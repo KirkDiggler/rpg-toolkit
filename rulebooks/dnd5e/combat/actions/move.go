@@ -3,7 +3,10 @@
 
 package actions
 
-import "fmt"
+import (
+	"fmt"
+	"maps"
+)
 
 // MovePolicy is HOW a creature moved against its will is moved: the shape of
 // the route, stated as a rule rather than as cells.
@@ -26,6 +29,10 @@ const (
 	// MoveLine continues the line from the anchor through the mover, past the
 	// mover, for the budget. A shove: it does not search for anywhere better.
 	MoveLine MovePolicy = "line"
+
+	// MovePull follows the direct line from the mover toward the anchor,
+	// stopping before it. It does not search for a route around obstacles.
+	MovePull MovePolicy = "pull"
 
 	// MoveAway sends the mover to the reached standable cell FARTHEST from the
 	// anchor by the ruler, within the budget. Not a direction and not a line:
@@ -76,6 +83,10 @@ const (
 // budget sitting beside a cast that does not move anybody are zero values that
 // lie. Nil is "this cast moves nobody"; non-nil is the whole answer.
 type CastMove struct {
+	// CellsByOption binds the cast's selected option to a distance. Zero
+	// explicitly declines movement; positive values cannot exceed Cells.
+	CellsByOption map[string]int `json:"cells_by_option,omitempty"`
+
 	// Policy is how the mover is moved.
 	Policy MovePolicy `json:"policy"`
 
@@ -110,7 +121,7 @@ type CastMove struct {
 // the three budgets, and a known price.
 func (m CastMove) Validate() error {
 	switch m.Policy {
-	case MoveLine, MoveAway, MoveToward:
+	case MoveLine, MoveAway, MoveToward, MovePull:
 	default:
 		return fmt.Errorf("unknown move policy %q", m.Policy)
 	}
@@ -142,6 +153,11 @@ func (m CastMove) Validate() error {
 			"move must declare exactly one budget, a positive cell count or the mover's speed or its turn")
 	}
 
+	for option, cells := range m.CellsByOption {
+		if option == "" || m.Cells <= 0 || m.Speed || m.Turn || cells < 0 || cells > m.Cells {
+			return fmt.Errorf("invalid move distance option %q: %d", option, cells)
+		}
+	}
 	switch m.Pays {
 	case PaysNothing, PaysReaction:
 	default:
@@ -149,4 +165,25 @@ func (m CastMove) Validate() error {
 	}
 
 	return nil
+}
+
+// Clone detaches option budgets from the authored content.
+func (m CastMove) Clone() CastMove { m.CellsByOption = maps.Clone(m.CellsByOption); return m }
+
+// ForOption binds a validated cast option. Nil means an explicit zero-distance
+// choice. An undeclared option is refused before payment by the cast door.
+func (m CastMove) ForOption(option string) (*CastMove, error) {
+	copy := m.Clone()
+	if len(m.CellsByOption) > 0 {
+		cells, ok := m.CellsByOption[option]
+		if !ok {
+			return nil, fmt.Errorf("unknown move option %q", option)
+		}
+		if cells == 0 {
+			return nil, nil
+		}
+		copy.Cells = cells
+	}
+	copy.CellsByOption = nil
+	return &copy, nil
 }

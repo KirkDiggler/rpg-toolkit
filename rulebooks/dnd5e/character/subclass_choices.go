@@ -14,6 +14,9 @@ func compileSubclassChoices(subclass classes.Subclass, submitted []choices.Submi
 	mods := choices.GetSubclassModifications(subclass)
 	allowed := map[choices.ChoiceID]shared.ChoiceCategory{}
 	if mods != nil {
+		for _, req := range mods.AdditionalCantrips {
+			allowed[req.ID] = shared.ChoiceCantrips
+		}
 		if mods.AdditionalSkills != nil {
 			allowed[mods.AdditionalSkills.ID] = shared.ChoiceSkills
 		}
@@ -32,6 +35,8 @@ func compileSubclassChoices(subclass classes.Subclass, submitted []choices.Submi
 		record := choices.ChoiceData{Source: shared.SourceSubclass, Category: category, ChoiceID: sub.ChoiceID}
 		values := append([]shared.SelectionID(nil), sub.Values...)
 		switch category {
+		case shared.ChoiceCantrips:
+			record.SpellSelection = values
 		case shared.ChoiceSkills:
 			record.SkillSelection = values
 		case shared.ChoiceLanguages:
@@ -64,6 +69,31 @@ func (d *Draft) validateSubclassLanguages(racial []languages.Language) error {
 					return rpgerr.Newf(rpgerr.CodeInvalidArgument, "subclass language %s is already known", language)
 				}
 				known[language] = true
+			}
+		}
+	}
+	return nil
+}
+
+// validateSubclassCantrips requires a bonus pick to add a spell. It compares
+// canonical spell IDs across all sources, so selection order cannot permit a
+// duplicate cleric/druid spell such as Guidance or Resistance.
+func (d *Draft) validateSubclassCantrips() error {
+	known := map[string]bool{}
+	for _, choice := range d.choices {
+		if choice.Category == shared.ChoiceCantrips && choice.Source != shared.SourceSubclass {
+			for _, id := range choice.SpellSelection {
+				known[id] = true
+			}
+		}
+	}
+	for _, choice := range d.choices {
+		if choice.Category == shared.ChoiceCantrips && choice.Source == shared.SourceSubclass {
+			for _, id := range choice.SpellSelection {
+				if known[id] {
+					return rpgerr.Newf(rpgerr.CodeInvalidArgument, "subclass cantrip %s is already known", id)
+				}
+				known[id] = true
 			}
 		}
 	}

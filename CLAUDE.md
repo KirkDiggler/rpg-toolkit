@@ -11,15 +11,15 @@ same instructions.
 ## Where things live
 
 - `docs/architecture/overview.md` — layer rules (Core → Events → Mechanics → Tools → Rulebooks), module map, boundary with rpg-api, named violations
-- `docs/architecture/data-model.md` — ToData/LoadFromData pattern, entity shapes, chain/breakdown output
-- `docs/architecture/components/` — one doc per major module (core, events, dice, mechanics, tools-spatial, tools-environments, tools-spawn, rulebook-dnd5e, refs, items)
+- `docs/architecture/data-model.md` — ToData/LoadFromData pattern, entity shapes, identifier constants, condition/feature serialization, chain/breakdown output
+- `docs/architecture/components/` — one doc per major module, plus focused sub-module docs (`rulebook-dnd5e-session`, `rulebook-dnd5e-character`)
 - `docs/status.md` — current health: active work, paused items, known rough edges, per-subsystem confidence
 - `docs/quality.md` — A-D scorecard with rationale per module
 - `docs/adr/` — architectural decisions (32 ADRs). New decisions add new ADRs; superseded ones stay with a "Superseded by ADR-NNN" note. Never archive an ADR.
 - `docs/journey/` — exploration narratives (49 docs). How the engine got to where it is. Future contributors learn the engine from these. Do not archive.
 - `docs/plans/` — design explorations for specific features (10 plans). Historical; some are implemented, some stale.
 - `docs/ideas/` — toolkit-scoped idea records. Each active idea keeps `design.md` and `plan.md` open through implementation, then adds `implementation.md` with observed results before the idea PR merges.
-- `docs/how-to/` — task guides: run-tests, add-a-mechanic, add-a-rulebook-entry, fix-go-mod-replace-directives, verified-transcripts (show a module working as designed: `./scripts/verify.sh <module>`)
+- `docs/how-to/` — task guides: run-tests (commands, the testify suite pattern, pre-commit gates), add-a-mechanic, add-a-rulebook-entry, fix-go-mod-replace-directives, verified-transcripts (show a module working as designed: `./scripts/verify.sh <module>`)
 - `docs/archive/` — genuine archive: pre-Dec-2025 design docs, diagrams, guides that no longer reflect current architecture. Read for historical context only.
 
 ## How live play is layered
@@ -148,9 +148,8 @@ Local `replace` directives and `go.work` files are a normal part of developing
 across modules here. Working outside-in (build the consumer against a local
 sibling, discover the contract, then merge inside-out) depends on them.
 
-The rule this section used to state — "no replace directives, no go.work" — was
-written because those overrides were being *committed* and breaking CI. That is
-the actual failure, and that is what stays banned.
+The failure that shaped this rule is overrides being *committed* and breaking
+CI. That is the actual failure, and that is what stays banned.
 
 1. **Override locally, publish before you merge**
    - Use `replace` or `go.work` freely while developing across modules
@@ -165,7 +164,6 @@ the actual failure, and that is what stays banned.
      main first (CI mints its tag), then `go get` the minted version in the
      dependent module
    - Go creates pseudo-versions automatically for un-tagged commits
-     (e.g., `v0.0.0-20230907052031-37f5183ecf93`)
 
 3. **Why This Shape**
    - Local overrides make cross-module work possible without a release per edit
@@ -175,78 +173,9 @@ the actual failure, and that is what stays banned.
      compiles against unless you have an override in place — the most common
      source of "I fixed it but nothing changed"
 
-## Testing Strategy
+## Laws
 
-### Preferred Testing Approach: Testify Suite Pattern
-
-**Use testify suite for clean test organization**:
-
-```go
-type ServiceTestSuite struct {
-    suite.Suite
-    service  *Service
-    mockDep  *MockDependency
-    testData *TestData
-}
-
-// SetupTest runs before EACH test function
-func (s *ServiceTestSuite) SetupTest() {
-    // Create mocks - fresh for each test
-    s.mockDep = NewMockDependency(s.T())
-    s.service = NewService(&ServiceConfig{
-        Dependency: s.mockDep,
-    })
-    // Initialize common test data
-    s.testData = createTestData()
-}
-
-// SetupSubTest runs before EACH s.Run()
-func (s *ServiceTestSuite) SetupSubTest() {
-    // Reset test data to clean state for each subtest
-    s.testData = createTestData()
-    // Can also reset specific mock expectations if needed
-}
-
-// Run the suite
-func TestServiceSuite(t *testing.T) {
-    suite.Run(t, new(ServiceTestSuite))
-}
-```
-
-**Key Testing Principles**:
-- Use `suite.Suite` for test organization
-- Use `s.Run()` for subtests with test cases
-- `SetupTest()` runs before each test function - establish mocks here
-- `SetupSubTest()` runs before each `s.Run()` - reset test data here
-- Keep test bodies focused on arrange/act/assert
-- Use suite assertions: `s.Assert()`, `s.Require()`
-
-### Testing Commands
-
-When working on a module:
-```bash
-# Run tests
-go test ./...
-
-# Run linter
-golangci-lint run ./...
-
-# Update dependencies
-go get -u ./...
-go mod tidy
-```
-
-## Pre-commit Checks
-
-The repository has comprehensive pre-commit hooks that run:
-- Formatting (gofmt, goimports)
-- go mod tidy
-- Linting
-- Tests
-
-These run automatically on commit.
-
-## Development Principles
+**Development principles**
 
 - **Optimize for simplicity, not hypothetical future needs**
 - **Only add what is necessary**
@@ -254,362 +183,97 @@ These run automatically on commit.
 - **Avoid conversion layers and dual representations**
 - **Delete code that creates unnecessary indirection**
 
-## Project Philosophy
+**Toolkit is infrastructure, not implementation**
 
-**IMPORTANT: RPG Toolkit provides infrastructure, NOT implementation**
+1. **Generic tools, not game rules** — we provide the infrastructure for game
+   mechanics; games implement their specific rules using our tools. We provide
+   proficiency infrastructure; the game defines what "Acrobatics" means.
+2. **Events observe, values decide** — typed topics (`events.DefineTypedTopic`,
+   the `.On(bus)` pattern) carry game occurrences to whoever subscribed; rules
+   and observers react there. Results still **return as values**: `play/*`
+   leaves never publish, and spatial publication is observer-only. See "How
+   live play is layered" above for which layer owns the bus.
+3. **Entity-based design** — all game objects implement `core.Entity` (ID and
+   Type), giving consistent patterns across the toolkit.
 
-1. **Generic Tools, Not Game Rules**
-   - We provide the infrastructure for game mechanics
-   - Games implement their specific rules using our tools
-   - Example: We provide proficiency infrastructure, games define what "Acrobatics" means
+**Patterns**
 
-2. **Events Observe, Values Decide**
-   - Typed topics (`events.DefineTypedTopic`, the `.On(bus)` pattern) carry
-     game occurrences to whoever subscribed; rules and observers react there
-   - Results still **return as values**: `play/*` leaves never publish, and
-     spatial publication is observer-only
-   - See "How live play is layered" above for which layer owns the bus
+- Config structs for constructors; embedded structs and interfaces over
+  inheritance
+- Event names use dot notation (e.g., "resource.consumed", "condition.applied")
+- **Identifier constants: toolkit is the source of truth for game-mechanics
+  identifiers, and rpg-api is a pure translator** — proto enum in, typed
+  constant, toolkit validates and returns, server passes the result through
+  unchanged. Toolkit validates everything; its error messages are user-facing.
+  The pattern and its law live in `docs/architecture/data-model.md`.
+- **Condition/feature serialization: rpg-api stores opaque JSON blobs; toolkit
+  marshals them into strongly-typed data structs** — runtime structs carry no
+  JSON tags; the loader routes by `ref.Value`. The full pattern lives in
+  `docs/architecture/data-model.md`.
+- **Every public function, type, constant, and variable carries a comment**
+  naming purpose, behavior, and error cases. No empty function bodies; no
+  functions that only return nil; follow existing toolkit patterns. CI
+  enforces this.
+- **Context discipline** — standard `context.Context` only where cancellation,
+  timeouts, or request-scoped values are genuinely needed; remove unused
+  context parameters. `play/*` packages take no `context.Context` at all, by
+  contract. Game data flows through typed topics and returned values, not
+  through a general-purpose context bag.
 
-3. **Entity-Based Design**
-   - All game objects implement core.Entity interface
-   - Entities have ID and Type
-   - This provides consistent patterns across the toolkit
+**Module isolation**
 
-## Current Status
+1. **Never touch other modules when working on a specific module.** Other
+   modules are read-only for reference; their issues get separate PRs.
+2. **Check the current directory before running go commands.** Bulk operations
+   across all modules corrupt dependencies — a stray `go mod tidy` in the
+   wrong module breaks everyone.
+3. **When CI fails, check what files actually changed first.** It is usually
+   code conflicts or accidentally committed files, not CI configuration.
+4. **A directory without `go.mod` is treated as part of the root workspace**
+   and can conflict types with existing modules. Every module has a proper
+   `go.mod` or is removed entirely.
 
-Live status is never snapshotted here — it rots (an old revision of this file
-still listed 2025's module list as "current"). Read instead:
+**Tests**
+
+- Test organization uses the testify suite pattern; the shape, commands, and
+  pre-commit gates live in `docs/how-to/run-tests.md`.
+- Check errors in tests with `s.Require().NoError(err)` / `require.NoError(t, err)`.
+
+## Workspace discipline
+
+- This repository participates in `KirkDiggler/rpg-project`. Toolkit owns game
+  mechanics and projections; API owns mapping, authorization, and orchestration;
+  web owns interaction and rendering; protos owns wire shape and generated SDKs.
+  Report adjacent work before taking it on. Inspect existing contracts before
+  requesting new fields. **Never repair a missing provider projection by
+  loosening validation or reconstructing rules in a consumer.**
+- For this user's work, correctness and controlled sequencing take priority
+  over speed: advance one PR at a time, wait for the provider to merge and CI
+  to publish its actual module tag, then update and verify the next consumer
+  against that release. No temporary dependency versions, no parallel dependent
+  PR stacks to accelerate delivery, no rewriting published branch history.
+- **Cross-project acceptance evidence:** for a new class or player-facing
+  mechanic, trace a normally created, **unseeded** character through
+  acquisition, finalization, persistence, private sheet reads, offers,
+  execution, results, and reload/rest. Creation and casting tests alone do not
+  establish that the player can read their sheet. The character-package
+  checklist in `rulebooks/dnd5e/character/CLAUDE.md` covers the provider checks.
+  Report evidence by boundary and exact revision: toolkit regression, API
+  contract test, and native browser acceptance are separate claims; a green
+  provider suite or seeded fixture does not prove native acquisition or
+  private-sheet reads. Mark an unrun boundary pending. Record unmerged PRs
+  separately from published releases and consumer adoption.
+- Include the user before deciding gameplay eligibility, missing-data
+  defaults, backward-compatibility behavior, or scope that introduces
+  prerequisites in other systems — these are product/rules decisions, not
+  routine coding choices. Once decided, record and implement the decision
+  without repeated confirmation.
+
+## Where current state lives
+
+Live status is never snapshotted here — it rots. Read instead:
 
 - `docs/status.md` — active work, paused items, rough edges (a living doc,
   updated in the same PR that invalidates a line)
 - `docs/quality.md` — per-module A-D scorecard
 - the GitHub issues and Project 19 board — what is actually in flight
-
-## Important Patterns
-1. **Config Pattern**: Use config structs for constructors
-2. **Composition Over Inheritance**: Use embedded structs and interfaces
-3. **Error Handling**: Always check errors in tests with require.NoError(t, err)
-4. **Event Naming**: Use dot notation (e.g., "resource.consumed", "condition.applied")
-5. **Typed Constants Pattern**: See below
-6. **JSON Serialization Pattern**: See below
-
-## Typed Constants Pattern
-
-**Toolkit is the source of truth for game mechanics identifiers.**
-
-Game server (rpg-api) is a pure translator:
-- Proto enum in → Toolkit typed constant
-- Toolkit validates, processes, returns result/error
-- Game server maps response → proto, passes through unchanged
-
-**Rule:** If the game server passes a decision parameter to the toolkit, it must be a typed constant.
-
-**Pattern:**
-- Base types in `shared/` or domain package
-- Constants in domain packages (e.g., `weapons/common.go`)
-
-```go
-// weapons/common.go
-type WeaponID = shared.EquipmentID
-const (
-    Longsword WeaponID = "longsword"
-    Dagger    WeaponID = "dagger"
-)
-```
-
-**Toolkit validates everything.** Error messages are user-facing since they pass through unchanged.
-
-## Feature/Condition Serialization Pattern
-
-**IMPORTANT: Typed Data Structs for JSON**
-
-Features and Conditions use a JSON-in/JSON-out pattern where:
-- The **game server (rpg-api)** stores conditions/features as **opaque JSON blobs** - it doesn't know internal structure
-- The **toolkit** is responsible for marshaling JSON into **strongly-typed structs**
-
-**Pattern:**
-```go
-// Data struct for serialization - uses core.Ref for routing
-type RagingData struct {
-    Ref               core.Ref `json:"ref"`
-    CharacterID       string   `json:"character_id"`
-    DamageBonus       int      `json:"damage_bonus"`
-    // ... other fields
-}
-
-// Runtime struct - no JSON tags needed
-type RagingCondition struct {
-    CharacterID string
-    DamageBonus int
-    // ... other fields + non-serialized runtime state
-}
-
-// ToJSON serializes to typed struct
-func (r *RagingCondition) ToJSON() (json.RawMessage, error) {
-    data := RagingData{
-        Ref: core.Ref{Module: "dnd5e", Type: "conditions", Value: "raging"},
-        CharacterID: r.CharacterID,
-        // ...
-    }
-    return json.Marshal(data)
-}
-
-// loadJSON deserializes from typed struct
-func (r *RagingCondition) loadJSON(data json.RawMessage) error {
-    var ragingData RagingData
-    if err := json.Unmarshal(data, &ragingData); err != nil {
-        return err
-    }
-    r.CharacterID = ragingData.CharacterID
-    // ...
-    return nil
-}
-```
-
-**Loader routes by ref:**
-```go
-func LoadJSON(data json.RawMessage) (ConditionBehavior, error) {
-    var peek struct { Ref core.Ref `json:"ref"` }
-    json.Unmarshal(data, &peek)
-
-    switch peek.Ref.Value {
-    case "raging":
-        c := &RagingCondition{}
-        c.loadJSON(data)
-        return c, nil
-    // ...
-    }
-}
-```
-
-**Key Benefits:**
-- Type-safe serialization (not `map[string]interface{}`)
-- Clear separation between runtime and serialized state
-- Game server doesn't need to understand toolkit internals
-- Easy to add new condition/feature types
-
-## Development Workflow Reminders
-
-**Git workflow:**
-```bash
-git checkout main && git pull
-git checkout -b fix/NNN-short-slug    # or feat/, docs/
-# ... make changes, run tests ...
-git add -A
-git commit -m "type: description"
-git push -u origin fix/NNN-short-slug
-gh pr create --draft                  # publish the first working checkpoint
-```
-
-Open a draft PR on the first working push and keep its checkpoint and
-validation evidence current. Mark it ready for review after implementation and
-applicable checks; publish the required review disposition before calling it
-merge-ready. Branch from and merge to `main` — there is no `dev` here.
-Published branches describe the issue/feature/module (for example,
-`feat/1601-bane-session`); keep runtime/session IDs in execution metadata.
-
-**Implementation/check checklist (not a draft-publication gate):**
-1. Always check existing patterns in similar modules
-2. Read Journey and ADR docs before implementing new features
-3. Never create files unless necessary - prefer editing existing ones
-4. Run the full test suite before committing (`go test ./...`)
-5. Run linter before committing (`golangci-lint run ./...`)
-6. **Run `go fmt ./...` and `go mod tidy` before committing** - CI checks for diffs
-7. Use `gh pr create` for PRs with proper formatting
-
-## Critical Module Isolation Rules
-**LEARNED FROM PR #76 TROUBLESHOOTING**
-
-1. **NEVER touch other modules when working on a specific module**
-   - Other modules are READ-ONLY for reference
-   - If other modules have issues, create separate PRs
-   - Don't run `go mod tidy` or similar commands in other modules
-
-2. **Be extremely careful with troubleshooting commands**
-   - Always check current directory before running go commands
-   - Don't run bulk operations across all modules unless absolutely necessary
-   - Accidental `go mod tidy` in wrong modules can corrupt dependencies
-
-3. **Focus on actual changes, not CI configuration**
-   - When CI fails, check what files were actually changed first
-   - Don't assume CI configuration issues - often it's code conflicts
-   - Look for accidentally committed files (like stray modules without go.mod)
-
-4. **Type conflicts from orphaned modules**
-   - Files without go.mod get treated as part of root workspace
-   - Can cause type conflicts with existing modules
-   - Always ensure new modules have proper go.mod or remove them entirely
-
-## AI Assistant Guidelines
-
-### Project coordination and explicit user direction
-
-This repository participates in `KirkDiggler/rpg-project`. Respect the ownership
-and handoff boundaries described in its team role documents, including
-[the API protos role](https://github.com/KirkDiggler/rpg-project/blob/main/docs/teams/roles/rpg-api-protos-member/prompt.md).
-Apply role-specific tooling requirements only to their owning repository.
-Toolkit owns game mechanics, API owns server orchestration, and protos owns wire
-contracts. Report adjacent work before taking it on. Review the assigned change
-and state remaining release prerequisites honestly; passing checks alone does
-not make a change merge-ready. Do not merge PRs on the user's behalf without
-explicit authorization.
-
-For this user's work, correctness and controlled sequencing take priority over
-speed. Their explicit release direction overrides the general pseudo-version
-development allowance above: advance one PR at a time, wait for the provider to
-merge and CI to publish its actual module tag, then update and verify the next
-consumer against that release. Do not introduce temporary dependency versions
-or publish a parallel dependent PR stack to accelerate delivery. Do not rewrite
-published branch history as a workflow shortcut.
-
-The Cure Wounds handoff sequence is recorded in `docs/ideas/cleric/plan.md`.
-
-### Cross-project acceptance evidence
-
-For a new class or player-facing mechanic, trace a normally created, unseeded
-character through acquisition, finalization, persistence, private sheet reads,
-offers, execution, results, and reload/rest. Creation and casting tests alone do
-not establish that the player can read their sheet. The character-package
-checklist in `rulebooks/dnd5e/character/CLAUDE.md` covers the provider checks.
-
-Keep ownership explicit in the handoff: toolkit owns rules and projections;
-protos owns wire shape and generated SDKs; API owns mapping, authorization and
-orchestration; web owns interaction and rendering. Inspect existing contracts
-before requesting new fields. Never repair a missing provider projection by
-loosening validation or reconstructing rules in a consumer.
-
-Report evidence by boundary and exact revision/version: toolkit regression,
-API contract test, and native browser acceptance are separate claims. Mark an
-unrun boundary pending. A seeded combat fixture, successful cast, or green
-provider suite does not prove native acquisition or private-sheet reads. Record
-unmerged PRs separately from published releases and consumer adoption. These
-checks complement the one-PR-at-a-time release policy above.
-
-Include the user before deciding gameplay eligibility, missing-data defaults,
-backward-compatibility behavior, or scope that introduces prerequisites in other
-systems. Explain the concrete behavior and tradeoff and obtain their direction
-before implementation. These are product/rules decisions, not routine coding
-choices. Once the user decides, record and implement that decision without
-repeated confirmation. For Cure Wounds, missing creature type does not match an
-exclusion and must not prevent selection or healing; broader classification is
-outside the Cleric slice.
-
-**CRITICAL: NO ASSUMPTIONS WITHOUT VERIFICATION**
-
-1. **Research Before Acting**
-   - Never make assumptions about tool versions, compatibility, or technical specifications
-   - Always research and verify facts before providing commands or instructions
-   - Use web search, documentation, or other verification methods when uncertain
-
-2. **Explicit Assumption Declaration**
-   - If you must make an assumption, explicitly state: "I'm making an assumption here that..."
-   - Explain what you're assuming and why
-   - Suggest verification steps the user can take
-
-3. **Version Compatibility**
-   - Always check actual compatibility matrices for tools and dependencies
-   - Don't assume version support without verification
-   - When in doubt, recommend checking official documentation
-
-4. **Error Recovery**
-   - When corrected, acknowledge the mistake clearly
-   - Update long-term memory (this file) with correct information
-   - Learn from the correction to avoid similar errors
-
-5. **Context Discipline**
-   - **Go Context**: standard `context.Context` for cancellation, timeouts,
-     request-scoped values — use it only where cancellation/timeouts are
-     genuinely needed, and remove unused context parameters
-   - `play/*` packages take no `context.Context` at all, by contract
-   - Game data flows through typed topic events and returned values, not
-     through a general-purpose context bag
-
-## CI Protection Guidelines
-
-**CRITICAL: ALL PUBLIC APIS MUST BE DOCUMENTED**
-
-Follow these patterns to avoid CI failures:
-
-### Documentation Requirements
-1. **All Public Functions** must have comments explaining what they do:
-   ```go
-   // NewBasicTable creates a new weighted selection table with the specified configuration
-   func NewBasicTable[T any](config BasicTableConfig) *BasicTable[T] {
-   ```
-
-2. **All Public Types** must have comments explaining their purpose:
-   ```go
-   // SelectionTable provides weighted random selection for any content type
-   // Purpose: Core interface for all grabbag/loot table functionality
-   type SelectionTable[T any] interface {
-   ```
-
-3. **All Public Constants** must have comments explaining their meaning:
-   ```go
-   // SelectionModeUnique prevents duplicate selections in multi-item rolls
-   const SelectionModeUnique SelectionMode = "unique"
-   ```
-
-4. **All Public Variables** must have comments explaining their purpose:
-   ```go
-   // ErrEmptyTable indicates an attempt to select from a table with no items
-   var ErrEmptyTable = errors.New("selection table contains no items")
-   ```
-
-### Documentation Patterns from Environments Package
-Based on `tools/environments/`:
-
-1. **Multi-line purpose explanations**:
-   ```go
-   // ConstraintType categorizes different kinds of generation constraints
-   // Purpose: Allows the generator to handle different constraint types appropriately.
-   // Some constraints affect placement, others affect connections, etc.
-   type ConstraintType int
-   ```
-
-2. **Constructor functions**:
-   ```go
-   // NewBasicEnvironment creates a new environment with the specified configuration
-   // Purpose: Standard constructor with config struct, proper initialization
-   func NewBasicEnvironment(config BasicEnvironmentConfig) *BasicEnvironment {
-   ```
-
-3. **Interface method documentation**:
-   ```go
-   // GetID returns the unique identifier for this environment
-   func (e *BasicEnvironment) GetID() string {
-   
-   // SetTheme changes the visual and atmospheric theme of the environment.
-   // Purpose: Allows dynamic environment appearance changes during gameplay
-   func (e *BasicEnvironment) SetTheme(theme string) error {
-   ```
-
-### Implementation Rules
-1. **NO functions that only return nil** - CI will fail
-2. **NO empty function bodies** - implement meaningful functionality or document why it's intentionally empty
-3. **ALL public methods** must have accompanying comments
-4. **Follow toolkit naming patterns** - see existing code for conventions
-
-### Error Handling Patterns
-```go
-// SelectMany selects multiple items from the table with the specified count
-// Returns ErrEmptyTable if the table contains no items
-// Returns ErrInvalidCount if count is less than 1
-func (t *BasicTable[T]) SelectMany(ctx SelectionContext, count int) ([]T, error) {
-    if len(t.items) == 0 {
-        return nil, ErrEmptyTable
-    }
-    if count < 1 {
-        return nil, ErrInvalidCount
-    }
-    // ... implementation
-}
-```
-
-### Pre-Implementation Checklist
-Before writing any public API:
-1. ✅ Function/type has descriptive comment
-2. ✅ Comment explains purpose and behavior  
-3. ✅ Error cases documented in comment
-4. ✅ Function has meaningful implementation (not just `return nil`)
-5. ✅ Follows existing toolkit patterns

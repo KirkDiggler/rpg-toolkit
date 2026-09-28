@@ -101,6 +101,9 @@ type Input struct {
 	// wielder. Everyone is proficient with an unarmed strike, and that is
 	// the rule rather than a training the sheet records.
 	AlwaysProficient bool
+
+	// Override changes only the primary weapon pool and optionally its ability.
+	Override *Override
 }
 
 // Assemble derives an inert shared attack definition from a weapon and its
@@ -129,6 +132,10 @@ func Assemble(in *Input) (combatActions.Definition, error) {
 	}
 
 	ability := AbilityFor(in.Wielder, weapon)
+	if in.Override != nil && in.Override.Ability != "" &&
+		in.Wielder.GetAbilityModifier(in.Override.Ability) > in.Wielder.GetAbilityModifier(ability) {
+		ability = in.Override.Ability
+	}
 	modifier := in.Wielder.GetAbilityModifier(ability)
 	attackBonus := modifier
 	if in.AlwaysProficient || in.Wielder.IsProficientWith(weapon) {
@@ -138,6 +145,21 @@ func Assemble(in *Input) (combatActions.Definition, error) {
 	pools, err := weapon.DamageForGrip(in.TwoHanded)
 	if err != nil {
 		return combatActions.Definition{}, rpgerr.Wrap(err, "cannot compile weapon damage")
+	}
+
+	pools = copyDamagePools(pools)
+	if in.Override != nil {
+		for i := range pools {
+			if !pools[i].HasProperty(damage.AddsAttackAbilityModifier) {
+				continue
+			}
+			if in.Override.Dice != "" {
+				pools[i].Dice = in.Override.Dice
+			}
+			if in.Override.Magical && !pools[i].HasProperty(damage.MagicalWeapon) {
+				pools[i].Properties = append(pools[i].Properties, damage.MagicalWeapon)
+			}
+		}
 	}
 
 	definition := combatActions.Definition{
@@ -229,4 +251,14 @@ func copyDamagePools(pools []damage.Damage) []damage.Damage {
 		copied[index].Properties = append([]damage.Property(nil), pool.Properties...)
 	}
 	return copied
+}
+
+// Override describes a held weapon's pre-roll enchantment. Dice replaces the
+// primary pool (including a versatile grip), never rider pools. Ability is an
+// optional alternative; the compiler uses it only when its modifier is better.
+// No catalog weapon is mutated and no discarded damage dice are rolled.
+type Override struct {
+	Dice    string
+	Ability abilities.Ability
+	Magical bool
 }

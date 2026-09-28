@@ -68,6 +68,12 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 	var condition dnd5eEvents.ConditionBehavior
 
 	switch ref.ID {
+	case refs.Conditions.Shillelagh().ID:
+		var config ShillelaghConfig
+		if err = json.Unmarshal(input.Config, &config); err == nil {
+			condition, err = NewShillelaghCondition(input.MemberID, config)
+		}
+
 	case refs.Conditions.InFog().ID:
 		var cfg struct {
 			SourceID string `json:"source_id"`

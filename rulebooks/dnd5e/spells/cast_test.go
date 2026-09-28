@@ -13,11 +13,13 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
 // CastContentSuite covers supported cast profiles and unsupported catalog entries.
@@ -738,13 +740,11 @@ func (s *CastContentSuite) TestEveryCommandOptionIsLabelledForAPersonToRead() {
 	}
 }
 
-// TestOnlyCommandOffersAMenu — the option is a cast-time input that every other
-// profile leaves at its zero value, and this is the assertion that would catch
-// a menu leaking into a spell by a shared helper or a copied row.
-func (s *CastContentSuite) TestOnlyCommandOffersAMenu() {
+// TestOnlyDeclaredChoiceSpellsOfferAMenu prevents accidental menus on other spells.
+func (s *CastContentSuite) TestOnlyDeclaredChoiceSpellsOfferAMenu() {
 	for id := range spells.SpellData {
 		definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: id, SpellSaveDC: 13})
-		if definition == nil || id == spells.Command {
+		if definition == nil || id == spells.Command || id == spells.Thornwhip {
 			continue
 		}
 		s.Require().NotNil(definition.Cast, "%s minted a definition with no cast profile", id)
@@ -915,4 +915,95 @@ func (s *CastContentSuite) TestFaerieFireDeclaresSharedPointBoxSaveAndConcentrat
 	s.Equal(10, d.Cast.Concentration.TurnEnds)
 	s.True(d.Cast.Concentration.SkipFirstTurnEnd)
 	s.Contains(spells.Selectable([]spells.Spell{spells.FaerieFire}), spells.FaerieFire)
+}
+
+func (s *CastContentSuite) TestPoisonSprayCarriesOnlyItsSaveAndPoisonDamage() {
+	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.PoisonSpray, SpellSaveDC: 14})
+	s.Require().NotNil(definition)
+	s.Require().NoError(definition.Validate())
+	s.Equal(refs.Spells.PoisonSpray().String(), definition.Ref.String())
+	s.Equal("Poison Spray", definition.Name)
+	s.Nil(definition.Attack)
+	s.Require().NotNil(definition.Cost)
+	s.Equal(1, definition.Cost.Slots[coreCombat.ActionStandard])
+	s.Empty(definition.Cost.Pools, "cantrips spend no spell-slot pool")
+
+	profile := definition.Cast
+	s.Require().NotNil(profile)
+	s.Equal(10, profile.RangeFeet)
+	s.Equal(actions.CastTargetOneCreature, profile.Target)
+	s.Require().NotNil(profile.Save)
+	s.Equal([]abilities.Ability{abilities.CON}, profile.Save.Abilities)
+	s.Equal(14, profile.Save.DC.DC(saves.DCInput{}))
+	s.Equal(saves.Negated, profile.Save.OnSuccess)
+	s.Equal(saves.RecurrenceNone, profile.Save.Recurrence)
+	s.Require().Len(profile.Damage, 1)
+	s.Equal("1d12", profile.Damage[0].Dice)
+	s.Equal(damage.Poison, profile.Damage[0].Type)
+	s.Empty(profile.Effects, "Poison Spray leaves no condition behind")
+	s.Nil(profile.Concentration)
+}
+
+func (s *CastContentSuite) TestShillelaghRequiresHeldEligibleWeaponAndBindsOneOrOffersBoth() {
+	input := spells.CastDefinitionInput{Spell: spells.Shillelagh, SpellcastingAbility: abilities.WIS}
+	s.Nil(spells.CastDefinition(input))
+	input.HeldWeapons = []spells.HeldWeapon{{Slot: "main_hand", ItemID: "sword", WeaponID: weapons.Longsword, Name: "Longsword"}}
+	s.Nil(spells.CastDefinition(input))
+	input.HeldWeapons = append(input.HeldWeapons, spells.HeldWeapon{Slot: "off_hand", ItemID: "club", WeaponID: weapons.Club, Name: "Club"})
+	d := spells.CastDefinition(input)
+	s.Require().NotNil(d)
+	s.Require().NoError(d.Validate())
+	s.Equal(1, d.Cost.Slots[coreCombat.ActionBonus])
+	s.Empty(d.Cost.Pools)
+	s.Equal(0, d.Cast.Casting.Level)
+	s.Equal(combat.SpellCastingBonusAction, d.Cast.Casting.Time)
+	s.Nil(d.Cast.Concentration)
+	s.Empty(d.Cast.Options)
+	s.Empty(d.Cast.Damage)
+	s.Nil(d.Cast.Attack)
+	var config conditions.ShillelaghConfig
+	s.Require().NoError(json.Unmarshal(d.Cast.Effects[0].Parameters, &config))
+	s.Equal("off_hand", config.WeaponSlot)
+	s.Len(config.Weapons, 1)
+	input.HeldWeapons[0] = spells.HeldWeapon{Slot: "main_hand", ItemID: "club", WeaponID: weapons.Club, Name: "Club"}
+	d = spells.CastDefinition(input)
+	s.Require().NoError(d.Validate())
+	s.Require().Len(d.Cast.Options, 2)
+	s.NotEqual(d.Cast.Options[0].ID, d.Cast.Options[1].ID, "identical catalog weapons remain distinct choices")
+	s.Equal("weapon_slot", d.Cast.Effects[0].OptionKey)
+}
+
+func (s *CastContentSuite) TestThornWhipDeclaresOptionalOnHitPull() {
+	d := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.Thornwhip})
+	s.Require().NotNil(d)
+	s.Require().NoError(d.Validate())
+	s.Equal(30, d.Cast.RangeFeet)
+	s.Equal(1, d.Cost.Slots[coreCombat.ActionStandard])
+	s.Empty(d.Cost.Pools)
+	s.Nil(d.Cast.Save)
+	s.Nil(d.Cast.Concentration)
+	s.Require().NotNil(d.Cast.Attack.Delivery.Melee)
+	s.Equal(30, d.Cast.Attack.Delivery.Melee.ReachFeet)
+	s.Equal(actions.MovePull, d.Cast.Move.Policy)
+	s.Equal(actions.PaysNothing, d.Cast.Move.Pays)
+	s.False(d.Cast.Move.Provokes)
+	for option, cells := range map[string]int{"no-pull": 0, "pull-5": 1, "pull-10": 2} {
+		move, err := d.Cast.Move.ForOption(option)
+		s.Require().NoError(err)
+		if cells == 0 {
+			s.Nil(move)
+		} else {
+			s.Require().NotNil(move)
+			s.Equal(cells, move.Cells)
+		}
+	}
+	_, err := d.Cast.Move.ForOption("pull-15")
+	s.Error(err)
+	clone := d.Clone()
+	clone.Cast.Move.CellsByOption["pull-10"] = 3
+	s.Error(clone.Validate())
+	s.Equal(2, d.Cast.Move.CellsByOption["pull-10"])
+	clone = d.Clone()
+	delete(clone.Cast.Move.CellsByOption, "no-pull")
+	s.Error(clone.Validate())
 }

@@ -336,8 +336,8 @@ func (p CastProfile) Validate() error {
 	}
 
 	if p.Attack != nil {
-		if p.Attack.Category != AttackCategorySpell || p.Save != nil || p.Healing != nil || p.Stabilize || len(p.Damage) > 0 || len(p.DamageIfInjured) > 0 || len(p.Effects) > 0 || p.Move != nil || p.Concentration != nil || p.Area != nil || len(p.HealingExcludes) > 0 || len(p.Options) > 0 {
-			return fmt.Errorf("spell attack cast must carry only its attack delivery")
+		if p.Attack.Category != AttackCategorySpell || p.Save != nil || p.Healing != nil || p.Stabilize || len(p.Damage) > 0 || len(p.DamageIfInjured) > 0 || len(p.Effects) > 0 || p.Concentration != nil || p.Area != nil || len(p.HealingExcludes) > 0 {
+			return fmt.Errorf("spell attack cast must carry only its attack and optional on-hit movement")
 		}
 		if p.MinTargets != 1 || p.MaxTargets != 1 || (p.Target != CastTargetOneCreature && p.Target != CastTargetTouch) {
 			return fmt.Errorf("spell attack cast requires one creature")
@@ -345,7 +345,15 @@ func (p CastProfile) Validate() error {
 		if err := p.Attack.Validate(); err != nil {
 			return fmt.Errorf("cast attack: %w", err)
 		}
-		return nil
+		if p.Move != nil {
+			if err := p.Move.Validate(); err != nil {
+				return fmt.Errorf("cast move is invalid: %w", err)
+			}
+			if p.Move.Pays != PaysNothing || p.Move.Speed || p.Move.Turn || p.Move.Provokes {
+				return fmt.Errorf("on-hit movement must be a fixed forced move without payment")
+			}
+		}
+		return p.validateOptions()
 	}
 	if p.Save != nil {
 		// The gate itself refuses a word that is neither Negated nor Half
@@ -426,35 +434,8 @@ func (p CastProfile) Validate() error {
 		}
 	}
 
-	seen := make(map[string]struct{}, len(p.Options))
-	for index, option := range p.Options {
-		if option.ID == "" {
-			return fmt.Errorf("cast option %d must declare an id", index)
-		}
-		if option.Label == "" {
-			return fmt.Errorf("cast option %q must declare a label", option.ID)
-		}
-		if _, already := seen[option.ID]; already {
-			return fmt.Errorf("cast declares duplicate option id %q", option.ID)
-		}
-		seen[option.ID] = struct{}{}
-	}
-
-	reads := false
-	for index, effect := range p.Effects {
-		if err := effect.validate(p.Target, len(p.Options) > 0); err != nil {
-			return fmt.Errorf("cast effect %d is invalid: %w", index, err)
-		}
-		if effect.OptionKey != "" {
-			reads = true
-		}
-	}
-	// The menu and the key are bound in both directions. A menu no effect
-	// reads is an affordance with nothing behind it: a client would draw the
-	// picker and the answer would land nowhere. The other direction is refused
-	// where the effect is validated, because that is where the key is.
-	if len(p.Options) > 0 && !reads {
-		return fmt.Errorf("cast declares options but no effect reads it")
+	if err := p.validateOptions(); err != nil {
+		return err
 	}
 
 	if p.Concentration != nil && p.Concentration.TurnEnds <= 0 {
@@ -516,7 +497,7 @@ func (p CastProfile) Clone() CastProfile {
 		clone.Area = &area
 	}
 	if p.Move != nil {
-		move := *p.Move
+		move := p.Move.Clone()
 		clone.Move = &move
 	}
 	if p.Concentration != nil {
@@ -590,4 +571,49 @@ func (p CastProfile) AllowsRecipient(stored []json.RawMessage) (bool, error) {
 		}
 	}
 	return true, nil
+}
+
+func (p CastProfile) validateOptions() error {
+	seen := make(map[string]struct{}, len(p.Options))
+	for index, option := range p.Options {
+		if option.ID == "" {
+			return fmt.Errorf("cast option %d must declare an id", index)
+		}
+		if option.Label == "" {
+			return fmt.Errorf("cast option %q must declare a label", option.ID)
+		}
+		if _, already := seen[option.ID]; already {
+			return fmt.Errorf("cast declares duplicate option id %q", option.ID)
+		}
+		seen[option.ID] = struct{}{}
+	}
+
+	reads := p.Move != nil && len(p.Move.CellsByOption) > 0
+	if reads {
+		if len(p.Move.CellsByOption) != len(p.Options) {
+			return fmt.Errorf("move options must cover the cast menu exactly")
+		}
+		for _, option := range p.Options {
+			if _, ok := p.Move.CellsByOption[option.ID]; !ok {
+				return fmt.Errorf("move has no distance for option %q", option.ID)
+			}
+		}
+	}
+	for index, effect := range p.Effects {
+		if err := effect.validate(p.Target, len(p.Options) > 0); err != nil {
+			return fmt.Errorf("cast effect %d is invalid: %w", index, err)
+		}
+		if effect.OptionKey != "" {
+			reads = true
+		}
+	}
+	// The menu and the key are bound in both directions. A menu no effect
+	// reads is an affordance with nothing behind it: a client would draw the
+	// picker and the answer would land nowhere. The other direction is refused
+	// where the effect is validated, because that is where the key is.
+	if len(p.Options) > 0 && !reads {
+		return fmt.Errorf("cast declares options but no effect reads it")
+	}
+
+	return nil
 }

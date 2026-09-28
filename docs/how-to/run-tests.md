@@ -46,6 +46,38 @@ cd play/clock && go test -race ./...
 Each `cd` above starts from the repository root; run them as separate commands or
 return to the root between them.
 
+## The testify suite pattern
+
+Test organization uses `suite.Suite`:
+
+```go
+type ServiceTestSuite struct {
+    suite.Suite
+    service  *Service
+    mockDep  *MockDependency
+    testData *TestData
+}
+
+// SetupTest runs before EACH test function — establish mocks here
+func (s *ServiceTestSuite) SetupTest() {
+    s.mockDep = NewMockDependency(s.T())
+    s.service = NewService(&ServiceConfig{Dependency: s.mockDep})
+    s.testData = createTestData()
+}
+
+// SetupSubTest runs before EACH s.Run() — reset test data here
+func (s *ServiceTestSuite) SetupSubTest() {
+    s.testData = createTestData()
+}
+
+func TestServiceSuite(t *testing.T) {
+    suite.Run(t, new(ServiceTestSuite))
+}
+```
+
+- Use `s.Run()` for subtests; keep bodies arrange/act/assert
+- Use `s.Assert()` / `s.Require()`; check errors with `s.Require().NoError(err)`
+
 ## All modules
 
 The Makefile discovers every tracked `go.mod`:

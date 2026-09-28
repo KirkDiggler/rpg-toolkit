@@ -21,6 +21,7 @@ var (
 	spellPrimalSavagery  = &core.Ref{Module: Module, Type: TypeSpells, ID: "primal-savagery"}
 	spellThornWhip       = &core.Ref{Module: Module, Type: TypeSpells, ID: "thorn-whip"}
 	spellCreateBonfire   = &core.Ref{Module: Module, Type: TypeSpells, ID: "create-bonfire"}
+	spellShillelagh      = &core.Ref{Module: Module, Type: TypeSpells, ID: "shillelagh"}
 	spellDruidcraft      = &core.Ref{Module: Module, Type: TypeSpells, ID: "druidcraft"}
 	spellInfestation     = &core.Ref{Module: Module, Type: TypeSpells, ID: "infestation"}
 	spellMagicStone      = &core.Ref{Module: Module, Type: TypeSpells, ID: "magic-stone"}
@@ -212,6 +213,7 @@ func (n spellsNS) Frostbite() *core.Ref       { return spellFrostbite }
 func (n spellsNS) PrimalSavagery() *core.Ref  { return spellPrimalSavagery }
 func (n spellsNS) ThornWhip() *core.Ref       { return spellThornWhip }
 func (n spellsNS) CreateBonfire() *core.Ref   { return spellCreateBonfire }
+func (n spellsNS) Shillelagh() *core.Ref      { return spellShillelagh }
 func (n spellsNS) Druidcraft() *core.Ref      { return spellDruidcraft }
 func (n spellsNS) Infestation() *core.Ref     { return spellInfestation }
 func (n spellsNS) MagicStone() *core.Ref      { return spellMagicStone }
@@ -401,6 +403,7 @@ var spellByID = map[string]*core.Ref{
 	"primal-savagery":               spellPrimalSavagery,
 	"thorn-whip":                    spellThornWhip,
 	"create-bonfire":                spellCreateBonfire,
+	"shillelagh":                    spellShillelagh,
 	"druidcraft":                    spellDruidcraft,
 	"infestation":                   spellInfestation,
 	"magic-stone":                   spellMagicStone,

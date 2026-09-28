@@ -133,6 +133,36 @@ Connection types (helper constructors in `connection_helpers.go`):
 - `CreateBridgeConnection` — crossable gap
 - `CreateTunnelConnection` — underground
 
+## Usage patterns and pitfalls
+
+**Event bus connection and loading.** A room created standalone publishes
+nothing until `ConnectToEventBus`; connect after loading from persistence —
+`LoadRoomFromContext(ctx, gameCtx)` builds the room, then the caller connects
+the bus when events should start:
+
+```go
+room, err := LoadRoomFromContext(ctx, gameCtx)
+if err != nil {
+    return err
+}
+room.ConnectToEventBus(eventBus)
+```
+
+**Entity-type vocabulary belongs to callers.** Build generic filters
+explicitly: `NewSimpleEntityFilter().WithEntityTypes("ally", "opponent")`,
+`CreateIncludeFilter(entityIDs...)`, `CreateExcludeFilter(entityIDs...)`.
+
+**Query performance.** Single-room queries use room methods directly
+(`GetEntitiesInRange`); multi-room queries use `SpatialQueryHandler`, which
+caches results until entity positions change. For large orchestrators:
+batch room additions, cache frequent paths, filter queries, profile before
+optimizing — the current implementation handles 100+ rooms efficiently.
+
+**Testing pitfall — subscribe before publishing, assert asynchronously.**
+A handler checked immediately after a placement may not have run yet:
+subscribe first, then act, then assert with `s.Eventually` rather than
+reading handler state in the same breath as the mutation.
+
 ## Known gaps
 
 ### PathFinder is hex-only (issue #614)

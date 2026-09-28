@@ -1728,6 +1728,7 @@
       "options": [
         "blade-ward",
         "light",
+        "mending",
         "true-strike",
         "vicious-mockery",
         "thunderclap"
@@ -3315,12 +3316,15 @@
       "id": "druid-cantrips-1",
       "count": 2,
       "options": [
+        "poison-spray",
         "frostbite",
         "primal-savagery",
-        "thornwhip",
+        "thorn-whip",
         "create-bonfire",
         "infestation",
         "druidcraft",
+        "shillelagh",
+        "mending",
         "guidance",
         "magic-stone",
         "mold-earth",

@@ -188,6 +188,14 @@ func newCast(in *ActionInput, normalizedTargetIDs []string) (Machine, error) {
 		return nil, err
 	}
 
+	if profile.Move != nil {
+		move, err := profile.Move.ForOption(in.Option)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrBadAction, err)
+		}
+		profile.Move = move
+	}
+
 	cause := dnd5eEvents.SaveCause{
 		Trigger:      dnd5eEvents.SaveTriggerSpell,
 		EffectRef:    &definition.Ref,
@@ -658,6 +666,14 @@ func (m *castMachine) shapeTarget(targetID string, out Outcome) (CastTargetOutco
 			outcome.Warded = inner.Warded
 		} else {
 			outcome.Attack = &inner
+			if inner.Hit && m.profile.Move != nil {
+				move := directiveFor(m.profile.Move, m.casterID)
+				ref := m.spell
+				outcome.Applied = append(outcome.Applied, ImposedEffect{
+					Kind: ImposedMove, Ref: &ref, Description: describeMove(*move),
+					RecipientID: targetID, Move: move,
+				})
+			}
 			for _, condition := range inner.Conditions {
 				outcome.Applied = append(outcome.Applied, condition.Imposed...)
 			}

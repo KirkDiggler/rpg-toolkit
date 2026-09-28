@@ -57,6 +57,7 @@ var classCantripOptions = map[classes.Class][]spells.Spell{
 
 	classes.Druid: {
 		// Damage cantrips
+		spells.PoisonSpray,
 		spells.Frostbite,
 		spells.PrimalSavagery,
 		spells.Thornwhip,
@@ -64,6 +65,8 @@ var classCantripOptions = map[classes.Class][]spells.Spell{
 		spells.Infestation,
 		// Utility cantrips
 		spells.Druidcraft,
+		spells.Shillelagh,
+		spells.Mending,
 		spells.Guidance,
 		spells.MagicStone,
 		spells.MoldEarth,

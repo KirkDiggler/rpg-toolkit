@@ -364,3 +364,9 @@ const (
 	WarlockPackDungeoneer  OptionID = "warlock-pack-b"
 	WarlockWeaponSecondary OptionID = "warlock-weapon-c"
 )
+
+// ClericNatureCantrip identifies Nature's separate bonus druid-cantrip choice.
+const ClericNatureCantrip ChoiceID = "cleric-nature-cantrip"
+
+// ClericNatureSkill identifies Nature's bonus skill proficiency choice.
+const ClericNatureSkill ChoiceID = "cleric-nature-skill"

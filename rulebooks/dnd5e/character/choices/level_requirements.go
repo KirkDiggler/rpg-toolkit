@@ -78,6 +78,11 @@ func (r *Requirements) ChoiceIDs() []ChoiceID {
 	if r.Cantrips != nil {
 		ids = append(ids, r.Cantrips.ID)
 	}
+	for _, req := range r.AdditionalCantrips {
+		if req != nil {
+			ids = append(ids, req.ID)
+		}
+	}
 	if r.Spellbook != nil {
 		ids = append(ids, r.Spellbook.ID)
 	}

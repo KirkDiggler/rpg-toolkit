@@ -42,7 +42,7 @@ imports remain appropriate for authoring rulebook content and character data.
 
 | Sub-package | Purpose | Test coverage |
 |---|---|---|
-| `character/` | Character struct, ToData/LoadFromData, finalization | High — full suite with fixture-driven tests |
+| `character/` | Character struct, ToData/LoadFromData, finalization — mechanics: `rulebook-dnd5e-character.md` | High — full suite with fixture-driven tests |
 | `character/choices/` | Choice system (class/race at creation) | Medium — testdata from external API |
 | `customization/` | Provider-neutral appearance intent, validation, and deep cloning | High — focused validation, clone, and character integration tests |
 | `combat/` | AC chain, attack resolution, damage, healing, action economy | High — integration and unit tests |

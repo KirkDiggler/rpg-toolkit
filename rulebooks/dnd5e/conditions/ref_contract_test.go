@@ -89,6 +89,7 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 		panic(err)
 	}
 	return map[string]dnd5eEvents.ConditionBehavior{
+		"shillelagh":         &ShillelaghCondition{MemberID: "m1", Weapon: HeldWeapon{Slot: "main_hand", ItemID: "club"}, Ability: "wis", TurnEndsLeft: 10},
 		inFog.Ref().String(): inFog,
 		"faerie_fire":        faerieFire,
 		"shield_of_faith":    shieldOfFaith,
