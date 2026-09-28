@@ -85,3 +85,18 @@ func (s *WalkEntrySuite) TestCombatEntryCannotBecomeAVoluntaryEndOnAnAlly() {
 	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
 	s.Require().NoError(err)
 }
+
+func (s *WalkEntrySuite) TestWalkEndPreflightRefusesSeenAlly() {
+	enc := s.scene(1)
+	err := enc.ValidateWalkEnd(encounter.CellAtInput{Mover: alice, Cell: cellAt(1, 0)})
+	s.ErrorIs(err, encounter.ErrBadPlacement)
+	s.NoError(enc.ValidateWalkEnd(encounter.CellAtInput{Mover: alice, Cell: cellAt(3, 0)}))
+}
+
+func (s *WalkEntrySuite) TestWalkEndPreflightDoesNotRevealUnseenOccupants() {
+	enc := s.scene(0)
+	// Unknown ally and hostile occupants are discovered during execution.
+	s.NoError(enc.ValidateWalkEnd(encounter.CellAtInput{Mover: alice, Cell: cellAt(1, 0)}))
+	s.NoError(enc.ValidateWalkEnd(encounter.CellAtInput{Mover: alice, Cell: cellAt(2, 0)}))
+	s.NoError(enc.ValidateWalkEnd(encounter.CellAtInput{Mover: alice, Cell: cellAt(3, 0)}))
+}
