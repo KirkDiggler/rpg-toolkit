@@ -61,6 +61,10 @@ type MovePolicy string
 // it.
 const MoveLine MovePolicy = "line"
 
+// MovePull follows the direct line toward the anchor, stopping before it.
+// Obstacles stop the pull; this policy never searches around them.
+const MovePull MovePolicy = "pull"
+
 // MoveAway is the rout: of every cell the mover can reach within the budget
 // and legally stop on, the one FARTHEST FROM THE ANCHOR BY THE RULER. It is
 // Dissonant Whispers — a creature that must use its whole movement to run
@@ -207,6 +211,8 @@ func (e *Encounter) Route(in RouteInput) (RouteOutput, error) {
 				in.Mover, ErrBadReach)
 		}
 		return q.routeLine(in.Mover, from, in.Anchor, in.Budget)
+	case MovePull:
+		return q.routeStraight(in.Mover, from, in.Anchor, in.Budget, true)
 	case MoveAway:
 		return q.routeAway(in.Mover, from, in.Anchor, in.Budget)
 	case MoveToward:
@@ -240,14 +246,23 @@ func (e *cellQuery) routeLine(mover MemberID, from, anchor spatial.Position, bud
 		Y: from.Y + (from.Y-anchor.Y)*float64(budget),
 	}
 
+	return e.routeStraight(mover, from, far, budget, false)
+}
+
+// routeStraight shares crossing, occupancy, and adjacency checks for pushes and pulls.
+func (e *cellQuery) routeStraight(mover MemberID, from, end spatial.Position, budget int, stopBeforeEnd bool) (RouteOutput, error) {
 	var out RouteOutput
 	prev := from
-	for _, cell := range e.canvas.GetGrid().GetLineOfSight(from, far) {
+	for _, cell := range e.canvas.GetGrid().GetLineOfSight(from, end) {
 		if cell == from {
 			continue // the line starts where they stand; the path does not
 		}
 		if len(out.Path) == budget {
 			return out, nil // the budget is spent, and a spent budget stops nothing
+		}
+		if stopBeforeEnd && cell == end {
+			out.StoppedBy = "reached the anchor"
+			return out, nil
 		}
 		if !e.canvas.GetGrid().IsAdjacent(prev, cell) {
 			out.StoppedBy = fmt.Sprintf("cell %v is off the edge of the field", cell)

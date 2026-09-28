@@ -241,7 +241,7 @@ func (s *EquipmentSlotsTestSuite) TestCharacter_UnequipItem() {
 		},
 	}
 
-	char.UnequipItem(SlotArmor)
+	s.Require().NoError(char.UnequipItem(SlotArmor))
 
 	_, exists := char.equipmentSlots[SlotArmor]
 	s.Assert().False(exists)

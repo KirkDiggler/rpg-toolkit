@@ -1558,3 +1558,55 @@ func (s *CastSuite) TestFaerieFirePreviewSavePaymentAndPersistedCondition() {
 		})
 	}
 }
+
+func (s *CastSuite) TestThornWhipThreeDistancesReachMovementAndStory() {
+	for option, cells := range map[string]int{"no-pull": 0, "pull-5": 1, "pull-10": 2} {
+		s.Run(option, func() {
+			s.scene(castingBard("bard", spells.Thornwhip), 4, 18, 2)
+			row := s.castRow(spells.Thornwhip)
+			s.Require().Len(row.Options, 3)
+			before := s.cellOf("skeleton")
+			out, err := s.mgr.Cast(context.Background(), &session.CastInput{
+				Session: "sess", Member: "bard", DeclarationID: row.ID, Targets: []string{"skeleton"}, Option: option,
+			})
+			s.Require().NoError(err)
+			s.False(out.Paused)
+			after := s.cellOf("skeleton")
+			s.Equal(before.X-float64(cells), after.X)
+			s.Equal(before.Y, after.Y)
+			s.Equal(11, s.storedSkeleton())
+			found := 0
+			for _, event := range s.beats(session.EventActivationResult) {
+				body, ok := event.Body.(session.ActivationResultBody)
+				s.Require().True(ok)
+				if body.MoveImposed != nil {
+					found++
+					s.Equal(cells, body.MoveImposed.MovedCells)
+					s.Equal("skeleton", body.MoveImposed.Target)
+					s.Equal(refs.Spells.ByID(string(spells.Thornwhip)).String(), body.MoveImposed.SourceRef)
+				}
+			}
+			if cells == 0 {
+				s.Zero(found)
+			} else {
+				s.Equal(1, found)
+			}
+			recorded, walked := -1, -1
+			story := s.storyOf("bard")
+			for i, beat := range story {
+				if beat.Result != nil && beat.Result.Kind == "moved" {
+					recorded = i
+					s.Require().NotNil(beat.Result.Moved)
+					s.Equal(cells, *beat.Result.Moved)
+				}
+				if beat.Beat == "moved" && beat.Member == "skeleton" {
+					walked = i
+				}
+			}
+			if cells > 0 {
+				s.GreaterOrEqual(recorded, 0)
+				s.Greater(walked, recorded)
+			}
+		})
+	}
+}

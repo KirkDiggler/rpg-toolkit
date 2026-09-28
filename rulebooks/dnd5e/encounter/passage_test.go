@@ -109,7 +109,7 @@ func (s *PassageSuite) TestReadStepAndRoutePreserveAssessmentFailure() {
 	s.Require().ErrorIs(err, failure)
 	_, err = s.enc.Step(&encounter.StepInput{Member: alice, To: cellAt(1, 0)})
 	s.Require().ErrorIs(err, failure)
-	for _, policy := range []encounter.MovePolicy{encounter.MoveToward, encounter.MoveAway, encounter.MoveLine} {
+	for _, policy := range []encounter.MovePolicy{encounter.MoveToward, encounter.MoveAway, encounter.MoveLine, encounter.MovePull} {
 		_, err = s.enc.Route(encounter.RouteInput{Mover: alice, Policy: policy, Anchor: cellAt(3, 0), Budget: 3})
 		s.Require().ErrorIs(err, failure)
 	}

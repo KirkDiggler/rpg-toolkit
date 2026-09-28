@@ -159,6 +159,12 @@ const CommandCasterParameter = "caster_id"
 // carried, which is the first cast-time choice in this catalogue.
 const CommandWordParameter = "word"
 
+// PoisonSprayRangeFeet is the 2014 spell's single-creature reach.
+const PoisonSprayRangeFeet = 10
+
+// PoisonSprayDamage is the poison damage at character levels 1–4.
+const PoisonSprayDamage = "1d12"
+
 // SacredFlameRangeFeet is Sacred Flame's range in the 2014 Basic Rules.
 const SacredFlameRangeFeet = 60
 
@@ -305,6 +311,27 @@ func slotCost(pool coreResources.ResourceKey) *combat.SpendProfile {
 // Light is intentionally absent: it needs targetable objects and illumination
 // effects. It may be selected or domain-granted, but has no executable cast yet.
 var castContent = map[Spell]castProfileBuilder{
+	// Thorn Whip's Large-or-smaller pull restriction is deferred until
+	// creature size is supported by the encounter participants.
+	Thornwhip: {
+		name: "Thorn Whip", casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction}, cost: cantripCost(),
+		build: func(_ int) actions.CastProfile {
+			return actions.CastProfile{
+				RangeFeet: 30, Target: actions.CastTargetOneCreature, MinTargets: 1, MaxTargets: 1,
+				Attack:  &actions.AttackProfile{Category: actions.AttackCategorySpell, Delivery: actions.AttackDelivery{Melee: &actions.MeleeDelivery{ReachFeet: 30}}, Damage: []damage.Damage{{Dice: "1d6", Type: damage.Piercing}}},
+				Options: []actions.CastOption{{ID: "no-pull", Label: "No pull"}, {ID: "pull-5", Label: "Pull 5 feet"}, {ID: "pull-10", Label: "Pull 10 feet"}},
+				Move:    &actions.CastMove{Policy: actions.MovePull, Cells: 2, CellsByOption: map[string]int{"no-pull": 0, "pull-5": 1, "pull-10": 2}},
+			}
+		},
+	},
+	Shillelagh: {
+		name:    "Shillelagh",
+		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingBonusAction},
+		cost:    &combat.SpendProfile{Slots: map[coreCombat.ActionType]int{coreCombat.ActionBonus: 1}},
+		build: func(_ int) actions.CastProfile {
+			return actions.CastProfile{RangeFeet: 5, Target: actions.CastTargetSelf}
+		},
+	},
 	InflictWounds: {
 		name:    "Inflict Wounds",
 		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
@@ -757,6 +784,26 @@ var castContent = map[Spell]castProfileBuilder{
 			}
 		},
 	},
+	PoisonSpray: {
+		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction},
+		name:    "Poison Spray",
+		cost:    cantripCost(),
+		build: func(spellSaveDC int) actions.CastProfile {
+			return actions.CastProfile{
+				RangeFeet:  PoisonSprayRangeFeet,
+				Target:     actions.CastTargetOneCreature,
+				MinTargets: 1,
+				MaxTargets: 1,
+				Save: &saves.SaveGate{
+					Abilities:  []abilities.Ability{abilities.CON},
+					DC:         saves.DCStatic(spellSaveDC),
+					OnSuccess:  saves.Negated,
+					Recurrence: saves.RecurrenceNone,
+				},
+				Damage: []damage.Damage{{Dice: PoisonSprayDamage, Type: damage.Poison}},
+			}
+		},
+	},
 	SacredFlame: {
 		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction},
 		name:    "Sacred Flame",
@@ -919,6 +966,10 @@ type CastDefinitionInput struct {
 	SpellSaveDC      int
 	// SpellAttackBonus is proficiency plus the spellcasting ability modifier.
 	SpellAttackBonus int
+	// SpellcastingAbility and HeldWeapons are authoritative sheet facts for
+	// spells which enchant held equipment. Candidates are filtered by content.
+	SpellcastingAbility abilities.Ability
+	HeldWeapons         []HeldWeapon
 }
 
 // CastDefinition returns the action definition for one spell, with SpellSaveDC
@@ -948,6 +999,9 @@ func CastDefinition(input CastDefinitionInput) *actions.Definition {
 	}
 
 	profile := content.build(input.SpellSaveDC)
+	if input.Spell == Shillelagh && !bindShillelagh(&profile, input) {
+		return nil
+	}
 	casting := content.casting
 	profile.Casting = &casting
 	if profile.Attack != nil {

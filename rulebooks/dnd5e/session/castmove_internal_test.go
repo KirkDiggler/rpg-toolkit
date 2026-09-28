@@ -21,6 +21,10 @@ import (
 // misread — because a profile carrying such a policy does not exist to cast.
 
 func TestRoutePolicyCrossesEveryWordBothVocabulariesHave(t *testing.T) {
+	pull, ok := routePolicy(combatActions.MovePull)
+	require.True(t, ok)
+	require.Equal(t, encounter.MovePull, pull)
+
 	line, ok := routePolicy(combatActions.MoveLine)
 	require.True(t, ok, "a shove along a line is the policy this seam shipped with")
 	require.Equal(t, encounter.MoveLine, line)

@@ -97,11 +97,14 @@ func TestSpellData_KnownSpells(t *testing.T) {
 }
 
 func TestNYICatalogSpellsAreNotCastable(t *testing.T) {
-	for _, id := range []Spell{Light, CharmPerson, DisguiseSelf, Identify} {
+	for _, id := range []Spell{Light, CharmPerson, DisguiseSelf, Identify, Druidcraft, Mending, AnimalFriendship, SpeakWithAnimals} {
 		t.Run(id, func(t *testing.T) {
 			data := GetData(id)
 			if data == nil || data.ID != id || !data.NotYetImplemented || data.Name == "" {
 				t.Fatalf("missing shared NYI catalog entry: %s", id)
+			}
+			if selected := Selectable([]Spell{id}); len(selected) != 1 || selected[0] != id {
+				t.Fatalf("NYI spell is not selectable: %s", id)
 			}
 			if len(Castable([]Spell{id})) != 0 {
 				t.Fatalf("NYI spell became castable: %s", id)

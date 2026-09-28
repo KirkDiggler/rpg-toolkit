@@ -11,8 +11,14 @@ type Data struct {
 }
 
 // SpellData is the lookup map for all spell data
-// Only includes spells that are defined in the proto enum
+// Shared by every class and domain; canonical refs also identify catalog-only spells.
 var SpellData = map[Spell]*Data{
+	Shillelagh:       {ID: Shillelagh, Level: 0, Name: "Shillelagh", Description: "Enchant a held club or quarterstaff: its weapon die becomes 1d8, it counts as magical, and it can use your spellcasting ability for attacks and damage. Lasts one minute, until recast, or until released."},
+	Druidcraft:       {ID: Druidcraft, Level: 0, Name: "Druidcraft", Description: "Create minor natural wonders; its environmental interactions are not yet implemented", NotYetImplemented: true},
+	Mending:          {ID: Mending, Level: 0, Name: "Mending", Description: "Repair a small break or tear in an object; object repair is not yet implemented", NotYetImplemented: true},
+	AnimalFriendship: {ID: AnimalFriendship, Level: 1, Name: "Animal Friendship", Description: "Charm a beast; animal interactions are not yet implemented", NotYetImplemented: true},
+	SpeakWithAnimals: {ID: SpeakWithAnimals, Level: 1, Name: "Speak with Animals", Description: "Understand and communicate with beasts; animal conversations are not yet implemented", NotYetImplemented: true},
+
 	// Cantrips (Level 0)
 	FireBolt: {
 		ID:          FireBolt,

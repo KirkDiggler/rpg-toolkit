@@ -21,6 +21,7 @@ func (c *Character) CastDefinition(id spells.Spell) *actions.Definition {
 	class := classes.ClassData[c.classID]
 	if class != nil && class.SpellcastingAbility != "" {
 		ability := class.SpellcastingAbility
+		input.SpellcastingAbility = ability
 		input.SpellAttackBonus = c.ProficiencyBonus() + c.GetAbilityModifier(ability)
 		input.HealingModifiers = []healing.Modifier{{Source: events.RollSource{
 			Ref:  &core.Ref{Module: refs.Module, Type: refs.TypeAbilities, ID: string(ability)},
@@ -29,6 +30,17 @@ func (c *Character) CastDefinition(id spells.Spell) *actions.Definition {
 		if data := spells.GetData(id); data != nil && c.classID == classes.Cleric && c.subclassID == classes.LifeDomain && c.GetLevel() >= 1 {
 			input.HealingModifiers = append(input.HealingModifiers, features.DiscipleOfLife(healing.Context{Spell: true, SpellLevel: data.Level}, c.id)...)
 		}
+	}
+	for _, slot := range []InventorySlot{SlotMainHand, SlotOffHand} {
+		equipped := c.GetEquippedSlot(slot)
+		if equipped == nil {
+			continue
+		}
+		weapon := equipped.AsWeapon()
+		if weapon == nil {
+			continue
+		}
+		input.HeldWeapons = append(input.HeldWeapons, spells.HeldWeapon{Slot: string(slot), ItemID: c.equipmentSlots.Get(slot), WeaponID: weapon.ID, Name: weapon.Name})
 	}
 	return spells.CastDefinition(input)
 }

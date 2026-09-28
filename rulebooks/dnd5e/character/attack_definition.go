@@ -51,7 +51,18 @@ func assembleWeaponAttack(
 	unarmed bool,
 	in *AssembleAttackInput,
 ) (combatActions.Definition, error) {
+	var override *weaponattack.Override
+	for _, condition := range c.conditions {
+		if provider, ok := condition.(interface {
+			WeaponAttackOverride(string, string) *weaponattack.Override
+		}); ok {
+			if candidate := provider.WeaponAttackOverride(string(in.Slot), c.equipmentSlots.Get(in.Slot)); candidate != nil {
+				override = candidate
+			}
+		}
+	}
 	return weaponattack.Assemble(&weaponattack.Input{
+		Override:         override,
 		Wielder:          c,
 		Weapon:           weapon,
 		TwoHanded:        in.TwoHanded,
