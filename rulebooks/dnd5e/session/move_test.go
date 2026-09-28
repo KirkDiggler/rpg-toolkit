@@ -309,18 +309,17 @@ func (s *MoveTestSuite) TestAStepWithNoDoorwayIsRefused() {
 	})
 	s.Require().NoError(err)
 
-	_, err = s.mgr.Move(ctx, &session.MoveInput{
+	out, err := s.mgr.Move(ctx, &session.MoveInput{
 		Session: "hex", Member: "alice",
 		// The vault's column 6, row 1: a real cell, a genuine neighbour of the
 		// threshold she is standing on, and joined to it by nothing — the gate
 		// is on row 0. (This cell is unchanged; only the threshold moved.)
 		Path: []spatial.Position{hexCell(6, 1)},
 	})
-	s.Require().Error(err)
-	s.NotErrorIs(err, session.ErrBrokenPath, "the cells ARE adjacent — that is the point")
-	s.ErrorIs(err, session.ErrBadPosition,
-		"currently the only answer available: the composition does not distinguish "+
-			"a walled crossing from a cell that is not there (rpg-toolkit#1135)")
+	s.Require().NoError(err)
+	s.Equal(session.MovementStopped, out.Status)
+	s.Empty(out.Steps)
+	s.NotEmpty(out.StopReason)
 }
 
 // TestAWalkComesBackThroughTheSameDoorway pins the direction a fixture will not
@@ -527,6 +526,23 @@ func (s *MoveTestSuite) TestThereAndBackIsLegal() {
 	s.Require().Len(out.Steps, 2, "both are walked, and both are recorded")
 	s.Equal(spatial.Position{X: 2, Y: 1}, out.Steps[0].Position)
 	s.Equal(spatial.Position{X: 1, Y: 1}, out.Steps[1].Position, "back where she started")
+}
+
+// A teammate sees the fight through the gap; Alice sees only the teammate.
+func (s *MoveTestSuite) TestVisibleCombatTeammateJoinsBeforeAnyStep() {
+	ctx := context.Background()
+	world := ambushWorld(s.T(), encounter.MemberInput{ID: "bob", Kind: encounter.KindPlayer, Position: hexCell(1, 3)})
+	_, err := s.mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: world})
+	s.Require().NoError(err)
+	before, err := s.mgr.Where(ctx, &session.WhereInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	out, err := s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: ambushPath()})
+	s.Require().NoError(err)
+	s.True(out.JoinedCombat)
+	s.Empty(out.Steps)
+	after, err := s.mgr.Where(ctx, &session.WhereInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Equal(before, after)
 }
 
 func TestMoveSuite(t *testing.T) {

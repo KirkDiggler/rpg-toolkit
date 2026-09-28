@@ -950,23 +950,22 @@ func (s *ConcealSuite) TestTheProbeLawHoldsAtTheSeam() {
 // refused byte-identically to the honest twin's authored wall.
 func (s *ConcealSuite) TestTheMoveLawHoldsAtTheSeam() {
 	ctx := context.Background()
-	walkAt := func(world *encounter.EncounterData) error {
+	walkAt := func(world *encounter.EncounterData) *session.MoveOutput {
 		s.startWith(world, dullEyed("bob"))
-		// bob steps to the doorway cell, then tries the crossing itself.
-		_, err := s.mgr.Move(ctx, &session.MoveInput{
-			Session: "sess", Member: "bob",
+		out, err := s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "bob",
 			Path: []spatial.Position{cell(3, 1), cell(4, 0), cell(5, 0), cell(6, 0)}})
-		return err
+		s.Require().NoError(err)
+		s.Equal(session.MovementStopped, out.Status)
+		s.Require().Len(out.Steps, 3, "completed prefix survives the obstruction")
+		where, err := s.mgr.Where(ctx, &session.WhereInput{Session: "sess", Member: "bob"})
+		s.Require().NoError(err)
+		s.Equal(out.Steps[2].Position, where.Position)
+		return out
 	}
-
 	veiled := walkAt(concealedWorld(s.T(), encounter.DoorIsClosed()))
-	s.Require().Error(veiled)
-
 	walled := walkAt(walledTwinWorld(s.T()))
-	s.Require().Error(walled)
-
-	s.Equal(walled.Error(), veiled.Error(),
-		"walking into the veil and walking into the twin's wall are the same refusal, byte for byte")
+	s.NotEmpty(veiled.StopReason)
+	s.Equal(walled.StopReason, veiled.StopReason, "a concealed door reveals no more than the wall")
 }
 
 // TestOpeningRevealsToThePerceiversThroughTheOneSeam is the witness scene:
