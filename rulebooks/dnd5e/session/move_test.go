@@ -548,3 +548,35 @@ func (s *MoveTestSuite) TestVisibleCombatTeammateJoinsBeforeAnyStep() {
 func TestMoveSuite(t *testing.T) {
 	suite.Run(t, new(MoveTestSuite))
 }
+
+func (s *MoveTestSuite) TestSeenAllyDestinationRefusedBeforeCompletedPrefix() {
+	ctx := context.Background()
+	_, err := s.mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: offsetWorld(s.T())})
+	s.Require().NoError(err)
+	_, err = s.mgr.Join(ctx, &session.JoinInput{Session: "sess", Member: "bob", Position: hexCell(43, 21)})
+	s.Require().NoError(err)
+	_, err = s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice",
+		Path: []spatial.Position{hexCell(42, 21), hexCell(43, 21)},
+	})
+	s.Require().ErrorIs(err, session.ErrBadPosition)
+	where, err := s.mgr.Where(ctx, &session.WhereInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Equal(hexCell(41, 21), where.Position, "known invalid destination refuses even the open first step")
+}
+
+func (s *MoveTestSuite) TestMoveCrossesSeenAllyAndStopsBeyond() {
+	ctx := context.Background()
+	_, err := s.mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: offsetWorld(s.T())})
+	s.Require().NoError(err)
+	_, err = s.mgr.Join(ctx, &session.JoinInput{Session: "sess", Member: "bob", Position: hexCell(42, 21)})
+	s.Require().NoError(err)
+	out, err := s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice",
+		Path: []spatial.Position{hexCell(42, 21), hexCell(43, 21)},
+	})
+	s.Require().NoError(err)
+	s.Equal(session.MovementCompleted, out.Status)
+	s.Require().Len(out.Steps, 2)
+	where, err := s.mgr.Where(ctx, &session.WhereInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Equal(hexCell(43, 21), where.Position)
+}
