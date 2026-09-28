@@ -226,18 +226,15 @@ func (e *cellQuery) cellAt(in CellAtInput) (CellFact, error) {
 			if MemberID(v.id) == in.Mover {
 				continue // a mover is not its own obstacle
 			}
-			// A downed monster is traversable and standable. Keep other
-			// occupants in the fold: a body cannot open a wall or another creature.
-			if v.kind == KindMonster && e.down[MemberID(v.id)] {
-				fact.Contribs = append(fact.Contribs, ContribRef{Kind: ContribMember, ID: v.id})
-				continue
+			passage := occupantPassage(occupantFacts{
+				kind: v.kind, down: e.down[MemberID(v.id)],
+				blocks: v.BlocksMovement(), hostile: e.opposed(in.Mover, MemberID(v.id)),
+			})
+			blocks := passage == PassageBlocked
+			if passage < fact.Passage {
+				fact.Passage = passage
 			}
-			blocks := v.BlocksMovement() || e.opposed(in.Mover, MemberID(v.id))
-			if blocks {
-				fact.Passage = PassageBlocked
-			} else if fact.Passage == PassageStandable {
-				fact.Passage = PassagePassThrough
-			}
+
 			fact.Contribs = append(fact.Contribs, ContribRef{
 				Kind: ContribMember, ID: v.id, Blocks: blocks,
 			})
@@ -381,3 +378,21 @@ type passageReadError struct{ cause error }
 
 func (e *passageReadError) Error() string { return e.cause.Error() }
 func (e *passageReadError) Unwrap() error { return e.cause }
+
+// occupantFacts supplies either current truth or observed facts to one policy.
+type occupantFacts struct {
+	kind    MemberKind
+	down    bool
+	blocks  bool
+	hostile bool
+}
+
+func occupantPassage(in occupantFacts) Passage {
+	if in.kind == KindMonster && in.down {
+		return PassageStandable
+	}
+	if in.blocks || in.hostile {
+		return PassageBlocked
+	}
+	return PassagePassThrough
+}

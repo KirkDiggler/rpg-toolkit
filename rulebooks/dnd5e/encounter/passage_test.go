@@ -53,6 +53,17 @@ type PassageSuite struct {
 
 func TestPassageSuite(t *testing.T) { suite.Run(t, new(PassageSuite)) }
 
+func (s *PassageSuite) TestPreviewDoesNotReadUnobservedParticipationChanges() {
+	before, err := s.enc.ObservedPassages(&encounter.ViewInput{Member: alice})
+	s.Require().NoError(err)
+	s.Equal(encounter.PassageBlocked, before[goblin])
+	s.life.down[goblin] = true
+	s.life.err = fmt.Errorf("live participation must not be queried by preview")
+	after, err := s.enc.ObservedPassages(&encounter.ViewInput{Member: alice})
+	s.Require().NoError(err)
+	s.Equal(before, after)
+}
+
 func (s *PassageSuite) SetupTest() {
 	s.life = &passageAssessment{down: map[encounter.MemberID]bool{}}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
