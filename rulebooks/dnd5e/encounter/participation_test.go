@@ -278,8 +278,8 @@ func TestDriveReassessesAfterStrikeBeforeUsingTheNextSlotsTurnAnswer(t *testing.
 		"the fresh Wait answer after the strike wins over the stale AutoPass answer")
 	require.Equal(t, 1, striker.calls)
 	require.Len(t, driver.calls, 2, "the driven monster attacks once and then passes")
-	require.Len(t, capability.questions, callsBefore+5,
-		"boundary pass, two views, nested Record pass, and post-interaction scheduling reassessment")
+	require.Len(t, capability.questions, callsBefore+6,
+		"end-position guard, boundary pass, two views, nested Record pass, and post-interaction scheduling reassessment")
 
 	for _, beat := range storyBeats(t, enc, zara) {
 		require.False(t, beat["beat"] == "turn-ended" && beat["member"] == string(zara),
@@ -328,7 +328,7 @@ func TestMidTurnStabilizedDeathSaveDoesNotAutoPassAlreadyActiveSlot(t *testing.T
 		},
 	})
 	require.NoError(t, err)
-	require.Len(t, capability.questions, callsBefore+1)
+	require.Len(t, capability.questions, callsBefore+2, "settlement plus witnessed standing refresh")
 	require.Equal(t, alice, clockState(t, enc, alice).Active,
 		"Record settles facts inside the current turn; it does not create a new active slot")
 	for _, beat := range storyBeats(t, enc, alice) {
@@ -848,4 +848,21 @@ func TestDrivenIsAParticipationWordAndAnUnknownOneIsNot(t *testing.T) {
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 2}},
 	))
 	require.ErrorIs(t, err, encounter.ErrInvalidData, "a word nobody wrote is still refused")
+}
+
+func TestObservedRecoveryKeepsTurnWithAnotherStabilizedAlly(t *testing.T) {
+	enc, capability := prepareDyingVictory(t)
+	capability.members[alice] = encounter.MemberParticipation{Down: true, Turn: encounter.TurnParticipationAutoPass}
+	_, err := enc.Recheck(&encounter.RecheckInput{Members: []encounter.MemberID{alice}})
+	require.NoError(t, err)
+	require.Equal(t, bob, clockState(t, enc, bob).Active)
+	capability.keepTurnOrder = false
+	capability.members[bob] = encounter.MemberParticipation{Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait}
+	_, err = enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeDeathSave, Actor: bob,
+		DeathSave: &encounter.DeathSaveDetail{Roll: 20, Outcome: "recovered", Recovered: true, HPRestored: 1, SuccessesNeeded: 3, FailuresRemaining: 3, Continuation: "keep_turn", PresentationID: "natural-20"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, encounter.ClockTurn, clockState(t, enc, bob).Kind, "natural20 must retain its explicit current-turn continuation")
+	require.Equal(t, bob, clockState(t, enc, bob).Active)
 }

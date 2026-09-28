@@ -298,7 +298,11 @@ func (e *Encounter) ResumeDirective(ctx context.Context) (DirectOutput, error) {
 	// [DirectOutput.StoppedBy]'s question and not the route's.
 	if !res.dropped && res.moved < len(h.remaining) {
 		cell := h.remaining[res.moved]
-		out.StoppedBy = e.stoppedBy(e.CellAt(CellAtInput{Cell: cell, Mover: h.member}), cell)
+		fact, factErr := e.CellAt(CellAtInput{Cell: cell, Mover: h.member})
+		if factErr != nil {
+			return DirectOutput{}, factErr
+		}
+		out.StoppedBy = e.stoppedBy(fact, cell)
 	}
 
 	return out, nil
@@ -314,7 +318,10 @@ func (e *Encounter) ResumeDirective(ctx context.Context) (DirectOutput, error) {
 // directive's cause is required and a turn's is the zero Ref unless something
 // routed it.
 func (e *Encounter) walkHeld(ctx context.Context, h *heldDirective, m *memberRecord) (walkResult, error) {
-	action, stepped := e.stepTo(m, h.to)
+	action, stepped, stepErr := e.stepTo(m, h.to)
+	if stepErr != nil {
+		return walkResult{}, stepErr
+	}
 	action.cause = h.cause
 	if !stepped {
 		// The floor changed under the announced cell while the window was

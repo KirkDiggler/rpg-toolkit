@@ -1270,7 +1270,7 @@ func (e *Encounter) walkPath(
 		// land at all: [Encounter.stepMember] refuses a crossing the mover's
 		// own atlas draws as wall, and this is the one walk that is nobody's
 		// choice. Ordinary walks never reach it: a creature's own route is
-		// gated by the same rule ([Encounter.floodFrom]), so it plans no
+		// gated by the same rule ([cellQuery.floodFrom]), so it plans no
 		// path through a secret, and a concealment already known reveals
 		// nothing here.
 		//
@@ -1284,7 +1284,10 @@ func (e *Encounter) walkPath(
 			return res, fmt.Errorf("move crossed concealment: %w", lerr)
 		}
 
-		action, stepped := e.stepTo(m, cell)
+		action, stepped, stepErr := e.stepTo(m, cell)
+		if stepErr != nil {
+			return res, stepErr
+		}
 		action.cause = cause
 		if !stepped {
 			// The same silent-refusal contract stepTo already has for
@@ -1401,7 +1404,10 @@ func (e *Encounter) routedRoute(
 	// answer is "the reached cell nearest the anchor, strictly nearer than
 	// where I stand" — which is what "walk to the front room" meant all
 	// along.
-	path, _ := e.routeTo(mover, from, func(cell spatial.Position) bool { return cell == anchor })
+	path, _, err := e.routeTo(mover, from, func(cell spatial.Position) bool { return cell == anchor })
+	if err != nil {
+		return RouteOutput{}, err
+	}
 	if len(path) == 0 {
 		return e.Route(RouteInput{Mover: mover, Policy: MoveToward, Anchor: anchor, Budget: budget})
 	}
@@ -1450,7 +1456,10 @@ func (e *Encounter) walkWorld(
 		if _, placed := e.canvas.GetEntityPosition(string(mover)); !placed {
 			break
 		}
-		action, stepped := e.stepTo(m, cell)
+		action, stepped, stepErr := e.stepTo(m, cell)
+		if stepErr != nil {
+			return res, stepErr
+		}
 		action.cause = cause
 		if !stepped {
 			break
@@ -1592,8 +1601,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 
 	var seen []SeenMember
 	var remembered []RememberedMember
-	var down map[MemberID]bool
-	standingLoaded := false
+	var query *cellQuery
 	for _, h := range holdings {
 		// Only location testimony from the sight channel is meaningful here.
 		// Unknown testimony deliberately populates neither collection.
@@ -1610,6 +1618,14 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 			continue
 		}
 		pos := location.Position
+		// One participation assessment serves all route searches in this
+		// immutable view. A later view after a strike acquires a fresh one.
+		if query == nil {
+			query, err = e.cellQuery()
+			if err != nil {
+				return MonsterView{}, fmt.Errorf("view passage: %w", err)
+			}
+		}
 
 		// A holding not current ON SIGHT is a GHOST — a subject remembered
 		// from before rather than one being watched now. The channel is
@@ -1618,7 +1634,10 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		// it right now, which are different questions the moment a second
 		// channel or a Report exists.
 		if !h.CurrentOn(perception.Sight) {
-			path, reachable := e.routeToRemembered(m.ID, ownCell, pos)
+			path, reachable, routeErr := query.routeToRemembered(m.ID, ownCell, pos)
+			if routeErr != nil {
+				return MonsterView{}, routeErr
+			}
 			if !reachable {
 				path = nil
 			}
@@ -1631,16 +1650,6 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 				Path:          path,
 			})
 			continue
-		}
-
-		// Standing is needed only for current sightings. Held memories are
-		// intentionally not enriched with a hidden standing fact.
-		if !standingLoaded {
-			down, err = e.downNow()
-			if err != nil {
-				return MonsterView{}, fmt.Errorf("standing: %w", err)
-			}
-			standingLoaded = true
 		}
 
 		dist := e.Distance(ownCell, pos)
@@ -1671,20 +1680,24 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		// walkable answer rather than a proxy for it. One BFS per
 		// sighting, every Act call — see the field's own doc for why that
 		// cost is accepted rather than deferred behind a lazy capability.
-		path, _ := e.routeTo(m.ID, ownCell, func(cell spatial.Position) bool {
+		path, _, routeErr := query.routeTo(m.ID, ownCell, func(cell spatial.Position) bool {
 			return e.Distance(cell, pos) <= float64(bestRangeCells)
 		})
 
-		var awayPath []spatial.Position
-		if away := e.routeAway(m.ID, ownCell, pos, 1); len(away.Path) > 0 {
-			awayPath = away.Path
+		if routeErr != nil {
+			return MonsterView{}, routeErr
 		}
+		away, routeErr := query.routeAway(m.ID, ownCell, pos, 1)
+		if routeErr != nil {
+			return MonsterView{}, routeErr
+		}
+		awayPath := away.Path
 
 		seen = append(seen, SeenMember{
 			ID:            subjectID,
 			Kind:          other.Kind,
 			Opposed:       e.opposed(m.ID, subjectID),
-			Standing:      !down[subjectID],
+			Standing:      !query.down[subjectID],
 			Position:      pos,
 			DistanceCells: dist,
 			InReach:       inReach,
@@ -1751,24 +1764,28 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 // neighbours in a fixed order and breaks equal-cost ties the same way every
 // time; the goal scan below breaks its own ties by distance, then X, then Y,
 // so ranging over the field's map cannot leak iteration order into the answer.
-func (e *Encounter) routeTo(
+func (e *cellQuery) routeTo(
 	mover MemberID, from spatial.Position, goal func(spatial.Position) bool,
-) ([]spatial.Position, bool) {
+) ([]spatial.Position, bool, error) {
 	if goal(from) {
-		return nil, true
+		return nil, true, nil
 	}
 
-	field, ok := e.floodFrom(mover, mover, from, nil, 0)
-	if !ok {
-		return nil, false
+	field, err := e.floodFrom(mover, mover, from, nil, 0)
+	if err != nil {
+		return nil, false, err
 	}
 
-	best, found := e.nearestStop(field, mover, from, goal)
+	best, found, err := e.nearestStop(field, mover, from, goal)
+	if err != nil {
+		return nil, false, err
+	}
 	if !found {
-		return nil, false
+		return nil, false, nil
 	}
 
-	return field.PathTo(best)
+	path, found := field.PathTo(best)
+	return path, found, nil
 }
 
 // routeToRemembered is the route to ONE remembered cell, and it is a different
@@ -1787,24 +1804,28 @@ func (e *Encounter) routeTo(
 // THE MAP STILL RULES. Only a creature is forgiven on the target cell. A wall,
 // a sealed cell or a pillar closes it exactly as it closes any other, because
 // those are facts about the floor that no memory of it gets to overrule.
-func (e *Encounter) routeToRemembered(
+func (e *cellQuery) routeToRemembered(
 	mover MemberID, from, target spatial.Position,
-) ([]spatial.Position, bool) {
+) ([]spatial.Position, bool, error) {
 	if from == target {
-		return nil, true
+		return nil, true, nil
 	}
 
-	field, ok := e.floodFrom(mover, mover, from, func(cell spatial.Position) bool {
-		return cell == target && e.blockedOnlyByCreatures(mover, cell)
+	field, err := e.floodFrom(mover, mover, from, func(cell spatial.Position) (bool, error) {
+		if cell != target {
+			return false, nil
+		}
+		return e.blockedOnlyByCreatures(mover, cell)
 	}, 0)
-	if !ok {
-		return nil, false
+	if err != nil {
+		return nil, false, err
 	}
 	if _, reached := field.Dist[target]; !reached {
-		return nil, false
+		return nil, false, nil
 	}
 
-	return field.PathTo(target)
+	path, found := field.PathTo(target)
+	return path, found, nil
 }
 
 // floodFrom is the one distance field every route here reads: outward from
@@ -1826,9 +1847,10 @@ func (e *Encounter) routeToRemembered(
 // rather than reinterpreted here. A caller with a real budget of zero has
 // nowhere to go and must say so before it asks, because asking with zero is
 // asking for the whole floor.
-func (e *Encounter) floodFrom(
-	mover, walker MemberID, from spatial.Position, forgiven func(spatial.Position) bool, limit int,
-) (spatial.FieldOutput, bool) {
+func (e *cellQuery) floodFrom(
+	mover, walker MemberID, from spatial.Position, forgiven func(spatial.Position) (bool, error), limit int,
+) (spatial.FieldOutput, error) {
+	var crossingErr error
 	field, err := spatial.Field(e.canvas.GetGrid(), spatial.FieldInput{
 		Sources: []spatial.Position{from},
 		Limit:   limit,
@@ -1838,47 +1860,74 @@ func (e *Encounter) floodFrom(
 			// route and a step cannot disagree about a thin blocker. A trace
 			// error fails the edge closed — a flood that cannot judge a
 			// crossing does not walk through it.
-			if _, blocked, err := e.crossingBlocked(a, b); err != nil || blocked {
+			if crossingErr != nil {
+				return false
+			}
+			_, blocked, err := e.crossingBlocked(a, b)
+			if err != nil {
+				crossingErr = err
+				return false
+			}
+			if blocked {
 				return false
 			}
 			if e.masqueradeBlocks(walker, a, b) {
 				return false
 			}
-			if e.CellAt(CellAtInput{Cell: b, Mover: mover}).Passage != PassageBlocked {
+			fact, err := e.cellAt(CellAtInput{Cell: b, Mover: mover})
+			if err != nil {
+				crossingErr = err
+				return false
+			}
+			if fact.Passage != PassageBlocked {
 				return true
 			}
-			return forgiven != nil && forgiven(b)
+			if forgiven == nil {
+				return false
+			}
+			allowed, err := forgiven(b)
+			if err != nil {
+				crossingErr = err
+				return false
+			}
+			return allowed
 		},
 	})
 	if err != nil {
-		return spatial.FieldOutput{}, false
+		return spatial.FieldOutput{}, err
 	}
 
-	return field, true
+	if crossingErr != nil {
+		return spatial.FieldOutput{}, crossingErr
+	}
+	return field, nil
 }
 
 // blockedOnlyByCreatures reports whether the single reason a cell is closed to
 // `mover` is somebody standing on it — no wall, no seal, no prop.
-func (e *Encounter) blockedOnlyByCreatures(mover MemberID, cell spatial.Position) bool {
-	fact := e.CellAt(CellAtInput{Cell: cell, Mover: mover})
+func (e *cellQuery) blockedOnlyByCreatures(mover MemberID, cell spatial.Position) (bool, error) {
+	fact, err := e.cellAt(CellAtInput{Cell: cell, Mover: mover})
+	if err != nil {
+		return false, err
+	}
 	if fact.Passage != PassageBlocked {
-		return false
+		return false, nil
 	}
 	for _, contrib := range fact.Contribs {
 		if contrib.Blocks && contrib.Kind != ContribMember {
-			return false
+			return false, nil
 		}
 	}
 
-	return true
+	return true, nil
 }
 
 // nearestStop is the cell satisfying goal that `mover` may stop on and reach
 // in the fewest steps — ties broken by X then Y, so the answer does not depend
 // on map iteration order (C8).
-func (e *Encounter) nearestStop(
+func (e *cellQuery) nearestStop(
 	field spatial.FieldOutput, mover MemberID, from spatial.Position, goal func(spatial.Position) bool,
-) (spatial.Position, bool) {
+) (spatial.Position, bool, error) {
 	var best spatial.Position
 	bestDist, found := 0, false
 
@@ -1887,7 +1936,11 @@ func (e *Encounter) nearestStop(
 			continue
 		}
 		// May cross an ally, may not stop on one.
-		if e.CellAt(CellAtInput{Cell: cell, Mover: mover}).Passage != PassageStandable {
+		fact, err := e.cellAt(CellAtInput{Cell: cell, Mover: mover})
+		if err != nil {
+			return spatial.Position{}, false, err
+		}
+		if fact.Passage != PassageStandable {
 			continue
 		}
 		if !found || dist < bestDist || (dist == bestDist && beforeInScanOrder(cell, best)) {
@@ -1895,7 +1948,7 @@ func (e *Encounter) nearestStop(
 		}
 	}
 
-	return best, found
+	return best, found, nil
 }
 
 // beforeInScanOrder is the tie-break between two equally near goal cells: X
@@ -2398,6 +2451,31 @@ func (e *Encounter) EndTurn(in *EndTurnInput) (*EndTurnOutput, error) {
 		return nil, fmt.Errorf("end turn %q: %w", in.Member, ErrNoBubble)
 	}
 
+	active, err := bubble.Active()
+	if err != nil {
+		return nil, fmt.Errorf("end turn: %w", err)
+	}
+	if active != core.EntityID(in.Member) {
+		return nil, fmt.Errorf("end turn: %w", ErrNotActive)
+	}
+	query, err := e.cellQuery()
+	if err != nil {
+		return nil, fmt.Errorf("end turn passage: %w", err)
+	}
+	if !query.down[in.Member] {
+		placed, err := e.placementOf(e.members[in.Member])
+		if err != nil {
+			return nil, err
+		}
+		fact, err := query.cellAt(CellAtInput{Mover: in.Member, Cell: placed.Position})
+		if err != nil {
+			return nil, err
+		}
+		if fact.Passage == PassagePassThrough {
+			return nil, fmt.Errorf("leave the occupied cell before ending your turn: %w", ErrBadPlacement)
+		}
+	}
+
 	out, err := bubble.End(&clock.EndInput{Actor: core.EntityID(in.Member)})
 	if err != nil {
 		// play/clock's own sentinel is translated here, not passed through —
@@ -2473,4 +2551,12 @@ func (e *Encounter) EndTurn(in *EndTurnInput) (*EndTurnOutput, error) {
 		IntelDeltas:  intelDeltas,
 		Paused:       e.Paused(),
 	}, nil
+}
+
+func (e *Encounter) routeTo(mover MemberID, from spatial.Position, goal func(spatial.Position) bool) ([]spatial.Position, bool, error) {
+	q, err := e.cellQuery()
+	if err != nil {
+		return nil, false, err
+	}
+	return q.routeTo(mover, from, goal)
 }

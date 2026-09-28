@@ -1639,6 +1639,9 @@ type FormedBubble struct {
 
 // StepInput names who steps and which cell they step to.
 type StepInput struct {
+	// EndWalk requires a standable destination for a voluntary walk endpoint.
+	EndWalk bool
+
 	// Member is the ID of the member stepping.
 	Member MemberID
 

@@ -60,6 +60,21 @@
 // not on the world clock for the world to think for. Which clock somebody is
 // on is always askable, per member, via ClockOf.
 //
+// # Movement passage
+//
+// CellAt returns the most restrictive contribution on a cell and an error if
+// its participation or geometry cannot be read. Nonhostile creatures permit
+// passage, not stopping; a downed monster permits both. Recovery restores the
+// current relation's contribution. Blocking terrain, props, doors and other
+// occupants still win over a passable body. Downed-player occupancy retains
+// its existing policy.
+//
+// A route query assesses participation once for its bounded search. A step
+// and each new query obtain fresh participation; no assessment survives a
+// mutation. Query failures remain errors through route, driven-walk and resume
+// callers. An ordinary placement refusal stops a driven walk; a failed query
+// requires the caller to discard the encounter without saving.
+//
 // # Time on the world clock (rpg-project#465)
 //
 // The world clock advances ONLY BECAUSE SOMEBODY ACTS. A walk pays one round
