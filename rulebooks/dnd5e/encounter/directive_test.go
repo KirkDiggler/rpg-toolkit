@@ -1127,3 +1127,30 @@ func (s *DirectiveTestSuite) TestTowardStopsBesideAnEMPTYAnchorCell() {
 	s.NotContains(out.Path, anchor, "and never enters the cell it was aimed at")
 	s.Len(out.Path, 4)
 }
+
+func (s *DirectiveTestSuite) TestPullUsesDirectLineAndStopsBeforeAnchor() {
+	enc := s.lineScene(false)
+	for _, budget := range []int{0, 1, 2, 5} {
+		out, err := enc.Route(encounter.RouteInput{Mover: goblin, Policy: encounter.MovePull, Anchor: cellAt(4, 0), Budget: budget})
+		s.Require().NoError(err)
+		expected := budget
+		if expected > 2 {
+			expected = 2
+		}
+		s.Len(out.Path, expected)
+		for i, cell := range out.Path {
+			s.Equal(cellAt(i+2, 0), cell)
+		}
+	}
+	out, err := enc.Route(encounter.RouteInput{Mover: goblin, Policy: encounter.MovePull, Anchor: s.casterCell, Budget: 2})
+	s.Require().NoError(err)
+	s.Empty(out.Path, "already beside the caster")
+}
+
+func (s *DirectiveTestSuite) TestPullStopsAtObstacleWithoutDetouring() {
+	enc := s.lineScene(true)
+	out, err := enc.Route(encounter.RouteInput{Mover: goblin, Policy: encounter.MovePull, Anchor: cellAt(4, 0), Budget: 2})
+	s.Require().NoError(err)
+	s.Equal([]spatial.Position{cellAt(2, 0)}, out.Path)
+	s.NotEmpty(out.StoppedBy)
+}
