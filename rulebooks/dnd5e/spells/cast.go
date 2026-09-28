@@ -311,6 +311,19 @@ func slotCost(pool coreResources.ResourceKey) *combat.SpendProfile {
 // Light is intentionally absent: it needs targetable objects and illumination
 // effects. It may be selected or domain-granted, but has no executable cast yet.
 var castContent = map[Spell]castProfileBuilder{
+	// Thorn Whip's Large-or-smaller pull restriction is deferred until
+	// creature size is supported by the encounter participants.
+	Thornwhip: {
+		name: "Thorn Whip", casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction}, cost: cantripCost(),
+		build: func(_ int) actions.CastProfile {
+			return actions.CastProfile{
+				RangeFeet: 30, Target: actions.CastTargetOneCreature, MinTargets: 1, MaxTargets: 1,
+				Attack:  &actions.AttackProfile{Category: actions.AttackCategorySpell, Delivery: actions.AttackDelivery{Melee: &actions.MeleeDelivery{ReachFeet: 30}}, Damage: []damage.Damage{{Dice: "1d6", Type: damage.Piercing}}},
+				Options: []actions.CastOption{{ID: "no-pull", Label: "No pull"}, {ID: "pull-5", Label: "Pull 5 feet"}, {ID: "pull-10", Label: "Pull 10 feet"}},
+				Move:    &actions.CastMove{Policy: actions.MovePull, Cells: 2, CellsByOption: map[string]int{"no-pull": 0, "pull-5": 1, "pull-10": 2}},
+			}
+		},
+	},
 	Shillelagh: {
 		name:    "Shillelagh",
 		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingBonusAction},

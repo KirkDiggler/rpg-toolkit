@@ -974,3 +974,38 @@ func (s *CastContentSuite) TestShillelaghRequiresHeldEligibleWeaponAndBindsOneOr
 	s.NotEqual(d.Cast.Options[0].ID, d.Cast.Options[1].ID, "identical catalog weapons remain distinct choices")
 	s.Equal("weapon_slot", d.Cast.Effects[0].OptionKey)
 }
+
+func (s *CastContentSuite) TestThornWhipDeclaresOptionalOnHitPull() {
+	d := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.Thornwhip})
+	s.Require().NotNil(d)
+	s.Require().NoError(d.Validate())
+	s.Equal(30, d.Cast.RangeFeet)
+	s.Equal(1, d.Cost.Slots[coreCombat.ActionStandard])
+	s.Empty(d.Cost.Pools)
+	s.Nil(d.Cast.Save)
+	s.Nil(d.Cast.Concentration)
+	s.Require().NotNil(d.Cast.Attack.Delivery.Melee)
+	s.Equal(30, d.Cast.Attack.Delivery.Melee.ReachFeet)
+	s.Equal(actions.MovePull, d.Cast.Move.Policy)
+	s.Equal(actions.PaysNothing, d.Cast.Move.Pays)
+	s.False(d.Cast.Move.Provokes)
+	for option, cells := range map[string]int{"no-pull": 0, "pull-5": 1, "pull-10": 2} {
+		move, err := d.Cast.Move.ForOption(option)
+		s.Require().NoError(err)
+		if cells == 0 {
+			s.Nil(move)
+		} else {
+			s.Require().NotNil(move)
+			s.Equal(cells, move.Cells)
+		}
+	}
+	_, err := d.Cast.Move.ForOption("pull-15")
+	s.Error(err)
+	clone := d.Clone()
+	clone.Cast.Move.CellsByOption["pull-10"] = 3
+	s.Error(clone.Validate())
+	s.Equal(2, d.Cast.Move.CellsByOption["pull-10"])
+	clone = d.Clone()
+	delete(clone.Cast.Move.CellsByOption, "no-pull")
+	s.Error(clone.Validate())
+}
