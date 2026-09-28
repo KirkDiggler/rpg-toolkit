@@ -11,6 +11,14 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't let 
 
 ## Current direction
 
+**Nature spell catalog and Poison Spray root (2026-09-28).** Druidcraft, Mending,
+Animal Friendship, and Speak with Animals are shared selectable/grantable NYI
+entries, without cast profiles. Poison Spray has a level-1 cast profile using the
+existing single-creature Constitution save and poison-damage path (10 feet,
+1d12 on failure, no damage on success, one action, no slot). Nature creation
+still needs its dedicated druid-cantrip choice and skill-choice completion;
+this root change does not establish native API or browser acceptance.
+
 **Character advancement rung 1 (rpg-project#452, rpg-toolkit#1764, 2026-09-16).**
 A character now keeps `Data.Levels`, the append-only record of the levels it has
 taken, and `Character.Advance` applies a class grant to a character that already

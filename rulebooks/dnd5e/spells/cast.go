@@ -159,6 +159,12 @@ const CommandCasterParameter = "caster_id"
 // carried, which is the first cast-time choice in this catalogue.
 const CommandWordParameter = "word"
 
+// PoisonSprayRangeFeet is the 2014 spell's single-creature reach.
+const PoisonSprayRangeFeet = 10
+
+// PoisonSprayDamage is the poison damage at character levels 1–4.
+const PoisonSprayDamage = "1d12"
+
 // SacredFlameRangeFeet is Sacred Flame's range in the 2014 Basic Rules.
 const SacredFlameRangeFeet = 60
 
@@ -754,6 +760,26 @@ var castContent = map[Spell]castProfileBuilder{
 					Recipient: actions.CastRecipientTarget, Ref: *refs.Conditions.Resistance(), CounterpartKey: "source_id",
 				}},
 				Concentration: &actions.CastConcentration{TurnEnds: ResistanceTurnEnds, SkipFirstTurnEnd: true},
+			}
+		},
+	},
+	PoisonSpray: {
+		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction},
+		name:    "Poison Spray",
+		cost:    cantripCost(),
+		build: func(spellSaveDC int) actions.CastProfile {
+			return actions.CastProfile{
+				RangeFeet:  PoisonSprayRangeFeet,
+				Target:     actions.CastTargetOneCreature,
+				MinTargets: 1,
+				MaxTargets: 1,
+				Save: &saves.SaveGate{
+					Abilities:  []abilities.Ability{abilities.CON},
+					DC:         saves.DCStatic(spellSaveDC),
+					OnSuccess:  saves.Negated,
+					Recurrence: saves.RecurrenceNone,
+				},
+				Damage: []damage.Damage{{Dice: PoisonSprayDamage, Type: damage.Poison}},
 			}
 		},
 	},

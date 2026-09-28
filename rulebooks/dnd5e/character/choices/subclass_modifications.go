@@ -170,6 +170,8 @@ var subclassModifications = map[classes.Subclass]*SubclassModifications{
 				ID:    ChoiceID("cleric-nature-cantrip"),
 				Count: 1,
 				Options: []spells.Spell{
+					spells.Druidcraft,
+					spells.Mending,
 					spells.Guidance,
 					spells.Resistance,
 					spells.PoisonSpray,

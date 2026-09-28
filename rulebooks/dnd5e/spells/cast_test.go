@@ -916,3 +916,30 @@ func (s *CastContentSuite) TestFaerieFireDeclaresSharedPointBoxSaveAndConcentrat
 	s.True(d.Cast.Concentration.SkipFirstTurnEnd)
 	s.Contains(spells.Selectable([]spells.Spell{spells.FaerieFire}), spells.FaerieFire)
 }
+
+func (s *CastContentSuite) TestPoisonSprayCarriesOnlyItsSaveAndPoisonDamage() {
+	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.PoisonSpray, SpellSaveDC: 14})
+	s.Require().NotNil(definition)
+	s.Require().NoError(definition.Validate())
+	s.Equal(refs.Spells.PoisonSpray().String(), definition.Ref.String())
+	s.Equal("Poison Spray", definition.Name)
+	s.Nil(definition.Attack)
+	s.Require().NotNil(definition.Cost)
+	s.Equal(1, definition.Cost.Slots[coreCombat.ActionStandard])
+	s.Empty(definition.Cost.Pools, "cantrips spend no spell-slot pool")
+
+	profile := definition.Cast
+	s.Require().NotNil(profile)
+	s.Equal(10, profile.RangeFeet)
+	s.Equal(actions.CastTargetOneCreature, profile.Target)
+	s.Require().NotNil(profile.Save)
+	s.Equal([]abilities.Ability{abilities.CON}, profile.Save.Abilities)
+	s.Equal(14, profile.Save.DC.DC(saves.DCInput{}))
+	s.Equal(saves.Negated, profile.Save.OnSuccess)
+	s.Equal(saves.RecurrenceNone, profile.Save.Recurrence)
+	s.Require().Len(profile.Damage, 1)
+	s.Equal("1d12", profile.Damage[0].Dice)
+	s.Equal(damage.Poison, profile.Damage[0].Type)
+	s.Empty(profile.Effects, "Poison Spray leaves no condition behind")
+	s.Nil(profile.Concentration)
+}
