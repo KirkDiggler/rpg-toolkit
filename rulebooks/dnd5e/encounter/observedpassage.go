@@ -77,6 +77,12 @@ func (e *Encounter) refreshChangedStanding(state *participationState) (map[Membe
 			subjects = append(subjects, id)
 		}
 	}
-	deltas, _, err := e.refreshSightDeclaring(e.rosterIDs(), subjects)
-	return deltas, err
+	deltas, err := e.rebuildPercepts(e.rosterIDs())
+	if err != nil {
+		return nil, err
+	}
+	if err = e.appendSightedBeats(deltas, subjects, uint64(e.clock.ToData().HighWater)); err != nil {
+		return nil, err
+	}
+	return deltas, nil
 }
