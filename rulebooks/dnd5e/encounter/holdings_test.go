@@ -415,13 +415,13 @@ func (s *HoldingsSuite) walkTo(enc *encounter.Encounter, member core.EntityID, t
 func (s *HoldingsSuite) withinReachOf(
 	enc *encounter.Encounter, member core.EntityID, cell spatial.Position,
 ) spatial.Position {
-	if enc.CellAt(encounter.CellAtInput{Cell: cell, Mover: member}).Passage != encounter.PassageBlocked {
+	if cellFactFor(s.T(), enc, encounter.CellAtInput{Cell: cell, Mover: member}).Passage != encounter.PassageBlocked {
 		return cell
 	}
 	canvas, err := enc.Canvas()
 	s.Require().NoError(err)
 	for _, n := range canvas.GetGrid().GetNeighbors(cell) {
-		if enc.CellAt(encounter.CellAtInput{Cell: n, Mover: member}).Passage == encounter.PassageStandable {
+		if cellFactFor(s.T(), enc, encounter.CellAtInput{Cell: n, Mover: member}).Passage == encounter.PassageStandable {
 			return n
 		}
 	}

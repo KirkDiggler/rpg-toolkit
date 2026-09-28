@@ -71,6 +71,9 @@ type SightTestimony struct {
 	// was not observed — which is not the same as "seen standing".
 	Down *bool
 
+	// BlocksMovement is the observed physical obstruction policy. Nil means unobserved.
+	BlocksMovement *bool
+
 	// Equipment is what the subject was seen holding. Nil means their hands
 	// were not observed, which is not the same as seeing empty hands; see
 	// [Equipment] for the two claims.
@@ -83,11 +86,12 @@ type handsWire struct {
 }
 
 type sightWire struct {
-	State     string     `json:"state,omitempty"`
-	X         *float64   `json:"x,omitempty"`
-	Y         *float64   `json:"y,omitempty"`
-	Down      *bool      `json:"down,omitempty"`
-	Equipment *handsWire `json:"equipment,omitempty"`
+	State          string     `json:"state,omitempty"`
+	X              *float64   `json:"x,omitempty"`
+	Y              *float64   `json:"y,omitempty"`
+	Down           *bool      `json:"down,omitempty"`
+	BlocksMovement *bool      `json:"blocks_movement,omitempty"`
+	Equipment      *handsWire `json:"equipment,omitempty"`
 }
 
 // sightPayloadFields is the complete set of keys canonical sight testimony may
@@ -95,7 +99,7 @@ type sightWire struct {
 // not understand is refused at the door instead of being silently dropped into
 // a testimony that then reads as confident.
 var sightPayloadFields = map[string]struct{}{
-	"state": {}, "x": {}, "y": {}, "down": {}, "equipment": {},
+	"state": {}, "x": {}, "y": {}, "down": {}, "equipment": {}, "blocks_movement": {},
 }
 
 // EncodeSightTestimony encodes sight testimony in the canonical tagged wire
@@ -106,7 +110,7 @@ func EncodeSightTestimony(testimony SightTestimony) ([]byte, error) {
 	switch testimony.State {
 	case LocationKnown:
 		x, y := testimony.Position.X, testimony.Position.Y
-		wire := sightWire{State: string(LocationKnown), X: &x, Y: &y, Down: testimony.Down}
+		wire := sightWire{State: string(LocationKnown), X: &x, Y: &y, Down: testimony.Down, BlocksMovement: testimony.BlocksMovement}
 		if testimony.Equipment != nil {
 			wire.Equipment = &handsWire{
 				MainHand: testimony.Equipment.MainHand,
@@ -117,6 +121,9 @@ func EncodeSightTestimony(testimony SightTestimony) ([]byte, error) {
 	case LocationUnknown:
 		if testimony.Position != (spatial.Position{}) {
 			return nil, fmt.Errorf("unknown location cannot carry a position")
+		}
+		if testimony.BlocksMovement != nil {
+			return nil, fmt.Errorf("unknown location cannot carry obstruction")
 		}
 		if testimony.Down != nil {
 			return nil, fmt.Errorf("unknown location cannot carry standing")
@@ -167,6 +174,7 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 	_, yPresent := fields["y"]
 	_, downPresent := fields["down"]
 	_, equipmentPresent := fields["equipment"]
+	_, blocksPresent := fields["blocks_movement"]
 
 	var hands *HeldEquipment
 	if wire.Equipment != nil {
@@ -179,7 +187,7 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 		}
 		// The legacy untagged form predates every fact but position, so it
 		// cannot carry one.
-		if downPresent || equipmentPresent {
+		if downPresent || equipmentPresent || blocksPresent {
 			return SightTestimony{}, false
 		}
 		return SightTestimony{
@@ -194,14 +202,15 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 			return SightTestimony{}, false
 		}
 		return SightTestimony{
-			State:     LocationKnown,
-			Position:  spatial.Position{X: *wire.X, Y: *wire.Y},
-			Down:      wire.Down,
-			Equipment: hands,
+			State:          LocationKnown,
+			Position:       spatial.Position{X: *wire.X, Y: *wire.Y},
+			Down:           wire.Down,
+			BlocksMovement: wire.BlocksMovement,
+			Equipment:      hands,
 		}, true
 	case LocationUnknown:
 		// Nobody in view has a position, a standing, or hands to observe.
-		if xPresent || yPresent || downPresent || equipmentPresent {
+		if xPresent || yPresent || downPresent || equipmentPresent || blocksPresent {
 			return SightTestimony{}, false
 		}
 		return SightTestimony{State: LocationUnknown}, true

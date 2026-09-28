@@ -417,7 +417,7 @@ func (s *PlacedOrdersSuite) TestAReservedPlacementIsNowhereUntilItsPredicateHold
 	s.Run("before: on no map, closing no cell, obstructing no lane", func() {
 		s.NotContains(s.placedIDs(enc), encounter.PropID(theBarricade))
 		s.Require().Equal(encounter.PassageStandable,
-			enc.CellAt(encounter.CellAtInput{Cell: barricadeHex}).Passage,
+			cellFactFor(s.T(), enc, encounter.CellAtInput{Cell: barricadeHex}).Passage,
 			"a rectangle that has not come closes nothing")
 		s.False(canvas.IsLineOfSightBlocked(cellAt(-2, 0), cellAt(2, 0)),
 			"and obstructs nothing")
@@ -427,7 +427,7 @@ func (s *PlacedOrdersSuite) TestAReservedPlacementIsNowhereUntilItsPredicateHold
 
 	s.Run("after: on the map, closing its cells, obstructing the lane", func() {
 		s.Contains(s.placedIDs(enc), encounter.PropID(theBarricade))
-		fact := enc.CellAt(encounter.CellAtInput{Cell: barricadeHex})
+		fact := cellFactFor(s.T(), enc, encounter.CellAtInput{Cell: barricadeHex})
 		s.Require().Equal(encounter.PassageBlocked, fact.Passage)
 		named := false
 		for _, contrib := range fact.Contribs {

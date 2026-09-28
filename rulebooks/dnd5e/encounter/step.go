@@ -4,6 +4,7 @@
 package encounter
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -130,7 +131,7 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 		}
 	}
 
-	action, err := e.stepMember(member, in.To)
+	action, err := e.stepMember(member, in.To, in.EndWalk)
 	if err != nil {
 		return nil, fmt.Errorf("step: %w", err)
 	}
@@ -205,7 +206,7 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 // expressed (see compileCanvas); it can be now, so permission is geometry like
 // everything else, and a step into a wall is refused exactly as a step into any
 // other wall is.
-func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (executedAction, error) {
+func (e *Encounter) stepMember(member *memberRecord, to spatial.Position, endWalk bool) (executedAction, error) {
 	// Hex fields require integral axial cells (interim tools/spatial#926
 	// enforcement — see isIntegralHexCell). Asked BEFORE the floor
 	// question so a fractional cell is named as itself: regionAt refuses one
@@ -269,10 +270,10 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 			// it. The sentences and the sentinels are the edge door's own,
 			// below; this is the same law reaching the second geometry.
 			if door := e.field.doorAcrossCrossing(here, to); door != nil {
-				return executedAction{}, shutDoorRefusal(door)
+				return executedAction{}, &StepObstructedError{cause: shutDoorRefusal(door)}
 			}
-			return executedAction{}, fmt.Errorf("the crossing from %v into %v is through %q: %w",
-				here, to, prop, ErrBadPlacement)
+			return executedAction{}, &StepObstructedError{cause: fmt.Errorf("the crossing from %v into %v is through %q: %w",
+				here, to, prop, ErrBadPlacement)}
 		}
 		crossingBlocked = crossed
 
@@ -295,9 +296,9 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 		// illusion breaking, which is the whole of what a forced move
 		// through a secret means.
 		if e.masqueradeBlocks(member.ID, here, to) {
-			return executedAction{}, fmt.Errorf(
+			return executedAction{}, &StepObstructedError{cause: fmt.Errorf(
 				"movemember: %w: entity %s cannot cross movement-blocking boundary from %v to %v",
-				ErrBadPlacement, member.ID, here, to)
+				ErrBadPlacement, member.ID, here, to)}
 		}
 	}
 
@@ -316,14 +317,27 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 	// on the far cell, so a blocked crossing skips the destination refusal
 	// the way a door always has.
 
-	if fact := e.CellAt(CellAtInput{Cell: to, Mover: member.ID}); fact.Passage == PassageBlocked && !crossingBlocked {
+	fact, factErr := e.CellAt(CellAtInput{Cell: to, Mover: member.ID})
+	if factErr != nil {
+		return executedAction{}, factErr
+	}
+	if endWalk && fact.Passage == PassagePassThrough && !crossingBlocked {
+		return executedAction{}, &StepObstructedError{cause: fmt.Errorf("step: destination permits passage but not stopping: %w", ErrBadPlacement)}
+	}
+	if fact.Passage == PassageBlocked && !crossingBlocked {
 		// THE DESTINATION IS A SHUT DOOR'S OWN CELL when a footprint door
 		// covers it — the same refusal a crossing through one earns, because
 		// it is the same door and the same answer: open it.
 		if door := e.field.doorStandingOn(to); door != nil {
-			return executedAction{}, shutDoorRefusal(door)
+			return executedAction{}, &StepObstructedError{cause: shutDoorRefusal(door)}
 		}
-		return executedAction{}, fmt.Errorf("cell %v %s: %w", to, e.blockedBy(fact, to), ErrBadPlacement)
+		refusal := fmt.Errorf("cell %v %s: %w", to, e.blockedBy(fact, to), ErrBadPlacement)
+		for _, contrib := range fact.Contribs {
+			if contrib.Blocks && contrib.Kind == ContribField {
+				return executedAction{}, refusal
+			}
+		}
+		return executedAction{}, &StepObstructedError{cause: refusal}
 	}
 
 	from, err := e.moveMember(member, to)
@@ -369,11 +383,11 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 				// OpenDoor's refusal does; a merely-shut door is its own
 				// answer; and ErrBadPlacement goes back to meaning what its
 				// name says — the position itself is not usable.
-				return executedAction{}, shutDoorRefusal(door)
+				return executedAction{}, &StepObstructedError{cause: shutDoorRefusal(door)}
 			}
 		}
 
-		return executedAction{}, err
+		return executedAction{}, &StepObstructedError{cause: err}
 	}
 
 	action := executedAction{member: member, from: from, to: to}
@@ -394,20 +408,20 @@ func (e *Encounter) crossedDoors(from, to spatial.Position) []CrossedDoor {
 	return out
 }
 
-// stepTo is the pump's way in: the same step, refused SILENTLY.
-//
-// Every refusal is reported as not-stepped rather than as an error, which is
-// the contract a spatially-rejected move already had — a monster that cannot
-// act simply does not act this tick, and never aborts the pump.
-//
-// It decides nothing of its own. Sharing stepMember with the public verb is
-// what makes "what is crossable" a single answer: a rule added there reaches a
-// player's walk and a monster's pursuit in the same commit, and there is no
-// second copy left to forget it.
-func (e *Encounter) stepTo(member *memberRecord, to spatial.Position) (executedAction, bool) {
-	action, err := e.stepMember(member, to)
+// stepTo reports ordinary placement refusals as a stopped walk. Capability
+// and query failures remain errors, so callers cannot save a broken read as
+// a successful shortened movement.
+func (e *Encounter) stepTo(member *memberRecord, to spatial.Position) (executedAction, bool, error) {
+	action, err := e.stepMember(member, to, false)
 	if err != nil {
-		return executedAction{}, false
+		var readErr *passageReadError
+		if errors.As(err, &readErr) {
+			return executedAction{}, false, err
+		}
+		if errors.Is(err, ErrBadPlacement) || errors.Is(err, ErrDoorShut) || errors.Is(err, ErrLocked) {
+			return executedAction{}, false, nil
+		}
+		return executedAction{}, false, err
 	}
-	return action, true
+	return action, true, nil
 }

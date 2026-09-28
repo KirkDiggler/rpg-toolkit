@@ -1755,11 +1755,13 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 		// local so its address is a value for exactly this subject, not the
 		// range variable.
 		isDown := down[subjectID]
+		blocksMovement := e.members[subjectID].BlocksMovement
 		payload, perr := encodeSighting(SightTestimony{
-			State:     LocationKnown,
-			Position:  cell,
-			Equipment: hands[subjectID],
-			Down:      &isDown,
+			State:          LocationKnown,
+			Position:       cell,
+			Equipment:      hands[subjectID],
+			Down:           &isDown,
+			BlocksMovement: &blocksMovement,
 		})
 		if perr != nil {
 			return nil, fmt.Errorf("encode sight testimony: %w", perr)

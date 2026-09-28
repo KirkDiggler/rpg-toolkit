@@ -6,6 +6,7 @@ package encounter_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -71,14 +72,14 @@ func (s *CellFactsTestSuite) SetupTest() {
 // --- The fold ---
 
 func (s *CellFactsTestSuite) TestAnOpenFloorCellIsStandable() {
-	got := s.enc.CellAt(encounter.CellAtInput{Cell: cellAt(14, 7), Mover: s.goblin})
+	got := cellFactFor(s.T(), s.enc, encounter.CellAtInput{Cell: cellAt(14, 7), Mover: s.goblin})
 	s.Equal(encounter.PassageStandable, got.Passage)
 	s.Equal(1, got.Cost)
 	s.Empty(got.Contribs, "nothing stands on open floor, so nobody contributed a fact")
 }
 
 func (s *CellFactsTestSuite) TestAPillarBlocks() {
-	got := s.enc.CellAt(encounter.CellAtInput{Cell: cellAt(11, 7), Mover: s.goblin})
+	got := cellFactFor(s.T(), s.enc, encounter.CellAtInput{Cell: cellAt(11, 7), Mover: s.goblin})
 	s.Equal(encounter.PassageBlocked, got.Passage)
 	s.Contains(got.Contribs, encounter.ContribRef{
 		Kind: encounter.ContribProp, ID: "prop-0", Ref: "dnd5e:props:pillar", Blocks: true,
@@ -86,14 +87,14 @@ func (s *CellFactsTestSuite) TestAPillarBlocks() {
 }
 
 func (s *CellFactsTestSuite) TestAHostileCreatureBlocksAndAnAllyIsPassedThrough() {
-	hostile := s.enc.CellAt(encounter.CellAtInput{Cell: cellAt(12, 7), Mover: s.goblin})
+	hostile := cellFactFor(s.T(), s.enc, encounter.CellAtInput{Cell: cellAt(12, 7), Mover: s.goblin})
 	s.Equal(encounter.PassageBlocked, hostile.Passage,
 		"2014: a hostile creature's space is not yours to enter")
 	s.Contains(hostile.Contribs, encounter.ContribRef{
 		Kind: encounter.ContribMember, ID: string(s.hero), Blocks: true,
 	})
 
-	ally := s.enc.CellAt(encounter.CellAtInput{Cell: cellAt(13, 7), Mover: s.goblin})
+	ally := cellFactFor(s.T(), s.enc, encounter.CellAtInput{Cell: cellAt(13, 7), Mover: s.goblin})
 	s.Equal(encounter.PassagePassThrough, ally.Passage,
 		"2014: you may move through a nonhostile creature's space but not stop there")
 	s.Contains(ally.Contribs, encounter.ContribRef{
@@ -102,20 +103,20 @@ func (s *CellFactsTestSuite) TestAHostileCreatureBlocksAndAnAllyIsPassedThrough(
 }
 
 func (s *CellFactsTestSuite) TestAMoverMayReEnterItsOwnCell() {
-	got := s.enc.CellAt(encounter.CellAtInput{Cell: cellAt(10, 7), Mover: s.goblin})
+	got := cellFactFor(s.T(), s.enc, encounter.CellAtInput{Cell: cellAt(10, 7), Mover: s.goblin})
 	s.Equal(encounter.PassageStandable, got.Passage,
 		"a mover standing here is not a reason it may not be here")
 	s.Empty(got.Contribs)
 }
 
 func (s *CellFactsTestSuite) TestASealedCellIsBlockedByTheField() {
-	got := s.enc.CellAt(encounter.CellAtInput{Cell: cellAt(14, 6), Mover: s.goblin})
+	got := cellFactFor(s.T(), s.enc, encounter.CellAtInput{Cell: cellAt(14, 6), Mover: s.goblin})
 	s.Equal(encounter.PassageBlocked, got.Passage)
 	s.Contains(got.Contribs, encounter.ContribRef{Kind: encounter.ContribField, Blocks: true})
 }
 
 func (s *CellFactsTestSuite) TestACellNoRegionOwnsIsBlockedByTheField() {
-	got := s.enc.CellAt(encounter.CellAtInput{Cell: cellAt(0, 0), Mover: s.goblin})
+	got := cellFactFor(s.T(), s.enc, encounter.CellAtInput{Cell: cellAt(0, 0), Mover: s.goblin})
 	s.Equal(encounter.PassageBlocked, got.Passage)
 	s.Contains(got.Contribs, encounter.ContribRef{Kind: encounter.ContribField, Blocks: true})
 }
@@ -125,9 +126,9 @@ func (s *CellFactsTestSuite) TestTheSameCellAnswersDifferentlyForDifferentMovers
 	// hero. A cell is not passable or impassable on its own, which is why the
 	// fold takes a mover rather than describing the map.
 	s.Equal(encounter.PassagePassThrough,
-		s.enc.CellAt(encounter.CellAtInput{Cell: cellAt(13, 7), Mover: s.goblin}).Passage)
+		cellFactFor(s.T(), s.enc, encounter.CellAtInput{Cell: cellAt(13, 7), Mover: s.goblin}).Passage)
 	s.Equal(encounter.PassageBlocked,
-		s.enc.CellAt(encounter.CellAtInput{Cell: cellAt(13, 7), Mover: s.hero}).Passage)
+		cellFactFor(s.T(), s.enc, encounter.CellAtInput{Cell: cellAt(13, 7), Mover: s.hero}).Passage)
 }
 
 // --- The step reads the same fold, and says which contributor refused ---
@@ -158,3 +159,10 @@ func (s *CellFactsTestSuite) TestAStepOntoOpenFloorStillSucceeds() {
 }
 
 func TestCellFactsSuite(t *testing.T) { suite.Run(t, new(CellFactsTestSuite)) }
+
+func cellFactFor(t *testing.T, enc *encounter.Encounter, in encounter.CellAtInput) encounter.CellFact {
+	t.Helper()
+	fact, err := enc.CellAt(in)
+	require.NoError(t, err)
+	return fact
+}

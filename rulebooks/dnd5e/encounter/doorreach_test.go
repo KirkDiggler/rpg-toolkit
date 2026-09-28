@@ -307,7 +307,7 @@ func (s *DoorReachSuite) TestAPlacedDoorIsReachedFromEveryCellItStandsOn() {
 	}{{2, 1, true}, {2, 3, true}, {2, 2, false}} {
 		s.Run(fmt.Sprintf("shut from (%d,%d), a cell it stands on", seat.col, seat.row), func() {
 			shut := s.placedDoorAt(placedDoorHall(leafDoor(encounter.DoorIsClosed())), authoredAt(0, 0))
-			stood := shut.CellAt(encounter.CellAtInput{Cell: cellAt(seat.col, seat.row), Mover: alice})
+			stood := cellFactFor(s.T(), shut, encounter.CellAtInput{Cell: cellAt(seat.col, seat.row), Mover: alice})
 			if seat.covered {
 				s.Require().Equal(encounter.PassageBlocked, stood.Passage)
 				s.Require().Len(stood.Contribs, 1)
