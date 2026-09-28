@@ -328,7 +328,7 @@ func TestMidTurnStabilizedDeathSaveDoesNotAutoPassAlreadyActiveSlot(t *testing.T
 		},
 	})
 	require.NoError(t, err)
-	require.Len(t, capability.questions, callsBefore+1)
+	require.Len(t, capability.questions, callsBefore+3, "settlement plus witnessed standing refresh and contact classification")
 	require.Equal(t, alice, clockState(t, enc, alice).Active,
 		"Record settles facts inside the current turn; it does not create a new active slot")
 	for _, beat := range storyBeats(t, enc, alice) {

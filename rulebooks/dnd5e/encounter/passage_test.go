@@ -181,3 +181,16 @@ func (s *PassageSuite) TestDrivenStepDoesNotSwallowProviderErrorWithPlacementSen
 	s.Require().ErrorIs(err, failure)
 	s.Equal(2, s.life.calls, "the probe must fail at the step, not its earlier down check")
 }
+
+func (s *PassageSuite) TestRecordedFallUpdatesWitnessPassageWithoutMovement() {
+	s.life.down[goblin] = true
+	_, err := s.enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
+		Values:      map[encounter.OutcomeValue]int{encounter.ValueRoll: 17, encounter.ValueTotal: 22, encounter.ValueAgainst: 15, encounter.ValueAmount: 9},
+		Calculation: attackCalculation(17, 5, 0),
+	})
+	s.Require().NoError(err)
+	passages, err := s.enc.ObservedPassages(&encounter.ViewInput{Member: alice})
+	s.Require().NoError(err)
+	s.Equal(encounter.PassageStandable, passages[goblin])
+}

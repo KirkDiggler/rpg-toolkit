@@ -752,10 +752,16 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	if in.Kind == OutcomeDeathSave && (in.DeathSave.Stabilized || in.DeathSave.Recovered) {
 		pass.deferReconcile = true
 	}
-	_, intelDeltas, nerr := e.noticeDown(pass)
+	participation, intelDeltas, nerr := e.noticeDown(pass)
 	if nerr != nil {
 		return nil, fmt.Errorf("record: %w", nerr)
 	}
+
+	observed, err := e.refreshChangedStanding(participation)
+	if err != nil {
+		return nil, fmt.Errorf("record observed standing: %w", err)
+	}
+	intelDeltas = mergeIntelDeltas(intelDeltas, observed)
 
 	return &RecordOutput{IntelDeltas: intelDeltas, Seq: appended.Seq, FollowUpSeqs: followUpSeqs}, nil
 }

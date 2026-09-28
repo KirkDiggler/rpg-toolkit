@@ -41,3 +41,42 @@ func (e *Encounter) ObservedPassages(in *ViewInput) (map[MemberID]Passage, error
 	}
 	return out, nil
 }
+
+// A recorded interaction can change standing without moving anyone. Refresh
+// through perception only when a current witness has an outdated observation;
+// ghosts retain their last testimony. Reads never perform this update.
+func (e *Encounter) refreshChangedStanding(state *participationState) (map[MemberID]*IntelDelta, error) {
+	if e.outcome != nil {
+		return nil, nil
+	}
+	changed := map[MemberID]bool{}
+	for _, observer := range e.rosterIDs() {
+		held, err := e.intelLog.Held(observer)
+		if err != nil {
+			return nil, err
+		}
+		for _, holding := range held {
+			if !holding.CurrentOn(perception.Sight) {
+				continue
+			}
+			seen, ok := DecodeSightTestimony(holding.Payload)
+			if !ok || seen.State != LocationKnown {
+				continue
+			}
+			if seen.Down == nil || *seen.Down != state.down[holding.Subject] {
+				changed[holding.Subject] = true
+			}
+		}
+	}
+	if len(changed) == 0 {
+		return nil, nil
+	}
+	subjects := make([]MemberID, 0, len(changed))
+	for _, id := range e.rosterIDs() {
+		if changed[id] {
+			subjects = append(subjects, id)
+		}
+	}
+	deltas, _, err := e.refreshSightDeclaring(e.rosterIDs(), subjects)
+	return deltas, err
+}
