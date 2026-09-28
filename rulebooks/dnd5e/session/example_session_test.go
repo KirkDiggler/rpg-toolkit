@@ -50,7 +50,7 @@ func Example_theSession() {
 
 	if _, err := mgr.Join(ctx, &session.JoinInput{
 		Session: "tomb-run", Member: "bob",
-		Position: hexCell(6, 2),
+		Position: hexCell(6, 1),
 	}); err != nil {
 		panic(err)
 	}
@@ -118,7 +118,7 @@ func Example_theSession() {
 	//   bob tries to move: true
 	//   but the story still reads: open=false, ended by "stairs"
 	//     alice at (4,1)
-	//     bob at (5,2)
+	//     bob at (6,1)
 }
 
 // Example_theFightThatStartsItself is the host's whole "a fight broke out"

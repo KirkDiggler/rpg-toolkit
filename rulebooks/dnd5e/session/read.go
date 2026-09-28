@@ -407,28 +407,8 @@ func (m *Manager) View(ctx context.Context, in *ViewInput) ([]Sighting, error) {
 	// because a stance is a fact about the PAIR rather than about the subject
 	// (believedStances). This is the read rpg-api fills the sighting's stance
 	// from, and the only place it is answered.
-	passages, err := enc.ObservedPassages(&encounter.ViewInput{Member: encounter.MemberID(in.Member)})
-	if err != nil {
-		return nil, fmt.Errorf("view passage: %w", err)
-	}
-	out := projectSightings(holdings, rosterNames(roster), rosterKinds(roster), believedStances(enc, in.Member, roster))
-	for i := range out {
-		passage, exists := passages[encounter.MemberID(out[i].Subject)]
-		if !exists {
-			continue
-		}
-		switch passage {
-		case encounter.PassageBlocked:
-			out[i].Passage = PassageBlocked
-		case encounter.PassagePassThrough:
-			out[i].Passage = PassagePassThrough
-		case encounter.PassageStandable:
-			out[i].Passage = PassageStandable
-		default:
-			return nil, fmt.Errorf("view passage: invalid provider answer %d", passage)
-		}
-	}
-	return out, nil
+	return projectSightings(holdings, rosterNames(roster), rosterKinds(roster),
+		believedStances(enc, in.Member, roster)), nil
 }
 
 // Story returns the beats a member has witnessed, from FromSeq onward

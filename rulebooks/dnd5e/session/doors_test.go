@@ -155,21 +155,23 @@ func (s *DoorsSuite) TestDoorsReadsTheLiveState() {
 
 func (s *DoorsSuite) TestAWalkIntoTheDoorSaysWhatStoppedIt() {
 	ctx := context.Background()
-	for _, row := range []struct {
-		state  encounter.DoorState
-		reason string
-	}{
-		{tombLock(), "locked"}, {encounter.DoorIsClosed(), "shut"},
-	} {
-		s.Run(row.reason, func() {
-			s.startWith(gatedWorld(s.T(), row.state))
-			out, err := s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: []spatial.Position{hexCell(6, 0)}})
-			s.Require().NoError(err)
-			s.Equal(session.MovementStopped, out.Status)
-			s.Empty(out.Steps)
-			s.Contains(out.StopReason, row.reason)
-		})
-	}
+
+	s.Run("locked says locked — the fiction beat, not a bad cell", func() {
+		s.startWith(gatedWorld(s.T(), tombLock()))
+		_, err := s.mgr.Move(ctx, &session.MoveInput{
+			Session: "sess", Member: "alice", Path: []spatial.Position{hexCell(6, 0)}})
+		s.Require().ErrorIs(err, session.ErrLocked)
+		s.NotErrorIs(err, session.ErrBadPosition,
+			"a caller told bad-position goes looking for arithmetic that is fine")
+	})
+
+	s.Run("shut says shut — the remedy is OpenDoor, not new coordinates", func() {
+		s.startWith(gatedWorld(s.T(), encounter.DoorIsClosed()))
+		_, err := s.mgr.Move(ctx, &session.MoveInput{
+			Session: "sess", Member: "alice", Path: []spatial.Position{hexCell(6, 0)}})
+		s.Require().ErrorIs(err, session.ErrDoorShut)
+		s.NotErrorIs(err, session.ErrBadPosition)
+	})
 }
 
 func (s *DoorsSuite) TestOpenDoorOpensAndTheTableHears() {

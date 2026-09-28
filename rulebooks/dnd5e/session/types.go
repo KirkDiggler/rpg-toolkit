@@ -849,21 +849,9 @@ const (
 	StandingDowned Standing = "downed"
 )
 
-// Passage is a provider-owned occupancy contribution for the viewing mover.
-type Passage string
-
-const (
-	PassageBlocked     Passage = "blocked"
-	PassagePassThrough Passage = "pass-through"
-	PassageStandable   Passage = "standable"
-)
-
 // Sighting is one thing an observer knows through Intel. Status and CurrentVia
 // distinguish current perception from held memory.
 type Sighting struct {
-	// Passage is present only for current, located sight testimony.
-	Passage Passage `json:"passage,omitempty"`
-
 	// Subject names what is perceived.
 	Subject string `json:"subject"`
 

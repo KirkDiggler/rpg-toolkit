@@ -504,10 +504,6 @@ func (s *HoldOutSessionSuite) walk(member string, to spatial.Position) *session.
 		}
 		out, err := s.mgr.Move(context.Background(), in)
 		s.Require().NoError(err, "%s walking to %v", member, to)
-		if out.JoinedCombat {
-			last = out
-			continue
-		}
 		s.Require().NotEmpty(out.Steps, "%s walked nowhere", member)
 		last = out
 		if out.Outcome != nil {
