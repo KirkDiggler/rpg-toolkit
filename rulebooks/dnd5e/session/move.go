@@ -71,6 +71,8 @@ type Step struct {
 
 // MoveOutput reports how far the member got and what it revealed.
 type MoveOutput struct {
+	// JoinedCombat reports entry from the current cell before the next step.
+	JoinedCombat bool `json:"joined_combat,omitempty"`
 	// Steps is what actually happened, in order.
 	//
 	// Shorter than the requested Path means the walk stopped early. The
@@ -108,62 +110,11 @@ type MoveOutput struct {
 // not — which rooms were left and entered — was the room dialect this seam
 // stopped speaking two slices ago.
 
-// Move walks a member along a path, one cell at a time.
-//
-// This is the first verb that does something the composition cannot do alone:
-// the composition's own Step is a single hop, and walking is what makes the
-// cells in between real. That matters beyond tidiness — anything that fires
-// because a member *entered a particular cell* can only be noticed by something
-// that visits each of them.
-//
-// The walk stops early when an ending fires underfoot. Remaining steps are not
-// attempted, and `len(Steps) < len(Path)` is how the caller learns, with the
-// reason in Outcome. Reporting that as an error would be wrong: the movement
-// that happened, happened, and it is exactly what the caller asked for up to
-// the point the world changed.
-//
-// # On the turn clock, a walk spends movement (rpg-toolkit#1169)
-//
-// A member IN A FIGHT may still walk — only when it is their turn, and only as
-// far as their turn's movement reaches. The echoed Move offer supplies the
-// already-loaded, turn-readied sheet; this verb compiles the whole requested
-// path at 5 feet per cell and charges it through [combat.Pay] BEFORE any cell is
-// entered, the same door [Manager.Attack] pays a swing through: a
-// path that costs more than the turn has left is refused whole, naming the
-// currency, and not one cell of it happens. Whose turn it is is not re-derived
-// here — [encounter.Step] is the one place that gate lives, and its refusal
-// (ErrNotActive) is translated to ErrNotYourTurn exactly as EndTurn's already
-// is. Free roam is untouched: a member on the world clock pays nothing, exactly
-// as [Manager.priceSwing] charges nothing there.
-//
-// WHAT IS VALIDATED WHOLE, AND WHAT IS NOT (R5, narrowed deliberately by
-// rpg-toolkit#1059). A path that is not a WALK is rejected entire, before a
-// single cell is entered: a gap in it, a step of no distance, a first cell
-// nowhere near the walker. A caller who mis-computed a route wants none of it
-// rather than an arbitrary prefix of it, and those are the mistakes a route
-// computation actually makes. Movement's own price joins that list: it is
-// charged against the whole path before the walk starts, not metered per cell
-// as the walk goes.
-//
-// The two refusals that need the MAP — a cell no room owns, and a cell in the
-// next room with no doorway joining it — are raised by the composition as each
-// step is taken, because checking them in advance means the seam re-deciding
-// what is crossable, which is the duplication this walk exists without. The
-// caller sees no difference: a refused walk returns an error, and nothing is
-// persisted or published, because the encounter that moved in memory is
-// discarded unsaved. The same is true of a charged sheet: offer regeneration
-// loads and readies a [character.Character] fresh for this call, and a walk
-// that fails after paying simply never hands that sheet to [Manager.saveWalker] —
-// nothing durable ever saw the spend.
-//
-// Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoDeclarationID,
-// ErrStaleDeclaration, ErrEmptyPath, ErrBrokenPath for a path with a gap in it,
-// ErrNoSession, ErrNoEncounter, ErrNoMember, ErrClosed, ErrBadPosition for a
-// cell no room owns OR a cell the walker is already standing on, ErrNoCrossing
-// for a step into another room with no doorway joining it, ErrNotYourTurn for a
-// bubble member asked to walk out of turn, ErrCannotAfford naming the movement
-// that ran short, ErrBadCharacter or ErrBadCost if the walker's own sheet
-// cannot be priced, or ErrSaveFailed with a populated report.
+// Move walks an adjacent path, validating its requested budget before acting.
+// Only completed steps consume movement. Reactions pause before the announced
+// step, and resumed walks pay only for additional completed steps. A visible
+// teammate in combat admits the walker before entering their occupied cell.
+// Input, placement, participation, and persistence errors remain errors.
 func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("move: %w", ErrNilInput)
@@ -203,6 +154,10 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 	}
 	if ClockKind(clock.Kind) == ClockTurn && string(clock.Active) != in.Member {
 		return nil, fmt.Errorf("move: %w", ErrNotYourTurn)
+	}
+
+	if err = scope.enc.ValidateWalkEnd(encounter.CellAtInput{Mover: encounter.MemberID(in.Member), Cell: in.Path[len(in.Path)-1]}); err != nil {
+		return nil, fmt.Errorf("move destination: %w", translate(err))
 	}
 
 	var cost *walkCost
@@ -254,49 +209,24 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		cost = &walkCost{}
 	}
 
-	// THE ONE PLACE A SPEND GOES for this verb, mirroring Attack's own comment
-	// at its call site: nil profile means FREE ROAM ONLY — turn-clock offer
-	// compilation blocks a member whose sheet it cannot load rather than
-	// silently pricing them as free. combat.Pay
-	// treats a nil profile as a free action by its own contract (see
-	// [combat.SpendProfile]), so this branch is a shortcut rather than a
-	// second free-action path.
+	// Validate the requested budget without consuming it. Each completed
+	// step pays below, so interruptions cannot spend the unwalked suffix.
 	if cost.profile != nil {
-		if err := combat.Pay(cost.sheet, cost.profile); err != nil {
+		if !combat.CanPay(cost.sheet, cost.profile) {
 			left := cost.sheet.CapacityLeft(combat.CapacityMovement)
 			return nil, fmt.Errorf("move: %w: %s", ErrCannotAfford, movementShortfall(cost.feet, left))
 		}
-		// On the SCOPE, snapshotted after the charge: the walk is about to be
-		// offered to the rules and a reaction may strike this very member, so
-		// the blow must land on the sheet that has already paid for the walk
-		// rather than on a second copy fetched behind its back. See
-		// [writeScope.walker].
 		scope.walker = cost.sheet.ToData()
 	}
 
-	// Standing used to be asked once here for the whole walk
-	// (rpg-toolkit#1137), because a Move could not down or revive anyone.
-	// Announcing each step to the rules is exactly what made that false, so
 	// runWalk asks per cell instead and this verb asks not at all.
 	res, err := m.runWalk(ctx, scope, in.Member, in.Path)
 	if err != nil {
 		return nil, fmt.Errorf("move: %w", err)
 	}
 
-	// The spend is durable only once the walk it paid for actually happened.
-	// Charged for the WHOLE requested path regardless of whether the walk
-	// stopped early on an Outcome or a Formed bubble (see runWalk) — v1 does
-	// not refund an interrupted walk's unused cells, the same way a paid-for
-	// swing is not refunded for missing.
-	//
-	// NOT WHEN A REACTION ALREADY WROTE THIS SHEET. That write carried the
-	// spend as well as the blow — the reaction resolved over this walk's own
-	// readied sheet ([writeScope.walker]) — so writing the copy held here
-	// afterwards would restore the hit points the walker just lost.
-	if cost.sheet != nil && !scope.walkerDirtied {
-		if err := m.saveWalker(ctx, scope, cost.sheet); err != nil {
-			return nil, fmt.Errorf("move: %w", err)
-		}
+	if err = m.saveWalkProgress(ctx, scope); err != nil {
+		return nil, err
 	}
 
 	report, delivery, err := m.commit(ctx, scope)
@@ -316,12 +246,13 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 	}
 
 	return &MoveOutput{
-		Steps:      res.steps,
-		Discovered: nilIfEmpty(res.discovered),
-		Outcome:    res.outcome,
-		Formed:     res.formed,
-		Saved:      report,
-		Delivery:   delivery,
+		Steps:        res.steps,
+		JoinedCombat: res.joinedCombat,
+		Discovered:   nilIfEmpty(res.discovered),
+		Outcome:      res.outcome,
+		Formed:       res.formed,
+		Saved:        report,
+		Delivery:     delivery,
 	}, nil
 }
 
@@ -392,10 +323,11 @@ func (m *Manager) saveWalker(ctx context.Context, scope *writeScope, sheet *char
 
 // walkResult is what one run of the walk produced.
 type walkResult struct {
-	steps      []Step
-	discovered map[string]Discovery
-	outcome    *Outcome
-	formed     *Formed
+	steps        []Step
+	discovered   map[string]Discovery
+	outcome      *Outcome
+	formed       *Formed
+	joinedCombat bool
 }
 
 // runWalk steps a member along a path, stopping at the first fight, the first
@@ -434,6 +366,15 @@ func (m *Manager) runWalk(
 	}
 
 	for i, cell := range path {
+		admission, admissionErr := scope.enc.AdmitWalk(&encounter.AdmitWalkInput{Member: encounter.MemberID(member)})
+		if admissionErr != nil {
+			return nil, translate(admissionErr)
+		}
+		mergeDiscoveries(res.discovered, projectDiscoveries(admission.IntelDeltas))
+		if admission.Joined {
+			res.joinedCombat = true
+			return res, nil
+		}
 		scope.walkContinuation = path[i:]
 		// ANNOUNCED BEFORE IT IS TAKEN, which is [encounter.Mover]'s contract
 		// and the reason an opportunity attack can fire at all: a reactor's
@@ -485,15 +426,43 @@ func (m *Manager) runWalk(
 			return res, nil
 		}
 
+		clock, clockErr := scope.enc.ClockOf(&encounter.ClockOfInput{Member: encounter.MemberID(member)})
+		if clockErr != nil {
+			return nil, translate(clockErr)
+		}
+		if clock.Kind == encounter.ClockTurn {
+			if string(clock.Active) != member {
+				return res, nil
+			}
+			if scope.walker == nil {
+				data, loadErr := m.fetchCharacterData(ctx, "walker", member)
+				if loadErr != nil {
+					return nil, loadErr
+				}
+				scope.walker = data
+			}
+		}
 		stepped, err := scope.enc.Step(&encounter.StepInput{
-			Member: encounter.MemberID(member),
-			To:     cell,
+			Member:  encounter.MemberID(member),
+			To:      cell,
+			EndWalk: i == len(path)-1,
 		})
 		if err != nil {
 			// Nothing is saved on a mid-walk rejection. The member has really
 			// moved in memory for the steps already taken, but that encounter is
 			// discarded unsaved, so the persisted world is untouched.
 			return nil, refusedStep(i, len(path), cell, err)
+		}
+
+		if clock.Kind == encounter.ClockTurn {
+			sheet, loadErr := character.Load(ctx, scope.walker)
+			if loadErr != nil {
+				return nil, fmt.Errorf("walk sheet: %w", loadErr)
+			}
+			if payErr := combat.Pay(sheet, &combat.SpendProfile{Capacity: map[combat.CapacityType]int{combat.CapacityMovement: 5}}); payErr != nil {
+				return nil, fmt.Errorf("walk step: %w", payErr)
+			}
+			scope.walker = sheet.ToData()
 		}
 
 		// Read off what the composition says happened rather than off the
@@ -810,4 +779,17 @@ func (m *Manager) reconcileFogMembership(ctx context.Context, scope *writeScope)
 		}
 	}
 	return nil
+}
+
+// saveWalkProgress saves the latest walking sheet, including reaction changes
+// and only the movement actually consumed. Resumed walks use the same path.
+func (m *Manager) saveWalkProgress(ctx context.Context, scope *writeScope) error {
+	if scope.walker == nil {
+		return nil
+	}
+	sheet, err := character.Load(ctx, scope.walker)
+	if err != nil {
+		return fmt.Errorf("save walking sheet: %w", err)
+	}
+	return m.saveWalker(ctx, scope, sheet)
 }

@@ -116,7 +116,7 @@ func (s *CastSuite) TestFlareDuringOpportunityAttackResumesWithoutRepeatingStep(
 	s.Require().NoError(err)
 	s.Equal(before, s.dice.next)
 	s.Equal(spatial.Position{X: 1, Y: 1}, s.cellOf("cleric"), "reaction pauses before leaving the cell")
-	s.Equal(movement-5, s.characters.byID["cleric"].ActionEconomy.MovementRemaining)
+	s.Equal(movement, s.characters.byID["cleric"].ActionEconomy.MovementRemaining, "paused before stepping: unused movement is not charged")
 	s.reloadHealingScene()
 	row := s.flareReaction()
 	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Choice: session.ReactStrike, Option: "use"})

@@ -529,6 +529,23 @@ func (s *MoveTestSuite) TestThereAndBackIsLegal() {
 	s.Equal(spatial.Position{X: 1, Y: 1}, out.Steps[1].Position, "back where she started")
 }
 
+// A teammate sees the fight through the gap; Alice sees only the teammate.
+func (s *MoveTestSuite) TestVisibleCombatTeammateJoinsBeforeAnyStep() {
+	ctx := context.Background()
+	world := ambushWorld(s.T(), encounter.MemberInput{ID: "bob", Kind: encounter.KindPlayer, Position: hexCell(1, 3)})
+	_, err := s.mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: world})
+	s.Require().NoError(err)
+	before, err := s.mgr.Where(ctx, &session.WhereInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	out, err := s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: ambushPath()})
+	s.Require().NoError(err)
+	s.True(out.JoinedCombat)
+	s.Empty(out.Steps)
+	after, err := s.mgr.Where(ctx, &session.WhereInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Equal(before, after)
+}
+
 func TestMoveSuite(t *testing.T) {
 	suite.Run(t, new(MoveTestSuite))
 }
