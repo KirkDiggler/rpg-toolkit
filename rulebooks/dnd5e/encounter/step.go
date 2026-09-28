@@ -4,6 +4,7 @@
 package encounter
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -316,7 +317,11 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 	// on the far cell, so a blocked crossing skips the destination refusal
 	// the way a door always has.
 
-	if fact := e.CellAt(CellAtInput{Cell: to, Mover: member.ID}); fact.Passage == PassageBlocked && !crossingBlocked {
+	fact, factErr := e.CellAt(CellAtInput{Cell: to, Mover: member.ID})
+	if factErr != nil {
+		return executedAction{}, factErr
+	}
+	if fact.Passage == PassageBlocked && !crossingBlocked {
 		// THE DESTINATION IS A SHUT DOOR'S OWN CELL when a footprint door
 		// covers it — the same refusal a crossing through one earns, because
 		// it is the same door and the same answer: open it.
@@ -394,20 +399,20 @@ func (e *Encounter) crossedDoors(from, to spatial.Position) []CrossedDoor {
 	return out
 }
 
-// stepTo is the pump's way in: the same step, refused SILENTLY.
-//
-// Every refusal is reported as not-stepped rather than as an error, which is
-// the contract a spatially-rejected move already had — a monster that cannot
-// act simply does not act this tick, and never aborts the pump.
-//
-// It decides nothing of its own. Sharing stepMember with the public verb is
-// what makes "what is crossable" a single answer: a rule added there reaches a
-// player's walk and a monster's pursuit in the same commit, and there is no
-// second copy left to forget it.
-func (e *Encounter) stepTo(member *memberRecord, to spatial.Position) (executedAction, bool) {
+// stepTo reports ordinary placement refusals as a stopped walk. Capability
+// and query failures remain errors, so callers cannot save a broken read as
+// a successful shortened movement.
+func (e *Encounter) stepTo(member *memberRecord, to spatial.Position) (executedAction, bool, error) {
 	action, err := e.stepMember(member, to)
 	if err != nil {
-		return executedAction{}, false
+		var readErr *passageReadError
+		if errors.As(err, &readErr) {
+			return executedAction{}, false, err
+		}
+		if errors.Is(err, ErrBadPlacement) || errors.Is(err, ErrDoorShut) || errors.Is(err, ErrLocked) {
+			return executedAction{}, false, nil
+		}
+		return executedAction{}, false, err
 	}
-	return action, true
+	return action, true, nil
 }

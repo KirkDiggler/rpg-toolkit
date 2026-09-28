@@ -195,6 +195,10 @@ func (e *Encounter) Route(in RouteInput) (RouteOutput, error) {
 	// refusal below belongs to the line and only to the line: a line through
 	// two identical cells has no direction, while "as far from here as you
 	// can get" is a perfectly good question asked from the cell itself.
+	q, err := e.cellQuery()
+	if err != nil {
+		return RouteOutput{}, fmt.Errorf("route: %w", err)
+	}
 	switch in.Policy {
 	case MoveLine:
 		if from == in.Anchor {
@@ -202,11 +206,11 @@ func (e *Encounter) Route(in RouteInput) (RouteOutput, error) {
 				"route %q: the anchor stands on the mover, so there is no line through them: %w",
 				in.Mover, ErrBadReach)
 		}
-		return e.routeLine(in.Mover, from, in.Anchor, in.Budget), nil
+		return q.routeLine(in.Mover, from, in.Anchor, in.Budget)
 	case MoveAway:
-		return e.routeAway(in.Mover, from, in.Anchor, in.Budget), nil
+		return q.routeAway(in.Mover, from, in.Anchor, in.Budget)
 	case MoveToward:
-		return e.routeToward(in.Mover, from, in.Anchor, in.Budget), nil
+		return q.routeToward(in.Mover, from, in.Anchor, in.Budget)
 	default:
 		return RouteOutput{}, fmt.Errorf("route %q: policy %q: %w", in.Mover, in.Policy, ErrUnsupportedPolicy)
 	}
@@ -226,9 +230,9 @@ func (e *Encounter) Route(in RouteInput) (RouteOutput, error) {
 // its own span, so a push aimed off the edge of the field comes back with a
 // gap in it; a route that stepped across that gap would hand [Encounter.Direct]
 // two cells that are not neighbours, and the walk would teleport.
-func (e *Encounter) routeLine(mover MemberID, from, anchor spatial.Position, budget int) RouteOutput {
+func (e *cellQuery) routeLine(mover MemberID, from, anchor spatial.Position, budget int) (RouteOutput, error) {
 	if budget == 0 {
-		return RouteOutput{}
+		return RouteOutput{}, nil
 	}
 
 	far := spatial.Position{
@@ -243,39 +247,47 @@ func (e *Encounter) routeLine(mover MemberID, from, anchor spatial.Position, bud
 			continue // the line starts where they stand; the path does not
 		}
 		if len(out.Path) == budget {
-			return out // the budget is spent, and a spent budget stops nothing
+			return out, nil // the budget is spent, and a spent budget stops nothing
 		}
 		if !e.canvas.GetGrid().IsAdjacent(prev, cell) {
 			out.StoppedBy = fmt.Sprintf("cell %v is off the edge of the field", cell)
-			return out
+			return out, nil
 		}
 		// THE CROSSING FOLD (issue #1753), fail closed on an unjudgeable
 		// crossing, exactly as the route flood is: a directed walk does not
 		// step through a footprint it could not measure.
-		if _, blocked, err := e.crossingBlocked(prev, cell); err != nil || blocked {
-			out.StoppedBy = fmt.Sprintf("the crossing from %v into %v is blocked", prev, cell)
-			return out
+		_, blocked, err := e.crossingBlocked(prev, cell)
+		if err != nil {
+			return RouteOutput{}, err
 		}
-		if fact := e.CellAt(CellAtInput{Cell: cell, Mover: mover}); fact.Passage != PassageStandable {
+		if blocked {
+			out.StoppedBy = fmt.Sprintf("the crossing from %v into %v is blocked", prev, cell)
+			return out, nil
+		}
+		fact, err := e.cellAt(CellAtInput{Cell: cell, Mover: mover})
+		if err != nil {
+			return RouteOutput{}, err
+		}
+		if fact.Passage != PassageStandable {
 			out.StoppedBy = e.stoppedBy(fact, cell)
-			return out
+			return out, nil
 		}
 		out.Path = append(out.Path, cell)
 		prev = cell
 	}
 
-	return out
+	return out, nil
 }
 
 // routeAway is the [MoveAway] policy: flood as far as the budget pays for,
 // then keep the reached cell that is farthest from the anchor by the ruler.
 //
-// IT IS THE SAME FLOOD A MONSTER'S OWN ROUTE READS ([Encounter.floodFrom]),
+// IT IS THE SAME FLOOD A MONSTER'S OWN ROUTE READS ([cellQuery.floodFrom]),
 // with a Limit, which is the whole reason a speed-bounded rout needed no
 // second searcher: the budget is a bound on a field that already existed
 // (rpg-toolkit#1652's lesson, one policy later).
 //
-// MAY CROSS IS NOT MAY STOP, exactly as [Encounter.nearestStop] has it: the
+// MAY CROSS IS NOT MAY STOP, exactly as [cellQuery.nearestStop] has it: the
 // flood passes through a nonhostile creature's cell, and the cell the mover
 // ends on must be Standable.
 //
@@ -292,17 +304,17 @@ func (e *Encounter) routeLine(mover MemberID, from, anchor spatial.Position, bud
 // [spatial.FieldInput.Limit], so asking the field with it would flood the
 // entire floor and hand a creature with no movement the far corner of the
 // dungeon.
-func (e *Encounter) routeAway(mover MemberID, from, anchor spatial.Position, budget int) RouteOutput {
+func (e *cellQuery) routeAway(mover MemberID, from, anchor spatial.Position, budget int) (RouteOutput, error) {
 	if budget == 0 {
-		return RouteOutput{}
+		return RouteOutput{}, nil
 	}
 
 	// UNGATED BY THE MOVER'S OWN PICTURE (rpg-project#490, E7): a directive
 	// is nobody's choice, so a wall that is only a wall to them does not
 	// shape where they are pushed to.
-	field, ok := e.floodFrom(mover, "", from, nil, budget)
-	if !ok {
-		return RouteOutput{StoppedBy: "the floor could not be flooded"}
+	field, err := e.floodFrom(mover, "", from, nil, budget)
+	if err != nil {
+		return RouteOutput{}, err
 	}
 
 	here := e.Distance(anchor, from)
@@ -313,7 +325,11 @@ func (e *Encounter) routeAway(mover MemberID, from, anchor spatial.Position, bud
 		if cell == from {
 			continue
 		}
-		if e.CellAt(CellAtInput{Cell: cell, Mover: mover}).Passage != PassageStandable {
+		fact, err := e.cellAt(CellAtInput{Cell: cell, Mover: mover})
+		if err != nil {
+			return RouteOutput{}, err
+		}
+		if fact.Passage != PassageStandable {
 			continue
 		}
 		far := e.Distance(anchor, cell)
@@ -327,10 +343,10 @@ func (e *Encounter) routeAway(mover MemberID, from, anchor spatial.Position, bud
 		}
 	}
 	if !found {
-		return RouteOutput{StoppedBy: fmt.Sprintf("nowhere farther from %v within %d cells", anchor, budget)}
+		return RouteOutput{StoppedBy: fmt.Sprintf("nowhere farther from %v within %d cells", anchor, budget)}, nil
 	}
 
-	return pathOrRefusal(field, best)
+	return pathOrRefusal(field, best), nil
 }
 
 // routeToward is the [MoveToward] policy: flood as far as the budget pays
@@ -339,7 +355,7 @@ func (e *Encounter) routeAway(mover MemberID, from, anchor spatial.Position, bud
 // cell nearest it by the ruler.
 //
 // TWO SCANS, AND THE SECOND ONLY WHEN THE FIRST FOUND NOTHING. The first is
-// [Encounter.nearestStop] over the goal "within one cell of the anchor",
+// [cellQuery.nearestStop] over the goal "within one cell of the anchor",
 // which is the same fewest-steps, may-cross-may-not-stop search a monster's
 // own route already runs ([Encounter.routeTo]); the second is
 // [Encounter.routeAway]'s scan with its comparison turned around. Keeping
@@ -363,37 +379,46 @@ func (e *Encounter) routeAway(mover MemberID, from, anchor spatial.Position, bud
 // reason: zero is unbounded to [spatial.FieldInput.Limit], so asking the field
 // with it would flood the whole floor on behalf of a creature that cannot
 // move.
-func (e *Encounter) routeToward(mover MemberID, from, anchor spatial.Position, budget int) RouteOutput {
+func (e *cellQuery) routeToward(mover MemberID, from, anchor spatial.Position, budget int) (RouteOutput, error) {
 	if budget == 0 {
-		return RouteOutput{}
+		return RouteOutput{}, nil
 	}
 
 	beside := func(cell spatial.Position) bool { return e.Distance(cell, anchor) <= 1 }
 	if beside(from) {
-		return RouteOutput{}
+		return RouteOutput{}, nil
 	}
 
 	// UNGATED BY THE MOVER'S OWN PICTURE (rpg-project#490, E7): a directive
 	// is nobody's choice, so a wall that is only a wall to them does not
 	// shape where they are pushed to.
-	field, ok := e.floodFrom(mover, "", from, nil, budget)
-	if !ok {
-		return RouteOutput{StoppedBy: "the floor could not be flooded"}
+	field, err := e.floodFrom(mover, "", from, nil, budget)
+	if err != nil {
+		return RouteOutput{}, err
 	}
 
-	if best, found := e.nearestStop(field, mover, from, beside); found {
-		return pathOrRefusal(field, best)
+	best, found, err := e.nearestStop(field, mover, from, beside)
+	if err != nil {
+		return RouteOutput{}, err
+	}
+	if found {
+		return pathOrRefusal(field, best), nil
 	}
 
 	here := e.Distance(anchor, from)
 
-	var best spatial.Position
-	bestNear, bestWalk, found := 0.0, 0, false
+	best = spatial.Position{}
+	found = false
+	bestNear, bestWalk := 0.0, 0
 	for cell, walk := range field.Dist {
 		if cell == from {
 			continue
 		}
-		if e.CellAt(CellAtInput{Cell: cell, Mover: mover}).Passage != PassageStandable {
+		fact, err := e.cellAt(CellAtInput{Cell: cell, Mover: mover})
+		if err != nil {
+			return RouteOutput{}, err
+		}
+		if fact.Passage != PassageStandable {
 			continue
 		}
 		near := e.Distance(anchor, cell)
@@ -407,10 +432,10 @@ func (e *Encounter) routeToward(mover MemberID, from, anchor spatial.Position, b
 		}
 	}
 	if !found {
-		return RouteOutput{StoppedBy: fmt.Sprintf("nowhere nearer to %v within %d cells", anchor, budget)}
+		return RouteOutput{StoppedBy: fmt.Sprintf("nowhere nearer to %v within %d cells", anchor, budget)}, nil
 	}
 
-	return pathOrRefusal(field, best)
+	return pathOrRefusal(field, best), nil
 }
 
 // pathOrRefusal reads one cell's route out of the flood that reached it.
@@ -597,7 +622,11 @@ func (e *Encounter) Direct(ctx context.Context, in DirectInput) (DirectOutput, e
 	out := DirectOutput{Moved: res.moved}
 	if res.paused == nil && !res.dropped && res.moved < len(in.Route) {
 		cell := in.Route[res.moved]
-		out.StoppedBy = e.stoppedBy(e.CellAt(CellAtInput{Cell: cell, Mover: in.Mover}), cell)
+		fact, factErr := e.CellAt(CellAtInput{Cell: cell, Mover: in.Mover})
+		if factErr != nil {
+			return DirectOutput{}, factErr
+		}
+		out.StoppedBy = e.stoppedBy(fact, cell)
 	}
 
 	// THE SAME SETTLE EVERY WALK RUNS, AND IT RUNS AT A HOLD TOO. A push

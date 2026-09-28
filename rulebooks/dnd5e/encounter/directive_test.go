@@ -502,6 +502,7 @@ func (s *DirectiveTestSuite) sceneOfCells(
 // It reads no wall, so it is only honest on a scene that has none — which both
 // away scenes state in their own docs.
 func reachedStandableWithin(
+	t *testing.T,
 	enc *encounter.Encounter, mover encounter.MemberID, from spatial.Position, budget int,
 ) map[spatial.Position]int {
 	canvas, err := enc.Canvas()
@@ -511,7 +512,7 @@ func reachedStandableWithin(
 	field, err := spatial.Field(canvas.GetGrid(), spatial.FieldInput{
 		Sources: []spatial.Position{from},
 		Passable: func(_, to spatial.Position) bool {
-			return enc.CellAt(encounter.CellAtInput{Cell: to, Mover: mover}).Passage != encounter.PassageBlocked
+			return cellFactFor(t, enc, encounter.CellAtInput{Cell: to, Mover: mover}).Passage != encounter.PassageBlocked
 		},
 		Limit: budget,
 	})
@@ -524,7 +525,7 @@ func reachedStandableWithin(
 		if cell == from {
 			continue
 		}
-		if enc.CellAt(encounter.CellAtInput{Cell: cell, Mover: mover}).Passage != encounter.PassageStandable {
+		if cellFactFor(t, enc, encounter.CellAtInput{Cell: cell, Mover: mover}).Passage != encounter.PassageStandable {
 			continue
 		}
 		out[cell] = dist
@@ -537,6 +538,7 @@ func reachedStandableWithin(
 // reached the ally's cell and the fold is what refused it" rather than leaving
 // the two indistinguishable.
 func reachedWithin(
+	t *testing.T,
 	enc *encounter.Encounter, mover encounter.MemberID, from spatial.Position, budget int,
 ) map[spatial.Position]int {
 	canvas, err := enc.Canvas()
@@ -546,7 +548,7 @@ func reachedWithin(
 	field, err := spatial.Field(canvas.GetGrid(), spatial.FieldInput{
 		Sources: []spatial.Position{from},
 		Passable: func(_, to spatial.Position) bool {
-			return enc.CellAt(encounter.CellAtInput{Cell: to, Mover: mover}).Passage != encounter.PassageBlocked
+			return cellFactFor(t, enc, encounter.CellAtInput{Cell: to, Mover: mover}).Passage != encounter.PassageBlocked
 		},
 		Limit: budget,
 	})
@@ -583,7 +585,7 @@ func (s *DirectiveTestSuite) TestAwayEndsAtTheReachedCellFarthestByTheRuler() {
 	s.Greater(enc.Distance(s.casterCell, end), enc.Distance(s.casterCell, start),
 		"a flee that ends no farther away is not a flee")
 
-	for cell := range reachedStandableWithin(enc, goblin, start, budget) {
+	for cell := range reachedStandableWithin(s.T(), enc, goblin, start, budget) {
 		s.LessOrEqual(enc.Distance(s.casterCell, cell), enc.Distance(s.casterCell, end),
 			"no reached standable cell is farther from the anchor than the chosen end")
 	}
@@ -623,7 +625,7 @@ func (s *DirectiveTestSuite) TestAwayDoesNotTakeTheDeadEndThatBendsBack() {
 	}
 
 	// The teeth: the pocket WAS affordable, and away declined it.
-	reached := reachedStandableWithin(enc, goblin, s.cellOfMember(goblin), budget)
+	reached := reachedStandableWithin(s.T(), enc, goblin, s.cellOfMember(goblin), budget)
 	pocketWalk, ok := reached[pocketFar]
 	s.Require().True(ok, "the pocket's far cell is inside the budget")
 	s.Greater(pocketWalk, len(out.Path), "a longer walk was on offer and away did not take it")
@@ -675,7 +677,7 @@ func (s *DirectiveTestSuite) TestAwayTiesAreStable() {
 
 	// The oracle applies the two tie rules itself and lands on one cell.
 	start := s.cellOfMember(goblin)
-	reached := reachedStandableWithin(enc, goblin, start, budget)
+	reached := reachedStandableWithin(s.T(), enc, goblin, start, budget)
 	here := enc.Distance(s.casterCell, start)
 	var want spatial.Position
 	wantFar, wantWalk, found := 0.0, 0, false
@@ -718,7 +720,7 @@ func (s *DirectiveTestSuite) TestAwayCrossesAnAllyAndDoesNotStopOnOne() {
 	s.Equal(cellAt(5, 2), end, "it stops beside the ally, not inside him")
 	s.Greater(enc.Distance(s.casterCell, allyCell), enc.Distance(s.casterCell, end),
 		"and the cell it declined was the farther one, which is the whole point")
-	s.Require().Contains(reachedWithin(enc, goblin, s.cellOfMember(goblin), 2), allyCell,
+	s.Require().Contains(reachedWithin(s.T(), enc, goblin, s.cellOfMember(goblin), 2), allyCell,
 		"the flood did reach it; the fold is what refused it")
 
 	far, err := enc.Route(encounter.RouteInput{
@@ -742,7 +744,7 @@ func (s *DirectiveTestSuite) TestAwayRefusesToShuffleSidewaysWhenNothingIsFarthe
 
 	start := s.cellOfMember(goblin)
 	here := enc.Distance(s.casterCell, start)
-	reached := reachedStandableWithin(enc, goblin, start, budget)
+	reached := reachedStandableWithin(s.T(), enc, goblin, start, budget)
 	s.Require().NotEmpty(reached, "there is floor to walk on, which is what makes this a real refusal")
 	for cell := range reached {
 		s.Equal(here, enc.Distance(s.casterCell, cell), "every cell on the ring is equally close")
@@ -859,7 +861,7 @@ func (s *DirectiveTestSuite) TestTowardTakesTheFewestStepsToTheRing() {
 
 	longWay := cellAt(1, 1)
 	s.Require().Equal(float64(1), enc.Distance(anchor, longWay), "the long way ends on the ring too")
-	reached := reachedStandableWithin(enc, goblin, s.cellOfMember(goblin), budget)
+	reached := reachedStandableWithin(s.T(), enc, goblin, s.cellOfMember(goblin), budget)
 	longWalk, ok := reached[longWay]
 	s.Require().True(ok, "and it is inside the budget, so the route had a real choice")
 
@@ -973,7 +975,7 @@ func (s *DirectiveTestSuite) TestTowardRefusesToShuffleWhenNothingIsNearer() {
 	start := s.cellOfMember(goblin)
 	here := enc.Distance(anchor, start)
 	s.Require().Equal(float64(2), here, "the mover stands on the ring, two from the hole in it")
-	reached := reachedStandableWithin(enc, goblin, start, budget)
+	reached := reachedStandableWithin(s.T(), enc, goblin, start, budget)
 	s.Require().NotEmpty(reached, "there is floor to walk on, which is what makes this a real refusal")
 	for cell := range reached {
 		s.Equal(here, enc.Distance(anchor, cell), "every cell of the ring is equally far")
@@ -1005,7 +1007,7 @@ func (s *DirectiveTestSuite) TestTowardCrossesAnAllyAndDoesNotStopOnOne() {
 		SpeedFeet: 30, Targeting: "closest",
 	})
 	s.Require().Equal(cellAt(2, 2), s.cellOfMember(bob))
-	s.Require().Contains(reachedWithin(onTheRing, goblin, cellAt(7, 2), 6), cellAt(2, 2),
+	s.Require().Contains(reachedWithin(s.T(), onTheRing, goblin, cellAt(7, 2), 6), cellAt(2, 2),
 		"the flood did reach the ring cell; the fold is what refuses to stop on it")
 
 	out, err := onTheRing.Route(encounter.RouteInput{
@@ -1110,9 +1112,9 @@ func (s *DirectiveTestSuite) TestTowardStopsBesideAnEMPTYAnchorCell() {
 
 	s.Require().NotEqual(anchor, s.cellOfMember(alice), "the anchor cell is nobody's")
 	s.Require().Equal(encounter.PassageStandable,
-		enc.CellAt(encounter.CellAtInput{Cell: anchor, Mover: goblin}).Passage,
+		cellFactFor(s.T(), enc, encounter.CellAtInput{Cell: anchor, Mover: goblin}).Passage,
 		"and the mover could legally stop on it, which is what makes this a real refusal")
-	s.Require().Contains(reachedStandableWithin(enc, goblin, s.cellOfMember(goblin), budget), anchor,
+	s.Require().Contains(reachedStandableWithin(s.T(), enc, goblin, s.cellOfMember(goblin), budget), anchor,
 		"and it is inside the budget")
 
 	out, err := enc.Route(encounter.RouteInput{

@@ -123,9 +123,34 @@ type CellFact struct {
 //
 // The creature rows are the 2014 rules as written: you may move through a
 // nonhostile creature's space but not stop there, and a hostile creature's
-// space is closed to you. (The size-difference exception waits for size to
+// space is closed to you while it is up. A downed monster permits standing.
+// Participation failures are returned, never converted to a passage value.
+// (The size-difference exception waits for size to
 // exist on a member — [memberEntity.GetSize] is a hardcoded 1.)
-func (e *Encounter) CellAt(in CellAtInput) CellFact {
+func (e *Encounter) CellAt(in CellAtInput) (CellFact, error) {
+	q, err := e.cellQuery()
+	if err != nil {
+		return CellFact{}, fmt.Errorf("cell at: %w", err)
+	}
+	return q.cellAt(in)
+}
+
+// cellQuery is a bounded read. Placement remains live; participation is assessed
+// once for this read only. Never retain a query across a step or reaction.
+type cellQuery struct {
+	*Encounter
+	down map[MemberID]bool
+}
+
+func (e *Encounter) cellQuery() (*cellQuery, error) {
+	down, err := e.downNow()
+	if err != nil {
+		return nil, &passageReadError{cause: err}
+	}
+	return &cellQuery{Encounter: e, down: down}, nil
+}
+
+func (e *cellQuery) cellAt(in CellAtInput) (CellFact, error) {
 	fact := CellFact{Passage: PassageStandable, Cost: 1}
 
 	if !e.field.isStandable(in.Cell) {
@@ -158,7 +183,10 @@ func (e *Encounter) CellAt(in CellAtInput) CellFact {
 			contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
 				Placement: placement, From: centre, To: centre,
 			})
-			if err != nil || contact.Contact {
+			if err != nil {
+				return CellFact{}, fmt.Errorf("cell footprint %q: %w", p.id, err)
+			}
+			if contact.Contact {
 				fact.Passage = PassageBlocked
 				fact.Contribs = append(fact.Contribs, ContribRef{
 					Kind: ContribProp, ID: string(p.id), Ref: string(p.id), Blocks: true,
@@ -198,6 +226,12 @@ func (e *Encounter) CellAt(in CellAtInput) CellFact {
 			if MemberID(v.id) == in.Mover {
 				continue // a mover is not its own obstacle
 			}
+			// A downed monster is traversable and standable. Keep other
+			// occupants in the fold: a body cannot open a wall or another creature.
+			if v.kind == KindMonster && e.down[MemberID(v.id)] {
+				fact.Contribs = append(fact.Contribs, ContribRef{Kind: ContribMember, ID: v.id})
+				continue
+			}
 			blocks := v.BlocksMovement() || e.opposed(in.Mover, MemberID(v.id))
 			if blocks {
 				fact.Passage = PassageBlocked
@@ -210,7 +244,7 @@ func (e *Encounter) CellAt(in CellAtInput) CellFact {
 		}
 	}
 
-	return fact
+	return fact, nil
 }
 
 // StaticPlacementError identifies a placement rejected by static field facts.
@@ -340,3 +374,10 @@ func (e *Encounter) blockedBy(fact CellFact, cell spatial.Position) string {
 		return e.field.notStandable(cell)
 	}
 }
+
+// passageReadError marks a failed assessment rather than a movement refusal.
+// Preserve its cause even if a dependency uses one of our refusal sentinels.
+type passageReadError struct{ cause error }
+
+func (e *passageReadError) Error() string { return e.cause.Error() }
+func (e *passageReadError) Unwrap() error { return e.cause }

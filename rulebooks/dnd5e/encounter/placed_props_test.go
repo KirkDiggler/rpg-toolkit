@@ -132,7 +132,7 @@ func (s *PlacedPropsSuite) TestACentreCoveredCellRefusesStandingAndIsNamed() {
 	s.Contains(err.Error(), "table-a")
 
 	// AND THE FOLD SAYS WHY: CellAt reports the covering contributor.
-	fact := enc.CellAt(encounter.CellAtInput{Cell: cellAt(1, 1), Mover: alice})
+	fact := cellFactFor(s.T(), enc, encounter.CellAtInput{Cell: cellAt(1, 1), Mover: alice})
 	s.Equal(encounter.PassageBlocked, fact.Passage)
 	s.Require().Len(fact.Contribs, 1)
 	s.Equal("table-a", fact.Contribs[0].ID)
@@ -142,7 +142,7 @@ func (s *PlacedPropsSuite) TestACentreCoveredCellRefusesStandingAndIsNamed() {
 	// its own occupant, since an ally standing there is pass-through to others.
 	_, err = enc.Join(&encounter.JoinInput{Member: "late", Kind: encounter.KindPlayer, Cell: cellAt(2, 1)})
 	s.Require().NoError(err)
-	fact = enc.CellAt(encounter.CellAtInput{Cell: cellAt(2, 1), Mover: "late"})
+	fact = cellFactFor(s.T(), enc, encounter.CellAtInput{Cell: cellAt(2, 1), Mover: "late"})
 	s.Equal(encounter.PassageStandable, fact.Passage)
 	s.Empty(fact.Contribs, "no footprint fact reached the clear cell")
 
@@ -191,7 +191,7 @@ func (s *PlacedPropsSuite) TestMovementWithoutSightClosesFeetAndOpensSight() {
 	))
 	s.Require().NoError(err)
 
-	fact := enc.CellAt(encounter.CellAtInput{Cell: cellAt(1, 0), Mover: ""})
+	fact := cellFactFor(s.T(), enc, encounter.CellAtInput{Cell: cellAt(1, 0), Mover: ""})
 	s.Equal(encounter.PassageBlocked, fact.Passage)
 
 	canvas, err := enc.Canvas()
@@ -299,7 +299,7 @@ func (s *PlacedPropsSuite) TestOverlappingContributorsDoNotEraseEachOther() {
 	))
 	s.Require().NoError(err)
 
-	fact := enc.CellAt(encounter.CellAtInput{Cell: cellAt(1, 1), Mover: ""})
+	fact := cellFactFor(s.T(), enc, encounter.CellAtInput{Cell: cellAt(1, 1), Mover: ""})
 	s.Equal(encounter.PassageBlocked, fact.Passage)
 	s.Require().Len(fact.Contribs, 2, "both placements cover the centre and both are reported")
 	s.ElementsMatch([]string{"table-a", "table-b"}, []string{fact.Contribs[0].ID, fact.Contribs[1].ID})
@@ -307,14 +307,14 @@ func (s *PlacedPropsSuite) TestOverlappingContributorsDoNotEraseEachOther() {
 	// Recompile with one placement gone: the survivor still closes the cell,
 	// by both of its remaining facts.
 	trimmed := s.reload(placedField(placed("table-b", coveredBox(3, centre), true, true)))
-	fact = trimmed.CellAt(encounter.CellAtInput{Cell: cellAt(1, 1), Mover: ""})
+	fact = cellFactFor(s.T(), trimmed, encounter.CellAtInput{Cell: cellAt(1, 1), Mover: ""})
 	s.Equal(encounter.PassageBlocked, fact.Passage)
 	s.Require().Len(fact.Contribs, 1)
 	s.Equal("table-b", fact.Contribs[0].ID)
 
 	// And with BOTH gone the cell is an ordinary one again.
 	opened := s.reload(placedField())
-	fact = opened.CellAt(encounter.CellAtInput{Cell: cellAt(1, 1), Mover: ""})
+	fact = cellFactFor(s.T(), opened, encounter.CellAtInput{Cell: cellAt(1, 1), Mover: ""})
 	s.Equal(encounter.PassageStandable, fact.Passage)
 	s.Empty(fact.Contribs)
 }
@@ -357,9 +357,9 @@ func (s *PlacedPropsSuite) TestCallerMutationAfterConstructionChangesNothing() {
 	in.Placed[0].Placement.Origin = spatial.Point{X: 0, Y: 0}
 	in.Placed[0].BlocksMovement = false
 
-	fact := enc.CellAt(encounter.CellAtInput{Cell: cellAt(1, 1), Mover: ""})
+	fact := cellFactFor(s.T(), enc, encounter.CellAtInput{Cell: cellAt(1, 1), Mover: ""})
 	s.Equal(encounter.PassageBlocked, fact.Passage, "the compiled field kept the placement it copied")
-	fact = enc.CellAt(encounter.CellAtInput{Cell: cellAt(0, 0), Mover: ""})
+	fact = cellFactFor(s.T(), enc, encounter.CellAtInput{Cell: cellAt(0, 0), Mover: ""})
 	s.Equal(encounter.PassageStandable, fact.Passage, "and the mutated geometry never reached it")
 
 	atlas, err := enc.Atlas()
@@ -455,7 +455,7 @@ func (s *PlacedPropsSuite) TestSaveLoadRetainsPlacementsAndTheirFacts() {
 	loaded := s.loadFrom(data)
 
 	// The same facts, from the same queries, on the reloaded field.
-	fact := loaded.CellAt(encounter.CellAtInput{Cell: cellAt(1, 1), Mover: ""})
+	fact := cellFactFor(s.T(), loaded, encounter.CellAtInput{Cell: cellAt(1, 1), Mover: ""})
 	s.Equal(encounter.PassageBlocked, fact.Passage)
 	s.Equal("table-a", fact.Contribs[0].ID)
 
@@ -556,7 +556,7 @@ func (s *PlacedPropsSuite) TestLegacyWallAndDoorStillDecideBesidePlacedFootprint
 	s.True(canvas.IsLineOfSightBlocked(cellAt(0, 0), cellAt(1, 0)), "a wall is still absolute")
 
 	// THE PLACED FACT COMPOSES: the table elsewhere is exactly what it was.
-	fact := enc.CellAt(encounter.CellAtInput{Cell: cellAt(3, 3), Mover: alice})
+	fact := cellFactFor(s.T(), enc, encounter.CellAtInput{Cell: cellAt(3, 3), Mover: alice})
 	s.Equal(encounter.PassageBlocked, fact.Passage)
 }
 

@@ -113,7 +113,7 @@ func (s *FootprintDoorSuite) TestAShutLeafRefusesTheWayThroughAndOpeningItOffers
 
 	// STANDING: the leaf covers cell (2,1)'s centre, so the doorway itself is
 	// nowhere to stand — the same refusal, through the cell fold.
-	blocked := enc.CellAt(encounter.CellAtInput{Cell: cellAt(2, 1), Mover: alice})
+	blocked := cellFactFor(s.T(), enc, encounter.CellAtInput{Cell: cellAt(2, 1), Mover: alice})
 	s.Equal(encounter.PassageBlocked, blocked.Passage)
 	s.Require().Len(blocked.Contribs, 1)
 	s.Equal(encounter.ContribDoor, blocked.Contribs[0].Kind,
@@ -133,7 +133,7 @@ func (s *FootprintDoorSuite) TestAShutLeafRefusesTheWayThroughAndOpeningItOffers
 
 	s.False(s.sightAcross(enc), "an open door blocks nothing, including sight")
 
-	offered := enc.CellAt(encounter.CellAtInput{Cell: cellAt(2, 1), Mover: alice})
+	offered := cellFactFor(s.T(), enc, encounter.CellAtInput{Cell: cellAt(2, 1), Mover: alice})
 	s.Equal(encounter.PassageStandable, offered.Passage)
 	s.Empty(offered.Contribs, "an open door contributes nothing at all, not a non-blocking row")
 
@@ -193,7 +193,7 @@ func (s *FootprintDoorSuite) TestAnOpenLeafIsTheGapItWasBefore() {
 	enc := s.setup(footprintDoorField(encounter.DoorIsOpen()))
 
 	s.False(s.sightAcross(enc))
-	fact := enc.CellAt(encounter.CellAtInput{Cell: cellAt(2, 1), Mover: alice})
+	fact := cellFactFor(s.T(), enc, encounter.CellAtInput{Cell: cellAt(2, 1), Mover: alice})
 	s.Equal(encounter.PassageStandable, fact.Passage)
 
 	_, err := enc.Step(&encounter.StepInput{Member: alice, To: cellAt(3, 0)})

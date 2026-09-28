@@ -690,7 +690,10 @@ func (e *Encounter) finishPausedIntent(
 	// have a cause; [Routed] made that false, and a first resumed cell
 	// missing it would be a single beat in N claiming the creature walked
 	// away of its own accord.
-	action, stepped := e.stepTo(m, p.to)
+	action, stepped, stepErr := e.stepTo(m, p.to)
+	if stepErr != nil {
+		return 0, nil, false, stepErr
+	}
 	action.cause = p.cause
 	if stepped {
 		if _, berr := e.appendMovementBeat(action, p.audience, p.at); berr != nil {
