@@ -56,3 +56,32 @@ func (s *WalkEntrySuite) TestUnseenTeammateDoesNotPullWalkerIntoCombat() {
 	s.Require().NoError(err)
 	s.False(joined.Joined)
 }
+
+func (s *WalkEntrySuite) TestVoluntaryEndpointCannotStopOnAnAlly() {
+	enc := s.scene(0)
+	_, err := enc.Step(&encounter.StepInput{Member: alice, To: cellAt(1, 0), EndWalk: true})
+	s.Require().Error(err)
+	s.ErrorIs(err, encounter.ErrBadPlacement)
+	var obstruction *encounter.StepObstructedError
+	s.ErrorAs(err, &obstruction)
+}
+
+func (s *WalkEntrySuite) TestCombatEntryCannotBecomeAVoluntaryEndOnAnAlly() {
+	enc := s.scene(1)
+	_, err := enc.AdmitWalk(&encounter.AdmitWalkInput{Member: alice})
+	s.Require().NoError(err)
+	// Bob is first in this fight. Alice follows the driven monster.
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: "bob"})
+	s.Require().NoError(err)
+	clock, err := enc.ClockOf(&encounter.ClockOfInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Equal(alice, clock.Active)
+	_, err = enc.Step(&encounter.StepInput{Member: alice, To: cellAt(1, 0)})
+	s.Require().NoError(err)
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+	_, err = enc.Step(&encounter.StepInput{Member: alice, To: cellAt(0, 0), EndWalk: true})
+	s.Require().NoError(err)
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+}

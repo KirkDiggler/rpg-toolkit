@@ -26,3 +26,11 @@ func (e *Encounter) ValidateWalkEnd(in CellAtInput) error {
 	}
 	return nil
 }
+
+// StepObstructedError is an ordinary obstacle encountered by a valid step.
+// Callers may commit the completed prefix. Capability and malformed placement
+// errors never use this marker. Unwrap preserves the original refusal.
+type StepObstructedError struct{ cause error }
+
+func (e *StepObstructedError) Error() string { return e.cause.Error() }
+func (e *StepObstructedError) Unwrap() error { return e.cause }

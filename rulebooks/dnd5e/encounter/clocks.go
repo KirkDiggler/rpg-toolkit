@@ -2451,6 +2451,31 @@ func (e *Encounter) EndTurn(in *EndTurnInput) (*EndTurnOutput, error) {
 		return nil, fmt.Errorf("end turn %q: %w", in.Member, ErrNoBubble)
 	}
 
+	active, err := bubble.Active()
+	if err != nil {
+		return nil, fmt.Errorf("end turn: %w", err)
+	}
+	if active != core.EntityID(in.Member) {
+		return nil, fmt.Errorf("end turn: %w", ErrNotActive)
+	}
+	query, err := e.cellQuery()
+	if err != nil {
+		return nil, fmt.Errorf("end turn passage: %w", err)
+	}
+	if !query.down[in.Member] {
+		placed, err := e.placementOf(e.members[in.Member])
+		if err != nil {
+			return nil, err
+		}
+		fact, err := query.cellAt(CellAtInput{Mover: in.Member, Cell: placed.Position})
+		if err != nil {
+			return nil, err
+		}
+		if fact.Passage == PassagePassThrough {
+			return nil, fmt.Errorf("leave the occupied cell before ending your turn: %w", ErrBadPlacement)
+		}
+	}
+
 	out, err := bubble.End(&clock.EndInput{Actor: core.EntityID(in.Member)})
 	if err != nil {
 		// play/clock's own sentinel is translated here, not passed through —

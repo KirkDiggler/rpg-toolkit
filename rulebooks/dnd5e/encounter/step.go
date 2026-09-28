@@ -270,7 +270,7 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position, endWal
 			// it. The sentences and the sentinels are the edge door's own,
 			// below; this is the same law reaching the second geometry.
 			if door := e.field.doorAcrossCrossing(here, to); door != nil {
-				return executedAction{}, shutDoorRefusal(door)
+				return executedAction{}, &StepObstructedError{cause: shutDoorRefusal(door)}
 			}
 			return executedAction{}, fmt.Errorf("the crossing from %v into %v is through %q: %w",
 				here, to, prop, ErrBadPlacement)
@@ -322,16 +322,22 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position, endWal
 		return executedAction{}, factErr
 	}
 	if endWalk && fact.Passage == PassagePassThrough && !crossingBlocked {
-		return executedAction{}, fmt.Errorf("step: destination permits passage but not stopping: %w", ErrBadPlacement)
+		return executedAction{}, &StepObstructedError{cause: fmt.Errorf("step: destination permits passage but not stopping: %w", ErrBadPlacement)}
 	}
 	if fact.Passage == PassageBlocked && !crossingBlocked {
 		// THE DESTINATION IS A SHUT DOOR'S OWN CELL when a footprint door
 		// covers it — the same refusal a crossing through one earns, because
 		// it is the same door and the same answer: open it.
 		if door := e.field.doorStandingOn(to); door != nil {
-			return executedAction{}, shutDoorRefusal(door)
+			return executedAction{}, &StepObstructedError{cause: shutDoorRefusal(door)}
 		}
-		return executedAction{}, fmt.Errorf("cell %v %s: %w", to, e.blockedBy(fact, to), ErrBadPlacement)
+		refusal := fmt.Errorf("cell %v %s: %w", to, e.blockedBy(fact, to), ErrBadPlacement)
+		for _, contrib := range fact.Contribs {
+			if contrib.Blocks && contrib.Kind == ContribField {
+				return executedAction{}, refusal
+			}
+		}
+		return executedAction{}, &StepObstructedError{cause: refusal}
 	}
 
 	from, err := e.moveMember(member, to)
@@ -377,11 +383,11 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position, endWal
 				// OpenDoor's refusal does; a merely-shut door is its own
 				// answer; and ErrBadPlacement goes back to meaning what its
 				// name says — the position itself is not usable.
-				return executedAction{}, shutDoorRefusal(door)
+				return executedAction{}, &StepObstructedError{cause: shutDoorRefusal(door)}
 			}
 		}
 
-		return executedAction{}, err
+		return executedAction{}, &StepObstructedError{cause: err}
 	}
 
 	action := executedAction{member: member, from: from, to: to}

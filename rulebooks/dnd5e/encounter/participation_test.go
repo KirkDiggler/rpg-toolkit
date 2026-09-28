@@ -278,8 +278,8 @@ func TestDriveReassessesAfterStrikeBeforeUsingTheNextSlotsTurnAnswer(t *testing.
 		"the fresh Wait answer after the strike wins over the stale AutoPass answer")
 	require.Equal(t, 1, striker.calls)
 	require.Len(t, driver.calls, 2, "the driven monster attacks once and then passes")
-	require.Len(t, capability.questions, callsBefore+5,
-		"boundary pass, two views, nested Record pass, and post-interaction scheduling reassessment")
+	require.Len(t, capability.questions, callsBefore+6,
+		"end-position guard, boundary pass, two views, nested Record pass, and post-interaction scheduling reassessment")
 
 	for _, beat := range storyBeats(t, enc, zara) {
 		require.False(t, beat["beat"] == "turn-ended" && beat["member"] == string(zara),
