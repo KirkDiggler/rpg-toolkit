@@ -203,9 +203,8 @@ func (s *PlacedPropsSuite) TestMovementWithoutSightClosesFeetAndOpensSight() {
 }
 
 func (s *PlacedPropsSuite) TestSightWithoutMovementBlocksLookingAndAllowsWalking() {
-	// A sight-blocking, walk-through footprint over cell (1,0): a join onto
-	// it succeeds — standing only asks the movement fact — and sight across
-	// it is a SOFT obstruction a lane can lean around.
+	// A sight-blocking, walk-through footprint over cell (2,0) permits
+	// standing, but sight cannot escape its interior via a neighboring cell.
 	enc, err := s.setup(placedField(
 		placed("veil-a", coveredBox(2, centreOf(cellAt(2, 0))), false, true),
 	))
@@ -214,15 +213,15 @@ func (s *PlacedPropsSuite) TestSightWithoutMovementBlocksLookingAndAllowsWalking
 	_, err = enc.Join(&encounter.JoinInput{Member: "seer", Kind: encounter.KindPlayer, Cell: cellAt(2, 0)})
 	s.Require().NoError(err, "a sight blocker that does not block movement does not refuse standing")
 
-	// The direct lane from (-2,0) crosses the veil's interior and is
-	// soft-blocked — but the lane into (1,0), whose centre stops short of
-	// the two-foot shape, is clear: the sightline leans, either way round.
 	canvas, err := enc.Canvas()
 	s.Require().NoError(err)
-	s.False(canvas.IsLineOfSightBlocked(cellAt(-2, 0), cellAt(2, 0)),
-		"a soft obstruction is leaned around while an uncovered lane remains")
-	s.False(canvas.IsLineOfSightBlocked(cellAt(2, 0), cellAt(-2, 0)),
-		"symmetrically, from either end")
+	s.True(canvas.IsLineOfSightBlocked(cellAt(-2, 0), cellAt(2, 0)),
+		"an opaque target cannot borrow a viewpoint outside its footprint")
+	s.True(canvas.IsLineOfSightBlocked(cellAt(2, 0), cellAt(-2, 0)),
+		"an opaque origin cannot borrow a viewpoint outside its footprint")
+
+	_, err = enc.Step(&encounter.StepInput{Member: "seer", To: cellAt(3, 0)})
+	s.Require().NoError(err, "opacity does not prevent walking out of the footprint")
 
 	// A WALL OF IT blocks every lane: the same thickness, thirty feet across
 	// the corridor, standing BETWEEN the two cells.
@@ -236,6 +235,53 @@ func (s *PlacedPropsSuite) TestSightWithoutMovementBlocksLookingAndAllowsWalking
 		"a footprint blocking every lane blocks sight")
 	s.True(wallCanvas.IsLineOfSightBlocked(cellAt(2, 0), cellAt(-2, 0)),
 		"and the block is symmetric")
+}
+
+// A wall can occupy part of a hex without covering its center. Sight must
+// not borrow the neighboring center across that wall (rpg-toolkit#1913).
+func (s *PlacedPropsSuite) TestOffCenterWallBlocksSightBeforeAndAfterReload() {
+	for _, reload := range []bool{false, true} {
+		name := "constructed"
+		if reload {
+			name = "reloaded"
+		}
+		s.Run(name, func() {
+			enc, err := s.setup(placedField(
+				placed("wall", thinWall(0.2, 30, 0, spatial.Point{X: 1.5, Y: 0}), true, true),
+			))
+			s.Require().NoError(err)
+			_, err = enc.Join(&encounter.JoinInput{Member: alice, Kind: encounter.KindPlayer, Cell: cellAt(0, 0)})
+			s.Require().NoError(err, "the author left the standing center clear")
+			if reload {
+				enc = s.loadFrom(enc.ToData())
+			}
+			_, err = enc.Step(&encounter.StepInput{Member: alice, To: cellAt(1, 0)})
+			s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+			s.Contains(err.Error(), "wall")
+			canvas, err := enc.Canvas()
+			s.Require().NoError(err)
+			s.True(canvas.IsLineOfSightBlocked(cellAt(0, 0), cellAt(4, 0)))
+			s.True(canvas.IsLineOfSightBlocked(cellAt(4, 0), cellAt(0, 0)))
+		})
+	}
+}
+
+func (s *PlacedPropsSuite) TestConnectedSightStillPeeksAroundSmallProp() {
+	from, to := cellAt(0, 0), cellAt(3, 1)
+	target := centreOf(to)
+	prop := coveredBox(1, spatial.Point{X: target.X / 2, Y: target.Y / 2})
+	direct, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
+		Placement: prop, From: centreOf(from), To: target,
+	})
+	s.Require().NoError(err)
+	s.Require().True(direct.Interior, "control: the prop obstructs the direct center ray")
+	enc, err := s.setup(placedField(placed("small-prop", prop, true, true)))
+	s.Require().NoError(err)
+	canvas, err := enc.Canvas()
+	s.Require().NoError(err)
+	s.False(canvas.IsLineOfSightBlocked(from, to),
+		"clear endpoint connections preserve a lawful view around a small prop")
+	s.False(canvas.IsLineOfSightBlocked(to, from))
 }
 
 // --- A thin segment between two clear centres closes the crossing, not the cells ---
