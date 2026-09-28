@@ -311,6 +311,14 @@ func slotCost(pool coreResources.ResourceKey) *combat.SpendProfile {
 // Light is intentionally absent: it needs targetable objects and illumination
 // effects. It may be selected or domain-granted, but has no executable cast yet.
 var castContent = map[Spell]castProfileBuilder{
+	Shillelagh: {
+		name:    "Shillelagh",
+		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingBonusAction},
+		cost:    &combat.SpendProfile{Slots: map[coreCombat.ActionType]int{coreCombat.ActionBonus: 1}},
+		build: func(_ int) actions.CastProfile {
+			return actions.CastProfile{RangeFeet: 5, Target: actions.CastTargetSelf}
+		},
+	},
 	InflictWounds: {
 		name:    "Inflict Wounds",
 		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
@@ -945,6 +953,10 @@ type CastDefinitionInput struct {
 	SpellSaveDC      int
 	// SpellAttackBonus is proficiency plus the spellcasting ability modifier.
 	SpellAttackBonus int
+	// SpellcastingAbility and HeldWeapons are authoritative sheet facts for
+	// spells which enchant held equipment. Candidates are filtered by content.
+	SpellcastingAbility abilities.Ability
+	HeldWeapons         []HeldWeapon
 }
 
 // CastDefinition returns the action definition for one spell, with SpellSaveDC
@@ -974,6 +986,9 @@ func CastDefinition(input CastDefinitionInput) *actions.Definition {
 	}
 
 	profile := content.build(input.SpellSaveDC)
+	if input.Spell == Shillelagh && !bindShillelagh(&profile, input) {
+		return nil
+	}
 	casting := content.casting
 	profile.Casting = &casting
 	if profile.Attack != nil {

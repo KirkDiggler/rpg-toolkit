@@ -10,6 +10,7 @@ import (
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
@@ -17,6 +18,7 @@ import (
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -572,4 +574,55 @@ func (s *CharacterAttackTestSuite) TestCostOfSwing_AlreadyBankedAttackCostsOnlyC
 	s.Equal(1, profile.Capacity[combat.CapacityAttack])
 	s.Empty(profile.Slots)
 	s.Empty(profile.Grants)
+}
+
+func (s *CharacterAttackTestSuite) TestShillelaghBindingSurvivesReloadButNotReleaseOrRecast() {
+	data := s.heroSheet([]proficiencies.Weapon{proficiencies.WeaponSimple}, map[InventorySlot]string{SlotMainHand: string(weapons.Club), SlotOffHand: string(weapons.Club)})
+	data.AbilityScores[abilities.WIS] = 18
+	c := s.load(data)
+	bus := events.NewEventBus()
+	s.Require().NoError(c.SheetKeeper().Apply(s.ctx, bus))
+	cast := func(slot InventorySlot) {
+		condition, err := conditions.NewShillelaghCondition(c.id, conditions.ShillelaghConfig{Weapons: []conditions.HeldWeapon{{Slot: string(slot), ItemID: string(weapons.Club)}}, WeaponSlot: string(slot), Ability: abilities.WIS})
+		s.Require().NoError(err)
+		s.Require().NoError(dnd5eEvents.ConditionAppliedTopic.On(bus).Publish(s.ctx, dnd5eEvents.ConditionAppliedEvent{Target: c, Condition: condition}))
+	}
+	cast(SlotMainHand)
+	attack, err := AssembleAttack(c, &AssembleAttackInput{Slot: SlotMainHand})
+	s.Require().NoError(err)
+	s.Equal("1d8", attack.Attack.Damage[0].Dice)
+	other, err := AssembleAttack(c, &AssembleAttackInput{Slot: SlotOffHand})
+	s.Require().NoError(err)
+	s.Equal("1d4", other.Attack.Damage[0].Dice)
+	reloaded := s.load(c.ToData())
+	attack, err = AssembleAttack(reloaded, &AssembleAttackInput{Slot: SlotMainHand})
+	s.Require().NoError(err)
+	s.Equal("1d8", attack.Attack.Damage[0].Dice)
+	cast(SlotOffHand)
+	s.Require().Len(c.conditions, 1)
+	attack, err = AssembleAttack(c, &AssembleAttackInput{Slot: SlotMainHand})
+	s.Require().NoError(err)
+	s.Equal("1d4", attack.Attack.Damage[0].Dice)
+	s.Require().NoError(c.UnequipItem(SlotOffHand))
+	s.Empty(c.conditions)
+	s.Require().NoError(c.EquipItem(SlotOffHand, string(weapons.Club)))
+	other, err = AssembleAttack(c, &AssembleAttackInput{Slot: SlotOffHand})
+	s.Require().NoError(err)
+	s.Equal("1d4", other.Attack.Damage[0].Dice)
+	s.Require().NoError(reloaded.UnequipItem(SlotMainHand))
+	s.Empty(reloaded.conditions, "pure loaded sheets also lose the enchantment immediately")
+}
+
+func (s *CharacterAttackTestSuite) TestShillelaghFollowsDirectTransferOfOneOwnedWeapon() {
+	c := s.load(s.heroSheet([]proficiencies.Weapon{proficiencies.WeaponSimple}, map[InventorySlot]string{SlotMainHand: string(weapons.Club)}))
+	condition, err := conditions.NewShillelaghCondition(c.id, conditions.ShillelaghConfig{Weapons: []conditions.HeldWeapon{{Slot: string(SlotMainHand), ItemID: string(weapons.Club)}}, WeaponSlot: string(SlotMainHand), Ability: abilities.WIS})
+	s.Require().NoError(err)
+	s.Require().NoError(c.addCondition(condition))
+	s.Require().NoError(c.EquipItem(SlotOffHand, string(weapons.Club)))
+	s.Equal(string(SlotOffHand), condition.Weapon.Slot)
+	attack, err := AssembleAttack(c, &AssembleAttackInput{Slot: SlotOffHand})
+	s.Require().NoError(err)
+	s.Equal("1d8", attack.Attack.Damage[0].Dice)
+	s.Require().NoError(c.UnequipItem(SlotOffHand))
+	s.Empty(c.conditions)
 }

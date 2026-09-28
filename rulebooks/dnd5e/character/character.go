@@ -1061,6 +1061,11 @@ func (c *Character) EquipItem(slot InventorySlot, itemID string) error {
 		c.equipmentSlots = make(EquipmentSlots)
 	}
 
+	previous := make(EquipmentSlots, len(c.equipmentSlots))
+	for occupied, id := range c.equipmentSlots {
+		previous[occupied] = id
+	}
+
 	// Count copies already occupying other slots. The requested slot is
 	// excluded so equipping an item where it already sits is idempotent.
 	equipped := 0
@@ -1097,7 +1102,7 @@ func (c *Character) EquipItem(slot InventorySlot, itemID string) error {
 	if isTwoHanded(item) {
 		c.equipmentSlots.Clear(SlotOffHand)
 		c.equipmentSlots.Set(SlotMainHand, itemID)
-		return nil
+		return c.removeReleasedEquipmentConditions(previous)
 	}
 
 	// Main hand holding a two-handed weapon blocks the off hand until
@@ -1109,12 +1114,13 @@ func (c *Character) EquipItem(slot InventorySlot, itemID string) error {
 	}
 
 	c.equipmentSlots.Set(slot, itemID)
-	return nil
+	return c.removeReleasedEquipmentConditions(previous)
 }
 
 // UnequipItem removes the item from the specified slot.
-func (c *Character) UnequipItem(slot InventorySlot) {
+func (c *Character) UnequipItem(slot InventorySlot) error {
 	c.equipmentSlots.Clear(slot)
+	return c.removeReleasedEquipmentConditions(nil)
 }
 
 // ToData converts the character to its persistent data form
@@ -1248,6 +1254,22 @@ func (c *Character) onConditionApplied(
 	// Only process events for this character
 	if event.Target.GetID() != c.id {
 		return nil
+	}
+
+	// A replacement is an application rule, not an attachment rule: loading
+	// an existing effect onto a transient bus must never remove that effect.
+	if replacement, ok := event.Condition.(interface{ ReplacesExistingCondition() bool }); ok && replacement.ReplacesExistingCondition() {
+		address := conditions.ConditionAddressOf(c.id, event.Condition)
+		for _, existing := range c.conditions {
+			if conditions.ConditionAddressOf(c.id, existing) == address {
+				if err := dnd5eEvents.ConditionRemovedTopic.On(bus).Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
+					MemberID: c.id, ConditionRef: address.ConditionRef, SourceID: address.SourceID, Reason: "replaced",
+				}); err != nil {
+					return err
+				}
+				break
+			}
+		}
 	}
 
 	// Apply the condition (subscribes to events)

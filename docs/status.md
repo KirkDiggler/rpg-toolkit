@@ -11,13 +11,22 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't let 
 
 ## Current direction
 
-**Nature spell catalog and Poison Spray root (2026-09-28).** Druidcraft, Mending,
-Animal Friendship, and Speak with Animals are shared selectable/grantable NYI
-entries, without cast profiles. Poison Spray has a level-1 cast profile using the
-existing single-creature Constitution save and poison-damage path (10 feet,
-1d12 on failure, no damage on success, one action, no slot). Nature creation
-still needs its dedicated druid-cantrip choice and skill-choice completion;
-this root change does not establish native API or browser acceptance.
+**Nature utility catalog, Poison Spray and Shillelagh root (2026-09-28).**
+Druidcraft, Mending, Animal Friendship and Speak with Animals are shared,
+selectable/grantable NYI entries. Poison Spray uses the existing CON-save
+profile (10 feet, 1d12 poison on failure, none on success). Shillelagh is a
+bonus-action cantrip for an equipped club or quarterstaff. Generic cast options
+choose the hand when both qualify; one eligible hand is automatic. Its persisted
+condition replaces the primary weapon pool with 1d8 before rolling, permits the
+better of ordinary/spellcasting ability, and marks that pool magical without
+changing bludgeoning to a different type. Riders remain separate. Recast,
+release/replacement of the bound hand, duration, combat end and rest remove it.
+Inventory stacks are not unique physical instances: the binding uses slot plus
+equipment ID, and a direct transfer of a single owned copy preserves the binding; explicit
+unequip removes it immediately and re-equipping cannot restore it.
+Nature's dedicated druid-cantrip choice and skill choice remain separate work.
+Root packages and focused test binaries compile; test execution and API/browser
+acceptance remain pending in this wave.
 
 **Character advancement rung 1 (rpg-project#452, rpg-toolkit#1764, 2026-09-16).**
 A character now keeps `Data.Levels`, the append-only record of the levels it has

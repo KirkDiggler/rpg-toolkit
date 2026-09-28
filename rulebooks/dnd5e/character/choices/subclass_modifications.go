@@ -171,6 +171,7 @@ var subclassModifications = map[classes.Subclass]*SubclassModifications{
 				Count: 1,
 				Options: []spells.Spell{
 					spells.Druidcraft,
+					spells.Shillelagh,
 					spells.Mending,
 					spells.Guidance,
 					spells.Resistance,

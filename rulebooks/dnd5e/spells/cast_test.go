@@ -13,11 +13,13 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
 // CastContentSuite covers supported cast profiles and unsupported catalog entries.
@@ -942,4 +944,33 @@ func (s *CastContentSuite) TestPoisonSprayCarriesOnlyItsSaveAndPoisonDamage() {
 	s.Equal(damage.Poison, profile.Damage[0].Type)
 	s.Empty(profile.Effects, "Poison Spray leaves no condition behind")
 	s.Nil(profile.Concentration)
+}
+
+func (s *CastContentSuite) TestShillelaghRequiresHeldEligibleWeaponAndBindsOneOrOffersBoth() {
+	input := spells.CastDefinitionInput{Spell: spells.Shillelagh, SpellcastingAbility: abilities.WIS}
+	s.Nil(spells.CastDefinition(input))
+	input.HeldWeapons = []spells.HeldWeapon{{Slot: "main_hand", ItemID: "sword", WeaponID: weapons.Longsword, Name: "Longsword"}}
+	s.Nil(spells.CastDefinition(input))
+	input.HeldWeapons = append(input.HeldWeapons, spells.HeldWeapon{Slot: "off_hand", ItemID: "club", WeaponID: weapons.Club, Name: "Club"})
+	d := spells.CastDefinition(input)
+	s.Require().NotNil(d)
+	s.Require().NoError(d.Validate())
+	s.Equal(1, d.Cost.Slots[coreCombat.ActionBonus])
+	s.Empty(d.Cost.Pools)
+	s.Equal(0, d.Cast.Casting.Level)
+	s.Equal(combat.SpellCastingBonusAction, d.Cast.Casting.Time)
+	s.Nil(d.Cast.Concentration)
+	s.Empty(d.Cast.Options)
+	s.Empty(d.Cast.Damage)
+	s.Nil(d.Cast.Attack)
+	var config conditions.ShillelaghConfig
+	s.Require().NoError(json.Unmarshal(d.Cast.Effects[0].Parameters, &config))
+	s.Equal("off_hand", config.WeaponSlot)
+	s.Len(config.Weapons, 1)
+	input.HeldWeapons[0] = spells.HeldWeapon{Slot: "main_hand", ItemID: "club", WeaponID: weapons.Club, Name: "Club"}
+	d = spells.CastDefinition(input)
+	s.Require().NoError(d.Validate())
+	s.Require().Len(d.Cast.Options, 2)
+	s.NotEqual(d.Cast.Options[0].ID, d.Cast.Options[1].ID, "identical catalog weapons remain distinct choices")
+	s.Equal("weapon_slot", d.Cast.Effects[0].OptionKey)
 }

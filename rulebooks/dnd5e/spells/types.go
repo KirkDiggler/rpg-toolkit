@@ -25,6 +25,7 @@ const (
 	EldritchBlast Spell = "eldritch-blast"
 
 	// Druid Cantrips
+	Shillelagh     Spell = "shillelagh"
 	Frostbite      Spell = "frostbite"
 	PrimalSavagery Spell = "primal-savagery"
 	Thornwhip      Spell = "thornwhip"

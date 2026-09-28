@@ -65,6 +65,7 @@ var classCantripOptions = map[classes.Class][]spells.Spell{
 		spells.Infestation,
 		// Utility cantrips
 		spells.Druidcraft,
+		spells.Shillelagh,
 		spells.Mending,
 		spells.Guidance,
 		spells.MagicStone,

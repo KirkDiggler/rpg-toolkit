@@ -23,6 +23,9 @@ const (
 	// DoesNotCrit prevents this pool's dice from being rolled a second time on
 	// a critical hit. Pools without it are critical-eligible.
 	DoesNotCrit Property = "does-not-crit"
+
+	// MagicalWeapon marks a pool from a magical weapon without changing its damage type.
+	MagicalWeapon Property = "magical"
 )
 
 // Damage declares one dice pool of one damage type.
@@ -80,7 +83,7 @@ func Validate(pools []Damage) error {
 				if abilityMarkers > 1 {
 					return fmt.Errorf("damage pool %d (%q): more than one %q marker", i, pool.Dice, AddsAttackAbilityModifier)
 				}
-			case DoesNotCrit:
+			case DoesNotCrit, MagicalWeapon:
 			default:
 				return fmt.Errorf("damage pool %d (%q): unknown property %q", i, pool.Dice, property)
 			}
