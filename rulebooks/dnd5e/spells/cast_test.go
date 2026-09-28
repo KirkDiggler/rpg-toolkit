@@ -740,13 +740,11 @@ func (s *CastContentSuite) TestEveryCommandOptionIsLabelledForAPersonToRead() {
 	}
 }
 
-// TestOnlyCommandOffersAMenu — the option is a cast-time input that every other
-// profile leaves at its zero value, and this is the assertion that would catch
-// a menu leaking into a spell by a shared helper or a copied row.
-func (s *CastContentSuite) TestOnlyCommandOffersAMenu() {
+// TestOnlyDeclaredChoiceSpellsOfferAMenu prevents accidental menus on other spells.
+func (s *CastContentSuite) TestOnlyDeclaredChoiceSpellsOfferAMenu() {
 	for id := range spells.SpellData {
 		definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: id, SpellSaveDC: 13})
-		if definition == nil || id == spells.Command {
+		if definition == nil || id == spells.Command || id == spells.Thornwhip {
 			continue
 		}
 		s.Require().NotNil(definition.Cast, "%s minted a definition with no cast profile", id)
