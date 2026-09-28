@@ -1,6 +1,9 @@
 package encounter
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // ValidateWalkEnd refuses a known occupied destination before a voluntary walk
 // starts. Unknown occupants are not queried; Step rechecks truth on arrival.
@@ -32,5 +35,12 @@ func (e *Encounter) ValidateWalkEnd(in CellAtInput) error {
 // errors never use this marker. Unwrap preserves the original refusal.
 type StepObstructedError struct{ cause error }
 
+// PublicReason omits identities that the mover may not have observed.
+func (e *StepObstructedError) PublicReason() string {
+	if errors.Is(e.cause, ErrBadPlacement) {
+		return "movement stopped at an obstruction"
+	}
+	return e.cause.Error()
+}
 func (e *StepObstructedError) Error() string { return e.cause.Error() }
 func (e *StepObstructedError) Unwrap() error { return e.cause }
