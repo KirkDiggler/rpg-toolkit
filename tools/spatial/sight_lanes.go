@@ -65,6 +65,9 @@ type SightLanesOutput struct {
 // SightLanes evaluates the direct grid lane and, for a soft direct obstruction,
 // progress-making alternate lanes from both endpoints. A hard direct
 // obstruction is absolute, and gridless queries evaluate only the direct lane.
+// An alternate origin must have a clear connecting lane to its original
+// endpoint; an unoccupied neighbor on the far side of an obstruction is not
+// a viewpoint available to that endpoint.
 // It returns the zero output with any validation or obstruction callback error.
 func SightLanes(in SightLanesInput) (SightLanesOutput, error) {
 	if in.Grid == nil {
@@ -102,6 +105,13 @@ func SightLanes(in SightLanesInput) (SightLanesOutput, error) {
 		if occupied.Blocked || in.Grid.Distance(alternate, in.To) >= distance {
 			continue
 		}
+		connection, err := in.readLane(in.From, alternate)
+		if err != nil {
+			return SightLanesOutput{}, err
+		}
+		if connection.HardBlocked || connection.SoftBlocked {
+			continue
+		}
 		lane, err := in.readLane(alternate, in.To)
 		if err != nil {
 			return SightLanesOutput{}, err
@@ -116,6 +126,13 @@ func SightLanes(in SightLanesInput) (SightLanesOutput, error) {
 			return SightLanesOutput{}, err
 		}
 		if occupied.Blocked || in.Grid.Distance(in.From, alternate) >= distance {
+			continue
+		}
+		connection, err := in.readLane(alternate, in.To)
+		if err != nil {
+			return SightLanesOutput{}, err
+		}
+		if connection.HardBlocked || connection.SoftBlocked {
 			continue
 		}
 		lane, err := in.readLane(in.From, alternate)
