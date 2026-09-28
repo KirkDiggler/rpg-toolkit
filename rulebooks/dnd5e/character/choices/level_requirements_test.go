@@ -92,13 +92,14 @@ func (s *LevelRequirementsTestSuite) TestChoiceIDsNamesEveryKindOfRequirement() 
 		Expertise:           &ExpertiseRequirement{ID: "a-expertise"},
 		Subclass:            &SubclassRequirement{ID: "a-subclass"},
 		Cantrips:            &CantripRequirement{ID: "a-cantrips"},
+		AdditionalCantrips:  []*CantripRequirement{{ID: "a-bonus-cantrip"}},
 		Spellbook:           &SpellbookRequirement{ID: "a-spellbook"},
 	}
 
 	s.ElementsMatch([]ChoiceID{
 		"a-skills", "a-additional-skills", "a-equipment", "a-equipment-categories",
 		"a-languages", "a-tools", "a-fighting-style", "a-expertise", "a-subclass",
-		"a-cantrips", "a-spellbook",
+		"a-cantrips", "a-bonus-cantrip", "a-spellbook",
 	}, reqs.ChoiceIDs())
 }
 

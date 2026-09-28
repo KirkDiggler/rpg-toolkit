@@ -47,7 +47,7 @@ type SetClassInput struct {
 
 // ClassChoices contains choices when selecting a class
 type ClassChoices struct {
-	// SubclassChoices answer provider-declared skill and language requirements by ID.
+	// SubclassChoices answer provider-declared skill, language, and bonus-cantrip requirements by ID.
 	SubclassChoices []choices.Submission         `json:"subclass_choices,omitempty"`
 	Skills          []skills.Skill               `json:"skills"`
 	FightingStyle   fightingstyles.FightingStyle `json:"fighting_style,omitempty"`

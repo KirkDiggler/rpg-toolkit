@@ -84,7 +84,7 @@ func (s *EquipOccupancyTestSuite) TestUnequipEmptiesOnlyNamedSlot() {
 	s.Require().NoError(s.char.EquipItem(SlotMainHand, weapons.Longsword))
 	s.Require().NoError(s.char.EquipItem(SlotArmor, armor.ChainMail))
 
-	s.char.UnequipItem(SlotMainHand)
+	s.Require().NoError(s.char.UnequipItem(SlotMainHand))
 
 	_, mainHandOccupied := s.char.equipmentSlots[SlotMainHand]
 	s.Assert().False(mainHandOccupied)

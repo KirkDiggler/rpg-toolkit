@@ -189,3 +189,39 @@ func TestAssembleRefusesWhatItCannotCompile(t *testing.T) {
 	})
 	require.ErrorContains(t, err, "no ref for weapon")
 }
+
+func TestWeaponOverrideReplacesPrimaryDiceBeforeRollingAndKeepsTheCatalog(t *testing.T) {
+	held := wielder{modifiers: map[abilities.Ability]int{abilities.STR: 1, abilities.WIS: 3}, proficient: true, bonus: 2}
+	staff := weapon(t, weapons.Quarterstaff)
+	before, err := staff.DamageForGrip(false)
+	require.NoError(t, err)
+	for _, grip := range []bool{false, true} {
+		result, err := weaponattack.Assemble(&weaponattack.Input{Wielder: held, Weapon: staff, TwoHanded: grip, Override: &weaponattack.Override{Dice: "1d8", Ability: abilities.WIS, Magical: true}})
+		require.NoError(t, err)
+		require.Equal(t, 5, result.Attack.AttackBonus)
+		require.Equal(t, abilities.WIS, result.Attack.Ability.Ability)
+		require.Equal(t, 3, result.Attack.Ability.Modifier)
+		require.Equal(t, "1d8", result.Attack.Damage[0].Dice)
+		require.Equal(t, damage.Bludgeoning, result.Attack.Damage[0].Type)
+		require.True(t, result.Attack.Damage[0].HasProperty(damage.MagicalWeapon))
+	}
+	after, err := staff.DamageForGrip(false)
+	require.NoError(t, err)
+	require.Equal(t, before, after)
+	held.modifiers[abilities.STR] = 4
+	result, err := weaponattack.Assemble(&weaponattack.Input{Wielder: held, Weapon: staff, Override: &weaponattack.Override{Dice: "2d8", Ability: abilities.WIS}})
+	require.NoError(t, err)
+	require.Equal(t, abilities.STR, result.Attack.Ability.Ability)
+	require.Equal(t, "2d8", result.Attack.Damage[0].Dice, "replacement is a dice expression, not a fixed die-size special case")
+}
+
+func TestWeaponOverrideLeavesAdditionalDamagePoolsAlone(t *testing.T) {
+	held := wielder{modifiers: map[abilities.Ability]int{abilities.STR: 1, abilities.WIS: 3}, proficient: true, bonus: 2}
+	club := weapon(t, weapons.Club)
+	club.Damage = append(club.Damage, damage.Damage{Dice: "1d4", Type: damage.Radiant})
+	result, err := weaponattack.Assemble(&weaponattack.Input{Wielder: held, Weapon: club, Override: &weaponattack.Override{Dice: "1d8", Ability: abilities.WIS, Magical: true}})
+	require.NoError(t, err)
+	require.Len(t, result.Attack.Damage, 2)
+	require.Equal(t, "1d8", result.Attack.Damage[0].Dice)
+	require.Equal(t, club.Damage[1], result.Attack.Damage[1])
+}

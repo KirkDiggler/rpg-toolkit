@@ -112,6 +112,29 @@ func (v *Validator) Validate(requirements *Requirements, submissions *Submission
 		}
 	}
 
+	for _, req := range requirements.AdditionalCantrips {
+		if err := v.validateCantrips(req, submissions); err != nil {
+			result.Valid = false
+			result.Errors = append(result.Errors, *err)
+		}
+		for _, bonus := range submissions.GetByCategory(shared.ChoiceCantrips) {
+			if bonus.ChoiceID != req.ID {
+				continue
+			}
+			for _, other := range submissions.GetByCategory(shared.ChoiceCantrips) {
+				if other.ChoiceID == req.ID {
+					continue
+				}
+				for _, selected := range bonus.Values {
+					if slices.Contains(other.Values, selected) {
+						result.Valid = false
+						result.Errors = append(result.Errors, ValidationError{Source: shared.SourceSubclass, Category: shared.ChoiceCantrips, ChoiceID: req.ID, Message: fmt.Sprintf("bonus cantrip %s is already selected", selected)})
+					}
+				}
+			}
+		}
+	}
+
 	// Validate fighting style
 	if requirements.FightingStyle != nil {
 		if err := v.validateFightingStyle(requirements.FightingStyle, submissions); err != nil {

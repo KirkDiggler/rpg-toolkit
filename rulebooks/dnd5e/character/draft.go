@@ -641,6 +641,10 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 	// it, same pattern raceData/classData already use.
 	bgGrant := backgrounds.GetGrants(d.background)
 
+	if err := d.validateSubclassCantrips(); err != nil {
+		return nil, err
+	}
+
 	// Build proficiencies
 	if err := d.validateSubclassLanguages(raceData.Languages); err != nil {
 		return nil, err
@@ -1083,7 +1087,7 @@ func (d *Draft) compileProficiencies(
 	}
 
 	// Apply level-1 heavy-armor grants from cleric domains. Domain proficiencies are additive to the cleric base proficiencies.
-	if d.class == classes.Cleric && (d.subclass == classes.LifeDomain || d.subclass == classes.TempestDomain || d.subclass == classes.WarDomain) {
+	if d.class == classes.Cleric && (d.subclass == classes.LifeDomain || d.subclass == classes.TempestDomain || d.subclass == classes.WarDomain || d.subclass == classes.NatureDomain) {
 		for _, category := range choices.GetSubclassModifications(d.subclass).GrantedProficiencies.Armor {
 			armorProfs = append(armorProfs, proficiencies.Armor(category))
 		}
@@ -1554,7 +1558,7 @@ func (d *Draft) IsClassComplete() bool {
 	validator := choices.NewValidator()
 	result := validator.Validate(reqs, subs)
 
-	return result.Valid && d.validateLifeEquipment() == nil
+	return result.Valid && d.validateLifeEquipment() == nil && d.validateSubclassCantrips() == nil
 }
 
 // IsBackgroundComplete checks if background selection and choices are complete

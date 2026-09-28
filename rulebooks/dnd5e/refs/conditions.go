@@ -245,3 +245,8 @@ var conditionFaerieFire = &core.Ref{Module: Module, Type: TypeConditions, ID: "f
 
 // FaerieFire returns the concentration-owned outline on an affected creature.
 func (n conditionsNS) FaerieFire() *core.Ref { return conditionFaerieFire }
+
+var conditionShillelagh = &core.Ref{Module: Module, Type: TypeConditions, ID: "shillelagh"}
+
+// Shillelagh returns the held-weapon enchantment.
+func (n conditionsNS) Shillelagh() *core.Ref { return conditionShillelagh }

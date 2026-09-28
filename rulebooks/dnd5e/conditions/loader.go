@@ -15,6 +15,13 @@ import (
 type conditionLoader func(json.RawMessage) (dnd5eEvents.ConditionBehavior, error)
 
 var conditionLoaders = map[string]conditionLoader{
+	refs.Conditions.Shillelagh().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
+		condition := &ShillelaghCondition{}
+		if err := condition.loadJSON(data); err != nil {
+			return nil, err
+		}
+		return condition, nil
+	},
 	refs.Conditions.Raging().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		raging := &RagingCondition{}
 		if err := raging.loadJSON(data); err != nil {
