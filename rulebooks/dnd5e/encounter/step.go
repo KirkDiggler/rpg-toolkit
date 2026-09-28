@@ -131,7 +131,7 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 		}
 	}
 
-	action, err := e.stepMember(member, in.To)
+	action, err := e.stepMember(member, in.To, in.EndWalk)
 	if err != nil {
 		return nil, fmt.Errorf("step: %w", err)
 	}
@@ -206,7 +206,7 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 // expressed (see compileCanvas); it can be now, so permission is geometry like
 // everything else, and a step into a wall is refused exactly as a step into any
 // other wall is.
-func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (executedAction, error) {
+func (e *Encounter) stepMember(member *memberRecord, to spatial.Position, endWalk bool) (executedAction, error) {
 	// Hex fields require integral axial cells (interim tools/spatial#926
 	// enforcement — see isIntegralHexCell). Asked BEFORE the floor
 	// question so a fractional cell is named as itself: regionAt refuses one
@@ -321,6 +321,9 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 	if factErr != nil {
 		return executedAction{}, factErr
 	}
+	if endWalk && fact.Passage == PassagePassThrough && !crossingBlocked {
+		return executedAction{}, fmt.Errorf("step: destination permits passage but not stopping: %w", ErrBadPlacement)
+	}
 	if fact.Passage == PassageBlocked && !crossingBlocked {
 		// THE DESTINATION IS A SHUT DOOR'S OWN CELL when a footprint door
 		// covers it — the same refusal a crossing through one earns, because
@@ -403,7 +406,7 @@ func (e *Encounter) crossedDoors(from, to spatial.Position) []CrossedDoor {
 // and query failures remain errors, so callers cannot save a broken read as
 // a successful shortened movement.
 func (e *Encounter) stepTo(member *memberRecord, to spatial.Position) (executedAction, bool, error) {
-	action, err := e.stepMember(member, to)
+	action, err := e.stepMember(member, to, false)
 	if err != nil {
 		var readErr *passageReadError
 		if errors.As(err, &readErr) {
