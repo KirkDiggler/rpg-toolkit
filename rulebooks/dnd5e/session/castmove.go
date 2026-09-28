@@ -233,6 +233,8 @@ func walkCastPushes(
 // which it meant.
 func routePolicy(policy combatActions.MovePolicy) (encounter.MovePolicy, bool) {
 	switch policy {
+	case combatActions.MovePull:
+		return encounter.MovePull, true
 	case combatActions.MoveLine:
 		return encounter.MoveLine, true
 	case combatActions.MoveAway:
