@@ -189,8 +189,10 @@ var omitted = map[string]string{
 	// driver is handed what it can act on, and a table is not one of those
 	// things. TestTheTableDoesNotCrossToAHostsDriver pins it from the other
 	// side.
-	"encounter.MonsterView.Table":  "read by encounter.TableDriver on the composition's own view, never through this twin",
-	"encounter.MonsterView.Temper": "Table's companion, omitted for Table's reason",
+	"encounter.MonsterView.Table":     "read by encounter.TableDriver on the composition's own view, never through this twin",
+	"encounter.MonsterView.AllyDeeds": "encounter.TableDriver reads the ally-scoped testimony directly on the composition view; host drivers receive Holdings",
+	"encounter.MonsterView.OwnDeeds":  "encounter.TableDriver reads self-scoped testimony directly on the composition view; host drivers receive Holdings",
+	"encounter.MonsterView.Temper":    "Table's companion, omitted for Table's reason",
 	"encounter.MonsterView.Deeds": "the deeds a `when` condition reads, decoded from Holdings — which " +
 		"IS carried, so a host driver that wants them reads the same testimony the table does",
 
