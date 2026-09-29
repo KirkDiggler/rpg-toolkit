@@ -399,10 +399,11 @@ type canvasSightObstructions struct {
 }
 
 // Along reads one lane: a sight-blocking BOUNDARY on the canonical ray is a
-// HARD obstruction (absolute, no lane bypasses it); an occluding entity on
-// the ray's interior and a footprint's INTERIOR crossing are SOFT ones —
-// endpoints excluded, exactly as the room's own entity rule excludes them, so
-// a sightline never blocks on somebody standing where it starts or ends.
+// HARD obstruction (absolute, no lane bypasses it). Occluding entities on
+// the ray's interior and continuous footprint INTERIOR crossings are SOFT
+// obstructions. Only the entity scan excludes endpoints; footprint traces
+// include them. Alternate lanes must connect clearly to their original
+// endpoints, so they cannot borrow a viewpoint through an opaque footprint.
 func (o canvasSightObstructions) Along(in spatial.SightLaneInput) (spatial.SightLaneOutput, error) {
 	for i := 1; i < len(in.Ray); i++ {
 		if b, ok := o.canvas.GetBoundary(in.Ray[i-1], in.Ray[i]); ok && b.BlocksLineOfSight {
