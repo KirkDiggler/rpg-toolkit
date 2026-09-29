@@ -201,6 +201,9 @@ func (m *Manager) answerPendingAttack(ctx context.Context, scope *writeScope, wi
 			if _, err = m.runWalk(ctx, scope, p.Target, p.WalkPath); err != nil {
 				return nil, err
 			}
+			if err = m.saveWalkProgress(ctx, scope); err != nil {
+				return nil, err
+			}
 		} else if len(open) == 0 && scope.enc.HeldDirective() {
 			if _, err = scope.enc.ResumeDirective(ctx); err != nil {
 				return nil, translate(err)
