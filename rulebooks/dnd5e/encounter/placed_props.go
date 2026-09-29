@@ -666,10 +666,11 @@ func (f *field) crossingBlocks(from, to spatial.Position) (PropID, bool, error) 
 
 // sightBlocksAlong reports whether any sight-blocking placed contributor's
 // INTERIOR covers the straight lane between two cells' centres — the SOFT
-// lane fact [spatial.SightLanes] leans around, never a wall. Endpoints are
-// not excluded here: a lane FROM a covered origin starts inside the shape,
-// and SightLanes routes around it through the origin-exclusion rule its own
-// contract names ("At excludes origins with Contact").
+// lane fact [spatial.SightLanes] may lean around through a clear connection.
+// Endpoints are not excluded: a lane from or to an interior point crosses
+// the shape. Alternate origins cannot escape that opacity, because their
+// connecting lane to the original endpoint must also be clear. This is a
+// sight query, independent of whether the footprint blocks movement.
 func (f *field) sightBlocksAlong(from, to spatial.Position) (bool, error) {
 	now := f.placedNow()
 	for i := range f.placed {
