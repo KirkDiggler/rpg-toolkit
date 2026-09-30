@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>One World, Different Views</title>
+<meta name="description" content="A rough prototype made a systems breakthrough visible: one encounter, with a different account delivered to each player.">
+<link rel="canonical" href="https://kirkdiggler.github.io/rpg-toolkit/one-world-different-views/">
+<meta property="og:site_name" content="rpg-toolkit">
+<meta property="og:type" content="article">
+<meta property="og:title" content="One World, Different Views">
+<meta property="og:description" content="A rough prototype made a systems breakthrough visible: one encounter, with a different account delivered to each player.">
+<meta property="og:url" content="https://kirkdiggler.github.io/rpg-toolkit/one-world-different-views/">
+<meta property="og:image" content="https://kirkdiggler.github.io/rpg-toolkit/social/one-world-different-views.png">
+<meta property="og:image:secure_url" content="https://kirkdiggler.github.io/rpg-toolkit/social/one-world-different-views.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Field-notes title card reading One World, Different Views beside a blue D20 wireframe.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="One World, Different Views">
+<meta name="twitter:description" content="A rough prototype made a systems breakthrough visible: one encounter, with a different account delivered to each player.">
+<meta name="twitter:image" content="https://kirkdiggler.github.io/rpg-toolkit/social/one-world-different-views.png">
+<meta name="twitter:image:alt" content="Field-notes title card reading One World, Different Views beside a blue D20 wireframe.">
+<link rel="icon" type="image/svg+xml" href="/rpg-toolkit/favicon.svg">
+<link rel="apple-touch-icon" href="/rpg-toolkit/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&amp;family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&amp;display=swap">
+<style>
+:root{--ground:#11141a;--surface:#181c23;--primary:#f1f3f5;--muted:#c2c8d0;--faint:#9da7b4;--rule:#343b46;--rule-strong:#4c5665;--accent:#7189d7;--bright:#9baded;--accent-soft:#1b2236;--pressure:#c96d62;--pressure-text:#e49b91;--pressure-soft:#2b1e20}
+*{box-sizing:border-box}
+html{background:var(--ground);color-scheme:dark;overflow-x:clip}
+body{margin:0;background:var(--ground);color:var(--primary);font-family:"Source Serif 4",Georgia,serif;font-size:17px;line-height:1.64;-webkit-font-smoothing:antialiased}
+:focus-visible{outline:2px solid var(--bright);outline-offset:4px}
+a{color:var(--bright);text-underline-offset:3px}
+.page{max-width:1180px;margin:0 auto;padding:22px 24px 100px}
+
+
+header{padding:78px 72px 66px;border-bottom:1px solid var(--rule)}
+.eyebrow,.question-label,.date-label,code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+.eyebrow{color:var(--bright);font-size:.76rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
+h1,h2,.end-question{font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-weight:600;line-height:1.03;text-wrap:balance}
+h1{max-width:950px;margin:.3em 0 .3em;font-size:clamp(3.7rem,8vw,6.2rem);letter-spacing:-.035em}
+.dek{max-width:790px;margin:0;color:var(--muted);font-size:clamp(1.1rem,2vw,1.3rem);line-height:1.55}
+.origin-links{display:flex;flex-wrap:wrap;gap:1.7rem;max-width:900px;margin-top:1.7rem}
+.origin-link{display:flex;align-items:baseline;gap:.8rem;padding:.65rem 0;border-block:1px solid var(--rule);color:inherit;text-decoration:none}
+.origin-link span{color:var(--bright);font:600 .68rem/1.4 "IBM Plex Mono",monospace;letter-spacing:.1em;text-transform:uppercase}
+.origin-link strong{font:600 1rem/1.3 "IBM Plex Sans Condensed","Arial Narrow",sans-serif}
+.origin-link:hover strong{color:var(--bright)}
+.opening-proof{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:36px;border-block:1px solid var(--rule)}
+.opening-proof div{padding:14px 18px 14px 0}.opening-proof div+div{padding-left:18px;border-left:1px solid var(--rule)}
+.opening-proof b{display:block;font:600 1.04rem/1.5 "IBM Plex Sans Condensed","Arial Narrow",sans-serif}.opening-proof span{color:var(--muted);font-size:.86rem}
+.legend{display:flex;flex-wrap:wrap;gap:1.5rem;margin-top:20px;color:var(--faint);font:500 .69rem/1.4 "IBM Plex Mono",monospace;letter-spacing:.07em;text-transform:uppercase}
+.legend span{display:inline-flex;align-items:center;gap:.48rem}.legend i{width:22px;height:2px;background:var(--accent)}.legend span+span i{background:var(--pressure)}
+.timeline{position:relative}.timeline::before{content:"";position:absolute;inset-block:0;left:55px;width:1px;background:var(--rule-strong)}
+.timeline-panel{position:relative;display:grid;grid-template-columns:112px minmax(0,1fr);gap:24px}
+.rail{position:relative;padding-top:47px;text-align:right}.node{position:absolute;top:50px;right:-8px;z-index:2;width:18px;height:18px;border:4px solid var(--ground);border-radius:50%;background:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.rail-number{display:block;padding-right:22px;color:var(--bright);font:600 1.25rem/1 "IBM Plex Mono",monospace}
+.date-label{display:block;max-width:92px;margin:12px 16px 0 auto;color:var(--faint);font-size:.68rem;letter-spacing:.07em;line-height:1.5;text-transform:uppercase}
+.pressure-panel .node{background:var(--pressure);box-shadow:0 0 0 1px var(--pressure)}.pressure-panel .rail-number,.pressure-panel .question-label{color:var(--pressure-text)}
+.panel-body{min-width:0;padding:48px 40px 58px;border-bottom:1px solid var(--rule)}
+.question-label{margin-bottom:7px;color:var(--bright);font-size:.73rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase}
+h2{max-width:870px;margin:0 0 .65em;font-size:clamp(2.1rem,4.4vw,3.2rem);letter-spacing:-.02em}
+p{max-width:74ch;margin:.76em 0}.lead,.reflection{color:var(--muted);font-size:1.07rem}.lead strong{color:var(--primary)}
+code{color:var(--bright);font-size:.87em}
+figure{margin:28px 0 16px;padding:18px 0 13px;overflow-x:auto;overscroll-behavior-inline:contain;border-block:1px solid var(--rule-strong);scrollbar-color:var(--rule-strong) var(--ground)}
+figure svg{display:block;width:100%;min-width:840px;height:auto;margin:0 auto}
+figcaption{max-width:78ch;margin-top:14px;color:var(--faint);font:400 .81rem/1.6 "IBM Plex Mono",monospace}
+.law{max-width:810px;margin:20px 0 0;padding:.55rem 0 .55rem 1rem;border-left:2px solid var(--accent);color:var(--muted);font:400 .85rem/1.55 "IBM Plex Mono",monospace}.law b{color:var(--primary);font-weight:500}
+.pressure-law{border-left-color:var(--pressure)}
+.end-question{max-width:860px;margin:32px 0 0;padding-top:26px;border-top:1px solid var(--rule);font-size:clamp(1.9rem,3.6vw,2.7rem)}
+footer{max-width:920px;margin:64px 0 0 136px;padding-top:28px;border-top:1px solid var(--rule);color:var(--muted)}footer h2{margin-bottom:.7rem;font-size:1.4rem}footer p{margin:.7rem 0;font-size:.86rem}footer a{white-space:nowrap}footer .scope{color:var(--faint);font:400 .75rem/1.65 "IBM Plex Mono",monospace}
+svg text{fill:var(--primary);font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-size:18px}
+svg .t-title{font-size:22px;font-weight:600}svg .t-big{font-size:29px;font-weight:600}svg .mono{font-size:15px}svg .label{fill:var(--muted);font:500 13px "IBM Plex Mono",monospace;letter-spacing:.8px}svg .small{fill:var(--muted);font-size:16px}svg .blue{fill:var(--bright)}svg .rust{fill:var(--pressure-text)}svg .faint{fill:var(--faint)}
+svg .box{fill:var(--surface);stroke:var(--rule-strong);stroke-width:1.3}svg .soft{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.5}svg .pressure{fill:var(--pressure-soft);stroke:var(--pressure);stroke-width:1.5}svg .ghost{fill:none;stroke:var(--rule-strong);stroke-width:1.4;stroke-dasharray:7 6}
+svg .wire{fill:none;stroke:var(--muted);stroke-width:1.5}svg .wire-blue{fill:none;stroke:var(--accent);stroke-width:2}svg .wire-rust{fill:none;stroke:var(--pressure);stroke-width:2}svg .dash{stroke-dasharray:7 6}
+figure::before{display:none}
+@media(max-width:760px){
+ .page{padding:14px 14px 70px}header{padding:50px 14px 48px 42px}
+ .origin-links{display:block}.origin-link{align-items:flex-start;flex-direction:column;gap:.25rem}.opening-proof{grid-template-columns:1fr}.opening-proof div{padding:11px 0}.opening-proof div+div{padding-left:0;border-top:1px solid var(--rule);border-left:0}.legend{flex-direction:column;gap:.6rem}
+ .timeline::before{left:16px}.timeline-panel{grid-template-columns:34px minmax(0,1fr);gap:8px}.rail{padding-top:39px}.node{top:42px;right:9px;width:14px;height:14px;border-width:3px}.rail-number{font-size:0;padding:0}.date-label{position:absolute;top:62px;left:-5px;width:max-content;max-width:none;margin:0;transform:rotate(-90deg) translateX(-100%);transform-origin:top left;font-size:.62rem;white-space:nowrap}
+ .panel-body{padding:40px 13px 46px}figure{padding:14px 0 10px}figure svg{min-width:900px}footer{margin:48px 0 0 42px}
+ figure::before{content:"Swipe diagram →";position:sticky;left:0;z-index:2;display:block;width:max-content;margin:0 0 11px;padding:.3rem 0;border-block:1px solid var(--accent);background:var(--ground);color:var(--bright);font:500 .69rem/1.3 "IBM Plex Mono",monospace;letter-spacing:.08em;text-transform:uppercase}
+}
+@media(max-width:420px){body{font-size:16px}header{padding-left:38px}h1{font-size:3.35rem}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important}}
+
+.photo-proof{overflow:visible}.photo-proof::before{display:none!important}.screens{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}.screens img{display:block;width:100%;height:auto;border:1px solid var(--rule-strong)}.screens a{display:block}footer a{white-space:normal}@media(max-width:760px){.screens{grid-template-columns:1fr;gap:22px}}
+</style>
+</head>
+<body>
+<main class="page">
+  <header>
+    <div class="eyebrow">Layer 11 · Proof of perspective</div>
+    <h1>One World, Different Views</h1>
+    <p class="dek">Moving Encounter into the toolkit hadn’t made it a toolbox. But there was something inside it I wanted to see working: one shared encounter, with each player receiving their own view of what happened.</p>
+    <nav class="origin-links" aria-label="Field-note navigation">
+      <a class="origin-link" href="https://kirkdiggler.github.io/rpg-project/"><span>Why this exists</span><strong>Where Everything Meets →</strong></a>
+      <a class="origin-link" href="https://kirkdiggler.github.io/rpg-toolkit/the-game-moved-into-the-toolkit/"><span>Previous field note</span><strong>The Game Moved Into the Toolkit →</strong></a>
+    </nav>
+    <div class="opening-proof" aria-label="Story coordinates"><div><b>The prototype</b><span>characters and event panels</span></div><div><b>The proof</b><span>a different account for each player</span></div><div><b>The horizon</b><span>how far that difference could go</span></div></div>
+  </header>
+
+  <div class="timeline" aria-label="Five panels: proof, the doorway, recipient-specific events, remembering, and the possibilities ahead">
+    <section class="timeline-panel" id="panel-1" data-panel="1" aria-labelledby="panel-1-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">01</span><span class="date-label">The May prototype</span></div>
+      <div class="panel-body">
+        <div class="question-label">I needed proof</div>
+        <h2 id="panel-1-title">The events belonged on the screen</h2>
+        <p class="lead">The characters were rough and the controls looked like development tools. That was fine. I’m a systems builder. I wanted the game and the events where I could inspect them together. Seeing an attack work mattered. Seeing what each player received mattered more.</p>
+        <figure class="photo-proof" aria-label="Two May playtest screenshots showing blocky characters above entity state and event logs">
+          <div class="screens">
+            <a href="images/multi-player-voxel.png" target="_blank" rel="noopener" aria-label="Open the multiplayer playtest screenshot at full size"><img src="images/multi-player-voxel.png" width="1212" height="1250" alt="May playtest: Alice, Wendy, Bob and a goblin above an entity table and recent event panel." loading="eager"></a>
+            <a href="images/voxel-events.png" target="_blank" rel="noopener" aria-label="Open the combat event screenshot at full size"><img src="images/voxel-events.png" width="1244" height="1357" alt="May playtest: Bob is raging beside a goblin. The panel below shows damage breakdowns and turns advancing." loading="eager"></a>
+          </div>
+          <figcaption>My May playtest screens. The panels were there because I needed proof. Open either image for detail.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="timeline-panel" id="panel-2" data-panel="2" aria-labelledby="panel-2-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">02</span><span class="date-label">The test I remember</span></div>
+      <div class="panel-body">
+        <div class="question-label">One door, two perspectives</div>
+        <h2 id="panel-2-title">Fifteen feet made a difference</h2>
+        <p class="lead">The first test I remember was opening a door with a second player fifteen feet behind. The second player’s view didn’t reach as far into the room. It worked the first time. I made the fog of war stronger so I could see the line-of-sight angles more clearly.</p>
+        <figure tabindex="0" aria-label="Illustration of the remembered doorway test, not a reconstruction of its exact geometry">
+          <svg viewBox="0 0 960 430" role="img" aria-labelledby="d1-title d1-desc">
+            <title id="d1-title">The same doorway, viewed from two positions</title>
+            <desc id="d1-desc">Two schematic views of the same room. The player at the door sees farther into it; the player fifteen feet behind sees less. Shaded regions illustrate the recollection, not measured visibility geometry.</desc>
+            <text x="242" y="31" text-anchor="middle" class="label">PLAYER AT THE DOOR</text>
+            <text x="718" y="31" text-anchor="middle" class="label">PLAYER FIFTEEN FEET BEHIND</text>
+            <rect x="32" y="54" width="420" height="330" class="box"/>
+            <rect x="508" y="54" width="420" height="330" class="box"/>
+            <path d="M242 281L135 91H349Z" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
+            <path d="M718 342L683 189H753Z" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
+            <path d="M76 100V251H221 M263 251H408V100 M552 100V251H697 M739 251H884V100" fill="none" stroke="var(--muted)" stroke-width="5"/>
+            <circle cx="242" cy="281" r="10" fill="var(--bright)"/>
+            <circle cx="718" cy="342" r="10" fill="var(--bright)"/>
+            <text x="242" y="158" text-anchor="middle" class="t-title blue">More of the room</text>
+            <text x="718" y="132" text-anchor="middle" class="small faint">Beyond this player’s view</text>
+            <text x="242" y="344" text-anchor="middle" class="small">One player’s revealed space</text>
+            <text x="718" y="411" text-anchor="middle" class="small">Not the same reveal</text>
+            <text x="242" y="411" text-anchor="middle" class="small">Same room · same open door</text>
+          </svg>
+          <figcaption>A schematic of the test I remember, not its exact map. The difference was the point.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="timeline-panel" id="panel-3" data-panel="3" aria-labelledby="panel-3-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">03</span><span class="date-label">Inside the stream</span></div>
+      <div class="panel-body">
+        <div class="question-label">Not just a different camera</div>
+        <h2 id="panel-3-title">The account itself was different</h2>
+        <p class="lead">It wasn’t enough to choose who received an event. The system also had to choose which parts they received. A movement could be fully visible to one player and only briefly visible to another. The server sent each player their portion, not the whole path for the browser to hide.</p>
+        <figure tabindex="0" aria-label="Diagram of a historical movement test with different payloads for two players">
+          <svg viewBox="0 0 960 345" role="img" aria-labelledby="d2-title d2-desc">
+            <title id="d2-title">One move, two delivered paths</title>
+            <desc id="d2-desc">In the May integration test the mover receives seven path hexes, while a second observer receives only two visible hexes. This is a separate range-based test, not the doorway test.</desc>
+            <rect x="275" y="20" width="410" height="74" class="box"/>
+            <text x="480" y="66" text-anchor="middle" class="t-title">One movement through seven hexes</text>
+            <path d="M480 94V130H242V176 M480 130H718V176" class="wire-blue"/>
+            <rect x="32" y="177" width="420" height="137" class="soft"/>
+            <rect x="508" y="177" width="420" height="137" class="soft"/>
+            <text x="242" y="214" text-anchor="middle" class="label blue">MOVER’S STREAM</text>
+            <text x="718" y="214" text-anchor="middle" class="label blue">OTHER PLAYER’S STREAM</text>
+            <g fill="var(--bright)"><circle cx="146" cy="251" r="9"/><circle cx="178" cy="251" r="9"/><circle cx="210" cy="251" r="9"/><circle cx="242" cy="251" r="9"/><circle cx="274" cy="251" r="9"/><circle cx="306" cy="251" r="9"/><circle cx="338" cy="251" r="9"/><circle cx="702" cy="251" r="9"/><circle cx="734" cy="251" r="9"/></g>
+            <text x="242" y="290" text-anchor="middle" class="small">The full path</text>
+            <text x="718" y="290" text-anchor="middle" class="small">Only the visible portion</text>
+          </svg>
+          <figcaption>A separate May integration test checks the actual streamed messages: seven path hexes for one player, two for the other.</figcaption>
+        </figure>
+        <p class="reflection">That exercised more than visibility. The player’s perspective had to survive the event structure, routing, translation and client state. The event panels let me inspect the result beside the game.</p>
+      </div>
+    </section>
+
+    <section class="timeline-panel" id="panel-4" data-panel="4" aria-labelledby="panel-4-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">04</span><span class="date-label">An early beginning</span></div>
+      <div class="panel-body">
+        <div class="question-label">Out of sight is not never seen</div>
+        <h2 id="panel-4-title">The last place I saw it</h2>
+        <p class="lead">There were beginnings of remembering, too. When an entity disappeared from view, the client could keep a ghost at the last position that player had seen. Not its actual new position. That distinction mattered: the world could continue changing without silently updating what the player knew.</p>
+        <figure tabindex="0" aria-label="Diagram distinguishing the last observed position from an unknown current position">
+          <svg viewBox="0 0 960 255" role="img" aria-labelledby="d3-title d3-desc">
+            <title id="d3-title">A last sighting, not a live location</title>
+            <desc id="d3-desc">A visible entity becomes a remembered ghost at its last seen position. Its current location beyond sight is not supplied by that disappearance update.</desc>
+            <rect x="28" y="38" width="250" height="144" class="soft"/>
+            <text x="153" y="80" text-anchor="middle" class="label blue">VISIBLE</text>
+            <text x="153" y="126" text-anchor="middle" class="t-title">I can see it here</text>
+            <path d="M278 108H348" class="wire-blue"/>
+            <rect x="354" y="38" width="252" height="144" class="ghost"/>
+            <text x="480" y="80" text-anchor="middle" class="label">LAST SEEN</text>
+            <text x="480" y="126" text-anchor="middle" class="t-title">It was here</text>
+            <path d="M650 24V203" class="wire dash"/>
+            <text x="800" y="87" text-anchor="middle" class="label">BEYOND SIGHT</text>
+            <text x="800" y="134" text-anchor="middle" class="t-title faint">Where is it now?</text>
+            <text x="480" y="235" text-anchor="middle" class="small">The last-known position belongs to the observer.</text>
+          </svg>
+          <figcaption>An early ghost marker, not the complete knowledge system that came later.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="timeline-panel" id="panel-5" data-panel="5" aria-labelledby="panel-5-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">05</span><span class="date-label">The horizon</span></div>
+      <div class="panel-body">
+        <div class="question-label">More than making the prototype work</div>
+        <h2 id="panel-5-title">How far could we take this?</h2>
+        <p class="lead">Each player getting their own view changed what I could imagine building. Split the party. Let something slip out of sight. Make the place someone last saw it matter. Those weren’t all finished features. They were reasons to keep going.</p>
+        <p class="reflection">The prototype had proved something worth carrying forward. It hadn’t yet proved that the application around it could support everything that possibility opened up.</p>
+        <p class="end-question">One world didn’t have to mean one shared view.<br>How much game could we build from that difference?</p>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <h2>Evidence trail</h2>
+    <p>The screenshots are from May, and I kept the event panels visible because I needed proof. The doorway test, the second player fifteen feet behind, its first-time success and the stronger fog are my recollections. These images show the harness, not that specific test.</p>
+    <p>The <a href="https://github.com/KirkDiggler/rpg-toolkit/blob/72e800442e8ebed2ed66a8666032645a45cf1ee5/encounter/encounter.go#L142-L197">toolkit projected movement per player</a>; the <a href="https://github.com/KirkDiggler/rpg-api/blob/9611fc5e83221d672f9bd9f11855a5eb23991c20/internal/handlers/dnd5e/v2/encounter/translate.go#L56-L81">API translated only that viewer’s slice</a>. The <a href="https://github.com/KirkDiggler/rpg-api/blob/9611fc5e83221d672f9bd9f11855a5eb23991c20/internal/integration/encounter_v2_test.go">asymmetric-stream test</a> checks the seven-versus-two path example.</p>
+    <p>The <a href="https://github.com/KirkDiggler/rpg-dnd5e-web/blob/4d4828cf2b7eace70c9d89048ac334b0b437ef40/src/components/playtest/PlaytestHarness.tsx#L176-L235">harness callbacks</a> update state and log the received events. The <a href="https://github.com/KirkDiggler/rpg-dnd5e-web/blob/4d4828cf2b7eace70c9d89048ac334b0b437ef40/src/hooks/useEncounterState.ts#L502-L525">ghost reducer</a> retains the supplied last-known position.</p>
+    <p class="scope">I have not pinned the doorway recollection to an exact revision. The early May toolkit test uses distance-based sight; wall-aware sight entered that path in July. These are different evidence points, not one dated playtest. Historical source and assertions were inspected, not rerun. Diagrams are explanatory; later remembered-knowledge and composable Encounter work is not claimed here.</p>
+  </footer>
+</main>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"51a3147a2b384c0cb2f6a1f7a694b180"}'></script>
+</body>
+</html>
