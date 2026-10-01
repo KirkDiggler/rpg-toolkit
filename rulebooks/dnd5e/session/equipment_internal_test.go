@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
@@ -89,7 +90,15 @@ func (s *MonsterEquipmentSeamSuite) TestReadsAliasedRecordAfterSeamConstructionA
 }
 
 func (s *MonsterEquipmentSeamSuite) TestCarriesProviderAnswerPastMultiattackWithoutInterpretingIt() {
-	s.data.NPCs = []monster.Data{*monsters.NewGoblinBoss("goblin").ToData()}
+	s.storeGoblin(weapons.Scimitar, weapons.Shortbow)
+	// A recursive interpretation would pick shortbow. The first flat weapon
+	// is scimitar, so this fixture distinguishes skipping from recursing.
+	s.data.NPCs[0].Actions = append([]combatActions.Definition{{
+		Ref: *refs.MonsterActions.GoblinBossMultiattack(), Name: "Multiattack",
+		Sequence: &combatActions.SequenceProfile{Steps: []combatActions.SequenceStep{
+			{Action: *refs.Weapons.Shortbow()},
+		}},
+	}}, s.data.NPCs[0].Actions...)
 	out, err := s.seam.Equipment([]encounter.MemberID{"goblin"})
 	s.Require().NoError(err)
 	s.Require().NotNil(out["goblin"])

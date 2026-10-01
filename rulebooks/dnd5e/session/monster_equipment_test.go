@@ -89,6 +89,34 @@ func (s *MonsterWeaponObservationSuite) spawnAndSee(ref string, actions []string
 	return sighting
 }
 
+func (s *MonsterWeaponObservationSuite) TestVisibleSpawnCarriesEquipmentInArrivalDiscoveryAndReload() {
+	ctx := context.Background()
+	out, err := s.mgr.Spawn(ctx, &session.SpawnInput{
+		Session: "sess", ID: "boss", Ref: refs.Monsters.GoblinBoss().String(),
+		Position: hexCell(4, 0),
+	})
+	s.Require().NoError(err)
+	discovery, ok := out.Discovered["fighter"]
+	s.Require().True(ok)
+	var report *session.Report
+	for i := range discovery.FirstContact {
+		if discovery.FirstContact[i].Subject == "boss" {
+			report = &discovery.FirstContact[i]
+		}
+	}
+	s.Require().NotNil(report, "Spawn itself must discover the visible arrival")
+	s.Require().NotNil(report.Seen)
+	s.Require().NotNil(report.Seen.Equipment)
+	s.Equal("scimitar", report.Seen.Equipment.MainHand)
+	view, err := s.manager().View(ctx, &session.ViewInput{Session: "sess", Member: "fighter"})
+	s.Require().NoError(err)
+	seen := findSighting(view, "boss")
+	s.Require().NotNil(seen)
+	s.NotEmpty(seen.CurrentVia)
+	s.Require().NotNil(seen.Seen)
+	s.Equal(report.Seen.Equipment, seen.Seen.Equipment)
+}
+
 func (s *MonsterWeaponObservationSuite) TestAuthoredWeaponOverrideIsObservedInAuthorOrder() {
 	for _, tc := range []struct {
 		name    string
