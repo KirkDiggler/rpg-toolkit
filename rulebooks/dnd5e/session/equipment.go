@@ -10,6 +10,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 )
 
 // What everyone is holding, answered where the sheets are.
@@ -22,9 +23,11 @@ import (
 //
 // # This answers TRUTH, and the lie happens later
 //
-// What comes back is what each member IS holding. Nothing here is told who is
-// looking, and nothing here dissembles. The composition snapshots this answer
-// into each observer's own sight testimony when they see somebody, and from
+// Players report their actual hands. Monsters report the rulebook's temporary
+// first-weapon presentation answer, not equipped state or permission to switch.
+// Nothing here is told who is looking, and nothing here dissembles. The
+// composition snapshots this answer into each observer's own sight testimony
+// when they see somebody, and from
 // that moment it is that observer's claim — free to disagree with the world,
 // with the sheet, and with every other observer. A charmed player who believes
 // the ogre holds a toy is a false payload written into THAT player's holding by
@@ -66,6 +69,10 @@ type equipmentSeam struct {
 	// load/setup boundary, so nothing guesses kind from whichever storage
 	// record happens to answer.
 	kinds map[string]encounter.MemberKind
+
+	// data aliases this verb's session record, just as standingSeam does, so
+	// newly spawned or updated monster sheets are visible on the next consult.
+	data *SessionData
 }
 
 // Equipment reports what each of the given members is holding.
@@ -81,8 +88,10 @@ type equipmentSeam struct {
 // member left OUT of the answer):
 //
 //   - KindWorld — a door has no hands. Never consulted.
-//   - KindMonster — monster sheets carry actions, not equipment slots. A
-//     skeleton observed empty-handed would be testimony nobody is entitled to.
+//   - KindMonster without a sheet or a rulebook presentation weapon — no
+//     catalog weapon is known, which is not a claim of observed empty hands.
+//     A known weapon is carried as the main-hand presentation; off-hand
+//     presentation is absent. This does not add equipped state to monsters.
 //   - A player whose sheet is not found — the ordinary authored-content state
 //     [standingSeam.recordsFor] describes, not a defect.
 //
@@ -108,8 +117,20 @@ func (s equipmentSeam) Equipment(
 		}
 
 		switch kind {
-		case encounter.KindWorld, encounter.KindMonster:
+		case encounter.KindWorld:
 			out[id] = nil
+			continue
+		case encounter.KindMonster:
+			out[id] = nil
+			if sheet, found := npcSheet(s.data, name); found {
+				presented, err := monster.PresentedWeapon(&monster.PresentedWeaponInput{Actions: sheet.Actions})
+				if err != nil {
+					return nil, fmt.Errorf("monster %q weapon presentation: %w: %v", name, ErrInvalidSession, err)
+				}
+				if presented.WeaponID != "" {
+					out[id] = &encounter.HeldEquipment{MainHand: string(presented.WeaponID)}
+				}
+			}
 			continue
 		case encounter.KindPlayer:
 		default:
@@ -153,5 +174,5 @@ func (s equipmentSeam) Equipment(
 // who is down, and what is in their hands. They only share where the sheets are
 // and which verb is asking.
 func equipmentBeside(s standingSeam) equipmentSeam {
-	return equipmentSeam{ctx: s.ctx, chars: s.chars, kinds: s.kinds}
+	return equipmentSeam(s)
 }
