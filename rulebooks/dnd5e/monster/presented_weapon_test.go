@@ -31,6 +31,7 @@ func (s *PresentedWeaponSuite) TestAuthoredOrderSelectsOnlyTheTopWeapon() {
 		{weapons.Scimitar},
 		{weapons.Shortbow},
 		{weapons.Shortsword},
+		{weapons.UnarmedStrike},
 		{weapons.Scimitar, weapons.Shortbow},
 		{weapons.Shortbow, weapons.Scimitar},
 	} {
@@ -58,6 +59,18 @@ func (s *PresentedWeaponSuite) TestDefaultStatBlockUsesItsExistingTopWeapon() {
 		s.Equal(weapons.WeaponID(actions[0].Ref.ID), out.WeaponID)
 		s.Equal(actions, m.Actions())
 	}
+}
+
+func (s *PresentedWeaponSuite) TestMultiattackAtTopDoesNotBorrowItsComponentWeapon() {
+	m := monsters.NewGoblinBoss("boss")
+	actions := m.Actions()
+	s.Require().NotNil(actions[0].Sequence, "real boss factory puts Multiattack first")
+	s.Require().Greater(len(actions), 1)
+	out, err := monster.PresentedWeapon(&monster.PresentedWeaponInput{Actions: actions})
+	s.Require().NoError(err)
+	s.Require().NotNil(out)
+	s.Empty(out.WeaponID, "literal top-action contract does not interpret sequence components")
+	s.Equal(actions, m.Actions())
 }
 
 func (s *PresentedWeaponSuite) TestStoredOrderSurvivesRoundTripAndFreshLoad() {

@@ -6,6 +6,7 @@ package monster
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
@@ -45,7 +46,7 @@ func PresentedWeapon(in *PresentedWeaponInput) (*PresentedWeaponOutput, error) {
 	if err := ref.IsValid(); err != nil {
 		return nil, rpgerr.Wrap(err, "invalid top monster action identity")
 	}
-	if ref.Module != "dnd5e" || ref.Type != "weapons" {
+	if ref.Module != refs.Module || ref.Type != refs.TypeWeapons {
 		return out, nil
 	}
 	weapon, err := weapons.GetByID(weapons.WeaponID(ref.ID))
