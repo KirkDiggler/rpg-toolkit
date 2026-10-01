@@ -797,14 +797,16 @@ type Seen struct {
 	// which is what illusion and enchantment need (rpg-toolkit#1615).
 	//
 	// NIL IS NOT EMPTY HANDS. Nil means the hands were not observed: nothing
-	// with a sheet behind it (a skeleton has no hands to report on), or
-	// testimony older than this field. Observed-empty arrives as a present
+	// with a sheet/presentation weapon behind it, or testimony older than this
+	// field. Observed-empty arrives as a present
 	// value whose strings are empty.
 	Equipment *SeenEquipment `json:"equipment,omitempty"`
 }
 
 // SeenEquipment is what a subject was observed holding, as one observer saw
-// it. Mirrors encounter.HeldEquipment across this seam.
+// it. Mirrors encounter.HeldEquipment across this seam. For monsters, MainHand
+// carries the rulebook's temporary first-weapon presentation answer, not tracked
+// equipped state or permission to switch; OffHand carries no monster visual.
 //
 // The strings are BARE ITEM IDS — "longsword", "shield" — exactly as the
 // rulebook holds them. The full ref a client keys a model off lives in the

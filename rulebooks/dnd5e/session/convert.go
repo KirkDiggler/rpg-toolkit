@@ -614,5 +614,8 @@ func projectReportSeen(payload []byte) *Seen {
 	if !ok || testimony.State != encounter.LocationKnown {
 		return nil
 	}
-	return &Seen{Position: testimony.Position, Standing: projectStanding(testimony.Down)}
+	return &Seen{
+		Position: testimony.Position, Standing: projectStanding(testimony.Down),
+		Equipment: projectSeenEquipment(testimony.Equipment),
+	}
 }
