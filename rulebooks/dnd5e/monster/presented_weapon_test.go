@@ -61,7 +61,7 @@ func (s *PresentedWeaponSuite) TestDefaultStatBlockUsesItsExistingTopWeapon() {
 	}
 }
 
-func (s *PresentedWeaponSuite) TestMultiattackAtTopDoesNotBorrowItsComponentWeapon() {
+func (s *PresentedWeaponSuite) TestMultiattackAtTopIsSkippedForTheFirstWeaponEntry() {
 	m := monsters.NewGoblinBoss("boss")
 	actions := m.Actions()
 	s.Require().NotNil(actions[0].Sequence, "real boss factory puts Multiattack first")
@@ -69,7 +69,7 @@ func (s *PresentedWeaponSuite) TestMultiattackAtTopDoesNotBorrowItsComponentWeap
 	out, err := monster.PresentedWeapon(&monster.PresentedWeaponInput{Actions: actions})
 	s.Require().NoError(err)
 	s.Require().NotNil(out)
-	s.Empty(out.WeaponID, "literal top-action contract does not interpret sequence components")
+	s.Equal(weapons.Scimitar, out.WeaponID, "skip Multiattack, then select the first weapon definition")
 	s.Equal(actions, m.Actions())
 }
 
@@ -87,7 +87,7 @@ func (s *PresentedWeaponSuite) TestStoredOrderSurvivesRoundTripAndFreshLoad() {
 	s.Equal(weapons.Shortbow, out.WeaponID)
 }
 
-func (s *PresentedWeaponSuite) TestNaturalTopActionDoesNotBorrowALaterWeapon() {
+func (s *PresentedWeaponSuite) TestNonWeaponPrefixIsSkippedWithoutReorderingWeapons() {
 	actions := []combatActions.Definition{
 		{Ref: core.Ref{Module: "dnd5e", Type: "monster_actions", ID: "bite"}},
 		{Ref: core.Ref{Module: "dnd5e", Type: "weapons", ID: "shortbow"}},
@@ -95,7 +95,7 @@ func (s *PresentedWeaponSuite) TestNaturalTopActionDoesNotBorrowALaterWeapon() {
 	out, err := monster.PresentedWeapon(&monster.PresentedWeaponInput{Actions: actions})
 	s.Require().NoError(err)
 	s.Require().NotNil(out)
-	s.Empty(out.WeaponID, "only the top action is the presentation authority")
+	s.Equal(weapons.Shortbow, out.WeaponID, "the first weapon entry is the presentation authority")
 }
 
 func (s *PresentedWeaponSuite) TestNamespaceCollisionsDoNotInventWeapons() {
@@ -110,6 +110,41 @@ func (s *PresentedWeaponSuite) TestNamespaceCollisionsDoNotInventWeapons() {
 		s.Require().NotNil(out)
 		s.Empty(out.WeaponID)
 	}
+}
+
+func (s *PresentedWeaponSuite) TestNaturalOnlyListDoesNotInventAWeapon() {
+	out, err := monster.PresentedWeapon(&monster.PresentedWeaponInput{
+		Actions: []combatActions.Definition{
+			{Ref: core.Ref{Module: "dnd5e", Type: "monster_actions", ID: "bite"}},
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(out)
+	s.Empty(out.WeaponID)
+}
+
+func (s *PresentedWeaponSuite) TestUnknownFirstWeaponDoesNotFallThroughToKnownWeapon() {
+	out, err := monster.PresentedWeapon(&monster.PresentedWeaponInput{
+		Actions: []combatActions.Definition{
+			{Ref: core.Ref{Module: "dnd5e", Type: "monster_actions", ID: "multiattack"}},
+			{Ref: core.Ref{Module: "dnd5e", Type: "weapons", ID: "trebuchet"}},
+			{Ref: core.Ref{Module: "dnd5e", Type: "weapons", ID: "scimitar"}},
+		},
+	})
+	s.Require().Error(err)
+	s.Nil(out)
+}
+
+func (s *PresentedWeaponSuite) TestEntriesAfterFirstWeaponAreNotConsulted() {
+	out, err := monster.PresentedWeapon(&monster.PresentedWeaponInput{
+		Actions: []combatActions.Definition{
+			{Ref: core.Ref{Module: "dnd5e", Type: "weapons", ID: "shortbow"}},
+			{},
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(out)
+	s.Equal(weapons.Shortbow, out.WeaponID)
 }
 
 func (s *PresentedWeaponSuite) TestAbsentListIsUnknownNotObservedEmptyHands() {
