@@ -450,6 +450,19 @@ func (f *field) exitAt(cell spatial.Position) ExitID {
 	return ""
 }
 
+// HeldProps returns the member's own carried prop IDs, sorted. This is the
+// owner's carriage, not an observation of what somebody else is holding.
+// Returns ErrNilInput or ErrNotMember for an invalid observer.
+func (e *Encounter) HeldProps(in *ViewInput) ([]PropID, error) {
+	if in == nil {
+		return nil, fmt.Errorf("held props: %w", ErrNilInput)
+	}
+	if _, ok := e.members[in.Member]; !ok {
+		return nil, fmt.Errorf("held props: %w", ErrNotMember)
+	}
+	return e.heldPropsOf(in.Member), nil
+}
+
 // heldPropsOf is the prop ids a member is carrying, sorted — the half of
 // their holdings that is a PHYSICAL thing, and therefore the half a
 // departure can leave on the floor.
