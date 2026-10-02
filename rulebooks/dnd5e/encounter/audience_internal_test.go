@@ -153,7 +153,6 @@ var wantClass = map[string]beatClass{
 	"down":              subjectBeat,
 	"moved":             subjectBeat,
 	"joined":            subjectBeat,
-	"door":              subjectBeat, // the early adopter — see doorverbs.go's setDoorState
 	"bubble-formed":     bubbleBeat,
 	"turn-ended":        bubbleBeat,
 	"transferred":       bubbleBeat,
@@ -181,6 +180,8 @@ var wantClass = map[string]beatClass{
 // appear in exactly one of these two tables — the loop at the bottom of
 // TestCallSiteClassification is what enforces that.
 var recipientScoped = map[string]bool{
+	"room_revealed":        true,
+	"door":                 true, // actual witnesses, not everybody who remembers the door
 	"sighted":              true,
 	"concealment_revealed": true,
 }

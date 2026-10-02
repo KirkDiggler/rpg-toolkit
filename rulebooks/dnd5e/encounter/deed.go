@@ -165,7 +165,7 @@ func (e *Encounter) landDeedAt(
 	verb string, actor, target MemberID, where spatial.Position, witnesses []core.EntityID, at uint64,
 ) error {
 	if err := stage.Land(&stage.LandInput{
-		Store:     e.intelLog,
+		Store:     memberReportStore{e},
 		Deed:      deed.Deed{Verb: verb, Actor: actor, Target: target, Where: where.String()},
 		Witnesses: witnesses,
 		At:        at,

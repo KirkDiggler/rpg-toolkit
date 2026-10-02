@@ -182,7 +182,8 @@ func TestTheScaleProjectionHasSomethingToMask(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, full.Regions, 11, "the whole dungeon")
-	require.Len(t, scoped.Regions, 10, "and one room the watcher cannot see")
+	require.Len(t, scoped.Regions, 1, "ordinary undiscovered rooms are withheld too")
+	require.Equal(t, "room-0", scoped.Regions[0].ID)
 	require.Less(t, len(scoped.Cells), len(full.Cells), "its floor is withheld with it")
 	require.NotEmpty(t, scoped.Boundaries,
 		"and the masquerade stands walls where the secret borders visible space")

@@ -70,15 +70,15 @@ import (
 // door's doorways name one cell of hidden floor per entrance — knowing
 // where a door is includes knowing it leads somewhere.
 
-// AtlasFor returns the field snapshot as one member knows it: the same
-// deterministic, construction-time answer [Encounter.Atlas] gives, with the
-// concealed structure this member has not had revealed withheld under the
-// absence law above. For a field with no concealment it IS Atlas —
-// byte-identical, no world machinery consulted, because none was built.
+// AtlasFor returns the field as one member has discovered it. An ordinary
+// region is learned on first observation of any of its floor, or by opening
+// a door into it. Its whole fixed layout remains known after loss of sight.
+// Concealment separately withholds its undiscovered structure; an explicit
+// concealment reveal retains the floor it teaches even without room sight.
+// Start and exits are supplied only on discovered floor.
 //
-// Door STATE is [Encounter.DoorsFor]'s business, exactly as it is for the
-// unscoped pair; a member's knowledge changes which doors are listed, never
-// what a snapshot promises.
+// Movable props are not fixed layout: their current/remembered placements are
+// [Encounter.PropSightings]. Door state is [Encounter.DoorSightings].
 //
 // Returns ErrNotMember for an ID this encounter does not hold — a
 // member-scoped answer for nobody is a question with no honest answer.
@@ -104,32 +104,27 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	if err != nil {
 		return Atlas{}, err
 	}
-	if !e.world.conceals() {
-		return full, nil
-	}
-
-	hidden := e.hiddenFrom(member)
+	hidden := e.undiscoveredFrom(member)
 	hiddenCells, unknownDoors := hidden.cells, hidden.doors
 
 	out := Atlas{
 		Orientation: full.Orientation,
-		// Carried through UNFILTERED: a way out is structure on the truth
-		// grain, the same for every member (rpg-project#368). Every other
-		// list below is rebuilt because concealment withholds part of it;
-		// this one has nothing to withhold.
-		Exits: full.Exits,
-		// The way in, carried through unfiltered for Exits' own reason: it
-		// is structure, the same for every member. The pointer is the
-		// snapshot's own — Atlas built it fresh — so sharing it here hands
-		// nobody a route back into the field.
-		Start:      full.Start,
-		Cells:      make([]spatial.Position, 0, len(full.Cells)),
-		Regions:    make([]AtlasRegion, 0, len(full.Regions)),
-		Props:      make([]AtlasProp, 0, len(full.Props)),
-		Placed:     make([]AtlasPlacedProp, 0, len(full.Placed)),
-		Boundaries: make([]AtlasBoundary, 0, len(full.Boundaries)),
-		Doorways:   make([]AtlasDoorway, 0, len(full.Doorways)),
-		Segments:   make([]AtlasSegment, 0, len(full.Segments)),
+		Cells:       make([]spatial.Position, 0, len(full.Cells)),
+		Regions:     make([]AtlasRegion, 0, len(full.Regions)),
+		Props:       make([]AtlasProp, 0, len(full.Props)),
+		Placed:      make([]AtlasPlacedProp, 0, len(full.Placed)),
+		Boundaries:  make([]AtlasBoundary, 0, len(full.Boundaries)),
+		Doorways:    make([]AtlasDoorway, 0, len(full.Doorways)),
+		Segments:    make([]AtlasSegment, 0, len(full.Segments)),
+	}
+
+	for _, exit := range full.Exits {
+		if !hiddenCells[exit.At] {
+			out.Exits = append(out.Exits, exit)
+		}
+	}
+	if full.Start != nil && !hiddenCells[full.Start.At] {
+		out.Start = full.Start
 	}
 
 	// C18: a wall wholly inside hidden space is withheld with the room, and
@@ -183,7 +178,7 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 		out.Regions = append(out.Regions, entry)
 	}
 	for _, p := range full.Props {
-		if !hiddenCells[p.At] && !hidden.props[p.ID] {
+		if !p.Holdable && !hiddenCells[p.At] && !hidden.props[p.ID] {
 			out.Props = append(out.Props, p)
 		}
 	}
@@ -193,7 +188,7 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	// cell it stands on is hidden, because a rectangle presented over a hole
 	// in the floor marks the hole.
 	for _, p := range full.Placed {
-		if hidden.props[p.ID] || hidden.doors[p.ID] || e.placedTouchesHidden(p, hiddenCells) {
+		if p.Holdable || hidden.props[p.ID] || hidden.doors[p.ID] || e.placedTouchesHidden(p, hiddenCells) {
 			continue
 		}
 		out.Placed = append(out.Placed, p)
@@ -256,7 +251,10 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	for _, b := range full.Boundaries {
 		authoredEdge[normalizeDoorEdge(DoorEdge{From: b.From, To: b.To})] = true
 	}
-	for hidden := range hiddenCells {
+	// Only concealed space masquerades as wall. Ordinary unexplored floor is
+	// withheld, not turned into a fictional obstacle.
+	concealed := e.hiddenFrom(member).cells
+	for hidden := range concealed {
 		for _, neighbor := range adjacencyGrid.GetNeighbors(hidden) {
 			if hiddenCells[neighbor] {
 				continue
@@ -293,29 +291,16 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	return out, nil
 }
 
-// DoorsFor reports every door AS ONE MEMBER KNOWS IT, in the same stable ID
-// order [Encounter.Doors] uses: a hidden door the member has not had
-// revealed is absent, and everything else — every door no concealment holds
-// included — is exactly what Doors reports. For a field that hides nothing
-// it IS Doors.
-//
-// Returns ErrNotMember for an ID this encounter does not hold.
+// DoorsFor preserves the older read shape using stored observations, never
+// unseen live state. Prefer DoorSightings to distinguish current from memory.
 func (e *Encounter) DoorsFor(member MemberID) ([]Door, error) {
-	if _, ok := e.members[member]; !ok {
-		return nil, fmt.Errorf("doors for %q: %w", member, ErrNotMember)
+	sightings, err := e.DoorSightings(&ViewInput{Member: member})
+	if err != nil {
+		return nil, err
 	}
-
-	all := e.Doors()
-	if !e.world.conceals() {
-		return all, nil
-	}
-
-	unknown := e.hiddenFrom(member).doors
-	out := make([]Door, 0, len(all))
-	for _, d := range all {
-		if !unknown[d.ID] {
-			out = append(out, d)
-		}
+	out := make([]Door, 0, len(sightings))
+	for _, sighting := range sightings {
+		out = append(out, sighting.Door)
 	}
 	return out, nil
 }
@@ -424,8 +409,8 @@ func (e *Encounter) masqueradeBlocks(member MemberID, from, to spatial.Position)
 // and the map would mark the secret it was hiding. Fail closed, and the
 // forgetful caller loses a rectangle instead of giving one away.
 //
-// AFTER the no-concealment short-circuit above, deliberately: a field that
-// hides nothing withholds nothing, whatever a placement says about itself.
+// Ordinary undiscovered rooms also contribute to hiddenCells; absence of
+// concealment does not mean the observer has explored the whole field.
 func (e *Encounter) placedTouchesHidden(p AtlasPlacedProp, hiddenCells map[spatial.Position]bool) bool {
 	if len(hiddenCells) == 0 {
 		return false

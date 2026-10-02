@@ -17,8 +17,8 @@
 // inferred here; party defeat takes precedence.
 //
 // LOCATION KNOWLEDGE IS ENCOUNTER-OWNED. mind/perception holds channel-
-// sourced testimony opaquely; this composition gives sight payloads their
-// strict Known(position) or Unknown meaning. New payloads are tagged, legacy
+// sourced testimony opaquely; this composition gives creature sight payloads
+// their strict Known(position) or Unknown meaning. New payloads are tagged, legacy
 // untagged coordinates remain readable as known, and malformed or current-
 // unknown sight testimony is refused on load. Other channels' payloads
 // remain uninterpreted.
@@ -97,6 +97,27 @@
 // unit, rolls its `time` table, and spends one. A creature that walks into an
 // opposed member's sight forms or joins a fight by the ordinary path.
 //
+// # Individual room discovery
+//
+// Ordinary regions are not automatically known. The existing sight pass
+// teaches a region's fixed layout on first observation of any of its floor;
+// opening an edge door also teaches its opener the adjoining rooms. Discovery
+// is recorded per member in the world journal, independently of creature
+// testimony. AtlasFor withholds undiscovered room geometry, starts and exits.
+// Learning persists across loss of sight and load without rerunning perception.
+// Concealment discovery remains an independent source of learned geometry.
+// Initial room knowledge comes from the snapshot; later discovery appends
+// recipient-scoped RoomRevealed beats containing fixed data, not live contents.
+//
+// Holdable props and door states join the creature pass in the same perception
+// store. Subjects are qualified by kind, so equal member/prop/door names cannot
+// overwrite testimony. Public creature reads retain member IDs; PropSightings
+// and DoorSightings expose their respective observations with current currency.
+// Loss of sight preserves memory. A prop's remembered placement is disproved
+// only when all of its former spatial support is observed empty; omission alone
+// never supplies a carrier or destination. Pickups and door changes notify
+// actual witnesses, not everybody who remembers the subject.
+//
 // # Concealment: the run composes its world (rpg-toolkit#1371, rpg-project#490)
 //
 // A field may declare CONCEALMENTS — one noun per secret, each with an id,
@@ -144,7 +165,7 @@
 //     byte-identical to a wall.
 //   - Reveals reach members as ONE recipient-scoped beat
 //     ([BeatConcealmentRevealed] — the wire's CONCEALMENT_REVEALED), and a
-//     hidden door's own state beats go to its knowers alone. The beat is a
+//     hidden door's own state beats go to its actual witnesses. The beat is a
 //     PATCH for the recipient's cached atlas, so it carries the secret's own
 //     slice AND the walls they did not have a moment ago — the segments
 //     newly presented to them, and the cells nobody stands on
@@ -162,8 +183,8 @@
 //     strangers again, while every member who ever perceived it keeps a
 //     visible shut door, and a mapped room stays mapped, forever.
 //
-// A field that hides nothing requires neither capability and sweeps
-// nothing, which keeps every plain dungeon's blob exactly as it was.
+// A field that hides nothing requires neither concealment capability. Its
+// ordinary room discovery still uses the same persisted knowledge journal.
 //
 // # Sides: the run composes ONE world (rpg-project#375)
 //

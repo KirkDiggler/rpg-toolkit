@@ -123,7 +123,7 @@ func newDrivenArrivalEncounter(
 		rememberedSubjects = []encounter.MemberID{billy}
 	}
 	for _, observer := range []encounter.MemberID{goblin, "ogre"} {
-		holdings, present := data.Perception.Intel.Holdings[observer]
+		holdings, present := data.Perception.Intel.Holdings[perception.Qualify("member", observer)]
 		if !present {
 			continue
 		}
@@ -134,7 +134,7 @@ func newDrivenArrivalEncounter(
 			// here at all.
 			var seeded bool
 			for key, holding := range holdings {
-				if string(key) != string(subject) {
+				if string(key) != string(perception.Qualify("member", subject)) {
 					continue
 				}
 				holding.Payload = known
@@ -670,9 +670,9 @@ func editGoblinHolding(
 	t *testing.T, data encounter.EncounterData, subject encounter.MemberID, payload []byte,
 ) {
 	t.Helper()
-	holdings := data.Perception.Intel.Holdings[goblin]
+	holdings := data.Perception.Intel.Holdings[perception.Qualify("member", goblin)]
 	for key, holding := range holdings {
-		if string(key) != string(subject) {
+		if string(key) != string(perception.Qualify("member", subject)) {
 			continue
 		}
 		holding.Payload = payload

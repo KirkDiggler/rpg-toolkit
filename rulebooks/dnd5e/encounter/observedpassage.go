@@ -51,7 +51,7 @@ func (e *Encounter) refreshChangedStanding(state *participationState) (map[Membe
 	}
 	changed := map[MemberID]bool{}
 	for _, observer := range e.rosterIDs() {
-		held, err := e.intelLog.Held(observer)
+		held, err := e.memberIntel(observer)
 		if err != nil {
 			return nil, err
 		}

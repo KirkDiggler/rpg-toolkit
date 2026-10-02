@@ -42,7 +42,7 @@ func (e *Encounter) AdmitWalk(in *AdmitWalkInput) (*AdmitWalkOutput, error) {
 	if bubble != nil || len(e.bubbles) == 0 {
 		return out, nil
 	}
-	holdings, err := e.intelLog.Held(in.Member)
+	holdings, err := e.memberIntel(in.Member)
 	if err != nil {
 		return nil, fmt.Errorf("admit walk sight: %w", err)
 	}

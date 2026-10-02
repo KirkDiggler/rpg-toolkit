@@ -208,11 +208,12 @@ func (s *HoldOutSuite) TestTheLetterArrivesAtRoundSixAndNotBefore() {
 		s.Require().True(end.RoundWrapped)
 
 		s.Contains(s.propIDs(enc), campLetter)
-		atlas, err := enc.AtlasFor(partner)
+		sightings, err := enc.PropSightings(&encounter.ViewInput{Member: partner})
 		s.Require().NoError(err)
 		found := false
-		for _, p := range atlas.Props {
-			if p.ID == campLetter {
+		for _, sighting := range sightings {
+			p := sighting.Prop
+			if p != nil && p.ID == campLetter {
 				found = true
 				s.Equal(cellAt(1, 3), p.At, "where the author drew it")
 				s.True(p.Holdable)

@@ -377,9 +377,16 @@ func (e *Encounter) revealConcealmentTo(member MemberID, c *concealment, cause s
 	if err := e.world.learnConcealment(member, c.id, cause); err != nil {
 		return fmt.Errorf("learn concealment %q: %w", c.id, err)
 	}
+	// Learning layout does not itself teach live contents. Refresh the learner's
+	// actual sight after the concealment lifts, so any state included in the
+	// reveal is testimony they can really observe.
+	deltas, err := e.rebuildPercepts([]MemberID{member})
+	if err != nil {
+		return err
+	}
 	if _, err := e.appendConcealmentRevealedBeat(member, c, before, at); err != nil {
 		return err
 	}
 
-	return nil
+	return e.appendSightedBeats(deltas, nil, at)
 }

@@ -179,14 +179,11 @@ func (s *HoldingsSuite) TestHoldRemovesThePropForEveryoneAndTheHolderHasIt() {
 		s.Require().False(present, "and it is gone from the truth-grain atlas too")
 	})
 
-	s.Run("the held beat reaches everyone present", func() {
-		for _, member := range []core.EntityID{raider, partner} {
-			held := s.beatsOfKind(enc, member, "held")
-			s.Require().Len(held, 1, "%s did not hear it", member)
-			s.Require().Equal(map[string]any{
-				"beat": "held", "holder": string(raider), "prop": chalice,
-			}, held[0])
-		}
+	s.Run("only the actor and actual witnesses hear the pickup", func() {
+		held := s.beatsOfKind(enc, raider, "held")
+		s.Require().Len(held, 1)
+		s.Equal(map[string]any{"beat": "held", "holder": string(raider), "prop": chalice}, held[0])
+		s.Empty(s.beatsOfKind(enc, partner, "held"), "the partner cannot see this pickup")
 	})
 
 	s.Run("but nothing names the chalice, so leaving drops it", func() {
@@ -762,13 +759,18 @@ func (s *HoldingsSuite) TestTheAtlasSaysWhatCanBePickedUp() {
 			atlas, err := enc.AtlasFor(member)
 			s.Require().NoError(err)
 
-			heirloomProp, ok := propInAtlas(atlas, heirloom)
+			_, hasHeirloom := propInAtlas(atlas, heirloom)
+			_, hasChalice := propInAtlas(atlas, chalice)
+			s.False(hasHeirloom, "movable things are observations, not fixed room layout")
+			s.False(hasChalice)
+			world, err := enc.Atlas()
+			s.Require().NoError(err)
+			heirloomProp, ok := propInAtlas(world, heirloom)
 			s.Require().True(ok)
-			s.Require().True(heirloomProp.Holdable)
-
-			chaliceProp, ok := propInAtlas(atlas, chalice)
+			s.True(heirloomProp.Holdable)
+			chaliceProp, ok := propInAtlas(world, chalice)
 			s.Require().True(ok)
-			s.Require().True(chaliceProp.Holdable)
+			s.True(chaliceProp.Holdable)
 
 			pillarProp, ok := propInAtlas(atlas, pillar)
 			s.Require().True(ok)
@@ -1186,10 +1188,10 @@ func (s *HoldingsSuite) TestAScrollTeachesWhoeverHoldsIt() {
 		}
 		s.Require().ElementsMatch([]any{vaultSecret, gateSecret}, learned)
 
-		doors, derr := enc.DoorsFor(raider)
+		atlas, derr := enc.AtlasFor(raider)
 		s.Require().NoError(derr)
-		s.Require().True(doorsListed(doors, tombVault))
-		s.Require().True(doorsListed(doors, hallGate))
+		s.True(hasDoorway(atlas, tombVault), "the scroll teaches layout, not unseen door state")
+		s.True(hasDoorway(atlas, hallGate))
 	})
 
 	s.Run("the bystander sees a thing picked up and learns nothing", func() {
@@ -1215,13 +1217,8 @@ func (s *HoldingsSuite) TestAScrollTeachesWhoeverHoldsIt() {
 		s.Require().Greater(revealedAt, heldAt, "the verb's beat precedes its consequences")
 	})
 
-	s.Run("the bystander's atlas moved by the scroll and by NOTHING else", func() {
-		// It does move: the scroll left the floor, and where a thing
-		// physically is folds on the truth grain for everybody. What must
-		// not move is anything about the secret it carried — asserted as a
-		// bound rather than as inequality, because "these differ" would pass
-		// for the vault leaking too.
-		s.Require().NotEqual(before, s.atlasBytes(enc, partner))
+	s.Run("the bystander's fixed atlas is unchanged by a pickup", func() {
+		s.Require().Equal(before, s.atlasBytes(enc, partner))
 
 		blind, err := enc.AtlasFor(partner)
 		s.Require().NoError(err)
@@ -1265,9 +1262,9 @@ func (s *HoldingsSuite) TestTheScrollKeepsSayingWhatItSays() {
 	})
 
 	s.Run("and the first reader still knows it — nothing was taken away", func() {
-		doors, derr := enc.DoorsFor(raider)
+		atlas, derr := enc.AtlasFor(raider)
 		s.Require().NoError(derr)
-		s.Require().True(doorsListed(doors, tombVault))
+		s.True(hasDoorway(atlas, tombVault))
 		s.Require().Len(s.beatsOfKind(enc, raider, encounter.BeatConcealmentRevealed), 2,
 			"and they were not told a second time")
 	})

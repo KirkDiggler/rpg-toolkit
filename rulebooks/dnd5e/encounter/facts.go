@@ -39,7 +39,7 @@ func (e *Encounter) factsFor(id MemberID) (Facts, error) {
 	if !ok {
 		return Facts{}, fmt.Errorf("facts: %q: %w", id, ErrNotMember)
 	}
-	holdings, err := e.intelLog.Held(id)
+	holdings, err := e.memberIntel(id)
 	if err != nil {
 		return Facts{}, fmt.Errorf("facts: held by %q: %w", id, err)
 	}

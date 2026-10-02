@@ -321,7 +321,7 @@ func (e *Encounter) firstContactWithNewEnemies(
 		if faction == "" {
 			continue
 		}
-		holdings, err := e.intelLog.Held(id)
+		holdings, err := e.memberIntel(id)
 		if err != nil {
 			return nil, fmt.Errorf("stance formation: %q's view: %w", id, err)
 		}

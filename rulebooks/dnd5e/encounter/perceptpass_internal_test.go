@@ -58,7 +58,7 @@ func perceptPassEncounter(t *testing.T, at map[MemberID]spatial.Position) *Encou
 // heldBy reads one observer's holding on one subject straight off the store.
 func heldBy(t *testing.T, enc *Encounter, observer, subject MemberID) (SightTestimony, bool, bool) {
 	t.Helper()
-	holdings, err := enc.intelLog.Held(observer)
+	holdings, err := enc.memberIntel(observer)
 	require.NoError(t, err)
 	for _, h := range holdings {
 		if h.Subject != subject {
