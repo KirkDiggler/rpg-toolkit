@@ -37,6 +37,7 @@ func (s *RoomKnowledgeSuite) SetupTest() {
 				rectRegion("room", 3, 0, 4, 5),
 				rectRegion("beyond", 7, 0, 3, 5),
 			},
+			Scenery: []spatial.Position{{X: 5, Y: 5}},
 			Walls: append(append(seamWallExcept(2, 5, 1), seamWallExcept(6, 5, 1)...),
 				wall(0, 4, 0, 3), wall(0, 4, 1, 4)),
 			Doors: []encounter.DoorInput{
@@ -170,6 +171,10 @@ func (s *RoomKnowledgeSuite) TestRoomRevealIsRecipientScopedFixedData() {
 			s.Require().NoError(json.Unmarshal(beat["region"], &region))
 			s.Equal("room", region.ID)
 			s.Len(region.Cells, 20)
+			var scenery []spatial.Position
+			s.Require().NoError(json.Unmarshal(beat["scenery"], &scenery))
+			s.Contains(scenery, cellAt(5, 5), "unowned floor reaches the client with the room")
+			s.NotContains(region.Cells, cellAt(5, 5), "scenery does not become walkable owned floor")
 			s.NotContains(string(entry.Payload), `"state"`, "door state is not fixed room data")
 			s.NotContains(string(entry.Payload), "hidden-exit")
 		}
