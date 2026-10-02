@@ -54,8 +54,9 @@ var _ encounter.Striker = strikerSeam{}
 // TurnDriver-driven turns ever reaches this method, and only an unplayed
 // member — always KindMonster today — has a TurnDriver in the first place.
 func (s strikerSeam) Strike(
-	ctx context.Context, enc *encounter.Encounter, attacker, target encounter.MemberID, action core.Ref,
+	_ context.Context, enc *encounter.Encounter, attacker, target encounter.MemberID, action core.Ref,
 ) error {
+	ctx := s.scope.ctx
 	var attackerData *monster.Data
 	for i := range s.scope.data.NPCs {
 		if s.scope.data.NPCs[i].ID == string(attacker) {

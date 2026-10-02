@@ -55,9 +55,9 @@ var _ encounter.Announcer = announcerSeam{}
 // No cost. A boundary has no declaring actor and nothing to pay: time is what
 // caused it. resolution's nil Cost is a free action, which is what this is.
 func (a announcerSeam) Announce(
-	ctx context.Context, enc *encounter.Encounter, crossed []encounter.Boundary,
+	_ context.Context, enc *encounter.Encounter, crossed []encounter.Boundary,
 ) error {
-
+	ctx := a.scope.ctx
 	roster, err := enc.Members()
 	if err != nil {
 		return fmt.Errorf("announce: %w", translate(err))
