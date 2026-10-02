@@ -1021,11 +1021,11 @@ func (s *ConcealSuite) TestOpeningRevealsToThePerceiversThroughTheOneSeam() {
 	// beat carrying the whole secret — no door-state beat for a door he did
 	// not know a moment ago.
 	bob := eventsFor(s.stream.published, "bob")
-	s.Equal([]session.EventKind{session.EventConcealmentRevealed}, kinds(bob),
+	s.Equal([]session.EventKind{session.EventRoomRevealed, session.EventConcealmentRevealed, session.EventSighted}, kinds(bob),
 		"perceiving a hidden door standing open reveals the concealment it belongs to, once")
 	s.assertDense(bob, "bob")
 
-	revealed, ok := bob[0].Body.(session.ConcealmentRevealedBody)
+	revealed, ok := bob[1].Body.(session.ConcealmentRevealedBody)
 	s.Require().True(ok)
 	s.Equal(vaultSecret, revealed.Concealment)
 	s.Len(revealed.Cells, 36, "the patch carries the secret's whole floor — 6x6")
@@ -1095,11 +1095,12 @@ func (s *ConcealSuite) TestAJoinIntoHiddenSpaceStaysHidden() {
 	// numbered densely from 1, because nothing was ever delivered to him
 	// before.
 	david := eventsFor(s.stream.published, "david")
-	s.Require().Len(david, 2)
+	s.Require().Len(david, 4)
+	s.Equal([]session.EventKind{session.EventJoined, session.EventRoomRevealed, session.EventConcealmentRevealed, session.EventSighted}, recipientKinds(david, "david"))
 	s.Equal(session.EventJoined, david[0].Kind)
 	s.Equal(uint64(1), david[0].Seq, "the joiner's stream starts at 1 — their own numbering, not the record's")
-	s.Equal(session.EventConcealmentRevealed, david[1].Kind)
-	s.Equal(uint64(2), david[1].Seq)
+	s.Equal(session.EventConcealmentRevealed, david[2].Kind)
+	s.Equal(uint64(3), david[2].Seq)
 	s.Equal(uint64(1), out.Seq, "the verb's own Seq speaks the actor's numbering too")
 
 	// The hall members hear that DAVID JOINED — membership is a table-level
@@ -1121,11 +1122,11 @@ func (s *ConcealSuite) TestAJoinIntoHiddenSpaceStaysHidden() {
 	// door were two secrets and standing inside one told you nothing about
 	// the other. They are one noun now (rpg-project#490 R1): you cannot
 	// occupy a secret you do not know exists, and knowing it is knowing all
-	// of it. david's map holds the whole authored floor — the hall was never
-	// a secret — plus the vault he stands in, and the veil with it.
+	// of it. David knows the vault and its doorway; the ordinary hall still
+	// needs its own discovery rather than arriving merely because it is not secret.
 	occupant, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "david"})
 	s.Require().NoError(err)
-	s.Len(occupant.Cells, 72)
+	s.Len(occupant.Cells, 36, "the occupant has not discovered the ordinary hall")
 	s.Len(occupant.Doorways, 1, "one noun: standing in the vault is knowing the vault")
 
 	stranger, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "bob"})

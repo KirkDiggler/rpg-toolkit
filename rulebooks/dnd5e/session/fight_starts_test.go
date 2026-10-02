@@ -308,7 +308,7 @@ func (s *FightStartsTestSuite) TestADiceFailureAbortsTheFight() {
 	// half-happen with an unordered fight left behind it.
 	view, err := mgr.View(context.Background(), &session.ViewInput{Session: "sess", Member: "ogre"})
 	s.Require().NoError(err)
-	s.Empty(view, "the ogre never saw her: not one step was persisted")
+	s.Empty(view.Sightings, "the ogre never saw her: not one step was persisted")
 }
 
 // TestAWalkThatStartsNoFightRunsToTheEnd is the negative control.
@@ -351,7 +351,7 @@ func (s *FightStartsTestSuite) TestAWalkThatStartsNoFightRunsToTheEnd() {
 	for _, who := range []string{"alice", "ogre"} {
 		seen, verr := s.mgr.View(context.Background(), &session.ViewInput{Session: "sess", Member: who})
 		s.Require().NoError(verr)
-		s.Empty(seen, "%s holds nothing", who)
+		s.Empty(seen.Sightings, "%s holds nothing", who)
 	}
 }
 
@@ -415,7 +415,7 @@ func (s *FightStartsTestSuite) TestSightIsSymmetric() {
 		// Subjects rather than counts. Equal lengths would still pass if the
 		// two were seeing DIFFERENT things, and a symmetry claim that cannot
 		// tell those apart is not a symmetry claim.
-		aliceHoldsOgre, ogreHoldsAlice := holds(aliceSees, "ogre"), holds(ogreSees, "alice")
+		aliceHoldsOgre, ogreHoldsAlice := holds(aliceSees.Sightings, "ogre"), holds(ogreSees.Sightings, "alice")
 		s.Equal(aliceHoldsOgre, ogreHoldsAlice,
 			"at %v the wall must do the same thing to both of them", at)
 		if aliceHoldsOgre {
@@ -454,8 +454,8 @@ func (s *FightStartsTestSuite) TestAFightOnTheFinalCellIsStillReported() {
 
 	seen, err := s.mgr.View(context.Background(), &session.ViewInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
-	s.Require().Len(seen, 1, "she did see the ogre")
-	s.Equal("ogre", seen[0].Subject)
+	s.Require().Len(seen.Sightings, 1, "she did see the ogre")
+	s.Equal("ogre", seen.Sightings[0].Subject)
 }
 
 // TestTheFightsOrderIsAFunctionOfPersistedData pins C8 at this seam.

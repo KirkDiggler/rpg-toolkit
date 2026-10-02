@@ -41,6 +41,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
@@ -284,6 +285,30 @@ func (s *HoldingsSuite) atlasOf(member string) *session.Atlas {
 	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess", Member: member})
 	s.Require().NoError(err)
 	return atlas
+}
+
+// propsOf is the supplied renderable prop knowledge, not live world truth.
+func (s *HoldingsSuite) propsOf(member string) map[string]session.AtlasProp {
+	s.T().Helper()
+	return knownCellProps(s.T(), s.mgr, "sess", member)
+}
+
+func knownCellProps(t *testing.T, mgr *session.Manager, id, member string) map[string]session.AtlasProp {
+	t.Helper()
+	atlas, err := mgr.Atlas(context.Background(), &session.AtlasInput{Session: id, Member: member})
+	require.NoError(t, err)
+	view, err := mgr.View(context.Background(), &session.ViewInput{Session: id, Member: member})
+	require.NoError(t, err)
+	out := make(map[string]session.AtlasProp)
+	for _, prop := range atlas.Props {
+		out[prop.ID] = prop
+	}
+	for _, sighting := range view.Props {
+		if sighting.Prop != nil && !sighting.ObservedEmpty {
+			out[sighting.Prop.ID] = *sighting.Prop
+		}
+	}
+	return out
 }
 
 // propIDs names the props on a member's map, in the order the map lists them.

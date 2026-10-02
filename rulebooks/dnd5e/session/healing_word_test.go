@@ -282,9 +282,9 @@ func (s *CastSuite) TestHealingWordRevalidatesSightAndTargetsBeforePayment() {
 				// underneath. perception.Holding collapsed CurrentVia into a
 				// bool for READERS; the persistence shape kept the list.
 				for _, world := range s.encounters.byID {
-					holding := world.Perception.Intel.Holdings["cleric"]["skeleton"]
+					holding := world.Perception.Intel.Holdings["member|cleric"]["member|skeleton"]
 					holding.CurrentVia = nil
-					world.Perception.Intel.Holdings["cleric"]["skeleton"] = holding
+					world.Perception.Intel.Holdings["member|cleric"]["member|skeleton"] = holding
 				}
 			case "wall":
 				for _, world := range s.encounters.byID {

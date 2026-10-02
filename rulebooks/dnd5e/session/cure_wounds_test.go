@@ -322,7 +322,7 @@ func (s *CastSuite) TestCureWoundsFailureBoundaries() {
 				s.Require().NoError(err)
 				s.Require().NotNil(out)
 				s.True(out.Delivery.Failed)
-				story, err := s.mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "cleric", FromSeq: out.Seqs[0] - 1})
+				story, err := s.mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "cleric", FromSeq: out.Seqs[0]})
 				s.Require().NoError(err)
 				s.Len(story, 2)
 			}

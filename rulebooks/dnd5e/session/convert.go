@@ -127,16 +127,7 @@ func projectAtlas(in encounter.Atlas) Atlas {
 	}
 
 	for _, prop := range in.Props {
-		out.Props = append(out.Props, AtlasProp{
-			ID:                string(prop.ID),
-			Holdable:          prop.Holdable,
-			Ref:               prop.Ref,
-			At:                prop.At,
-			BlocksMovement:    prop.BlocksMovement,
-			BlocksLineOfSight: prop.BlocksLineOfSight,
-			Facing:            prop.Facing,
-			Offset:            prop.Offset,
-		})
+		out.Props = append(out.Props, projectAtlasProp(prop))
 	}
 
 	// EVERY FIELD, THE CELLS INCLUDED (rpg-api-protos#351). Where a rectangle
@@ -152,31 +143,7 @@ func projectAtlas(in encounter.Atlas) Atlas {
 	// type crosses the exported surface (S2) and no host holds a pointer into
 	// a snapshot.
 	for _, p := range in.Placed {
-		// A placement with no box cannot reach here: the composition refuses
-		// one at construction (ErrNoField), and a box is what makes a
-		// rectangle a rectangle. Read through a guard anyway, because the
-		// alternative is a nil dereference inside a host's read verb, and a
-		// zero-sided rectangle is a visibly wrong answer rather than a silent
-		// one.
-		var width, depth float64
-		if box := p.Placement.Footprint.Box; box != nil {
-			width, depth = box.W, box.D
-		}
-
-		out.Placed = append(out.Placed, AtlasPlacedProp{
-			ID: string(p.ID),
-			Placement: FootprintPlacement{
-				Width:       width,
-				Depth:       depth,
-				Origin:      FootprintPoint{X: p.Placement.Origin.X, Y: p.Placement.Origin.Y},
-				Facing:      p.Placement.Facing,
-				LocalOffset: FootprintPoint{X: p.Placement.LocalOffset.X, Y: p.Placement.LocalOffset.Y},
-			},
-			BlocksMovement:    p.BlocksMovement,
-			BlocksLineOfSight: p.BlocksLineOfSight,
-			Holdable:          p.Holdable,
-			Cells:             append([]spatial.Position(nil), p.Cells...),
-		})
+		out.Placed = append(out.Placed, projectAtlasPlaced(p))
 	}
 
 	for _, b := range in.Boundaries {
@@ -208,6 +175,22 @@ func projectAtlas(in encounter.Atlas) Atlas {
 	}
 
 	return out
+}
+
+func projectAtlasProp(prop encounter.AtlasProp) AtlasProp {
+	return AtlasProp{ID: string(prop.ID), Holdable: prop.Holdable, Ref: prop.Ref, At: prop.At,
+		BlocksMovement: prop.BlocksMovement, BlocksLineOfSight: prop.BlocksLineOfSight, Facing: prop.Facing, Offset: prop.Offset}
+}
+
+func projectAtlasPlaced(p encounter.AtlasPlacedProp) AtlasPlacedProp {
+	var width, depth float64
+	if box := p.Placement.Footprint.Box; box != nil {
+		width, depth = box.W, box.D
+	}
+	return AtlasPlacedProp{ID: string(p.ID), Placement: FootprintPlacement{
+		Width: width, Depth: depth, Origin: FootprintPoint{X: p.Placement.Origin.X, Y: p.Placement.Origin.Y},
+		Facing: p.Placement.Facing, LocalOffset: FootprintPoint{X: p.Placement.LocalOffset.X, Y: p.Placement.LocalOffset.Y},
+	}, BlocksMovement: p.BlocksMovement, BlocksLineOfSight: p.BlocksLineOfSight, Holdable: p.Holdable, Cells: append([]spatial.Position(nil), p.Cells...)}
 }
 
 // intelIDs converts the seam's plain record ids to the composition's own type.

@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
@@ -101,13 +102,13 @@ type rosterCharacterRow struct {
 	err  error
 }
 
-// Roster returns the current public player and monster identities in encounter
-// order. It reloads every player character from the repository, strictly loads
-// each character so corrupt appearance data is refused, and projects only
-// public identity and customization. KindWorld members are omitted.
+// Roster returns self and known creature identities in encounter order. Known
+// players' sheets are loaded strictly and only public customization is returned.
+// KindWorld members are omitted. Encounter testimony, not another visibility
+// algorithm, determines which identities the observer knows.
 //
-// The authenticated host principal in RosterInput.Player must match at least
-// one current player character's PlayerID; otherwise ErrNotSeated is returned.
+// RosterInput.Player must own the exact requested Member seat; owning some
+// other seat does not authorize this view. Otherwise ErrNotSeated is returned.
 // Other refusals include ErrNilInput, ErrNoSessionID, ErrNoMemberID,
 // ErrNoSession, ErrNoEncounter, ErrNoCharacter, ErrBadCharacter,
 // ErrBadRepository, ErrNoSheet, ErrBadNPC, or ErrInvalidWorld.
@@ -118,7 +119,7 @@ func (m *Manager) Roster(ctx context.Context, in *RosterInput) (*RosterOutput, e
 	if in.Session == "" {
 		return nil, fmt.Errorf("roster: %w", ErrNoSessionID)
 	}
-	if in.Player == "" {
+	if in.Player == "" || in.Member == "" {
 		return nil, fmt.Errorf("roster: %w", ErrNoMemberID)
 	}
 
@@ -130,6 +131,10 @@ func (m *Manager) Roster(ctx context.Context, in *RosterInput) (*RosterOutput, e
 	if err != nil {
 		return nil, fmt.Errorf("roster: %w", err)
 	}
+	return m.rosterFrom(ctx, enc, data, in)
+}
+
+func (m *Manager) rosterFrom(ctx context.Context, enc *encounter.Encounter, data *SessionData, in *RosterInput) (*RosterOutput, error) {
 	roster, err := enc.Members()
 	if err != nil {
 		return nil, fmt.Errorf("roster: %w", translate(err))
@@ -141,7 +146,7 @@ func (m *Manager) Roster(ctx context.Context, in *RosterInput) (*RosterOutput, e
 	characters := make(map[string]rosterCharacterRow)
 	seated := false
 	for _, member := range roster {
-		if member.Kind != encounter.KindPlayer {
+		if member.Kind != encounter.KindPlayer || string(member.ID) != in.Member {
 			continue
 		}
 		id := string(member.ID)
@@ -155,6 +160,17 @@ func (m *Manager) Roster(ctx context.Context, in *RosterInput) (*RosterOutput, e
 		return nil, fmt.Errorf("roster: %q: %w", in.Player, ErrNotSeated)
 	}
 
+	known := map[string]bool{in.Member: true}
+	holdings, err := enc.View(&encounter.ViewInput{Member: encounter.MemberID(in.Member)})
+	if err != nil {
+		return nil, translate(err)
+	}
+	for _, holding := range holdings {
+		if holding.Channel == perception.Sight {
+			known[string(holding.Subject)] = true
+		}
+	}
+
 	npcs, err := indexRosterNPCs(data.NPCs)
 	if err != nil {
 		return nil, fmt.Errorf("roster: %w", err)
@@ -163,9 +179,15 @@ func (m *Manager) Roster(ctx context.Context, in *RosterInput) (*RosterOutput, e
 	members := make([]PublicMember, 0, len(roster))
 	for _, member := range roster {
 		id := string(member.ID)
+		if !known[id] {
+			continue
+		}
 		switch member.Kind {
 		case encounter.KindPlayer:
-			row := characters[id]
+			row, cached := characters[id]
+			if !cached {
+				row.data, row.err = m.fetchCharacterData(ctx, "roster", id)
+			}
 			if row.err != nil {
 				return nil, fmt.Errorf("roster: %w", row.err)
 			}
@@ -201,8 +223,8 @@ func (m *Manager) Roster(ctx context.Context, in *RosterInput) (*RosterOutput, e
 // Knowledge truth rather than construction truth now: unchanged by movement,
 // joins, exits or endings, and PATCHED by the member's own reveal beats
 // (EventConcealmentRevealed) — the load-once, beat-refreshed
-// shape. For a world with no concealment nothing is ever withheld and the
-// answer is the whole map, exactly as before.
+// shape. Ordinary rooms need individual discovery too; an absence of
+// concealments is not permission to deliver the whole map.
 //
 // The unscoped read ([encounter.Encounter.Atlas]) remains the host's internal
 // whole truth and deliberately does not cross this seam for a member-shaped
@@ -366,11 +388,12 @@ func (m *Manager) Where(ctx context.Context, in *WhereInput) (*WhereOutput, erro
 	return &WhereOutput{Position: at}, nil
 }
 
-// View returns what one member currently perceives.
+// View returns one loaded observer view: creature sightings, prop/door
+// observations and sight areas. Remembered values are not live-world lookups.
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
 // ErrNoEncounter, or ErrNoMember if the member is not in this encounter.
-func (m *Manager) View(ctx context.Context, in *ViewInput) ([]Sighting, error) {
+func (m *Manager) View(ctx context.Context, in *ViewInput) (*ViewOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("view: %w", ErrNilInput)
 	}
@@ -385,7 +408,10 @@ func (m *Manager) View(ctx context.Context, in *ViewInput) ([]Sighting, error) {
 	if err != nil {
 		return nil, fmt.Errorf("view: %w", err)
 	}
+	return projectView(enc, in)
+}
 
+func projectView(enc *encounter.Encounter, in *ViewInput) (*ViewOutput, error) {
 	holdings, err := enc.View(&encounter.ViewInput{Member: encounter.MemberID(in.Member)})
 	if err != nil {
 		return nil, fmt.Errorf("view: %w", translate(err))
@@ -428,7 +454,11 @@ func (m *Manager) View(ctx context.Context, in *ViewInput) ([]Sighting, error) {
 			return nil, fmt.Errorf("view passage: invalid provider answer %d", passage)
 		}
 	}
-	return out, nil
+	props, doors, err := projectObjectSightings(enc, in.Member)
+	if err != nil {
+		return nil, err
+	}
+	return &ViewOutput{Sightings: out, Props: props, Doors: doors, Areas: projectAreas(enc, in.Member)}, nil
 }
 
 // Story returns the beats a member has witnessed, from FromSeq onward

@@ -173,12 +173,13 @@
 // recipient-scoped path — while everyone present hears EventLooted, naming
 // looter and body and nothing else.
 //
-// A HELD PROP IS GONE FOR EVERYBODY. Where a thing physically is folds on the
-// truth grain, unlike knowledge, so the composition drops it from the atlas
-// itself and both Atlas and AtlasOf inherit that by construction. What this
-// package adds beside it is carriage: Atlas.Exits, AtlasProp.ID and
-// AtlasProp.Holdable are facts a client needs and a field-for-field
-// projection would otherwise silently drop.
+// Player Atlas carries discovered fixed geometry; mutable prop and door
+// observations arrive through View with current/remembered currency. An unseen
+// pickup does not erase another observer's remembered placement. Knowledge
+// restores geometry, observations, own carriage, placement and known identities
+// from one loaded world with its recipient-local sequence cutoff. Room-revealed
+// events add fixed data; Sighted requests a fresh mutable view. Authoring's
+// AtlasOf remains an unscoped world read, never a gameplay fallback.
 //
 // EXIT SAYS WHAT IT DID NOT SAY BEFORE. ExitedBody carries what the member
 // walked out with and the authored exit they used, both empty for the

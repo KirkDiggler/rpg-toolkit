@@ -588,13 +588,17 @@ func (m *Manager) finishCast(
 	if len(targetResults) == 1 {
 		singleSave = targetResults[0].Save
 	}
+	seqs := make([]uint64, len(recorded.Seqs))
+	for i, seq := range recorded.Seqs {
+		seqs[i] = scope.deliveredSeq(member, seq)
+	}
 	return &CastOutput{
 		MissedTargets: missedTargets,
 		WardedTargets: wardedTargets,
 		Spell:         spell,
 		Saved:         castSaveReport(singleSave),
 		Caught:        caught,
-		Seqs:          recorded.Seqs,
+		Seqs:          seqs,
 		Paused:        paused,
 		Persisted:     report,
 		Delivery:      delivery,

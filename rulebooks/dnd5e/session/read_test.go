@@ -361,9 +361,9 @@ func (s *ReadTestSuite) TestViewCarriesNameAndStanding() {
 	s.Require().NoError(err)
 
 	var skeleton *session.Sighting
-	for i := range sightings {
-		if sightings[i].Subject == "skeleton" {
-			skeleton = &sightings[i]
+	for i := range sightings.Sightings {
+		if sightings.Sightings[i].Subject == "skeleton" {
+			skeleton = &sightings.Sightings[i]
 		}
 	}
 	s.Require().NotNil(skeleton, "alice must currently see the skeleton aFight spawned adjacent to her")
@@ -411,12 +411,12 @@ func (s *ReadTestSuite) TestViewCarriesKind() {
 	s.Require().NoError(err)
 
 	var ally, goblin *session.Sighting
-	for i := range sightings {
-		switch sightings[i].Subject {
+	for i := range sightings.Sightings {
+		switch sightings.Sightings[i].Subject {
 		case "ally":
-			ally = &sightings[i]
+			ally = &sightings.Sightings[i]
 		case "goblin":
-			goblin = &sightings[i]
+			goblin = &sightings.Sightings[i]
 		}
 	}
 	s.Require().NotNil(ally, "scout must see ally in the open hall")

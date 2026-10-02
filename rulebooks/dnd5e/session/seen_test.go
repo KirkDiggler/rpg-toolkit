@@ -109,7 +109,7 @@ func (s *SeenTestSuite) TestSeenIsPopulatedAfterCrossingTheDoorway() {
 	// assertion trivially true.
 	before, err := s.mgr.View(ctx, &session.ViewInput{Session: "sess", Member: "fighter"})
 	s.Require().NoError(err)
-	for _, sight := range before {
+	for _, sight := range before.Sightings {
 		s.NotEqual("skeleton-1", sight.Subject, "the wall must actually block sight before the walk")
 	}
 
@@ -135,12 +135,7 @@ func (s *SeenTestSuite) TestSeenIsPopulatedAfterCrossingTheDoorway() {
 	after, err := s.mgr.View(ctx, &session.ViewInput{Session: "sess", Member: "fighter"})
 	s.Require().NoError(err)
 
-	var skeleton *session.Sighting
-	for i := range after {
-		if after[i].Subject == "skeleton-1" {
-			skeleton = &after[i]
-		}
-	}
+	skeleton := findSighting(after, "skeleton-1")
 	s.Require().NotNil(skeleton, "the fighter must see the skeleton once through the doorway")
 	s.Require().NotNil(skeleton.Seen, "a sight-channel sighting must carry Seen")
 	s.Equal(where.Position, skeleton.Seen.Position,
@@ -175,12 +170,7 @@ func (s *SeenTestSuite) TestSeenEquipmentComesFromTheSnapshotNotTheSheet() {
 	after, err := s.mgr.View(ctx, &session.ViewInput{Session: "sess", Member: "fighter"})
 	s.Require().NoError(err)
 
-	var skeleton *session.Sighting
-	for i := range after {
-		if after[i].Subject == "skeleton-1" {
-			skeleton = &after[i]
-		}
-	}
+	skeleton := findSighting(after, "skeleton-1")
 	s.Require().NotNil(skeleton, "the fighter must see the skeleton once through the doorway")
 	s.Require().NotNil(skeleton.Seen, "a sight-channel sighting must carry Seen")
 
@@ -326,10 +316,10 @@ func groundedSkeletonScene(t *testing.T) (*fakeSessions, *fakeEncounters) {
 	return sessions, encounters
 }
 
-func findSighting(sightings []session.Sighting, subject string) *session.Sighting {
-	for i := range sightings {
-		if sightings[i].Subject == subject {
-			return &sightings[i]
+func findSighting(view *session.ViewOutput, subject string) *session.Sighting {
+	for i := range view.Sightings {
+		if view.Sightings[i].Subject == subject {
+			return &view.Sightings[i]
 		}
 	}
 	return nil

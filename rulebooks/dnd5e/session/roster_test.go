@@ -130,8 +130,8 @@ func TestRosterProjectsMixedRoster(t *testing.T) {
 	fixture := newRosterFixture(t)
 
 	out, err := fixture.manager.Roster(context.Background(), &session.RosterInput{
-		Session: "sess",
-		Player:  "player-alice",
+		Session: "sess", Member: "alice",
+		Player: "player-alice",
 	})
 	require.NoError(t, err)
 	require.Equal(t, []session.PublicMember{
@@ -175,7 +175,7 @@ func TestRosterIsReadOnlyAndPreservesEncounterOrder(t *testing.T) {
 	fixture := newRosterFixture(t)
 
 	_, err := fixture.manager.Roster(context.Background(), &session.RosterInput{
-		Session: "sess", Player: "player-alice",
+		Session: "sess", Player: "player-alice", Member: "alice",
 	})
 	require.NoError(t, err)
 	require.Zero(t, fixture.sessions.saves)
@@ -183,7 +183,7 @@ func TestRosterIsReadOnlyAndPreservesEncounterOrder(t *testing.T) {
 	require.Zero(t, fixture.characters.saves)
 
 	out, err := fixture.manager.Roster(context.Background(), &session.RosterInput{
-		Session: "sess", Player: "player-alice",
+		Session: "sess", Player: "player-alice", Member: "alice",
 	})
 	require.NoError(t, err)
 	require.Equal(t, []string{"alice", "bob", "skel-1"}, []string{
@@ -193,7 +193,7 @@ func TestRosterIsReadOnlyAndPreservesEncounterOrder(t *testing.T) {
 
 func TestRosterReloadsCurrentCharacterIdentityOnEveryCall(t *testing.T) {
 	fixture := newRosterFixture(t)
-	input := &session.RosterInput{Session: "sess", Player: "player-alice"}
+	input := &session.RosterInput{Session: "sess", Player: "player-alice", Member: "alice"}
 
 	first, err := fixture.manager.Roster(context.Background(), input)
 	require.NoError(t, err)
@@ -223,7 +223,7 @@ func TestRosterValidatesInputAndDependencies(t *testing.T) {
 		{
 			name: "empty session",
 			call: func(f *rosterFixture) error {
-				_, err := f.manager.Roster(ctx, &session.RosterInput{Player: "player-alice"})
+				_, err := f.manager.Roster(ctx, &session.RosterInput{Player: "player-alice", Member: "alice"})
 				return err
 			},
 			want: session.ErrNoSessionID,
@@ -239,7 +239,7 @@ func TestRosterValidatesInputAndDependencies(t *testing.T) {
 		{
 			name: "missing session",
 			call: func(f *rosterFixture) error {
-				_, err := f.manager.Roster(ctx, &session.RosterInput{Session: "missing", Player: "player-alice"})
+				_, err := f.manager.Roster(ctx, &session.RosterInput{Session: "missing", Player: "player-alice", Member: "alice"})
 				return err
 			},
 			want: session.ErrNoSession,
@@ -248,7 +248,7 @@ func TestRosterValidatesInputAndDependencies(t *testing.T) {
 			name: "missing encounter",
 			call: func(f *rosterFixture) error {
 				f.sessions.byID["orphan"] = &session.SessionData{ID: "orphan", Encounter: "missing"}
-				_, err := f.manager.Roster(ctx, &session.RosterInput{Session: "orphan", Player: "player-alice"})
+				_, err := f.manager.Roster(ctx, &session.RosterInput{Session: "orphan", Player: "player-alice", Member: "alice"})
 				return err
 			},
 			want: session.ErrNoEncounter,
@@ -267,7 +267,7 @@ func TestRosterRefusesAnUnauthenticatedPrincipal(t *testing.T) {
 	fixture := newRosterFixture(t)
 
 	out, err := fixture.manager.Roster(context.Background(), &session.RosterInput{
-		Session: "sess", Player: "player-nobody",
+		Session: "sess", Player: "player-nobody", Member: "alice",
 	})
 	require.ErrorIs(t, err, session.ErrNotSeated)
 	require.Nil(t, out)
@@ -316,13 +316,13 @@ func TestRosterOutsiderCannotObserveUnrelatedRosterIntegrity(t *testing.T) {
 			tc.edit(fixture)
 
 			out, err := fixture.manager.Roster(context.Background(), &session.RosterInput{
-				Session: "sess", Player: "player-outsider",
+				Session: "sess", Player: "player-outsider", Member: "alice",
 			})
 			require.ErrorIs(t, err, session.ErrNotSeated)
 			require.Nil(t, out)
 
 			out, err = fixture.manager.Roster(context.Background(), &session.RosterInput{
-				Session: "sess", Player: "player-alice",
+				Session: "sess", Player: "player-alice", Member: "alice",
 			})
 			require.ErrorIs(t, err, tc.want)
 			require.Nil(t, out)
@@ -334,7 +334,7 @@ func TestRosterReadsEachPlayerOncePerCall(t *testing.T) {
 	fixture := newRosterFixture(t)
 
 	_, err := fixture.manager.Roster(context.Background(), &session.RosterInput{
-		Session: "sess", Player: "player-alice",
+		Session: "sess", Player: "player-alice", Member: "alice",
 	})
 	require.NoError(t, err)
 	require.Equal(t, 1, fixture.characters.asked["alice"])
@@ -346,7 +346,7 @@ func TestRosterRefusesMissingCharacter(t *testing.T) {
 	delete(fixture.characters.byID, "bob")
 
 	out, err := fixture.manager.Roster(context.Background(), &session.RosterInput{
-		Session: "sess", Player: "player-alice",
+		Session: "sess", Player: "player-alice", Member: "alice",
 	})
 	require.ErrorIs(t, err, session.ErrNoCharacter)
 	require.Nil(t, out)
@@ -357,7 +357,7 @@ func TestRosterRefusesCorruptCharacter(t *testing.T) {
 	fixture.characters.byID["alice"].Appearance.Hair.ColorSRGB = rosterPtr(uint32(0x1000000))
 
 	out, err := fixture.manager.Roster(context.Background(), &session.RosterInput{
-		Session: "sess", Player: "player-alice",
+		Session: "sess", Player: "player-alice", Member: "alice",
 	})
 	require.ErrorIs(t, err, session.ErrBadCharacter)
 	require.Nil(t, out)
@@ -368,7 +368,7 @@ func TestRosterRefusesACharacterReturnedUnderTheWrongID(t *testing.T) {
 	fixture.characters.byID["bob"].ID = "not-bob"
 
 	out, err := fixture.manager.Roster(context.Background(), &session.RosterInput{
-		Session: "sess", Player: "player-alice",
+		Session: "sess", Player: "player-alice", Member: "alice",
 	})
 	require.ErrorIs(t, err, session.ErrBadRepository)
 	require.Nil(t, out)
@@ -385,7 +385,7 @@ func TestRosterRefusesANilCharacterRepositoryResult(t *testing.T) {
 	require.NoError(t, err)
 
 	out, err := manager.Roster(context.Background(), &session.RosterInput{
-		Session: "sess", Player: "player-alice",
+		Session: "sess", Player: "player-alice", Member: "alice",
 	})
 	require.ErrorIs(t, err, session.ErrNotSeated)
 	require.Nil(t, out)
@@ -406,7 +406,7 @@ func TestRosterRefusesMissingMonsterSheet(t *testing.T) {
 	fixture.sessions.byID["sess"].NPCs = nil
 
 	out, err := fixture.manager.Roster(context.Background(), &session.RosterInput{
-		Session: "sess", Player: "player-alice",
+		Session: "sess", Player: "player-alice", Member: "alice",
 	})
 	require.ErrorIs(t, err, session.ErrNoSheet)
 	require.Nil(t, out)
@@ -420,7 +420,7 @@ func TestRosterRefusesDuplicateMonsterSheet(t *testing.T) {
 	)
 
 	out, err := fixture.manager.Roster(context.Background(), &session.RosterInput{
-		Session: "sess", Player: "player-alice",
+		Session: "sess", Player: "player-alice", Member: "alice",
 	})
 	require.ErrorIs(t, err, session.ErrBadNPC)
 	require.Nil(t, out)
@@ -445,7 +445,7 @@ func TestRosterRefusesCorruptMonsterIdentity(t *testing.T) {
 			tc.edit(&fixture.sessions.byID["sess"].NPCs[0])
 
 			out, err := fixture.manager.Roster(context.Background(), &session.RosterInput{
-				Session: "sess", Player: "player-alice",
+				Session: "sess", Player: "player-alice", Member: "alice",
 			})
 			require.ErrorIs(t, err, session.ErrBadNPC)
 			require.Nil(t, out)
@@ -462,7 +462,7 @@ func TestRosterRefusesUnknownMemberKind(t *testing.T) {
 	}
 
 	out, err := fixture.manager.Roster(context.Background(), &session.RosterInput{
-		Session: "sess", Player: "player-alice",
+		Session: "sess", Player: "player-alice", Member: "alice",
 	})
 	require.ErrorIs(t, err, session.ErrInvalidWorld)
 	require.Nil(t, out)
@@ -508,7 +508,7 @@ func TestRosterReturnedCustomizationIsDetached(t *testing.T) {
 	storedAppearance := customization.CloneAppearance(fixture.characters.byID["alice"].Appearance)
 
 	out, err := fixture.manager.Roster(context.Background(), &session.RosterInput{
-		Session: "sess", Player: "player-alice",
+		Session: "sess", Player: "player-alice", Member: "alice",
 	})
 	require.NoError(t, err)
 
@@ -524,7 +524,7 @@ func TestRosterReturnedCustomizationIsDetached(t *testing.T) {
 	require.Equal(t, "Skeleton", fixture.sessions.byID["sess"].NPCs[0].Name)
 
 	again, err := fixture.manager.Roster(context.Background(), &session.RosterInput{
-		Session: "sess", Player: "player-alice",
+		Session: "sess", Player: "player-alice", Member: "alice",
 	})
 	require.NoError(t, err)
 	require.Equal(t, "Fresh Alice", again.Members[0].Name)
@@ -535,7 +535,7 @@ func TestRosterReturnedCustomizationIsDetached(t *testing.T) {
 func TestRosterSurvivesManagerRestartFromCopiedPersistence(t *testing.T) {
 	fixture := newRosterFixture(t)
 	first, err := fixture.manager.Roster(context.Background(), &session.RosterInput{
-		Session: "sess", Player: "player-alice",
+		Session: "sess", Player: "player-alice", Member: "alice",
 	})
 	require.NoError(t, err)
 
@@ -562,7 +562,7 @@ func TestRosterSurvivesManagerRestartFromCopiedPersistence(t *testing.T) {
 	require.NoError(t, err)
 
 	afterRestart, err := restarted.Roster(context.Background(), &session.RosterInput{
-		Session: "sess", Player: "player-alice",
+		Session: "sess", Player: "player-alice", Member: "alice",
 	})
 	require.NoError(t, err)
 	require.Equal(t, first, afterRestart)
@@ -591,7 +591,7 @@ func TestRosterRejectsMalformedNPCRefWithoutLeakingCoreErrors(t *testing.T) {
 	require.NoError(t, err)
 
 	out, err := manager.Roster(context.Background(), &session.RosterInput{
-		Session: "sess", Player: "player-alice",
+		Session: "sess", Player: "player-alice", Member: "alice",
 	})
 	require.ErrorIs(t, err, session.ErrBadNPC)
 	require.Nil(t, out)

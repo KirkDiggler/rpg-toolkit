@@ -347,11 +347,20 @@ func (s *HoldOutSessionSuite) status() *session.Status {
 
 func (s *HoldOutSessionSuite) roster() map[string]session.PublicMember {
 	s.T().Helper()
-	out, err := s.mgr.Roster(context.Background(), &session.RosterInput{Session: campSession, Player: "player-alice"})
+	// These scenario assertions inspect membership/reserve truth, not Alice's
+	// discovered identities. Gameplay Roster deliberately excludes unseen NPCs.
+	world, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data: *s.encounters.byID[campWorldID], Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
+		Standing: encEveryoneStanding{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
+		CheckResolver: encNeverResolves{}, Witness: encNeverWitnesses{},
+	})
 	s.Require().NoError(err)
-	rows := make(map[string]session.PublicMember, len(out.Members))
-	for _, row := range out.Members {
-		rows[row.ID] = row
+	members, err := world.Members()
+	s.Require().NoError(err)
+	rows := make(map[string]session.PublicMember, len(members))
+	for _, member := range members {
+		rows[string(member.ID)] = session.PublicMember{ID: string(member.ID), Kind: session.MemberKind(member.Kind), Faction: string(member.Faction), Name: member.Name}
 	}
 	return rows
 }
@@ -403,7 +412,10 @@ func (s *HoldOutSessionSuite) doorway(door, near string) (nearCell, farCell spat
 // scene says where somebody walks and the map says how.
 func (s *HoldOutSessionSuite) pathTo(member string, to spatial.Position) []spatial.Position {
 	s.T().Helper()
-	atlas := s.atlas(member)
+	// A scripted fixture plans the full walk from authored truth. The game
+	// client only receives discovered rooms and does not use this helper.
+	atlas, err := s.mgr.AtlasOf(context.Background(), &session.AtlasOfInput{World: s.encounters.byID[campWorldID]})
+	s.Require().NoError(err)
 	from := s.where(member)
 
 	floor := make(map[spatial.Position]bool, len(atlas.Cells))

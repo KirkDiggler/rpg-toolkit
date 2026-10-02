@@ -295,7 +295,7 @@ func (s *OneMapSuite) TestASightingIsReportedOnTheMap() {
 	s.Require().NoError(err)
 
 	var payload map[string]any
-	for _, sighting := range seen {
+	for _, sighting := range seen.Sightings {
 		if sighting.Subject != "bob" {
 			continue
 		}
@@ -345,7 +345,7 @@ func (s *OneMapSuite) TestASightingAndAPlacementAgree() {
 
 	var sighted spatial.Position
 	found := false
-	for _, sighting := range seen {
+	for _, sighting := range seen.Sightings {
 		if sighting.Subject != "bob" {
 			continue
 		}

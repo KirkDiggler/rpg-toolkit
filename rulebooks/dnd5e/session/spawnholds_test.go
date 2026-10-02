@@ -61,7 +61,7 @@ func (s *HoldingsSuite) TestASpawnedMonsterCarriesTheRecordsItWasPlacedWith() {
 	s.Require().NoError(err)
 
 	s.Run("the looter alone is told about the secret", func() {
-		s.Equal([]session.EventKind{session.EventLooted, session.EventConcealmentRevealed},
+		s.Equal([]session.EventKind{session.EventLooted, session.EventConcealmentRevealed, session.EventSighted},
 			s.kinds("alice"))
 		body, ok := s.bodyOf("alice", session.EventConcealmentRevealed).(session.ConcealmentRevealedBody)
 		s.Require().True(ok)

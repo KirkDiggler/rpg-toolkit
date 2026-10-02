@@ -2803,17 +2803,16 @@ func (ConcealmentRevealedBody) isEventBody() {}
 // SightedBody is [EventSighted]'s typed body: who entered this recipient's
 // view, and who left it.
 //
-// EITHER LIST MAY BE EMPTY AND NEVER BOTH. The composition omits the half
-// that did not happen rather than sending it empty, and appends no beat at
-// all when neither did — so a delivered event always carries at least one
-// name. A reader may treat an empty Gained as "nobody arrived" without
-// having to wonder whether the question was asked.
+// Member lists may all be empty when KnowledgeChanged reports a prop or
+// door observation update. Otherwise at least one member list names a change.
 //
 // GAINED MERGES FIRST CONTACT WITH RE-ACQUISITION. Somebody the recipient
 // has never seen and somebody whose ghost just became real again are one
 // fact to a client — a peer is in view who was not — and the answer to both
 // is the same re-read.
 type SightedBody struct {
+	// KnowledgeChanged reports mutable object/area observations without member changes.
+	KnowledgeChanged bool `json:"knowledge_changed,omitempty"`
 	// Gained is every member who came into this recipient's view.
 	Gained []string `json:"gained"`
 	// Lost is every member who left it, and who the recipient now holds
@@ -2929,6 +2928,8 @@ const (
 // Player is the authenticated host principal, not a client-supplied authority
 // token; the manager uses it only to verify that the caller owns a seat.
 type RosterInput struct {
+	// Member is the controlled observer whose known identities are requested.
+	Member string
 	// Session is the session whose encounter roster to read.
 	Session string
 

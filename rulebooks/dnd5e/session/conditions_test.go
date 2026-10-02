@@ -195,8 +195,8 @@ func (s *ConditionsTestSuite) TestTheRageSurvivesTheFightAndARestart() {
 	// The far side reads the same world: she is where the fight stopped her.
 	seen, err := restarted.View(ctx, &session.ViewInput{Session: "sess", Member: "ogre"})
 	s.Require().NoError(err)
-	s.Require().Len(seen, 1, "the ogre still holds her across the restart")
-	s.Equal("alice", seen[0].Subject)
+	s.Require().Len(seen.Sightings, 1, "the ogre still holds her across the restart")
+	s.Equal("alice", seen.Sightings[0].Subject)
 
 	stored, ok := characters.byID["alice"]
 	s.Require().True(ok)
