@@ -1,6 +1,8 @@
 package spells
 
-// Data contains all the game mechanics data for a spell
+// Data contains character-independent catalogue metadata for a spell.
+// Executable mechanics are authored separately in the cast profiles; metadata
+// lookup neither compiles an action nor grants permission to cast.
 type Data struct {
 	ID          Spell  // The spell this data represents
 	Level       int    // 0 for cantrips, 1-9 for leveled spells
@@ -13,6 +15,12 @@ type Data struct {
 // SpellData is the lookup map for all spell data
 // Shared by every class and domain; canonical refs also identify catalog-only spells.
 var SpellData = map[Spell]*Data{
+	BladeWard:        {ID: BladeWard, Level: 0, Name: "Blade Ward", Description: "Ward yourself against bludgeoning, piercing, and slashing damage from weapons."},
+	FaerieFire:       {ID: FaerieFire, Level: 1, Name: "Faerie Fire", Description: "Outline creatures in an area. A failed Dexterity save lets attackers who can see them attack with advantage while you concentrate."},
+	FogCloud:         {ID: FogCloud, Level: 1, Name: "Fog Cloud", Description: "Create a cloud of fog that blocks sight while you concentrate."},
+	Thunderclap:      {ID: Thunderclap, Level: 0, Name: "Thunderclap", Description: "Other creatures within 5 feet make a Constitution save or take 1d6 thunder damage."},
+	TrueStrike:       {ID: TrueStrike, Level: 0, Name: "True Strike", Description: "Concentrate on a creature to gain advantage on your next attack against it."},
+	ViciousMockery:   {ID: ViciousMockery, Level: 0, Name: "Vicious Mockery", Description: "A creature that fails a Wisdom save takes 1d4 psychic damage and has disadvantage on its next attack."},
 	Shillelagh:       {ID: Shillelagh, Level: 0, Name: "Shillelagh", Description: "Enchant a held club or quarterstaff: its weapon die becomes 1d8, it counts as magical, and it can use your spellcasting ability for attacks and damage. Lasts one minute, until recast, or until released."},
 	Druidcraft:       {ID: Druidcraft, Level: 0, Name: "Druidcraft", Description: "Create minor natural wonders; its environmental interactions are not yet implemented", NotYetImplemented: true},
 	Mending:          {ID: Mending, Level: 0, Name: "Mending", Description: "Repair a small break or tear in an object; object repair is not yet implemented", NotYetImplemented: true},
