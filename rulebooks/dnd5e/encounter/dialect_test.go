@@ -120,9 +120,9 @@ func (s *DialectSuite) TestARoomBearingSightPayloadIsRefused() {
 	} {
 		s.Run(payload, func() {
 			data := s.closedBlob()
-			holding := data.Perception.Intel.Holdings[core.EntityID("alice")]["bob"]
+			holding := data.Perception.Intel.Holdings[core.EntityID("member|alice")]["member|bob"]
 			holding.Payload = []byte(payload)
-			data.Perception.Intel.Holdings[core.EntityID("alice")]["bob"] = holding
+			data.Perception.Intel.Holdings[core.EntityID("member|alice")]["member|bob"] = holding
 
 			err := s.load(data)
 			s.Require().Error(err, "a sighting that names a room must not load")
@@ -162,11 +162,11 @@ func (s *DialectSuite) TestAnotherChannelsPayloadIsNotOurs() {
 	// Written with untyped constants: the channel type is play/intel's, which
 	// encounter no longer names (rpg-toolkit#1691), and perception's charter —
 	// Data.Intel is intel.Data verbatim — is what makes the map reachable here.
-	holding := data.Perception.Intel.Holdings[core.EntityID("alice")]["bob"]
+	holding := data.Perception.Intel.Holdings[core.EntityID("member|alice")]["member|bob"]
 	holding.Channel = "hearsay"
 	holding.CurrentVia = append(holding.CurrentVia[:0], "hearsay")
 	holding.Payload = []byte(aRoomBearingSighting)
-	data.Perception.Intel.Holdings[core.EntityID("alice")]["bob"] = holding
+	data.Perception.Intel.Holdings[core.EntityID("member|alice")]["member|bob"] = holding
 
 	s.Require().NoError(s.load(data),
 		"a channel this composition never writes is not this composition's business")
@@ -191,8 +191,8 @@ func (s *DialectSuite) TestTheRefusalNamesTheSameSightingEveryTime() {
 
 	first := s.load(data)
 	s.Require().Error(first)
-	s.Contains(first.Error(), `"alice"`, "the first observer")
-	s.Contains(first.Error(), `"bob"`, "and their first subject")
+	s.Contains(first.Error(), `"member|alice"`, "the first observer")
+	s.Contains(first.Error(), `"member|bob"`, "and their first subject")
 
 	// Fifty runs: an unsorted walk would have to pick the same one out of six
 	// holdings fifty times running to slip through here.

@@ -168,7 +168,7 @@ func (e *Encounter) Interact(in *InteractInput) (*InteractOutput, error) {
 // thing you do with something you can SEE. Hearing a goblin behind a door is
 // not reaching it.
 func (e *Encounter) currentlyPerceives(observer, subject MemberID) (bool, error) {
-	holdings, err := e.intelLog.Held(observer)
+	holdings, err := e.memberIntel(observer)
 	if err != nil {
 		return false, fmt.Errorf("held by %q: %w", observer, err)
 	}

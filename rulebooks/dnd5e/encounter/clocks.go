@@ -1578,7 +1578,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 	// CurrentVia rebuilt per call), carried through mind/perception — no
 	// redundant defensive copy here; TestPumpMutatingDeciderCannotCorrupt
 	// pins the composed guarantee.
-	holdings, err := e.intelLog.Held(m.ID)
+	holdings, err := e.memberIntel(m.ID)
 	if err != nil {
 		return MonsterView{}, fmt.Errorf("held by: %w", err)
 	}

@@ -506,17 +506,13 @@ func (e *Encounter) setDoorState(door *doorRecord, next DoorState, actor MemberI
 		return doorChange{}, err
 	}
 
-	// The beat's audience and the refresh's scope are two different
-	// questions now (rpg-toolkit#1371). The BEAT goes to every member who
-	// KNOWS the door: for a door no concealment holds that is the whole
-	// roster (full data until v1.0, unchanged), and for a hidden one it is
-	// exactly the members its concealment has been revealed to — computed
-	// BEFORE the refresh below, whose sweep may mint new knowers; a member
-	// learning of the secret on this very change gets CONCEALMENT_REVEALED
-	// there, never this beat. The REFRESH stays roster-wide regardless: a
-	// door changing what it blocks changes what everyone can see, knower or
-	// not.
-	audience := e.doorBeatAudience(door)
+	// A known doorway is not permission to learn an unseen state change.
+	// Capture witnesses now; replay retains this audience rather than asking
+	// who happens to know the door later.
+	audience, err := e.mutableWitnesses(sightDoor(door.id), actor)
+	if err != nil {
+		return doorChange{}, err
+	}
 
 	seq, err := e.appendDoorBeat(door, audience, extra)
 	if err != nil {
@@ -535,26 +531,6 @@ func (e *Encounter) setDoorState(door *doorRecord, next DoorState, actor MemberI
 	}
 
 	return doorChange{seq: seq, deltas: deltas, formed: formed}, nil
-}
-
-// doorBeatAudience is who hears a door's own state-change beat: everyone,
-// for a door no concealment holds (full data until v1.0), and exactly the
-// current members who KNOW the concealment holding it otherwise — as far as
-// a secret requires and no further (rpg-project#350; rpg-toolkit#1020's
-// shelf coming due for doors). Sorted, like every audience this module
-// computes (C8).
-func (e *Encounter) doorBeatAudience(door *doorRecord) []MemberID {
-	id, hidden := e.hiddenDoorConcealment(door.id)
-	if !hidden {
-		return e.audienceFor(subjectBeat)
-	}
-	knowers := make([]MemberID, 0, len(e.members))
-	for _, member := range e.rosterIDs() {
-		if e.world.knowsConcealment(member, id) {
-			knowers = append(knowers, member)
-		}
-	}
-	return knowers
 }
 
 // hiddenDoorConcealment is the concealment holding a door, and whether one
@@ -598,12 +574,8 @@ func (e *Encounter) probeDoor(door *doorRecord, actor MemberID) error {
 	return fmt.Errorf("door %q: %w", door.id, ErrNoDoor)
 }
 
-// appendDoorBeat records what a door did, to the members who know it.
-//
-// The audience arrives computed ([Encounter.doorBeatAudience]): the whole
-// roster for a door no concealment holds — whether a member can SEE it move
-// is still #1020's asymmetric perception, not this — and the secret's
-// knowers for a hidden one, which is as far as a secret requires.
+// appendDoorBeat records a door change with the audience captured by
+// mutableWitnesses. Remembering the door alone does not grant new state.
 func (e *Encounter) appendDoorBeat(door *doorRecord, audience []MemberID, extra map[string]interface{}) (uint64, error) {
 	payload := map[string]interface{}{
 		"beat":  "door",

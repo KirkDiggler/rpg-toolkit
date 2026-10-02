@@ -244,8 +244,8 @@ func (s *BeatOrderTestSuite) TestOpenDoorOpensBeforeItFights() {
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
 	s.Require().NoError(err)
-	s.Require().Equal([]string{"scene-opened"}, s.beatKinds(enc, alice),
-		"the shut door keeps them apart: no fight before the verb under test")
+	s.Require().Equal([]string{"scene-opened", "sighted"}, s.beatKinds(enc, alice),
+		"the door is observed, but the shut door keeps the creatures apart: no fight yet")
 
 	out, err := enc.OpenDoor(&encounter.OpenDoorInput{Door: shutDoor})
 	s.Require().NoError(err)

@@ -149,6 +149,38 @@ func (s *RoomKnowledgeSuite) TestInvalidRoomKnowledgeIsRejectedOnLoad() {
 	}
 }
 
+func (s *RoomKnowledgeSuite) TestRoomRevealIsRecipientScopedFixedData() {
+	_, err := s.enc.OpenDoor(&encounter.OpenDoorInput{Door: "entry-door", Actor: "a"})
+	s.Require().NoError(err)
+	for _, member := range []encounter.MemberID{"a", "b"} {
+		story, err := s.enc.Story(&encounter.StoryInput{Audience: member})
+		s.Require().NoError(err)
+		count := 0
+		for _, entry := range story {
+			var beat map[string]json.RawMessage
+			s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+			if string(beat["beat"]) != `"room_revealed"` {
+				continue
+			}
+			count++
+			var region struct {
+				ID    string
+				Cells []spatial.Position
+			}
+			s.Require().NoError(json.Unmarshal(beat["region"], &region))
+			s.Equal("room", region.ID)
+			s.Len(region.Cells, 20)
+			s.NotContains(string(entry.Payload), `"state"`, "door state is not fixed room data")
+			s.NotContains(string(entry.Payload), "hidden-exit")
+		}
+		if member == "a" {
+			s.Equal(1, count)
+		} else {
+			s.Zero(count)
+		}
+	}
+}
+
 func (s *RoomKnowledgeSuite) TestKnowledgeSurvivesLossOfSightAndJSONReload() {
 	_, err := s.enc.OpenDoor(&encounter.OpenDoorInput{Door: "entry-door", Actor: "a"})
 	s.Require().NoError(err)

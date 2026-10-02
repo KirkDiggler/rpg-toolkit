@@ -159,13 +159,17 @@ func (e *Encounter) appendConcealmentRevealedBeat(
 		}
 	}
 
+	doors, err := e.revealDoorsPayload(recipient, c)
+	if err != nil {
+		return 0, err
+	}
 	payload := map[string]interface{}{
 		"beat":        BeatConcealmentRevealed,
 		"concealment": c.id,
 		"cells":       cells,
 		"regions":     revealRegionsPayload(regions),
 		"props":       revealPropsPayload(props),
-		"doors":       e.revealDoorsPayload(c),
+		"doors":       doors,
 		"boundaries":  revealBoundariesPayload(boundaries),
 		"segments":    revealSegmentsPayload(newSegments(before.Segments, scoped.Segments)),
 		"sealed":      sealed,
@@ -187,29 +191,37 @@ func (e *Encounter) appendConcealmentRevealedBeat(
 //
 // In the concealment's authored door order, which is the order the author
 // wrote them in and the order every other read of this list uses.
-func (e *Encounter) revealDoorsPayload(c *concealment) []map[string]interface{} {
+func (e *Encounter) revealDoorsPayload(recipient MemberID, c *concealment) ([]map[string]interface{}, error) {
+	sightings, err := e.DoorSightings(&ViewInput{Member: recipient})
+	if err != nil {
+		return nil, err
+	}
+	observed := make(map[DoorID]Door)
+	for _, sighting := range sightings {
+		observed[sighting.Door.ID] = sighting.Door
+	}
 	out := make([]map[string]interface{}, 0, len(c.doors))
 	for _, id := range c.doors {
-		d, ok := e.doorsByID[id]
+		d, ok := observed[id]
 		if !ok {
 			continue
 		}
-		doorways := make([]map[string]spatial.Position, 0, len(d.edges))
-		for _, edge := range d.edges {
+		doorways := make([]map[string]spatial.Position, 0, len(d.Edges))
+		for _, edge := range d.Edges {
 			doorways = append(doorways, map[string]spatial.Position{"from": edge.From, "to": edge.To})
 		}
 		entry := map[string]interface{}{
-			"door":     d.id,
-			"state":    string(d.state.Kind()),
+			"door":     d.ID,
+			"state":    string(d.State.Kind()),
 			"doorways": doorways,
 		}
-		if lock, locked := d.state.Lock(); locked {
+		if lock, locked := d.State.Lock(); locked {
 			entry["approaches"] = approachesDataFrom(lock.Approaches)
 		}
 		out = append(out, entry)
 	}
 
-	return out
+	return out, nil
 }
 
 // newSegments is every wall in `after` that was not in `before`, in after's
@@ -302,6 +314,8 @@ func revealPropsPayload(props []AtlasProp) []map[string]interface{} {
 	out := make([]map[string]interface{}, 0, len(props))
 	for _, p := range props {
 		out = append(out, map[string]interface{}{
+			"id":                   p.ID,
+			"holdable":             p.Holdable,
 			"ref":                  p.Ref,
 			"at":                   p.At,
 			"blocks_movement":      p.BlocksMovement,

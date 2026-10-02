@@ -13,9 +13,12 @@ import (
 // additions can be reported alongside the mind/perception transitions without
 // changing perception's payload-opaque API.
 type IntelDelta struct {
-	FirstContact []perception.Presence
-	Refreshed    []core.EntityID
-	Faded        []core.EntityID
+	// KnowledgeChanged reports a prop/door observation change without pretending
+	// those subjects are roster members. Readers refresh their own observations.
+	KnowledgeChanged bool
+	FirstContact     []perception.Presence
+	Refreshed        []core.EntityID
+	Faded            []core.EntityID
 
 	// Changed is every subject this observer already held whose TESTIMONY is
 	// different this pass — somebody moved, or swapped what is in their
@@ -88,11 +91,12 @@ func mergeIntelDeltas(dst, src map[MemberID]*IntelDelta) map[MemberID]*IntelDelt
 		}
 
 		dst[observer] = &IntelDelta{
-			FirstContact: mergePresences(existing.FirstContact, incoming.FirstContact),
-			Refreshed:    mergeSubjects(existing.Refreshed, incoming.Refreshed),
-			Faded:        mergeSubjects(existing.Faded, incoming.Faded),
-			Changed:      mergeSubjects(existing.Changed, incoming.Changed),
-			Reacquired:   mergeSubjects(existing.Reacquired, incoming.Reacquired),
+			KnowledgeChanged: existing.KnowledgeChanged || incoming.KnowledgeChanged,
+			FirstContact:     mergePresences(existing.FirstContact, incoming.FirstContact),
+			Refreshed:        mergeSubjects(existing.Refreshed, incoming.Refreshed),
+			Faded:            mergeSubjects(existing.Faded, incoming.Faded),
+			Changed:          mergeSubjects(existing.Changed, incoming.Changed),
+			Reacquired:       mergeSubjects(existing.Reacquired, incoming.Reacquired),
 		}
 	}
 
@@ -105,11 +109,12 @@ func cloneIntelDelta(in *IntelDelta) *IntelDelta {
 	}
 
 	return &IntelDelta{
-		FirstContact: clonePresences(in.FirstContact),
-		Refreshed:    cloneSubjects(in.Refreshed),
-		Faded:        cloneSubjects(in.Faded),
-		Changed:      cloneSubjects(in.Changed),
-		Reacquired:   cloneSubjects(in.Reacquired),
+		KnowledgeChanged: in.KnowledgeChanged,
+		FirstContact:     clonePresences(in.FirstContact),
+		Refreshed:        cloneSubjects(in.Refreshed),
+		Faded:            cloneSubjects(in.Faded),
+		Changed:          cloneSubjects(in.Changed),
+		Reacquired:       cloneSubjects(in.Reacquired),
 	}
 }
 

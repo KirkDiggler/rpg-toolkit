@@ -563,8 +563,12 @@ func (s *ConcealSuite) TestFindingASecretRevealsTheWholeOfIt() {
 // carried as the atlas slice the never-authored answer withheld.
 func (s *ConcealSuite) TestOpeningInPresenceRevealsToPerceivers() {
 	enc := s.open(findsEverything{}, false)
+	// The scripted concealment witness must agree with real sight: open the
+	// intervening hall door rather than claiming sight through a closed wall.
+	_, err := enc.OpenDoor(&encounter.OpenDoorInput{Door: veilDoor})
+	s.Require().NoError(err)
 
-	_, err := enc.Search(&encounter.SearchInput{Member: buddy, Region: annexRegion})
+	_, err = enc.Search(&encounter.SearchInput{Member: buddy, Region: annexRegion})
 	s.Require().NoError(err)
 	// Up to the door first: a door opens only from within reach of it
 	// (rpg-toolkit#1856), and this scene is about who hears it swing.
@@ -613,8 +617,10 @@ func (s *ConcealSuite) TestOpeningInPresenceRevealsToPerceivers() {
 // reveal then.
 func (s *ConcealSuite) TestALatePerceiverGetsTheirRevealOnArrival() {
 	enc := s.open(findsEverything{}, false)
+	_, err := enc.OpenDoor(&encounter.OpenDoorInput{Door: veilDoor})
+	s.Require().NoError(err)
 
-	_, err := enc.Search(&encounter.SearchInput{Member: buddy, Region: annexRegion})
+	_, err = enc.Search(&encounter.SearchInput{Member: buddy, Region: annexRegion})
 	s.Require().NoError(err)
 	// Up to the door first (rpg-toolkit#1856); the late arrival below is
 	// the seeker's, not the opener's.

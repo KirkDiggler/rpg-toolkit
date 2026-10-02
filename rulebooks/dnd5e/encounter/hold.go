@@ -303,7 +303,7 @@ func (e *Encounter) showsAnyCellTo(member MemberID, cells []spatial.Position) (b
 }
 
 // takeProp is WHAT HAPPENS WHEN A THING IS PICKED UP, whichever kind of
-// thing it is: the two holdings facts, the `held` beat to everyone present,
+// thing it is: the two holdings facts, the `held` beat to actual witnesses,
 // what the thing teaches whoever holds it, and who was standing with them.
 //
 // Shared by [Encounter.Hold] and [Encounter.holdPlaced] so a legacy prop and
@@ -311,6 +311,10 @@ func (e *Encounter) showsAnyCellTo(member MemberID, cells []spatial.Position) (b
 // differ are the ones about where the thing is, and they are all above this
 // line.
 func (e *Encounter) takeProp(member MemberID, target PropID) (*HoldOutput, error) {
+	audience, err := e.mutableWitnesses(sightProp(target), member)
+	if err != nil {
+		return nil, fmt.Errorf("hold witnesses: %w", err)
+	}
 	at := uint64(e.clock.ToData().HighWater)
 	if err := e.holdings.markHeld(member, target); err != nil {
 		return nil, fmt.Errorf("hold: %w", err)
@@ -329,7 +333,7 @@ func (e *Encounter) takeProp(member MemberID, target PropID) (*HoldOutput, error
 	}
 	if _, err := e.appendBeat(&record.AppendInput{
 		At:       at,
-		Audience: e.audienceFor(subjectBeat, member),
+		Audience: audience,
 		Tags:     map[string]string{"tag": "hold"},
 		Payload:  payload,
 	}); err != nil {
@@ -353,6 +357,9 @@ func (e *Encounter) takeProp(member MemberID, target PropID) (*HoldOutput, error
 		return nil, fmt.Errorf("hold: %w", err)
 	}
 
+	if _, _, err := e.refreshSight(e.rosterIDs()); err != nil {
+		return nil, fmt.Errorf("hold observation: %w", err)
+	}
 	return &HoldOutput{}, nil
 }
 
@@ -360,9 +367,8 @@ func (e *Encounter) takeProp(member MemberID, target PropID) (*HoldOutput, error
 // probe law's question, asked of the projection that already answers it
 // rather than of a second copy of the concealment rules.
 //
-// A field with no concealment shows every member the whole floor, so this is
-// true for any floor cell there, which is exactly right: nothing is hidden,
-// so nothing needs hiding behind an evasive refusal.
+// Ordinary room discovery and concealment both constrain this read. Knowing
+// floor does not itself make a prop current; prop observations are separate.
 //
 // THE ERROR IS RETURNED, NEVER FOLDED INTO "NOT SHOWN" (Copilot, PR #1497
 // review). Swallowing it would answer a wiring fault — an atlas that could

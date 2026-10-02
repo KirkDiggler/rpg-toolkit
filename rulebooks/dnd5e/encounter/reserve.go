@@ -239,7 +239,7 @@ func (e *Encounter) reservedIDs() []MemberID {
 // therefore a function of persisted data and nothing else (C8). A closed run
 // arrives nobody.
 //
-// When a MEMBER arrived, sight is refreshed for the whole roster at the end,
+// When a member or prop arrived, sight is refreshed for the whole roster at the end,
 // once — see the file's own doc for why that is this verb's refresh and not a
 // later one's.
 func (e *Encounter) arrivals(holds func(Trigger) (string, bool), at uint64) error {
@@ -247,7 +247,7 @@ func (e *Encounter) arrivals(holds func(Trigger) (string, bool), at uint64) erro
 		return nil
 	}
 
-	memberArrived := false
+	arrived := false
 	for _, id := range e.reservedIDs() {
 		rm := e.reserve[id]
 		cause, ok := holds(rm.arrives)
@@ -258,7 +258,7 @@ func (e *Encounter) arrivals(holds func(Trigger) (string, bool), at uint64) erro
 			return err
 		}
 		delete(e.reserve, id)
-		memberArrived = true
+		arrived = true
 	}
 
 	placements := e.holdings.propPlacements()
@@ -273,6 +273,7 @@ func (e *Encounter) arrivals(holds func(Trigger) (string, bool), at uint64) erro
 		if err := e.arriveProp(i, cause, at); err != nil {
 			return err
 		}
+		arrived = true
 	}
 	// AND THE FOOTPRINTS, in authored order after the legacy props
 	// (rpg-toolkit#1854). Same reserve, same predicate, same fact and same
@@ -290,9 +291,10 @@ func (e *Encounter) arrivals(holds func(Trigger) (string, bool), at uint64) erro
 		if err := e.arrivePlacedProp(p, cause, at); err != nil {
 			return err
 		}
+		arrived = true
 	}
 
-	if !memberArrived {
+	if !arrived {
 		return nil
 	}
 	if _, _, err := e.refreshSight(e.rosterIDs()); err != nil {

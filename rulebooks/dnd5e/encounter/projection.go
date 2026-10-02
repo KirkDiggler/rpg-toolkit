@@ -77,9 +77,8 @@ import (
 // concealment reveal retains the floor it teaches even without room sight.
 // Start and exits are supplied only on discovered floor.
 //
-// This geometry checkpoint still carries live mutable props in known rooms;
-// prop testimony and remembered door reads are follow-on work in #508. It is
-// not yet the complete player knowledge boundary.
+// Movable props are not fixed layout: their current/remembered placements are
+// [Encounter.PropSightings]. Door state is [Encounter.DoorSightings].
 //
 // Returns ErrNotMember for an ID this encounter does not hold — a
 // member-scoped answer for nobody is a question with no honest answer.
@@ -179,7 +178,7 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 		out.Regions = append(out.Regions, entry)
 	}
 	for _, p := range full.Props {
-		if !hiddenCells[p.At] && !hidden.props[p.ID] {
+		if !p.Holdable && !hiddenCells[p.At] && !hidden.props[p.ID] {
 			out.Props = append(out.Props, p)
 		}
 	}
@@ -189,7 +188,7 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	// cell it stands on is hidden, because a rectangle presented over a hole
 	// in the floor marks the hole.
 	for _, p := range full.Placed {
-		if hidden.props[p.ID] || hidden.doors[p.ID] || e.placedTouchesHidden(p, hiddenCells) {
+		if p.Holdable || hidden.props[p.ID] || hidden.doors[p.ID] || e.placedTouchesHidden(p, hiddenCells) {
 			continue
 		}
 		out.Placed = append(out.Placed, p)
@@ -292,29 +291,16 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	return out, nil
 }
 
-// DoorsFor reports every door AS ONE MEMBER KNOWS IT, in the same stable ID
-// order [Encounter.Doors] uses: a hidden door the member has not had
-// revealed is absent, and everything else — every door no concealment holds
-// included — is exactly what Doors reports. For a field that hides nothing
-// it IS Doors.
-//
-// Returns ErrNotMember for an ID this encounter does not hold.
+// DoorsFor preserves the older read shape using stored observations, never
+// unseen live state. Prefer DoorSightings to distinguish current from memory.
 func (e *Encounter) DoorsFor(member MemberID) ([]Door, error) {
-	if _, ok := e.members[member]; !ok {
-		return nil, fmt.Errorf("doors for %q: %w", member, ErrNotMember)
+	sightings, err := e.DoorSightings(&ViewInput{Member: member})
+	if err != nil {
+		return nil, err
 	}
-
-	all := e.Doors()
-	if !e.world.conceals() {
-		return all, nil
-	}
-
-	unknown := e.hiddenFrom(member).doors
-	out := make([]Door, 0, len(all))
-	for _, d := range all {
-		if !unknown[d.ID] {
-			out = append(out, d)
-		}
+	out := make([]Door, 0, len(sightings))
+	for _, sighting := range sightings {
+		out = append(out, sighting.Door)
 	}
 	return out, nil
 }

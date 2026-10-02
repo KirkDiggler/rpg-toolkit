@@ -336,7 +336,7 @@ func (e *Encounter) unawareOfOpposition(id MemberID, contact map[MemberID]bool) 
 		return false, nil
 	}
 
-	holdings, err := e.intelLog.Held(id)
+	holdings, err := e.memberIntel(id)
 	if err != nil {
 		return false, err
 	}

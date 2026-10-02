@@ -12,7 +12,9 @@ import (
 )
 
 // sightedbeat.go is the per-recipient perception beat: one observer being
-// told that WHO THEY CAN SEE changed.
+// told that WHO THEY CAN SEE or their mutable object observations changed.
+// Creature IDs stay in gained/lost/changed; knowledge_changed requests the
+// recipient's prop/door observations without treating objects as members.
 //
 // # Why this beat exists at all
 //
@@ -170,7 +172,7 @@ func (e *Encounter) appendSightedBeats(
 		// nobody could see is the same silence — the observers who cannot
 		// see the subject are told nothing, which is the point of scoping
 		// it per observer rather than broadcasting the fact.
-		if len(gained) == 0 && len(lost) == 0 && len(changed) == 0 {
+		if len(gained) == 0 && len(lost) == 0 && len(changed) == 0 && !delta.KnowledgeChanged {
 			continue
 		}
 
@@ -190,6 +192,9 @@ func (e *Encounter) appendSightedBeats(
 		}
 		if len(changed) > 0 {
 			payload["changed"] = changed
+		}
+		if delta.KnowledgeChanged {
+			payload["knowledge_changed"] = true
 		}
 
 		beatBytes, err := json.Marshal(payload)

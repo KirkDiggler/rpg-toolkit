@@ -1034,7 +1034,7 @@ func (e *Encounter) View(in *ViewInput) ([]perception.Holding, error) {
 		return nil, fmt.Errorf("view: %w", ErrNotMember)
 	}
 
-	holdings, err := e.intelLog.Held(in.Member)
+	holdings, err := e.memberIntel(in.Member)
 	if err != nil {
 		return nil, fmt.Errorf("view: %w", err)
 	}
@@ -1766,7 +1766,7 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 		if perr != nil {
 			return nil, fmt.Errorf("encode sight testimony: %w", perr)
 		}
-		presences = append(presences, perception.Presence{ID: subjectID, Payload: payload})
+		presences = append(presences, perception.Presence{ID: sightMember(subjectID), Payload: payload})
 	}
 
 	// UNPLACED OBSERVERS AND NON-MEMBERS ARE FILTERED OUT, and this is the one
@@ -1788,7 +1788,7 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 		if _, placed := positions[observerID]; !placed {
 			continue // Observer not placed
 		}
-		observerIDs = append(observerIDs, observerID)
+		observerIDs = append(observerIDs, sightMember(observerID))
 	}
 
 	// Every OTHER member on the map, kept or dropped by GEOMETRY ALONE.
@@ -1822,26 +1822,37 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 		canvas:    e.canvas,
 		areas:     e.sightAreas,
 	}
+	presences, observationGeometry, err := e.appendMutablePresences(presences, geometry)
+	if err != nil {
+		return nil, err
+	}
 	perceived, err := e.intelLog.Observe(perception.Pass{
 		At:        clockReading,
 		Channel:   perception.Sight,
 		Presences: presences,
 		Observers: observerIDs,
-		Reach:     geometry,
+		Reach:     observationGeometry,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("refreshsight observe: %w", err)
 	}
 
 	for _, observer := range observerIDs {
-		if err := e.discoverRooms(observer, geometry); err != nil {
+		member, _ := subjectID(observer, memberSubjectKind)
+		if err := e.discoverRooms(member, geometry); err != nil {
 			return nil, err
 		}
 	}
 
 	deltas := make(map[MemberID]*IntelDelta, len(perceived))
 	for observerID, delta := range perceived {
-		deltas[observerID] = intelDeltaFromPerception(delta)
+		member, _ := subjectID(observerID, memberSubjectKind)
+		deltas[member] = memberPerceptionDelta(delta)
+		corrected, err := e.correctEmptyProps(member, observationGeometry, clockReading)
+		if err != nil {
+			return nil, err
+		}
+		deltas[member].KnowledgeChanged = deltas[member].KnowledgeChanged || corrected
 	}
 
 	return deltas, nil
@@ -2172,7 +2183,7 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 	finalRegion, _ := e.RegionAt(finalCell)
 
 	// Capture the exiting member's holdings (carry-forward)
-	carry, err := e.intelLog.Held(in.Member)
+	carry, err := e.memberIntel(in.Member)
 	if err != nil {
 		return nil, fmt.Errorf("exit held_by: %w", err)
 	}

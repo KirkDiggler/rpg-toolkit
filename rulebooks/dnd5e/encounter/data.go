@@ -44,9 +44,12 @@ type EncounterData struct {
 	// "intel" key inside this value is perception's own shape, which its
 	// charter admits is intel's Data verbatim.
 	Perception perception.Data `json:"perception"`
-	Log        record.LogData  `json:"log"`
-	Field      FieldData       `json:"field"`
-	Members    []MemberData    `json:"members"`
+	// PerceptionSubjects versions encounter-owned subject qualification. Zero
+	// is the legacy member-only sight namespace; load preserves its testimony.
+	PerceptionSubjects uint32         `json:"perception_subjects,omitempty"`
+	Log                record.LogData `json:"log"`
+	Field              FieldData      `json:"field"`
+	Members            []MemberData   `json:"members"`
 	// Doors are the field's doors and the state each is in RIGHT NOW
 	// (rpg-toolkit#1123). Top level rather than inside Field, beside Members
 	// and for the same reason: a door's edges are construction truth but its
@@ -1920,22 +1923,23 @@ func (e *Encounter) snapshot() EncounterData {
 	}
 
 	return EncounterData{
-		Outcome:     outcomeData,
-		Clock:       e.clock.ToData(),
-		Bubbles:     bubblesData,
-		Perception:  e.intelLog.ToData(),
-		Log:         e.story.ToData(),
-		Field:       fieldData,
-		Members:     membersData,
-		Doors:       doorData,
-		SightAreas:  sightAreasData,
-		World:       worldData,
-		Holdings:    holdingsData,
-		Reserve:     reserveData,
-		Endings:     endingsData,
-		EverMembers: everMembersSlice,
-		Retention:   e.retention,
-		PausedTurn:  pausedTurnDataFrom(e.pausedTurn),
+		Outcome:            outcomeData,
+		Clock:              e.clock.ToData(),
+		Bubbles:            bubblesData,
+		Perception:         e.intelLog.ToData(),
+		PerceptionSubjects: perceptionSubjectVersion,
+		Log:                e.story.ToData(),
+		Field:              fieldData,
+		Members:            membersData,
+		Doors:              doorData,
+		SightAreas:         sightAreasData,
+		World:              worldData,
+		Holdings:           holdingsData,
+		Reserve:            reserveData,
+		Endings:            endingsData,
+		EverMembers:        everMembersSlice,
+		Retention:          e.retention,
+		PausedTurn:         pausedTurnDataFrom(e.pausedTurn),
 
 		HeldDirective: heldDirectiveDataFrom(e.heldDirective),
 	}
@@ -2798,6 +2802,10 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			data.HeldDirective.Member, ErrInvalidData)
 	}
 
+	data.Perception, err = normalizePerceptionSubjects(data.Perception, data.PerceptionSubjects)
+	if err != nil {
+		return nil, err
+	}
 	if err = refuseRoomLocalSightings(data.Perception); err != nil {
 		return nil, err
 	}
@@ -3141,12 +3149,41 @@ func refuseRoomLocalSightings(data perception.Data) error {
 	observers := slices.Sorted(maps.Keys(data.Intel.Holdings))
 
 	for _, observer := range observers {
+		if _, ok := subjectID(observer, memberSubjectKind); !ok {
+			return fmt.Errorf("invalid observation identity %q: %w", observer, ErrInvalidData)
+		}
 		subjects := slices.Sorted(maps.Keys(data.Intel.Holdings[observer]))
 
 		for _, subject := range subjects {
 			holding := data.Intel.Holdings[observer][subject]
 			if perception.Channel(holding.Channel) != perception.Sight {
 				continue
+			}
+			if id, prop := subjectID(core.EntityID(subject), propSubjectKind); prop {
+				observation, err := decodePropObservation(holding.Payload)
+				if err != nil {
+					return err
+				}
+				if observation.id() != string(id) || (observation.ObservedEmpty && len(holding.CurrentVia) > 0) {
+					return fmt.Errorf("invalid prop observation %q: %w", subject, ErrInvalidData)
+				}
+				continue
+			}
+			if id, door := subjectID(core.EntityID(subject), doorSubjectKind); door {
+				var observation DoorData
+				if err := json.Unmarshal(holding.Payload, &observation); err != nil {
+					return fmt.Errorf("invalid door observation %q: %w", subject, ErrInvalidData)
+				}
+				if observation.ID != string(id) {
+					return fmt.Errorf("door observation identity %q: %w", subject, ErrInvalidData)
+				}
+				if _, err := doorStateFromData(observation.ID, observation.State, observation.Lock); err != nil {
+					return fmt.Errorf("door observation: %w: %w", ErrInvalidData, err)
+				}
+				continue
+			}
+			if _, member := subjectID(core.EntityID(subject), memberSubjectKind); !member {
+				return fmt.Errorf("invalid sight subject %q: %w", subject, ErrInvalidData)
 			}
 			// Check the old room-bearing dialect first so stale saves receive the
 			// established migration guidance; all other malformed sight bytes are

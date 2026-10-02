@@ -434,7 +434,7 @@ func (s *ConcealmentSuite) TestTheRevealCarriesTheRoomsTheSecretWasCutOutOf() {
 		reveals := s.revealsFor(enc, walker)
 		s.Require().Len(reveals, 1)
 		s.Empty(reveals[0]["regions"], "a hidden bookcase cuts no room out of anything")
-		s.NotEmpty(reveals[0]["props"], "and the thing itself is the whole of the news")
+		s.Empty(reveals[0]["props"], "a movable idol is learned by observation, not a fixed-geometry reveal")
 	})
 }
 

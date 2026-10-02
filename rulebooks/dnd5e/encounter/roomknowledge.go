@@ -63,12 +63,28 @@ func (e *Encounter) learnRoom(member MemberID, id RegionID) error {
 	if e.world.knownRooms(member)[id] {
 		return nil
 	}
-	_, err := e.world.log.Append(journal.Fact{
+	next, err := e.NextStorySeq()
+	if err != nil {
+		return err
+	}
+	var before Atlas
+	// Initial discovery precedes scene-opened and is restored by the snapshot.
+	// Later discovery is a recipient-scoped addition on the existing story.
+	if next > 1 {
+		before, err = e.AtlasFor(member)
+		if err != nil {
+			return err
+		}
+	}
+	_, err = e.world.log.Append(journal.Fact{
 		Kind: roomKnownKind(id), Actor: journal.EntityID(member),
 		Subject: journal.EntityID(member), Audience: journal.Audience{journal.EntityID(member)},
 	})
 	if err != nil {
 		return fmt.Errorf("discover room %q: %w", id, err)
+	}
+	if next > 1 {
+		return e.appendRoomRevealedBeat(member, id, before)
 	}
 	return nil
 }
@@ -151,6 +167,9 @@ func (e *Encounter) undiscoveredFrom(member MemberID) hiddenView {
 	}
 	for _, door := range e.doors {
 		if hidden.doors[door.id] {
+			continue
+		}
+		if id, concealed := e.hiddenDoorConcealment(door.id); concealed && e.world.knowsConcealment(member, id) {
 			continue
 		}
 		visible := false

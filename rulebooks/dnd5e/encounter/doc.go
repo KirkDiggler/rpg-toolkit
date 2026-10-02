@@ -17,8 +17,8 @@
 // inferred here; party defeat takes precedence.
 //
 // LOCATION KNOWLEDGE IS ENCOUNTER-OWNED. mind/perception holds channel-
-// sourced testimony opaquely; this composition gives sight payloads their
-// strict Known(position) or Unknown meaning. New payloads are tagged, legacy
+// sourced testimony opaquely; this composition gives creature sight payloads
+// their strict Known(position) or Unknown meaning. New payloads are tagged, legacy
 // untagged coordinates remain readable as known, and malformed or current-
 // unknown sight testimony is refused on load. Other channels' payloads
 // remain uninterpreted.
@@ -106,6 +106,17 @@
 // testimony. AtlasFor withholds undiscovered room geometry, starts and exits.
 // Learning persists across loss of sight and load without rerunning perception.
 // Concealment discovery remains an independent source of learned geometry.
+// Initial room knowledge comes from the snapshot; later discovery appends
+// recipient-scoped RoomRevealed beats containing fixed data, not live contents.
+//
+// Holdable props and door states join the creature pass in the same perception
+// store. Subjects are qualified by kind, so equal member/prop/door names cannot
+// overwrite testimony. Public creature reads retain member IDs; PropSightings
+// and DoorSightings expose their respective observations with current currency.
+// Loss of sight preserves memory. A prop's remembered placement is disproved
+// only when all of its former spatial support is observed empty; omission alone
+// never supplies a carrier or destination. Pickups and door changes notify
+// actual witnesses, not everybody who remembers the subject.
 //
 // # Concealment: the run composes its world (rpg-toolkit#1371, rpg-project#490)
 //
@@ -154,7 +165,7 @@
 //     byte-identical to a wall.
 //   - Reveals reach members as ONE recipient-scoped beat
 //     ([BeatConcealmentRevealed] — the wire's CONCEALMENT_REVEALED), and a
-//     hidden door's own state beats go to its knowers alone. The beat is a
+//     hidden door's own state beats go to its actual witnesses. The beat is a
 //     PATCH for the recipient's cached atlas, so it carries the secret's own
 //     slice AND the walls they did not have a moment ago — the segments
 //     newly presented to them, and the cells nobody stands on

@@ -76,7 +76,7 @@ func standingPassEncounter(t *testing.T, at map[MemberID]spatial.Position, stand
 // Current included — [heldBy] throws those away and this needs them.
 func holdingOn(t *testing.T, enc *Encounter, observer, subject MemberID) (perception.Holding, bool) {
 	t.Helper()
-	holdings, err := enc.intelLog.Held(observer)
+	holdings, err := enc.memberIntel(observer)
 	require.NoError(t, err)
 	for _, h := range holdings {
 		if h.Subject != subject {
