@@ -1196,6 +1196,7 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string) (*writeSco
 	// the load, is safe: by the time a driven turn ever reaches Strike,
 	// every field it reads is set.
 	scope := &writeScope{
+		ctx:       ctx,
 		session:   sessionID,
 		encounter: data.Encounter,
 		data:      data,
@@ -1280,6 +1281,12 @@ func (s *writeScope) frozen() error {
 // and the sequence boundary separating what was already recorded from what this
 // verb records.
 type writeScope struct {
+	// ctx belongs to this verb, not the Manager or persisted session. The
+	// context-free composition may call synchronous capabilities with a
+	// background context; host I/O must retain the caller's values, deadline
+	// and cancellation through those callbacks, including after adopt.
+	ctx context.Context
+
 	// The already-paid remainder is frozen only if a direct walk poses.
 	walkContinuation []spatial.Position
 	// Snapshot of areas whose membership transitions have already been queued.

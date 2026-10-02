@@ -67,8 +67,9 @@ var reactionName = map[string]string{
 // nothing reacted to returns nil having recorded nothing, which is the ordinary
 // case.
 func (s moverSeam) Move(
-	ctx context.Context, enc *encounter.Encounter, step encounter.MoveStep,
+	_ context.Context, enc *encounter.Encounter, step encounter.MoveStep,
 ) error {
+	ctx := s.scope.ctx
 	roster, err := enc.Members()
 	if err != nil {
 		return fmt.Errorf("move: %w", translate(err))

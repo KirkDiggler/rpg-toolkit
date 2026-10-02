@@ -250,7 +250,10 @@
 // S3 — repositories trade in data, not domain objects. Hydration happens here,
 // where the laws are; the host stays storage.
 //
-// S4 — every verb is load, act, save, return.
+// S4 — every verb is load, act, save, return. Synchronous composition callbacks
+// retain that verb's host context for repository access: request-scoped values,
+// deadlines and cancellation must not disappear inside a driven turn. The
+// context lives only on the call's write scope, never on the Manager or in data.
 //
 // S5 and S7 — retired with the spine above, not repealed. When a resolution can
 // suspend again they are the laws it suspends under.
