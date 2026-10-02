@@ -153,7 +153,7 @@ func (s *IntimidateSuite) threaten(mgr *session.Manager) (*session.IntimidateOut
 func (s *IntimidateSuite) held(mgr *session.Manager, verb string) bool {
 	sightings, err := mgr.View(context.Background(), &session.ViewInput{Session: "sess", Member: "goblin"})
 	s.Require().NoError(err)
-	for _, holding := range sightings {
+	for _, holding := range sightings.Sightings {
 		if holding.Channel != string(deed.Channel) {
 			continue
 		}

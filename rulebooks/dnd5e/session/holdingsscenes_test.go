@@ -36,7 +36,7 @@ func (s *HoldingsSuite) TestLootOnTheCaptainRevealsTheVaultToTheLooterAlone() {
 		"the transferred fact rides the world; the advanced stream cursors ride the session")
 
 	s.Run("the looter alone is told about the secret", func() {
-		s.Equal([]session.EventKind{session.EventLooted, session.EventConcealmentRevealed, session.EventTick},
+		s.Equal([]session.EventKind{session.EventLooted, session.EventConcealmentRevealed, session.EventSighted, session.EventTick},
 			s.kinds("alice"), "the verb's own beat first, then what it caused, then the round it spent")
 		body, ok := s.bodyOf("alice", session.EventConcealmentRevealed).(session.ConcealmentRevealedBody)
 		s.Require().True(ok, "a reveal carries its typed body")
@@ -116,13 +116,10 @@ func (s *HoldingsSuite) TestLootOnABodyWithNothingIsIndistinguishableAtTheSeam()
 	s.Run("the response says the same thing about what was written", func() {
 		s.Equal(poor.Saved, rich.Saved)
 	})
-	s.Run("the ONE difference is the looter's own reveal, counted", func() {
-		// Design Q1 closed this deliberately: the reports go to the CALLER,
-		// who is the looter and who learns the door anyway on their own
-		// stream a line later. So the delivery count may differ by exactly
-		// the reveal, and it must not differ by anything else — a count that
-		// moved by two would mean a second beat somebody could have read.
-		s.Equal(poor.Delivery.Events+1, rich.Delivery.Events)
+	s.Run("the looter's reveal and resulting observation are counted", func() {
+		// Only the caller learns the secret and sees the newly exposed door;
+		// the bystander's stream above remains byte-identical.
+		s.Equal(poor.Delivery.Events+2, rich.Delivery.Events)
 		s.False(rich.Delivery.Failed)
 		s.False(poor.Delivery.Failed)
 	})
@@ -168,22 +165,22 @@ func (s *HoldingsSuite) TestLootIsOfferedOnEveryBodyAndRefusesAnUpright() {
 func (s *HoldingsSuite) TestHoldRemovesThePropForEveryoneAndTheHolderHasIt() {
 	ctx := context.Background()
 	s.start(true)
-	s.Require().Contains(propIDs(s.atlasOf("bob")), heirloomID, "it is on the floor to begin with")
+	s.Require().Contains(s.propsOf("bob"), heirloomID, "it is on the floor to begin with")
 
 	_, err := s.mgr.Hold(ctx, &session.HoldInput{
 		Session: "sess", Member: "alice", Target: heirloomID, Range: 2})
 	s.Require().NoError(err)
 
 	s.Run("it is gone from every member's own map", func() {
-		s.NotContains(propIDs(s.atlasOf("alice")), heirloomID)
-		s.NotContains(propIDs(s.atlasOf("bob")), heirloomID)
-		s.Contains(propIDs(s.atlasOf("bob")), chaliceID,
+		s.NotContains(s.propsOf("alice"), heirloomID)
+		s.NotContains(s.propsOf("bob"), heirloomID)
+		s.Contains(s.propsOf("bob"), chaliceID,
 			"and the prop nobody touched is still there")
 	})
 
 	s.Run("everyone present is told, with the same typed body", func() {
 		for _, who := range []string{"alice", "bob"} {
-			s.Equal([]session.EventKind{session.EventHeld}, s.kinds(who))
+			s.Equal([]session.EventKind{session.EventHeld, session.EventSighted}, s.kinds(who))
 			s.Equal(session.HeldBody{Holder: "alice", Prop: heirloomID},
 				s.bodyOf(who, session.EventHeld))
 		}
@@ -297,7 +294,7 @@ func (s *HoldingsSuite) TestExitAwayFromTheBoundExitDropsTheHolding() {
 	_, err := s.mgr.Hold(ctx, &session.HoldInput{
 		Session: "sess", Member: "bob", Target: chaliceID, Range: 1})
 	s.Require().NoError(err)
-	s.Require().NotContains(propIDs(s.atlasOf("alice")), chaliceID, "off the floor while carried")
+	s.Require().NotContains(s.propsOf("alice"), chaliceID, "off the floor while carried")
 	s.stream.published = nil
 
 	out, err := s.mgr.Exit(ctx, &session.ExitInput{Session: "sess", Member: "bob"})
@@ -319,13 +316,8 @@ func (s *HoldingsSuite) TestExitAwayFromTheBoundExitDropsTheHolding() {
 	})
 
 	s.Run("and it is back on the map, at the drop cell", func() {
-		var found *session.AtlasProp
-		for i := range s.atlasOf("alice").Props {
-			if s.atlasOf("alice").Props[i].ID == chaliceID {
-				found = &s.atlasOf("alice").Props[i]
-			}
-		}
-		s.Require().NotNil(found, "the prop reappears — a drop is a new fact, not an erasure")
+		found, present := s.propsOf("alice")[chaliceID]
+		s.Require().True(present, "the prop reappears — a drop is a new fact, not an erasure")
 		s.Equal(bobCellAbsolute(), found.At, "at the drop cell, not the authored one")
 		s.True(found.Holdable, "and still holdable, so somebody else can finish the run")
 	})
@@ -471,7 +463,7 @@ func (s *HoldingsSuite) TestTheAtlasCarriesTheWaysOutAndWhatCanBePickedUp() {
 
 	s.Run("a prop says whether it can be picked up, and carries its author's name", func() {
 		byID := map[string]session.AtlasProp{}
-		for _, p := range s.atlasOf("alice").Props {
+		for _, p := range s.propsOf("alice") {
 			byID[p.ID] = p
 		}
 		s.Require().Contains(byID, heirloomID)
@@ -494,8 +486,8 @@ func (s *HoldingsSuite) TestTheAtlasCarriesTheWaysOutAndWhatCanBePickedUp() {
 		_, err := s.mgr.Hold(ctx, &session.HoldInput{
 			Session: "sess", Member: "alice", Target: heirloomID, Range: 2})
 		s.Require().NoError(err)
-		s.NotContains(propIDs(s.atlasOf("alice")), heirloomID)
-		s.NotContains(propIDs(s.atlasOf("bob")), heirloomID,
+		s.NotContains(s.propsOf("alice"), heirloomID)
+		s.NotContains(s.propsOf("bob"), heirloomID,
 			"the filter is the composition's, inherited by both reads rather than "+
 				"re-derived in this package")
 	})
@@ -530,15 +522,15 @@ func (s *HoldingsSuite) TestEveryBeatNamesItsVerbAsAStatement() {
 		// further — the clock accrues by DRIVER as a high-water mark, not as a
 		// sum, so bob's second and third acts are still inside his first round.
 		session.EventTick,
-		session.EventHeld, session.EventExited, session.EventDropped,
+		session.EventHeld, session.EventSighted, session.EventExited, session.EventDropped,
 		// And the departure changed what alice can see, which is its own
 		// statement on her own stream — bob left the map, so she holds him
 		// as a ghost now.
 		session.EventSighted,
 	}, s.kinds("alice"), "every beat arrived named, and in the order the fiction happened")
 	s.Equal([]session.EventKind{
-		session.EventLooted, session.EventConcealmentRevealed, session.EventTick,
-		session.EventHeld, session.EventExited, session.EventDropped,
+		session.EventLooted, session.EventConcealmentRevealed, session.EventSighted, session.EventTick,
+		session.EventHeld, session.EventSighted, session.EventExited, session.EventDropped,
 	}, s.kinds("bob"), "and the ACTOR's stream is the same list plus what his loot caused, "+
 		"which is the one beat nobody else may see")
 
@@ -682,7 +674,7 @@ func (s *HoldingsSuite) TestHoldingAScrollTeachesTheHolderAtTheSeam() {
 	s.Require().NoError(err)
 
 	s.Run("the holder is told what it says, after being told they hold it", func() {
-		s.Equal([]session.EventKind{session.EventHeld, session.EventConcealmentRevealed}, s.kinds("alice"),
+		s.Equal([]session.EventKind{session.EventHeld, session.EventConcealmentRevealed, session.EventSighted}, s.kinds("alice"),
 			"picking it up is the cause; what it teaches is the consequence")
 
 		body, ok := s.bodyOf("alice", session.EventConcealmentRevealed).(session.ConcealmentRevealedBody)
@@ -691,7 +683,7 @@ func (s *HoldingsSuite) TestHoldingAScrollTeachesTheHolderAtTheSeam() {
 	})
 
 	s.Run("the bystander sees a thing picked up and is taught nothing", func() {
-		s.Equal([]session.EventKind{session.EventHeld}, s.kinds("bob"),
+		s.Equal([]session.EventKind{session.EventHeld, session.EventSighted}, s.kinds("bob"),
 			"holding is public; what the scroll says is not")
 	})
 

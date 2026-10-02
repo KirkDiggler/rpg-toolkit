@@ -104,7 +104,7 @@ func (s *HoldOutSessionSuite) TestASpawnWithAPredicateWaitsInReserveForEveryone(
 			s.ErrorIs(err, session.ErrNoMember, "%s is nowhere", id)
 		}
 		for _, who := range []string{"alice", "bob"} {
-			s.NotContains(propIDs(s.atlas(who)), campLetter, "%s: the letter waits for round 6", who)
+			s.NotContains(knownCellProps(s.T(), s.mgr, campSession, who), campLetter, "%s: the letter waits for round 6", who)
 		}
 	})
 
@@ -226,7 +226,7 @@ func (s *HoldOutSessionSuite) TestTheLetterArrivesAtRoundSixThroughTheSeam() {
 		_, err := s.mgr.Hold(context.Background(), &session.HoldInput{
 			Session: campSession, Member: "bob", Target: campLetter, Range: 9})
 		s.Require().ErrorIs(err, session.ErrNoProp, "%s: the letter refuses as a thing that is not here", when)
-		s.NotContains(propIDs(s.atlas("bob")), campLetter, "%s: bob's map shows the letter", when)
+		s.NotContains(knownCellProps(s.T(), s.mgr, campSession, "bob"), campLetter, "%s: bob's map shows the letter", when)
 		s.Empty(s.arrivalsOn("bob"), "%s", when)
 	}
 	absent("at first light")
@@ -239,8 +239,8 @@ func (s *HoldOutSessionSuite) TestTheLetterArrivesAtRoundSixThroughTheSeam() {
 
 	s.Require().NoError(s.endTurnOf("alice"), "round 6 starts")
 	s.Run("round six: the letter lies at the gate for everyone", func() {
-		s.Contains(propIDs(s.atlas("bob")), campLetter)
-		s.Contains(propIDs(s.atlas("alice")), campLetter)
+		s.Contains(knownCellProps(s.T(), s.mgr, campSession, "bob"), campLetter)
+		s.Contains(knownCellProps(s.T(), s.mgr, campSession, "alice"), campLetter)
 		for _, who := range []string{"alice", "bob"} {
 			arrivals := s.arrivalsOn(who)
 			s.Require().Len(arrivals, 1, "%s heard %v", who, s.kinds(who))

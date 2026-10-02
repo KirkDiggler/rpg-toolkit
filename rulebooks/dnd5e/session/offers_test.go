@@ -108,11 +108,11 @@ func injectHolding(
 	if stored.Perception.Intel.Holdings == nil {
 		stored.Perception.Intel.Holdings = map[core.EntityID]map[intel.Subject]intel.HoldingData{}
 	}
-	obs := core.EntityID("alice")
+	obs := core.EntityID("member|alice")
 	if stored.Perception.Intel.Holdings[obs] == nil {
 		stored.Perception.Intel.Holdings[obs] = map[intel.Subject]intel.HoldingData{}
 	}
-	stored.Perception.Intel.Holdings[obs][intel.Subject(subject)] = intel.HoldingData{
+	stored.Perception.Intel.Holdings[obs][intel.Subject("member|"+subject)] = intel.HoldingData{
 		Channel:    intel.Sight,
 		CurrentVia: currentVia,
 		Payload:    payload,

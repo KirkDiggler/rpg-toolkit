@@ -157,6 +157,13 @@ func (s *PlacedAtlasSuite) placedOf(member string) map[string]session.AtlasPlace
 	for _, p := range atlas.Placed {
 		out[p.ID] = p
 	}
+	view, err := s.mgr.View(context.Background(), &session.ViewInput{Session: "sess", Member: member})
+	s.Require().NoError(err)
+	for _, sighting := range view.Props {
+		if sighting.Placed != nil && !sighting.ObservedEmpty {
+			out[sighting.Placed.ID] = *sighting.Placed
+		}
+	}
 	return out
 }
 

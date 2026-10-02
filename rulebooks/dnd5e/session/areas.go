@@ -43,11 +43,15 @@ func (m *Manager) Areas(ctx context.Context, in *ViewInput) ([]SightArea, error)
 	if _, err := enc.View(&encounter.ViewInput{Member: encounter.MemberID(in.Member)}); err != nil {
 		return nil, translate(err)
 	}
-	areas := enc.SightAreasFor(encounter.MemberID(in.Member))
+	return projectAreas(enc, in.Member), nil
+}
+
+func projectAreas(enc *encounter.Encounter, member string) []SightArea {
+	areas := enc.SightAreasFor(encounter.MemberID(member))
 	out := make([]SightArea, 0, len(areas))
 	for _, a := range areas {
 		opaque := sha256.Sum256([]byte(a.ID))
 		out = append(out, SightArea{ID: hex.EncodeToString(opaque[:16]), Name: a.Name, Ref: a.Ref, Center: a.Center, RadiusFeet: a.RadiusFeet})
 	}
-	return out, nil
+	return out
 }

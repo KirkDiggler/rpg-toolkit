@@ -312,6 +312,8 @@ func kindFor(beat string) EventKind {
 	// and "region_revealed" were two beats for one moment, nothing writes
 	// either any more, and neither is decoded here — a seam that still
 	// answered them would claim to read a wire that no longer speaks.
+	case encounter.BeatRoomRevealed:
+		return EventRoomRevealed
 	case encounter.BeatConcealmentRevealed:
 		return EventConcealmentRevealed
 	// A change in one recipient's own perception. The composition exports
@@ -744,6 +746,8 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			return nil
 		}
 		return DroppedBody{Member: p.Member, Prop: p.Prop, At: p.Position}
+	case EventRoomRevealed:
+		return roomRevealedBody(payload)
 	case EventConcealmentRevealed:
 		// The payload's cells, props, regions, boundaries, segments and
 		// sealed cells carry exactly this package's atlas field names — the
@@ -790,15 +794,16 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		// body says so rather than handing a client an empty change to
 		// act on.
 		var p struct {
-			Gained  []string `json:"gained"`
-			Lost    []string `json:"lost"`
-			Changed []string `json:"changed"`
+			Gained           []string `json:"gained"`
+			Lost             []string `json:"lost"`
+			Changed          []string `json:"changed"`
+			KnowledgeChanged bool     `json:"knowledge_changed"`
 		}
 		if json.Unmarshal(payload, &p) != nil ||
-			(len(p.Gained) == 0 && len(p.Lost) == 0 && len(p.Changed) == 0) {
+			(len(p.Gained) == 0 && len(p.Lost) == 0 && len(p.Changed) == 0 && !p.KnowledgeChanged) {
 			return nil
 		}
-		return SightedBody{Gained: p.Gained, Lost: p.Lost, Changed: p.Changed}
+		return SightedBody{Gained: p.Gained, Lost: p.Lost, Changed: p.Changed, KnowledgeChanged: p.KnowledgeChanged}
 	default:
 		// EventSceneOpened, EventTick: no body member exists for these — see
 		// EventBody's own doc.

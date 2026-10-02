@@ -185,7 +185,7 @@ func (s *BothWaysSuite) believedStance(viewer, subject string) string {
 	s.T().Helper()
 	sightings, err := s.mgr.View(context.Background(), &session.ViewInput{Session: bwSession, Member: viewer})
 	s.Require().NoError(err)
-	for _, sighting := range sightings {
+	for _, sighting := range sightings.Sightings {
 		if sighting.Subject == subject {
 			return sighting.Stance
 		}

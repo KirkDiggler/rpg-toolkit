@@ -242,7 +242,7 @@ func TestAResolverErrorFailsTheVerbAndDrivesNoTurn(t *testing.T) {
 	// A read is refused by the same door, for the same reason: a world this
 	// package builds never holds a brain that belongs to somebody else.
 	askedBeforeRefusedRead := source.asks["sess"]
-	_, readErr := mgr.Roster(context.Background(), &session.RosterInput{Session: "sess", Player: "player-fighter-a"})
+	_, readErr := mgr.Roster(context.Background(), &session.RosterInput{Session: "sess", Player: "player-fighter-a", Member: "fighter-a"})
 	require.ErrorIs(t, readErr, boom)
 	require.Equal(t, askedBeforeRefusedRead+1, source.asks["sess"], "and a refused read asks once too")
 
@@ -254,7 +254,7 @@ func TestAResolverErrorFailsTheVerbAndDrivesNoTurn(t *testing.T) {
 	// promise is actually about — the read path resolves beside the world and
 	// carries that answer through the whole verb.
 	askedBeforeRead := source.asks["sess"]
-	_, err = mgr.Roster(context.Background(), &session.RosterInput{Session: "sess", Player: "player-fighter-a"})
+	_, err = mgr.Roster(context.Background(), &session.RosterInput{Session: "sess", Player: "player-fighter-a", Member: "fighter-a"})
 	require.NoError(t, err)
 	require.Equal(t, askedBeforeRead+1, source.asks["sess"],
 		"one read verb, one ask: the driver is resolved next to the world and carried")
@@ -277,7 +277,7 @@ func TestASourceThatHandsOverNoDriverIsRefused(t *testing.T) {
 	startDungeon(t, mgr, "sess", "fighter-a", "skel-1")
 
 	source.nilFor = true
-	_, err := mgr.Roster(context.Background(), &session.RosterInput{Session: "sess", Player: "player-fighter-a"})
+	_, err := mgr.Roster(context.Background(), &session.RosterInput{Session: "sess", Player: "player-fighter-a", Member: "fighter-a"})
 	require.ErrorIs(t, err, session.ErrNoTurnDriver)
 	require.Contains(t, err.Error(), "sess", "and it names the session nobody could name a driver for")
 }

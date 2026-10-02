@@ -30,9 +30,9 @@ func (s *CastSuite) TestBlessKnownDyingAndStabilizedRecipientsPersistWithConcent
 			s.characters.byID["patient"].HitPoints = 0
 			s.characters.byID["patient"].DeathSaveState = &saves.DeathSaveState{Stabilized: stable}
 			for _, world := range s.encounters.byID {
-				h := world.Perception.Intel.Holdings["cleric"]["patient"]
+				h := world.Perception.Intel.Holdings["member|cleric"]["member|patient"]
 				h.CurrentVia = nil
-				world.Perception.Intel.Holdings["cleric"]["patient"] = h
+				world.Perception.Intel.Holdings["member|cleric"]["member|patient"] = h
 			}
 			s.configureBless(session.StaleTargetRefuse)
 			row := s.castRow(spells.Bless)
@@ -97,12 +97,12 @@ func (s *CastSuite) TestBlessPoliciesMixedCastAndStoryReload() {
 			s.configureBless(policy)
 			row := s.castRow(spells.Bless)
 			for _, world := range s.encounters.byID {
-				h := world.Perception.Intel.Holdings["cleric"]["skeleton"]
+				h := world.Perception.Intel.Holdings["member|cleric"]["member|skeleton"]
 				h.CurrentVia = nil
 				var err error
 				h.Payload, err = encounter.EncodeSightTestimony(encounter.SightTestimony{State: encounter.LocationKnown, Position: spatial.Position{X: 3, Y: 2}})
 				s.Require().NoError(err)
-				world.Perception.Intel.Holdings["cleric"]["skeleton"] = h
+				world.Perception.Intel.Holdings["member|cleric"]["member|skeleton"] = h
 			}
 			candidate, found := castCandidate(s.T(), s.castRow(spells.Bless), "skeleton")
 			s.Require().True(found)

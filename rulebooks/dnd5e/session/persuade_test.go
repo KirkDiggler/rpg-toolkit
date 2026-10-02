@@ -239,7 +239,7 @@ func (s *PersuadeSuite) TestABeatenAppealLandsItsOwnDeed() {
 func (s *PersuadeSuite) heldBy(mgr *session.Manager, verb string) bool {
 	sightings, err := mgr.View(context.Background(), &session.ViewInput{Session: "sess", Member: "goblin"})
 	s.Require().NoError(err)
-	for _, holding := range sightings {
+	for _, holding := range sightings.Sightings {
 		if holding.Channel != string(deed.Channel) {
 			continue
 		}
@@ -547,7 +547,7 @@ func (s *PersuadeSuite) TestTwoViewersBelieveDifferentStancesAboutOneSubject() {
 	stanceOf := func(viewer, subject string) string {
 		sightings, err := mgr.View(ctx, &session.ViewInput{Session: "sess", Member: viewer})
 		s.Require().NoError(err)
-		for _, sighting := range sightings {
+		for _, sighting := range sightings.Sightings {
 			if sighting.Subject == subject {
 				return sighting.Stance
 			}
@@ -583,7 +583,7 @@ func (s *PersuadeSuite) TestASubjectInNoFactionHasNoStance() {
 	s.Require().NoError(err)
 
 	var found bool
-	for _, sighting := range sightings {
+	for _, sighting := range sightings.Sightings {
 		if sighting.Subject != "innkeeper" {
 			continue
 		}
