@@ -82,10 +82,12 @@ func (s *ConcealLawSuite) openTwin() *encounter.Encounter {
 // COMPUTED by authoring the twin, not echoed from the projection.
 func (s *ConcealLawSuite) TestANonKnowersAtlasIsAnHonestlyAuthoredTwin() {
 	enc := s.open(findsNothing{}, false)
-	scoped, err := enc.AtlasFor(seeker)
+	// Compare the same observer, including ordinary room discovery, on both
+	// sides of the never-authored test. Buddy occupies the vault's neighbour.
+	scoped, err := enc.AtlasFor(buddy)
 	s.Require().NoError(err)
 
-	twin, err := s.openTwin().Atlas()
+	twin, err := s.openTwin().AtlasFor(buddy)
 	s.Require().NoError(err)
 
 	s.Equal(twin.Cells, scoped.Cells, "cells byte-identical to never-authored")
@@ -144,7 +146,7 @@ func (s *ConcealLawSuite) TestPresencePiercesFromFrameOne() {
 	s.True(doorsListed(doors, vaultDoor), "occupying the room IS knowing its door — one noun, one moment")
 	s.False(doorsListed(doors, veilDoor), "while the OTHER secret, which they are not standing in, stays hidden")
 	_, masked := hasBoundary(atlas, spatial.Position{X: 4, Y: concealRow}, spatial.Position{X: 5, Y: concealRow})
-	s.True(masked, "and the veil-door's crossing is still masked as wall for them")
+	s.False(masked, "the remote veil-door is wholly outside the occupant's discovered layout")
 
 	// THE BEAT IS THE ATLAS'S OWN PATCH (PR #1373 review, Minor 1): its
 	// boundary list equals, entry for entry, what the occupant's AtlasFor

@@ -1816,20 +1816,27 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 	// ANSWER — with nothing here moving — which is exactly the promise
 	// [Standing] makes about hit points. All of it lives in [sightReach] now,
 	// which is the only thing in this pass that knows what a wall is.
+	geometry := sightReach{
+		positions: positions,
+		cells:     reach,
+		canvas:    e.canvas,
+		areas:     e.sightAreas,
+	}
 	perceived, err := e.intelLog.Observe(perception.Pass{
 		At:        clockReading,
 		Channel:   perception.Sight,
 		Presences: presences,
 		Observers: observerIDs,
-		Reach: sightReach{
-			positions: positions,
-			cells:     reach,
-			canvas:    e.canvas,
-			areas:     e.sightAreas,
-		},
+		Reach:     geometry,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("refreshsight observe: %w", err)
+	}
+
+	for _, observer := range observerIDs {
+		if err := e.discoverRooms(observer, geometry); err != nil {
+			return nil, err
+		}
 	}
 
 	deltas := make(map[MemberID]*IntelDelta, len(perceived))

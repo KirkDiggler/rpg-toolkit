@@ -63,15 +63,21 @@ type sightReach struct {
 // what this composition has always done for one it could not place. See
 // [Encounter.rebuildPercepts].
 func (s sightReach) Reaches(_ perception.Channel, observer, subject core.EntityID) bool {
-	observerCell, placed := s.positions[observer]
-	if !placed {
-		return false
-	}
 	subjectCell, placed := s.positions[subject]
 	if !placed {
 		return false
 	}
 
+	return s.reachesCell(observer, subjectCell)
+}
+
+// reachesCell is the same sight question for floor and remembered locations.
+// Discovery uses this answer, not a second visibility algorithm.
+func (s sightReach) reachesCell(observer MemberID, subjectCell spatial.Position) bool {
+	observerCell, placed := s.positions[observer]
+	if !placed {
+		return false
+	}
 	if s.canvas.GetGrid().Distance(observerCell, subjectCell) > float64(s.cells[observer]) {
 		return false
 	}

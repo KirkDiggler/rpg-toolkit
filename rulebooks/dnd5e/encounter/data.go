@@ -1047,7 +1047,7 @@ func worldDataFrom(w *encounterWorld) *WorldData {
 // the same way: a blob claiming an allied pair turned hostile is claiming
 // something this field has no machinery for.
 func validateWorldFacts(
-	data *WorldData, concealments []ConcealmentInput, facts []FactID,
+	data *WorldData, concealments []ConcealmentInput, regions []RegionInput, facts []FactID,
 	turnable []factionPair, everMembers []MemberID,
 ) error {
 	// kind -> the subject that kind's writer always records; "" for a fact
@@ -1058,6 +1058,9 @@ func validateWorldFacts(
 	}
 	for _, id := range facts {
 		minted[string(factKnownKind(id))] = ""
+	}
+	for _, region := range regions {
+		minted[string(roomKnownKind(region.ID))] = ""
 	}
 	settled := make(map[string]factionPair, 2*len(turnable))
 	for _, pair := range turnable {
@@ -2626,7 +2629,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 		mintable := mintedFactIDs(f, triggersOf(endingInputsForValidation), taught)
 		if err = validateWorldFacts(
-			data.World, fieldInput.Concealments, mintable, turnablePairsOf(f), data.EverMembers,
+			data.World, fieldInput.Concealments, fieldInput.Regions, mintable, turnablePairsOf(f), data.EverMembers,
 		); err != nil {
 			return nil, fmt.Errorf("load encounter: %w", err)
 		}

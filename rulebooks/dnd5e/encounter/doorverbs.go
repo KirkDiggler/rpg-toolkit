@@ -160,7 +160,7 @@ func (e *Encounter) OpenDoor(in *OpenDoorInput) (*OpenDoorOutput, error) {
 		return nil, fmt.Errorf("open door %q: it is already open: %w", door.id, ErrBadDoor)
 	}
 
-	changed, err := e.setDoorState(door, DoorIsOpen(), doorActorExtra(in.Actor))
+	changed, err := e.setDoorState(door, DoorIsOpen(), in.Actor, doorActorExtra(in.Actor))
 	if err != nil {
 		return nil, fmt.Errorf("open door %q: %w", door.id, err)
 	}
@@ -250,7 +250,7 @@ func (e *Encounter) CloseDoor(in *CloseDoorInput) (*CloseDoorOutput, error) {
 		return nil, fmt.Errorf("close door %q: it is already %s: %w", door.id, door.state.Kind(), ErrBadDoor)
 	}
 
-	changed, err := e.setDoorState(door, DoorIsClosed(), doorActorExtra(in.Actor))
+	changed, err := e.setDoorState(door, DoorIsClosed(), in.Actor, doorActorExtra(in.Actor))
 	if err != nil {
 		return nil, fmt.Errorf("close door %q: %w", door.id, err)
 	}
@@ -442,7 +442,7 @@ func (e *Encounter) Unlock(in *UnlockInput) (*UnlockOutput, error) {
 		extra["calculation"] = in.Calculation
 	}
 
-	changed, err := e.setDoorState(door, next, extra)
+	changed, err := e.setDoorState(door, next, in.Actor, extra)
 	if err != nil {
 		return nil, fmt.Errorf("unlock %q: %w", door.id, err)
 	}
@@ -499,7 +499,7 @@ type doorChange struct {
 // through here is worth more than the microseconds a "did it really change"
 // branch would save, and a refresh over an unchanged world produces no new
 // percepts by construction.
-func (e *Encounter) setDoorState(door *doorRecord, next DoorState, extra map[string]interface{}) (doorChange, error) {
+func (e *Encounter) setDoorState(door *doorRecord, next DoorState, actor MemberID, extra map[string]interface{}) (doorChange, error) {
 	door.state = next
 
 	if err := registerDoor(e.canvas.BasicRoom, door); err != nil {
@@ -521,6 +521,12 @@ func (e *Encounter) setDoorState(door *doorRecord, next DoorState, extra map[str
 	seq, err := e.appendDoorBeat(door, audience, extra)
 	if err != nil {
 		return doorChange{}, err
+	}
+
+	if next.Kind() == DoorOpen {
+		if err := e.discoverOpenedRooms(actor, door); err != nil {
+			return doorChange{}, err
+		}
 	}
 
 	deltas, formed, err := e.refreshSight(e.rosterIDs())

@@ -97,6 +97,16 @@
 // unit, rolls its `time` table, and spends one. A creature that walks into an
 // opposed member's sight forms or joins a fight by the ordinary path.
 //
+// # Individual room discovery
+//
+// Ordinary regions are not automatically known. The existing sight pass
+// teaches a region's fixed layout on first observation of any of its floor;
+// opening an edge door also teaches its opener the adjoining rooms. Discovery
+// is recorded per member in the world journal, independently of creature
+// testimony. AtlasFor withholds undiscovered room geometry, starts and exits.
+// Learning persists across loss of sight and load without rerunning perception.
+// Concealment discovery remains an independent source of learned geometry.
+//
 // # Concealment: the run composes its world (rpg-toolkit#1371, rpg-project#490)
 //
 // A field may declare CONCEALMENTS — one noun per secret, each with an id,
@@ -162,8 +172,8 @@
 //     strangers again, while every member who ever perceived it keeps a
 //     visible shut door, and a mapped room stays mapped, forever.
 //
-// A field that hides nothing requires neither capability and sweeps
-// nothing, which keeps every plain dungeon's blob exactly as it was.
+// A field that hides nothing requires neither concealment capability. Its
+// ordinary room discovery still uses the same persisted knowledge journal.
 //
 // # Sides: the run composes ONE world (rpg-project#375)
 //

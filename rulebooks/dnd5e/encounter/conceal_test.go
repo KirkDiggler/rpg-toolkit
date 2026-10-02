@@ -322,12 +322,8 @@ func (s *ConcealSuite) TestAConcealedFieldRefusesConstructionWithoutItsCapabilit
 	})
 }
 
-// TestAPlainFieldNeedsNoCapabilitiesAndBuildsNoWorld: zero behavior change
-// for a dungeon without concealment — construction accepts nil capabilities,
-// the member-scoped reads ARE the unscoped ones, the blob writes no world
-// key (the exact bytes every pre-concealment blob already has), and a
-// search answers without machinery.
-func (s *ConcealSuite) TestAPlainFieldNeedsNoCapabilitiesAndBuildsNoWorld() {
+// Ordinary room discovery requires no concealment/check capabilities.
+func (s *ConcealSuite) TestAPlainFieldNeedsNoConcealmentCapabilities() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
@@ -345,7 +341,9 @@ func (s *ConcealSuite) TestAPlainFieldNeedsNoCapabilitiesAndBuildsNoWorld() {
 	s.Require().NoError(err)
 	scoped, err := enc.AtlasFor(nessa)
 	s.Require().NoError(err)
-	s.Equal(full, scoped, "the member-scoped atlas IS the atlas")
+	s.Len(full.Regions, 2)
+	s.Require().Len(scoped.Regions, 1)
+	s.Equal(doorWest, scoped.Regions[0].ID, "the shut ordinary door withholds the other room")
 
 	doors, err := enc.DoorsFor(nessa)
 	s.Require().NoError(err)
@@ -353,7 +351,7 @@ func (s *ConcealSuite) TestAPlainFieldNeedsNoCapabilitiesAndBuildsNoWorld() {
 
 	blob, err := json.Marshal(enc.ToData())
 	s.Require().NoError(err)
-	s.NotContains(string(blob), `"world"`, "a plain dungeon writes no world key at all")
+	s.Contains(string(blob), `"known:room:west"`, "ordinary room knowledge uses the existing world journal")
 
 	out, err := enc.Search(&encounter.SearchInput{Member: nessa, Region: doorWest})
 	s.Require().NoError(err, "searching a plain dungeon is legal — refusing would answer the question")
