@@ -176,6 +176,19 @@ func (s *CallbackContextSuite) TestDrivenMovementKeepsCallerContext() {
 	s.Require().NotNil(reaction, "a lost repository context must not silently omit the player's reaction")
 	s.Require().NotNil(reaction.Reaction)
 	s.Equal(oaRef(), reaction.Reaction.Ref)
+
+	// Answering the suspended walk is a different host request. Its resumed
+	// callbacks must use this new context, not the one that posed the window.
+	ctx = s.callContext("react-resume")
+	_, err = s.manager.React(ctx, &session.ReactInput{
+		Session: "sess", Member: "fighter", DeclarationID: reaction.ID, Choice: session.ReactStrike,
+	})
+	s.Require().NoError(err)
+	s.Positive(s.characters.reads)
+	s.Positive(s.characters.writes, "the reaction persists under the answering call's context")
+	where, err := s.manager.Where(ctx, &session.WhereInput{Session: "sess", Member: "skel-1"})
+	s.Require().NoError(err)
+	s.Equal(hexCell(4, 0), where.Position, "the monster finishes the resumed walk")
 }
 
 type cancelingPass struct{ cancel context.CancelFunc }
