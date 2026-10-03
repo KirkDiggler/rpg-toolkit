@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	wantRagingDetail      = "Adds your rage damage bonus to melee weapon attacks that use Strength. Also grants advantage on Strength checks and saving throws, and resistance to bludgeoning, piercing, and slashing damage."
+	wantRagingDetail      = "Adds your rage damage bonus to melee weapon attacks that use Strength. Also grants advantage on Strength-based skill checks and Strength saving throws, and resistance to bludgeoning, piercing, and slashing damage."
 	wantSneakAttackDetail = "Once per turn, adds extra damage to a qualifying attack when you have advantage or another enemy of the target is within 5 feet."
 	wantBlessedDetail     = "Adds 1d4 to attack rolls and saving throws. Multiple Bless effects do not add extra dice to the same roll."
 )

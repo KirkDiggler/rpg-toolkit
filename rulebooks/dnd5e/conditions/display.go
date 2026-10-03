@@ -54,7 +54,7 @@ var displayCatalog = map[string]Display{
 	// Barbarian.
 	refs.Conditions.Raging().String(): {
 		Name:   "Raging",
-		Detail: "Adds your rage damage bonus to melee weapon attacks that use Strength. Also grants advantage on Strength checks and saving throws, and resistance to bludgeoning, piercing, and slashing damage.",
+		Detail: "Adds your rage damage bonus to melee weapon attacks that use Strength. Also grants advantage on Strength-based skill checks and Strength saving throws, and resistance to bludgeoning, piercing, and slashing damage.",
 	},
 	refs.Conditions.RecklessAttack().String(): {Name: "Reckless Attack"},
 	refs.Conditions.BrutalCritical().String(): {Name: "Brutal Critical"},
