@@ -280,7 +280,6 @@ var BardCantrips = []Spell{
 // caster's own save DC supplied later because it is not a property of the spell.
 type castProfileBuilder struct {
 	casting combat.SpellCasting
-	name    string
 	cost    *combat.SpendProfile
 	build   func(spellSaveDC int) actions.CastProfile
 }
@@ -314,7 +313,7 @@ var castContent = map[Spell]castProfileBuilder{
 	// Thorn Whip's Large-or-smaller pull restriction is deferred until
 	// creature size is supported by the encounter participants.
 	Thornwhip: {
-		name: "Thorn Whip", casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction}, cost: cantripCost(),
+		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction}, cost: cantripCost(),
 		build: func(_ int) actions.CastProfile {
 			return actions.CastProfile{
 				RangeFeet: 30, Target: actions.CastTargetOneCreature, MinTargets: 1, MaxTargets: 1,
@@ -325,7 +324,6 @@ var castContent = map[Spell]castProfileBuilder{
 		},
 	},
 	Shillelagh: {
-		name:    "Shillelagh",
 		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingBonusAction},
 		cost:    &combat.SpendProfile{Slots: map[coreCombat.ActionType]int{coreCombat.ActionBonus: 1}},
 		build: func(_ int) actions.CastProfile {
@@ -333,7 +331,6 @@ var castContent = map[Spell]castProfileBuilder{
 		},
 	},
 	InflictWounds: {
-		name:    "Inflict Wounds",
 		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
 		cost:    slotCost(resources.SpellSlotLevel1),
 		build: func(_ int) actions.CastProfile {
@@ -348,7 +345,6 @@ var castContent = map[Spell]castProfileBuilder{
 		},
 	},
 	GuidingBolt: {
-		name:    "Guiding Bolt",
 		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
 		cost:    slotCost(resources.SpellSlotLevel1),
 		build: func(_ int) actions.CastProfile {
@@ -364,7 +360,6 @@ var castContent = map[Spell]castProfileBuilder{
 		},
 	},
 	Bless: {
-		name:    "Bless",
 		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
 		cost:    slotCost(resources.SpellSlotLevel1),
 		build: func(_ int) actions.CastProfile {
@@ -378,7 +373,6 @@ var castContent = map[Spell]castProfileBuilder{
 		},
 	},
 	FaerieFire: {
-		name:    "Faerie Fire",
 		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
 		cost:    slotCost(resources.SpellSlotLevel1),
 		build: func(spellSaveDC int) actions.CastProfile {
@@ -395,7 +389,6 @@ var castContent = map[Spell]castProfileBuilder{
 		},
 	},
 	FogCloud: {
-		name:    "Fog Cloud",
 		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
 		cost:    slotCost(resources.SpellSlotLevel1),
 		build: func(_ int) actions.CastProfile {
@@ -414,7 +407,6 @@ var castContent = map[Spell]castProfileBuilder{
 		},
 	},
 	DivineFavor: {
-		name:    "Divine Favor",
 		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingBonusAction},
 		cost: &combat.SpendProfile{
 			Slots: map[coreCombat.ActionType]int{coreCombat.ActionBonus: 1},
@@ -429,7 +421,6 @@ var castContent = map[Spell]castProfileBuilder{
 		},
 	},
 	ShieldOfFaith: {
-		name:    "Shield of Faith",
 		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingBonusAction},
 		cost: &combat.SpendProfile{
 			Slots: map[coreCombat.ActionType]int{coreCombat.ActionBonus: 1},
@@ -444,7 +435,6 @@ var castContent = map[Spell]castProfileBuilder{
 		},
 	},
 	HealingWord: {
-		name:    "Healing Word",
 		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingBonusAction},
 		cost: &combat.SpendProfile{
 			Slots: map[coreCombat.ActionType]int{coreCombat.ActionBonus: 1},
@@ -458,7 +448,6 @@ var castContent = map[Spell]castProfileBuilder{
 		},
 	},
 	Sanctuary: {
-		name:    "Sanctuary",
 		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingBonusAction},
 		cost: &combat.SpendProfile{
 			Slots: map[coreCombat.ActionType]int{coreCombat.ActionBonus: 1},
@@ -487,7 +476,6 @@ var castContent = map[Spell]castProfileBuilder{
 	},
 	CureWounds: {
 		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
-		name:    "Cure Wounds",
 		cost:    slotCost(resources.SpellSlotLevel1),
 		build: func(_ int) actions.CastProfile {
 			return actions.CastProfile{RangeFeet: 5, Target: actions.CastTargetTouch, MinTargets: 1, MaxTargets: 1,
@@ -496,7 +484,6 @@ var castContent = map[Spell]castProfileBuilder{
 	},
 	Bane: {
 		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
-		name:    "Bane",
 		cost:    slotCost(resources.SpellSlotLevel1),
 		build: func(spellSaveDC int) actions.CastProfile {
 			return actions.CastProfile{
@@ -523,7 +510,6 @@ var castContent = map[Spell]castProfileBuilder{
 	},
 	Thunderclap: {
 		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction},
-		name:    "Thunderclap",
 		cost:    cantripCost(),
 		build: func(spellSaveDC int) actions.CastProfile {
 			return actions.CastProfile{
@@ -556,7 +542,6 @@ var castContent = map[Spell]castProfileBuilder{
 	},
 	BurningHands: {
 		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
-		name:    "Burning Hands",
 		cost:    slotCost(resources.SpellSlotLevel1),
 		build: func(spellSaveDC int) actions.CastProfile {
 			return actions.CastProfile{
@@ -572,7 +557,6 @@ var castContent = map[Spell]castProfileBuilder{
 	},
 	Thunderwave: {
 		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
-		name:    "Thunderwave",
 		cost:    slotCost(resources.SpellSlotLevel1),
 		build: func(spellSaveDC int) actions.CastProfile {
 			return actions.CastProfile{
@@ -623,7 +607,6 @@ var castContent = map[Spell]castProfileBuilder{
 	},
 	DissonantWhispers: {
 		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
-		name:    "Dissonant Whispers",
 		cost:    slotCost(resources.SpellSlotLevel1),
 		build: func(spellSaveDC int) actions.CastProfile {
 			return actions.CastProfile{
@@ -662,7 +645,6 @@ var castContent = map[Spell]castProfileBuilder{
 	},
 	Command: {
 		casting: combat.SpellCasting{Level: 1, Time: combat.SpellCastingAction},
-		name:    "Command",
 		cost:    slotCost(resources.SpellSlotLevel1),
 		build: func(spellSaveDC int) actions.CastProfile {
 			return actions.CastProfile{
@@ -733,7 +715,6 @@ var castContent = map[Spell]castProfileBuilder{
 	},
 	SpareTheDying: {
 		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction},
-		name:    "Spare the Dying",
 		cost:    cantripCost(),
 		build: func(_ int) actions.CastProfile {
 			// Recipient eligibility and stabilization belong to the character
@@ -746,7 +727,6 @@ var castContent = map[Spell]castProfileBuilder{
 	},
 	Guidance: {
 		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction},
-		name:    "Guidance",
 		cost:    cantripCost(),
 		build: func(_ int) actions.CastProfile {
 			// Self is a legal touch recipient (docs/ideas/cleric plan): CastTargetSelf
@@ -767,7 +747,6 @@ var castContent = map[Spell]castProfileBuilder{
 	},
 	Resistance: {
 		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction},
-		name:    "Resistance",
 		cost:    cantripCost(),
 		build: func(_ int) actions.CastProfile {
 			// [Guidance]'s own shape, for its own reason: which saving throw
@@ -786,7 +765,6 @@ var castContent = map[Spell]castProfileBuilder{
 	},
 	PoisonSpray: {
 		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction},
-		name:    "Poison Spray",
 		cost:    cantripCost(),
 		build: func(spellSaveDC int) actions.CastProfile {
 			return actions.CastProfile{
@@ -806,7 +784,6 @@ var castContent = map[Spell]castProfileBuilder{
 	},
 	SacredFlame: {
 		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction},
-		name:    "Sacred Flame",
 		cost:    cantripCost(),
 		build: func(spellSaveDC int) actions.CastProfile {
 			return actions.CastProfile{
@@ -826,7 +803,6 @@ var castContent = map[Spell]castProfileBuilder{
 	},
 	TollTheDead: {
 		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction},
-		name:    "Toll the Dead",
 		cost:    cantripCost(),
 		build: func(spellSaveDC int) actions.CastProfile {
 			return actions.CastProfile{
@@ -847,7 +823,6 @@ var castContent = map[Spell]castProfileBuilder{
 	},
 	WordOfRadiance: {
 		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction},
-		name:    "Word of Radiance",
 		cost:    cantripCost(),
 		build: func(spellSaveDC int) actions.CastProfile {
 			return actions.CastProfile{
@@ -867,7 +842,6 @@ var castContent = map[Spell]castProfileBuilder{
 	},
 	BladeWard: {
 		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction},
-		name:    "Blade Ward",
 		cost:    cantripCost(),
 		build: func(_ int) actions.CastProfile {
 			return actions.CastProfile{
@@ -898,7 +872,6 @@ var castContent = map[Spell]castProfileBuilder{
 	},
 	TrueStrike: {
 		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction},
-		name:    "True Strike",
 		cost:    cantripCost(),
 		build: func(_ int) actions.CastProfile {
 			return actions.CastProfile{
@@ -924,7 +897,6 @@ var castContent = map[Spell]castProfileBuilder{
 	},
 	ViciousMockery: {
 		casting: combat.SpellCasting{Level: 0, Time: combat.SpellCastingAction},
-		name:    "Vicious Mockery",
 		cost:    cantripCost(),
 		build: func(spellSaveDC int) actions.CastProfile {
 			return actions.CastProfile{
@@ -990,11 +962,12 @@ func CastDefinition(input CastDefinitionInput) *actions.Definition {
 		return nil
 	}
 
+	data := GetData(input.Spell)
 	ref := refs.Spells.ByID(string(input.Spell))
-	if ref == nil {
-		// The table and the ref catalog disagreeing is a build defect rather
-		// than a runtime condition, and returning nil says the same thing the
-		// missing-content answer says: no row.
+	if ref == nil || data == nil {
+		// A disagreement between cast content, refs and catalogue metadata is
+		// a build defect. Coverage tests require all three; a missing identity
+		// cannot produce a partially described executable row.
 		return nil
 	}
 
@@ -1014,7 +987,7 @@ func CastDefinition(input CastDefinitionInput) *actions.Definition {
 	}
 	return &actions.Definition{
 		Ref:  *ref,
-		Name: content.name,
+		Name: data.Name,
 		Cost: actions.CloneSpendProfile(content.cost),
 		Cast: &profile,
 	}

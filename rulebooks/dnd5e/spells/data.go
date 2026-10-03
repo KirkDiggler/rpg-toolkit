@@ -1,11 +1,13 @@
 package spells
 
-// Data contains all the game mechanics data for a spell
+// Data contains character-independent catalogue metadata for a spell.
+// Executable mechanics are authored separately in the cast profiles; metadata
+// lookup neither compiles an action nor grants permission to cast.
 type Data struct {
 	ID          Spell  // The spell this data represents
 	Level       int    // 0 for cantrips, 1-9 for leveled spells
 	Name        string // Display name
-	Description string // Brief description of the spell's effect
+	Description string // Player-facing effect, choices, duration and important limits
 	// NotYetImplemented marks catalog-only content, selectable/grantable but not castable.
 	NotYetImplemented bool
 }
@@ -13,7 +15,13 @@ type Data struct {
 // SpellData is the lookup map for all spell data
 // Shared by every class and domain; canonical refs also identify catalog-only spells.
 var SpellData = map[Spell]*Data{
-	Shillelagh:       {ID: Shillelagh, Level: 0, Name: "Shillelagh", Description: "Enchant a held club or quarterstaff: its weapon die becomes 1d8, it counts as magical, and it can use your spellcasting ability for attacks and damage. Lasts one minute, until recast, or until released."},
+	BladeWard:        {ID: BladeWard, Level: 0, Name: "Blade Ward", Description: "Use an action to protect yourself until the end of your next turn. You take half damage, rounded down, from bludgeoning, piercing, and slashing damage dealt by weapon attacks. This does not protect against other damage types. No concentration required."},
+	FaerieFire:       {ID: FaerieFire, Level: 1, Name: "Faerie Fire", Description: "Use an action to outline creatures in a 20-foot cube within 60 feet. Each creature makes a Dexterity save; on a failure, attacks against it have advantage if the attacker can see it. The area can catch allies too. Requires concentration, up to 1 minute."},
+	FogCloud:         {ID: FogCloud, Level: 1, Name: "Fog Cloud", Description: "Use an action to create a 20-foot-radius fog cloud around a point within 120 feet. The cloud blocks sight through its area, obscuring allies and enemies alike. Requires concentration, up to 1 hour. It deals no damage."},
+	Thunderclap:      {ID: Thunderclap, Level: 0, Name: "Thunderclap", Description: "Use an action to burst with thunder. Every other creature within 5 feet, including allies, makes a Constitution save. A failed save deals 1d6 thunder damage; a successful save deals none. You are not hit by your own burst. No concentration required."},
+	TrueStrike:       {ID: TrueStrike, Level: 0, Name: "True Strike", Description: "Use an action to focus on one creature within 30 feet. While concentrating, your next attack against that creature has advantage: roll two d20s and use the higher result, unless disadvantage cancels it. The benefit is consumed by that attack and otherwise lasts until the end of your next turn. It adds no damage."},
+	ViciousMockery:   {ID: ViciousMockery, Level: 0, Name: "Vicious Mockery", Description: "Use an action to mock one creature within 60 feet. It makes a Wisdom save. On a failure, it takes 1d4 psychic damage and has disadvantage on its next attack roll before the end of its next turn: roll two d20s and use the lower result, unless advantage cancels it. A successful save prevents both effects. No concentration required."},
+	Shillelagh:       {ID: Shillelagh, Level: 0, Name: "Shillelagh", Description: "Use a bonus action to enchant a club or quarterstaff you are holding. Its weapon die becomes 1d8 and it counts as magical. This build uses your spellcasting ability for its attacks and damage when that modifier is better than Strength. The enchantment lasts 1 minute, ending early if you cast it again or release the weapon. No concentration required."},
 	Druidcraft:       {ID: Druidcraft, Level: 0, Name: "Druidcraft", Description: "Create minor natural wonders; its environmental interactions are not yet implemented", NotYetImplemented: true},
 	Mending:          {ID: Mending, Level: 0, Name: "Mending", Description: "Repair a small break or tear in an object; object repair is not yet implemented", NotYetImplemented: true},
 	AnimalFriendship: {ID: AnimalFriendship, Level: 1, Name: "Animal Friendship", Description: "Charm a beast; animal interactions are not yet implemented", NotYetImplemented: true},
@@ -48,7 +56,7 @@ var SpellData = map[Spell]*Data{
 		ID:          PoisonSpray,
 		Level:       0,
 		Name:        "Poison Spray",
-		Description: "Project a puff of noxious gas dealing 1d12 poison damage",
+		Description: "Use an action to spray one creature you can see within 10 feet. It makes a Constitution save, taking 1d12 poison damage on a failure and none on a success. This is a saving throw, not an attack roll. No concentration required.",
 	},
 	ChillTouch: {
 		ID:          ChillTouch,
@@ -60,19 +68,19 @@ var SpellData = map[Spell]*Data{
 		ID:          SacredFlame,
 		Level:       0,
 		Name:        "Sacred Flame",
-		Description: "Flame-like radiance descends for 1d8 radiant damage",
+		Description: "Use an action to strike one creature you can see within 60 feet with radiant fire. It makes a Dexterity save, taking 1d8 radiant damage on a failure and none on a success. This is a saving throw, not an attack roll. No concentration required.",
 	},
 	TollTheDead: {
 		ID:          TollTheDead,
 		Level:       0,
 		Name:        "Toll the Dead",
-		Description: "Point at a creature and sound a dolorous bell for 1d8/1d12 necrotic damage",
+		Description: "Use an action to target one creature you can see within 60 feet. It makes a Wisdom save. On a failure, it takes 1d8 necrotic damage, or 1d12 instead if it is already missing any hit points. A successful save deals no damage. No concentration required.",
 	},
 	WordOfRadiance: {
 		ID:          WordOfRadiance,
 		Level:       0,
 		Name:        "Word of Radiance",
-		Description: "Burning radiance erupts from you for 1d6 radiant damage to nearby enemies",
+		Description: "Use an action to choose creatures you can see within 5 feet. Each chosen creature makes a Constitution save, taking 1d6 radiant damage on a failure and none on a success. Unlike Thunderclap, you choose which nearby creatures to affect. No concentration required.",
 	},
 	EldritchBlast: {
 		ID:          EldritchBlast,
@@ -96,7 +104,7 @@ var SpellData = map[Spell]*Data{
 		ID:          Thornwhip,
 		Level:       0,
 		Name:        "Thorn Whip",
-		Description: "A vine-like whip deals 1d6 piercing damage and pulls the target closer",
+		Description: "Use an action to make a melee spell attack against a creature within 30 feet. A hit deals 1d6 piercing damage. Choose No pull, Pull 5 feet, or Pull 10 feet; a chosen pull draws the creature toward you as far as the terrain permits. A miss deals no damage and pulls nothing. No concentration required.",
 	},
 	MageHand: {
 		ID:          MageHand,
@@ -127,13 +135,13 @@ var SpellData = map[Spell]*Data{
 		ID:          Guidance,
 		Level:       0,
 		Name:        "Guidance",
-		Description: "Touch a willing creature to add 1d4 to one ability check",
+		Description: "Use an action to touch a creature, including yourself, and give it a one-use d4 for an ability check. In this build, the creature chooses whether to add the die after rolling but before the result is revealed. Spending the die ends the benefit. Requires concentration, up to 1 minute; it does not help attack rolls or saving throws.",
 	},
 	Resistance: {
 		ID:          Resistance,
 		Level:       0,
 		Name:        "Resistance",
-		Description: "Touch a willing creature to add 1d4 to one saving throw",
+		Description: "Use an action to touch a creature, including yourself, and give it a one-use d4 for a saving throw. In this build, the creature chooses whether to add the die after rolling but before the result is revealed. Spending the die ends the benefit. Requires concentration, up to 1 minute. This improves a save; it does not directly reduce damage.",
 	},
 	Thaumaturgy: {
 		ID:          Thaumaturgy,
@@ -145,7 +153,7 @@ var SpellData = map[Spell]*Data{
 		ID:          SpareTheDying,
 		Level:       0,
 		Name:        "Spare the Dying",
-		Description: "Stabilize a dying creature",
+		Description: "Use an action to touch a living character at 0 hit points and make them stable. They stop making death saves, but regain no hit points and remain unconscious. This cannot revive someone who is already dead. This build supports character targets, not monsters. No concentration required.",
 	},
 
 	// Level 1 Spells
@@ -159,7 +167,7 @@ var SpellData = map[Spell]*Data{
 		ID:          BurningHands,
 		Level:       1,
 		Name:        "Burning Hands",
-		Description: "Cone of fire from your hands deals 3d6 fire damage",
+		Description: "Use an action to project a 15-foot cone of fire from yourself. Creatures in the cone, including allies, make a Dexterity save. They take 3d6 fire damage on a failure or half as much, rounded down, on a success. No concentration required.",
 	},
 	ChromaticOrb: {
 		ID:          ChromaticOrb,
@@ -171,19 +179,19 @@ var SpellData = map[Spell]*Data{
 		ID:          Thunderwave,
 		Level:       1,
 		Name:        "Thunderwave",
-		Description: "A wave of thunderous force deals 2d8 thunder damage and pushes creatures",
+		Description: "Use an action to send a wave through a 15-foot cube extending from you. Other creatures caught in it, including allies, make a Constitution save. On a failure they take 2d8 thunder damage and are pushed up to 10 feet away, subject to terrain. On a success they take half damage, rounded down, and are not pushed. No concentration required.",
 	},
 	DissonantWhispers: {
 		ID:          DissonantWhispers,
 		Level:       1,
 		Name:        "Dissonant Whispers",
-		Description: "A discordant whisper deals 3d6 psychic damage and sends the target fleeing",
+		Description: "Use an action to target one creature within 60 feet. It makes a Wisdom save. On a failure it takes 3d6 psychic damage and, if it has a reaction available, spends it moving away from you up to its speed. This movement can provoke opportunity attacks. A successful save halves the damage and prevents the movement. No concentration required.",
 	},
 	Command: {
 		ID:          Command,
 		Level:       1,
 		Name:        "Command",
-		Description: "One word a creature must obey on its next turn unless it succeeds on a Wisdom save",
+		Description: "Use an action to command one creature within 60 feet. If it fails a Wisdom save, it obeys on its next turn. Choose Approach: move toward you, then end its turn; Flee: spend its movement going away from you, then end its turn; or Grovel: fall prone, then end its turn. A prone creature has disadvantage on its own attacks; attacks against it have advantage from within 5 feet and disadvantage from farther away. A successful save ignores the command. This build offers those three words only, not Drop, Halt, or custom commands, and does not enforce the book's language or undead restrictions. No concentration required.",
 	},
 	IceKnife: {
 		ID:          IceKnife,
@@ -201,13 +209,13 @@ var SpellData = map[Spell]*Data{
 		ID:          GuidingBolt,
 		Level:       1,
 		Name:        "Guiding Bolt",
-		Description: "A flash of light deals 4d6 radiant damage and grants advantage on next attack",
+		Description: "Use an action to make a ranged spell attack against one creature within 120 feet. A hit deals 4d6 radiant damage and gives the next attack roll against that creature advantage, whether made by you or an ally. That advantage is consumed by the attack or expires at the end of your next turn. A miss causes neither effect. No concentration required.",
 	},
 	InflictWounds: {
 		ID:          InflictWounds,
 		Level:       1,
 		Name:        "Inflict Wounds",
-		Description: "Touch deals 3d10 necrotic damage to a creature",
+		Description: "Use an action to make a melee spell attack against one creature within touch reach, 5 feet. A hit deals 3d10 necrotic damage; a miss deals none. This requires an attack roll, not a saving throw. No concentration required.",
 	},
 	HailOfThorns: {
 		ID:          HailOfThorns,
@@ -298,41 +306,41 @@ var SpellData = map[Spell]*Data{
 		ID:          CureWounds,
 		Level:       1,
 		Name:        "Cure Wounds",
-		Description: "Touch heals a creature for 1d8+modifier hit points",
+		Description: "Use an action to touch a creature, including yourself, and restore 1d8 plus your spellcasting ability modifier in hit points, up to its maximum. Healing features can add further bonuses. It does not heal undead or constructs. No concentration required.",
 	},
 	HealingWord: {
 		ID:          HealingWord,
 		Level:       1,
 		Name:        "Healing Word",
-		Description: "Speak a word of healing to restore 1d4+modifier hit points at range",
+		Description: "Use a bonus action to heal one creature you can see within 60 feet, including yourself. Restore 1d4 plus your spellcasting ability modifier in hit points, up to its maximum; healing features can add further bonuses. It does not heal undead or constructs. No concentration required.",
 	},
 	Bless: {
 		ID:          Bless,
 		Level:       1,
 		Name:        "Bless",
-		Description: "Bless up to three creatures, adding 1d4 to attack rolls and saves",
+		Description: "Use an action to choose up to three creatures within 30 feet, including yourself. While you concentrate, each adds 1d4 to its attack rolls and saving throws. The d4 is rolled for each affected roll; it does not add to damage or ability checks. Requires concentration, up to 1 minute.",
 	},
 	Bane: {
 		ID:          Bane,
 		Level:       1,
 		Name:        "Bane",
-		Description: "Curse enemies to subtract 1d4 from attack rolls and saves",
+		Description: "Use an action to choose up to three creatures within 30 feet. Each makes a Charisma save. On a failure, it subtracts 1d4 from its attack rolls and saving throws while you concentrate; a successful save avoids the curse. The penalty is rerolled for each affected roll, not applied to damage. Requires concentration, up to 1 minute.",
 	},
 	DivineFavor: {
 		ID: DivineFavor, Level: 1, Name: "Divine Favor",
-		Description: "Your weapon hits deal an extra 1d4 radiant damage; concentration, up to 1 minute",
+		Description: "Use a bonus action to empower your weapon attacks. Each weapon hit deals an extra 1d4 radiant damage in addition to the weapon's normal damage. This adds damage, not a bonus to hit, and does not enhance spell attacks. Requires concentration, up to 1 minute.",
 	},
 	ShieldOfFaith: {
 		ID:          ShieldOfFaith,
 		Level:       1,
 		Name:        "Shield of Faith",
-		Description: "Shimmering field grants +2 AC for 10 minutes",
+		Description: "Use a bonus action to protect one creature within 60 feet, including yourself. It gains +2 Armor Class, making attacks against it harder to hit. It does not improve saving throws or directly reduce damage. Requires concentration, up to 10 minutes.",
 	},
 	Sanctuary: {
 		ID:          Sanctuary,
 		Level:       1,
 		Name:        "Sanctuary",
-		Description: "Ward a willing creature; attackers must save or choose a new target",
+		Description: "In this build, use a bonus action to touch a creature and protect it while you concentrate, up to 1 minute. A creature attempting a direct attack or harmful targeted spell against it must first pass a Wisdom save; a failure blocks that attempt against the protected creature. Area effects are not blocked. The protection ends if the protected creature attacks or casts a harmful spell. Receiving the ward also prevents another Sanctuary for 20 of the recipient's turn ends, or until combat ends or they rest; this limit survives losing the ward.",
 	},
 
 	// Level 2 Spells
