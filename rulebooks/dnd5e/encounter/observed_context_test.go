@@ -10,7 +10,9 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 type observedContextEquipment struct {
@@ -129,6 +131,52 @@ func (s *observedContextSuite) TestCurrentMembersAndPairs() {
 	s.Nil(s.pair(out, alice, "vendor").Stance, "unknown is not neutral")
 	s.Require().NotNil(s.member(out, goblin).Down)
 	s.False(*s.member(out, goblin).Down, "observed false is a known fact")
+}
+
+func (s *observedContextSuite) TestCurrentPropsAndDoorsDoNotEnterTheMemberContext() {
+	field := doorField(3, encounter.DoorIsOpen(), "gate", 1)
+	field.Props = []encounter.PropInput{{
+		// The prop deliberately shares the other member's bare ID, but not
+		// its position. Subject-kind filtering must preserve that distinction.
+		ID: string(bob), Ref: "test:props:chest", Holdable: true,
+		At:             spatial.Position{X: 4, Y: 1},
+		BlocksMovement: boolPtr(false), BlocksLineOfSight: boolPtr(false),
+	}}
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: field, Sight: s.sight, Equipment: s.hands, Standing: s.life,
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+		Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: cellAt(2, 1)},
+			{ID: bob, Kind: encounter.KindPlayer, Position: cellAt(3, 1)},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	// Prove the shared store actually contains current object testimony;
+	// an empty or merely remembered prop/door would not exercise this seam.
+	props, err := enc.PropSightings(&encounter.ViewInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Len(props, 1)
+	s.Require().NotNil(props[0].Prop)
+	s.Equal(string(bob), props[0].Prop.ID)
+	s.Contains(props[0].CurrentVia, perception.Sight)
+	doors, err := enc.DoorSightings(&encounter.ViewInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Len(doors, 1)
+	s.Equal("gate", doors[0].Door.ID)
+	s.Contains(doors[0].CurrentVia, perception.Sight)
+
+	out := s.read(enc)
+	s.Equal(alice, out.Observer)
+	s.Equal(cellAt(2, 1), out.Position)
+	s.Require().Len(out.Members, 1, "props and doors are not context members")
+	s.Equal(bob, out.Members[0].ID)
+	s.Equal(cellAt(3, 1), out.Members[0].Position, "the member, not the same-ID prop")
+	s.Require().Len(out.Pairs, 2, "pairs range only over the observer and the other member")
+	s.Equal(float64(1), s.pair(out, alice, bob).DistanceCells)
+	s.Equal(float64(1), s.pair(out, bob, alice).DistanceCells)
 }
 
 func (s *observedContextSuite) TestKnownNeutralIsNotUnknown() {
