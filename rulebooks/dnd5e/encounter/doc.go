@@ -60,6 +60,18 @@
 // not on the world clock for the world to think for. Which clock somebody is
 // on is always askable, per member, via ClockOf.
 //
+// # Observed rule context
+//
+// ObservedContext returns detached current sight facts plus the observer's own
+// placement. Distances are measured between those projected positions, not live
+// target cells. Pair relationships share BelievedStance's owner and retain the
+// original observer. Missing observed standing, hands or relationships remain
+// absent; memories and other sensory channels do not supply current sight facts.
+// The read consults no live participation, equipment or sight capability and
+// never refreshes perception. Its universe is observations, not all participants:
+// it cannot prove no unseen neighbor exists, expose target effects/senses, or
+// decide whether a rule such as a damage benefit applies.
+//
 // # Movement passage
 //
 // CellAt returns the most restrictive contribution on a cell and an error if
