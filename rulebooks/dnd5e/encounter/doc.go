@@ -194,9 +194,14 @@
 // repeat reset distance. Explicit nonpositive counts, reset distances within
 // the one-hex trigger range, and unknown lifetimes are refused. ToData stores
 // the effective policy with all defaults resolved, and Load validates it.
-// This authoring/persistence surface does not itself roll or spend attempts;
-// automatic enforcement and replacement of the legacy Search path are separate
-// parts of the discovery composition.
+// A host supplying DiscoveryCheckResolver enables the distance-driven sweep:
+// one hex triggers an available attempt, departure to ResetHexes re-arms an
+// explicitly repeatable check, and return uses its next allowance. Counts and
+// armed state persist; loading does not roll. The same captured placed-player
+// audience receives the result beat and successful discovery when sharing is
+// on. Private checks address the actor alone. These hosts refuse Search.
+// Hosts supplying only the older CheckResolver retain their explicit-search
+// contract for source migration; the game host uses automatic discovery.
 //
 // # Sides: the run composes ONE world (rpg-project#375)
 //

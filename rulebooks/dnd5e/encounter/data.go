@@ -25,8 +25,10 @@ import (
 // All leaves (Clock, Intel, Log) embed their Data types verbatim.
 // Deciders are NOT persisted; they are re-registered at load.
 type EncounterData struct {
-	Outcome *OutcomeData   `json:"outcome,omitempty"`
-	Clock   clock.TickData `json:"clock"`
+	// Discovery holds run attempt/re-arm state; learned facts remain in World.
+	Discovery map[MemberID]DiscoveryStateData `json:"discovery,omitempty"`
+	Outcome   *OutcomeData                    `json:"outcome,omitempty"`
+	Clock     clock.TickData                  `json:"clock"`
 	// Bubbles holds the localized initiative bubbles running in this
 	// encounter — zero or more, and zero for any encounter not currently in a
 	// fight. Absent in blobs written before this field existed, which load as
@@ -1926,6 +1928,7 @@ func (e *Encounter) snapshot() EncounterData {
 	}
 
 	return EncounterData{
+		Discovery:          copyDiscoveryStates(e.discovery),
 		Outcome:            outcomeData,
 		Clock:              e.clock.ToData(),
 		Bubbles:            bubblesData,
@@ -2831,6 +2834,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// panic on the load path rather than an empty answer.
 	world := newEncounterWorld()
 	e := &Encounter{
+		discovery:     copyDiscoveryStates(data.Discovery),
 		sightAreas:    sightAreasFromData(data.SightAreas),
 		members:       make(map[MemberID]*memberRecord),
 		everMembers:   make(map[MemberID]bool),
@@ -3089,6 +3093,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 	}
 
+	if err := e.validateDiscoveryStates(); err != nil {
+		return nil, err
+	}
 	return e, nil
 }
 
