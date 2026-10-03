@@ -52,7 +52,10 @@ var displayCatalog = map[string]Display{
 	refs.Conditions.FightingStyleTwoWeaponFighting().String():   {Name: "Two-Weapon Fighting"},
 
 	// Barbarian.
-	refs.Conditions.Raging().String():         {Name: "Raging"},
+	refs.Conditions.Raging().String(): {
+		Name:   "Raging",
+		Detail: "Adds your rage damage bonus to melee weapon attacks that use Strength. Also grants advantage on Strength checks and saving throws, and resistance to bludgeoning, piercing, and slashing damage.",
+	},
 	refs.Conditions.RecklessAttack().String(): {Name: "Reckless Attack"},
 	refs.Conditions.BrutalCritical().String(): {Name: "Brutal Critical"},
 
@@ -65,22 +68,28 @@ var displayCatalog = map[string]Display{
 	refs.Conditions.UnarmoredMovement().String(): {Name: "Unarmored Movement"},
 
 	// Rogue. Sneak Attack names itself by a feature ref, not a condition ref.
-	refs.Features.SneakAttack().String(): {Name: "Sneak Attack"},
+	refs.Features.SneakAttack().String(): {
+		Name:   "Sneak Attack",
+		Detail: "Once per turn, adds extra damage to a qualifying attack when you have advantage or another enemy of the target is within 5 feet.",
+	},
 
 	// Turn-based / combat-ability conditions.
-	refs.Conditions.Dodging().String():           {Name: "Dodging"},
-	refs.Conditions.Disengaging().String():       {Name: "Disengaging"},
-	refs.Conditions.Hidden().String():            {Name: "Hidden"},
-	refs.Conditions.Helped().String():            {Name: "Helped"},
-	refs.Conditions.Inspired().String():          {Name: InspiredName},
-	refs.Conditions.BladeWard().String():         {Name: BladeWardName},
-	refs.Conditions.GuidingBolt().String():       {Name: GuidingBoltName},
-	refs.Conditions.TrueStrike().String():        {Name: TrueStrikeName},
-	refs.Conditions.ViciousMockery().String():    {Name: ViciousMockeryName},
-	refs.Conditions.Commanded().String():         {Name: CommandedName},
-	refs.Conditions.Concentrating().String():     {Name: ConcentratingName},
-	refs.Conditions.Baned().String():             {Name: BanedName},
-	refs.Conditions.Blessed().String():           {Name: BlessedName},
+	refs.Conditions.Dodging().String():        {Name: "Dodging"},
+	refs.Conditions.Disengaging().String():    {Name: "Disengaging"},
+	refs.Conditions.Hidden().String():         {Name: "Hidden"},
+	refs.Conditions.Helped().String():         {Name: "Helped"},
+	refs.Conditions.Inspired().String():       {Name: InspiredName},
+	refs.Conditions.BladeWard().String():      {Name: BladeWardName},
+	refs.Conditions.GuidingBolt().String():    {Name: GuidingBoltName},
+	refs.Conditions.TrueStrike().String():     {Name: TrueStrikeName},
+	refs.Conditions.ViciousMockery().String(): {Name: ViciousMockeryName},
+	refs.Conditions.Commanded().String():      {Name: CommandedName},
+	refs.Conditions.Concentrating().String():  {Name: ConcentratingName},
+	refs.Conditions.Baned().String():          {Name: BanedName},
+	refs.Conditions.Blessed().String(): {
+		Name:   BlessedName,
+		Detail: "Adds 1d4 to attack rolls and saving throws. Multiple Bless effects do not add extra dice to the same roll.",
+	},
 	refs.Conditions.Prone().String():             {Name: "Prone"},
 	refs.Conditions.OpportunityAttack().String(): {Name: "Opportunity Attack"},
 

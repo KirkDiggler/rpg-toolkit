@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
@@ -171,6 +172,11 @@ func TestStatusViewRogueProjectsSneakAttackCondition(t *testing.T) {
 	for _, c := range out.View.Conditions {
 		if c.Ref.String() == refs.Features.SneakAttack().String() {
 			require.Equal(t, "Sneak Attack", c.Name)
+			display, known := conditions.DisplayFor(c.Ref)
+			require.True(t, known)
+			require.NotEmpty(t, c.Detail)
+			require.Equal(t, display.Detail, c.Detail)
+			require.Nil(t, c.SourceMember)
 			foundSneakAttack = true
 		}
 	}
@@ -179,6 +185,71 @@ func TestStatusViewRogueProjectsSneakAttackCondition(t *testing.T) {
 	// Rogue has only the owner-owned Hit Dice resource.
 	keys := resourceKeys(out.View.Resources)
 	require.ElementsMatch(t, []coreResources.ResourceKey{resources.HitDice}, keys)
+}
+
+type canonicalEffectDetailsSuite struct {
+	suite.Suite
+}
+
+func TestStatusViewProjectsCanonicalEffectDetails(t *testing.T) {
+	suite.Run(t, new(canonicalEffectDetailsSuite))
+}
+
+func (s *canonicalEffectDetailsSuite) TestReadPreservesCharacterAndEffectIdentity() {
+	ctx := context.Background()
+	draft := newBarbarianDraft(s.T())
+	char, err := draft.ToCharacter(ctx, "effect-info-barbarian", events.NewEventBus())
+	s.Require().NoError(err)
+	s.Require().NotNil(char)
+
+	// Active effects are explicit projection fixtures after normal creation;
+	// this does not claim the cast/activation path was exercised.
+	const sourceID = "cleric-ally"
+	blessed, err := conditions.NewBlessedCondition(conditions.NewBlessedConditionInput{
+		MemberID: char.GetID(), SourceID: sourceID, SourceRef: refs.Spells.Bless(),
+	})
+	s.Require().NoError(err)
+	raging := &conditions.RagingCondition{
+		CharacterID: char.GetID(), DamageBonus: 2, Level: 1,
+		Source: refs.Features.Rage().String(), TurnsActive: 3, WasHitThisTurn: true,
+	}
+	char.conditions = append(char.conditions, raging, blessed)
+	beforeData := char.ToData()
+	before, err := json.Marshal(beforeData)
+	s.Require().NoError(err)
+
+	for range 2 {
+		out, readErr := char.StatusView(&StatusViewInput{})
+		s.Require().NoError(readErr)
+		s.Require().NotNil(out)
+		s.Require().NotNil(out.View)
+		seen := make(map[string]bool)
+		for _, row := range out.View.Conditions {
+			if !row.Ref.Equals(raging.Ref()) && !row.Ref.Equals(blessed.Ref()) {
+				continue
+			}
+			display, known := conditions.DisplayFor(row.Ref)
+			s.Require().True(known)
+			s.NotEmpty(row.Detail)
+			s.Equal(display.Name, row.Name)
+			s.Equal(display.Detail, row.Detail)
+			seen[row.Ref.String()] = true
+			if row.Ref.Equals(blessed.Ref()) {
+				s.Require().NotNil(row.SourceMember)
+				s.Equal(sourceID, *row.SourceMember)
+			} else {
+				s.Nil(row.SourceMember)
+			}
+		}
+		s.Len(seen, 2, "both fixture effects must be projected")
+		afterData := char.ToData()
+		// ToData stamps serialization time, not a mutable character field.
+		// Normalize only that generated timestamp; compare all persisted state.
+		afterData.UpdatedAt = beforeData.UpdatedAt
+		after, marshalErr := json.Marshal(afterData)
+		s.Require().NoError(marshalErr)
+		s.Equal(before, after, "reading tooltips must not change persisted effect or character state")
+	}
 }
 
 // TestStatusViewRejectsConflictingDuplicateResourceKey confirms that a
