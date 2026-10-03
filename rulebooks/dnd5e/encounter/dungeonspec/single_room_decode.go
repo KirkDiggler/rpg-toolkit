@@ -117,7 +117,22 @@ func DecodeSingleRoom(in SingleRoomDecodeInput) (*SingleRoomDecodeResult, error)
 		// words, the same translation [Decode] runs — see unknown_key.go. The
 		// two dialects share the shapes and they share the refusal
 		// (rpg-project#481, R2).
-		return nil, &ValidationError{Errors: decodeErrors(err, in.Source)}
+		errs := decodeErrors(err, in.Source)
+		// Typed decoding can fail before the normal shape walk (for example
+		// an attempts list where a mapping belongs). Preserve its error and
+		// also report source-shape defects at their authoring paths.
+		var root yaml.Node
+		if parseErr := yaml.Unmarshal(in.Source, &root); parseErr == nil {
+			for _, shapeErr := range sourceShapeErrors(&root) {
+				// A misspelled key already has its own decode refusal. Do not
+				// add a second "required" error for its correctly spelled twin.
+				if shapeErr.Message != errRequired {
+					errs = append(errs, shapeErr)
+				}
+			}
+			sortFieldErrors(errs)
+		}
+		return nil, &ValidationError{Errors: errs}
 	}
 	var extra yaml.Node
 	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {

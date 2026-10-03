@@ -186,6 +186,18 @@
 // A field that hides nothing requires neither concealment capability. Its
 // ordinary room discovery still uses the same persisted knowledge journal.
 //
+// # Discovery attempt policy
+//
+// ConcealmentInput.Attempts authors one policy for the whole discovery check,
+// not an allowance per alternative skill approach. ResolveDiscoveryPolicy
+// defaults omitted values to one character-retained attempt and a three-hex
+// repeat reset distance. Explicit nonpositive counts, reset distances within
+// the one-hex trigger range, and unknown lifetimes are refused. ToData stores
+// the effective policy with all defaults resolved, and Load validates it.
+// This authoring/persistence surface does not itself roll or spend attempts;
+// automatic enforcement and replacement of the legacy Search path are separate
+// parts of the discovery composition.
+//
 // # Sides: the run composes ONE world (rpg-project#375)
 //
 // One journal and one graph exist from Setup and from Load, whether or not
