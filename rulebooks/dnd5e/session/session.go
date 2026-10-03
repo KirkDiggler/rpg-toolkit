@@ -36,6 +36,11 @@ type Config struct {
 	// the same coordination domain. No lock implementation lives in the SDK.
 	Locker SessionLocker
 
+	// Explorations enables automatic discovery and stores character-retained
+	// knowledge/preferences. Hosts coordinate shared profiles across sessions.
+	// Nil preserves older hosts' explicit-search contract.
+	Explorations ExplorationRepository
+
 	// Encounters persists the world. Required.
 	Encounters EncounterRepository
 
@@ -148,6 +153,7 @@ type Manager struct {
 	staleTargetPolicy StaleTargetPolicy
 	sessions          SessionRepository
 	locker            SessionLocker
+	explorations      ExplorationRepository
 	encounters        EncounterRepository
 	characters        CharacterRepository
 	events            EventStream
@@ -238,6 +244,7 @@ func NewManager(cfg *Config) (*Manager, error) {
 		staleTargetPolicy: cfg.StaleTargetPolicy,
 		sessions:          cfg.Sessions,
 		locker:            cfg.Locker,
+		explorations:      cfg.Explorations,
 		encounters:        cfg.Encounters,
 		characters:        cfg.Characters,
 		events:            cfg.Events,

@@ -51,12 +51,14 @@ type KnowledgeInput struct {
 // loaded encounter. Seq is its recipient-local state cutoff, not acknowledgement
 // of historical narration.
 type KnowledgeOutput struct {
-	Atlas   Atlas        `json:"atlas"`
-	View    ViewOutput   `json:"view"`
-	Where   WhereOutput  `json:"where"`
-	Roster  RosterOutput `json:"roster"`
-	Holding []string     `json:"holding"`
-	Seq     uint64       `json:"seq"`
+	// DiscoverySharing is absent for hosts without the exploration capability.
+	DiscoverySharing *bool        `json:"discovery_sharing,omitempty"`
+	Atlas            Atlas        `json:"atlas"`
+	View             ViewOutput   `json:"view"`
+	Where            WhereOutput  `json:"where"`
+	Roster           RosterOutput `json:"roster"`
+	Holding          []string     `json:"holding"`
+	Seq              uint64       `json:"seq"`
 }
 
 // Knowledge returns one coherent snapshot for an authenticated owned seat.
@@ -108,7 +110,15 @@ func (m *Manager) Knowledge(ctx context.Context, in *KnowledgeInput) (*Knowledge
 	for _, id := range held {
 		holding = append(holding, string(id))
 	}
-	return &KnowledgeOutput{Atlas: projected, View: *view, Where: WhereOutput{Position: at}, Roster: *roster, Holding: holding, Seq: cursors[in.Member].Count}, nil
+	var sharing *bool
+	if m.explorations != nil {
+		preference, err := enc.DiscoverySharing(&encounter.DiscoveryMemoryInput{Member: encounter.MemberID(in.Member)})
+		if err != nil {
+			return nil, translate(err)
+		}
+		sharing = &preference.Sharing
+	}
+	return &KnowledgeOutput{DiscoverySharing: sharing, Atlas: projected, View: *view, Where: WhereOutput{Position: at}, Roster: *roster, Holding: holding, Seq: cursors[in.Member].Count}, nil
 }
 
 func projectObjectSightings(enc *encounter.Encounter, member string) ([]PropSighting, []DoorSighting, error) {

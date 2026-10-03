@@ -316,6 +316,8 @@ func kindFor(beat string) EventKind {
 		return EventRoomRevealed
 	case encounter.BeatConcealmentRevealed:
 		return EventConcealmentRevealed
+	case encounter.BeatDiscoveryChecked:
+		return EventDiscoveryChecked
 	// A change in one recipient's own perception. The composition exports
 	// this string by name, as it does for the two window beats, precisely
 	// because this decoder was written against it in the same wave — so a
@@ -748,6 +750,12 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		return DroppedBody{Member: p.Member, Prop: p.Prop, At: p.Position}
 	case EventRoomRevealed:
 		return roomRevealedBody(payload)
+	case EventDiscoveryChecked:
+		var body DiscoveryCheckedBody
+		if json.Unmarshal(payload, &body) != nil || body.Member == "" || body.Ability == "" {
+			return nil
+		}
+		return body
 	case EventConcealmentRevealed:
 		// The payload's cells, props, regions, boundaries, segments and
 		// sealed cells carry exactly this package's atlas field names — the
