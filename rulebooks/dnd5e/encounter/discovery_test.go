@@ -80,7 +80,7 @@ func (s *AutomaticDiscoverySuite) TestDefaultOneTryAndFailureAudience() {
 		s.NotContains(result, key)
 	}
 	_, err := enc.Search(&encounter.SearchInput{Member: "alice", Region: "hall"})
-	s.Error(err)
+	s.ErrorIs(err, encounter.ErrSearchRetired)
 	s.Equal(1, r.calls)
 }
 func (s *AutomaticDiscoverySuite) TestThreeHexRearmAndReload() {

@@ -22,13 +22,13 @@ type SearchOutput struct{}
 // Search preserves the explicit-search contract for existing hosts that do not
 // supply automatic discovery. An automatic-discovery host refuses this path so
 // it cannot bypass proximity or the attempt budget. The game no longer exposes
-// an active Search RPC or button.
+// an active Search RPC or button. Automatic hosts return ErrSearchRetired.
 func (e *Encounter) Search(in *SearchInput) (*SearchOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("search: %w", ErrNilInput)
 	}
 	if _, automatic := e.checkResolver.(DiscoveryCheckResolver); automatic {
-		return nil, fmt.Errorf("search is retired; discovery checks are automatic")
+		return nil, fmt.Errorf("search: %w", ErrSearchRetired)
 	}
 	if in.Member == "" {
 		return nil, fmt.Errorf("search: %w", ErrNoMember)
