@@ -75,6 +75,11 @@ func (m *Manager) Unpack(ctx context.Context, in *UnpackInput) (*UnpackOutput, e
 	if in == nil {
 		return nil, fmt.Errorf("unpack: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Actor == "" {
 		return nil, fmt.Errorf("unpack: %w", ErrNoMemberID)
 	}

@@ -61,6 +61,11 @@ func (m *Manager) Doors(ctx context.Context, in *DoorsInput) (*DoorsOutput, erro
 	if in == nil {
 		return nil, fmt.Errorf("doors: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Member == "" {
 		return nil, fmt.Errorf("doors: %w", ErrNoMemberID)
 	}
@@ -133,6 +138,11 @@ func (m *Manager) OpenDoor(ctx context.Context, in *OpenDoorInput) (*OpenDoorOut
 	if in == nil {
 		return nil, fmt.Errorf("opendoor: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Member == "" {
 		return nil, fmt.Errorf("opendoor: %w", ErrNoMemberID)
 	}
@@ -259,6 +269,11 @@ func (m *Manager) Unlock(ctx context.Context, in *UnlockInput) (*UnlockOutput, e
 	if in == nil {
 		return nil, fmt.Errorf("unlock: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Member == "" {
 		return nil, fmt.Errorf("unlock: %w", ErrNoMemberID)
 	}

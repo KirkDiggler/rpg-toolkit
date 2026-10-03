@@ -97,6 +97,11 @@ func (m *Manager) DeathSave(ctx context.Context, in *DeathSaveInput) (*DeathSave
 	if in == nil {
 		return nil, fmt.Errorf("death save: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Member == "" {
 		return nil, fmt.Errorf("death save: %w", ErrNoMemberID)
 	}
