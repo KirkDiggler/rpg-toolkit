@@ -481,6 +481,11 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 	if in == nil {
 		return nil, fmt.Errorf("join: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Member == "" {
 		return nil, fmt.Errorf("join: %w", ErrNoMemberID)
 	}
@@ -640,6 +645,11 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 	if in == nil {
 		return nil, fmt.Errorf("spawn: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.ID == "" {
 		return nil, fmt.Errorf("spawn: %w", ErrNoMemberID)
 	}
@@ -775,6 +785,11 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 	if in == nil {
 		return nil, fmt.Errorf("place npc: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Member == "" {
 		return nil, fmt.Errorf("place npc: %w", ErrNoMemberID)
 	}
@@ -1074,6 +1089,11 @@ func (m *Manager) Exit(ctx context.Context, in *ExitInput) (*ExitOutput, error) 
 	if in == nil {
 		return nil, fmt.Errorf("exit: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Member == "" {
 		return nil, fmt.Errorf("exit: %w", ErrNoMemberID)
 	}
@@ -1124,6 +1144,11 @@ func (m *Manager) End(ctx context.Context, in *EndInput) (*EndOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("end: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 
 	scope, err := m.openForChange(ctx, in.Session)
 	if err != nil {
@@ -2064,6 +2089,11 @@ func (m *Manager) Recheck(ctx context.Context, in *RecheckInput) (*RecheckOutput
 	if in == nil {
 		return nil, fmt.Errorf("recheck: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if len(in.Members) == 0 {
 		return nil, fmt.Errorf("recheck: %w", ErrNoMemberID)
 	}

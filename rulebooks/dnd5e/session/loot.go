@@ -96,6 +96,11 @@ func (m *Manager) Loot(ctx context.Context, in *LootInput) (*LootOutput, error) 
 	if in == nil {
 		return nil, fmt.Errorf("loot: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Member == "" || in.Target == "" {
 		return nil, fmt.Errorf("loot: %w", ErrNoMemberID)
 	}

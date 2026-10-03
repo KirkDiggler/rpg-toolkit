@@ -88,6 +88,11 @@ func (m *Manager) Search(ctx context.Context, in *SearchInput) (*SearchOutput, e
 	if in == nil {
 		return nil, fmt.Errorf("search: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Member == "" {
 		return nil, fmt.Errorf("search: %w", ErrNoMemberID)
 	}

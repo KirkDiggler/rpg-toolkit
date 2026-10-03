@@ -118,56 +118,17 @@ type CharacterRepository interface {
 	SaveCharacter(ctx context.Context, data *character.Data) error
 }
 
-// Concurrency: two doors deliberately left open.
+// Concurrency is a host responsibility. Stateless load-act-save does not
+// prevent simultaneous requests from loading the same world and overwriting
+// one another. Config.Locker supplies a separate SessionLocker capability;
+// no locking methods are added to these key-value repository interfaces.
+// The SDK holds that guard across the entire session-shaped operation,
+// including reads, creation, writes and event delivery. Without it, callers
+// must serialize externally. All writers of the same session must participate
+// in the same coordination domain; a process-local locker cannot protect a
+// different process or an out-of-band repository writer.
 //
-// Every verb loads, acts and saves (S4), so nothing is cached between calls and
-// a stale in-memory world can never overwrite a fresh one. What that does NOT
-// prevent is two genuinely simultaneous requests against one session: both load
-// the same world, both apply their change, both save, and the later write wins
-// while the earlier action vanishes. No failure is required for this — only two
-// players acting at the same moment.
-//
-// It is unaddressed on purpose. The game is turn-based, a host can serialise
-// per session trivially, and committing to a concurrency model before real
-// contention exists would be guessing. But the doors are worth keeping open,
-// and they do not cost the same:
-//
-// PESSIMISTIC — free to add later. Locking must NOT arrive as a method on
-// SessionRepository: adding one to an existing interface stops every host
-// compiling. It arrives as a separate optional capability the manager
-// type-asserts for, the way spatial.BoundaryAwareRoom already works in this
-// codebase:
-//
-//	type SessionLocker interface {
-//	    LockSession(ctx context.Context, id string) (release func(), err error)
-//	}
-//
-// Hosts that implement it get serialised sessions; hosts that do not keep
-// working exactly as they do today. Nothing needs to exist for this to remain
-// possible, which is why nothing does.
-//
-// OPTIMISTIC — also free to add later, given a checksum-derived version.
-//
-// The scheme the game's own storage layer already uses: the store checksums the
-// stored JSON body, a write is accepted only if the caller's version matches
-// what is stored, and an ABSENT version is accepted unconditionally so the first
-// write of any record succeeds. On mismatch the caller re-reads, re-applies, and
-// writes again.
-//
-// That is retrofittable with no migration. Existing records carry no version, so
-// their first write under the scheme succeeds and stamps one; a repository that
-// does not implement CAS ignores the field and behaves exactly as it does today.
-// The cost is a Version field on the data (a compatible addition, on our types
-// and on EncounterData alike, since we own that module) plus a conflict error
-// that only CAS-implementing repositories ever return.
-//
-// Deriving the version from the body rather than maintaining a counter is what
-// makes this safe: a version nobody increments would read as a guarantee it does
-// not provide, and a checksum cannot be forgotten because nobody maintains it.
-//
-// Worth noting what load-act-save buys here, because it is not incidental:
-// recovering from a conflict is just calling the verb again. There is no partial
-// mutation to unwind and no cached world to invalidate. Had this package held an
-// encounter between calls, a retry would have to work out what to discard and
-// what to keep — the same property that makes concurrent writers safe from stale
-// overwrites makes the retry loop trivially correct.
+// Exclusion is not a transaction: a failed multi-repository save still carries
+// the existing partial SaveReport. Character-only operations have no session
+// identity and are outside this guard. Cross-session use of shared characters
+// or future durable exploration profiles needs its own host consistency policy.

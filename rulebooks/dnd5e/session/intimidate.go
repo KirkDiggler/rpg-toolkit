@@ -154,6 +154,11 @@ func (m *Manager) Intimidate(ctx context.Context, in *IntimidateInput) (*Intimid
 	if in == nil {
 		return nil, fmt.Errorf("intimidate: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	out, err := m.speak(ctx, m.intimidateVerb(), in.Session, in.Member, in.Target)
 	if err != nil {
 		return nil, err

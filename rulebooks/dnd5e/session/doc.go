@@ -31,6 +31,18 @@
 // Every verb is load, act, save, return. There is no setup call, no teardown,
 // and no ordering for the caller to get wrong.
 //
+// # Operation coordination
+//
+// Config.Locker supplies host-owned exclusion for every public operation that
+// names a session, from before its first repository read through its final
+// save and event delivery. Reads and StartSession use the same guard as writes.
+// Release is deferred on the public call, so failures and panics release it too.
+// The SDK stores no mutex or lock state. A nil Locker means the host serializes
+// externally, not that concurrent load-act-save is safe. Managers sharing data
+// must share a coordination domain, and callbacks must not synchronously reenter
+// the same guarded session. Character-only operations and authoring AtlasOf do
+// not name a session and are not guarded. Partial saves remain partial saves.
+//
 // # What this package does not hold
 //
 // It holds no game rules. That is the charter, and it is checkable: read every

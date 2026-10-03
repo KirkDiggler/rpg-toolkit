@@ -160,6 +160,11 @@ func (m *Manager) Turn(ctx context.Context, in *TurnInput) (*TurnOutput, error) 
 	if in == nil {
 		return nil, fmt.Errorf("turn: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Member == "" {
 		return nil, fmt.Errorf("turn: %w", ErrNoMemberID)
 	}
@@ -344,6 +349,11 @@ func (m *Manager) EndTurn(ctx context.Context, in *EndTurnInput) (*EndTurnOutput
 	if in == nil {
 		return nil, fmt.Errorf("endturn: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Member == "" {
 		return nil, fmt.Errorf("endturn: %w", ErrNoMemberID)
 	}

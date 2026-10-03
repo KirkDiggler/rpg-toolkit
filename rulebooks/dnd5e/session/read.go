@@ -116,6 +116,11 @@ func (m *Manager) Roster(ctx context.Context, in *RosterInput) (*RosterOutput, e
 	if in == nil {
 		return nil, fmt.Errorf("roster: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Session == "" {
 		return nil, fmt.Errorf("roster: %w", ErrNoSessionID)
 	}
@@ -245,6 +250,11 @@ func (m *Manager) Atlas(ctx context.Context, in *AtlasInput) (*Atlas, error) {
 	if in == nil {
 		return nil, fmt.Errorf("atlas: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Member == "" {
 		return nil, fmt.Errorf("atlas: %w", ErrNoMemberID)
 	}
@@ -323,6 +333,11 @@ func (m *Manager) Status(ctx context.Context, in *StatusInput) (*Status, error) 
 	if in == nil {
 		return nil, fmt.Errorf("status: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	enc, err := m.open(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("status: %w", err)
@@ -367,6 +382,11 @@ func (m *Manager) Where(ctx context.Context, in *WhereInput) (*WhereOutput, erro
 	if in == nil {
 		return nil, fmt.Errorf("where: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Member == "" {
 		return nil, fmt.Errorf("where: %w", ErrNoMemberID)
 	}
@@ -397,6 +417,11 @@ func (m *Manager) View(ctx context.Context, in *ViewInput) (*ViewOutput, error) 
 	if in == nil {
 		return nil, fmt.Errorf("view: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Member == "" {
 		return nil, fmt.Errorf("view: %w", ErrNoMemberID)
 	}
@@ -478,6 +503,11 @@ func (m *Manager) Story(ctx context.Context, in *StoryInput) ([]Event, error) {
 	if in == nil {
 		return nil, fmt.Errorf("story: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Member == "" {
 		return nil, fmt.Errorf("story: %w", ErrNoMemberID)
 	}

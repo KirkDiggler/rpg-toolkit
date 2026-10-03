@@ -214,6 +214,11 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 	if in == nil {
 		return nil, fmt.Errorf("attack: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Attacker == "" || in.Target == "" {
 		return nil, fmt.Errorf("attack: %w", ErrNoMemberID)
 	}

@@ -241,6 +241,7 @@ var sessionSentinels = map[string]error{
 	"ErrCannotAfford":         session.ErrCannotAfford,
 	"ErrBadCost":              session.ErrBadCost,
 	"ErrInvalidSession":       session.ErrInvalidSession,
+	"ErrBadSessionLock":       session.ErrBadSessionLock,
 	"ErrSaveFailed":           session.ErrSaveFailed,
 	"ErrBadTurnOutcome":       session.ErrBadTurnOutcome,
 	"ErrInvalidTradeOffer":    session.ErrInvalidTradeOffer,
