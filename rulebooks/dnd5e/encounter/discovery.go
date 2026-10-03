@@ -119,6 +119,32 @@ func (e *Encounter) DiscoverySharing(in *DiscoveryMemoryInput) (*SetDiscoverySha
 	return &SetDiscoverySharingOutput{Sharing: !e.discovery[in.Member].Private}, nil
 }
 
+// RestoreDiscoveryInput supplies a placed player's own retained profile.
+// It is not party catch-up and never rolls.
+type RestoreDiscoveryInput struct {
+	Member  MemberID
+	Private bool
+	Checks  map[ConcealmentID]DiscoveryMemoryData
+}
+
+// RestoreDiscovery restores own knowledge/counts without replaying them to peers.
+func (e *Encounter) RestoreDiscovery(in *RestoreDiscoveryInput) (*DiscoveryMemoryOutput, error) {
+	if in == nil {
+		return nil, ErrNilInput
+	}
+	member, ok := e.members[in.Member]
+	if !ok || member.Kind != KindPlayer {
+		return nil, ErrNotMember
+	}
+	if err := e.initializeDiscovery(in.Member, in.Private, in.Checks); err != nil {
+		return nil, err
+	}
+	state := e.discovery[in.Member]
+	state.Private = in.Private
+	e.discovery[in.Member] = state
+	return e.DiscoveryMemory(&DiscoveryMemoryInput{Member: in.Member})
+}
+
 func (e *Encounter) initializeDiscovery(member MemberID, private bool, memory map[ConcealmentID]DiscoveryMemoryData) error {
 	if e.discovery == nil {
 		e.discovery = map[MemberID]DiscoveryStateData{}
