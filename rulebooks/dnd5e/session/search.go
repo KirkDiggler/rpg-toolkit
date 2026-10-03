@@ -59,7 +59,9 @@ type SearchOutput struct {
 	Delivery DeliveryReport `json:"delivery"`
 }
 
-// Search sweeps a region for hidden structure as Member.
+// Search sweeps a region for hidden structure as Member for legacy hosts.
+// Hosts configured with Explorations use automatic discovery and this verb
+// refuses with ErrSearchRetired instead of offering a second attempt path.
 //
 // Load-act-save like every verb, and the act is one call: the composition
 // finds every unfound concealment the region TOUCHES, rolls each one's checks
@@ -82,7 +84,8 @@ type SearchOutput struct {
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
 // ErrNoEncounter, ErrNoCharacter, ErrBadCharacter, ErrClosed, ErrNoMember,
-// ErrBadPosition for an unplaced searcher, ErrElsewhere for a region the
+// ErrBadPosition for an unplaced searcher, ErrSearchRetired for automatic
+// discovery, ErrElsewhere for a region the
 // searcher does not stand in, or ErrSaveFailed with a populated report.
 func (m *Manager) Search(ctx context.Context, in *SearchInput) (*SearchOutput, error) {
 	if in == nil {

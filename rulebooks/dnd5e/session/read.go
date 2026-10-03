@@ -833,6 +833,8 @@ func translate(err error) error {
 		// split: shut is a state a caller can change (OpenDoor), not a bad
 		// coordinate.
 		return fmt.Errorf("%w", ErrDoorShut)
+	case errors.Is(err, encounter.ErrSearchRetired):
+		return fmt.Errorf("%w", ErrSearchRetired)
 	case errors.Is(err, encounter.ErrElsewhere):
 		// Search named a region the searcher does not stand in — including
 		// one that does not exist, deliberately indistinguishably (the

@@ -144,29 +144,31 @@ type SetDiscoverySharingOutput struct {
 }
 
 // SetDiscoverySharing neither replays earlier discoveries nor removes knowledge.
+// Refusals name the verb while preserving sentinels and partial-save reports.
 func (m *Manager) SetDiscoverySharing(ctx context.Context, in *SetDiscoverySharingInput) (*SetDiscoverySharingOutput, error) {
+	const verb = "set discovery sharing"
 	if in == nil {
-		return nil, ErrNilInput
+		return nil, fmt.Errorf("%s: %w", verb, ErrNilInput)
 	}
 	release, lockErr := m.acquireSession(ctx, in.Session)
 	if lockErr != nil {
-		return nil, lockErr
+		return nil, fmt.Errorf("%s: %w", verb, lockErr)
 	}
 	defer release()
 	if m.explorations == nil {
-		return nil, fmt.Errorf("discovery sharing unavailable: %w", ErrIncompleteConfig)
+		return nil, fmt.Errorf("%s: unavailable: %w", verb, ErrIncompleteConfig)
 	}
 	scope, err := m.openForChange(ctx, in.Session)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s: %w", verb, err)
 	}
 	out, err := scope.enc.SetDiscoverySharing(&encounter.SetDiscoverySharingInput{Member: encounter.MemberID(in.Member), Sharing: in.Sharing})
 	if err != nil {
-		return nil, translate(err)
+		return nil, fmt.Errorf("%s: %w", verb, translate(err))
 	}
 	saved, delivery, err := m.commit(ctx, scope)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s: %w", verb, err)
 	}
 	return &SetDiscoverySharingOutput{Sharing: out.Sharing, Saved: saved, Delivery: delivery}, nil
 }
@@ -186,6 +188,13 @@ func (c automaticCheckSeam) ResolveDiscoveryCheck(in *encounter.ResolveCheckInpu
 	if c.scope.walker != nil && c.scope.walker.ID == string(in.Member) {
 		staged.data = c.scope.walker
 	} else {
+		// Staging precedes the verb's own writes, not only other requests.
+		// Join, for example, stages the incoming member and then persists a
+		// LongRest before placement triggers this check. Reusing that staged
+		// record would reattach pre-rest effects (such as Rage). The session
+		// guard does not make the old record current after an in-verb save.
+		// The walker above is the exception: its unpaid/in-flight movement
+		// state lives on the scope and must not be replaced from storage.
 		fresh, err := c.m.fetchCharacterData(staged.ctx, "discovery observer", string(in.Member))
 		if err != nil {
 			return nil, err

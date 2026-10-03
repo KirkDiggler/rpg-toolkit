@@ -78,5 +78,6 @@ func (s *AutomaticDiscoverySDKSuite) TestRealSheetRollPersistsAcrossRunsAndPrefe
 	}
 	s.Equal(1, profiles.data["alice"].Checks["hall/secret"].Used)
 	_, err = mgr.Search(ctx, &session.SearchInput{Session: "second", Member: "alice", Region: "hall"})
-	s.Error(err, "automatic hosts cannot use the old search path")
+	s.ErrorIs(err, session.ErrSearchRetired, "automatic hosts refuse in matchable session vocabulary")
+	s.NotErrorIs(err, encounter.ErrSearchRetired, "the host must not depend on the composition sentinel")
 }
