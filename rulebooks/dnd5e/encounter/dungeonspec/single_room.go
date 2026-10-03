@@ -526,6 +526,15 @@ type RoomDoorBinding struct {
 	Locked CheckSpec `yaml:"locked,omitempty" json:"locked,omitempty"`
 }
 
+// DiscoveryAttemptsSpec authors one discovery check's retry policy. Omitted
+// fields use encounter's defaults; pointer fields preserve explicit invalid zero
+// and empty values so validation cannot mistake them for absence.
+type DiscoveryAttemptsSpec struct {
+	MaxAttempts *int    `yaml:"max,omitempty" json:"max,omitempty"`
+	ResetHexes  *int    `yaml:"reset_hexes,omitempty" json:"reset_hexes,omitempty"`
+	Lifetime    *string `yaml:"lifetime,omitempty" json:"lifetime,omitempty"`
+}
+
 // ConcealmentSpec is one secret this room hides: what finds it, and what it
 // hides (rpg-project#490, R1).
 //
@@ -545,6 +554,10 @@ type RoomDoorBinding struct {
 // publish, not the web's: the web carries the list and the engine grades it,
 // which is the same split `doorBindings` keeps.
 type ConcealmentSpec struct {
+	// Attempts belongs to the whole discovery check, not to each alternative
+	// skill approach. It does not configure active lockpicking/forcing checks.
+	Attempts *DiscoveryAttemptsSpec `yaml:"attempts,omitempty" json:"attempts,omitempty"`
+
 	// Notice is the PASSIVE tell: the same approach list as Checks,
 	// resolved without dice against an observer's passive score
 	// (rpg-project#490, R6). Optional, and the NIL-VS-EMPTY law is

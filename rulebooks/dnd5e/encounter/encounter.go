@@ -194,7 +194,8 @@ type Encounter struct {
 	// plain dungeon has sides and knowledge too, and what it skips is the
 	// concealment capabilities and the sweep's work, which keeps its blob
 	// byte-identical to what it was before.
-	world *encounterWorld
+	world     *encounterWorld
+	discovery map[MemberID]DiscoveryStateData
 
 	// holdings is WHO HAS WHAT: a reader over the world's journal for the
 	// holdings, takings and drops (rpg-project#368, design §5). An
@@ -940,6 +941,14 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// sides, the belonging, the knowledge reducers, the flips (world.go).
 	if err = e.buildWorld(); err != nil {
 		return nil, fmt.Errorf("newencounter: %w", err)
+	}
+
+	for _, mi := range in.Members {
+		if mi.Kind == KindPlayer {
+			if err = e.initializeDiscovery(mi.ID, mi.PrivateDiscoveries, mi.RetainedDiscoveries); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	// First light: build sight percepts for each member using refreshSight
@@ -2102,6 +2111,11 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	}
 
 	seqNum := appendOut.Seq
+	if member.Kind == KindPlayer {
+		if err := e.initializeDiscovery(in.Member, in.PrivateDiscoveries, in.RetainedDiscoveries); err != nil {
+			return nil, err
+		}
+	}
 
 	// The faction's mix, dealt at this door exactly as it is at Setup's
 	// (design §3): a monster that arrives mid-run gets its own nerve rolled

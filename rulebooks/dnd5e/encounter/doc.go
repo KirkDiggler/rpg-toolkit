@@ -186,6 +186,23 @@
 // A field that hides nothing requires neither concealment capability. Its
 // ordinary room discovery still uses the same persisted knowledge journal.
 //
+// # Discovery attempt policy
+//
+// ConcealmentInput.Attempts authors one policy for the whole discovery check,
+// not an allowance per alternative skill approach. ResolveDiscoveryPolicy
+// defaults omitted values to one character-retained attempt and a three-hex
+// repeat reset distance. Explicit nonpositive counts, reset distances within
+// the one-hex trigger range, and unknown lifetimes are refused. ToData stores
+// the effective policy with all defaults resolved, and Load validates it.
+// A host supplying DiscoveryCheckResolver enables the distance-driven sweep:
+// one hex triggers an available attempt, departure to ResetHexes re-arms an
+// explicitly repeatable check, and return uses its next allowance. Counts and
+// armed state persist; loading does not roll. The same captured placed-player
+// audience receives the result beat and successful discovery when sharing is
+// on. Private checks address the actor alone. These hosts refuse Search.
+// Hosts supplying only the older CheckResolver retain their explicit-search
+// contract for source migration; the game host uses automatic discovery.
+//
 // # Sides: the run composes ONE world (rpg-project#375)
 //
 // One journal and one graph exist from Setup and from Load, whether or not
