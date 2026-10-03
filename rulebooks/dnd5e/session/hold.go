@@ -93,6 +93,11 @@ func (m *Manager) Hold(ctx context.Context, in *HoldInput) (*HoldOutput, error) 
 	if in == nil {
 		return nil, fmt.Errorf("hold: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Member == "" {
 		return nil, fmt.Errorf("hold: %w", ErrNoMemberID)
 	}

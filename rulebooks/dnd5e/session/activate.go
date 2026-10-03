@@ -134,6 +134,11 @@ func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOut
 	if in == nil {
 		return nil, fmt.Errorf("activate: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Member == "" {
 		return nil, fmt.Errorf("activate: %w", ErrNoMemberID)
 	}

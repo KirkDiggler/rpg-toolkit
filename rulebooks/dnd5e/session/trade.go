@@ -161,6 +161,11 @@ func (m *Manager) Trade(ctx context.Context, in *TradeInput) (*TradeOutput, erro
 	if in == nil {
 		return nil, fmt.Errorf("trade: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Actor == "" || in.Target == "" {
 		return nil, fmt.Errorf("trade: %w", ErrNoMemberID)
 	}

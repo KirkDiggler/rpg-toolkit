@@ -28,6 +28,11 @@ func (m *Manager) Areas(ctx context.Context, in *ViewInput) ([]SightArea, error)
 	if in == nil {
 		return nil, fmt.Errorf("areas: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Member == "" {
 		return nil, fmt.Errorf("areas: %w", ErrNoMemberID)
 	}

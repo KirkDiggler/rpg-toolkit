@@ -117,6 +117,11 @@ func (m *Manager) Persuade(ctx context.Context, in *PersuadeInput) (*PersuadeOut
 	if in == nil {
 		return nil, fmt.Errorf("persuade: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	out, err := m.speak(ctx, m.persuadeVerb(), in.Session, in.Member, in.Target)
 	if err != nil {
 		return nil, err

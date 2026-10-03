@@ -469,6 +469,10 @@ var (
 	// contract, carried across unweakened).
 	ErrElsewhere = errors.New("not standing in that region")
 
+	// ErrSearchRetired is returned when an automatic-discovery host receives
+	// the legacy Search verb. Move/placement supplies discovery instead.
+	ErrSearchRetired = errors.New("search is retired; discovery checks are automatic")
+
 	// ErrNoSheet is returned when a member has no stored sheet to resolve
 	// against — an authored monster standing in a world nobody spawned.
 	//

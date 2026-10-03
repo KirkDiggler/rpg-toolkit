@@ -1340,6 +1340,8 @@ const (
 	// nothing writes them, and a seam that still answered them would be
 	// claiming to read a wire that no longer speaks.
 	EventConcealmentRevealed EventKind = "concealment_revealed"
+	// EventDiscoveryChecked reports an automatic roll to its captured audience.
+	EventDiscoveryChecked EventKind = "discovery_checked"
 
 	// EventSighted is a change in THIS RECIPIENT's own perception: members
 	// who came into their view, and members whose view of them was lost.
@@ -2712,6 +2714,17 @@ type RevealedDoor struct {
 	// door is locked — what the recipient's Doors read would now list.
 	Approaches []DoorApproach `json:"approaches,omitempty"`
 }
+
+// DiscoveryCheckedBody names the actor and skill, never the hidden subject/DC.
+type DiscoveryCheckedBody struct {
+	Member      string           `json:"member"`
+	Ability     string           `json:"ability"`
+	Beaten      bool             `json:"beaten"`
+	Total       int              `json:"total"`
+	Calculation *RollCalculation `json:"calculation,omitempty"`
+}
+
+func (DiscoveryCheckedBody) isEventBody() {}
 
 // ConcealmentRevealedBody is [EventConcealmentRevealed]'s typed body: the
 // whole of what one concealment was withholding from this recipient, exactly
