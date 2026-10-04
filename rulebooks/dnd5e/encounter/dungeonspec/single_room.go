@@ -570,15 +570,22 @@ type ConcealmentSpec struct {
 	Cells []RoomCell `yaml:"cells,omitempty" json:"cells,omitempty"`
 
 	// Props are the placed things this hides, by the id
-	// `propDeclarations` declares them under — doors, wall props, anything.
-	// Every one must be a declared prop, and no id may be in two
-	// concealments. Optional.
+	// `propDeclarations` declares them under — doors, wall props, anything —
+	// or a STRUCTURAL WALL's raw id (rpg-project#169). Every one must be a
+	// declared prop, an attached door id or a wall id, and no id may be in
+	// two concealments. Optional.
 	//
 	// A DOOR IS JUST A PLACED ID HERE, because a door IS a prop in this
 	// dialect (single_room_doors.go: "a door here is a prop plus a state").
 	// The lowering sorts the ids into the engine's two lists by asking
 	// `doorBindings` which of them are doors; the author never writes the
 	// distinction twice.
+	//
+	// A WALL ID NAMES THE WHOLE WALL: the lowering expands it to the wall's
+	// identity-only presence entry AND every generated span id, so neither
+	// the wall's existence nor its blocking geometry is disclosed. An
+	// attached door on one of its openings is not swept in — its independent
+	// id is selected explicitly, exactly like any other source item.
 	Props []string `yaml:"props,omitempty" json:"props,omitempty"`
 }
 
@@ -595,6 +602,124 @@ type RoomPropDeclaration struct {
 	BlocksMovement    *bool         `yaml:"blocksMovement" json:"blocksMovement"`
 	BlocksLineOfSight *bool         `yaml:"blocksLineOfSight" json:"blocksLineOfSight"`
 	Footprint         RoomFootprint `yaml:"footprint" json:"footprint"`
+}
+
+// RoomWall is one authored structural wall in the World Builder's own schema
+// (rpg-project#169; single-room-play.md §3): a line an author drew, the
+// doorless openings cut into it, the repeating appearance it is drawn with,
+// and the independent blocker it stands as.
+//
+// THE SHAPE IS THE WEB'S, VERBATIM (rpg-dnd5e-web structuralWalls.ts,
+// `StructuralWall`). The editor authors it, the engine carries it, and this
+// type is where the one decode meets the one lowering — a second spelling
+// would be the drift a shared dialect exists to prevent.
+//
+// THE LINE IS SCENE UNITS on the editor's world X/Z plane, exactly as a scene
+// item's `transform.x`/`transform.z` are; the lowering converts it through
+// the same adapter every placed prop goes through (single_room_placement.go)
+// rather than defining a second frame. An opening's `position` is measured
+// along the line from its start, in scene units.
+//
+// APPEARANCE IS CONTENT AND IS CARRIED UNREAD. `assetRef`, `height`,
+// `thickness` and `elevation` reach no gameplay fact — the blocker below is
+// what blocks — so nothing here turns an asset's bounds into a rule, and no
+// asset or network access is required to decode or compile a wall.
+//
+// THE BLOCKER IS A [RoomPropDeclaration], the SAME SHAPE A PROP'S IS: width,
+// depth and both offsets are its footprint's, and the two blocking answers
+// are independent. Its rectangle is LOCAL TO THE WALL MIDPOINT — +X along
+// start→end, +Z perpendicular in the XZ plane — and the per-prop 12-unit
+// clamp deliberately does NOT apply to it (a long wall keeps its exact
+// extent beyond 12 scene units).
+type RoomWall struct {
+	// ID names the wall within this document. REQUIRED nonempty and unique
+	// across this document's walls, openings and scene item ids — what a
+	// generated span id is minted from, and what the author keeps stable.
+	ID string `yaml:"id" json:"id"`
+
+	// Label is the author's word for the wall. REQUIRED to be a string, and
+	// may be empty: it is a display name, not a gameplay fact.
+	Label string `yaml:"label" json:"label"`
+
+	// Line is the wall's structural line in scene XZ units.
+	Line RoomWallLine `yaml:"line" json:"line"`
+
+	// Appearance is the repeating visual content. Carried unread.
+	Appearance RoomWallAppearance `yaml:"appearance" json:"appearance"`
+
+	// Blocker is the independently authored rectangle this wall blocks with.
+	Blocker RoomPropDeclaration `yaml:"blocker" json:"blocker"`
+
+	// Openings are the gaps cut into the wall, in authored order. A bare gap
+	// carries no door state and no pose; an opening may carry an attached door
+	// ([RoomWallDoor]) whose pose this opening resolves and whose state lives
+	// under `doorBindings`.
+	Openings []RoomWallOpening `yaml:"openings" json:"openings"`
+}
+
+// RoomWallLine is a structural wall's two endpoints in scene XZ units.
+type RoomWallLine struct {
+	Start RoomWallPoint `yaml:"start" json:"start"`
+	End   RoomWallPoint `yaml:"end" json:"end"`
+}
+
+// RoomWallPoint is one authored point on the editor's world X/Z plane.
+type RoomWallPoint struct {
+	X float64 `yaml:"x" json:"x"`
+	Z float64 `yaml:"z" json:"z"`
+}
+
+// RoomWallOpening is a gap in a wall: its centre measured along the line from
+// the start, and how wide the gap is, both in scene units. It may carry an
+// attached door (rpg-project#169, the settled attached-door contract).
+type RoomWallOpening struct {
+	ID       string  `yaml:"id" json:"id"`
+	Position float64 `yaml:"position" json:"position"`
+	Width    float64 `yaml:"width" json:"width"`
+
+	// Door is the optional door ATTACHED to this opening — its identity and
+	// its catalog appearance, and nothing else. Optional; absent means a bare
+	// gap that blocks nothing and carries no state.
+	//
+	// THE OPENING OWNS THE DOOR'S POSE (rpg-dnd5e-web structuralWalls.ts,
+	// structuralDoorEditing.ts, Task 5). A bound door stores no transform and
+	// has no `scene.items` entry: its placement is resolved from this opening
+	// and the wall's own independent blocker at lowering time. Appearance
+	// (AssetRef) is carried UNREAD — no catalog, mesh or asset lookup happens
+	// here.
+	//
+	// THE DOOR'S STATE IS NOT HERE. It lives at the existing
+	// `room.doorBindings[<Door.ID>]` with that block's unchanged
+	// open/closed/locked grammar, and a door with no binding there is refused
+	// at this path — presence requires an explicit state.
+	Door *RoomWallDoor `yaml:"door,omitempty" json:"door,omitempty"`
+}
+
+// RoomWallDoor is the identity and catalog appearance of a door attached to a
+// wall opening. There is NO transform and no scene item: the opening resolves
+// the one placement. The type exists so the strict decoder can refuse a
+// `transform` or any other unread key here by name.
+type RoomWallDoor struct {
+	// ID names this door within the document and is the key its state lives
+	// under in `room.doorBindings`. REQUIRED, nonempty and unique against
+	// every wall id, opening id, scene item id and other attached door id.
+	ID string `yaml:"id" json:"id"`
+
+	// AssetRef is the catalog appearance the door is drawn with. REQUIRED to
+	// be a nonempty string and CARRIED UNREAD — membership in a catalog is
+	// the codec that owns that catalog (the web's), not this engine's.
+	AssetRef string `yaml:"assetRef" json:"assetRef"`
+}
+
+// RoomWallAppearance is a wall's repeating visual content. It is carried
+// unread: no field below reaches a gameplay fact, and validating membership
+// in a catalog is the codec that owns that catalog (the web's) — not this
+// engine's.
+type RoomWallAppearance struct {
+	AssetRef  string  `yaml:"assetRef" json:"assetRef"`
+	Height    float64 `yaml:"height" json:"height"`
+	Thickness float64 `yaml:"thickness" json:"thickness"`
+	Elevation float64 `yaml:"elevation" json:"elevation"`
 }
 
 // RoomGameplaySource contains the room's walkable cells and placements.
@@ -631,6 +756,20 @@ type RoomGameplaySource struct {
 	// See [RoomPropBinding] for why this block decodes and does not yet
 	// compile.
 	PropBindings map[string]RoomPropBinding `yaml:"propBindings,omitempty" json:"propBindings,omitempty"`
+
+	// Walls are the structural walls this room authored, in authored order
+	// (rpg-project#169). Optional, and ABSENT WHEN THE ROOM HAS NO WALLS —
+	// undefined and empty both normalize to absent, so a document without
+	// them decodes, compiles and marshal exactly as it did before this key
+	// existed.
+	//
+	// THE KEY IS A v4 FACT. A root version below 4 carrying a non-empty
+	// `walls:` is refused by name, because v3 has no place for it and
+	// claiming otherwise would be a version that lies. A wall compiles into
+	// the placed contributors the connected-sight contract already reads
+	// (rpg-project#506); it introduces no collider and no wall-to-edge
+	// substitution.
+	Walls []RoomWall `yaml:"walls,omitempty" json:"walls,omitempty"`
 }
 
 // SingleRoomDecodeInput supplies YAML source for decoding.

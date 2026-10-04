@@ -1,0 +1,52 @@
+# A v4 single-room document authored by the World Builder WITH ONE STRUCTURAL
+# WALL (rpg-project#169; single-room-play.md §3) — the `walls:` block exactly as
+# rpg-dnd5e-web's `validateStructuralWalls` emits it, re-authored here so the
+# toolkit's decode and compile of that schema has a source to read.
+#
+# THE WALL IS DELIBERATELY OUT OF THE CORRIDOR'S WAY. The corridor is five cells
+# along scene z = 0; the wall runs parallel to it at scene z = 3, so its
+# blocker covers no cell centre and the room still compiles. That is what lets
+# this fixture be BOTH the decode witness and the "no 12-unit clamp" witness:
+# its blocker is 30 scene units wide, far beyond the per-prop clamp.
+#
+# A WALL IS CONTENT THE ENGINE CARRIES, NOT CONTENT IT MODELS. `appearance` is
+# here in full and nothing in this package reads a field of it.
+version: 4
+key: walls-room
+play: { void: transparent, lighting: bright, standing: centre-covered }
+
+room:
+  version: 3
+  id: room-1
+  name: Walls Room
+  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
+    distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz}
+  workspace: { hexRadius: 6, horizontalLimit: 12 }
+  scene:
+    version: 1
+    id: scene-1
+    name: Walls Room
+    items: []
+    groups: []
+  room:
+    implicitRegionId: room-1-region
+    walkableHexes: [{q: 0, r: 0}, {q: 1, r: 0}, {q: 2, r: 0}, {q: 3, r: 0},
+      {q: 4, r: 0}]
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    partyStart: {q: 0, r: 0}
+    monsterDeclarations: []
+    walls:
+      - id: long-wall
+        label: Long wall
+        line:
+          start: {x: 0, z: 3}
+          end: {x: 20, z: 3}
+        appearance: {assetRef: 'dnd5e:env:test:wall', height: 3, thickness: 0.3,
+          elevation: 0}
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint: {width: 30, depth: 0.5, offsetX: 0, offsetZ: 0}
+        openings: []

@@ -126,6 +126,14 @@ func singleRoomConcealmentValues(s *SingleRoomSpec, g *grammar, add errSink) map
 	declared := make(map[string]bool, len(s.Concealments))
 	cellAt := map[RoomCell]string{}
 	propAt := map[string]string{}
+	// A CONCEALMENT'S `props:` NAMES PLACED THINGS, and in this dialect two
+	// kinds of source id reach the field as placed contributors: a door
+	// attached to a wall opening (lowered to a placed rectangle and a door),
+	// and a STRUCTURAL WALL, whose raw id is the presence entry a client joins
+	// by (rpg-project#169). The author names either here just as they name the
+	// bookcase behind it. The universe is the declarations plus those two.
+	bound := boundDoorIDSet(gp.Walls)
+	walls := wallIDSet(gp.Walls)
 
 	for _, id := range sortedConcealmentIDs(s.Concealments) {
 		p := "concealments." + id
@@ -163,7 +171,8 @@ func singleRoomConcealmentValues(s *SingleRoomSpec, g *grammar, add errSink) map
 
 		for j, named := range c.Props {
 			at := fmt.Sprintf("%s.props[%d]", p, j)
-			if _, isProp := gp.PropDeclarations[named]; !isProp {
+			_, isProp := gp.PropDeclarations[named]
+			if !isProp && !bound[named] && !walls[named] {
 				add(at, concealmentUnknownProp)
 				continue
 			}
@@ -199,12 +208,21 @@ func sortedConcealmentIDs(concealments map[string]ConcealmentSpec) []string {
 // (C8 — a map's iteration order is not a thing a compiled field may depend
 // on).
 //
-// THE AUTHOR WRITES ONE LIST OF PLACED IDS AND THE ENGINE TAKES TWO. A door
-// is a prop in this dialect, so `props:` carries both and the split is asked
-// of `doorBindings` here rather than of the author twice. A door's id is
-// minted `<key>/<id>` because that is what [singleRoomDoors] mints; a prop's
-// is the bare item id, because that is what [placedPropFrom] mints. Two
-// namespaces, each spelled the way its own list spells it.
+// THE AUTHOR WRITES ONE LIST OF PLACED IDS AND THE ENGINE TAKES TWO. A
+// selected door contributes both its state identity and its placed identity:
+// they are two projections of the same explicitly selected source item. This
+// association is lowered here, not inferred from overlapping hidden cells.
+// Door ids are minted `<key>/<id>`; placed ids remain the bare source id.
+//
+// A SELECTED WALL NAMES A WHOLE WALL (rpg-project#169, Task 8). Its raw id is
+// the identity-only presence entry, and the SAME lowering that compiled the
+// wall produced its span ids; naming the wall conceals the presence AND every
+// span, so neither the wall's existence nor its obstruction geometry is
+// disclosed. An attached door on one of its openings is NOT swept in — its
+// independent id is selected explicitly, exactly like any other source item.
+// The span list is read from the compiled lowering ([wallSpanIDs]), never
+// recalculated here, so the concealment and the field cannot drift; an empty
+// list still conceals the presence.
 //
 // THE ID IS `<key>/<id>`, the minting a door and an intel record already use,
 // so two dungeons in one process cannot collide.
@@ -212,7 +230,7 @@ func sortedConcealmentIDs(concealments map[string]ConcealmentSpec) []string {
 // Only reachable for a validated document: every cell is walkable and every
 // id is declared, both refused by name above when they are not.
 func singleRoomConcealments(
-	key string, s *SingleRoomSpec, o spatial.HexOrientation,
+	key string, s *SingleRoomSpec, o spatial.HexOrientation, wallSpansByID map[string][]encounter.PropID,
 ) []encounter.ConcealmentInput {
 	gp := &s.Room.Gameplay
 
@@ -228,9 +246,13 @@ func singleRoomConcealments(
 			lowered.Cells = append(lowered.Cells, axialOffset(cell, o))
 		}
 		for _, named := range c.Props {
+			if spans, isWall := wallSpansByID[named]; isWall {
+				lowered.Props = append(lowered.Props, named)
+				lowered.Props = append(lowered.Props, spans...)
+				continue
+			}
 			if _, isDoor := gp.DoorBindings[named]; isDoor {
 				lowered.Doors = append(lowered.Doors, encounter.DoorID(key+"/"+named))
-				continue
 			}
 			lowered.Props = append(lowered.Props, named)
 		}

@@ -455,6 +455,7 @@ func gameplayShape(gp *yaml.Node, add errSink) {
 	monsterBindingsShape(gp, add)
 	doorBindingsShape(gp, add)
 	propBindingsShape(gp, add)
+	wallsShape(gp, add)
 }
 
 // cellShape reads an axial cell. Both coordinates are required, and the
@@ -598,6 +599,11 @@ func validateSingleRoom(s *SingleRoomSpec) (roomRead, []FieldError) {
 	read, defects := readRoom(&s.Room)
 	e = append(e, defects...)
 	gameplayValues(&s.Room.Gameplay, read, add)
+	// THE WALLS LAST, and judged against the scene item universe the lowering
+	// read: a wall or opening id that is also a scene item id is a collision
+	// the web refuses too, and the root version is asked before the geometry
+	// so one wrong version is one sentence (single_room_walls.go).
+	wallValues(&s.Room.Gameplay, s.Version, read, add)
 	// THE SITE SCOPE AND THE ORDERS LAST, and judged by the one gameplay
 	// grammar (grammar.go, see single_room_site.go for this dialect's half of
 	// the call): every refusal about a faction, a disposition, a membership or

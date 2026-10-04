@@ -115,6 +115,7 @@ func (e *Encounter) discoverOpenedRooms(member MemberID, door *doorRecord) error
 // wall and must not acquire concealment's movement/probe rules.
 func (e *Encounter) undiscoveredFrom(member MemberID) hiddenView {
 	hidden := e.hiddenFrom(member)
+	hidden.unexploredCells = make(map[spatial.Position]bool)
 	known := e.world.knownRooms(member)
 	// Existing explicit concealment discovery may teach a slice of a region
 	// without seeing it. Preserve that knowledge; ordinary room discovery is
@@ -132,6 +133,7 @@ func (e *Encounter) undiscoveredFrom(member MemberID) hiddenView {
 		region, owned := e.field.regionOf(cell)
 		if (!owned || !known[region]) && !revealed[cell] {
 			hidden.cells[cell] = true
+			hidden.unexploredCells[cell] = true
 		}
 	}
 	// Unowned scenery directly bordering learned floor belongs to its visible
@@ -144,6 +146,7 @@ func (e *Encounter) undiscoveredFrom(member MemberID) hiddenView {
 			region, owned := e.field.regionOf(neighbor)
 			if owned && known[region] && !hidden.cells[neighbor] {
 				delete(hidden.cells, cell)
+				delete(hidden.unexploredCells, cell)
 				break
 			}
 		}
@@ -164,6 +167,7 @@ func (e *Encounter) undiscoveredFrom(member MemberID) hiddenView {
 	}
 	for cell := range footing {
 		delete(hidden.cells, cell)
+		delete(hidden.unexploredCells, cell)
 	}
 	for _, door := range e.doors {
 		if hidden.doors[door.id] {

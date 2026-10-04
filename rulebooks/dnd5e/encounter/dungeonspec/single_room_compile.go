@@ -83,6 +83,48 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 	// The declaration gave the footprint; the binding gives the orders, laid
 	// onto the same placement rather than onto a second list of props.
 	applyPropBindings(spec.Key, props, spec.Room.Gameplay.PropBindings)
+	// AND THE STRUCTURAL WALLS (rpg-project#169, single_room_walls.go). One
+	// authored wall lowers to its IDENTITY-ONLY presence entry (raw wall id,
+	// complete blocker, both flags false) plus one blocking contributor per
+	// remaining blocker span — the SAME list the authored props are in,
+	// because the connected-sight contract reads one contributor set and a
+	// second one would be a second answer about what blocks. The doors are
+	// built first so a generated span id can be checked against their
+	// compiled identities rather than silently replacing one.
+	wallLowerings, err := canonicalWallLowerings(spec.Room.Gameplay.Walls)
+	if err != nil {
+		return Compiled{}, singleRoomCompileError("room.room.walls", err.Error())
+	}
+	doors := singleRoomDoors(spec.Key, &spec.Room.Gameplay, read)
+	// AND THE DOORS ATTACHED TO A WALL OPENING (rpg-project#169). A bound door
+	// has no scene item and no prop declaration, so it brings its own
+	// nonblocking placed entry for the observer atlas plus the live door; both
+	// share the one placement resolved from the opening. They are appended
+	// BEFORE the collision walk so a generated span id cannot silently replace
+	// either the raw attached id or the minted `<key>/<id>`.
+	boundPlaced, boundDoors, err := attachedDoorLowering(spec.Key, &spec.Room.Gameplay)
+	if err != nil {
+		return Compiled{}, singleRoomCompileError("room.room.walls", err.Error())
+	}
+	props = append(props, boundPlaced...)
+	doors = append(doors, boundDoors...)
+	if err := wallCollision(props, wallLowerings, doors); err != nil {
+		return Compiled{}, err
+	}
+	for _, lowered := range wallLowerings {
+		// THE PRESENCE ENTRY FIRST, then its blocking spans. The presence
+		// carries the raw wall id the client joins by, and BOTH FLAGS FALSE
+		// so identity can never refill an opening the spans left clear.
+		props = append(props, lowered.presence)
+		props = append(props, lowered.spans...)
+	}
+	// One id order for the one list (C8), so a map or an authored wall order
+	// never leaks into which overlapping contributor a cell fold names first.
+	// A room with no walls re-sorts its already-sorted props and is unchanged.
+	sort.SliceStable(props, func(i, j int) bool { return props[i].ID < props[j].ID })
+	// And one order for the doors, which now has two sources: the standalone
+	// bindings and the attached ones.
+	sort.SliceStable(doors, func(i, j int) bool { return doors[i].ID < doors[j].ID })
 	field := encounter.FieldInput{
 		Canvas:  encounter.CanvasInput{Void: encounter.VoidIsTransparent(), Orientation: encounter.HexesArePointyTop()},
 		Regions: []encounter.RegionInput{{ID: spec.Room.Gameplay.ImplicitRegionID, Name: spec.Room.Name, Cells: cells, Archetype: "crypt", Lighting: &bright}},
@@ -94,7 +136,7 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		// author left false, and this is the same rectangle with its state
 		// deciding what it blocks. One authored footprint, one adapter, two
 		// questions.
-		Doors: singleRoomDoors(spec.Key, &spec.Room.Gameplay, read),
+		Doors: doors,
 		Start: nil,
 		// THE RECORDS, minted `<key>/<id>` by the shared [intelRecordsOf] —
 		// the composition reads a record's reveals when it changes hands, so
@@ -104,8 +146,10 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		// WHAT THIS ROOM HIDES (rpg-project#490,
 		// single_room_concealments.go): the root's `concealments:`, with the
 		// author's one list of placed ids sorted into the engine's doors and
-		// props. Nil when the room hides nothing.
-		Concealments: singleRoomConcealments(spec.Key, spec, o),
+		// props. A wall id in that list expands to the wall's presence entry
+		// and every span the SAME lowering produced (rpg-project#169). Nil
+		// when the room hides nothing.
+		Concealments: singleRoomConcealments(spec.Key, spec, o, wallSpanIDs(wallLowerings)),
 		// The sides ride the FIELD, for [Compile]'s reason: the stance graph
 		// is seeded from them at every Setup and Load, so they have to be
 		// where the field is. Nil when the site declares none.

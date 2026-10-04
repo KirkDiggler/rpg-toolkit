@@ -320,12 +320,16 @@ func (s *FootprintDoorSuite) TestAFootprintDoorMayBeHidden() {
 	// well as something to withhold.
 	field.Placed = []encounter.PlacedPropInput{
 		{ID: "cellar-door", Placement: placementPtrValue(leafAcrossTheHall())},
+		{ID: "unlisted-overlap", Placement: placementPtrValue(leafAcrossTheHall())},
 		{ID: "table", Placement: thinWall(4, 4, 0, spatial.Point{X: 2.5, Y: 0})},
 	}
 	field.Concealments = []encounter.ConcealmentInput{{
 		ID:     "cellar",
 		Checks: []encounter.CheckApproach{{Ability: "perception", DC: 15}},
 		Doors:  []encounter.DoorID{theLeaf},
+		// The source compiler maps ONE selected door to both its canonical
+		// identities. Geometry overlap must not stand in for that relation.
+		Props: []encounter.PropID{"cellar-door"},
 	}}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
@@ -356,8 +360,9 @@ func (s *FootprintDoorSuite) TestAFootprintDoorMayBeHidden() {
 		placedIDs[p.ID] = true
 	}
 	s.False(placedIDs["cellar-door"],
-		"the leaf's drawn rectangle is withheld — it stands on floor this observer cannot see, "+
-			"which is how the v4 twin is covered without the concealment naming it twice")
+		"the selected door's explicit placed identity is withheld")
+	s.True(placedIDs["unlisted-overlap"],
+		"even exact footprint equality does not conceal an unlisted placement")
 	s.True(placedIDs["table"],
 		"and the table beside it is not — Atlas.Placed is FILTERED now, not withheld wholesale")
 
