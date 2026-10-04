@@ -202,6 +202,9 @@ func fieldHasConcealment(concealments []ConcealmentInput) bool { return len(conc
 // concealments in sorted-ID order, their doors in authored order, members in
 // sorted-ID order, witness answers sorted before use.
 func (e *Encounter) sweepConcealment() error {
+	if err := e.sweepDiscoveryChecks(); err != nil {
+		return err
+	}
 	at := uint64(e.clock.ToData().HighWater)
 
 	if err := e.sweepOccupancy(at); err != nil {

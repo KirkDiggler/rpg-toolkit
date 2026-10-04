@@ -77,6 +77,12 @@ type ConcealmentInput struct {
 	// ONE ROLL PER CONCEALMENT, never per hidden thing ([Encounter.Search]).
 	Checks []CheckApproach
 
+	// Attempts configures this discovery check, not its individual approaches.
+	// Omitted means one retained attempt and a three-hex repeat reset distance.
+	// Compiled and persisted here; automatic enforcement is supplied by the
+	// discovery sweep. The legacy Search path does not yet consume this policy.
+	Attempts *DiscoveryPolicyInput
+
 	// Notice is the PASSIVE tell — the same approach list, resolved without
 	// dice against an observer's passive score when they first sight a cell
 	// touching this (rpg-project#490, R6). Optional; nil means the author
@@ -122,9 +128,10 @@ type ConcealmentInput struct {
 // the AUTHORED frame — what ToData writes back out — beside the absolute
 // cells every read asks for.
 type concealment struct {
-	id     ConcealmentID
-	checks []CheckApproach
-	notice []CheckApproach
+	id       ConcealmentID
+	checks   []CheckApproach
+	notice   []CheckApproach
+	attempts DiscoveryPolicy
 
 	// authoredCells is the input's own list, in the authored offset frame,
 	// so ToData writes back what the author wrote.
@@ -168,6 +175,14 @@ func (f *field) compileConcealments(in []ConcealmentInput) error {
 		if err := validateConcealmentCheck(c.ID, "lists no way to find it", c.Checks); err != nil {
 			return err
 		}
+		policyInput := c.Attempts
+		if policyInput == nil {
+			policyInput = &DiscoveryPolicyInput{}
+		}
+		policy, err := ResolveDiscoveryPolicy(policyInput)
+		if err != nil {
+			return fmt.Errorf("concealment %q: %w", c.ID, err)
+		}
 		// NIL IS NOT EMPTY. A concealment with no `notice` is one whose
 		// author declared no passive tell; one with an empty list is an
 		// author who said there IS a tell and did not say what beats it —
@@ -185,6 +200,7 @@ func (f *field) compileConcealments(in []ConcealmentInput) error {
 			id:            c.ID,
 			checks:        append([]CheckApproach(nil), c.Checks...),
 			notice:        copyApproaches(c.Notice),
+			attempts:      *policy,
 			authoredCells: append([]spatial.Position(nil), c.Cells...),
 			doors:         append([]DoorID(nil), c.Doors...),
 			props:         append([]PropID(nil), c.Props...),

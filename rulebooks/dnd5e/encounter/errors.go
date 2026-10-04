@@ -350,6 +350,10 @@ var (
 	// probe law's concern arriving at the region vocabulary.
 	ErrElsewhere = errors.New("encounter: not standing in that region")
 
+	// ErrSearchRetired refuses explicit Search when the host supplies
+	// DiscoveryCheckResolver; only proximity can consume that allowance.
+	ErrSearchRetired = errors.New("search is retired; discovery checks are automatic")
+
 	// ErrNoTurnDriver indicates Setup or Load was given no TurnDriver
 	// capability. A member with no player can land on a fight's clock — a
 	// turn ending, or a fight forming with an unplayed member first in
