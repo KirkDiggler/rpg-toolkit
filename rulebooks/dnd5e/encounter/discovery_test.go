@@ -11,13 +11,28 @@ import (
 	"testing"
 )
 
+type discoveryConsult struct {
+	member encounter.MemberID
+	dc     int
+}
+
 type discoveryRoller struct {
-	calls   int
-	success bool
+	calls      int
+	success    bool
+	err        error
+	nilVerdict bool
+	order      []discoveryConsult
 }
 
 func (r *discoveryRoller) ResolveCheck(in *encounter.ResolveCheckInput) (*encounter.ResolveCheckOutput, error) {
 	r.calls++
+	r.order = append(r.order, discoveryConsult{member: in.Member, dc: in.Approaches[0].DC})
+	if r.err != nil {
+		return nil, r.err
+	}
+	if r.nilVerdict {
+		return nil, nil
+	} // deliberate provider-contract violation
 	return &encounter.ResolveCheckOutput{Beaten: r.success, Applied: in.Approaches[0], Total: 1}, nil
 }
 
@@ -29,17 +44,10 @@ type AutomaticDiscoverySuite struct{ suite.Suite }
 
 func TestAutomaticDiscoverySuite(t *testing.T) { suite.Run(t, new(AutomaticDiscoverySuite)) }
 func (s *AutomaticDiscoverySuite) world(private bool, max int, roller *discoveryRoller) *encounter.Encounter {
-	prop := holdableProp("secret", "dnd5e:props:idol", spatial.Position{X: 4, Y: 0})
-	prop.Holdable = false
-	blocked := true
-	prop.BlocksMovement = &blocked
-	prop.BlocksLineOfSight = &blocked
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, CheckResolver: roller, Witness: nobodyPerceives{},
-		Field:   encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 10, 3)}, Props: []encounter.PropInput{prop}, Concealments: []encounter.ConcealmentInput{{ID: "secret", Checks: []encounter.CheckApproach{{Ability: "religion", DC: 15}}, Props: []string{"secret"}, Attempts: &encounter.DiscoveryPolicyInput{MaxAttempts: &max}}}},
-		Members: []encounter.MemberInput{{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{}, PrivateDiscoveries: private}, {ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 2}}},
-		Endings: []encounter.EndingInput{{Key: "exit", Trigger: encounter.TriggerExternal{}}},
-	})
+	in := discoveryFixture(roller)
+	in.Members[0].PrivateDiscoveries = private
+	in.Field.Concealments[0].Attempts = &encounter.DiscoveryPolicyInput{MaxAttempts: &max}
+	enc, err := encounter.NewEncounter(in)
 	s.Require().NoError(err)
 	return enc
 }

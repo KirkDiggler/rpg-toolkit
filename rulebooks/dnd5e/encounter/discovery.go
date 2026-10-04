@@ -43,7 +43,7 @@ type DiscoveryMemoryData struct {
 	Learned bool `json:"learned,omitempty"`
 }
 
-// DiscoveryMemoryInput selects one member's retained check memory.
+// DiscoveryMemoryInput selects one placed player's retained check memory.
 type DiscoveryMemoryInput struct{ Member MemberID }
 
 // DiscoveryMemoryOutput contains only character-lifetime entries in this field.
@@ -51,12 +51,14 @@ type DiscoveryMemoryOutput struct {
 	Checks map[ConcealmentID]DiscoveryMemoryData
 }
 
-// DiscoveryMemory returns a detached projection, never an additional authority.
+// DiscoveryMemory returns a detached player projection, never an additional
+// authority. Nil input is ErrNilInput; absent or non-player members are ErrNotMember.
 func (e *Encounter) DiscoveryMemory(in *DiscoveryMemoryInput) (*DiscoveryMemoryOutput, error) {
 	if in == nil {
 		return nil, ErrNilInput
 	}
-	if _, ok := e.members[in.Member]; !ok {
+	member, ok := e.members[in.Member]
+	if !ok || member.Kind != KindPlayer {
 		return nil, ErrNotMember
 	}
 	out := &DiscoveryMemoryOutput{Checks: map[ConcealmentID]DiscoveryMemoryData{}}
