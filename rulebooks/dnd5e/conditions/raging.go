@@ -15,6 +15,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/assessment"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -427,28 +429,27 @@ func (r *RagingCondition) onDamageChain(
 		// checking the pre-chain snapshot would let Rage's bonus survive a
 		// swap away from STR.
 		modifyDamage := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
-			primary := primaryWeaponComponent(e)
-			if primary == nil {
+			// Both execution and information ask the same detached rule. This
+			// adapter supplies current fold facts, not a previously read answer.
+			out, assessErr := (ragingDamageRule{owner: r.CharacterID, bonus: r.DamageBonus}).AssessDamage(
+				&assessment.AssessDamageInput{Frame: assessment.DamageFrame{
+					ActorID: e.AttackerID, Ability: contributions.Known(e.AbilityUsed),
+					Melee:         contributions.Known(e.IsMelee),
+					HasWeaponPool: contributions.Known(primaryWeaponComponent(e) != nil),
+				}},
+			)
+			if assessErr != nil {
+				return e, assessErr
+			}
+			if out.Decision.Applicability != contributions.Applies {
 				return e, nil
 			}
-			// RAW: the rage damage bonus only applies to melee weapon attacks
-			// that use Strength (including unarmed strikes) -- not ranged or
-			// DEX-based attacks.
-			if e.AbilityUsed != abilities.STR || !e.IsMelee {
-				return e, nil
-			}
-
-			// Append rage damage component. The modifier is a copy so the
-			// component cannot alias the live condition's field.
-			damageBonus := r.DamageBonus
+			change := out.Changes[0]
 			e.Components = append(e.Components, dnd5eEvents.DamageComponent{
 				Source: dnd5eEvents.DamageSourceCondition,
 				Roll: dnd5eEvents.RollComponent{
-					Source: dnd5eEvents.RollSource{
-						Ref:  refs.Conditions.Raging(),
-						Name: "Raging",
-					},
-					Modifier: &damageBonus, // No dice
+					Source:   change.Source,
+					Modifier: change.Fixed, // Detached; no dice
 				},
 				DamageType: e.WeaponDamageType, // Same as marked primary weapon type
 				IsCritical: false,

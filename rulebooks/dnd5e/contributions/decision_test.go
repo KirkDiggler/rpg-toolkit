@@ -48,7 +48,7 @@ func (s *decisionSuite) TestPairNeedsNameBothDistinctSubjects() {
 		s.Error((contributions.Need{Kind: kind, Subject: "actor", Other: "actor"}).Validate())
 	}
 	for _, kind := range []contributions.NeedKind{
-		contributions.NeedUniverse, contributions.NeedTargetEffects, contributions.NeedReactionReadiness,
+		contributions.NeedUniverse, contributions.NeedTargetEffects, contributions.NeedReactionReadiness, contributions.NeedActionFacts,
 	} {
 		s.Require().NoError((contributions.Need{Kind: kind, Subject: "target"}).Validate())
 		s.Error((contributions.Need{Kind: kind}).Validate())

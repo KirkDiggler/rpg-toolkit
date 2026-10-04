@@ -66,6 +66,8 @@ const (
 	NeedTargetEffects NeedKind = "target_effects"
 	// NeedReactionReadiness marks absent permitted readiness for Subject.
 	NeedReactionReadiness NeedKind = "reaction_readiness"
+	// NeedActionFacts marks effective action facts not yet settled by normalization.
+	NeedActionFacts NeedKind = "action_facts"
 )
 
 // Need names missing information about known subjects. A consumer must not
@@ -88,7 +90,7 @@ func (n Need) Validate() error {
 		if n.Subject == "" || n.Other == "" || n.Subject == n.Other {
 			return fmt.Errorf("%s need requires two distinct subjects", n.Kind)
 		}
-	case NeedUniverse, NeedTargetEffects, NeedReactionReadiness:
+	case NeedUniverse, NeedTargetEffects, NeedReactionReadiness, NeedActionFacts:
 		if n.Subject == "" || n.Other != "" {
 			return fmt.Errorf("%s need requires one subject", n.Kind)
 		}
