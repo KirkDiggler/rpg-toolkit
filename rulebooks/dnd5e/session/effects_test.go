@@ -23,6 +23,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
@@ -566,8 +567,13 @@ func (s *EffectRowsSuite) TestNoRowsOnTheWorldClock() {
 }
 
 // TestAffordFailsClosedWhenRowsCannotBeRead pins the fail-closed contract on a
-// real inconsistency staged through the seam: a stored sheet carrying the same
-// Rage twice. Everything Afford compiles before the rows still compiles —
+// genuinely inconsistent sheet. A doubled Rage cannot arise from play: the
+// rulebook refuses Rage while one is already active (features.Rage
+// CanActivate, "already raging"), and the character sheet replaces a
+// condition applied at an identity it already holds —
+// TestRagingAgainIsRefusedAndThePanelSurvives walks that path. Loading a
+// stored sheet does not pass through that door, so the duplicate is staged as
+// stored data. Everything Afford compiles before the rows still compiles —
 // the sheet loads, the offers price — and the rulebook then refuses to list
 // two rows under one id. Afford returns that error rather than a panel with
 // some rows missing, because an empty list reads as "nothing bears on this
@@ -581,4 +587,70 @@ func (s *EffectRowsSuite) TestAffordFailsClosedWhenRowsCannotBeRead() {
 	s.Require().Error(err, "a row the rulebook cannot list fails the read")
 	s.Nil(out, "and no partial panel is returned beside it")
 	s.Contains(err.Error(), `duplicate effect row id "dnd5e:conditions:raging"`)
+}
+
+// TestRagingAgainIsRefusedAndThePanelSurvives drives the play path that once
+// produced a doubled Rage, with nothing planted: a barbarian with two charges
+// rages and swings, the turn comes back round, and the rulebook (features.Rage
+// CanActivate, "already raging") now refuses the second Rage. The Rage row
+// reads unavailable with that reason, activating it anyway is refused, the
+// sheet still holds one Raging and one spent charge, and Afford keeps
+// returning the whole panel with the Raging row on Attack.
+func (s *EffectRowsSuite) TestRagingAgainIsRefusedAndThePanelSurvives() {
+	barbarian := ragingBarbarian("alice", 2)
+	barbarian.AbilityScores[abilities.DEX] = 16
+	barbarian.WeaponProficiencies = []proficiencies.Weapon{proficiencies.WeaponSimple, proficiencies.WeaponMartial}
+	s.cave(barbarian)
+	rageRef := refs.Features.Rage().String()
+
+	rage := activationFor(s.T(), s.afford("alice").Declarations, rageRef)
+	s.Require().True(rage.Available, "precondition: the first Rage is offered")
+	_, err := s.mgr.Activate(s.ctx, &session.ActivateInput{Session: erSession, Member: "alice", DeclarationID: rage.ID})
+	s.Require().NoError(err)
+	// A swing keeps the rage up past the turn's end.
+	_, err = s.mgr.Attack(s.ctx, &session.AttackInput{
+		Session: erSession, Attacker: "alice", Target: erGoblin1,
+		DeclarationID: s.mainAttack(s.afford("alice")).ID,
+	})
+	s.Require().NoError(err)
+
+	for _, member := range []string{"alice", erAlly} {
+		_, err := s.mgr.EndTurn(s.ctx, &session.EndTurnInput{
+			Session: erSession, Member: member, DeclarationID: currentEndTurnID(s.T(), s.mgr, erSession, member),
+		})
+		s.Require().NoError(err, "ending %s's turn", member)
+	}
+	turn, err := s.mgr.Turn(s.ctx, &session.TurnInput{Session: erSession, Member: "alice"})
+	s.Require().NoError(err)
+	s.Require().Equal("alice", turn.Active, "precondition: the turn came back round")
+	s.Require().Equal(2, turn.Round)
+
+	out := s.afford("alice")
+	again := activationFor(s.T(), out.Declarations, rageRef)
+	s.False(again.Available, "a barbarian already raging is not offered a second Rage")
+	s.Require().NotNil(again.Why)
+	s.Contains(again.Why.Text, "already raging", "the rulebook's own reason, carried verbatim")
+
+	_, err = s.mgr.Activate(s.ctx, &session.ActivateInput{Session: erSession, Member: "alice", DeclarationID: again.ID})
+	s.Require().Error(err, "and activating it anyway is refused")
+
+	ragings := 0
+	for _, ref := range storedConditionRefs(s.T(), s.characters, "alice") {
+		if ref == refs.Conditions.Raging().String() {
+			ragings++
+		}
+	}
+	s.Equal(1, ragings, "the sheet holds one Raging")
+	s.Equal(1, storedSheet(s.T(), s.characters, "alice").Resources[resources.RageCharges].Current,
+		"one charge spent, by the first Rage only")
+
+	for _, panel := range []*session.AffordOutput{out, s.afford("alice")} {
+		verbs := map[session.Verb]bool{}
+		for _, declaration := range panel.Declarations {
+			verbs[declaration.Verb] = true
+		}
+		s.True(verbs[session.VerbAttack] && verbs[session.VerbEndTurn] && verbs[session.VerbMove],
+			"the whole panel survives: %v", verbs)
+		s.Equal(session.EffectApplies, s.row(s.mainAttack(panel), refs.Conditions.Raging().String()).State)
+	}
 }
