@@ -647,6 +647,26 @@ func (s *FrameTestSuite) TestStrikeSanctuaryWardsComeFromTheHeldRule() {
 	s.Nil(out.Outcome.(StrikeOutcome).Warded, "an attacker's own ward asks no save")
 }
 
+// TestStrikeWardCheckReadsTheExecutionFrame: the ward check asks the held rule
+// over the strike's execution frame, so the frame exists before any ward save
+// is rolled. A warded target whose holdings cannot be framed — its record
+// lists the same Prone twice, which no frame may carry — fails the strike
+// with no save asked. A ward check that read the sheet on its own would roll
+// the attacker's save, lose the attack and report a ward that no frame ever
+// agreed to.
+func (s *FrameTestSuite) TestStrikeWardCheckReadsTheExecutionFrame() {
+	prone, err := conditions.NewProneCondition(heroID).ToJSON()
+	s.Require().NoError(err)
+	warded := actionHero()
+	warded.Conditions = []json.RawMessage{sanctuaryJSON(s.T(), heroID), prone, prone}
+
+	out, err := resolveHeroStrikeAs(s, wolfID, heroID, warded, facedRoller{d20: 1, other: 1})
+
+	s.Require().Error(err, "the frame the ward rule reads cannot be built: %+v", out)
+	s.Contains(err.Error(), "attack frame")
+	s.Nil(out, "no ward outcome, no world to save")
+}
+
 // resolveHeroStrikeAs runs one strike between the hero and the wolf, with the
 // cleric whose ward is on the hero's sheet present to answer its save DC.
 func resolveHeroStrikeAs(
