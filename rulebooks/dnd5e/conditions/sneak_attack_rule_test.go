@@ -221,10 +221,13 @@ type sneakAttackHandlerSuite struct {
 	roller    *countingRoller
 }
 
-// countingRoller rolls fixed faces and counts the dice it was asked for.
-type countingRoller struct{ rollNCalls int }
+// countingRoller rolls fixed faces and counts every roll it was asked for.
+type countingRoller struct{ rollNCalls, rollCalls int }
 
-func (r *countingRoller) Roll(context.Context, int) (int, error) { return 3, nil }
+func (r *countingRoller) Roll(context.Context, int) (int, error) {
+	r.rollCalls++
+	return 3, nil
+}
 
 func (r *countingRoller) RollN(_ context.Context, count, _ int) ([]int, error) {
 	r.rollNCalls++

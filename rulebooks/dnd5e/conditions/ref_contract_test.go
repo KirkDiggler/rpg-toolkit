@@ -106,7 +106,7 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 		"fs_twf":             NewFightingStyleTwoWeaponFightingCondition("m1"),
 		"improved_critical":  NewImprovedCriticalCondition(ImprovedCriticalInput{MemberID: "m1"}),
 		"reckless_attack":    NewRecklessAttackCondition("m1"),
-		"martial_arts":       NewMartialArtsCondition(MartialArtsInput{MemberID: "m1", MonkLevel: 5, Roller: roller}),
+		"martial_arts":       NewMartialArtsCondition(MartialArtsInput{MemberID: "m1", MonkLevel: 5}),
 		"unarmored_move":     NewUnarmoredMovementCondition(UnarmoredMovementInput{MemberID: "m1", MonkLevel: 5}),
 		"sneak_attack":       NewSneakAttackCondition(SneakAttackInput{MemberID: "m1", Level: 5, Roller: roller}),
 		"disengaging":        NewDisengagingCondition("m1"),
