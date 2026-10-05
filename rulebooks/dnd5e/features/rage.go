@@ -109,8 +109,19 @@ func (r *Rage) GetType() core.EntityType {
 	return EntityTypeFeature
 }
 
-// CanActivate implements core.Action[FeatureInput]
+// CanActivate implements core.Action[FeatureInput]. It refuses a barbarian
+// who is already raging — a second Rage would put a second Raging condition on
+// the sheet and spend a charge on nothing — and one with no charges left. It
+// runs on every Afford with an empty FeatureInput, so its refusal is also the
+// reason the Rage row reads unavailable. An owner whose conditions cannot be
+// read is refused: not knowing is not "not raging".
 func (r *Rage) CanActivate(_ context.Context, owner core.Entity, _ FeatureInput) error {
+	if err := refuseWhileHolding(&refuseWhileHoldingInput{
+		Owner: owner, Ref: refs.Conditions.Raging(), Reason: "already raging",
+	}); err != nil {
+		return err
+	}
+
 	// At level 20, barbarians have unlimited rages
 	if r.level >= 20 {
 		return nil

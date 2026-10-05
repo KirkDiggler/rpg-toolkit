@@ -10,6 +10,7 @@ import (
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
@@ -19,9 +20,13 @@ import (
 // mockResourceAccessor implements coreResources.ResourceAccessor for testing
 // and is shared by the other feature tests in this package.
 type mockResourceAccessor struct {
-	id        string
-	resources map[coreResources.ResourceKey]*combat.RecoverableResource
+	id         string
+	resources  map[coreResources.ResourceKey]*combat.RecoverableResource
+	conditions []dnd5eEvents.ConditionBehavior
 }
+
+// GetConditions reports the mock's own held conditions.
+func (m *mockResourceAccessor) GetConditions() []dnd5eEvents.ConditionBehavior { return m.conditions }
 
 func (m *mockResourceAccessor) GetID() string {
 	return m.id
