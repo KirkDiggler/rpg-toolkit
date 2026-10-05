@@ -8,6 +8,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
@@ -107,4 +108,29 @@ func DecodeCommanded(stored []json.RawMessage) (*CommandedConditionData, bool, e
 		return nil, false, nil
 	}
 	return oldest, true, nil
+}
+
+// HeldAddresses reports the address each stored condition blob names itself
+// by, in stored order: the (ref, source) a rule keyed by reference reads
+// (rpg-project#520, R16, R17). It is the reader a seam answering "what does
+// this member hold" uses, so that seam names no condition type and holds none.
+//
+// It builds each condition only to ask its address, and attaches nothing: no
+// bus is touched and nothing runs.
+//
+// A blob this package does not load as a condition is left out, because the
+// loaded sheet leaves it out too: a monster's stat-block trait (immunity,
+// vulnerability, …) is not a condition, and a blob that cannot be read is
+// dropped by the sheet's own lenient projection. The result is non-nil even
+// when empty — the sheet was read.
+func HeldAddresses(member string, stored []json.RawMessage) []dnd5eEvents.ConditionAddress {
+	held := make([]dnd5eEvents.ConditionAddress, 0, len(stored))
+	for _, blob := range stored {
+		loaded, err := LoadJSON(blob)
+		if err != nil {
+			continue
+		}
+		held = append(held, ConditionAddressOf(member, loaded))
+	}
+	return held
 }
