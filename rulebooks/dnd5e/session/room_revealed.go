@@ -25,6 +25,15 @@ type RoomRevealedBody struct {
 	Doorways   []AtlasDoorway     `json:"doorways"`
 	Placed     []AtlasPlacedProp  `json:"placed"`
 	Exits      []AtlasExit        `json:"exits"`
+
+	// StructuralWalls and StructuralDoors are the optional new-or-changed
+	// fixed structural rows this room brought (rpg-project#169, P2E). Each is
+	// the COMPLETE projected record for its identity, so applying it by id
+	// onto a cached atlas yields the fresh answer; both are absent on a legacy
+	// beat and on a beat where the recipient's structural layout did not
+	// change.
+	StructuralWalls []AtlasStructuralWall `json:"structural_walls,omitempty"`
+	StructuralDoors []AtlasStructuralDoor `json:"structural_doors,omitempty"`
 }
 
 func (RoomRevealedBody) isEventBody() {}
@@ -43,6 +52,16 @@ func roomRevealedBody(payload []byte) EventBody {
 	if json.Unmarshal(payload, &p) != nil || p.Region.ID == "" {
 		return nil
 	}
+	// THE STRUCTURAL ROWS ARE DECODED ONCE, SHARED WITH THE CONCEALMENT BEAT.
+	// A row missing its identity refuses the whole beat rather than handing a
+	// client a half-patched cache; an absent key is the legacy payload and
+	// leaves both lists empty.
+	walls, doors, ok := structuralRowsFromPayload(payload)
+	if !ok {
+		return nil
+	}
+	p.StructuralWalls = walls
+	p.StructuralDoors = doors
 	for _, prop := range p.Placed {
 		if prop.ID == "" {
 			return nil

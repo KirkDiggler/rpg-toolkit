@@ -204,8 +204,29 @@
 // what a stored counter/knowledge bit means. The boundary allow-list pins this
 // narrow concession; runtime inner types remain forbidden.
 //
-// # Holdings: Loot, Hold, and the ending on the way out
+// # Structural layout, on the same fixed-layout grain
 //
+// The promoted authored walls and doors (rpg-project#169) ride the pipeline the
+// package already had. The composition decides which walls, cuts and doors a
+// recipient may know — a wall is presented only when its raw static presence
+// survives, a bound opening only when its own door identity is independently
+// permitted, and a withheld opening is omitted whole so a visible wall carries no
+// tell. This seam copies that answer: [Atlas.StructuralWalls] and
+// [Atlas.StructuralDoors] carry the permitted records with their canonical-feet
+// geometry, and the two fixed rows ride the existing room_revealed and
+// concealment_revealed payloads as optional `structural_walls`/`structural_doors`
+// (RoomRevealedBody, ConcealmentRevealedBody), by id, new-or-changed only.
+//
+// NOTHING IS DECIDED HERE. projectAtlas is a field-for-field copy; the reveal
+// decode is a shared helper that refuses a malformed or identity-less row whole
+// rather than handing a client a half-applied patch. A fixed row carries no
+// mutable state, no private placed id and no parent association, so an unknown
+// door state stays unknown instead of turning a known doorway into wall; and a
+// replay of an old beat never re-reads a newer world to enrich it. Legacy payloads
+// with neither key decode exactly as before.
+//
+// # Holdings: Loot, Hold, and the ending on the way out
+// //
 // Slice 2 (rpg-toolkit#1496, ruled on rpg-project#368) adds two verbs and
 // changes what a departure says, in the shape the package already had.
 //

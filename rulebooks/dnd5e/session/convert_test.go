@@ -65,6 +65,16 @@ var projectedPairs = []struct {
 	{"AtlasPlacedProp", encounter.AtlasPlacedProp{}, session.AtlasPlacedProp{}},
 	{"AtlasBoundary", encounter.AtlasBoundary{}, session.AtlasBoundary{}},
 	{"AtlasDoorway", encounter.AtlasDoorway{}, session.AtlasDoorway{}},
+	// THE STRUCTURAL LAYOUT (rpg-project#169). Wall, opening and door are
+	// audited as their own pairs, not only as fields of Atlas, because the
+	// completeness check does not descend into element types: a field carried
+	// on the outer list proves nothing about the row inside it. The framing
+	// types differ only in how a point is spelled (spatial.Point vs the local
+	// FootprintPoint), which is the S2 rewrite this audit assumes everywhere;
+	// convert_internal_test.go is the value half.
+	{"AtlasStructuralWall", encounter.AtlasStructuralWall{}, session.AtlasStructuralWall{}},
+	{"AtlasStructuralOpening", encounter.AtlasStructuralOpening{}, session.AtlasStructuralOpening{}},
+	{"AtlasStructuralDoor", encounter.AtlasStructuralDoor{}, session.AtlasStructuralDoor{}},
 	{"Status", encounter.Status{}, session.Status{}},
 	{"Outcome", encounter.Outcome{}, session.Outcome{}},
 	{"Member", encounter.Member{}, session.Member{}},
