@@ -56,7 +56,14 @@ which part is [`../CLAUDE.md`](../CLAUDE.md).
   ([`participation.go`](./participation.go), [`standing.go`](./standing.go)),
   `MakeCheck` ([`check.go`](./check.go)), `LongRest` ([`long_rest.go`](./long_rest.go)),
   `DeathSave` ([`death_save.go`](./death_save.go)). Each goes through the same
-  door; none is a mode of another.
+  door; none is a mode of another. `InformAttack` ([`inform.go`](./inform.go))
+  opens no door at all: it asks the actor's own effects how they bear on an
+  attack, from an information frame built from the actor's observed context
+  alone, and spends, rolls and publishes nothing.
+- **The frame a rule answers from** ([`frame.go`](./frame.go)), built once per
+  action and target: the information frame from what the actor knows, the
+  execution frame from authoritative state — and one strike hands the same
+  execution frame to its offers and its damage fold (rpg-project#520).
 
 ## What it must never learn
 
