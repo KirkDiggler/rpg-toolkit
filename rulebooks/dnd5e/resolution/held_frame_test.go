@@ -51,8 +51,12 @@ func (c sheetConditions) Conditions(
 			out[id] = nil
 			continue
 		}
+		addresses, err := conditions.HeldAddresses(string(id), *blobs)
+		if err != nil {
+			return nil, err
+		}
 		set := &encounter.ConditionSet{Conditions: []encounter.ConditionKey{}}
-		for _, address := range conditions.HeldAddresses(string(id), *blobs) {
+		for _, address := range addresses {
 			set.Conditions = append(set.Conditions, encounter.ConditionKey{
 				ConditionRef: address.ConditionRef, SourceID: address.SourceID,
 			})
@@ -153,13 +157,15 @@ func (s *FrameTestSuite) informHeld(
 }
 
 // strikeHeld swings the rogue's attack at goblin one on the scene's world,
-// from authoritative state. The world is seated under full sight; the strike
-// asks the scene's own sight live.
+// from authoritative state. The world is seated under full sight and with no
+// conditions observed — the strike reads what members hold from their sheets,
+// never from testimony; the strike asks the scene's own sight live.
 func (s *FrameTestSuite) strikeHeld(
 	bus events.EventBus, h *heldScene, attack combatActions.Definition, d20 int,
 ) (*Output, error) {
 	seated := *h
 	seated.sight = everyoneSeesTheWholeMap{}
+	seated.unobserved = map[encounter.MemberID]bool{informGoblin1: true, informGoblin2: true}
 	world := s.heldEncounter(&seated).ToData()
 	return resolveOn(s.ctx, &Input{
 		World: world,
@@ -506,8 +512,10 @@ func (s *FrameTestSuite) TestExecutionHeldIsEveryLoadedAddress() {
 	for member, stored := range map[string][]json.RawMessage{
 		informRogue: rogue.Conditions, informGoblin1: scene.goblin.Conditions, informGoblin2: scene.other.Conditions,
 	} {
+		addresses, err := conditions.HeldAddresses(member, stored)
+		s.Require().NoError(err)
 		want := []contributions.HeldCondition{}
-		for _, address := range conditions.HeldAddresses(member, stored) {
+		for _, address := range addresses {
 			want = append(want, contributions.HeldCondition{Ref: address.ConditionRef, SourceID: address.SourceID})
 		}
 		held, known := frame.HeldBy(member)
@@ -522,6 +530,29 @@ func (s *FrameTestSuite) TestExecutionHeldIsEveryLoadedAddress() {
 	goblin, _ := frame.HeldBy(informGoblin1)
 	s.Contains(goblin, contributions.HeldCondition{Ref: refs.Conditions.FaerieFire().String(), SourceID: heldCaster},
 		"the goblin's Faerie Fire keeps its caster as source")
+}
+
+// TestUnreadableStoredConditionFailsTheStrike: the execution frame lists what
+// the loaded sheets hold, so it can be no more honest than the load. A target
+// whose stored Faerie Fire does not load is refused before any step runs —
+// the strike fails loudly, and the goblin is never framed as holding less
+// than its record says.
+func (s *FrameTestSuite) TestUnreadableStoredConditionFailsTheStrike() {
+	unreadable := json.RawMessage(`{"ref":"` + refs.Conditions.FaerieFire().String() + `"}`)
+	_, err := conditions.LoadJSON(unreadable)
+	s.Require().Error(err, "the blob names a condition that does not load")
+	scene := s.newHeldScene(2, unreadable)
+	before := scene.goblin.HitPoints
+	bus := events.NewEventBus()
+	rolled := s.watchAttackFrames(bus)
+
+	out, err := s.strikeHeld(bus, scene, dagger(), 18)
+
+	s.Require().Error(err)
+	s.Contains(err.Error(), informGoblin1)
+	s.Nil(out)
+	s.Empty(*rolled, "no frame was built from a sheet that could not be read")
+	s.Equal(before, scene.goblin.HitPoints)
 }
 
 // TestStrikeFailsWhenAHeldRuleCannotAnswer is R13: the target holds Faerie
@@ -581,9 +612,9 @@ func (s *FrameTestSuite) TestStrikeWardsComeFromTheHeldRule() {
 	s.Require().NoError(err)
 	s.Empty(wards, "the holder's own ward does not stop its own attack")
 
-	wards, err = strikeWards(frame(wolfID, contributions.MemberHeld{Member: heroID, Conditions: []contributions.HeldCondition{}}), cast, heroID)
-	s.Require().NoError(err)
-	s.Empty(wards, "the rule reads the frame: a frame that shows no ward selects none")
+	_, err = strikeWards(frame(wolfID, contributions.MemberHeld{Member: heroID, Conditions: []contributions.HeldCondition{}}), cast, heroID)
+	s.True(errors.Is(err, contributions.ErrRuleCannotAnswer),
+		"a frame that lists the holder without the ward it applies cannot answer for it: %v", err)
 
 	_, err = strikeWards(frame(wolfID), cast, heroID)
 	s.True(errors.Is(err, contributions.ErrRuleCannotAnswer), "unknown holdings fail the strike: %v", err)
