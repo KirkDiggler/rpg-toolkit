@@ -491,10 +491,10 @@ func (s *FrameTestSuite) TestStrikeFrameCarriesHeldAndSight() {
 }
 
 // TestExecutionHeldIsEveryLoadedAddress: the strike's frame lists, for every
-// participant with a sheet — the monsters included — the addresses its stored
-// conditions name themselves by ([conditions.HeldAddresses]), in stored order,
-// followed only by what the loader carries by existing (the opportunity
-// attack, which is never stored). A loaded handler asks its held rule about
+// participant with a sheet — the monsters included — exactly what the
+// rulebook's stored-sheet reader says it holds ([conditions.HeldAddresses]:
+// its stored conditions plus the free reactions every combatant carries), in
+// the same order. A loaded handler asks its held rule about
 // its own address, and a frame that lists a holder without that address is a
 // frame the rule cannot answer from (R13), so a dropped condition or a lost
 // source qualifier must not get past here.
@@ -520,12 +520,7 @@ func (s *FrameTestSuite) TestExecutionHeldIsEveryLoadedAddress() {
 		}
 		held, known := frame.HeldBy(member)
 		s.True(known, "%s has a sheet, so what it holds is known", member)
-		s.Require().GreaterOrEqual(len(held), len(want), "%s: %+v", member, held)
-		s.Equal(want, held[:len(want)], "%s's held list starts with its stored addresses", member)
-		for _, carried := range held[len(want):] {
-			s.Equal(contributions.HeldCondition{Ref: refs.Conditions.OpportunityAttack().String()}, carried,
-				"%s holds nothing beyond its stored conditions but what it carries by existing", member)
-		}
+		s.Equal(want, held, "%s's execution held list is what its record says it holds", member)
 	}
 	goblin, _ := frame.HeldBy(informGoblin1)
 	s.Contains(goblin, contributions.HeldCondition{Ref: refs.Conditions.FaerieFire().String(), SourceID: heldCaster},

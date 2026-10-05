@@ -5,6 +5,7 @@ package resolution
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 
@@ -14,7 +15,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
-	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
@@ -289,13 +289,17 @@ func (m *strikeMachine) attackRollFrame(ctx context.Context) (contributions.Fram
 		}
 	}
 
+	held, err := castHeld(m.cast, members)
+	if err != nil {
+		return contributions.Frame{}, fmt.Errorf("%w: attack frame: %w", ErrBadWorld, err)
+	}
 	frame := contributions.Frame{
 		Actor:    m.in.AttackerID,
 		Target:   contributions.Known(m.in.TargetID),
 		Action:   attackActionFacts(m.attack, m.in.Opportunity),
 		Pairs:    pairs,
 		Complete: true,
-		Held:     castHeld(m.cast, members),
+		Held:     held,
 	}
 	if err := frame.Validate(); err != nil {
 		return contributions.Frame{}, fmt.Errorf("attack frame: %w", err)
@@ -336,39 +340,54 @@ func (m *strikeMachine) executionFrame(ctx context.Context) (contributions.Frame
 }
 
 // castHeld lists what each member with a sheet holds, in the given order, each
-// condition at its own address — the same address a loaded condition's
-// handler asks its held rule about. A member with no sheet in the cast is left
-// out, which a frame reads as unknown.
+// condition at its own address — the same address its handler asks its held
+// rule about. A member with no sheet in the cast is left out, which a frame
+// reads as unknown.
 //
-// It reads the LOADED sheet, not the stored blobs
-// ([conditions.HeldAddresses] reads those, for a seam that holds only data):
-// execution's question is what the attached handlers hold, and the loaded
-// sheet also carries what a combatant has by existing (the opportunity
-// attack), which is never stored. Both reach the address through
-// [conditions.ConditionAddressOf].
-func castHeld(cast *Participants, members []string) []contributions.MemberHeld {
+// Each sheet is read through [sheetHeld], the one derivation every frame
+// uses, over the sheet's CURRENT record: a ward the strike has just ended is
+// gone, and the free reactions every combatant carries are there although
+// they are never stored.
+//
+// Errors: a sheet whose record does not read ([sheetHeld]) — authoritative
+// state that cannot be read fails the strike rather than framing the member
+// as holding less.
+func castHeld(cast *Participants, members []string) ([]contributions.MemberHeld, error) {
 	held := make([]contributions.MemberHeld, 0, len(members))
 	for _, id := range members {
-		var loaded []dnd5eEvents.ConditionBehavior
+		var stored []json.RawMessage
 		if character, ok := cast.Character(id); ok {
-			loaded = character.GetConditions()
+			stored = character.ToData().Conditions
 		} else if monster, ok := cast.Monster(id); ok {
-			loaded = monster.GetConditions()
+			stored = monster.ToData().Conditions
 		} else {
 			continue
 		}
-		held = append(held, contributions.MemberHeld{Member: id, Conditions: heldAddresses(id, loaded)})
+		conditions, err := sheetHeld(id, stored)
+		if err != nil {
+			return nil, err
+		}
+		held = append(held, contributions.MemberHeld{Member: id, Conditions: conditions})
 	}
-	return held
+	return held, nil
 }
 
-// heldAddresses maps a member's loaded conditions to the held list a frame
-// carries, in persisted order.
-func heldAddresses(member string, loaded []dnd5eEvents.ConditionBehavior) []contributions.HeldCondition {
-	held := make([]contributions.HeldCondition, 0, len(loaded))
-	for _, condition := range loaded {
-		address := conditions.ConditionAddressOf(member, condition)
+// sheetHeld is what a member's record says it holds, as a frame carries it:
+// [conditions.HeldAddresses] — the stored conditions at their own addresses,
+// in stored order, plus the free reactions every combatant carries from
+// attach. It is the rulebook's own reader, so the information frame's actor
+// entry, the execution frames and a seam answering sightings agree on what a
+// member holds.
+//
+// Errors: a stored condition that does not load.
+func sheetHeld(member string, stored []json.RawMessage) ([]contributions.HeldCondition, error) {
+	addresses, err := conditions.HeldAddresses(member, stored)
+	if err != nil {
+		return nil, fmt.Errorf("what %q holds: %w", member, err)
+	}
+	held := make([]contributions.HeldCondition, 0, len(addresses))
+	for _, address := range addresses {
 		held = append(held, contributions.HeldCondition{Ref: address.ConditionRef, SourceID: address.SourceID})
 	}
-	return held
+	return held, nil
 }
