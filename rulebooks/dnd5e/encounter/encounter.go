@@ -164,6 +164,11 @@ type Encounter struct {
 	// testimony, and why a nil answer is a fact rather than a gap.
 	equipment Equipment
 
+	// conditions reports which conditions each member holds. It is the same
+	// value as equipment, asserted at both constructors — see
+	// [EquipmentWithConditions] for why it rides that field.
+	conditions Conditions
+
 	// turnDriver decides what a member with no player does when the clock
 	// lands on their turn. Required at both constructors, for the same reason
 	// standing and sight are, and never optional; see
@@ -609,6 +614,13 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	if in.Equipment == nil {
 		return nil, fmt.Errorf("newencounter: %w", ErrNoEquipment)
 	}
+	// And the same value answers conditions, the next fact of a sighting
+	// (rpg-project#520 R16): refused at the door rather than defaulted, as
+	// Participation is on Standing.
+	equipmentWithConditions, ok := in.Equipment.(EquipmentWithConditions)
+	if !ok {
+		return nil, fmt.Errorf("newencounter: Equipment does not implement Conditions: %w", ErrNoConditions)
+	}
 
 	// Required for the same reason again: a fight can form at first light
 	// with an unplayed member first in the rolled order, so an encounter that
@@ -813,7 +825,8 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		standing:      standingWithParticipation,
 		participation: standingWithParticipation,
 		sight:         in.Sight,
-		equipment:     in.Equipment,
+		equipment:     equipmentWithConditions,
+		conditions:    equipmentWithConditions,
 		driver:        in.TurnDriver,
 		roller:        in.Roller,
 		striker:       in.Striker,
@@ -1707,6 +1720,15 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 		return nil, err
 	}
 
+	// Conditions too, beside equipment and for its reasons: what a member
+	// holds is a fact an observer can be wrong about later, so it is
+	// snapshotted into the one payload this pass encodes per member and
+	// never read live (rpg-project#520 R16).
+	held, err := e.conditionsNow()
+	if err != nil {
+		return nil, err
+	}
+
 	// Read before the pass and never carried into it, for the same reason as
 	// sight and equipment above and beside them rather than inside the pass,
 	// so that one pass writes one consistent reading of the world into every
@@ -1769,6 +1791,7 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 			State:          LocationKnown,
 			Position:       cell,
 			Equipment:      hands[subjectID],
+			Conditions:     held[subjectID],
 			Down:           &isDown,
 			BlocksMovement: &blocksMovement,
 		})

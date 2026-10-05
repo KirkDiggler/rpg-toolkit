@@ -48,12 +48,12 @@ const (
 //
 // Unknown testimony means the subject is known to exist without being placed —
 // so there is nobody in view to have a standing or a pair of hands. Unknown
-// therefore carries no position, no standing and no equipment, and encoding one
-// that does is refused rather than silently trimmed.
+// therefore carries no position, no standing, no equipment and no conditions,
+// and encoding one that does is refused rather than silently trimmed.
 //
 // # Each fact says whether it was observed at all
 //
-// Standing and Equipment are pointers because "not observed" and "observed to
+// Standing, Equipment and Conditions are pointers because "not observed" and "observed to
 // be X" are different claims that must not collapse. A bool that is false
 // whether the subject is upright or was never looked at is a zero value that
 // lies, and testimony is the last place that should happen. Testimony written
@@ -78,11 +78,23 @@ type SightTestimony struct {
 	// were not observed, which is not the same as seeing empty hands; see
 	// [Equipment] for the two claims.
 	Equipment *HeldEquipment
+
+	// Conditions is every condition the subject was seen holding, as it was
+	// at the instant of sight — never a live read of their sheet, and not
+	// filtered for perceivability (rpg-project#520 R16). Nil means conditions
+	// were not observed, which is not the same as an empty set: seen holding
+	// none. See [ConditionSet].
+	Conditions *ConditionSet
 }
 
 type handsWire struct {
 	MainHand string `json:"main_hand,omitempty"`
 	OffHand  string `json:"off_hand,omitempty"`
+}
+
+type conditionWire struct {
+	Ref      string `json:"ref"`
+	SourceID string `json:"source_id,omitempty"`
 }
 
 type sightWire struct {
@@ -92,6 +104,9 @@ type sightWire struct {
 	Down           *bool      `json:"down,omitempty"`
 	BlocksMovement *bool      `json:"blocks_movement,omitempty"`
 	Equipment      *handsWire `json:"equipment,omitempty"`
+	// Conditions is a pointer to a slice so that nil (not observed) omits the
+	// key while an observed empty set encodes [].
+	Conditions *[]conditionWire `json:"conditions,omitempty"`
 }
 
 // sightPayloadFields is the complete set of keys canonical sight testimony may
@@ -99,7 +114,7 @@ type sightWire struct {
 // not understand is refused at the door instead of being silently dropped into
 // a testimony that then reads as confident.
 var sightPayloadFields = map[string]struct{}{
-	"state": {}, "x": {}, "y": {}, "down": {}, "equipment": {}, "blocks_movement": {},
+	"state": {}, "x": {}, "y": {}, "down": {}, "equipment": {}, "blocks_movement": {}, "conditions": {},
 }
 
 // EncodeSightTestimony encodes sight testimony in the canonical tagged wire
@@ -117,6 +132,16 @@ func EncodeSightTestimony(testimony SightTestimony) ([]byte, error) {
 				OffHand:  testimony.Equipment.OffHand,
 			}
 		}
+		if testimony.Conditions != nil {
+			if err := validateConditionSet(testimony.Conditions); err != nil {
+				return nil, fmt.Errorf("invalid conditions: %w", err)
+			}
+			held := make([]conditionWire, 0, len(testimony.Conditions.Conditions))
+			for _, c := range testimony.Conditions.Conditions {
+				held = append(held, conditionWire(c))
+			}
+			wire.Conditions = &held
+		}
 		return json.Marshal(wire)
 	case LocationUnknown:
 		if testimony.Position != (spatial.Position{}) {
@@ -130,6 +155,9 @@ func EncodeSightTestimony(testimony SightTestimony) ([]byte, error) {
 		}
 		if testimony.Equipment != nil {
 			return nil, fmt.Errorf("unknown location cannot carry equipment")
+		}
+		if testimony.Conditions != nil {
+			return nil, fmt.Errorf("unknown location cannot carry conditions")
 		}
 		return json.Marshal(sightWire{State: string(LocationUnknown)})
 	default:
@@ -175,10 +203,27 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 	_, downPresent := fields["down"]
 	_, equipmentPresent := fields["equipment"]
 	_, blocksPresent := fields["blocks_movement"]
+	_, conditionsPresent := fields["conditions"]
 
 	var hands *HeldEquipment
 	if wire.Equipment != nil {
 		hands = &HeldEquipment{MainHand: wire.Equipment.MainHand, OffHand: wire.Equipment.OffHand}
+	}
+
+	// A present key must hold a list: "conditions": null would decode as
+	// not observed while claiming the key, which is two answers in one.
+	if conditionsPresent && wire.Conditions == nil {
+		return SightTestimony{}, false
+	}
+	var held *ConditionSet
+	if wire.Conditions != nil {
+		held = &ConditionSet{Conditions: make([]SeenCondition, 0, len(*wire.Conditions))}
+		for _, c := range *wire.Conditions {
+			held.Conditions = append(held.Conditions, SeenCondition(c))
+		}
+		if validateConditionSet(held) != nil {
+			return SightTestimony{}, false
+		}
 	}
 
 	if wire.State == "" {
@@ -187,7 +232,7 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 		}
 		// The legacy untagged form predates every fact but position, so it
 		// cannot carry one.
-		if downPresent || equipmentPresent || blocksPresent {
+		if downPresent || equipmentPresent || blocksPresent || conditionsPresent {
 			return SightTestimony{}, false
 		}
 		return SightTestimony{
@@ -207,10 +252,12 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 			Down:           wire.Down,
 			BlocksMovement: wire.BlocksMovement,
 			Equipment:      hands,
+			Conditions:     held,
 		}, true
 	case LocationUnknown:
-		// Nobody in view has a position, a standing, or hands to observe.
-		if xPresent || yPresent || downPresent || equipmentPresent || blocksPresent {
+		// Nobody in view has a position, a standing, hands or conditions to
+		// observe.
+		if xPresent || yPresent || downPresent || equipmentPresent || blocksPresent || conditionsPresent {
 			return SightTestimony{}, false
 		}
 		return SightTestimony{State: LocationUnknown}, true

@@ -724,3 +724,14 @@ func (noHandsAreObserved) Equipment(
 	}
 	return out, nil
 }
+
+// Conditions answers "nothing to observe" for every member, for the reason
+// Equipment does: no sheet stands behind these members, so neither a held
+// condition nor its absence is testimony this demo can give.
+func (noHandsAreObserved) Conditions(members []encounter.MemberID) (map[encounter.MemberID]*encounter.ConditionSet, error) {
+	out := make(map[encounter.MemberID]*encounter.ConditionSet, len(members))
+	for _, id := range members {
+		out[id] = nil
+	}
+	return out, nil
+}

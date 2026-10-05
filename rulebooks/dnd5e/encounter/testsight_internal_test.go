@@ -34,3 +34,14 @@ func (noHandsAreObserved) Equipment(members []MemberID) (map[MemberID]*HeldEquip
 	}
 	return out, nil
 }
+
+// Conditions answers "nothing to observe" for every member, for the reason
+// Equipment does: no sheet stands behind these members, so neither a held
+// condition nor its absence is testimony this fixture can give.
+func (noHandsAreObserved) Conditions(members []MemberID) (map[MemberID]*ConditionSet, error) {
+	out := make(map[MemberID]*ConditionSet, len(members))
+	for _, id := range members {
+		out[id] = nil
+	}
+	return out, nil
+}

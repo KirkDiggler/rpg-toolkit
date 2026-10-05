@@ -326,6 +326,14 @@ var (
 	// different claims that must not collapse.
 	ErrNoEquipment = errors.New("encounter: no equipment capability")
 
+	// ErrNoConditions indicates this module was not told, usably, what
+	// conditions somebody holds. Two ways to earn it: Setup or Load was given
+	// an Equipment value that does not also implement [Conditions]; or the
+	// capability answered without covering a member it was asked about. A nil
+	// answer for a member does NOT earn this — that is "nothing to observe",
+	// see [ConditionSet].
+	ErrNoConditions = errors.New("encounter: no conditions capability")
+
 	// ErrNoCheckResolver indicates Setup or Load was given a field carrying
 	// concealed structure and no CheckResolver capability. A concealed door
 	// exists to be searched for, and this module refuses to roll the find
