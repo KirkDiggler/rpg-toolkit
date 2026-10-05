@@ -576,30 +576,49 @@ func (e *Encounter) Stance(a, b FactionID) (Stance, error) {
 // when either is not a member of this encounter: an effect asking about
 // somebody who is not here has to be able to tell that apart from an answer.
 func (e *Encounter) IsHostile(a, b MemberID) (hostile, known bool) {
-	stance, known := e.StanceBetween(a, b)
-	return stance == StanceHostile, known
+	if _, ok := e.members[a]; !ok {
+		return false, false
+	}
+	if _, ok := e.members[b]; !ok {
+		return false, false
+	}
+	return e.opposed(a, b), true
 }
 
 // IsAllied answers whether b is on a's side — an allied-with edge between
 // their factions, which a faction has with itself and with any faction a
 // disposition declares it allied to. Not the negation of [Encounter.IsHostile]:
 // two neutral factions are neither. known is false when either is not a
-// member.
+// member; a member in no faction is (false, true) — "are they on my side"
+// has a correct false even where [Encounter.StanceBetween] has no stance.
 func (e *Encounter) IsAllied(a, b MemberID) (allied, known bool) {
-	stance, known := e.StanceBetween(a, b)
-	return stance == StanceAllied, known
+	if _, ok := e.members[a]; !ok {
+		return false, false
+	}
+	if _, ok := e.members[b]; !ok {
+		return false, false
+	}
+	stance, _ := e.StanceBetween(a, b)
+	return stance == StanceAllied, true
 }
 
-// StanceBetween is THE authoritative stance between two members — the one
-// word [Encounter.IsHostile] and [Encounter.IsAllied] each read half of, and
-// the relationship an execution frame takes (rpg-project#520, R5: a stance
-// at the moment of asking, never cached). For every member pair, hostile here
-// is IsHostile true and allied here is IsAllied true.
+// StanceBetween is THE authoritative stance between two members: hostile,
+// neutral or allied, folded from this run's own world at the moment of asking
+// and never cached (rpg-project#520, R5). It is the one fold
+// [Encounter.IsHostile] and [Encounter.IsAllied] read, so for every member
+// pair hostile here is IsHostile true and allied here is IsAllied true.
 //
-// A member in NO FACTION — a world NPC — stands in no hostile or allied edge,
-// so the pair is KNOWN NEUTRAL: nothing makes them an enemy or a friend, and
-// that is an answer, not an absence. known is false only when either id is
-// not a member of this encounter.
+// The bool is false when NO STANCE EXISTS, in two cases:
+//
+//   - either id is not a member of this encounter;
+//   - either member is in NO FACTION, which a world NPC is.
+//
+// A member in no faction is NEVER answered neutral. Neutral is a real
+// disposition between two sides, one a fact can turn hostile or allied; a
+// member with no side has nothing to turn. This is the same absence
+// [Encounter.BelievedStance] reports, so with no deception in play the two
+// reads agree, including on no stance. A consumer that already knows both
+// ids are members may read false as "no side".
 func (e *Encounter) StanceBetween(a, b MemberID) (Stance, bool) {
 	ma, ok := e.members[a]
 	if !ok {
@@ -611,7 +630,7 @@ func (e *Encounter) StanceBetween(a, b MemberID) (Stance, bool) {
 	}
 	fa, fb := factionOf(ma), factionOf(mb)
 	if fa == "" || fb == "" {
-		return StanceNeutral, true
+		return "", false
 	}
 	return e.stanceBetween(pairOf(fa, fb)), true
 }
