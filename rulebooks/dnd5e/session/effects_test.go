@@ -536,3 +536,49 @@ func (s *EffectRowsSuite) TestAttachRunsOnlyInAfford() {
 	}
 	s.Equal(map[string]int{"Afford": 1}, callers)
 }
+
+// TestNoRowsOnTheWorldClock closes the third early return: a blessed fighter
+// in free roam is offered the social verbs and nothing on them carries a row,
+// because the world clock compiles no attack.
+func (s *EffectRowsSuite) TestNoRowsOnTheWorldClock() {
+	s.characters = newFakeCharacters(s.fighter(s.blessedBy("alice", "bob")), armedFighter("bob"))
+	mgr, err := session.NewManager(&session.Config{
+		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: s.characters,
+		Events: session.DiscardEvents{},
+	})
+	s.Require().NoError(err)
+	_, err = mgr.StartSession(s.ctx, &session.StartSessionInput{
+		Session: erSession, Encounter: "world", World: freeRoamDuelWorld(s.T()),
+	})
+	s.Require().NoError(err)
+
+	out, err := mgr.Afford(s.ctx, &session.AffordInput{Session: erSession, Member: "alice"})
+	s.Require().NoError(err)
+	s.Require().Equal(session.ClockWorld, out.Clock, "precondition: free roam")
+	s.Require().NotEmpty(out.Declarations, "precondition: the social verbs are offered")
+	for _, declaration := range out.Declarations {
+		s.Empty(declaration.Effects, "world clock: %s", declaration.Verb)
+		for _, candidate := range declaration.Candidates {
+			s.Empty(candidate.Effects, "world clock: %s -> %s", declaration.Verb, candidate.Member)
+		}
+	}
+}
+
+// TestAffordFailsClosedWhenRowsCannotBeRead pins the fail-closed contract on a
+// real inconsistency staged through the seam: a stored sheet carrying the same
+// Rage twice. Everything Afford compiles before the rows still compiles —
+// the sheet loads, the offers price — and the rulebook then refuses to list
+// two rows under one id. Afford returns that error rather than a panel with
+// some rows missing, because an empty list reads as "nothing bears on this
+// attack", which would be false.
+func (s *EffectRowsSuite) TestAffordFailsClosedWhenRowsCannotBeRead() {
+	barbarian := s.barbarian()
+	barbarian.Conditions = append(barbarian.Conditions, append(json.RawMessage(nil), barbarian.Conditions[0]...))
+	s.cave(barbarian)
+
+	out, err := s.mgr.Afford(s.ctx, &session.AffordInput{Session: erSession, Member: "alice"})
+	s.Require().Error(err, "a row the rulebook cannot list fails the read")
+	s.Nil(out, "and no partial panel is returned beside it")
+	s.Contains(err.Error(), `duplicate effect row id "dnd5e:conditions:raging"`)
+}
