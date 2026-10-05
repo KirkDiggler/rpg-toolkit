@@ -99,7 +99,7 @@ func (s *HelpedConditionTestSuite) TestAttackChain_AllyAttackGetsAdvantageAndCon
 	}
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 	attacks := dnd5eEvents.AttackChain.On(s.bus)
-	modifiedChain, err := attacks.PublishWithChain(s.ctx, attackEvent, attackChain)
+	modifiedChain, err := attacks.PublishWithChain(s.ctx, framedAttack(attackEvent), attackChain)
 	s.Require().NoError(err)
 
 	finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
@@ -126,7 +126,7 @@ func (s *HelpedConditionTestSuite) TestAttackChain_OtherCharacterAttackIsUntouch
 	}
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 	attacks := dnd5eEvents.AttackChain.On(s.bus)
-	modifiedChain, err := attacks.PublishWithChain(s.ctx, attackEvent, attackChain)
+	modifiedChain, err := attacks.PublishWithChain(s.ctx, framedAttack(attackEvent), attackChain)
 	s.Require().NoError(err)
 
 	finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
@@ -204,7 +204,7 @@ func (s *HelpedConditionTestSuite) TestLoaderRoundTrip() {
 	attackEvent := dnd5eEvents.AttackChainEvent{AttackerID: s.characterID, TargetID: "goblin-1"}
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 	attacks := dnd5eEvents.AttackChain.On(s.bus)
-	modifiedChain, err := attacks.PublishWithChain(s.ctx, attackEvent, attackChain)
+	modifiedChain, err := attacks.PublishWithChain(s.ctx, framedAttack(attackEvent), attackChain)
 	s.Require().NoError(err)
 	finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
 	s.Require().NoError(err)

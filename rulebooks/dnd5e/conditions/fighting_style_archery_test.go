@@ -77,7 +77,7 @@ func (s *FightingStyleArcheryTestSuite) TestAddsToRangedAttacks() {
 	// Execute through attack chain
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 	attacks := dnd5eEvents.AttackChain.On(s.bus)
-	modifiedChain, err := attacks.PublishWithChain(s.ctx, attackEvent, attackChain)
+	modifiedChain, err := attacks.PublishWithChain(s.ctx, framedAttack(attackEvent), attackChain)
 	s.Require().NoError(err)
 
 	finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
@@ -107,7 +107,7 @@ func (s *FightingStyleArcheryTestSuite) TestDoesNotAddToMeleeAttacks() {
 	// Execute through attack chain
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 	attacks := dnd5eEvents.AttackChain.On(s.bus)
-	modifiedChain, err := attacks.PublishWithChain(s.ctx, attackEvent, attackChain)
+	modifiedChain, err := attacks.PublishWithChain(s.ctx, framedAttack(attackEvent), attackChain)
 	s.Require().NoError(err)
 
 	finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
@@ -137,7 +137,7 @@ func (s *FightingStyleArcheryTestSuite) TestDoesNotAddToOtherCharacterAttacks() 
 	// Execute through attack chain
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 	attacks := dnd5eEvents.AttackChain.On(s.bus)
-	modifiedChain, err := attacks.PublishWithChain(s.ctx, attackEvent, attackChain)
+	modifiedChain, err := attacks.PublishWithChain(s.ctx, framedAttack(attackEvent), attackChain)
 	s.Require().NoError(err)
 
 	finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)

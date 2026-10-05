@@ -16,6 +16,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -143,17 +144,20 @@ func (f *FightingStyleGreatWeaponFightingCondition) loadJSON(data json.RawMessag
 // failure cannot leak partial mutations. Original faces are never rewritten,
 // and every ordered reroll is sourced to this condition's canonical ref and
 // display name.
+//
+// It rerolls only when greatWeaponFightingRule applies to the event's frame —
+// the same rule information asks; an invalid frame or a Depends answer fails
+// the fold.
 func (f *FightingStyleGreatWeaponFightingCondition) onDamageChain(
 	_ context.Context,
 	event *dnd5eEvents.DamageChainEvent,
 	c chain.Chain[*dnd5eEvents.DamageChainEvent],
 ) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
-	// Only modify damage for attacks by this character
-	if event.AttackerID != f.MemberID {
-		return c, nil
+	executed, err := executeRule(&executeRuleInput{Name: "great weapon fighting", Rule: f.rule(), Frame: event.Frame})
+	if err != nil {
+		return c, err
 	}
-
-	if primaryWeaponComponentIndex(event) < 0 {
+	if executed.Answer.Decision.Applicability != contributions.Applies {
 		return c, nil
 	}
 

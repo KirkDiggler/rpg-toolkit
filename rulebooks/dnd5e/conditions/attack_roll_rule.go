@@ -5,31 +5,7 @@ package conditions
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
-	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
-
-// attackChainFrame is the frame an attack-chain handler asks its rule with.
-//
-// The attack chain carries no frame yet — resolution builds one for the damage
-// fold and the post-roll offers, after the attack chain has folded — so this
-// reads only the facts the event itself carries: attacker, target and whether
-// the attack is melee. Every other fact stays unknown, so a rule that needs
-// one answers Depends and executeRule fails the attack instead of switching
-// the rule off. It goes away when resolution hands the attack chain its frame.
-func attackChainFrame(event dnd5eEvents.AttackChainEvent) contributions.Frame {
-	frame := contributions.Frame{
-		Actor:  event.AttackerID,
-		Target: contributions.Unknown[string](),
-		Action: contributions.ActionFacts{
-			Roll:  contributions.Known(contributions.RollKindAttack),
-			Melee: contributions.Known(event.IsMelee),
-		},
-	}
-	if event.TargetID != "" {
-		frame.Target = contributions.Known(event.TargetID)
-	}
-	return frame
-}
 
 // attackRollText is a rule's player-facing wording. Benefit states what the
 // effect does to the roll when it applies.

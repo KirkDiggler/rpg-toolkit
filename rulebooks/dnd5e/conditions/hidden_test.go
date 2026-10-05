@@ -80,7 +80,7 @@ func (s *HiddenConditionTestSuite) TestRemove() {
 func (s *HiddenConditionTestSuite) runAttackChain(event dnd5eEvents.AttackChainEvent) dnd5eEvents.AttackChainEvent {
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 	attacks := dnd5eEvents.AttackChain.On(s.bus)
-	modifiedChain, err := attacks.PublishWithChain(s.ctx, event, attackChain)
+	modifiedChain, err := attacks.PublishWithChain(s.ctx, framedAttack(event), attackChain)
 	s.Require().NoError(err)
 
 	finalEvent, err := modifiedChain.Execute(s.ctx, event)

@@ -443,7 +443,7 @@ func (s *FighterEncounterSuite) TestFightingStyleDueling_AddsDamage() {
 		// Execute through damage chain
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
-		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, damageChain)
+		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, framed(s.ctx, damageEvent), damageChain)
 		s.Require().NoError(err)
 
 		finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
@@ -490,7 +490,7 @@ func (s *FighterEncounterSuite) TestFightingStyleDueling_NoBonus_TwoHanded() {
 
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
-		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, damageChain)
+		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, framed(s.ctx, damageEvent), damageChain)
 		s.Require().NoError(err)
 
 		finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
@@ -524,7 +524,7 @@ func (s *FighterEncounterSuite) TestFightingStyleDueling_NoBonus_DualWielding() 
 
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
-		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, damageChain)
+		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, framed(s.ctx, damageEvent), damageChain)
 		s.Require().NoError(err)
 
 		finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
@@ -564,7 +564,7 @@ func (s *FighterEncounterSuite) TestFightingStyleArchery_AddsAttackBonus() {
 		// Execute through attack chain
 		attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 		attackTopic := dnd5eEvents.AttackChain.On(s.bus)
-		modifiedChain, err := attackTopic.PublishWithChain(s.ctx, attackEvent, attackChain)
+		modifiedChain, err := attackTopic.PublishWithChain(s.ctx, framedAttack(attackEvent), attackChain)
 		s.Require().NoError(err)
 
 		finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
@@ -599,7 +599,7 @@ func (s *FighterEncounterSuite) TestFightingStyleArchery_NoBonus_Melee() {
 
 		attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 		attackTopic := dnd5eEvents.AttackChain.On(s.bus)
-		modifiedChain, err := attackTopic.PublishWithChain(s.ctx, attackEvent, attackChain)
+		modifiedChain, err := attackTopic.PublishWithChain(s.ctx, framedAttack(attackEvent), attackChain)
 		s.Require().NoError(err)
 
 		finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
@@ -631,10 +631,13 @@ func (s *FighterEncounterSuite) TestFightingStyleGWF_RerollsLowDice() {
 		s.Require().NoError(err)
 		defer func() { _ = gwf.Remove(s.ctx, s.bus) }()
 
-		// Create damage event with 1s and 2s in the roll (2d6 = 2 dice)
+		// Create damage event with 1s and 2s in the roll (2d6 = 2 dice), a
+		// melee weapon held in both hands
 		damageEvent := &dnd5eEvents.DamageChainEvent{
 			AttackerID: s.fighter.GetID(),
 			TargetID:   s.goblin.GetID(),
+			IsMelee:    true,
+			TwoHanded:  true,
 			Components: []dnd5eEvents.DamageComponent{
 				{
 					Source:     dnd5eEvents.DamageSourceWeapon,
@@ -650,7 +653,7 @@ func (s *FighterEncounterSuite) TestFightingStyleGWF_RerollsLowDice() {
 
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
-		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, damageChain)
+		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, framed(s.ctx, damageEvent), damageChain)
 		s.Require().NoError(err)
 
 		finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
@@ -693,7 +696,7 @@ func (s *FighterEncounterSuite) TestFightingStyleGWF_KeepsHighRolls() {
 
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
-		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, damageChain)
+		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, framed(s.ctx, damageEvent), damageChain)
 		s.Require().NoError(err)
 
 		finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
@@ -742,7 +745,7 @@ func (s *FighterEncounterSuite) TestFightingStyleTWF_AddsAbilityModToOffHand() {
 
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
-		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, damageChain)
+		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, framed(s.ctx, damageEvent), damageChain)
 		s.Require().NoError(err)
 
 		finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
@@ -778,7 +781,7 @@ func (s *FighterEncounterSuite) TestFightingStyleTWF_NoBonus_MainHand() {
 
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
-		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, damageChain)
+		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, framed(s.ctx, damageEvent), damageChain)
 		s.Require().NoError(err)
 
 		finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
@@ -833,7 +836,7 @@ func (s *FighterEncounterSuite) TestFightingStyleProtection_ImposesDisadvantage(
 
 		attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 		attackTopic := dnd5eEvents.AttackChain.On(s.bus)
-		modifiedChain, err := attackTopic.PublishWithChain(ctx, attackEvent, attackChain)
+		modifiedChain, err := attackTopic.PublishWithChain(ctx, framedAttack(attackEvent), attackChain)
 		s.Require().NoError(err)
 
 		finalEvent, err := modifiedChain.Execute(ctx, attackEvent)

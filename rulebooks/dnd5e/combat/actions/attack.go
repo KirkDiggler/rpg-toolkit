@@ -146,8 +146,11 @@ type AbilityContribution struct {
 }
 
 // WeaponContext records optional wielded-weapon evidence used by attack rules.
+// Slot names the hand holding the weapon; empty when the producer holds no
+// hands to name, as a stat block does not.
 type WeaponContext struct {
 	Ref              *core.Ref `json:"ref,omitempty"`
+	Slot             string    `json:"slot,omitempty"`
 	TwoHanded        bool      `json:"two_handed"`
 	OffHandWeaponRef *core.Ref `json:"off_hand_weapon_ref,omitempty"`
 }

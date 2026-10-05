@@ -165,7 +165,7 @@ func (h *HiddenCondition) onAttackChain(
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
 	switch h.MemberID {
 	case event.AttackerID:
-		executed, err := executeRule(&executeRuleInput{Name: "hidden", Rule: h.attackRule(), Frame: attackChainFrame(event)})
+		executed, err := executeRule(&executeRuleInput{Name: "hidden", Rule: h.attackRule(), Frame: event.Frame})
 		if err != nil {
 			return c, err
 		}

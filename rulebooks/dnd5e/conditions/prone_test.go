@@ -81,7 +81,7 @@ func (s *ProneConditionSuite) resolveAttack(ctx context.Context, attacker, targe
 	}
 
 	staged := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
-	modified, err := dnd5eEvents.AttackChain.On(s.bus).PublishWithChain(ctx, event, staged)
+	modified, err := dnd5eEvents.AttackChain.On(s.bus).PublishWithChain(ctx, framedAttack(event), staged)
 	s.Require().NoError(err)
 
 	final, err := modified.Execute(ctx, event)

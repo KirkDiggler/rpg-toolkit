@@ -6,9 +6,12 @@ package conditions
 import (
 	"slices"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
 // intPtr returns a pointer to v, so a present zero modifier stays present.
@@ -45,14 +48,79 @@ func testAttackFrame(attacker, target string) contributions.Frame {
 
 // withEventFrame sets the event's frame from its own fields, the facts
 // resolution settles from the assembled attack: ability, melee, the marked
-// weapon pool and effective advantage, all known, plus any pairs supplied.
+// weapon pool, effective advantage and the weapon facts, all known, plus any
+// pairs supplied.
 func withEventFrame(event *dnd5eEvents.DamageChainEvent, pairs ...contributions.PairFacts) *dnd5eEvents.DamageChainEvent {
+	event.Frame = contributions.Frame{}
+	framedDamage(event)
+	event.Frame.Pairs = pairs
+	return event
+}
+
+// framedDamage sets a damage event's execution frame from its own fields, the
+// way resolution settles the facts from the assembled attack, unless the test
+// already set one. A test fixture: production frames come from resolution
+// alone.
+func framedDamage(event *dnd5eEvents.DamageChainEvent) *dnd5eEvents.DamageChainEvent {
+	if event.Frame.Actor != "" {
+		return event
+	}
 	frame := testAttackFrame(event.AttackerID, event.TargetID)
+	frame.Action = fixtureWeaponFacts(event.WeaponRef, event.TwoHanded, event.OffHandWeaponRef != nil)
 	frame.Action.Ability = contributions.Known(event.AbilityUsed)
+	frame.Action.AbilityModifier = contributions.Known(event.AbilityModifier)
 	frame.Action.Melee = contributions.Known(event.IsMelee)
 	frame.Action.WeaponPool = contributions.Known(primaryWeaponComponent(event) != nil)
 	frame.Action.Advantage = contributions.Known(event.HasAdvantage)
-	frame.Pairs = pairs
+	frame.Action.OffHandAttack = contributions.Known(event.IsOffHandAttack)
 	event.Frame = frame
 	return event
+}
+
+// framedAttack sets an attack event's attack-roll frame from its own fields:
+// attacker, target, melee, the weapon facts and whether it is an opportunity
+// attack, with advantage unknown because the chain has not folded, unless the
+// test already set one. A test fixture: production frames come from
+// resolution alone.
+func framedAttack(event dnd5eEvents.AttackChainEvent) dnd5eEvents.AttackChainEvent {
+	if event.Frame.Actor != "" {
+		return event
+	}
+	frame := contributions.Frame{Actor: event.AttackerID, Target: contributions.Unknown[string](), Complete: true}
+	if event.TargetID != "" {
+		frame.Target = contributions.Known(event.TargetID)
+	}
+	frame.Action = fixtureWeaponFacts(event.WeaponRef, false, false)
+	frame.Action.Melee = contributions.Known(event.IsMelee)
+	frame.Action.WeaponPool = contributions.Known(event.WeaponRef != nil)
+	frame.Action.Opportunity = contributions.Known(event.AttackType == dnd5eEvents.AttackTypeOpportunity)
+	event.Frame = frame
+	return event
+}
+
+// fixtureWeaponFacts reads the weapon facts from a weapon ref through the
+// catalogue: no ref is an attack with no weapon.
+func fixtureWeaponFacts(weaponRef *core.Ref, twoHanded, otherWeapon bool) contributions.ActionFacts {
+	facts := contributions.ActionFacts{
+		Roll:            contributions.Known(contributions.RollKindAttack),
+		Ability:         contributions.Known(abilities.Ability("")),
+		AbilityModifier: contributions.Known(0),
+		Weapon:          contributions.Known(""),
+		WeaponSlot:      contributions.Known(""),
+		Finesse:         contributions.Known(false),
+		RangedWeapon:    contributions.Known(false),
+		TwoHanded:       contributions.Known(twoHanded),
+		OffHandWeapon:   contributions.Known(otherWeapon),
+		OffHandAttack:   contributions.Known(false),
+		Opportunity:     contributions.Known(false),
+	}
+	if weaponRef == nil {
+		return facts
+	}
+	facts.Weapon = contributions.Known(weaponRef.String())
+	if weapon, err := weapons.GetByID(weapons.WeaponID(weaponRef.ID)); err == nil {
+		facts.Finesse = contributions.Known(weapon.HasProperty(weapons.PropertyFinesse))
+		facts.RangedWeapon = contributions.Known(weapon.IsRanged())
+	}
+	return facts
 }

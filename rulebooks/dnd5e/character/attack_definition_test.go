@@ -258,6 +258,21 @@ func (s *CharacterAttackTestSuite) TestAssembleAttack_RecordsTheOtherHandWeapon(
 	s.Equal(refs.Weapons.Dagger(), definition.Attack.Weapon.OffHandWeaponRef)
 }
 
+// TestAssembleAttack_RecordsTheSwingingHand: the weapon context names the hand
+// the weapon is held in, so a rule bound to one hand can tell them apart.
+func (s *CharacterAttackTestSuite) TestAssembleAttack_RecordsTheSwingingHand() {
+	data := s.heroSheet(
+		[]proficiencies.Weapon{proficiencies.WeaponSimple, proficiencies.WeaponMartial},
+		map[InventorySlot]string{
+			SlotMainHand: string(weapons.Longsword),
+			SlotOffHand:  string(weapons.Dagger),
+		},
+	)
+
+	s.Equal(string(SlotMainHand), s.assemble(data, s.mainHand()).Attack.Weapon.Slot)
+	s.Equal(string(SlotOffHand), s.assemble(data, &AssembleAttackInput{Slot: SlotOffHand}).Attack.Weapon.Slot)
+}
+
 func (s *CharacterAttackTestSuite) TestAssembleAttack_PreservesEveryDamagePool() {
 	original := weapons.All[weapons.Longsword]
 	modified := original

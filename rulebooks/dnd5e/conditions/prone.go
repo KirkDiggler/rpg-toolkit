@@ -242,7 +242,7 @@ func (p *ProneCondition) attackingWhileProne(
 	event dnd5eEvents.AttackChainEvent,
 	c chain.Chain[dnd5eEvents.AttackChainEvent],
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
-	executed, err := executeRule(&executeRuleInput{Name: "prone", Rule: p.attackRule(), Frame: attackChainFrame(event)})
+	executed, err := executeRule(&executeRuleInput{Name: "prone", Rule: p.attackRule(), Frame: event.Frame})
 	if err != nil {
 		return c, err
 	}

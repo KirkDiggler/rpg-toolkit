@@ -46,33 +46,28 @@ var (
 // equal.
 var actionCensus = map[string]actionCensusEntry{
 	// Answer from the frame.
-	refs.Conditions.Raging().String():               answersNow,
-	refs.Features.SneakAttack().String():            answersNow,
-	refs.Conditions.Blessed().String():              answersNow,
-	refs.Conditions.Baned().String():                answersNow,
-	refs.Conditions.Inspired().String():             answersLater,
-	refs.Conditions.Prone().String():                answersNow,
-	refs.Conditions.Hidden().String():               answersNow,
-	refs.Conditions.Helped().String():               answersNow,
-	refs.Conditions.TrueStrike().String():           answersNow,
-	refs.Conditions.ViciousMockery().String():       answersNow,
-	refs.Conditions.ImprovedCritical().String():     answersNow,
-	refs.Conditions.FightingStyleArchery().String(): answersNow,
-	refs.Conditions.DivineFavor().String():          answersNow,
-	refs.Conditions.BrutalCritical().String():       answersNow,
+	refs.Conditions.Raging().String():                           answersNow,
+	refs.Features.SneakAttack().String():                        answersNow,
+	refs.Conditions.Blessed().String():                          answersNow,
+	refs.Conditions.Baned().String():                            answersNow,
+	refs.Conditions.Inspired().String():                         answersLater,
+	refs.Conditions.Prone().String():                            answersNow,
+	refs.Conditions.Hidden().String():                           answersNow,
+	refs.Conditions.Helped().String():                           answersNow,
+	refs.Conditions.TrueStrike().String():                       answersNow,
+	refs.Conditions.ViciousMockery().String():                   answersNow,
+	refs.Conditions.ImprovedCritical().String():                 answersNow,
+	refs.Conditions.FightingStyleArchery().String():             answersNow,
+	refs.Conditions.DivineFavor().String():                      answersNow,
+	refs.Conditions.BrutalCritical().String():                   answersNow,
+	refs.Conditions.Shillelagh().String():                       answersNow,
+	refs.Conditions.MartialArts().String():                      answersNow,
+	refs.Conditions.FightingStyleDueling().String():             answersNow,
+	refs.Conditions.FightingStyleGreatWeaponFighting().String(): answersNow,
+	refs.Conditions.FightingStyleTwoWeaponFighting().String():   answersNow,
+	refs.Conditions.RecklessAttack().String():                   answersNow,
 
-	// Bear on the holder's attack, but cannot yet answer: each needs a fact
-	// the frame does not carry.
-	// Which held weapon the attack uses.
-	refs.Conditions.Shillelagh().String():  notYetAnswering,
-	refs.Conditions.MartialArts().String(): notYetAnswering,
-	// The weapon's grip: two-handed, and what the other hand holds.
-	refs.Conditions.FightingStyleDueling().String():             notYetAnswering,
-	refs.Conditions.FightingStyleGreatWeaponFighting().String(): notYetAnswering,
-	// Whether the attack is the two-weapon off-hand attack.
-	refs.Conditions.FightingStyleTwoWeaponFighting().String(): notYetAnswering,
-	// Whether the attack is an opportunity attack.
-	refs.Conditions.RecklessAttack().String(): notYetAnswering,
+	// Bear on the holder's attack, but cannot yet answer.
 	// Attacking ends the ward, which resolution decides; no rule here holds
 	// that predicate for information to share.
 	refs.Conditions.Sanctuary().String(): notYetAnswering,

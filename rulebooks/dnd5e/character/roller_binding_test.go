@@ -163,6 +163,7 @@ func (s *RollerBindingTestSuite) runWeaponDamage(
 				Roll:       contributions.Known(contributions.RollKindAttack),
 				Melee:      contributions.Known(true),
 				WeaponPool: contributions.Known(true),
+				TwoHanded:  contributions.Known(true),
 			},
 			Complete: true,
 		},

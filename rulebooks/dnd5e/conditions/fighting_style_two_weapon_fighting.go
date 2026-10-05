@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -115,25 +116,19 @@ func (f *FightingStyleTwoWeaponFightingCondition) loadJSON(data json.RawMessage)
 	return nil
 }
 
-// onDamageChain adds ability modifier to off-hand weapon damage.
+// onDamageChain adds the ability modifier to off-hand weapon damage when
+// twoWeaponFightingRule applies to the event's frame — the same rule
+// information asks. An invalid frame or a Depends answer fails the fold.
 func (f *FightingStyleTwoWeaponFightingCondition) onDamageChain(
 	_ context.Context,
 	event *dnd5eEvents.DamageChainEvent,
 	c chain.Chain[*dnd5eEvents.DamageChainEvent],
 ) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
-	// Only modify damage for attacks by this character
-	if event.AttackerID != f.MemberID {
-		return c, nil
+	executed, err := executeRule(&executeRuleInput{Name: "two-weapon fighting", Rule: f.rule(), Frame: event.Frame})
+	if err != nil {
+		return c, err
 	}
-
-	// Only applies to off-hand attacks
-	if !event.IsOffHandAttack {
-		return c, nil
-	}
-
-	// The base two-weapon rule already retains a negative modifier. The style
-	// restores only the positive modifier that the bonus attack omitted.
-	if event.AbilityModifier <= 0 {
+	if executed.Answer.Decision.Applicability != contributions.Applies {
 		return c, nil
 	}
 

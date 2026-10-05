@@ -168,7 +168,7 @@ func (f *FightingStyleArcheryCondition) onAttackChain(
 	event dnd5eEvents.AttackChainEvent,
 	c chain.Chain[dnd5eEvents.AttackChainEvent],
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
-	executed, err := executeRule(&executeRuleInput{Name: "archery", Rule: f.rule(), Frame: attackChainFrame(event)})
+	executed, err := executeRule(&executeRuleInput{Name: "archery", Rule: f.rule(), Frame: event.Frame})
 	if err != nil {
 		return c, err
 	}

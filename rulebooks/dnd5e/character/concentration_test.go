@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -321,7 +322,11 @@ func (s *ConcentrationKeeperSuite) TestACasterAnswersWhichSpellItIsHolding() {
 
 // attack publishes one attack down the chain and returns the folded event.
 func (s *ConcentrationKeeperSuite) attack(attackerID, targetID string) dnd5eEvents.AttackChainEvent {
-	event := dnd5eEvents.AttackChainEvent{AttackerID: attackerID, TargetID: targetID}
+	event := dnd5eEvents.AttackChainEvent{AttackerID: attackerID, TargetID: targetID, Frame: contributions.Frame{
+		Actor:  attackerID,
+		Target: contributions.Known(targetID),
+		Action: contributions.ActionFacts{Roll: contributions.Known(contributions.RollKindAttack)},
+	}}
 	staged := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 
 	modified, err := dnd5eEvents.AttackChain.On(s.bus).PublishWithChain(s.ctx, event, staged)

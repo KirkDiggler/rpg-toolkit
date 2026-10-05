@@ -21,11 +21,15 @@ import (
 // attackEffectRulesSuite covers the rules that answer for an effect on the
 // holder's own attack beyond the first five: each applies, does not apply for
 // its stated reason, and depends when the fact it reads is unknown.
-type attackEffectRulesSuite struct{ suite.Suite }
+type attackEffectRulesSuite struct{ ruleHelpers }
+
+// ruleHelpers asks a rule and publishes attack and damage folds; the rule
+// suites embed it.
+type ruleHelpers struct{ suite.Suite }
 
 func TestAttackEffectRulesSuite(t *testing.T) { suite.Run(t, new(attackEffectRulesSuite)) }
 
-func (s *attackEffectRulesSuite) answer(rule contributions.ActionAssessor, frame contributions.Frame) contributions.Answer {
+func (s *ruleHelpers) answer(rule contributions.ActionAssessor, frame contributions.Frame) contributions.Answer {
 	out, err := rule.AssessAction(&contributions.AssessActionInput{Frame: frame})
 	s.Require().NoError(err)
 	s.Require().NotNil(out)
@@ -265,7 +269,7 @@ func (s *attackEffectRulesSuite) TestRowsListTheNewAnswers() {
 		Conditions: []dnd5eEvents.ConditionBehavior{
 			NewProneCondition("rogue"),
 			NewFightingStyleArcheryCondition("rogue"),
-			NewFightingStyleDuelingCondition("rogue"),
+			s.sanctuary(),
 		},
 		Frame: rogueFrame(false),
 	})
@@ -281,11 +285,19 @@ func (s *attackEffectRulesSuite) TestRowsListTheNewAnswers() {
 	s.Equal("Archery adds only to ranged attacks", out.Effects[1].Reason)
 	s.Empty(out.Effects[1].Benefit)
 
-	s.Equal(refs.Conditions.FightingStyleDueling().String(), out.Effects[2].ID)
+	s.Equal(refs.Conditions.Sanctuary().String()+"@cleric", out.Effects[2].ID)
 	s.Equal(contributions.StateUnavailable, out.Effects[2].State)
 }
 
-func (s *attackEffectRulesSuite) publishAttack(
+func (s *attackEffectRulesSuite) sanctuary() *SanctuaryCondition {
+	ward, err := NewSanctuaryCondition(NewSanctuaryConditionInput{
+		MemberID: "rogue", SourceID: "cleric", SourceRef: refs.Spells.Sanctuary(),
+	})
+	s.Require().NoError(err)
+	return ward
+}
+
+func (s *ruleHelpers) publishAttack(
 	bus events.EventBus, event dnd5eEvents.AttackChainEvent,
 ) (dnd5eEvents.AttackChainEvent, error) {
 	ctx := context.Background()
@@ -310,7 +322,7 @@ func (s *attackEffectRulesSuite) TestAskingDoesNotConsumeTheEffect() {
 	}
 	s.True(helped.IsApplied())
 
-	final, err := s.publishAttack(bus, dnd5eEvents.AttackChainEvent{AttackerID: "rogue", TargetID: "goblin", IsMelee: true})
+	final, err := s.publishAttack(bus, framedAttack(dnd5eEvents.AttackChainEvent{AttackerID: "rogue", TargetID: "goblin", IsMelee: true}))
 	s.Require().NoError(err)
 	s.Require().Len(final.AdvantageSources, 1)
 	s.Equal(refs.Conditions.Helped(), final.AdvantageSources[0].SourceRef)
@@ -325,8 +337,8 @@ func (s *attackEffectRulesSuite) TestArcheryExecutionAgreesWithItsAnswer() {
 
 	for name, melee := range map[string]bool{"ranged": false, "melee": true} {
 		s.Run(name, func() {
-			event := dnd5eEvents.AttackChainEvent{AttackerID: "rogue", TargetID: "goblin", IsMelee: melee, AttackBonus: 5}
-			answer := s.answer(archery, attackChainFrame(event))
+			event := framedAttack(dnd5eEvents.AttackChainEvent{AttackerID: "rogue", TargetID: "goblin", IsMelee: melee, AttackBonus: 5})
+			answer := s.answer(archery, event.Frame)
 			final, err := s.publishAttack(bus, event)
 			s.Require().NoError(err)
 			if answer.Decision.Applicability == contributions.Applies {
@@ -346,14 +358,46 @@ func (s *attackEffectRulesSuite) TestTrueStrikeFailsAnAttackWithNoTarget() {
 	strike := NewTrueStrikeCondition("rogue", "goblin", refs.Spells.TrueStrike().String())
 	s.Require().NoError(strike.Apply(context.Background(), bus))
 
-	_, err := s.publishAttack(bus, dnd5eEvents.AttackChainEvent{AttackerID: "rogue", IsMelee: true})
+	_, err := s.publishAttack(bus, framedAttack(dnd5eEvents.AttackChainEvent{AttackerID: "rogue", IsMelee: true}))
 
 	s.Require().Error(err)
 	s.True(errors.Is(err, contributions.ErrRuleCannotAnswer))
 	s.True(strike.IsApplied(), "a failed attack does not consume True Strike")
 }
 
-func (s *attackEffectRulesSuite) publishDamage(bus events.EventBus, event *dnd5eEvents.DamageChainEvent) error {
+// TestAttackChainHandlersRejectAMissingFrame: every attack-chain handler that
+// asks a rule fails the attack on an event with no frame rather than switching
+// itself off, and adds nothing.
+func (s *attackEffectRulesSuite) TestAttackChainHandlersRejectAMissingFrame() {
+	for name, condition := range map[string]dnd5eEvents.ConditionBehavior{
+		"prone":             NewProneCondition("rogue"),
+		"hidden":            NewHiddenCondition("rogue"),
+		"helped":            NewHelpedCondition("rogue", "cleric"),
+		"vicious mockery":   NewViciousMockeryCondition("rogue", "bard", refs.Spells.ViciousMockery().String()),
+		"true strike":       NewTrueStrikeCondition("rogue", "goblin", refs.Spells.TrueStrike().String()),
+		"improved critical": NewImprovedCriticalCondition(ImprovedCriticalInput{MemberID: "rogue", Threshold: 19}),
+		"archery":           NewFightingStyleArcheryCondition("rogue"),
+		"reckless attack":   NewRecklessAttackCondition("rogue"),
+	} {
+		s.Run(name, func() {
+			bus := events.NewEventBus()
+			s.Require().NoError(condition.Apply(context.Background(), bus))
+
+			final, err := s.publishAttack(bus, dnd5eEvents.AttackChainEvent{
+				AttackerID: "rogue", TargetID: "goblin", IsMelee: false, AttackBonus: 5, CriticalThreshold: 20,
+			})
+
+			s.Require().Error(err)
+			s.True(errors.Is(err, contributions.ErrRuleCannotAnswer))
+			s.Empty(final.AdvantageSources)
+			s.Empty(final.DisadvantageSources)
+			s.Equal(5, final.AttackBonus)
+			s.Equal(20, final.CriticalThreshold)
+		})
+	}
+}
+
+func (s *ruleHelpers) publishDamage(bus events.EventBus, event *dnd5eEvents.DamageChainEvent) error {
 	ctx := context.Background()
 	c := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	modified, err := dnd5eEvents.DamageChain.On(bus).PublishWithChain(ctx, event, c)

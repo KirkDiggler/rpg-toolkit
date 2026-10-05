@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -44,14 +45,19 @@ func (s *actionCensusSuite) TestAnsweringLoadersImplementActionAssessor() {
 		refs.Features.SneakAttack().String(): NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue", Level: 1}),
 		refs.Conditions.Inspired().String():  NewInspiredCondition("rogue", "bard", ""),
 
-		refs.Conditions.Prone().String():                NewProneCondition("rogue"),
-		refs.Conditions.Hidden().String():               NewHiddenCondition("rogue"),
-		refs.Conditions.Helped().String():               NewHelpedCondition("rogue", "cleric"),
-		refs.Conditions.TrueStrike().String():           NewTrueStrikeCondition("rogue", "goblin", refs.Spells.TrueStrike().String()),
-		refs.Conditions.ViciousMockery().String():       NewViciousMockeryCondition("rogue", "bard", refs.Spells.ViciousMockery().String()),
-		refs.Conditions.ImprovedCritical().String():     NewImprovedCriticalCondition(ImprovedCriticalInput{MemberID: "rogue", Threshold: 19}),
-		refs.Conditions.FightingStyleArchery().String(): NewFightingStyleArcheryCondition("rogue"),
-		refs.Conditions.BrutalCritical().String():       NewBrutalCriticalCondition(BrutalCriticalInput{MemberID: "rogue", Level: 9}),
+		refs.Conditions.Prone().String():                            NewProneCondition("rogue"),
+		refs.Conditions.Hidden().String():                           NewHiddenCondition("rogue"),
+		refs.Conditions.Helped().String():                           NewHelpedCondition("rogue", "cleric"),
+		refs.Conditions.TrueStrike().String():                       NewTrueStrikeCondition("rogue", "goblin", refs.Spells.TrueStrike().String()),
+		refs.Conditions.ViciousMockery().String():                   NewViciousMockeryCondition("rogue", "bard", refs.Spells.ViciousMockery().String()),
+		refs.Conditions.ImprovedCritical().String():                 NewImprovedCriticalCondition(ImprovedCriticalInput{MemberID: "rogue", Threshold: 19}),
+		refs.Conditions.FightingStyleArchery().String():             NewFightingStyleArcheryCondition("rogue"),
+		refs.Conditions.BrutalCritical().String():                   NewBrutalCriticalCondition(BrutalCriticalInput{MemberID: "rogue", Level: 9}),
+		refs.Conditions.MartialArts().String():                      NewMartialArtsCondition(MartialArtsInput{MemberID: "rogue", MonkLevel: 1}),
+		refs.Conditions.FightingStyleDueling().String():             NewFightingStyleDuelingCondition("rogue"),
+		refs.Conditions.FightingStyleGreatWeaponFighting().String(): NewFightingStyleGreatWeaponFightingCondition("rogue", nil),
+		refs.Conditions.FightingStyleTwoWeaponFighting().String():   NewFightingStyleTwoWeaponFightingCondition("rogue"),
+		refs.Conditions.RecklessAttack().String():                   NewRecklessAttackCondition("rogue"),
 	}
 	blessed, err := NewBlessedCondition(NewBlessedConditionInput{
 		MemberID: "rogue", SourceID: "cleric", SourceRef: refs.Spells.Bless(),
@@ -68,6 +74,9 @@ func (s *actionCensusSuite) TestAnsweringLoadersImplementActionAssessor() {
 	})
 	s.Require().NoError(err)
 	fixtures[refs.Conditions.DivineFavor().String()] = favored
+	enchanted, err := NewShillelaghCondition("rogue", testShillelaghConfig())
+	s.Require().NoError(err)
+	fixtures[refs.Conditions.Shillelagh().String()] = enchanted
 
 	var answering []string
 	for ref, entry := range actionCensus {
@@ -103,19 +112,37 @@ func (s *actionCensusSuite) TestBearingLoadersHaveDescriptions() {
 
 func (s *actionCensusSuite) TestNotYetAnsweringYieldsUnavailableRow() {
 	out, err := AssessActionEffects(&AssessActionEffectsInput{
-		Conditions: []dnd5eEvents.ConditionBehavior{NewFightingStyleDuelingCondition("rogue")},
+		Conditions: []dnd5eEvents.ConditionBehavior{s.sanctuary()},
 		Frame:      rogueFrame(false),
 	})
 	s.Require().NoError(err)
 	s.Require().Len(out.Effects, 1)
 	effect := out.Effects[0]
-	s.Equal(refs.Conditions.FightingStyleDueling().String(), effect.ID)
+	s.Equal(refs.Conditions.Sanctuary().String()+"@cleric", effect.ID)
 	s.Equal(contributions.StateUnavailable, effect.State)
 	s.Equal("This effect cannot yet say whether it applies to this action", effect.Reason)
-	s.Equal(displayCatalog[refs.Conditions.FightingStyleDueling().String()].Detail, effect.Description)
-	s.Equal("Dueling", effect.Source.Name)
+	s.Equal(displayCatalog[refs.Conditions.Sanctuary().String()].Detail, effect.Description)
+	s.Equal(SanctuaryName, effect.Source.Name)
 	s.Equal(contributions.ContributesNow, effect.Participation)
 	s.Empty(effect.Benefit)
+}
+
+// sanctuary is a ward on the rogue, an effect whose rule cannot yet answer.
+func (s *actionCensusSuite) sanctuary() *SanctuaryCondition {
+	ward, err := NewSanctuaryCondition(NewSanctuaryConditionInput{
+		MemberID: "rogue", SourceID: "cleric", SourceRef: refs.Spells.Sanctuary(),
+	})
+	s.Require().NoError(err)
+	return ward
+}
+
+// testShillelaghConfig enchants the club in the main hand with Wisdom.
+func testShillelaghConfig() ShillelaghConfig {
+	return ShillelaghConfig{
+		Weapons:    []HeldWeapon{{Slot: "main_hand", ItemID: "club"}},
+		WeaponSlot: "main_hand",
+		Ability:    abilities.WIS,
+	}
 }
 
 func (s *actionCensusSuite) TestNotBearingYieldsNoRow() {

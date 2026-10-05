@@ -142,7 +142,7 @@ func (ic *ImprovedCriticalCondition) onAttackChain(
 	event dnd5eEvents.AttackChainEvent,
 	c chain.Chain[dnd5eEvents.AttackChainEvent],
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
-	executed, err := executeRule(&executeRuleInput{Name: "improved critical", Rule: ic.attackRule(), Frame: attackChainFrame(event)})
+	executed, err := executeRule(&executeRuleInput{Name: "improved critical", Rule: ic.attackRule(), Frame: event.Frame})
 	if err != nil {
 		return c, err
 	}

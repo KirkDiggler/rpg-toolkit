@@ -211,7 +211,7 @@ func (v *ViciousMockeryCondition) onAttackChain(
 	event dnd5eEvents.AttackChainEvent,
 	c chain.Chain[dnd5eEvents.AttackChainEvent],
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
-	executed, err := executeRule(&executeRuleInput{Name: "vicious mockery", Rule: v.attackRule(), Frame: attackChainFrame(event)})
+	executed, err := executeRule(&executeRuleInput{Name: "vicious mockery", Rule: v.attackRule(), Frame: event.Frame})
 	if err != nil {
 		return c, err
 	}

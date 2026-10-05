@@ -335,6 +335,13 @@ type AttackChainEvent struct {
 	AttackBonus       int // Base bonus before modifiers (can be modified by chain)
 	TargetAC          int // Target's armor class (for reference)
 	CriticalThreshold int // Roll >= this value is a critical hit (default 20, can be lowered)
+
+	// Frame is the attack-roll frame, built once by resolution from
+	// authoritative state before the chain folds, so its Advantage is
+	// unknown. A rule asked during the fold reads it and nothing else; an
+	// invalid frame fails the fold rather than switching a rule off. The
+	// damage fold's frame is this one with Advantage settled.
+	Frame contributions.Frame
 }
 
 // IsCancelled returns true if this attack has been cancelled.
