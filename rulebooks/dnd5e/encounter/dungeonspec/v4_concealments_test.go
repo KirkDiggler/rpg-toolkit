@@ -172,7 +172,7 @@ func TestAConcealmentIsRefusedForWhatItCannotBe(t *testing.T) {
 		errs := refusals(t, v4With(
 			"concealments:\n  vault: { cheks: [{ability: perception, dc: 15}], cells: [{q: 1, r: 0}] }", ""))
 		requireExactDefect(t, errs, "concealments.vault.cheks",
-			`"cheks" is not a key this build reads: they are cells, checks, notice, props`)
+			`"cheks" is not a key this build reads: they are attempts, cells, checks, notice, props`)
 	})
 
 	t.Run("a record naming no such concealment", func(t *testing.T) {

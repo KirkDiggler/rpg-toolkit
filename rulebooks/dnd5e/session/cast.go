@@ -255,6 +255,11 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 	if in == nil {
 		return nil, fmt.Errorf("cast: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Member == "" {
 		return nil, fmt.Errorf("cast: %w", ErrNoMemberID)
 	}

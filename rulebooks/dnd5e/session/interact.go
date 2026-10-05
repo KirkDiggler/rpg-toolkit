@@ -124,6 +124,11 @@ func (m *Manager) Interact(ctx context.Context, in *InteractInput) (*InteractOut
 	if in == nil {
 		return nil, fmt.Errorf("interact: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Actor == "" || in.Target == "" {
 		return nil, fmt.Errorf("interact: %w", ErrNoMemberID)
 	}

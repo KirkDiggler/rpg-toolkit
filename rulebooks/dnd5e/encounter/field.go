@@ -848,6 +848,9 @@ type FieldStart struct {
 // play data have different shapes for a reason, and this is the construction
 // one.
 type MemberInput struct {
+	// PrivateDiscoveries and RetainedDiscoveries are a player's loaded profile.
+	PrivateDiscoveries  bool
+	RetainedDiscoveries map[ConcealmentID]DiscoveryMemoryData
 	// ID is the member's unique identifier.
 	ID MemberID
 
@@ -1741,6 +1744,9 @@ type StepOutput struct {
 // two PRs on: two ways in is two places for a rule to land, and eventually one
 // of them misses.
 type JoinInput struct {
+	// PrivateDiscoveries and RetainedDiscoveries are restored before first sight.
+	PrivateDiscoveries  bool
+	RetainedDiscoveries map[ConcealmentID]DiscoveryMemoryData
 	// Member is the joining member's unique identifier.
 	Member MemberID
 

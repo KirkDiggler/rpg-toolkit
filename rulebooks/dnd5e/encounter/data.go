@@ -25,8 +25,10 @@ import (
 // All leaves (Clock, Intel, Log) embed their Data types verbatim.
 // Deciders are NOT persisted; they are re-registered at load.
 type EncounterData struct {
-	Outcome *OutcomeData   `json:"outcome,omitempty"`
-	Clock   clock.TickData `json:"clock"`
+	// Discovery holds run attempt/re-arm state; learned facts remain in World.
+	Discovery map[MemberID]DiscoveryStateData `json:"discovery,omitempty"`
+	Outcome   *OutcomeData                    `json:"outcome,omitempty"`
+	Clock     clock.TickData                  `json:"clock"`
 	// Bubbles holds the localized initiative bubbles running in this
 	// encounter — zero or more, and zero for any encounter not currently in a
 	// fight. Absent in blobs written before this field existed, which load as
@@ -794,12 +796,15 @@ type DoorData struct {
 // way [ConcealmentInput.Notice] does: omitted is "no passive tell", and a
 // written empty list is the defect both seams refuse.
 type ConcealmentData struct {
-	ID     string              `json:"id"`
-	Checks []CheckApproachData `json:"checks"`
-	Notice []CheckApproachData `json:"notice,omitempty"`
-	Cells  []PositionData      `json:"cells,omitempty"`
-	Doors  []string            `json:"doors,omitempty"`
-	Props  []string            `json:"props,omitempty"`
+	// Attempts freezes the effective policy. Nil is a pre-policy snapshot and
+	// resolves through the same defaults as omitted authored configuration.
+	Attempts *DiscoveryPolicy    `json:"attempts,omitempty"`
+	ID       string              `json:"id"`
+	Checks   []CheckApproachData `json:"checks"`
+	Notice   []CheckApproachData `json:"notice,omitempty"`
+	Cells    []PositionData      `json:"cells,omitempty"`
+	Doors    []string            `json:"doors,omitempty"`
+	Props    []string            `json:"props,omitempty"`
 }
 
 // EdgeData is the persistent representation of a [DoorEdge]: one crossing,
@@ -1974,6 +1979,7 @@ func (e *Encounter) snapshot() EncounterData {
 	}
 
 	return EncounterData{
+		Discovery:          copyDiscoveryStates(e.discovery),
 		Outcome:            outcomeData,
 		Clock:              e.clock.ToData(),
 		Bubbles:            bubblesData,
@@ -2023,12 +2029,14 @@ func fieldDataFrom(f *field) FieldData {
 
 	for i := range f.concealments {
 		c := &f.concealments[i]
+		policy := c.attempts
 		cd := ConcealmentData{
-			ID:     c.id,
-			Checks: approachesDataFrom(c.checks),
-			Notice: approachesDataFrom(c.notice),
-			Doors:  append([]string(nil), c.doors...),
-			Props:  append([]string(nil), c.props...),
+			Attempts: &policy,
+			ID:       c.id,
+			Checks:   approachesDataFrom(c.checks),
+			Notice:   approachesDataFrom(c.notice),
+			Doors:    append([]string(nil), c.doors...),
+			Props:    append([]string(nil), c.props...),
 		}
 		for _, at := range c.authoredCells {
 			cd.Cells = append(cd.Cells, PositionData{X: at.X, Y: at.Y})
@@ -2917,6 +2925,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// panic on the load path rather than an empty answer.
 	world := newEncounterWorld()
 	e := &Encounter{
+		discovery:     copyDiscoveryStates(data.Discovery),
 		sightAreas:    sightAreasFromData(data.SightAreas),
 		members:       make(map[MemberID]*memberRecord),
 		everMembers:   make(map[MemberID]bool),
@@ -3175,6 +3184,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 	}
 
+	if err := e.validateDiscoveryStates(); err != nil {
+		return nil, err
+	}
 	return e, nil
 }
 
@@ -3381,6 +3393,16 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 			Notice: approachesFromData(cd.Notice),
 			Doors:  append([]DoorID(nil), cd.Doors...),
 			Props:  append([]PropID(nil), cd.Props...),
+		}
+		if cd.Attempts != nil {
+			if cd.Attempts.Lifetime == "" {
+				return FieldInput{}, fmt.Errorf("concealment %q stored attempts has no lifetime: %w", cd.ID, ErrInvalidData)
+			}
+			c.Attempts = &DiscoveryPolicyInput{
+				MaxAttempts: &cd.Attempts.MaxAttempts,
+				ResetHexes:  &cd.Attempts.ResetHexes,
+				Lifetime:    &cd.Attempts.Lifetime,
+			}
 		}
 		for _, at := range cd.Cells {
 			c.Cells = append(c.Cells, spatial.Position{X: at.X, Y: at.Y})

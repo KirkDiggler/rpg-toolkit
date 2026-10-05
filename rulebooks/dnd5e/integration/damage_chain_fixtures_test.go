@@ -4,10 +4,14 @@
 package integration
 
 import (
+	"context"
 	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 )
 
 // intPtr returns a pointer to v, so a present zero modifier stays present.
@@ -26,4 +30,58 @@ func testDiceTrace(dieSize int, faces ...int) *dnd5eEvents.DiceTrace {
 		FinalRolls:    slices.Clone(faces),
 		Subtotal:      subtotal,
 	}
+}
+
+// framed sets the damage event's execution frame the way resolution builds it
+// from authoritative state: the action facts from the swing, and a pair from
+// the target to every other entity the room places, measured on the room's
+// grid and stanced from the cast. Without a room the frame carries no pairs.
+func framed(ctx context.Context, event *dnd5eEvents.DamageChainEvent) *dnd5eEvents.DamageChainEvent {
+	weaponPool := false
+	for _, component := range event.Components {
+		if component.Source == dnd5eEvents.DamageSourceWeapon &&
+			component.HasProperty(damage.AddsAttackAbilityModifier) {
+			weaponPool = true
+		}
+	}
+	frame := contributions.Frame{
+		Actor:  event.AttackerID,
+		Target: contributions.Known(event.TargetID),
+		Action: contributions.ActionFacts{
+			Roll:       contributions.Known(contributions.RollKindAttack),
+			Ability:    contributions.Known(event.AbilityUsed),
+			Melee:      contributions.Known(event.IsMelee),
+			WeaponPool: contributions.Known(weaponPool),
+			Advantage:  contributions.Known(event.HasAdvantage),
+		},
+		Complete: true,
+	}
+	room, hasRoom := gamectx.Room(ctx)
+	cast, hasCast := gamectx.CastOf(ctx)
+	if hasRoom {
+		targetPos, placed := room.GetEntityPosition(event.TargetID)
+		for id := range room.GetAllEntities() {
+			pos, ok := room.GetEntityPosition(id)
+			if !placed || !ok || id == event.TargetID {
+				continue
+			}
+			pair := contributions.PairFacts{
+				From: event.TargetID, To: id,
+				DistanceCells: contributions.Known(room.GetGrid().Distance(targetPos, pos)),
+			}
+			if hasCast {
+				// No stance between two MEMBERS of the cast is no side, never
+				// neutral; a placed entity the cast does not hold stays unknown.
+				members := cast.Members()
+				if stance, ok := cast.StanceBetween(event.TargetID, id); ok {
+					pair.Stance = contributions.Known(stance)
+				} else if slices.Contains(members, event.TargetID) && slices.Contains(members, id) {
+					pair.Stance = contributions.Known(contributions.StanceNone)
+				}
+			}
+			frame.Pairs = append(frame.Pairs, pair)
+		}
+	}
+	event.Frame = frame
+	return event
 }

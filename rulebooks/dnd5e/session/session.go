@@ -30,6 +30,17 @@ type Config struct {
 	// Sessions persists session state. Required.
 	Sessions SessionRepository
 
+	// Locker coordinates complete session operations, including reads and
+	// creation. Optional only for hosts that already serialize calls externally.
+	// Nil provides no concurrency protection. Managers sharing storage must use
+	// the same coordination domain. No lock implementation lives in the SDK.
+	Locker SessionLocker
+
+	// Explorations enables automatic discovery and stores character-retained
+	// knowledge/preferences. Hosts coordinate shared profiles across sessions.
+	// Nil preserves older hosts' explicit-search contract.
+	Explorations ExplorationRepository
+
 	// Encounters persists the world. Required.
 	Encounters EncounterRepository
 
@@ -135,11 +146,14 @@ type Config struct {
 // verb loads what it needs, acts, saves, and drops everything, so a Manager is safe to construct once at
 // process start, share across goroutines that do not share a verb call, and
 // keep for the life of the process. Nothing about a session is cached between
-// calls, which is what allows several servers to serve the same session with
-// no coordination.
+// calls. Concurrent operations on the same stored session still require
+// coordination through Config.Locker or external serialization; statelessness
+// alone does not prevent lost updates.
 type Manager struct {
 	staleTargetPolicy StaleTargetPolicy
 	sessions          SessionRepository
+	locker            SessionLocker
+	explorations      ExplorationRepository
 	encounters        EncounterRepository
 	characters        CharacterRepository
 	events            EventStream
@@ -229,6 +243,8 @@ func NewManager(cfg *Config) (*Manager, error) {
 	return &Manager{
 		staleTargetPolicy: cfg.StaleTargetPolicy,
 		sessions:          cfg.Sessions,
+		locker:            cfg.Locker,
+		explorations:      cfg.Explorations,
 		encounters:        cfg.Encounters,
 		characters:        cfg.Characters,
 		events:            cfg.Events,

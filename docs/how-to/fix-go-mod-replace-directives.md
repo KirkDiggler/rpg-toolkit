@@ -6,6 +6,12 @@ updated: 2026-08-20
 
 # How to fix go.mod replace directives
 
+For current cross-module development, push the provider commit to origin and pin
+it with `go get <module>@<pushed-commit>` in the consumer. Do not introduce a local
+`replace` or `go.work` to run the game. The steps below remove existing overrides;
+use a compatible pushed commit during development and the CI-published provider
+tag before merging the consumer. See the root `CLAUDE.md` module workflow.
+
 **Status (2026-08-20): resolved — main carries no `replace github.com/KirkDiggler/rpg-toolkit/...` directives.**
 - ✅ `items/go.mod` — directive removed (per issue #613)
 - ✅ `mechanics/proficiency/go.mod` — directive removed (per issue #613)
@@ -22,14 +28,18 @@ The workspace rule (CLAUDE.md) is explicit: no replace directives on main, full 
 
 For each affected module:
 
-### 1. Find the current published version of each dependency
+### 1. Choose a compatible provider revision
+
+Use the exact pushed provider commit for in-flight development or its actual
+CI-published tag for release adoption. Let Go resolve the version:
 
 ```bash
-# Check what version is published
-GOPROXY=direct go list -m github.com/KirkDiggler/rpg-toolkit/core@latest
-GOPROXY=direct go list -m github.com/KirkDiggler/rpg-toolkit/events@latest
-# etc.
+# Replace PUSHED_COMMIT with the provider commit available on origin.
+go list -m github.com/KirkDiggler/rpg-toolkit/core@PUSHED_COMMIT
 ```
+
+This lookup does not update a pin. Use `go get` in the consumer module to adopt
+the selected revision; do not hand-write pseudo-version strings.
 
 Or check the go.mod files of modules that already pin published versions:
 ```bash

@@ -192,6 +192,11 @@ func (m *Manager) Dissolve(ctx context.Context, in *DissolveInput) (*DissolveOut
 	if in == nil {
 		return nil, fmt.Errorf("dissolve: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Member == "" {
 		return nil, fmt.Errorf("dissolve: %w", ErrNoMemberID)
 	}

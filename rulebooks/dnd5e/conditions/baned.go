@@ -11,6 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -54,6 +55,7 @@ var (
 	_ dnd5eEvents.ConditionBehavior        = (*BanedCondition)(nil)
 	_ dnd5eEvents.ConditionAddressProvider = (*BanedCondition)(nil)
 	_ dnd5eEvents.RollContributionProvider = (*BanedCondition)(nil)
+	_ contributions.ActionAssessor         = (*BanedCondition)(nil)
 )
 
 // NewBanedCondition creates one source-qualified Bane effect.
@@ -189,6 +191,8 @@ type DescribeSelectedRollContributionsInput struct {
 
 // DescribeSelectedRollContributions selects the oldest applicable provider in
 // each provider-declared group, then asks only those providers to describe.
+// AssessActionEffects walks providers with the same selection, so the dice
+// execution adds are exactly the applying rows information lists.
 func DescribeSelectedRollContributions(
 	input *DescribeSelectedRollContributionsInput,
 ) (*dnd5eEvents.DescribeRollContributionsOutput, error) {
@@ -197,21 +201,18 @@ func DescribeSelectedRollContributions(
 	}
 
 	output := &dnd5eEvents.DescribeRollContributionsOutput{}
-	selectedGroups := make(map[string]struct{})
+	groups := newRollGroupSelection(input.Request)
 	for _, condition := range input.Conditions {
 		provider, ok := condition.(dnd5eEvents.RollContributionProvider)
 		if !ok {
 			continue
 		}
-		metadata := provider.RollContributionMetadata(input.Request)
-		if !metadata.Applicable {
-			continue
+		applicable := provider.RollContributionMetadata(input.Request).Applicable
+		claim, err := groups.claim(&rollClaimInput{Provider: provider, Applies: applicable})
+		if err != nil {
+			return nil, err
 		}
-		if metadata.Group == "" {
-			return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
-				"roll contribution provider %T declared an empty stacking group", condition)
-		}
-		if _, selected := selectedGroups[metadata.Group]; selected {
+		if !claim.Applicable || claim.Shadowed {
 			continue
 		}
 
@@ -223,10 +224,58 @@ func DescribeSelectedRollContributions(
 			return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
 				"roll contribution provider %T returned nil output", condition)
 		}
-		selectedGroups[metadata.Group] = struct{}{}
 		output.Contributions = append(output.Contributions, described.Contributions...)
 	}
 	return output, nil
+}
+
+// rollGroupSelection is the one per-provider walk behind roll-contribution
+// stacking: in persisted order, the first applying provider holds its group
+// and every later applying provider in that group is shadowed.
+type rollGroupSelection struct {
+	request *dnd5eEvents.DescribeRollContributionsInput
+	holders map[string]string
+}
+
+func newRollGroupSelection(request *dnd5eEvents.DescribeRollContributionsInput) *rollGroupSelection {
+	return &rollGroupSelection{request: request, holders: make(map[string]string)}
+}
+
+// rollClaimInput names a provider in persisted order, whether its rule applies,
+// and the name it is known by in a shadowed provider's reason.
+type rollClaimInput struct {
+	Provider dnd5eEvents.RollContributionProvider
+	Applies  bool
+	Name     string
+}
+
+// rollClaimOutput reports the provider's metadata applicability and whether an
+// earlier provider already holds the group, with that provider's name.
+type rollClaimOutput struct {
+	Applicable bool
+	Shadowed   bool
+	HeldBy     string
+}
+
+// claim records an applying provider as its group's holder unless an earlier
+// provider holds it. An applicable provider with an empty group is an error.
+func (s *rollGroupSelection) claim(in *rollClaimInput) (*rollClaimOutput, error) {
+	metadata := in.Provider.RollContributionMetadata(s.request)
+	out := &rollClaimOutput{Applicable: metadata.Applicable}
+	if !metadata.Applicable || !in.Applies {
+		return out, nil
+	}
+	if metadata.Group == "" {
+		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"roll contribution provider %T declared an empty stacking group", in.Provider)
+	}
+	if holder, held := s.holders[metadata.Group]; held {
+		out.Shadowed = true
+		out.HeldBy = holder
+		return out, nil
+	}
+	s.holders[metadata.Group] = in.Name
+	return out, nil
 }
 
 // ConditionAddressOf derives a condition's exact identity on memberID's sheet.
@@ -240,4 +289,17 @@ func ConditionAddressOf(
 	return dnd5eEvents.ConditionAddress{
 		MemberID: memberID, ConditionRef: condition.Ref().String(),
 	}
+}
+
+// AssessAction answers whether Bane subtracts from the framed roll. For its
+// recipient's roll it applies exactly when RollContributionMetadata does — the
+// function execution's selection calls — and carries the same described d4;
+// another member's roll is not its to change.
+func (b *BanedCondition) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error) {
+	return assessRollContribution(&assessRollContributionInput{
+		Name: "baned", Provider: b, Recipient: b.MemberID, Assess: in, Sign: "−",
+		NotRecipient: "Bane affects only its recipient's rolls",
+		Applies:      "Bane subtracts from attack rolls and saving throws",
+		DoesNotApply: "Bane subtracts only from attack rolls and saving throws",
+	})
 }

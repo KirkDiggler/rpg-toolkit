@@ -435,7 +435,7 @@ func (s *RagingConditionTestSuite) executeDamageChain(
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
 
-	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, chain)
+	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, withEventFrame(damageEvent), chain)
 	if err != nil {
 		return nil, err
 	}
@@ -481,7 +481,7 @@ func (s *RagingConditionTestSuite) executeDamageChainWithAbility(
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
 
-	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, chain)
+	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, withEventFrame(damageEvent), chain)
 	if err != nil {
 		return nil, err
 	}
@@ -517,7 +517,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionUsesMarkedWeaponType() {
 		}},
 	}
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
-	modified, err := dnd5eEvents.DamageChain.On(s.bus).PublishWithChain(s.ctx, damageEvent, chain)
+	modified, err := dnd5eEvents.DamageChain.On(s.bus).PublishWithChain(s.ctx, withEventFrame(damageEvent), chain)
 	s.Require().NoError(err)
 	finalEvent, err := modified.Execute(s.ctx, damageEvent)
 	s.Require().NoError(err)
@@ -881,7 +881,7 @@ func (s *RagingConditionTestSuite) executeDamageChainAgainstTarget(
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
 
-	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, chain)
+	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, withEventFrame(damageEvent), chain)
 	if err != nil {
 		return nil, err
 	}
@@ -966,7 +966,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionResistanceUsesComponentTyp
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
-	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, chain)
+	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, withEventFrame(damageEvent), chain)
 	s.Require().NoError(err)
 	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
 	s.Require().NoError(err)

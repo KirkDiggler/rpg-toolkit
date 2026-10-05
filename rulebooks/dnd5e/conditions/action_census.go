@@ -1,0 +1,92 @@
+// Copyright (C) 2026 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package conditions
+
+import (
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+)
+
+// actionClass says how one loaded effect bears on its holder's own action.
+type actionClass string
+
+const (
+	// actionAnswers marks an effect whose rule answers through
+	// contributions.ActionAssessor.
+	actionAnswers actionClass = "answers"
+	// actionNotBearing marks an effect that does not bear on its holder's own
+	// action. It yields no row.
+	actionNotBearing actionClass = "not_bearing"
+	// actionNotYetAnswering marks an effect that bears on the action but whose
+	// rule cannot yet answer. It is shown unavailable, never dropped and never
+	// shown as not applying.
+	actionNotYetAnswering actionClass = "not_yet_answering"
+)
+
+// actionCensusEntry classifies one loader ref. Participation is empty for an
+// effect that does not bear.
+type actionCensusEntry struct {
+	class         actionClass
+	participation contributions.Participation
+}
+
+var (
+	answersNow       = actionCensusEntry{class: actionAnswers, participation: contributions.ContributesNow}
+	answersLater     = actionCensusEntry{class: actionAnswers, participation: contributions.LaterChoice}
+	notYetAnswering  = actionCensusEntry{class: actionNotYetAnswering, participation: contributions.ContributesNow}
+	notBearingAction = actionCensusEntry{class: actionNotBearing}
+)
+
+// actionCensus classifies every conditionLoaders key once, for the acting
+// character's own loaded effects. A loader with no entry is an error at
+// assessment, and TestEveryConditionLoaderIsClassified keeps the two key sets
+// equal.
+var actionCensus = map[string]actionCensusEntry{
+	// Answer from the frame.
+	refs.Conditions.Raging().String():    answersNow,
+	refs.Features.SneakAttack().String(): answersNow,
+	refs.Conditions.Blessed().String():   answersNow,
+	refs.Conditions.Baned().String():     answersNow,
+	refs.Conditions.Inspired().String():  answersLater,
+
+	// Bear on the holder's attack, but cannot yet answer.
+	refs.Conditions.Shillelagh().String():                       notYetAnswering,
+	refs.Conditions.BrutalCritical().String():                   notYetAnswering,
+	refs.Conditions.FightingStyleArchery().String():             notYetAnswering,
+	refs.Conditions.FightingStyleDueling().String():             notYetAnswering,
+	refs.Conditions.FightingStyleGreatWeaponFighting().String(): notYetAnswering,
+	refs.Conditions.FightingStyleTwoWeaponFighting().String():   notYetAnswering,
+	refs.Conditions.ImprovedCritical().String():                 notYetAnswering,
+	refs.Conditions.RecklessAttack().String():                   notYetAnswering,
+	refs.Conditions.MartialArts().String():                      notYetAnswering,
+	refs.Conditions.Prone().String():                            notYetAnswering,
+	refs.Conditions.Hidden().String():                           notYetAnswering,
+	refs.Conditions.Helped().String():                           notYetAnswering,
+	refs.Conditions.TrueStrike().String():                       notYetAnswering,
+	refs.Conditions.ViciousMockery().String():                   notYetAnswering,
+	refs.Conditions.DivineFavor().String():                      notYetAnswering,
+	refs.Conditions.Sanctuary().String():                        notYetAnswering,
+	refs.Conditions.InFog().String():                            notYetAnswering,
+
+	// Do not bear on the holder's own attack.
+	refs.Conditions.UnarmoredDefense().String():        notBearingAction,
+	refs.Conditions.FightingStyleDefense().String():    notBearingAction,
+	refs.Conditions.FightingStyleProtection().String(): notBearingAction,
+	refs.Conditions.UnarmoredMovement().String():       notBearingAction,
+	refs.Conditions.Disengaging().String():             notBearingAction,
+	refs.Conditions.Dodging().String():                 notBearingAction,
+	refs.Conditions.Unconscious().String():             notBearingAction,
+	refs.Conditions.OpportunityAttack().String():       notBearingAction,
+	refs.Conditions.BladeWard().String():               notBearingAction,
+	refs.Conditions.Commanded().String():               notBearingAction,
+	refs.Conditions.Concentrating().String():           notBearingAction,
+	refs.Conditions.FaerieFire().String():              notBearingAction,
+	refs.Conditions.ShieldOfFaith().String():           notBearingAction,
+	refs.Conditions.Guided().String():                  notBearingAction,
+	refs.Conditions.Resistance().String():              notBearingAction,
+	refs.Conditions.GuidingBolt().String():             notBearingAction,
+	refs.Spells.Shield().String():                      notBearingAction,
+	// Only bars receiving another Sanctuary.
+	refs.Conditions.SanctuaryImmune().String(): notBearingAction,
+}

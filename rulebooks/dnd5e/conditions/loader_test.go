@@ -71,7 +71,7 @@ func (s *LoaderTestSuite) executeDamageChain(
 	ch := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
 
-	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, ch)
+	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, withEventFrame(damageEvent), ch)
 	if err != nil {
 		return nil, err
 	}

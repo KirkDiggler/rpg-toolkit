@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 )
 
@@ -52,6 +53,9 @@ func (f *fakeCast) Members() []string {
 // answering a question this fake has no basis for would be inventing one.
 func (f *fakeCast) IsHostile(_, _ string) (hostile, known bool) { return false, false }
 func (f *fakeCast) IsAllied(_, _ string) (allied, known bool)   { return false, false }
+
+// StanceBetween has no stance for any pair, matching the two above.
+func (f *fakeCast) StanceBetween(_, _ string) (contributions.Stance, bool) { return "", false }
 
 // castOf installs a cast holding these sheets, the way resolution's one door
 // installs the real one.

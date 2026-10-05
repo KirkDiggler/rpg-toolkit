@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 )
 
@@ -64,6 +65,20 @@ func (f *fakeCast) IsAllied(a, b string) (allied, known bool) {
 		return false, false
 	}
 	return sa == sb, true
+}
+
+// StanceBetween folds the side map the way IsHostile and IsAllied do; a
+// member missing from the map has no stance.
+func (f *fakeCast) StanceBetween(a, b string) (contributions.Stance, bool) {
+	sa, oka := f.side[a]
+	sb, okb := f.side[b]
+	if !oka || !okb {
+		return "", false
+	}
+	if sa == sb {
+		return contributions.StanceAllied, true
+	}
+	return contributions.StanceHostile, true
 }
 
 // castOf installs a cast holding these members, each on its own side, the way

@@ -142,36 +142,29 @@ The version model behind those rules is:
 
 ## Module Development Workflow
 
-**IMPORTANT: LOCAL OVERRIDES ARE FINE — THEY MUST NEVER REACH CI**
+**Push the provider commit; pin it in the consumer.**
 
-Local `replace` directives and `go.work` files are a normal part of developing
-across modules here. Working outside-in (build the consumer against a local
-sibling, discover the contract, then merge inside-out) depends on them.
+1. **Develop against real pseudo-versions**
+   - Commit and push the provider change to origin.
+   - In the consuming module's worktree, run
+     `go get <module>@<pushed-commit>` and commit `go.mod`/`go.sum`.
+   - Go generates the pseudo-version; never hand-write one or hand-tag a branch.
+   - Repeat through the actual dependency graph. A sibling edit on disk does
+     not update a consumer's pin.
 
-The failure that shaped this rule is overrides being *committed* and breaking
-CI. That is the actual failure, and that is what stays banned.
+2. **Use the same dependency graph locally and in CI**
+   - Local stacks build the normal API image from its committed module pins.
+   - Do not use local `replace` directives, `go.work`, toolkit source-copy
+     selectors or `Dockerfile.local-toolkit` as this workspace's development loop.
+   - Keep referenced commits reachable while consumers depend on them; do not
+     rewrite or delete a provider branch out from under its pseudo-version.
 
-1. **Override locally, publish before you merge**
-   - Use `replace` or `go.work` freely while developing across modules
-   - **Never commit them.** A `replace` pointing at a local path fails CI, and
-     it fails it for everyone, not just you
-   - Before merging: merge the dependency so CI mints its tag, then point at
-     the minted version and remove the override
-
-2. **Dependency Management**
-   - Committed `go.mod` files reference published versions (e.g., `v0.1.0`)
-   - To take an update from another module: merge that module's change to
-     main first (CI mints its tag), then `go get` the minted version in the
-     dependent module
-   - Go creates pseudo-versions automatically for un-tagged commits
-
-3. **Why This Shape**
-   - Local overrides make cross-module work possible without a release per edit
-   - Requiring published versions *at merge* keeps the committed graph honest:
-     what CI builds is what a consumer would get
-   - Editing a sibling module on disk does **not** change what your module
-     compiles against unless you have an override in place — the most common
-     source of "I fixed it but nothing changed"
+3. **Adopt release tags before consumer merges**
+   - Integration can run before the provider merges, using its pushed commit.
+   - After verification and operator-authorized provider merge, CI mints the
+     module's tag. Adopt that actual tag in each consumer before it merges.
+   - Release pinning is the merge requirement, not a prerequisite for beginning
+     development. Proto SDK publication remains the separate exception above.
 
 ## Laws
 
@@ -247,11 +240,11 @@ CI. That is the actual failure, and that is what stays banned.
   Report adjacent work before taking it on. Inspect existing contracts before
   requesting new fields. **Never repair a missing provider projection by
   loosening validation or reconstructing rules in a consumer.**
-- For this user's work, correctness and controlled sequencing take priority
-  over speed: advance one PR at a time, wait for the provider to merge and CI
-  to publish its actual module tag, then update and verify the next consumer
-  against that release. No temporary dependency versions, no parallel dependent
-  PR stacks to accelerate delivery, no rewriting published branch history.
+- Develop consumers against pushed provider commits and real Go pseudo-versions;
+  keep module ownership and dependency ordering explicit. Merge providers
+  inside-out after verification, then adopt their actual CI-published tags before
+  consumer merges. Do not rewrite published branch history or use local source
+  overrides to hide the dependency graph.
 - **Cross-project acceptance evidence:** for a new class or player-facing
   mechanic, trace a normally created, **unseeded** character through
   acquisition, finalization, persistence, private sheet reads, offers,

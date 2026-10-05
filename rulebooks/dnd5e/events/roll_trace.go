@@ -8,40 +8,31 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 )
 
 // RollSource identifies and describes the rulebook-owned source of a roll fact.
 // Label optionally describes the source's role within its calculation. SourceID
 // optionally identifies the entity that contributed the fact; it is the sole
 // calculation home for contributor entity identity.
-type RollSource struct {
-	Ref      *core.Ref
-	Name     string
-	Label    string
-	SourceID string
-}
+type RollSource = contributions.Source
 
 // DiceContribution describes an unresolved homogeneous dice modification.
 // Its SourceID names the responsible entity uniformly for every contribution;
 // base dice and fixed components retain RollSource's broader optional provenance.
 // Dice is unsigned notation; Subtract records the operator without encoding a
 // sign into the pool or producing a face before the owning roll path evaluates it.
-type DiceContribution struct {
-	Source   RollSource
-	Dice     string
-	Subtract bool
-}
+type DiceContribution = contributions.DiceContribution
 
 // RollKind identifies the operation whose conditions are being consulted.
-type RollKind string
+type RollKind = contributions.RollKind
 
 const (
 	// RollKindAttack identifies an attack roll.
-	RollKindAttack RollKind = "attack"
+	RollKindAttack = contributions.RollKindAttack
 	// RollKindSavingThrow identifies a saving throw.
-	RollKindSavingThrow RollKind = "saving_throw"
+	RollKindSavingThrow = contributions.RollKindSavingThrow
 )
 
 // DescribeRollContributionsInput asks for condition contributions to one roll kind.
@@ -277,21 +268,7 @@ func cloneDiceRerolls(rerolls []DiceReroll) []DiceReroll {
 }
 
 func cloneRollSource(source RollSource) RollSource {
-	return RollSource{
-		Ref:      cloneRef(source.Ref),
-		Name:     source.Name,
-		Label:    source.Label,
-		SourceID: source.SourceID,
-	}
-}
-
-func cloneRef(ref *core.Ref) *core.Ref {
-	if ref == nil {
-		return nil
-	}
-
-	clone := *ref
-	return &clone
+	return contributions.CloneSource(source)
 }
 
 func cloneInt(value *int) *int {
