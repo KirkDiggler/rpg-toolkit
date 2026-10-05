@@ -48,8 +48,14 @@ func TestDisplayForKnownConditions(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got, ok := DisplayFor(tc.ref)
 			assert.True(t, ok, "known ref must be in the catalog")
-			assert.Equal(t, tc.want, got)
 			assert.NotEmpty(t, got.Name, "name is never empty for a known ref")
+			if tc.want.Detail == "" {
+				// Descriptions authored for effect rows are pinned by
+				// TestBearingLoadersHaveDescriptions; this table pins names.
+				assert.Equal(t, tc.want.Name, got.Name)
+				return
+			}
+			assert.Equal(t, tc.want, got)
 		})
 	}
 }

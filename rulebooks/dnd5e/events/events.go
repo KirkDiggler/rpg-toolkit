@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
@@ -375,6 +376,11 @@ type DamageChainEvent struct {
 	// is, so a predicate like Dueling's decides eligibility from the event
 	// alone rather than a live gamectx lookup.
 	OffHandWeaponRef *core.Ref
+
+	// Frame is the action's execution frame, built once by resolution from
+	// authoritative state. A rule asked during the fold reads it and nothing
+	// else; an invalid frame fails the fold rather than switching a rule off.
+	Frame contributions.Frame
 }
 
 // DamageChainInput contains the facts used to construct a DamageChainEvent.
@@ -395,10 +401,11 @@ type DamageChainInput struct {
 	IsMelee          bool
 	TwoHanded        bool
 	OffHandWeaponRef *core.Ref
+	Frame            contributions.Frame
 }
 
 // NewDamageChainEvent constructs a damage-chain event with explicit primary
-// weapon metadata. It does not derive a damage type from Components because a
+// weapon metadata and a detached copy of the frame. It does not derive a damage type from Components because a
 // multi-pool attack has no event-wide damage type.
 func NewDamageChainEvent(input DamageChainInput) *DamageChainEvent {
 	return &DamageChainEvent{
@@ -416,6 +423,7 @@ func NewDamageChainEvent(input DamageChainInput) *DamageChainEvent {
 		IsMelee:          input.IsMelee,
 		TwoHanded:        input.TwoHanded,
 		OffHandWeaponRef: input.OffHandWeaponRef,
+		Frame:            input.Frame.Clone(),
 	}
 }
 

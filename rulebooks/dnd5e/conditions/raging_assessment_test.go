@@ -1,158 +1,195 @@
-package conditions_test
+// Copyright (C) 2026 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package conditions
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/assessment"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
-	dndevents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/stretchr/testify/suite"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
-type ragingAssessmentSuite struct{ suite.Suite }
+type ragingRuleSuite struct{ suite.Suite }
 
-func TestRagingAssessmentSuite(t *testing.T) { suite.Run(t, new(ragingAssessmentSuite)) }
+func TestRagingRuleSuite(t *testing.T) { suite.Run(t, new(ragingRuleSuite)) }
 
-func (s *ragingAssessmentSuite) input() *assessment.AssessDamageInput {
-	return &assessment.AssessDamageInput{Frame: assessment.DamageFrame{
-		ActorID: "actor", Ability: contributions.Known(abilities.STR),
-		Melee: contributions.Known(true), HasWeaponPool: contributions.Known(true),
-	}}
-}
-
-func (s *ragingAssessmentSuite) TestDetachedSnapshotAndReadOnlyAmount() {
-	condition := &conditions.RagingCondition{CharacterID: "actor", DamageBonus: 2}
-	before, err := condition.ToJSON()
-	s.Require().NoError(err)
-	bound, err := condition.AssessmentSnapshot(&assessment.BindInput{ID: "effect/0", OwnerID: "actor", Order: 3})
-	s.Require().NoError(err)
-	s.Equal("effect/0", bound.Binding.ID)
-	s.Equal(3, bound.Binding.Order)
-	s.Require().NotNil(bound.Binding.Damage)
-	s.False(condition.IsApplied())
-	for range 2 {
-		out, assessErr := bound.Binding.Damage.AssessDamage(s.input())
-		s.Require().NoError(assessErr)
-		s.Require().NoError(out.Validate())
-		s.Equal(contributions.Applies, out.Decision.Applicability)
-		s.Require().Len(out.Changes, 1)
-		s.Equal(2, *out.Changes[0].Fixed)
-		s.Equal(assessment.PrimaryWeaponPool, out.Changes[0].PoolID)
-		s.False(out.Changes[0].DoubleDiceOnCritical)
-		*out.Changes[0].Fixed = 99
-		out.Changes[0].Source.Ref.ID = "changed"
+func barbarianFrame() contributions.Frame {
+	return contributions.Frame{
+		Actor:  "barb",
+		Target: contributions.Known("goblin"),
+		Action: contributions.ActionFacts{
+			Roll:       contributions.Known(contributions.RollKindAttack),
+			Ability:    contributions.Known(abilities.STR),
+			Melee:      contributions.Known(true),
+			WeaponPool: contributions.Known(true),
+			Advantage:  contributions.Known(false),
+		},
+		Complete: true,
 	}
-	after, err := condition.ToJSON()
-	s.Require().NoError(err)
-	s.JSONEq(string(before), string(after))
-	condition.DamageBonus = 4
-	condition.CharacterID = "changed"
-	bound.Binding.Source.Ref.ID = "also-changed"
-	out, err := bound.Binding.Damage.AssessDamage(s.input())
-	s.Require().NoError(err)
-	s.Equal(2, *out.Changes[0].Fixed)
-	s.Equal("raging", out.Changes[0].Source.Ref.ID)
 }
 
-func (s *ragingAssessmentSuite) TestKnownNegativesAndUnknownAreDifferent() {
-	condition := &conditions.RagingCondition{CharacterID: "actor", DamageBonus: 2}
-	bound, err := condition.AssessmentSnapshot(&assessment.BindInput{ID: "effect/0", OwnerID: "actor"})
+func (s *ragingRuleSuite) assess(frame contributions.Frame) contributions.Answer {
+	out, err := ragingDamageRule{owner: "barb", bonus: 2}.AssessAction(&contributions.AssessActionInput{Frame: frame})
 	s.Require().NoError(err)
-	for _, mutate := range []func(*assessment.AssessDamageInput){
-		func(in *assessment.AssessDamageInput) { in.Frame.Ability = contributions.Known(abilities.DEX) },
-		func(in *assessment.AssessDamageInput) { in.Frame.Melee = contributions.Known(false) },
-		func(in *assessment.AssessDamageInput) { in.Frame.HasWeaponPool = contributions.Known(false) },
-		func(in *assessment.AssessDamageInput) { in.Frame.ActorID = "other" },
-	} {
-		in := s.input()
-		mutate(in)
-		out, assessErr := bound.Binding.Damage.AssessDamage(in)
-		s.Require().NoError(assessErr)
-		s.Require().NoError(out.Validate())
-		s.Equal(contributions.DoesNotApply, out.Decision.Applicability)
-		s.Empty(out.Changes)
-	}
-	in := s.input()
-	in.Frame.Ability = contributions.Unknown[abilities.Ability]()
-	out, err := bound.Binding.Damage.AssessDamage(in)
-	s.Require().NoError(err)
-	s.Require().NoError(out.Validate())
-	s.Equal(contributions.NeedsContext, out.Decision.Applicability)
-	s.Empty(out.Changes)
-	in.Frame.Melee = contributions.Known(false)
-	out, err = bound.Binding.Damage.AssessDamage(in)
-	s.Require().NoError(err)
-	s.Equal(contributions.DoesNotApply, out.Decision.Applicability, "decisive known negative wins over irrelevant unknown ability")
+	s.Require().NotNil(out)
+	s.Require().NoError(out.Answer.Decision.Validate())
+	s.Equal(contributions.ContributesNow, out.Answer.Participation)
+	return out.Answer
 }
 
-func (s *ragingAssessmentSuite) TestSameAnswerDrivesTheRealDamageChain() {
-	for _, tc := range []struct {
-		name    string
-		ability abilities.Ability
-		melee   bool
-		bonus   int
+func (s *ragingRuleSuite) TestRagingRuleAppliesToMeleeStrengthWeapon() {
+	answer := s.assess(barbarianFrame())
+
+	s.Equal(contributions.Applies, answer.Decision.Applicability)
+	s.Equal("The melee weapon attack uses Strength", answer.Decision.Reason)
+	s.Equal("+2 damage", answer.Benefit)
+	s.Require().Len(answer.Damage, 1)
+	s.Equal(contributions.PrimaryWeaponPool, answer.Damage[0].PoolID)
+	s.Equal("weapon:primary", answer.Damage[0].PoolID)
+	s.Require().NotNil(answer.Damage[0].Fixed)
+	s.Equal(2, *answer.Damage[0].Fixed)
+	s.Empty(answer.Damage[0].Dice)
+	s.Equal(refs.Conditions.Raging().String(), answer.Damage[0].Source.Ref.String())
+}
+
+func (s *ragingRuleSuite) TestRagingRuleDoesNotApplyToDexterity() {
+	frame := barbarianFrame()
+	frame.Action.Ability = contributions.Known(abilities.DEX)
+
+	answer := s.assess(frame)
+
+	s.Equal(contributions.DoesNotApply, answer.Decision.Applicability)
+	s.Equal("Rage's damage bonus requires Strength", answer.Decision.Reason)
+	s.Empty(answer.Benefit)
+	s.Empty(answer.Damage)
+}
+
+func (s *ragingRuleSuite) TestRagingRuleKnownNegatives() {
+	for name, tc := range map[string]struct {
+		mutate func(*contributions.Frame)
+		reason string
 	}{
-		{"strength", abilities.STR, true, 2},
-		{"changed bonus", abilities.STR, true, 4},
-		{"real zero", abilities.STR, true, 0},
-		{"dexterity", abilities.DEX, true, 2},
-		{"ranged", abilities.STR, false, 2},
+		"ranged":      {func(f *contributions.Frame) { f.Action.Melee = contributions.Known(false) }, "Rage's damage bonus requires a melee weapon attack"},
+		"no weapon":   {func(f *contributions.Frame) { f.Action.WeaponPool = contributions.Known(false) }, "Rage requires a weapon damage pool"},
+		"other actor": {func(f *contributions.Frame) { f.Actor = "rogue" }, "Rage modifies its recipient's attacks"},
 	} {
-		s.Run(tc.name, func() {
-			ctx := context.Background()
-			bus := events.NewEventBus()
-			condition := &conditions.RagingCondition{CharacterID: "actor", DamageBonus: tc.bonus}
-			bound, err := condition.AssessmentSnapshot(&assessment.BindInput{ID: "effect/0", OwnerID: "actor"})
-			s.Require().NoError(err)
-			in := s.input()
-			in.Frame.Ability = contributions.Known(tc.ability)
-			in.Frame.Melee = contributions.Known(tc.melee)
-			answer, err := bound.Binding.Damage.AssessDamage(in)
-			s.Require().NoError(err)
-			s.Require().NoError(answer.Validate())
-			s.Require().NoError(condition.Apply(ctx, bus))
-			event := &dndevents.DamageChainEvent{
-				AttackerID: "actor", TargetID: "target", AbilityUsed: tc.ability, IsMelee: tc.melee,
-				WeaponDamageType: damage.Slashing,
-				Components: []dndevents.DamageComponent{{Source: dndevents.DamageSourceWeapon,
-					Properties: []damage.Property{damage.AddsAttackAbilityModifier}}},
-			}
-			chain := events.NewStagedChain[*dndevents.DamageChainEvent](combat.ModifierStages)
-			fold, err := dndevents.DamageChain.On(bus).PublishWithChain(ctx, event, chain)
-			s.Require().NoError(err)
-			result, err := fold.Execute(ctx, event)
-			s.Require().NoError(err)
-			s.Require().Len(result.Components, 1+len(answer.Changes))
-			if answer.Decision.Applicability == contributions.Applies {
-				s.Require().Len(answer.Changes, 1)
-				s.Equal(answer.Changes[0].Source, result.Components[1].Roll.Source)
-				s.Equal(*answer.Changes[0].Fixed, *result.Components[1].Roll.Modifier)
-			}
-			s.False(condition.DidAttackThisTurn, "damage assessment does not sustain Rage")
-			s.Require().NoError(condition.Remove(ctx, bus))
-		})
+		frame := barbarianFrame()
+		tc.mutate(&frame)
+		answer := s.assess(frame)
+		s.Equal(contributions.DoesNotApply, answer.Decision.Applicability, name)
+		s.Equal(tc.reason, answer.Decision.Reason, name)
+		s.Empty(answer.Damage, name)
 	}
 }
 
-func (s *ragingAssessmentSuite) TestInputErrorsAndCoverage() {
-	condition := &conditions.RagingCondition{CharacterID: "actor", DamageBonus: 2}
-	for _, in := range []*assessment.BindInput{nil, {}, {ID: "id", OwnerID: "other"}, {ID: "id", OwnerID: "actor", Order: -1}} {
-		out, err := condition.AssessmentSnapshot(in)
-		s.Error(err)
-		s.Nil(out)
+func (s *ragingRuleSuite) TestRagingRuleDependsWhenAbilityUnknown() {
+	frame := barbarianFrame()
+	frame.Action.Ability = contributions.Unknown[abilities.Ability]()
+
+	answer := s.assess(frame)
+
+	s.Equal(contributions.Depends, answer.Decision.Applicability)
+	s.Empty(answer.Benefit)
+	s.Empty(answer.Damage)
+
+	frame.Action.Melee = contributions.Known(false)
+	s.Equal(contributions.DoesNotApply, s.assess(frame).Decision.Applicability,
+		"a decisive known negative wins over an unknown ability")
+}
+
+// ragingHandlerSuite drives the real damage chain through a live rage.
+type ragingHandlerSuite struct {
+	suite.Suite
+	ctx       context.Context
+	bus       events.EventBus
+	condition *RagingCondition
+}
+
+func TestRagingHandlerSuite(t *testing.T) { suite.Run(t, new(ragingHandlerSuite)) }
+
+func (s *ragingHandlerSuite) SetupTest() {
+	s.ctx = context.Background()
+	s.bus = events.NewEventBus()
+	s.condition = &RagingCondition{CharacterID: "barb", DamageBonus: 2}
+	s.Require().NoError(s.condition.Apply(s.ctx, s.bus))
+}
+
+func (s *ragingHandlerSuite) fold(event *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
+	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	modified, err := dnd5eEvents.DamageChain.On(s.bus).PublishWithChain(s.ctx, event, chain)
+	if err != nil {
+		return nil, err
 	}
-	bound, err := condition.AssessmentSnapshot(&assessment.BindInput{ID: "id", OwnerID: "actor"})
+	return modified.Execute(s.ctx, event)
+}
+
+func (s *ragingHandlerSuite) event(frame contributions.Frame) *dnd5eEvents.DamageChainEvent {
+	return &dnd5eEvents.DamageChainEvent{
+		AttackerID: "barb", TargetID: "goblin", AbilityUsed: abilities.STR, IsMelee: true,
+		WeaponDamageType: damage.Slashing,
+		Components: []dnd5eEvents.DamageComponent{{
+			Source:     dnd5eEvents.DamageSourceWeapon,
+			Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+			DamageType: damage.Slashing,
+		}},
+		Frame: frame,
+	}
+}
+
+func (s *ragingHandlerSuite) TestRagingHandlerReadsFrameNotEventFields() {
+	event := s.event(barbarianFrame())
+	event.AbilityUsed = abilities.DEX
+	event.IsMelee = false
+
+	result, err := s.fold(event)
+
 	s.Require().NoError(err)
-	s.Require().Len(bound.Binding.Coverage, 5)
-	s.Equal(assessment.Supported, bound.Binding.Coverage[1].Support)
-	out, err := bound.Binding.Damage.AssessDamage(nil)
-	s.Error(err)
-	s.Nil(out)
+	s.Require().Len(result.Components, 2, "the frame says Strength melee, so Rage adds")
+	s.Equal("Raging", result.Components[1].Roll.Source.Name)
+	s.Equal(2, *result.Components[1].Roll.Modifier)
+	s.False(s.condition.DidAttackThisTurn, "a damage fold does not sustain Rage")
+}
+
+func (s *ragingHandlerSuite) TestRagingHandlerSkipsWhenFrameSaysDexterity() {
+	frame := barbarianFrame()
+	frame.Action.Ability = contributions.Known(abilities.DEX)
+
+	result, err := s.fold(s.event(frame))
+
+	s.Require().NoError(err)
+	s.Len(result.Components, 1)
+}
+
+func (s *ragingHandlerSuite) TestRagingHandlerFailsWhenRuleDepends() {
+	frame := barbarianFrame()
+	frame.Action.Ability = contributions.Unknown[abilities.Ability]()
+	event := s.event(frame)
+
+	result, err := s.fold(event)
+
+	s.Require().Error(err)
+	s.True(errors.Is(err, contributions.ErrRuleCannotAnswer))
+	s.Nil(result)
+	s.Len(event.Components, 1, "no component appended")
+}
+
+func (s *ragingHandlerSuite) TestRagingHandlerRejectsZeroFrame() {
+	event := s.event(contributions.Frame{})
+
+	result, err := s.fold(event)
+
+	s.Require().Error(err)
+	s.True(errors.Is(err, contributions.ErrRuleCannotAnswer))
+	s.Nil(result)
+	s.Len(event.Components, 1)
 }

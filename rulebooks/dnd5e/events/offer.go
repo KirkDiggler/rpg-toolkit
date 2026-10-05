@@ -7,6 +7,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 )
 
 // Offer is one spendable thing a member already holds that could join a roll
@@ -77,6 +78,10 @@ type PostRollOfferEvent struct {
 	// it — the number an offer would be added to.
 	AttackBonus int
 	Total       int
+
+	// Frame is the attack's execution frame, the same one its damage fold
+	// reads. An offering rule decides from it alone.
+	Frame contributions.Frame
 
 	// Offers are what the roller's own effects put on the table, in
 	// subscription order.

@@ -7,57 +7,44 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/assessment"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
-	dndevents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
-// AssessmentSnapshot captures Rage's outgoing-damage rule without its live bus,
-// duration or receiver pointer. Defensive resistance and save/check advantages
-// remain outside this outgoing, pre-defense calculation. Invalid binding identity
-// is an error; reading the snapshot never applies, sustains or consumes Rage.
-func (r *RagingCondition) AssessmentSnapshot(in *assessment.BindInput) (*assessment.BindOutput, error) {
-	if r == nil || in == nil || in.ID == "" || in.OwnerID == "" ||
-		in.OwnerID != r.CharacterID || in.Order < 0 {
-		return nil, fmt.Errorf("raging snapshot requires its owner and a valid binding identity")
-	}
-	return &assessment.BindOutput{Binding: assessment.RuleBinding{
-		ID: in.ID, Order: in.Order,
-		Source: contributions.CloneSource(contributions.Source{Ref: refs.Conditions.Raging(), Name: "Raging"}),
-		Address: &dndevents.ConditionAddress{
-			MemberID: r.CharacterID, ConditionRef: refs.Conditions.Raging().String(),
-		},
-		Coverage: []assessment.Coverage{
-			{Facet: contributions.AttackRoll, Support: assessment.NotRelevant, Reason: "Rage does not modify the attack roll"},
-			{Facet: contributions.DamageNormal, Support: assessment.Supported, Reason: "Rage can add weapon damage"},
-			{Facet: contributions.DamageCritical, Support: assessment.Supported, Reason: "Rage can add weapon damage"},
-			{Facet: contributions.SpellDC, Support: assessment.NotRelevant, Reason: "Rage does not modify caster save DC"},
-			{Facet: contributions.Healing, Support: assessment.NotRelevant, Reason: "Rage does not modify healing"},
-		},
-		Damage: ragingDamageRule{owner: r.CharacterID, bonus: r.DamageBonus},
-	}}, nil
+var _ contributions.ActionAssessor = (*RagingCondition)(nil)
+
+// AssessAction answers whether Rage's damage bonus applies to the framed
+// action. It reads the frame and this rage's own owner and bonus; it never
+// applies, sustains or ends Rage. Defensive resistance and the save/check
+// advantages are not part of this answer.
+func (r *RagingCondition) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error) {
+	return ragingDamageRule{owner: r.CharacterID, bonus: r.DamageBonus}.AssessAction(in)
 }
 
-// A value containing only the facts the owning predicate uses, not the condition.
+// ragingDamageRule holds only the facts Rage's damage predicate uses, not the
+// condition, so asking it cannot touch the live rage.
 type ragingDamageRule struct {
 	owner string
 	bonus int
 }
 
-func (r ragingDamageRule) AssessDamage(in *assessment.AssessDamageInput) (*assessment.AssessDamageOutput, error) {
-	if in == nil {
-		return nil, fmt.Errorf("raging damage assessment requires input")
+func (r ragingDamageRule) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error) {
+	frame, err := frameOf(in, "raging")
+	if err != nil {
+		return nil, err
 	}
-	answer := func(state contributions.Applicability, reason string) *assessment.AssessDamageOutput {
-		return &assessment.AssessDamageOutput{Decision: contributions.Decision{Applicability: state, Reason: reason}}
+	answer := func(state contributions.Applicability, reason string) *contributions.AssessActionOutput {
+		return &contributions.AssessActionOutput{Answer: contributions.Answer{
+			Decision:      contributions.Decision{Applicability: state, Reason: reason},
+			Participation: contributions.ContributesNow,
+		}}
 	}
-	if in.Frame.ActorID != r.owner {
+	if frame.Actor != r.owner {
 		return answer(contributions.DoesNotApply, "Rage modifies its recipient's attacks"), nil
 	}
-	weapon, weaponKnown := in.Frame.HasWeaponPool.Get()
-	melee, meleeKnown := in.Frame.Melee.Get()
-	ability, abilityKnown := in.Frame.Ability.Get()
+	weapon, weaponKnown := frame.Action.WeaponPool.Get()
+	melee, meleeKnown := frame.Action.Melee.Get()
+	ability, abilityKnown := frame.Action.Ability.Get()
 	if weaponKnown && !weapon {
 		return answer(contributions.DoesNotApply, "Rage requires a weapon damage pool"), nil
 	}
@@ -68,15 +55,14 @@ func (r ragingDamageRule) AssessDamage(in *assessment.AssessDamageInput) (*asses
 		return answer(contributions.DoesNotApply, "Rage's damage bonus requires Strength"), nil
 	}
 	if !weaponKnown || !meleeKnown || !abilityKnown {
-		out := answer(contributions.NeedsContext, "The attack's effective weapon and ability facts are not established")
-		out.Decision.Needs = []contributions.Need{{Kind: contributions.NeedActionFacts, Subject: r.owner}}
-		return out, nil
+		return answer(contributions.Depends, "Depends on the attack's weapon and ability"), nil
 	}
 	out := answer(contributions.Applies, "The melee weapon attack uses Strength")
 	bonus := r.bonus
-	out.Changes = []assessment.DamageChange{{
-		PoolID: assessment.PrimaryWeaponPool,
-		Source: contributions.CloneSource(contributions.Source{Ref: refs.Conditions.Raging(), Name: "Raging"}),
+	out.Answer.Benefit = fmt.Sprintf("+%d damage", bonus)
+	out.Answer.Damage = []contributions.DamageChange{{
+		PoolID: contributions.PrimaryWeaponPool,
+		Source: contributions.Source{Ref: refs.Conditions.Raging(), Name: "Raging"},
 		Fixed:  &bonus,
 	}}
 	return out, nil

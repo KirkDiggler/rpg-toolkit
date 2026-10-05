@@ -15,7 +15,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/assessment"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -415,49 +414,40 @@ func (r *RagingCondition) endRage(ctx context.Context, reason string) error {
 // onDamageChain handles both:
 // 1. Adding rage damage bonus when the raging character attacks
 // 2. Applying resistance (halve damage) when the raging character is hit by B/P/S damage
+//
+// The bonus is decided by ragingDamageRule from the event's frame — the same
+// rule information asks — never from the event's own ability or melee fields.
+// An invalid frame or a Depends answer fails the fold.
 func (r *RagingCondition) onDamageChain(
 	_ context.Context,
 	event *dnd5eEvents.DamageChainEvent,
 	c chain.Chain[*dnd5eEvents.DamageChainEvent],
 ) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
-	// Handle attacker side: add rage damage bonus
-	if event.AttackerID == r.CharacterID {
-		// Add rage damage modifier in the StageFeatures stage. Gated inside the
-		// modifier (on the live e.AbilityUsed/e.IsMelee) rather than on the
-		// publish-time event above, since other StageFeatures modifiers (e.g.
-		// Martial Arts) can change AbilityUsed while the chain executes --
-		// checking the pre-chain snapshot would let Rage's bonus survive a
-		// swap away from STR.
+	executed, err := executeRule(&executeRuleInput{
+		Name:  "raging",
+		Rule:  ragingDamageRule{owner: r.CharacterID, bonus: r.DamageBonus},
+		Frame: event.Frame,
+	})
+	if err != nil {
+		return c, err
+	}
+
+	// Attacker side: add the rule's own damage change.
+	if executed.Answer.Decision.Applicability == contributions.Applies {
+		change := executed.Answer.Damage[0]
 		modifyDamage := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
-			// Both execution and information ask the same detached rule. This
-			// adapter supplies current fold facts, not a previously read answer.
-			out, assessErr := (ragingDamageRule{owner: r.CharacterID, bonus: r.DamageBonus}).AssessDamage(
-				&assessment.AssessDamageInput{Frame: assessment.DamageFrame{
-					ActorID: e.AttackerID, Ability: contributions.Known(e.AbilityUsed),
-					Melee:         contributions.Known(e.IsMelee),
-					HasWeaponPool: contributions.Known(primaryWeaponComponent(e) != nil),
-				}},
-			)
-			if assessErr != nil {
-				return e, assessErr
-			}
-			if out.Decision.Applicability != contributions.Applies {
-				return e, nil
-			}
-			change := out.Changes[0]
 			e.Components = append(e.Components, dnd5eEvents.DamageComponent{
 				Source: dnd5eEvents.DamageSourceCondition,
 				Roll: dnd5eEvents.RollComponent{
 					Source:   change.Source,
-					Modifier: change.Fixed, // Detached; no dice
+					Modifier: change.Fixed, // No dice
 				},
 				DamageType: e.WeaponDamageType, // Same as marked primary weapon type
 				IsCritical: false,
 			})
 			return e, nil
 		}
-		err := c.Add(combat.StageFeatures, "rage", modifyDamage)
-		if err != nil {
+		if err := c.Add(combat.StageFeatures, "rage", modifyDamage); err != nil {
 			return c, rpgerr.Wrapf(err, "error applying rage damage bonus for character id %s", r.CharacterID)
 		}
 	}
@@ -487,8 +477,7 @@ func (r *RagingCondition) onDamageChain(
 			}
 			return e, nil
 		}
-		err := c.Add(combat.StageFinal, "rage_resistance", applyResistance)
-		if err != nil {
+		if err := c.Add(combat.StageFinal, "rage_resistance", applyResistance); err != nil {
 			return c, rpgerr.Wrapf(err, "error applying rage resistance for character id %s", r.CharacterID)
 		}
 	}

@@ -6,10 +6,12 @@ package conditions
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -53,6 +55,7 @@ var (
 	_ dnd5eEvents.ConditionBehavior        = (*BlessedCondition)(nil)
 	_ dnd5eEvents.ConditionAddressProvider = (*BlessedCondition)(nil)
 	_ dnd5eEvents.RollContributionProvider = (*BlessedCondition)(nil)
+	_ contributions.ActionAssessor         = (*BlessedCondition)(nil)
 )
 
 // NewBlessedCondition creates one source-qualified Bless effect.
@@ -177,4 +180,59 @@ func (b *BlessedCondition) DescribeRollContributions(
 			Dice: "1d4",
 		}},
 	}, nil
+}
+
+// AssessAction answers whether Bless adds to the framed roll. It applies
+// exactly when RollContributionMetadata does — the function execution's
+// selection calls — and carries the same described d4.
+func (b *BlessedCondition) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error) {
+	return assessRollContribution(&assessRollContributionInput{
+		Name: "blessed", Provider: b, Assess: in, Sign: "+",
+		Applies:      "Bless adds to attack rolls and saving throws",
+		DoesNotApply: "Bless adds only to attack rolls and saving throws",
+	})
+}
+
+// assessRollContributionInput names a roll-contribution provider, the frame it
+// is asked about, and its owner-authored reasons and benefit sign.
+type assessRollContributionInput struct {
+	Name         string
+	Provider     dnd5eEvents.RollContributionProvider
+	Assess       *contributions.AssessActionInput
+	Sign         string
+	Applies      string
+	DoesNotApply string
+}
+
+// assessRollContribution answers for a provider from its own metadata and
+// description, so information and execution share one predicate.
+func assessRollContribution(in *assessRollContributionInput) (*contributions.AssessActionOutput, error) {
+	frame, err := frameOf(in.Assess, in.Name)
+	if err != nil {
+		return nil, err
+	}
+	roll, _ := frame.Action.Roll.Get()
+	request := &dnd5eEvents.DescribeRollContributionsInput{Kind: roll}
+	out := &contributions.AssessActionOutput{Answer: contributions.Answer{
+		Participation: contributions.ContributesNow,
+	}}
+	if !in.Provider.RollContributionMetadata(request).Applicable {
+		out.Answer.Decision = contributions.Decision{Applicability: contributions.DoesNotApply, Reason: in.DoesNotApply}
+		return out, nil
+	}
+	described, err := in.Provider.DescribeRollContributions(request)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", in.Name, err)
+	}
+	if described == nil || len(described.Contributions) == 0 {
+		return nil, fmt.Errorf("%s: an applicable roll contribution described no dice", in.Name)
+	}
+	noun := "attack roll"
+	if roll == contributions.RollKindSavingThrow {
+		noun = "saving throw"
+	}
+	out.Answer.Decision = contributions.Decision{Applicability: contributions.Applies, Reason: in.Applies}
+	out.Answer.Benefit = fmt.Sprintf("%s%s to the %s", in.Sign, described.Contributions[0].Dice, noun)
+	out.Answer.Roll = described.Contributions
+	return out, nil
 }
