@@ -122,6 +122,12 @@
 // authorization or idempotency tokens: the host still binds the acting member
 // to its authenticated caller.
 //
+// A compiled Attack, and a compiled Cast that makes a spell attack, also
+// carries Declaration.Effects: each effect bearing on the action, with the
+// rulebook's answer (rpg-project#520). Answers that change by target ride
+// TargetCandidate.Effects. Afford alone attaches them, after every gate and
+// selector is settled; they never grant, refuse or select an action.
+//
 // The compiled object never crosses S2. For Attack it privately carries the
 // complete priced definition, matching resolution cost/readied payer, shared
 // candidate preflight, and one raw participant-data cast. Compilation strictly

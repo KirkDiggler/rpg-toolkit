@@ -4,6 +4,8 @@
 package conditions
 
 import (
+	"slices"
+
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -89,4 +91,20 @@ var actionCensus = map[string]actionCensusEntry{
 	refs.Spells.Shield().String():                      notBearingAction,
 	// Only bars receiving another Sanctuary.
 	refs.Conditions.SanctuaryImmune().String(): notBearingAction,
+}
+
+// ActionBearingRefs lists, sorted, every loader ref the action census classes
+// as answering or not yet answering — the conditions that yield an effect row
+// for their holder's own action. It is a read of the census, not a second
+// list: a test that must cover every bearing condition reads this rather than
+// restating its size.
+func ActionBearingRefs() []string {
+	bearing := make([]string, 0, len(actionCensus))
+	for ref, entry := range actionCensus {
+		if entry.class != actionNotBearing {
+			bearing = append(bearing, ref)
+		}
+	}
+	slices.Sort(bearing)
+	return bearing
 }

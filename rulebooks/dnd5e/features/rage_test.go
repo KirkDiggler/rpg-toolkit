@@ -9,6 +9,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
@@ -23,9 +24,13 @@ type RageTestSuite struct {
 
 // StubEntity implements core.Entity and coreResources.ResourceAccessor for testing
 type StubEntity struct {
-	id        string
-	resources map[coreResources.ResourceKey]int
+	id         string
+	resources  map[coreResources.ResourceKey]int
+	conditions []dnd5eEvents.ConditionBehavior
 }
+
+// GetConditions reports the stub's own held conditions.
+func (m *StubEntity) GetConditions() []dnd5eEvents.ConditionBehavior { return m.conditions }
 
 func (m *StubEntity) GetID() string            { return m.id }
 func (m *StubEntity) GetType() core.EntityType { return "character" }
@@ -216,6 +221,43 @@ func (s *RageTestSuite) TestToJSON() {
 	s.Equal(s.rage.name, loaded.name)
 	s.Equal(s.rage.level, loaded.level)
 }
+
+func (s *RageTestSuite) TestRageRefusedWhileAlreadyRaging() {
+	for _, level := range []int{3, 20} {
+		owner := newStubEntityWithRage("barbarian-1", level)
+		owner.conditions = []dnd5eEvents.ConditionBehavior{
+			&conditions.RagingCondition{CharacterID: "barbarian-1", DamageBonus: 2, Level: level},
+		}
+		rage := newRageForTest("rage-feature", level)
+		chargesBefore := owner.resources[resources.RageCharges]
+
+		err := rage.CanActivate(s.ctx, owner, FeatureInput{})
+		s.Require().Error(err, "level %d", level)
+		s.Equal(rpgerr.CodeConflictingState, rpgerr.GetCode(err), "level %d", level)
+		s.Contains(err.Error(), "already raging")
+
+		published := 0
+		_, subErr := dnd5eEvents.ConditionAppliedTopic.On(s.bus).Subscribe(s.ctx,
+			func(context.Context, dnd5eEvents.ConditionAppliedEvent) error { published++; return nil })
+		s.Require().NoError(subErr)
+		s.Require().Error(rage.Activate(s.ctx, owner, FeatureInput{Bus: s.bus}))
+		s.Equal(chargesBefore, owner.resources[resources.RageCharges], "a refused rage spends no charge")
+		s.Zero(published, "a refused rage applies no condition")
+	}
+}
+
+func (s *RageTestSuite) TestRageRefusesAnOwnerWhoseConditionsCannotBeRead() {
+	owner := &resourceOnlyOwner{StubEntity: newStubEntityWithRage("barbarian-1", 3)}
+
+	err := s.rage.CanActivate(s.ctx, owner, FeatureInput{})
+
+	s.Require().Error(err, "unknown is not 'not raging'")
+}
+
+// resourceOnlyOwner carries resources but cannot report its conditions.
+type resourceOnlyOwner struct{ *StubEntity }
+
+func (o *resourceOnlyOwner) GetConditions() {}
 
 func TestRageTestSuite(t *testing.T) {
 	suite.Run(t, new(RageTestSuite))

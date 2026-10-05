@@ -7,7 +7,9 @@ import (
 
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -48,6 +50,24 @@ func (s *RecklessAttackTestSuite) TestCanActivate_Always() {
 	// Reckless Attack has no cost — always activatable
 	err := s.feature.CanActivate(s.ctx, s.character, features.FeatureInput{})
 	s.Require().NoError(err)
+}
+
+func (s *RecklessAttackTestSuite) TestRecklessAttackRefusedWhileAlreadyReckless() {
+	s.character.conditions = []dnd5eEvents.ConditionBehavior{
+		conditions.NewRecklessAttackCondition(s.character.GetID()),
+	}
+
+	err := s.feature.CanActivate(s.ctx, s.character, features.FeatureInput{})
+	s.Require().Error(err)
+	s.Equal(rpgerr.CodeConflictingState, rpgerr.GetCode(err))
+	s.Contains(err.Error(), "already attacking recklessly")
+
+	published := 0
+	_, subErr := dnd5eEvents.ConditionAppliedTopic.On(s.bus).Subscribe(s.ctx,
+		func(context.Context, dnd5eEvents.ConditionAppliedEvent) error { published++; return nil })
+	s.Require().NoError(subErr)
+	s.Require().Error(s.feature.Activate(s.ctx, s.character, features.FeatureInput{Bus: s.bus}))
+	s.Zero(published, "a refused Reckless Attack applies no second condition")
 }
 
 func (s *RecklessAttackTestSuite) TestActivate_PublishesConditionAppliedEvent() {
