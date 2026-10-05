@@ -36,7 +36,7 @@ type conditionTable struct {
 }
 
 func (c *conditionTable) Equipment(members []encounter.MemberID) (map[encounter.MemberID]*encounter.HeldEquipment, error) {
-	return noHandsAreObserved{}.Equipment(members)
+	return encounter.UnobservedEquipment{}.Equipment(members)
 }
 
 func (c *conditionTable) Conditions(members []encounter.MemberID) (map[encounter.MemberID]*encounter.ConditionSet, error) {
@@ -50,7 +50,7 @@ func (c *conditionTable) Conditions(members []encounter.MemberID) (map[encounter
 
 // conditionsSkipping omits one member from its answer.
 type conditionsSkipping struct {
-	noHandsAreObserved
+	encounter.UnobservedEquipment
 	skip encounter.MemberID
 }
 
@@ -61,7 +61,7 @@ func (c conditionsSkipping) Conditions(members []encounter.MemberID) (map[encoun
 }
 
 // conditionsForAStranger names somebody who is not a member.
-type conditionsForAStranger struct{ noHandsAreObserved }
+type conditionsForAStranger struct{ encounter.UnobservedEquipment }
 
 func (conditionsForAStranger) Conditions(members []encounter.MemberID) (map[encounter.MemberID]*encounter.ConditionSet, error) {
 	out := noConditionsObserved(members)
@@ -73,7 +73,7 @@ func (conditionsForAStranger) Conditions(members []encounter.MemberID) (map[enco
 type handsOnly struct{}
 
 func (handsOnly) Equipment(members []encounter.MemberID) (map[encounter.MemberID]*encounter.HeldEquipment, error) {
-	return noHandsAreObserved{}.Equipment(members)
+	return encounter.UnobservedEquipment{}.Equipment(members)
 }
 
 // heldSet builds an observed set. Its list is never nil, matching what decode
