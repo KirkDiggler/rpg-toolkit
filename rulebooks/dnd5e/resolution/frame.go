@@ -183,7 +183,7 @@ func informationFrame(in *informationFrameInput) (*informationFrameOutput, error
 		}
 		held := make([]contributions.HeldCondition, 0, len(member.Conditions.Conditions))
 		for _, seen := range member.Conditions.Conditions {
-			held = append(held, contributions.HeldCondition{Ref: seen.Ref, SourceID: seen.SourceID})
+			held = append(held, contributions.HeldCondition{Ref: seen.ConditionRef, SourceID: seen.SourceID})
 		}
 		frame.Held = append(frame.Held, contributions.MemberHeld{Member: string(member.ID), Conditions: held})
 	}
@@ -339,6 +339,13 @@ func (m *strikeMachine) executionFrame(ctx context.Context) (contributions.Frame
 // condition at its own address — the same address a loaded condition's
 // handler asks its held rule about. A member with no sheet in the cast is left
 // out, which a frame reads as unknown.
+//
+// It reads the LOADED sheet, not the stored blobs
+// ([conditions.HeldAddresses] reads those, for a seam that holds only data):
+// execution's question is what the attached handlers hold, and the loaded
+// sheet also carries what a combatant has by existing (the opportunity
+// attack), which is never stored. Both reach the address through
+// [conditions.ConditionAddressOf].
 func castHeld(cast *Participants, members []string) []contributions.MemberHeld {
 	held := make([]contributions.MemberHeld, 0, len(members))
 	for _, id := range members {

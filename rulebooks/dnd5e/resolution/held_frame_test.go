@@ -28,8 +28,10 @@ import (
 const heldCaster = "cleric"
 
 // sheetConditions answers the conditions capability from the scene's sheets,
-// as a host does: each member with a sheet reports what it holds, at each
-// condition's own address; a member with no sheet has nothing to observe.
+// as a host does, through the rulebook's own reader
+// ([conditions.HeldAddresses]): each member with a sheet reports what it
+// holds, at each condition's own address; a member with no sheet has nothing
+// to observe.
 // Hands are never observed. The sheets are read when asked, so a change to
 // one is seen at the next sight refresh and not before.
 type sheetConditions struct {
@@ -49,15 +51,10 @@ func (c sheetConditions) Conditions(
 			out[id] = nil
 			continue
 		}
-		set := &encounter.ConditionSet{Conditions: []encounter.SeenCondition{}}
-		for _, blob := range *blobs {
-			loaded, err := conditions.LoadJSON(blob)
-			if err != nil {
-				return nil, err
-			}
-			address := conditions.ConditionAddressOf(string(id), loaded)
-			set.Conditions = append(set.Conditions, encounter.SeenCondition{
-				Ref: address.ConditionRef, SourceID: address.SourceID,
+		set := &encounter.ConditionSet{Conditions: []encounter.ConditionKey{}}
+		for _, address := range conditions.HeldAddresses(string(id), *blobs) {
+			set.Conditions = append(set.Conditions, encounter.ConditionKey{
+				ConditionRef: address.ConditionRef, SourceID: address.SourceID,
 			})
 		}
 		out[id] = set
@@ -248,8 +245,8 @@ func (s *FrameTestSuite) TestInformationFrameHeldFromSightingsOnly() {
 		Observed: &encounter.ObservedContextOutput{
 			Observer: holdOutRogue,
 			Members: []encounter.ObservedContextMember{
-				{ID: holdOutScout, Conditions: &encounter.ConditionSet{Conditions: []encounter.SeenCondition{
-					{Ref: refs.Conditions.FaerieFire().String(), SourceID: heldCaster},
+				{ID: holdOutScout, Conditions: &encounter.ConditionSet{Conditions: []encounter.ConditionKey{
+					{ConditionRef: refs.Conditions.FaerieFire().String(), SourceID: heldCaster},
 				}}},
 				{ID: holdOutChief},
 				{ID: holdOutAlly, Conditions: &encounter.ConditionSet{}},
@@ -485,6 +482,46 @@ func (s *FrameTestSuite) TestStrikeFrameCarriesHeldAndSight() {
 	s.Equal(contributions.Known(true), after.Action.Advantage, "faerie fire granted it")
 	before.Action.Advantage = after.Action.Advantage
 	s.Equal(before, after, "the damage frame only adds advantage")
+}
+
+// TestExecutionHeldIsEveryLoadedAddress: the strike's frame lists, for every
+// participant with a sheet — the monsters included — the addresses its stored
+// conditions name themselves by ([conditions.HeldAddresses]), in stored order,
+// followed only by what the loader carries by existing (the opportunity
+// attack, which is never stored). A loaded handler asks its held rule about
+// its own address, and a frame that lists a holder without that address is a
+// frame the rule cannot answer from (R13), so a dropped condition or a lost
+// source qualifier must not get past here.
+func (s *FrameTestSuite) TestExecutionHeldIsEveryLoadedAddress() {
+	scene := s.newHeldScene(2, s.faerieFireJSON(informGoblin1), s.proneJSON(informGoblin1))
+	rogue := s.heldRogue()
+	bus := events.NewEventBus()
+	rolled := s.watchAttackFrames(bus)
+
+	_, err := s.strikeHeld(bus, scene, dagger(), 18)
+	s.Require().NoError(err)
+	s.Require().NotEmpty(*rolled)
+	frame := (*rolled)[0]
+
+	for member, stored := range map[string][]json.RawMessage{
+		informRogue: rogue.Conditions, informGoblin1: scene.goblin.Conditions, informGoblin2: scene.other.Conditions,
+	} {
+		want := []contributions.HeldCondition{}
+		for _, address := range conditions.HeldAddresses(member, stored) {
+			want = append(want, contributions.HeldCondition{Ref: address.ConditionRef, SourceID: address.SourceID})
+		}
+		held, known := frame.HeldBy(member)
+		s.True(known, "%s has a sheet, so what it holds is known", member)
+		s.Require().GreaterOrEqual(len(held), len(want), "%s: %+v", member, held)
+		s.Equal(want, held[:len(want)], "%s's held list starts with its stored addresses", member)
+		for _, carried := range held[len(want):] {
+			s.Equal(contributions.HeldCondition{Ref: refs.Conditions.OpportunityAttack().String()}, carried,
+				"%s holds nothing beyond its stored conditions but what it carries by existing", member)
+		}
+	}
+	goblin, _ := frame.HeldBy(informGoblin1)
+	s.Contains(goblin, contributions.HeldCondition{Ref: refs.Conditions.FaerieFire().String(), SourceID: heldCaster},
+		"the goblin's Faerie Fire keeps its caster as source")
 }
 
 // TestStrikeFailsWhenAHeldRuleCannotAnswer is R13: the target holds Faerie
