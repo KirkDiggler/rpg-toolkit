@@ -71,18 +71,36 @@ type ActionFacts struct {
 }
 
 // PairFacts carries facts in the From→To direction. DistanceCells is in grid
-// cells as the producer measured it. No reverse fact is inferred.
+// cells as the producer measured it. Sees says From can see To. No reverse fact
+// is inferred.
 type PairFacts struct {
 	From          string
 	To            string
 	DistanceCells Fact[float64]
 	Stance        Fact[Stance]
+	Sees          Fact[bool]
+}
+
+// HeldCondition is one condition a member holds: its canonical condition ref
+// and its source qualifier ("" when it has none).
+type HeldCondition struct {
+	Ref      string
+	SourceID string
+}
+
+// MemberHeld lists what one member holds, in the order the producer reported.
+// A member present with an empty list is KNOWN to hold nothing; a member
+// absent from Frame.Held is unknown.
+type MemberHeld struct {
+	Member     string
+	Conditions []HeldCondition
 }
 
 // Frame is everything a rule may read when it answers. Resolution builds it
 // once per action and target: from the actor's knowledge for information, from
 // authoritative state for execution. Complete is an explicit guarantee that
 // Pairs covers every relevant member; a partial set of sightings never is.
+// Held lists the conditions members are known to hold; see [Frame.HeldBy].
 // The zero frame is invalid.
 type Frame struct {
 	Actor    string
@@ -90,6 +108,7 @@ type Frame struct {
 	Action   ActionFacts
 	Pairs    []PairFacts
 	Complete bool
+	Held     []MemberHeld
 }
 
 // Validate refuses a frame no rule can read: no actor, a roll kind that is
@@ -97,7 +116,9 @@ type Frame struct {
 // one of the six nor the declared none (Known("")), a known weapon that is
 // neither a ref nor the declared none (Known("")), a known but empty target,
 // malformed or duplicate pairs, an impossible known distance or an
-// unrecognised known stance. Unknown facts are valid; a known value that is
+// unrecognised known stance, or a malformed held list — an empty or repeated
+// member, a condition that is not a ref, or one condition listed twice for a
+// member. Unknown facts are valid; a known value that is
 // not a real value is an error, never a negative answer.
 func (f Frame) Validate() error {
 	if f.Actor == "" {
@@ -143,7 +164,35 @@ func (f Frame) Validate() error {
 			}
 		}
 	}
+	members := make(map[string]bool, len(f.Held))
+	for _, held := range f.Held {
+		if held.Member == "" || members[held.Member] {
+			return fmt.Errorf("invalid or repeated held member %q", held.Member)
+		}
+		members[held.Member] = true
+		listed := make(map[HeldCondition]bool, len(held.Conditions))
+		for _, condition := range held.Conditions {
+			if _, err := core.ParseString(condition.Ref); err != nil {
+				return fmt.Errorf("member %q holds %q, which is not a ref: %w", held.Member, condition.Ref, err)
+			}
+			if listed[condition] {
+				return fmt.Errorf("member %q holds %q@%q twice", held.Member, condition.Ref, condition.SourceID)
+			}
+			listed[condition] = true
+		}
+	}
 	return nil
+}
+
+// HeldBy returns what member holds and whether that is known. A member the
+// frame does not list is unknown, never a member holding nothing.
+func (f Frame) HeldBy(member string) ([]HeldCondition, bool) {
+	for _, held := range f.Held {
+		if held.Member == member {
+			return held.Conditions, true
+		}
+	}
+	return nil, false
 }
 
 // Pair returns the facts for the directed pair. A pair the frame does not
@@ -157,8 +206,16 @@ func (f Frame) Pair(from, to string) PairFacts {
 	return PairFacts{From: from, To: to}
 }
 
-// Clone detaches the frame's pairs; every fact is already a scalar value.
+// Clone detaches the frame's pairs and held lists; every fact is already a
+// scalar value.
 func (f Frame) Clone() Frame {
 	f.Pairs = slices.Clone(f.Pairs)
+	if f.Held != nil {
+		held := make([]MemberHeld, len(f.Held))
+		for i, member := range f.Held {
+			held[i] = MemberHeld{Member: member.Member, Conditions: slices.Clone(member.Conditions)}
+		}
+		f.Held = held
+	}
 	return f
 }

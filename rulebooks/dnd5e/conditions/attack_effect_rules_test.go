@@ -157,25 +157,38 @@ func (s *attackEffectRulesSuite) TestTrueStrikeAnswersOnlyForItsTarget() {
 	s.Equal("Depends on the target", answer.Decision.Reason)
 }
 
-func (s *attackEffectRulesSuite) TestArcheryAnswersFromTheAttacksReach() {
+// TestArcheryAnswersFromTheWeapon: Archery reads the weapon's category, so a
+// ranged spell attack — not melee, no ranged weapon — gets nothing.
+func (s *attackEffectRulesSuite) TestArcheryAnswersFromTheWeapon() {
 	rule := NewFightingStyleArcheryCondition("rogue")
 
 	ranged := rogueFrame(false)
 	ranged.Action.Melee = contributions.Known(false)
+	ranged.Action.Weapon = contributions.Known(refs.Weapons.Shortbow().String())
+	ranged.Action.Finesse = contributions.Known(false)
+	ranged.Action.RangedWeapon = contributions.Known(true)
 	answer := s.answer(rule, ranged)
 	s.Equal(contributions.Applies, answer.Decision.Applicability)
-	s.Equal("The attack is ranged", answer.Decision.Reason)
+	s.Equal("The attack is made with a ranged weapon", answer.Decision.Reason)
 	s.Equal("+2 to the attack roll", answer.Benefit)
 
 	answer = s.answer(rule, rogueFrame(false))
 	s.Equal(contributions.DoesNotApply, answer.Decision.Applicability)
-	s.Equal("Archery adds only to ranged attacks", answer.Decision.Reason)
+	s.Equal("Archery adds only to attacks with ranged weapons", answer.Decision.Reason)
+
+	spell := rogueFrame(false)
+	spell.Action.Melee = contributions.Known(false)
+	spell.Action.WeaponPool = contributions.Known(false)
+	spell.Action.Weapon = contributions.Known("")
+	spell.Action.Finesse = contributions.Known(false)
+	answer = s.answer(rule, spell)
+	s.Equal(contributions.DoesNotApply, answer.Decision.Applicability, "a ranged spell attack is not a ranged weapon")
 
 	unknown := rogueFrame(false)
-	unknown.Action.Melee = contributions.Unknown[bool]()
+	unknown.Action.RangedWeapon = contributions.Unknown[bool]()
 	answer = s.answer(rule, unknown)
 	s.Equal(contributions.Depends, answer.Decision.Applicability)
-	s.Equal("Depends on whether the attack is ranged", answer.Decision.Reason)
+	s.Equal("Depends on the attack's weapon", answer.Decision.Reason)
 
 	other := ranged
 	other.Actor = "fighter"
@@ -282,7 +295,7 @@ func (s *attackEffectRulesSuite) TestRowsListTheNewAnswers() {
 
 	s.Equal(refs.Conditions.FightingStyleArchery().String(), out.Effects[1].ID)
 	s.Equal(contributions.StateDoesNotApply, out.Effects[1].State)
-	s.Equal("Archery adds only to ranged attacks", out.Effects[1].Reason)
+	s.Equal("Archery adds only to attacks with ranged weapons", out.Effects[1].Reason)
 	s.Empty(out.Effects[1].Benefit)
 
 	s.Equal(refs.Conditions.Sanctuary().String()+"@cleric", out.Effects[2].ID)
@@ -337,7 +350,11 @@ func (s *attackEffectRulesSuite) TestArcheryExecutionAgreesWithItsAnswer() {
 
 	for name, melee := range map[string]bool{"ranged": false, "melee": true} {
 		s.Run(name, func() {
-			event := framedAttack(dnd5eEvents.AttackChainEvent{AttackerID: "rogue", TargetID: "goblin", IsMelee: melee, AttackBonus: 5})
+			weapon := refs.Weapons.Shortbow()
+			if melee {
+				weapon = refs.Weapons.Shortsword()
+			}
+			event := framedAttack(dnd5eEvents.AttackChainEvent{AttackerID: "rogue", TargetID: "goblin", IsMelee: melee, WeaponRef: weapon, AttackBonus: 5})
 			answer := s.answer(archery, event.Frame)
 			final, err := s.publishAttack(bus, event)
 			s.Require().NoError(err)

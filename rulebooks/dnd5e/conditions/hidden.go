@@ -51,6 +51,13 @@ func (h *HiddenCondition) AssessAction(in *contributions.AssessActionInput) (*co
 	return h.attackRule().AssessAction(in)
 }
 
+// heldRule is the by-reference rule for this Hidden on its holder — the one
+// information asks for a candidate. Attacks against the hidden holder have
+// disadvantage.
+func (h *HiddenCondition) heldRule() contributions.ActionAssessor {
+	return newHiddenHeldRule(h.MemberID, heldAddress(h.MemberID, h))
+}
+
 func (h *HiddenCondition) attackRule() attackRollRule {
 	return attackRollRule{name: "hidden", owner: h.MemberID, text: attackRollText{
 		NotOwner:    "Hidden affects only its holder's attacks",
@@ -202,17 +209,11 @@ func (h *HiddenCondition) onAttackChain(
 		}
 
 	case event.TargetID:
-		modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
-			e.DisadvantageSources = append(e.DisadvantageSources, dnd5eEvents.AttackModifierSource{
-				SourceRef: refs.Conditions.Hidden(),
-				SourceID:  h.MemberID,
-				Reason:    "Hidden",
-			})
-			return e, nil
-		}
-		if err := c.Add(combat.StageConditions, "hidden_target_disadvantage", modifyAttack); err != nil {
-			return c, rpgerr.Wrapf(err, "failed to add hidden disadvantage modifier for character %s", h.MemberID)
-		}
+		return applyHeldAttack(&heldAttackInput{
+			Name: "hidden", Rule: h.heldRule(), Event: event, Chain: c,
+			SourceRef: refs.Conditions.Hidden(), SourceID: h.MemberID,
+			Label: fixedLabel("hidden_target_disadvantage", "Hidden"),
+		})
 	}
 
 	return c, nil

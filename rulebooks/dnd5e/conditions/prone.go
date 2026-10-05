@@ -16,18 +16,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
-
-// proneReachCells is "within 5 feet" in the units a grid answers in: one cell.
-//
-// This comment used to explain the conversion here, and note that
-// FightingStyleProtectionCondition and SneakAttackCondition spelled out the
-// same one. They did — and sneak attack's copy nonetheless used 1.5. The
-// rationale now lives once, on [combat.AdjacentCells], and this is an alias so
-// the two cannot drift apart again (rpg-toolkit#1255 review).
-const proneReachCells = combat.AdjacentCells
 
 // ProneConditionData is the serializable form of the prone condition.
 // This is stored by the game server as an opaque JSON blob.
@@ -46,22 +36,17 @@ type ProneConditionData struct {
 //     within 5 feet, and disadvantage otherwise. Standing over someone is an
 //     opportunity; shooting at someone lying down is not.
 //
-// The second rule is why this condition reads the room. Distance is not on the
-// attack event and cannot be inferred from it: AttackChainEvent.IsMelee is not
-// a proxy for "within 5 feet" in either direction — a glaive is melee at ten
-// feet, and a shortbow fired point-blank is ranged at zero. So the position of
-// both parties is read from the room in [gamectx], the way every other
-// range-dependent predicate in this package does.
+// The second rule reads the attacker→target distance from the attack's frame.
+// Distance is not on the attack event and cannot be inferred from it:
+// AttackChainEvent.IsMelee is not a proxy for "within 5 feet" in either
+// direction — a glaive is melee at ten feet, and a shortbow fired point-blank
+// is ranged at zero. Resolution measures it on the room's grid and puts it on
+// the frame; the rule, keyed by Prone's reference, is the one information asks
+// for a candidate (R17).
 //
-// **When there is no room, the second rule does not fire.** No advantage, no
-// disadvantage: the attack rolls straight, and the prone creature's own
-// disadvantage is unaffected. That is a rule silently not applied, which is
-// worth stating plainly rather than discovering — but the alternative is worse.
-// A handler that returned an error would abort the whole attack chain (a bus
-// publish stops at the first handler error), so a caller that never installed a
-// room would find that attacking a prone creature failed rather than merely
-// rolled straight. Pinned by TestNoRoomLeavesTheTargetSideRuleUnapplied so it
-// cannot be mistaken for a guarantee.
+// **When the distance is unknown, the attack fails.** The rule answers that it
+// depends, and at execution that is an error (R13): rolling straight would be
+// a rule silently not applied, and a missing fact must not switch a rule off.
 //
 // What this condition does NOT do: the movement half of prone. Crawling at half
 // speed and standing up costing half your movement are real rules, and movement
@@ -221,7 +206,7 @@ func (p *ProneCondition) loadJSON(data json.RawMessage) error {
 // disadvantage it would get attacking anyone else, and not both modifiers at
 // once.
 func (p *ProneCondition) onAttackChain(
-	ctx context.Context,
+	_ context.Context,
 	event dnd5eEvents.AttackChainEvent,
 	c chain.Chain[dnd5eEvents.AttackChainEvent],
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
@@ -229,7 +214,7 @@ func (p *ProneCondition) onAttackChain(
 	case event.AttackerID == p.CharacterID:
 		return p.attackingWhileProne(event, c)
 	case event.TargetID == p.CharacterID:
-		return p.attackedWhileProne(ctx, event, c)
+		return p.attackedWhileProne(event, c)
 	default:
 		return c, nil
 	}
@@ -266,78 +251,31 @@ func (p *ProneCondition) attackingWhileProne(
 	return c, nil
 }
 
-// attackedWhileProne resolves the range split: advantage from within 5 feet,
-// disadvantage from beyond it.
+// attackedWhileProne resolves the range split through the held rule:
+// advantage from within 5 feet, disadvantage from beyond it, as the answer's
+// attack mode says.
 //
-// Both directions are decided here rather than one being the default, because
-// "no modifier" is a third, wrong answer that a half-implemented range check
-// silently produces.
+// Both directions are decided by the rule rather than one being the default,
+// because "no modifier" is a third, wrong answer that a half-implemented range
+// check silently produces.
 func (p *ProneCondition) attackedWhileProne(
-	ctx context.Context,
 	event dnd5eEvents.AttackChainEvent,
 	c chain.Chain[dnd5eEvents.AttackChainEvent],
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
-	within, known := p.attackerIsWithinReach(ctx, event.AttackerID)
-	if !known {
-		// No room, or someone is not on the map. See the type's godoc: the rule
-		// cannot be decided, and refusing the attack outright would be worse
-		// than leaving it to roll straight.
-		return c, nil
-	}
-
-	key := "prone_target_disadvantage"
-	reason := "Prone target beyond 5 feet"
-	appendSource := func(e dnd5eEvents.AttackChainEvent, src dnd5eEvents.AttackModifierSource) dnd5eEvents.AttackChainEvent {
-		e.DisadvantageSources = append(e.DisadvantageSources, src)
-		return e
-	}
-
-	if within {
-		key = "prone_target_advantage"
-		reason = "Prone target within 5 feet"
-		appendSource = func(e dnd5eEvents.AttackChainEvent, src dnd5eEvents.AttackModifierSource) dnd5eEvents.AttackChainEvent {
-			e.AdvantageSources = append(e.AdvantageSources, src)
-			return e
-		}
-	}
-
-	modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
-		return appendSource(e, dnd5eEvents.AttackModifierSource{
-			SourceRef: refs.Conditions.Prone(),
-			SourceID:  p.CharacterID,
-			Reason:    reason,
-		}), nil
-	}
-
-	if err := c.Add(combat.StageConditions, key, modifyAttack); err != nil {
-		return c, rpgerr.Wrapf(err, "failed to add %s for character %s", key, p.CharacterID)
-	}
-
-	return c, nil
+	return applyHeldAttack(&heldAttackInput{
+		Name: "prone", Rule: p.heldRule(), Event: event, Chain: c,
+		SourceRef: refs.Conditions.Prone(), SourceID: p.CharacterID,
+		Label: func(mode contributions.AttackMode) (string, string) {
+			if mode == contributions.AttackAdvantage {
+				return "prone_target_advantage", "Prone target within 5 feet"
+			}
+			return "prone_target_disadvantage", "Prone target beyond 5 feet"
+		},
+	})
 }
 
-// attackerIsWithinReach answers whether the attacker is within 5 feet of this
-// prone creature, and whether that could be answered at all.
-//
-// The second return is the whole reason this is not a plain bool: "not within
-// reach" and "nobody knows where these two are standing" call for different
-// modifiers, and collapsing them would make an unmapped attacker roll at
-// disadvantage — a rule invented out of missing data.
-func (p *ProneCondition) attackerIsWithinReach(ctx context.Context, attackerID string) (within, known bool) {
-	room, ok := gamectx.Room(ctx)
-	if !ok {
-		return false, false
-	}
-
-	attackerPos, attackerPlaced := room.GetEntityPosition(attackerID)
-	if !attackerPlaced {
-		return false, false
-	}
-
-	pronePos, pronePlaced := room.GetEntityPosition(p.CharacterID)
-	if !pronePlaced {
-		return false, false
-	}
-
-	return room.GetGrid().Distance(attackerPos, pronePos) <= proneReachCells, true
+// heldRule is the by-reference rule for this Prone on its holder — the one
+// information asks for a candidate.
+func (p *ProneCondition) heldRule() contributions.ActionAssessor {
+	return newProneHeldRule(p.CharacterID, heldAddress(p.CharacterID, p))
 }

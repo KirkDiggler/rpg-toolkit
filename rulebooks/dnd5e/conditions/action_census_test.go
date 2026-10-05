@@ -146,12 +146,22 @@ func testShillelaghConfig() ShillelaghConfig {
 }
 
 func (s *actionCensusSuite) TestNotBearingYieldsNoRow() {
+	fog, err := NewInFogCondition(NewInFogConditionInput{MemberID: "rogue", SourceID: "area-1", SourceRef: refs.Spells.FogCloud()})
+	s.Require().NoError(err)
 	out, err := AssessActionEffects(&AssessActionEffectsInput{
-		Conditions: []dnd5eEvents.ConditionBehavior{&UnarmoredDefenseCondition{MemberID: "rogue"}},
+		Conditions: []dnd5eEvents.ConditionBehavior{&UnarmoredDefenseCondition{MemberID: "rogue"}, fog},
 		Frame:      rogueFrame(false),
 	})
 	s.Require().NoError(err)
-	s.Empty(out.Effects)
+	s.Empty(out.Effects, "In Fog owns no rule, so it shows no row (R20)")
+
+	frame := rogueFrame(false)
+	frame.Held = []contributions.MemberHeld{{Member: "goblin", Conditions: []contributions.HeldCondition{
+		{Ref: refs.Conditions.InFog().String(), SourceID: "area-1"},
+	}}}
+	held, err := AssessTargetHeldEffects(&AssessTargetHeldEffectsInput{Frame: frame})
+	s.Require().NoError(err)
+	s.Empty(held.Effects, "a target in the fog shows no row either (R20)")
 }
 
 func (s *actionCensusSuite) TestEffectIDsUniqueAndDeterministic() {

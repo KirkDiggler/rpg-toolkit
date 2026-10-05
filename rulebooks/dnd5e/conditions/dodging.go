@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -155,26 +156,21 @@ func (d *DodgingCondition) onAttackChain(
 	event dnd5eEvents.AttackChainEvent,
 	c chain.Chain[dnd5eEvents.AttackChainEvent],
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
-	// Only apply when this character is the target
+	// Only when this character is the target: routing, not a predicate.
 	if event.TargetID != d.MemberID {
 		return c, nil
 	}
+	return applyHeldAttack(&heldAttackInput{
+		Name: "dodging", Rule: d.heldRule(), Event: event, Chain: c,
+		SourceRef: refs.Conditions.Dodging(), SourceID: d.MemberID,
+		Label: fixedLabel("dodging_disadvantage", "Dodging"),
+	})
+}
 
-	// Add disadvantage at the conditions stage
-	modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
-		e.DisadvantageSources = append(e.DisadvantageSources, dnd5eEvents.AttackModifierSource{
-			SourceRef: refs.Conditions.Dodging(),
-			SourceID:  d.MemberID,
-			Reason:    "Dodging",
-		})
-		return e, nil
-	}
-
-	if err := c.Add(combat.StageConditions, "dodging_disadvantage", modifyAttack); err != nil {
-		return c, rpgerr.Wrapf(err, "failed to add dodging disadvantage modifier for character %s", d.MemberID)
-	}
-
-	return c, nil
+// heldRule is the by-reference rule for this Dodging on its holder — the one
+// information asks for a candidate.
+func (d *DodgingCondition) heldRule() contributions.ActionAssessor {
+	return newDodgingHeldRule(d.MemberID, heldAddress(d.MemberID, d))
 }
 
 // onSavingThrowChain handles saving throw events to grant advantage on DEX saves.

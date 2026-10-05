@@ -8,15 +8,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
@@ -174,29 +172,25 @@ func (g *FaerieFireCondition) loadJSON(data json.RawMessage) error {
 	return nil
 }
 
-// onAttackChain checks current sight on every attack. The condition is not
+// onAttackChain asks the held rule on every attack against the holder, reading
+// whether the attacker sees the holder from the event's frame — resolution
+// measures sight, and an unknown answer fails the attack. The condition is not
 // consumed by attacks, and visibility loss does not remove it.
 func (g *FaerieFireCondition) onAttackChain(
-	ctx context.Context, event dnd5eEvents.AttackChainEvent, c chain.Chain[dnd5eEvents.AttackChainEvent],
+	_ context.Context, event dnd5eEvents.AttackChainEvent, c chain.Chain[dnd5eEvents.AttackChainEvent],
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
 	if event.TargetID != g.MemberID {
 		return c, nil
 	}
-	sight, ok := gamectx.Visibility(ctx)
-	if !ok {
-		return c, nil
-	}
-	// Faerie Fire imposes no attack-distance cap: the attack owns its range.
-	// The supplied visibility provider still checks actual sight range and fog.
-	visible, known := sight.SeesWithin(event.AttackerID, g.MemberID, math.MaxInt)
-	if !known || !visible {
-		return c, nil
-	}
-	err := c.Add(combat.StageConditions, "faerie_fire_"+g.SourceID, func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
-		e.AdvantageSources = append(e.AdvantageSources, dnd5eEvents.AttackModifierSource{
-			SourceRef: g.Ref(), SourceID: g.SourceID, Reason: FaerieFireName,
-		})
-		return e, nil
+	return applyHeldAttack(&heldAttackInput{
+		Name: "faerie fire", Rule: g.heldRule(), Event: event, Chain: c,
+		SourceRef: g.Ref(), SourceID: g.SourceID,
+		Label: fixedLabel("faerie_fire_"+g.SourceID, FaerieFireName),
 	})
-	return c, err
+}
+
+// heldRule is the by-reference rule for this Faerie Fire on its holder — the
+// one information asks for a candidate.
+func (g *FaerieFireCondition) heldRule() contributions.ActionAssessor {
+	return newFaerieFireHeldRule(g.MemberID, heldAddress(g.MemberID, g))
 }

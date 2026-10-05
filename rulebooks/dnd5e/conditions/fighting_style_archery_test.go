@@ -69,7 +69,8 @@ func (s *FightingStyleArcheryTestSuite) TestAddsToRangedAttacks() {
 		AttackerID:        "fighter-1",
 		TargetID:          "goblin-1",
 		IsMelee:           false, // Ranged attack
-		AttackBonus:       5,     // DEX(3) + Prof(2)
+		WeaponRef:         refs.Weapons.Longbow(),
+		AttackBonus:       5, // DEX(3) + Prof(2)
 		TargetAC:          13,
 		CriticalThreshold: 20,
 	}

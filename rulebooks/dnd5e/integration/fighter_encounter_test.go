@@ -557,7 +557,8 @@ func (s *FighterEncounterSuite) TestFightingStyleArchery_AddsAttackBonus() {
 			AttackerID:        s.fighter.GetID(),
 			TargetID:          s.goblin.GetID(),
 			IsMelee:           false, // Ranged attack
-			AttackBonus:       5,     // Base bonus
+			WeaponRef:         refs.Weapons.Longbow(),
+			AttackBonus:       5, // Base bonus
 			CriticalThreshold: 20,
 		}
 

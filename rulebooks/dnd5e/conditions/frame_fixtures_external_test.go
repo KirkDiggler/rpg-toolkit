@@ -88,3 +88,18 @@ func externalWeaponFacts(weaponRef *core.Ref, twoHanded, otherWeapon bool) contr
 	}
 	return facts
 }
+
+// framedAgainst sets an attack event's attack-roll frame from its own fields
+// and adds what resolution measures between the two: the attacker→target
+// distance and sight, and the conditions the target holds. A test fixture.
+func framedAgainst(
+	event dnd5eEvents.AttackChainEvent, distance float64, sees bool, held ...contributions.HeldCondition,
+) dnd5eEvents.AttackChainEvent {
+	event = framedAttack(event)
+	event.Frame.Pairs = []contributions.PairFacts{{
+		From: event.AttackerID, To: event.TargetID,
+		DistanceCells: contributions.Known(distance), Sees: contributions.Known(sees),
+	}}
+	event.Frame.Held = []contributions.MemberHeld{{Member: event.TargetID, Conditions: held}}
+	return event
+}

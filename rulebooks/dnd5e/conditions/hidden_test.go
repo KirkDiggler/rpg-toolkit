@@ -11,6 +11,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -80,7 +81,7 @@ func (s *HiddenConditionTestSuite) TestRemove() {
 func (s *HiddenConditionTestSuite) runAttackChain(event dnd5eEvents.AttackChainEvent) dnd5eEvents.AttackChainEvent {
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 	attacks := dnd5eEvents.AttackChain.On(s.bus)
-	modifiedChain, err := attacks.PublishWithChain(s.ctx, framedAttack(event), attackChain)
+	modifiedChain, err := attacks.PublishWithChain(s.ctx, framedAgainst(event, 1, true, hiddenHeld), attackChain)
 	s.Require().NoError(err)
 
 	finalEvent, err := modifiedChain.Execute(s.ctx, event)
@@ -203,3 +204,6 @@ func (s *HiddenConditionTestSuite) TestFactoryRoundTrip() {
 	s.Require().True(ok)
 	s.Equal(s.characterID, hidden.MemberID)
 }
+
+// hiddenHeld is a Hidden condition as a target's held list names it.
+var hiddenHeld = contributions.HeldCondition{Ref: refs.Conditions.Hidden().String()}
