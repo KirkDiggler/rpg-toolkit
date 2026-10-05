@@ -232,7 +232,7 @@
 // with neither key decode exactly as before.
 //
 // # Holdings: Loot, Hold, and the ending on the way out
-// //
+//
 // Slice 2 (rpg-toolkit#1496, ruled on rpg-project#368) adds two verbs and
 // changes what a departure says, in the shape the package already had.
 //
