@@ -22,14 +22,15 @@ import "fmt"
 // stand-in answers without inventing an observation, except where the
 // capability has no "not observed" answer, and those say what they do:
 //
-//   - Standing/Participation: nobody is down, and every member is up,
-//     conscious, IN CONTACT and waiting for their player or driver — the
-//     session's own answer for an undowned member. That is a CLAIM, made
-//     because participation has no "unknown" and Contact false would dissolve
-//     every fight the moment it formed. PartyDefeated and KeepTurnOrder are
-//     false. It is asked only if the caller places members; never in play,
-//     because the capabilities are not persisted and every load supplies its
-//     own.
+//   - Standing: nobody is down, as an empty list — literally true of a world
+//     with nobody in it.
+//   - Participation: an empty ask gets an empty assessment. A non-empty ask
+//     REFUSES with ErrRefusingParticipation: participation has no "not
+//     observed" answer, and saying a member is conscious and in contact would
+//     be a confident answer nobody observed. The documented caller places no
+//     members, so only an empty ask reaches it; a host that places members in
+//     a compiled world supplies its own Standing. Never asked in play: the
+//     capabilities are not persisted and every load supplies its own.
 //   - Initiative: REFUSES with ErrRefusingInitiative. Initiative has no "not
 //     observed" answer, and any order this could give — the order asked is
 //     the forming members sorted by ID — would be a confident wrong answer
@@ -106,8 +107,8 @@ func (UnobservedEquipment) Conditions(members []MemberID) (map[MemberID]*Conditi
 	return out, nil
 }
 
-// nobodyDown answers standing and participation for a world being compiled;
-// see [CompileOnlySetup] for the claim Assess makes.
+// nobodyDown answers standing and participation for a world being compiled
+// with nobody in it; see [CompileOnlySetup] for why Assess refuses members.
 type nobodyDown struct{}
 
 func (nobodyDown) Standing([]MemberID) ([]MemberID, error) {
@@ -115,13 +116,10 @@ func (nobodyDown) Standing([]MemberID) ([]MemberID, error) {
 }
 
 func (nobodyDown) Assess(members []MemberID) (*ParticipationAssessment, error) {
-	out := &ParticipationAssessment{Members: make([]MemberParticipation, 0, len(members))}
-	for _, id := range members {
-		out.Members = append(out.Members, MemberParticipation{
-			Member: id, Contact: true, Conscious: true, Turn: TurnParticipationWait,
-		})
+	if len(members) > 0 {
+		return nil, fmt.Errorf("assess %d members: %w", len(members), ErrRefusingParticipation)
 	}
-	return out, nil
+	return &ParticipationAssessment{Members: []MemberParticipation{}}, nil
 }
 
 // zeroSight gives every member a range of zero cells.

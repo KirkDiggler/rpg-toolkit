@@ -452,6 +452,13 @@ var (
 	// no fight, and a session supplies its own roller at load.
 	ErrRefusingInitiative = errors.New("encounter: compile-only InitiativeRoller: a fight formed in a world being compiled, not played")
 
+	// ErrRefusingParticipation is what the Participation [CompileOnlySetup]
+	// installs returns when asked about any member: a compiled world has
+	// nobody in it, and claiming a member conscious and in contact would be an
+	// answer nobody observed. A host that places members supplies its own
+	// Standing.
+	ErrRefusingParticipation = errors.New("encounter: compile-only Participation: asked about members of a world being compiled, not played")
+
 	// ErrRefusingCheckResolver is what the CheckResolver [CompileOnlySetup]
 	// installs always returns: an authored check was rolled against a world
 	// still being compiled, not played. A host bug — a check is rolled only

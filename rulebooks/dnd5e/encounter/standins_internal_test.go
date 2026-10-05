@@ -33,13 +33,18 @@ func TestCompileOnlyStandInAnswers(t *testing.T) {
 		require.NotNil(t, down)
 		require.Empty(t, down)
 	})
-	t.Run("participation: everyone up, conscious, in contact, waiting", func(t *testing.T) {
-		got, err := nobodyDown{}.Assess(asked)
+	t.Run("participation: an empty ask is answered empty", func(t *testing.T) {
+		got, err := nobodyDown{}.Assess(nil)
 		require.NoError(t, err)
-		require.Equal(t, &ParticipationAssessment{Members: []MemberParticipation{
-			{Member: "b", Contact: true, Conscious: true, Turn: TurnParticipationWait},
-			{Member: "a", Contact: true, Conscious: true, Turn: TurnParticipationWait},
-		}}, got)
+		require.NotNil(t, got)
+		require.Empty(t, got.Members)
+		require.False(t, got.PartyDefeated)
+		require.False(t, got.KeepTurnOrder)
+	})
+	t.Run("participation: asking about members refuses", func(t *testing.T) {
+		got, err := nobodyDown{}.Assess(asked)
+		require.ErrorIs(t, err, ErrRefusingParticipation)
+		require.Nil(t, got)
 	})
 	t.Run("sight: zero for every member", func(t *testing.T) {
 		got, err := zeroSight{}.Sight(asked)

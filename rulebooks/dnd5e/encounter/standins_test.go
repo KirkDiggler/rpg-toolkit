@@ -37,11 +37,20 @@ func (s *standInsSuite) TestNewEncounterConstructsFromCompileOnlySetup() {
 	s.Require().NoError(err)
 	s.NotNil(enc)
 
-	s.Run("and with members placed, nobody is seen", func() {
-		enc, err := encounter.NewEncounter(emptyWorld(
+	s.Run("placing members without a standing of the host's own refuses", func() {
+		_, err := encounter.NewEncounter(emptyWorld(
+			encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: cellAt(0, 0)},
+		))
+		s.Require().ErrorIs(err, encounter.ErrRefusingParticipation)
+	})
+
+	s.Run("with members placed and the host's own standing, nobody is seen", func() {
+		setup := emptyWorld(
 			encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: cellAt(0, 0)},
 			encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: cellAt(2, 0)},
-		))
+		)
+		setup.Standing = everyoneStanding{}
+		enc, err := encounter.NewEncounter(setup)
 		s.Require().NoError(err)
 		out, err := enc.ObservedContext(&encounter.ViewInput{Member: alice})
 		s.Require().NoError(err)
@@ -55,6 +64,7 @@ func (s *standInsSuite) TestNewEncounterConstructsFromCompileOnlySetup() {
 			encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: cellAt(2, 0)},
 		)
 		setup.Sight = everyoneSeesTheWholeMap{}
+		setup.Standing = everyoneStanding{}
 		_, err := encounter.NewEncounter(setup)
 		s.Require().ErrorIs(err, encounter.ErrRefusingInitiative)
 	})
