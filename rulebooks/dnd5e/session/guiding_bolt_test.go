@@ -26,12 +26,19 @@ func (s *CastSuite) TestGuidingBoltPublicCastAndStoryReplay() {
 			beforeHP := s.storedSkeleton()
 			row := s.castRow(spells.GuidingBolt)
 			s.Require().True(row.Available)
+			published := len(s.stream.published)
 			out, err := s.cast(spells.GuidingBolt)
 			s.Require().NoError(err)
 			s.False(out.Posed)
 			s.Nil(out.Saved)
 			events := s.beats(session.EventCast, session.EventStruck, session.EventMissed, session.EventActivationResult)
+			sighted := ofKinds(s.stream.published[published:], session.EventSighted)
 			if hit {
+				// The light is a real change to the skeleton, so its one watcher is
+				// told to look again — once, naming only the lit target (R19).
+				s.Require().Len(sighted, 1, "one sight beat for the one change")
+				s.Equal("cleric", sighted[0].Recipient)
+				s.Equal(session.SightedBody{Changed: []string{"skeleton"}}, sighted[0].Body)
 				s.Require().Len(events, 3)
 				struck := events[1].Body.(session.StruckBody)
 				s.Equal(refs.Spells.GuidingBolt().String(), struck.Attack.Ref)
@@ -45,6 +52,7 @@ func (s *CastSuite) TestGuidingBoltPublicCastAndStoryReplay() {
 				s.Equal(refs.Conditions.GuidingBolt().String(), condition.Ref)
 				s.Equal(beforeHP-4, s.storedSkeleton())
 			} else {
+				s.Empty(sighted, "a miss lights nothing, so nobody looks again")
 				s.Require().Len(events, 2)
 				missed := events[1].Body.(session.MissedBody)
 				s.Equal(refs.Spells.GuidingBolt().String(), missed.Attack.Ref)
@@ -58,7 +66,8 @@ func (s *CastSuite) TestGuidingBoltPublicCastAndStoryReplay() {
 			beforeRolls := s.dice.next
 			story, err := s.mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "cleric", FromSeq: events[0].Seq})
 			s.Require().NoError(err)
-			s.Equal(events, ofKinds(story, session.EventCast, session.EventStruck, session.EventMissed, session.EventActivationResult), "the light on the target is a real change: its sight beat follows")
+			s.Equal(events, ofKinds(story, session.EventCast, session.EventStruck, session.EventMissed, session.EventActivationResult))
+			s.Equal(sighted, ofKinds(story, session.EventSighted), "the replay carries the same sight beats, no more")
 			s.Equal(beforeRolls, s.dice.next)
 		})
 	}
