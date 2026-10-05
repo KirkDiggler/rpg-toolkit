@@ -2,6 +2,10 @@ module github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e
 
 go 1.24.1
 
+// v0.199.1 was tagged by an out-of-order tagging run at the commit before
+// v0.199.0's change: a higher version with older content (rpg-toolkit#1941).
+retract v0.199.1
+
 require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.11.0
 	github.com/KirkDiggler/rpg-toolkit/dice v0.3.2

@@ -7,6 +7,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 )
@@ -137,6 +138,25 @@ func (v *castView) IsAllied(a, b string) (allied, known bool) {
 	}
 
 	return v.run.IsAllied(encounter.MemberID(a), encounter.MemberID(b))
+}
+
+// StanceBetween answers the authoritative stance between a and b from the
+// same fold [castView.IsHostile] and [castView.IsAllied] read
+// ([encounter.Encounter.StanceBetween]), so the three cannot disagree.
+//
+// ok is false when no stance exists: there is no run to ask, either id is not
+// a member of it, or either member belongs to no faction. It never answers
+// [contributions.StanceNone] itself — reading false as "no side" is for a
+// caller that knows both are placed members.
+func (v *castView) StanceBetween(a, b string) (contributions.Stance, bool) {
+	if v.run == nil {
+		return "", false
+	}
+	stance, ok := v.run.StanceBetween(encounter.MemberID(a), encounter.MemberID(b))
+	if !ok {
+		return "", false
+	}
+	return contributions.Stance(stance), true
 }
 
 // SeesWithin carries the encounter's live visibility/reach answer to effects.

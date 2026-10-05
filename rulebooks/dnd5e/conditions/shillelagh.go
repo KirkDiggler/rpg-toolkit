@@ -69,9 +69,6 @@ func (s *ShillelaghCondition) ConditionAddress() dnd5eEvents.ConditionAddress {
 	return dnd5eEvents.ConditionAddress{MemberID: s.MemberID, ConditionRef: s.Ref().String(), SourceID: s.MemberID}
 }
 
-// ReplacesExistingCondition makes a recast remove the previous enchantment.
-func (s *ShillelaghCondition) ReplacesExistingCondition() bool { return true }
-
 // EquipmentBinding tells the sheet which occupied hand must remain equipped.
 func (s *ShillelaghCondition) EquipmentBinding() (string, string) {
 	return s.Weapon.Slot, s.Weapon.ItemID

@@ -189,13 +189,18 @@ func (s *CastActionTestSuite) TestBlessLifeStatesAndSameAddressReplacement() {
 	}
 }
 
+// sightMemberKey prefixes the key the encounter files a member's sight
+// testimony under in persisted intel — the member kind as perception.Qualify
+// joins it, the literal session's fixtures use too.
+const sightMemberKey = "member|"
+
 func (s *CastActionTestSuite) rememberedHero(world *encounter.EncounterData, state encounter.LocationState, pos spatial.Position) {
-	holding := world.Perception.Intel.Holdings[bardID][heroID]
+	holding := world.Perception.Intel.Holdings[sightMemberKey+bardID][sightMemberKey+heroID]
 	holding.CurrentVia = nil
 	var err error
 	holding.Payload, err = encounter.EncodeSightTestimony(encounter.SightTestimony{State: state, Position: pos})
 	s.Require().NoError(err)
-	world.Perception.Intel.Holdings[bardID][heroID] = holding
+	world.Perception.Intel.Holdings[sightMemberKey+bardID][sightMemberKey+heroID] = holding
 }
 
 func (s *CastActionTestSuite) TestBlessKnownSelfDyingAndMonsterPayOnce() {

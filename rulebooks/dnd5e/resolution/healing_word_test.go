@@ -190,9 +190,9 @@ func (s *CastActionTestSuite) TestHealingWordRejectsUnseenOrOutOfRangeBeforePaym
 				// field is perception.Data, whose own Intel is the store
 				// underneath. perception.Holding collapsed CurrentVia into a
 				// bool for READERS; the persistence shape kept the list.
-				holding := world.Perception.Intel.Holdings[bardID][heroID]
+				holding := world.Perception.Intel.Holdings[sightMemberKey+bardID][sightMemberKey+heroID]
 				holding.CurrentVia = nil
-				world.Perception.Intel.Holdings[bardID][heroID] = holding
+				world.Perception.Intel.Holdings[sightMemberKey+bardID][sightMemberKey+heroID] = holding
 			case "out of range":
 				definition.Cast.RangeFeet = 5
 			case "wall":

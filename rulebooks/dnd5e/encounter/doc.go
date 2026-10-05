@@ -235,7 +235,9 @@
 // ends with [ByStance]; a member holding the letter standing in the chief's
 // region teaches the chief (presence transfer, on the same sweep occupancy
 // pierces by). Nothing stores a stance: it is derived on every question and
-// every load from the declaration plus the facts.
+// every load from the declaration plus the facts. StanceBetween is the one
+// authoritative member-pair read — IsHostile and IsAllied are its two halves —
+// and a member in no faction has no stance there, never a neutral one.
 //
 // # A pair turns BOTH WAYS, and one law nobody authors (rpg-project#493)
 //
