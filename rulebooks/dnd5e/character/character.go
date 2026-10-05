@@ -1256,20 +1256,36 @@ func (c *Character) onConditionApplied(
 		return nil
 	}
 
-	// A replacement is an application rule, not an attachment rule: loading
-	// an existing effect onto a transient bus must never remove that effect.
-	if replacement, ok := event.Condition.(interface{ ReplacesExistingCondition() bool }); ok && replacement.ReplacesExistingCondition() {
-		address := conditions.ConditionAddressOf(c.id, event.Condition)
-		for _, existing := range c.conditions {
-			if conditions.ConditionAddressOf(c.id, existing) == address {
-				if err := dnd5eEvents.ConditionRemovedTopic.On(bus).Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-					MemberID: c.id, ConditionRef: address.ConditionRef, SourceID: address.SourceID, Reason: "replaced",
-				}); err != nil {
-					return err
-				}
-				break
-			}
+	// ONE CONDITION PER IDENTITY. A condition arriving at an address this
+	// sheet already holds replaces what is there: the old one comes off
+	// through the removal topic, which detaches its subscriptions, before the
+	// new one is applied. The address is conditions.ConditionAddressOf —
+	// member, ref and source — the identity resolution's replaceSameAddress
+	// and the effect rows both use, so a different caster's Bless keeps its
+	// own instance. This is the path a directly activated ability (Hide, Help,
+	// a feature) takes with nothing in between; resolution's deliveries have
+	// already cleared the address and find nothing here.
+	//
+	// It is an application rule, not an attachment rule: loading an existing
+	// effect onto a transient bus never comes through here, so it never
+	// removes that effect.
+	//
+	// A condition that cannot name itself has no address; the door refuses it
+	// before anything is replaced or subscribed.
+	if err := requireNameable(event.Condition, c.id); err != nil {
+		return err
+	}
+	address := conditions.ConditionAddressOf(c.id, event.Condition)
+	for _, existing := range c.conditions {
+		if existing == event.Condition || conditions.ConditionAddressOf(c.id, existing) != address {
+			continue
 		}
+		if err := dnd5eEvents.ConditionRemovedTopic.On(bus).Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
+			MemberID: c.id, ConditionRef: address.ConditionRef, SourceID: address.SourceID, Reason: "replaced",
+		}); err != nil {
+			return err
+		}
+		break
 	}
 
 	// Apply the condition (subscribes to events)
