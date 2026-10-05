@@ -50,7 +50,7 @@ func (s *RecordCastSuite) TestMixedMissAndDeliveryRecordsInOrderAndSurvivesReloa
 			{Target: castSkeleton, Missed: true},
 			{Target: castFighter, Results: []encounter.ActivationResult{{
 				Kind: encounter.ResultConditionApplied, Name: "Blessed",
-				Address: &encounter.ConditionAddress{MemberID: castFighter, ConditionRef: "dnd5e:conditions:blessed", SourceID: string(castBard)},
+				Address: &encounter.ConditionAddress{MemberID: castFighter, ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:blessed", SourceID: string(castBard)}},
 			}}},
 			{Target: castBard, Missed: true},
 		},
@@ -207,7 +207,8 @@ func mockedCondition() encounter.ActivationResult {
 	return encounter.ActivationResult{
 		Kind: encounter.ResultConditionApplied,
 		Address: &encounter.ConditionAddress{
-			MemberID: castSkeleton, ConditionRef: "dnd5e:conditions:mocked",
+			MemberID:     castSkeleton,
+			ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:mocked"},
 		},
 		Name: "Mocked",
 	}
@@ -495,7 +496,8 @@ func (s *RecordCastSuite) TestAnUngatedCastAppendsNoSavedBeat() {
 			Results: []encounter.ActivationResult{{
 				Kind: encounter.ResultConditionApplied,
 				Address: &encounter.ConditionAddress{
-					MemberID: castBard, ConditionRef: "dnd5e:conditions:true-strike",
+					MemberID:     castBard,
+					ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:true-strike"},
 				},
 				Name: "True Strike",
 			}},
@@ -712,7 +714,7 @@ func (s *RecordCastSuite) TestNothingLandsWhenAnythingIsRefused() {
 			Target: castSkeleton, Save: failedSave(),
 			Results: []encounter.ActivationResult{
 				psychicDamage(),
-				{Kind: encounter.ResultConditionApplied, Address: &encounter.ConditionAddress{MemberID: "nobody", ConditionRef: "dnd5e:conditions:unknown"}, Name: "n"},
+				{Kind: encounter.ResultConditionApplied, Address: &encounter.ConditionAddress{MemberID: "nobody", ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:unknown"}}, Name: "n"},
 			},
 		}},
 	})
@@ -826,7 +828,8 @@ func (s *RecordCastSuite) TestAnOrderedThreeTargetCastRecordsOneCastAndEachTarge
 		return encounter.ActivationResult{
 			Kind: encounter.ResultConditionApplied,
 			Address: &encounter.ConditionAddress{
-				MemberID: target, ConditionRef: "dnd5e:conditions:generic-penalty", SourceID: string(castBard),
+				MemberID:     target,
+				ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:generic-penalty", SourceID: string(castBard)},
 			},
 			Name: "Generic Penalty",
 		}
@@ -963,7 +966,8 @@ func (s *RecordCastSuite) TestAMovedResultRefusesEveryFieldOutsideItsShape() {
 		"a condition address": func(r *encounter.ActivationResult) {
 			r.Target = ""
 			r.Address = &encounter.ConditionAddress{
-				MemberID: castSkeleton, ConditionRef: "dnd5e:conditions:prone",
+				MemberID:     castSkeleton,
+				ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:prone"},
 			}
 		},
 		"a damage type": func(r *encounter.ActivationResult) { r.DamageType = "thunder" },
@@ -1051,7 +1055,7 @@ func (s *RecordCastSuite) TestAttackCastRecordsRollBeforeLightAndReplays() {
 		Calculation: attackCalculation(17, 5, 0),
 	}
 	input := &encounter.RecordCastInput{Actor: castBard, Spell: spell, Targets: []encounter.CastTargetResult{{Target: castSkeleton, Attack: attack,
-		Results: []encounter.ActivationResult{{Kind: encounter.ResultConditionApplied, Name: "Guiding Bolt", Address: &encounter.ConditionAddress{MemberID: castSkeleton, ConditionRef: "dnd5e:conditions:guiding_bolt", SourceID: string(castBard)}}},
+		Results: []encounter.ActivationResult{{Kind: encounter.ResultConditionApplied, Name: "Guiding Bolt", Address: &encounter.ConditionAddress{MemberID: castSkeleton, ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:guiding_bolt", SourceID: string(castBard)}}}},
 	}}}
 	beforeSeq, err := enc.NextStorySeq()
 	s.Require().NoError(err)

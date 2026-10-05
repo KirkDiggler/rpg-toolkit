@@ -8,25 +8,6 @@ import (
 	"sort"
 )
 
-// SeenCondition is one condition a member was seen holding: its canonical
-// condition ref and its source qualifier ("" when the condition has none). It is
-// the ConditionRef and SourceID half of a [ConditionAddress] — the member is the
-// sighting's subject, so it is not repeated here.
-//
-// Bare strings, for the reason [HeldEquipment]'s item ids are bare: this module
-// cannot import the rulebook (law C1) and learns no condition ref. It carries
-// no condition payload or state either — a sighting says WHAT was held and by
-// whose hand, which is enough for a rule that answers by reference, and nothing
-// a rule would have to interpret here.
-type SeenCondition struct {
-	// Ref is the condition's canonical reference, e.g. "dnd5e:conditions:faerie_fire".
-	Ref string
-
-	// SourceID qualifies Ref when one member can hold the same condition from
-	// more than one source (the caster's id for Faerie Fire); "" when it cannot.
-	SourceID string
-}
-
 // ConditionSet is what a member was seen holding.
 //
 // A nil *ConditionSet means there was nothing to observe — no sheet behind the
@@ -35,9 +16,11 @@ type SeenCondition struct {
 // [Equipment] gives for hands: collapsing them would let an unobserved member
 // read as a member observed to be clean.
 type ConditionSet struct {
-	// Conditions are the held conditions in the order the rulebook reported
-	// them. No (Ref, SourceID) pair repeats.
-	Conditions []SeenCondition
+	// Conditions are the held conditions, each by its [ConditionKey], in the
+	// order the rulebook reported them. No key repeats, and none has an empty
+	// ConditionRef. A key carries no condition payload or state: what was held
+	// and by whose hand is enough for a rule that answers by reference.
+	Conditions []ConditionKey
 }
 
 // Conditions reports which conditions each of the given members holds. The
@@ -90,7 +73,7 @@ type EquipmentWithConditions interface {
 // It is [Encounter.equipmentNow] for conditions, with the same sorted roster,
 // the same once-per-refresh question and the same two refusals: a stranger in
 // the answer (ErrNotMember) and a member the answer skipped (ErrNoConditions).
-// It also refuses an entry with no Ref, and a (Ref, SourceID) pair repeated
+// It also refuses an entry with no ConditionRef, and a key repeated
 // within one member, as ErrInvalidData — a list a rule reads by reference must
 // not hold an address it cannot name or one it holds twice.
 //
@@ -131,19 +114,19 @@ func (e *Encounter) conditionsNow() (map[MemberID]*ConditionSet, error) {
 	return reported, nil
 }
 
-// validateConditionSet refuses an entry with no Ref and a repeated
-// (Ref, SourceID) pair. A nil set is valid: nothing to observe.
+// validateConditionSet refuses an entry with no ConditionRef and a repeated
+// key. A nil set is valid: nothing to observe.
 func validateConditionSet(set *ConditionSet) error {
 	if set == nil {
 		return nil
 	}
-	seen := make(map[SeenCondition]struct{}, len(set.Conditions))
+	seen := make(map[ConditionKey]struct{}, len(set.Conditions))
 	for _, held := range set.Conditions {
-		if held.Ref == "" {
+		if held.ConditionRef == "" {
 			return fmt.Errorf("condition with no ref")
 		}
 		if _, repeated := seen[held]; repeated {
-			return fmt.Errorf("condition %q from %q held twice", held.Ref, held.SourceID)
+			return fmt.Errorf("condition %q from %q held twice", held.ConditionRef, held.SourceID)
 		}
 		seen[held] = struct{}{}
 	}

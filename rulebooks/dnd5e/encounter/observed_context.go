@@ -73,7 +73,7 @@ type ObservedContextPair struct {
 // testimony, always with nil output on error. Returned values do not alias the
 // encounter. Reading this context does not spend, roll, publish, or mutate state.
 func (e *Encounter) ObservedContext(in *ViewInput) (*ObservedContextOutput, error) {
-	holdings, err := e.View(in)
+	holdings, err := e.storedView(in)
 	if err != nil {
 		return nil, fmt.Errorf("observed context: %w", err)
 	}

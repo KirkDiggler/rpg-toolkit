@@ -274,7 +274,7 @@ func TestCallSiteClassification(t *testing.T) {
 		Ability: ActivationIdentity{Ref: "dnd5e:combat-abilities:help", Name: "Help"},
 		Results: []ActivationResult{{
 			Kind:    ResultConditionApplied,
-			Address: &ConditionAddress{MemberID: "goblin", ConditionRef: "dnd5e:conditions:helped"},
+			Address: &ConditionAddress{MemberID: "goblin", ConditionKey: ConditionKey{ConditionRef: "dnd5e:conditions:helped"}},
 			Name:    "Helped",
 		}},
 	})

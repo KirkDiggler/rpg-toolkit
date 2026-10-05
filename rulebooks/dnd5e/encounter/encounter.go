@@ -1045,9 +1045,26 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	return e, nil
 }
 
-// View returns the member's current intel holdings.
-// Returns ErrNotMember if the member is not part of this encounter.
+// View returns the member's current intel holdings, in the form this module
+// delivers: sight testimony without the conditions it saw, which rules read
+// through [Encounter.ObservedContext] and which never leave the toolkit as a
+// payload (see [deliveredSightPayload]).
+// Returns ErrNilInput, ErrNotMember if the member is not part of this
+// encounter, or ErrInvalidData for stored testimony that cannot be delivered.
 func (e *Encounter) View(in *ViewInput) ([]perception.Holding, error) {
+	holdings, err := e.storedView(in)
+	if err != nil {
+		return nil, err
+	}
+	if holdings, err = deliveredHoldings(holdings); err != nil {
+		return nil, fmt.Errorf("view: %w", err)
+	}
+	return holdings, nil
+}
+
+// storedView is [Encounter.View] before delivery: the member's holdings as
+// stored, conditions included, for readers inside this module.
+func (e *Encounter) storedView(in *ViewInput) ([]perception.Holding, error) {
 	if in == nil {
 		return nil, fmt.Errorf("view: %w", ErrNilInput)
 	}
@@ -1879,7 +1896,11 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 	deltas := make(map[MemberID]*IntelDelta, len(perceived))
 	for observerID, delta := range perceived {
 		member, _ := subjectID(observerID, memberSubjectKind)
-		deltas[member] = memberPerceptionDelta(delta)
+		projected, err := memberPerceptionDelta(delta)
+		if err != nil {
+			return nil, err
+		}
+		deltas[member] = projected
 		corrected, err := e.correctEmptyProps(member, observationGeometry, clockReading)
 		if err != nil {
 			return nil, err
@@ -2222,6 +2243,10 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 	// Capture the exiting member's holdings (carry-forward)
 	carry, err := e.memberIntel(in.Member)
 	if err != nil {
+		return nil, fmt.Errorf("exit held_by: %w", err)
+	}
+	// Carry leaves this module, so it leaves in the delivered form.
+	if carry, err = deliveredHoldings(carry); err != nil {
 		return nil, fmt.Errorf("exit held_by: %w", err)
 	}
 

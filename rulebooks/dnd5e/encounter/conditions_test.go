@@ -10,7 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
+	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -76,8 +78,8 @@ func (handsOnly) Equipment(members []encounter.MemberID) (map[encounter.MemberID
 
 // heldSet builds an observed set. Its list is never nil, matching what decode
 // yields for an observed empty set.
-func heldSet(conditions ...encounter.SeenCondition) *encounter.ConditionSet {
-	return &encounter.ConditionSet{Conditions: append([]encounter.SeenCondition{}, conditions...)}
+func heldSet(conditions ...encounter.ConditionKey) *encounter.ConditionSet {
+	return &encounter.ConditionSet{Conditions: append([]encounter.ConditionKey{}, conditions...)}
 }
 
 type sightingConditionsSuite struct {
@@ -93,7 +95,7 @@ func TestSightingConditionsSuite(t *testing.T) {
 
 func (s *sightingConditionsSuite) SetupTest() {
 	s.table = &conditionTable{held: map[encounter.MemberID]*encounter.ConditionSet{
-		goblin: heldSet(encounter.SeenCondition{Ref: faerieFire, SourceID: clericSource}),
+		goblin: heldSet(encounter.ConditionKey{ConditionRef: faerieFire, SourceID: clericSource}),
 		bob:    heldSet(),
 	}}
 	s.sight = &sightList{fallback: unlimitedSight}
@@ -151,7 +153,7 @@ func (s *sightingConditionsSuite) recheck(id encounter.MemberID) {
 func (s *sightingConditionsSuite) TestSightingSnapshotsConditions() {
 	member, ok := s.observed(s.enc, goblin)
 	s.Require().True(ok, "alice sees the goblin")
-	s.Equal(heldSet(encounter.SeenCondition{Ref: faerieFire, SourceID: clericSource}), member.Conditions)
+	s.Equal(heldSet(encounter.ConditionKey{ConditionRef: faerieFire, SourceID: clericSource}), member.Conditions)
 }
 
 func (s *sightingConditionsSuite) TestUnknownAndObservedEmptyStayDistinct() {
@@ -184,18 +186,18 @@ func (s *sightingConditionsSuite) TestUnknownAndObservedEmptyStayDistinct() {
 		s.Empty(b.Conditions.Conditions)
 		g, ok := s.observed(loaded, goblin)
 		s.Require().True(ok)
-		s.Equal(heldSet(encounter.SeenCondition{Ref: faerieFire, SourceID: clericSource}), g.Conditions)
+		s.Equal(heldSet(encounter.ConditionKey{ConditionRef: faerieFire, SourceID: clericSource}), g.Conditions)
 	})
 }
 
 func (s *sightingConditionsSuite) TestSightingIsTestimonyNotALiveRead() {
 	// Change the truth twice without a refresh: once by replacing the answer
 	// and once by editing the very set the capability handed over.
-	s.table.held[goblin].Conditions[0].Ref = guidingBolt
-	s.table.held[bob] = heldSet(encounter.SeenCondition{Ref: guidingBolt, SourceID: clericSource})
+	s.table.held[goblin].Conditions[0].ConditionRef = guidingBolt
+	s.table.held[bob] = heldSet(encounter.ConditionKey{ConditionRef: guidingBolt, SourceID: clericSource})
 
 	g, _ := s.observed(s.enc, goblin)
-	s.Equal(heldSet(encounter.SeenCondition{Ref: faerieFire, SourceID: clericSource}), g.Conditions,
+	s.Equal(heldSet(encounter.ConditionKey{ConditionRef: faerieFire, SourceID: clericSource}), g.Conditions,
 		"the snapshot neither re-reads nor aliases the sheet")
 	b, _ := s.observed(s.enc, bob)
 	s.Require().NotNil(b.Conditions)
@@ -203,21 +205,21 @@ func (s *sightingConditionsSuite) TestSightingIsTestimonyNotALiveRead() {
 
 	s.recheck(bob)
 	b, _ = s.observed(s.enc, bob)
-	s.Equal(heldSet(encounter.SeenCondition{Ref: guidingBolt, SourceID: clericSource}), b.Conditions)
+	s.Equal(heldSet(encounter.ConditionKey{ConditionRef: guidingBolt, SourceID: clericSource}), b.Conditions)
 }
 
 func (s *sightingConditionsSuite) TestRecheckPicksUpAddedAndRemovedConditions() {
 	s.table.held[goblin] = heldSet(
-		encounter.SeenCondition{Ref: guidingBolt, SourceID: clericSource},
-		encounter.SeenCondition{Ref: "dnd5e:conditions:prone"},
+		encounter.ConditionKey{ConditionRef: guidingBolt, SourceID: clericSource},
+		encounter.ConditionKey{ConditionRef: "dnd5e:conditions:prone"},
 	)
 	s.recheck(goblin)
 
 	g, ok := s.observed(s.enc, goblin)
 	s.Require().True(ok)
 	s.Equal(heldSet(
-		encounter.SeenCondition{Ref: guidingBolt, SourceID: clericSource},
-		encounter.SeenCondition{Ref: "dnd5e:conditions:prone"},
+		encounter.ConditionKey{ConditionRef: guidingBolt, SourceID: clericSource},
+		encounter.ConditionKey{ConditionRef: "dnd5e:conditions:prone"},
 	), g.Conditions, "faerie fire gone, two added, in the order reported")
 
 	s.table.held[goblin] = heldSet()
@@ -237,24 +239,19 @@ func (s *sightingConditionsSuite) TestUnsightedMemberExposesNothing() {
 	// Alice's light shrinks to her own cell, then the goblin's truth changes.
 	s.sight.reach = map[encounter.MemberID]int{alice: 0}
 	s.recheck(alice)
-	s.table.held[goblin] = heldSet(encounter.SeenCondition{Ref: guidingBolt, SourceID: clericSource})
+	s.table.held[goblin] = heldSet(encounter.ConditionKey{ConditionRef: guidingBolt, SourceID: clericSource})
 	s.recheck(goblin)
 
 	_, ok := s.observed(s.enc, goblin)
 	s.False(ok, "an unsighted member is not in the observed context")
 
-	// What alice keeps is a memory of what she saw, never the new truth.
-	holdings, err := s.enc.View(&encounter.ViewInput{Member: alice})
-	s.Require().NoError(err)
-	for _, h := range holdings {
-		if h.Channel != perception.Sight || h.Subject != goblin {
-			continue
-		}
-		s.False(h.CurrentOn(perception.Sight))
-		memory, valid := encounter.DecodeSightTestimony(h.Payload)
-		s.Require().True(valid)
-		s.Equal(heldSet(encounter.SeenCondition{Ref: faerieFire, SourceID: clericSource}), memory.Conditions)
-	}
+	// What alice keeps, as stored, is a memory of what she saw, never the new
+	// truth.
+	h := s.enc.ToData().Perception.Intel.Holdings["member|alice"]["member|goblin"]
+	s.Empty(h.CurrentVia, "a memory, not a current sighting")
+	memory, valid := encounter.DecodeSightTestimony(h.Payload)
+	s.Require().True(valid)
+	s.Equal(heldSet(encounter.ConditionKey{ConditionRef: faerieFire, SourceID: clericSource}), memory.Conditions)
 
 	// Bob still sees the goblin, and sees the new truth.
 	bobView, err := s.enc.ObservedContext(&encounter.ViewInput{Member: bob})
@@ -263,7 +260,7 @@ func (s *sightingConditionsSuite) TestUnsightedMemberExposesNothing() {
 	for _, m := range bobView.Members {
 		if m.ID == goblin {
 			found = true
-			s.Equal(heldSet(encounter.SeenCondition{Ref: guidingBolt, SourceID: clericSource}), m.Conditions)
+			s.Equal(heldSet(encounter.ConditionKey{ConditionRef: guidingBolt, SourceID: clericSource}), m.Conditions)
 		}
 	}
 	s.True(found)
@@ -312,10 +309,10 @@ func (s *sightingConditionsSuite) TestConditionsNowRefusesStrangerAndSkippedMemb
 
 func (s *sightingConditionsSuite) TestConditionsNowRefusesMalformedEntries() {
 	cases := map[string]*encounter.ConditionSet{
-		"empty ref": heldSet(encounter.SeenCondition{SourceID: clericSource}),
+		"empty ref": heldSet(encounter.ConditionKey{SourceID: clericSource}),
 		"repeated": heldSet(
-			encounter.SeenCondition{Ref: faerieFire, SourceID: clericSource},
-			encounter.SeenCondition{Ref: faerieFire, SourceID: clericSource},
+			encounter.ConditionKey{ConditionRef: faerieFire, SourceID: clericSource},
+			encounter.ConditionKey{ConditionRef: faerieFire, SourceID: clericSource},
 		),
 	}
 	for name, set := range cases {
@@ -327,8 +324,8 @@ func (s *sightingConditionsSuite) TestConditionsNowRefusesMalformedEntries() {
 	}
 	s.Run("same ref from two sources is two conditions", func() {
 		table := &conditionTable{held: map[encounter.MemberID]*encounter.ConditionSet{goblin: heldSet(
-			encounter.SeenCondition{Ref: faerieFire, SourceID: clericSource},
-			encounter.SeenCondition{Ref: faerieFire, SourceID: "druid"},
+			encounter.ConditionKey{ConditionRef: faerieFire, SourceID: clericSource},
+			encounter.ConditionKey{ConditionRef: faerieFire, SourceID: "druid"},
 		)}}
 		_, err := encounter.NewEncounter(s.setup(table))
 		s.Require().NoError(err)
@@ -340,8 +337,8 @@ func TestSightTestimonyConditionsRoundTrip(t *testing.T) {
 		"not observed": nil,
 		"seen none":    heldSet(),
 		"seen two": heldSet(
-			encounter.SeenCondition{Ref: guidingBolt, SourceID: clericSource},
-			encounter.SeenCondition{Ref: faerieFire},
+			encounter.ConditionKey{ConditionRef: guidingBolt, SourceID: clericSource},
+			encounter.ConditionKey{ConditionRef: faerieFire},
 		),
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -359,7 +356,7 @@ func TestSightTestimonyConditionsRoundTrip(t *testing.T) {
 			case len(set.Conditions) == 0:
 				require.JSONEq(t, `[]`, string(raw), "seen none encodes an empty list")
 			default:
-				require.JSONEq(t, `[{"ref":"`+guidingBolt+`","source_id":"cleric"},{"ref":"`+faerieFire+`"}]`, string(raw))
+				require.JSONEq(t, `[{"condition_ref":"`+guidingBolt+`","source_id":"cleric"},{"condition_ref":"`+faerieFire+`","source_id":""}]`, string(raw))
 			}
 
 			got, ok := encounter.DecodeSightTestimony(payload)
@@ -388,12 +385,12 @@ func TestSightTestimonyRefusesConditionsOnUnknownAndLegacy(t *testing.T) {
 
 func TestDecodeRefusesMalformedConditions(t *testing.T) {
 	for name, conditions := range map[string]string{
-		"empty ref":     `[{"ref":"","source_id":"cleric"}]`,
+		"empty ref":     `[{"condition_ref":"","source_id":"cleric"}]`,
 		"missing ref":   `[{"source_id":"cleric"}]`,
-		"repeated":      `[{"ref":"a","source_id":"x"},{"ref":"a","source_id":"x"}]`,
+		"repeated":      `[{"condition_ref":"a","source_id":"x"},{"condition_ref":"a","source_id":"x"}]`,
 		"null":          `null`,
-		"unknown field": `[{"ref":"a","state":{}}]`,
-		"not a list":    `{"ref":"a"}`,
+		"unknown field": `[{"condition_ref":"a","state":{}}]`,
+		"not a list":    `{"condition_ref":"a"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, ok := encounter.DecodeSightTestimony([]byte(`{"state":"known","x":1,"y":2,"conditions":` + conditions + `}`))
@@ -402,7 +399,117 @@ func TestDecodeRefusesMalformedConditions(t *testing.T) {
 	}
 
 	_, err := encounter.EncodeSightTestimony(encounter.SightTestimony{
-		State: encounter.LocationKnown, Conditions: heldSet(encounter.SeenCondition{SourceID: "x"}),
+		State: encounter.LocationKnown, Conditions: heldSet(encounter.ConditionKey{SourceID: "x"}),
 	})
 	require.Error(t, err, "encode validates the same way")
+}
+
+// storedSightOf decodes the testimony observer holds about subject as it is
+// STORED — the persisted form, conditions included.
+func (s *sightingConditionsSuite) storedSightOf(enc *encounter.Encounter, observer, subject encounter.MemberID) encounter.SightTestimony {
+	h, ok := enc.ToData().Perception.Intel.Holdings[core.EntityID("member|"+observer)][intel.Subject("member|"+subject)]
+	s.Require().True(ok, "%s holds no stored sighting of %s", observer, subject)
+	got, valid := encounter.DecodeSightTestimony(h.Payload)
+	s.Require().True(valid)
+	return got
+}
+
+// viewPayloadOf is the sight payload View delivers to observer about subject.
+func (s *sightingConditionsSuite) viewPayloadOf(enc *encounter.Encounter, observer, subject encounter.MemberID) []byte {
+	holdings, err := enc.View(&encounter.ViewInput{Member: observer})
+	s.Require().NoError(err)
+	for _, h := range holdings {
+		if h.Channel == perception.Sight && h.Subject == subject {
+			return h.Payload
+		}
+	}
+	s.FailNow("no delivered sighting", "%s of %s", observer, subject)
+	return nil
+}
+
+// requireNoConditionsKey fails when a delivered payload names conditions at
+// all — an empty list is a leak of "seen holding none" as much as a full one.
+func (s *sightingConditionsSuite) requireNoConditionsKey(payload []byte) {
+	var fields map[string]json.RawMessage
+	s.Require().NoError(json.Unmarshal(payload, &fields))
+	s.NotContains(fields, "conditions", "a delivered payload never carries seen conditions: %s", payload)
+}
+
+func (s *sightingConditionsSuite) TestDeliveredPayloadsCarryNoConditions() {
+	s.Run("View", func() {
+		s.requireNoConditionsKey(s.viewPayloadOf(s.enc, alice, goblin))
+		s.requireNoConditionsKey(s.viewPayloadOf(s.enc, alice, bob))
+		s.NotNil(s.storedSightOf(s.enc, alice, goblin).Conditions, "while the stored testimony keeps them")
+	})
+	s.Run("first contact", func() {
+		joined, err := s.enc.Join(&encounter.JoinInput{Member: "carol", Kind: encounter.KindPlayer, Cell: cellAt(3, 0)})
+		s.Require().NoError(err)
+		delta := joined.IntelDeltas["carol"]
+		s.Require().NotNil(delta)
+		found := false
+		for _, presence := range delta.FirstContact {
+			s.requireNoConditionsKey(presence.Payload)
+			if presence.ID == goblin {
+				found = true
+			}
+		}
+		s.True(found, "carol's first contact includes the goblin")
+		s.Equal(heldSet(encounter.ConditionKey{ConditionRef: faerieFire, SourceID: clericSource}),
+			s.storedSightOf(s.enc, "carol", goblin).Conditions)
+	})
+	s.Run("exit carry", func() {
+		exited, err := s.enc.Exit(&encounter.ExitInput{Member: alice})
+		s.Require().NoError(err)
+		found := false
+		for _, h := range exited.Carry {
+			if h.Channel != perception.Sight {
+				continue
+			}
+			s.requireNoConditionsKey(h.Payload)
+			found = found || h.Subject == goblin
+		}
+		s.True(found, "alice carries her sighting of the goblin out")
+	})
+	s.Run("the delivered bytes are the testimony without conditions", func() {
+		stored := s.storedSightOf(s.enc, alice, goblin)
+		stored.Conditions = nil
+		want, err := encounter.EncodeSightTestimony(stored)
+		s.Require().NoError(err)
+		s.Equal(string(want), string(s.viewPayloadOf(s.enc, alice, goblin)))
+	})
+}
+
+// TestAConditionsOnlyChangeStillTellsWatchers is the R19 consequence of keeping
+// conditions off the delivered payload: a Recheck after only a condition
+// changed delivers byte-identical sighting bytes, and the watcher is still told
+// "changed" — the beat is driven by the declaration, not by the payload diff —
+// while the stored testimony and ObservedContext carry the new set.
+func (s *sightingConditionsSuite) TestAConditionsOnlyChangeStillTellsWatchers() {
+	before := s.viewPayloadOf(s.enc, alice, goblin)
+	story, err := s.enc.Story(&encounter.StoryInput{Audience: alice})
+	s.Require().NoError(err)
+	seen := len(story)
+
+	s.table.held[goblin] = heldSet(encounter.ConditionKey{ConditionRef: guidingBolt, SourceID: clericSource})
+	s.recheck(goblin)
+
+	s.Equal(string(before), string(s.viewPayloadOf(s.enc, alice, goblin)), "delivery cannot see the change")
+	g, _ := s.observed(s.enc, goblin)
+	s.Equal(heldSet(encounter.ConditionKey{ConditionRef: guidingBolt, SourceID: clericSource}), g.Conditions)
+
+	story, err = s.enc.Story(&encounter.StoryInput{Audience: alice})
+	s.Require().NoError(err)
+	var changed []string
+	for _, entry := range story[seen:] {
+		var beat struct {
+			Beat    string   `json:"beat"`
+			Changed []string `json:"changed"`
+		}
+		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		if beat.Beat == encounter.BeatSighted {
+			changed = append(changed, beat.Changed...)
+			s.NotContains(string(entry.Payload), "conditions", "the beat names who, never what")
+		}
+	}
+	s.Equal([]string{string(goblin)}, changed)
 }

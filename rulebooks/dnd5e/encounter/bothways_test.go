@@ -517,8 +517,8 @@ func (s *BothWaysSuite) TestAWorldNPCIsNotATarget() {
 				Results: []encounter.ActivationResult{{
 					Kind: encounter.ResultConditionApplied, Name: "Unconscious",
 					Address: &encounter.ConditionAddress{
-						MemberID: bwVendor, ConditionRef: "dnd5e:conditions:unconscious",
-						SourceID: string(alice),
+						MemberID:     bwVendor,
+						ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:unconscious", SourceID: string(alice)},
 					},
 				}},
 			}},
@@ -868,8 +868,8 @@ func (s *BothWaysSuite) TestAGatelessConditionProvokesAndAGatelessKindnessDoesNo
 				Results: []encounter.ActivationResult{{
 					Kind: encounter.ResultConditionApplied, Name: "Unconscious",
 					Address: &encounter.ConditionAddress{
-						MemberID: bwScout, ConditionRef: "dnd5e:conditions:unconscious",
-						SourceID: string(alice),
+						MemberID:     bwScout,
+						ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:unconscious", SourceID: string(alice)},
 					},
 				}},
 			}},
@@ -888,8 +888,8 @@ func (s *BothWaysSuite) TestAGatelessConditionProvokesAndAGatelessKindnessDoesNo
 				Results: []encounter.ActivationResult{{
 					Kind: encounter.ResultConditionRemoved, Name: "Poisoned", Reason: "dispelled",
 					Address: &encounter.ConditionAddress{
-						MemberID: bwScout, ConditionRef: "dnd5e:conditions:poisoned",
-						SourceID: string(alice),
+						MemberID:     bwScout,
+						ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:poisoned", SourceID: string(alice)},
 					},
 				}},
 			}},

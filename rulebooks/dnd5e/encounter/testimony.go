@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -84,17 +85,16 @@ type SightTestimony struct {
 	// filtered for perceivability (rpg-project#520 R16). Nil means conditions
 	// were not observed, which is not the same as an empty set: seen holding
 	// none. See [ConditionSet].
+	//
+	// STORED, NEVER DELIVERED. It persists with the testimony and rules read
+	// it through [Encounter.ObservedContext]; every payload this module hands
+	// out leaves without it (see [deliveredSightPayload]).
 	Conditions *ConditionSet
 }
 
 type handsWire struct {
 	MainHand string `json:"main_hand,omitempty"`
 	OffHand  string `json:"off_hand,omitempty"`
-}
-
-type conditionWire struct {
-	Ref      string `json:"ref"`
-	SourceID string `json:"source_id,omitempty"`
 }
 
 type sightWire struct {
@@ -106,7 +106,7 @@ type sightWire struct {
 	Equipment      *handsWire `json:"equipment,omitempty"`
 	// Conditions is a pointer to a slice so that nil (not observed) omits the
 	// key while an observed empty set encodes [].
-	Conditions *[]conditionWire `json:"conditions,omitempty"`
+	Conditions *[]ConditionKey `json:"conditions,omitempty"`
 }
 
 // sightPayloadFields is the complete set of keys canonical sight testimony may
@@ -136,10 +136,7 @@ func EncodeSightTestimony(testimony SightTestimony) ([]byte, error) {
 			if err := validateConditionSet(testimony.Conditions); err != nil {
 				return nil, fmt.Errorf("invalid conditions: %w", err)
 			}
-			held := make([]conditionWire, 0, len(testimony.Conditions.Conditions))
-			for _, c := range testimony.Conditions.Conditions {
-				held = append(held, conditionWire(c))
-			}
+			held := append(make([]ConditionKey, 0, len(testimony.Conditions.Conditions)), testimony.Conditions.Conditions...)
 			wire.Conditions = &held
 		}
 		return json.Marshal(wire)
@@ -163,6 +160,66 @@ func EncodeSightTestimony(testimony SightTestimony) ([]byte, error) {
 	default:
 		return nil, fmt.Errorf("unsupported location state %q", testimony.State)
 	}
+}
+
+// deliveredSightPayload returns one stored sight payload as this module hands
+// it OUT — through [Encounter.View], [IntelDelta.FirstContact] and
+// [ExitOutput.Carry] — which is the stored testimony with its Conditions
+// removed.
+//
+// # Stored and delivered are two encodings on purpose
+//
+// The stored form (intel, [EncounterData], the minds' [TurnView.Holdings] and
+// [Encounter.ObservedContext]) carries every condition a sighting saw, because
+// rules read them there (rpg-project#520 R16). The delivered form is what a
+// host relays to a client as an opaque payload, and a client learns what it
+// holds only as typed effect rows the rules compiled — never as raw condition
+// refs it would have to recognise by name. So the conditions stop at this
+// module's edge, and the only place that edge exists is here: a host cannot
+// strip what it was never told was there.
+//
+// A payload whose testimony carries no conditions is returned unchanged,
+// byte for byte, so a delivered payload is exactly what it was before
+// sightings learned conditions. A payload that does not decode is returned
+// unchanged too, unless it claims a conditions key — that one is refused
+// (ErrInvalidData) rather than relayed, because passing it on is the leak
+// this function exists to prevent.
+func deliveredSightPayload(payload []byte) ([]byte, error) {
+	testimony, ok := DecodeSightTestimony(payload)
+	if !ok {
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(payload, &fields) == nil {
+			if _, claims := fields["conditions"]; claims {
+				return nil, fmt.Errorf("undecodable sight testimony carries conditions: %w", ErrInvalidData)
+			}
+		}
+		return append([]byte(nil), payload...), nil
+	}
+	if testimony.Conditions == nil {
+		return append([]byte(nil), payload...), nil
+	}
+	testimony.Conditions = nil
+	out, err := EncodeSightTestimony(testimony)
+	if err != nil {
+		return nil, fmt.Errorf("deliver sight testimony: %w", err)
+	}
+	return out, nil
+}
+
+// deliveredHoldings returns holdings with every sight payload in its delivered
+// form; see [deliveredSightPayload]. Other channels pass through.
+func deliveredHoldings(holdings []perception.Holding) ([]perception.Holding, error) {
+	for i := range holdings {
+		if holdings[i].Channel != perception.Sight {
+			continue
+		}
+		payload, err := deliveredSightPayload(holdings[i].Payload)
+		if err != nil {
+			return nil, fmt.Errorf("sighting of %q: %w", holdings[i].Subject, err)
+		}
+		holdings[i].Payload = payload
+	}
+	return holdings, nil
 }
 
 // DecodeSightTestimony decodes canonical tagged sight testimony and the legacy
@@ -217,10 +274,7 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 	}
 	var held *ConditionSet
 	if wire.Conditions != nil {
-		held = &ConditionSet{Conditions: make([]SeenCondition, 0, len(*wire.Conditions))}
-		for _, c := range *wire.Conditions {
-			held.Conditions = append(held.Conditions, SeenCondition(c))
-		}
+		held = &ConditionSet{Conditions: append(make([]ConditionKey, 0, len(*wire.Conditions)), *wire.Conditions...)}
 		if validateConditionSet(held) != nil {
 			return SightTestimony{}, false
 		}
