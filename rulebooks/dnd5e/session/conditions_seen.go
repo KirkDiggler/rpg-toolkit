@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -113,4 +115,93 @@ func seenConditions(member string, raw []json.RawMessage) *encounter.ConditionSe
 		})
 	}
 	return set
+}
+
+// conditionKey is one member's holdings as a comparable string: its sorted
+// addresses, or a marker no address can spell when nothing was observed.
+func conditionKey(set *encounter.ConditionSet) string {
+	if set == nil {
+		return "\x00unobserved"
+	}
+	parts := make([]string, 0, len(set.Conditions))
+	for _, held := range set.Conditions {
+		parts = append(parts, held.Ref+"\x1f"+held.SourceID)
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, "\x1e")
+}
+
+// recheckChangedConditions is condition freshness (rpg-project#520, R19): a
+// change to a member's conditions refreshes the sightings of that member at
+// commit, the same way an equipment change does through [Manager.Recheck],
+// because a row must not outlive the condition it describes.
+//
+// # It compares what is SEEN with what is TRUE
+//
+// After every settlement that can write a sheet, it reads what each member
+// holds now and every observer's current sight of them
+// ([encounter.Encounter.ObservedContext] — testimony, never a live read), and
+// asks the composition to re-look at exactly the members some current
+// sighting describes differently, in sorted order. A sight refresh earlier in
+// the verb already wrote the truth into what it refreshed, so only sightings
+// left stale are re-looked; a verb that changes no condition finds none and
+// adds no beat. Comparing with the sightings rather than with a snapshot taken
+// when the verb opened costs no sheet read before the verb has acted, which
+// the verbs' own load-order laws forbid.
+//
+// A sighting that observed no conditions (testimony from before sightings
+// carried them) is unknown rather than stale: it yields no held rows, and it
+// is refreshed by the next ordinary sight refresh rather than by a beat to
+// every watcher at once. A member nobody currently sees has no sighting to
+// refresh. A finished encounter has no one left to look.
+//
+// Accepted cost: every condition change a watcher can see sends that watcher a
+// sighting "changed" beat naming the member — never the condition.
+func (m *Manager) recheckChangedConditions(scope *writeScope) error {
+	roster, err := scope.enc.Members()
+	if err != nil {
+		return fmt.Errorf("condition freshness: %w", translate(err))
+	}
+	ids := make([]encounter.MemberID, 0, len(roster))
+	for _, member := range roster {
+		ids = append(ids, member.ID)
+	}
+	truth, err := equipmentBeside(scope.standing).Conditions(ids)
+	if err != nil {
+		return err
+	}
+
+	stale := make(map[encounter.MemberID]bool)
+	for _, observer := range roster {
+		if observer.Kind == encounter.KindWorld {
+			continue
+		}
+		observed, err := scope.enc.ObservedContext(&encounter.ViewInput{Member: observer.ID})
+		if err != nil {
+			return fmt.Errorf("condition freshness for %q: %w", observer.ID, translate(err))
+		}
+		for _, seen := range observed.Members {
+			if seen.Conditions == nil || stale[seen.ID] {
+				continue
+			}
+			if conditionKey(seen.Conditions) != conditionKey(truth[seen.ID]) {
+				stale[seen.ID] = true
+			}
+		}
+	}
+	if len(stale) == 0 {
+		return nil
+	}
+	changed := make([]encounter.MemberID, 0, len(stale))
+	for id := range stale {
+		changed = append(changed, id)
+	}
+	sort.Slice(changed, func(i, j int) bool { return changed[i] < changed[j] })
+	if _, err := scope.enc.Recheck(&encounter.RecheckInput{Members: changed}); err != nil {
+		if errors.Is(err, encounter.ErrClosed) {
+			return nil
+		}
+		return fmt.Errorf("condition freshness: %w", translate(err))
+	}
+	return nil
 }

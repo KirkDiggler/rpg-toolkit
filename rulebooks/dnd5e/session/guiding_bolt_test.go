@@ -58,7 +58,7 @@ func (s *CastSuite) TestGuidingBoltPublicCastAndStoryReplay() {
 			beforeRolls := s.dice.next
 			story, err := s.mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "cleric", FromSeq: events[0].Seq})
 			s.Require().NoError(err)
-			s.Equal(events, story)
+			s.Equal(events, ofKinds(story, session.EventCast, session.EventStruck, session.EventMissed, session.EventActivationResult))
 			s.Equal(beforeRolls, s.dice.next)
 		})
 	}

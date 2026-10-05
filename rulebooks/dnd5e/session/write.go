@@ -1659,6 +1659,13 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 		return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", err)
 	}
 
+	// Freshness (R19), after every settlement that can write a sheet and
+	// before numbering, so the re-look's beats are this act's own.
+	if err := m.recheckChangedConditions(scope); err != nil {
+		report := SaveReport{Written: append([]string(nil), scope.written...)}
+		return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", err)
+	}
+
 	// Number every member's stream and BUILD the delivery batch BEFORE the
 	// FINAL save-point ToData, from a pure WorldView and the live Story — the
 	// ordering retention-at-the-storage-boundary makes load-bearing. Join's

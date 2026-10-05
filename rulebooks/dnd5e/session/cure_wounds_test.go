@@ -171,7 +171,7 @@ func (s *CastSuite) TestCureWoundsUntypedMonsterSelectionHealingAndReload() {
 			s.Require().NoError(err)
 			story, err := s.mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "cleric", FromSeq: beats[0].Seq})
 			s.Require().NoError(err)
-			s.Equal(beats, story, "reload replays the result without another roll")
+			s.Equal(beats, ofKinds(story, session.EventCast, session.EventActivationResult), "reload replays the result without another roll")
 			s.Equal(9, s.storedSkeleton())
 			s.Equal(1, s.characters.byID["cleric"].Resources[resources.SpellSlotLevel1].Current)
 			for _, npc := range s.sessions.byID["sess"].NPCs {

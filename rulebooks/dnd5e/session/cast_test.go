@@ -730,6 +730,24 @@ func (s *CastSuite) beats(kinds ...session.EventKind) []session.Event {
 	return out
 }
 
+// ofKinds keeps the events of the given kinds, in order. A replayed story also
+// carries the act's sight beats — a condition the act seated is re-looked at
+// commit (rpg-project#520, R19) — so a replay is compared kind for kind with
+// the beats a test selected.
+func ofKinds(events []session.Event, kinds ...session.EventKind) []session.Event {
+	wanted := make(map[session.EventKind]bool, len(kinds))
+	for _, kind := range kinds {
+		wanted[kind] = true
+	}
+	out := make([]session.Event, 0, len(events))
+	for _, event := range events {
+		if wanted[event.Kind] {
+			out = append(out, event)
+		}
+	}
+	return out
+}
+
 // TestTrueStrikeIsACastBeatAndAConditionOnTheCaster is the gateless half of the
 // door: no roll, no save beat, and the condition lands on the BARD rather than
 // on the creature it was pointed at.
