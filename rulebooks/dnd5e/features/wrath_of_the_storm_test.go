@@ -11,6 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	dndCombat "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dndEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -63,6 +64,9 @@ func (c *wrathTestCast) Member(id string) (dndCombat.Member, bool) {
 func (c *wrathTestCast) Members() []string                  { return []string{"owner", "attacker"} }
 func (c *wrathTestCast) IsHostile(_, _ string) (bool, bool) { return true, true }
 func (c *wrathTestCast) IsAllied(_, _ string) (bool, bool)  { return false, true }
+func (c *wrathTestCast) StanceBetween(_, _ string) (contributions.Stance, bool) {
+	return contributions.StanceHostile, true
+}
 func (c *wrathTestCast) ResourceStatus(string, coreResources.ResourceKey) (int, int, bool) {
 	return 1, 1, true
 }

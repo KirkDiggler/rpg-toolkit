@@ -97,6 +97,19 @@ func (s *sneakAttackRuleSuite) TestSneakAttackRuleNeutralAdjacentDoesNotQualify(
 	s.Equal("No advantage and no other enemy of the target within 5 feet", answer.Decision.Reason)
 }
 
+func (s *sneakAttackRuleSuite) TestSneakAttackRuleNoSideAdjacentDoesNotQualify() {
+	complete := rogueFrame(true)
+	complete.Pairs = []contributions.PairFacts{knownPair("goblin", "villager", 1.0, contributions.StanceNone)}
+	answer := s.assess(rogueRule(), complete)
+	s.Equal(contributions.DoesNotApply, answer.Decision.Applicability,
+		"a member with no side is a known pair and never another enemy of the target")
+	s.Equal("No advantage and no other enemy of the target within 5 feet", answer.Decision.Reason)
+
+	incomplete := rogueFrame(false)
+	incomplete.Pairs = complete.Pairs
+	s.Equal(contributions.Depends, s.assess(rogueRule(), incomplete).Decision.Applicability)
+}
+
 func (s *sneakAttackRuleSuite) TestSneakAttackRuleIgnoresActorAdjacency() {
 	frame := rogueFrame(true)
 	frame.Pairs = []contributions.PairFacts{knownPair("goblin", "rogue", 1.0, contributions.StanceHostile)}

@@ -7,6 +7,7 @@ import (
 	"context"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 )
 
 // Cast is what an effect may ask about the OTHER participants in the
@@ -99,6 +100,15 @@ type Cast interface {
 	//
 	// known is false when the question cannot be answered at all.
 	IsAllied(a, b string) (allied, known bool)
+
+	// StanceBetween is the authoritative stance between a and b on the
+	// disposition graph, right now: hostile, neutral or allied, agreeing with
+	// IsHostile and IsAllied. ok is false when no stance exists — either is
+	// not a member, or either belongs to no faction. A caller that knows both
+	// are placed members reads that as contributions.StanceNone (no side),
+	// never as neutral and never as unknown. It never returns StanceNone
+	// itself.
+	StanceBetween(a, b string) (stance contributions.Stance, ok bool)
 }
 
 // castContextKey is the key type for storing a Cast in context.Context.

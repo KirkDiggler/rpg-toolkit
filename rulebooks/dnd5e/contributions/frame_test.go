@@ -66,6 +66,18 @@ func (s *frameSuite) TestFrameValidateRejectsZeroFrameDuplicatePairsAndNaN() {
 	reverse.Pairs = append(reverse.Pairs, contributions.PairFacts{From: "fighter", To: "goblin"})
 	s.NoError(reverse.Validate(), "the reverse direction is a distinct pair")
 
+	for _, stance := range []contributions.Stance{
+		contributions.StanceHostile, contributions.StanceNeutral,
+		contributions.StanceAllied, contributions.StanceNone,
+	} {
+		frame := validFrame()
+		frame.Pairs[0].Stance = contributions.Known(stance)
+		s.NoError(frame.Validate(), "known stance %q is valid", stance)
+	}
+	emptyStance := validFrame()
+	emptyStance.Pairs[0].Stance = contributions.Known(contributions.Stance(""))
+	s.Error(emptyStance.Validate(), "a known empty stance is not one of the four")
+
 	unknownTarget := validFrame()
 	unknownTarget.Target = contributions.Unknown[string]()
 	s.NoError(unknownTarget.Validate(), "an unknown target is a valid frame")

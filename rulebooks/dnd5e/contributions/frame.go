@@ -12,7 +12,8 @@ import (
 )
 
 // Stance is the relationship between two members on the disposition graph at
-// the moment of asking. It is not a boolean and it is not cached.
+// the moment of asking: hostile, neutral, allied, or no side. It is not a
+// boolean and it is not cached.
 type Stance string
 
 const (
@@ -22,6 +23,11 @@ const (
 	StanceNeutral Stance = "neutral"
 	// StanceAllied means the two members are allies.
 	StanceAllied Stance = "allied"
+	// StanceNone means the two members have no side toward each other: one
+	// of them belongs to no faction. It is a known fact and is not hostile.
+	// It is never reported as neutral — neutral is a real disposition that
+	// can turn hostile or allied — and it is distinct from an unknown Fact.
+	StanceNone Stance = "none"
 )
 
 // ActionFacts are the action's effective facts, settled from the assembled
@@ -83,7 +89,7 @@ func (f Frame) Validate() error {
 		}
 		if stance, known := pair.Stance.Get(); known {
 			switch stance {
-			case StanceHostile, StanceNeutral, StanceAllied:
+			case StanceHostile, StanceNeutral, StanceAllied, StanceNone:
 			default:
 				return fmt.Errorf("unknown stance %q for frame pair %q to %q", stance, pair.From, pair.To)
 			}

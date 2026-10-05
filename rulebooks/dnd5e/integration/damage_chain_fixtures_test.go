@@ -70,15 +70,10 @@ func framed(ctx context.Context, event *dnd5eEvents.DamageChainEvent) *dnd5eEven
 				DistanceCells: contributions.Known(room.GetGrid().Distance(targetPos, pos)),
 			}
 			if hasCast {
-				hostile, hostileKnown := cast.IsHostile(event.TargetID, id)
-				allied, alliedKnown := cast.IsAllied(event.TargetID, id)
-				switch {
-				case hostileKnown && hostile:
-					pair.Stance = contributions.Known(contributions.StanceHostile)
-				case alliedKnown && allied:
-					pair.Stance = contributions.Known(contributions.StanceAllied)
-				case hostileKnown && alliedKnown:
-					pair.Stance = contributions.Known(contributions.StanceNeutral)
+				// Two placed members with no stance have no side, never neutral.
+				pair.Stance = contributions.Known(contributions.StanceNone)
+				if stance, ok := cast.StanceBetween(event.TargetID, id); ok {
+					pair.Stance = contributions.Known(stance)
 				}
 			}
 			frame.Pairs = append(frame.Pairs, pair)
