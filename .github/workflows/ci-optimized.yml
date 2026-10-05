@@ -233,8 +233,18 @@ jobs:
     - name: Every ADR is summarised in docs/adr/DECISIONS.md
       run: ./scripts/check-decisions.sh
 
+  # The tagger mints the releases every consumer pins, and a wrong tag cannot
+  # be taken back once the Go proxy caches it. Its cases run against
+  # throwaway repositories. Cheap, no Go toolchain needed.
+  tagger:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: The module tagger mints only where history allows
+      run: ./scripts/auto-tag-modules.test.sh
+
   ci-status:
-    needs: [changes, test-changed, test-all, docs-decisions]
+    needs: [changes, test-changed, test-all, docs-decisions, tagger]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -245,6 +255,7 @@ jobs:
         echo "Changed modules test: ${{ needs.test-changed.result }}"
         echo "All modules test: ${{ needs.test-all.result }}"
         echo "ADR digest: ${{ needs.docs-decisions.result }}"
+        echo "Module tagger: ${{ needs.tagger.result }}"
         
         # Fail if any required job failed
         if [[ "${{ needs.changes.result }}" == "failure" ]]; then
@@ -266,6 +277,11 @@ jobs:
 
         if [[ "${{ needs.docs-decisions.result }}" == "failure" ]]; then
           echo "❌ An ADR is missing from docs/adr/DECISIONS.md"
+          exit 1
+        fi
+
+        if [[ "${{ needs.tagger.result }}" == "failure" ]]; then
+          echo "❌ The module tagger's cases failed"
           exit 1
         fi
         
