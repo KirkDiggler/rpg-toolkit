@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
 // frame.go is where resolution builds the frame a rule answers from, once per
@@ -24,8 +25,8 @@ import (
 // the same rule function, and only the facts differ.
 
 // attackActionFacts is the one derivation of an attack's action facts, shared
-// by both frames so the tooltip and the swing cannot read the assembled
-// profile two ways.
+// by the information frame, the attack-roll frame and the post-fold frame so
+// the tooltip and the swing cannot read the assembled profile two ways.
 //
 // Every fact comes from the ASSEMBLED profile — the ability and dice the
 // swing will use were settled before any rule is asked (R10), so a monk's
@@ -34,11 +35,21 @@ import (
 // matches what a damage-chain rule finds as the primary weapon pool: a weapon
 // attack with exactly one pool that adds the attack ability modifier.
 // Advantage is left unknown: it is a fold result, not an assembly fact, and
-// only the execution frame has a fold to read it from.
-func attackActionFacts(p *combatActions.AttackProfile) contributions.ActionFacts {
+// only the post-fold frame has a fold to read it from.
+//
+// The weapon facts read the profile's weapon context. An attack with no
+// weapon context — a spell attack, or a stat-block attack that names no
+// weapon — knows every weapon fact as its zero value. A weapon context whose
+// ref is missing leaves the weapon and its catalogue properties unknown, and
+// so does a ref the weapons catalogue does not hold: an unreadable weapon is
+// never read as a plain one. Opportunity is the caller's: the strike knows
+// whether it is an opportunity attack, and the profile does not.
+func attackActionFacts(p *combatActions.AttackProfile, opportunity bool) contributions.ActionFacts {
 	var ability abilities.Ability
+	modifier := 0
 	if p.Ability != nil {
 		ability = p.Ability.Ability
+		modifier = p.Ability.Modifier
 	}
 	primaryPools := 0
 	for i := range p.Damage {
@@ -47,13 +58,40 @@ func attackActionFacts(p *combatActions.AttackProfile) contributions.ActionFacts
 		}
 	}
 
-	return contributions.ActionFacts{
-		Roll:       contributions.Known(contributions.RollKindAttack),
-		Ability:    contributions.Known(ability),
-		Melee:      contributions.Known(p.Delivery.IsMelee()),
-		WeaponPool: contributions.Known(p.Category == combatActions.AttackCategoryWeapon && primaryPools == 1),
-		Advantage:  contributions.Unknown[bool](),
+	facts := contributions.ActionFacts{
+		Roll:            contributions.Known(contributions.RollKindAttack),
+		Ability:         contributions.Known(ability),
+		Melee:           contributions.Known(p.Delivery.IsMelee()),
+		WeaponPool:      contributions.Known(p.Category == combatActions.AttackCategoryWeapon && primaryPools == 1),
+		Advantage:       contributions.Unknown[bool](),
+		AbilityModifier: contributions.Known(modifier),
+		Weapon:          contributions.Known(""),
+		WeaponSlot:      contributions.Known(""),
+		Finesse:         contributions.Known(false),
+		RangedWeapon:    contributions.Known(false),
+		TwoHanded:       contributions.Known(false),
+		OffHandWeapon:   contributions.Known(false),
+		OffHandAttack:   contributions.Known(p.IsOffHandAttack),
+		Opportunity:     contributions.Known(opportunity),
 	}
+	if p.Weapon == nil {
+		return facts
+	}
+	facts.WeaponSlot = contributions.Known(p.Weapon.Slot)
+	facts.TwoHanded = contributions.Known(p.Weapon.TwoHanded)
+	facts.OffHandWeapon = contributions.Known(p.Weapon.OffHandWeaponRef != nil)
+	facts.Weapon = contributions.Unknown[string]()
+	facts.Finesse = contributions.Unknown[bool]()
+	facts.RangedWeapon = contributions.Unknown[bool]()
+	if p.Weapon.Ref == nil {
+		return facts
+	}
+	facts.Weapon = contributions.Known(p.Weapon.Ref.String())
+	if weapon, err := weapons.GetByID(weapons.WeaponID(p.Weapon.Ref.ID)); err == nil {
+		facts.Finesse = contributions.Known(weapon.HasProperty(weapons.PropertyFinesse))
+		facts.RangedWeapon = contributions.Known(weapon.IsRanged())
+	}
+	return facts
 }
 
 // informationFrameInput is what an information frame is built from: the
@@ -79,7 +117,10 @@ type informationFrameOutput struct {
 // [contributions.StanceNone], which is a known fact this read cannot prove.
 // Complete is false: a set of sightings never proves no unseen creature
 // exists (K5). Advantage stays unknown, because advantage is a fold result and
-// information does not fold.
+// information does not fold. Opportunity is known false: information answers
+// for an attack the actor declares, and an opportunity attack is a reaction
+// that is never declared — rows outside the actor's own turn are not
+// delivered (R12).
 //
 // Errors: a nil observed context or attack, or a frame that fails
 // [contributions.Frame.Validate].
@@ -90,7 +131,7 @@ func informationFrame(in *informationFrameInput) (*informationFrameOutput, error
 	frame := contributions.Frame{
 		Actor:  string(in.Observed.Observer),
 		Target: contributions.Unknown[string](),
-		Action: attackActionFacts(in.Attack),
+		Action: attackActionFacts(in.Attack, false),
 		Pairs:  make([]contributions.PairFacts, 0, len(in.Observed.Pairs)),
 	}
 	if in.Target != "" {
@@ -115,14 +156,10 @@ func informationFrame(in *informationFrameInput) (*informationFrameOutput, error
 	return &informationFrameOutput{Frame: frame}, nil
 }
 
-// executionFrame is the strike's execution frame, built from authoritative
-// state ONCE per machine and handed to every rule the strike asks: the
-// post-roll offers and the damage fold read the same frame (O5).
-//
-// Built on first use, after the attack chain has folded, so Advantage is the
-// fold's own effective answer: granted and not imposed, the same reading the
-// d20 was rolled under. A resumed machine builds it afresh from current truth
-// plus the frozen fold; rows a client saw are never consulted (S3).
+// attackRollFrame is the strike's attack-roll frame, built from authoritative
+// state ONCE per machine, before the attack chain folds, and handed to every
+// rule the attack chain asks. Its Advantage is unknown: the fold that settles
+// it has not run.
 //
 // Pairs range over every cast member the installed room places — the
 // participants are this interaction's declared universe (R3) — measured with
@@ -130,26 +167,25 @@ func informationFrame(in *informationFrameInput) (*informationFrameOutput, error
 // stance is the installed cast's authoritative [gamectx.Cast.StanceBetween];
 // two placed members with no stance are a KNOWN no side
 // ([contributions.StanceNone]), never unknown. Complete is true because the
-// pairs cover every placed participant.
+// pairs cover every placed participant. Opportunity is the strike input's own.
+//
+// A resumed machine builds it afresh from current truth (S3); rows a client
+// saw are never consulted.
 //
 // Errors: no installed room or cast ([ErrBadWorld]), or a frame that fails
 // [contributions.Frame.Validate]. The caller gets a detached copy.
-func (m *strikeMachine) executionFrame(ctx context.Context) (contributions.Frame, error) {
-	if m.frame != nil {
-		return m.frame.Clone(), nil
+func (m *strikeMachine) attackRollFrame(ctx context.Context) (contributions.Frame, error) {
+	if m.rollFrame != nil {
+		return m.rollFrame.Clone(), nil
 	}
 	room, err := gamectx.RequireRoom(ctx)
 	if err != nil {
-		return contributions.Frame{}, fmt.Errorf("%w: execution frame: %w", ErrBadWorld, err)
+		return contributions.Frame{}, fmt.Errorf("%w: attack frame: %w", ErrBadWorld, err)
 	}
 	cast, ok := gamectx.CastOf(ctx)
 	if !ok {
-		return contributions.Frame{}, fmt.Errorf("%w: execution frame: no cast installed", ErrBadWorld)
+		return contributions.Frame{}, fmt.Errorf("%w: attack frame: no cast installed", ErrBadWorld)
 	}
-
-	action := attackActionFacts(m.attack)
-	folded := m.outcome.Folded
-	action.Advantage = contributions.Known(len(folded.AdvantageSources) > 0 && len(folded.DisadvantageSources) == 0)
 
 	members := cast.Members()
 	placed := make([]string, 0, len(members))
@@ -182,13 +218,37 @@ func (m *strikeMachine) executionFrame(ctx context.Context) (contributions.Frame
 	frame := contributions.Frame{
 		Actor:    m.in.AttackerID,
 		Target:   contributions.Known(m.in.TargetID),
-		Action:   action,
+		Action:   attackActionFacts(m.attack, m.in.Opportunity),
 		Pairs:    pairs,
 		Complete: true,
 	}
 	if err := frame.Validate(); err != nil {
-		return contributions.Frame{}, fmt.Errorf("execution frame: %w", err)
+		return contributions.Frame{}, fmt.Errorf("attack frame: %w", err)
 	}
+	m.rollFrame = &frame
+
+	return frame.Clone(), nil
+}
+
+// executionFrame is the strike's post-fold frame: the attack-roll frame with
+// Advantage settled to the fold's own effective answer — granted and not
+// imposed, the same reading the d20 was rolled under. It only ADDS that
+// knowledge; every other fact is the attack-roll frame's. The post-roll offers
+// and the damage fold read it (O5). Built once, on first use after the attack
+// chain has folded.
+//
+// Errors: any error from [strikeMachine.attackRollFrame]. The caller gets a
+// detached copy.
+func (m *strikeMachine) executionFrame(ctx context.Context) (contributions.Frame, error) {
+	if m.frame != nil {
+		return m.frame.Clone(), nil
+	}
+	frame, err := m.attackRollFrame(ctx)
+	if err != nil {
+		return contributions.Frame{}, err
+	}
+	folded := m.outcome.Folded
+	frame.Action.Advantage = contributions.Known(len(folded.AdvantageSources) > 0 && len(folded.DisadvantageSources) == 0)
 	m.frame = &frame
 
 	return frame.Clone(), nil
