@@ -103,7 +103,7 @@ func newDrivenArrivalEncounter(
 
 	base, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: arrivalOrder{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: arrivalOrder{},
 		TurnDriver: passDriver{}, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -147,7 +147,7 @@ func newDrivenArrivalEncounter(
 	}
 
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data, Sight: sight, Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: arrivalOrder{},
+		Data: data, Sight: sight, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: arrivalOrder{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	require.NoError(t, err)
@@ -210,7 +210,7 @@ func (s *MonsterTurnTestSuite) TestRecordDrivingAMonsterLeavesItsMemoryAlone() {
 	down := &downList{}
 
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: seeded.ToData(), Sight: sight, Equipment: noHandsAreObserved{}, Standing: down, Initiative: arrivalOrder{},
+		Data: seeded.ToData(), Sight: sight, Equipment: encounter.UnobservedEquipment{}, Standing: down, Initiative: arrivalOrder{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().NoError(err)
@@ -467,7 +467,7 @@ func announcedOf(step encounter.MoveStep) announcedStep {
 func (s *MonsterTurnTestSuite) adjacentSkeletonEncounter(driver encounter.TurnDriver, striker encounter.Striker) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: striker, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -515,7 +515,7 @@ func (s *MonsterTurnTestSuite) farSkeletonFight(
 ) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: striker, Mover: mover, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -598,7 +598,7 @@ func (s *MonsterTurnTestSuite) TestMonsterViewProjectsHeldKnownSightIntoRemember
 	driver := &scriptedDriver{}
 	sight := &stagedSight{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: sight, Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: sight, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -639,7 +639,7 @@ func (s *MonsterTurnTestSuite) TestMonsterViewProjectsHeldKnownSightIntoRemember
 // turn-driver seam, preserving its active bubble and intel exactly.
 func (s *MonsterTurnTestSuite) loadEncounterData(data encounter.EncounterData, driver *scriptedDriver) *encounter.Encounter {
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().NoError(err)
@@ -689,7 +689,7 @@ func editGoblinHolding(
 func (s *MonsterTurnTestSuite) threeMemberSkeletonEncounter() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -877,7 +877,7 @@ func (s *MonsterTurnTestSuite) TestPausedStrikeSurvivesReloadAndDoesNotStrikeTwi
 
 	resumedStriker := &pausingStriker{}
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{},
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 		Striker: resumedStriker, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
@@ -1072,7 +1072,7 @@ func (s *MonsterTurnTestSuite) TestAStrikerMalfunctionAbortsTheWholeCall() {
 func (s *MonsterTurnTestSuite) TestSetupRefusesAnEncounterWithNoStriker() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -1094,7 +1094,7 @@ func (s *MonsterTurnTestSuite) TestLoadRefusesAnEncounterWithNoStriker() {
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:      saved,
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{},
 	})
 	s.Require().ErrorIs(err, encounter.ErrNoStriker)
@@ -1111,7 +1111,7 @@ func (s *MonsterTurnTestSuite) TestMemberFactsRoundTripThroughToDataAndLoadEncou
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:      saved,
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().NoError(err)
@@ -1254,7 +1254,7 @@ func (s *MonsterTurnTestSuite) TestAnOverBudgetMoveAnnouncesNothing() {
 func (s *MonsterTurnTestSuite) TestSetupRefusesAnEncounterWithNoMover() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -1276,7 +1276,7 @@ func (s *MonsterTurnTestSuite) TestLoadRefusesAnEncounterWithNoMover() {
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:      saved,
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().ErrorIs(err, encounter.ErrNoMover)
@@ -1329,7 +1329,7 @@ func (s *MonsterTurnTestSuite) TestAReactionThatDropsTheMoverStopsTheWalk() {
 	// second is announced, so the second and third never happen.
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: standing, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: standing, Initiative: orderAsGiven{},
 		TurnDriver: &scriptedDriver{intents: []encounter.TurnIntent{
 			encounter.Move{Path: []spatial.Position{cellAt(5, 2), cellAt(4, 2), cellAt(3, 2)}},
 		}},
@@ -1387,7 +1387,7 @@ func (s *MonsterTurnTestSuite) TestSetupRejectsANegativeMemberFact() {
 		mutate(&mi)
 		return &encounter.SetupInput{
 			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -1471,7 +1471,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathWalksAroundAWall() {
 	driver := &scriptedDriver{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -1541,7 +1541,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathWalksAroundAPillar() {
 	driver := &scriptedDriver{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -1593,7 +1593,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathIsEmptyWhenSightedButUnreachabl
 	driver := &scriptedDriver{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			// Sight crosses void here (VoidIsTransparent), but a 4-cell gap
@@ -1633,7 +1633,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathStopsAtTheMemberOwnLongestReach
 	driver := &scriptedDriver{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -1710,7 +1710,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathFindsTheNearestInRangeCellNotJu
 	driver := &scriptedDriver{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -1794,7 +1794,7 @@ func (s *MonsterTurnTestSuite) TestDrivenKillingBlowEndsTheDriveCleanly() {
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: standing, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: standing, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: striker, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -1902,7 +1902,7 @@ func (s *MonsterTurnTestSuite) TestADownedTeammateDoesNotHandTheDrivenMonsterASe
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: standing, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: standing, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: striker, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  openAir(),
@@ -1987,7 +1987,7 @@ func routedScene(
 	t.Helper()
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: standing, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: standing, Initiative: orderAsGiven{},
 		TurnDriver: driver,
 		Striker:    passStriker{}, Mover: mover, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
@@ -2123,7 +2123,7 @@ func TestARoutedTurnIsBoundedByItsOwnMovement(t *testing.T) {
 	driver := routedDriver(encounter.MoveToward, alice)
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: &downList{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: &downList{}, Initiative: orderAsGiven{},
 		TurnDriver: driver,
 		Striker:    passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{

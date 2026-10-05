@@ -98,7 +98,7 @@ func (s *ArrivalSuite) arrivalEncounter(filter encounter.MemberID, walker encoun
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field:   arrivalField(),
 		Members: members,
 		Endings: []encounter.EndingInput{

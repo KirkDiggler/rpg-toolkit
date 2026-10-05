@@ -96,7 +96,7 @@ func (s *BothWaysSuite) open(
 ) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: s.standing, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: s.standing, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		Field: field, Members: members, Endings: []encounter.EndingInput{withdrawn()},
@@ -517,8 +517,8 @@ func (s *BothWaysSuite) TestAWorldNPCIsNotATarget() {
 				Results: []encounter.ActivationResult{{
 					Kind: encounter.ResultConditionApplied, Name: "Unconscious",
 					Address: &encounter.ConditionAddress{
-						MemberID: bwVendor, ConditionRef: "dnd5e:conditions:unconscious",
-						SourceID: string(alice),
+						MemberID:     bwVendor,
+						ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:unconscious", SourceID: string(alice)},
 					},
 				}},
 			}},
@@ -616,7 +616,7 @@ func (s *BothWaysSuite) TestATurnedPairSurvivesASaveAndLoad() {
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:      enc.ToData(),
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: s.standing, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: s.standing, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 	})
@@ -868,8 +868,8 @@ func (s *BothWaysSuite) TestAGatelessConditionProvokesAndAGatelessKindnessDoesNo
 				Results: []encounter.ActivationResult{{
 					Kind: encounter.ResultConditionApplied, Name: "Unconscious",
 					Address: &encounter.ConditionAddress{
-						MemberID: bwScout, ConditionRef: "dnd5e:conditions:unconscious",
-						SourceID: string(alice),
+						MemberID:     bwScout,
+						ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:unconscious", SourceID: string(alice)},
 					},
 				}},
 			}},
@@ -888,8 +888,8 @@ func (s *BothWaysSuite) TestAGatelessConditionProvokesAndAGatelessKindnessDoesNo
 				Results: []encounter.ActivationResult{{
 					Kind: encounter.ResultConditionRemoved, Name: "Poisoned", Reason: "dispelled",
 					Address: &encounter.ConditionAddress{
-						MemberID: bwScout, ConditionRef: "dnd5e:conditions:poisoned",
-						SourceID: string(alice),
+						MemberID:     bwScout,
+						ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:poisoned", SourceID: string(alice)},
 					},
 				}},
 			}},

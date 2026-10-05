@@ -87,7 +87,7 @@ func newArrivalMemoryEncounter(
 
 	base, err := NewEncounter(&SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: FieldInput{
 			Canvas:  openAir(),
@@ -152,7 +152,7 @@ func newArrivalMemoryEncounter(
 		Pass{},
 	}}
 	enc, err := LoadEncounter(&LoadEncounterInput{
-		Data: data, Sight: propagationSight{}, Equipment: noHandsAreObserved{}, Standing: standing, Initiative: orderAsGiven{},
+		Data: data, Sight: propagationSight{}, Equipment: UnobservedEquipment{}, Standing: standing, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	require.NoError(t, err)
