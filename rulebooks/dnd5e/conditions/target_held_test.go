@@ -32,6 +32,7 @@ var (
 	proneHeld       = contributions.HeldCondition{Ref: refs.Conditions.Prone().String()}
 	sanctuaryHeld   = contributions.HeldCondition{Ref: refs.Conditions.Sanctuary().String(), SourceID: "cleric"}
 	bladeWardHeld   = contributions.HeldCondition{Ref: refs.Conditions.BladeWard().String()}
+	recklessHeld    = contributions.HeldCondition{Ref: refs.Conditions.RecklessAttack().String()}
 	concentrateHeld = contributions.HeldCondition{Ref: refs.Conditions.Concentrating().String()}
 )
 
@@ -213,7 +214,7 @@ func (s *targetHeldSuite) TestValidateAnswerRefusesModeWhenNotApplying() {
 func (s *targetHeldSuite) TestAssessTargetHeldEffectsListsBearingHeldEffects() {
 	ff := contributions.HeldCondition{Ref: ffHeld.Ref, SourceID: "c1"}
 	out, err := AssessTargetHeldEffects(&AssessTargetHeldEffectsInput{
-		Frame: gobFrame(ff, concentrateHeld, bladeWardHeld, proneHeld),
+		Frame: gobFrame(ff, concentrateHeld, recklessHeld, proneHeld),
 	})
 	s.Require().NoError(err)
 	s.Require().Len(out.Effects, 3, "Concentrating does not bear")
@@ -225,14 +226,37 @@ func (s *targetHeldSuite) TestAssessTargetHeldEffectsListsBearingHeldEffects() {
 	s.Equal(displayCatalog[ffHeld.Ref].Detail, out.Effects[0].Description)
 	s.Equal("Advantage on the attack roll", out.Effects[0].Benefit)
 
-	s.Equal("target:"+bladeWardHeld.Ref, out.Effects[1].ID)
+	s.Equal("target:"+recklessHeld.Ref, out.Effects[1].ID)
 	s.Equal(contributions.StateUnavailable, out.Effects[1].State)
 	s.Equal(unavailableReason, out.Effects[1].Reason)
-	s.Equal(displayCatalog[bladeWardHeld.Ref].Detail, out.Effects[1].Description)
+	s.Equal(displayCatalog[recklessHeld.Ref].Detail, out.Effects[1].Description)
 
 	s.Equal("target:"+proneHeld.Ref, out.Effects[2].ID)
 	s.Equal(contributions.StateApplies, out.Effects[2].State)
 	s.Equal("The prone target is within 5 feet", out.Effects[2].Reason)
+}
+
+// TestTargetDefencesYieldNoRow is R21: a target's armour class and
+// resistances are not the attacker's to know, so a target holding only effects
+// that bear through them shows the attacker no row at all.
+func (s *targetHeldSuite) TestTargetDefencesYieldNoRow() {
+	for _, ref := range []string{
+		refs.Conditions.Raging().String(),
+		refs.Conditions.BladeWard().String(),
+		refs.Conditions.ShieldOfFaith().String(),
+		refs.Conditions.UnarmoredDefense().String(),
+		refs.Conditions.FightingStyleDefense().String(),
+		refs.Spells.Shield().String(),
+	} {
+		s.Run(ref, func() {
+			out, err := AssessTargetHeldEffects(&AssessTargetHeldEffectsInput{
+				Frame: gobFrame(contributions.HeldCondition{Ref: ref, SourceID: "someone"}),
+			})
+			s.Require().NoError(err)
+			s.Empty(out.Effects)
+			s.NotContains(TargetBearingRefs(), ref)
+		})
+	}
 }
 
 func (s *targetHeldSuite) TestAssessTargetHeldEffectsUnknownHoldingsYieldNoRows() {

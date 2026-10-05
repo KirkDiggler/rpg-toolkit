@@ -45,7 +45,7 @@ var displayCatalog = map[string]Display{
 	refs.Conditions.InFog().String():      {Name: InFogName, Detail: "Inside Fog Cloud. Sight is blocked by the fog."},
 	// Fighting styles (Fighter).
 	refs.Conditions.FightingStyleArchery().String():             {Name: "Archery", Detail: "Adds 2 to attack rolls you make with ranged weapons."},
-	refs.Conditions.FightingStyleDefense().String():             {Name: "Defense", Detail: "Adds 1 to your Armor Class while you wear armor."},
+	refs.Conditions.FightingStyleDefense().String():             {Name: "Defense"},
 	refs.Conditions.FightingStyleDueling().String():             {Name: "Dueling", Detail: "Adds 2 damage when you wield a melee weapon in one hand and no other weapon."},
 	refs.Conditions.FightingStyleGreatWeaponFighting().String(): {Name: "Great Weapon Fighting", Detail: "Rerolls weapon damage dice that roll a 1 or 2 when you attack with a melee weapon held in both hands."},
 	refs.Conditions.FightingStyleProtection().String():          {Name: "Protection"},
@@ -64,7 +64,7 @@ var displayCatalog = map[string]Display{
 
 	// Monk.
 	refs.Conditions.MartialArts().String():       {Name: "Martial Arts", Detail: "Unarmed strikes and monk weapons can use Dexterity, and unarmed strikes deal your Martial Arts die."},
-	refs.Conditions.UnarmoredDefense().String():  {Name: "Unarmored Defense", Detail: "While you wear no armor, your Armor Class is 10 plus your Dexterity modifier plus your Constitution (barbarian) or Wisdom (monk) modifier. A shield still counts."},
+	refs.Conditions.UnarmoredDefense().String():  {Name: "Unarmored Defense"},
 	refs.Conditions.UnarmoredMovement().String(): {Name: "Unarmored Movement"},
 
 	// Rogue. Sneak Attack names itself by a feature ref, not a condition ref.
@@ -79,7 +79,7 @@ var displayCatalog = map[string]Display{
 	refs.Conditions.Hidden().String():         {Name: "Hidden", Detail: "Your attacks have advantage and attacks against you have disadvantage. Attacking ends it."},
 	refs.Conditions.Helped().String():         {Name: "Helped", Detail: "Your next attack roll has advantage."},
 	refs.Conditions.Inspired().String():       {Name: InspiredName, Detail: "Holds a Bardic Inspiration die. After seeing your attack roll you may add it; the die is spent only when you take it."},
-	refs.Conditions.BladeWard().String():      {Name: BladeWardName, Detail: "Bludgeoning, piercing and slashing damage dealt to you by weapon attacks is halved."},
+	refs.Conditions.BladeWard().String():      {Name: BladeWardName},
 	refs.Conditions.GuidingBolt().String():    {Name: GuidingBoltName, Detail: "The next attack roll against you has advantage."},
 	refs.Conditions.TrueStrike().String():     {Name: TrueStrikeName, Detail: "Your next attack against the chosen target has advantage."},
 	refs.Conditions.ViciousMockery().String(): {Name: ViciousMockeryName, Detail: "Your next attack roll has disadvantage."},
@@ -104,7 +104,7 @@ var displayCatalog = map[string]Display{
 	// exact catalog Resistance's own entry touches, for the same reason.
 	refs.Conditions.DivineFavor().String():     {Name: DivineFavorName, Detail: "Your weapon attacks deal an extra 1d4 radiant damage."},
 	refs.Conditions.FaerieFire().String():      {Name: FaerieFireName, Detail: "Attack rolls against you have advantage if the attacker can see you."},
-	refs.Conditions.ShieldOfFaith().String():   {Name: ShieldOfFaithName, Detail: "Adds 2 to your Armor Class."},
+	refs.Conditions.ShieldOfFaith().String():   {Name: ShieldOfFaithName},
 	refs.Conditions.Guided().String():          {Name: GuidedName},
 	refs.Conditions.Resistance().String():      {Name: ResistanceName},
 	refs.Conditions.Sanctuary().String():       {Name: SanctuaryName, Detail: "A creature that targets you must first succeed on a Wisdom saving throw. Making an attack ends the ward."},

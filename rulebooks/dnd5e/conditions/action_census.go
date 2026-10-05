@@ -111,21 +111,21 @@ var targetCensus = map[string]actionCensusEntry{
 	refs.Conditions.Hidden().String():      answersNow,
 
 	// Bear on an attack against the holder, but cannot yet answer.
-	// Attacks against a reckless holder have advantage; flagged to follow up.
+	// Attacks against a reckless holder have advantage; an attack-roll rule
+	// awaiting migration.
 	refs.Conditions.RecklessAttack().String(): notYetAnswering,
-	// Resistance as the defender, through the damage chain.
-	refs.Conditions.Raging().String():    notYetAnswering,
-	refs.Conditions.BladeWard().String(): notYetAnswering,
-	// Armour class, already folded into the target's AC.
-	refs.Conditions.ShieldOfFaith().String():        notYetAnswering,
-	refs.Conditions.UnarmoredDefense().String():     notYetAnswering,
-	refs.Conditions.FightingStyleDefense().String(): notYetAnswering,
 
 	// Do not bear on an attack against the holder.
-	// The Shield reaction bears only once its holder chooses it after the
-	// roll, and the status catalogue deliberately holds no description for
-	// it (TestDisplayCatalogExcludesShieldSpell), so it shows no row here.
-	refs.Spells.Shield().String(): notBearingAction,
+	// A target's armour class and resistances are not the attacker's to know
+	// (R21): an effect whose only bearing on the attack is the target's AC or
+	// its resistance produces no row for the attacker.
+	refs.Conditions.Raging().String():               notBearingAction,
+	refs.Conditions.BladeWard().String():            notBearingAction,
+	refs.Conditions.ShieldOfFaith().String():        notBearingAction,
+	refs.Conditions.UnarmoredDefense().String():     notBearingAction,
+	refs.Conditions.FightingStyleDefense().String(): notBearingAction,
+	refs.Spells.Shield().String():                   notBearingAction,
+
 	// Owns no rule; fog acts through the general sight rule (R20).
 	refs.Conditions.InFog().String(): notBearingAction,
 	// No handler acts on an attack against an unconscious holder.
