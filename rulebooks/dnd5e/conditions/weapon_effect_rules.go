@@ -40,6 +40,26 @@ func frameWeaponID(frame contributions.Frame) (id string, known bool) {
 	return ref.ID, true
 }
 
+// frameMeleeWeapon reads whether the attack is made with a melee weapon: a
+// weapon is named and it is not of a ranged category. It reads the weapon, not
+// how the attack is delivered — a ranged weapon is not the same fact as an
+// attack that is not melee, so a thrown dagger is still a melee weapon. known
+// is false while a fact it needs is unknown.
+func frameMeleeWeapon(frame contributions.Frame) (melee, known bool) {
+	weapon, weaponKnown := frameWeaponID(frame)
+	ranged, rangedKnown := frame.Action.RangedWeapon.Get()
+	switch {
+	case weaponKnown && weapon == "":
+		return false, true
+	case rangedKnown && ranged:
+		return false, true
+	case !weaponKnown || !rangedKnown:
+		return false, false
+	default:
+		return true, true
+	}
+}
+
 // isAttackRoll reports whether the frame asks about an attack roll.
 func isAttackRoll(frame contributions.Frame) bool {
 	roll, _ := frame.Action.Roll.Get()
@@ -104,8 +124,8 @@ func (f *FightingStyleDuelingCondition) rule() duelingRule {
 }
 
 // duelingRule holds only the facts Dueling's predicate uses: a real melee
-// weapon — the unarmed strike is not one — held in one hand, with no weapon
-// in the other.
+// weapon — the unarmed strike is not one, and a thrown dagger still is — held
+// in one hand, with no weapon in the other.
 type duelingRule struct {
 	owner string
 }
@@ -122,17 +142,14 @@ func (r duelingRule) AssessAction(in *contributions.AssessActionInput) (*contrib
 		return assessed(contributions.DoesNotApply, "Dueling adds only to weapon attacks"), nil
 	}
 	pool, poolKnown := frame.Action.WeaponPool.Get()
-	weapon, weaponKnown := frameWeaponID(frame)
-	melee, meleeKnown := frame.Action.Melee.Get()
+	weapon, _ := frameWeaponID(frame)
+	melee, meleeKnown := frameMeleeWeapon(frame)
 	twoHanded, gripKnown := frame.Action.TwoHanded.Get()
 	otherWeapon, otherKnown := frame.Action.OffHandWeapon.Get()
 	if poolKnown && !pool {
 		return assessed(contributions.DoesNotApply, "Dueling requires a weapon damage pool"), nil
 	}
-	if weaponKnown && (weapon == "" || weapon == refs.Weapons.UnarmedStrike().ID) {
-		return assessed(contributions.DoesNotApply, "Dueling needs a melee weapon"), nil
-	}
-	if meleeKnown && !melee {
+	if (meleeKnown && !melee) || weapon == refs.Weapons.UnarmedStrike().ID {
 		return assessed(contributions.DoesNotApply, "Dueling needs a melee weapon"), nil
 	}
 	if gripKnown && twoHanded {
@@ -141,7 +158,7 @@ func (r duelingRule) AssessAction(in *contributions.AssessActionInput) (*contrib
 	if otherKnown && otherWeapon {
 		return assessed(contributions.DoesNotApply, "Dueling needs no other weapon in hand"), nil
 	}
-	if !poolKnown || !weaponKnown || !meleeKnown || !gripKnown || !otherKnown {
+	if !poolKnown || !meleeKnown || !gripKnown || !otherKnown {
 		return assessed(contributions.Depends, "Depends on the attack's weapon and grip"), nil
 	}
 	out := assessed(contributions.Applies, "A melee weapon in one hand and no other weapon")
@@ -162,7 +179,8 @@ func (f *FightingStyleGreatWeaponFightingCondition) rule() greatWeaponFightingRu
 }
 
 // greatWeaponFightingRule holds only the facts Great Weapon Fighting's
-// predicate uses: a melee weapon attack with the weapon held in both hands.
+// predicate uses: an attack with a melee weapon held in both hands. It reads
+// the weapon, not the delivery.
 type greatWeaponFightingRule struct {
 	owner string
 }
@@ -181,7 +199,7 @@ func (r greatWeaponFightingRule) AssessAction(
 		return assessed(contributions.DoesNotApply, "Great Weapon Fighting adds only to weapon attacks"), nil
 	}
 	pool, poolKnown := frame.Action.WeaponPool.Get()
-	melee, meleeKnown := frame.Action.Melee.Get()
+	melee, meleeKnown := frameMeleeWeapon(frame)
 	twoHanded, gripKnown := frame.Action.TwoHanded.Get()
 	if poolKnown && !pool {
 		return assessed(contributions.DoesNotApply, "Great Weapon Fighting requires a weapon damage pool"), nil
@@ -213,9 +231,11 @@ func (f *FightingStyleTwoWeaponFightingCondition) rule() twoWeaponFightingRule {
 }
 
 // twoWeaponFightingRule holds only the facts Two-Weapon Fighting's predicate
-// uses. The base off-hand attack already keeps a negative modifier; the style
+// uses: the off-hand attack, its weapon damage pool and its ability modifier.
+// The base off-hand attack already keeps a negative modifier; the style
 // restores only a positive one, so a modifier that is not positive adds
-// nothing.
+// nothing. Its answer carries the modifier as the damage it contributes, the
+// one number the handler adds.
 type twoWeaponFightingRule struct {
 	owner string
 }
@@ -233,17 +253,26 @@ func (r twoWeaponFightingRule) AssessAction(in *contributions.AssessActionInput)
 	}
 	offHand, offHandKnown := frame.Action.OffHandAttack.Get()
 	modifier, modifierKnown := frame.Action.AbilityModifier.Get()
+	pool, poolKnown := frame.Action.WeaponPool.Get()
+	if poolKnown && !pool {
+		return assessed(contributions.DoesNotApply, "Two-Weapon Fighting requires a weapon damage pool"), nil
+	}
 	if offHandKnown && !offHand {
 		return assessed(contributions.DoesNotApply, "Two-Weapon Fighting adds only to the off-hand attack"), nil
 	}
 	if modifierKnown && modifier <= 0 {
 		return assessed(contributions.DoesNotApply, "Your ability modifier adds nothing to damage"), nil
 	}
-	if !offHandKnown || !modifierKnown {
+	if !poolKnown || !offHandKnown || !modifierKnown {
 		return assessed(contributions.Depends, "Depends on the off-hand attack and your ability modifier"), nil
 	}
 	out := assessed(contributions.Applies, "This is the off-hand attack")
 	out.Answer.Benefit = fmt.Sprintf("+%d damage", modifier)
+	out.Answer.Damage = []contributions.DamageChange{{
+		PoolID: contributions.PrimaryWeaponPool,
+		Source: contributions.Source{Ref: refs.Conditions.FightingStyleTwoWeaponFighting(), Name: "Two-Weapon Fighting"},
+		Fixed:  &modifier,
+	}}
 	return out, nil
 }
 

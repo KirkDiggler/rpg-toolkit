@@ -87,8 +87,12 @@ func (s *ShillelaghCondition) WeaponAttackOverride(slot, itemID string) *weapona
 
 // binds reports whether a hand and the equipment ID it holds are the
 // enchanted weapon — the one predicate attack assembly and AssessAction share.
-// Inventory stores a weapon by its catalogue ID, so the frame's weapon ID is
-// the equipment ID assembly was handed.
+//
+// Invariant: inventory keys a weapon by its catalogue ID, so the item ID a
+// hand holds (what assembly passes, and what the cast stored) equals the
+// assembled weapon ref's ID (what the frame carries). Pinned by
+// character.TestAssembleAttack_WeaponRefIDIsTheEquippedItemID; if inventory
+// ever keys weapons by instance, that test fails before the two drift.
 func (s *ShillelaghCondition) binds(slot, itemID string) bool {
 	return slot == s.Weapon.Slot && itemID == s.Weapon.ItemID
 }

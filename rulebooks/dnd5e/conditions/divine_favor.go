@@ -196,6 +196,10 @@ func (g *DivineFavorCondition) rule() divineFavorRule {
 	return divineFavorRule{owner: g.MemberID}
 }
 
+// divineFavorDie is the size of Divine Favor's radiant die: the one number
+// its answer's benefit and the swing's roll both read.
+const divineFavorDie = 4
+
 // divineFavorRule holds only the facts Divine Favor's predicate uses: its
 // caster's weapon attacks, read as the frame's primary weapon pool.
 type divineFavorRule struct {
@@ -221,7 +225,7 @@ func (r divineFavorRule) AssessAction(in *contributions.AssessActionInput) (*con
 		return assessed(contributions.DoesNotApply, "Divine Favor requires a weapon attack"), nil
 	}
 	out := assessed(contributions.Applies, "The attack is a weapon attack")
-	out.Answer.Benefit = "+1d4 radiant damage"
+	out.Answer.Benefit = fmt.Sprintf("+1d%d radiant damage", divineFavorDie)
 	return out, nil
 }
 
@@ -243,13 +247,10 @@ func (g *DivineFavorCondition) onDamageChain(
 	}
 	modify := func(ctx context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
 		if primaryWeaponComponent(e) == nil {
-			return e, nil
-		}
-		// Repeated instances of the same spell never stack or roll extra dice.
-		for _, component := range e.Components {
-			if component.Roll.Source.Ref != nil && component.Roll.Source.Ref.String() == refs.Spells.DivineFavor().String() {
-				return e, nil
-			}
+			// Fail closed: the rule applied on the frame's weapon pool, so a
+			// fold with no marked primary pool is a malformed event.
+			return e, rpgerr.Newf(rpgerr.CodeInvalidArgument,
+				"divine favor applies but the damage has no marked primary weapon pool for %s", g.MemberID)
 		}
 		roller := g.roller
 		if roller == nil {
@@ -259,7 +260,7 @@ func (g *DivineFavorCondition) onDamageChain(
 		if e.IsCritical {
 			count = 2
 		}
-		faces, err := roller.RollN(ctx, count, 4)
+		faces, err := roller.RollN(ctx, count, divineFavorDie)
 		if err != nil {
 			return nil, rpgerr.Wrap(err, "failed to roll Divine Favor damage")
 		}
@@ -271,7 +272,7 @@ func (g *DivineFavorCondition) onDamageChain(
 			Source: dnd5eEvents.DamageSourceSpell,
 			Roll: dnd5eEvents.RollComponent{
 				Source: dnd5eEvents.RollSource{Ref: refs.Spells.DivineFavor(), Name: DivineFavorName, SourceID: g.SourceID},
-				Dice:   &dnd5eEvents.DiceTrace{Notation: dice.SimplePool(count, 4, 0).Notation(), DieSize: 4, OriginalRolls: faces, FinalRolls: slices.Clone(faces), Subtotal: total},
+				Dice:   &dnd5eEvents.DiceTrace{Notation: dice.SimplePool(count, divineFavorDie, 0).Notation(), DieSize: divineFavorDie, OriginalRolls: faces, FinalRolls: slices.Clone(faces), Subtotal: total},
 			},
 			DamageType: damage.Radiant, IsCritical: e.IsCritical,
 		})

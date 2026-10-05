@@ -77,7 +77,9 @@ func (s *DivineFavorSuite) TestWeaponHitsReloadCriticalAndTeardown() {
 	}
 }
 
-func (s *DivineFavorSuite) TestExcludesSpellsOtherAttackersAndDuplicateBonusesWithoutRolling() {
+// TestExcludesSpellsAndOtherAttackersWithoutRolling: Divine Favor is its
+// caster's own and one per caster, so the rule's answer is the whole decision.
+func (s *DivineFavorSuite) TestExcludesSpellsAndOtherAttackersWithoutRolling() {
 	ctx := context.Background()
 	bus := events.NewEventBus()
 	c, err := conditions.NewDivineFavorCondition(conditions.NewDivineFavorConditionInput{MemberID: "caster", SourceID: "caster", SourceRef: refs.Spells.DivineFavor()})
@@ -87,7 +89,6 @@ func (s *DivineFavorSuite) TestExcludesSpellsOtherAttackersAndDuplicateBonusesWi
 	for _, event := range []*de.DamageChainEvent{
 		{AttackerID: "caster", Frame: favorFrame("caster", false, false), Components: []de.DamageComponent{{Source: de.DamageSourceSpell}}},
 		{AttackerID: "other", Frame: favorFrame("other", true, true), Components: []de.DamageComponent{{Source: de.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}}}},
-		{AttackerID: "caster", Frame: favorFrame("caster", true, true), Components: []de.DamageComponent{{Source: de.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}}, {Source: de.DamageSourceSpell, Roll: de.RollComponent{Source: de.RollSource{Ref: refs.Spells.DivineFavor()}}}}},
 	} {
 		before := len(event.Components)
 		result, err := s.execute(bus, event)

@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -172,7 +173,6 @@ func (s *RecklessAttackTestSuite) TestBothAdvantageWhenBarbarianAttacksSelf() {
 		AttackerID: "barbarian-1",
 		TargetID:   "barbarian-1", // Self-target
 		IsMelee:    true,
-		AttackType: dnd5eEvents.AttackTypeStandard,
 	}
 
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
@@ -200,12 +200,13 @@ func (s *RecklessAttackTestSuite) TestNoAdvantageOnOpportunityAttacks() {
 		AttackerID: "barbarian-1",
 		TargetID:   "goblin-1",
 		IsMelee:    true,
-		AttackType: dnd5eEvents.AttackTypeOpportunity, // Opportunity attack!
 	}
+	framed := framedAttack(attackEvent)
+	framed.Frame.Action.Opportunity = contributions.Known(true) // Opportunity attack!
 
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 	attackTopic := dnd5eEvents.AttackChain.On(s.bus)
-	modifiedChain, err := attackTopic.PublishWithChain(s.ctx, framedAttack(attackEvent), attackChain)
+	modifiedChain, err := attackTopic.PublishWithChain(s.ctx, framed, attackChain)
 	s.Require().NoError(err)
 
 	finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)

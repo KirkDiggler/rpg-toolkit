@@ -639,6 +639,7 @@ func (s *FighterEncounterSuite) TestFightingStyleGWF_RerollsLowDice() {
 			TargetID:   s.goblin.GetID(),
 			IsMelee:    true,
 			TwoHanded:  true,
+			WeaponRef:  refs.Weapons.Greatsword(),
 			Components: []dnd5eEvents.DamageComponent{
 				{
 					Source:     dnd5eEvents.DamageSourceWeapon,

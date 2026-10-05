@@ -266,23 +266,6 @@ func (dc *DamageComponent) Total() int {
 }
 
 // =============================================================================
-// Attack Type
-// =============================================================================
-
-// AttackType categorizes the type of attack being made.
-// This is used to distinguish standard attacks from opportunity attacks,
-// which affects how certain conditions (like Disengaging) can respond.
-type AttackType string
-
-const (
-	// AttackTypeStandard is a normal attack made during combat (default)
-	AttackTypeStandard AttackType = "standard"
-
-	// AttackTypeOpportunity is a reaction attack triggered by movement
-	AttackTypeOpportunity AttackType = "opportunity"
-)
-
-// =============================================================================
 // Attack Modifier Types
 // =============================================================================
 
@@ -315,11 +298,10 @@ func (s AttackModifierSource) RollSource() RollSource {
 // This event fires BEFORE the d20 roll to allow advantage/disadvantage to be collected.
 type AttackChainEvent struct {
 	// Identity
-	AttackerID string     // ID of the attacking character
-	TargetID   string     // ID of the target
-	WeaponRef  *core.Ref  // Reference to the weapon used
-	IsMelee    bool       // True for melee attacks, false for ranged
-	AttackType AttackType // Type of attack (standard or opportunity)
+	AttackerID string    // ID of the attacking character
+	TargetID   string    // ID of the target
+	WeaponRef  *core.Ref // Reference to the weapon used
+	IsMelee    bool      // True for melee attacks, false for ranged
 
 	// BeforeRollOffers are optional reactions; collecting them never spends or rolls.
 	BeforeRollOffers []AttackRollOffer
