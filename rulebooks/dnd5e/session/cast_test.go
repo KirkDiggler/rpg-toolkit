@@ -731,9 +731,10 @@ func (s *CastSuite) beats(kinds ...session.EventKind) []session.Event {
 }
 
 // ofKinds keeps the events of the given kinds, in order. A replayed story also
-// carries the act's sight beats — a condition the act seated is re-looked at
-// commit (rpg-project#520, R19) — so a replay is compared kind for kind with
-// the beats a test selected.
+// carries the act's sight beats when the act really changed a member's
+// conditions — Guiding Bolt lighting its target is re-looked at commit
+// (rpg-project#520, R19) — so such a replay is compared kind for kind with the
+// beats a test selected.
 func ofKinds(events []session.Event, kinds ...session.EventKind) []session.Event {
 	wanted := make(map[session.EventKind]bool, len(kinds))
 	for _, kind := range kinds {

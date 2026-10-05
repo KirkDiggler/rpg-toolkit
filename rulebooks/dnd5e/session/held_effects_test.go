@@ -274,3 +274,32 @@ func (s *EffectRowsSuite) TestACorruptTargetConditionFailsTheRead() {
 	s.Nil(out)
 	s.Contains(err.Error(), erGoblin1)
 }
+
+// TestAHitOnAFreshMonsterSendsNoSightedBeat: alice wounds a goblin that has
+// just arrived, and it stays on its feet. Nobody's conditions change — every
+// combatant holds its opportunity attack from the moment it is a participant,
+// whether or not its stored sheet has caught up, and the wound is what writes
+// the goblin's sheet back with it — so no watcher is told to look again.
+func (s *EffectRowsSuite) TestAHitOnAFreshMonsterSendsNoSightedBeat() {
+	s.cave(s.rogue())
+	data := s.sessions.byID[erSession]
+	for i := range data.NPCs {
+		if data.NPCs[i].ID == erGoblin1 {
+			data.NPCs[i].HitPoints, data.NPCs[i].MaxHitPoints = 100, 100 // wounded, still standing
+		}
+	}
+	s.stream.published = nil
+
+	out, err := s.mgr.Attack(s.ctx, &session.AttackInput{
+		Session: erSession, Attacker: "alice", Target: erGoblin1,
+		DeclarationID: s.mainAttack(s.afford("alice")).ID,
+	})
+	s.Require().NoError(err)
+	s.Require().True(out.Hit, "precondition: the swing lands")
+
+	for _, event := range s.stream.published {
+		if body, ok := event.Body.(session.SightedBody); ok {
+			s.Empty(body.Changed, "no condition changed, so nobody is told to look again: %+v to %s", body, event.Recipient)
+		}
+	}
+}

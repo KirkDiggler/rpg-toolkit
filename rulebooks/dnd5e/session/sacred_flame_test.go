@@ -124,8 +124,7 @@ func (s *CastSuite) TestSacredFlameSaveDamageAndReload() {
 				Session: "sess", Member: s.member, FromSeq: events[0].Seq,
 			})
 			s.Require().NoError(err)
-			s.Equal(events, ofKinds(story, session.EventCast, session.EventSaved, session.EventActivationResult),
-				"cast, save and damage survive JSON and manager recreation")
+			s.Equal(events, story, "cast, save and damage survive JSON and manager recreation")
 			s.Equal(before-tc.damage, s.storedSkeleton())
 			s.Equal(castingCleric().KnownCantrips, s.characters.byID[s.member].KnownCantrips)
 			row := s.castRow(spells.SacredFlame)

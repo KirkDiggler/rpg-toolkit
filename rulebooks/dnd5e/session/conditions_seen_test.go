@@ -69,24 +69,29 @@ func (s *ConditionSeamSuite) TestConditionSeamReportsSheets() {
 		"player": {Conditions: []encounter.ConditionKey{
 			{ConditionRef: refs.Conditions.Prone().String()},
 			{ConditionRef: refs.Conditions.FaerieFire().String(), SourceID: "cleric"},
+			{ConditionRef: refs.Conditions.OpportunityAttack().String()},
 		}},
 		"goblin": {Conditions: []encounter.ConditionKey{
 			{ConditionRef: refs.Conditions.Dodging().String()},
+			{ConditionRef: refs.Conditions.OpportunityAttack().String()},
 		}},
 		"door":      nil,
 		"ghost":     nil,
 		"unsheeted": nil,
-	}, got, "in sheet order; a trait is not a condition; no sheet is nothing to observe")
+	}, got, "in sheet order, then what a combatant carries by existing; a trait is not a condition; no sheet is nothing to observe")
 }
 
-func (s *ConditionSeamSuite) TestASheetHoldingNothingIsSeenHoldingNone() {
+// TestASheetHoldingNothingIsSeenHoldingOnlyItsOpportunityAttack: a sheet with
+// nothing stored is an observation, and what it observes is what the member
+// holds as a participant — the opportunity attack every combatant carries.
+func (s *ConditionSeamSuite) TestASheetHoldingNothingIsSeenHoldingOnlyItsOpportunityAttack() {
 	s.chars.byID["player"] = &character.Data{ID: "player"}
 
 	got, err := s.seam.Conditions([]encounter.MemberID{"player"})
 	s.Require().NoError(err)
 
 	s.Require().NotNil(got["player"], "a sheet was read: an observation, not an absence")
-	s.Empty(got["player"].Conditions)
+	s.Equal([]encounter.ConditionKey{{ConditionRef: refs.Conditions.OpportunityAttack().String()}}, got["player"].Conditions)
 }
 
 func (s *ConditionSeamSuite) TestAnswersOnlyForWhoWasAsked() {
