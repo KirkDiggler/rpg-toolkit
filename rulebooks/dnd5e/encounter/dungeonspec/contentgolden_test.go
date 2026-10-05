@@ -71,6 +71,16 @@ type contentGolden struct {
 	Placed []encounter.AtlasPlacedProp `json:"placed,omitempty"`
 	Doors  []goldenDoor                `json:"doors,omitempty"`
 
+	// StructuralWalls and StructuralDoors are THE FIXED LAYOUT the placed
+	// spans were carved from (rpg-project#169). They were invisible in this
+	// picture before, which meant a change to how a wall's line, dimensions or
+	// an attached door's opening resolves showed up in no golden at all.
+	//
+	// OMITTED WHEN EMPTY, so a file that authors no walls writes exactly the
+	// bytes it wrote before they were pictured.
+	StructuralWalls []encounter.AtlasStructuralWall `json:"structural_walls,omitempty"`
+	StructuralDoors []encounter.AtlasStructuralDoor `json:"structural_doors,omitempty"`
+
 	// Scenarios is what this slice added that a host can observe and the
 	// atlas does not carry (rpg-project#368). Exits, prop ids and
 	// holdability all ride in the atlas above, which is already here.
@@ -141,25 +151,27 @@ func contentGoldenOf(t *testing.T, path string) contentGolden {
 	t.Helper()
 	compiled, atlas := compiledAtlas(t, path)
 	return contentGolden{
-		Orientation:  string(atlas.Orientation.Kind()),
-		Void:         string(compiled.Field.Canvas.Void.Kind()),
-		Cells:        atlas.Cells,
-		Regions:      atlas.Regions,
-		Props:        atlas.Props,
-		Boundaries:   atlas.Boundaries,
-		Doorways:     atlas.Doorways,
-		Exits:        atlas.Exits,
-		Start:        atlas.Start,
-		PartyStart:   compiled.PartyStart,
-		Monsters:     compiled.Monsters,
-		Intel:        compiled.Intel,
-		Concealments: compiled.Concealments,
-		Scenarios:    compiled.Scenarios,
-		Endings:      compiled.Endings,
-		Factions:     compiled.Factions,
-		Dispositions: compiled.Dispositions,
-		Placed:       atlas.Placed,
-		Doors:        goldenDoorsOf(compiled.Field.Doors),
+		Orientation:     string(atlas.Orientation.Kind()),
+		Void:            string(compiled.Field.Canvas.Void.Kind()),
+		Cells:           atlas.Cells,
+		Regions:         atlas.Regions,
+		Props:           atlas.Props,
+		Boundaries:      atlas.Boundaries,
+		Doorways:        atlas.Doorways,
+		Exits:           atlas.Exits,
+		Start:           atlas.Start,
+		PartyStart:      compiled.PartyStart,
+		Monsters:        compiled.Monsters,
+		Intel:           compiled.Intel,
+		Concealments:    compiled.Concealments,
+		Scenarios:       compiled.Scenarios,
+		Endings:         compiled.Endings,
+		Factions:        compiled.Factions,
+		Dispositions:    compiled.Dispositions,
+		Placed:          atlas.Placed,
+		Doors:           goldenDoorsOf(compiled.Field.Doors),
+		StructuralWalls: atlas.StructuralWalls,
+		StructuralDoors: atlas.StructuralDoors,
 	}
 }
 

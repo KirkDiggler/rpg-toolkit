@@ -168,6 +168,14 @@ type field struct {
 	concealmentOfDoor map[DoorID]ConcealmentID
 	concealmentOfProp map[PropID]ConcealmentID
 
+	// structuralWalls is THE STRUCTURAL WALL DEFINITIONS (rpg-project#169,
+	// structural_walls.go): every authored wall as its canonical line, its
+	// assembled dimensions and its openings, deep-copied — what ToData writes
+	// back out beside the regions, props and segments. The placed spans carved
+	// from the same wall are a separate, mechanical contributor set; this is
+	// the layout a client draws and a reveal patches.
+	structuralWalls []structuralWall
+
 	// exits is the authored ways out, deep-copied, in the AUTHORED frame —
 	// what ToData writes back out beside the regions and the props.
 	exits []FieldExit
@@ -303,6 +311,14 @@ func compileField(in FieldInput) (*field, error) {
 		return nil, err
 	}
 	if err := f.compileSegments(in.Segments); err != nil {
+		return nil, err
+	}
+	// THE STRUCTURAL WALL DEFINITIONS LAST OF THE GEOMETRY, because they
+	// resolve against two things already compiled: the static placed
+	// contributors a wall presence and a bound door presence name, and the
+	// authored doors a binding's DoorID must resolve to. A field that declares
+	// none is untouched.
+	if err := f.compileStructuralWalls(in.StructuralWalls, in.Doors); err != nil {
 		return nil, err
 	}
 	// EXITS LAST, because standable is the question they ask and the sealed

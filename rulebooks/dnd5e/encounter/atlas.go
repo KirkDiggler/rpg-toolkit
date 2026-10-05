@@ -68,6 +68,29 @@ type Atlas struct {
 	// doorway's crossing, projected onto the segment it stands in.
 	Segments []AtlasSegment
 
+	// StructuralWalls is every authored structural wall (rpg-project#169),
+	// sorted by id: its canonical line, its assembled dimensions and its
+	// permitted cut list. See [AtlasStructuralWall].
+	//
+	// FILTERED BY [Encounter.AtlasFor], never sliced, on the same explicit
+	// membership the placed contributors use: a wall is projected only when
+	// its raw static presence survives, and a bound opening is retained only
+	// when its own door is independently permitted. It is the layout a client
+	// draws — the geometry the placed blockers were carved from and could not
+	// describe.
+	StructuralWalls []AtlasStructuralWall
+
+	// StructuralDoors is every independently permitted structural door
+	// (rpg-project#169), sorted by canonical DoorID: its opening endpoints and
+	// the assembled dimensions it fits. See [AtlasStructuralDoor].
+	//
+	// ONE FLAT COLLECTION, NOT A PARENT-DEPENDENT SUBTYPE. A door here stands
+	// on its own identity: a hidden parent never conceals an independently
+	// permitted door, and this record carries no parent id, no hidden-opening
+	// association and no state. FILTERED BY [Encounter.AtlasFor] when its own
+	// raw static presence is withheld or its door identity is concealed.
+	StructuralDoors []AtlasStructuralDoor
+
 	// Placed is every authored footprint placement (issue #1753), sorted by
 	// id — the SAME contributor set standing, crossing and sight read, in
 	// the CANONICAL frame, so a host drawing or projecting the placed
@@ -167,6 +190,81 @@ type AtlasSegment struct {
 	// Height is the authored wall-height multiplier, carried verbatim.
 	// 0 = not authored = standard height, [WallInput.Height]'s contract.
 	Height float64
+}
+
+// AtlasStructuralWall is one authored structural wall as the map reports it:
+// its stable identity, its opaque appearance reference, its line in canonical
+// feet, the assembled dimensions it is drawn at, and its permitted cut list.
+// [StructuralWallInput] as a snapshot.
+//
+// NO NESTED DOOR METADATA. An opening here carries only its identity, position
+// and width; a door bound to it appears — when independently permitted — as its
+// own [AtlasStructuralDoor], so a hidden parent cannot leak through a nested
+// child and a hidden door leaves no tell behind.
+type AtlasStructuralWall struct {
+	// ID is the raw placed presence identity the wall's contributors are keyed
+	// by ([StructuralWallInput.ID]).
+	ID PropID
+
+	// Ref is content's identifier for the wall's appearance, carried verbatim
+	// and never inspected.
+	Ref string
+
+	// From and To are the wall's two ends in canonical feet.
+	From, To spatial.Point
+
+	// Height, Thickness and Elevation are the assembled dimensions in
+	// canonical feet ([StructuralWallInput]).
+	Height, Thickness, Elevation float64
+
+	// Openings is the permitted cut list, in authored order: every bare
+	// opening, and a bound opening only when its door is independently
+	// permitted. A withheld bound opening is omitted WHOLE — id, position and
+	// width included — so the visible wall does not disclose the secret.
+	Openings []AtlasStructuralOpening
+}
+
+// AtlasStructuralOpening is one permitted gap in an [AtlasStructuralWall]: its
+// identity, its centre along the line and its width, all canonical feet. It
+// deliberately carries no door id, no state and no hidden association — the
+// door, when permitted, is its own record.
+type AtlasStructuralOpening struct {
+	// ID names this opening ([StructuralOpeningInput.ID]).
+	ID string
+
+	// Position is the gap's centre, measured along From→To from the wall's
+	// start, in canonical feet.
+	Position float64
+
+	// Width is the gap's width along the line, in canonical feet.
+	Width float64
+}
+
+// AtlasStructuralDoor is one independently permitted structural door: its
+// canonical gameplay DoorID, its opaque appearance reference, its resolved
+// visual opening endpoints in canonical feet, and the assembled dimensions it
+// fits. [StructuralDoorBindingInput] as a snapshot.
+//
+// SELF-CONTAINED, WITH NO PARENT. It carries no parent wall id and no opening
+// association, so a client places it without a withheld parent's identity and
+// one collection holds every permitted attached door.
+type AtlasStructuralDoor struct {
+	// ID is the actual canonical gameplay door id the observation and verb
+	// paths use ([StructuralDoorBindingInput.DoorID]).
+	ID DoorID
+
+	// Ref is content's identifier for the door's appearance, carried verbatim
+	// and never inspected.
+	Ref string
+
+	// From and To are the resolved visual opening endpoints in canonical
+	// feet; their nonzero distance is the door's width.
+	From, To spatial.Point
+
+	// Height, Thickness and Elevation are the assembled dimensions the door
+	// fits, in canonical feet — the owning wall's own assembly, so a door and
+	// its opening agree without a second authored pose.
+	Height, Thickness, Elevation float64
 }
 
 // AtlasRegion is one region: a NAMED SET OF CELLS, enumerated, with the
@@ -347,13 +445,14 @@ type AtlasDoorway struct {
 func (e *Encounter) Atlas() (Atlas, error) {
 	f := e.field
 	out := Atlas{
-		Orientation: f.orientation,
-		Cells:       append([]spatial.Position(nil), f.cells...),
-		Regions:     make([]AtlasRegion, 0, len(f.regions)),
-		Props:       make([]AtlasProp, 0, len(f.props)),
-		Boundaries:  make([]AtlasBoundary, 0, len(f.walls)),
-		Doorways:    make([]AtlasDoorway, 0, len(e.doors)),
-		Segments:    make([]AtlasSegment, 0, len(f.segments)),
+		Orientation:     f.orientation,
+		Cells:           append([]spatial.Position(nil), f.cells...),
+		Regions:         make([]AtlasRegion, 0, len(f.regions)),
+		Props:           make([]AtlasProp, 0, len(f.props)),
+		Boundaries:      make([]AtlasBoundary, 0, len(f.walls)),
+		Doorways:        make([]AtlasDoorway, 0, len(e.doors)),
+		Segments:        make([]AtlasSegment, 0, len(f.segments)),
+		StructuralWalls: make([]AtlasStructuralWall, 0, len(f.structuralWalls)),
 	}
 
 	for _, s := range f.segments {
@@ -525,6 +624,32 @@ func (e *Encounter) Atlas() (Atlas, error) {
 		}
 		return cellBefore(a.To, b.To)
 	})
+
+	// THE STRUCTURAL LAYOUT (rpg-project#169). The FULL author atlas carries
+	// every valid definition and every opening, including a bound one; the
+	// per-member filter is [Encounter.AtlasFor]'s, exactly as it is for the
+	// placed contributors. Sorted by wall id and door id so a map or an
+	// authored order never leaks through the list (C8).
+	for i := range f.structuralWalls {
+		w := &f.structuralWalls[i]
+		wall := AtlasStructuralWall{
+			ID: w.id, Ref: w.ref, From: w.from, To: w.to,
+			Height: w.height, Thickness: w.thickness, Elevation: w.elevation,
+			Openings: make([]AtlasStructuralOpening, 0, len(w.openings)),
+		}
+		for j := range w.openings {
+			o := &w.openings[j]
+			wall.Openings = append(wall.Openings, AtlasStructuralOpening{ID: o.id, Position: o.position, Width: o.width})
+			if o.door != nil {
+				out.StructuralDoors = append(out.StructuralDoors, AtlasStructuralDoor{
+					ID: o.door.doorID, Ref: o.door.ref, From: o.door.from, To: o.door.to,
+					Height: w.height, Thickness: w.thickness, Elevation: w.elevation,
+				})
+			}
+		}
+		out.StructuralWalls = append(out.StructuralWalls, wall)
+	}
+	sortStructuralLayout(&out)
 
 	return out, nil
 }

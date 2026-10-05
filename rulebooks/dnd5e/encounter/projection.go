@@ -107,16 +107,30 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	}
 	hidden := e.undiscoveredFrom(member)
 	hiddenCells, unknownDoors := hidden.cells, hidden.doors
+	// A structural binding explicitly identifies the drawn representation of
+	// one gameplay door. Withholding that door must withhold this identity too,
+	// even for a direct FieldInput naming only the canonical DoorID. This is
+	// an identity link, never an inference from overlapping geometry.
+	withheldDoorPlacements := make(map[PropID]bool)
+	for _, wall := range e.field.structuralWalls {
+		for _, opening := range wall.openings {
+			if opening.door != nil && unknownDoors[opening.door.doorID] {
+				withheldDoorPlacements[opening.door.placedID] = true
+			}
+		}
+	}
 
 	out := Atlas{
-		Orientation: full.Orientation,
-		Cells:       make([]spatial.Position, 0, len(full.Cells)),
-		Regions:     make([]AtlasRegion, 0, len(full.Regions)),
-		Props:       make([]AtlasProp, 0, len(full.Props)),
-		Placed:      make([]AtlasPlacedProp, 0, len(full.Placed)),
-		Boundaries:  make([]AtlasBoundary, 0, len(full.Boundaries)),
-		Doorways:    make([]AtlasDoorway, 0, len(full.Doorways)),
-		Segments:    make([]AtlasSegment, 0, len(full.Segments)),
+		Orientation:     full.Orientation,
+		Cells:           make([]spatial.Position, 0, len(full.Cells)),
+		Regions:         make([]AtlasRegion, 0, len(full.Regions)),
+		Props:           make([]AtlasProp, 0, len(full.Props)),
+		Placed:          make([]AtlasPlacedProp, 0, len(full.Placed)),
+		Boundaries:      make([]AtlasBoundary, 0, len(full.Boundaries)),
+		Doorways:        make([]AtlasDoorway, 0, len(full.Doorways)),
+		Segments:        make([]AtlasSegment, 0, len(full.Segments)),
+		StructuralWalls: make([]AtlasStructuralWall, 0, len(full.StructuralWalls)),
+		StructuralDoors: make([]AtlasStructuralDoor, 0, len(full.StructuralDoors)),
 	}
 
 	for _, exit := range full.Exits {
@@ -188,11 +202,66 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	// placements touching unexplored space. The combined floor mask cannot be
 	// used here: a concealed hex does not implicitly select an unlisted prop.
 	for _, p := range full.Placed {
-		if p.Holdable || hidden.props[p.ID] || hidden.doors[p.ID] || e.placedTouchesHidden(p, hidden.unexploredCells) {
+		if p.Holdable || hidden.props[p.ID] || hidden.doors[p.ID] || withheldDoorPlacements[p.ID] || e.placedTouchesHidden(p, hidden.unexploredCells) {
 			continue
 		}
 		out.Placed = append(out.Placed, p)
 	}
+
+	// THE STRUCTURAL LAYOUT, ON THE SAME PRESENCE ANSWER (rpg-project#169).
+	// Presence consumes the permitted-identity answer the placed list above
+	// just computed — never a fresh visibility policy and never DoorSightings.
+	// A wall is projected only when its raw static presence survives; a bound
+	// opening is retained, and its independent door record emitted, only when
+	// the door's OWN raw static presence survives AND its canonical DoorID is
+	// not concealed. A withheld bound opening is omitted whole, so the visible
+	// wall carries no tell; a withheld parent never conceals a door that is
+	// independently permitted, because the door's own placed identity and
+	// DoorID are the only things consulted.
+	//
+	// UNKNOWN MUTABLE STATE DOES NOT TURN A KNOWN DOORWAY INTO WALL: no state
+	// is read here at all, so an absent DoorSighting leaves a known opening
+	// present with no state attached, exactly as a fixed identity must.
+	survivingPlaced := make(map[PropID]bool, len(out.Placed))
+	for _, p := range out.Placed {
+		survivingPlaced[p.ID] = true
+	}
+	for i := range e.field.structuralWalls {
+		w := &e.field.structuralWalls[i]
+		wallPresent := survivingPlaced[w.id]
+		var wall AtlasStructuralWall
+		if wallPresent {
+			wall = AtlasStructuralWall{
+				ID: w.id, Ref: w.ref, From: w.from, To: w.to,
+				Height: w.height, Thickness: w.thickness, Elevation: w.elevation,
+				Openings: make([]AtlasStructuralOpening, 0, len(w.openings)),
+			}
+		}
+		for j := range w.openings {
+			o := &w.openings[j]
+			permitted := true
+			if o.door != nil {
+				// A bound opening is permitted only when the door's OWN placed
+				// presence survives AND its canonical DoorID is not concealed.
+				// A withheld parent is not part of this answer.
+				permitted = survivingPlaced[o.door.placedID] && !unknownDoors[o.door.doorID]
+			}
+			if wallPresent && permitted {
+				wall.Openings = append(wall.Openings, AtlasStructuralOpening{ID: o.id, Position: o.position, Width: o.width})
+			}
+			if o.door != nil && permitted {
+				out.StructuralDoors = append(out.StructuralDoors, AtlasStructuralDoor{
+					ID: o.door.doorID, Ref: o.door.ref, From: o.door.from, To: o.door.to,
+					Height: w.height, Thickness: w.thickness, Elevation: w.elevation,
+				})
+			}
+		}
+		if wallPresent {
+			out.StructuralWalls = append(out.StructuralWalls, wall)
+		}
+	}
+
+	sortStructuralLayout(&out)
 
 	// Boundaries, in three passes, then restored to the atlas's own sort — a
 	// mask or a synthesized wall that sorted differently from an authored

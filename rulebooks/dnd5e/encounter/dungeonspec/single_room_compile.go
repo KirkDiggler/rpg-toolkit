@@ -95,6 +95,15 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 	if err != nil {
 		return Compiled{}, singleRoomCompileError("room.room.walls", err.Error())
 	}
+	// AND THE FIXED STRUCTURAL LAYOUT (rpg-project#169): the same authored
+	// walls as canonical lines with their openings, converted once. It rides
+	// beside the placed spans rather than replacing them — the spans are what
+	// blocks, this is what the layout IS — and a room with no walls carries
+	// none, so its bytes are untouched.
+	structuralWalls, err := canonicalStructuralWalls(spec.Key, spec.Room.Gameplay.Walls)
+	if err != nil {
+		return Compiled{}, singleRoomCompileError("room.room.walls", err.Error())
+	}
 	doors := singleRoomDoors(spec.Key, &spec.Room.Gameplay, read)
 	// AND THE DOORS ATTACHED TO A WALL OPENING (rpg-project#169). A bound door
 	// has no scene item and no prop declaration, so it brings its own
@@ -143,6 +152,10 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		// the table has to be where the field is. Nil when the site declares
 		// none.
 		Intel: intelRecordsOf(spec.Key, spec.Intel, singleRoomConcealmentOf(spec.Key)),
+		// THE FIXED STRUCTURAL LAYOUT (rpg-project#169). Nil when the room
+		// authored no walls, so a wall-less document pictures exactly as it
+		// did before this key existed.
+		StructuralWalls: structuralWalls,
 		// WHAT THIS ROOM HIDES (rpg-project#490,
 		// single_room_concealments.go): the root's `concealments:`, with the
 		// author's one list of placed ids sorted into the engine's doors and

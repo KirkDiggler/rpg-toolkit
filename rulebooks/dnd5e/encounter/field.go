@@ -595,6 +595,20 @@ type FieldInput struct {
 	// which floor a presented wall stands on. See [SegmentInput].
 	Segments []SegmentInput
 
+	// StructuralWalls are the authored structural walls (rpg-project#169): one
+	// canonical line with its assembled dimensions and its openings, each
+	// opening optionally bound to an existing footprint door. Optional and
+	// inert to the mechanics — the blocking contributors are still [Walls],
+	// [Placed] and [Doors] — this is the fixed layout a host draws and the
+	// projection filters. See [StructuralWallInput].
+	//
+	// IT IS NOT A SECOND AUTHORED POSE. A wall's [StructuralWallInput.ID] is
+	// the raw identity of its placed presence entry, a bound door's endpoints
+	// are resolved by the source compiler from its owning opening, and no
+	// transform, asset or catalog reference reaches a rule. Nil when the field
+	// declares none, which is every field authored before this noun existed.
+	StructuralWalls []StructuralWallInput
+
 	// Sealed is every cell some wall leaves too little of to stand on: a cell
 	// that KEEPS ITS OWNER and loses its feet (rpg-project#360, design C10).
 	// Absolute authored offset [col,row] cells. Optional; omitted means none.

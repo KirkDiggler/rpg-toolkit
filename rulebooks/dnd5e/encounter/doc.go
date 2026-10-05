@@ -118,6 +118,38 @@
 // never supplies a carrier or destination. Pickups and door changes notify
 // actual witnesses, not everybody who remembers the subject.
 //
+// # Structural walls and their permitted cuts (rpg-project#169)
+//
+// The placed spans are the MECHANICAL truth — the rectangles a wall blocks
+// with. Beside them a field may carry a fixed STRUCTURAL LAYOUT: one authored
+// line with its stable placed identity, absolute canonical-feet dimensions and
+// its openings, each optionally bound to an existing footprint door. It enters
+// through [FieldInput.StructuralWalls], is validated at construction (references
+// resolve, geometry is finite and positive, openings fit and do not overlap),
+// persists through [FieldData], and leaves as two flat [Atlas] collections:
+// [Atlas.StructuralWalls] (a permitted cut list with no nested door metadata)
+// and [Atlas.StructuralDoors] (every independently permitted door's actual
+// canonical DoorID, ref, opening endpoints and dimensions).
+//
+// PRESENCE IS THE EXISTING PERMITTED-IDENTITY ANSWER, never a fresh visibility
+// policy or a [DoorSighting]. A wall is projected only when its raw static
+// presence survives [Encounter.AtlasFor]; a door, when its own raw static
+// presence survives AND the existing door-identity concealment answer permits
+// its canonical DoorID. A hidden parent never conceals an unlisted door — the
+// door record is self-contained and carries no parent id — and a hidden door
+// leaves no tell, because its whole opening record is omitted. Known identity
+// with unknown mutable state keeps the cut and copies no state.
+//
+// A REVEAL CARRIES THE DIFFERENCE (structural_reveal.go, P2E). The existing
+// room_revealed and concealment_revealed payloads gain optional
+// `structural_walls` and `structural_doors`: the new or changed projected rows
+// by identity, computed from the same recipient-scoped [Encounter.AtlasFor] on
+// both sides of the knowledge moment. A wall whose newly permitted cut changed
+// is re-sent under its same id; an independent door the recipient already had
+// is not duplicated; both keys are absent when nothing changed. An earlier
+// payload is never enriched by a later discovery, and a fixed row carries no
+// state, lock or parent association.
+//
 // # Concealment: the run composes its world (rpg-toolkit#1371, rpg-project#490)
 //
 // A field may declare CONCEALMENTS — one noun per secret, each with an id,

@@ -859,3 +859,81 @@ func wallCollision(existing []encounter.PlacedPropInput, lowerings []wallLowerin
 	}
 	return nil
 }
+
+// # The structural layout
+
+// canonicalStructuralWalls lowers every authored wall into the runtime's fixed
+// structural layout (rpg-project#169, encounter/structural_walls.go): one
+// definition per wall in AUTHORED order, with its line and every length
+// converted ONCE through [feetPerSourceUnit], and each opening's bound door
+// resolved from the owning line.
+//
+// THE LAYOUT IS NOT THE BLOCKER AND NOT THE APPEARANCE'S RULE. The line becomes
+// canonical feet, the assembled height/thickness/elevation become canonical
+// feet beside it, and the opening's centre becomes a canonical distance along
+// the line; the blocking footprint, its depth, its offset and the two blocking
+// flags stay exactly where the placed-span lowering put them, and nothing here
+// re-reads them. A door's endpoints are the opening's own corridor — position
+// minus and plus half its width, projected onto the line — so a door and its
+// opening agree by construction and the door stores no transform of its own.
+//
+// Ref is content's word and is carried verbatim. No asset, catalog or mesh
+// bounds are read.
+//
+// Only reachable for a validated document: every wall's line is finite and
+// positive and every opening fits it. It still returns an error rather than
+// panicking on a spec assembled in Go, because [RoomSource] is exported.
+func canonicalStructuralWalls(key string, walls []RoomWall) ([]encounter.StructuralWallInput, error) {
+	if len(walls) == 0 {
+		return nil, nil
+	}
+	k := feetPerSourceUnit
+	out := make([]encounter.StructuralWallInput, 0, len(walls))
+	for i := range walls {
+		wall := &walls[i]
+		start, end := wall.Line.Start, wall.Line.End
+		dx, dz := end.X-start.X, end.Z-start.Z
+		length := math.Hypot(dx, dz)
+		if !wallFinite(length) || length <= 0 {
+			return nil, fmt.Errorf("room.room.walls[%d]: line has no finite positive length", i)
+		}
+		dirX, dirZ := dx/length, dz/length
+
+		lowered := encounter.StructuralWallInput{
+			ID:        encounter.PropID(wall.ID),
+			Ref:       wall.Appearance.AssetRef,
+			From:      spatial.Point{X: start.X * k, Y: start.Z * k},
+			To:        spatial.Point{X: end.X * k, Y: end.Z * k},
+			Height:    wall.Appearance.Height * k,
+			Thickness: wall.Appearance.Thickness * k,
+			Elevation: wall.Appearance.Elevation * k,
+		}
+		for j := range wall.Openings {
+			opening := wall.Openings[j]
+			loweredOpening := encounter.StructuralOpeningInput{
+				ID:       opening.ID,
+				Position: opening.Position * k,
+				Width:    opening.Width * k,
+			}
+			if opening.Door != nil {
+				// THE OPENING OWNS THE DOOR'S POSE. Half-width either side of
+				// the centre, projected onto the line, is the door's visual
+				// opening; the transverse depth and offset the placed lowering
+				// uses are that record's business and are not duplicated here.
+				near := opening.Position - opening.Width/2
+				far := opening.Position + opening.Width/2
+				loweredOpening.Door = &encounter.StructuralDoorBindingInput{
+					PlacedID: encounter.PropID(opening.Door.ID),
+					DoorID:   encounter.DoorID(key + "/" + opening.Door.ID),
+					Ref:      opening.Door.AssetRef,
+					From:     spatial.Point{X: (start.X + dirX*near) * k, Y: (start.Z + dirZ*near) * k},
+					To:       spatial.Point{X: (start.X + dirX*far) * k, Y: (start.Z + dirZ*far) * k},
+				}
+			}
+			lowered.Openings = append(lowered.Openings, loweredOpening)
+		}
+		out = append(out, lowered)
+	}
+
+	return out, nil
+}

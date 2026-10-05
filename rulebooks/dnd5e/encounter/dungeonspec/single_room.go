@@ -620,10 +620,13 @@ type RoomPropDeclaration struct {
 // rather than defining a second frame. An opening's `position` is measured
 // along the line from its start, in scene units.
 //
-// APPEARANCE IS CONTENT AND IS CARRIED UNREAD. `assetRef`, `height`,
-// `thickness` and `elevation` reach no gameplay fact — the blocker below is
-// what blocks — so nothing here turns an asset's bounds into a rule, and no
-// asset or network access is required to decode or compile a wall.
+// APPEARANCE IS CONTENT AND REACHES NO RULE. `assetRef`, `height`, `thickness`
+// and `elevation` reach no gameplay fact — the blocker below is what blocks —
+// so nothing here turns an asset's bounds into a mechanic, and no asset or
+// network access is required to decode or compile a wall. The four values are
+// copied into the FIXED LAYOUT RECORD so a client draws the authored
+// dimensions (encounter/structural_walls.go, rpg-project#169); transporting
+// them is not deriving physics from them.
 //
 // THE BLOCKER IS A [RoomPropDeclaration], the SAME SHAPE A PROP'S IS: width,
 // depth and both offsets are its footprint's, and the two blocking answers
@@ -711,8 +714,10 @@ type RoomWallDoor struct {
 	AssetRef string `yaml:"assetRef" json:"assetRef"`
 }
 
-// RoomWallAppearance is a wall's repeating visual content. It is carried
-// unread: no field below reaches a gameplay fact, and validating membership
+// RoomWallAppearance is a wall's repeating visual content. It reaches no rule:
+// the four values are copied into the fixed layout record as the assembled
+// dimensions it is drawn at (encounter/structural_walls.go, rpg-project#169),
+// never read to decide blocking, movement or sight, and validating membership
 // in a catalog is the codec that owns that catalog (the web's) — not this
 // engine's.
 type RoomWallAppearance struct {
