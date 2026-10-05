@@ -79,10 +79,22 @@ func (s *ShillelaghCondition) MoveEquipmentBinding(slot string) { s.Weapon.Slot 
 
 // WeaponAttackOverride affects only attacks with the selected held weapon.
 func (s *ShillelaghCondition) WeaponAttackOverride(slot, itemID string) *weaponattack.Override {
-	if slot != s.Weapon.Slot || itemID != s.Weapon.ItemID || s.TurnEndsLeft <= 0 {
+	if s.TurnEndsLeft <= 0 || !s.binds(slot, itemID) {
 		return nil
 	}
 	return &weaponattack.Override{Dice: "1d8", Ability: s.Ability, Magical: true}
+}
+
+// binds reports whether a hand and the equipment ID it holds are the
+// enchanted weapon — the one predicate attack assembly and AssessAction share.
+//
+// Invariant: inventory keys a weapon by its catalogue ID, so the item ID a
+// hand holds (what assembly passes, and what the cast stored) equals the
+// assembled weapon ref's ID (what the frame carries). Pinned by
+// character.TestAssembleAttack_WeaponRefIDIsTheEquippedItemID; if inventory
+// ever keys weapons by instance, that test fails before the two drift.
+func (s *ShillelaghCondition) binds(slot, itemID string) bool {
+	return slot == s.Weapon.Slot && itemID == s.Weapon.ItemID
 }
 
 // IsApplied reports whether the clock is attached to a bus.

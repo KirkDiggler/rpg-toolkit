@@ -161,17 +161,22 @@ func answerEffect(in *answerEffectInput) error {
 }
 
 // validateAnswer refuses a producer defect: an invalid decision, a
-// participation other than the census declares, or a contribution carried by
-// an answer that does not apply.
+// participation other than the census declares, an unknown attack mode, or a
+// contribution carried by an answer that does not apply.
 func validateAnswer(answer contributions.Answer, participation contributions.Participation) error {
 	if err := answer.Decision.Validate(); err != nil {
 		return err
+	}
+	switch answer.AttackMode {
+	case "", contributions.AttackAdvantage, contributions.AttackDisadvantage:
+	default:
+		return fmt.Errorf("unknown attack mode %q", answer.AttackMode)
 	}
 	if answer.Participation != participation {
 		return fmt.Errorf("answer participation %q differs from its census entry %q", answer.Participation, participation)
 	}
 	if answer.Decision.Applicability != contributions.Applies &&
-		(answer.Benefit != "" || len(answer.Damage) != 0 || len(answer.Roll) != 0) {
+		(answer.Benefit != "" || len(answer.Damage) != 0 || len(answer.Roll) != 0 || answer.AttackMode != "") {
 		return fmt.Errorf("an answer that does not apply cannot carry a benefit or contribution")
 	}
 	return nil

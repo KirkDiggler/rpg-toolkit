@@ -233,11 +233,11 @@ var conditionLoaders = map[string]conditionLoader{
 		return divineFavor, nil
 	},
 	refs.Conditions.FaerieFire().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		shieldOfFaith := &FaerieFireCondition{}
-		if err := shieldOfFaith.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load shieldOfFaith condition")
+		faerieFire := &FaerieFireCondition{}
+		if err := faerieFire.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load faerie fire condition")
 		}
-		return shieldOfFaith, nil
+		return faerieFire, nil
 	},
 	refs.Conditions.ShieldOfFaith().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		shieldOfFaith := &ShieldOfFaithCondition{}

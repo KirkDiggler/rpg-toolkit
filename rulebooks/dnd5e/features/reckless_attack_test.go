@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -99,6 +100,15 @@ func (s *RecklessAttackTestSuite) TestActivate_PublishesConditionAppliedEvent() 
 		AttackerID: s.character.GetID(),
 		TargetID:   "goblin-1",
 		IsMelee:    true,
+		Frame: contributions.Frame{
+			Actor:  s.character.GetID(),
+			Target: contributions.Known("goblin-1"),
+			Action: contributions.ActionFacts{
+				Roll:        contributions.Known(contributions.RollKindAttack),
+				Melee:       contributions.Known(true),
+				Opportunity: contributions.Known(false),
+			},
+		},
 	}
 
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)

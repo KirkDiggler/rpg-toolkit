@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -75,6 +76,26 @@ type TrueStrikeCondition struct {
 
 // Ensure TrueStrikeCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*TrueStrikeCondition)(nil)
+
+var _ contributions.ActionAssessor = (*TrueStrikeCondition)(nil)
+
+// AssessAction answers whether True Strike bears on the framed attack: its
+// holder's next attack against the chosen target has advantage. An unknown
+// target depends. The attack consumes it; reading this answer consumes
+// nothing.
+func (t *TrueStrikeCondition) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error) {
+	return t.attackRule().AssessAction(in)
+}
+
+func (t *TrueStrikeCondition) attackRule() attackRollRule {
+	return attackRollRule{name: "true strike", owner: t.MemberID, target: t.TargetID, text: attackRollText{
+		NotOwner:    "True Strike affects only its caster's attack",
+		OnlyAttacks: "True Strike affects only attack rolls",
+		NotTarget:   "True Strike helps only against its chosen target",
+		Applies:     "This is True Strike's chosen target",
+		Benefit:     "Advantage on the attack roll",
+	}}
+}
 
 // Ref returns the canonical ref this condition names itself by — the same ref
 // its ToJSON embeds and its loader routes on.
@@ -200,7 +221,11 @@ func (t *TrueStrikeCondition) onAttackChain(
 	event dnd5eEvents.AttackChainEvent,
 	c chain.Chain[dnd5eEvents.AttackChainEvent],
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
-	if event.AttackerID != t.MemberID || event.TargetID != t.TargetID {
+	executed, err := executeRule(&executeRuleInput{Name: "true strike", Rule: t.attackRule(), Frame: event.Frame})
+	if err != nil {
+		return c, err
+	}
+	if executed.Answer.Decision.Applicability != contributions.Applies {
 		return c, nil
 	}
 
