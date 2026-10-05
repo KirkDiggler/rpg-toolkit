@@ -77,6 +77,9 @@ type mockCharacter struct {
 func (m *mockCharacter) GetID() string            { return m.id }
 func (m *mockCharacter) GetType() core.EntityType { return "character" }
 
+// GetConditions reports what the character holds: nothing, so Rage may start.
+func (m *mockCharacter) GetConditions() []dnd5eEvents.ConditionBehavior { return nil }
+
 // IsResourceAvailable implements coreResources.ResourceAccessor
 func (m *mockCharacter) IsResourceAvailable(key coreResources.ResourceKey) bool {
 	if m.resources == nil {
