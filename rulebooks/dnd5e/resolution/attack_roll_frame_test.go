@@ -12,20 +12,27 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/weaponattack"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
-// handaxe is the dagger's swing made with a handaxe: a melee weapon that is
-// neither finesse nor of a ranged category, thrown or not.
+// handaxe is the dagger's swing made by THROWING a handaxe: ranged delivery,
+// with a weapon that is a melee weapon and neither finesse nor of a ranged
+// category — the law's own example of an attack that is not melee made with
+// a weapon that is not a ranged weapon.
 func handaxe() combatActions.Definition {
 	definition := dagger()
 	weapon := *refs.Weapons.Handaxe()
 	definition.Ref = weapon
 	definition.Name = "Handaxe"
-	definition.Attack.Weapon = &combatActions.WeaponContext{Ref: &weapon}
+	definition.Attack.Delivery = combatActions.AttackDelivery{Ranged: &combatActions.RangedDelivery{NormalFeet: 20, LongFeet: 60}}
+	definition.Attack.Weapon = &combatActions.WeaponContext{Ref: &weapon, Slot: "main_hand"}
 	definition.Attack.Damage = []damage.Damage{{
 		Dice: "1d6", Type: damage.Slashing, Properties: []damage.Property{damage.AddsAttackAbilityModifier},
 	}}
@@ -50,11 +57,11 @@ func (s *FrameTestSuite) TestAttackActionFactsReadTheWeapon() {
 	facts := attackActionFacts(dagger().Attack, false)
 
 	s.Equal(contributions.Known(refs.Weapons.Dagger().String()), facts.Weapon)
-	s.Equal(contributions.Known(""), facts.WeaponSlot, "the fixture names no hand")
 	s.Equal(contributions.Known(true), facts.Finesse)
 	s.Equal(contributions.Known(false), facts.RangedWeapon)
-	s.Equal(contributions.Known(false), facts.TwoHanded)
-	s.Equal(contributions.Known(false), facts.OffHandWeapon)
+	s.Equal(contributions.Unknown[string](), facts.WeaponSlot, "the fixture names no hand, so none was read")
+	s.Equal(contributions.Unknown[bool](), facts.TwoHanded, "no hand read, no grip read")
+	s.Equal(contributions.Unknown[bool](), facts.OffHandWeapon, "no hand read, no other hand read")
 	s.Equal(contributions.Known(false), facts.OffHandAttack)
 	s.Equal(contributions.Known(3), facts.AbilityModifier)
 	s.Equal(contributions.Known(false), facts.Opportunity)
@@ -62,16 +69,42 @@ func (s *FrameTestSuite) TestAttackActionFactsReadTheWeapon() {
 	s.Equal(contributions.Known(true), attackActionFacts(dagger().Attack, true).Opportunity,
 		"opportunity is the caller's, not the profile's")
 
+}
+
+// TestAttackActionFactsThrownWeaponIsNotARangedWeapon: a thrown handaxe is not
+// melee and is not a ranged weapon — the weapon's category, never its
+// delivery, says which.
+func (s *FrameTestSuite) TestAttackActionFactsThrownWeaponIsNotARangedWeapon() {
 	thrown := attackActionFacts(handaxe().Attack, false)
+
+	s.Equal(contributions.Known(false), thrown.Melee, "precondition: the handaxe is thrown")
 	s.Equal(contributions.Known(false), thrown.Finesse)
 	s.Equal(contributions.Known(false), thrown.RangedWeapon, "a handaxe is a melee weapon, thrown or not")
+	s.Equal(contributions.Known("main_hand"), thrown.WeaponSlot)
+}
+
+// TestMonsterWeaponLeavesTheHandsUnread: a stat-block wielder names no hand,
+// so its grip and other hand were never read and stay unknown, never false.
+func (s *FrameTestSuite) TestMonsterWeaponLeavesTheHandsUnread() {
+	scimitar, err := weapons.GetByID(weapons.Scimitar)
+	s.Require().NoError(err)
+	definition, err := weaponattack.Assemble(&weaponattack.Input{Wielder: monsters.NewWolf(wolfID), Weapon: &scimitar})
+	s.Require().NoError(err)
+
+	facts := attackActionFacts(definition.Attack, false)
+
+	s.Equal(contributions.Known(refs.Weapons.Scimitar().String()), facts.Weapon)
+	s.Equal(contributions.Known(true), facts.Finesse)
+	s.Equal(contributions.Unknown[string](), facts.WeaponSlot)
+	s.Equal(contributions.Unknown[bool](), facts.TwoHanded)
+	s.Equal(contributions.Unknown[bool](), facts.OffHandWeapon)
 }
 
 func (s *FrameTestSuite) TestAttackActionFactsReadTheGrip() {
 	other := *refs.Weapons.Dagger()
 	held := dagger()
 	held.Attack.IsOffHandAttack = true
-	held.Attack.Weapon.Slot = "off_hand"
+	held.Attack.Weapon.Slot = "off_hand" // a character's assembly names its hands
 	held.Attack.Weapon.TwoHanded = true
 	held.Attack.Weapon.OffHandWeaponRef = &other
 
@@ -96,14 +129,17 @@ func (s *FrameTestSuite) TestAttackActionFactsRangedWeapon() {
 }
 
 // TestAttackActionFactsNoWeaponIsKnownNone: an attack with no weapon context
-// knows every weapon fact as its zero value.
+// honestly has no weapon, so the weapon's facts are known zero — but whether
+// the other hand holds a weapon was never read.
 func (s *FrameTestSuite) TestAttackActionFactsNoWeaponIsKnownNone() {
 	facts := attackActionFacts(bite().Attack, false)
 
 	s.Equal(contributions.Known(""), facts.Weapon)
+	s.Equal(contributions.Known(""), facts.WeaponSlot)
 	s.Equal(contributions.Known(false), facts.Finesse)
 	s.Equal(contributions.Known(false), facts.RangedWeapon)
 	s.Equal(contributions.Known(false), facts.TwoHanded)
+	s.Equal(contributions.Unknown[bool](), facts.OffHandWeapon)
 	s.Equal(contributions.Known(0), facts.AbilityModifier, "a stat block names no ability")
 }
 
@@ -237,4 +273,78 @@ func (s *FrameTestSuite) TestHandaxeStrikeDoesNotSneakAttack() {
 	s.False(sneakAttackFired(outcome), "components: %+v", outcome.DamageComponents)
 	s.Empty(roller.script)
 	s.Equal(abilities.DEX, handaxe().Attack.Ability.Ability, "precondition: the swing uses Dexterity")
+}
+
+// frozenOpportunity reads a frozen strike blob's opportunity flag.
+func (s *FrameTestSuite) frozenOpportunity(frozen json.RawMessage) any {
+	var blob map[string]any
+	s.Require().NoError(json.Unmarshal(frozen, &blob))
+	return blob["opportunity"]
+}
+
+// TestEveryFreezeCarriesOpportunity: an opportunity strike that pauses at any
+// of its three freeze points — a reaction before the roll, an offer after it,
+// a reaction after the hit — writes the flag into the blob it freezes, so the
+// resumed strike rebuilds the same attack-roll frame.
+func (s *FrameTestSuite) TestEveryFreezeCarriesOpportunity() {
+	s.Run("before the roll", func() {
+		roller := &actionRoller{singles: []int{15}, pairs: [][]int{{15, 2}}, damage: [][]int{{3}}}
+		out, err := resolveOn(s.ctx, &Input{
+			World: actionWorld(s.T(), 2), Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Character: flareHero(s.T())}},
+			Machine:    NewStrike(&StrikeInput{AttackerID: wolfID, TargetID: heroID, Definition: validMeleeDefinition(), Opportunity: true, Roller: roller}),
+			Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+			TurnDriver: passDriver{}, Roller: roller,
+		}, newSurface(events.NewEventBus()))
+		s.Require().NoError(err)
+		s.Require().NotNil(out.Posed)
+		s.Require().True(out.Posed.BeforeRoll, "precondition: the pre-roll reaction posed")
+		s.Equal(true, s.frozenOpportunity(out.Posed.Frozen))
+	})
+
+	s.Run("after the roll", func() {
+		out, err := resolveHeroStrike(s.T(), inspiredHero(s.T()), NewStrike(&StrikeInput{
+			AttackerID: heroID, TargetID: wolfID, Definition: validMeleeDefinition(), Opportunity: true,
+			Roller: &actionRoller{singles: []int{8}},
+		}))
+		s.Require().NoError(err)
+		s.Require().NotNil(out.Posed)
+		s.Require().False(out.Posed.BeforeRoll, "precondition: the post-roll offer posed")
+		s.Equal(true, s.frozenOpportunity(out.Posed.Frozen))
+	})
+
+	s.Run("after the hit", func() {
+		bus := events.NewEventBus()
+		_, err := dnd5eEvents.PostHitChain.On(bus).SubscribeWithChain(s.ctx,
+			func(_ context.Context, e *dnd5eEvents.PostHitEvent,
+				c chain.Chain[*dnd5eEvents.PostHitEvent],
+			) (chain.Chain[*dnd5eEvents.PostHitEvent], error) {
+				e.Offers = append(e.Offers, dnd5eEvents.PostHitOffer{
+					ReactorID: e.TargetID, Ref: *refs.Conditions.Dodging(), Name: "a test reaction",
+				})
+				return c, nil
+			})
+		s.Require().NoError(err)
+		out, err := resolveHeroStrikeOn(s.T(), actionHero(), NewStrike(&StrikeInput{
+			AttackerID: heroID, TargetID: wolfID, Definition: validMeleeDefinition(), Opportunity: true,
+			Roller: &actionRoller{singles: []int{15}, damage: [][]int{{3}}},
+		}), newSurface(bus))
+		s.Require().NoError(err)
+		s.Require().NotNil(out.Posed)
+		s.Require().NotNil(out.Posed.SettledStrike, "precondition: the post-hit reaction posed")
+		s.Equal(true, s.frozenOpportunity(out.Posed.Frozen))
+	})
+}
+
+// TestInformationOpportunityIsKnownFalse: information answers for an attack
+// the actor declares, which is never an opportunity attack — known false,
+// not unknown, or Reckless Attack's row would depend on every declaration.
+func (s *FrameTestSuite) TestInformationOpportunityIsKnownFalse() {
+	out, err := informationFrame(&informationFrameInput{
+		Observed: &encounter.ObservedContextOutput{Observer: encounter.MemberID(holdOutRogue)},
+		Attack:   dagger().Attack,
+		Target:   holdOutScout,
+	})
+	s.Require().NoError(err)
+
+	s.Equal(contributions.Known(false), out.Frame.Action.Opportunity)
 }

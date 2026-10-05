@@ -37,13 +37,23 @@ import (
 // Advantage is left unknown: it is a fold result, not an assembly fact, and
 // only the post-fold frame has a fold to read it from.
 //
-// The weapon facts read the profile's weapon context. An attack with no
-// weapon context — a spell attack, or a stat-block attack that names no
-// weapon — knows every weapon fact as its zero value. A weapon context whose
-// ref is missing leaves the weapon and its catalogue properties unknown, and
-// so does a ref the weapons catalogue does not hold: an unreadable weapon is
-// never read as a plain one. Opportunity is the caller's: the strike knows
-// whether it is an opportunity attack, and the profile does not.
+// The weapon facts read the profile's weapon context, and what was not read
+// stays unknown:
+//   - No weapon context — a spell attack, or a stat-block attack that names no
+//     weapon — honestly has no weapon: Weapon and WeaponSlot are Known(""),
+//     Finesse, RangedWeapon and TwoHanded known false. Whether the other hand
+//     holds a weapon was never read, so OffHandWeapon is unknown.
+//   - A weapon context whose producer names no hand (Slot "", every monster
+//     today: weaponattack never reads a second hand or asks a grip) leaves
+//     WeaponSlot, TwoHanded and OffHandWeapon unknown.
+//   - A weapon context whose ref is missing, or names a weapon the catalogue
+//     does not hold, leaves the weapon's catalogue properties unknown: an
+//     unreadable weapon is never read as a plain one.
+//
+// No rule that ships reads an unknown here for those attacks: Dueling and Great
+// Weapon Fighting refuse a spell attack on its weapon pool first, and no
+// monster holds a grip-reading rule. Opportunity is the caller's: the strike
+// knows whether it is an opportunity attack, and the profile does not.
 func attackActionFacts(p *combatActions.AttackProfile, opportunity bool) contributions.ActionFacts {
 	var ability abilities.Ability
 	modifier := 0
@@ -70,16 +80,21 @@ func attackActionFacts(p *combatActions.AttackProfile, opportunity bool) contrib
 		Finesse:         contributions.Known(false),
 		RangedWeapon:    contributions.Known(false),
 		TwoHanded:       contributions.Known(false),
-		OffHandWeapon:   contributions.Known(false),
+		OffHandWeapon:   contributions.Unknown[bool](),
 		OffHandAttack:   contributions.Known(p.IsOffHandAttack),
 		Opportunity:     contributions.Known(opportunity),
 	}
 	if p.Weapon == nil {
 		return facts
 	}
-	facts.WeaponSlot = contributions.Known(p.Weapon.Slot)
-	facts.TwoHanded = contributions.Known(p.Weapon.TwoHanded)
-	facts.OffHandWeapon = contributions.Known(p.Weapon.OffHandWeaponRef != nil)
+	if p.Weapon.Slot == "" {
+		facts.WeaponSlot = contributions.Unknown[string]()
+		facts.TwoHanded = contributions.Unknown[bool]()
+	} else {
+		facts.WeaponSlot = contributions.Known(p.Weapon.Slot)
+		facts.TwoHanded = contributions.Known(p.Weapon.TwoHanded)
+		facts.OffHandWeapon = contributions.Known(p.Weapon.OffHandWeaponRef != nil)
+	}
 	facts.Weapon = contributions.Unknown[string]()
 	facts.Finesse = contributions.Unknown[bool]()
 	facts.RangedWeapon = contributions.Unknown[bool]()
@@ -236,6 +251,12 @@ func (m *strikeMachine) attackRollFrame(ctx context.Context) (contributions.Fram
 // knowledge; every other fact is the attack-roll frame's. The post-roll offers
 // and the damage fold read it (O5). Built once, on first use after the attack
 // chain has folded.
+//
+// That guarantee holds within one uninterrupted strike. A strike resumed after
+// a freeze rebuilds its attack-roll frame from current state (S3), so its
+// distances, stances and holdings may differ from the frame the attack chain
+// folded under before the freeze; only the frozen fold's Advantage carries
+// over.
 //
 // Errors: any error from [strikeMachine.attackRollFrame]. The caller gets a
 // detached copy.
