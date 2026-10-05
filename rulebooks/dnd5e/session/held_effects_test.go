@@ -131,3 +131,38 @@ func (s *EffectRowsSuite) TestHeldEffectsWireKey() {
 	}
 	s.True(carried, "goblin one carries its held row: %s", raw)
 }
+
+// TestAStaleSightingOfAnUntouchedMemberDrawsNoRecheck: R19 is an EVENT — a
+// change to a member's conditions refreshes sightings of that member — not a
+// standing diff between sightings and sheets. Goblin one's sheet gains Faerie
+// Fire with no verb declaring it, so the rogue's current sighting of it is
+// stale; later verbs that never touch the goblin (alice dodges; the host
+// re-looks at alice) must not re-look at it or send a beat naming it. Whatever
+// ordinary sight refresh those verbs run may still renew the goblin's
+// testimony — that is sight doing its job, not this trigger.
+func (s *EffectRowsSuite) TestAStaleSightingOfAnUntouchedMemberDrawsNoRecheck() {
+	s.cave(s.rogue())
+	data := s.sessions.byID[erSession]
+	for i := range data.NPCs {
+		if data.NPCs[i].ID == erGoblin1 {
+			data.NPCs[i].Conditions = append(data.NPCs[i].Conditions, s.raw(s.faerieFireOn(erGoblin1)))
+		}
+	}
+	s.stream.published = nil
+
+	// Two verbs that touch alice and never the goblin: the dodge, then the
+	// host's re-look at alice. A standing diff would re-look at the goblin on
+	// each of them, forever.
+	_, err := s.mgr.Activate(s.ctx, &session.ActivateInput{
+		Session: erSession, Member: "alice", DeclarationID: activationSelector(s.T(), s.mgr, "alice", "dnd5e:combat_abilities:dodge"),
+	})
+	s.Require().NoError(err)
+	_, err = s.mgr.Recheck(s.ctx, &session.RecheckInput{Session: erSession, Members: []string{"alice"}})
+	s.Require().NoError(err)
+
+	for _, event := range s.stream.published {
+		if body, ok := event.Body.(session.SightedBody); ok {
+			s.NotContains(body.Changed, erGoblin1, "no beat names the untouched goblin: %+v", body)
+		}
+	}
+}

@@ -139,42 +139,73 @@ func conditionKey(set *encounter.ConditionSet) string {
 	return strings.Join(parts, "\x1e")
 }
 
+// npcConditionKeys keys every monster sheet's conditions in the session
+// record, which a verb already holds: no repository is read.
+func npcConditionKeys(data *SessionData) map[string]string {
+	keys := make(map[string]string, len(data.NPCs))
+	for i := range data.NPCs {
+		keys[data.NPCs[i].ID] = conditionKey(seenConditions(data.NPCs[i].ID, data.NPCs[i].Conditions))
+	}
+	return keys
+}
+
 // recheckChangedConditions is condition freshness (rpg-project#520, R19): a
-// change to a member's conditions refreshes the sightings of that member at
+// CHANGE to a member's conditions refreshes the sightings of that member at
 // commit, the same way an equipment change does through [Manager.Recheck],
 // because a row must not outlive the condition it describes.
 //
-// # It compares what is SEEN with what is TRUE
+// # It is an event, not a standing diff
 //
-// After every settlement that can write a sheet, it reads what each member
-// holds now and every observer's current sight of them
-// ([encounter.Encounter.ObservedContext] — testimony, never a live read), and
-// asks the composition to re-look at exactly the members some current
-// sighting describes differently, in sorted order. A sight refresh earlier in
-// the verb already wrote the truth into what it refreshed, so only sightings
-// left stale are re-looked; a verb that changes no condition finds none and
-// adds no beat. Comparing with the sightings rather than with a snapshot taken
-// when the verb opened costs no sheet read before the verb has acted, which
-// the verbs' own load-order laws forbid.
+// Only members this verb touched can have changed: a player whose sheet the
+// verb wrote (scope.written), or a monster whose sheet's conditions differ
+// from when the verb opened. A member the verb never touched is never
+// compared, so a sighting that is legitimately stale — a watcher who cannot
+// see the member now, or a change no verb declared — draws no re-look, no
+// beat and no sheet read on any later commit. For each touched member, what
+// it holds now is compared with every observer's current sight of it
+// ([encounter.Encounter.ObservedContext], testimony); the members some
+// sighting describes differently are re-looked, in sorted order. A sight
+// refresh earlier in the verb already wrote the truth into what it refreshed,
+// so a touched member already seen afresh draws nothing.
 //
-// A sighting that observed no conditions (testimony from before sightings
-// carried them) is unknown rather than stale: it yields no held rows, and it
-// is refreshed by the next ordinary sight refresh rather than by a beat to
-// every watcher at once. A member nobody currently sees has no sighting to
-// refresh. A finished encounter has no one left to look.
+// The sheets read here are only those the verb itself wrote, after it acted;
+// no sheet is read before the verb has acted, which the verbs' load-order laws
+// forbid. A sighting that observed no conditions (testimony from before
+// sightings carried them) is unknown rather than stale. A finished encounter
+// has no one left to look.
 //
 // Accepted cost: every condition change a watcher can see sends that watcher a
 // sighting "changed" beat naming the member — never the condition.
 func (m *Manager) recheckChangedConditions(scope *writeScope) error {
+	touched := make(map[encounter.MemberID]bool)
+	for _, written := range scope.written {
+		if id, ok := strings.CutPrefix(written, "character:"); ok {
+			touched[encounter.MemberID(id)] = true
+		}
+	}
+	for id, key := range npcConditionKeys(scope.data) {
+		if before, ok := scope.npcConditionsAtOpen[id]; ok && before != key {
+			touched[encounter.MemberID(id)] = true
+		}
+	}
+	if len(touched) == 0 {
+		return nil
+	}
+
 	roster, err := scope.enc.Members()
 	if err != nil {
 		return fmt.Errorf("condition freshness: %w", translate(err))
 	}
-	ids := make([]encounter.MemberID, 0, len(roster))
+	asked := make([]encounter.MemberID, 0, len(touched))
 	for _, member := range roster {
-		ids = append(ids, member.ID)
+		if touched[member.ID] {
+			asked = append(asked, member.ID)
+		}
 	}
-	truth, err := equipmentBeside(scope.standing).Conditions(ids)
+	if len(asked) == 0 {
+		return nil
+	}
+	truth, err := equipmentBeside(scope.standing).Conditions(asked)
 	if err != nil {
 		return err
 	}
@@ -189,10 +220,11 @@ func (m *Manager) recheckChangedConditions(scope *writeScope) error {
 			return fmt.Errorf("condition freshness for %q: %w", observer.ID, translate(err))
 		}
 		for _, seen := range observed.Members {
-			if seen.Conditions == nil || stale[seen.ID] {
+			now, isTouched := truth[seen.ID]
+			if !isTouched || seen.Conditions == nil || stale[seen.ID] {
 				continue
 			}
-			if conditionKey(seen.Conditions) != conditionKey(truth[seen.ID]) {
+			if conditionKey(seen.Conditions) != conditionKey(now) {
 				stale[seen.ID] = true
 			}
 		}
