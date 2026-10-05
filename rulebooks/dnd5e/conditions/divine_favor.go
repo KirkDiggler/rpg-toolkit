@@ -17,6 +17,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -182,10 +183,62 @@ func (g *DivineFavorCondition) BindRoller(roller dice.Roller) {
 
 var _ RollerBinder = (*DivineFavorCondition)(nil)
 
+var _ contributions.ActionAssessor = (*DivineFavorCondition)(nil)
+
+// AssessAction answers whether Divine Favor's radiant d4 bears on the framed
+// attack. It reads the frame and this condition's own recipient; it never
+// rolls.
+func (g *DivineFavorCondition) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error) {
+	return g.rule().AssessAction(in)
+}
+
+func (g *DivineFavorCondition) rule() divineFavorRule {
+	return divineFavorRule{owner: g.MemberID}
+}
+
+// divineFavorRule holds only the facts Divine Favor's predicate uses: its
+// caster's weapon attacks, read as the frame's primary weapon pool.
+type divineFavorRule struct {
+	owner string
+}
+
+func (r divineFavorRule) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error) {
+	frame, err := frameOf(in, "divine favor")
+	if err != nil {
+		return nil, err
+	}
+	if frame.Actor != r.owner {
+		return assessed(contributions.DoesNotApply, "Divine Favor affects only its caster's attacks"), nil
+	}
+	if roll, _ := frame.Action.Roll.Get(); roll != contributions.RollKindAttack {
+		return assessed(contributions.DoesNotApply, "Divine Favor adds only to weapon attacks"), nil
+	}
+	weapon, known := frame.Action.WeaponPool.Get()
+	if !known {
+		return assessed(contributions.Depends, "Depends on the attack's weapon"), nil
+	}
+	if !weapon {
+		return assessed(contributions.DoesNotApply, "Divine Favor requires a weapon attack"), nil
+	}
+	out := assessed(contributions.Applies, "The attack is a weapon attack")
+	out.Answer.Benefit = "+1d4 radiant damage"
+	return out, nil
+}
+
+// onDamageChain adds Divine Favor's radiant d4 when divineFavorRule applies to
+// the event's frame — the same rule information asks. An invalid frame or a
+// Depends answer fails the fold.
 func (g *DivineFavorCondition) onDamageChain(
 	_ context.Context, event *dnd5eEvents.DamageChainEvent, c chain.Chain[*dnd5eEvents.DamageChainEvent],
 ) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
-	if event == nil || event.AttackerID != g.MemberID {
+	if event == nil {
+		return c, nil
+	}
+	executed, err := executeRule(&executeRuleInput{Name: "divine favor", Rule: g.rule(), Frame: event.Frame})
+	if err != nil {
+		return c, err
+	}
+	if executed.Answer.Decision.Applicability != contributions.Applies {
 		return c, nil
 	}
 	modify := func(ctx context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {

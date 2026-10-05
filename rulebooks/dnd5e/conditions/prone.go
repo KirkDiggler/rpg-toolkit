@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -75,6 +76,24 @@ type ProneCondition struct {
 
 // Ensure ProneCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*ProneCondition)(nil)
+
+var _ contributions.ActionAssessor = (*ProneCondition)(nil)
+
+// AssessAction answers whether Prone's disadvantage bears on the framed
+// attack: every attack roll its holder makes. Attacks against the prone
+// creature are not its holder's action and are not part of this answer.
+func (p *ProneCondition) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error) {
+	return p.attackRule().AssessAction(in)
+}
+
+func (p *ProneCondition) attackRule() attackRollRule {
+	return attackRollRule{name: "prone", owner: p.CharacterID, text: attackRollText{
+		NotOwner:    "Prone affects only its holder's attacks",
+		OnlyAttacks: "Prone affects only attack rolls",
+		Applies:     "You are prone",
+		Benefit:     "Disadvantage on the attack roll",
+	}}
+}
 
 // Ref returns the canonical ref this condition names itself by — the same ref
 // its ToJSON embeds and its loader routes on.
@@ -208,7 +227,7 @@ func (p *ProneCondition) onAttackChain(
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
 	switch {
 	case event.AttackerID == p.CharacterID:
-		return p.attackingWhileProne(c)
+		return p.attackingWhileProne(event, c)
 	case event.TargetID == p.CharacterID:
 		return p.attackedWhileProne(ctx, event, c)
 	default:
@@ -216,11 +235,21 @@ func (p *ProneCondition) onAttackChain(
 	}
 }
 
-// attackingWhileProne imposes the prone creature's own disadvantage. No geometry
-// is involved: it applies to every attack it makes, at any range.
+// attackingWhileProne imposes the prone creature's own disadvantage when its
+// attack rule applies — the same rule information asks. No geometry is
+// involved: it applies to every attack it makes, at any range.
 func (p *ProneCondition) attackingWhileProne(
+	event dnd5eEvents.AttackChainEvent,
 	c chain.Chain[dnd5eEvents.AttackChainEvent],
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
+	executed, err := executeRule(&executeRuleInput{Name: "prone", Rule: p.attackRule(), Frame: attackChainFrame(event)})
+	if err != nil {
+		return c, err
+	}
+	if executed.Answer.Decision.Applicability != contributions.Applies {
+		return c, nil
+	}
+
 	modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
 		e.DisadvantageSources = append(e.DisadvantageSources, dnd5eEvents.AttackModifierSource{
 			SourceRef: refs.Conditions.Prone(),

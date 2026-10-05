@@ -43,6 +43,15 @@ func (s *actionCensusSuite) TestAnsweringLoadersImplementActionAssessor() {
 		refs.Conditions.Raging().String():    &RagingCondition{CharacterID: "barb", DamageBonus: 2, Level: 1},
 		refs.Features.SneakAttack().String(): NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue", Level: 1}),
 		refs.Conditions.Inspired().String():  NewInspiredCondition("rogue", "bard", ""),
+
+		refs.Conditions.Prone().String():                NewProneCondition("rogue"),
+		refs.Conditions.Hidden().String():               NewHiddenCondition("rogue"),
+		refs.Conditions.Helped().String():               NewHelpedCondition("rogue", "cleric"),
+		refs.Conditions.TrueStrike().String():           NewTrueStrikeCondition("rogue", "goblin", refs.Spells.TrueStrike().String()),
+		refs.Conditions.ViciousMockery().String():       NewViciousMockeryCondition("rogue", "bard", refs.Spells.ViciousMockery().String()),
+		refs.Conditions.ImprovedCritical().String():     NewImprovedCriticalCondition(ImprovedCriticalInput{MemberID: "rogue", Threshold: 19}),
+		refs.Conditions.FightingStyleArchery().String(): NewFightingStyleArcheryCondition("rogue"),
+		refs.Conditions.BrutalCritical().String():       NewBrutalCriticalCondition(BrutalCriticalInput{MemberID: "rogue", Level: 9}),
 	}
 	blessed, err := NewBlessedCondition(NewBlessedConditionInput{
 		MemberID: "rogue", SourceID: "cleric", SourceRef: refs.Spells.Bless(),
@@ -54,6 +63,11 @@ func (s *actionCensusSuite) TestAnsweringLoadersImplementActionAssessor() {
 	})
 	s.Require().NoError(err)
 	fixtures[refs.Conditions.Baned().String()] = baned
+	favored, err := NewDivineFavorCondition(NewDivineFavorConditionInput{
+		MemberID: "rogue", SourceID: "rogue", SourceRef: refs.Spells.DivineFavor(),
+	})
+	s.Require().NoError(err)
+	fixtures[refs.Conditions.DivineFavor().String()] = favored
 
 	var answering []string
 	for ref, entry := range actionCensus {
@@ -89,17 +103,17 @@ func (s *actionCensusSuite) TestBearingLoadersHaveDescriptions() {
 
 func (s *actionCensusSuite) TestNotYetAnsweringYieldsUnavailableRow() {
 	out, err := AssessActionEffects(&AssessActionEffectsInput{
-		Conditions: []dnd5eEvents.ConditionBehavior{NewFightingStyleArcheryCondition("rogue")},
+		Conditions: []dnd5eEvents.ConditionBehavior{NewFightingStyleDuelingCondition("rogue")},
 		Frame:      rogueFrame(false),
 	})
 	s.Require().NoError(err)
 	s.Require().Len(out.Effects, 1)
 	effect := out.Effects[0]
-	s.Equal(refs.Conditions.FightingStyleArchery().String(), effect.ID)
+	s.Equal(refs.Conditions.FightingStyleDueling().String(), effect.ID)
 	s.Equal(contributions.StateUnavailable, effect.State)
 	s.Equal("This effect cannot yet say whether it applies to this action", effect.Reason)
-	s.Equal(displayCatalog[refs.Conditions.FightingStyleArchery().String()].Detail, effect.Description)
-	s.Equal("Archery", effect.Source.Name)
+	s.Equal(displayCatalog[refs.Conditions.FightingStyleDueling().String()].Detail, effect.Description)
+	s.Equal("Dueling", effect.Source.Name)
 	s.Equal(contributions.ContributesNow, effect.Participation)
 	s.Empty(effect.Benefit)
 }

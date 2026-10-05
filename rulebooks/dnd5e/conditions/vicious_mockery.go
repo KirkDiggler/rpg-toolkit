@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -65,6 +66,24 @@ type ViciousMockeryCondition struct {
 
 // Ensure ViciousMockeryCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*ViciousMockeryCondition)(nil)
+
+var _ contributions.ActionAssessor = (*ViciousMockeryCondition)(nil)
+
+// AssessAction answers whether Vicious Mockery bears on the framed attack: the
+// mocked creature's next attack roll has disadvantage. The attack consumes it;
+// reading this answer consumes nothing.
+func (v *ViciousMockeryCondition) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error) {
+	return v.attackRule().AssessAction(in)
+}
+
+func (v *ViciousMockeryCondition) attackRule() attackRollRule {
+	return attackRollRule{name: "vicious mockery", owner: v.MemberID, text: attackRollText{
+		NotOwner:    "Vicious Mockery affects only the mocked creature's attack",
+		OnlyAttacks: "Vicious Mockery affects only attack rolls",
+		Applies:     "You were mocked",
+		Benefit:     "Disadvantage on the attack roll",
+	}}
+}
 
 // Ref returns the canonical ref this condition names itself by — the same ref
 // its ToJSON embeds and its loader routes on.
@@ -192,7 +211,11 @@ func (v *ViciousMockeryCondition) onAttackChain(
 	event dnd5eEvents.AttackChainEvent,
 	c chain.Chain[dnd5eEvents.AttackChainEvent],
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
-	if event.AttackerID != v.MemberID {
+	executed, err := executeRule(&executeRuleInput{Name: "vicious mockery", Rule: v.attackRule(), Frame: attackChainFrame(event)})
+	if err != nil {
+		return c, err
+	}
+	if executed.Answer.Decision.Applicability != contributions.Applies {
 		return c, nil
 	}
 

@@ -7,6 +7,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	de "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -49,7 +50,7 @@ func (s *DivineFavorSuite) TestWeaponHitsReloadCriticalAndTeardown() {
 			c.BindRoller(nil)
 			s.Require().NoError(c.Apply(ctx, bus))
 			hit := func() *de.DamageChainEvent {
-				return &de.DamageChainEvent{AttackerID: "caster", TargetID: "enemy", IsMelee: tc.melee, IsCritical: tc.critical, Components: []de.DamageComponent{{Source: de.DamageSourceWeapon, DamageType: damage.Slashing, Properties: []damage.Property{damage.AddsAttackAbilityModifier}}}}
+				return &de.DamageChainEvent{AttackerID: "caster", TargetID: "enemy", Frame: favorFrame("caster", tc.melee, true), IsMelee: tc.melee, IsCritical: tc.critical, Components: []de.DamageComponent{{Source: de.DamageSourceWeapon, DamageType: damage.Slashing, Properties: []damage.Property{damage.AddsAttackAbilityModifier}}}}
 			}
 			for range 2 {
 				result, err := s.execute(bus, hit())
@@ -84,9 +85,9 @@ func (s *DivineFavorSuite) TestExcludesSpellsOtherAttackersAndDuplicateBonusesWi
 	c.BindRoller(mockdice.NewMockRoller(gomock.NewController(s.T())))
 	s.Require().NoError(c.Apply(ctx, bus))
 	for _, event := range []*de.DamageChainEvent{
-		{AttackerID: "caster", Components: []de.DamageComponent{{Source: de.DamageSourceSpell}}},
-		{AttackerID: "other", Components: []de.DamageComponent{{Source: de.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}}}},
-		{AttackerID: "caster", Components: []de.DamageComponent{{Source: de.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}}, {Source: de.DamageSourceSpell, Roll: de.RollComponent{Source: de.RollSource{Ref: refs.Spells.DivineFavor()}}}}},
+		{AttackerID: "caster", Frame: favorFrame("caster", false, false), Components: []de.DamageComponent{{Source: de.DamageSourceSpell}}},
+		{AttackerID: "other", Frame: favorFrame("other", true, true), Components: []de.DamageComponent{{Source: de.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}}}},
+		{AttackerID: "caster", Frame: favorFrame("caster", true, true), Components: []de.DamageComponent{{Source: de.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}}, {Source: de.DamageSourceSpell, Roll: de.RollComponent{Source: de.RollSource{Ref: refs.Spells.DivineFavor()}}}}},
 	} {
 		before := len(event.Components)
 		result, err := s.execute(bus, event)
@@ -105,7 +106,7 @@ func (s *DivineFavorSuite) TestRollFailurePropagates() {
 	roller.EXPECT().RollN(gomock.Any(), 1, 4).Return(nil, failure)
 	c.BindRoller(roller)
 	s.Require().NoError(c.Apply(ctx, bus))
-	_, err = s.execute(bus, &de.DamageChainEvent{AttackerID: "caster", Components: []de.DamageComponent{{Source: de.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}}}})
+	_, err = s.execute(bus, &de.DamageChainEvent{AttackerID: "caster", Frame: favorFrame("caster", true, true), Components: []de.DamageComponent{{Source: de.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}}}})
 	s.ErrorIs(err, failure)
 }
 
@@ -117,4 +118,18 @@ func (s *DivineFavorSuite) execute(bus events.EventBus, event *de.DamageChainEve
 		return nil, err
 	}
 	return modified.Execute(ctx, event)
+}
+
+// favorFrame is an execution frame for an attack by actor.
+func favorFrame(actor string, melee, weapon bool) contributions.Frame {
+	return contributions.Frame{
+		Actor:  actor,
+		Target: contributions.Known("enemy"),
+		Action: contributions.ActionFacts{
+			Roll:       contributions.Known(contributions.RollKindAttack),
+			Melee:      contributions.Known(melee),
+			WeaponPool: contributions.Known(weapon),
+		},
+		Complete: true,
+	}
 }
