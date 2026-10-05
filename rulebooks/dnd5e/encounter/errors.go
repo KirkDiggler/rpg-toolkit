@@ -446,6 +446,12 @@ var (
 	// world — not a legal outcome any caller is meant to recover from.
 	ErrRefusingAnnouncer = errors.New("encounter: RefusingAnnouncer: a clock advanced on a construction-only world")
 
+	// ErrRefusingCheckResolver is what the CheckResolver [CompileOnlySetup]
+	// installs always returns: an authored check was rolled against a world
+	// still being compiled, not played. A host bug — a check is rolled only
+	// through an explicit Search — not an outcome to recover from.
+	ErrRefusingCheckResolver = errors.New("encounter: compile-only CheckResolver: a check was rolled against a world being compiled, not played")
+
 	// ErrNoDissolveMilestone is a leaf that reported dissolving a bubble and
 	// then did not say so in its milestones. An INVARIANT of play/clock, not a
 	// caller mistake and not recoverable: combatEndBoundaries reads the round a

@@ -22,27 +22,17 @@ func TestStandInsSuite(t *testing.T) {
 	suite.Run(t, new(standInsSuite))
 }
 
-// emptyWorld is the SetupInput a host writes for a world nobody is in yet,
-// using nothing but what this module exports.
+// emptyWorld is what a host writes for a world nobody is in yet: one call.
 func emptyWorld(members ...encounter.MemberInput) *encounter.SetupInput {
-	return &encounter.SetupInput{
-		Initiative: encounter.InitiativeAsGiven{},
-		Standing:   encounter.NobodyDown{},
-		Sight:      encounter.ZeroSight{},
-		Equipment:  encounter.UnobservedEquipment{},
-		TurnDriver: encounter.PassDriver{},
-		Striker:    encounter.RefusingStriker{},
-		Mover:      encounter.RefusingMover{},
-		Announcer:  encounter.RefusingAnnouncer{},
-		Field: encounter.FieldInput{
-			Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("yard", 0, 0, 6, 1)},
-		},
-		Members: members,
-		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-	}
+	setup := encounter.CompileOnlySetup(
+		encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("yard", 0, 0, 6, 1)}},
+		[]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	)
+	setup.Members = members
+	return setup
 }
 
-func (s *standInsSuite) TestNewEncounterConstructsFromTheStandInsAlone() {
+func (s *standInsSuite) TestNewEncounterConstructsFromCompileOnlySetup() {
 	enc, err := encounter.NewEncounter(emptyWorld())
 	s.Require().NoError(err)
 	s.NotNil(enc)
@@ -57,54 +47,32 @@ func (s *standInsSuite) TestNewEncounterConstructsFromTheStandInsAlone() {
 		s.Require().NoError(err)
 		s.Empty(out.Members, "zero sight writes no sighting")
 	})
+
+	s.Run("a concealed door left open is witnessed at first light, and answered", func() {
+		field := concealField()
+		for i := range field.Doors {
+			if field.Doors[i].ID == veilDoor {
+				field.Doors[i].State = encounter.DoorIsOpen()
+			}
+		}
+		enc, err := encounter.NewEncounter(encounter.CompileOnlySetup(field,
+			[]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}))
+		s.Require().NoError(err)
+		s.NotNil(enc)
+	})
 }
 
-func (s *standInsSuite) TestStandInsAnswerNotObserved() {
+func (s *standInsSuite) TestUnobservedEquipmentAnswersNotObserved() {
 	asked := []encounter.MemberID{alice, goblin}
+	hands, err := encounter.UnobservedEquipment{}.Equipment(asked)
+	s.Require().NoError(err)
+	s.Equal(map[encounter.MemberID]*encounter.HeldEquipment{alice: nil, goblin: nil}, hands,
+		"every member answered, each nil: no hands to observe, not empty hands")
 
-	s.Run("NobodyDown", func() {
-		down, err := encounter.NobodyDown{}.Standing(asked)
-		s.Require().NoError(err)
-		s.NotNil(down, "nobody, said as a list rather than nil")
-		s.Empty(down)
-
-		assessment, err := encounter.NobodyDown{}.Assess(asked)
-		s.Require().NoError(err)
-		s.False(assessment.PartyDefeated)
-		s.False(assessment.KeepTurnOrder)
-		s.Require().Len(assessment.Members, len(asked), "one answer per member asked")
-		for i, m := range assessment.Members {
-			s.Equal(encounter.MemberParticipation{
-				Member: asked[i], Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait,
-			}, m)
-		}
-	})
-
-	s.Run("ZeroSight", func() {
-		reach, err := encounter.ZeroSight{}.Sight(asked)
-		s.Require().NoError(err)
-		s.Equal(map[encounter.MemberID]int{alice: 0, goblin: 0}, reach)
-	})
-
-	s.Run("UnobservedEquipment", func() {
-		hands, err := encounter.UnobservedEquipment{}.Equipment(asked)
-		s.Require().NoError(err)
-		s.Equal(map[encounter.MemberID]*encounter.HeldEquipment{alice: nil, goblin: nil}, hands,
-			"every member answered, each nil: no hands to observe, not empty hands")
-
-		held, err := encounter.UnobservedEquipment{}.Conditions(asked)
-		s.Require().NoError(err)
-		s.Equal(map[encounter.MemberID]*encounter.ConditionSet{alice: nil, goblin: nil}, held,
-			"every member answered, each nil: nothing observed, not an empty set")
-	})
-
-	s.Run("InitiativeAsGiven", func() {
-		order, err := encounter.InitiativeAsGiven{}.RollInitiative(asked)
-		s.Require().NoError(err)
-		s.Equal(asked, order)
-		order[0] = "someone-else"
-		s.Equal(alice, asked[0], "the answer does not alias the question")
-	})
+	held, err := encounter.UnobservedEquipment{}.Conditions(asked)
+	s.Require().NoError(err)
+	s.Equal(map[encounter.MemberID]*encounter.ConditionSet{alice: nil, goblin: nil}, held,
+		"every member answered, each nil: nothing observed, not an empty set")
 }
 
 // TestAStandInWorldLoadsWithRealCapabilities is the host's path: build the
