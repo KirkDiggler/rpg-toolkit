@@ -91,6 +91,7 @@ func concealmentsShape(doc *yaml.Node, add errSink) {
 			add(p, errNotAMapping)
 			continue
 		}
+		discoveryAttemptsShape(c, p, add)
 		optionalNode(c, "notice", p, add)
 		optionalNode(c, "checks", p, add)
 		optionalNode(c, "props", p, add)
@@ -139,6 +140,11 @@ func singleRoomConcealmentValues(s *SingleRoomSpec, g *grammar, add errSink) map
 		}
 		if c.Notice != nil {
 			g.approaches(p+".notice", concealmentNoNotice, c.Notice)
+		}
+		if c.Attempts != nil {
+			if _, err := encounter.ResolveDiscoveryPolicy(discoveryPolicyInput(c.Attempts)); err != nil {
+				add(p+".attempts", err.Error())
+			}
 		}
 		if len(c.Cells) == 0 && len(c.Props) == 0 {
 			add(p, concealmentHidesNothing)
@@ -220,9 +226,10 @@ func singleRoomConcealments(
 	for _, id := range sortedConcealmentIDs(s.Concealments) {
 		c := s.Concealments[id]
 		lowered := encounter.ConcealmentInput{
-			ID:     encounter.ConcealmentID(key + "/" + id),
-			Checks: approachesOf(c.Checks),
-			Notice: approachesOf(c.Notice),
+			ID:       encounter.ConcealmentID(key + "/" + id),
+			Checks:   approachesOf(c.Checks),
+			Notice:   approachesOf(c.Notice),
+			Attempts: discoveryPolicyInput(c.Attempts),
 		}
 		for _, cell := range c.Cells {
 			lowered.Cells = append(lowered.Cells, axialOffset(cell, o))

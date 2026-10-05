@@ -36,6 +36,7 @@ func TestTranslateLetsNoCompositionSentinelThrough(t *testing.T) {
 		{"empty member id", encounter.ErrNoMember, ErrNoMember},
 		{"not a member", encounter.ErrNotMember, ErrNoMember},
 		{"closed encounter", encounter.ErrClosed, ErrClosed},
+		{"automatic discovery retires search", encounter.ErrSearchRetired, ErrSearchRetired},
 		{"undeclared ending", encounter.ErrNoEnding, ErrNoEnding},
 		// A faction the dungeon does not declare, or a mind arriving outside
 		// its faction (rpg-project#375): a naming mistake in the host's

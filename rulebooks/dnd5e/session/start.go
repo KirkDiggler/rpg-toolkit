@@ -77,6 +77,11 @@ func (m *Manager) StartSession(ctx context.Context, in *StartSessionInput) (*Sta
 	if in == nil {
 		return nil, fmt.Errorf("startsession: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Session == "" {
 		return nil, fmt.Errorf("startsession: %w", ErrNoSessionID)
 	}

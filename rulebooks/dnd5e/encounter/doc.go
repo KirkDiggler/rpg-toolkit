@@ -60,6 +60,18 @@
 // not on the world clock for the world to think for. Which clock somebody is
 // on is always askable, per member, via ClockOf.
 //
+// # Observed rule context
+//
+// ObservedContext returns detached current sight facts plus the observer's own
+// placement. Distances are measured between those projected positions, not live
+// target cells. Pair relationships share BelievedStance's owner and retain the
+// original observer. Missing observed standing, hands or relationships remain
+// absent; memories and other sensory channels do not supply current sight facts.
+// The read consults no live participation, equipment or sight capability and
+// never refreshes perception. Its universe is observations, not all participants:
+// it cannot prove no unseen neighbor exists, expose target effects/senses, or
+// decide whether a rule such as a damage benefit applies.
+//
 // # Movement passage
 //
 // CellAt returns the most restrictive contribution on a cell and an error if
@@ -185,6 +197,23 @@
 //
 // A field that hides nothing requires neither concealment capability. Its
 // ordinary room discovery still uses the same persisted knowledge journal.
+//
+// # Discovery attempt policy
+//
+// ConcealmentInput.Attempts authors one policy for the whole discovery check,
+// not an allowance per alternative skill approach. ResolveDiscoveryPolicy
+// defaults omitted values to one character-retained attempt and a three-hex
+// repeat reset distance. Explicit nonpositive counts, reset distances within
+// the one-hex trigger range, and unknown lifetimes are refused. ToData stores
+// the effective policy with all defaults resolved, and Load validates it.
+// A host supplying DiscoveryCheckResolver enables the distance-driven sweep:
+// one hex triggers an available attempt, departure to ResetHexes re-arms an
+// explicitly repeatable check, and return uses its next allowance. Counts and
+// armed state persist; loading does not roll. The same captured placed-player
+// audience receives the result beat and successful discovery when sharing is
+// on. Private checks address the actor alone. These hosts refuse Search.
+// Hosts supplying only the older CheckResolver retain their explicit-search
+// contract for source migration; the game host uses automatic discovery.
 //
 // # Sides: the run composes ONE world (rpg-project#375)
 //

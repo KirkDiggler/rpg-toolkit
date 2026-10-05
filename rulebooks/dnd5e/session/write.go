@@ -481,11 +481,16 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 	if in == nil {
 		return nil, fmt.Errorf("join: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Member == "" {
 		return nil, fmt.Errorf("join: %w", ErrNoMemberID)
 	}
 
-	scope, err := m.openForChange(ctx, in.Session)
+	scope, err := m.openForChange(ctx, in.Session, in.Member)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", err)
 	}
@@ -640,6 +645,11 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 	if in == nil {
 		return nil, fmt.Errorf("spawn: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.ID == "" {
 		return nil, fmt.Errorf("spawn: %w", ErrNoMemberID)
 	}
@@ -775,6 +785,11 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 	if in == nil {
 		return nil, fmt.Errorf("place npc: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Member == "" {
 		return nil, fmt.Errorf("place npc: %w", ErrNoMemberID)
 	}
@@ -891,11 +906,17 @@ func place(
 	// unless this runs first (sight.go's own doc explains why a pointer
 	// makes that possible at all).
 	scope.sight.add(encounter.MemberID(id), sightFeet)
+	profile := scope.exploration[id]
+	if profile == nil {
+		profile = &ExplorationData{}
+	}
 	placed, err := scope.enc.Join(&encounter.JoinInput{
-		Member: encounter.MemberID(id),
-		Kind:   encounter.MemberKind(kind),
-		Name:   name,
-		Cell:   at,
+		PrivateDiscoveries:  profile.PrivateDiscoveries,
+		RetainedDiscoveries: profile.Checks,
+		Member:              encounter.MemberID(id),
+		Kind:                encounter.MemberKind(kind),
+		Name:                name,
+		Cell:                at,
 		// SpeedFeet, SightFeet, Actions and Targeting are this member's
 		// static facts (rpg-project#254) — what a TurnDriver reads through
 		// MonsterView once the clock lands on this member with nobody
@@ -1074,6 +1095,11 @@ func (m *Manager) Exit(ctx context.Context, in *ExitInput) (*ExitOutput, error) 
 	if in == nil {
 		return nil, fmt.Errorf("exit: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if in.Member == "" {
 		return nil, fmt.Errorf("exit: %w", ErrNoMemberID)
 	}
@@ -1124,6 +1150,11 @@ func (m *Manager) End(ctx context.Context, in *EndInput) (*EndOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("end: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 
 	scope, err := m.openForChange(ctx, in.Session)
 	if err != nil {
@@ -1157,7 +1188,7 @@ func (m *Manager) End(ctx context.Context, in *EndInput) (*EndOutput, error) {
 // every other write verb picks it up by picking that opener. Forgetting the
 // freeze therefore requires choosing the one React uses rather than merely
 // omitting a line (rpg-project#316 rung 3, restoring the #964 slice-2 split).
-func (m *Manager) openForWrite(ctx context.Context, sessionID string) (*writeScope, error) {
+func (m *Manager) openForWrite(ctx context.Context, sessionID string, extraMembers ...string) (*writeScope, error) {
 	if sessionID == "" {
 		return nil, ErrNoSessionID
 	}
@@ -1206,7 +1237,7 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string) (*writeSco
 	enc, baseline, standing, err := m.loadWorldWithBaseline(
 		ctx, data, strikerSeam{m: m, scope: scope}, moverSeam{m: m, scope: scope},
 		announcerSeam{m: m, scope: scope}, scope.sight,
-		checkSeam{m: m, scope: scope}, witnessSeam{scope: scope},
+		m.checkResolverFor(scope), witnessSeam{scope: scope},
 		m.compelledDriverFor(ctx, scope),
 		// THE SESSION'S SHARED DICE, because this verb can advance a clock and
 		// a clock that advances gives creatures time (rpg-project#465). Every
@@ -1221,6 +1252,9 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string) (*writeSco
 	scope.areaStoryBefore = enc.WorldView().SightAreas
 	scope.baseline = baseline
 	scope.standing = standing
+	if err := m.prepareExploration(ctx, scope, extraMembers...); err != nil {
+		return nil, err
+	}
 	return scope, nil
 }
 
@@ -1238,8 +1272,8 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string) (*writeSco
 // change is exactly what a player waiting on somebody else's answer does, and
 // refusing it would blank the screen of every member at the table for the one
 // who has to decide.
-func (m *Manager) openForChange(ctx context.Context, sessionID string) (*writeScope, error) {
-	scope, err := m.openForWrite(ctx, sessionID)
+func (m *Manager) openForChange(ctx context.Context, sessionID string, extraMembers ...string) (*writeScope, error) {
+	scope, err := m.openForWrite(ctx, sessionID, extraMembers...)
 	if err != nil {
 		return nil, err
 	}
@@ -1280,6 +1314,8 @@ func (s *writeScope) frozen() error {
 // and the sequence boundary separating what was already recorded from what this
 // verb records.
 type writeScope struct {
+	exploration       map[string]*ExplorationData
+	explorationBefore map[string]ExplorationData
 	// The already-paid remainder is frozen only if a direct walk poses.
 	walkContinuation []spatial.Position
 	// Snapshot of areas whose membership transitions have already been queued.
@@ -1461,7 +1497,7 @@ func (m *Manager) adopt(ctx context.Context, scope *writeScope, world encounter.
 		// reason: the world coming back may carry concealed structure, and
 		// the seams read scope.enc — which this assignment is about to
 		// replace — only at consult time.
-		CheckResolver: checkSeam{m: m, scope: scope},
+		CheckResolver: m.checkResolverFor(scope),
 		Witness:       witnessSeam{scope: scope},
 	})
 	if err != nil {
@@ -1652,6 +1688,9 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 	// delta has been numbered and projected. Everything before this line read
 	// that whole delta; everything after reads only what storage keeps.
 	world := scope.enc.ToData()
+	if err := m.saveExploration(ctx, scope); err != nil {
+		return SaveReport{Written: append([]string(nil), scope.written...)}, DeliveryReport{}, err
+	}
 
 	report, err := m.persist(ctx, scope, world)
 	if err != nil {
@@ -2064,6 +2103,11 @@ func (m *Manager) Recheck(ctx context.Context, in *RecheckInput) (*RecheckOutput
 	if in == nil {
 		return nil, fmt.Errorf("recheck: %w", ErrNilInput)
 	}
+	release, lockErr := m.acquireSession(ctx, in.Session)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer release()
 	if len(in.Members) == 0 {
 		return nil, fmt.Errorf("recheck: %w", ErrNoMemberID)
 	}

@@ -661,20 +661,33 @@ func (e *Encounter) IsAllied(a, b MemberID) (allied, known bool) {
 // different question: "are they on my side" has a correct false answer, while
 // "what is their stance" has none.
 func (e *Encounter) BelievedStance(viewer, subject MemberID) (Stance, bool) {
-	mv, ok := e.members[viewer]
+	return e.believedStanceBetween(viewer, viewer, subject)
+}
+
+// believedStanceBetween is the shared relationship owner for an observer's own
+// pair and a pair of other observed subjects. The caller bounds which subjects
+// may be described; ObservedContext admits only the observer and current sight.
+// The existing policy is unchanged: absent deception, what is shown equals the
+// derived stance. Keep the actual observer here so a future differing belief is
+// answered here, never by looking through one of the pair's private viewpoints.
+func (e *Encounter) believedStanceBetween(observer, from, to MemberID) (Stance, bool) {
+	if _, ok := e.members[observer]; !ok {
+		return "", false
+	}
+	mf, ok := e.members[from]
 	if !ok {
 		return "", false
 	}
-	ms, ok := e.members[subject]
+	mt, ok := e.members[to]
 	if !ok {
 		return "", false
 	}
-	fv, fs := factionOf(mv), factionOf(ms)
-	if fv == "" || fs == "" {
+	ff, ft := factionOf(mf), factionOf(mt)
+	if ff == "" || ft == "" {
 		return "", false
 	}
 
-	return e.stanceBetween(pairOf(fv, fs)), true
+	return e.stanceBetween(pairOf(ff, ft)), true
 }
 
 // turnablePairs is every pair whose stance this run can change, sorted, so a

@@ -10,8 +10,9 @@
 //
 // # The loop
 //
-// The host implements three repositories and then calls verbs with IDs. It
-// never holds a domain object:
+// The host implements the core repositories and then calls verbs with IDs.
+// Optional exploration storage enables automatic discovery. The host never
+// holds a domain object:
 //
 //	mgr, err := session.NewManager(&session.Config{
 //	    Sessions:   sessRepo,
@@ -30,6 +31,18 @@
 //
 // Every verb is load, act, save, return. There is no setup call, no teardown,
 // and no ordering for the caller to get wrong.
+//
+// # Operation coordination
+//
+// Config.Locker supplies host-owned exclusion for every public operation that
+// names a session, from before its first repository read through its final
+// save and event delivery. Reads and StartSession use the same guard as writes.
+// Release is deferred on the public call, so failures and panics release it too.
+// The SDK stores no mutex or lock state. A nil Locker means the host serializes
+// externally, not that concurrent load-act-save is safe. Managers sharing data
+// must share a coordination domain, and callbacks must not synchronously reenter
+// the same guarded session. Character-only operations and authoring AtlasOf do
+// not name a session and are not guarded. Partial saves remain partial saves.
 //
 // # What this package does not hold
 //
@@ -132,9 +145,11 @@
 // The living-world slice (rpg-toolkit#1375) added a verb and a law, both in
 // the shape this package already had.
 //
-// The verb is Search: member and region in, the composition's Search does the
-// rest — every rule that keeps a secret secret lives there, and this seam
-// adds only what it adds to every verb. The two capabilities a concealed
+// Legacy hosts use Search: member and region in, the composition's Search does
+// the rest. Automatic-discovery hosts instead supply exploration storage as
+// described below, and Search returns ErrSearchRetired through the ordinary
+// composition-to-session translation. Every rule that keeps a secret secret
+// stays in encounter; this seam adds only its usual wiring. The two capabilities a concealed
 // world refuses to build without are supplied from here the way Standing is
 // (conceal.go): a check resolver that stages the member's stored record and
 // hands it to resolution — which loads the character, attaches their
@@ -153,6 +168,41 @@
 // oracle, closed), and every Seq a verb's output carries speaks its actor's
 // own numbering. What makes that durable is a persisted cursor per member on
 // the session record, advanced in the same commit as the beats it counts.
+//
+// # Automatic discovery and character-retained exploration
+//
+// Config.Explorations is an optional ExplorationRepository, keyed by character
+// ID. Nil preserves the legacy explicit-search host contract. Supplying it
+// enables automaticCheckSeam and persists ExplorationData separately from an
+// expiring session: a character's sharing preference and retained check memory.
+// The host stores this data opaquely and must coordinate profiles shared across
+// runs; a session-ID-only lock is not a cross-session profile transaction.
+//
+// prepareExploration loads the placed players' profiles and any incoming Join
+// member, validates/stages character records, and hands retained values to
+// encounter.RestoreDiscovery or Join. Encounter owns proximity, eligibility,
+// allowance, re-arming, lifetime filtering, and monotonic knowledge/count merge.
+// saveExploration copies that owner's DiscoveryMemory projection into the stored
+// profile, retaining unrelated check IDs, and writes changed records. Neither
+// helper decides a rule or recomputes a result: selecting records and carrying
+// provider-owned data is this seam's responsibility. Resolution still owns the
+// actual check and returns dirty character data and sourced arithmetic.
+//
+// SetDiscoverySharing changes the seated character's future discovery audience;
+// it neither backfills a new recipient nor erases anyone's learned knowledge.
+// KnowledgeOutput.DiscoverySharing is absent for hosts without this capability,
+// not a false/private default. EventDiscoveryChecked projects the provider's
+// actor, applied skill, verdict, total and calculation, never a hidden subject
+// or DC. Successful teaching and failed-check narration keep the composition's
+// captured audience and the existing dense per-recipient live/Story numbering.
+// Reads do not roll, and delivery waits for the persistence reports. Partial
+// saves still obey S6 rather than claiming multi-store rollback.
+//
+// ExplorationData.Checks deliberately carries encounter.DiscoveryMemoryData
+// across S2 as an opaque PERSISTENCE SHAPE, like EncounterData at its repository
+// port. The host round-trips it, never constructs a runtime encounter or decides
+// what a stored counter/knowledge bit means. The boundary allow-list pins this
+// narrow concession; runtime inner types remain forbidden.
 //
 // # Holdings: Loot, Hold, and the ending on the way out
 //
@@ -243,8 +293,10 @@
 // removes an entire class of stale-in-memory bugs, with no sticky sessions.
 //
 // S2 — no inner type crosses the boundary. Exported signatures reference types
-// owned here plus stable value types (spatial.Position). Never an encounter,
-// combat, clock, intel or record type. This is what allows the
+// owned here plus stable value types (spatial.Position), with explicit opaque
+// persistence-shape exceptions at repository ports, including
+// ExplorationData's encounter.DiscoveryMemoryData. Never a runtime encounter,
+// combat, clock, intel or record object. This is what allows the
 // modules underneath to be replaced without the host changing a line, and it
 // is enforced by a test rather than by good intentions.
 //
