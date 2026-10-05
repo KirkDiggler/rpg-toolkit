@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -85,6 +86,9 @@ type InspiredCondition struct {
 
 // Ensure InspiredCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*InspiredCondition)(nil)
+
+// Ensure InspiredCondition answers from a frame.
+var _ contributions.ActionAssessor = (*InspiredCondition)(nil)
 
 // Ref returns the canonical ref this condition names itself by — the same ref
 // its ToJSON embeds and its loader routes on.
@@ -209,15 +213,23 @@ func (i *InspiredCondition) loadJSON(data json.RawMessage) error {
 	return nil
 }
 
-// onPostRollOffer puts the die on the table when the holder's own d20 has been
-// rolled. It appends an offer and changes no number: nothing is spent here,
-// and a roll nobody answers leaves the die in hand.
+// onPostRollOffer puts the die on the table when the rule applies to the
+// event's frame — the holder's own attack roll. It appends an offer and
+// changes no number: nothing is spent here, and a roll nobody answers leaves
+// the die in hand. An invalid frame or a Depends answer fails the fold.
 func (i *InspiredCondition) onPostRollOffer(
 	_ context.Context,
 	event *dnd5eEvents.PostRollOfferEvent,
 	c chain.Chain[*dnd5eEvents.PostRollOfferEvent],
 ) (chain.Chain[*dnd5eEvents.PostRollOfferEvent], error) {
-	if event == nil || event.AttackerID != i.MemberID {
+	if event == nil {
+		return c, rpgerr.New(rpgerr.CodeInvalidArgument, "inspired offer requires an event")
+	}
+	executed, err := executeRule(&executeRuleInput{Name: "inspired", Rule: i, Frame: event.Frame})
+	if err != nil {
+		return c, err
+	}
+	if executed.Answer.Decision.Applicability != contributions.Applies {
 		return c, nil
 	}
 
@@ -237,6 +249,36 @@ func (i *InspiredCondition) onPostRollOffer(
 		return c, rpgerr.Wrapf(err, "failed to offer inspiration die for member %s", i.MemberID)
 	}
 	return c, nil
+}
+
+// AssessAction answers whether this die is offered on the framed action: the
+// holder's own attack roll. It is always a later choice, shown as available
+// and never as added. It reads the frame and the holder and die; it never
+// offers or spends.
+func (i *InspiredCondition) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error) {
+	frame, err := frameOf(in, "inspired")
+	if err != nil {
+		return nil, err
+	}
+	answer := func(state contributions.Applicability, reason string) *contributions.AssessActionOutput {
+		return &contributions.AssessActionOutput{Answer: contributions.Answer{
+			Decision:      contributions.Decision{Applicability: state, Reason: reason},
+			Participation: contributions.LaterChoice,
+		}}
+	}
+	if frame.Actor != i.MemberID {
+		return answer(contributions.DoesNotApply, "Bardic Inspiration joins its holder's own rolls"), nil
+	}
+	roll, known := frame.Action.Roll.Get()
+	if !known {
+		return answer(contributions.Depends, "Depends on the roll"), nil
+	}
+	if roll != contributions.RollKindAttack {
+		return answer(contributions.DoesNotApply, "Bardic Inspiration is offered on attack rolls here"), nil
+	}
+	out := answer(contributions.Applies, "Your attack roll can take the die after it is rolled")
+	out.Answer.Benefit = fmt.Sprintf("May add %s after seeing the roll", i.Die)
+	return out, nil
 }
 
 // onOfferTaken spends the die, because it was taken. The face is not this

@@ -233,7 +233,7 @@ func (s *RogueEncounterSuite) TestSneakAttack_WithAdvantage_AddsDamage() {
 		// Execute through damage chain
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
-		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, damageChain)
+		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, framed(s.ctx, damageEvent), damageChain)
 		s.Require().NoError(err)
 
 		finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
@@ -288,7 +288,7 @@ func (s *RogueEncounterSuite) TestSneakAttack_WithAllyAdjacent_AddsDamage() {
 
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
-		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, damageChain)
+		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, framed(s.ctx, damageEvent), damageChain)
 		s.Require().NoError(err)
 
 		finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
@@ -338,7 +338,7 @@ func (s *RogueEncounterSuite) TestSneakAttack_NoAdvantageNoAlly_NoDamage() {
 
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
-		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, damageChain)
+		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, framed(s.ctx, damageEvent), damageChain)
 		s.Require().NoError(err)
 
 		finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
@@ -376,7 +376,7 @@ func (s *RogueEncounterSuite) TestSneakAttack_OncePerTurn() {
 
 		chain1 := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		topic := dnd5eEvents.DamageChain.On(s.bus)
-		modChain1, err := topic.PublishWithChain(s.ctx, damageEvent1, chain1)
+		modChain1, err := topic.PublishWithChain(s.ctx, framed(s.ctx, damageEvent1), chain1)
 		s.Require().NoError(err)
 		finalEvent1, err := modChain1.Execute(s.ctx, damageEvent1)
 		s.Require().NoError(err)
@@ -389,7 +389,7 @@ func (s *RogueEncounterSuite) TestSneakAttack_OncePerTurn() {
 		}
 
 		chain2 := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
-		modChain2, err := topic.PublishWithChain(s.ctx, damageEvent2, chain2)
+		modChain2, err := topic.PublishWithChain(s.ctx, framed(s.ctx, damageEvent2), chain2)
 		s.Require().NoError(err)
 		finalEvent2, err := modChain2.Execute(s.ctx, damageEvent2)
 		s.Require().NoError(err)
@@ -424,7 +424,7 @@ func (s *RogueEncounterSuite) TestSneakAttack_ResetsOnTurnEnd() {
 			Components: []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"}}}},
 		}
 		chain1 := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
-		modChain1, err := topic.PublishWithChain(s.ctx, damageEvent1, chain1)
+		modChain1, err := topic.PublishWithChain(s.ctx, framed(s.ctx, damageEvent1), chain1)
 		s.Require().NoError(err)
 		_, err = modChain1.Execute(s.ctx, damageEvent1)
 		s.Require().NoError(err)
@@ -442,7 +442,7 @@ func (s *RogueEncounterSuite) TestSneakAttack_ResetsOnTurnEnd() {
 			Components: []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"}}}},
 		}
 		chain2 := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
-		modChain2, err := topic.PublishWithChain(s.ctx, damageEvent2, chain2)
+		modChain2, err := topic.PublishWithChain(s.ctx, framed(s.ctx, damageEvent2), chain2)
 		s.Require().NoError(err)
 		finalEvent2, err := modChain2.Execute(s.ctx, damageEvent2)
 		s.Require().NoError(err)
@@ -479,7 +479,7 @@ func (s *RogueEncounterSuite) TestSneakAttack_RequiresFinesseOrRanged() {
 
 		chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		topic := dnd5eEvents.DamageChain.On(s.bus)
-		modChain, err := topic.PublishWithChain(s.ctx, damageEvent, chain)
+		modChain, err := topic.PublishWithChain(s.ctx, framed(s.ctx, damageEvent), chain)
 		s.Require().NoError(err)
 		finalEvent, err := modChain.Execute(s.ctx, damageEvent)
 		s.Require().NoError(err)
@@ -516,7 +516,7 @@ func (s *RogueEncounterSuite) TestSneakAttack_ScalesWithLevel() {
 
 		chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		topic := dnd5eEvents.DamageChain.On(s.bus)
-		modChain, err := topic.PublishWithChain(s.ctx, damageEvent, chain)
+		modChain, err := topic.PublishWithChain(s.ctx, framed(s.ctx, damageEvent), chain)
 		s.Require().NoError(err)
 		finalEvent, err := modChain.Execute(s.ctx, damageEvent)
 		s.Require().NoError(err)

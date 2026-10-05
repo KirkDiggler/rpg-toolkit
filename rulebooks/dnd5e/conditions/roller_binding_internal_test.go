@@ -56,12 +56,6 @@ func TestBindRollerNilKeepsTheExplicitRoller(t *testing.T) {
 	if brutal.roller != explicit {
 		t.Fatal("brutal critical: nil binding erased an explicit roller")
 	}
-
-	ma := NewMartialArtsCondition(MartialArtsInput{MemberID: "member-1", Roller: explicit})
-	ma.BindRoller(nil)
-	if ma.roller != explicit {
-		t.Fatal("martial arts: nil binding erased an explicit roller")
-	}
 }
 
 // TestBindRollerBindsTheSuppliedRoller pins the positive half: a condition
@@ -86,11 +80,5 @@ func TestBindRollerBindsTheSuppliedRoller(t *testing.T) {
 	brutal.BindRoller(bound)
 	if brutal.roller != bound {
 		t.Fatal("brutal critical: binding did not set the supplied roller")
-	}
-
-	ma := NewMartialArtsCondition(MartialArtsInput{MemberID: "member-1"})
-	ma.BindRoller(bound)
-	if ma.roller != bound {
-		t.Fatal("martial arts: binding did not set the supplied roller")
 	}
 }

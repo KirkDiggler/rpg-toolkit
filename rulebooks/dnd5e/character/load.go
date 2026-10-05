@@ -133,7 +133,7 @@ func Attach(ctx context.Context, c *Character, bus events.EventBus) error {
 // rules it carries, not about the randomness that will resolve them. A
 // condition that implements [conditions.RollerBinder] is offered the roller
 // here — every rolling rule on a Character sheet (Great Weapon Fighting,
-// Sneak Attack, Brutal Critical, Martial Arts) implements it — so the faces
+// Sneak Attack, Brutal Critical) implements it — so the faces
 // its rules produce come from the interaction's roller instead of a
 // process-global default, and land in the roll trace like any other sourced
 // fact. The monster attach path is the precedent: its entry takes the roller
