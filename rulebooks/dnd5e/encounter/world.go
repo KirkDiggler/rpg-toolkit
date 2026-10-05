@@ -615,10 +615,12 @@ func (e *Encounter) IsAllied(a, b MemberID) (allied, known bool) {
 //
 // A member in no faction is NEVER answered neutral. Neutral is a real
 // disposition between two sides, one a fact can turn hostile or allied; a
-// member with no side has nothing to turn. This is the same absence
-// [Encounter.BelievedStance] reports, so with no deception in play the two
-// reads agree, including on no stance. A consumer that already knows both
-// ids are members may read false as "no side".
+// member with no side has nothing to turn. StanceBetween OWNS this absence
+// rule: [Encounter.BelievedStance] and ObservedContext's pairs answer through
+// it (believedStanceBetween adds only the observer's membership), so with no
+// deception in play the reads agree, including on no stance, by construction.
+// A consumer that already knows both ids are members may read false as
+// "no side".
 func (e *Encounter) StanceBetween(a, b MemberID) (Stance, bool) {
 	ma, ok := e.members[a]
 	if !ok {
@@ -686,27 +688,17 @@ func (e *Encounter) BelievedStance(viewer, subject MemberID) (Stance, bool) {
 // believedStanceBetween is the shared relationship owner for an observer's own
 // pair and a pair of other observed subjects. The caller bounds which subjects
 // may be described; ObservedContext admits only the observer and current sight.
-// The existing policy is unchanged: absent deception, what is shown equals the
-// derived stance. Keep the actual observer here so a future differing belief is
-// answered here, never by looking through one of the pair's private viewpoints.
+// It owns only what is the OBSERVER's: that the observer is a member. Whether
+// a stance exists between the pair, and what it is, is owned by
+// [Encounter.StanceBetween] — absent deception, belief equals truth, so this
+// returns that answer and holds no copy of its absence rule. Keep the actual
+// observer here so a future differing belief is answered here, never by
+// looking through one of the pair's private viewpoints.
 func (e *Encounter) believedStanceBetween(observer, from, to MemberID) (Stance, bool) {
 	if _, ok := e.members[observer]; !ok {
 		return "", false
 	}
-	mf, ok := e.members[from]
-	if !ok {
-		return "", false
-	}
-	mt, ok := e.members[to]
-	if !ok {
-		return "", false
-	}
-	ff, ft := factionOf(mf), factionOf(mt)
-	if ff == "" || ft == "" {
-		return "", false
-	}
-
-	return e.stanceBetween(pairOf(ff, ft)), true
+	return e.StanceBetween(from, to)
 }
 
 // turnablePairs is every pair whose stance this run can change, sorted, so a
