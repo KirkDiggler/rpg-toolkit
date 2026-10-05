@@ -104,3 +104,18 @@ func (s *ConditionSeamSuite) TestAMemberWithNoRosterKindIsRefused() {
 	_, err := s.seam.Conditions([]encounter.MemberID{"nobody"})
 	s.ErrorIs(err, ErrInvalidSession)
 }
+
+// TestAnUnreadableConditionMakesTheMemberUnknown: a sheet holding a condition
+// that cannot be read is nothing observed, never a list claiming the
+// unreadable one is absent.
+func (s *ConditionSeamSuite) TestAnUnreadableConditionMakesTheMemberUnknown() {
+	s.chars.byID["player"] = &character.Data{ID: "player", Conditions: []json.RawMessage{
+		s.blob(conditions.NewProneCondition("player")), json.RawMessage(`{"ref":"nonsense","x":`),
+	}}
+
+	got, err := s.seam.Conditions([]encounter.MemberID{"player"})
+	s.Require().NoError(err, "the verb plays on, as the sheet's lenient projection does")
+
+	s.Contains(got, encounter.MemberID("player"))
+	s.Nil(got["player"])
+}

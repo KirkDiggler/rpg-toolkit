@@ -3544,6 +3544,16 @@ type TargetCandidate struct {
 	// when every row reads as declared for this target. They never change
 	// Available.
 	Effects []TargetEffect `json:"effects,omitempty"`
+
+	// HeldEffects are the effects THIS TARGET holds that bear on the
+	// declaration's action, as full rows (rpg-project#520, R18): Faerie Fire
+	// on a goblin, Dodging on a duelist. They are never joined with the
+	// declaration's rows or with Effects, and each ID ("target:" + ref, plus
+	// "@" + source) never equals a declaration row's. Empty when the target
+	// holds nothing that bears, or when what it holds is not known — the
+	// actor has not sighted it holding anything. They never change
+	// Available.
+	HeldEffects []EffectRow `json:"held_effects,omitempty"`
 }
 
 // Discovery is what changed in one observer's perception.

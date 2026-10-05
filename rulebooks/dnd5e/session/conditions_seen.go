@@ -44,16 +44,15 @@ var _ encounter.EquipmentWithConditions = equipmentSeam{}
 //     empty when the sheet holds no conditions, because that is a real
 //     observation.
 //
-// # What a sheet does not load is not held
+// # A trait is not a condition, and an unreadable condition is unknown
 //
 // A monster's stored list also carries its stat-block traits, which are not
-// conditions; and the sheet's own projection is lenient — loading logs and
-// drops a stored condition it cannot parse, and the rest of the sheet plays on
-// (TestACorruptConditionIsDroppedRatherThanRejected). The loaded member holds
-// neither, so this answer, which reports what the member holds, leaves both out
-// the same way ([conditions.HeldAddresses]). Failing the verb instead would
-// make one unreadable blob refuse every sight refresh in the encounter where
-// the sheet itself would have loaded.
+// conditions, so they are left out ([conditions.HeldAddresses]). A stored
+// condition that cannot be read makes the member's holdings unknown (nil):
+// the sheet's own projection is lenient — it drops the blob and plays on
+// (TestACorruptConditionIsDroppedRatherThanRejected) — so failing the verb
+// would refuse every sight refresh where the sheet itself loads, and listing
+// the rest would claim the unreadable one is known to be absent.
 func (s equipmentSeam) Conditions(
 	members []encounter.MemberID,
 ) (map[encounter.MemberID]*encounter.ConditionSet, error) {
@@ -106,8 +105,17 @@ func (s equipmentSeam) Conditions(
 // seenConditions reports what a sheet's stored conditions name themselves by,
 // through the conditions package's own reader, so this seam names no condition
 // type and holds none. The set is non-nil even when empty: a sheet was read.
+//
+// A sheet holding a condition that cannot be read is reported as nil —
+// nothing observed — rather than failing the verb or listing the rest: the
+// sheet still plays on under its lenient projection, but a list that left the
+// unreadable one out would claim, known, that the member does not hold it,
+// and unknown is never read as false.
 func seenConditions(member string, raw []json.RawMessage) *encounter.ConditionSet {
-	held := conditions.HeldAddresses(member, raw)
+	held, err := conditions.HeldAddresses(member, raw)
+	if err != nil {
+		return nil
+	}
 	set := &encounter.ConditionSet{Conditions: make([]encounter.SeenCondition, 0, len(held))}
 	for _, address := range held {
 		set.Conditions = append(set.Conditions, encounter.SeenCondition{

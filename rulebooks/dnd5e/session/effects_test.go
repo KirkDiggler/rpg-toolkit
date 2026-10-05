@@ -358,6 +358,9 @@ func (s *EffectRowsSuite) TestNoRowsOffTurnOrWhileFrozen() {
 
 	for _, declaration := range s.afford(erAlly).Declarations {
 		s.Empty(declaration.Effects, "off turn: %s", declaration.Verb)
+		for _, candidate := range declaration.Candidates {
+			s.Empty(candidate.HeldEffects, "off turn: %s -> %s", declaration.Verb, candidate.Member)
+		}
 	}
 
 	// Inspiration's post-roll offer opens a window: the table waits on alice.
@@ -374,6 +377,7 @@ func (s *EffectRowsSuite) TestNoRowsOffTurnOrWhileFrozen() {
 			s.Empty(declaration.Effects, "%s while frozen: %s", member, declaration.Verb)
 			for _, candidate := range declaration.Candidates {
 				s.Empty(candidate.Effects, "%s while frozen: %s -> %s", member, declaration.Verb, candidate.Member)
+				s.Empty(candidate.HeldEffects, "%s while frozen: %s -> %s", member, declaration.Verb, candidate.Member)
 			}
 		}
 	}
@@ -597,7 +601,8 @@ func (s *EffectRowsSuite) TestAffordFailsClosedWhenRowsCannotBeRead() {
 	out, err := s.mgr.Afford(s.ctx, &session.AffordInput{Session: erSession, Member: "alice"})
 	s.Require().Error(err, "a row the rulebook cannot list fails the read")
 	s.Nil(out, "and no partial panel is returned beside it")
-	s.Contains(err.Error(), `duplicate effect row id "dnd5e:conditions:raging"`)
+	// The frame refuses the repeated holding before any row is listed.
+	s.Contains(err.Error(), `"dnd5e:conditions:raging"@"" twice`)
 }
 
 // TestRagingAgainIsRefusedAndThePanelSurvives drives the play path that once

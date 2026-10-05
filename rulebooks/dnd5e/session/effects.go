@@ -191,12 +191,50 @@ func attachEffects(in *attachEffectsInput) error {
 				return fmt.Errorf("effect rows for %q: %w", candidates[j].Member, err)
 			}
 			candidates[j].Effects = answers
+			held, err := heldRowsOf(rows, informed.HeldByTarget, candidates[j].Member)
+			if err != nil {
+				return fmt.Errorf("held effect rows for %q: %w", candidates[j].Member, err)
+			}
+			candidates[j].HeldEffects = held
 		}
 
 		offer.declaration.Effects = rows
 		offer.declaration.Candidates = candidates
 	}
 	return nil
+}
+
+// heldRowsOf maps one candidate's held effects onto full rows, set only on
+// that candidate (R18): declaration rows stay the actor's own, and an effect
+// no candidate holds appears nowhere. Resolution answers every target asked,
+// so a target missing from heldByTarget is a broken answer and fails the read,
+// as does a held row whose ID collides with a declaration row's — the two
+// lists are never joined, and a shared ID would let a client do exactly that.
+// Nil when the target holds nothing that bears or its holdings are unknown.
+func heldRowsOf(declared []EffectRow, heldByTarget map[string][]contributions.Effect, member string) ([]EffectRow, error) {
+	held, answered := heldByTarget[member]
+	if !answered {
+		return nil, fmt.Errorf("resolution gave no held answer for this target: %w", ErrBadAttack)
+	}
+	if len(held) == 0 {
+		return nil, nil
+	}
+	ids := make(map[string]bool, len(declared))
+	for _, row := range declared {
+		ids[row.ID] = true
+	}
+	rows := make([]EffectRow, 0, len(held))
+	for _, effect := range held {
+		row, err := effectRowOf(effect)
+		if err != nil {
+			return nil, err
+		}
+		if ids[row.ID] {
+			return nil, fmt.Errorf("held row %q collides with a declaration row: %w", row.ID, ErrBadAttack)
+		}
+		rows = append(rows, row)
+	}
+	return rows, nil
 }
 
 // informedAttackOf is the attack profile an offer's rows are asked about, and
