@@ -35,6 +35,7 @@ func (s *heldAddressesSuite) TestReportsEachAddressInStoredOrder() {
 	s.Equal([]dnd5eEvents.ConditionAddress{
 		{MemberID: "gob", ConditionRef: refs.Conditions.Prone().String()},
 		{MemberID: "gob", ConditionRef: refs.Conditions.FaerieFire().String(), SourceID: "cleric"},
+		oaOf("gob"),
 	}, held)
 }
 
@@ -44,7 +45,9 @@ func (s *heldAddressesSuite) TestLeavesOutATraitWhichIsNotACondition() {
 	held, err := HeldAddresses("gob", []json.RawMessage{trait, s.blob(NewProneCondition("gob"))})
 	s.Require().NoError(err)
 
-	s.Equal([]dnd5eEvents.ConditionAddress{{MemberID: "gob", ConditionRef: refs.Conditions.Prone().String()}}, held)
+	s.Equal([]dnd5eEvents.ConditionAddress{
+		{MemberID: "gob", ConditionRef: refs.Conditions.Prone().String()}, oaOf("gob"),
+	}, held)
 }
 
 // TestACorruptConditionIsAnErrorNotAGap: a blob that cannot be read, or that
@@ -61,10 +64,31 @@ func (s *heldAddressesSuite) TestACorruptConditionIsAnErrorNotAGap() {
 	}
 }
 
-func (s *heldAddressesSuite) TestAnEmptySheetIsKnownToHoldNothing() {
+// TestAnEmptySheetHoldsOnlyWhatACombatantCarries: a sheet with nothing stored
+// still holds the free reactions every combatant carries by existing — the
+// attach gives it them before it acts, whether or not they were written back.
+func (s *heldAddressesSuite) TestAnEmptySheetHoldsOnlyWhatACombatantCarries() {
 	held, err := HeldAddresses("gob", nil)
 	s.Require().NoError(err)
 
-	s.NotNil(held, "a sheet was read")
-	s.Empty(held)
+	s.Equal([]dnd5eEvents.ConditionAddress{oaOf("gob")}, held)
+}
+
+// TestACarriedReactionIsNotListedTwice: once the sheet has been saved with its
+// opportunity attack, the stored one is the one listed — the same holdings as
+// before it was written back, so a save is never read as a change.
+func (s *heldAddressesSuite) TestACarriedReactionIsNotListedTwice() {
+	before, err := HeldAddresses("gob", []json.RawMessage{s.blob(NewProneCondition("gob"))})
+	s.Require().NoError(err)
+	after, err := HeldAddresses("gob", []json.RawMessage{
+		s.blob(NewProneCondition("gob")), s.blob(NewOpportunityAttackCondition("gob")),
+	})
+	s.Require().NoError(err)
+
+	s.Equal(before, after)
+}
+
+// oaOf is the opportunity attack a combatant carries, as its address.
+func oaOf(member string) dnd5eEvents.ConditionAddress {
+	return dnd5eEvents.ConditionAddress{MemberID: member, ConditionRef: refs.Conditions.OpportunityAttack().String()}
 }

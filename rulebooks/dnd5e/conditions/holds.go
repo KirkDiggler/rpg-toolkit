@@ -5,6 +5,7 @@ package conditions
 
 import (
 	"encoding/json"
+	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
@@ -110,10 +111,18 @@ func DecodeCommanded(stored []json.RawMessage) (*CommandedConditionData, bool, e
 	return oldest, true, nil
 }
 
-// HeldAddresses reports the address each stored condition blob names itself
-// by, in stored order: the (ref, source) a rule keyed by reference reads
-// (rpg-project#520, R16, R17). It is the reader a seam answering "what does
-// this member hold" uses, so that seam names no condition type and holds none.
+// HeldAddresses reports what a member holds as a participant, as the address
+// each condition names itself by: the (ref, source) a rule keyed by reference
+// reads (rpg-project#520, R16, R17). It is the reader a seam answering "what
+// does this member hold" uses, so that seam names no condition type and holds
+// none.
+//
+// That is the stored conditions, in stored order, followed by every free
+// reaction a combatant carries by existing ([FreeReactions]) that the stored
+// list does not already name. The sheet's own attach adds those to every
+// combatant before it acts, and writes them back only when the sheet is next
+// saved, so a reader of the stored list alone would see a member gain one the
+// moment its sheet is saved — a change that never happened.
 //
 // It builds each condition only to ask its address, and attaches nothing: no
 // bus is touched and nothing runs.
@@ -140,5 +149,27 @@ func HeldAddresses(member string, stored []json.RawMessage) ([]dnd5eEvents.Condi
 		}
 		held = append(held, ConditionAddressOf(member, loaded))
 	}
+	for _, carried := range FreeReactions(member) {
+		address := ConditionAddressOf(member, carried)
+		if !slices.ContainsFunc(held, func(stored dnd5eEvents.ConditionAddress) bool {
+			return stored.ConditionRef == address.ConditionRef
+		}) {
+			held = append(held, address)
+		}
+	}
 	return held, nil
+}
+
+// FreeReactions are the reactions a combatant carries by existing, built for
+// one member: the opportunity attack. ONE ENTRY, and the list is the rule —
+// a COSTED reaction (Shield burns a spell slot) is not had by existing.
+//
+// Character and monster attach each give a combatant these when it becomes a
+// participant; their own lists are pinned equal to this one by
+// character.TestFreeReactionsMatchTheConditionsList and
+// monstertraits.TestFreeReactionsMatchTheConditionsList, so "what a member
+// holds" has one answer whether it is read from the loaded sheet or from
+// [HeldAddresses].
+func FreeReactions(member string) []dnd5eEvents.ConditionBehavior {
+	return []dnd5eEvents.ConditionBehavior{NewOpportunityAttackCondition(member)}
 }
