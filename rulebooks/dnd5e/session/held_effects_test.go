@@ -227,3 +227,50 @@ func (s *EffectRowsSuite) TestDeliveredPayloadsCarryNoConditions() {
 	}
 	s.Positive(beats, "precondition: the re-look sent sighted beats")
 }
+
+// TestACorruptOwnConditionBlocksTheTurnVisibly pins what a player sees when
+// their own sheet holds a condition that cannot be read: the offer compiler
+// loads the actor strictly, so every action is unavailable for that reason and
+// carries no rows — there is no available attack whose swing would then fail.
+// Only ending the turn remains.
+func (s *EffectRowsSuite) TestACorruptOwnConditionBlocksTheTurnVisibly() {
+	s.cave(s.rogue())
+	stored := s.characters.byID["alice"]
+	stored.Conditions = append(stored.Conditions, json.RawMessage(`{"ref":"nonsense","x":`))
+
+	out, err := s.mgr.Afford(s.ctx, &session.AffordInput{Session: erSession, Member: "alice"})
+	s.Require().NoError(err, "the panel still answers")
+
+	for _, declaration := range out.Declarations {
+		s.Empty(declaration.Effects, "%s carries no row", declaration.Verb)
+		if declaration.Verb == session.VerbEndTurn {
+			s.True(declaration.Available, "ending the turn is still possible")
+			continue
+		}
+		s.False(declaration.Available, "%s is not offered", declaration.Verb)
+		s.Require().NotNil(declaration.Why, declaration.Verb)
+		s.Equal(session.ShortfallUnreadable, declaration.Why.Reason, declaration.Verb)
+		s.Nil(declaration.Attack, "no compiled attack to swing: %s", declaration.Verb)
+	}
+}
+
+// TestACorruptTargetConditionFailsTheRead: a condition that cannot be read on
+// a candidate target's sheet fails Afford itself, loudly — resolution attaches
+// the target strictly to judge participation — rather than offering an attack
+// the swing would then refuse.
+func (s *EffectRowsSuite) TestACorruptTargetConditionFailsTheRead() {
+	s.cave(s.rogue())
+	data := s.sessions.byID[erSession]
+	for i := range data.NPCs {
+		if data.NPCs[i].ID == erGoblin1 {
+			data.NPCs[i].Conditions = append(data.NPCs[i].Conditions,
+				json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"faerie_fire"},"member_id":""}`))
+		}
+	}
+
+	out, err := s.mgr.Afford(s.ctx, &session.AffordInput{Session: erSession, Member: "alice"})
+
+	s.Require().Error(err)
+	s.Nil(out)
+	s.Contains(err.Error(), erGoblin1)
+}

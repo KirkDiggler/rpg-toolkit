@@ -123,7 +123,8 @@ func (refusingTurnDriver) Act(MonsterView) (TurnIntent, error) {
 // MonsterView is this package's own twin of encounter.MonsterView — what a
 // TurnDriver is told about its own turn. Plain data throughout (rpg-project#254
 // review): loggable, replayable, fixture-buildable, and never a live
-// *encounter.Encounter reference.
+// *encounter.Encounter reference. Its Holdings are stored testimony, seen
+// conditions included — never forward a MonsterView to a client.
 type MonsterView struct {
 	// Self is who this view is for.
 	Self string
@@ -144,6 +145,11 @@ type MonsterView struct {
 	// plus what they drop (a deeds-channel holding, for one). A driver
 	// that reads testimony itself reads it here; the store stays the
 	// encounter's (rule A1), and nothing on this slice reaches it.
+	//
+	// It is STORED testimony, including the conditions this member saw others
+	// holding (rpg-project#520, R16), which no delivered payload carries. It
+	// is for the driver deciding this member's turn, and must never be
+	// forwarded to a client: a host that implements TurnDriver holds it.
 	Holdings []Holding
 
 	// At is the clock's high-water when this view was built: the same
