@@ -254,7 +254,7 @@ func (s *GuidingBoltCondition) onAttackChain(ctx context.Context, event dnd5eEve
 		return c, nil
 	}
 	return applyHeldAttack(&heldAttackInput{
-		Name: "guiding bolt", Rule: s.heldRule(), Event: event, Chain: c,
+		Name: "guiding bolt", Holder: s.MemberID, Held: heldAddress(s.MemberID, s), Rule: s.heldRule(), Event: event, Chain: c,
 		SourceRef: s.Ref(), SourceID: s.SourceID,
 		Label: fixedLabel("guiding_bolt_advantage_"+s.SourceID, GuidingBoltName),
 	})

@@ -505,3 +505,56 @@ func (s *targetHeldSuite) TestExecuteHeldEffectRefusesRefWithoutRule() {
 	_, err = ExecuteHeldEffect(nil)
 	s.Error(err)
 }
+
+// TestExecutionRefusesAFrameOmittingTheHandlersOwnAddress is R13 through the
+// held list: at execution the loaded condition proves its holder holds it, so
+// a frame that lists the holder without this address — none at all, or the
+// same condition from another source — fails the attack rather than switching
+// the effect off. Information keeps its gate: there a stale sighting is
+// legitimate testimony, and the rule answers does not apply.
+func (s *targetHeldSuite) TestExecutionRefusesAFrameOmittingTheHandlersOwnAddress() {
+	for name, tc := range map[string]struct {
+		condition func() dnd5eEvents.ConditionBehavior
+		held      contributions.HeldCondition
+	}{
+		"faerie fire": {func() dnd5eEvents.ConditionBehavior {
+			ff, err := NewFaerieFireCondition(NewFaerieFireConditionInput{MemberID: "gob", SourceID: "cleric", SourceRef: refs.Spells.FaerieFire()})
+			s.Require().NoError(err)
+			return ff
+		}, ffHeld},
+		"guiding bolt": {func() dnd5eEvents.ConditionBehavior {
+			gb, err := NewGuidingBoltCondition(NewGuidingBoltConditionInput{MemberID: "gob", SourceID: "cleric", SourceRef: refs.Spells.GuidingBolt()})
+			s.Require().NoError(err)
+			return gb
+		}, gbHeld},
+	} {
+		otherSource := tc.held
+		otherSource.SourceID = "someone-else"
+		for frameName, frame := range map[string]contributions.Frame{
+			"holds nothing":       gobFrame(),
+			"another source only": gobFrame(otherSource),
+		} {
+			s.Run(name+"/"+frameName, func() {
+				bus := events.NewEventBus()
+				condition := tc.condition()
+				s.Require().NoError(condition.Apply(context.Background(), bus))
+
+				final, err := s.attackOn(bus, frame)
+
+				s.Require().Error(err)
+				s.True(errors.Is(err, contributions.ErrRuleCannotAnswer))
+				s.Empty(final.AdvantageSources)
+				s.True(condition.IsApplied(), "nothing was spent on an attack that failed")
+
+				_, err = ExecuteHeldEffect(&ExecuteHeldEffectInput{Holder: "gob", Held: tc.held, Frame: frame})
+				s.True(errors.Is(err, contributions.ErrRuleCannotAnswer), "the exported execute refuses it too")
+
+				out, err := AssessTargetHeldEffects(&AssessTargetHeldEffectsInput{Frame: frame})
+				s.Require().NoError(err)
+				for _, row := range out.Effects {
+					s.NotEqual(heldEffectID(tc.held), row.ID, "information shows no row for what the sighting does not list")
+				}
+			})
+		}
+	}
+}

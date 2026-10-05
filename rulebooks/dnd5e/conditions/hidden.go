@@ -210,7 +210,7 @@ func (h *HiddenCondition) onAttackChain(
 
 	case event.TargetID:
 		return applyHeldAttack(&heldAttackInput{
-			Name: "hidden", Rule: h.heldRule(), Event: event, Chain: c,
+			Name: "hidden", Holder: h.MemberID, Held: heldAddress(h.MemberID, h), Rule: h.heldRule(), Event: event, Chain: c,
 			SourceRef: refs.Conditions.Hidden(), SourceID: h.MemberID,
 			Label: fixedLabel("hidden_target_disadvantage", "Hidden"),
 		})

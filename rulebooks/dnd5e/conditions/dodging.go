@@ -161,7 +161,7 @@ func (d *DodgingCondition) onAttackChain(
 		return c, nil
 	}
 	return applyHeldAttack(&heldAttackInput{
-		Name: "dodging", Rule: d.heldRule(), Event: event, Chain: c,
+		Name: "dodging", Holder: d.MemberID, Held: heldAddress(d.MemberID, d), Rule: d.heldRule(), Event: event, Chain: c,
 		SourceRef: refs.Conditions.Dodging(), SourceID: d.MemberID,
 		Label: fixedLabel("dodging_disadvantage", "Dodging"),
 	})

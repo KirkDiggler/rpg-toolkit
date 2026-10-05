@@ -305,8 +305,8 @@ func ExecuteHeldEffect(in *ExecuteHeldEffectInput) (*ExecuteHeldEffectOutput, er
 	if !ok {
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "held condition %s has no held rule", in.Held.Ref)
 	}
-	executed, err := executeRule(&executeRuleInput{
-		Name: "held " + in.Held.Ref, Rule: rule(in.Holder, in.Held), Frame: in.Frame,
+	executed, err := executeHeld(&executeHeldInput{
+		Name: "held " + in.Held.Ref, Holder: in.Holder, Held: in.Held, Rule: rule(in.Holder, in.Held), Frame: in.Frame,
 	})
 	if err != nil {
 		return nil, err
@@ -314,10 +314,45 @@ func ExecuteHeldEffect(in *ExecuteHeldEffectInput) (*ExecuteHeldEffectOutput, er
 	return &ExecuteHeldEffectOutput{Answer: executed.Answer}, nil
 }
 
+// executeHeldInput names a held condition its holder applies, its rule and
+// the execution frame.
+type executeHeldInput struct {
+	Name   string
+	Holder string
+	Held   contributions.HeldCondition
+	Rule   contributions.ActionAssessor
+	Frame  contributions.Frame
+}
+
+// executeHeld asks a held rule the way execution must. At execution the
+// caller applying the effect is authoritative that its holder holds it — the
+// loaded condition is that proof, and so is a ward resolution found on the
+// holder's sheet. So a valid frame that lists the holder's holdings WITHOUT
+// this address is a frame that cannot answer (R13), never "the target does
+// not hold this effect": accepting it would switch the effect off silently,
+// and Guiding Bolt would even be spent for nothing. An unknown holding is the
+// rule's Depends, and executeRule refuses that too. Information keeps the
+// rule's gate as it is, because there a stale sighting is legitimate
+// testimony.
+func executeHeld(in *executeHeldInput) (*executeRuleOutput, error) {
+	if err := in.Frame.Validate(); err != nil {
+		return nil, fmt.Errorf("%s: %w: %w", in.Name, contributions.ErrRuleCannotAnswer, err)
+	}
+	if listed, known := in.Frame.HeldBy(in.Holder); known && !slices.Contains(listed, in.Held) {
+		return nil, fmt.Errorf("%s: %w: the frame omits a held condition its holder applies (%s@%q on %q)",
+			in.Name, contributions.ErrRuleCannotAnswer, in.Held.Ref, in.Held.SourceID, in.Holder)
+	}
+	return executeRule(&executeRuleInput{Name: in.Name, Rule: in.Rule, Frame: in.Frame})
+}
+
 // heldAttackInput names a target-held handler's rule and how an applying
 // answer reads on the attack chain.
 type heldAttackInput struct {
-	Name      string
+	Name string
+	// Holder and Held are the handler's own holder and address: the loaded
+	// condition is proof its holder holds it.
+	Holder    string
+	Held      contributions.HeldCondition
 	Rule      contributions.ActionAssessor
 	Event     dnd5eEvents.AttackChainEvent
 	Chain     chain.Chain[dnd5eEvents.AttackChainEvent]
@@ -330,11 +365,14 @@ type heldAttackInput struct {
 
 // applyHeldAttack is the attack-chain half of a target-held handler: it asks
 // the held rule from the event's frame and, when it applies, adds an advantage
-// or disadvantage source as the answer's attack mode says. An invalid frame or
-// a Depends answer fails the attack; an applying answer with no mode is a
-// producer defect.
+// or disadvantage source as the answer's attack mode says. An invalid frame, a
+// frame that omits the handler's own address, or a Depends answer fails the
+// attack (see executeHeld); an applying answer with no mode is a producer
+// defect.
 func applyHeldAttack(in *heldAttackInput) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
-	executed, err := executeRule(&executeRuleInput{Name: in.Name, Rule: in.Rule, Frame: in.Event.Frame})
+	executed, err := executeHeld(&executeHeldInput{
+		Name: in.Name, Holder: in.Holder, Held: in.Held, Rule: in.Rule, Frame: in.Event.Frame,
+	})
 	if err != nil {
 		return in.Chain, err
 	}

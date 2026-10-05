@@ -29,7 +29,8 @@ func (s *heldAddressesSuite) TestReportsEachAddressInStoredOrder() {
 	ff, err := NewFaerieFireCondition(NewFaerieFireConditionInput{MemberID: "gob", SourceID: "cleric", SourceRef: refs.Spells.FaerieFire()})
 	s.Require().NoError(err)
 
-	held := HeldAddresses("gob", []json.RawMessage{s.blob(NewProneCondition("gob")), s.blob(ff)})
+	held, err := HeldAddresses("gob", []json.RawMessage{s.blob(NewProneCondition("gob")), s.blob(ff)})
+	s.Require().NoError(err)
 
 	s.Equal([]dnd5eEvents.ConditionAddress{
 		{MemberID: "gob", ConditionRef: refs.Conditions.Prone().String()},
@@ -37,17 +38,32 @@ func (s *heldAddressesSuite) TestReportsEachAddressInStoredOrder() {
 	}, held)
 }
 
-func (s *heldAddressesSuite) TestLeavesOutWhatTheSheetDoesNotLoad() {
+func (s *heldAddressesSuite) TestLeavesOutATraitWhichIsNotACondition() {
 	trait := json.RawMessage(`{"ref":{"module":"dnd5e","type":"monster_traits","id":"vulnerability"}}`)
-	corrupt := json.RawMessage(`{"ref":"nonsense","x":`)
 
-	held := HeldAddresses("gob", []json.RawMessage{trait, s.blob(NewProneCondition("gob")), corrupt})
+	held, err := HeldAddresses("gob", []json.RawMessage{trait, s.blob(NewProneCondition("gob"))})
+	s.Require().NoError(err)
 
 	s.Equal([]dnd5eEvents.ConditionAddress{{MemberID: "gob", ConditionRef: refs.Conditions.Prone().String()}}, held)
 }
 
+// TestACorruptConditionIsAnErrorNotAGap: a blob that cannot be read, or that
+// names a condition and will not load, is refused — a list that left it out
+// would claim, known, that the member does not hold it.
+func (s *heldAddressesSuite) TestACorruptConditionIsAnErrorNotAGap() {
+	for name, blob := range map[string]json.RawMessage{
+		"unreadable":             json.RawMessage(`{"ref":"nonsense","x":`),
+		"a condition that fails": json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"faerie_fire"},"member_id":""}`),
+	} {
+		held, err := HeldAddresses("gob", []json.RawMessage{s.blob(NewProneCondition("gob")), blob})
+		s.Error(err, name)
+		s.Nil(held, name)
+	}
+}
+
 func (s *heldAddressesSuite) TestAnEmptySheetIsKnownToHoldNothing() {
-	held := HeldAddresses("gob", nil)
+	held, err := HeldAddresses("gob", nil)
+	s.Require().NoError(err)
 
 	s.NotNil(held, "a sheet was read")
 	s.Empty(held)

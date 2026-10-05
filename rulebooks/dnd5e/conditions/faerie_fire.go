@@ -183,7 +183,7 @@ func (g *FaerieFireCondition) onAttackChain(
 		return c, nil
 	}
 	return applyHeldAttack(&heldAttackInput{
-		Name: "faerie fire", Rule: g.heldRule(), Event: event, Chain: c,
+		Name: "faerie fire", Holder: g.MemberID, Held: heldAddress(g.MemberID, g), Rule: g.heldRule(), Event: event, Chain: c,
 		SourceRef: g.Ref(), SourceID: g.SourceID,
 		Label: fixedLabel("faerie_fire_"+g.SourceID, FaerieFireName),
 	})

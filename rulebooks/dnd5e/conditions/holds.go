@@ -118,19 +118,27 @@ func DecodeCommanded(stored []json.RawMessage) (*CommandedConditionData, bool, e
 // It builds each condition only to ask its address, and attaches nothing: no
 // bus is touched and nothing runs.
 //
-// A blob this package does not load as a condition is left out, because the
-// loaded sheet leaves it out too: a monster's stat-block trait (immunity,
-// vulnerability, …) is not a condition, and a blob that cannot be read is
-// dropped by the sheet's own lenient projection. The result is non-nil even
-// when empty — the sheet was read.
-func HeldAddresses(member string, stored []json.RawMessage) []dnd5eEvents.ConditionAddress {
+// A blob whose ref names no condition this package loads — a monster's
+// stat-block trait (immunity, vulnerability, …) — is not a condition and is
+// left out. A blob that cannot be read, or that names a condition and fails to
+// load, is an ERROR rather than a gap: a list that silently left it out would
+// claim, known, that the member does not hold it, and unknown is never read as
+// false. The result is non-nil even when empty — the sheet was read.
+func HeldAddresses(member string, stored []json.RawMessage) ([]dnd5eEvents.ConditionAddress, error) {
 	held := make([]dnd5eEvents.ConditionAddress, 0, len(stored))
-	for _, blob := range stored {
+	for index, blob := range stored {
+		var named storedRef
+		if err := json.Unmarshal(blob, &named); err != nil {
+			return nil, rpgerr.Wrapf(err, "failed to read the ref of stored condition %d", index)
+		}
+		if _, isCondition := conditionLoaders[named.Ref.String()]; !isCondition {
+			continue
+		}
 		loaded, err := LoadJSON(blob)
 		if err != nil {
-			continue
+			return nil, rpgerr.Wrapf(err, "stored condition %d (%s) does not load", index, named.Ref.String())
 		}
 		held = append(held, ConditionAddressOf(member, loaded))
 	}
-	return held
+	return held, nil
 }

@@ -263,7 +263,7 @@ func (p *ProneCondition) attackedWhileProne(
 	c chain.Chain[dnd5eEvents.AttackChainEvent],
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
 	return applyHeldAttack(&heldAttackInput{
-		Name: "prone", Rule: p.heldRule(), Event: event, Chain: c,
+		Name: "prone", Holder: p.CharacterID, Held: heldAddress(p.CharacterID, p), Rule: p.heldRule(), Event: event, Chain: c,
 		SourceRef: refs.Conditions.Prone(), SourceID: p.CharacterID,
 		Label: func(mode contributions.AttackMode) (string, string) {
 			if mode == contributions.AttackAdvantage {
