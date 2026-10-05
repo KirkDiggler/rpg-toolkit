@@ -36,7 +36,10 @@ const encounterPath = "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encoun
 // or a turn-driving seam; sightSeam is a read-only range projection. Refreshing
 // perception remains in session after dirty sheets are saved.
 // WorldView is a pure snapshot: no standing consult and no retention mutation.
-var encounterReach = []string{"AddSightArea", "Canvas", "IsAllied", "IsHostile", "RemoveSightArea", "SeesWithin", "ToData", "View", "WorldView"}
+// StanceBetween joins for the execution frame (rpg-project#520): it is the
+// fold IsHostile and IsAllied themselves read — membership, factions and the
+// run's own graph — and consults no capability.
+var encounterReach = []string{"AddSightArea", "Canvas", "IsAllied", "IsHostile", "RemoveSightArea", "SeesWithin", "StanceBetween", "ToData", "View", "WorldView"}
 
 // TestResolveTouchesTheEncounterThroughTwoMethods is the half of the reentrancy
 // invariant that only this package can hold.

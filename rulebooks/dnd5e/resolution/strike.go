@@ -16,6 +16,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -185,6 +186,10 @@ type strikeMachine struct {
 	// resume is the answer to a pose this machine already made, or nil for a
 	// fresh strike. See [NewStrikeResumed].
 	resume *strikeResume
+
+	// frame is the execution frame, built once on first use and read by every
+	// rule this strike asks. See [strikeMachine.executionFrame].
+	frame *contributions.Frame
 
 	// outcome accumulates across phases. It is the machine's whole state, and
 	// the reason a suspension between any two phases would need nothing else.
@@ -474,11 +479,18 @@ func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents
 
 	hasAdvantage := len(folded.AdvantageSources) > 0
 	hasDisadvantage := len(folded.DisadvantageSources) > 0
-	contributions, err := describeRollContributions(m.cast, m.in.AttackerID, dnd5eEvents.RollKindAttack)
+	// The frame every rule this strike asks reads, built here — after the
+	// fold, before anything is rolled or offered — and reused by the damage
+	// fold.
+	frame, err := m.executionFrame(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rollContributions, err := describeRollContributions(m.cast, m.in.AttackerID, dnd5eEvents.RollKindAttack)
 	if err != nil {
 		return nil, fmt.Errorf("describe attack contributions: %w", err)
 	}
-	if err := rolls.ValidateContributions(contributions); err != nil {
+	if err := rolls.ValidateContributions(rollContributions); err != nil {
 		return nil, fmt.Errorf("validate attack contributions: %w", err)
 	}
 	// ONE D20 ROLLER for the rulebook. The fold's own source records go
@@ -500,7 +512,7 @@ func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents
 	}
 	roll := d20.Face
 	resolved, err := rolls.ResolveContributions(ctx, &rolls.ResolveContributionsInput{
-		Roller: roller, Contributions: contributions,
+		Roller: roller, Contributions: rollContributions,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("resolve attack contributions: %w", err)
@@ -552,6 +564,7 @@ func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents
 		Roll:        roll,
 		AttackBonus: folded.AttackBonus,
 		Total:       m.outcome.Total,
+		Frame:       frame,
 	}
 	return gatherPostRollOffers(offerEvent, func(_ context.Context, offers []dnd5eEvents.Offer) (Step, error) {
 		if len(offers) == 0 {
@@ -652,6 +665,14 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 	if len(m.attack.Damage) == 0 {
 		return m.afterDamage(ctx)
 	}
+	// The same frame the offers read — or, on a resumed strike, one built from
+	// current truth and the frozen fold — settled before any damage die is
+	// thrown. Its advantage is the fold's effective answer, so the event's flag
+	// and the frame cannot disagree.
+	frame, err := m.executionFrame(ctx)
+	if err != nil {
+		return nil, err
+	}
 	components := make([]dnd5eEvents.DamageComponent, 0, len(m.attack.Damage)+1)
 	var primary *damage.Damage
 	for i := range m.attack.Damage {
@@ -693,8 +714,7 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 		})
 	}
 
-	effectiveAdvantage := len(m.outcome.Folded.AdvantageSources) > 0 &&
-		len(m.outcome.Folded.DisadvantageSources) == 0
+	effectiveAdvantage, _ := frame.Action.Advantage.Get()
 	var weaponDamageDice string
 	var weaponDamageType damage.Type
 	if primary != nil {
@@ -723,6 +743,7 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 		// live gamectx lookup, the same way Rage decides from AbilityUsed.
 		TwoHanded:        m.twoHanded,
 		OffHandWeaponRef: m.offHandWeaponRef,
+		Frame:            frame,
 	}), m.afterDamageChain), nil
 }
 
