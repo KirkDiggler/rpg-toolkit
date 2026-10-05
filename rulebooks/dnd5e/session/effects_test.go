@@ -412,15 +412,22 @@ func (s *EffectRowsSuite) TestSpellAttackCastCarriesBlessRow() {
 	s.Equal("+1d4 to the attack roll", bless.Benefit)
 }
 
+// TestUnansweringEffectShownUnavailable: Sanctuary bears on its holder's own
+// attack (attacking ends the ward) but no rule here answers for it yet, so its
+// row is unavailable — shown, never dropped and never not-applying.
 func (s *EffectRowsSuite) TestUnansweringEffectShownUnavailable() {
-	s.cave(s.fighter(s.raw(conditions.NewFightingStyleArcheryCondition("alice"))))
+	ward, err := conditions.NewSanctuaryCondition(conditions.NewSanctuaryConditionInput{
+		MemberID: "alice", SourceID: erAlly, SourceRef: refs.Spells.Sanctuary(),
+	})
+	s.Require().NoError(err)
+	s.cave(s.fighter(s.raw(ward)))
 
-	archery := s.row(s.mainAttack(s.afford("alice")), refs.Conditions.FightingStyleArchery().String())
-	display, found := conditions.DisplayFor(*refs.Conditions.FightingStyleArchery())
+	sanctuary := s.row(s.mainAttack(s.afford("alice")), refs.Conditions.Sanctuary().String()+"@"+erAlly)
+	display, found := conditions.DisplayFor(*refs.Conditions.Sanctuary())
 	s.Require().True(found)
-	s.Equal(session.EffectUnavailable, archery.State, "never dropped and never shown as not applying")
-	s.Equal(display.Detail, archery.Description)
-	s.NotEmpty(archery.Reason)
+	s.Equal(session.EffectUnavailable, sanctuary.State, "never dropped and never shown as not applying")
+	s.Equal(display.Detail, sanctuary.Description)
+	s.NotEmpty(sanctuary.Reason)
 }
 
 func (s *EffectRowsSuite) TestReadingRowsChangesNothing() {
@@ -580,8 +587,12 @@ func (s *EffectRowsSuite) TestNoRowsOnTheWorldClock() {
 // attack", which would be false.
 func (s *EffectRowsSuite) TestAffordFailsClosedWhenRowsCannotBeRead() {
 	barbarian := s.barbarian()
-	barbarian.Conditions = append(barbarian.Conditions, append(json.RawMessage(nil), barbarian.Conditions[0]...))
 	s.cave(barbarian)
+	// Planted after the fight starts: a sight refresh would refuse the
+	// repeated address first (the encounter's own conditions door), and this
+	// test is about the read.
+	stored := s.characters.byID["alice"]
+	stored.Conditions = append(stored.Conditions, append(json.RawMessage(nil), stored.Conditions[0]...))
 
 	out, err := s.mgr.Afford(s.ctx, &session.AffordInput{Session: erSession, Member: "alice"})
 	s.Require().Error(err, "a row the rulebook cannot list fails the read")
