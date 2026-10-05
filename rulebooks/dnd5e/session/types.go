@@ -3538,6 +3538,12 @@ type TargetCandidate struct {
 	// turn/economy reasons are never copied here — they live on the
 	// declaration's Why.
 	Why *Shortfall `json:"why,omitempty"`
+
+	// Effects are this target's answers that differ from the declaration's
+	// rows, each replacing the row with the same ID (rpg-project#520). Empty
+	// when every row reads as declared for this target. They never change
+	// Available.
+	Effects []TargetEffect `json:"effects,omitempty"`
 }
 
 // Discovery is what changed in one observer's perception.

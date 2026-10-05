@@ -61,6 +61,19 @@ the turn; [`offers.go`](./offers.go), [`casts.go`](./casts.go) and
 [`declaration_id.go`](./declaration_id.go) mints the opaque selector each
 mutating verb demands back. See [ADR-0042](../../../docs/adr/0042-afford-answers-in-declarations-not-currencies.md).
 
+**Effect rows ride the declaration (rpg-project#520).** A compiled Attack, and a
+compiled Cast that makes a spell attack, carries `Declaration.Effects`
+(`EffectRow`: id, ref, name, description, state, reason, participation,
+benefit); each `TargetCandidate.Effects` carries a `TargetEffect` (id, state,
+reason, benefit) only where that target's answer differs from the row.
+[`effects.go`](./effects.go) attaches them in `Afford` alone, after
+`compileOffersFor` — no execution caller computes a row, so a row can never
+refuse, alter or select a command, and it is not selector material. The rows
+are `resolution.InformAttack`'s answers over the actor's own
+`ObservedContext` and loaded sheet; this package projects them and decides
+nothing. Off turn, while frozen, on the world clock and on blockers there are
+no rows.
+
 **The executors.** A declared action becomes a resolution machine here and
 nowhere else: `resolution.NewActivation` in [`activate.go`](./activate.go),
 the cast machine in [`cast.go`](./cast.go), the swing in
