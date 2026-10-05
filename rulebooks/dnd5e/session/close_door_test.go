@@ -166,6 +166,8 @@ func (s *CloseDoorSuite) TestAnOpenFootprintDoorClosesAndBlocksAgain() {
 	s.Equal(session.Door{ID: leafDoorID, State: "closed"}, closed.Door)
 	s.NotEmpty(closed.Saved.Written, "the closed world was saved")
 	s.Contains(closed.Saved.Written, "encounter:world", "the world carries the new state")
+	s.Require().Contains(closed.Discovered["alice"].Faded, "bob", "the close result carries Alice's lost sighting")
+	s.Require().Contains(closed.Discovered["bob"].Faded, "alice", "the close result carries Bob's lost sighting")
 
 	shutAgain := s.walkOntoLeaf(s.mgr)
 	s.Equal(session.MovementStopped, shutAgain.Status, "the crossing is refused again")

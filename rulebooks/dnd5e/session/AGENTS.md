@@ -11,9 +11,9 @@ for why the split exists at all.
 
 ## What this package owns
 
-**The verb surface.** Thirty-five exported `Manager` methods, each one load, act,
-save, return — no setup call, no teardown, no ordering for the caller to get
-wrong. `Move`, `Attack`, `Cast`, `Activate`, `DeathSave`, `EndTurn`, `React`,
+**The verb surface.** The exported `Manager` methods are load, act, save,
+return — no setup call, no teardown, no ordering for the caller to get
+wrong. They include `Move`, `Attack`, `Cast`, `Activate`, `DeathSave`, `EndTurn`, `React`,
 `Search`, `Loot`, `Hold`, `Trade`, `Interact`, `OpenDoor`, `CloseDoor`, `Unlock`, `Join`,
 `Exit`, `End`, `Spawn`, `PlaceNPC`, `Dissolve`, `Unpack`, `LevelUp`,
 `StartSession`, and the reads `Afford`, `Roster`, `Atlas`, `AtlasOf`, `Status`,

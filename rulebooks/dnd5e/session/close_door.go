@@ -82,9 +82,10 @@ type CloseDoorOutput struct {
 // ordinary closed door. That ruling is the composition's and this seam adds
 // nothing to it.
 //
-// Errors: ErrNilInput, ErrNoMemberID, ErrNoConnection (empty door, unknown,
-// already closed or locked), ErrOutOfRange, or the ordinary read/save
-// translations.
+// Errors include ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
+// ErrNoEncounter, ErrNoMember, ErrWindowOpen, ErrNoConnection (empty door,
+// unknown, already closed or locked), ErrOutOfRange, and the ordinary
+// lock/read/save translations.
 func (m *Manager) CloseDoor(ctx context.Context, in *CloseDoorInput) (*CloseDoorOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("closedoor: %w", ErrNilInput)
