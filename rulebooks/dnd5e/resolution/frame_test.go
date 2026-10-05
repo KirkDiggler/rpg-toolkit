@@ -17,6 +17,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
@@ -25,6 +26,7 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -341,6 +343,113 @@ func (s *FrameTestSuite) TestResumedStrikeRebuildsFrameFromTruth() {
 	s.Equal(contributions.Known(wolfID), frame.Target)
 	s.Equal(contributions.Known(false), frame.Action.Advantage, "the frozen fold granted nothing")
 	s.Equal(contributions.Known(1.0), frame.Pair(heroID, wolfID).DistanceCells)
+}
+
+// grantAdvantage has the fold grant the rogue advantage, as a condition would,
+// so the execution frame's advantage is read from a fold that granted it.
+func (s *FrameTestSuite) grantAdvantage(bus events.EventBus) {
+	_, err := dnd5eEvents.AttackChain.On(bus).SubscribeWithChain(s.ctx,
+		func(_ context.Context, e dnd5eEvents.AttackChainEvent,
+			c chain.Chain[dnd5eEvents.AttackChainEvent],
+		) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
+			if e.AttackerID != holdOutRogue {
+				return c, nil
+			}
+			return c, c.Add(combat.StageConditions, "granted-advantage",
+				func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
+					e.AdvantageSources = append(e.AdvantageSources, dnd5eEvents.AttackModifierSource{
+						SourceRef: refs.Conditions.Dodging(), SourceID: holdOutAlly, Reason: "granted for the test",
+					})
+					return e, nil
+				})
+		})
+	s.Require().NoError(err)
+}
+
+// TestGrantedAdvantageReachesTheExecutionFrame: the fold grants advantage and
+// nobody of the party stands beside the chief, so only advantage can qualify
+// Sneak Attack — the frame says known true and the sneak dice roll.
+func (s *FrameTestSuite) TestGrantedAdvantageReachesTheExecutionFrame() {
+	bus := events.NewEventBus()
+	s.grantAdvantage(bus)
+	spy := s.watchFrames(bus)
+	roller := &interactionRoller{script: []interactionRoll{
+		{count: 2, sides: 20, faces: []int{15, 15}},
+		{count: 1, sides: 4, faces: []int{3}},
+		{count: 1, sides: 6, faces: []int{5}},
+	}}
+
+	out, err := s.resolveCamp(bus, &StrikeInput{AttackerID: holdOutRogue, TargetID: holdOutChief, Definition: dagger(), Roller: roller})
+	s.Require().NoError(err)
+
+	s.Require().Len(spy.damaged, 1)
+	s.Equal(contributions.Known(true), spy.damaged[0].Action.Advantage)
+	outcome, ok := out.Outcome.(StrikeOutcome)
+	s.Require().True(ok)
+	s.True(sneakAttackFired(outcome), "components: %+v", outcome.DamageComponents)
+	s.Empty(roller.script, "%v", roller.calls)
+}
+
+// TestCancelledAdvantageIsKnownFalseInTheExecutionFrame: advantage granted and
+// disadvantage imposed cancel, so the frame says known false and, with no
+// enemy of the chief beside it, Sneak Attack does not roll.
+func (s *FrameTestSuite) TestCancelledAdvantageIsKnownFalseInTheExecutionFrame() {
+	bus := events.NewEventBus()
+	s.grantAdvantage(bus)
+	spy := s.watchFrames(bus)
+	roller := &interactionRoller{script: []interactionRoll{
+		{count: 1, sides: 20, faces: []int{15}},
+		{count: 1, sides: 4, faces: []int{3}},
+	}}
+
+	out, err := s.resolveCamp(bus, &StrikeInput{
+		AttackerID: holdOutRogue, TargetID: holdOutChief, Definition: dagger(), Roller: roller,
+		Imposed: []dnd5eEvents.AttackModifierSource{{
+			SourceRef: refs.Conditions.Prone(), SourceID: holdOutRogue, Reason: "imposed for the test",
+		}},
+	})
+	s.Require().NoError(err)
+
+	s.Require().Len(spy.damaged, 1)
+	s.Equal(contributions.Known(false), spy.damaged[0].Action.Advantage)
+	outcome, ok := out.Outcome.(StrikeOutcome)
+	s.Require().True(ok)
+	s.Require().True(outcome.Hit, "precondition: the scripted swing lands")
+	s.NotEmpty(outcome.Folded.AdvantageSources, "precondition: advantage was granted")
+	s.False(sneakAttackFired(outcome), "components: %+v", outcome.DamageComponents)
+	s.Empty(roller.script, "%v", roller.calls)
+}
+
+// TestStrikeFailsWhenAnOfferRuleCannotAnswer is R13 on the offer side: a rule
+// that cannot answer during the post-roll offer fails the action, so Resolve
+// returns no world to save and no damage is applied.
+func (s *FrameTestSuite) TestStrikeFailsWhenAnOfferRuleCannotAnswer() {
+	bus := events.NewEventBus()
+	_, err := dnd5eEvents.PostRollOfferChain.On(bus).SubscribeWithChain(s.ctx,
+		func(_ context.Context, _ *dnd5eEvents.PostRollOfferEvent,
+			c chain.Chain[*dnd5eEvents.PostRollOfferEvent],
+		) (chain.Chain[*dnd5eEvents.PostRollOfferEvent], error) {
+			return c, fmt.Errorf("spy offer rule: %w", contributions.ErrRuleCannotAnswer)
+		})
+	s.Require().NoError(err)
+	damaged := s.watchFrames(bus)
+	target := monsters.NewWolf(wolfID).ToData()
+	before := target.HitPoints
+
+	out, err := resolveOn(s.ctx, &Input{
+		World:        actionWorld(s.T(), 2),
+		Participants: []Participant{{Monster: target}, {Character: actionHero()}},
+		Machine: NewStrike(&StrikeInput{AttackerID: heroID, TargetID: wolfID, Definition: validMeleeDefinition(),
+			Roller: &actionRoller{singles: []int{15}, damage: [][]int{{3}}}}),
+		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		TurnDriver: passDriver{}, Roller: &actionRoller{},
+	}, newSurface(bus))
+
+	s.Require().Error(err)
+	s.True(errors.Is(err, contributions.ErrRuleCannotAnswer), "the rule's refusal reaches the caller: %v", err)
+	s.Nil(out, "nothing comes back to be saved")
+	s.Empty(damaged.damaged, "no damage was folded")
+	s.Equal(before, target.HitPoints, "the target's record is untouched")
 }
 
 // TestAPlacedMemberWithNoFactionIsKnownNoSide: an execution frame never
