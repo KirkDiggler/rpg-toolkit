@@ -413,6 +413,17 @@ type Declaration struct {
 	// remains the only source of coverage, exclusions, obstruction, and
 	// legality.
 	Footprint *Footprint `json:"footprint,omitempty"`
+
+	// Effects lists every effect bearing on this declaration's action, each
+	// with the rulebook's answer when no target is chosen (rpg-project#520).
+	// Answers that change by target ride [TargetCandidate.Effects].
+	//
+	// Present only on a compiled Attack and on a compiled Cast that makes a
+	// spell attack — an unavailable one included, because availability and
+	// applicability are independent. Empty on every other declaration, on a
+	// blocker, off turn and while a window is frozen. Rows never grant or
+	// refuse the action and are not selector material.
+	Effects []EffectRow `json:"effects,omitempty"`
 }
 
 // AffordOutput is what one member can still declare this turn.
@@ -631,6 +642,15 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 		VerbAttack, VerbMove, VerbActivate, VerbCast, VerbIntimidate, VerbPersuade, VerbDeathSave, VerbEndTurn,
 	)
 	if err != nil {
+		return nil, fmt.Errorf("afford: %w", err)
+	}
+	// EFFECT ROWS, HERE AND NOWHERE ELSE (rpg-project#520). Every gate and
+	// selector above is settled before a row exists, and no execution caller
+	// of compileOffersFor attaches them, so a row can describe an action but
+	// never refuse, alter or select one. The sheet is the one compiled from.
+	if err := attachEffects(&attachEffectsInput{
+		Encounter: enc, Member: in.Member, Actor: actor.sheet, Offers: offers,
+	}); err != nil {
 		return nil, fmt.Errorf("afford: %w", err)
 	}
 
