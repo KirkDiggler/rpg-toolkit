@@ -341,7 +341,12 @@ type AttackChainEvent struct {
 	// unknown. A rule asked during the fold reads it and nothing else; an
 	// invalid frame fails the fold rather than switching a rule off. The
 	// damage fold's frame is this one with Advantage settled.
-	Frame contributions.Frame
+	//
+	// It is never persisted: a frozen fold keeps the event, and a resumed
+	// strike rebuilds its frame from current truth (S3). A Fact does not
+	// marshal, so a serialized frame would come back hollow — every fact
+	// unknown yet still claiming Complete.
+	Frame contributions.Frame `json:"-"`
 }
 
 // IsCancelled returns true if this attack has been cancelled.
