@@ -139,20 +139,18 @@ func answerEffect(in *answerEffectInput) error {
 	if !contributesToRolls {
 		return nil
 	}
-	applies := answer.Decision.Applicability == contributions.Applies
-	name := ""
-	if applies {
-		if len(answer.Roll) == 0 {
-			return rpgerr.Newf(rpgerr.CodeInternal, "roll contribution %s applies but describes no dice", ref)
-		}
-		name = answer.Roll[0].Source.Name
+	if answer.Decision.Applicability != contributions.Applies {
+		return nil
 	}
-	claim, err := in.Groups.claim(&rollClaimInput{Provider: provider, Applies: applies, Name: name})
+	if len(answer.Roll) == 0 {
+		return rpgerr.Newf(rpgerr.CodeInternal, "roll contribution %s applies but describes no dice", ref)
+	}
+	claim, err := in.Groups.claim(&rollClaimInput{Provider: provider, Applies: true, Name: answer.Roll[0].Source.Name})
 	if err != nil {
 		return fmt.Errorf("assess %s: %w", ref, err)
 	}
-	if claim.Applicable != applies {
-		return rpgerr.Newf(rpgerr.CodeInternal, "condition %s answer disagrees with its roll contribution metadata", ref)
+	if !claim.Applicable {
+		return rpgerr.Newf(rpgerr.CodeInternal, "condition %s applies but its roll contribution metadata does not", ref)
 	}
 	if claim.Shadowed {
 		in.Effect.State = contributions.StateDoesNotApply

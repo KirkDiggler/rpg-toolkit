@@ -182,22 +182,27 @@ func (b *BlessedCondition) DescribeRollContributions(
 	}, nil
 }
 
-// AssessAction answers whether Bless adds to the framed roll. It applies
-// exactly when RollContributionMetadata does — the function execution's
-// selection calls — and carries the same described d4.
+// AssessAction answers whether Bless adds to the framed roll. For its
+// recipient's roll it applies exactly when RollContributionMetadata does — the
+// function execution's selection calls — and carries the same described d4;
+// another member's roll is not its to change.
 func (b *BlessedCondition) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error) {
 	return assessRollContribution(&assessRollContributionInput{
-		Name: "blessed", Provider: b, Assess: in, Sign: "+",
+		Name: "blessed", Provider: b, Recipient: b.MemberID, Assess: in, Sign: "+",
+		NotRecipient: "Bless affects only its recipient's rolls",
 		Applies:      "Bless adds to attack rolls and saving throws",
 		DoesNotApply: "Bless adds only to attack rolls and saving throws",
 	})
 }
 
-// assessRollContributionInput names a roll-contribution provider, the frame it
-// is asked about, and its owner-authored reasons and benefit sign.
+// assessRollContributionInput names a roll-contribution provider and the
+// member whose rolls it affects, the frame it is asked about, and its
+// owner-authored reasons and benefit sign.
 type assessRollContributionInput struct {
 	Name         string
 	Provider     dnd5eEvents.RollContributionProvider
+	Recipient    string
+	NotRecipient string
 	Assess       *contributions.AssessActionInput
 	Sign         string
 	Applies      string
@@ -216,6 +221,10 @@ func assessRollContribution(in *assessRollContributionInput) (*contributions.Ass
 	out := &contributions.AssessActionOutput{Answer: contributions.Answer{
 		Participation: contributions.ContributesNow,
 	}}
+	if frame.Actor != in.Recipient {
+		out.Answer.Decision = contributions.Decision{Applicability: contributions.DoesNotApply, Reason: in.NotRecipient}
+		return out, nil
+	}
 	if !in.Provider.RollContributionMetadata(request).Applicable {
 		out.Answer.Decision = contributions.Decision{Applicability: contributions.DoesNotApply, Reason: in.DoesNotApply}
 		return out, nil

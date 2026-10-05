@@ -78,6 +78,27 @@ func (s *frameSuite) TestFrameValidateRejectsZeroFrameDuplicatePairsAndNaN() {
 	emptyStance.Pairs[0].Stance = contributions.Known(contributions.Stance(""))
 	s.Error(emptyStance.Validate(), "a known empty stance is not one of the four")
 
+	for name, roll := range map[string]contributions.RollKind{"known empty": "", "misspelled": "atack"} {
+		frame := validFrame()
+		frame.Action.Roll = contributions.Known(roll)
+		s.Error(frame.Validate(), "a %s roll kind is not a roll kind", name)
+	}
+	savingThrow := validFrame()
+	savingThrow.Action.Roll = contributions.Known(contributions.RollKindSavingThrow)
+	s.NoError(savingThrow.Validate())
+
+	noAbility := validFrame()
+	noAbility.Action.Ability = contributions.Known(abilities.Ability(""))
+	s.NoError(noAbility.Validate(), "Known(\"\") is an attack that declares no governing ability")
+	for _, ability := range abilities.AllAbilities() {
+		frame := validFrame()
+		frame.Action.Ability = contributions.Known(ability)
+		s.NoError(frame.Validate(), string(ability))
+	}
+	badAbility := validFrame()
+	badAbility.Action.Ability = contributions.Known(abilities.Ability("strength"))
+	s.Error(badAbility.Validate(), "a known ability must be one of the six or the declared none")
+
 	unknownTarget := validFrame()
 	unknownTarget.Target = contributions.Unknown[string]()
 	s.NoError(unknownTarget.Validate(), "an unknown target is a valid frame")

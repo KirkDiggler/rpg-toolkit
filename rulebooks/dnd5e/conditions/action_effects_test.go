@@ -173,6 +173,46 @@ func (s *actionEffectsSuite) TestInspiredOfferHandlerFailsOnZeroFrame() {
 	s.Empty(event.Offers)
 }
 
+func (s *actionEffectsSuite) TestInspiredOfferHandlerFailsOnUnrecognisedRollKind() {
+	for _, roll := range []contributions.RollKind{"", "atack"} {
+		ctx := context.Background()
+		bus := events.NewEventBus()
+		inspired := NewInspiredCondition("rogue", "bard", "")
+		s.Require().NoError(inspired.Apply(ctx, bus))
+
+		frame := rogueFrame(true)
+		frame.Action.Roll = contributions.Known(roll)
+		event := &dnd5eEvents.PostRollOfferEvent{AttackerID: "rogue", TargetID: "goblin", Roll: 12, Frame: frame}
+		chain := events.NewStagedChain[*dnd5eEvents.PostRollOfferEvent](combat.ModifierStages)
+		_, err := dnd5eEvents.PostRollOfferChain.On(bus).PublishWithChain(ctx, event, chain)
+
+		s.Require().Error(err, "roll kind %q fails the action instead of silently withholding the die", roll)
+		s.True(errors.Is(err, contributions.ErrRuleCannotAnswer))
+		s.Empty(event.Offers)
+	}
+}
+
+func (s *actionEffectsSuite) TestBlessAndBaneDoNotApplyToAnotherMembersAttack() {
+	frame := rogueFrame(false)
+	frame.Actor = "fighter"
+	for name, condition := range map[string]contributions.ActionAssessor{
+		"Bless": s.blessed("rogue", "cleric"),
+		"Bane":  s.baned("rogue", "cultist"),
+	} {
+		out, err := condition.AssessAction(&contributions.AssessActionInput{Frame: frame})
+		s.Require().NoError(err, name)
+		s.Equal(contributions.DoesNotApply, out.Answer.Decision.Applicability, name)
+		s.Equal(name+" affects only its recipient's rolls", out.Answer.Decision.Reason)
+		s.Empty(out.Answer.Benefit, name)
+		s.Empty(out.Answer.Roll, name)
+	}
+
+	effects := s.assess(frame, s.blessed("rogue", "cleric"))
+	s.Require().Len(effects, 1)
+	s.Equal(contributions.StateDoesNotApply, effects[0].State,
+		"another member's Bless in the listing reads does-not-apply, not an error")
+}
+
 func (s *actionEffectsSuite) TestAssessingSpendsNothing() {
 	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue", Level: 3})
 	inspired := NewInspiredCondition("rogue", "bard", "")

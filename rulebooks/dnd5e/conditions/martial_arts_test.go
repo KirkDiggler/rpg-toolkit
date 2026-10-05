@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -93,21 +92,16 @@ func (s *MartialArtsTestSuite) TestMonkWeaponDetection() {
 	}
 }
 
-// TestMartialArtsRollsItsDieOnce stands in for the strike: the assembled
-// unarmed pool is rolled once by its owner, then the damage and attack chains
-// fold with Martial Arts applied. A counting roller sees exactly one roll —
-// nothing rolls the weapon die and then discards it for the Martial Arts die.
-func (s *MartialArtsTestSuite) TestMartialArtsRollsItsDieOnce() {
+// TestMartialArtsFoldLeavesTheRolledDieAlone pins that Martial Arts touches no
+// roll: with the condition applied, a damage fold leaves the faces already
+// rolled for the assembled Martial Arts die untouched, and an attack fold
+// leaves the assembled bonus alone. The end-to-end count — a monk's unarmed
+// hit rolls its damage die exactly once — needs the strike machine and lives
+// in resolution (rpg-toolkit#1939, TestMonkUnarmedHitRollsItsDamageDieOnce).
+func (s *MartialArtsTestSuite) TestMartialArtsFoldLeavesTheRolledDieAlone() {
 	condition := NewMartialArtsCondition(MartialArtsInput{MemberID: "monk-1", MonkLevel: 1})
 	s.Require().NoError(condition.Apply(s.ctx, s.bus))
 	override := condition.WeaponAttackOverride("main_hand", "")
-
-	roller := &countingRoller{}
-	pool, err := dice.ParseNotation(override.Dice)
-	s.Require().NoError(err)
-	rolled := pool.RollContext(s.ctx, roller)
-	s.Require().NoError(rolled.Error())
-	s.Equal(1, roller.rollNCalls+roller.rollCalls, "the assembled 1d4 is rolled once")
 
 	event := &dnd5eEvents.DamageChainEvent{
 		AttackerID: "monk-1", TargetID: "goblin", AbilityUsed: abilities.DEX, IsMelee: true,
@@ -127,7 +121,10 @@ func (s *MartialArtsTestSuite) TestMartialArtsRollsItsDieOnce() {
 	s.Require().NoError(err)
 	folded, err := modified.Execute(s.ctx, event)
 	s.Require().NoError(err)
-	s.Equal([]int{3}, folded.Components[0].Roll.Dice.FinalRolls, "the fold leaves the rolled die alone")
+	s.Require().Len(folded.Components, 1)
+	s.Equal([]int{3}, folded.Components[0].Roll.Dice.OriginalRolls, "no re-roll replaced the assembled die")
+	s.Equal([]int{3}, folded.Components[0].Roll.Dice.FinalRolls)
+	s.Equal("1d4", folded.WeaponDamageDice)
 	s.Equal(abilities.DEX, folded.AbilityUsed)
 
 	attack := dnd5eEvents.AttackChainEvent{AttackerID: "monk-1", WeaponRef: refs.Weapons.UnarmedStrike(), AttackBonus: 5}
@@ -137,8 +134,6 @@ func (s *MartialArtsTestSuite) TestMartialArtsRollsItsDieOnce() {
 	foldedAttack, err := modifiedAttack.Execute(s.ctx, attack)
 	s.Require().NoError(err)
 	s.Equal(5, foldedAttack.AttackBonus, "the attack bonus was settled at assembly")
-
-	s.Equal(1, roller.rollNCalls+roller.rollCalls)
 }
 
 // TestSerialization tests JSON serialization round-trip

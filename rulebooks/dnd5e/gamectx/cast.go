@@ -103,11 +103,16 @@ type Cast interface {
 
 	// StanceBetween is the authoritative stance between a and b on the
 	// disposition graph, right now: hostile, neutral or allied, agreeing with
-	// IsHostile and IsAllied. ok is false when no stance exists — either is
-	// not a member, or either belongs to no faction. A caller that knows both
-	// are placed members reads that as contributions.StanceNone (no side),
-	// never as neutral and never as unknown. It never returns StanceNone
-	// itself.
+	// IsHostile and IsAllied. It never returns StanceNone itself.
+	//
+	// ok is false when no stance exists, which covers two cases this method
+	// does not tell apart: either is not a member of this cast, or either
+	// belongs to no faction. A caller may read false as contributions.StanceNone
+	// (no side, known) ONLY after establishing that both a and b are members —
+	// from this cast's own Members list, never from room placement alone,
+	// because a placed entity the cast does not hold is a roster gap, an
+	// unknown, not a member with no side. Without that membership proof, false
+	// is an unknown stance.
 	StanceBetween(a, b string) (stance contributions.Stance, ok bool)
 }
 

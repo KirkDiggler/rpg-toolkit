@@ -63,15 +63,28 @@ type Frame struct {
 	Complete bool
 }
 
-// Validate refuses a frame no rule can read: no actor, an unknown roll kind,
-// a known but empty target, malformed or duplicate pairs, an impossible known
-// distance or an unrecognised known stance. Unknown facts are valid.
+// Validate refuses a frame no rule can read: no actor, a roll kind that is
+// unknown or not one of the RollKind values, a known ability that is neither
+// one of the six nor the declared none (Known("")), a known but empty target,
+// malformed or duplicate pairs, an impossible known distance or an
+// unrecognised known stance. Unknown facts are valid; a known value that is
+// not a real value is an error, never a negative answer.
 func (f Frame) Validate() error {
 	if f.Actor == "" {
 		return fmt.Errorf("frame requires an actor")
 	}
-	if _, known := f.Action.Roll.Get(); !known {
+	roll, known := f.Action.Roll.Get()
+	if !known {
 		return fmt.Errorf("frame requires a known roll kind")
+	}
+	switch roll {
+	case RollKindAttack, RollKindSavingThrow:
+	default:
+		return fmt.Errorf("unknown roll kind %q", roll)
+	}
+	if ability, known := f.Action.Ability.Get(); known && ability != "" &&
+		!slices.Contains(abilities.AllAbilities(), ability) {
+		return fmt.Errorf("unknown ability %q", ability)
 	}
 	if target, known := f.Target.Get(); known && target == "" {
 		return fmt.Errorf("frame target is known but empty")

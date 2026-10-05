@@ -70,10 +70,13 @@ func framed(ctx context.Context, event *dnd5eEvents.DamageChainEvent) *dnd5eEven
 				DistanceCells: contributions.Known(room.GetGrid().Distance(targetPos, pos)),
 			}
 			if hasCast {
-				// Two placed members with no stance have no side, never neutral.
-				pair.Stance = contributions.Known(contributions.StanceNone)
+				// No stance between two MEMBERS of the cast is no side, never
+				// neutral; a placed entity the cast does not hold stays unknown.
+				members := cast.Members()
 				if stance, ok := cast.StanceBetween(event.TargetID, id); ok {
 					pair.Stance = contributions.Known(stance)
+				} else if slices.Contains(members, event.TargetID) && slices.Contains(members, id) {
+					pair.Stance = contributions.Known(contributions.StanceNone)
 				}
 			}
 			frame.Pairs = append(frame.Pairs, pair)

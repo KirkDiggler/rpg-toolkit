@@ -291,12 +291,14 @@ func ConditionAddressOf(
 	}
 }
 
-// AssessAction answers whether Bane subtracts from the framed roll. It applies
-// exactly when RollContributionMetadata does — the function execution's
-// selection calls — and carries the same described d4.
+// AssessAction answers whether Bane subtracts from the framed roll. For its
+// recipient's roll it applies exactly when RollContributionMetadata does — the
+// function execution's selection calls — and carries the same described d4;
+// another member's roll is not its to change.
 func (b *BanedCondition) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error) {
 	return assessRollContribution(&assessRollContributionInput{
-		Name: "baned", Provider: b, Assess: in, Sign: "−",
+		Name: "baned", Provider: b, Recipient: b.MemberID, Assess: in, Sign: "−",
+		NotRecipient: "Bane affects only its recipient's rolls",
 		Applies:      "Bane subtracts from attack rolls and saving throws",
 		DoesNotApply: "Bane subtracts only from attack rolls and saving throws",
 	})
