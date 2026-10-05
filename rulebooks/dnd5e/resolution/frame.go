@@ -6,12 +6,15 @@ package resolution
 import (
 	"context"
 	"fmt"
+	"math"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
@@ -110,13 +113,15 @@ func attackActionFacts(p *combatActions.AttackProfile, opportunity bool) contrib
 }
 
 // informationFrameInput is what an information frame is built from: the
-// observer's own detached knowledge, the assembled attack, and the target
-// being asked about. Target is empty for the ask about no target in
-// particular.
+// observer's own detached knowledge, the assembled attack, the target being
+// asked about, and what the observer holds by its own sheet. Target is empty
+// for the ask about no target in particular. ActorHeld is the observer's own
+// holdings, always known: nil is read as holding none.
 type informationFrameInput struct {
-	Observed *encounter.ObservedContextOutput
-	Attack   *combatActions.AttackProfile
-	Target   string
+	Observed  *encounter.ObservedContextOutput
+	Attack    *combatActions.AttackProfile
+	Target    string
+	ActorHeld []contributions.HeldCondition
 }
 
 // informationFrameOutput carries the validated information frame.
@@ -137,20 +142,50 @@ type informationFrameOutput struct {
 // that is never declared — rows outside the actor's own turn are not
 // delivered (R12).
 //
+// What members hold is testimony, never a live read (R16, K3). The observer is
+// listed first with its own sheet's holdings. Each sighted member whose
+// sighting observed conditions follows, in sighting order, listed exactly as
+// it was seen — an empty set is a known "holds nothing". A sighting that
+// observed no conditions (nil) leaves that member out of Held, which is
+// UNKNOWN, never "holds nothing". A member who is not sighted is unknown too.
+//
+// Sight is known only where the observer knows it: each observer→member pair
+// is Known(true), because every member is a current SIGHT sighting by
+// [encounter.ObservedContextOutput]'s contract. Every other direction — what
+// a member sees, including whether it sees the observer — is unknown, because
+// the observer's sightings say nothing about another creature's eyes.
+//
 // Errors: a nil observed context or attack, or a frame that fails
 // [contributions.Frame.Validate].
 func informationFrame(in *informationFrameInput) (*informationFrameOutput, error) {
 	if in == nil || in.Observed == nil || in.Attack == nil {
 		return nil, fmt.Errorf("%w: an information frame needs an observed context and an attack", ErrNilInput)
 	}
+	observer := string(in.Observed.Observer)
 	frame := contributions.Frame{
-		Actor:  string(in.Observed.Observer),
+		Actor:  observer,
 		Target: contributions.Unknown[string](),
 		Action: attackActionFacts(in.Attack, false),
 		Pairs:  make([]contributions.PairFacts, 0, len(in.Observed.Pairs)),
+		Held:   make([]contributions.MemberHeld, 0, len(in.Observed.Members)+1),
 	}
 	if in.Target != "" {
 		frame.Target = contributions.Known(in.Target)
+	}
+	frame.Held = append(frame.Held, contributions.MemberHeld{
+		Member: observer, Conditions: append([]contributions.HeldCondition{}, in.ActorHeld...),
+	})
+	sighted := make(map[string]bool, len(in.Observed.Members))
+	for _, member := range in.Observed.Members {
+		sighted[string(member.ID)] = true
+		if member.Conditions == nil {
+			continue
+		}
+		held := make([]contributions.HeldCondition, 0, len(member.Conditions.Conditions))
+		for _, seen := range member.Conditions.Conditions {
+			held = append(held, contributions.HeldCondition{Ref: seen.Ref, SourceID: seen.SourceID})
+		}
+		frame.Held = append(frame.Held, contributions.MemberHeld{Member: string(member.ID), Conditions: held})
 	}
 	for _, observed := range in.Observed.Pairs {
 		pair := contributions.PairFacts{
@@ -158,9 +193,13 @@ func informationFrame(in *informationFrameInput) (*informationFrameOutput, error
 			To:            string(observed.To),
 			DistanceCells: contributions.Known(observed.DistanceCells),
 			Stance:        contributions.Unknown[contributions.Stance](),
+			Sees:          contributions.Unknown[bool](),
 		}
 		if observed.Stance != nil {
 			pair.Stance = contributions.Known(contributions.Stance(*observed.Stance))
+		}
+		if pair.From == observer && sighted[pair.To] {
+			pair.Sees = contributions.Known(true)
 		}
 		frame.Pairs = append(frame.Pairs, pair)
 	}
@@ -184,11 +223,22 @@ func informationFrame(in *informationFrameInput) (*informationFrameOutput, error
 // ([contributions.StanceNone]), never unknown. Complete is true because the
 // pairs cover every placed participant. Opportunity is the strike input's own.
 //
+// Sight is the installed visibility's live answer for each placed ordered
+// pair, uncapped by range — the attack owns its range: known and visible is
+// Known(true), known and not visible Known(false), and a pair visibility
+// cannot answer stays unknown, never false. Held lists every participant with
+// a sheet, in the cast's order, each with its persisted conditions at their
+// own addresses ([conditions.ConditionAddressOf]); a participant with
+// nothing on its sheet is listed holding nothing, because the sheet is the
+// authority. The first caller is the Sanctuary step, after the attacker's own
+// ward has ended, so the frame the ward check, the attack chain and the
+// damage fold read is one frame.
+//
 // A resumed machine builds it afresh from current truth (S3); rows a client
 // saw are never consulted.
 //
-// Errors: no installed room or cast ([ErrBadWorld]), or a frame that fails
-// [contributions.Frame.Validate]. The caller gets a detached copy.
+// Errors: no installed room, cast or visibility ([ErrBadWorld]), or a frame
+// that fails [contributions.Frame.Validate]. The caller gets a detached copy.
 func (m *strikeMachine) attackRollFrame(ctx context.Context) (contributions.Frame, error) {
 	if m.rollFrame != nil {
 		return m.rollFrame.Clone(), nil
@@ -200,6 +250,10 @@ func (m *strikeMachine) attackRollFrame(ctx context.Context) (contributions.Fram
 	cast, ok := gamectx.CastOf(ctx)
 	if !ok {
 		return contributions.Frame{}, fmt.Errorf("%w: attack frame: no cast installed", ErrBadWorld)
+	}
+	sight, ok := gamectx.Visibility(ctx)
+	if !ok {
+		return contributions.Frame{}, fmt.Errorf("%w: attack frame: no visibility installed", ErrBadWorld)
 	}
 
 	members := cast.Members()
@@ -221,11 +275,16 @@ func (m *strikeMachine) attackRollFrame(ctx context.Context) (contributions.Fram
 			if !exists {
 				stance = contributions.StanceNone
 			}
+			sees := contributions.Unknown[bool]()
+			if visible, known := sight.SeesWithin(from, to, math.MaxInt); known {
+				sees = contributions.Known(visible)
+			}
 			pairs = append(pairs, contributions.PairFacts{
 				From:          from,
 				To:            to,
 				DistanceCells: contributions.Known(room.GetGrid().Distance(fromAt, toAt)),
 				Stance:        contributions.Known(stance),
+				Sees:          sees,
 			})
 		}
 	}
@@ -236,6 +295,7 @@ func (m *strikeMachine) attackRollFrame(ctx context.Context) (contributions.Fram
 		Action:   attackActionFacts(m.attack, m.in.Opportunity),
 		Pairs:    pairs,
 		Complete: true,
+		Held:     castHeld(m.cast, members),
 	}
 	if err := frame.Validate(); err != nil {
 		return contributions.Frame{}, fmt.Errorf("attack frame: %w", err)
@@ -273,4 +333,35 @@ func (m *strikeMachine) executionFrame(ctx context.Context) (contributions.Frame
 	m.frame = &frame
 
 	return frame.Clone(), nil
+}
+
+// castHeld lists what each member with a sheet holds, in the given order, each
+// condition at its own address — the same address a loaded condition's
+// handler asks its held rule about. A member with no sheet in the cast is left
+// out, which a frame reads as unknown.
+func castHeld(cast *Participants, members []string) []contributions.MemberHeld {
+	held := make([]contributions.MemberHeld, 0, len(members))
+	for _, id := range members {
+		var loaded []dnd5eEvents.ConditionBehavior
+		if character, ok := cast.Character(id); ok {
+			loaded = character.GetConditions()
+		} else if monster, ok := cast.Monster(id); ok {
+			loaded = monster.GetConditions()
+		} else {
+			continue
+		}
+		held = append(held, contributions.MemberHeld{Member: id, Conditions: heldAddresses(id, loaded)})
+	}
+	return held
+}
+
+// heldAddresses maps a member's loaded conditions to the held list a frame
+// carries, in persisted order.
+func heldAddresses(member string, loaded []dnd5eEvents.ConditionBehavior) []contributions.HeldCondition {
+	held := make([]contributions.HeldCondition, 0, len(loaded))
+	for _, condition := range loaded {
+		address := conditions.ConditionAddressOf(member, condition)
+		held = append(held, contributions.HeldCondition{Ref: address.ConditionRef, SourceID: address.SourceID})
+	}
+	return held
 }

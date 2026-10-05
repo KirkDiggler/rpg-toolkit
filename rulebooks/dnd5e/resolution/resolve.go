@@ -141,6 +141,12 @@ type Input struct {
 	// "everybody is empty-handed" is not a missing answer, it is TESTIMONY, and
 	// inventing testimony is the one thing the sight seam must never do. So it
 	// is handed over, and the caller that owns the sheets owns the answer.
+	//
+	// It must also answer what each member holds
+	// ([encounter.EquipmentWithConditions]): the composition snapshots
+	// conditions into sight testimony beside hands, and refuses an Equipment
+	// that cannot say (rpg-project#520 R16). The same reasoning applies: "nobody
+	// holds anything" is testimony, never a default.
 	Equipment encounter.Equipment
 
 	// Roller reconstitutes runtime dice dependencies for effects that roll when

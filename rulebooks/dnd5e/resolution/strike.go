@@ -242,6 +242,11 @@ func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, er
 // why this lives here rather than as a subscription on the condition
 // itself, and why the self-break fires on the attempt regardless of
 // whether THIS attack is itself warded off.
+//
+// The strike's attack-roll frame is built here, after the self-break and
+// before ward selection, so the wards are chosen by the held rule from the
+// same frame the attack chain and the damage fold read (rpg-project#520).
+// A held rule that cannot answer fails the strike (R13).
 func (m *strikeMachine) sanctuaryStep(cast *Participants) Step {
 	next := m.effectiveACStep(m.target, m.longRange)
 	return Gather{
@@ -250,7 +255,14 @@ func (m *strikeMachine) sanctuaryStep(cast *Participants) Step {
 			if err := endSanctuaryIfHeld(ctx, bus, cast, m.in.AttackerID); err != nil {
 				return nil, err
 			}
-			pending := pendingSanctuaryWards(cast, m.in.AttackerID, m.in.TargetID)
+			frame, err := m.attackRollFrame(ctx)
+			if err != nil {
+				return nil, err
+			}
+			pending, err := strikeWards(frame, cast, m.in.TargetID)
+			if err != nil {
+				return nil, err
+			}
 			return m.wardCheckStep(cast, pending, 0, next), nil
 		},
 	}
