@@ -18,11 +18,12 @@ type refuseWhileHoldingInput struct {
 }
 
 // refuseWhileHolding refuses activating a self-applied feature while its owner
-// already holds the condition that feature applies: the sheet appends what it
-// is given, so the feature's own CanActivate is where a second copy is kept
-// off it. The refusal is CodeConflictingState with the given reason. An owner
-// that cannot report its conditions is refused too — not knowing is not "not
-// holding".
+// already holds the condition that feature applies. The sheet would replace
+// the held condition with the new one (one condition per identity); the
+// operator ruled on #1944 that an already-active Rage or Reckless Attack is
+// refused instead, so activating it again burns no charge and no action. The
+// refusal is CodeConflictingState with the given reason. An owner that cannot
+// report its conditions is refused too — not knowing is not "not holding".
 func refuseWhileHolding(in *refuseWhileHoldingInput) error {
 	holder, ok := in.Owner.(interface {
 		GetConditions() []dnd5eEvents.ConditionBehavior

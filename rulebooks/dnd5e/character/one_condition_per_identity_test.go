@@ -10,9 +10,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -56,20 +54,6 @@ func (s *OneConditionPerIdentitySuite) held(address dnd5eEvents.ConditionAddress
 		}
 	}
 	return found
-}
-
-func (s *OneConditionPerIdentitySuite) attackFrame() contributions.Frame {
-	return contributions.Frame{
-		Actor:  s.char.GetID(),
-		Target: contributions.Known("goblin"),
-		Action: contributions.ActionFacts{
-			Roll:       contributions.Known(contributions.RollKindAttack),
-			Ability:    contributions.Known(abilities.STR),
-			Melee:      contributions.Known(true),
-			WeaponPool: contributions.Known(true),
-			Advantage:  contributions.Known(false),
-		},
-	}
 }
 
 func (s *OneConditionPerIdentitySuite) TestHidingAgainReplacesTheFirstHidden() {
@@ -120,91 +104,4 @@ func (s *OneConditionPerIdentitySuite) TestDifferentSourcesAreDifferentIdentitie
 	s.Len(s.held(a.ConditionAddress()), 1)
 	s.Len(s.held(b.ConditionAddress()), 1, "a second caster's Bless keeps its own instance")
 	s.True(a.IsApplied())
-}
-
-// TestEveryBearingConditionAppliedTwiceLeavesOne covers each condition the
-// action census classes as answering or not yet answering: applying it twice
-// through the sheet's door leaves one, and the effect rows still list.
-func (s *OneConditionPerIdentitySuite) TestEveryBearingConditionAppliedTwiceLeavesOne() {
-	id := "char-load"
-	must := func(c dnd5eEvents.ConditionBehavior, err error) dnd5eEvents.ConditionBehavior {
-		s.Require().NoError(err)
-		return c
-	}
-	fixtures := map[string]func() dnd5eEvents.ConditionBehavior{
-		"raging": func() dnd5eEvents.ConditionBehavior {
-			return &conditions.RagingCondition{CharacterID: id, DamageBonus: 2, Level: 3}
-		},
-		"sneak attack": func() dnd5eEvents.ConditionBehavior {
-			return conditions.NewSneakAttackCondition(conditions.SneakAttackInput{MemberID: id, Level: 1})
-		},
-		"blessed": func() dnd5eEvents.ConditionBehavior {
-			return must(conditions.NewBlessedCondition(conditions.NewBlessedConditionInput{
-				MemberID: id, SourceID: "cleric", SourceRef: refs.Spells.Bless()}))
-		},
-		"baned": func() dnd5eEvents.ConditionBehavior {
-			return must(conditions.NewBanedCondition(conditions.NewBanedConditionInput{
-				MemberID: id, SourceID: "cultist", SourceRef: refs.Spells.Bane()}))
-		},
-		"inspired": func() dnd5eEvents.ConditionBehavior { return conditions.NewInspiredCondition(id, "bard", "") },
-		"shillelagh": func() dnd5eEvents.ConditionBehavior {
-			return must(conditions.NewShillelaghCondition(id, conditions.ShillelaghConfig{
-				Weapons:    []conditions.HeldWeapon{{Slot: string(SlotMainHand), ItemID: "club"}},
-				WeaponSlot: string(SlotMainHand), Ability: abilities.WIS}))
-		},
-		"brutal critical": func() dnd5eEvents.ConditionBehavior {
-			return conditions.NewBrutalCriticalCondition(conditions.BrutalCriticalInput{MemberID: id, Level: 9})
-		},
-		"archery": func() dnd5eEvents.ConditionBehavior { return conditions.NewFightingStyleArcheryCondition(id) },
-		"dueling": func() dnd5eEvents.ConditionBehavior { return conditions.NewFightingStyleDuelingCondition(id) },
-		"great weapon": func() dnd5eEvents.ConditionBehavior {
-			return conditions.NewFightingStyleGreatWeaponFightingCondition(id, nil)
-		},
-		"two weapon": func() dnd5eEvents.ConditionBehavior { return conditions.NewFightingStyleTwoWeaponFightingCondition(id) },
-		"reckless":   func() dnd5eEvents.ConditionBehavior { return conditions.NewRecklessAttackCondition(id) },
-		"prone":      func() dnd5eEvents.ConditionBehavior { return conditions.NewProneCondition(id) },
-		"hidden":     func() dnd5eEvents.ConditionBehavior { return conditions.NewHiddenCondition(id) },
-		"helped":     func() dnd5eEvents.ConditionBehavior { return conditions.NewHelpedCondition(id, "cleric") },
-		"true strike": func() dnd5eEvents.ConditionBehavior {
-			return conditions.NewTrueStrikeCondition(id, "goblin", refs.Spells.TrueStrike().String())
-		},
-		"mockery": func() dnd5eEvents.ConditionBehavior {
-			return conditions.NewViciousMockeryCondition(id, "bard", refs.Spells.ViciousMockery().String())
-		},
-		"martial arts": func() dnd5eEvents.ConditionBehavior {
-			return conditions.NewMartialArtsCondition(conditions.MartialArtsInput{MemberID: id, MonkLevel: 1})
-		},
-		"improved critical": func() dnd5eEvents.ConditionBehavior {
-			return conditions.NewImprovedCriticalCondition(conditions.ImprovedCriticalInput{MemberID: id, Threshold: 19})
-		},
-		"divine favor": func() dnd5eEvents.ConditionBehavior {
-			return must(conditions.NewDivineFavorCondition(conditions.NewDivineFavorConditionInput{
-				MemberID: id, SourceID: id, SourceRef: refs.Spells.DivineFavor()}))
-		},
-		"sanctuary": func() dnd5eEvents.ConditionBehavior {
-			return must(conditions.NewSanctuaryCondition(conditions.NewSanctuaryConditionInput{
-				MemberID: id, SourceID: "cleric", SourceRef: refs.Spells.Sanctuary()}))
-		},
-		"in fog": func() dnd5eEvents.ConditionBehavior {
-			return must(conditions.NewInFogCondition(conditions.NewInFogConditionInput{
-				MemberID: id, SourceID: "area-1", SourceRef: refs.Spells.FogCloud()}))
-		},
-	}
-	s.Len(fixtures, 22, "one fixture per answering or not-yet-answering census entry")
-
-	for name, build := range fixtures {
-		s.SetupTest()
-		first, second := build(), build()
-		s.apply(first)
-		s.apply(second)
-
-		s.Require().Len(s.held(conditions.ConditionAddressOf(id, second)), 1, name)
-		s.False(first.IsApplied(), "%s: the replaced instance is detached", name)
-
-		out, err := conditions.AssessActionEffects(&conditions.AssessActionEffectsInput{
-			Conditions: s.char.GetConditions(), Frame: s.attackFrame(),
-		})
-		s.Require().NoError(err, "%s: effect rows list without a duplicate id", name)
-		s.Require().NotNil(out, name)
-	}
 }

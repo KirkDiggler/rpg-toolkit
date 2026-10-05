@@ -84,8 +84,9 @@ func (r *RecklessAttack) Activate(ctx context.Context, owner core.Entity, input 
 	}
 
 	// Publish via ConditionAppliedTopic so the character's condition manager
-	// applies and stores it (same pattern as Rage). The sheet does not dedupe;
-	// CanActivate's refusal is what keeps a second one off it.
+	// applies and stores it (same pattern as Rage). A second one would replace
+	// the first on the sheet; it never gets that far, because CanActivate
+	// refuses an already-active Reckless Attack (operator ruling on #1944).
 	condition := conditions.NewRecklessAttackCondition(owner.GetID())
 	topic := dnd5eEvents.ConditionAppliedTopic.On(input.Bus)
 	if err := topic.Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
