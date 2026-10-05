@@ -350,9 +350,11 @@ func activationResults(effects []resolution.ActivationEffect) []encounter.Activa
 		switch result.Kind {
 		case encounter.ResultConditionApplied, encounter.ResultConditionRemoved:
 			result.Address = &encounter.ConditionAddress{
-				MemberID:     encounter.MemberID(effect.Address.MemberID),
-				ConditionRef: effect.Address.ConditionRef,
-				SourceID:     effect.Address.SourceID,
+				MemberID: encounter.MemberID(effect.Address.MemberID),
+				ConditionKey: encounter.ConditionKey{
+					ConditionRef: effect.Address.ConditionRef,
+					SourceID:     effect.Address.SourceID,
+				},
 			}
 		default:
 			result.Target = encounter.MemberID(effect.TargetID)

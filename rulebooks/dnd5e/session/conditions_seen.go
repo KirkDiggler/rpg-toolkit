@@ -116,10 +116,10 @@ func seenConditions(member string, raw []json.RawMessage) *encounter.ConditionSe
 	if err != nil {
 		return nil
 	}
-	set := &encounter.ConditionSet{Conditions: make([]encounter.SeenCondition, 0, len(held))}
+	set := &encounter.ConditionSet{Conditions: make([]encounter.ConditionKey, 0, len(held))}
 	for _, address := range held {
-		set.Conditions = append(set.Conditions, encounter.SeenCondition{
-			Ref: address.ConditionRef, SourceID: address.SourceID,
+		set.Conditions = append(set.Conditions, encounter.ConditionKey{
+			ConditionRef: address.ConditionRef, SourceID: address.SourceID,
 		})
 	}
 	return set
@@ -133,7 +133,7 @@ func conditionKey(set *encounter.ConditionSet) string {
 	}
 	parts := make([]string, 0, len(set.Conditions))
 	for _, held := range set.Conditions {
-		parts = append(parts, held.Ref+"\x1f"+held.SourceID)
+		parts = append(parts, held.ConditionRef+"\x1f"+held.SourceID)
 	}
 	sort.Strings(parts)
 	return strings.Join(parts, "\x1e")

@@ -213,9 +213,11 @@ func imposedResult(
 		return encounter.ActivationResult{
 			Kind: encounter.ResultConditionApplied,
 			Address: &encounter.ConditionAddress{
-				MemberID:     encounter.MemberID(imposed.Address.MemberID),
-				ConditionRef: imposed.Address.ConditionRef,
-				SourceID:     imposed.Address.SourceID,
+				MemberID: encounter.MemberID(imposed.Address.MemberID),
+				ConditionKey: encounter.ConditionKey{
+					ConditionRef: imposed.Address.ConditionRef,
+					SourceID:     imposed.Address.SourceID,
+				},
 			},
 			Name: imposed.Description,
 		}, nil

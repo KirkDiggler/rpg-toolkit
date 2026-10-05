@@ -66,12 +66,12 @@ func (s *ConditionSeamSuite) TestConditionSeamReportsSheets() {
 	s.Require().NoError(err)
 
 	s.Equal(map[encounter.MemberID]*encounter.ConditionSet{
-		"player": {Conditions: []encounter.SeenCondition{
-			{Ref: refs.Conditions.Prone().String()},
-			{Ref: refs.Conditions.FaerieFire().String(), SourceID: "cleric"},
+		"player": {Conditions: []encounter.ConditionKey{
+			{ConditionRef: refs.Conditions.Prone().String()},
+			{ConditionRef: refs.Conditions.FaerieFire().String(), SourceID: "cleric"},
 		}},
-		"goblin": {Conditions: []encounter.SeenCondition{
-			{Ref: refs.Conditions.Dodging().String()},
+		"goblin": {Conditions: []encounter.ConditionKey{
+			{ConditionRef: refs.Conditions.Dodging().String()},
 		}},
 		"door":      nil,
 		"ghost":     nil,

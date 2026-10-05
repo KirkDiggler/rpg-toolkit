@@ -9,6 +9,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
 )
 
 // Held rows (rpg-project#520, R18): an effect a TARGET holds is a full row on
@@ -165,4 +166,64 @@ func (s *EffectRowsSuite) TestAStaleSightingOfAnUntouchedMemberDrawsNoRecheck() 
 			s.NotContains(body.Changed, erGoblin1, "no beat names the untouched goblin: %+v", body)
 		}
 	}
+}
+
+// TestConditionChangeRechecksWatchers: the cleric's Guiding Bolt lights goblin
+// one, nobody moves, and the cleric's next spell attack against it carries the
+// Guiding Bolt row — the commit re-looked at the goblin whose conditions the
+// cast changed (R19).
+func (s *EffectRowsSuite) TestConditionChangeRechecksWatchers() {
+	s.cave(s.blessedCleric())
+	data := s.sessions.byID[erSession]
+	for i := range data.NPCs {
+		if data.NPCs[i].ID == erGoblin1 {
+			data.NPCs[i].HitPoints, data.NPCs[i].MaxHitPoints = 100, 100 // survives the bolt
+		}
+	}
+	bolt := s.castOf(s.afford("cleric"), spells.GuidingBolt)
+	s.Require().Empty(s.candidate(bolt, erGoblin1).HeldEffects, "precondition: nothing lit yet")
+
+	_, err := s.mgr.Cast(s.ctx, &session.CastInput{
+		Session: erSession, Member: "cleric", DeclarationID: bolt.ID, Targets: []string{erGoblin1},
+	})
+	s.Require().NoError(err)
+
+	held := s.candidate(s.castOf(s.afford("cleric"), spells.GuidingBolt), erGoblin1).HeldEffects
+	s.Require().Len(held, 1, "the goblin's sighting carries the light with nobody moving")
+	s.Equal("target:"+refs.Conditions.GuidingBolt().String()+"@cleric", held[0].ID)
+	s.Equal(session.EffectApplies, held[0].State)
+}
+
+// TestDeliveredPayloadsCarryNoConditions: what a sighting snapshots of a
+// member's conditions is testimony for rules, never something delivered.
+// Goblin one holds Faerie Fire and has been re-looked at: neither alice's
+// View sightings nor any sighted beat on the stream carries a "conditions" key.
+func (s *EffectRowsSuite) TestDeliveredPayloadsCarryNoConditions() {
+	s.cave(s.rogue())
+	s.seatOnGoblin(erGoblin1, s.faerieFireOn(erGoblin1))
+	s.Require().NotEmpty(s.candidate(s.mainAttack(s.afford("alice")), erGoblin1).HeldEffects,
+		"precondition: the testimony does hold the condition")
+
+	seen, err := s.mgr.View(s.ctx, &session.ViewInput{Session: erSession, Member: "alice"})
+	s.Require().NoError(err)
+	checked := 0
+	for _, sighting := range seen.Sightings {
+		var payload map[string]json.RawMessage
+		s.Require().NoError(json.Unmarshal(sighting.Payload, &payload))
+		s.NotContains(payload, "conditions", "sighting of %s", sighting.Subject)
+		checked++
+	}
+	s.Positive(checked, "precondition: alice holds sightings")
+
+	beats := 0
+	for _, event := range s.stream.published {
+		if event.Kind != session.EventSighted {
+			continue
+		}
+		var payload map[string]json.RawMessage
+		s.Require().NoError(json.Unmarshal(event.Payload, &payload))
+		s.NotContains(payload, "conditions", "sighted beat to %s", event.Recipient)
+		beats++
+	}
+	s.Positive(beats, "precondition: the re-look sent sighted beats")
 }

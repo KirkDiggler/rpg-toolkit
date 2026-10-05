@@ -5,7 +5,6 @@ package session_test
 
 import (
 	"context"
-	"encoding/json"
 	"slices"
 	"testing"
 
@@ -17,36 +16,11 @@ import (
 // Condition freshness (rpg-project#520, R19): a change to a member's
 // conditions refreshes the sightings of that member at commit, the way an
 // equipment change does, so a held row never outlives the condition it
-// describes. These tests watch alice through the skeleton's own sighting of
-// her — testimony, read through View — with nobody moving.
+// describes. Conditions ride no delivered payload, so these tests watch the
+// beat that tells a client to look again, and the held rows the refreshed
+// testimony yields (held_effects_test.go).
 
 const dodging = "dnd5e:conditions:dodging"
-
-// seenConditionsOf is what watcher's current sighting of subject says the
-// subject holds: the refs in the sighting's "conditions", or nil when the
-// watcher holds no sighting of them.
-func seenConditionsOf(t *testing.T, mgr *session.Manager, watcher, subject string) []string {
-	t.Helper()
-	seen, err := mgr.View(context.Background(), &session.ViewInput{Session: "sess", Member: watcher})
-	require.NoError(t, err)
-	for _, sighting := range seen.Sightings {
-		if sighting.Subject != subject {
-			continue
-		}
-		var payload struct {
-			Conditions []struct {
-				Ref string `json:"ref"`
-			} `json:"conditions"`
-		}
-		require.NoError(t, json.Unmarshal(sighting.Payload, &payload))
-		refs := make([]string, 0, len(payload.Conditions))
-		for _, held := range payload.Conditions {
-			refs = append(refs, held.Ref)
-		}
-		return refs
-	}
-	return nil
-}
 
 // dodge has alice take the Dodge action.
 func dodge(t *testing.T, mgr *session.Manager) {
@@ -56,25 +30,13 @@ func dodge(t *testing.T, mgr *session.Manager) {
 	require.NoError(t, err)
 }
 
-// TestConditionChangeRechecksWatchers: alice dodges, standing still, and the
-// skeleton's sighting of her carries Dodging when the verb commits.
-func TestConditionChangeRechecksWatchers(t *testing.T) {
-	mgr, _, _, chars := aFight(t, ragingBarbarian("alice", 2), []int{1, 1})
-	require.NotContains(t, seenConditionsOf(t, mgr, "skeleton", "alice"), dodging, "precondition: nobody has seen a dodge")
-
-	dodge(t, mgr)
-
-	require.Contains(t, storedConditionRefs(t, chars, "alice"), dodging, "precondition: the sheet holds it")
-	require.Contains(t, seenConditionsOf(t, mgr, "skeleton", "alice"), dodging,
-		"the watcher's sighting carries the new condition with nobody moving")
-}
-
-// TestConditionEndingRemovesItFromSightings: Dodging ends when alice's next
-// turn starts, and the skeleton's sighting of her stops carrying it.
-func TestConditionEndingRemovesItFromSightings(t *testing.T) {
+// TestConditionEndingRefreshesWatchers: Dodging ends when alice's next turn
+// starts — a change no step makes visible — and the skeleton is told to look
+// at her again: a sighting "changed" beat naming her, the client's cue.
+func TestConditionEndingRefreshesWatchers(t *testing.T) {
 	mgr, _, _, chars := aFight(t, ragingBarbarian("alice", 2), []int{1, 1})
 	dodge(t, mgr)
-	require.Contains(t, seenConditionsOf(t, mgr, "skeleton", "alice"), dodging, "precondition")
+	before := sightedNaming(t, mgr, "skeleton", "alice")
 
 	_, err := mgr.EndTurn(context.Background(), &session.EndTurnInput{
 		Session: "sess", Member: "alice", DeclarationID: currentEndTurnID(t, mgr, "sess", "alice"),
@@ -85,8 +47,8 @@ func TestConditionEndingRemovesItFromSightings(t *testing.T) {
 	require.Equal(t, "alice", turn.Active, "precondition: the round came back to alice")
 	require.NotContains(t, storedConditionRefs(t, chars, "alice"), dodging, "precondition: the dodge ended")
 
-	require.NotContains(t, seenConditionsOf(t, mgr, "skeleton", "alice"), dodging,
-		"the watcher's sighting no longer carries an ended condition")
+	require.Greater(t, sightedNaming(t, mgr, "skeleton", "alice"), before,
+		"the watcher is told to look at alice again when her dodge ends")
 }
 
 // TestUnchangedConditionsDoNotRecheck: a write that changes no condition asks
