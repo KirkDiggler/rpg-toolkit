@@ -6,17 +6,12 @@ package conditions
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/core/chain"
-	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/weaponattack"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
@@ -29,32 +24,22 @@ type MartialArtsData struct {
 	MonkLevel int       `json:"monk_level"`
 }
 
-// MartialArtsCondition represents the Monk's Martial Arts feature.
-// Allows DEX for unarmed strikes and monk weapons, and scales unarmed damage.
+// MartialArtsCondition represents the Monk's Martial Arts feature: unarmed
+// strikes and monk weapons may use Dexterity, and an unarmed strike deals the
+// Martial Arts die.
+//
+// Both are settled at assembly, through [MartialArtsCondition.WeaponAttackOverride],
+// before any rule is asked and before any die is rolled — the attack's
+// ability and its damage die are the ones the swing uses, and no roll is made
+// and then discarded. The condition subscribes to nothing.
 type MartialArtsCondition struct {
-	MemberID        string
-	MonkLevel       int
-	subscriptionIDs []string
-	bus             events.EventBus
-	roller          dice.Roller
+	MemberID  string
+	MonkLevel int
+	bus       events.EventBus
 }
 
 // Ensure MartialArtsCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*MartialArtsCondition)(nil)
-
-// Ensure MartialArtsCondition can receive a runtime roller.
-var _ RollerBinder = (*MartialArtsCondition)(nil)
-
-// BindRoller binds the roller this condition rolls martial arts damage with,
-// so a condition restored from persisted JSON — whose loader has no roller to
-// give it — rolls the interaction's dice instead of a process-global default.
-// A nil roller leaves the current one alone.
-func (ma *MartialArtsCondition) BindRoller(roller dice.Roller) {
-	if roller == nil {
-		return
-	}
-	ma.roller = roller
-}
 
 // Ref returns the canonical ref this condition names itself by — the same ref
 // its ToJSON embeds and its loader routes on.
@@ -65,60 +50,44 @@ func (ma *MartialArtsCondition) IsApplied() bool {
 	return ma.bus != nil
 }
 
-// Apply subscribes this condition to attack and damage chain events
-func (ma *MartialArtsCondition) Apply(ctx context.Context, bus events.EventBus) error {
+// Apply marks the condition active. Martial Arts acts at attack assembly and
+// installs no subscriber.
+func (ma *MartialArtsCondition) Apply(_ context.Context, bus events.EventBus) error {
 	if ma.IsApplied() {
 		return rpgerr.New(rpgerr.CodeAlreadyExists, "martial arts condition already applied")
 	}
 	ma.bus = bus
-
-	// Subscribe to DamageChain to modify unarmed strike damage and ensure DEX is used
-	damageChain := dnd5eEvents.DamageChain.On(bus)
-	subID, err := damageChain.SubscribeWithChain(ctx, ma.onDamageChain)
-	if err != nil {
-		ma.bus = nil
-		return rpgerr.Wrap(err, "failed to subscribe to damage chain")
-	}
-	ma.subscriptionIDs = append(ma.subscriptionIDs, subID)
-
-	// Subscribe to AttackChain so the ATTACK ROLL uses DEX when it is higher,
-	// matching the damage swap above — attack and damage must agree on the
-	// governing ability (#709: the swap applied to damage only, so a DEX monk
-	// attacked at STR + prof while its damage credited DEX).
-	attackChain := dnd5eEvents.AttackChain.On(bus)
-	attackSubID, err := attackChain.SubscribeWithChain(ctx, ma.onAttackChain)
-	if err != nil {
-		// Roll back the damage-chain subscription so a failed Apply leaves no
-		// partial state (mirrors DodgingCondition.Apply).
-		_ = ma.Remove(ctx, bus)
-		return rpgerr.Wrap(err, "failed to subscribe to attack chain")
-	}
-	ma.subscriptionIDs = append(ma.subscriptionIDs, attackSubID)
-
 	return nil
 }
 
-// Remove unsubscribes this condition from events
-func (ma *MartialArtsCondition) Remove(ctx context.Context, bus events.EventBus) error {
-	if ma.bus == nil {
-		return nil // Not applied, nothing to remove
-	}
-
-	total := len(ma.subscriptionIDs)
-	var errs []error
-	for _, subID := range ma.subscriptionIDs {
-		if err := bus.Unsubscribe(ctx, subID); err != nil {
-			errs = append(errs, fmt.Errorf("unsubscribe %s: %w", subID, err))
-		}
-	}
-
-	ma.subscriptionIDs = nil
+// Remove marks the condition inactive.
+func (ma *MartialArtsCondition) Remove(_ context.Context, _ events.EventBus) error {
 	ma.bus = nil
-
-	if len(errs) > 0 {
-		return fmt.Errorf("failed to unsubscribe %d/%d subscriptions: %w", len(errs), total, errors.Join(errs...))
-	}
 	return nil
+}
+
+// WeaponAttackOverride settles Martial Arts at attack assembly for an unarmed
+// strike (an empty hand, or the bonus unarmed strike) or a monk weapon:
+// Dexterity is offered as the attack's ability, which assembly takes only when
+// its modifier is higher than the weapon's own ability, and an unarmed strike's
+// primary pool becomes the Martial Arts die for this monk's level. Any other
+// weapon gets no override.
+func (ma *MartialArtsCondition) WeaponAttackOverride(_, itemID string) *weaponattack.Override {
+	if itemID == "" {
+		return &weaponattack.Override{Dice: ma.getMartialArtsDice(), Ability: abilities.DEX}
+	}
+	weapon, err := weapons.GetByID(weapons.WeaponID(itemID))
+	if err != nil {
+		return nil
+	}
+	switch {
+	case weapon.ID == weapons.UnarmedStrike:
+		return &weaponattack.Override{Dice: ma.getMartialArtsDice(), Ability: abilities.DEX}
+	case isMonkWeapon(&weapon):
+		return &weaponattack.Override{Ability: abilities.DEX}
+	default:
+		return nil
+	}
 }
 
 // ToJSON converts the condition to JSON for persistence
@@ -144,184 +113,6 @@ func (ma *MartialArtsCondition) loadJSON(data json.RawMessage) error {
 	ma.MonkLevel = maData.MonkLevel
 
 	return nil
-}
-
-// onDamageChain modifies damage to scale unarmed strike damage and use DEX when appropriate
-func (ma *MartialArtsCondition) onDamageChain(
-	ctx context.Context,
-	event *dnd5eEvents.DamageChainEvent,
-	c chain.Chain[*dnd5eEvents.DamageChainEvent],
-) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
-	// Only modify damage for attacks by this character
-	if event.AttackerID != ma.MemberID {
-		return c, nil
-	}
-
-	// Own sheet, looked up in the cast by this character's own ID. A cast that
-	// cannot name this monk means no comparison to make — leave the chain
-	// untouched rather than erroring, which would discard every other damage
-	// component with it. See [member].
-	me, ok := member(ctx, ma.MemberID)
-	if !ok {
-		return c, nil
-	}
-	abilityScores := me.AbilityScores()
-
-	// Check if this is an unarmed strike or monk weapon
-	isUnarmed, monkWeapon := martialArtsWeaponKind(event.WeaponRef)
-
-	// Only modify if it's an unarmed strike or monk weapon
-	if !isUnarmed && monkWeapon == nil {
-		return c, nil
-	}
-
-	// Add modifier to scale unarmed damage and ensure DEX is used when beneficial
-	modifyDamage := func(modCtx context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
-		dexMod := abilityScores.Modifier(abilities.DEX)
-		strMod := abilityScores.Modifier(abilities.STR)
-
-		// For unarmed strikes, we need to replace the weapon damage dice with martial arts dice
-		if isUnarmed {
-			componentIndex := primaryWeaponComponentIndex(e)
-			if componentIndex < 0 {
-				return e, nil
-			}
-			component := &e.Components[componentIndex]
-			martialArtsDice := ma.getMartialArtsDice()
-
-			// Re-roll weapon damage with martial arts dice
-			roller := ma.roller
-			if roller == nil {
-				roller = dice.NewRoller()
-			}
-
-			// Parse martial arts dice notation
-			pool, err := dice.ParseNotation(martialArtsDice)
-			if err != nil {
-				return e, rpgerr.Wrapf(err, "failed to parse martial arts dice: %s", martialArtsDice)
-			}
-			maDieSize, err := parseDieSize(martialArtsDice)
-			if err != nil {
-				return e, rpgerr.Wrap(err, "failed to parse martial arts die size")
-			}
-
-			// Roll the dice (double for crits)
-			times := 1
-			if e.IsCritical && !component.HasProperty(damage.DoesNotCrit) {
-				times = 2
-			}
-
-			var newRolls []int
-			for i := 0; i < times; i++ {
-				result := pool.RollContext(modCtx, roller)
-				if result.Error() != nil {
-					return e, rpgerr.Wrap(result.Error(), "failed to roll martial arts damage")
-				}
-				// Flatten the roll groups
-				for _, group := range result.Rolls() {
-					newRolls = append(newRolls, group...)
-				}
-			}
-
-			// Replace only the component carrying the canonical primary marker.
-			// The trace records the martial arts dice actually rolled — for a
-			// critical, the doubled pool — while the event's marked metadata
-			// follows the printed expression.
-			subtotal := 0
-			for _, face := range newRolls {
-				subtotal += face
-			}
-			component.Roll.Dice = &dnd5eEvents.DiceTrace{
-				Notation:      dice.SimplePool(len(newRolls), maDieSize, 0).Notation(),
-				DieSize:       maDieSize,
-				OriginalRolls: append([]int(nil), newRolls...),
-				FinalRolls:    append([]int(nil), newRolls...),
-				Subtotal:      subtotal,
-			}
-			e.WeaponDamageDice = martialArtsDice
-			component.IsCritical = times == 2
-
-		}
-
-		// If DEX is higher than STR, replace ability modifier for monk weapons and unarmed strikes
-		if dexMod > strMod {
-			for i := range e.Components {
-				component := &e.Components[i]
-				if component.Source == dnd5eEvents.DamageSourceAbility {
-					// Replace STR modifier value with DEX modifier
-					component.Roll.Modifier = &dexMod
-					// Update the source identity so combat log shows DEX, not STR
-					component.Roll.Source.Ref = refs.Abilities.Dexterity()
-					component.Roll.Source.Name = abilities.DEX.Display()
-					// Update the ability used in the event
-					e.AbilityUsed = abilities.DEX
-					break
-				}
-			}
-		}
-
-		return e, nil
-	}
-
-	if err := c.Add(combat.StageFeatures, "martial_arts", modifyDamage); err != nil {
-		return c, rpgerr.Wrapf(err, "failed to apply martial arts for character %s", ma.MemberID)
-	}
-
-	return c, nil
-}
-
-// onAttackChain swaps the attack roll's governing ability to DEX for unarmed
-// strikes and monk weapons when DEX is higher — the attack-roll mirror of the
-// damage swap in onDamageChain, so attack and damage agree on the governing
-// ability (#709: the swap applied to damage only, leaving the attack at STR).
-func (ma *MartialArtsCondition) onAttackChain(
-	ctx context.Context,
-	event dnd5eEvents.AttackChainEvent,
-	c chain.Chain[dnd5eEvents.AttackChainEvent],
-) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
-	// Only modify attacks by this character
-	if event.AttackerID != ma.MemberID {
-		return c, nil
-	}
-
-	// Own sheet, read off the cast — the damage chain's twin, and it has to
-	// read the SAME scores through the SAME channel or attack and damage can
-	// disagree about the governing ability (#709).
-	me, ok := member(ctx, ma.MemberID)
-	if !ok {
-		return c, nil
-	}
-	abilityScores := me.AbilityScores()
-
-	// Only modify if it's an unarmed strike or monk weapon
-	isUnarmed, monkWeapon := martialArtsWeaponKind(event.WeaponRef)
-	if !isUnarmed && monkWeapon == nil {
-		return c, nil
-	}
-
-	// Finesse monk weapons (e.g. shortsword) already attack with the higher of
-	// STR/DEX on the base path — adjusting again would double-count DEX.
-	if monkWeapon != nil && monkWeapon.HasProperty(weapons.PropertyFinesse) {
-		return c, nil
-	}
-
-	modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
-		dexMod := abilityScores.Modifier(abilities.DEX)
-		strMod := abilityScores.Modifier(abilities.STR)
-		if dexMod > strMod {
-			// The base bonus used STR (melee, non-finesse); replace it with
-			// DEX by applying the difference — same rule the damage chain
-			// applies to the ability component.
-			e.AttackBonus += dexMod - strMod
-		}
-		return e, nil
-	}
-
-	if err := c.Add(combat.StageFeatures, "martial_arts", modifyAttack); err != nil {
-		return c, rpgerr.Wrapf(err, "failed to apply martial arts attack bonus for character %s", ma.MemberID)
-	}
-
-	return c, nil
 }
 
 // martialArtsWeaponKind classifies an attack's weapon for Martial Arts
@@ -392,7 +183,6 @@ func isMonkWeapon(weapon *weapons.Weapon) bool {
 type MartialArtsInput struct {
 	MemberID  string
 	MonkLevel int
-	Roller    dice.Roller // optional, uses default if nil
 }
 
 // NewMartialArtsCondition creates a new martial arts condition
@@ -400,6 +190,5 @@ func NewMartialArtsCondition(input MartialArtsInput) *MartialArtsCondition {
 	return &MartialArtsCondition{
 		MemberID:  input.MemberID,
 		MonkLevel: input.MonkLevel,
-		roller:    input.Roller,
 	}
 }

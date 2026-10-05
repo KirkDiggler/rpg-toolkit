@@ -16,9 +16,10 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
@@ -196,31 +197,20 @@ func (s *SneakAttackCondition) onRest(ctx context.Context, event dnd5eEvents.Res
 	return s.stateChanged(ctx)
 }
 
-// onDamageChain adds sneak attack dice when conditions are met
+// onDamageChain adds sneak attack dice when sneakAttackRule applies to the
+// event's frame — the same rule information asks. The handler keeps only what
+// execution owns: rolling the dice and the once-per-turn transition. An
+// invalid frame or a Depends answer fails the fold.
 func (s *SneakAttackCondition) onDamageChain(
 	ctx context.Context,
 	event *dnd5eEvents.DamageChainEvent,
 	c chain.Chain[*dnd5eEvents.DamageChainEvent],
 ) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
-	// Only apply to this character's attacks
-	if event.AttackerID != s.CharacterID {
-		return c, nil
+	executed, err := executeRule(&executeRuleInput{Name: "sneak attack", Rule: s.rule(), Frame: event.Frame})
+	if err != nil {
+		return c, err
 	}
-
-	// Only apply once per turn
-	if s.UsedThisTurn {
-		return c, nil
-	}
-
-	// Must be a finesse or ranged weapon attack
-	// For now, we check if the attack uses DEX (finesse weapons use DEX when it's higher)
-	// TODO: Add proper weapon property checking via WeaponRef
-	if event.AbilityUsed != "dex" {
-		return c, nil
-	}
-
-	// Advantage, OR another enemy of the target adjacent to it.
-	if !s.sneakAttackApplies(ctx, event) {
+	if executed.Answer.Decision.Applicability != contributions.Applies {
 		return c, nil
 	}
 
@@ -245,10 +235,6 @@ func (s *SneakAttackCondition) onDamageChain(
 
 	// Add sneak attack damage component using DamageSourceFeature
 	modifyDamage := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
-		primary := primaryWeaponComponent(e)
-		if primary == nil {
-			return e, nil
-		}
 		subtotal := 0
 		for _, face := range sneakDice {
 			subtotal += face
@@ -281,7 +267,7 @@ func (s *SneakAttackCondition) onDamageChain(
 		return c, err
 	}
 
-	err := c.Add(combat.StageFeatures, "sneak_attack", modifyDamage)
+	err = c.Add(combat.StageFeatures, "sneak_attack", modifyDamage)
 	if err != nil {
 		return c, rpgerr.Wrap(err, "failed to add sneak attack modifier")
 	}
@@ -289,58 +275,104 @@ func (s *SneakAttackCondition) onDamageChain(
 	return c, nil
 }
 
-// sneakAttackApplies reports whether sneak attack's positional requirement is
-// met: the attacker has advantage, or another enemy OF THE TARGET is within
-// five feet of it.
+var _ contributions.ActionAssessor = (*SneakAttackCondition)(nil)
+
+// AssessAction answers whether Sneak Attack applies to the framed attack. It
+// reads the frame and this condition's own owner, once-per-turn flag and dice;
+// it never rolls or spends.
+func (s *SneakAttackCondition) AssessAction(
+	in *contributions.AssessActionInput,
+) (*contributions.AssessActionOutput, error) {
+	return s.rule().AssessAction(in)
+}
+
+func (s *SneakAttackCondition) rule() sneakAttackRule {
+	return sneakAttackRule{owner: s.CharacterID, usedThisTurn: s.UsedThisTurn, dice: s.DamageDice}
+}
+
+// sneakAttackRule holds only the facts Sneak Attack's predicate uses.
 //
 // Note whose enemy. RAW is "another enemy of the target is within 5 feet of
 // it" — the relation is measured from the TARGET's point of view, not the
-// attacker's. With two factions those coincide and nobody notices. With three
-// they come apart: a hobgoblin standing beside the duergar you are stabbing is
-// an enemy of your target and enables this, and it is nobody's ally.
+// attacker's, which is why the rule reads target→X pairs. With three factions
+// a hobgoblin beside the duergar you are stabbing is an enemy of your target
+// and enables this, and it is nobody's ally. The attacker's own adjacency
+// never counts.
 //
-// This used to ask whether the adjacent entity's type was "character", which
-// baked a two-sided world into the rule and got it wrong in both directions —
-// a fellow player counted even when fighting you, and a rival monster never
-// counted at all.
-//
-// Returns a plain bool. A question this cannot answer is not an error: the
-// caller folds this into the damage chain, and an errored fold discards every
-// other damage component along with this one, exactly as an errored AC fold
-// discarded every other AC contributor (rpg-toolkit#1254).
-func (s *SneakAttackCondition) sneakAttackApplies(
-	ctx context.Context,
-	event *dnd5eEvents.DamageChainEvent,
-) bool {
-	if event.HasAdvantage {
-		return true
+// The Dexterity test is the known defect rpg-toolkit#1929 (RAW asks for a
+// finesse or ranged weapon), kept as it is.
+type sneakAttackRule struct {
+	owner        string
+	usedThisTurn bool
+	dice         int
+}
+
+func (r sneakAttackRule) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error) {
+	frame, err := frameOf(in, "sneak attack")
+	if err != nil {
+		return nil, err
+	}
+	answer := func(state contributions.Applicability, reason string) *contributions.AssessActionOutput {
+		out := &contributions.AssessActionOutput{Answer: contributions.Answer{
+			Decision:      contributions.Decision{Applicability: state, Reason: reason},
+			Participation: contributions.ContributesNow,
+		}}
+		if state == contributions.Applies {
+			out.Answer.Benefit = fmt.Sprintf("+%dd6 damage", r.dice)
+		}
+		return out
 	}
 
-	room, ok := gamectx.Room(ctx)
-	if !ok {
-		return false
+	if frame.Actor != r.owner {
+		return answer(contributions.DoesNotApply, "Sneak Attack adds to its owner's attacks"), nil
 	}
-	cast, ok := gamectx.CastOf(ctx)
-	if !ok {
-		return false
+	if r.usedThisTurn {
+		return answer(contributions.DoesNotApply, "Already used this turn"), nil
+	}
+	ability, abilityKnown := frame.Action.Ability.Get()
+	if abilityKnown && ability != abilities.DEX {
+		return answer(contributions.DoesNotApply, "Sneak Attack requires a Dexterity attack"), nil
+	}
+	weapon, weaponKnown := frame.Action.WeaponPool.Get()
+	if weaponKnown && !weapon {
+		return answer(contributions.DoesNotApply, "Sneak Attack requires a weapon attack"), nil
+	}
+	target, targetKnown := frame.Target.Get()
+	if !targetKnown {
+		return answer(contributions.Depends, "Depends on the target"), nil
+	}
+	if !abilityKnown || !weaponKnown {
+		return answer(contributions.Depends, "Depends on the attack's weapon and ability"), nil
+	}
+	if advantage, known := frame.Action.Advantage.Get(); known && advantage {
+		return answer(contributions.Applies, "The attack has advantage"), nil
 	}
 
-	targetPos, found := room.GetEntityPosition(event.TargetID)
-	if !found {
-		return false
-	}
-
-	for _, entity := range room.GetEntitiesInRange(targetPos, combat.AdjacentCells) {
-		id := entity.GetID()
-		if id == event.TargetID || id == event.AttackerID {
+	// Look for a proven enemy of the target beside it. A pair that cannot be
+	// ruled out — an unknown distance or stance that could still qualify —
+	// keeps the answer open; only a complete frame can prove there is none.
+	open := false
+	for _, pair := range frame.Pairs {
+		if pair.From != target || pair.To == frame.Actor || pair.To == target {
 			continue
 		}
-		if hostile, known := cast.IsHostile(event.TargetID, id); known && hostile {
-			return true
+		distance, distanceKnown := pair.DistanceCells.Get()
+		stance, stanceKnown := pair.Stance.Get()
+		if distanceKnown && distance > combat.AdjacentCells {
+			continue
 		}
+		if stanceKnown && stance != contributions.StanceHostile {
+			continue
+		}
+		if distanceKnown && stanceKnown {
+			return answer(contributions.Applies, "Another enemy of the target is within 5 feet"), nil
+		}
+		open = true
 	}
-
-	return false
+	if advantage, known := frame.Action.Advantage.Get(); frame.Complete && known && !advantage && !open {
+		return answer(contributions.DoesNotApply, "No advantage and no other enemy of the target within 5 feet"), nil
+	}
+	return answer(contributions.Depends, "Needs advantage or another enemy of the target within 5 feet"), nil
 }
 
 // ToJSON converts the condition to JSON for persistence

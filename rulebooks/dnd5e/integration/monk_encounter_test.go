@@ -263,233 +263,50 @@ func (s *MonkEncounterSuite) createShortsword() *weapons.Weapon {
 // LEVEL 1: MARTIAL ARTS TESTS
 // =============================================================================
 
+// Martial Arts settles the attack's ability and the unarmed die at assembly,
+// before any rule is asked and before any die is rolled. These read the
+// real monk's assembled attack, not a damage fold.
+
 func (s *MonkEncounterSuite) TestMartialArts_DEXForUnarmedStrikes() {
 	s.Run("Martial Arts uses DEX instead of STR when DEX is higher", func() {
-		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
-		s.T().Log("║  MONK MARTIAL ARTS: DEX for Unarmed Strikes                     ║")
-		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
-		s.T().Log("")
-		s.T().Logf("  Monk: %s (Level 1, STR +0, DEX +3)", s.monk.GetName())
-		s.T().Logf("  Target: Goblin Scout (AC 13, HP 7)")
-		s.T().Log("")
-
-		// Verify Martial Arts condition is loaded
-		monkConditions := s.monk.GetConditions()
-		s.Require().NotEmpty(monkConditions, "Monk should have Martial Arts condition loaded from Data")
-		s.T().Log("→ Martial Arts active: Can use DEX for unarmed strikes")
-		s.T().Log("")
-
-		// Note: The MartialArtsCondition loaded via JSON uses its own dice.NewRoller()
-		// (not the mock), so we verify behavior (DEX swap, damage string) rather than
-		// exact roll values.
-
-		// Create damage chain event for unarmed strike
-		damageEvent := &dnd5eEvents.DamageChainEvent{
-			AttackerID: s.monk.GetID(),
-			TargetID:   s.goblin.GetID(),
-			WeaponRef:  refs.Weapons.UnarmedStrike(),
-			Components: []dnd5eEvents.DamageComponent{
-				{
-					Source:     dnd5eEvents.DamageSourceWeapon,
-					Properties: []damage.Property{damage.AddsAttackAbilityModifier},
-					Roll: dnd5eEvents.RollComponent{
-						Source: dnd5eEvents.RollSource{Ref: refs.Weapons.UnarmedStrike(), Name: "Unarmed Strike"},
-						Dice:   testDiceTrace(6, 1),
-					}},
-				{
-					Source: dnd5eEvents.DamageSourceAbility,
-					Roll: dnd5eEvents.RollComponent{
-						Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
-						Modifier: intPtr(0), // STR +0 (should be replaced with DEX +3)
-					},
-				},
-			},
-			AbilityUsed: abilities.STR,
-		}
-
-		// Execute through damage chain, with the monk in the cast: Martial Arts
-		// reads its own ability scores out of it. See castOf for why installing
-		// one here stands in for resolution's door rather than inventing a
-		// registry nothing in production builds.
-		ctx := castOf(s.ctx, s.monk)
-		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
-		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
-		modifiedChain, err := damageTopic.PublishWithChain(ctx, damageEvent, damageChain)
+		definition, err := character.AssembleAttack(s.monk, &character.AssembleAttackInput{Slot: character.SlotMainHand})
 		s.Require().NoError(err)
-
-		finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
-		s.Require().NoError(err)
-
-		// Verify DEX was used (ability component should have +3)
-		var abilityBonus int
-		for _, comp := range finalEvent.Components {
-			if comp.Source == dnd5eEvents.DamageSourceAbility {
-				abilityBonus = comp.Total()
-				break
-			}
-		}
-		s.Equal(3, abilityBonus, "Should use DEX (+3) instead of STR (+0)")
-		s.Equal(abilities.DEX, finalEvent.AbilityUsed, "AbilityUsed should be updated to DEX")
-
-		s.T().Log("  Verified:")
-		s.T().Log("    Ability modifier: DEX +3 (replaced STR +0)")
-		s.T().Log("    AbilityUsed field: DEX")
-		s.T().Log("")
-		s.T().Log("✓ Martial Arts correctly uses DEX for unarmed strikes")
+		s.Require().NotNil(definition.Attack)
+		s.Equal(abilities.DEX, definition.Attack.Ability.Ability)
+		s.Equal(3, definition.Attack.Ability.Modifier, "DEX +3 rather than STR +0")
+		s.Equal(3+2, definition.Attack.AttackBonus, "DEX plus proficiency on the attack roll")
 	})
 }
 
 func (s *MonkEncounterSuite) TestMartialArts_UnarmedDamageScaling() {
 	s.Run("Martial Arts scales unarmed damage: 1d4 at level 1", func() {
-		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
-		s.T().Log("║  MONK MARTIAL ARTS: Unarmed Damage Scaling (1d4)                ║")
-		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
-		s.T().Log("")
-		s.T().Logf("  Monk: %s (Level 1)", s.monk.GetName())
-		s.T().Log("  Martial Arts Die: 1d4 (levels 1-4)")
-		s.T().Log("")
-
-		s.T().Log("→ Shadow throws a punch!")
-
-		// The condition rolls with its own dice.NewRoller(), so the VALUE is
-		// non-deterministic and the DICE STRING is not. The seeded roll below is
-		// deliberately outside 1d4's range: this test used to seed a 1, which
-		// is a legal 1d4 result, so every assertion here passed unchanged when
-		// the condition did not fire at all. It said so in this very comment —
-		// "we verify the damage string is upgraded" — while asserting no such
-		// thing.
-
-		damageEvent := &dnd5eEvents.DamageChainEvent{
-			AttackerID: s.monk.GetID(),
-			TargetID:   s.goblin.GetID(),
-			WeaponRef:  refs.Weapons.UnarmedStrike(),
-			Components: []dnd5eEvents.DamageComponent{
-				{
-					Source:     dnd5eEvents.DamageSourceWeapon,
-					Properties: []damage.Property{damage.AddsAttackAbilityModifier},
-					Roll: dnd5eEvents.RollComponent{
-						Source: dnd5eEvents.RollSource{Ref: refs.Weapons.UnarmedStrike(), Name: "Unarmed Strike"},
-						Dice:   testDiceTrace(7, 7),
-					}},
-				{
-					Source: dnd5eEvents.DamageSourceAbility,
-					Roll: dnd5eEvents.RollComponent{
-						Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
-						Modifier: intPtr(0),
-					},
-				},
-			},
-			AbilityUsed: abilities.STR,
-		}
-
-		// Execute through damage chain, with the monk in the cast: Martial Arts
-		// reads its own ability scores out of it. See castOf for why installing
-		// one here stands in for resolution's door rather than inventing a
-		// registry nothing in production builds.
-		ctx := castOf(s.ctx, s.monk)
-		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
-		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
-		modifiedChain, err := damageTopic.PublishWithChain(ctx, damageEvent, damageChain)
+		definition, err := character.AssembleAttack(s.monk, &character.AssembleAttackInput{Slot: character.SlotMainHand})
 		s.Require().NoError(err)
-
-		finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
-		s.Require().NoError(err)
-
-		// The dice STRING is the deterministic half, and the one the comment
-		// above always claimed was checked.
-		var weaponRolls []int
-		var weaponDice string
-		for _, comp := range finalEvent.Components {
-			if comp.Source == dnd5eEvents.DamageSourceWeapon {
-				weaponRolls = comp.Roll.Dice.FinalRolls
-				weaponDice = comp.Roll.Dice.Notation
-				break
-			}
-		}
-		s.Equal("d4", weaponDice, "a level 1 monk's unarmed strike is upgraded from the weapon's own die to one d4 (canonical trace notation)")
-		s.Equal("1d4", finalEvent.WeaponDamageDice, "and the event carries the same upgrade for the combat log")
-
-		s.Require().Len(weaponRolls, 1, "Should have exactly 1 die roll (1d4)")
-		s.True(weaponRolls[0] >= 1 && weaponRolls[0] <= 4,
-			"the seeded 7 must have been re-rolled on 1d4, got %d", weaponRolls[0])
-
-		s.T().Log("  Damage die progression:")
-		s.T().Log("    Levels 1-4:   1d4")
-		s.T().Log("    Levels 5-10:  1d6")
-		s.T().Log("    Levels 11-16: 1d8")
-		s.T().Log("    Levels 17+:   1d10")
-		s.T().Log("")
-		s.T().Logf("  This attack: 1d4 → %d (verified in [1,4] range)", weaponRolls[0])
-		s.T().Log("")
-		s.T().Log("✓ Martial Arts correctly upgrades unarmed damage to 1d4 at level 1")
+		s.Require().Len(definition.Attack.Damage, 1)
+		s.Equal("1d4", definition.Attack.Damage[0].Dice, "the Martial Arts die is assembled, not rolled and replaced")
+		s.Equal(damage.Bludgeoning, definition.Attack.Damage[0].Type)
 	})
 }
 
 func (s *MonkEncounterSuite) TestMartialArts_MonkWeaponWithDEX() {
-	s.Run("Martial Arts allows DEX for monk weapons (shortsword)", func() {
-		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
-		s.T().Log("║  MONK MARTIAL ARTS: DEX for Monk Weapons                        ║")
-		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
-		s.T().Log("")
-		s.T().Logf("  Monk: %s (Level 1, STR +0, DEX +3)", s.monk.GetName())
-		s.T().Logf("  Weapon: Shortsword (1d6 piercing, monk weapon)")
-		s.T().Log("")
-
-		s.T().Log("→ Shadow slashes with a shortsword!")
-
-		// Shortsword attack - uses weapon's 1d6, but DEX for modifier
-		damageEvent := &dnd5eEvents.DamageChainEvent{
-			AttackerID: s.monk.GetID(),
-			TargetID:   s.goblin.GetID(),
-			WeaponRef:  refs.Weapons.Shortsword(),
-			Components: []dnd5eEvents.DamageComponent{
-				{
-					Source:     dnd5eEvents.DamageSourceWeapon,
-					Properties: []damage.Property{damage.AddsAttackAbilityModifier},
-					Roll: dnd5eEvents.RollComponent{
-						Source: dnd5eEvents.RollSource{Ref: refs.Weapons.UnarmedStrike(), Name: "Unarmed Strike"},
-						Dice:   testDiceTrace(6, 5),
-					}},
-				{
-					Source: dnd5eEvents.DamageSourceAbility,
-					Roll: dnd5eEvents.RollComponent{
-						Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
-						Modifier: intPtr(0), // STR +0 (will be replaced with DEX +3)
-					},
-				},
-			},
-			AbilityUsed: abilities.STR,
+	s.Run("Martial Arts allows DEX for monk weapons (quarterstaff)", func() {
+		data := s.monk.ToData()
+		data.Inventory = append(data.Inventory, character.InventoryItemData{
+			Type: shared.EquipmentTypeWeapon, ID: string(weapons.Quarterstaff), Quantity: 1,
+		})
+		if data.EquipmentSlots == nil {
+			data.EquipmentSlots = character.EquipmentSlots{}
 		}
-
-		// Execute through damage chain, with the monk in the cast: Martial Arts
-		// reads its own ability scores out of it. See castOf for why installing
-		// one here stands in for resolution's door rather than inventing a
-		// registry nothing in production builds.
-		ctx := castOf(s.ctx, s.monk)
-		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
-		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
-		modifiedChain, err := damageTopic.PublishWithChain(ctx, damageEvent, damageChain)
+		data.EquipmentSlots[character.SlotMainHand] = string(weapons.Quarterstaff)
+		armed, err := character.LoadFromData(s.ctx, data, events.NewEventBus())
 		s.Require().NoError(err)
 
-		finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
+		definition, err := character.AssembleAttack(armed, &character.AssembleAttackInput{Slot: character.SlotMainHand})
 		s.Require().NoError(err)
-
-		// Verify DEX was used
-		var abilityBonus int
-		for _, comp := range finalEvent.Components {
-			if comp.Source == dnd5eEvents.DamageSourceAbility {
-				abilityBonus = comp.Total()
-				break
-			}
-		}
-		s.Equal(3, abilityBonus, "Should use DEX (+3) for monk weapon")
-
-		s.T().Log("  Damage breakdown:")
-		s.T().Logf("    1d6 shortsword: %d", 5)
-		s.T().Logf("    + DEX modifier: %d", 3)
-		s.T().Logf("    = Total:        %d damage", 8)
-		s.T().Log("")
-		s.T().Log("✓ Martial Arts correctly uses DEX for monk weapons")
+		s.Equal(abilities.DEX, definition.Attack.Ability.Ability, "a non-finesse monk weapon may use DEX")
+		quarterstaff, err := weapons.GetByID(weapons.Quarterstaff)
+		s.Require().NoError(err)
+		s.Equal(quarterstaff.Damage[0].Dice, definition.Attack.Damage[0].Dice, "a monk weapon keeps its own die")
 	})
 }
 

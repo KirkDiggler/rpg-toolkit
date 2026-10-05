@@ -374,7 +374,7 @@ func (s *BarbarianEncounterSuite) TestEncounter_MultiTurnCombat() {
 		}
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
-		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, damageChain)
+		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, framed(s.ctx, damageEvent), damageChain)
 		s.Require().NoError(err)
 		finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
 		s.Require().NoError(err)

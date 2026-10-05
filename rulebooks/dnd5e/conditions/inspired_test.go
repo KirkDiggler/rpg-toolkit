@@ -41,6 +41,7 @@ func (s *InspiredConditionTestSuite) foldOffers(attacker string) []dnd5eEvents.O
 	event := &dnd5eEvents.PostRollOfferEvent{
 		AttackerID: attacker, TargetID: "skeleton-1",
 		Roll: 11, AttackBonus: 5, Total: 16,
+		Frame: testAttackFrame(attacker, "skeleton-1"),
 	}
 	chain := events.NewStagedChain[*dnd5eEvents.PostRollOfferEvent](combat.ModifierStages)
 	modified, err := dnd5eEvents.PostRollOfferChain.On(s.bus).PublishWithChain(s.ctx, event, chain)
