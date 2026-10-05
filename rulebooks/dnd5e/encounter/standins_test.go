@@ -48,6 +48,17 @@ func (s *standInsSuite) TestNewEncounterConstructsFromCompileOnlySetup() {
 		s.Empty(out.Members, "zero sight writes no sighting")
 	})
 
+	s.Run("a fight forming in a compiled world fails loudly", func() {
+		// Only a host that swapped the zero sight for real sight can get here.
+		setup := emptyWorld(
+			encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: cellAt(0, 0)},
+			encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: cellAt(2, 0)},
+		)
+		setup.Sight = everyoneSeesTheWholeMap{}
+		_, err := encounter.NewEncounter(setup)
+		s.Require().ErrorIs(err, encounter.ErrRefusingInitiative)
+	})
+
 	s.Run("a concealed door left open is witnessed at first light, and answered", func() {
 		field := concealField()
 		for i := range field.Doors {

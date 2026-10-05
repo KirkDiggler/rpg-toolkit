@@ -46,12 +46,10 @@ func TestCompileOnlyStandInAnswers(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, map[MemberID]int{"a": 0, "b": 0}, got)
 	})
-	t.Run("initiative: the order given, not aliased", func(t *testing.T) {
-		got, err := initiativeAsGiven{}.RollInitiative(asked)
-		require.NoError(t, err)
-		require.Equal(t, asked, got)
-		got[0] = "z"
-		require.Equal(t, MemberID("b"), asked[0])
+	t.Run("initiative refuses", func(t *testing.T) {
+		got, err := refusingInitiative{}.RollInitiative(asked)
+		require.ErrorIs(t, err, ErrRefusingInitiative)
+		require.Nil(t, got)
 	})
 	t.Run("check resolver refuses", func(t *testing.T) {
 		got, err := refusingCheckResolver{}.ResolveCheck(&ResolveCheckInput{})

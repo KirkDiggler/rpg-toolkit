@@ -446,6 +446,12 @@ var (
 	// world — not a legal outcome any caller is meant to recover from.
 	ErrRefusingAnnouncer = errors.New("encounter: RefusingAnnouncer: a clock advanced on a construction-only world")
 
+	// ErrRefusingInitiative is what the InitiativeRoller [CompileOnlySetup]
+	// installs always returns: a fight tried to form in a world being
+	// compiled, not played. A host bug — the compiled world's zero sight forms
+	// no fight, and a session supplies its own roller at load.
+	ErrRefusingInitiative = errors.New("encounter: compile-only InitiativeRoller: a fight formed in a world being compiled, not played")
+
 	// ErrRefusingCheckResolver is what the CheckResolver [CompileOnlySetup]
 	// installs always returns: an authored check was rolled against a world
 	// still being compiled, not played. A host bug — a check is rolled only

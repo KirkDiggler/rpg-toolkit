@@ -20,17 +20,21 @@ import "fmt"
 // The returned value is the caller's to finish: Members, Retention and Roller
 // are left zero because they are the host's choices, not capabilities. Each
 // stand-in answers without inventing an observation, except where the
-// capability has no "not observed" answer; those two make a choice, named
-// here so it is never mistaken for an absence:
+// capability has no "not observed" answer, and those say what they do:
 //
 //   - Standing/Participation: nobody is down, and every member is up,
 //     conscious, IN CONTACT and waiting for their player or driver — the
-//     session's own answer for an undowned member. Contact is a claim, made
-//     because false would dissolve every fight the moment it formed.
-//     PartyDefeated and KeepTurnOrder are false.
-//   - Initiative: the members in the order the encounter asks, which is the
-//     forming members sorted by ID, so whoever's ID sorts first acts first.
-//     Honest only because a world with nobody in it forms no fight.
+//     session's own answer for an undowned member. That is a CLAIM, made
+//     because participation has no "unknown" and Contact false would dissolve
+//     every fight the moment it formed. PartyDefeated and KeepTurnOrder are
+//     false. It is asked only if the caller places members; never in play,
+//     because the capabilities are not persisted and every load supplies its
+//     own.
+//   - Initiative: REFUSES with ErrRefusingInitiative. Initiative has no "not
+//     observed" answer, and any order this could give — the order asked is
+//     the forming members sorted by ID — would be a confident wrong answer
+//     deciding a fight. With zero sight no fight can form here, so reaching
+//     it means a host changed the setup and tried to play a compiled world.
 //   - Sight: zero cells for every member; no sighting is written.
 //   - Equipment and Conditions: nil for every member — nothing to observe,
 //     never empty hands or an empty set ([UnobservedEquipment]).
@@ -45,7 +49,7 @@ func CompileOnlySetup(field FieldInput, endings []EndingInput) *SetupInput {
 	return &SetupInput{
 		Field:         field,
 		Endings:       endings,
-		Initiative:    initiativeAsGiven{},
+		Initiative:    refusingInitiative{},
 		Standing:      nobodyDown{},
 		Sight:         zeroSight{},
 		Equipment:     UnobservedEquipment{},
@@ -61,7 +65,7 @@ func CompileOnlySetup(field FieldInput, endings []EndingInput) *SetupInput {
 // Every capability a stand-in must answer, asserted here so that a capability
 // added to this module fails this module's build until its stand-in answers it.
 var (
-	_ InitiativeRoller          = initiativeAsGiven{}
+	_ InitiativeRoller          = refusingInitiative{}
 	_ StandingWithParticipation = nobodyDown{}
 	_ Sight                     = zeroSight{}
 	_ EquipmentWithConditions   = UnobservedEquipment{}
@@ -131,12 +135,12 @@ func (zeroSight) Sight(members []MemberID) (map[MemberID]int, error) {
 	return out, nil
 }
 
-// initiativeAsGiven returns the members in the order asked; a choice, not an
-// absence — see [CompileOnlySetup].
-type initiativeAsGiven struct{}
+// refusingInitiative fails every roll with ErrRefusingInitiative; see
+// [CompileOnlySetup] for why it refuses rather than ordering.
+type refusingInitiative struct{}
 
-func (initiativeAsGiven) RollInitiative(members []MemberID) ([]MemberID, error) {
-	return append([]MemberID(nil), members...), nil
+func (refusingInitiative) RollInitiative([]MemberID) ([]MemberID, error) {
+	return nil, fmt.Errorf("roll initiative: %w", ErrRefusingInitiative)
 }
 
 // refusingCheckResolver fails every check with ErrRefusingCheckResolver.
