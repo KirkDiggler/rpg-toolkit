@@ -132,20 +132,21 @@ func (f *FightingStyleTwoWeaponFightingCondition) onDamageChain(
 		return c, nil
 	}
 
-	// Add ability modifier to damage at StageFeatures
+	// Add the rule's own damage change at StageFeatures: the answer carries
+	// the modifier, so the row and the swing add the same number.
+	change := executed.Answer.Damage[0]
 	modifyDamage := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
-		primary := primaryWeaponComponent(e)
-		if primary == nil {
-			return e, nil
+		if primaryWeaponComponent(e) == nil {
+			// Fail closed: the rule applied on the frame's weapon pool, so a
+			// fold with no marked primary pool is a malformed event.
+			return e, rpgerr.Newf(rpgerr.CodeInvalidArgument,
+				"two-weapon fighting applies but the damage has no marked primary weapon pool for character %s", f.MemberID)
 		}
-		modifier := e.AbilityModifier
+		modifier := *change.Fixed
 		e.Components = append(e.Components, dnd5eEvents.DamageComponent{
 			Source: dnd5eEvents.DamageSourceFeature,
 			Roll: dnd5eEvents.RollComponent{
-				Source: dnd5eEvents.RollSource{
-					Ref:  refs.Conditions.FightingStyleTwoWeaponFighting(),
-					Name: "Two-Weapon Fighting",
-				},
+				Source:   change.Source,
 				Modifier: &modifier,
 			},
 			DamageType: e.WeaponDamageType,

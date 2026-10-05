@@ -49,12 +49,9 @@ func (f *FightingStyleArcheryCondition) rule() archeryRule {
 	return archeryRule{owner: f.CharacterID}
 }
 
-// archeryRule holds only the facts Archery's predicate uses.
-//
-// It asks whether the attack is ranged, which is what execution has always
-// read. RAW asks for a ranged weapon; the attack chain carries no weapon fact
-// to tell a ranged spell attack apart, so this answer and the swing both
-// treat any ranged attack roll alike.
+// archeryRule holds only the facts Archery's predicate uses: an attack made
+// with a ranged weapon. It reads the weapon's category, not how the attack is
+// delivered, so a ranged spell attack gets nothing.
 type archeryRule struct {
 	owner string
 }
@@ -70,14 +67,14 @@ func (r archeryRule) AssessAction(in *contributions.AssessActionInput) (*contrib
 	if roll, _ := frame.Action.Roll.Get(); roll != contributions.RollKindAttack {
 		return assessed(contributions.DoesNotApply, "Archery affects only attack rolls"), nil
 	}
-	melee, known := frame.Action.Melee.Get()
+	ranged, known := frame.Action.RangedWeapon.Get()
 	if !known {
-		return assessed(contributions.Depends, "Depends on whether the attack is ranged"), nil
+		return assessed(contributions.Depends, "Depends on the attack's weapon"), nil
 	}
-	if melee {
-		return assessed(contributions.DoesNotApply, "Archery adds only to ranged attacks"), nil
+	if !ranged {
+		return assessed(contributions.DoesNotApply, "Archery adds only to attacks with ranged weapons"), nil
 	}
-	out := assessed(contributions.Applies, "The attack is ranged")
+	out := assessed(contributions.Applies, "The attack is made with a ranged weapon")
 	out.Answer.Benefit = "+2 to the attack roll"
 	return out, nil
 }

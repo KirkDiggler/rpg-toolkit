@@ -58,7 +58,7 @@ func framedAttack(event dnd5eEvents.AttackChainEvent) dnd5eEvents.AttackChainEve
 	}
 	event.Frame.Action.Melee = contributions.Known(event.IsMelee)
 	event.Frame.Action.WeaponPool = contributions.Known(event.WeaponRef != nil)
-	event.Frame.Action.Opportunity = contributions.Known(event.AttackType == dnd5eEvents.AttackTypeOpportunity)
+	event.Frame.Action.Opportunity = contributions.Known(false)
 	return event
 }
 
@@ -82,9 +82,14 @@ func externalWeaponFacts(weaponRef *core.Ref, twoHanded, otherWeapon bool) contr
 		return facts
 	}
 	facts.Weapon = contributions.Known(weaponRef.String())
-	if weapon, err := weapons.GetByID(weapons.WeaponID(weaponRef.ID)); err == nil {
-		facts.Finesse = contributions.Known(weapon.HasProperty(weapons.PropertyFinesse))
-		facts.RangedWeapon = contributions.Known(weapon.IsRanged())
+	weapon, err := weapons.GetByID(weapons.WeaponID(weaponRef.ID))
+	if err != nil {
+		// Like resolution: a weapon the catalogue does not hold is unread.
+		facts.Finesse = contributions.Unknown[bool]()
+		facts.RangedWeapon = contributions.Unknown[bool]()
+		return facts
 	}
+	facts.Finesse = contributions.Known(weapon.HasProperty(weapons.PropertyFinesse))
+	facts.RangedWeapon = contributions.Known(weapon.IsRanged())
 	return facts
 }

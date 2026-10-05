@@ -108,6 +108,7 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerolls1sAnd2s() {
 		TargetID:   "goblin-1",
 		IsMelee:    true,
 		TwoHanded:  true,
+		WeaponRef:  refs.Weapons.Greatsword(),
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:     dnd5eEvents.DamageSourceWeapon,
@@ -178,6 +179,7 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestDoesNotRerollHigherValue
 		TargetID:   "goblin-1",
 		IsMelee:    true,
 		TwoHanded:  true,
+		WeaponRef:  refs.Weapons.Greatsword(),
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:     dnd5eEvents.DamageSourceWeapon,
@@ -225,6 +227,7 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerollsMarkedPrimaryWhen
 		TargetID:   "goblin-1",
 		IsMelee:    true,
 		TwoHanded:  true,
+		WeaponRef:  refs.Weapons.Greatsword(),
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source: dnd5eEvents.DamageSourceWeapon,
@@ -280,6 +283,7 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerollsCurrentFacesAfter
 		TargetID:   "goblin-1",
 		IsMelee:    true,
 		TwoHanded:  true,
+		WeaponRef:  refs.Weapons.Greatsword(),
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:     dnd5eEvents.DamageSourceWeapon,
@@ -359,6 +363,7 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRollerErrorLeavesTheCall
 		TargetID:   "goblin-1",
 		IsMelee:    true,
 		TwoHanded:  true,
+		WeaponRef:  refs.Weapons.Greatsword(),
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:     dnd5eEvents.DamageSourceWeapon,
@@ -412,6 +417,7 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestNilPrimaryDiceTraceFails
 		TargetID:   "goblin-1",
 		IsMelee:    true,
 		TwoHanded:  true,
+		WeaponRef:  refs.Weapons.Greatsword(),
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:     dnd5eEvents.DamageSourceWeapon,
@@ -473,6 +479,7 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerollsEveryLowFaceButOn
 		TargetID:   "goblin-1",
 		IsMelee:    true,
 		TwoHanded:  true,
+		WeaponRef:  refs.Weapons.Greatsword(),
 		Components: []dnd5eEvents.DamageComponent{{
 			Source:     dnd5eEvents.DamageSourceWeapon,
 			Properties: []damage.Property{damage.AddsAttackAbilityModifier},

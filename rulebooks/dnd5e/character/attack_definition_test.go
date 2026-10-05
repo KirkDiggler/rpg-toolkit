@@ -258,6 +258,29 @@ func (s *CharacterAttackTestSuite) TestAssembleAttack_RecordsTheOtherHandWeapon(
 	s.Equal(refs.Weapons.Dagger(), definition.Attack.Weapon.OffHandWeaponRef)
 }
 
+// TestAssembleAttack_WeaponRefIDIsTheEquippedItemID pins the invariant
+// Shillelagh's binding rests on: the item ID a hand holds — what attack
+// assembly hands WeaponAttackOverride and what a cast stores as the enchanted
+// item — is the assembled weapon ref's ID, which is what the frame carries.
+// If inventory ever keys a weapon by instance, this fails before the tooltip
+// and the swing can disagree.
+func (s *CharacterAttackTestSuite) TestAssembleAttack_WeaponRefIDIsTheEquippedItemID() {
+	data := s.heroSheet(
+		[]proficiencies.Weapon{proficiencies.WeaponSimple, proficiencies.WeaponMartial},
+		map[InventorySlot]string{
+			SlotMainHand: string(weapons.Club),
+			SlotOffHand:  string(weapons.Dagger),
+		},
+	)
+	hero := s.load(data)
+
+	for _, slot := range []InventorySlot{SlotMainHand, SlotOffHand} {
+		definition, err := AssembleAttack(hero, &AssembleAttackInput{Slot: slot})
+		s.Require().NoError(err)
+		s.Equal(hero.equipmentSlots.Get(slot), definition.Attack.Weapon.Ref.ID, slot)
+	}
+}
+
 // TestAssembleAttack_RecordsTheSwingingHand: the weapon context names the hand
 // the weapon is held in, so a rule bound to one hand can tell them apart.
 func (s *CharacterAttackTestSuite) TestAssembleAttack_RecordsTheSwingingHand() {

@@ -64,16 +64,15 @@ func (s *weaponEffectRulesSuite) TestRecklessAttackSkipsAnOpportunityAttack() {
 	reckless := NewRecklessAttackCondition("rogue")
 	s.Require().NoError(reckless.Apply(context.Background(), bus))
 
-	for name, kind := range map[string]dnd5eEvents.AttackType{
-		"standard": dnd5eEvents.AttackTypeStandard, "opportunity": dnd5eEvents.AttackTypeOpportunity,
-	} {
+	for name, opportunity := range map[string]bool{"standard": false, "opportunity": true} {
 		s.Run(name, func() {
-			event := framedAttack(dnd5eEvents.AttackChainEvent{AttackerID: "rogue", TargetID: "goblin", IsMelee: true, AttackType: kind})
+			event := framedAttack(dnd5eEvents.AttackChainEvent{AttackerID: "rogue", TargetID: "goblin", IsMelee: true})
+			event.Frame.Action.Opportunity = contributions.Known(opportunity)
 			answer := s.answer(reckless, event.Frame)
 			final, err := s.publishAttack(bus, event)
 			s.Require().NoError(err)
 			applies := answer.Decision.Applicability == contributions.Applies
-			s.Equal(kind == dnd5eEvents.AttackTypeStandard, applies)
+			s.Equal(!opportunity, applies)
 			s.Equal(applies, len(final.AdvantageSources) == 1)
 		})
 	}
@@ -88,8 +87,14 @@ func (s *weaponEffectRulesSuite) TestDueling() {
 	s.expect(rule, mutated(func(a *contributions.ActionFacts) {
 		a.Weapon = contributions.Known(refs.Weapons.UnarmedStrike().String())
 	}), contributions.DoesNotApply, "Dueling needs a melee weapon")
-	s.expect(rule, mutated(func(a *contributions.ActionFacts) { a.Melee = contributions.Known(false) }),
+	s.expect(rule, mutated(func(a *contributions.ActionFacts) {
+		a.Weapon = contributions.Known(refs.Weapons.Shortbow().String())
+		a.RangedWeapon = contributions.Known(true)
+	}), contributions.DoesNotApply, "Dueling needs a melee weapon")
+	s.expect(rule, mutated(func(a *contributions.ActionFacts) { a.Weapon = contributions.Known("") }),
 		contributions.DoesNotApply, "Dueling needs a melee weapon")
+	s.expect(rule, mutated(func(a *contributions.ActionFacts) { a.RangedWeapon = contributions.Unknown[bool]() }),
+		contributions.Depends, "Depends on the attack's weapon and grip")
 	s.expect(rule, mutated(func(a *contributions.ActionFacts) { a.TwoHanded = contributions.Known(true) }),
 		contributions.DoesNotApply, "Dueling needs the weapon in one hand")
 	s.expect(rule, mutated(func(a *contributions.ActionFacts) { a.OffHandWeapon = contributions.Known(true) }),
@@ -98,6 +103,20 @@ func (s *weaponEffectRulesSuite) TestDueling() {
 		contributions.DoesNotApply, "Dueling requires a weapon damage pool")
 	s.expect(rule, mutated(func(a *contributions.ActionFacts) { a.OffHandWeapon = contributions.Unknown[bool]() }),
 		contributions.Depends, "Depends on the attack's weapon and grip")
+}
+
+// TestDuelingKeepsAThrownDagger: a dagger thrown from one hand is still a
+// melee weapon — the weapon's category, not the attack's delivery — so Dueling
+// applies though the attack is not melee.
+func (s *weaponEffectRulesSuite) TestDuelingKeepsAThrownDagger() {
+	thrown := mutated(func(a *contributions.ActionFacts) {
+		a.Melee = contributions.Known(false)
+		a.Weapon = contributions.Known(refs.Weapons.Dagger().String())
+		a.RangedWeapon = contributions.Known(false)
+	})
+
+	s.expect(NewFightingStyleDuelingCondition("rogue"), thrown,
+		contributions.Applies, "A melee weapon in one hand and no other weapon")
 }
 
 func (s *weaponEffectRulesSuite) TestGreatWeaponFighting() {
@@ -109,8 +128,12 @@ func (s *weaponEffectRulesSuite) TestGreatWeaponFighting() {
 
 	s.expect(rule, rogueFrame(false), contributions.DoesNotApply, "Great Weapon Fighting needs the weapon in both hands")
 	ranged := twoHanded
-	ranged.Action.Melee = contributions.Known(false)
+	ranged.Action.Weapon = contributions.Known(refs.Weapons.Longbow().String())
+	ranged.Action.RangedWeapon = contributions.Known(true)
 	s.expect(rule, ranged, contributions.DoesNotApply, "Great Weapon Fighting needs a melee weapon")
+	unread := twoHanded
+	unread.Action.RangedWeapon = contributions.Unknown[bool]()
+	s.expect(rule, unread, contributions.Depends, "Depends on the attack's weapon and grip")
 	unknown := twoHanded
 	unknown.Action.TwoHanded = contributions.Unknown[bool]()
 	s.expect(rule, unknown, contributions.Depends, "Depends on the attack's weapon and grip")
@@ -262,4 +285,59 @@ func (s *weaponEffectRulesSuite) TestWeaponDamageHandlersRejectAZeroFrame() {
 			s.Len(event.Components, 1)
 		})
 	}
+}
+
+// TestTwoWeaponFightingAddsTheAnswersModifier: the swing adds the number the
+// rule answered with — the frame's modifier — not a second copy on the event.
+func (s *weaponEffectRulesSuite) TestTwoWeaponFightingAddsTheAnswersModifier() {
+	bus := events.NewEventBus()
+	twf := NewFightingStyleTwoWeaponFightingCondition("rogue")
+	s.Require().NoError(twf.Apply(context.Background(), bus))
+	event := &dnd5eEvents.DamageChainEvent{
+		AttackerID: "rogue", TargetID: "goblin", AbilityModifier: 99,
+		Components: []dnd5eEvents.DamageComponent{{
+			Source:     dnd5eEvents.DamageSourceWeapon,
+			Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+		}},
+		Frame: mutated(func(a *contributions.ActionFacts) { a.OffHandAttack = contributions.Known(true) }),
+	}
+
+	s.Require().NoError(s.publishDamage(bus, event))
+
+	s.Require().Len(event.Components, 2)
+	s.Require().NotNil(event.Components[1].Roll.Modifier)
+	s.Equal(3, *event.Components[1].Roll.Modifier, "the frame's modifier, as the row said")
+}
+
+// TestWeaponPoolRulesFailClosedWithoutAPrimaryPool: Two-Weapon Fighting and
+// Divine Favor apply on the frame's weapon pool, so a fold whose components
+// carry no marked primary pool fails instead of silently adding nothing.
+func (s *weaponEffectRulesSuite) TestWeaponPoolRulesFailClosedWithoutAPrimaryPool() {
+	favor, err := NewDivineFavorCondition(NewDivineFavorConditionInput{
+		MemberID: "rogue", SourceID: "rogue", SourceRef: refs.Spells.DivineFavor(),
+	})
+	s.Require().NoError(err)
+	for name, condition := range map[string]dnd5eEvents.ConditionBehavior{
+		"two-weapon fighting": NewFightingStyleTwoWeaponFightingCondition("rogue"),
+		"divine favor":        favor,
+	} {
+		s.Run(name, func() {
+			bus := events.NewEventBus()
+			s.Require().NoError(condition.Apply(context.Background(), bus))
+			event := &dnd5eEvents.DamageChainEvent{
+				AttackerID: "rogue", TargetID: "goblin",
+				Components: []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceSpell}},
+				Frame:      mutated(func(a *contributions.ActionFacts) { a.OffHandAttack = contributions.Known(true) }),
+			}
+
+			s.Error(s.publishDamage(bus, event))
+		})
+	}
+}
+
+func (s *weaponEffectRulesSuite) TestTwoWeaponFightingNeedsAWeaponPool() {
+	s.expect(NewFightingStyleTwoWeaponFightingCondition("rogue"), mutated(func(a *contributions.ActionFacts) {
+		a.OffHandAttack = contributions.Known(true)
+		a.WeaponPool = contributions.Known(false)
+	}), contributions.DoesNotApply, "Two-Weapon Fighting requires a weapon damage pool")
 }

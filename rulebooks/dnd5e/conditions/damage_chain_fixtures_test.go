@@ -78,8 +78,8 @@ func framedDamage(event *dnd5eEvents.DamageChainEvent) *dnd5eEvents.DamageChainE
 }
 
 // framedAttack sets an attack event's attack-roll frame from its own fields:
-// attacker, target, melee, the weapon facts and whether it is an opportunity
-// attack, with advantage unknown because the chain has not folded, unless the
+// attacker, target, melee and the weapon facts, with opportunity known false
+// and advantage unknown because the chain has not folded, unless the
 // test already set one. A test fixture: production frames come from
 // resolution alone.
 func framedAttack(event dnd5eEvents.AttackChainEvent) dnd5eEvents.AttackChainEvent {
@@ -93,7 +93,7 @@ func framedAttack(event dnd5eEvents.AttackChainEvent) dnd5eEvents.AttackChainEve
 	frame.Action = fixtureWeaponFacts(event.WeaponRef, false, false)
 	frame.Action.Melee = contributions.Known(event.IsMelee)
 	frame.Action.WeaponPool = contributions.Known(event.WeaponRef != nil)
-	frame.Action.Opportunity = contributions.Known(event.AttackType == dnd5eEvents.AttackTypeOpportunity)
+	frame.Action.Opportunity = contributions.Known(false)
 	event.Frame = frame
 	return event
 }
@@ -118,9 +118,14 @@ func fixtureWeaponFacts(weaponRef *core.Ref, twoHanded, otherWeapon bool) contri
 		return facts
 	}
 	facts.Weapon = contributions.Known(weaponRef.String())
-	if weapon, err := weapons.GetByID(weapons.WeaponID(weaponRef.ID)); err == nil {
-		facts.Finesse = contributions.Known(weapon.HasProperty(weapons.PropertyFinesse))
-		facts.RangedWeapon = contributions.Known(weapon.IsRanged())
+	weapon, err := weapons.GetByID(weapons.WeaponID(weaponRef.ID))
+	if err != nil {
+		// Like resolution: a weapon the catalogue does not hold is unread.
+		facts.Finesse = contributions.Unknown[bool]()
+		facts.RangedWeapon = contributions.Unknown[bool]()
+		return facts
 	}
+	facts.Finesse = contributions.Known(weapon.HasProperty(weapons.PropertyFinesse))
+	facts.RangedWeapon = contributions.Known(weapon.IsRanged())
 	return facts
 }
