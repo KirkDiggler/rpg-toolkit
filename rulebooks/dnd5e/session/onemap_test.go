@@ -311,7 +311,9 @@ func (s *OneMapSuite) TestASightingIsReportedOnTheMap() {
 	// "down" rides the same snapshot now (encounter#1697/#1699, adopted here
 	// by the rpg-toolkit#1702 version bump): bob was observed on his feet, so
 	// it is a present false, not an absent key — the same "observed, not
-	// inferred" discipline Equipment already keeps.
+	// inferred" discipline Equipment already keeps. Conditions ride the
+	// testimony for rules (rpg-project#520, R16) but never a delivered
+	// payload, so there is no "conditions" key here.
 	s.Equal(map[string]any{
 		"state":           string(encounter.LocationKnown),
 		"x":               bobsCell.X,

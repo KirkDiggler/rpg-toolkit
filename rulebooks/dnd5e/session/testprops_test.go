@@ -150,6 +150,20 @@ func (encNoHandsObserved) Equipment(
 	return out, nil
 }
 
+// Conditions answers "nothing to observe" for every member asked, for the same
+// reason Equipment does: this fixture has no sheets to report from.
+func (encNoHandsObserved) Conditions(
+	members []encounter.MemberID,
+) (map[encounter.MemberID]*encounter.ConditionSet, error) {
+	out := make(map[encounter.MemberID]*encounter.ConditionSet, len(members))
+	for _, id := range members {
+		out[id] = nil
+	}
+	return out, nil
+}
+
+var _ encounter.EquipmentWithConditions = encNoHandsObserved{}
+
 // blockingProps is occludingProps' opposite number: cells a creature cannot be
 // put into.
 //

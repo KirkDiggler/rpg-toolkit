@@ -5,6 +5,7 @@ package session_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -201,4 +202,25 @@ func (s *MonsterWeaponObservationSuite) TestRememberedWeaponDoesNotRevealOffscre
 func (s *MonsterWeaponObservationSuite) TestNaturalActionMonsterDoesNotInventObservedEmptyHands() {
 	seen := s.spawnAndSee(refs.Monsters.Wolf().String(), nil)
 	s.Nil(seen.Seen.Equipment)
+}
+
+// TestFirstContactPayloadCarriesNoConditions: a visible arrival's first-contact
+// report delivers what was seen, and conditions are not among it — they are
+// testimony for rules (rpg-project#520, R16), never delivered.
+func (s *MonsterWeaponObservationSuite) TestFirstContactPayloadCarriesNoConditions() {
+	out, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
+		Session: "sess", ID: "boss", Ref: refs.Monsters.GoblinBoss().String(),
+		Position: hexCell(4, 0),
+	})
+	s.Require().NoError(err)
+	reports := 0
+	for watcher, discovery := range out.Discovered {
+		for _, report := range discovery.FirstContact {
+			var payload map[string]json.RawMessage
+			s.Require().NoError(json.Unmarshal(report.Payload, &payload))
+			s.NotContains(payload, "conditions", "%s's first contact with %s", watcher, report.Subject)
+			reports++
+		}
+	}
+	s.Positive(reports, "precondition: the arrival was first contact for somebody")
 }
