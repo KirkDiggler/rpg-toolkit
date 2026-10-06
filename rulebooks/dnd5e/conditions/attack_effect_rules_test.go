@@ -288,19 +288,21 @@ func (s *attackEffectRulesSuite) TestRowsListTheNewAnswers() {
 		Frame: rogueFrame(false),
 	})
 	s.Require().NoError(err)
-	s.Require().Len(out.Effects, 3)
 
-	s.Equal(refs.Conditions.Prone().String(), out.Effects[0].ID)
-	s.Equal(contributions.StateApplies, out.Effects[0].State)
-	s.Equal("Disadvantage on the attack roll", out.Effects[0].Benefit)
+	prone, found := effectByID(out.Effects, refs.Conditions.Prone().String())
+	s.Require().True(found, "an applying row is listed")
+	s.Equal(contributions.StateApplies, prone.State)
+	s.Equal("Disadvantage on the attack roll", prone.Benefit)
 
-	s.Equal(refs.Conditions.FightingStyleArchery().String(), out.Effects[1].ID)
-	s.Equal(contributions.StateDoesNotApply, out.Effects[1].State)
-	s.Equal("Archery adds only to attacks with ranged weapons", out.Effects[1].Reason)
-	s.Empty(out.Effects[1].Benefit)
+	archery, found := effectByID(out.Effects, refs.Conditions.FightingStyleArchery().String())
+	s.Require().True(found, "a row that does not apply stays listed, not dropped")
+	s.Equal(contributions.StateDoesNotApply, archery.State)
+	s.Equal("Archery adds only to attacks with ranged weapons", archery.Reason)
+	s.Empty(archery.Benefit)
 
-	s.Equal(refs.Conditions.Sanctuary().String()+"@cleric", out.Effects[2].ID)
-	s.Equal(contributions.StateUnavailable, out.Effects[2].State)
+	ward, found := effectByID(out.Effects, refs.Conditions.Sanctuary().String()+"@cleric")
+	s.Require().True(found, "a rule that cannot yet answer stays listed, not dropped")
+	s.Equal(contributions.StateUnavailable, ward.State)
 }
 
 func (s *attackEffectRulesSuite) sanctuary() *SanctuaryCondition {

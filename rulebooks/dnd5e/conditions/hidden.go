@@ -154,16 +154,18 @@ func (h *HiddenCondition) loadJSON(data json.RawMessage) error {
 	return nil
 }
 
-// onAttackChain handles attack events in both directions:
-//   - When the hidden character is the attacker, grants advantage on that
-//     attack, then removes Hidden (PHB p.192: attacking ends Hidden). The
-//     removal happens after the modifier is queued on the chain, so this
-//     attack still gets its advantage — Remove only stops FUTURE events from
-//     reaching this condition (see events.simpleEventBus.Publish, which
-//     snapshots subscribers before invoking handlers, so unsubscribing here
-//     is safe mid-dispatch).
-//   - When the hidden character is the target, imposes disadvantage on the
-//     attacker. This does not end Hidden (no "seen" break trigger this wave).
+// onAttackChain handles attack events in both directions, each through the
+// rule information asks:
+//   - When the hidden character is the attacker, its attack rule answers and
+//     its mode — advantage — is applied; then Hidden is removed (PHB p.192:
+//     attacking ends Hidden). The removal happens after the modifier is
+//     queued on the chain, so this attack still gets its advantage — Remove
+//     only stops FUTURE events from reaching this condition (see
+//     events.simpleEventBus.Publish, which snapshots subscribers before
+//     invoking handlers, so unsubscribing here is safe mid-dispatch).
+//   - When the hidden character is the target, its by-reference held rule
+//     answers through applyHeldAttack, imposing disadvantage on the attacker.
+//     This does not end Hidden: nothing yet models being seen.
 func (h *HiddenCondition) onAttackChain(
 	ctx context.Context,
 	event dnd5eEvents.AttackChainEvent,

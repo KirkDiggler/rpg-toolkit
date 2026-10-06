@@ -28,9 +28,9 @@ func (s *targetCensusSuite) TestEveryConditionLoaderIsClassifiedForTargetHeld() 
 
 	for ref, entry := range targetCensus {
 		switch entry.class {
-		case actionAnswers, actionNotYetAnswering:
+		case censusAnswers, censusNotYetAnswering:
 			s.Equal(contributions.ContributesNow, entry.participation, ref)
-		case actionNotBearing:
+		case censusNotBearing:
 			s.Empty(entry.participation, ref)
 		default:
 			s.Failf("unknown census class", "%s: %q", ref, entry.class)
@@ -41,7 +41,7 @@ func (s *targetCensusSuite) TestEveryConditionLoaderIsClassifiedForTargetHeld() 
 func (s *targetCensusSuite) TestTargetAnsweringRefsHaveHeldRules() {
 	var answering []string
 	for ref, entry := range targetCensus {
-		if entry.class == actionAnswers {
+		if entry.class == censusAnswers {
 			answering = append(answering, ref)
 		}
 	}

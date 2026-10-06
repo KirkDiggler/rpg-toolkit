@@ -124,9 +124,9 @@ func newRecklessHeldRule(holder string, held contributions.HeldCondition) contri
 	}}
 }
 
-// newDodgingHeldRule: disadvantage on attacks against the dodging target. Like
-// the shipped handler it reads no sight; the 5e text's "an attacker you can
-// see" is flagged for a ruling, not built.
+// newDodgingHeldRule: disadvantage on attacks against the dodging target. It
+// reads no sight; the 5e text's "an attacker you can see" is flagged for a
+// ruling, not built.
 func newDodgingHeldRule(holder string, held contributions.HeldCondition) contributions.ActionAssessor {
 	return heldRule{name: "Dodging", holder: holder, held: held, decide: func(contributions.Frame, string) *contributions.AssessActionOutput {
 		return heldApplies("The target is dodging", disadvantageBenefit, contributions.AttackDisadvantage)
@@ -216,7 +216,7 @@ func AssessTargetHeldEffects(in *AssessTargetHeldEffectsInput) (*AssessTargetHel
 		if !classified {
 			return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "held condition %s has no target census entry", condition.Ref)
 		}
-		if entry.class == actionNotBearing {
+		if entry.class == censusNotBearing {
 			continue
 		}
 		ref, err := core.ParseString(condition.Ref)
@@ -239,10 +239,10 @@ func AssessTargetHeldEffects(in *AssessTargetHeldEffectsInput) (*AssessTargetHel
 		ids[effect.ID] = struct{}{}
 
 		switch entry.class {
-		case actionNotYetAnswering:
+		case censusNotYetAnswering:
 			effect.State = contributions.StateUnavailable
 			effect.Reason = unavailableReason
-		case actionAnswers:
+		case censusAnswers:
 			answer, err := assessHeld(target, condition, in.Frame, entry)
 			if err != nil {
 				return nil, err
@@ -269,7 +269,7 @@ func heldEffectID(held contributions.HeldCondition) string {
 
 // assessHeld asks one answering held condition's rule and validates its answer.
 func assessHeld(
-	holder string, held contributions.HeldCondition, frame contributions.Frame, entry actionCensusEntry,
+	holder string, held contributions.HeldCondition, frame contributions.Frame, entry censusEntry,
 ) (contributions.Answer, error) {
 	rule, ok := targetHeldRules[held.Ref]
 	if !ok {
