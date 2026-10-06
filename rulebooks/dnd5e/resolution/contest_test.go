@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
@@ -155,17 +154,7 @@ func (s *ContestTestSuite) contestOutcome(out *Output) ContestOutcome {
 
 // conditionRefs reads the refs of the conditions a persisted sheet carries.
 func (s *ContestTestSuite) conditionRefs(data *character.Data) []string {
-	held := withoutFreeReactions(s.T(), data.ID, data.Conditions)
-	out := make([]string, 0, len(held))
-	for _, raw := range held {
-		var peek struct {
-			Ref core.Ref `json:"ref"`
-		}
-		s.Require().NoError(json.Unmarshal(raw, &peek))
-		out = append(out, peek.Ref.String())
-	}
-
-	return out
+	return storedRefs(s.T(), data.Conditions)
 }
 
 // THE HEADLINE. Nobody wired anything: the wolf's stat block says its bite can
@@ -185,7 +174,7 @@ func (s *ContestTestSuite) TestAFailedSaveKnocksTheHeroProne() {
 
 	s.Require().Len(out.DirtyCharacters, 1, "the sheet changed, so it comes back to be saved")
 	s.Require().Equal(heroID, out.DirtyCharacters[0].ID)
-	s.Require().Equal([]string{refs.Conditions.Prone().String()}, s.conditionRefs(out.DirtyCharacters[0]))
+	s.Require().ElementsMatch([]string{refs.Conditions.Prone().String(), opportunityAttack}, s.conditionRefs(out.DirtyCharacters[0]))
 }
 
 // The control that makes the headline mean something: same wolf, same gate,

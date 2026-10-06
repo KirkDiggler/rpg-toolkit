@@ -18,6 +18,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -146,10 +147,10 @@ func (s *DirtyTestSuite) TestAConditionThatChangesItselfComesBackToBeStored() {
 			"a condition asked for it")
 	s.Require().Equal(heroID, out.DirtyCharacters[0].ID)
 
-	held := withoutFreeReactions(s.T(), heroID, out.DirtyCharacters[0].Conditions)
-	s.Require().Len(held, 1)
+	sheet := out.DirtyCharacters[0].Conditions
+	s.Require().ElementsMatch([]string{refs.Conditions.Raging().String(), opportunityAttack}, storedRefs(s.T(), sheet))
 	var stored map[string]any
-	s.Require().NoError(json.Unmarshal(held[0], &stored))
+	s.Require().NoError(json.Unmarshal(conditionWithRefOrNil(sheet, refs.Conditions.Raging()), &stored))
 	s.Require().Equal(true, stored["did_attack_this_turn"],
 		"and the change is IN the blob that gets stored, not only on the live object")
 }
