@@ -116,7 +116,7 @@ func (s *SingleRoomWallDoorSuite) play(compiled dungeonspec.Compiled, members ..
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: nothingIsEverFound{}, Witness: nobodyPerceivesAnything{},
 		Field:   compiled.Field,
@@ -132,7 +132,7 @@ func (s *SingleRoomWallDoorSuite) reload(enc *encounter.Encounter) *encounter.En
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:      enc.ToData(),
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: nothingIsEverFound{}, Witness: nobodyPerceivesAnything{},
 	})

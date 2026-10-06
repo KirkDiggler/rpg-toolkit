@@ -222,6 +222,9 @@ func (e *Encounter) discoveryDistance(c *concealment, at spatial.Position) float
 		if d == nil {
 			continue
 		}
+		for _, cell := range e.doorFootprintCells(d) {
+			visit(cell)
+		}
 		for _, edge := range d.edges {
 			visit(edge.From)
 			visit(edge.To)

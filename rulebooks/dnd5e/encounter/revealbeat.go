@@ -88,11 +88,10 @@ const BeatConcealmentRevealed = "concealment_revealed"
 // so the concealment being revealed is present in its own patch.
 //
 // THE FIXED STRUCTURAL LAYOUT IS PART OF THE PATCH (rpg-project#169,
-// structural_reveal.go). `structural_walls` and `structural_doors` carry the
-// new-or-changed projected rows by id — a wall whose newly permitted cut
-// changed is re-sent under its SAME id, and an independent door the recipient
-// already had is not duplicated when its parent becomes known. Both keys are
-// absent when nothing changed.
+// structural_reveal.go). `structural_walls` and `structural_doors` introduce
+// permitted identities; `structural_wall_openings_replacements` updates cuts
+// on known walls without resending their fixed fields. An independently known
+// door is not repeated when its parent arrives. Empty collections add no key.
 func (e *Encounter) appendConcealmentRevealedBeat(
 	recipient MemberID, c *concealment, before Atlas, at uint64,
 ) (uint64, error) {

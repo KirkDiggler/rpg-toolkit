@@ -324,36 +324,12 @@ func (f *field) concealmentOf(id ConcealmentID) *concealment {
 	return &f.concealments[i]
 }
 
-// hiddenCellsOf is EVERY CELL A CONCEALMENT HIDES: the cells its author
-// listed, plus the cells any FOOTPRINT door of it stands on.
-//
-// THE SECOND HALF IS WHAT MAKES A FOOTPRINT DOOR HIDEABLE AT ALL. A
-// rectangle in the middle of a room has no crossing to mask, so the only way
-// its absence does not mark itself is for the floor it occupies to be
-// withheld with it — the same answer the never-authored yardstick gives for
-// every other hidden thing. An EDGE door contributes nothing here: its
-// crossing is masked as wall (projection.go), which is what a wall is.
-//
-// A MEMBER PROP CONTRIBUTES NOTHING HERE, deliberately. The floor under a
-// bookcase that is not what it looks like is ordinary floor, and withholding
-// it would be the tell the bookcase exists to avoid; the prop itself is
-// withheld by membership, wherever it stands. Where those cells DO matter is
-// reach — see [Encounter.memberPropCells].
-//
-// Derived per call rather than compiled, because a footprint door's cells are
-// a question about the FIELD's cell list and the doors arrive beside it.
-// Callers that ask repeatedly build the union once (see [Encounter.hiddenFrom]).
+// hiddenCellsOf copies only explicitly authored concealed floor membership.
+// Door and prop support is geometry for reach/discovery, not permission to
+// conceal the floor under or behind those objects. The copy lets reveal payloads
+// sort their cells without mutating the authored definition.
 func (e *Encounter) hiddenCellsOf(c *concealment) []spatial.Position {
-	out := append([]spatial.Position(nil), c.cells...)
-	for _, id := range c.doors {
-		d, ok := e.doorsByID[id]
-		if !ok || d.placement == nil {
-			continue
-		}
-		out = append(out, e.field.placedCells(*d.placement)...)
-	}
-
-	return out
+	return append([]spatial.Position(nil), c.cells...)
 }
 
 // memberPropCells is WHERE THE THINGS A CONCEALMENT HIDES STAND — a legacy

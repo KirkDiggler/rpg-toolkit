@@ -4,9 +4,8 @@
 package encounter
 
 // structural_reveal.go is THE STRUCTURAL HALF OF A REVEAL BEAT (rpg-project#169,
-// P2E): the optional `structural_walls` and `structural_doors` a room_revealed
-// or concealment_revealed payload gains when a recipient's fixed structural
-// layout actually changed.
+// P2E): full introductions and typed opening-list replacements carried by
+// room_revealed or concealment_revealed when a recipient's layout changes.
 //
 // # What it is, and what it deliberately is not
 //
@@ -17,58 +16,81 @@ package encounter
 // with that recipient's knowledge as it stood at the two moments, exactly as the
 // segment delta beside it does.
 //
-// A row is the COMPLETE projected record for its identity, so applying it by id
-// onto the recipient's cached atlas yields the fresh answer. A wall whose cut
-// list changed is emitted again under the SAME id; a door already present and
-// unchanged is not emitted at all, so a parent becoming known does not duplicate
-// an independent door the recipient already had.
+// Newly permitted identities arrive as complete records. An already-known wall
+// whose cut list changed receives only a structural_wall_openings_replacements
+// record. Applying those introductions and replacements atomically yields the
+// fresh projected answer without resending the wall's unchanged layout fields.
+// An unchanged independently known door is not repeated when its parent arrives.
 //
 // NOTHING RIDES HERE THAT IS NOT FIXED LAYOUT: no DoorState, no lock, no placed
 // id, no parent association. Mutable state has its own existing event fields and
-// is not authority to add it to a fixed row. Both keys are omitted entirely when
+// is not authority to add it to a fixed row. Payload keys are omitted entirely when
 // there is nothing new or changed, so a legacy beat's bytes are untouched.
 
-// structuralRevealPayload computes the new-or-changed wall and door rows for one
-// reveal, in the recipient-scoped before/after atlases the beat was built from.
+// structuralRevealPayload computes introductions and known-wall opening
+// replacements from the recipient's before/after projections.
 //
-// Either returned slice is empty when nothing of that kind changed. Callers
+// Each returned slice is empty when nothing of that kind changed. Callers
 // attach a key only for a non-empty slice, which is what keeps an unchanged or
 // legacy beat byte-identical.
-func structuralRevealPayload(before, after Atlas) (walls, doors []map[string]interface{}) {
+func structuralRevealPayload(before, after Atlas) (walls, doors, replacements []map[string]interface{}) {
 	return changedStructuralWalls(before.StructuralWalls, after.StructuralWalls),
-		changedStructuralDoors(before.StructuralDoors, after.StructuralDoors)
+		changedStructuralDoors(before.StructuralDoors, after.StructuralDoors),
+		changedStructuralWallOpenings(before.StructuralWalls, after.StructuralWalls)
 }
 
 // addStructuralReveal attaches the optional structural keys to a reveal payload
 // when — and only when — the recipient's structural layout changed. An empty
 // wall or door delta adds no key at all.
 func addStructuralReveal(payload map[string]interface{}, before, after Atlas) {
-	walls, doors := structuralRevealPayload(before, after)
+	walls, doors, replacements := structuralRevealPayload(before, after)
 	if len(walls) > 0 {
 		payload["structural_walls"] = walls
 	}
 	if len(doors) > 0 {
 		payload["structural_doors"] = doors
 	}
+	if len(replacements) > 0 {
+		payload["structural_wall_openings_replacements"] = replacements
+	}
 }
 
-// changedStructuralWalls is every wall in after that is NEW or DIFFERENT by id
-// from before, each as its complete projected row. A wall the recipient already
-// had, unchanged, is not news; a wall whose opening list grew a newly permitted
-// cut is emitted whole under the same id.
+// changedStructuralWalls introduces newly permitted walls as complete records.
+// Layout definitions are fixed during a run; a known wall's only projected
+// component change is its permitted opening list, emitted separately below.
 func changedStructuralWalls(before, after []AtlasStructuralWall) []map[string]interface{} {
+	had := make(map[PropID]bool, len(before))
+	for _, w := range before {
+		had[w.ID] = true
+	}
+	out := make([]map[string]interface{}, 0)
+	for _, w := range after {
+		if !had[w.ID] {
+			out = append(out, structuralWallRow(w))
+		}
+	}
+	return out
+}
+
+// changedStructuralWallOpenings replaces a known wall's permitted cuts without
+// revealing or repeating its fixed fields. A present row with an empty list is
+// a clear, not a no-op; absent rows leave the component unchanged.
+func changedStructuralWallOpenings(before, after []AtlasStructuralWall) []map[string]interface{} {
 	had := make(map[PropID]AtlasStructuralWall, len(before))
 	for _, w := range before {
 		had[w.ID] = w
 	}
 	out := make([]map[string]interface{}, 0)
 	for _, w := range after {
-		if prior, known := had[w.ID]; known && sameStructuralWall(prior, w) {
+		prior, known := had[w.ID]
+		if !known || sameStructuralOpenings(prior.Openings, w.Openings) {
 			continue
 		}
-		out = append(out, structuralWallRow(w))
+		out = append(out, map[string]interface{}{
+			"wall_id":  w.ID,
+			"openings": structuralOpeningRows(w.Openings),
+		})
 	}
-
 	return out
 }
 
@@ -90,23 +112,16 @@ func changedStructuralDoors(before, after []AtlasStructuralDoor) []map[string]in
 	return out
 }
 
-// sameStructuralWall reports whether two projected walls are the same fixed
-// record. Openings are compared by value in authored order, which is part of the
-// row a client applies.
-func sameStructuralWall(a, b AtlasStructuralWall) bool {
-	if a.ID != b.ID || a.Ref != b.Ref || a.From != b.From || a.To != b.To ||
-		a.Height != b.Height || a.Thickness != b.Thickness || a.Elevation != b.Elevation {
+// sameStructuralOpenings compares complete permitted lists in snapshot order.
+func sameStructuralOpenings(a, b []AtlasStructuralOpening) bool {
+	if len(a) != len(b) {
 		return false
 	}
-	if len(a.Openings) != len(b.Openings) {
-		return false
-	}
-	for i := range a.Openings {
-		if a.Openings[i] != b.Openings[i] {
+	for i := range a {
+		if a[i] != b[i] {
 			return false
 		}
 	}
-
 	return true
 }
 
@@ -115,15 +130,6 @@ func sameStructuralWall(a, b AtlasStructuralWall) bool {
 // permitted cuts — each opening id, position and width ONLY. No door id, no
 // state, no placed/parent association is carried through the opening.
 func structuralWallRow(w AtlasStructuralWall) map[string]interface{} {
-	openings := make([]map[string]interface{}, 0, len(w.Openings))
-	for _, o := range w.Openings {
-		openings = append(openings, map[string]interface{}{
-			"id":       o.ID,
-			"position": o.Position,
-			"width":    o.Width,
-		})
-	}
-
 	return map[string]interface{}{
 		"id":        w.ID,
 		"ref":       w.Ref,
@@ -132,8 +138,20 @@ func structuralWallRow(w AtlasStructuralWall) map[string]interface{} {
 		"height":    w.Height,
 		"thickness": w.Thickness,
 		"elevation": w.Elevation,
-		"openings":  openings,
+		"openings":  structuralOpeningRows(w.Openings),
 	}
+}
+
+// structuralOpeningRows encodes only permitted cut facts. Even an empty list
+// is allocated so a clearing replacement has an explicit array in stored JSON.
+func structuralOpeningRows(openings []AtlasStructuralOpening) []map[string]interface{} {
+	out := make([]map[string]interface{}, 0, len(openings))
+	for _, o := range openings {
+		out = append(out, map[string]interface{}{
+			"id": o.ID, "position": o.Position, "width": o.Width,
+		})
+	}
+	return out
 }
 
 // structuralDoorRow renders one independent door as the wire row: its actual

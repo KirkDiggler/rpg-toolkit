@@ -4,8 +4,8 @@
 package encounter_test
 
 // structural_reveal_test.go is P2E's witness (rpg-project#169): the existing
-// room_revealed and concealment_revealed beats gain optional structural_walls
-// and structural_doors carrying NEW OR CHANGED fixed layout rows by identity.
+// room_revealed and concealment_revealed beats carry full structural
+// introductions and opening-list replacements for already-known walls.
 //
 // The contract the beat exists to keep is the same one the segments keep: a
 // recipient's cached atlas, plus what the beat says, IS what AtlasFor now
@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -144,7 +145,7 @@ func (s *StructuralRevealSuite) open(field encounter.FieldInput, resolver encoun
 	// observer who earned it, and an obstructed peer must not be handed it.
 	sight := &sightList{fallback: 30, reach: map[encounter.MemberID]int{"peer": 1}}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: sight, Equipment: noHandsAreObserved{}, Standing: everyoneStanding{},
+		Sight: sight, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{},
 		Announcer: quietAnnouncer{}, CheckResolver: resolver, Witness: nobodyPerceives{},
 		Field: field,
@@ -164,7 +165,7 @@ func (s *StructuralRevealSuite) open(field encounter.FieldInput, resolver encoun
 func (s *StructuralRevealSuite) reload(enc *encounter.Encounter) *encounter.Encounter {
 	s.T().Helper()
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: enc.ToData(), Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Data: enc.ToData(), Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{},
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 		Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
@@ -293,13 +294,38 @@ func (s *StructuralRevealSuite) TestSearchUpdatesAnExistingWallAndAddsItsNewDoor
 	s.Require().Len(beats, 1, "the secret opens once")
 	body := beats[0]
 
-	// THE SAME WALL ID, UPDATED: its newly permitted cut is delivered whole.
-	s.Equal([]string{"wall-presence"}, wallRowIDs(body))
-	wallRow := body["structural_walls"].([]any)[0].(map[string]any)
+	// A known wall receives only its replacement opening component.
+	s.NotContains(body, "structural_walls", "unchanged layout fields must not be resent")
+	s.Require().Contains(body, "structural_wall_openings_replacements")
+	replacements := body["structural_wall_openings_replacements"].([]any)
+	s.Require().Len(replacements, 1)
+	wallRow := replacements[0].(map[string]any)
+	s.Equal("wall-presence", wallRow["wall_id"])
 	s.Equal("wall-presence-gap", wallRow["openings"].([]any)[0].(map[string]any)["id"])
 	s.Equal([]string{"vault/gate"}, doorRowIDs(body))
 
 	s.assertRevealPatchMatchesFresh(enc, before, body)
+}
+
+func (s *StructuralRevealSuite) TestDoorOnlyRevealDoesNotIntroduceFloor() {
+	field := hiddenDoorRevealField()
+	field.Concealments[0].Cells = nil
+	enc := s.open(field, findsEverything{})
+	before, err := enc.AtlasFor("finder")
+	s.Require().NoError(err)
+	full, err := enc.Atlas()
+	s.Require().NoError(err)
+	s.Equal(full.Cells, before.Cells, "door selection does not remove its footing")
+	_, err = enc.Search(&encounter.SearchInput{Member: "finder", Region: "hall"})
+	s.Require().NoError(err)
+	beats := s.structuralBeats(enc, "finder", encounter.BeatConcealmentRevealed)
+	s.Require().Len(beats, 1)
+	s.Empty(beats[0]["cells"], "door support must not become revealed-floor membership")
+	s.Require().Contains(beats[0], "structural_wall_openings_replacements")
+	after, err := enc.AtlasFor("finder")
+	s.Require().NoError(err)
+	s.Equal(before.Cells, after.Cells)
+	s.assertRevealPatchMatchesFresh(enc, before, beats[0])
 }
 
 func (s *StructuralRevealSuite) TestRevealingAHiddenWallDoesNotDuplicateAnAlreadyKnownDoor() {
@@ -346,6 +372,8 @@ func (s *StructuralRevealSuite) assertRevealPatchMatchesFresh(enc *encounter.Enc
 func applyStructuralRows(t *testing.T, before encounter.Atlas, body map[string]any) encounter.Atlas {
 	t.Helper()
 	out := before
+	out.StructuralWalls = append([]encounter.AtlasStructuralWall(nil), before.StructuralWalls...)
+	out.StructuralDoors = append([]encounter.AtlasStructuralDoor(nil), before.StructuralDoors...)
 	wallIndex := map[encounter.PropID]int{}
 	for i, w := range out.StructuralWalls {
 		wallIndex[w.ID] = i
@@ -359,6 +387,21 @@ func applyStructuralRows(t *testing.T, before encounter.Atlas, body map[string]a
 			}
 			wallIndex[w.ID] = len(out.StructuralWalls)
 			out.StructuralWalls = append(out.StructuralWalls, w)
+		}
+	}
+	if raw, ok := body["structural_wall_openings_replacements"].([]any); ok {
+		for _, row := range raw {
+			m := row.(map[string]any)
+			id := encounter.PropID(m["wall_id"].(string))
+			i, known := wallIndex[id]
+			require.True(t, known, "a replacement requires a known wall")
+			out.StructuralWalls[i].Openings = nil
+			for _, opening := range m["openings"].([]any) {
+				o := opening.(map[string]any)
+				out.StructuralWalls[i].Openings = append(out.StructuralWalls[i].Openings, encounter.AtlasStructuralOpening{
+					ID: o["id"].(string), Position: o["position"].(float64), Width: o["width"].(float64),
+				})
+			}
 		}
 	}
 	doorIndex := map[encounter.DoorID]int{}
@@ -449,11 +492,9 @@ func (s *StructuralRevealSuite) TestStructuralRowsCarryNoStateOrPrivateAssociati
 	s.Require().Len(beats, 1)
 	body := beats[0]
 
-	wallRow := body["structural_walls"].([]any)[0].(map[string]any)
-	s.Equal(map[string]bool{
-		"id": true, "ref": true, "from": true, "to": true,
-		"height": true, "thickness": true, "elevation": true, "openings": true,
-	}, keySet(wallRow))
+	s.Require().Contains(body, "structural_wall_openings_replacements")
+	wallRow := body["structural_wall_openings_replacements"].([]any)[0].(map[string]any)
+	s.Equal(map[string]bool{"wall_id": true, "openings": true}, keySet(wallRow))
 	openingRow := wallRow["openings"].([]any)[0].(map[string]any)
 	s.Equal(map[string]bool{"id": true, "position": true, "width": true}, keySet(openingRow))
 
@@ -489,6 +530,7 @@ func (s *StructuralRevealSuite) TestALegacyRevealAddsNoStructuralKeys() {
 	s.Require().Len(beats, 1)
 	s.NotContains(beats[0], "structural_walls", "a field with no structural layout writes no key")
 	s.NotContains(beats[0], "structural_doors")
+	s.NotContains(beats[0], "structural_wall_openings_replacements")
 }
 
 func (s *StructuralRevealSuite) TestAnEarlierPayloadNeverAcquiresLaterSecretIDs() {

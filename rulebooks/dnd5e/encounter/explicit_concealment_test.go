@@ -23,7 +23,7 @@ func TestExplicitConcealmentSuite(t *testing.T) {
 
 func (s *ExplicitConcealmentSuite) setup(field encounter.FieldInput, at spatial.Position) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{},
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
@@ -37,13 +37,51 @@ func (s *ExplicitConcealmentSuite) setup(field encounter.FieldInput, at spatial.
 
 func (s *ExplicitConcealmentSuite) reload(enc *encounter.Encounter) *encounter.Encounter {
 	out, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: enc.ToData(), Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Data: enc.ToData(), Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{},
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 	})
 	s.Require().NoError(err)
 	return out
+}
+
+func (s *ExplicitConcealmentSuite) TestDoorSupportIsNotConcealedFloorOrAnOccupancyReveal() {
+	field := footprintDoorField(encounter.DoorIsOpen())
+	field.Concealments = []encounter.ConcealmentInput{{
+		ID: "door-secret", Checks: vaultCheck(), Doors: []encounter.DoorID{theLeaf},
+	}}
+	enc := s.searchSetup(field, cellAt(2, 1))
+	for _, current := range []*encounter.Encounter{enc, s.reload(enc)} {
+		full, err := current.Atlas()
+		s.Require().NoError(err)
+		view, err := current.AtlasFor("walker")
+		s.Require().NoError(err)
+		s.Equal(full.Cells, view.Cells, "there are no explicitly concealed cells")
+		_, err = current.OpenDoor(&encounter.OpenDoorInput{Door: theLeaf, Actor: "walker"})
+		s.Require().ErrorIs(err, encounter.ErrNoDoor, "standing on support alone must not discover the secret")
+	}
+	_, err := enc.Search(&encounter.SearchInput{Member: "walker", Region: "hall"})
+	s.Require().NoError(err, "a floor-less secret remains reachable by its door geometry")
+	_, err = enc.CloseDoor(&encounter.CloseDoorInput{Door: theLeaf, Actor: "walker"})
+	s.Require().NoError(err, "discovery still finds the selected door")
+}
+
+func (s *ExplicitConcealmentSuite) TestDoorOnlyConcealmentPreservesAdjacentFloorAndAnonymousRefusal() {
+	field := footprintDoorField(encounter.DoorIsClosed())
+	shape := thinWall(0.25, 8, 0, spatial.Point{X: 7.5, Y: 0})
+	field.Doors[0].Placement = &shape
+	field.Concealments = []encounter.ConcealmentInput{{
+		ID: "door-secret", Checks: vaultCheck(), Doors: []encounter.DoorID{theLeaf},
+	}}
+	enc := s.setup(field, cellAt(3, 0))
+	_, err := enc.Step(&encounter.StepInput{Member: "walker", To: cellAt(2, 0)})
+	s.Require().NoError(err, "floor beside the actual rectangle must not become a full-hex mask")
+	_, err = enc.Step(&encounter.StepInput{Member: "walker", To: cellAt(1, 0)})
+	s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+	s.Contains(err.Error(), "cannot cross movement-blocking boundary")
+	s.NotContains(err.Error(), string(theLeaf), "a physical refusal must not name an unfound door")
+	s.NotContains(err.Error(), "shut")
 }
 
 func (s *ExplicitConcealmentSuite) TestConcealedCellDoesNotSelectUnlistedWallOrProp() {
@@ -107,7 +145,7 @@ func (s *ExplicitConcealmentSuite) TestConcealedCellDoesNotSelectUnlistedWallOrP
 // path.
 func (s *ExplicitConcealmentSuite) searchSetup(field encounter.FieldInput, at spatial.Position) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{},
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsEverything{}, Witness: nobodyPerceives{},

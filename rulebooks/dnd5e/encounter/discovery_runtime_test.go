@@ -11,6 +11,30 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
+func (s *AutomaticDiscoverySuite) TestFootprintDoorSupportStillTriggersDiscoveryWithoutHiddenFloor() {
+	r := &discoveryRoller{success: true}
+	in := discoveryFixture(r)
+	in.Field.Props = nil
+	in.Field.Concealments[0].Props = nil
+	in.Field.Concealments[0].Doors = []encounter.DoorID{"secret-door"}
+	placement := coveredBox(1, centreOf(spatial.Position{X: 4}))
+	in.Field.Doors = []encounter.DoorInput{{ID: "secret-door", Placement: &placement, State: encounter.DoorIsClosed()}}
+	enc := s.create(in)
+	before, err := enc.AtlasFor("alice")
+	s.Require().NoError(err)
+	full, err := enc.Atlas()
+	s.Require().NoError(err)
+	s.Equal(full.Cells, before.Cells)
+	s.walk(enc, 1, 2)
+	s.Zero(r.calls)
+	s.step(enc, 3)
+	s.Equal(1, r.calls, "selected door geometry still supplies discovery distance")
+	s.True(s.memory(enc, "alice")["secret"].Learned)
+	after, err := enc.AtlasFor("alice")
+	s.Require().NoError(err)
+	s.Equal(before.Cells, after.Cells, "discovering an object reveals no additional floor")
+}
+
 func (s *AutomaticDiscoverySuite) TestBlockedHexDoesNotGateDiscovery() {
 	r := &discoveryRoller{}
 	in := discoveryFixture(r)
