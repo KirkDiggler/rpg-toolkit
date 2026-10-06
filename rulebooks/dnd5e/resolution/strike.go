@@ -95,7 +95,9 @@ type StrikeOutcome struct {
 	Critical bool
 
 	// Folded is the attack chain after every subscriber had its say — the
-	// record of which effects granted advantage or imposed disadvantage.
+	// record of which effects granted advantage or imposed disadvantage. Its
+	// Frame is always zero here: the execution frame the rules read stays
+	// inside resolution.
 	Folded dnd5eEvents.AttackChainEvent
 
 	// Damage is what was dealt. Zero on a miss.
@@ -288,7 +290,7 @@ func (m *strikeMachine) wardCheckStep(
 					AttackerID: m.in.AttackerID, TargetID: m.in.TargetID,
 					Warded: &WardOutcome{SourceID: ward.SourceID, Ability: abilities.WIS, Save: out.Result},
 				}
-				return Done{Outcome: m.outcome}, nil
+				return Done{Outcome: m.reported()}, nil
 			}
 			return m.wardCheckStep(cast, pending, index+1, next), nil
 		})
@@ -471,6 +473,17 @@ func (m *strikeMachine) effectiveACStep(target combat.Member, longRange bool) Ga
 	}
 }
 
+// reported is the outcome as it leaves this machine: a copy, with the folded
+// attack chain's Frame zeroed. The frame is the authoritative execution frame
+// — every member's conditions and sight — built for the rules this strike
+// asked; nothing above resolution reads it, and handing it out would hand the
+// host every member's hidden state (rpg-toolkit#1958 item 11).
+func (m *strikeMachine) reported() StrikeOutcome {
+	out := m.outcome
+	out.Folded.Frame = contributions.Frame{}
+	return out
+}
+
 // afterAttackChain rolls the die the fold decided the shape of, and decides
 // whether the blow lands.
 //
@@ -488,7 +501,7 @@ func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents
 	m.outcome.TargetAC = folded.TargetAC
 	m.outcome.Folded = folded
 	if folded.IsCancelled() {
-		return Done{Outcome: m.outcome}, nil
+		return Done{Outcome: m.reported()}, nil
 	}
 
 	if len(folded.BeforeRollOffers) > 0 {
@@ -647,7 +660,7 @@ func (m *strikeMachine) afterOffers(
 			// A miss ends the strike here: no damage, and no save. The rider the
 			// action declares is gated on the blow landing, so a bite that misses
 			// rolls no save (rpg-toolkit#962's residual).
-			return Done{Outcome: m.outcome}, nil
+			return Done{Outcome: m.reported()}, nil
 		}
 
 		return m.rollDamage(nextCtx, m.in.Roller)
@@ -988,11 +1001,11 @@ func (m *strikeMachine) afterNotify(_ context.Context) (Step, error) {
 func (m *strikeMachine) nextCondition(index int) (Step, error) {
 	if index >= len(m.prepared) {
 		if !m.outcome.Hit {
-			return Done{Outcome: m.outcome}, nil
+			return Done{Outcome: m.reported()}, nil
 		}
 		return collectPostHitOffers(m.outcome.AttackerID, m.outcome.TargetID, func(_ context.Context, offers []dnd5eEvents.PostHitOffer) (Step, error) {
 			if len(offers) == 0 {
-				return Done{Outcome: m.outcome}, nil
+				return Done{Outcome: m.reported()}, nil
 			}
 			return m.posePostHit(offers[0])
 		}), nil

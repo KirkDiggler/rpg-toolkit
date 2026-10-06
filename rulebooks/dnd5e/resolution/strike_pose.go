@@ -403,5 +403,6 @@ func (m *strikeMachine) posePostHit(offer dnd5eEvents.PostHitOffer) (Step, error
 	if err != nil {
 		return nil, fmt.Errorf("%w: freeze post-hit reaction: %v", ErrBadFrozen, err)
 	}
-	return Pose{SettledStrike: &m.outcome, Ask: Ask{Audience: offer.ReactorID, Choices: choices, Offer: dnd5eEvents.Offer{Audience: offer.ReactorID, Ref: &offer.Ref, Name: offer.Name}, Options: options}, Frozen: frozen}, nil
+	settled := m.reported()
+	return Pose{SettledStrike: &settled, Ask: Ask{Audience: offer.ReactorID, Choices: choices, Offer: dnd5eEvents.Offer{Audience: offer.ReactorID, Ref: &offer.Ref, Name: offer.Name}, Options: options}, Frozen: frozen}, nil
 }

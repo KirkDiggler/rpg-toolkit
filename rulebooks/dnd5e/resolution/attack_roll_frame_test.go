@@ -332,6 +332,8 @@ func (s *FrameTestSuite) TestEveryFreezeCarriesOpportunity() {
 		s.Require().NotNil(out.Posed)
 		s.Require().NotNil(out.Posed.SettledStrike, "precondition: the post-hit reaction posed")
 		s.Equal(true, s.frozenOpportunity(out.Posed.Frozen))
+		s.Equal(contributions.Frame{}, out.Posed.SettledStrike.Folded.Frame,
+			"the settled strike a pose reports carries no execution frame")
 	})
 }
 

@@ -266,8 +266,9 @@ func TestDeliveryRangeAndLongRangeDisadvantage(t *testing.T) {
 		out, err := resolveActionDefinition(t, definition, 4, roller)
 		require.NoError(t, err)
 		outcome := out.Outcome.(StrikeOutcome)
-		require.Equal(t, contributions.Known(false), outcome.Folded.Frame.Action.Melee)
 		require.Empty(t, outcome.Folded.DisadvantageSources)
+		require.Equal(t, contributions.Frame{}, outcome.Folded.Frame,
+			"the authoritative frame stays inside resolution; the outcome carries none")
 	})
 
 	t.Run("ranged beyond long range refuses before dice", func(t *testing.T) {
