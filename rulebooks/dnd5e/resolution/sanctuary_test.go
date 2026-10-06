@@ -6,11 +6,13 @@ package resolution
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
+	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
@@ -329,6 +331,8 @@ type rosterCast struct {
 
 func (c rosterCast) Members() []string { return c.members }
 
+func (rosterCast) answersSides() bool { return true }
+
 func (c rosterCast) StanceBetween(a, b string) (contributions.Stance, bool) {
 	stance, ok := c.stances[[2]string{a, b}]
 	return stance, ok
@@ -356,4 +360,41 @@ func TestCastWardGateFailsClosedOnAnUnknownStance(t *testing.T) {
 
 	_, err = castIsHostile(context.Background(), bardID, heroID)
 	require.ErrorIs(t, err, ErrBadWorld, "no cast installed is no answer, not a skipped ward")
+}
+
+// runSanctuaryGate steps a harmful cast's ward gate for heroID, cast by
+// bardID, under ctx — the gate itself, the step the cast path inserts
+// before the target's own machine. Resolve cannot produce an unknown stance
+// today, so the gate is stepped directly.
+func runSanctuaryGate(ctx context.Context) (Step, error) {
+	m := &castMachine{spell: *refs.Spells.Bane(), casterID: bardID, cast: &Participants{order: []string{bardID, heroID}}}
+	gate, ok := m.sanctuaryGate(castTargetMachine{targetID: heroID}, 0).(Gather)
+	if !ok {
+		return nil, errors.New("the sanctuary gate is not a Gather step")
+	}
+	return gate.run(ctx, events.NewEventBus())
+}
+
+// The ward gate fails the cast when the caster→target stance cannot be
+// decided (R13): a cast installed with no run to ask, or no cast at all.
+func TestSanctuaryGateFailsTheCastOnAnUnknownStance(t *testing.T) {
+	cast := &Participants{order: []string{bardID, heroID}}
+
+	next, err := runSanctuaryGate(installTruth(context.Background(), nil, cast, nil))
+	require.ErrorIs(t, err, contributions.ErrRuleCannotAnswer, "no run answered the stance: the cast fails")
+	require.Nil(t, next, "the cast does not go on to its target")
+
+	next, err = runSanctuaryGate(context.Background())
+	require.ErrorIs(t, err, ErrBadWorld, "no cast installed: the cast fails")
+	require.Nil(t, next)
+}
+
+// A cast with no run loaded proves nothing about sides: every pair is an
+// unknown stance, never the known no side.
+func TestAuthoritativeStanceWithNoRunIsUnknown(t *testing.T) {
+	view := &castView{cast: &Participants{order: []string{bardID, heroID}}}
+	require.Equal(t, contributions.Unknown[contributions.Stance](), authoritativeStance(view, bardID, heroID))
+
+	_, err := castStanceIsHostile(view, bardID, heroID)
+	require.ErrorIs(t, err, contributions.ErrRuleCannotAnswer)
 }

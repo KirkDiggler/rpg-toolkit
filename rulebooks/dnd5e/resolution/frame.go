@@ -209,17 +209,29 @@ func informationFrame(in *informationFrameInput) (*informationFrameOutput, error
 	return &informationFrameOutput{Frame: frame}, nil
 }
 
+// sideAnswerer is a cast that can say whether anyone answered its stance
+// questions. [castView] is one: with no run loaded there is no disposition
+// graph, so its silence about a pair proves nothing.
+type sideAnswerer interface {
+	answersSides() bool
+}
+
 // authoritativeStance is the execution answer for the stance from one member
 // toward another: the installed cast's [gamectx.Cast.StanceBetween], with no
 // stance between two members of the cast read as the known no side
 // ([contributions.StanceNone], R5). Membership is proven from the cast's own
 // Members, as StanceBetween's contract requires; a pair naming anyone the cast
-// does not hold is UNKNOWN, never no side. Every execution read of a stance
-// goes through here, so the attack frame and the cast's ward gate cannot
-// disagree about one pair.
+// does not hold is UNKNOWN, never no side. So is every pair when the cast has
+// no graph to ask ([sideAnswerer]), or cannot say whether it has one: silence
+// from nobody is not "no side". Every execution read of a stance goes through
+// here, so the attack frame and the cast's ward gate cannot disagree about one
+// pair.
 func authoritativeStance(cast gamectx.Cast, from, to string) contributions.Fact[contributions.Stance] {
 	if stance, ok := cast.StanceBetween(from, to); ok {
 		return contributions.Known(stance)
+	}
+	if answerer, ok := cast.(sideAnswerer); !ok || !answerer.answersSides() {
+		return contributions.Unknown[contributions.Stance]()
 	}
 	members := cast.Members()
 	if slices.Contains(members, from) && slices.Contains(members, to) {

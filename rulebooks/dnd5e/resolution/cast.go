@@ -159,6 +159,12 @@ func (v *castView) StanceBetween(a, b string) (contributions.Stance, bool) {
 	return contributions.Stance(stance), true
 }
 
+// answersSides reports whether a run is loaded to answer stance questions;
+// without one, StanceBetween's false is no answer at all ([sideAnswerer]).
+func (v *castView) answersSides() bool {
+	return v.run != nil
+}
+
 // SeesWithin carries the encounter's live visibility/reach answer to effects.
 func (v *castView) SeesWithin(observer, subject string, rangeFeet int) (bool, bool) {
 	if v.run == nil {
