@@ -185,7 +185,7 @@ func (m *Manager) resolveStagedCheckPoseable(
 			}
 			return nil, &SaveError{Report: report, Err: fmt.Errorf("saving checker: %w", err)}
 		}
-		scope.written = append(scope.written, "character:"+out.DirtyCharacter.ID)
+		scope.noteCharacterWritten(out.DirtyCharacter.ID)
 		staged.data = out.DirtyCharacter
 		if scope.walker != nil && scope.walker.ID == out.DirtyCharacter.ID {
 			scope.walker = out.DirtyCharacter
