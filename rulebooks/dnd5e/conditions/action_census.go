@@ -103,17 +103,13 @@ var actionCensus = map[string]actionCensusEntry{
 // key sets equal.
 var targetCensus = map[string]actionCensusEntry{
 	// Answer from the frame, through a rule keyed by reference.
-	refs.Conditions.FaerieFire().String():  answersNow,
-	refs.Conditions.GuidingBolt().String(): answersNow,
-	refs.Conditions.Dodging().String():     answersNow,
-	refs.Conditions.Prone().String():       answersNow,
-	refs.Conditions.Sanctuary().String():   answersNow,
-	refs.Conditions.Hidden().String():      answersNow,
-
-	// Bear on an attack against the holder, but cannot yet answer.
-	// Attacks against a reckless holder have advantage; an attack-roll rule
-	// awaiting migration.
-	refs.Conditions.RecklessAttack().String(): notYetAnswering,
+	refs.Conditions.FaerieFire().String():     answersNow,
+	refs.Conditions.GuidingBolt().String():    answersNow,
+	refs.Conditions.Dodging().String():        answersNow,
+	refs.Conditions.Prone().String():          answersNow,
+	refs.Conditions.Sanctuary().String():      answersNow,
+	refs.Conditions.Hidden().String():         answersNow,
+	refs.Conditions.RecklessAttack().String(): answersNow,
 
 	// Do not bear on an attack against the holder.
 	// A target's armour class and resistances are not the attacker's to know

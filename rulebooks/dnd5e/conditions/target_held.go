@@ -31,12 +31,13 @@ type heldRuleFor func(holder string, held contributions.HeldCondition) contribut
 // targetHeldRules is every answering target-census ref's rule, keyed by
 // condition ref. Each handler builds its rule through the same constructor.
 var targetHeldRules = map[string]heldRuleFor{
-	refs.Conditions.FaerieFire().String():  newFaerieFireHeldRule,
-	refs.Conditions.GuidingBolt().String(): newGuidingBoltHeldRule,
-	refs.Conditions.Dodging().String():     newDodgingHeldRule,
-	refs.Conditions.Prone().String():       newProneHeldRule,
-	refs.Conditions.Sanctuary().String():   newSanctuaryHeldRule,
-	refs.Conditions.Hidden().String():      newHiddenHeldRule,
+	refs.Conditions.FaerieFire().String():     newFaerieFireHeldRule,
+	refs.Conditions.GuidingBolt().String():    newGuidingBoltHeldRule,
+	refs.Conditions.Dodging().String():        newDodgingHeldRule,
+	refs.Conditions.Prone().String():          newProneHeldRule,
+	refs.Conditions.Sanctuary().String():      newSanctuaryHeldRule,
+	refs.Conditions.Hidden().String():         newHiddenHeldRule,
+	refs.Conditions.RecklessAttack().String(): newRecklessHeldRule,
 }
 
 // heldRule answers for one condition its holder holds, on an attack against
@@ -112,6 +113,14 @@ func newFaerieFireHeldRule(holder string, held contributions.HeldCondition) cont
 func newGuidingBoltHeldRule(holder string, held contributions.HeldCondition) contributions.ActionAssessor {
 	return heldRule{name: GuidingBoltName, holder: holder, held: held, decide: func(contributions.Frame, string) *contributions.AssessActionOutput {
 		return heldApplies("The target is lit by Guiding Bolt", advantageBenefit, contributions.AttackAdvantage)
+	}}
+}
+
+// newRecklessHeldRule: advantage on every attack against the reckless holder,
+// whoever makes it.
+func newRecklessHeldRule(holder string, held contributions.HeldCondition) contributions.ActionAssessor {
+	return heldRule{name: "Reckless Attack", holder: holder, held: held, decide: func(contributions.Frame, string) *contributions.AssessActionOutput {
+		return heldApplies("The target is attacking recklessly", advantageBenefit, contributions.AttackAdvantage)
 	}}
 }
 
