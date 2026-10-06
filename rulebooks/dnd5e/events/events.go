@@ -348,7 +348,9 @@ type DamageChainEvent struct {
 	// Frame is the action's execution frame, built once by resolution from
 	// authoritative state. A rule asked during the fold reads it and nothing
 	// else; an invalid frame fails the fold rather than switching a rule off.
-	Frame contributions.Frame
+	// Never persisted, like AttackChainEvent.Frame: a Fact does not marshal,
+	// so a serialized frame would come back hollow yet still claim Complete.
+	Frame contributions.Frame `json:"-"`
 }
 
 // DamageChainInput contains the facts used to construct a DamageChainEvent.
