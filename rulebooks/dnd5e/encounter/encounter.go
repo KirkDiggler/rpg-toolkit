@@ -590,10 +590,6 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	if in.Standing == nil {
 		return nil, fmt.Errorf("newencounter: %w", ErrNoStanding)
 	}
-	standingWithParticipation, ok := in.Standing.(StandingWithParticipation)
-	if !ok {
-		return nil, fmt.Errorf("newencounter: Standing does not implement Participation: %w", ErrNoParticipation)
-	}
 
 	// Required for the third time, at the same door and by the same law: the
 	// sight consult runs at every refresh including first light, so an
@@ -613,13 +609,6 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// testimony, not an absence of it.
 	if in.Equipment == nil {
 		return nil, fmt.Errorf("newencounter: %w", ErrNoEquipment)
-	}
-	// And the same value answers conditions, the next fact of a sighting
-	// (rpg-project#520 R16): refused at the door rather than defaulted, as
-	// Participation is on Standing.
-	equipmentWithConditions, ok := in.Equipment.(EquipmentWithConditions)
-	if !ok {
-		return nil, fmt.Errorf("newencounter: Equipment does not implement Conditions: %w", ErrNoConditions)
 	}
 
 	// Required for the same reason again: a fight can form at first light
@@ -822,11 +811,11 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		everMembers:   make(map[MemberID]bool),
 		field:         f,
 		initiative:    in.Initiative,
-		standing:      standingWithParticipation,
-		participation: standingWithParticipation,
+		standing:      in.Standing,
+		participation: in.Standing,
 		sight:         in.Sight,
-		equipment:     equipmentWithConditions,
-		conditions:    equipmentWithConditions,
+		equipment:     in.Equipment,
+		conditions:    in.Equipment,
 		driver:        in.TurnDriver,
 		roller:        in.Roller,
 		striker:       in.Striker,

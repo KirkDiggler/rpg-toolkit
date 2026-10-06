@@ -10,17 +10,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCompileOnlySetupStandsInEveryCapability is what keeps a new capability
-// from needing a host change: every interface-typed field of SetupInput is
-// filled, except Roller, which is optional and refused loudly at the roll.
-func TestCompileOnlySetupStandsInEveryCapability(t *testing.T) {
-	setup := reflect.ValueOf(*CompileOnlySetup(FieldInput{}, nil))
-	for i := 0; i < setup.NumField(); i++ {
-		field := setup.Type().Field(i)
-		if field.Type.Kind() != reflect.Interface || field.Name == "Roller" {
-			continue
+// TestCompileOnlyInputsLeaveNoInterfaceSlotNil checks only that no
+// interface-typed field of either compile-only input is left nil, except
+// Roller, which is optional and refused loudly at the roll. It cannot see
+// whether a stand-in answers what the door actually asks — that invariant is
+// held by the behavioural tests in standins_test.go, which construct and
+// load from these inputs (TestNewEncounterConstructsFromCompileOnlySetup,
+// TestLoadEncounterLoadsFromCompileOnlyLoad), and by the field types, which
+// name the wide capability interfaces.
+func TestCompileOnlyInputsLeaveNoInterfaceSlotNil(t *testing.T) {
+	for name, input := range map[string]reflect.Value{
+		"CompileOnlySetup": reflect.ValueOf(*CompileOnlySetup(FieldInput{}, nil)),
+		"CompileOnlyLoad":  reflect.ValueOf(*CompileOnlyLoad(EncounterData{})),
+	} {
+		for i := 0; i < input.NumField(); i++ {
+			field := input.Type().Field(i)
+			if field.Type.Kind() != reflect.Interface || field.Name == "Roller" {
+				continue
+			}
+			require.False(t, input.Field(i).IsNil(), "%s leaves %s nil", name, field.Name)
 		}
-		require.False(t, setup.Field(i).IsNil(), "CompileOnlySetup leaves %s unanswered", field.Name)
 	}
 }
 
@@ -57,12 +66,16 @@ func TestCompileOnlyStandInAnswers(t *testing.T) {
 		require.Nil(t, got)
 	})
 	t.Run("check resolver refuses", func(t *testing.T) {
-		got, err := refusingCheckResolver{}.ResolveCheck(&ResolveCheckInput{})
+		got, err := RefusingCheckResolver{}.ResolveCheck(&ResolveCheckInput{})
 		require.ErrorIs(t, err, ErrRefusingCheckResolver)
 		require.Nil(t, got)
 	})
+	t.Run("driver refuses", func(t *testing.T) {
+		_, err := RefusingDriver{}.Act(MonsterView{})
+		require.ErrorIs(t, err, ErrRefusingDriver)
+	})
 	t.Run("witness: nobody, as a list", func(t *testing.T) {
-		got, err := nobodyPerceives{}.Perceivers(&PerceiversInput{})
+		got, err := NobodyPerceives{}.Perceivers(&PerceiversInput{})
 		require.NoError(t, err)
 		require.NotNil(t, got)
 		require.Empty(t, got)

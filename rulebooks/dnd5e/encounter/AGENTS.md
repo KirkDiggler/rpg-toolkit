@@ -39,8 +39,8 @@ Every noun below is one this module is the truth for. Nothing else may hold a se
   `dice.ParseNotation` validating a persisted roll trace ([roll_trace.go:194](./roll_trace.go#L194)).
   There is no roller here and no place to add one.
 - **Who is alive, and what "down" means.** Supplied as `Standing`/`Participation`
-  ([standing.go:24](./standing.go#L24), [participation.go:58](./participation.go#L58)); a value that
-  does not also satisfy `StandingWithParticipation` is refused with `ErrNoParticipation`. Never
+  ([standing.go:24](./standing.go#L24), [participation.go:58](./participation.go#L58)); the field is
+  typed `StandingWithParticipation`, so a Standing-only value does not compile. Never
   defaulted to "everyone active" ([rpg-toolkit#1033](https://github.com/KirkDiggler/rpg-toolkit/issues/1033)).
 - **How far anybody sees.** Supplied as `Sight` ([sight.go:111](./sight.go#L111)), refused at
   construction with `ErrNoSight`. A number meaning "everyone sees this far" would be this module
@@ -70,7 +70,7 @@ supplied capability, never as a new import.** Every one of these is required at
 | It asks | Interface | Refused without it |
 |---|---|---|
 | what order a forming fight goes in | `InitiativeRoller` ([trigger.go:25](./trigger.go#L25)) | `ErrNoInitiative` |
-| who is down, who counts as present | `Standing` + `Participation` ([participation.go:66](./participation.go#L66)) | `ErrNoParticipation` |
+| who is down, who counts as present | `StandingWithParticipation` ([participation.go:73](./participation.go#L73)) | `ErrNoStanding` (nil) |
 | how far each member sees | `Sight` ([sight.go:111](./sight.go#L111)) | `ErrNoSight` |
 | what an unplayed member does on its turn | `TurnDriver` ([turndriver.go:49](./turndriver.go#L49)) | `ErrNoTurnDriver` ([ADR-0043](../../../docs/adr/0043-a-monsters-turn-has-a-driver.md)) |
 | how that member's swing resolves | `Striker` ([turndriver.go:473](./turndriver.go#L473)) | `ErrNoStriker` |
@@ -242,9 +242,9 @@ Things that look like they work.
    props — and no doc on that path says so. Prefer `Members()` + `Distance()` when you want members.
 5. **`StoryInput.AfterSeq` is INCLUSIVE.** [field.go:1291](./field.go#L1291) — the name predates the
    behaviour. To resume after entry N, pass N+1; passing N replays it.
-6. **`SetupInput.Standing` is typed `Standing` but that type is not sufficient.** The concrete value
-   must also satisfy `Participation` or construction fails with `ErrNoParticipation`
-   ([participation.go:66](./participation.go#L66)). A compiling constructor is not a working one.
+6. **(Retired, rpg-toolkit#1958.)** `SetupInput.Standing`/`Equipment` and their `LoadEncounterInput`
+   twins used to be typed narrower than they had to be; they are now `StandingWithParticipation` and
+   `EquipmentWithConditions`, so a compiling constructor has every required capability.
 7. **A verb's MUTATE phase is not atomic.** R5 promises validate-before-mutate and first-failure-wins;
    it does not promise rollback. `Join`, `Exit` and the clock verbs (`form`, `Dissolve`) can each
    fail partway, leaving a member between clocks. The

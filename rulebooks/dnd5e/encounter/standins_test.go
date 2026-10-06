@@ -4,6 +4,7 @@
 package encounter_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -80,6 +81,63 @@ func (s *standInsSuite) TestNewEncounterConstructsFromCompileOnlySetup() {
 			[]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}))
 		s.Require().NoError(err)
 		s.NotNil(enc)
+	})
+}
+
+// refusingWitness fails every ask — the probe for "LoadEncounter never asks
+// the witness".
+type refusingWitness struct{}
+
+func (refusingWitness) Perceivers(*encounter.PerceiversInput) ([]encounter.MemberID, error) {
+	return nil, errors.New("the witness was asked")
+}
+
+// TestLoadEncounterLoadsFromCompileOnlyLoad is the load-side host's path: a
+// persisted world loaded only to be inspected, with no stand-ins of its own.
+func (s *standInsSuite) TestLoadEncounterLoadsFromCompileOnlyLoad() {
+	withdrawn := []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}
+
+	s.Run("an empty compiled world loads", func() {
+		built, err := encounter.NewEncounter(emptyWorld())
+		s.Require().NoError(err)
+		loaded, err := encounter.LoadEncounter(encounter.CompileOnlyLoad(built.ToData()))
+		s.Require().NoError(err)
+		s.Equal(built.ToData(), loaded.ToData(), "loading changes nothing it re-serializes")
+	})
+
+	s.Run("a world with members loads, and nobody is seen", func() {
+		setup := emptyWorld(
+			encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: cellAt(0, 0)},
+			encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: cellAt(2, 0)},
+		)
+		setup.Standing = everyoneStanding{}
+		built, err := encounter.NewEncounter(setup)
+		s.Require().NoError(err)
+
+		loaded, err := encounter.LoadEncounter(encounter.CompileOnlyLoad(built.ToData()))
+		s.Require().NoError(err, "load asks no participation, so the stand-in's refusal does not fire")
+		out, err := loaded.ObservedContext(&encounter.ViewInput{Member: alice})
+		s.Require().NoError(err)
+		s.Empty(out.Members, "zero sight wrote no sighting")
+	})
+
+	s.Run("a concealed door left open loads, and load never asks the witness", func() {
+		field := concealField()
+		for i := range field.Doors {
+			if field.Doors[i].ID == veilDoor {
+				field.Doors[i].State = encounter.DoorIsOpen()
+			}
+		}
+		built, err := encounter.NewEncounter(encounter.CompileOnlySetup(field, withdrawn))
+		s.Require().NoError(err)
+
+		_, err = encounter.LoadEncounter(encounter.CompileOnlyLoad(built.ToData()))
+		s.Require().NoError(err, "the stock witness answers nobody")
+
+		probe := encounter.CompileOnlyLoad(built.ToData())
+		probe.Witness = refusingWitness{}
+		_, err = encounter.LoadEncounter(probe)
+		s.Require().NoError(err, "a witness that refuses is never reached by load")
 	})
 }
 

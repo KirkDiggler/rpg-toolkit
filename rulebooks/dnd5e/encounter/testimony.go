@@ -86,9 +86,17 @@ type SightTestimony struct {
 	// were not observed, which is not the same as an empty set: seen holding
 	// none. See [ConditionSet].
 	//
-	// STORED, NEVER DELIVERED. It persists with the testimony and rules read
-	// it through [Encounter.ObservedContext]; every payload this module hands
-	// out leaves without it (see [deliveredSightPayload]).
+	// STORED, NEVER DELIVERED TO A CLIENT. It persists with the testimony and
+	// rules read it through [Encounter.ObservedContext]; every sight payload
+	// this module hands a host to relay leaves without it (see
+	// [deliveredSightPayload]). The stored form still leaves this module by
+	// TWO other exits, both host-side and neither a delivery:
+	//
+	//   - [MonsterView.Holdings], the raw testimony a [Driver] is handed, so a
+	//     mind can read what its creature saw. A host that adapts the view
+	//     for its own driver must not relay those payloads to a client.
+	//   - [Encounter.ToData], the persisted blob, which a host stores and
+	//     hands back to [LoadEncounter], never to a client.
 	Conditions *ConditionSet
 }
 
@@ -169,7 +177,7 @@ func EncodeSightTestimony(testimony SightTestimony) ([]byte, error) {
 //
 // # Stored and delivered are two encodings on purpose
 //
-// The stored form (intel, [EncounterData], the minds' [TurnView.Holdings] and
+// The stored form (intel, [EncounterData], the minds' [MonsterView.Holdings] and
 // [Encounter.ObservedContext]) carries every condition a sighting saw, because
 // rules read them there (rpg-project#520 R16). The delivered form is what a
 // host relays to a client as an opaque payload, and a client learns what it

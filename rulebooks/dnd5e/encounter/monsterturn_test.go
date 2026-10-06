@@ -1982,7 +1982,7 @@ var commandedRef = core.Ref{Module: "dnd5e", Type: "conditions", ID: "commanded"
 // alice has declined cells it could afford, and an Away route has room to
 // spend the whole budget running.
 func routedScene(
-	t *testing.T, mover encounter.Mover, standing encounter.Standing, driver encounter.TurnDriver,
+	t *testing.T, mover encounter.Mover, standing encounter.StandingWithParticipation, driver encounter.TurnDriver,
 ) *encounter.Encounter {
 	t.Helper()
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{

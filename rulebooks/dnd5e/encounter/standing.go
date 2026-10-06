@@ -12,15 +12,12 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 )
 
-// Standing is the legacy binary source shape retained at constructor and
-// resolution boundaries. NewEncounter and LoadEncounter require its concrete
-// value to also implement [Participation], returning [ErrNoParticipation]
-// otherwise. Play consults only that richer assessment; it never falls back to
-// Standing or treats nil as everyone active.
-//
-// Keeping this interface lets existing Standing: fields remain source-compatible
-// while making participation an explicit required capability. Implementations
-// should answer both methods from the same rulebook truth.
+// Standing is the legacy binary half of [StandingWithParticipation], the type
+// NewEncounter and LoadEncounter take, so a value answering only this does not
+// compile there (rpg-toolkit#1958). Play consults only the richer
+// [Participation] assessment; it never falls back to Standing or treats nil as
+// everyone active. Implementations should answer both methods from the same
+// rulebook truth.
 type Standing interface {
 	// Standing reports which of the given members are down. Returning none is
 	// the ordinary answer.

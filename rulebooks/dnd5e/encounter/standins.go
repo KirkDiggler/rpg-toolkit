@@ -46,6 +46,8 @@ import "fmt"
 //     rolled through an explicit Search, which nothing compiling a world does.
 //   - TurnDriver, Striker, Mover, Announcer: [PassDriver], [RefusingStriker],
 //     [RefusingMover], [RefusingAnnouncer].
+//
+// [CompileOnlyLoad] is the same for [LoadEncounter].
 func CompileOnlySetup(field FieldInput, endings []EndingInput) *SetupInput {
 	return &SetupInput{
 		Field:         field,
@@ -58,8 +60,56 @@ func CompileOnlySetup(field FieldInput, endings []EndingInput) *SetupInput {
 		Striker:       RefusingStriker{},
 		Mover:         RefusingMover{},
 		Announcer:     RefusingAnnouncer{},
-		CheckResolver: refusingCheckResolver{},
-		Witness:       nobodyPerceives{},
+		CheckResolver: RefusingCheckResolver{},
+		Witness:       NobodyPerceives{},
+	}
+}
+
+// CompileOnlyLoad returns a LoadEncounterInput for a persisted world being
+// loaded only to be inspected or re-serialized — never played: the given data,
+// and every capability [LoadEncounter] requires stood in by this module, the
+// same stand-ins [CompileOnlySetup] installs (rpg-toolkit#1958).
+//
+// A host that loads an authored world to prove it loads, preview its atlas or
+// re-serialize it — session's StartSession validation load and AtlasOf — has
+// no turn to drive and no check to roll. This is the one place that knows
+// which capabilities a load requires, so a capability added to LoadEncounter
+// is stood in here and the host's call does not change.
+//
+// The returned value is the caller's to finish: Roller is left nil (a load
+// that rolls is not compile-only), and any capability the host CAN answer —
+// real Initiative, Standing, Sight or Equipment from the sheets behind a
+// world's members — it overwrites on the returned value. Left as returned:
+//
+//   - Standing: nobody down. Participation REFUSES a non-empty ask with
+//     ErrRefusingParticipation, as at Setup; [LoadEncounter] itself never
+//     asks it, so a world WITH members loads, and the refusal fires only if
+//     the host goes on to play it.
+//   - Initiative: REFUSES with ErrRefusingInitiative. Load forms no fight.
+//   - Sight: zero cells for every member; Equipment and Conditions:
+//     [UnobservedEquipment].
+//   - TurnDriver: [RefusingDriver], not [PassDriver] — a loaded world may
+//     hold members, and a silent pass would hide a driven turn.
+//   - Striker, Mover, Announcer: [RefusingStriker], [RefusingMover],
+//     [RefusingAnnouncer].
+//   - CheckResolver: [RefusingCheckResolver]; Witness: [NobodyPerceives].
+//     Both are installed whether or not the data declares a concealment;
+//     LoadEncounter holds them only when it does. LoadEncounter never asks
+//     the witness (see [NobodyPerceives]); a later sight refresh would, and
+//     with zero sight nobody is the true answer.
+func CompileOnlyLoad(data EncounterData) *LoadEncounterInput {
+	return &LoadEncounterInput{
+		Data:          data,
+		Initiative:    refusingInitiative{},
+		Standing:      nobodyDown{},
+		Sight:         zeroSight{},
+		Equipment:     UnobservedEquipment{},
+		TurnDriver:    RefusingDriver{},
+		Striker:       RefusingStriker{},
+		Mover:         RefusingMover{},
+		Announcer:     RefusingAnnouncer{},
+		CheckResolver: RefusingCheckResolver{},
+		Witness:       NobodyPerceives{},
 	}
 }
 
@@ -74,8 +124,8 @@ var (
 	_ Striker                   = RefusingStriker{}
 	_ Mover                     = RefusingMover{}
 	_ Announcer                 = RefusingAnnouncer{}
-	_ CheckResolver             = refusingCheckResolver{}
-	_ Witness                   = nobodyPerceives{}
+	_ CheckResolver             = RefusingCheckResolver{}
+	_ Witness                   = NobodyPerceives{}
 )
 
 // UnobservedEquipment is an Equipment and Conditions for a world being
@@ -141,16 +191,46 @@ func (refusingInitiative) RollInitiative([]MemberID) ([]MemberID, error) {
 	return nil, fmt.Errorf("roll initiative: %w", ErrRefusingInitiative)
 }
 
-// refusingCheckResolver fails every check with ErrRefusingCheckResolver.
-type refusingCheckResolver struct{}
+// RefusingCheckResolver is a CheckResolver for a world compiled or loaded
+// only to be inspected — [RefusingStriker]'s pattern one capability over. A
+// find check is rolled only through an explicit Search, which nothing that
+// compiles, previews or re-serializes a world does, so reaching it is a HOST
+// BUG reported by name rather than answered with an invented roll.
+// [CompileOnlySetup] and [CompileOnlyLoad] install it.
+type RefusingCheckResolver struct{}
 
-func (refusingCheckResolver) ResolveCheck(*ResolveCheckInput) (*ResolveCheckOutput, error) {
+// ResolveCheck always fails with ErrRefusingCheckResolver.
+func (RefusingCheckResolver) ResolveCheck(*ResolveCheckInput) (*ResolveCheckOutput, error) {
 	return nil, fmt.Errorf("resolve check: %w", ErrRefusingCheckResolver)
 }
 
-// nobodyPerceives answers that nobody perceives the door, as an empty list.
-type nobodyPerceives struct{}
+// NobodyPerceives is a Witness that answers nobody perceives the door, as an
+// empty list. [CompileOnlySetup] and [CompileOnlyLoad] install it.
+//
+// IT ANSWERS RATHER THAN REFUSES, unlike the other stand-ins, because the
+// witness is asked by every sight refresh, not by a verb a compile-only host
+// avoids: [NewEncounter]'s first light asks it for an authored concealed door
+// that stands open even with no members (legal content, rpg-api#887). With
+// zero sight nobody perceives anything, so "nobody" is the true answer, not an
+// invented one. [LoadEncounter] itself never asks it — load re-derives
+// presence (sweepOccupancy) but runs no sight refresh — so a refusing witness
+// would only move the failure to the first verb that refreshes sight, on a
+// world whose only fault is a door standing open.
+type NobodyPerceives struct{}
 
-func (nobodyPerceives) Perceivers(*PerceiversInput) ([]MemberID, error) {
+// Perceivers answers an empty list: nobody perceives the door.
+func (NobodyPerceives) Perceivers(*PerceiversInput) ([]MemberID, error) {
 	return []MemberID{}, nil
+}
+
+// RefusingDriver is a [Driver] for a world loaded only to be inspected —
+// [RefusingStriker]'s pattern one capability over. [CompileOnlyLoad] installs
+// it rather than [PassDriver] because a loaded world may hold members: a
+// silent Pass would turn a host that drove a compile-only world into a board
+// of idle monsters, where this names the bug.
+type RefusingDriver struct{}
+
+// Act always fails with ErrRefusingDriver.
+func (RefusingDriver) Act(MonsterView) (Decision, error) {
+	return Decision{}, ErrRefusingDriver
 }
