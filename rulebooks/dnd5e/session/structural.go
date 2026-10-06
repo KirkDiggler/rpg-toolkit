@@ -15,7 +15,8 @@ import (
 //
 // WHAT IT DOES NOT DO is the whole point. The composition has already decided
 // which walls and doors a recipient may know and which cuts survive; this seam
-// copies the bytes and refuses a row that is not a whole record. It never
+// copies complete records and typed replacements, refusing malformed identity
+// sets rather than yielding a partial event. It never
 // re-reads the world, never infers a door's state, never reconstructs a parent
 // link, and never fills a missing identity in.
 
@@ -56,12 +57,13 @@ func projectStructuralDoor(d encounter.AtlasStructuralDoor) AtlasStructuralDoor 
 	}
 }
 
-// structuralRows is the optional structural half of a reveal payload: the two
-// keys P2E adds to room_revealed and concealment_revealed, and nothing else.
-// An absent key decodes as nil, which is the legacy payload's own reading.
+// structuralRows is the shared structural payload on both reveal kinds.
+// Absent collections are legacy no-ops; a present replacement remains present
+// even when its opening list has the empty/default value.
 type structuralRows struct {
-	Walls []AtlasStructuralWall `json:"structural_walls"`
-	Doors []AtlasStructuralDoor `json:"structural_doors"`
+	Walls        []AtlasStructuralWall               `json:"structural_walls"`
+	Doors        []AtlasStructuralDoor               `json:"structural_doors"`
+	Replacements []StructuralWallOpeningsReplacement `json:"structural_wall_openings_replacements"`
 }
 
 // structuralRowsFromPayload decodes the optional structural keys of a reveal
@@ -73,38 +75,46 @@ type structuralRows struct {
 // the caller produces no body, exactly as the existing required-identity
 // guards do. An absent key is not malformed: legacy payloads decode with nil
 // slices and a true verdict.
-func structuralRowsFromPayload(payload []byte) (walls []AtlasStructuralWall, doors []AtlasStructuralDoor, ok bool) {
+func structuralRowsFromPayload(payload []byte) (structuralRows, bool) {
 	var rows structuralRows
-	if err := json.Unmarshal(payload, &rows); err != nil {
-		return nil, nil, false
+	if err := json.Unmarshal(payload, &rows); err != nil || !validStructuralRows(rows) {
+		return structuralRows{}, false
 	}
-	if !validStructuralRows(rows.Walls, rows.Doors) {
-		return nil, nil, false
-	}
-
-	return rows.Walls, rows.Doors, true
+	return rows, true
 }
 
-// validStructuralRows reports whether every declared row names itself. A wall
-// names its wall id and every one of its cuts; a door names its canonical door
-// id. A row that names nothing is not a change a client can apply, so its
-// presence refuses the body rather than being silently dropped.
-func validStructuralRows(walls []AtlasStructuralWall, doors []AtlasStructuralDoor) bool {
-	for _, w := range walls {
-		if w.ID == "" {
-			return false
-		}
-		for _, o := range w.Openings {
-			if o.ID == "" {
+// validStructuralRows checks identities without consulting the live world.
+// Duplicate replacement IDs, repeated opening IDs and full-row/replacement
+// collisions refuse the entire body. A default empty replacement remains valid;
+// deciding whether its baseline wall is present belongs to the receiving cache.
+func validStructuralRows(rows structuralRows) bool {
+	walls := make(map[string]bool)
+	openings := make(map[string]bool)
+	validOpenings := func(list []AtlasStructuralOpening) bool {
+		for _, o := range list {
+			if o.ID == "" || openings[o.ID] {
 				return false
 			}
+			openings[o.ID] = true
 		}
+		return true
 	}
-	for _, d := range doors {
+	for _, w := range rows.Walls {
+		if w.ID == "" || walls[w.ID] || !validOpenings(w.Openings) {
+			return false
+		}
+		walls[w.ID] = true
+	}
+	for _, replacement := range rows.Replacements {
+		if replacement.WallID == "" || walls[replacement.WallID] || !validOpenings(replacement.Openings) {
+			return false
+		}
+		walls[replacement.WallID] = true
+	}
+	for _, d := range rows.Doors {
 		if d.ID == "" {
 			return false
 		}
 	}
-
 	return true
 }

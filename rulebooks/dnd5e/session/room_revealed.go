@@ -26,14 +26,13 @@ type RoomRevealedBody struct {
 	Placed     []AtlasPlacedProp  `json:"placed"`
 	Exits      []AtlasExit        `json:"exits"`
 
-	// StructuralWalls and StructuralDoors are the optional new-or-changed
-	// fixed structural rows this room brought (rpg-project#169, P2E). Each is
-	// the COMPLETE projected record for its identity, so applying it by id
-	// onto a cached atlas yields the fresh answer; both are absent on a legacy
-	// beat and on a beat where the recipient's structural layout did not
-	// change.
+	// StructuralWalls and StructuralDoors introduce complete permitted records.
+	// Historical full changed-wall records retain whole-record upsert semantics.
 	StructuralWalls []AtlasStructuralWall `json:"structural_walls,omitempty"`
 	StructuralDoors []AtlasStructuralDoor `json:"structural_doors,omitempty"`
+	// StructuralWallOpeningsReplacements replaces cuts on known walls in the
+	// same atomic structural update. An empty/default list is a clear.
+	StructuralWallOpeningsReplacements []StructuralWallOpeningsReplacement `json:"structural_wall_openings_replacements,omitempty"`
 }
 
 func (RoomRevealedBody) isEventBody() {}
@@ -56,12 +55,13 @@ func roomRevealedBody(payload []byte) EventBody {
 	// A row missing its identity refuses the whole beat rather than handing a
 	// client a half-patched cache; an absent key is the legacy payload and
 	// leaves both lists empty.
-	walls, doors, ok := structuralRowsFromPayload(payload)
+	rows, ok := structuralRowsFromPayload(payload)
 	if !ok {
 		return nil
 	}
-	p.StructuralWalls = walls
-	p.StructuralDoors = doors
+	p.StructuralWalls = rows.Walls
+	p.StructuralDoors = rows.Doors
+	p.StructuralWallOpeningsReplacements = rows.Replacements
 	for _, prop := range p.Placed {
 		if prop.ID == "" {
 			return nil

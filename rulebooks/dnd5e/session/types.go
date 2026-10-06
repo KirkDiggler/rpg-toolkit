@@ -729,6 +729,18 @@ type AtlasStructuralOpening struct {
 	Width float64 `json:"width"`
 }
 
+// StructuralWallOpeningsReplacement replaces a known wall's complete permitted
+// cut list without repeating its fixed layout. A present record with empty or
+// default Openings clears that component; absence of a record is a no-op. Apply
+// with sibling structural introductions atomically after the snapshot cutoff.
+// A missing local wall requires Knowledge recovery, never a partial wall.
+type StructuralWallOpeningsReplacement struct {
+	// WallID is the known AtlasStructuralWall identity, not a withheld parent.
+	WallID string `json:"wall_id"`
+	// Openings is the complete permitted list in snapshot order and feet.
+	Openings []AtlasStructuralOpening `json:"openings"`
+}
+
 // AtlasStructuralDoor is one independently permitted structural door: its
 // canonical gameplay door id, its opaque appearance reference, its resolved
 // visual opening endpoints in canonical feet, and the assembled dimensions it
@@ -2925,14 +2937,13 @@ type ConcealmentRevealedBody struct {
 	// discarded; everything outside them is untouched.
 	Sealed []spatial.Position `json:"sealed,omitempty"`
 
-	// StructuralWalls and StructuralDoors are the optional new-or-changed
-	// fixed structural rows this secret was withholding (rpg-project#169,
-	// P2E): the complete projected record for each identity whose wall cut
-	// list changed or whose door became permitted. AN ADDITION, applied by id
-	// like the other fixed lists; absent on a legacy beat and on a beat where
-	// nothing structural changed, so no cached entry is duplicated.
+	// StructuralWalls and StructuralDoors introduce complete permitted records.
+	// Historical full changed-wall records retain whole-record upsert semantics.
 	StructuralWalls []AtlasStructuralWall `json:"structural_walls,omitempty"`
 	StructuralDoors []AtlasStructuralDoor `json:"structural_doors,omitempty"`
+	// StructuralWallOpeningsReplacements updates known walls atomically with
+	// the introductions, without rereading world truth or carrying door state.
+	StructuralWallOpeningsReplacements []StructuralWallOpeningsReplacement `json:"structural_wall_openings_replacements,omitempty"`
 }
 
 func (ConcealmentRevealedBody) isEventBody() {}
