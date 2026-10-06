@@ -155,8 +155,9 @@ func (s *ContestTestSuite) contestOutcome(out *Output) ContestOutcome {
 
 // conditionRefs reads the refs of the conditions a persisted sheet carries.
 func (s *ContestTestSuite) conditionRefs(data *character.Data) []string {
-	out := make([]string, 0, len(data.Conditions))
-	for _, raw := range data.Conditions {
+	held := withoutFreeReactions(s.T(), data.ID, data.Conditions)
+	out := make([]string, 0, len(held))
+	for _, raw := range held {
 		var peek struct {
 			Ref core.Ref `json:"ref"`
 		}

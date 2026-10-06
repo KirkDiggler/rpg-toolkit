@@ -21,6 +21,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -373,7 +374,7 @@ func TestGreatWeaponFightingTraceSurvivesTheStrike(t *testing.T) {
 		DieIndex: 0, Before: 1, After: 4,
 		Source: dnd5eEvents.RollSource{Ref: &canonicalGWF, Name: "Great Weapon Fighting"},
 	}
-	wantWeaponRef := definition.Ref
+	wantWeapon := contributions.Known(refs.Weapons.Greatsword().String())
 
 	foldedReroll := &folded.Components[0].Roll.Dice.Rerolls[0]
 	foldedReroll.After = 9
@@ -387,10 +388,8 @@ func TestGreatWeaponFightingTraceSurvivesTheStrike(t *testing.T) {
 
 	require.Equal(t, wantReroll, outcome.DamageComponents[0].Roll.Dice.Rerolls[0],
 		"the outcome's reroll entry is an owned clone of what the fold settled")
-	require.Equal(t, wantWeaponRef, *outcome.Folded.WeaponRef,
-		"the folded attack event's WeaponRef is an owned clone, not the caller's definition ref")
-	require.Equal(t, wantWeaponRef, *folded.WeaponRef,
-		"the folded damage event's WeaponRef is an owned clone, not the caller's weapon ref")
+	require.Equal(t, wantWeapon, folded.Frame.Action.Weapon,
+		"the folded damage frame's weapon is a value read once, not the caller's weapon ref")
 	require.Equal(t, "Great Weapon Fighting", outcome.DamageComponents[0].Roll.Dice.Rerolls[0].Source.Name)
 }
 
@@ -447,7 +446,7 @@ func TestUppercaseDamageNotationRollsAndTraces(t *testing.T) {
 // profile's weapon context names a different ref than the definition — a
 // valid, compilable shape — the roll's provenance is the Definition.Ref and
 // Definition.Name PAIR, not a weapon ref wearing the definition's name. The
-// weapon ref keeps its own job: the damage-chain WeaponRef predicates read.
+// weapon ref keeps its own job: the frame's weapon fact predicates read.
 func TestProvenanceKeepsTheTraceSourcePairedToTheDefinition(t *testing.T) {
 	var folded *dnd5eEvents.DamageChainEvent
 	bus := events.NewEventBus()
@@ -506,24 +505,22 @@ func TestProvenanceKeepsTheTraceSourcePairedToTheDefinition(t *testing.T) {
 		"the trace's provenance name is the paired Definition.Name")
 
 	require.NotNil(t, folded)
-	require.Equal(t, *weaponRef, *folded.WeaponRef,
-		"the damage-chain WeaponRef the weapon predicates read stays the weapon's ref")
+	require.Equal(t, contributions.Known(weaponRef.String()), folded.Frame.Action.Weapon,
+		"the frame's weapon fact the weapon predicates read stays the weapon's ref")
 	require.Equal(t, 5, outcome.Damage, "3 pool + 2 flat bonus")
 
 	// CUSTODY OF THE FOLDED IDENTITY. The caller still owns the strike input
 	// and the shared attack profile after Resolve; mutating both must not
-	// rewrite what the strike already reported — neither the folded events'
-	// WeaponRef nor the trace's paired source. Snapshot the originals first.
-	wantWeapon := *weaponRef
+	// rewrite what the strike already reported — neither the folded frame's
+	// weapon nor the trace's paired source. Snapshot the originals first.
+	wantWeapon := weaponRef.String()
 	wantDefinition := definition.Ref
 	wantSourceName := definition.Name
 	in.Definition.Ref.ID = "caller-tampered"
 	in.Definition.Attack.Weapon.Ref.ID = "caller-tampered"
 
-	require.Equal(t, wantWeapon, *outcome.Folded.WeaponRef,
-		"the folded attack event's WeaponRef is an owned clone, not the caller's ref")
-	require.Equal(t, wantWeapon, *folded.WeaponRef,
-		"the folded damage event's WeaponRef is an owned clone, not the caller's ref")
+	require.Equal(t, contributions.Known(wantWeapon), folded.Frame.Action.Weapon,
+		"the folded damage frame's weapon is a value read once, not the caller's ref")
 	require.Equal(t, wantDefinition, *outcome.DamageComponents[0].Roll.Source.Ref,
 		"the trace's provenance ref survives caller mutation of the definition")
 	require.Equal(t, wantSourceName, outcome.DamageComponents[0].Roll.Source.Name,

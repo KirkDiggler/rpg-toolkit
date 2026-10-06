@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -322,9 +323,7 @@ func heroDieState(t *testing.T, out *Output) string {
 		}
 		for _, raw := range sheet.Conditions {
 			var peek struct {
-				Ref struct {
-					ID string `json:"id"`
-				} `json:"ref"`
+				Ref core.Ref `json:"ref"`
 			}
 			require.NoError(t, json.Unmarshal(raw, &peek))
 			if peek.Ref.ID == refs.Conditions.Inspired().ID {

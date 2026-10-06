@@ -107,8 +107,9 @@ func (s *CastActionTestSuite) TestStabilizationDeliveryAndRefusal() {
 			paid := f.sheet(out, bardID)
 			s.Zero(paid.ActionEconomy.ActionsRemaining)
 			s.Equal(2, paid.Resources[resources.SpellSlotLevel1].Current)
-			s.Require().Len(paid.Conditions, 1)
-			s.JSONEq(string(caster.Conditions[0]), string(paid.Conditions[0]))
+			held := withoutFreeReactions(s.T(), bardID, paid.Conditions)
+			s.Require().Len(held, 1)
+			s.JSONEq(string(caster.Conditions[0]), string(held[0]))
 			encoded, err := json.Marshal(f.sheet(out, heroID))
 			s.Require().NoError(err)
 			var stored character.Data

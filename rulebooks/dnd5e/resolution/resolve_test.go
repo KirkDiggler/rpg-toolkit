@@ -599,15 +599,6 @@ func TestCapabilitiesAreSuppliedNeverDefaulted(t *testing.T) {
 		require.ErrorIs(t, err, ErrNoStanding)
 	})
 
-	t.Run("standing without participation", func(t *testing.T) {
-		out, err := Resolve(context.Background(), &Input{
-			Machine: machine, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
-			Standing: standingOnly{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Roller: dice.NewRoller(),
-		})
-		require.ErrorIs(t, err, encounter.ErrNoParticipation)
-		require.Nil(t, out)
-	})
-
 	t.Run("no sight", func(t *testing.T) {
 		err := (&Input{
 			Machine: machine, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Roller: dice.NewRoller(),
@@ -650,14 +641,6 @@ func TestCapabilitiesAreSuppliedNeverDefaulted(t *testing.T) {
 		}).Validate()
 		require.NoError(t, err)
 	})
-}
-
-// standingOnly is the legacy half of the migration bridge. Resolve must reject
-// it before handing a world to encounter.Load.
-type standingOnly struct{}
-
-func (standingOnly) Standing(_ []encounter.MemberID) ([]encounter.MemberID, error) {
-	return nil, nil
 }
 
 // countingStanding answers like everyoneStanding and remembers being asked

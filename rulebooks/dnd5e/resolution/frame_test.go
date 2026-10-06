@@ -175,17 +175,17 @@ func (s *FrameTestSuite) TestMonkUnarmedHitRollsItsDamageDieOnce() {
 	s.Equal(3+3, outcome.Damage, "1d4=3 plus Dexterity 3")
 }
 
-// TestInformationFrameMapsNilStanceToUnknown: an observer holding no belief
-// about a pair has an unknown stance, never "no side"; the frame never claims
-// to be complete, and advantage is not a fact information has.
-func (s *FrameTestSuite) TestInformationFrameMapsNilStanceToUnknown() {
-	hostile := encounter.StanceHostile
+// TestInformationFrameCarriesTheObservedStance: every observed pair names a
+// stance, the no-side pair included, so the information frame knows each one;
+// the frame never claims to be complete, and advantage is not a fact
+// information has.
+func (s *FrameTestSuite) TestInformationFrameCarriesTheObservedStance() {
 	out, err := informationFrame(&informationFrameInput{
 		Observed: &encounter.ObservedContextOutput{
 			Observer: holdOutRogue,
 			Pairs: []encounter.ObservedContextPair{
-				{From: holdOutRogue, To: holdOutScout, DistanceCells: 1, Stance: &hostile},
-				{From: holdOutScout, To: holdOutLetter, DistanceCells: 2},
+				{From: holdOutRogue, To: holdOutScout, DistanceCells: 1, Stance: encounter.StanceHostile},
+				{From: holdOutScout, To: holdOutLetter, DistanceCells: 2, Stance: encounter.StanceNone},
 			},
 		},
 		Attack: dagger().Attack,
@@ -199,9 +199,9 @@ func (s *FrameTestSuite) TestInformationFrameMapsNilStanceToUnknown() {
 	s.False(frame.Complete, "sightings never prove nobody else is there")
 	s.Equal(contributions.Unknown[bool](), frame.Action.Advantage)
 	s.Equal(contributions.Known(contributions.StanceHostile), frame.Pair(holdOutRogue, holdOutScout).Stance)
-	unbelieved := frame.Pair(holdOutScout, holdOutLetter)
-	s.Equal(contributions.Unknown[contributions.Stance](), unbelieved.Stance, "nil observed stance is unknown, not none")
-	s.Equal(contributions.Known(2.0), unbelieved.DistanceCells)
+	noSide := frame.Pair(holdOutScout, holdOutLetter)
+	s.Equal(contributions.Known(contributions.StanceNone), noSide.Stance, "no side is a known fact, never unknown")
+	s.Equal(contributions.Known(2.0), noSide.DistanceCells)
 }
 
 // frameSpy records the frames the strike hands its rules.
@@ -491,4 +491,17 @@ func (s *FrameTestSuite) TestAPlacedMemberWithNoFactionIsKnownNoSide() {
 	s.Equal(contributions.Known(contributions.StanceNone), frame.Pair(shopkeeperID, heroID).Stance)
 	s.Equal(contributions.Known(contributions.StanceHostile), frame.Pair(wolfID, heroID).Stance)
 	s.Equal(contributions.Known(1.0), frame.Pair(wolfID, shopkeeperID).DistanceCells)
+
+	// The hero's information frame, built from what the hero observed in the
+	// same world, carries the same known no side for the same pair: the
+	// tooltip and the swing agree (rpg-toolkit#1958 item 2).
+	observed, err := enc.ObservedContext(&encounter.ViewInput{Member: heroID})
+	s.Require().NoError(err)
+	informed, err := informationFrame(&informationFrameInput{
+		Observed: observed, Attack: validMeleeDefinition().Attack, Target: wolfID,
+	})
+	s.Require().NoError(err)
+	s.Equal(contributions.Known(contributions.StanceNone), informed.Frame.Pair(heroID, shopkeeperID).Stance)
+	s.Equal(frame.Pair(heroID, shopkeeperID).Stance, informed.Frame.Pair(heroID, shopkeeperID).Stance,
+		"information and execution give the no-faction pair one stance")
 }

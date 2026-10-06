@@ -49,7 +49,7 @@ func TestReconcileFogMembershipEntersAndLeaves(t *testing.T) {
 	entered, err := ReconcileFogMembership(ctx, &FogMembershipInput{Participants: participants, Room: room, Areas: []encounter.SightAreaData{area}, Roller: dice.NewRoller()})
 	require.NoError(t, err)
 	require.Len(t, entered.DirtyCharacters, 1)
-	require.Len(t, entered.DirtyCharacters[0].Conditions, 1)
+	require.Len(t, withoutFreeReactions(t, hero.ID, entered.DirtyCharacters[0].Conditions), 1)
 
 	unchanged, err := ReconcileFogMembership(ctx, &FogMembershipInput{Participants: fogMembershipParticipantData(entered), Room: room, Areas: []encounter.SightAreaData{area}, Roller: dice.NewRoller()})
 	require.NoError(t, err)
@@ -58,7 +58,7 @@ func TestReconcileFogMembershipEntersAndLeaves(t *testing.T) {
 	left, err := ReconcileFogMembership(ctx, &FogMembershipInput{Participants: fogMembershipParticipantData(entered), Room: room, Areas: nil, Roller: dice.NewRoller()})
 	require.NoError(t, err)
 	require.Len(t, left.DirtyCharacters, 1)
-	require.Empty(t, left.DirtyCharacters[0].Conditions)
+	require.Empty(t, withoutFreeReactions(t, hero.ID, left.DirtyCharacters[0].Conditions))
 }
 
 func TestReconcileFogMembershipKeepsOverlappingCloudsIndependent(t *testing.T) {
@@ -71,17 +71,17 @@ func TestReconcileFogMembershipKeepsOverlappingCloudsIndependent(t *testing.T) {
 	entered, err := ReconcileFogMembership(ctx, &FogMembershipInput{Participants: participants, Room: room, Areas: areas, Roller: dice.NewRoller()})
 	require.NoError(t, err)
 	require.Len(t, entered.DirtyCharacters, 1)
-	require.Len(t, entered.DirtyCharacters[0].Conditions, 2)
+	require.Len(t, withoutFreeReactions(t, hero.ID, entered.DirtyCharacters[0].Conditions), 2)
 
 	oneLeft, err := ReconcileFogMembership(ctx, &FogMembershipInput{Participants: fogMembershipParticipantData(entered), Room: room, Areas: []encounter.SightAreaData{areas[1]}, Roller: dice.NewRoller()})
 	require.NoError(t, err)
 	require.Len(t, oneLeft.DirtyCharacters, 1)
-	require.Len(t, oneLeft.DirtyCharacters[0].Conditions, 1)
+	require.Len(t, withoutFreeReactions(t, hero.ID, oneLeft.DirtyCharacters[0].Conditions), 1)
 
 	allLeft, err := ReconcileFogMembership(ctx, &FogMembershipInput{Participants: fogMembershipParticipantData(oneLeft), Room: room, Areas: nil, Roller: dice.NewRoller()})
 	require.NoError(t, err)
 	require.Len(t, allLeft.DirtyCharacters, 1)
-	require.Empty(t, allLeft.DirtyCharacters[0].Conditions)
+	require.Empty(t, withoutFreeReactions(t, hero.ID, allLeft.DirtyCharacters[0].Conditions))
 }
 
 type fogMember struct{ id string }

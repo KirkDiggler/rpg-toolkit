@@ -176,14 +176,12 @@ type strikeMachine struct {
 	// the first needs them and a step's closure is handed only a bus.
 	cast *Participants
 
-	attack           *combatActions.AttackProfile
-	sourceRef        *core.Ref
-	ability          abilities.Ability
-	abilityModifier  int
-	isOffHandAttack  bool
-	twoHanded        bool
-	offHandWeaponRef *core.Ref
-	prepared         []preparedCondition
+	attack          *combatActions.AttackProfile
+	sourceRef       *core.Ref
+	ability         abilities.Ability
+	abilityModifier int
+	isOffHandAttack bool
+	prepared        []preparedCondition
 
 	// target and longRange are what preflight found, kept because the first
 	// step is built after it rather than inside it.
@@ -322,12 +320,8 @@ func (m *strikeMachine) preflight(ctx context.Context, cast *Participants) error
 	// rewrite what the folded events and the outcome already report.
 	m.sourceRef = cloneCoreRef(&m.in.Definition.Ref)
 	m.isOffHandAttack = m.attack.IsOffHandAttack
-	if m.attack.Weapon != nil {
-		m.twoHanded = m.attack.Weapon.TwoHanded
-		m.offHandWeaponRef = m.attack.Weapon.OffHandWeaponRef
-		if m.attack.Weapon.Ref != nil {
-			m.sourceRef = cloneCoreRef(m.attack.Weapon.Ref)
-		}
+	if m.attack.Weapon != nil && m.attack.Weapon.Ref != nil {
+		m.sourceRef = cloneCoreRef(m.attack.Weapon.Ref)
 	}
 	if m.attack.Ability != nil {
 		m.ability = m.attack.Ability.Ability
@@ -444,8 +438,6 @@ func (m *strikeMachine) effectiveACStep(target combat.Member, longRange bool) Ga
 			event := dnd5eEvents.AttackChainEvent{
 				AttackerID:        m.in.AttackerID,
 				TargetID:          m.in.TargetID,
-				WeaponRef:         m.sourceRef,
-				IsMelee:           m.attack.Delivery.IsMelee(),
 				AttackBonus:       m.attack.AttackBonus,
 				TargetAC:          effectiveAC,
 				CriticalThreshold: criticalThreshold,
@@ -743,7 +735,6 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 		})
 	}
 
-	effectiveAdvantage, _ := frame.Action.Advantage.Get()
 	var weaponDamageDice string
 	var weaponDamageType damage.Type
 	if primary != nil {
@@ -756,23 +747,12 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 		TargetID:         m.in.TargetID,
 		Components:       components,
 		IsCritical:       m.outcome.Critical,
-		HasAdvantage:     effectiveAdvantage,
 		WeaponDamageDice: weaponDamageDice,
 		WeaponDamageType: weaponDamageType,
-		IsMelee:          m.attack.Delivery.IsMelee(),
-		// Which ability swung, for the effects that predicate on it — Rage
-		// only pays out on a melee Strength attack. Empty when the compiler
-		// named none, which is a stat block's honest answer.
-		AbilityUsed:     m.ability,
-		AbilityModifier: m.abilityModifier,
-		IsOffHandAttack: m.isOffHandAttack,
-		WeaponRef:       m.sourceRef,
-		// Static equipment facts the compiler already knew (rpg-toolkit#1178)
-		// — Dueling's predicate decides eligibility from these rather than a
-		// live gamectx lookup, the same way Rage decides from AbilityUsed.
-		TwoHanded:        m.twoHanded,
-		OffHandWeaponRef: m.offHandWeaponRef,
-		Frame:            frame,
+		// Which ability swung, whether it was melee, the off-hand and
+		// two-handed facts: all ride the frame's Action, the one place a
+		// damage rule reads them (rpg-toolkit#1958).
+		Frame: frame,
 	}), m.afterDamageChain), nil
 }
 

@@ -276,8 +276,9 @@ func (s *ContestDamageTestSuite) sheet(out *Output, id string) *character.Data {
 }
 
 func (s *ContestDamageTestSuite) conditionRefs(data *character.Data) []string {
-	out := make([]string, 0, len(data.Conditions))
-	for _, raw := range data.Conditions {
+	held := withoutFreeReactions(s.T(), data.ID, data.Conditions)
+	out := make([]string, 0, len(held))
+	for _, raw := range held {
 		var peek struct {
 			Ref core.Ref `json:"ref"`
 		}
@@ -410,7 +411,7 @@ func (s *ContestDamageTestSuite) TestADamageOnlyContestLandsDamageAndNothingElse
 
 	sheet := s.sheet(out, heroID)
 	s.Require().Equal(11, sheet.HitPoints)
-	s.Require().Empty(sheet.Conditions, "nothing was declared, so nothing went on")
+	s.Require().Empty(s.conditionRefs(sheet), "nothing was declared, so nothing went on")
 }
 
 // THE REGRESSION THAT MATTERS. A contest that declares no damage is what it was

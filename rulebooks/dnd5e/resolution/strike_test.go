@@ -17,6 +17,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -265,7 +266,7 @@ func TestDeliveryRangeAndLongRangeDisadvantage(t *testing.T) {
 		out, err := resolveActionDefinition(t, definition, 4, roller)
 		require.NoError(t, err)
 		outcome := out.Outcome.(StrikeOutcome)
-		require.False(t, outcome.Folded.IsMelee)
+		require.Equal(t, contributions.Known(false), outcome.Folded.Frame.Action.Melee)
 		require.Empty(t, outcome.Folded.DisadvantageSources)
 	})
 

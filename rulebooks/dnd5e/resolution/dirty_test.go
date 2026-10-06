@@ -146,9 +146,10 @@ func (s *DirtyTestSuite) TestAConditionThatChangesItselfComesBackToBeStored() {
 			"a condition asked for it")
 	s.Require().Equal(heroID, out.DirtyCharacters[0].ID)
 
-	s.Require().Len(out.DirtyCharacters[0].Conditions, 1)
+	held := withoutFreeReactions(s.T(), heroID, out.DirtyCharacters[0].Conditions)
+	s.Require().Len(held, 1)
 	var stored map[string]any
-	s.Require().NoError(json.Unmarshal(out.DirtyCharacters[0].Conditions[0], &stored))
+	s.Require().NoError(json.Unmarshal(held[0], &stored))
 	s.Require().Equal(true, stored["did_attack_this_turn"],
 		"and the change is IN the blob that gets stored, not only on the live object")
 }

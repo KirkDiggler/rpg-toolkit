@@ -163,8 +163,9 @@ func (s *ConcentrationTestSuite) conditionRefs(out *Output, id string) []string 
 		if data.ID != id {
 			continue
 		}
-		found := make([]string, 0, len(data.Conditions))
-		for _, raw := range data.Conditions {
+		held := withoutFreeReactions(s.T(), id, data.Conditions)
+		found := make([]string, 0, len(held))
+		for _, raw := range held {
 			var peek struct {
 				Ref string `json:"ref"`
 			}
@@ -671,9 +672,10 @@ func (s *ConcentrationTestSuite) TestBaneAllSaveRecastReplacesOnlyItsQualifiedOw
 	s.True(hold.SkipNextTurnEnd)
 
 	updatedTarget := fixtures.sheet(out, heroID)
-	s.Require().Len(updatedTarget.Conditions, 1)
+	targetHeld := withoutFreeReactions(s.T(), heroID, updatedTarget.Conditions)
+	s.Require().Len(targetHeld, 1)
 	var remaining conditions.BanedConditionData
-	s.Require().NoError(json.Unmarshal(updatedTarget.Conditions[0], &remaining))
+	s.Require().NoError(json.Unmarshal(targetHeld[0], &remaining))
 	s.Equal(wolfID, remaining.SourceID)
 	for _, dirty := range out.DirtyMonsters {
 		s.NotEqual(wolfID, dirty.ID, "the unrelated owner and its seven-turn clock stay untouched")

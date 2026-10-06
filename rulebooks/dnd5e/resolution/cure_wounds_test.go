@@ -95,8 +95,9 @@ func (s *CastActionTestSuite) TestCureWoundsMonsterTypesAndConcentration() {
 			}
 			paid := f.sheet(out, bardID)
 			s.Equal(1, paid.Resources[resources.SpellSlotLevel1].Current)
-			s.Require().Len(paid.Conditions, 1)
-			s.JSONEq(string(caster.Conditions[0]), string(paid.Conditions[0]), "healing preserves concentration")
+			held := withoutFreeReactions(s.T(), bardID, paid.Conditions)
+			s.Require().Len(held, 1)
+			s.JSONEq(string(caster.Conditions[0]), string(held[0]), "healing preserves concentration")
 		})
 	}
 }

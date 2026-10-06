@@ -132,9 +132,10 @@ type informationFrameOutput struct {
 // informationFrame builds the frame from what the acting character knows and
 // nothing else (K1): its observed context and its own assembled attack.
 //
-// A pair's distance is known because the observer measured it. A nil observed
-// stance is UNKNOWN — the observer holds no belief about that pair — never
-// [contributions.StanceNone], which is a known fact this read cannot prove.
+// A pair's distance is known because the observer measured it, and its stance
+// is known because every observed pair names one: a member in no faction is
+// the known no side ([contributions.StanceNone]), exactly as the execution
+// frame reads it (R5, rpg-toolkit#1958).
 // Complete is false: a set of sightings never proves no unseen creature
 // exists (K5). Advantage stays unknown, because advantage is a fold result and
 // information does not fold. Opportunity is known false: information answers
@@ -192,11 +193,8 @@ func informationFrame(in *informationFrameInput) (*informationFrameOutput, error
 			From:          string(observed.From),
 			To:            string(observed.To),
 			DistanceCells: contributions.Known(observed.DistanceCells),
-			Stance:        contributions.Unknown[contributions.Stance](),
+			Stance:        contributions.Known(contributions.Stance(observed.Stance)),
 			Sees:          contributions.Unknown[bool](),
-		}
-		if observed.Stance != nil {
-			pair.Stance = contributions.Known(contributions.Stance(*observed.Stance))
 		}
 		if pair.From == observer && sighted[pair.To] {
 			pair.Sees = contributions.Known(true)

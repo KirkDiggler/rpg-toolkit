@@ -98,19 +98,15 @@ type Input struct {
 	// is handed over.
 	Initiative encounter.InitiativeRoller
 
-	// Standing carries the rulebook's participation answer. REQUIRED.
-	//
-	// The field remains encounter.Standing for source compatibility during the
-	// migration, but its concrete value MUST also implement
-	// encounter.Participation — equivalently, encounter.StandingWithParticipation.
-	// Validate rejects a legacy Standing-only value with
-	// encounter.ErrNoParticipation before loading the world.
+	// Standing carries the rulebook's standing and participation answers.
+	// REQUIRED. Typed as the composition types it, so a Standing-only value
+	// does not compile.
 	//
 	// Carried, never consulted. This package loads the world and reads it back
 	// out as data; no encounter verb runs in between, so neither half is asked
 	// here. The caller owns the sheets and therefore owns this answer; inventing
 	// "nobody is down" or "everyone participates" would put a rule in wiring.
-	Standing encounter.Standing
+	Standing encounter.StandingWithParticipation
 
 	// Sight reports how far each member can see, in cells. REQUIRED.
 	//
@@ -142,12 +138,11 @@ type Input struct {
 	// inventing testimony is the one thing the sight seam must never do. So it
 	// is handed over, and the caller that owns the sheets owns the answer.
 	//
-	// It must also answer what each member holds
-	// ([encounter.EquipmentWithConditions]): the composition snapshots
-	// conditions into sight testimony beside hands, and refuses an Equipment
-	// that cannot say (rpg-project#520 R16). The same reasoning applies: "nobody
-	// holds anything" is testimony, never a default.
-	Equipment encounter.Equipment
+	// It also answers what each member holds: the composition snapshots
+	// conditions into sight testimony beside hands (rpg-project#520 R16). The
+	// same reasoning applies: "nobody holds anything" is testimony, never a
+	// default.
+	Equipment encounter.EquipmentWithConditions
 
 	// Roller reconstitutes runtime dice dependencies for effects that roll when
 	// triggered rather than when loaded — Character conditions such as Great
@@ -223,10 +218,6 @@ func (in *Input) Validate() error {
 	}
 	if in.Standing == nil {
 		return ErrNoStanding
-	}
-	if _, ok := in.Standing.(encounter.StandingWithParticipation); !ok {
-		return fmt.Errorf("resolution: Standing does not implement Participation: %w",
-			encounter.ErrNoParticipation)
 	}
 	if in.Sight == nil {
 		return ErrNoSight
