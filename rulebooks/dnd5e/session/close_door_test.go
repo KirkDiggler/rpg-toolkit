@@ -16,6 +16,7 @@ package session_test
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -368,4 +369,31 @@ func (s *CloseDoorSuite) TestCloseDoorRunsUnderTheSessionLock() {
 	s.Require().ErrorIs(err, session.ErrNoConnection)
 	s.False(locker.held, "the guard is also released after a refusal")
 	s.Equal(2, locker.releases)
+}
+
+// TestClosingADoorTellsNobodyToLookAgain pins how closing meets condition
+// freshness (rpg-project#520, R19): the commit runs the freshness step, and a
+// close changes no member's conditions, so the only sight beats it sends are
+// the sightings it takes away — never a "changed" beat telling an observer to
+// look again at somebody it can still see.
+func (s *CloseDoorSuite) TestClosingADoorTellsNobodyToLookAgain() {
+	s.startWith(footprintLeafWorld(s.T(), encounter.DoorIsOpen()))
+	s.Require().True(s.bobIsCurrentlySeen(), "precondition: the open door lets alice see bob")
+
+	_, err := s.mgr.CloseDoor(context.Background(),
+		&session.CloseDoorInput{Session: "sess", Member: "alice", Door: leafDoorID})
+	s.Require().NoError(err)
+
+	lost := false
+	for _, event := range s.stream.published {
+		body, ok := event.Body.(session.SightedBody)
+		if !ok {
+			continue
+		}
+		s.Empty(body.Changed, "nobody's conditions changed: %+v to %s", body, event.Recipient)
+		if event.Recipient == "alice" && slices.Contains(body.Lost, "bob") {
+			lost = true
+		}
+	}
+	s.True(lost, "the close's own sight beat still reaches alice: bob left her view")
 }
