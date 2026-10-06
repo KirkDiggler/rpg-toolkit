@@ -161,11 +161,9 @@ func (p *packTacticsCondition) onAttackChain(
 // creature within five feet of the target. Every member the frame pairs with
 // the target is a candidate; errors wrap contributions.ErrRuleCannotAnswer.
 //
-// TODO(rpg-toolkit): RAW adds "and isn't incapacitated". That clause cannot be
-// written yet — Incapacitated is one of thirteen standard conditions with no
-// implementation, so there is nothing truthful to test. Deliberately left
-// unenforced rather than approximated by something that happens to be nearby
-// (downed, say), which would be a different rule wearing this one's name.
+// RAW's "and isn't incapacitated" is not yet answered: the frame carries no
+// incapacitated fact for a member (rpg-toolkit#1963), so a downed packmate
+// still counts. It is left unenforced rather than approximated.
 func (p *packTacticsCondition) allyAdjacentToTarget(frame contributions.Frame, target string) (bool, error) {
 	if err := frame.Validate(); err != nil {
 		return false, fmt.Errorf("pack tactics: %w: %w", contributions.ErrRuleCannotAnswer, err)

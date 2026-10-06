@@ -74,7 +74,6 @@ func (p *ProneCondition) attackRule() attackRollRule {
 		NotOwner:    "Prone affects only its holder's attacks",
 		OnlyAttacks: "Prone affects only attack rolls",
 		Applies:     "You are prone",
-		Benefit:     disadvantageBenefit,
 	}, mode: contributions.AttackDisadvantage}
 }
 

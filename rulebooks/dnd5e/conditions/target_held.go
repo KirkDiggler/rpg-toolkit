@@ -80,11 +80,13 @@ func (r heldRule) AssessAction(in *contributions.AssessActionInput) (*contributi
 	return r.decide(frame, r.holder), nil
 }
 
-// heldApplies is an applying answer with its benefit and attack mode.
-func heldApplies(reason, benefit string, mode contributions.AttackMode) *contributions.AssessActionOutput {
+// heldApplies is an applying answer carrying its attack mode, with the
+// benefit line derived from that mode: the row and the swing read one Answer,
+// so the tooltip cannot say one way while the roll goes the other.
+func heldApplies(reason string, mode contributions.AttackMode) *contributions.AssessActionOutput {
 	out := assessed(contributions.Applies, reason)
-	out.Answer.Benefit = benefit
 	out.Answer.AttackMode = mode
+	out.Answer.Benefit = benefitFor(mode)
 	return out
 }
 
@@ -92,6 +94,19 @@ const (
 	advantageBenefit    = "Advantage on the attack roll"
 	disadvantageBenefit = "Disadvantage on the attack roll"
 )
+
+// benefitFor is the benefit line an attack mode reads as. A mode it does not
+// name reads as nothing, and validateAnswer refuses the mode itself.
+func benefitFor(mode contributions.AttackMode) string {
+	switch mode {
+	case contributions.AttackAdvantage:
+		return advantageBenefit
+	case contributions.AttackDisadvantage:
+		return disadvantageBenefit
+	default:
+		return ""
+	}
+}
 
 // newFaerieFireHeldRule: advantage when the attacker can see the outlined
 // target.
@@ -104,7 +119,7 @@ func newFaerieFireHeldRule(holder string, held contributions.HeldCondition) cont
 		case !sees:
 			return assessed(contributions.DoesNotApply, "You cannot see the target")
 		default:
-			return heldApplies("You can see the outlined target", advantageBenefit, contributions.AttackAdvantage)
+			return heldApplies("You can see the outlined target", contributions.AttackAdvantage)
 		}
 	}}
 }
@@ -112,7 +127,7 @@ func newFaerieFireHeldRule(holder string, held contributions.HeldCondition) cont
 // newGuidingBoltHeldRule: advantage on the next attack against the target.
 func newGuidingBoltHeldRule(holder string, held contributions.HeldCondition) contributions.ActionAssessor {
 	return heldRule{name: GuidingBoltName, holder: holder, held: held, decide: func(contributions.Frame, string) *contributions.AssessActionOutput {
-		return heldApplies("The target is lit by Guiding Bolt", advantageBenefit, contributions.AttackAdvantage)
+		return heldApplies("The target is lit by Guiding Bolt", contributions.AttackAdvantage)
 	}}
 }
 
@@ -120,7 +135,7 @@ func newGuidingBoltHeldRule(holder string, held contributions.HeldCondition) con
 // whoever makes it.
 func newRecklessHeldRule(holder string, held contributions.HeldCondition) contributions.ActionAssessor {
 	return heldRule{name: "Reckless Attack", holder: holder, held: held, decide: func(contributions.Frame, string) *contributions.AssessActionOutput {
-		return heldApplies("The target is attacking recklessly", advantageBenefit, contributions.AttackAdvantage)
+		return heldApplies("The target is attacking recklessly", contributions.AttackAdvantage)
 	}}
 }
 
@@ -129,14 +144,14 @@ func newRecklessHeldRule(holder string, held contributions.HeldCondition) contri
 // ruling, not built.
 func newDodgingHeldRule(holder string, held contributions.HeldCondition) contributions.ActionAssessor {
 	return heldRule{name: "Dodging", holder: holder, held: held, decide: func(contributions.Frame, string) *contributions.AssessActionOutput {
-		return heldApplies("The target is dodging", disadvantageBenefit, contributions.AttackDisadvantage)
+		return heldApplies("The target is dodging", contributions.AttackDisadvantage)
 	}}
 }
 
 // newHiddenHeldRule: disadvantage on attacks against the hidden target.
 func newHiddenHeldRule(holder string, held contributions.HeldCondition) contributions.ActionAssessor {
 	return heldRule{name: "Hidden", holder: holder, held: held, decide: func(contributions.Frame, string) *contributions.AssessActionOutput {
-		return heldApplies("The target is hidden", disadvantageBenefit, contributions.AttackDisadvantage)
+		return heldApplies("The target is hidden", contributions.AttackDisadvantage)
 	}}
 }
 
@@ -150,9 +165,9 @@ func newProneHeldRule(holder string, held contributions.HeldCondition) contribut
 		case !known:
 			return assessed(contributions.Depends, "Depends on how far you are from the target")
 		case distance <= combat.AdjacentCells:
-			return heldApplies("The prone target is within 5 feet", advantageBenefit, contributions.AttackAdvantage)
+			return heldApplies("The prone target is within 5 feet", contributions.AttackAdvantage)
 		default:
-			return heldApplies("The prone target is beyond 5 feet", disadvantageBenefit, contributions.AttackDisadvantage)
+			return heldApplies("The prone target is beyond 5 feet", contributions.AttackDisadvantage)
 		}
 	}}
 }
@@ -165,8 +180,9 @@ func newSanctuaryHeldRule(holder string, held contributions.HeldCondition) contr
 		if frame.Actor == holder {
 			return assessed(contributions.DoesNotApply, "Your own ward does not stop your attack")
 		}
-		return heldApplies("The target is warded by Sanctuary",
-			"Wisdom saving throw first; on a failure the attack is lost", "")
+		out := assessed(contributions.Applies, "The target is warded by Sanctuary")
+		out.Answer.Benefit = "Wisdom saving throw first; on a failure the attack is lost"
+		return out
 	}}
 }
 

@@ -29,7 +29,9 @@ type attackRollRule struct {
 	text   attackRollText
 	// mode is the advantage or disadvantage an applying answer carries, for
 	// a rule whose handler applies it through applyAttackMode; empty for one
-	// whose handler contributes something else.
+	// whose handler contributes something else. A rule with a mode takes its
+	// benefit line from the mode (benefitFor), never from text.Benefit, so
+	// the row and the swing cannot disagree.
 	mode contributions.AttackMode
 }
 
@@ -55,7 +57,10 @@ func (r attackRollRule) AssessAction(in *contributions.AssessActionInput) (*cont
 	}
 	out := assessed(contributions.Applies, r.text.Applies)
 	out.Answer.Benefit = r.text.Benefit
-	out.Answer.AttackMode = r.mode
+	if r.mode != "" {
+		out.Answer.AttackMode = r.mode
+		out.Answer.Benefit = benefitFor(r.mode)
+	}
 	return out, nil
 }
 

@@ -62,7 +62,6 @@ func (h *HiddenCondition) attackRule() attackRollRule {
 		NotOwner:    "Hidden affects only its holder's attacks",
 		OnlyAttacks: "Hidden affects only attack rolls",
 		Applies:     "You are hidden; attacking ends it",
-		Benefit:     advantageBenefit,
 	}, mode: contributions.AttackAdvantage}
 }
 

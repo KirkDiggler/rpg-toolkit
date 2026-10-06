@@ -67,7 +67,9 @@ func (s *targetCensusSuite) TestTargetBearingDescriptionsAreReaderNeutral() {
 	for _, ref := range TargetBearingRefs() {
 		parsed, err := core.ParseString(ref)
 		s.Require().NoError(err, ref)
-		display, _ := DisplayFor(*parsed)
+		display, found := DisplayFor(*parsed)
+		s.Require().True(found, "%s bears on attacks against its holder but has no catalog entry", ref)
+		s.Require().NotEmpty(display.Detail, "%s bears on attacks against its holder but has no description", ref)
 		s.False(secondPerson.MatchString(display.Detail), "%s speaks to its holder: %q", ref, display.Detail)
 	}
 }
