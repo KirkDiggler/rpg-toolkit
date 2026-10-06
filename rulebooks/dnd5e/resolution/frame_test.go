@@ -315,6 +315,34 @@ func (s *FrameTestSuite) TestStrikeFailsWhenARuleCannotAnswer() {
 	s.Equal(before, target.HitPoints, "the target's record is untouched")
 }
 
+// TestStrikeFailsWhenAHeldRuleCannotAnswer is R13 through the attack-chain
+// fold: the wolf holds Dodging on the bus but not on its sheet, so the
+// execution frame lists what the wolf holds without it. The loaded
+// condition's held rule cannot answer from a frame that omits the very
+// address it applies for, and the strike fails rather than dropping the
+// disadvantage — sight is known both ways, so the held rule is the refusal.
+func (s *FrameTestSuite) TestStrikeFailsWhenAHeldRuleCannotAnswer() {
+	bus := events.NewEventBus()
+	s.Require().NoError(conditions.NewDodgingCondition(wolfID).Apply(s.ctx, bus))
+	target := monsters.NewWolf(wolfID).ToData()
+	before := target.HitPoints
+
+	out, err := resolveOn(s.ctx, &Input{
+		World:        actionWorld(s.T(), 2),
+		Participants: []Participant{{Monster: target}, {Character: actionHero()}},
+		Machine: NewStrike(&StrikeInput{AttackerID: heroID, TargetID: wolfID, Definition: validMeleeDefinition(),
+			Roller: &actionRoller{singles: []int{15}, damage: [][]int{{3}}}}),
+		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		TurnDriver: passDriver{}, Roller: &actionRoller{},
+	}, newSurface(bus))
+
+	s.Require().Error(err)
+	s.True(errors.Is(err, contributions.ErrRuleCannotAnswer), "the held rule's refusal reaches the caller: %v", err)
+	s.Contains(err.Error(), "omits a held condition", "the held rule is the one that could not answer")
+	s.Nil(out, "nothing comes back to be saved")
+	s.Equal(before, target.HitPoints, "the target's record is untouched")
+}
+
 // TestResumedStrikeRebuildsFrameFromTruth is S3: a strike resumed after the
 // post-roll offer was taken builds its damage frame afresh from current truth
 // and the frozen fold — complete, never reconstructed from anything a client
