@@ -1479,7 +1479,7 @@ func (s *writeScope) replaceMonsterSheet(dirty *monster.Data) {
 			if s.npcConditionsBefore == nil {
 				s.npcConditionsBefore = make(map[encounter.MemberID]string)
 			}
-			s.npcConditionsBefore[id] = conditionKey(
+			s.npcConditionsBefore[id] = conditionFingerprint(
 				seenConditions(s.data.NPCs[i].ID, s.data.NPCs[i].Conditions))
 		}
 		s.data.NPCs[i] = *dirty

@@ -125,9 +125,11 @@ func seenConditions(member string, raw []json.RawMessage) *encounter.ConditionSe
 	return set
 }
 
-// conditionKey is one member's holdings as a comparable string: its sorted
-// addresses, or a marker no address can spell when nothing was observed.
-func conditionKey(set *encounter.ConditionSet) string {
+// conditionFingerprint is one member's holdings as a comparable string: its
+// sorted addresses, or a marker no address can spell when nothing was
+// observed. Named apart from [encounter.ConditionKey], which is ONE held
+// address; this is a member's whole set, flattened for comparison only.
+func conditionFingerprint(set *encounter.ConditionSet) string {
 	if set == nil {
 		return "\x00unobserved"
 	}
@@ -176,7 +178,7 @@ func (m *Manager) recheckChangedConditions(scope *writeScope) error {
 	}
 	for id, before := range scope.npcConditionsBefore {
 		if sheet, found := npcSheet(scope.data, string(id)); found &&
-			conditionKey(seenConditions(sheet.ID, sheet.Conditions)) != before {
+			conditionFingerprint(seenConditions(sheet.ID, sheet.Conditions)) != before {
 			touched[id] = true
 		}
 	}
@@ -216,7 +218,7 @@ func (m *Manager) recheckChangedConditions(scope *writeScope) error {
 			if !isTouched || seen.Conditions == nil || stale[seen.ID] {
 				continue
 			}
-			if conditionKey(seen.Conditions) != conditionKey(now) {
+			if conditionFingerprint(seen.Conditions) != conditionFingerprint(now) {
 				stale[seen.ID] = true
 			}
 		}

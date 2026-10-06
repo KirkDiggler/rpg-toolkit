@@ -22,7 +22,7 @@ func TestOnlyAWrittenMonsterIsFingerprinted(t *testing.T) {
 	scope := &writeScope{data: &SessionData{NPCs: []monster.Data{
 		{ID: "goblin-1"}, {ID: "goblin-2"},
 	}}}
-	before := conditionKey(seenConditions("goblin-1", nil))
+	before := conditionFingerprint(seenConditions("goblin-1", nil))
 
 	dodging, err := (&conditions.DodgingCondition{MemberID: "goblin-1"}).ToJSON()
 	require.NoError(t, err)
