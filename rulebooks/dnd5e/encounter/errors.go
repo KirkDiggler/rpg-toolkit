@@ -459,6 +459,12 @@ var (
 	// Standing.
 	ErrRefusingParticipation = errors.New("encounter: compile-only Participation: asked about members of a world being compiled, not played")
 
+	// ErrRefusingDriver is what [RefusingDriver.Act] always returns: a turn
+	// was driven on a world [CompileOnlyLoad] loaded only to be inspected. A
+	// host bug, the twin of [ErrRefusingStriker], not an outcome to recover
+	// from.
+	ErrRefusingDriver = errors.New("encounter: RefusingDriver: a turn was driven on a world loaded only to be inspected")
+
 	// ErrRefusingCheckResolver is what the CheckResolver [CompileOnlySetup]
 	// installs always returns: an authored check was rolled against a world
 	// still being compiled, not played. A host bug — a check is rolled only

@@ -57,12 +57,16 @@ func TestCompileOnlyStandInAnswers(t *testing.T) {
 		require.Nil(t, got)
 	})
 	t.Run("check resolver refuses", func(t *testing.T) {
-		got, err := refusingCheckResolver{}.ResolveCheck(&ResolveCheckInput{})
+		got, err := RefusingCheckResolver{}.ResolveCheck(&ResolveCheckInput{})
 		require.ErrorIs(t, err, ErrRefusingCheckResolver)
 		require.Nil(t, got)
 	})
+	t.Run("driver refuses", func(t *testing.T) {
+		_, err := RefusingDriver{}.Act(MonsterView{})
+		require.ErrorIs(t, err, ErrRefusingDriver)
+	})
 	t.Run("witness: nobody, as a list", func(t *testing.T) {
-		got, err := nobodyPerceives{}.Perceivers(&PerceiversInput{})
+		got, err := NobodyPerceives{}.Perceivers(&PerceiversInput{})
 		require.NoError(t, err)
 		require.NotNil(t, got)
 		require.Empty(t, got)
