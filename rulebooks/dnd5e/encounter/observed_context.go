@@ -55,9 +55,14 @@ type ObservedContextPair struct {
 	To   MemberID
 	// DistanceCells is measured between the projected positions in grid cells.
 	DistanceCells float64
-	// Stance is nil when no relationship is known, not a neutral relationship.
-	// It follows encounter's believed-stance policy for the original observer.
-	Stance *Stance
+	// Stance is always known: hostile, neutral or allied, or [StanceNone]
+	// when either member is in no faction — a known "no side", never neutral
+	// and never unknown (rpg-project#520, R5). Both members are always
+	// members of this encounter (the observer is checked and every sighting
+	// is validated), so the only absence left is a member with no side. It
+	// follows encounter's believed-stance policy for the original observer.
+	// The zero value "" is never produced.
+	Stance Stance
 }
 
 // ObservedContext returns the member's own placement, current sight snapshots,
@@ -121,8 +126,12 @@ func (e *Encounter) ObservedContext(in *ViewInput) (*ObservedContextOutput, erro
 				continue
 			}
 			pair := ObservedContextPair{From: from, To: to, DistanceCells: e.Distance(positions[from], positions[to])}
+			// Both ids are members (positions admits only the observer and
+			// validated sightings), so a false here is StanceBetween's other
+			// case: a member in no faction, which is a known no side.
+			pair.Stance = StanceNone
 			if stance, known := e.believedStanceBetween(in.Member, from, to); known {
-				pair.Stance = &stance
+				pair.Stance = stance
 			}
 			out.Pairs = append(out.Pairs, pair)
 		}

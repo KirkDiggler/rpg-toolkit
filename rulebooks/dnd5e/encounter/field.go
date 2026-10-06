@@ -86,6 +86,14 @@ const (
 	// StanceAllied means the two stand together. Authorable only as a
 	// static stance; no predicate turns a pair allied (R2).
 	StanceAllied Stance = "allied"
+
+	// StanceNone means the pair has NO SIDE toward each other: one of them
+	// is in no faction, which a world NPC is (rpg-project#520, R5). It is a
+	// KNOWN answer, never "unknown" and never neutral, and it is never
+	// authorable — a disposition or a stance trigger naming it is refused,
+	// because it describes a member, not a posture between two sides. Only
+	// [ObservedContextPair.Stance] reports it.
+	StanceNone Stance = "none"
 )
 
 // FactionInput declares one faction the dungeon authored (design §2).

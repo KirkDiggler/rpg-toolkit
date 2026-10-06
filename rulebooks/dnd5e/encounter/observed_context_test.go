@@ -129,10 +129,11 @@ func (s *observedContextSuite) TestCurrentMembersAndPairs() {
 	s.IsIncreasing(keys)
 	s.Equal(float64(1), s.pair(out, goblin, bob).DistanceCells)
 	s.Equal(float64(2), s.pair(out, alice, goblin).DistanceCells)
-	stance := s.pair(out, goblin, bob).Stance
-	s.Require().NotNil(stance)
-	s.Equal(encounter.StanceHostile, *stance)
-	s.Nil(s.pair(out, alice, "vendor").Stance, "unknown is not neutral")
+	s.Equal(encounter.StanceHostile, s.pair(out, goblin, bob).Stance)
+	s.Equal(encounter.StanceNone, s.pair(out, alice, "vendor").Stance,
+		"a member in no faction is a known no side, neither neutral nor unknown")
+	s.Equal(encounter.StanceNone, s.pair(out, "vendor", goblin).Stance,
+		"no side holds whichever end of the pair has no faction")
 	s.Require().NotNil(s.member(out, goblin).Down)
 	s.False(*s.member(out, goblin).Down, "observed false is a known fact")
 }
@@ -188,9 +189,25 @@ func (s *observedContextSuite) TestKnownNeutralIsNotUnknown() {
 		Between: [2]encounter.FactionID{encounter.FactionParty, encounter.FactionMonsters},
 		Stance:  encounter.StanceNeutral,
 	}})
-	stance := s.pair(s.read(enc), goblin, bob).Stance
-	s.Require().NotNil(stance)
-	s.Equal(encounter.StanceNeutral, *stance)
+	s.Equal(encounter.StanceNeutral, s.pair(s.read(enc), goblin, bob).Stance)
+}
+
+func (s *observedContextSuite) TestNoSideIsNeverAuthorable() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: s.sight, Equipment: s.hands, Standing: s.life,
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+		Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Field: encounter.FieldInput{
+			Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("yard", 0, 0, 6, 1)},
+			Dispositions: []encounter.DispositionInput{{
+				Between: [2]encounter.FactionID{encounter.FactionParty, encounter.FactionMonsters},
+				Stance:  encounter.StanceNone,
+			}},
+		},
+		Members: []encounter.MemberInput{{ID: alice, Kind: encounter.KindPlayer, Position: cellAt(0, 0)}},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.ErrorIs(err, encounter.ErrNoFaction, "no side describes a member, not a posture two sides can hold")
 }
 
 func (s *observedContextSuite) TestSnapshotFactsWinOverLiveState() {
@@ -290,8 +307,7 @@ func (s *observedContextSuite) TestDetachedAndReadOnly() {
 			mutated.Members[i].Equipment.MainHand = "greataxe"
 		}
 	}
-	s.Require().NotNil(mutated.Pairs[0].Stance)
-	*mutated.Pairs[0].Stance = encounter.StanceNeutral
+	mutated.Pairs[0].Stance = encounter.StanceNeutral
 	mutated.Pairs[0].DistanceCells = 999
 	s.Equal(before, s.read(s.enc))
 	afterData, err := json.Marshal(s.enc.ToData())
