@@ -55,7 +55,7 @@ func TestADecidedFightRefusesToCountAGhost(t *testing.T) {
 	rulebook := &oneDown{}
 	enc, err := NewEncounter(&SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: rulebook, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: UnobservedEquipment{}, Standing: rulebook, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: FieldInput{Canvas: openAir(), Regions: []RegionInput{rectRegion("crypt", 0, 0, 12, 12)}},
 		Members: []MemberInput{
 			{ID: "alice", Kind: KindPlayer, Position: spatial.Position{X: 0, Y: 2}},

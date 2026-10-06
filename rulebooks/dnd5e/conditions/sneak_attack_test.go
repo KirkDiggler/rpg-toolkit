@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
@@ -57,6 +58,7 @@ type damageChainInput struct {
 	isCritical       bool
 	componentType    damage.Type
 	weaponDamageType damage.Type
+	weaponRef        *core.Ref
 }
 
 // executeDamageChain creates a damage chain event and executes it.
@@ -81,6 +83,11 @@ func (s *SneakAttackTestSuite) executeDamageChain(input damageChainInput) (*dnd5
 		IsCritical: false,
 	}
 
+	weaponRef := input.weaponRef
+	if weaponRef == nil {
+		weaponRef = refs.Weapons.Shortsword()
+	}
+
 	targetID := input.targetID
 	if targetID == "" {
 		targetID = "goblin-1"
@@ -94,6 +101,7 @@ func (s *SneakAttackTestSuite) executeDamageChain(input damageChainInput) (*dnd5
 		IsCritical:       input.isCritical,
 		HasAdvantage:     input.hasAdvantage,
 		AbilityUsed:      input.abilityUsed,
+		WeaponRef:        weaponRef,
 	}
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
@@ -431,18 +439,35 @@ func (s *SneakAttackTestSuite) TestSneakAttackRequiresFinesseWeapon() {
 	err := sneak.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
 
-	// No roller expectation - attack with STR should not trigger sneak attack
+	// No roller expectation: a weapon that is neither finesse nor ranged
+	// never sneak attacks, whichever ability swings it (rpg-toolkit#1929).
+	for _, ability := range []abilities.Ability{abilities.STR, abilities.DEX} {
+		finalEvent, err := s.executeDamageChain(damageChainInput{
+			attackerID:   "rogue-1",
+			abilityUsed:  ability,
+			hasAdvantage: true,
+			weaponRef:    refs.Weapons.Club(),
+		})
+		s.Require().NoError(err)
+		s.Require().Len(finalEvent.Components, 1, "a club attack should NOT have sneak attack")
+	}
+}
 
-	// Attack with STR (non-finesse weapon) - even with advantage
+// TestSneakAttackWithStrengthFinesse: a finesse weapon swung with Strength
+// still sneak attacks (rpg-toolkit#1929).
+func (s *SneakAttackTestSuite) TestSneakAttackWithStrengthFinesse() {
+	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue-1", Level: 1, Roller: s.roller})
+	s.Require().NoError(sneak.Apply(s.ctx, s.bus))
+	s.roller.EXPECT().RollN(gomock.Any(), 1, 6).Return([]int{4}, nil)
+
 	finalEvent, err := s.executeDamageChain(damageChainInput{
 		attackerID:   "rogue-1",
 		abilityUsed:  abilities.STR,
 		hasAdvantage: true,
+		weaponRef:    refs.Weapons.Rapier(),
 	})
 	s.Require().NoError(err)
-
-	// Should only have weapon component (no sneak attack)
-	s.Require().Len(finalEvent.Components, 1, "STR attack should NOT have sneak attack")
+	s.Require().Len(finalEvent.Components, 2, "a Strength rapier attack sneak attacks")
 }
 
 func (s *SneakAttackTestSuite) TestSneakAttackOnlyAffectsOwnAttacks() {
@@ -596,10 +621,11 @@ func (s *SneakAttackTestSuite) runDamageChain(
 		IsMelee:      true,
 		HasAdvantage: false,
 		AbilityUsed:  abilities.DEX,
+		WeaponRef:    refs.Weapons.Shortsword(),
 	}, pairs...)
 
 	c := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
-	modifiedChain, err := dnd5eEvents.DamageChain.On(s.bus).PublishWithChain(s.ctx, damageEvent, c)
+	modifiedChain, err := dnd5eEvents.DamageChain.On(s.bus).PublishWithChain(s.ctx, framedDamage(damageEvent), c)
 	s.Require().NoError(err)
 
 	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)

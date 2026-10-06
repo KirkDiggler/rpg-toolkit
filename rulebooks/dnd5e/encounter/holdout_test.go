@@ -157,7 +157,7 @@ func withdrawn() encounter.EndingInput {
 func (s *HoldOutSuite) open(field encounter.FieldInput, members []encounter.MemberInput, endings ...encounter.EndingInput) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: s.standing, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: s.standing, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: journalAnnouncer{j: s.heard},
 		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		Field:     field,
@@ -178,7 +178,7 @@ func (s *HoldOutSuite) reload(enc *encounter.Encounter) *encounter.Encounter {
 	out, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:      enc.ToData(),
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: s.standing, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: s.standing, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: journalAnnouncer{j: s.heard},
 		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 	})
@@ -640,7 +640,7 @@ func (s *HoldOutSuite) TestLoadRefusesKnowledgeThisFieldCannotMint() {
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data:      data,
 			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: noHandsAreObserved{}, Standing: s.standing, Initiative: orderAsGiven{},
+			Equipment: encounter.UnobservedEquipment{}, Standing: s.standing, Initiative: orderAsGiven{},
 			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		})
@@ -693,7 +693,7 @@ func (s *HoldOutSuite) TestLoadRefusesKnowledgeThisFieldCannotMint() {
 func (s *HoldOutSuite) TestAPlainDungeonWritesNoSides() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		Field: heirloomField(),
@@ -725,7 +725,7 @@ func (s *HoldOutSuite) TestTheRunRefusesWhatItCannotKeep() {
 	open := func(field encounter.FieldInput, endings ...encounter.EndingInput) error {
 		_, err := encounter.NewEncounter(&encounter.SetupInput{
 			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 			Field: field, Members: s.cast(true), Endings: append([]encounter.EndingInput{withdrawn()}, endings...),
@@ -865,7 +865,7 @@ func (s *HoldOutSuite) openWith(
 ) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: s.standing, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: s.standing, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: striker, Mover: quietMover{}, Announcer: journalAnnouncer{j: s.heard},
 		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		Field:     field,

@@ -76,18 +76,29 @@ func (ma *MartialArtsCondition) WeaponAttackOverride(_, itemID string) *weaponat
 	if itemID == "" {
 		return &weaponattack.Override{Dice: ma.getMartialArtsDice(), Ability: abilities.DEX}
 	}
-	weapon, err := weapons.GetByID(weapons.WeaponID(itemID))
-	if err != nil {
-		return nil
-	}
+	unarmed, monk := martialArtsWeaponID(itemID)
 	switch {
-	case weapon.ID == weapons.UnarmedStrike:
+	case unarmed:
 		return &weaponattack.Override{Dice: ma.getMartialArtsDice(), Ability: abilities.DEX}
-	case isMonkWeapon(&weapon):
+	case monk:
 		return &weaponattack.Override{Ability: abilities.DEX}
 	default:
 		return nil
 	}
+}
+
+// martialArtsWeaponID classifies a catalogue weapon ID for Martial Arts: the
+// unarmed strike, or a monk weapon. An ID the catalogue does not know is
+// neither. Attack assembly and AssessAction share it.
+func martialArtsWeaponID(id string) (unarmed, monk bool) {
+	weapon, err := weapons.GetByID(weapons.WeaponID(id))
+	if err != nil {
+		return false, false
+	}
+	if weapon.ID == weapons.UnarmedStrike {
+		return true, false
+	}
+	return false, isMonkWeapon(&weapon)
 }
 
 // ToJSON converts the condition to JSON for persistence

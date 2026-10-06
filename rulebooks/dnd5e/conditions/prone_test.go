@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -72,22 +73,43 @@ func (s *ProneConditionSuite) applied() *conditions.ProneCondition {
 
 // resolveAttack runs one attack through the chain and returns the event as the
 // modifiers left it. ctx is explicit because whether a room is installed is the
-// variable half of these tests.
+// variable half of these tests: the room stands in for resolution, which
+// measures the attacker→target distance onto the frame.
 func (s *ProneConditionSuite) resolveAttack(ctx context.Context, attacker, target string) dnd5eEvents.AttackChainEvent {
+	final, err := s.tryAttack(ctx, attacker, target)
+	s.Require().NoError(err)
+	return final
+}
+
+// tryAttack is resolveAttack that hands back the chain's error. The frame lists
+// the prone creature holding Prone, and the attacker→target distance when the
+// room places both; otherwise that distance is unknown.
+func (s *ProneConditionSuite) tryAttack(ctx context.Context, attacker, target string) (dnd5eEvents.AttackChainEvent, error) {
 	event := dnd5eEvents.AttackChainEvent{
 		AttackerID: attacker,
 		TargetID:   target,
 		IsMelee:    true,
 	}
+	framed := framedAttack(event)
+	framed.Frame.Held = []contributions.MemberHeld{{
+		Member: proneID, Conditions: []contributions.HeldCondition{{Ref: refs.Conditions.Prone().String()}},
+	}}
+	if room, ok := gamectx.Room(ctx); ok {
+		from, fromPlaced := room.GetEntityPosition(attacker)
+		to, toPlaced := room.GetEntityPosition(target)
+		if fromPlaced && toPlaced {
+			framed.Frame.Pairs = []contributions.PairFacts{{
+				From: attacker, To: target, DistanceCells: contributions.Known(room.GetGrid().Distance(from, to)),
+			}}
+		}
+	}
 
 	staged := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
-	modified, err := dnd5eEvents.AttackChain.On(s.bus).PublishWithChain(ctx, event, staged)
-	s.Require().NoError(err)
-
-	final, err := modified.Execute(ctx, event)
-	s.Require().NoError(err)
-
-	return final
+	modified, err := dnd5eEvents.AttackChain.On(s.bus).PublishWithChain(ctx, framed, staged)
+	if err != nil {
+		return event, err
+	}
+	return modified.Execute(ctx, event)
 }
 
 // withRoom is the context an attack resolves in when somebody knows where
@@ -188,42 +210,39 @@ func (s *ProneConditionSuite) TestDiagonalAdjacencyIsWithinFiveFeet() {
 	s.Assert().Empty(final.DisadvantageSources)
 }
 
-// The documented gap: with no room installed, the range cannot be decided, so
-// the target-side rule contributes nothing and the attack rolls straight.
-// Erroring instead would abort the whole attack chain for every caller that has
-// not installed a room — resolution, today, is one of them.
-func (s *ProneConditionSuite) TestNoRoomLeavesTheTargetSideRuleUnapplied() {
+// With no distance on the frame the range cannot be decided, so the rule
+// depends and the attack fails (R13) — rolling straight would be a rule
+// silently not applied. Here no room stands in for resolution.
+func (s *ProneConditionSuite) TestNoDistanceFailsTheAttack() {
 	s.place(proneID, 5, 5)
 	s.place(attackerID, 5, 6)
 	s.applied()
 
-	final := s.resolveAttack(s.ctx, attackerID, proneID) // no gamectx.WithRoom
+	_, err := s.tryAttack(s.ctx, attackerID, proneID) // no gamectx.WithRoom
 
-	s.Assert().Empty(final.AdvantageSources)
-	s.Assert().Empty(final.DisadvantageSources)
+	s.Require().Error(err)
+	s.True(errors.Is(err, contributions.ErrRuleCannotAnswer))
 }
 
-// Same gap, other cause: a room exists but somebody is not on the map. "Not
-// within reach" and "nobody knows where they are" must not collapse into each
-// other, or an unplaced attacker would roll at disadvantage on no evidence.
-func (s *ProneConditionSuite) TestAnUnplacedAttackerLeavesTheRuleUnapplied() {
+// Same cause, other source: a room exists but somebody is not on the map, so
+// no distance reaches the frame. "Not within reach" and "nobody knows where
+// they are" never collapse into each other.
+func (s *ProneConditionSuite) TestAnUnplacedAttackerFailsTheAttack() {
 	s.place(proneID, 5, 5)
 	s.applied()
 
-	final := s.resolveAttack(s.withRoom(), attackerID, proneID)
+	_, err := s.tryAttack(s.withRoom(), attackerID, proneID)
 
-	s.Assert().Empty(final.AdvantageSources)
-	s.Assert().Empty(final.DisadvantageSources)
+	s.True(errors.Is(err, contributions.ErrRuleCannotAnswer))
 }
 
-func (s *ProneConditionSuite) TestAnUnplacedProneCreatureLeavesTheRuleUnapplied() {
+func (s *ProneConditionSuite) TestAnUnplacedProneCreatureFailsTheAttack() {
 	s.place(attackerID, 5, 6)
 	s.applied()
 
-	final := s.resolveAttack(s.withRoom(), attackerID, proneID)
+	_, err := s.tryAttack(s.withRoom(), attackerID, proneID)
 
-	s.Assert().Empty(final.AdvantageSources)
-	s.Assert().Empty(final.DisadvantageSources)
+	s.True(errors.Is(err, contributions.ErrRuleCannotAnswer))
 }
 
 // An attack between two other people is none of this condition's business.

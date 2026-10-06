@@ -50,7 +50,7 @@ func (s *WorldTimeSuite) hallWith(
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: tableDriver(), Roller: rollsLowest{},
 		Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
@@ -286,7 +286,7 @@ func (s *WorldTimeSuite) TestACreatureWithNothingOpposedHoldsAndTheBeatSaysSo() 
 func (s *WorldTimeSuite) TestAnAttackOffTheTurnClockIsAnError() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: alwaysSwings{}, Roller: rollsLowest{},
 		Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
@@ -505,7 +505,7 @@ func (s *WorldTimeSuite) TestTheDefaultTableClosesAndThenSwings() {
 	striker := &swingRecorder{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: tableDriver(), Roller: rollsLowest{},
 		Striker: striker, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
@@ -578,7 +578,7 @@ func (s *WorldTimeSuite) TestASpentCreatureIsNotAskedToSwingAgain() {
 	striker := &swingRecorder{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: tableDriver(), Roller: rollsLowest{},
 		Striker: striker, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
@@ -661,7 +661,7 @@ func (s *WorldTimeSuite) TestAnOrderedCellSomebodyIsStandingOnIsStillWalkedTowar
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: tableDriver(), Roller: rollsLowest{},
 		Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{

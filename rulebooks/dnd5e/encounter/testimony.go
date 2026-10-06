@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -48,12 +49,12 @@ const (
 //
 // Unknown testimony means the subject is known to exist without being placed —
 // so there is nobody in view to have a standing or a pair of hands. Unknown
-// therefore carries no position, no standing and no equipment, and encoding one
-// that does is refused rather than silently trimmed.
+// therefore carries no position, no standing, no equipment and no conditions,
+// and encoding one that does is refused rather than silently trimmed.
 //
 // # Each fact says whether it was observed at all
 //
-// Standing and Equipment are pointers because "not observed" and "observed to
+// Standing, Equipment and Conditions are pointers because "not observed" and "observed to
 // be X" are different claims that must not collapse. A bool that is false
 // whether the subject is upright or was never looked at is a zero value that
 // lies, and testimony is the last place that should happen. Testimony written
@@ -78,6 +79,17 @@ type SightTestimony struct {
 	// were not observed, which is not the same as seeing empty hands; see
 	// [Equipment] for the two claims.
 	Equipment *HeldEquipment
+
+	// Conditions is every condition the subject was seen holding, as it was
+	// at the instant of sight — never a live read of their sheet, and not
+	// filtered for perceivability (rpg-project#520 R16). Nil means conditions
+	// were not observed, which is not the same as an empty set: seen holding
+	// none. See [ConditionSet].
+	//
+	// STORED, NEVER DELIVERED. It persists with the testimony and rules read
+	// it through [Encounter.ObservedContext]; every payload this module hands
+	// out leaves without it (see [deliveredSightPayload]).
+	Conditions *ConditionSet
 }
 
 type handsWire struct {
@@ -92,6 +104,9 @@ type sightWire struct {
 	Down           *bool      `json:"down,omitempty"`
 	BlocksMovement *bool      `json:"blocks_movement,omitempty"`
 	Equipment      *handsWire `json:"equipment,omitempty"`
+	// Conditions is a pointer to a slice so that nil (not observed) omits the
+	// key while an observed empty set encodes [].
+	Conditions *[]ConditionKey `json:"conditions,omitempty"`
 }
 
 // sightPayloadFields is the complete set of keys canonical sight testimony may
@@ -99,7 +114,7 @@ type sightWire struct {
 // not understand is refused at the door instead of being silently dropped into
 // a testimony that then reads as confident.
 var sightPayloadFields = map[string]struct{}{
-	"state": {}, "x": {}, "y": {}, "down": {}, "equipment": {}, "blocks_movement": {},
+	"state": {}, "x": {}, "y": {}, "down": {}, "equipment": {}, "blocks_movement": {}, "conditions": {},
 }
 
 // EncodeSightTestimony encodes sight testimony in the canonical tagged wire
@@ -117,6 +132,13 @@ func EncodeSightTestimony(testimony SightTestimony) ([]byte, error) {
 				OffHand:  testimony.Equipment.OffHand,
 			}
 		}
+		if testimony.Conditions != nil {
+			if err := validateConditionSet(testimony.Conditions); err != nil {
+				return nil, fmt.Errorf("invalid conditions: %w", err)
+			}
+			held := append(make([]ConditionKey, 0, len(testimony.Conditions.Conditions)), testimony.Conditions.Conditions...)
+			wire.Conditions = &held
+		}
 		return json.Marshal(wire)
 	case LocationUnknown:
 		if testimony.Position != (spatial.Position{}) {
@@ -131,10 +153,73 @@ func EncodeSightTestimony(testimony SightTestimony) ([]byte, error) {
 		if testimony.Equipment != nil {
 			return nil, fmt.Errorf("unknown location cannot carry equipment")
 		}
+		if testimony.Conditions != nil {
+			return nil, fmt.Errorf("unknown location cannot carry conditions")
+		}
 		return json.Marshal(sightWire{State: string(LocationUnknown)})
 	default:
 		return nil, fmt.Errorf("unsupported location state %q", testimony.State)
 	}
+}
+
+// deliveredSightPayload returns one stored sight payload as this module hands
+// it OUT — through [Encounter.View], [IntelDelta.FirstContact] and
+// [ExitOutput.Carry] — which is the stored testimony with its Conditions
+// removed.
+//
+// # Stored and delivered are two encodings on purpose
+//
+// The stored form (intel, [EncounterData], the minds' [TurnView.Holdings] and
+// [Encounter.ObservedContext]) carries every condition a sighting saw, because
+// rules read them there (rpg-project#520 R16). The delivered form is what a
+// host relays to a client as an opaque payload, and a client learns what it
+// holds only as typed effect rows the rules compiled — never as raw condition
+// refs it would have to recognise by name. So the conditions stop at this
+// module's edge, and the only place that edge exists is here: a host cannot
+// strip what it was never told was there.
+//
+// A payload whose testimony carries no conditions is returned unchanged,
+// byte for byte, so a delivered payload is exactly what it was before
+// sightings learned conditions. A payload that does not decode is returned
+// unchanged too, unless it claims a conditions key — that one is refused
+// (ErrInvalidData) rather than relayed, because passing it on is the leak
+// this function exists to prevent.
+func deliveredSightPayload(payload []byte) ([]byte, error) {
+	testimony, ok := DecodeSightTestimony(payload)
+	if !ok {
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(payload, &fields) == nil {
+			if _, claims := fields["conditions"]; claims {
+				return nil, fmt.Errorf("undecodable sight testimony carries conditions: %w", ErrInvalidData)
+			}
+		}
+		return append([]byte(nil), payload...), nil
+	}
+	if testimony.Conditions == nil {
+		return append([]byte(nil), payload...), nil
+	}
+	testimony.Conditions = nil
+	out, err := EncodeSightTestimony(testimony)
+	if err != nil {
+		return nil, fmt.Errorf("deliver sight testimony: %w", err)
+	}
+	return out, nil
+}
+
+// deliveredHoldings returns holdings with every sight payload in its delivered
+// form; see [deliveredSightPayload]. Other channels pass through.
+func deliveredHoldings(holdings []perception.Holding) ([]perception.Holding, error) {
+	for i := range holdings {
+		if holdings[i].Channel != perception.Sight {
+			continue
+		}
+		payload, err := deliveredSightPayload(holdings[i].Payload)
+		if err != nil {
+			return nil, fmt.Errorf("sighting of %q: %w", holdings[i].Subject, err)
+		}
+		holdings[i].Payload = payload
+	}
+	return holdings, nil
 }
 
 // DecodeSightTestimony decodes canonical tagged sight testimony and the legacy
@@ -175,10 +260,24 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 	_, downPresent := fields["down"]
 	_, equipmentPresent := fields["equipment"]
 	_, blocksPresent := fields["blocks_movement"]
+	_, conditionsPresent := fields["conditions"]
 
 	var hands *HeldEquipment
 	if wire.Equipment != nil {
 		hands = &HeldEquipment{MainHand: wire.Equipment.MainHand, OffHand: wire.Equipment.OffHand}
+	}
+
+	// A present key must hold a list: "conditions": null would decode as
+	// not observed while claiming the key, which is two answers in one.
+	if conditionsPresent && wire.Conditions == nil {
+		return SightTestimony{}, false
+	}
+	var held *ConditionSet
+	if wire.Conditions != nil {
+		held = &ConditionSet{Conditions: append(make([]ConditionKey, 0, len(*wire.Conditions)), *wire.Conditions...)}
+		if validateConditionSet(held) != nil {
+			return SightTestimony{}, false
+		}
 	}
 
 	if wire.State == "" {
@@ -187,7 +286,7 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 		}
 		// The legacy untagged form predates every fact but position, so it
 		// cannot carry one.
-		if downPresent || equipmentPresent || blocksPresent {
+		if downPresent || equipmentPresent || blocksPresent || conditionsPresent {
 			return SightTestimony{}, false
 		}
 		return SightTestimony{
@@ -207,10 +306,12 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 			Down:           wire.Down,
 			BlocksMovement: wire.BlocksMovement,
 			Equipment:      hands,
+			Conditions:     held,
 		}, true
 	case LocationUnknown:
-		// Nobody in view has a position, a standing, or hands to observe.
-		if xPresent || yPresent || downPresent || equipmentPresent || blocksPresent {
+		// Nobody in view has a position, a standing, hands or conditions to
+		// observe.
+		if xPresent || yPresent || downPresent || equipmentPresent || blocksPresent || conditionsPresent {
 			return SightTestimony{}, false
 		}
 		return SightTestimony{State: LocationUnknown}, true

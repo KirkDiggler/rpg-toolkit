@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -40,6 +41,31 @@ type HiddenCondition struct {
 
 // Ensure HiddenCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*HiddenCondition)(nil)
+
+var _ contributions.ActionAssessor = (*HiddenCondition)(nil)
+
+// AssessAction answers whether being hidden bears on the framed attack: every
+// attack roll its holder makes has advantage. Attacking ends Hidden; reading
+// this answer ends nothing.
+func (h *HiddenCondition) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error) {
+	return h.attackRule().AssessAction(in)
+}
+
+// heldRule is the by-reference rule for this Hidden on its holder — the one
+// information asks for a candidate. Attacks against the hidden holder have
+// disadvantage.
+func (h *HiddenCondition) heldRule() contributions.ActionAssessor {
+	return newHiddenHeldRule(h.MemberID, heldAddress(h.MemberID, h))
+}
+
+func (h *HiddenCondition) attackRule() attackRollRule {
+	return attackRollRule{name: "hidden", owner: h.MemberID, text: attackRollText{
+		NotOwner:    "Hidden affects only its holder's attacks",
+		OnlyAttacks: "Hidden affects only attack rolls",
+		Applies:     "You are hidden; attacking ends it",
+		Benefit:     "Advantage on the attack roll",
+	}}
+}
 
 // Ref returns the canonical ref this condition names itself by — the same ref
 // its ToJSON embeds and its loader routes on.
@@ -146,6 +172,13 @@ func (h *HiddenCondition) onAttackChain(
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
 	switch h.MemberID {
 	case event.AttackerID:
+		executed, err := executeRule(&executeRuleInput{Name: "hidden", Rule: h.attackRule(), Frame: event.Frame})
+		if err != nil {
+			return c, err
+		}
+		if executed.Answer.Decision.Applicability != contributions.Applies {
+			return c, nil
+		}
 		modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
 			e.AdvantageSources = append(e.AdvantageSources, dnd5eEvents.AttackModifierSource{
 				SourceRef: refs.Conditions.Hidden(),
@@ -176,17 +209,11 @@ func (h *HiddenCondition) onAttackChain(
 		}
 
 	case event.TargetID:
-		modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
-			e.DisadvantageSources = append(e.DisadvantageSources, dnd5eEvents.AttackModifierSource{
-				SourceRef: refs.Conditions.Hidden(),
-				SourceID:  h.MemberID,
-				Reason:    "Hidden",
-			})
-			return e, nil
-		}
-		if err := c.Add(combat.StageConditions, "hidden_target_disadvantage", modifyAttack); err != nil {
-			return c, rpgerr.Wrapf(err, "failed to add hidden disadvantage modifier for character %s", h.MemberID)
-		}
+		return applyHeldAttack(&heldAttackInput{
+			Name: "hidden", Holder: h.MemberID, Held: heldAddress(h.MemberID, h), Rule: h.heldRule(), Event: event, Chain: c,
+			SourceRef: refs.Conditions.Hidden(), SourceID: h.MemberID,
+			Label: fixedLabel("hidden_target_disadvantage", "Hidden"),
+		})
 	}
 
 	return c, nil

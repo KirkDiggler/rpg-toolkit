@@ -266,23 +266,6 @@ func (dc *DamageComponent) Total() int {
 }
 
 // =============================================================================
-// Attack Type
-// =============================================================================
-
-// AttackType categorizes the type of attack being made.
-// This is used to distinguish standard attacks from opportunity attacks,
-// which affects how certain conditions (like Disengaging) can respond.
-type AttackType string
-
-const (
-	// AttackTypeStandard is a normal attack made during combat (default)
-	AttackTypeStandard AttackType = "standard"
-
-	// AttackTypeOpportunity is a reaction attack triggered by movement
-	AttackTypeOpportunity AttackType = "opportunity"
-)
-
-// =============================================================================
 // Attack Modifier Types
 // =============================================================================
 
@@ -315,11 +298,10 @@ func (s AttackModifierSource) RollSource() RollSource {
 // This event fires BEFORE the d20 roll to allow advantage/disadvantage to be collected.
 type AttackChainEvent struct {
 	// Identity
-	AttackerID string     // ID of the attacking character
-	TargetID   string     // ID of the target
-	WeaponRef  *core.Ref  // Reference to the weapon used
-	IsMelee    bool       // True for melee attacks, false for ranged
-	AttackType AttackType // Type of attack (standard or opportunity)
+	AttackerID string    // ID of the attacking character
+	TargetID   string    // ID of the target
+	WeaponRef  *core.Ref // Reference to the weapon used
+	IsMelee    bool      // True for melee attacks, false for ranged
 
 	// BeforeRollOffers are optional reactions; collecting them never spends or rolls.
 	BeforeRollOffers []AttackRollOffer
@@ -335,6 +317,18 @@ type AttackChainEvent struct {
 	AttackBonus       int // Base bonus before modifiers (can be modified by chain)
 	TargetAC          int // Target's armor class (for reference)
 	CriticalThreshold int // Roll >= this value is a critical hit (default 20, can be lowered)
+
+	// Frame is the attack-roll frame, built once by resolution from
+	// authoritative state before the chain folds, so its Advantage is
+	// unknown. A rule asked during the fold reads it and nothing else; an
+	// invalid frame fails the fold rather than switching a rule off. The
+	// damage fold's frame is this one with Advantage settled.
+	//
+	// It is never persisted: a frozen fold keeps the event, and a resumed
+	// strike rebuilds its frame from current truth (S3). A Fact does not
+	// marshal, so a serialized frame would come back hollow — every fact
+	// unknown yet still claiming Complete.
+	Frame contributions.Frame `json:"-"`
 }
 
 // IsCancelled returns true if this attack has been cancelled.

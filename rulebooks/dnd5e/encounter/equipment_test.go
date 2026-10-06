@@ -63,6 +63,28 @@ func (handsForAStranger) Equipment(
 	return out, nil
 }
 
+// noConditionsObserved answers "nothing to observe" for every member. The
+// equipment fixtures below return it so that these tests stay about hands.
+func noConditionsObserved(members []encounter.MemberID) map[encounter.MemberID]*encounter.ConditionSet {
+	out := make(map[encounter.MemberID]*encounter.ConditionSet, len(members))
+	for _, id := range members {
+		out[id] = nil
+	}
+	return out
+}
+
+func (handsFrom) Conditions(members []encounter.MemberID) (map[encounter.MemberID]*encounter.ConditionSet, error) {
+	return noConditionsObserved(members), nil
+}
+
+func (handsSkippingWhenTold) Conditions(members []encounter.MemberID) (map[encounter.MemberID]*encounter.ConditionSet, error) {
+	return noConditionsObserved(members), nil
+}
+
+func (handsForAStranger) Conditions(members []encounter.MemberID) (map[encounter.MemberID]*encounter.ConditionSet, error) {
+	return noConditionsObserved(members), nil
+}
+
 func TestTheTestimonyCarriesWhatTheSubjectWasHolding(t *testing.T) {
 	hands := handsFrom{
 		"zara":  {MainHand: "longsword", OffHand: "shield"},

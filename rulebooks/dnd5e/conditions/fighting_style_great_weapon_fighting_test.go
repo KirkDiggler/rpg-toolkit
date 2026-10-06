@@ -106,6 +106,9 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerolls1sAnd2s() {
 	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
+		IsMelee:    true,
+		TwoHanded:  true,
+		WeaponRef:  refs.Weapons.Greatsword(),
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:     dnd5eEvents.DamageSourceWeapon,
@@ -126,7 +129,7 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerolls1sAnd2s() {
 	// Execute through damage chain
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)
-	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
+	modifiedChain, err := damages.PublishWithChain(s.ctx, framedDamage(damageEvent), damageChain)
 	s.Require().NoError(err)
 
 	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
@@ -174,6 +177,9 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestDoesNotRerollHigherValue
 	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
+		IsMelee:    true,
+		TwoHanded:  true,
+		WeaponRef:  refs.Weapons.Greatsword(),
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:     dnd5eEvents.DamageSourceWeapon,
@@ -194,7 +200,7 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestDoesNotRerollHigherValue
 	// Execute through damage chain
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)
-	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
+	modifiedChain, err := damages.PublishWithChain(s.ctx, framedDamage(damageEvent), damageChain)
 	s.Require().NoError(err)
 
 	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
@@ -219,6 +225,9 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerollsMarkedPrimaryWhen
 	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
+		IsMelee:    true,
+		TwoHanded:  true,
+		WeaponRef:  refs.Weapons.Greatsword(),
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source: dnd5eEvents.DamageSourceWeapon,
@@ -246,7 +255,7 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerollsMarkedPrimaryWhen
 
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)
-	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
+	modifiedChain, err := damages.PublishWithChain(s.ctx, framedDamage(damageEvent), damageChain)
 	s.Require().NoError(err)
 	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
 	s.Require().NoError(err)
@@ -272,6 +281,9 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerollsCurrentFacesAfter
 	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
+		IsMelee:    true,
+		TwoHanded:  true,
+		WeaponRef:  refs.Weapons.Greatsword(),
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:     dnd5eEvents.DamageSourceWeapon,
@@ -306,7 +318,7 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerollsCurrentFacesAfter
 
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)
-	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
+	modifiedChain, err := damages.PublishWithChain(s.ctx, framedDamage(damageEvent), damageChain)
 	s.Require().NoError(err)
 	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
 	s.Require().NoError(err)
@@ -349,6 +361,9 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRollerErrorLeavesTheCall
 	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
+		IsMelee:    true,
+		TwoHanded:  true,
+		WeaponRef:  refs.Weapons.Greatsword(),
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:     dnd5eEvents.DamageSourceWeapon,
@@ -366,7 +381,7 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRollerErrorLeavesTheCall
 
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)
-	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
+	modifiedChain, err := damages.PublishWithChain(s.ctx, framedDamage(damageEvent), damageChain)
 	s.Require().NoError(err)
 
 	_, execErr := modifiedChain.Execute(s.ctx, damageEvent)
@@ -400,6 +415,9 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestNilPrimaryDiceTraceFails
 	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
+		IsMelee:    true,
+		TwoHanded:  true,
+		WeaponRef:  refs.Weapons.Greatsword(),
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:     dnd5eEvents.DamageSourceWeapon,
@@ -418,7 +436,7 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestNilPrimaryDiceTraceFails
 
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)
-	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
+	modifiedChain, err := damages.PublishWithChain(s.ctx, framedDamage(damageEvent), damageChain)
 	s.Require().NoError(err)
 
 	_, err = modifiedChain.Execute(s.ctx, damageEvent)
@@ -459,6 +477,9 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerollsEveryLowFaceButOn
 	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
+		IsMelee:    true,
+		TwoHanded:  true,
+		WeaponRef:  refs.Weapons.Greatsword(),
 		Components: []dnd5eEvents.DamageComponent{{
 			Source:     dnd5eEvents.DamageSourceWeapon,
 			Properties: []damage.Property{damage.AddsAttackAbilityModifier},
@@ -473,7 +494,7 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerollsEveryLowFaceButOn
 	}
 
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
-	modifiedChain, err := dnd5eEvents.DamageChain.On(s.bus).PublishWithChain(s.ctx, damageEvent, damageChain)
+	modifiedChain, err := dnd5eEvents.DamageChain.On(s.bus).PublishWithChain(s.ctx, framedDamage(damageEvent), damageChain)
 	s.Require().NoError(err)
 	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
 	s.Require().NoError(err)

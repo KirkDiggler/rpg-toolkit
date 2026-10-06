@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/stretchr/testify/suite"
@@ -95,7 +96,7 @@ func (s *DodgingConditionTestSuite) TestAttackChainDisadvantage() {
 
 		attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 		attacks := dnd5eEvents.AttackChain.On(s.bus)
-		modifiedChain, err := attacks.PublishWithChain(s.ctx, attackEvent, attackChain)
+		modifiedChain, err := attacks.PublishWithChain(s.ctx, framedAgainst(attackEvent, 1, true, dodgingHeld), attackChain)
 		s.Require().NoError(err)
 
 		finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
@@ -118,7 +119,7 @@ func (s *DodgingConditionTestSuite) TestAttackChainDisadvantage() {
 
 		attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 		attacks := dnd5eEvents.AttackChain.On(s.bus)
-		modifiedChain, err := attacks.PublishWithChain(s.ctx, attackEvent, attackChain)
+		modifiedChain, err := attacks.PublishWithChain(s.ctx, framedAgainst(attackEvent, 1, true, dodgingHeld), attackChain)
 		s.Require().NoError(err)
 
 		finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
@@ -139,7 +140,7 @@ func (s *DodgingConditionTestSuite) TestAttackChainDisadvantage() {
 
 		attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 		attacks := dnd5eEvents.AttackChain.On(s.bus)
-		modifiedChain, err := attacks.PublishWithChain(s.ctx, attackEvent, attackChain)
+		modifiedChain, err := attacks.PublishWithChain(s.ctx, framedAgainst(attackEvent, 1, true, dodgingHeld), attackChain)
 		s.Require().NoError(err)
 
 		finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
@@ -273,3 +274,6 @@ func (s *DodgingConditionTestSuite) TestToJSON() {
 	s.Require().NoError(err)
 	s.Assert().Equal(s.memberID, loaded.MemberID)
 }
+
+// dodgingHeld is a Dodging condition as a target's held list names it.
+var dodgingHeld = contributions.HeldCondition{Ref: refs.Conditions.Dodging().String()}

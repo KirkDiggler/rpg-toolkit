@@ -2200,7 +2200,8 @@ type LoadEncounterInput struct {
 	// on SetupInput: a loaded encounter snapshots hands on its first sight
 	// refresh, so a blob that comes back without one is as unusable as a Setup
 	// without one (rpg-toolkit#1615). Refused at the door, never guarded at the
-	// use site, and never defaulted.
+	// use site, and never defaulted. Its value must also answer Conditions
+	// ([EquipmentWithConditions]) or Load returns ErrNoConditions.
 	Equipment Equipment
 
 	// TurnDriver decides what a member with no player does when it is given
@@ -2270,6 +2271,9 @@ func (in *LoadEncounterInput) Validate() error {
 	}
 	if in.Equipment == nil {
 		return fmt.Errorf("load encounter: Equipment is required: %w", ErrNoEquipment)
+	}
+	if _, ok := in.Equipment.(EquipmentWithConditions); !ok {
+		return fmt.Errorf("load encounter: Equipment does not implement Conditions: %w", ErrNoConditions)
 	}
 	if in.TurnDriver == nil {
 		return fmt.Errorf("load encounter: TurnDriver is required: %w", ErrNoTurnDriver)
@@ -2843,6 +2847,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		participation: standingWithParticipation,
 		sight:         input.Sight,
 		equipment:     input.Equipment,
+		conditions:    input.Equipment.(EquipmentWithConditions),
 		driver:        input.TurnDriver,
 		roller:        input.Roller,
 		striker:       input.Striker,

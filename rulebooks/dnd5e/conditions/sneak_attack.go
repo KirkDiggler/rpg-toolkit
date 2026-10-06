@@ -16,7 +16,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -299,8 +298,9 @@ func (s *SneakAttackCondition) rule() sneakAttackRule {
 // and enables this, and it is nobody's ally. The attacker's own adjacency
 // never counts.
 //
-// The Dexterity test is the known defect rpg-toolkit#1929 (RAW asks for a
-// finesse or ranged weapon), kept as it is.
+// The weapon test reads the weapon, not the ability that swung it: a finesse
+// weapon qualifies with Strength, and a Dexterity attack with a weapon that is
+// neither finesse nor ranged does not (rpg-toolkit#1929).
 type sneakAttackRule struct {
 	owner        string
 	usedThisTurn bool
@@ -329,20 +329,22 @@ func (r sneakAttackRule) AssessAction(in *contributions.AssessActionInput) (*con
 	if r.usedThisTurn {
 		return answer(contributions.DoesNotApply, "Already used this turn"), nil
 	}
-	ability, abilityKnown := frame.Action.Ability.Get()
-	if abilityKnown && ability != abilities.DEX {
-		return answer(contributions.DoesNotApply, "Sneak Attack requires a Dexterity attack"), nil
-	}
 	weapon, weaponKnown := frame.Action.WeaponPool.Get()
 	if weaponKnown && !weapon {
 		return answer(contributions.DoesNotApply, "Sneak Attack requires a weapon attack"), nil
+	}
+	finesse, finesseKnown := frame.Action.Finesse.Get()
+	ranged, rangedKnown := frame.Action.RangedWeapon.Get()
+	eligible := (finesseKnown && finesse) || (rangedKnown && ranged)
+	if finesseKnown && rangedKnown && !eligible {
+		return answer(contributions.DoesNotApply, "Sneak Attack requires a finesse or ranged weapon"), nil
 	}
 	target, targetKnown := frame.Target.Get()
 	if !targetKnown {
 		return answer(contributions.Depends, "Depends on the target"), nil
 	}
-	if !abilityKnown || !weaponKnown {
-		return answer(contributions.Depends, "Depends on the attack's weapon and ability"), nil
+	if !weaponKnown || !eligible {
+		return answer(contributions.Depends, "Depends on the attack's weapon"), nil
 	}
 	if advantage, known := frame.Action.Advantage.Get(); known && advantage {
 		return answer(contributions.Applies, "The attack has advantage"), nil

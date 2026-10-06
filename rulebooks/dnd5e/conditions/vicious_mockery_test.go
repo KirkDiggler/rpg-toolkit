@@ -50,7 +50,7 @@ func (s *ViciousMockeryConditionSuite) attack(attackerID string) dnd5eEvents.Att
 	event := dnd5eEvents.AttackChainEvent{AttackerID: attackerID, TargetID: "somebody"}
 	staged := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 
-	modified, err := dnd5eEvents.AttackChain.On(s.bus).PublishWithChain(s.ctx, event, staged)
+	modified, err := dnd5eEvents.AttackChain.On(s.bus).PublishWithChain(s.ctx, framedAttack(event), staged)
 	s.Require().NoError(err)
 
 	folded, err := modified.Execute(s.ctx, event)

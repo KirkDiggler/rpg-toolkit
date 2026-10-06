@@ -220,12 +220,12 @@ func (s *RogueEncounterSuite) TestSneakAttack_WithAdvantage_AddsDamage() {
 		s.mockRoller.EXPECT().RollN(gomock.Any(), 1, 6).Return([]int{4}, nil)
 
 		damageEvent := &dnd5eEvents.DamageChainEvent{
-			AttackerID:   s.rogue.GetID(),
-			TargetID:     s.goblin.GetID(),
-			AbilityUsed:  abilities.DEX, // Rapier is finesse
+			AttackerID:  s.rogue.GetID(),
+			TargetID:    s.goblin.GetID(),
+			AbilityUsed: abilities.DEX, WeaponRef: refs.Weapons.Rapier(), // Rapier is finesse
 			HasAdvantage: true,
 			Components: []dnd5eEvents.DamageComponent{
-				{Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"}, Dice: testDiceTrace(6, 6)},
+				{Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Rapier(), Name: "Rapier"}, Dice: testDiceTrace(6, 6)},
 					DamageType: damage.Piercing},
 			},
 		}
@@ -276,12 +276,12 @@ func (s *RogueEncounterSuite) TestSneakAttack_WithAllyAdjacent_AddsDamage() {
 		s.mockRoller.EXPECT().RollN(gomock.Any(), 1, 6).Return([]int{5}, nil)
 
 		damageEvent := &dnd5eEvents.DamageChainEvent{
-			AttackerID:   s.rogue.GetID(),
-			TargetID:     s.goblin.GetID(),
-			AbilityUsed:  abilities.DEX,
+			AttackerID:  s.rogue.GetID(),
+			TargetID:    s.goblin.GetID(),
+			AbilityUsed: abilities.DEX, WeaponRef: refs.Weapons.Rapier(),
 			HasAdvantage: false, // No advantage!
 			Components: []dnd5eEvents.DamageComponent{
-				{Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"}, Dice: testDiceTrace(6, 5)},
+				{Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Rapier(), Name: "Rapier"}, Dice: testDiceTrace(6, 5)},
 					DamageType: damage.Piercing},
 			},
 		}
@@ -326,12 +326,12 @@ func (s *RogueEncounterSuite) TestSneakAttack_NoAdvantageNoAlly_NoDamage() {
 		// NO dice roll expected
 
 		damageEvent := &dnd5eEvents.DamageChainEvent{
-			AttackerID:   s.rogue.GetID(),
-			TargetID:     s.goblin.GetID(),
-			AbilityUsed:  abilities.DEX,
+			AttackerID:  s.rogue.GetID(),
+			TargetID:    s.goblin.GetID(),
+			AbilityUsed: abilities.DEX, WeaponRef: refs.Weapons.Rapier(),
 			HasAdvantage: false,
 			Components: []dnd5eEvents.DamageComponent{
-				{Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"}, Dice: testDiceTrace(6, 4)},
+				{Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Rapier(), Name: "Rapier"}, Dice: testDiceTrace(6, 4)},
 					DamageType: damage.Piercing},
 			},
 		}
@@ -370,8 +370,8 @@ func (s *RogueEncounterSuite) TestSneakAttack_OncePerTurn() {
 		s.mockRoller.EXPECT().RollN(gomock.Any(), 1, 6).Return([]int{3}, nil)
 
 		damageEvent1 := &dnd5eEvents.DamageChainEvent{
-			AttackerID: s.rogue.GetID(), TargetID: s.goblin.GetID(), AbilityUsed: abilities.DEX, HasAdvantage: true,
-			Components: []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"}}}},
+			AttackerID: s.rogue.GetID(), TargetID: s.goblin.GetID(), AbilityUsed: abilities.DEX, WeaponRef: refs.Weapons.Rapier(), HasAdvantage: true,
+			Components: []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Rapier(), Name: "Rapier"}}}},
 		}
 
 		chain1 := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
@@ -384,8 +384,8 @@ func (s *RogueEncounterSuite) TestSneakAttack_OncePerTurn() {
 
 		// Second attack (same turn) - sneak attack should NOT trigger
 		damageEvent2 := &dnd5eEvents.DamageChainEvent{
-			AttackerID: s.rogue.GetID(), TargetID: s.goblin.GetID(), AbilityUsed: abilities.DEX, HasAdvantage: true,
-			Components: []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"}}}},
+			AttackerID: s.rogue.GetID(), TargetID: s.goblin.GetID(), AbilityUsed: abilities.DEX, WeaponRef: refs.Weapons.Rapier(), HasAdvantage: true,
+			Components: []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Rapier(), Name: "Rapier"}}}},
 		}
 
 		chain2 := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
@@ -420,8 +420,8 @@ func (s *RogueEncounterSuite) TestSneakAttack_ResetsOnTurnEnd() {
 		s.mockRoller.EXPECT().RollN(gomock.Any(), 1, 6).Return([]int{3}, nil)
 		damageEvent1 := &dnd5eEvents.DamageChainEvent{
 			AttackerID: s.rogue.GetID(), TargetID: s.goblin.GetID(),
-			AbilityUsed: abilities.DEX, HasAdvantage: true,
-			Components: []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"}}}},
+			AbilityUsed: abilities.DEX, WeaponRef: refs.Weapons.Rapier(), HasAdvantage: true,
+			Components: []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Rapier(), Name: "Rapier"}}}},
 		}
 		chain1 := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		modChain1, err := topic.PublishWithChain(s.ctx, framed(s.ctx, damageEvent1), chain1)
@@ -438,8 +438,8 @@ func (s *RogueEncounterSuite) TestSneakAttack_ResetsOnTurnEnd() {
 		s.mockRoller.EXPECT().RollN(gomock.Any(), 1, 6).Return([]int{6}, nil)
 		damageEvent2 := &dnd5eEvents.DamageChainEvent{
 			AttackerID: s.rogue.GetID(), TargetID: s.goblin.GetID(),
-			AbilityUsed: abilities.DEX, HasAdvantage: true,
-			Components: []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"}}}},
+			AbilityUsed: abilities.DEX, WeaponRef: refs.Weapons.Rapier(), HasAdvantage: true,
+			Components: []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Rapier(), Name: "Rapier"}}}},
 		}
 		chain2 := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		modChain2, err := topic.PublishWithChain(s.ctx, framed(s.ctx, damageEvent2), chain2)
@@ -468,11 +468,12 @@ func (s *RogueEncounterSuite) TestSneakAttack_RequiresFinesseOrRanged() {
 		s.Require().NoError(err)
 		defer func() { _ = sneakAttack.Remove(s.ctx, s.bus) }()
 
-		// STR attack - should NOT trigger sneak attack even with advantage
+		// A longsword is neither finesse nor ranged - no sneak attack even with advantage
 		damageEvent := &dnd5eEvents.DamageChainEvent{
 			AttackerID:   s.rogue.GetID(),
 			TargetID:     s.goblin.GetID(),
-			AbilityUsed:  abilities.STR, // Not DEX!
+			AbilityUsed:  abilities.STR,
+			WeaponRef:    refs.Weapons.Longsword(),
 			HasAdvantage: true,
 			Components:   []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"}}}},
 		}
@@ -510,8 +511,8 @@ func (s *RogueEncounterSuite) TestSneakAttack_ScalesWithLevel() {
 
 		damageEvent := &dnd5eEvents.DamageChainEvent{
 			AttackerID: s.rogue.GetID(), TargetID: s.goblin.GetID(),
-			AbilityUsed: abilities.DEX, HasAdvantage: true,
-			Components: []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"}}}},
+			AbilityUsed: abilities.DEX, WeaponRef: refs.Weapons.Rapier(), HasAdvantage: true,
+			Components: []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Rapier(), Name: "Rapier"}}}},
 		}
 
 		chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)

@@ -117,7 +117,7 @@ func (e *Encounter) makeSightAreaTransition(member MemberID, area SightArea, ent
 		kind = ResultConditionApplied
 	}
 	result, err := e.prepareActivationResult("area membership", 0, ActivationResult{
-		Kind: kind, Address: &ConditionAddress{MemberID: member, ConditionRef: area.MembershipRef, SourceID: area.MembershipSourceID}, Name: area.MembershipName, Reason: reason,
+		Kind: kind, Address: &ConditionAddress{MemberID: member, ConditionKey: ConditionKey{ConditionRef: area.MembershipRef, SourceID: area.MembershipSourceID}}, Name: area.MembershipName, Reason: reason,
 	})
 	if err != nil {
 		return sightAreaTransition{}, err

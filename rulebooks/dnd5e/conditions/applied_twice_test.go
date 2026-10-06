@@ -129,10 +129,6 @@ func (s *AppliedTwiceSuite) fixtures() map[string]func() dnd5eEvents.ConditionBe
 			return s.must(conditions.NewSanctuaryCondition(conditions.NewSanctuaryConditionInput{
 				MemberID: id, SourceID: "cleric", SourceRef: refs.Spells.Sanctuary()}))
 		},
-		refs.Conditions.InFog().String(): func() dnd5eEvents.ConditionBehavior {
-			return s.must(conditions.NewInFogCondition(conditions.NewInFogConditionInput{
-				MemberID: id, SourceID: "area-1", SourceRef: refs.Spells.FogCloud()}))
-		},
 	}
 }
 
