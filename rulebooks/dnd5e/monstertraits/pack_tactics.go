@@ -6,14 +6,15 @@ package monstertraits
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
@@ -27,11 +28,8 @@ type PackTacticsData struct {
 // Pack Tactics grants advantage on attack rolls against a creature if at least
 // one of the attacker's allies is within 5 feet of the target and not incapacitated.
 //
-// This was a stub until rpg-toolkit#1251. It could not be written before,
-// because a trait had no way to ask who anybody was to anybody else — the
-// registry that would have answered was never installed, and the only other
-// signal available was entity type, which cannot tell one monster faction from
-// another. gamectx.Cast answers it now.
+// Who is whose ally and who stands beside the target are frame facts
+// resolution measures; the trait reads them and nothing else.
 type packTacticsCondition struct {
 	ownerID string
 	bus     events.EventBus
@@ -117,24 +115,29 @@ func (p *packTacticsCondition) loadJSON(data json.RawMessage) error {
 // onAttackChain grants advantage when an ally of the attacker is within five
 // feet of the target.
 //
-// Asks IsAllied rather than IsHostile. Those are momentarily each other's
-// complement — both answer "same MemberKind" today — but they are different
-// questions and the rule has to ask the one it means. The moment a third
-// faction can be neutral, "not my enemy" would start counting bystanders as
-// pack-mates.
+// Who stands where and who is on whose side are read from the event's
+// attack-roll frame, which resolution builds from authoritative state: the
+// ally→target distance and the attacker→ally stance on the disposition graph
+// at the moment of asking (R5). The rule asks for an ALLIED stance, not "not
+// hostile": a neutral faction beside the target is no packmate.
 //
-// A question that cannot be answered leaves the chain untouched. Never an
-// error: this folds into the attack chain, and an errored fold discards every
-// other contribution to that roll along with this one (rpg-toolkit#1254).
+// A frame that cannot answer fails the attack (R13): an invalid or incomplete
+// frame — a partial set of pairs never proves no packmate stands there — or an
+// unknown stance or distance for a member beside the target. It is never read
+// as "no ally", which would switch the trait off silently.
 func (p *packTacticsCondition) onAttackChain(
-	ctx context.Context,
+	_ context.Context,
 	event dnd5eEvents.AttackChainEvent,
 	c chain.Chain[dnd5eEvents.AttackChainEvent],
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
 	if event.AttackerID != p.ownerID {
 		return c, nil
 	}
-	if !p.allyAdjacentToTarget(ctx, event) {
+	adjacent, err := p.allyAdjacentToTarget(event.Frame, event.TargetID)
+	if err != nil {
+		return c, err
+	}
+	if !adjacent {
 		return c, nil
 	}
 
@@ -154,41 +157,43 @@ func (p *packTacticsCondition) onAttackChain(
 	return c, nil
 }
 
-// allyAdjacentToTarget reports whether any ally of this creature stands within
-// five feet of the target.
+// allyAdjacentToTarget reports whether the frame shows any ally of this
+// creature within five feet of the target. Every member the frame pairs with
+// the target is a candidate; errors wrap contributions.ErrRuleCannotAnswer.
 //
 // TODO(rpg-toolkit): RAW adds "and isn't incapacitated". That clause cannot be
 // written yet — Incapacitated is one of thirteen standard conditions with no
 // implementation, so there is nothing truthful to test. Deliberately left
 // unenforced rather than approximated by something that happens to be nearby
 // (downed, say), which would be a different rule wearing this one's name.
-func (p *packTacticsCondition) allyAdjacentToTarget(
-	ctx context.Context,
-	event dnd5eEvents.AttackChainEvent,
-) bool {
-	room, ok := gamectx.Room(ctx)
-	if !ok {
-		return false
+func (p *packTacticsCondition) allyAdjacentToTarget(frame contributions.Frame, target string) (bool, error) {
+	if err := frame.Validate(); err != nil {
+		return false, fmt.Errorf("pack tactics: %w: %w", contributions.ErrRuleCannotAnswer, err)
 	}
-	cast, ok := gamectx.CastOf(ctx)
-	if !ok {
-		return false
+	if !frame.Complete {
+		return false, fmt.Errorf("pack tactics: %w: the frame's pairs do not cover every member",
+			contributions.ErrRuleCannotAnswer)
 	}
-
-	targetPos, found := room.GetEntityPosition(event.TargetID)
-	if !found {
-		return false
-	}
-
-	for _, entity := range room.GetEntitiesInRange(targetPos, combat.AdjacentCells) {
-		id := entity.GetID()
-		if id == event.TargetID || id == p.ownerID {
+	for _, pair := range frame.Pairs {
+		if pair.To != target || pair.From == p.ownerID {
 			continue
 		}
-		if allied, known := cast.IsAllied(p.ownerID, id); known && allied {
-			return true
+		stance, known := frame.Pair(p.ownerID, pair.From).Stance.Get()
+		if !known {
+			return false, fmt.Errorf("pack tactics: %w: stance from %q to %q is unknown",
+				contributions.ErrRuleCannotAnswer, p.ownerID, pair.From)
+		}
+		if stance != contributions.StanceAllied {
+			continue
+		}
+		distance, known := pair.DistanceCells.Get()
+		if !known {
+			return false, fmt.Errorf("pack tactics: %w: distance from %q to %q is unknown",
+				contributions.ErrRuleCannotAnswer, pair.From, target)
+		}
+		if distance <= combat.AdjacentCells {
+			return true, nil
 		}
 	}
-
-	return false
+	return false, nil
 }

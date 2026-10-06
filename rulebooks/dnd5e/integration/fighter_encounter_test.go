@@ -21,6 +21,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
@@ -838,7 +839,16 @@ func (s *FighterEncounterSuite) TestFightingStyleProtection_ImposesDisadvantage(
 
 		attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 		attackTopic := dnd5eEvents.AttackChain.On(s.bus)
-		modifiedChain, err := attackTopic.PublishWithChain(ctx, framedAttack(attackEvent), attackChain)
+		// The frame resolution builds carries the fighter→ally distance,
+		// measured on the room's grid.
+		framedEvent := framedAttack(attackEvent)
+		fighterAt, _ := s.room.GetEntityPosition(s.fighter.GetID())
+		allyAt, _ := s.room.GetEntityPosition(ally.GetID())
+		framedEvent.Frame.Pairs = []contributions.PairFacts{{
+			From: s.fighter.GetID(), To: ally.GetID(),
+			DistanceCells: contributions.Known(s.room.GetGrid().Distance(fighterAt, allyAt)),
+		}}
+		modifiedChain, err := attackTopic.PublishWithChain(ctx, framedEvent, attackChain)
 		s.Require().NoError(err)
 
 		finalEvent, err := modifiedChain.Execute(ctx, attackEvent)
