@@ -65,8 +65,8 @@ func installTruth(ctx context.Context, room spatial.Room, cast *Participants, ru
 	// decide — install nothing — silently switched off every predicate that
 	// reads positions the moment one party member wandered off, which in a
 	// dungeon is most of the time (rpg-toolkit#1090). There is one map, so
-	// there is nothing to choose between, and no input can produce an
-	// interaction without a world. TestNoCodePathProducesARoomlessInteraction
+	// there is nothing to choose between, and no input to Resolve can produce
+	// an interaction without a world. TestNoCodePathProducesARoomlessInteraction
 	// holds that structurally rather than by example.
 	ctx = gamectx.WithRoom(ctx, room)
 
@@ -87,9 +87,12 @@ func installTruth(ctx context.Context, room spatial.Room, cast *Participants, ru
 	// is the run's to answer: the encounter's graph folds the dungeon's
 	// factions and dispositions with the facts the run has learned, and the
 	// cast asks it rather than keeping a table of sides (rpg-project#375,
-	// design §4). The run is nil on the entries that have no world — the same
-	// entries that install no room — and there a side question is unknown,
-	// the absent value that says what the author meant.
+	// design §4). The six entries with no world to load — MakeCheck, its
+	// resumed pose, DeathSave, LongRest, Participation and ProjectCharacter —
+	// pass a nil run and a nil room. The room is still installed above, and a
+	// nil room reads as absent ([gamectx.Room]); with a nil run every side and
+	// sight question is unknown, the absent value that says what the author
+	// meant. Only Resolve passes a world.
 	view := &castView{cast: cast, run: run}
 	ctx = gamectx.WithCast(ctx, view)
 	ctx = gamectx.WithVisibility(ctx, view)

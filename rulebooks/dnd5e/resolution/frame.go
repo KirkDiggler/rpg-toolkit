@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
@@ -132,9 +133,10 @@ type informationFrameOutput struct {
 // informationFrame builds the frame from what the acting character knows and
 // nothing else (K1): its observed context and its own assembled attack.
 //
-// A pair's distance is known because the observer measured it. A nil observed
-// stance is UNKNOWN — the observer holds no belief about that pair — never
-// [contributions.StanceNone], which is a known fact this read cannot prove.
+// A pair's distance is known because the observer measured it, and its stance
+// is known because every observed pair names one: a member in no faction is
+// the known no side ([contributions.StanceNone]), exactly as the execution
+// frame reads it (R5, rpg-toolkit#1958).
 // Complete is false: a set of sightings never proves no unseen creature
 // exists (K5). Advantage stays unknown, because advantage is a fold result and
 // information does not fold. Opportunity is known false: information answers
@@ -192,11 +194,8 @@ func informationFrame(in *informationFrameInput) (*informationFrameOutput, error
 			From:          string(observed.From),
 			To:            string(observed.To),
 			DistanceCells: contributions.Known(observed.DistanceCells),
-			Stance:        contributions.Unknown[contributions.Stance](),
+			Stance:        contributions.Known(contributions.Stance(observed.Stance)),
 			Sees:          contributions.Unknown[bool](),
-		}
-		if observed.Stance != nil {
-			pair.Stance = contributions.Known(contributions.Stance(*observed.Stance))
 		}
 		if pair.From == observer && sighted[pair.To] {
 			pair.Sees = contributions.Known(true)
@@ -208,6 +207,37 @@ func informationFrame(in *informationFrameInput) (*informationFrameOutput, error
 	}
 
 	return &informationFrameOutput{Frame: frame}, nil
+}
+
+// sideAnswerer is a cast that can say whether anyone answered its stance
+// questions. [castView] is one: with no run loaded there is no disposition
+// graph, so its silence about a pair proves nothing.
+type sideAnswerer interface {
+	answersSides() bool
+}
+
+// authoritativeStance is the execution answer for the stance from one member
+// toward another: the installed cast's [gamectx.Cast.StanceBetween], with no
+// stance between two members of the cast read as the known no side
+// ([contributions.StanceNone], R5). Membership is proven from the cast's own
+// Members, as StanceBetween's contract requires; a pair naming anyone the cast
+// does not hold is UNKNOWN, never no side. So is every pair when the cast has
+// no graph to ask ([sideAnswerer]), or cannot say whether it has one: silence
+// from nobody is not "no side". Every execution read of a stance goes through
+// here, so the attack frame and the cast's ward gate cannot disagree about one
+// pair.
+func authoritativeStance(cast gamectx.Cast, from, to string) contributions.Fact[contributions.Stance] {
+	if stance, ok := cast.StanceBetween(from, to); ok {
+		return contributions.Known(stance)
+	}
+	if answerer, ok := cast.(sideAnswerer); !ok || !answerer.answersSides() {
+		return contributions.Unknown[contributions.Stance]()
+	}
+	members := cast.Members()
+	if slices.Contains(members, from) && slices.Contains(members, to) {
+		return contributions.Known(contributions.StanceNone)
+	}
+	return contributions.Unknown[contributions.Stance]()
 }
 
 // attackRollFrame is the strike's attack-roll frame, built from authoritative
@@ -224,9 +254,11 @@ func informationFrame(in *informationFrameInput) (*informationFrameOutput, error
 // pairs cover every placed participant. Opportunity is the strike input's own.
 //
 // Sight is the installed visibility's live answer for each placed ordered
-// pair, uncapped by range — the attack owns its range: known and visible is
-// Known(true), known and not visible Known(false), and a pair visibility
-// cannot answer stays unknown, never false. Held lists every participant with
+// pair, both directions, uncapped by range — the attack owns its range: known
+// and visible is Known(true), known and not visible Known(false), and a pair
+// visibility cannot answer stays unknown, never false. The strike's sight
+// rule ([applySightAttackModifiers]) reads attacker→target and target→attacker
+// from here and asks visibility nothing itself. Held lists every participant with
 // a sheet, in the cast's order, each with its persisted conditions at their
 // own addresses ([conditions.ConditionAddressOf]); a participant with
 // nothing on its sheet is listed holding nothing, because the sheet is the
@@ -271,10 +303,6 @@ func (m *strikeMachine) attackRollFrame(ctx context.Context) (contributions.Fram
 				continue
 			}
 			toAt, _ := room.GetEntityPosition(to)
-			stance, exists := cast.StanceBetween(from, to)
-			if !exists {
-				stance = contributions.StanceNone
-			}
 			sees := contributions.Unknown[bool]()
 			if visible, known := sight.SeesWithin(from, to, math.MaxInt); known {
 				sees = contributions.Known(visible)
@@ -283,7 +311,7 @@ func (m *strikeMachine) attackRollFrame(ctx context.Context) (contributions.Fram
 				From:          from,
 				To:            to,
 				DistanceCells: contributions.Known(room.GetGrid().Distance(fromAt, toAt)),
-				Stance:        contributions.Known(stance),
+				Stance:        authoritativeStance(cast, from, to),
 				Sees:          sees,
 			})
 		}
