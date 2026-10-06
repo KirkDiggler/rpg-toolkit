@@ -6,10 +6,11 @@ package conditions
 import (
 	"context"
 	"encoding/json"
+	"testing"
+
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestInFogMembershipRoundTripKeepsIndependentAreas(t *testing.T) {

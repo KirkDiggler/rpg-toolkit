@@ -13,7 +13,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -75,8 +74,8 @@ func (p *ProneCondition) attackRule() attackRollRule {
 		NotOwner:    "Prone affects only its holder's attacks",
 		OnlyAttacks: "Prone affects only attack rolls",
 		Applies:     "You are prone",
-		Benefit:     "Disadvantage on the attack roll",
-	}}
+		Benefit:     disadvantageBenefit,
+	}, mode: contributions.AttackDisadvantage}
 }
 
 // Ref returns the canonical ref this condition names itself by — the same ref
@@ -219,8 +218,8 @@ func (p *ProneCondition) onAttackChain(
 	}
 }
 
-// attackingWhileProne imposes the prone creature's own disadvantage when its
-// attack rule applies — the same rule information asks. No geometry is
+// attackingWhileProne imposes the prone creature's own disadvantage as its
+// attack rule's answer says — the same rule information asks. No geometry is
 // involved: it applies to every attack it makes, at any range.
 func (p *ProneCondition) attackingWhileProne(
 	event dnd5eEvents.AttackChainEvent,
@@ -230,24 +229,11 @@ func (p *ProneCondition) attackingWhileProne(
 	if err != nil {
 		return c, err
 	}
-	if executed.Answer.Decision.Applicability != contributions.Applies {
-		return c, nil
-	}
-
-	modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
-		e.DisadvantageSources = append(e.DisadvantageSources, dnd5eEvents.AttackModifierSource{
-			SourceRef: refs.Conditions.Prone(),
-			SourceID:  p.CharacterID,
-			Reason:    "Prone attacker",
-		})
-		return e, nil
-	}
-
-	if err := c.Add(combat.StageConditions, "prone_attacker_disadvantage", modifyAttack); err != nil {
-		return c, rpgerr.Wrapf(err, "failed to add prone attacker disadvantage for character %s", p.CharacterID)
-	}
-
-	return c, nil
+	return applyAttackMode(&attackModeInput{
+		Name: "prone", Answer: executed.Answer, Chain: c,
+		SourceRef: refs.Conditions.Prone(), SourceID: p.CharacterID,
+		Label: fixedLabel("prone_attacker_disadvantage", "Prone attacker"),
+	})
 }
 
 // attackedWhileProne resolves the range split through the held rule:

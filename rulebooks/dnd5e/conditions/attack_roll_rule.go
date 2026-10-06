@@ -27,6 +27,10 @@ type attackRollRule struct {
 	owner  string
 	target string
 	text   attackRollText
+	// mode is the advantage or disadvantage an applying answer carries, for
+	// a rule whose handler applies it through applyAttackMode; empty for one
+	// whose handler contributes something else.
+	mode contributions.AttackMode
 }
 
 func (r attackRollRule) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error) {
@@ -51,6 +55,7 @@ func (r attackRollRule) AssessAction(in *contributions.AssessActionInput) (*cont
 	}
 	out := assessed(contributions.Applies, r.text.Applies)
 	out.Answer.Benefit = r.text.Benefit
+	out.Answer.AttackMode = r.mode
 	return out, nil
 }
 

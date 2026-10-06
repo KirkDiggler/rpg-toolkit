@@ -373,11 +373,10 @@ type heldAttackInput struct {
 }
 
 // applyHeldAttack is the attack-chain half of a target-held handler: it asks
-// the held rule from the event's frame and, when it applies, adds an advantage
-// or disadvantage source as the answer's attack mode says. An invalid frame, a
-// frame that omits the handler's own address, or a Depends answer fails the
-// attack (see executeHeld); an applying answer with no mode is a producer
-// defect.
+// the held rule from the event's frame and, when it applies, adds the answer's
+// attack mode through applyAttackMode. An invalid frame, a frame that omits
+// the handler's own address, or a Depends answer fails the attack (see
+// executeHeld).
 func applyHeldAttack(in *heldAttackInput) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
 	executed, err := executeHeld(&executeHeldInput{
 		Name: in.Name, Holder: in.Holder, Held: in.Held, Rule: in.Rule, Frame: in.Event.Frame,
@@ -385,10 +384,35 @@ func applyHeldAttack(in *heldAttackInput) (chain.Chain[dnd5eEvents.AttackChainEv
 	if err != nil {
 		return in.Chain, err
 	}
-	if executed.Answer.Decision.Applicability != contributions.Applies {
+	return applyAttackMode(&attackModeInput{
+		Name: in.Name, Answer: executed.Answer, Chain: in.Chain,
+		SourceRef: in.SourceRef, SourceID: in.SourceID, Label: in.Label,
+	})
+}
+
+// attackModeInput is a settled answer and how its attack mode reads on the
+// attack chain.
+type attackModeInput struct {
+	Name      string
+	Answer    contributions.Answer
+	Chain     chain.Chain[dnd5eEvents.AttackChainEvent]
+	SourceRef *core.Ref
+	SourceID  string
+	// Label names the chain key and the source's reason for the answer's
+	// attack mode.
+	Label func(contributions.AttackMode) (key, reason string)
+}
+
+// applyAttackMode adds an advantage or disadvantage source as a settled
+// answer's attack mode says, so the rule that answered — for a held effect or
+// for the holder's own attack — is the one source that decides which. An
+// answer that does not apply adds nothing; an applying answer with no mode is
+// a producer defect.
+func applyAttackMode(in *attackModeInput) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
+	if in.Answer.Decision.Applicability != contributions.Applies {
 		return in.Chain, nil
 	}
-	mode := executed.Answer.AttackMode
+	mode := in.Answer.AttackMode
 	key, reason := in.Label(mode)
 	source := dnd5eEvents.AttackModifierSource{SourceRef: in.SourceRef, SourceID: in.SourceID, Reason: reason}
 	var modify func(context.Context, dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error)

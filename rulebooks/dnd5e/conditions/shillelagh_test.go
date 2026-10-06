@@ -4,11 +4,12 @@ package conditions
 
 import (
 	"context"
+	"testing"
+
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestShillelaghClockSurvivesReloadAndIgnoresOtherTurns(t *testing.T) {

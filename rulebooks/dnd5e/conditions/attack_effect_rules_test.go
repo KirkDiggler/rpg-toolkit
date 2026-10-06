@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
@@ -449,6 +450,43 @@ func (s *attackEffectRulesSuite) TestDamageHandlersRejectAZeroFrame() {
 			s.Require().Error(err)
 			s.True(errors.Is(err, contributions.ErrRuleCannotAnswer))
 			s.Len(event.Components, 1)
+		})
+	}
+}
+
+// TestProneAndHiddenAttackersTakeTheirRulesMode: the attacker's own attack
+// rule returns the attack mode, and the handler applies exactly that mode —
+// one source decides, for the row and for the swing.
+func (s *attackEffectRulesSuite) TestProneAndHiddenAttackersTakeTheirRulesMode() {
+	for name, tc := range map[string]struct {
+		condition interface {
+			dnd5eEvents.ConditionBehavior
+			contributions.ActionAssessor
+		}
+		ref *core.Ref
+	}{
+		"prone":  {NewProneCondition("rogue"), refs.Conditions.Prone()},
+		"hidden": {NewHiddenCondition("rogue"), refs.Conditions.Hidden()},
+	} {
+		s.Run(name, func() {
+			bus := events.NewEventBus()
+			s.Require().NoError(tc.condition.Apply(context.Background(), bus))
+			event := swungAttack(dnd5eEvents.AttackChainEvent{AttackerID: "rogue", TargetID: "goblin"}, swing{IsMelee: true})
+
+			answer := s.answer(tc.condition, event.Frame)
+			final, err := s.publishAttack(bus, event)
+			s.Require().NoError(err)
+
+			s.Equal(contributions.Applies, answer.Decision.Applicability)
+			granted, imposed := final.AdvantageSources, final.DisadvantageSources
+			if answer.AttackMode == contributions.AttackDisadvantage {
+				granted, imposed = imposed, granted
+			} else {
+				s.Equal(contributions.AttackAdvantage, answer.AttackMode, "the rule names a mode")
+			}
+			s.Require().Len(granted, 1, "the swing carries the mode the rule answered")
+			s.Equal(tc.ref, granted[0].SourceRef)
+			s.Empty(imposed)
 		})
 	}
 }

@@ -13,7 +13,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -63,8 +62,8 @@ func (h *HiddenCondition) attackRule() attackRollRule {
 		NotOwner:    "Hidden affects only its holder's attacks",
 		OnlyAttacks: "Hidden affects only attack rolls",
 		Applies:     "You are hidden; attacking ends it",
-		Benefit:     "Advantage on the attack roll",
-	}}
+		Benefit:     advantageBenefit,
+	}, mode: contributions.AttackAdvantage}
 }
 
 // Ref returns the canonical ref this condition names itself by — the same ref
@@ -179,16 +178,13 @@ func (h *HiddenCondition) onAttackChain(
 		if executed.Answer.Decision.Applicability != contributions.Applies {
 			return c, nil
 		}
-		modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
-			e.AdvantageSources = append(e.AdvantageSources, dnd5eEvents.AttackModifierSource{
-				SourceRef: refs.Conditions.Hidden(),
-				SourceID:  h.MemberID,
-				Reason:    "Hidden",
-			})
-			return e, nil
-		}
-		if err := c.Add(combat.StageConditions, "hidden_attacker_advantage", modifyAttack); err != nil {
-			return c, rpgerr.Wrapf(err, "failed to add hidden advantage modifier for character %s", h.MemberID)
+		c, err = applyAttackMode(&attackModeInput{
+			Name: "hidden", Answer: executed.Answer, Chain: c,
+			SourceRef: refs.Conditions.Hidden(), SourceID: h.MemberID,
+			Label: fixedLabel("hidden_attacker_advantage", "Hidden"),
+		})
+		if err != nil {
+			return c, err
 		}
 
 		// Hidden ends when the hidden character attacks. Publish the removal
