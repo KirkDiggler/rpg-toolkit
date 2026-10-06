@@ -74,7 +74,7 @@ func (m *Manager) answerCheckOffer(
 			}
 			return nil, &SaveError{Report: report, Err: fmt.Errorf("saving checker: %w", err)}
 		}
-		scope.written = append(scope.written, "character:"+out.DirtyCharacter.ID)
+		scope.noteCharacterWritten(out.DirtyCharacter.ID)
 	}
 
 	// Finish the verb this check was for. Each composition op records its

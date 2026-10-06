@@ -160,7 +160,17 @@ func (s *ConditionsTestSuite) TestAVerbLeavesTheCharacterStoreUntouched() {
 		s.Require().NotNil(out.Formed, "this walk is supposed to start a fight")
 		after := cloneCharacter(s.characters.byID["alice"])
 		s.Require().NotNil(after.ActionEconomy, "combat entry grants the normal budget")
-		// Only the newly initialized economy and save timestamp may change.
+		// Only the newly initialized economy, the save timestamp, and the
+		// opportunity attack attach records on the sheet (rpg-toolkit#1958
+		// item 9) may change. The record is named, not filtered: everything
+		// else the sheet held must come back byte for byte.
+		s.Nil(conditionByRef(s.T(), before.Conditions, refs.Conditions.OpportunityAttack().String()),
+			"the seeded sheet does not record the opportunity attack yet")
+		s.Require().NotNil(conditionByRef(s.T(), after.Conditions, refs.Conditions.OpportunityAttack().String()),
+			"the saved sheet records the opportunity attack attach applied")
+		oa, err := conditions.NewOpportunityAttackCondition("alice").ToJSON()
+		s.Require().NoError(err)
+		before.Conditions = append(before.Conditions, oa)
 		after.ActionEconomy = before.ActionEconomy
 		after.UpdatedAt = before.UpdatedAt
 		if len(before.Inventory) == 0 {
@@ -200,10 +210,11 @@ func (s *ConditionsTestSuite) TestTheRageSurvivesTheFightAndARestart() {
 
 	stored, ok := characters.byID["alice"]
 	s.Require().True(ok)
-	s.Require().Len(stored.Conditions, 1, "she is still raging on the far side")
+	rage := conditionByRef(s.T(), stored.Conditions, refs.Conditions.Raging().String())
+	s.Require().NotNil(rage, "she is still raging on the far side")
 
 	var got conditions.RagingData
-	s.Require().NoError(json.Unmarshal(stored.Conditions[0], &got))
+	s.Require().NoError(json.Unmarshal(rage, &got))
 	s.Equal(refs.Conditions.Raging().String(), got.Ref.String())
 	s.Equal(2, got.TurnsActive, "the rage remembers how long it has run")
 	s.True(got.WasHitThisTurn, "and what happened to her during it")

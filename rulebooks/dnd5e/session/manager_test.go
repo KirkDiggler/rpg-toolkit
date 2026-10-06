@@ -415,3 +415,22 @@ func storedJSON(t *testing.T, value any) string {
 	require.NoError(t, err)
 	return string(raw)
 }
+
+// conditionByRef returns the stored condition carrying ref, or nil. A sheet's
+// condition list is not a closed set the test owns — attach records the free
+// reactions a member carries (rpg-toolkit#1958 item 9) — so a test about one
+// condition asserts that condition's presence or absence, never the list's
+// length.
+func conditionByRef(t *testing.T, stored []json.RawMessage, ref string) json.RawMessage {
+	t.Helper()
+	for _, raw := range stored {
+		var peek struct {
+			Ref string `json:"ref"`
+		}
+		require.NoError(t, json.Unmarshal(raw, &peek))
+		if peek.Ref == ref {
+			return raw
+		}
+	}
+	return nil
+}

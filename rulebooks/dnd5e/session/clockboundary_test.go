@@ -104,6 +104,12 @@ func (s *ClockBoundaryTestSuite) storedConditions(id string) []json.RawMessage {
 	return sheet.Conditions
 }
 
+// held is the stored condition carrying ref on a member's sheet, or nil.
+func (s *ClockBoundaryTestSuite) held(id, ref string) json.RawMessage {
+	s.T().Helper()
+	return conditionByRef(s.T(), s.storedConditions(id), ref)
+}
+
 func (s *ClockBoundaryTestSuite) raw(c interface {
 	ToJSON() (json.RawMessage, error)
 }) json.RawMessage {
@@ -123,14 +129,14 @@ func (s *ClockBoundaryTestSuite) raw(c interface {
 // and HER turn start is what removes it.
 func (s *ClockBoundaryTestSuite) TestDodgeLapsesWhenItsOwnersTurnComesAround() {
 	mgr := s.fight(s.raw(&conditions.DodgingCondition{MemberID: "alice"}))
-	s.Require().Len(s.storedConditions("alice"), 1, "alice starts the fight dodging")
+	s.Require().NotNil(s.held("alice", refs.Conditions.Dodging().String()), "alice starts the fight dodging")
 
 	s.endTurn(mgr, "alice")
-	s.Require().Len(s.storedConditions("alice"), 1,
+	s.Require().NotNil(s.held("alice", refs.Conditions.Dodging().String()),
 		"and is STILL dodging through bob's turn — that is the whole rule")
 
 	s.endTurn(mgr, "bob")
-	s.Empty(s.storedConditions("alice"),
+	s.Nil(s.held("alice", refs.Conditions.Dodging().String()),
 		"alice's own turn starting is what ends it")
 }
 
@@ -146,13 +152,13 @@ func (s *ClockBoundaryTestSuite) TestSneakAttackForgetsItsDiceWhenTheTurnEnds() 
 
 	s.endTurn(mgr, "alice")
 
-	stored := s.storedConditions("alice")
-	s.Require().Len(stored, 1, "the condition survives; only its memory of this turn is cleared")
+	stored := s.held("alice", refs.Features.SneakAttack().String())
+	s.Require().NotNil(stored, "the condition survives; only its memory of this turn is cleared")
 
 	var blob struct {
 		Used bool `json:"used_this_turn"`
 	}
-	s.Require().NoError(json.Unmarshal(stored[0], &blob))
+	s.Require().NoError(json.Unmarshal(stored, &blob))
 	s.False(blob.Used, "a rogue sneak attacks once per TURN, not once per fight")
 }
 
@@ -178,11 +184,11 @@ func (s *ClockBoundaryTestSuite) TestRageLapsesWhenTheBarbarianDidNothing() {
 	mgr := s.fight(s.raw(&conditions.RagingCondition{
 		CharacterID: "alice", DamageBonus: 2, Level: 1, Source: "dnd5e:features:rage",
 	}))
-	s.Require().Len(s.storedConditions("alice"), 1, "alice starts raging")
+	s.Require().NotNil(s.held("alice", refs.Conditions.Raging().String()), "alice starts raging")
 
 	// Alice's own turn ends: graced, and anchored to the round the clock says.
 	s.endTurn(mgr, "alice")
-	s.Require().Len(s.storedConditions("alice"), 1,
+	s.Require().NotNil(s.held("alice", refs.Conditions.Raging().String()),
 		"the turn a rage started is not checked — it survives its own activation turn ending")
 
 	// Round the order back to alice so she gets a SECOND turn end, this one
@@ -190,7 +196,7 @@ func (s *ClockBoundaryTestSuite) TestRageLapsesWhenTheBarbarianDidNothing() {
 	s.endTurn(mgr, "bob")
 	s.endTurn(mgr, "alice")
 
-	s.Empty(s.storedConditions("alice"),
+	s.Nil(s.held("alice", refs.Conditions.Raging().String()),
 		"a barbarian who neither swung nor was hit stops raging when their NEXT turn ends")
 }
 
@@ -221,9 +227,9 @@ func (s *ClockBoundaryTestSuite) TestOneAdvanceReachesEveryoneAndEachDecidesForI
 
 	s.endTurn(mgr, "alice")
 
-	s.Len(s.storedConditions("alice"), 1,
+	s.NotNil(s.held("alice", refs.Conditions.Dodging().String()),
 		"alice's dodge survives her turn ENDING — dodging lapses at its owner's turn start")
-	s.Empty(s.storedConditions("bob"),
+	s.Nil(s.held("bob", refs.Conditions.Dodging().String()),
 		"and bob's ends on the very same announcement, because his turn is the one that STARTED")
 }
 
@@ -402,11 +408,11 @@ func (s *ClockBoundaryTestSuite) TestRageEndsWhenTheFightDoes() {
 	mgr := s.fight(s.raw(&conditions.RagingCondition{
 		CharacterID: "alice", DamageBonus: 2, Level: 1, Source: "dnd5e:features:rage",
 	}))
-	s.Require().Len(s.storedConditions("alice"), 1, "alice starts the fight raging")
+	s.Require().NotNil(s.held("alice", refs.Conditions.Raging().String()), "alice starts the fight raging")
 
 	s.dissolve(mgr, "alice")
 
-	s.Empty(s.storedConditions("alice"),
+	s.Nil(s.held("alice", refs.Conditions.Raging().String()),
 		"the fight ending is what ends the rage — no turn ended in this test at all")
 }
 
@@ -423,11 +429,11 @@ func (s *ClockBoundaryTestSuite) TestRageEndsWhenTheFightDoes() {
 func (s *ClockBoundaryTestSuite) TestTheFightEndsForMembersTheCallerNeverNamed() {
 	mgr := s.fight()
 	s.enrage("bob")
-	s.Require().Len(s.storedConditions("bob"), 1, "bob starts the fight raging")
+	s.Require().NotNil(s.held("bob", refs.Conditions.Raging().String()), "bob starts the fight raging")
 
 	s.dissolve(mgr, "alice")
 
-	s.Empty(s.storedConditions("bob"),
+	s.Nil(s.held("bob", refs.Conditions.Raging().String()),
 		"bob was in the fight and was never named — his rage ends with everyone else's")
 }
 
@@ -465,6 +471,6 @@ func (s *ClockBoundaryTestSuite) TestTheEconomyClearDoesNotUndoTheBoundary() {
 	after, err := s.characters.GetCharacter(s.ctx, "bob")
 	s.Require().NoError(err)
 	s.Nil(after.ActionEconomy, "leaving a fight puts the action economy out")
-	s.Empty(after.Conditions,
+	s.Nil(conditionByRef(s.T(), after.Conditions, refs.Conditions.Raging().String()),
 		"and the boundary's removal survived the write that came after it")
 }

@@ -7,6 +7,7 @@ import (
 	"context"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -96,7 +97,8 @@ func (s *AutomaticDiscoverySDKSuite) TestJoinDiscoveryUsesTheRestedRecordRatherT
 			}
 			_, err = mgr.Join(ctx, &session.JoinInput{Session: "run", Member: "bob", Position: position})
 			s.Require().NoError(err)
-			s.Empty(characters.byID["bob"].Conditions, "first admission actually removed the old rage")
+			s.Nil(conditionByRef(s.T(), characters.byID["bob"].Conditions, refs.Conditions.Raging().String()),
+				"first admission actually removed the old rage")
 			if rageAfterJoin {
 				s.Zero(dice.calls)
 				characters.byID["bob"] = ragingDwarf("bob")
