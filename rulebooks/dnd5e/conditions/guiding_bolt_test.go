@@ -18,7 +18,8 @@ func TestGuidingBoltTargetConsumesOnceForAnyAttacker(t *testing.T) {
 	require.NoError(t, c.Apply(ctx, bus))
 	attack := func(target string) dnd5eEvents.AttackChainEvent {
 		e := dnd5eEvents.AttackChainEvent{AttackerID: "ally", TargetID: target}
-		chain, err := dnd5eEvents.AttackChain.On(bus).PublishWithChain(ctx, e, events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages))
+		framed := framedAgainst(e, 1, true, heldOf("target", c))
+		chain, err := dnd5eEvents.AttackChain.On(bus).PublishWithChain(ctx, framed, events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages))
 		require.NoError(t, err)
 		out, err := chain.Execute(ctx, e)
 		require.NoError(t, err)

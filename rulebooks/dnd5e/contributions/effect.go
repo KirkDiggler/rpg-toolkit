@@ -25,15 +25,28 @@ type DamageChange struct {
 }
 
 // Answer is a rule's whole reply to one frame: its decision, how it takes
-// part, and what it contributes as data. Benefit, Damage and Roll are
-// non-empty only when the decision is Applies. It holds no total.
+// part, and what it contributes as data. Benefit, Damage, Roll and AttackMode
+// are non-empty only when the decision is Applies. It holds no total.
 type Answer struct {
 	Decision      Decision
 	Participation Participation
 	Benefit       string
 	Damage        []DamageChange
 	Roll          []DiceContribution
+	AttackMode    AttackMode
 }
+
+// AttackMode is what a rule contributes to the attack roll's advantage: one
+// rule's contribution as data, never the roll's settled advantage. Empty means
+// the rule contributes none.
+type AttackMode string
+
+const (
+	// AttackAdvantage means the rule grants advantage on the attack roll.
+	AttackAdvantage AttackMode = "advantage"
+	// AttackDisadvantage means the rule imposes disadvantage on the attack roll.
+	AttackDisadvantage AttackMode = "disadvantage"
+)
 
 // AssessActionInput hands a rule the frame it answers from.
 type AssessActionInput struct {

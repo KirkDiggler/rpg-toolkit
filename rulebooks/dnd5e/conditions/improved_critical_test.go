@@ -105,7 +105,7 @@ func (s *ImprovedCriticalTestSuite) TestCriticalThresholdModification() {
 		chain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 		attackChain := dnd5eEvents.AttackChain.On(s.bus)
 
-		modifiedChain, err := attackChain.PublishWithChain(ctx, event, chain)
+		modifiedChain, err := attackChain.PublishWithChain(ctx, framedAttack(event), chain)
 		s.Require().NoError(err)
 
 		finalEvent, err := modifiedChain.Execute(ctx, event)
@@ -127,7 +127,7 @@ func (s *ImprovedCriticalTestSuite) TestCriticalThresholdModification() {
 		chain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 		attackChain := dnd5eEvents.AttackChain.On(s.bus)
 
-		modifiedChain, err := attackChain.PublishWithChain(ctx, event, chain)
+		modifiedChain, err := attackChain.PublishWithChain(ctx, framedAttack(event), chain)
 		s.Require().NoError(err)
 
 		finalEvent, err := modifiedChain.Execute(ctx, event)
@@ -167,7 +167,7 @@ func (s *ImprovedCriticalTestSuite) TestCriticalThresholdModification() {
 		chain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 		attackChain := dnd5eEvents.AttackChain.On(s.bus)
 
-		modifiedChain, err := attackChain.PublishWithChain(ctx, event, chain)
+		modifiedChain, err := attackChain.PublishWithChain(ctx, framedAttack(event), chain)
 		s.Require().NoError(err)
 
 		finalEvent, err := modifiedChain.Execute(ctx, event)
@@ -294,7 +294,7 @@ func (s *ImprovedCriticalTestSuite) TestIntegrationWithAttackChain() {
 		chain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 		attackChain := dnd5eEvents.AttackChain.On(s.bus)
 
-		modifiedChain, err := attackChain.PublishWithChain(ctx, event, chain)
+		modifiedChain, err := attackChain.PublishWithChain(ctx, framedAttack(event), chain)
 		s.Require().NoError(err)
 
 		finalEvent, err := modifiedChain.Execute(ctx, event)
@@ -316,7 +316,7 @@ func (s *ImprovedCriticalTestSuite) TestIntegrationWithAttackChain() {
 		chain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 		attackChain := dnd5eEvents.AttackChain.On(s.bus)
 
-		modifiedChain, err := attackChain.PublishWithChain(ctx, event, chain)
+		modifiedChain, err := attackChain.PublishWithChain(ctx, framedAttack(event), chain)
 		s.Require().NoError(err)
 
 		finalEvent, err := modifiedChain.Execute(ctx, event)
@@ -338,7 +338,7 @@ func (s *ImprovedCriticalTestSuite) TestIntegrationWithAttackChain() {
 		chain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 		attackChain := dnd5eEvents.AttackChain.On(s.bus)
 
-		modifiedChain, err := attackChain.PublishWithChain(ctx, event, chain)
+		modifiedChain, err := attackChain.PublishWithChain(ctx, framedAttack(event), chain)
 		s.Require().NoError(err)
 
 		finalEvent, err := modifiedChain.Execute(ctx, event)

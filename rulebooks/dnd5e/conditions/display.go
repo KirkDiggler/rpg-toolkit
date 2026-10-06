@@ -74,13 +74,13 @@ var displayCatalog = map[string]Display{
 	},
 
 	// Turn-based / combat-ability conditions.
-	refs.Conditions.Dodging().String():        {Name: "Dodging"},
+	refs.Conditions.Dodging().String():        {Name: "Dodging", Detail: "Attack rolls against you have disadvantage, and you have advantage on Dexterity saving throws."},
 	refs.Conditions.Disengaging().String():    {Name: "Disengaging"},
 	refs.Conditions.Hidden().String():         {Name: "Hidden", Detail: "Your attacks have advantage and attacks against you have disadvantage. Attacking ends it."},
 	refs.Conditions.Helped().String():         {Name: "Helped", Detail: "Your next attack roll has advantage."},
 	refs.Conditions.Inspired().String():       {Name: InspiredName, Detail: "Holds a Bardic Inspiration die. After seeing your attack roll you may add it; the die is spent only when you take it."},
 	refs.Conditions.BladeWard().String():      {Name: BladeWardName},
-	refs.Conditions.GuidingBolt().String():    {Name: GuidingBoltName},
+	refs.Conditions.GuidingBolt().String():    {Name: GuidingBoltName, Detail: "The next attack roll against you has advantage."},
 	refs.Conditions.TrueStrike().String():     {Name: TrueStrikeName, Detail: "Your next attack against the chosen target has advantage."},
 	refs.Conditions.ViciousMockery().String(): {Name: ViciousMockeryName, Detail: "Your next attack roll has disadvantage."},
 	refs.Conditions.Commanded().String():      {Name: CommandedName},
@@ -103,7 +103,7 @@ var displayCatalog = map[string]Display{
 	// rather than filed separately since it is a one-line addition to the
 	// exact catalog Resistance's own entry touches, for the same reason.
 	refs.Conditions.DivineFavor().String():     {Name: DivineFavorName, Detail: "Your weapon attacks deal an extra 1d4 radiant damage."},
-	refs.Conditions.FaerieFire().String():      {Name: FaerieFireName},
+	refs.Conditions.FaerieFire().String():      {Name: FaerieFireName, Detail: "Attack rolls against you have advantage if the attacker can see you."},
 	refs.Conditions.ShieldOfFaith().String():   {Name: ShieldOfFaithName},
 	refs.Conditions.Guided().String():          {Name: GuidedName},
 	refs.Conditions.Resistance().String():      {Name: ResistanceName},

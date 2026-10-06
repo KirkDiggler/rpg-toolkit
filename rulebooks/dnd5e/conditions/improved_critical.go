@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -36,6 +37,24 @@ type ImprovedCriticalCondition struct {
 
 // Ensure ImprovedCriticalCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*ImprovedCriticalCondition)(nil)
+
+var _ contributions.ActionAssessor = (*ImprovedCriticalCondition)(nil)
+
+// AssessAction answers whether Improved Critical bears on the framed attack:
+// every attack roll its holder makes scores a critical hit on the lowered
+// threshold. It states the threshold, never whether the roll will reach it.
+func (ic *ImprovedCriticalCondition) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error) {
+	return ic.attackRule().AssessAction(in)
+}
+
+func (ic *ImprovedCriticalCondition) attackRule() attackRollRule {
+	return attackRollRule{name: "improved critical", owner: ic.MemberID, text: attackRollText{
+		NotOwner:    "Improved Critical affects only its holder's attacks",
+		OnlyAttacks: "Improved Critical affects only attack rolls",
+		Applies:     "Your attacks score a critical hit on a lower roll",
+		Benefit:     fmt.Sprintf("Critical hit on a roll of %d or higher", ic.Threshold),
+	}}
+}
 
 // Ref returns the canonical ref this condition names itself by — the same ref
 // its ToJSON embeds and its loader routes on.
@@ -123,8 +142,11 @@ func (ic *ImprovedCriticalCondition) onAttackChain(
 	event dnd5eEvents.AttackChainEvent,
 	c chain.Chain[dnd5eEvents.AttackChainEvent],
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
-	// Only modify attacks by this character
-	if event.AttackerID != ic.MemberID {
+	executed, err := executeRule(&executeRuleInput{Name: "improved critical", Rule: ic.attackRule(), Frame: event.Frame})
+	if err != nil {
+		return c, err
+	}
+	if executed.Answer.Decision.Applicability != contributions.Applies {
 		return c, nil
 	}
 
@@ -137,7 +159,7 @@ func (ic *ImprovedCriticalCondition) onAttackChain(
 		return e, nil
 	}
 
-	err := c.Add(combat.StageFeatures, "improved_critical", modifyThreshold)
+	err = c.Add(combat.StageFeatures, "improved_critical", modifyThreshold)
 	if err != nil {
 		return c, rpgerr.Wrapf(err, "failed to apply improved critical for character %s", ic.MemberID)
 	}

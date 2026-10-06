@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -115,42 +116,37 @@ func (f *FightingStyleTwoWeaponFightingCondition) loadJSON(data json.RawMessage)
 	return nil
 }
 
-// onDamageChain adds ability modifier to off-hand weapon damage.
+// onDamageChain adds the ability modifier to off-hand weapon damage when
+// twoWeaponFightingRule applies to the event's frame — the same rule
+// information asks. An invalid frame or a Depends answer fails the fold.
 func (f *FightingStyleTwoWeaponFightingCondition) onDamageChain(
 	_ context.Context,
 	event *dnd5eEvents.DamageChainEvent,
 	c chain.Chain[*dnd5eEvents.DamageChainEvent],
 ) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
-	// Only modify damage for attacks by this character
-	if event.AttackerID != f.MemberID {
+	executed, err := executeRule(&executeRuleInput{Name: "two-weapon fighting", Rule: f.rule(), Frame: event.Frame})
+	if err != nil {
+		return c, err
+	}
+	if executed.Answer.Decision.Applicability != contributions.Applies {
 		return c, nil
 	}
 
-	// Only applies to off-hand attacks
-	if !event.IsOffHandAttack {
-		return c, nil
-	}
-
-	// The base two-weapon rule already retains a negative modifier. The style
-	// restores only the positive modifier that the bonus attack omitted.
-	if event.AbilityModifier <= 0 {
-		return c, nil
-	}
-
-	// Add ability modifier to damage at StageFeatures
+	// Add the rule's own damage change at StageFeatures: the answer carries
+	// the modifier, so the row and the swing add the same number.
+	change := executed.Answer.Damage[0]
 	modifyDamage := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
-		primary := primaryWeaponComponent(e)
-		if primary == nil {
-			return e, nil
+		if primaryWeaponComponent(e) == nil {
+			// Fail closed: the rule applied on the frame's weapon pool, so a
+			// fold with no marked primary pool is a malformed event.
+			return e, rpgerr.Newf(rpgerr.CodeInvalidArgument,
+				"two-weapon fighting applies but the damage has no marked primary weapon pool for character %s", f.MemberID)
 		}
-		modifier := e.AbilityModifier
+		modifier := *change.Fixed
 		e.Components = append(e.Components, dnd5eEvents.DamageComponent{
 			Source: dnd5eEvents.DamageSourceFeature,
 			Roll: dnd5eEvents.RollComponent{
-				Source: dnd5eEvents.RollSource{
-					Ref:  refs.Conditions.FightingStyleTwoWeaponFighting(),
-					Name: "Two-Weapon Fighting",
-				},
+				Source:   change.Source,
 				Modifier: &modifier,
 			},
 			DamageType: e.WeaponDamageType,

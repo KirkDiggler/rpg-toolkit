@@ -5,9 +5,11 @@ package conditions
 
 import (
 	"encoding/json"
+	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
@@ -107,4 +109,67 @@ func DecodeCommanded(stored []json.RawMessage) (*CommandedConditionData, bool, e
 		return nil, false, nil
 	}
 	return oldest, true, nil
+}
+
+// HeldAddresses reports what a member holds as a participant, as the address
+// each condition names itself by: the (ref, source) a rule keyed by reference
+// reads (rpg-project#520, R16, R17). It is the reader a seam answering "what
+// does this member hold" uses, so that seam names no condition type and holds
+// none.
+//
+// That is the stored conditions, in stored order, followed by every free
+// reaction a combatant carries by existing ([FreeReactions]) that the stored
+// list does not already name. The sheet's own attach adds those to every
+// combatant before it acts, and writes them back only when the sheet is next
+// saved, so a reader of the stored list alone would see a member gain one the
+// moment its sheet is saved — a change that never happened.
+//
+// It builds each condition only to ask its address, and attaches nothing: no
+// bus is touched and nothing runs.
+//
+// A blob whose ref names no condition this package loads — a monster's
+// stat-block trait (immunity, vulnerability, …) — is not a condition and is
+// left out. A blob that cannot be read, or that names a condition and fails to
+// load, is an ERROR rather than a gap: a list that silently left it out would
+// claim, known, that the member does not hold it, and unknown is never read as
+// false. The result is non-nil even when empty — the sheet was read.
+func HeldAddresses(member string, stored []json.RawMessage) ([]dnd5eEvents.ConditionAddress, error) {
+	held := make([]dnd5eEvents.ConditionAddress, 0, len(stored))
+	for index, blob := range stored {
+		var named storedRef
+		if err := json.Unmarshal(blob, &named); err != nil {
+			return nil, rpgerr.Wrapf(err, "failed to read the ref of stored condition %d", index)
+		}
+		if _, isCondition := conditionLoaders[named.Ref.String()]; !isCondition {
+			continue
+		}
+		loaded, err := LoadJSON(blob)
+		if err != nil {
+			return nil, rpgerr.Wrapf(err, "stored condition %d (%s) does not load", index, named.Ref.String())
+		}
+		held = append(held, ConditionAddressOf(member, loaded))
+	}
+	for _, carried := range FreeReactions(member) {
+		address := ConditionAddressOf(member, carried)
+		if !slices.ContainsFunc(held, func(stored dnd5eEvents.ConditionAddress) bool {
+			return stored.ConditionRef == address.ConditionRef
+		}) {
+			held = append(held, address)
+		}
+	}
+	return held, nil
+}
+
+// FreeReactions are the reactions a combatant carries by existing, built for
+// one member: the opportunity attack. ONE ENTRY, and the list is the rule —
+// a COSTED reaction (Shield burns a spell slot) is not had by existing.
+//
+// Character and monster attach each give a combatant these when it becomes a
+// participant; their own lists are pinned equal to this one by
+// character.TestFreeReactionsMatchTheConditionsList and
+// monstertraits.TestFreeReactionsMatchTheConditionsList, so "what a member
+// holds" has one answer whether it is read from the loaded sheet or from
+// [HeldAddresses].
+func FreeReactions(member string) []dnd5eEvents.ConditionBehavior {
+	return []dnd5eEvents.ConditionBehavior{NewOpportunityAttackCondition(member)}
 }

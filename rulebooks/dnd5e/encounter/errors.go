@@ -326,6 +326,14 @@ var (
 	// different claims that must not collapse.
 	ErrNoEquipment = errors.New("encounter: no equipment capability")
 
+	// ErrNoConditions indicates this module was not told, usably, what
+	// conditions somebody holds. Two ways to earn it: Setup or Load was given
+	// an Equipment value that does not also implement [Conditions]; or the
+	// capability answered without covering a member it was asked about. A nil
+	// answer for a member does NOT earn this — that is "nothing to observe",
+	// see [ConditionSet].
+	ErrNoConditions = errors.New("encounter: no conditions capability")
+
 	// ErrNoCheckResolver indicates Setup or Load was given a field carrying
 	// concealed structure and no CheckResolver capability. A concealed door
 	// exists to be searched for, and this module refuses to roll the find
@@ -437,6 +445,25 @@ var (
 	// host bug — nothing should reach EndTurn or form against such a
 	// world — not a legal outcome any caller is meant to recover from.
 	ErrRefusingAnnouncer = errors.New("encounter: RefusingAnnouncer: a clock advanced on a construction-only world")
+
+	// ErrRefusingInitiative is what the InitiativeRoller [CompileOnlySetup]
+	// installs always returns: a fight tried to form in a world being
+	// compiled, not played. A host bug — the compiled world's zero sight forms
+	// no fight, and a session supplies its own roller at load.
+	ErrRefusingInitiative = errors.New("encounter: compile-only InitiativeRoller: a fight formed in a world being compiled, not played")
+
+	// ErrRefusingParticipation is what the Participation [CompileOnlySetup]
+	// installs returns when asked about any member: a compiled world has
+	// nobody in it, and claiming a member conscious and in contact would be an
+	// answer nobody observed. A host that places members supplies its own
+	// Standing.
+	ErrRefusingParticipation = errors.New("encounter: compile-only Participation: asked about members of a world being compiled, not played")
+
+	// ErrRefusingCheckResolver is what the CheckResolver [CompileOnlySetup]
+	// installs always returns: an authored check was rolled against a world
+	// still being compiled, not played. A host bug — a check is rolled only
+	// through an explicit Search — not an outcome to recover from.
+	ErrRefusingCheckResolver = errors.New("encounter: compile-only CheckResolver: a check was rolled against a world being compiled, not played")
 
 	// ErrNoDissolveMilestone is a leaf that reported dissolving a bubble and
 	// then did not say so in its milestones. An INVARIANT of play/clock, not a

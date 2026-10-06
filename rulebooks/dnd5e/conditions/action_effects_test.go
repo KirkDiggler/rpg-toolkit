@@ -53,6 +53,8 @@ func (s *actionEffectsSuite) TestRowsMapAnswersOneToOne() {
 	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue", Level: 1})
 	frame := rogueFrame(false)
 	frame.Action.Ability = contributions.Known(abilities.STR)
+	frame.Action.Weapon = contributions.Known(refs.Weapons.Club().String())
+	frame.Action.Finesse = contributions.Known(false)
 
 	effects := s.assess(frame, rage, sneak)
 
@@ -68,7 +70,7 @@ func (s *actionEffectsSuite) TestRowsMapAnswersOneToOne() {
 	}, effects[0])
 	s.Equal(refs.Features.SneakAttack().String(), effects[1].ID)
 	s.Equal(contributions.StateDoesNotApply, effects[1].State)
-	s.Equal("Sneak Attack requires a Dexterity attack", effects[1].Reason)
+	s.Equal("Sneak Attack requires a finesse or ranged weapon", effects[1].Reason)
 	s.Empty(effects[1].Benefit)
 }
 

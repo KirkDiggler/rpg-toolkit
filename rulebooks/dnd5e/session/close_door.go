@@ -4,7 +4,7 @@
 package session
 
 // close_door.go exposes the composition's already-authored CloseDoor verb
-// through the seam (rpg-project#169, O2). It is DELIBERATELY THIN: the
+// through the seam (rpg-project#527). It is DELIBERATELY THIN: the
 // encounter owns every closing rule — it refuses a locked or already-closed
 // door, probes concealment, checks the actor is a member, measures reach, flips
 // the state, refreshes sight and records the existing door beat — and this file
@@ -82,9 +82,10 @@ type CloseDoorOutput struct {
 // ordinary closed door. That ruling is the composition's and this seam adds
 // nothing to it.
 //
-// Errors: ErrNilInput, ErrNoMemberID, ErrNoConnection (empty door, unknown,
-// already closed or locked), ErrOutOfRange, or the ordinary read/save
-// translations.
+// Errors include ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
+// ErrNoEncounter, ErrNoMember, ErrWindowOpen, ErrNoConnection (empty door,
+// unknown, already closed or locked), ErrOutOfRange, and the ordinary
+// lock/read/save translations.
 func (m *Manager) CloseDoor(ctx context.Context, in *CloseDoorInput) (*CloseDoorOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("closedoor: %w", ErrNilInput)

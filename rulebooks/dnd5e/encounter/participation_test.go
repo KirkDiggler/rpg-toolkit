@@ -91,7 +91,7 @@ func participationSetup(capability encounter.Standing, members ...encounter.Memb
 		Initiative: orderAsGiven{},
 		Standing:   capability,
 		Sight:      everyoneSeesTheWholeMap{},
-		Equipment:  noHandsAreObserved{},
+		Equipment:  encounter.UnobservedEquipment{},
 		TurnDriver: passDriver{},
 		Striker:    passStriker{}, Mover: quietMover{},
 		Announcer: quietAnnouncer{},
@@ -156,7 +156,7 @@ func TestParticipationIsRequiredWithoutChangingTheStandingFieldShape(t *testing.
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: built.ToData(), Initiative: orderAsGiven{}, Standing: standingOnly{},
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: encounter.UnobservedEquipment{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	require.ErrorIs(t, err, encounter.ErrNoParticipation)
 }
@@ -488,7 +488,7 @@ func TestSuppliedPartyDefeatClosesAfterItsCausalBeats(t *testing.T) {
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: enc.ToData(), Initiative: orderAsGiven{}, Standing: capability,
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: encounter.UnobservedEquipment{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	require.NoError(t, err)
 	reloadedStatus, err := reloaded.Status()
@@ -679,7 +679,7 @@ func TestDeathSaveDetailRoundTripsEveryPrimitiveAndRejectsMismatches(t *testing.
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: enc.ToData(), Initiative: orderAsGiven{}, Standing: capability,
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: encounter.UnobservedEquipment{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	require.NoError(t, err)
 	beats := storyBeats(t, reloaded, alice)

@@ -11,9 +11,9 @@ for why the split exists at all.
 
 ## What this package owns
 
-**The verb surface.** Thirty-five exported `Manager` methods, each one load, act,
-save, return — no setup call, no teardown, no ordering for the caller to get
-wrong. `Move`, `Attack`, `Cast`, `Activate`, `DeathSave`, `EndTurn`, `React`,
+**The verb surface.** The exported `Manager` methods are load, act, save,
+return — no setup call, no teardown, no ordering for the caller to get
+wrong. They include `Move`, `Attack`, `Cast`, `Activate`, `DeathSave`, `EndTurn`, `React`,
 `Search`, `Loot`, `Hold`, `Trade`, `Interact`, `OpenDoor`, `CloseDoor`, `Unlock`, `Join`,
 `Exit`, `End`, `Spawn`, `PlaceNPC`, `Dissolve`, `Unpack`, `LevelUp`,
 `StartSession`, and the reads `Afford`, `Roster`, `Atlas`, `AtlasOf`, `Status`,
@@ -65,14 +65,24 @@ mutating verb demands back. See [ADR-0042](../../../docs/adr/0042-afford-answers
 compiled Cast that makes a spell attack, carries `Declaration.Effects`
 (`EffectRow`: id, ref, name, description, state, reason, participation,
 benefit); each `TargetCandidate.Effects` carries a `TargetEffect` (id, state,
-reason, benefit) only where that target's answer differs from the row.
-[`effects.go`](./effects.go) attaches them in `Afford` alone, after
+reason, benefit) only where that target's answer differs from the row. Each
+`TargetCandidate.HeldEffects` carries full `EffectRow`s for the effects THAT
+TARGET holds that bear on the action (ids `target:`+ref[@source]), never joined
+with the declaration's rows (R18); a target whose holdings the actor has not
+sighted carries none. [`effects.go`](./effects.go) attaches them in `Afford` alone, after
 `compileOffersFor` — no execution caller computes a row, so a row can never
 refuse, alter or select a command, and it is not selector material. The rows
 are `resolution.InformAttack`'s answers over the actor's own
 `ObservedContext` and loaded sheet; this package projects them and decides
 nothing. Off turn, while frozen, on the world clock and on blockers there are
 no rows.
+
+**What a member holds rides sightings (R16, R19).** The equipment seam also
+answers the composition's `Conditions` capability
+([`conditions_seen.go`](./conditions_seen.go)), so each sighting snapshots the
+sighted member's conditions. At `commit`, any member a current sighting
+describes differently from their sheet is re-looked (`encounter.Recheck`), so a
+held row never outlives its condition.
 
 **The executors.** A declared action becomes a resolution machine here and
 nowhere else: `resolution.NewActivation` in [`activate.go`](./activate.go),

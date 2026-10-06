@@ -13,7 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -253,14 +253,17 @@ func (s *GuidingBoltCondition) onAttackChain(ctx context.Context, event dnd5eEve
 	if event.TargetID != s.MemberID {
 		return c, nil
 	}
-	err := c.Add(combat.StageConditions, "guiding_bolt_advantage_"+s.SourceID, func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
-		e.AdvantageSources = append(e.AdvantageSources, dnd5eEvents.AttackModifierSource{SourceRef: s.Ref(), SourceID: s.SourceID, Reason: GuidingBoltName})
-		return e, nil
+	return applyHeldAttack(&heldAttackInput{
+		Name: "guiding bolt", Holder: s.MemberID, Held: heldAddress(s.MemberID, s), Rule: s.heldRule(), Event: event, Chain: c,
+		SourceRef: s.Ref(), SourceID: s.SourceID,
+		Label: fixedLabel("guiding_bolt_advantage_"+s.SourceID, GuidingBoltName),
 	})
-	if err != nil {
-		return c, err
-	}
-	return c, nil
+}
+
+// heldRule is the by-reference rule for this Guiding Bolt on its holder — the
+// one information asks for a candidate.
+func (s *GuidingBoltCondition) heldRule() contributions.ActionAssessor {
+	return newGuidingBoltHeldRule(s.MemberID, heldAddress(s.MemberID, s))
 }
 
 // onRolled consumes the light after an actual attack roll and before any pause.

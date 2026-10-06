@@ -3,7 +3,7 @@
 
 package session_test
 
-// close_door_test.go drives O2 (rpg-project#169): the composition's existing
+// close_door_test.go covers rpg-project#527: the composition's existing
 // CloseDoor verb, exposed through the seam. It is the mirrored half of the door
 // suite in doors_test.go, and it is deliberately about EXPOSURE rather than a
 // new rule — every closing decision (probe, membership, reach, state) is the
@@ -16,6 +16,7 @@ package session_test
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -166,6 +167,8 @@ func (s *CloseDoorSuite) TestAnOpenFootprintDoorClosesAndBlocksAgain() {
 	s.Equal(session.Door{ID: leafDoorID, State: "closed"}, closed.Door)
 	s.NotEmpty(closed.Saved.Written, "the closed world was saved")
 	s.Contains(closed.Saved.Written, "encounter:world", "the world carries the new state")
+	s.Require().Contains(closed.Discovered["alice"].Faded, "bob", "the close result carries Alice's lost sighting")
+	s.Require().Contains(closed.Discovered["bob"].Faded, "alice", "the close result carries Bob's lost sighting")
 
 	shutAgain := s.walkOntoLeaf(s.mgr)
 	s.Equal(session.MovementStopped, shutAgain.Status, "the crossing is refused again")
@@ -226,28 +229,22 @@ func (s *CloseDoorSuite) TestTheCloseBeatNamesTheActorAndState() {
 	s.Equal(out.Seq, beats[0].Seq, "the output's Seq is the actor's own number for that beat")
 }
 
-// TestTheOtherFixedRecordsAreUntouched — closing a door is a DOOR fact. The
-// structural layout the room already taught stays exactly as it was: a client
-// applying the close beat changes a door's state and nothing else.
-func (s *CloseDoorSuite) TestTheOtherFixedRecordsAreUntouched() {
+// Closing changes door state, not the known room or its floor. Structural-wall
+// integration coverage remains on the separate structural-layout branch.
+func (s *CloseDoorSuite) TestTheKnownRoomAndFloorAreUntouched() {
 	ctx := context.Background()
-	// The structural room world: opening the gate reveals the vault's wall,
-	// which must survive a later close unchanged.
-	s.startWith(structuralRoomWorld(s.T()))
-	_, err := s.mgr.OpenDoor(ctx, &session.OpenDoorInput{Session: "sess", Member: "alice", Door: "gate"})
+	s.startWith(footprintLeafWorld(s.T(), encounter.DoorIsOpen()))
+	before, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
+	s.Require().NotEmpty(before.Cells)
+	s.Require().NotEmpty(before.Regions)
 
-	before, err := s.mgr.Knowledge(ctx, &session.KnowledgeInput{Session: "sess", Member: "alice", Player: "player-alice"})
+	_, err = s.mgr.CloseDoor(ctx, &session.CloseDoorInput{Session: "sess", Member: "alice", Door: leafDoorID})
 	s.Require().NoError(err)
-	s.Require().NotEmpty(before.Atlas.StructuralWalls, "the room's wall is known before the close")
-
-	_, err = s.mgr.CloseDoor(ctx, &session.CloseDoorInput{Session: "sess", Member: "alice", Door: "gate"})
+	after, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
-
-	after, err := s.mgr.Knowledge(ctx, &session.KnowledgeInput{Session: "sess", Member: "alice", Player: "player-alice"})
-	s.Require().NoError(err)
-	s.Equal(before.Atlas.StructuralWalls, after.Atlas.StructuralWalls, "the fixed wall is unchanged by a door's state")
-	s.Equal(before.Atlas.StructuralDoors, after.Atlas.StructuralDoors, "and so is the independent door record")
+	s.Equal(before.Cells, after.Cells)
+	s.Equal(before.Regions, after.Regions)
 }
 
 // TestCloseDoorRefusalsCarryNoWrite is the failure half: every refusal the
@@ -266,6 +263,12 @@ func (s *CloseDoorSuite) TestCloseDoorRefusalsCarryNoWrite() {
 			world: func(t fataler) *encounter.EncounterData { return footprintLeafWorld(t, encounter.DoorIsClosed()) },
 			in:    &session.CloseDoorInput{Session: "sess", Door: leafDoorID},
 			want:  session.ErrNoMemberID,
+		},
+		{
+			name:  "unknown member",
+			world: func(t fataler) *encounter.EncounterData { return footprintLeafWorld(t, encounter.DoorIsOpen()) },
+			in:    &session.CloseDoorInput{Session: "sess", Member: "stranger", Door: leafDoorID},
+			want:  session.ErrNoMember,
 		},
 		{
 			name:  "no session",
@@ -340,10 +343,17 @@ func (s *CloseDoorSuite) TestCloseDoorRunsUnderTheSessionLock() {
 	s.startWith(footprintLeafWorld(s.T(), encounter.DoorIsOpen()))
 
 	locker := &observingLocker{}
+	accesses := 0
+	probe := func() {
+		accesses++
+		s.True(locker.held, "repository and delivery operations must hold the session guard")
+	}
+	stream := &guardedStream{probe: probe}
 	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
-		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: testCharacters(), Events: &fakeStream{}, Locker: locker,
+		Sessions:   guardedSessions{SessionRepository: s.sessions, probe: probe},
+		Encounters: guardedEncounters{EncounterRepository: s.encounters, probe: probe},
+		Characters: testCharacters(), Events: stream, Locker: locker,
 	})
 	s.Require().NoError(err)
 
@@ -351,4 +361,39 @@ func (s *CloseDoorSuite) TestCloseDoorRunsUnderTheSessionLock() {
 	s.Require().NoError(err)
 	s.Equal([]string{"sess"}, locker.calls)
 	s.False(locker.held, "the guard is released after the operation")
+	s.Equal(1, locker.releases)
+	s.Positive(accesses)
+	s.Positive(stream.published)
+
+	_, err = mgr.CloseDoor(ctx, &session.CloseDoorInput{Session: "sess", Member: "alice", Door: leafDoorID})
+	s.Require().ErrorIs(err, session.ErrNoConnection)
+	s.False(locker.held, "the guard is also released after a refusal")
+	s.Equal(2, locker.releases)
+}
+
+// TestClosingADoorTellsNobodyToLookAgain pins how closing meets condition
+// freshness (rpg-project#520, R19): the commit runs the freshness step, and a
+// close changes no member's conditions, so the only sight beats it sends are
+// the sightings it takes away — never a "changed" beat telling an observer to
+// look again at somebody it can still see.
+func (s *CloseDoorSuite) TestClosingADoorTellsNobodyToLookAgain() {
+	s.startWith(footprintLeafWorld(s.T(), encounter.DoorIsOpen()))
+	s.Require().True(s.bobIsCurrentlySeen(), "precondition: the open door lets alice see bob")
+
+	_, err := s.mgr.CloseDoor(context.Background(),
+		&session.CloseDoorInput{Session: "sess", Member: "alice", Door: leafDoorID})
+	s.Require().NoError(err)
+
+	lost := false
+	for _, event := range s.stream.published {
+		body, ok := event.Body.(session.SightedBody)
+		if !ok {
+			continue
+		}
+		s.Empty(body.Changed, "nobody's conditions changed: %+v to %s", body, event.Recipient)
+		if event.Recipient == "alice" && slices.Contains(body.Lost, "bob") {
+			lost = true
+		}
+	}
+	s.True(lost, "the close's own sight beat still reaches alice: bob left her view")
 }

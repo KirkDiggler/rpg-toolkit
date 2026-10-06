@@ -16,7 +16,7 @@ const ReactionUse = "use"
 
 func (m *strikeMachine) poseBeforeRoll(folded dndEvents.AttackChainEvent) (Step, error) {
 	offer := folded.BeforeRollOffers[0]
-	frozen, err := json.Marshal(frozenStrike{Kind: frozenStrikeKind, Version: frozenStrikeVersion, AttackerID: m.in.AttackerID, TargetID: m.in.TargetID, Definition: m.in.Definition, Folded: folded, Outcome: &m.outcome, BeforeRoll: &offer})
+	frozen, err := json.Marshal(frozenStrike{Kind: frozenStrikeKind, Version: frozenStrikeVersion, AttackerID: m.in.AttackerID, TargetID: m.in.TargetID, Definition: m.in.Definition, Opportunity: m.in.Opportunity, Folded: folded, Outcome: &m.outcome, BeforeRoll: &offer})
 	if err != nil {
 		return nil, fmt.Errorf("%w: freeze pre-roll reaction: %v", ErrBadFrozen, err)
 	}

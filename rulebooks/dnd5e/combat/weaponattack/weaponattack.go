@@ -96,6 +96,9 @@ type Input struct {
 	// weapon context. Nil for a wielder with no second hand to read — which
 	// is every monster today, and a character swinging an unarmed strike.
 	OffHandWeaponRef *core.Ref
+	// Slot names the hand holding the weapon, for the weapon context. Empty
+	// for a wielder with no hands to name — every monster today.
+	Slot string
 
 	// AlwaysProficient adds the proficiency bonus without asking the
 	// wielder. Everyone is proficient with an unarmed strike, and that is
@@ -176,6 +179,7 @@ func Assemble(in *Input) (combatActions.Definition, error) {
 			},
 			Weapon: &combatActions.WeaponContext{
 				Ref:              CopyRef(weaponRef),
+				Slot:             in.Slot,
 				TwoHanded:        in.TwoHanded || weapon.HasProperty(weapons.PropertyTwoHanded),
 				OffHandWeaponRef: CopyRef(in.OffHandWeaponRef),
 			},

@@ -27,7 +27,8 @@ func strickenChild() encounter.ActivationResult {
 	return encounter.ActivationResult{
 		Kind: encounter.ResultConditionRemoved,
 		Address: &encounter.ConditionAddress{
-			MemberID: castSkeleton, ConditionRef: "dnd5e:conditions:true-strike",
+			MemberID:     castSkeleton,
+			ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:true-strike"},
 		},
 		Name: "True Strike", Reason: "damage",
 	}
@@ -39,7 +40,8 @@ func theOwnerItself() encounter.ActivationResult {
 	return encounter.ActivationResult{
 		Kind: encounter.ResultConditionRemoved,
 		Address: &encounter.ConditionAddress{
-			MemberID: castBard, ConditionRef: "dnd5e:conditions:concentrating",
+			MemberID:     castBard,
+			ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:concentrating"},
 		},
 		Name: "Concentrating", Reason: "damage",
 	}
@@ -280,7 +282,8 @@ func (s *RecordCastSuite) TestTwoBreaksKeepTheirOrder() {
 		Removed: []encounter.ActivationResult{{
 			Kind: encounter.ResultConditionRemoved,
 			Address: &encounter.ConditionAddress{
-				MemberID: castFighter, ConditionRef: "dnd5e:conditions:concentrating",
+				MemberID:     castFighter,
+				ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:concentrating"},
 			},
 			Name: "Concentrating", Reason: "caster_down",
 		}},
@@ -524,7 +527,8 @@ func (s *RecordCastSuite) TestTwoFailedChecksNeverPool() {
 		Removed: []encounter.ActivationResult{{
 			Kind: encounter.ResultConditionRemoved,
 			Address: &encounter.ConditionAddress{
-				MemberID: castFighter, ConditionRef: "dnd5e:conditions:concentrating",
+				MemberID:     castFighter,
+				ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:concentrating"},
 			},
 			Name: "Concentrating", Reason: "damage",
 		}},

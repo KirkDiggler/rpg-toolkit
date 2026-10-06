@@ -14,7 +14,9 @@ import (
 // ObservedContextOutput is detached context from one member's current knowledge.
 // Members excludes the observer; Pairs ranges over the observer plus Members.
 // This is an observed universe, never a claim that no unseen participant exists.
-// It contains no target sheet, effect state, or answer about rule applicability.
+// It contains no target sheet and no answer about rule applicability. The
+// conditions a member holds appear only as that member's sight testimony —
+// what the observer saw at the moment of sighting (rpg-project#520 R16).
 type ObservedContextOutput struct {
 	// Observer identifies whose knowledge this answer describes.
 	Observer MemberID
@@ -28,7 +30,8 @@ type ObservedContextOutput struct {
 
 // ObservedContextMember is one current sight snapshot, not a live subject read.
 // Missing observed facts remain nil; Down does not imply any other life-state or
-// condition fact, and Equipment describes observed hands, not an inventory.
+// condition fact, Equipment describes observed hands, not an inventory, and
+// Conditions is what was seen held at sight time, not the member's sheet now.
 type ObservedContextMember struct {
 	// ID names the sighted member.
 	ID MemberID
@@ -38,6 +41,10 @@ type ObservedContextMember struct {
 	Down *bool
 	// Equipment is nil when hands were not observed, not observed empty hands.
 	Equipment *HeldEquipment
+	// Conditions is nil when conditions were not observed; a non-nil empty set
+	// is observed holding none. Entries keep the reported order. A detached
+	// copy: it aliases neither the encounter nor the member's sheet.
+	Conditions *ConditionSet
 }
 
 // ObservedContextPair carries spatial and relationship facts for two members
@@ -55,8 +62,9 @@ type ObservedContextPair struct {
 
 // ObservedContext returns the member's own placement, current sight snapshots,
 // and pair facts over exactly those subjects. It neither refreshes perception nor
-// consults live Sight, Equipment or Participation capabilities. Other members'
-// positions and optional observed facts come only from their sight testimony.
+// consults live Sight, Equipment, Conditions or Participation capabilities.
+// Other members' positions and optional observed facts, conditions included,
+// come only from their sight testimony.
 // Relationships use the same owner as BelievedStance, with the original observer
 // retained even when the pair names two other members.
 //
@@ -65,7 +73,7 @@ type ObservedContextPair struct {
 // testimony, always with nil output on error. Returned values do not alias the
 // encounter. Reading this context does not spend, roll, publish, or mutate state.
 func (e *Encounter) ObservedContext(in *ViewInput) (*ObservedContextOutput, error) {
-	holdings, err := e.View(in)
+	holdings, err := e.storedView(in)
 	if err != nil {
 		return nil, fmt.Errorf("observed context: %w", err)
 	}
@@ -97,6 +105,7 @@ func (e *Encounter) ObservedContext(in *ViewInput) (*ObservedContextOutput, erro
 		// of these pointers points into a live participant or shared testimony.
 		out.Members = append(out.Members, ObservedContextMember{
 			ID: holding.Subject, Position: seen.Position, Down: seen.Down, Equipment: seen.Equipment,
+			Conditions: seen.Conditions,
 		})
 		positions[holding.Subject] = seen.Position
 	}

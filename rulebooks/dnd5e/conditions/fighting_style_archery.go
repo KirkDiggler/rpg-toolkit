@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -33,6 +34,50 @@ type FightingStyleArcheryCondition struct {
 
 // Ensure FightingStyleArcheryCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*FightingStyleArcheryCondition)(nil)
+
+var _ contributions.ActionAssessor = (*FightingStyleArcheryCondition)(nil)
+
+// AssessAction answers whether Archery's +2 bears on the framed attack. It
+// reads the frame and this style's own owner; it changes nothing.
+func (f *FightingStyleArcheryCondition) AssessAction(
+	in *contributions.AssessActionInput,
+) (*contributions.AssessActionOutput, error) {
+	return f.rule().AssessAction(in)
+}
+
+func (f *FightingStyleArcheryCondition) rule() archeryRule {
+	return archeryRule{owner: f.CharacterID}
+}
+
+// archeryRule holds only the facts Archery's predicate uses: an attack made
+// with a ranged weapon. It reads the weapon's category, not how the attack is
+// delivered, so a ranged spell attack gets nothing.
+type archeryRule struct {
+	owner string
+}
+
+func (r archeryRule) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error) {
+	frame, err := frameOf(in, "archery")
+	if err != nil {
+		return nil, err
+	}
+	if frame.Actor != r.owner {
+		return assessed(contributions.DoesNotApply, "Archery affects only its holder's attacks"), nil
+	}
+	if roll, _ := frame.Action.Roll.Get(); roll != contributions.RollKindAttack {
+		return assessed(contributions.DoesNotApply, "Archery affects only attack rolls"), nil
+	}
+	ranged, known := frame.Action.RangedWeapon.Get()
+	if !known {
+		return assessed(contributions.Depends, "Depends on the attack's weapon"), nil
+	}
+	if !ranged {
+		return assessed(contributions.DoesNotApply, "Archery adds only to attacks with ranged weapons"), nil
+	}
+	out := assessed(contributions.Applies, "The attack is made with a ranged weapon")
+	out.Answer.Benefit = "+2 to the attack roll"
+	return out, nil
+}
 
 // Ref returns the canonical ref this condition names itself by — the same ref
 // its ToJSON embeds and its loader routes on.
@@ -113,19 +158,18 @@ func (f *FightingStyleArcheryCondition) loadJSON(data json.RawMessage) error {
 	return nil
 }
 
-// onAttackChain adds +2 to attack rolls for ranged weapons.
+// onAttackChain adds +2 to the attack roll when archeryRule applies to the
+// attack — the same rule information asks.
 func (f *FightingStyleArcheryCondition) onAttackChain(
 	_ context.Context,
 	event dnd5eEvents.AttackChainEvent,
 	c chain.Chain[dnd5eEvents.AttackChainEvent],
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
-	// Only modify attacks by this character
-	if event.AttackerID != f.CharacterID {
-		return c, nil
+	executed, err := executeRule(&executeRuleInput{Name: "archery", Rule: f.rule(), Frame: event.Frame})
+	if err != nil {
+		return c, err
 	}
-
-	// Only apply to ranged attacks
-	if event.IsMelee {
+	if executed.Answer.Decision.Applicability != contributions.Applies {
 		return c, nil
 	}
 

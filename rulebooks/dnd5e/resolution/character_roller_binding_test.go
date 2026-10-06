@@ -18,6 +18,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
@@ -83,7 +84,7 @@ func greatswordDefinition() combatActions.Definition {
 			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
 			AttackBonus: 4,
 			Ability:     &combatActions.AbilityContribution{Ability: abilities.STR, Modifier: 3},
-			Weapon:      &combatActions.WeaponContext{Ref: &greatsword, TwoHanded: true},
+			Weapon:      &combatActions.WeaponContext{Ref: &greatsword, Slot: "main_hand", TwoHanded: true},
 			Damage: []damage.Damage{{
 				Dice:       "2d6",
 				Type:       damage.Slashing,
@@ -207,6 +208,20 @@ func foldMarkedWeaponDamage(t *testing.T, bus events.EventBus) *dnd5eEvents.Dice
 			},
 			DamageType: damage.Slashing,
 		}},
+		// The greatsword's frame: a melee weapon attack held in both hands.
+		Frame: contributions.Frame{
+			Actor:  heroID,
+			Target: contributions.Known(wolfID),
+			Action: contributions.ActionFacts{
+				Roll:         contributions.Known(contributions.RollKindAttack),
+				Melee:        contributions.Known(true),
+				WeaponPool:   contributions.Known(true),
+				TwoHanded:    contributions.Known(true),
+				Weapon:       contributions.Known(refs.Weapons.Greatsword().String()),
+				RangedWeapon: contributions.Known(false),
+			},
+			Complete: true,
+		},
 	}
 
 	staged := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
