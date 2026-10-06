@@ -56,6 +56,9 @@ func (s *frameSuite) TestFrameValidateRejectsZeroFrameDuplicatePairsAndNaN() {
 		"unrecognised stance": func(f *contributions.Frame) {
 			f.Pairs[0].Stance = contributions.Known(contributions.Stance("friendly-ish"))
 		},
+		"weapon that is not a ref": func(f *contributions.Frame) {
+			f.Action.Weapon = contributions.Known("rapier")
+		},
 	} {
 		frame := validFrame()
 		mutate(&frame)
@@ -102,6 +105,20 @@ func (s *frameSuite) TestFrameValidateRejectsZeroFrameDuplicatePairsAndNaN() {
 	unknownTarget := validFrame()
 	unknownTarget.Target = contributions.Unknown[string]()
 	s.NoError(unknownTarget.Validate(), "an unknown target is a valid frame")
+}
+
+// TestFrameValidateAcceptsWeaponFactsKnownOrUnknown: a weapon ref, the declared
+// no weapon and an unknown weapon are all valid.
+func (s *frameSuite) TestFrameValidateAcceptsWeaponFactsKnownOrUnknown() {
+	for name, weapon := range map[string]contributions.Fact[string]{
+		"ref":       contributions.Known("dnd5e:weapons:rapier"),
+		"no weapon": contributions.Known(""),
+		"unknown":   contributions.Unknown[string](),
+	} {
+		frame := validFrame()
+		frame.Action.Weapon = weapon
+		s.NoError(frame.Validate(), name)
+	}
 }
 
 func (s *frameSuite) TestFramePairMissingIsUnknown() {

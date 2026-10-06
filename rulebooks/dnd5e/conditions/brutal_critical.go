@@ -18,6 +18,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -165,17 +166,73 @@ func (b *BrutalCriticalCondition) loadJSON(data json.RawMessage) error {
 	return nil
 }
 
-// onDamageChain adds extra weapon damage dice on critical hits
+var _ contributions.ActionAssessor = (*BrutalCriticalCondition)(nil)
+
+// AssessAction answers whether Brutal Critical bears on the framed attack. It
+// applies to its holder's weapon attacks and states that its dice join only a
+// critical hit; it never predicts whether the roll will be one.
+func (b *BrutalCriticalCondition) AssessAction(
+	in *contributions.AssessActionInput,
+) (*contributions.AssessActionOutput, error) {
+	return b.rule().AssessAction(in)
+}
+
+func (b *BrutalCriticalCondition) rule() brutalCriticalRule {
+	return brutalCriticalRule{owner: b.MemberID, extraDice: b.ExtraDice}
+}
+
+// brutalCriticalRule holds only the facts Brutal Critical's predicate uses.
+// Whether the hit is critical is the swing's outcome, not a fact of the
+// action, so it is execution's moment to add the dice — the way Sneak Attack
+// doubles its own on a critical — and not part of this answer.
+type brutalCriticalRule struct {
+	owner     string
+	extraDice int
+}
+
+func (r brutalCriticalRule) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error) {
+	frame, err := frameOf(in, "brutal critical")
+	if err != nil {
+		return nil, err
+	}
+	if frame.Actor != r.owner {
+		return assessed(contributions.DoesNotApply, "Brutal Critical affects only its holder's attacks"), nil
+	}
+	if r.extraDice == 0 {
+		return assessed(contributions.DoesNotApply, "Brutal Critical adds dice from 9th level"), nil
+	}
+	if roll, _ := frame.Action.Roll.Get(); roll != contributions.RollKindAttack {
+		return assessed(contributions.DoesNotApply, "Brutal Critical adds only to weapon attacks"), nil
+	}
+	weapon, known := frame.Action.WeaponPool.Get()
+	if !known {
+		return assessed(contributions.Depends, "Depends on the attack's weapon"), nil
+	}
+	if !weapon {
+		return assessed(contributions.DoesNotApply, "Brutal Critical requires a weapon damage die"), nil
+	}
+	out := assessed(contributions.Applies, "The attack has a weapon damage die")
+	noun := "die"
+	if r.extraDice != 1 {
+		noun = "dice"
+	}
+	out.Answer.Benefit = fmt.Sprintf("+%d weapon damage %s on a critical hit", r.extraDice, noun)
+	return out, nil
+}
+
+// onDamageChain adds extra weapon damage dice on a critical hit when
+// brutalCriticalRule applies to the event's frame — the same rule information
+// asks. An invalid frame or a Depends answer fails the fold.
 func (b *BrutalCriticalCondition) onDamageChain(
 	_ context.Context,
 	event *dnd5eEvents.DamageChainEvent,
 	c chain.Chain[*dnd5eEvents.DamageChainEvent],
 ) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
-	// Only add extra dice if:
-	// 1. We're the attacker
-	// 2. This is a critical hit
-	// 3. We have extra dice to add (level 9+)
-	if event.AttackerID != b.MemberID || !event.IsCritical || b.ExtraDice == 0 {
+	executed, err := executeRule(&executeRuleInput{Name: "brutal critical", Rule: b.rule(), Frame: event.Frame})
+	if err != nil {
+		return c, err
+	}
+	if executed.Answer.Decision.Applicability != contributions.Applies || !event.IsCritical {
 		return c, nil
 	}
 

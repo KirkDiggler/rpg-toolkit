@@ -42,7 +42,7 @@ func TestTheProvokedCampReadsAnEnemyAndADeedInOnePick(t *testing.T) {
 
 	enc, err := NewEncounter(&SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Retention: RetentionUnbounded,
 		Field: FieldInput{
@@ -110,7 +110,7 @@ func TestTheMockedWatcherReadsAnEnemyAndADeedInOnePick(t *testing.T) {
 
 	enc, err := NewEncounter(&SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Retention: RetentionUnbounded,
 		Field: FieldInput{
@@ -211,7 +211,7 @@ func TestTheMissiledWatcherReadsAnEnemyAndADeedInOnePick(t *testing.T) {
 
 	enc, err := NewEncounter(&SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Retention: RetentionUnbounded,
 		Field: FieldInput{

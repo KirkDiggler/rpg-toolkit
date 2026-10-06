@@ -53,7 +53,7 @@ func TestRecordActivationSuite(t *testing.T) {
 func (s *RecordActivationSuite) scene(standing encounter.Standing) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: standing, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: standing, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Retention: encounter.RetentionUnbounded,
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -179,9 +179,9 @@ func (s *RecordActivationSuite) TestRecordActivationMultiResultOrder() {
 		Target:  activationCleric,
 		Ability: encounter.ActivationIdentity{Ref: "dnd5e:features:many-effects", Name: "Many Effects"},
 		Results: []encounter.ActivationResult{
-			{Kind: encounter.ResultConditionApplied, Address: &encounter.ConditionAddress{MemberID: activationFighter, ConditionRef: "dnd5e:conditions:raging"}, Name: "Raging"},
+			{Kind: encounter.ResultConditionApplied, Address: &encounter.ConditionAddress{MemberID: activationFighter, ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:raging"}}, Name: "Raging"},
 			{Kind: encounter.ResultCapacityGranted, Target: activationFighter, Description: "30ft movement"},
-			{Kind: encounter.ResultConditionRemoved, Address: &encounter.ConditionAddress{MemberID: activationCleric, ConditionRef: "dnd5e:conditions:helped"}, Name: "Helped", Reason: "expired"},
+			{Kind: encounter.ResultConditionRemoved, Address: &encounter.ConditionAddress{MemberID: activationCleric, ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:helped"}}, Name: "Helped", Reason: "expired"},
 			healingWithTotal(activationCleric, "dnd5e:features:many-effects", "Many Effects", 3, 1, 2),
 		},
 	}
@@ -490,7 +490,7 @@ func (s *RecordActivationSuite) TestRecordActivationValidationBeforeAppend() {
 	})
 
 	conditionApplied := func() encounter.ActivationResult {
-		return encounter.ActivationResult{Kind: encounter.ResultConditionApplied, Address: &encounter.ConditionAddress{MemberID: activationFighter, ConditionRef: "dnd5e:conditions:raging"}, Name: "Raging"}
+		return encounter.ActivationResult{Kind: encounter.ResultConditionApplied, Address: &encounter.ConditionAddress{MemberID: activationFighter, ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:raging"}}, Name: "Raging"}
 	}
 	add("condition applied missing ref", func(in *encounter.RecordActivationInput) {
 		in.Results = []encounter.ActivationResult{conditionApplied()}
@@ -524,7 +524,7 @@ func (s *RecordActivationSuite) TestRecordActivationValidationBeforeAppend() {
 	}
 
 	conditionRemoved := func() encounter.ActivationResult {
-		return encounter.ActivationResult{Kind: encounter.ResultConditionRemoved, Address: &encounter.ConditionAddress{MemberID: activationFighter, ConditionRef: "dnd5e:conditions:raging"}, Name: "Raging", Reason: "expired"}
+		return encounter.ActivationResult{Kind: encounter.ResultConditionRemoved, Address: &encounter.ConditionAddress{MemberID: activationFighter, ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:raging"}}, Name: "Raging", Reason: "expired"}
 	}
 	add("condition removed missing ref", func(in *encounter.RecordActivationInput) {
 		in.Results = []encounter.ActivationResult{conditionRemoved()}
@@ -660,7 +660,8 @@ func (s *RecordActivationSuite) TestRecordActivationNoticeDownFailure() {
 // primitive carrier rather than importing or embedding root D&D event types.
 func (s *RecordActivationSuite) TestRecordActivationClosedShapes() {
 	s.Equal([]string{"Ref", "Name"}, structFieldNames(encounter.ActivationIdentity{}))
-	s.Equal([]string{"MemberID", "ConditionRef", "SourceID"}, structFieldNames(encounter.ConditionAddress{}))
+	s.Equal([]string{"MemberID", "ConditionKey"}, structFieldNames(encounter.ConditionAddress{}))
+	s.Equal([]string{"ConditionRef", "SourceID"}, structFieldNames(encounter.ConditionKey{}))
 	// The move facts are two more PRIMITIVES, which is the whole of what this
 	// assertion guards: an int and a string, not a spatial position and not a
 	// root event type. A result says how far a creature went and what stopped
@@ -682,7 +683,8 @@ func (s *RecordActivationSuite) TestRecordActivationClosedShapes() {
 func (s *RecordActivationSuite) TestQualifiedConditionAddressRoundTripsAndRejectsMismatch() {
 	enc := s.scene(everyoneStanding{})
 	address := &encounter.ConditionAddress{
-		MemberID: activationGoblin, ConditionRef: "dnd5e:conditions:generic-penalty", SourceID: string(activationCleric),
+		MemberID:     activationGoblin,
+		ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:generic-penalty", SourceID: string(activationCleric)},
 	}
 	out, err := enc.RecordActivation(&encounter.RecordActivationInput{
 		Actor:   activationCleric,
@@ -704,7 +706,8 @@ func (s *RecordActivationSuite) TestQualifiedConditionAddressRoundTripsAndReject
 		Results: []encounter.ActivationResult{{
 			Kind: encounter.ResultConditionRemoved,
 			Address: &encounter.ConditionAddress{
-				MemberID: "", ConditionRef: "dnd5e:conditions:generic-penalty", SourceID: string(activationCleric),
+				MemberID:     "",
+				ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:generic-penalty", SourceID: string(activationCleric)},
 			},
 			Name: "Generic Penalty", Reason: "expired",
 		}},

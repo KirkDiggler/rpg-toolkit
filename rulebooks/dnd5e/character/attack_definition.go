@@ -68,6 +68,7 @@ func assembleWeaponAttack(
 		TwoHanded:        in.TwoHanded,
 		Cost:             in.Cost,
 		OffHandWeaponRef: otherHandWeaponRef(c, in.Slot),
+		Slot:             string(in.Slot),
 		AlwaysProficient: unarmed,
 	})
 }

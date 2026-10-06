@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -48,6 +49,24 @@ type HelpedCondition struct {
 
 // Ensure HelpedCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*HelpedCondition)(nil)
+
+var _ contributions.ActionAssessor = (*HelpedCondition)(nil)
+
+// AssessAction answers whether Help bears on the framed attack: the helped
+// creature's next attack roll has advantage. The attack consumes it; reading
+// this answer consumes nothing.
+func (h *HelpedCondition) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error) {
+	return h.attackRule().AssessAction(in)
+}
+
+func (h *HelpedCondition) attackRule() attackRollRule {
+	return attackRollRule{name: "helped", owner: h.MemberID, text: attackRollText{
+		NotOwner:    "Help affects only the helped creature's attack",
+		OnlyAttacks: "Help affects only attack rolls",
+		Applies:     "An ally is helping you",
+		Benefit:     "Advantage on the attack roll",
+	}}
+}
 
 // Ref returns the canonical ref this condition names itself by — the same ref
 // its ToJSON embeds and its loader routes on.
@@ -159,7 +178,11 @@ func (h *HelpedCondition) onAttackChain(
 	event dnd5eEvents.AttackChainEvent,
 	c chain.Chain[dnd5eEvents.AttackChainEvent],
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
-	if event.AttackerID != h.MemberID {
+	executed, err := executeRule(&executeRuleInput{Name: "helped", Rule: h.attackRule(), Frame: event.Frame})
+	if err != nil {
+		return c, err
+	}
+	if executed.Answer.Decision.Applicability != contributions.Applies {
 		return c, nil
 	}
 

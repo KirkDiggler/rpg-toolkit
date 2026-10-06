@@ -90,7 +90,7 @@ func (s *FightingStyleDuelingTestSuite) TestAddsDamageWithOneHandedWeapon() {
 	// Execute through damage chain — plain context, no gamectx installed.
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)
-	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
+	modifiedChain, err := damages.PublishWithChain(s.ctx, framedDamage(damageEvent), damageChain)
 	s.Require().NoError(err)
 
 	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
@@ -133,7 +133,7 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithTwoHandedWeapon() {
 
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)
-	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
+	modifiedChain, err := damages.PublishWithChain(s.ctx, framedDamage(damageEvent), damageChain)
 	s.Require().NoError(err)
 
 	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
@@ -174,7 +174,7 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithOffHandWeapon() {
 
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)
-	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
+	modifiedChain, err := damages.PublishWithChain(s.ctx, framedDamage(damageEvent), damageChain)
 	s.Require().NoError(err)
 
 	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
@@ -217,7 +217,7 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithShieldInOffHand() {
 
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)
-	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
+	modifiedChain, err := damages.PublishWithChain(s.ctx, framedDamage(damageEvent), damageChain)
 	s.Require().NoError(err)
 
 	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
@@ -262,7 +262,7 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithUnarmedStrike() {
 
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)
-	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
+	modifiedChain, err := damages.PublishWithChain(s.ctx, framedDamage(damageEvent), damageChain)
 	s.Require().NoError(err)
 
 	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
@@ -303,7 +303,7 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithNoWeaponRef() {
 
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)
-	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
+	modifiedChain, err := damages.PublishWithChain(s.ctx, framedDamage(damageEvent), damageChain)
 	s.Require().NoError(err)
 
 	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)

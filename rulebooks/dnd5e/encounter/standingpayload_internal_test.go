@@ -59,7 +59,7 @@ func standingPassEncounter(t *testing.T, at map[MemberID]spatial.Position, stand
 
 	enc, err := NewEncounter(&SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: standing, Initiative: orderAsGiven{},
+		Equipment: UnobservedEquipment{}, Standing: standing, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: FieldInput{
 			Canvas:  openAir(),

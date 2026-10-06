@@ -7,11 +7,14 @@ import (
 	"context"
 	"slices"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
 // intPtr returns a pointer to v, so a present zero modifier stays present.
@@ -45,17 +48,17 @@ func framed(ctx context.Context, event *dnd5eEvents.DamageChainEvent) *dnd5eEven
 		}
 	}
 	frame := contributions.Frame{
-		Actor:  event.AttackerID,
-		Target: contributions.Known(event.TargetID),
-		Action: contributions.ActionFacts{
-			Roll:       contributions.Known(contributions.RollKindAttack),
-			Ability:    contributions.Known(event.AbilityUsed),
-			Melee:      contributions.Known(event.IsMelee),
-			WeaponPool: contributions.Known(weaponPool),
-			Advantage:  contributions.Known(event.HasAdvantage),
-		},
+		Actor:    event.AttackerID,
+		Target:   contributions.Known(event.TargetID),
+		Action:   weaponFacts(event.WeaponRef, event.TwoHanded, event.OffHandWeaponRef != nil),
 		Complete: true,
 	}
+	frame.Action.Ability = contributions.Known(event.AbilityUsed)
+	frame.Action.AbilityModifier = contributions.Known(event.AbilityModifier)
+	frame.Action.Melee = contributions.Known(event.IsMelee)
+	frame.Action.WeaponPool = contributions.Known(weaponPool)
+	frame.Action.Advantage = contributions.Known(event.HasAdvantage)
+	frame.Action.OffHandAttack = contributions.Known(event.IsOffHandAttack)
 	room, hasRoom := gamectx.Room(ctx)
 	cast, hasCast := gamectx.CastOf(ctx)
 	if hasRoom {
@@ -84,4 +87,52 @@ func framed(ctx context.Context, event *dnd5eEvents.DamageChainEvent) *dnd5eEven
 	}
 	event.Frame = frame
 	return event
+}
+
+// framedAttack sets an attack event's attack-roll frame from its own fields,
+// with advantage unknown because the chain has not folded. A test fixture:
+// production frames come from resolution alone.
+func framedAttack(event dnd5eEvents.AttackChainEvent) dnd5eEvents.AttackChainEvent {
+	event.Frame = contributions.Frame{
+		Actor:    event.AttackerID,
+		Target:   contributions.Known(event.TargetID),
+		Action:   weaponFacts(event.WeaponRef, false, false),
+		Complete: true,
+	}
+	event.Frame.Action.Melee = contributions.Known(event.IsMelee)
+	event.Frame.Action.WeaponPool = contributions.Known(event.WeaponRef != nil)
+	event.Frame.Action.Opportunity = contributions.Known(false)
+	return event
+}
+
+// weaponFacts reads the weapon facts from a weapon ref through the catalogue:
+// no ref is an attack with no weapon.
+func weaponFacts(weaponRef *core.Ref, twoHanded, otherWeapon bool) contributions.ActionFacts {
+	facts := contributions.ActionFacts{
+		Roll:            contributions.Known(contributions.RollKindAttack),
+		Ability:         contributions.Known(abilities.Ability("")),
+		AbilityModifier: contributions.Known(0),
+		Weapon:          contributions.Known(""),
+		WeaponSlot:      contributions.Known(""),
+		Finesse:         contributions.Known(false),
+		RangedWeapon:    contributions.Known(false),
+		TwoHanded:       contributions.Known(twoHanded),
+		OffHandWeapon:   contributions.Known(otherWeapon),
+		OffHandAttack:   contributions.Known(false),
+		Opportunity:     contributions.Known(false),
+	}
+	if weaponRef == nil {
+		return facts
+	}
+	facts.Weapon = contributions.Known(weaponRef.String())
+	weapon, err := weapons.GetByID(weapons.WeaponID(weaponRef.ID))
+	if err != nil {
+		// Like resolution: a weapon the catalogue does not hold is unread.
+		facts.Finesse = contributions.Unknown[bool]()
+		facts.RangedWeapon = contributions.Unknown[bool]()
+		return facts
+	}
+	facts.Finesse = contributions.Known(weapon.HasProperty(weapons.PropertyFinesse))
+	facts.RangedWeapon = contributions.Known(weapon.IsRanged())
+	return facts
 }

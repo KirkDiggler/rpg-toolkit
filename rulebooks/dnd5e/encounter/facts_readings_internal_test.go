@@ -45,7 +45,7 @@ func readingsEnc(t *testing.T, watcherAlliedToParty bool) *Encounter {
 
 	enc, err := NewEncounter(&SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Retention: RetentionUnbounded,
 		Field: FieldInput{
