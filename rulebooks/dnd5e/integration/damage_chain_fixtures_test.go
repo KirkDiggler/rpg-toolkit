@@ -15,6 +15,7 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // intPtr returns a pointer to v, so a present zero modifier stays present.
@@ -139,6 +140,31 @@ func framedAttack(event dnd5eEvents.AttackChainEvent) dnd5eEvents.AttackChainEve
 		return event
 	}
 	return swungAttack(event, swing{})
+}
+
+// placedPairs is every ordered pair of entities the room places, each with
+// its distance measured on the room's grid — the pairs resolution's
+// attack-roll frame carries, with the frame Complete.
+func placedPairs(room spatial.Room) []contributions.PairFacts {
+	ids := make([]string, 0)
+	for id := range room.GetAllEntities() {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	var pairs []contributions.PairFacts
+	for _, from := range ids {
+		fromAt, _ := room.GetEntityPosition(from)
+		for _, to := range ids {
+			if from == to {
+				continue
+			}
+			toAt, _ := room.GetEntityPosition(to)
+			pairs = append(pairs, contributions.PairFacts{
+				From: from, To: to, DistanceCells: contributions.Known(room.GetGrid().Distance(fromAt, toAt)),
+			})
+		}
+	}
+	return pairs
 }
 
 // weaponFacts reads the weapon facts from a weapon ref through the catalogue:

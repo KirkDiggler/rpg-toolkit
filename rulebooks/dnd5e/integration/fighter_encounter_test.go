@@ -21,7 +21,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
@@ -815,25 +814,30 @@ func (s *FighterEncounterSuite) TestFightingStyleProtection_ImposesDisadvantage(
 			CriticalThreshold: 20,
 		}, swing{IsMelee: true})
 
-		attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
-		attackTopic := dnd5eEvents.AttackChain.On(s.bus)
-		// The frame resolution builds carries the fighter→ally distance,
-		// measured on the room's grid.
-		framedEvent := framedAttack(attackEvent)
-		fighterAt, _ := s.room.GetEntityPosition(s.fighter.GetID())
-		allyAt, _ := s.room.GetEntityPosition(ally.GetID())
-		framedEvent.Frame.Pairs = []contributions.PairFacts{{
-			From: s.fighter.GetID(), To: ally.GetID(),
-			DistanceCells: contributions.Known(s.room.GetGrid().Distance(fighterAt, allyAt)),
-		}}
-		modifiedChain, err := attackTopic.PublishWithChain(ctx, framedEvent, attackChain)
-		s.Require().NoError(err)
+		// The frame as resolution builds it: complete, one pair for every
+		// ordered pair of members the room places, measured on its grid.
+		attack := func() (dnd5eEvents.AttackChainEvent, error) {
+			framedEvent := framedAttack(attackEvent)
+			framedEvent.Frame.Pairs = placedPairs(s.room)
+			attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
+			modifiedChain, err := dnd5eEvents.AttackChain.On(s.bus).PublishWithChain(ctx, framedEvent, attackChain)
+			if err != nil {
+				return framedEvent, err
+			}
+			return modifiedChain.Execute(ctx, framedEvent)
+		}
 
-		finalEvent, err := modifiedChain.Execute(ctx, attackEvent)
+		finalEvent, err := attack()
 		s.Require().NoError(err)
+		s.Require().Len(finalEvent.DisadvantageSources, 1, "Protection should impose disadvantage")
 
-		// Verify disadvantage was imposed
-		s.Greater(len(finalEvent.DisadvantageSources), 0, "Protection should impose disadvantage")
+		// The same fighter taken off the map: the complete frame carries no
+		// pair from it, so it is not within 5 feet and the attack proceeds
+		// untouched rather than failing as unanswerable.
+		s.Require().NoError(s.room.RemoveEntity(s.fighter.GetID()))
+		finalEvent, err = attack()
+		s.Require().NoError(err, "an unplaced protector does not fail other members' attacks")
+		s.Empty(finalEvent.DisadvantageSources)
 
 		s.T().Log("✓ Protection correctly imposes disadvantage on attacks against adjacent ally")
 	})

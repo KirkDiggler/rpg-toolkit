@@ -128,9 +128,11 @@ func (f *FightingStyleProtectionCondition) loadJSON(data json.RawMessage) error 
 //
 // Whether the attack is melee and how far the protector stands from its
 // target are read from the event's attack-roll frame, which resolution builds
-// from authoritative state; the handler measures nothing itself. A frame that
-// leaves either fact unknown fails the attack (R13) rather than silently
-// withholding the reaction.
+// from authoritative state; the handler measures nothing itself. A complete
+// frame with no protector→target pair is a protector not placed, and not
+// eligible. A frame that cannot answer — melee unknown, pairs incomplete, or
+// the pair present with its distance unknown — fails the attack (R13) rather
+// than silently withholding the reaction.
 func (f *FightingStyleProtectionCondition) onAttackChain(
 	ctx context.Context,
 	event dnd5eEvents.AttackChainEvent,
@@ -186,8 +188,19 @@ func (f *FightingStyleProtectionCondition) onAttackChain(
 	}
 
 	// Within 5 feet of the target, read from the frame's protector→target
-	// pair.
-	distance, known := frame.Pair(f.MemberID, event.TargetID).DistanceCells.Get()
+	// pair. A complete frame pairs every placed member, so one that carries
+	// no pair from the protector to the target is a protector not placed:
+	// not within 5 feet, so not eligible. Only an incomplete frame, or a pair
+	// present with its distance unknown, cannot answer.
+	pair, paired := carriedPair(frame, f.MemberID, event.TargetID)
+	if !paired {
+		if frame.Complete {
+			return c, nil
+		}
+		return c, fmt.Errorf("protection: %w: the frame's pairs do not cover every member",
+			contributions.ErrRuleCannotAnswer)
+	}
+	distance, known := pair.DistanceCells.Get()
 	if !known {
 		return c, fmt.Errorf("protection: %w: distance from %q to %q is unknown",
 			contributions.ErrRuleCannotAnswer, f.MemberID, event.TargetID)
@@ -228,4 +241,16 @@ func (f *FightingStyleProtectionCondition) onAttackChain(
 	}
 
 	return c, nil
+}
+
+// carriedPair returns the directed pair the frame actually carries, and
+// whether it carries one. Frame.Pair answers an absent pair as every fact
+// unknown; this tells absence apart, which a complete frame makes meaningful.
+func carriedPair(frame contributions.Frame, from, to string) (contributions.PairFacts, bool) {
+	for _, pair := range frame.Pairs {
+		if pair.From == from && pair.To == to {
+			return pair, true
+		}
+	}
+	return contributions.PairFacts{}, false
 }

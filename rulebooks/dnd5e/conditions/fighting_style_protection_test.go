@@ -154,6 +154,40 @@ func (s *FightingStyleProtectionTestSuite) TestUnknownDistanceFailsTheAttack() {
 	s.ErrorIs(err, contributions.ErrRuleCannotAnswer)
 }
 
+// TestUnplacedProtectorIsNotEligible: a complete frame pairs every placed
+// member, so one with no protector→target pair says the protector is not
+// placed — not within 5 feet. The attack proceeds untouched and no reaction
+// is spent; it never fails as unanswerable.
+func (s *FightingStyleProtectionTestSuite) TestUnplacedProtectorIsNotEligible() {
+	protection := NewFightingStyleProtectionCondition("fighter-1")
+	castCtx, keeper := s.protector(true, 1)
+	s.Require().NoError(protection.Apply(s.ctx, s.bus))
+	defer func() { _ = protection.Remove(s.ctx, s.bus) }()
+
+	frame := testAttackFrame("goblin-1", "ally-1")
+	frame.Action.Melee = contributions.Known(true)
+	frame.Pairs = []contributions.PairFacts{{
+		From: "goblin-1", To: "ally-1", DistanceCells: contributions.Known(1.0),
+		Stance: contributions.Known(contributions.StanceHostile), Sees: contributions.Known(true),
+	}}
+	finalEvent, err := s.publishProtected(castCtx, dnd5eEvents.AttackChainEvent{
+		AttackerID: "goblin-1", TargetID: "ally-1", AttackBonus: 5, Frame: frame,
+	})
+
+	s.Require().NoError(err)
+	s.Empty(finalEvent.DisadvantageSources)
+	s.Equal(5, finalEvent.AttackBonus, "the rest of the attack is untouched")
+	s.Empty(keeper.spent, "no reaction is spent")
+
+	s.Run("an incomplete frame cannot say the protector is absent", func() {
+		frame.Complete = false
+		_, err := s.publishProtected(castCtx, dnd5eEvents.AttackChainEvent{
+			AttackerID: "goblin-1", TargetID: "ally-1", Frame: frame,
+		})
+		s.ErrorIs(err, contributions.ErrRuleCannotAnswer)
+	})
+}
+
 // TestUnknownMeleeFailsTheAttack is R13 for the other frame fact.
 func (s *FightingStyleProtectionTestSuite) TestUnknownMeleeFailsTheAttack() {
 	protection := NewFightingStyleProtectionCondition("fighter-1")
