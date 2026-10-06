@@ -375,7 +375,7 @@ func (m *movementMachine) react(i int) Step {
 			continue
 		}
 
-		inner := NewStrike(&StrikeInput{AttackerID: trigger.ReactorID, TargetID: trigger.SourceEntity, Definition: definition, Roller: m.in.Roller})
+		inner := NewStrike(&StrikeInput{AttackerID: trigger.ReactorID, TargetID: trigger.SourceEntity, Definition: definition, Opportunity: true, Roller: m.in.Roller})
 		if m.resumed != nil && i == m.resumeIndex {
 			inner = m.resumed
 			m.resumed = nil

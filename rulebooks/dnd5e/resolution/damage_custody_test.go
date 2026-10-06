@@ -283,7 +283,7 @@ func TestGreatWeaponFightingTraceSurvivesTheStrike(t *testing.T) {
 			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
 			AttackBonus: 4,
 			Ability:     &combatActions.AbilityContribution{Ability: abilities.STR, Modifier: 3},
-			Weapon:      &combatActions.WeaponContext{Ref: &greatsword, TwoHanded: true},
+			Weapon:      &combatActions.WeaponContext{Ref: &greatsword, Slot: "main_hand", TwoHanded: true},
 			Damage: []damage.Damage{{
 				Dice:       "2d6",
 				Type:       damage.Slashing,

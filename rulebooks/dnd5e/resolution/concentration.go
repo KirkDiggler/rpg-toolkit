@@ -285,7 +285,8 @@ func removedResults(fact dnd5eEvents.ConcentrationEndedEvent) ([]encounter.Activ
 		results = append(results, encounter.ActivationResult{
 			Kind: encounter.ResultConditionRemoved,
 			Address: &encounter.ConditionAddress{
-				MemberID: encounter.MemberID(address.MemberID), ConditionRef: ref, SourceID: address.SourceID,
+				MemberID:     encounter.MemberID(address.MemberID),
+				ConditionKey: encounter.ConditionKey{ConditionRef: ref, SourceID: address.SourceID},
 			},
 			Name: name, Reason: fact.Reason,
 		})

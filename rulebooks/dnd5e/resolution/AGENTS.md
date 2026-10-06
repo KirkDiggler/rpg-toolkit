@@ -58,12 +58,15 @@ which part is [`../CLAUDE.md`](../CLAUDE.md).
   `DeathSave` ([`death_save.go`](./death_save.go)). Each goes through the same
   door; none is a mode of another. `InformAttack` ([`inform.go`](./inform.go))
   opens no door at all: it asks the actor's own effects how they bear on an
-  attack, from an information frame built from the actor's observed context
-  alone, and spends, rolls and publishes nothing.
+  attack, and per candidate the effects that candidate was SEEN holding, from
+  an information frame built from the actor's observed context alone (and its
+  own sheet for what it holds itself), and spends, rolls and publishes nothing.
 - **The frame a rule answers from** ([`frame.go`](./frame.go)), built once per
   action and target: the information frame from what the actor knows, the
-  execution frame from authoritative state — and one strike hands the same
-  execution frame to its offers and its damage fold (rpg-project#520).
+  execution frame from authoritative state — and one strike builds it once,
+  at its Sanctuary step, and hands it to the ward check, the attack chain, the
+  offers and the damage fold (rpg-project#520). Both frames say what members
+  hold and who sees whom; information knows only what was sighted.
 
 ## What it must never learn
 
