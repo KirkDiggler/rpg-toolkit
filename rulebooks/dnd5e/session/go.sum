@@ -28,8 +28,8 @@ github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.201.0 h1:7vM3G01zqUbu1O2dM
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.201.0/go.mod h1:qjCtaPjI/BvOCj9JId2GpTQqIkJPnhRMB2ZYKbkX5u4=
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.114.0 h1:8Lva7sHFXG8PtSdHJH4zrOe2zJv0g6AfHzEUR6+AzdU=
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.114.0/go.mod h1:L3T7XE9IYejvjaB0fTHiqmv8OxV6ce/qlxW9LzODyf8=
-github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.60.1-0.20261005112741-0d019188bd9e h1:kUnHSI36ynB2EPp+sUTU/OxUa3T81PDPkDyMmE/LhNg=
-github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.60.1-0.20261005112741-0d019188bd9e/go.mod h1:b+ogdjKMpVYPnu+4WQ8RCLZGzTn28MgHUloHtGbQZ4o=
+github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.61.0 h1:kkhCrEnU3SjOxGuXFmq0kk0CGBf8uWAVMDkLMF+6uDA=
+github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.61.0/go.mod h1:OmUTHF43ydAL8SOtC498QTbDoVF4lH2fNs8AHQwrKRk=
 github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.16.1 h1:bN6QuGWZTOzk6bLDFgJ0vKol6NpY/MZ1y+ERJ7CF3lY=
 github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.16.1/go.mod h1:3SZFDKtQWXwplGyRfUDSsdrGH25Etkm62BdZig0Q3rY=
 github.com/KirkDiggler/rpg-toolkit/world v0.4.0 h1:/Ag3BfgOH5wXODtnw8jDqX1dtURZWYdQeYtnm85veko=
