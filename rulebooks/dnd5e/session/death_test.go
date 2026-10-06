@@ -626,7 +626,7 @@ func (s *DeathTestSuite) TestAKillingAttackReportsTheNestedBoundarySaveFailure()
 	afterAlice, getErr := s.characters.GetCharacter(context.Background(), "alice")
 	s.Require().NoError(getErr)
 	s.NotNil(afterAlice.ActionEconomy, "the earlier paid-sheet write remains durable")
-	s.Len(afterAlice.Conditions, 1,
+	s.NotNil(conditionByRef(s.T(), afterAlice.Conditions, refs.Conditions.Raging().String()),
 		"the newer combat-end removal failed, matching the report's Failed identity")
 }
 
