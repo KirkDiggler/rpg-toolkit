@@ -40,9 +40,14 @@ const (
 // Written and CHECKED, so a payload from a build that froze something else, or
 // froze this differently, is refused rather than read as a strike. The same
 // trust boundary a stored window payload keeps one layer up.
+//
+// Version 3 added Opportunity. A version-2 blob never wrote it, so its absence
+// there is not "a swing on its own turn" but a fact the writer never knew;
+// resuming it would rebuild the frame with Opportunity Known(false). It is
+// refused like any other version this build did not write.
 const (
 	frozenStrikeKind    = "strike.post_roll"
-	frozenStrikeVersion = 2
+	frozenStrikeVersion = 3
 )
 
 // frozenStrike is a strike stopped after its d20, in enough detail to finish
@@ -64,7 +69,8 @@ type frozenStrike struct {
 
 	// Opportunity is the strike input's own: whether the frozen swing is an
 	// opportunity attack. Carried so the resumed machine rebuilds the same
-	// attack-roll frame; a blob that omits it is a swing on its own turn.
+	// attack-roll frame; a version-3 blob that omits it is a swing on its own
+	// turn, because every version-3 writer knew which it was.
 	Opportunity bool `json:"opportunity,omitempty"`
 
 	// Definition is the attack that was offered, stored whole for the reason
