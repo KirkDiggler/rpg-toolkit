@@ -463,7 +463,9 @@ func (m *strikeMachine) effectiveACStep(target combat.Member, longRange bool) Ga
 				})
 			}
 
-			applySightAttackModifiers(ctx, &event, m.in.AttackerID, m.in.TargetID, 1000000, m.sourceRef)
+			if err := applySightAttackModifiers(frame, &event, m.in.AttackerID, m.in.TargetID, m.sourceRef); err != nil {
+				return nil, err
+			}
 			return gatherAttack(event, m.afterAttackChain), nil
 		},
 	}

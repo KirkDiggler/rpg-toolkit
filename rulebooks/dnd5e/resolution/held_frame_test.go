@@ -550,11 +550,13 @@ func (s *FrameTestSuite) TestUnreadableStoredConditionFailsTheStrike() {
 	s.Equal(before, scene.goblin.HitPoints)
 }
 
-// TestStrikeFailsWhenAHeldRuleCannotAnswer is R13: the target holds Faerie
-// Fire and the run cannot say whether the rogue sees it, so the rule answers
-// that it depends — and the strike fails rather than silently granting
-// nothing. The row the same rule gives over that frame says it depends too.
-func (s *FrameTestSuite) TestStrikeFailsWhenAHeldRuleCannotAnswer() {
+// TestStrikeFailsWhenSightCannotBeAnswered is R13: the target holds Faerie
+// Fire and the run cannot say whether the rogue sees it. The strike's sight
+// rule reads that unknown off the execution frame and fails the strike before
+// the attack chain folds, rather than counting the target as seen; and the
+// Faerie Fire rule, asked over the same unknown, cannot answer either, so no
+// path grants or withholds its advantage silently.
+func (s *FrameTestSuite) TestStrikeFailsWhenSightCannotBeAnswered() {
 	scene := s.newHeldScene(2, s.faerieFireJSON(informGoblin1))
 	scene.sight = failingSight{}
 	before := scene.goblin.HitPoints
@@ -565,18 +567,24 @@ func (s *FrameTestSuite) TestStrikeFailsWhenAHeldRuleCannotAnswer() {
 
 	s.Require().Error(err)
 	s.True(errors.Is(err, contributions.ErrRuleCannotAnswer), "%v", err)
-	s.Contains(err.Error(), "faerie fire", "the held rule is the one that could not answer")
+	s.Contains(err.Error(), "sight", "the sight rule is the first to find it cannot answer")
 	s.Nil(out, "nothing comes back to be saved")
 	s.Equal(before, scene.goblin.HitPoints)
+	s.Empty(*rolled, "the attack chain never folded")
 
-	s.Require().NotEmpty(*rolled)
-	frame := (*rolled)[0]
-	s.Equal(contributions.Unknown[bool](), frame.Pair(informRogue, informGoblin1).Sees)
-	executed, err := conditions.AssessTargetHeldEffects(&conditions.AssessTargetHeldEffectsInput{Frame: frame})
-	s.Require().NoError(err)
-	row, found := rowNamed(executed.Effects, faerieFireRowID)
-	s.Require().True(found)
-	s.Equal(contributions.StateDepends, row.State)
+	fire := contributions.HeldCondition{Ref: refs.Conditions.FaerieFire().String(), SourceID: heldCaster}
+	_, err = conditions.ExecuteHeldEffect(&conditions.ExecuteHeldEffectInput{
+		Holder: informGoblin1,
+		Held:   fire,
+		Frame: contributions.Frame{
+			Actor:  informRogue,
+			Target: contributions.Known(informGoblin1),
+			Action: attackActionFacts(dagger().Attack, false),
+			Pairs:  []contributions.PairFacts{{From: informRogue, To: informGoblin1, Sees: contributions.Unknown[bool]()}},
+			Held:   []contributions.MemberHeld{{Member: informGoblin1, Conditions: []contributions.HeldCondition{fire}}},
+		},
+	})
+	s.True(errors.Is(err, contributions.ErrRuleCannotAnswer), "Faerie Fire cannot answer an unknown sight either: %v", err)
 }
 
 // TestStrikeWardsComeFromTheHeldRule: the strike's ward selection is the held

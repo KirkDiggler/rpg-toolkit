@@ -242,9 +242,11 @@ func authoritativeStance(cast gamectx.Cast, from, to string) contributions.Fact[
 // pairs cover every placed participant. Opportunity is the strike input's own.
 //
 // Sight is the installed visibility's live answer for each placed ordered
-// pair, uncapped by range — the attack owns its range: known and visible is
-// Known(true), known and not visible Known(false), and a pair visibility
-// cannot answer stays unknown, never false. Held lists every participant with
+// pair, both directions, uncapped by range — the attack owns its range: known
+// and visible is Known(true), known and not visible Known(false), and a pair
+// visibility cannot answer stays unknown, never false. The strike's sight
+// rule ([applySightAttackModifiers]) reads attacker→target and target→attacker
+// from here and asks visibility nothing itself. Held lists every participant with
 // a sheet, in the cast's order, each with its persisted conditions at their
 // own addresses ([conditions.ConditionAddressOf]); a participant with
 // nothing on its sheet is listed holding nothing, because the sheet is the

@@ -261,7 +261,9 @@ func (s *FrameTestSuite) TestStrikeBuildsOneExecutionFrameForOfferAndDamage() {
 	s.Equal(contributions.Known(1.0), beside.DistanceCells)
 	s.Equal(contributions.Known(contributions.StanceHostile), beside.Stance)
 	s.Equal(contributions.Known(contributions.StanceAllied), frame.Pair(holdOutRogue, holdOutAlly).Stance)
-	s.Len(frame.Pairs, 4*3, "every ordered pair of the four placed participants")
+	s.Equal(contributions.Known(true), frame.Pair(holdOutRogue, holdOutScout).Sees, "attacker to target is known")
+	s.Equal(contributions.Known(true), frame.Pair(holdOutScout, holdOutRogue).Sees,
+		"target to attacker is known too: the strike's sight rule reads both directions from this frame")
 }
 
 // TestStrikeSneakAttackFromExecutionFrame: the rogue's hit on the scout with
