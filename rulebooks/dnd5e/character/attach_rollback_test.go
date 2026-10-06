@@ -103,8 +103,8 @@ func (s *AttachRollbackTestSuite) assertRetryWorks(char *Character) {
 	s.Require().False(char.GetResource(resources.RageCharges).IsApplied(),
 		"a successful Attach still does not own character resources")
 
-	s.Require().Len(char.GetConditions(), 1)
-	s.Require().True(char.GetConditions()[0].IsApplied(), "the condition attached on the retry")
+	s.Require().Len(authored(char), 1)
+	s.Require().True(authored(char)[0].IsApplied(), "the condition attached on the retry")
 
 	s.Require().NoError(dnd5eEvents.HealingReceivedTopic.On(bus).Publish(s.ctx, dnd5eEvents.HealingReceivedEvent{
 		TargetID: char.GetID(),
@@ -199,8 +199,8 @@ func (s *AttachRollbackTestSuite) TestASecondConditionFailingRemovesTheFirst() {
 
 	good := events.NewEventBus()
 	s.Require().NoError(Attach(s.ctx, char, good))
-	s.Require().Len(char.GetConditions(), 2)
-	for _, cond := range char.GetConditions() {
+	s.Require().Len(authored(char), 2)
+	for _, cond := range authored(char) {
 		s.Require().True(cond.IsApplied(), "the retry attached both")
 	}
 }
@@ -214,7 +214,7 @@ func (s *AttachRollbackTestSuite) TestLenientAttachStillDropsAndContinues() {
 	char, err := LoadFromData(s.ctx, fullSheet(&s.Suite), bus)
 
 	s.Require().NoError(err)
-	s.Require().Empty(char.GetConditions(), "the condition that would not apply was dropped")
+	s.Require().Empty(authored(char), "the condition that would not apply was dropped")
 	s.Require().NotEmpty(char.subscriptionIDs, "the sheet is attached")
 }
 

@@ -182,7 +182,7 @@ func (s *EffectScopingTestSuite) TestPlainBusLoadsIdentically() {
 	char, err := LoadFromData(s.ctx, s.ragingBarbarian(), plain)
 	s.Require().NoError(err)
 
-	conds := char.GetConditions()
+	conds := authored(char)
 	s.Require().Len(conds, 1)
 	s.Require().True(conds[0].IsApplied())
 }

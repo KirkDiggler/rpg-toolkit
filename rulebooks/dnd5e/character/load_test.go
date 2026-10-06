@@ -233,7 +233,7 @@ func (s *PureLoadTestSuite) TestLegacyLoadDropsAMalformedCondition() {
 	char, err := LoadFromData(s.ctx, data, events.NewEventBus())
 
 	s.Require().NoError(err)
-	s.Require().Len(char.GetConditions(), 1, "the unreadable condition is silently dropped")
+	s.Require().Len(authored(char), 1, "the unreadable condition is silently dropped")
 }
 
 // Features are the same species of loss as conditions, and get the same
@@ -502,8 +502,8 @@ func (s *PureLoadTestSuite) TestAttachAppliesWhatLoadParsed() {
 
 	s.Require().NoError(Attach(s.ctx, char, events.NewEventBus()))
 
-	s.Require().Len(char.GetConditions(), 1)
-	s.Require().True(char.GetConditions()[0].IsApplied())
+	s.Require().Len(authored(char), 1)
+	s.Require().True(authored(char)[0].IsApplied())
 	s.Require().False(char.GetResource(resources.RageCharges).IsApplied(),
 		"Attach does not apply character-owned resources")
 	s.Require().NotEmpty(char.subscriptionIDs, "the sheet keeper subscribed")
@@ -518,7 +518,7 @@ func (s *PureLoadTestSuite) TestAttachDrainsWhatItApplied() {
 	s.Require().NoError(Attach(s.ctx, char, events.NewEventBus()))
 
 	s.Require().Empty(char.pendingEffects)
-	s.Require().Len(char.GetConditions(), 1, "draining does not take the conditions off the sheet")
+	s.Require().Len(authored(char), 1, "draining does not take the conditions off the sheet")
 }
 
 // Attaching the same sheet twice is refused rather than silently doubling every

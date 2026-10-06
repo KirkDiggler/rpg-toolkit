@@ -221,6 +221,10 @@ func (s *ClericFinalizeSuite) TestStatusProjectionAfterFinalizationAndReload() {
 	s.Equal(1, out.View.Resources[1].Current, "projection preserves spent slots")
 	sources := map[string][]string{}
 	for _, condition := range out.View.Conditions {
+		if condition.Ref.String() == refs.Conditions.OpportunityAttack().String() {
+			s.Nil(condition.SourceMember, "the reaction attach recorded has no source member")
+			continue
+		}
 		s.Require().NotNil(condition.SourceMember)
 		sources[condition.Ref.String()] = append(sources[condition.Ref.String()], *condition.SourceMember)
 	}
@@ -230,7 +234,12 @@ func (s *ClericFinalizeSuite) TestStatusProjectionAfterFinalizationAndReload() {
 	rested, err := loaded.StatusView(&StatusViewInput{})
 	s.Require().NoError(err)
 	s.Equal(2, rested.View.Resources[1].Current)
-	s.Empty(rested.View.Conditions)
+	restedRefs := make([]string, 0, len(rested.View.Conditions))
+	for _, condition := range rested.View.Conditions {
+		restedRefs = append(restedRefs, condition.Ref.String())
+	}
+	s.Equal([]string{refs.Conditions.OpportunityAttack().String()}, restedRefs,
+		"the rest ends every spell; the recorded reaction stays")
 	s.Equal(1, out.View.Resources[1].Current, "prior projection is detached")
 }
 

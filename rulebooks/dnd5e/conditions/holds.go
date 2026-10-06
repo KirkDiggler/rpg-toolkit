@@ -119,10 +119,14 @@ func DecodeCommanded(stored []json.RawMessage) (*CommandedConditionData, bool, e
 //
 // That is the stored conditions, in stored order, followed by every free
 // reaction a combatant carries by existing ([FreeReactions]) that the stored
-// list does not already name. The sheet's own attach adds those to every
-// combatant before it acts, and writes them back only when the sheet is next
-// saved, so a reader of the stored list alone would see a member gain one the
-// moment its sheet is saved — a change that never happened.
+// list does not already name. Character and monster attach both record those
+// on the sheet, but a record is written back only when the sheet is next
+// saved, so a stored list read before that save — any sheet attached but
+// never dirtied since, or never attached under this rule — does not name
+// them yet, and a reader of it alone would see the member gain one the moment
+// its sheet is saved, a change that never happened. Resolution's frames rely
+// on this merge for that reason. Removing it is a follow-up once every stored
+// sheet names its free reactions.
 //
 // It builds each condition only to ask its address, and attaches nothing: no
 // bus is touched and nothing runs.
@@ -164,12 +168,10 @@ func HeldAddresses(member string, stored []json.RawMessage) ([]dnd5eEvents.Condi
 // one member: the opportunity attack. ONE ENTRY, and the list is the rule —
 // a COSTED reaction (Shield burns a spell slot) is not had by existing.
 //
-// Character and monster attach each give a combatant these when it becomes a
-// participant; their own lists are pinned equal to this one by
-// character.TestFreeReactionsMatchTheConditionsList and
-// monstertraits.TestFreeReactionsMatchTheConditionsList, so "what a member
-// holds" has one answer whether it is read from the loaded sheet or from
-// [HeldAddresses].
+// It is the one list: character and monster attach read it to give a
+// combatant these when it becomes a participant and record them on its sheet,
+// and [HeldAddresses] reads it too, so "what a member holds" has one answer
+// whether it is read from the loaded sheet or from the stored record.
 func FreeReactions(member string) []dnd5eEvents.ConditionBehavior {
 	return []dnd5eEvents.ConditionBehavior{NewOpportunityAttackCondition(member)}
 }
