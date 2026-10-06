@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
@@ -208,6 +209,25 @@ func informationFrame(in *informationFrameInput) (*informationFrameOutput, error
 	return &informationFrameOutput{Frame: frame}, nil
 }
 
+// authoritativeStance is the execution answer for the stance from one member
+// toward another: the installed cast's [gamectx.Cast.StanceBetween], with no
+// stance between two members of the cast read as the known no side
+// ([contributions.StanceNone], R5). Membership is proven from the cast's own
+// Members, as StanceBetween's contract requires; a pair naming anyone the cast
+// does not hold is UNKNOWN, never no side. Every execution read of a stance
+// goes through here, so the attack frame and the cast's ward gate cannot
+// disagree about one pair.
+func authoritativeStance(cast gamectx.Cast, from, to string) contributions.Fact[contributions.Stance] {
+	if stance, ok := cast.StanceBetween(from, to); ok {
+		return contributions.Known(stance)
+	}
+	members := cast.Members()
+	if slices.Contains(members, from) && slices.Contains(members, to) {
+		return contributions.Known(contributions.StanceNone)
+	}
+	return contributions.Unknown[contributions.Stance]()
+}
+
 // attackRollFrame is the strike's attack-roll frame, built from authoritative
 // state ONCE per machine, before the attack chain folds, and handed to every
 // rule the attack chain asks. Its Advantage is unknown: the fold that settles
@@ -269,10 +289,6 @@ func (m *strikeMachine) attackRollFrame(ctx context.Context) (contributions.Fram
 				continue
 			}
 			toAt, _ := room.GetEntityPosition(to)
-			stance, exists := cast.StanceBetween(from, to)
-			if !exists {
-				stance = contributions.StanceNone
-			}
 			sees := contributions.Unknown[bool]()
 			if visible, known := sight.SeesWithin(from, to, math.MaxInt); known {
 				sees = contributions.Known(visible)
@@ -281,7 +297,7 @@ func (m *strikeMachine) attackRollFrame(ctx context.Context) (contributions.Fram
 				From:          from,
 				To:            to,
 				DistanceCells: contributions.Known(room.GetGrid().Distance(fromAt, toAt)),
-				Stance:        contributions.Known(stance),
+				Stance:        authoritativeStance(cast, from, to),
 				Sees:          sees,
 			})
 		}

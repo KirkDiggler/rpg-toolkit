@@ -14,6 +14,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -315,4 +317,43 @@ func TestSanctuaryDoesNotGateANonHostileCast(t *testing.T) {
 	require.Nil(t, outcome.Targets[0].Warded, "bard and hero share a faction: never hostile, never gated")
 	require.NotNil(t, outcome.Targets[0].Save)
 	require.Equal(t, 1, roller.calls, "just Bane's own save — no ward save attempted, and Bane deals no damage")
+}
+
+// rosterCast answers stances from a fixed table over a fixed roster; every
+// other Cast question is outside these tests and panics if asked.
+type rosterCast struct {
+	gamectx.Cast
+	members []string
+	stances map[[2]string]contributions.Stance
+}
+
+func (c rosterCast) Members() []string { return c.members }
+
+func (c rosterCast) StanceBetween(a, b string) (contributions.Stance, bool) {
+	stance, ok := c.stances[[2]string{a, b}]
+	return stance, ok
+}
+
+// A harmful cast's ward gate decides from the authoritative stance and fails
+// the cast when it cannot (R13): a stance it cannot answer, or no cast to ask,
+// is an error, never a skipped ward.
+func TestCastWardGateFailsClosedOnAnUnknownStance(t *testing.T) {
+	cast := rosterCast{
+		members: []string{bardID, heroID, "shopkeeper"},
+		stances: map[[2]string]contributions.Stance{{bardID, heroID}: contributions.StanceHostile},
+	}
+	hostile, err := castStanceIsHostile(cast, bardID, heroID)
+	require.NoError(t, err)
+	require.True(t, hostile, "a hostile stance reaches the ward")
+
+	hostile, err = castStanceIsHostile(cast, bardID, "shopkeeper")
+	require.NoError(t, err)
+	require.False(t, hostile, "a member of no faction is a known no side, never warded against")
+
+	_, err = castStanceIsHostile(cast, bardID, "stranger")
+	require.ErrorIs(t, err, contributions.ErrRuleCannotAnswer,
+		"a target the cast does not hold has no stance to read: the cast fails")
+
+	_, err = castIsHostile(context.Background(), bardID, heroID)
+	require.ErrorIs(t, err, ErrBadWorld, "no cast installed is no answer, not a skipped ward")
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -484,13 +485,21 @@ func (m *castMachine) castRequest(target castTargetMachine, index int) Step {
 // target's own cast machine — gated on hostility rather than a per-spell
 // harmful/beneficial classification, which does not exist anywhere in this
 // content model. RAW's "attack or a harmful spell" maps onto "a spell aimed
-// at an enemy", and [gamectx.Cast.IsHostile] is the existing question
-// resolution already has an answer for (Sneak Attack asks it the same way).
-// A cast against a non-hostile target (self, an ally — Cure Wounds,
-// Guidance, Healing Word) never reaches the ward check at all, and an
-// unknown relationship (no run to ask) fails open the same way an unknown
-// relationship already does everywhere else this question is asked: no
-// ward is invented out of missing data.
+// at an enemy": the caster→target stance, read the one way execution reads a
+// stance ([authoritativeStance]), the way the strike's frame reads it. A cast
+// at a target that is known not hostile (self, an ally, a member of no
+// faction — Cure Wounds, Guidance, Healing Word) never reaches the ward check
+// at all.
+//
+// An unknown stance, or no cast to ask, fails the cast (R13): a ward that
+// cannot be decided is never silently skipped.
+//
+// This is still a second predicate beside the strike's, which asks the held
+// rule ([strikeWards]). Sanctuary's held rule answers for attack rolls only —
+// its gate answers any other roll "does not apply" — so asking it for a save
+// or no-roll cast would switch the ward off for Bane silently. Folding this
+// gate into the held rule needs the frame to name a harmful cast and the held
+// rule to answer for one; both are root's (rpg-toolkit#1958 item 3).
 //
 // See docs/ideas/cleric/plan.md's Sanctuary section.
 func (m *castMachine) sanctuaryGate(target castTargetMachine, index int) Step {
@@ -498,12 +507,11 @@ func (m *castMachine) sanctuaryGate(target castTargetMachine, index int) Step {
 	return Gather{
 		name: "sanctuary check " + target.targetID,
 		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
-			cast, ok := gamectx.CastOf(ctx)
-			if !ok {
-				return next, nil
+			hostile, err := castIsHostile(ctx, m.casterID, target.targetID)
+			if err != nil {
+				return nil, err
 			}
-			hostile, known := cast.IsHostile(m.casterID, target.targetID)
-			if !known || !hostile {
+			if !hostile {
 				return next, nil
 			}
 			if err := endSanctuaryIfHeld(ctx, bus, m.cast, m.casterID); err != nil {
@@ -513,6 +521,28 @@ func (m *castMachine) sanctuaryGate(target castTargetMachine, index int) Step {
 			return m.wardCastStep(pending, 0, target, index, next), nil
 		},
 	}
+}
+
+// castIsHostile answers whether a cast from casterID at targetID is aimed at
+// an enemy, from the authoritative stance. Errors: no cast installed
+// ([ErrBadWorld]), or a stance the cast cannot answer (wrapping
+// [contributions.ErrRuleCannotAnswer]).
+func castIsHostile(ctx context.Context, casterID, targetID string) (bool, error) {
+	cast, ok := gamectx.CastOf(ctx)
+	if !ok {
+		return false, fmt.Errorf("%w: sanctuary check: no cast installed", ErrBadWorld)
+	}
+	return castStanceIsHostile(cast, casterID, targetID)
+}
+
+// castStanceIsHostile is [castIsHostile] over a cast already in hand.
+func castStanceIsHostile(cast gamectx.Cast, casterID, targetID string) (bool, error) {
+	stance, known := authoritativeStance(cast, casterID, targetID).Get()
+	if !known {
+		return false, fmt.Errorf("sanctuary check on %q: %w: the stance from %q is unknown",
+			targetID, contributions.ErrRuleCannotAnswer, casterID)
+	}
+	return stance == contributions.StanceHostile, nil
 }
 
 // wardCastStep is [strikeMachine.wardCheckStep]'s Cast sibling: it works
