@@ -50,7 +50,7 @@ func TestRecordActivationSuite(t *testing.T) {
 // scene keeps the monster behind a wall so first light does not form a fight;
 // activation tests need only a roster, a record, and an observable Standing
 // capability.
-func (s *RecordActivationSuite) scene(standing encounter.Standing) *encounter.Encounter {
+func (s *RecordActivationSuite) scene(standing encounter.StandingWithParticipation) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: encounter.UnobservedEquipment{}, Standing: standing, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},

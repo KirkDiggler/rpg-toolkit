@@ -2184,11 +2184,10 @@ type LoadEncounterInput struct {
 	// door, not a branch taken deep inside a verb.
 	Initiative InitiativeRoller
 
-	// Standing retains SetupInput's source-compatible field shape. REQUIRED,
-	// and its concrete value must also implement Participation
-	// (StandingWithParticipation). Load returns ErrNoParticipation for a
-	// Standing-only value and never falls back to its binary answer.
-	Standing Standing
+	// Standing answers who is down and who participates. REQUIRED, typed
+	// [StandingWithParticipation] exactly as on SetupInput, so a Standing-only
+	// value does not compile and nothing falls back to its binary answer.
+	Standing StandingWithParticipation
 
 	// Sight reports how far each member can see, in cells. REQUIRED, exactly as
 	// it is on SetupInput: a loaded encounter consults it on its first sight
@@ -2200,9 +2199,9 @@ type LoadEncounterInput struct {
 	// on SetupInput: a loaded encounter snapshots hands on its first sight
 	// refresh, so a blob that comes back without one is as unusable as a Setup
 	// without one (rpg-toolkit#1615). Refused at the door, never guarded at the
-	// use site, and never defaulted. Its value must also answer Conditions
-	// ([EquipmentWithConditions]) or Load returns ErrNoConditions.
-	Equipment Equipment
+	// use site, and never defaulted. Typed [EquipmentWithConditions] exactly
+	// as on SetupInput, so it answers Conditions by construction.
+	Equipment EquipmentWithConditions
 
 	// TurnDriver decides what a member with no player does when it is given
 	// time. REQUIRED, exactly as it is on SetupInput: a loaded encounter's
@@ -2271,9 +2270,6 @@ func (in *LoadEncounterInput) Validate() error {
 	}
 	if in.Equipment == nil {
 		return fmt.Errorf("load encounter: Equipment is required: %w", ErrNoEquipment)
-	}
-	if _, ok := in.Equipment.(EquipmentWithConditions); !ok {
-		return fmt.Errorf("load encounter: Equipment does not implement Conditions: %w", ErrNoConditions)
 	}
 	if in.TurnDriver == nil {
 		return fmt.Errorf("load encounter: TurnDriver is required: %w", ErrNoTurnDriver)
@@ -2347,11 +2343,6 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	if err := validateSightAreasData(input.Data.SightAreas); err != nil {
 		return nil, fmt.Errorf("load encounter: %w", err)
 	}
-	standingWithParticipation, ok := input.Standing.(StandingWithParticipation)
-	if !ok {
-		return nil, fmt.Errorf("load encounter: Standing does not implement Participation: %w", ErrNoParticipation)
-	}
-
 	data := input.Data
 
 	// R5: Validate everything before constructing
@@ -2843,11 +2834,11 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		members:       make(map[MemberID]*memberRecord),
 		everMembers:   make(map[MemberID]bool),
 		initiative:    input.Initiative,
-		standing:      standingWithParticipation,
-		participation: standingWithParticipation,
+		standing:      input.Standing,
+		participation: input.Standing,
 		sight:         input.Sight,
 		equipment:     input.Equipment,
-		conditions:    input.Equipment.(EquipmentWithConditions),
+		conditions:    input.Equipment,
 		driver:        input.TurnDriver,
 		roller:        input.Roller,
 		striker:       input.Striker,

@@ -78,7 +78,7 @@ func (a failAfterForming) Announce(
 // ever decided.
 func (s *CombatEndTestSuite) fightWithStanding(
 	driver encounter.TurnDriver, striker encounter.Striker, announcer encounter.Announcer,
-	standing encounter.Standing, monsters ...core.EntityID,
+	standing encounter.StandingWithParticipation, monsters ...core.EntityID,
 ) (*encounter.Encounter, error) {
 	members := []encounter.MemberInput{
 		{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},

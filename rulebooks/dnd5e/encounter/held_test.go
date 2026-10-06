@@ -41,7 +41,7 @@ func fleeRoute() []spatial.Position {
 	return []spatial.Position{cellAt(7, 2), cellAt(8, 2), cellAt(9, 2)}
 }
 
-func (s *HeldTestSuite) scene(mover encounter.Mover, standing encounter.Standing) *encounter.Encounter {
+func (s *HeldTestSuite) scene(mover encounter.Mover, standing encounter.StandingWithParticipation) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: encounter.UnobservedEquipment{}, Standing: standing, Initiative: orderAsGiven{},
@@ -109,7 +109,7 @@ func (s *HeldTestSuite) beatsNamed(enc *encounter.Encounter, audience encounter.
 }
 
 // loadInput is the reload every test here uses, with the data swapped in.
-func loadInput(data encounter.EncounterData, mover encounter.Mover, standing encounter.Standing,
+func loadInput(data encounter.EncounterData, mover encounter.Mover, standing encounter.StandingWithParticipation,
 ) *encounter.LoadEncounterInput {
 	return &encounter.LoadEncounterInput{
 		Sight:     everyoneSeesTheWholeMap{},

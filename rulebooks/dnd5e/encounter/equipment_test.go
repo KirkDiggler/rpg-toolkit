@@ -178,7 +178,7 @@ func TestOlderTestimonyDidNotObserveHands(t *testing.T) {
 	require.Nil(t, got.Down)
 }
 
-func equipmentSetup(hands encounter.Equipment, members ...encounter.MemberInput) *encounter.SetupInput {
+func equipmentSetup(hands encounter.EquipmentWithConditions, members ...encounter.MemberInput) *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Initiative: orderAsGiven{},
 		Standing:   everyoneStanding{},

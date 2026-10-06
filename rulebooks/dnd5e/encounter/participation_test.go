@@ -16,10 +16,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-type standingOnly struct{}
-
-func (standingOnly) Standing([]encounter.MemberID) ([]encounter.MemberID, error) { return nil, nil }
-
 type scriptedParticipation struct {
 	members       map[encounter.MemberID]encounter.MemberParticipation
 	partyDefeated bool
@@ -86,7 +82,7 @@ func (s *waitingAfterStrike) Strike(
 	return err
 }
 
-func participationSetup(capability encounter.Standing, members ...encounter.MemberInput) *encounter.SetupInput {
+func participationSetup(capability encounter.StandingWithParticipation, members ...encounter.MemberInput) *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Initiative: orderAsGiven{},
 		Standing:   capability,
@@ -109,7 +105,7 @@ func participationSetup(capability encounter.Standing, members ...encounter.Memb
 	}
 }
 
-func participationTrio(t *testing.T, capability encounter.Standing) *encounter.Encounter {
+func participationTrio(t *testing.T, capability encounter.StandingWithParticipation) *encounter.Encounter {
 	t.Helper()
 	enc, err := encounter.NewEncounter(participationSetup(capability,
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 2}},
@@ -138,27 +134,6 @@ func storyBeats(t *testing.T, enc *encounter.Encounter, member encounter.MemberI
 		beats = append(beats, beat)
 	}
 	return beats
-}
-
-func TestParticipationIsRequiredWithoutChangingTheStandingFieldShape(t *testing.T) {
-	input := participationSetup(standingOnly{},
-		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 2}},
-	)
-	_, err := encounter.NewEncounter(input)
-	require.ErrorIs(t, err, encounter.ErrNoParticipation)
-
-	capability := &scriptedParticipation{}
-	built, err := encounter.NewEncounter(participationSetup(capability,
-		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 2}},
-	))
-	require.NoError(t, err)
-
-	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: built.ToData(), Initiative: orderAsGiven{}, Standing: standingOnly{},
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-	})
-	require.ErrorIs(t, err, encounter.ErrNoParticipation)
 }
 
 func TestParticipationQuestionAndAnswerContract(t *testing.T) {
@@ -739,7 +714,7 @@ func TestNextStorySeqIsAReadAndEqualsTheNextSuccessfulRecord(t *testing.T) {
 // purpose — a monster answering Driven would be indistinguishable from the
 // Wait it already gets.
 func drivenScene(
-	t *testing.T, capability encounter.Standing, driver encounter.TurnDriver,
+	t *testing.T, capability encounter.StandingWithParticipation, driver encounter.TurnDriver,
 ) *encounter.Encounter {
 	t.Helper()
 	setup := participationSetup(capability,

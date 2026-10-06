@@ -300,9 +300,13 @@ var (
 	// started a fight.
 	ErrNoStanding = errors.New("encounter: no standing capability")
 
-	// ErrNoParticipation indicates Setup or Load kept the source-compatible
-	// Standing field but supplied a concrete capability without Participation.
-	// There is no legacy binary fallback and no default assessment.
+	// ErrNoParticipation indicates a Standing value without Participation.
+	// This module no longer returns it: SetupInput.Standing and
+	// LoadEncounterInput.Standing are typed [StandingWithParticipation], so
+	// the compiler refuses that value (rpg-toolkit#1958). It is kept for
+	// callers that still carry a narrow Standing field of their own and refuse
+	// it by this name. There is no legacy binary fallback and no default
+	// assessment.
 	ErrNoParticipation = errors.New("encounter: no participation capability")
 
 	// ErrNoSight indicates this module was not told, usably, how far somebody
@@ -327,9 +331,9 @@ var (
 	ErrNoEquipment = errors.New("encounter: no equipment capability")
 
 	// ErrNoConditions indicates this module was not told, usably, what
-	// conditions somebody holds. Two ways to earn it: Setup or Load was given
-	// an Equipment value that does not also implement [Conditions]; or the
-	// capability answered without covering a member it was asked about. A nil
+	// conditions somebody holds: the capability answered without covering a
+	// member it was asked about. (An Equipment value without [Conditions] no
+	// longer compiles at Setup or Load — rpg-toolkit#1958.) A nil
 	// answer for a member does NOT earn this — that is "nothing to observe",
 	// see [ConditionSet].
 	ErrNoConditions = errors.New("encounter: no conditions capability")
