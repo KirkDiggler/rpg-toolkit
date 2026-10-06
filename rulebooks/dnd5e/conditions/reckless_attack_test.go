@@ -73,11 +73,10 @@ func (s *RecklessAttackTestSuite) TestGrantsAdvantageOnOwnMeleeAttacks() {
 	s.Require().NoError(err)
 
 	// Create attack event: barbarian attacks with melee
-	attackEvent := dnd5eEvents.AttackChainEvent{
+	attackEvent := swungAttack(dnd5eEvents.AttackChainEvent{
 		AttackerID: "barbarian-1",
 		TargetID:   "goblin-1",
-		IsMelee:    true,
-	}
+	}, swing{IsMelee: true})
 
 	// Execute through attack chain
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
@@ -99,11 +98,10 @@ func (s *RecklessAttackTestSuite) TestNoAdvantageOnRangedAttacks() {
 	s.Require().NoError(err)
 
 	// Create attack event: barbarian attacks with ranged
-	attackEvent := dnd5eEvents.AttackChainEvent{
+	attackEvent := swungAttack(dnd5eEvents.AttackChainEvent{
 		AttackerID: "barbarian-1",
 		TargetID:   "goblin-1",
-		IsMelee:    false, // Ranged!
-	}
+	}, swing{IsMelee: false})
 
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 	attackTopic := dnd5eEvents.AttackChain.On(s.bus)
@@ -122,11 +120,10 @@ func (s *RecklessAttackTestSuite) TestEnemiesGetAdvantageAgainstBarbarian() {
 	s.Require().NoError(err)
 
 	// Create attack event: enemy attacks the barbarian
-	attackEvent := dnd5eEvents.AttackChainEvent{
+	attackEvent := swungAttack(dnd5eEvents.AttackChainEvent{
 		AttackerID: "goblin-1",
 		TargetID:   "barbarian-1", // Barbarian is the target
-		IsMelee:    true,
-	}
+	}, swing{IsMelee: true})
 
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 	attackTopic := dnd5eEvents.AttackChain.On(s.bus)
@@ -146,11 +143,10 @@ func (s *RecklessAttackTestSuite) TestEnemyRangedAlsoGetsAdvantage() {
 	s.Require().NoError(err)
 
 	// Ranged enemy attacks the barbarian — still gets advantage
-	attackEvent := dnd5eEvents.AttackChainEvent{
+	attackEvent := swungAttack(dnd5eEvents.AttackChainEvent{
 		AttackerID: "archer-1",
 		TargetID:   "barbarian-1",
-		IsMelee:    false, // Ranged attack
-	}
+	}, swing{IsMelee: false})
 
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 	attackTopic := dnd5eEvents.AttackChain.On(s.bus)
@@ -169,11 +165,10 @@ func (s *RecklessAttackTestSuite) TestBothAdvantageWhenBarbarianAttacksSelf() {
 	err := s.condition.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
 
-	attackEvent := dnd5eEvents.AttackChainEvent{
+	attackEvent := swungAttack(dnd5eEvents.AttackChainEvent{
 		AttackerID: "barbarian-1",
 		TargetID:   "barbarian-1", // Self-target
-		IsMelee:    true,
-	}
+	}, swing{IsMelee: true})
 
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 	attackTopic := dnd5eEvents.AttackChain.On(s.bus)
@@ -196,11 +191,10 @@ func (s *RecklessAttackTestSuite) TestNoAdvantageOnOpportunityAttacks() {
 	err := s.condition.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
 
-	attackEvent := dnd5eEvents.AttackChainEvent{
+	attackEvent := swungAttack(dnd5eEvents.AttackChainEvent{
 		AttackerID: "barbarian-1",
 		TargetID:   "goblin-1",
-		IsMelee:    true,
-	}
+	}, swing{IsMelee: true})
 	framed := framedAttack(attackEvent)
 	framed.Frame.Action.Opportunity = contributions.Known(true) // Opportunity attack!
 
@@ -221,11 +215,10 @@ func (s *RecklessAttackTestSuite) TestNoEffectOnUnrelatedAttacks() {
 	s.Require().NoError(err)
 
 	// Attack between two other entities
-	attackEvent := dnd5eEvents.AttackChainEvent{
+	attackEvent := swungAttack(dnd5eEvents.AttackChainEvent{
 		AttackerID: "goblin-1",
 		TargetID:   "fighter-1",
-		IsMelee:    true,
-	}
+	}, swing{IsMelee: true})
 
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 	attackTopic := dnd5eEvents.AttackChain.On(s.bus)
@@ -341,11 +334,10 @@ func (s *RecklessAttackTestSuite) TestLoaderIntegration() {
 	s.Require().NoError(err)
 
 	// Create attack to verify it's wired up
-	attackEvent := dnd5eEvents.AttackChainEvent{
+	attackEvent := swungAttack(dnd5eEvents.AttackChainEvent{
 		AttackerID: "barbarian-1",
 		TargetID:   "goblin-1",
-		IsMelee:    true,
-	}
+	}, swing{IsMelee: true})
 
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 	attackTopic := dnd5eEvents.AttackChain.On(s.bus)
@@ -392,11 +384,10 @@ func (s *RecklessAttackTestSuite) TestChainStageOrdering() {
 	s.Require().NoError(err)
 
 	// Test barbarian attacking (triggers feature stage)
-	attackEvent := dnd5eEvents.AttackChainEvent{
+	attackEvent := swungAttack(dnd5eEvents.AttackChainEvent{
 		AttackerID: "barbarian-1",
 		TargetID:   "goblin-1",
-		IsMelee:    true,
-	}
+	}, swing{IsMelee: true})
 
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 	modifiedChain, err := attackTopic.PublishWithChain(s.ctx, framedAttack(attackEvent), attackChain)
@@ -407,11 +398,10 @@ func (s *RecklessAttackTestSuite) TestChainStageOrdering() {
 	s.True(featuresFired, "Reckless Attack advantage should fire at features stage")
 
 	// Test enemy attacking barbarian (triggers conditions stage)
-	enemyEvent := dnd5eEvents.AttackChainEvent{
+	enemyEvent := swungAttack(dnd5eEvents.AttackChainEvent{
 		AttackerID: "goblin-1",
 		TargetID:   "barbarian-1",
-		IsMelee:    true,
-	}
+	}, swing{IsMelee: true})
 
 	// Reset and add condition tracker
 	_, err = attackTopic.SubscribeWithChain(s.ctx,
@@ -463,7 +453,7 @@ func (s *RecklessAttackTestSuite) selfReckless(event dnd5eEvents.AttackChainEven
 // advantage.
 func (s *RecklessAttackTestSuite) TestTargetAdvantageAgreesWithTheHeldRule() {
 	s.Require().NoError(s.condition.Apply(s.ctx, s.bus))
-	event := s.againstReckless(dnd5eEvents.AttackChainEvent{AttackerID: "goblin-1", TargetID: "barbarian-1", IsMelee: true})
+	event := s.againstReckless(swungAttack(dnd5eEvents.AttackChainEvent{AttackerID: "goblin-1", TargetID: "barbarian-1"}, swing{IsMelee: true}))
 
 	rows, err := AssessTargetHeldEffects(&AssessTargetHeldEffectsInput{Frame: event.Frame})
 	s.Require().NoError(err)
@@ -487,7 +477,7 @@ func (s *RecklessAttackTestSuite) TestTargetAdvantageAgreesWithTheHeldRule() {
 // answer (R13) rather than silently granting nothing.
 func (s *RecklessAttackTestSuite) TestTargetFrameOmittingRecklessFailsTheAttack() {
 	s.Require().NoError(s.condition.Apply(s.ctx, s.bus))
-	event := framedAgainst(dnd5eEvents.AttackChainEvent{AttackerID: "goblin-1", TargetID: "barbarian-1", IsMelee: true}, 1, true)
+	event := framedAgainst(swungAttack(dnd5eEvents.AttackChainEvent{AttackerID: "goblin-1", TargetID: "barbarian-1"}, swing{IsMelee: true}), 1, true)
 
 	_, err := dnd5eEvents.AttackChain.On(s.bus).PublishWithChain(
 		s.ctx, event, events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages))

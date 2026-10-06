@@ -37,9 +37,8 @@ type ProneConditionData struct {
 //     opportunity; shooting at someone lying down is not.
 //
 // The second rule reads the attacker→target distance from the attack's frame.
-// Distance is not on the attack event and cannot be inferred from it:
-// AttackChainEvent.IsMelee is not a proxy for "within 5 feet" in either
-// direction — a glaive is melee at ten feet, and a shortbow fired point-blank
+// Distance cannot be inferred from whether the attack is melee: the frame's
+// Melee fact is not a proxy for "within 5 feet" in either direction — a glaive is melee at ten feet, and a shortbow fired point-blank
 // is ranged at zero. Resolution measures it on the room's grid and puts it on
 // the frame; the rule, keyed by Prone's reference, is the one information asks
 // for a candidate (R17).

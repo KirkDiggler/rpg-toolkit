@@ -422,15 +422,13 @@ func (s *RagingConditionTestSuite) executeDamageChain(
 		IsCritical: false,
 	}
 
-	damageEvent := &dnd5eEvents.DamageChainEvent{
+	damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
 		AttackerID:       attackerID,
 		TargetID:         "goblin-1",
 		Components:       []dnd5eEvents.DamageComponent{weaponComp, abilityComp},
 		WeaponDamageType: damage.Fire,
 		IsCritical:       true,
-		AbilityUsed:      abilities.STR,
-		IsMelee:          true, // Simulates a STR-based melee attack (rage bonus applies)
-	}
+	}, swing{AbilityUsed: abilities.STR, IsMelee: true})
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
@@ -469,14 +467,12 @@ func (s *RagingConditionTestSuite) executeDamageChainWithAbility(
 		DamageType: damage.Slashing,
 	}
 
-	damageEvent := &dnd5eEvents.DamageChainEvent{
+	damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
 		AttackerID:       attackerID,
 		TargetID:         "goblin-1",
 		Components:       []dnd5eEvents.DamageComponent{weaponComp, abilityComp},
 		WeaponDamageType: damage.Slashing,
-		AbilityUsed:      abilityUsed,
-		IsMelee:          isMelee,
-	}
+	}, swing{AbilityUsed: abilityUsed, IsMelee: isMelee})
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
@@ -501,12 +497,10 @@ func (s *RagingConditionTestSuite) TestRagingConditionUsesMarkedWeaponType() {
 	// The marked metadata is authoritative for inherited damage type. The
 	// component deliberately disagrees so an implementation reading the
 	// component instead of the event envelope fails this behavior test.
-	damageEvent := &dnd5eEvents.DamageChainEvent{
+	damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
 		AttackerID:       "barbarian-1",
 		TargetID:         "goblin-1",
 		WeaponDamageType: damage.Fire,
-		AbilityUsed:      abilities.STR,
-		IsMelee:          true,
 		Components: []dnd5eEvents.DamageComponent{{
 			Source:     dnd5eEvents.DamageSourceWeapon,
 			Properties: []damage.Property{damage.AddsAttackAbilityModifier},
@@ -515,7 +509,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionUsesMarkedWeaponType() {
 			},
 			DamageType: damage.Slashing,
 		}},
-	}
+	}, swing{AbilityUsed: abilities.STR, IsMelee: true})
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	modified, err := dnd5eEvents.DamageChain.On(s.bus).PublishWithChain(s.ctx, withEventFrame(damageEvent), chain)
 	s.Require().NoError(err)
@@ -870,13 +864,12 @@ func (s *RagingConditionTestSuite) executeDamageChainAgainstTarget(
 		DamageType: damageType,
 	}
 
-	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID:  attackerID,
-		TargetID:    targetID,
-		Components:  []dnd5eEvents.DamageComponent{weaponComp},
-		IsCritical:  false,
-		AbilityUsed: abilities.STR,
-	}
+	damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
+		AttackerID: attackerID,
+		TargetID:   targetID,
+		Components: []dnd5eEvents.DamageComponent{weaponComp},
+		IsCritical: false,
+	}, swing{AbilityUsed: abilities.STR})
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damageTopic := dnd5eEvents.DamageChain.On(s.bus)

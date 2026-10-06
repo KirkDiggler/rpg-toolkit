@@ -13,7 +13,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
@@ -229,12 +228,11 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalOnlyAffectsOwnAttacks() {
 	}
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID:  "barbarian-2", // Different character
-		Frame:       brutalFrame("barbarian-2"),
-		TargetID:    "goblin-1",
-		Components:  []dnd5eEvents.DamageComponent{weaponComp},
-		IsCritical:  true,
-		AbilityUsed: abilities.STR,
+		AttackerID: "barbarian-2", // Different character
+		Frame:      brutalFrame("barbarian-2"),
+		TargetID:   "goblin-1",
+		Components: []dnd5eEvents.DamageComponent{weaponComp},
+		IsCritical: true,
 	}
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)

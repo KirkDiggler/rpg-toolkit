@@ -364,7 +364,7 @@ func (s *targetHeldSuite) TestAssessingHeldEffectsSpendsNothing() {
 }
 
 func (s *targetHeldSuite) attackOn(bus events.EventBus, frame contributions.Frame) (dnd5eEvents.AttackChainEvent, error) {
-	return s.publishAttack(bus, dnd5eEvents.AttackChainEvent{AttackerID: "rogue", TargetID: "gob", IsMelee: true, Frame: frame})
+	return s.publishAttack(bus, dnd5eEvents.AttackChainEvent{AttackerID: "rogue", TargetID: "gob", Frame: frame})
 }
 
 func (s *targetHeldSuite) TestFaerieFireHandlerReadsFrameSight() {

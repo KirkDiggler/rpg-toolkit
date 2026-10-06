@@ -335,7 +335,7 @@ func (s *attackEffectRulesSuite) TestAskingDoesNotConsumeTheEffect() {
 	}
 	s.True(helped.IsApplied())
 
-	final, err := s.publishAttack(bus, framedAttack(dnd5eEvents.AttackChainEvent{AttackerID: "rogue", TargetID: "goblin", IsMelee: true}))
+	final, err := s.publishAttack(bus, swungAttack(dnd5eEvents.AttackChainEvent{AttackerID: "rogue", TargetID: "goblin"}, swing{IsMelee: true}))
 	s.Require().NoError(err)
 	s.Require().Len(final.AdvantageSources, 1)
 	s.Equal(refs.Conditions.Helped(), final.AdvantageSources[0].SourceRef)
@@ -354,7 +354,7 @@ func (s *attackEffectRulesSuite) TestArcheryExecutionAgreesWithItsAnswer() {
 			if melee {
 				weapon = refs.Weapons.Shortsword()
 			}
-			event := framedAttack(dnd5eEvents.AttackChainEvent{AttackerID: "rogue", TargetID: "goblin", IsMelee: melee, WeaponRef: weapon, AttackBonus: 5})
+			event := swungAttack(dnd5eEvents.AttackChainEvent{AttackerID: "rogue", TargetID: "goblin", AttackBonus: 5}, swing{IsMelee: melee, WeaponRef: weapon})
 			answer := s.answer(archery, event.Frame)
 			final, err := s.publishAttack(bus, event)
 			s.Require().NoError(err)
@@ -375,7 +375,7 @@ func (s *attackEffectRulesSuite) TestTrueStrikeFailsAnAttackWithNoTarget() {
 	strike := NewTrueStrikeCondition("rogue", "goblin", refs.Spells.TrueStrike().String())
 	s.Require().NoError(strike.Apply(context.Background(), bus))
 
-	_, err := s.publishAttack(bus, framedAttack(dnd5eEvents.AttackChainEvent{AttackerID: "rogue", IsMelee: true}))
+	_, err := s.publishAttack(bus, swungAttack(dnd5eEvents.AttackChainEvent{AttackerID: "rogue"}, swing{IsMelee: true}))
 
 	s.Require().Error(err)
 	s.True(errors.Is(err, contributions.ErrRuleCannotAnswer))
@@ -401,7 +401,7 @@ func (s *attackEffectRulesSuite) TestAttackChainHandlersRejectAMissingFrame() {
 			s.Require().NoError(condition.Apply(context.Background(), bus))
 
 			final, err := s.publishAttack(bus, dnd5eEvents.AttackChainEvent{
-				AttackerID: "rogue", TargetID: "goblin", IsMelee: false, AttackBonus: 5, CriticalThreshold: 20,
+				AttackerID: "rogue", TargetID: "goblin", AttackBonus: 5, CriticalThreshold: 20,
 			})
 
 			s.Require().Error(err)

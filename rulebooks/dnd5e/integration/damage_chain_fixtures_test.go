@@ -35,11 +35,23 @@ func testDiceTrace(dieSize int, faces ...int) *dnd5eEvents.DiceTrace {
 	}
 }
 
-// framed sets the damage event's execution frame the way resolution builds it
-// from authoritative state: the action facts from the swing, and a pair from
-// the target to every other entity the room places, measured on the room's
-// grid and stanced from the cast. Without a room the frame carries no pairs.
-func framed(ctx context.Context, event *dnd5eEvents.DamageChainEvent) *dnd5eEvents.DamageChainEvent {
+// swing is what a test says about one swing: the facts resolution settles
+// from the assembled attack and puts on the frame. The events carry none of
+// these; only the frame does. A test fixture.
+type swing struct {
+	WeaponRef        *core.Ref
+	IsMelee          bool
+	AbilityUsed      abilities.Ability
+	AbilityModifier  int
+	IsOffHandAttack  bool
+	TwoHanded        bool
+	OffHandWeaponRef *core.Ref
+	HasAdvantage     bool
+}
+
+// swungDamage records the swing's action facts on the damage event's frame;
+// framed adds the pairs when the test folds it.
+func swungDamage(event *dnd5eEvents.DamageChainEvent, sw swing) *dnd5eEvents.DamageChainEvent {
 	weaponPool := false
 	for _, component := range event.Components {
 		if component.Source == dnd5eEvents.DamageSourceWeapon &&
@@ -50,15 +62,30 @@ func framed(ctx context.Context, event *dnd5eEvents.DamageChainEvent) *dnd5eEven
 	frame := contributions.Frame{
 		Actor:    event.AttackerID,
 		Target:   contributions.Known(event.TargetID),
-		Action:   weaponFacts(event.WeaponRef, event.TwoHanded, event.OffHandWeaponRef != nil),
+		Action:   weaponFacts(sw.WeaponRef, sw.TwoHanded, sw.OffHandWeaponRef != nil),
 		Complete: true,
 	}
-	frame.Action.Ability = contributions.Known(event.AbilityUsed)
-	frame.Action.AbilityModifier = contributions.Known(event.AbilityModifier)
-	frame.Action.Melee = contributions.Known(event.IsMelee)
+	frame.Action.Ability = contributions.Known(sw.AbilityUsed)
+	frame.Action.AbilityModifier = contributions.Known(sw.AbilityModifier)
+	frame.Action.Melee = contributions.Known(sw.IsMelee)
 	frame.Action.WeaponPool = contributions.Known(weaponPool)
-	frame.Action.Advantage = contributions.Known(event.HasAdvantage)
-	frame.Action.OffHandAttack = contributions.Known(event.IsOffHandAttack)
+	frame.Action.Advantage = contributions.Known(sw.HasAdvantage)
+	frame.Action.OffHandAttack = contributions.Known(sw.IsOffHandAttack)
+	event.Frame = frame
+	return event
+}
+
+// framed completes the damage event's execution frame the way resolution
+// builds it from authoritative state: the swing's action facts (a swing with
+// none when swungDamage never set them), and a pair from the target to every
+// other entity the room places, measured on the room's grid and stanced from
+// the cast. Without a room the frame carries no pairs.
+func framed(ctx context.Context, event *dnd5eEvents.DamageChainEvent) *dnd5eEvents.DamageChainEvent {
+	if event.Frame.Actor == "" {
+		swungDamage(event, swing{})
+	}
+	frame := event.Frame
+	frame.Pairs = nil
 	room, hasRoom := gamectx.Room(ctx)
 	cast, hasCast := gamectx.CastOf(ctx)
 	if hasRoom {
@@ -89,20 +116,29 @@ func framed(ctx context.Context, event *dnd5eEvents.DamageChainEvent) *dnd5eEven
 	return event
 }
 
-// framedAttack sets an attack event's attack-roll frame from its own fields,
-// with advantage unknown because the chain has not folded. A test fixture:
-// production frames come from resolution alone.
-func framedAttack(event dnd5eEvents.AttackChainEvent) dnd5eEvents.AttackChainEvent {
+// swungAttack frames an attack event from the swing, with advantage unknown
+// because the chain has not folded. A test fixture: production frames come
+// from resolution alone.
+func swungAttack(event dnd5eEvents.AttackChainEvent, sw swing) dnd5eEvents.AttackChainEvent {
 	event.Frame = contributions.Frame{
 		Actor:    event.AttackerID,
 		Target:   contributions.Known(event.TargetID),
-		Action:   weaponFacts(event.WeaponRef, false, false),
+		Action:   weaponFacts(sw.WeaponRef, false, false),
 		Complete: true,
 	}
-	event.Frame.Action.Melee = contributions.Known(event.IsMelee)
-	event.Frame.Action.WeaponPool = contributions.Known(event.WeaponRef != nil)
+	event.Frame.Action.Melee = contributions.Known(sw.IsMelee)
+	event.Frame.Action.WeaponPool = contributions.Known(sw.WeaponRef != nil)
 	event.Frame.Action.Opportunity = contributions.Known(false)
 	return event
+}
+
+// framedAttack keeps the frame swungAttack set, or frames a swing with no
+// weapon facts.
+func framedAttack(event dnd5eEvents.AttackChainEvent) dnd5eEvents.AttackChainEvent {
+	if event.Frame.Actor != "" {
+		return event
+	}
+	return swungAttack(event, swing{})
 }
 
 // weaponFacts reads the weapon facts from a weapon ref through the catalogue:
