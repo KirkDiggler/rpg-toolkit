@@ -823,8 +823,8 @@ func (m *strikeMachine) rollDamageComponent(
 	// Provider identity: the compiled definition is the provenance PAIR —
 	// Definition.Ref with its own Definition.Name — exactly as compiled, even
 	// when the profile's weapon context names a different (valid) ref. The
-	// weapon ref keeps its separate job: the damage-chain WeaponRef field above
-	// is what the weapon predicates read. The ref is cloned because the
+	// weapon ref keeps its separate job: the frame's Action.Weapon fact is
+	// what the weapon predicates read. The ref is cloned because the
 	// definition (and the refs package) owns the original.
 	component := dnd5eEvents.DamageComponent{
 		Source: source,
