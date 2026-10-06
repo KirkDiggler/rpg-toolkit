@@ -276,8 +276,7 @@ func TestLongRestPersistsEveryConditionOutcomeOnAttachedCharacter(t *testing.T) 
 			})
 
 			require.False(t, sheet.IsDirty(), "Attach and its free reaction must not dirty a loaded sheet")
-			require.Len(t, sheet.GetConditions(), 1,
-				"a free opportunity attack must neither duplicate nor replace the persisted target condition")
+			requireHeldOnce(t, sheet.ToData(), refString, carriedRef)
 
 			require.NoError(t, sheet.LongRest(ctx))
 			if testCase.outcome == attachedLongRestRetain {
@@ -293,27 +292,19 @@ func TestLongRestPersistsEveryConditionOutcomeOnAttachedCharacter(t *testing.T) 
 
 			switch testCase.outcome {
 			case attachedLongRestRetain:
-				require.Len(t, after.Conditions, 1,
-					"a free reaction must not make a missing passive condition look retained")
-				require.Len(t, afterByRef, 1)
-				require.Len(t, afterByRef[testCase.expectedRef.String()], 1)
+				requireHeldOnce(t, after, refString, carriedRef)
 				require.JSONEq(t,
 					string(beforeByRef[testCase.expectedRef.String()][0]),
 					string(afterByRef[testCase.expectedRef.String()][0]),
 					"a retained passive condition must preserve its serialized state")
 
 			case attachedLongRestReset:
-				require.Len(t, after.Conditions, 1,
-					"the retained meter must be the only persisted condition, not a free duplicate")
-				require.Len(t, afterByRef, 1)
-				require.Len(t, afterByRef[testCase.expectedRef.String()], 1)
+				requireHeldOnce(t, after, refString, carriedRef)
 				require.False(t, persistedUsedThisTurn(t, afterByRef[testCase.expectedRef.String()][0]),
 					"the seeded spent meter must persist as available after long rest")
 
 			case attachedLongRestRemove:
-				require.Empty(t, after.Conditions,
-					"a runtime-only free reaction must not mask a temporary condition that failed to leave persistence")
-				require.Empty(t, afterByRef)
+				requireHeldOnce(t, after, carriedRef)
 
 			default:
 				t.Fatalf("unknown attached long-rest outcome %q", testCase.outcome)
@@ -328,6 +319,27 @@ func TestLongRestPersistsEveryConditionOutcomeOnAttachedCharacter(t *testing.T) 
 	// the distribution tests nothing on its own, and every condition added or
 	// re-ruled since has had to bump it.
 	require.Len(t, seen, expectedCaseCount)
+}
+
+// carriedRef is the opportunity attack every attached sheet records.
+var carriedRef = refs.Conditions.OpportunityAttack().String()
+
+// requireHeldOnce asserts the persisted conditions are exactly the given refs,
+// each stored once: the recorded free reaction neither duplicates nor stands
+// in for the condition under test, and a condition that should have left is
+// not still there.
+func requireHeldOnce(t *testing.T, data *Data, held ...string) {
+	t.Helper()
+
+	want := map[string]int{}
+	for _, ref := range held {
+		want[ref] = 1
+	}
+	got := map[string]int{}
+	for ref, blobs := range persistedConditionBlobsByRef(t, data) {
+		got[ref] = len(blobs)
+	}
+	require.Equal(t, want, got)
 }
 
 func persistedConditionBlobsByRef(t *testing.T, data *Data) map[string][]json.RawMessage {

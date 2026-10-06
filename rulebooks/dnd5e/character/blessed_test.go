@@ -76,9 +76,9 @@ func (s *ConcentrationKeeperSuite) TestBlessOwnersCleanUpOnlyTheirOwnRecipientsA
 		MemberID: "cleric-a", ConditionRef: refs.Conditions.Concentrating().String(), SourceID: "cleric-a",
 		Reason: conditions.ConcentrationEndedRecast,
 	}))
-	s.Empty(owners[0].GetConditions())
-	s.Require().Len(owners[1].GetConditions(), 1)
-	s.Require().Len(target.GetConditions(), 1)
+	s.Empty(authored(owners[0]))
+	s.Require().Len(authored(owners[1]), 1)
+	s.Require().Len(authored(target), 1)
 	out, err := target.DescribeRollContributions(&dnd5eEvents.DescribeRollContributionsInput{Kind: dnd5eEvents.RollKindAttack})
 	s.Require().NoError(err)
 	s.Require().Len(out.Contributions, 1)

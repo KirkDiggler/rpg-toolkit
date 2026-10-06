@@ -124,25 +124,64 @@ type placedEntity struct {
 func (p *placedEntity) GetID() string            { return p.id }
 func (p *placedEntity) GetType() core.EntityType { return p.kind }
 
-// The character half of Kirk's ruling: characters PAY, so their meter is the
-// persisted reaction slot and the condition itself is never written down.
-//
-// This is what keeps a sheet that merely joined an interaction from being
-// rewritten — resolution refuses to write back a participant nothing happened
-// to, and gaining a reaction is not something that happened.
-func TestACarriedReactionIsNeverWrittenToTheCharacterSheet(t *testing.T) {
+// Attach records the opportunity attack every combatant carries on the sheet,
+// the way a monster's attach does, so GetConditions and ToData name what the
+// participant holds. Recording it is not a change worth saving: a character's
+// meter is ActionEconomy.ReactionsRemaining, and the condition carries none.
+func TestAttachRecordsTheCarriedReactionOnTheSheet(t *testing.T) {
 	ctx := context.Background()
-	data := plainFighter("fighter-1")
-
-	sheet, err := Load(ctx, data)
+	sheet, err := Load(ctx, plainFighter("fighter-1"))
 	require.NoError(t, err)
+	require.Empty(t, sheet.ToData().Conditions, "Load stays a pure read")
+
 	require.NoError(t, Attach(ctx, sheet, events.NewEventBus()))
 
-	after := sheet.ToData()
-	require.Empty(t, after.Conditions,
-		"a character's meter is ActionEconomy.ReactionsRemaining, so nothing needs writing "+
-			"and the sheet writes back exactly what it was built from")
+	require.Equal(t, []string{refs.Conditions.OpportunityAttack().String()}, heldRefs(sheet.GetConditions()))
+	require.Equal(t, []string{refs.Conditions.OpportunityAttack().String()}, conditionRefs(sheet.ToData()))
 	require.False(t, sheet.IsDirty(), "gaining a reaction is not a change worth saving")
+}
+
+// A record that already lists the opportunity attack — one an earlier attach
+// recorded and a save wrote — is not given a second, on the sheet or on the
+// bus.
+func TestAttachDoesNotRecordTheCarriedReactionTwice(t *testing.T) {
+	ctx := context.Background()
+	first, err := Load(ctx, inFight(plainFighter("fighter-1")))
+	require.NoError(t, err)
+	require.NoError(t, Attach(ctx, first, events.NewEventBus()))
+
+	reloaded, err := Load(ctx, first.ToData())
+	require.NoError(t, err)
+	bus := events.NewEventBus()
+	require.NoError(t, Attach(ctx, reloaded, bus))
+
+	require.Equal(t, []string{refs.Conditions.OpportunityAttack().String()}, heldRefs(reloaded.GetConditions()))
+	require.Equal(t, 1, triggersOnAStepAway(t, bus, reloaded), "one reactor on the bus, however it got there")
+}
+
+// heldRefs lists the refs of the given conditions, in order.
+func heldRefs(held []dnd5eEvents.ConditionBehavior) []string {
+	out := make([]string, 0, len(held))
+	for _, condition := range held {
+		out = append(out, condition.Ref().String())
+	}
+	return out
+}
+
+// authored is what a test put on the sheet: its conditions without the free
+// reactions ([conditions.FreeReactions]) every attached sheet records.
+func authored(c *Character) []dnd5eEvents.ConditionBehavior {
+	carried := map[string]bool{}
+	for _, reaction := range conditions.FreeReactions(c.GetID()) {
+		carried[reaction.Ref().String()] = true
+	}
+	var out []dnd5eEvents.ConditionBehavior
+	for _, condition := range c.GetConditions() {
+		if !carried[condition.Ref().String()] {
+			out = append(out, condition)
+		}
+	}
+	return out
 }
 
 // A SHEET WITH NO ECONOMY CANNOT REACT, which is this package answering

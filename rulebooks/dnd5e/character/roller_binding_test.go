@@ -358,13 +358,16 @@ func (s *RollerBindingTestSuite) TestFailedStrictAttachRetryBindsTheRetryRoller(
 
 // TestNilRollerAttachesWithoutBinding pins the nil half of the contract: a
 // nil roller attaches the sheet exactly as Attach always has — every
-// condition applied, no serialized state changed, and no condition's roller
-// erased.
+// condition applied, the same serialized state a plain Attach leaves, and no
+// condition's roller erased.
 func (s *RollerBindingTestSuite) TestNilRollerAttachesWithoutBinding() {
+	plain, err := Load(s.ctx, rollerBindingSheet(gwfBlob(&s.Suite, "roller-fighter")))
+	s.Require().NoError(err)
+	s.Require().NoError(Attach(s.ctx, plain, events.NewEventBus()))
+	before := marshalData(&s.Suite, plain.ToData())
+
 	char, err := Load(s.ctx, rollerBindingSheet(gwfBlob(&s.Suite, "roller-fighter")))
 	s.Require().NoError(err)
-	before := marshalData(&s.Suite, char.ToData())
-
 	bus := events.NewEventBus()
 	s.Require().NoError(AttachWithRoller(s.ctx, char, bus, nil))
 
@@ -372,7 +375,7 @@ func (s *RollerBindingTestSuite) TestNilRollerAttachesWithoutBinding() {
 		s.Require().True(cond.IsApplied(), "a nil roller attaches the sheet as usual")
 	}
 	s.Equal(before, marshalData(&s.Suite, char.ToData()),
-		"attaching with a roller changes no serialized state")
+		"attaching with no roller serializes exactly what a plain attach does")
 }
 
 // TestExistingWrappersStillWork pins the source-compatible contract: the old

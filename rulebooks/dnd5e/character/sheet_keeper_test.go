@@ -137,7 +137,7 @@ func (s *SheetKeeperTestSuite) TestConditionAppliedLandsOnTheSheet() {
 	})
 
 	s.Require().NoError(err)
-	s.Require().Len(s.char.GetConditions(), 1)
+	s.Require().Len(authored(s.char), 1)
 	s.Require().True(condition.applied, "the keeper applies the condition it was handed")
 	s.Require().True(s.char.IsDirty(), "a sheet that gained a condition needs saving")
 }
@@ -154,7 +154,7 @@ func (s *SheetKeeperTestSuite) TestConditionAppliedToSomeoneElseIsIgnored() {
 	})
 
 	s.Require().NoError(err)
-	s.Require().Empty(s.char.GetConditions())
+	s.Require().Empty(authored(s.char))
 	s.Require().False(s.char.IsDirty())
 }
 
@@ -172,7 +172,7 @@ func (s *SheetKeeperTestSuite) TestConditionRemovedLeavesTheSheet() {
 	})
 
 	s.Require().NoError(err)
-	s.Require().Empty(s.char.GetConditions())
+	s.Require().Empty(authored(s.char))
 	s.Require().True(s.char.IsDirty(), "a sheet that lost a condition needs saving")
 }
 
@@ -719,6 +719,6 @@ func (s *SheetKeeperTestSuite) TestARefLessConditionIsRefusedAtTheDoor() {
 	})
 
 	s.Require().Error(err, "a condition that cannot name itself must not reach the sheet")
-	s.Require().Empty(s.char.GetConditions(), "and nothing was admitted")
+	s.Require().Empty(authored(s.char), "and nothing was admitted")
 	s.Require().False(s.char.IsDirty(), "a refused application changes nothing to save")
 }

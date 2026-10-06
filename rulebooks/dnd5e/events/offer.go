@@ -80,8 +80,10 @@ type PostRollOfferEvent struct {
 	Total       int
 
 	// Frame is the attack's execution frame, the same one its damage fold
-	// reads. An offering rule decides from it alone.
-	Frame contributions.Frame
+	// reads. An offering rule decides from it alone. Never persisted, like
+	// AttackChainEvent.Frame: a Fact does not marshal, so a serialized frame
+	// would come back hollow yet still claim Complete.
+	Frame contributions.Frame `json:"-"`
 
 	// Offers are what the roller's own effects put on the table, in
 	// subscription order.

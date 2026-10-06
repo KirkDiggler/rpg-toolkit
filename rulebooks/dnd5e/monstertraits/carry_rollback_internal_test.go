@@ -43,12 +43,11 @@ func (unwritableCondition) ToJSON() (json.RawMessage, error) { return nil, errUn
 func TestAFailedCarryRollsTheWholeAttachBack(t *testing.T) {
 	ctx := context.Background()
 
-	restore := freeReactions
-	freeReactions = []freeReaction{{
-		ref:   refs.Conditions.OpportunityAttack(),
-		build: func(string) dnd5eEvents.ConditionBehavior { return unwritableCondition{} },
-	}}
-	defer func() { freeReactions = restore }()
+	restore := freeReactionsFor
+	freeReactionsFor = func(string) []dnd5eEvents.ConditionBehavior {
+		return []dnd5eEvents.ConditionBehavior{unwritableCondition{}}
+	}
+	defer func() { freeReactionsFor = restore }()
 
 	authored, err := Immunity("gob-1", "poison").ToJSON()
 	require.NoError(t, err)

@@ -103,12 +103,9 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerolls1sAnd2s() {
 	s.mockRoller.EXPECT().Roll(gomock.Any(), 6).Return(4, nil).Times(1) // Reroll the 2
 
 	// Create damage chain event with 1s and 2s
-	damageEvent := &dnd5eEvents.DamageChainEvent{
+	damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
-		IsMelee:    true,
-		TwoHanded:  true,
-		WeaponRef:  refs.Weapons.Greatsword(),
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:     dnd5eEvents.DamageSourceWeapon,
@@ -124,7 +121,7 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerolls1sAnd2s() {
 				DamageType: damage.Slashing,
 			},
 		},
-	}
+	}, swing{IsMelee: true, TwoHanded: true, WeaponRef: refs.Weapons.Greatsword()})
 
 	// Execute through damage chain
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
@@ -174,12 +171,9 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestDoesNotRerollHigherValue
 
 	// No rerolls expected - all dice are 3+
 	// Create damage chain event with no 1s or 2s
-	damageEvent := &dnd5eEvents.DamageChainEvent{
+	damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
-		IsMelee:    true,
-		TwoHanded:  true,
-		WeaponRef:  refs.Weapons.Greatsword(),
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:     dnd5eEvents.DamageSourceWeapon,
@@ -195,7 +189,7 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestDoesNotRerollHigherValue
 				DamageType: damage.Slashing,
 			},
 		},
-	}
+	}, swing{IsMelee: true, TwoHanded: true, WeaponRef: refs.Weapons.Greatsword()})
 
 	// Execute through damage chain
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
@@ -222,12 +216,9 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerollsMarkedPrimaryWhen
 
 	s.mockRoller.EXPECT().Roll(gomock.Any(), 6).Return(5, nil)
 
-	damageEvent := &dnd5eEvents.DamageChainEvent{
+	damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
-		IsMelee:    true,
-		TwoHanded:  true,
-		WeaponRef:  refs.Weapons.Greatsword(),
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source: dnd5eEvents.DamageSourceWeapon,
@@ -251,7 +242,7 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerollsMarkedPrimaryWhen
 				DamageType: damage.Slashing,
 			},
 		},
-	}
+	}, swing{IsMelee: true, TwoHanded: true, WeaponRef: refs.Weapons.Greatsword()})
 
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)
@@ -278,12 +269,9 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerollsCurrentFacesAfter
 
 	s.mockRoller.EXPECT().Roll(gomock.Any(), 6).Return(5, nil).Times(1)
 
-	damageEvent := &dnd5eEvents.DamageChainEvent{
+	damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
-		IsMelee:    true,
-		TwoHanded:  true,
-		WeaponRef:  refs.Weapons.Greatsword(),
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:     dnd5eEvents.DamageSourceWeapon,
@@ -314,7 +302,7 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerollsCurrentFacesAfter
 				DamageType: damage.Slashing,
 			},
 		},
-	}
+	}, swing{IsMelee: true, TwoHanded: true, WeaponRef: refs.Weapons.Greatsword()})
 
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)
@@ -358,12 +346,9 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRollerErrorLeavesTheCall
 	s.mockRoller.EXPECT().Roll(gomock.Any(), 6).Return(5, nil).Times(1)
 	s.mockRoller.EXPECT().Roll(gomock.Any(), 6).Return(0, errors.New("roller exploded")).Times(1)
 
-	damageEvent := &dnd5eEvents.DamageChainEvent{
+	damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
-		IsMelee:    true,
-		TwoHanded:  true,
-		WeaponRef:  refs.Weapons.Greatsword(),
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:     dnd5eEvents.DamageSourceWeapon,
@@ -377,7 +362,7 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRollerErrorLeavesTheCall
 				DamageType: damage.Slashing,
 			},
 		},
-	}
+	}, swing{IsMelee: true, TwoHanded: true, WeaponRef: refs.Weapons.Greatsword()})
 
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)
@@ -412,12 +397,9 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestNilPrimaryDiceTraceFails
 
 	// No roller expectations: the failure must precede any reroll attempt.
 
-	damageEvent := &dnd5eEvents.DamageChainEvent{
+	damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
-		IsMelee:    true,
-		TwoHanded:  true,
-		WeaponRef:  refs.Weapons.Greatsword(),
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:     dnd5eEvents.DamageSourceWeapon,
@@ -432,7 +414,7 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestNilPrimaryDiceTraceFails
 				DamageType: damage.Slashing,
 			},
 		},
-	}
+	}, swing{IsMelee: true, TwoHanded: true, WeaponRef: refs.Weapons.Greatsword()})
 
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)
@@ -474,12 +456,9 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerollsEveryLowFaceButOn
 	trace.KeptIndices = []int{1}
 	trace.Subtotal = 2
 
-	damageEvent := &dnd5eEvents.DamageChainEvent{
+	damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
-		IsMelee:    true,
-		TwoHanded:  true,
-		WeaponRef:  refs.Weapons.Greatsword(),
 		Components: []dnd5eEvents.DamageComponent{{
 			Source:     dnd5eEvents.DamageSourceWeapon,
 			Properties: []damage.Property{damage.AddsAttackAbilityModifier},
@@ -491,7 +470,7 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerollsEveryLowFaceButOn
 			},
 			DamageType: damage.Slashing,
 		}},
-	}
+	}, swing{IsMelee: true, TwoHanded: true, WeaponRef: refs.Weapons.Greatsword()})
 
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	modifiedChain, err := dnd5eEvents.DamageChain.On(s.bus).PublishWithChain(s.ctx, framedDamage(damageEvent), damageChain)

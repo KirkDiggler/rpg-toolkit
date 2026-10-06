@@ -9,6 +9,7 @@ import (
 	"errors"
 	"log/slog"
 	"maps"
+	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
@@ -208,6 +209,20 @@ func AttachWithRoller(ctx context.Context, c *Character, bus events.EventBus, ro
 		}
 
 		attached = append(attached, attachedEffect{effect: effect, bus: effectBus})
+	}
+
+	// The free reactions that attached join the sheet, so GetConditions and
+	// ToData tell the truth about what this participant holds — the way a
+	// monster's attach records its own. Only here, once the attach has
+	// succeeded: a strict rollback above has nothing of theirs to take back.
+	// Joining is not dirtying; gaining a reaction is not something that
+	// happened in the world.
+	for i := range attached {
+		if slices.ContainsFunc(carried, func(effect loadedEffect) bool {
+			return effect.behavior == attached[i].effect.behavior
+		}) {
+			c.conditions = append(c.conditions, attached[i].effect.behavior)
+		}
 	}
 
 	// The roller is bound only HERE, after every effect has applied and the
@@ -700,27 +715,26 @@ func peekEffectRef(raw json.RawMessage) core.Ref {
 //
 // The condition still marks the sheet dirty when it SPENDS its meter, which is
 // the only moment anything worth persisting has happened.
+//
+// # One list, and it joins the sheet
+//
+// The reactions are [conditions.FreeReactions], the one list monsters and
+// [conditions.HeldAddresses] read too. Attach records the ones it applied in
+// the sheet's conditions — not at Load, which stays a pure read — so
+// GetConditions and ToData name the opportunity attack like any stored
+// condition. A sheet that already holds one, stored or recorded by an earlier
+// attach, is not given a second.
 func (c *Character) freeReactionsToCarry() []loadedEffect {
 	var carried []loadedEffect
-	for _, ref := range freeReactionRefs {
+	for _, reaction := range conditions.FreeReactions(c.id) {
+		ref := reaction.Ref()
 		if carriesRef(c.conditions, ref) {
 			continue
 		}
-		carried = append(carried, loadedEffect{
-			ref:      *ref,
-			behavior: conditions.NewOpportunityAttackCondition(c.id),
-		})
+		carried = append(carried, loadedEffect{ref: *ref, behavior: reaction})
 	}
 
 	return carried
-}
-
-// freeReactionRefs are the reactions a combatant carries by existing. ONE
-// ENTRY, and the list is the rule rather than an optimisation of it: a COSTED
-// reaction (Shield burns a spell slot, Uncanny Dodge burns a class feature) is
-// not had by existing and does not belong here.
-var freeReactionRefs = []*core.Ref{
-	refs.Conditions.OpportunityAttack(),
 }
 
 // carriesRef reports whether the sheet already holds this ref — asked of

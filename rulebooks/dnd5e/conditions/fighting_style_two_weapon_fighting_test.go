@@ -64,12 +64,10 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestAddsDamageToOffHandAttack(
 	// Create damage chain event for off-hand attack
 	// Normally off-hand attacks don't add ability modifier to damage
 	// But with Two-Weapon Fighting, they do
-	damageEvent := &dnd5eEvents.DamageChainEvent{
+	damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
 		AttackerID:       "fighter-1",
 		TargetID:         "goblin-1",
 		WeaponDamageType: damage.Fire,
-		IsOffHandAttack:  true, // This is an off-hand attack
-		AbilityModifier:  3,    // STR or DEX modifier to add
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:     dnd5eEvents.DamageSourceWeapon,
@@ -82,7 +80,7 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestAddsDamageToOffHandAttack(
 			},
 		},
 		IsCritical: true,
-	}
+	}, swing{IsOffHandAttack: true, AbilityModifier: 3})
 
 	// Execute through damage chain
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
@@ -105,12 +103,10 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestDoesNotAddANegativeModifie
 	s.Require().NoError(twf.Apply(s.ctx, s.bus))
 	defer func() { _ = twf.Remove(s.ctx, s.bus) }()
 
-	damageEvent := &dnd5eEvents.DamageChainEvent{
+	damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
 		AttackerID:       "fighter-1",
 		TargetID:         "goblin-1",
 		WeaponDamageType: damage.Slashing,
-		IsOffHandAttack:  true,
-		AbilityModifier:  -2,
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:     dnd5eEvents.DamageSourceWeapon,
@@ -130,7 +126,7 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestDoesNotAddANegativeModifie
 				DamageType: damage.Slashing,
 			},
 		},
-	}
+	}, swing{IsOffHandAttack: true, AbilityModifier: -2})
 
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	modifiedChain, err := dnd5eEvents.DamageChain.On(s.bus).PublishWithChain(s.ctx, framedDamage(damageEvent), damageChain)
@@ -150,11 +146,9 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestDoesNotAddToMainHandAttack
 	defer func() { _ = twf.Remove(s.ctx, s.bus) }()
 
 	// Create damage chain event for main-hand attack (not off-hand)
-	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID:      "fighter-1",
-		TargetID:        "goblin-1",
-		IsOffHandAttack: false, // Main-hand attack
-		AbilityModifier: 3,
+	damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:     dnd5eEvents.DamageSourceWeapon,
@@ -167,7 +161,7 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestDoesNotAddToMainHandAttack
 				DamageType: damage.Slashing,
 			},
 		},
-	}
+	}, swing{IsOffHandAttack: false, AbilityModifier: 3})
 
 	// Execute through damage chain
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
@@ -190,11 +184,9 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestDoesNotAddToOtherCharacter
 	defer func() { _ = twf.Remove(s.ctx, s.bus) }()
 
 	// Create damage chain event for different character
-	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID:      "rogue-1", // Different character
-		TargetID:        "goblin-1",
-		IsOffHandAttack: true,
-		AbilityModifier: 4,
+	damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
+		AttackerID: "rogue-1", // Different character
+		TargetID:   "goblin-1",
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:     dnd5eEvents.DamageSourceWeapon,
@@ -206,7 +198,7 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestDoesNotAddToOtherCharacter
 				DamageType: damage.Piercing,
 			},
 		},
-	}
+	}, swing{IsOffHandAttack: true, AbilityModifier: 4})
 
 	// Execute through damage chain
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)

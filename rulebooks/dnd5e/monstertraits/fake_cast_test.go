@@ -7,18 +7,14 @@ import (
 	"context"
 	"sort"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 )
 
-// fakeCast answers gamectx.Cast from a plain member -> side map.
-//
-// Sides rather than a monster/party flag: Pack Tactics belongs to a monster,
-// and the case it has to get right is a dungeon holding two monster factions
-// that hate each other as much as they hate the party. A fake that could only
-// express "monsters" and "characters" would hide exactly that.
+// fakeCast answers gamectx.Cast from a plain member -> side map, for a
+// trait that reads a participant's sheet out of the cast (a monster's own
+// opportunity attack reads itself that way).
 type fakeCast struct {
 	side    map[string]string
 	members map[string]combat.Member
@@ -78,14 +74,6 @@ func (f *fakeCast) StanceBetween(a, b string) (contributions.Stance, bool) {
 	}
 	return contributions.StanceHostile, true
 }
-
-// fakeEntity is a placeable body with an ID.
-type fakeEntity struct {
-	id string
-}
-
-func (f *fakeEntity) GetID() string            { return f.id }
-func (f *fakeEntity) GetType() core.EntityType { return "monster" }
 
 // castOf installs a cast holding these sheets, the way resolution's one door
 // installs the real one on every path that folds anything.

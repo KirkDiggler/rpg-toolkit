@@ -93,16 +93,13 @@ func (s *SneakAttackTestSuite) executeDamageChain(input damageChainInput) (*dnd5
 		targetID = "goblin-1"
 	}
 
-	damageEvent := &dnd5eEvents.DamageChainEvent{
+	damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
 		AttackerID:       input.attackerID,
 		TargetID:         targetID,
 		Components:       []dnd5eEvents.DamageComponent{weaponComp},
 		WeaponDamageType: weaponDamageType,
 		IsCritical:       input.isCritical,
-		HasAdvantage:     input.hasAdvantage,
-		AbilityUsed:      input.abilityUsed,
-		WeaponRef:        weaponRef,
-	}
+	}, swing{HasAdvantage: input.hasAdvantage, AbilityUsed: input.abilityUsed, WeaponRef: weaponRef})
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
@@ -606,7 +603,7 @@ func (s *SneakAttackTestSuite) runDamageChain(
 ) *dnd5eEvents.DamageChainEvent {
 	s.T().Helper()
 
-	damageEvent := withEventFrame(&dnd5eEvents.DamageChainEvent{
+	damageEvent := withEventFrame(swungDamage(&dnd5eEvents.DamageChainEvent{
 		AttackerID: attackerID,
 		TargetID:   targetID,
 		Components: []dnd5eEvents.DamageComponent{{
@@ -618,11 +615,7 @@ func (s *SneakAttackTestSuite) runDamageChain(
 			},
 			DamageType: damage.Piercing,
 		}},
-		IsMelee:      true,
-		HasAdvantage: false,
-		AbilityUsed:  abilities.DEX,
-		WeaponRef:    refs.Weapons.Shortsword(),
-	}, pairs...)
+	}, swing{IsMelee: true, HasAdvantage: false, AbilityUsed: abilities.DEX, WeaponRef: refs.Weapons.Shortsword()}), pairs...)
 
 	c := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	modifiedChain, err := dnd5eEvents.DamageChain.On(s.bus).PublishWithChain(s.ctx, framedDamage(damageEvent), c)

@@ -88,11 +88,10 @@ func (s *DodgingConditionTestSuite) TestAttackChainDisadvantage() {
 		err := condition.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 
-		attackEvent := dnd5eEvents.AttackChainEvent{
+		attackEvent := swungAttack(dnd5eEvents.AttackChainEvent{
 			AttackerID: "attacker-1",
 			TargetID:   s.memberID,
-			IsMelee:    true,
-		}
+		}, swing{IsMelee: true})
 
 		attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 		attacks := dnd5eEvents.AttackChain.On(s.bus)
@@ -111,11 +110,10 @@ func (s *DodgingConditionTestSuite) TestAttackChainDisadvantage() {
 		err := condition.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 
-		attackEvent := dnd5eEvents.AttackChainEvent{
+		attackEvent := swungAttack(dnd5eEvents.AttackChainEvent{
 			AttackerID: "attacker-1",
 			TargetID:   s.memberID,
-			IsMelee:    false,
-		}
+		}, swing{IsMelee: false})
 
 		attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 		attacks := dnd5eEvents.AttackChain.On(s.bus)
@@ -132,11 +130,10 @@ func (s *DodgingConditionTestSuite) TestAttackChainDisadvantage() {
 		err := condition.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 
-		attackEvent := dnd5eEvents.AttackChainEvent{
+		attackEvent := swungAttack(dnd5eEvents.AttackChainEvent{
 			AttackerID: "attacker-1",
 			TargetID:   "other-character",
-			IsMelee:    true,
-		}
+		}, swing{IsMelee: true})
 
 		attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 		attacks := dnd5eEvents.AttackChain.On(s.bus)

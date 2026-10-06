@@ -85,11 +85,10 @@ func (s *ProneConditionSuite) resolveAttack(ctx context.Context, attacker, targe
 // the prone creature holding Prone, and the attacker→target distance when the
 // room places both; otherwise that distance is unknown.
 func (s *ProneConditionSuite) tryAttack(ctx context.Context, attacker, target string) (dnd5eEvents.AttackChainEvent, error) {
-	event := dnd5eEvents.AttackChainEvent{
+	event := swungAttack(dnd5eEvents.AttackChainEvent{
 		AttackerID: attacker,
 		TargetID:   target,
-		IsMelee:    true,
-	}
+	}, swing{IsMelee: true})
 	framed := framedAttack(event)
 	framed.Frame.Held = []contributions.MemberHeld{{
 		Member: proneID, Conditions: []contributions.HeldCondition{{Ref: refs.Conditions.Prone().String()}},

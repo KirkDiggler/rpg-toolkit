@@ -46,43 +46,43 @@ func testAttackFrame(attacker, target string) contributions.Frame {
 	}
 }
 
-// withEventFrame sets the event's frame from its own fields, the facts
-// resolution settles from the assembled attack: ability, melee, the marked
-// weapon pool, effective advantage and the weapon facts, all known, plus any
-// pairs supplied.
-func withEventFrame(event *dnd5eEvents.DamageChainEvent, pairs ...contributions.PairFacts) *dnd5eEvents.DamageChainEvent {
-	event.Frame = contributions.Frame{}
-	framedDamage(event)
-	event.Frame.Pairs = pairs
-	return event
+// swing is what a test says about one swing: the facts resolution settles
+// from the assembled attack and puts on the frame — weapon, melee, ability and
+// its modifier, grip, off-hand and effective advantage. The events carry none
+// of these; only the frame does. A test fixture.
+type swing struct {
+	WeaponRef        *core.Ref
+	IsMelee          bool
+	AbilityUsed      abilities.Ability
+	AbilityModifier  int
+	IsOffHandAttack  bool
+	TwoHanded        bool
+	OffHandWeaponRef *core.Ref
+	HasAdvantage     bool
 }
 
-// framedDamage sets a damage event's execution frame from its own fields, the
-// way resolution settles the facts from the assembled attack, unless the test
-// already set one. A test fixture: production frames come from resolution
-// alone.
-func framedDamage(event *dnd5eEvents.DamageChainEvent) *dnd5eEvents.DamageChainEvent {
+// swungDamage frames a damage event from the swing, unless the test already
+// set a frame.
+func swungDamage(event *dnd5eEvents.DamageChainEvent, sw swing) *dnd5eEvents.DamageChainEvent {
 	if event.Frame.Actor != "" {
 		return event
 	}
 	frame := testAttackFrame(event.AttackerID, event.TargetID)
-	frame.Action = fixtureWeaponFacts(event.WeaponRef, event.TwoHanded, event.OffHandWeaponRef != nil)
-	frame.Action.Ability = contributions.Known(event.AbilityUsed)
-	frame.Action.AbilityModifier = contributions.Known(event.AbilityModifier)
-	frame.Action.Melee = contributions.Known(event.IsMelee)
+	frame.Action = fixtureWeaponFacts(sw.WeaponRef, sw.TwoHanded, sw.OffHandWeaponRef != nil)
+	frame.Action.Ability = contributions.Known(sw.AbilityUsed)
+	frame.Action.AbilityModifier = contributions.Known(sw.AbilityModifier)
+	frame.Action.Melee = contributions.Known(sw.IsMelee)
 	frame.Action.WeaponPool = contributions.Known(primaryWeaponComponent(event) != nil)
-	frame.Action.Advantage = contributions.Known(event.HasAdvantage)
-	frame.Action.OffHandAttack = contributions.Known(event.IsOffHandAttack)
+	frame.Action.Advantage = contributions.Known(sw.HasAdvantage)
+	frame.Action.OffHandAttack = contributions.Known(sw.IsOffHandAttack)
 	event.Frame = frame
 	return event
 }
 
-// framedAttack sets an attack event's attack-roll frame from its own fields:
-// attacker, target, melee and the weapon facts, with opportunity known false
-// and advantage unknown because the chain has not folded, unless the
-// test already set one. A test fixture: production frames come from
-// resolution alone.
-func framedAttack(event dnd5eEvents.AttackChainEvent) dnd5eEvents.AttackChainEvent {
+// swungAttack frames an attack event from the swing — opportunity known false
+// and advantage unknown because the chain has not folded — unless the test
+// already set a frame.
+func swungAttack(event dnd5eEvents.AttackChainEvent, sw swing) dnd5eEvents.AttackChainEvent {
 	if event.Frame.Actor != "" {
 		return event
 	}
@@ -90,12 +90,34 @@ func framedAttack(event dnd5eEvents.AttackChainEvent) dnd5eEvents.AttackChainEve
 	if event.TargetID != "" {
 		frame.Target = contributions.Known(event.TargetID)
 	}
-	frame.Action = fixtureWeaponFacts(event.WeaponRef, false, false)
-	frame.Action.Melee = contributions.Known(event.IsMelee)
-	frame.Action.WeaponPool = contributions.Known(event.WeaponRef != nil)
+	frame.Action = fixtureWeaponFacts(sw.WeaponRef, false, false)
+	frame.Action.Melee = contributions.Known(sw.IsMelee)
+	frame.Action.WeaponPool = contributions.Known(sw.WeaponRef != nil)
 	frame.Action.Opportunity = contributions.Known(false)
 	event.Frame = frame
 	return event
+}
+
+// withEventFrame frames the event as a swing with no weapon facts unless it
+// is already framed, and sets the pairs supplied.
+func withEventFrame(event *dnd5eEvents.DamageChainEvent, pairs ...contributions.PairFacts) *dnd5eEvents.DamageChainEvent {
+	framedDamage(event)
+	event.Frame.Pairs = pairs
+	return event
+}
+
+// framedDamage frames a damage event that names no swing facts, unless the
+// test already set a frame. A test fixture: production frames come from
+// resolution alone.
+func framedDamage(event *dnd5eEvents.DamageChainEvent) *dnd5eEvents.DamageChainEvent {
+	return swungDamage(event, swing{})
+}
+
+// framedAttack frames an attack event that names no swing facts, unless the
+// test already set a frame. A test fixture: production frames come from
+// resolution alone.
+func framedAttack(event dnd5eEvents.AttackChainEvent) dnd5eEvents.AttackChainEvent {
+	return swungAttack(event, swing{})
 }
 
 // fixtureWeaponFacts reads the weapon facts from a weapon ref through the

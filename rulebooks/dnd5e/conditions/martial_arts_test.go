@@ -103,9 +103,9 @@ func (s *MartialArtsTestSuite) TestMartialArtsFoldLeavesTheRolledDieAlone() {
 	s.Require().NoError(condition.Apply(s.ctx, s.bus))
 	override := condition.WeaponAttackOverride("main_hand", "")
 
-	event := &dnd5eEvents.DamageChainEvent{
-		AttackerID: "monk-1", TargetID: "goblin", AbilityUsed: abilities.DEX, IsMelee: true,
-		WeaponRef: refs.Weapons.UnarmedStrike(), WeaponDamageDice: override.Dice,
+	event := swungDamage(&dnd5eEvents.DamageChainEvent{
+		AttackerID: "monk-1", TargetID: "goblin",
+		WeaponDamageDice: override.Dice,
 		Components: []dnd5eEvents.DamageComponent{{
 			Source:     dnd5eEvents.DamageSourceWeapon,
 			Properties: []damage.Property{damage.AddsAttackAbilityModifier},
@@ -115,7 +115,7 @@ func (s *MartialArtsTestSuite) TestMartialArtsFoldLeavesTheRolledDieAlone() {
 			},
 			DamageType: damage.Bludgeoning,
 		}},
-	}
+	}, swing{AbilityUsed: abilities.DEX, IsMelee: true, WeaponRef: refs.Weapons.UnarmedStrike()})
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	modified, err := dnd5eEvents.DamageChain.On(s.bus).PublishWithChain(s.ctx, withEventFrame(event), chain)
 	s.Require().NoError(err)
@@ -125,9 +125,10 @@ func (s *MartialArtsTestSuite) TestMartialArtsFoldLeavesTheRolledDieAlone() {
 	s.Equal([]int{3}, folded.Components[0].Roll.Dice.OriginalRolls, "no re-roll replaced the assembled die")
 	s.Equal([]int{3}, folded.Components[0].Roll.Dice.FinalRolls)
 	s.Equal("1d4", folded.WeaponDamageDice)
-	s.Equal(abilities.DEX, folded.AbilityUsed)
+	ability, _ := folded.Frame.Action.Ability.Get()
+	s.Equal(abilities.DEX, ability)
 
-	attack := dnd5eEvents.AttackChainEvent{AttackerID: "monk-1", WeaponRef: refs.Weapons.UnarmedStrike(), AttackBonus: 5}
+	attack := swungAttack(dnd5eEvents.AttackChainEvent{AttackerID: "monk-1", AttackBonus: 5}, swing{WeaponRef: refs.Weapons.UnarmedStrike()})
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 	modifiedAttack, err := dnd5eEvents.AttackChain.On(s.bus).PublishWithChain(s.ctx, attack, attackChain)
 	s.Require().NoError(err)
