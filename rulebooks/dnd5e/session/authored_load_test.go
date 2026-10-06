@@ -9,6 +9,7 @@ import (
 	"go/parser"
 	"go/token"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -16,17 +17,22 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 )
 
-// TestAnAuthoredWorldWithAnOpenSecretDoorPreviewsAndStarts is the behavioural
+// TestLoadingAnAuthoredWorldNeedsNothingSessionInvented is the behavioural
 // half of rpg-toolkit#1958 item 8: an authored world loads on the
 // composition's own stand-ins, with this package supplying only the four
 // capabilities it can answer for real.
 //
-// The world is the hardest legal one for a compile-only load: a concealment,
-// so the load holds a check resolver and a witness, and its door standing
-// OPEN, the one state a sight refresh would ask the witness about. Both
-// callers of the authored load take it — AtlasOf previews it, StartSession
-// proves it and persists it — and the preview is the author's whole truth.
-func (s *ConcealSuite) TestAnAuthoredWorldWithAnOpenSecretDoorPreviewsAndStarts() {
+// WHAT IT DOES NOT PROVE. It passes with session's old stand-ins put back as
+// well: neither StartSession nor AtlasOf drives a turn, rolls a check or
+// refreshes sight, so the refusing witness and driver those stand-ins were and
+// encounter's answering ones are never asked on either path, and nothing
+// observable differs between them today. What this pins is that a world
+// carrying concealed structure — so the load must hold a check resolver and a
+// witness — with its secret door standing open loads on what encounter
+// supplies, through both callers, and that the preview is the author's whole
+// truth. [TestTheAuthoredLoadIsTheCompositionsOwn] is the check that the
+// stand-ins are encounter's.
+func (s *ConcealSuite) TestLoadingAnAuthoredWorldNeedsNothingSessionInvented() {
 	world := concealedWorld(s.T(), encounter.DoorIsOpen())
 	s.startWith(world, armedSearcher("alice"), armedFighter("bob"), dullEyed("carol"))
 
@@ -45,9 +51,14 @@ func (s *ConcealSuite) TestAnAuthoredWorldWithAnOpenSecretDoorPreviewsAndStarts(
 // loadAuthored must start from encounter.CompileOnlyLoad and build no
 // LoadEncounterInput of its own, so a capability added to LoadEncounter is
 // stood in by the composition and this package's call does not change. And
-// the only witness and check resolver this package declares are its real
-// seams — a refusing or answering twin of encounter's stand-in is the copy
-// item 8 deleted, and this is what keeps it deleted.
+// every witness, check resolver and turn driver this package declares is one
+// of a closed list of real ones — a refusing or answering twin of encounter's
+// stand-in is the copy item 8 deleted, and this is what keeps it deleted.
+//
+// The list is keyed by method name and receiver, so a NEW legitimate
+// implementation (a wrapper around witnessSeam, a host-facing driver beside
+// Pass) fails here until it is added to the list on purpose — the cost of the
+// guard, paid once per new seam.
 func TestTheAuthoredLoadIsTheCompositionsOwn(t *testing.T) {
 	fset := token.NewFileSet()
 	entries, err := filepath.Glob("*.go")
@@ -55,7 +66,13 @@ func TestTheAuthoredLoadIsTheCompositionsOwn(t *testing.T) {
 		t.Fatalf("listing sources: %v", err)
 	}
 
-	realSeams := map[string]string{"Perceivers": "witnessSeam", "ResolveCheck": "checkSeam"}
+	realSeams := map[string][]string{
+		"Perceivers":   {"witnessSeam"},
+		"ResolveCheck": {"checkSeam"},
+		// Both Act shapes: encounter.Driver (compelledDriver, turnDriverSeam)
+		// and this package's TurnDriver (Pass, tableDriver).
+		"Act": {"compelledDriver", "turnDriverSeam", "Pass", "tableDriver"},
+	}
 	foundLoad := false
 	for _, path := range entries {
 		if strings.HasSuffix(path, "_test.go") {
@@ -70,11 +87,11 @@ func TestTheAuthoredLoadIsTheCompositionsOwn(t *testing.T) {
 			if !ok {
 				continue
 			}
-			if want, isSeam := realSeams[fn.Name.Name]; isSeam && fn.Recv != nil {
-				if got := receiverName(fn.Recv); got != want {
+			if allowed, isSeam := realSeams[fn.Name.Name]; isSeam && fn.Recv != nil {
+				if got := receiverName(fn.Recv); !slices.Contains(allowed, got) {
 					t.Errorf("%s: %s.%s — the composition's stand-in is the one answer for a world "+
-						"nobody plays; only %s may answer it here",
-						fset.Position(fn.Pos()), got, fn.Name.Name, want)
+						"nobody plays; only %v may answer it here",
+						fset.Position(fn.Pos()), got, fn.Name.Name, allowed)
 				}
 			}
 			if fn.Name.Name != "loadAuthored" {
