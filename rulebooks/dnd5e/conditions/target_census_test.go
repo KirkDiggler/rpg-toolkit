@@ -5,6 +5,7 @@ package conditions
 
 import (
 	"maps"
+	"regexp"
 	"slices"
 	"testing"
 
@@ -55,5 +56,18 @@ func (s *targetCensusSuite) TestTargetBearingLoadersHaveDescriptions() {
 		display, found := DisplayFor(*parsed)
 		s.True(found, "%s bears on attacks against its holder but has no catalog entry", ref)
 		s.NotEmpty(display.Detail, "%s bears on attacks against its holder but has no description", ref)
+	}
+}
+
+// TestTargetBearingDescriptionsAreReaderNeutral: a held row's description is
+// shown on an attacker's target candidate, so it never speaks to the holder as
+// "you" — the attacker reading it is not the one prone, hidden or lit.
+func (s *targetCensusSuite) TestTargetBearingDescriptionsAreReaderNeutral() {
+	secondPerson := regexp.MustCompile(`(?i)\byou(r|rs|rself)?\b`)
+	for _, ref := range TargetBearingRefs() {
+		parsed, err := core.ParseString(ref)
+		s.Require().NoError(err, ref)
+		display, _ := DisplayFor(*parsed)
+		s.False(secondPerson.MatchString(display.Detail), "%s speaks to its holder: %q", ref, display.Detail)
 	}
 }
