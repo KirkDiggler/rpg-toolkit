@@ -62,6 +62,11 @@ type frozenStrike struct {
 	AttackerID string `json:"attacker_id"`
 	TargetID   string `json:"target_id"`
 
+	// Opportunity is the strike input's own: whether the frozen swing is an
+	// opportunity attack. Carried so the resumed machine rebuilds the same
+	// attack-roll frame; a blob that omits it is a swing on its own turn.
+	Opportunity bool `json:"opportunity,omitempty"`
+
 	// Definition is the attack that was offered, stored whole for the reason
 	// above.
 	Definition combatActions.Definition `json:"definition"`
@@ -160,7 +165,7 @@ func NewStrikeResumed(in *StrikeResumeInput) (Machine, error) {
 		if (in.Answer == OfferSpend && in.Option != ReactionUse) || (in.Answer == OfferKeep && in.Option != "") {
 			return nil, fmt.Errorf("%w: invalid pre-roll answer", ErrNotOffered)
 		}
-		machine := newStrikeMachine(&StrikeInput{AttackerID: frozen.AttackerID, TargetID: frozen.TargetID, Definition: frozen.Definition, Roller: in.Roller})
+		machine := newStrikeMachine(&StrikeInput{AttackerID: frozen.AttackerID, TargetID: frozen.TargetID, Definition: frozen.Definition, Opportunity: frozen.Opportunity, Roller: in.Roller})
 		machine.resume = &strikeResume{frozen: frozen, answer: in.Answer, option: in.Option}
 		return machine, nil
 	}
@@ -174,7 +179,7 @@ func NewStrikeResumed(in *StrikeResumeInput) (Machine, error) {
 		if len(frozen.Retaliation) == 0 && in.Answer != OfferKeep && in.Option == "" {
 			return nil, fmt.Errorf("%w: post-hit spend requires an option", ErrNotOffered)
 		}
-		machine := newStrikeMachine(&StrikeInput{AttackerID: frozen.AttackerID, TargetID: frozen.TargetID, Definition: frozen.Definition, Roller: in.Roller})
+		machine := newStrikeMachine(&StrikeInput{AttackerID: frozen.AttackerID, TargetID: frozen.TargetID, Definition: frozen.Definition, Opportunity: frozen.Opportunity, Roller: in.Roller})
 		machine.resume = &strikeResume{frozen: frozen, answer: in.Answer, option: in.Option}
 		return machine, nil
 	}
@@ -212,10 +217,11 @@ func NewStrikeResumed(in *StrikeResumeInput) (Machine, error) {
 	}
 
 	machine := newStrikeMachine(&StrikeInput{
-		AttackerID: frozen.AttackerID,
-		TargetID:   frozen.TargetID,
-		Definition: frozen.Definition,
-		Roller:     in.Roller,
+		AttackerID:  frozen.AttackerID,
+		TargetID:    frozen.TargetID,
+		Definition:  frozen.Definition,
+		Opportunity: frozen.Opportunity,
+		Roller:      in.Roller,
 	})
 	machine.resume = &strikeResume{frozen: frozen, answer: in.Answer, option: in.Option}
 	return machine, nil
@@ -276,6 +282,7 @@ func (m *strikeMachine) pose(
 		AttackerID:  m.outcome.AttackerID,
 		TargetID:    m.outcome.TargetID,
 		Definition:  m.in.Definition.Clone(),
+		Opportunity: m.in.Opportunity,
 		Folded:      folded,
 		Roll:        roll,
 		Total:       m.outcome.Total,
@@ -392,7 +399,7 @@ func (m *strikeMachine) posePostHit(offer dnd5eEvents.PostHitOffer) (Step, error
 		choices = append(choices, Choice{ID: option.ID, Label: option.Label})
 	}
 	options = append(options, string(ReactionDecline))
-	frozen, err := json.Marshal(frozenStrike{Kind: frozenStrikeKind, Version: frozenStrikeVersion, AttackerID: m.in.AttackerID, TargetID: m.in.TargetID, Definition: m.in.Definition, PostHitPhase: true, Outcome: &m.outcome, PostHit: &offer})
+	frozen, err := json.Marshal(frozenStrike{Kind: frozenStrikeKind, Version: frozenStrikeVersion, AttackerID: m.in.AttackerID, TargetID: m.in.TargetID, Definition: m.in.Definition, Opportunity: m.in.Opportunity, PostHitPhase: true, Outcome: &m.outcome, PostHit: &offer})
 	if err != nil {
 		return nil, fmt.Errorf("%w: freeze post-hit reaction: %v", ErrBadFrozen, err)
 	}

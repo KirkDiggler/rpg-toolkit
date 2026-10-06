@@ -50,6 +50,13 @@ type StrikeInput struct {
 	// be imposing a penalty nothing in the game could answer.
 	Imposed []dnd5eEvents.AttackModifierSource
 
+	// Opportunity marks this swing as an opportunity attack — the reaction a
+	// creature makes as another leaves its reach. It is not on the assembled
+	// profile, because the same weapon swings both ways; the caller that
+	// raises the reaction knows it, and the frame carries it to the rules
+	// that read it.
+	Opportunity bool
+
 	Roller dice.Roller
 }
 
@@ -187,8 +194,13 @@ type strikeMachine struct {
 	// fresh strike. See [NewStrikeResumed].
 	resume *strikeResume
 
-	// frame is the execution frame, built once on first use and read by every
-	// rule this strike asks. See [strikeMachine.executionFrame].
+	// rollFrame is the attack-roll frame, built once before the attack chain
+	// folds. See [strikeMachine.attackRollFrame].
+	rollFrame *contributions.Frame
+
+	// frame is the post-fold frame — rollFrame with Advantage settled —
+	// built once on first use and read by every rule asked after the fold.
+	// See [strikeMachine.executionFrame].
 	frame *contributions.Frame
 
 	// outcome accumulates across phases. It is the machine's whole state, and
@@ -230,6 +242,11 @@ func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, er
 // why this lives here rather than as a subscription on the condition
 // itself, and why the self-break fires on the attempt regardless of
 // whether THIS attack is itself warded off.
+//
+// The strike's attack-roll frame is built here, after the self-break and
+// before ward selection, so the wards are chosen by the held rule from the
+// same frame the attack chain and the damage fold read (rpg-project#520).
+// A held rule that cannot answer fails the strike (R13).
 func (m *strikeMachine) sanctuaryStep(cast *Participants) Step {
 	next := m.effectiveACStep(m.target, m.longRange)
 	return Gather{
@@ -238,7 +255,14 @@ func (m *strikeMachine) sanctuaryStep(cast *Participants) Step {
 			if err := endSanctuaryIfHeld(ctx, bus, cast, m.in.AttackerID); err != nil {
 				return nil, err
 			}
-			pending := pendingSanctuaryWards(cast, m.in.AttackerID, m.in.TargetID)
+			frame, err := m.attackRollFrame(ctx)
+			if err != nil {
+				return nil, err
+			}
+			pending, err := strikeWards(frame, cast, m.in.TargetID)
+			if err != nil {
+				return nil, err
+			}
 			return m.wardCheckStep(cast, pending, 0, next), nil
 		},
 	}
@@ -413,6 +437,10 @@ func (m *strikeMachine) effectiveACStep(target combat.Member, longRange bool) Ga
 				TargetAC:   effectiveAC,
 			}
 
+			frame, err := m.attackRollFrame(ctx)
+			if err != nil {
+				return nil, err
+			}
 			event := dnd5eEvents.AttackChainEvent{
 				AttackerID:        m.in.AttackerID,
 				TargetID:          m.in.TargetID,
@@ -421,6 +449,7 @@ func (m *strikeMachine) effectiveACStep(target combat.Member, longRange bool) Ga
 				AttackBonus:       m.attack.AttackBonus,
 				TargetAC:          effectiveAC,
 				CriticalThreshold: criticalThreshold,
+				Frame:             frame,
 			}
 			if longRange {
 				// Cloned like the weapon identity: the folded event must survive the
