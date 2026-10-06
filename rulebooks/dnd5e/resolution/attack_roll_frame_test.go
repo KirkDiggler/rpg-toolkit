@@ -367,3 +367,23 @@ func (s *FrameTestSuite) TestInformationOpportunityIsKnownFalse() {
 
 	s.Equal(contributions.Known(false), out.Frame.Action.Opportunity)
 }
+
+// TestBaseDamageReadsTheFrame: base damage takes the ability, its modifier
+// and the off hand from the frame's action facts, and refuses a frame that
+// leaves any of them unknown rather than guessing.
+func (s *FrameTestSuite) TestBaseDamageReadsTheFrame() {
+	held := validMeleeDefinition()
+	held.Attack.Ability = &combatActions.AbilityContribution{Ability: abilities.DEX, Modifier: 3}
+	held.Attack.IsOffHandAttack = true
+	action := attackActionFacts(held.Attack, false)
+
+	ability, modifier, offHand, err := baseDamageFacts(action)
+	s.Require().NoError(err)
+	s.Equal(abilities.DEX, ability)
+	s.Equal(3, modifier)
+	s.True(offHand)
+
+	action.OffHandAttack = contributions.Unknown[bool]()
+	_, _, _, err = baseDamageFacts(action)
+	s.ErrorIs(err, contributions.ErrRuleCannotAnswer)
+}
