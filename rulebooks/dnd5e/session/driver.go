@@ -79,7 +79,7 @@ type tableDriver struct{}
 // compile-time proof the marker satisfies the field it is wired to.
 var _ TurnDriver = tableDriver{}
 
-// Act always refuses, the way [refusingTurnDriver] does and for a kindred
+// Act always refuses, the way [encounter.RefusingDriver] does and for a kindred
 // reason: reaching it means the marker was asked to drive a turn through the
 // twin view instead of being recognised at [Manager.resolveTurnDriver], and a
 // table rolled against a view with no table in it would hold forever while
