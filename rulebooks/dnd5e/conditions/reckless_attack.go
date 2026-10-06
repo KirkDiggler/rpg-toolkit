@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -154,9 +155,18 @@ func (r *RecklessAttackCondition) onAttackChain(
 		return c, nil
 	}
 
-	// When the barbarian is the attacker: advantage on melee attacks made during their turn.
-	// RAW: "When you make your first attack on your turn" — does not apply to opportunity attacks.
-	if isAttacker && event.IsMelee && event.AttackType != dnd5eEvents.AttackTypeOpportunity {
+	// When the barbarian is the attacker: advantage when recklessAttackRule
+	// applies — the same rule information asks. RAW: "When you make your first
+	// attack on your turn" — it does not cover opportunity attacks.
+	applies := false
+	if isAttacker {
+		executed, err := executeRule(&executeRuleInput{Name: "reckless attack", Rule: r.rule(), Frame: event.Frame})
+		if err != nil {
+			return c, err
+		}
+		applies = executed.Answer.Decision.Applicability == contributions.Applies
+	}
+	if applies {
 		modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
 			e.AdvantageSources = append(e.AdvantageSources, dnd5eEvents.AttackModifierSource{
 				SourceRef: refs.Conditions.RecklessAttack(),

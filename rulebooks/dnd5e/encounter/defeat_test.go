@@ -379,7 +379,7 @@ func (s *DefeatSuite) TestOnlyTheDecidedFightEnds() {
 		Data:       data,
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: &downList{down: []encounter.MemberID{goblin}},
+		Equipment: encounter.UnobservedEquipment{}, Standing: &downList{down: []encounter.MemberID{goblin}},
 	})
 	s.Require().NoError(err)
 

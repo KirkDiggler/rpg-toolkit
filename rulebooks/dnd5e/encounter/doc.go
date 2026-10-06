@@ -65,12 +65,15 @@
 // ObservedContext returns detached current sight facts plus the observer's own
 // placement. Distances are measured between those projected positions, not live
 // target cells. Pair relationships share BelievedStance's owner and retain the
-// original observer. Missing observed standing, hands or relationships remain
-// absent; memories and other sensory channels do not supply current sight facts.
-// The read consults no live participation, equipment or sight capability and
-// never refreshes perception. Its universe is observations, not all participants:
-// it cannot prove no unseen neighbor exists, expose target effects/senses, or
-// decide whether a rule such as a damage benefit applies.
+// original observer. Each sighted member carries the conditions the observer saw
+// it holding at the moment of sighting, unfiltered (rpg-project#520 R16). Missing
+// observed standing, hands, conditions or relationships remain absent; memories
+// and other sensory channels do not supply current sight facts. The read
+// consults no live participation, equipment, conditions or sight capability and
+// never refreshes perception. Its universe is observations, not all
+// participants: it cannot prove no unseen neighbor exists, expose target senses
+// or any condition state beyond what was seen held, or decide whether a rule
+// such as a damage benefit applies.
 //
 // # Movement passage
 //

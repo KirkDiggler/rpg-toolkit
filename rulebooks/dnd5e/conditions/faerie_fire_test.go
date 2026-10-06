@@ -2,25 +2,27 @@ package conditions_test
 
 import (
 	"context"
+	"errors"
+	"testing"
+
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/stretchr/testify/suite"
-	"testing"
 )
 
 type FaerieFireSuite struct{ suite.Suite }
 
 func TestFaerieFireSuite(t *testing.T) { suite.Run(t, new(FaerieFireSuite)) }
 
-type faerieSight struct{ visible, known bool }
-
-func (v *faerieSight) SeesWithin(_, _ string, _ int) (bool, bool) { return v.visible, v.known }
-
-func (s *FaerieFireSuite) TestRepeatedAttacksRespectLiveSightAfterReloadAndRemoval() {
+// TestRepeatedAttacksRespectFrameSightAfterReloadAndRemoval: each attack reads
+// whether the attacker sees the outlined target from its own frame, so sight
+// lost and regained between attacks is honoured, an unknown sight fails the
+// attack, and concentration teardown revokes the benefit.
+func (s *FaerieFireSuite) TestRepeatedAttacksRespectFrameSightAfterReloadAndRemoval() {
 	c, err := conditions.NewFaerieFireCondition(conditions.NewFaerieFireConditionInput{
 		MemberID: "target", SourceID: "caster", SourceRef: refs.Spells.FaerieFire(),
 	})
@@ -31,30 +33,39 @@ func (s *FaerieFireSuite) TestRepeatedAttacksRespectLiveSightAfterReloadAndRemov
 	s.Require().NoError(err)
 	c = loaded.(*conditions.FaerieFireCondition)
 	s.Equal("caster", c.ConditionAddress().SourceID)
-	sight := &faerieSight{true, true}
-	ctx := gamectx.WithVisibility(context.Background(), sight)
+	held := contributions.HeldCondition{Ref: refs.Conditions.FaerieFire().String(), SourceID: "caster"}
+	ctx := context.Background()
 	bus := events.NewEventBus()
 	s.Require().NoError(c.Apply(ctx, bus))
-	attack := func(ctx context.Context, target string) int {
-		event := dnd5eEvents.AttackChainEvent{AttackerID: "attacker", TargetID: target}
+	publish := func(event dnd5eEvents.AttackChainEvent) (int, error) {
 		ch := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 		modified, err := dnd5eEvents.AttackChain.On(bus).PublishWithChain(ctx, event, ch)
-		s.Require().NoError(err)
+		if err != nil {
+			return 0, err
+		}
 		result, err := modified.Execute(ctx, event)
-		s.Require().NoError(err)
-		return len(result.AdvantageSources)
+		if err != nil {
+			return 0, err
+		}
+		return len(result.AdvantageSources), nil
 	}
-	s.Equal(1, attack(ctx, "target"))
-	s.Equal(1, attack(ctx, "target"), "attacks do not consume Faerie Fire")
-	s.Equal(0, attack(ctx, "other"))
-	sight.visible = false
-	s.Equal(0, attack(ctx, "target"), "fog suppresses the benefit without removing the condition")
-	sight.visible = true
-	s.Equal(1, attack(ctx, "target"), "benefit resumes when sight returns")
-	sight.known = false
-	s.Equal(0, attack(ctx, "target"), "unknown sight cannot establish eligibility")
-	s.Equal(0, attack(context.Background(), "target"))
-	sight.known = true
+	attack := func(target string, sees bool) int {
+		got, err := publish(framedAgainst(dnd5eEvents.AttackChainEvent{AttackerID: "attacker", TargetID: target}, 3, sees, held))
+		s.Require().NoError(err)
+		return got
+	}
+	s.Equal(1, attack("target", true))
+	s.Equal(1, attack("target", true), "attacks do not consume Faerie Fire")
+	s.Equal(0, attack("other", true))
+	s.Equal(0, attack("target", false), "fog suppresses the benefit without removing the condition")
+	s.Equal(1, attack("target", true), "benefit resumes when sight returns")
+
+	unknown := framedAgainst(dnd5eEvents.AttackChainEvent{AttackerID: "attacker", TargetID: "target"}, 3, true, held)
+	unknown.Frame.Pairs[0].Sees = contributions.Unknown[bool]()
+	_, err = publish(unknown)
+	s.Require().Error(err, "unknown sight fails the attack rather than switching the rule off")
+	s.True(errors.Is(err, contributions.ErrRuleCannotAnswer))
+
 	s.Require().NoError(c.Remove(ctx, bus))
-	s.Equal(0, attack(ctx, "target"), "concentration teardown revokes the benefit")
+	s.Equal(0, attack("target", true), "concentration teardown revokes the benefit")
 }

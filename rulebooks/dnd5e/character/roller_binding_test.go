@@ -17,6 +17,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -155,6 +156,19 @@ func (s *RollerBindingTestSuite) runWeaponDamage(
 		AttackerID: "roller-fighter",
 		TargetID:   "goblin-1",
 		Components: []dnd5eEvents.DamageComponent{markedWeaponComponent(faces...)},
+		Frame: contributions.Frame{
+			Actor:  "roller-fighter",
+			Target: contributions.Known("goblin-1"),
+			Action: contributions.ActionFacts{
+				Roll:         contributions.Known(contributions.RollKindAttack),
+				Melee:        contributions.Known(true),
+				WeaponPool:   contributions.Known(true),
+				TwoHanded:    contributions.Known(true),
+				Weapon:       contributions.Known(refs.Weapons.Greatsword().String()),
+				RangedWeapon: contributions.Known(false),
+			},
+			Complete: true,
+		},
 	}
 
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)

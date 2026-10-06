@@ -72,13 +72,26 @@ const (
 	ResultMoved ActivationResultKind = "moved"
 )
 
+// ConditionKey identifies one condition independent of who holds it: its
+// canonical condition ref and its source qualifier. SourceID is exact identity:
+// empty names only an unqualified condition and is never a wildcard.
+//
+// It is the one spelling of that pair in this module. [ConditionAddress] embeds
+// it to name a condition on a member, and [ConditionSet] lists it for what a
+// sighted member was seen holding. Bare strings: this module learns no
+// condition ref (law C1).
+type ConditionKey struct {
+	ConditionRef string `json:"condition_ref"`
+	SourceID     string `json:"source_id"`
+}
+
 // ConditionAddress is the exact neutral identity of one condition on one
-// member. SourceID is exact identity: empty names only an unqualified legacy
-// condition and is never a wildcard.
+// member: the member plus the [ConditionKey]. The key's fields are promoted,
+// so address.ConditionRef and address.SourceID read as before, and the JSON
+// shape is unchanged (member_id, condition_ref, source_id).
 type ConditionAddress struct {
-	MemberID     MemberID `json:"member_id"`
-	ConditionRef string   `json:"condition_ref"`
-	SourceID     string   `json:"source_id"`
+	MemberID MemberID `json:"member_id"`
+	ConditionKey
 }
 
 // StabilizationDetail carries the authoritative life-state transition, unchanged

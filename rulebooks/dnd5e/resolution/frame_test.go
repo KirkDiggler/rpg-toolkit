@@ -102,7 +102,7 @@ func (s *FrameTestSuite) unarmedStrike(data *character.Data) combatActions.Defin
 }
 
 func (s *FrameTestSuite) TestAttackActionFactsWeaponFinesse() {
-	facts := attackActionFacts(dagger().Attack)
+	facts := attackActionFacts(dagger().Attack, false)
 
 	s.Equal(contributions.Known(contributions.RollKindAttack), facts.Roll)
 	s.Equal(contributions.Known(abilities.DEX), facts.Ability)
@@ -119,7 +119,7 @@ func (s *FrameTestSuite) TestAttackActionFactsSpellAttack() {
 		Damage: []damage.Damage{{
 			Dice: "4d6", Type: damage.Radiant, Properties: []damage.Property{damage.AddsAttackAbilityModifier},
 		}},
-	})
+	}, false)
 
 	s.Equal(contributions.Known(false), facts.WeaponPool, "a spell attack has no weapon pool, even one adding its ability")
 	s.Equal(contributions.Known(false), facts.Melee)
@@ -127,7 +127,7 @@ func (s *FrameTestSuite) TestAttackActionFactsSpellAttack() {
 }
 
 func (s *FrameTestSuite) TestAttackActionFactsNoAbilityIsKnownNone() {
-	facts := attackActionFacts(bite().Attack)
+	facts := attackActionFacts(bite().Attack, false)
 
 	ability, known := facts.Ability.Get()
 	s.True(known, "a stat block that names no ability has answered")
@@ -141,7 +141,7 @@ func (s *FrameTestSuite) TestAttackActionFactsNoAbilityIsKnownNone() {
 func (s *FrameTestSuite) TestAttackActionFactsForMonkUnarmedIsDexterity() {
 	definition := s.unarmedStrike(s.monkSheet())
 
-	facts := attackActionFacts(definition.Attack)
+	facts := attackActionFacts(definition.Attack, false)
 
 	s.Equal(contributions.Known(abilities.DEX), facts.Ability)
 	s.Equal(contributions.Known(true), facts.Melee)

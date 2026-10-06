@@ -229,3 +229,64 @@ func TestTheHoldingsWireNamesMatchTheContract(t *testing.T) {
 		require.Equal(t, "true", string(named["holdable"]))
 	})
 }
+
+// TestTheEffectRowWireNamesMatchTheContract pins the JSON names of the effect
+// rows rpg-project#520 added to Declaration and TargetCandidate — the proto's
+// own `effects`, `id`, `ref`, `name`, `description`, `state`, `reason`,
+// `participation` and `benefit` — and their enum values' bytes.
+//
+// `benefit` is OMITTED when empty: a row with no benefit line and a row whose
+// line is empty are the same fact. `effects` is omitted on a declaration that
+// carries none, because a repeated field has no presence to preserve.
+func TestTheEffectRowWireNamesMatchTheContract(t *testing.T) {
+	keys := func(v any) map[string]json.RawMessage {
+		raw, err := json.Marshal(v)
+		require.NoError(t, err)
+		var out map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(raw, &out))
+		return out
+	}
+
+	row := keys(session.EffectRow{
+		ID: "dnd5e:conditions:raging", Ref: "dnd5e:conditions:raging", Name: "Raging",
+		Description: "what it does", State: session.EffectApplies, Reason: "why here",
+		Participation: session.ContributesNow, Benefit: "+2 damage",
+	})
+	require.Equal(t, `"dnd5e:conditions:raging"`, string(row["id"]))
+	require.Equal(t, `"dnd5e:conditions:raging"`, string(row["ref"]))
+	require.Equal(t, `"Raging"`, string(row["name"]))
+	require.Equal(t, `"what it does"`, string(row["description"]))
+	require.Equal(t, `"applies"`, string(row["state"]))
+	require.Equal(t, `"why here"`, string(row["reason"]))
+	require.Equal(t, `"contributes_now"`, string(row["participation"]))
+	require.Equal(t, `"+2 damage"`, string(row["benefit"]))
+
+	for state, want := range map[session.EffectState]string{
+		session.EffectApplies: `"applies"`, session.EffectDoesNotApply: `"does_not_apply"`,
+		session.EffectDepends: `"depends"`, session.EffectUnavailable: `"unavailable"`,
+	} {
+		require.Equal(t, want, string(keys(session.TargetEffect{ID: "x", State: state})["state"]))
+	}
+	require.Equal(t, `"later_choice"`, string(keys(session.EffectRow{Participation: session.LaterChoice})["participation"]))
+
+	answer := keys(session.TargetEffect{ID: "sneak", State: session.EffectDepends, Reason: "needs a flank"})
+	require.Equal(t, `"sneak"`, string(answer["id"]))
+	require.Equal(t, `"needs a flank"`, string(answer["reason"]))
+	require.NotContains(t, answer, "benefit", "no benefit line spends no key")
+	require.NotContains(t, answer, "description", "a target answer never repeats the description")
+
+	carried := keys(session.Declaration{
+		Effects:    []session.EffectRow{{ID: "a"}},
+		Candidates: []session.TargetCandidate{{Member: "g", Effects: []session.TargetEffect{{ID: "a"}}}},
+	})
+	require.Contains(t, carried, "effects")
+	var candidates []map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(carried["candidates"], &candidates))
+	require.Contains(t, candidates[0], "effects")
+
+	bare := keys(session.Declaration{Candidates: []session.TargetCandidate{{Member: "g"}}})
+	require.NotContains(t, bare, "effects", "a declaration with no rows spends no key")
+	var bareCandidates []map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(bare["candidates"], &bareCandidates))
+	require.NotContains(t, bareCandidates[0], "effects", "nor does a candidate that answers as declared")
+}

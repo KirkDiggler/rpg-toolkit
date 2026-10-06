@@ -98,7 +98,7 @@ func (s *DirectiveTestSuite) lineScene(withPillar bool) *encounter.Encounter {
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: s.driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed},
 		Mover: s.mover, Announcer: quietAnnouncer{},
 		Field: field,
@@ -464,7 +464,7 @@ func (s *DirectiveTestSuite) sceneOfCells(
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: s.driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed},
 		Mover: s.mover, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
@@ -912,7 +912,7 @@ func (s *DirectiveTestSuite) towardCorridorWalledScene() *encounter.Encounter {
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: s.driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed},
 		Mover: s.mover, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{

@@ -162,6 +162,27 @@ func (s *InformAttackTestSuite) TestInformAttackSneakAttackPerTarget() {
 	}
 }
 
+// TestInformAttackHandaxeDoesNotSneakAttack is the information half of
+// rpg-toolkit#1929: with the fighter seen beside the goblin, the dagger's row
+// applies, and the same swing with a handaxe — neither finesse nor a ranged
+// weapon, thrown or not — does not, for the rule's own reason. The execution
+// half is TestHandaxeStrikeDoesNotSneakAttack.
+func (s *InformAttackTestSuite) TestInformAttackHandaxeDoesNotSneakAttack() {
+	enc := s.scene(everyoneSeesTheWholeMap{}, true)
+	observed, err := enc.ObservedContext(&encounter.ViewInput{Member: informRogue})
+	s.Require().NoError(err)
+
+	out, err := InformAttack(&InformAttackInput{
+		Observed: observed, Actor: s.rogue(), Attack: handaxe().Attack, Targets: []string{informGoblin1},
+	})
+	s.Require().NoError(err)
+
+	row := s.sneakRow(out.ByTarget[informGoblin1])
+	s.Equal(contributions.StateDoesNotApply, row.State)
+	s.Equal("Sneak Attack requires a finesse or ranged weapon", row.Reason)
+	s.Empty(row.Benefit)
+}
+
 // TestUnseenAllyLeavesRowsUnchanged is K3 and K5: the fighter really is beside
 // the goblin, but the rogue cannot see that far, so the answer is exactly the
 // answer of the same scene with no fighter at all — hidden truth changes

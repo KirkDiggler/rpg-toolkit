@@ -1337,7 +1337,9 @@ type SetupInput struct {
 	// complete percept. Refused at construction (ErrNoEquipment). There is no
 	// default — empty hands for everybody would be this module inventing
 	// testimony, and the difference between "no hands to observe" and "observed
-	// empty" is a distinction only the rulebook can draw.
+	// empty" is a distinction only the rulebook can draw. Its value must also
+	// answer Conditions ([EquipmentWithConditions]) or Setup returns
+	// ErrNoConditions.
 	Equipment Equipment
 
 	// TurnDriver decides what a member with no player does when it is given

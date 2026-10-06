@@ -72,15 +72,21 @@ func (s memberReportStore) Report(in perception.ReportInput) (*perception.Report
 }
 
 // memberPerceptionDelta keeps creature IDs on the existing public delta while
-// the private store qualifies the identity of everything it observes.
-func memberPerceptionDelta(in *perception.Delta) *IntelDelta {
+// the private store qualifies the identity of everything it observes. A first
+// contact's payload is the delivered form ([deliveredSightPayload]): the delta
+// is handed out, and seen conditions do not leave with it.
+func memberPerceptionDelta(in *perception.Delta) (*IntelDelta, error) {
 	if in == nil {
-		return nil
+		return nil, nil
 	}
 	out := &IntelDelta{}
 	for _, presence := range in.FirstContact {
 		if id, member := subjectID(presence.ID, memberSubjectKind); member {
-			out.FirstContact = append(out.FirstContact, perception.Presence{ID: id, Payload: cloneIntelPayload(presence.Payload)})
+			payload, err := deliveredSightPayload(presence.Payload)
+			if err != nil {
+				return nil, fmt.Errorf("first contact with %q: %w", id, err)
+			}
+			out.FirstContact = append(out.FirstContact, perception.Presence{ID: id, Payload: payload})
 		} else {
 			out.KnowledgeChanged = true
 		}
@@ -101,7 +107,7 @@ func memberPerceptionDelta(in *perception.Delta) *IntelDelta {
 			}
 		}
 	}
-	return out
+	return out, nil
 }
 
 // normalizePerceptionSubjects upgrades the old member-only sight namespace

@@ -1252,6 +1252,7 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string, extraMembe
 	scope.areaStoryBefore = enc.WorldView().SightAreas
 	scope.baseline = baseline
 	scope.standing = standing
+	scope.npcConditionsAtOpen = npcConditionKeys(data)
 	if err := m.prepareExploration(ctx, scope, extraMembers...); err != nil {
 		return nil, err
 	}
@@ -1344,6 +1345,12 @@ type writeScope struct {
 	// and would quietly allow two capabilities reading different sheets within
 	// one verb.
 	standing standingSeam
+
+	// npcConditionsAtOpen is each monster sheet's conditions when this verb
+	// opened, keyed for comparison, read from the session record this verb
+	// already holds (no repository read). See
+	// [Manager.recheckChangedConditions].
+	npcConditionsAtOpen map[string]string
 
 	// driver is THIS VERB's turn driver, resolved once by
 	// [Manager.resolveTurnDriver] before the world was loaded and read by
@@ -1655,6 +1662,13 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 	// in one order, is what keeps "what commit settles" a list somebody can
 	// read rather than a search.
 	if err := m.settleExperience(ctx, scope); err != nil {
+		report := SaveReport{Written: append([]string(nil), scope.written...)}
+		return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", err)
+	}
+
+	// Freshness (R19), after every settlement that can write a sheet and
+	// before numbering, so the re-look's beats are this act's own.
+	if err := m.recheckChangedConditions(scope); err != nil {
 		report := SaveReport{Written: append([]string(nil), scope.written...)}
 		return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", err)
 	}

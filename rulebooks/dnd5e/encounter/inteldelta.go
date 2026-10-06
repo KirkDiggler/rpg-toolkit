@@ -16,13 +16,18 @@ type IntelDelta struct {
 	// KnowledgeChanged reports a prop/door observation change without pretending
 	// those subjects are roster members. Readers refresh their own observations.
 	KnowledgeChanged bool
-	FirstContact     []perception.Presence
-	Refreshed        []core.EntityID
-	Faded            []core.EntityID
+	// FirstContact payloads are in the delivered form, without seen
+	// conditions (see [deliveredSightPayload]).
+	FirstContact []perception.Presence
+	Refreshed    []core.EntityID
+	Faded        []core.EntityID
 
 	// Changed is every subject this observer already held whose TESTIMONY is
-	// different this pass — somebody moved, or swapped what is in their
-	// hands, where the observer could see it.
+	// different this pass — somebody moved, swapped what is in their hands,
+	// or gained or lost a condition, where the observer could see it. It
+	// compares STORED testimony, so a conditions-only change lists the
+	// subject here even though the delivered payloads in FirstContact and
+	// [Encounter.View] cannot show the difference.
 	//
 	// It REFINES Refreshed and does not partition it, exactly as Reacquired
 	// does below: a changed subject appears in both. The comparison is the

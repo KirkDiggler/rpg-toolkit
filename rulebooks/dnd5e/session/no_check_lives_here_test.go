@@ -50,6 +50,7 @@ const conditionsPath = "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/condi
 // no. A named function is a compile-time contract. A copied JSON tag is a
 // guess that fails quietly.
 var conditionReaders = map[string]bool{
+	"HeldAddresses":          true,
 	"HoldsRef":               true,
 	"DecodeCommanded":        true,
 	"CommandedConditionData": true,

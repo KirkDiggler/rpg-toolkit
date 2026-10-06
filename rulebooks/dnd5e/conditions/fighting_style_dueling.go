@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -113,51 +114,21 @@ func (f *FightingStyleDuelingCondition) loadJSON(data json.RawMessage) error {
 	return nil
 }
 
-// onDamageChain adds +2 to damage when wielding one-handed melee weapon with no off-hand weapon.
-//
-// Eligibility reads entirely off the folded event, the same way
-// [conditions.RagingCondition] does — no live character-registry lookup
-// (rpg-toolkit#1178). Every fact it needs (IsMelee, TwoHanded,
-// OffHandWeaponRef) is a STATIC equipment fact the attack compiler already
-// knew before the swing, carried onto the event exactly like WeaponRef and
-// AbilityUsed already are; see DamageChainEvent's own doc for why those
-// facts belong there rather than behind a context-installed registry.
+// onDamageChain adds +2 to damage when duelingRule applies to the event's
+// frame — the same rule information asks. Every fact it reads (the weapon,
+// melee, the grip, the other hand) is a static equipment fact resolution
+// settled from the assembled attack before the swing (rpg-toolkit#1178). An
+// invalid frame or a Depends answer fails the fold.
 func (f *FightingStyleDuelingCondition) onDamageChain(
 	_ context.Context,
 	event *dnd5eEvents.DamageChainEvent,
 	c chain.Chain[*dnd5eEvents.DamageChainEvent],
 ) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
-	// Only modify damage for attacks by this character
-	if event.AttackerID != f.CharacterID {
-		return c, nil
+	executed, err := executeRule(&executeRuleInput{Name: "dueling", Rule: f.rule(), Frame: event.Frame})
+	if err != nil {
+		return c, err
 	}
-
-	// Check Dueling eligibility:
-	// 1. This swing must be an actual weapon — Dueling requires "wielding a
-	//    melee weapon", and the catalog's unarmed strike is not one, even
-	//    though it compiles through the same melee/damage machinery
-	//    (rpg-toolkit#1168, caught by Copilot on PR #1179 as a regression
-	//    from moving this check off a live registry: the old
-	//    gamectx.CharacterRegistry lookup never listed the unarmed strike
-	//    as a "weapon" in the first place, so this exclusion was implicit
-	//    before and needs to be explicit now).
-	// 2. This swing must be melee
-	// 3. Must not be gripped two-handed
-	// 4. Must NOT have an off-hand weapon (shields are OK — OffHandWeaponRef
-	//    is nil for a shield, since a shield is not a weapon)
-	if event.WeaponRef == nil || event.WeaponRef.Equals(refs.Weapons.UnarmedStrike()) {
-		return c, nil
-	}
-
-	if !event.IsMelee {
-		return c, nil
-	}
-
-	if event.TwoHanded {
-		return c, nil
-	}
-
-	if event.OffHandWeaponRef != nil {
+	if executed.Answer.Decision.Applicability != contributions.Applies {
 		return c, nil
 	}
 

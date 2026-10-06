@@ -663,14 +663,14 @@ func TestActivationResultsMapEveryProviderFieldInOrder(t *testing.T) {
 	require.Equal(t, encounter.ActivationResult{
 		Kind: encounter.ResultConditionApplied,
 		Address: &encounter.ConditionAddress{
-			MemberID: "bob", ConditionRef: "dnd5e:conditions:raging", SourceID: "alice",
+			MemberID: "bob", ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:raging", SourceID: "alice"},
 		},
 		Name: "Raging", Calculation: nil, // the non-healing kinds carry no calculation
 	}, results[1])
 	require.Equal(t, encounter.ActivationResult{
 		Kind: encounter.ResultConditionRemoved,
 		Address: &encounter.ConditionAddress{
-			MemberID: "carol", ConditionRef: "dnd5e:conditions:hidden", SourceID: "alice",
+			MemberID: "carol", ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:hidden", SourceID: "alice"},
 		},
 		Name: "Hidden", Reason: "revealed",
 	}, results[2])

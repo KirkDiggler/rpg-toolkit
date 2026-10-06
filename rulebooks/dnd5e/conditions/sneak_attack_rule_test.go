@@ -19,6 +19,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 type sneakAttackRuleSuite struct{ suite.Suite }
@@ -32,11 +33,20 @@ func rogueFrame(complete bool) contributions.Frame {
 		Actor:  "rogue",
 		Target: contributions.Known("goblin"),
 		Action: contributions.ActionFacts{
-			Roll:       contributions.Known(contributions.RollKindAttack),
-			Ability:    contributions.Known(abilities.DEX),
-			Melee:      contributions.Known(true),
-			WeaponPool: contributions.Known(true),
-			Advantage:  contributions.Known(false),
+			Roll:            contributions.Known(contributions.RollKindAttack),
+			Ability:         contributions.Known(abilities.DEX),
+			Melee:           contributions.Known(true),
+			WeaponPool:      contributions.Known(true),
+			Advantage:       contributions.Known(false),
+			AbilityModifier: contributions.Known(3),
+			Weapon:          contributions.Known(refs.Weapons.Shortsword().String()),
+			WeaponSlot:      contributions.Known("main_hand"),
+			Finesse:         contributions.Known(true),
+			RangedWeapon:    contributions.Known(false),
+			TwoHanded:       contributions.Known(false),
+			OffHandWeapon:   contributions.Known(false),
+			OffHandAttack:   contributions.Known(false),
+			Opportunity:     contributions.Known(false),
 		},
 		Complete: complete,
 	}
@@ -173,15 +183,39 @@ func (s *sneakAttackRuleSuite) TestSneakAttackRuleUsedThisTurn() {
 
 // The Dexterity test is rpg-toolkit#1929, kept on purpose: a finesse weapon
 // swung with Strength should qualify by RAW and does not here.
-func (s *sneakAttackRuleSuite) TestSneakAttackRuleKeepsDexOnlyDefect() {
-	frame := rogueFrame(true)
-	frame.Action.Ability = contributions.Known(abilities.STR)
-	frame.Action.Advantage = contributions.Known(true)
+// TestSneakAttackRuleReadsTheWeaponNotTheAbility is rpg-toolkit#1929: a
+// finesse weapon qualifies with Strength, a ranged weapon qualifies, and a
+// Dexterity attack with a weapon that is neither does not.
+func (s *sneakAttackRuleSuite) TestSneakAttackRuleReadsTheWeaponNotTheAbility() {
+	strengthFinesse := rogueFrame(true)
+	strengthFinesse.Action.Ability = contributions.Known(abilities.STR)
+	strengthFinesse.Action.Advantage = contributions.Known(true)
+	answer := s.assess(rogueRule(), strengthFinesse)
+	s.Equal(contributions.Applies, answer.Decision.Applicability)
 
-	answer := s.assess(rogueRule(), frame)
+	ranged := rogueFrame(true)
+	ranged.Action.Weapon = contributions.Known(refs.Weapons.Shortbow().String())
+	ranged.Action.Finesse = contributions.Known(false)
+	ranged.Action.RangedWeapon = contributions.Known(true)
+	ranged.Action.Melee = contributions.Known(false)
+	ranged.Action.Advantage = contributions.Known(true)
+	s.Equal(contributions.Applies, s.assess(rogueRule(), ranged).Decision.Applicability)
 
+	dexterityClub := rogueFrame(true)
+	dexterityClub.Action.Weapon = contributions.Known(refs.Weapons.Club().String())
+	dexterityClub.Action.Finesse = contributions.Known(false)
+	dexterityClub.Action.Advantage = contributions.Known(true)
+	answer = s.assess(rogueRule(), dexterityClub)
 	s.Equal(contributions.DoesNotApply, answer.Decision.Applicability)
-	s.Equal("Sneak Attack requires a Dexterity attack", answer.Decision.Reason)
+	s.Equal("Sneak Attack requires a finesse or ranged weapon", answer.Decision.Reason)
+
+	unknown := rogueFrame(true)
+	unknown.Action.Finesse = contributions.Unknown[bool]()
+	unknown.Action.RangedWeapon = contributions.Known(false)
+	unknown.Action.Advantage = contributions.Known(true)
+	answer = s.assess(rogueRule(), unknown)
+	s.Equal(contributions.Depends, answer.Decision.Applicability)
+	s.Equal("Depends on the attack's weapon", answer.Decision.Reason)
 }
 
 func (s *sneakAttackRuleSuite) TestSneakAttackRuleDependsWithoutTarget() {

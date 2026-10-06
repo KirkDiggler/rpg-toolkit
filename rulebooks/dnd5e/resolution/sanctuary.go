@@ -11,6 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
@@ -52,13 +53,51 @@ func sanctuaryWardsOn(cast *Participants, memberID string) []*conditions.Sanctua
 	return wards
 }
 
-// pendingSanctuaryWards returns wards the aggressor must save against.
-// A recipient's recast cooldown never grants an aggressor a save bypass.
+// pendingSanctuaryWards returns wards the aggressor of a harmful CAST must
+// save against. A recipient's recast cooldown never grants an aggressor a save
+// bypass.
+//
+// The strike path does not use it: a strike asks the held rule through
+// [strikeWards]. These are two predicates for one condition, answering
+// different questions (an attack versus a harmful spell), and the spell wave
+// reconciles them (rpg-project#520 plan, flagged).
 func pendingSanctuaryWards(cast *Participants, attackerID, targetID string) []*conditions.SanctuaryCondition {
 	if attackerID == targetID {
 		return nil
 	}
 	return sanctuaryWardsOn(cast, targetID)
+}
+
+// strikeWards returns the Sanctuary wards on targetID that the strike's
+// attacker must save against: each ward the target's sheet holds whose held
+// rule ([conditions.ExecuteHeldEffect]) answers Applies on the strike's
+// execution frame. That is the same rule function a candidate's information
+// row asks, so the tooltip and the swing cannot disagree about whose ward
+// stops whom (R17); the attacker's own ward answers DoesNotApply there, not
+// here.
+//
+// Errors: any error from the rule, including a frame it cannot answer from
+// (wrapping [contributions.ErrRuleCannotAnswer]) — the strike fails rather
+// than skipping the ward (R13).
+func strikeWards(
+	frame contributions.Frame, cast *Participants, targetID string,
+) ([]*conditions.SanctuaryCondition, error) {
+	var wards []*conditions.SanctuaryCondition
+	for _, ward := range sanctuaryWardsOn(cast, targetID) {
+		address := conditions.ConditionAddressOf(targetID, ward)
+		executed, err := conditions.ExecuteHeldEffect(&conditions.ExecuteHeldEffectInput{
+			Holder: targetID,
+			Held:   contributions.HeldCondition{Ref: address.ConditionRef, SourceID: address.SourceID},
+			Frame:  frame,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("sanctuary ward on %q from %q: %w", targetID, ward.SourceID, err)
+		}
+		if executed.Answer.Decision.Applicability == contributions.Applies {
+			wards = append(wards, ward)
+		}
+	}
+	return wards, nil
 }
 
 // wardSaveDC reads the warding caster's own spell save DC. Sanctuary is

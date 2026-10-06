@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -78,6 +79,7 @@ func (s *BrutalCriticalTestSuite) executeCriticalDamageChain(
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID:       attackerID,
+		Frame:            brutalFrame(attackerID),
 		TargetID:         "goblin-1",
 		Components:       []dnd5eEvents.DamageComponent{weaponComp, abilityComp},
 		WeaponDamageDice: weaponDamage,
@@ -228,6 +230,7 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalOnlyAffectsOwnAttacks() {
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID:  "barbarian-2", // Different character
+		Frame:       brutalFrame("barbarian-2"),
 		TargetID:    "goblin-1",
 		Components:  []dnd5eEvents.DamageComponent{weaponComp},
 		IsCritical:  true,
@@ -278,6 +281,7 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalWorksWithDifferentWeaponDice
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID:       "barbarian-1",
+		Frame:            brutalFrame("barbarian-1"),
 		TargetID:         "goblin-1",
 		Components:       []dnd5eEvents.DamageComponent{weaponComp},
 		WeaponDamageDice: "1d12",
@@ -370,3 +374,17 @@ func (s *BrutalCriticalTestSuite) TestCalculateExtraDice() {
 
 // Ensure we have the unused import warning suppressed
 var _ dice.Roller = (*mock_dice.MockRoller)(nil)
+
+// brutalFrame is an execution frame for a melee weapon attack by actor.
+func brutalFrame(actor string) contributions.Frame {
+	return contributions.Frame{
+		Actor:  actor,
+		Target: contributions.Known("goblin-1"),
+		Action: contributions.ActionFacts{
+			Roll:       contributions.Known(contributions.RollKindAttack),
+			Melee:      contributions.Known(true),
+			WeaponPool: contributions.Known(true),
+		},
+		Complete: true,
+	}
+}

@@ -7,7 +7,10 @@ import (
 
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -50,6 +53,24 @@ func (s *RecklessAttackTestSuite) TestCanActivate_Always() {
 	s.Require().NoError(err)
 }
 
+func (s *RecklessAttackTestSuite) TestRecklessAttackRefusedWhileAlreadyReckless() {
+	s.character.conditions = []dnd5eEvents.ConditionBehavior{
+		conditions.NewRecklessAttackCondition(s.character.GetID()),
+	}
+
+	err := s.feature.CanActivate(s.ctx, s.character, features.FeatureInput{})
+	s.Require().Error(err)
+	s.Equal(rpgerr.CodeConflictingState, rpgerr.GetCode(err))
+	s.Contains(err.Error(), "already attacking recklessly")
+
+	published := 0
+	_, subErr := dnd5eEvents.ConditionAppliedTopic.On(s.bus).Subscribe(s.ctx,
+		func(context.Context, dnd5eEvents.ConditionAppliedEvent) error { published++; return nil })
+	s.Require().NoError(subErr)
+	s.Require().Error(s.feature.Activate(s.ctx, s.character, features.FeatureInput{Bus: s.bus}))
+	s.Zero(published, "a refused Reckless Attack applies no second condition")
+}
+
 func (s *RecklessAttackTestSuite) TestActivate_PublishesConditionAppliedEvent() {
 	// Subscribe to ConditionAppliedTopic to verify the feature publishes correctly
 	var receivedEvent *dnd5eEvents.ConditionAppliedEvent
@@ -79,6 +100,15 @@ func (s *RecklessAttackTestSuite) TestActivate_PublishesConditionAppliedEvent() 
 		AttackerID: s.character.GetID(),
 		TargetID:   "goblin-1",
 		IsMelee:    true,
+		Frame: contributions.Frame{
+			Actor:  s.character.GetID(),
+			Target: contributions.Known("goblin-1"),
+			Action: contributions.ActionFacts{
+				Roll:        contributions.Known(contributions.RollKindAttack),
+				Melee:       contributions.Known(true),
+				Opportunity: contributions.Known(false),
+			},
+		},
 	}
 
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)

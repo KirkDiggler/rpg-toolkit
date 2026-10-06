@@ -25,6 +25,10 @@ func (h *observedContextEquipment) Equipment(ids []encounter.MemberID) (map[enco
 	return h.hands.Equipment(ids)
 }
 
+func (h *observedContextEquipment) Conditions(ids []encounter.MemberID) (map[encounter.MemberID]*encounter.ConditionSet, error) {
+	return noConditionsObserved(ids), nil
+}
+
 type observedContextSuite struct {
 	suite.Suite
 	enc   *encounter.Encounter

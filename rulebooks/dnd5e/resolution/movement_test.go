@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
@@ -178,6 +179,33 @@ func (s *MovementTestSuite) TestATriggeredReactionSwingsWithinTheSameInteraction
 	s.Equal(heroID, got.Struck.AttackerID, "the strike really ran; this is its outcome")
 	s.Equal(wolfID, got.Struck.TargetID)
 	s.Positive(got.Struck.Total, "a strike that never rolled is not a strike")
+}
+
+// TestAnOpportunityAttackSwingsAsOne: the reaction the movement machine runs is
+// an opportunity attack, and its attack-roll frame says so — the fact Reckless
+// Attack reads to refuse it. This machine is the flag's only production
+// writer.
+func (s *MovementTestSuite) TestAnOpportunityAttackSwingsAsOne() {
+	var frames []contributions.Frame
+	trigger := triggerFrom(heroID, wolfID)
+	out, err := s.runStep(s.stepInput(), func(ctx context.Context, bus events.EventBus) {
+		trigger(ctx, bus)
+		_, _ = dnd5eEvents.AttackChain.On(bus).SubscribeWithChain(ctx,
+			func(_ context.Context, e dnd5eEvents.AttackChainEvent,
+				c chain.Chain[dnd5eEvents.AttackChainEvent],
+			) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
+				frames = append(frames, e.Frame.Clone())
+				return c, nil
+			})
+	})
+	s.Require().NoError(err)
+
+	moved, ok := out.Outcome.(MovementOutcome)
+	s.Require().True(ok)
+	s.Require().Len(moved.Reactions, 1, "precondition: the opportunity attack swung")
+	s.Require().Len(frames, 1)
+	s.Equal(heroID, frames[0].Actor)
+	s.Equal(contributions.Known(true), frames[0].Action.Opportunity)
 }
 
 // triggerFrom publishes a reaction trigger during the fold, which is exactly

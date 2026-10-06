@@ -87,7 +87,7 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestAddsDamageToOffHandAttack(
 	// Execute through damage chain
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)
-	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
+	modifiedChain, err := damages.PublishWithChain(s.ctx, framedDamage(damageEvent), damageChain)
 	s.Require().NoError(err)
 
 	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
@@ -133,7 +133,7 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestDoesNotAddANegativeModifie
 	}
 
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
-	modifiedChain, err := dnd5eEvents.DamageChain.On(s.bus).PublishWithChain(s.ctx, damageEvent, damageChain)
+	modifiedChain, err := dnd5eEvents.DamageChain.On(s.bus).PublishWithChain(s.ctx, framedDamage(damageEvent), damageChain)
 	s.Require().NoError(err)
 	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
 	s.Require().NoError(err)
@@ -172,7 +172,7 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestDoesNotAddToMainHandAttack
 	// Execute through damage chain
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)
-	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
+	modifiedChain, err := damages.PublishWithChain(s.ctx, framedDamage(damageEvent), damageChain)
 	s.Require().NoError(err)
 
 	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
@@ -211,7 +211,7 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestDoesNotAddToOtherCharacter
 	// Execute through damage chain
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)
-	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
+	modifiedChain, err := damages.PublishWithChain(s.ctx, framedDamage(damageEvent), damageChain)
 	s.Require().NoError(err)
 
 	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)

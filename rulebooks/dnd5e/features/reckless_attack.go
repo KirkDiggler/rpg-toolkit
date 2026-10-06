@@ -60,10 +60,15 @@ func (r *RecklessAttack) GetType() core.EntityType {
 	return EntityTypeFeature
 }
 
-// CanActivate implements core.Action[FeatureInput].
-// Reckless Attack has no resource cost — it can always be activated.
-func (r *RecklessAttack) CanActivate(_ context.Context, _ core.Entity, _ FeatureInput) error {
-	return nil
+// CanActivate implements core.Action[FeatureInput]. Reckless Attack costs
+// nothing, so the only refusal is a barbarian already attacking recklessly: a
+// second activation would put a second condition on the sheet. That refusal
+// is also the reason the row reads unavailable on Afford. An owner whose
+// conditions cannot be read is refused.
+func (r *RecklessAttack) CanActivate(_ context.Context, owner core.Entity, _ FeatureInput) error {
+	return refuseWhileHolding(&refuseWhileHoldingInput{
+		Owner: owner, Ref: refs.Conditions.RecklessAttack(), Reason: "already attacking recklessly",
+	})
 }
 
 // Activate implements core.Action[FeatureInput].
@@ -79,7 +84,9 @@ func (r *RecklessAttack) Activate(ctx context.Context, owner core.Entity, input 
 	}
 
 	// Publish via ConditionAppliedTopic so the character's condition manager
-	// handles apply/storage/duplicate-prevention (same pattern as Rage).
+	// applies and stores it (same pattern as Rage). A second one would replace
+	// the first on the sheet; it never gets that far, because CanActivate
+	// refuses an already-active Reckless Attack (operator ruling on #1944).
 	condition := conditions.NewRecklessAttackCondition(owner.GetID())
 	topic := dnd5eEvents.ConditionAppliedTopic.On(input.Bus)
 	if err := topic.Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
