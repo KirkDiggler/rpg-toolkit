@@ -268,12 +268,22 @@ func (m *Manager) resumeAfterLastAnswer(
 	if len(open) > 0 {
 		return nil
 	}
+	// Every continuation runs after the answer saved dirty sheets — and a
+	// walk's earlier cells may have saved more — so whichever one refuses, the
+	// refusal names what landed (S6). One wrap, at the step's return; an
+	// existing SaveError passes through it unchanged.
+	return saveErrorAfterWrites(scope, "", m.continueAfterLastAnswer(ctx, scope, walker, walkPath))
+}
+
+// continueAfterLastAnswer runs the one continuation resumeAfterLastAnswer
+// chose, in its stated order. It does not report writes; its caller does.
+func (m *Manager) continueAfterLastAnswer(
+	ctx context.Context, scope *writeScope, walker string, walkPath []spatial.Position,
+) error {
 	switch {
 	case len(walkPath) > 0:
 		if _, err := m.runWalk(ctx, scope, walker, walkPath); err != nil {
-			// The answer already saved dirty sheets, and an earlier cell
-			// may have too, so the refusal names what landed (S6).
-			return saveErrorAfterWrites(scope, "", err)
+			return err
 		}
 		return m.saveWalkProgress(ctx, scope)
 	case scope.enc.HeldDirective():
