@@ -381,9 +381,9 @@ func BenchmarkSpawnMonster(b *testing.B) {
 // Nothing recomputed it, so a monk who never changed gear reported 10+DEX
 // forever.
 //
-// The fixture makes echoing impossible: the stored scalar says 13 (the exact
-// wrong-but-plausible base-armour number this bug produced) while the folded
-// answer is 15. A projection that read the sheet would return 13 and fail here.
+// The record carries no armour class at all now (rpg-project#538, R1), so the
+// only number Join can report is the fold's: 15, where the wrong-but-plausible
+// base-armour number this bug produced was 13.
 func (s *EntitiesTestSuite) TestAMonksUnarmoredDefenseReachesTheJoinedAC() {
 	monk := dwarfCharacter("bob")
 	monk.RaceID = races.Human
@@ -396,9 +396,6 @@ func (s *EntitiesTestSuite) TestAMonksUnarmoredDefenseReachesTheJoinedAC() {
 		abilities.WIS: 14, // +2
 		abilities.CHA: 8,
 	}
-	// The stale value the bug leaves behind: 10 + DEX, no Unarmored Defense.
-	monk.ArmorClass = 13
-
 	ud := conditions.NewUnarmoredDefenseCondition(conditions.UnarmoredDefenseInput{
 		MemberID: "bob",
 		Type:     conditions.UnarmoredDefenseMonk,
@@ -416,6 +413,4 @@ func (s *EntitiesTestSuite) TestAMonksUnarmoredDefenseReachesTheJoinedAC() {
 
 	s.Equal(15, out.Character.ArmorClass,
 		"10 base + 3 DEX + 2 WIS: Unarmored Defense must reach the joined AC")
-	s.NotEqual(13, out.Character.ArmorClass,
-		"13 is the stale scalar on the sheet — reading it is the bug")
 }

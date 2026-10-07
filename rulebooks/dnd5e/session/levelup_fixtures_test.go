@@ -56,7 +56,7 @@ func advancingFighter(id string) *character.Data {
 			abilities.STR: 16, abilities.DEX: 12, abilities.CON: 14,
 			abilities.INT: 10, abilities.WIS: 10, abilities.CHA: 8,
 		},
-		HitPoints: 12, MaxHitPoints: 12, ArmorClass: 16, ProficiencyBonus: 2,
+		HitPoints: 12, MaxHitPoints: 12, ProficiencyBonus: 2,
 		Resources: map[coreResources.ResourceKey]character.RecoverableResourceData{
 			resources.HitDice: {Current: 1, Maximum: 1, ResetType: coreResources.ResetLongRest},
 		},
@@ -81,7 +81,7 @@ func advancingBard(id string) *character.Data {
 			abilities.STR: 8, abilities.DEX: 14, abilities.CON: 12,
 			abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 16,
 		},
-		HitPoints: 9, MaxHitPoints: 9, ArmorClass: 12, ProficiencyBonus: 2,
+		HitPoints: 9, MaxHitPoints: 9, ProficiencyBonus: 2,
 		Resources: map[coreResources.ResourceKey]character.RecoverableResourceData{
 			resources.HitDice:         {Current: 1, Maximum: 1, ResetType: coreResources.ResetLongRest},
 			resources.Inspiration:     {Current: 2, Maximum: 2, ResetType: coreResources.ResetLongRest},
@@ -107,7 +107,7 @@ func advancingWizard(id string) *character.Data {
 			abilities.STR: 8, abilities.DEX: 14, abilities.CON: 12,
 			abilities.INT: 16, abilities.WIS: 12, abilities.CHA: 10,
 		},
-		HitPoints: 7, MaxHitPoints: 7, ArmorClass: 12, ProficiencyBonus: 2,
+		HitPoints: 7, MaxHitPoints: 7, ProficiencyBonus: 2,
 		Resources: map[coreResources.ResourceKey]character.RecoverableResourceData{
 			resources.HitDice: {Current: 1, Maximum: 1, ResetType: coreResources.ResetLongRest},
 		},
@@ -131,7 +131,7 @@ func advancingDruid(id string) *character.Data {
 			abilities.STR: 10, abilities.DEX: 14, abilities.CON: 14,
 			abilities.INT: 12, abilities.WIS: 16, abilities.CHA: 8,
 		},
-		HitPoints: 21, MaxHitPoints: 21, ArmorClass: 13, ProficiencyBonus: 2,
+		HitPoints: 21, MaxHitPoints: 21, ProficiencyBonus: 2,
 		Resources: map[coreResources.ResourceKey]character.RecoverableResourceData{
 			resources.HitDice: {Current: 3, Maximum: 3, ResetType: coreResources.ResetLongRest},
 		},
@@ -156,7 +156,7 @@ func advancingRanger(id string) *character.Data {
 			abilities.STR: 12, abilities.DEX: 16, abilities.CON: 14,
 			abilities.INT: 10, abilities.WIS: 14, abilities.CHA: 8,
 		},
-		HitPoints: 12, MaxHitPoints: 12, ArmorClass: 14, ProficiencyBonus: 2,
+		HitPoints: 12, MaxHitPoints: 12, ProficiencyBonus: 2,
 		Resources: map[coreResources.ResourceKey]character.RecoverableResourceData{
 			resources.HitDice: {Current: 1, Maximum: 1, ResetType: coreResources.ResetLongRest},
 		},

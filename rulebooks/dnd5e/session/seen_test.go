@@ -51,7 +51,7 @@ func (s *SeenTestSuite) SetupTest() {
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
-		Sessions: s.sessions, Encounters: s.encounters, Characters: testCharacters(),
+		Sessions: s.sessions, Encounters: s.encounters, Characters: newFakeCharacters(armedFighter("fighter")),
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
@@ -63,7 +63,7 @@ func (s *SeenTestSuite) SetupTest() {
 // else along the shared edge. skeleton-1 stands well inside hall at authored
 // [9,3], where nothing but the doorway can put it in sight.
 func skeletonBehindADoor(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
 		Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{
 			Canvas: pointyCanvas(),
@@ -103,6 +103,7 @@ func (s *SeenTestSuite) TestSeenIsPopulatedAfterCrossingTheDoorway() {
 		Session: "sess", Encounter: "skeleton-behind-a-door", World: skeletonBehindADoor(s.T()),
 	})
 	s.Require().NoError(err)
+	stockAuthoredMonsters(s.T(), s.sessions, s.encounters, "sess")
 
 	// Before: the wall genuinely blocks it. Asserted first so a fixture that
 	// accidentally puts the skeleton in the open cannot make the "after"
@@ -141,12 +142,13 @@ func (s *SeenTestSuite) TestSeenIsPopulatedAfterCrossingTheDoorway() {
 	s.Equal(where.Position, skeleton.Seen.Position,
 		"Seen.Position must equal the skeleton's own reported placement, read independently via Where")
 
-	// A skeleton has no character sheet and therefore no hands to observe, which
-	// is a DIFFERENT claim from being seen empty-handed. Nil all the way through
-	// the SDK is what keeps a client from drawing "we don't know" as "unarmed"
-	// (rpg-toolkit#1615).
-	s.Nil(skeleton.Seen.Equipment,
-		"a monster has no hands to observe; it was not seen empty-handed")
+	// What was seen in its hands is what its stat block presents — the goblin
+	// stat block this scene records for it, since a member the world plays
+	// has a sheet behind it (rpg-project#538). A monster with no presentable
+	// weapon still answers "no hands to observe" rather than "empty-handed";
+	// equipment_internal_test.go pins that distinction (rpg-toolkit#1615).
+	s.Require().NotNil(skeleton.Seen.Equipment, "its sheet presents a weapon, and the sighting carries it")
+	s.Equal("scimitar", skeleton.Seen.Equipment.MainHand)
 }
 
 // TestSeenEquipmentComesFromTheSnapshotNotTheSheet pins the property the whole
@@ -160,6 +162,7 @@ func (s *SeenTestSuite) TestSeenEquipmentComesFromTheSnapshotNotTheSheet() {
 		Session: "sess", Encounter: "skeleton-behind-a-door", World: skeletonBehindADoor(s.T()),
 	})
 	s.Require().NoError(err)
+	stockAuthoredMonsters(s.T(), s.sessions, s.encounters, "sess")
 
 	_, err = s.mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "fighter",
@@ -192,6 +195,7 @@ func (s *SeenTestSuite) TestDiscoveredAlsoCarriesSeen() {
 		Session: "sess", Encounter: "skeleton-behind-a-door", World: skeletonBehindADoor(s.T()),
 	})
 	s.Require().NoError(err)
+	stockAuthoredMonsters(s.T(), s.sessions, s.encounters, "sess")
 
 	out, err := s.mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "fighter",
@@ -224,7 +228,7 @@ func (s *SeenTestSuite) TestDiscoveredAlsoCarriesSeen() {
 // 5): an authored member with no sheet always reads Conscious, and could
 // never actually go down for this proof to mean anything.
 func groundedSkeletonWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
 		Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{
 			Canvas: pointyCanvas(),
@@ -374,18 +378,27 @@ func TestGhostSeenStandingIsWhatItLastSaw(t *testing.T) {
 			"change nobody actually saw, exactly the defect rpg-toolkit#1702 closes")
 }
 
-// panickingCharacters is a CharacterRepository that panics if either method
-// is ever called. Wiring it into a Manager and driving a real read through
-// it is a stronger proof than a mock expectation: it fails the moment the
-// call happens, wherever in the call graph it happens, rather than only when
-// someone remembers to assert on a spy afterward.
-type panickingCharacters struct{}
+// seamOnlyCharacters is a CharacterRepository that panics if anything but the
+// sheet seam reads it, and on every write. Wiring it into a Manager and
+// driving a real read through it fails the moment the call happens, wherever
+// in the call graph it happens, rather than only when someone remembers to
+// assert on a spy afterward.
+//
+// THE SHEET SEAM IS THE ONE READER ALLOWED. A View asks the viewer's sight
+// range for the area projection, and sight is asked of the viewer's own sheet
+// at the moment of use (rpg-project#538, R12) — so a read reaches the store
+// for that, through sheets.go, legitimately. Every other reader — standing,
+// above all — panics, told apart by the caller on the stack.
+type seamOnlyCharacters struct{ sheets *fakeCharacters }
 
-func (panickingCharacters) GetCharacter(context.Context, string) (*character.Data, error) {
-	panic("GetCharacter must not be called: View no longer consults standing at all (rpg-toolkit#1702)")
+func (r seamOnlyCharacters) GetCharacter(ctx context.Context, id string) (*character.Data, error) {
+	if !calledFromSheetSeam() {
+		panic("GetCharacter must not be called outside the sheet seam: View no longer consults standing at all (rpg-toolkit#1702)")
+	}
+	return r.sheets.GetCharacter(ctx, id)
 }
 
-func (panickingCharacters) SaveCharacter(context.Context, *character.Data) error {
+func (seamOnlyCharacters) SaveCharacter(context.Context, *character.Data) error {
 	panic("SaveCharacter must not be called from a read")
 }
 
@@ -395,22 +408,22 @@ func (panickingCharacters) SaveCharacter(context.Context, *character.Data) error
 // must be UNABLE to, so a future change that reintroduces the call fails
 // loudly here rather than only in behavior nobody happened to test.
 //
-// A Manager built over a CharacterRepository that panics on any call, reused
+// A Manager over a character store only the sheet seam may read, reused
 // against the exact scene case 1 built (a live sighting existed briefly, a
 // ghost exists now), still produces the full projection — proving the
-// sighting path never reaches the character store at all, not merely that
-// it returned the right answer this time.
+// sighting path never reaches the character store except to ask the viewer's
+// sheet how far it sees.
 func TestViewNeverConsultsStandingEvenWithACurrentAndAGhostSighting(t *testing.T) {
 	sessions, encounters := groundedSkeletonScene(t)
 
 	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
-		Sessions: sessions, Encounters: encounters, Characters: panickingCharacters{},
+		Sessions: sessions, Encounters: encounters, Characters: seamOnlyCharacters{sheets: newFakeCharacters(armedFighter("fighter"))},
 		Events: session.DiscardEvents{},
 	})
 	require.NoError(t, err)
 
 	sightings, err := mgr.View(context.Background(), &session.ViewInput{Session: "sess", Member: "fighter"})
-	require.NoError(t, err, "a panicking character store must never be reached")
+	require.NoError(t, err, "only the sheet seam reads the store, and nothing writes it")
 	skeleton := findSighting(sightings, "skeleton-1")
 	require.NotNil(t, skeleton, "the ghost holding must still project — a full sighting, not an empty result")
 	require.NotNil(t, skeleton.Seen)

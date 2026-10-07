@@ -439,8 +439,9 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 		Participants: participants,
 		Initiative:   m.initiative,
 		Standing:     scope.standing,
-		Sight:        &sightSeam{members: worldMembers(world)},
+		Sight:        sheetsBeside(scope.standing),
 		Equipment:    equipmentBeside(scope.standing),
+		Sheets:       sheetsBeside(scope.standing),
 		TurnDriver:   scope.driver,
 		// The concealment pair (rpg-toolkit#1378), bound to the same live
 		// scope openForChange and adopt bind — the one-seam consistency law.
@@ -514,7 +515,7 @@ func (m *Manager) finishCast(
 	// one cell instead of two; the walk that follows puts the movement beats
 	// after the cast beat, which is the order a client animates them in.
 	// Thunder, then the slide. See [castPush].
-	if err := routeCastPushes(scope.enc, pushes, targetResults); err != nil {
+	if err := routeCastPushes(scope.enc, sheetsBeside(scope.standing), pushes, targetResults); err != nil {
 		return nil, fmt.Errorf("cast: %w", err)
 	}
 

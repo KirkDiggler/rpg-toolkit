@@ -181,7 +181,7 @@ func campWorld(t *testing.T, compiled dungeonspec.Compiled, withEnding bool) *en
 	if len(seats) < 2 {
 		t.Fatalf("the camp seats %d, and the party is two", len(seats))
 	}
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		CheckResolver: encNeverResolves{}, Witness: encNeverWitnesses{},
@@ -350,7 +350,7 @@ func (s *HoldOutSessionSuite) roster() map[string]session.PublicMember {
 	// These scenario assertions inspect membership/reserve truth, not Alice's
 	// discovered identities. Gameplay Roster deliberately excludes unseen NPCs.
 	world, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: *s.encounters.byID[campWorldID], Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
+		Data: *s.encounters.byID[campWorldID], Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Sheets: encStandStill{},
 		Standing: encEveryoneStanding{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
 		CheckResolver: encNeverResolves{}, Witness: encNeverWitnesses{},

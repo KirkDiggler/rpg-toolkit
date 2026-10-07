@@ -652,7 +652,7 @@ func (m *Manager) loadWorld(ctx context.Context, data *SessionData) (*encounter.
 
 	enc, _, _, err := m.loadWorldWithBaseline(
 		ctx, data, encounter.RefusingStriker{}, encounter.RefusingMover{}, encounter.RefusingAnnouncer{},
-		&sightSeam{}, encounter.RefusingCheckResolver{}, encounter.NobodyPerceives{},
+		encounter.RefusingCheckResolver{}, encounter.NobodyPerceives{},
 		// The plain seam, not a compelled driver. A read advances no clock —
 		// the three refusing capabilities above are what says so — and a
 		// compelled driver here would have no scope to save the condition an
@@ -683,16 +683,12 @@ func (m *Manager) loadWorld(ctx context.Context, data *SessionData) (*encounter.
 // each use, so there is exactly one answer to "which sheets is this call
 // reading" for the whole call.
 //
-// sight is PRE-ALLOCATED BY THE CALLER, empty, and populated here from the
-// blob this function fetches — the same chicken-and-egg [strikerSeam] solves
-// for Striker, one capability over (rpg-project#254). A write verb's caller
-// keeps its own reference to the same pointer afterward, because [place]
-// needs to add a member THIS SAME call is about to place before that
-// member's own Join asks Sight about it; a read verb's caller passes a
-// throwaway that nothing reaches again.
+// Sight and Sheets are both answered by the [sheetSeam] built beside that
+// same standing capability, so a member [place] classifies mid-verb is one
+// whose sheet both can find (sheets.go).
 func (m *Manager) loadWorldWithBaseline(
 	ctx context.Context, data *SessionData,
-	striker encounter.Striker, mover encounter.Mover, announcer encounter.Announcer, sight *sightSeam,
+	striker encounter.Striker, mover encounter.Mover, announcer encounter.Announcer,
 	resolver encounter.CheckResolver, witness encounter.Witness, driver encounter.Driver,
 	roller dice.Roller,
 ) (*encounter.Encounter, uint64, standingSeam, error) {
@@ -711,16 +707,15 @@ func (m *Manager) loadWorldWithBaseline(
 	}
 
 	// Placed AND waiting (reserve.go): an arrival happens mid-verb, and its
-	// own sight refresh asks both seams about the newcomer at once.
-	sight.members = append(sight.members, worldMembers(*world)...)
-
+	// own sight refresh asks the seams about the newcomer at once.
 	standing := m.standingFor(ctx, data, encounterDataKinds(worldMembers(*world)))
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:       *world,
 		Initiative: m.initiative,
 		Standing:   standing,
-		Sight:      sight,
+		Sight:      sheetsBeside(standing),
 		Equipment:  equipmentBeside(standing),
+		Sheets:     sheetsBeside(standing),
 		// And the same, one capability over: a compelledDriver bound to a
 		// write verb's scope, or the plain seam for a read that advances no
 		// clock. A compulsion is read off a SHEET, so the thing that takes a
@@ -908,6 +903,15 @@ func translate(err error) error {
 		// ResumeTurn without first asking Paused, so an arm for it would be a
 		// claim about a path this file cannot back.
 		return fmt.Errorf("%w", ErrWindowOpen)
+	case errors.Is(err, encounter.ErrNoSheets):
+		// The sheet capability's answer skipped a member, or none was
+		// supplied (rpg-project#538): a member whose speed and reach would
+		// have to be invented. The remedy is a sheet this seam failed to read.
+		return fmt.Errorf("%w", ErrNoSheet)
+	case errors.Is(err, encounter.ErrRefusingSheets):
+		// A compile-only world asked to pace, budget or reach a member: it
+		// has no sheets behind it and is not a world to play as loaded.
+		return fmt.Errorf("%w", ErrInvalidWorld)
 	case errors.Is(err, encounter.ErrNoField), errors.Is(err, encounter.ErrInvalidData):
 		// Both mean the stored world cannot answer: a field that is defective
 		// or does not hold the room somebody stands in, and a blob that cannot

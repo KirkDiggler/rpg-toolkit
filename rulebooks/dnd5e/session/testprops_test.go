@@ -32,6 +32,21 @@ func occludingProps(at ...spatial.Position) []encounter.PropInput {
 	return out
 }
 
+// encStandStill answers the sheet question for a scene being ASSEMBLED, never
+// played: every member asked stands still with nothing to swing and no
+// strategy — the facts these authored members always carried — so a sight pass
+// during construction that forms a fight paces and budgets nobody. Once the
+// session loads the world it answers from each member's own sheet.
+type encStandStill struct{}
+
+func (encStandStill) Sheets(members []encounter.MemberID) (map[encounter.MemberID]encounter.SheetFacts, error) {
+	out := make(map[encounter.MemberID]encounter.SheetFacts, len(members))
+	for _, id := range members {
+		out[id] = encounter.SheetFacts{}
+	}
+	return out, nil
+}
+
 // encEveryoneSees is the sight capability these scenes run on: unbounded range,
 // so the only thing that hides a member is something drawn on the map — the
 // same position session itself takes in v1 (see sightRangeCells).

@@ -205,7 +205,6 @@ func (m *Manager) loadAuthored(ctx context.Context, world *encounter.EncounterDa
 	input := encounter.CompileOnlyLoad(*world)
 	input.Initiative = m.initiative
 	input.Standing = standing
-	input.Sight = &sightSeam{members: worldMembers(*world)}
 	input.Equipment = equipmentBeside(standing)
 	enc, err := encounter.LoadEncounter(input)
 	if err != nil {

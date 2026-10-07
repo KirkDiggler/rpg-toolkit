@@ -84,7 +84,7 @@ func (s *EffectRowsSuite) cave(actor *character.Data) {
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{},
 		Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
@@ -214,7 +214,7 @@ func (s *EffectRowsSuite) landCondition(member string, raw json.RawMessage) {
 // rogue is a level-1 rogue with a shortsword and Sneak Attack, as resolution's
 // own information test seats one.
 func (s *EffectRowsSuite) rogue() *character.Data {
-	sneak := s.raw(conditions.NewSneakAttackCondition(conditions.SneakAttackInput{MemberID: "alice", Level: 1}))
+	sneak := s.raw(conditions.NewSneakAttackCondition(conditions.SneakAttackInput{MemberID: "alice"}))
 	return &character.Data{
 		ID: "alice", PlayerID: "player-alice", Name: "alice", Level: 1,
 		Levels: syntheticLevels(classes.Rogue, 1), ClassID: classes.Rogue, RaceID: races.Human,
@@ -222,7 +222,7 @@ func (s *EffectRowsSuite) rogue() *character.Data {
 			abilities.STR: 10, abilities.DEX: 16, abilities.CON: 12,
 			abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 10,
 		},
-		HitPoints: 10, MaxHitPoints: 10, ArmorClass: 14, ProficiencyBonus: 2,
+		HitPoints: 10, MaxHitPoints: 10, ProficiencyBonus: 2,
 		WeaponProficiencies: []proficiencies.Weapon{proficiencies.WeaponSimple, proficiencies.WeaponShortsword},
 		Inventory: []character.InventoryItemData{
 			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Shortsword), Quantity: 1},
@@ -235,7 +235,7 @@ func (s *EffectRowsSuite) rogue() *character.Data {
 // barbarian is a raging level-1 barbarian swinging a greataxe.
 func (s *EffectRowsSuite) barbarian() *character.Data {
 	rage := s.raw(&conditions.RagingCondition{
-		CharacterID: "alice", DamageBonus: 2, Level: 1, Source: refs.Features.Rage().String(),
+		CharacterID: "alice", Source: refs.Features.Rage().String(),
 	})
 	return &character.Data{
 		ID: "alice", PlayerID: "player-alice", Name: "alice", Level: 1,
@@ -244,7 +244,7 @@ func (s *EffectRowsSuite) barbarian() *character.Data {
 			abilities.STR: 16, abilities.DEX: 16, abilities.CON: 14,
 			abilities.INT: 8, abilities.WIS: 10, abilities.CHA: 8,
 		},
-		HitPoints: 14, MaxHitPoints: 14, ArmorClass: 13, ProficiencyBonus: 2,
+		HitPoints: 14, MaxHitPoints: 14, ProficiencyBonus: 2,
 		WeaponProficiencies: []proficiencies.Weapon{proficiencies.WeaponSimple, proficiencies.WeaponMartial},
 		Inventory: []character.InventoryItemData{
 			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Greataxe), Quantity: 1},

@@ -26,7 +26,7 @@ func castingCleric() *character.Data {
 			abilities.STR: 14, abilities.DEX: 10, abilities.CON: 14,
 			abilities.INT: 10, abilities.WIS: 16, abilities.CHA: 8,
 		},
-		HitPoints: 10, MaxHitPoints: 10, ArmorClass: 10, ProficiencyBonus: 2,
+		HitPoints: 10, MaxHitPoints: 10, ProficiencyBonus: 2,
 		KnownCantrips: []string{
 			refs.Spells.SacredFlame().String(), refs.Spells.Guidance().String(), refs.Spells.Light().String(),
 		},
@@ -191,4 +191,25 @@ func (s *CastSuite) TestSacredFlameRangeBoundary() {
 			s.refuseSacredFlame(row.ID, "skeleton")
 		}
 	}
+}
+
+// TestACastWhoseTargetLostItsSheetNamesTheSheet: a selector minted while the
+// skeleton's stat block was held, echoed after the session stops holding it,
+// is refused by the sheet (ErrNoSheet), not called stale — the cast's offer is
+// blocked by an unreadable participant, and that participant is what refuses
+// (rpg-project#538). Nothing is written and no die is thrown.
+func (s *CastSuite) TestACastWhoseTargetLostItsSheetNamesTheSheet() {
+	s.scene(castingCleric(), 2)
+	row := s.castRow(spells.SacredFlame)
+	s.Require().True(row.Available, "precondition: the cast is offered while the sheet is held")
+
+	s.sessions.byID["sess"].NPCs = nil
+
+	before := []int{s.sessions.saves, s.encounters.saves, s.characters.saves, s.dice.next, len(s.stream.published)}
+	_, err := s.mgr.Cast(context.Background(), &session.CastInput{
+		Session: "sess", Member: s.member, DeclarationID: row.ID, Target: "skeleton",
+	})
+	s.Require().ErrorIs(err, session.ErrNoSheet, "the sheet refuses the cast, not the selector")
+	s.NotErrorIs(err, session.ErrStaleDeclaration)
+	s.Equal(before, []int{s.sessions.saves, s.encounters.saves, s.characters.saves, s.dice.next, len(s.stream.published)})
 }

@@ -55,7 +55,7 @@ func (s shortSight) Sight(members []encounter.MemberID) (map[encounter.MemberID]
 // their whole panel to it.
 func TestAbsentCandidateKeepsItsRowAndThePanel(t *testing.T) {
 	ctx := context.Background()
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
 		Sight: shortSight{"alice": 1}, Equipment: encNoHandsObserved{},
 		Standing: aggregateRecordEveryoneStanding{}, Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{},
@@ -79,7 +79,7 @@ func TestAbsentCandidateKeepsItsRowAndThePanel(t *testing.T) {
 		require.NotEqual(t, encounter.MemberID("goblin-2"), member.ID, "precondition: goblin two is not observed")
 	}
 
-	sneak, err := conditions.NewSneakAttackCondition(conditions.SneakAttackInput{MemberID: "alice", Level: 1}).ToJSON()
+	sneak, err := conditions.NewSneakAttackCondition(conditions.SneakAttackInput{MemberID: "alice"}).ToJSON()
 	require.NoError(t, err)
 	sheet, err := character.Load(ctx, &character.Data{
 		ID: "alice", PlayerID: "player-alice", Name: "alice", Level: 1, ClassID: classes.Rogue, RaceID: races.Human,
@@ -87,7 +87,7 @@ func TestAbsentCandidateKeepsItsRowAndThePanel(t *testing.T) {
 			abilities.STR: 10, abilities.DEX: 16, abilities.CON: 12,
 			abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 10,
 		},
-		HitPoints: 10, MaxHitPoints: 10, ArmorClass: 14, ProficiencyBonus: 2,
+		HitPoints: 10, MaxHitPoints: 10, ProficiencyBonus: 2,
 		WeaponProficiencies: []proficiencies.Weapon{proficiencies.WeaponSimple, proficiencies.WeaponShortsword},
 		Inventory: []character.InventoryItemData{
 			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Shortsword), Quantity: 1},

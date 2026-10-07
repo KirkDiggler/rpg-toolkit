@@ -85,7 +85,7 @@ func (passDriver) Act(encounter.MonsterView) (encounter.Decision, error) {
 func walkWorld(t *testing.T) *encounter.Encounter {
 	t.Helper()
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: &sightSeam{}, Equipment: encNoHandsObserved{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encStatedSight{}, Equipment: encNoHandsObserved{},
 		Initiative: walkOrderAsGiven{}, TurnDriver: passDriver{}, Standing: walkEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{
 			rectRegion("hall", 30, 40, 4, 4),

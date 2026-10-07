@@ -39,9 +39,10 @@ func TestTurnConcentrationSuite(t *testing.T) {
 func (s *TurnConcentrationSuite) SetupTest() {
 	s.characters = testCharacters()
 
+	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
-		Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+		Sessions: sessions, Encounters: encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
@@ -51,6 +52,7 @@ func (s *TurnConcentrationSuite) SetupTest() {
 		Session: "sess", Encounter: "world", World: ambushWorld(s.T()),
 	})
 	s.Require().NoError(err)
+	stockAuthoredMonsters(s.T(), sessions, encounters, "sess")
 }
 
 // fight walks alice into the ogre so there is a turn clock to read. The world

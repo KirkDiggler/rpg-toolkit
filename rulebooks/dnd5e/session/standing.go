@@ -154,12 +154,17 @@ func (s standingSeam) Assess(members []encounter.MemberID) (*encounter.Participa
 // A member whose authoritative store says not found is in neither provider
 // input list. participation.go then supplies one final Conscious compatibility
 // fact for its required answer row. For KindPlayer that exact fact also enters
-// party policy; KindMonster and KindWorld never do. This is an ordinary state
-// rather than a defect: authored content placed straight into a world has no
-// sheet until something spawns it, which is exactly what every tomb fixture's
-// monsters are. Answering DOWNED instead would kill every authored monster in
-// the toolkit the moment anybody looked at one; answering with an error would
-// make those worlds unplayable. Neither is a rule this package gets to write.
+// party policy; KindMonster and KindWorld never do. Answering DOWNED instead
+// would kill a member because nobody can read it, which is not a rule this
+// package gets to write.
+//
+// It is no longer how a sheetless member is PLAYED. The sheet seam
+// (sheets.go) is asked how fast every member walks and how far it sees
+// whenever the world paces, budgets or refreshes sight, and it refuses a
+// member the verb holds no sheet for (rpg-project#538) — so a world with an
+// authored, never-spawned monster refuses its first such verb by name. This
+// tolerance is standing's own answer to its own question, kept for the reads
+// that ask it alone (a compile-only load has no session record at all).
 func (s standingSeam) recordsFor(
 	members []encounter.MemberID,
 ) (characters, monsters []resolution.Participant, err error) {

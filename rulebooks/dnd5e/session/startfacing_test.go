@@ -40,7 +40,7 @@ func TestStartFacingSuite(t *testing.T) { suite.Run(t, new(StartFacingSuite)) }
 // — nil for a dungeon that declares none, which is every dungeon stored
 // before this field existed.
 func startWorld(t fataler, start *encounter.FieldStart) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},

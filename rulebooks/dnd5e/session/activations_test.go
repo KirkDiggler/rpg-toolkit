@@ -36,7 +36,7 @@ func ragingBarbarian(id string, charges int) *character.Data {
 			abilities.STR: 16, abilities.DEX: 14, abilities.CON: 16,
 			abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 8,
 		},
-		HitPoints: 15, MaxHitPoints: 15, ArmorClass: 15, ProficiencyBonus: 2,
+		HitPoints: 15, MaxHitPoints: 15, ProficiencyBonus: 2,
 		Inventory: []character.InventoryItemData{
 			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Greataxe), Quantity: 1},
 		},
