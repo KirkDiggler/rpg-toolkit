@@ -69,7 +69,7 @@ func (s *HoldOutSuite) camp() *encounter.Encounter {
 	no := false
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{},
-		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("yard", 0, 0, 8, 4)},
@@ -110,7 +110,7 @@ func (s *HoldOutSuite) turn(enc *encounter.Encounter) {
 
 // rogue is a level-1 rogue carrying Sneak Attack, as the sheet persists it.
 func (s *HoldOutSuite) rogue() *character.Data {
-	sneak, err := conditions.NewSneakAttackCondition(conditions.SneakAttackInput{MemberID: holdOutRogue, Level: 1}).ToJSON()
+	sneak, err := conditions.NewSneakAttackCondition(conditions.SneakAttackInput{MemberID: holdOutRogue}).ToJSON()
 	s.Require().NoError(err)
 
 	return &character.Data{
@@ -119,7 +119,7 @@ func (s *HoldOutSuite) rogue() *character.Data {
 			abilities.STR: 10, abilities.DEX: 16, abilities.CON: 12,
 			abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 10,
 		},
-		HitPoints: 10, MaxHitPoints: 10, ArmorClass: 14, ProficiencyBonus: 2,
+		HitPoints: 10, MaxHitPoints: 10, ProficiencyBonus: 2,
 		Conditions: []json.RawMessage{sneak},
 	}
 }
@@ -133,7 +133,7 @@ func (s *HoldOutSuite) ally() *character.Data {
 			abilities.STR: 16, abilities.DEX: 12, abilities.CON: 14,
 			abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 8,
 		},
-		HitPoints: 12, MaxHitPoints: 12, ArmorClass: 16, ProficiencyBonus: 2,
+		HitPoints: 12, MaxHitPoints: 12, ProficiencyBonus: 2,
 	}
 }
 
@@ -194,7 +194,7 @@ func (s *HoldOutSuite) resolve(world encounter.EncounterData, strike *StrikeInpu
 			{Monster: s.raider(holdOutScout)}, {Monster: s.raider(holdOutChief)},
 		},
 		Machine:    NewStrike(strike),
-		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		TurnDriver: passDriver{}, Roller: strike.Roller,
 	})
 	s.Require().NoError(err)

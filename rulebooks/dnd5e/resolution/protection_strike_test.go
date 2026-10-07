@@ -39,7 +39,7 @@ func protector(t *testing.T) *character.Data {
 			abilities.STR: 16, abilities.DEX: 12, abilities.CON: 14,
 			abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 8,
 		},
-		HitPoints: 12, MaxHitPoints: 12, ArmorClass: 12, ProficiencyBonus: 2,
+		HitPoints: 12, MaxHitPoints: 12, ProficiencyBonus: 2,
 		Inventory: []character.InventoryItemData{
 			{Type: shared.EquipmentTypeArmor, ID: string(armor.Shield), Quantity: 1},
 		},
@@ -67,7 +67,7 @@ func protectionWorld(t *testing.T, placeProtector bool) encounter.EncounterData 
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{},
-		Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		Field:   encounter.FieldInput{Canvas: hexCanvas(), Regions: []encounter.RegionInput{rectRegion("room", 0, 0, 10, 4)}},
 		Members: members,
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
@@ -90,7 +90,7 @@ func wolfBitesTheHeroBesideProtector(t *testing.T, placeProtector bool) (StrikeO
 			Roller: &actionRoller{singles: []int{15}, pairs: [][]int{{15, 15}}, damage: [][]int{{3}}},
 		}),
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Roller: dice.NewRoller(),
+		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
 	})
 	require.NoError(t, err)
 	outcome, ok := out.Outcome.(StrikeOutcome)

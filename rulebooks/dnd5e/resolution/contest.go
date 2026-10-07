@@ -669,7 +669,7 @@ func applyPreparedDamage(
 				AttackerID: cause.InstigatorID,
 				TargetID:   targetID,
 				Components: rolled,
-				Frame:      contestDamageFrame(cause.InstigatorID, targetID),
+				Frame:      contestDamageFrame(cast, cause.InstigatorID, targetID),
 			}), func(ctx context.Context, folded *dnd5eEvents.DamageChainEvent) (Step, error) {
 				return dealFoldedDamage(ctx, folded.Components, cause, sourceName, cast, targetID,
 					halved, described, next)
@@ -683,13 +683,24 @@ func applyPreparedDamage(
 //
 // WeaponPool is KNOWN false, not unknown. An attacker-side rule asked by the
 // fold — Sneak Attack, Rage's bonus — gates on the weapon pool, and an unknown
-// one answers Depends and fails the fold (R13). Everything else stays unknown:
-// a rule that needs a pair, a holding or a hand answers Depends, and the fold
-// fails loudly rather than guessing.
-func contestDamageFrame(instigatorID, saverID string) contributions.Frame {
+// one answers Depends and fails the fold (R13). The instigator's class levels
+// are its own sheet's ([sheetClassLevels]): a class-scaled rule reads its
+// level before it reads the weapon pool, so a rogue or a raging barbarian who
+// raised the save must be framed with their levels or the fold fails. An
+// instigator with no sheet in the cast — whose effects are therefore attached
+// to nothing on this bus — is framed with its class levels UNKNOWN, the
+// honest answer, never an empty list nobody read. Everything else stays
+// unknown: a rule that needs a pair, a holding or a hand answers Depends, and
+// the fold fails loudly rather than guessing.
+func contestDamageFrame(cast *Participants, instigatorID, saverID string) contributions.Frame {
+	levels, err := sheetClassLevels(cast, instigatorID)
+	if err != nil {
+		levels = contributions.UnknownClassLevels()
+	}
 	return contributions.Frame{
-		Actor:  instigatorID,
-		Target: contributions.Known(saverID),
+		Actor:            instigatorID,
+		ActorClassLevels: levels,
+		Target:           contributions.Known(saverID),
 		Action: contributions.ActionFacts{
 			Roll:       contributions.Known(contributions.RollKindSavingThrow),
 			WeaponPool: contributions.Known(false),

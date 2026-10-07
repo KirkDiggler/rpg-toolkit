@@ -99,6 +99,7 @@ func InformAttack(in *InformAttackInput) (*InformAttackOutput, error) {
 	assess := func(target string) ([]contributions.Effect, contributions.Frame, error) {
 		framed, err := informationFrame(&informationFrameInput{
 			Observed: in.Observed, Attack: in.Attack, Target: target, ActorHeld: actorHeld,
+			ActorClassLevels: in.Actor.ClassLevels(),
 		})
 		if err != nil {
 			return nil, contributions.Frame{}, err

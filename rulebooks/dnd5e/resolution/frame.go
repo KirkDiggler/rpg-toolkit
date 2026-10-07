@@ -117,12 +117,15 @@ func attackActionFacts(p *combatActions.AttackProfile, opportunity bool) contrib
 // observer's own detached knowledge, the assembled attack, the target being
 // asked about, and what the observer holds by its own sheet. Target is empty
 // for the ask about no target in particular. ActorHeld is the observer's own
-// holdings, always known: nil is read as holding none.
+// holdings, always known: nil is read as holding none. ActorClassLevels is the
+// observer's class levels from its own sheet ([sheetClassLevels]); it must be
+// known, because a member always knows its own sheet.
 type informationFrameInput struct {
-	Observed  *encounter.ObservedContextOutput
-	Attack    *combatActions.AttackProfile
-	Target    string
-	ActorHeld []contributions.HeldCondition
+	Observed         *encounter.ObservedContextOutput
+	Attack           *combatActions.AttackProfile
+	Target           string
+	ActorHeld        []contributions.HeldCondition
+	ActorClassLevels contributions.ClassLevels
 }
 
 // informationFrameOutput carries the validated information frame.
@@ -157,19 +160,31 @@ type informationFrameOutput struct {
 // a member sees, including whether it sees the observer — is unknown, because
 // the observer's sightings say nothing about another creature's eyes.
 //
-// Errors: a nil observed context or attack, or a frame that fails
+// The observer's class levels are its own sheet's (rpg-project#538), the same
+// answer [strikeMachine.attackRollFrame] reads from the cast, so a
+// class-scaled row and the swing it describes compute from one level.
+//
+// Errors: a nil observed context or attack, unknown actor class levels
+// (wrapping [contributions.ErrRuleCannotAnswer], the sentinel a class-scaled
+// rule gives for the same missing fact — unreachable through [InformAttack],
+// whose character actor always knows its levels), or a frame that fails
 // [contributions.Frame.Validate].
 func informationFrame(in *informationFrameInput) (*informationFrameOutput, error) {
 	if in == nil || in.Observed == nil || in.Attack == nil {
 		return nil, fmt.Errorf("%w: an information frame needs an observed context and an attack", ErrNilInput)
 	}
 	observer := string(in.Observed.Observer)
+	if _, known := in.ActorClassLevels.Get(); !known {
+		return nil, fmt.Errorf("information frame: %w: %q's class levels are unknown; its own sheet answers them",
+			contributions.ErrRuleCannotAnswer, observer)
+	}
 	frame := contributions.Frame{
-		Actor:  observer,
-		Target: contributions.Unknown[string](),
-		Action: attackActionFacts(in.Attack, false),
-		Pairs:  make([]contributions.PairFacts, 0, len(in.Observed.Pairs)),
-		Held:   make([]contributions.MemberHeld, 0, len(in.Observed.Members)+1),
+		Actor:            observer,
+		ActorClassLevels: in.ActorClassLevels,
+		Target:           contributions.Unknown[string](),
+		Action:           attackActionFacts(in.Attack, false),
+		Pairs:            make([]contributions.PairFacts, 0, len(in.Observed.Pairs)),
+		Held:             make([]contributions.MemberHeld, 0, len(in.Observed.Members)+1),
 	}
 	if in.Target != "" {
 		frame.Target = contributions.Known(in.Target)
@@ -264,13 +279,16 @@ func authoritativeStance(cast gamectx.Cast, from, to string) contributions.Fact[
 // nothing on its sheet is listed holding nothing, because the sheet is the
 // authority. The first caller is the Sanctuary step, after the attacker's own
 // ward has ended, so the frame the ward check, the attack chain and the
-// damage fold read is one frame.
+// damage fold read is one frame. ActorClassLevels is the attacker's own
+// sheet's answer ([sheetClassLevels]), asked as the frame is built and never
+// stored on an effect (rpg-project#538).
 //
 // A resumed machine builds it afresh from current truth (S3); rows a client
 // saw are never consulted.
 //
-// Errors: no installed room, cast or visibility ([ErrBadWorld]), or a frame
-// that fails [contributions.Frame.Validate]. The caller gets a detached copy.
+// Errors: no installed room, cast or visibility ([ErrBadWorld]), an attacker
+// with no sheet in the cast ([ErrNoCombatant]), or a frame that fails
+// [contributions.Frame.Validate]. The caller gets a detached copy.
 func (m *strikeMachine) attackRollFrame(ctx context.Context) (contributions.Frame, error) {
 	if m.rollFrame != nil {
 		return m.rollFrame.Clone(), nil
@@ -321,13 +339,18 @@ func (m *strikeMachine) attackRollFrame(ctx context.Context) (contributions.Fram
 	if err != nil {
 		return contributions.Frame{}, fmt.Errorf("%w: attack frame: %w", ErrBadWorld, err)
 	}
+	levels, err := sheetClassLevels(m.cast, m.in.AttackerID)
+	if err != nil {
+		return contributions.Frame{}, fmt.Errorf("attack frame: %w", err)
+	}
 	frame := contributions.Frame{
-		Actor:    m.in.AttackerID,
-		Target:   contributions.Known(m.in.TargetID),
-		Action:   attackActionFacts(m.attack, m.in.Opportunity),
-		Pairs:    pairs,
-		Complete: true,
-		Held:     held,
+		Actor:            m.in.AttackerID,
+		ActorClassLevels: levels,
+		Target:           contributions.Known(m.in.TargetID),
+		Action:           attackActionFacts(m.attack, m.in.Opportunity),
+		Pairs:            pairs,
+		Complete:         true,
+		Held:             held,
 	}
 	if err := frame.Validate(); err != nil {
 		return contributions.Frame{}, fmt.Errorf("attack frame: %w", err)
@@ -365,6 +388,25 @@ func (m *strikeMachine) executionFrame(ctx context.Context) (contributions.Frame
 	m.frame = &frame
 
 	return frame.Clone(), nil
+}
+
+// sheetClassLevels is a member's class levels as its own sheet answers them
+// (rpg-project#538): a character's from its level record, a monster's known
+// and empty. Every frame that names an actor with a sheet in the cast fills
+// [contributions.Frame.ActorClassLevels] through here, so the information
+// frame and the execution frames cannot read two different levels for one
+// member. The levels are asked each time a frame is built; nothing below the
+// sheet keeps a copy.
+//
+// Errors: a member with no sheet in the cast ([ErrNoCombatant]).
+func sheetClassLevels(cast *Participants, id string) (contributions.ClassLevels, error) {
+	if character, ok := cast.Character(id); ok {
+		return character.ClassLevels(), nil
+	}
+	if monster, ok := cast.Monster(id); ok {
+		return monster.ClassLevels(), nil
+	}
+	return contributions.UnknownClassLevels(), fmt.Errorf("%w: class levels of %q", ErrNoCombatant, id)
 }
 
 // castHeld lists what each member with a sheet holds, in the given order, each

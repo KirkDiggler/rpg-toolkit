@@ -57,9 +57,8 @@ const projectedHeroID = "projected-hero"
 // instead of the same one by luck. Unarmored Defense makes the answer
 // 10 + 2 + 3 = 15.
 //
-// ArmorClass on the sheet says 10 and is meant to: it is the stale scalar the
-// old read path returned, so any test below that accidentally reads the sheet
-// instead of folding reports 10 and says so out loud.
+// The sheet stores no armour class (rpg-project#538): the fold below is the
+// only place the number exists.
 func (s *ProjectionTestSuite) barbarian(conds ...json.RawMessage) *character.Data {
 	return &character.Data{
 		ID:       projectedHeroID,
@@ -78,7 +77,6 @@ func (s *ProjectionTestSuite) barbarian(conds ...json.RawMessage) *character.Dat
 		},
 		HitPoints:        14,
 		MaxHitPoints:     14,
-		ArmorClass:       10,
 		ProficiencyBonus: 2,
 		Conditions:       conds,
 	}
@@ -196,8 +194,8 @@ func (s *ProjectionTestSuite) TestTheDoorIsWhatMakesTheNumberRight() {
 }
 
 // monk is unarmoured with DEX +3 and WIS +2, wearing nothing, holding
-// Unarmored Defense (monk): 10 + 3 + 2 = 15. The sheet's stored ArmorClass is
-// 10, so a view that read the record instead of folding says so.
+// Unarmored Defense (monk): 10 + 3 + 2 = 15. The sheet stores no armour class
+// (rpg-project#538), so the fold is the only answer a view can give.
 func (s *ProjectionTestSuite) monk() *character.Data {
 	raw, err := (&conditions.UnarmoredDefenseCondition{
 		MemberID: projectedHeroID,
@@ -331,7 +329,7 @@ func (s *ProjectionTestSuite) TestTheProjectionRefusesARecordItCannotName() {
 func (s *ProjectionTestSuite) world() encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{},
-		Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -351,9 +349,10 @@ func (s *ProjectionTestSuite) world() encounter.EncounterData {
 //
 // ONE RECORD, carrying one condition that parses and one blob that does not.
 // The projection used to fold what parsed and warn about the rest, because it
-// "only read". Its callers now write what it folds back to storage — session's
-// Join puts the AC on the member, rpg-api persists it as the stored AC — so a
-// dropped condition there is a wrong number persisted (rpg-api#1078 review).
+// "only read". Its callers now hand what it folds out as the character's own
+// answer — rpg-api fills every armour class it returns from it and stores none
+// (rpg-project#538) — so a dropped condition there is a wrong number reported
+// as the whole one (rpg-api#1078 review).
 // Both entries now refuse the same record, and both name the blob.
 func (s *ProjectionTestSuite) TestTheProjectionRefusesWhatResolveRefuses() {
 	unreadable := json.RawMessage(`{"ref":"nonsense","x":`)
@@ -370,7 +369,7 @@ func (s *ProjectionTestSuite) TestTheProjectionRefusesWhatResolveRefuses() {
 		Participants: []Participant{{Character: s.barbarian(s.unarmoredDefense(), unreadable)}},
 		Machine:      &captureMachine{},
 		Initiative:   orderAsGiven{}, TurnDriver: passDriver{},
-		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		Roller: dice.NewRoller(),
 	})
 	s.Require().Error(err,

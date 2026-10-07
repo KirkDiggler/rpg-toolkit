@@ -136,11 +136,11 @@ const (
 //
 // It used to read leniently: what parsed was folded, what did not was dropped
 // with a warning, on the reasoning that "nothing on this path writes a sheet
-// back". That stopped being true. Session's Join copies the projected AC and
-// facts onto the member it writes, and rpg-api persists ArmorClass.Total as
-// the character's stored AC after an equip. A fold that silently left out a
-// condition would be persisted as though it were the whole answer — the
-// rpg-toolkit#1276 shape behind a log line (rpg-api#1078 review). So the
+// back". That stopped being true: rpg-project#538 makes this projection the
+// only armour class a character has — the sheet stores none, and rpg-api fills
+// every armour class it returns from ArmorClass.Total. A fold that silently
+// left out a condition would be reported as though it were the whole answer —
+// the rpg-toolkit#1276 shape behind a log line (rpg-api#1078 review). So the
 // projection takes the policy that cannot write a wrong number: the zero value
 // of DropUnreadable on [attachAllInput], which is what Resolve takes too.
 // TestTheProjectionRefusesWhatResolveRefuses pins the two answers side by side.

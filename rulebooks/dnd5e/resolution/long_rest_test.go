@@ -290,7 +290,7 @@ func (s *LongRestTestSuite) TestHeldSurfaceAttachErrorLeavesNoRegistrations() {
 func (s *LongRestTestSuite) fighter() *character.Data {
 	secondWind, err := json.Marshal(features.SecondWindData{
 		Ref: refs.Features.SecondWind(), ID: "fighter-second-wind", Name: "Second Wind",
-		Level: 4, CharacterID: longRestFighterID, Uses: 0, MaxUses: 1,
+		CharacterID: longRestFighterID, Uses: 0, MaxUses: 1,
 	})
 	s.Require().NoError(err)
 	actionSurge, err := json.Marshal(features.ActionSurgeData{
@@ -313,7 +313,7 @@ func (s *LongRestTestSuite) fighter() *character.Data {
 			abilities.STR: 16, abilities.DEX: 14, abilities.CON: 14,
 			abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 8,
 		},
-		HitPoints: 7, MaxHitPoints: 36, ArmorClass: 16,
+		HitPoints: 7, MaxHitPoints: 36,
 		DeathSaveState: &saves.DeathSaveState{Successes: 1, Failures: 2, Stabilized: true},
 		Skills:         map[skills.Skill]shared.ProficiencyLevel{skills.Athletics: shared.Proficient},
 		Languages:      []languages.Language{languages.Common},
@@ -339,8 +339,6 @@ func (s *LongRestTestSuite) barbarian() *character.Data {
 	s.Require().NoError(err)
 	raging, err := (&conditions.RagingCondition{
 		CharacterID: longRestBarbarianID,
-		DamageBonus: 2,
-		Level:       5,
 		Source:      "dnd5e:features:rage",
 	}).ToJSON()
 	s.Require().NoError(err)
@@ -353,7 +351,7 @@ func (s *LongRestTestSuite) barbarian() *character.Data {
 			abilities.STR: 18, abilities.DEX: 14, abilities.CON: 16,
 			abilities.INT: 8, abilities.WIS: 12, abilities.CHA: 10,
 		},
-		HitPoints: 0, MaxHitPoints: 55, ArmorClass: 15,
+		HitPoints: 0, MaxHitPoints: 55,
 		DeathSaveState: &saves.DeathSaveState{Successes: 2, Failures: 1, Dead: true},
 		Resources: map[coreResources.ResourceKey]character.RecoverableResourceData{
 			resources.HitDice:     {Current: 0, Maximum: 5, ResetType: coreResources.ResetLongRest},

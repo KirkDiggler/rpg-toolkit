@@ -144,6 +144,23 @@ type Input struct {
 	// default.
 	Equipment encounter.EquipmentWithConditions
 
+	// Sheets reports each member's speed, attacks and targeting from its
+	// sheet. REQUIRED.
+	//
+	// Carried, never consulted, for exactly the reason Sight and Equipment
+	// above are, and by a nameable mechanism: the composition asks it only
+	// when it paces a walk on the world clock, budgets a driven turn, builds a
+	// driver's view or tests the `enemy: reach` band — and its load asks
+	// nothing. This package loads a world and reads it back out as data, so
+	// none of those is reached here.
+	//
+	// The composition refuses to load without one (encounter.ErrNoSheets,
+	// rpg-project#538), and an answer invented here would be worse than any
+	// default: the composition stores no speed or reach any more, so a number
+	// this package made up would be the only one it had. The session owns the
+	// sheets and answers from them; it is handed over.
+	Sheets encounter.Sheets
+
 	// Roller reconstitutes runtime dice dependencies for effects that roll when
 	// triggered rather than when loaded — Character conditions such as Great
 	// Weapon Fighting and Monster traits such as Undead Fortitude. REQUIRED.
@@ -224,6 +241,9 @@ func (in *Input) Validate() error {
 	}
 	if in.Equipment == nil {
 		return ErrNoEquipment
+	}
+	if in.Sheets == nil {
+		return ErrNoSheets
 	}
 	if in.TurnDriver == nil {
 		return ErrNoTurnDriver
@@ -378,6 +398,7 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		Standing:   in.Standing,
 		Sight:      in.Sight,
 		Equipment:  in.Equipment,
+		Sheets:     in.Sheets,
 		TurnDriver: in.TurnDriver,
 		// The concealment capabilities (rpg-toolkit#1378), handed over exactly
 		// as supplied: nil stays nil, so a plain world loads untouched and a

@@ -52,6 +52,16 @@ var (
 	// (rpg-toolkit#1615).
 	ErrNoEquipment = errors.New("resolution: no equipment capability")
 
+	// ErrNoSheets indicates an interaction given no way to find out each
+	// member's speed, attacks and targeting. Carried rather than computed for
+	// [ErrNoSight]'s reason: the composition asks it only while pacing,
+	// budgeting a turn, building a driver's view or testing reach, and nothing
+	// on this package's load-act-save path reaches those. Refused rather than
+	// defaulted because the composition no longer holds a copy of any of them
+	// (rpg-project#538): a speed answered here would be invented, and zero is
+	// a real speed, not an absent one.
+	ErrNoSheets = errors.New("resolution: no sheets capability")
+
 	// ErrNoTurnDriver indicates an interaction given no way to decide what an
 	// unplayed member does when a fight's clock lands on their turn. The
 	// composition requires one to load at all, the same way it requires an

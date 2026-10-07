@@ -71,12 +71,8 @@ func (s *EffectiveACTestSuite) armoredHero(conds ...json.RawMessage) *character.
 			abilities.WIS: 12,
 			abilities.CHA: 8,
 		},
-		HitPoints:    14,
-		MaxHitPoints: 14,
-		// The flat sheet number, deliberately DIFFERENT from what the armor
-		// and the fighting style compute. If the strike reads this, the tests
-		// below fail with a number that says so.
-		ArmorClass:       10,
+		HitPoints:        14,
+		MaxHitPoints:     14,
 		ProficiencyBonus: 2,
 		Inventory: []character.InventoryItemData{
 			{Type: shared.EquipmentTypeArmor, ID: string(armor.ChainMail), Quantity: 1},
@@ -98,7 +94,7 @@ func (s *EffectiveACTestSuite) defenseStyle() json.RawMessage {
 }
 
 func (s *EffectiveACTestSuite) world() encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -120,7 +116,7 @@ func (s *EffectiveACTestSuite) biteAt(hero *character.Data, roll int) StrikeOutc
 	data := monsters.NewWolf(wolfID).ToData()
 	attack := data.Actions[0]
 
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
 		World:        s.world(),
 		Participants: []Participant{{Character: hero}, {Monster: data}},
 		Machine: NewStrike(&StrikeInput{
@@ -142,9 +138,9 @@ func (s *EffectiveACTestSuite) biteAt(hero *character.Data, roll int) StrikeOutc
 //
 // No armor on purpose: Unarmored Defense only applies when unarmored, so the
 // whole number has to come from the sheet's own ability scores through the AC
-// chain. DEX 14 (+2) and CON 14 (+2) put the answer at 10+2+2 = 14, and the
-// flat ArmorClass is 10 so that reading the sheet reports a number that says
-// so.
+// chain. DEX 14 (+2) and CON 14 (+2) put the answer at 10+2+2 = 14. The sheet
+// stores no armour class at all (rpg-project#538), so the fold is the only
+// place the number can come from.
 func (s *EffectiveACTestSuite) unarmoredBarbarian(conds ...json.RawMessage) *character.Data {
 	return &character.Data{
 		ID:       heroID,
@@ -163,7 +159,6 @@ func (s *EffectiveACTestSuite) unarmoredBarbarian(conds ...json.RawMessage) *cha
 		},
 		HitPoints:        14,
 		MaxHitPoints:     14,
-		ArmorClass:       10,
 		ProficiencyBonus: 2,
 		Conditions:       conds,
 	}
@@ -223,13 +218,14 @@ func (s *EffectiveACTestSuite) TestUnarmoredDefenseDecidesTheHit() {
 
 // THE PROVING TEST. Worn armor reaches the strike.
 //
-// Chain mail is AC 16 with no DEX contribution. The sheet's flat ArmorClass
-// says 10. If the strike measured against the flat number this reports 10.
+// Chain mail is AC 16 with no DEX contribution. The sheet stores no armour
+// class (rpg-project#538); unarmoured, this hero folds to 10 + DEX 2 = 12, so a
+// strike that missed the armour reports 12.
 func (s *EffectiveACTestSuite) TestWornArmorReachesTheStrike() {
 	outcome := s.biteAt(s.armoredHero(), 12)
 
 	s.Require().Equal(16, outcome.TargetAC,
-		"chain mail's 16, not the sheet's flat 10")
+		"chain mail's 16, not the unarmoured 12")
 }
 
 // AND THE ONE THAT MATTERS: a fighting style that folds onto the AC chain
@@ -270,7 +266,7 @@ func (s *EffectiveACTestSuite) TestAMonsterTargetStillReportsItsStatBlockAC() {
 	second := monsters.NewWolf(secondWolfID).ToData()
 	attack := data.Actions[0]
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -283,7 +279,7 @@ func (s *EffectiveACTestSuite) TestAMonsterTargetStillReportsItsStatBlockAC() {
 	})
 	s.Require().NoError(err)
 
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
 		World:        enc.ToData(),
 		Participants: []Participant{{Monster: data}, {Monster: second}},
 		Machine: NewStrike(&StrikeInput{

@@ -66,7 +66,12 @@ which part is [`../CLAUDE.md`](../CLAUDE.md).
   execution frame from authoritative state — and one strike builds it once,
   at its Sanctuary step, and hands it to the ward check, the attack chain, the
   offers and the damage fold (rpg-project#520). Both frames say what members
-  hold and who sees whom; information knows only what was sighted.
+  hold and who sees whom; information knows only what was sighted. Both carry
+  the actor's class levels from the actor's own sheet, asked as the frame is
+  built (rpg-project#538): a class-scaled rule reads its level there, never
+  from a copy on an effect. A contest's damage frame carries the
+  instigator's, unknown when it has no sheet in the cast, because nothing of
+  its own is attached to read them.
 
 ## What it must never learn
 
@@ -107,9 +112,9 @@ outcome or the pose, the hooks, and the concentration checks and breaks. No
 runtime object crosses either way.
 
 It ASKS the caller for everything else, and the `Input` fields say so in their
-own godoc: `Standing`, `Sight`, `TurnDriver`, `CheckResolver`, `Witness` are
-**carried, never consulted** — handed to the composition so a world can be
-loaded at all. `Initiative` likewise. `Roller` is REQUIRED and
+own godoc: `Standing`, `Sight`, `Equipment`, `Sheets`, `TurnDriver`,
+`CheckResolver`, `Witness` are **carried, never consulted** — handed to the
+composition so a world can be loaded at all. `Initiative` likewise. `Roller` is REQUIRED and
 never defaulted (rpg-toolkit#1033): a silent default is unreproducible dice in a
 result that looks fine.
 
