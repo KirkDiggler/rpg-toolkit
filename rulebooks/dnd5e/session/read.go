@@ -652,7 +652,7 @@ func (m *Manager) loadWorld(ctx context.Context, data *SessionData) (*encounter.
 
 	enc, _, _, err := m.loadWorldWithBaseline(
 		ctx, data, encounter.RefusingStriker{}, encounter.RefusingMover{}, encounter.RefusingAnnouncer{},
-		&sightSeam{}, refusingCheckResolver{}, refusingWitness{},
+		&sightSeam{}, encounter.RefusingCheckResolver{}, encounter.NobodyPerceives{},
 		// The plain seam, not a compelled driver. A read advances no clock —
 		// the three refusing capabilities above are what says so — and a
 		// compelled driver here would have no scope to save the condition an
@@ -751,11 +751,12 @@ func (m *Manager) loadWorldWithBaseline(
 		// indistinguishable from the boundary that never got published.
 		Announcer: announcer,
 		// The concealment pair, caller-chosen the same way: real seams
-		// bound to a write verb's scope, or the refusing pair for a read
-		// that never rolls a check or refreshes sight. Supplied non-nil
-		// either way — the composition requires them exactly when the
-		// field carries concealed structure, and a stand-in that errors at
-		// use is how a read path fails closed.
+		// bound to a write verb's scope, or the composition's own
+		// stand-ins for a read that never rolls a check or refreshes sight
+		// (encounter.RefusingCheckResolver, encounter.NobodyPerceives).
+		// Supplied non-nil either way — the composition requires them
+		// exactly when the field carries concealed structure. The witness
+		// is asked only inside a sight refresh, which no read runs.
 		CheckResolver: resolver,
 		Witness:       witness,
 	})

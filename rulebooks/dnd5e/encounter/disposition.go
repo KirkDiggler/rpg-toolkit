@@ -52,7 +52,8 @@ func pairOf(a, b FactionID) factionPair {
 // String renders the pair the way a refusal names it.
 func (p factionPair) String() string { return p.a + " and " + p.b }
 
-// knownStance reports whether a word is one of the closed [Stance] set.
+// knownStance reports whether a word is one of the closed AUTHORABLE [Stance]
+// set. [StanceNone] is deliberately outside it: no side is not a posture.
 func knownStance(s Stance) bool {
 	switch s {
 	case StanceHostile, StanceNeutral, StanceAllied:

@@ -282,6 +282,20 @@ func (s *FrameTestSuite) frozenOpportunity(frozen json.RawMessage) any {
 	return blob["opportunity"]
 }
 
+// refusesAsVersionTwo rewrites a frozen strike to version 2 — the build that
+// froze no Opportunity — and asserts the resume refuses it, rather than
+// reading the missing flag as a swing on its own turn.
+func (s *FrameTestSuite) refusesAsVersionTwo(frozen json.RawMessage) {
+	var blob map[string]any
+	s.Require().NoError(json.Unmarshal(frozen, &blob))
+	blob["version"] = 2
+	delete(blob, "opportunity")
+	old, err := json.Marshal(blob)
+	s.Require().NoError(err)
+	_, err = NewStrikeResumed(&StrikeResumeInput{Frozen: old, Answer: OfferKeep, Roller: &actionRoller{}})
+	s.Require().ErrorIs(err, ErrBadFrozen, "a version-2 strike cannot resume as Opportunity Known(false)")
+}
+
 // TestEveryFreezeCarriesOpportunity: an opportunity strike that pauses at any
 // of its three freeze points — a reaction before the roll, an offer after it,
 // a reaction after the hit — writes the flag into the blob it freezes, so the
@@ -299,6 +313,7 @@ func (s *FrameTestSuite) TestEveryFreezeCarriesOpportunity() {
 		s.Require().NotNil(out.Posed)
 		s.Require().True(out.Posed.BeforeRoll, "precondition: the pre-roll reaction posed")
 		s.Equal(true, s.frozenOpportunity(out.Posed.Frozen))
+		s.refusesAsVersionTwo(out.Posed.Frozen)
 	})
 
 	s.Run("after the roll", func() {
@@ -310,6 +325,7 @@ func (s *FrameTestSuite) TestEveryFreezeCarriesOpportunity() {
 		s.Require().NotNil(out.Posed)
 		s.Require().False(out.Posed.BeforeRoll, "precondition: the post-roll offer posed")
 		s.Equal(true, s.frozenOpportunity(out.Posed.Frozen))
+		s.refusesAsVersionTwo(out.Posed.Frozen)
 	})
 
 	s.Run("after the hit", func() {
@@ -332,6 +348,9 @@ func (s *FrameTestSuite) TestEveryFreezeCarriesOpportunity() {
 		s.Require().NotNil(out.Posed)
 		s.Require().NotNil(out.Posed.SettledStrike, "precondition: the post-hit reaction posed")
 		s.Equal(true, s.frozenOpportunity(out.Posed.Frozen))
+		s.refusesAsVersionTwo(out.Posed.Frozen)
+		s.Equal(contributions.Frame{}, out.Posed.SettledStrike.Folded.Frame,
+			"the settled strike a pose reports carries no execution frame")
 	})
 }
 
@@ -347,4 +366,24 @@ func (s *FrameTestSuite) TestInformationOpportunityIsKnownFalse() {
 	s.Require().NoError(err)
 
 	s.Equal(contributions.Known(false), out.Frame.Action.Opportunity)
+}
+
+// TestBaseDamageReadsTheFrame: base damage takes the ability, its modifier
+// and the off hand from the frame's action facts, and refuses a frame that
+// leaves any of them unknown rather than guessing.
+func (s *FrameTestSuite) TestBaseDamageReadsTheFrame() {
+	held := validMeleeDefinition()
+	held.Attack.Ability = &combatActions.AbilityContribution{Ability: abilities.DEX, Modifier: 3}
+	held.Attack.IsOffHandAttack = true
+	action := attackActionFacts(held.Attack, false)
+
+	ability, modifier, offHand, err := baseDamageFacts(action)
+	s.Require().NoError(err)
+	s.Equal(abilities.DEX, ability)
+	s.Equal(3, modifier)
+	s.True(offHand)
+
+	action.OffHandAttack = contributions.Unknown[bool]()
+	_, _, _, err = baseDamageFacts(action)
+	s.ErrorIs(err, contributions.ErrRuleCannotAnswer)
 }

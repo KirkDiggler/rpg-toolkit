@@ -40,7 +40,7 @@ const doomKey = "boss-down"
 // sight — with the wolf's death declared as an ending. Not the shared scene()
 // fixture, because that one hard-codes its endings and endings are what this
 // suite is about.
-func (s *MemberDownSuite) doomed(standing encounter.Standing) *encounter.Encounter {
+func (s *MemberDownSuite) doomed(standing encounter.StandingWithParticipation) *encounter.Encounter {
 	s.T().Helper()
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{

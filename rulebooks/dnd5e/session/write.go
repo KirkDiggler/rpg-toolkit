@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -537,7 +538,7 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 			return nil, saveErrorAfterWrites(scope, aggregate,
 				fmt.Errorf("saving character: %w", err))
 		}
-		scope.written = append(scope.written, aggregate)
+		scope.noteCharacterWritten(in.Member)
 		record = resolved.Character
 	}
 
@@ -1252,7 +1253,6 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string, extraMembe
 	scope.areaStoryBefore = enc.WorldView().SightAreas
 	scope.baseline = baseline
 	scope.standing = standing
-	scope.npcConditionsAtOpen = npcConditionKeys(data)
 	if err := m.prepareExploration(ctx, scope, extraMembers...); err != nil {
 		return nil, err
 	}
@@ -1346,11 +1346,18 @@ type writeScope struct {
 	// one verb.
 	standing standingSeam
 
-	// npcConditionsAtOpen is each monster sheet's conditions when this verb
-	// opened, keyed for comparison, read from the session record this verb
-	// already holds (no repository read). See
-	// [Manager.recheckChangedConditions].
-	npcConditionsAtOpen map[string]string
+	// sheetsWritten is every character this verb saved, by member ID — the
+	// members [Manager.recheckChangedConditions] treats as touched. Recorded
+	// by [writeScope.noteCharacterWritten] beside the report's own entry, so
+	// the report's text is never read back as an event.
+	sheetsWritten map[encounter.MemberID]bool
+
+	// npcConditionsBefore is a monster sheet's conditions as they stood
+	// before this verb first replaced that sheet, fingerprinted for
+	// comparison — recorded by [writeScope.replaceMonsterSheet], and only for
+	// the monsters this verb wrote, so a verb that touches no monster keys
+	// none. See [Manager.recheckChangedConditions].
+	npcConditionsBefore map[encounter.MemberID]string
 
 	// driver is THIS VERB's turn driver, resolved once by
 	// [Manager.resolveTurnDriver] before the world was loaded and read by
@@ -1431,6 +1438,54 @@ type writeScope struct {
 // actor.
 func (s *writeScope) deliveredSeq(member string, seq uint64) uint64 {
 	return s.numbers.deliveredSeq(member, seq)
+}
+
+// noteCharacterWritten records that this verb made a character's sheet
+// durable: once in the report ([writeScope.written]), and once as a touched
+// member ([writeScope.sheetsWritten]).
+//
+// A second save of the SAME sheet — a killing swing's own saveDirty, then the
+// sheet readied and saved again for something later in the same verb — writes
+// the newer state but must not duplicate the NAME in the report: a caller
+// reading Written to know what landed should see one entry per aggregate, not
+// a count of how many times it was touched (Copilot's own finding on PR
+// #1222).
+func (s *writeScope) noteCharacterWritten(id string) {
+	if s.sheetsWritten == nil {
+		s.sheetsWritten = make(map[encounter.MemberID]bool)
+	}
+	s.sheetsWritten[encounter.MemberID(id)] = true
+	aggregate := "character:" + id
+	for _, written := range s.written {
+		if written == aggregate {
+			return
+		}
+	}
+	s.written = append(s.written, aggregate)
+}
+
+// replaceMonsterSheet puts a monster's changed sheet into the session record
+// and marks the record touched. The first time a verb replaces a given
+// monster's sheet, the conditions it held until then are fingerprinted, so
+// commit can tell whether this verb changed them. A sheet the record does not
+// hold is not added: only a member already placed can have been resolved.
+func (s *writeScope) replaceMonsterSheet(dirty *monster.Data) {
+	for i := range s.data.NPCs {
+		if s.data.NPCs[i].ID != dirty.ID {
+			continue
+		}
+		id := encounter.MemberID(dirty.ID)
+		if _, seen := s.npcConditionsBefore[id]; !seen {
+			if s.npcConditionsBefore == nil {
+				s.npcConditionsBefore = make(map[encounter.MemberID]string)
+			}
+			s.npcConditionsBefore[id] = conditionFingerprint(
+				seenConditions(s.data.NPCs[i].ID, s.data.NPCs[i].Conditions))
+		}
+		s.data.NPCs[i] = *dirty
+		s.touched = true
+		return
+	}
 }
 
 // adopt replaces the scope's encounter with one loaded from a world that came
@@ -1520,22 +1575,16 @@ func (m *Manager) adopt(ctx context.Context, scope *writeScope, world encounter.
 func (m *Manager) saveCharacterRecord(
 	ctx context.Context, scope *writeScope, data *character.Data,
 ) error {
-	aggregate := "character:" + data.ID
 	if err := m.characters.SaveCharacter(ctx, data); err != nil {
 		return &SaveError{
 			Report: SaveReport{
 				Written: append([]string(nil), scope.written...),
-				Failed:  []string{aggregate},
+				Failed:  []string{"character:" + data.ID},
 			},
 			Err: fmt.Errorf("saving character: %w", err),
 		}
 	}
-	for _, written := range scope.written {
-		if written == aggregate {
-			return nil
-		}
-	}
-	scope.written = append(scope.written, aggregate)
+	scope.noteCharacterWritten(data.ID)
 	return nil
 }
 

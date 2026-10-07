@@ -125,9 +125,11 @@ func seenConditions(member string, raw []json.RawMessage) *encounter.ConditionSe
 	return set
 }
 
-// conditionKey is one member's holdings as a comparable string: its sorted
-// addresses, or a marker no address can spell when nothing was observed.
-func conditionKey(set *encounter.ConditionSet) string {
+// conditionFingerprint is one member's holdings as a comparable string: its
+// sorted addresses, or a marker no address can spell when nothing was
+// observed. Named apart from [encounter.ConditionKey], which is ONE held
+// address; this is a member's whole set, flattened for comparison only.
+func conditionFingerprint(set *encounter.ConditionSet) string {
 	if set == nil {
 		return "\x00unobserved"
 	}
@@ -139,16 +141,6 @@ func conditionKey(set *encounter.ConditionSet) string {
 	return strings.Join(parts, "\x1e")
 }
 
-// npcConditionKeys keys every monster sheet's conditions in the session
-// record, which a verb already holds: no repository is read.
-func npcConditionKeys(data *SessionData) map[string]string {
-	keys := make(map[string]string, len(data.NPCs))
-	for i := range data.NPCs {
-		keys[data.NPCs[i].ID] = conditionKey(seenConditions(data.NPCs[i].ID, data.NPCs[i].Conditions))
-	}
-	return keys
-}
-
 // recheckChangedConditions is condition freshness (rpg-project#520, R19): a
 // CHANGE to a member's conditions refreshes the sightings of that member at
 // commit, the same way an equipment change does through [Manager.Recheck],
@@ -157,8 +149,11 @@ func npcConditionKeys(data *SessionData) map[string]string {
 // # It is an event, not a standing diff
 //
 // Only members this verb touched can have changed: a player whose sheet the
-// verb wrote (scope.written), or a monster whose sheet's conditions differ
-// from when the verb opened. A member the verb never touched is never
+// verb wrote ([writeScope.sheetsWritten]), or a monster whose sheet the verb
+// replaced with different conditions than it held before
+// ([writeScope.npcConditionsBefore]). Both are recorded where the write
+// happens; nothing is keyed at the verb's open, and a monster this verb never
+// wrote is never fingerprinted. A member the verb never touched is never
 // compared, so a sighting that is legitimately stale — a watcher who cannot
 // see the member now, or a change no verb declared — draws no re-look, no
 // beat and no sheet read on any later commit. For each touched member, what
@@ -177,15 +172,14 @@ func npcConditionKeys(data *SessionData) map[string]string {
 // Accepted cost: every condition change a watcher can see sends that watcher a
 // sighting "changed" beat naming the member — never the condition.
 func (m *Manager) recheckChangedConditions(scope *writeScope) error {
-	touched := make(map[encounter.MemberID]bool)
-	for _, written := range scope.written {
-		if id, ok := strings.CutPrefix(written, "character:"); ok {
-			touched[encounter.MemberID(id)] = true
-		}
+	touched := make(map[encounter.MemberID]bool, len(scope.sheetsWritten))
+	for id := range scope.sheetsWritten {
+		touched[id] = true
 	}
-	for id, key := range npcConditionKeys(scope.data) {
-		if before, ok := scope.npcConditionsAtOpen[id]; ok && before != key {
-			touched[encounter.MemberID(id)] = true
+	for id, before := range scope.npcConditionsBefore {
+		if sheet, found := npcSheet(scope.data, string(id)); found &&
+			conditionFingerprint(seenConditions(sheet.ID, sheet.Conditions)) != before {
+			touched[id] = true
 		}
 	}
 	if len(touched) == 0 {
@@ -224,7 +218,7 @@ func (m *Manager) recheckChangedConditions(scope *writeScope) error {
 			if !isTouched || seen.Conditions == nil || stale[seen.ID] {
 				continue
 			}
-			if conditionKey(seen.Conditions) != conditionKey(now) {
+			if conditionFingerprint(seen.Conditions) != conditionFingerprint(now) {
 				stale[seen.ID] = true
 			}
 		}

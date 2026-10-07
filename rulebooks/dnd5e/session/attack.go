@@ -1162,13 +1162,7 @@ func (m *Manager) saveDirty(ctx context.Context, scope *writeScope, out *resolut
 		if dirty == nil {
 			continue
 		}
-		for i := range scope.data.NPCs {
-			if scope.data.NPCs[i].ID == dirty.ID {
-				scope.data.NPCs[i] = *dirty
-				scope.touched = true
-				break
-			}
-		}
+		scope.replaceMonsterSheet(dirty)
 	}
 	if out.SightAreasChanged {
 		if err := scope.enc.ReplaceSightAreas(out.World.SightAreas); err != nil {

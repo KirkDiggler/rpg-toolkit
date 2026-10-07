@@ -2,12 +2,13 @@ package conditions_test
 
 import (
 	"context"
+	"testing"
+
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/stretchr/testify/suite"
-	"testing"
 )
 
 type ShieldOfFaithSuite struct{ suite.Suite }

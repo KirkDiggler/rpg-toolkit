@@ -58,10 +58,10 @@ type Conditions interface {
 //
 // It rides the Equipment value rather than adding a field for the reason
 // [StandingWithParticipation] rides Standing: both answer a sighting fact from
-// the same sheets, and the field stays source-compatible for every caller that
-// constructs an encounter. NewEncounter and LoadEncounter refuse an Equipment
-// without it (ErrNoConditions) — at the door, never defaulted, because "nobody
-// holds anything" is testimony and not an absence of it.
+// the same sheets. The Equipment fields of SetupInput and LoadEncounterInput
+// are typed EquipmentWithConditions, so an Equipment without it does not
+// compile (rpg-toolkit#1958) — never defaulted, because "nobody holds
+// anything" is testimony and not an absence of it.
 type EquipmentWithConditions interface {
 	Equipment
 	Conditions

@@ -77,12 +77,12 @@ func (m *pausingThenDroppingMover) Move(
 // walkingScene builds a one-room fight where the goblin is asked to walk a
 // three-cell path away from alice — the shape every scene in this suite
 // needs, differing only in its Mover and its Standing.
-func (s *PauseTestSuite) walkingScene(mover encounter.Mover, standing encounter.Standing) *encounter.Encounter {
+func (s *PauseTestSuite) walkingScene(mover encounter.Mover, standing encounter.StandingWithParticipation) *encounter.Encounter {
 	return s.sceneWithPath(mover, standing, []spatial.Position{cellAt(5, 2), cellAt(4, 2), cellAt(3, 2)})
 }
 
 func (s *PauseTestSuite) sceneWithPath(
-	mover encounter.Mover, standing encounter.Standing, path []spatial.Position,
+	mover encounter.Mover, standing encounter.StandingWithParticipation, path []spatial.Position,
 ) *encounter.Encounter {
 	return s.sceneWithDriver(mover, standing, &scriptedDriver{
 		intents: []encounter.TurnIntent{encounter.Move{Path: path}},
@@ -90,7 +90,7 @@ func (s *PauseTestSuite) sceneWithPath(
 }
 
 func (s *PauseTestSuite) sceneWithDriver(
-	mover encounter.Mover, standing encounter.Standing, driver encounter.TurnDriver,
+	mover encounter.Mover, standing encounter.StandingWithParticipation, driver encounter.TurnDriver,
 ) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
@@ -170,7 +170,7 @@ func (s *PauseTestSuite) windowBeat(enc *encounter.Encounter, audience encounter
 }
 
 // reload round-trips an encounter through the storage boundary.
-func (s *PauseTestSuite) reload(enc *encounter.Encounter, mover encounter.Mover, standing encounter.Standing) *encounter.Encounter {
+func (s *PauseTestSuite) reload(enc *encounter.Encounter, mover encounter.Mover, standing encounter.StandingWithParticipation) *encounter.Encounter {
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: encounter.UnobservedEquipment{}, Standing: standing, Initiative: orderAsGiven{},
@@ -568,7 +568,7 @@ func (s *PauseTestSuite) TestAResumedWalkContinuesFromTheReloadedTurn() {
 // routedWalkingScene is walkingScene with a Routed intent instead of a Move:
 // alice at [2,2] and the goblin at [6,2], compelled to approach her.
 func (s *PauseTestSuite) routedWalkingScene(
-	mover encounter.Mover, standing encounter.Standing, driver encounter.TurnDriver,
+	mover encounter.Mover, standing encounter.StandingWithParticipation, driver encounter.TurnDriver,
 ) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},

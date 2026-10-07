@@ -66,7 +66,7 @@ func (s *weaponEffectRulesSuite) TestRecklessAttackSkipsAnOpportunityAttack() {
 
 	for name, opportunity := range map[string]bool{"standard": false, "opportunity": true} {
 		s.Run(name, func() {
-			event := framedAttack(dnd5eEvents.AttackChainEvent{AttackerID: "rogue", TargetID: "goblin", IsMelee: true})
+			event := swungAttack(dnd5eEvents.AttackChainEvent{AttackerID: "rogue", TargetID: "goblin"}, swing{IsMelee: true})
 			event.Frame.Action.Opportunity = contributions.Known(opportunity)
 			answer := s.answer(reckless, event.Frame)
 			final, err := s.publishAttack(bus, event)
@@ -145,15 +145,14 @@ func (s *weaponEffectRulesSuite) TestGreatWeaponFightingLeavesAOneHandedSwingAlo
 	bus := events.NewEventBus()
 	gwf := NewFightingStyleGreatWeaponFightingCondition("rogue", nil)
 	s.Require().NoError(gwf.Apply(context.Background(), bus))
-	event := framedDamage(&dnd5eEvents.DamageChainEvent{
-		AttackerID: "rogue", TargetID: "goblin", IsMelee: true, TwoHanded: false,
-		WeaponRef: refs.Weapons.Longsword(),
+	event := swungDamage(&dnd5eEvents.DamageChainEvent{
+		AttackerID: "rogue", TargetID: "goblin",
 		Components: []dnd5eEvents.DamageComponent{{
 			Source:     dnd5eEvents.DamageSourceWeapon,
 			Properties: []damage.Property{damage.AddsAttackAbilityModifier},
 			Roll:       dnd5eEvents.RollComponent{Dice: testDiceTrace(8, 1, 2)},
 		}},
-	})
+	}, swing{IsMelee: true, TwoHanded: false, WeaponRef: refs.Weapons.Longsword()})
 
 	s.Require().NoError(s.publishDamage(bus, event))
 
@@ -270,7 +269,7 @@ func (s *weaponEffectRulesSuite) TestWeaponDamageHandlersRejectAZeroFrame() {
 			bus := events.NewEventBus()
 			s.Require().NoError(condition.Apply(context.Background(), bus))
 			event := &dnd5eEvents.DamageChainEvent{
-				AttackerID: "rogue", TargetID: "goblin", IsMelee: true, IsOffHandAttack: true, AbilityModifier: 3,
+				AttackerID: "rogue", TargetID: "goblin",
 				Components: []dnd5eEvents.DamageComponent{{
 					Source:     dnd5eEvents.DamageSourceWeapon,
 					Properties: []damage.Property{damage.AddsAttackAbilityModifier},
@@ -288,13 +287,13 @@ func (s *weaponEffectRulesSuite) TestWeaponDamageHandlersRejectAZeroFrame() {
 }
 
 // TestTwoWeaponFightingAddsTheAnswersModifier: the swing adds the number the
-// rule answered with — the frame's modifier — not a second copy on the event.
+// rule answered with — the frame's modifier, the only one there is.
 func (s *weaponEffectRulesSuite) TestTwoWeaponFightingAddsTheAnswersModifier() {
 	bus := events.NewEventBus()
 	twf := NewFightingStyleTwoWeaponFightingCondition("rogue")
 	s.Require().NoError(twf.Apply(context.Background(), bus))
 	event := &dnd5eEvents.DamageChainEvent{
-		AttackerID: "rogue", TargetID: "goblin", AbilityModifier: 99,
+		AttackerID: "rogue", TargetID: "goblin",
 		Components: []dnd5eEvents.DamageComponent{{
 			Source:     dnd5eEvents.DamageSourceWeapon,
 			Properties: []damage.Property{damage.AddsAttackAbilityModifier},

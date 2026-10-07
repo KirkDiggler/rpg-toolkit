@@ -105,7 +105,7 @@ func (s *ConcentrationKeeperSuite) TestAPrunedConditionIsUnsubscribed() {
 			Reason:       conditions.ConcentrationEndedRecast,
 		}))
 
-	s.Empty(loaded.GetConditions(), "dropped from the sheet")
+	s.Empty(authored(loaded), "dropped from the sheet")
 	s.Empty(s.damage("bard-1", 12).FollowUps,
 		"AND off the bus — a condition that keeps answering events was never really removed")
 }
@@ -162,16 +162,16 @@ func (s *ConcentrationKeeperSuite) TestTwoRealBaneOwnersRemoveOnlyTheirQualified
 			Reason: conditions.ConcentrationEndedRecast,
 		}))
 
-	s.Require().Len(target.GetConditions(), 1)
+	s.Require().Len(authored(target), 1)
 	after, err := target.DescribeRollContributions(&dnd5eEvents.DescribeRollContributionsInput{
 		Kind: dnd5eEvents.RollKindSavingThrow,
 	})
 	s.Require().NoError(err)
 	s.Require().Len(after.Contributions, 1)
 	s.Equal("bard-b", after.Contributions[0].Source.SourceID)
-	s.Empty(bardA.GetConditions())
-	s.Require().Len(bardB.GetConditions(), 1)
-	liveB := bardB.GetConditions()[0].(*conditions.ConcentratingCondition)
+	s.Empty(authored(bardA))
+	s.Require().Len(authored(bardB), 1)
+	liveB := authored(bardB)[0].(*conditions.ConcentratingCondition)
 	s.Equal(10, liveB.TurnEndsLeft, "handoff does not reset or consume the other owner's clock")
 	s.Equal([]dnd5eEvents.ConditionAddress{baneB.ConditionAddress()}, liveB.Children,
 		"A's source-qualified child removal does not alter B's bookkeeping")
@@ -224,11 +224,11 @@ func (s *ConcentrationKeeperSuite) TestLongRestRemovesOnlyTheQualifiedBaneOwnerA
 
 	s.Require().NoError(bardA.LongRest(s.ctx))
 
-	s.Empty(bardA.GetConditions(), "the qualified owner leaves its caster sheet")
+	s.Empty(authored(bardA), "the qualified owner leaves its caster sheet")
 	s.True(bardA.IsDirty())
-	s.Require().Len(target.GetConditions(), 1, "only A's qualified child leaves the recipient")
+	s.Require().Len(authored(target), 1, "only A's qualified child leaves the recipient")
 	s.True(target.IsDirty(), "the recipient persists its changed condition list")
-	s.Require().Len(bardB.GetConditions(), 1, "B's qualified owner is preserved")
+	s.Require().Len(authored(bardB), 1, "B's qualified owner is preserved")
 	s.False(bardB.IsDirty(), "B's untouched sheet remains clean")
 	liveB := bardB.GetConditions()[0].(*conditions.ConcentratingCondition)
 	s.Equal(10, liveB.TurnEndsLeft)
@@ -266,14 +266,14 @@ func (s *ConcentrationKeeperSuite) TestWrongBaneSourceDoesNotRemoveOrDirtyCharac
 		dnd5eEvents.ConditionRemovedEvent{
 			MemberID: "bard-1", ConditionRef: refs.Conditions.Baned().String(), SourceID: "bard-b",
 		}))
-	s.Require().Len(loaded.GetConditions(), 1)
+	s.Require().Len(authored(loaded), 1)
 	s.False(loaded.IsDirty(), "a mismatched source is an exact no-op")
 
 	s.Require().NoError(dnd5eEvents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx,
 		dnd5eEvents.ConditionRemovedEvent{
 			MemberID: "bard-1", ConditionRef: refs.Conditions.Baned().String(),
 		}))
-	s.Require().Len(loaded.GetConditions(), 1, "empty source is legacy identity, not a wildcard")
+	s.Require().Len(authored(loaded), 1, "empty source is legacy identity, not a wildcard")
 	s.False(loaded.IsDirty())
 }
 
@@ -289,7 +289,7 @@ func (s *ConcentrationKeeperSuite) TestASelfEndingConditionIsStillDroppedCleanly
 	// and calling its own Remove before the keeper hears anything.
 	s.Require().Len(s.attack("bard-1", "goblin-1").AdvantageSources, 1)
 
-	s.Empty(loaded.GetConditions())
+	s.Empty(authored(loaded))
 	s.Empty(s.attack("bard-1", "goblin-1").AdvantageSources)
 }
 
@@ -402,7 +402,7 @@ func (s *ConcentrationKeeperSuite) TestAHoldEndedByAFactStripsItsChildren() {
 			// hold as "last child left" and test the wrong path entirely.
 			// TestASelfEndingConditionIsStillDroppedCleanly is where the
 			// advantage itself is pinned.
-			s.Require().Len(loaded.GetConditions(), 2)
+			s.Require().Len(authored(loaded), 2)
 			s.Require().True(live.IsApplied())
 
 			// Exactly what resolution publishes: ONE removal, for the owner.
@@ -417,7 +417,7 @@ func (s *ConcentrationKeeperSuite) TestAHoldEndedByAFactStripsItsChildren() {
 			s.Equal(reason, ended[0].Reason)
 			s.Equal([]dnd5eEvents.ChildRef{child}, ended[0].Removed)
 
-			s.Empty(loaded.GetConditions(),
+			s.Empty(authored(loaded),
 				"the hold AND its child are off the sheet — a nested publish must not resurrect the child")
 			s.Empty(s.attack("bard-1", "goblin-1").AdvantageSources,
 				"and the child is off the bus too")

@@ -80,9 +80,12 @@ no rows.
 **What a member holds rides sightings (R16, R19).** The equipment seam also
 answers the composition's `Conditions` capability
 ([`conditions_seen.go`](./conditions_seen.go)), so each sighting snapshots the
-sighted member's conditions. At `commit`, any member a current sighting
-describes differently from their sheet is re-looked (`encounter.Recheck`), so a
-held row never outlives its condition.
+sighted member's conditions. At `commit`, a member this verb TOUCHED — a
+character whose sheet it saved, a monster whose sheet it replaced with
+different conditions, both carried on the `writeScope` — is re-looked
+(`encounter.Recheck`) when some current sighting describes it differently from
+its sheet, so a held row never outlives its condition. It is an event, not a
+standing diff: a member no verb touched is never compared.
 
 **The executors.** A declared action becomes a resolution machine here and
 nowhere else: `resolution.NewActivation` in [`activate.go`](./activate.go),

@@ -13,7 +13,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -37,9 +36,8 @@ type ProneConditionData struct {
 //     opportunity; shooting at someone lying down is not.
 //
 // The second rule reads the attacker→target distance from the attack's frame.
-// Distance is not on the attack event and cannot be inferred from it:
-// AttackChainEvent.IsMelee is not a proxy for "within 5 feet" in either
-// direction — a glaive is melee at ten feet, and a shortbow fired point-blank
+// Distance cannot be inferred from whether the attack is melee: the frame's
+// Melee fact is not a proxy for "within 5 feet" in either direction — a glaive is melee at ten feet, and a shortbow fired point-blank
 // is ranged at zero. Resolution measures it on the room's grid and puts it on
 // the frame; the rule, keyed by Prone's reference, is the one information asks
 // for a candidate (R17).
@@ -76,8 +74,7 @@ func (p *ProneCondition) attackRule() attackRollRule {
 		NotOwner:    "Prone affects only its holder's attacks",
 		OnlyAttacks: "Prone affects only attack rolls",
 		Applies:     "You are prone",
-		Benefit:     "Disadvantage on the attack roll",
-	}}
+	}, mode: contributions.AttackDisadvantage}
 }
 
 // Ref returns the canonical ref this condition names itself by — the same ref
@@ -220,8 +217,8 @@ func (p *ProneCondition) onAttackChain(
 	}
 }
 
-// attackingWhileProne imposes the prone creature's own disadvantage when its
-// attack rule applies — the same rule information asks. No geometry is
+// attackingWhileProne imposes the prone creature's own disadvantage as its
+// attack rule's answer says — the same rule information asks. No geometry is
 // involved: it applies to every attack it makes, at any range.
 func (p *ProneCondition) attackingWhileProne(
 	event dnd5eEvents.AttackChainEvent,
@@ -231,24 +228,11 @@ func (p *ProneCondition) attackingWhileProne(
 	if err != nil {
 		return c, err
 	}
-	if executed.Answer.Decision.Applicability != contributions.Applies {
-		return c, nil
-	}
-
-	modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
-		e.DisadvantageSources = append(e.DisadvantageSources, dnd5eEvents.AttackModifierSource{
-			SourceRef: refs.Conditions.Prone(),
-			SourceID:  p.CharacterID,
-			Reason:    "Prone attacker",
-		})
-		return e, nil
-	}
-
-	if err := c.Add(combat.StageConditions, "prone_attacker_disadvantage", modifyAttack); err != nil {
-		return c, rpgerr.Wrapf(err, "failed to add prone attacker disadvantage for character %s", p.CharacterID)
-	}
-
-	return c, nil
+	return applyAttackMode(&attackModeInput{
+		Name: "prone", Answer: executed.Answer, Chain: c,
+		SourceRef: refs.Conditions.Prone(), SourceID: p.CharacterID,
+		Label: fixedLabel("prone_attacker_disadvantage", "Prone attacker"),
+	})
 }
 
 // attackedWhileProne resolves the range split through the held rule:

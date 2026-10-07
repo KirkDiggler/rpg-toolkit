@@ -112,7 +112,7 @@ func (s *RecordCastSuite) TestContradictoryLaterMissRejectsWholeTransaction() {
 
 // scene keeps the skeleton behind a wall so first light does not form a fight;
 // cast tests need only a roster, a record, and an observable Standing.
-func (s *RecordCastSuite) scene(standing encounter.Standing) *encounter.Encounter {
+func (s *RecordCastSuite) scene(standing encounter.StandingWithParticipation) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: encounter.UnobservedEquipment{}, Standing: standing, Initiative: orderAsGiven{},

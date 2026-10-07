@@ -324,20 +324,7 @@ func (m *Manager) saveWalker(ctx context.Context, scope *writeScope, sheet *char
 		return &SaveError{Report: report, Err: fmt.Errorf("saving character: %w", err)}
 	}
 
-	// A second save of the SAME aggregate this call already reported — a
-	// killing swing's own saveDirty, then this sheet readied and saved again
-	// for something later in the same verb — writes the newer state (never
-	// stale, always correct) but must not duplicate the NAME in the report:
-	// a caller reading Written to know what landed should see one entry per
-	// aggregate, not a count of how many times it was touched (Copilot's own
-	// finding on PR #1222).
-	aggregate := "character:" + data.ID
-	for _, w := range scope.written {
-		if w == aggregate {
-			return nil
-		}
-	}
-	scope.written = append(scope.written, aggregate)
+	scope.noteCharacterWritten(data.ID)
 	return nil
 }
 
@@ -809,13 +796,7 @@ func (m *Manager) reconcileFogMembership(ctx context.Context, scope *writeScope)
 		}
 	}
 	for _, data := range out.DirtyMonsters {
-		for i := range scope.data.NPCs {
-			if scope.data.NPCs[i].ID == data.ID {
-				scope.data.NPCs[i] = *data
-				scope.touched = true
-				break
-			}
-		}
+		scope.replaceMonsterSheet(data)
 	}
 	return nil
 }

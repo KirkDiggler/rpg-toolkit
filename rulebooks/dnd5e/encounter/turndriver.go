@@ -143,6 +143,11 @@ type MonsterView struct {
 	// they drop (a deeds-channel holding, for one). A mind that reads
 	// testimony itself reads it here; the store stays the encounter's
 	// (rule A1), and nothing on this slice reaches it.
+	//
+	// STORED FORM, NOT DELIVERED FORM: a sight payload here carries the
+	// conditions the creature saw ([SightTestimony.Conditions]), which this
+	// module strips from every payload it hands a host to relay. These are
+	// for the mind; a host must never forward them to a client.
 	Holdings []perception.Holding
 
 	// At is the clock's high-water when this view was built: the stamp a

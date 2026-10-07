@@ -69,13 +69,6 @@ func (conditionsForAStranger) Conditions(members []encounter.MemberID) (map[enco
 	return out, nil
 }
 
-// handsOnly is an Equipment that does not answer Conditions.
-type handsOnly struct{}
-
-func (handsOnly) Equipment(members []encounter.MemberID) (map[encounter.MemberID]*encounter.HeldEquipment, error) {
-	return encounter.UnobservedEquipment{}.Equipment(members)
-}
-
 // heldSet builds an observed set. Its list is never nil, matching what decode
 // yields for an observed empty set.
 func heldSet(conditions ...encounter.ConditionKey) *encounter.ConditionSet {
@@ -106,7 +99,7 @@ func (s *sightingConditionsSuite) SetupTest() {
 
 func (s *sightingConditionsSuite) SetupSubTest() { s.SetupTest() }
 
-func (s *sightingConditionsSuite) setup(equipment encounter.Equipment) *encounter.SetupInput {
+func (s *sightingConditionsSuite) setup(equipment encounter.EquipmentWithConditions) *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Sight: s.sight, Equipment: equipment, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
@@ -124,7 +117,7 @@ func (s *sightingConditionsSuite) setup(equipment encounter.Equipment) *encounte
 	}
 }
 
-func (s *sightingConditionsSuite) loadInput(data encounter.EncounterData, equipment encounter.Equipment) *encounter.LoadEncounterInput {
+func (s *sightingConditionsSuite) loadInput(data encounter.EncounterData, equipment encounter.EquipmentWithConditions) *encounter.LoadEncounterInput {
 	return &encounter.LoadEncounterInput{
 		Data: data, Sight: s.sight, Equipment: equipment, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
@@ -282,18 +275,6 @@ func (s *sightingConditionsSuite) TestLegacyTestimonyLoadsAsNotObserved() {
 	g, ok := s.observed(loaded, goblin)
 	s.Require().True(ok)
 	s.Nil(g.Conditions, "testimony from before conditions existed says they were not observed")
-}
-
-func (s *sightingConditionsSuite) TestNewEncounterRefusesEquipmentWithoutConditions() {
-	enc, err := encounter.NewEncounter(s.setup(handsOnly{}))
-	s.Require().ErrorIs(err, encounter.ErrNoConditions)
-	s.Nil(enc)
-}
-
-func (s *sightingConditionsSuite) TestLoadRefusesEquipmentWithoutConditions() {
-	enc, err := encounter.LoadEncounter(s.loadInput(s.enc.ToData(), handsOnly{}))
-	s.Require().ErrorIs(err, encounter.ErrNoConditions)
-	s.Nil(enc)
 }
 
 func (s *sightingConditionsSuite) TestConditionsNowRefusesStrangerAndSkippedMember() {

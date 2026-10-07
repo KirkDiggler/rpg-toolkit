@@ -135,7 +135,7 @@ func (s *ragingHandlerSuite) fold(event *dnd5eEvents.DamageChainEvent) (*dnd5eEv
 
 func (s *ragingHandlerSuite) event(frame contributions.Frame) *dnd5eEvents.DamageChainEvent {
 	return &dnd5eEvents.DamageChainEvent{
-		AttackerID: "barb", TargetID: "goblin", AbilityUsed: abilities.STR, IsMelee: true,
+		AttackerID: "barb", TargetID: "goblin",
 		WeaponDamageType: damage.Slashing,
 		Components: []dnd5eEvents.DamageComponent{{
 			Source:     dnd5eEvents.DamageSourceWeapon,
@@ -146,12 +146,8 @@ func (s *ragingHandlerSuite) event(frame contributions.Frame) *dnd5eEvents.Damag
 	}
 }
 
-func (s *ragingHandlerSuite) TestRagingHandlerReadsFrameNotEventFields() {
-	event := s.event(barbarianFrame())
-	event.AbilityUsed = abilities.DEX
-	event.IsMelee = false
-
-	result, err := s.fold(event)
+func (s *ragingHandlerSuite) TestRagingHandlerAddsWhenFrameSaysStrengthMelee() {
+	result, err := s.fold(s.event(barbarianFrame()))
 
 	s.Require().NoError(err)
 	s.Require().Len(result.Components, 2, "the frame says Strength melee, so Rage adds")

@@ -156,14 +156,27 @@ func (m *Manager) StartSession(ctx context.Context, in *StartSessionInput) (*Sta
 
 // loadAuthored reconstitutes an authored world that no session holds yet.
 //
-// The capabilities are supplied over NO session record, which is the honest
-// answer at this moment rather than a shortcut: no session exists, so nothing
-// has been spawned and there are no session-scoped sheets to read. Real ones
-// are built anyway — capabilities are supplied, never defaulted, and handing
-// over a stand-in here would be a second answer to a question that has one.
-// The Striker is the construction-only one (rpg-project#254): a driven turn
-// reaching a world loaded here would be a bug in this package rather than
-// anything a caller did.
+// The capability set is the composition's own: [encounter.CompileOnlyLoad]
+// stands in every capability a load requires for a world loaded only to be
+// inspected or re-serialized — refusing initiative, driver, striker, mover,
+// announcer and check resolver, a witness that answers nobody — and this
+// package holds no copy of any of them (rpg-toolkit#1958 item 8). A capability
+// added to LoadEncounter is stood in there, and this call does not change.
+//
+// Four of them this package CAN answer for real, and does, overwriting the
+// stand-ins: Initiative, Standing, Sight and Equipment, read over NO session
+// record. That is the honest answer at this moment rather than a shortcut: no
+// session exists, so nothing has been spawned and there are no session-scoped
+// sheets to read. Real ones are installed anyway — a stand-in where a real
+// answer exists would be a second answer to a question that has one.
+//
+// Everything else stays refused because an authored world is loaded to be
+// inspected and re-serialized: no clock advances, no turn is driven, nobody
+// walks, no check is rolled. A host's driver source is not asked either — it
+// is asked about a session, and neither caller has one to give: StartSession
+// is proving a world loads BEFORE creating the session, and AtlasOf previews a
+// world nobody has started. AtlasOf answers the WHOLE truth for an authored
+// world — the author's own view — which is why it stays on the unscoped Atlas.
 //
 // Two callers, one load. [Manager.StartSession] proves a world can be
 // reconstituted before persisting it, and [Manager.AtlasOf] projects the map
@@ -179,43 +192,13 @@ func (m *Manager) loadAuthored(ctx context.Context, world *encounter.EncounterDa
 	if world == nil {
 		return nil, fmt.Errorf("nil world: %w", ErrInvalidWorld)
 	}
-	// Preserve the dual concrete capability while assigning it to encounter's
-	// compatibility-shaped Standing field.
 	standing := m.standingFor(ctx, nil, encounterDataKinds(worldMembers(*world)))
-	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:       *world,
-		Initiative: m.initiative,
-		Standing:   standing,
-		Sight:      &sightSeam{members: worldMembers(*world)},
-		Equipment:  equipmentBeside(standing),
-		// The REFUSING stand-in, for the reason the Striker below gives: an
-		// authored world is loaded to be inspected and re-serialized, so no
-		// clock advances and no turn is ever driven here. A compelled driver
-		// would also have no scope to save what an obeyed word left behind.
-		//
-		// It is a stand-in rather than a resolution because there is no
-		// session to name. A host's driver source is asked about one
-		// (rpg-toolkit#1734), and neither caller has one to give: StartSession
-		// is proving a world loads BEFORE creating the session — asking here
-		// would have the host mint a driver for a session that may turn out to
-		// exist already — and AtlasOf previews a world nobody has started at
-		// all.
-		TurnDriver: turnDriverSeam{driver: refusingTurnDriver{}},
-		Striker:    encounter.RefusingStriker{},
-		// An authored world is walked by nobody: it is loaded to be inspected
-		// and re-serialized. Same reasoning as the Striker above.
-		Mover: encounter.RefusingMover{},
-		// Authored worlds are loaded to be inspected and re-serialized, never
-		// driven — no clock advances here. Same reasoning as the Striker above.
-		Announcer: encounter.RefusingAnnouncer{},
-		// And the concealment pair: an authored world is never searched and
-		// never refreshes sight, so this package's refusing stand-ins hold
-		// the same line (conceal.go). AtlasOf deliberately answers the WHOLE
-		// truth for an authored world — the author's own view — which is
-		// why it stays on the unscoped Atlas.
-		CheckResolver: refusingCheckResolver{},
-		Witness:       refusingWitness{},
-	})
+	input := encounter.CompileOnlyLoad(*world)
+	input.Initiative = m.initiative
+	input.Standing = standing
+	input.Sight = &sightSeam{members: worldMembers(*world)}
+	input.Equipment = equipmentBeside(standing)
+	enc, err := encounter.LoadEncounter(input)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidWorld, err)
 	}

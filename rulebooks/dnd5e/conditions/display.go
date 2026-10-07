@@ -40,6 +40,12 @@ func DisplayFor(ref core.Ref) (Display, bool) {
 //
 // The existing Shield spell condition remains excluded because it is not
 // promoted into status projection; Baned is explicitly status-visible.
+//
+// A Detail is read by more than its holder: the holder's status view shows it,
+// and so does an attacker's target candidate when the target holds it
+// (R18). So an effect that bears on attacks against its holder — every ref
+// TargetBearingRefs lists — is described in reader-neutral third person
+// ("A prone creature's attacks…"), never in the holder's "you".
 var displayCatalog = map[string]Display{
 	refs.Conditions.Shillelagh().String(): {Name: "Shillelagh", Detail: "Selected held weapon: 1d8 magical bludgeoning; uses the better of Strength or spellcasting ability."},
 	refs.Conditions.InFog().String():      {Name: InFogName, Detail: "Inside Fog Cloud. Sight is blocked by the fog."},
@@ -56,7 +62,7 @@ var displayCatalog = map[string]Display{
 		Name:   "Raging",
 		Detail: "Adds your rage damage bonus to melee weapon attacks that use Strength. Also grants advantage on Strength-based skill checks and Strength saving throws, and resistance to bludgeoning, piercing, and slashing damage.",
 	},
-	refs.Conditions.RecklessAttack().String(): {Name: "Reckless Attack", Detail: "Your melee weapon attacks using Strength have advantage until your next turn, and attacks against you have advantage."},
+	refs.Conditions.RecklessAttack().String(): {Name: "Reckless Attack", Detail: "A reckless creature's melee weapon attacks using Strength have advantage until its next turn, and attacks against it have advantage."},
 	refs.Conditions.BrutalCritical().String(): {Name: "Brutal Critical", Detail: "Adds extra weapon damage dice when you score a critical hit."},
 
 	// Fighter (champion).
@@ -74,13 +80,13 @@ var displayCatalog = map[string]Display{
 	},
 
 	// Turn-based / combat-ability conditions.
-	refs.Conditions.Dodging().String():        {Name: "Dodging", Detail: "Attack rolls against you have disadvantage, and you have advantage on Dexterity saving throws."},
+	refs.Conditions.Dodging().String():        {Name: "Dodging", Detail: "Attack rolls against a dodging creature have disadvantage, and it has advantage on Dexterity saving throws."},
 	refs.Conditions.Disengaging().String():    {Name: "Disengaging"},
-	refs.Conditions.Hidden().String():         {Name: "Hidden", Detail: "Your attacks have advantage and attacks against you have disadvantage. Attacking ends it."},
+	refs.Conditions.Hidden().String():         {Name: "Hidden", Detail: "A hidden creature's attacks have advantage, and attacks against it have disadvantage. Attacking ends it."},
 	refs.Conditions.Helped().String():         {Name: "Helped", Detail: "Your next attack roll has advantage."},
 	refs.Conditions.Inspired().String():       {Name: InspiredName, Detail: "Holds a Bardic Inspiration die. After seeing your attack roll you may add it; the die is spent only when you take it."},
 	refs.Conditions.BladeWard().String():      {Name: BladeWardName},
-	refs.Conditions.GuidingBolt().String():    {Name: GuidingBoltName, Detail: "The next attack roll against you has advantage."},
+	refs.Conditions.GuidingBolt().String():    {Name: GuidingBoltName, Detail: "The next attack roll against the lit creature has advantage."},
 	refs.Conditions.TrueStrike().String():     {Name: TrueStrikeName, Detail: "Your next attack against the chosen target has advantage."},
 	refs.Conditions.ViciousMockery().String(): {Name: ViciousMockeryName, Detail: "Your next attack roll has disadvantage."},
 	refs.Conditions.Commanded().String():      {Name: CommandedName},
@@ -90,7 +96,7 @@ var displayCatalog = map[string]Display{
 		Name:   BlessedName,
 		Detail: "Adds 1d4 to attack rolls and saving throws. Multiple Bless effects do not add extra dice to the same roll.",
 	},
-	refs.Conditions.Prone().String():             {Name: "Prone", Detail: "Your attacks have disadvantage. Attacks against you have advantage from within 5 feet and disadvantage from farther away."},
+	refs.Conditions.Prone().String():             {Name: "Prone", Detail: "A prone creature's attacks have disadvantage; attacks against it from within 5 feet have advantage, otherwise disadvantage."},
 	refs.Conditions.OpportunityAttack().String(): {Name: "Opportunity Attack"},
 
 	// Standard conditions reachable by the four builds.
@@ -103,10 +109,10 @@ var displayCatalog = map[string]Display{
 	// rather than filed separately since it is a one-line addition to the
 	// exact catalog Resistance's own entry touches, for the same reason.
 	refs.Conditions.DivineFavor().String():     {Name: DivineFavorName, Detail: "Your weapon attacks deal an extra 1d4 radiant damage."},
-	refs.Conditions.FaerieFire().String():      {Name: FaerieFireName, Detail: "Attack rolls against you have advantage if the attacker can see you."},
+	refs.Conditions.FaerieFire().String():      {Name: FaerieFireName, Detail: "Attack rolls against an outlined creature have advantage if the attacker can see it."},
 	refs.Conditions.ShieldOfFaith().String():   {Name: ShieldOfFaithName},
 	refs.Conditions.Guided().String():          {Name: GuidedName},
 	refs.Conditions.Resistance().String():      {Name: ResistanceName},
-	refs.Conditions.Sanctuary().String():       {Name: SanctuaryName, Detail: "A creature that targets you must first succeed on a Wisdom saving throw. Making an attack ends the ward."},
+	refs.Conditions.Sanctuary().String():       {Name: SanctuaryName, Detail: "A creature that targets the warded creature must first succeed on a Wisdom saving throw. The ward ends if the warded creature attacks."},
 	refs.Conditions.SanctuaryImmune().String(): {Name: SanctuaryImmuneName},
 }

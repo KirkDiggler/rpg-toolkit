@@ -42,9 +42,8 @@
 // The composition holds no rules of its own that it could hold instead.
 // InitiativeRoller, Participation, and Sight are SUPPLIED at construction and
 // consulted during play, never defaulted (rpg-toolkit#1033). The constructor
-// fields retain their legacy Standing type, but the concrete value must satisfy
-// StandingWithParticipation or construction returns ErrNoParticipation; binary
-// Standing is never a fallback. Randomness, life-state participation and light
+// fields are typed StandingWithParticipation, so a binary Standing-only value
+// does not compile; binary Standing is never a fallback. Randomness, life-state participation and light
 // remain facts this module asks for rather than facts it knows (C1).
 //
 // Every member is on exactly one clock (R6). The world tick is the default —

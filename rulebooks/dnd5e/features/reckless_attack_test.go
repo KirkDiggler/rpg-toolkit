@@ -99,7 +99,6 @@ func (s *RecklessAttackTestSuite) TestActivate_PublishesConditionAppliedEvent() 
 	attackEvent := dnd5eEvents.AttackChainEvent{
 		AttackerID: s.character.GetID(),
 		TargetID:   "goblin-1",
-		IsMelee:    true,
 		Frame: contributions.Frame{
 			Actor:  s.character.GetID(),
 			Target: contributions.Known("goblin-1"),
