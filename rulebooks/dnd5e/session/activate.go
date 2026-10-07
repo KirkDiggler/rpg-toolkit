@@ -314,6 +314,9 @@ func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOut
 	}); err != nil {
 		return nil, fmt.Errorf("activate: %w", reportUnrecorded(scope, translate(err)))
 	}
+	if err := m.landAreas(scope.enc, scope, out); err != nil {
+		return nil, fmt.Errorf("activate: %w", reportUnrecorded(scope, err))
+	}
 
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {

@@ -462,7 +462,11 @@ func projectView(enc *encounter.Encounter, in *ViewInput) (*ViewOutput, error) {
 	if err != nil {
 		return nil, fmt.Errorf("view passage: %w", err)
 	}
-	out := projectSightings(holdings, rosterNames(roster), rosterKinds(roster), believedStances(enc, in.Member, roster))
+	stances, err := believedStances(enc, in.Member, roster)
+	if err != nil {
+		return nil, fmt.Errorf("view stance: %w", err)
+	}
+	out := projectSightings(holdings, rosterNames(roster), rosterKinds(roster), stances)
 	for i := range out {
 		passage, exists := passages[encounter.MemberID(out[i].Subject)]
 		if !exists {
@@ -797,8 +801,18 @@ func translate(err error) error {
 	switch {
 	case errors.Is(err, encounter.ErrTrimmed):
 		return fmt.Errorf("%w", ErrStoryTrimmed)
-	case errors.Is(err, encounter.ErrNoMember), errors.Is(err, encounter.ErrNotMember):
+	case errors.Is(err, encounter.ErrNotMember), errors.Is(err, encounter.ErrNoMember):
+		// ErrNotMember is a non-empty id the encounter does not hold, refused
+		// at every composition door (rpg-project#539) — this package's
+		// ErrNoMember, which has always meant exactly that. The composition's
+		// ErrNoMember is NOT only the empty id: its construction and load
+		// checks still raise it for a duplicate arrival and a roster that does
+		// not cohere. Mapping it to ErrNoMemberID would report a duplicate as
+		// an empty id, so it keeps the word it had until the composition
+		// splits those refusals; a verb's own door names an empty id first.
 		return fmt.Errorf("%w", ErrNoMember)
+	case errors.Is(err, encounter.ErrBadReach):
+		return fmt.Errorf("%w", ErrBadReach)
 	case errors.Is(err, encounter.ErrClosed):
 		return fmt.Errorf("%w", ErrClosed)
 	case errors.Is(err, encounter.ErrNoEnding):

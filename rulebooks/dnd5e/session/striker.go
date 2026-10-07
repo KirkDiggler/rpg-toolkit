@@ -140,12 +140,15 @@ func (s strikerSeam) Strike(
 		Roller:        &diceSeam{roller: s.m.dice},
 	})
 	if err != nil {
-		return fmt.Errorf("strike: %w", translateResolution(err))
+		return fmt.Errorf("strike: %w", translateAttack(err))
 	}
 
 	if out.Posed != nil {
 		if out.Posed.BeforeRoll || out.Posed.Sequence != nil {
 			if err := s.m.saveDirty(ctx, s.scope, out); err != nil {
+				return err
+			}
+			if err := s.m.landAreas(enc, s.scope, out); err != nil {
 				return err
 			}
 			p := pendingAttackWindowPayload{Attacker: string(attacker), Target: string(target), Definition: definition, Components: attackerData.Actions}
@@ -169,6 +172,9 @@ func (s strikerSeam) Strike(
 		if _, err := enc.Record(recordFor(in, *out.Posed.SettledStrike, definition, "", out)); err != nil {
 			return translate(err)
 		}
+		if err := s.m.landAreas(enc, s.scope, out); err != nil {
+			return err
+		}
 		if err := posePostHitWindow(s.scope, out.Posed); err != nil {
 			return err
 		}
@@ -190,10 +196,13 @@ func (s strikerSeam) Strike(
 		if _, err := enc.Record(recordFor(in, produced, definition, "", out)); err != nil {
 			return fmt.Errorf("strike: %w", translate(err))
 		}
-		return nil
+		return s.m.landAreas(enc, s.scope, out)
 
 	case resolution.SequenceOutcome:
-		return s.recordSequence(enc, in, produced, attackerData.Actions)
+		if err := s.recordSequence(enc, in, produced, attackerData.Actions); err != nil {
+			return err
+		}
+		return s.m.landAreas(enc, s.scope, out)
 
 	default:
 		return fmt.Errorf("strike: %w: strike produced %T", ErrInvalidWorld, out.Outcome)

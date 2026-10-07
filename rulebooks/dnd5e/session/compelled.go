@@ -263,6 +263,9 @@ func (d compelledDriver) obey(
 	if err := d.m.saveDirty(d.ctx, d.scope, out.Resolved); err != nil {
 		return nil, fmt.Errorf("compelled turn %q: %w", member, err)
 	}
+	if err := d.m.landAreas(d.scope.enc, d.scope, out.Resolved); err != nil {
+		return nil, fmt.Errorf("compelled turn %q: %w", member, err)
+	}
 	return out, nil
 }
 

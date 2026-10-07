@@ -142,7 +142,7 @@ func (m *Manager) answerPendingAttack(ctx context.Context, scope *writeScope, wi
 	world := scope.enc.WorldView()
 	out, err := resolution.Resolve(ctx, &resolution.Input{World: world, Participants: m.walkCast(ctx, scope, roster), Initiative: m.initiative, Standing: scope.standing, Sight: sheetsBeside(scope.standing), Equipment: equipmentBeside(scope.standing), Sheets: sheetsBeside(scope.standing), TurnDriver: scope.driver, CheckResolver: checkSeam{m: m, scope: scope}, Witness: witnessSeam{scope: scope}, Machine: machine, Roller: &diceSeam{roller: m.dice}})
 	if err != nil {
-		return nil, translateResolution(err)
+		return nil, translateAttack(err)
 	}
 	if err = m.adopt(ctx, scope, out.World); err != nil {
 		return nil, err
@@ -171,6 +171,9 @@ func (m *Manager) answerPendingAttack(ctx context.Context, scope *writeScope, wi
 		if err = posePendingAttackWindow(scope, out.Posed, p); err != nil {
 			return nil, err
 		}
+		if err = m.landAreas(scope.enc, scope, out); err != nil {
+			return nil, reportUnrecorded(scope, err)
+		}
 	} else {
 		switch produced := out.Outcome.(type) {
 		case resolution.MovementOutcome:
@@ -192,6 +195,9 @@ func (m *Manager) answerPendingAttack(ctx context.Context, scope *writeScope, wi
 			}
 		default:
 			return nil, fmt.Errorf("%w: resumed attack produced %T", ErrInvalidWorld, out.Outcome)
+		}
+		if err = m.landAreas(scope.enc, scope, out); err != nil {
+			return nil, reportUnrecorded(scope, err)
 		}
 		if err = m.resumeAfterLastAnswer(ctx, scope, p.Target, p.WalkPath); err != nil {
 			return nil, err

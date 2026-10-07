@@ -53,12 +53,8 @@ func knownCastCandidates(ctx context.Context, input *compileCastOfferInput, poli
 		}
 	}
 	sort.Strings(ids)
-	room, err := input.Encounter.Canvas()
-	if err != nil {
-		return nil, err
-	}
 	answers, err := resolution.KnownCreatureTargets(ctx, &resolution.KnownCreatureTargetsInput{
-		Room: room, Encounter: input.Encounter, CasterID: input.Member,
+		Encounter: input.Encounter, CasterID: input.Member,
 		Candidates: ids, Participants: input.Participants, RangeFeet: input.Definition.Cast.RangeFeet,
 		StaleTargetPolicy: resolution.StaleTargetPolicy(policy),
 	})

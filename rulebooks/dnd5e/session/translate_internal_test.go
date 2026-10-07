@@ -37,6 +37,7 @@ func TestTranslateLetsNoCompositionSentinelThrough(t *testing.T) {
 		{"trimmed story", encounter.ErrTrimmed, ErrStoryTrimmed},
 		{"empty member id", encounter.ErrNoMember, ErrNoMember},
 		{"not a member", encounter.ErrNotMember, ErrNoMember},
+		{"malformed reach", encounter.ErrBadReach, ErrBadReach},
 		{"closed encounter", encounter.ErrClosed, ErrClosed},
 		{"automatic discovery retires search", encounter.ErrSearchRetired, ErrSearchRetired},
 		{"undeclared ending", encounter.ErrNoEnding, ErrNoEnding},
@@ -140,7 +141,8 @@ func TestTranslateResolutionLetsNoResolutionSentinelThrough(t *testing.T) {
 		// before the strike runs, so this arm is the one that catches a
 		// combatant the cast turned out not to hold.
 		{"combatant not in the cast", resolution.ErrNoCombatant, ErrNoSheet},
-		{"target beyond delivery", resolution.ErrOutOfRange, ErrOutOfReach},
+		// Out of range on every verb but a swing, which translateAttack owns.
+		{"target beyond range", resolution.ErrOutOfRange, ErrOutOfRange},
 		// Driven for real in sentinels_test.go: a second swing in a turn that
 		// bought one. The PLAYER-facing arm, and the only one of the economy's
 		// three a caller can reach.

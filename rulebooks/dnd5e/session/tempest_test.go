@@ -56,7 +56,8 @@ func (s *CastSuite) TestFogCloudPublicCastPersistsWithoutDamageOrDice() {
 	s.Equal(areas, again)
 	raw, err := json.Marshal(s.characters.byID["cleric"].Conditions)
 	s.Require().NoError(err)
-	s.Contains(string(raw), refs.Conditions.InFog().String(), "membership persists through reload")
+	s.NotContains(string(raw), refs.Conditions.InFog().String(),
+		"membership is the encounter's answer; no sheet records it (rpg-project#539 R7)")
 }
 
 func (s *CastSuite) TestWrathPublicAttackReactPersistsWithoutRepeatingHit() {
@@ -262,23 +263,37 @@ func (s *CastSuite) TestFogMembershipFollowsPublicMovement() {
 	row := s.castRow(spells.FogCloud)
 	_, err := s.mgr.Cast(ctx, &session.CastInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Cell: &spatial.Position{X: 7, Y: 1}})
 	s.Require().NoError(err)
-	assertFog := func(want bool) {
+	// Membership is the encounter's answer, told in the story at the step
+	// that crosses the edge; no sheet ever records it (rpg-project#539 R7).
+	noSheetRow := func() {
 		raw, marshalErr := json.Marshal(s.characters.byID["cleric"].Conditions)
 		s.Require().NoError(marshalErr)
-		if want {
-			s.Contains(string(raw), refs.Conditions.InFog().String())
-		} else {
-			s.NotContains(string(raw), refs.Conditions.InFog().String())
-		}
+		s.NotContains(string(raw), refs.Conditions.InFog().String())
 	}
-	assertFog(false)
+	told := func(applied bool) int {
+		count := 0
+		for _, event := range s.beats(session.EventActivationResult) {
+			body := event.Body.(session.ActivationResultBody)
+			if applied && body.ConditionApplied != nil && body.ConditionApplied.Target == "cleric" {
+				count++
+			}
+			if !applied && body.ConditionRemoved != nil && body.ConditionRemoved.Target == "cleric" {
+				count++
+			}
+		}
+		return count
+	}
+	s.Zero(told(true), "outside the cloud, nobody is told they entered it")
 	_, err = s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "cleric", DeclarationID: currentMoveID(s.T(), s.mgr, "sess", "cleric"), Path: []spatial.Position{{X: 2, Y: 1}, {X: 3, Y: 1}, {X: 4, Y: 1}}})
 	s.Require().NoError(err)
-	assertFog(true)
+	noSheetRow()
+	s.Equal(1, told(true), "walking in is told once")
+	s.Zero(told(false))
 	s.reloadHealingScene()
 	_, err = s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "cleric", DeclarationID: currentMoveID(s.T(), s.mgr, "sess", "cleric"), Path: []spatial.Position{{X: 3, Y: 1}, {X: 2, Y: 1}, {X: 1, Y: 1}}})
 	s.Require().NoError(err)
-	assertFog(false)
+	noSheetRow()
+	s.Equal(1, told(false), "walking out is told once")
 	results := s.beats(session.EventActivationResult)
 	s.Require().Len(results, 2, "one entry and one exit, without duplicate reload narration")
 	entered := results[0].Body.(session.ActivationResultBody).ConditionApplied

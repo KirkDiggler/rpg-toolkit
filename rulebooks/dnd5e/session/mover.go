@@ -243,6 +243,9 @@ func (s moverSeam) recordMovementResults(ctx context.Context, enc *encounter.Enc
 			return fmt.Errorf("move: %w", translate(err))
 		}
 	}
+	if err := s.m.landAreas(enc, s.scope, out); err != nil {
+		return fmt.Errorf("move: %w", err)
+	}
 	return nil
 }
 

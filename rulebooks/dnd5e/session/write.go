@@ -1229,7 +1229,6 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string, extraMembe
 		return nil, err
 	}
 	scope.enc = enc
-	scope.areaStoryBefore = enc.WorldView().SightAreas
 	scope.baseline = baseline
 	scope.standing = standing
 	if err := m.prepareExploration(ctx, scope, extraMembers...); err != nil {
@@ -1298,8 +1297,6 @@ type writeScope struct {
 	explorationBefore map[string]ExplorationData
 	// The already-paid remainder is frozen only if a direct walk poses.
 	walkContinuation []spatial.Position
-	// Snapshot of areas whose membership transitions have already been queued.
-	areaStoryBefore []encounter.SightAreaData
 
 	session   string
 	encounter string
@@ -1657,19 +1654,6 @@ func (m *Manager) persist(
 // own delta, because what they settle is noticed by the composition at
 // whatever sight refresh caught it rather than declared by a verb.
 func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, DeliveryReport, error) {
-	if err := scope.enc.FlushSightAreaTransitions(); err != nil {
-		report := SaveReport{Written: append([]string(nil), scope.written...)}
-		return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", translate(err))
-	}
-	// Reconcile after all movement (including monster and forced movement),
-	// while the verb still owns the write lock and before delivery.
-	if len(scope.enc.WorldView().SightAreas) > 0 {
-		if err := m.reconcileFogMembership(ctx, scope); err != nil {
-			report := SaveReport{Written: append([]string(nil), scope.written...)}
-			return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", err)
-		}
-	}
-
 	if err := m.exitDissolvedCombatants(ctx, scope); err != nil {
 		report := SaveReport{Written: append([]string(nil), scope.written...)}
 		return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", err)

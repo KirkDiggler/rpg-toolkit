@@ -111,7 +111,10 @@ func (a announcerSeam) Announce(
 		return fmt.Errorf("announce: %w", translateResolution(err))
 	}
 
-	return a.m.saveDirty(ctx, a.scope, out)
+	if err := a.m.saveDirty(ctx, a.scope, out); err != nil {
+		return err
+	}
+	return a.m.landAreas(enc, a.scope, out)
 }
 
 // boundaryCast gathers everyone in the fight, and TOLERATES a member the

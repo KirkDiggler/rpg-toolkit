@@ -387,7 +387,7 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		Roller: &diceSeam{roller: m.dice},
 	})
 	if err != nil {
-		translated := translateResolution(err)
+		translated := translateAttack(err)
 		if errors.Is(translated, ErrOutOfReach) {
 			return nil, fmt.Errorf("attack: target %q: %w", in.Target, translated)
 		}
@@ -423,6 +423,9 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 	recorded, err := scope.enc.Record(recordFor(in, struck, definition, presentationID, out))
 	if err != nil {
 		return nil, fmt.Errorf("attack: %w", reportUnrecorded(scope, translate(err)))
+	}
+	if err := m.landAreas(scope.enc, scope, out); err != nil {
+		return nil, fmt.Errorf("attack: %w", reportUnrecorded(scope, err))
 	}
 
 	report, delivery, err := m.commit(ctx, scope)
@@ -483,6 +486,9 @@ func (m *Manager) poseAttackWindow(
 		if err := m.saveDirty(ctx, scope, out); err != nil {
 			return nil, err
 		}
+		if err := m.landAreas(scope.enc, scope, out); err != nil {
+			return nil, err
+		}
 		p := pendingAttackWindowPayload{Attacker: in.Attacker, Target: in.Target, Definition: definition, PresentationID: presentationID}
 		if err := posePendingAttackWindow(scope, out.Posed, p); err != nil {
 			return nil, err
@@ -504,6 +510,9 @@ func (m *Manager) poseAttackWindow(
 		recorded, err := scope.enc.Record(recordFor(in, *out.Posed.SettledStrike, definition, presentationID, out))
 		if err != nil {
 			return nil, reportUnrecorded(scope, translate(err))
+		}
+		if err = m.landAreas(scope.enc, scope, out); err != nil {
+			return nil, reportUnrecorded(scope, err)
 		}
 		if err = posePostHitWindow(scope, out.Posed); err != nil {
 			return nil, err
@@ -531,6 +540,9 @@ func (m *Manager) poseAttackWindow(
 		return nil, fmt.Errorf("attack: %w", err)
 	}
 	if err := m.saveDirty(ctx, scope, out); err != nil {
+		return nil, fmt.Errorf("attack: %w", err)
+	}
+	if err := m.landAreas(scope.enc, scope, out); err != nil {
 		return nil, fmt.Errorf("attack: %w", err)
 	}
 
@@ -656,6 +668,19 @@ func badCostUnlessSheet(err error) error {
 	return fmt.Errorf("%w: %v", ErrBadCost, err)
 }
 
+// translateAttack is [translateResolution] for a swing: resolution's one
+// out-of-range refusal there is the delivery's, a target the weapon or the
+// spell attack cannot reach, and that stays the attack's own refusal
+// (ErrOutOfReach) rather than the out-of-range every other verb reports.
+// Resolution names one sentinel for every such refusal and leaves the word to
+// the host; this is the host choosing it by verb.
+func translateAttack(err error) error {
+	if sheetRefusal(err) == nil && errors.Is(err, resolution.ErrOutOfRange) {
+		return fmt.Errorf("%w: %v", ErrOutOfReach, err)
+	}
+	return translateResolution(err)
+}
+
 // translateResolution maps the resolution module's sentinels onto this
 // package's own.
 //
@@ -713,7 +738,12 @@ func translateResolution(err error) error {
 	case errors.Is(err, resolution.ErrBadActivation):
 		return fmt.Errorf("%w: %v", ErrBadActivation, err)
 	case errors.Is(err, resolution.ErrOutOfRange):
-		return fmt.Errorf("%w: %v", ErrOutOfReach, err)
+		// A target beyond what the action reaches is out of range on every
+		// verb (rpg-project#539): a cast's or a heal's range, a known creature
+		// with no believed point in range on a clear line. An attack's
+		// delivery is the one exception and keeps its own word; see
+		// [translateAttack].
+		return fmt.Errorf("%w: %v", ErrOutOfRange, err)
 	case errors.Is(err, resolution.ErrBadParticipant):
 		return fmt.Errorf("%w: %v", ErrBadCharacter, err)
 	case errors.Is(err, resolution.ErrWardUnreadable):
@@ -1187,6 +1217,42 @@ func (m *Manager) castFor(
 	return cast, nil
 }
 
+// landAreas applies the runtime areas an interaction closed and opened to the
+// live encounter, through the encounter's own verbs, and refreshes perception
+// over the area set they leave (rpg-project#539, "Who is in an area"). enc is
+// the encounter the outcome was recorded on: scope.enc for a verb, the calling
+// encounter for a seam the composition drives from inside its own verbs.
+//
+// IT RUNS AFTER THE OUTCOME IS RECORDED. The encounter tells every member
+// inside a changed area the moment the change is applied, so the call order is
+// the story order: the cast or the broken concentration first, then who
+// entered or who was in the area that ended. A path that records nothing of
+// its own calls it straight after [Manager.saveDirty].
+//
+// Closed before opened, as [resolution.Output.ClosedAreas] states: a recast
+// ends the old area under the id the new one takes. No area set is copied
+// back; the encounter holds the only one.
+func (m *Manager) landAreas(enc *encounter.Encounter, scope *writeScope, out *resolution.Output) error {
+	if len(out.ClosedAreas) == 0 && len(out.OpenedAreas) == 0 {
+		return nil
+	}
+	for _, source := range out.ClosedAreas {
+		if _, err := enc.RemoveSightArea(source); err != nil {
+			return translate(err)
+		}
+	}
+	for i := range out.OpenedAreas {
+		if err := enc.AddSightArea(&out.OpenedAreas[i]); err != nil {
+			return translate(err)
+		}
+	}
+	if err := enc.RefreshPerception(); err != nil {
+		return translate(err)
+	}
+	scope.touched = true
+	return nil
+}
+
 // saveDirty writes back every sheet the interaction changed.
 //
 // Characters go to the host's repository; NPCs live in the session record, so
@@ -1234,19 +1300,5 @@ func (m *Manager) saveDirty(ctx context.Context, scope *writeScope, out *resolut
 		}
 		scope.replaceMonsterSheet(dirty)
 	}
-	if out.SightAreasChanged {
-		if err := scope.enc.ReplaceSightAreas(out.World.SightAreas); err != nil {
-			return translate(err)
-		}
-		if err := scope.enc.QueueSightAreaTransitions(scope.areaStoryBefore); err != nil {
-			return translate(err)
-		}
-		scope.areaStoryBefore = scope.enc.WorldView().SightAreas
-		if err := scope.enc.RefreshPerception(); err != nil {
-			return translate(err)
-		}
-		scope.touched = true
-	}
-
 	return nil
 }
