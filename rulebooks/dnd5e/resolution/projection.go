@@ -46,6 +46,14 @@ type ProjectCharacterOutput struct {
 	// with no name and no range" are different facts and only one of them is
 	// true of an empty hand.
 	MainHand *AttackFacts
+
+	// Equipment is the sheet's equipment display — items, slots, the folded AC
+	// total and its note, the main-hand damage — computed on the same context
+	// the door installed for ArmorClass. [character.Character.EquipmentView]
+	// folds the AC, and the fold needs the cast: called on a host's own bare
+	// context it refuses for an unarmoured monk or barbarian
+	// ([gamectx.ErrNotInCast]), so a host reads it from here instead.
+	Equipment *character.EquipmentView
 }
 
 // CharacterFacts is the static half of a character, read off the reconstituted
@@ -222,6 +230,12 @@ func projectCharacterOn(
 	}
 
 	breakdown, foldErr := ch.EffectiveAC(ctx)
+	var equipment *character.EquipmentView
+	if foldErr == nil {
+		// Under the same installed truth, before teardown, for the reason
+		// ArmorClass is: the view's AC is a fold, and a fold needs the door.
+		equipment, foldErr = ch.EquipmentView(ctx)
+	}
 
 	// Revoked on every exit whether or not the fold worked, because a
 	// subscription that outlives its interaction is the leak this package
@@ -246,7 +260,9 @@ func projectCharacterOn(
 		return nil, fmt.Errorf("resolution: project character %q: %w", one.ID(), err)
 	}
 
-	return &ProjectCharacterOutput{ArmorClass: breakdown, Sheet: facts, MainHand: mainHand}, nil
+	return &ProjectCharacterOutput{
+		ArmorClass: breakdown, Sheet: facts, MainHand: mainHand, Equipment: equipment,
+	}, nil
 }
 
 // factsOf reads a loaded sheet's static answers and compiles its main-hand

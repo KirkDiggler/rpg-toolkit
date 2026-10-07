@@ -194,6 +194,49 @@ func (s *ProjectionTestSuite) TestTheDoorIsWhatMakesTheNumberRight() {
 		"without the door the same record cannot be folded, and says why")
 }
 
+// monk is unarmoured with DEX +3 and WIS +2, wearing nothing, holding
+// Unarmored Defense (monk): 10 + 3 + 2 = 15. The sheet's stored ArmorClass is
+// 10, so a view that read the record instead of folding says so.
+func (s *ProjectionTestSuite) monk() *character.Data {
+	raw, err := (&conditions.UnarmoredDefenseCondition{
+		MemberID: projectedHeroID,
+		Type:     conditions.UnarmoredDefenseMonk,
+	}).ToJSON()
+	s.Require().NoError(err)
+
+	record := s.barbarian(raw)
+	record.Name = "Kirin"
+	record.ClassID = classes.Monk
+	record.AbilityScores = shared.AbilityScores{
+		abilities.STR: 10, abilities.DEX: 16, abilities.CON: 12,
+		abilities.INT: 10, abilities.WIS: 14, abilities.CHA: 8,
+	}
+
+	return record
+}
+
+// TestAMonksEquipmentViewCarriesTheFoldedAC is the EquipmentView gap: the view
+// folds the AC, so on a host's bare context it refuses for an unarmoured monk.
+// Through the door it comes back with the WIS-inclusive total, the same number
+// ArmorClass carries, because it is folded on the same installed truth.
+func (s *ProjectionTestSuite) TestAMonksEquipmentViewCarriesTheFoldedAC() {
+	out, err := ProjectCharacter(s.ctx, &ProjectCharacterInput{Character: s.monk()})
+	s.Require().NoError(err)
+	s.Require().NotNil(out.ArmorClass)
+	s.Require().Equal(15, out.ArmorClass.Total, "10 base + 3 DEX + 2 WIS")
+
+	s.Require().NotNil(out.Equipment, "the projection carries the equipment view")
+	s.Equal(15, out.Equipment.ACTotal, "the view's AC is the folded one, WIS included")
+	s.Equal(out.ArmorClass.Total, out.Equipment.ACTotal, "and it agrees with ArmorClass")
+
+	direct, err := character.Load(s.ctx, s.monk())
+	s.Require().NoError(err)
+	s.Require().NoError(character.Attach(s.ctx, direct, events.NewEventBus()))
+	_, err = direct.EquipmentView(s.ctx)
+	s.Require().ErrorIs(err, gamectx.ErrNotInCast,
+		"the same record's view on a bare context refuses, which is why the door carries it")
+}
+
 // TestTheProjectionInstallsNoWorld is the M4 pin, and the answer to "how did
 // you enter the door without a room".
 //
