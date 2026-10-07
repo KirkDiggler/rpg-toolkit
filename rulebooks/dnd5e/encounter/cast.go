@@ -664,11 +664,8 @@ func (e *Encounter) prepareSaveBeat(
 func (e *Encounter) prepareWardedBeat(
 	verb string, actor, target MemberID, warded *WardedDetail, spell spellIdentityPayload,
 ) ([]byte, []MemberID, error) {
-	if warded.Source == "" {
-		return nil, nil, fmt.Errorf("%s: warded source: %w", verb, ErrNoMember)
-	}
-	if _, ok := e.members[warded.Source]; !ok {
-		return nil, nil, fmt.Errorf("%s: warded source %q: %w", verb, warded.Source, ErrNoMember)
+	if err := e.checkWardSource(verb, warded.Source); err != nil {
+		return nil, nil, err
 	}
 	save := warded.Save
 	if save.Saver == "" {

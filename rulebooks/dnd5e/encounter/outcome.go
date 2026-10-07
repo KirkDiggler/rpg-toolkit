@@ -299,12 +299,35 @@ type DeathSaveDetail struct {
 // of the recipient. Save.Saver must equal the outcome's own Actor, never
 // the warded Target; the inversion is the whole point of a ward.
 type WardedDetail struct {
-	// Source is the caster whose ward blocked this attempt. Must be a
-	// current member.
+	// Source is the caster whose ward blocked this attempt. Must be a member
+	// of this encounter now or at some point before — see
+	// [Encounter.checkWardSource].
 	Source MemberID `json:"source"`
 
 	// Save is the ACTOR's own failed save against Source's DC.
 	Save CastSave `json:"save"`
+}
+
+// checkWardSource refuses a ward source this encounter has never held.
+//
+// AN EVER-MEMBER, NOT A CURRENT ONE (rpg-toolkit#1965). A ward outlives the
+// caster who cast it — Sanctuary does not end when its caster walks away, and
+// the rulebook records the ward's DC at cast so nothing has to read the
+// caster's sheet afterwards. A swing at the warded member after that caster
+// Exited is the same fact as one before, and refusing it wedged the table: a
+// driven monster turn is one of those swings. The departed source is the same
+// notion [Encounter.Story] answers by — someone who was here keeps their name
+// in the story. An id this encounter never held is still nobody.
+//
+// Errors: ErrNoMember when source is empty or was never a member.
+func (e *Encounter) checkWardSource(verb string, source MemberID) error {
+	if source == "" {
+		return fmt.Errorf("%s: warded source: %w", verb, ErrNoMember)
+	}
+	if !e.everMembers[source] {
+		return fmt.Errorf("%s: warded source %q: %w", verb, source, ErrNoMember)
+	}
+	return nil
 }
 
 // TradeDetail is the closed, rulebook-neutral story shape for one traded
@@ -833,11 +856,8 @@ func (e *Encounter) prepareRecord(in *RecordInput) ([]preparedActivationBeat, er
 		if in.Warded == nil {
 			return nil, fmt.Errorf("record: warded detail is required: %w", ErrInvalidData)
 		}
-		if in.Warded.Source == "" {
-			return nil, fmt.Errorf("record: warded source: %w", ErrNoMember)
-		}
-		if _, ok := e.members[in.Warded.Source]; !ok {
-			return nil, fmt.Errorf("record: warded source %q: %w", in.Warded.Source, ErrNoMember)
+		if err := e.checkWardSource("record", in.Warded.Source); err != nil {
+			return nil, err
 		}
 		save := in.Warded.Save
 		// THE INVERSION IS THE WHOLE POINT OF A WARD: an ordinary CastSave's

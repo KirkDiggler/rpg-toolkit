@@ -314,6 +314,41 @@ func (s *RecordCastSuite) TestAWardedTargetReachesTheStoryAndRejectsMismatches()
 	})
 }
 
+// TestAWardedCastOutlivesTheCasterWhoLeft is BeatCastWarded's half of
+// [OutcomeTestSuite.TestAWardOutlivesTheCasterWhoLeft]: a ward whose caster
+// has Exited still stops a spell, and the beat still names who cast it. An id
+// this encounter never held stays refused.
+func (s *RecordCastSuite) TestAWardedCastOutlivesTheCasterWhoLeft() {
+	enc := s.scene(everyoneStanding{})
+	_, err := enc.Exit(&encounter.ExitInput{Member: castFighter})
+	s.Require().NoError(err)
+
+	out, err := enc.RecordCast(&encounter.RecordCastInput{
+		Actor: castBard, Spell: viciousMockery,
+		Targets: []encounter.CastTargetResult{{
+			Target: castSkeleton, Warded: &encounter.WardedDetail{Source: castFighter, Save: wardedSave()},
+		}},
+	})
+	s.Require().NoError(err, "the ward's caster left; the ward did not")
+
+	entries := s.storyEntries(enc, castBard, out.Seqs)
+	s.Equal([]string{encounter.BeatCast, encounter.BeatCastWarded}, s.beatNames(entries))
+	var beat map[string]any
+	s.Require().NoError(json.Unmarshal(entries[1].Payload, &beat))
+	s.Equal(string(castFighter), beat["source"], "the beat still names the caster who left")
+	s.Equal(float64(15), beat["dc"], "the DC as the rulebook gave it")
+
+	s.Run("a source this encounter never held is still nobody", func() {
+		_, err := enc.RecordCast(&encounter.RecordCastInput{
+			Actor: castBard, Spell: viciousMockery,
+			Targets: []encounter.CastTargetResult{{
+				Target: castSkeleton, Warded: &encounter.WardedDetail{Source: "nobody", Save: wardedSave()},
+			}},
+		})
+		s.Require().ErrorIs(err, encounter.ErrNoMember)
+	})
+}
+
 func viciousMockeryCast() *encounter.RecordCastInput {
 	return &encounter.RecordCastInput{
 		Actor: castBard,
