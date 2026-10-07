@@ -2133,7 +2133,9 @@ func (s *MonsterTurnTestSuite) TestFogKeepsMovedTargetAtLastKnownLocation() {
 	s.Empty(driver.calls[0].Seen, "fog must withhold the live position from AI")
 	s.Require().Len(driver.calls[0].Remembered, 1)
 	s.Equal(cellAt(2, 2), driver.calls[0].Remembered[0].Position)
-	s.True(enc.RemoveSightArea("caster"))
+	removed, err := enc.RemoveSightArea("caster")
+	s.Require().NoError(err)
+	s.True(removed)
 	s.Require().NoError(enc.RefreshPerception())
 	requireKnownLocation(s.T(), requireHolding(s.T(), enc, goblin, alice).Payload, cellAt(1, 2))
 }

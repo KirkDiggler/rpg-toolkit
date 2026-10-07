@@ -181,5 +181,5 @@ func (s *InteractSuite) TestANegativeRangeIsRefused() {
 
 	_, err = enc.Interact(&encounter.InteractInput{Actor: alice, Target: "vendor", Range: -1})
 	s.Require().Error(err)
-	s.ErrorIs(err, encounter.ErrNoMember)
+	s.ErrorIs(err, encounter.ErrBadReach)
 }

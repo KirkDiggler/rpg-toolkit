@@ -970,7 +970,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// declaration order (the order Members were given in), not the sorted
 	// order every other beat in this module uses, and audienceFor's
 	// tableBeat branch preserves exactly that (see its doc).
-	beatPayload, _ := json.Marshal(map[string]string{"beat": "scene-opened"})
+	beatPayload, _ := json.Marshal(map[string]string{"beat": BeatSceneOpened})
 	_, err = e.appendBeat(&record.AppendInput{
 		At:       0,
 		Audience: e.audienceFor(tableBeat, memberIDs...),
@@ -1220,8 +1220,8 @@ func (e *Encounter) Status() (*Status, error) {
 // StoryInput.AfterSeq). To resume after entry N, pass N+1.
 //
 // Allows both current members and members who have exited (everMembers).
-// Returns ErrNilInput if the input is nil, ErrNoMember if the member never
-// joined, and ErrTrimmed if a non-zero AfterSeq names a sequence that has
+// Returns ErrNilInput if the input is nil, ErrNoMember for an empty audience,
+// ErrNotMember if the member never joined, and ErrTrimmed if a non-zero AfterSeq names a sequence that has
 // already aged out of the retention window — the caller must resync rather
 // than resume, since a short answer would be indistinguishable from a complete
 // one. AfterSeq == 0 is exempt and always answerable.
@@ -1232,8 +1232,11 @@ func (e *Encounter) Story(in *StoryInput) ([]record.Entry, error) {
 		return nil, fmt.Errorf("story: %w", ErrNilInput)
 	}
 
-	if _, ok := e.everMembers[in.Audience]; !ok {
+	if in.Audience == "" {
 		return nil, fmt.Errorf("story: %w", ErrNoMember)
+	}
+	if _, ok := e.everMembers[in.Audience]; !ok {
+		return nil, fmt.Errorf("story %q: %w", in.Audience, ErrNotMember)
 	}
 
 	// A resume point below the retained floor cannot be honoured, and must be
@@ -1415,7 +1418,7 @@ func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberI
 	audience = e.frontierAudience(action, audience)
 
 	payload := map[string]interface{}{
-		"beat":     "moved",
+		"beat":     BeatMoved,
 		"member":   string(action.member.ID),
 		"position": action.to,
 	}
@@ -1481,7 +1484,7 @@ func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberI
 	if err != nil {
 		return 0, err
 	}
-	if err := e.appendSightAreaMovementTransitions(action.member.ID, action.from, action.to); err != nil {
+	if err := e.appendStepAreaTransitions(action.member.ID, action.from, action.to); err != nil {
 		return 0, err
 	}
 	return appendOut.Seq, nil
@@ -1572,7 +1575,7 @@ func (e *Encounter) closeWith(key string, at uint64, audience ...MemberID) (*Out
 	// close still runs with nobody removed, and for those the two are the
 	// same list.
 	beatBytes, _ := json.Marshal(map[string]interface{}{
-		"beat":   "ended",
+		"beat":   BeatEnded,
 		"ending": key,
 	})
 	if _, err := e.appendBeat(&record.AppendInput{
@@ -2124,7 +2127,7 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	clockReadingInt := e.clock.ToData().HighWater
 	clockReadingForBeat := uint64(clockReadingInt)
 	beatPayload := map[string]interface{}{
-		"beat":   "joined",
+		"beat":   BeatJoined,
 		"member": string(in.Member),
 	}
 	beatBytes, _ := json.Marshal(beatPayload)
@@ -2314,7 +2317,7 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 	}
 
 	beatPayload := map[string]interface{}{
-		"beat":   "exited",
+		"beat":   BeatExited,
 		"member": string(in.Member),
 		// holding is what LEFT THE RUN with them, and exit is the authored
 		// way they left by — empty when they left from anywhere else, which

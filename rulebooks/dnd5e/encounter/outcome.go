@@ -319,13 +319,14 @@ type WardedDetail struct {
 // notion [Encounter.Story] answers by — someone who was here keeps their name
 // in the story. An id this encounter never held is still nobody.
 //
-// Errors: ErrNoMember when source is empty or was never a member.
+// Errors: ErrNoMember when source is empty; ErrNotMember when it was never a
+// member.
 func (e *Encounter) checkWardSource(verb string, source MemberID) error {
 	if source == "" {
 		return fmt.Errorf("%s: warded source: %w", verb, ErrNoMember)
 	}
 	if !e.everMembers[source] {
-		return fmt.Errorf("%s: warded source %q: %w", verb, source, ErrNoMember)
+		return fmt.Errorf("%s: warded source %q: %w", verb, source, ErrNotMember)
 	}
 	return nil
 }
@@ -687,8 +688,8 @@ type RecordOutput struct {
 //
 // Errors: ErrNilInput, ErrClosed (for every kind but
 // [OutcomeExperienceGained], which is recordable after the close — see
-// prepareRecord's refusal site for why), ErrNoMember (empty or unknown
-// actor, unknown target), ErrInvalidData (a kind or value name this
+// prepareRecord's refusal site for why), ErrNoMember (empty actor or
+// target), ErrNotMember (unknown actor or target), ErrInvalidData (a kind or value name this
 // composition does not know, missing or mismatched DeathSave, Trade or
 // Experience detail, an experience grant naming no character or paying a
 // non-positive amount, an Attack or
@@ -900,13 +901,16 @@ func (e *Encounter) prepareRecord(in *RecordInput) ([]preparedActivationBeat, er
 		return nil, fmt.Errorf("record: actor: %w", ErrNoMember)
 	}
 	if _, ok := e.members[in.Actor]; !ok {
-		return nil, fmt.Errorf("record: actor %q: %w", in.Actor, ErrNoMember)
+		return nil, fmt.Errorf("record: actor %q: %w", in.Actor, ErrNotMember)
 	}
 
 	targets := append([]MemberID(nil), in.Targets...)
 	for _, id := range targets {
+		if id == "" {
+			return nil, fmt.Errorf("record: target: %w", ErrNoMember)
+		}
 		if _, ok := e.members[id]; !ok {
-			return nil, fmt.Errorf("record: target %q: %w", id, ErrNoMember)
+			return nil, fmt.Errorf("record: target %q: %w", id, ErrNotMember)
 		}
 		// AN NPC IS NOT A TARGET (rpg-project#493, R4), and only a swing is
 		// refused: a trade and a death save name members too, and neither is

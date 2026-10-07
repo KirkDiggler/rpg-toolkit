@@ -432,7 +432,7 @@ func (s *KillingBlowSuite) TestTheRefusalsRunBeforeTheConsult() {
 	asked := counted.calls
 
 	_, err := enc.Record(&encounter.RecordInput{Kind: encounter.OutcomeStruck, Actor: "nobody"})
-	s.Require().ErrorIs(err, encounter.ErrNoMember)
+	s.Require().ErrorIs(err, encounter.ErrNotMember)
 
 	s.Equal(asked, counted.calls, "a rejected verb asked nothing")
 }

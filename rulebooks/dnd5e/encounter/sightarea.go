@@ -57,6 +57,16 @@ func (in *SightAreaInput) area() (SightArea, error) {
 	}
 	return SightArea{ID: in.ID, SourceID: in.SourceID, Name: in.Name, Ref: in.Ref, Center: in.Center, RadiusFeet: in.RadiusFeet, MembershipRef: in.MembershipRef, MembershipName: in.MembershipName, MembershipSourceID: in.MembershipSourceID}, nil
 }
+
+// AddSightArea opens one runtime area and queues its story: every member
+// whose placement the area holds is told it entered, with the area's own
+// membership label. The tellings append after the outcome that caused them
+// (see [Encounter.FlushSightAreaTransitions]). An area without a membership
+// label obscures sight and tells nobody anything.
+//
+// Errors: ErrNilInput; ErrInvalidData for an invalid identity, radius or
+// partial membership label, or an id already open; any error reading the
+// roster's placement or the sight answer the audience is told by.
 func (e *Encounter) AddSightArea(in *SightAreaInput) error {
 	a, err := in.area()
 	if err != nil {
@@ -65,30 +75,48 @@ func (e *Encounter) AddSightArea(in *SightAreaInput) error {
 	if _, ok := e.sightAreas[a.ID]; ok {
 		return fmt.Errorf("sight area %q exists: %w", a.ID, ErrInvalidData)
 	}
-	if e.sightAreas == nil {
-		e.sightAreas = make(map[string]SightArea)
-	}
-	e.sightAreas[a.ID] = a
-	return nil
-}
-func (e *Encounter) ReplaceSightAreas(data []SightAreaData) error {
-	if err := validateSightAreasData(data); err != nil {
+	before := e.copySightAreas()
+	after := e.copySightAreas()
+	after[a.ID] = a
+	if err := e.queueAreaChangeTransitions(before, after); err != nil {
 		return err
 	}
-	next := sightAreasFromData(data)
-	e.sightAreas = next
+	e.sightAreas = after
 	return nil
 }
 
-func (e *Encounter) RemoveSightArea(sourceID string) bool {
-	removed := false
-	for id, a := range e.sightAreas {
+// RemoveSightArea ends every runtime area the source opened and queues its
+// story: every member the ended area held is told "area ended". removed is
+// false when the source opened no area, which is an answer rather than an
+// error.
+//
+// Errors: any error reading the roster's placement or the sight answer the
+// audience is told by; the area set is left unchanged.
+func (e *Encounter) RemoveSightArea(sourceID string) (removed bool, err error) {
+	before := e.copySightAreas()
+	after := e.copySightAreas()
+	for id, a := range after {
 		if a.SourceID == sourceID {
-			delete(e.sightAreas, id)
+			delete(after, id)
 			removed = true
 		}
 	}
-	return removed
+	if !removed {
+		return false, nil
+	}
+	if err := e.queueAreaChangeTransitions(before, after); err != nil {
+		return false, err
+	}
+	e.sightAreas = after
+	return true, nil
+}
+
+func (e *Encounter) copySightAreas() map[string]SightArea {
+	out := make(map[string]SightArea, len(e.sightAreas)+1)
+	for id, a := range e.sightAreas {
+		out[id] = a
+	}
+	return out
 }
 
 // SightAreasFor returns areas whose visible footprint can be shown to member.
@@ -147,17 +175,6 @@ func sightAreasFromData(in []SightAreaData) map[string]SightArea {
 	return out
 }
 
-// SightAreaContains reports whether a point lies inside the runtime sight area.
-// The caller supplies the encounter canvas grid so membership uses the same
-// hex distance and feet-to-cell conversion as sight reach.
-func SightAreaContains(area SightAreaData, point spatial.Position, grid spatial.Grid) bool {
-	if area.RadiusFeet <= 0 {
-		return false
-	}
-	center := spatial.Position{X: area.Center.X, Y: area.Center.Y}
-	return grid.Distance(center, point) <= float64(area.RadiusFeet)/float64(FeetPerCell)
-}
-
 func finite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
 func areaCrosses(a SightArea, from, to spatial.Position, grid spatial.Grid) bool {
 	r := float64(a.RadiusFeet) / float64(FeetPerCell)
@@ -182,7 +199,6 @@ func areaCrosses(a SightArea, from, to spatial.Position, grid spatial.Grid) bool
 
 func validateSightAreasData(in []SightAreaData) error {
 	seen := make(map[string]bool, len(in))
-	sources := make(map[string]bool, len(in))
 	for _, d := range in {
 		if d.ID == "" || d.SourceID == "" || d.RadiusFeet <= 0 || !finite(d.Center.X) || !finite(d.Center.Y) {
 			return fmt.Errorf("invalid sight area %q: %w", d.ID, ErrInvalidData)
@@ -194,7 +210,6 @@ func validateSightAreasData(in []SightAreaData) error {
 		if (d.MembershipRef == "") != (d.MembershipName == "") || (d.MembershipRef == "") != (d.MembershipSourceID == "") {
 			return fmt.Errorf("invalid sight area %q membership metadata: %w", d.ID, ErrInvalidData)
 		}
-		_ = sources
 	}
 	return nil
 }

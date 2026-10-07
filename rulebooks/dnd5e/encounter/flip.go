@@ -211,7 +211,7 @@ func (e *Encounter) settleStances(before map[factionPair]Stance, at uint64) erro
 // composition deciding a thing the graph decided.
 func (e *Encounter) appendStanceBeat(pair factionPair, to Stance, cause string, at uint64) error {
 	body := map[string]interface{}{
-		"beat":    "stance",
+		"beat":    BeatStance,
 		"between": []FactionID{pair.a, pair.b},
 		"stance":  string(to),
 	}

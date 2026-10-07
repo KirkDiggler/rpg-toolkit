@@ -240,7 +240,8 @@
 // pierces by). Nothing stores a stance: it is derived on every question and
 // every load from the declaration plus the facts. StanceBetween is the one
 // authoritative member-pair read — IsHostile and IsAllied are its two halves —
-// and a member in no faction has no stance there, never a neutral one.
+// and a member in no faction answers StanceNone there, never a neutral one; a
+// pair naming a non-member is refused (ErrNotMember).
 //
 // # A pair turns BOTH WAYS, and one law nobody authors (rpg-project#493)
 //

@@ -57,7 +57,11 @@ func (e *Encounter) AdmitWalk(in *AdmitWalkInput) (*AdmitWalkOutput, error) {
 		// The owner answers: StanceBetween holds the no-faction rule, and a
 		// faction is allied with itself, so one read covers teammates and
 		// allied sides alike.
-		if stance, ok := e.StanceBetween(member.ID, other.ID); !ok || stance != StanceAllied {
+		stance, err := e.StanceBetween(member.ID, other.ID)
+		if err != nil {
+			return nil, fmt.Errorf("admit walk sight: %w", err)
+		}
+		if stance != StanceAllied {
 			continue
 		}
 		teammateBubble, err := e.bubbleFor(other.ID)

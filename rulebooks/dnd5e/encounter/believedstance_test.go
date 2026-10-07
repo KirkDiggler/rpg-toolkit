@@ -80,8 +80,8 @@ func (s *BelievedStanceTestSuite) TestBeliefIsTheDerivedStanceToday() {
 		{"one monster faction at another", goblin, "bandit", encounter.StanceNeutral},
 	} {
 		s.Run(tc.name, func() {
-			got, known := enc.BelievedStance(tc.viewer, tc.subject)
-			s.Require().True(known)
+			got, err := enc.BelievedStance(tc.viewer, tc.subject)
+			s.Require().NoError(err)
 			s.Equal(tc.want, got)
 		})
 	}
@@ -101,48 +101,45 @@ func (s *BelievedStanceTestSuite) TestBeliefIsTheDerivedStanceToday() {
 func (s *BelievedStanceTestSuite) TestEveryViewerBelievesTheSameThingToday() {
 	enc := s.yard()
 
-	forAlice, known := enc.BelievedStance(alice, goblin)
-	s.Require().True(known)
-	forBilly, known := enc.BelievedStance(billy, goblin)
-	s.Require().True(known)
+	forAlice, err := enc.BelievedStance(alice, goblin)
+	s.Require().NoError(err)
+	forBilly, err := enc.BelievedStance(billy, goblin)
+	s.Require().NoError(err)
 	s.Equal(forAlice, forBilly, "no deception is in play, so belief is truth for both")
 }
 
-// A world NPC is in NO FACTION, so there is no pair to have a stance about and
-// the answer is NOT KNOWN — not "neutral".
-//
-// This scene used to assert the opposite, and the opposite was wrong. "Nobody
-// is against them" and "there is no side here to be on" are different
-// statements, and reporting the second as neutral collapses an absence into an
-// answer: a client drawing a ring would paint a vendor the same colour as a
-// goblin the party had a truce with, with no way to tell them apart.
-func (s *BelievedStanceTestSuite) TestAWorldNPCHasNoStanceToBelieve() {
+// A world NPC is in NO FACTION, so the answer is NO SIDE — StanceNone, the
+// one encoding every reader takes — and never "neutral". "Nobody is against
+// them" and "there is no side here to be on" are different statements: a
+// client drawing a ring would otherwise paint a vendor the same colour as a
+// goblin the party had a truce with.
+func (s *BelievedStanceTestSuite) TestAWorldNPCIsBelievedNoSide() {
 	enc := s.yard()
 
-	got, known := enc.BelievedStance(alice, "innkeeper")
-	s.False(known, "a member in no faction is in no pair")
-	s.Empty(got)
+	got, err := enc.BelievedStance(alice, "innkeeper")
+	s.Require().NoError(err)
+	s.Equal(encounter.StanceNone, got)
 
 	// And the other direction, for the same reason.
-	got, known = enc.BelievedStance("innkeeper", alice)
-	s.False(known)
-	s.Empty(got)
+	got, err = enc.BelievedStance("innkeeper", alice)
+	s.Require().NoError(err)
+	s.Equal(encounter.StanceNone, got)
 
 	// IsAllied still answers, because it asks a different question: "are they
-	// on my side" has a correct false, while "what is their stance" has none.
+	// on my side" has a correct false.
 	allied, known := enc.IsAllied(alice, "innkeeper")
 	s.True(known)
 	s.False(allied)
 }
 
-// Somebody who is not here is not "neutral": known is false, so a caller can
-// tell an absence from an answer.
-func (s *BelievedStanceTestSuite) TestSomebodyWhoIsNotHereIsNotKnown() {
+// Somebody who is not here is not "neutral" and not "no side": the read is
+// refused as not a member, so a caller can tell a stranger from an answer.
+func (s *BelievedStanceTestSuite) TestSomebodyWhoIsNotHereIsRefused() {
 	enc := s.yard()
 
-	_, known := enc.BelievedStance(alice, "nobody")
-	s.False(known)
+	_, err := enc.BelievedStance(alice, "nobody")
+	s.Require().ErrorIs(err, encounter.ErrNotMember)
 
-	_, known = enc.BelievedStance("nobody", alice)
-	s.False(known)
+	_, err = enc.BelievedStance("nobody", alice)
+	s.Require().ErrorIs(err, encounter.ErrNotMember)
 }

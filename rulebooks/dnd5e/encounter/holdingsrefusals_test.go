@@ -40,7 +40,7 @@ func (s *HoldingsSuite) TestLootRefusesInOrder() {
 	})
 	s.Run("a negative range is a caller defect, not a smaller reach", func() {
 		_, err := enc.Loot(&encounter.LootInput{Member: raider, Target: captain, Range: -1})
-		s.Require().ErrorIs(err, encounter.ErrNoMember)
+		s.Require().ErrorIs(err, encounter.ErrBadReach)
 	})
 	s.Run("not a member", func() {
 		_, err := enc.Loot(&encounter.LootInput{Member: "ghost", Target: captain})
@@ -120,7 +120,7 @@ func (s *HoldingsSuite) TestHoldRefusesInOrder() {
 	})
 	s.Run("a negative range", func() {
 		_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: chalice, Range: -1})
-		s.Require().ErrorIs(err, encounter.ErrNoMember)
+		s.Require().ErrorIs(err, encounter.ErrBadReach)
 	})
 	s.Run("not a member", func() {
 		_, err := enc.Hold(&encounter.HoldInput{Member: "ghost", Target: chalice})

@@ -23,9 +23,60 @@ import (
 // TWO DOORS, ONE PROJECTION. A social verdict is answered inside the verb,
 // where the encounter has the creature in hand ([Encounter.factsFor]); a
 // `time` pick is made by a [Driver], which is handed a [MonsterView] and
-// nothing else ([factsFromView]). Both end at the same [Facts], and the deed
-// half is literally the same function, so the two cannot come to disagree
-// about how old a deed is.
+// nothing else ([factsFromView]). Each door gathers what it has into the same
+// [factsInput], and [projectFacts] alone turns that into [Facts] — so the two
+// cannot come to disagree about which enemy is in reach, how old a deed is, or
+// whether a body counts (rpg-project#539: a downed subject is never an enemy
+// in reach).
+
+// factsInput is what either door gathers before the one projection runs.
+type factsInput struct {
+	deeds, allyDeeds, ownDeeds []HeldDeed
+	now                        uint64
+	canAttack, canMove         bool
+	sightings                  []factSighting
+}
+
+// factSighting is one opposed-or-not subject a member holds sight testimony
+// about with a position. current is false for a remembered ghost. standing
+// and inReach are read only for a current sighting.
+type factSighting struct {
+	opposed, current, standing, inReach bool
+}
+
+// projectFacts is THE projection both doors end at.
+//
+// An enemy is seen when a current sighting is opposed, and in reach only when
+// it is also standing and inside one of the member's actions' reach: a body is
+// not an enemy in reach, and [attackIntent] will not swing at one either. A
+// remembered opposed subject is remembered. The bands are then narrowed to one
+// ([narrowToOneBand]).
+func projectFacts(in factsInput) Facts {
+	facts := Facts{
+		Deeds:     in.deeds,
+		AllyDeeds: in.allyDeeds,
+		OwnDeeds:  in.ownDeeds,
+		Now:       in.now,
+		CanAttack: in.canAttack,
+		CanMove:   in.canMove,
+	}
+	for _, s := range in.sightings {
+		if !s.opposed {
+			continue
+		}
+		if !s.current {
+			facts.EnemyRemembered = true
+			continue
+		}
+		facts.EnemySeen = true
+		if s.standing && s.inReach {
+			facts.EnemyInReach = true
+		}
+	}
+	narrowToOneBand(&facts)
+
+	return facts
+}
 
 // factsFor projects one member's own holdings into the facts its table reads.
 //
@@ -33,7 +84,8 @@ import (
 // [Encounter.buildMonsterView] makes. Opposition is asked of the stance graph
 // per subject, so a creature in no faction — a world NPC — reads `enemy:
 // none` however crowded the room is, which is what keeps the neutral goblin
-// from advancing on the party the first time it has time.
+// from advancing on the party the first time it has time. Standing is the
+// same down set [Encounter.buildMonsterView]'s route search reads.
 func (e *Encounter) factsFor(id MemberID) (Facts, error) {
 	self, ok := e.members[id]
 	if !ok {
@@ -49,9 +101,13 @@ func (e *Encounter) factsFor(id MemberID) (Facts, error) {
 	if err != nil {
 		return Facts{}, fmt.Errorf("facts: %q: %w", id, err)
 	}
+	down, err := e.downNow()
+	if err != nil {
+		return Facts{}, fmt.Errorf("facts: %q: %w", id, err)
+	}
 
-	facts := Facts{
-		Deeds: heldDeedsAgainst(holdings, id),
+	in := factsInput{
+		deeds: heldDeedsAgainst(holdings, id),
 		// THE TWO READINGS BESIDE THE FIRST (rpg-toolkit#1883, rpg-project#498).
 		// Every deed a witness holds is ALREADY here — deeds land on every
 		// witness, and the payload carries `Target` — so these are the same
@@ -60,17 +116,17 @@ func (e *Encounter) factsFor(id MemberID) (Facts, error) {
 		// ALLY IS THE STANCE GRAPH'S ANSWER, asked per deed at the moment it
 		// is read: a disposition that changes changes this reading, and the
 		// document never names a faction.
-		AllyDeeds: heldDeedsAgainstSide(e, holdings, id),
-		OwnDeeds:  heldDeedsBy(holdings, id),
-		Now:       uint64(e.clock.ToData().HighWater),
+		allyDeeds: heldDeedsAgainstSide(e, holdings, id),
+		ownDeeds:  heldDeedsBy(holdings, id),
+		now:       uint64(e.clock.ToData().HighWater),
 		// NOTHING A SOCIAL VERDICT CAN ANSWER WITH IS PAID OUT OF A TURN.
 		// `fact`, `flee` and a bare line cost nothing a budget runs out of,
 		// and the three budgeted words are refused under a social key at
 		// every door a table comes in through ([validateTable]). Saying
 		// "cannot" here would read as a creature with nothing left, which is
 		// not what this projection knows or means.
-		CanAttack: true,
-		CanMove:   true,
+		canAttack: true,
+		canMove:   true,
 	}
 
 	for _, h := range holdings {
@@ -81,26 +137,20 @@ func (e *Encounter) factsFor(id MemberID) (Facts, error) {
 		if _, ok := e.members[subject]; !ok {
 			continue
 		}
-		if !e.opposed(id, subject) {
-			continue
-		}
 		location, ok := DecodeSightTestimony(h.Payload)
 		if !ok || location.State == LocationUnknown {
 			continue
 		}
-		if h.CurrentOn(perception.Sight) {
-			facts.EnemySeen = true
-			if e.withinReach(self, sheet.Actions, location.Position) {
-				facts.EnemyInReach = true
-			}
-			continue
-		}
-		facts.EnemyRemembered = true
+		current := h.CurrentOn(perception.Sight)
+		in.sightings = append(in.sightings, factSighting{
+			opposed:  e.opposed(id, subject),
+			current:  current,
+			standing: !down[subject],
+			inReach:  current && e.withinReach(self, sheet.Actions, location.Position),
+		})
 	}
 
-	narrowToOneBand(&facts)
-
-	return facts, nil
+	return projectFacts(in), nil
 }
 
 // withinReach reports whether a cell is inside any of this member's own
@@ -129,9 +179,9 @@ func (e *Encounter) withinReach(m *memberRecord, actions []ActionView, cell spat
 // narrowToOneBand keeps the enemy bands EXCLUSIVE: the nearest one that holds
 // is the only one that holds.
 //
-// ENFORCED IN ONE PLACE, and both projections call it. An author writes one
-// entry per band and knows exactly one is on the table; a reader that
-// re-derived the exclusion would be a second place it could stop being true.
+// ENFORCED IN ONE PLACE, inside [projectFacts]. An author writes one entry per
+// band and knows exactly one is on the table; a reader that re-derived the
+// exclusion would be a second place it could stop being true.
 func narrowToOneBand(facts *Facts) {
 	if facts.EnemyInReach {
 		facts.EnemySeen = false
@@ -144,20 +194,20 @@ func narrowToOneBand(facts *Facts) {
 	}
 }
 
-// factsFromView is the same projection for a [Driver], which is handed a
-// [MonsterView] rather than the encounter.
+// factsFromView is the driver's door into the same projection: a [Driver] is
+// handed a [MonsterView] rather than the encounter.
 //
-// IT READS Opposed OFF THE VIEW rather than asking the stance graph, because
-// a driver has no graph to ask: [Encounter.buildMonsterView] fills the flag
-// from `opposed(self, other)` at the moment the view is built, which is the
-// anti-wall-hack contract holding for opposition exactly as it holds for
-// position.
+// IT READS Opposed, Standing AND InReach OFF THE VIEW rather than asking the
+// encounter, because a driver has nothing else to ask:
+// [Encounter.buildMonsterView] fills them at the moment the view is built,
+// which is the anti-wall-hack contract holding for opposition exactly as it
+// holds for position.
 func factsFromView(view MonsterView) Facts {
-	facts := Facts{
-		Deeds:     view.Deeds,
-		AllyDeeds: view.AllyDeeds,
-		OwnDeeds:  view.OwnDeeds,
-		Now:       view.At,
+	in := factsInput{
+		deeds:     view.Deeds,
+		allyDeeds: view.AllyDeeds,
+		ownDeeds:  view.OwnDeeds,
+		now:       view.At,
 		// AFFORDABILITY IS ELIGIBILITY (rpg-project#465, ruled on an
 		// api-builder finding): what the creature can still pay for this turn
 		// decides which entries are on the table at all. The budget is the
@@ -165,39 +215,29 @@ func factsFromView(view MonsterView) Facts {
 		// `attack` a second time — and on the world clock, where the budget
 		// carries no attacks at all, a table's `attack` row is simply never a
 		// candidate.
-		CanAttack: view.Budget.AttacksLeft > 0,
-		CanMove:   CellsFromFeet(view.Budget.MovementFeet) > 0,
+		canAttack: view.Budget.AttacksLeft > 0,
+		canMove:   CellsFromFeet(view.Budget.MovementFeet) > 0,
 	}
 	for _, s := range view.Seen {
-		if !s.Opposed {
-			continue
-		}
-		facts.EnemySeen = true
 		// THE SAME REACH AN Attack IS TESTED AGAINST, read off the view the
 		// encounter already computed it onto ([attackIntent] asks the same
 		// map) — so `enemy: reach` and `attack: enemy` can never disagree
 		// about whether the swing lands.
-		//
-		// STANDING IS PART OF IT: a body is not an enemy in reach, and
-		// attackIntent will not swing at one either.
-		if !s.Standing {
-			continue
-		}
+		inReach := false
 		for _, a := range view.Actions {
 			if s.InReach[a.Ref] {
-				facts.EnemyInReach = true
+				inReach = true
 			}
 		}
+		in.sightings = append(in.sightings, factSighting{
+			opposed: s.Opposed, current: true, standing: s.Standing, inReach: inReach,
+		})
 	}
 	for _, r := range view.Remembered {
-		if r.Opposed {
-			facts.EnemyRemembered = true
-			break
-		}
+		in.sightings = append(in.sightings, factSighting{opposed: r.Opposed})
 	}
-	narrowToOneBand(&facts)
 
-	return facts
+	return projectFacts(in)
 }
 
 // heldDeedsAgainst is every deed this creature holds that was done TO IT,

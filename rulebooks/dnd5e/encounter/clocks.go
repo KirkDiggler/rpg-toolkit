@@ -472,7 +472,7 @@ func (e *Encounter) autoPassTurn(bubble *clock.Turn, member MemberID) (uint64, b
 		return 0, false, err
 	}
 	seq, err := e.appendClockBeat(map[string]interface{}{
-		"beat":   "turn-ended",
+		"beat":   BeatTurnEnded,
 		"member": string(member),
 		"next":   out.Next,
 	}, order...)
@@ -734,7 +734,7 @@ func (e *Encounter) endDrivenTurn(bubble *clock.Turn, active core.EntityID) (uin
 	}
 
 	seq, berr := e.appendClockBeat(map[string]interface{}{
-		"beat":   "turn-ended",
+		"beat":   BeatTurnEnded,
 		"member": string(activeID),
 		"next":   out.Next,
 	}, order...)
@@ -2146,7 +2146,7 @@ func (e *Encounter) formWithParticipation(
 	e.bubbles = append(e.bubbles, bubble)
 
 	beat := map[string]interface{}{
-		"beat":  "bubble-formed",
+		"beat":  BeatFightStarted,
 		"order": in.Order,
 	}
 	// Recorded rather than merely returned: surprise is consumed a turn later
@@ -2363,7 +2363,7 @@ func (e *Encounter) transfer(in *TransferInput, driveAfterRemove bool) (*Transfe
 	}
 
 	seq, err := e.appendClockBeat(map[string]interface{}{
-		"beat":   "transferred",
+		"beat":   BeatTransferred,
 		"member": string(in.Member),
 		"to":     string(in.To),
 	}, subjects...)
@@ -2510,7 +2510,7 @@ func (e *Encounter) EndTurn(in *EndTurnInput) (*EndTurnOutput, error) {
 	}
 
 	seq, err := e.appendClockBeat(map[string]interface{}{
-		"beat":   "turn-ended",
+		"beat":   BeatTurnEnded,
 		"member": string(in.Member),
 		"next":   out.Next,
 	}, order...)

@@ -57,9 +57,9 @@ type InteractOutput struct {
 // closed → actor exists and is a player → target exists and is a world NPC
 // → both placed → target in range → target visible.
 //
-// Errors: ErrNilInput, ErrNoMember (empty actor/target, or a negative
-// Range — the same "negative numeric input is a caller defect" convention
-// the Sheets consult applies to a speed or an action's RangeFeet),
+// Errors: ErrNilInput, ErrNoMember (empty actor/target), ErrBadReach (a
+// negative Range — the same "negative numeric input is a caller defect"
+// convention the Sheets consult applies to a speed or an action's RangeFeet),
 // ErrClosed, ErrNotMember (actor/target missing, or present but the wrong
 // kind), ErrBadPlacement (either member has no cell), ErrOutOfRange,
 // ErrNotVisible.
@@ -75,7 +75,7 @@ func (e *Encounter) Interact(in *InteractInput) (*InteractOutput, error) {
 	// RangeFeet (validateSheetFacts) — silently normalizing it to "adjacent"
 	// would hide the mistake rather than report it (Copilot, PR #1412 review).
 	if in.Range < 0 {
-		return nil, fmt.Errorf("interact: range %d is negative: %w", in.Range, ErrNoMember)
+		return nil, fmt.Errorf("interact: range %d is negative: %w", in.Range, ErrBadReach)
 	}
 	if e.outcome != nil {
 		return nil, fmt.Errorf("interact: %w", ErrClosed)
@@ -125,7 +125,7 @@ func (e *Encounter) Interact(in *InteractInput) (*InteractOutput, error) {
 
 	at := uint64(e.clock.ToData().HighWater)
 	payload, err := json.Marshal(map[string]interface{}{
-		"beat":   "interacted",
+		"beat":   BeatInteracted,
 		"actor":  string(in.Actor),
 		"target": string(in.Target),
 	})

@@ -61,7 +61,7 @@ import (
 // cell — which is every placed member, and is why the audience of an
 // `intimidated` beat has the actor in it.
 //
-// Errors: ErrNoMember (no such member), ErrBadPlacement (not placed).
+// Errors: ErrNotMember (no such member), ErrBadPlacement (not placed).
 func (e *Encounter) Witnesses(of MemberID) ([]MemberID, error) {
 	_, witnesses, err := e.audienceOf(of)
 	if err != nil {

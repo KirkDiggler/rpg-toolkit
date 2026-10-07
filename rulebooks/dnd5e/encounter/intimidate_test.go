@@ -130,7 +130,7 @@ func (s *IntimidateTestSuite) TestTheWitnessReadIsTheAudience() {
 	s.Equal(witnesses, out.Witnesses, "what the caller was told, and what the verb used")
 
 	_, err = enc.Witnesses("nobody")
-	s.ErrorIs(err, encounter.ErrNoMember)
+	s.ErrorIs(err, encounter.ErrNotMember)
 }
 
 // A missed threat lands NOTHING — no deed at all, which is the difference

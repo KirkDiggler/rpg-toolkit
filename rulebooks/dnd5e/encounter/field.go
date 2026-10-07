@@ -91,8 +91,10 @@ const (
 	// is in no faction, which a world NPC is (rpg-project#520, R5). It is a
 	// KNOWN answer, never "unknown" and never neutral, and it is never
 	// authorable — a disposition or a stance trigger naming it is refused,
-	// because it describes a member, not a posture between two sides. Only
-	// [ObservedContextPair.Stance] reports it.
+	// because it describes a member, not a posture between two sides.
+	// [Encounter.StanceBetween], [Encounter.BelievedStance] and
+	// [ObservedContextPair.Stance] report it; it is the one encoding of no
+	// side.
 	StanceNone Stance = "none"
 )
 
