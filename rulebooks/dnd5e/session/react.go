@@ -9,6 +9,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/play/interrupt"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // ReactChoice is one answer to an open reaction window.
@@ -206,31 +207,8 @@ func (m *Manager) React(ctx context.Context, in *ReactInput) (*ReactOutput, erro
 		}
 	}
 
-	open, err := scope.ledger.Open()
-	if err != nil {
-		return nil, fmt.Errorf("react: %w: %v", ErrInvalidSession, err)
-	}
-	if len(open) == 0 {
-		// TWO CONTINUE-VERBS, AND THE ENCOUNTER SAYS WHICH. A driven turn that
-		// stopped mid-walk is finished by ResumeTurn; a DIRECTED walk — a
-		// creature a spell sent running — is finished by ResumeDirective, and
-		// it is nobody's turn that is waiting: the caster's turn is still going
-		// on. The two are asked in this order because a hold is the narrower
-		// fact, and Paused() answers true for either.
-		//
-		// Resuming can pause AGAIN on a later cell — a new question, not a
-		// failure — and the pose that does it writes its own windows onto
-		// this same ledger. Both outcomes are read off the ledger below.
-		switch {
-		case scope.enc.HeldDirective():
-			if _, err := scope.enc.ResumeDirective(ctx); err != nil {
-				return nil, fmt.Errorf("react: %w", translate(err))
-			}
-		case scope.enc.Paused():
-			if _, err := scope.enc.ResumeTurn(ctx); err != nil {
-				return nil, fmt.Errorf("react: %w", translate(err))
-			}
-		}
+	if err := m.resumeAfterLastAnswer(ctx, scope, "", nil); err != nil {
+		return nil, fmt.Errorf("react: %w", err)
 	}
 
 	// Written once, AFTER the resume, so a walk that stopped again on a later
@@ -244,6 +222,57 @@ func (m *Manager) React(ctx context.Context, in *ReactInput) (*ReactOutput, erro
 		return nil, fmt.Errorf("react: %w", err)
 	}
 	return &ReactOutput{Saved: report, Delivery: delivery}, nil
+}
+
+// resumeAfterLastAnswer continues whatever the table was waiting on, once the
+// window just answered was the last one open. Every React path that answers a
+// window ends here, so the three of them cannot disagree about what "the last
+// answer" resumes (rpg-toolkit#1965).
+//
+// NOTHING RESUMES WHILE A QUESTION STANDS. Another audience still deciding is
+// still holding the table, and continuing past them would take the announced
+// step out from under their answer.
+//
+// THEN THE NARROWEST CONTINUATION FIRST, because Paused() answers true for
+// every one of them:
+//
+//   - walkPath is a player's own walk that a swing interrupted, carried on the
+//     pending-attack window that stopped it. Only that window has one; every
+//     other caller passes nil.
+//   - A DIRECTED walk — a creature a spell sent running — is finished by
+//     ResumeDirective, and it is nobody's turn that is waiting: the caster's
+//     turn is still going on.
+//   - A driven turn that stopped mid-walk is finished by ResumeTurn.
+//
+// Resuming can pause AGAIN on a later cell — a new question, not a failure —
+// and the pose that does it writes its own windows onto this same ledger, which
+// each caller persists after this returns.
+func (m *Manager) resumeAfterLastAnswer(
+	ctx context.Context, scope *writeScope, walker string, walkPath []spatial.Position,
+) error {
+	open, err := scope.ledger.Open()
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidSession, err)
+	}
+	if len(open) > 0 {
+		return nil
+	}
+	switch {
+	case len(walkPath) > 0:
+		if _, err := m.runWalk(ctx, scope, walker, walkPath); err != nil {
+			return err
+		}
+		return m.saveWalkProgress(ctx, scope)
+	case scope.enc.HeldDirective():
+		if _, err := scope.enc.ResumeDirective(ctx); err != nil {
+			return translate(err)
+		}
+	case scope.enc.Paused():
+		if _, err := scope.enc.ResumeTurn(ctx); err != nil {
+			return translate(err)
+		}
+	}
+	return nil
 }
 
 // selectWindow finds the open window a declaration id names.

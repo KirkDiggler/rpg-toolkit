@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -349,6 +350,83 @@ func (s *CastPauseSuite) TestAHeldSwingStillLetsTheWalkFinish() {
 	s.Empty(s.swings("bard"), "holding swings at nobody")
 	s.Equal(6, s.fledCells(), "and the creature runs the same thirty feet either way")
 	s.Require().NoError(s.endBardsTurn())
+}
+
+// TestAPostHitAnswerDuringAHeldDirectiveResumesTheDirective pins that every
+// React path agrees on what the last answer resumes (rpg-toolkit#1965).
+//
+// Paused() is true for a held directive as well as a paused turn, so a path
+// that resumed on Paused() alone called ResumeTurn here — refused with
+// ErrNotPaused, because it is the bard's turn and nobody's turn is paused —
+// and the held walk never finished. The post-hit path now ends in the same
+// step as the other two, and that step resumes the directive.
+//
+// THE WINDOW IS SWAPPED IN THE STORED RECORD. The fighter's open window
+// becomes a post-hit window — the skeleton has struck her, and she holds a
+// post-hit reaction — while the directive is still held. No content on this
+// stack gives a fleeing skeleton's opponent that offer mid-flight, but the
+// record shape is one React accepts, and the continuation it chooses is the
+// claim.
+func (s *CastPauseSuite) TestAPostHitAnswerDuringAHeldDirectiveResumesTheDirective() {
+	s.oneFighterScene()
+
+	out, err := s.whisper()
+	s.Require().NoError(err)
+	s.Require().True(out.Paused, "the flight is held on the fighter's question")
+
+	s.swapInPostHitWindow("fighter")
+	row := s.reactRow("fighter")
+	s.Require().NotEmpty(row.ID, "the swapped window is still an open row")
+	s.Require().NotNil(row.Reaction)
+	s.Equal(refs.Features.WrathOfTheStorm().String(), row.Reaction.Ref, "and it is the post-hit offer now")
+
+	_, err = s.mgr.React(context.Background(), &session.ReactInput{
+		Session: "sess", Member: "fighter", DeclarationID: row.ID, Choice: session.ReactHold,
+	})
+	s.Require().NoError(err, "the last answer resumes the held directive, not a turn nobody paused")
+
+	s.Equal(6, s.fledCells(), "the held walk finished its thirty feet")
+	s.Empty(s.reactRow("fighter").ID, "nothing is being asked any more")
+	s.Require().NoError(s.endBardsTurn(), "and the table moves again")
+}
+
+// swapInPostHitWindow rewrites member's one open window in the stored session
+// record into a post-hit window, keeping its id so the row's selector holds.
+func (s *CastPauseSuite) swapInPostHitWindow(member string) {
+	s.T().Helper()
+	offer := struct {
+		ReactorID   string    `json:"reactor_id"`
+		Ref         *core.Ref `json:"ref"`
+		Name        string    `json:"name"`
+		ResourceKey string    `json:"resource_key"`
+	}{ReactorID: member, Ref: refs.Features.WrathOfTheStorm(), Name: "Wrath of the Storm", ResourceKey: "wrath_of_the_storm"}
+	frozen, err := json.Marshal(map[string]any{
+		"kind": "strike.post_roll", "version": 3,
+		"attacker_id": "skeleton", "target_id": member,
+		"post_hit_phase": true,
+		"outcome":        map[string]any{"AttackerID": "skeleton", "TargetID": member, "Hit": true},
+		"post_hit":       offer,
+	})
+	s.Require().NoError(err)
+	payload, err := json.Marshal(map[string]any{
+		"kind": "post_hit", "audience": member,
+		"offer":  map[string]string{"ref": refs.Features.WrathOfTheStorm().String(), "name": "Wrath of the Storm"},
+		"frozen": frozen,
+	})
+	s.Require().NoError(err)
+
+	stored := s.sessions.byID["sess"]
+	s.Require().NotNil(stored)
+	swapped := false
+	for i := range stored.Windows.Windows {
+		if string(stored.Windows.Windows[i].Audience) != member {
+			continue
+		}
+		s.Require().False(swapped, "member %q has more than one open window", member)
+		stored.Windows.Windows[i].Payload = payload
+		swapped = true
+	}
+	s.Require().True(swapped, "member %q has no open window to swap", member)
 }
 
 // TestTheCasterIsAskedOnHerOwnTurn. The bard whispers at the skeleton standing

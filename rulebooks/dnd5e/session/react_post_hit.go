@@ -144,10 +144,8 @@ func (m *Manager) answerPostHit(ctx context.Context, scope *writeScope, window i
 		if err = m.recordRetaliation(scope, struck.Retaliation, out); err != nil {
 			return nil, reportUnrecorded(scope, err)
 		}
-		if scope.enc.Paused() {
-			if _, err = scope.enc.ResumeTurn(ctx); err != nil {
-				return nil, translate(err)
-			}
+		if err = m.resumeAfterLastAnswer(ctx, scope, "", nil); err != nil {
+			return nil, err
 		}
 	}
 	scope.data.Windows = scope.ledger.ToData()

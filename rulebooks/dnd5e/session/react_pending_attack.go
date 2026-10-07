@@ -193,25 +193,8 @@ func (m *Manager) answerPendingAttack(ctx context.Context, scope *writeScope, wi
 		default:
 			return nil, fmt.Errorf("%w: resumed attack produced %T", ErrInvalidWorld, out.Outcome)
 		}
-		open, openErr := scope.ledger.Open()
-		if openErr != nil {
-			return nil, openErr
-		}
-		if len(open) == 0 && len(p.WalkPath) > 0 {
-			if _, err = m.runWalk(ctx, scope, p.Target, p.WalkPath); err != nil {
-				return nil, err
-			}
-			if err = m.saveWalkProgress(ctx, scope); err != nil {
-				return nil, err
-			}
-		} else if len(open) == 0 && scope.enc.HeldDirective() {
-			if _, err = scope.enc.ResumeDirective(ctx); err != nil {
-				return nil, translate(err)
-			}
-		} else if len(open) == 0 && scope.enc.Paused() {
-			if _, err = scope.enc.ResumeTurn(ctx); err != nil {
-				return nil, translate(err)
-			}
+		if err = m.resumeAfterLastAnswer(ctx, scope, p.Target, p.WalkPath); err != nil {
+			return nil, err
 		}
 	}
 	scope.data.Windows = scope.ledger.ToData()
