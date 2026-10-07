@@ -467,3 +467,18 @@ func TestABaneOnAWardWhoseCasterIsNotInTheCastIsRefused(t *testing.T) {
 	require.ErrorContains(t, err, wolfID)
 	require.Zero(t, roller.calls, "no ward save was rolled")
 }
+
+// FAIL CLOSED, the other half. A ward whose caster IS in the cast but casts
+// nothing has a spell save DC of 0 — the same automatic success as an absent
+// caster — so the strike is refused the same way.
+func TestAWardWhoseCasterHasNoSpellSaveDCRefusesTheStrike(t *testing.T) {
+	caster := clericWarder()
+	caster.ClassID = "fighter" // same id as the ward's SourceID, no spellcasting ability
+
+	roller := &actionRoller{singles: []int{20}}
+	_, err := strikeOnWardedHero(t, roller, Participant{Character: caster})
+	require.ErrorIs(t, err, ErrWardUnreadable)
+	require.ErrorContains(t, err, heroID, "the error names the ward's holder")
+	require.ErrorContains(t, err, "cleric-1", "and its caster")
+	require.Zero(t, roller.calls, "no save was rolled against a DC of zero")
+}

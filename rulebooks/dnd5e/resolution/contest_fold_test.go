@@ -15,6 +15,7 @@ import (
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -243,4 +244,45 @@ func (s *ContestFoldTestSuite) TestContestDamageWithNoInstigatorIsRefusedAtTheDo
 	)
 	s.Require().ErrorIs(err, ErrBadAction)
 	s.Require().ErrorContains(err, "instigator")
+}
+
+// The trace line names the multiplier FinalDamage actually applied, not one
+// whose truncated product happens to match. With a total of 1, a resistance
+// listed before an immunity also reproduces 0 (int(1 * 0.5) == 0); the line
+// must still read immune, sourced to the immunity. Driven directly because
+// today's content cannot put both on one creature.
+func (s *ContestFoldTestSuite) TestAMultiplierLineNamesTheFactorThatWasApplied() {
+	one := 1
+	explained, err := multipliedDamage([]dnd5eEvents.DamageComponent{
+		{
+			Source: dnd5eEvents.DamageSourceSpell,
+			Roll: dnd5eEvents.RollComponent{
+				Source:   dnd5eEvents.RollSource{Ref: refs.Spells.DissonantWhispers(), Name: mockeryName},
+				Modifier: &one,
+			},
+			DamageType: damage.Bludgeoning,
+		},
+		{
+			Source:     dnd5eEvents.DamageSourceCondition,
+			Roll:       dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging"}},
+			DamageType: damage.Bludgeoning,
+			Multiplier: dnd5eEvents.Multiply(0.5),
+		},
+		{
+			Source: dnd5eEvents.DamageSourceMonsterTrait,
+			Roll: dnd5eEvents.RollComponent{
+				Source: dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity"},
+			},
+			DamageType: damage.Bludgeoning,
+			Multiplier: dnd5eEvents.Multiply(0),
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(explained)
+
+	line := explained[0]
+	s.Equal("immune", line.Roll.Source.Label, "immunity is what FinalDamage applied")
+	s.Equal(refs.MonsterTraits.Immunity().String(), line.Roll.Source.Ref.String())
+	s.Require().NotNil(line.Roll.Modifier)
+	s.Equal(-1, *line.Roll.Modifier)
 }

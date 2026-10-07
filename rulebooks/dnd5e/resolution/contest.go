@@ -784,11 +784,14 @@ func additiveDamage(components []dnd5eEvents.DamageComponent) []dnd5eEvents.Dama
 // cancelling) gets no component.
 //
 // The stacking rules are NOT reimplemented: FinalDamage decides the amount,
-// and this only names which multiplier's factor reproduces it — the first one,
-// in fold order, whose factor applied to the type's total gives that amount.
+// and FinalDamage also says which factor it applied ([effectiveMultiplier]).
+// The line names the first multiplier, in fold order, whose own factor IS
+// that effective one. Matching on the truncated product instead would let a
+// small total name the wrong rule: with a total of 1, a resistance listed
+// before an immunity reproduces the immunity's 0 too.
 //
-// Errors: a multiplied type whose settled amount no single multiplier on it
-// explains — a stacking rule this trace cannot name, refused rather than
+// Errors: a multiplied type whose effective factor no multiplier on it
+// carries — a stacking rule this trace cannot name, refused rather than
 // recorded under the wrong source.
 func multipliedDamage(components []dnd5eEvents.DamageComponent) ([]dnd5eEvents.DamageComponent, error) {
 	var types []damage.Type
@@ -818,9 +821,10 @@ func multipliedDamage(components []dnd5eEvents.DamageComponent) ([]dnd5eEvents.D
 		if len(multipliers[damageType]) == 0 || delta == 0 {
 			continue
 		}
+		effective := effectiveMultiplier(damageType, multipliers[damageType])
 		var decided *dnd5eEvents.DamageComponent
 		for i, multiplier := range multipliers[damageType] {
-			if int(float64(base[damageType])**multiplier.Multiplier) == settled[damageType] {
+			if *multiplier.Multiplier == effective {
 				decided = &multipliers[damageType][i]
 				break
 			}
@@ -840,6 +844,26 @@ func multipliedDamage(components []dnd5eEvents.DamageComponent) ([]dnd5eEvents.D
 	}
 
 	return explained, nil
+}
+
+// multiplierProbe is the total [effectiveMultiplier] folds its multipliers
+// over: large enough that every factor the stacking rules can settle on (0,
+// 0.5, 1, 2) comes back exact rather than truncated.
+const multiplierProbe = 1000
+
+// effectiveMultiplier asks [combat.FinalDamage] which factor its stacking
+// rules apply to one damage type's multipliers, by folding them over
+// [multiplierProbe] of that type. FinalDamage stays the one author of
+// the stacking rule; this only reads its answer back without truncation.
+func effectiveMultiplier(damageType damage.Type, multipliers []dnd5eEvents.DamageComponent) float64 {
+	probe := multiplierProbe
+	components := append([]dnd5eEvents.DamageComponent{{
+		Roll:       dnd5eEvents.RollComponent{Modifier: &probe},
+		DamageType: damageType,
+	}}, multipliers...)
+	_, total := combat.FinalDamage(components)
+
+	return float64(total) / multiplierProbe
 }
 
 // multipliedLabel is what a multiplier's line on the trace calls itself, so a
