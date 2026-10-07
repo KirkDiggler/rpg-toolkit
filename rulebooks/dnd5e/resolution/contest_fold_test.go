@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
@@ -255,43 +256,47 @@ func (s *ContestFoldTestSuite) TestContestDamageWithNoInstigatorIsRefusedAtTheDo
 	s.Require().ErrorContains(err, "instigator")
 }
 
-// The trace line names the multiplier FinalDamage actually applied, not one
+// The trace line names the multiplier the settlement decided by, not one
 // whose truncated product happens to match. With a total of 1, a resistance
-// listed before an immunity also reproduces 0 (int(1 * 0.5) == 0); the line
+// folded before an immunity also reproduces 0 (int(1 * 0.5) == 0); the line
 // must still read immune, sourced to the immunity. Driven directly because
 // today's content cannot put both on one creature.
 func (s *ContestFoldTestSuite) TestAMultiplierLineNamesTheFactorThatWasApplied() {
 	one := 1
-	explained, err := multipliedDamage([]dnd5eEvents.DamageComponent{
-		{
-			Source: dnd5eEvents.DamageSourceSpell,
-			Roll: dnd5eEvents.RollComponent{
-				Source:   dnd5eEvents.RollSource{Ref: refs.Spells.DissonantWhispers(), Name: mockeryName},
-				Modifier: &one,
-			},
-			DamageType: damage.Bludgeoning,
+	dealt := []dnd5eEvents.DamageComponent{{
+		Source: dnd5eEvents.DamageSourceSpell,
+		Roll: dnd5eEvents.RollComponent{
+			Source:   dnd5eEvents.RollSource{Ref: refs.Spells.DissonantWhispers(), Name: mockeryName},
+			Modifier: &one,
 		},
-		{
-			Source:     dnd5eEvents.DamageSourceCondition,
-			Roll:       dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging"}},
-			DamageType: damage.Bludgeoning,
-			Multiplier: dnd5eEvents.Multiply(0.5),
-		},
-		{
-			Source: dnd5eEvents.DamageSourceMonsterTrait,
-			Roll: dnd5eEvents.RollComponent{
-				Source: dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity"},
+		DamageType: damage.Bludgeoning,
+	}}
+	settlement, err := combat.SettleDamage(&combat.SettleDamageInput{
+		Dealt: dealt,
+		Multipliers: []dnd5eEvents.DamageMultiplier{
+			{
+				Category:   dnd5eEvents.DamageSourceCondition,
+				Source:     dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging"},
+				DamageType: damage.Bludgeoning,
+				Factor:     dnd5eEvents.DamageFactorResistance,
 			},
-			DamageType: damage.Bludgeoning,
-			Multiplier: dnd5eEvents.Multiply(0),
+			{
+				Category:   dnd5eEvents.DamageSourceMonsterTrait,
+				Source:     dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity"},
+				DamageType: damage.Bludgeoning,
+				Factor:     dnd5eEvents.DamageFactorImmunity,
+			},
 		},
 	})
 	s.Require().NoError(err)
-	s.Require().NotEmpty(explained)
+	trace, err := receivedTrace(dealt, nil, settlement)
+	s.Require().NoError(err)
+	s.Require().Len(trace, 2, "the dealt line and one multiplier line for the one type")
 
-	line := explained[0]
-	s.Equal("immune", line.Roll.Source.Label, "immunity is what FinalDamage applied")
+	line := trace[1]
+	s.Equal("immune", line.Roll.Source.Label, "immunity is what the settlement applied")
 	s.Equal(refs.MonsterTraits.Immunity().String(), line.Roll.Source.Ref.String())
 	s.Require().NotNil(line.Roll.Modifier)
 	s.Equal(-1, *line.Roll.Modifier)
+	s.Nil(line.Multiplier, "a raw multiplier never leaves resolution")
 }

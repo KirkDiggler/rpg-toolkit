@@ -31,15 +31,18 @@ const encounterPath = "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encoun
 // View joins this set for ranged healing. In the pinned encounter v0.76.0,
 // it validates membership and reads intel.Held only; it neither refreshes
 // perception nor consults Sight, Standing, or another capability.
-// Persistent-area mutation changes geometry only, without consulting any
-// external capability. SeesWithin consults Sight for ranges but never Standing
+// Resolution no longer opens or ends a runtime area: it reports them on
+// Output for the host to apply through the encounter's own verbs, so
+// AddSightArea and RemoveSightArea left this set. BelievedAim joins for
+// known-creature targeting: it reads the observer's own held testimony and
+// measures on the run's canvas, consulting no capability. SeesWithin consults Sight for ranges but never Standing
 // or a turn-driving seam; sightSeam is a read-only range projection. Refreshing
 // perception remains in session after dirty sheets are saved.
 // WorldView is a pure snapshot: no standing consult and no retention mutation.
 // StanceBetween joins for the execution frame (rpg-project#520): it is the
 // fold IsHostile and IsAllied themselves read — membership, factions and the
 // run's own graph — and consults no capability.
-var encounterReach = []string{"AddSightArea", "Canvas", "IsAllied", "IsHostile", "RemoveSightArea", "SeesWithin", "StanceBetween", "ToData", "View", "WorldView"}
+var encounterReach = []string{"BelievedAim", "Canvas", "IsAllied", "IsHostile", "SeesWithin", "StanceBetween", "ToData", "View", "WorldView"}
 
 // TestResolveTouchesTheEncounterThroughTwoMethods is the half of the reentrancy
 // invariant that only this package can hold.

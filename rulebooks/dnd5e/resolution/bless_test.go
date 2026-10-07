@@ -305,9 +305,7 @@ func (s *CastActionTestSuite) TestBlessTargetProjectionHonorsPolicyWithoutReveal
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encounter.RefusingAnnouncer{}})
 	s.Require().NoError(err)
-	room, err := run.Canvas()
-	s.Require().NoError(err)
-	input := &KnownCreatureTargetsInput{Encounter: run, Room: room, CasterID: bardID, RangeFeet: 30,
+	input := &KnownCreatureTargetsInput{Encounter: run, CasterID: bardID, RangeFeet: 30,
 		Candidates: []string{bardID, heroID, wolfID}, Participants: []Participant{{Character: baneCaster(1, 2)}, {Character: f.saver(0)}, {Monster: f.wolfData()}}}
 	for _, policy := range []StaleTargetPolicy{StaleTargetRefuse, StaleTargetAttempt} {
 		input.StaleTargetPolicy = policy

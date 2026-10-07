@@ -32,6 +32,13 @@ which part is [`../CLAUDE.md`](../CLAUDE.md).
   a rule; content declares only the menu a client may choose from. The two
   lists have to agree and nothing makes them, so a test pins content's menu
   against the arms.
+- **The target step** ([`target_step.go`](./target_step.go)). Every damage
+  source — a strike's blow, a contest's damage — delivers through
+  `receiveDamage`: the dealt fold (the source's rules), a made save's halving,
+  the incoming fold (the target's reductions and multipliers, refused if it
+  altered what it was dealt), combat's settlement, the sheet, then the damage
+  taken report. It poses no question. Both outcomes carry its one trace, and
+  it refuses to apply a number the trace does not explain.
 - **One instance per ADDRESS per member.** `replaceSameAddress`
   ([`contest.go`](./contest.go)) takes off what the recipient already holds at
   the address a condition is about to land on. The key is the address and not
@@ -108,7 +115,8 @@ which part is [`../CLAUDE.md`](../CLAUDE.md).
 
 It ANSWERS exactly one question: **what happened when this interaction ran** —
 and it answers in data (R2). `Output` carries the world, the dirty sheets, the
-outcome or the pose, the hooks, and the concentration checks and breaks. No
+outcome or the pose, the hooks, the concentration checks and breaks, and the
+runtime areas the interaction opened and closed. No
 runtime object crosses either way.
 
 It ASKS the caller for everything else, and the `Input` fields say so in their
@@ -134,7 +142,7 @@ because the answer to *"where could this live?"* is so often *"here, easily."*
 
 | The question | Owner |
 |---|---|
-| **Where is anything** — who stands where, who can see what, what shape the floor has, who is inside a shape | [`encounter`](../encounter) |
+| **Where is anything** — who stands where, who can see what, what shape the floor has, who is inside a shape, a runtime area and who stands in it, where an observer believes a subject stands, which side a member is on | [`encounter`](../encounter) |
 | **What happens when things interact** — does it land, for how much, what does it leave behind, what does a fact mean | **`resolution`** (this module) |
 | **What was asked for, what is loaded, what is saved** — the host's verbs, the repositories, the integrity of what enters and leaves | [`session`](../session) |
 
@@ -261,6 +269,9 @@ here.
 | A new condition | `../conditions` + its loader | It is data on a sheet plus a behaviour that attaches. This package routes the blob and attaches it; it never learns the condition's name. |
 | A reaction or follow-up a subscriber wants | `events.FollowUp` ([`../events/damage_taken.go:50`](../events/damage_taken.go)) | **SUBSCRIBERS DESCRIBE, MACHINES ROLL.** The subscriber appends data — settled DC, settled consequence — to the fact it heard; `runFollowUps` ([`damagetaken.go:131`](./damagetaken.go)) rolls it nested, in the same interaction. `ConcentratingCondition.onDamageTaken` ([`../conditions/concentrating.go:406`](../conditions/concentrating.go)) is the worked example. |
 | A new cast shape | content first, then an arm in `newCast` | `newCast` ([`action.go:106`](./action.go)) reads the profile and splits: a profile with a `Save` gate goes to `newGatedCast` → `NewContest` ([`action.go:535`](./action.go)); one without goes to `newGatelessCast` → `NewActivation` ([`action.go:584`](./action.go)). Fit the shape or add an arm — never a spell name. |
+| A target's answer to damage — immunity, resistance, vulnerability, a fixed reduction | the rules packages, on `IncomingDamageChain` | The target step folds it and combat settles it. A condition that answers on both sides — Rage's bonus and Rage's resistance — subscribes to each fold separately; the dealt fold carries nothing a target answers. |
+| A spell whose area outlasts the cast — Fog Cloud's cloud | `encounter` owns the area and its membership | The cast reports it on `Output.OpenedAreas`, a concentration that ends reports its caster on `Output.ClosedAreas`, and the session applies both through encounter's own verbs. No condition records membership on a sheet, and nothing here selects an area by its spell. |
+| Aiming at a creature the caster remembers | `encounter.BelievedAim` answers; the stale-target policy is here | The believed point, its range on a clear line and whether the target moved off it are the encounter's answer. This package only decides what it means: refuse the cast, or attempt and miss. It decodes no testimony and measures nothing. |
 | An effect that MOVES a creature | here as an [`ImposedMove`](./contest.go), and `encounter` walks it | Resolution DESCRIBES the move — a policy, the anchor it is measured from, a budget — and never which cells. The cells are read from the field under `encounter`'s own fold, so a push obeys the same refusals a chosen step does and there is no second author of passability (rpg-project#431 §2). A step that was not chosen names its cause in `MovementInput.ForcedBy`, which suppresses the opportunity attacks. |
 | Something that must survive the call | `session` (and `encounter`'s record) | The bus dies with the call and this package opens no repository. What survives is what leaves in `Output`. |
 | A new ambient fact a predicate needs | `installTruth` — as a design decision | One installer, on every path, inside no condition. A registry populated by the call sites that happen to need it is rpg-toolkit#1251, which fought a whole campaign at base AC and logged nothing. |

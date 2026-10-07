@@ -938,22 +938,30 @@ func (s *DamageCustodyTestSuite) onDamageChain(
 	s.Require().NoError(err)
 }
 
-// multiplyOnBus installs a modifier component carrying the given factor —
-// the shape resistance, vulnerability, and immunity all take.
+// multiplyOnBus installs a target answer on the incoming fold carrying the
+// given factor — the shape resistance, vulnerability, and immunity all take.
 func (s *DamageCustodyTestSuite) multiplyOnBus(bus events.EventBus, t damage.Type, factor float64) {
-	s.onDamageChain(bus, "test_multiplier_"+string(t), func(e *dnd5eEvents.DamageChainEvent) {
-		e.Components = append(e.Components, dnd5eEvents.DamageComponent{
-			Source: dnd5eEvents.DamageSourceCondition,
-			Roll: dnd5eEvents.RollComponent{
-				Source: dnd5eEvents.RollSource{
-					Ref:  &core.Ref{Module: "test", Type: "conditions", ID: "multiplier"},
-					Name: "Test Multiplier",
-				},
-			},
-			Multiplier: dnd5eEvents.Multiply(factor),
-			DamageType: t,
+	_, err := dnd5eEvents.IncomingDamageChain.On(bus).SubscribeWithChain(s.ctx,
+		func(_ context.Context, _ *dnd5eEvents.IncomingDamageEvent,
+			c chain.Chain[*dnd5eEvents.IncomingDamageEvent],
+		) (chain.Chain[*dnd5eEvents.IncomingDamageEvent], error) {
+			err := c.Add(combat.StageFinal, "test_multiplier_"+string(t),
+				func(_ context.Context, e *dnd5eEvents.IncomingDamageEvent) (*dnd5eEvents.IncomingDamageEvent, error) {
+					e.Multipliers = append(e.Multipliers, dnd5eEvents.DamageMultiplier{
+						Category: dnd5eEvents.DamageSourceCondition,
+						Source: dnd5eEvents.RollSource{
+							Ref:  &core.Ref{Module: "test", Type: "conditions", ID: "multiplier"},
+							Name: "Test Multiplier",
+						},
+						DamageType: t,
+						Factor:     factor,
+					})
+					return e, nil
+				})
+
+			return c, err
 		})
-	})
+	s.Require().NoError(err)
 }
 
 func (s *DamageCustodyTestSuite) halveOnBus(bus events.EventBus, t damage.Type) {

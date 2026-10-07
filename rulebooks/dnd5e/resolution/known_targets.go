@@ -10,7 +10,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // StaleTargetPolicy decides the consequence of aiming at a remembered location
@@ -33,10 +32,10 @@ func (p StaleTargetPolicy) validate() error {
 }
 
 // KnownCreatureTargetsInput supplies an explicit candidate universe and the
-// same policy used for execution. Knowledge comes from Encounter.View; the
+// same policy used for execution. Where the caster believes each candidate
+// stands is the encounter's answer ([encounter.Encounter.BelievedAim]); the
 // candidate list alone does not establish a known location.
 type KnownCreatureTargetsInput struct {
-	Room              spatial.Room
 	Encounter         *encounter.Encounter
 	CasterID          string
 	Candidates        []string
@@ -68,7 +67,7 @@ func KnownCreatureTargets(ctx context.Context, in *KnownCreatureTargetsInput) (m
 		if !knownCreatureEligible(states[id]) {
 			continue
 		}
-		available, _, err := knownCreatureReach(in.Room, in.Encounter, in.CasterID, id, in.RangeFeet, in.StaleTargetPolicy)
+		available, _, err := knownCreatureReach(in.Encounter, in.CasterID, id, in.RangeFeet, in.StaleTargetPolicy)
 		if err != nil {
 			return nil, err
 		}
@@ -96,10 +95,6 @@ func validateKnownCreatureTarget(ctx context.Context, cast *Participants, caster
 	if !knownCreatureEligible(state) {
 		return false, fmt.Errorf("%w: ineligible creature recipient", ErrBadAction)
 	}
-	room, err := gamectx.RequireRoom(ctx)
-	if err != nil {
-		return false, err
-	}
 	view, ok := gamectx.CastOf(ctx)
 	if !ok {
 		return false, fmt.Errorf("%w: known-creature casting requires the encounter cast", ErrBadWorld)
@@ -108,7 +103,7 @@ func validateKnownCreatureTarget(ctx context.Context, cast *Participants, caster
 	if !ok {
 		return false, fmt.Errorf("%w: known-creature casting requires the encounter view", ErrBadWorld)
 	}
-	available, missed, err := knownCreatureReach(room, live.run, casterID, targetID, rangeFeet, policy)
+	available, missed, err := knownCreatureReach(live.run, casterID, targetID, rangeFeet, policy)
 	if err != nil {
 		return false, err
 	}
@@ -118,47 +113,36 @@ func validateKnownCreatureTarget(ctx context.Context, cast *Participants, caster
 	return missed, nil
 }
 
-// Encounter supplies position and testimony facts; resolution interprets them
-// for this pointed delivery. Never aim using a hidden live position.
-func knownCreatureReach(room spatial.Room, run *encounter.Encounter, casterID, targetID string, rangeFeet int, policy StaleTargetPolicy) (available, missed bool, err error) {
+// knownCreatureReach applies the stale-target policy to the encounter's
+// answer about where the caster believes the target stands
+// ([encounter.Encounter.BelievedAim]). Everything measured — the believed
+// point, its range on a clear line, whether the target moved off it — is the
+// encounter's; this decides only what the answer means for the cast. A target
+// the caster holds no belief about, one known without a point, or a believed
+// point out of range or behind a wall is unavailable. A displaced target is
+// unavailable under [StaleTargetRefuse] and an attempt that misses (missed)
+// under [StaleTargetAttempt]. Never aim using a hidden live position.
+//
+// Errors: an invalid policy ([ErrBadAction]); no encounter or a range that is
+// not positive ([ErrBadWorld]); the encounter refusing the aim, wrapped in
+// [ErrBadWorld].
+func knownCreatureReach(run *encounter.Encounter, casterID, targetID string, rangeFeet int, policy StaleTargetPolicy) (available, missed bool, err error) {
 	if err := policy.validate(); err != nil {
 		return false, false, err
 	}
-	if room == nil || run == nil || rangeFeet <= 0 {
-		return false, false, fmt.Errorf("%w: known-creature casting requires room, encounter and positive range", ErrBadWorld)
+	if run == nil || rangeFeet <= 0 {
+		return false, false, fmt.Errorf("%w: known-creature casting requires an encounter and positive range", ErrBadWorld)
 	}
-	from, ok := room.GetEntityPosition(casterID)
-	if !ok {
-		return false, false, fmt.Errorf("%w: caster has no position", ErrBadWorld)
-	}
-	if casterID == targetID {
-		return true, false, nil
-	}
-	holdings, err := run.View(&encounter.ViewInput{Member: encounter.MemberID(casterID)})
+	aim, err := run.BelievedAim(&encounter.BelievedAimInput{
+		Observer:  encounter.MemberID(casterID),
+		Subject:   encounter.MemberID(targetID),
+		RangeFeet: rangeFeet,
+	})
 	if err != nil {
-		return false, false, err
+		return false, false, fmt.Errorf("%w: %w", ErrBadWorld, err)
 	}
-	for _, holding := range holdings {
-		if string(holding.Subject) != targetID {
-			continue
-		}
-		testimony, valid := encounter.DecodeSightTestimony(holding.Payload)
-		if !valid {
-			return false, false, fmt.Errorf("%w: invalid location testimony", ErrBadWorld)
-		}
-		if testimony.State != encounter.LocationKnown {
-			return false, false, nil
-		}
-		aim := testimony.Position
-		if room.GetGrid().Distance(from, aim) > float64(encounter.CellsFromFeet(rangeFeet)) || room.IsLineOfSightBlocked(from, aim) {
-			return false, false, nil
-		}
-		actual, placed := room.GetEntityPosition(targetID)
-		if !placed {
-			return false, false, fmt.Errorf("%w: target has no position", ErrBadWorld)
-		}
-		missed = actual != aim
-		return !missed || policy == StaleTargetAttempt, missed, nil
+	if !aim.Held || aim.State != encounter.LocationKnown || !aim.InRange {
+		return false, false, nil
 	}
-	return false, false, nil
+	return !aim.Displaced || policy == StaleTargetAttempt, aim.Displaced, nil
 }

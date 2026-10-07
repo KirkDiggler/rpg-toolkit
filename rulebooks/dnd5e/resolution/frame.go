@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
@@ -224,35 +223,31 @@ func informationFrame(in *informationFrameInput) (*informationFrameOutput, error
 	return &informationFrameOutput{Frame: frame}, nil
 }
 
-// sideAnswerer is a cast that can say whether anyone answered its stance
-// questions. [castView] is one: with no run loaded there is no disposition
-// graph, so its silence about a pair proves nothing.
-type sideAnswerer interface {
-	answersSides() bool
+// stanceAnswerer is a cast that carries the encounter's whole stance answer,
+// no side included. [castView] is one.
+type stanceAnswerer interface {
+	stanceAnswer(a, b string) (contributions.Stance, error)
 }
 
 // authoritativeStance is the execution answer for the stance from one member
-// toward another: the installed cast's [gamectx.Cast.StanceBetween], with no
-// stance between two members of the cast read as the known no side
-// ([contributions.StanceNone], R5). Membership is proven from the cast's own
-// Members, as StanceBetween's contract requires; a pair naming anyone the cast
-// does not hold is UNKNOWN, never no side. So is every pair when the cast has
-// no graph to ask ([sideAnswerer]), or cannot say whether it has one: silence
-// from nobody is not "no side". Every execution read of a stance goes through
-// here, so the attack frame and the cast's ward gate cannot disagree about one
-// pair.
+// toward another: the encounter's own answer, taken as given — hostile,
+// neutral, allied, or [contributions.StanceNone] for a member in no faction.
+// Nothing here reconstructs no side from a missing stance and a membership
+// check. A pair the encounter refuses (a non-member), or a cast with no
+// encounter to ask, is UNKNOWN: a rule reading it answers Depends and the
+// fold fails rather than guessing. Every execution read of a stance goes
+// through here, so the attack frame and the cast's ward gate cannot disagree
+// about one pair.
 func authoritativeStance(cast gamectx.Cast, from, to string) contributions.Fact[contributions.Stance] {
-	if stance, ok := cast.StanceBetween(from, to); ok {
-		return contributions.Known(stance)
-	}
-	if answerer, ok := cast.(sideAnswerer); !ok || !answerer.answersSides() {
+	answerer, ok := cast.(stanceAnswerer)
+	if !ok {
 		return contributions.Unknown[contributions.Stance]()
 	}
-	members := cast.Members()
-	if slices.Contains(members, from) && slices.Contains(members, to) {
-		return contributions.Known(contributions.StanceNone)
+	stance, err := answerer.stanceAnswer(from, to)
+	if err != nil {
+		return contributions.Unknown[contributions.Stance]()
 	}
-	return contributions.Unknown[contributions.Stance]()
+	return contributions.Known(stance)
 }
 
 // attackRollFrame is the strike's attack-roll frame, built from authoritative
@@ -263,9 +258,8 @@ func authoritativeStance(cast gamectx.Cast, from, to string) contributions.Fact[
 // Pairs range over every cast member the installed room places — the
 // participants are this interaction's declared universe (R3) — measured with
 // the room's own grid, the metric [encounter.Encounter.Distance] uses. The
-// stance is the installed cast's authoritative [gamectx.Cast.StanceBetween];
-// two placed members with no stance are a KNOWN no side
-// ([contributions.StanceNone]), never unknown. Complete is true because the
+// stance is the encounter's own answer ([authoritativeStance]), no side
+// ([contributions.StanceNone]) included, taken as given. Complete is true because the
 // pairs cover every placed participant. Opportunity is the strike input's own.
 //
 // Sight is the installed visibility's live answer for each placed ordered
