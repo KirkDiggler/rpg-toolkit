@@ -1394,7 +1394,6 @@ func (s *DataTestSuite) TestSightAreaMembershipStoryAudienceAndRemoval() {
 	// This observer remains obscured before and after the other cloud changes.
 	s.Require().NoError(enc.AddSightArea(&encounter.SightAreaInput{ID: "cover", SourceID: "other", Center: spatial.Position{X: 3, Y: 3}, RadiusFeet: 5}))
 	s.Require().NoError(enc.AddSightArea(&encounter.SightAreaInput{ID: "fog", SourceID: "spell", Center: spatial.Position{X: 1, Y: 1}, RadiusFeet: 5, MembershipRef: "dnd5e:conditions:in_fog", MembershipName: "In Fog", MembershipSourceID: "opaque"}))
-	s.Require().NoError(enc.FlushSightAreaTransitions())
 	for _, id := range []encounter.MemberID{"p1", "visible"} {
 		entries, err := enc.Story(&encounter.StoryInput{Audience: id})
 		s.Require().NoError(err)
@@ -1408,7 +1407,6 @@ func (s *DataTestSuite) TestSightAreaMembershipStoryAudienceAndRemoval() {
 	removed, err := enc.RemoveSightArea("spell")
 	s.Require().NoError(err)
 	s.Require().True(removed)
-	s.Require().NoError(enc.FlushSightAreaTransitions())
 	for _, id := range []encounter.MemberID{"p1", "visible"} {
 		entries, err = enc.Story(&encounter.StoryInput{Audience: id})
 		s.Require().NoError(err)

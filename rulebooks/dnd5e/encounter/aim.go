@@ -49,6 +49,11 @@ type BelievedAimOutput struct {
 // an observer believes and reaches"). Whether the subject has moved off that
 // point is the one fact read live, and it is reported, not acted on.
 //
+// THE CLEAR LINE IS THE CANVAS'S, WALLS ONLY. A runtime sight area (fog)
+// never blocks an aim: fog obscures what an observer sees, which is already
+// in its testimony, and does not stop a point it believes in from being
+// reached.
+//
 // An observer aiming at itself believes its own placement: held, known, in
 // range and not displaced.
 //

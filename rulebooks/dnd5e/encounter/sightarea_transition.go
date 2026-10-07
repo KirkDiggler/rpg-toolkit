@@ -33,10 +33,17 @@ type sightAreaTransition struct {
 // inSightArea is THE membership answer: whether a point lies inside a runtime
 // area, by the same hex distance and feet-to-cell conversion sight reach uses.
 func (e *Encounter) inSightArea(area SightArea, point spatial.Position) bool {
+	return areaHolds(area, point, e.canvas.GetGrid())
+}
+
+// areaHolds is the one point-in-area test: membership, the footprint a member
+// sees from inside ([Encounter.SightAreasFor]) and a sight lane's crossing
+// ([areaCrosses]) all answer through it.
+func areaHolds(area SightArea, point spatial.Position, grid spatial.Grid) bool {
 	if area.RadiusFeet <= 0 {
 		return false
 	}
-	return e.canvas.GetGrid().Distance(area.Center, point) <= float64(area.RadiusFeet)/float64(FeetPerCell)
+	return grid.Distance(area.Center, point) <= float64(area.RadiusFeet)/float64(FeetPerCell)
 }
 
 // sightAreaTransitions diffs one member's membership of every labelled area
@@ -91,24 +98,35 @@ func (e *Encounter) sightAreaTransitions(
 	return out, nil
 }
 
-// queueAreaChangeTransitions is an area change's half: every member, at its
-// one shared placement, diffed across the area set before and after the
-// change. Queued rather than appended, so the story tells the cause (the cast,
-// the broken concentration) before the membership it caused.
-func (e *Encounter) queueAreaChangeTransitions(before, after map[string]SightArea) error {
+// areaChangeTransitions is an area change's half: every member, at its one
+// shared placement, diffed across the area set before and after the change.
+// Computed before the change is applied, so a refusal leaves both the area
+// set and the story untouched.
+func (e *Encounter) areaChangeTransitions(before, after map[string]SightArea) ([]sightAreaTransition, error) {
 	members, err := e.Members()
 	if err != nil {
-		return fmt.Errorf("area membership: %w", err)
+		return nil, fmt.Errorf("area membership: %w", err)
 	}
-	pending := make([]sightAreaTransition, 0)
+	out := make([]sightAreaTransition, 0)
 	for _, m := range members {
 		transitions, err := e.sightAreaTransitions(m.ID, m.Position, m.Position, before, after)
 		if err != nil {
+			return nil, fmt.Errorf("area membership: %w", err)
+		}
+		out = append(out, transitions...)
+	}
+	return out, nil
+}
+
+// appendSightAreaTransitions writes membership beats in order. A beat is
+// written when its change is applied and never held in memory, so a save, a
+// step or an exit can neither lose nor reorder it.
+func (e *Encounter) appendSightAreaTransitions(transitions []sightAreaTransition) error {
+	for _, transition := range transitions {
+		if err := e.appendSightAreaTransition(transition); err != nil {
 			return fmt.Errorf("area membership: %w", err)
 		}
-		pending = append(pending, transitions...)
 	}
-	e.pendingSightAreaTransitions = append(e.pendingSightAreaTransitions, pending...)
 	return nil
 }
 
@@ -121,12 +139,7 @@ func (e *Encounter) appendStepAreaTransitions(member MemberID, from, to spatial.
 	if err != nil {
 		return err
 	}
-	for _, transition := range transitions {
-		if err := e.appendSightAreaTransition(transition); err != nil {
-			return err
-		}
-	}
-	return nil
+	return e.appendSightAreaTransitions(transitions)
 }
 
 func (e *Encounter) makeSightAreaTransition(member MemberID, area SightArea, entered bool, reason string, from, to spatial.Position, before, after map[string]SightArea) (sightAreaTransition, error) {
@@ -175,19 +188,4 @@ func (e *Encounter) makeSightAreaTransition(member MemberID, area SightArea, ent
 func (e *Encounter) appendSightAreaTransition(transition sightAreaTransition) error {
 	_, err := e.appendBeat(&record.AppendInput{At: uint64(e.clock.ToData().HighWater), Audience: transition.audience, Tags: map[string]string{"tag": "outcome"}, Payload: transition.payload})
 	return err
-}
-
-// FlushSightAreaTransitions appends the membership an area change queued
-// ([Encounter.AddSightArea], [Encounter.RemoveSightArea]) without activating
-// an ability, charging an action, or running a participation pass. Every
-// recorded outcome flushes first, so a host calls this only when it changed
-// the area set with nothing else to record.
-func (e *Encounter) FlushSightAreaTransitions() error {
-	for len(e.pendingSightAreaTransitions) > 0 {
-		if err := e.appendSightAreaTransition(e.pendingSightAreaTransitions[0]); err != nil {
-			return fmt.Errorf("area membership: %w", err)
-		}
-		e.pendingSightAreaTransitions = e.pendingSightAreaTransitions[1:]
-	}
-	return nil
 }

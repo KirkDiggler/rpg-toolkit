@@ -58,15 +58,21 @@ func (in *SightAreaInput) area() (SightArea, error) {
 	return SightArea{ID: in.ID, SourceID: in.SourceID, Name: in.Name, Ref: in.Ref, Center: in.Center, RadiusFeet: in.RadiusFeet, MembershipRef: in.MembershipRef, MembershipName: in.MembershipName, MembershipSourceID: in.MembershipSourceID}, nil
 }
 
-// AddSightArea opens one runtime area and queues its story: every member
-// whose placement the area holds is told it entered, with the area's own
-// membership label. The tellings append after the outcome that caused them
-// (see [Encounter.FlushSightAreaTransitions]). An area without a membership
-// label obscures sight and tells nobody anything.
+// AddSightArea opens one runtime area and tells its story at once: every
+// member whose placement the area holds is told it entered, with the area's
+// own membership label. An area without a membership label obscures sight
+// and tells nobody anything.
+//
+// TELLING IS IMMEDIATE, SO ORDER IS THE CALLER'S. The beats append when the
+// area is applied, never held for later, so a save or a step cannot lose or
+// reorder them. A host applies an area change after it records the outcome
+// that caused it (the cast, the broken concentration), and the story then
+// reads cause before membership.
 //
 // Errors: ErrNilInput; ErrInvalidData for an invalid identity, radius or
 // partial membership label, or an id already open; any error reading the
-// roster's placement or the sight answer the audience is told by.
+// roster's placement or the sight answer the audience is told by, with the
+// area set and the story untouched.
 func (e *Encounter) AddSightArea(in *SightAreaInput) error {
 	a, err := in.area()
 	if err != nil {
@@ -78,20 +84,22 @@ func (e *Encounter) AddSightArea(in *SightAreaInput) error {
 	before := e.copySightAreas()
 	after := e.copySightAreas()
 	after[a.ID] = a
-	if err := e.queueAreaChangeTransitions(before, after); err != nil {
+	transitions, err := e.areaChangeTransitions(before, after)
+	if err != nil {
 		return err
 	}
 	e.sightAreas = after
-	return nil
+	return e.appendSightAreaTransitions(transitions)
 }
 
-// RemoveSightArea ends every runtime area the source opened and queues its
-// story: every member the ended area held is told "area ended". removed is
-// false when the source opened no area, which is an answer rather than an
-// error.
+// RemoveSightArea ends every runtime area the source opened and tells its
+// story at once: every member the ended area held is told "area ended". As
+// with [Encounter.AddSightArea], a host removes the area after it records
+// the outcome that ended it. removed is false when the source opened no area,
+// which is an answer rather than an error.
 //
 // Errors: any error reading the roster's placement or the sight answer the
-// audience is told by; the area set is left unchanged.
+// audience is told by, with the area set and the story untouched.
 func (e *Encounter) RemoveSightArea(sourceID string) (removed bool, err error) {
 	before := e.copySightAreas()
 	after := e.copySightAreas()
@@ -104,10 +112,14 @@ func (e *Encounter) RemoveSightArea(sourceID string) (removed bool, err error) {
 	if !removed {
 		return false, nil
 	}
-	if err := e.queueAreaChangeTransitions(before, after); err != nil {
+	transitions, err := e.areaChangeTransitions(before, after)
+	if err != nil {
 		return false, err
 	}
 	e.sightAreas = after
+	if err := e.appendSightAreaTransitions(transitions); err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
@@ -140,11 +152,10 @@ func (e *Encounter) SightAreasFor(member MemberID) []SightArea {
 	out := make([]SightArea, 0)
 	for _, a := range e.sightAreas {
 		c := spatial.Position{X: a.Center.X, Y: a.Center.Y}
-		r := float64(a.RadiusFeet) / float64(FeetPerCell)
-		distance := e.canvas.GetGrid().Distance(pos, c)
 		// A member standing inside the area can always see its own footprint;
 		// otherwise both supplied sight range and the wall ray bound visibility.
-		if distance <= r || (distance <= float64(maxDistance) && !e.canvas.IsLineOfSightBlocked(pos, c)) {
+		if e.inSightArea(a, pos) ||
+			(e.canvas.GetGrid().Distance(pos, c) <= float64(maxDistance) && !e.canvas.IsLineOfSightBlocked(pos, c)) {
 			out = append(out, a)
 		}
 	}
@@ -177,8 +188,7 @@ func sightAreasFromData(in []SightAreaData) map[string]SightArea {
 
 func finite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
 func areaCrosses(a SightArea, from, to spatial.Position, grid spatial.Grid) bool {
-	r := float64(a.RadiusFeet) / float64(FeetPerCell)
-	if grid.Distance(from, a.Center) <= r || grid.Distance(to, a.Center) <= r {
+	if areaHolds(a, from, grid) || areaHolds(a, to, grid) {
 		return true
 	}
 	dx, dy := to.X-from.X, to.Y-from.Y
@@ -194,7 +204,7 @@ func areaCrosses(a SightArea, from, to spatial.Position, grid spatial.Grid) bool
 		t = 1
 	}
 	x, y := from.X+t*dx, from.Y+t*dy
-	return grid.Distance(spatial.Position{X: x, Y: y}, a.Center) <= r
+	return areaHolds(a, spatial.Position{X: x, Y: y}, grid)
 }
 
 func validateSightAreasData(in []SightAreaData) error {

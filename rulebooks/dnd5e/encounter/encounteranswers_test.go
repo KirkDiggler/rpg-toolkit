@@ -86,7 +86,6 @@ func (s *EncounterAnswersSuite) loadData(data encounter.EncounterData) *encounte
 func (s *EncounterAnswersSuite) TestAWalkInAndOutIsToldBothFromTheAreaChangesFunction() {
 	enc := s.loadData(validEncounterData())
 	s.Require().NoError(enc.AddSightArea(fogAt(spatial.Position{X: 4, Y: 1})))
-	s.Require().NoError(enc.FlushSightAreaTransitions())
 	s.Require().Empty(s.tellingsAbout(enc, "p1"), "p1 starts outside the fog")
 
 	for _, cell := range []spatial.Position{{X: 2, Y: 1}, {X: 3, Y: 1}, {X: 2, Y: 1}} {
@@ -106,7 +105,6 @@ func (s *EncounterAnswersSuite) TestAWalkInAndOutIsToldBothFromTheAreaChangesFun
 	data.Members[0].Cell = &encounter.PositionData{X: 3, Y: 1}
 	opened := s.loadData(data)
 	s.Require().NoError(opened.AddSightArea(fogAt(spatial.Position{X: 4, Y: 1})))
-	s.Require().NoError(opened.FlushSightAreaTransitions())
 	byChange := s.tellingsAbout(opened, "p1")
 	s.Require().Len(byChange, 1)
 	s.Equal(told[0].raw, byChange[0].raw, "a step and an area change tell entering in one shape")
@@ -125,11 +123,9 @@ func (s *EncounterAnswersSuite) TestAddingAndRemovingAnAreaTellsEveryMemberInsid
 	enc := s.loadData(data)
 
 	s.Require().NoError(enc.AddSightArea(fogAt(spatial.Position{X: 4, Y: 1})))
-	s.Require().NoError(enc.FlushSightAreaTransitions())
 	removed, err := enc.RemoveSightArea("caster")
 	s.Require().NoError(err)
 	s.Require().True(removed)
-	s.Require().NoError(enc.FlushSightAreaTransitions())
 
 	for _, inside := range []encounter.MemberID{"centre", "edge"} {
 		told := s.tellingsAbout(enc, inside)
@@ -149,14 +145,18 @@ func (s *EncounterAnswersSuite) TestAddingAndRemovingAnAreaTellsEveryMemberInsid
 // at a location the subject has since left answers displaced. Both are read
 // from the observer's own testimony, never the subject's live cell.
 func (s *EncounterAnswersSuite) TestTheBelievedAimAnswersRangeAndDisplacement() {
+	var withTestimony func(encounter.SightTestimony) *encounter.Encounter
 	withBelief := func(believed spatial.Position) *encounter.Encounter {
+		return withTestimony(encounter.SightTestimony{
+			State: encounter.LocationKnown, Position: believed, Down: new(bool), BlocksMovement: new(bool),
+		})
+	}
+	withTestimony = func(testimony encounter.SightTestimony) *encounter.Encounter {
 		data := validEncounterData()
 		data.Members = append(data.Members,
 			encounter.MemberData{ID: "target", Kind: encounter.KindPlayer, Cell: &encounter.PositionData{X: 3, Y: 3}})
 		data.EverMembers = append(data.EverMembers, "target")
-		payload, err := encounter.EncodeSightTestimony(encounter.SightTestimony{
-			State: encounter.LocationKnown, Position: believed, Down: new(bool), BlocksMovement: new(bool),
-		})
+		payload, err := encounter.EncodeSightTestimony(testimony)
 		s.Require().NoError(err)
 		setSightHolding(s.T(), &data, payload, false)
 		// setSightHolding writes qualified subjects, which is the current
@@ -183,6 +183,22 @@ func (s *EncounterAnswersSuite) TestTheBelievedAimAnswersRangeAndDisplacement() 
 	s.Require().NoError(err)
 	s.True(out.InRange)
 	s.False(out.Displaced, "a subject still on the believed point is not displaced")
+
+	near := withBelief(spatial.Position{X: 1, Y: 1})
+	out, err = near.BelievedAim(&encounter.BelievedAimInput{Observer: "p1", Subject: "target", RangeFeet: 0})
+	s.Require().NoError(err)
+	s.True(out.InRange, "a zero range reaches the observer's own cell")
+	out, err = stays.BelievedAim(&encounter.BelievedAimInput{Observer: "p1", Subject: "target", RangeFeet: 0})
+	s.Require().NoError(err)
+	s.False(out.InRange, "and nothing beyond it")
+
+	unknown := withTestimony(encounter.SightTestimony{State: encounter.LocationUnknown})
+	out, err = unknown.BelievedAim(&encounter.BelievedAimInput{Observer: "p1", Subject: "target", RangeFeet: 30})
+	s.Require().NoError(err)
+	s.True(out.Held, "the subject is known")
+	s.Equal(encounter.LocationUnknown, out.State)
+	s.False(out.InRange, "a subject known without a point has no point in range")
+	s.False(out.Displaced)
 
 	none, err := stays.BelievedAim(&encounter.BelievedAimInput{Observer: "target", Subject: "p1", RangeFeet: 30})
 	s.Require().NoError(err)
@@ -251,4 +267,111 @@ func (s *EncounterAnswersSuite) TestAFightEndedByDecisionIsSettled() {
 
 	_, err = enc.Settlement(nil)
 	s.Require().ErrorIs(err, encounter.ErrNilInput)
+}
+
+// A fall is a true historical fact: a member who fell and then exited is
+// still a fall, with the kind it fell as, in the order it fell.
+func (s *EncounterAnswersSuite) TestAFallerWhoExitedIsStillAFall() {
+	down := &downList{}
+	enc := s.trio(down)
+	baseline, err := enc.NextStorySeq()
+	s.Require().NoError(err)
+
+	down.down = []encounter.MemberID{goblin, wolf}
+	_, err = aRound(enc)
+	s.Require().NoError(err)
+	_, err = enc.Exit(&encounter.ExitInput{Member: goblin})
+	s.Require().NoError(err)
+
+	settled, err := enc.Settlement(&encounter.SettlementInput{FromSeq: baseline})
+	s.Require().NoError(err)
+	s.Require().Len(settled.Falls, 2, "both falls, the departed one included")
+	fell := make([]encounter.MemberID, 0, 2)
+	for _, f := range settled.Falls {
+		s.Equal(encounter.KindMonster, f.Kind, "the kind the beat carried at the fall")
+		fell = append(fell, f.Member)
+	}
+	s.Less(settled.Falls[0].Seq, settled.Falls[1].Seq)
+	s.ElementsMatch([]encounter.MemberID{goblin, wolf}, fell)
+}
+
+// A fight whose beats reached only the members present then is settled all
+// the same: alice joins after the fight between bob and the monsters ended,
+// so no beat of it reached her, and the settlement does not depend on whose
+// story it is.
+func (s *EncounterAnswersSuite) TestASettlementDoesNotDependOnWhoSawIt() {
+	down := &downList{}
+	enc := s.scene(down,
+		encounter.MemberInput{ID: bob, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 2}},
+		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 0, Y: 10}},
+		encounter.MemberInput{ID: wolf, Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 10}},
+	)
+	baseline, err := enc.NextStorySeq()
+	s.Require().NoError(err)
+	down.down = []encounter.MemberID{goblin, wolf}
+	_, err = aRound(enc)
+	s.Require().NoError(err)
+	_, err = enc.Join(&encounter.JoinInput{Member: alice, Kind: encounter.KindPlayer, Cell: spatial.Position{X: 4, Y: 2}})
+	s.Require().NoError(err)
+
+	for _, beat := range s.beatsOf(enc, alice) {
+		s.NotEqual(encounter.BeatFightEnded, beat["beat"], "control: the ending never reached alice")
+	}
+
+	settled, err := enc.Settlement(&encounter.SettlementInput{FromSeq: baseline})
+	s.Require().NoError(err)
+	s.Require().Len(settled.FightsEnded, 1)
+	s.Equal(encounter.DissolveByDefeat, settled.FightsEnded[0].Cause)
+	s.ElementsMatch([]encounter.MemberID{bob, goblin, wolf}, settled.FightsEnded[0].Members)
+	s.Len(settled.Falls, 2)
+}
+
+// An area's membership beat is written when the change is applied, so it
+// survives a save and reload with nothing to flush.
+func (s *EncounterAnswersSuite) TestAnAreaBeatSurvivesASave() {
+	data := validEncounterData()
+	data.Members[0].Cell = &encounter.PositionData{X: 3, Y: 1}
+	enc := s.loadData(data)
+	s.Require().NoError(enc.AddSightArea(fogAt(spatial.Position{X: 4, Y: 1})))
+
+	reloaded := s.loadData(enc.ToData())
+	told := s.tellingsAbout(reloaded, "p1")
+	s.Require().Len(told, 1, "the entering was saved with the area")
+	s.Equal(string(encounter.ResultConditionApplied), told[0].kind)
+}
+
+// A step right after an area change is told after the change, never before
+// it: the area's entering precedes the step's leaving.
+func (s *EncounterAnswersSuite) TestAStepAfterAnAreaChangeIsToldInOrder() {
+	data := validEncounterData()
+	data.Members[0].Cell = &encounter.PositionData{X: 3, Y: 1}
+	enc := s.loadData(data)
+	s.Require().NoError(enc.AddSightArea(fogAt(spatial.Position{X: 4, Y: 1})))
+	_, err := enc.Step(&encounter.StepInput{Member: "p1", To: spatial.Position{X: 1, Y: 1}})
+	s.Require().NoError(err)
+
+	told := s.tellingsAbout(enc, "p1")
+	s.Require().Len(told, 2)
+	s.Equal(string(encounter.ResultConditionApplied), told[0].kind)
+	s.Equal(string(encounter.ResultConditionRemoved), told[1].kind)
+	s.Equal("left area", told[1].reason)
+}
+
+// A member the ended area held, who then exits, still has "area ended" in its
+// story: the beat was written before it left.
+func (s *EncounterAnswersSuite) TestAnAreaEndedBeatOutlivesAnExit() {
+	data := validEncounterData()
+	data.Members = append(data.Members,
+		encounter.MemberData{ID: "inside", Kind: encounter.KindPlayer, Cell: &encounter.PositionData{X: 4, Y: 1}})
+	data.EverMembers = append(data.EverMembers, "inside")
+	enc := s.loadData(data)
+	s.Require().NoError(enc.AddSightArea(fogAt(spatial.Position{X: 4, Y: 1})))
+	_, err := enc.RemoveSightArea("caster")
+	s.Require().NoError(err)
+	_, err = enc.Exit(&encounter.ExitInput{Member: "inside"})
+	s.Require().NoError(err)
+
+	told := s.tellingsAbout(enc, "inside")
+	s.Require().Len(told, 2)
+	s.Equal("area ended", told[1].reason)
 }

@@ -24,6 +24,12 @@ var (
 	// checks with no Setup analogue — a persisted abandoned outcome with
 	// non-empty membership (abandonment means the membership emptied) or a
 	// current member missing from EverMembers (#929 hardening round F).
+	//
+	// Two runtime refusals keep it on a non-empty id, for the same
+	// roster-coherence reason: Transfer of a world NPC into a fight (the
+	// member exists and holds no seat there), and a reserve arrival whose
+	// kind has no reserve or whose predicate cannot hold (validateArrival,
+	// asked at Setup, Join and Load). An unknown id is never one of them.
 	ErrNoMember = errors.New("empty member id")
 
 	// ErrNotMember is returned when an entity is not a member of this encounter.
@@ -148,8 +154,12 @@ var (
 	// declared (0,0).
 	ErrBadPlacement = errors.New("bad placement")
 
-	// ErrBadReach is returned when [Encounter.MembersWithin] is handed a
-	// negative reach.
+	// ErrBadReach is returned for a negative reach or range at every door
+	// that takes one: [Encounter.MembersWithin], [Encounter.Route] (a
+	// negative budget), [Encounter.Hold], [Encounter.Loot],
+	// [Encounter.Interact] and [Encounter.BelievedAim]. It also refuses a
+	// direction that has none: [Encounter.MembersCovered] aimed at its own
+	// anchor, and a Route line whose anchor stands on the mover.
 	//
 	// REFUSED RATHER THAN ANSWERED EMPTY, though answering empty would be
 	// arithmetically honest: no distance is less than a negative number, so a

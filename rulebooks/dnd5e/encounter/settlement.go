@@ -39,7 +39,10 @@ type MemberFell struct {
 	Seq uint64
 	// Member is who fell.
 	Member MemberID
-	// Kind is the fallen member's kind on this encounter's roster.
+	// Kind is the fallen member's kind as the roster held it at the fall,
+	// carried on the beat. Empty only for a fall told before beats carried
+	// it whose member has since exited: the kind is then unknown, never
+	// guessed.
 	Kind MemberKind
 }
 
@@ -65,8 +68,8 @@ type SettlementOutput struct {
 // Errors: ErrNilInput; ErrTrimmed when a non-zero FromSeq names a sequence
 // already trimmed from the retained record (a short answer would be
 // indistinguishable from a complete one); ErrInvalidData for a fight or fall
-// beat that does not say what it must; ErrNotMember for a fall naming a member
-// no longer on the roster, whose kind this encounter can no longer answer.
+// beat that does not say what it must. A fall whose member has since exited
+// is still a fall.
 func (e *Encounter) Settlement(in *SettlementInput) (*SettlementOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("settlement: %w", ErrNilInput)
@@ -108,7 +111,8 @@ func (e *Encounter) Settlement(in *SettlementInput) (*SettlementOutput, error) {
 			})
 		case string(OutcomeDown):
 			var beat struct {
-				Member MemberID `json:"member"`
+				Member MemberID   `json:"member"`
+				Kind   MemberKind `json:"kind"`
 			}
 			if err := json.Unmarshal(entry.Payload, &beat); err != nil {
 				return nil, fmt.Errorf("settlement: fall at %d: %w: %v", entry.Seq, ErrInvalidData, err)
@@ -116,11 +120,16 @@ func (e *Encounter) Settlement(in *SettlementInput) (*SettlementOutput, error) {
 			if beat.Member == "" {
 				return nil, fmt.Errorf("settlement: fall at %d: %w: %w", entry.Seq, ErrInvalidData, ErrNoMember)
 			}
-			m, ok := e.members[beat.Member]
-			if !ok {
-				return nil, fmt.Errorf("settlement: fall at %d: %q: %w", entry.Seq, beat.Member, ErrNotMember)
+			// The beat carries the kind the roster held at the fall. A beat
+			// written before it did falls back to the roster; a fall is a
+			// true historical fact either way, and is never refused for a
+			// member who has since exited.
+			if beat.Kind == "" {
+				if m, ok := e.members[beat.Member]; ok {
+					beat.Kind = m.Kind
+				}
 			}
-			out.Falls = append(out.Falls, MemberFell{Seq: entry.Seq, Member: beat.Member, Kind: m.Kind})
+			out.Falls = append(out.Falls, MemberFell{Seq: entry.Seq, Member: beat.Member, Kind: beat.Kind})
 		}
 	}
 	return out, nil
