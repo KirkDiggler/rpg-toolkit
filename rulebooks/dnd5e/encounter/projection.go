@@ -116,8 +116,10 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	// an identity link, never an inference from overlapping geometry.
 	withheldDoorPlacements := make(map[PropID]bool)
 	structuralBoundaries := make(map[PropID]bool)
+	structuralWallIDs := make(map[PropID]bool)
 	for _, wall := range e.field.structuralWalls {
 		structuralBoundaries[wall.id] = true
+		structuralWallIDs[wall.id] = true
 		for _, opening := range wall.openings {
 			if opening.door != nil {
 				structuralBoundaries[opening.door.placedID] = true
@@ -150,6 +152,30 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 		out.Start = full.Start
 	}
 
+	// Resolve identity permission before floor emission. Wall footing consumes
+	// this same answer; it must not grant permission to a wall or a door.
+	for _, p := range full.Placed {
+		if p.Holdable || hidden.props[p.ID] || hidden.doors[p.ID] || withheldDoorPlacements[p.ID] {
+			continue
+		}
+		unexplored := e.placedTouchesHidden(p, hidden.unexploredCells)
+		if structuralBoundaries[p.ID] || (p.BlocksMovement && p.BlocksLineOfSight) {
+			support, supportErr := e.field.footprintObservationCells(p.Placement)
+			if supportErr != nil {
+				return Atlas{}, fmt.Errorf("structural boundary %q support: %w", p.ID, supportErr)
+			}
+			for _, cell := range support {
+				if !hidden.unexploredCells[cell] {
+					unexplored = false
+					break
+				}
+			}
+		}
+		if !unexplored {
+			out.Placed = append(out.Placed, p)
+		}
+	}
+
 	// C18: a wall wholly inside hidden space is withheld with the room, and
 	// every other wall is presented — standing on its own footprint, which
 	// enters this atlas as floor nobody owns whatever the recipient may know
@@ -162,6 +188,34 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 		out.Segments = append(out.Segments, full.Segments[i])
 		for _, c := range seg.Footprint {
 			footing[e.field.cellAt(c)] = true
+		}
+	}
+
+	// A known structural wall needs its own footing too, including an owned
+	// threshold under a still-closed leaf. This is presentation footing, not
+	// room discovery or permission to any prop/door on that floor. Explicit
+	// floor secrecy remains independent. Door state is not read here: finding
+	// a secret cut cannot punch a hole that the solid-wall twin did not have.
+	for _, p := range out.Placed {
+		if !structuralWallIDs[p.ID] {
+			continue
+		}
+		for _, cell := range p.Cells {
+			if _, concealed := e.field.concealmentOfCell[cell]; concealed && hiddenCells[cell] {
+				continue
+			}
+			centre := e.field.plane.CellCentre(cell)
+			contact, traceErr := spatial.TraceFootprint(spatial.FootprintTraceInput{
+				Placement: p.Placement, From: centre, To: centre,
+			})
+			if traceErr != nil {
+				return Atlas{}, fmt.Errorf("structural wall %q footing: %w", p.ID, traceErr)
+			}
+			// placedCells also includes nearest-cell support; that alone
+			// is not physical footing and cannot reveal an adjoining cell.
+			if contact.Contact {
+				footing[cell] = true
+			}
 		}
 	}
 
@@ -205,37 +259,6 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 			out.Props = append(out.Props, p)
 		}
 	}
-	// A PLACEMENT GOES WHOLE OR STAYS WHOLE. Explicit prop/door membership
-	// withholds it as a secret. Ordinary room discovery independently withholds
-	// ordinary props touching unexplored space. Structural boundaries instead
-	// survive on their own known support, as fixed segments do. The combined
-	// floor mask cannot be used here: a concealed hex does not select a prop.
-	for _, p := range full.Placed {
-		if p.Holdable || hidden.props[p.ID] || hidden.doors[p.ID] || withheldDoorPlacements[p.ID] {
-			continue
-		}
-		unexplored := e.placedTouchesHidden(p, hidden.unexploredCells)
-		if structuralBoundaries[p.ID] || (p.BlocksMovement && p.BlocksLineOfSight) {
-			// Like a fixed wall segment, a structural/opaque boundary may border
-			// both discovered and undiscovered space. Its own known support
-			// permits the boundary, not any additional floor or contents.
-			// Door membership is still checked independently above.
-			support, supportErr := e.field.footprintObservationCells(p.Placement)
-			if supportErr != nil {
-				return Atlas{}, fmt.Errorf("structural boundary %q support: %w", p.ID, supportErr)
-			}
-			for _, cell := range support {
-				if !hidden.unexploredCells[cell] {
-					unexplored = false
-					break
-				}
-			}
-		}
-		if !unexplored {
-			out.Placed = append(out.Placed, p)
-		}
-	}
-
 	// THE STRUCTURAL LAYOUT, ON THE SAME PRESENCE ANSWER (rpg-project#169).
 	// Presence consumes the permitted-identity answer the placed list above
 	// just computed — never a fresh visibility policy and never DoorSightings.
