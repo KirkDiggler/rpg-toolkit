@@ -156,7 +156,7 @@ func scaleEncounter(tb testing.TB, raw string) (*encounter.Encounter, encounter.
 	watcher := core.EntityID("watcher")
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: nobodyFindsAnything{}, Witness: nobodyIsWatching{},
 		Field: compiled.Field,

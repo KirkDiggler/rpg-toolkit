@@ -20,11 +20,14 @@ import (
 // the author's placement wrote onto it at spawn. Nothing here asks which kind
 // of sheet answered.
 //
-// THE ZERO VALUE TELLS THE TRUTH: a member that never moves on its own turn,
-// has nothing to attack with, and was given no strategy. That is what a
-// player is to a [TurnDriver] today — a player's movement is driven by
-// [Encounter.Step] under a live hand, not by a budget — so a session may
-// answer a player with only the facts it has, or none.
+// THE ZERO VALUE IS A CLAIM, NOT A GAP: a SpeedFeet of 0 is a true speed of
+// zero — a creature that cannot move on its own — and the walks it takes on
+// the world clock pace nothing. Nothing on the sheet is optional to answer.
+// A player is answered from its own sheet exactly as a monster is: its
+// walking speed paces its walks (rpg-project#538), and an empty Actions or
+// Targeting is what that sheet actually says, not what a host happened to
+// have to hand. A host that cannot read a member's sheet refuses the ask
+// (see [Sheets]); it never answers zero in its place.
 //
 // Sight is NOT here. How far a member sees is asked through [Sight], at the
 // percept refresh, with light applied; it is a different question asked at a
@@ -135,14 +138,19 @@ func (e *Encounter) sheetsNow() (map[MemberID]SheetFacts, error) {
 
 // sheetOf is [Encounter.sheetsNow] read for one member — the whole roster is
 // still asked, so a mis-wired capability fails the same way whichever member
-// the verb cared about.
+// the verb cared about. An id outside the roster is refused (ErrNotMember)
+// rather than answered with a zero sheet nobody gave.
 func (e *Encounter) sheetOf(id MemberID) (SheetFacts, error) {
 	all, err := e.sheetsNow()
 	if err != nil {
 		return SheetFacts{}, err
 	}
+	facts, ok := all[id]
+	if !ok {
+		return SheetFacts{}, fmt.Errorf("sheets: %q is not a member: %w", id, ErrNotMember)
+	}
 
-	return all[id], nil
+	return facts, nil
 }
 
 // validateSheetFacts refuses a negative speed and a negative action range.

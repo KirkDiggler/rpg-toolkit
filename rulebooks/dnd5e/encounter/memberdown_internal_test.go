@@ -37,7 +37,7 @@ func TestAClosedEncounterIsNotClosedAgainByAnArrival(t *testing.T) {
 
 	enc, err := NewEncounter(&SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: standing, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: standing, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: FieldInput{
 			Canvas:  CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()},
 			Regions: []RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -87,7 +87,7 @@ func TestClosingEncounterDiscardsSuspendedContinuations(t *testing.T) {
 	for _, held := range []bool{false, true} {
 		t.Run(map[bool]string{false: "turn", true: "directive"}[held], func(t *testing.T) {
 			enc, err := NewEncounter(&SetupInput{
-				Sight: everyoneSeesTheWholeMap{}, Equipment: UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: &somebodyDown{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+				Sight: everyoneSeesTheWholeMap{}, Equipment: UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: &somebodyDown{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 				Field:   FieldInput{Canvas: CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()}, Regions: []RegionInput{rectRegion("room-1", 0, 0, 10, 10)}},
 				Members: []MemberInput{{ID: "alice", Kind: KindPlayer, Position: spatial.Position{X: 2, Y: 2}}},
 				Endings: []EndingInput{{Key: "done", Trigger: TriggerExternal{}}},
@@ -105,7 +105,7 @@ func TestClosingEncounterDiscardsSuspendedContinuations(t *testing.T) {
 			data := enc.ToData()
 			require.Nil(t, data.PausedTurn)
 			require.Nil(t, data.HeldDirective)
-			_, err = LoadEncounter(&LoadEncounterInput{Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: &somebodyDown{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}})
+			_, err = LoadEncounter(&LoadEncounterInput{Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: &somebodyDown{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}})
 			require.NoError(t, err, "an ending reached during a reaction must reload")
 		})
 	}

@@ -83,7 +83,7 @@ func (s *CombatEndTestSuite) fightWithStanding(
 	members := []encounter.MemberInput{
 		{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
 	}
-	sheets := sheetFacts{}
+	sheets := sheetFacts{alice: {}}
 	for i, id := range monsters {
 		members = append(members, encounter.MemberInput{
 			ID: id, Kind: encounter.KindMonster,

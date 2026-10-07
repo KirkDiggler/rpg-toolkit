@@ -67,7 +67,7 @@ func (s *KillingBlowSuite) apart(standing encounter.StandingWithParticipation) *
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: standing,
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: standing,
 		Retention: encounter.RetentionUnbounded,
 		Field:     encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Regions: []encounter.RegionInput{rectRegion(cryptID, 0, 0, 12, 12)}, Props: wallRow(6, 0, 11)},
 		Members: []encounter.MemberInput{

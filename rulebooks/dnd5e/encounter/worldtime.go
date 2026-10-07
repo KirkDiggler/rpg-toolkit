@@ -125,9 +125,11 @@ func (e *Encounter) spendWorldAction(actor MemberID) error {
 // [Sheets] each time and never stored: a member whose speed changed between
 // two walks paces the second at the new speed, with no write to the encounter.
 //
-// A MEMBER WITH NO SPEED PACES NOTHING rather than paying a round per cell.
-// Zero speed is a sheet that states none, and dividing by it would make the
-// slowest thing in the world the fastest clock in it.
+// A MEMBER WHOSE SHEET ANSWERS A SPEED OF ZERO PACES NOTHING rather than
+// paying a round per cell. Zero is that sheet's true speed — a creature that
+// cannot walk — not a missing answer (a missing sheet is refused before this
+// line), and dividing by it would make the slowest thing in the world the
+// fastest clock in it.
 func (e *Encounter) spendWorldPace(mover MemberID) error {
 	m, ok := e.members[mover]
 	if !ok {

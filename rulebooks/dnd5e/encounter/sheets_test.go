@@ -116,7 +116,7 @@ func (s *SheetsTestSuite) drivenPair(sheets encounter.Sheets) (*encounter.Encoun
 func (s *SheetsTestSuite) TestADrivenTurnReadsTheSheetOfThatMoment() {
 	sheets := sheetFacts{goblin: {SpeedFeet: 30, Targeting: "closest", Actions: []encounter.ActionView{
 		{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
-	}}}
+	}}, alice: {}}
 	enc, driver := s.drivenPair(sheets)
 
 	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
@@ -301,7 +301,7 @@ func (s *SheetsTestSuite) TestADrivenTurnWithAMissingSheetAbortsTheVerb() {
 // TestSetupAndLoadRefuseWithoutSheets: the capability is required at both
 // doors and never defaulted.
 func (s *SheetsTestSuite) TestSetupAndLoadRefuseWithoutSheets() {
-	setup := hallSetup(sheetFacts{})
+	setup := hallSetup(zeroSheets{})
 	built, err := encounter.NewEncounter(setup)
 	s.Require().NoError(err)
 

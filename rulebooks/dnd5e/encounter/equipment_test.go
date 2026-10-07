@@ -183,7 +183,7 @@ func equipmentSetup(hands encounter.EquipmentWithConditions, members ...encounte
 		Initiative: orderAsGiven{},
 		Standing:   everyoneStanding{},
 		Sight:      everyoneSeesTheWholeMap{},
-		Equipment:  hands, Sheets: sheetFacts{},
+		Equipment:  hands, Sheets: zeroSheets{},
 		TurnDriver: passDriver{},
 		Striker:    passStriker{}, Mover: quietMover{},
 		Announcer: quietAnnouncer{},

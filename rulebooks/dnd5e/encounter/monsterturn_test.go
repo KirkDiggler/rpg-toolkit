@@ -95,7 +95,7 @@ func newDrivenArrivalEncounter(
 		{ID: billy, Kind: encounter.KindPlayer, Position: spatial.Position{X: 7, Y: 7}},
 		{ID: carol, Kind: encounter.KindPlayer, Position: spatial.Position{X: 8, Y: 8}},
 	}
-	sheets := sheetFacts{goblin: {SpeedFeet: 30}}
+	sheets := sheetFacts{goblin: {SpeedFeet: 30}, alice: {}, bob: {}, billy: {}, carol: {}}
 	if includeOgre {
 		members = append(members, encounter.MemberInput{
 			ID: "ogre", Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 2},
@@ -212,7 +212,7 @@ func (s *MonsterTurnTestSuite) TestRecordDrivingAMonsterLeavesItsMemoryAlone() {
 	down := &downList{}
 
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: seeded.ToData(), Sight: sight, Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30}}, Standing: down, Initiative: arrivalOrder{},
+		Data: seeded.ToData(), Sight: sight, Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30}, alice: {}, bob: {}, billy: {}, carol: {}}, Standing: down, Initiative: arrivalOrder{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().NoError(err)
@@ -466,10 +466,10 @@ func announcedOf(step encounter.MoveStep) announcedStep {
 // melee action at 5 feet reach, a 30-foot walking speed, the closest target.
 var adjacentSkeletonSheets = sheetFacts{goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{
 	{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
-}, Targeting: "closest"}}
+}, Targeting: "closest"}, alice: {}, bob: {}, billy: {}, carol: {}}
 
 // threeMemberSheets is the goblin's sheet in the three-member scene.
-var threeMemberSheets = sheetFacts{goblin: {SpeedFeet: 30}}
+var threeMemberSheets = sheetFacts{goblin: {SpeedFeet: 30}, alice: {}, bob: {}, billy: {}, carol: {}}
 
 // adjacentSkeletonEncounter builds a one-room fight: alice and a monster
 // standing next to each other (co-located rooms form the bubble at first
@@ -524,7 +524,7 @@ func (s *MonsterTurnTestSuite) farSkeletonFight(
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{
 			{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
-		}, Targeting: "closest"}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		}, Targeting: "closest"}, alice: {}, bob: {}, billy: {}, carol: {}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: striker, Mover: mover, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -603,7 +603,7 @@ func (s *MonsterTurnTestSuite) TestMonsterViewProjectsHeldKnownSightIntoRemember
 	driver := &scriptedDriver{}
 	sight := &stagedSight{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: sight, Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"}}}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: sight, Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"}}}, alice: {}, bob: {}, billy: {}, carol: {}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -1081,7 +1081,7 @@ func (s *MonsterTurnTestSuite) TestAStrikerMalfunctionAbortsTheWholeCall() {
 func (s *MonsterTurnTestSuite) TestSetupRefusesAnEncounterWithNoStriker() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -1103,7 +1103,7 @@ func (s *MonsterTurnTestSuite) TestLoadRefusesAnEncounterWithNoStriker() {
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:      saved,
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{},
 	})
 	s.Require().ErrorIs(err, encounter.ErrNoStriker)
@@ -1228,7 +1228,7 @@ func (s *MonsterTurnTestSuite) TestAnOverBudgetMoveAnnouncesNothing() {
 func (s *MonsterTurnTestSuite) TestSetupRefusesAnEncounterWithNoMover() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -1250,7 +1250,7 @@ func (s *MonsterTurnTestSuite) TestLoadRefusesAnEncounterWithNoMover() {
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:      saved,
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().ErrorIs(err, encounter.ErrNoMover)
@@ -1305,7 +1305,7 @@ func (s *MonsterTurnTestSuite) TestAReactionThatDropsTheMoverStopsTheWalk() {
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{
 			{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
-		}, Targeting: "closest"}}, Standing: standing, Initiative: orderAsGiven{},
+		}, Targeting: "closest"}, alice: {}, bob: {}, billy: {}, carol: {}}, Standing: standing, Initiative: orderAsGiven{},
 		TurnDriver: &scriptedDriver{intents: []encounter.TurnIntent{
 			encounter.Move{Path: []spatial.Position{cellAt(5, 2), cellAt(4, 2), cellAt(3, 2)}},
 		}},
@@ -1383,7 +1383,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathWalksAroundAWall() {
 	driver := &scriptedDriver{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", RangeFeet: 5, Kind: "melee"}}, Targeting: "closest"}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", RangeFeet: 5, Kind: "melee"}}, Targeting: "closest"}, alice: {}, bob: {}, billy: {}, carol: {}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -1451,7 +1451,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathWalksAroundAPillar() {
 	driver := &scriptedDriver{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", RangeFeet: 5, Kind: "melee"}}, Targeting: "closest"}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", RangeFeet: 5, Kind: "melee"}}, Targeting: "closest"}, alice: {}, bob: {}, billy: {}, carol: {}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -1501,7 +1501,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathIsEmptyWhenSightedButUnreachabl
 	driver := &scriptedDriver{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", RangeFeet: 5, Kind: "melee"}}, Targeting: "closest"}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", RangeFeet: 5, Kind: "melee"}}, Targeting: "closest"}, alice: {}, bob: {}, billy: {}, carol: {}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			// Sight crosses void here (VoidIsTransparent), but a 4-cell gap
@@ -1539,7 +1539,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathStopsAtTheMemberOwnLongestReach
 	driver := &scriptedDriver{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: reachWeapon, Name: "Glaive", RangeFeet: 10, Kind: "melee"}}, Targeting: "closest"}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: reachWeapon, Name: "Glaive", RangeFeet: 10, Kind: "melee"}}, Targeting: "closest"}, alice: {}, bob: {}, billy: {}, carol: {}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -1619,7 +1619,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathFindsTheNearestInRangeCellNotJu
 		// alice) is already in range, making the detour-vs-shortcut
 		// distinction unambiguous.
 		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 60, Targeting: "closest",
-			Actions: []encounter.ActionView{{Ref: longReach, Name: "Whip", RangeFeet: 15, Kind: "melee"}}}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Actions: []encounter.ActionView{{Ref: longReach, Name: "Whip", RangeFeet: 15, Kind: "melee"}}}, alice: {}, bob: {}, billy: {}, carol: {}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -1699,7 +1699,7 @@ func (s *MonsterTurnTestSuite) TestDrivenKillingBlowEndsTheDriveCleanly() {
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{
 			{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
-		}, Targeting: "closest"}}, Standing: standing, Initiative: orderAsGiven{},
+		}, Targeting: "closest"}, alice: {}, bob: {}, billy: {}, carol: {}}, Standing: standing, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: striker, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -1805,7 +1805,7 @@ func (s *MonsterTurnTestSuite) TestADownedTeammateDoesNotHandTheDrivenMonsterASe
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{
 			{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
-		}, Targeting: "closest"}}, Standing: standing, Initiative: orderAsGiven{},
+		}, Targeting: "closest"}, alice: {}, bob: {}, billy: {}, carol: {}}, Standing: standing, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: striker, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  openAir(),
@@ -1888,7 +1888,7 @@ func routedScene(
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{
 			{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
-		}, Targeting: "closest"}}, Standing: standing, Initiative: orderAsGiven{},
+		}, Targeting: "closest"}, alice: {}, bob: {}, billy: {}, carol: {}}, Standing: standing, Initiative: orderAsGiven{},
 		TurnDriver: driver,
 		Striker:    passStriker{}, Mover: mover, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
@@ -2020,7 +2020,7 @@ func TestARoutedTurnIsBoundedByItsOwnMovement(t *testing.T) {
 	driver := routedDriver(encounter.MoveToward, alice)
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 5, Targeting: "closest"}}, Standing: &downList{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 5, Targeting: "closest"}, alice: {}, bob: {}, billy: {}, carol: {}}, Standing: &downList{}, Initiative: orderAsGiven{},
 		TurnDriver: driver,
 		Striker:    passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{

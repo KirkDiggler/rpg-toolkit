@@ -38,7 +38,7 @@ func worldField() encounter.FieldInput {
 }
 
 func (s *WorldNPCSuite) baseSetup(members ...encounter.MemberInput) (*encounter.Encounter, error) {
-	return s.baseSetupSheets(sheetFacts{}, members...)
+	return s.baseSetupSheets(zeroSheets{}, members...)
 }
 
 // baseSetupSheets is baseSetup with the members' sheets named.
@@ -108,7 +108,7 @@ func (s *WorldNPCSuite) TestAPlayerAndAWorldNPCInMutualSightNeverFormABubble() {
 }
 
 func (s *WorldNPCSuite) TestAMonstersWorldDrivenWalkIntoAWorldNPCFormsNoFight() {
-	enc, err := s.baseSetupSheets(sheetFacts{goblin: {SpeedFeet: 5}},
+	enc, err := s.baseSetupSheets(sheetFacts{goblin: {SpeedFeet: 5}, "vendor": {}},
 		encounter.MemberInput{
 			ID: goblin, Kind: encounter.KindMonster, Position: cellAt(0, 0), Table: walksTo(cellAt(2, 0)),
 		},
@@ -166,7 +166,7 @@ func (s *WorldNPCSuite) TestPersistenceRoundTripsAWorldNPC() {
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:      data,
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().NoError(err)
@@ -189,7 +189,7 @@ func (s *WorldNPCSuite) TestOldPlayerAndMonsterBlobsStillLoadUnchanged() {
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:      data,
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().NoError(err)

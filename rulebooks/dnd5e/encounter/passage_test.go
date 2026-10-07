@@ -67,7 +67,7 @@ func (s *PassageSuite) TestPreviewDoesNotReadUnobservedParticipationChanges() {
 func (s *PassageSuite) SetupTest() {
 	s.life = &passageAssessment{down: map[encounter.MemberID]bool{}}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: s.life,
+		Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.life,
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("corridor", 0, 0, 4, 1)}},
@@ -151,7 +151,7 @@ func (s *PassageSuite) TestRouteAssessesOnceAndNextRouteAsksAgain() {
 func (s *PassageSuite) TestReloadUsesCurrentParticipationRatherThanStoredDownFlag() {
 	s.life.down[goblin] = true
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: s.enc.ToData(), Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: s.life,
+		Data: s.enc.ToData(), Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.life,
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().NoError(err)

@@ -87,7 +87,7 @@ func (s *ArrivalSuite) arrivalEncounter(filter encounter.MemberID, walker encoun
 	members := []encounter.MemberInput{
 		{ID: dave, Kind: encounter.KindPlayer, Position: arrivalAnnexOrigin},
 	}
-	sheets := sheetFacts{}
+	sheets := sheetFacts{alice: {}, dave: {}}
 	if walker != "" {
 		w := encounter.MemberInput{ID: alice, Kind: walker, Position: arrivalStart.Add(arrivalVaultOrigin)}
 		if walker == encounter.KindMonster {

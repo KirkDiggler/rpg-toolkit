@@ -87,7 +87,7 @@ func participationSetup(capability encounter.StandingWithParticipation, members 
 		Initiative: orderAsGiven{},
 		Standing:   capability,
 		Sight:      everyoneSeesTheWholeMap{},
-		Equipment:  encounter.UnobservedEquipment{}, Sheets: sheetFacts{},
+		Equipment:  encounter.UnobservedEquipment{}, Sheets: zeroSheets{},
 		TurnDriver: passDriver{},
 		Striker:    passStriker{}, Mover: quietMover{},
 		Announcer: quietAnnouncer{},
@@ -237,7 +237,7 @@ func TestDriveReassessesAfterStrikeBeforeUsingTheNextSlotsTurnAnswer(t *testing.
 		encounter.MemberInput{ID: zara, Kind: encounter.KindPlayer, Position: spatial.Position{X: 4, Y: 2}},
 	)
 	setup.Sheets = sheetFacts{goblin: {SpeedFeet: 30,
-		Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Test Strike", RangeFeet: 5, Kind: "melee"}}}}
+		Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Test Strike", RangeFeet: 5, Kind: "melee"}}}, alice: {}, zara: {}}
 	setup.TurnDriver = driver
 	setup.Striker = striker
 	enc, err := encounter.NewEncounter(setup)
@@ -464,7 +464,7 @@ func TestSuppliedPartyDefeatClosesAfterItsCausalBeats(t *testing.T) {
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: enc.ToData(), Initiative: orderAsGiven{}, Standing: capability,
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	require.NoError(t, err)
 	reloadedStatus, err := reloaded.Status()
@@ -655,7 +655,7 @@ func TestDeathSaveDetailRoundTripsEveryPrimitiveAndRejectsMismatches(t *testing.
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: enc.ToData(), Initiative: orderAsGiven{}, Standing: capability,
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	require.NoError(t, err)
 	beats := storyBeats(t, reloaded, alice)
@@ -726,7 +726,7 @@ func drivenScene(
 		},
 	)
 	setup.Sheets = sheetFacts{goblin: {SpeedFeet: 30,
-		Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Test Strike", RangeFeet: 5, Kind: "melee"}}}}
+		Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Test Strike", RangeFeet: 5, Kind: "melee"}}}, alice: {}, bob: {}}
 	setup.TurnDriver = driver
 	enc, err := encounter.NewEncounter(setup)
 	require.NoError(t, err)

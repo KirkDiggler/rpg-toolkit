@@ -44,7 +44,7 @@ func fleeRoute() []spatial.Position {
 // heldSheets is the goblin's sheet, on the scene and on every reload of it.
 var heldSheets = sheetFacts{goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{
 	{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
-}, Targeting: "closest"}}
+}, Targeting: "closest"}, alice: {}}
 
 func (s *HeldTestSuite) scene(mover encounter.Mover, standing encounter.StandingWithParticipation) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{

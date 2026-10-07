@@ -84,7 +84,7 @@ func newArrivalMemoryEncounter(
 	withBubble bool,
 ) (*Encounter, *propagationStanding) {
 	t.Helper()
-	sheets := sheetFacts{propagationGoblin: {SpeedFeet: 30}}
+	sheets := sheetFacts{propagationGoblin: {SpeedFeet: 30}, "active-player": {}, "remembered-player": {}, "joining-player": {}, "world-player": {}}
 
 	base, err := NewEncounter(&SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},

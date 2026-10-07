@@ -50,7 +50,7 @@ func seen(
 // campaign's sequel. This test doubles as the composition's usage
 // documentation: a host wires the free-roam encounter exactly like this.
 func TestTombWatch(t *testing.T) {
-	sheets := sheetFacts{goblin: {SpeedFeet: 5}}
+	sheets := sheetFacts{goblin: {SpeedFeet: 5}, alice: {}, "bella": {}, cormac: {}}
 	// ---- Beat 1: the crypt lights up -------------------------------
 	// A 12x12 crypt with a wall across the middle, x=5..7 at y=6. Alice
 	// (2,2) and Bella (3,2) enter; a goblin patrols the far end between

@@ -40,7 +40,7 @@ func (s *CellFactsTestSuite) SetupTest() {
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: &scriptedDriver{}, Striker: &scriptedStriker{kind: encounter.OutcomeMissed},
 		Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{

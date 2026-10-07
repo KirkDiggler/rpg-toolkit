@@ -55,7 +55,7 @@ func (s *DiscoveryPolicySuite) TestInvalidValuesAreNotDefaulted() {
 
 func (s *DiscoveryPolicySuite) world(policy *encounter.DiscoveryPolicyInput) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Mover: quietMover{}, Announcer: quietAnnouncer{}, CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		Field: encounter.FieldInput{
@@ -74,7 +74,7 @@ func (s *DiscoveryPolicySuite) world(policy *encounter.DiscoveryPolicyInput) *en
 
 func (s *DiscoveryPolicySuite) load(data encounter.EncounterData) (*encounter.Encounter, error) {
 	return encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{},
+		Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Mover: quietMover{}, Announcer: quietAnnouncer{}, CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 	})

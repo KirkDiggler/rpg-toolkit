@@ -86,7 +86,7 @@ func (s *BoundaryTestSuite) fightWithMonsters(
 	members := []encounter.MemberInput{
 		{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
 	}
-	sheets := sheetFacts{}
+	sheets := sheetFacts{alice: {}}
 	for i, id := range monsters {
 		members = append(members, encounter.MemberInput{
 			ID: id, Kind: encounter.KindMonster,
@@ -248,7 +248,7 @@ func (s *BoundaryTestSuite) TestAnnouncerIsRequiredAtBothConstructors() {
 	s.Require().NoError(err)
 
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: enc.ToData(), Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{},
+		Data: enc.ToData(), Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{},
 	})
 	s.Require().ErrorIs(err, encounter.ErrNoAnnouncer,
@@ -279,7 +279,7 @@ func (s *BoundaryTestSuite) TestAnnouncerFailureAbortsTheVerb() {
 	// Reload the same world with an announcer that fails, so construction
 	// itself is not the thing under test.
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: enc.ToData(), Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{},
+		Data: enc.ToData(), Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{},
 		Announcer: journalAnnouncer{j: j, fail: boom},
 	})

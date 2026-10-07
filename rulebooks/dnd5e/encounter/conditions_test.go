@@ -101,7 +101,7 @@ func (s *sightingConditionsSuite) SetupSubTest() { s.SetupTest() }
 
 func (s *sightingConditionsSuite) setup(equipment encounter.EquipmentWithConditions) *encounter.SetupInput {
 	return &encounter.SetupInput{
-		Sight: s.sight, Equipment: equipment, Sheets: sheetFacts{}, Standing: everyoneStanding{},
+		Sight: s.sight, Equipment: equipment, Sheets: zeroSheets{}, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
@@ -119,7 +119,7 @@ func (s *sightingConditionsSuite) setup(equipment encounter.EquipmentWithConditi
 
 func (s *sightingConditionsSuite) loadInput(data encounter.EncounterData, equipment encounter.EquipmentWithConditions) *encounter.LoadEncounterInput {
 	return &encounter.LoadEncounterInput{
-		Data: data, Sight: s.sight, Equipment: equipment, Sheets: sheetFacts{}, Standing: everyoneStanding{},
+		Data: data, Sight: s.sight, Equipment: equipment, Sheets: zeroSheets{}, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Mover: quietMover{}, Announcer: quietAnnouncer{},
 	}

@@ -98,7 +98,7 @@ var pauseShortsword = encounter.SheetFacts{SpeedFeet: 30, Actions: []encounter.A
 // pauseSheets answers the goblin and, where a scene has one, the skeleton —
 // on the scene's Setup and on every reload of it, since the sheets are the
 // host's and nothing in the blob carries them.
-var pauseSheets = sheetFacts{goblin: pauseShortsword, "skeleton": pauseShortsword}
+var pauseSheets = sheetFacts{goblin: pauseShortsword, "skeleton": pauseShortsword, alice: {}}
 
 func (s *PauseTestSuite) sceneWithDriver(
 	mover encounter.Mover, standing encounter.StandingWithParticipation, driver encounter.TurnDriver,

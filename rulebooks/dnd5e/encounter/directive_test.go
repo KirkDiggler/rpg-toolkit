@@ -101,8 +101,7 @@ func (s *DirectiveTestSuite) lineScene(withPillar bool) *encounter.Encounter {
 		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{
 			goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", RangeFeet: 5, Kind: "melee"}}, Targeting: "closest"},
 			// bob, when a scene adds him, is the goblin's ally standing in the way.
-			bob: {SpeedFeet: 30, Targeting: "closest"},
-		}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			bob: {SpeedFeet: 30, Targeting: "closest"}, alice: {}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: s.driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed},
 		Mover: s.mover, Announcer: quietAnnouncer{},
 		Field: field,
@@ -468,8 +467,7 @@ func (s *DirectiveTestSuite) sceneOfCells(
 		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{
 			goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", RangeFeet: 5, Kind: "melee"}}, Targeting: "closest"},
 			// bob, when a scene adds him, is the goblin's ally standing in the way.
-			bob: {SpeedFeet: 30, Targeting: "closest"},
-		}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			bob: {SpeedFeet: 30, Targeting: "closest"}, alice: {}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: s.driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed},
 		Mover: s.mover, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
@@ -918,8 +916,7 @@ func (s *DirectiveTestSuite) towardCorridorWalledScene() *encounter.Encounter {
 		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{
 			goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", RangeFeet: 5, Kind: "melee"}}, Targeting: "closest"},
 			// bob, when a scene adds him, is the goblin's ally standing in the way.
-			bob: {SpeedFeet: 30, Targeting: "closest"},
-		}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			bob: {SpeedFeet: 30, Targeting: "closest"}, alice: {}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: s.driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed},
 		Mover: s.mover, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{

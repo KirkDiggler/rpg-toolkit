@@ -24,7 +24,7 @@ import (
 // pursuitDecider, shared with tombwatch_test.go and pump_test.go
 // respectively (same package).
 func TestVaultChase(t *testing.T) {
-	sheets := sheetFacts{goblin: {SpeedFeet: 60}}
+	sheets := sheetFacts{goblin: {SpeedFeet: 60}, alice: {}}
 	// ---- The set -----------------------------------------------------
 	// Two regions, one gate: an open door standing in the crossing from the
 	// corridor's [9,5] to the vault's [10,5] (rpg-project#256 — a doorway is

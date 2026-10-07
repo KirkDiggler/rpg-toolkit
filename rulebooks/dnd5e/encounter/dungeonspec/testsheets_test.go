@@ -5,15 +5,15 @@ package dungeonspec_test
 
 import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 
-// sheetFacts is the Sheets capability these tests install: the zero value —
-// no speed, no actions, no strategy — for every member asked, or a listed
-// member's own facts. Nothing in this package's tests walks or drives anybody.
-type sheetFacts map[encounter.MemberID]encounter.SheetFacts
+// zeroSheets is the Sheets capability these tests install: every member's
+// sheet states no speed, no actions and no strategy. Nothing in this
+// package's tests walks or drives anybody, and installing it says so.
+type zeroSheets struct{}
 
-func (f sheetFacts) Sheets(members []encounter.MemberID) (map[encounter.MemberID]encounter.SheetFacts, error) {
+func (zeroSheets) Sheets(members []encounter.MemberID) (map[encounter.MemberID]encounter.SheetFacts, error) {
 	out := make(map[encounter.MemberID]encounter.SheetFacts, len(members))
 	for _, id := range members {
-		out[id] = f[id]
+		out[id] = encounter.SheetFacts{}
 	}
 
 	return out, nil
