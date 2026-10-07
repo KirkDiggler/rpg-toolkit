@@ -82,19 +82,23 @@ func (e *Encounter) Settlement(in *SettlementInput) (*SettlementOutput, error) {
 
 	out := &SettlementOutput{}
 	for _, entry := range entries {
-		var beat struct {
-			Beat    string     `json:"beat"`
-			Members []MemberID `json:"members"`
-			Cause   string     `json:"cause"`
-			Member  MemberID   `json:"member"`
+		var peek struct {
+			Beat string `json:"beat"`
 		}
-		if json.Unmarshal(entry.Payload, &beat) != nil {
+		if json.Unmarshal(entry.Payload, &peek) != nil {
 			// Every beat this module writes is a JSON object; a payload that
 			// is not one is not a fight or a fall this module told.
 			continue
 		}
-		switch beat.Beat {
+		switch peek.Beat {
 		case BeatFightEnded:
+			var beat struct {
+				Members []MemberID `json:"members"`
+				Cause   string     `json:"cause"`
+			}
+			if err := json.Unmarshal(entry.Payload, &beat); err != nil {
+				return nil, fmt.Errorf("settlement: fight ended at %d: %w: %v", entry.Seq, ErrInvalidData, err)
+			}
 			cause := DissolveKind(beat.Cause)
 			if !validDissolveKind(cause) {
 				return nil, fmt.Errorf("settlement: fight ended at %d: cause %q: %w", entry.Seq, beat.Cause, ErrInvalidData)
@@ -103,6 +107,12 @@ func (e *Encounter) Settlement(in *SettlementInput) (*SettlementOutput, error) {
 				Seq: entry.Seq, Members: append([]MemberID(nil), beat.Members...), Cause: cause,
 			})
 		case string(OutcomeDown):
+			var beat struct {
+				Member MemberID `json:"member"`
+			}
+			if err := json.Unmarshal(entry.Payload, &beat); err != nil {
+				return nil, fmt.Errorf("settlement: fall at %d: %w: %v", entry.Seq, ErrInvalidData, err)
+			}
 			if beat.Member == "" {
 				return nil, fmt.Errorf("settlement: fall at %d: %w: %w", entry.Seq, ErrInvalidData, ErrNoMember)
 			}
