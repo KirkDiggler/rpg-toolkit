@@ -167,6 +167,10 @@ func TestTranslateResolutionLetsNoResolutionSentinelThrough(t *testing.T) {
 		// because inventing one would mean building a disagreement that does
 		// not exist.
 		{"an ability that said no", resolution.ErrActivationRefused, ErrCannotActivate},
+		// The ward carries no DC: a Sanctuary written before wards recorded
+		// their caster's spell save DC at cast refuses rather than reading as
+		// DC 0 (rpg-toolkit#1965). Bad stored data on the holder's sheet.
+		{"a ward that carries no DC", resolution.ErrWardUnreadable, ErrBadCharacter},
 		// Defects here rather than in the call, and unreachable for that
 		// reason.
 		{"no input at all", resolution.ErrNilInput, ErrNilInput},

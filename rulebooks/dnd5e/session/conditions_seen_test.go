@@ -119,7 +119,7 @@ func (s *ConditionSeamSuite) TestAnUnreadableConditionMakesTheMemberUnknown() {
 	}}
 
 	got, err := s.seam.Conditions([]encounter.MemberID{"player"})
-	s.Require().NoError(err, "the verb plays on, as the sheet's lenient projection does")
+	s.Require().NoError(err, "the seam reports unknown; refusing the sheet is the strict loaders' job")
 
 	s.Contains(got, encounter.MemberID("player"))
 	s.Nil(got["player"])

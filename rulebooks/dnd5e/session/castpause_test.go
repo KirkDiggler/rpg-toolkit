@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
@@ -349,6 +350,108 @@ func (s *CastPauseSuite) TestAHeldSwingStillLetsTheWalkFinish() {
 	s.Empty(s.swings("bard"), "holding swings at nobody")
 	s.Equal(6, s.fledCells(), "and the creature runs the same thirty feet either way")
 	s.Require().NoError(s.endBardsTurn())
+}
+
+// TestAPostHitAnswerDuringAHeldDirectiveResumesTheDirective pins that every
+// React path agrees on what the last answer resumes (rpg-toolkit#1965).
+//
+// Paused() is true for a held directive as well as a paused turn, so a path
+// that resumed on Paused() alone called ResumeTurn here — refused with
+// ErrNotPaused, because it is the bard's turn and nobody's turn is paused —
+// and the held walk never finished. The post-hit path now ends in the same
+// step as the other two, and that step resumes the directive.
+//
+// THE WINDOW IS SWAPPED IN THE STORED RECORD. The fighter's open window
+// becomes a post-hit window — the skeleton has struck her, and she holds a
+// post-hit reaction — while the directive is still held. No content on this
+// stack gives a fleeing skeleton's opponent that offer mid-flight, but the
+// record shape is one React accepts, and the continuation it chooses is the
+// claim.
+func (s *CastPauseSuite) TestAPostHitAnswerDuringAHeldDirectiveResumesTheDirective() {
+	s.oneFighterScene()
+
+	out, err := s.whisper()
+	s.Require().NoError(err)
+	s.Require().True(out.Paused, "the flight is held on the fighter's question")
+
+	s.swapInPostHitWindow("fighter")
+	row := s.reactRow("fighter")
+	s.Require().NotEmpty(row.ID, "the swapped window is still an open row")
+	s.Require().NotNil(row.Reaction)
+	s.Equal(refs.Features.WrathOfTheStorm().String(), row.Reaction.Ref, "and it is the post-hit offer now")
+
+	_, err = s.mgr.React(context.Background(), &session.ReactInput{
+		Session: "sess", Member: "fighter", DeclarationID: row.ID, Choice: session.ReactHold,
+	})
+	s.Require().NoError(err, "the last answer resumes the held directive, not a turn nobody paused")
+
+	s.Equal(6, s.fledCells(), "the held walk finished its thirty feet")
+	s.Empty(s.reactRow("fighter").ID, "nothing is being asked any more")
+	s.Require().NoError(s.endBardsTurn(), "and the table moves again")
+}
+
+// swapInPostHitWindow rewrites member's one open window in the stored session
+// record into a post-hit window, keeping its id so the row's selector holds.
+//
+// The frozen strike inside it is RESOLUTION'S OWN, minted by a real Wrath of the
+// Storm pose (realPostHitFrozen) rather than written here: the envelope is a
+// private resolution type, and this test owns only the swap. The window wrapper
+// around it is this package's own shape.
+func (s *CastPauseSuite) swapInPostHitWindow(member string) {
+	s.T().Helper()
+	payload, err := json.Marshal(map[string]any{
+		"kind": "post_hit", "audience": member,
+		"offer":  map[string]string{"ref": refs.Features.WrathOfTheStorm().String(), "name": "Wrath of the Storm"},
+		"frozen": realPostHitFrozen(s.T()),
+	})
+	s.Require().NoError(err)
+
+	stored := s.sessions.byID["sess"]
+	s.Require().NotNil(stored)
+	swapped := false
+	for i := range stored.Windows.Windows {
+		if string(stored.Windows.Windows[i].Audience) != member {
+			continue
+		}
+		s.Require().False(swapped, "member %q has more than one open window", member)
+		stored.Windows.Windows[i].Payload = payload
+		swapped = true
+	}
+	s.Require().True(swapped, "member %q has no open window to swap", member)
+}
+
+// realPostHitFrozen is the frozen strike resolution writes when a goblin's
+// driven swing hits a Tempest cleric holding Wrath of the Storm — the scene
+// TestWrathMonsterTurnReloadResumesWithoutSecondStrike plays, stopped at the
+// pose. Declining it resumes nothing inside the strike, so the ids it names
+// need not be members of the scene it is swapped into.
+func realPostHitFrozen(t *testing.T) []byte {
+	t.Helper()
+	wrath := &CastSuite{}
+	wrath.SetT(t)
+	wrath.scene(wrath.tempestSheet(), 1, 15, 2, 1, 4, 5)
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: wrath.dice, TurnDriver: reachlessAttacker{}, Sessions: wrath.sessions, Encounters: wrath.encounters, Characters: wrath.characters, Events: wrath.stream})
+	require.NoError(t, err)
+	_, err = mgr.EndTurn(context.Background(), &session.EndTurnInput{Session: "sess", Member: "cleric", DeclarationID: currentEndTurnID(t, mgr, "sess", "cleric")})
+	require.NoError(t, err)
+
+	stored := wrath.sessions.byID["sess"]
+	require.NotNil(t, stored)
+	for _, window := range stored.Windows.Windows {
+		if string(window.Audience) != "cleric" {
+			continue
+		}
+		var posed struct {
+			Kind   string `json:"kind"`
+			Frozen []byte `json:"frozen"`
+		}
+		require.NoError(t, json.Unmarshal(window.Payload, &posed))
+		require.Equal(t, "post_hit", posed.Kind, "the goblin's hit poses the cleric's Wrath")
+		require.NotEmpty(t, posed.Frozen)
+		return posed.Frozen
+	}
+	require.FailNow(t, "the Wrath scene posed no window to the cleric")
+	return nil
 }
 
 // TestTheCasterIsAskedOnHerOwnTurn. The bard whispers at the skeleton standing

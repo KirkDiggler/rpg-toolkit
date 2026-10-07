@@ -313,7 +313,11 @@ func (m *Manager) compileOffersFor(
 		dependencyFailures []resolutionDependencyFailure
 	)
 	if requested[VerbAttack] || requested[VerbCast] {
-		resolutionCast, dependencyFailures = m.compileResolutionCast(ctx, data, roster, sheet.ToData())
+		readied, err := sheet.ToData()
+		if err != nil {
+			return nil, fmt.Errorf("member %q: %w: %v", member, ErrBadCharacter, err)
+		}
+		resolutionCast, dependencyFailures = m.compileResolutionCast(ctx, data, roster, readied)
 	}
 
 	var casts []compiledOffer

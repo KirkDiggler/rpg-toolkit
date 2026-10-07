@@ -175,11 +175,12 @@ func (s *JoinLongRestTestSuite) TestDuplicateCurrentJoinDoesNotRestOrSave() {
 	})
 	s.Require().NoError(err)
 
-	// A strict LongRest would reject this effect. The ordinary projection is
-	// deliberately lenient, so ErrNoMember proves encounter.Join — not rest —
-	// refused the duplicate.
+	// A clean, re-spent record: had the duplicate rested, the save counts and
+	// the hit points below would say so, and ErrNoMember proves encounter.Join
+	// — not rest — refused it. The same duplicate past an UNREADABLE condition
+	// is refused earlier, by the projection
+	// (TestADuplicateJoinPastAnUnreadableConditionRefusesAndWritesNothing).
 	spent := spentJoinFighter(s.T(), "bob")
-	spent.Conditions = append(spent.Conditions, malformedRage("bob"))
 	s.characters.seed(s.T(), spent)
 	beforeSaves := s.characters.saves
 	beforeAttempts := s.characters.saveAttempts
@@ -205,7 +206,6 @@ func (s *JoinLongRestTestSuite) TestExitThenRejoinUsesPersistedEverMembersAndDoe
 	s.Require().NoError(err)
 
 	spent := spentJoinFighter(s.T(), "bob")
-	spent.Conditions = append(spent.Conditions, malformedRage("bob"))
 	s.characters.seed(s.T(), spent)
 	beforeSaves := s.characters.saves
 	beforeAttempts := s.characters.saveAttempts
@@ -220,6 +220,66 @@ func (s *JoinLongRestTestSuite) TestExitThenRejoinUsesPersistedEverMembersAndDoe
 	s.Equal(beforeSaves, s.characters.saves)
 	s.Equal(beforeAttempts, s.characters.saveAttempts)
 	s.Equal(7, s.characters.stored(s.T(), "bob").HitPoints)
+}
+
+// TestADuplicateJoinPastAnUnreadableConditionRefusesAndWritesNothing: the
+// projection is strict (rpg-toolkit#1968), so a current member joining again
+// with a condition this build cannot load is refused by name before the
+// composition is asked — and nothing is rested, saved or attempted.
+func (s *JoinLongRestTestSuite) TestADuplicateJoinPastAnUnreadableConditionRefusesAndWritesNothing() {
+	_, err := s.mgr.Join(s.ctx, &session.JoinInput{
+		Session: "sess", Member: "bob", Position: hexCell(2, 2),
+	})
+	s.Require().NoError(err)
+
+	spent := spentJoinFighter(s.T(), "bob")
+	spent.Conditions = append(spent.Conditions, malformedRage("bob"))
+	s.characters.seed(s.T(), spent)
+	s.assertRefusedAndUntouched("bob")
+}
+
+// TestARejoinPastAnUnreadableConditionRefusesAndDoesNotRestOrSave: the same
+// refusal after Exit. A rejoin used to project leniently because nothing wrote
+// back; Join now writes the projected AC and facts onto the member, so it is
+// as strict as a first admission, and the stored record keeps every byte.
+func (s *JoinLongRestTestSuite) TestARejoinPastAnUnreadableConditionRefusesAndDoesNotRestOrSave() {
+	_, err := s.mgr.Join(s.ctx, &session.JoinInput{
+		Session: "sess", Member: "bob", Position: hexCell(2, 2),
+	})
+	s.Require().NoError(err)
+	_, err = s.mgr.Exit(s.ctx, &session.ExitInput{Session: "sess", Member: "bob"})
+	s.Require().NoError(err)
+
+	spent := spentJoinFighter(s.T(), "bob")
+	spent.Conditions = append(spent.Conditions, malformedRage("bob"))
+	s.characters.seed(s.T(), spent)
+	s.assertRefusedAndUntouched("bob")
+}
+
+// assertRefusedAndUntouched joins member again and asserts the refusal names
+// the unreadable Rage blob while no character or world write is attempted and
+// the stored record is byte-for-byte what was seeded.
+func (s *JoinLongRestTestSuite) assertRefusedAndUntouched(member string) {
+	s.T().Helper()
+	before, err := json.Marshal(s.characters.stored(s.T(), member))
+	s.Require().NoError(err)
+	beforeSaves := s.characters.saves
+	beforeAttempts := s.characters.saveAttempts
+	beforeEncounterSaves := s.encounters.saves
+
+	out, err := s.mgr.Join(s.ctx, &session.JoinInput{
+		Session: "sess", Member: member, Position: hexCell(3, 2),
+	})
+	s.Require().ErrorIs(err, session.ErrBadCharacter, "the strict projection refuses the record")
+	s.Contains(err.Error(), "raging", "and names the condition it could not load")
+	s.Nil(out)
+	s.Equal(beforeSaves, s.characters.saves)
+	s.Equal(beforeAttempts, s.characters.saveAttempts, "a refused Join never attempts a character save")
+	s.Equal(beforeEncounterSaves, s.encounters.saves, "and never writes the world")
+
+	after, err := json.Marshal(s.characters.stored(s.T(), member))
+	s.Require().NoError(err)
+	s.Equal(string(before), string(after), "the stored record is untouched")
 }
 
 func (s *JoinLongRestTestSuite) TestGenuinelyNewLateMemberRests() {

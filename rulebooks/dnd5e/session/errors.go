@@ -100,7 +100,9 @@ var (
 	ErrNoCharacter = errors.New("no such character")
 
 	// ErrBadCharacter is returned when a character's stored data exists but
-	// cannot be reconstituted into a usable character.
+	// cannot be reconstituted into a usable character, or when a loaded sheet
+	// cannot be written back whole (character.ToData refuses rather than drop
+	// an effect).
 	//
 	// Separate from ErrNoCharacter for the same reason ErrBadRepository is
 	// separate from ErrNotFound: absent and corrupt send whoever debugs it to

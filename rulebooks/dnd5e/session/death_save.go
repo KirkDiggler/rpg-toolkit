@@ -161,8 +161,12 @@ func (m *Manager) DeathSave(ctx context.Context, in *DeathSaveInput) (*DeathSave
 		return nil, fmt.Errorf("death save: generated presentation id: %w", err)
 	}
 
+	record, err := selected.sheet.ToData()
+	if err != nil {
+		return nil, fmt.Errorf("death save: member %q: %w: %v", in.Member, ErrBadCharacter, err)
+	}
 	resolved, err := resolution.DeathSave(ctx, &resolution.DeathSaveInput{
-		Character: selected.sheet.ToData(),
+		Character: record,
 		Roller:    &diceSeam{roller: m.dice},
 	})
 	if err != nil {
