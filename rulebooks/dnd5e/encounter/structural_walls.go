@@ -136,9 +136,10 @@ type StructuralDoorBindingInput struct {
 	Ref string
 
 	// From and To are the door's resolved VISUAL opening endpoints in
-	// canonical feet — the opening's own centre minus and plus half its
-	// width, projected onto the owning line. REQUIRED finite, representable
-	// and distinct: their nonzero distance is the door's visual width.
+	// canonical feet. The producing dialect owns resolving the opening's centre
+	// and width onto its line; this module carries that resolved pose rather
+	// than deriving or cross-checking it against the interval again. Endpoints
+	// must be finite, representable and distinct; their distance is visual width.
 	From, To spatial.Point
 }
 
