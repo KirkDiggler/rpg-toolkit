@@ -72,7 +72,7 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 		panic(err)
 	}
 	sanctuary, err := NewSanctuaryCondition(NewSanctuaryConditionInput{
-		MemberID: "m1", SourceID: "cleric-1", SourceRef: refs.Spells.Sanctuary(),
+		MemberID: "m1", SourceID: "cleric-1", SourceRef: refs.Spells.Sanctuary(), SaveDC: 13,
 	})
 	if err != nil {
 		panic(err)

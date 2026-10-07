@@ -579,9 +579,11 @@ func createResistance(config json.RawMessage, memberID, sourceRef string) (*Resi
 }
 
 // sanctuaryConfig is the config structure for the sanctuary condition.
-// SourceID is the cleric who cast Sanctuary.
+// SourceID is the cleric who cast Sanctuary; SaveDC is that cleric's spell
+// save DC when the ward landed, written under the cast effect's SaveDCKey.
 type sanctuaryConfig struct {
 	SourceID string `json:"source_id"`
+	SaveDC   int    `json:"save_dc"`
 }
 
 // createSanctuary creates a sanctuary condition from config. The member is
@@ -600,7 +602,7 @@ func createSanctuary(config json.RawMessage, memberID, sourceRef string) (*Sanct
 	}
 
 	return NewSanctuaryCondition(NewSanctuaryConditionInput{
-		MemberID: memberID, SourceID: cfg.SourceID, SourceRef: ref,
+		MemberID: memberID, SourceID: cfg.SourceID, SourceRef: ref, SaveDC: cfg.SaveDC,
 	})
 }
 

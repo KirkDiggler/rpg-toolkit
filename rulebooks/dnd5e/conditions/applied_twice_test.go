@@ -127,7 +127,7 @@ func (s *AppliedTwiceSuite) fixtures() map[string]func() dnd5eEvents.ConditionBe
 		},
 		refs.Conditions.Sanctuary().String(): func() dnd5eEvents.ConditionBehavior {
 			return s.must(conditions.NewSanctuaryCondition(conditions.NewSanctuaryConditionInput{
-				MemberID: id, SourceID: "cleric", SourceRef: refs.Spells.Sanctuary()}))
+				MemberID: id, SourceID: "cleric", SourceRef: refs.Spells.Sanctuary(), SaveDC: 13}))
 		},
 	}
 }

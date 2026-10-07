@@ -367,7 +367,7 @@ var longRestCases = map[string]longRestCase{
 		data: json.RawMessage(`{
 			"ref":{"module":"dnd5e","type":"conditions","id":"sanctuary"},
 			"member_id":"member-1","source_id":"cleric-1",
-			"source_ref":{"module":"dnd5e","type":"spells","id":"sanctuary"}
+			"source_ref":{"module":"dnd5e","type":"spells","id":"sanctuary"},"save_dc":13
 		}`),
 		ownerID:          "member-1",
 		expectedRef:      refs.Conditions.Sanctuary(),

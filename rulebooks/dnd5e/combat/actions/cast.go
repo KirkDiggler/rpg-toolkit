@@ -262,6 +262,16 @@ type CastEffect struct {
 	// convention that guessed one key would silently drop the other.
 	CounterpartKey string `json:"counterpart_key,omitempty"`
 
+	// SaveDCKey names the parameter that receives the caster's spell save DC
+	// when the effect is imposed; empty means the effect keeps no DC.
+	//
+	// Declared for the reason CounterpartKey is: an effect that is asked for a
+	// DC long after the cast — Sanctuary's ward save, rolled by whoever targets
+	// the warded creature — must own the number it was cast with. Reading it
+	// off the caster's sheet at use time fails the moment the caster leaves the
+	// interaction, and a ward nobody can read stalls the table.
+	SaveDCKey string `json:"save_dc_key,omitempty"`
+
 	// OptionKey names the parameter the chosen option is written under, the
 	// way CounterpartKey names the other party's. Empty means the effect does
 	// not read the option.
@@ -525,6 +535,12 @@ func (e CastEffect) validate(target CastTargetRule, hasOptions bool) error {
 		if e.CounterpartKey != "" {
 			return fmt.Errorf("a self-targeted cast has no counterpart to bind")
 		}
+	}
+	// Two bindings naming one parameter would let whichever is written last
+	// silently overwrite the other — the counterpart lost under the DC, or the
+	// DC under the option.
+	if e.SaveDCKey != "" && (e.SaveDCKey == e.CounterpartKey || e.SaveDCKey == e.OptionKey) {
+		return fmt.Errorf("effect save DC key %q collides with another binding", e.SaveDCKey)
 	}
 	if err := e.Ref.IsValid(); err != nil {
 		return fmt.Errorf("condition ref is invalid: %w", err)
