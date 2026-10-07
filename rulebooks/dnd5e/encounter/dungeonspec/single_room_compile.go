@@ -14,12 +14,15 @@ import (
 // legacy offset frame and is reached only through the canonical spatial
 // inverse.
 //
-// THE PRESENTATION DOES NOT COME WITH IT (rpg-project#479). The authored
-// scene is content, served to the player by dungeon key; what crosses into
-// the field is the geometry the lowering read out of it —
-// [encounter.PlacedPropInput] per declared prop, and nothing that names an
-// asset, a light or a workspace. single_room_lowering.go lists every value this
-// compile reads from the presentation, by path.
+// The complete editor scene does not cross this boundary. Declared props lower
+// to PlacedPropInput; structural walls additionally carry their fixed layout and
+// opaque appearance refs for permitted projection. Gameplay never needs an
+// unrestricted fetch of the source document.
+//
+// One editing document can contain several discoverable rooms. PartitionRegion
+// derives spaces from the existing geometry with doors treated as closed for
+// topology only. Their ordinary RegionInput records feed unchanged room discovery;
+// initial door state does not rename them. Party seats stay in the starting space.
 //
 // THE SITE SCOPE AND THE ORDERS COMPILE THROUGH THE SHARED COMPILERS
 // (rpg-project#477, rpg-toolkit#1826; rpg-project#484). `factions:` and
@@ -169,6 +172,14 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		Factions:     factionsOf(spec.Factions, cast),
 		Dispositions: dispositionsOf(spec.Dispositions),
 	}
+	// The editor's one document may contain several physically separated
+	// spaces. Feed those to ordinary room discovery instead of teaching the
+	// entire painted floor when its first cell is seen.
+	layout, err := singleRoomRegions(field)
+	if err != nil {
+		return Compiled{}, singleRoomCompileError("room.room", err.Error())
+	}
+	field.Regions = layout.regions
 	// THE WAYS OUT, lowered by the one [exitsOf] the other dialect uses, with
 	// this dialect's frame spent on the way in (rpg-project#488 R2). Held
 	// aside until every cell below has been judged: they join the field after
@@ -211,7 +222,7 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 			ID: m.ID, Ref: m.Ref, Faction: b.Faction,
 			On: on, Temper: b.Temper, Actions: b.Actions,
 		}, from)
-		mp.Region = spec.Room.Gameplay.ImplicitRegionID
+		mp.Region = layout.owner[at]
 		mp.At = at
 		mp.Facing = m.StartingCell.Facing
 		// AND THE FOUR GAMEPLAY KEYS THE BINDING CARRIES (rpg-project#488
@@ -271,10 +282,18 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 				fmt.Sprintf("at author's axial q=%d r=%d: %s", placement.cell.Q, placement.cell.R, err))
 		}
 	}
-	// Party seats are deterministic nearest-first in the authored region.
-	party := deriveSingleRoomSeats(cells, starts[0], occupied, o, field)
+	// Party seats stay nearest-first in the STARTING space, not across an
+	// opaque partition merely because both sides share an editing document.
+	entryID := layout.owner[starts[0]]
+	entryCells := make([]spatial.Position, 0, len(cells))
+	for _, cell := range cells {
+		if layout.owner[cell] == entryID {
+			entryCells = append(entryCells, cell)
+		}
+	}
+	party := deriveSingleRoomSeats(entryCells, starts[0], occupied, o, field)
 	for i := range party {
-		party[i].Region = spec.Room.Gameplay.ImplicitRegionID
+		party[i].Region = entryID
 	}
 	if len(party) == 0 {
 		return Compiled{}, singleRoomCompileError("room.room.partyStart", "has no free seat")

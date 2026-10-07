@@ -91,8 +91,10 @@ import (
 // a hidden region's edge would have invented geometry the author never drew,
 // so the whole list went rather than be approximated. Nothing is sliced now.
 // A placement is WITHHELD WHOLE when it belongs to an unfound concealment, or
-// touches ordinary unexplored space. Concealed cells alone do not conceal an
-// unlisted placement: membership is explicit. Every other placement is presented
+// touches ordinary unexplored space. Structural wall/door boundaries, like fixed
+// wall segments, remain present when their own support also borders known space;
+// this does not reveal adjoining floor or override explicit concealment membership.
+// Concealed cells alone do not conceal an unlisted placement. Every other placement is presented
 // exactly as [Encounter.Atlas] reports it. Withholding the list wholesale
 // stopped being honest the moment a footprint DOOR could be a secret: a
 // dungeon whose tables all vanished the instant anything anywhere was hidden
@@ -112,10 +114,15 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	// even for a direct FieldInput naming only the canonical DoorID. This is
 	// an identity link, never an inference from overlapping geometry.
 	withheldDoorPlacements := make(map[PropID]bool)
+	structuralBoundaries := make(map[PropID]bool)
 	for _, wall := range e.field.structuralWalls {
+		structuralBoundaries[wall.id] = true
 		for _, opening := range wall.openings {
-			if opening.door != nil && unknownDoors[opening.door.doorID] {
-				withheldDoorPlacements[opening.door.placedID] = true
+			if opening.door != nil {
+				structuralBoundaries[opening.door.placedID] = true
+				if unknownDoors[opening.door.doorID] {
+					withheldDoorPlacements[opening.door.placedID] = true
+				}
 			}
 		}
 	}
@@ -199,13 +206,33 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	}
 	// A PLACEMENT GOES WHOLE OR STAYS WHOLE. Explicit prop/door membership
 	// withholds it as a secret. Ordinary room discovery independently withholds
-	// placements touching unexplored space. The combined floor mask cannot be
-	// used here: a concealed hex does not implicitly select an unlisted prop.
+	// ordinary props touching unexplored space. Structural boundaries instead
+	// survive on their own known support, as fixed segments do. The combined
+	// floor mask cannot be used here: a concealed hex does not select a prop.
 	for _, p := range full.Placed {
-		if p.Holdable || hidden.props[p.ID] || hidden.doors[p.ID] || withheldDoorPlacements[p.ID] || e.placedTouchesHidden(p, hidden.unexploredCells) {
+		if p.Holdable || hidden.props[p.ID] || hidden.doors[p.ID] || withheldDoorPlacements[p.ID] {
 			continue
 		}
-		out.Placed = append(out.Placed, p)
+		unexplored := e.placedTouchesHidden(p, hidden.unexploredCells)
+		if structuralBoundaries[p.ID] {
+			// Like a fixed wall segment, a structural boundary may border
+			// both discovered and undiscovered space. Its own known support
+			// permits the boundary, not any additional floor or contents.
+			// Door membership is still checked independently above.
+			support, supportErr := e.field.footprintObservationCells(p.Placement)
+			if supportErr != nil {
+				return Atlas{}, fmt.Errorf("structural boundary %q support: %w", p.ID, supportErr)
+			}
+			for _, cell := range support {
+				if !hidden.unexploredCells[cell] {
+					unexplored = false
+					break
+				}
+			}
+		}
+		if !unexplored {
+			out.Placed = append(out.Placed, p)
+		}
 	}
 
 	// THE STRUCTURAL LAYOUT, ON THE SAME PRESENCE ANSWER (rpg-project#169).

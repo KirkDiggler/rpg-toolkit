@@ -122,6 +122,10 @@
 // Concealment discovery remains an independent source of learned geometry.
 // Initial room knowledge comes from the snapshot; later discovery appends
 // recipient-scoped RoomRevealed beats containing fixed data, not live contents.
+// Builder compilation can refine a painted region through [PartitionRegion]:
+// geometry-separated spaces become ordinary regions before play. Door topology
+// is measured closed so initial mutable state cannot merge room identities;
+// runtime discovery, persistence and authored region membership stay unchanged.
 //
 // Holdable props and door states join the creature pass in the same perception
 // store. Subjects are qualified by kind, so equal member/prop/door names cannot
@@ -149,7 +153,11 @@
 // policy or a [DoorSighting]. A wall is projected only when its raw static
 // presence survives [Encounter.AtlasFor]; a door, when its own raw static
 // presence survives AND the existing door-identity concealment answer permits
-// its canonical DoorID. A hidden parent never conceals an unlisted door — the
+// its canonical DoorID. A boundary can overlap both known and unknown floor;
+// its own positive-area floor coverage permits it from either known side without
+// revealing the adjoining interior. Footprint door observation uses that coverage
+// with the existing sight evaluator, separately from standing/holding support.
+// A hidden parent never conceals an unlisted door — the
 // door record is self-contained and carries no parent id — and a hidden door
 // leaves no tell, because its whole opening record is omitted. Known identity
 // with unknown mutable state keeps the cut and copies no state.

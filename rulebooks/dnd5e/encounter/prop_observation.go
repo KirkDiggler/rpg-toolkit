@@ -219,7 +219,11 @@ func (e *Encounter) appendMutablePresences(presences []perception.Presence, geom
 			support.cells = append(support.cells, edge.From, edge.To)
 		}
 		if door.placement != nil {
-			support.cells = e.field.placedCells(*door.placement)
+			cells, supportErr := e.field.footprintObservationCells(*door.placement)
+			if supportErr != nil {
+				return nil, reach, fmt.Errorf("door %q observation support: %w", door.id, supportErr)
+			}
+			support.cells = cells
 		}
 		id := sightDoor(door.id)
 		reach.supports[id] = support
