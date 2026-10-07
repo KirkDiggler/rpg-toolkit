@@ -28,10 +28,10 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// clericWarder is a level-1 Cleric with a real spell save DC (13, the
-// [wardDC] every fixture ward carries) — the caster named by the wards in
-// these tests. Never placed on the encounter map, and never read by the ward
-// check: a ward owns its DC, so the cleric's presence changes nothing there.
+// clericWarder is a level-1 Cleric with a real spell save DC of 13 — not the
+// [wardDC] the fixture wards carry — and the caster named by those wards.
+// Never placed on the encounter map, and never read by the ward check: a ward
+// owns its DC, so the cleric's presence changes nothing there.
 func clericWarder() *character.Data {
 	return &character.Data{
 		ID: "cleric-1", PlayerID: "player-2", Name: "Warder", Level: 1, ClassID: "cleric", RaceID: races.Human,
@@ -43,9 +43,12 @@ func clericWarder() *character.Data {
 	}
 }
 
-// wardDC is the DC every fixture ward carries: clericWarder's own spell save
-// DC, 8 + proficiency 2 + WIS +3, as the cast would have written it.
-const wardDC = 13
+// wardDC is the DC every fixture ward carries. It is deliberately NOT
+// clericWarder's own spell save DC (13): a ward check that read the caster's
+// sheet instead of the ward would answer 13, and the tests could not tell the
+// two apart. TestAWardKeepsItsDCAfterItsCasterLeaves pins the cast writing
+// the caster's real DC.
+const wardDC = 15
 
 func sanctuaryJSON(t *testing.T, memberID string) json.RawMessage {
 	t.Helper()

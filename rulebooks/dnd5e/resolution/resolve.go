@@ -862,13 +862,19 @@ type attachAllInput struct {
 	// inherits the answer that cannot destroy anything.
 	//
 	// The one entry that asks is participation, and it is safe there for a
-	// reason that is about the ENTRY rather than about loading: it only reads,
-	// nothing on its path writes a sheet back, and refusing
-	// would put one unreadable blob between a player and the game. The
-	// projection used to ask too, and stopped when its callers began writing
-	// the AC it folds back to storage. The drop is not silent —
-	// the loader warns by name — which is D10: fail loudly means OBSERVABLE,
-	// not refused.
+	// reason that is about WHAT IT ANSWERS rather than about loading: its
+	// answer reads no condition at all. Life state comes from hit points and
+	// the sheet's death-save state, and attack-target eligibility follows from
+	// life state, so a dropped condition cannot move any number it returns —
+	// while refusing would put one unreadable blob between a player and the
+	// game. "Nothing writes back" is NOT the reason: session turns the answer
+	// into party defeat and turn removal, which encounter persists. The day a
+	// condition-sensitive field joins ParticipantParticipation, this drop stops
+	// being safe (TestParticipationIgnoresAnUnreadableCondition trips first).
+	// The projection used to ask too, and stopped when a dropped condition
+	// changed the AC its callers write back. The drop is not silent — the
+	// loader warns by name — which is D10: fail loudly means OBSERVABLE, not
+	// refused.
 	//
 	// ONE ATTACH MECHANISM, policy per entry. Both entries reach this same
 	// function, and the difference between them is this field rather than a
