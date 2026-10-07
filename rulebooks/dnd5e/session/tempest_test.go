@@ -350,3 +350,68 @@ func (s *CastSuite) TestLethalHitBreakingFogKeepsItsStory() {
 	}
 	s.Equal(live, replay, "the damaging hit and resulting downed event must survive reload unchanged")
 }
+
+// TestAStrikeThatBreaksFogInsideAWalkEndsTheArea is rpg-project#539's session
+// done-when: the cleric walks out of the skeleton's reach, the opportunity
+// attack breaks the concentration holding Fog Cloud, and the area ends on the
+// live encounter — told to everyone the cloud held, after the strike that
+// ended it.
+func (s *CastSuite) TestAStrikeThatBreaksFogInsideAWalkEndsTheArea() {
+	// No Wrath of the Storm to spend, so the opportunity attack lands without
+	// posing the cleric a reaction.
+	cleric := s.tempestSheet()
+	pool := cleric.Resources[resources.WrathOfTheStorm]
+	pool.Current = 0
+	cleric.Resources[resources.WrathOfTheStorm] = pool
+	dana := s.finalizedSpareTheDyingCleric()
+	dana.ID, dana.PlayerID, dana.Name = "dana", "player-dana", "Dana"
+	// The skeleton stands at the cleric's back (cells -1 puts it on (0,1)),
+	// dana beside her at (2,1). The cloud is centred four cells past dana so
+	// it holds dana and neither the cleric nor the skeleton, who can still see
+	// each other.
+	s.sceneWithAllies(cleric, []*character.Data{dana}, -1, 15, 4, 1)
+	ctx := context.Background()
+	row := s.castRow(spells.FogCloud)
+	_, err := s.mgr.Cast(ctx, &session.CastInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Cell: &spatial.Position{X: 6, Y: 1}})
+	s.Require().NoError(err)
+	areas, err := s.mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "cleric"})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(areas, "control: the cloud stands")
+	s.stream.published = nil
+
+	_, err = s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "cleric", DeclarationID: currentMoveID(s.T(), s.mgr, "sess", "cleric"), Path: []spatial.Position{{X: 1, Y: 2}, {X: 1, Y: 3}}})
+	s.Require().NoError(err)
+
+	// Ended on the live encounter, and so on the saved one.
+	areas, err = s.mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "dana"})
+	s.Require().NoError(err)
+	s.Empty(areas, "the broken concentration ends the cloud")
+	for _, id := range []string{"cleric", "dana"} {
+		raw, marshalErr := json.Marshal(s.characters.byID[id].Conditions)
+		s.Require().NoError(marshalErr)
+		s.NotContains(string(raw), refs.Conditions.InFog().String(), "no sheet ever records membership")
+	}
+
+	// Dana, the one the cloud held, is told it ended — after the strike, the
+	// save and the break that caused it, and before the walk goes on.
+	seqOf := func(kind session.EventKind, match func(session.Event) bool) uint64 {
+		for _, event := range eventsFor(s.stream.published, "dana") {
+			if event.Kind == kind && match(event) {
+				return event.Seq
+			}
+		}
+		s.FailNow("dana was never told " + string(kind))
+		return 0
+	}
+	first := func(session.Event) bool { return true }
+	struck := seqOf(session.EventStruck, first)
+	broken := seqOf(session.EventConcentrationEnded, first)
+	ended := seqOf(session.EventActivationResult, func(e session.Event) bool {
+		removed := e.Body.(session.ActivationResultBody).ConditionRemoved
+		return removed != nil && removed.Target == "dana" && removed.Reason == "area ended"
+	})
+	moved := seqOf(session.EventMoved, first)
+	s.Less(struck, broken)
+	s.Less(broken, ended, "the cause is told before the membership change")
+	s.Less(ended, moved, "and the area ends inside the step, before the walk goes on")
+}

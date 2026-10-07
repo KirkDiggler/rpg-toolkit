@@ -1031,20 +1031,21 @@ func diceTraceFromEncounter(trace *encounter.DiceTrace) *DiceTrace {
 	return clone
 }
 
+// recordDamageComponents copies the received damage's one trace onto the
+// struck beat: the dealt lines, the save's halving, and the target's answers
+// (immune, resisted, vulnerable, reduced, cannot fall below zero) as labelled
+// modifier lines whose changes total the damage taken (rpg-project#539).
+// Resolution never sets a raw multiplier any more, so none is read here; the
+// label and the modifier on each line are the whole account.
 func recordDamageComponents(in []dnd5eEvents.DamageComponent) []encounter.DamageComponent {
 	if len(in) == 0 {
 		return nil
 	}
 	out := make([]encounter.DamageComponent, 0, len(in))
 	for _, component := range in {
-		var multiplier *float64
-		if component.Multiplier != nil {
-			value := *component.Multiplier
-			multiplier = &value
-		}
 		out = append(out, encounter.DamageComponent{
 			Source: string(component.Source), Roll: rollComponentFor(component.Roll),
-			DamageType: string(component.DamageType), Multiplier: multiplier,
+			DamageType: string(component.DamageType),
 		})
 	}
 	return out

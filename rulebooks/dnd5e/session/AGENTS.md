@@ -92,7 +92,9 @@ nowhere else: `resolution.NewActivation` in [`activate.go`](./activate.go),
 the cast machine in [`cast.go`](./cast.go), the swing in
 [`attack.go`](./attack.go), the walk in [`move.go`](./move.go), the save in
 [`death_save.go`](./death_save.go). Each one hands `resolution.Resolve` a world
-view, adopts the world back, saves dirty sheets, then records.
+view, adopts the world back, saves dirty sheets, records, then lands the
+areas the interaction closed and opened through encounter's own verbs
+(`landAreas`), so the story tells the cause before the membership change.
 
 **The lookups.** Ten capabilities the composition cannot implement for itself,
 each proved at compile time by a `var _` line: `standingSeam`
