@@ -76,6 +76,8 @@ func (s *ToDataTestSuite) TestAConditionThatCannotSerializeFailsTheWrite() {
 	data, err := char.ToData()
 
 	s.Require().ErrorIs(err, errUnserializable)
+	s.ErrorContains(err, `serialize condition "`+(&keptCondition{}).Ref().String()+`"`,
+		"the refusal names the effect it could not write, not its position")
 	s.Nil(data, "nothing is handed back to be written: a record missing a condition is not a smaller truth")
 }
 
@@ -86,6 +88,8 @@ func (s *ToDataTestSuite) TestAFeatureThatCannotSerializeFailsTheWrite() {
 	data, err := char.ToData()
 
 	s.Require().ErrorIs(err, errUnserializable)
+	s.ErrorContains(err, `serialize feature "`+stubFeatureRef.String()+`"`,
+		"the refusal names the effect it could not write, not its position")
 	s.Nil(data)
 }
 

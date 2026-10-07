@@ -1198,7 +1198,7 @@ func (c *Character) ToData() (*Data, error) {
 		// Use the feature's ToJSON method to get the serialized form
 		jsonData, err := feature.ToJSON()
 		if err != nil {
-			return nil, rpgerr.Wrapf(err, "character %s: serialize feature %d", c.id, len(data.Features))
+			return nil, rpgerr.Wrapf(err, "character %s: serialize feature %q", c.id, refString(feature.Ref()))
 		}
 		// The feature's ToJSON already includes the fully qualified ref
 		data.Features = append(data.Features, jsonData)
@@ -1219,12 +1219,21 @@ func (c *Character) ToData() (*Data, error) {
 		// Use the condition's ToJSON method to get the serialized form
 		jsonData, err := condition.ToJSON()
 		if err != nil {
-			return nil, rpgerr.Wrapf(err, "character %s: serialize condition %d", c.id, len(data.Conditions))
+			return nil, rpgerr.Wrapf(err, "character %s: serialize condition %q", c.id, refString(condition.Ref()))
 		}
 		data.Conditions = append(data.Conditions, jsonData)
 	}
 
 	return data, nil
+}
+
+// refString names an effect by its ref for an error message, saying so when
+// the effect has none rather than dereferencing nil.
+func refString(ref *core.Ref) string {
+	if ref == nil {
+		return "<nil ref>"
+	}
+	return ref.String()
 }
 
 // subscribeToEvents subscribes the character to gameplay events on the bus it
