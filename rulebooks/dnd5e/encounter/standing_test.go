@@ -57,14 +57,14 @@ const wolf = encounter.MemberID("wolf")
 // Retention is unbounded because most of these tests read the story, and a
 // window would make "what the story says" a question about trimming.
 // TestAForgottenDeathIsToldAgain sets its own, on purpose.
-func (s *deathScene) scene(standing encounter.Standing, members ...encounter.MemberInput) *encounter.Encounter {
+func (s *deathScene) scene(standing encounter.StandingWithParticipation, members ...encounter.MemberInput) *encounter.Encounter {
 	return s.sceneDriven(standing, passDriver{}, members...)
 }
 
 // sceneDriven is scene with the driver named — for the one fixture whose
 // monster is supposed to actually walk.
 func (s *deathScene) sceneDriven(
-	standing encounter.Standing, driver encounter.TurnDriver, members ...encounter.MemberInput,
+	standing encounter.StandingWithParticipation, driver encounter.TurnDriver, members ...encounter.MemberInput,
 ) *encounter.Encounter {
 	s.T().Helper()
 
@@ -83,7 +83,7 @@ func (s *deathScene) sceneDriven(
 }
 
 // pair is alice and a goblin in plain sight of each other.
-func (s *deathScene) pair(standing encounter.Standing) *encounter.Encounter {
+func (s *deathScene) pair(standing encounter.StandingWithParticipation) *encounter.Encounter {
 	s.T().Helper()
 
 	return s.scene(standing,
@@ -94,7 +94,7 @@ func (s *deathScene) pair(standing encounter.Standing) *encounter.Encounter {
 
 // pacingPair is pair with the goblin given somewhere to walk, so a round of
 // the world has something to show.
-func (s *deathScene) pacingPair(standing encounter.Standing) *encounter.Encounter {
+func (s *deathScene) pacingPair(standing encounter.StandingWithParticipation) *encounter.Encounter {
 	s.T().Helper()
 
 	return s.sceneDriven(standing, tableDriver(),
@@ -106,7 +106,7 @@ func (s *deathScene) pacingPair(standing encounter.Standing) *encounter.Encounte
 
 // trio adds the wolf, so a fight has an order long enough for a gap in the
 // middle of it to be visible.
-func (s *deathScene) trio(standing encounter.Standing) *encounter.Encounter {
+func (s *deathScene) trio(standing encounter.StandingWithParticipation) *encounter.Encounter {
 	s.T().Helper()
 
 	return s.scene(standing,

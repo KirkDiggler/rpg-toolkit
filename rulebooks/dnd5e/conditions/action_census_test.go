@@ -28,10 +28,10 @@ func (s *actionCensusSuite) TestEveryConditionLoaderIsClassified() {
 
 	for ref, entry := range actionCensus {
 		switch entry.class {
-		case actionAnswers, actionNotYetAnswering:
+		case censusAnswers, censusNotYetAnswering:
 			s.Contains([]contributions.Participation{contributions.ContributesNow, contributions.LaterChoice},
 				entry.participation, ref)
-		case actionNotBearing:
+		case censusNotBearing:
 			s.Empty(entry.participation, ref)
 		default:
 			s.Failf("unknown census class", "%s: %q", ref, entry.class)
@@ -80,7 +80,7 @@ func (s *actionCensusSuite) TestAnsweringLoadersImplementActionAssessor() {
 
 	var answering []string
 	for ref, entry := range actionCensus {
-		if entry.class == actionAnswers {
+		if entry.class == censusAnswers {
 			answering = append(answering, ref)
 		}
 	}
@@ -99,7 +99,7 @@ func (s *actionCensusSuite) TestAnsweringLoadersImplementActionAssessor() {
 
 func (s *actionCensusSuite) TestBearingLoadersHaveDescriptions() {
 	for ref, entry := range actionCensus {
-		if entry.class == actionNotBearing {
+		if entry.class == censusNotBearing {
 			continue
 		}
 		parsed, err := core.ParseString(ref)

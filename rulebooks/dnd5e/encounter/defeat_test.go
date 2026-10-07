@@ -46,7 +46,7 @@ func TestDefeatSuite(t *testing.T) {
 // First light puts all four in ONE bubble; the multi-bubble scene below splits
 // that blob by hand, because form's policy is one fight per encounter and the
 // only door to a second is a loaded shape.
-func (s *DefeatSuite) quartet(standing encounter.Standing) *encounter.Encounter {
+func (s *DefeatSuite) quartet(standing encounter.StandingWithParticipation) *encounter.Encounter {
 	s.T().Helper()
 
 	return s.scene(standing,

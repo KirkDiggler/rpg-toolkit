@@ -65,15 +65,13 @@ func (s *FightingStyleArcheryTestSuite) TestAddsToRangedAttacks() {
 	defer func() { _ = archery.Remove(s.ctx, s.bus) }()
 
 	// Create attack chain event for ranged attack
-	attackEvent := dnd5eEvents.AttackChainEvent{
+	attackEvent := swungAttack(dnd5eEvents.AttackChainEvent{
 		AttackerID:        "fighter-1",
 		TargetID:          "goblin-1",
-		IsMelee:           false, // Ranged attack
-		WeaponRef:         refs.Weapons.Longbow(),
 		AttackBonus:       5, // DEX(3) + Prof(2)
 		TargetAC:          13,
 		CriticalThreshold: 20,
-	}
+	}, swing{IsMelee: false, WeaponRef: refs.Weapons.Longbow()})
 
 	// Execute through attack chain
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
@@ -96,14 +94,13 @@ func (s *FightingStyleArcheryTestSuite) TestDoesNotAddToMeleeAttacks() {
 	defer func() { _ = archery.Remove(s.ctx, s.bus) }()
 
 	// Create attack chain event for melee attack
-	attackEvent := dnd5eEvents.AttackChainEvent{
+	attackEvent := swungAttack(dnd5eEvents.AttackChainEvent{
 		AttackerID:        "fighter-1",
 		TargetID:          "goblin-1",
-		IsMelee:           true, // Melee attack
-		AttackBonus:       5,    // STR(3) + Prof(2)
+		AttackBonus:       5, // STR(3) + Prof(2)
 		TargetAC:          13,
 		CriticalThreshold: 20,
-	}
+	}, swing{IsMelee: true})
 
 	// Execute through attack chain
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
@@ -126,14 +123,13 @@ func (s *FightingStyleArcheryTestSuite) TestDoesNotAddToOtherCharacterAttacks() 
 	defer func() { _ = archery.Remove(s.ctx, s.bus) }()
 
 	// Create attack chain event for different character
-	attackEvent := dnd5eEvents.AttackChainEvent{
+	attackEvent := swungAttack(dnd5eEvents.AttackChainEvent{
 		AttackerID:        "ranger-1", // Different character
 		TargetID:          "goblin-1",
-		IsMelee:           false, // Ranged
 		AttackBonus:       5,
 		TargetAC:          13,
 		CriticalThreshold: 20,
-	}
+	}, swing{IsMelee: false})
 
 	// Execute through attack chain
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)

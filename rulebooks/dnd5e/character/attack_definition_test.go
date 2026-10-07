@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
@@ -663,4 +664,44 @@ func (s *CharacterAttackTestSuite) TestShillelaghFollowsDirectTransferOfOneOwned
 	s.Equal("1d8", attack.Attack.Damage[0].Dice)
 	s.Require().NoError(c.UnequipItem(SlotOffHand))
 	s.Empty(c.conditions)
+}
+
+// TestAssembleAttack_CompetingOffersFailClosed: a monk holding a Shillelagh
+// club gets two offers for one swing — Martial Arts (the club is a monk
+// weapon) and Shillelagh. R22 makes the pick the player's, so with no pick the
+// assembly refuses instead of letting sheet order choose a die.
+func (s *CharacterAttackTestSuite) TestAssembleAttack_CompetingOffersFailClosed() {
+	data := s.heroSheet(
+		[]proficiencies.Weapon{proficiencies.WeaponSimple},
+		map[InventorySlot]string{SlotMainHand: string(weapons.Club)},
+	)
+	data.ClassID = classes.Monk
+	monk := s.load(data)
+	martialArts := conditions.NewMartialArtsCondition(conditions.MartialArtsInput{MemberID: monk.id, MonkLevel: 1})
+	shillelagh, err := conditions.NewShillelaghCondition(monk.id, conditions.ShillelaghConfig{
+		Weapons:    []conditions.HeldWeapon{{Slot: string(SlotMainHand), ItemID: string(weapons.Club)}},
+		WeaponSlot: string(SlotMainHand),
+		Ability:    abilities.WIS,
+	})
+	s.Require().NoError(err)
+
+	s.Run("one offer assembles", func() {
+		s.Require().NoError(monk.addCondition(shillelagh))
+		attack, err := AssembleAttack(monk, s.mainHand())
+		s.Require().NoError(err)
+		s.Equal("1d8", attack.Attack.Damage[0].Dice)
+	})
+
+	s.Run("two offers refuse whatever their order", func() {
+		s.Require().NoError(monk.addCondition(martialArts))
+		_, err := AssembleAttack(monk, s.mainHand())
+		s.Require().Error(err)
+		s.Equal(rpgerr.CodeConflictingState, rpgerr.GetCode(err))
+		s.Contains(err.Error(), refs.Conditions.MartialArts().String())
+		s.Contains(err.Error(), refs.Conditions.Shillelagh().String())
+
+		monk.conditions[0], monk.conditions[1] = monk.conditions[1], monk.conditions[0]
+		_, err = AssembleAttack(monk, s.mainHand())
+		s.Require().Error(err)
+	})
 }

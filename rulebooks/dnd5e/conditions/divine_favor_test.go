@@ -3,6 +3,8 @@ package conditions_test
 import (
 	"context"
 	"errors"
+	"testing"
+
 	mockdice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -13,7 +15,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
-	"testing"
 )
 
 type DivineFavorSuite struct{ suite.Suite }
@@ -50,7 +51,7 @@ func (s *DivineFavorSuite) TestWeaponHitsReloadCriticalAndTeardown() {
 			c.BindRoller(nil)
 			s.Require().NoError(c.Apply(ctx, bus))
 			hit := func() *de.DamageChainEvent {
-				return &de.DamageChainEvent{AttackerID: "caster", TargetID: "enemy", Frame: favorFrame("caster", tc.melee, true), IsMelee: tc.melee, IsCritical: tc.critical, Components: []de.DamageComponent{{Source: de.DamageSourceWeapon, DamageType: damage.Slashing, Properties: []damage.Property{damage.AddsAttackAbilityModifier}}}}
+				return &de.DamageChainEvent{AttackerID: "caster", TargetID: "enemy", Frame: favorFrame("caster", tc.melee, true), IsCritical: tc.critical, Components: []de.DamageComponent{{Source: de.DamageSourceWeapon, DamageType: damage.Slashing, Properties: []damage.Property{damage.AddsAttackAbilityModifier}}}}
 			}
 			for range 2 {
 				result, err := s.execute(bus, hit())

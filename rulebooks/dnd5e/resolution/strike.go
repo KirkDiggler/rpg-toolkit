@@ -95,7 +95,9 @@ type StrikeOutcome struct {
 	Critical bool
 
 	// Folded is the attack chain after every subscriber had its say — the
-	// record of which effects granted advantage or imposed disadvantage.
+	// record of which effects granted advantage or imposed disadvantage. Its
+	// Frame is always zero here: the execution frame the rules read stays
+	// inside resolution.
 	Folded dnd5eEvents.AttackChainEvent
 
 	// Damage is what was dealt. Zero on a miss.
@@ -176,14 +178,9 @@ type strikeMachine struct {
 	// the first needs them and a step's closure is handed only a bus.
 	cast *Participants
 
-	attack           *combatActions.AttackProfile
-	sourceRef        *core.Ref
-	ability          abilities.Ability
-	abilityModifier  int
-	isOffHandAttack  bool
-	twoHanded        bool
-	offHandWeaponRef *core.Ref
-	prepared         []preparedCondition
+	attack    *combatActions.AttackProfile
+	sourceRef *core.Ref
+	prepared  []preparedCondition
 
 	// target and longRange are what preflight found, kept because the first
 	// step is built after it rather than inside it.
@@ -290,7 +287,7 @@ func (m *strikeMachine) wardCheckStep(
 					AttackerID: m.in.AttackerID, TargetID: m.in.TargetID,
 					Warded: &WardOutcome{SourceID: ward.SourceID, Ability: abilities.WIS, Save: out.Result},
 				}
-				return Done{Outcome: m.outcome}, nil
+				return Done{Outcome: m.reported()}, nil
 			}
 			return m.wardCheckStep(cast, pending, index+1, next), nil
 		})
@@ -321,17 +318,8 @@ func (m *strikeMachine) preflight(ctx context.Context, cast *Participants) error
 	// pointer, so an uncloned ref would let a caller mutation after Resolve
 	// rewrite what the folded events and the outcome already report.
 	m.sourceRef = cloneCoreRef(&m.in.Definition.Ref)
-	m.isOffHandAttack = m.attack.IsOffHandAttack
-	if m.attack.Weapon != nil {
-		m.twoHanded = m.attack.Weapon.TwoHanded
-		m.offHandWeaponRef = m.attack.Weapon.OffHandWeaponRef
-		if m.attack.Weapon.Ref != nil {
-			m.sourceRef = cloneCoreRef(m.attack.Weapon.Ref)
-		}
-	}
-	if m.attack.Ability != nil {
-		m.ability = m.attack.Ability.Ability
-		m.abilityModifier = m.attack.Ability.Modifier
+	if m.attack.Weapon != nil && m.attack.Weapon.Ref != nil {
+		m.sourceRef = cloneCoreRef(m.attack.Weapon.Ref)
 	}
 
 	if _, err := combatantFor(cast, m.in.AttackerID); err != nil {
@@ -444,8 +432,6 @@ func (m *strikeMachine) effectiveACStep(target combat.Member, longRange bool) Ga
 			event := dnd5eEvents.AttackChainEvent{
 				AttackerID:        m.in.AttackerID,
 				TargetID:          m.in.TargetID,
-				WeaponRef:         m.sourceRef,
-				IsMelee:           m.attack.Delivery.IsMelee(),
 				AttackBonus:       m.attack.AttackBonus,
 				TargetAC:          effectiveAC,
 				CriticalThreshold: criticalThreshold,
@@ -471,10 +457,23 @@ func (m *strikeMachine) effectiveACStep(target combat.Member, longRange bool) Ga
 				})
 			}
 
-			applySightAttackModifiers(ctx, &event, m.in.AttackerID, m.in.TargetID, 1000000, m.sourceRef)
+			if err := applySightAttackModifiers(frame, &event, m.in.AttackerID, m.in.TargetID, m.sourceRef); err != nil {
+				return nil, err
+			}
 			return gatherAttack(event, m.afterAttackChain), nil
 		},
 	}
+}
+
+// reported is the outcome as it leaves this machine: a copy, with the folded
+// attack chain's Frame zeroed. The frame is the authoritative execution frame
+// — every member's conditions and sight — built for the rules this strike
+// asked; nothing above resolution reads it, and handing it out would hand the
+// host every member's hidden state (rpg-toolkit#1958 item 11).
+func (m *strikeMachine) reported() StrikeOutcome {
+	out := m.outcome
+	out.Folded.Frame = contributions.Frame{}
+	return out
 }
 
 // afterAttackChain rolls the die the fold decided the shape of, and decides
@@ -494,7 +493,7 @@ func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents
 	m.outcome.TargetAC = folded.TargetAC
 	m.outcome.Folded = folded
 	if folded.IsCancelled() {
-		return Done{Outcome: m.outcome}, nil
+		return Done{Outcome: m.reported()}, nil
 	}
 
 	if len(folded.BeforeRollOffers) > 0 {
@@ -653,7 +652,7 @@ func (m *strikeMachine) afterOffers(
 			// A miss ends the strike here: no damage, and no save. The rider the
 			// action declares is gated on the blow landing, so a bite that misses
 			// rolls no save (rpg-toolkit#962's residual).
-			return Done{Outcome: m.outcome}, nil
+			return Done{Outcome: m.reported()}, nil
 		}
 
 		return m.rollDamage(nextCtx, m.in.Roller)
@@ -720,6 +719,9 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 	// The two-weapon bonus attack omits a positive ability modifier from
 	// base damage. A negative modifier remains part of the base rule; the
 	// Two-Weapon Fighting style may restore a positive one during the fold.
+	// Which ability, its modifier and whether this is the off-hand swing are
+	// the frame's action facts — the ones the damage rules read — so base
+	// damage and the fold cannot disagree about the swing.
 	//
 	// The ability component's identity is the canonical ability ref and the
 	// display authority's name; the modifier pointer is PRESENT even when the
@@ -727,14 +729,17 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 	// reserved for "the modifier did not participate". The ref is cloned:
 	// refs.Abilities hands back shared singletons, and the outcome's mutable
 	// component graph must never alias one.
-	if primary != nil && (!m.isOffHandAttack || m.abilityModifier < 0) {
-		modifier := m.abilityModifier
+	ability, modifier, offHand, err := baseDamageFacts(frame.Action)
+	if err != nil {
+		return nil, err
+	}
+	if primary != nil && (!offHand || modifier < 0) {
 		components = append(components, dnd5eEvents.DamageComponent{
 			Source: dnd5eEvents.DamageSourceAbility,
 			Roll: dnd5eEvents.RollComponent{
 				Source: dnd5eEvents.RollSource{
-					Ref:  cloneCoreRef(attackAbilityRef(m.ability)),
-					Name: m.ability.Display(),
+					Ref:  cloneCoreRef(attackAbilityRef(ability)),
+					Name: ability.Display(),
 				},
 				Modifier: &modifier,
 			},
@@ -743,7 +748,6 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 		})
 	}
 
-	effectiveAdvantage, _ := frame.Action.Advantage.Get()
 	var weaponDamageDice string
 	var weaponDamageType damage.Type
 	if primary != nil {
@@ -756,24 +760,29 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 		TargetID:         m.in.TargetID,
 		Components:       components,
 		IsCritical:       m.outcome.Critical,
-		HasAdvantage:     effectiveAdvantage,
 		WeaponDamageDice: weaponDamageDice,
 		WeaponDamageType: weaponDamageType,
-		IsMelee:          m.attack.Delivery.IsMelee(),
-		// Which ability swung, for the effects that predicate on it — Rage
-		// only pays out on a melee Strength attack. Empty when the compiler
-		// named none, which is a stat block's honest answer.
-		AbilityUsed:     m.ability,
-		AbilityModifier: m.abilityModifier,
-		IsOffHandAttack: m.isOffHandAttack,
-		WeaponRef:       m.sourceRef,
-		// Static equipment facts the compiler already knew (rpg-toolkit#1178)
-		// — Dueling's predicate decides eligibility from these rather than a
-		// live gamectx lookup, the same way Rage decides from AbilityUsed.
-		TwoHanded:        m.twoHanded,
-		OffHandWeaponRef: m.offHandWeaponRef,
-		Frame:            frame,
+		// Which ability swung, whether it was melee, the off-hand and
+		// two-handed facts: all ride the frame's Action, the one place a
+		// damage rule reads them (rpg-toolkit#1958).
+		Frame: frame,
 	}), m.afterDamageChain), nil
+}
+
+// baseDamageFacts reads the swing's ability, its modifier and whether it is
+// the off-hand attack off the frame. Errors: any of the three unknown,
+// wrapping [contributions.ErrRuleCannotAnswer] — the profile always sets
+// them, so an unknown here is a frame built wrong, and base damage is never
+// guessed (R13).
+func baseDamageFacts(action contributions.ActionFacts) (abilities.Ability, int, bool, error) {
+	ability, abilityKnown := action.Ability.Get()
+	modifier, modifierKnown := action.AbilityModifier.Get()
+	offHand, offHandKnown := action.OffHandAttack.Get()
+	if !abilityKnown || !modifierKnown || !offHandKnown {
+		return "", 0, false, fmt.Errorf("base damage: %w: the frame leaves the ability, its modifier or the off hand unknown",
+			contributions.ErrRuleCannotAnswer)
+	}
+	return ability, modifier, offHand, nil
 }
 
 func (m *strikeMachine) rollDamageComponent(
@@ -828,8 +837,8 @@ func (m *strikeMachine) rollDamageComponent(
 	// Provider identity: the compiled definition is the provenance PAIR —
 	// Definition.Ref with its own Definition.Name — exactly as compiled, even
 	// when the profile's weapon context names a different (valid) ref. The
-	// weapon ref keeps its separate job: the damage-chain WeaponRef field above
-	// is what the weapon predicates read. The ref is cloned because the
+	// weapon ref keeps its separate job: the frame's Action.Weapon fact is
+	// what the weapon predicates read. The ref is cloned because the
 	// definition (and the refs package) owns the original.
 	component := dnd5eEvents.DamageComponent{
 		Source: source,
@@ -1006,11 +1015,11 @@ func (m *strikeMachine) afterNotify(_ context.Context) (Step, error) {
 func (m *strikeMachine) nextCondition(index int) (Step, error) {
 	if index >= len(m.prepared) {
 		if !m.outcome.Hit {
-			return Done{Outcome: m.outcome}, nil
+			return Done{Outcome: m.reported()}, nil
 		}
 		return collectPostHitOffers(m.outcome.AttackerID, m.outcome.TargetID, func(_ context.Context, offers []dnd5eEvents.PostHitOffer) (Step, error) {
 			if len(offers) == 0 {
-				return Done{Outcome: m.outcome}, nil
+				return Done{Outcome: m.reported()}, nil
 			}
 			return m.posePostHit(offers[0])
 		}), nil

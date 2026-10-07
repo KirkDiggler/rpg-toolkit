@@ -12,11 +12,23 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
-// framedDamage sets a damage event's execution frame from its own fields, the
-// way resolution settles the facts from the assembled attack, unless the test
-// already set one. A test fixture: production frames come from resolution
-// alone.
-func framedDamage(event *dnd5eEvents.DamageChainEvent) *dnd5eEvents.DamageChainEvent {
+// swing is what a test says about one swing: the facts resolution settles
+// from the assembled attack and puts on the frame. The events carry none of
+// these; only the frame does. A test fixture.
+type swing struct {
+	WeaponRef        *core.Ref
+	IsMelee          bool
+	AbilityUsed      abilities.Ability
+	AbilityModifier  int
+	IsOffHandAttack  bool
+	TwoHanded        bool
+	OffHandWeaponRef *core.Ref
+	HasAdvantage     bool
+}
+
+// swungDamage frames a damage event from the swing, unless the test already
+// set a frame.
+func swungDamage(event *dnd5eEvents.DamageChainEvent, sw swing) *dnd5eEvents.DamageChainEvent {
 	if event.Frame.Actor != "" {
 		return event
 	}
@@ -30,36 +42,48 @@ func framedDamage(event *dnd5eEvents.DamageChainEvent) *dnd5eEvents.DamageChainE
 	event.Frame = contributions.Frame{
 		Actor:    event.AttackerID,
 		Target:   contributions.Known(event.TargetID),
-		Action:   externalWeaponFacts(event.WeaponRef, event.TwoHanded, event.OffHandWeaponRef != nil),
+		Action:   externalWeaponFacts(sw.WeaponRef, sw.TwoHanded, sw.OffHandWeaponRef != nil),
 		Complete: true,
 	}
-	event.Frame.Action.Ability = contributions.Known(event.AbilityUsed)
-	event.Frame.Action.AbilityModifier = contributions.Known(event.AbilityModifier)
-	event.Frame.Action.Melee = contributions.Known(event.IsMelee)
+	event.Frame.Action.Ability = contributions.Known(sw.AbilityUsed)
+	event.Frame.Action.AbilityModifier = contributions.Known(sw.AbilityModifier)
+	event.Frame.Action.Melee = contributions.Known(sw.IsMelee)
 	event.Frame.Action.WeaponPool = contributions.Known(pool)
-	event.Frame.Action.Advantage = contributions.Known(event.HasAdvantage)
-	event.Frame.Action.OffHandAttack = contributions.Known(event.IsOffHandAttack)
+	event.Frame.Action.Advantage = contributions.Known(sw.HasAdvantage)
+	event.Frame.Action.OffHandAttack = contributions.Known(sw.IsOffHandAttack)
 	return event
 }
 
-// framedAttack sets an attack event's attack-roll frame from its own fields,
-// with advantage unknown because the chain has not folded, unless the test
-// already set one. A test fixture: production frames come from resolution
-// alone.
-func framedAttack(event dnd5eEvents.AttackChainEvent) dnd5eEvents.AttackChainEvent {
+// swungAttack frames an attack event from the swing, with advantage unknown
+// because the chain has not folded, unless the test already set a frame.
+func swungAttack(event dnd5eEvents.AttackChainEvent, sw swing) dnd5eEvents.AttackChainEvent {
 	if event.Frame.Actor != "" {
 		return event
 	}
 	event.Frame = contributions.Frame{
 		Actor:    event.AttackerID,
 		Target:   contributions.Known(event.TargetID),
-		Action:   externalWeaponFacts(event.WeaponRef, false, false),
+		Action:   externalWeaponFacts(sw.WeaponRef, false, false),
 		Complete: true,
 	}
-	event.Frame.Action.Melee = contributions.Known(event.IsMelee)
-	event.Frame.Action.WeaponPool = contributions.Known(event.WeaponRef != nil)
+	event.Frame.Action.Melee = contributions.Known(sw.IsMelee)
+	event.Frame.Action.WeaponPool = contributions.Known(sw.WeaponRef != nil)
 	event.Frame.Action.Opportunity = contributions.Known(false)
 	return event
+}
+
+// framedDamage frames a damage event that names no swing facts, unless the
+// test already set a frame. A test fixture: production frames come from
+// resolution alone.
+func framedDamage(event *dnd5eEvents.DamageChainEvent) *dnd5eEvents.DamageChainEvent {
+	return swungDamage(event, swing{})
+}
+
+// framedAttack frames an attack event that names no swing facts, unless the
+// test already set a frame. A test fixture: production frames come from
+// resolution alone.
+func framedAttack(event dnd5eEvents.AttackChainEvent) dnd5eEvents.AttackChainEvent {
+	return swungAttack(event, swing{})
 }
 
 // externalWeaponFacts reads the weapon facts from a weapon ref through the

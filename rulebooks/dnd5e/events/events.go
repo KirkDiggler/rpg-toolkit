@@ -298,10 +298,8 @@ func (s AttackModifierSource) RollSource() RollSource {
 // This event fires BEFORE the d20 roll to allow advantage/disadvantage to be collected.
 type AttackChainEvent struct {
 	// Identity
-	AttackerID string    // ID of the attacking character
-	TargetID   string    // ID of the target
-	WeaponRef  *core.Ref // Reference to the weapon used
-	IsMelee    bool      // True for melee attacks, false for ranged
+	AttackerID string // ID of the attacking character
+	TargetID   string // ID of the target
 
 	// BeforeRollOffers are optional reactions; collecting them never spends or rolls.
 	BeforeRollOffers []AttackRollOffer
@@ -346,35 +344,13 @@ type DamageChainEvent struct {
 	WeaponDamageDice string            // Marked primary weapon dice (e.g., "1d8").
 	WeaponDamageType damage.Type       // Marked primary weapon damage type.
 	IsCritical       bool              // Double damage dice on crit
-	HasAdvantage     bool              // True if attacker had advantage on the attack roll
-	AbilityUsed      abilities.Ability // Which ability was used (str, dex, etc.)
-	WeaponRef        *core.Ref         // Reference to the weapon used (for off-hand detection, etc.)
-	IsOffHandAttack  bool              // True for bonus action off-hand attacks (two-weapon fighting)
-	AbilityModifier  int               // The ability modifier (STR/DEX) for this attack
-	IsMelee          bool              // True for melee attacks, false for ranged (mirrors AttackChainEvent.IsMelee)
-
-	// TwoHanded says this swing is being made with both hands on the
-	// weapon — either the weapon itself requires it, or a versatile weapon
-	// was gripped that way. A STATIC fact of the swing, compiled once by
-	// the attack compiler rather than read live off a character registry
-	// (rpg-toolkit#1178, docs/ideas/session-sdk/attack-profile-seam.md):
-	// it cannot change between the attack roll and the damage roll of the
-	// same swing.
-	TwoHanded bool
-
-	// OffHandWeaponRef names the weapon, if any, occupying the attacker's
-	// OTHER hand from the one that just swung — nil when that hand is
-	// empty or holds something that is not a weapon (a shield, most
-	// often). Like TwoHanded, this is a static equipment fact the compiler
-	// already knows, carried onto the event the same way WeaponRef already
-	// is, so a predicate like Dueling's decides eligibility from the event
-	// alone rather than a live gamectx lookup.
-	OffHandWeaponRef *core.Ref
 
 	// Frame is the action's execution frame, built once by resolution from
 	// authoritative state. A rule asked during the fold reads it and nothing
 	// else; an invalid frame fails the fold rather than switching a rule off.
-	Frame contributions.Frame
+	// Never persisted, like AttackChainEvent.Frame: a Fact does not marshal,
+	// so a serialized frame would come back hollow yet still claim Complete.
+	Frame contributions.Frame `json:"-"`
 }
 
 // DamageChainInput contains the facts used to construct a DamageChainEvent.
@@ -387,14 +363,6 @@ type DamageChainInput struct {
 	WeaponDamageDice string
 	WeaponDamageType damage.Type
 	IsCritical       bool
-	HasAdvantage     bool
-	AbilityUsed      abilities.Ability
-	WeaponRef        *core.Ref
-	IsOffHandAttack  bool
-	AbilityModifier  int
-	IsMelee          bool
-	TwoHanded        bool
-	OffHandWeaponRef *core.Ref
 	Frame            contributions.Frame
 }
 
@@ -409,14 +377,6 @@ func NewDamageChainEvent(input DamageChainInput) *DamageChainEvent {
 		WeaponDamageDice: input.WeaponDamageDice,
 		WeaponDamageType: input.WeaponDamageType,
 		IsCritical:       input.IsCritical,
-		HasAdvantage:     input.HasAdvantage,
-		AbilityUsed:      input.AbilityUsed,
-		WeaponRef:        input.WeaponRef,
-		IsOffHandAttack:  input.IsOffHandAttack,
-		AbilityModifier:  input.AbilityModifier,
-		IsMelee:          input.IsMelee,
-		TwoHanded:        input.TwoHanded,
-		OffHandWeaponRef: input.OffHandWeaponRef,
 		Frame:            input.Frame.Clone(),
 	}
 }

@@ -566,7 +566,8 @@ func TestLegacyUnconsciousBlobCannotRunASecondDeathSaveLedger(t *testing.T) {
 		"only Character.ApplyDamage may author damage-at-zero failures")
 
 	persisted := char.ToData()
-	require.Len(t, persisted.Conditions, 1)
+	require.Equal(t, []string{refs.Conditions.Unconscious().String(), refs.Conditions.OpportunityAttack().String()},
+		conditionRefs(persisted), "the legacy blob, then the reaction attach recorded")
 	var gotLegacy conditions.UnconsciousData
 	require.NoError(t, json.Unmarshal(persisted.Conditions[0], &gotLegacy))
 	require.Equal(t, 2, gotLegacy.Successes)

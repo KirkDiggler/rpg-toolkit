@@ -158,21 +158,18 @@ func (s *ConcentrationTestSuite) struck(out *Output) StrikeOutcome {
 	return outcome
 }
 
+// concentrating and trueStrike are the hold and its child, by stored ref.
+var (
+	concentrating = refs.Conditions.Concentrating().String()
+	trueStrike    = refs.Conditions.TrueStrike().String()
+)
+
 func (s *ConcentrationTestSuite) conditionRefs(out *Output, id string) []string {
 	for _, data := range out.DirtyCharacters {
 		if data.ID != id {
 			continue
 		}
-		found := make([]string, 0, len(data.Conditions))
-		for _, raw := range data.Conditions {
-			var peek struct {
-				Ref string `json:"ref"`
-			}
-			s.Require().NoError(json.Unmarshal(raw, &peek))
-			found = append(found, peek.Ref)
-		}
-
-		return found
+		return storedRefs(s.T(), data.Conditions)
 	}
 	s.Require().Failf("sheet not dirty", "%s did not come back changed", id)
 
@@ -238,7 +235,7 @@ func (s *ConcentrationTestSuite) TestAStrikeOnAConcentratingCasterRunsTheCheckIn
 	s.Equal(conditions.ConcentrationEndedDamage, (*removals)[1].Reason)
 
 	// And on the sheet: both are gone.
-	s.Empty(s.conditionRefs(out, heroID), "the child went with the parent")
+	s.Equal([]string{opportunityAttack}, s.conditionRefs(out, heroID), "the child went with the parent")
 }
 
 func (s *ConcentrationTestSuite) TestBaneAppliesToConcentrationSaveAndRecordCalculation() {
@@ -303,7 +300,8 @@ func (s *ConcentrationTestSuite) TestAMadeCheckRemovesNothing() {
 	s.Equal(20, kept.Save.Total)
 	s.Equal(conditions.ConcentrationDCFloor, kept.Save.DC)
 	s.True(kept.Save.Succeeded, "encounter refuses a check recorded as having changed nothing")
-	s.Len(s.conditionRefs(out, heroID), 2, "the hold and its child are both still there")
+	s.ElementsMatch([]string{concentrating, trueStrike, opportunityAttack}, s.conditionRefs(out, heroID),
+		"the hold and its child are both still there")
 }
 
 // The DC is half the damage when that is higher than the floor, settled by the
@@ -389,7 +387,7 @@ func (s *ConcentrationTestSuite) TestACasterDroppedToZeroLosesTheSpellWithNoRoll
 	s.Equal(trueStrikeAddress(heroID).ConditionRef, (*removals)[0].ConditionRef)
 	s.Equal(concentratingAddress(heroID).ConditionRef, (*removals)[1].ConditionRef)
 
-	s.Empty(s.conditionRefs(out, heroID), "the hold and its child are both gone")
+	s.Equal([]string{opportunityAttack}, s.conditionRefs(out, heroID), "the hold and its child are both gone")
 }
 
 // Two follow-ups from one interaction are two nested checks, in append order,
@@ -671,9 +669,10 @@ func (s *ConcentrationTestSuite) TestBaneAllSaveRecastReplacesOnlyItsQualifiedOw
 	s.True(hold.SkipNextTurnEnd)
 
 	updatedTarget := fixtures.sheet(out, heroID)
-	s.Require().Len(updatedTarget.Conditions, 1)
+	s.Require().ElementsMatch([]string{refs.Conditions.Baned().String(), opportunityAttack},
+		storedRefs(s.T(), updatedTarget.Conditions))
 	var remaining conditions.BanedConditionData
-	s.Require().NoError(json.Unmarshal(updatedTarget.Conditions[0], &remaining))
+	s.Require().NoError(json.Unmarshal(conditionWithRefOrNil(updatedTarget.Conditions, refs.Conditions.Baned()), &remaining))
 	s.Equal(wolfID, remaining.SourceID)
 	for _, dirty := range out.DirtyMonsters {
 		s.NotEqual(wolfID, dirty.ID, "the unrelated owner and its seven-turn clock stay untouched")
@@ -806,7 +805,7 @@ func (s *ConcentrationTestSuite) TestTheSpellsOwnDurationEndsItAtATurnEnd() {
 	s.Equal(encounter.MemberID(heroID), broke.Removed[0].Address.MemberID)
 	s.Equal(refs.Conditions.TrueStrike().String(), broke.Removed[0].Address.ConditionRef)
 
-	s.Empty(s.conditionRefs(out, heroID), "the hold and its child are both gone")
+	s.Equal([]string{opportunityAttack}, s.conditionRefs(out, heroID), "the hold and its child are both gone")
 }
 
 // A turn end with the clock still running ends nothing, so a boundary that
@@ -818,7 +817,8 @@ func (s *ConcentrationTestSuite) TestATurnEndWithTimeLeftEndsNothing() {
 	)
 
 	s.Empty(out.ConcentrationBreaks)
-	s.Len(s.conditionRefs(out, heroID), 2, "the hold is still there, one turn shorter")
+	s.ElementsMatch([]string{concentrating, trueStrike, opportunityAttack}, s.conditionRefs(out, heroID),
+		"the hold is still there, one turn shorter")
 }
 
 // The fight ending takes the hold with it, in the same boundary interaction.
@@ -831,7 +831,7 @@ func (s *ConcentrationTestSuite) TestCombatEndingEndsTheHold() {
 	broke := s.onlyBreak(out, heroID, conditions.ConcentrationEndedCombatEnd)
 	s.Require().Len(broke.Removed, 1)
 	s.Equal(refs.Conditions.TrueStrike().String(), broke.Removed[0].Address.ConditionRef)
-	s.Empty(s.conditionRefs(out, heroID))
+	s.Equal([]string{opportunityAttack}, s.conditionRefs(out, heroID))
 }
 
 // The last child ending on its own account ends the spell: True Strike is
@@ -866,7 +866,7 @@ func (s *ConcentrationTestSuite) TestTheLastChildEndingEndsTheSpell() {
 
 	broke := s.onlyBreak(out, heroID, conditions.ConcentrationEndedSpellEnded)
 	s.Empty(broke.Removed, "the child ended itself; the hold took nothing else off")
-	s.Empty(s.conditionRefs(out, heroID))
+	s.Equal([]string{opportunityAttack}, s.conditionRefs(out, heroID))
 }
 
 // The SECOND call site. A cast that deals damage reports it and runs what came
@@ -921,7 +921,8 @@ func (s *ConcentrationTestSuite) TestCastDamageReportsItselfAndRunsTheCheck() {
 	s.Require().Len(out.ConcentrationChecks, 1, "and the roll that kept it is still the record")
 	s.Equal("True Strike", out.ConcentrationChecks[0].Spell.Name)
 	s.True(out.ConcentrationChecks[0].Save.Succeeded)
-	s.Len(s.conditionRefs(out, heroID), 3, "the hold, its child, and the cantrip's rider")
+	s.ElementsMatch([]string{concentrating, trueStrike, refs.Conditions.ViciousMockery().String(), opportunityAttack},
+		s.conditionRefs(out, heroID), "the hold, its child, and the cantrip's rider")
 }
 
 // The cast call site's OTHER half: a cantrip's damage breaks the spell its
@@ -975,7 +976,7 @@ func (s *ConcentrationTestSuite) TestCastDamageBreaksTheTargetsConcentration() {
 
 	// The strip, on the sheet: the hold and its child are gone and only the
 	// cantrip's own rider is left.
-	s.Equal([]string{refs.Conditions.ViciousMockery().String()}, s.conditionRefs(out, heroID))
+	s.ElementsMatch([]string{refs.Conditions.ViciousMockery().String(), opportunityAttack}, s.conditionRefs(out, heroID))
 }
 
 // TestTheMirrorCarriesTheKeepRecord pins the seam where the record would

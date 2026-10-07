@@ -16,8 +16,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
@@ -124,11 +124,15 @@ func (f *FightingStyleProtectionCondition) loadJSON(data json.RawMessage) error 
 // attacks too, because it excluded only "target is me" and never "attacker
 // is me" — but Protection is a REACTION to someone else's attack (the doc
 // comment above says so: "a creature ... attacks a target other than
-// you"), never a response to your own swing. That gap put every armed
-// attack by a Protection-wielding character on the code path below, which
-// depends on gamectx.RequireCharacters — a live registry the session stack
-// never installs — turning an unrelated eligibility bug into a crash on
-// every one of that character's own attacks.
+// you"), never a response to your own swing.
+//
+// Whether the attack is melee and how far the protector stands from its
+// target are read from the event's attack-roll frame, which resolution builds
+// from authoritative state; the handler measures nothing itself. A complete
+// frame with no protector→target pair is a protector not placed, and not
+// eligible. A frame that cannot answer — melee unknown, pairs incomplete, or
+// the pair present with its distance unknown — fails the attack (R13) rather
+// than silently withholding the reaction.
 func (f *FightingStyleProtectionCondition) onAttackChain(
 	ctx context.Context,
 	event dnd5eEvents.AttackChainEvent,
@@ -144,21 +148,28 @@ func (f *FightingStyleProtectionCondition) onAttackChain(
 		return c, nil
 	}
 
+	frame := event.Frame
+	if err := frame.Validate(); err != nil {
+		return c, fmt.Errorf("protection: %w: %w", contributions.ErrRuleCannotAnswer, err)
+	}
+
 	// Only triggers for melee attacks
-	if !event.IsMelee {
+	melee, known := frame.Action.Melee.Get()
+	if !known {
+		return c, fmt.Errorf("protection: %w: whether the attack is melee is unknown", contributions.ErrRuleCannotAnswer)
+	}
+	if !melee {
 		return c, nil
 	}
 
 	// This protector's own sheet, read out of the cast the way it reads
-	// anybody else's — in place of the handle a loader used to pass in at
-	// attach time (rpg-toolkit#1178), which was silently absent whenever a
-	// loader forgot.
+	// anybody else's (rpg-toolkit#1178). The shield it wields and whether it
+	// can still react are not frame facts: the frame carries no member's
+	// equipment or action economy, so these two stay sheet reads until it
+	// does.
 	//
-	// A protector nobody can look up is NOT ELIGIBLE — the old nil-owner
-	// branch preserved exactly, and the same answer the opportunity attack
-	// gives to the same question. A cast is installed on every path that folds
-	// anything, so a fold without one is assembled wrong rather than describing
-	// a participant with nothing to say.
+	// A protector nobody can look up is NOT ELIGIBLE — the same answer the
+	// opportunity attack gives to the same question.
 	self, ok := member(ctx, f.MemberID)
 	if !ok {
 		return c, nil
@@ -176,30 +187,25 @@ func (f *FightingStyleProtectionCondition) onAttackChain(
 		return c, nil
 	}
 
-	// Check if we're within 5 feet of the target. Positions are genuinely
-	// world state no single character's sheet carries, so this stays on
-	// [gamectx.RequireRoom] rather than moving to the cast the way the shield
-	// and reaction reads above did.
-	//
-	// It is not the only registry in play. resolution.installTruth installs
-	// three — the room, the cast, and reaction readiness — and this condition
-	// reads two of them: the cast at the self lookup above, the room here.
-	room, err := gamectx.RequireRoom(ctx)
-	if err != nil {
-		return c, err
+	// Within 5 feet of the target, read from the frame's protector→target
+	// pair. A complete frame pairs every placed member, so one that carries
+	// no pair from the protector to the target is a protector not placed:
+	// not within 5 feet, so not eligible. Only an incomplete frame, or a pair
+	// present with its distance unknown, cannot answer.
+	pair, paired := carriedPair(frame, f.MemberID, event.TargetID)
+	if !paired {
+		if frame.Complete {
+			return c, nil
+		}
+		return c, fmt.Errorf("protection: %w: the frame's pairs do not cover every member",
+			contributions.ErrRuleCannotAnswer)
 	}
-
-	// Get positions of fighter and target
-	fighterPos, fighterExists := room.GetEntityPosition(f.MemberID)
-	targetPos, targetExists := room.GetEntityPosition(event.TargetID)
-	if !fighterExists || !targetExists {
-		return c, nil
+	distance, known := pair.DistanceCells.Get()
+	if !known {
+		return c, fmt.Errorf("protection: %w: distance from %q to %q is unknown",
+			contributions.ErrRuleCannotAnswer, f.MemberID, event.TargetID)
 	}
-
-	// Check if within 5 feet (adjacent on grid = distance 1)
-	grid := room.GetGrid()
-	distance := grid.Distance(fighterPos, targetPos)
-	if distance > 1 {
+	if distance > combat.AdjacentCells {
 		return c, nil
 	}
 
@@ -235,4 +241,16 @@ func (f *FightingStyleProtectionCondition) onAttackChain(
 	}
 
 	return c, nil
+}
+
+// carriedPair returns the directed pair the frame actually carries, and
+// whether it carries one. Frame.Pair answers an absent pair as every fact
+// unknown; this tells absence apart, which a complete frame makes meaningful.
+func carriedPair(frame contributions.Frame, from, to string) (contributions.PairFacts, bool) {
+	for _, pair := range frame.Pairs {
+		if pair.From == from && pair.To == to {
+			return pair, true
+		}
+	}
+	return contributions.PairFacts{}, false
 }

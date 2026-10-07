@@ -13,7 +13,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -63,8 +62,7 @@ func (h *HiddenCondition) attackRule() attackRollRule {
 		NotOwner:    "Hidden affects only its holder's attacks",
 		OnlyAttacks: "Hidden affects only attack rolls",
 		Applies:     "You are hidden; attacking ends it",
-		Benefit:     "Advantage on the attack roll",
-	}}
+	}, mode: contributions.AttackAdvantage}
 }
 
 // Ref returns the canonical ref this condition names itself by — the same ref
@@ -155,16 +153,18 @@ func (h *HiddenCondition) loadJSON(data json.RawMessage) error {
 	return nil
 }
 
-// onAttackChain handles attack events in both directions:
-//   - When the hidden character is the attacker, grants advantage on that
-//     attack, then removes Hidden (PHB p.192: attacking ends Hidden). The
-//     removal happens after the modifier is queued on the chain, so this
-//     attack still gets its advantage — Remove only stops FUTURE events from
-//     reaching this condition (see events.simpleEventBus.Publish, which
-//     snapshots subscribers before invoking handlers, so unsubscribing here
-//     is safe mid-dispatch).
-//   - When the hidden character is the target, imposes disadvantage on the
-//     attacker. This does not end Hidden (no "seen" break trigger this wave).
+// onAttackChain handles attack events in both directions, each through the
+// rule information asks:
+//   - When the hidden character is the attacker, its attack rule answers and
+//     its mode — advantage — is applied; then Hidden is removed (PHB p.192:
+//     attacking ends Hidden). The removal happens after the modifier is
+//     queued on the chain, so this attack still gets its advantage — Remove
+//     only stops FUTURE events from reaching this condition (see
+//     events.simpleEventBus.Publish, which snapshots subscribers before
+//     invoking handlers, so unsubscribing here is safe mid-dispatch).
+//   - When the hidden character is the target, its by-reference held rule
+//     answers through applyHeldAttack, imposing disadvantage on the attacker.
+//     This does not end Hidden: nothing yet models being seen.
 func (h *HiddenCondition) onAttackChain(
 	ctx context.Context,
 	event dnd5eEvents.AttackChainEvent,
@@ -179,16 +179,13 @@ func (h *HiddenCondition) onAttackChain(
 		if executed.Answer.Decision.Applicability != contributions.Applies {
 			return c, nil
 		}
-		modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
-			e.AdvantageSources = append(e.AdvantageSources, dnd5eEvents.AttackModifierSource{
-				SourceRef: refs.Conditions.Hidden(),
-				SourceID:  h.MemberID,
-				Reason:    "Hidden",
-			})
-			return e, nil
-		}
-		if err := c.Add(combat.StageConditions, "hidden_attacker_advantage", modifyAttack); err != nil {
-			return c, rpgerr.Wrapf(err, "failed to add hidden advantage modifier for character %s", h.MemberID)
+		c, err = applyAttackMode(&attackModeInput{
+			Name: "hidden", Answer: executed.Answer, Chain: c,
+			SourceRef: refs.Conditions.Hidden(), SourceID: h.MemberID,
+			Label: fixedLabel("hidden_attacker_advantage", "Hidden"),
+		})
+		if err != nil {
+			return c, err
 		}
 
 		// Hidden ends when the hidden character attacks. Publish the removal

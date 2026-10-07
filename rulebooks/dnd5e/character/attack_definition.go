@@ -51,15 +51,9 @@ func assembleWeaponAttack(
 	unarmed bool,
 	in *AssembleAttackInput,
 ) (combatActions.Definition, error) {
-	var override *weaponattack.Override
-	for _, condition := range c.conditions {
-		if provider, ok := condition.(interface {
-			WeaponAttackOverride(string, string) *weaponattack.Override
-		}); ok {
-			if candidate := provider.WeaponAttackOverride(string(in.Slot), c.equipmentSlots.Get(in.Slot)); candidate != nil {
-				override = candidate
-			}
-		}
+	override, err := weaponAttackOverride(c, in.Slot)
+	if err != nil {
+		return combatActions.Definition{}, err
 	}
 	return weaponattack.Assemble(&weaponattack.Input{
 		Override:         override,
@@ -71,6 +65,39 @@ func assembleWeaponAttack(
 		Slot:             string(in.Slot),
 		AlwaysProficient: unarmed,
 	})
+}
+
+// weaponAttackOverride returns the one ability-or-die offer a loaded condition
+// makes for the swing from slot, or nil when none does.
+//
+// Two offers for the same swing — a monk's Martial Arts and Shillelagh on the
+// club in that hand — fail closed. Design R22 makes that pick the player's
+// (rpg-project#535), and until the pick exists the assembly refuses rather
+// than letting the order conditions sit on the sheet choose one, because an
+// order-chosen offer is a die the player never picked.
+func weaponAttackOverride(c *Character, slot InventorySlot) (*weaponattack.Override, error) {
+	var override *weaponattack.Override
+	var offeredBy []string
+	for _, condition := range c.conditions {
+		provider, ok := condition.(interface {
+			WeaponAttackOverride(string, string) *weaponattack.Override
+		})
+		if !ok {
+			continue
+		}
+		candidate := provider.WeaponAttackOverride(string(slot), c.equipmentSlots.Get(slot))
+		if candidate == nil {
+			continue
+		}
+		override = candidate
+		offeredBy = append(offeredBy, condition.Ref().String())
+	}
+	if len(offeredBy) > 1 {
+		return nil, rpgerr.Newf(rpgerr.CodeConflictingState,
+			"%q has competing attack offers %v; the pick is the player's and none was taken (R22)",
+			slot, offeredBy)
+	}
+	return override, nil
 }
 
 func otherHandWeaponRef(c *Character, slot InventorySlot) *core.Ref {

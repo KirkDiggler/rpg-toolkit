@@ -9,24 +9,13 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
-
-// protectionTestEntity is a simple entity for testing
-type protectionTestEntity struct {
-	id   string
-	kind string
-}
-
-func (e *protectionTestEntity) GetID() string            { return e.id }
-func (e *protectionTestEntity) GetType() core.EntityType { return core.EntityType(e.kind) }
 
 // protector builds this fighter's own sheet and the keeper that owns it, and
 // installs the sheet in the cast the way resolution's one door does.
@@ -42,6 +31,30 @@ func (s *FightingStyleProtectionTestSuite) protector(shield bool, reactions int)
 	s.Require().NoError(err)
 
 	return castOf(s.ctx, sheet), keeper
+}
+
+// protectionFrame is the attack-roll frame resolution hands an attack by
+// attacker on target: melee or not, with the protector→target distance given.
+func protectionFrame(attacker, target string, melee bool, distance contributions.Fact[float64]) contributions.Frame {
+	frame := testAttackFrame(attacker, target)
+	frame.Action.Melee = contributions.Known(melee)
+	if target != "fighter-1" {
+		frame.Pairs = []contributions.PairFacts{{From: "fighter-1", To: target, DistanceCells: distance}}
+	}
+	return frame
+}
+
+// publishProtected runs one attack through the chain and returns the folded
+// event.
+func (s *FightingStyleProtectionTestSuite) publishProtected(
+	ctx context.Context, event dnd5eEvents.AttackChainEvent,
+) (dnd5eEvents.AttackChainEvent, error) {
+	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
+	modifiedChain, err := dnd5eEvents.AttackChain.On(s.bus).PublishWithChain(ctx, event, attackChain)
+	if err != nil {
+		return event, err
+	}
+	return modifiedChain.Execute(ctx, event)
 }
 
 type FightingStyleProtectionTestSuite struct {
@@ -81,106 +94,129 @@ func (s *FightingStyleProtectionTestSuite) TestApplyAndRemove() {
 	s.False(protection.IsApplied())
 }
 
-// TestImposesDisadvantageOnNearbyAlly pins rpg-toolkit#1178's Protection
-// fix: shield and reaction eligibility come from the CAST, where the
-// protector looks itself up by its own ID and gets the same read surface it
-// would get for anybody else — not from a handle a loader had to remember to
-// pass in. Positions come from gamectx (WithRoom), which resolution installs
-// on every path that folds anything. Team-lead's exact reproduction shape:
-// three participants (protector + ally + monster), the ally is attacked, not
-// the protector.
+// TestImposesDisadvantageOnNearbyAlly: shield and reaction eligibility come
+// from the CAST, where the protector looks itself up by its own ID
+// (rpg-toolkit#1178); melee and the protector→target distance come from the
+// attack-roll frame resolution builds. Three participants: protector, ally and
+// monster, and the ally is attacked.
 func (s *FightingStyleProtectionTestSuite) TestImposesDisadvantageOnNearbyAlly() {
 	protection := NewFightingStyleProtectionCondition("fighter-1")
-
 	castCtx, keeper := s.protector(true, 1)
-
-	err := protection.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
+	s.Require().NoError(protection.Apply(s.ctx, s.bus))
 	defer func() { _ = protection.Remove(s.ctx, s.bus) }()
 
-	// Set up room with fighter and ally adjacent
-	grid := spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10})
-	room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
-		ID:   "test-room",
-		Type: "room",
-		Grid: grid,
+	finalEvent, err := s.publishProtected(castCtx, dnd5eEvents.AttackChainEvent{
+		AttackerID: "goblin-1", TargetID: "ally-1", AttackBonus: 5, TargetAC: 15, CriticalThreshold: 20,
+		Frame: protectionFrame("goblin-1", "ally-1", true, contributions.Known(1.0)),
 	})
-
-	fighter := &protectionTestEntity{id: "fighter-1", kind: "character"}
-	ally := &protectionTestEntity{id: "ally-1", kind: "character"}
-
-	err = room.PlaceEntity(fighter, spatial.Position{X: 5, Y: 5})
-	s.Require().NoError(err)
-	err = room.PlaceEntity(ally, spatial.Position{X: 6, Y: 5}) // Adjacent
 	s.Require().NoError(err)
 
-	// Positions are the one thing this condition still reads from gamectx —
-	// no CharacterRegistry, no GameContext installed at all.
-	ctx := gamectx.WithRoom(castCtx, room)
+	s.Require().Len(finalEvent.DisadvantageSources, 1)
+	s.Equal(refs.Conditions.FightingStyleProtection(), finalEvent.DisadvantageSources[0].SourceRef)
 
-	// Create attack chain event - melee attack on ally, by a THIRD
-	// combatant (neither the protector nor the target) — this is exactly
-	// the shape Copilot flagged as reachable on the session stack: three
-	// or more participants, someone other than the protector attacking
-	// someone other than the protector.
-	attackEvent := dnd5eEvents.AttackChainEvent{
-		AttackerID:        "goblin-1",
-		TargetID:          "ally-1", // Attacking ally, not fighter
-		IsMelee:           true,
-		AttackBonus:       5,
-		TargetAC:          15,
-		CriticalThreshold: 20,
-	}
-
-	// Execute through attack chain
-	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
-	attacks := dnd5eEvents.AttackChain.On(s.bus)
-	modifiedChain, err := attacks.PublishWithChain(ctx, attackEvent, attackChain)
-	s.Require().NoError(err)
-
-	finalEvent, err := modifiedChain.Execute(ctx, attackEvent)
-	s.Require().NoError(err)
-
-	// Should have disadvantage imposed
-	s.Len(finalEvent.DisadvantageSources, 1)
-
-	// And the reaction is actually spent: the condition asked, and the keeper
-	// that owns the sheet applied it. Debited by the time Execute returns,
-	// because the bus is synchronous and the request goes out inside the
-	// stage — the same instant the direct SpendSlots call used to land.
-	//
-	// This IS the reaction evidence now. The chain event used to carry a
-	// ReactionsConsumed shelf alongside, written here and read by nobody;
-	// rpg-project#319 Phase 6 deleted it, leaving the keeper's ledger as the
-	// single answer to "was the reaction spent".
+	// The reaction is actually spent: the condition asked, and the keeper
+	// that owns the sheet applied it, by the time Execute returns.
 	s.Equal(0, keeper.sheet.reactions, "the reaction was actually debited")
 	s.Equal([]coreCombat.ActionType{coreCombat.ActionReaction}, keeper.spent)
 }
 
-// TestNoShieldMeansNoProtection pins that a missing shield refuses
-// eligibility before ever touching gamectx.RequireRoom — no room is
-// installed in this test at all, and the condition must never reach for
-// one when the shield check alone already disqualifies it.
+// TestAllyBeyondFiveFeetIsNotProtected: the frame's protector→target distance
+// decides reach.
+func (s *FightingStyleProtectionTestSuite) TestAllyBeyondFiveFeetIsNotProtected() {
+	protection := NewFightingStyleProtectionCondition("fighter-1")
+	castCtx, keeper := s.protector(true, 1)
+	s.Require().NoError(protection.Apply(s.ctx, s.bus))
+	defer func() { _ = protection.Remove(s.ctx, s.bus) }()
+
+	finalEvent, err := s.publishProtected(castCtx, dnd5eEvents.AttackChainEvent{
+		AttackerID: "goblin-1", TargetID: "ally-1",
+		Frame: protectionFrame("goblin-1", "ally-1", true, contributions.Known(2.0)),
+	})
+	s.Require().NoError(err)
+
+	s.Empty(finalEvent.DisadvantageSources)
+	s.Equal(1, keeper.sheet.reactions, "an untaken reaction must not be debited")
+}
+
+// TestUnknownDistanceFailsTheAttack is R13: an eligible protector whose frame
+// does not say how far it stands from the target fails the attack, never
+// silently withholds the reaction.
+func (s *FightingStyleProtectionTestSuite) TestUnknownDistanceFailsTheAttack() {
+	protection := NewFightingStyleProtectionCondition("fighter-1")
+	castCtx, _ := s.protector(true, 1)
+	s.Require().NoError(protection.Apply(s.ctx, s.bus))
+	defer func() { _ = protection.Remove(s.ctx, s.bus) }()
+
+	_, err := s.publishProtected(castCtx, dnd5eEvents.AttackChainEvent{
+		AttackerID: "goblin-1", TargetID: "ally-1",
+		Frame: protectionFrame("goblin-1", "ally-1", true, contributions.Unknown[float64]()),
+	})
+	s.ErrorIs(err, contributions.ErrRuleCannotAnswer)
+}
+
+// TestUnplacedProtectorIsNotEligible: a complete frame pairs every placed
+// member, so one with no protector→target pair says the protector is not
+// placed — not within 5 feet. The attack proceeds untouched and no reaction
+// is spent; it never fails as unanswerable.
+func (s *FightingStyleProtectionTestSuite) TestUnplacedProtectorIsNotEligible() {
+	protection := NewFightingStyleProtectionCondition("fighter-1")
+	castCtx, keeper := s.protector(true, 1)
+	s.Require().NoError(protection.Apply(s.ctx, s.bus))
+	defer func() { _ = protection.Remove(s.ctx, s.bus) }()
+
+	frame := testAttackFrame("goblin-1", "ally-1")
+	frame.Action.Melee = contributions.Known(true)
+	frame.Pairs = []contributions.PairFacts{{
+		From: "goblin-1", To: "ally-1", DistanceCells: contributions.Known(1.0),
+		Stance: contributions.Known(contributions.StanceHostile), Sees: contributions.Known(true),
+	}}
+	finalEvent, err := s.publishProtected(castCtx, dnd5eEvents.AttackChainEvent{
+		AttackerID: "goblin-1", TargetID: "ally-1", AttackBonus: 5, Frame: frame,
+	})
+
+	s.Require().NoError(err)
+	s.Empty(finalEvent.DisadvantageSources)
+	s.Equal(5, finalEvent.AttackBonus, "the rest of the attack is untouched")
+	s.Empty(keeper.spent, "no reaction is spent")
+
+	s.Run("an incomplete frame cannot say the protector is absent", func() {
+		frame.Complete = false
+		_, err := s.publishProtected(castCtx, dnd5eEvents.AttackChainEvent{
+			AttackerID: "goblin-1", TargetID: "ally-1", Frame: frame,
+		})
+		s.ErrorIs(err, contributions.ErrRuleCannotAnswer)
+	})
+}
+
+// TestUnknownMeleeFailsTheAttack is R13 for the other frame fact.
+func (s *FightingStyleProtectionTestSuite) TestUnknownMeleeFailsTheAttack() {
+	protection := NewFightingStyleProtectionCondition("fighter-1")
+	castCtx, _ := s.protector(true, 1)
+	s.Require().NoError(protection.Apply(s.ctx, s.bus))
+	defer func() { _ = protection.Remove(s.ctx, s.bus) }()
+
+	frame := protectionFrame("goblin-1", "ally-1", true, contributions.Known(1.0))
+	frame.Action.Melee = contributions.Unknown[bool]()
+	_, err := s.publishProtected(castCtx, dnd5eEvents.AttackChainEvent{
+		AttackerID: "goblin-1", TargetID: "ally-1", Frame: frame,
+	})
+	s.ErrorIs(err, contributions.ErrRuleCannotAnswer)
+}
+
+// TestNoShieldMeansNoProtection: a missing shield refuses eligibility before
+// distance is read, so even a frame that cannot say the distance does not
+// fail an attack the protector could never have reacted to.
 func (s *FightingStyleProtectionTestSuite) TestNoShieldMeansNoProtection() {
 	protection := NewFightingStyleProtectionCondition("fighter-1")
 	castCtx, _ := s.protector(false, 1)
-
-	err := protection.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
+	s.Require().NoError(protection.Apply(s.ctx, s.bus))
 	defer func() { _ = protection.Remove(s.ctx, s.bus) }()
 
-	attackEvent := dnd5eEvents.AttackChainEvent{
-		AttackerID: "goblin-1", TargetID: "ally-1", IsMelee: true,
-	}
-
-	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
-	attacks := dnd5eEvents.AttackChain.On(s.bus)
-	modifiedChain, err := attacks.PublishWithChain(castCtx, attackEvent, attackChain)
+	finalEvent, err := s.publishProtected(castCtx, dnd5eEvents.AttackChainEvent{
+		AttackerID: "goblin-1", TargetID: "ally-1",
+		Frame: protectionFrame("goblin-1", "ally-1", true, contributions.Unknown[float64]()),
+	})
 	s.Require().NoError(err)
-
-	finalEvent, err := modifiedChain.Execute(castCtx, attackEvent)
-	s.Require().NoError(err)
-
 	s.Empty(finalEvent.DisadvantageSources)
 }
 
@@ -189,152 +225,74 @@ func (s *FightingStyleProtectionTestSuite) TestNoShieldMeansNoProtection() {
 func (s *FightingStyleProtectionTestSuite) TestNoReactionMeansNoProtection() {
 	protection := NewFightingStyleProtectionCondition("fighter-1")
 	castCtx, _ := s.protector(true, 0)
-
-	err := protection.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
+	s.Require().NoError(protection.Apply(s.ctx, s.bus))
 	defer func() { _ = protection.Remove(s.ctx, s.bus) }()
 
-	attackEvent := dnd5eEvents.AttackChainEvent{
-		AttackerID: "goblin-1", TargetID: "ally-1", IsMelee: true,
-	}
-
-	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
-	attacks := dnd5eEvents.AttackChain.On(s.bus)
-	modifiedChain, err := attacks.PublishWithChain(castCtx, attackEvent, attackChain)
+	finalEvent, err := s.publishProtected(castCtx, dnd5eEvents.AttackChainEvent{
+		AttackerID: "goblin-1", TargetID: "ally-1",
+		Frame: protectionFrame("goblin-1", "ally-1", true, contributions.Known(1.0)),
+	})
 	s.Require().NoError(err)
-
-	finalEvent, err := modifiedChain.Execute(castCtx, attackEvent)
-	s.Require().NoError(err)
-
 	s.Empty(finalEvent.DisadvantageSources)
 }
 
 func (s *FightingStyleProtectionTestSuite) TestDoesNotProtectSelf() {
 	protection := NewFightingStyleProtectionCondition("fighter-1")
-
-	err := protection.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
+	castCtx, keeper := s.protector(true, 1)
+	s.Require().NoError(protection.Apply(s.ctx, s.bus))
 	defer func() { _ = protection.Remove(s.ctx, s.bus) }()
 
-	// Create attack targeting self
-	attackEvent := dnd5eEvents.AttackChainEvent{
-		AttackerID:        "goblin-1",
-		TargetID:          "fighter-1", // Attacking self
-		IsMelee:           true,
-		AttackBonus:       5,
-		TargetAC:          15,
-		CriticalThreshold: 20,
-	}
-
-	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
-	attacks := dnd5eEvents.AttackChain.On(s.bus)
-	modifiedChain, err := attacks.PublishWithChain(s.ctx, attackEvent, attackChain)
+	finalEvent, err := s.publishProtected(castCtx, dnd5eEvents.AttackChainEvent{
+		AttackerID: "goblin-1", TargetID: "fighter-1",
+		Frame: protectionFrame("goblin-1", "fighter-1", true, contributions.Known(1.0)),
+	})
 	s.Require().NoError(err)
 
-	finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
-	s.Require().NoError(err)
-
-	// No disadvantage - can't protect self
-	s.Empty(finalEvent.DisadvantageSources)
+	s.Empty(finalEvent.DisadvantageSources, "can't protect self")
+	s.Empty(keeper.spent)
 }
 
 // TestDoesNotTriggerOnOwnAttack pins rpg-toolkit#1178's Protection half: the
 // condition used to exclude only "target is me" and never "attacker is me",
 // so it fired on the protector's OWN melee attacks.
 //
-// THE PROTECTOR IS FULLY ELIGIBLE HERE, and that is the whole point. Shield,
-// reaction, cast and room are all installed, and fighter-1 stands adjacent to
-// the creature it is attacking — this is TestImposesDisadvantageOnNearbyAlly
-// with exactly one thing changed, the identity of the attacker. So the
-// attacker-is-me guard is the only thing between this attack and a
-// disadvantage source, and removing that guard fails the assertion below.
-//
-// It did not used to be. This test installed no cast and no room, which meant
-// a regression fell through to the fail-closed "a protector nobody can look
-// up is NOT ELIGIBLE" branch and returned the same empty chain the exclusion
-// returns. Verified by mutation, not by reading: with the guard deleted the
-// old test still passed, and so did every other test in the module. The
-// comment claimed a failure with ErrNoGameContext, from a gamectx symbol that
-// no longer exists.
+// THE PROTECTOR IS FULLY ELIGIBLE HERE: shield, reaction and cast are
+// installed, and the frame puts fighter-1 adjacent to the creature it attacks
+// — TestImposesDisadvantageOnNearbyAlly with exactly one thing changed, the
+// identity of the attacker. Removing the attacker-is-me guard fails this.
 func (s *FightingStyleProtectionTestSuite) TestDoesNotTriggerOnOwnAttack() {
 	protection := NewFightingStyleProtectionCondition("fighter-1")
-
 	castCtx, keeper := s.protector(true, 1)
-
-	err := protection.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
+	s.Require().NoError(protection.Apply(s.ctx, s.bus))
 	defer func() { _ = protection.Remove(s.ctx, s.bus) }()
 
-	// Adjacent, so range is not what refuses this — the exclusion is.
-	grid := spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10})
-	room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
-		ID:   "test-room",
-		Type: "room",
-		Grid: grid,
+	finalEvent, err := s.publishProtected(castCtx, dnd5eEvents.AttackChainEvent{
+		AttackerID: "fighter-1", TargetID: "goblin-1", AttackBonus: 5, TargetAC: 15, CriticalThreshold: 20,
+		Frame: protectionFrame("fighter-1", "goblin-1", true, contributions.Known(1.0)),
 	})
-
-	fighter := &protectionTestEntity{id: "fighter-1", kind: "character"}
-	goblin := &protectionTestEntity{id: "goblin-1", kind: "monster"}
-
-	err = room.PlaceEntity(fighter, spatial.Position{X: 5, Y: 5})
-	s.Require().NoError(err)
-	err = room.PlaceEntity(goblin, spatial.Position{X: 6, Y: 5})
-	s.Require().NoError(err)
-
-	ctx := gamectx.WithRoom(castCtx, room)
-
-	// The protector attacking someone else — never a reaction to their own swing.
-	attackEvent := dnd5eEvents.AttackChainEvent{
-		AttackerID:        "fighter-1",
-		TargetID:          "goblin-1",
-		IsMelee:           true,
-		AttackBonus:       5,
-		TargetAC:          15,
-		CriticalThreshold: 20,
-	}
-
-	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
-	attacks := dnd5eEvents.AttackChain.On(s.bus)
-	modifiedChain, err := attacks.PublishWithChain(ctx, attackEvent, attackChain)
-	s.Require().NoError(err)
-
-	finalEvent, err := modifiedChain.Execute(ctx, attackEvent)
 	s.Require().NoError(err)
 
 	s.Empty(finalEvent.DisadvantageSources, "Protection is a reaction to someone ELSE's attack, never my own")
-
-	// And nothing was spent for the reaction it never took.
 	s.Equal(1, keeper.sheet.reactions, "an untaken reaction must not be debited")
 	s.Empty(keeper.spent)
 }
 
+// TestDoesNotProtectAgainstRangedAttacks: the frame's Melee decides, with the
+// protector otherwise eligible and adjacent.
 func (s *FightingStyleProtectionTestSuite) TestDoesNotProtectAgainstRangedAttacks() {
 	protection := NewFightingStyleProtectionCondition("fighter-1")
-
-	err := protection.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
+	castCtx, keeper := s.protector(true, 1)
+	s.Require().NoError(protection.Apply(s.ctx, s.bus))
 	defer func() { _ = protection.Remove(s.ctx, s.bus) }()
 
-	// Create ranged attack
-	attackEvent := dnd5eEvents.AttackChainEvent{
-		AttackerID:        "archer-1",
-		TargetID:          "ally-1",
-		IsMelee:           false, // Ranged attack
-		AttackBonus:       5,
-		TargetAC:          15,
-		CriticalThreshold: 20,
-	}
-
-	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
-	attacks := dnd5eEvents.AttackChain.On(s.bus)
-	modifiedChain, err := attacks.PublishWithChain(s.ctx, attackEvent, attackChain)
+	finalEvent, err := s.publishProtected(castCtx, dnd5eEvents.AttackChainEvent{
+		AttackerID: "archer-1", TargetID: "ally-1", AttackBonus: 5, TargetAC: 15, CriticalThreshold: 20,
+		Frame: protectionFrame("archer-1", "ally-1", false, contributions.Known(1.0)),
+	})
 	s.Require().NoError(err)
 
-	finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
-	s.Require().NoError(err)
-
-	// No disadvantage for ranged attacks
 	s.Empty(finalEvent.DisadvantageSources)
+	s.Empty(keeper.spent)
 }
 
 func (s *FightingStyleProtectionTestSuite) TestToJSON() {

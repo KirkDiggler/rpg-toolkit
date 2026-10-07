@@ -66,12 +66,10 @@ func (s *FightingStyleDuelingTestSuite) TestAddsDamageWithOneHandedWeapon() {
 	defer func() { _ = dueling.Remove(s.ctx, s.bus) }()
 
 	// A one-handed melee weapon, no off-hand weapon: eligible.
-	damageEvent := &dnd5eEvents.DamageChainEvent{
+	damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
 		AttackerID:       "fighter-1",
 		TargetID:         "goblin-1",
-		WeaponRef:        refs.Weapons.Longsword(),
 		WeaponDamageType: damage.Fire,
-		IsMelee:          true,
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:     dnd5eEvents.DamageSourceWeapon,
@@ -85,7 +83,7 @@ func (s *FightingStyleDuelingTestSuite) TestAddsDamageWithOneHandedWeapon() {
 			},
 		},
 		IsCritical: true,
-	}
+	}, swing{WeaponRef: refs.Weapons.Longsword(), IsMelee: true})
 
 	// Execute through damage chain — plain context, no gamectx installed.
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
@@ -111,12 +109,9 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithTwoHandedWeapon() {
 	defer func() { _ = dueling.Remove(s.ctx, s.bus) }()
 
 	// A two-handed grip disqualifies Dueling regardless of the weapon.
-	damageEvent := &dnd5eEvents.DamageChainEvent{
+	damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
-		WeaponRef:  refs.Weapons.Greatsword(),
-		IsMelee:    true,
-		TwoHanded:  true,
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:     dnd5eEvents.DamageSourceWeapon,
@@ -129,7 +124,7 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithTwoHandedWeapon() {
 				DamageType: damage.Slashing,
 			},
 		},
-	}
+	}, swing{WeaponRef: refs.Weapons.Greatsword(), IsMelee: true, TwoHanded: true})
 
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)
@@ -152,12 +147,9 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithOffHandWeapon() {
 
 	// A weapon in the off hand (dual wielding) disqualifies Dueling.
 	offHandRef := refs.Weapons.Shortsword()
-	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID:       "fighter-1",
-		TargetID:         "goblin-1",
-		WeaponRef:        refs.Weapons.Shortsword(),
-		IsMelee:          true,
-		OffHandWeaponRef: offHandRef,
+	damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:     dnd5eEvents.DamageSourceWeapon,
@@ -170,7 +162,7 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithOffHandWeapon() {
 				DamageType: damage.Piercing,
 			},
 		},
-	}
+	}, swing{WeaponRef: refs.Weapons.Shortsword(), IsMelee: true, OffHandWeaponRef: offHandRef})
 
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)
@@ -195,11 +187,9 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithShieldInOffHand() {
 	s.Require().NoError(err)
 	defer func() { _ = dueling.Remove(s.ctx, s.bus) }()
 
-	damageEvent := &dnd5eEvents.DamageChainEvent{
+	damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
-		WeaponRef:  refs.Weapons.Longsword(),
-		IsMelee:    true,
 		// OffHandWeaponRef intentionally nil — a shield is not a weapon.
 		Components: []dnd5eEvents.DamageComponent{
 			{
@@ -213,7 +203,7 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithShieldInOffHand() {
 				DamageType: damage.Slashing,
 			},
 		},
-	}
+	}, swing{WeaponRef: refs.Weapons.Longsword(), IsMelee: true})
 
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)
@@ -241,11 +231,9 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithUnarmedStrike() {
 	s.Require().NoError(err)
 	defer func() { _ = dueling.Remove(s.ctx, s.bus) }()
 
-	damageEvent := &dnd5eEvents.DamageChainEvent{
+	damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
-		WeaponRef:  refs.Weapons.UnarmedStrike(),
-		IsMelee:    true,
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:     dnd5eEvents.DamageSourceWeapon,
@@ -258,7 +246,7 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithUnarmedStrike() {
 				DamageType: damage.Bludgeoning,
 			},
 		},
-	}
+	}, swing{WeaponRef: refs.Weapons.UnarmedStrike(), IsMelee: true})
 
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)
@@ -282,11 +270,9 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithNoWeaponRef() {
 	s.Require().NoError(err)
 	defer func() { _ = dueling.Remove(s.ctx, s.bus) }()
 
-	damageEvent := &dnd5eEvents.DamageChainEvent{
+	damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
-		WeaponRef:  nil,
-		IsMelee:    true,
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:     dnd5eEvents.DamageSourceWeapon,
@@ -299,7 +285,7 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithNoWeaponRef() {
 				DamageType: damage.Slashing,
 			},
 		},
-	}
+	}, swing{WeaponRef: nil, IsMelee: true})
 
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)

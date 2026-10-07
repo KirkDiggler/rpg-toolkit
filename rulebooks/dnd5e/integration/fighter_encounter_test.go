@@ -414,12 +414,9 @@ func (s *FighterEncounterSuite) TestFightingStyleDueling_AddsDamage() {
 		s.T().Log("║  FIGHTER DUELING: +2 Damage One-Handed                           ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 
-		// rpg-toolkit#1178: Dueling no longer asks a gamectx.CharacterRegistry
-		// what is equipped — it reads IsMelee/TwoHanded/OffHandWeaponRef off
-		// the event itself, the same static facts the attack compiler already
-		// knew. No registry setup needed for this weapon shape (rapier main
-		// hand, empty off hand) any more; IsMelee: true below is the whole of
-		// it.
+		// Dueling asks no registry what is equipped: it reads melee, grip
+		// and the other hand from the frame, the static facts the attack
+		// compiler already knew. The swing below is the whole of it.
 
 		// Apply Dueling fighting style
 		dueling := conditions.NewFightingStyleDuelingCondition(s.fighter.GetID())
@@ -428,17 +425,14 @@ func (s *FighterEncounterSuite) TestFightingStyleDueling_AddsDamage() {
 		defer func() { _ = dueling.Remove(s.ctx, s.bus) }()
 
 		// Create damage event
-		damageEvent := &dnd5eEvents.DamageChainEvent{
-			AttackerID:  s.fighter.GetID(),
-			TargetID:    s.goblin.GetID(),
-			AbilityUsed: abilities.STR,
-			WeaponRef:   refs.Weapons.Rapier(),
-			IsMelee:     true,
+		damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
+			AttackerID: s.fighter.GetID(),
+			TargetID:   s.goblin.GetID(),
 			Components: []dnd5eEvents.DamageComponent{
 				{Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"}, Dice: testDiceTrace(6, 6)},
 					DamageType: damage.Piercing},
 			},
-		}
+		}, swing{AbilityUsed: abilities.STR, WeaponRef: refs.Weapons.Rapier(), IsMelee: true})
 
 		// Execute through damage chain
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
@@ -478,15 +472,11 @@ func (s *FighterEncounterSuite) TestFightingStyleDueling_NoBonus_TwoHanded() {
 		s.Require().NoError(err)
 		defer func() { _ = dueling.Remove(s.ctx, s.bus) }()
 
-		damageEvent := &dnd5eEvents.DamageChainEvent{
-			AttackerID:  s.fighter.GetID(),
-			TargetID:    s.goblin.GetID(),
-			AbilityUsed: abilities.STR,
-			WeaponRef:   refs.Weapons.Greatsword(),
-			IsMelee:     true,
-			TwoHanded:   true,
-			Components:  []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"}}}},
-		}
+		damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
+			AttackerID: s.fighter.GetID(),
+			TargetID:   s.goblin.GetID(),
+			Components: []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"}}}},
+		}, swing{AbilityUsed: abilities.STR, WeaponRef: refs.Weapons.Greatsword(), IsMelee: true, TwoHanded: true})
 
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
@@ -515,12 +505,11 @@ func (s *FighterEncounterSuite) TestFightingStyleDueling_NoBonus_DualWielding() 
 		s.Require().NoError(err)
 		defer func() { _ = dueling.Remove(s.ctx, s.bus) }()
 
-		damageEvent := &dnd5eEvents.DamageChainEvent{
-			AttackerID:  s.fighter.GetID(),
-			TargetID:    s.goblin.GetID(),
-			AbilityUsed: abilities.STR,
-			Components:  []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"}}}},
-		}
+		damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
+			AttackerID: s.fighter.GetID(),
+			TargetID:   s.goblin.GetID(),
+			Components: []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"}}}},
+		}, swing{AbilityUsed: abilities.STR})
 
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
@@ -552,15 +541,13 @@ func (s *FighterEncounterSuite) TestFightingStyleArchery_AddsAttackBonus() {
 		s.Require().NoError(err)
 		defer func() { _ = archery.Remove(s.ctx, s.bus) }()
 
-		// Create ranged attack event (IsMelee: false = ranged)
-		attackEvent := dnd5eEvents.AttackChainEvent{
+		// Create ranged attack event (the swing names no melee)
+		attackEvent := swungAttack(dnd5eEvents.AttackChainEvent{
 			AttackerID:        s.fighter.GetID(),
 			TargetID:          s.goblin.GetID(),
-			IsMelee:           false, // Ranged attack
-			WeaponRef:         refs.Weapons.Longbow(),
 			AttackBonus:       5, // Base bonus
 			CriticalThreshold: 20,
-		}
+		}, swing{IsMelee: false, WeaponRef: refs.Weapons.Longbow()})
 
 		// Execute through attack chain
 		attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
@@ -590,13 +577,12 @@ func (s *FighterEncounterSuite) TestFightingStyleArchery_NoBonus_Melee() {
 		defer func() { _ = archery.Remove(s.ctx, s.bus) }()
 
 		// Create melee attack event
-		attackEvent := dnd5eEvents.AttackChainEvent{
+		attackEvent := swungAttack(dnd5eEvents.AttackChainEvent{
 			AttackerID:        s.fighter.GetID(),
 			TargetID:          s.goblin.GetID(),
-			IsMelee:           true, // Melee attack
-			AttackBonus:       5,    // Base bonus
+			AttackBonus:       5, // Base bonus
 			CriticalThreshold: 20,
-		}
+		}, swing{IsMelee: true})
 
 		attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 		attackTopic := dnd5eEvents.AttackChain.On(s.bus)
@@ -634,12 +620,9 @@ func (s *FighterEncounterSuite) TestFightingStyleGWF_RerollsLowDice() {
 
 		// Create damage event with 1s and 2s in the roll (2d6 = 2 dice), a
 		// melee weapon held in both hands
-		damageEvent := &dnd5eEvents.DamageChainEvent{
+		damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
 			AttackerID: s.fighter.GetID(),
 			TargetID:   s.goblin.GetID(),
-			IsMelee:    true,
-			TwoHanded:  true,
-			WeaponRef:  refs.Weapons.Greatsword(),
 			Components: []dnd5eEvents.DamageComponent{
 				{
 					Source:     dnd5eEvents.DamageSourceWeapon,
@@ -651,7 +634,7 @@ func (s *FighterEncounterSuite) TestFightingStyleGWF_RerollsLowDice() {
 					DamageType: damage.Slashing,
 				},
 			},
-		}
+		}, swing{IsMelee: true, TwoHanded: true, WeaponRef: refs.Weapons.Greatsword()})
 
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
@@ -727,11 +710,9 @@ func (s *FighterEncounterSuite) TestFightingStyleTWF_AddsAbilityModToOffHand() {
 		defer func() { _ = twf.Remove(s.ctx, s.bus) }()
 
 		// Create off-hand attack damage event with ability modifier
-		damageEvent := &dnd5eEvents.DamageChainEvent{
-			AttackerID:      s.fighter.GetID(),
-			TargetID:        s.goblin.GetID(),
-			IsOffHandAttack: true, // Off-hand attack
-			AbilityModifier: 3,    // STR modifier to add
+		damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
+			AttackerID: s.fighter.GetID(),
+			TargetID:   s.goblin.GetID(),
 			Components: []dnd5eEvents.DamageComponent{
 				{
 					Source:     dnd5eEvents.DamageSourceWeapon,
@@ -743,7 +724,7 @@ func (s *FighterEncounterSuite) TestFightingStyleTWF_AddsAbilityModToOffHand() {
 					DamageType: damage.Slashing,
 				},
 			},
-		}
+		}, swing{IsOffHandAttack: true, AbilityModifier: 3})
 
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
@@ -773,13 +754,11 @@ func (s *FighterEncounterSuite) TestFightingStyleTWF_NoBonus_MainHand() {
 		defer func() { _ = twf.Remove(s.ctx, s.bus) }()
 
 		// Create main-hand attack damage event
-		damageEvent := &dnd5eEvents.DamageChainEvent{
-			AttackerID:      s.fighter.GetID(),
-			TargetID:        s.goblin.GetID(),
-			IsOffHandAttack: false, // Main-hand attack
-			AbilityModifier: 3,
-			Components:      []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"}}}},
-		}
+		damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
+			AttackerID: s.fighter.GetID(),
+			TargetID:   s.goblin.GetID(),
+			Components: []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"}}}},
+		}, swing{IsOffHandAttack: false, AbilityModifier: 3})
 
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
@@ -828,24 +807,37 @@ func (s *FighterEncounterSuite) TestFightingStyleProtection_ImposesDisadvantage(
 		ctx := gamectx.WithRoom(castOf(s.ctx, s.fighter), s.room)
 
 		// Create melee attack against the ally (not the fighter)
-		attackEvent := dnd5eEvents.AttackChainEvent{
+		attackEvent := swungAttack(dnd5eEvents.AttackChainEvent{
 			AttackerID:        s.goblin.GetID(),
 			TargetID:          ally.GetID(), // Attacking ally, not fighter
-			IsMelee:           true,
 			AttackBonus:       5,
 			CriticalThreshold: 20,
+		}, swing{IsMelee: true})
+
+		// The frame as resolution builds it: complete, one pair for every
+		// ordered pair of members the room places, measured on its grid.
+		attack := func() (dnd5eEvents.AttackChainEvent, error) {
+			framedEvent := framedAttack(attackEvent)
+			framedEvent.Frame.Pairs = placedPairs(s.room)
+			attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
+			modifiedChain, err := dnd5eEvents.AttackChain.On(s.bus).PublishWithChain(ctx, framedEvent, attackChain)
+			if err != nil {
+				return framedEvent, err
+			}
+			return modifiedChain.Execute(ctx, framedEvent)
 		}
 
-		attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
-		attackTopic := dnd5eEvents.AttackChain.On(s.bus)
-		modifiedChain, err := attackTopic.PublishWithChain(ctx, framedAttack(attackEvent), attackChain)
+		finalEvent, err := attack()
 		s.Require().NoError(err)
+		s.Require().Len(finalEvent.DisadvantageSources, 1, "Protection should impose disadvantage")
 
-		finalEvent, err := modifiedChain.Execute(ctx, attackEvent)
-		s.Require().NoError(err)
-
-		// Verify disadvantage was imposed
-		s.Greater(len(finalEvent.DisadvantageSources), 0, "Protection should impose disadvantage")
+		// The same fighter taken off the map: the complete frame carries no
+		// pair from it, so it is not within 5 feet and the attack proceeds
+		// untouched rather than failing as unanswerable.
+		s.Require().NoError(s.room.RemoveEntity(s.fighter.GetID()))
+		finalEvent, err = attack()
+		s.Require().NoError(err, "an unplaced protector does not fail other members' attacks")
+		s.Empty(finalEvent.DisadvantageSources)
 
 		s.T().Log("✓ Protection correctly imposes disadvantage on attacks against adjacent ally")
 	})

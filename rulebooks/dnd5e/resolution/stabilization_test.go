@@ -11,6 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -107,8 +108,8 @@ func (s *CastActionTestSuite) TestStabilizationDeliveryAndRefusal() {
 			paid := f.sheet(out, bardID)
 			s.Zero(paid.ActionEconomy.ActionsRemaining)
 			s.Equal(2, paid.Resources[resources.SpellSlotLevel1].Current)
-			s.Require().Len(paid.Conditions, 1)
-			s.JSONEq(string(caster.Conditions[0]), string(paid.Conditions[0]))
+			s.Require().ElementsMatch([]string{concentrating, opportunityAttack}, storedRefs(s.T(), paid.Conditions))
+			s.JSONEq(string(caster.Conditions[0]), string(conditionWithRefOrNil(paid.Conditions, refs.Conditions.Concentrating())))
 			encoded, err := json.Marshal(f.sheet(out, heroID))
 			s.Require().NoError(err)
 			var stored character.Data

@@ -100,26 +100,6 @@ func (s staticTurnDrivers) DriverFor(context.Context, string) (TurnDriver, error
 	return s.driver, nil
 }
 
-// refusingTurnDriver is the stand-in for a world no session holds —
-// [encounter.RefusingStriker]'s pattern one capability over, and the fourth
-// refusing stand-in at the same call site ([Manager.loadAuthored]).
-//
-// An authored world is loaded to be inspected and re-serialized: no clock
-// advances and no turn is ever driven there, so a driver asked to act on one
-// is this package's own bug. There is also no session to name, which is the
-// structural reason this is a stand-in rather than a resolution — a host's
-// source is asked about a session, and StartSession's has not been created yet
-// while AtlasOf has none at all.
-type refusingTurnDriver struct{}
-
-// compile-time proof the stand-in satisfies what it is handed to.
-var _ TurnDriver = refusingTurnDriver{}
-
-// Act always refuses: no authored world drives a turn.
-func (refusingTurnDriver) Act(MonsterView) (TurnIntent, error) {
-	return nil, fmt.Errorf("a turn was driven on a construction-only world: %w", ErrInvalidWorld)
-}
-
 // MonsterView is this package's own twin of encounter.MonsterView — what a
 // TurnDriver is told about its own turn. Plain data throughout (rpg-project#254
 // review): loggable, replayable, fixture-buildable, and never a live

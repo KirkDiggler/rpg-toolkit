@@ -401,27 +401,13 @@ func refOf(condition dnd5eEvents.ConditionBehavior) core.Ref {
 	return core.Ref{}
 }
 
-// freeReactionRefs are the reactions a combatant carries by existing. ONE
-// ENTRY, and the list is the rule rather than an optimisation of it: a COSTED
-// reaction is not had by existing and does not belong here.
-var freeReactions = []freeReaction{
-	{
-		ref:   refs.Conditions.OpportunityAttack(),
-		build: func(id string) dnd5eEvents.ConditionBehavior { return conditions.NewOpportunityAttackCondition(id) },
-	},
-}
-
-// freeReaction pairs the ref a combatant carries with the way to build one.
-//
-// It carries its own constructor rather than being a bare ref so the failure
-// path below is reachable from a test: writing a blob can only fail if a
+// freeReactionsFor is [conditions.FreeReactions], the one list characters and
+// [conditions.HeldAddresses] read too. A variable only so the failure path
+// below is reachable from a test: writing a blob can only fail if a
 // condition's ToJSON does, which the opportunity attack's never will, and a
 // rollback guard no test can enter is the built-and-unwired shape this whole
 // slice exists to undo.
-type freeReaction struct {
-	ref   *core.Ref
-	build func(id string) dnd5eEvents.ConditionBehavior
-}
+var freeReactionsFor = conditions.FreeReactions
 
 // carryingFreeReactions gives a monster the reactions every combatant has, the
 // way a class grant gives a character a class feature.
@@ -453,14 +439,14 @@ type freeReaction struct {
 // by the monster's own keeper, and what this function seats is the reactor
 // alone.
 func carryingFreeReactions(blobs []json.RawMessage, id string) ([]json.RawMessage, error) {
-	for _, reaction := range freeReactions {
-		if carriesRef(blobs, reaction.ref) {
+	for _, reaction := range freeReactionsFor(id) {
+		if carriesRef(blobs, reaction.Ref()) {
 			continue
 		}
 
-		blob, err := reaction.build(id).ToJSON()
+		blob, err := reaction.ToJSON()
 		if err != nil {
-			return nil, rpgerr.Wrapf(err, "failed to write the %s a combatant carries", reaction.ref)
+			return nil, rpgerr.Wrapf(err, "failed to write the %s a combatant carries", reaction.Ref())
 		}
 		blobs = append(blobs, blob)
 	}

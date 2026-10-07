@@ -39,7 +39,7 @@ func (m *strikeMachine) resumePostHit(ctx context.Context) (Step, error) {
 		if m.resume.option != "" {
 			return nil, fmt.Errorf("%w: declining a reaction carries no option", ErrNotOffered)
 		}
-		return Done{Outcome: m.outcome}, nil
+		return Done{Outcome: m.reported()}, nil
 	}
 	var choice *dndEvents.PostHitOption
 	for i := range frozen.PostHit.Options {
@@ -82,7 +82,7 @@ func (m *strikeMachine) retaliationRequest(nested Machine) Request {
 				return nil, fmt.Errorf("%w: retaliation produced %T", ErrBadStep, out)
 			}
 			m.outcome.Retaliation = &RetaliationOutcome{Offer: *m.resume.frozen.PostHit, TargetID: m.in.AttackerID, Result: result}
-			return Done{Outcome: m.outcome}, nil
+			return Done{Outcome: m.reported()}, nil
 		},
 		onPose: func(_ context.Context, pose Pose) (Step, error) {
 			frozen := m.resume.frozen

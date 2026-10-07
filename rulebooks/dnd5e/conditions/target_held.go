@@ -31,12 +31,13 @@ type heldRuleFor func(holder string, held contributions.HeldCondition) contribut
 // targetHeldRules is every answering target-census ref's rule, keyed by
 // condition ref. Each handler builds its rule through the same constructor.
 var targetHeldRules = map[string]heldRuleFor{
-	refs.Conditions.FaerieFire().String():  newFaerieFireHeldRule,
-	refs.Conditions.GuidingBolt().String(): newGuidingBoltHeldRule,
-	refs.Conditions.Dodging().String():     newDodgingHeldRule,
-	refs.Conditions.Prone().String():       newProneHeldRule,
-	refs.Conditions.Sanctuary().String():   newSanctuaryHeldRule,
-	refs.Conditions.Hidden().String():      newHiddenHeldRule,
+	refs.Conditions.FaerieFire().String():     newFaerieFireHeldRule,
+	refs.Conditions.GuidingBolt().String():    newGuidingBoltHeldRule,
+	refs.Conditions.Dodging().String():        newDodgingHeldRule,
+	refs.Conditions.Prone().String():          newProneHeldRule,
+	refs.Conditions.Sanctuary().String():      newSanctuaryHeldRule,
+	refs.Conditions.Hidden().String():         newHiddenHeldRule,
+	refs.Conditions.RecklessAttack().String(): newRecklessHeldRule,
 }
 
 // heldRule answers for one condition its holder holds, on an attack against
@@ -79,11 +80,13 @@ func (r heldRule) AssessAction(in *contributions.AssessActionInput) (*contributi
 	return r.decide(frame, r.holder), nil
 }
 
-// heldApplies is an applying answer with its benefit and attack mode.
-func heldApplies(reason, benefit string, mode contributions.AttackMode) *contributions.AssessActionOutput {
+// heldApplies is an applying answer carrying its attack mode, with the
+// benefit line derived from that mode: the row and the swing read one Answer,
+// so the tooltip cannot say one way while the roll goes the other.
+func heldApplies(reason string, mode contributions.AttackMode) *contributions.AssessActionOutput {
 	out := assessed(contributions.Applies, reason)
-	out.Answer.Benefit = benefit
 	out.Answer.AttackMode = mode
+	out.Answer.Benefit = benefitFor(mode)
 	return out
 }
 
@@ -91,6 +94,19 @@ const (
 	advantageBenefit    = "Advantage on the attack roll"
 	disadvantageBenefit = "Disadvantage on the attack roll"
 )
+
+// benefitFor is the benefit line an attack mode reads as. A mode it does not
+// name reads as nothing, and validateAnswer refuses the mode itself.
+func benefitFor(mode contributions.AttackMode) string {
+	switch mode {
+	case contributions.AttackAdvantage:
+		return advantageBenefit
+	case contributions.AttackDisadvantage:
+		return disadvantageBenefit
+	default:
+		return ""
+	}
+}
 
 // newFaerieFireHeldRule: advantage when the attacker can see the outlined
 // target.
@@ -103,7 +119,7 @@ func newFaerieFireHeldRule(holder string, held contributions.HeldCondition) cont
 		case !sees:
 			return assessed(contributions.DoesNotApply, "You cannot see the target")
 		default:
-			return heldApplies("You can see the outlined target", advantageBenefit, contributions.AttackAdvantage)
+			return heldApplies("You can see the outlined target", contributions.AttackAdvantage)
 		}
 	}}
 }
@@ -111,23 +127,31 @@ func newFaerieFireHeldRule(holder string, held contributions.HeldCondition) cont
 // newGuidingBoltHeldRule: advantage on the next attack against the target.
 func newGuidingBoltHeldRule(holder string, held contributions.HeldCondition) contributions.ActionAssessor {
 	return heldRule{name: GuidingBoltName, holder: holder, held: held, decide: func(contributions.Frame, string) *contributions.AssessActionOutput {
-		return heldApplies("The target is lit by Guiding Bolt", advantageBenefit, contributions.AttackAdvantage)
+		return heldApplies("The target is lit by Guiding Bolt", contributions.AttackAdvantage)
 	}}
 }
 
-// newDodgingHeldRule: disadvantage on attacks against the dodging target. Like
-// the shipped handler it reads no sight; the 5e text's "an attacker you can
-// see" is flagged for a ruling, not built.
+// newRecklessHeldRule: advantage on every attack against the reckless holder,
+// whoever makes it.
+func newRecklessHeldRule(holder string, held contributions.HeldCondition) contributions.ActionAssessor {
+	return heldRule{name: "Reckless Attack", holder: holder, held: held, decide: func(contributions.Frame, string) *contributions.AssessActionOutput {
+		return heldApplies("The target is attacking recklessly", contributions.AttackAdvantage)
+	}}
+}
+
+// newDodgingHeldRule: disadvantage on attacks against the dodging target. It
+// reads no sight; the 5e text's "an attacker you can see" is flagged for a
+// ruling, not built.
 func newDodgingHeldRule(holder string, held contributions.HeldCondition) contributions.ActionAssessor {
 	return heldRule{name: "Dodging", holder: holder, held: held, decide: func(contributions.Frame, string) *contributions.AssessActionOutput {
-		return heldApplies("The target is dodging", disadvantageBenefit, contributions.AttackDisadvantage)
+		return heldApplies("The target is dodging", contributions.AttackDisadvantage)
 	}}
 }
 
 // newHiddenHeldRule: disadvantage on attacks against the hidden target.
 func newHiddenHeldRule(holder string, held contributions.HeldCondition) contributions.ActionAssessor {
 	return heldRule{name: "Hidden", holder: holder, held: held, decide: func(contributions.Frame, string) *contributions.AssessActionOutput {
-		return heldApplies("The target is hidden", disadvantageBenefit, contributions.AttackDisadvantage)
+		return heldApplies("The target is hidden", contributions.AttackDisadvantage)
 	}}
 }
 
@@ -141,9 +165,9 @@ func newProneHeldRule(holder string, held contributions.HeldCondition) contribut
 		case !known:
 			return assessed(contributions.Depends, "Depends on how far you are from the target")
 		case distance <= combat.AdjacentCells:
-			return heldApplies("The prone target is within 5 feet", advantageBenefit, contributions.AttackAdvantage)
+			return heldApplies("The prone target is within 5 feet", contributions.AttackAdvantage)
 		default:
-			return heldApplies("The prone target is beyond 5 feet", disadvantageBenefit, contributions.AttackDisadvantage)
+			return heldApplies("The prone target is beyond 5 feet", contributions.AttackDisadvantage)
 		}
 	}}
 }
@@ -156,8 +180,9 @@ func newSanctuaryHeldRule(holder string, held contributions.HeldCondition) contr
 		if frame.Actor == holder {
 			return assessed(contributions.DoesNotApply, "Your own ward does not stop your attack")
 		}
-		return heldApplies("The target is warded by Sanctuary",
-			"Wisdom saving throw first; on a failure the attack is lost", "")
+		out := assessed(contributions.Applies, "The target is warded by Sanctuary")
+		out.Answer.Benefit = "Wisdom saving throw first; on a failure the attack is lost"
+		return out
 	}}
 }
 
@@ -207,7 +232,7 @@ func AssessTargetHeldEffects(in *AssessTargetHeldEffectsInput) (*AssessTargetHel
 		if !classified {
 			return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "held condition %s has no target census entry", condition.Ref)
 		}
-		if entry.class == actionNotBearing {
+		if entry.class == censusNotBearing {
 			continue
 		}
 		ref, err := core.ParseString(condition.Ref)
@@ -230,10 +255,10 @@ func AssessTargetHeldEffects(in *AssessTargetHeldEffectsInput) (*AssessTargetHel
 		ids[effect.ID] = struct{}{}
 
 		switch entry.class {
-		case actionNotYetAnswering:
+		case censusNotYetAnswering:
 			effect.State = contributions.StateUnavailable
 			effect.Reason = unavailableReason
-		case actionAnswers:
+		case censusAnswers:
 			answer, err := assessHeld(target, condition, in.Frame, entry)
 			if err != nil {
 				return nil, err
@@ -260,7 +285,7 @@ func heldEffectID(held contributions.HeldCondition) string {
 
 // assessHeld asks one answering held condition's rule and validates its answer.
 func assessHeld(
-	holder string, held contributions.HeldCondition, frame contributions.Frame, entry actionCensusEntry,
+	holder string, held contributions.HeldCondition, frame contributions.Frame, entry censusEntry,
 ) (contributions.Answer, error) {
 	rule, ok := targetHeldRules[held.Ref]
 	if !ok {
@@ -364,11 +389,10 @@ type heldAttackInput struct {
 }
 
 // applyHeldAttack is the attack-chain half of a target-held handler: it asks
-// the held rule from the event's frame and, when it applies, adds an advantage
-// or disadvantage source as the answer's attack mode says. An invalid frame, a
-// frame that omits the handler's own address, or a Depends answer fails the
-// attack (see executeHeld); an applying answer with no mode is a producer
-// defect.
+// the held rule from the event's frame and, when it applies, adds the answer's
+// attack mode through applyAttackMode. An invalid frame, a frame that omits
+// the handler's own address, or a Depends answer fails the attack (see
+// executeHeld).
 func applyHeldAttack(in *heldAttackInput) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
 	executed, err := executeHeld(&executeHeldInput{
 		Name: in.Name, Holder: in.Holder, Held: in.Held, Rule: in.Rule, Frame: in.Event.Frame,
@@ -376,10 +400,35 @@ func applyHeldAttack(in *heldAttackInput) (chain.Chain[dnd5eEvents.AttackChainEv
 	if err != nil {
 		return in.Chain, err
 	}
-	if executed.Answer.Decision.Applicability != contributions.Applies {
+	return applyAttackMode(&attackModeInput{
+		Name: in.Name, Answer: executed.Answer, Chain: in.Chain,
+		SourceRef: in.SourceRef, SourceID: in.SourceID, Label: in.Label,
+	})
+}
+
+// attackModeInput is a settled answer and how its attack mode reads on the
+// attack chain.
+type attackModeInput struct {
+	Name      string
+	Answer    contributions.Answer
+	Chain     chain.Chain[dnd5eEvents.AttackChainEvent]
+	SourceRef *core.Ref
+	SourceID  string
+	// Label names the chain key and the source's reason for the answer's
+	// attack mode.
+	Label func(contributions.AttackMode) (key, reason string)
+}
+
+// applyAttackMode adds an advantage or disadvantage source as a settled
+// answer's attack mode says, so the rule that answered — for a held effect or
+// for the holder's own attack — is the one source that decides which. An
+// answer that does not apply adds nothing; an applying answer with no mode is
+// a producer defect.
+func applyAttackMode(in *attackModeInput) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
+	if in.Answer.Decision.Applicability != contributions.Applies {
 		return in.Chain, nil
 	}
-	mode := executed.Answer.AttackMode
+	mode := in.Answer.AttackMode
 	key, reason := in.Label(mode)
 	source := dnd5eEvents.AttackModifierSource{SourceRef: in.SourceRef, SourceID: in.SourceID, Reason: reason}
 	var modify func(context.Context, dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error)

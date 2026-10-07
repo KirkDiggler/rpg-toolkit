@@ -59,7 +59,7 @@ func AssessActionEffects(in *AssessActionEffectsInput) (*AssessActionEffectsOutp
 		if !classified {
 			return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "condition %s has no action census entry", ref.String())
 		}
-		if entry.class == actionNotBearing {
+		if entry.class == censusNotBearing {
 			continue
 		}
 		display, found := DisplayFor(ref)
@@ -85,10 +85,10 @@ func AssessActionEffects(in *AssessActionEffectsInput) (*AssessActionEffectsOutp
 		ids[effect.ID] = struct{}{}
 
 		switch entry.class {
-		case actionNotYetAnswering:
+		case censusNotYetAnswering:
 			effect.State = contributions.StateUnavailable
 			effect.Reason = unavailableReason
-		case actionAnswers:
+		case censusAnswers:
 			if err := answerEffect(&answerEffectInput{
 				Condition: condition, Entry: entry, Frame: in.Frame, Groups: groups, Effect: &effect,
 			}); err != nil {
@@ -105,7 +105,7 @@ func AssessActionEffects(in *AssessActionEffectsInput) (*AssessActionEffectsOutp
 // answerEffectInput carries one answering condition and the row being filled.
 type answerEffectInput struct {
 	Condition dnd5eEvents.ConditionBehavior
-	Entry     actionCensusEntry
+	Entry     censusEntry
 	Frame     contributions.Frame
 	Groups    *rollGroupSelection
 	Effect    *contributions.Effect

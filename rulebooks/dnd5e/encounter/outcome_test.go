@@ -1269,7 +1269,7 @@ func aGrant() *encounter.ExperienceDetail {
 // bossScene is a fight whose monster's death ENDS the run — TriggerMemberDown
 // over the goblin, the boss-down ending the experience beat has to survive.
 // Retention is unbounded because every test here reads the story back.
-func (s *OutcomeTestSuite) bossScene(standing encounter.Standing) *encounter.Encounter {
+func (s *OutcomeTestSuite) bossScene(standing encounter.StandingWithParticipation) *encounter.Encounter {
 	s.T().Helper()
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{

@@ -185,7 +185,7 @@ func (m *Manager) resolveStagedCheckPoseable(
 			}
 			return nil, &SaveError{Report: report, Err: fmt.Errorf("saving checker: %w", err)}
 		}
-		scope.written = append(scope.written, "character:"+out.DirtyCharacter.ID)
+		scope.noteCharacterWritten(out.DirtyCharacter.ID)
 		staged.data = out.DirtyCharacter
 		if scope.walker != nil && scope.walker.ID == out.DirtyCharacter.ID {
 			scope.walker = out.DirtyCharacter
@@ -400,31 +400,4 @@ func (w witnessSeam) Perceivers(in *encounter.PerceiversInput) ([]encounter.Memb
 		}
 	}
 	return out, nil
-}
-
-// refusingCheckResolver is the read-path stand-in, [encounter.RefusingStriker]'s
-// pattern one capability over: a read verb loads worlds it never drives, so a
-// check resolved on one is this package's own bug, reported at the point of
-// failure rather than answered with an invented roll.
-type refusingCheckResolver struct{}
-
-// compile-time proof the stand-in satisfies what it is handed to.
-var _ encounter.CheckResolver = refusingCheckResolver{}
-
-// ResolveCheck always refuses: no read verb rolls a check.
-func (refusingCheckResolver) ResolveCheck(*encounter.ResolveCheckInput) (*encounter.ResolveCheckOutput, error) {
-	return nil, fmt.Errorf("a check was resolved on a read-only world: %w", ErrInvalidWorld)
-}
-
-// refusingWitness is refusingCheckResolver's twin for perception: reads
-// refresh no sight, so a witness consulted on a read path is a bug, not an
-// event.
-type refusingWitness struct{}
-
-// compile-time proof the stand-in satisfies what it is handed to.
-var _ encounter.Witness = refusingWitness{}
-
-// Perceivers always refuses: no read verb refreshes sight.
-func (refusingWitness) Perceivers(*encounter.PerceiversInput) ([]encounter.MemberID, error) {
-	return nil, fmt.Errorf("a witness was consulted on a read-only world: %w", ErrInvalidWorld)
 }

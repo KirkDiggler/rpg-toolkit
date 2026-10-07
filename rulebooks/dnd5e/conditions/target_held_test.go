@@ -217,23 +217,63 @@ func (s *targetHeldSuite) TestAssessTargetHeldEffectsListsBearingHeldEffects() {
 		Frame: gobFrame(ff, concentrateHeld, recklessHeld, proneHeld),
 	})
 	s.Require().NoError(err)
-	s.Require().Len(out.Effects, 3, "Concentrating does not bear")
 
-	s.Equal("target:dnd5e:conditions:faerie_fire@c1", out.Effects[0].ID)
-	s.Equal(contributions.StateApplies, out.Effects[0].State)
-	s.Equal("c1", out.Effects[0].Source.SourceID)
-	s.Equal(FaerieFireName, out.Effects[0].Source.Name)
-	s.Equal(displayCatalog[ffHeld.Ref].Detail, out.Effects[0].Description)
-	s.Equal("Advantage on the attack roll", out.Effects[0].Benefit)
+	_, found := effectByID(out.Effects, heldEffectID(concentrateHeld))
+	s.False(found, "Concentrating does not bear on an attack against its holder")
 
-	s.Equal("target:"+recklessHeld.Ref, out.Effects[1].ID)
-	s.Equal(contributions.StateUnavailable, out.Effects[1].State)
-	s.Equal(unavailableReason, out.Effects[1].Reason)
-	s.Equal(displayCatalog[recklessHeld.Ref].Detail, out.Effects[1].Description)
+	ids := make([]string, 0, len(out.Effects))
+	for _, effect := range out.Effects {
+		ids = append(ids, effect.ID)
+	}
+	s.Equal([]string{heldEffectID(ff), heldEffectID(recklessHeld), heldEffectID(proneHeld)}, ids,
+		"the bearing rows, in the frame's held order")
 
-	s.Equal("target:"+proneHeld.Ref, out.Effects[2].ID)
-	s.Equal(contributions.StateApplies, out.Effects[2].State)
-	s.Equal("The prone target is within 5 feet", out.Effects[2].Reason)
+	row, _ := effectByID(out.Effects, "target:dnd5e:conditions:faerie_fire@c1")
+	s.Equal(contributions.StateApplies, row.State)
+	s.Equal("c1", row.Source.SourceID)
+	s.Equal(FaerieFireName, row.Source.Name)
+	s.Equal(displayCatalog[ffHeld.Ref].Detail, row.Description)
+	s.Equal("Advantage on the attack roll", row.Benefit)
+
+	row, _ = effectByID(out.Effects, "target:"+recklessHeld.Ref)
+	s.Equal(contributions.StateApplies, row.State)
+	s.Equal("The target is attacking recklessly", row.Reason)
+	s.Equal("Advantage on the attack roll", row.Benefit)
+	s.Equal(displayCatalog[recklessHeld.Ref].Detail, row.Description)
+
+	row, _ = effectByID(out.Effects, "target:"+proneHeld.Ref)
+	s.Equal(contributions.StateApplies, row.State)
+	s.Equal("The prone target is within 5 feet", row.Reason)
+}
+
+// TestNotYetAnsweringHeldEffectIsUnavailable: a held effect the census marks
+// as bearing but not yet answering shows an unavailable row with its
+// description, never dropped and never not-applying. No shipped target-held
+// ref is in that class today, so the census entry is swapped for the test.
+func (s *targetHeldSuite) TestNotYetAnsweringHeldEffectIsUnavailable() {
+	original := targetCensus[recklessHeld.Ref]
+	targetCensus[recklessHeld.Ref] = notYetAnswering
+	s.T().Cleanup(func() { targetCensus[recklessHeld.Ref] = original })
+
+	out, err := AssessTargetHeldEffects(&AssessTargetHeldEffectsInput{Frame: gobFrame(recklessHeld)})
+	s.Require().NoError(err)
+
+	row, found := effectByID(out.Effects, heldEffectID(recklessHeld))
+	s.Require().True(found)
+	s.Equal(contributions.StateUnavailable, row.State)
+	s.Equal(unavailableReason, row.Reason)
+	s.Equal(displayCatalog[recklessHeld.Ref].Detail, row.Description)
+	s.Empty(row.Benefit)
+}
+
+// effectByID finds the row with id among effects.
+func effectByID(effects []contributions.Effect, id string) (contributions.Effect, bool) {
+	for _, effect := range effects {
+		if effect.ID == id {
+			return effect, true
+		}
+	}
+	return contributions.Effect{}, false
 }
 
 // TestTargetDefencesYieldNoRow is R21: a target's armour class and
@@ -324,7 +364,7 @@ func (s *targetHeldSuite) TestAssessingHeldEffectsSpendsNothing() {
 }
 
 func (s *targetHeldSuite) attackOn(bus events.EventBus, frame contributions.Frame) (dnd5eEvents.AttackChainEvent, error) {
-	return s.publishAttack(bus, dnd5eEvents.AttackChainEvent{AttackerID: "rogue", TargetID: "gob", IsMelee: true, Frame: frame})
+	return s.publishAttack(bus, dnd5eEvents.AttackChainEvent{AttackerID: "rogue", TargetID: "gob", Frame: frame})
 }
 
 func (s *targetHeldSuite) TestFaerieFireHandlerReadsFrameSight() {

@@ -86,6 +86,14 @@ const (
 	// StanceAllied means the two stand together. Authorable only as a
 	// static stance; no predicate turns a pair allied (R2).
 	StanceAllied Stance = "allied"
+
+	// StanceNone means the pair has NO SIDE toward each other: one of them
+	// is in no faction, which a world NPC is (rpg-project#520, R5). It is a
+	// KNOWN answer, never "unknown" and never neutral, and it is never
+	// authorable — a disposition or a stance trigger naming it is refused,
+	// because it describes a member, not a posture between two sides. Only
+	// [ObservedContextPair.Stance] reports it.
+	StanceNone Stance = "none"
 )
 
 // FactionInput declares one faction the dungeon authored (design §2).
@@ -1301,12 +1309,12 @@ type SetupInput struct {
 	// without it (ErrNoInitiative).
 	Initiative InitiativeRoller
 
-	// Standing retains the constructor's source-compatible binary shape. It is
-	// REQUIRED and its concrete value must also implement Participation
-	// (StandingWithParticipation); otherwise Setup returns ErrNoParticipation.
-	// Play consults the richer assessment only. Neither a nil nor a
-	// Standing-only value defaults to everyone active.
-	Standing Standing
+	// Standing answers who is down and who participates. REQUIRED (nil is
+	// ErrNoStanding), and typed [StandingWithParticipation] so the compiler,
+	// not a runtime assertion, refuses a Standing-only value (rpg-toolkit#1958).
+	// Play consults the richer assessment only; nothing defaults to everyone
+	// active.
+	Standing StandingWithParticipation
 
 	// Sight reports how far each member can see, in cells (rpg-toolkit#1111).
 	// REQUIRED, for the same reason Standing is: the consult runs at every
@@ -1323,10 +1331,10 @@ type SetupInput struct {
 	// complete percept. Refused at construction (ErrNoEquipment). There is no
 	// default — empty hands for everybody would be this module inventing
 	// testimony, and the difference between "no hands to observe" and "observed
-	// empty" is a distinction only the rulebook can draw. Its value must also
-	// answer Conditions ([EquipmentWithConditions]) or Setup returns
-	// ErrNoConditions.
-	Equipment Equipment
+	// empty" is a distinction only the rulebook can draw. Typed
+	// [EquipmentWithConditions] so the compiler, not a runtime assertion,
+	// requires it to answer Conditions too (rpg-toolkit#1958).
+	Equipment EquipmentWithConditions
 
 	// TurnDriver decides what a member with no player does when it is given
 	// time — its turn in a fight, or a round of the world (rpg-toolkit#1162,

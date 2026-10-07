@@ -181,23 +181,24 @@ func (r *RecklessAttackCondition) onAttackChain(
 		}
 	}
 
-	// When the barbarian is the target: enemies get advantage
+	// When the barbarian is the target: the by-reference held rule — the one
+	// information asks for a target candidate — decides the attacker's
+	// advantage.
 	if isTarget {
-		modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
-			e.AdvantageSources = append(e.AdvantageSources, dnd5eEvents.AttackModifierSource{
-				SourceRef: refs.Conditions.RecklessAttack(),
-				SourceID:  r.MemberID,
-				Reason:    "Target is reckless",
-			})
-			return e, nil
-		}
-
-		if err := c.Add(combat.StageConditions, "reckless_attack_vulnerability", modifyAttack); err != nil {
-			return c, rpgerr.Wrapf(err, "failed to add reckless vulnerability for character %s", r.MemberID)
-		}
+		return applyHeldAttack(&heldAttackInput{
+			Name: "reckless attack", Holder: r.MemberID, Held: heldAddress(r.MemberID, r), Rule: r.heldRule(),
+			Event: event, Chain: c, SourceRef: r.Ref(), SourceID: r.MemberID,
+			Label: fixedLabel("reckless_attack_vulnerability", "Target is reckless"),
+		})
 	}
 
 	return c, nil
+}
+
+// heldRule is the by-reference rule for this Reckless Attack on its holder —
+// the one information asks for a candidate attacking it.
+func (r *RecklessAttackCondition) heldRule() contributions.ActionAssessor {
+	return newRecklessHeldRule(r.MemberID, heldAddress(r.MemberID, r))
 }
 
 // onTurnStart removes the condition when the barbarian's turn starts.

@@ -358,12 +358,9 @@ func (s *BarbarianEncounterSuite) TestEncounter_MultiTurnCombat() {
 
 		// Publish the canonical typed damage fold. Raging observes the fold and
 		// records this as combat activity while contributing its +2 component.
-		damageEvent := &dnd5eEvents.DamageChainEvent{
-			AttackerID:      s.barbarian.GetID(),
-			TargetID:        s.goblin.GetID(),
-			AbilityUsed:     abilities.STR,
-			AbilityModifier: 3,
-			IsMelee:         true,
+		damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
+			AttackerID: s.barbarian.GetID(),
+			TargetID:   s.goblin.GetID(),
 			Components: []dnd5eEvents.DamageComponent{{
 				Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"}, Dice: testDiceTrace(10, 10)},
 				DamageType: damage.Slashing,
@@ -371,7 +368,7 @@ func (s *BarbarianEncounterSuite) TestEncounter_MultiTurnCombat() {
 				Source: dnd5eEvents.DamageSourceAbility, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"}, Modifier: intPtr(3)},
 				DamageType: damage.Slashing,
 			}},
-		}
+		}, swing{AbilityUsed: abilities.STR, AbilityModifier: 3, IsMelee: true})
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
 		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, framed(s.ctx, damageEvent), damageChain)

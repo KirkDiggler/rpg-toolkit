@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -276,16 +275,7 @@ func (s *ContestDamageTestSuite) sheet(out *Output, id string) *character.Data {
 }
 
 func (s *ContestDamageTestSuite) conditionRefs(data *character.Data) []string {
-	out := make([]string, 0, len(data.Conditions))
-	for _, raw := range data.Conditions {
-		var peek struct {
-			Ref core.Ref `json:"ref"`
-		}
-		s.Require().NoError(json.Unmarshal(raw, &peek))
-		out = append(out, peek.Ref.String())
-	}
-
-	return out
+	return storedRefs(s.T(), data.Conditions)
 }
 
 // THE HEADLINE. One machine, one save, two consequences: the psychic damage
@@ -314,7 +304,7 @@ func (s *ContestDamageTestSuite) TestAFailedSaveDeliversDamageAndThenTheConditio
 
 	sheet := s.sheet(out, heroID)
 	s.Require().Equal(11, sheet.HitPoints, "14 - 3, applied exactly once")
-	s.Require().Equal([]string{refs.Conditions.Prone().String()}, s.conditionRefs(sheet))
+	s.Require().ElementsMatch([]string{refs.Conditions.Prone().String(), opportunityAttack}, s.conditionRefs(sheet))
 }
 
 // The control. Same declaration, a better die, and a made save negates both
@@ -410,7 +400,7 @@ func (s *ContestDamageTestSuite) TestADamageOnlyContestLandsDamageAndNothingElse
 
 	sheet := s.sheet(out, heroID)
 	s.Require().Equal(11, sheet.HitPoints)
-	s.Require().Empty(sheet.Conditions, "nothing was declared, so nothing went on")
+	s.Require().Equal([]string{opportunityAttack}, s.conditionRefs(sheet), "nothing was declared, so nothing went on")
 }
 
 // THE REGRESSION THAT MATTERS. A contest that declares no damage is what it was
@@ -429,7 +419,7 @@ func (s *ContestDamageTestSuite) TestAConditionOnlyContestIsUnchanged() {
 
 	sheet := s.sheet(out, heroID)
 	s.Require().Equal(14, sheet.HitPoints, "no damage was declared, so none was dealt")
-	s.Require().Equal([]string{refs.Conditions.Prone().String()}, s.conditionRefs(sheet))
+	s.Require().ElementsMatch([]string{refs.Conditions.Prone().String(), opportunityAttack}, s.conditionRefs(sheet))
 }
 
 // The damage goes through the sheet's own ApplyDamage, so a cantrip can drop

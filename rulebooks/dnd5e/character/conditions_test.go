@@ -480,7 +480,7 @@ func (s *CharacterConditionsTestSuite) TestCharacterConditionRoundTrip() {
 	s.Require().NotNil(char)
 
 	// Verify the character has exactly one condition and it is applied
-	conds := char.GetConditions()
+	conds := authored(char)
 	s.Require().Len(conds, 1, "Character should have one condition loaded from data")
 
 	loadedCond, ok := conds[0].(*conditions.RagingCondition)
