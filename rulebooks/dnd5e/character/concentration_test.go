@@ -134,7 +134,7 @@ func (s *ConcentrationKeeperSuite) TestTwoRealBaneOwnersRemoveOnlyTheirQualified
 	targetData.ID = "target-1"
 	target, err := Load(s.ctx, targetData)
 	s.Require().NoError(err)
-	target, err = Load(s.ctx, target.ToData())
+	target, err = Load(s.ctx, mustToData(s.T(), target))
 	s.Require().NoError(err, "persisted condition order survives a sheet round trip")
 	bardAData := s.bardData(holdA)
 	bardAData.ID = "bard-a"

@@ -166,7 +166,7 @@ func (s *UnarmoredDefenseACTestSuite) TestUnarmoredDefenseAC() {
 			s.Require().NotNil(char)
 
 			// Assert
-			data := char.ToData()
+			data := mustToData(s.T(), char)
 			s.Equal(tc.expectedAC, data.ArmorClass,
 				"AC should be %s, but got %d", tc.acExplanation, data.ArmorClass)
 		})

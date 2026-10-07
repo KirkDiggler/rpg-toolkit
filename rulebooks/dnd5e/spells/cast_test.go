@@ -158,6 +158,8 @@ func (s *CastContentSuite) TestSanctuaryDeclaresTouchBonusActionAndOwnedConcentr
 	s.Equal(*refs.Conditions.SanctuaryImmune(), d.Cast.RecipientBlockedBy[0])
 	s.Equal(actions.CastRecipientTarget, d.Cast.Effects[0].Recipient)
 	s.Equal(*refs.Conditions.Sanctuary(), d.Cast.Effects[0].Ref)
+	s.Equal("save_dc", d.Cast.Effects[0].SaveDCKey, "the ward records the caster's DC when it lands")
+	s.Empty(d.Cast.Effects[1].SaveDCKey, "the immunity rolls nothing and keeps no DC")
 	s.Equal("source_id", d.Cast.Effects[0].CounterpartKey)
 	s.Require().NotNil(d.Cast.Concentration, "up to one minute, the same duration category as Guidance")
 	s.Equal(10, d.Cast.Concentration.TurnEnds)

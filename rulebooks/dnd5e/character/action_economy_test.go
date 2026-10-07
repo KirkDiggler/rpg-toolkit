@@ -126,7 +126,7 @@ func (s *ActionEconomyTestSuite) TestToData_NilActionEconomyOmitted() {
 	}
 	char.actionEconomy = nil
 
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	s.Nil(data.ActionEconomy)
 
 	// Verify it marshals without the field
@@ -154,7 +154,7 @@ func (s *ActionEconomyTestSuite) TestToData_IncludesActionEconomy() {
 		},
 	}
 
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	s.Require().NotNil(data.ActionEconomy)
 	s.Equal(1, data.ActionEconomy.ActionsRemaining)
 	s.Equal(0, data.ActionEconomy.BonusActionsRemaining)
@@ -206,7 +206,7 @@ func (s *ActionEconomyTestSuite) TestLoadFromData_RoundTrip() {
 	s.True(loaded.InCombat())
 
 	// Round-trip through ToData
-	roundTripped := loaded.ToData()
+	roundTripped := mustToData(s.T(), loaded)
 	s.Require().NotNil(roundTripped.ActionEconomy)
 	s.Equal(0, roundTripped.ActionEconomy.ActionsRemaining)
 	s.Equal(1, roundTripped.ActionEconomy.BonusActionsRemaining)
@@ -235,7 +235,7 @@ func (s *ActionEconomyTestSuite) TestSeededEconomy_RoundTrip_ActivateAbility_NoN
 
 	// Serialize → JSON → back, faithfully reproducing the omitempty drop the
 	// host (rpg-api) hits when it persists and reloads the character.
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	raw, err := json.Marshal(data)
 	s.Require().NoError(err)
 
@@ -360,7 +360,7 @@ func (s *ActionEconomyTestSuite) TestToolkitEconomyBridgePersistsSpentDeathSaveC
 	char.fromToolkitActionEconomy(fielded)
 
 	s.Zero(char.CapacityLeft(combat.CapacityDeathSave))
-	exported := char.ToData()
+	exported := mustToData(s.T(), char)
 	s.Require().NotNil(exported.ActionEconomy)
 	s.NotContains(exported.ActionEconomy.Granted, GrantedDeathSaves,
 		"a spent one-shot grant must not survive persistence at its old value")

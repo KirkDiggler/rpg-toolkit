@@ -359,6 +359,43 @@ func (s *CastProfileSuite) TestItRefusesWhatItCannotResolve() {
 		profile.MaxTargets = 0
 		s.Require().ErrorContains(profile.Validate(), "no counterpart to bind")
 	})
+
+	s.Run("a save DC key that collides with the counterpart key", func() {
+		profile := gatelessProfile()
+		profile.Effects[0].SaveDCKey = profile.Effects[0].CounterpartKey
+		s.Require().ErrorContains(profile.Validate(), "one binding would overwrite the other")
+	})
+
+	s.Run("a save DC key that collides with the option key", func() {
+		profile := commandProfile()
+		profile.Effects[0].SaveDCKey = profile.Effects[0].OptionKey
+		s.Require().ErrorContains(profile.Validate(), "one binding would overwrite the other")
+	})
+
+	s.Run("a counterpart key that collides with the option key", func() {
+		profile := commandProfile()
+		profile.Effects[0].CounterpartKey = "word"
+		profile.Effects[0].OptionKey = "word"
+		s.Require().ErrorContains(profile.Validate(), "one binding would overwrite the other")
+	})
+}
+
+// TestASaveDCKeyValidatesAndClones — an effect that keeps the caster's DC is an
+// ordinary effect with one more binding, on any target rule, self included:
+// unlike the counterpart, the caster's DC always exists.
+func (s *CastProfileSuite) TestASaveDCKeyValidatesAndClones() {
+	profile := gatelessProfile()
+	profile.Effects[0].SaveDCKey = "save_dc"
+	s.Require().NoError(profile.Validate())
+
+	self := gatelessProfile()
+	self.Target = actions.CastTargetSelf
+	self.MinTargets, self.MaxTargets = 0, 0
+	self.Effects[0].CounterpartKey = ""
+	self.Effects[0].SaveDCKey = "save_dc"
+	s.Require().NoError(self.Validate())
+
+	s.Equal("save_dc", profile.Clone().Effects[0].SaveDCKey)
 }
 
 func (s *CastProfileSuite) TestLevelOneCastPriceRefusalPreservesActionAndPoolAtomically() {

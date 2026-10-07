@@ -20,6 +20,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -290,7 +291,8 @@ func (s *MonkEncounterSuite) TestMartialArts_UnarmedDamageScaling() {
 
 func (s *MonkEncounterSuite) TestMartialArts_MonkWeaponWithDEX() {
 	s.Run("Martial Arts allows DEX for monk weapons (quarterstaff)", func() {
-		data := s.monk.ToData()
+		data, err := s.monk.ToData()
+		s.Require().NoError(err)
 		data.Inventory = append(data.Inventory, character.InventoryItemData{
 			Type: shared.EquipmentTypeWeapon, ID: string(weapons.Quarterstaff), Quantity: 1,
 		})
@@ -468,19 +470,19 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainIncludesWIS() {
 // attach time. True while that handle existed. The handle is gone: an effect
 // reads itself out of the cast, like any other participant.
 //
-// # So why is asserting 13 not the original sin repeating
+// # And then it asserted 13 on a bare context, which was the sin again
 //
-// Because of WHERE the 13 happens. The first version blessed the number
-// production actually got. This one pins the number a fold gets when it runs
-// OUTSIDE resolution — which R6 calls the bug rather than a mode. Production
-// folds inside, where one door installs the cast unconditionally, and that is
-// pinned a level up by session's TestAMonksUnarmoredDefenseReachesTheJoinedAC
-// (Join → resolution.ProjectCharacter → 15 on the wire).
+// It pinned the number a fold gets OUTSIDE resolution, reasoning that R6 calls
+// that the bug and production folds inside. Production did not: rpg-api folded
+// exactly this way on equip and saved a monk's AC without WIS
+// (rpg-toolkit#1965 tier 1 #2). A test that keeps a wrong number "visible" is
+// still a test that passes while the wrong number ships.
 //
-// Keeping the 13 visible here is the point. It is the observable edge of the
-// migration: any caller still folding an AC chain on a bare context is one
-// that has to come to resolution, and it now says so in a test instead of
-// being discovered as a wrong number in somebody's character sheet.
+// So the bare context now REFUSES with gamectx.ErrNotInCast. Any caller still
+// folding an AC chain outside resolution learns it from an error, not from a
+// sheet. Production's path is pinned a level up by session's
+// TestAMonksUnarmoredDefenseReachesTheJoinedAC (Join →
+// resolution.ProjectCharacter → 15 on the wire).
 func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainReadsTheCast() {
 	s.Run("Monk AC chain reads WIS off the installed cast", func() {
 		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
@@ -488,9 +490,8 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainReadsTheCast() {
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 		s.T().Log("")
 		s.T().Log("  With the cast installed the monk reads its own sheet and folds")
-		s.T().Log("  15. With a bare context nobody can name this character, the")
-		s.T().Log("  chain is left untouched, and 13 is what a fold outside")
-		s.T().Log("  resolution is worth.")
+		s.T().Log("  15. With a bare context nobody can name this character, and")
+		s.T().Log("  the fold refuses rather than answering 13.")
 		s.T().Log("")
 
 		monkWithUD := &character.Data{
@@ -558,22 +559,14 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainReadsTheCast() {
 		}
 		s.True(hasWIS, "the WIS component must be attributed in the breakdown, not just folded into the total")
 
-		// WITHOUT it: nobody can name this character, so the condition leaves
-		// the chain alone. NOT an error — an erroring contributor would take
-		// every other AC contributor down with it, which is the failure this
-		// whole channel exists to stop.
+		// WITHOUT it: nobody can name this character, so the fold refuses.
+		// 13 would be base armour for a monk with Unarmored Defense — a wrong
+		// AC, not a smaller one.
 		bare, bareErr := monk.EffectiveAC(context.Background())
-		s.Require().NoError(bareErr,
-			"a condition that cannot answer leaves the chain untouched; it must not poison the fold")
-
-		s.T().Logf("  Monk EffectiveAC (bare context):  %d", bare.Total)
-
-		s.Equal(13, bare.Total,
-			"10 + DEX(+3) and nothing else: a fold outside resolution has no cast to read")
-		for _, comp := range bare.Components {
-			s.NotEqual(combat.ACSourceFeature, comp.Type,
-				"with no cast there is no feature contribution to attribute")
-		}
+		s.Require().ErrorIs(bareErr, gamectx.ErrNotInCast,
+			"a fold outside resolution has no cast to read, and says so")
+		s.Nil(bare, "a refused read returns no breakdown to be mistaken for an answer")
+		s.T().Logf("  Monk EffectiveAC (bare context):  refused (%v)", bareErr)
 	})
 }
 

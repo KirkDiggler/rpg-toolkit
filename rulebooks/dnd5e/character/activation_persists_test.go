@@ -73,7 +73,7 @@ func (s *ActivationPersistsTestSuite) activated(ability *core.Ref) *Data {
 	s.Require().NoError(err)
 	s.Require().True(out.Success, "activation must succeed: %s", out.Error)
 
-	return char.ToData()
+	return mustToData(s.T(), char)
 }
 
 func conditionRefs(data *Data) []string {

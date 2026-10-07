@@ -212,7 +212,7 @@ func TestLongRestRestoresTheLevelOneSpellSlotResource(t *testing.T) {
 
 	require.NoError(t, char.LongRest(ctx))
 	require.Equal(t, 2, char.GetResource(resources.SpellSlotLevel1).Current())
-	require.Equal(t, 2, char.ToData().Resources[resources.SpellSlotLevel1].Current)
+	require.Equal(t, 2, mustToData(t, char).Resources[resources.SpellSlotLevel1].Current)
 }
 
 func TestLongRestClearsPersistedActionEconomy(t *testing.T) {
@@ -236,14 +236,14 @@ func TestLongRestClearsPersistedActionEconomy(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, char.Cleanup(ctx)) })
 
 	require.NoError(t, char.LongRest(ctx))
-	got := char.ToData()
+	got := mustToData(t, char)
 	require.Nil(t, got.ActionEconomy, "a completed long rest must not persist a prior combat turn")
 	require.False(t, char.InCombat())
 	require.True(t, char.IsDirty(), "clearing persisted combat state must be saved")
 
 	_, err = char.StartTurn(ctx, &StartTurnInput{TurnNumber: 1, Speed: 35})
 	require.NoError(t, err)
-	fresh := char.ToData().ActionEconomy
+	fresh := mustToData(t, char).ActionEconomy
 	require.NotNil(t, fresh)
 	require.Equal(t, 1, fresh.TurnNumber)
 	require.Equal(t, 1, fresh.ActionsRemaining)
@@ -280,7 +280,7 @@ func TestLongRestRetainsCombatEconomyWhenRestEventPublicationFails(t *testing.T)
 	// error before any character-owned rest observer can react.
 	require.NoError(t, Attach(ctx, char, bus))
 	t.Cleanup(func() { require.NoError(t, char.Cleanup(ctx)) })
-	before := char.ToData().ActionEconomy
+	before := mustToData(t, char).ActionEconomy
 	require.NotNil(t, before)
 
 	err = char.LongRest(ctx)
@@ -288,7 +288,7 @@ func TestLongRestRetainsCombatEconomyWhenRestEventPublicationFails(t *testing.T)
 	require.ErrorIs(t, err, publicationFailure)
 	require.True(t, char.InCombat(), "a failed rest publication must not exit combat")
 
-	after := char.ToData().ActionEconomy
+	after := mustToData(t, char).ActionEconomy
 	require.NotNil(t, after)
 	require.Equal(t, before, after, "ExitCombat must run only after successful rest publication")
 }
@@ -303,7 +303,7 @@ func TestLongRestKeepsAbsentActionEconomyAbsent(t *testing.T) {
 
 	require.NoError(t, char.LongRest(ctx))
 	require.NoError(t, char.LongRest(ctx))
-	require.Nil(t, char.ToData().ActionEconomy)
+	require.Nil(t, mustToData(t, char).ActionEconomy)
 	require.False(t, char.InCombat())
 }
 
@@ -326,7 +326,7 @@ func TestShortRestRetainsPersistedActionEconomy(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, char.Cleanup(ctx)) })
 
 	require.NoError(t, char.ShortRest(ctx))
-	got := char.ToData().ActionEconomy
+	got := mustToData(t, char).ActionEconomy
 	require.NotNil(t, got, "a short rest must not leave combat")
 	require.True(t, char.InCombat())
 	require.Equal(t, 1, got.TurnNumber)
@@ -412,7 +412,7 @@ func TestLongRestPersistsCompleteRecoveryOnAttachedSheet(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, char.Cleanup(ctx)) })
 
 	require.NoError(t, char.LongRest(ctx))
-	got := char.ToData()
+	got := mustToData(t, char)
 	require.Equal(t, 36, got.HitPoints)
 	require.Equal(t, 36, got.MaxHitPoints)
 	if got.DeathSaveState != nil {

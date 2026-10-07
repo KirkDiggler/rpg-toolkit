@@ -465,6 +465,7 @@ var castContent = map[Spell]castProfileBuilder{
 				MinTargets: 1, MaxTargets: 1,
 				Effects: []actions.CastEffect{{
 					Recipient: actions.CastRecipientTarget, Ref: *refs.Conditions.Sanctuary(), CounterpartKey: "source_id",
+					SaveDCKey: "save_dc",
 				}, {
 					Recipient: actions.CastRecipientTarget, Ref: *refs.Conditions.SanctuaryImmune(), CounterpartKey: "source_id",
 					IndependentDuration: true,

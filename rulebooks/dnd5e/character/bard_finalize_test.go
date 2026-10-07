@@ -130,7 +130,7 @@ func (s *BardFinalizeSuite) TestTheFeatureIsOnTheSheet() {
 // leaking back into the serialized character shape.
 func (s *BardFinalizeSuite) TestNoLegacySpellSlotsProjection() {
 	char := s.finalize(16)
-	raw, err := json.Marshal(char.ToData())
+	raw, err := json.Marshal(mustToData(s.T(), char))
 	s.Require().NoError(err)
 	s.NotContains(string(raw), "spell_slots")
 }
@@ -160,7 +160,7 @@ func (s *BardFinalizeSuite) TestPoolIsALongRestResource() {
 func (s *BardFinalizeSuite) TestTheChosenInstrumentsBecomeProficiencies() {
 	char := s.finalize(16)
 
-	s.Subset(char.ToData().ToolProficiencies, []proficiencies.Tool{
+	s.Subset(mustToData(s.T(), char).ToolProficiencies, []proficiencies.Tool{
 		proficiencies.ToolLute, proficiencies.ToolFlute, proficiencies.ToolDrum,
 	}, "a bard who chose three instruments is proficient with three instruments")
 }
@@ -183,7 +183,7 @@ func (s *BardFinalizeSuite) TestTheBardWalksInWithArmourAndADagger() {
 	char := s.finalize(16)
 
 	carried := map[string]int{}
-	for _, item := range char.ToData().Inventory {
+	for _, item := range mustToData(s.T(), char).Inventory {
 		carried[item.ID] += item.Quantity
 	}
 
@@ -199,7 +199,7 @@ func (s *BardFinalizeSuite) TestTheBardWalksInWithArmourAndADagger() {
 func (s *BardFinalizeSuite) TestNothingIsEquippedAtCreation() {
 	char := s.finalize(16)
 
-	for slot, item := range char.ToData().EquipmentSlots {
+	for slot, item := range mustToData(s.T(), char).EquipmentSlots {
 		s.Empty(item, "slot %q is filled at creation", slot)
 	}
 }

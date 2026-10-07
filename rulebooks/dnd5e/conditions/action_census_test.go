@@ -130,7 +130,7 @@ func (s *actionCensusSuite) TestNotYetAnsweringYieldsUnavailableRow() {
 // sanctuary is a ward on the rogue, an effect whose rule cannot yet answer.
 func (s *actionCensusSuite) sanctuary() *SanctuaryCondition {
 	ward, err := NewSanctuaryCondition(NewSanctuaryConditionInput{
-		MemberID: "rogue", SourceID: "cleric", SourceRef: refs.Spells.Sanctuary(),
+		MemberID: "rogue", SourceID: "cleric", SourceRef: refs.Spells.Sanctuary(), SaveDC: 13,
 	})
 	s.Require().NoError(err)
 	return ward

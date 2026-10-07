@@ -1123,8 +1123,14 @@ func (c *Character) UnequipItem(slot InventorySlot) error {
 	return c.removeReleasedEquipmentConditions(nil)
 }
 
-// ToData converts the character to its persistent data form
-func (c *Character) ToData() *Data {
+// ToData converts the character to its persistent data form.
+//
+// It returns an error, and no data, when any feature or condition cannot
+// serialize itself. It used to skip that entry and return the rest, which
+// wrote a sheet that had silently lost an effect — the save-side twin of a
+// loader that drops what it cannot read (rpg-toolkit#948, #1965). A record
+// missing a condition is not a smaller truth; nothing may persist it.
+func (c *Character) ToData() (*Data, error) {
 	data := &Data{
 		ID:       c.id,
 		PlayerID: c.playerID,
@@ -1192,9 +1198,7 @@ func (c *Character) ToData() *Data {
 		// Use the feature's ToJSON method to get the serialized form
 		jsonData, err := feature.ToJSON()
 		if err != nil {
-			// Skip features that can't be serialized
-			// TODO: Consider how to handle serialization errors
-			continue
+			return nil, rpgerr.Wrapf(err, "character %s: serialize feature %q", c.id, refString(feature.Ref()))
 		}
 		// The feature's ToJSON already includes the fully qualified ref
 		data.Features = append(data.Features, jsonData)
@@ -1215,14 +1219,21 @@ func (c *Character) ToData() *Data {
 		// Use the condition's ToJSON method to get the serialized form
 		jsonData, err := condition.ToJSON()
 		if err != nil {
-			// Skip conditions that can't be serialized
-			// TODO: Consider how to handle serialization errors
-			continue
+			return nil, rpgerr.Wrapf(err, "character %s: serialize condition %q", c.id, refString(condition.Ref()))
 		}
 		data.Conditions = append(data.Conditions, jsonData)
 	}
 
-	return data
+	return data, nil
+}
+
+// refString names an effect by its ref for an error message, saying so when
+// the effect has none rather than dereferencing nil.
+func refString(ref *core.Ref) string {
+	if ref == nil {
+		return "<nil ref>"
+	}
+	return ref.String()
 }
 
 // subscribeToEvents subscribes the character to gameplay events on the bus it
@@ -1710,6 +1721,15 @@ func calculateShieldAC(shieldItem *armor.Armor) combat.ACComponent {
 // same reason: this used to swallow both the publish and the execute error and
 // return whatever the breakdown happened to hold, which meant a broken
 // contributor degraded the total instead of failing the read.
+//
+// Attached is not always enough. A contributor that reads its holder out of
+// the installed cast — Unarmored Defense reads WIS or CON — refuses the fold
+// with [gamectx.ErrNotInCast] when no cast holding this character is on ctx,
+// and that refusal is returned here. Attaching the sheet to a fresh bus and
+// folding on a bare context is therefore an error for a monk or barbarian, not
+// base armour (rpg-toolkit#1965). The cast is installed by resolution's one
+// door; a caller holding a record asks resolution.ProjectCharacter, which
+// loads, attaches, installs the cast and folds in one call.
 //
 // Callers holding a sheet from the bus-free [Load] must [Attach] it before
 // asking. A stat block that has no chain to fold wants [Character.AC].

@@ -453,8 +453,8 @@ The canonical `ToData` / `LoadFromData` round-trip lives here:
 char := character.New(config)
 char.Finalize()
 
-// Serialize (what rpg-api stores)
-data := char.ToData()
+// Serialize (what rpg-api stores); refuses rather than drop an effect
+data, err := char.ToData()
 
 // Reconstitute (what rpg-api does before any rule call)
 newChar, err := character.LoadFromData(ctx, data, bus)

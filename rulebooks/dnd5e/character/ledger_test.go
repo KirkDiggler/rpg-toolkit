@@ -117,7 +117,7 @@ func (s *SheetLedgerTestSuite) TestSpellSlotResourceSpendSurvivesReload() {
 	s.Require().NoError(err)
 	s.Require().NoError(char.UseResource(resources.SpellSlotLevel1, 1))
 
-	loaded, err := Load(s.ctx, char.ToData())
+	loaded, err := Load(s.ctx, mustToData(s.T(), char))
 	s.Require().NoError(err)
 	s.Equal(1, loaded.GetResource(resources.SpellSlotLevel1).Current())
 	s.Equal(2, loaded.GetResource(resources.SpellSlotLevel1).Maximum())

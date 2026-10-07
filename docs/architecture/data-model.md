@@ -122,7 +122,7 @@ type Data struct {
 
 Roundtrip:
 ```go
-data := char.ToData()               // serialize to Data struct
+data, err := char.ToData()          // serialize to Data struct; refuses if any effect cannot serialize
 // rpg-api stores data as JSON in Redis
 char, err := LoadFromData(ctx, data, bus)  // reconstitute live character
 ```
