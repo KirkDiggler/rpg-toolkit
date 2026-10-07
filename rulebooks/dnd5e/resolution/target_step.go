@@ -5,11 +5,13 @@ package resolution
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
@@ -31,6 +33,14 @@ type targetStepInput struct {
 	// Halving is set when a made save meets a Half gate, and names the save's
 	// cause for the halving line. Nil for every other delivery.
 	Halving *damageHalving
+
+	// Reductions and Multipliers are target answers settled before the step
+	// opens: a damage-changing reaction rolled by the machine that held its
+	// window, which closes before the step (R6). They open the incoming
+	// fold's answer lists and no subscriber may rewrite them. No machine
+	// supplies one yet; the window that will is the pause envelope design's.
+	Reductions  []dnd5eEvents.DamageReduction
+	Multipliers []dnd5eEvents.DamageMultiplier
 
 	Cast       *Participants
 	IsCritical bool
@@ -96,9 +106,10 @@ func foldDamage(in targetStepInput) Gather {
 //  1. The dealt fold, on [dnd5eEvents.DamageChain]: the source's rules add
 //     what it deals. Nothing the target answers is folded here.
 //  2. A made save's halving, when one met a Half gate ([halveDamage]).
-//  3. The incoming fold, on [dnd5eEvents.IncomingDamageChain], executed over a
-//     clone of the event sent: the target's rules append reductions and
-//     multipliers. A fold that changed what it was handed is refused.
+//  3. The incoming fold, on [dnd5eEvents.IncomingDamageChain]: one clone of
+//     the event sent is published and the fold executes over another, so the
+//     target's rules append reductions and multipliers and cannot touch what
+//     was sent. A fold that changed what it was handed is refused.
 //  4. Combat's settlement ([combat.SettleDamage]), per damage type.
 //  5. The trace ([receivedTrace]), and the refusal to apply a number it does
 //     not explain.
@@ -110,7 +121,9 @@ func foldDamage(in targetStepInput) Gather {
 //
 // Errors: the dealt or incoming fold failing, a halving that cannot be built
 // ([halveDamage]), an incoming fold that altered what it was handed (wrapping
-// [dnd5eEvents.ErrTargetAnswerAltered]), a settlement combat refuses, or a
+// [dnd5eEvents.ErrTargetAnswerAltered]), a malformed target answer (wrapping
+// [contributions.ErrRuleCannotAnswer] and [dnd5eEvents.ErrMalformedTargetAnswer]),
+// a settlement combat refuses, or a
 // trace that does not explain the settled number ([ErrBadAction]).
 func receiveDamage(ctx context.Context, bus events.EventBus, in targetStepInput) (Step, error) {
 	target, err := combatantFor(in.Cast, in.Dealt.TargetID)
@@ -138,16 +151,21 @@ func receiveDamage(ctx context.Context, bus events.EventBus, in targetStepInput)
 	}
 
 	sent, err := dnd5eEvents.NewIncomingDamageEvent(dnd5eEvents.IncomingDamageInput{
-		TargetID: in.Dealt.TargetID,
-		SourceID: in.Dealt.AttackerID,
-		Dealt:    dealt,
-		Frame:    frame,
+		TargetID:    in.Dealt.TargetID,
+		SourceID:    in.Dealt.AttackerID,
+		Dealt:       dealt,
+		Frame:       frame,
+		Reductions:  in.Reductions,
+		Multipliers: in.Multipliers,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("incoming damage: %w", err)
+		return nil, targetAnswerError(fmt.Errorf("incoming damage: %w", err))
 	}
+	// sent never leaves this function: subscribers are handed one clone and
+	// the fold runs over another, so nothing a handler does can rewrite what
+	// CheckUnaltered compares against.
 	incoming := events.NewStagedChain[*dnd5eEvents.IncomingDamageEvent](combat.ModifierStages)
-	answering, err := dnd5eEvents.IncomingDamageChain.On(bus).PublishWithChain(ctx, sent, incoming)
+	answering, err := dnd5eEvents.IncomingDamageChain.On(bus).PublishWithChain(ctx, sent.Clone(), incoming)
 	if err != nil {
 		return nil, fmt.Errorf("publish incoming damage: %w", err)
 	}
@@ -156,7 +174,7 @@ func receiveDamage(ctx context.Context, bus events.EventBus, in targetStepInput)
 		return nil, fmt.Errorf("execute incoming damage: %w", err)
 	}
 	if err := answered.CheckUnaltered(sent); err != nil {
-		return nil, fmt.Errorf("incoming damage on %q: %w", in.Dealt.TargetID, err)
+		return nil, targetAnswerError(fmt.Errorf("incoming damage on %q: %w", in.Dealt.TargetID, err))
 	}
 
 	settlement, err := combat.SettleDamage(&combat.SettleDamageInput{
@@ -165,7 +183,7 @@ func receiveDamage(ctx context.Context, bus events.EventBus, in targetStepInput)
 		Multipliers: answered.Multipliers,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("settle damage on %q: %w", in.Dealt.TargetID, err)
+		return nil, targetAnswerError(fmt.Errorf("settle damage on %q: %w", in.Dealt.TargetID, err))
 	}
 	trace, err := receivedTrace(sent.Dealt(), answered.Reductions, settlement)
 	if err != nil {
@@ -223,6 +241,18 @@ func receiveDamage(ctx context.Context, bus events.EventBus, in targetStepInput)
 		}
 		return runFollowUps(reported, ups, 0, in.Roller, record, in.Then)
 	}), nil
+}
+
+// targetAnswerError classifies a refusal caused by a target rule's malformed
+// answer ([dnd5eEvents.ErrMalformedTargetAnswer]) as a rule that cannot
+// answer ([contributions.ErrRuleCannotAnswer]): the defect is in the rule
+// that answered, not in the world or the action. Every other error passes
+// through unchanged.
+func targetAnswerError(err error) error {
+	if errors.Is(err, dnd5eEvents.ErrMalformedTargetAnswer) {
+		return fmt.Errorf("%w: %w", contributions.ErrRuleCannotAnswer, err)
+	}
+	return err
 }
 
 // receivedTrace builds the one trace from the settlement: the dealt
