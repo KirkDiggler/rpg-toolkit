@@ -912,12 +912,11 @@ func place(
 		profile = &ExplorationData{}
 	}
 	placed, err := scope.enc.Join(&encounter.JoinInput{
-		PrivateDiscoveries:  profile.PrivateDiscoveries,
-		RetainedDiscoveries: profile.Checks,
-		Member:              encounter.MemberID(id),
-		Kind:                encounter.MemberKind(kind),
-		Name:                name,
-		Cell:                at,
+		PrivateDiscoveries: profile.PrivateDiscoveries,
+		Member:             encounter.MemberID(id),
+		Kind:               encounter.MemberKind(kind),
+		Name:               name,
+		Cell:               at,
 		// SpeedFeet, SightFeet, Actions and Targeting are this member's
 		// static facts (rpg-project#254) — what a TurnDriver reads through
 		// MonsterView once the clock lands on this member with nobody
