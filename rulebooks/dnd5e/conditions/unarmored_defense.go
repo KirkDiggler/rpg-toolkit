@@ -18,7 +18,6 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
 // UnarmoredDefenseType distinguishes between class variants of Unarmored Defense
@@ -144,23 +143,6 @@ func (u *UnarmoredDefenseCondition) loadJSON(data json.RawMessage) error {
 	u.Source = udData.Source
 
 	return nil
-}
-
-// CalculateAC computes the AC for this unarmored defense type given ability scores.
-// Returns the unarmored AC (10 + DEX + secondary ability).
-func (u *UnarmoredDefenseCondition) CalculateAC(scores shared.AbilityScores) int {
-	baseAC := 10
-	dexMod := scores.Modifier(abilities.DEX)
-
-	var secondaryMod int
-	switch u.Type {
-	case UnarmoredDefenseBarbarian:
-		secondaryMod = scores.Modifier(abilities.CON)
-	case UnarmoredDefenseMonk:
-		secondaryMod = scores.Modifier(abilities.WIS)
-	}
-
-	return baseAC + dexMod + secondaryMod
 }
 
 // SecondaryAbility returns the secondary ability used for this type of unarmored defense

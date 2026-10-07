@@ -12,6 +12,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
@@ -242,33 +243,39 @@ func (s *attackEffectRulesSuite) TestDivineFavorAnswersFromTheWeaponPool() {
 }
 
 func (s *attackEffectRulesSuite) TestBrutalCriticalAnswersFromTheWeaponPool() {
-	rule := NewBrutalCriticalCondition(BrutalCriticalInput{MemberID: "rogue", Level: 9})
+	rule := NewBrutalCriticalCondition(BrutalCriticalInput{MemberID: "rogue"})
+	atLevel := func(level int) contributions.Frame {
+		frame := rogueFrame(false)
+		frame.ActorClassLevels = classLevels(classes.Barbarian, level)
+		return frame
+	}
 
-	answer := s.answer(rule, rogueFrame(false))
+	answer := s.answer(rule, atLevel(9))
 	s.Equal(contributions.Applies, answer.Decision.Applicability)
 	s.Equal("The attack has a weapon damage die", answer.Decision.Reason)
 	s.Equal("+1 weapon damage die on a critical hit", answer.Benefit)
 
-	answer = s.answer(NewBrutalCriticalCondition(BrutalCriticalInput{MemberID: "rogue", Level: 13}), rogueFrame(false))
-	s.Equal("+2 weapon damage dice on a critical hit", answer.Benefit)
+	answer = s.answer(rule, atLevel(13))
+	s.Equal("+2 weapon damage dice on a critical hit", answer.Benefit,
+		"the same condition reads the frame's level, not a stored one")
 
-	answer = s.answer(NewBrutalCriticalCondition(BrutalCriticalInput{MemberID: "rogue", Level: 5}), rogueFrame(false))
+	answer = s.answer(rule, atLevel(5))
 	s.Equal(contributions.DoesNotApply, answer.Decision.Applicability)
 	s.Equal("Brutal Critical adds dice from 9th level", answer.Decision.Reason)
 
-	spell := rogueFrame(false)
+	spell := atLevel(9)
 	spell.Action.WeaponPool = contributions.Known(false)
 	answer = s.answer(rule, spell)
 	s.Equal(contributions.DoesNotApply, answer.Decision.Applicability)
 	s.Equal("Brutal Critical requires a weapon damage die", answer.Decision.Reason)
 
-	unknown := rogueFrame(false)
+	unknown := atLevel(9)
 	unknown.Action.WeaponPool = contributions.Unknown[bool]()
 	answer = s.answer(rule, unknown)
 	s.Equal(contributions.Depends, answer.Decision.Applicability)
 	s.Equal("Depends on the attack's weapon", answer.Decision.Reason)
 
-	other := rogueFrame(false)
+	other := atLevel(9)
 	other.Actor = "fighter"
 	answer = s.answer(rule, other)
 	s.Equal(contributions.DoesNotApply, answer.Decision.Applicability)
@@ -433,7 +440,7 @@ func (s *ruleHelpers) publishDamage(bus events.EventBus, event *dnd5eEvents.Dama
 func (s *attackEffectRulesSuite) TestDamageHandlersRejectAZeroFrame() {
 	for name, condition := range map[string]dnd5eEvents.ConditionBehavior{
 		"divine favor":    s.divineFavor(),
-		"brutal critical": NewBrutalCriticalCondition(BrutalCriticalInput{MemberID: "rogue", Level: 9}),
+		"brutal critical": NewBrutalCriticalCondition(BrutalCriticalInput{MemberID: "rogue"}),
 	} {
 		s.Run(name, func() {
 			bus := events.NewEventBus()

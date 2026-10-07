@@ -966,7 +966,6 @@ func (s *CharacterLoadFromDataRoundTripSuite) minimalSpellcasterData() *Data {
 		ProficiencyBonus: 2,
 		HitPoints:        8,
 		MaxHitPoints:     8,
-		ArmorClass:       12,
 		AbilityScores: shared.AbilityScores{
 			abilities.INT: 16,
 		},

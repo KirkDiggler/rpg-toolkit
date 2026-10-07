@@ -26,7 +26,7 @@ func (s *CharacterAttackTestSuite) monkSheet(mainHand weapons.WeaponID, str, dex
 	data.AbilityScores[abilities.STR] = str
 	data.AbilityScores[abilities.DEX] = dex
 	martialArts, err := conditions.NewMartialArtsCondition(conditions.MartialArtsInput{
-		MemberID: id, MonkLevel: 1,
+		MemberID: id,
 	}).ToJSON()
 	s.Require().NoError(err)
 	data.Conditions = append(data.Conditions, martialArts)

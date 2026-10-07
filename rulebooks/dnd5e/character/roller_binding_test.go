@@ -112,7 +112,6 @@ func rollerBindingSheet(conditions ...json.RawMessage) *Data {
 		},
 		HitPoints:    20,
 		MaxHitPoints: 30,
-		ArmorClass:   16,
 		Conditions:   conditions,
 	}
 }

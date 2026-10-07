@@ -67,7 +67,6 @@ func createTestFighterCharacter(t *testing.T, bus events.EventBus) *Character {
 		},
 		hitPoints:    28,
 		maxHitPoints: 28,
-		armorClass:   18,
 		skills:       make(map[skills.Skill]shared.ProficiencyLevel),
 		savingThrows: make(map[abilities.Ability]shared.ProficiencyLevel),
 		resources:    make(map[coreResources.ResourceKey]*combat.RecoverableResource),
@@ -182,7 +181,6 @@ func (s *ActionEconomyTestSuite) TestLoadFromData_RoundTrip() {
 		},
 		HitPoints:    44,
 		MaxHitPoints: 44,
-		ArmorClass:   18,
 		Skills:       make(map[skills.Skill]shared.ProficiencyLevel),
 		SavingThrows: make(map[abilities.Ability]shared.ProficiencyLevel),
 		ActionEconomy: &ActionEconomyData{
@@ -296,7 +294,6 @@ func (s *ActionEconomyTestSuite) TestLoadFromData_NilActionEconomy() {
 		},
 		HitPoints:    44,
 		MaxHitPoints: 44,
-		ArmorClass:   18,
 		Skills:       make(map[skills.Skill]shared.ProficiencyLevel),
 		SavingThrows: make(map[abilities.Ability]shared.ProficiencyLevel),
 	}
@@ -533,7 +530,6 @@ func (s *ActionEconomyTestSuite) TestTwoWeaponsDoNotSynthesizeAnActivateAbility(
 		},
 		HitPoints:    12,
 		MaxHitPoints: 12,
-		ArmorClass:   14,
 		Inventory: []InventoryItemData{
 			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Shortsword), Quantity: 1},
 			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Scimitar), Quantity: 1},

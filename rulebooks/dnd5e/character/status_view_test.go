@@ -210,8 +210,8 @@ func (s *canonicalEffectDetailsSuite) TestReadPreservesCharacterAndEffectIdentit
 	})
 	s.Require().NoError(err)
 	raging := &conditions.RagingCondition{
-		CharacterID: char.GetID(), DamageBonus: 2, Level: 1,
-		Source: refs.Features.Rage().String(), TurnsActive: 3, WasHitThisTurn: true,
+		CharacterID: char.GetID(),
+		Source:      refs.Features.Rage().String(), TurnsActive: 3, WasHitThisTurn: true,
 	}
 	char.conditions = append(char.conditions, raging, blessed)
 	beforeData := mustToData(s.T(), char)

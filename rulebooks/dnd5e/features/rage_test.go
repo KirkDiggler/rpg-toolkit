@@ -10,6 +10,7 @@ import (
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
@@ -27,7 +28,13 @@ type StubEntity struct {
 	id         string
 	resources  map[coreResources.ResourceKey]int
 	conditions []dnd5eEvents.ConditionBehavior
+	// levels answers the named class-level question; a class it does not
+	// name holds zero levels.
+	levels map[classes.Class]int
 }
+
+// ClassLevel answers from the stub's level record.
+func (m *StubEntity) ClassLevel(class classes.Class) int { return m.levels[class] }
 
 // GetConditions reports the stub's own held conditions.
 func (m *StubEntity) GetConditions() []dnd5eEvents.ConditionBehavior { return m.conditions }
@@ -55,29 +62,31 @@ func (m *StubEntity) UseResource(key coreResources.ResourceKey, amount int) erro
 	return nil
 }
 
-// newStubEntityWithRage creates a stub entity with rage charges for testing
+// newStubEntityWithRage creates a barbarian stub of the given level holding
+// that level's rage charges (PHB p.48).
 func newStubEntityWithRage(id string, level int) *StubEntity {
-	maxUses := calculateRageUses(level)
+	maxUses := map[int]int{1: 2, 2: 2, 3: 3, 5: 3, 6: 4, 12: 5, 17: 6, 20: 0}[level]
 	return &StubEntity{
 		id: id,
 		resources: map[coreResources.ResourceKey]int{
 			resources.RageCharges: maxUses,
 		},
+		levels: map[classes.Class]int{classes.Barbarian: level},
 	}
 }
 
-// newRageForTest creates a rage feature for testing
-func newRageForTest(id string, level int) *Rage {
+// newRageForTest creates a rage feature for testing. It holds no level: the
+// owner answers it.
+func newRageForTest(id string) *Rage {
 	return &Rage{
-		id:    id,
-		name:  "Rage",
-		level: level,
+		id:   id,
+		name: "Rage",
 	}
 }
 
 func (s *RageTestSuite) SetupTest() {
 	s.bus = events.NewEventBus()
-	s.rage = newRageForTest("rage-feature", 3) // Level 3 barbarian
+	s.rage = newRageForTest("rage-feature")
 	s.ctx = context.Background()
 }
 
@@ -127,58 +136,33 @@ func (s *RageTestSuite) TestActivatePublishesCondition() {
 	s.True(ok, "Event condition should be *RagingCondition")
 	s.NotNil(ragingCond)
 	s.Equal("barbarian-1", ragingCond.CharacterID)
-	s.Equal(2, ragingCond.DamageBonus) // Level 3 = +2 damage
-	s.Equal(3, ragingCond.Level)
+	raw, err := ragingCond.ToJSON()
+	s.Require().NoError(err)
+	s.NotContains(string(raw), "level", "the raging condition stores no barbarian level")
+	s.NotContains(string(raw), "damage_bonus", "the bonus is read from each attack's frame")
 	s.Equal("rage-feature", ragingCond.Source)
 }
 
-func (s *RageTestSuite) TestRageUsesPerLevel() {
-	testCases := []struct {
-		level    int
-		expected int
-	}{
-		{1, 2},
-		{2, 2},
-		{3, 3},
-		{5, 3},
-		{6, 4},
-		{11, 4},
-		{12, 5},
-		{16, 5},
-		{17, 6},
-		{19, 6},
-		{20, -1}, // Unlimited
-	}
-
-	for _, tc := range testCases {
-		actual := calculateRageUses(tc.level)
-		s.Equal(tc.expected, actual, "Level %d should have %d rage uses", tc.level, tc.expected)
-	}
-}
-
-func (s *RageTestSuite) TestRageDamagePerLevel() {
-	testCases := []struct {
-		level    int
-		expected int
-	}{
-		{1, 2},
-		{8, 2},
-		{9, 3},
-		{15, 3},
-		{16, 4},
-		{20, 4},
-	}
-
-	for _, tc := range testCases {
-		actual := calculateRageDamage(tc.level)
-		s.Equal(tc.expected, actual, "Level %d should have +%d rage damage", tc.level, tc.expected)
+// TestRageRefusesAnOwnerWithNoBarbarianLevels: whether rages are unlimited
+// is asked of the owner, so an owner that cannot answer its barbarian level,
+// or holds none, is refused rather than read as level one.
+func (s *RageTestSuite) TestRageRefusesAnOwnerWithNoBarbarianLevels() {
+	for name, levels := range map[string]map[classes.Class]int{
+		"no barbarian levels": {classes.Fighter: 3},
+		"no levels at all":    nil,
+	} {
+		owner := newStubEntityWithRage("barbarian-1", 3)
+		owner.levels = levels
+		s.Error(s.rage.CanActivate(s.ctx, owner, FeatureInput{}), name)
+		s.Error(s.rage.Activate(s.ctx, owner, FeatureInput{Bus: s.bus}), name)
+		s.Equal(3, owner.resources[resources.RageCharges], "%s: no charge spent", name)
 	}
 }
 
 func (s *RageTestSuite) TestUnlimitedRagesAtLevel20() {
 	// Level 20 barbarians have unlimited rages - no resources needed
-	owner := &StubEntity{id: "barbarian-1"}
-	rage20 := newRageForTest("epic-rage", 20)
+	owner := &StubEntity{id: "barbarian-1", levels: map[classes.Class]int{classes.Barbarian: 20}}
+	rage20 := newRageForTest("epic-rage")
 
 	// Should be able to activate many times without consuming resources
 	for i := 0; i < 10; i++ {
@@ -205,7 +189,10 @@ func (s *RageTestSuite) TestLoadJSON() {
 
 	s.Equal("loaded-rage", rage.id)
 	s.Equal("Rage", rage.name)
-	s.Equal(5, rage.level)
+
+	resaved, err := rage.ToJSON()
+	s.Require().NoError(err)
+	s.NotContains(string(resaved), "level", "an old saved level is ignored, never re-written")
 }
 
 func (s *RageTestSuite) TestToJSON() {
@@ -219,16 +206,15 @@ func (s *RageTestSuite) TestToJSON() {
 
 	s.Equal(s.rage.id, loaded.id)
 	s.Equal(s.rage.name, loaded.name)
-	s.Equal(s.rage.level, loaded.level)
 }
 
 func (s *RageTestSuite) TestRageRefusedWhileAlreadyRaging() {
 	for _, level := range []int{3, 20} {
 		owner := newStubEntityWithRage("barbarian-1", level)
 		owner.conditions = []dnd5eEvents.ConditionBehavior{
-			&conditions.RagingCondition{CharacterID: "barbarian-1", DamageBonus: 2, Level: level},
+			&conditions.RagingCondition{CharacterID: "barbarian-1"},
 		}
-		rage := newRageForTest("rage-feature", level)
+		rage := newRageForTest("rage-feature")
 		chargesBefore := owner.resources[resources.RageCharges]
 
 		err := rage.CanActivate(s.ctx, owner, FeatureInput{})

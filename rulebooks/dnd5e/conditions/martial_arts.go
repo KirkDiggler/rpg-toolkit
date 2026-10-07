@@ -11,17 +11,19 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/weaponattack"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
-// MartialArtsData is the JSON structure for persisting martial arts condition state
+// MartialArtsData is the JSON structure for persisting martial arts condition
+// state. No monk level is stored; a blob saved with the old "monk_level" key
+// loads and the copy is ignored.
 type MartialArtsData struct {
-	Ref       *core.Ref `json:"ref"`
-	MemberID  string    `json:"member_id"`
-	MonkLevel int       `json:"monk_level"`
+	Ref      *core.Ref `json:"ref"`
+	MemberID string    `json:"member_id"`
 }
 
 // MartialArtsCondition represents the Monk's Martial Arts feature: unarmed
@@ -31,11 +33,12 @@ type MartialArtsData struct {
 // Both are settled at assembly, through [MartialArtsCondition.WeaponAttackOverride],
 // before any rule is asked and before any die is rolled — the attack's
 // ability and its damage die are the ones the swing uses, and no roll is made
-// and then discarded. The condition subscribes to nothing.
+// and then discarded. The condition subscribes to nothing. The Martial Arts
+// die scales with monk level, which the sheet hands the override with each
+// swing; the condition stores none.
 type MartialArtsCondition struct {
-	MemberID  string
-	MonkLevel int
-	bus       events.EventBus
+	MemberID string
+	bus      events.EventBus
 }
 
 // Ensure MartialArtsCondition implements dnd5eEvents.ConditionBehavior
@@ -70,20 +73,35 @@ func (ma *MartialArtsCondition) Remove(_ context.Context, _ events.EventBus) err
 // strike (an empty hand, or the bonus unarmed strike) or a monk weapon:
 // Dexterity is offered as the attack's ability, which assembly takes only when
 // its modifier is higher than the weapon's own ability, and an unarmed strike's
-// primary pool becomes the Martial Arts die for this monk's level. Any other
-// weapon gets no override.
-func (ma *MartialArtsCondition) WeaponAttackOverride(_, itemID string) *weaponattack.Override {
-	if itemID == "" {
-		return &weaponattack.Override{Dice: ma.getMartialArtsDice(), Ability: abilities.DEX}
+// primary pool becomes the Martial Arts die for the monk level the sheet's
+// level record answers at this swing. Any other weapon gets no override.
+//
+// An unarmed strike with no level record handed in, or from a holder with no
+// monk levels, is an error: the die cannot be answered, and zero is never read
+// as level one.
+func (ma *MartialArtsCondition) WeaponAttackOverride(
+	in *weaponattack.OverrideInput,
+) (*weaponattack.OverrideOutput, error) {
+	if in == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "martial arts: no attack assembly input")
 	}
-	unarmed, monk := martialArtsWeaponID(itemID)
+	unarmed, monk := in.ItemID == "", false
+	if !unarmed {
+		unarmed, monk = martialArtsWeaponID(in.ItemID)
+	}
 	switch {
 	case unarmed:
-		return &weaponattack.Override{Dice: ma.getMartialArtsDice(), Ability: abilities.DEX}
+		die, err := martialArtsDie(in.Levels)
+		if err != nil {
+			return nil, err
+		}
+		return &weaponattack.OverrideOutput{
+			Override: &weaponattack.Override{Dice: die, Ability: abilities.DEX},
+		}, nil
 	case monk:
-		return &weaponattack.Override{Ability: abilities.DEX}
+		return &weaponattack.OverrideOutput{Override: &weaponattack.Override{Ability: abilities.DEX}}, nil
 	default:
-		return nil
+		return &weaponattack.OverrideOutput{}, nil
 	}
 }
 
@@ -104,9 +122,8 @@ func martialArtsWeaponID(id string) (unarmed, monk bool) {
 // ToJSON converts the condition to JSON for persistence
 func (ma *MartialArtsCondition) ToJSON() (json.RawMessage, error) {
 	data := MartialArtsData{
-		Ref:       refs.Conditions.MartialArts(),
-		MemberID:  ma.MemberID,
-		MonkLevel: ma.MonkLevel,
+		Ref:      refs.Conditions.MartialArts(),
+		MemberID: ma.MemberID,
 	}
 	return json.Marshal(data)
 }
@@ -121,7 +138,6 @@ func (ma *MartialArtsCondition) loadJSON(data json.RawMessage) error {
 	}
 
 	ma.MemberID = maData.MemberID
-	ma.MonkLevel = maData.MonkLevel
 
 	return nil
 }
@@ -150,14 +166,31 @@ func IsMartialArtsWeapon(weaponRef *core.Ref) bool {
 	return isUnarmed || monkWeapon != nil
 }
 
-// getMartialArtsDice returns the damage dice for unarmed strikes based on monk level
-func (ma *MartialArtsCondition) getMartialArtsDice() string {
+// martialArtsDie returns the unarmed strike's Martial Arts die for the monk
+// level the holder's level record answers. No level record, or no monk
+// levels, is an error.
+func martialArtsDie(levels classes.LevelHolder) (string, error) {
+	if levels == nil {
+		return "", rpgerr.New(rpgerr.CodeInvalidArgument,
+			"martial arts: no level record handed to the attack assembly")
+	}
+	level := levels.ClassLevel(classes.Monk)
+	if level < 1 {
+		return "", rpgerr.New(rpgerr.CodePrerequisiteNotMet,
+			"martial arts: the holder has no monk levels, so the Martial Arts die cannot be answered")
+	}
+	return martialArtsDieAt(level), nil
+}
+
+// martialArtsDieAt is the Martial Arts die at a monk level of at least one:
+// 1d4, 1d6 from 5th, 1d8 from 11th, 1d10 from 17th.
+func martialArtsDieAt(level int) string {
 	switch {
-	case ma.MonkLevel >= 17:
+	case level >= 17:
 		return "1d10"
-	case ma.MonkLevel >= 11:
+	case level >= 11:
 		return "1d8"
-	case ma.MonkLevel >= 5:
+	case level >= 5:
 		return "1d6"
 	default:
 		return "1d4"
@@ -190,16 +223,16 @@ func isMonkWeapon(weapon *weapons.Weapon) bool {
 	return true
 }
 
-// MartialArtsInput provides configuration for creating a martial arts condition
+// MartialArtsInput provides configuration for creating a martial arts
+// condition. It takes no level: the die is read from the sheet's level record
+// at each swing.
 type MartialArtsInput struct {
-	MemberID  string
-	MonkLevel int
+	MemberID string
 }
 
 // NewMartialArtsCondition creates a new martial arts condition
 func NewMartialArtsCondition(input MartialArtsInput) *MartialArtsCondition {
 	return &MartialArtsCondition{
-		MemberID:  input.MemberID,
-		MonkLevel: input.MonkLevel,
+		MemberID: input.MemberID,
 	}
 }

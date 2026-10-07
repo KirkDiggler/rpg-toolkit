@@ -31,9 +31,11 @@ type mockDirtyCombatant struct {
 	proficiencyBonus int
 }
 
-func (m *mockDirtyCombatant) GetID() string                       { return m.id }
-func (m *mockDirtyCombatant) GetHitPoints() int                   { return m.hp }
-func (m *mockDirtyCombatant) GetMaxHitPoints() int                { return m.maxHP }
+func (m *mockDirtyCombatant) GetID() string        { return m.id }
+func (m *mockDirtyCombatant) GetHitPoints() int    { return m.hp }
+func (m *mockDirtyCombatant) GetMaxHitPoints() int { return m.maxHP }
+
+// AC is a flat number the member carries; GetEffectiveAC must not read it.
 func (m *mockDirtyCombatant) AC() int                             { return m.ac }
 func (m *mockDirtyCombatant) IsDirty() bool                       { return m.dirty }
 func (m *mockDirtyCombatant) AbilityScores() shared.AbilityScores { return m.abilityScores }
@@ -61,18 +63,16 @@ func (m *mockDirtyCombatant) ApplyDamage(ctx context.Context, input *combat.Appl
 	}
 }
 
-// Test that Combatant interface includes AC method
-func (s *CombatantDirtyTestSuite) TestCombatant_HasAC() {
-	combatant := &mockDirtyCombatant{
-		id:    "test-1",
-		hp:    20,
-		maxHP: 20,
-		ac:    15,
-	}
+// TestGetEffectiveAC_RefusesAMemberThatCannotFold: armour class is only a
+// fold. A member that does not fold is refused, even one still carrying a
+// flat AC() number — there is no stored armour class to fall back to.
+func (s *CombatantDirtyTestSuite) TestGetEffectiveAC_RefusesAMemberThatCannotFold() {
+	combatant := &mockDirtyCombatant{id: "test-1", hp: 20, maxHP: 20, ac: 15}
 
-	// This should compile - Combatant interface should have AC()
-	var c combat.Combatant = combatant
-	s.Equal(15, c.AC())
+	ac, err := combat.GetEffectiveAC(context.Background(), combatant)
+
+	s.Require().Error(err)
+	s.Zero(ac, "no fallback number is answered")
 }
 
 // Test that Combatant interface includes IsDirty method

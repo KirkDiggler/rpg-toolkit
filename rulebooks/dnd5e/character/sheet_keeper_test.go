@@ -117,7 +117,6 @@ func keeperSheet() *Data {
 		},
 		HitPoints:    10,
 		MaxHitPoints: 30,
-		ArmorClass:   14,
 		Resources: map[coreResources.ResourceKey]RecoverableResourceData{
 			resources.RageCharges: {Current: 1, Maximum: 3, ResetType: coreResources.ResetLongRest},
 		},

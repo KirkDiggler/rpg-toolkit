@@ -122,7 +122,7 @@ func (s *GrantTestSuite) TestGetGrants_Rogue_EndToEndConditionCreation() {
 	// Verify the condition ref can be parsed
 	condRef := level1.Conditions[0]
 	s.NotEmpty(condRef.Ref, "Condition ref should not be empty")
-	s.NotEmpty(condRef.Config, "Condition config should not be empty")
+	s.Empty(condRef.Config, "Sneak Attack's grant carries no level: the dice are read from the rogue's level at each attack")
 
 	// The full flow would call conditions.CreateFromRef with these values
 	// That's tested in conditions/factory_test.go - this test verifies the data is correct
@@ -281,7 +281,7 @@ func (s *GrantTestSuite) TestGetGrants_Barbarian_Level1Rage() {
 	rage := level1.Features[0]
 	s.Equal(refs.Features.Rage().String(), rage.Ref,
 		"Barbarian should have Rage feature")
-	s.NotEmpty(rage.Config, "Rage should have config (uses, damage_bonus)")
+	s.Empty(rage.Config, "Rage's grant carries no level-derived number: charges live on the character, the bonus is read at each attack")
 }
 
 func (s *GrantTestSuite) TestGetGrants_Barbarian_Level1UnarmoredDefense() {
@@ -394,8 +394,8 @@ func (s *GrantTestSuite) TestGetGrants_Monk_Level1MartialArts() {
 	}
 	s.Require().NotNil(martialArts,
 		"Monk should have Martial Arts condition")
-	s.NotEmpty(martialArts.Config,
-		"Martial Arts should have config (monk_level)")
+	s.Empty(martialArts.Config,
+		"Martial Arts' grant carries no monk level: the die is read from the sheet at each swing")
 }
 
 func (s *GrantTestSuite) TestGetGrants_Monk_NoFeaturesAtLevel1() {

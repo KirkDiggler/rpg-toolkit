@@ -69,7 +69,7 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 	case refs.Features.WardingFlare().ID:
 		feature = &WardingFlare{id: refs.Features.WardingFlare().ID, name: "Warding Flare", characterID: input.CharacterID}
 	case refs.Features.Rage().ID:
-		feature, err = createRage(input.Config, input.CharacterID)
+		feature = createRage()
 	case refs.Features.SecondWind().ID:
 		feature, err = createSecondWind(input.Config, input.CharacterID)
 	case refs.Features.WrathOfTheStorm().ID:
@@ -85,7 +85,7 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 	case refs.Features.RecklessAttack().ID:
 		feature, err = createRecklessAttack(input.Config, input.CharacterID)
 	case refs.Features.DeflectMissiles().ID:
-		feature, err = createDeflectMissiles(input.Config, input.CharacterID)
+		feature = createDeflectMissiles(input.CharacterID)
 	case refs.Features.BardicInspiration().ID:
 		feature = NewBardicInspiration()
 	default:
@@ -99,39 +99,21 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 	return &CreateFromRefOutput{Feature: feature}, nil
 }
 
-// rageConfig is the config structure for rage feature
-type rageConfig struct {
-	Level int `json:"level"` // Barbarian level (optional, for calculating damage bonus)
-}
-
-// createRage creates a rage feature from config.
+// createRage creates a rage feature. It takes no config: no barbarian level
+// is accepted, stored or defaulted — activation asks the owner.
 // Note: The rage resource (rage_charges) should be registered on the Character,
 // not on the feature itself.
-func createRage(config json.RawMessage, _ string) (*Rage, error) {
-	var cfg rageConfig
-	if len(config) > 0 {
-		if err := json.Unmarshal(config, &cfg); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to parse rage config")
-		}
-	}
-
-	// Default level to 1 if not specified
-	level := cfg.Level
-	if level == 0 {
-		level = 1
-	}
-
+func createRage() *Rage {
 	return &Rage{
-		id:    refs.Features.Rage().ID,
-		name:  "Rage",
-		level: level,
-	}, nil
+		id:   refs.Features.Rage().ID,
+		name: "Rage",
+	}
 }
 
-// secondWindConfig is the config structure for second wind feature
+// secondWindConfig is the config structure for second wind feature. It takes
+// no level: activation asks the owner its fighter level.
 type secondWindConfig struct {
-	Uses  int `json:"uses"`  // Number of uses (default 1)
-	Level int `json:"level"` // Fighter level (for healing calculation)
+	Uses int `json:"uses"` // Number of uses (default 1)
 }
 
 // createSecondWind creates a second wind feature from config
@@ -141,12 +123,6 @@ func createSecondWind(config json.RawMessage, characterID string) (*SecondWind, 
 		if err := json.Unmarshal(config, &cfg); err != nil {
 			return nil, rpgerr.Wrap(err, "failed to parse second wind config")
 		}
-	}
-
-	// Default level to 1 if not specified
-	level := cfg.Level
-	if level == 0 {
-		level = 1
 	}
 
 	// Default uses to 1 (restores on short rest)
@@ -166,7 +142,6 @@ func createSecondWind(config json.RawMessage, characterID string) (*SecondWind, 
 	return &SecondWind{
 		id:          refs.Features.SecondWind().ID,
 		name:        "Second Wind",
-		level:       level,
 		characterID: characterID,
 		resource:    resource,
 	}, nil
@@ -295,40 +270,15 @@ func createRecklessAttack(config json.RawMessage, characterID string) (*Reckless
 	}, nil
 }
 
-// deflectMissilesConfig is the config structure for deflect missiles feature
-type deflectMissilesConfig struct {
-	MonkLevel   int `json:"monk_level"`   // Monk level (for damage reduction calculation)
-	DexModifier int `json:"dex_modifier"` // Dexterity modifier (for damage reduction calculation)
-}
-
-// createDeflectMissiles creates a deflect missiles feature from config
-func createDeflectMissiles(config json.RawMessage, characterID string) (*DeflectMissiles, error) {
-	var cfg deflectMissilesConfig
-	if len(config) > 0 {
-		if err := json.Unmarshal(config, &cfg); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to parse deflect missiles config")
-		}
-	}
-
-	// Default monk level to 3 (when feature is gained) if not specified
-	monkLevel := cfg.MonkLevel
-	if monkLevel == 0 {
-		monkLevel = 3
-	}
-
-	// Default dex modifier to +3 if not specified
-	dexModifier := cfg.DexModifier
-	if dexModifier == 0 {
-		dexModifier = 3
-	}
-
+// createDeflectMissiles creates a deflect missiles feature. It takes no
+// config: no monk level or Dexterity modifier is accepted, stored or
+// defaulted — the deflection asks the owner when it is activated.
+func createDeflectMissiles(characterID string) *DeflectMissiles {
 	return &DeflectMissiles{
 		id:          refs.Features.DeflectMissiles().ID,
 		name:        "Deflect Missiles",
 		characterID: characterID,
-		monkLevel:   monkLevel,
-		dexModifier: dexModifier,
-	}, nil
+	}
 }
 
 func createWrathOfTheStorm(_ json.RawMessage, characterID string) (*WrathOfTheStorm, error) {

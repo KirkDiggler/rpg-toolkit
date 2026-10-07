@@ -45,13 +45,13 @@ func TestBindRollerNilKeepsTheExplicitRoller(t *testing.T) {
 		t.Fatal("great weapon fighting: nil binding erased an explicit roller")
 	}
 
-	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "member-1", Level: 3, Roller: explicit})
+	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "member-1", Roller: explicit})
 	sneak.BindRoller(nil)
 	if sneak.roller != explicit {
 		t.Fatal("sneak attack: nil binding erased an explicit roller")
 	}
 
-	brutal := NewBrutalCriticalCondition(BrutalCriticalInput{MemberID: "member-1", Level: 9, Roller: explicit})
+	brutal := NewBrutalCriticalCondition(BrutalCriticalInput{MemberID: "member-1", Roller: explicit})
 	brutal.BindRoller(nil)
 	if brutal.roller != explicit {
 		t.Fatal("brutal critical: nil binding erased an explicit roller")
@@ -70,13 +70,13 @@ func TestBindRollerBindsTheSuppliedRoller(t *testing.T) {
 		t.Fatal("great weapon fighting: binding did not set the supplied roller")
 	}
 
-	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "member-1", Level: 3})
+	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "member-1"})
 	sneak.BindRoller(bound)
 	if sneak.roller != bound {
 		t.Fatal("sneak attack: binding did not set the supplied roller")
 	}
 
-	brutal := NewBrutalCriticalCondition(BrutalCriticalInput{MemberID: "member-1", Level: 9})
+	brutal := NewBrutalCriticalCondition(BrutalCriticalInput{MemberID: "member-1"})
 	brutal.BindRoller(bound)
 	if brutal.roller != bound {
 		t.Fatal("brutal critical: binding did not set the supplied roller")

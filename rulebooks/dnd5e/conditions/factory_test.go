@@ -26,7 +26,6 @@ func (s *FactoryTestSuite) TestCreateFromRef_SneakAttack() {
 
 	input := &CreateFromRefInput{
 		Ref:      refs.Conditions.SneakAttack().String(),
-		Config:   json.RawMessage(`{"rogue_level": 1}`),
 		MemberID: "rogue-1",
 	}
 
@@ -41,25 +40,20 @@ func (s *FactoryTestSuite) TestCreateFromRef_SneakAttack() {
 	s.Require().True(ok, "Should be a SneakAttackCondition")
 
 	s.Equal("rogue-1", sneak.CharacterID)
-	s.Equal(1, sneak.Level)
-	s.Equal(1, sneak.DamageDice, "Level 1 rogue should have 1d6 sneak attack")
 }
 
-func (s *FactoryTestSuite) TestCreateFromRef_SneakAttackLevel5() {
-	input := &CreateFromRefInput{
+// An old config carrying a rogue level is ignored, never stored: the level
+// is the rogue's, read from the frame at each attack.
+func (s *FactoryTestSuite) TestCreateFromRef_SneakAttackIgnoresAConfiguredLevel() {
+	output, err := CreateFromRef(&CreateFromRefInput{
 		Ref:      refs.Conditions.SneakAttack().String(),
 		Config:   json.RawMessage(`{"rogue_level": 5}`),
 		MemberID: "rogue-1",
-	}
-
-	output, err := CreateFromRef(input)
-
+	})
 	s.Require().NoError(err)
-	s.Require().NotNil(output)
 
-	sneak, ok := output.Condition.(*SneakAttackCondition)
-	s.Require().True(ok)
-
-	s.Equal(5, sneak.Level)
-	s.Equal(3, sneak.DamageDice, "Level 5 rogue should have 3d6 sneak attack")
+	raw, err := output.Condition.ToJSON()
+	s.Require().NoError(err)
+	s.NotContains(string(raw), "level")
+	s.NotContains(string(raw), "dice")
 }

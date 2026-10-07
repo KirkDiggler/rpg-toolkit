@@ -1017,13 +1017,14 @@ type StepOfTheWindActivatedEvent struct {
 	Source      string // Feature that triggered this (refs.Features.StepOfTheWind().ID)
 }
 
-// DeflectMissilesTriggerEvent is published when a monk deflects a ranged weapon attack
+// DeflectMissilesTriggerEvent is published when a monk uses its reaction to
+// deflect a ranged weapon attack. It carries the reduction the monk rolled,
+// asked of the monk's own sheet at activation; whoever applies it to the
+// incoming damage compares the two, so the event carries no damage amount.
 type DeflectMissilesTriggerEvent struct {
-	CharacterID      string // ID of the monk deflecting
-	OriginalDamage   int    // Damage before reduction
-	Reduction        int    // Amount reduced (1d10 + DEX + monk level)
-	DamageReducedTo0 bool   // If true, monk can spend 1 Ki to throw it back
-	Source           string // Feature that triggered this (refs.Features.DeflectMissiles().ID)
+	CharacterID string // ID of the monk deflecting
+	Reduction   int    // Amount reduced (1d10 + DEX modifier + monk level)
+	Source      string // Feature that triggered this (refs.Features.DeflectMissiles().ID)
 }
 
 // DeflectMissilesThrowEvent is published when a monk throws a deflected missile back

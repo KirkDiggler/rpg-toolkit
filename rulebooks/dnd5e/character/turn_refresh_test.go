@@ -58,7 +58,6 @@ func (s *TurnRefreshTestSuite) sheet() *Data {
 		},
 		HitPoints:    44,
 		MaxHitPoints: 44,
-		ArmorClass:   18,
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	dnd5eCombat "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -20,20 +21,21 @@ import (
 
 // SecondWind represents the fighter's Second Wind feature.
 // It implements core.Action[FeatureInput] for activation and events.BusEffect for resource management.
+// It stores no fighter level: activation asks its owner, and heals 1d10 plus
+// the level the owner answers.
 type SecondWind struct {
 	id          string
 	name        string
-	level       int                              // Fighter level for healing calculation
 	characterID string                           // Character this feature belongs to
 	resource    *dnd5eCombat.RecoverableResource // Tracks second wind uses (1 per short/long rest)
 }
 
-// SecondWindData is the JSON structure for persisting Second Wind state
+// SecondWindData is the JSON structure for persisting Second Wind state. A
+// blob saved with the old "level" key loads and the copy is ignored.
 type SecondWindData struct {
 	Ref         *core.Ref `json:"ref"`
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
-	Level       int       `json:"level"`
 	CharacterID string    `json:"character_id"`
 	Uses        int       `json:"uses"`
 	MaxUses     int       `json:"max_uses"`
@@ -109,10 +111,16 @@ func (s *SecondWind) Remove(ctx context.Context, bus events.EventBus) error {
 	return s.resource.Remove(ctx, bus)
 }
 
-// Activate implements core.Action[FeatureInput]
+// Activate implements core.Action[FeatureInput]. It asks the owner its
+// fighter level before spending the use, so an owner that cannot answer, or
+// holds no fighter levels, is refused with the use intact.
 func (s *SecondWind) Activate(ctx context.Context, owner core.Entity, input FeatureInput) error {
 	// Check if we can activate
 	if err := s.CanActivate(ctx, owner, input); err != nil {
+		return err
+	}
+	level, err := ownerClassLevel(owner, classes.Fighter, "second wind")
+	if err != nil {
 		return err
 	}
 
@@ -135,7 +143,7 @@ func (s *SecondWind) Activate(ctx context.Context, owner core.Entity, input Feat
 	}
 
 	faces := append([]int(nil), result.Rolls()[0]...)
-	modifier := s.level // Fighter level is the modifier
+	modifier := level // Fighter level is the modifier
 	// The published event graph is mutable and handed to strangers: publish
 	// fresh copies of the identity refs, never the package singletons, so a
 	// receiver mutating a published ref cannot corrupt refs.Features.SecondWind()
@@ -202,7 +210,6 @@ func (s *SecondWind) loadJSON(data json.RawMessage) error {
 
 	s.id = secondWindData.ID
 	s.name = secondWindData.Name
-	s.level = secondWindData.Level
 	s.characterID = secondWindData.CharacterID
 
 	// Set up recoverable resource with current and max uses
@@ -228,7 +235,6 @@ func (s *SecondWind) ToJSON() (json.RawMessage, error) {
 		Ref:         refs.Features.SecondWind(),
 		ID:          s.id,
 		Name:        s.name,
-		Level:       s.level,
 		CharacterID: s.characterID,
 		Uses:        s.resource.Current(),
 		MaxUses:     s.resource.Maximum(),

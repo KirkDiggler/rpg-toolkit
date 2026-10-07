@@ -68,7 +68,6 @@ func (s *ConcentrationKeeperSuite) bardData(carry ...dnd5eEvents.ConditionBehavi
 		},
 		HitPoints:      9,
 		MaxHitPoints:   9,
-		ArmorClass:     12,
 		EquipmentSlots: EquipmentSlots{},
 		Conditions:     blobs,
 	}

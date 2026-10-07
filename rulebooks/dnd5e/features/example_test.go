@@ -8,6 +8,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
@@ -20,9 +21,10 @@ func Example() {
 	bus := events.NewEventBus()
 	ctx := context.Background()
 
-	// Mock barbarian character with rage charges resource
+	// Mock level 5 barbarian with rage charges resource
 	barbarian := &mockCharacter{
-		id: "conan",
+		id:             "conan",
+		barbarianLevel: 5,
 		resources: map[coreResources.ResourceKey]int{
 			resources.RageCharges: 3, // Level 5 barbarian has 3 rage uses
 		},
@@ -32,8 +34,7 @@ func Example() {
 	featureJSON := json.RawMessage(`{
 		"ref": {"module": "dnd5e", "type": "features", "id": "rage"},
 		"id": "rage",
-		"name": "Rage",
-		"level": 5
+		"name": "Rage"
 	}`)
 
 	// Load the feature
@@ -43,11 +44,10 @@ func Example() {
 	topic := dnd5eEvents.ConditionAppliedTopic.On(bus)
 	_, err := topic.Subscribe(ctx, func(_ context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
 		if event.Type == dnd5eEvents.ConditionRaging {
-			// Type assert the condition to get rage-specific info
-			if ragingCond, ok := event.Condition.(*conditions.RagingCondition); ok {
-				fmt.Printf("%s is now raging! Damage bonus: +%d\n",
-					event.Target.GetID(),
-					ragingCond.DamageBonus)
+			// The damage bonus is not on the condition: each attack reads it
+			// from the barbarian's level in its frame.
+			if _, ok := event.Condition.(*conditions.RagingCondition); ok {
+				fmt.Printf("%s is now raging!\n", event.Target.GetID())
 			}
 		}
 
@@ -66,12 +66,22 @@ func Example() {
 		return
 	}
 
-	// Output: conan is now raging! Damage bonus: +2
+	// Output: conan is now raging!
 }
 
 type mockCharacter struct {
-	id        string
-	resources map[coreResources.ResourceKey]int
+	id             string
+	barbarianLevel int
+	resources      map[coreResources.ResourceKey]int
+}
+
+// ClassLevel answers the named class-level question: the mock holds only
+// barbarian levels.
+func (m *mockCharacter) ClassLevel(class classes.Class) int {
+	if class == classes.Barbarian {
+		return m.barbarianLevel
+	}
+	return 0
 }
 
 func (m *mockCharacter) GetID() string            { return m.id }

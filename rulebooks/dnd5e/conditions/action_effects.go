@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
@@ -204,6 +205,24 @@ func frameOf(in *contributions.AssessActionInput, rule string) (contributions.Fr
 		return contributions.Frame{}, fmt.Errorf("%s: %w: %w", rule, contributions.ErrRuleCannotAnswer, err)
 	}
 	return in.Frame, nil
+}
+
+// actorClassLevel reads the acting member's levels in class from the frame,
+// for a class-scaled rule that already knows the actor is its holder. Unknown
+// class levels, or zero levels in the scaling class, are an error wrapping
+// ErrRuleCannotAnswer: the effect cannot answer, and zero is never read as
+// level one.
+func actorClassLevel(frame contributions.Frame, class classes.Class, rule string) (int, error) {
+	levels, known := frame.ActorClassLevels.Of(class)
+	if !known {
+		return 0, fmt.Errorf("%s: %w: the frame does not carry %q's class levels",
+			rule, contributions.ErrRuleCannotAnswer, frame.Actor)
+	}
+	if levels < 1 {
+		return 0, fmt.Errorf("%s: %w: %q holds no %s levels",
+			rule, contributions.ErrRuleCannotAnswer, frame.Actor, class)
+	}
+	return levels, nil
 }
 
 // executeRuleInput names the rule an execution handler asks and the event's

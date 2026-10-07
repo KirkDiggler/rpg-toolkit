@@ -90,9 +90,9 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 	case refs.Conditions.UnarmoredDefense().ID:
 		condition, err = createUnarmoredDefense(input.Config, input.MemberID, input.SourceRef)
 	case refs.Conditions.Raging().ID:
-		condition, err = createRaging(input.Config, input.MemberID, input.SourceRef)
+		condition = createRaging(input.MemberID, input.SourceRef)
 	case refs.Conditions.BrutalCritical().ID:
-		condition, err = createBrutalCritical(input.Config, input.MemberID)
+		condition = createBrutalCritical(input.MemberID)
 	case refs.Conditions.FightingStyleArchery().ID:
 		condition = NewFightingStyleArcheryCondition(input.MemberID)
 	case refs.Conditions.FightingStyleDefense().ID:
@@ -108,11 +108,11 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 	case refs.Conditions.ImprovedCritical().ID:
 		condition, err = createImprovedCritical(input.Config, input.MemberID)
 	case refs.Conditions.MartialArts().ID:
-		condition, err = createMartialArts(input.Config, input.MemberID)
+		condition = createMartialArts(input.MemberID)
 	case refs.Conditions.UnarmoredMovement().ID:
-		condition, err = createUnarmoredMovement(input.Config, input.MemberID)
+		condition = createUnarmoredMovement(input.MemberID)
 	case refs.Conditions.SneakAttack().ID:
-		condition, err = createSneakAttack(input.Config, input.MemberID)
+		condition = createSneakAttack(input.MemberID)
 	case refs.Conditions.Disengaging().ID:
 		condition = NewDisengagingCondition(input.MemberID)
 	case refs.Conditions.Dodging().ID:
@@ -193,27 +193,10 @@ func createUnarmoredDefense(config json.RawMessage, characterID, sourceRef strin
 	}), nil
 }
 
-// ragingConfig is the config structure for raging condition
-type ragingConfig struct {
-	DamageBonus int `json:"damage_bonus"`
-	Level       int `json:"level"`
-}
-
-// createRaging creates a raging condition from config
-func createRaging(config json.RawMessage, characterID, sourceRef string) (*RagingCondition, error) {
-	var cfg ragingConfig
-	if len(config) > 0 {
-		if err := json.Unmarshal(config, &cfg); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to parse raging config")
-		}
-	}
-
-	// Default damage bonus to 2 if not specified
-	damageBonus := cfg.DamageBonus
-	if damageBonus == 0 {
-		damageBonus = 2
-	}
-
+// createRaging creates a raging condition. Rage takes no config: its damage
+// bonus is read from the attacker's barbarian levels in each attack's frame,
+// so no level or bonus is accepted, stored or defaulted.
+func createRaging(characterID, sourceRef string) *RagingCondition {
 	// Default to rage feature ref if not specified
 	source := sourceRef
 	if source == "" {
@@ -222,37 +205,15 @@ func createRaging(config json.RawMessage, characterID, sourceRef string) (*Ragin
 
 	return &RagingCondition{
 		CharacterID: characterID,
-		DamageBonus: damageBonus,
-		Level:       cfg.Level,
 		Source:      source,
-	}, nil
+	}
 }
 
-// brutalCriticalConfig is the config structure for brutal critical
-type brutalCriticalConfig struct {
-	Level int `json:"level"` // Barbarian level (9+ for 1 die, 13+ for 2, 17+ for 3)
-}
-
-// createBrutalCritical creates a brutal critical condition from config
-func createBrutalCritical(config json.RawMessage, memberID string) (*BrutalCriticalCondition, error) {
-	var cfg brutalCriticalConfig
-	if len(config) > 0 {
-		if err := json.Unmarshal(config, &cfg); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to parse brutal critical config")
-		}
-	}
-
-	// Level determines extra dice via calculateExtraDice in the constructor
-	// Default to level 9 if not specified (minimum level for brutal critical)
-	level := cfg.Level
-	if level == 0 {
-		level = 9
-	}
-
-	return NewBrutalCriticalCondition(BrutalCriticalInput{
-		MemberID: memberID,
-		Level:    level,
-	}), nil
+// createBrutalCritical creates a brutal critical condition. It takes no
+// config: its dice are read from the attacker's barbarian levels in each
+// attack's frame.
+func createBrutalCritical(memberID string) *BrutalCriticalCondition {
+	return NewBrutalCriticalCondition(BrutalCriticalInput{MemberID: memberID})
 }
 
 // improvedCriticalConfig is the config structure for improved critical
@@ -281,81 +242,26 @@ func createImprovedCritical(config json.RawMessage, memberID string) (*ImprovedC
 	}), nil
 }
 
-// martialArtsConfig is the config structure for martial arts
-type martialArtsConfig struct {
-	MonkLevel int `json:"monk_level"`
+// createMartialArts creates a martial arts condition. It takes no config:
+// the Martial Arts die is read from the sheet's level record at each swing.
+func createMartialArts(memberID string) *MartialArtsCondition {
+	return NewMartialArtsCondition(MartialArtsInput{MemberID: memberID})
 }
 
-// createMartialArts creates a martial arts condition from config
-func createMartialArts(config json.RawMessage, memberID string) (*MartialArtsCondition, error) {
-	var cfg martialArtsConfig
-	if len(config) > 0 {
-		if err := json.Unmarshal(config, &cfg); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to parse martial arts config")
-		}
-	}
-
-	// Monk level is required
-	if cfg.MonkLevel == 0 {
-		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "martial arts config requires 'monk_level' field")
-	}
-
-	return NewMartialArtsCondition(MartialArtsInput{
-		MemberID:  memberID,
-		MonkLevel: cfg.MonkLevel,
-	}), nil
+// createUnarmoredMovement creates an unarmored movement condition. It takes
+// no config and stores no level.
+func createUnarmoredMovement(memberID string) *UnarmoredMovementCondition {
+	return NewUnarmoredMovementCondition(UnarmoredMovementInput{MemberID: memberID})
 }
 
-// unarmoredMovementConfig is the config structure for unarmored movement
-type unarmoredMovementConfig struct {
-	MonkLevel int `json:"monk_level"`
-}
-
-// createUnarmoredMovement creates an unarmored movement condition from config
-func createUnarmoredMovement(config json.RawMessage, memberID string) (*UnarmoredMovementCondition, error) {
-	var cfg unarmoredMovementConfig
-	if len(config) > 0 {
-		if err := json.Unmarshal(config, &cfg); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to parse unarmored movement config")
-		}
-	}
-
-	// Monk level is required
-	if cfg.MonkLevel == 0 {
-		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "unarmored movement config requires 'monk_level' field")
-	}
-
-	return NewUnarmoredMovementCondition(UnarmoredMovementInput{
-		MemberID:  memberID,
-		MonkLevel: cfg.MonkLevel,
-	}), nil
-}
-
-// sneakAttackConfig is the config structure for sneak attack
-type sneakAttackConfig struct {
-	RogueLevel int `json:"rogue_level"`
-}
-
-// createSneakAttack creates a sneak attack condition from config
-func createSneakAttack(config json.RawMessage, memberID string) (*SneakAttackCondition, error) {
-	var cfg sneakAttackConfig
-	if len(config) > 0 {
-		if err := json.Unmarshal(config, &cfg); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to parse sneak attack config")
-		}
-	}
-
-	// Default to level 1 if not specified
-	level := cfg.RogueLevel
-	if level == 0 {
-		level = 1
-	}
-
+// createSneakAttack creates a sneak attack condition. It takes no config: its
+// dice are read from the attacker's rogue levels in each attack's frame, and a
+// missing level is never defaulted.
+func createSneakAttack(memberID string) *SneakAttackCondition {
 	return NewSneakAttackCondition(SneakAttackInput{
 		MemberID: memberID,
-		Level:    level,
 		// Roller is nil - will use default roller when needed
-	}), nil
+	})
 }
 
 // helpedConfig is the config structure for the helped condition

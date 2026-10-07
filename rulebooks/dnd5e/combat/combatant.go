@@ -6,6 +6,7 @@ package combat
 import (
 	"context"
 
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
@@ -93,14 +94,15 @@ type Member interface {
 	// GetMaxHitPoints returns maximum HP
 	GetMaxHitPoints() int
 
-	// AC returns the combatant's armor class
-	AC() int
+	// There is no AC question here. Armour class is a fold, asked through
+	// [GetEffectiveAC]; a member that cannot fold has no armour class to give,
+	// and a stored number in its place would be a copy nobody refreshes.
 
 	// HasShieldEquipped reports whether this combatant is carrying a shield.
 	//
 	// A MONSTER ANSWERS FALSE, and that is an answer rather than a gap. A
 	// monster has no equipment slots to read: whatever defence its shield
-	// gives is already inside the stat block AC it reports through AC() above,
+	// gives is already inside the stat block AC its fold starts from,
 	// and nothing else about the sheet changes because it is holding one. The
 	// rules that ask this question — Unarmored Movement's speed bonus,
 	// Fighting Style (Protection)'s reaction — are character features, so
@@ -159,9 +161,9 @@ type Combatant interface {
 	IsDirty() bool
 }
 
-// EffectiveACCalculator is implemented by combatants that support dynamic AC calculation.
-// Characters implement this to support spells like Shield that modify AC through the event chain.
-// Combatants that don't implement this will use their base AC() value.
+// EffectiveACCalculator is implemented by every combatant that has an armour
+// class: characters and monsters both fold their AC through the event chain.
+// A member that does not implement it has no armour class to answer.
 type EffectiveACCalculator interface {
 	// EffectiveAC calculates AC through the modifier chain, allowing conditions/spells to adjust it.
 	// Returns an ACBreakdown with the final AC and all contributing components, or an
@@ -192,13 +194,14 @@ type EffectiveACCalculator interface {
 // features" — a wrong number that looks exactly like a right one. See
 // [EffectiveACCalculator].
 //
-// A combatant that does NOT implement the interface is a different case
-// entirely and keeps its authored AC(). Characters and monsters both fold
-// their attached condition chains, so temporary protection is included.
+// A member that does NOT fold is refused: there is no stored armour class to
+// fall back to. Characters and monsters both fold their attached condition
+// chains, so temporary protection is included.
 func GetEffectiveAC(ctx context.Context, c Member) (int, error) {
 	calc, ok := c.(EffectiveACCalculator)
 	if !ok {
-		return c.AC(), nil
+		return 0, rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"member %q cannot fold an armour class", c.GetID())
 	}
 	breakdown, err := calc.EffectiveAC(ctx)
 	if err != nil {

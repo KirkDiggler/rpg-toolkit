@@ -14,6 +14,7 @@ import (
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
@@ -49,8 +50,6 @@ type ragingConditionInput struct {
 func newRagingCondition(input ragingConditionInput) *RagingCondition {
 	return &RagingCondition{
 		CharacterID: input.CharacterID,
-		DamageBonus: input.DamageBonus,
-		Level:       input.Level,
 		Source:      input.Source,
 	}
 }
@@ -429,7 +428,7 @@ func (s *RagingConditionTestSuite) executeDamageChain(
 		Components:       []dnd5eEvents.DamageComponent{weaponComp, abilityComp},
 		WeaponDamageType: damage.Fire,
 		IsCritical:       true,
-	}, swing{AbilityUsed: abilities.STR, IsMelee: true})
+	}, swing{ClassLevels: classLevels(classes.Barbarian, 1), AbilityUsed: abilities.STR, IsMelee: true})
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
@@ -473,7 +472,7 @@ func (s *RagingConditionTestSuite) executeDamageChainWithAbility(
 		TargetID:         "goblin-1",
 		Components:       []dnd5eEvents.DamageComponent{weaponComp, abilityComp},
 		WeaponDamageType: damage.Slashing,
-	}, swing{AbilityUsed: abilityUsed, IsMelee: isMelee})
+	}, swing{ClassLevels: classLevels(classes.Barbarian, 1), AbilityUsed: abilityUsed, IsMelee: isMelee})
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
@@ -510,7 +509,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionUsesMarkedWeaponType() {
 			},
 			DamageType: damage.Slashing,
 		}},
-	}, swing{AbilityUsed: abilities.STR, IsMelee: true})
+	}, swing{ClassLevels: classLevels(classes.Barbarian, 1), AbilityUsed: abilities.STR, IsMelee: true})
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	modified, err := dnd5eEvents.DamageChain.On(s.bus).PublishWithChain(s.ctx, withEventFrame(damageEvent), chain)
 	s.Require().NoError(err)
@@ -870,7 +869,7 @@ func (s *RagingConditionTestSuite) executeDamageChainAgainstTarget(
 		TargetID:   targetID,
 		Components: []dnd5eEvents.DamageComponent{weaponComp},
 		IsCritical: false,
-	}, swing{AbilityUsed: abilities.STR})
+	}, swing{ClassLevels: classLevels(classes.Barbarian, 1), AbilityUsed: abilities.STR})
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
@@ -1535,7 +1534,7 @@ func (s *RagingConditionTestSuite) TestASavingThrowFrameFoldsOnTheDamageChain() 
 		CharacterID: "barbarian-1", DamageBonus: 2, Level: 5, Source: "dnd5e:features:rage",
 	})
 	s.Require().NoError(raging.Apply(s.ctx, s.bus))
-	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "caster-1", Level: 3})
+	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "caster-1"})
 	s.Require().NoError(sneak.Apply(s.ctx, s.bus))
 
 	event := dnd5eEvents.NewDamageChainEvent(dnd5eEvents.DamageChainInput{
@@ -1547,8 +1546,9 @@ func (s *RagingConditionTestSuite) TestASavingThrowFrameFoldsOnTheDamageChain() 
 			DamageType: damage.Bludgeoning,
 		}},
 		Frame: contributions.Frame{
-			Actor:  "caster-1",
-			Target: contributions.Known("barbarian-1"),
+			Actor:            "caster-1",
+			ActorClassLevels: classLevels(classes.Rogue, 1),
+			Target:           contributions.Known("barbarian-1"),
 			Action: contributions.ActionFacts{
 				Roll:       contributions.Known(contributions.RollKindSavingThrow),
 				WeaponPool: contributions.Known(false),

@@ -16,6 +16,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -197,9 +198,19 @@ func (m *Monster) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput)
 	}
 }
 
-// AC returns armor class
+// AC returns the stat block's authored armour class: the base the monster's
+// fold starts from. A fight asks the fold, [Monster.EffectiveAC].
 func (m *Monster) AC() int {
 	return m.ac
+}
+
+// ClassLevels answers the frame's class-levels fact for a monster: known, and
+// empty. A stat block holds no class levels, which is an answer rather than
+// an unknown — a class-scaled rule held by a monster refuses rather than
+// reading level one. Resolution fills [contributions.Frame.ActorClassLevels]
+// with it for a monster actor.
+func (m *Monster) ClassLevels() contributions.ClassLevels {
+	return contributions.KnownClassLevels()
 }
 
 // EffectiveAC folds temporary protection over the authored stat-block AC.
