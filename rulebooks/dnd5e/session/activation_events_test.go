@@ -49,7 +49,7 @@ func newActivationEventScene(
 	require.NoError(t, err)
 	scene.mgr = mgr
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
 		Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Initiative: encOrderAsGiven{},
 		TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
@@ -96,7 +96,7 @@ func secondWindFighter(t *testing.T, id string, hp, maxHP int) *character.Data {
 	fighter.MaxHitPoints = maxHP
 	feature, err := json.Marshal(features.SecondWindData{
 		Ref: refs.Features.SecondWind(), ID: id + "-second-wind", Name: "Second Wind",
-		Level: fighter.Level, CharacterID: id, Uses: 1, MaxUses: 1,
+		CharacterID: id, Uses: 1, MaxUses: 1,
 	})
 	require.NoError(t, err)
 	fighter.Features = []json.RawMessage{feature}
@@ -333,7 +333,7 @@ func TestActivationRecordFailureReportsTheDurableSheetAndDropsTheEncounterScope(
 	})
 	require.NoError(t, err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
 		Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Initiative: encOrderAsGiven{},
 		TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},

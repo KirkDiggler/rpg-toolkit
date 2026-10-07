@@ -132,8 +132,9 @@ func Example_theSession() {
 // (rpg-toolkit#964), so what reaches the host is news rather than a question.
 func Example_theFightThatStartsItself() {
 	ctx := context.Background()
+	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
-		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: testCharacters(),
+		Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
 		Events: session.DiscardEvents{},
 	})
 	if err != nil {
@@ -144,6 +145,9 @@ func Example_theFightThatStartsItself() {
 	}); err != nil {
 		panic(err)
 	}
+	// The ogre the tomb authored gets the stat block a Spawn would have
+	// recorded: the world asks every member's sheet how fast it walks.
+	stockAuthoredMonsters(panicFataler{}, sessions, encounters, "run")
 
 	path := ambushPath()
 	out, err := mgr.Move(ctx, &session.MoveInput{Session: "run", Member: "alice", Path: path})
@@ -189,7 +193,7 @@ func (panicFataler) Fatalf(format string, args ...any) {
 // authoredTomb is content, not a live encounter: the blob a host would have
 // sitting in storage from an authoring pipeline.
 func authoredTomb() *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
 		Members: []encounter.MemberInput{

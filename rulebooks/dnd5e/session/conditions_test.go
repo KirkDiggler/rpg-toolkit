@@ -60,6 +60,7 @@ func (s *ConditionsTestSuite) SetupTest() {
 		Session: "sess", Encounter: "world", World: ambushWorld(s.T()),
 	})
 	s.Require().NoError(err)
+	stockAuthoredMonsters(s.T(), s.sessions, s.encounters, "sess")
 }
 
 func (s *ConditionsTestSuite) SetupSubTest() { s.SetupTest() }
@@ -85,8 +86,6 @@ func ragingDwarf(id string) *character.Data {
 	data := dwarfCharacter(id)
 	raging := &conditions.RagingCondition{
 		CharacterID:       id,
-		DamageBonus:       2,
-		Level:             3,
 		Source:            refs.Features.Rage().String(),
 		TurnsActive:       2,
 		WasHitThisTurn:    true,
@@ -219,8 +218,6 @@ func (s *ConditionsTestSuite) TestTheRageSurvivesTheFightAndARestart() {
 	s.Equal(2, got.TurnsActive, "the rage remembers how long it has run")
 	s.True(got.WasHitThisTurn, "and what happened to her during it")
 	s.True(got.DidAttackThisTurn)
-	s.Equal(2, got.DamageBonus)
-	s.Equal(3, got.Level)
 	s.Equal(refs.Features.Rage().String(), got.Source)
 }
 

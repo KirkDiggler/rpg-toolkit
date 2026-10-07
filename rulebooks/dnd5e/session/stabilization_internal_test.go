@@ -60,7 +60,7 @@ func (s *StabilizationSessionSuite) TestCompiledProfilePersistsAndDeliversReplay
 			dice := &scriptedDice{}
 			mgr, err := NewManager(&Config{PresentationIDs: testPresentationIDs{}, Dice: dice, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters, Characters: characters, Events: stream})
 			s.Require().NoError(err)
-			world, err := encounter.NewEncounter(&encounter.SetupInput{
+			world, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 				Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{}, Equipment: encNoHandsObserved{},
 				Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
 				Field:   encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 5, 5)}},
@@ -97,7 +97,7 @@ func (s *StabilizationSessionSuite) TestCompiledProfilePersistsAndDeliversReplay
 			s.Require().NoError(err)
 			out, err := resolution.Resolve(ctx, &resolution.Input{World: scope.enc.WorldView(), Participants: participants, Machine: machine,
 				Cost: &resolution.Cost{PayerID: "alice", Profile: definition.Cost, SpellTurn: "turn1", Turn: &resolution.Turn{Number: 1}}, Roller: &diceSeam{roller: dice},
-				Initiative: mgr.initiative, TurnDriver: scope.driver, Standing: scope.standing, Sight: aggregateRecordEveryoneSees{}, Equipment: encNoHandsObserved{}})
+				Initiative: mgr.initiative, TurnDriver: scope.driver, Standing: scope.standing, Sight: aggregateRecordEveryoneSees{}, Equipment: encNoHandsObserved{}, Sheets: sheetsBeside(scope.standing)})
 			s.Require().NoError(err)
 			results, pushes, err := castOutcome(out.Outcome, "alice", *offer.declaration.Spell)
 			s.Require().NoError(err)

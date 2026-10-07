@@ -250,11 +250,11 @@ func (m *Manager) compileOffersFor(
 	if requested[VerbAttack] || requested[VerbActivate] || requested[VerbCast] {
 		var err error
 		if roster, err = enc.Members(); err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrBadCost, translate(err))
+			return nil, badCostUnlessSheet(translate(err))
 		}
 		positions = rosterPositions(roster)
 		if holdings, err = enc.View(&encounter.ViewInput{Member: encounter.MemberID(member)}); err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrBadCost, translate(err))
+			return nil, badCostUnlessSheet(translate(err))
 		}
 	}
 
@@ -812,11 +812,11 @@ type socialAudience struct {
 func readSocialAudience(enc *encounter.Encounter, member string) (socialAudience, error) {
 	witnesses, err := enc.Witnesses(encounter.MemberID(member))
 	if err != nil {
-		return socialAudience{}, fmt.Errorf("%w: %v", ErrBadCost, translate(err))
+		return socialAudience{}, badCostUnlessSheet(translate(err))
 	}
 	roster, err := enc.Members()
 	if err != nil {
-		return socialAudience{}, fmt.Errorf("%w: %v", ErrBadCost, translate(err))
+		return socialAudience{}, badCostUnlessSheet(translate(err))
 	}
 
 	seen := make([]string, 0, len(witnesses))

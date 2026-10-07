@@ -6,10 +6,13 @@ package session_test
 import (
 	"context"
 	"encoding/json"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -217,16 +220,16 @@ func TestAffordThenEndTurnRejectsRepositorySessionIDMismatch(t *testing.T) {
 // may legitimately consult standing again after the roll and after damage.
 type actorLoadCheckingDice struct {
 	t          *testing.T
-	characters *fakeCharacters
+	characters *compileLoadCounting
 	rolls      []int
 	next       int
 }
 
 func (d *actorLoadCheckingDice) Roll(_ context.Context, _ int) (int, error) {
 	if d.next == 0 {
-		require.Equal(d.t, 1, d.characters.asked["alice"],
+		require.Equal(d.t, 1, d.characters.compiled["alice"],
 			"downed verdict and compiled offer must share one strict actor load before execution")
-		require.Equal(d.t, 1, d.characters.asked["bob"],
+		require.Equal(d.t, 1, d.characters.compiled["bob"],
 			"compiled cast must snapshot each non-actor participant once and execution must not refetch it")
 	}
 	require.Less(d.t, d.next, len(d.rolls), "execution requested an unexpected die roll")
@@ -235,9 +238,43 @@ func (d *actorLoadCheckingDice) Roll(_ context.Context, _ int) (int, error) {
 	return roll, nil
 }
 
+// compileLoadCounting counts the store reads the verb's own compile and cast
+// make, apart from the sheet seam's (sheets.go). The seam re-reads a sheet at
+// every consult on purpose — how far a member sees, how fast it walks, asked
+// when the world uses either and never cached (rpg-project#538) — so its
+// reads are not the strict load this test pins. Told apart by the caller, the
+// one honest way a repository can tell who asked.
+type compileLoadCounting struct {
+	*fakeCharacters
+	compiled map[string]int
+}
+
+func (c *compileLoadCounting) GetCharacter(ctx context.Context, id string) (*character.Data, error) {
+	pcs := make([]uintptr, 64)
+	frames := runtime.CallersFrames(pcs[:runtime.Callers(2, pcs)])
+	seam := false
+	for {
+		frame, more := frames.Next()
+		if strings.Contains(frame.Function, "session.sheetSeam.") {
+			seam = true
+			break
+		}
+		if !more {
+			break
+		}
+	}
+	if !seam {
+		c.compiled[id]++
+	}
+	return c.fakeCharacters.GetCharacter(ctx, id)
+}
+
 func TestSuccessfulTurnAttackLoadsActorOnceBeforeExecution(t *testing.T) {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
-	characters := newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
+	characters := &compileLoadCounting{
+		fakeCharacters: newFakeCharacters(armedFighter("alice"), armedFighter("bob")),
+		compiled:       map[string]int{},
+	}
 	dice := &actorLoadCheckingDice{t: t, characters: characters, rolls: []int{15, 5}}
 	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: dice, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
@@ -250,9 +287,8 @@ func TestSuccessfulTurnAttackLoadsActorOnceBeforeExecution(t *testing.T) {
 	})
 	require.NoError(t, err)
 	id := currentAttackID(t, mgr, "sess", "alice")
-	characters.asked["alice"] = 0
-	characters.asked["bob"] = 0
-	characters.loads = 0
+	characters.compiled["alice"] = 0
+	characters.compiled["bob"] = 0
 
 	out, err := mgr.Attack(context.Background(), &session.AttackInput{
 		Session: "sess", Attacker: "alice", Target: "bob", DeclarationID: id,

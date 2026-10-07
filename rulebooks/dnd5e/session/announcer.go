@@ -93,8 +93,9 @@ func (a announcerSeam) Announce(
 		Participants: cast,
 		Initiative:   a.m.initiative,
 		Standing:     a.scope.standing,
-		Sight:        &sightSeam{members: worldMembers(world)},
+		Sight:        sheetsBeside(a.scope.standing),
 		Equipment:    equipmentBeside(a.scope.standing),
+		Sheets:       sheetsBeside(a.scope.standing),
 		TurnDriver:   a.scope.driver,
 		// The concealment pair (rpg-toolkit#1378), bound to the same live
 		// scope openForWrite and adopt bind — the one-seam consistency law:

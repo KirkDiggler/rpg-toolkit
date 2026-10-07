@@ -26,7 +26,7 @@ func castingCleric() *character.Data {
 			abilities.STR: 14, abilities.DEX: 10, abilities.CON: 14,
 			abilities.INT: 10, abilities.WIS: 16, abilities.CHA: 8,
 		},
-		HitPoints: 10, MaxHitPoints: 10, ArmorClass: 10, ProficiencyBonus: 2,
+		HitPoints: 10, MaxHitPoints: 10, ProficiencyBonus: 2,
 		KnownCantrips: []string{
 			refs.Spells.SacredFlame().String(), refs.Spells.Guidance().String(), refs.Spells.Light().String(),
 		},

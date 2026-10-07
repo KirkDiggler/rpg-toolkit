@@ -3,7 +3,10 @@
 
 package session
 
-import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+import (
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+)
 
 // encNoHandsObserved answers the equipment question for fixtures that are not
 // about equipment: every member is answered for, every answer is "no hands to
@@ -34,3 +37,31 @@ func (encNoHandsObserved) Conditions(
 }
 
 var _ encounter.EquipmentWithConditions = encNoHandsObserved{}
+
+// encStandStill answers the sheet question for a scene being ASSEMBLED, never
+// played: every member asked stands still with nothing to swing and no
+// strategy — the facts these authored members always carried — so a sight pass
+// during construction that forms a fight paces and budgets nobody. Once the
+// session loads the world it answers from each member's own sheet (sheets.go).
+type encStandStill struct{}
+
+func (encStandStill) Sheets(members []encounter.MemberID) (map[encounter.MemberID]encounter.SheetFacts, error) {
+	out := make(map[encounter.MemberID]encounter.SheetFacts, len(members))
+	for _, id := range members {
+		out[id] = encounter.SheetFacts{}
+	}
+	return out, nil
+}
+
+// encStatedSight answers the sight question for a scene being assembled: the
+// rulebook's stated default range for every member, which is what a member
+// whose sheet states no range answers once the session plays the world.
+type encStatedSight struct{}
+
+func (encStatedSight) Sight(members []encounter.MemberID) (map[encounter.MemberID]int, error) {
+	out := make(map[encounter.MemberID]int, len(members))
+	for _, id := range members {
+		out[id] = encounter.CellsFromFeet(combat.DefaultSightFeet)
+	}
+	return out, nil
+}

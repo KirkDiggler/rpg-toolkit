@@ -93,7 +93,6 @@ func barbarianCharacter(id string) *character.Data {
 		ClassID:          classes.Barbarian,
 		HitPoints:        30,
 		MaxHitPoints:     30,
-		ArmorClass:       11,
 		AbilityScores: shared.AbilityScores{
 			abilities.STR: 16,
 			abilities.DEX: 14, // +2
@@ -157,47 +156,11 @@ func (s *JoinFoldsACTestSuite) TestTheRestOfTheProjectionSurvivesTheReroute() {
 	s.Equal(30, out.Character.Speed, "a human's speed, derived rather than stored")
 }
 
-// TestTheSeatedMemberCarriesWhatResolutionDerived pins everything Join takes
-// from the answer that does NOT come back out on JoinOutput.
-//
-// The armour class is read off JoinOutput and pinned three ways over. The speed
-// and the main-hand attack are not on JoinOutput at all — they go into the
-// member record the encounter stores, where a turn's movement budget and a
-// TurnDriver eventually read them — so nothing here noticed where they came
-// from. BOTH mutants survived the whole suite: seating every player with speed
-// zero, and seating them with an attack of no range and no kind. That is how
-// this test came to exist.
-//
-// The values are chosen so a dropped one is a different number rather than a
-// plausible one. 30 is what a HUMAN walks, derived from race by the loaded
-// sheet and on no record. 5 feet and "melee" are what an unarmed strike is —
-// this fixture equips nothing, and the rules say empty hands still punch.
-func (s *JoinFoldsACTestSuite) TestTheSeatedMemberCarriesWhatResolutionDerived() {
-	_, err := s.mgr.Join(context.Background(), &session.JoinInput{
-		Session: "sess", Member: ragingID, Position: hexCell(3, 2),
-	})
-	s.Require().NoError(err)
-
-	world, ok := s.encounters.byID["world"]
-	s.Require().True(ok, "the join committed a world")
-
-	var seated bool
-	for _, member := range world.Members {
-		if string(member.ID) != ragingID {
-			continue
-		}
-		seated = true
-		s.Equal(30, member.SpeedFeet,
-			"a Human walks 30: the seated member carries the speed resolution derived, not zero")
-
-		s.Require().Len(member.Actions, 1, "the main-hand attack was compiled into the member record")
-		s.Equal(5, member.Actions[0].RangeFeet,
-			"an unarmed strike reaches 5 feet — 0 would seat a member who cannot reach anything")
-		s.Equal("melee", member.Actions[0].Kind,
-			"and it is made in reach; an empty kind is not a kind")
-	}
-	s.Require().True(seated, "the barbarian is on the stored roster")
-}
+// The speed and the main-hand attack this file used to pin on the seated
+// member record are no longer copied there (rpg-project#538): the composition
+// asks the sheet seam for them at the moment it uses one. Their pins — a Human
+// walks 30, an empty hand reaches 5 feet in melee — moved with them, to
+// sheets_internal_test.go, where the answer is now made.
 
 // TestABadMainHandIsReportedAsABadAttack pins a vocabulary that was lost and
 // given back, and the round trip is why this test still exists.

@@ -101,7 +101,9 @@ each proved at compile time by a `var _` line: `standingSeam`
 ([`striker.go`](./striker.go):38), `moverSeam` ([`mover.go`](./mover.go):37),
 `announcerSeam` ([`announcer.go`](./announcer.go):31), `turnDriverSeam`
 ([`turndriver.go`](./turndriver.go):426), `initiativeSeam`
-([`initiative.go`](./initiative.go)), `sightSeam` ([`sight.go`](./sight.go)),
+([`initiative.go`](./initiative.go)), `sheetSeam` ([`sheets.go`](./sheets.go),
+answering both `Sheets` and `Sight` ([`sight.go`](./sight.go)) from the sheets
+the verb holds),
 and `reactionAttacks` ([`mover.go`](./mover.go):486, the one `resolution`
 capability).
 
@@ -144,15 +146,13 @@ not the only one who can see. The composition owns it now (rpg-toolkit#964).
 `doc.go` tells the story; the point for you is the shape of the mistake: it did
 not look like a rule, it looked like the walk noticing something.
 
-**The honest exception, so you can weigh it rather than discover it.** Three
+**The honest exception, so you can weigh it rather than discover it.** Two
 range constants do live here: `helpReachFeet = 5`
-([`activations.go`](./activations.go):269), `inspirationReachFeet = 60`
-([`inspiration.go`](./inspiration.go):29), `defaultSightFeet = 120`
-([`sight.go`](./sight.go):25). Each is documented as a ruling with its RAW
-divergence named.
+([`activations.go`](./activations.go):269) and `inspirationReachFeet = 60`
+([`inspiration.go`](./inspiration.go):29). Each is documented as a ruling with
+its RAW divergence named.
 
-**Do not read them as precedent, because they are not one exception but two
-different problems** (rpg-toolkit#1630):
+**Do not read them as precedent** (rpg-toolkit#1630):
 
 - `helpReachFeet` and `inspirationReachFeet` are **content facts with nowhere to
   live.** An attack declares `AttackDelivery.ReachFeet` and a cast declares
@@ -160,12 +160,15 @@ different problems** (rpg-toolkit#1630):
   an activation has no such field. These two numbers are here because the data
   model has a hole exactly where they belong, not because this package decided to
   hold game numbers. When an activation can declare its range, they leave.
-- `defaultSightFeet` is not a range declaration at all. It is a **fallback for an
-  absent fact** — its own comment says *"we don't have this stat block's Senses
-  yet"* — which is the fail-closed question, not this one.
+- A default for an absent fact is not one of them either. Sight's stated default
+  lives on the sheet that states none (`combat.DefaultSightFeet`, answered by
+  the race table and the stat block through `combat.SightHolder`), and a member
+  the verb holds no sheet for is refused rather than defaulted
+  (rpg-project#538, R12).
 
-So a fourth constant arriving is the charter slipping, and the right response is
-to ask which of those two shapes it is rather than to weigh it against these.
+So a third constant arriving is the charter slipping, and the right response is
+to ask whether it is a content fact with nowhere to live rather than to weigh it
+against these.
 
 ## Questions it answers, questions it asks
 

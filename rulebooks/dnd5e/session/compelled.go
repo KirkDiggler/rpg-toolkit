@@ -236,8 +236,9 @@ func (d compelledDriver) obey(
 			Participants: cast,
 			Initiative:   d.m.initiative,
 			Standing:     d.scope.standing,
-			Sight:        &sightSeam{members: worldMembers(world)},
+			Sight:        sheetsBeside(d.scope.standing),
 			Equipment:    equipmentBeside(d.scope.standing),
+			Sheets:       sheetsBeside(d.scope.standing),
 			// This session's driver, NOT this wrapper. Resolution carries the
 			// capability without consulting it — no verb runs inside an
 			// interaction — and handing it a driver that would open a second

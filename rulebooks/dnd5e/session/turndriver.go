@@ -112,7 +112,8 @@ type MonsterView struct {
 	// Position is where this member stands, dungeon-absolute.
 	Position spatial.Position
 
-	// Actions are this member's own static facts about what it can do.
+	// Actions are what this member's sheet says it can do, asked of the
+	// sheet at the start of this turn (rpg-project#538).
 	Actions []ActionView
 
 	// Targeting is this member's target-selection strategy, in the

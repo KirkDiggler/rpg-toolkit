@@ -58,7 +58,6 @@ func unarmedFighter(id string) *character.Data {
 		},
 		HitPoints:        24,
 		MaxHitPoints:     28,
-		ArmorClass:       16,
 		ProficiencyBonus: 2,
 	}
 }
@@ -80,7 +79,6 @@ func armedFighter(id string) *character.Data {
 		},
 		HitPoints:           24,
 		MaxHitPoints:        28,
-		ArmorClass:          16,
 		ProficiencyBonus:    2,
 		WeaponProficiencies: []proficiencies.Weapon{proficiencies.WeaponMartial},
 		Inventory: []character.InventoryItemData{
@@ -134,7 +132,7 @@ func turnWorld(data *encounter.EncounterData, order []string, active int) *encou
 // duel delivered to a real stream rather than discarded. One world, so a
 // fixture drift cannot make the two suites disagree about what was swung at.
 func freeRoamDuelWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
@@ -380,7 +378,7 @@ func (s *AttackTestSuite) TestProtectionReactsToANearbyAllysAttackOnTheSessionSt
 
 	s.characters = newFakeCharacters(alice, bob, carol)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
@@ -641,7 +639,7 @@ func (s *AttackTestSuite) TestAMonsterAttackerIsRefused() {
 	})
 	s.Require().NoError(err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
@@ -718,7 +716,7 @@ func (s *AttackTestSuite) TestAnEmptyHandThrowsAnUnarmedStrike() {
 	})
 	s.Require().NoError(err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
@@ -751,7 +749,7 @@ func (s *AttackTestSuite) TestAnEmptyHandThrowsAnUnarmedStrike() {
 // of how far apart they stand, which is what lets this fixture isolate
 // reach from perception.
 func reachWorld(t fataler, bobAt spatial.Position) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
@@ -840,7 +838,7 @@ func (s *AttackTestSuite) TestNotYourTurnIsRefused() {
 	})
 	s.Require().NoError(err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
@@ -888,9 +886,11 @@ func (s *AttackTestSuite) TestNotYourTurnIsRefused() {
 }
 
 // TestAffordThenAttackRefusesASheetlessTargetBeforeExecution covers content
-// standing in a world that nobody spawned. Afford and unchanged Attack must
-// agree before resolution: the candidate remains visible but is Unreadable,
-// the declaration is unavailable, and echoing its selector mutates nothing.
+// standing in a world that nobody spawned. Afford and Attack must agree, and
+// both refuse by name: the world asks every member's sheet how far it sees
+// before it can say who witnesses a swing (rpg-project#538), and a monster
+// the session holds no stat block for is refused there (ErrNoSheet) rather
+// than answered with a range nobody stated. Nothing is written.
 func (s *AttackTestSuite) TestAffordThenAttackRefusesASheetlessTargetBeforeExecution() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"))
@@ -900,7 +900,7 @@ func (s *AttackTestSuite) TestAffordThenAttackRefusesASheetlessTargetBeforeExecu
 	})
 	s.Require().NoError(err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
@@ -917,24 +917,15 @@ func (s *AttackTestSuite) TestAffordThenAttackRefusesASheetlessTargetBeforeExecu
 	})
 	s.Require().NoError(err)
 
-	afford, err := mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "alice"})
-	s.Require().NoError(err)
-	decl := requireSingleAttackDeclaration(s.T(), afford.Declarations)
-	s.False(decl.Available, "a sheetless target cannot produce an executable Attack")
-	s.Require().NotNil(decl.Why)
-	s.Equal(session.ShortfallUnreadable, decl.Why.Reason)
-	s.Require().Len(decl.Candidates, 1)
-	s.Equal("ogre", decl.Candidates[0].Member)
-	s.False(decl.Candidates[0].Available)
-	s.Require().NotNil(decl.Candidates[0].Why)
-	s.Equal(session.ShortfallUnreadable, decl.Candidates[0].Why.Reason)
+	_, err = mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "alice"})
+	s.Require().ErrorIs(err, session.ErrNoSheet)
 
 	beforeSessionSaves, beforeEncounterSaves, beforeCharacterSaves :=
 		s.sessions.saves, s.encounters.saves, s.characters.saves
 	_, err = mgr.Attack(context.Background(), &session.AttackInput{
-		Session: "sess", Attacker: "alice", Target: "ogre", DeclarationID: decl.ID,
+		Session: "sess", Attacker: "alice", Target: "ogre", DeclarationID: "attack:stale",
 	})
-	s.ErrorIs(err, session.ErrStaleDeclaration)
+	s.Require().Error(err)
 	s.Equal(beforeSessionSaves, s.sessions.saves)
 	s.Equal(beforeEncounterSaves, s.encounters.saves)
 	s.Equal(beforeCharacterSaves, s.characters.saves)
@@ -962,7 +953,7 @@ func (s *AttackTestSuite) duelAmong(members []string, sheets ...*character.Data)
 			ID: encounter.MemberID(id), Kind: encounter.KindPlayer, Position: spatial.Position{X: float64(i + 1), Y: 1},
 		})
 	}
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing:  encEveryoneStanding{},
 		Field:     encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
@@ -1022,74 +1013,46 @@ func (s *AttackTestSuite) TestAnUnreadableAttackerSheetIsCorruptRatherThanAbsent
 		"an unreadable dependency produces a blocker, never an executable selector")
 }
 
-// TestAnAbsentBystanderSheetIsAbsentRatherThanCorrupt covers the castFor path:
-// a member who is neither swinging nor being swung at still joins the cast,
-// because applicability is an effect's own predicate (ADR-0038). Their sheet
-// being absent is the same failure as the attacker's and must read the same way.
+// TestUnreadableTargetAndParticipantBlockAffordBeforeUnchangedAttack: a
+// member whose stored sheet exists and cannot be reconstituted — the target
+// or a bystander — refuses Afford by name (ErrBadCharacter) rather than
+// leaving a blocker row: the world asks that sheet how far it sees before it
+// can say who witnesses a swing (rpg-project#538), and a sheet that cannot be
+// read cannot answer. Attack refuses the same way and writes nothing.
 func (s *AttackTestSuite) TestUnreadableTargetAndParticipantBlockAffordBeforeUnchangedAttack() {
 	tests := []struct {
-		name             string
-		sheets           []*character.Data
-		unreadableMember string
-		candidate        bool
+		name    string
+		sheets  []*character.Data
+		members []string
 	}{
 		{
-			name: "unreadable target is a candidate refusal",
-			sheets: []*character.Data{
-				armedFighter("alice"), unreadableFighter("bob"),
-			},
-			unreadableMember: "bob",
-			candidate:        true,
+			name:    "unreadable target",
+			sheets:  []*character.Data{armedFighter("alice"), unreadableFighter("bob")},
+			members: []string{"alice", "bob"},
 		},
 		{
-			name: "unreadable non-target participant is a global refusal",
-			sheets: []*character.Data{
-				armedFighter("alice"), armedFighter("bob"), unreadableFighter("carol"),
-			},
-			unreadableMember: "carol",
-			candidate:        false,
+			name:    "unreadable non-target participant",
+			sheets:  []*character.Data{armedFighter("alice"), armedFighter("bob"), unreadableFighter("carol")},
+			members: []string{"alice", "bob", "carol"},
 		},
 	}
 
 	for _, tc := range tests {
 		s.Run(tc.name, func() {
-			members := []string{"alice", "bob"}
-			if tc.unreadableMember == "carol" {
-				members = append(members, "carol")
-			}
-			mgr := s.duelAmong(members, tc.sheets...)
-			if !tc.candidate {
-				// Carol remains a resolution-required roster participant but is
-				// not a live target candidate for Alice.
-				injectHolding(s.T(), s.encounters, tc.unreadableMember, nil)
-			}
+			mgr := s.duelAmong(tc.members, tc.sheets...)
 
-			afford, err := mgr.Afford(context.Background(), &session.AffordInput{
+			_, err := mgr.Afford(context.Background(), &session.AffordInput{
 				Session: "sess", Member: "alice",
 			})
-			s.Require().NoError(err)
-			decl := requireSingleAttackDeclaration(s.T(), afford.Declarations)
-			s.False(decl.Available, "Afford must not advertise an Attack whose cast cannot attach")
-			s.Require().NotNil(decl.Why)
-			s.Equal(session.ShortfallUnreadable, decl.Why.Reason)
-
-			bob := decl.Candidates[0]
-			s.Equal("bob", bob.Member)
-			if tc.candidate {
-				s.False(bob.Available)
-				s.Require().NotNil(bob.Why)
-				s.Equal(session.ShortfallUnreadable, bob.Why.Reason)
-			} else {
-				s.True(bob.Available, "the readable target keeps its independent reach fact")
-				s.Nil(bob.Why)
-			}
+			s.Require().ErrorIs(err, session.ErrBadCharacter)
+			s.NotErrorIs(err, session.ErrNoCharacter, "corrupt is not absent")
 
 			beforeSessionSaves, beforeEncounterSaves, beforeCharacterSaves :=
 				s.sessions.saves, s.encounters.saves, s.characters.saves
 			out, err := mgr.Attack(context.Background(), &session.AttackInput{
-				Session: "sess", Attacker: "alice", Target: "bob", DeclarationID: decl.ID,
+				Session: "sess", Attacker: "alice", Target: "bob", DeclarationID: "attack:stale",
 			})
-			s.ErrorIs(err, session.ErrStaleDeclaration)
+			s.Require().Error(err)
 			s.Nil(out)
 			s.Equal(beforeSessionSaves, s.sessions.saves)
 			s.Equal(beforeEncounterSaves, s.encounters.saves)
@@ -1097,13 +1060,14 @@ func (s *AttackTestSuite) TestUnreadableTargetAndParticipantBlockAffordBeforeUnc
 		})
 	}
 }
+
 func rangedDuelWorld(t fataler, targetX float64) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("range", 0, 0, 140, 8)}},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, SightFeet: 700, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "bob", Kind: encounter.KindPlayer, SightFeet: 700, Position: spatial.Position{X: targetX, Y: 1}},
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: targetX, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, Retention: encounter.RetentionUnbounded,
 	})
@@ -1114,10 +1078,19 @@ func rangedDuelWorld(t fataler, targetX float64) *encounter.EncounterData {
 	return turnWorld(&data, []string{"alice", "bob"}, 0)
 }
 
-func (s *AttackTestSuite) rangedDuel(targetX float64, roller *sequenceDice) *session.Manager {
+// rangedDuel puts bob targetX-1 cells down the range from alice, who holds
+// weapon in her main hand.
+//
+// EVERY DISTANCE HERE IS INSIDE WHAT A CHARACTER SEES. Sight is asked of each
+// member's sheet (rpg-project#538, R12), and a character's sheet answers the
+// stated 120 feet — 24 cells — so a target farther off is not one she can
+// declare at all. The range bands are therefore exercised with weapons whose
+// bands fall inside that sight: a shortbow's long range starts at 80 feet and
+// a dart's ends at 60.
+func (s *AttackTestSuite) rangedDuel(targetX float64, weapon weapons.WeaponID, roller *sequenceDice) *session.Manager {
 	alice, bob := armedFighter("alice"), armedFighter("bob")
-	alice.Inventory = []character.InventoryItemData{{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Longbow), Quantity: 1}}
-	alice.EquipmentSlots = character.EquipmentSlots{character.SlotMainHand: string(weapons.Longbow)}
+	alice.Inventory = []character.InventoryItemData{{Type: shared.EquipmentTypeWeapon, ID: string(weapon), Quantity: 1}}
+	alice.EquipmentSlots = character.EquipmentSlots{character.SlotMainHand: string(weapon)}
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(alice, bob)
 	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: session.DiscardEvents{}})
@@ -1129,15 +1102,15 @@ func (s *AttackTestSuite) rangedDuel(targetX float64, roller *sequenceDice) *ses
 
 func (s *AttackTestSuite) TestCharacterLongbowAttacksInsideNormalRange() {
 	roller := &sequenceDice{rolls: []int{4, 17}}
-	out, err := s.swing(s.rangedDuel(17, roller)) // 16 cells = 80 feet
+	out, err := s.swing(s.rangedDuel(17, weapons.Longbow, roller)) // 16 cells = 80 feet
 	s.Require().NoError(err)
 	s.Equal(4, out.Roll, "normal range rolls one die")
 	s.Equal(1, roller.next)
 }
 
-func (s *AttackTestSuite) TestCharacterLongbowAttacksAtLongRangeWithDisadvantage() {
+func (s *AttackTestSuite) TestCharacterShortbowAttacksAtLongRangeWithDisadvantage() {
 	roller := &sequenceDice{rolls: []int{17, 4}}
-	out, err := s.swing(s.rangedDuel(41, roller)) // 40 cells = 200 feet
+	out, err := s.swing(s.rangedDuel(21, weapons.Shortbow, roller)) // 20 cells = 100 feet, past 80
 	s.Require().NoError(err)
 	s.Equal(4, out.Roll)
 	s.Equal(2, roller.next)
@@ -1145,7 +1118,7 @@ func (s *AttackTestSuite) TestCharacterLongbowAttacksAtLongRangeWithDisadvantage
 
 func (s *AttackTestSuite) TestOutOfRangeAttackRollsNothing() {
 	roller := &sequenceDice{rolls: []int{17, 4}}
-	_, err := s.swing(s.rangedDuel(123, roller)) // 122 cells = 610 feet
+	_, err := s.swing(s.rangedDuel(15, weapons.Dart, roller)) // 14 cells = 70 feet, past a dart's 60
 	s.Require().ErrorIs(err, session.ErrStaleDeclaration)
 	s.Zero(roller.next)
 }

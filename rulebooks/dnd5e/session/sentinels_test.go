@@ -93,6 +93,10 @@ var compositionSentinels = map[string]error{
 	"encounter.ErrTrimmed":                encounter.ErrTrimmed,
 	"encounter.ErrNoInitiative":           encounter.ErrNoInitiative,
 	"encounter.ErrNoStanding":             encounter.ErrNoStanding,
+	// The sheet capability's two refusals (rpg-project#538), translated to
+	// ErrNoSheet and ErrInvalidWorld.
+	"encounter.ErrNoSheets":       encounter.ErrNoSheets,
+	"encounter.ErrRefusingSheets": encounter.ErrRefusingSheets,
 }
 
 // resolutionSentinels is every error value the resolution module exports.
@@ -143,6 +147,9 @@ var resolutionSentinels = map[string]error{
 	// A Sanctuary ward that carries no DC (rpg-toolkit#1965): translated to
 	// ErrBadCharacter with %v, so it is not in the chain a host sees.
 	"resolution.ErrWardUnreadable": resolution.ErrWardUnreadable,
+	// The sheet capability not supplied (rpg-project#538): translated to
+	// ErrNoSheet with %v.
+	"resolution.ErrNoSheets": resolution.ErrNoSheets,
 }
 
 // refSentinels is core's identifier vocabulary — what a malformed ref is

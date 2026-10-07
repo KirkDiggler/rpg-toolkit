@@ -149,7 +149,7 @@ func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
 		},
 	}
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
 		Sight:      aggregateRecordEveryoneSees{},
 		Equipment:  encNoHandsObserved{},
 		Standing:   aggregateRecordEveryoneStanding{},
@@ -238,7 +238,7 @@ func TestRecordProjectsCriticalStrikeTrace(t *testing.T) {
 		},
 	}
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
 		Sight:      aggregateRecordEveryoneSees{},
 		Equipment:  encNoHandsObserved{},
@@ -613,7 +613,7 @@ func TestMoveRegenerationSkipsAttackTargetPreflight(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	world, err := encounter.NewEncounter(&encounter.SetupInput{
+	world, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)}},
@@ -679,7 +679,7 @@ func TestInjectedTargetPreflightRefusalChangesAffordAndAttack(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	world, err := encounter.NewEncounter(&encounter.SetupInput{
+	world, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)}},
@@ -785,7 +785,7 @@ func TestAttackVariantsShareOneTargetPreflight(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	world, err := encounter.NewEncounter(&encounter.SetupInput{
+	world, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)}},
@@ -843,7 +843,6 @@ func strikeFixtureFighter(id string) *character.Data {
 		},
 		HitPoints:           24,
 		MaxHitPoints:        28,
-		ArmorClass:          16,
 		ProficiencyBonus:    2,
 		WeaponProficiencies: []proficiencies.Weapon{proficiencies.WeaponMartial},
 		Inventory: []character.InventoryItemData{{
@@ -870,7 +869,7 @@ func TestStrikeRefusesAPersistedMonsterPriceBeforeRolling(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	world, err := encounter.NewEncounter(&encounter.SetupInput{
+	world, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
 		Field:     encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("tomb", 0, 0, 12, 6)}},

@@ -621,7 +621,7 @@ func spentJoinFighter(t *testing.T, id string) *character.Data {
 	t.Helper()
 	secondWind, err := json.Marshal(features.SecondWindData{
 		Ref: refs.Features.SecondWind(), ID: id + "-second-wind", Name: "Second Wind",
-		Level: 4, CharacterID: id, Uses: 0, MaxUses: 1,
+		CharacterID: id, Uses: 0, MaxUses: 1,
 	})
 	if err != nil {
 		t.Fatalf("build Second Wind: %v", err)
@@ -645,7 +645,7 @@ func spentJoinFighter(t *testing.T, id string) *character.Data {
 			abilities.STR: 16, abilities.DEX: 14, abilities.CON: 14,
 			abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 8,
 		},
-		HitPoints: 7, MaxHitPoints: 36, ArmorClass: 16,
+		HitPoints: 7, MaxHitPoints: 36,
 		DeathSaveState: &saves.DeathSaveState{
 			Successes: 1, Failures: 2, Stabilized: true, Dead: true,
 		},
@@ -660,7 +660,7 @@ func spentJoinFighter(t *testing.T, id string) *character.Data {
 
 func memberDownJoinWorld(t *testing.T) *encounter.EncounterData {
 	t.Helper()
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
 		Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},

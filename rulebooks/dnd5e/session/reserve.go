@@ -26,9 +26,9 @@ import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 //
 // A reserved member ARRIVES INSIDE SOME LATER VERB — the participation pass
 // that notices the chief down, the round that starts, the fact that lands —
-// and the arrival's own sight refresh asks the Sight and Standing seams about
-// the newcomer at once. Both seams are seeded from the stored world at load
-// AND again when a verb adopts the world a resolution handed back
+// and the arrival's own sight refresh asks the sheet and Standing seams about
+// the newcomer at once. Their roster kinds are seeded from the stored world
+// at load AND again when a verb adopts the world a resolution handed back
 // ([Manager.adopt]: the swing that fells the chief is recorded on that
 // world, and the zombies arrive inside the record), so they must be seeded
 // from what WAITS as well as from what stands ([worldMembers]); a seam that
@@ -115,10 +115,14 @@ const (
 
 // worldMembers is every member the stored world has, PLACED OR WAITING: the
 // roster as persisted, followed by the reserve as the members they will be.
-// What the Sight and Standing seams are seeded from at every load, because an
-// arrival happens mid-verb and its own sight refresh asks both seams about the
-// newcomer at once (this file's doc). Members first, so a plain world's seams
-// are seeded exactly as they always were.
+// What the verb's roster-kind snapshot is seeded from at every load, because
+// an arrival happens mid-verb and its own sight refresh asks the sheet and
+// standing seams about the newcomer at once (this file's doc). Members first,
+// so a plain world's kinds are seeded exactly as they always were.
+//
+// No speed, sight, attacks or targeting: neither record carries them
+// (rpg-project#538). An arriving monster's sheet was recorded at Spawn, and
+// the sheet seam reads it there.
 func worldMembers(world encounter.EncounterData) []encounter.MemberData {
 	out := make([]encounter.MemberData, 0, len(world.Members)+len(world.Reserve))
 	out = append(out, world.Members...)
@@ -127,10 +131,6 @@ func worldMembers(world encounter.EncounterData) []encounter.MemberData {
 			ID:             r.ID,
 			Kind:           r.Kind,
 			Name:           r.Name,
-			SpeedFeet:      r.SpeedFeet,
-			SightFeet:      r.SightFeet,
-			Actions:        r.Actions,
-			Targeting:      r.Targeting,
 			BlocksMovement: r.BlocksMovement,
 			Faction:        r.Faction,
 		})

@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/play/interrupt"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
@@ -363,8 +364,9 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		Participants: cast,
 		Initiative:   m.initiative,
 		Standing:     scope.standing,
-		Sight:        &sightSeam{members: worldMembers(world)},
+		Sight:        sheetsBeside(scope.standing),
 		Equipment:    equipmentBeside(scope.standing),
+		Sheets:       sheetsBeside(scope.standing),
 		TurnDriver:   scope.driver,
 		// The concealment pair (rpg-toolkit#1378), bound to the same live
 		// scope openForWrite and adopt bind — the one-seam consistency law:
@@ -626,6 +628,29 @@ func attackRefFor(definition combatActions.Definition) AttackRef {
 	return ref
 }
 
+// sheetRefusal reports which of this package's own sheet sentinels err
+// carries, or nil: the refusals the sheet seam (sheets.go) makes about a member
+// it holds no readable sheet for.
+func sheetRefusal(err error) error {
+	for _, own := range []error{ErrNoCharacter, ErrBadCharacter, ErrNoSheet, ErrBadRepository} {
+		if errors.Is(err, own) {
+			return own
+		}
+	}
+	return nil
+}
+
+// badCostUnlessSheet is how Afford reports a world read that failed while it
+// was pricing: [ErrBadCost], unless the failure was a sheet the sheet seam
+// could not read — then that refusal's own sentinel, for [sheetRefusal]'s
+// reason (the repair is the sheet's, not the cost's).
+func badCostUnlessSheet(err error) error {
+	if own := sheetRefusal(err); own != nil {
+		return fmt.Errorf("%w: %v", own, err)
+	}
+	return fmt.Errorf("%w: %v", ErrBadCost, err)
+}
+
 // translateResolution maps the resolution module's sentinels onto this
 // package's own.
 //
@@ -650,6 +675,15 @@ func attackRefFor(definition combatActions.Definition) AttackRef {
 // mechanical: sentinels_test.go drives the refusals a caller can produce, and
 // translate_internal_test.go covers every arm below.
 func translateResolution(err error) error {
+	// A SHEET THIS PACKAGE COULD NOT READ IS THE CAUSE, whatever resolution
+	// was doing when it asked. The sheet seam (sheets.go) is consulted from
+	// inside a resolution — a cost's witnesses ask every member's sight — and
+	// resolution wraps the seam's refusal in its own sentinel for what it was
+	// doing at the time. The host's repair is the sheet's, so the seam's own
+	// word wins, carried alone with the account as text (S2).
+	if own := sheetRefusal(err); own != nil {
+		return fmt.Errorf("%w: %v", own, err)
+	}
 	switch {
 	case errors.Is(err, resolution.ErrCannotPay):
 		// The PLAYER-FACING one, and the reason it is not folded in with the two
@@ -691,6 +725,22 @@ func translateResolution(err error) error {
 		// standing in a world nobody spawned. Refused earlier by name, so this
 		// arm is the backstop rather than the path.
 		return fmt.Errorf("%w: %v", ErrNoSheet, err)
+	case errors.Is(err, contributions.ErrRuleCannotAnswer):
+		// A class-scaled rule that cannot answer from its frame: the actor's
+		// sheet holds no levels in the class its effect scales with, or its
+		// levels are unknown (rpg-project#538). The effect fails rather than
+		// being read as level one, and the remedy is the sheet's, so it is
+		// this package's word for a sheet it cannot use.
+		return fmt.Errorf("%w: %v", ErrBadCharacter, err)
+	case errors.Is(err, resolution.ErrNoSheets), errors.Is(err, encounter.ErrNoSheets):
+		// The sheet capability was not supplied, or its answer skipped a
+		// member: either way some member's speed and reach would have to be
+		// invented, and the remedy is a sheet this seam failed to read.
+		return fmt.Errorf("%w: %v", ErrNoSheet, err)
+	case errors.Is(err, encounter.ErrRefusingSheets):
+		// A compile-only world was asked to pace, budget or reach: it has no
+		// sheets behind it and was never meant to be played as loaded.
+		return fmt.Errorf("%w: %v", ErrInvalidWorld, err)
 	case errors.Is(err, resolution.ErrNilInput), errors.Is(err, resolution.ErrNoMachine):
 		return fmt.Errorf("%w: %v", ErrNilInput, err)
 	default:
