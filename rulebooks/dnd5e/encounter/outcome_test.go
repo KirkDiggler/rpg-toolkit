@@ -192,6 +192,48 @@ func (s *OutcomeTestSuite) TestAWardedAttackReachesTheStoryAndRejectsMismatches(
 	})
 }
 
+// TestAWardOutlivesTheCasterWhoLeft is rpg-toolkit#1965's stall, at the seam
+// that refused it. Sanctuary does not end when its caster walks away, and the
+// ward records its own DC at cast, so a monster's swing at the warded member
+// after the caster Exited still meets the ward — and the story has to be able
+// to say so. The source is a member who WAS here: [Encounter.Story] already
+// answers an exited member for the same reason, and an id this encounter never
+// held is still nobody.
+func (s *OutcomeTestSuite) TestAWardOutlivesTheCasterWhoLeft() {
+	enc := s.wardScene()
+	_, err := enc.Exit(&encounter.ExitInput{Member: bob})
+	s.Require().NoError(err)
+
+	out, err := enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeWarded, Actor: alice, Targets: []encounter.MemberID{goblin}, Warded: wardedSaveDetail(),
+	})
+	s.Require().NoError(err, "the ward's caster left; the ward did not")
+
+	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(story)
+	last := story[len(story)-1]
+	s.Equal(out.Seq, last.Seq)
+
+	var beat map[string]any
+	s.Require().NoError(json.Unmarshal(last.Payload, &beat))
+	s.Equal("warded", beat["beat"])
+	warded, ok := beat["warded"].(map[string]any)
+	s.Require().True(ok)
+	s.Equal("bob", warded["source"], "the beat still names the caster who left")
+	save, ok := warded["save"].(map[string]any)
+	s.Require().True(ok)
+	s.Equal(float64(15), save["dc"], "the DC as the rulebook gave it")
+
+	s.Run("a source this encounter never held is still nobody", func() {
+		unknown := &encounter.WardedDetail{Source: "nobody", Save: wardedSaveDetail().Save}
+		_, err := enc.Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeWarded, Actor: alice, Targets: []encounter.MemberID{goblin}, Warded: unknown,
+		})
+		s.Require().ErrorIs(err, encounter.ErrNoMember)
+	})
+}
+
 // TestABoughtItemReachesTheStoryAndRejectsMismatches is OutcomeBought's half
 // of Record, the same shape TestDeathSaveDetailRoundTripsEveryPrimitiveAndRejectsMismatches
 // (participation_test.go) already pins for OutcomeDeathSave: the detail
