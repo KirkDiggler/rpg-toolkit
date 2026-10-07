@@ -562,7 +562,7 @@ func (m *castMachine) wardCastStep(
 		return next, nil
 	}
 	ward := pending[wardIndex]
-	dc, err := wardSaveDC(m.cast, target.targetID, ward.SourceID)
+	dc, err := wardSaveDC(target.targetID, ward)
 	if err != nil {
 		return nil, err
 	}
@@ -924,6 +924,14 @@ func newGatedCast(
 				"%w: %s contests a save and delivers to its caster, which no contest can do",
 				ErrBadAction, definition.Ref.String())
 		}
+		if effect.SaveDCKey != "" {
+			// The DC is bound from the caster's sheet when the cast starts, and
+			// only the gateless delivery does that today. A contested effect
+			// that keeps a DC arrives with its own customer; until then it is
+			// refused rather than imposed without the number it declared.
+			return nil, fmt.Errorf("%w: %s keeps the caster's save DC on a contested effect, which no contest binds yet",
+				ErrBadAction, definition.Ref.String())
+		}
 		parameters, err := bindCast(effect, casterID, option)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %s: %w", ErrBadAction, definition.Ref.String(), err)
@@ -1002,6 +1010,18 @@ func newGatelessCast(definition combatActions.Definition, casterID, targetID, op
 		parameters, err := bindCast(effect, counterpartID, option)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %s: %w", ErrBadAction, definition.Ref.String(), err)
+		}
+		if effect.SaveDCKey != "" {
+			// The caster's DC is on a sheet this constructor cannot see; the
+			// condition is built when the cast starts ([pendingDelivery]).
+			deliveries = append(deliveries, preparedDelivery{
+				recipientID: recipientID,
+				pending: &pendingDelivery{
+					ref: effect.Ref, parameters: parameters, saveDCKey: effect.SaveDCKey,
+					casterID: casterID, sourceRef: definition.Ref.String(),
+				},
+			})
+			continue
 		}
 		prepared, err := prepareCondition(
 			combatActions.ConditionApplication{Ref: effect.Ref, Parameters: parameters},
@@ -1094,13 +1114,13 @@ func bindOption(
 	return writeParameter(effect.Ref, parameters, effect.OptionKey, option)
 }
 
-// writeParameter puts one string under one key in a condition's configuration
-// and hands the whole object back.
+// writeParameter puts one value — an id, a word, a DC — under one key in a
+// condition's configuration and hands the whole object back.
 //
 // The parameters it is given may already carry a binding, so it re-reads them
 // rather than starting from the effect: what comes back is everything content
 // authored plus everything the engine has bound so far.
-func writeParameter(ref core.Ref, parameters json.RawMessage, key, value string) (json.RawMessage, error) {
+func writeParameter(ref core.Ref, parameters json.RawMessage, key string, value any) (json.RawMessage, error) {
 	fields := map[string]json.RawMessage{}
 	if len(parameters) > 0 {
 		if err := json.Unmarshal(parameters, &fields); err != nil {
@@ -1109,7 +1129,7 @@ func writeParameter(ref core.Ref, parameters json.RawMessage, key, value string)
 	}
 	encoded, err := json.Marshal(value)
 	if err != nil {
-		return nil, fmt.Errorf("condition %s %s %q: %w", ref.String(), key, value, err)
+		return nil, fmt.Errorf("condition %s %s %v: %w", ref.String(), key, value, err)
 	}
 	fields[key] = encoded
 

@@ -17,18 +17,21 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// clericWarder is a level-1 Cleric with a real, computable spell save DC —
-// the standalone participant whose Sanctuary wards heroID in these tests.
-// Never placed on the encounter map: [wardSaveDC] only needs the sheet, not
-// a position.
+// clericWarder is a level-1 Cleric with a real spell save DC (13, the
+// [wardDC] every fixture ward carries) — the caster named by the wards in
+// these tests. Never placed on the encounter map, and never read by the ward
+// check: a ward owns its DC, so the cleric's presence changes nothing there.
 func clericWarder() *character.Data {
 	return &character.Data{
 		ID: "cleric-1", PlayerID: "player-2", Name: "Warder", Level: 1, ClassID: "cleric", RaceID: races.Human,
@@ -40,10 +43,15 @@ func clericWarder() *character.Data {
 	}
 }
 
+// wardDC is the DC every fixture ward carries: clericWarder's own spell save
+// DC, 8 + proficiency 2 + WIS +3, as the cast would have written it.
+const wardDC = 13
+
 func sanctuaryJSON(t *testing.T, memberID string) json.RawMessage {
 	t.Helper()
 	ward, err := conditions.NewSanctuaryCondition(conditions.NewSanctuaryConditionInput{
 		MemberID: memberID, SourceID: "cleric-1", SourceRef: refs.Spells.Sanctuary(),
+		SaveDC: wardDC,
 	})
 	require.NoError(t, err)
 	raw, err := ward.ToJSON()
@@ -405,7 +413,12 @@ func strikeOnWardedHero(t *testing.T, roller *actionRoller, extra ...Participant
 	t.Helper()
 	target := actionHero()
 	target.Conditions = []json.RawMessage{sanctuaryJSON(t, heroID)}
+	return strikeOn(t, target, roller, extra...)
+}
 
+// strikeOn resolves the wolf's bite on the given hero sheet.
+func strikeOn(t *testing.T, target *character.Data, roller *actionRoller, extra ...Participant) (*Output, error) {
+	t.Helper()
 	machine, err := NewAction(&ActionInput{
 		Definition: validMeleeDefinition(), AttackerID: wolfID, TargetID: heroID, Roller: roller,
 	})
@@ -421,64 +434,170 @@ func strikeOnWardedHero(t *testing.T, roller *actionRoller, extra ...Participant
 	})
 }
 
-// The ward reads its caster's own spell save DC: 8 + proficiency 2 + WIS +3.
-func TestTheWardDCIsTheCastersSpellSaveDC(t *testing.T) {
-	out, err := strikeOnWardedHero(t, &actionRoller{singles: []int{5}}, Participant{Character: clericWarder()})
+// castSanctuaryOnHero resolves the bard casting Sanctuary on the hero and
+// hands back the hero's sheet as the cast left it.
+func castSanctuaryOnHero(t *testing.T, caster *character.Data) (*character.Data, error) {
+	t.Helper()
+	fixtures := castFixtures(t)
+	caster.ActionEconomy.BonusActionsRemaining = 1
+	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.Sanctuary})
+	machine, err := NewAction(&ActionInput{
+		Definition: *definition, AttackerID: bardID, TargetIDs: []string{heroID},
+		Roller: &countingCastRoller{},
+	})
 	require.NoError(t, err)
+	out, err := Resolve(context.Background(), &Input{
+		World: touchWorld(t), Machine: machine,
+		Participants: []Participant{{Character: caster}, {Character: actionHero()}},
+		Cost:         &Cost{PayerID: bardID, Profile: definition.Cost, SpellTurn: "first"},
+		Initiative:   orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Roller: dice.NewRoller(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return fixtures.sheet(out, heroID), nil
+}
+
+// touchWorld stands the bard beside the hero, so a touch spell reaches.
+func touchWorld(t *testing.T) encounter.EncounterData {
+	t.Helper()
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{},
+		Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{},
+		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Field: encounter.FieldInput{
+			Canvas:  hexCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
+		},
+		Members: []encounter.MemberInput{
+			{ID: heroID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: bardID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	require.NoError(t, err)
+	return enc.ToData()
+}
+
+// THE RULING. The ward owns the DC it was cast with. A cleric (here the bard,
+// CHA +3, proficiency 2: DC 13) casts Sanctuary on the hero, then leaves the
+// interaction; a strike at the hero still rolls the Wisdom save at DC 13.
+// Before, the ward looked its caster up and, with the caster gone, every
+// strike at the warded ally refused — a stalled table.
+func TestAWardKeepsItsDCAfterItsCasterLeaves(t *testing.T) {
+	warded, err := castSanctuaryOnHero(t, baneCaster(1, 2))
+	require.NoError(t, err)
+
+	var dc int
+	for _, blob := range warded.Conditions {
+		loaded, loadErr := conditions.LoadJSON(blob)
+		require.NoError(t, loadErr)
+		if ward, ok := loaded.(*conditions.SanctuaryCondition); ok {
+			dc = ward.SaveDC
+		}
+	}
+	require.Equal(t, 13, dc, "the cast wrote the caster's spell save DC onto the ward")
+
+	roller := &actionRoller{singles: []int{5}} // wolf's WIS save: fails against 13
+	out, err := strikeOn(t, warded, roller)    // the caster is not in this cast
+	require.NoError(t, err, "a ward whose caster left still wards")
 
 	outcome := out.Outcome.(StrikeOutcome)
 	require.NotNil(t, outcome.Warded)
-	require.Equal(t, 13, outcome.Warded.Save.DC, "8 + 2 + 3: the cleric's spell save DC")
+	require.Equal(t, bardID, outcome.Warded.SourceID)
+	require.Equal(t, 13, outcome.Warded.Save.DC, "at the DC the ward was cast with")
+	require.Equal(t, 1, roller.calls, "only the ward save was rolled")
 }
 
-// FAIL CLOSED. A ward whose caster is not in the cast has no DC to roll
-// against. It used to answer 0 — a save that always succeeds, so the attack
-// went through as if the ward were not there. The strike is refused instead,
-// before any die is rolled.
-func TestAWardWhoseCasterIsNotInTheCastRefusesTheStrike(t *testing.T) {
-	roller := &actionRoller{singles: []int{20}} // a save that would beat any DC: the ward cannot be skipped by luck
-	_, err := strikeOnWardedHero(t, roller)
-	require.ErrorIs(t, err, ErrWardUnreadable)
-	require.ErrorContains(t, err, heroID, "the error names the ward's holder")
-	require.ErrorContains(t, err, "cleric-1", "and its caster")
-	require.Zero(t, roller.calls, "no save was rolled against a DC nobody could read")
+// The ward reads its own DC, never the caster's sheet, so the same ward holds
+// with its caster present or absent.
+func TestTheWardDCIsTheOneItCarries(t *testing.T) {
+	for name, extra := range map[string][]Participant{
+		"caster present": {{Character: clericWarder()}},
+		"caster absent":  nil,
+	} {
+		t.Run(name, func(t *testing.T) {
+			out, err := strikeOnWardedHero(t, &actionRoller{singles: []int{5}}, extra...)
+			require.NoError(t, err)
+
+			outcome := out.Outcome.(StrikeOutcome)
+			require.NotNil(t, outcome.Warded)
+			require.Equal(t, wardDC, outcome.Warded.Save.DC)
+		})
+	}
 }
 
-// The cast path refuses the same way: a Bane on a creature warded by a caster
-// who is not in the cast is refused, not let through.
-func TestABaneOnAWardWhoseCasterIsNotInTheCastIsRefused(t *testing.T) {
+// The cast path reads the same DC: a Bane on a creature warded by a caster who
+// is not in the cast still meets the ward.
+func TestABaneOnAWardWhoseCasterLeftStillMeetsTheWard(t *testing.T) {
 	fixtures := castFixtures(t)
 	wolf := fixtures.wolfData()
 	wolf.Conditions = []json.RawMessage{sanctuaryJSON(t, wolfID)}
 
-	roller := &actionRoller{singles: []int{20}}
+	roller := &actionRoller{singles: []int{5}}
 	machine, err := NewAction(&ActionInput{
 		Definition: *baneDefinition(), AttackerID: bardID, TargetIDs: []string{wolfID}, Roller: roller,
 	})
 	require.NoError(t, err)
-	_, err = Resolve(context.Background(), &Input{
+	out, err := Resolve(context.Background(), &Input{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
 		World:        fixtures.world(),
 		Participants: []Participant{{Monster: wolf}, {Character: baneCaster(1, 2)}},
 		Machine:      machine, Cost: baneCost(),
 	})
-	require.ErrorIs(t, err, ErrWardUnreadable)
-	require.ErrorContains(t, err, wolfID)
-	require.Zero(t, roller.calls, "no ward save was rolled")
+	require.NoError(t, err)
+
+	outcome := out.Outcome.(CastOutcome)
+	require.NotNil(t, outcome.Targets[0].Warded)
+	require.Equal(t, wardDC, outcome.Targets[0].Warded.Save.DC)
 }
 
-// FAIL CLOSED, the other half. A ward whose caster IS in the cast but casts
-// nothing has a spell save DC of 0 — the same automatic success as an absent
-// caster — so the strike is refused the same way.
-func TestAWardWhoseCasterHasNoSpellSaveDCRefusesTheStrike(t *testing.T) {
-	caster := clericWarder()
-	caster.ClassID = "fighter" // same id as the ward's SourceID, no spellcasting ability
+// FAIL CLOSED at the cast. A caster with no spell save DC cannot impose a ward
+// that keeps one: the CAST is refused at the door, before any ward exists to
+// be rolled against at DC 0.
+func TestACasterWithNoSpellSaveDCCannotCastSanctuary(t *testing.T) {
+	caster := baneCaster(1, 2)
+	caster.ClassID = "fighter" // no spellcasting ability: SpellSaveDC is 0
 
+	warded, err := castSanctuaryOnHero(t, caster)
+	require.ErrorIs(t, err, ErrBadAction)
+	require.ErrorContains(t, err, bardID, "the refusal names the caster")
+	require.Nil(t, warded)
+}
+
+// FAIL CLOSED at the ward. A ward stored before wards kept their DC carries
+// none; a save against DC 0 always succeeds, so the strike is refused.
+func TestAWardWithNoDCRefusesTheStrike(t *testing.T) {
+	var fields map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(sanctuaryJSON(t, heroID), &fields))
+	delete(fields, "save_dc")
+	old, err := json.Marshal(fields)
+	require.NoError(t, err)
+
+	target := actionHero()
+	target.Conditions = []json.RawMessage{old}
 	roller := &actionRoller{singles: []int{20}}
-	_, err := strikeOnWardedHero(t, roller, Participant{Character: caster})
+	_, err = strikeOn(t, target, roller, Participant{Character: clericWarder()})
 	require.ErrorIs(t, err, ErrWardUnreadable)
 	require.ErrorContains(t, err, heroID, "the error names the ward's holder")
 	require.ErrorContains(t, err, "cleric-1", "and its caster")
 	require.Zero(t, roller.calls, "no save was rolled against a DC of zero")
+}
+
+// A contested effect that declares a save DC key is refused rather than
+// imposed without the DC it declared: only the gateless delivery binds one.
+func TestAContestedEffectKeepingASaveDCIsRefused(t *testing.T) {
+	definition := baneDefinition()
+	profile := definition.Cast.Clone() // never write through to shared content
+	profile.Effects[0].SaveDCKey = "save_dc"
+	definition.Cast = &profile
+
+	_, err := NewAction(&ActionInput{
+		Definition: *definition, AttackerID: bardID, TargetIDs: []string{wolfID},
+		Roller: &actionRoller{singles: []int{5}},
+	})
+	require.ErrorIs(t, err, ErrBadAction)
+	require.ErrorContains(t, err, "save DC")
 }

@@ -100,26 +100,22 @@ func strikeWards(
 	return wards, nil
 }
 
-// wardSaveDC reads the warding caster's own spell save DC. Sanctuary is
-// Cleric-only in this build, so its caster is always a character.
+// wardSaveDC is the DC the ward was cast with, which it owns: it was written
+// onto the ward from the caster's sheet when Sanctuary was imposed
+// ([combatActions.CastEffect.SaveDCKey]). The caster is never looked up here,
+// so a ward keeps working after its cleric leaves the interaction — the table
+// does not stall on a sheet nobody loaded.
 //
-// Errors: [ErrWardUnreadable], naming the ward's holder and caster, when the
-// caster is not a character in the cast or its sheet casts nothing (a DC of
-// zero). It used to answer 0, and a Wisdom save against DC 0 always succeeds:
-// a ward whose caster had left the cast let every attack through. The
-// interaction refuses instead of bypassing the ward (rpg-toolkit#1965 tier 1 #4).
-func wardSaveDC(cast *Participants, holderID, casterID string) (int, error) {
-	caster, ok := cast.Character(casterID)
-	if !ok {
-		return 0, fmt.Errorf("%w: the ward on %q was cast by %q, who is not a character in the cast",
-			ErrWardUnreadable, holderID, casterID)
+// Errors: [ErrWardUnreadable], naming the ward's holder and caster, for a ward
+// that carries no DC — one stored before wards kept theirs. A Wisdom save
+// against DC 0 always succeeds, so the attempt is refused rather than let
+// through (rpg-toolkit#1965 tier 1 #4).
+func wardSaveDC(holderID string, ward *conditions.SanctuaryCondition) (int, error) {
+	if ward.SaveDC <= 0 {
+		return 0, fmt.Errorf("%w: the ward on %q from %q carries no save DC",
+			ErrWardUnreadable, holderID, ward.SourceID)
 	}
-	dc := caster.SpellSaveDC()
-	if dc <= 0 {
-		return 0, fmt.Errorf("%w: the ward on %q was cast by %q, whose sheet has no spell save DC",
-			ErrWardUnreadable, holderID, casterID)
-	}
-	return dc, nil
+	return ward.SaveDC, nil
 }
 
 // wardSaveInput builds the attacker's Wisdom save against one Sanctuary ward.

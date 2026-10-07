@@ -282,7 +282,7 @@ func (m *strikeMachine) wardCheckStep(
 		return next, nil
 	}
 	ward := pending[index]
-	dc, err := wardSaveDC(cast, m.in.TargetID, ward.SourceID)
+	dc, err := wardSaveDC(m.in.TargetID, ward)
 	if err != nil {
 		return nil, err
 	}
