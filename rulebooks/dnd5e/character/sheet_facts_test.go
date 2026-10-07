@@ -20,7 +20,9 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
 // SheetFactsTestSuite pins that class-scaled numbers are asked of the sheet
@@ -254,7 +256,14 @@ func (s *SheetFactsTestSuite) TestClassLevelsAnswersFromTheLevelRecord() {
 // dwarf, whose darkvision is a dim-light rule awaiting the light model, not a
 // range.
 func (s *SheetFactsTestSuite) TestACharacterWithNoStatedRangeSeesTheStatedDefault() {
-	char := s.finalize(newRogueDraft(s.T()), "sighted-rogue")
+	draft := newRogueDraft(s.T())
+	s.Require().NoError(draft.SetRace(&SetRaceInput{
+		RaceID:    races.Dwarf,
+		SubraceID: races.HillDwarf,
+		Choices:   RaceChoices{Tools: []shared.SelectionID{"smith-tools"}},
+	}))
+	char := s.finalize(draft, "sighted-dwarf")
+	s.Require().Equal(races.HillDwarf, mustToData(s.T(), char).SubraceID, "the fixture is a dwarf with darkvision")
 
-	s.Equal(120, char.SightFeet())
+	s.Equal(120, char.SightFeet(), "darkvision does not change the range before a light model (R10)")
 }

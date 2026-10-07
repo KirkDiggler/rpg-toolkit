@@ -210,6 +210,9 @@ var _ combat.SightHolder = (*Monster)(nil)
 // stat block: its authored darkvision range when it states one, else
 // [combat.DefaultSightFeet] — the same default a character whose race table
 // states no range answers, because silence means the same for both kinds.
+// Before a light model exists, an authored darkvision IS the monster's range,
+// so authoring senses narrows sight relative to a silent stat block — today's
+// behaviour, kept under R12; the light model (R10) revisits it.
 func (m *Monster) SightFeet() int {
 	if m.senses.Darkvision > 0 {
 		return m.senses.Darkvision

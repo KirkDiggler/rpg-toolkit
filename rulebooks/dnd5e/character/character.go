@@ -216,10 +216,11 @@ func (c *Character) ClassLevels() contributions.ClassLevels {
 
 var _ combat.SightHolder = (*Character)(nil)
 
-// SightFeet answers the named sight question ([combat.SightHolder]) from this
-// character's sheet: the race table's stated range when the rulebook states
-// one, else [combat.DefaultSightFeet]. No race in the table states a range
-// today, so every character answers the stated default of 120 feet.
+// SightFeet answers the named sight question ([combat.SightHolder]) for this
+// character. No race in the race table states a sight range today, so it
+// answers [combat.DefaultSightFeet], the rulebook's stated 120 feet, for every
+// character. When a race does state a range, that number comes from the race
+// table here.
 //
 // Darkvision as a race trait does not change the number: it is a rule about
 // seeing in dim light and darkness, and until a light model exists (R10)
