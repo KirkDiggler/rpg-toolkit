@@ -584,6 +584,7 @@ func TestAWardWithNoDCRefusesTheStrike(t *testing.T) {
 	roller := &actionRoller{singles: []int{20}}
 	_, err = strikeOn(t, target, roller, Participant{Character: clericWarder()})
 	require.ErrorIs(t, err, ErrWardUnreadable)
+	require.ErrorIs(t, err, conditions.ErrWardWithoutDC, "the ward's own refusal rides inside")
 	require.ErrorContains(t, err, heroID, "the error names the ward's holder")
 	require.ErrorContains(t, err, "cleric-1", "and its caster")
 	require.Zero(t, roller.calls, "no save was rolled against a DC of zero")

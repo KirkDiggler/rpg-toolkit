@@ -106,16 +106,19 @@ func strikeWards(
 // so a ward keeps working after its cleric leaves the interaction — the table
 // does not stall on a sheet nobody loaded.
 //
-// Errors: [ErrWardUnreadable], naming the ward's holder and caster, for a ward
-// that carries no DC — one stored before wards kept theirs. A Wisdom save
+// Errors: [ErrWardUnreadable] wrapping [conditions.ErrWardWithoutDC] (both
+// match errors.Is), naming the ward's holder and caster, for a ward that
+// carries no DC — one stored before wards kept theirs. A Wisdom save
 // against DC 0 always succeeds, so the attempt is refused rather than let
 // through (rpg-toolkit#1965 tier 1 #4).
 func wardSaveDC(holderID string, ward *conditions.SanctuaryCondition) (int, error) {
-	if ward.SaveDC <= 0 {
-		return 0, fmt.Errorf("%w: the ward on %q from %q carries no save DC",
-			ErrWardUnreadable, holderID, ward.SourceID)
+	// The ward answers for its own DC; this only names the attempt it stops.
+	dc, err := ward.WardSaveDC()
+	if err != nil {
+		return 0, fmt.Errorf("%w: the ward on %q from %q: %w",
+			ErrWardUnreadable, holderID, ward.SourceID, err)
 	}
-	return ward.SaveDC, nil
+	return dc, nil
 }
 
 // wardSaveInput builds the attacker's Wisdom save against one Sanctuary ward.
