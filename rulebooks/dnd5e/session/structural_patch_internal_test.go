@@ -65,6 +65,7 @@ func (s *StructuralPatchDecodeSuite) TestMalformedReplacementsRefuseTheWholeBody
 		"empty opening identity":               `"structural_wall_openings_replacements":[{"wall_id":"w","openings":[{"width":1}]}]`,
 		"duplicate openings":                   `"structural_wall_openings_replacements":[{"wall_id":"w","openings":[{"id":"o"},{"id":"o"}]}]`,
 		"full row collision":                   `"structural_walls":[{"id":"w"}],"structural_wall_openings_replacements":[{"wall_id":"w"}]`,
+		"two full walls sharing an opening":    `"structural_walls":[{"id":"a","openings":[{"id":"same"}]},{"id":"b","openings":[{"id":"same"}]}]`,
 		"cross-wall openings":                  `"structural_wall_openings_replacements":[{"wall_id":"a","openings":[{"id":"same"}]},{"wall_id":"b","openings":[{"id":"same"}]}]`,
 		"full-row and patch opening collision": `"structural_walls":[{"id":"a","openings":[{"id":"same"}]}],"structural_wall_openings_replacements":[{"wall_id":"b","openings":[{"id":"same"}]}]`,
 		"wrong opening type":                   `"structural_walls":[{"id":"a","openings":[true]}]`,
