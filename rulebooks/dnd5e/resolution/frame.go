@@ -385,7 +385,11 @@ func castHeld(cast *Participants, members []string) ([]contributions.MemberHeld,
 	for _, id := range members {
 		var stored []json.RawMessage
 		if character, ok := cast.Character(id); ok {
-			stored = character.ToData().Conditions
+			data, err := character.ToData()
+			if err != nil {
+				return nil, fmt.Errorf("frame: %q: %w", id, err)
+			}
+			stored = data.Conditions
 		} else if monster, ok := cast.Monster(id); ok {
 			stored = monster.ToData().Conditions
 		} else {

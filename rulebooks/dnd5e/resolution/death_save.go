@@ -107,7 +107,10 @@ func deathSaveOn(
 	// Snapshot before deferred teardown. Cleanup is never called: registration
 	// ownership belongs to the surface, and Cleanup would erase conditions from
 	// the record about to cross the persistence boundary.
-	changed := ch.ToData()
+	changed, err := ch.ToData()
+	if err != nil {
+		return nil, fmt.Errorf("resolution: death save for %q: %w", one.ID(), err)
+	}
 
 	return &DeathSaveOutput{Character: changed, Result: *result}, nil
 }

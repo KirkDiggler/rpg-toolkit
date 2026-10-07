@@ -605,10 +605,15 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		ended, kept = nil, nil
 	}
 
+	dirty, err := dirtyCharacters(cast)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Output{
 		World:               enc.ToData(),
 		SightAreasChanged:   areasChanged,
-		DirtyCharacters:     dirtyCharacters(cast),
+		DirtyCharacters:     dirty,
 		DirtyMonsters:       dirtyMonsters(cast),
 		Outcome:             outcome,
 		Posed:               posed,
@@ -762,17 +767,24 @@ func attachMonster(
 //
 // Cleanup is never called first (R7): its first statement nils the conditions
 // that ToData is about to serialize, so a "tidy" snapshot is a lossy one.
-func dirtyCharacters(cast *Participants) []*character.Data {
+//
+// Errors: a sheet that cannot be written whole — the resolution fails rather
+// than hand back a record that silently lost an effect.
+func dirtyCharacters(cast *Participants) ([]*character.Data, error) {
 	var out []*character.Data
 	for _, id := range cast.order {
 		ch, ok := cast.characters[id]
 		if !ok || !ch.IsDirty() {
 			continue
 		}
-		out = append(out, ch.ToData())
+		data, err := ch.ToData()
+		if err != nil {
+			return nil, fmt.Errorf("resolution: write %q: %w", id, err)
+		}
+		out = append(out, data)
 	}
 
-	return out
+	return out, nil
 }
 
 func dirtyMonsters(cast *Participants) []*monster.Data {

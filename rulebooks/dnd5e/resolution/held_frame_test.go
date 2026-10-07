@@ -139,7 +139,9 @@ func (s *FrameTestSuite) heldRogue() *character.Data {
 	informs := &InformAttackTestSuite{}
 	informs.SetT(s.T())
 	informs.ctx = s.ctx
-	return informs.rogue().ToData()
+	data, err := informs.rogue().ToData()
+	s.Require().NoError(err)
+	return data
 }
 
 // informHeld asks the rogue's rows for an attack over the scene's observed

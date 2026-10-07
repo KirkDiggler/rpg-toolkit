@@ -87,7 +87,11 @@ func InformAttack(in *InformAttackInput) (*InformAttackOutput, error) {
 			in.Observed.Observer, in.Actor.GetID())
 	}
 	loaded := in.Actor.GetConditions()
-	actorHeld, err := sheetHeld(in.Actor.GetID(), in.Actor.ToData().Conditions)
+	actorData, err := in.Actor.ToData()
+	if err != nil {
+		return nil, fmt.Errorf("inform attack: %w", err)
+	}
+	actorHeld, err := sheetHeld(in.Actor.GetID(), actorData.Conditions)
 	if err != nil {
 		return nil, fmt.Errorf("inform attack: %w", err)
 	}

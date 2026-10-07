@@ -109,8 +109,8 @@ func (s *ProjectionTestSuite) unarmoredDefense() json.RawMessage {
 //
 // The reader migration that limit was waiting for has landed. Unarmored Defense
 // reads itself out of the CAST, the cast is installed by the door, and so the
-// 15 below is now downstream of installTruth: delete that call and this fails
-// with 12. Measured, not assumed — TestTheDoorIsWhatMakesTheNumberRight pins
+// 15 below is now downstream of installTruth: delete that call and the fold
+// refuses with gamectx.ErrNotInCast. Measured, not assumed — TestTheDoorIsWhatMakesTheNumberRight pins
 // exactly that, and it is the pin this comment promised would become possible.
 func (s *ProjectionTestSuite) TestTheProjectionFoldsTheConditionIn() {
 	out, err := ProjectCharacter(s.ctx, &ProjectCharacterInput{
@@ -133,34 +133,29 @@ func (s *ProjectionTestSuite) TestTheProjectionFoldsTheConditionIn() {
 }
 
 // TestTheProjectionBeatsAnAttachedFold was the parity half, and its baseline
-// moved on purpose.
+// moved on purpose — twice.
 //
 // It used to assert that both paths answered 15 for the same record — the
 // projection, and the old load-attach-fold written out in full because it was
-// the thing being replaced. Both were pinned independently so it could not pass
-// by two wrongs agreeing.
+// the thing being replaced. Then the old path answered 12: with no CAST,
+// Unarmored Defense could not find itself and left the chain alone, and the
+// fold returned 10 + 2 DEX as though that were the barbarian's AC.
 //
-// The old path now answers 12. Not a regression: an attached sheet folding on a
-// bare context has no CAST, so Unarmored Defense cannot find itself and leaves
-// the chain alone, and 10 + 2 DEX is what is left. That is R6 — a chain folded
-// outside resolution is the bug rather than a mode — and it is the entire point
-// of the phase, so the test that used to say "these agree" now says WHY THEY NO
-// LONGER DO. A parity assertion kept here would have to be satisfied by
-// breaking the thing that was just fixed.
-//
-// Both numbers stay pinned independently, for the original reason: 15 names the
-// fold that had the truth, 12 names the fold that did not, and three points
-// apart is far enough that the assertion says which one moved.
+// Now the old path answers nothing. Unarmored Defense refuses to fold when it
+// cannot read its holder (rpg-toolkit#1965), so the attached sheet on a bare
+// context returns [gamectx.ErrNotInCast] instead of a number that looks fine
+// and is wrong. That is R6 made loud — a chain folded outside resolution is
+// the bug rather than a mode — and the projection is the only one of the two
+// that answers at all.
 func (s *ProjectionTestSuite) TestTheProjectionBeatsAnAttachedFold() {
 	direct, err := character.Load(s.ctx, s.barbarian(s.unarmoredDefense()))
 	s.Require().NoError(err)
 	s.Require().NoError(character.Attach(s.ctx, direct, events.NewEventBus()))
 
 	outside, err := direct.EffectiveAC(s.ctx)
-	s.Require().NoError(err,
-		"a fold with no cast is degraded, not refused: the condition leaves the chain alone")
-	s.Require().Equal(12, outside.Total,
-		"10 base + 2 DEX. No cast, so Unarmored Defense contributes nothing")
+	s.Require().ErrorIs(err, gamectx.ErrNotInCast,
+		"a fold with no cast is refused: Unarmored Defense cannot read its holder")
+	s.Require().Nil(outside, "and a refusal carries no number to misread")
 
 	out, err := ProjectCharacter(s.ctx, &ProjectCharacterInput{
 		Character: s.barbarian(s.unarmoredDefense()),
@@ -169,8 +164,6 @@ func (s *ProjectionTestSuite) TestTheProjectionBeatsAnAttachedFold() {
 
 	s.Require().Equal(15, out.ArmorClass.Total,
 		"the entry installs the truth, so the condition can read itself: +3 CON")
-	s.Require().Greater(out.ArmorClass.Total, outside.Total,
-		"the door is worth exactly the contributors a cast-less fold silently drops")
 }
 
 // TestTheDoorIsWhatMakesTheNumberRight is the pin the honest-limit note on
@@ -182,23 +175,23 @@ func (s *ProjectionTestSuite) TestTheProjectionBeatsAnAttachedFold() {
 // load-bearing for the value, and that is asserted here rather than described.
 //
 // It works by contrast rather than by reaching inside: the same record folded
-// through the entry (door called) and through an attached sheet on a bare
-// context (no door) differ by exactly the condition's contribution.
+// through the entry (door called) answers 15, and through an attached sheet on
+// a bare context (no door) is refused with [gamectx.ErrNotInCast]. The door is
+// the difference between a number and no number at all.
 func (s *ProjectionTestSuite) TestTheDoorIsWhatMakesTheNumberRight() {
 	record := s.barbarian(s.unarmoredDefense())
 
 	withDoor, err := ProjectCharacter(s.ctx, &ProjectCharacterInput{Character: record})
 	s.Require().NoError(err)
+	s.Require().Equal(15, withDoor.ArmorClass.Total,
+		"with the truth installed, Unarmored Defense's +3 CON reaches the fold")
 
 	direct, err := character.Load(s.ctx, s.barbarian(s.unarmoredDefense()))
 	s.Require().NoError(err)
 	s.Require().NoError(character.Attach(s.ctx, direct, events.NewEventBus()))
-	withoutDoor, err := direct.EffectiveAC(s.ctx)
-	s.Require().NoError(err)
-
-	s.Require().Equal(3, withDoor.ArmorClass.Total-withoutDoor.Total,
-		"the difference between folding with the truth installed and without it "+
-			"is precisely Unarmored Defense's +3 CON")
+	_, err = direct.EffectiveAC(s.ctx)
+	s.Require().ErrorIs(err, gamectx.ErrNotInCast,
+		"without the door the same record cannot be folded, and says why")
 }
 
 // TestTheProjectionInstallsNoWorld is the M4 pin, and the answer to "how did
