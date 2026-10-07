@@ -88,7 +88,6 @@ func (s *EffectiveACAttachmentSuite) monkData() *Data {
 		},
 		HitPoints:      9,
 		MaxHitPoints:   9,
-		ArmorClass:     15,
 		EquipmentSlots: EquipmentSlots{},
 		Conditions:     []json.RawMessage{raw},
 	}

@@ -77,12 +77,20 @@ func (s *ShillelaghCondition) EquipmentBinding() (string, string) {
 // MoveEquipmentBinding preserves an identified hand-to-hand transfer.
 func (s *ShillelaghCondition) MoveEquipmentBinding(slot string) { s.Weapon.Slot = slot }
 
-// WeaponAttackOverride affects only attacks with the selected held weapon.
-func (s *ShillelaghCondition) WeaponAttackOverride(slot, itemID string) *weaponattack.Override {
-	if s.TurnEndsLeft <= 0 || !s.binds(slot, itemID) {
-		return nil
+// WeaponAttackOverride affects only attacks with the selected held weapon. It
+// reads no level, so it never errors.
+func (s *ShillelaghCondition) WeaponAttackOverride(
+	in *weaponattack.OverrideInput,
+) (*weaponattack.OverrideOutput, error) {
+	if in == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "shillelagh: no attack assembly input")
 	}
-	return &weaponattack.Override{Dice: "1d8", Ability: s.Ability, Magical: true}
+	if s.TurnEndsLeft <= 0 || !s.binds(in.Slot, in.ItemID) {
+		return &weaponattack.OverrideOutput{}, nil
+	}
+	return &weaponattack.OverrideOutput{
+		Override: &weaponattack.Override{Dice: "1d8", Ability: s.Ability, Magical: true},
+	}, nil
 }
 
 // binds reports whether a hand and the equipment ID it holds are the

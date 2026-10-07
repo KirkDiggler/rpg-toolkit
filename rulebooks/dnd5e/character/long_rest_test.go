@@ -359,7 +359,6 @@ func longRestEconomyTestData(actionEconomy *ActionEconomyData) *Data {
 		},
 		HitPoints:     20,
 		MaxHitPoints:  36,
-		ArmorClass:    16,
 		ActionEconomy: actionEconomy,
 	}
 }
@@ -370,7 +369,6 @@ func TestLongRestPersistsCompleteRecoveryOnAttachedSheet(t *testing.T) {
 		Ref:         refs.Features.SecondWind(),
 		ID:          "second-wind-rest",
 		Name:        "Second Wind",
-		Level:       4,
 		CharacterID: "rest-fighter",
 		Uses:        0,
 		MaxUses:     1,
@@ -396,7 +394,6 @@ func TestLongRestPersistsCompleteRecoveryOnAttachedSheet(t *testing.T) {
 		},
 		HitPoints:      11,
 		MaxHitPoints:   36,
-		ArmorClass:     16,
 		DeathSaveState: &saves.DeathSaveState{Successes: 1, Failures: 2},
 		Resources: map[coreResources.ResourceKey]RecoverableResourceData{
 			shortRestPool:     {Current: 0, Maximum: 2, ResetType: coreResources.ResetShortRest},

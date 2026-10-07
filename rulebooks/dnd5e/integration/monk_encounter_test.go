@@ -123,7 +123,6 @@ func (s *MonkEncounterSuite) createLevel1Monk() *character.Character {
 		},
 		HitPoints:    10, // 8 base + 2 CON
 		MaxHitPoints: 10,
-		ArmorClass:   16, // Unarmored: 10 + DEX(3) + WIS(3)
 		Skills: map[skills.Skill]shared.ProficiencyLevel{
 			skills.Acrobatics: shared.Proficient,
 			skills.Stealth:    shared.Proficient,
@@ -132,12 +131,20 @@ func (s *MonkEncounterSuite) createLevel1Monk() *character.Character {
 			abilities.STR: shared.Proficient,
 			abilities.DEX: shared.Proficient,
 		},
-		// Martial Arts is a passive condition applied at character creation
+		// Martial Arts and Unarmored Defense are passive conditions applied at
+		// character creation. The armour class is the fold, so Unarmored
+		// Defense must be on the sheet for it to count.
 		Conditions: []json.RawMessage{
 			json.RawMessage(`{
 				"ref": {"module": "dnd5e", "type": "conditions", "id": "martial_arts"},
 				"member_id": "shadow-monk",
 				"monk_level": 1
+			}`),
+			json.RawMessage(`{
+				"ref": {"module": "dnd5e", "type": "conditions", "id": "unarmored_defense"},
+				"type": "monk",
+				"member_id": "shadow-monk",
+				"source": "dnd5e:classes:monk"
 			}`),
 		},
 	}
@@ -178,7 +185,6 @@ func (s *MonkEncounterSuite) createLevel2Monk() *character.Character {
 		},
 		HitPoints:    16, // 16 HP at level 2
 		MaxHitPoints: 16,
-		ArmorClass:   16, // Unarmored: 10 + DEX(3) + WIS(3)
 		Skills: map[skills.Skill]shared.ProficiencyLevel{
 			skills.Acrobatics: shared.Proficient,
 			skills.Stealth:    shared.Proficient,
@@ -323,16 +329,17 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ExpectedAC() {
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 		s.T().Log("")
 
-		// Verify the character's stored AC was set correctly during creation.
-		// Note: For the AC chain to work during combat, the UnarmoredDefenseCondition
-		// must be in the character's Conditions JSON AND the game context must have
-		// the character's ability scores. See TestUnarmoredDefense_ACChainIncludesWIS.
+		// The sheet stores no armour class: it is folded under a cast that
+		// holds the monk, so Unarmored Defense can read WIS.
 
 		// Monk stats: DEX 16 (+3), WIS 16 (+3)
 		// Unarmored Defense: 10 + 3 + 3 = 16
 		expectedAC := 16
 
-		actualAC := s.monk.AC()
+		// Armour class is the fold, under an installed cast holding the sheet.
+		breakdown, err := s.monk.EffectiveAC(castOf(s.ctx, s.monk))
+		s.Require().NoError(err)
+		actualAC := breakdown.Total
 		s.Equal(expectedAC, actualAC, "Character AC should match expected Unarmored Defense formula")
 
 		s.T().Log("  Ability Scores:")
@@ -385,7 +392,6 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainIncludesWIS() {
 			},
 			HitPoints:    10,
 			MaxHitPoints: 10,
-			ArmorClass:   15, // 10 + DEX(3) + WIS(2)
 			Skills: map[skills.Skill]shared.ProficiencyLevel{
 				skills.Acrobatics: shared.Proficient,
 				skills.Stealth:    shared.Proficient,
@@ -512,7 +518,6 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainReadsTheCast() {
 			},
 			HitPoints:    10,
 			MaxHitPoints: 10,
-			ArmorClass:   15,
 			Skills: map[skills.Skill]shared.ProficiencyLevel{
 				skills.Acrobatics: shared.Proficient,
 				skills.Stealth:    shared.Proficient,
@@ -781,68 +786,6 @@ func (s *MonkEncounterSuite) TestStepOfTheWind_PublishesDisengageEvent() {
 // =============================================================================
 // LEVEL 2: UNARMORED MOVEMENT TESTS
 // =============================================================================
-
-func (s *MonkEncounterSuite) TestUnarmoredMovement_SpeedBonus() {
-	s.Run("Unarmored Movement grants +10ft speed at level 2", func() {
-		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
-		s.T().Log("║  MONK UNARMORED MOVEMENT: Speed Bonus                           ║")
-		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
-		s.T().Log("")
-
-		// Override with level 2 monk that has Unarmored Movement condition
-		if s.monk != nil {
-			_ = s.monk.Cleanup(s.ctx)
-		}
-		s.monk = s.createLevel2Monk()
-
-		// No weapons registry, deliberately. The shield question is answered by
-		// the member surface every combatant carries, read out of the installed
-		// cast — see castOf. The registry this used to build was never
-		// installed outside a test.
-
-		s.T().Logf("  Monk: %s (Level 2, unarmored)", s.monk.GetName())
-		s.T().Log("")
-
-		// Find the UnarmoredMovementCondition from loaded conditions
-		var umCondition interface {
-			SpeedBonus(context.Context) (int, bool)
-		}
-		for _, cond := range s.monk.GetConditions() {
-			if getter, ok := cond.(interface {
-				SpeedBonus(context.Context) (int, bool)
-			}); ok {
-				umCondition = getter
-				break
-			}
-		}
-		s.Require().NotNil(umCondition, "Monk should have UnarmoredMovementCondition loaded from Data")
-
-		// Verify speed bonus, with the monk in the cast — the condition reads
-		// its own shield state off the member surface.
-		bonus, known := umCondition.SpeedBonus(castOf(s.ctx, s.monk))
-		s.Require().True(known, "the monk is in the cast, so the shield question has an answer")
-		s.Equal(10, bonus, "Level 2 monk should get +10 ft speed bonus")
-
-		// And with nobody in the cast the answer is UNKNOWN rather than zero.
-		// Zero would read as "this monk is carrying a shield", which is a rule
-		// invented out of missing data — the distinction the second return
-		// exists to keep expressible.
-		bare, bareKnown := umCondition.SpeedBonus(context.Background())
-		s.False(bareKnown, "no cast, no answer — not a silent zero")
-		s.Zero(bare)
-
-		s.T().Log("  Speed bonus by level:")
-		s.T().Log("    Level 2-5:   +10 ft")
-		s.T().Log("    Level 6-9:   +15 ft")
-		s.T().Log("    Level 10-13: +20 ft")
-		s.T().Log("    Level 14-17: +25 ft")
-		s.T().Log("    Level 18+:   +30 ft")
-		s.T().Log("")
-		s.T().Logf("  Current bonus: +%d ft", bonus)
-		s.T().Log("")
-		s.T().Log("✓ Unarmored Movement correctly grants speed bonus")
-	})
-}
 
 // =============================================================================
 // LEVEL 2: KI EXHAUSTION

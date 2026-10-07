@@ -9,6 +9,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
@@ -59,6 +60,18 @@ type swing struct {
 	TwoHanded        bool
 	OffHandWeaponRef *core.Ref
 	HasAdvantage     bool
+	// ClassLevels is the attacker's class levels, which resolution reads from
+	// the attacker's own sheet; unknown unless the test says.
+	ClassLevels contributions.ClassLevels
+}
+
+// classLevels is a known class-levels fact holding level levels in class; at
+// zero it is known and holds no levels in any class.
+func classLevels(class classes.Class, level int) contributions.ClassLevels {
+	if level == 0 {
+		return contributions.KnownClassLevels()
+	}
+	return contributions.KnownClassLevels(contributions.ClassLevel{Class: class, Levels: level})
 }
 
 // swungDamage frames a damage event from the swing, unless the test already
@@ -75,6 +88,7 @@ func swungDamage(event *dnd5eEvents.DamageChainEvent, sw swing) *dnd5eEvents.Dam
 	frame.Action.WeaponPool = contributions.Known(primaryWeaponComponent(event) != nil)
 	frame.Action.Advantage = contributions.Known(sw.HasAdvantage)
 	frame.Action.OffHandAttack = contributions.Known(sw.IsOffHandAttack)
+	frame.ActorClassLevels = sw.ClassLevels
 	event.Frame = frame
 	return event
 }

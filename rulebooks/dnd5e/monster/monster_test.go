@@ -373,3 +373,30 @@ func (s *HealingAppliedTestSuite) TestHealingAppliedSubscriberErrorPropagatesAft
 func TestHealingAppliedSuite(t *testing.T) {
 	suite.Run(t, new(HealingAppliedTestSuite))
 }
+
+// TestClassLevelsAreKnownAndEmpty: a stat block holds no class levels, and
+// that is an answer — known and empty — never an unknown a rule could not
+// read.
+func (s *MonsterTestSuite) TestClassLevelsAreKnownAndEmpty() {
+	m := New(Config{ID: "goblin-1", Name: "Goblin", HP: 7, AC: 15})
+
+	levels, known := m.ClassLevels().Get()
+
+	s.True(known, "a monster's class levels are known")
+	s.Empty(levels, "a stat block holds no class levels")
+}
+
+// TestSightFeetAnswersFromTheStatBlock: a stat block's authored darkvision is
+// its range; one that states none answers the same stated 120 feet a silent
+// character does.
+func (s *MonsterTestSuite) TestSightFeetAnswersFromTheStatBlock() {
+	seeing, err := LoadFromData(context.Background(), &Data{
+		ID: "orc-1", Name: "Orc", HitPoints: 15, MaxHitPoints: 15, ArmorClass: 13,
+		Senses: SensesData{Darkvision: 60},
+	}, events.NewEventBus())
+	s.Require().NoError(err)
+	s.Equal(60, seeing.SightFeet(), "the authored darkvision is the range")
+
+	silent := New(Config{ID: "bandit-1", Name: "Bandit", HP: 11, AC: 12})
+	s.Equal(120, silent.SightFeet(), "silence answers the rulebook's stated default")
+}

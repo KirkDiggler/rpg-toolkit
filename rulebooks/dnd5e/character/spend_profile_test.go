@@ -69,7 +69,6 @@ func (s *CostCompilerTestSuite) sheetOf(class classes.Class, level int) *Charact
 		},
 		HitPoints:    20,
 		MaxHitPoints: 20,
-		ArmorClass:   16,
 	}, s.bus)
 	s.Require().NoError(err)
 
@@ -95,7 +94,6 @@ func (s *CostCompilerTestSuite) offHandFighter() *Character {
 		},
 		HitPoints:    20,
 		MaxHitPoints: 20,
-		ArmorClass:   16,
 		Inventory: []InventoryItemData{
 			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Shortsword), Quantity: 1},
 			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Scimitar), Quantity: 1},
@@ -119,7 +117,7 @@ func (s *CostCompilerTestSuite) martialArtsMonk(
 	var conditionData []json.RawMessage
 	if withMartialArts {
 		martialArts, err := conditions.NewMartialArtsCondition(conditions.MartialArtsInput{
-			MemberID: id, MonkLevel: 1,
+			MemberID: id,
 		}).ToJSON()
 		s.Require().NoError(err)
 		conditionData = []json.RawMessage{martialArts}
@@ -132,7 +130,7 @@ func (s *CostCompilerTestSuite) martialArtsMonk(
 			abilities.STR: 12, abilities.DEX: 16, abilities.CON: 14,
 			abilities.INT: 10, abilities.WIS: 14, abilities.CHA: 8,
 		},
-		HitPoints: 10, MaxHitPoints: 10, ArmorClass: 15,
+		HitPoints: 10, MaxHitPoints: 10,
 		WeaponProficiencies: []proficiencies.Weapon{proficiencies.WeaponSimple},
 		Inventory:           inventory,
 		EquipmentSlots:      slots,

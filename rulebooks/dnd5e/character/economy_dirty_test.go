@@ -78,7 +78,6 @@ func (s *EconomyDirtyTestSuite) sheet() *Data {
 		},
 		HitPoints:    18,
 		MaxHitPoints: 24,
-		ArmorClass:   16,
 		Resources: map[coreResources.ResourceKey]RecoverableResourceData{
 			resources.Ki:      {Current: 3, Maximum: 3, ResetType: coreResources.ResetShortRest},
 			resources.HitDice: {Current: 3, Maximum: 3, ResetType: coreResources.ResetLongRest},

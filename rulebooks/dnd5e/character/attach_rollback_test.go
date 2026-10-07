@@ -221,7 +221,7 @@ func (s *AttachRollbackTestSuite) TestLenientAttachStillDropsAndContinues() {
 func (s *AttachRollbackTestSuite) fighterFeatureSheet() *Data {
 	secondWind, err := json.Marshal(features.SecondWindData{
 		Ref: refs.Features.SecondWind(), ID: "rollback-second-wind", Name: "Second Wind",
-		Level: 4, CharacterID: "rollback-fighter", Uses: 0, MaxUses: 1,
+		CharacterID: "rollback-fighter", Uses: 0, MaxUses: 1,
 	})
 	s.Require().NoError(err)
 	actionSurge, err := json.Marshal(features.ActionSurgeData{

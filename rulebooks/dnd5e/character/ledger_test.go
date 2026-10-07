@@ -67,7 +67,6 @@ func (s *SheetLedgerTestSuite) monk() *Data {
 		},
 		HitPoints:    32,
 		MaxHitPoints: 32,
-		ArmorClass:   16,
 		Resources: map[coreResources.ResourceKey]RecoverableResourceData{
 			resources.Ki: {Current: 3, Maximum: 5, ResetType: coreResources.ResetShortRest},
 		},

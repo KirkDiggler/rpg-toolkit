@@ -61,7 +61,6 @@ func (s *ToDataTestSuite) loaded() *Character {
 		},
 		HitPoints:      12,
 		MaxHitPoints:   12,
-		ArmorClass:     11,
 		EquipmentSlots: EquipmentSlots{},
 	})
 	s.Require().NoError(err)

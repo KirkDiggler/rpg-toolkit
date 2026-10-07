@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -25,12 +26,12 @@ type SecondWindTestSuite struct {
 	ctx        context.Context
 }
 
-// newSecondWindForTest creates a Second Wind feature for testing
-func newSecondWindForTest(id string, level int, characterID string) *SecondWind {
+// newSecondWindForTest creates a Second Wind feature for testing. It holds no
+// level: the owner answers it at activation.
+func newSecondWindForTest(id string, characterID string) *SecondWind {
 	return &SecondWind{
 		id:          id,
 		name:        "Second Wind",
-		level:       level,
 		characterID: characterID,
 		resource: combat.NewRecoverableResource(combat.RecoverableResourceConfig{
 			ID:          refs.Features.SecondWind().ID,
@@ -43,7 +44,7 @@ func newSecondWindForTest(id string, level int, characterID string) *SecondWind 
 
 func (s *SecondWindTestSuite) SetupTest() {
 	s.bus = events.NewEventBus()
-	s.secondWind = newSecondWindForTest("second-wind-feature", 3, "fighter-1") // Level 3 fighter
+	s.secondWind = newSecondWindForTest("second-wind-feature", "fighter-1")
 	s.ctx = context.Background()
 }
 
@@ -133,7 +134,7 @@ func (s *SecondWindTestSuite) TestDeadOwnerIsRejectedBeforeRollOrSpend() {
 }
 
 func (s *SecondWindTestSuite) TestCanActivate() {
-	owner := &StubEntity{id: "fighter-1"}
+	owner := fighterOwner(3)
 
 	// Should be able to activate with uses available
 	err := s.secondWind.CanActivate(s.ctx, owner, FeatureInput{})
@@ -150,7 +151,7 @@ func (s *SecondWindTestSuite) TestCanActivate() {
 }
 
 func (s *SecondWindTestSuite) TestActivatePublishesHealingEvent() {
-	owner := &StubEntity{id: "fighter-1"}
+	owner := fighterOwner(3)
 
 	// Track if healing event was published
 	var receivedEvent *dnd5eEvents.HealingReceivedEvent
@@ -196,8 +197,8 @@ func (s *SecondWindTestSuite) TestActivatePublishesHealingEvent() {
 }
 
 func (s *SecondWindTestSuite) TestActivatePublishesSourcedRollCalculation() {
-	owner := &StubEntity{id: "fighter-1"}
-	sw := newSecondWindForTest("second-wind-feature", 1, "fighter-1")
+	owner := fighterOwner(1)
+	sw := newSecondWindForTest("second-wind-feature", "fighter-1")
 	roller := &fixedSecondWindRoller{face: 6}
 
 	var receivedEvent *dnd5eEvents.HealingReceivedEvent
@@ -254,8 +255,8 @@ func (s *SecondWindTestSuite) TestActivatePublishesSourcedRollCalculation() {
 // and published to strangers, so a receiver mutating a published ref must not
 // corrupt refs.Features.SecondWind() or refs.Classes.Fighter() for everyone else.
 func (s *SecondWindTestSuite) TestActivatePublishesOwnRefsNotSharedSingletons() {
-	owner := &StubEntity{id: "fighter-1"}
-	sw := newSecondWindForTest("second-wind-feature", 1, "fighter-1")
+	owner := fighterOwner(1)
+	sw := newSecondWindForTest("second-wind-feature", "fighter-1")
 
 	var receivedEvent *dnd5eEvents.HealingReceivedEvent
 	_, err := dnd5eEvents.HealingReceivedTopic.On(s.bus).Subscribe(
@@ -311,8 +312,8 @@ func (s *SecondWindTestSuite) TestHealingScalesWithLevel() {
 
 	for _, tc := range testCases {
 		s.Run(fmt.Sprintf("Level %d", tc.level), func() {
-			sw := newSecondWindForTest("test-sw", tc.level, "fighter-1")
-			owner := &StubEntity{id: "fighter-1"}
+			sw := newSecondWindForTest("test-sw", "fighter-1")
+			owner := fighterOwner(tc.level)
 
 			var receivedEvent *dnd5eEvents.HealingReceivedEvent
 			topic := dnd5eEvents.HealingReceivedTopic.On(s.bus)
@@ -352,7 +353,6 @@ func (s *SecondWindTestSuite) TestLoadJSON() {
 
 	s.Equal("loaded-second-wind", sw.id)
 	s.Equal("Second Wind", sw.name)
-	s.Equal(5, sw.level)
 	s.Equal("fighter-99", sw.characterID)
 	s.Equal(0, sw.resource.Current())
 	s.Equal(1, sw.resource.Maximum())
@@ -369,11 +369,11 @@ func (s *SecondWindTestSuite) TestToJSON() {
 
 	s.Equal(s.secondWind.id, loaded.id)
 	s.Equal(s.secondWind.name, loaded.name)
-	s.Equal(s.secondWind.level, loaded.level)
+	s.NotContains(string(jsonData), "level", "Second Wind stores no fighter level")
 }
 
 func (s *SecondWindTestSuite) TestAutomaticShortRestRecovery() {
-	owner := &StubEntity{id: "fighter-1"}
+	owner := fighterOwner(3)
 
 	// Apply the resource to the event bus for automatic recovery
 	err := s.secondWind.Apply(s.ctx, s.bus)
@@ -403,7 +403,7 @@ func (s *SecondWindTestSuite) TestAutomaticShortRestRecovery() {
 }
 
 func (s *SecondWindTestSuite) TestAutomaticLongRestRecovery() {
-	owner := &StubEntity{id: "fighter-1"}
+	owner := fighterOwner(3)
 
 	// Apply the resource to the event bus for automatic recovery
 	err := s.secondWind.Apply(s.ctx, s.bus)
@@ -430,7 +430,7 @@ func (s *SecondWindTestSuite) TestAutomaticLongRestRecovery() {
 }
 
 func (s *SecondWindTestSuite) TestNoRecoveryForDifferentCharacter() {
-	owner := &StubEntity{id: "fighter-1"}
+	owner := fighterOwner(3)
 
 	// Apply the resource to the event bus for automatic recovery
 	err := s.secondWind.Apply(s.ctx, s.bus)
@@ -466,7 +466,7 @@ func (s *SecondWindTestSuite) TestApplyRemove() {
 	s.False(s.secondWind.resource.IsApplied())
 
 	// After removal, rest events should not restore
-	owner := &StubEntity{id: "fighter-1"}
+	owner := fighterOwner(3)
 	err = s.secondWind.Activate(s.ctx, owner, FeatureInput{Bus: s.bus})
 	s.NoError(err)
 	s.Equal(0, s.secondWind.resource.Current())
@@ -485,4 +485,46 @@ func (s *SecondWindTestSuite) TestApplyRemove() {
 
 func TestSecondWindTestSuite(t *testing.T) {
 	suite.Run(t, new(SecondWindTestSuite))
+}
+
+// fighterOwner is a fighter of the given level who answers the named
+// class-level question from its level record.
+func fighterOwner(level int) *StubEntity {
+	return &StubEntity{id: "fighter-1", levels: map[classes.Class]int{classes.Fighter: level}}
+}
+
+// TestSecondWindHealsFromTheOwnersLevelAtActivation: a fighter advanced to
+// level 2 heals 1d10 + 2 — the level is asked of the owner when Second Wind is
+// used, so the same feature reads the new level with nothing rewritten.
+func (s *SecondWindTestSuite) TestSecondWindHealsFromTheOwnersLevelAtActivation() {
+	owner := fighterOwner(1)
+	sw := newSecondWindForTest("second-wind-feature", "fighter-1")
+	var healed []int
+	_, err := dnd5eEvents.HealingReceivedTopic.On(s.bus).Subscribe(s.ctx,
+		func(_ context.Context, event dnd5eEvents.HealingReceivedEvent) error {
+			healed = append(healed, event.Amount)
+			return nil
+		})
+	s.Require().NoError(err)
+
+	owner.levels[classes.Fighter] = 2
+	s.Require().NoError(sw.Activate(s.ctx, owner, FeatureInput{Bus: s.bus, Roller: &fixedSecondWindRoller{face: 6}}))
+
+	s.Equal([]int{6 + 2}, healed)
+}
+
+// TestSecondWindRefusesAnOwnerWithNoFighterLevels: an owner that cannot answer
+// its fighter level, or holds none, is refused with the use intact — zero is
+// never read as level one.
+func (s *SecondWindTestSuite) TestSecondWindRefusesAnOwnerWithNoFighterLevels() {
+	for name, owner := range map[string]*StubEntity{
+		"no fighter levels": {id: "fighter-1", levels: map[classes.Class]int{classes.Rogue: 2}},
+		"no level record":   {id: "fighter-1"},
+	} {
+		sw := newSecondWindForTest("second-wind-feature", "fighter-1")
+		s.Error(sw.CanActivate(s.ctx, owner, FeatureInput{}),
+			"%s: the Afford row reads unavailable, not a use Activate would refuse", name)
+		s.Error(sw.Activate(s.ctx, owner, FeatureInput{Bus: s.bus}), name)
+		s.Equal(1, sw.resource.Current(), "%s: the use is not spent", name)
+	}
 }

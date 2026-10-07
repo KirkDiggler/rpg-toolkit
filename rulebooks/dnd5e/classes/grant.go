@@ -168,12 +168,10 @@ func getBarbarianGrants() []Grant {
 				proficiencies.WeaponSimple,
 				proficiencies.WeaponMartial,
 			},
-			// Rage feature with level 1 config
+			// Rage takes no config: its charges live on the character and its
+			// damage bonus is read from the barbarian's level at each attack.
 			Features: []FeatureRef{
-				{
-					Ref:    refs.Features.Rage().String(),
-					Config: json.RawMessage(`{"uses": 2, "damage_bonus": 2}`),
-				},
+				{Ref: refs.Features.Rage().String()},
 			},
 			Equipment: []EquipmentItem{
 				{ID: weapons.Javelin, Quantity: 4},
@@ -213,10 +211,7 @@ func getMonkGrants() []Grant {
 					Ref:    refs.Conditions.UnarmoredDefense().String(),
 					Config: json.RawMessage(`{"variant": "monk"}`),
 				},
-				{
-					Ref:    refs.Conditions.MartialArts().String(),
-					Config: json.RawMessage(`{"monk_level": 1}`),
-				},
+				{Ref: refs.Conditions.MartialArts().String()},
 			},
 		},
 	}
@@ -291,12 +286,10 @@ func getRogueGrants() []Grant {
 				{ID: weapons.Dagger, Quantity: 2},
 				{ID: tools.ThievesTools, Quantity: 1},
 			},
-			// Sneak Attack condition (scales with rogue level)
+			// Sneak Attack condition (scales with rogue level, read at each
+			// attack — the grant carries no level)
 			Conditions: []ConditionRef{
-				{
-					Ref:    refs.Conditions.SneakAttack().String(),
-					Config: json.RawMessage(`{"rogue_level": 1}`),
-				},
+				{Ref: refs.Conditions.SneakAttack().String()},
 			},
 			// Thieves' Cant - secret rogue language
 			Languages: []languages.Language{

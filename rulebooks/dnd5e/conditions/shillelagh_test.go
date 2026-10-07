@@ -8,6 +8,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/weaponattack"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/stretchr/testify/require"
 )
@@ -38,5 +39,7 @@ func TestShillelaghClockSurvivesReloadAndIgnoresOtherTurns(t *testing.T) {
 	require.Equal(t, 1, reloaded.TurnEndsLeft)
 	require.NoError(t, turns.Publish(ctx, dnd5eEvents.TurnEndEvent{SubjectID: "caster"}))
 	require.False(t, reloaded.IsApplied())
-	require.Nil(t, reloaded.WeaponAttackOverride("main_hand", "club"))
+	offer, err := reloaded.WeaponAttackOverride(&weaponattack.OverrideInput{Slot: "main_hand", ItemID: "club"})
+	require.NoError(t, err)
+	require.Nil(t, offer.Override)
 }

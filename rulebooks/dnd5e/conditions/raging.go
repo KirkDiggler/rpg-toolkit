@@ -22,12 +22,14 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
-// RagingData is the JSON structure for persisting raging condition state
+// RagingData is the JSON structure for persisting raging condition state.
+//
+// No barbarian level and no damage bonus is stored: the bonus is computed from
+// the attacker's barbarian levels in the rule's frame. A blob saved with the
+// old "level" or "damage_bonus" keys loads and the copy is ignored.
 type RagingData struct {
 	Ref               *core.Ref `json:"ref"`
 	CharacterID       string    `json:"member_id"`
-	DamageBonus       int       `json:"damage_bonus"`
-	Level             int       `json:"level"`
 	Source            string    `json:"source"` // Ref string in "module:type:value" format (e.g., "dnd5e:features:rage")
 	SawTurnEnd        bool      `json:"saw_turn_end"`
 	RoundActivated    int       `json:"round_activated"`
@@ -36,12 +38,12 @@ type RagingData struct {
 	DidAttackThisTurn bool      `json:"did_attack_this_turn"`
 }
 
-// RagingCondition represents the barbarian rage state.
+// RagingCondition represents the barbarian rage state. Its damage bonus
+// scales with the attacker's barbarian levels, read from the frame each time
+// an attack asks.
 // It implements the Condition interface.
 type RagingCondition struct {
 	CharacterID       string
-	DamageBonus       int
-	Level             int
 	Source            string // Ref string in "module:type:value" format (e.g., "dnd5e:features:rage")
 	SawTurnEnd        bool
 	RoundActivated    int
@@ -198,8 +200,6 @@ func (r *RagingCondition) ToJSON() (json.RawMessage, error) {
 	data := RagingData{
 		Ref:               refs.Conditions.Raging(),
 		CharacterID:       r.CharacterID,
-		DamageBonus:       r.DamageBonus,
-		Level:             r.Level,
 		Source:            r.Source,
 		SawTurnEnd:        r.SawTurnEnd,
 		RoundActivated:    r.RoundActivated,
@@ -218,8 +218,6 @@ func (r *RagingCondition) loadJSON(data json.RawMessage) error {
 	}
 
 	r.CharacterID = ragingData.CharacterID
-	r.DamageBonus = ragingData.DamageBonus
-	r.Level = ragingData.Level
 	r.Source = ragingData.Source
 	r.SawTurnEnd = ragingData.SawTurnEnd
 	r.RoundActivated = ragingData.RoundActivated
@@ -430,7 +428,7 @@ func (r *RagingCondition) onDamageChain(
 ) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
 	executed, err := executeRule(&executeRuleInput{
 		Name:  "raging",
-		Rule:  ragingDamageRule{owner: r.CharacterID, bonus: r.DamageBonus},
+		Rule:  ragingDamageRule{owner: r.CharacterID},
 		Frame: event.Frame,
 	})
 	if err != nil {

@@ -76,10 +76,12 @@ type Data struct {
 	// Ability scores (final values including racial modifiers)
 	AbilityScores shared.AbilityScores `json:"ability_scores"`
 
-	// Combat stats
+	// Combat stats. Armour class is not stored: it is folded through
+	// resolution's door (resolution.ProjectCharacter) at the moment it is
+	// asked. A blob saved with the old "armor_class" key loads and the copy is
+	// ignored.
 	HitPoints    int `json:"hit_points"`
 	MaxHitPoints int `json:"max_hit_points"`
-	ArmorClass   int `json:"armor_class"`
 
 	// Death saves (only persisted if character is at 0 HP making death saves)
 	DeathSaveState *saves.DeathSaveState `json:"death_save_state,omitempty"`

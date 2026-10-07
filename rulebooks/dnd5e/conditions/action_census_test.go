@@ -41,8 +41,8 @@ func (s *actionCensusSuite) TestEveryConditionLoaderIsClassified() {
 
 func (s *actionCensusSuite) TestAnsweringLoadersImplementActionAssessor() {
 	fixtures := map[string]dnd5eEvents.ConditionBehavior{
-		refs.Conditions.Raging().String():    &RagingCondition{CharacterID: "barb", DamageBonus: 2, Level: 1},
-		refs.Features.SneakAttack().String(): NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue", Level: 1}),
+		refs.Conditions.Raging().String():    &RagingCondition{CharacterID: "barb"},
+		refs.Features.SneakAttack().String(): NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue"}),
 		refs.Conditions.Inspired().String():  NewInspiredCondition("rogue", "bard", ""),
 
 		refs.Conditions.Prone().String():                            NewProneCondition("rogue"),
@@ -52,8 +52,8 @@ func (s *actionCensusSuite) TestAnsweringLoadersImplementActionAssessor() {
 		refs.Conditions.ViciousMockery().String():                   NewViciousMockeryCondition("rogue", "bard", refs.Spells.ViciousMockery().String()),
 		refs.Conditions.ImprovedCritical().String():                 NewImprovedCriticalCondition(ImprovedCriticalInput{MemberID: "rogue", Threshold: 19}),
 		refs.Conditions.FightingStyleArchery().String():             NewFightingStyleArcheryCondition("rogue"),
-		refs.Conditions.BrutalCritical().String():                   NewBrutalCriticalCondition(BrutalCriticalInput{MemberID: "rogue", Level: 9}),
-		refs.Conditions.MartialArts().String():                      NewMartialArtsCondition(MartialArtsInput{MemberID: "rogue", MonkLevel: 1}),
+		refs.Conditions.BrutalCritical().String():                   NewBrutalCriticalCondition(BrutalCriticalInput{MemberID: "rogue"}),
+		refs.Conditions.MartialArts().String():                      NewMartialArtsCondition(MartialArtsInput{MemberID: "rogue"}),
 		refs.Conditions.FightingStyleDueling().String():             NewFightingStyleDuelingCondition("rogue"),
 		refs.Conditions.FightingStyleGreatWeaponFighting().String(): NewFightingStyleGreatWeaponFightingCondition("rogue", nil),
 		refs.Conditions.FightingStyleTwoWeaponFighting().String():   NewFightingStyleTwoWeaponFightingCondition("rogue"),
@@ -172,7 +172,7 @@ func (s *actionCensusSuite) TestEffectIDsUniqueAndDeterministic() {
 		s.Require().NoError(err)
 		return []dnd5eEvents.ConditionBehavior{
 			a, b,
-			NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue", Level: 1}),
+			NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue"}),
 			NewFightingStyleArcheryCondition("rogue"),
 		}
 	}

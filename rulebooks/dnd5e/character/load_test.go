@@ -50,8 +50,6 @@ func (s *PureLoadTestSuite) SetupTest() {
 func ragingBlob(s *suite.Suite) json.RawMessage {
 	raging := &conditions.RagingCondition{
 		CharacterID: "char-load",
-		DamageBonus: 2,
-		Level:       3,
 		Source:      "rage",
 	}
 
@@ -64,10 +62,9 @@ func ragingBlob(s *suite.Suite) json.RawMessage {
 // rageBlob is a persisted Rage feature, canonicalized the same way.
 func rageBlob(s *suite.Suite) json.RawMessage {
 	seed, err := json.Marshal(features.RageData{
-		Ref:   refs.Features.Rage(),
-		ID:    "rage-1",
-		Name:  "Rage",
-		Level: 3,
+		Ref:  refs.Features.Rage(),
+		ID:   "rage-1",
+		Name: "Rage",
 	})
 	s.Require().NoError(err)
 
@@ -84,9 +81,7 @@ func rageBlob(s *suite.Suite) json.RawMessage {
 // way, for the tests that need a sheet carrying more than one.
 func brutalCriticalBlob(s *suite.Suite) json.RawMessage {
 	brutal := &conditions.BrutalCriticalCondition{
-		MemberID:  "char-load",
-		Level:     9,
-		ExtraDice: 1,
+		MemberID: "char-load",
 	}
 
 	raw, err := brutal.ToJSON()
@@ -121,7 +116,6 @@ func fullSheet(s *suite.Suite) *Data {
 		},
 		HitPoints:    22,
 		MaxHitPoints: 34,
-		ArmorClass:   15,
 		Skills: map[skills.Skill]shared.ProficiencyLevel{
 			skills.Athletics: shared.Proficient,
 		},

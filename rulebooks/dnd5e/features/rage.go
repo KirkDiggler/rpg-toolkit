@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/combat"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -20,50 +21,26 @@ import (
 // It implements core.Action[FeatureInput] for activation.
 // Rage uses the owner's resources via ResourceAccessor - the character owns the
 // rage charges resource, and this feature consumes from it.
+//
+// It stores no barbarian level. Activation asks its owner whether rages are
+// unlimited (barbarian 20); the Raging condition it applies reads its damage
+// bonus from each attack's frame.
 type Rage struct {
-	id    string
-	name  string
-	level int // Barbarian level for determining damage bonus
+	id   string
+	name string
 }
 
 // RageData is the JSON structure for persisting rage state.
 // Note: Resource state (uses/max) is owned by the Character, not the feature.
+// A blob saved with the old "level" key loads and the copy is ignored.
 type RageData struct {
-	Ref   *core.Ref `json:"ref"`
-	ID    string    `json:"id"`
-	Name  string    `json:"name"`
-	Level int       `json:"level"`
+	Ref  *core.Ref `json:"ref"`
+	ID   string    `json:"id"`
+	Name string    `json:"name"`
 }
 
-// calculateRageUses determines max rage uses based on barbarian level
-func calculateRageUses(level int) int {
-	switch {
-	case level < 3:
-		return 2
-	case level < 6:
-		return 3
-	case level < 12:
-		return 4
-	case level < 17:
-		return 5
-	case level < 20:
-		return 6
-	default:
-		return -1 // Unlimited at level 20
-	}
-}
-
-// calculateRageDamage determines rage damage bonus based on barbarian level
-func calculateRageDamage(level int) int {
-	switch {
-	case level < 9:
-		return 2
-	case level < 16:
-		return 3
-	default:
-		return 4
-	}
-}
+// unlimitedRageLevel is the barbarian level from which rages are unlimited.
+const unlimitedRageLevel = 20
 
 // Ref returns the unique ref for the Rage feature.
 func (r *Rage) Ref() *core.Ref { return refs.Features.Rage() }
@@ -114,7 +91,9 @@ func (r *Rage) GetType() core.EntityType {
 // the sheet and spend a charge on nothing — and one with no charges left. It
 // runs on every Afford with an empty FeatureInput, so its refusal is also the
 // reason the Rage row reads unavailable. An owner whose conditions cannot be
-// read is refused: not knowing is not "not raging".
+// read is refused: not knowing is not "not raging". So is an owner that cannot
+// answer its barbarian level, or holds none: whether rages are unlimited is
+// asked of the owner, never assumed.
 func (r *Rage) CanActivate(_ context.Context, owner core.Entity, _ FeatureInput) error {
 	if err := refuseWhileHolding(&refuseWhileHoldingInput{
 		Owner: owner, Ref: refs.Conditions.Raging(), Reason: "already raging",
@@ -122,8 +101,12 @@ func (r *Rage) CanActivate(_ context.Context, owner core.Entity, _ FeatureInput)
 		return err
 	}
 
+	level, err := ownerClassLevel(owner, classes.Barbarian, "rage")
+	if err != nil {
+		return err
+	}
 	// At level 20, barbarians have unlimited rages
-	if r.level >= 20 {
+	if level >= unlimitedRageLevel {
 		return nil
 	}
 
@@ -148,8 +131,12 @@ func (r *Rage) Activate(ctx context.Context, owner core.Entity, input FeatureInp
 		return err
 	}
 
+	level, err := ownerClassLevel(owner, classes.Barbarian, "rage")
+	if err != nil {
+		return err
+	}
 	// Consume a use (unless level 20)
-	if r.level < 20 {
+	if level < unlimitedRageLevel {
 		accessor, ok := owner.(coreResources.ResourceAccessor)
 		if !ok {
 			return rpgerr.New(rpgerr.CodeInvalidArgument, "owner does not implement ResourceAccessor")
@@ -162,8 +149,6 @@ func (r *Rage) Activate(ctx context.Context, owner core.Entity, input FeatureInp
 	// Create the raging condition
 	ragingCondition := &conditions.RagingCondition{
 		CharacterID: owner.GetID(),
-		DamageBonus: calculateRageDamage(r.level),
-		Level:       r.level,
 		Source:      r.id,
 	}
 
@@ -193,7 +178,6 @@ func (r *Rage) loadJSON(data json.RawMessage) error {
 
 	r.id = rageData.ID
 	r.name = rageData.Name
-	r.level = rageData.Level
 
 	return nil
 }
@@ -201,10 +185,9 @@ func (r *Rage) loadJSON(data json.RawMessage) error {
 // ToJSON converts rage to JSON for persistence
 func (r *Rage) ToJSON() (json.RawMessage, error) {
 	data := RageData{
-		Ref:   refs.Features.Rage(),
-		ID:    r.id,
-		Name:  r.name,
-		Level: r.level,
+		Ref:  refs.Features.Rage(),
+		ID:   r.id,
+		Name: r.name,
 	}
 
 	bytes, err := json.Marshal(data)

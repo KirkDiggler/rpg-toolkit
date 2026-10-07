@@ -40,7 +40,6 @@ func (s *LoaderTestSuite) TestLoadRageFeature() {
 	rage, ok := feature.(*Rage)
 	s.True(ok, "Should be a Rage instance")
 	s.Equal("rage", rage.id)
-	s.Equal(5, rage.level)
 
 	// Test that it can be activated (owner needs ResourceAccessor)
 	owner := newStubEntityWithRage("test-barbarian", 5)
@@ -96,7 +95,7 @@ func (s *LoaderTestSuite) TestPrivateResourceLoadsRejectInvalidBounds() {
 
 func (s *LoaderTestSuite) TestRoundTripThroughJSON() {
 	// Create a rage feature
-	originalRage := newRageForTest("rage-roundtrip", 7)
+	originalRage := newRageForTest("rage-roundtrip")
 
 	// Convert to JSON
 	jsonData, err := originalRage.ToJSON()
@@ -111,7 +110,6 @@ func (s *LoaderTestSuite) TestRoundTripThroughJSON() {
 
 	// Verify state was preserved (resource state is owned by Character, not feature)
 	s.Equal(originalRage.id, loadedRage.id)
-	s.Equal(originalRage.level, loadedRage.level)
 }
 
 func (s *LoaderTestSuite) TestActionTypes() {
