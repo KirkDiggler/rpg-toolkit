@@ -96,6 +96,13 @@ func (s *SecondWind) CanActivate(_ context.Context, owner core.Entity, _ Feature
 		return rpgerr.New(rpgerr.CodeResourceExhausted, "no second wind uses remaining")
 	}
 
+	// The healing is 1d10 + fighter level, so an owner that cannot answer its
+	// fighter level, or holds none, cannot use it — refused here so the Afford
+	// row never reads available for a use Activate would refuse.
+	if _, err := ownerClassLevel(owner, classes.Fighter, "second wind"); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -111,9 +118,9 @@ func (s *SecondWind) Remove(ctx context.Context, bus events.EventBus) error {
 	return s.resource.Remove(ctx, bus)
 }
 
-// Activate implements core.Action[FeatureInput]. It asks the owner its
-// fighter level before spending the use, so an owner that cannot answer, or
-// holds no fighter levels, is refused with the use intact.
+// Activate implements core.Action[FeatureInput]. CanActivate has already
+// refused an owner with no fighter levels; the level is asked again here, at
+// the moment it is used, before the use is spent.
 func (s *SecondWind) Activate(ctx context.Context, owner core.Entity, input FeatureInput) error {
 	// Check if we can activate
 	if err := s.CanActivate(ctx, owner, input); err != nil {

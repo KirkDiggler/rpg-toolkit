@@ -522,6 +522,8 @@ func (s *SecondWindTestSuite) TestSecondWindRefusesAnOwnerWithNoFighterLevels() 
 		"no level record":   {id: "fighter-1"},
 	} {
 		sw := newSecondWindForTest("second-wind-feature", "fighter-1")
+		s.Error(sw.CanActivate(s.ctx, owner, FeatureInput{}),
+			"%s: the Afford row reads unavailable, not a use Activate would refuse", name)
 		s.Error(sw.Activate(s.ctx, owner, FeatureInput{Bus: s.bus}), name)
 		s.Equal(1, sw.resource.Current(), "%s: the use is not spent", name)
 	}

@@ -373,3 +373,15 @@ func (s *HealingAppliedTestSuite) TestHealingAppliedSubscriberErrorPropagatesAft
 func TestHealingAppliedSuite(t *testing.T) {
 	suite.Run(t, new(HealingAppliedTestSuite))
 }
+
+// TestClassLevelsAreKnownAndEmpty: a stat block holds no class levels, and
+// that is an answer — known and empty — never an unknown a rule could not
+// read.
+func (s *MonsterTestSuite) TestClassLevelsAreKnownAndEmpty() {
+	m := New(Config{ID: "goblin-1", Name: "Goblin", HP: 7, AC: 15})
+
+	levels, known := m.ClassLevels().Get()
+
+	s.True(known, "a monster's class levels are known")
+	s.Empty(levels, "a stat block holds no class levels")
+}

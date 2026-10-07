@@ -104,10 +104,9 @@ type Member interface {
 	// monster has no equipment slots to read: whatever defence its shield
 	// gives is already inside the stat block AC its fold starts from,
 	// and nothing else about the sheet changes because it is holding one. The
-	// rules that ask this question — Unarmored Movement's speed bonus,
-	// Fighting Style (Protection)'s reaction — are character features, so
-	// false is the correct answer for a monster rather than a placeholder for
-	// one nobody has written.
+	// rule that asks this question — Fighting Style (Protection)'s reaction —
+	// is a character feature, so false is the correct answer for a monster
+	// rather than a placeholder for one nobody has written.
 	HasShieldEquipped() bool
 
 	// CanReact reports whether this combatant's action economy has a reaction

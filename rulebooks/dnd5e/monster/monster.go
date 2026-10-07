@@ -240,9 +240,9 @@ func (m *Monster) EffectiveAC(ctx context.Context) (*combat.ACBreakdown, error) 
 // A monster has no equipment slots. Whatever defence a shield gives one is
 // already inside the stat block AC returned above — the author wrote a number,
 // not a loadout — so there is nothing here to read and nothing further for a
-// rule to add. The features that ask (Unarmored Movement's speed bonus,
-// Fighting Style (Protection)'s reaction) are character features, so a monster
-// answering false is that question correctly answered, not one deferred.
+// rule to add. The feature that asks (Fighting Style (Protection)'s reaction)
+// is a character feature, so a monster answering false is that question
+// correctly answered, not one deferred.
 //
 // The day monsters carry real equipment this stops being a constant, and the
 // question is already in the right place for that to be the only edit.
