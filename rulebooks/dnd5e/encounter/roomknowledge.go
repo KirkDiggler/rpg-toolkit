@@ -145,7 +145,12 @@ func (e *Encounter) undiscoveredFrom(member MemberID) hiddenView {
 		for _, neighbor := range adjacencyGrid.GetNeighbors(cell) {
 			region, owned := e.field.regionOf(neighbor)
 			if owned && known[region] && !hidden.cells[neighbor] {
-				delete(hidden.cells, cell)
+				// Knowing a boundary's ordinary footing does not beat an
+				// explicit concealment on that floor. Keep the two masks
+				// independent so unlisted props do not inherit floor secrecy.
+				if _, concealed := e.field.concealmentOfCell[cell]; !concealed || revealed[cell] {
+					delete(hidden.cells, cell)
+				}
 				delete(hidden.unexploredCells, cell)
 				break
 			}

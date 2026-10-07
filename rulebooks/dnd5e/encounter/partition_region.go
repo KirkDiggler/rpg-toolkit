@@ -24,6 +24,10 @@ type PartitionRegionInput struct {
 // are ordered by canonical axial cell; returned slices do not alias the input.
 type PartitionRegionOutput struct {
 	Components [][]spatial.Position
+	// Footing is permanently occupied opaque floor that cannot be assigned
+	// to one adjoining component. A compiler carries it as scenery, not as
+	// an undiscoverable room. It excludes doors and movable/reserved props.
+	Footing []spatial.Position
 }
 
 // PartitionRegion groups one region's cells by clear adjacent sight crossings
@@ -45,6 +49,22 @@ func PartitionRegion(in PartitionRegionInput) (PartitionRegionOutput, error) {
 	if !exists {
 		return PartitionRegionOutput{}, fmt.Errorf("partition region %q: %w", in.Region, ErrNoRegion)
 	}
+	// Mutable props do not define fixed room topology. These are validated,
+	// owned construction copies, not edits to the caller's field.
+	fixedPlaced := f.placed[:0]
+	for _, p := range f.placed {
+		if !p.mutable() {
+			fixedPlaced = append(fixedPlaced, p)
+		}
+	}
+	f.placed = fixedPlaced
+	fixedProps := f.props[:0]
+	for _, p := range f.props {
+		if !p.Holdable && p.Arrives == nil {
+			fixedProps = append(fixedProps, p)
+		}
+	}
+	f.props = fixedProps
 	doors, _ := doorRecordsFrom(in.Field.Doors)
 	for _, door := range doors {
 		door.state = DoorIsClosed()
@@ -88,11 +108,14 @@ func PartitionRegion(in PartitionRegionInput) (PartitionRegionOutput, error) {
 		}
 		groups = append(groups, group)
 	}
-	groups, err = joinOpaqueFooting(canvas, groups)
+	groups, footing, err := joinOpaqueFooting(canvas, groups)
 	if err != nil {
 		return PartitionRegionOutput{}, err
 	}
 	out := PartitionRegionOutput{Components: make([][]spatial.Position, 0, len(groups))}
+	for _, cell := range footing {
+		out.Footing = append(out.Footing, authored[cell])
+	}
 	for _, group := range groups {
 		cells := make([]spatial.Position, 0, len(group))
 		for _, cell := range group {
@@ -103,10 +126,37 @@ func PartitionRegion(in PartitionRegionInput) (PartitionRegionOutput, error) {
 	return out, nil
 }
 
+// permanentOpaqueFootingAt uses the same centre-contact standing rule as the
+// field, restricted to immutable opaque contributors. Door states are excluded:
+// their floor must remain owned so it can be stood on after opening.
+func (f *field) permanentOpaqueFootingAt(cell spatial.Position) (bool, error) {
+	for _, p := range f.props {
+		if !p.Holdable && p.Arrives == nil && p.BlocksMovement != nil && *p.BlocksMovement &&
+			p.BlocksLineOfSight != nil && *p.BlocksLineOfSight && f.cellAt(p.At) == cell {
+			return true, nil
+		}
+	}
+	centre := f.plane.CellCentre(cell)
+	for _, p := range f.placed {
+		if p.mutable() || !p.blocksMovement || !p.blocksLineOfSight {
+			continue
+		}
+		contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{Placement: p.placement, From: centre, To: centre})
+		if err != nil {
+			return false, err
+		}
+		if contact.Contact {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // An opaque pillar's own cell is not another room. Attach completely opaque
 // footing only when it borders ONE clear component; never join two rooms through
-// a wall/closed door. Ambiguous boundary footing remains separate, not guessed.
-func joinOpaqueFooting(canvas *canvasRoom, groups [][]spatial.Position) ([][]spatial.Position, error) {
+// a wall/closed door. Permanently occupied ambiguous footing is scenery, never
+// a phantom discovery region. Doors retain owned floor because they can open.
+func joinOpaqueFooting(canvas *canvasRoom, groups [][]spatial.Position) ([][]spatial.Position, []spatial.Position, error) {
 	owner := make(map[spatial.Position]int)
 	opaque := make([]bool, len(groups))
 	obstructions := canvasSightObstructions{canvas: canvas}
@@ -116,7 +166,7 @@ func joinOpaqueFooting(canvas *canvasRoom, groups [][]spatial.Position) ([][]spa
 			owner[cell] = i
 			at, err := obstructions.At(spatial.SightCellInput{At: cell})
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			if !at.Blocked {
 				opaque[i] = false
@@ -124,6 +174,7 @@ func joinOpaqueFooting(canvas *canvasRoom, groups [][]spatial.Position) ([][]spa
 		}
 	}
 	joined := make([][]spatial.Position, len(groups))
+	footing := make([]spatial.Position, 0)
 	for i, cells := range groups {
 		target, ambiguous := -1, false
 		if opaque[i] {
@@ -141,6 +192,18 @@ func joinOpaqueFooting(canvas *canvasRoom, groups [][]spatial.Position) ([][]spa
 			}
 		}
 		if target < 0 || ambiguous {
+			permanent := opaque[i]
+			for _, cell := range cells {
+				fixed, err := canvas.field.permanentOpaqueFootingAt(cell)
+				if err != nil {
+					return nil, nil, err
+				}
+				permanent = permanent && fixed
+			}
+			if permanent {
+				footing = append(footing, cells...)
+				continue
+			}
 			target = i
 		}
 		joined[target] = append(joined[target], cells...)
@@ -153,5 +216,6 @@ func joinOpaqueFooting(canvas *canvasRoom, groups [][]spatial.Position) ([][]spa
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return cellBefore(out[i][0], out[j][0]) })
-	return out, nil
+	sortCells(footing)
+	return out, footing, nil
 }

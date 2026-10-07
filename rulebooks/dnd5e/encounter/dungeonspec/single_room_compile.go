@@ -180,6 +180,7 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		return Compiled{}, singleRoomCompileError("room.room", err.Error())
 	}
 	field.Regions = layout.regions
+	field.Scenery = append(field.Scenery, layout.footing...)
 	// THE WAYS OUT, lowered by the one [exitsOf] the other dialect uses, with
 	// this dialect's frame spent on the way in (rpg-project#488 R2). Held
 	// aside until every cell below has been judged: they join the field after

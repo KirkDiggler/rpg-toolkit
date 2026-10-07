@@ -5,6 +5,7 @@ package dungeonspec_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -108,6 +109,91 @@ func (s *SingleRoomWallDoorSuite) TestOrdinaryDiscoveryDoesNotSeeThroughAFoundSe
 	s.Require().NoError(err)
 	s.Require().Len(atlas.StructuralDoors, 1, "the automatic check actually found the door")
 	s.NotContains(atlas.Cells, axial(4, 0), "finding a door does not see through its closed leaf")
+}
+
+// Review F1/F2: an opaque centre-covered cell separating two spaces is
+// permanent boundary footing, not a phantom room and not a bridge between rooms.
+func (s *SingleRoomWallDoorSuite) TestOrdinaryDiscoveryOpaqueFootingIsVisibleFromBothSides() {
+	for _, structural := range []bool{false, true} {
+		s.Run(fmt.Sprintf("structural=%t", structural), func() {
+			spec := s.gapSpec(dungeonspec.RoomDoorBinding{Closed: true})
+			spec.Room.Gameplay.DoorBindings = nil
+			id := "boundary"
+			if structural {
+				x := boundaryWallX(5)
+				spec.Room.Gameplay.Walls = []dungeonspec.RoomWall{roomWall(id, x, -2, x, 2,
+					wallBlocks(true, true, 4, boundaryWallX(1.5), 0, 0))}
+			} else {
+				id = "pillar"
+				spec.Room.Gameplay.Walls = nil
+				spec.Room.Scene = sceneNode(s.T(), `
+version: 1
+id: scene-1
+name: Divider
+items: [{id: pillar, kind: prop, assetRef: 'dnd5e:props:pillar', transform: {x: `+fmtFloat(boundaryWallX(5))+`, y: 0, z: 0, rotationY: 0}}]
+groups: []
+`)
+				spec.Room.Gameplay.PropDeclarations = map[string]dungeonspec.RoomPropDeclaration{
+					id: wallBlocks(true, true, boundaryWallX(1.5), boundaryWallX(1.5), 0, 0),
+				}
+			}
+			compiled := s.load(spec)
+			s.Require().Len(compiled.Field.Regions, 2, "never join the rooms or mint a third phantom region")
+			s.Require().Len(compiled.Field.Scenery, 1)
+			s.Equal(axial(1, 0), compiled.Field.Scenery[0])
+			slices.Reverse(spec.Room.Gameplay.WalkableHexes)
+			reordered := s.load(spec)
+			s.Equal(compiled.Field.Regions, reordered.Field.Regions)
+			s.Equal(compiled.Field.Scenery, reordered.Field.Scenery)
+			enc := s.play(compiled,
+				encounter.MemberInput{ID: "walker", Kind: encounter.KindPlayer, Position: axial(0, 0)},
+				encounter.MemberInput{ID: "other", Kind: encounter.KindPlayer, Position: axial(2, 0)})
+			for _, member := range []encounter.MemberID{"walker", "other"} {
+				atlas, err := enc.AtlasFor(member)
+				s.Require().NoError(err)
+				s.Contains(atlas.Cells, axial(1, 0), "the known boundary has floor beneath it")
+				s.Contains(atlas.Sealed, axial(1, 0), "footing is not standable")
+				found := false
+				for _, p := range atlas.Placed {
+					if p.ID == id {
+						found = true
+					}
+				}
+				s.True(found, "the boundary itself is visible from %s", member)
+				if structural {
+					s.Len(atlas.StructuralWalls, 1)
+				}
+				if member == "walker" {
+					s.NotContains(atlas.Cells, axial(2, 0))
+				} else {
+					s.NotContains(atlas.Cells, axial(0, 0))
+				}
+				restored, err := s.reload(enc).AtlasFor(member)
+				s.Require().NoError(err)
+				s.Equal(atlas, restored)
+			}
+			_, err := enc.Step(&encounter.StepInput{Member: "walker", To: axial(1, 0)})
+			s.ErrorIs(err, encounter.ErrBadPlacement)
+
+			// Explicit floor secrecy is separate from ordinary boundary
+			// knowledge, and does not select the unlisted wall/pillar.
+			spec.Concealments = map[string]dungeonspec.ConcealmentSpec{"footing": {
+				Checks: dungeonspec.CheckSpec{{Ability: "perception", DC: 20}},
+				Cells:  []dungeonspec.RoomCell{{Q: 1, R: 0}},
+			}}
+			secret := s.play(s.load(spec))
+			concealed, err := secret.AtlasFor("walker")
+			s.Require().NoError(err)
+			s.NotContains(concealed.Cells, axial(1, 0), "boundary knowledge does not discover a selected secret cell")
+			present := false
+			for _, p := range concealed.Placed {
+				if p.ID == id {
+					present = true
+				}
+			}
+			s.True(present, "floor secrecy does not conceal an unlisted boundary")
+		})
+	}
 }
 
 func (s *SingleRoomWallDoorSuite) TestOrdinaryDiscoveryWithATwoDimensionalDivider() {

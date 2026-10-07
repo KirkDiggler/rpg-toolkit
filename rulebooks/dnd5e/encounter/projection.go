@@ -91,7 +91,8 @@ import (
 // a hidden region's edge would have invented geometry the author never drew,
 // so the whole list went rather than be approximated. Nothing is sliced now.
 // A placement is WITHHELD WHOLE when it belongs to an unfound concealment, or
-// touches ordinary unexplored space. Structural wall/door boundaries, like fixed
+// touches ordinary unexplored space. Structural wall/door and fixed opaque
+// contributor boundaries, like fixed
 // wall segments, remain present when their own support also borders known space;
 // this does not reveal adjoining floor or override explicit concealment membership.
 // Concealed cells alone do not conceal an unlisted placement. Every other placement is presented
@@ -214,8 +215,8 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 			continue
 		}
 		unexplored := e.placedTouchesHidden(p, hidden.unexploredCells)
-		if structuralBoundaries[p.ID] {
-			// Like a fixed wall segment, a structural boundary may border
+		if structuralBoundaries[p.ID] || (p.BlocksMovement && p.BlocksLineOfSight) {
+			// Like a fixed wall segment, a structural/opaque boundary may border
 			// both discovered and undiscovered space. Its own known support
 			// permits the boundary, not any additional floor or contents.
 			// Door membership is still checked independently above.

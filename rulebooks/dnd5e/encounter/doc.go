@@ -125,7 +125,9 @@
 // Builder compilation can refine a painted region through [PartitionRegion]:
 // geometry-separated spaces become ordinary regions before play. Door topology
 // is measured closed so initial mutable state cannot merge room identities;
-// runtime discovery, persistence and authored region membership stay unchanged.
+// runtime discovery and persistence stay unchanged. Permanently occupied opaque
+// boundary footing uses existing scenery, not an undiscoverable region. Door and
+// mutable-prop cells are not made permanently unowned by this construction query.
 //
 // Holdable props and door states join the creature pass in the same perception
 // store. Subjects are qualified by kind, so equal member/prop/door names cannot

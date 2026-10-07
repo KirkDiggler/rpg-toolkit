@@ -15,6 +15,7 @@ import (
 // their derivation belongs to the builder dialect.
 type singleRoomRegionLayout struct {
 	regions []encounter.RegionInput
+	footing []spatial.Position
 	owner   map[spatial.Position]string
 }
 
@@ -28,7 +29,7 @@ func singleRoomRegions(field encounter.FieldInput) (singleRoomRegionLayout, erro
 	if err != nil {
 		return singleRoomRegionLayout{}, err
 	}
-	out := singleRoomRegionLayout{owner: make(map[spatial.Position]string, len(base.Cells))}
+	out := singleRoomRegionLayout{owner: make(map[spatial.Position]string, len(base.Cells)), footing: partition.Footing}
 	for i, cells := range partition.Components {
 		region := base
 		lighting := *base.Lighting

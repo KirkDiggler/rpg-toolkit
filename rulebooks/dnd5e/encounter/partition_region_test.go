@@ -62,6 +62,36 @@ func (s *PartitionRegionSuite) TestAnInternalOpaquePillarIsNotAnotherRoom() {
 	s.ElementsMatch(field.Regions[0].Cells, out.Components[0])
 }
 
+func (s *PartitionRegionSuite) TestDoorAndSightOnlyCellsDoNotBecomePermanentFooting() {
+	placement := coveredBox(1.5, spatial.Point{X: 5, Y: 0})
+	field := encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("floor", 0, 0, 3, 1)},
+		Doors: []encounter.DoorInput{{ID: "door", Placement: &placement, State: encounter.DoorIsOpen()}},
+	}
+	out, err := encounter.PartitionRegion(encounter.PartitionRegionInput{Field: field, Region: "floor"})
+	s.Require().NoError(err)
+	s.Empty(out.Footing, "an openable door cannot permanently remove ownership/standing")
+	s.Require().NoError(encounter.ValidateStaticPlacements(field, []spatial.Position{cellAt(1, 0)}))
+	field.Doors = nil
+	field.Placed = []encounter.PlacedPropInput{placed("screen", placement, false, true)}
+	out, err = encounter.PartitionRegion(encounter.PartitionRegionInput{Field: field, Region: "floor"})
+	s.Require().NoError(err)
+	s.Empty(out.Footing, "sight blocking alone must not remove standing")
+	s.Require().NoError(encounter.ValidateStaticPlacements(field, []spatial.Position{cellAt(1, 0)}))
+}
+
+func (s *PartitionRegionSuite) TestMovablePropsDoNotDefineFixedRooms() {
+	p := placed("movable", coveredBox(1.5, spatial.Point{X: 5, Y: 0}), true, true)
+	p.Holdable = true
+	field := encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("floor", 0, 0, 3, 1)}, Placed: []encounter.PlacedPropInput{p}}
+	out, err := encounter.PartitionRegion(encounter.PartitionRegionInput{Field: field, Region: "floor"})
+	s.Require().NoError(err)
+	s.Require().Len(out.Components, 1)
+	s.Len(out.Components[0], 3)
+	s.Empty(out.Footing)
+	s.True(field.Placed[0].Holdable)
+	s.True(field.Placed[0].BlocksLineOfSight, "partition must not edit actual contributor state")
+}
+
 func (s *PartitionRegionSuite) TestNamesItsUniverseAndRejectsInvalidInputs() {
 	field := encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{
 		rectRegion("selected", 0, 0, 2, 1), rectRegion("other", 2, 0, 2, 1),
