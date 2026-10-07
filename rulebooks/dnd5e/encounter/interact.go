@@ -59,7 +59,7 @@ type InteractOutput struct {
 //
 // Errors: ErrNilInput, ErrNoMember (empty actor/target, or a negative
 // Range — the same "negative numeric input is a caller defect" convention
-// validateMemberFacts already applies to SpeedFeet/SightFeet/RangeFeet),
+// the Sheets consult applies to a speed or an action's RangeFeet),
 // ErrClosed, ErrNotMember (actor/target missing, or present but the wrong
 // kind), ErrBadPlacement (either member has no cell), ErrOutOfRange,
 // ErrNotVisible.
@@ -71,8 +71,8 @@ func (e *Encounter) Interact(in *InteractInput) (*InteractOutput, error) {
 		return nil, fmt.Errorf("interact: %w", ErrNoMember)
 	}
 	// A negative Range is not a smaller reach; it is a caller defect, the
-	// same call validateMemberFacts already makes for SpeedFeet, SightFeet,
-	// and each action's RangeFeet — silently normalizing it to "adjacent"
+	// same call the Sheets consult makes for a speed and each action's
+	// RangeFeet (validateSheetFacts) — silently normalizing it to "adjacent"
 	// would hide the mistake rather than report it (Copilot, PR #1412 review).
 	if in.Range < 0 {
 		return nil, fmt.Errorf("interact: range %d is negative: %w", in.Range, ErrNoMember)

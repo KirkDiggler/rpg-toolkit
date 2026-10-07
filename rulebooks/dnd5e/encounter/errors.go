@@ -338,6 +338,14 @@ var (
 	// see [ConditionSet].
 	ErrNoConditions = errors.New("encounter: no conditions capability")
 
+	// ErrNoSheets indicates this module was not told, usably, how a member
+	// moves and what it can attack with. Two ways to earn it: Setup or Load was
+	// given no [Sheets] capability; or the capability answered without covering
+	// a member it was asked about. Both are the same defect seen from different
+	// sides — a speed and a reach this module would have to invent, which
+	// rpg-toolkit#1033 forbids it to do.
+	ErrNoSheets = errors.New("encounter: no sheets capability")
+
 	// ErrNoCheckResolver indicates Setup or Load was given a field carrying
 	// concealed structure and no CheckResolver capability. A concealed door
 	// exists to be searched for, and this module refuses to roll the find
@@ -462,6 +470,13 @@ var (
 	// answer nobody observed. A host that places members supplies its own
 	// Standing.
 	ErrRefusingParticipation = errors.New("encounter: compile-only Participation: asked about members of a world being compiled, not played")
+
+	// ErrRefusingSheets is what the [Sheets] [CompileOnlySetup] and
+	// [CompileOnlyLoad] install returns when asked about any member: a world
+	// compiled or loaded only to be inspected has no sheets behind its members,
+	// and a speed or a reach would be an answer nobody read off a sheet. A host
+	// that paces, budgets or drives a member supplies its own Sheets.
+	ErrRefusingSheets = errors.New("encounter: compile-only Sheets: asked about members of a world being compiled, not played")
 
 	// ErrRefusingDriver is what [RefusingDriver.Act] always returns: a turn
 	// was driven on a world [CompileOnlyLoad] loaded only to be inspected. A

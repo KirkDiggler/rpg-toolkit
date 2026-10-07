@@ -31,8 +31,25 @@ func (s *WorldTimeSuite) SetupTest() { s.ctx = context.Background() }
 // hall is a long open room with nobody in it but the members a test names —
 // no walls to route around and no props, so a claim about TIME is not quietly
 // a claim about geometry.
+//
+// Everybody in it walks thirty feet ([walksThirty]) unless a test says
+// otherwise through [WorldTimeSuite.hallSheets].
 func (s *WorldTimeSuite) hall(members ...encounter.MemberInput) *encounter.Encounter {
-	return s.hallWith(nil, members...)
+	return s.hallSheets(walksThirty{}, nil, members...)
+}
+
+// walksThirty is a Sheets that answers a thirty-foot walking speed, and
+// nothing else, for every member asked — the speed every walker in this file
+// has unless its test is about a different one.
+type walksThirty struct{}
+
+func (walksThirty) Sheets(members []encounter.MemberID) (map[encounter.MemberID]encounter.SheetFacts, error) {
+	out := make(map[encounter.MemberID]encounter.SheetFacts, len(members))
+	for _, id := range members {
+		out[id] = encounter.SheetFacts{SpeedFeet: 30}
+	}
+
+	return out, nil
 }
 
 // hallWith is hall with the sides declared — for the one test whose creature
@@ -40,6 +57,13 @@ func (s *WorldTimeSuite) hall(members ...encounter.MemberInput) *encounter.Encou
 // its table's `enemy: none` entry is the one that fires).
 func (s *WorldTimeSuite) hallWith(
 	dispositions []encounter.DispositionInput, members ...encounter.MemberInput,
+) *encounter.Encounter {
+	return s.hallSheets(walksThirty{}, dispositions, members...)
+}
+
+// hallSheets is hallWith with the members' sheets named.
+func (s *WorldTimeSuite) hallSheets(
+	sheets encounter.Sheets, dispositions []encounter.DispositionInput, members ...encounter.MemberInput,
 ) *encounter.Encounter {
 	s.T().Helper()
 
@@ -50,7 +74,7 @@ func (s *WorldTimeSuite) hallWith(
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheets, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: tableDriver(), Roller: rollsLowest{},
 		Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
@@ -95,7 +119,7 @@ func (s *WorldTimeSuite) walk(enc *encounter.Encounter, who encounter.MemberID, 
 func (s *WorldTimeSuite) TestAPaceIsTheMoversOwnSpeed() {
 	s.Run("five cells is no round", func() {
 		enc := s.hall(encounter.MemberInput{
-			ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}, SpeedFeet: 30,
+			ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1},
 		})
 		s.walk(enc, alice, 1, 5, 1)
 		s.Equal(0, s.reading(enc), "five cells of a thirty-foot walker is most of a round, and most is none")
@@ -103,7 +127,7 @@ func (s *WorldTimeSuite) TestAPaceIsTheMoversOwnSpeed() {
 
 	s.Run("six cells is one", func() {
 		enc := s.hall(encounter.MemberInput{
-			ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}, SpeedFeet: 30,
+			ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1},
 		})
 		s.walk(enc, alice, 1, 6, 1)
 		s.Equal(1, s.reading(enc), "the sixth cell is the pace, and the pace is the round")
@@ -111,7 +135,7 @@ func (s *WorldTimeSuite) TestAPaceIsTheMoversOwnSpeed() {
 
 	s.Run("and the remainder carries", func() {
 		enc := s.hall(encounter.MemberInput{
-			ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}, SpeedFeet: 30,
+			ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1},
 		})
 		s.walk(enc, alice, 1, 11, 1)
 		s.Equal(1, s.reading(enc), "eleven cells is one round and five over")
@@ -127,9 +151,9 @@ func (s *WorldTimeSuite) TestAPaceIsTheMoversOwnSpeed() {
 func (s *WorldTimeSuite) TestTwoMoversWalkingTogetherAdvanceItOnce() {
 	enc := s.hall(
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer,
-			Position: spatial.Position{X: 1, Y: 1}, SpeedFeet: 30},
+			Position: spatial.Position{X: 1, Y: 1}},
 		encounter.MemberInput{ID: billy, Kind: encounter.KindPlayer,
-			Position: spatial.Position{X: 1, Y: 3}, SpeedFeet: 30},
+			Position: spatial.Position{X: 1, Y: 3}},
 	)
 
 	s.walk(enc, alice, 1, 6, 1)
@@ -142,11 +166,11 @@ func (s *WorldTimeSuite) TestTwoMoversWalkingTogetherAdvanceItOnce() {
 	s.Equal(2, s.reading(enc), "the round after is the next one either of them completes")
 }
 
-// TestAMemberWithNoSpeedPacesNothing: zero speed is a roster row that carried
-// no number, not the slowest creature in the world. Dividing by it would make
+// TestAMemberWithNoSpeedPacesNothing: zero speed is a sheet that states no
+// number, not the slowest creature in the world. Dividing by it would make
 // every cell a round.
 func (s *WorldTimeSuite) TestAMemberWithNoSpeedPacesNothing() {
-	enc := s.hall(encounter.MemberInput{
+	enc := s.hallSheets(sheetFacts{alice: {}}, nil, encounter.MemberInput{
 		ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1},
 	})
 
@@ -161,7 +185,7 @@ func (s *WorldTimeSuite) TestAMemberWithNoSpeedPacesNothing() {
 // concealment to sweep.
 func (s *WorldTimeSuite) TestAnActionCostsOneRoundForItsActor() {
 	enc := s.hall(encounter.MemberInput{
-		ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}, SpeedFeet: 30,
+		ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1},
 	})
 
 	_, err := enc.Search(&encounter.SearchInput{Member: alice, Region: "hall"})
@@ -179,9 +203,9 @@ func (s *WorldTimeSuite) TestAnActionCostsOneRoundForItsActor() {
 func (s *WorldTimeSuite) TestAThreatCostsItsActorARound() {
 	enc := s.hall(
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer,
-			Position: spatial.Position{X: 1, Y: 1}, SpeedFeet: 30},
+			Position: spatial.Position{X: 1, Y: 1}},
 		encounter.MemberInput{ID: goblin, Kind: encounter.KindWorld,
-			Position: spatial.Position{X: 3, Y: 1}, SpeedFeet: 30},
+			Position: spatial.Position{X: 3, Y: 1}},
 	)
 
 	_, err := enc.Intimidate(s.ctx, &encounter.IntimidateInput{
@@ -205,13 +229,13 @@ func (s *WorldTimeSuite) TestAThreatCostsItsActorARound() {
 func (s *WorldTimeSuite) TestAFightRoundIsARoundForEveryFighter() {
 	enc := s.hall(
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer,
-			Position: spatial.Position{X: 1, Y: 1}, SpeedFeet: 30},
+			Position: spatial.Position{X: 1, Y: 1}},
 		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster,
-			Position: spatial.Position{X: 3, Y: 1}, SpeedFeet: 30},
+			Position: spatial.Position{X: 3, Y: 1}},
 		// A world NPC: on no side, so the fight forms without it and it stays
 		// on the world clock, which is what this half is about.
 		encounter.MemberInput{ID: "straggler", Kind: encounter.KindWorld,
-			Position: spatial.Position{X: 28, Y: 7}, SpeedFeet: 30},
+			Position: spatial.Position{X: 28, Y: 7}},
 	)
 
 	on, err := enc.ClockOf(&encounter.ClockOfInput{Member: alice})
@@ -252,11 +276,11 @@ func (s *WorldTimeSuite) TestACreatureWithNothingOpposedHoldsAndTheBeatSaysSo() 
 			Stance:  encounter.StanceNeutral,
 		}},
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer,
-			Position: spatial.Position{X: 1, Y: 1}, SpeedFeet: 30},
+			Position: spatial.Position{X: 1, Y: 1}},
 		// A monster, so the world thinks for it — and on a side nobody is
 		// against, so it is opposed to nobody however crowded the hall is.
 		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Faction: "vendors",
-			Position: spatial.Position{X: 20, Y: 6}, SpeedFeet: 30, Table: hunts()},
+			Position: spatial.Position{X: 20, Y: 6}, Table: hunts()},
 	)
 
 	started := whereIs(s.T(), enc, goblin)
@@ -286,7 +310,7 @@ func (s *WorldTimeSuite) TestACreatureWithNothingOpposedHoldsAndTheBeatSaysSo() 
 func (s *WorldTimeSuite) TestAnAttackOffTheTurnClockIsAnError() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{alice: {SpeedFeet: 30}, goblin: {SpeedFeet: 30}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: alwaysSwings{}, Roller: rollsLowest{},
 		Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
@@ -299,13 +323,13 @@ func (s *WorldTimeSuite) TestAnAttackOffTheTurnClockIsAnError() {
 			}},
 		},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}, SpeedFeet: 30},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			// Neutral, so no fight forms and it stays the world's to think
 			// for — and carrying a table, because a creature with none is
 			// never consulted at all.
 			{ID: goblin, Kind: encounter.KindMonster, Faction: "vendors",
-				Position: spatial.Position{X: 20, Y: 6}, SpeedFeet: 30,
-				Table: encounter.Table{encounter.AnswerTime: {{Weight: 1, Hold: true}}}},
+				Position: spatial.Position{X: 20, Y: 6},
+				Table:    encounter.Table{encounter.AnswerTime: {{Weight: 1, Hold: true}}}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -368,13 +392,13 @@ func (s *WorldTimeSuite) TestAFactionsMixIsDealtAtTheDoorAndSaysSo() {
 			Stance:  encounter.StanceHostile,
 		}},
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer,
-			Position: spatial.Position{X: 1, Y: 1}, SpeedFeet: 30},
+			Position: spatial.Position{X: 1, Y: 1}},
 		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Faction: "vendors",
-			Position: spatial.Position{X: 20, Y: 6}, SpeedFeet: 30, Temper: mix},
+			Position: spatial.Position{X: 20, Y: 6}, Temper: mix},
 		// One that named no side, to pin that the beat carries the RESOLVED
 		// faction rather than the authored blank.
 		encounter.MemberInput{ID: "straggler", Kind: encounter.KindMonster,
-			Position: spatial.Position{X: 28, Y: 7}, SpeedFeet: 30, Temper: mix},
+			Position: spatial.Position{X: 28, Y: 7}, Temper: mix},
 	)
 
 	// AND THE SCENE OPENED FIRST. A deal is a beat, and a beat inside a scene
@@ -419,9 +443,9 @@ func (s *WorldTimeSuite) TestAFactionsMixIsDealtAtTheDoorAndSaysSo() {
 func (s *WorldTimeSuite) TestAnAuthoredWordDealsNothingAndSaysNothing() {
 	enc := s.hall(
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer,
-			Position: spatial.Position{X: 1, Y: 1}, SpeedFeet: 30},
+			Position: spatial.Position{X: 1, Y: 1}},
 		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster,
-			Position: spatial.Position{X: 20, Y: 6}, SpeedFeet: 30,
+			Position: spatial.Position{X: 20, Y: 6},
 			Temper: encounter.Temper{Word: "coward",
 				Profile: encounter.TemperProfile{Attack: 50, Toward: 50, Away: 300, Flee: 300, Hold: 100}}},
 	)
@@ -505,7 +529,7 @@ func (s *WorldTimeSuite) TestTheDefaultTableClosesAndThenSwings() {
 	striker := &swingRecorder{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{alice: {SpeedFeet: 30}, goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, RangeFeet: 5}}}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: tableDriver(), Roller: rollsLowest{},
 		Striker: striker, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
@@ -513,14 +537,12 @@ func (s *WorldTimeSuite) TestTheDefaultTableClosesAndThenSwings() {
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 30, 8)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}, SpeedFeet: 30},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			// Four cells away with thirty feet of speed and five of reach: it
 			// cannot touch her where it stands, and it can reach her if it
 			// walks. That gap is the whole scene.
 			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 5, Y: 1},
-				SpeedFeet: 30,
-				Actions:   []encounter.ActionView{{Ref: testMeleeAction, RangeFeet: 5}},
-				Table:     theDefaultThugTable()},
+				Table: theDefaultThugTable()},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -578,7 +600,7 @@ func (s *WorldTimeSuite) TestASpentCreatureIsNotAskedToSwingAgain() {
 	striker := &swingRecorder{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{alice: {SpeedFeet: 30}, goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, RangeFeet: 5}}}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: tableDriver(), Roller: rollsLowest{},
 		Striker: striker, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
@@ -586,12 +608,10 @@ func (s *WorldTimeSuite) TestASpentCreatureIsNotAskedToSwingAgain() {
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 30, 8)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}, SpeedFeet: 30},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			// Already in reach, so its first roll is the swing and nothing
 			// has to walk first.
 			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 1},
-				SpeedFeet: 30,
-				Actions:   []encounter.ActionView{{Ref: testMeleeAction, RangeFeet: 5}},
 				// ONLY `attack`, and nothing else: with no `hold` beneath it
 				// the second consult has nothing at all on the table, which
 				// is the empty pick this rule is really about.
@@ -661,7 +681,7 @@ func (s *WorldTimeSuite) TestAnOrderedCellSomebodyIsStandingOnIsStillWalkedTowar
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{alice: {SpeedFeet: 30}, "squatter": {SpeedFeet: 30}, "bandit": {SpeedFeet: 30}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: tableDriver(), Roller: rollsLowest{},
 		Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
@@ -680,13 +700,13 @@ func (s *WorldTimeSuite) TestAnOrderedCellSomebodyIsStandingOnIsStillWalkedTowar
 			},
 		},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 20, Y: 6}, SpeedFeet: 30},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 20, Y: 6}},
 			// THE CELL IS TAKEN, which is the whole scene.
 			{ID: "squatter", Kind: encounter.KindMonster, Faction: "squatters",
-				Position: spatial.Position{X: 3, Y: 3}, SpeedFeet: 30},
+				Position: spatial.Position{X: 3, Y: 3}},
 			{ID: "bandit", Kind: encounter.KindMonster, Faction: "bandits",
-				Position: spatial.Position{X: 15, Y: 3}, SpeedFeet: 30,
-				Table: walksTo(target)},
+				Position: spatial.Position{X: 15, Y: 3},
+				Table:    walksTo(target)},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -726,10 +746,10 @@ func (s *WorldTimeSuite) TestAWalkThatMovesNobodySaysSo() {
 			Stance:  encounter.StanceNeutral,
 		}},
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer,
-			Position: spatial.Position{X: 1, Y: 1}, SpeedFeet: 30},
+			Position: spatial.Position{X: 1, Y: 1}},
 		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Faction: "vendors",
-			Position: spatial.Position{X: 25, Y: 6}, SpeedFeet: 30,
-			Table: walksTo(standing)},
+			Position: spatial.Position{X: 25, Y: 6},
+			Table:    walksTo(standing)},
 	)
 
 	s.Require().Equal(standing, whereIs(s.T(), enc, goblin), "precondition: it is already there")

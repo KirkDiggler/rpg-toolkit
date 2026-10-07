@@ -82,14 +82,13 @@ func (s *PursuitSuite) SetupTest() {
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{hunter: {SpeedFeet: 30}, straggler: {SpeedFeet: 5}, alice: {}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: field,
 		Members: []encounter.MemberInput{
 			// Alice stands at the threshold; the goblin is across the room
 			// with a clear line to her, so first light makes them mutual.
 			{ID: hunted, Kind: encounter.KindPlayer, Position: spatial.Position{X: 25, Y: 13}},
-			{ID: hunter, Kind: encounter.KindMonster, Position: spatial.Position{X: 21, Y: 13},
-				SpeedFeet: 30, Table: hunts()},
+			{ID: hunter, Kind: encounter.KindMonster, Position: spatial.Position{X: 21, Y: 13}, Table: hunts()},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -247,8 +246,7 @@ func (s *PursuitSuite) freeRoamWalkingTo(cell spatial.Position) {
 		seat = cellAt(25, 12)
 	}
 	_, err = s.enc.Join(&encounter.JoinInput{
-		Member: straggler, Kind: encounter.KindMonster, Cell: seat,
-		SpeedFeet: 5, Table: walksTo(cell),
+		Member: straggler, Kind: encounter.KindMonster, Cell: seat, Table: walksTo(cell),
 	})
 	s.Require().NoError(err)
 

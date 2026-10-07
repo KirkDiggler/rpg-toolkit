@@ -26,7 +26,8 @@ import (
 //
 // Now every verb the turn clock would price as an action pays ONE ROUND on
 // the world clock, and a walk pays one round per PACE — every
-// `CellsFromFeet(SpeedFeet)` cells the mover walks. Standing still is free,
+// `CellsFromFeet(SpeedFeet)` cells the mover walks, at the speed its sheet
+// answers through [Sheets] at that step. Standing still is free,
 // said plainly: a party that talks to the goblin and waits sees nothing move.
 // That is the roguelike clock play/clock chose ("advances only because
 // players act") and the encounter's C5 (no goroutines, no timers).
@@ -120,16 +121,18 @@ func (e *Encounter) spendWorldAction(actor MemberID) error {
 // time, and a member whose walk also accrued pace would be paying for the
 // same movement twice.
 //
-// A MEMBER WITH NO SPEED PACES NOTHING rather than paying a round per cell.
-// Zero speed is a roster row that carried no number, and dividing by it would
-// make the slowest thing in the world the fastest clock in it.
+// THE PACE IS THE SHEET'S SPEED OF THIS STEP (rpg-project#538), asked through
+// [Sheets] each time and never stored: a member whose speed changed between
+// two walks paces the second at the new speed, with no write to the encounter.
+//
+// A MEMBER WHOSE SHEET ANSWERS A SPEED OF ZERO PACES NOTHING rather than
+// paying a round per cell. Zero is that sheet's true speed — a creature that
+// cannot walk — not a missing answer (a missing sheet is refused before this
+// line), and dividing by it would make the slowest thing in the world the
+// fastest clock in it.
 func (e *Encounter) spendWorldPace(mover MemberID) error {
 	m, ok := e.members[mover]
 	if !ok {
-		return nil
-	}
-	perRound := CellsFromFeet(m.SpeedFeet)
-	if perRound <= 0 {
 		return nil
 	}
 
@@ -138,6 +141,15 @@ func (e *Encounter) spendWorldPace(mover MemberID) error {
 		return fmt.Errorf("world pace: %w", err)
 	}
 	if bubble != nil {
+		return nil
+	}
+
+	sheet, err := e.sheetOf(mover)
+	if err != nil {
+		return fmt.Errorf("world pace: %w", err)
+	}
+	perRound := CellsFromFeet(sheet.SpeedFeet)
+	if perRound <= 0 {
 		return nil
 	}
 
@@ -325,7 +337,12 @@ func (e *Encounter) thinkFor(member MemberID, m *memberRecord) error {
 	}
 
 	for spent := 0; spent < budget; spent++ {
-		turnBudget := TurnBudget{AttacksLeft: 0, MovementFeet: m.SpeedFeet}
+		// Each turn's worth reads the sheet's speed of that moment.
+		sheet, err := e.sheetOf(member)
+		if err != nil {
+			return fmt.Errorf("world thinks %q: %w", member, err)
+		}
+		turnBudget := TurnBudget{AttacksLeft: 0, MovementFeet: sheet.SpeedFeet}
 		// The same anti-spin bound a fight's own turn uses: one terminating
 		// Pass plus however many cells this member could ever ask for one at
 		// a time. There is no attack to allow for here.

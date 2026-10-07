@@ -469,20 +469,18 @@ type FootprintData struct {
 // Every field mirrors [MemberData]'s, with two differences that are the
 // point. Cell is where the member WILL arrive — its authored seat or its
 // joiner's cell, dungeon-absolute, standable — not a place anybody stands.
+// Like MemberData it carries no speed, sight, actions or targeting
+// (rpg-project#538); an old blob's keys for them are ignored at load.
 // And Holds is here where MemberData deliberately has none: a roster member's
 // records live in the journal, seeded when it entered the run, but a reserved
 // member has not entered it yet, so the author's placement is still a fact
 // about the member and not yet a fact about the run. Arrives is the predicate,
 // REQUIRED — a reserve entry with none would be a member waiting for nothing.
 type ReserveData struct {
-	ID        MemberID         `json:"id"`
-	Kind      MemberKind       `json:"kind"`
-	Name      string           `json:"name,omitempty"`
-	Cell      PositionData     `json:"cell"`
-	SpeedFeet int              `json:"speed_feet,omitempty"`
-	SightFeet int              `json:"sight_feet,omitempty"`
-	Actions   []ActionViewData `json:"actions,omitempty"`
-	Targeting string           `json:"targeting,omitempty"`
+	ID   MemberID     `json:"id"`
+	Kind MemberKind   `json:"kind"`
+	Name string       `json:"name,omitempty"`
+	Cell PositionData `json:"cell"`
 
 	// Intimidate, Persuade, Table and Temper are [MemberData]'s own keys,
 	// kept for a member still waiting to arrive — its facts are the same
@@ -1629,14 +1627,17 @@ func convertDoorDataToDoorInput(doors []DoorData) ([]DoorInput, error) {
 // no installed base — only a hand-kept fixture, which is exactly what should be
 // recreated rather than reinterpreted.
 type MemberData struct {
-	ID        MemberID         `json:"id"`
-	Kind      MemberKind       `json:"kind"`
-	Name      string           `json:"name,omitempty"`
-	Cell      *PositionData    `json:"cell"`
-	SpeedFeet int              `json:"speed_feet,omitempty"`
-	SightFeet int              `json:"sight_feet,omitempty"`
-	Actions   []ActionViewData `json:"actions,omitempty"`
-	Targeting string           `json:"targeting,omitempty"`
+	ID   MemberID      `json:"id"`
+	Kind MemberKind    `json:"kind"`
+	Name string        `json:"name,omitempty"`
+	Cell *PositionData `json:"cell"`
+
+	// speed_feet, sight_feet, actions and targeting are GONE (rpg-project#538).
+	// They were copies of the member's sheet taken at Join; the sheet owns
+	// them and [Sheets] and [Sight] ask it at use. A blob that still carries
+	// the keys LOADS with them ignored — encoding/json drops what no field
+	// claims — and loses nothing, because the truth they copied is always
+	// on the sheet. Nothing is migrated.
 
 	// Intimidate, Persuade, Table and Temper carry forward the member's
 	// shenanigan facts and its whole policy (rpg-project#454,
@@ -1681,18 +1682,6 @@ type MemberData struct {
 	// roster are byte-identical, and both load into the same two-faction
 	// world.
 	Faction FactionID `json:"faction,omitempty"`
-}
-
-// ActionViewData is the persistent representation of an [ActionView] — a
-// member's static fact about one action, round-tripped verbatim (Kirk,
-// rpg-project#254 review: "round-tripped through ToData/LoadEncounter, as
-// encounter-owned primitives"). core.Ref already carries its own JSON tags
-// and needs no persisted twin of its own.
-type ActionViewData struct {
-	Ref       core.Ref `json:"ref"`
-	Name      string   `json:"name,omitempty"`
-	RangeFeet int      `json:"range_feet,omitempty"`
-	Kind      string   `json:"kind,omitempty"`
 }
 
 // EndingData is the persistent representation of a declared ending.
@@ -1814,10 +1803,6 @@ func (e *Encounter) snapshot() EncounterData {
 			Kind:           m.Kind,
 			Name:           m.Name,
 			Cell:           &PositionData{X: cell.X, Y: cell.Y},
-			SpeedFeet:      m.SpeedFeet,
-			SightFeet:      m.SightFeet,
-			Actions:        actionViewDataFrom(m.Actions),
-			Targeting:      m.Targeting,
 			Intimidate:     approachesDataFrom(m.Intimidate),
 			Persuade:       approachesDataFrom(m.Persuade),
 			Table:          tableDataFrom(m.Table),
@@ -1912,10 +1897,6 @@ func (e *Encounter) snapshot() EncounterData {
 			Kind:           rm.record.Kind,
 			Name:           rm.record.Name,
 			Cell:           PositionData{X: rm.at.X, Y: rm.at.Y},
-			SpeedFeet:      rm.record.SpeedFeet,
-			SightFeet:      rm.record.SightFeet,
-			Actions:        actionViewDataFrom(rm.record.Actions),
-			Targeting:      rm.record.Targeting,
 			Intimidate:     approachesDataFrom(rm.record.Intimidate),
 			Persuade:       approachesDataFrom(rm.record.Persuade),
 			Table:          tableDataFrom(rm.record.Table),
@@ -2127,37 +2108,6 @@ func fieldDataFrom(f *field) FieldData {
 	return out
 }
 
-// actionViewDataFrom converts a member's runtime [ActionView] facts to their
-// persisted twin. A nil slice stays nil rather than becoming an allocated
-// empty one (Copilot, PR #1187 review: `omitempty` already treats the two
-// identically on the wire — len()==0 either way — so this is not a wire
-// distinction; it is a plain no-op-for-the-common-case allocation avoidance,
-// and keeps a round-tripped nil equal to its original by reflect.DeepEqual
-// rather than becoming a spurious non-nil empty slice).
-func actionViewDataFrom(actions []ActionView) []ActionViewData {
-	if actions == nil {
-		return nil
-	}
-	out := make([]ActionViewData, len(actions))
-	for i, a := range actions {
-		out[i] = ActionViewData(a)
-	}
-	return out
-}
-
-// actionViewsFrom is actionViewDataFrom's inverse, restoring a member's
-// runtime [ActionView] facts from their persisted twin.
-func actionViewsFrom(data []ActionViewData) []ActionView {
-	if data == nil {
-		return nil
-	}
-	out := make([]ActionView, len(data))
-	for i, a := range data {
-		out[i] = ActionView(a)
-	}
-	return out
-}
-
 // LoadEncounterInput carries everything LoadEncounter needs: what persisted, and
 // what is alive for this call.
 //
@@ -2202,6 +2152,14 @@ type LoadEncounterInput struct {
 	// use site, and never defaulted. Typed [EquipmentWithConditions] exactly
 	// as on SetupInput, so it answers Conditions by construction.
 	Equipment EquipmentWithConditions
+
+	// Sheets reports each member's speed, actions and targeting. REQUIRED,
+	// exactly as it is on SetupInput: a loaded encounter's bubble can land on
+	// an unplayed member whose budget and reach its sheet answers, and the
+	// first walk is paced from it (rpg-project#538). Refused at the door,
+	// never defaulted. The blob carries none of these facts; this is the only
+	// way in.
+	Sheets Sheets
 
 	// TurnDriver decides what a member with no player does when it is given
 	// time. REQUIRED, exactly as it is on SetupInput: a loaded encounter's
@@ -2270,6 +2228,9 @@ func (in *LoadEncounterInput) Validate() error {
 	}
 	if in.Equipment == nil {
 		return fmt.Errorf("load encounter: Equipment is required: %w", ErrNoEquipment)
+	}
+	if in.Sheets == nil {
+		return fmt.Errorf("load encounter: Sheets is required: %w", ErrNoSheets)
 	}
 	if in.TurnDriver == nil {
 		return fmt.Errorf("load encounter: TurnDriver is required: %w", ErrNoTurnDriver)
@@ -2576,7 +2537,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 				r.ID, cell.X, cell.Y, prop, ErrInvalidData, ErrBadPlacement)
 		}
 		if err := validateMemberFacts(memberFacts{
-			ID: r.ID, SpeedFeet: r.SpeedFeet, SightFeet: r.SightFeet, Actions: actionViewsFrom(r.Actions),
+			ID:         r.ID,
 			Intimidate: approachesFromData(r.Intimidate), Persuade: approachesFromData(r.Persuade),
 			Table: tableFromData(r.Table),
 		}); err != nil {
@@ -2839,6 +2800,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		sight:         input.Sight,
 		equipment:     input.Equipment,
 		conditions:    input.Equipment,
+		sheets:        input.Sheets,
 		driver:        input.TurnDriver,
 		roller:        input.Roller,
 		striker:       input.Striker,
@@ -2951,10 +2913,6 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			ID:             m.ID,
 			Kind:           m.Kind,
 			Name:           m.Name,
-			SpeedFeet:      m.SpeedFeet,
-			SightFeet:      m.SightFeet,
-			Actions:        actionViewsFrom(m.Actions),
-			Targeting:      m.Targeting,
 			Intimidate:     approachesFromData(m.Intimidate),
 			Persuade:       approachesFromData(m.Persuade),
 			Table:          tableFromData(m.Table),
@@ -3000,10 +2958,6 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 				ID:             r.ID,
 				Kind:           r.Kind,
 				Name:           r.Name,
-				SpeedFeet:      r.SpeedFeet,
-				SightFeet:      r.SightFeet,
-				Actions:        actionViewsFrom(r.Actions),
-				Targeting:      r.Targeting,
 				Intimidate:     approachesFromData(r.Intimidate),
 				Persuade:       approachesFromData(r.Persuade),
 				Table:          tableFromData(r.Table),
