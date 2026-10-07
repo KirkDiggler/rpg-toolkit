@@ -76,6 +76,12 @@ type compiledOffer struct {
 	// definition for Attack. Equality compares these bytes so two offers
 	// with the same selector material are recurrence, not a collision.
 	variant json.RawMessage
+	// unreadable is why this offer is blocked when the cause is a sheet a
+	// resolution participant needs and nobody can read: the first dependency
+	// failure, in this package's own vocabulary. Nil otherwise. Selecting a
+	// blocked offer reports it rather than calling the selector stale — the
+	// selector is current; the sheet is what refuses (rpg-project#538).
+	unreadable error
 }
 
 // targetPreflight is the shared, target-specific gate result for one
@@ -520,7 +526,11 @@ func compileAttackOffer(input *compileAttackOfferInput) (compiledOffer, error) {
 	// facts without sharing those mutable annotations.
 	candidates := cloneTargetPreflights(input.Candidates)
 	var dependencyWhy *Shortfall
+	var unreadable error
 	for _, failure := range input.DependencyFailures {
+		if unreadable == nil {
+			unreadable = dependencyRefusal(failure)
+		}
 		why := Shortfall{
 			Reason: ShortfallUnreadable,
 			Text:   fmt.Sprintf("resolution participant %q is unreadable: %v", failure.member, failure.err),
@@ -575,7 +585,23 @@ func compileAttackOffer(input *compileAttackOfferInput) (compiledOffer, error) {
 		},
 		attack: &definition, targets: targets, sheet: input.Sheet,
 		price: input.Price, cast: input.Cast, verb: VerbAttack, slot: slot, variant: variant,
+		unreadable: unreadable,
 	}, nil
+}
+
+// dependencyRefusal names one unreadable resolution participant in this
+// package's vocabulary: the sheet sentinel the failure already carries
+// (ErrNoSheet, ErrNoCharacter, ...) or, for a resolution preflight refusal,
+// translateResolution's word for it. The inner account rides along as text.
+func dependencyRefusal(failure resolutionDependencyFailure) error {
+	own := sheetRefusal(failure.err)
+	if own == nil {
+		own = sheetRefusal(translateResolution(failure.err))
+	}
+	if own == nil {
+		own = ErrBadCharacter
+	}
+	return fmt.Errorf("resolution participant %q: %w: %v", failure.member, own, failure.err)
 }
 
 // finishRequestedOffers filters candidate offers to the requested verbs and
@@ -1026,6 +1052,9 @@ func selectCompiledOffer(offers []compiledOffer, verb Verb, id string) (compiled
 			return compiledOffer{}, ErrStaleDeclaration
 		}
 		selected = &offers[i]
+	}
+	if selected != nil && !selected.declaration.Available && selected.unreadable != nil {
+		return compiledOffer{}, selected.unreadable
 	}
 	if selected == nil || !selected.declaration.Available {
 		return compiledOffer{}, ErrStaleDeclaration

@@ -217,7 +217,9 @@ func TestTranslateResolutionLetsNoResolutionSentinelThrough(t *testing.T) {
 // doing at the time. The host's repair is the sheet's, so the seam's own word
 // wins, and the resolution sentinel it was wrapped in stays unreachable.
 func TestASheetTheSeamCouldNotReadIsTheCause(t *testing.T) {
-	for _, own := range []error{ErrNoCharacter, ErrBadCharacter, ErrNoSheet, ErrBadRepository} {
+	for _, own := range []error{
+		ErrNoCharacter, ErrBadCharacter, ErrNoSheet, ErrBadRepository, ErrInvalidSession, ErrBadAttack,
+	} {
 		t.Run(own.Error(), func(t *testing.T) {
 			inner := fmt.Errorf("%w: witnesses: sight: member %q: %w", resolution.ErrBadCost, "bob", own)
 

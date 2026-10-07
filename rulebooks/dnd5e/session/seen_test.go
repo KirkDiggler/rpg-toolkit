@@ -378,43 +378,52 @@ func TestGhostSeenStandingIsWhatItLastSaw(t *testing.T) {
 			"change nobody actually saw, exactly the defect rpg-toolkit#1702 closes")
 }
 
-// readOnlyCharacters is a CharacterRepository a read may look a sheet up in
-// and must never write to: SaveCharacter panics, wherever in the call graph it
-// happens.
+// seamOnlyCharacters is a CharacterRepository that panics if anything but the
+// sheet seam reads it, and on every write. Wiring it into a Manager and
+// driving a real read through it fails the moment the call happens, wherever
+// in the call graph it happens, rather than only when someone remembers to
+// assert on a spy afterward.
 //
-// IT ANSWERS LOOKUPS, AND USED TO PANIC ON THEM TOO. A View asks the viewer's
-// sight range for the area projection, and sight is now asked of the viewer's
-// own sheet at the moment of use (rpg-project#538, R12) rather than read off a
-// range copied into the stored roster — so a read reaches the character store
-// for that, legitimately. What it must still never do is consult standing:
-// that is pinned in behaviour by TestGhostSeenStandingIsWhatItLastSaw, where
-// a live standing read would report a kill the observer never saw.
-type readOnlyCharacters struct{ sheets *fakeCharacters }
+// THE SHEET SEAM IS THE ONE READER ALLOWED. A View asks the viewer's sight
+// range for the area projection, and sight is asked of the viewer's own sheet
+// at the moment of use (rpg-project#538, R12) — so a read reaches the store
+// for that, through sheets.go, legitimately. Every other reader — standing,
+// above all — panics, told apart by the caller on the stack.
+type seamOnlyCharacters struct{ sheets *fakeCharacters }
 
-func (r readOnlyCharacters) GetCharacter(ctx context.Context, id string) (*character.Data, error) {
+func (r seamOnlyCharacters) GetCharacter(ctx context.Context, id string) (*character.Data, error) {
+	if !calledFromSheetSeam() {
+		panic("GetCharacter must not be called outside the sheet seam: View no longer consults standing at all (rpg-toolkit#1702)")
+	}
 	return r.sheets.GetCharacter(ctx, id)
 }
 
-func (readOnlyCharacters) SaveCharacter(context.Context, *character.Data) error {
+func (seamOnlyCharacters) SaveCharacter(context.Context, *character.Data) error {
 	panic("SaveCharacter must not be called from a read")
 }
 
 // TestViewNeverConsultsStandingEvenWithACurrentAndAGhostSighting is
-// rpg-toolkit#1702's test case 5. A Manager over a character store that
-// refuses every write, reused against the exact scene case 1 built (a live
-// sighting existed briefly, a ghost exists now), still produces the full
-// projection, with Standing taken from the testimony's own snapshot.
+// rpg-toolkit#1702's test case 5 — the structural guard. It is not enough
+// that View happens not to call the standing seam today; the sighting path
+// must be UNABLE to, so a future change that reintroduces the call fails
+// loudly here rather than only in behavior nobody happened to test.
+//
+// A Manager over a character store only the sheet seam may read, reused
+// against the exact scene case 1 built (a live sighting existed briefly, a
+// ghost exists now), still produces the full projection — proving the
+// sighting path never reaches the character store except to ask the viewer's
+// sheet how far it sees.
 func TestViewNeverConsultsStandingEvenWithACurrentAndAGhostSighting(t *testing.T) {
 	sessions, encounters := groundedSkeletonScene(t)
 
 	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
-		Sessions: sessions, Encounters: encounters, Characters: readOnlyCharacters{sheets: newFakeCharacters(armedFighter("fighter"))},
+		Sessions: sessions, Encounters: encounters, Characters: seamOnlyCharacters{sheets: newFakeCharacters(armedFighter("fighter"))},
 		Events: session.DiscardEvents{},
 	})
 	require.NoError(t, err)
 
 	sightings, err := mgr.View(context.Background(), &session.ViewInput{Session: "sess", Member: "fighter"})
-	require.NoError(t, err, "a read writes no sheet")
+	require.NoError(t, err, "only the sheet seam reads the store, and nothing writes it")
 	skeleton := findSighting(sightings, "skeleton-1")
 	require.NotNil(t, skeleton, "the ghost holding must still project — a full sighting, not an empty result")
 	require.NotNil(t, skeleton.Seen)

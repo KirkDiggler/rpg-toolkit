@@ -885,12 +885,14 @@ func (s *AttackTestSuite) TestNotYourTurnIsRefused() {
 		"the clock is asked before the sheet is — a refusal this early must never have loaded it")
 }
 
-// TestAffordThenAttackRefusesASheetlessTargetBeforeExecution covers content
-// standing in a world that nobody spawned. Afford and Attack must agree, and
-// both refuse by name: the world asks every member's sheet how far it sees
-// before it can say who witnesses a swing (rpg-project#538), and a monster
-// the session holds no stat block for is refused there (ErrNoSheet) rather
-// than answered with a range nobody stated. Nothing is written.
+// TestAffordThenAttackRefusesASheetlessTargetBeforeExecution covers a monster
+// whose stat block the session stops holding. Afford and Attack must agree,
+// and both refuse by name: the world asks every member's sheet how far it
+// sees before it can say who witnesses a swing (rpg-project#538), and a
+// monster the session holds no stat block for is refused there (ErrNoSheet)
+// rather than answered with a range nobody stated. The swing carries a
+// selector minted while the sheet was held, so it is the sheet, not a stale
+// declaration, that refuses it. Nothing is written.
 func (s *AttackTestSuite) TestAffordThenAttackRefusesASheetlessTargetBeforeExecution() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"))
@@ -916,6 +918,11 @@ func (s *AttackTestSuite) TestAffordThenAttackRefusesASheetlessTargetBeforeExecu
 		Session: "sess", Encounter: "world", World: turnWorld(&data, []string{"alice", "ogre"}, 0),
 	})
 	s.Require().NoError(err)
+	stockAuthoredMonsters(s.T(), s.sessions, s.encounters, "sess")
+	declaration := currentAttackID(s.T(), mgr, "sess", "alice")
+
+	// The stat block goes; the roster row stays.
+	s.sessions.byID["sess"].NPCs = nil
 
 	_, err = mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "alice"})
 	s.Require().ErrorIs(err, session.ErrNoSheet)
@@ -923,9 +930,10 @@ func (s *AttackTestSuite) TestAffordThenAttackRefusesASheetlessTargetBeforeExecu
 	beforeSessionSaves, beforeEncounterSaves, beforeCharacterSaves :=
 		s.sessions.saves, s.encounters.saves, s.characters.saves
 	_, err = mgr.Attack(context.Background(), &session.AttackInput{
-		Session: "sess", Attacker: "alice", Target: "ogre", DeclarationID: "attack:stale",
+		Session: "sess", Attacker: "alice", Target: "ogre", DeclarationID: declaration,
 	})
-	s.Require().Error(err)
+	s.Require().ErrorIs(err, session.ErrNoSheet, "the sheet refuses the swing, not the selector")
+	s.NotErrorIs(err, session.ErrStaleDeclaration)
 	s.Equal(beforeSessionSaves, s.sessions.saves)
 	s.Equal(beforeEncounterSaves, s.encounters.saves)
 	s.Equal(beforeCharacterSaves, s.characters.saves)
@@ -1018,28 +1026,27 @@ func (s *AttackTestSuite) TestAnUnreadableAttackerSheetIsCorruptRatherThanAbsent
 // or a bystander — refuses Afford by name (ErrBadCharacter) rather than
 // leaving a blocker row: the world asks that sheet how far it sees before it
 // can say who witnesses a swing (rpg-project#538), and a sheet that cannot be
-// read cannot answer. Attack refuses the same way and writes nothing.
+// read cannot answer. The sheet is corrupted after a real selector was
+// minted, so Attack is refused by the sheet the same way, and writes nothing.
 func (s *AttackTestSuite) TestUnreadableTargetAndParticipantBlockAffordBeforeUnchangedAttack() {
 	tests := []struct {
-		name    string
-		sheets  []*character.Data
-		members []string
+		name       string
+		members    []string
+		unreadable string
 	}{
-		{
-			name:    "unreadable target",
-			sheets:  []*character.Data{armedFighter("alice"), unreadableFighter("bob")},
-			members: []string{"alice", "bob"},
-		},
-		{
-			name:    "unreadable non-target participant",
-			sheets:  []*character.Data{armedFighter("alice"), armedFighter("bob"), unreadableFighter("carol")},
-			members: []string{"alice", "bob", "carol"},
-		},
+		{name: "unreadable target", members: []string{"alice", "bob"}, unreadable: "bob"},
+		{name: "unreadable non-target participant", members: []string{"alice", "bob", "carol"}, unreadable: "carol"},
 	}
 
 	for _, tc := range tests {
 		s.Run(tc.name, func() {
-			mgr := s.duelAmong(tc.members, tc.sheets...)
+			sheets := make([]*character.Data, 0, len(tc.members))
+			for _, id := range tc.members {
+				sheets = append(sheets, armedFighter(id))
+			}
+			mgr := s.duelAmong(tc.members, sheets...)
+			declaration := currentAttackID(s.T(), mgr, "sess", "alice")
+			s.characters.byID[tc.unreadable] = unreadableFighter(tc.unreadable)
 
 			_, err := mgr.Afford(context.Background(), &session.AffordInput{
 				Session: "sess", Member: "alice",
@@ -1050,9 +1057,10 @@ func (s *AttackTestSuite) TestUnreadableTargetAndParticipantBlockAffordBeforeUnc
 			beforeSessionSaves, beforeEncounterSaves, beforeCharacterSaves :=
 				s.sessions.saves, s.encounters.saves, s.characters.saves
 			out, err := mgr.Attack(context.Background(), &session.AttackInput{
-				Session: "sess", Attacker: "alice", Target: "bob", DeclarationID: "attack:stale",
+				Session: "sess", Attacker: "alice", Target: "bob", DeclarationID: declaration,
 			})
-			s.Require().Error(err)
+			s.Require().ErrorIs(err, session.ErrBadCharacter, "the sheet refuses the swing, not the selector")
+			s.NotErrorIs(err, session.ErrStaleDeclaration)
 			s.Nil(out)
 			s.Equal(beforeSessionSaves, s.sessions.saves)
 			s.Equal(beforeEncounterSaves, s.encounters.saves)

@@ -630,9 +630,14 @@ func attackRefFor(definition combatActions.Definition) AttackRef {
 
 // sheetRefusal reports which of this package's own sheet sentinels err
 // carries, or nil: the refusals the sheet seam (sheets.go) makes about a member
-// it holds no readable sheet for.
+// it holds no readable sheet for — absent or corrupt character, absent stat
+// block, a store that answered wrongly, a stat block that will not load or a
+// member with no roster kind (ErrInvalidSession), and a main hand the
+// projection cannot compile (ErrBadAttack).
 func sheetRefusal(err error) error {
-	for _, own := range []error{ErrNoCharacter, ErrBadCharacter, ErrNoSheet, ErrBadRepository} {
+	for _, own := range []error{
+		ErrNoCharacter, ErrBadCharacter, ErrNoSheet, ErrBadRepository, ErrInvalidSession, ErrBadAttack,
+	} {
 		if errors.Is(err, own) {
 			return own
 		}

@@ -548,9 +548,10 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 	// read three of those off it; what it holds now is a record on the way in
 	// and numbers on the way out.
 	//
-	// Asked BEFORE the placement because the placement needs the name. On first admission the rest is already durable, so every failure
-	// from here through commit must carry scope.written in its SaveError rather
-	// than masquerade as a no-write refusal.
+	// Asked BEFORE the placement because the placement needs the name. On
+	// first admission the rest is already durable, so every failure from here
+	// through commit must carry scope.written in its SaveError rather than
+	// masquerade as a no-write refusal.
 	projected, err := projectCharacter(ctx, in.Member, record)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", saveErrorAfterWrites(scope, "", err))

@@ -250,23 +250,27 @@ type compileLoadCounting struct {
 }
 
 func (c *compileLoadCounting) GetCharacter(ctx context.Context, id string) (*character.Data, error) {
-	pcs := make([]uintptr, 64)
-	frames := runtime.CallersFrames(pcs[:runtime.Callers(2, pcs)])
-	seam := false
-	for {
-		frame, more := frames.Next()
-		if strings.Contains(frame.Function, "session.sheetSeam.") {
-			seam = true
-			break
-		}
-		if !more {
-			break
-		}
-	}
-	if !seam {
+	if !calledFromSheetSeam() {
 		c.compiled[id]++
 	}
 	return c.fakeCharacters.GetCharacter(ctx, id)
+}
+
+// calledFromSheetSeam reports whether the sheet seam (sheets.go) is on the
+// caller's stack: the one honest way a test repository can tell the seam's
+// per-consult reads apart from every other reader.
+func calledFromSheetSeam() bool {
+	pcs := make([]uintptr, 64)
+	frames := runtime.CallersFrames(pcs[:runtime.Callers(2, pcs)])
+	for {
+		frame, more := frames.Next()
+		if strings.Contains(frame.Function, "session.sheetSeam.") {
+			return true
+		}
+		if !more {
+			return false
+		}
+	}
 }
 
 func TestSuccessfulTurnAttackLoadsActorOnceBeforeExecution(t *testing.T) {
