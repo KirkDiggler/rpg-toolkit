@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
@@ -46,25 +47,34 @@ func (s *UnarmoredDefenseCastSuite) foldAC(
 	ctx context.Context, ud *UnarmoredDefenseCondition, characterID string, baseTotal int,
 ) *combat.ACChainEvent {
 	s.T().Helper()
+	final, err := s.tryFoldAC(ctx, ud, characterID, baseTotal, false)
+	s.Require().NoError(err)
+
+	return final
+}
+
+// tryFoldAC is [foldAC] that hands back the fold's error instead of requiring
+// none, for the refusals below.
+func (s *UnarmoredDefenseCastSuite) tryFoldAC(
+	ctx context.Context, ud *UnarmoredDefenseCondition, characterID string, baseTotal int, hasArmor bool,
+) (*combat.ACChainEvent, error) {
+	s.T().Helper()
 	s.Require().NoError(ud.Apply(s.ctx, s.bus))
 
 	event := &combat.ACChainEvent{
 		CharacterID: characterID,
 		Breakdown:   &combat.ACBreakdown{Total: baseTotal, Components: []combat.ACComponent{}},
-		HasArmor:    false,
+		HasArmor:    hasArmor,
 		HasShield:   false,
 	}
 
 	acChain := events.NewStagedChain[*combat.ACChainEvent](combat.ModifierStages)
 	modified, err := combat.ACChain.On(s.bus).PublishWithChain(ctx, event, acChain)
-	s.Require().NoError(err)
+	if err != nil {
+		return nil, err
+	}
 
-	final, err := modified.Execute(ctx, event)
-	s.Require().NoError(err,
-		"a condition that cannot answer must leave the chain untouched, never error: "+
-			"an erroring contributor discards every other AC contributor with it")
-
-	return final
+	return modified.Execute(ctx, event)
 }
 
 // A barbarian reads CON off its own member. 10 + DEX(+2) + CON(+3) = 15.
@@ -127,32 +137,33 @@ func (s *UnarmoredDefenseCastSuite) TestAMonkReadsWISOffTheCast() {
 	s.Equal(2, final.Breakdown.Components[0].Value, "WIS, not CON: CON here is +4")
 }
 
-// NO CAST AT ALL: the chain comes back untouched, and no error.
+// NO CAST AT ALL: the fold REFUSES with gamectx.ErrNotInCast.
 //
-// The pair of assertions is the point. "Left alone" and "did not blow up" are
-// separate promises, and the second is the one that matters most: an errored
-// fold discards every OTHER contributor to that armour class, which is how a
-// barbarian ended up at base AC with nothing logged.
-func (s *UnarmoredDefenseCastSuite) TestNoCastLeavesTheChainUntouched() {
+// This used to pin "the chain comes back untouched, and no error", on the
+// theory that an erroring contributor discards every other contributor. That
+// was true when EffectiveAC swallowed fold errors; it returns them now, and an
+// untouched chain here is base armour for a monk who has Unarmored Defense —
+// the number rpg-api saved on equip (rpg-toolkit#1965 tier 1 #2). A refusal is
+// the only answer that is not a lie.
+func (s *UnarmoredDefenseCastSuite) TestNoCastRefusesTheFold() {
 	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
 		MemberID: "monk-1",
 		Type:     UnarmoredDefenseMonk,
 		Source:   "dnd5e:classes:monk",
 	})
 
-	final := s.foldAC(context.Background(), ud, "monk-1", 13)
+	_, err := s.tryFoldAC(context.Background(), ud, "monk-1", 13, false)
 
-	s.Equal(13, final.Breakdown.Total, "no cast, no contribution — and no damage to the rest")
-	s.Empty(final.Breakdown.Components, "nothing may be attributed that was not read")
+	s.Require().ErrorIs(err, gamectx.ErrNotInCast, "no cast, no WIS — and 13 would be a wrong AC")
 }
 
-// A cast that does not hold THIS character is the same answer as no cast.
+// A cast that does not hold THIS character refuses the same way.
 //
 // Distinct from the case above rather than a duplicate of it: a cast is
 // installed and answers questions, it simply cannot name this member — a
 // roster the condition is genuinely absent from. Collapsing the two would let
 // a lookup that ignored its own ID pass.
-func (s *UnarmoredDefenseCastSuite) TestACastWithoutThisCharacterLeavesTheChainUntouched() {
+func (s *UnarmoredDefenseCastSuite) TestACastWithoutThisCharacterRefusesTheFold() {
 	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
 		MemberID: "monk-1",
 		Type:     UnarmoredDefenseMonk,
@@ -167,8 +178,24 @@ func (s *UnarmoredDefenseCastSuite) TestACastWithoutThisCharacterLeavesTheChainU
 		},
 	})
 
-	final := s.foldAC(ctx, ud, "monk-1", 13)
+	_, err := s.tryFoldAC(ctx, ud, "monk-1", 13, false)
 
-	s.Equal(13, final.Breakdown.Total, "another member's wisdom is not this monk's")
-	s.Empty(final.Breakdown.Components)
+	s.Require().ErrorIs(err, gamectx.ErrNotInCast, "another member's wisdom is not this monk's")
+}
+
+// Armoured, the condition contributes nothing and therefore needs nobody: no
+// cast is no refusal. The refusal is for a contribution that would be missing,
+// not a blanket "no cast, no AC".
+func (s *UnarmoredDefenseCastSuite) TestAnArmouredHolderNeedsNoCast() {
+	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
+		MemberID: "monk-1",
+		Type:     UnarmoredDefenseMonk,
+		Source:   "dnd5e:classes:monk",
+	})
+
+	final, err := s.tryFoldAC(context.Background(), ud, "monk-1", 14, true)
+
+	s.Require().NoError(err)
+	s.Equal(14, final.Breakdown.Total)
+	s.Empty(final.Breakdown.Components, "Unarmored Defense does not apply in armour")
 }

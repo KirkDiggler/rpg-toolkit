@@ -16,6 +16,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -191,12 +192,16 @@ func (u *UnarmoredDefenseCondition) onACChain(
 	}
 
 	// Own sheet, looked up in the cast by this character's own ID — the same
-	// call any other participant's sheet would come through. See [member] for
-	// why a cast that cannot name this character leaves the chain untouched
-	// instead of erroring.
+	// call any other participant's sheet would come through.
+	//
+	// A cast that cannot name this character REFUSES the fold. This
+	// contribution is part of the number, so leaving it out would answer base
+	// armour for a character who has Unarmored Defense — the wrong AC that
+	// rpg-api saved for monks and barbarians (rpg-toolkit#1965). See [member].
 	me, ok := member(ctx, u.MemberID)
 	if !ok {
-		return c, nil
+		return c, rpgerr.Wrapf(gamectx.ErrNotInCast,
+			"unarmored defense cannot read character %s's ability scores", u.MemberID)
 	}
 
 	// The secondary ability modifier (WIS for Monk, CON for Barbarian)

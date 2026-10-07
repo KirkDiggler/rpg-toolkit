@@ -1711,6 +1711,15 @@ func calculateShieldAC(shieldItem *armor.Armor) combat.ACComponent {
 // return whatever the breakdown happened to hold, which meant a broken
 // contributor degraded the total instead of failing the read.
 //
+// Attached is not always enough. A contributor that reads its holder out of
+// the installed cast — Unarmored Defense reads WIS or CON — refuses the fold
+// with [gamectx.ErrNotInCast] when no cast holding this character is on ctx,
+// and that refusal is returned here. Attaching the sheet to a fresh bus and
+// folding on a bare context is therefore an error for a monk or barbarian, not
+// base armour (rpg-toolkit#1965). The cast is installed by resolution's one
+// door; a caller holding a record asks resolution.ProjectCharacter, which
+// loads, attaches, installs the cast and folds in one call.
+//
 // Callers holding a sheet from the bus-free [Load] must [Attach] it before
 // asking. A stat block that has no chain to fold wants [Character.AC].
 func (c *Character) EffectiveAC(ctx context.Context) (*combat.ACBreakdown, error) {
