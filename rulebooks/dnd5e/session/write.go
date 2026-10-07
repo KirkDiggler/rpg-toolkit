@@ -2020,19 +2020,13 @@ func (m *Manager) settleOneFall(ctx context.Context, scope *writeScope, fallen s
 	// The fallen monster is the beat's actor as well as its cause — the
 	// composition names an actor on every beat and this one has no other
 	// candidate, the fall being anonymous by ruling (rpg-toolkit#959, R3).
-	// Only Exit removes a member, so a body is normally still on the roster.
-	// One that fell and then left in the same act is not, and the composition
-	// refuses an actor who is not a member: the first payee (players is
-	// sorted) acts the beat instead. The cause stays the fallen monster, on
-	// Experience.Member, which is what the projection reads. No targets: the
-	// composition adds every grantee to the beat's subjects itself.
-	actor := encounter.MemberID(fallen)
-	if !onRoster(scope.enc.WorldView().Members, actor) {
-		actor = encounter.MemberID(players[0])
-	}
+	// A body that fell and then left the roster in the same act is still the
+	// actor: the composition accepts a former member on this one kind. No
+	// targets: the composition adds every grantee to the beat's subjects
+	// itself.
 	if _, err := scope.enc.Record(&encounter.RecordInput{
 		Kind:  encounter.OutcomeExperienceGained,
-		Actor: actor,
+		Actor: encounter.MemberID(fallen),
 		Experience: &encounter.ExperienceDetail{
 			Member: fallen, Grants: grants,
 		},
@@ -2041,16 +2035,6 @@ func (m *Manager) settleOneFall(ctx context.Context, scope *writeScope, fallen s
 	}
 
 	return nil
-}
-
-// onRoster reports whether id is a current member of the roster view.
-func onRoster(members []encounter.MemberData, id encounter.MemberID) bool {
-	for _, member := range members {
-		if member.ID == id {
-			return true
-		}
-	}
-	return false
 }
 
 // Recheck tells the session that something an observer could SEE about these

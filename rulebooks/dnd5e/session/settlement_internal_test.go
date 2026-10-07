@@ -5,6 +5,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -106,4 +107,29 @@ func (s *SettlementSuite) TestAMonsterThatFellAndThenExitedStillGrants() {
 
 	s.Equal(sheet.Experience, s.characters.byID["fighter"].Experience,
 		"the lone fighter takes the whole worth of the goblin that fell")
+
+	// The beat names the goblin as its actor and its cause: the composition
+	// accepts a former member as the actor of an experience beat.
+	after, err := s.mgr.openForChange(ctx, "sess")
+	s.Require().NoError(err)
+	entries, err := after.enc.Story(&encounter.StoryInput{Audience: "fighter"})
+	s.Require().NoError(err)
+	told := false
+	for _, entry := range entries {
+		var beat struct {
+			Beat       string `json:"beat"`
+			Actor      string `json:"actor"`
+			Experience struct {
+				Member string `json:"member"`
+			} `json:"experience"`
+		}
+		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		if beat.Beat != string(encounter.OutcomeExperienceGained) {
+			continue
+		}
+		told = true
+		s.Equal("goblin", beat.Actor, "the fallen monster acts its own beat")
+		s.Equal("goblin", beat.Experience.Member)
+	}
+	s.True(told, "the grant is told")
 }
