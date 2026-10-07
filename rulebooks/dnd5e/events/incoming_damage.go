@@ -124,6 +124,27 @@ type IncomingDamageInput struct {
 // subscriber answers by appending to Reductions or Multipliers; the step
 // refuses a fold that returned anything else, with [IncomingDamageEvent.CheckUnaltered].
 //
+// # The target step
+//
+// Resolution is the only publisher of both damage topics, and every damage
+// source it delivers runs the same step, in this order:
+//
+//  1. Fold [DamageChain] (the dealt fold): the source's rules add what it deals.
+//  2. Halve the folded components when a made save meets a Half gate.
+//  3. sent := NewIncomingDamageEvent with those components and the action's
+//     frame, the target known (a contest's frame is the saving-throw frame
+//     with the weapon pool known false).
+//  4. Publish sent on [IncomingDamageChain]; execute the chain over
+//     sent.Clone(), so sent stays what was sent.
+//  5. folded.CheckUnaltered(sent): refuse a fold that changed or removed a
+//     dealt component.
+//  6. combat.SettleDamage with sent.Dealt() and folded's Reductions and
+//     Multipliers; apply its FinalDamage instances to the target's sheet.
+//  7. Build the one trace from the settlement: the dealt components and the
+//     halving, one line per reduction, the floor when a type sank below zero,
+//     and one line per multiplied type naming its DecidedBy and carrying its
+//     Change. The trace totals what the sheet takes.
+//
 // Never persisted, like [DamageChainEvent]: a Fact does not marshal.
 type IncomingDamageEvent struct {
 	targetID string
