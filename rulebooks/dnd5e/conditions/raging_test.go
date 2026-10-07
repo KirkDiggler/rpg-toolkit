@@ -1477,3 +1477,43 @@ func (s *RagingConditionTestSuite) TestANegativeRoundNeverBecomesTheAnchor() {
 	s.Equal(2, raging.RoundActivated)
 	s.Equal(1, raging.TurnsActive, "and its first counted turn is that one, not a number derived from -5")
 }
+
+// TestRageEndsWhenTheBarbarianDropsToZero is rpg-toolkit#1965 tier 1 #3.
+//
+// RAW: rage ends early if you are knocked unconscious. The rage used to listen
+// for a ConditionApplied fact typed Unconscious, which nothing has published
+// since life state moved onto the sheet (DeathSaveState, combat.LifeState) —
+// so a barbarian at 0 hit points kept raging. The fact that does say "this
+// member went down" is DamageTaken with DroppedToZero, published by every
+// machine that applies damage.
+func (s *RagingConditionTestSuite) TestRageEndsWhenTheBarbarianDropsToZero() {
+	raging, removed := s.ragingWithRemovalWatch()
+
+	s.Require().NoError(dnd5eEvents.DamageTakenTopic.On(s.bus).Publish(s.ctx, &dnd5eEvents.DamageTakenEvent{
+		MemberID: "barbarian-1", Amount: 14, DamageType: damage.Slashing, DroppedToZero: true,
+	}))
+
+	s.Require().NotNil(removed(), "a barbarian at 0 hit points is not raging")
+	s.Equal("barbarian-1", removed().MemberID)
+	s.Equal(refs.Conditions.Raging().String(), removed().ConditionRef)
+	s.Equal("unconscious", removed().Reason)
+	s.False(raging.IsApplied())
+}
+
+// TestRageSurvivesDamageThatDoesNotDropTheBarbarian pins the other side: being
+// hurt is not going down, and somebody else going down is not this rage's
+// business.
+func (s *RagingConditionTestSuite) TestRageSurvivesDamageThatDoesNotDropTheBarbarian() {
+	raging, removed := s.ragingWithRemovalWatch()
+	damageTaken := dnd5eEvents.DamageTakenTopic.On(s.bus)
+
+	s.Require().NoError(damageTaken.Publish(s.ctx, &dnd5eEvents.DamageTakenEvent{
+		MemberID: "barbarian-1", Amount: 5, DamageType: damage.Slashing,
+	}))
+	s.Require().NoError(damageTaken.Publish(s.ctx, &dnd5eEvents.DamageTakenEvent{
+		MemberID: "goblin-1", Amount: 7, DamageType: damage.Slashing, DroppedToZero: true,
+	}))
+
+	s.Nil(removed())
+	s.True(raging.IsApplied())
+}

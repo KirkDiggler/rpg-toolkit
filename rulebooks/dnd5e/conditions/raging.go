@@ -95,9 +95,9 @@ func (r *RagingCondition) Apply(ctx context.Context, bus events.EventBus) error 
 	}
 	r.subscriptionIDs = append(r.subscriptionIDs, subID2)
 
-	// Subscribe to condition applied events to check for unconscious
-	conditions := dnd5eEvents.ConditionAppliedTopic.On(bus)
-	subID3, err := conditions.Subscribe(ctx, r.onConditionApplied)
+	// Subscribe to the damage-taken fact to end rage when we go down
+	damageTaken := dnd5eEvents.DamageTakenTopic.On(bus)
+	subID3, err := damageTaken.Subscribe(ctx, r.onDamageTaken)
 	if err != nil {
 		// Rollback: unsubscribe from previous subscriptions
 		_ = r.Remove(ctx, bus)
@@ -359,13 +359,18 @@ func (r *RagingCondition) onTurnEnd(ctx context.Context, event dnd5eEvents.TurnE
 	return r.stateChanged(ctx)
 }
 
-// onConditionApplied handles condition applied events to check for unconscious
-func (r *RagingCondition) onConditionApplied(ctx context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
-	// Check if unconscious was applied to us
-	if event.Type == dnd5eEvents.ConditionUnconscious && event.Target.GetID() == r.CharacterID {
-		return r.endRage(ctx, "unconscious")
+// onDamageTaken ends the rage when the blow took us to 0 hit points — RAW,
+// rage ends early if you are knocked unconscious.
+//
+// Keyed to DroppedToZero on the damage fact, not to an Unconscious condition:
+// life state lives on the sheet (DeathSaveState, combat.LifeState) and no
+// Unconscious condition is applied when a member goes down, so a subscriber
+// waiting for one waits forever (rpg-toolkit#1965).
+func (r *RagingCondition) onDamageTaken(ctx context.Context, event *dnd5eEvents.DamageTakenEvent) error {
+	if event == nil || event.MemberID != r.CharacterID || !event.DroppedToZero {
+		return nil
 	}
-	return nil
+	return r.endRage(ctx, "unconscious")
 }
 
 // onRest handles rest events - rage ends on any rest
