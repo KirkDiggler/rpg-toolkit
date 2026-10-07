@@ -238,6 +238,32 @@ func TestASheetTheSeamCouldNotReadIsTheCause(t *testing.T) {
 		"a pricing failure that is not a sheet is still the cost's")
 }
 
+// TestADependencyRefusalNamesASheetOnlyWhenOneIsNamed: an unreadable
+// participant's refusal is a sheet's only when a member is named and a sheet
+// sentinel says so. A failure against no member is a cast this package built
+// wrongly, and it keeps resolution's translated word rather than sending a
+// host to repair a sheet that is fine.
+func TestADependencyRefusalNamesASheetOnlyWhenOneIsNamed(t *testing.T) {
+	unnamed := dependencyRefusal(resolutionDependencyFailure{
+		member: "", err: fmt.Errorf("%w: empty cast", resolution.ErrNilInput),
+	})
+	require.ErrorIs(t, unnamed, ErrNilInput)
+	require.NotErrorIs(t, unnamed, ErrBadCharacter, "no member named, no sheet blamed")
+	require.NotErrorIs(t, unnamed, resolution.ErrNilInput, "and resolution's own word stays behind the boundary")
+
+	for _, own := range []error{ErrNoSheet, ErrNoCharacter, ErrBadCharacter, ErrBadRepository} {
+		named := dependencyRefusal(resolutionDependencyFailure{member: "bob", err: fmt.Errorf("load: %w", own)})
+		require.ErrorIs(t, named, own)
+		require.Contains(t, named.Error(), `"bob"`)
+	}
+
+	translated := dependencyRefusal(resolutionDependencyFailure{
+		member: "bob", err: fmt.Errorf("attach: %w", resolution.ErrBadParticipant),
+	})
+	require.ErrorIs(t, translated, ErrBadCharacter, "resolution's participant refusal, in this package's word")
+	require.NotErrorIs(t, translated, resolution.ErrBadParticipant)
+}
+
 // unknownCause is a cause from a composition NEWER than this build.
 //
 // It is built by embedding a real one, and that is not a trick to get around

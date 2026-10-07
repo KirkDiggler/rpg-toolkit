@@ -1133,8 +1133,14 @@ func (m *Manager) compileResolutionCast(
 		return cast, failures
 	}
 
+	// A row here is resolution's own finding that this member's stored sheet
+	// will not reconstitute and attach: a corrupt sheet, named as one at the
+	// point it is known (ErrBadCharacter), so nothing downstream has to guess.
 	for _, refusal := range preflight.Unreadable {
-		failures = append(failures, resolutionDependencyFailure{member: refusal.Member, err: refusal.Reason})
+		failures = append(failures, resolutionDependencyFailure{
+			member: refusal.Member,
+			err:    fmt.Errorf("%w: %v", ErrBadCharacter, refusal.Reason),
+		})
 	}
 
 	return cast, failures

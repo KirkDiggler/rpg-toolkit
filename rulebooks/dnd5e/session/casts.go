@@ -293,7 +293,11 @@ func (m *Manager) compileCastOffer(
 		}
 	}
 	var dependencyWhy *Shortfall
+	var unreadable error
 	for _, failure := range input.DependencyFailures {
+		if unreadable == nil {
+			unreadable = dependencyRefusal(failure)
+		}
 		why := Shortfall{
 			Reason: ShortfallUnreadable,
 			Text:   fmt.Sprintf("resolution participant %q is unreadable: %v", failure.member, failure.err),
@@ -342,6 +346,7 @@ func (m *Manager) compileCastOffer(
 		},
 		spell: &definition, targets: targets, sheet: input.Sheet,
 		cast: input.Participants, verb: VerbCast, slot: slot, variant: variant,
+		unreadable: unreadable,
 	}, nil
 }
 

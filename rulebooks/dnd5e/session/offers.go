@@ -590,18 +590,24 @@ func compileAttackOffer(input *compileAttackOfferInput) (compiledOffer, error) {
 }
 
 // dependencyRefusal names one unreadable resolution participant in this
-// package's vocabulary: the sheet sentinel the failure already carries
-// (ErrNoSheet, ErrNoCharacter, ...) or, for a resolution preflight refusal,
-// translateResolution's word for it. The inner account rides along as text.
+// package's vocabulary. A NAMED member whose failure carries a sheet sentinel
+// (ErrNoSheet, ErrNoCharacter, ErrBadCharacter, ... — directly, or as
+// translateResolution's word for a preflight refusal) is that sheet's refusal.
+// Anything else is translateResolution's answer as it stands: a failure with
+// no member is a cast this package built wrongly, and naming a sheet for it
+// would send a host to repair one that is fine.
 func dependencyRefusal(failure resolutionDependencyFailure) error {
-	own := sheetRefusal(failure.err)
-	if own == nil {
-		own = sheetRefusal(translateResolution(failure.err))
+	translated := translateResolution(failure.err)
+	if failure.member != "" {
+		own := sheetRefusal(failure.err)
+		if own == nil {
+			own = sheetRefusal(translated)
+		}
+		if own != nil {
+			return fmt.Errorf("resolution participant %q: %w: %v", failure.member, own, failure.err)
+		}
 	}
-	if own == nil {
-		own = ErrBadCharacter
-	}
-	return fmt.Errorf("resolution participant %q: %w: %v", failure.member, own, failure.err)
+	return translated
 }
 
 // finishRequestedOffers filters candidate offers to the requested verbs and
