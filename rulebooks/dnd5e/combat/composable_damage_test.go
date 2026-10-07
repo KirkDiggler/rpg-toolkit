@@ -137,7 +137,7 @@ func (s *ComposableDamageTestSuite) foldCriticalPactLongsword(strengthModifier, 
 	})
 	s.Require().NoError(err)
 	incoming := events.NewStagedChain[*dnd5eEvents.IncomingDamageEvent](combat.ModifierStages)
-	modifiedIncoming, err := dnd5eEvents.IncomingDamageChain.On(s.bus).PublishWithChain(s.ctx, sent, incoming)
+	modifiedIncoming, err := dnd5eEvents.IncomingDamageChain.On(s.bus).PublishWithChain(s.ctx, sent.Clone(), incoming)
 	s.Require().NoError(err)
 	answered, err := modifiedIncoming.Execute(s.ctx, sent.Clone())
 	s.Require().NoError(err)

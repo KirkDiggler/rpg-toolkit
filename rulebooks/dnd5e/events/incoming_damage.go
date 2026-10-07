@@ -31,6 +31,12 @@ const (
 // reduction or a multiplier; it never rewrites the damage dealt to it.
 var ErrTargetAnswerAltered = errors.New("incoming damage fold altered what it was handed")
 
+// ErrMalformedTargetAnswer reports a reduction or multiplier no settlement can
+// fold: no damage type, no named source, a reduction that does not reduce, or
+// a factor that is not immunity, resistance or vulnerability. It names a
+// defect in the rule that answered, never in the step that asked.
+var ErrMalformedTargetAnswer = errors.New("malformed target answer")
+
 // DamageReduction is one target answer that lowers one damage type by a fixed
 // amount before any multiplier applies. Modifier is negative: a reduction
 // adds nothing, and damage a source adds belongs on the dealt fold.
@@ -48,17 +54,18 @@ type DamageReduction struct {
 }
 
 // Validate refuses a reduction the settlement cannot fold: no damage type, no
-// named source, or a modifier that does not reduce.
+// named source, or a modifier that does not reduce. Errors wrap
+// [ErrMalformedTargetAnswer].
 func (r DamageReduction) Validate() error {
 	if r.DamageType == "" {
-		return fmt.Errorf("damage reduction names no damage type")
+		return fmt.Errorf("%w: damage reduction names no damage type", ErrMalformedTargetAnswer)
 	}
 	if r.Source.Ref == nil {
-		return fmt.Errorf("%s damage reduction names no source", r.DamageType)
+		return fmt.Errorf("%w: %s damage reduction names no source", ErrMalformedTargetAnswer, r.DamageType)
 	}
 	if r.Modifier >= 0 {
-		return fmt.Errorf("%s damage reduction from %s is %d, not negative",
-			r.DamageType, r.Source.Ref, r.Modifier)
+		return fmt.Errorf("%w: %s damage reduction from %s is %d, not negative",
+			ErrMalformedTargetAnswer, r.DamageType, r.Source.Ref, r.Modifier)
 	}
 	return nil
 }
@@ -79,20 +86,21 @@ type DamageMultiplier struct {
 }
 
 // Validate refuses a multiplier the stacking rules cannot fold: no damage
-// type, no named source, or a factor that is not one of the three.
+// type, no named source, or a factor that is not one of the three. Errors wrap
+// [ErrMalformedTargetAnswer].
 func (m DamageMultiplier) Validate() error {
 	if m.DamageType == "" {
-		return fmt.Errorf("damage multiplier names no damage type")
+		return fmt.Errorf("%w: damage multiplier names no damage type", ErrMalformedTargetAnswer)
 	}
 	if m.Source.Ref == nil {
-		return fmt.Errorf("%s damage multiplier names no source", m.DamageType)
+		return fmt.Errorf("%w: %s damage multiplier names no source", ErrMalformedTargetAnswer, m.DamageType)
 	}
 	switch m.Factor {
 	case DamageFactorImmunity, DamageFactorResistance, DamageFactorVulnerability:
 		return nil
 	default:
-		return fmt.Errorf("%s damage multiplier from %s has factor %v, not immunity, resistance or vulnerability",
-			m.DamageType, m.Source.Ref, m.Factor)
+		return fmt.Errorf("%w: %s damage multiplier from %s has factor %v, not immunity, resistance or vulnerability",
+			ErrMalformedTargetAnswer, m.DamageType, m.Source.Ref, m.Factor)
 	}
 }
 
@@ -124,6 +132,11 @@ type IncomingDamageInput struct {
 // subscriber answers by appending to Reductions or Multipliers; the step
 // refuses a fold that returned anything else, with [IncomingDamageEvent.CheckUnaltered].
 //
+// Every subscriber's handler is handed the published event, and Reductions
+// and Multipliers are writable there. The step therefore publishes a clone
+// and executes over another, never the event it sent, so no handler can reach
+// the answers it compares against.
+//
 // # The target step
 //
 // Resolution is the only publisher of both damage topics, and every damage
@@ -134,14 +147,17 @@ type IncomingDamageInput struct {
 //  3. sent := NewIncomingDamageEvent with those components and the action's
 //     frame, the target known (a contest's frame is the saving-throw frame
 //     with the weapon pool known false).
-//  4. Publish sent on [IncomingDamageChain]; execute the chain over
-//     sent.Clone(), so sent stays what was sent.
+//  4. Publish sent.Clone() on [IncomingDamageChain]; execute the chain over
+//     another sent.Clone(). Neither a handler nor a modifier ever holds sent,
+//     so sent stays what was sent.
 //  5. folded.CheckUnaltered(sent): refuse a fold that changed or removed a
-//     dealt component.
+//     dealt component (ErrTargetAnswerAltered) or appended a malformed answer
+//     (ErrMalformedTargetAnswer).
 //  6. combat.SettleDamage with sent.Dealt() and folded's Reductions and
 //     Multipliers; apply its FinalDamage instances to the target's sheet.
 //  7. Build the one trace from the settlement: the dealt components and the
-//     halving, one line per reduction, the floor when a type sank below zero,
+//     halving, one line per reduction, the floor when a type's total was
+//     below zero (from a negative dealt total or from reductions),
 //     and one line per multiplied type naming its DecidedBy and carrying its
 //     Change. The trace totals what the sheet takes.
 //
@@ -165,7 +181,7 @@ type IncomingDamageEvent struct {
 // Errors: an empty target or source; a frame that is invalid, whose actor is
 // not the source, or whose target is not known as the target; a dealt
 // component with no damage type or carrying a multiplier (a target answer on
-// the dealt side); or a malformed answer.
+// the dealt side); or a malformed answer (wrapping [ErrMalformedTargetAnswer]).
 func NewIncomingDamageEvent(input IncomingDamageInput) (*IncomingDamageEvent, error) {
 	if input.TargetID == "" {
 		return nil, fmt.Errorf("incoming damage names no target")
@@ -241,7 +257,7 @@ func (e *IncomingDamageEvent) DealtTypes() []damage.Type {
 }
 
 // Clone returns an independently owned copy. The target step publishes one
-// event and executes the fold over its clone, so the event it sent stays what
+// clone and executes the fold over another, so the event it sent stays what
 // it sent and [IncomingDamageEvent.CheckUnaltered] has something to compare
 // against.
 func (e *IncomingDamageEvent) Clone() *IncomingDamageEvent {
@@ -258,8 +274,8 @@ func (e *IncomingDamageEvent) Clone() *IncomingDamageEvent {
 // CheckUnaltered refuses a folded event that is not sent plus appended
 // answers: the target, source, frame and dealt components must be sent's, and
 // sent's own answers must open each answer list unchanged. Every appended
-// answer must be well formed. Errors wrap [ErrTargetAnswerAltered], or name
-// the malformed answer.
+// answer must be well formed. Errors wrap [ErrTargetAnswerAltered] or
+// [ErrMalformedTargetAnswer].
 func (e *IncomingDamageEvent) CheckUnaltered(sent *IncomingDamageEvent) error {
 	if e == nil || sent == nil {
 		return fmt.Errorf("%w: an incoming damage event is missing", ErrTargetAnswerAltered)

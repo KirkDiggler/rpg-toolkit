@@ -14,6 +14,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -412,6 +413,7 @@ func TestARetiredInFogConditionIsNamedRetired(t *testing.T) {
 	require.True(t, IsRetired(saved))
 	_, err := LoadJSON(saved)
 	require.ErrorIs(t, err, ErrRetiredCondition)
+	require.Equal(t, rpgerr.CodeInvalidArgument, rpgerr.GetCode(err), "the same code shape as an unknown ref")
 
 	raging, err := (&RagingCondition{CharacterID: "m1", Source: "rage"}).ToJSON()
 	require.NoError(t, err)

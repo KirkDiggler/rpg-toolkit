@@ -6,7 +6,6 @@ package conditions
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
@@ -340,7 +339,8 @@ func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 	}
 
 	if retiredConditions[peek.Ref.String()] {
-		return nil, fmt.Errorf("%w: %s", ErrRetiredCondition, peek.Ref.String())
+		return nil, rpgerr.WrapWithCode(ErrRetiredCondition, rpgerr.CodeInvalidArgument,
+			"retired condition ref: "+peek.Ref.String())
 	}
 
 	load, ok := conditionLoaders[peek.Ref.String()]

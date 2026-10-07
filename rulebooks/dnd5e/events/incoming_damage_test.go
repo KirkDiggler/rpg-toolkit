@@ -80,7 +80,7 @@ func (s *IncomingDamageSuite) fold(
 		})
 	s.Require().NoError(err)
 	modified, err := dnd5eEvents.IncomingDamageChain.On(s.bus).PublishWithChain(
-		s.ctx, sent, events.NewStagedChain[*dnd5eEvents.IncomingDamageEvent](combat.ModifierStages))
+		s.ctx, sent.Clone(), events.NewStagedChain[*dnd5eEvents.IncomingDamageEvent](combat.ModifierStages))
 	s.Require().NoError(err)
 	folded, err := modified.Execute(s.ctx, sent.Clone())
 	s.Require().NoError(err)
@@ -143,6 +143,39 @@ func (s *IncomingDamageSuite) TestAFoldThatRewritesAnEarlierAnswerIsRefused() {
 	s.Require().ErrorIs(err, dnd5eEvents.ErrTargetAnswerAltered)
 }
 
+// THE HANDLER-TIME PROBE. A handler is handed the published event and its
+// answer lists are writable. A handler that rewrites a reaction's resistance
+// into immunity there must reach nothing the step settles: the step publishes
+// a clone, so the folded answer and the settlement keep the resistance.
+func (s *IncomingDamageSuite) TestAHandlerCannotRewriteAnEarlierAnswer() {
+	in := s.input()
+	in.Multipliers = []dnd5eEvents.DamageMultiplier{resistance()}
+	sent, err := dnd5eEvents.NewIncomingDamageEvent(in)
+	s.Require().NoError(err)
+
+	_, err = dnd5eEvents.IncomingDamageChain.On(s.bus).SubscribeWithChain(s.ctx,
+		func(_ context.Context, e *dnd5eEvents.IncomingDamageEvent, c chain.Chain[*dnd5eEvents.IncomingDamageEvent],
+		) (chain.Chain[*dnd5eEvents.IncomingDamageEvent], error) {
+			e.Multipliers[0].Factor = dnd5eEvents.DamageFactorImmunity
+			return c, nil
+		})
+	s.Require().NoError(err)
+	modified, err := dnd5eEvents.IncomingDamageChain.On(s.bus).PublishWithChain(
+		s.ctx, sent.Clone(), events.NewStagedChain[*dnd5eEvents.IncomingDamageEvent](combat.ModifierStages))
+	s.Require().NoError(err)
+	folded, err := modified.Execute(s.ctx, sent.Clone())
+	s.Require().NoError(err)
+	s.Require().NoError(folded.CheckUnaltered(sent))
+
+	settled, err := combat.SettleDamage(&combat.SettleDamageInput{
+		Dealt: sent.Dealt(), Reductions: folded.Reductions, Multipliers: folded.Multipliers,
+	})
+	s.Require().NoError(err)
+	s.Equal([]dnd5eEvents.DamageMultiplier{resistance()}, folded.Multipliers)
+	_, total := settled.FinalDamage()
+	s.Equal(4, total, "8 resisted lands as 4; the handler's immunity reached nothing")
+}
+
 // A malformed appended answer is refused by the check.
 func (s *IncomingDamageSuite) TestAMalformedAppendedAnswerIsRefused() {
 	sent, err := dnd5eEvents.NewIncomingDamageEvent(s.input())
@@ -154,7 +187,7 @@ func (s *IncomingDamageSuite) TestAMalformedAppendedAnswerIsRefused() {
 		e.Multipliers = append(e.Multipliers, quarter)
 		return e, nil
 	})
-	s.Require().Error(err)
+	s.Require().ErrorIs(err, dnd5eEvents.ErrMalformedTargetAnswer)
 }
 
 // The read-only accessors hand out copies.
@@ -201,4 +234,22 @@ func (s *IncomingDamageSuite) TestConstructionRefusals() {
 			s.Error(err)
 		})
 	}
+}
+
+// Every malformed answer, on either Validate path, wraps the one sentinel
+// resolution classifies a rule defect by.
+func (s *IncomingDamageSuite) TestMalformedAnswersWrapTheSentinel() {
+	in := s.input()
+	in.Reductions = []dnd5eEvents.DamageReduction{{
+		Source: dnd5eEvents.RollSource{Ref: refs.Features.DeflectMissiles()}, DamageType: damage.Slashing, Modifier: 2,
+	}}
+	_, err := dnd5eEvents.NewIncomingDamageEvent(in)
+	s.Require().ErrorIs(err, dnd5eEvents.ErrMalformedTargetAnswer)
+
+	unnamed := resistance()
+	unnamed.Source = dnd5eEvents.RollSource{}
+	s.Require().ErrorIs(unnamed.Validate(), dnd5eEvents.ErrMalformedTargetAnswer)
+	untyped := resistance()
+	untyped.DamageType = ""
+	s.Require().ErrorIs(untyped.Validate(), dnd5eEvents.ErrMalformedTargetAnswer)
 }

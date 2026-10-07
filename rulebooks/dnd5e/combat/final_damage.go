@@ -46,8 +46,9 @@ type TypeSettlement struct {
 	// Reduced is the sum of the target's reductions on this type, zero or
 	// negative.
 	Reduced int
-	// Floor is what brings the type back to zero when its reductions sank it
-	// below zero; zero otherwise. A type cannot heal its target.
+	// Floor is what brings the type back to zero when Dealt + Reduced is below
+	// zero, whether a negative dealt total (a 1 rolled with a -2 modifier) or
+	// reductions put it there; zero otherwise. A type cannot heal its target.
 	Floor int
 	// Factor is the effective multiplier the stacking rules chose: 0 for
 	// immunity, 0.5 for resistance, 2 for vulnerability, 1 for none or for
@@ -76,8 +77,8 @@ type SettleDamageOutput struct {
 // rule chose, and what is taken. Bus-free: the target step folds on its own
 // bus and hands in what the folds settled on.
 //
-// The order is the 5e order. Reductions apply first, and a type they sink
-// below zero is floored at zero; then the multipliers, after every other
+// The order is the 5e order. Reductions apply first, and a type whose total
+// is then below zero is floored at zero; then the multipliers, after every other
 // modifier, rounding down. Immunity wins over resistance and vulnerability;
 // resistance and vulnerability cancel; neither stacks.
 //

@@ -161,7 +161,9 @@ func (i *immunityCondition) onIncomingDamage(
 		return e, nil
 	}
 
-	if err := c.Add(combat.StageFinal, "immunity", answer); err != nil {
+	// Keyed by damage type: one owner may hold this trait for several types,
+	// and one hit may deal more than one of them.
+	if err := c.Add(combat.StageFinal, "immunity:"+string(i.damageType), answer); err != nil {
 		return c, rpgerr.Wrapf(err, "error applying immunity for owner %s", i.ownerID)
 	}
 

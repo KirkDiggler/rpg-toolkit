@@ -103,3 +103,35 @@ func (s *ImmunityTestSuite) TestImmunityCanBeRemoved() {
 	s.Empty(folded.Multipliers, "a removed trait answers nothing")
 	s.Equal(9, total)
 }
+
+// Two immunities on one owner, one hit dealing both types: each answers, and
+// the fold does not refuse the second as a duplicate modifier (Animated Armor
+// holds poison and psychic).
+func (s *ImmunityTestSuite) TestTwoImmunitiesAnswerOneHitOfBothTypes() {
+	poison := Immunity("monster-1", damage.Poison)
+	psychic := Immunity("monster-1", damage.Psychic)
+	s.Require().NoError(poison.Apply(s.ctx, s.bus))
+	s.Require().NoError(psychic.Apply(s.ctx, s.bus))
+
+	component := func(t damage.Type) dnd5eEvents.DamageComponent {
+		return dnd5eEvents.DamageComponent{
+			Source: dnd5eEvents.DamageSourceSpell,
+			Roll: dnd5eEvents.RollComponent{
+				Source:   dnd5eEvents.RollSource{Ref: refs.Weapons.Dagger(), Name: "Dagger"},
+				Modifier: intPtr(5),
+			},
+			DamageType: t,
+		}
+	}
+	folded, settled, err := foldIncoming(s.ctx, s.bus, "pc-1", "monster-1",
+		[]dnd5eEvents.DamageComponent{component(damage.Poison), component(damage.Psychic)})
+	s.Require().NoError(err)
+
+	var immune []damage.Type
+	for _, multiplier := range folded.Multipliers {
+		immune = append(immune, multiplier.DamageType)
+	}
+	s.ElementsMatch([]damage.Type{damage.Poison, damage.Psychic}, immune)
+	_, total := settled.FinalDamage()
+	s.Zero(total)
+}

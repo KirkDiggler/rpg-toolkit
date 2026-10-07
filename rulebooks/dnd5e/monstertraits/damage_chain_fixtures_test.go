@@ -50,7 +50,7 @@ func foldIncoming(
 		return nil, nil, err
 	}
 	chain := events.NewStagedChain[*dnd5eEvents.IncomingDamageEvent](combat.ModifierStages)
-	modified, err := dnd5eEvents.IncomingDamageChain.On(bus).PublishWithChain(ctx, sent, chain)
+	modified, err := dnd5eEvents.IncomingDamageChain.On(bus).PublishWithChain(ctx, sent.Clone(), chain)
 	if err != nil {
 		return nil, nil, err
 	}
