@@ -169,6 +169,11 @@ type Encounter struct {
 	// [EquipmentWithConditions] for why it rides that field.
 	conditions Conditions
 
+	// sheets reports each member's speed, actions and targeting. Required at
+	// both constructors — see [Sheets] for why it is asked at every use rather
+	// than copied onto the member.
+	sheets Sheets
+
 	// turnDriver decides what a member with no player does when the clock
 	// lands on their turn. Required at both constructors, for the same reason
 	// standing and sight are, and never optional; see
@@ -611,6 +616,15 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter: %w", ErrNoEquipment)
 	}
 
+	// Required beside them: a fight can form at first light and drive an
+	// unplayed member whose movement budget and reach are its sheet's, and
+	// the first walk on the world clock is paced by the walker's speed
+	// (rpg-project#538). Never defaulted — a speed nobody read off a sheet is
+	// an invented one.
+	if in.Sheets == nil {
+		return nil, fmt.Errorf("newencounter: %w", ErrNoSheets)
+	}
+
 	// Required for the same reason again: a fight can form at first light
 	// with an unplayed member first in the rolled order, so an encounter that
 	// cannot answer "what does this member do" would stall before its caller
@@ -674,13 +688,8 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		}
 		seenIDs[m.ID] = true
 
-		// SpeedFeet, SightFeet and each action's RangeFeet are feet-
-		// denominated facts CellsFromFeet divides by FeetPerCell — a
-		// negative one is not a shorter distance, it is a caller defect
-		// (Copilot, PR #1187), and would otherwise produce a nonsense
-		// budget or reach at the exact moment a monster's turn needs one.
 		if err := validateMemberFacts(memberFacts{
-			ID: m.ID, SpeedFeet: m.SpeedFeet, SightFeet: m.SightFeet, Actions: m.Actions,
+			ID:         m.ID,
 			Intimidate: m.Intimidate, Persuade: m.Persuade, Table: m.Table,
 		}); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
@@ -816,6 +825,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		sight:         in.Sight,
 		equipment:     in.Equipment,
 		conditions:    in.Equipment,
+		sheets:        in.Sheets,
 		driver:        in.TurnDriver,
 		roller:        in.Roller,
 		striker:       in.Striker,
@@ -880,10 +890,6 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			ID:             mi.ID,
 			Kind:           mi.Kind,
 			Name:           mi.Name,
-			SpeedFeet:      mi.SpeedFeet,
-			SightFeet:      mi.SightFeet,
-			Actions:        mi.Actions,
-			Targeting:      mi.Targeting,
 			Intimidate:     copyApproaches(mi.Intimidate),
 			Persuade:       copyApproaches(mi.Persuade),
 			Table:          cloneTable(mi.Table),
@@ -1141,16 +1147,11 @@ func (e *Encounter) placementOf(record *memberRecord) (Member, error) {
 
 	region, _ := e.RegionAt(cell)
 	return Member{
-		ID:        record.ID,
-		Kind:      record.Kind,
-		Name:      record.Name,
-		Region:    region,
-		Position:  cell,
-		SpeedFeet: record.SpeedFeet,
-		SightFeet: record.SightFeet,
-		Actions:   record.Actions,
-		Targeting: record.Targeting,
-
+		ID:             record.ID,
+		Kind:           record.Kind,
+		Name:           record.Name,
+		Region:         region,
+		Position:       cell,
 		Intimidate:     copyApproaches(record.Intimidate),
 		Persuade:       copyApproaches(record.Persuade),
 		Table:          cloneTable(record.Table),
@@ -1980,7 +1981,7 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	// fact caught after PlaceEntity would need to roll a placement back
 	// rather than simply never having made one (Copilot, PR #1187).
 	if err := validateMemberFacts(memberFacts{
-		ID: in.Member, SpeedFeet: in.SpeedFeet, SightFeet: in.SightFeet, Actions: in.Actions,
+		ID:         in.Member,
 		Intimidate: in.Intimidate, Persuade: in.Persuade, Table: in.Table,
 	}); err != nil {
 		return nil, fmt.Errorf("join: %w", err)
@@ -2042,10 +2043,6 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		ID:             in.Member,
 		Kind:           in.Kind,
 		Name:           in.Name,
-		SpeedFeet:      in.SpeedFeet,
-		SightFeet:      in.SightFeet,
-		Actions:        in.Actions,
-		Targeting:      in.Targeting,
 		Intimidate:     copyApproaches(in.Intimidate),
 		Persuade:       copyApproaches(in.Persuade),
 		Table:          cloneTable(in.Table),
@@ -2068,7 +2065,6 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 			Reserved: true,
 			Member: Member{
 				ID: in.Member, Kind: in.Kind, Name: in.Name, Region: region, Position: in.Cell,
-				SpeedFeet: in.SpeedFeet, SightFeet: in.SightFeet, Actions: in.Actions, Targeting: in.Targeting,
 				Intimidate: copyApproaches(in.Intimidate), Persuade: copyApproaches(in.Persuade),
 				Table:          cloneTable(in.Table),
 				Temper:         in.Temper,

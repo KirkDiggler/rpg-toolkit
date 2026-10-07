@@ -54,7 +54,7 @@ func (s *observedContextSuite) SetupSubTest() { s.SetupTest() }
 
 func (s *observedContextSuite) newEncounter(dispositions []encounter.DispositionInput) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: s.sight, Equipment: s.hands, Standing: s.life,
+		Sight: s.sight, Equipment: s.hands, Sheets: sheetFacts{}, Standing: s.life,
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
@@ -75,7 +75,7 @@ func (s *observedContextSuite) newEncounter(dispositions []encounter.Disposition
 
 func (s *observedContextSuite) load(data encounter.EncounterData) *encounter.Encounter {
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data, Sight: s.sight, Equipment: s.hands, Standing: s.life,
+		Data: data, Sight: s.sight, Equipment: s.hands, Sheets: sheetFacts{}, Standing: s.life,
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
@@ -148,7 +148,7 @@ func (s *observedContextSuite) TestCurrentPropsAndDoorsDoNotEnterTheMemberContex
 		BlocksMovement: boolPtr(false), BlocksLineOfSight: boolPtr(false),
 	}}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Field: field, Sight: s.sight, Equipment: s.hands, Standing: s.life,
+		Field: field, Sight: s.sight, Equipment: s.hands, Sheets: sheetFacts{}, Standing: s.life,
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Members: []encounter.MemberInput{
@@ -194,7 +194,7 @@ func (s *observedContextSuite) TestKnownNeutralIsNotUnknown() {
 
 func (s *observedContextSuite) TestNoSideIsNeverAuthorable() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: s.sight, Equipment: s.hands, Standing: s.life,
+		Sight: s.sight, Equipment: s.hands, Sheets: sheetFacts{}, Standing: s.life,
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{

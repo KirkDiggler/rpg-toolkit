@@ -84,10 +84,11 @@ func newArrivalMemoryEncounter(
 	withBubble bool,
 ) (*Encounter, *propagationStanding) {
 	t.Helper()
+	sheets := sheetFacts{propagationGoblin: {SpeedFeet: 30}}
 
 	base, err := NewEncounter(&SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: UnobservedEquipment{}, Sheets: sheets, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: FieldInput{
 			Canvas:  openAir(),
@@ -108,7 +109,7 @@ func newArrivalMemoryEncounter(
 		},
 		Members: []MemberInput{
 			{ID: propagationActive, Kind: KindMonster, Position: spatial.Position{X: 0, Y: 1}},
-			{ID: propagationGoblin, Kind: KindMonster, Position: spatial.Position{X: 1, Y: 1}, SpeedFeet: 30},
+			{ID: propagationGoblin, Kind: KindMonster, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: propagationSubject, Kind: KindMonster, Position: spatial.Position{X: 8, Y: 8}},
 			{ID: propagationCaller, Kind: KindMonster, Position: spatial.Position{X: 0, Y: 3}},
 		},
@@ -152,7 +153,7 @@ func newArrivalMemoryEncounter(
 		Pass{},
 	}}
 	enc, err := LoadEncounter(&LoadEncounterInput{
-		Data: data, Sight: propagationSight{}, Equipment: UnobservedEquipment{}, Standing: standing, Initiative: orderAsGiven{},
+		Data: data, Sight: propagationSight{}, Equipment: UnobservedEquipment{}, Sheets: sheets, Standing: standing, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	require.NoError(t, err)

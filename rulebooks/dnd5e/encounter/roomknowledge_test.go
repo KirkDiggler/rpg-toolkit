@@ -27,7 +27,7 @@ func (s *RoomKnowledgeSuite) SetupTest() {
 	s.sight = &sightList{fallback: 20}
 	var err error
 	s.enc, err = encounter.NewEncounter(&encounter.SetupInput{
-		Sight: s.sight, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{},
+		Sight: s.sight, Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
@@ -141,7 +141,7 @@ func (s *RoomKnowledgeSuite) TestInvalidRoomKnowledgeIsRejectedOnLoad() {
 				fact.Actor = "other"
 			}
 			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-				Data: data, Sight: s.sight, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{},
+				Data: data, Sight: s.sight, Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{},
 				Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 				Mover: quietMover{}, Announcer: quietAnnouncer{},
 			})
@@ -198,7 +198,7 @@ func (s *RoomKnowledgeSuite) TestKnowledgeSurvivesLossOfSightAndJSONReload() {
 	var data encounter.EncounterData
 	s.Require().NoError(json.Unmarshal(bytes, &data))
 	s.enc, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data, Sight: s.sight, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{},
+		Data: data, Sight: s.sight, Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})

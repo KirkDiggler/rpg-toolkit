@@ -100,7 +100,7 @@ func (s *SightedBeatTestSuite) sightedKeys(
 func (s *SightedBeatTestSuite) blocked() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: wallRoom(),
 		Members: []encounter.MemberInput{
@@ -130,7 +130,7 @@ func (s *SightedBeatTestSuite) TestNoTransitionAppendsNoBeat() {
 func (s *SightedBeatTestSuite) TestFirstLightTellsEachObserverWhatTheySee() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: wallRoom(),
 		Members: []encounter.MemberInput{
@@ -308,7 +308,7 @@ func (s *SightedBeatTestSuite) TestTheNamesAreDeterministic() {
 	scene := func() []string {
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
 			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field: wallRoom(),
 			Members: []encounter.MemberInput{
@@ -355,7 +355,7 @@ func (s *SightedBeatTestSuite) TestGainedIsSortedAcrossBothItsHalves() {
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: wallRoom(),
 		Members: []encounter.MemberInput{
@@ -376,7 +376,7 @@ func (s *SightedBeatTestSuite) TestGainedIsSortedAcrossBothItsHalves() {
 	// see them — so they are still unmet when she walks back out.
 	_, err = enc.Join(&encounter.JoinInput{
 		Member: newcomer, Kind: encounter.KindPlayer,
-		Cell: cellAt(6, 11), SpeedFeet: 30, SightFeet: 60,
+		Cell: cellAt(6, 11),
 	})
 	s.Require().NoError(err)
 
@@ -407,7 +407,7 @@ func (s *SightedBeatTestSuite) TestThePerceptItselfIsOrdered() {
 	seen := func() []string {
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
 			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field: wallRoom(),
 			Members: []encounter.MemberInput{
@@ -449,7 +449,7 @@ func (s *SightedBeatTestSuite) TestThePerceptItselfIsOrdered() {
 func (s *SightedBeatTestSuite) open() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: wallRoom(),
 		Members: []encounter.MemberInput{
@@ -642,7 +642,7 @@ func (s *SightedBeatTestSuite) TestAReacquisitionInTheSamePassIsGainedOnly() {
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     reach,
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: wallRoom(),
 		Members: []encounter.MemberInput{

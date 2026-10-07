@@ -87,10 +87,11 @@ func (s *ArrivalSuite) arrivalEncounter(filter encounter.MemberID, walker encoun
 	members := []encounter.MemberInput{
 		{ID: dave, Kind: encounter.KindPlayer, Position: arrivalAnnexOrigin},
 	}
+	sheets := sheetFacts{}
 	if walker != "" {
 		w := encounter.MemberInput{ID: alice, Kind: walker, Position: arrivalStart.Add(arrivalVaultOrigin)}
 		if walker == encounter.KindMonster {
-			w.SpeedFeet = 5
+			sheets[alice] = encounter.SheetFacts{SpeedFeet: 5}
 			w.Table = walksTo(vaultCell(arrivalTarget))
 		}
 		members = append(members, w)
@@ -98,7 +99,7 @@ func (s *ArrivalSuite) arrivalEncounter(filter encounter.MemberID, walker encoun
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheets, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field:   arrivalField(),
 		Members: members,
 		Endings: []encounter.EndingInput{

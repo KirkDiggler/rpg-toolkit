@@ -41,7 +41,7 @@ func (s *AnswerTestSuite) SetupTest() {
 func (s *AnswerTestSuite) front(table encounter.Table) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:   openAir(),
@@ -55,7 +55,7 @@ func (s *AnswerTestSuite) front(table encounter.Table) *encounter.Encounter {
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1},
-				Faction: campFaction, SpeedFeet: 30, Table: table},
+				Faction: campFaction, Table: table},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -220,7 +220,7 @@ func (s *AnswerTestSuite) TestAFactEntryTeachesEveryWitnessAndTurnsTheCamp() {
 func (s *AnswerTestSuite) neutralFront(table encounter.Table) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30}, "latecomer": {SpeedFeet: 30}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		// The WORLD's die, which only a deal reads here: nobody in this room
 		// has a mix until somebody joins carrying one.
@@ -237,7 +237,7 @@ func (s *AnswerTestSuite) neutralFront(table encounter.Table) *encounter.Encount
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1},
-				Faction: "goblins", SpeedFeet: 30, Table: table},
+				Faction: "goblins", Table: table},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -331,7 +331,7 @@ func (s *AnswerTestSuite) TestAFleeEntryLandsTheDeedAndTheTableDoesTheRunning() 
 func (s *AnswerTestSuite) TestAPinnedCreatureStaysAndTheBeatStillFires() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  openAir(),
@@ -339,7 +339,7 @@ func (s *AnswerTestSuite) TestAPinnedCreatureStaysAndTheBeatStillFires() {
 		},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
-			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 1, Y: 0}, SpeedFeet: 30,
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 1, Y: 0},
 				Table: encounter.Table{
 					encounter.AnswerIntimidated: {{Weight: 1, Flee: true}},
 				}},
@@ -436,7 +436,7 @@ func (s *AnswerTestSuite) TestAnUnrollableTableIsRefusedAtTheDoor() {
 func (s *AnswerTestSuite) setupWith(table encounter.Table) *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  openAir(),
@@ -471,7 +471,7 @@ var (
 func (s *AnswerTestSuite) straggler() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30}, "straggler": {SpeedFeet: 30}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Roller: rollsLowest{},
 		Field: encounter.FieldInput{
@@ -486,12 +486,12 @@ func (s *AnswerTestSuite) straggler() *encounter.Encounter {
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1},
-				Faction: campFaction, SpeedFeet: 30,
+				Faction: campFaction,
 				Table: encounter.Table{
 					encounter.AnswerIntimidated: {{Weight: 1, Say: "Fine.", Fact: campFact}},
 				}},
 			{ID: "straggler", Kind: encounter.KindMonster, Position: spatial.Position{X: 9, Y: 3},
-				Faction: campFaction, SpeedFeet: 30,
+				Faction: campFaction,
 				Arrives: encounter.TriggerFact{Fact: campFact},
 				Temper:  encounter.Temper{Mix: banditMix, Profiles: banditProfiles}},
 		},
@@ -508,7 +508,7 @@ func (s *AnswerTestSuite) reload(enc *encounter.Encounter) *encounter.Encounter 
 	out, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:      enc.ToData(),
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30}, "straggler": {SpeedFeet: 30}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Roller: rollsLowest{},
 	})
@@ -593,7 +593,7 @@ func (s *AnswerTestSuite) TestAReservedMemberIsDealtFromTheMixItWasSavedWith() {
 func (s *AnswerTestSuite) neutralFrontPair(table encounter.Table) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{"cousin": {SpeedFeet: 30}, goblin: {SpeedFeet: 30}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:   openAir(),
@@ -607,9 +607,9 @@ func (s *AnswerTestSuite) neutralFrontPair(table encounter.Table) *encounter.Enc
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1},
-				Faction: "goblins", SpeedFeet: 30, Table: table},
+				Faction: "goblins", Table: table},
 			{ID: "cousin", Kind: encounter.KindMonster, Position: spatial.Position{X: 1, Y: 5},
-				Faction: "goblins", SpeedFeet: 30},
+				Faction: "goblins"},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -689,8 +689,8 @@ func (s *AnswerTestSuite) TestAJoinerIsAnnouncedBeforeItsNerveIsDealt() {
 
 	_, err := enc.Join(&encounter.JoinInput{
 		Member: "latecomer", Kind: encounter.KindMonster, Cell: spatial.Position{X: 9, Y: 3},
-		Faction: "goblins", SpeedFeet: 30,
-		Temper: encounter.Temper{Mix: banditMix, Profiles: banditProfiles},
+		Faction: "goblins",
+		Temper:  encounter.Temper{Mix: banditMix, Profiles: banditProfiles},
 	})
 	s.Require().NoError(err)
 

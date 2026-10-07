@@ -121,7 +121,7 @@ nobody can trust.
 ### What a round of the world guarantees you
 
 There is no tick verb. **The world clock advances only because somebody acts**
-— a walk pays a round every `SpeedFeet / 5` cells, an action pays one for its
+— a walk pays a round every `SpeedFeet / 5` cells of the walker's sheet speed, asked through `Sheets` at each step, an action pays one for its
 actor, a fight round wrapping pays one per fighter — and every advance names
 its own member as the driver. Standing still is free.
 

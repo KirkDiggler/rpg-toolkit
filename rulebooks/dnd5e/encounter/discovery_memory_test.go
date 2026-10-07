@@ -16,7 +16,7 @@ func discoveryFixture(resolver encounter.CheckResolver) *encounter.SetupInput {
 	prop.BlocksMovement = boolPtr(true)
 	prop.BlocksLineOfSight = boolPtr(true)
 	return &encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Mover: quietMover{}, Announcer: quietAnnouncer{}, CheckResolver: resolver, Witness: nobodyPerceives{},
 		Field: encounter.FieldInput{
@@ -46,7 +46,7 @@ func (s *AutomaticDiscoverySuite) reloadDiscovery(enc *encounter.Encounter, reso
 	var data encounter.EncounterData
 	s.Require().NoError(json.Unmarshal(raw, &data))
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{},
+		Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Mover: quietMover{}, Announcer: quietAnnouncer{}, CheckResolver: resolver, Witness: nobodyPerceives{},
 	})

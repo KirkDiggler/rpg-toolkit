@@ -69,7 +69,7 @@ func (s *RecordActivationSuite) TestStabilizationCastSurvivesReloadWithoutInvent
 			var data encounter.EncounterData
 			s.Require().NoError(json.Unmarshal(raw, &data))
 			reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-				Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{},
+				Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{},
 				Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 				Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			})

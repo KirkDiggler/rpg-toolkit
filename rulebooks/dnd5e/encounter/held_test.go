@@ -41,10 +41,15 @@ func fleeRoute() []spatial.Position {
 	return []spatial.Position{cellAt(7, 2), cellAt(8, 2), cellAt(9, 2)}
 }
 
+// heldSheets is the goblin's sheet, on the scene and on every reload of it.
+var heldSheets = sheetFacts{goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{
+	{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
+}, Targeting: "closest"}}
+
 func (s *HeldTestSuite) scene(mover encounter.Mover, standing encounter.StandingWithParticipation) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: standing, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: heldSheets, Standing: standing, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: mover, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -54,10 +59,6 @@ func (s *HeldTestSuite) scene(mover encounter.Mover, standing encounter.Standing
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
 			{
 				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 2},
-				SpeedFeet: 30, Targeting: "closest",
-				Actions: []encounter.ActionView{
-					{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
-				},
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
@@ -113,7 +114,7 @@ func loadInput(data encounter.EncounterData, mover encounter.Mover, standing enc
 ) *encounter.LoadEncounterInput {
 	return &encounter.LoadEncounterInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: standing, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: heldSheets, Standing: standing, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: mover, Announcer: quietAnnouncer{},
 		Data: data,
 	}
@@ -437,7 +438,7 @@ func (s *HeldTestSuite) TestTheFloorChangingUnderAHeldWalkStopsItAndSaysSo() {
 		s.Require().NoError(err)
 
 		_, jerr := enc.Join(&encounter.JoinInput{
-			Member: bob, Kind: encounter.KindPlayer, Cell: cellAt(8, 2), SpeedFeet: 30,
+			Member: bob, Kind: encounter.KindPlayer, Cell: cellAt(8, 2),
 		})
 		s.Require().NoError(jerr, "somebody arriving while a window is open is ordinary")
 
@@ -456,7 +457,7 @@ func (s *HeldTestSuite) TestTheFloorChangingUnderAHeldWalkStopsItAndSaysSo() {
 		s.Require().NoError(err)
 
 		_, jerr := enc.Join(&encounter.JoinInput{
-			Member: bob, Kind: encounter.KindPlayer, Cell: cellAt(7, 2), SpeedFeet: 30,
+			Member: bob, Kind: encounter.KindPlayer, Cell: cellAt(7, 2),
 		})
 		s.Require().NoError(jerr)
 

@@ -42,7 +42,7 @@ func TestTheProvokedCampReadsAnEnemyAndADeedInOnePick(t *testing.T) {
 
 	enc, err := NewEncounter(&SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: UnobservedEquipment{}, Sheets: sheetFacts{"alice": {SpeedFeet: 30}, "watcher": {SpeedFeet: 30, Actions: []ActionView{scimitar}}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Retention: RetentionUnbounded,
 		Field: FieldInput{
@@ -54,10 +54,9 @@ func TestTheProvokedCampReadsAnEnemyAndADeedInOnePick(t *testing.T) {
 			}},
 		},
 		Members: []MemberInput{
-			{ID: "alice", Kind: KindPlayer, Position: spatial.Position{X: 1, Y: 1}, SpeedFeet: 30, SightFeet: 60},
+			{ID: "alice", Kind: KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			{
 				ID: "watcher", Kind: KindMonster, Faction: camp, Position: spatial.Position{X: 2, Y: 1},
-				SpeedFeet: 30, SightFeet: 60, Actions: []ActionView{scimitar},
 			},
 		},
 		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
@@ -110,7 +109,7 @@ func TestTheMockedWatcherReadsAnEnemyAndADeedInOnePick(t *testing.T) {
 
 	enc, err := NewEncounter(&SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: UnobservedEquipment{}, Sheets: sheetFacts{"alice": {SpeedFeet: 30}, "watcher": {SpeedFeet: 30, Actions: []ActionView{scimitar}}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Retention: RetentionUnbounded,
 		Field: FieldInput{
@@ -122,10 +121,9 @@ func TestTheMockedWatcherReadsAnEnemyAndADeedInOnePick(t *testing.T) {
 			}},
 		},
 		Members: []MemberInput{
-			{ID: "alice", Kind: KindPlayer, Position: spatial.Position{X: 1, Y: 1}, SpeedFeet: 30, SightFeet: 60},
+			{ID: "alice", Kind: KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			{
 				ID: "watcher", Kind: KindMonster, Faction: camp, Position: spatial.Position{X: 2, Y: 1},
-				SpeedFeet: 30, SightFeet: 60, Actions: []ActionView{scimitar},
 			},
 		},
 		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
@@ -211,7 +209,7 @@ func TestTheMissiledWatcherReadsAnEnemyAndADeedInOnePick(t *testing.T) {
 
 	enc, err := NewEncounter(&SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: UnobservedEquipment{}, Sheets: sheetFacts{"alice": {SpeedFeet: 30}, "watcher": {SpeedFeet: 30, Actions: []ActionView{scimitar}}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Retention: RetentionUnbounded,
 		Field: FieldInput{
@@ -223,10 +221,9 @@ func TestTheMissiledWatcherReadsAnEnemyAndADeedInOnePick(t *testing.T) {
 			}},
 		},
 		Members: []MemberInput{
-			{ID: "alice", Kind: KindPlayer, Position: spatial.Position{X: 1, Y: 1}, SpeedFeet: 30, SightFeet: 60},
+			{ID: "alice", Kind: KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			{
 				ID: "watcher", Kind: KindMonster, Faction: camp, Position: spatial.Position{X: 2, Y: 1},
-				SpeedFeet: 30, SightFeet: 60, Actions: []ActionView{scimitar},
 			},
 		},
 		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},

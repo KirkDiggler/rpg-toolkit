@@ -92,7 +92,8 @@
 // # Time on the world clock (rpg-project#465)
 //
 // The world clock advances ONLY BECAUSE SOMEBODY ACTS. A walk pays one round
-// per PACE — every CellsFromFeet(SpeedFeet) cells, the remainder carried on
+// per PACE — every CellsFromFeet(SpeedFeet) cells of the speed the walker's
+// sheet answers through Sheets at that step, the remainder carried on
 // the member and persisted. Every verb the turn clock would price as an action
 // pays one round for its actor, after its outcome has landed: Intimidate,
 // Persuade, Search, Unlock, Interact, Loot, RecordCast, RecordActivation. A

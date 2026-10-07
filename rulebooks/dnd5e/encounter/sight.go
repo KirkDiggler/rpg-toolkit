@@ -58,7 +58,10 @@ import (
 //
 // # It is a pull, and it is never remembered
 //
-// The composition stores no sight range, in memory or in its blob. It asks at
+// The composition stores no sight range, in memory or in its blob: no member
+// record, reserve entry or roster read carries one (the copy filled at Join
+// was retired by rpg-project#538), so this consult is the only way a range
+// reaches it. It asks at
 // the choke point where percepts are built and uses the answer it gets, once,
 // for that refresh. The alternative — being handed a range at construction and
 // keeping it — recreates the dual state [Standing]'s doc describes: light the

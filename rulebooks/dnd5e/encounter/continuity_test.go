@@ -128,7 +128,7 @@ func vaultChaseHexSetup() *encounter.SetupInput {
 	}
 	return &encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 60}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: field,
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 5}},
@@ -151,8 +151,7 @@ func vaultChaseHexSetup() *encounter.SetupInput {
 			// loses her AT the threshold, which is what leaves the ghost on
 			// the corridor's own gate cell one step away, and what makes the
 			// decider reach for the doorway on its second think.
-			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 9, Y: 4},
-				SpeedFeet: 60, Table: hunts()},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 9, Y: 4}, Table: hunts()},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "sanctuary", Trigger: encounter.TriggerReachedPosition{
@@ -347,7 +346,7 @@ func TestVaultChaseAbsoluteContinuity(t *testing.T) {
 	data := enc.ToData()
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data})
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 60}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data})
 	require.NoError(t, err, "the suspended chase crosses a process boundary")
 	enc = enc2
 	proj.useEncounter(enc) // SAME projector, reloaded enc — the transcript keeps accumulating

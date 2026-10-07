@@ -52,12 +52,11 @@ func Example_theDoorway() {
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{"goblin": {SpeedFeet: 30}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: field,
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 7, Y: 4}},
-			{ID: "goblin", Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 4},
-				SpeedFeet: 30, Table: hunts()},
+			{ID: "goblin", Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 4}, Table: hunts()},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "done", Trigger: encounter.TriggerExternal{}},

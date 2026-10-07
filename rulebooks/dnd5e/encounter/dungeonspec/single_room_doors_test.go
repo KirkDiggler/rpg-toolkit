@@ -115,7 +115,7 @@ func (s *SingleRoomDoorSuite) TestTheClosedLeafSealsTheGoblinOff() {
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: nothingIsEverFound{}, Witness: nobodyPerceivesAnything{},
 		Field:   compiled.Field,

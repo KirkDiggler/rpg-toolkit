@@ -14,7 +14,7 @@ func TestWalkEntrySuite(t *testing.T) { suite.Run(t, new(WalkEntrySuite)) }
 func (s *WalkEntrySuite) scene(reach int) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     &sightList{reach: map[encounter.MemberID]int{alice: reach}, fallback: 1},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("corridor", 0, 0, 5, 3)}},

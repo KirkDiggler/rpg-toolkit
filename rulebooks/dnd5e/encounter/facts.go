@@ -43,6 +43,12 @@ func (e *Encounter) factsFor(id MemberID) (Facts, error) {
 	if err != nil {
 		return Facts{}, fmt.Errorf("facts: held by %q: %w", id, err)
 	}
+	// Reach is the sheet's, asked now (rpg-project#538): a weapon swapped
+	// since the last question is the weapon this band is tested with.
+	sheet, err := e.sheetOf(id)
+	if err != nil {
+		return Facts{}, fmt.Errorf("facts: %q: %w", id, err)
+	}
 
 	facts := Facts{
 		Deeds: heldDeedsAgainst(holdings, id),
@@ -84,7 +90,7 @@ func (e *Encounter) factsFor(id MemberID) (Facts, error) {
 		}
 		if h.CurrentOn(perception.Sight) {
 			facts.EnemySeen = true
-			if e.withinReach(self, location.Position) {
+			if e.withinReach(self, sheet.Actions, location.Position) {
 				facts.EnemyInReach = true
 			}
 			continue
@@ -103,14 +109,15 @@ func (e *Encounter) factsFor(id MemberID) (Facts, error) {
 //
 // ANY ACTION, not the longest: InReach is per action and [attackIntent] takes
 // the first one whose target is in reach, so "in reach" means "in reach of
-// something I can do".
-func (e *Encounter) withinReach(m *memberRecord, cell spatial.Position) bool {
+// something I can do". The actions are the member's sheet answer of this
+// moment ([Sheets]); nothing on the member record holds a reach.
+func (e *Encounter) withinReach(m *memberRecord, actions []ActionView, cell spatial.Position) bool {
 	own, placed := e.canvas.GetEntityPosition(string(m.ID))
 	if !placed {
 		return false
 	}
 	distance := e.Distance(own, cell)
-	for _, a := range m.Actions {
+	for _, a := range actions {
 		if distance <= float64(CellsFromFeet(a.RangeFeet)) {
 			return true
 		}

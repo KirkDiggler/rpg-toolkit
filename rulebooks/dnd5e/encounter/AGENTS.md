@@ -72,6 +72,7 @@ supplied capability, never as a new import.** Every one of these is required at
 | what order a forming fight goes in | `InitiativeRoller` ([trigger.go:25](./trigger.go#L25)) | `ErrNoInitiative` |
 | who is down, who counts as present | `StandingWithParticipation` ([participation.go:73](./participation.go#L73)) | `ErrNoStanding` (nil) |
 | how far each member sees | `Sight` ([sight.go:111](./sight.go#L111)) | `ErrNoSight` |
+| how fast each member moves, what it can attack with and at what reach, and how it picks a target | `Sheets` ([sheets.go](./sheets.go)) — asked at pace, turn budget, reach and driver view; nothing is stored ([rpg-project#538](https://github.com/KirkDiggler/rpg-project/issues/538)) | `ErrNoSheets` |
 | what an unplayed member does on its turn | `TurnDriver` ([turndriver.go:49](./turndriver.go#L49)) | `ErrNoTurnDriver` ([ADR-0043](../../../docs/adr/0043-a-monsters-turn-has-a-driver.md)) |
 | how that member's swing resolves | `Striker` ([turndriver.go:473](./turndriver.go#L473)) | `ErrNoStriker` |
 | who should hear about a step before it happens, and what a FORCED one means | `Mover` ([turndriver.go](./turndriver.go)), asked with a [`MoveStep`](./turndriver.go) | `ErrNoMover` |

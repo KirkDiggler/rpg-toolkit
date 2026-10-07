@@ -103,7 +103,7 @@ func solidPillar(x, y float64) encounter.PropInput {
 
 func dungeonSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
-		Sight: torchAndDarkvision{}, Equipment: encounter.UnobservedEquipment{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{},
+		Sight: torchAndDarkvision{}, Equipment: encounter.UnobservedEquipment{}, Sheets: goblinWalksThirty{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{},
 		TurnDriver: encounter.PassDriver{}, Striker: noAttacksExpected{}, Mover: nothingReactsHere{}, Announcer: nobodyIsListening{},
 		Field: encounter.FieldInput{
 			// You cannot see across the space the crypt's two regions do not
@@ -136,7 +136,7 @@ func dungeonSetup() *encounter.SetupInput {
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
 			{ID: "bella", Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 2}},
-			{ID: "goblin", Kind: encounter.KindMonster, SpeedFeet: 30,
+			{ID: "goblin", Kind: encounter.KindMonster,
 				Position: spatial.Position{X: 6, Y: 10}, Table: goblinTable()},
 		},
 		Endings: []encounter.EndingInput{
@@ -565,7 +565,7 @@ func main() {
 				continue
 			}
 			loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-				Sight: torchAndDarkvision{}, Equipment: encounter.UnobservedEquipment{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{}, TurnDriver: encounter.PassDriver{}, Striker: noAttacksExpected{}, Mover: nothingReactsHere{}, Announcer: nobodyIsListening{}, Data: data})
+				Sight: torchAndDarkvision{}, Equipment: encounter.UnobservedEquipment{}, Sheets: goblinWalksThirty{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{}, TurnDriver: encounter.PassDriver{}, Striker: noAttacksExpected{}, Mover: nothingReactsHere{}, Announcer: nobodyIsListening{}, Data: data})
 			if err != nil {
 				fmt.Println(" ", err)
 				continue
@@ -707,4 +707,25 @@ func (torchAndDarkvision) Sight(members []encounter.MemberID) (map[encounter.Mem
 	}
 
 	return reach, nil
+}
+
+// goblinWalksThirty is the workbench's stand-in for the sheets a session
+// answers from: the goblin walks thirty feet, and nobody has an attack —
+// nothing in this workbench strikes. A real host answers [encounter.Sheets]
+// from character sheets and stat blocks; this answers the one fact the demo's
+// wandering goblin needs.
+type goblinWalksThirty struct{}
+
+func (goblinWalksThirty) Sheets(members []encounter.MemberID) (map[encounter.MemberID]encounter.SheetFacts, error) {
+	out := make(map[encounter.MemberID]encounter.SheetFacts, len(members))
+	for _, id := range members {
+		if id == "goblin" {
+			out[id] = encounter.SheetFacts{SpeedFeet: 30}
+
+			continue
+		}
+		out[id] = encounter.SheetFacts{}
+	}
+
+	return out, nil
 }

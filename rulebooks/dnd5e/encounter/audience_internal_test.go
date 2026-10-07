@@ -28,7 +28,7 @@ import (
 func TestAudienceForPolicy(t *testing.T) {
 	enc, err := NewEncounter(&SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: FieldInput{Canvas: CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()}, Regions: []RegionInput{rectRegion("hall", 0, 0, 6, 6)}},
 		Members: []MemberInput{
 			{ID: "zebra", Kind: KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
@@ -85,7 +85,7 @@ func TestAudienceForPolicy(t *testing.T) {
 func TestAnExperienceBeatNamesEveryGranteeAsASubject(t *testing.T) {
 	enc, err := NewEncounter(&SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: UnobservedEquipment{}, Sheets: sheetFacts{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: FieldInput{Canvas: CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()},
 			Regions: []RegionInput{rectRegion("hall", 0, 0, 6, 6)}},
@@ -202,7 +202,7 @@ func TestCallSiteClassification(t *testing.T) {
 
 	enc, err := NewEncounter(&SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: UnobservedEquipment{}, Standing: standing, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: UnobservedEquipment{}, Sheets: sheetFacts{"zebra": {SpeedFeet: 30}, "alice": {SpeedFeet: 30}, "goblin": {SpeedFeet: 30}}, Standing: standing, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Retention: RetentionUnbounded,
 		Field: FieldInput{
 			Canvas: CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()},
@@ -215,9 +215,9 @@ func TestCallSiteClassification(t *testing.T) {
 			},
 		},
 		Members: []MemberInput{
-			{ID: "zebra", Kind: KindPlayer, Position: spatial.Position{X: 0, Y: 0}, SpeedFeet: 30, SightFeet: 60},
-			{ID: "alice", Kind: KindPlayer, Position: spatial.Position{X: 1, Y: 0}, SpeedFeet: 30, SightFeet: 60},
-			{ID: "goblin", Kind: KindMonster, Position: spatial.Position{X: 2, Y: 0}, SpeedFeet: 30},
+			{ID: "zebra", Kind: KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
+			{ID: "alice", Kind: KindPlayer, Position: spatial.Position{X: 1, Y: 0}},
+			{ID: "goblin", Kind: KindMonster, Position: spatial.Position{X: 2, Y: 0}},
 		},
 		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
 	})
@@ -301,7 +301,7 @@ func TestCallSiteClassification(t *testing.T) {
 	require.NoError(t, enc.worldThinks())
 
 	// joined + exited: carl passes through.
-	_, err = enc.Join(&JoinInput{Member: "carl", Kind: KindPlayer, Cell: spatial.Position{X: 3, Y: 3}, SpeedFeet: 30, SightFeet: 60})
+	_, err = enc.Join(&JoinInput{Member: "carl", Kind: KindPlayer, Cell: spatial.Position{X: 3, Y: 3}})
 	require.NoError(t, err)
 	_, err = enc.Exit(&ExitInput{Member: "carl"})
 	require.NoError(t, err)
