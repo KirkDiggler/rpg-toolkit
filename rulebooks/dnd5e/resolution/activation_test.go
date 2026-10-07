@@ -610,7 +610,8 @@ func (s *ActivationTestSuite) TestOffTheBusTheSameCallSucceedsAndAppliesNothing(
 	s.Require().NoError(err)
 	s.Require().True(out.Success, "the sheet reports success with no bus to publish on")
 
-	data := sheet.ToData()
+	data, err := sheet.ToData()
+	s.Require().NoError(err)
 	// The charge is gone, so something definitely happened...
 	s.Equal(1, data.Resources[resources.RageCharges].Current)
 	// ...and the barbarian is not raging.

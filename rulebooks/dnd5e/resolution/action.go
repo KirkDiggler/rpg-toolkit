@@ -518,7 +518,7 @@ func (m *castMachine) sanctuaryGate(target castTargetMachine, index int) Step {
 				return nil, err
 			}
 			pending := pendingSanctuaryWards(m.cast, m.casterID, target.targetID)
-			return m.wardCastStep(pending, 0, target, index, next), nil
+			return m.wardCastStep(pending, 0, target, index, next)
 		},
 	}
 }
@@ -552,14 +552,20 @@ func castStanceIsHostile(cast gamectx.Cast, casterID, targetID string) (bool, er
 // others, so a failed save here records THIS target as warded and moves on
 // to resolveTarget(index+1) rather than ending the whole cast. Sets no
 // onPose, [strikeMachine.wardCheckStep]'s same documented gap.
+//
+// Errors: [ErrWardUnreadable] from [wardSaveDC] — the cast fails rather than
+// skipping the ward.
 func (m *castMachine) wardCastStep(
 	pending []*conditions.SanctuaryCondition, wardIndex int, target castTargetMachine, index int, next Step,
-) Step {
+) (Step, error) {
 	if wardIndex >= len(pending) {
-		return next
+		return next, nil
 	}
 	ward := pending[wardIndex]
-	dc := wardSaveDC(m.cast, ward.SourceID)
+	dc, err := wardSaveDC(target.targetID, ward)
+	if err != nil {
+		return nil, err
+	}
 	return requestSave(wardSaveInput(m.casterID, ward, dc, m.roller),
 		func(_ context.Context, out SaveOutcome) (Step, error) {
 			if !out.Result.Success {
@@ -569,8 +575,8 @@ func (m *castMachine) wardCastStep(
 				})
 				return m.resolveTarget(index + 1), nil
 			}
-			return m.wardCastStep(pending, wardIndex+1, target, index, next), nil
-		})
+			return m.wardCastStep(pending, wardIndex+1, target, index, next)
+		}), nil
 }
 
 // drop ends the concentration the caster is already holding, in favour of the
@@ -918,6 +924,14 @@ func newGatedCast(
 				"%w: %s contests a save and delivers to its caster, which no contest can do",
 				ErrBadAction, definition.Ref.String())
 		}
+		if effect.SaveDCKey != "" {
+			// The DC is bound from the caster's sheet when the cast starts, and
+			// only the gateless delivery does that today. A contested effect
+			// that keeps a DC arrives with its own customer; until then it is
+			// refused rather than imposed without the number it declared.
+			return nil, fmt.Errorf("%w: %s keeps the caster's save DC on a contested effect, which no contest binds yet",
+				ErrBadAction, definition.Ref.String())
+		}
 		parameters, err := bindCast(effect, casterID, option)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %s: %w", ErrBadAction, definition.Ref.String(), err)
@@ -996,6 +1010,18 @@ func newGatelessCast(definition combatActions.Definition, casterID, targetID, op
 		parameters, err := bindCast(effect, counterpartID, option)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %s: %w", ErrBadAction, definition.Ref.String(), err)
+		}
+		if effect.SaveDCKey != "" {
+			// The caster's DC is on a sheet this constructor cannot see; the
+			// condition is built when the cast starts ([pendingDelivery]).
+			deliveries = append(deliveries, preparedDelivery{
+				recipientID: recipientID,
+				pending: &pendingDelivery{
+					ref: effect.Ref, parameters: parameters, saveDCKey: effect.SaveDCKey,
+					casterID: casterID, sourceRef: definition.Ref.String(),
+				},
+			})
+			continue
 		}
 		prepared, err := prepareCondition(
 			combatActions.ConditionApplication{Ref: effect.Ref, Parameters: parameters},
@@ -1088,13 +1114,13 @@ func bindOption(
 	return writeParameter(effect.Ref, parameters, effect.OptionKey, option)
 }
 
-// writeParameter puts one string under one key in a condition's configuration
-// and hands the whole object back.
+// writeParameter puts one value — an id, a word, a DC — under one key in a
+// condition's configuration and hands the whole object back.
 //
 // The parameters it is given may already carry a binding, so it re-reads them
 // rather than starting from the effect: what comes back is everything content
 // authored plus everything the engine has bound so far.
-func writeParameter(ref core.Ref, parameters json.RawMessage, key, value string) (json.RawMessage, error) {
+func writeParameter(ref core.Ref, parameters json.RawMessage, key string, value any) (json.RawMessage, error) {
 	fields := map[string]json.RawMessage{}
 	if len(parameters) > 0 {
 		if err := json.Unmarshal(parameters, &fields); err != nil {
@@ -1103,7 +1129,7 @@ func writeParameter(ref core.Ref, parameters json.RawMessage, key, value string)
 	}
 	encoded, err := json.Marshal(value)
 	if err != nil {
-		return nil, fmt.Errorf("condition %s %s %q: %w", ref.String(), key, value, err)
+		return nil, fmt.Errorf("condition %s %s %v: %w", ref.String(), key, value, err)
 	}
 	fields[key] = encoded
 

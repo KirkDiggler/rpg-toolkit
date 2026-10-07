@@ -5,6 +5,7 @@ package resolution
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -139,4 +140,21 @@ func participationCharacter(id string, hp int, state *saves.DeathSaveState) *cha
 	data.ID = id
 	data.ActionEconomy = nil
 	return data
+}
+
+// Participation's leniency is safe because its answer reads no condition: an
+// unreadable blob beside a Dying sheet changes nothing about the answer. The
+// day a condition-sensitive field joins ParticipantParticipation, this is the
+// test that says the drop is no longer safe.
+func TestParticipationIgnoresAnUnreadableCondition(t *testing.T) {
+	ctx := context.Background()
+	clean := deathSaveCharacter(0, &saves.DeathSaveState{Successes: 1, Failures: 1})
+	blobbed := deathSaveCharacter(0, &saves.DeathSaveState{Successes: 1, Failures: 1})
+	blobbed.Conditions = append(blobbed.Conditions, json.RawMessage(`{"ref":"nonsense","x":`))
+
+	want, err := Participation(ctx, &ParticipationInput{Participants: []Participant{{Character: clean}}})
+	require.NoError(t, err)
+	got, err := Participation(ctx, &ParticipationInput{Participants: []Participant{{Character: blobbed}}})
+	require.NoError(t, err, "an unreadable condition does not refuse participation")
+	require.Equal(t, want.Members, got.Members, "and does not change its answer")
 }

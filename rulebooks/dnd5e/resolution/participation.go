@@ -48,9 +48,10 @@ type ParticipationOutput struct {
 // projection deliberately refuses to describe it.
 //
 // It remains a lenient read at the record boundary: character effects that this
-// build cannot parse are audibly dropped under the existing Standing policy,
-// while unreadable monster traits still refuse because their loader has no
-// lenient mode.
+// build cannot parse are audibly dropped, because nothing this entry answers
+// reads a condition — life state comes from hit points and death-save state —
+// so a dropped one cannot change the answer. Unreadable monster traits still
+// refuse because their loader has no lenient mode.
 func Participation(ctx context.Context, in *ParticipationInput) (*ParticipationOutput, error) {
 	return participationOn(ctx, in, newSurface(events.NewEventBus()))
 }

@@ -135,5 +135,9 @@ func ReconcileFogMembership(ctx context.Context, in *FogMembershipInput) (*FogMe
 	if err := surf.teardown(ctx); err != nil {
 		return nil, err
 	}
-	return &FogMembershipOutput{DirtyCharacters: dirtyCharacters(cast), DirtyMonsters: dirtyMonsters(cast)}, nil
+	dirty, err := dirtyCharacters(cast)
+	if err != nil {
+		return nil, err
+	}
+	return &FogMembershipOutput{DirtyCharacters: dirty, DirtyMonsters: dirtyMonsters(cast)}, nil
 }

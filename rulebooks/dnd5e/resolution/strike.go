@@ -260,7 +260,7 @@ func (m *strikeMachine) sanctuaryStep(cast *Participants) Step {
 			if err != nil {
 				return nil, err
 			}
-			return m.wardCheckStep(cast, pending, 0, next), nil
+			return m.wardCheckStep(cast, pending, 0, next)
 		},
 	}
 }
@@ -272,14 +272,20 @@ func (m *strikeMachine) sanctuaryStep(cast *Participants) Step {
 // requester cannot be suspended" refusal — a named error, not silent
 // corruption — rather than a freeze/resume shape for this new interruption
 // point. Documented as a known gap, not assumed absent.
+//
+// Errors: [ErrWardUnreadable] from [wardSaveDC] — the strike fails rather than
+// skipping the ward.
 func (m *strikeMachine) wardCheckStep(
 	cast *Participants, pending []*conditions.SanctuaryCondition, index int, next Step,
-) Step {
+) (Step, error) {
 	if index >= len(pending) {
-		return next
+		return next, nil
 	}
 	ward := pending[index]
-	dc := wardSaveDC(cast, ward.SourceID)
+	dc, err := wardSaveDC(m.in.TargetID, ward)
+	if err != nil {
+		return nil, err
+	}
 	return requestSave(wardSaveInput(m.in.AttackerID, ward, dc, m.in.Roller),
 		func(_ context.Context, out SaveOutcome) (Step, error) {
 			if !out.Result.Success {
@@ -289,8 +295,8 @@ func (m *strikeMachine) wardCheckStep(
 				}
 				return Done{Outcome: m.reported()}, nil
 			}
-			return m.wardCheckStep(cast, pending, index+1, next), nil
-		})
+			return m.wardCheckStep(cast, pending, index+1, next)
+		}), nil
 }
 
 // preflight is everything both a fresh and a resumed strike need before

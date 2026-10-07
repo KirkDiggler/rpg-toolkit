@@ -99,7 +99,10 @@ func longRestOn(
 	// Snapshot before the deferred teardown. Character.Cleanup is deliberately
 	// never called: resolution owns registration teardown, and Cleanup would
 	// erase conditions before this persistence snapshot.
-	rested := ch.ToData()
+	rested, err := ch.ToData()
+	if err != nil {
+		return nil, fmt.Errorf("resolution: long rest %q: %w", one.ID(), err)
+	}
 
 	return &LongRestOutput{Character: rested}, nil
 }
