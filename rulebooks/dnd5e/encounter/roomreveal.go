@@ -64,17 +64,27 @@ func (e *Encounter) appendRoomRevealedBeat(member MemberID, id RegionID, before 
 				doorways = append(doorways, map[string]interface{}{"door": doorway.Door, "from": doorway.From, "to": doorway.To})
 			}
 		}
+		hadPlaced := make(map[PropID]bool, len(before.Placed))
+		for _, prop := range before.Placed {
+			hadPlaced[prop.ID] = true
+		}
 		placed := make([]map[string]interface{}, 0)
 		for _, prop := range after.Placed {
+			// A newly permitted boundary can have its standing support on
+			// the still-unknown side. Introduce the same row the snapshot
+			// permits; do not substitute a region-cell test for that answer.
+			include := !hadPlaced[prop.ID]
 			for _, cell := range prop.Cells {
-				if !cells[cell] {
-					continue
+				if cells[cell] {
+					include = true
+					break
 				}
+			}
+			if include {
 				placed = append(placed, map[string]interface{}{
 					"id": prop.ID, "placement": placementDataFrom(prop.Placement), "cells": prop.Cells,
 					"blocks_movement": prop.BlocksMovement, "blocks_line_of_sight": prop.BlocksLineOfSight, "holdable": false,
 				})
-				break
 			}
 		}
 		sealed := make([]spatial.Position, 0)

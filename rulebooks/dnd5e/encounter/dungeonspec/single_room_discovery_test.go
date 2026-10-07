@@ -4,9 +4,11 @@
 package dungeonspec_test
 
 import (
+	"encoding/json"
+	"slices"
+
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
-	"slices"
 )
 
 func (s *SingleRoomWallDoorSuite) TestOrdinaryDiscoveryPartitionsStayFixedAndSeatsStayOnTheStartingSide() {
@@ -33,7 +35,8 @@ func (s *SingleRoomWallDoorSuite) TestOrdinaryDiscoveryPartitionsStayFixedAndSea
 
 func (s *SingleRoomWallDoorSuite) TestOrdinaryDiscoveryStopsAtTheNextClosedDoor() {
 	spec := s.gapSpec(dungeonspec.RoomDoorBinding{Closed: true})
-	x := boundaryWallX(12.5)
+	// Put the next boundary's nearest centre on its undiscovered side.
+	x := boundaryWallX(12.5 + 0.000001)
 	spec.Room.Gameplay.Walls = append(spec.Room.Gameplay.Walls,
 		roomWall("far-boundary", x, -2, x, 2, wallBlocks(true, true, 4, 0.2, 0, 0),
 			dungeonspec.RoomWallOpening{ID: "far-gap", Position: 2, Width: 2,
@@ -42,12 +45,40 @@ func (s *SingleRoomWallDoorSuite) TestOrdinaryDiscoveryStopsAtTheNextClosedDoor(
 	compiled := s.load(spec)
 	s.Require().Len(compiled.Field.Regions, 3)
 	enc := s.play(compiled)
-	_, err := enc.OpenDoor(&encounter.OpenDoorInput{Actor: "walker", Door: "wall-doors-room/gap-door"})
+	before, err := enc.AtlasFor("walker")
+	s.Require().NoError(err)
+	_, err = enc.OpenDoor(&encounter.OpenDoorInput{Actor: "walker", Door: "wall-doors-room/gap-door"})
 	s.Require().NoError(err)
 	atlas, err := enc.AtlasFor("walker")
 	s.Require().NoError(err)
 	s.Contains(atlas.Cells, axial(2, 0))
 	s.NotContains(atlas.Cells, axial(3, 0), "opening the first door must not reveal room three")
+	known := make(map[string]bool)
+	for _, placed := range before.Placed {
+		known[placed.ID] = true
+	}
+	story, err := enc.Story(&encounter.StoryInput{Audience: "walker"})
+	s.Require().NoError(err)
+	delivered := make(map[string]bool)
+	for _, entry := range story {
+		var payload struct {
+			Beat   string `json:"beat"`
+			Placed []struct {
+				ID string `json:"id"`
+			} `json:"placed"`
+		}
+		s.Require().NoError(json.Unmarshal(entry.Payload, &payload))
+		if payload.Beat == encounter.BeatRoomRevealed {
+			for _, placed := range payload.Placed {
+				delivered[placed.ID] = true
+			}
+		}
+	}
+	for _, placed := range atlas.Placed {
+		if !known[placed.ID] {
+			s.True(delivered[placed.ID], "newly permitted boundary %q must arrive in the same room reveal as its snapshot", placed.ID)
+		}
+	}
 }
 
 type findDoorCheck struct{}
