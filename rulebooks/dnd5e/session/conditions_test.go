@@ -33,10 +33,10 @@ import (
 // through Join then Exit so persisted EverMembers — not a test-only flag — is
 // what suppresses the second rest and save.
 //
-// That negative remains load-bearing. character.LoadFromData drops conditions
-// it cannot parse and Character.ToData drops conditions it cannot serialise,
-// both silently and with no error (toolkit#948). A non-first Join may project
-// leniently, but it must not save that projection and make the loss permanent.
+// That negative remains load-bearing. A non-first Join must not save over a
+// record it could not read whole, and it no longer reads one leniently: the
+// projection refuses a condition it cannot load (rpg-toolkit#1968), so a
+// rejoin past one is refused and the store keeps every byte.
 type ConditionsTestSuite struct {
 	suite.Suite
 
@@ -261,16 +261,18 @@ func (s *ConditionsTestSuite) requeueJSON(from any, into any) {
 	s.Require().NoError(json.Unmarshal(raw, into))
 }
 
-// TestACharacterTheSDKCannotFullyLoadIsStillNotDamaged is where the non-first
-// no-clobber property earns its keep.
+// TestARejoinPastAnUnreadableConditionRefusesAndLeavesTheStoreWhole is where
+// the non-first no-clobber property earns its keep.
 //
 // A FIRST admission strictly rests and therefore rejects a condition this build
-// cannot parse rather than writing a lossy sheet. This test establishes a prior
+// cannot parse rather than writing a lossy sheet. A rejoin now refuses the same
+// way: the projection is strict (rpg-toolkit#1968), because Join writes the
+// projected AC and facts onto the member and a lenient read would put numbers
+// from a sheet missing an effect into play. This test establishes a prior
 // admission while the record is clean, exits, then replaces the repository
-// record with an unreadable condition. The rejoin still uses the existing
-// lenient projection, and because EverMembers suppresses its save, the unknown
-// blob remains whole.
-func (s *ConditionsTestSuite) TestACharacterTheSDKCannotFullyLoadIsStillNotDamaged() {
+// record with an unreadable condition. The rejoin is refused by name, and the
+// unknown blob remains whole in the store.
+func (s *ConditionsTestSuite) TestARejoinPastAnUnreadableConditionRefusesAndLeavesTheStoreWhole() {
 	s.characters.byID["dave"] = dwarfCharacter("dave")
 	_, err := s.mgr.Join(context.Background(), &session.JoinInput{
 		Session: "sess", Member: "dave", Position: spatial.Position{X: 0, Y: 0},
@@ -284,11 +286,16 @@ func (s *ConditionsTestSuite) TestACharacterTheSDKCannotFullyLoadIsStillNotDamag
 		json.RawMessage(`{"ref":"homebrew:conditions:hexed","character_id":"dave","stacks":3}`))
 	s.characters.byID["dave"] = corrupt
 	before := s.storedBytes("dave")
+	beforeSaves := s.characters.saves
 
-	_, err = s.mgr.Join(context.Background(), &session.JoinInput{
+	out, err := s.mgr.Join(context.Background(), &session.JoinInput{
 		Session: "sess", Member: "dave", Position: spatial.Position{X: 0, Y: 0},
 	})
-	s.Require().NoError(err, "the non-first projection remains lenient")
+	s.Require().ErrorIs(err, session.ErrBadCharacter, "a rejoin refuses what a first Join refuses")
+	s.Contains(err.Error(), "hexed", "and names the condition it could not read")
+	s.Nil(out)
+
+	s.Equal(beforeSaves, s.characters.saves, "a refused rejoin writes no sheet")
 
 	s.Equal(string(before), string(s.storedBytes("dave")),
 		"the condition this build could not read is still in the store")
@@ -297,5 +304,10 @@ func (s *ConditionsTestSuite) TestACharacterTheSDKCannotFullyLoadIsStillNotDamag
 	s.Require().NoError(json.Unmarshal(s.storedBytes("dave"), &struct {
 		Conditions *[]json.RawMessage `json:"conditions"`
 	}{Conditions: &held}))
-	s.Require().Len(held, 2, "both conditions, including the one we cannot parse")
+	stored := make([]string, 0, len(held))
+	for _, raw := range held {
+		stored = append(stored, string(raw))
+	}
+	s.Contains(stored, `{"ref":"homebrew:conditions:hexed","character_id":"dave","stacks":3}`,
+		"the condition this build could not read is still held, byte for byte")
 }

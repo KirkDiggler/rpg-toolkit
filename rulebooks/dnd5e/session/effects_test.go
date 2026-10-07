@@ -421,7 +421,7 @@ func (s *EffectRowsSuite) TestSpellAttackCastCarriesBlessRow() {
 // row is unavailable — shown, never dropped and never not-applying.
 func (s *EffectRowsSuite) TestUnansweringEffectShownUnavailable() {
 	ward, err := conditions.NewSanctuaryCondition(conditions.NewSanctuaryConditionInput{
-		MemberID: "alice", SourceID: erAlly, SourceRef: refs.Spells.Sanctuary(),
+		MemberID: "alice", SourceID: erAlly, SourceRef: refs.Spells.Sanctuary(), SaveDC: 13,
 	})
 	s.Require().NoError(err)
 	s.cave(s.fighter(s.raw(ward)))

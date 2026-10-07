@@ -982,12 +982,10 @@ func (s *AttackTestSuite) duelAmong(members []string, sheets ...*character.Data)
 
 // unreadableFighter is a stored sheet that EXISTS and cannot be reconstituted.
 //
-// The malformed condition blob is what makes it unreadable, and it bites only
-// on the path under test: character.Load — what compileAttack uses — is STRICT
-// and fails the whole load, while the lenient character.LoadFromData that Join
-// uses drops the blob and carries on (pinned by
-// TestACorruptConditionIsDroppedRatherThanRejected). So this fixture is corrupt
-// exactly where the sentinel under test is chosen.
+// The malformed condition blob is what makes it unreadable: character.Load —
+// what compileAttack uses — is STRICT and fails the whole load, and so is the
+// projection Join uses (TestARejoinPastACorruptConditionIsRefused). So this
+// fixture is corrupt exactly where the sentinel under test is chosen.
 func unreadableFighter(id string) *character.Data {
 	sheet := armedFighter(id)
 	sheet.Conditions = []json.RawMessage{json.RawMessage(`{"ref":"nonsense","x":`)}
