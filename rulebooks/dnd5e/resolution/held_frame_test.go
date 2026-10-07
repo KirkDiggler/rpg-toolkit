@@ -177,7 +177,7 @@ func (s *FrameTestSuite) strikeHeld(
 		Machine: NewStrike(&StrikeInput{
 			AttackerID: informRogue, TargetID: informGoblin1, Definition: attack, Roller: facedRoller{d20: d20, other: 1},
 		}),
-		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: h.sight, Equipment: h.equipment(), Sheets: standStillSheets{},
+		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: h.sight, Equipment: h.equipment(), Sheets: noSheetsAsked{},
 		TurnDriver: passDriver{}, Roller: facedRoller{d20: d20, other: 1},
 	}, newSurface(bus))
 }

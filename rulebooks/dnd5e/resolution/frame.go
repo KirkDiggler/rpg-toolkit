@@ -164,15 +164,19 @@ type informationFrameOutput struct {
 // answer [strikeMachine.attackRollFrame] reads from the cast, so a
 // class-scaled row and the swing it describes compute from one level.
 //
-// Errors: a nil observed context or attack, unknown actor class levels, or a
-// frame that fails [contributions.Frame.Validate].
+// Errors: a nil observed context or attack, unknown actor class levels
+// (wrapping [contributions.ErrRuleCannotAnswer], the sentinel a class-scaled
+// rule gives for the same missing fact — unreachable through [InformAttack],
+// whose character actor always knows its levels), or a frame that fails
+// [contributions.Frame.Validate].
 func informationFrame(in *informationFrameInput) (*informationFrameOutput, error) {
 	if in == nil || in.Observed == nil || in.Attack == nil {
 		return nil, fmt.Errorf("%w: an information frame needs an observed context and an attack", ErrNilInput)
 	}
 	observer := string(in.Observed.Observer)
 	if _, known := in.ActorClassLevels.Get(); !known {
-		return nil, fmt.Errorf("information frame: %q's class levels are unknown; its own sheet answers them", observer)
+		return nil, fmt.Errorf("information frame: %w: %q's class levels are unknown; its own sheet answers them",
+			contributions.ErrRuleCannotAnswer, observer)
 	}
 	frame := contributions.Frame{
 		Actor:            observer,

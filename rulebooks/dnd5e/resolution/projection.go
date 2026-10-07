@@ -136,9 +136,9 @@ const (
 //
 // It used to read leniently: what parsed was folded, what did not was dropped
 // with a warning, on the reasoning that "nothing on this path writes a sheet
-// back". That stopped being true: rpg-api fills every armour class it returns
-// from ArmorClass.Total, and the sheet stores none (rpg-project#538), so this
-// projection is the only armour class a character has. A fold that silently
+// back". That stopped being true: rpg-project#538 makes this projection the
+// only armour class a character has — the sheet stores none, and rpg-api fills
+// every armour class it returns from ArmorClass.Total. A fold that silently
 // left out a condition would be reported as though it were the whole answer —
 // the rpg-toolkit#1276 shape behind a log line (rpg-api#1078 review). So the
 // projection takes the policy that cannot write a wrong number: the zero value

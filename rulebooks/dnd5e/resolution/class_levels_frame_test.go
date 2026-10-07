@@ -129,8 +129,7 @@ func (s *FrameTestSuite) TestInformationFrameRefusesUnknownActorClassLevels() {
 		Observed: &encounter.ObservedContextOutput{Observer: encounter.MemberID(holdOutRogue)},
 		Attack:   dagger().Attack,
 	})
-	s.Require().Error(err)
-	s.Contains(err.Error(), "class levels are unknown")
+	s.Require().ErrorIs(err, contributions.ErrRuleCannotAnswer)
 }
 
 // A contest's damage frame names the instigator, and carries the instigator's
