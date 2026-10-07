@@ -421,7 +421,10 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 	// The readied sheet goes into the participants rather than being fetched
 	// again: compileOffersFor readied this turn's economy on it, and a second
 	// read would hand resolution a ledger that had not been filled.
-	readied := selected.sheet.ToData()
+	readied, err := selected.sheet.ToData()
+	if err != nil {
+		return nil, fmt.Errorf("cast: caster %q: %w: %v", in.Member, ErrBadCharacter, err)
+	}
 	participants, failures := m.compileResolutionCast(ctx, scope.data, roster, readied)
 	if len(failures) > 0 {
 		return nil, fmt.Errorf("cast: participant %q: %w: %v",

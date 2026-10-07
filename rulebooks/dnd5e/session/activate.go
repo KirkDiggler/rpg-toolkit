@@ -249,7 +249,10 @@ func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOut
 	// The readied sheet goes into the cast rather than being fetched again:
 	// compileOffersFor readied this turn's economy on it, and a second read
 	// would hand resolution a ledger that had not been filled.
-	readied := selected.sheet.ToData()
+	readied, err := selected.sheet.ToData()
+	if err != nil {
+		return nil, fmt.Errorf("activate: actor %q: %w: %v", in.Member, ErrBadCharacter, err)
+	}
 	cast, failures := m.compileResolutionCast(ctx, scope.data, roster, readied)
 	if len(failures) > 0 {
 		return nil, fmt.Errorf("activate: participant %q: %w: %v",

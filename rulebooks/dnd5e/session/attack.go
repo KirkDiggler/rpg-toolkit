@@ -677,6 +677,14 @@ func translateResolution(err error) error {
 		return fmt.Errorf("%w: %v", ErrOutOfReach, err)
 	case errors.Is(err, resolution.ErrBadParticipant):
 		return fmt.Errorf("%w: %v", ErrBadCharacter, err)
+	case errors.Is(err, resolution.ErrWardUnreadable):
+		// A Sanctuary ward whose caster this verb's cast could not give
+		// resolution — absent, or a sheet with no spell save DC. It used to
+		// read as DC 0 and let every attempt through; it now refuses
+		// (rpg-toolkit#1965). The cast is this package's loading, so it is
+		// the same word as a participant that would not load, and the inner
+		// reason rides along as text.
+		return fmt.Errorf("%w: %v", ErrBadCharacter, err)
 	case errors.Is(err, resolution.ErrNoCombatant):
 		// Reachable when a member has no stored sheet — an authored monster
 		// standing in a world nobody spawned. Refused earlier by name, so this

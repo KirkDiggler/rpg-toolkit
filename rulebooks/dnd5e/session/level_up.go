@@ -105,7 +105,10 @@ func (m *Manager) LevelUp(ctx context.Context, in *LevelUpInput) (*LevelUpOutput
 		return nil, fmt.Errorf("level up: character %q: %w", in.Character, translateAdvance(err))
 	}
 
-	record := sheet.ToData()
+	record, err := sheet.ToData()
+	if err != nil {
+		return nil, fmt.Errorf("level up: character %q: %w: %v", in.Character, ErrBadCharacter, err)
+	}
 	aggregate := "character:" + record.ID
 	if err := m.characters.SaveCharacter(ctx, record); err != nil {
 		return nil, fmt.Errorf("level up: %w", &SaveError{

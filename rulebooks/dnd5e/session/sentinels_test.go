@@ -140,6 +140,9 @@ var resolutionSentinels = map[string]error{
 	// sees.
 	"resolution.ErrActivationRefused": resolution.ErrActivationRefused,
 	"resolution.ErrBadActivation":     resolution.ErrBadActivation,
+	// The fail-closed Sanctuary ward (rpg-toolkit#1965): translated to
+	// ErrBadCharacter with %v, so it is not in the chain a host sees.
+	"resolution.ErrWardUnreadable": resolution.ErrWardUnreadable,
 }
 
 // refSentinels is core's identifier vocabulary — what a malformed ref is

@@ -112,7 +112,10 @@ func (m *Manager) priceSwing(
 		return nil, fmt.Errorf("attacker %q: %w: %v", attacker, ErrBadCost, err)
 	}
 
-	ready := sheet.ToData()
+	ready, err := sheet.ToData()
+	if err != nil {
+		return nil, fmt.Errorf("attacker %q: %w: %v", attacker, ErrBadCharacter, err)
+	}
 	return &swingPrice{
 		cost: &resolution.Cost{
 			PayerID: attacker,
