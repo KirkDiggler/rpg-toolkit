@@ -12,6 +12,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
@@ -69,7 +70,7 @@ func (s *ContestFoldTestSuite) creature(traits ...json.RawMessage) *monster.Data
 
 func (s *ContestFoldTestSuite) raging() json.RawMessage {
 	raw, err := (&conditions.RagingCondition{
-		CharacterID: heroID, DamageBonus: 2, Level: 1, Source: "rage",
+		CharacterID: heroID, Source: "rage",
 	}).ToJSON()
 	s.Require().NoError(err)
 
@@ -107,6 +108,7 @@ func (s *ContestFoldTestSuite) resolveErr(machine Machine, participants ...Parti
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		Equipment: noHandsAreObserved{},
+		Sheets:    noSheetsAsked{},
 		World:     s.fixtures().world(), Participants: participants, Machine: machine,
 	})
 }
@@ -198,10 +200,17 @@ func (s *ContestFoldTestSuite) TestAHalfGateHalvesBeforeTheMultipliersApply() {
 // The caster's Sneak Attack is a weapon rule. It is asked by the same fold and
 // answers DoesNotApply, because the frame KNOWS there is no weapon pool — an
 // unknown pool would answer Depends and fail the fold.
+//
+// The caster holds a rogue level, because a Sneak Attack holder with no rogue
+// levels is refused before the pool is read (rpg-project#538): the contest's
+// frame carries the instigator's class levels from its own sheet, which is
+// what lets the rule reach the pool question at all. (A bard/rogue multiclass
+// would read better; the level record refuses multiclassing today, R2.4.)
 func (s *ContestFoldTestSuite) TestTheCastersSneakAttackDoesNotRideASave() {
-	sneak, err := conditions.NewSneakAttackCondition(conditions.SneakAttackInput{MemberID: bardID, Level: 1}).ToJSON()
+	sneak, err := conditions.NewSneakAttackCondition(conditions.SneakAttackInput{MemberID: bardID}).ToJSON()
 	s.Require().NoError(err)
 	bard := s.fixtures().bard(1)
+	bard.ClassID = classes.Rogue
 	bard.Conditions = []json.RawMessage{sneak}
 
 	outcome := s.resolve(

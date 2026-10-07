@@ -3,6 +3,7 @@ package resolution
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -165,3 +166,34 @@ func (everyoneSeesTheWholeMap) Sight(members []encounter.MemberID) (map[encounte
 // empty-handed" or "nobody holds anything", which would be testimony this
 // fixture has no standing to give.
 type noHandsAreObserved = encounter.UnobservedEquipment
+
+// noSheetsAsked is this suite's Sheets stand-in: it answers an empty ask and
+// REFUSES any member with [encounter.ErrRefusingSheets], the same shape as the
+// composition's compile-only stand-in. This package carries Sheets and never
+// consults it, so no test here should ever reach it with a member; one that
+// did fails by name rather than pacing a walk on a speed nobody gave.
+type noSheetsAsked struct{}
+
+func (noSheetsAsked) Sheets(members []encounter.MemberID) (map[encounter.MemberID]encounter.SheetFacts, error) {
+	if len(members) == 0 {
+		return map[encounter.MemberID]encounter.SheetFacts{}, nil
+	}
+	return nil, fmt.Errorf("resolution test: asked for %d members' sheets: %w", len(members), encounter.ErrRefusingSheets)
+}
+
+// standStillSheets answers every member asked with no speed, no actions and no
+// strategy: a creature that stands where it was placed and attacks nobody.
+// For a test's OWN world setup whose sight pass forms a fight and drives a
+// monster's turn — the composition asks for a turn budget there. It is a
+// stated sheet, not a default: every member in such a scene carried exactly
+// these facts before the composition stopped storing them (rpg-project#538).
+// Resolve itself is always handed [noSheetsAsked].
+type standStillSheets struct{}
+
+func (standStillSheets) Sheets(members []encounter.MemberID) (map[encounter.MemberID]encounter.SheetFacts, error) {
+	out := make(map[encounter.MemberID]encounter.SheetFacts, len(members))
+	for _, id := range members {
+		out[id] = encounter.SheetFacts{}
+	}
+	return out, nil
+}

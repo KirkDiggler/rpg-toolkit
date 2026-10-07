@@ -55,6 +55,7 @@ func concealedWorld(t *testing.T) encounter.EncounterData {
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{},
 		Sight:         everyoneSeesTheWholeMap{},
 		Equipment:     noHandsAreObserved{},
+		Sheets:        noSheetsAsked{},
 		CheckResolver: neverResolves{},
 		Witness:       neverWitnesses{},
 		Field: encounter.FieldInput{
@@ -123,6 +124,7 @@ func TestTheConcealmentCapabilitiesAreCarriedAndNeverAsked(t *testing.T) {
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight:         everyoneSeesTheWholeMap{},
 		Equipment:     noHandsAreObserved{},
+		Sheets:        noSheetsAsked{},
 		Roller:        dice.NewRoller(),
 		CheckResolver: resolver,
 		Witness:       witness,
@@ -155,6 +157,7 @@ func TestAConcealedWorldIsRefusedAtEncountersOwnDoor(t *testing.T) {
 			Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 			Sight:        everyoneSeesTheWholeMap{},
 			Equipment:    noHandsAreObserved{},
+			Sheets:       noSheetsAsked{},
 			Roller:       dice.NewRoller(),
 			World:        world,
 			Participants: []Participant{{Character: probeSheet(heroID)}},

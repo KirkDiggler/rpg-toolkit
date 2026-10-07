@@ -47,7 +47,6 @@ func deathSaveCharacter(hp int, state *saves.DeathSaveState) *character.Data {
 		ClassID:        classes.Fighter,
 		HitPoints:      hp,
 		MaxHitPoints:   12,
-		ArmorClass:     14,
 		DeathSaveState: state,
 		ActionEconomy: &character.ActionEconomyData{
 			TurnNumber: 7,

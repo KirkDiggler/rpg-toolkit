@@ -78,7 +78,7 @@ func (s *InformAttackTestSuite) scene(sight encounter.Sight, withFighter bool) *
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{},
-		Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: sight, Equipment: noHandsAreObserved{},
+		Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: sight, Equipment: noHandsAreObserved{}, Sheets: standStillSheets{},
 		Field: encounter.FieldInput{
 			Canvas:   hexCanvas(),
 			Regions:  []encounter.RegionInput{rectRegion("cave", 0, 0, 10, 5)},
@@ -97,7 +97,7 @@ func (s *InformAttackTestSuite) scene(sight encounter.Sight, withFighter bool) *
 // rogue is the acting character's loaded sheet: a level-1 rogue carrying
 // Sneak Attack.
 func (s *InformAttackTestSuite) rogue() *character.Character {
-	sneak, err := conditions.NewSneakAttackCondition(conditions.SneakAttackInput{MemberID: informRogue, Level: 1}).ToJSON()
+	sneak, err := conditions.NewSneakAttackCondition(conditions.SneakAttackInput{MemberID: informRogue}).ToJSON()
 	s.Require().NoError(err)
 	sheet, err := character.Load(s.ctx, &character.Data{
 		ID: informRogue, PlayerID: "player-rogue", Name: "Rook", Level: 1, ClassID: classes.Rogue, RaceID: races.Human,
@@ -105,7 +105,7 @@ func (s *InformAttackTestSuite) rogue() *character.Character {
 			abilities.STR: 10, abilities.DEX: 16, abilities.CON: 12,
 			abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 10,
 		},
-		HitPoints: 10, MaxHitPoints: 10, ArmorClass: 14, ProficiencyBonus: 2,
+		HitPoints: 10, MaxHitPoints: 10, ProficiencyBonus: 2,
 		Conditions: []json.RawMessage{sneak},
 	})
 	s.Require().NoError(err)

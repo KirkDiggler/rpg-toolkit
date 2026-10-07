@@ -48,7 +48,7 @@ func (s *AreaActionTestSuite) resolveArea(
 	}
 	return Resolve(s.ctx, &Input{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Roller: dice.NewRoller(),
+		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
 		World: world, Participants: participants, Machine: machine, Cost: castCost(),
 	})
 }

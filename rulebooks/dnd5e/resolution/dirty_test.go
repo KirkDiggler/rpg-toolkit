@@ -70,8 +70,6 @@ func (s *DirtyTestSuite) SetupTest() {
 func (s *DirtyTestSuite) ragingHero() *character.Data {
 	raging, err := (&conditions.RagingCondition{
 		CharacterID: heroID,
-		DamageBonus: 2,
-		Level:       1,
 		Source:      "dnd5e:features:rage",
 	}).ToJSON()
 	s.Require().NoError(err)
@@ -89,7 +87,6 @@ func (s *DirtyTestSuite) ragingHero() *character.Data {
 		},
 		HitPoints:        20,
 		MaxHitPoints:     20,
-		ArmorClass:       12,
 		ProficiencyBonus: 2,
 		Conditions:       []json.RawMessage{raging},
 	}
@@ -98,7 +95,7 @@ func (s *DirtyTestSuite) ragingHero() *character.Data {
 func (s *DirtyTestSuite) world() encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{},
-		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -129,6 +126,7 @@ func (s *DirtyTestSuite) TestAConditionThatChangesItselfComesBackToBeStored() {
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		Equipment:    noHandsAreObserved{},
+		Sheets:       noSheetsAsked{},
 		World:        s.world(),
 		Participants: []Participant{{Character: hero}, {Monster: monsters.NewWolf(wolfID).ToData()}},
 		Machine: NewStrike(&StrikeInput{
@@ -169,7 +167,7 @@ func (s *DirtyTestSuite) TestAnUntouchedParticipantIsNotReturned() {
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{},
-		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -187,6 +185,7 @@ func (s *DirtyTestSuite) TestAnUntouchedParticipantIsNotReturned() {
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		Equipment: noHandsAreObserved{},
+		Sheets:    noSheetsAsked{},
 		World:     enc.ToData(),
 		Participants: []Participant{
 			{Character: hero},

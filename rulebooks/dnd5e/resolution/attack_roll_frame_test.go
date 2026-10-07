@@ -306,7 +306,7 @@ func (s *FrameTestSuite) TestEveryFreezeCarriesOpportunity() {
 		out, err := resolveOn(s.ctx, &Input{
 			World: actionWorld(s.T(), 2), Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Character: flareHero(s.T())}},
 			Machine:    NewStrike(&StrikeInput{AttackerID: wolfID, TargetID: heroID, Definition: validMeleeDefinition(), Opportunity: true, Roller: roller}),
-			Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+			Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 			TurnDriver: passDriver{}, Roller: roller,
 		}, newSurface(events.NewEventBus()))
 		s.Require().NoError(err)
@@ -359,9 +359,10 @@ func (s *FrameTestSuite) TestEveryFreezeCarriesOpportunity() {
 // not unknown, or Reckless Attack's row would depend on every declaration.
 func (s *FrameTestSuite) TestInformationOpportunityIsKnownFalse() {
 	out, err := informationFrame(&informationFrameInput{
-		Observed: &encounter.ObservedContextOutput{Observer: encounter.MemberID(holdOutRogue)},
-		Attack:   dagger().Attack,
-		Target:   holdOutScout,
+		Observed:         &encounter.ObservedContextOutput{Observer: encounter.MemberID(holdOutRogue)},
+		Attack:           dagger().Attack,
+		Target:           holdOutScout,
+		ActorClassLevels: contributions.KnownClassLevels(),
 	})
 	s.Require().NoError(err)
 

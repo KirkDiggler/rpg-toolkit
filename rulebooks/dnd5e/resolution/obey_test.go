@@ -53,7 +53,7 @@ func (s *ObeyTestSuite) interaction(fixtures *ContestDamageTestSuite, participan
 	return &Input{
 		World: fixtures.world(), Participants: participants,
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Roller: dice.NewRoller(),
+		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
 	}
 }
 

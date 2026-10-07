@@ -114,7 +114,7 @@ func (h *heldScene) equipment() sheetConditions {
 func (s *FrameTestSuite) heldEncounter(h *heldScene) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{},
-		Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: h.sight, Equipment: h.equipment(),
+		Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: h.sight, Equipment: h.equipment(), Sheets: standStillSheets{},
 		Field: encounter.FieldInput{
 			Canvas:   hexCanvas(),
 			Regions:  []encounter.RegionInput{rectRegion("cave", 0, 0, 10, 5)},
@@ -177,7 +177,7 @@ func (s *FrameTestSuite) strikeHeld(
 		Machine: NewStrike(&StrikeInput{
 			AttackerID: informRogue, TargetID: informGoblin1, Definition: attack, Roller: facedRoller{d20: d20, other: 1},
 		}),
-		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: h.sight, Equipment: h.equipment(),
+		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: h.sight, Equipment: h.equipment(), Sheets: standStillSheets{},
 		TurnDriver: passDriver{}, Roller: facedRoller{d20: d20, other: 1},
 	}, newSurface(bus))
 }
@@ -260,9 +260,10 @@ func (s *FrameTestSuite) TestInformationFrameHeldFromSightingsOnly() {
 				{ID: holdOutAlly, Conditions: &encounter.ConditionSet{}},
 			},
 		},
-		Attack:    dagger().Attack,
-		Target:    holdOutScout,
-		ActorHeld: []contributions.HeldCondition{{Ref: refs.Conditions.Prone().String()}},
+		Attack:           dagger().Attack,
+		Target:           holdOutScout,
+		ActorHeld:        []contributions.HeldCondition{{Ref: refs.Conditions.Prone().String()}},
+		ActorClassLevels: contributions.KnownClassLevels(),
 	})
 	s.Require().NoError(err)
 	frame := out.Frame
@@ -300,8 +301,9 @@ func (s *FrameTestSuite) TestInformationFrameSeesOnlyObserverToSighted() {
 				{From: holdOutScout, To: holdOutRogue, DistanceCells: 1, Stance: encounter.StanceHostile},
 			},
 		},
-		Attack: dagger().Attack,
-		Target: holdOutScout,
+		Attack:           dagger().Attack,
+		Target:           holdOutScout,
+		ActorClassLevels: contributions.KnownClassLevels(),
 	})
 	s.Require().NoError(err)
 	frame := out.Frame
@@ -684,7 +686,7 @@ func resolveHeroStrikeAs(
 			{Monster: monsters.NewWolf(wolfID).ToData()}, {Character: hero}, {Character: clericWarder()},
 		},
 		Machine:    NewStrike(&StrikeInput{AttackerID: attackerID, TargetID: targetID, Definition: definition, Roller: roller}),
-		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		TurnDriver: passDriver{}, Roller: roller,
 	}, newSurface(events.NewEventBus()))
 }

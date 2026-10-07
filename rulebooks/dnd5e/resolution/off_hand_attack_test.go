@@ -60,6 +60,7 @@ func resolveHeroAttack(
 		Standing:   everyoneStanding{},
 		Sight:      everyoneSeesTheWholeMap{},
 		Equipment:  noHandsAreObserved{},
+		Sheets:     noSheetsAsked{},
 		TurnDriver: passDriver{},
 		Roller:     dice.NewRoller(),
 	})

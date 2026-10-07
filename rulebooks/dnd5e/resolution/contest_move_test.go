@@ -296,6 +296,7 @@ func (s *ContestMoveTestSuite) resolveOnBus(
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		Equipment: noHandsAreObserved{},
+		Sheets:    noSheetsAsked{},
 		World:     fixtures.world(),
 		Participants: []Participant{
 			{Character: saver}, {Monster: fixtures.wolfData()}, {Character: fixtures.bard(1)},

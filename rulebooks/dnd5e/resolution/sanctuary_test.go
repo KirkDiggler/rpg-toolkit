@@ -39,7 +39,7 @@ func clericWarder() *character.Data {
 			abilities.STR: 10, abilities.DEX: 10, abilities.CON: 12,
 			abilities.INT: 10, abilities.WIS: 16, abilities.CHA: 10,
 		},
-		HitPoints: 10, MaxHitPoints: 10, ArmorClass: 12, ProficiencyBonus: 2,
+		HitPoints: 10, MaxHitPoints: 10, ProficiencyBonus: 2,
 	}
 }
 
@@ -102,6 +102,7 @@ func TestSanctuaryBlocksAnAttackOnAFailedWardSave(t *testing.T) {
 		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, TurnDriver: passDriver{}, Roller: dice.NewRoller(),
 		Equipment: noHandsAreObserved{},
+		Sheets:    noSheetsAsked{},
 	})
 	require.NoError(t, err)
 
@@ -133,6 +134,7 @@ func TestSanctuarySaveSuccessDoesNotGrantAttackerImmunity(t *testing.T) {
 		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, TurnDriver: passDriver{}, Roller: dice.NewRoller(),
 		Equipment: noHandsAreObserved{},
+		Sheets:    noSheetsAsked{},
 	})
 	require.NoError(t, err)
 
@@ -165,6 +167,7 @@ func TestRecipientCooldownDoesNotSkipWardSaves(t *testing.T) {
 		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, TurnDriver: passDriver{}, Roller: dice.NewRoller(),
 		Equipment: noHandsAreObserved{},
+		Sheets:    noSheetsAsked{},
 	})
 	require.NoError(t, err)
 
@@ -191,6 +194,7 @@ func TestAttackingEndsTheAttackersOwnSanctuary(t *testing.T) {
 		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, TurnDriver: passDriver{}, Roller: dice.NewRoller(),
 		Equipment: noHandsAreObserved{},
+		Sheets:    noSheetsAsked{},
 	})
 	require.NoError(t, err)
 
@@ -225,7 +229,7 @@ func TestSanctuaryBlocksABaneTargetOnAFailedWardSave(t *testing.T) {
 	require.NoError(t, err)
 	out, err := Resolve(context.Background(), &Input{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		World: fixtures.world(),
 		Participants: []Participant{
 			{Monster: wolf}, {Character: baneCaster(1, 2)}, {Character: clericWarder()},
@@ -259,7 +263,7 @@ func TestSanctuarySaveSuccessDoesNotGrantCasterImmunity(t *testing.T) {
 	require.NoError(t, err)
 	out, err := Resolve(context.Background(), &Input{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		World: fixtures.world(),
 		Participants: []Participant{
 			{Monster: wolf}, {Character: baneCaster(1, 2)}, {Character: clericWarder()},
@@ -291,7 +295,7 @@ func TestCastingABaneEndsTheCastersOwnSanctuary(t *testing.T) {
 	require.NoError(t, err)
 	out, err := Resolve(context.Background(), &Input{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		World:        fixtures.world(),
 		Participants: []Participant{{Monster: fixtures.wolfData()}, {Character: caster}},
 		Machine:      machine, Cost: baneCost(),
@@ -316,7 +320,7 @@ func TestSanctuaryDoesNotGateANonHostileCast(t *testing.T) {
 	require.NoError(t, err)
 	out, err := Resolve(context.Background(), &Input{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		World: fixtures.world(),
 		Participants: []Participant{
 			{Character: saver}, {Monster: fixtures.wolfData()}, {Character: baneCaster(1, 2)},
@@ -434,6 +438,7 @@ func strikeOn(t *testing.T, target *character.Data, roller *actionRoller, extra 
 		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, TurnDriver: passDriver{}, Roller: dice.NewRoller(),
 		Equipment: noHandsAreObserved{},
+		Sheets:    noSheetsAsked{},
 	})
 }
 
@@ -454,7 +459,7 @@ func castSanctuaryOnHero(t *testing.T, caster *character.Data) (*character.Data,
 		Participants: []Participant{{Character: caster}, {Character: actionHero()}},
 		Cost:         &Cost{PayerID: bardID, Profile: definition.Cost, SpellTurn: "first"},
 		Initiative:   orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Roller: dice.NewRoller(),
+		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
 	})
 	if err != nil {
 		return nil, err
@@ -468,7 +473,7 @@ func touchWorld(t *testing.T) encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{},
 		Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{},
-		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -545,7 +550,7 @@ func TestABaneOnAWardWhoseCasterLeftStillMeetsTheWard(t *testing.T) {
 	require.NoError(t, err)
 	out, err := Resolve(context.Background(), &Input{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		World:        fixtures.world(),
 		Participants: []Participant{{Monster: wolf}, {Character: baneCaster(1, 2)}},
 		Machine:      machine, Cost: baneCost(),

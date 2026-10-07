@@ -40,7 +40,7 @@ func (s *PreflightTestSuite) hero(id string, conds ...json.RawMessage) *characte
 			abilities.STR: 16, abilities.DEX: 14, abilities.CON: 16,
 			abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 8,
 		},
-		HitPoints: 14, MaxHitPoints: 14, ArmorClass: 10,
+		HitPoints: 14, MaxHitPoints: 14,
 		ProficiencyBonus: 2, Conditions: conds,
 	}
 }
