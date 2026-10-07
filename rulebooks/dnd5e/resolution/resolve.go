@@ -861,10 +861,12 @@ type attachAllInput struct {
 	// writing — a new entry added by somebody who never read this comment
 	// inherits the answer that cannot destroy anything.
 	//
-	// The one entry that asks is the projection, and it is safe there for a
+	// The one entry that asks is participation, and it is safe there for a
 	// reason that is about the ENTRY rather than about loading: it only reads,
-	// nothing on its path writes a sheet back, and refusing would put one
-	// unreadable blob between a player and the game. The drop is not silent —
+	// nothing on its path writes a sheet back, and refusing
+	// would put one unreadable blob between a player and the game. The
+	// projection used to ask too, and stopped when its callers began writing
+	// the AC it folds back to storage. The drop is not silent —
 	// the loader warns by name — which is D10: fail loudly means OBSERVABLE,
 	// not refused.
 	//

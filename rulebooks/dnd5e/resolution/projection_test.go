@@ -21,6 +21,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -345,34 +346,24 @@ func (s *ProjectionTestSuite) world() encounter.EncounterData {
 	return enc.ToData()
 }
 
-// TestTheProjectionReadsWhatResolveRefuses is the D10 contrast, and the reason
-// the policy is an argument rather than a mode.
+// TestTheProjectionRefusesWhatResolveRefuses was the D10 contrast, and the
+// contrast is gone on purpose.
 //
 // ONE RECORD, carrying one condition that parses and one blob that does not.
-// The two entries answer differently and both answers are right, because
-// strictness is a property of what the entry DOES:
-//
-//   - Resolve hands back sheets to be persisted. A sheet loaded past a silently
-//     dropped condition is a sheet that, written back, has had that condition
-//     deleted by a verb that merely moved somebody (rpg-toolkit#948). So it
-//     refuses, and names the blob.
-//   - The projection only reads. Refusing there would put one unreadable blob
-//     between a player and the game, and the character is no less playable for
-//     it — so it folds what parsed. The drop is not silent: the loader warns,
-//     which is D10's "fail loudly means observable, not refused".
-//
-// The same 15 as every other case in this suite, so the lenient path is doing
-// the whole fold rather than limping to a plausible number.
-func (s *ProjectionTestSuite) TestTheProjectionReadsWhatResolveRefuses() {
+// The projection used to fold what parsed and warn about the rest, because it
+// "only read". Its callers now write what it folds back to storage — session's
+// Join puts the AC on the member, rpg-api persists it as the stored AC — so a
+// dropped condition there is a wrong number persisted (rpg-api#1078 review).
+// Both entries now refuse the same record, and both name the blob.
+func (s *ProjectionTestSuite) TestTheProjectionRefusesWhatResolveRefuses() {
 	unreadable := json.RawMessage(`{"ref":"nonsense","x":`)
 
 	out, err := ProjectCharacter(s.ctx, &ProjectCharacterInput{
 		Character: s.barbarian(s.unarmoredDefense(), unreadable),
 	})
-	s.Require().NoError(err,
-		"a read entry does not put an unreadable blob between a player and the game")
-	s.Require().Equal(15, out.ArmorClass.Total,
-		"and folds every condition that did parse: 10 + 2 DEX + 3 CON")
+	s.Require().Error(err, "a projection whose answer is written back refuses what it cannot read")
+	s.Require().Nil(out)
+	s.Require().Contains(err.Error(), "nonsense", "and names the blob it could not read")
 
 	_, err = Resolve(s.ctx, &Input{
 		World:        s.world(),
@@ -388,13 +379,32 @@ func (s *ProjectionTestSuite) TestTheProjectionReadsWhatResolveRefuses() {
 		"and names the blob it could not read")
 }
 
+// TestAConditionThatFailsToApplyRefusesTheProjection is the rpg-api#1078
+// probe. An Inspired die with no granting bard parses — strict Load accepts
+// it — and then refuses to Apply. The lenient projection dropped it with a
+// warning and folded the rest; the strict one refuses and names the ref.
+func (s *ProjectionTestSuite) TestAConditionThatFailsToApplyRefusesTheProjection() {
+	inspired, err := (&conditions.InspiredCondition{MemberID: projectedHeroID}).ToJSON()
+	s.Require().NoError(err)
+	record := s.barbarian(s.unarmoredDefense(), inspired)
+
+	_, err = character.Load(s.ctx, s.barbarian(s.unarmoredDefense(), inspired))
+	s.Require().NoError(err, "the condition parses: this is an Apply refusal, not a parse one")
+
+	out, err := ProjectCharacter(s.ctx, &ProjectCharacterInput{Character: record})
+	s.Require().Error(err, "a condition that will not apply is not folded around")
+	s.Require().Nil(out)
+	s.Require().Contains(err.Error(), refs.Conditions.Inspired().String(),
+		"and the refusal names the condition that would not apply")
+}
+
 // TestTheDefaultAttachRefuses pins the shape Kirk asked for on #1289: the
 // policy is a field whose ZERO VALUE is the answer that cannot destroy
 // anything.
 //
-// It reaches past both entries on purpose. Resolve refusing and the projection
-// dropping are pinned by the contrast above, and both of those pass whichever
-// way round the default sits — each entry says what it wants. What no
+// It reaches past the entries on purpose. Resolve and the projection refusing
+// are pinned above, and those pass whichever way round the default sits — each
+// entry says what it wants. What no
 // behavioural test covers is the entry NOT WRITTEN YET: somebody adds a third
 // caller, does not read the field's comment, and gets whatever the zero value
 // happens to mean. This asserts that what they get is the refusal.

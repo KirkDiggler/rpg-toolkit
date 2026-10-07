@@ -128,26 +128,22 @@ const (
 // the way out; a caller holding a cast would be a caller able to fold without a
 // door, which is the disease rather than the cure.
 //
-// # It reads leniently, because refusing would be the wrong kind of loud
+// # It reads strictly, because its answer is written back
 //
-// A record carrying a condition this build cannot parse — homebrew, a body
-// written by a newer version, a partial write — still projects. What parsed is
-// folded; what did not is dropped, and the loader warns about it by name. This
-// entry only reads, so a drop here cannot delete anything: nothing on this path
-// writes a sheet back.
+// A record carrying a condition this build cannot parse, or one that parses
+// and then refuses to Apply, does not project. The attach fails and the error
+// names the condition ref, the same refusal [Resolve] gives the same record.
 //
-// [Resolve] does the opposite with the same record and is also right, because
-// it hands back sheets to be persisted — a silently dropped condition there is
-// a condition deleted by whatever verb happened to run (rpg-toolkit#948). One
-// attach mechanism, policy per entry: the difference between the two entries is
-// DropUnreadable on [attachAllInput], which this one sets and Resolve leaves at
-// its zero value. TestTheProjectionReadsWhatResolveRefuses runs one record
-// through both and pins the two answers side by side.
-//
-// That the drop is AUDIBLE rather than merely tolerated is the whole point of
-// the ruling behind this — fail loudly means observable, not refused. Getting
-// the drop out somewhere a player can see it, rather than into a log, is a
-// named shelf in the design.
+// It used to read leniently: what parsed was folded, what did not was dropped
+// with a warning, on the reasoning that "nothing on this path writes a sheet
+// back". That stopped being true. Session's Join copies the projected AC and
+// facts onto the member it writes, and rpg-api persists ArmorClass.Total as
+// the character's stored AC after an equip. A fold that silently left out a
+// condition would be persisted as though it were the whole answer — the
+// rpg-toolkit#1276 shape behind a log line (rpg-api#1078 review). So the
+// projection takes the policy that cannot write a wrong number: the zero value
+// of DropUnreadable on [attachAllInput], which is what Resolve takes too.
+// TestTheProjectionRefusesWhatResolveRefuses pins the two answers side by side.
 //
 // # There is no world here, and that is an answer rather than a gap
 //
@@ -197,10 +193,8 @@ func projectCharacterOn(
 	cast, err := attachAll(ctx, surf, &attachAllInput{
 		Participants: []Participant{one},
 		Roller:       refusingRoller{},
-		// Asked for in writing, because the default cannot destroy anything and
-		// this is the entry that opts out of it. Safe here for a reason about
-		// this entry rather than about loading — see the field's own comment.
-		DropUnreadable: true,
+		// DropUnreadable stays at its zero value: this entry's answer is
+		// written back by its callers, so it refuses what it cannot attach.
 	})
 	if err != nil {
 		// Tear down whatever did attach before giving up, exactly as the
