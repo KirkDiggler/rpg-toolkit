@@ -113,6 +113,11 @@ const (
 	// happening; an encounter whose fallen monster was worth nothing simply
 	// has no experience beat in it.
 	//
+	// ITS ACTOR MAY BE A FORMER MEMBER, alone among the kinds: the fallen
+	// monster that caused the grant may have exited by the time the session
+	// records it. Any member this encounter ever held is accepted; a
+	// never-member is refused (ErrNotMember).
+	//
 	// ACCEPTED AFTER THE ENCOUNTER HAS CLOSED, alone among the kinds. The
 	// fall that pays can be the fall that ends the run — see
 	// [Encounter.prepareRecord]'s refusal site for why that door has to be
@@ -689,7 +694,8 @@ type RecordOutput struct {
 // Errors: ErrNilInput, ErrClosed (for every kind but
 // [OutcomeExperienceGained], which is recordable after the close — see
 // prepareRecord's refusal site for why), ErrNoMember (empty actor or
-// target), ErrNotMember (unknown actor or target), ErrInvalidData (a kind or value name this
+// target), ErrNotMember (unknown actor or target; an experience beat's actor
+// may be any former member), ErrInvalidData (a kind or value name this
 // composition does not know, missing or mismatched DeathSave, Trade or
 // Experience detail, an experience grant naming no character or paying a
 // non-positive amount, an Attack or
@@ -896,7 +902,17 @@ func (e *Encounter) prepareRecord(in *RecordInput) ([]preparedActivationBeat, er
 	if in.Actor == "" {
 		return nil, fmt.Errorf("record: actor: %w", ErrNoMember)
 	}
-	if _, ok := e.members[in.Actor]; !ok {
+	// AN EXPERIENCE BEAT MAY NAME A FORMER MEMBER. Its actor is the cause —
+	// the monster whose fall paid — and a fallen monster can exit before the
+	// session settles the act. It is the same notion [Encounter.Story] and
+	// [Encounter.checkWardSource] answer by: someone who was here keeps their
+	// name in the story. An id this encounter never held is still nobody.
+	// Every other kind's actor must be a current member.
+	if in.Kind == OutcomeExperienceGained {
+		if !e.everMembers[in.Actor] {
+			return nil, fmt.Errorf("record: actor %q: %w", in.Actor, ErrNotMember)
+		}
+	} else if _, ok := e.members[in.Actor]; !ok {
 		return nil, fmt.Errorf("record: actor %q: %w", in.Actor, ErrNotMember)
 	}
 

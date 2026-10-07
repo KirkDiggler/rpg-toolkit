@@ -375,3 +375,31 @@ func (s *EncounterAnswersSuite) TestAnAreaEndedBeatOutlivesAnExit() {
 	s.Require().Len(told, 2)
 	s.Equal("area ended", told[1].reason)
 }
+
+// An experience beat may name the monster whose fall paid even after that
+// monster has exited: the actor is the cause, and a member who was here keeps
+// its name in the story. A never-member is still refused, and every other
+// kind still requires a current member.
+func (s *EncounterAnswersSuite) TestAnExperienceBeatNamesAFallenMonsterThatExited() {
+	down := &downList{}
+	enc := s.trio(down)
+	down.down = []encounter.MemberID{goblin}
+	_, err := aRound(enc)
+	s.Require().NoError(err)
+	_, err = enc.Exit(&encounter.ExitInput{Member: goblin})
+	s.Require().NoError(err)
+
+	grant := &encounter.ExperienceDetail{
+		Member: string(goblin),
+		Grants: []encounter.ExperienceGrant{{Character: string(alice), Amount: 50, Total: 350}},
+	}
+	out, err := enc.Record(&encounter.RecordInput{Kind: encounter.OutcomeExperienceGained, Actor: goblin, Experience: grant})
+	s.Require().NoError(err, "a former member is the cause of its own grant")
+	s.NotZero(out.Seq)
+
+	_, err = enc.Record(&encounter.RecordInput{Kind: encounter.OutcomeExperienceGained, Actor: "stranger", Experience: grant})
+	s.Require().ErrorIs(err, encounter.ErrNotMember, "a never-member is nobody")
+
+	_, err = enc.Record(&encounter.RecordInput{Kind: encounter.OutcomeMissed, Actor: goblin, Targets: []encounter.MemberID{alice}})
+	s.Require().ErrorIs(err, encounter.ErrNotMember, "every other kind still needs a current member")
+}
