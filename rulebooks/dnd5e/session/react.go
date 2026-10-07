@@ -225,9 +225,20 @@ func (m *Manager) React(ctx context.Context, in *ReactInput) (*ReactOutput, erro
 }
 
 // resumeAfterLastAnswer continues whatever the table was waiting on, once the
-// window just answered was the last one open. Every React path that answers a
-// window ends here, so the three of them cannot disagree about what "the last
-// answer" resumes (rpg-toolkit#1965).
+// window just answered was the last one open. Every answer path whose window
+// can stand while the table is paused ends here — the generic reaction window
+// (React itself), the pending-attack window (answerPendingAttack) and the
+// post-hit window (answerPostHit) — so they cannot disagree about what "the
+// last answer" resumes (rpg-toolkit#1965).
+//
+// THREE PATHS ARE EXEMPT, and only because of where their windows come from:
+// answerPostRoll, answerCheckOffer and answerCastOffer answer windows posed by
+// the actor's own Attack, Unlock or Cast, on their own turn, through
+// openForChange. No turn is paused and no directive is held while one stands,
+// so there is nothing for them to resume. The day one of those windows can be
+// posed during a driven turn or a held walk, its answer path must call this
+// step too — porting Shield onto the post-roll offer window (rpg-toolkit#1965
+// tier 1 #8) is exactly that day.
 //
 // NOTHING RESUMES WHILE A QUESTION STANDS. Another audience still deciding is
 // still holding the table, and continuing past them would take the announced
@@ -260,7 +271,9 @@ func (m *Manager) resumeAfterLastAnswer(
 	switch {
 	case len(walkPath) > 0:
 		if _, err := m.runWalk(ctx, scope, walker, walkPath); err != nil {
-			return err
+			// The answer already saved dirty sheets, and an earlier cell
+			// may have too, so the refusal names what landed (S6).
+			return saveErrorAfterWrites(scope, "", err)
 		}
 		return m.saveWalkProgress(ctx, scope)
 	case scope.enc.HeldDirective():

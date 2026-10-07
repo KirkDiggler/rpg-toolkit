@@ -8,9 +8,9 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -392,26 +392,17 @@ func (s *CastPauseSuite) TestAPostHitAnswerDuringAHeldDirectiveResumesTheDirecti
 
 // swapInPostHitWindow rewrites member's one open window in the stored session
 // record into a post-hit window, keeping its id so the row's selector holds.
+//
+// The frozen strike inside it is RESOLUTION'S OWN, minted by a real Wrath of the
+// Storm pose (realPostHitFrozen) rather than written here: the envelope is a
+// private resolution type, and this test owns only the swap. The window wrapper
+// around it is this package's own shape.
 func (s *CastPauseSuite) swapInPostHitWindow(member string) {
 	s.T().Helper()
-	offer := struct {
-		ReactorID   string    `json:"reactor_id"`
-		Ref         *core.Ref `json:"ref"`
-		Name        string    `json:"name"`
-		ResourceKey string    `json:"resource_key"`
-	}{ReactorID: member, Ref: refs.Features.WrathOfTheStorm(), Name: "Wrath of the Storm", ResourceKey: "wrath_of_the_storm"}
-	frozen, err := json.Marshal(map[string]any{
-		"kind": "strike.post_roll", "version": 3,
-		"attacker_id": "skeleton", "target_id": member,
-		"post_hit_phase": true,
-		"outcome":        map[string]any{"AttackerID": "skeleton", "TargetID": member, "Hit": true},
-		"post_hit":       offer,
-	})
-	s.Require().NoError(err)
 	payload, err := json.Marshal(map[string]any{
 		"kind": "post_hit", "audience": member,
 		"offer":  map[string]string{"ref": refs.Features.WrathOfTheStorm().String(), "name": "Wrath of the Storm"},
-		"frozen": frozen,
+		"frozen": realPostHitFrozen(s.T()),
 	})
 	s.Require().NoError(err)
 
@@ -427,6 +418,40 @@ func (s *CastPauseSuite) swapInPostHitWindow(member string) {
 		swapped = true
 	}
 	s.Require().True(swapped, "member %q has no open window to swap", member)
+}
+
+// realPostHitFrozen is the frozen strike resolution writes when a goblin's
+// driven swing hits a Tempest cleric holding Wrath of the Storm — the scene
+// TestWrathMonsterTurnReloadResumesWithoutSecondStrike plays, stopped at the
+// pose. Declining it resumes nothing inside the strike, so the ids it names
+// need not be members of the scene it is swapped into.
+func realPostHitFrozen(t *testing.T) []byte {
+	t.Helper()
+	wrath := &CastSuite{}
+	wrath.SetT(t)
+	wrath.scene(wrath.tempestSheet(), 1, 15, 2, 1, 4, 5)
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: wrath.dice, TurnDriver: reachlessAttacker{}, Sessions: wrath.sessions, Encounters: wrath.encounters, Characters: wrath.characters, Events: wrath.stream})
+	require.NoError(t, err)
+	_, err = mgr.EndTurn(context.Background(), &session.EndTurnInput{Session: "sess", Member: "cleric", DeclarationID: currentEndTurnID(t, mgr, "sess", "cleric")})
+	require.NoError(t, err)
+
+	stored := wrath.sessions.byID["sess"]
+	require.NotNil(t, stored)
+	for _, window := range stored.Windows.Windows {
+		if string(window.Audience) != "cleric" {
+			continue
+		}
+		var posed struct {
+			Kind   string `json:"kind"`
+			Frozen []byte `json:"frozen"`
+		}
+		require.NoError(t, json.Unmarshal(window.Payload, &posed))
+		require.Equal(t, "post_hit", posed.Kind, "the goblin's hit poses the cleric's Wrath")
+		require.NotEmpty(t, posed.Frozen)
+		return posed.Frozen
+	}
+	require.FailNow(t, "the Wrath scene posed no window to the cleric")
+	return nil
 }
 
 // TestTheCasterIsAskedOnHerOwnTurn. The bard whispers at the skeleton standing

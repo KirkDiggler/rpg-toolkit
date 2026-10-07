@@ -244,7 +244,9 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 	// runWalk asks per cell instead and this verb asks not at all.
 	res, err := m.runWalk(ctx, scope, in.Member, in.Path)
 	if err != nil {
-		return nil, fmt.Errorf("move: %w", err)
+		// A cell's opportunity attack can already have saved sheets before a
+		// later cell refuses, so the refusal names what landed (S6).
+		return nil, fmt.Errorf("move: %w", saveErrorAfterWrites(scope, "", err))
 	}
 
 	if err = m.saveWalkProgress(ctx, scope); err != nil {
@@ -822,7 +824,7 @@ func (m *Manager) saveWalkProgress(ctx context.Context, scope *writeScope) error
 	}
 	sheet, err := character.Load(ctx, scope.walker)
 	if err != nil {
-		return fmt.Errorf("save walking sheet: %w", err)
+		return saveErrorAfterWrites(scope, "", fmt.Errorf("save walking sheet: %w", err))
 	}
 	return m.saveWalker(ctx, scope, sheet)
 }
