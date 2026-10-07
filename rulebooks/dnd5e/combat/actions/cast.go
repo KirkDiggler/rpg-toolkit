@@ -537,10 +537,10 @@ func (e CastEffect) validate(target CastTargetRule, hasOptions bool) error {
 		}
 	}
 	// Two bindings naming one parameter would let whichever is written last
-	// silently overwrite the other — the counterpart lost under the DC, or the
-	// DC under the option.
-	if e.SaveDCKey != "" && (e.SaveDCKey == e.CounterpartKey || e.SaveDCKey == e.OptionKey) {
-		return fmt.Errorf("effect save DC key %q collides with another binding", e.SaveDCKey)
+	// silently overwrite the other — the counterpart lost under the option,
+	// the option under the DC. Every pair of non-empty keys must differ.
+	if err := e.bindingsAreDistinct(); err != nil {
+		return err
 	}
 	if err := e.Ref.IsValid(); err != nil {
 		return fmt.Errorf("condition ref is invalid: %w", err)
@@ -556,6 +556,23 @@ func (e CastEffect) validate(target CastTargetRule, hasOptions bool) error {
 	// promised left empty — which is the quiet half of the binding.
 	if e.OptionKey != "" && !hasOptions {
 		return fmt.Errorf("effect names option key %q but the cast declares no options", e.OptionKey)
+	}
+	return nil
+}
+
+// bindingsAreDistinct refuses two non-empty binding keys that name the same
+// parameter.
+func (e CastEffect) bindingsAreDistinct() error {
+	bindings := []struct{ name, key string }{
+		{"counterpart", e.CounterpartKey}, {"option", e.OptionKey}, {"save DC", e.SaveDCKey},
+	}
+	for i := range bindings {
+		for j := i + 1; j < len(bindings); j++ {
+			if bindings[i].key != "" && bindings[i].key == bindings[j].key {
+				return fmt.Errorf("effect %s key and %s key both name parameter %q: one binding would overwrite the other",
+					bindings[i].name, bindings[j].name, bindings[i].key)
+			}
+		}
 	}
 	return nil
 }

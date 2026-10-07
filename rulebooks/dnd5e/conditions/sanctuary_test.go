@@ -72,6 +72,32 @@ func (s *SanctuarySuite) TestRefusesAWardWithNoSaveDC() {
 	}
 }
 
+// WardSaveDC hands back the ward's own DC.
+func (s *SanctuarySuite) TestWardSaveDCIsTheWardsOwn() {
+	dc, err := s.condition("cleric-a").WardSaveDC()
+	s.Require().NoError(err)
+	s.Equal(13, dc)
+}
+
+// A ward stored before wards kept a DC still LOADS — refusing would brick the
+// whole sheet until a long rest — but it loads as SaveDC 0 and the ward itself
+// refuses to answer a DC. The decision is pinned here so neither half can
+// drift: load stays lenient, the reading stays fail-closed.
+func (s *SanctuarySuite) TestAWardStoredWithoutADCLoadsButRefusesItsDC() {
+	loaded, err := LoadJSON(json.RawMessage(`{
+		"ref":{"module":"dnd5e","type":"conditions","id":"sanctuary"},
+		"member_id":"ward","source_id":"cleric",
+		"source_ref":{"module":"dnd5e","type":"spells","id":"sanctuary"}
+	}`))
+	s.Require().NoError(err)
+	ward, ok := loaded.(*SanctuaryCondition)
+	s.Require().True(ok)
+	s.Zero(ward.SaveDC)
+
+	_, err = ward.WardSaveDC()
+	s.Require().ErrorIs(err, ErrWardWithoutDC)
+}
+
 // The factory reads the DC from the parameter the cast effect's SaveDCKey
 // names, and a config without one is refused the same way.
 func (s *SanctuarySuite) TestTheFactoryTakesTheDCFromConfig() {

@@ -363,13 +363,20 @@ func (s *CastProfileSuite) TestItRefusesWhatItCannotResolve() {
 	s.Run("a save DC key that collides with the counterpart key", func() {
 		profile := gatelessProfile()
 		profile.Effects[0].SaveDCKey = profile.Effects[0].CounterpartKey
-		s.Require().ErrorContains(profile.Validate(), "collides with another binding")
+		s.Require().ErrorContains(profile.Validate(), "one binding would overwrite the other")
 	})
 
 	s.Run("a save DC key that collides with the option key", func() {
 		profile := commandProfile()
 		profile.Effects[0].SaveDCKey = profile.Effects[0].OptionKey
-		s.Require().ErrorContains(profile.Validate(), "collides with another binding")
+		s.Require().ErrorContains(profile.Validate(), "one binding would overwrite the other")
+	})
+
+	s.Run("a counterpart key that collides with the option key", func() {
+		profile := commandProfile()
+		profile.Effects[0].CounterpartKey = "word"
+		profile.Effects[0].OptionKey = "word"
+		s.Require().ErrorContains(profile.Validate(), "one binding would overwrite the other")
 	})
 }
 

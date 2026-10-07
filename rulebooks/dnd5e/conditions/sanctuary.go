@@ -6,6 +6,7 @@ package conditions
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -16,6 +17,11 @@ import (
 
 // SanctuaryName is the display name for a creature warded by Sanctuary.
 const SanctuaryName = "Sanctuary"
+
+// ErrWardWithoutDC is returned by [SanctuaryCondition.WardSaveDC] when the
+// ward keeps no positive DC — a blob written before wards recorded one. A save
+// against DC 0 always succeeds, so a zero is never a DC to roll against.
+var ErrWardWithoutDC = errors.New("conditions: sanctuary ward keeps no save DC")
 
 // SanctuaryConditionData is the persisted source-qualified Sanctuary ward.
 type SanctuaryConditionData struct {
@@ -97,6 +103,17 @@ func NewSanctuaryCondition(input NewSanctuaryConditionInput) (*SanctuaryConditio
 		SourceRef: refs.Spells.Sanctuary(),
 		SaveDC:    input.SaveDC,
 	}, nil
+}
+
+// WardSaveDC is the DC an attacker's Wisdom save is rolled against. It is the
+// one place the zero rule is enforced: a ward with SaveDC <= 0 refuses with
+// [ErrWardWithoutDC] rather than handing a reader a number nobody can fail.
+// Readers ask this instead of reading SaveDC directly.
+func (s *SanctuaryCondition) WardSaveDC() (int, error) {
+	if s.SaveDC <= 0 {
+		return 0, rpgerr.Wrapf(ErrWardWithoutDC, "ward on %s from %s", s.MemberID, s.SourceID)
+	}
+	return s.SaveDC, nil
 }
 
 // Ref returns the canonical Sanctuary condition ref.
