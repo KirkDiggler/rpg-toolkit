@@ -5,6 +5,8 @@ package conditions
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
@@ -274,13 +276,6 @@ var conditionLoaders = map[string]conditionLoader{
 		}
 		return immune, nil
 	},
-	refs.Conditions.InFog().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		condition := &InFogCondition{}
-		if err := condition.loadJSON(data); err != nil {
-			return nil, err
-		}
-		return condition, nil
-	},
 	refs.Conditions.GuidingBolt().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		immune := &GuidingBoltCondition{}
 		if err := immune.loadJSON(data); err != nil {
@@ -297,9 +292,42 @@ var conditionLoaders = map[string]conditionLoader{
 	},
 }
 
+// ErrRetiredCondition reports a saved condition whose type no longer exists.
+// A sheet loader drops such an entry, under every load policy, rather than
+// failing the sheet: the condition carried no rule, and what it recorded is
+// now answered elsewhere. See [IsRetired].
+var ErrRetiredCondition = errors.New("condition type is retired")
+
+// retiredConditions are the refs a saved sheet may still carry for a condition
+// type that no longer exists.
+//
+// In Fog recorded membership in a Fog Cloud area. Membership is the
+// encounter's answer, asked when needed and never stored on a sheet; its ref
+// lives on only as the area's membership label.
+var retiredConditions = map[string]bool{
+	refs.Conditions.InFog().String(): true,
+}
+
+// IsRetired reports whether data is a saved condition of a retired type,
+// which a sheet loader drops. Data that does not parse is not retired; the
+// loader reports it as it always has.
+func IsRetired(data json.RawMessage) bool {
+	var peek struct {
+		Ref core.Ref `json:"ref"`
+	}
+	if err := json.Unmarshal(data, &peek); err != nil {
+		return false
+	}
+	return retiredConditions[peek.Ref.String()]
+}
+
 // LoadJSON loads a condition from its JSON representation.
 // The game server stores conditions as opaque JSON blobs;
 // this function deserializes them into strongly-typed structs.
+//
+// Errors: unparsable data, an unknown ref, a retired type (wrapping
+// [ErrRetiredCondition], which a sheet loader drops), or the condition's own
+// load error.
 func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 	// Peek at the complete ref so refs with a known ID under the wrong module
 	// or type cannot route to a condition they do not canonically name.
@@ -309,6 +337,10 @@ func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 
 	if err := json.Unmarshal(data, &peek); err != nil {
 		return nil, rpgerr.Wrap(err, "failed to peek at condition ref")
+	}
+
+	if retiredConditions[peek.Ref.String()] {
+		return nil, fmt.Errorf("%w: %s", ErrRetiredCondition, peek.Ref.String())
 	}
 
 	load, ok := conditionLoaders[peek.Ref.String()]

@@ -465,15 +465,20 @@ func TestApplyDamageAtZeroOwnsDeathSaveFailures(t *testing.T) {
 }
 
 func TestZeroAppliedDamageDoesNotChangeDeathSaveProgress(t *testing.T) {
-	immunity := 0.0
 	twelve := 12
-	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
-		{DamageType: damage.Fire, Roll: dnd5eEvents.RollComponent{
+	settled, err := combat.SettleDamage(&combat.SettleDamageInput{
+		Dealt: []dnd5eEvents.DamageComponent{{DamageType: damage.Fire, Roll: dnd5eEvents.RollComponent{
 			Source:   dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
 			Modifier: &twelve,
+		}}},
+		Multipliers: []dnd5eEvents.DamageMultiplier{{
+			Source:     dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity"},
+			DamageType: damage.Fire,
+			Factor:     dnd5eEvents.DamageFactorImmunity,
 		}},
-		{DamageType: damage.Fire, Multiplier: &immunity},
 	})
+	require.NoError(t, err)
+	instances, total := settled.FinalDamage()
 	require.Zero(t, total)
 	require.Empty(t, instances)
 

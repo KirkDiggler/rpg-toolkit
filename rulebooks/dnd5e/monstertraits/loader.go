@@ -151,6 +151,11 @@ func LoadMonsterConditions(
 	roller dice.Roller,
 ) error {
 	for _, data := range conditionData {
+		// A retired condition type is dropped: it carried no rule.
+		if conditions.IsRetired(data) {
+			continue
+		}
+
 		condition, err := LoadJSON(data, roller)
 		if err != nil {
 			return rpgerr.Wrap(err, "failed to load monster condition")

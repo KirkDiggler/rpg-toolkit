@@ -48,7 +48,6 @@ func DisplayFor(ref core.Ref) (Display, bool) {
 // ("A prone creature's attacks…"), never in the holder's "you".
 var displayCatalog = map[string]Display{
 	refs.Conditions.Shillelagh().String(): {Name: "Shillelagh", Detail: "Selected held weapon: 1d8 magical bludgeoning; uses the better of Strength or spellcasting ability."},
-	refs.Conditions.InFog().String():      {Name: InFogName, Detail: "Inside Fog Cloud. Sight is blocked by the fog."},
 	// Fighting styles (Fighter).
 	refs.Conditions.FightingStyleArchery().String():             {Name: "Archery", Detail: "Adds 2 to attack rolls you make with ranged weapons."},
 	refs.Conditions.FightingStyleDefense().String():             {Name: "Defense"},

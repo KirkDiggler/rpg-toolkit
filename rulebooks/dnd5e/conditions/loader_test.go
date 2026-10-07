@@ -402,3 +402,19 @@ func TestEveryLoadedConditionNamesItsCanonicalRef(t *testing.T) {
 		})
 	}
 }
+
+// A saved In Fog condition is a retired type: LoadJSON names it as retired
+// rather than unknown, and IsRetired tells a sheet loader to drop it.
+func TestARetiredInFogConditionIsNamedRetired(t *testing.T) {
+	saved := json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"in_fog"},` +
+		`"member_id":"m1","source_id":"area-1","source_ref":{"module":"dnd5e","type":"spells","id":"fog-cloud"}}`)
+
+	require.True(t, IsRetired(saved))
+	_, err := LoadJSON(saved)
+	require.ErrorIs(t, err, ErrRetiredCondition)
+
+	raging, err := (&RagingCondition{CharacterID: "m1", Source: "rage"}).ToJSON()
+	require.NoError(t, err)
+	require.False(t, IsRetired(raging), "a live condition type is not retired")
+	require.False(t, IsRetired(json.RawMessage(`not json`)), "unparsable data is reported by the loader, not dropped")
+}

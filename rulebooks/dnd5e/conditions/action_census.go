@@ -40,8 +40,6 @@ var actionCensus = map[string]censusEntry{
 	refs.Conditions.Sanctuary().String(): notYetAnswering,
 
 	// Do not bear on the holder's own attack.
-	// Owns no rule; fog acts through the general sight rule (R20).
-	refs.Conditions.InFog().String():                   notBearing,
 	refs.Conditions.UnarmoredDefense().String():        notBearing,
 	refs.Conditions.FightingStyleDefense().String():    notBearing,
 	refs.Conditions.FightingStyleProtection().String(): notBearing,

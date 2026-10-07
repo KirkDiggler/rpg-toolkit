@@ -238,7 +238,10 @@ func (n conditionsNS) DivineFavor() *core.Ref { return conditionDivineFavor }
 
 var conditionInFog = &core.Ref{Module: Module, Type: TypeConditions, ID: "in_fog"}
 
-// InFog returns membership in a source-qualified Fog Cloud area, not Blinded.
+// InFog is Fog Cloud's area membership label: the encounter tells a member
+// entering and leaving the area under this ref. It names no condition type;
+// nothing on a sheet carries it, and a saved sheet that still does drops it
+// on load.
 func (n conditionsNS) InFog() *core.Ref { return conditionInFog }
 
 var conditionFaerieFire = &core.Ref{Module: Module, Type: TypeConditions, ID: "faerie_fire"}

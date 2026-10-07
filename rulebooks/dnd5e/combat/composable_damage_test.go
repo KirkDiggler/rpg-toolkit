@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -57,7 +58,7 @@ func (s *ComposableDamageTestSuite) TestFlatNecroticFeatureDoesNotDoubleOnCritic
 	s.Equal(5, feature.Total(), "a +5 Charisma modifier contributes five, not a doubled ten")
 	s.False(feature.IsCritical, "a flat-only feature component does not double on a critical")
 	s.True(got.featurePresentAtConditions,
-		"StageFeatures must append the feature component before StageConditions applies defenses")
+		"the dealt fold's feature component reaches the incoming fold where the target's defenses answer")
 
 	weapon := componentBySourceAndType(got.components, dnd5eEvents.DamageSourceWeapon, damage.Slashing)
 	s.Require().NotNil(weapon)
@@ -126,7 +127,27 @@ func (s *ComposableDamageTestSuite) foldCriticalPactLongsword(strengthModifier, 
 	folded, err := modifiedChain.Execute(s.ctx, event)
 	s.Require().NoError(err)
 
-	instances, total := combat.FinalDamage(folded.Components)
+	sent, err := dnd5eEvents.NewIncomingDamageEvent(dnd5eEvents.IncomingDamageInput{
+		TargetID: "ghoul-1", SourceID: "warlock-1", Dealt: folded.Components,
+		Frame: contributions.Frame{
+			Actor:  "warlock-1",
+			Target: contributions.Known("ghoul-1"),
+			Action: contributions.ActionFacts{Roll: contributions.Known(contributions.RollKindAttack)},
+		},
+	})
+	s.Require().NoError(err)
+	incoming := events.NewStagedChain[*dnd5eEvents.IncomingDamageEvent](combat.ModifierStages)
+	modifiedIncoming, err := dnd5eEvents.IncomingDamageChain.On(s.bus).PublishWithChain(s.ctx, sent, incoming)
+	s.Require().NoError(err)
+	answered, err := modifiedIncoming.Execute(s.ctx, sent.Clone())
+	s.Require().NoError(err)
+	s.Require().NoError(answered.CheckUnaltered(sent))
+
+	settled, err := combat.SettleDamage(&combat.SettleDamageInput{
+		Dealt: sent.Dealt(), Reductions: answered.Reductions, Multipliers: answered.Multipliers,
+	})
+	s.Require().NoError(err)
+	instances, total := settled.FinalDamage()
 	return foldedPactLongsword{
 		components:                 folded.Components,
 		instances:                  instances,
@@ -157,27 +178,20 @@ func (s *ComposableDamageTestSuite) installFlatNecroticFeature(charismaModifier 
 }
 
 func (s *ComposableDamageTestSuite) installTypeSpecificDefenses(featurePresentAtConditions *bool) {
-	_, err := dnd5eEvents.DamageChain.On(s.bus).SubscribeWithChain(s.ctx,
-		func(_ context.Context, _ *dnd5eEvents.DamageChainEvent, c chain.Chain[*dnd5eEvents.DamageChainEvent]) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
-			err := c.Add(combat.StageConditions, "test_lifedrinker_type_defenses",
-				func(_ context.Context, event *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
-					*featurePresentAtConditions = componentBySourceAndType(event.Components, dnd5eEvents.DamageSourceFeature, damage.Necrotic) != nil
-					event.Components = append(event.Components,
-						dnd5eEvents.DamageComponent{
-							Source: dnd5eEvents.DamageSourceCondition,
-							Roll: dnd5eEvents.RollComponent{
-								Source: dnd5eEvents.RollSource{Ref: syntheticDefensesRef, Name: "Synthetic Type Defenses"},
-							},
-							Multiplier: dnd5eEvents.Multiply(2),
-							DamageType: damage.Slashing,
+	_, err := dnd5eEvents.IncomingDamageChain.On(s.bus).SubscribeWithChain(s.ctx,
+		func(_ context.Context, _ *dnd5eEvents.IncomingDamageEvent, c chain.Chain[*dnd5eEvents.IncomingDamageEvent]) (chain.Chain[*dnd5eEvents.IncomingDamageEvent], error) {
+			err := c.Add(combat.StageFinal, "test_lifedrinker_type_defenses",
+				func(_ context.Context, event *dnd5eEvents.IncomingDamageEvent) (*dnd5eEvents.IncomingDamageEvent, error) {
+					*featurePresentAtConditions = componentBySourceAndType(event.Dealt(), dnd5eEvents.DamageSourceFeature, damage.Necrotic) != nil
+					source := dnd5eEvents.RollSource{Ref: syntheticDefensesRef, Name: "Synthetic Type Defenses"}
+					event.Multipliers = append(event.Multipliers,
+						dnd5eEvents.DamageMultiplier{
+							Category: dnd5eEvents.DamageSourceCondition, Source: source,
+							DamageType: damage.Slashing, Factor: dnd5eEvents.DamageFactorVulnerability,
 						},
-						dnd5eEvents.DamageComponent{
-							Source: dnd5eEvents.DamageSourceCondition,
-							Roll: dnd5eEvents.RollComponent{
-								Source: dnd5eEvents.RollSource{Ref: syntheticDefensesRef, Name: "Synthetic Type Defenses"},
-							},
-							Multiplier: dnd5eEvents.Multiply(0.5),
-							DamageType: damage.Necrotic,
+						dnd5eEvents.DamageMultiplier{
+							Category: dnd5eEvents.DamageSourceCondition, Source: source,
+							DamageType: damage.Necrotic, Factor: dnd5eEvents.DamageFactorResistance,
 						},
 					)
 					return event, nil

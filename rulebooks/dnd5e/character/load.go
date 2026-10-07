@@ -581,6 +581,12 @@ func loadEffects(raw []json.RawMessage, characterID string, policy effectPolicy)
 	effects := make([]loadedEffect, 0, len(raw))
 
 	for i, rawCondition := range raw {
+		// A retired condition type is dropped under every policy: it carried
+		// no rule, and the sheet saves without it.
+		if conditions.IsRetired(rawCondition) {
+			continue
+		}
+
 		condition, err := conditions.LoadJSON(rawCondition)
 		if err != nil {
 			if policy == strictEffects {

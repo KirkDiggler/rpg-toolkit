@@ -146,22 +146,20 @@ func testShillelaghConfig() ShillelaghConfig {
 }
 
 func (s *actionCensusSuite) TestNotBearingYieldsNoRow() {
-	fog, err := NewInFogCondition(NewInFogConditionInput{MemberID: "rogue", SourceID: "area-1", SourceRef: refs.Spells.FogCloud()})
-	s.Require().NoError(err)
 	out, err := AssessActionEffects(&AssessActionEffectsInput{
-		Conditions: []dnd5eEvents.ConditionBehavior{&UnarmoredDefenseCondition{MemberID: "rogue"}, fog},
+		Conditions: []dnd5eEvents.ConditionBehavior{&UnarmoredDefenseCondition{MemberID: "rogue"}},
 		Frame:      rogueFrame(false),
 	})
 	s.Require().NoError(err)
-	s.Empty(out.Effects, "In Fog owns no rule, so it shows no row (R20)")
+	s.Empty(out.Effects, "Unarmored Defense bears on AC only, so it shows no row")
 
 	frame := rogueFrame(false)
 	frame.Held = []contributions.MemberHeld{{Member: "goblin", Conditions: []contributions.HeldCondition{
-		{Ref: refs.Conditions.InFog().String(), SourceID: "area-1"},
+		{Ref: refs.Conditions.UnarmoredDefense().String()},
 	}}}
 	held, err := AssessTargetHeldEffects(&AssessTargetHeldEffectsInput{Frame: frame})
 	s.Require().NoError(err)
-	s.Empty(held.Effects, "a target in the fog shows no row either (R20)")
+	s.Empty(held.Effects, "a target's AC is not the attacker's to know, so no row (R21)")
 }
 
 func (s *actionCensusSuite) TestEffectIDsUniqueAndDeterministic() {
