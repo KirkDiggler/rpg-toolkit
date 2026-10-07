@@ -214,6 +214,21 @@ func (c *Character) ClassLevels() contributions.ClassLevels {
 	return contributions.KnownClassLevels(held...)
 }
 
+var _ combat.SightHolder = (*Character)(nil)
+
+// SightFeet answers the named sight question ([combat.SightHolder]) from this
+// character's sheet: the race table's stated range when the rulebook states
+// one, else [combat.DefaultSightFeet]. No race in the table states a range
+// today, so every character answers the stated default of 120 feet.
+//
+// Darkvision as a race trait does not change the number: it is a rule about
+// seeing in dim light and darkness, and until a light model exists (R10)
+// there is no darkness for it to answer against. It is asked each time and
+// never stored.
+func (c *Character) SightFeet() int {
+	return combat.DefaultSightFeet
+}
+
 // cloneLevelEntries deep-copies a level record, including each entry's
 // choices, so neither the caller nor the sheet can mutate the other's.
 func cloneLevelEntries(entries []LevelEntry) []LevelEntry {

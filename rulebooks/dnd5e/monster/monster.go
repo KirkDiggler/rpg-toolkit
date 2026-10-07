@@ -204,6 +204,19 @@ func (m *Monster) AC() int {
 	return m.ac
 }
 
+var _ combat.SightHolder = (*Monster)(nil)
+
+// SightFeet answers the named sight question ([combat.SightHolder]) from the
+// stat block: its authored darkvision range when it states one, else
+// [combat.DefaultSightFeet] — the same default a character whose race table
+// states no range answers, because silence means the same for both kinds.
+func (m *Monster) SightFeet() int {
+	if m.senses.Darkvision > 0 {
+		return m.senses.Darkvision
+	}
+	return combat.DefaultSightFeet
+}
+
 // ClassLevels answers the frame's class-levels fact for a monster: known, and
 // empty. A stat block holds no class levels, which is an answer rather than
 // an unknown — a class-scaled rule held by a monster refuses rather than

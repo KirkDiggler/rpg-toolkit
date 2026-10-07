@@ -248,3 +248,13 @@ func (s *SheetFactsTestSuite) TestClassLevelsAnswersFromTheLevelRecord() {
 	s.Equal([]contributions.ClassLevel{{Class: classes.Rogue, Levels: 3}}, levels)
 	s.NoError(char.ClassLevels().Validate())
 }
+
+// TestACharacterWithNoStatedRangeSeesTheStatedDefault: no race table states a
+// sight range, so a character answers the rulebook's stated 120 feet — even a
+// dwarf, whose darkvision is a dim-light rule awaiting the light model, not a
+// range.
+func (s *SheetFactsTestSuite) TestACharacterWithNoStatedRangeSeesTheStatedDefault() {
+	char := s.finalize(newRogueDraft(s.T()), "sighted-rogue")
+
+	s.Equal(120, char.SightFeet())
+}
