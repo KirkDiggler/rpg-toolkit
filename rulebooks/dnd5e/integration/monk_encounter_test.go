@@ -291,7 +291,8 @@ func (s *MonkEncounterSuite) TestMartialArts_UnarmedDamageScaling() {
 
 func (s *MonkEncounterSuite) TestMartialArts_MonkWeaponWithDEX() {
 	s.Run("Martial Arts allows DEX for monk weapons (quarterstaff)", func() {
-		data := s.monk.ToData()
+		data, err := s.monk.ToData()
+		s.Require().NoError(err)
 		data.Inventory = append(data.Inventory, character.InventoryItemData{
 			Type: shared.EquipmentTypeWeapon, ID: string(weapons.Quarterstaff), Quantity: 1,
 		})

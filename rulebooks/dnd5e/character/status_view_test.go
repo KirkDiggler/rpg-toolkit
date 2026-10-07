@@ -214,7 +214,7 @@ func (s *canonicalEffectDetailsSuite) TestReadPreservesCharacterAndEffectIdentit
 		Source: refs.Features.Rage().String(), TurnsActive: 3, WasHitThisTurn: true,
 	}
 	char.conditions = append(char.conditions, raging, blessed)
-	beforeData := char.ToData()
+	beforeData := mustToData(s.T(), char)
 	before, err := json.Marshal(beforeData)
 	s.Require().NoError(err)
 
@@ -242,7 +242,7 @@ func (s *canonicalEffectDetailsSuite) TestReadPreservesCharacterAndEffectIdentit
 			}
 		}
 		s.Len(seen, 2, "both fixture effects must be projected")
-		afterData := char.ToData()
+		afterData := mustToData(s.T(), char)
 		// ToData stamps serialization time, not a mutable character field.
 		// Normalize only that generated timestamp; compare all persisted state.
 		afterData.UpdatedAt = beforeData.UpdatedAt

@@ -917,7 +917,7 @@ func (s *CharacterLoadFromDataRoundTripSuite) TestAppearanceSurvivesRoundTrip() 
 	s.Require().NoError(err)
 	s.Require().NotNil(char)
 
-	out := char.ToData()
+	out := mustToData(s.T(), char)
 	s.Require().Equal(expected, out.Appearance)
 }
 
@@ -938,7 +938,7 @@ func (s *CharacterLoadFromDataRoundTripSuite) TestClassResourcesSurviveRoundTrip
 	s.Require().NoError(err)
 	s.Require().NotNil(char)
 
-	out := char.ToData()
+	out := mustToData(s.T(), char)
 	s.Require().NotNil(out.ClassResources, "round-tripped ClassResources must not be nil")
 
 	rage, ok := out.ClassResources[shared.ClassResourceRage]

@@ -89,7 +89,7 @@ func (s *BackgroundChoicesSuite) TestOutlanderInstrumentProficiency() {
 
 	char, err := draft.ToCharacter(s.ctx, "outlander-char", s.bus)
 	s.Require().NoError(err)
-	s.Contains(char.ToData().ToolProficiencies, proficiencies.ToolLute)
+	s.Contains(mustToData(s.T(), char).ToolProficiencies, proficiencies.ToolLute)
 }
 
 // TestNobleGamingSetProficiency covers Noble/Knight's proficiency-only choice.
@@ -102,7 +102,7 @@ func (s *BackgroundChoicesSuite) TestNobleGamingSetProficiency() {
 
 	char, err := draft.ToCharacter(s.ctx, "noble-char", s.bus)
 	s.Require().NoError(err)
-	s.Contains(char.ToData().ToolProficiencies, proficiencies.ToolDragonchessSet)
+	s.Contains(mustToData(s.T(), char).ToolProficiencies, proficiencies.ToolDragonchessSet)
 }
 
 // TestCriminalGamingSetProficiency covers Criminal/Spy's proficiency-only
@@ -117,8 +117,8 @@ func (s *BackgroundChoicesSuite) TestCriminalGamingSetProficiency() {
 
 	char, err := draft.ToCharacter(s.ctx, "criminal-char", s.bus)
 	s.Require().NoError(err)
-	s.Contains(char.ToData().ToolProficiencies, proficiencies.ToolThreeDragonAnte)
-	s.Contains(char.ToData().ToolProficiencies, proficiencies.ToolThieves, "Criminal's fixed thieves' tools grant is untouched")
+	s.Contains(mustToData(s.T(), char).ToolProficiencies, proficiencies.ToolThreeDragonAnte)
+	s.Contains(mustToData(s.T(), char).ToolProficiencies, proficiencies.ToolThieves, "Criminal's fixed thieves' tools grant is untouched")
 }
 
 // TestEntertainerInstrumentDerivesProficiency covers the equipment+derived-
@@ -141,7 +141,7 @@ func (s *BackgroundChoicesSuite) TestEntertainerInstrumentDerivesProficiency() {
 
 	char, err := draft.ToCharacter(s.ctx, "entertainer-char", s.bus)
 	s.Require().NoError(err)
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	s.assertInventoryContainsID(data.Inventory, "flute")
 	s.Contains(data.ToolProficiencies, proficiencies.ToolFlute,
 		"proficiency must be derived from the equipment choice, not asked separately")
@@ -168,7 +168,7 @@ func (s *BackgroundChoicesSuite) TestFolkHeroArtisanToolsDerivesProficiency() {
 
 	char, err := draft.ToCharacter(s.ctx, "folk-hero-char", s.bus)
 	s.Require().NoError(err)
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	s.assertInventoryContainsID(data.Inventory, "smith-tools")
 	s.Contains(data.ToolProficiencies, proficiencies.ToolSmith,
 		"proficiency must be derived from the equipment choice, not asked separately")
@@ -193,7 +193,7 @@ func (s *BackgroundChoicesSuite) TestGuildArtisanToolsDerivesProficiency() {
 
 	char, err := draft.ToCharacter(s.ctx, "guild-artisan-char", s.bus)
 	s.Require().NoError(err)
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	s.assertInventoryContainsID(data.Inventory, "carpenter-tools")
 	s.Contains(data.ToolProficiencies, proficiencies.ToolCarpenter)
 }
@@ -217,7 +217,7 @@ func (s *BackgroundChoicesSuite) TestSoldierItemAndProficiencyAreIndependent() {
 
 	char, err := draft.ToCharacter(s.ctx, "soldier-char", s.bus)
 	s.Require().NoError(err)
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	s.assertInventoryContainsID(data.Inventory, string(tools.DiceSet))
 	s.Contains(data.ToolProficiencies, proficiencies.ToolDragonchessSet,
 		"proficiency choice is independent of which physical item was picked")
@@ -241,7 +241,7 @@ func (s *BackgroundChoicesSuite) TestCharlatanToolsOfTheCon() {
 
 	char, err := draft.ToCharacter(s.ctx, "charlatan-char", s.bus)
 	s.Require().NoError(err)
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	s.assertInventoryContainsID(data.Inventory, "signet-ring")
 }
 
@@ -319,7 +319,7 @@ func (s *BackgroundChoicesSuite) TestChangingCompleteBackgroundClearsOldChoice()
 
 	char, err := draft.ToCharacter(s.ctx, "background-change-char", s.bus)
 	s.Require().NoError(err)
-	s.NotContains(char.ToData().ToolProficiencies, proficiencies.ToolLute,
+	s.NotContains(mustToData(s.T(), char).ToolProficiencies, proficiencies.ToolLute,
 		"Outlander's old choice must not survive the background change")
 }
 
@@ -379,10 +379,10 @@ func (s *BackgroundChoicesSuite) TestFullPublicPathRoundTrip() {
 	s.Require().NoError(err)
 
 	// Serialize and reload the character.
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	reloaded, err := character.Load(s.ctx, data)
 	s.Require().NoError(err)
-	reloadedData := reloaded.ToData()
+	reloadedData := mustToData(s.T(), reloaded)
 
 	s.Equal(shared.Expert, reloadedData.Skills[skills.Stealth], "class expertise survives")
 	s.Equal(shared.Expert, reloadedData.Skills[skills.Insight], "race-granted expertise survives")

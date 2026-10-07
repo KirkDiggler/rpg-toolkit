@@ -157,7 +157,10 @@ func (s *CharacterService) FinalizeCharacter(draftID string) (*CharacterID, erro
     }
     
     // Convert to persistence format
-    characterData := character.ToData()
+    characterData, err := character.ToData()
+    if err != nil {
+        return nil, err
+    }
     
     // Save to your character repository
     if err := s.repo.SaveCharacter(characterData); err != nil {

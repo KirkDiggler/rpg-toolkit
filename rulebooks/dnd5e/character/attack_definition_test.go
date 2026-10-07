@@ -633,7 +633,7 @@ func (s *CharacterAttackTestSuite) TestShillelaghBindingSurvivesReloadButNotRele
 	other, err := AssembleAttack(c, &AssembleAttackInput{Slot: SlotOffHand})
 	s.Require().NoError(err)
 	s.Equal("1d4", other.Attack.Damage[0].Dice)
-	reloaded := s.load(c.ToData())
+	reloaded := s.load(mustToData(s.T(), c))
 	attack, err = AssembleAttack(reloaded, &AssembleAttackInput{Slot: SlotMainHand})
 	s.Require().NoError(err)
 	s.Equal("1d8", attack.Attack.Damage[0].Dice)

@@ -1123,8 +1123,14 @@ func (c *Character) UnequipItem(slot InventorySlot) error {
 	return c.removeReleasedEquipmentConditions(nil)
 }
 
-// ToData converts the character to its persistent data form
-func (c *Character) ToData() *Data {
+// ToData converts the character to its persistent data form.
+//
+// It returns an error, and no data, when any feature or condition cannot
+// serialize itself. It used to skip that entry and return the rest, which
+// wrote a sheet that had silently lost an effect — the save-side twin of a
+// loader that drops what it cannot read (rpg-toolkit#948, #1965). A record
+// missing a condition is not a smaller truth; nothing may persist it.
+func (c *Character) ToData() (*Data, error) {
 	data := &Data{
 		ID:       c.id,
 		PlayerID: c.playerID,
@@ -1192,9 +1198,7 @@ func (c *Character) ToData() *Data {
 		// Use the feature's ToJSON method to get the serialized form
 		jsonData, err := feature.ToJSON()
 		if err != nil {
-			// Skip features that can't be serialized
-			// TODO: Consider how to handle serialization errors
-			continue
+			return nil, rpgerr.Wrapf(err, "character %s: serialize feature %d", c.id, len(data.Features))
 		}
 		// The feature's ToJSON already includes the fully qualified ref
 		data.Features = append(data.Features, jsonData)
@@ -1215,14 +1219,12 @@ func (c *Character) ToData() *Data {
 		// Use the condition's ToJSON method to get the serialized form
 		jsonData, err := condition.ToJSON()
 		if err != nil {
-			// Skip conditions that can't be serialized
-			// TODO: Consider how to handle serialization errors
-			continue
+			return nil, rpgerr.Wrapf(err, "character %s: serialize condition %d", c.id, len(data.Conditions))
 		}
 		data.Conditions = append(data.Conditions, jsonData)
 	}
 
-	return data
+	return data, nil
 }
 
 // subscribeToEvents subscribes the character to gameplay events on the bus it

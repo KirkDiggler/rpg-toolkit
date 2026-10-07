@@ -122,7 +122,7 @@ func (s *AttachRollbackTestSuite) assertRetryWorks(char *Character) {
 func (s *AttachRollbackTestSuite) TestKeeperRollsBackAPartialSubscribe() {
 	char, err := Load(s.ctx, fullSheet(&s.Suite))
 	s.Require().NoError(err)
-	before := marshalData(&s.Suite, char.ToData())
+	before := marshalData(&s.Suite, mustToData(s.T(), char))
 	resource := char.GetResource(resources.RageCharges)
 	s.Require().False(resource.IsApplied())
 
@@ -131,7 +131,7 @@ func (s *AttachRollbackTestSuite) TestKeeperRollsBackAPartialSubscribe() {
 
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, errRefused)
-	s.Require().Equal(before, marshalData(&s.Suite, char.ToData()))
+	s.Require().Equal(before, marshalData(&s.Suite, mustToData(s.T(), char)))
 	s.Require().Empty(char.subscriptionIDs, "the sheet claims no subscriptions")
 	s.Require().Nil(char.bus, "and holds the bus it held before, which was none")
 	s.Require().False(resource.IsApplied(), "failed Attach does not change resource lifecycle")
@@ -148,13 +148,13 @@ func (s *AttachRollbackTestSuite) TestKeeperRollsBackAPartialSubscribe() {
 func (s *AttachRollbackTestSuite) TestAttachRollsBackAFailedCondition() {
 	char, err := Load(s.ctx, fullSheet(&s.Suite))
 	s.Require().NoError(err)
-	before := marshalData(&s.Suite, char.ToData())
+	before := marshalData(&s.Suite, mustToData(s.T(), char))
 
 	bus := newFailingBus(6)
 	err = Attach(s.ctx, char, bus)
 
 	s.Require().Error(err)
-	s.Require().Equal(before, marshalData(&s.Suite, char.ToData()))
+	s.Require().Equal(before, marshalData(&s.Suite, mustToData(s.T(), char)))
 	s.Require().Len(char.GetConditions(), 1, "the condition is still on the sheet")
 	s.Require().False(char.GetConditions()[0].IsApplied(), "just not applied")
 	s.Require().Len(char.pendingEffects, 1, "and still waiting to be, ref and all")
@@ -184,13 +184,13 @@ func (s *AttachRollbackTestSuite) TestASecondConditionFailingRemovesTheFirst() {
 	char, err := Load(s.ctx, data)
 	s.Require().NoError(err)
 	s.Require().Len(char.GetConditions(), 2)
-	before := marshalData(&s.Suite, char.ToData())
+	before := marshalData(&s.Suite, mustToData(s.T(), char))
 
 	bus := newFailingBus(firstSubscriptionOfTheSecondCondition)
 	err = Attach(s.ctx, char, bus)
 
 	s.Require().Error(err)
-	s.Require().Equal(before, marshalData(&s.Suite, char.ToData()))
+	s.Require().Equal(before, marshalData(&s.Suite, mustToData(s.T(), char)))
 	s.Require().Len(char.pendingEffects, 2, "both are waiting again")
 	for _, cond := range char.GetConditions() {
 		s.Require().False(cond.IsApplied(), "including the one that had applied")
@@ -238,7 +238,7 @@ func (s *AttachRollbackTestSuite) fighterFeatureSheet() *Data {
 }
 
 func (s *AttachRollbackTestSuite) featureUses(char *Character, ref string) int {
-	for _, raw := range char.ToData().Features {
+	for _, raw := range mustToData(s.T(), char).Features {
 		var envelope struct {
 			Ref  string `json:"ref"`
 			Uses int    `json:"uses"`
@@ -258,14 +258,14 @@ func (s *AttachRollbackTestSuite) featureUses(char *Character, ref string) int {
 func (s *AttachRollbackTestSuite) TestAttachRollsBackAFailedFeature() {
 	char, err := Load(s.ctx, s.fighterFeatureSheet())
 	s.Require().NoError(err)
-	before := marshalData(&s.Suite, char.ToData())
+	before := marshalData(&s.Suite, mustToData(s.T(), char))
 
 	bus := newFailingBus(7) // five keeper hooks, Second Wind, then Action Surge
 	err = Attach(s.ctx, char, bus)
 
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, errRefused)
-	s.Require().Equal(before, marshalData(&s.Suite, char.ToData()))
+	s.Require().Equal(before, marshalData(&s.Suite, mustToData(s.T(), char)))
 	s.Require().Empty(char.subscriptionIDs)
 	s.Require().Nil(char.bus)
 

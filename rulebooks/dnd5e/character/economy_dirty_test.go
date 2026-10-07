@@ -378,7 +378,7 @@ func (s *EconomyDirtyTestSuite) TestASpendOnALoadedSheetSurvivesToData() {
 
 	s.Require().True(char.IsDirty(), "so resolution keeps it in DirtyCharacters")
 
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	s.Require().NotNil(data.ActionEconomy)
 	s.Equal(15, data.ActionEconomy.MovementRemaining, "and this is what gets written")
 	s.Equal(2, data.Resources[resources.Ki].Current)

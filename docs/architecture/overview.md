@@ -95,7 +95,7 @@ superseded as current guidance by the shipped separate modules
 Every stateful toolkit component implements exactly two methods:
 
 ```go
-func (c *Character) ToData() *Data { ... }
+func (c *Character) ToData() (*Data, error) { ... }
 func LoadFromData(ctx context.Context, data *Data, bus events.EventBus) (*Character, error) { ... }
 ```
 

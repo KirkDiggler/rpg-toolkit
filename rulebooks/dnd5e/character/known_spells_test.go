@@ -166,7 +166,7 @@ func (s *KnownSpellsSuite) TestEveryFourSpellBardSelectionFinalizesAndSurvivesRe
 			char, err := draft.ToCharacter(context.Background(), "bard-selection", s.bus)
 			s.Require().NoError(err)
 			s.Require().NoError(char.UseResource(resources.SpellSlotLevel1, 1))
-			encoded, err := json.Marshal(char.ToData())
+			encoded, err := json.Marshal(mustToData(s.T(), char))
 			s.Require().NoError(err)
 			var data Data
 			s.Require().NoError(json.Unmarshal(encoded, &data))
@@ -194,7 +194,7 @@ func (s *KnownSpellsSuite) TestBaneKnowledgeAndSpellSlotResourceSurviveReloadAnd
 	char, err := s.bardDraft().ToCharacter(ctx, "bard-reload", s.bus)
 	s.Require().NoError(err)
 	s.Require().NoError(char.UseResource(resources.SpellSlotLevel1, 1))
-	persisted := char.ToData()
+	persisted := mustToData(s.T(), char)
 	s.Require().NoError(char.Cleanup(ctx))
 
 	loaded, err := Load(ctx, persisted)
@@ -259,7 +259,7 @@ func (s *KnownSpellsSuite) TestAFighterKnowsNothing() {
 
 	s.Nil(char.KnownCantrips())
 	s.Nil(char.KnownSpells())
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	s.Nil(data.KnownCantrips)
 	s.Nil(data.KnownSpells)
 }
@@ -327,7 +327,7 @@ func (s *KnownSpellsSuite) knownSheet() *Data {
 	char, err := s.bardDraft().ToCharacter(context.Background(), "bard-1", s.bus)
 	s.Require().NoError(err)
 
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	data.KnownCantrips = []string{
 		refs.Spells.ViciousMockery().String(), refs.Spells.MinorIllusion().String(),
 	}
@@ -350,7 +350,7 @@ func (s *KnownSpellsSuite) TestTheySurviveARoundTrip() {
 		refs.Spells.CharmPerson().String(), refs.Spells.HealingWord().String(),
 	}, spellRefsAsStrings(loaded.KnownSpells()))
 
-	back := loaded.ToData()
+	back := mustToData(s.T(), loaded)
 	s.Equal(s.knownSheet().KnownCantrips, back.KnownCantrips)
 	s.Equal(s.knownSheet().KnownSpells, back.KnownSpells)
 }
