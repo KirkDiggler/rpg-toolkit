@@ -3,6 +3,7 @@ package character
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -700,8 +701,12 @@ func (s *ClericFinalizeSuite) TestWarProficienciesSurviveCreationReloadAndDriveA
 	s.Require().NoError(json.Unmarshal(encoded, &stored))
 	loaded, err := LoadFromData(context.Background(), &stored, events.NewEventBus())
 	s.Require().NoError(err)
-	s.ElementsMatch([]proficiencies.Armor{proficiencies.ArmorLight, proficiencies.ArmorMedium, proficiencies.ArmorShields, proficiencies.ArmorHeavy}, mustToData(s.T(), loaded).ArmorProficiencies)
-	s.ElementsMatch([]proficiencies.Weapon{proficiencies.WeaponSimple, proficiencies.WeaponMartial}, mustToData(s.T(), loaded).WeaponProficiencies)
+	loadedData := mustToData(s.T(), loaded)
+	s.ElementsMatch([]proficiencies.Armor{
+		proficiencies.ArmorLight, proficiencies.ArmorMedium, proficiencies.ArmorShields, proficiencies.ArmorHeavy,
+	}, loadedData.ArmorProficiencies)
+	s.ElementsMatch([]proficiencies.Weapon{proficiencies.WeaponSimple, proficiencies.WeaponMartial},
+		loadedData.WeaponProficiencies)
 	for _, id := range []shared.EquipmentID{weapons.Longsword, weapons.Longbow, weapons.Mace} {
 		weapon, err := weapons.GetByID(id)
 		s.Require().NoError(err)
@@ -754,7 +759,8 @@ func (s *ClericFinalizeSuite) TestNYIDomainGrantsSurviveCreationAndReloadWithout
 			s.Require().NoError(err)
 			c, err = Load(context.Background(), mustToData(s.T(), c))
 			s.Require().NoError(err)
-			all := append(mustToData(s.T(), c).KnownCantrips, mustToData(s.T(), c).KnownSpells...)
+			data := mustToData(s.T(), c)
+			all := slices.Concat(data.KnownCantrips, data.KnownSpells)
 			for _, id := range tc.grants {
 				s.Contains(all, refs.Spells.ByID(id).String())
 				s.Nil(c.CastDefinition(id))
@@ -791,7 +797,9 @@ func (s *ClericFinalizeSuite) TestKnowledgeGrantsPersistAndOnlyChosenSkillsDoubl
 	}
 	s.Equal(shared.Proficient, mustToData(s.T(), c).Skills[skills.Religion])
 	s.Equal(c.GetAbilityModifier(abilities.INT)+c.ProficiencyBonus(), c.GetSkillModifier(skills.Religion))
-	s.ElementsMatch([]languages.Language{languages.Common, languages.Dwarvish, languages.Elvish, languages.Gnomish}, mustToData(s.T(), c).Languages)
+	s.ElementsMatch([]languages.Language{
+		languages.Common, languages.Dwarvish, languages.Elvish, languages.Gnomish,
+	}, mustToData(s.T(), c).Languages)
 	s.Contains(mustToData(s.T(), c).KnownSpells, refs.Spells.Command().String())
 	s.Contains(mustToData(s.T(), c).KnownSpells, refs.Spells.Identify().String())
 	s.Require().NoError(draft.SetClass(s.classInput()))

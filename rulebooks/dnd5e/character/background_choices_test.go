@@ -118,7 +118,8 @@ func (s *BackgroundChoicesSuite) TestCriminalGamingSetProficiency() {
 	char, err := draft.ToCharacter(s.ctx, "criminal-char", s.bus)
 	s.Require().NoError(err)
 	s.Contains(mustToData(s.T(), char).ToolProficiencies, proficiencies.ToolThreeDragonAnte)
-	s.Contains(mustToData(s.T(), char).ToolProficiencies, proficiencies.ToolThieves, "Criminal's fixed thieves' tools grant is untouched")
+	s.Contains(mustToData(s.T(), char).ToolProficiencies, proficiencies.ToolThieves,
+		"Criminal's fixed thieves' tools grant is untouched")
 }
 
 // TestEntertainerInstrumentDerivesProficiency covers the equipment+derived-
