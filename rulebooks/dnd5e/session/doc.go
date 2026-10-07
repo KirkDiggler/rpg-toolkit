@@ -219,9 +219,12 @@
 // permitted, and a withheld opening is omitted whole so a visible wall carries no
 // tell. This seam copies that answer: [Atlas.StructuralWalls] and
 // [Atlas.StructuralDoors] carry the permitted records with their canonical-feet
-// geometry, and the two fixed rows ride the existing room_revealed and
-// concealment_revealed payloads as optional `structural_walls`/`structural_doors`
-// (RoomRevealedBody, ConcealmentRevealedBody), by id, new-or-changed only.
+// geometry. Existing room_revealed and concealment_revealed payloads introduce
+// full records through `structural_walls`/`structural_doors`, and replace a known
+// wall's opening list through `structural_wall_openings_replacements`
+// (RoomRevealedBody, ConcealmentRevealedBody). A present replacement with an
+// empty/default opening list clears it; absence is a no-op. Historical full-row
+// updates retain their whole-record upsert semantics.
 //
 // NOTHING IS DECIDED HERE. projectAtlas is a field-for-field copy; the reveal
 // decode is a shared helper that refuses a malformed or identity-less row whole
@@ -229,7 +232,7 @@
 // mutable state, no private placed id and no parent association, so an unknown
 // door state stays unknown instead of turning a known doorway into wall; and a
 // replay of an old beat never re-reads a newer world to enrich it. Legacy payloads
-// with neither key decode exactly as before.
+// without structural keys decode exactly as before.
 //
 // # Holdings: Loot, Hold, and the ending on the way out
 //

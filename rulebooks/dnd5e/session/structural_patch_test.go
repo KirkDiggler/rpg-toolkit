@@ -11,7 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-func structuralDoorOnlyWorld(t fataler) *encounter.EncounterData {
+func structuralDoorOnlyWorld(t fataler, extra ...encounter.ConcealmentInput) *encounter.EncounterData {
 	centre := hallPlane().CellCentre(hexCell(4, 0))
 	point := func(dx float64) spatial.Point { return spatial.Point{X: centre.X + dx, Y: centre.Y} }
 	wallBox := structuralBox(hexCell(4, 0), 6, 0.25)
@@ -23,10 +23,10 @@ func structuralDoorOnlyWorld(t fataler) *encounter.EncounterData {
 		CheckResolver: encNeverResolves{}, Witness: encNeverWitnesses{},
 		Field: encounter.FieldInput{
 			Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 6)},
-			Concealments: []encounter.ConcealmentInput{{
+			Concealments: append([]encounter.ConcealmentInput{{
 				ID: structSecret, Checks: vaultFind(),
 				Doors: []encounter.DoorID{structDoorID}, Props: []encounter.PropID{structDoorPresence},
-			}},
+			}}, extra...),
 			Doors: []encounter.DoorInput{{ID: structDoorID, Placement: &doorBox, State: encounter.DoorIsClosed()}},
 			Placed: []encounter.PlacedPropInput{
 				{ID: structWallPresence, Placement: wallBox},
@@ -52,6 +52,38 @@ func structuralDoorOnlyWorld(t fataler) *encounter.EncounterData {
 	}
 	data := enc.ToData()
 	return &data
+}
+
+func (s *StructuralSessionSuite) TestIndependentDoorIntroductionDoesNotRequireItsHiddenParent() {
+	ctx := context.Background()
+	world := structuralDoorOnlyWorld(s.T(), encounter.ConcealmentInput{
+		ID: "hidden-parent", Props: []encounter.PropID{structWallPresence},
+		Checks: []encounter.CheckApproach{{Ability: "perception", DC: 100}},
+	})
+	s.startWith(world, sharpEyed("alice"))
+	in := &session.KnowledgeInput{Session: "sess", Member: "alice", Player: "player-alice"}
+	before, err := s.mgr.Knowledge(ctx, in)
+	s.Require().NoError(err)
+	s.Empty(before.Atlas.StructuralWalls)
+	s.Empty(before.Atlas.StructuralDoors)
+	s.stream.published = nil
+	_, err = s.mgr.Search(ctx, &session.SearchInput{Session: "sess", Member: "alice", Region: "hall"})
+	s.Require().NoError(err)
+	reveals := eventsOfKind(s.stream.published, "alice", session.EventConcealmentRevealed)
+	s.Require().Len(reveals, 1)
+	body := reveals[0].Body.(session.ConcealmentRevealedBody)
+	s.Empty(body.StructuralWalls)
+	s.Empty(body.StructuralWallOpeningsReplacements, "a hidden parent must not be named by a patch")
+	s.Require().Len(body.StructuralDoors, 1)
+	s.Equal(structDoorID, body.StructuralDoors[0].ID)
+	after, err := s.mgr.Knowledge(ctx, in)
+	s.Require().NoError(err)
+	s.Empty(after.Atlas.StructuralWalls)
+	s.Equal(body.StructuralDoors, after.Atlas.StructuralDoors)
+	s.Equal(before.Atlas.Cells, after.Atlas.Cells)
+	replay, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice", FromSeq: before.Seq + 1})
+	s.Require().NoError(err)
+	s.Equal(eventsFor(s.stream.published, "alice"), replay)
 }
 
 func (s *StructuralSessionSuite) TestKnownWallOpeningReplacementMatchesSnapshotAndReplay() {

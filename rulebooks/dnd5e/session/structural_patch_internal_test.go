@@ -21,6 +21,7 @@ func (s *StructuralPatchDecodeSuite) TestBothRevealKindsPreserveReplacementsAndE
 			"populated":     `{"wall_id":"wall","openings":[{"id":"gap","position":3,"width":2}]}`,
 			"empty":         `{"wall_id":"wall","openings":[]}`,
 			"default empty": `{"wall_id":"wall"}`,
+			"null empty":    `{"wall_id":"wall","openings":null}`,
 		} {
 			s.Run(beat+"/"+name, func() {
 				payload := fmt.Sprintf(`{"beat":%q,"region":{"id":"room"},"concealment":"secret","structural_wall_openings_replacements":[%s]}`, beat, row)
@@ -48,14 +49,25 @@ func (s *StructuralPatchDecodeSuite) TestBothRevealKindsPreserveReplacementsAndE
 	}
 }
 
+func (s *StructuralPatchDecodeSuite) TestDistinctOpeningsOnDifferentWallPatchesRemainValid() {
+	for _, beat := range []string{"room_revealed", "concealment_revealed"} {
+		payload := fmt.Sprintf(`{"beat":%q,"region":{"id":"room"},"concealment":"secret","structural_wall_openings_replacements":[{"wall_id":"a","openings":[{"id":"one","position":1,"width":0.5}]},{"wall_id":"b","openings":[{"id":"two","position":1,"width":0.5}]}]}`, beat)
+		_, body := decodeBeat([]byte(payload))
+		s.NotNil(body, "global uniqueness must not reject distinct cuts on different walls")
+	}
+}
+
 func (s *StructuralPatchDecodeSuite) TestMalformedReplacementsRefuseTheWholeBody() {
 	for name, suffix := range map[string]string{
-		"empty identity":         `"structural_wall_openings_replacements":[{"openings":[]}]`,
-		"wrong type":             `"structural_wall_openings_replacements":true`,
-		"duplicate wall":         `"structural_wall_openings_replacements":[{"wall_id":"w"},{"wall_id":"w"}]`,
-		"empty opening identity": `"structural_wall_openings_replacements":[{"wall_id":"w","openings":[{"width":1}]}]`,
-		"duplicate openings":     `"structural_wall_openings_replacements":[{"wall_id":"w","openings":[{"id":"o"},{"id":"o"}]}]`,
-		"full row collision":     `"structural_walls":[{"id":"w"}],"structural_wall_openings_replacements":[{"wall_id":"w"}]`,
+		"empty identity":                       `"structural_wall_openings_replacements":[{"openings":[]}]`,
+		"wrong type":                           `"structural_wall_openings_replacements":true`,
+		"duplicate wall":                       `"structural_wall_openings_replacements":[{"wall_id":"w"},{"wall_id":"w"}]`,
+		"empty opening identity":               `"structural_wall_openings_replacements":[{"wall_id":"w","openings":[{"width":1}]}]`,
+		"duplicate openings":                   `"structural_wall_openings_replacements":[{"wall_id":"w","openings":[{"id":"o"},{"id":"o"}]}]`,
+		"full row collision":                   `"structural_walls":[{"id":"w"}],"structural_wall_openings_replacements":[{"wall_id":"w"}]`,
+		"cross-wall openings":                  `"structural_wall_openings_replacements":[{"wall_id":"a","openings":[{"id":"same"}]},{"wall_id":"b","openings":[{"id":"same"}]}]`,
+		"full-row and patch opening collision": `"structural_walls":[{"id":"a","openings":[{"id":"same"}]}],"structural_wall_openings_replacements":[{"wall_id":"b","openings":[{"id":"same"}]}]`,
+		"wrong opening type":                   `"structural_walls":[{"id":"a","openings":[true]}]`,
 	} {
 		for _, beat := range []string{"room_revealed", "concealment_revealed"} {
 			s.Run(beat+"/"+name, func() {
