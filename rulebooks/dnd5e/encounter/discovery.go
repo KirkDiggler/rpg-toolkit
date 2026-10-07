@@ -37,7 +37,9 @@ type DiscoveryStateData struct {
 	Attempts map[ConcealmentID]DiscoveryAttemptData `json:"attempts,omitempty"`
 }
 
-// DiscoveryMemoryData is carry-forward testimony about one authored check.
+// DiscoveryMemoryData is the legacy explicit-memory projection of one check.
+// Game persistence uses EncounterData.Discovery and the World journal, not a
+// character-owned copy of this projection.
 type DiscoveryMemoryData struct {
 	Used    int  `json:"used"`
 	Learned bool `json:"learned,omitempty"`
@@ -121,12 +123,16 @@ func (e *Encounter) DiscoverySharing(in *DiscoveryMemoryInput) (*SetDiscoverySha
 	return &SetDiscoverySharingOutput{Sharing: !e.discovery[in.Member].Private}, nil
 }
 
-// RestoreDiscoveryInput supplies a placed player's own retained profile.
-// It is not party catch-up and never rolls.
+// RestoreDiscoveryInput supports the legacy explicit-memory import and audience
+// preference. It is not party catch-up and never rolls. The game SDK supplies
+// only Private; Checks from character profiles have no authority in a new run.
+// Use EncounterData loading to restore the same encounter, not this projection.
 type RestoreDiscoveryInput struct {
 	Member  MemberID
 	Private bool
-	Checks  map[ConcealmentID]DiscoveryMemoryData
+	// Checks is retained for older callers of the explicit-import seam.
+	// Compatibility only: never seed a new playthrough from another encounter's memory.
+	Checks map[ConcealmentID]DiscoveryMemoryData
 }
 
 // RestoreDiscovery restores own knowledge/counts without replaying them to peers.
@@ -174,7 +180,8 @@ func (e *Encounter) initializeDiscovery(member MemberID, private bool, memory ma
 		if remembered.Used > current.Used {
 			current.Used = remembered.Used
 		}
-		// A new visit starts a fresh approach, not a fresh retained allowance.
+		// Explicit legacy imports retain their supplied allowance. This does not
+		// authorize the game host to import a previous playthrough's state.
 		if !exists {
 			current.Armed = true
 		}

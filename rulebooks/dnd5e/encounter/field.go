@@ -856,8 +856,11 @@ type FieldStart struct {
 // play data have different shapes for a reason, and this is the construction
 // one.
 type MemberInput struct {
-	// PrivateDiscoveries and RetainedDiscoveries are a player's loaded profile.
-	PrivateDiscoveries  bool
+	// PrivateDiscoveries is the player's audience preference.
+	PrivateDiscoveries bool
+	// RetainedDiscoveries is a legacy explicit-import input, not game persistence.
+	// Compatibility only: game hosts must not seed new playthroughs from character memory;
+	// restore an existing encounter through EncounterData instead.
 	RetainedDiscoveries map[ConcealmentID]DiscoveryMemoryData
 	// ID is the member's unique identifier.
 	ID MemberID
@@ -1754,8 +1757,11 @@ type StepOutput struct {
 // two PRs on: two ways in is two places for a rule to land, and eventually one
 // of them misses.
 type JoinInput struct {
-	// PrivateDiscoveries and RetainedDiscoveries are restored before first sight.
-	PrivateDiscoveries  bool
+	// PrivateDiscoveries is applied before first sight; run knowledge stays in
+	// this encounter rather than coming from the character profile.
+	PrivateDiscoveries bool
+	// RetainedDiscoveries remains for legacy explicit-import callers.
+	// Compatibility only: game hosts do not populate this; EncounterData owns run state.
 	RetainedDiscoveries map[ConcealmentID]DiscoveryMemoryData
 	// Member is the joining member's unique identifier.
 	Member MemberID
