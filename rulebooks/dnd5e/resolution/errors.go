@@ -198,4 +198,11 @@ var (
 	// the end of each of your turns" as a single save would produce a
 	// paralysis nobody ever shakes off, and it would look like it worked.
 	ErrRecurrenceUnsupported = errors.New("resolution: save gate recurrence not supported yet")
+
+	// ErrWardUnreadable indicates a Sanctuary ward whose save DC cannot be
+	// read: its caster is not a character in the cast, or casts nothing. The
+	// strike or cast it would have warded is refused rather than let through,
+	// because the only number left to roll against is zero — an automatic
+	// success that would turn a missing caster into no ward at all.
+	ErrWardUnreadable = errors.New("resolution: sanctuary ward's save DC cannot be read")
 )

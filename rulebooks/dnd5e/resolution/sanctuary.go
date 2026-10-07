@@ -102,11 +102,24 @@ func strikeWards(
 
 // wardSaveDC reads the warding caster's own spell save DC. Sanctuary is
 // Cleric-only in this build, so its caster is always a character.
-func wardSaveDC(cast *Participants, casterID string) int {
-	if caster, ok := cast.Character(casterID); ok {
-		return caster.SpellSaveDC()
+//
+// Errors: [ErrWardUnreadable], naming the ward's holder and caster, when the
+// caster is not a character in the cast or its sheet casts nothing (a DC of
+// zero). It used to answer 0, and a Wisdom save against DC 0 always succeeds:
+// a ward whose caster had left the cast let every attack through. The
+// interaction refuses instead of bypassing the ward (rpg-toolkit#1965 tier 1 #4).
+func wardSaveDC(cast *Participants, holderID, casterID string) (int, error) {
+	caster, ok := cast.Character(casterID)
+	if !ok {
+		return 0, fmt.Errorf("%w: the ward on %q was cast by %q, who is not a character in the cast",
+			ErrWardUnreadable, holderID, casterID)
 	}
-	return 0
+	dc := caster.SpellSaveDC()
+	if dc <= 0 {
+		return 0, fmt.Errorf("%w: the ward on %q was cast by %q, whose sheet has no spell save DC",
+			ErrWardUnreadable, holderID, casterID)
+	}
+	return dc, nil
 }
 
 // wardSaveInput builds the attacker's Wisdom save against one Sanctuary ward.

@@ -518,7 +518,7 @@ func (m *castMachine) sanctuaryGate(target castTargetMachine, index int) Step {
 				return nil, err
 			}
 			pending := pendingSanctuaryWards(m.cast, m.casterID, target.targetID)
-			return m.wardCastStep(pending, 0, target, index, next), nil
+			return m.wardCastStep(pending, 0, target, index, next)
 		},
 	}
 }
@@ -552,14 +552,20 @@ func castStanceIsHostile(cast gamectx.Cast, casterID, targetID string) (bool, er
 // others, so a failed save here records THIS target as warded and moves on
 // to resolveTarget(index+1) rather than ending the whole cast. Sets no
 // onPose, [strikeMachine.wardCheckStep]'s same documented gap.
+//
+// Errors: [ErrWardUnreadable] from [wardSaveDC] — the cast fails rather than
+// skipping the ward.
 func (m *castMachine) wardCastStep(
 	pending []*conditions.SanctuaryCondition, wardIndex int, target castTargetMachine, index int, next Step,
-) Step {
+) (Step, error) {
 	if wardIndex >= len(pending) {
-		return next
+		return next, nil
 	}
 	ward := pending[wardIndex]
-	dc := wardSaveDC(m.cast, ward.SourceID)
+	dc, err := wardSaveDC(m.cast, target.targetID, ward.SourceID)
+	if err != nil {
+		return nil, err
+	}
 	return requestSave(wardSaveInput(m.casterID, ward, dc, m.roller),
 		func(_ context.Context, out SaveOutcome) (Step, error) {
 			if !out.Result.Success {
@@ -569,8 +575,8 @@ func (m *castMachine) wardCastStep(
 				})
 				return m.resolveTarget(index + 1), nil
 			}
-			return m.wardCastStep(pending, wardIndex+1, target, index, next), nil
-		})
+			return m.wardCastStep(pending, wardIndex+1, target, index, next)
+		}), nil
 }
 
 // drop ends the concentration the caster is already holding, in favour of the

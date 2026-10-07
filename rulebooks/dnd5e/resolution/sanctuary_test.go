@@ -398,3 +398,72 @@ func TestAuthoritativeStanceWithNoRunIsUnknown(t *testing.T) {
 	_, err := castStanceIsHostile(view, bardID, heroID)
 	require.ErrorIs(t, err, contributions.ErrRuleCannotAnswer)
 }
+
+// strikeOnWardedHero resolves the wolf's bite on a hero warded by cleric-1,
+// with the given extra participants beside the two combatants.
+func strikeOnWardedHero(t *testing.T, roller *actionRoller, extra ...Participant) (*Output, error) {
+	t.Helper()
+	target := actionHero()
+	target.Conditions = []json.RawMessage{sanctuaryJSON(t, heroID)}
+
+	machine, err := NewAction(&ActionInput{
+		Definition: validMeleeDefinition(), AttackerID: wolfID, TargetID: heroID, Roller: roller,
+	})
+	require.NoError(t, err)
+	return Resolve(context.Background(), &Input{
+		World: actionWorld(t, 2),
+		Participants: append([]Participant{
+			{Monster: monsters.NewWolf(wolfID).ToData()}, {Character: target},
+		}, extra...),
+		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, TurnDriver: passDriver{}, Roller: dice.NewRoller(),
+		Equipment: noHandsAreObserved{},
+	})
+}
+
+// The ward reads its caster's own spell save DC: 8 + proficiency 2 + WIS +3.
+func TestTheWardDCIsTheCastersSpellSaveDC(t *testing.T) {
+	out, err := strikeOnWardedHero(t, &actionRoller{singles: []int{5}}, Participant{Character: clericWarder()})
+	require.NoError(t, err)
+
+	outcome := out.Outcome.(StrikeOutcome)
+	require.NotNil(t, outcome.Warded)
+	require.Equal(t, 13, outcome.Warded.Save.DC, "8 + 2 + 3: the cleric's spell save DC")
+}
+
+// FAIL CLOSED. A ward whose caster is not in the cast has no DC to roll
+// against. It used to answer 0 — a save that always succeeds, so the attack
+// went through as if the ward were not there. The strike is refused instead,
+// before any die is rolled.
+func TestAWardWhoseCasterIsNotInTheCastRefusesTheStrike(t *testing.T) {
+	roller := &actionRoller{singles: []int{20}} // a save that would beat any DC: the ward cannot be skipped by luck
+	_, err := strikeOnWardedHero(t, roller)
+	require.ErrorIs(t, err, ErrWardUnreadable)
+	require.ErrorContains(t, err, heroID, "the error names the ward's holder")
+	require.ErrorContains(t, err, "cleric-1", "and its caster")
+	require.Zero(t, roller.calls, "no save was rolled against a DC nobody could read")
+}
+
+// The cast path refuses the same way: a Bane on a creature warded by a caster
+// who is not in the cast is refused, not let through.
+func TestABaneOnAWardWhoseCasterIsNotInTheCastIsRefused(t *testing.T) {
+	fixtures := castFixtures(t)
+	wolf := fixtures.wolfData()
+	wolf.Conditions = []json.RawMessage{sanctuaryJSON(t, wolfID)}
+
+	roller := &actionRoller{singles: []int{20}}
+	machine, err := NewAction(&ActionInput{
+		Definition: *baneDefinition(), AttackerID: bardID, TargetIDs: []string{wolfID}, Roller: roller,
+	})
+	require.NoError(t, err)
+	_, err = Resolve(context.Background(), &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
+		World:        fixtures.world(),
+		Participants: []Participant{{Monster: wolf}, {Character: baneCaster(1, 2)}},
+		Machine:      machine, Cost: baneCost(),
+	})
+	require.ErrorIs(t, err, ErrWardUnreadable)
+	require.ErrorContains(t, err, wolfID)
+	require.Zero(t, roller.calls, "no ward save was rolled")
+}
