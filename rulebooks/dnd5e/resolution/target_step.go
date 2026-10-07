@@ -34,14 +34,6 @@ type targetStepInput struct {
 	// cause for the halving line. Nil for every other delivery.
 	Halving *damageHalving
 
-	// Reductions and Multipliers are target answers settled before the step
-	// opens: a damage-changing reaction rolled by the machine that held its
-	// window, which closes before the step (R6). They open the incoming
-	// fold's answer lists and no subscriber may rewrite them. No machine
-	// supplies one yet; the window that will is the pause envelope design's.
-	Reductions  []dnd5eEvents.DamageReduction
-	Multipliers []dnd5eEvents.DamageMultiplier
-
 	Cast       *Participants
 	IsCritical bool
 
@@ -72,7 +64,7 @@ type damageHalving struct {
 // one shape a strike and a contest both report.
 type receivedDamage struct {
 	// Trace is every line that explains the number: the dealt components, the
-	// halving, the target's reductions, a floor where a type sank below zero,
+	// halving, the target's reductions, a floor where a type fell below zero,
 	// and one line per multiplied type naming the multiplier that decided it.
 	// No line carries a multiplier factor; Calculation totals Requested.
 	Trace       []dnd5eEvents.DamageComponent
@@ -151,12 +143,10 @@ func receiveDamage(ctx context.Context, bus events.EventBus, in targetStepInput)
 	}
 
 	sent, err := dnd5eEvents.NewIncomingDamageEvent(dnd5eEvents.IncomingDamageInput{
-		TargetID:    in.Dealt.TargetID,
-		SourceID:    in.Dealt.AttackerID,
-		Dealt:       dealt,
-		Frame:       frame,
-		Reductions:  in.Reductions,
-		Multipliers: in.Multipliers,
+		TargetID: in.Dealt.TargetID,
+		SourceID: in.Dealt.AttackerID,
+		Dealt:    dealt,
+		Frame:    frame,
 	})
 	if err != nil {
 		return nil, targetAnswerError(fmt.Errorf("incoming damage: %w", err))
@@ -185,10 +175,7 @@ func receiveDamage(ctx context.Context, bus events.EventBus, in targetStepInput)
 	if err != nil {
 		return nil, targetAnswerError(fmt.Errorf("settle damage on %q: %w", in.Dealt.TargetID, err))
 	}
-	trace, err := receivedTrace(sent.Dealt(), answered.Reductions, settlement)
-	if err != nil {
-		return nil, err
-	}
+	trace := receivedTrace(sent.Dealt(), answered.Reductions, settlement)
 	calculation, err := damageCalculation(trace)
 	if err != nil {
 		return nil, err
@@ -257,26 +244,34 @@ func targetAnswerError(err error) error {
 
 // receivedTrace builds the one trace from the settlement: the dealt
 // components as they were sent, one line per target reduction in fold order,
-// then per settled type a floor line when its reductions sank it below zero
-// and one line naming the multiplier that decided it, carrying the change it
-// made. Each type's lines sum to what it took, so the trace totals the
-// settlement.
+// then per settled type a floor line when its total fell below zero and one
+// line naming the multiplier that decided it, carrying the change it made.
+// Each type's lines sum to what it took, so the trace totals the settlement.
+//
+// A type falls below zero two ways: its reductions sank it, and the floor line
+// names the first reduction on it; or its dealt total was negative (a 1 rolled
+// beside a -3 modifier) with no reduction at all, and the floor line names the
+// last dealt component of that type. Either way the type lands at zero.
 //
 // A multiplied type gets its line even when the change is zero — immunity to
-// a type its reductions already sank is still the rule that decided it. A
-// type whose factors cancel has no deciding multiplier and no line.
-//
-// Errors: a floored type with no reduction to name, which the settlement
-// cannot produce.
+// a type already floored is still the rule that decided it. A type whose
+// factors cancel has no deciding multiplier and no line.
 func receivedTrace(
 	dealt []dnd5eEvents.DamageComponent, reductions []dnd5eEvents.DamageReduction,
 	settlement *combat.SettleDamageOutput,
-) ([]dnd5eEvents.DamageComponent, error) {
+) []dnd5eEvents.DamageComponent {
 	trace := dnd5eEvents.CloneDamageComponents(dealt)
-	firstReduction := make(map[damage.Type]dnd5eEvents.DamageReduction)
+	floorSource := make(map[damage.Type]dnd5eEvents.DamageComponent)
+	for _, component := range dealt {
+		floorSource[component.DamageType] = component
+	}
+	reduced := make(map[damage.Type]bool)
 	for _, reduction := range reductions {
-		if _, seen := firstReduction[reduction.DamageType]; !seen {
-			firstReduction[reduction.DamageType] = reduction
+		if !reduced[reduction.DamageType] {
+			reduced[reduction.DamageType] = true
+			floorSource[reduction.DamageType] = dnd5eEvents.DamageComponent{
+				Source: reduction.Category, Roll: dnd5eEvents.RollComponent{Source: reduction.Source},
+			}
 		}
 		trace = append(trace, answerLine(reduction.Category, reduction.Source, reducedLabel,
 			reduction.DamageType, reduction.Modifier))
@@ -284,12 +279,8 @@ func receivedTrace(
 
 	for _, settled := range settlement.Types {
 		if settled.Floor != 0 {
-			reduction, ok := firstReduction[settled.Type]
-			if !ok {
-				return nil, fmt.Errorf("%w: %s damage was floored with no reduction on it",
-					ErrBadAction, settled.Type)
-			}
-			trace = append(trace, answerLine(reduction.Category, reduction.Source, flooredLabel,
+			source := floorSource[settled.Type]
+			trace = append(trace, answerLine(source.Source, source.Roll.Source, flooredLabel,
 				settled.Type, settled.Floor))
 		}
 		if settled.DecidedBy != nil {
@@ -298,7 +289,7 @@ func receivedTrace(
 		}
 	}
 
-	return trace, nil
+	return trace
 }
 
 // answerLine is one modifier-only trace line for a target's answer, sourced

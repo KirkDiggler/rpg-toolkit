@@ -217,11 +217,8 @@ func (s *TargetStepTestSuite) TestAnAnswerThatAltersADealtComponentIsRefused() {
 }
 
 // stepDirect runs the target step itself on bus, over the wolf's 2d4 slashing
-// (3 and 3) at the hero, carrying the given pre-fold multipliers, and returns
-// what the hero received.
-func (s *TargetStepTestSuite) stepDirect(
-	bus events.EventBus, before []dnd5eEvents.DamageMultiplier,
-) (receivedDamage, error) {
+// (3 and 3) at the hero, and returns what the hero received.
+func (s *TargetStepTestSuite) stepDirect(bus events.EventBus) (receivedDamage, error) {
 	fixtures := s.fold().fixtures()
 	surf := newSurface(bus)
 	cast, err := attachAll(s.ctx, surf, &attachAllInput{
@@ -241,12 +238,11 @@ func (s *TargetStepTestSuite) stepDirect(
 			AttackerID: wolfID, TargetID: heroID, Components: rolled,
 			Frame: contestDamageFrame(cast, wolfID, heroID),
 		}),
-		Multipliers: before,
-		Cast:        cast,
-		Cause:       mockedCause(),
-		Roller:      dice.NewRoller(),
-		Received:    func(r receivedDamage) { received = r },
-		Then:        func(context.Context) (Step, error) { return Done{}, nil },
+		Cast:     cast,
+		Cause:    mockedCause(),
+		Roller:   dice.NewRoller(),
+		Received: func(r receivedDamage) { received = r },
+		Then:     func(context.Context) (Step, error) { return Done{}, nil },
 	})
 	return received, err
 }
@@ -268,61 +264,102 @@ func (s *TargetStepTestSuite) incomingHandler(
 			if modify == nil {
 				return c, nil
 			}
-			return c, c.Add(combat.StageFinal, "rewrites a pre-fold answer", modify)
+			return c, c.Add(combat.StageFinal, "test answer", modify)
 		})
 	s.Require().NoError(err)
 }
 
-// preFoldResistance is a reaction's resistance, settled before the step opens.
-func preFoldResistance() []dnd5eEvents.DamageMultiplier {
-	return []dnd5eEvents.DamageMultiplier{{
+// resistance is a resistance to slashing from Rage.
+func resistance() dnd5eEvents.DamageMultiplier {
+	return dnd5eEvents.DamageMultiplier{
 		Category:   dnd5eEvents.DamageSourceCondition,
 		Source:     dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging"},
 		DamageType: damage.Slashing,
 		Factor:     dnd5eEvents.DamageFactorResistance,
-	}}
+	}
 }
 
-// A subscriber cannot turn a pre-fold resistance into immunity. Rewriting
-// the event it was handed changes a clone nobody settles from, so the hero
-// still takes half; rewriting it in the fold is refused.
-func (s *TargetStepTestSuite) TestAPreFoldAnswerCannotBeRewritten() {
-	baseline, err := s.stepDirect(events.NewEventBus(), preFoldResistance())
-	s.Require().NoError(err)
-	s.Equal(3, baseline.Requested, "six slashing, resisted to three")
+// reduction is a fixed reduction to slashing.
+func reduction(amount int) dnd5eEvents.DamageReduction {
+	return dnd5eEvents.DamageReduction{
+		Category:   dnd5eEvents.DamageSourceCondition,
+		Source:     dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging"},
+		DamageType: damage.Slashing,
+		Modifier:   amount,
+	}
+}
 
+// THE CLONE. A handler that writes on the event it was handed — rather than
+// answering in the fold — changes a clone nobody settles from: the hero takes
+// the six it was dealt. Were the step to publish what it sent, the sent
+// event would gain the answer the fold never saw, and CheckUnaltered would
+// refuse.
+func (s *TargetStepTestSuite) TestAHandlerCannotRewriteWhatWasSent() {
 	bus := events.NewEventBus()
 	s.incomingHandler(bus, func(e *dnd5eEvents.IncomingDamageEvent) {
-		e.Multipliers[0].Factor = dnd5eEvents.DamageFactorImmunity
+		e.Multipliers = append(e.Multipliers, resistance())
 	}, nil)
-	received, err := s.stepDirect(bus, preFoldResistance())
+	received, err := s.stepDirect(bus)
 	s.Require().NoError(err)
-	s.Equal(3, received.Requested, "the handler rewrote a clone; the resistance stands")
-	s.Equal(3, received.Applied.TotalDamage)
-
-	bus = events.NewEventBus()
-	s.incomingHandler(bus, nil, func(_ context.Context, e *dnd5eEvents.IncomingDamageEvent) (*dnd5eEvents.IncomingDamageEvent, error) {
-		e.Multipliers[0].Factor = dnd5eEvents.DamageFactorImmunity
-		return e, nil
-	})
-	_, err = s.stepDirect(bus, preFoldResistance())
-	s.Require().ErrorIs(err, dnd5eEvents.ErrTargetAnswerAltered)
+	s.Equal(6, received.Requested, "the write landed on a clone")
+	s.Equal(6, received.Applied.TotalDamage)
 }
 
-// A malformed target answer is a rule that cannot answer, not a bad world or
-// a bad action: the defect is the answering rule's.
+// A reduction is a line of its own, and a reduction that sinks its type
+// below zero is floored back to it on a line named for that reduction: six
+// dealt, ten reduced, four floored, nothing taken.
+func (s *TargetStepTestSuite) TestAReductionFloorsItsTypeAtZero() {
+	bus := events.NewEventBus()
+	s.incomingHandler(bus, nil, func(_ context.Context, e *dnd5eEvents.IncomingDamageEvent) (*dnd5eEvents.IncomingDamageEvent, error) {
+		e.Reductions = append(e.Reductions, reduction(-10))
+		return e, nil
+	})
+	received, err := s.stepDirect(bus)
+	s.Require().NoError(err)
+
+	lines, total := s.shapeOf(received.Trace)
+	raging := refs.Conditions.Raging().String()
+	s.Equal([]traceLine{
+		{Role: "dealt", DamageType: damage.Slashing, Amount: 6},
+		{Role: reducedLabel, Rule: raging, DamageType: damage.Slashing, Amount: -10},
+		{Role: flooredLabel, Rule: raging, DamageType: damage.Slashing, Amount: 4},
+	}, lines)
+	s.Zero(total)
+	s.Zero(received.Requested)
+	s.Zero(received.Applied.TotalDamage)
+}
+
+// A reduction that does not sink its type carries its own line and no floor:
+// six dealt, two reduced, four taken.
+func (s *TargetStepTestSuite) TestAReductionIsALineOfItsOwn() {
+	bus := events.NewEventBus()
+	s.incomingHandler(bus, nil, func(_ context.Context, e *dnd5eEvents.IncomingDamageEvent) (*dnd5eEvents.IncomingDamageEvent, error) {
+		e.Reductions = append(e.Reductions, reduction(-2))
+		return e, nil
+	})
+	received, err := s.stepDirect(bus)
+	s.Require().NoError(err)
+
+	lines, total := s.shapeOf(received.Trace)
+	s.Equal([]traceLine{
+		{Role: "dealt", DamageType: damage.Slashing, Amount: 6},
+		{Role: reducedLabel, Rule: refs.Conditions.Raging().String(), DamageType: damage.Slashing, Amount: -2},
+	}, lines)
+	s.Equal(4, total)
+	s.Equal(4, received.Applied.TotalDamage)
+}
+
+// A malformed answer is a rule that cannot answer, not a bad world or a bad
+// action: the defect is the answering rule's.
 func (s *TargetStepTestSuite) TestAMalformedAnswerIsARuleThatCannotAnswer() {
 	bus := events.NewEventBus()
 	s.incomingHandler(bus, nil, func(_ context.Context, e *dnd5eEvents.IncomingDamageEvent) (*dnd5eEvents.IncomingDamageEvent, error) {
-		e.Multipliers = append(e.Multipliers, dnd5eEvents.DamageMultiplier{
-			Category:   dnd5eEvents.DamageSourceCondition,
-			Source:     dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging"},
-			DamageType: damage.Slashing,
-			Factor:     0.25,
-		})
+		malformed := resistance()
+		malformed.Factor = 0.25
+		e.Multipliers = append(e.Multipliers, malformed)
 		return e, nil
 	})
-	_, err := s.stepDirect(bus, nil)
+	_, err := s.stepDirect(bus)
 	s.Require().ErrorIs(err, dnd5eEvents.ErrMalformedTargetAnswer)
 	s.Require().ErrorIs(err, contributions.ErrRuleCannotAnswer)
 	s.NotErrorIs(err, ErrBadWorld)

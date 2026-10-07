@@ -289,8 +289,7 @@ func (s *ContestFoldTestSuite) TestAMultiplierLineNamesTheFactorThatWasApplied()
 		},
 	})
 	s.Require().NoError(err)
-	trace, err := receivedTrace(dealt, nil, settlement)
-	s.Require().NoError(err)
+	trace := receivedTrace(dealt, nil, settlement)
 	s.Require().Len(trace, 2, "the dealt line and one multiplier line for the one type")
 
 	line := trace[1]

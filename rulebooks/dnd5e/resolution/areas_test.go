@@ -119,6 +119,46 @@ func (s *ConcentrationTestSuite) TestBreakingConcentrationReportsTheAreaClosed()
 	s.Empty(out.ClosedAreas, "a caster who opened no area closes none")
 }
 
+// A recast of Fog Cloud ends the old concentration and opens the new area
+// under the id the old one held, so the host must end the old area before it
+// opens the new one: the old caster is reported closed, one area opened, one
+// hold broken.
+func (s *ConcentrationTestSuite) TestARecastClosesTheOldAreaAndOpensTheNew() {
+	hold := conditions.NewConcentratingCondition(bardID, refs.Spells.FogCloud().String(), "Fog Cloud", 600)
+	holdJSON, err := hold.ToJSON()
+	s.Require().NoError(err)
+	bard := baneCaster(1, 2)
+	bard.Conditions = append(bard.Conditions, holdJSON)
+
+	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.FogCloud, SpellSaveDC: spellSaveDC})
+	s.Require().NotNil(definition)
+	center := spatial.Position{X: 2, Y: 1}
+	machine, err := NewAction(&ActionInput{
+		Definition: *definition, AttackerID: bardID, AreaCenter: &center,
+		Roller: facedRoller{d20: straightRoll, other: psychicFace},
+	})
+	s.Require().NoError(err)
+
+	fixtures := s.fixtures()
+	world := fixtures.world()
+	world.SightAreas = []encounter.SightAreaData{fogCloudArea(bardID)}
+	out, err := Resolve(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
+		Roller: dice.NewRoller(), World: world, Machine: machine, Cost: castCost(),
+		Participants: []Participant{
+			{Character: fixtures.saver(14)}, {Monster: fixtures.wolfData()}, {Character: bard},
+		},
+	})
+	s.Require().NoError(err)
+
+	s.Require().Len(out.ConcentrationBreaks, 1, "the recast ended the old hold")
+	s.Equal([]string{bardID}, out.ClosedAreas)
+	s.Require().Len(out.OpenedAreas, 1)
+	s.Equal(fogCloudArea(bardID).ID, out.OpenedAreas[0].ID, "the new area reuses the old one's id")
+	s.Equal(center, out.OpenedAreas[0].Center)
+}
+
 // Known-creature targeting decides from the encounter's believed-aim answer
 // alone: the targeting code measures nothing and decodes no payload, and no
 // production file in this module decodes a sight testimony at all.
