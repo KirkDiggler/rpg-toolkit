@@ -56,7 +56,7 @@ which part is [`../CLAUDE.md`](../CLAUDE.md).
   applies it; an unpaid change returns no record.
 - **Ambient truth.** `installTruth` at [`truth.go:60`](./truth.go) is the ONE
   function allowed to call a `gamectx.With*`: the room, the cast, reaction
-  readiness. Eight attached-behaviour entries reach it and `Preflight` is
+  readiness. Nine attached-behaviour entries reach it and `Preflight` is
   deliberately not one — see [`preflight.go`](./preflight.go).
 - **The attach loop and its teardown.** Sheets are loaded purely, attached in
   sorted order, and every subscription this package granted is revoked, success
@@ -66,6 +66,7 @@ which part is [`../CLAUDE.md`](../CLAUDE.md).
   ([`participation.go`](./participation.go), [`standing.go`](./standing.go)),
   `MakeCheck` ([`check.go`](./check.go)), `LongRest` ([`long_rest.go`](./long_rest.go)),
   `ShortRest` ([`short_rest.go`](./short_rest.go)), `Equip` ([`equip.go`](./equip.go)),
+  `Depart` ([`depart.go`](./depart.go)),
   `DeathSave` ([`death_save.go`](./death_save.go)). Each goes through the same
   door; none is a mode of another. `InformAttack` ([`inform.go`](./inform.go))
   opens no door at all: it asks the actor's own effects how they bear on an

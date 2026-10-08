@@ -257,7 +257,7 @@
 // TestOnlyTheDoorInstallsGameContext, holds that the door is the only installer
 // and that every truth-bearing attached-behavior path reaches it.
 //
-// There are eight such truth-bearing attached-behavior paths, and
+// There are nine such truth-bearing attached-behavior paths, and
 // TestOnlyTheDoorInstallsGameContext holds the list. [Resolve] runs an
 // interaction. [ProjectCharacter] folds one derived
 // number for a caller with no interaction to run — a character joining a
@@ -269,7 +269,8 @@
 // and the check chain's first live production audience. [LongRest] publishes
 // the root rest rule to one attached character, and [ShortRest] its sibling,
 // rolling the hit dice it is handed a roller for. [Equip] charges an in-fight
-// equipment change at the door and applies it. [DeathSave] executes the root
+// equipment change at the door and applies it. [Depart] takes a leaver out of
+// every hold that names it. [DeathSave] executes the root
 // typed death-save transition and returns its continuation unchanged. All but
 // [Resolve] have no world, so their context carries a room that is honestly
 // ABSENT rather than invented. Each goes through the same door, and none is a

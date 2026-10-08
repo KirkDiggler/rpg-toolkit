@@ -158,7 +158,7 @@ func TestOnlyTheDoorInstallsGameContext(t *testing.T) {
 // truthEntries are the functions in this package that run attached behavior or
 // stand a fold up from nothing, and therefore must go through the door first.
 //
-// EIGHT of them now, and the growth is why this is a table. Resolve runs an
+// NINE of them now, and the growth is why this is a table. Resolve runs an
 // interaction. ProjectCharacter folds one derived number for a caller with no
 // interaction to run — a character joining a session, who is not standing
 // anywhere yet. Participation answers life-state policy about live sheets for a
@@ -166,8 +166,9 @@ func TestOnlyTheDoorInstallsGameContext(t *testing.T) {
 // attached path. MakeCheck makes one character's ability check with their
 // conditions attached. LongRest publishes a rule event to its attached sheet;
 // ShortRest rolls and publishes its sibling. Equip pays for and applies one
-// equipment change, whose release ends equipment-granted conditions. DeathSave
-// executes the root character rule over one attached record. All eight install
+// equipment change, whose release ends equipment-granted conditions. Depart
+// tells every hold naming a leaver to let go of it. DeathSave executes the
+// root character rule over one attached record. All nine install
 // the same truth before behavior runs; none is a mode of another.
 //
 // PREFLIGHT IS DELIBERATELY ABSENT, and its absence is the interesting entry in
@@ -193,6 +194,7 @@ var truthEntries = []struct{ file, fn string }{
 	{"long_rest.go", "longRestOn"},
 	{"short_rest.go", "shortRestOn"},
 	{"equip.go", "equipOn"},
+	{"depart.go", "departOn"},
 	{"death_save.go", "deathSaveOn"},
 }
 

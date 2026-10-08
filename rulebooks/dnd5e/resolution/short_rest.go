@@ -131,21 +131,9 @@ func shortRestOn(
 	}
 
 	one := Participant{Character: cloneCharacterData(in.Character)}
-	if err := one.validate(); err != nil {
+	participants, err := castWithOthers(one, in.Others)
+	if err != nil {
 		return nil, err
-	}
-	participants := []Participant{one}
-	for _, other := range in.Others {
-		if err := other.validate(); err != nil {
-			return nil, err
-		}
-		if other.ID() == one.ID() {
-			return nil, fmt.Errorf("%w: %q rests and is also among the others", ErrBadParticipant, one.ID())
-		}
-		if other.Character != nil {
-			other = Participant{Character: cloneCharacterData(other.Character)}
-		}
-		participants = append(participants, other)
 	}
 
 	cast, err := attachAll(ctx, surf, &attachAllInput{
