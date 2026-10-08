@@ -11,10 +11,12 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
@@ -58,6 +60,77 @@ func (s *EquipPriceTestSuite) price(slot InventorySlot, itemID string) *PriceEqu
 	return out
 }
 
+// itemRefs names inventory ids as the refs a plan reports.
+func itemRefs(ids ...string) []*core.Ref {
+	out := make([]*core.Ref, 0, len(ids))
+	for _, id := range ids {
+		kind := refs.TypeEquipment
+		if _, ok := weapons.All[weapons.WeaponID(id)]; ok {
+			kind = refs.TypeWeapons
+		} else if _, ok := armor.All[armor.ArmorID(id)]; ok {
+			kind = refs.TypeArmor
+		}
+		out = append(out, &core.Ref{Module: refs.Module, Type: kind, ID: core.ID(id)})
+	}
+	return out
+}
+
+func (s *EquipPriceTestSuite) plan(slot InventorySlot, itemID string) *PlanEquipmentOutput {
+	out, err := s.char.PlanEquipment(&PlanEquipmentInput{Slot: slot, ItemID: itemID})
+	s.Require().NoError(err)
+	s.Require().NotNil(out)
+	return out
+}
+
+// The plan needs no turn and covers every slot: body armour donned is a draw
+// and doffed is a stow.
+func (s *EquipPriceTestSuite) TestPlanArmourDonIsADrawAndDoffAStow() {
+	_, err := s.char.ExitCombat(context.Background(), nil)
+	s.Require().NoError(err)
+
+	on := s.plan(SlotArmor, armor.ChainMail)
+	s.Equal(itemRefs(armor.ChainMail), on.Drawn)
+	s.Empty(on.Stowed)
+	s.Equal("dnd5e:armor:chain-mail", on.Drawn[0].String())
+
+	s.Require().NoError(s.char.EquipItem(SlotArmor, armor.ChainMail))
+	off := s.plan(SlotArmor, "")
+	s.Equal(itemRefs(armor.ChainMail), off.Stowed)
+	s.Empty(off.Drawn)
+}
+
+func (s *EquipPriceTestSuite) TestPlanASwapIsBoth() {
+	s.Require().NoError(s.char.EquipItem(SlotMainHand, weapons.Handaxe))
+
+	out := s.plan(SlotMainHand, weapons.Longsword)
+	s.Equal(itemRefs(weapons.Handaxe), out.Stowed)
+	s.Equal(itemRefs(weapons.Longsword), out.Drawn)
+	s.Equal("dnd5e:weapons:longsword", out.Drawn[0].String())
+}
+
+func (s *EquipPriceTestSuite) TestPlanANoChangeIsEmpty() {
+	s.Require().NoError(s.char.EquipItem(SlotOffHand, armor.Shield))
+
+	same := s.plan(SlotOffHand, armor.Shield)
+	s.Empty(same.Stowed)
+	s.Empty(same.Drawn)
+
+	nothing := s.plan(SlotArmor, "")
+	s.Empty(nothing.Stowed)
+	s.Empty(nothing.Drawn)
+}
+
+// The price reports exactly what the plan reports for the same change.
+func (s *EquipPriceTestSuite) TestThePriceReadsThePlan() {
+	s.Require().NoError(s.char.EquipItem(SlotMainHand, weapons.Longsword))
+	s.Require().NoError(s.char.EquipItem(SlotOffHand, weapons.Handaxe))
+
+	plan := s.plan(SlotMainHand, weapons.Greatsword)
+	price := s.price(SlotMainHand, weapons.Greatsword)
+	s.Equal(plan.Stowed, price.Stowed)
+	s.Equal(plan.Drawn, price.Drawn)
+}
+
 func action(n int) map[coreCombat.ActionType]int {
 	return map[coreCombat.ActionType]int{coreCombat.ActionStandard: n}
 }
@@ -89,7 +162,7 @@ func (s *EquipPriceTestSuite) TestDrawingIntoAnEmptyMainHandCostsTheInteraction(
 	s.Require().NotNil(out.Profile)
 	s.Empty(out.Profile.Slots, "a draw does not touch the action")
 	s.Equal(interaction(1), out.Profile.Capacity)
-	s.Equal([]string{weapons.Longsword}, out.Drawn)
+	s.Equal(itemRefs(weapons.Longsword), out.Drawn)
 	s.Empty(out.Stowed)
 }
 
@@ -101,7 +174,7 @@ func (s *EquipPriceTestSuite) TestStowingAHeldLongswordCostsTheAction() {
 	s.Require().NotNil(out.Profile)
 	s.Equal(action(1), out.Profile.Slots)
 	s.Empty(out.Profile.Capacity)
-	s.Equal([]string{weapons.Longsword}, out.Stowed)
+	s.Equal(itemRefs(weapons.Longsword), out.Stowed)
 }
 
 func (s *EquipPriceTestSuite) TestASwapCostsBoth() {
@@ -112,8 +185,8 @@ func (s *EquipPriceTestSuite) TestASwapCostsBoth() {
 	s.Require().NotNil(out.Profile)
 	s.Equal(action(1), out.Profile.Slots, "the stow")
 	s.Equal(interaction(1), out.Profile.Capacity, "the draw")
-	s.Equal([]string{weapons.Handaxe}, out.Stowed)
-	s.Equal([]string{weapons.Longsword}, out.Drawn)
+	s.Equal(itemRefs(weapons.Handaxe), out.Stowed)
+	s.Equal(itemRefs(weapons.Longsword), out.Drawn)
 }
 
 func (s *EquipPriceTestSuite) TestADrawAfterTheInteractionIsSpentCostsTheAction() {
@@ -162,7 +235,7 @@ func (s *EquipPriceTestSuite) TestATwoHanderOverTwoHeldItemsStowsBoth() {
 	out := s.price(SlotMainHand, weapons.Greatsword)
 
 	s.Require().NotNil(out.Profile)
-	s.ElementsMatch([]string{weapons.Longsword, weapons.Handaxe}, out.Stowed)
+	s.ElementsMatch(itemRefs(weapons.Longsword, weapons.Handaxe), out.Stowed)
 	s.Equal(action(2), out.Profile.Slots)
 	s.Equal(interaction(1), out.Profile.Capacity)
 }

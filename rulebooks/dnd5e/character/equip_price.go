@@ -5,11 +5,15 @@ package character
 
 import (
 	"errors"
+	"slices"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
 // ErrArmorInFight refuses an equipment change that would put on or take off
@@ -20,6 +24,109 @@ import (
 // It is a refusal of the change, never a price. The session translates it into
 // its own in-fight refusal; match it with errors.Is.
 var ErrArmorInFight = errors.New("body armour cannot change in a fight")
+
+// PlanEquipmentInput is one equipment change to plan: equip ItemID into
+// Slot, or, when ItemID is empty, empty Slot.
+type PlanEquipmentInput struct {
+	// Slot is the slot the change names.
+	Slot InventorySlot
+
+	// ItemID is the inventory item to equip. Empty means unequip Slot.
+	ItemID string
+}
+
+// PlanEquipmentOutput is what one change would move, across every slot.
+type PlanEquipmentOutput struct {
+	// Stowed are the items the change takes off or puts away: a weapon
+	// stowed, a shield doffed, body armour taken off. Each is a fresh ref
+	// (dnd5e:weapons:<id>, dnd5e:armor:<id>, or dnd5e:equipment:<id> for
+	// anything else), main hand first, then off hand, then the worn slots.
+	Stowed []*core.Ref
+
+	// Drawn are the items the change puts in hand or on: a weapon drawn, a
+	// shield donned, body armour put on. Same refs, same order.
+	Drawn []*core.Ref
+}
+
+// PlanEquipment reports what one equipment change would stow and draw, and
+// writes nothing. It needs no turn: it is the same answer in a fight or out
+// of one, and is what a beat says ("draws a longsword", "dons chain mail").
+//
+// The occupancy rules are [Character.EquipItem]'s own — a two-handed weapon
+// clears the off hand, a single copy moves between hands — and the plan reads
+// every slot before and after exactly that change, as a multiset of items, so
+// an item that only moves from one hand to the other is neither stowed nor
+// drawn. Donning is a draw and doffing a stow, for a shield and for body
+// armour alike. A change that moves nothing returns both lists empty.
+//
+// [Character.PriceEquipment] prices from this same plan. A change EquipItem
+// would refuse is refused here with the same error.
+func (c *Character) PlanEquipment(input *PlanEquipmentInput) (*PlanEquipmentOutput, error) {
+	if input == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "no equipment change to plan")
+	}
+
+	plan, err := c.planEquipment(input.Slot, input.ItemID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &PlanEquipmentOutput{Stowed: c.equipmentRefs(plan.stowed), Drawn: c.equipmentRefs(plan.drawn)}, nil
+}
+
+// equipmentPlan is the one path both PlanEquipment and PriceEquipment read:
+// the occupancy after the change, and the item ids it stows and draws.
+type equipmentPlan struct {
+	next   EquipmentSlots
+	stowed []string
+	drawn  []string
+}
+
+// planEquipment computes the occupancy the change would leave, without
+// writing it, and what moved.
+func (c *Character) planEquipment(slot InventorySlot, itemID string) (*equipmentPlan, error) {
+	var next EquipmentSlots
+	if itemID != "" {
+		var err error
+		next, err = c.slotsAfterEquip(slot, itemID)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		next = EquipmentSlots{}
+		for occupied, id := range c.equipmentSlots {
+			if occupied != slot {
+				next[occupied] = id
+			}
+		}
+	}
+
+	stowed, drawn := slotsDiff(c.equipmentSlots, next)
+	return &equipmentPlan{next: next, stowed: stowed, drawn: drawn}, nil
+}
+
+// equipmentRefs names each item id as a fresh content ref, typed by what the
+// inventory says the item is. An id the inventory no longer holds is named as
+// plain equipment rather than dropped.
+func (c *Character) equipmentRefs(ids []string) []*core.Ref {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	out := make([]*core.Ref, 0, len(ids))
+	for _, id := range ids {
+		item, _ := c.ownedEquipment(id)
+		kind := refs.TypeEquipment
+		switch item.(type) {
+		case *weapons.Weapon:
+			kind = refs.TypeWeapons
+		case *armor.Armor:
+			kind = refs.TypeArmor
+		}
+		out = append(out, &core.Ref{Module: refs.Module, Type: kind, ID: core.ID(id)})
+	}
+	return out
+}
 
 // PriceEquipmentInput is one equipment change to price: equip ItemID into
 // Slot, or, when ItemID is empty, empty Slot.
@@ -38,15 +145,16 @@ type PriceEquipmentOutput struct {
 	// already as asked — and is free.
 	Profile *combat.SpendProfile
 
-	// Stowed are the item ids leaving the character's hands, a shield doffed
-	// included. Each one costs the action.
-	Stowed []string
+	// Stowed are the items leaving the character's hands, a shield doffed
+	// included — the plan's own list (see [Character.PlanEquipment]). Each
+	// one costs the action.
+	Stowed []*core.Ref
 
-	// Drawn are the item ids entering the character's hands, a shield donned
+	// Drawn are the items entering the character's hands, a shield donned
 	// included. A weapon or other item costs the object interaction while the
 	// turn still holds one and the action after; a shield always costs the
 	// action.
-	Drawn []string
+	Drawn []*core.Ref
 }
 
 // PriceEquipment compiles the price of one equipment change against this
@@ -91,7 +199,8 @@ type PriceEquipmentOutput struct {
 // two-handed weapon clears the off hand, a single copy moves between hands —
 // so the price is read off the hands before and after exactly that change. An
 // item that only moves from one hand to the other is in hand both before and
-// after and costs nothing.
+// after and costs nothing. The price is compiled from [Character.PlanEquipment]'s
+// plan, the one path for what a change moves.
 //
 // An equip EquipItem would refuse is refused here with the same error.
 func (c *Character) PriceEquipment(input *PriceEquipmentInput) (*PriceEquipmentOutput, error) {
@@ -103,10 +212,11 @@ func (c *Character) PriceEquipment(input *PriceEquipmentInput) (*PriceEquipmentO
 			"an equipment change is priced against a readied turn, and this sheet has none")
 	}
 
-	next, err := c.slotsAfter(input)
+	plan, err := c.planEquipment(input.Slot, input.ItemID)
 	if err != nil {
 		return nil, err
 	}
+	next := plan.next
 
 	for slot := range unionSlots(c.equipmentSlots, next) {
 		if isHand(slot) || c.equipmentSlots.Get(slot) == next.Get(slot) {
@@ -117,7 +227,9 @@ func (c *Character) PriceEquipment(input *PriceEquipmentInput) (*PriceEquipmentO
 			rpgerr.WithMeta("slot", slot))
 	}
 
-	stowed, drawn := handsDiff(c.equipmentSlots, next)
+	// Past the refusal above only the hands changed, so the plan's lists are
+	// the hands' lists.
+	stowed, drawn := plan.stowed, plan.drawn
 
 	actions, interactions := len(stowed), 0
 	interactionsLeft := c.CapacityLeft(combat.CapacityObjectInteraction)
@@ -133,7 +245,7 @@ func (c *Character) PriceEquipment(input *PriceEquipmentInput) (*PriceEquipmentO
 		}
 	}
 
-	out := &PriceEquipmentOutput{Stowed: stowed, Drawn: drawn}
+	out := &PriceEquipmentOutput{Stowed: c.equipmentRefs(stowed), Drawn: c.equipmentRefs(drawn)}
 	if actions == 0 && interactions == 0 {
 		return out, nil
 	}
@@ -147,21 +259,6 @@ func (c *Character) PriceEquipment(input *PriceEquipmentInput) (*PriceEquipmentO
 	}
 
 	return out, nil
-}
-
-// slotsAfter is the occupancy the change would leave, without writing it.
-func (c *Character) slotsAfter(input *PriceEquipmentInput) (EquipmentSlots, error) {
-	if input.ItemID != "" {
-		return c.slotsAfterEquip(input.Slot, input.ItemID)
-	}
-
-	next := EquipmentSlots{}
-	for slot, id := range c.equipmentSlots {
-		if slot != input.Slot {
-			next[slot] = id
-		}
-	}
-	return next, nil
 }
 
 // isShield reports whether the inventory item with this id is a shield.
@@ -188,14 +285,25 @@ func unionSlots(a, b EquipmentSlots) map[InventorySlot]struct{} {
 	return out
 }
 
-// handsDiff compares what the two hands hold before and after, as a multiset
-// of item ids, so an item that only changed hands is neither stowed nor drawn.
-// The main hand is read first, so the order is stable.
-func handsDiff(before, after EquipmentSlots) (stowed, drawn []string) {
+// slotsDiff compares every slot before and after, as a multiset of item ids,
+// so an item that only moved between slots is neither stowed nor drawn. Slots
+// are read in a fixed order — main hand, off hand, armour, then the rest by
+// name — so the lists are stable.
+func slotsDiff(before, after EquipmentSlots) (stowed, drawn []string) {
+	order := []InventorySlot{SlotMainHand, SlotOffHand, SlotArmor}
+	var rest []InventorySlot
+	for slot := range unionSlots(before, after) {
+		if !slices.Contains(order, slot) {
+			rest = append(rest, slot)
+		}
+	}
+	slices.Sort(rest)
+	order = append(order, rest...)
+
 	held := func(slots EquipmentSlots) map[string]int {
 		counts := map[string]int{}
-		for _, hand := range [...]InventorySlot{SlotMainHand, SlotOffHand} {
-			if id := slots.Get(hand); id != "" {
+		for _, slot := range order {
+			if id := slots.Get(slot); id != "" {
 				counts[id]++
 			}
 		}
@@ -203,16 +311,16 @@ func handsDiff(before, after EquipmentSlots) (stowed, drawn []string) {
 	}
 
 	was, will := held(before), held(after)
-	for _, hand := range [...]InventorySlot{SlotMainHand, SlotOffHand} {
-		if id := before.Get(hand); id != "" && was[id] > will[id] {
+	for _, slot := range order {
+		if id := before.Get(slot); id != "" && was[id] > will[id] {
 			stowed = append(stowed, id)
 			was[id]--
 		}
 	}
 
 	was = held(before)
-	for _, hand := range [...]InventorySlot{SlotMainHand, SlotOffHand} {
-		if id := after.Get(hand); id != "" && will[id] > was[id] {
+	for _, slot := range order {
+		if id := after.Get(slot); id != "" && will[id] > was[id] {
 			drawn = append(drawn, id)
 			will[id]--
 		}
