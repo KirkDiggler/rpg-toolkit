@@ -143,7 +143,7 @@ func (s *BardFinalizeSuite) TestLongRestRestoresTheUses() {
 	s.Require().NoError(char.UseResource(resources.Inspiration, 2))
 	s.Require().Equal(1, pool.Current())
 
-	s.Require().NoError(char.LongRest(context.Background()))
+	s.Require().NoError(restErr(char.LongRest(context.Background())))
 
 	s.Equal(3, char.GetResource(resources.Inspiration).Current(), "a long rest fills it")
 }

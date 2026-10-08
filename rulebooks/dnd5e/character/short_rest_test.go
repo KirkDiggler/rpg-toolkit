@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
+
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -332,7 +334,7 @@ func TestLongRestRefillsBothKindsAndHalfTheHitDice(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 0, char.GetResource(resources.HitDice).Current())
 
-	require.NoError(t, char.LongRest(ctx))
+	require.NoError(t, restErr(char.LongRest(ctx)))
 
 	require.Equal(t, 1, secondWindUses(t, char))
 	require.Equal(t, 2, char.GetResource(resources.RageCharges).Current())
@@ -348,7 +350,7 @@ func TestLongRestReturnsAtLeastOneHitDie(t *testing.T) {
 	require.NoError(t, pool.Use(1))
 	char.AddResource(resources.HitDice, pool)
 
-	require.NoError(t, char.LongRest(ctx))
+	require.NoError(t, restErr(char.LongRest(ctx)))
 	require.Equal(t, 1, pool.Current())
 }
 
@@ -382,4 +384,55 @@ func TestShortRestEndsAFightsConditions(t *testing.T) {
 	require.NotContains(t, held, refs.Conditions.Prone().String())
 	require.NotContains(t, held, refs.Conditions.Blessed().String())
 	require.Contains(t, held, refs.Conditions.Unconscious().String(), "long-rest-only stays through a short rest")
+}
+
+// A rest reports which resources it refilled, each named by the feature that
+// reports its pool: a short rest refills spent Second Wind and leaves spent
+// Rage unlisted; a long rest lists Rage. A pool that was already full is not
+// listed, because nothing rose.
+func TestRestsReportWhatRefilled(t *testing.T) {
+	ctx := context.Background()
+	data := restFighterData(t)
+	rage, err := features.LoadJSON(mustJSON(t, features.RageData{Ref: refs.Features.Rage(), ID: "rage-rest", Name: "Rage"}))
+	require.NoError(t, err)
+	rageBlob, err := rage.ToJSON()
+	require.NoError(t, err)
+	data.Features = append(data.Features, rageBlob)
+	char := attachRestFighter(t, data)
+
+	short, err := char.ShortRest(ctx, &ShortRestInput{})
+	require.NoError(t, err)
+	require.Equal(t, []string{refs.Features.SecondWind().String()}, refilledStrings(short.Refilled))
+
+	long, err := char.LongRest(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []string{refs.Features.Rage().String()}, refilledStrings(long.Refilled),
+		"Second Wind was refilled by the short rest, so only Rage rose")
+}
+
+// A pool no feature reports is named by its key.
+func TestARestNamesAnUnreportedPoolByItsKey(t *testing.T) {
+	char := restFighter(t)
+
+	long, err := char.LongRest(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		refs.Features.SecondWind().String(),
+		"dnd5e:resources:rage_charges",
+	}, refilledStrings(long.Refilled))
+}
+
+func refilledStrings(in []*core.Ref) []string {
+	var out []string
+	for _, ref := range in {
+		out = append(out, ref.String())
+	}
+	return out
+}
+
+func mustJSON(t *testing.T, v any) json.RawMessage {
+	t.Helper()
+	raw, err := json.Marshal(v)
+	require.NoError(t, err)
+	return raw
 }

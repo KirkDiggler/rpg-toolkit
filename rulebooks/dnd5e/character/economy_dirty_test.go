@@ -346,7 +346,7 @@ func (s *EconomyDirtyTestSuite) TestALongRestMarks() {
 	char := s.loaded()
 	char.bus = s.bus
 
-	s.Require().NoError(char.LongRest(s.ctx))
+	s.Require().NoError(restErr(char.LongRest(s.ctx)))
 
 	s.Equal(char.GetMaxHitPoints(), char.GetHitPoints())
 	s.True(char.IsDirty())

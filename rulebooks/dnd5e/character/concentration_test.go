@@ -221,7 +221,7 @@ func (s *ConcentrationKeeperSuite) TestLongRestRemovesOnlyTheQualifiedBaneOwnerA
 		})
 	s.Require().NoError(err)
 
-	s.Require().NoError(bardA.LongRest(s.ctx))
+	s.Require().NoError(restErr(bardA.LongRest(s.ctx)))
 
 	s.Empty(authored(bardA), "the qualified owner leaves its caster sheet")
 	s.True(bardA.IsDirty())

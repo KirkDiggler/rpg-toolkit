@@ -80,7 +80,7 @@ func (s *LongRestTestSuite) TestLongRest() {
 		s.character.maxHitPoints = 40
 
 		// Act
-		err := s.character.LongRest(s.ctx)
+		_, err := s.character.LongRest(s.ctx)
 
 		// Assert
 		s.Require().NoError(err)
@@ -95,7 +95,7 @@ func (s *LongRestTestSuite) TestLongRest() {
 		}
 
 		// Act
-		err := s.character.LongRest(s.ctx)
+		_, err := s.character.LongRest(s.ctx)
 
 		// Assert
 		s.Require().NoError(err)
@@ -121,7 +121,7 @@ func (s *LongRestTestSuite) TestLongRest() {
 		s.character.AddResource("rage", rageResource)
 
 		// Act
-		err = s.character.LongRest(s.ctx)
+		_, err = s.character.LongRest(s.ctx)
 
 		// Assert
 		s.Require().NoError(err)
@@ -144,7 +144,7 @@ func (s *LongRestTestSuite) TestLongRest() {
 		s.character.AddResource(resources.HitDice, hitDiceResource)
 
 		// Act
-		err := s.character.LongRest(s.ctx)
+		_, err := s.character.LongRest(s.ctx)
 
 		// Assert
 		s.Require().NoError(err)
@@ -157,7 +157,7 @@ func (s *LongRestTestSuite) TestLongRest() {
 		s.character.bus = nil
 
 		// Act
-		err := s.character.LongRest(s.ctx)
+		_, err := s.character.LongRest(s.ctx)
 
 		// Assert
 		s.Error(err)
@@ -170,7 +170,7 @@ func (s *LongRestTestSuite) TestLongRest() {
 		s.character.maxHitPoints = 40
 
 		// Act
-		err := s.character.LongRest(s.ctx)
+		_, err := s.character.LongRest(s.ctx)
 
 		// Assert
 		s.Require().NoError(err)
@@ -182,7 +182,7 @@ func (s *LongRestTestSuite) TestLongRest() {
 		s.character.deathSaveState = nil
 
 		// Act
-		err := s.character.LongRest(s.ctx)
+		_, err := s.character.LongRest(s.ctx)
 
 		// Assert
 		s.Require().NoError(err)
@@ -210,7 +210,7 @@ func TestLongRestRestoresTheLevelOneSpellSlotResource(t *testing.T) {
 	require.NoError(t, Attach(ctx, char, bus))
 	t.Cleanup(func() { require.NoError(t, char.Cleanup(ctx)) })
 
-	require.NoError(t, char.LongRest(ctx))
+	require.NoError(t, restErr(char.LongRest(ctx)))
 	require.Equal(t, 2, char.GetResource(resources.SpellSlotLevel1).Current())
 	require.Equal(t, 2, mustToData(t, char).Resources[resources.SpellSlotLevel1].Current)
 }
@@ -235,7 +235,7 @@ func TestLongRestClearsPersistedActionEconomy(t *testing.T) {
 	require.NoError(t, Attach(ctx, char, bus))
 	t.Cleanup(func() { require.NoError(t, char.Cleanup(ctx)) })
 
-	require.NoError(t, char.LongRest(ctx))
+	require.NoError(t, restErr(char.LongRest(ctx)))
 	got := mustToData(t, char)
 	require.Nil(t, got.ActionEconomy, "a completed long rest must not persist a prior combat turn")
 	require.False(t, char.InCombat())
@@ -285,7 +285,7 @@ func TestLongRestRetainsCombatEconomyWhenRestEventPublicationFails(t *testing.T)
 	before := mustToData(t, char).ActionEconomy
 	require.NotNil(t, before)
 
-	err = char.LongRest(ctx)
+	_, err = char.LongRest(ctx)
 	require.EqualError(t, err, "failed to publish rest event: rest publication refused")
 	require.ErrorIs(t, err, publicationFailure)
 	require.True(t, char.InCombat(), "a failed rest publication must not exit combat")
@@ -303,8 +303,8 @@ func TestLongRestKeepsAbsentActionEconomyAbsent(t *testing.T) {
 	require.NoError(t, Attach(ctx, char, bus))
 	t.Cleanup(func() { require.NoError(t, char.Cleanup(ctx)) })
 
-	require.NoError(t, char.LongRest(ctx))
-	require.NoError(t, char.LongRest(ctx))
+	require.NoError(t, restErr(char.LongRest(ctx)))
+	require.NoError(t, restErr(char.LongRest(ctx)))
 	require.Nil(t, mustToData(t, char).ActionEconomy)
 	require.False(t, char.InCombat())
 }
@@ -411,7 +411,7 @@ func TestLongRestPersistsCompleteRecoveryOnAttachedSheet(t *testing.T) {
 	require.NoError(t, Attach(ctx, char, bus))
 	t.Cleanup(func() { require.NoError(t, char.Cleanup(ctx)) })
 
-	require.NoError(t, char.LongRest(ctx))
+	require.NoError(t, restErr(char.LongRest(ctx)))
 	got := mustToData(t, char)
 	require.Equal(t, 36, got.HitPoints)
 	require.Equal(t, 36, got.MaxHitPoints)
@@ -444,3 +444,7 @@ func featureByRef(t *testing.T, blobs []json.RawMessage, want *core.Ref) json.Ra
 	t.Fatalf("feature %s not found", want.String())
 	return nil
 }
+
+// restErr drops a long rest's report, for tests that only ask whether it
+// succeeded.
+func restErr(_ *LongRestOutput, err error) error { return err }

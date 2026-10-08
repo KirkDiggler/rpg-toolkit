@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -497,6 +498,10 @@ type ShortRestOutput struct {
 	// Healed is the healing that landed: the hit points gained, after the
 	// cap.
 	Healed int
+	// Refilled names every resource the rest refilled: one whose reset kind
+	// a short rest satisfies and whose current count rose. See
+	// [LongRestOutput.Refilled] for how each is named.
+	Refilled []*core.Ref
 }
 
 // ShortRest is one short rest, as one character operation (PHB p.186).
@@ -557,9 +562,15 @@ func (c *Character) ShortRest(ctx context.Context, input *ShortRestInput) (*Shor
 			"not enough hit dice: have %d, asked to spend %d", pool.Current(), input.HitDice)
 	}
 
+	// Read before anything moves, so a feature that cannot report its pool
+	// refuses the rest rather than half of it.
+	before, err := c.refillSnapshot()
+	if err != nil {
+		return nil, err
+	}
+
 	var healing *dnd5eEvents.RollCalculation
 	if input.HitDice > 0 {
-		var err error
 		healing, err = c.rollHitDice(ctx, input.HitDice, input.Roller)
 		if err != nil {
 			return nil, err
@@ -595,7 +606,7 @@ func (c *Character) ShortRest(ctx context.Context, input *ShortRestInput) (*Shor
 		}
 	}
 
-	err := dnd5eEvents.RestTopic.On(c.bus).Publish(ctx, dnd5eEvents.RestEvent{
+	err = dnd5eEvents.RestTopic.On(c.bus).Publish(ctx, dnd5eEvents.RestEvent{
 		RestType:    coreResources.ResetShortRest,
 		CharacterID: c.id,
 	})
@@ -603,7 +614,13 @@ func (c *Character) ShortRest(ctx context.Context, input *ShortRestInput) (*Shor
 		return nil, rpgerr.Wrapf(err, "failed to publish rest event")
 	}
 
+	refilled, err := c.refilledSince(before)
+	if err != nil {
+		return nil, err
+	}
+
 	return &ShortRestOutput{
+		Refilled:         refilled,
 		HitDiceSpent:     input.HitDice,
 		HitDiceRemaining: pool.Current(),
 		Healing:          healing,
@@ -713,12 +730,30 @@ func (c *Character) recoverOnRest(rest coreResources.ResetType) {
 	}
 }
 
+// LongRestOutput is what a long rest did.
+type LongRestOutput struct {
+	// Refilled names every resource the rest refilled: one whose reset kind a
+	// long rest satisfies (a short or a long rest) and whose current count
+	// rose. A pool a feature reports is named by the feature's ref
+	// ("dnd5e:features:second_wind", "dnd5e:features:rage"); a character
+	// pool no feature reports, by its key ("dnd5e:resources:spell_slots_1").
+	// Hit dice are not listed: their return is counted on its own. Sorted,
+	// fresh refs; nil when nothing rose.
+	Refilled []*core.Ref
+}
+
 // LongRest performs a long rest, restoring HP to maximum and all long-rest resources.
 // It publishes RestEvent for conditions to handle their own removal if appropriate,
-// then leaves any prior combat turn.
-func (c *Character) LongRest(ctx context.Context) error {
+// then leaves any prior combat turn, and reports which resources refilled.
+func (c *Character) LongRest(ctx context.Context) (*LongRestOutput, error) {
 	if c.bus == nil {
-		return rpgerr.New(rpgerr.CodeInvalidArgument, "character has no event bus")
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "character has no event bus")
+	}
+	// Read before anything moves, so a feature that cannot report its pool
+	// refuses the rest rather than half of it.
+	before, err := c.refillSnapshot()
+	if err != nil {
+		return nil, err
 	}
 
 	// Restore HP to maximum
@@ -737,16 +772,78 @@ func (c *Character) LongRest(ctx context.Context) error {
 
 	// Publish RestEvent for conditions to react (e.g., RagingCondition removes itself)
 	restTopic := dnd5eEvents.RestTopic.On(c.bus)
-	err := restTopic.Publish(ctx, dnd5eEvents.RestEvent{
+	err = restTopic.Publish(ctx, dnd5eEvents.RestEvent{
 		RestType:    coreResources.ResetLongRest,
 		CharacterID: c.id,
 	})
 	if err != nil {
-		return rpgerr.Wrapf(err, "failed to publish rest event")
+		return nil, rpgerr.Wrapf(err, "failed to publish rest event")
 	}
 
-	_, err = c.ExitCombat(ctx, nil)
-	return err
+	if _, err := c.ExitCombat(ctx, nil); err != nil {
+		return nil, err
+	}
+
+	refilled, err := c.refilledSince(before)
+	if err != nil {
+		return nil, err
+	}
+	return &LongRestOutput{Refilled: refilled}, nil
+}
+
+// refillPool is one resource as a rest sees it: its name and its count.
+type refillPool struct {
+	ref     core.Ref
+	current int
+}
+
+// refillSnapshot reads every resource a rest can refill, keyed by resource
+// key: the pools features report (named by the feature, shared pools
+// included), then the character's own pools no feature reports (named by
+// key). Hit dice are left out; a rest counts their return on its own.
+func (c *Character) refillSnapshot() (map[coreResources.ResourceKey]refillPool, error) {
+	pools := make(map[coreResources.ResourceKey]refillPool)
+	for _, f := range c.features {
+		out, err := f.Status(&features.StatusInput{Owner: c})
+		if err != nil {
+			return nil, rpgerr.Wrapf(err, "feature %s reported malformed status", featureID(f))
+		}
+		if out == nil || out.Status == nil || out.Status.Resource == nil {
+			continue
+		}
+		pools[out.Status.Resource.Key] = refillPool{ref: out.Status.Ref, current: out.Status.Resource.Current}
+	}
+	for key, resource := range c.resources {
+		if key == resources.HitDice {
+			continue
+		}
+		if _, named := pools[key]; named {
+			continue
+		}
+		pools[key] = refillPool{
+			ref:     core.Ref{Module: refs.Module, Type: refs.TypeResources, ID: core.ID(key)},
+			current: resource.Current(),
+		}
+	}
+	return pools, nil
+}
+
+// refilledSince names the pools whose count rose since the snapshot.
+func (c *Character) refilledSince(before map[coreResources.ResourceKey]refillPool) ([]*core.Ref, error) {
+	after, err := c.refillSnapshot()
+	if err != nil {
+		return nil, err
+	}
+
+	var out []*core.Ref
+	for key, now := range after {
+		if was, ok := before[key]; ok && now.current > was.current {
+			ref := now.ref
+			out = append(out, &ref)
+		}
+	}
+	slices.SortFunc(out, func(a, b *core.Ref) int { return strings.Compare(a.String(), b.String()) })
+	return out, nil
 }
 
 // EndCombat used to sit here, and it is gone (rpg-project#319 Phase 6). It

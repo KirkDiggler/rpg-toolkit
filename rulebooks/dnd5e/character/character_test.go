@@ -192,7 +192,7 @@ func (s *CharacterResourceTestSuite) TestLoadResourceDataIsInertUntilCharacterRe
 	s.Equal(1, rage.Current())
 	s.Equal(5, ki.Current())
 	s.Require().NoError(ki.Use(2))
-	s.Require().NoError(s.character.LongRest(s.ctx))
+	s.Require().NoError(restErr(s.character.LongRest(s.ctx)))
 	s.Equal(2, rage.Current())
 	s.Equal(5, ki.Current())
 }
