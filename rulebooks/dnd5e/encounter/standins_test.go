@@ -166,7 +166,7 @@ func (s *standInsSuite) TestAStandInWorldLoadsWithRealCapabilities() {
 		goblin: heldSet(encounter.ConditionKey{ConditionRef: faerieFire, SourceID: clericSource}),
 	}}
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: built.ToData(), Sight: everyoneSeesTheWholeMap{}, Equipment: table, Standing: everyoneStanding{},
+		Data: built.ToData(), Sight: everyoneSeesTheWholeMap{}, Equipment: table, Sheets: zeroSheets{}, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})

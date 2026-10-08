@@ -30,7 +30,7 @@ func (s *PropObservationSuite) SetupTest() {
 	s.sight = &sightList{fallback: 20}
 	var err error
 	s.enc, err = encounter.NewEncounter(&encounter.SetupInput{
-		Field: field, Sight: s.sight, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{},
+		Field: field, Sight: s.sight, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Members: []encounter.MemberInput{{ID: propObserver, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}}, {ID: "b", Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 1}}},
 		Endings: []encounter.EndingInput{{Key: "end", Trigger: encounter.TriggerExternal{}}},
@@ -68,7 +68,7 @@ func (s *PropObservationSuite) reload() {
 	var data encounter.EncounterData
 	s.Require().NoError(json.Unmarshal(raw, &data))
 	s.enc, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data, Sight: s.sight, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Data: data, Sight: s.sight, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().NoError(err)
 }
@@ -81,7 +81,7 @@ func (s *PropObservationSuite) TestFootprintMemoryKeepsItsShapeAndNeedsCompleteE
 	field.PropPresentations = []encounter.PropPresentation{{ID: "b", Ref: "test:props:chest", Origin: box.Placement.Origin, HeightScale: 1.25, Elevation: 2}}
 	var err error
 	s.enc, err = encounter.NewEncounter(&encounter.SetupInput{
-		Field: field, Sight: s.sight, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Field: field, Sight: s.sight, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Members: []encounter.MemberInput{{ID: propObserver, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}}, {ID: "b", Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 1}}},
 		Endings: []encounter.EndingInput{{Key: "end", Trigger: encounter.TriggerExternal{}}},
@@ -137,7 +137,7 @@ func (s *PropObservationSuite) TestRoomLayoutDoesNotDiscloseAnOccludedProp() {
 	}
 	var err error
 	s.enc, err = encounter.NewEncounter(&encounter.SetupInput{
-		Field: field, Sight: s.sight, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Field: field, Sight: s.sight, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Members: []encounter.MemberInput{{ID: propObserver, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}}},
 		Endings: []encounter.EndingInput{{Key: "end", Trigger: encounter.TriggerExternal{}}},

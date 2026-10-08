@@ -103,12 +103,15 @@ type StrikeOutcome struct {
 	// Damage is what was dealt. Zero on a miss.
 	Damage int
 
-	// DamageInstances are the typed amounts that landed after the damage fold
-	// and multiplier arithmetic. Empty on a miss.
+	// DamageInstances are the typed amounts that landed: the target step's
+	// settlement, one per damage type taken above zero. Empty on a miss.
 	DamageInstances []damage.Instance
 
-	// DamageComponents are the folded source-attributed components from which
-	// DamageInstances were calculated. Empty on a miss.
+	// DamageComponents are the damage trace, the same shape a contest's
+	// [ImposedEffect.Components] carries: the dealt components, the target's
+	// reductions, and one line per multiplied type naming the rule that
+	// decided it. They total what the target step settled on; no line carries
+	// a multiplier factor. Empty on a miss.
 	DamageComponents []dnd5eEvents.DamageComponent
 
 	// Conditions records each declared on-hit application in declaration order.
@@ -156,23 +159,27 @@ func NewStrike(in *StrikeInput) Machine {
 // here, which is what keeps combat.Combatant named in this file alone
 // (TestOnlyStrikeNamesTheKeeperSurface).
 func newStrikeMachine(in *StrikeInput) *strikeMachine {
-	return &strikeMachine{
-		in: in,
-		applyDamage: func(
-			ctx context.Context, target combat.Combatant, input *combat.ApplyDamageInput,
-		) *combat.ApplyDamageResult {
-			return target.ApplyDamage(ctx, input)
-		},
-	}
+	return &strikeMachine{in: in, applyDamage: applyToSheet}
+}
+
+// applyDamageFunc is the one target-application boundary: the target step
+// applies what it settled through it. Keeping it as a dependency lets tests
+// count calls while delegating to the real combatant.
+type applyDamageFunc func(context.Context, combat.Combatant, *combat.ApplyDamageInput) *combat.ApplyDamageResult
+
+// applyToSheet is the production application: the target's own sheet.
+func applyToSheet(
+	ctx context.Context, target combat.Combatant, input *combat.ApplyDamageInput,
+) *combat.ApplyDamageResult {
+	return target.ApplyDamage(ctx, input)
 }
 
 type strikeMachine struct {
 	in *StrikeInput
 
-	// applyDamage is the one target-application boundary. Keeping it as a
-	// dependency lets tests count calls while delegating to the real combatant;
-	// NewStrike always installs the direct production behavior.
-	applyDamage func(context.Context, combat.Combatant, *combat.ApplyDamageInput) *combat.ApplyDamageResult
+	// applyDamage is the target step's application seam; NewStrike always
+	// installs [applyToSheet].
+	applyDamage applyDamageFunc
 
 	// cast is the sheets this interaction attached, kept because a phase after
 	// the first needs them and a step's closure is handed only a bus.
@@ -260,7 +267,7 @@ func (m *strikeMachine) sanctuaryStep(cast *Participants) Step {
 			if err != nil {
 				return nil, err
 			}
-			return m.wardCheckStep(cast, pending, 0, next), nil
+			return m.wardCheckStep(cast, pending, 0, next)
 		},
 	}
 }
@@ -272,14 +279,20 @@ func (m *strikeMachine) sanctuaryStep(cast *Participants) Step {
 // requester cannot be suspended" refusal — a named error, not silent
 // corruption — rather than a freeze/resume shape for this new interruption
 // point. Documented as a known gap, not assumed absent.
+//
+// Errors: [ErrWardUnreadable] from [wardSaveDC] — the strike fails rather than
+// skipping the ward.
 func (m *strikeMachine) wardCheckStep(
 	cast *Participants, pending []*conditions.SanctuaryCondition, index int, next Step,
-) Step {
+) (Step, error) {
 	if index >= len(pending) {
-		return next
+		return next, nil
 	}
 	ward := pending[index]
-	dc := wardSaveDC(cast, ward.SourceID)
+	dc, err := wardSaveDC(m.in.TargetID, ward)
+	if err != nil {
+		return nil, err
+	}
 	return requestSave(wardSaveInput(m.in.AttackerID, ward, dc, m.in.Roller),
 		func(_ context.Context, out SaveOutcome) (Step, error) {
 			if !out.Result.Success {
@@ -289,8 +302,8 @@ func (m *strikeMachine) wardCheckStep(
 				}
 				return Done{Outcome: m.reported()}, nil
 			}
-			return m.wardCheckStep(cast, pending, index+1, next), nil
-		})
+			return m.wardCheckStep(cast, pending, index+1, next)
+		}), nil
 }
 
 // preflight is everything both a fresh and a resumed strike need before
@@ -755,7 +768,7 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 		weaponDamageType = primary.Type
 	}
 
-	return foldDamage(dnd5eEvents.NewDamageChainEvent(dnd5eEvents.DamageChainInput{
+	event := dnd5eEvents.NewDamageChainEvent(dnd5eEvents.DamageChainInput{
 		AttackerID:       m.in.AttackerID,
 		TargetID:         m.in.TargetID,
 		Components:       components,
@@ -766,7 +779,24 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 		// two-handed facts: all ride the frame's Action, the one place a
 		// damage rule reads them (rpg-toolkit#1958).
 		Frame: frame,
-	}), m.afterDamageChain), nil
+	})
+	return foldDamage(targetStepInput{
+		Dealt:      event,
+		Cast:       m.cast,
+		IsCritical: m.outcome.Critical,
+		Apply:      m.applyDamage,
+		Cause:      m.damageCause(),
+		Roller:     m.in.Roller,
+		Received: func(received receivedDamage) {
+			m.outcome.DamageInstances = received.Instances
+			m.outcome.DamageComponents = received.Trace
+			m.outcome.Damage = received.Applied.TotalDamage
+		},
+		FollowUp: func(followUp FollowUpOutcome) {
+			m.outcome.FollowUps = append(m.outcome.FollowUps, followUp)
+		},
+		Then: m.afterDamage,
+	}), nil
 }
 
 // baseDamageFacts reads the swing's ability, its modifier and whether it is
@@ -887,69 +917,6 @@ func attackAbilityRef(ability abilities.Ability) *core.Ref {
 	default:
 		return nil
 	}
-}
-
-// afterDamageChain applies what the fold settled on — bus-free, straight onto
-// the sheet (ADR-0026's Apply). Notify is deliberately absent: publishing
-// DamageReceivedEvent would apply the damage a second time to a monster
-// target, whose sheet-keeper treats that topic as an instruction — the
-// one-topic-two-meanings finding #965 slice 2 owes a classification for.
-// Pinned by TestAMonsterTargetTakesItsDamageOnce.
-func (m *strikeMachine) afterDamageChain(
-	ctx context.Context, folded *dnd5eEvents.DamageChainEvent,
-) (Step, error) {
-	target, err := combatantFor(m.cast, m.in.TargetID)
-	if err != nil {
-		return nil, err
-	}
-
-	// The multipliers are combat's arithmetic, called bus-free now that it is
-	// exported (#965 slice 2 PR-A). Resistance, vulnerability, and immunity
-	// stacking stays one implementation shared with the legacy stack rather
-	// than a copy that can drift.
-	final, _ := combat.FinalDamage(folded.Components)
-
-	m.outcome.DamageInstances = make([]damage.Instance, 0, len(final))
-	instances := make([]combat.DamageInstance, 0, len(final))
-	for _, instance := range final {
-		m.outcome.DamageInstances = append(m.outcome.DamageInstances, damage.Instance{
-			Amount: instance.Amount,
-			Type:   instance.Type,
-		})
-		instances = append(instances, combat.DamageInstance{
-			Amount: instance.Amount,
-			Type:   string(instance.Type),
-		})
-	}
-	m.outcome.DamageComponents = cloneDamageComponents(folded.Components)
-
-	// Bus-free, and the only phase that is: applying damage is the sheet's own
-	// business and takes no bus on either a character or a monster.
-	applied := m.applyDamage(ctx, target, &combat.ApplyDamageInput{
-		Instances:  instances,
-		IsCritical: m.outcome.Critical,
-	})
-	m.outcome.Damage = applied.TotalDamage
-
-	// Say what landed, then answer what came back. This is where afterDamage's
-	// notify would have gone and deliberately did not: DamageReceivedTopic
-	// means two things to two halves of the roster (see [strikeMachine.afterDamage]),
-	// so the fact this publishes is a NEW topic with one meaning and no
-	// subscriber that applies anything.
-	return reportDamage(reportDamageInput{
-		MemberID:      m.in.TargetID,
-		Amount:        applied.TotalDamage,
-		DamageType:    primaryDamageType(m.outcome.DamageInstances),
-		DroppedToZero: applied.PreviousHP > 0 && applied.CurrentHP == 0,
-		Cause:         m.damageCause(),
-	}, func(reported context.Context, ups []dnd5eEvents.FollowUp) (Step, error) {
-		return runFollowUps(reported, ups, 0, m.in.Roller,
-			func(followUp FollowUpOutcome) {
-				m.outcome.FollowUps = append(m.outcome.FollowUps, followUp)
-			},
-			m.afterDamage,
-		)
-	}), nil
 }
 
 // damageCause says what dealt the damage and who swung it.
@@ -1118,44 +1085,6 @@ func publishPostAttackRoll(
 	}
 }
 
-// foldDamage builds the step that folds the damage chain on this
-// interaction's own bus.
-//
-// Resolution publishes and executes the chain itself, the same way it already
-// does for the attack and the saving throw, and then calls the exported
-// [combat.FinalDamage] for the multiplier arithmetic. Slice 1 handed its bus
-// to combat.ResolveDamage instead — the fold happened on the right bus either
-// way, since resolution attached every subscriber to it, but custody of the
-// fold sat in the other module and there was no bus-free arithmetic to call.
-// PR-A exported that arithmetic; this is the half that uses it.
-//
-// What is deliberately NOT reimplemented: the stacking rules. FinalDamage is
-// shared with the legacy stack, so resistance and immunity cannot drift
-// between the two.
-func foldDamage(
-	event *dnd5eEvents.DamageChainEvent,
-	next func(context.Context, *dnd5eEvents.DamageChainEvent) (Step, error),
-) Gather {
-	return Gather{
-		name: "damage chain",
-		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
-			chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
-
-			modified, err := dnd5eEvents.DamageChain.On(bus).PublishWithChain(ctx, event, chain)
-			if err != nil {
-				return nil, fmt.Errorf("publish damage chain: %w", err)
-			}
-
-			folded, err := modified.Execute(ctx, event)
-			if err != nil {
-				return nil, fmt.Errorf("execute damage chain: %w", err)
-			}
-
-			return next(ctx, folded)
-		},
-	}
-}
-
 // pureNdMNotation matches the pure NdM shape damage.Validate guarantees for a
 // declared pool's dice — in either letter case, the same `[dD]` the dice
 // package's own notation grammar accepts ("1D6" and "1d6" are one notation).
@@ -1187,64 +1116,6 @@ func cloneCoreRef(ref *core.Ref) *core.Ref {
 	}
 	clone := *ref
 	return &clone
-}
-
-// cloneDamageComponents returns an independently owned copy of the folded
-// components. The folded damage event is publisher-owned state a chain
-// subscriber can retain, so the outcome deep-clones every roll fact at the
-// moment it captures them: a late mutation of the publisher's trace cannot
-// rewrite what the strike already reported, and no component's trace ever
-// aliases another's.
-func cloneDamageComponents(components []dnd5eEvents.DamageComponent) []dnd5eEvents.DamageComponent {
-	if components == nil {
-		return nil
-	}
-	clones := make([]dnd5eEvents.DamageComponent, len(components))
-	for i, component := range components {
-		clones[i] = component
-		clones[i].Roll = cloneRollComponent(component.Roll)
-		clones[i].Properties = append([]damage.Property(nil), component.Properties...)
-		if component.Multiplier != nil {
-			factor := *component.Multiplier
-			clones[i].Multiplier = &factor
-		}
-	}
-	return clones
-}
-
-// cloneRollComponent deep-clones one component's roll facts: the provider's
-// identity ref, the dice trace with every face list and sourced reroll, and
-// the modifier pointer.
-func cloneRollComponent(roll dnd5eEvents.RollComponent) dnd5eEvents.RollComponent {
-	clone := dnd5eEvents.RollComponent{
-		Source: dnd5eEvents.RollSource{
-			Ref: cloneCoreRef(roll.Source.Ref), Name: roll.Source.Name,
-			Label: roll.Source.Label, SourceID: roll.Source.SourceID,
-		},
-		SubtractDice: roll.SubtractDice,
-	}
-	if roll.Dice != nil {
-		dice := *roll.Dice
-		dice.OriginalRolls = append([]int(nil), roll.Dice.OriginalRolls...)
-		dice.FinalRolls = append([]int(nil), roll.Dice.FinalRolls...)
-		dice.KeptIndices = append([]int(nil), roll.Dice.KeptIndices...)
-		if roll.Dice.Rerolls != nil {
-			dice.Rerolls = make([]dnd5eEvents.DiceReroll, len(roll.Dice.Rerolls))
-			for i, reroll := range roll.Dice.Rerolls {
-				dice.Rerolls[i] = reroll
-				dice.Rerolls[i].Source = dnd5eEvents.RollSource{
-					Ref: cloneCoreRef(reroll.Source.Ref), Name: reroll.Source.Name,
-					Label: reroll.Source.Label, SourceID: reroll.Source.SourceID,
-				}
-			}
-		}
-		clone.Dice = &dice
-	}
-	if roll.Modifier != nil {
-		modifier := *roll.Modifier
-		clone.Modifier = &modifier
-	}
-	return clone
 }
 
 // flattenDice collapses a pool's grouped rolls into one per-die list, in roll

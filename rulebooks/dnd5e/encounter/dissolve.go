@@ -204,7 +204,7 @@ func (e *Encounter) dissolveBubble(bubble *clock.Turn, cause DissolveCause) (*Di
 	}
 
 	seq, err := e.appendClockBeat(map[string]interface{}{
-		"beat":    "bubble-dissolved",
+		"beat":    BeatFightEnded,
 		"members": out.Members,
 		"cause":   string(cause.Kind()),
 	}, out.Members...)

@@ -103,15 +103,14 @@ func (s *ProjectionTestSuite) TestAnUncompilableMainHandIsABadAttack() {
 			"report the whole character as corrupt")
 }
 
-// The facts survive the same lenient load the armour class does: a record
-// carrying a condition this build cannot parse still projects, and the numbers
-// come back whole.
-func (s *ProjectionTestSuite) TestTheFactsSurviveAnUnreadableCondition() {
+// The facts go with the armour class: a record carrying a condition this
+// build cannot parse does not project at all. Facts from a sheet missing an
+// effect would be written onto the member as though the sheet were whole.
+func (s *ProjectionTestSuite) TestTheFactsDoNotOutliveAnUnreadableCondition() {
 	record := s.barbarian(json.RawMessage(`{"ref":"nonsense","x":`))
 
 	out, err := ProjectCharacter(s.ctx, &ProjectCharacterInput{Character: record})
-	s.Require().NoError(err)
-
-	s.Equal(30, out.Sheet.SpeedFeet, "the rest of the character still loaded")
-	s.Require().NotNil(out.MainHand)
+	s.Require().Error(err)
+	s.Require().Nil(out, "no half a projection: no facts without the fold")
+	s.Require().Contains(err.Error(), "nonsense")
 }

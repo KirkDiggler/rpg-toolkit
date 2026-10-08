@@ -98,7 +98,8 @@ func (s *SingleRoomWallDoorSuite) TestOrdinaryDiscoveryDoesNotSeeThroughAFoundSe
 	}}
 	compiled := s.load(spec)
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{},
+		Sheets: zeroSheets{},
+		Sight:  everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findDoorCheck{}, Witness: nobodyPerceivesAnything{},
 		Field: compiled.Field, Members: []encounter.MemberInput{{ID: "walker", Kind: encounter.KindPlayer, Position: axial(0, 0)}},

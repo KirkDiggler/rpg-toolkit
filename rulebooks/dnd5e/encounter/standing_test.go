@@ -58,20 +58,21 @@ const wolf = encounter.MemberID("wolf")
 // window would make "what the story says" a question about trimming.
 // TestAForgottenDeathIsToldAgain sets its own, on purpose.
 func (s *deathScene) scene(standing encounter.StandingWithParticipation, members ...encounter.MemberInput) *encounter.Encounter {
-	return s.sceneDriven(standing, passDriver{}, members...)
+	return s.sceneDriven(standing, passDriver{}, zeroSheets{}, members...)
 }
 
-// sceneDriven is scene with the driver named — for the one fixture whose
-// monster is supposed to actually walk.
+// sceneDriven is scene with the driver and the sheets named — for the one
+// fixture whose monster is supposed to actually walk.
 func (s *deathScene) sceneDriven(
-	standing encounter.StandingWithParticipation, driver encounter.TurnDriver, members ...encounter.MemberInput,
+	standing encounter.StandingWithParticipation, driver encounter.TurnDriver, sheets encounter.Sheets,
+	members ...encounter.MemberInput,
 ) *encounter.Encounter {
 	s.T().Helper()
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: driver, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: standing,
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheets, Standing: standing,
 		Retention: encounter.RetentionUnbounded,
 		Field:     encounter.FieldInput{Canvas: openAir(), Regions: []encounter.RegionInput{rectRegion(cryptID, 0, 0, 12, 12)}},
 		Members:   members,
@@ -97,10 +98,9 @@ func (s *deathScene) pair(standing encounter.StandingWithParticipation) *encount
 func (s *deathScene) pacingPair(standing encounter.StandingWithParticipation) *encounter.Encounter {
 	s.T().Helper()
 
-	return s.sceneDriven(standing, tableDriver(),
+	return s.sceneDriven(standing, tableDriver(), sheetFacts{goblin: {SpeedFeet: 5}, alice: {}},
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 2}},
-		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 0, Y: 10},
-			SpeedFeet: 5, Table: walksTo(spatial.Position{X: 2, Y: 10})},
+		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 0, Y: 10}, Table: walksTo(spatial.Position{X: 2, Y: 10})},
 	)
 }
 
@@ -250,7 +250,7 @@ func (s *StandingSuite) TestALoadedEncounterAsksToo() {
 		Data:       saved,
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: down,
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: down,
 	})
 	s.Require().NoError(err)
 	s.Require().Equal([]encounter.MemberID{alice, goblin, wolf}, s.orderOf(enc, alice),
@@ -457,7 +457,7 @@ func (s *StandingSuite) TestAForgottenDeathIsToldAgain() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: &downList{down: []encounter.MemberID{goblin}},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: &downList{down: []encounter.MemberID{goblin}},
 		Retention: 4,
 		Field:     encounter.FieldInput{Canvas: openAir(), Regions: []encounter.RegionInput{rectRegion(cryptID, 0, 0, 12, 12)}},
 		Members: []encounter.MemberInput{

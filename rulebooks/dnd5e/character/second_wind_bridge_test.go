@@ -8,6 +8,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -52,7 +53,10 @@ func (s *SecondWindBridgeTestSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.bus = events.NewEventBus()
 
-	char, err := Load(s.ctx, keeperSheet())
+	// A level-1 fighter: Second Wind asks its owner's fighter level.
+	sheet := keeperSheet()
+	sheet.Levels, sheet.Level, sheet.ClassID = syntheticLevels(classes.Fighter, 1), 1, classes.Fighter
+	char, err := Load(s.ctx, sheet)
 	s.Require().NoError(err)
 	s.Require().NoError(Attach(s.ctx, char, s.bus))
 	s.char = char
@@ -82,7 +86,6 @@ func (s *SecondWindBridgeTestSuite) TestActivateAbilityCarriesRollerIntoSecondWi
 	// Install a real Second Wind feature through the factory.
 	output, err := features.CreateFromRef(&features.CreateFromRefInput{
 		Ref:         refs.Features.SecondWind().String(),
-		Config:      []byte(`{"level": 1}`),
 		CharacterID: s.char.GetID(),
 	})
 	s.Require().NoError(err)

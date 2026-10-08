@@ -51,7 +51,6 @@ func (s *WeaponProficiencyTestSuite) sheet(profs ...proficiencies.Weapon) *Chara
 		},
 		HitPoints:           12,
 		MaxHitPoints:        12,
-		ArmorClass:          16,
 		ProficiencyBonus:    2,
 		WeaponProficiencies: profs,
 	})

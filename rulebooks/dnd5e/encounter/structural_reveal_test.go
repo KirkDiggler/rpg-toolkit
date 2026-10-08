@@ -145,7 +145,8 @@ func (s *StructuralRevealSuite) open(field encounter.FieldInput, resolver encoun
 	// observer who earned it, and an obstructed peer must not be handed it.
 	sight := &sightList{fallback: 30, reach: map[encounter.MemberID]int{"peer": 1}}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: sight, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{},
+		Sheets: zeroSheets{},
+		Sight:  sight, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{},
 		Announcer: quietAnnouncer{}, CheckResolver: resolver, Witness: nobodyPerceives{},
 		Field: field,
@@ -165,7 +166,8 @@ func (s *StructuralRevealSuite) open(field encounter.FieldInput, resolver encoun
 func (s *StructuralRevealSuite) reload(enc *encounter.Encounter) *encounter.Encounter {
 	s.T().Helper()
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: enc.ToData(), Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{},
+		Sheets: zeroSheets{},
+		Data:   enc.ToData(), Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{},
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 		Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},

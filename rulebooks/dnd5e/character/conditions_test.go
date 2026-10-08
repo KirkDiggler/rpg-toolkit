@@ -145,7 +145,6 @@ func (s *CharacterConditionsTestSuite) TestCharacterReceivesRageCondition() {
 	}
 	s.Require().NotNil(ragingCond, "Should have raging condition")
 	s.Equal("char-1", ragingCond.CharacterID)
-	s.Equal(2, ragingCond.DamageBonus) // Level 1 barbarian = +2 rage damage
 	s.Equal("rage", ragingCond.Source)
 }
 
@@ -204,8 +203,6 @@ func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterConditi
 	// Create a raging condition for the different character
 	ragingCond := &conditions.RagingCondition{
 		CharacterID: "char-2",
-		DamageBonus: 2,
-		Level:       5,
 		Source:      "test",
 	}
 
@@ -434,17 +431,18 @@ func (s *CharacterConditionsTestSuite) TestMonkReceivesMartialArtsCondition() {
 	s.True(hasUnarmoredDefense, "Monk should have Unarmored Defense condition")
 	s.True(hasMartialArts, "Monk should have Martial Arts condition")
 
-	// Verify Martial Arts is configured for level 1
+	// Martial Arts stores no monk level: the die is read from the sheet at
+	// each swing.
 	s.Require().NotNil(martialArtsCond)
-	s.Equal(1, martialArtsCond.MonkLevel, "Martial Arts should be configured for monk level 1")
+	raw, err := martialArtsCond.ToJSON()
+	s.Require().NoError(err)
+	s.NotContains(string(raw), "level")
 }
 
 func (s *CharacterConditionsTestSuite) TestCharacterConditionRoundTrip() {
 	// Build a RagingCondition, serialize it to JSON
 	ragingCond := &conditions.RagingCondition{
 		CharacterID: "char-rt",
-		DamageBonus: 2,
-		Level:       1,
 		Source:      "rage",
 		TurnsActive: 3,
 	}
@@ -487,7 +485,6 @@ func (s *CharacterConditionsTestSuite) TestCharacterConditionRoundTrip() {
 	s.Require().True(ok, "Condition should be a RagingCondition")
 	s.True(loadedCond.IsApplied(), "Loaded condition should be applied (subscribed to bus)")
 	s.Equal("char-rt", loadedCond.CharacterID)
-	s.Equal(2, loadedCond.DamageBonus)
 	s.Equal(3, loadedCond.TurnsActive)
 }
 

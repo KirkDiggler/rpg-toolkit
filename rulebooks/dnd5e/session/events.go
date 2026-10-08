@@ -226,59 +226,64 @@ func decodeBeat(payload []byte) (EventKind, EventBody) {
 // kindFor maps the composition's declared "beat" string onto the wire enum.
 // Total: every string reaches an arm, and the ones this build does not
 // recognise fall to EventUnknown alongside an empty or unparseable one.
+//
+// EVERY ARM IS ONE OF THE COMPOSITION'S EXPORTED CONSTANTS, never a string
+// literal (rpg-project#539): the beat kinds are the composition's words, so a
+// rename there fails to compile here instead of quietly producing a beat
+// nobody renders. TestNoBeatKindIsMatchedByALiteral holds the line.
 func kindFor(beat string) EventKind {
 	switch beat {
-	case "moved":
+	case encounter.BeatMoved:
 		return EventMoved
-	case "joined":
+	case encounter.BeatJoined:
 		return EventJoined
-	case "exited":
+	case encounter.BeatExited:
 		return EventExited
-	case "ended":
+	case encounter.BeatEnded:
 		return EventEnded
-	case "scene-opened":
+	case encounter.BeatSceneOpened:
 		return EventSceneOpened
-	case "tick":
+	case encounter.BeatTick:
 		return EventTick
-	case "turn-ended":
+	case encounter.BeatTurnEnded:
 		return EventTurnEnded
-	case "bubble-formed":
+	case encounter.BeatFightStarted:
 		return EventFightStarted
-	case "bubble-dissolved":
+	case encounter.BeatFightEnded:
 		return EventFightEnded
 	// The explicit outcome beats. Unlike every other case here, these strings are
 	// not the composition's own vocabulary for a verb it ran — they are the
 	// OutcomeKind a rulebook handed it (encounter's Record), which is why the
 	// mapping is worth a word: adding an outcome kind upstream means adding a
 	// case here, or the new outcome goes out unnamed.
-	case "struck":
+	case string(encounter.OutcomeStruck):
 		return EventStruck
-	case "missed":
+	case string(encounter.OutcomeMissed):
 		return EventMissed
-	case "warded":
+	case string(encounter.OutcomeWarded):
 		return EventWarded
-	case "death_save":
+	case string(encounter.OutcomeDeathSave):
 		return EventDeathSave
-	case "activated":
+	case encounter.BeatActivated:
 		return EventActivated
-	case "activation-result":
+	case encounter.BeatActivationResult:
 		return EventActivationResult
 	// The cast beats. "cast" and "saved" are the composition's own words for
 	// what it recorded (encounter's RecordCast), so they cross unchanged.
-	case "cast":
+	case encounter.BeatCast:
 		return EventCast
-	case "cast_missed":
+	case encounter.BeatCastMissed:
 		return EventCastMissed
-	case "cast_warded":
+	case encounter.BeatCastWarded:
 		return EventCastWarded
-	case "saved":
+	case encounter.BeatSaved:
 		return EventSaved
 	// The break beat, and it crosses unchanged for the same reason the two
 	// above do: "concentration_ended" is the composition's own word for what
 	// it recorded. It rides in on whatever interaction ended the spell rather
 	// than arriving through a verb of its own, so there is no third string
 	// here to translate.
-	case "concentration_ended":
+	case encounter.BeatConcentrationEnded:
 		return EventConcentrationEnded
 	// The third outcome beat, and the one nobody pushed. "down" is an
 	// OutcomeKind like the two above, but no caller can hand it to Record —
@@ -294,7 +299,7 @@ func kindFor(beat string) EventKind {
 	// that LEAVES the session is the unambiguous one, while the composition's
 	// own kind — which is persisted in every stored world — is left alone. A
 	// rename there would be a migration; a translation here is a line.
-	case "down":
+	case string(encounter.OutcomeDown):
 		return EventDowned
 	// The party's receipt for that fall, and an outcome kind like the ones
 	// above — but this one IS pushed, by this package: the composition sees
@@ -304,7 +309,7 @@ func kindFor(beat string) EventKind {
 	// unchanged; there is no ambiguity here to translate away.
 	case string(encounter.OutcomeExperienceGained):
 		return EventExperienceGained
-	case "door":
+	case encounter.BeatDoor:
 		return EventDoor
 	// One secret entering one recipient's knowledge. Named by the
 	// composition's own exported constant, for BeatSighted's reason below
@@ -356,22 +361,22 @@ func kindFor(beat string) EventKind {
 	// above, which is a translation and says why. NOTHING HERE SAYS "took":
 	// Take is reserved for the act that lands a thing in inventory (R10),
 	// and no beat this seam publishes may claim it.
-	case "looted":
+	case encounter.BeatLooted:
 		return EventLooted
-	case "held":
+	case encounter.BeatHeld:
 		return EventHeld
-	case "dropped":
+	case encounter.BeatDropped:
 		return EventDropped
 	// THE WORD CHANGES HERE, like "down"/"downed" above: the composition
 	// names the noun ("stance", the thing that changed) and the wire names
 	// the event, beside "fight_ended" and "concealment_revealed". A stance turning
 	// is truth grain and goes to everyone (rpg-project#375, design §6).
-	case "stance":
+	case encounter.BeatStance:
 		return EventStanceChanged
 	// A reserved placement entering the run (rpg-project#375, R6): the
 	// composition's own word for what it did, crossing unchanged like
 	// "held" and "dropped".
-	case "arrived":
+	case encounter.BeatArrived:
 		return EventArrived
 	// A step stopping to ask somebody (rpg-project#316 rung 3). The
 	// composition's word crosses unchanged, and unlike every other case here
@@ -1262,7 +1267,7 @@ func deathSaveEventBody(payload []byte) EventBody {
 		}
 	}
 	var beat, actor string
-	if json.Unmarshal(outer["beat"], &beat) != nil || beat != "death_save" ||
+	if json.Unmarshal(outer["beat"], &beat) != nil || beat != string(encounter.OutcomeDeathSave) ||
 		json.Unmarshal(outer["actor"], &actor) != nil || actor == "" {
 		return nil
 	}

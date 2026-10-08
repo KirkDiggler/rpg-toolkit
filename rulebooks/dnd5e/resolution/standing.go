@@ -36,9 +36,10 @@ type StandingOutput struct {
 // display projection. A condition such as Shield that loads successfully but
 // intentionally has no status-display catalog entry therefore still answers.
 // That is distinct from the established lenient record policy: a truly
-// unreadable character condition is audibly dropped because this entry never
-// writes the sheet back, while an unreadable monster trait still refuses
-// because monstertraits has no lenient loader.
+// unreadable character condition is audibly dropped because "down" reads no
+// condition — it comes from hit points and death-save state — while an
+// unreadable monster trait still refuses because monstertraits has no lenient
+// loader.
 func Standing(ctx context.Context, in *StandingInput) (*StandingOutput, error) {
 	return standingOn(ctx, in, newSurface(events.NewEventBus()))
 }

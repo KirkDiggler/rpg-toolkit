@@ -7,6 +7,7 @@ package monstertraits
 import (
 	"context"
 	"encoding/json"
+	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
@@ -83,9 +84,10 @@ func (i *immunityCondition) Apply(ctx context.Context, bus events.EventBus) erro
 	}
 	i.bus = bus
 
-	// Subscribe to damage chain to reduce immune damage to 0
-	damageChain := dnd5eEvents.DamageChain.On(bus)
-	subID, err := damageChain.SubscribeWithChain(ctx, i.onDamageChain)
+	// Answer on the incoming fold: the immunity is this target's own answer
+	// to the damage dealt to it.
+	incoming := dnd5eEvents.IncomingDamageChain.On(bus)
+	subID, err := incoming.SubscribeWithChain(ctx, i.onIncomingDamage)
 	if err != nil {
 		return err
 	}
@@ -135,49 +137,33 @@ func (i *immunityCondition) loadJSON(data json.RawMessage) error {
 	return nil
 }
 
-// onDamageChain adds an immunity multiplier component if damage type matches
-func (i *immunityCondition) onDamageChain(
+// onIncomingDamage answers with a immunity multiplier when the damage dealt
+// to this trait's owner includes its damage type: nothing of the type gets through.
+func (i *immunityCondition) onIncomingDamage(
 	_ context.Context,
-	event *dnd5eEvents.DamageChainEvent,
-	c chain.Chain[*dnd5eEvents.DamageChainEvent],
-) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
-	// Only process if we're the target
-	if event.TargetID != i.ownerID {
+	event *dnd5eEvents.IncomingDamageEvent,
+	c chain.Chain[*dnd5eEvents.IncomingDamageEvent],
+) (chain.Chain[*dnd5eEvents.IncomingDamageEvent], error) {
+	if event.TargetID() != i.ownerID || !slices.Contains(event.DealtTypes(), i.damageType) {
 		return c, nil
 	}
 
-	// Check if any component has our immune damage type
-	hasImmuneDamage := false
-	for idx := range event.Components {
-		if event.Components[idx].DamageType == i.damageType {
-			hasImmuneDamage = true
-			break
-		}
-	}
-
-	if !hasImmuneDamage {
-		return c, nil
-	}
-
-	// Add immunity multiplier component (0 = negate all damage of this type)
-	addMultiplier := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
-		e.Components = append(e.Components, dnd5eEvents.DamageComponent{
-			Source: dnd5eEvents.DamageSourceMonsterTrait,
-			Roll: dnd5eEvents.RollComponent{
-				Source: dnd5eEvents.RollSource{
-					Ref:  refs.MonsterTraits.Immunity(),
-					Name: "Immunity",
-				},
+	answer := func(_ context.Context, e *dnd5eEvents.IncomingDamageEvent) (*dnd5eEvents.IncomingDamageEvent, error) {
+		e.Multipliers = append(e.Multipliers, dnd5eEvents.DamageMultiplier{
+			Category: dnd5eEvents.DamageSourceMonsterTrait,
+			Source: dnd5eEvents.RollSource{
+				Ref:  refs.MonsterTraits.Immunity(),
+				Name: "Immunity",
 			},
 			DamageType: i.damageType,
-			Multiplier: dnd5eEvents.Multiply(0), // immunity: nothing gets through
+			Factor:     dnd5eEvents.DamageFactorImmunity,
 		})
 		return e, nil
 	}
 
-	// Add to chain - process in final stage (for resistance/vulnerability/immunity)
-	err := c.Add(combat.StageFinal, "immunity", addMultiplier)
-	if err != nil {
+	// Keyed by damage type: one owner may hold this trait for several types,
+	// and one hit may deal more than one of them.
+	if err := c.Add(combat.StageFinal, "immunity:"+string(i.damageType), answer); err != nil {
 		return c, rpgerr.Wrapf(err, "error applying immunity for owner %s", i.ownerID)
 	}
 

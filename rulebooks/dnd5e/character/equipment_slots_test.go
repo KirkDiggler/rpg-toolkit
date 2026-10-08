@@ -273,7 +273,7 @@ func (s *EquipmentSlotsTestSuite) TestEquipmentSlots_Persistence() {
 	}
 
 	// Convert to data
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 
 	s.Assert().Equal(armor.ChainMail, data.EquipmentSlots[SlotArmor])
 	s.Assert().Equal("longsword", data.EquipmentSlots[SlotMainHand])

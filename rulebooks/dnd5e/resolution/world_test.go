@@ -86,6 +86,7 @@ func walledWorld(t *testing.T) encounter.EncounterData {
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{},
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: noHandsAreObserved{},
+		Sheets:    noSheetsAsked{},
 		Field: encounter.FieldInput{
 			Canvas: hexCanvas(),
 			// Two regions on ONE canvas in ONE absolute frame: room-1 owns
@@ -128,6 +129,7 @@ func runProbe(t *testing.T, world encounter.EncounterData, participants []Partic
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight:        everyoneSeesTheWholeMap{},
 		Equipment:    noHandsAreObserved{},
+		Sheets:       noSheetsAsked{},
 		Roller:       dice.NewRoller(),
 		World:        world,
 		Participants: participants,

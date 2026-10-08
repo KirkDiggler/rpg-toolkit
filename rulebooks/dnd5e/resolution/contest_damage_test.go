@@ -148,7 +148,6 @@ func (s *ContestDamageTestSuite) saver(hp int, conds ...json.RawMessage) *charac
 		},
 		HitPoints:        hp,
 		MaxHitPoints:     14,
-		ArmorClass:       13,
 		ProficiencyBonus: 2,
 		SavingThrows: map[abilities.Ability]shared.ProficiencyLevel{
 			abilities.STR: shared.Proficient,
@@ -177,7 +176,6 @@ func (s *ContestDamageTestSuite) bard(actions int) *character.Data {
 		},
 		HitPoints:        9,
 		MaxHitPoints:     9,
-		ArmorClass:       12,
 		ProficiencyBonus: 2,
 		ActionEconomy: &character.ActionEconomyData{
 			TurnNumber:            mockeryTurn,
@@ -193,7 +191,7 @@ func (s *ContestDamageTestSuite) world() encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{},
 		Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{},
-		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -252,6 +250,7 @@ func (s *ContestDamageTestSuite) resolve(
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		Equipment: noHandsAreObserved{},
+		Sheets:    noSheetsAsked{},
 		World:     s.world(), Participants: participants, Machine: machine, Cost: cost,
 	})
 }
@@ -521,7 +520,8 @@ func TestTheContestsDeliveryStepsSayWhatTheyDo(t *testing.T) {
 	deal := applyPreparedDamage(
 		[]damage.Damage{{Dice: "1d4", Type: damage.Psychic}}, nil, dnd5eEvents.SaveCause{},
 		mockeryName, nil, heroID, false,
-		func(ImposedEffect) (Step, error) { return nil, nil },
+		func(ImposedEffect) {}, func(FollowUpOutcome) {},
+		func(context.Context) (Step, error) { return nil, nil },
 	)
 	require.Equal(t, "deal 1d4 psychic damage", deal.Name())
 
@@ -530,7 +530,8 @@ func TestTheContestsDeliveryStepsSayWhatTheyDo(t *testing.T) {
 	halved := applyPreparedDamage(
 		[]damage.Damage{{Dice: "1d4", Type: damage.Psychic}}, nil, dnd5eEvents.SaveCause{},
 		mockeryName, nil, heroID, true,
-		func(ImposedEffect) (Step, error) { return nil, nil },
+		func(ImposedEffect) {}, func(FollowUpOutcome) {},
+		func(context.Context) (Step, error) { return nil, nil },
 	)
 	require.Equal(t, "deal 1d4 psychic damage (halved)", halved.Name())
 

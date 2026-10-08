@@ -40,7 +40,7 @@ func (s *HoldingsSuite) TestLootRefusesInOrder() {
 	})
 	s.Run("a negative range is a caller defect, not a smaller reach", func() {
 		_, err := enc.Loot(&encounter.LootInput{Member: raider, Target: captain, Range: -1})
-		s.Require().ErrorIs(err, encounter.ErrNoMember)
+		s.Require().ErrorIs(err, encounter.ErrBadReach)
 	})
 	s.Run("not a member", func() {
 		_, err := enc.Loot(&encounter.LootInput{Member: "ghost", Target: captain})
@@ -120,7 +120,7 @@ func (s *HoldingsSuite) TestHoldRefusesInOrder() {
 	})
 	s.Run("a negative range", func() {
 		_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: chalice, Range: -1})
-		s.Require().ErrorIs(err, encounter.ErrNoMember)
+		s.Require().ErrorIs(err, encounter.ErrBadReach)
 	})
 	s.Run("not a member", func() {
 		_, err := enc.Hold(&encounter.HoldInput{Member: "ghost", Target: chalice})
@@ -205,7 +205,7 @@ func (s *HoldingsSuite) TestTheTurnClockGatesBothVerbs() {
 	fight := &downList{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: fight, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: fight, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 		Field: heirloomField(),
@@ -288,7 +288,7 @@ func (s *HoldingsSuite) TestConstructionRefusesAnUnauthoredKnowledgeLink() {
 	setup := func(holds []encounter.IntelID) error {
 		_, err := encounter.NewEncounter(&encounter.SetupInput{
 			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Standing: s.standing, Initiative: orderAsGiven{},
+			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.standing, Initiative: orderAsGiven{},
 			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: s.witness,
 			Field: heirloomField(),
@@ -313,7 +313,7 @@ func (s *HoldingsSuite) TestConstructionRefusesADeadEndingAndABadExit() {
 	setup := func(mutate func(*encounter.SetupInput)) error {
 		in := &encounter.SetupInput{
 			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Standing: s.standing, Initiative: orderAsGiven{},
+			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.standing, Initiative: orderAsGiven{},
 			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: s.witness,
 			Field:   heirloomField(),
@@ -444,7 +444,7 @@ func (s *HoldingsSuite) TestLoadRefusesABrokenExitedHoldingEnding() {
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data:      blob,
 			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Standing: s.standing, Initiative: orderAsGiven{},
+			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.standing, Initiative: orderAsGiven{},
 			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: s.witness,
 		})
@@ -486,7 +486,7 @@ func (s *HoldingsSuite) TestAnInertKnowledgeLinkTransfersNothingVisible() {
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: s.standing, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.standing, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: plain,
 		Members: []encounter.MemberInput{
@@ -526,7 +526,7 @@ func (s *HoldingsSuite) TestAHeldPropIsGoneForABlindMemberToo() {
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: s.standing, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.standing, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: plain,
 		Members: []encounter.MemberInput{
@@ -569,7 +569,7 @@ func (s *HoldingsSuite) TestLoadRefusesCorruptedHoldings() {
 		_, lerr := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data:      blob,
 			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Standing: s.standing, Initiative: orderAsGiven{},
+			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.standing, Initiative: orderAsGiven{},
 			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: s.witness,
 		})
@@ -698,7 +698,7 @@ func (s *HoldingsSuite) TestConstructionRefusesABadIntelTable() {
 		mutate(&field)
 		_, err := encounter.NewEncounter(&encounter.SetupInput{
 			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Standing: s.standing, Initiative: orderAsGiven{},
+			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.standing, Initiative: orderAsGiven{},
 			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: s.witness,
 			Field:   field,
@@ -812,7 +812,7 @@ func (s *HoldingsSuite) TestLoadRefusesABadIntelTable() {
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data:      blob,
 			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Standing: s.standing, Initiative: orderAsGiven{},
+			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.standing, Initiative: orderAsGiven{},
 			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: s.witness,
 		})

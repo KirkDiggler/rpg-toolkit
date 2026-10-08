@@ -4,11 +4,13 @@
 package session
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
@@ -35,6 +37,7 @@ func TestTranslateLetsNoCompositionSentinelThrough(t *testing.T) {
 		{"trimmed story", encounter.ErrTrimmed, ErrStoryTrimmed},
 		{"empty member id", encounter.ErrNoMember, ErrNoMember},
 		{"not a member", encounter.ErrNotMember, ErrNoMember},
+		{"malformed reach", encounter.ErrBadReach, ErrBadReach},
 		{"closed encounter", encounter.ErrClosed, ErrClosed},
 		{"automatic discovery retires search", encounter.ErrSearchRetired, ErrSearchRetired},
 		{"undeclared ending", encounter.ErrNoEnding, ErrNoEnding},
@@ -90,6 +93,13 @@ func TestTranslateLetsNoCompositionSentinelThrough(t *testing.T) {
 		{"no such prop", encounter.ErrNoProp, ErrNoProp},
 		{"prop is scenery", encounter.ErrNotHoldable, ErrNotHoldable},
 		{"prop already carried", encounter.ErrAlreadyHeld, ErrAlreadyHeld},
+		// The sheet capability's two refusals (rpg-project#538): an answer
+		// that skipped a member, and a compile-only world asked to pace or
+		// reach one. Neither is reachable while the sheet seam answers every
+		// member it is asked about or refuses by its own name first; the arms
+		// keep the composition's words behind the boundary if that changes.
+		{"sheet answer skipped a member", encounter.ErrNoSheets, ErrNoSheet},
+		{"compiled world asked for sheets", encounter.ErrRefusingSheets, ErrInvalidWorld},
 	}
 
 	for _, tc := range cases {
@@ -131,7 +141,8 @@ func TestTranslateResolutionLetsNoResolutionSentinelThrough(t *testing.T) {
 		// before the strike runs, so this arm is the one that catches a
 		// combatant the cast turned out not to hold.
 		{"combatant not in the cast", resolution.ErrNoCombatant, ErrNoSheet},
-		{"target beyond delivery", resolution.ErrOutOfRange, ErrOutOfReach},
+		// Out of range on every verb but a swing, which translateAttack owns.
+		{"target beyond range", resolution.ErrOutOfRange, ErrOutOfRange},
 		// Driven for real in sentinels_test.go: a second swing in a turn that
 		// bought one. The PLAYER-facing arm, and the only one of the economy's
 		// three a caller can reach.
@@ -167,6 +178,20 @@ func TestTranslateResolutionLetsNoResolutionSentinelThrough(t *testing.T) {
 		// because inventing one would mean building a disagreement that does
 		// not exist.
 		{"an ability that said no", resolution.ErrActivationRefused, ErrCannotActivate},
+		// The ward carries no DC: a Sanctuary written before wards recorded
+		// their caster's spell save DC at cast refuses rather than reading as
+		// DC 0 (rpg-toolkit#1965). Bad stored data on the holder's sheet.
+		{"a ward that carries no DC", resolution.ErrWardUnreadable, ErrBadCharacter},
+		// A class-scaled rule handed a frame it cannot answer from — the
+		// actor's sheet holds no levels in the class its effect scales with
+		// (rpg-project#538). The sheet's problem, so this package's word for a
+		// sheet it cannot use; the effect fails rather than reading level one.
+		{"a class-scaled rule with no levels to read", contributions.ErrRuleCannotAnswer, ErrBadCharacter},
+		// The sheet capability not supplied, or its answer skipping a member,
+		// as resolution reports them back out of its own load.
+		{"no sheets capability", resolution.ErrNoSheets, ErrNoSheet},
+		{"sheet answer skipped a member", encounter.ErrNoSheets, ErrNoSheet},
+		{"compiled world asked for sheets", encounter.ErrRefusingSheets, ErrInvalidWorld},
 		// Defects here rather than in the call, and unreachable for that
 		// reason.
 		{"no input at all", resolution.ErrNilInput, ErrNilInput},
@@ -186,6 +211,79 @@ func TestTranslateResolutionLetsNoResolutionSentinelThrough(t *testing.T) {
 				"while the reason itself survives as text, for whoever debugs it")
 		})
 	}
+}
+
+// TestASheetTheSeamCouldNotReadIsTheCause: the sheet seam is consulted from
+// inside a resolution — a cost's witnesses ask every member's sight — and
+// resolution wraps the seam's refusal in its own sentinel for what it was
+// doing at the time. The host's repair is the sheet's, so the seam's own word
+// wins, and the resolution sentinel it was wrapped in stays unreachable.
+// TestTranslateAttackKeepsTheDeliveryRefusal pins the one place the word for
+// resolution's out-of-range refusal depends on the verb (rpg-project#539): a
+// swing's delivery that cannot reach is ErrOutOfReach, while the same
+// sentinel on a cast, a heal or a known target is ErrOutOfRange. Anything
+// else a swing returns falls through to translateResolution unchanged.
+func TestTranslateAttackKeepsTheDeliveryRefusal(t *testing.T) {
+	swing := translateAttack(fmt.Errorf("delivery: %w", resolution.ErrOutOfRange))
+	require.ErrorIs(t, swing, ErrOutOfReach)
+	require.NotErrorIs(t, swing, ErrOutOfRange, "a swing's delivery keeps its own word")
+	require.NotErrorIs(t, swing, resolution.ErrOutOfRange, "and the inner sentinel does not leak")
+
+	cast := translateResolution(fmt.Errorf("cast: %w", resolution.ErrOutOfRange))
+	require.ErrorIs(t, cast, ErrOutOfRange)
+	require.NotErrorIs(t, cast, ErrOutOfReach, "a cast, a heal or a known target is out of range")
+
+	other := translateAttack(resolution.ErrCannotPay)
+	require.ErrorIs(t, other, ErrCannotAfford, "every other sentinel is translateResolution's")
+	require.NotErrorIs(t, other, ErrOutOfReach)
+}
+
+func TestASheetTheSeamCouldNotReadIsTheCause(t *testing.T) {
+	for _, own := range []error{
+		ErrNoCharacter, ErrBadCharacter, ErrNoSheet, ErrBadRepository, ErrInvalidSession, ErrBadAttack,
+	} {
+		t.Run(own.Error(), func(t *testing.T) {
+			inner := fmt.Errorf("%w: witnesses: sight: member %q: %w", resolution.ErrBadCost, "bob", own)
+
+			out := translateResolution(inner)
+			require.ErrorIs(t, out, own)
+			require.NotErrorIs(t, out, resolution.ErrBadCost, "no resolution sentinel reaches the host (S2)")
+			require.NotErrorIs(t, out, ErrBadCost, "and the cost is not blamed for a sheet")
+
+			priced := badCostUnlessSheet(inner)
+			require.ErrorIs(t, priced, own)
+			require.NotErrorIs(t, priced, ErrBadCost)
+		})
+	}
+
+	require.ErrorIs(t, badCostUnlessSheet(errors.New("ledger refused")), ErrBadCost,
+		"a pricing failure that is not a sheet is still the cost's")
+}
+
+// TestADependencyRefusalNamesASheetOnlyWhenOneIsNamed: an unreadable
+// participant's refusal is a sheet's only when a member is named and a sheet
+// sentinel says so. A failure against no member is a cast this package built
+// wrongly, and it keeps resolution's translated word rather than sending a
+// host to repair a sheet that is fine.
+func TestADependencyRefusalNamesASheetOnlyWhenOneIsNamed(t *testing.T) {
+	unnamed := dependencyRefusal(resolutionDependencyFailure{
+		member: "", err: fmt.Errorf("%w: empty cast", resolution.ErrNilInput),
+	})
+	require.ErrorIs(t, unnamed, ErrNilInput)
+	require.NotErrorIs(t, unnamed, ErrBadCharacter, "no member named, no sheet blamed")
+	require.NotErrorIs(t, unnamed, resolution.ErrNilInput, "and resolution's own word stays behind the boundary")
+
+	for _, own := range []error{ErrNoSheet, ErrNoCharacter, ErrBadCharacter, ErrBadRepository} {
+		named := dependencyRefusal(resolutionDependencyFailure{member: "bob", err: fmt.Errorf("load: %w", own)})
+		require.ErrorIs(t, named, own)
+		require.Contains(t, named.Error(), `"bob"`)
+	}
+
+	translated := dependencyRefusal(resolutionDependencyFailure{
+		member: "bob", err: fmt.Errorf("attach: %w", resolution.ErrBadParticipant),
+	})
+	require.ErrorIs(t, translated, ErrBadCharacter, "resolution's participant refusal, in this package's word")
+	require.NotErrorIs(t, translated, resolution.ErrBadParticipant)
 }
 
 // unknownCause is a cause from a composition NEWER than this build.

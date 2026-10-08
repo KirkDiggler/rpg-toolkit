@@ -6,6 +6,7 @@ package conditions
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -17,20 +18,28 @@ import (
 // SanctuaryName is the display name for a creature warded by Sanctuary.
 const SanctuaryName = "Sanctuary"
 
+// ErrWardWithoutDC is returned by [SanctuaryCondition.WardSaveDC] when the
+// ward keeps no positive DC — a blob written before wards recorded one. A save
+// against DC 0 always succeeds, so a zero is never a DC to roll against.
+var ErrWardWithoutDC = errors.New("conditions: sanctuary ward keeps no save DC")
+
 // SanctuaryConditionData is the persisted source-qualified Sanctuary ward.
 type SanctuaryConditionData struct {
 	Ref       *core.Ref `json:"ref"`
 	MemberID  string    `json:"member_id"`
 	SourceID  string    `json:"source_id"`
 	SourceRef *core.Ref `json:"source_ref"`
+	SaveDC    int       `json:"save_dc"`
 }
 
-// NewSanctuaryConditionInput names the warded creature, the caster, and the
-// canonical spell that created a Sanctuary condition.
+// NewSanctuaryConditionInput names the warded creature, the caster, the
+// canonical spell that created a Sanctuary condition, and the caster's spell
+// save DC at the moment the ward landed.
 type NewSanctuaryConditionInput struct {
 	MemberID  string
 	SourceID  string
 	SourceRef *core.Ref
+	SaveDC    int
 }
 
 // SanctuaryCondition marks its holder as warded. It stores no die, offers
@@ -55,6 +64,13 @@ type SanctuaryCondition struct {
 	SourceID  string
 	SourceRef *core.Ref
 
+	// SaveDC is the Wisdom save DC an attacker rolls against, recorded from
+	// the caster when the ward landed. The ward owns its number: the caster
+	// may leave the interaction while the ward stands, and a DC read off an
+	// absent sheet is no DC at all. Zero on a loaded blob means the ward was
+	// written before it kept one and cannot be read — never a DC of zero.
+	SaveDC int
+
 	bus       events.EventBus
 	restSubID string
 }
@@ -75,12 +91,29 @@ func NewSanctuaryCondition(input NewSanctuaryConditionInput) (*SanctuaryConditio
 	if input.SourceRef == nil || input.SourceRef.String() != refs.Spells.Sanctuary().String() {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "sanctuary condition source ref must be Sanctuary")
 	}
+	if input.SaveDC <= 0 {
+		// Fail closed: a ward with no DC is unreadable, and a save against
+		// DC 0 always succeeds — the ward would protect nobody.
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "sanctuary condition requires the caster's spell save DC")
+	}
 
 	return &SanctuaryCondition{
 		MemberID:  input.MemberID,
 		SourceID:  input.SourceID,
 		SourceRef: refs.Spells.Sanctuary(),
+		SaveDC:    input.SaveDC,
 	}, nil
+}
+
+// WardSaveDC is the DC an attacker's Wisdom save is rolled against. It is the
+// one place the zero rule is enforced: a ward with SaveDC <= 0 refuses with
+// [ErrWardWithoutDC] rather than handing a reader a number nobody can fail.
+// Readers ask this instead of reading SaveDC directly.
+func (s *SanctuaryCondition) WardSaveDC() (int, error) {
+	if s.SaveDC <= 0 {
+		return 0, rpgerr.Wrapf(ErrWardWithoutDC, "ward on %s from %s", s.MemberID, s.SourceID)
+	}
+	return s.SaveDC, nil
 }
 
 // Ref returns the canonical Sanctuary condition ref.
@@ -139,6 +172,7 @@ func (s *SanctuaryCondition) ToJSON() (json.RawMessage, error) {
 		MemberID:  s.MemberID,
 		SourceID:  s.SourceID,
 		SourceRef: refs.Spells.Sanctuary(),
+		SaveDC:    s.SaveDC,
 	})
 }
 
@@ -150,5 +184,6 @@ func (s *SanctuaryCondition) loadJSON(data json.RawMessage) error {
 	s.MemberID = stored.MemberID
 	s.SourceID = stored.SourceID
 	s.SourceRef = refs.Spells.Sanctuary()
+	s.SaveDC = stored.SaveDC
 	return nil
 }

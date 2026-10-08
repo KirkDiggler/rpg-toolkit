@@ -33,7 +33,7 @@ const outcomeRoom = "yard"
 func (s *OutcomeTestSuite) scene() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Regions: []encounter.RegionInput{rectRegion(outcomeRoom, 0, 0, 12, 12)}, Props: wallRow(6, 4, 8)},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 2}},
@@ -95,7 +95,7 @@ func (s *OutcomeTestSuite) TestARuleResolvedElsewhereReachesTheStory() {
 func (s *OutcomeTestSuite) wardScene() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Regions: []encounter.RegionInput{rectRegion(outcomeRoom, 0, 0, 12, 12)}, Props: wallRow(6, 4, 8)},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 2}},
@@ -188,7 +188,51 @@ func (s *OutcomeTestSuite) TestAWardedAttackReachesTheStoryAndRejectsMismatches(
 		_, err := enc.Record(&encounter.RecordInput{
 			Kind: encounter.OutcomeWarded, Actor: alice, Targets: []encounter.MemberID{goblin}, Warded: unknown,
 		})
-		s.Require().ErrorIs(err, encounter.ErrNoMember)
+		s.Require().ErrorIs(err, encounter.ErrNotMember)
+		s.NotErrorIs(err, encounter.ErrNoMember, "a non-empty id is not refused as empty")
+	})
+}
+
+// TestAWardOutlivesTheCasterWhoLeft is rpg-toolkit#1965's stall, at the seam
+// that refused it. Sanctuary does not end when its caster walks away, and the
+// ward records its own DC at cast, so a monster's swing at the warded member
+// after the caster Exited still meets the ward — and the story has to be able
+// to say so. The source is a member who WAS here: [Encounter.Story] already
+// answers an exited member for the same reason, and an id this encounter never
+// held is still nobody.
+func (s *OutcomeTestSuite) TestAWardOutlivesTheCasterWhoLeft() {
+	enc := s.wardScene()
+	_, err := enc.Exit(&encounter.ExitInput{Member: bob})
+	s.Require().NoError(err)
+
+	out, err := enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeWarded, Actor: alice, Targets: []encounter.MemberID{goblin}, Warded: wardedSaveDetail(),
+	})
+	s.Require().NoError(err, "the ward's caster left; the ward did not")
+
+	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(story)
+	last := story[len(story)-1]
+	s.Equal(out.Seq, last.Seq)
+
+	var beat map[string]any
+	s.Require().NoError(json.Unmarshal(last.Payload, &beat))
+	s.Equal("warded", beat["beat"])
+	warded, ok := beat["warded"].(map[string]any)
+	s.Require().True(ok)
+	s.Equal("bob", warded["source"], "the beat still names the caster who left")
+	save, ok := warded["save"].(map[string]any)
+	s.Require().True(ok)
+	s.Equal(float64(15), save["dc"], "the DC as the rulebook gave it")
+
+	s.Run("a source this encounter never held is still nobody", func() {
+		unknown := &encounter.WardedDetail{Source: "nobody", Save: wardedSaveDetail().Save}
+		_, err := enc.Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeWarded, Actor: alice, Targets: []encounter.MemberID{goblin}, Warded: unknown,
+		})
+		s.Require().ErrorIs(err, encounter.ErrNotMember)
+		s.NotErrorIs(err, encounter.ErrNoMember, "a non-empty id is not refused as empty")
 	})
 }
 
@@ -877,7 +921,7 @@ func (s *OutcomeTestSuite) TestRefusalsAreCheckedAgainstTheRoster() {
 		_, err := s.scene().Record(&encounter.RecordInput{
 			Kind: encounter.OutcomeStruck, Actor: "nobody",
 		})
-		s.ErrorIs(err, encounter.ErrNoMember)
+		s.ErrorIs(err, encounter.ErrNotMember)
 	})
 
 	s.Run("an empty actor", func() {
@@ -890,7 +934,7 @@ func (s *OutcomeTestSuite) TestRefusalsAreCheckedAgainstTheRoster() {
 			Kind: encounter.OutcomeStruck, Actor: alice,
 			Targets: []encounter.MemberID{"ghost"},
 		})
-		s.ErrorIs(err, encounter.ErrNoMember)
+		s.ErrorIs(err, encounter.ErrNotMember)
 	})
 
 	s.Run("a closed encounter", func() {
@@ -1274,7 +1318,7 @@ func (s *OutcomeTestSuite) bossScene(standing encounter.StandingWithParticipatio
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: standing,
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: standing,
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Retention: encounter.RetentionUnbounded,
@@ -1553,7 +1597,7 @@ func (s *OutcomeTestSuite) TestAGrantSurvivesTheRoundTrip() {
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:      enc.ToData(),
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})

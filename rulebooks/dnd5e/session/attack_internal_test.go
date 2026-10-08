@@ -100,7 +100,7 @@ func recordedStrikeCalculation(roll, modifier int) *dnd5eEvents.RollCalculation 
 // projection. Resolution keeps richer internal evidence; the replay carrier
 // receives only the approved ordered subset and never modifier prose.
 func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
-	immunity := 0.0
+	immune := -4
 	zero := 0
 	struck := resolution.StrikeOutcome{
 		Roll: 15, Total: 20, Calculation: recordedStrikeCalculation(15, 5),
@@ -134,9 +134,10 @@ func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
 			{
 				Source: dnd5eEvents.DamageSourceMonsterTrait,
 				Roll: dnd5eEvents.RollComponent{
-					Source: dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity"},
+					Source:   dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity", Label: "immune"},
+					Modifier: &immune,
 				},
-				DamageType: damage.Slashing, Multiplier: &immunity,
+				DamageType: damage.Slashing,
 			},
 		},
 		Folded: dnd5eEvents.AttackChainEvent{
@@ -149,7 +150,7 @@ func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
 		},
 	}
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
 		Sight:      aggregateRecordEveryoneSees{},
 		Equipment:  encNoHandsObserved{},
 		Standing:   aggregateRecordEveryoneStanding{},
@@ -189,12 +190,12 @@ func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
 			`"dice":{"notation":"d8","die_size":8,"original_rolls":[2],"final_rolls":[4],`+
 			`"rerolls":[{"die_index":0,"before":2,"after":4,"source":{"ref":"dnd5e:conditions:fighting_style_great_weapon_fighting","name":"Great Weapon Fighting","label":"reroll"}}],"subtotal":4},"modifier":0},`+
 			`"damage_type":"slashing"},`+
-			`{"source":"monster_trait","roll":{"source":{"ref":"dnd5e:monster_traits:immunity","name":"Immunity"}},"damage_type":"slashing","multiplier":0}],`+
+			`{"source":"monster_trait","roll":{"source":{"ref":"dnd5e:monster_traits:immunity","name":"Immunity","label":"immune"},"modifier":-4},"damage_type":"slashing"}],`+
 			`"presentation_id":"roll-abc"}`,
 		payload,
 	)
 	for _, excluded := range []string{
-		`"original_dice_rolls"`, `"properties"`, `"is_critical"`, `"reason"`, `"flat_bonus"`,
+		`"original_dice_rolls"`, `"properties"`, `"is_critical"`, `"reason"`, `"flat_bonus"`, `"multiplier"`,
 	} {
 		require.NotContains(t, payload, excluded)
 	}
@@ -238,7 +239,7 @@ func TestRecordProjectsCriticalStrikeTrace(t *testing.T) {
 		},
 	}
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
 		Sight:      aggregateRecordEveryoneSees{},
 		Equipment:  encNoHandsObserved{},
@@ -314,7 +315,7 @@ func TestRecordProjectsCriticalStrikeTrace(t *testing.T) {
 // component are copied one-for-one — and NOTHING aliases. A provider mutating
 // its published graph after the projection cannot rewrite what was recorded.
 func TestRecordDamageComponentsCloneEveryRollFact(t *testing.T) {
-	immunity := 0.0
+	immune := -4
 	zero := 0
 	in := []dnd5eEvents.DamageComponent{
 		{
@@ -344,9 +345,10 @@ func TestRecordDamageComponentsCloneEveryRollFact(t *testing.T) {
 		{
 			Source: dnd5eEvents.DamageSourceMonsterTrait,
 			Roll: dnd5eEvents.RollComponent{
-				Source: dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity"},
+				Source:   dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity", Label: "immune"},
+				Modifier: &immune,
 			},
-			DamageType: damage.Slashing, Multiplier: &immunity,
+			DamageType: damage.Slashing,
 		},
 	}
 
@@ -377,11 +379,12 @@ func TestRecordDamageComponentsCloneEveryRollFact(t *testing.T) {
 
 	trait := out[1]
 	require.Equal(t, "monster_trait", trait.Source)
-	require.Nil(t, trait.Roll.Dice, "the multiplier-only component rolls nothing")
-	require.Nil(t, trait.Roll.Modifier)
+	require.Nil(t, trait.Roll.Dice, "a target's answer rolls nothing")
 	require.Equal(t, "dnd5e:monster_traits:immunity", trait.Roll.Source.Ref)
-	require.NotNil(t, trait.Multiplier)
-	require.Zero(t, *trait.Multiplier)
+	require.Equal(t, "immune", trait.Roll.Source.Label, "the answer is told by its labelled line")
+	require.NotNil(t, trait.Roll.Modifier)
+	require.Equal(t, -4, *trait.Roll.Modifier, "and the line carries the change it made")
+	require.Nil(t, trait.Multiplier, "no raw multiplier leaves resolution, so none is recorded")
 
 	// No aliasing in either direction: mutating the provider's graph after the
 	// projection cannot rewrite the recorded carrier, and the carrier's own
@@ -392,7 +395,7 @@ func TestRecordDamageComponentsCloneEveryRollFact(t *testing.T) {
 	in[0].Roll.Dice.Rerolls[0].Source.Name = "mutated"
 	in[0].Roll.Modifier = nil
 	in[1].Roll.Source.Name = "mutated"
-	*in[1].Multiplier = 9.0
+	*in[1].Roll.Modifier = 9
 	require.Equal(t, []int{2, 5}, out[0].Roll.Dice.OriginalRolls)
 	require.Equal(t, []int{5, 5}, out[0].Roll.Dice.FinalRolls)
 	require.Equal(t, 5, out[0].Roll.Dice.Rerolls[0].After)
@@ -400,10 +403,10 @@ func TestRecordDamageComponentsCloneEveryRollFact(t *testing.T) {
 	require.NotNil(t, out[0].Roll.Modifier, "the recorded zero modifier is independently owned")
 	require.Zero(t, *out[0].Roll.Modifier)
 	require.Equal(t, "Immunity", out[1].Roll.Source.Name)
-	require.Zero(t, *out[1].Multiplier)
+	require.Equal(t, -4, *out[1].Roll.Modifier)
 	require.NotSame(t, in[0].Roll.Dice, out[0].Roll.Dice)
 	require.NotSame(t, in[0].Roll.Modifier, out[0].Roll.Modifier)
-	require.NotSame(t, in[1].Multiplier, out[1].Multiplier)
+	require.NotSame(t, in[1].Roll.Modifier, out[1].Roll.Modifier)
 }
 
 // TestRollCalculationForClonesComponentsInOrder pins the healing calculation's
@@ -613,7 +616,7 @@ func TestMoveRegenerationSkipsAttackTargetPreflight(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	world, err := encounter.NewEncounter(&encounter.SetupInput{
+	world, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)}},
@@ -679,7 +682,7 @@ func TestInjectedTargetPreflightRefusalChangesAffordAndAttack(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	world, err := encounter.NewEncounter(&encounter.SetupInput{
+	world, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)}},
@@ -785,7 +788,7 @@ func TestAttackVariantsShareOneTargetPreflight(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	world, err := encounter.NewEncounter(&encounter.SetupInput{
+	world, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)}},
@@ -843,7 +846,6 @@ func strikeFixtureFighter(id string) *character.Data {
 		},
 		HitPoints:           24,
 		MaxHitPoints:        28,
-		ArmorClass:          16,
 		ProficiencyBonus:    2,
 		WeaponProficiencies: []proficiencies.Weapon{proficiencies.WeaponMartial},
 		Inventory: []character.InventoryItemData{{
@@ -870,7 +872,7 @@ func TestStrikeRefusesAPersistedMonsterPriceBeforeRolling(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	world, err := encounter.NewEncounter(&encounter.SetupInput{
+	world, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
 		Field:     encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("tomb", 0, 0, 12, 6)}},

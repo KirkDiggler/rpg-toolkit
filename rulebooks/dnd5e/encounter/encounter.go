@@ -140,9 +140,8 @@ type Encounter struct {
 	// IT CANNOT BE PER VERB. The round site raises the world clock from inside
 	// EndTurn, which takes no die, and a creature's `time` pick happens there
 	// — so the die has to be the composition's, not the caller's.
-	roller                      dice.Roller
-	sightAreas                  map[string]SightArea
-	pendingSightAreaTransitions []sightAreaTransition
+	roller     dice.Roller
+	sightAreas map[string]SightArea
 
 	// worldThinking guards [Encounter.worldThinks] against re-entry: the
 	// outer pass owns the world's round, and a nested one would consult the
@@ -168,6 +167,11 @@ type Encounter struct {
 	// value as equipment, asserted at both constructors — see
 	// [EquipmentWithConditions] for why it rides that field.
 	conditions Conditions
+
+	// sheets reports each member's speed, actions and targeting. Required at
+	// both constructors — see [Sheets] for why it is asked at every use rather
+	// than copied onto the member.
+	sheets Sheets
 
 	// turnDriver decides what a member with no player does when the clock
 	// lands on their turn. Required at both constructors, for the same reason
@@ -611,6 +615,15 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter: %w", ErrNoEquipment)
 	}
 
+	// Required beside them: a fight can form at first light and drive an
+	// unplayed member whose movement budget and reach are its sheet's, and
+	// the first walk on the world clock is paced by the walker's speed
+	// (rpg-project#538). Never defaulted — a speed nobody read off a sheet is
+	// an invented one.
+	if in.Sheets == nil {
+		return nil, fmt.Errorf("newencounter: %w", ErrNoSheets)
+	}
+
 	// Required for the same reason again: a fight can form at first light
 	// with an unplayed member first in the rolled order, so an encounter that
 	// cannot answer "what does this member do" would stall before its caller
@@ -674,13 +687,8 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		}
 		seenIDs[m.ID] = true
 
-		// SpeedFeet, SightFeet and each action's RangeFeet are feet-
-		// denominated facts CellsFromFeet divides by FeetPerCell — a
-		// negative one is not a shorter distance, it is a caller defect
-		// (Copilot, PR #1187), and would otherwise produce a nonsense
-		// budget or reach at the exact moment a monster's turn needs one.
 		if err := validateMemberFacts(memberFacts{
-			ID: m.ID, SpeedFeet: m.SpeedFeet, SightFeet: m.SightFeet, Actions: m.Actions,
+			ID:         m.ID,
 			Intimidate: m.Intimidate, Persuade: m.Persuade, Table: m.Table,
 		}); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
@@ -816,6 +824,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		sight:         in.Sight,
 		equipment:     in.Equipment,
 		conditions:    in.Equipment,
+		sheets:        in.Sheets,
 		driver:        in.TurnDriver,
 		roller:        in.Roller,
 		striker:       in.Striker,
@@ -880,10 +889,6 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			ID:             mi.ID,
 			Kind:           mi.Kind,
 			Name:           mi.Name,
-			SpeedFeet:      mi.SpeedFeet,
-			SightFeet:      mi.SightFeet,
-			Actions:        mi.Actions,
-			Targeting:      mi.Targeting,
 			Intimidate:     copyApproaches(mi.Intimidate),
 			Persuade:       copyApproaches(mi.Persuade),
 			Table:          cloneTable(mi.Table),
@@ -964,7 +969,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// declaration order (the order Members were given in), not the sorted
 	// order every other beat in this module uses, and audienceFor's
 	// tableBeat branch preserves exactly that (see its doc).
-	beatPayload, _ := json.Marshal(map[string]string{"beat": "scene-opened"})
+	beatPayload, _ := json.Marshal(map[string]string{"beat": BeatSceneOpened})
 	_, err = e.appendBeat(&record.AppendInput{
 		At:       0,
 		Audience: e.audienceFor(tableBeat, memberIDs...),
@@ -1141,16 +1146,11 @@ func (e *Encounter) placementOf(record *memberRecord) (Member, error) {
 
 	region, _ := e.RegionAt(cell)
 	return Member{
-		ID:        record.ID,
-		Kind:      record.Kind,
-		Name:      record.Name,
-		Region:    region,
-		Position:  cell,
-		SpeedFeet: record.SpeedFeet,
-		SightFeet: record.SightFeet,
-		Actions:   record.Actions,
-		Targeting: record.Targeting,
-
+		ID:             record.ID,
+		Kind:           record.Kind,
+		Name:           record.Name,
+		Region:         region,
+		Position:       cell,
 		Intimidate:     copyApproaches(record.Intimidate),
 		Persuade:       copyApproaches(record.Persuade),
 		Table:          cloneTable(record.Table),
@@ -1219,8 +1219,8 @@ func (e *Encounter) Status() (*Status, error) {
 // StoryInput.AfterSeq). To resume after entry N, pass N+1.
 //
 // Allows both current members and members who have exited (everMembers).
-// Returns ErrNilInput if the input is nil, ErrNoMember if the member never
-// joined, and ErrTrimmed if a non-zero AfterSeq names a sequence that has
+// Returns ErrNilInput if the input is nil, ErrNoMember for an empty audience,
+// ErrNotMember if the member never joined, and ErrTrimmed if a non-zero AfterSeq names a sequence that has
 // already aged out of the retention window — the caller must resync rather
 // than resume, since a short answer would be indistinguishable from a complete
 // one. AfterSeq == 0 is exempt and always answerable.
@@ -1231,8 +1231,11 @@ func (e *Encounter) Story(in *StoryInput) ([]record.Entry, error) {
 		return nil, fmt.Errorf("story: %w", ErrNilInput)
 	}
 
-	if _, ok := e.everMembers[in.Audience]; !ok {
+	if in.Audience == "" {
 		return nil, fmt.Errorf("story: %w", ErrNoMember)
+	}
+	if _, ok := e.everMembers[in.Audience]; !ok {
+		return nil, fmt.Errorf("story %q: %w", in.Audience, ErrNotMember)
 	}
 
 	// A resume point below the retained floor cannot be honoured, and must be
@@ -1414,7 +1417,7 @@ func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberI
 	audience = e.frontierAudience(action, audience)
 
 	payload := map[string]interface{}{
-		"beat":     "moved",
+		"beat":     BeatMoved,
 		"member":   string(action.member.ID),
 		"position": action.to,
 	}
@@ -1480,7 +1483,7 @@ func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberI
 	if err != nil {
 		return 0, err
 	}
-	if err := e.appendSightAreaMovementTransitions(action.member.ID, action.from, action.to); err != nil {
+	if err := e.appendStepAreaTransitions(action.member.ID, action.from, action.to); err != nil {
 		return 0, err
 	}
 	return appendOut.Seq, nil
@@ -1546,9 +1549,6 @@ func (e *Encounter) firedReachedPosition(member *memberRecord, cell spatial.Posi
 //
 // Returns a DEEP COPY (mutation-proof), like every projection.
 func (e *Encounter) closeWith(key string, at uint64, audience ...MemberID) (*Outcome, error) {
-	if err := e.FlushSightAreaTransitions(); err != nil {
-		return nil, err
-	}
 	// A reaction can finish the encounter while a turn or directed walk is
 	// suspended. No continuation survives an ending, and closed persisted worlds
 	// must never carry resumable work.
@@ -1571,7 +1571,7 @@ func (e *Encounter) closeWith(key string, at uint64, audience ...MemberID) (*Out
 	// close still runs with nobody removed, and for those the two are the
 	// same list.
 	beatBytes, _ := json.Marshal(map[string]interface{}{
-		"beat":   "ended",
+		"beat":   BeatEnded,
 		"ending": key,
 	})
 	if _, err := e.appendBeat(&record.AppendInput{
@@ -1980,7 +1980,7 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	// fact caught after PlaceEntity would need to roll a placement back
 	// rather than simply never having made one (Copilot, PR #1187).
 	if err := validateMemberFacts(memberFacts{
-		ID: in.Member, SpeedFeet: in.SpeedFeet, SightFeet: in.SightFeet, Actions: in.Actions,
+		ID:         in.Member,
 		Intimidate: in.Intimidate, Persuade: in.Persuade, Table: in.Table,
 	}); err != nil {
 		return nil, fmt.Errorf("join: %w", err)
@@ -2042,10 +2042,6 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		ID:             in.Member,
 		Kind:           in.Kind,
 		Name:           in.Name,
-		SpeedFeet:      in.SpeedFeet,
-		SightFeet:      in.SightFeet,
-		Actions:        in.Actions,
-		Targeting:      in.Targeting,
 		Intimidate:     copyApproaches(in.Intimidate),
 		Persuade:       copyApproaches(in.Persuade),
 		Table:          cloneTable(in.Table),
@@ -2068,7 +2064,6 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 			Reserved: true,
 			Member: Member{
 				ID: in.Member, Kind: in.Kind, Name: in.Name, Region: region, Position: in.Cell,
-				SpeedFeet: in.SpeedFeet, SightFeet: in.SightFeet, Actions: in.Actions, Targeting: in.Targeting,
 				Intimidate: copyApproaches(in.Intimidate), Persuade: copyApproaches(in.Persuade),
 				Table:          cloneTable(in.Table),
 				Temper:         in.Temper,
@@ -2128,7 +2123,7 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	clockReadingInt := e.clock.ToData().HighWater
 	clockReadingForBeat := uint64(clockReadingInt)
 	beatPayload := map[string]interface{}{
-		"beat":   "joined",
+		"beat":   BeatJoined,
 		"member": string(in.Member),
 	}
 	beatBytes, _ := json.Marshal(beatPayload)
@@ -2318,7 +2313,7 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 	}
 
 	beatPayload := map[string]interface{}{
-		"beat":   "exited",
+		"beat":   BeatExited,
 		"member": string(in.Member),
 		// holding is what LEFT THE RUN with them, and exit is the authored
 		// way they left by — empty when they left from anywhere else, which

@@ -262,6 +262,16 @@ type CastEffect struct {
 	// convention that guessed one key would silently drop the other.
 	CounterpartKey string `json:"counterpart_key,omitempty"`
 
+	// SaveDCKey names the parameter that receives the caster's spell save DC
+	// when the effect is imposed; empty means the effect keeps no DC.
+	//
+	// Declared for the reason CounterpartKey is: an effect that is asked for a
+	// DC long after the cast — Sanctuary's ward save, rolled by whoever targets
+	// the warded creature — must own the number it was cast with. Reading it
+	// off the caster's sheet at use time fails the moment the caster leaves the
+	// interaction, and a ward nobody can read stalls the table.
+	SaveDCKey string `json:"save_dc_key,omitempty"`
+
 	// OptionKey names the parameter the chosen option is written under, the
 	// way CounterpartKey names the other party's. Empty means the effect does
 	// not read the option.
@@ -526,6 +536,12 @@ func (e CastEffect) validate(target CastTargetRule, hasOptions bool) error {
 			return fmt.Errorf("a self-targeted cast has no counterpart to bind")
 		}
 	}
+	// Two bindings naming one parameter would let whichever is written last
+	// silently overwrite the other — the counterpart lost under the option,
+	// the option under the DC. Every pair of non-empty keys must differ.
+	if err := e.bindingsAreDistinct(); err != nil {
+		return err
+	}
 	if err := e.Ref.IsValid(); err != nil {
 		return fmt.Errorf("condition ref is invalid: %w", err)
 	}
@@ -540,6 +556,23 @@ func (e CastEffect) validate(target CastTargetRule, hasOptions bool) error {
 	// promised left empty — which is the quiet half of the binding.
 	if e.OptionKey != "" && !hasOptions {
 		return fmt.Errorf("effect names option key %q but the cast declares no options", e.OptionKey)
+	}
+	return nil
+}
+
+// bindingsAreDistinct refuses two non-empty binding keys that name the same
+// parameter.
+func (e CastEffect) bindingsAreDistinct() error {
+	bindings := []struct{ name, key string }{
+		{"counterpart", e.CounterpartKey}, {"option", e.OptionKey}, {"save DC", e.SaveDCKey},
+	}
+	for i := range bindings {
+		for j := i + 1; j < len(bindings); j++ {
+			if bindings[i].key != "" && bindings[i].key == bindings[j].key {
+				return fmt.Errorf("effect %s key and %s key both name parameter %q: one binding would overwrite the other",
+					bindings[i].name, bindings[j].name, bindings[i].key)
+			}
+		}
 	}
 	return nil
 }

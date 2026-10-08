@@ -157,7 +157,7 @@ func withdrawn() encounter.EndingInput {
 func (s *HoldOutSuite) open(field encounter.FieldInput, members []encounter.MemberInput, endings ...encounter.EndingInput) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: s.standing, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.standing, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: journalAnnouncer{j: s.heard},
 		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		Field:     field,
@@ -178,7 +178,7 @@ func (s *HoldOutSuite) reload(enc *encounter.Encounter) *encounter.Encounter {
 	out, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:      enc.ToData(),
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: s.standing, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: holdOutSheets, Standing: s.standing, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: journalAnnouncer{j: s.heard},
 		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 	})
@@ -640,7 +640,7 @@ func (s *HoldOutSuite) TestLoadRefusesKnowledgeThisFieldCannotMint() {
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data:      data,
 			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Standing: s.standing, Initiative: orderAsGiven{},
+			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.standing, Initiative: orderAsGiven{},
 			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		})
@@ -693,7 +693,7 @@ func (s *HoldOutSuite) TestLoadRefusesKnowledgeThisFieldCannotMint() {
 func (s *HoldOutSuite) TestAPlainDungeonWritesNoSides() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		Field: heirloomField(),
@@ -725,7 +725,7 @@ func (s *HoldOutSuite) TestTheRunRefusesWhatItCannotKeep() {
 	open := func(field encounter.FieldInput, endings ...encounter.EndingInput) error {
 		_, err := encounter.NewEncounter(&encounter.SetupInput{
 			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 			Field: field, Members: s.cast(true), Endings: append([]encounter.EndingInput{withdrawn()}, endings...),
@@ -857,6 +857,19 @@ func (s *HoldOutSuite) TestAThirdFactionStillHostileKeepsItsFight() {
 	})
 }
 
+// holdOutSheets is what the driven members of this file's scenes can do: the
+// chief walks and swings a scimitar, the beast bites, and the players' sheets
+// state nothing a driver reads.
+var holdOutSheets = sheetFacts{
+	campChief: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Scimitar", RangeFeet: 5, Kind: "melee"}}},
+	"beast":   {Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Bite", RangeFeet: 5, Kind: "melee"}}},
+	"alice":   {},
+	"carl":    {},
+	"partner": {},
+	"raider":  {},
+	campScout: {},
+}
+
 // openWith is open() with the turn driver and the striker named — for the
 // scenes about what a driven monster does, which passDriver cannot say.
 func (s *HoldOutSuite) openWith(
@@ -865,7 +878,7 @@ func (s *HoldOutSuite) openWith(
 ) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: s.standing, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: holdOutSheets, Standing: s.standing, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: striker, Mover: quietMover{}, Announcer: journalAnnouncer{j: s.heard},
 		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		Field:     field,
@@ -931,8 +944,6 @@ func (s *HoldOutSuite) yardAndHut() (encounter.FieldInput, []encounter.MemberInp
 		{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 4, Y: 1}},
 		{
 			ID: campChief, Kind: encounter.KindMonster, Position: spatial.Position{X: 8, Y: 1}, Faction: campFaction,
-			SpeedFeet: 30,
-			Actions:   []encounter.ActionView{{Ref: testMeleeAction, Name: "Scimitar", RangeFeet: 5, Kind: "melee"}},
 		},
 	}
 	return field, members
@@ -1037,7 +1048,6 @@ func (s *HoldOutSuite) TestAnActivePlayerExitingMidFightLetsTheNextMonsterStrike
 		{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 1}},
 		{
 			ID: "beast", Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 1},
-			Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Bite", RangeFeet: 5, Kind: "melee"}},
 		},
 		{ID: "carl", Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 1}},
 	}

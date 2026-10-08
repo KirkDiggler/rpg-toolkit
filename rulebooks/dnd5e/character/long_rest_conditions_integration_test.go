@@ -242,7 +242,7 @@ func TestLongRestPersistsEveryConditionOutcomeOnAttachedCharacter(t *testing.T) 
 			require.NoError(t, err)
 			require.False(t, sheet.IsDirty(), "strict load must not invent a persistence write")
 
-			before := sheet.ToData()
+			before := mustToData(t, sheet)
 			beforeByRef := persistedConditionBlobsByRef(t, before)
 			require.Len(t, before.Conditions, 1, "the fixture must load as exactly one persisted condition")
 			require.Len(t, beforeByRef, 1)
@@ -276,7 +276,7 @@ func TestLongRestPersistsEveryConditionOutcomeOnAttachedCharacter(t *testing.T) 
 			})
 
 			require.False(t, sheet.IsDirty(), "Attach and its free reaction must not dirty a loaded sheet")
-			requireHeldOnce(t, sheet.ToData(), refString, carriedRef)
+			requireHeldOnce(t, mustToData(t, sheet), refString, carriedRef)
 
 			require.NoError(t, sheet.LongRest(ctx))
 			if testCase.outcome == attachedLongRestRetain {
@@ -287,7 +287,7 @@ func TestLongRestPersistsEveryConditionOutcomeOnAttachedCharacter(t *testing.T) 
 					"a reset or removal fact must make the sheet persistence-visible after the checkpoint")
 			}
 
-			after := sheet.ToData()
+			after := mustToData(t, sheet)
 			afterByRef := persistedConditionBlobsByRef(t, after)
 
 			switch testCase.outcome {

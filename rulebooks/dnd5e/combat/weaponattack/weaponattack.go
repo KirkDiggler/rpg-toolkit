@@ -32,6 +32,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
@@ -265,4 +266,29 @@ type Override struct {
 	Dice    string
 	Ability abilities.Ability
 	Magical bool
+}
+
+// OverrideInput is what a sheet hands an [OverrideProvider] during its own
+// attack assembly: the hand the swing is made from, the item ID that hand
+// holds ("" for an empty hand), and the sheet's level record, asked through
+// the named class-level question. A provider whose die scales with a class
+// reads it here, at the moment of the swing, and stores no copy.
+type OverrideInput struct {
+	Slot   string
+	ItemID string
+	Levels classes.LevelHolder
+}
+
+// OverrideOutput carries a provider's offer for the swing. A nil Override is
+// the provider making no offer for this hand.
+type OverrideOutput struct {
+	Override *Override
+}
+
+// OverrideProvider is a loaded effect that may offer an [Override] for a
+// swing. It answers an output with a nil Override when it makes no offer, and
+// an error when it should offer but cannot answer — a class-scaled die whose
+// holder has no levels in the class, or no level record handed to it.
+type OverrideProvider interface {
+	WeaponAttackOverride(in *OverrideInput) (*OverrideOutput, error)
 }

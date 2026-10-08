@@ -8,7 +8,6 @@ package integration
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -19,6 +18,7 @@ import (
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
@@ -69,10 +69,19 @@ type mockFighterCharacter struct {
 	reactions int
 }
 
-func (m *mockFighterCharacter) GetID() string                                  { return m.id }
-func (m *mockFighterCharacter) GetType() core.EntityType                       { return "character" }
-func (m *mockFighterCharacter) GetName() string                                { return m.name }
-func (m *mockFighterCharacter) GetLevel() int                                  { return m.level }
+func (m *mockFighterCharacter) GetID() string            { return m.id }
+func (m *mockFighterCharacter) GetType() core.EntityType { return "character" }
+func (m *mockFighterCharacter) GetName() string          { return m.name }
+func (m *mockFighterCharacter) GetLevel() int            { return m.level }
+
+// ClassLevel answers the named class-level question: the mock is a fighter of
+// its level and holds no other class.
+func (m *mockFighterCharacter) ClassLevel(class classes.Class) int {
+	if class == classes.Fighter {
+		return m.level
+	}
+	return 0
+}
 func (m *mockFighterCharacter) AbilityScores() shared.AbilityScores            { return m.abilityScores }
 func (m *mockFighterCharacter) ProficiencyBonus() int                          { return m.proficiencyBonus }
 func (m *mockFighterCharacter) GetHitPoints() int                              { return m.hitPoints }
@@ -171,15 +180,11 @@ func (s *FighterEncounterSuite) createGoblin() *monster.Monster {
 	})
 }
 
-// createSecondWind creates a Second Wind feature for testing.
-func (s *FighterEncounterSuite) createSecondWind(level int, characterID string) *features.SecondWind {
-	// Create config with level using standard formatting
-	config := []byte(fmt.Sprintf(`{"level": %d}`, level))
-
-	// Use the factory to create Second Wind properly
+// createSecondWind creates a Second Wind feature for testing. It takes no
+// level: activation asks the owner its fighter level.
+func (s *FighterEncounterSuite) createSecondWind(characterID string) *features.SecondWind {
 	output, err := features.CreateFromRef(&features.CreateFromRefInput{
 		Ref:         refs.Features.SecondWind().String(),
-		Config:      config,
 		CharacterID: characterID,
 	})
 	s.Require().NoError(err)
@@ -199,7 +204,7 @@ func (s *FighterEncounterSuite) TestSecondWind_HealsCharacter() {
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 
 		// Create Second Wind feature
-		secondWind := s.createSecondWind(1, s.fighter.GetID())
+		secondWind := s.createSecondWind(s.fighter.GetID())
 		err := secondWind.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 		defer func() { _ = secondWind.Remove(s.ctx, s.bus) }()
@@ -244,7 +249,7 @@ func (s *FighterEncounterSuite) TestSecondWind_OncePerShortRest() {
 		s.T().Log("║  FIGHTER SECOND WIND: Once Per Short Rest                        ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 
-		secondWind := s.createSecondWind(1, s.fighter.GetID())
+		secondWind := s.createSecondWind(s.fighter.GetID())
 		err := secondWind.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 		defer func() { _ = secondWind.Remove(s.ctx, s.bus) }()
@@ -268,7 +273,7 @@ func (s *FighterEncounterSuite) TestSecondWind_ResetsOnShortRest() {
 		s.T().Log("║  FIGHTER SECOND WIND: Resets on Short Rest                       ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 
-		secondWind := s.createSecondWind(1, s.fighter.GetID())
+		secondWind := s.createSecondWind(s.fighter.GetID())
 		err := secondWind.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 		defer func() { _ = secondWind.Remove(s.ctx, s.bus) }()
@@ -303,8 +308,10 @@ func (s *FighterEncounterSuite) TestSecondWind_ScalesWithLevel() {
 		s.T().Log("║  FIGHTER SECOND WIND: Level Scaling                              ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 
-		// Level is passed to the factory config, not read from the character
-		secondWind := s.createSecondWind(5, s.fighter.GetID()) // Level 5
+		// The level is asked of the fighter when Second Wind is used: the same
+		// fighter advanced to 5 heals 1d10 + 5, with nothing rewritten.
+		s.fighter.level = 5
+		secondWind := s.createSecondWind(s.fighter.GetID())
 		err := secondWind.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 		defer func() { _ = secondWind.Remove(s.ctx, s.bus) }()

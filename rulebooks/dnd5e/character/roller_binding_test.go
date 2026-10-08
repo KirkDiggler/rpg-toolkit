@@ -112,7 +112,6 @@ func rollerBindingSheet(conditions ...json.RawMessage) *Data {
 		},
 		HitPoints:    20,
 		MaxHitPoints: 30,
-		ArmorClass:   16,
 		Conditions:   conditions,
 	}
 }
@@ -286,7 +285,7 @@ func (s *RollerBindingTestSuite) TestFailedStrictAttachNilRollerRetryLeavesTheFa
 
 	char, err := Load(s.ctx, data)
 	s.Require().NoError(err)
-	before := marshalData(&s.Suite, char.ToData())
+	before := marshalData(&s.Suite, mustToData(s.T(), char))
 
 	failedRoller := &scriptedRoller{results: []int{4}}
 	bus := newFailingBus(failureAt)
@@ -294,7 +293,7 @@ func (s *RollerBindingTestSuite) TestFailedStrictAttachNilRollerRetryLeavesTheFa
 
 	s.Require().ErrorIs(err, errRefused)
 	s.Empty(failedRoller.calls, "a failed attach binds nothing: the roller is never called")
-	s.Equal(before, marshalData(&s.Suite, char.ToData()),
+	s.Equal(before, marshalData(&s.Suite, mustToData(s.T(), char)),
 		"the sheet is byte-identical after the failed attach")
 	s.Require().Len(char.pendingEffects, 2, "both conditions are pending again")
 
@@ -331,7 +330,7 @@ func (s *RollerBindingTestSuite) TestFailedStrictAttachRetryBindsTheRetryRoller(
 
 	char, err := Load(s.ctx, data)
 	s.Require().NoError(err)
-	before := marshalData(&s.Suite, char.ToData())
+	before := marshalData(&s.Suite, mustToData(s.T(), char))
 
 	failedRoller := &scriptedRoller{results: []int{4}}
 	bus := newFailingBus(failureAt)
@@ -339,7 +338,7 @@ func (s *RollerBindingTestSuite) TestFailedStrictAttachRetryBindsTheRetryRoller(
 
 	s.Require().ErrorIs(err, errRefused)
 	s.Empty(failedRoller.calls, "the failed attach never called its roller")
-	s.Equal(before, marshalData(&s.Suite, char.ToData()),
+	s.Equal(before, marshalData(&s.Suite, mustToData(s.T(), char)),
 		"the sheet is byte-identical after the failed attach")
 
 	retryRoller := &scriptedRoller{results: []int{4}}
@@ -364,7 +363,7 @@ func (s *RollerBindingTestSuite) TestNilRollerAttachesWithoutBinding() {
 	plain, err := Load(s.ctx, rollerBindingSheet(gwfBlob(&s.Suite, "roller-fighter")))
 	s.Require().NoError(err)
 	s.Require().NoError(Attach(s.ctx, plain, events.NewEventBus()))
-	before := marshalData(&s.Suite, plain.ToData())
+	before := marshalData(&s.Suite, mustToData(s.T(), plain))
 
 	char, err := Load(s.ctx, rollerBindingSheet(gwfBlob(&s.Suite, "roller-fighter")))
 	s.Require().NoError(err)
@@ -374,7 +373,7 @@ func (s *RollerBindingTestSuite) TestNilRollerAttachesWithoutBinding() {
 	for _, cond := range char.GetConditions() {
 		s.Require().True(cond.IsApplied(), "a nil roller attaches the sheet as usual")
 	}
-	s.Equal(before, marshalData(&s.Suite, char.ToData()),
+	s.Equal(before, marshalData(&s.Suite, mustToData(s.T(), char)),
 		"attaching with no roller serializes exactly what a plain attach does")
 }
 

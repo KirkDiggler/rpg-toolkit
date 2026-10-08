@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
@@ -24,8 +25,16 @@ type ragingRuleSuite struct{ suite.Suite }
 func TestRagingRuleSuite(t *testing.T) { suite.Run(t, new(ragingRuleSuite)) }
 
 func barbarianFrame() contributions.Frame {
+	return barbarianFrameAt(1)
+}
+
+// barbarianFrameAt is barbarianFrame for an attacker holding level barbarian
+// levels.
+func barbarianFrameAt(level int) contributions.Frame {
 	return contributions.Frame{
-		Actor:  "barb",
+		Actor: "barb",
+		ActorClassLevels: contributions.KnownClassLevels(
+			contributions.ClassLevel{Class: classes.Barbarian, Levels: level}),
 		Target: contributions.Known("goblin"),
 		Action: contributions.ActionFacts{
 			Roll:       contributions.Known(contributions.RollKindAttack),
@@ -39,7 +48,7 @@ func barbarianFrame() contributions.Frame {
 }
 
 func (s *ragingRuleSuite) assess(frame contributions.Frame) contributions.Answer {
-	out, err := ragingDamageRule{owner: "barb", bonus: 2}.AssessAction(&contributions.AssessActionInput{Frame: frame})
+	out, err := ragingDamageRule{owner: "barb"}.AssessAction(&contributions.AssessActionInput{Frame: frame})
 	s.Require().NoError(err)
 	s.Require().NotNil(out)
 	s.Require().NoError(out.Answer.Decision.Validate())
@@ -60,6 +69,36 @@ func (s *ragingRuleSuite) TestRagingRuleAppliesToMeleeStrengthWeapon() {
 	s.Equal(2, *answer.Damage[0].Fixed)
 	s.Empty(answer.Damage[0].Dice)
 	s.Equal(refs.Conditions.Raging().String(), answer.Damage[0].Source.Ref.String())
+}
+
+// The bonus is read from the attacker's barbarian levels in the frame: +2
+// through 8th, +3 from 9th, +4 from 16th. Multiclass levels in another class
+// do not count.
+func (s *ragingRuleSuite) TestRagingRuleBonusScalesWithBarbarianLevel() {
+	for level, bonus := range map[int]int{1: 2, 8: 2, 9: 3, 15: 3, 16: 4, 20: 4} {
+		answer := s.assess(barbarianFrameAt(level))
+		s.Require().NotNil(answer.Damage[0].Fixed)
+		s.Equal(bonus, *answer.Damage[0].Fixed, "barbarian %d", level)
+	}
+	multiclass := barbarianFrameAt(1)
+	multiclass.ActorClassLevels = contributions.KnownClassLevels(
+		contributions.ClassLevel{Class: classes.Barbarian, Levels: 1},
+		contributions.ClassLevel{Class: classes.Fighter, Levels: 10})
+	s.Equal(2, *s.assess(multiclass).Damage[0].Fixed, "the class level, not the total level")
+}
+
+// A holder with zero barbarian levels, or a frame without the attacker's class
+// levels, is refused: the rule cannot answer.
+func (s *ragingRuleSuite) TestRagingRuleRefusesWithoutBarbarianLevels() {
+	for name, levels := range map[string]contributions.ClassLevels{
+		"zero barbarian levels": contributions.KnownClassLevels(),
+		"unknown":               contributions.UnknownClassLevels(),
+	} {
+		frame := barbarianFrame()
+		frame.ActorClassLevels = levels
+		_, err := ragingDamageRule{owner: "barb"}.AssessAction(&contributions.AssessActionInput{Frame: frame})
+		s.ErrorIs(err, contributions.ErrRuleCannotAnswer, name)
+	}
 }
 
 func (s *ragingRuleSuite) TestRagingRuleDoesNotApplyToDexterity() {
@@ -120,7 +159,7 @@ func TestRagingHandlerSuite(t *testing.T) { suite.Run(t, new(ragingHandlerSuite)
 func (s *ragingHandlerSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.bus = events.NewEventBus()
-	s.condition = &RagingCondition{CharacterID: "barb", DamageBonus: 2}
+	s.condition = &RagingCondition{CharacterID: "barb"}
 	s.Require().NoError(s.condition.Apply(s.ctx, s.bus))
 }
 

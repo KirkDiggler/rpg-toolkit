@@ -18,6 +18,7 @@ import (
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
@@ -32,6 +33,9 @@ type SneakAttackTestSuite struct {
 	ctx    context.Context
 	bus    events.EventBus
 	roller *mock_dice.MockRoller
+	// rogueLevel is the attacker's rogue levels the damage frame carries;
+	// Sneak Attack reads its dice from it.
+	rogueLevel int
 }
 
 func (s *SneakAttackTestSuite) SetupTest() {
@@ -39,6 +43,7 @@ func (s *SneakAttackTestSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.bus = events.NewEventBus()
 	s.roller = mock_dice.NewMockRoller(s.ctrl)
+	s.rogueLevel = 1
 }
 
 func (s *SneakAttackTestSuite) TearDownTest() {
@@ -99,7 +104,10 @@ func (s *SneakAttackTestSuite) executeDamageChain(input damageChainInput) (*dnd5
 		Components:       []dnd5eEvents.DamageComponent{weaponComp},
 		WeaponDamageType: weaponDamageType,
 		IsCritical:       input.isCritical,
-	}, swing{HasAdvantage: input.hasAdvantage, AbilityUsed: input.abilityUsed, WeaponRef: weaponRef})
+	}, swing{
+		HasAdvantage: input.hasAdvantage, AbilityUsed: input.abilityUsed, WeaponRef: weaponRef,
+		ClassLevels: classLevels(classes.Rogue, s.rogueLevel),
+	})
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
@@ -115,7 +123,6 @@ func (s *SneakAttackTestSuite) executeDamageChain(input damageChainInput) (*dnd5
 func (s *SneakAttackTestSuite) TestSneakAttackUsesMarkedWeaponType() {
 	sneak := NewSneakAttackCondition(SneakAttackInput{
 		MemberID: "rogue-1",
-		Level:    1,
 		Roller:   s.roller,
 	})
 	s.Require().NoError(sneak.Apply(s.ctx, s.bus))
@@ -151,7 +158,6 @@ func (s *SneakAttackTestSuite) TestSneakAttackAddsDiceLevel1() {
 	// Level 1 rogue gets 1d6 sneak attack
 	sneak := NewSneakAttackCondition(SneakAttackInput{
 		MemberID: "rogue-1",
-		Level:    1,
 		Roller:   s.roller,
 	})
 
@@ -180,7 +186,6 @@ func (s *SneakAttackTestSuite) TestSneakAttackAddsDiceLevel1() {
 func (s *SneakAttackTestSuite) TestCriticalRollsSneakDiceTwice() {
 	sneak := NewSneakAttackCondition(SneakAttackInput{
 		MemberID: "rogue-1",
-		Level:    1,
 		Roller:   s.roller,
 	})
 	s.Require().NoError(sneak.Apply(s.ctx, s.bus))
@@ -207,9 +212,9 @@ func (s *SneakAttackTestSuite) TestCriticalRollsSneakDiceTwice() {
 
 func (s *SneakAttackTestSuite) TestSneakAttackAddsDiceLevel5() {
 	// Level 5 rogue gets 3d6 sneak attack
+	s.rogueLevel = 5
 	sneak := NewSneakAttackCondition(SneakAttackInput{
 		MemberID: "rogue-1",
-		Level:    5,
 		Roller:   s.roller,
 	})
 
@@ -235,7 +240,6 @@ func (s *SneakAttackTestSuite) TestSneakAttackAddsDiceLevel5() {
 func (s *SneakAttackTestSuite) TestSneakAttackOnlyOncePerTurn() {
 	sneak := NewSneakAttackCondition(SneakAttackInput{
 		MemberID: "rogue-1",
-		Level:    1,
 		Roller:   s.roller,
 	})
 
@@ -262,7 +266,6 @@ func (s *SneakAttackTestSuite) TestSneakAttackOnlyOncePerTurn() {
 func (s *SneakAttackTestSuite) TestSneakAttackResetsOnTurnEnd() {
 	sneak := NewSneakAttackCondition(SneakAttackInput{
 		MemberID: "rogue-1",
-		Level:    1,
 		Roller:   s.roller,
 	})
 
@@ -303,7 +306,6 @@ func (s *SneakAttackTestSuite) TestSneakAttackResetsOnTurnEnd() {
 func (s *SneakAttackTestSuite) TestSneakAttackUsedThisTurnPersistsAcrossJSONRoundTrip() {
 	sneak := NewSneakAttackCondition(SneakAttackInput{
 		MemberID: "rogue-1",
-		Level:    3,
 	})
 	sneak.UsedThisTurn = true
 
@@ -317,8 +319,6 @@ func (s *SneakAttackTestSuite) TestSneakAttackUsedThisTurnPersistsAcrossJSONRoun
 	s.True(loaded.UsedThisTurn,
 		"UsedThisTurn must survive ToJSON → loadJSON; otherwise the once-per-turn gate is silently broken across LoadFromData cycles")
 	s.Equal("rogue-1", loaded.CharacterID, "CharacterID still round-trips")
-	s.Equal(3, loaded.Level, "Level still round-trips")
-	s.Equal(2, loaded.DamageDice, "DamageDice still round-trips (level 3 → 2d6)")
 }
 
 // TestSneakAttackUsedThisTurnFalseRoundTrips guards against the inverse bug —
@@ -327,7 +327,6 @@ func (s *SneakAttackTestSuite) TestSneakAttackUsedThisTurnPersistsAcrossJSONRoun
 func (s *SneakAttackTestSuite) TestSneakAttackUsedThisTurnFalseRoundTrips() {
 	sneak := NewSneakAttackCondition(SneakAttackInput{
 		MemberID: "rogue-1",
-		Level:    1,
 	})
 	// UsedThisTurn defaults to false; explicit for the test.
 	sneak.UsedThisTurn = false
@@ -414,7 +413,7 @@ func TestSneakAttackMeterResetsOnLongRest(t *testing.T) {
 func TestSneakAttackMeterLongRestSubscribeFailureRollsBack(t *testing.T) {
 	ctx := context.Background()
 	bus := &failAfterBus{EventBus: events.NewEventBus(), allow: 2}
-	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue-1", Level: 3})
+	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue-1"})
 
 	err := sneak.Apply(ctx, bus)
 	require.ErrorIs(t, err, errRefusedSubscribe)
@@ -429,7 +428,6 @@ func TestSneakAttackMeterLongRestSubscribeFailureRollsBack(t *testing.T) {
 func (s *SneakAttackTestSuite) TestSneakAttackRequiresFinesseWeapon() {
 	sneak := NewSneakAttackCondition(SneakAttackInput{
 		MemberID: "rogue-1",
-		Level:    1,
 		Roller:   s.roller,
 	})
 
@@ -453,7 +451,7 @@ func (s *SneakAttackTestSuite) TestSneakAttackRequiresFinesseWeapon() {
 // TestSneakAttackWithStrengthFinesse: a finesse weapon swung with Strength
 // still sneak attacks (rpg-toolkit#1929).
 func (s *SneakAttackTestSuite) TestSneakAttackWithStrengthFinesse() {
-	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue-1", Level: 1, Roller: s.roller})
+	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue-1", Roller: s.roller})
 	s.Require().NoError(sneak.Apply(s.ctx, s.bus))
 	s.roller.EXPECT().RollN(gomock.Any(), 1, 6).Return([]int{4}, nil)
 
@@ -470,7 +468,6 @@ func (s *SneakAttackTestSuite) TestSneakAttackWithStrengthFinesse() {
 func (s *SneakAttackTestSuite) TestSneakAttackOnlyAffectsOwnAttacks() {
 	sneak := NewSneakAttackCondition(SneakAttackInput{
 		MemberID: "rogue-1",
-		Level:    1,
 		Roller:   s.roller,
 	})
 
@@ -509,12 +506,14 @@ func (s *SneakAttackTestSuite) TestCalculateSneakAttackDice() {
 	}
 
 	for _, tc := range testCases {
-		sneak := NewSneakAttackCondition(SneakAttackInput{
-			MemberID: "rogue-1",
-			Level:    tc.level,
-			Roller:   s.roller,
-		})
-		s.Equal(tc.damageDice, sneak.DamageDice, "Level %d should have %dd6", tc.level, tc.damageDice)
+		frame := contributions.Frame{
+			Actor: "rogue-1",
+			ActorClassLevels: contributions.KnownClassLevels(
+				contributions.ClassLevel{Class: classes.Rogue, Levels: tc.level}),
+		}
+		damageDice, err := sneakAttackDice(frame)
+		s.Require().NoError(err)
+		s.Equal(tc.damageDice, damageDice, "Level %d should have %dd6", tc.level, tc.damageDice)
 	}
 }
 
@@ -526,7 +525,6 @@ func (s *SneakAttackTestSuite) TestSneakAttackTriggersWithAdvantage() {
 	// Sneak attack should trigger when attacker has advantage
 	sneak := NewSneakAttackCondition(SneakAttackInput{
 		MemberID: "rogue-1",
-		Level:    1,
 		Roller:   s.roller,
 	})
 
@@ -555,7 +553,7 @@ func (s *SneakAttackTestSuite) TestSneakAttackTriggersWithAdvantage() {
 // the disposition graph. No room or cast is consulted here.
 
 func (s *SneakAttackTestSuite) TestSneakAttackTriggersWithAllyAdjacent() {
-	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue-1", Level: 1, Roller: s.roller})
+	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue-1", Roller: s.roller})
 	s.Require().NoError(sneak.Apply(s.ctx, s.bus))
 	s.roller.EXPECT().RollN(gomock.Any(), 1, 6).Return([]int{5}, nil)
 
@@ -572,7 +570,7 @@ func (s *SneakAttackTestSuite) TestSneakAttackTriggersWithAllyAdjacent() {
 // RAW is "another ENEMY OF THE TARGET is within 5 feet of it". A second goblin
 // standing beside the first is the target's ally, and grants the rogue nothing.
 func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWhenAdjacentCreatureIsTheTargetsAlly() {
-	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue-1", Level: 1, Roller: s.roller})
+	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue-1", Roller: s.roller})
 	s.Require().NoError(sneak.Apply(s.ctx, s.bus))
 
 	finalEvent := s.runDamageChain("rogue-1", "goblin-1",
@@ -585,7 +583,7 @@ func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWhenAdjacentCreature
 // stands next to it. That hobgoblin is an enemy of the target, so RAW the rogue
 // sneak attacks, though it is nobody's ally.
 func (s *SneakAttackTestSuite) TestSneakAttackTriggersWhenAThirdFactionIsAdjacentToTheTarget() {
-	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue-1", Level: 1, Roller: s.roller})
+	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue-1", Roller: s.roller})
 	s.Require().NoError(sneak.Apply(s.ctx, s.bus))
 	s.roller.EXPECT().RollN(gomock.Any(), 1, 6).Return([]int{5}, nil)
 
@@ -615,7 +613,10 @@ func (s *SneakAttackTestSuite) runDamageChain(
 			},
 			DamageType: damage.Piercing,
 		}},
-	}, swing{IsMelee: true, HasAdvantage: false, AbilityUsed: abilities.DEX, WeaponRef: refs.Weapons.Shortsword()}), pairs...)
+	}, swing{
+		IsMelee: true, HasAdvantage: false, AbilityUsed: abilities.DEX, WeaponRef: refs.Weapons.Shortsword(),
+		ClassLevels: classLevels(classes.Rogue, s.rogueLevel),
+	}), pairs...)
 
 	c := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	modifiedChain, err := dnd5eEvents.DamageChain.On(s.bus).PublishWithChain(s.ctx, framedDamage(damageEvent), c)
@@ -627,7 +628,7 @@ func (s *SneakAttackTestSuite) runDamageChain(
 }
 
 func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWithoutConditions() {
-	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue-1", Level: 1, Roller: s.roller})
+	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue-1", Roller: s.roller})
 	s.Require().NoError(sneak.Apply(s.ctx, s.bus))
 
 	// No roller expectation - sneak attack should NOT be rolled.
@@ -638,7 +639,7 @@ func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWithoutConditions() 
 }
 
 func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWhenAllyTooFar() {
-	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue-1", Level: 1, Roller: s.roller})
+	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue-1", Roller: s.roller})
 	s.Require().NoError(sneak.Apply(s.ctx, s.bus))
 
 	finalEvent := s.runDamageChain("rogue-1", "goblin-1",
@@ -648,3 +649,44 @@ func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWhenAllyTooFar() {
 
 // Suppress unused import warning
 var _ dice.Roller = (*mock_dice.MockRoller)(nil)
+
+// TestAnOldOneDieBlobRollsFromTheRoguesLevel: a sheet saved when Sneak Attack
+// stored a level and a dice count loads, the copy is ignored, and a level-3
+// rogue rolls 2d6 — the frame's rogue levels, not the saved one die.
+func (s *SneakAttackTestSuite) TestAnOldOneDieBlobRollsFromTheRoguesLevel() {
+	loaded, err := LoadJSON(json.RawMessage(
+		`{"ref":"dnd5e:features:sneak_attack","member_id":"rogue-1","level":1,"damage_dice":1,"used_this_turn":false}`))
+	s.Require().NoError(err)
+	sneak, ok := loaded.(*SneakAttackCondition)
+	s.Require().True(ok)
+	sneak.BindRoller(s.roller)
+	s.Require().NoError(sneak.Apply(s.ctx, s.bus))
+	s.rogueLevel = 3
+
+	s.roller.EXPECT().RollN(gomock.Any(), 2, 6).Return([]int{2, 5}, nil)
+
+	finalEvent, err := s.executeDamageChain(damageChainInput{
+		attackerID: "rogue-1", abilityUsed: abilities.DEX, hasAdvantage: true,
+	})
+	s.Require().NoError(err)
+	s.Require().Len(finalEvent.Components, 2)
+	s.Equal([]int{2, 5}, finalEvent.Components[1].Roll.Dice.FinalRolls)
+
+	resaved, err := sneak.ToJSON()
+	s.Require().NoError(err)
+	s.NotContains(string(resaved), "level")
+	s.NotContains(string(resaved), "damage_dice")
+}
+
+// TestAHolderWithNoRogueLevelsFailsTheFold: a frame naming a Sneak Attack
+// holder with zero rogue levels fails the fold — nothing defaults the level.
+func (s *SneakAttackTestSuite) TestAHolderWithNoRogueLevelsFailsTheFold() {
+	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue-1", Roller: s.roller})
+	s.Require().NoError(sneak.Apply(s.ctx, s.bus))
+	s.rogueLevel = 0
+
+	_, err := s.executeDamageChain(damageChainInput{
+		attackerID: "rogue-1", abilityUsed: abilities.DEX, hasAdvantage: true,
+	})
+	s.Require().ErrorIs(err, contributions.ErrRuleCannotAnswer)
+}

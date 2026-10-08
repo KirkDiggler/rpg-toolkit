@@ -13,13 +13,16 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/healing"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
+
+// fogCloudMembershipName is the name the story gives a Fog Cloud area's
+// membership label when a member enters or leaves it.
+const fogCloudMembershipName = "In Fog"
 
 // BaneRangeFeet is how far a caster may point Bane (PHB p.216).
 const BaneRangeFeet = 30
@@ -399,7 +402,7 @@ var castContent = map[Spell]castProfileBuilder{
 					Catches:        actions.AreaCatchesEveryone,
 					ObscuresSight:  true,
 					MembershipRef:  refs.Conditions.InFog().String(),
-					MembershipName: conditions.InFogName,
+					MembershipName: fogCloudMembershipName,
 				},
 				// One hour in the current turn-count model. Wind dispersal is deferred.
 				Concentration: &actions.CastConcentration{TurnEnds: 600, SkipFirstTurnEnd: true},
@@ -465,6 +468,7 @@ var castContent = map[Spell]castProfileBuilder{
 				MinTargets: 1, MaxTargets: 1,
 				Effects: []actions.CastEffect{{
 					Recipient: actions.CastRecipientTarget, Ref: *refs.Conditions.Sanctuary(), CounterpartKey: "source_id",
+					SaveDCKey: "save_dc",
 				}, {
 					Recipient: actions.CastRecipientTarget, Ref: *refs.Conditions.SanctuaryImmune(), CounterpartKey: "source_id",
 					IndependentDuration: true,

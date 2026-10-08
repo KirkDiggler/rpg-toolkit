@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -14,18 +15,31 @@ import (
 var _ contributions.ActionAssessor = (*RagingCondition)(nil)
 
 // AssessAction answers whether Rage's damage bonus applies to the framed
-// action. It reads the frame and this rage's own owner and bonus; it never
+// action. It reads the frame — the attacker's barbarian levels included — and
+// this rage's own owner; it never
 // applies, sustains or ends Rage. Defensive resistance and the save/check
 // advantages are not part of this answer.
 func (r *RagingCondition) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error) {
-	return ragingDamageRule{owner: r.CharacterID, bonus: r.DamageBonus}.AssessAction(in)
+	return ragingDamageRule{owner: r.CharacterID}.AssessAction(in)
 }
 
 // ragingDamageRule holds only the facts Rage's damage predicate uses, not the
 // condition, so asking it cannot touch the live rage.
 type ragingDamageRule struct {
 	owner string
-	bonus int
+}
+
+// rageDamageBonus is Rage's melee damage bonus for a barbarian level: +2
+// through 8th, +3 from 9th, +4 from 16th.
+func rageDamageBonus(level int) int {
+	switch {
+	case level < 9:
+		return 2
+	case level < 16:
+		return 3
+	default:
+		return 4
+	}
 }
 
 func (r ragingDamageRule) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error) {
@@ -41,6 +55,10 @@ func (r ragingDamageRule) AssessAction(in *contributions.AssessActionInput) (*co
 	}
 	if frame.Actor != r.owner {
 		return answer(contributions.DoesNotApply, "Rage modifies its recipient's attacks"), nil
+	}
+	level, err := actorClassLevel(frame, classes.Barbarian, "raging")
+	if err != nil {
+		return nil, err
 	}
 	weapon, weaponKnown := frame.Action.WeaponPool.Get()
 	melee, meleeKnown := frame.Action.Melee.Get()
@@ -58,7 +76,7 @@ func (r ragingDamageRule) AssessAction(in *contributions.AssessActionInput) (*co
 		return answer(contributions.Depends, "Depends on the attack's weapon and ability"), nil
 	}
 	out := answer(contributions.Applies, "The melee weapon attack uses Strength")
-	bonus := r.bonus
+	bonus := rageDamageBonus(level)
 	out.Answer.Benefit = fmt.Sprintf("+%d damage", bonus)
 	out.Answer.Damage = []contributions.DamageChange{{
 		PoolID: contributions.PrimaryWeaponPool,

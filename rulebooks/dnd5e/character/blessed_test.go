@@ -26,7 +26,7 @@ func (s *BlessedCharacterSuite) TestBlessChangesADeathSaveAfterJSONReload() {
 	})
 	s.Require().NoError(err)
 	char.conditions = append(char.conditions, blessed)
-	raw, err := json.Marshal(char.ToData())
+	raw, err := json.Marshal(mustToData(s.T(), char))
 	s.Require().NoError(err)
 	var data Data
 	s.Require().NoError(json.Unmarshal(raw, &data))
@@ -67,7 +67,7 @@ func (s *ConcentrationKeeperSuite) TestBlessOwnersCleanUpOnlyTheirOwnRecipientsA
 	data.ID = "target"
 	target, err := Load(s.ctx, data)
 	s.Require().NoError(err)
-	target, err = Load(s.ctx, target.ToData())
+	target, err = Load(s.ctx, mustToData(s.T(), target))
 	s.Require().NoError(err)
 	for _, member := range append(owners, target) {
 		s.Require().NoError(Attach(s.ctx, member, s.bus))

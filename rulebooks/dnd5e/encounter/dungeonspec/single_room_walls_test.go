@@ -153,6 +153,7 @@ func generatedSpans(field encounter.FieldInput) []encounter.PlacedPropInput {
 // capabilities every one of these geometry scenes supplies.
 func (s *SingleRoomWallSuite) wallEncounter(compiled dungeonspec.Compiled) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sheets:    zeroSheets{},
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
@@ -167,6 +168,7 @@ func (s *SingleRoomWallSuite) wallEncounter(compiled dungeonspec.Compiled) *enco
 
 func (s *SingleRoomWallSuite) reload(enc *encounter.Encounter) *encounter.Encounter {
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Sheets:    zeroSheets{},
 		Data:      enc.ToData(),
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},

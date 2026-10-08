@@ -23,7 +23,8 @@ func TestExplicitConcealmentSuite(t *testing.T) {
 
 func (s *ExplicitConcealmentSuite) setup(field encounter.FieldInput, at spatial.Position) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{},
+		Sheets: zeroSheets{},
+		Sight:  everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{},
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
@@ -37,7 +38,8 @@ func (s *ExplicitConcealmentSuite) setup(field encounter.FieldInput, at spatial.
 
 func (s *ExplicitConcealmentSuite) reload(enc *encounter.Encounter) *encounter.Encounter {
 	out, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: enc.ToData(), Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{},
+		Sheets: zeroSheets{},
+		Data:   enc.ToData(), Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{},
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
@@ -145,7 +147,8 @@ func (s *ExplicitConcealmentSuite) TestConcealedCellDoesNotSelectUnlistedWallOrP
 // path.
 func (s *ExplicitConcealmentSuite) searchSetup(field encounter.FieldInput, at spatial.Position) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{},
+		Sheets: zeroSheets{},
+		Sight:  everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{},
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsEverything{}, Witness: nobodyPerceives{},

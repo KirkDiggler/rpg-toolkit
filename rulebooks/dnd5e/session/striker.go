@@ -124,8 +124,9 @@ func (s strikerSeam) Strike(
 		Participants: cast,
 		Initiative:   s.m.initiative,
 		Standing:     s.scope.standing,
-		Sight:        &sightSeam{members: worldMembers(world)},
+		Sight:        sheetsBeside(s.scope.standing),
 		Equipment:    equipmentBeside(s.scope.standing),
+		Sheets:       sheetsBeside(s.scope.standing),
 		TurnDriver:   s.scope.driver,
 		// The concealment pair (rpg-toolkit#1378), bound to the same live
 		// scope openForWrite and adopt bind — the one-seam consistency law:
@@ -139,7 +140,7 @@ func (s strikerSeam) Strike(
 		Roller:        &diceSeam{roller: s.m.dice},
 	})
 	if err != nil {
-		return fmt.Errorf("strike: %w", translateResolution(err))
+		return fmt.Errorf("strike: %w", translateAttack(err))
 	}
 
 	if out.Posed != nil {
@@ -148,10 +149,24 @@ func (s strikerSeam) Strike(
 				return err
 			}
 			p := pendingAttackWindowPayload{Attacker: string(attacker), Target: string(target), Definition: definition, Components: attackerData.Actions}
+			var told []resolution.SequenceStepOutcome
 			if out.Posed.Sequence != nil {
+				told = out.Posed.Sequence.Steps
 				if err := s.m.recordPendingSequence(s.scope, &p, *out.Posed.Sequence); err != nil {
 					return err
 				}
+			}
+			// The completed swings are told; a swing that settled and then
+			// stopped to ask is NOT, until the answer resumes the sequence.
+			// An area that swing closed waits with it, carried on the window,
+			// so the story never tells "area ended" before its cause. A pose
+			// before the roll has no unrecorded swing: everything that could
+			// have closed an area is already told, and the areas land now.
+			// (Today that branch carries none: the only before-roll offer,
+			// Warding Flare, depends on the target and not the swing, so a
+			// sequence would have posed it on its first swing.)
+			if err := s.m.landToldAreas(enc, s.scope, &p, out, told); err != nil {
+				return err
 			}
 			if err := posePendingAttackWindow(s.scope, out.Posed, p); err != nil {
 				return err
@@ -167,6 +182,9 @@ func (s strikerSeam) Strike(
 		in := &AttackInput{Attacker: string(attacker), Target: string(target)}
 		if _, err := enc.Record(recordFor(in, *out.Posed.SettledStrike, definition, "", out)); err != nil {
 			return translate(err)
+		}
+		if err := s.m.landAreas(enc, s.scope, out); err != nil {
+			return err
 		}
 		if err := posePostHitWindow(s.scope, out.Posed); err != nil {
 			return err
@@ -189,10 +207,13 @@ func (s strikerSeam) Strike(
 		if _, err := enc.Record(recordFor(in, produced, definition, "", out)); err != nil {
 			return fmt.Errorf("strike: %w", translate(err))
 		}
-		return nil
+		return s.m.landAreas(enc, s.scope, out)
 
 	case resolution.SequenceOutcome:
-		return s.recordSequence(enc, in, produced, attackerData.Actions)
+		if err := s.recordSequence(enc, in, produced, attackerData.Actions); err != nil {
+			return err
+		}
+		return s.m.landAreas(enc, s.scope, out)
 
 	default:
 		return fmt.Errorf("strike: %w: strike produced %T", ErrInvalidWorld, out.Outcome)

@@ -44,7 +44,7 @@ func TestWardingFlarePausesBeforeDiceAndResumesOnlyOnce(t *testing.T) {
 					return c, nil
 				})
 				require.NoError(t, err)
-				return resolveOn(context.Background(), &Input{World: actionWorld(t, 2), Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Character: hero}}, Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, TurnDriver: passDriver{}, Roller: dice.NewRoller()}, newSurface(bus))
+				return resolveOn(context.Background(), &Input{World: actionWorld(t, 2), Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Character: hero}}, Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, TurnDriver: passDriver{}, Roller: dice.NewRoller()}, newSurface(bus))
 			}
 			out, err := run(NewStrike(&StrikeInput{AttackerID: wolfID, TargetID: heroID, Definition: validMeleeDefinition(), Roller: roller}))
 			require.NoError(t, err)
@@ -94,7 +94,7 @@ func TestWardingFlareSequenceCanDeclineFirstAndSpendOnSecond(t *testing.T) {
 		if len(out.DirtyCharacters) > 0 {
 			hero = out.DirtyCharacters[0]
 		}
-		out, e = Resolve(context.Background(), &Input{World: out.World, Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Character: hero}}, Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, TurnDriver: passDriver{}, Roller: dice.NewRoller()})
+		out, e = Resolve(context.Background(), &Input{World: out.World, Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Character: hero}}, Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, TurnDriver: passDriver{}, Roller: dice.NewRoller()})
 		require.NoError(t, e)
 	}
 	resume(OfferKeep, "")

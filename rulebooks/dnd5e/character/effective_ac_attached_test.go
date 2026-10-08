@@ -13,12 +13,14 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
-// EffectiveACAttachmentSuite pins EffectiveAC's two refusals.
+// EffectiveACAttachmentSuite pins EffectiveAC's refusals.
 //
 // They are different failures and it is worth not conflating them, because the
 // first is the one everybody assumes and the second is the one that actually
@@ -36,6 +38,12 @@ import (
 //     to base armour with nothing in the call stack saying so — how a monk
 //     fought at 10+DEX with Unarmored Defense attached. Those errors are now
 //     returned.
+//
+//  3. A CONTRIBUTOR THAT CANNOT READ ITS HOLDER. Attached, but on a context
+//     with no cast (or a cast without this character), Unarmored Defense
+//     cannot learn the WIS it adds. It used to leave the chain untouched and
+//     the fold answered base armour; it now refuses with gamectx.ErrNotInCast
+//     and the fold returns that, by (2).
 //
 // Both halves of (1) matter. The refusal is only meaningful if the same sheet,
 // once attached, actually produces the higher number; otherwise these would
@@ -80,7 +88,6 @@ func (s *EffectiveACAttachmentSuite) monkData() *Data {
 		},
 		HitPoints:      9,
 		MaxHitPoints:   9,
-		ArmorClass:     15,
 		EquipmentSlots: EquipmentSlots{},
 		Conditions:     []json.RawMessage{raw},
 	}
@@ -119,33 +126,75 @@ func (s *EffectiveACAttachmentSuite) TestAttachedSheetFoldsUnarmoredDefense() {
 	s.Assert().Equal(15, breakdown.Total, "10 base + 3 DEX + 2 WIS (Unarmored Defense)")
 }
 
-// Attached but with NO cast: the fold runs, and Unarmored Defense contributes
-// nothing. 13 rather than 15.
+// Attached but with NO cast: Unarmored Defense cannot find its holder, so the
+// fold REFUSES with gamectx.ErrNotInCast rather than answering 13.
 //
-// This is the observable edge of the read law, kept in a test on purpose. A
-// condition that cannot find itself leaves the chain untouched rather than
-// erroring — an erroring contributor would take every OTHER contributor down
-// with it, which is the failure the whole channel exists to prevent — so the
-// only visible symptom is a number that looks like a character with no
-// features. That is exactly how this class of bug hides, and pinning it here
-// means the next caller folding on a bare context finds out from a test rather
-// than from a wrong armour class on somebody's sheet.
+// This test used to pin 13 — "10 base + 3 DEX, and no Unarmored Defense" — on
+// the theory that a condition that cannot answer should leave the chain
+// untouched so it cannot poison the fold for everybody else. That theory was
+// written when EffectiveAC swallowed fold errors. It no longer does, and a
+// missing AC contributor is not a smaller answer, it is a wrong one: rpg-api
+// folded exactly this way on equip and saved a monk's AC without WIS
+// (rpg-toolkit#1965 tier 1 #2). The refusal is the answer.
 //
-// The answer for such a caller is not to install a cast of its own. It is R6:
-// bring the fold to resolution, where one door installs the truth on every
-// path. resolution.ProjectCharacter is that entry for a caller holding a record.
-func (s *EffectiveACAttachmentSuite) TestAttachedSheetWithoutACastLosesUnarmoredDefense() {
+// The answer for such a caller is still not to install a cast of its own. It
+// is R6: bring the fold to resolution, where one door installs the truth on
+// every path. resolution.ProjectCharacter is that entry for a caller holding a
+// record.
+func (s *EffectiveACAttachmentSuite) TestAttachedSheetWithoutACastRefusesEffectiveAC() {
 	loaded, err := Load(s.ctx, s.monkData())
 	s.Require().NoError(err)
 	s.Require().NoError(Attach(s.ctx, loaded, events.NewEventBus()))
 
 	breakdown, acErr := loaded.EffectiveAC(s.ctx)
 
-	s.Require().NoError(acErr,
-		"a condition that cannot answer must not poison the fold for everyone else")
+	s.Require().ErrorIs(acErr, gamectx.ErrNotInCast,
+		"Unarmored Defense could not read its holder, so 13 would be a lie")
+	s.Assert().Nil(breakdown, "a refused read returns no breakdown to be mistaken for an answer")
+}
+
+// A cast that does not hold the monk is the same lie by another route: the
+// condition asks for its holder and nobody can name it.
+func (s *EffectiveACAttachmentSuite) TestACastWithoutTheHolderRefusesEffectiveAC() {
+	loaded, err := Load(s.ctx, s.monkData())
+	s.Require().NoError(err)
+	s.Require().NoError(Attach(s.ctx, loaded, events.NewEventBus()))
+
+	ctx := gamectx.WithCast(s.ctx, &fakeCast{members: map[string]combat.Member{}})
+	breakdown, acErr := loaded.EffectiveAC(ctx)
+
+	s.Require().ErrorIs(acErr, gamectx.ErrNotInCast)
+	s.Assert().Nil(breakdown)
+}
+
+// The refusal is the condition's, not a blanket "no cast, no AC": a sheet with
+// nothing that reads the cast folds on a bare context exactly as before. Without
+// this, an EffectiveAC that refused every castless call would pass above.
+func (s *EffectiveACAttachmentSuite) TestASheetNeedingNoCastStillFoldsWithoutOne() {
+	data := s.monkData()
+	data.Conditions = nil
+	loaded, err := Load(s.ctx, data)
+	s.Require().NoError(err)
+	s.Require().NoError(Attach(s.ctx, loaded, events.NewEventBus()))
+
+	breakdown, acErr := loaded.EffectiveAC(s.ctx)
+
+	s.Require().NoError(acErr)
 	s.Require().NotNil(breakdown)
-	s.Assert().Equal(13, breakdown.Total,
-		"10 base + 3 DEX, and no Unarmored Defense: nobody here could name this character")
+	s.Assert().Equal(13, breakdown.Total, "10 base + 3 DEX, and nothing on the sheet that adds to it")
+}
+
+// An attached monk on a bare context cannot produce an equipment view either:
+// the view carries the folded AC and inherits its refusal.
+func (s *EffectiveACAttachmentSuite) TestAttachedSheetWithoutACastRefusesEquipmentView() {
+	loaded, err := Load(s.ctx, s.monkData())
+	s.Require().NoError(err)
+	s.Require().NoError(Attach(s.ctx, loaded, events.NewEventBus()))
+
+	view, viewErr := loaded.EquipmentView(s.ctx)
+
+	s.Require().ErrorIs(viewErr, gamectx.ErrNotInCast)
+	s.Assert().Nil(view)
 }
 
 // EquipmentView carries a folded AC, so it inherits the refusal rather than

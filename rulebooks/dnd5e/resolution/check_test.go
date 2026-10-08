@@ -93,8 +93,6 @@ func (s *CheckTestSuite) guided() json.RawMessage {
 func (s *CheckTestSuite) raging() json.RawMessage {
 	raw, err := (&conditions.RagingCondition{
 		CharacterID: seekerID,
-		DamageBonus: 2,
-		Level:       1,
 		Source:      "rage",
 	}).ToJSON()
 	s.Require().NoError(err)
@@ -261,20 +259,15 @@ func (s *CheckTestSuite) TestRefusalsByName() {
 	})
 }
 
-// The strictness contrast with the projection, pinned side by side the way
-// TestTheProjectionReadsWhatResolveRefuses pins it against Resolve: the same
-// record projects (read-only, drop and warn) and is REFUSED here, because a
-// check rolled past a condition that could not load is exactly the unaided
-// check the ruling forbids.
-func (s *CheckTestSuite) TestTheCheckRefusesWhatTheProjectionReads() {
+// A check rolled past a condition that could not load is exactly the unaided
+// check the ruling forbids, so the record is REFUSED. This used to be a
+// contrast with the projection, which dropped and warned; the projection now
+// refuses the same record (TestTheProjectionRefusesWhatResolveRefuses), so
+// only the check's half is left to pin here.
+func (s *CheckTestSuite) TestTheCheckRefusesAConditionNobodyCouldLoad() {
 	unreadable := json.RawMessage(`{"ref":"nonsense","x":`)
 
-	_, err := ProjectCharacter(s.ctx, &ProjectCharacterInput{
-		Character: s.seeker(unreadable),
-	})
-	s.Require().NoError(err, "the read entry tolerates what it cannot parse")
-
-	_, err = s.check(s.seeker(unreadable), route(string(skills.Perception), 10))
+	_, err := s.check(s.seeker(unreadable), route(skills.Perception, 10))
 	s.Require().Error(err,
 		"a rules verdict must not be computed past a condition nobody could load")
 }

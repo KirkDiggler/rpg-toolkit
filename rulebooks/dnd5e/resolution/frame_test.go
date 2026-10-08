@@ -66,7 +66,7 @@ func (s *FrameTestSuite) resolveCamp(bus events.EventBus, strike *StrikeInput) (
 			{Monster: camp.raider(holdOutScout)}, {Monster: camp.raider(holdOutChief)},
 		},
 		Machine:    NewStrike(strike),
-		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		TurnDriver: passDriver{}, Roller: strike.Roller,
 	}, newSurface(bus))
 }
@@ -75,7 +75,7 @@ func (s *FrameTestSuite) resolveCamp(bus events.EventBus, strike *StrikeInput) (
 // carrying its persisted Martial Arts.
 func (s *FrameTestSuite) monkSheet() *character.Data {
 	martialArts, err := conditions.NewMartialArtsCondition(conditions.MartialArtsInput{
-		MemberID: heroID, MonkLevel: 1,
+		MemberID: heroID,
 	}).ToJSON()
 	s.Require().NoError(err)
 
@@ -85,7 +85,7 @@ func (s *FrameTestSuite) monkSheet() *character.Data {
 			abilities.STR: 10, abilities.DEX: 16, abilities.CON: 12,
 			abilities.INT: 10, abilities.WIS: 14, abilities.CHA: 8,
 		},
-		HitPoints: 9, MaxHitPoints: 9, ArmorClass: 15, ProficiencyBonus: 2,
+		HitPoints: 9, MaxHitPoints: 9, ProficiencyBonus: 2,
 		Conditions: []json.RawMessage{martialArts},
 	}
 }
@@ -162,7 +162,7 @@ func (s *FrameTestSuite) TestMonkUnarmedHitRollsItsDamageDieOnce() {
 		World:        actionWorld(s.T(), 2),
 		Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Character: monk}},
 		Machine:      NewStrike(&StrikeInput{AttackerID: heroID, TargetID: wolfID, Definition: definition, Roller: roller}),
-		Initiative:   orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Initiative:   orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		TurnDriver: passDriver{}, Roller: roller,
 	})
 	s.Require().NoError(err)
@@ -188,8 +188,9 @@ func (s *FrameTestSuite) TestInformationFrameCarriesTheObservedStance() {
 				{From: holdOutScout, To: holdOutLetter, DistanceCells: 2, Stance: encounter.StanceNone},
 			},
 		},
-		Attack: dagger().Attack,
-		Target: holdOutScout,
+		Attack:           dagger().Attack,
+		Target:           holdOutScout,
+		ActorClassLevels: contributions.KnownClassLevels(),
 	})
 	s.Require().NoError(err)
 
@@ -305,7 +306,7 @@ func (s *FrameTestSuite) TestStrikeFailsWhenARuleCannotAnswer() {
 		Participants: []Participant{{Monster: target}, {Character: actionHero()}},
 		Machine: NewStrike(&StrikeInput{AttackerID: heroID, TargetID: wolfID, Definition: validMeleeDefinition(),
 			Roller: &actionRoller{singles: []int{15}, damage: [][]int{{3}}}}),
-		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		TurnDriver: passDriver{}, Roller: &actionRoller{},
 	}, newSurface(bus))
 
@@ -332,7 +333,7 @@ func (s *FrameTestSuite) TestStrikeFailsWhenAHeldRuleCannotAnswer() {
 		Participants: []Participant{{Monster: target}, {Character: actionHero()}},
 		Machine: NewStrike(&StrikeInput{AttackerID: heroID, TargetID: wolfID, Definition: validMeleeDefinition(),
 			Roller: &actionRoller{singles: []int{15}, damage: [][]int{{3}}}}),
-		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		TurnDriver: passDriver{}, Roller: &actionRoller{},
 	}, newSurface(bus))
 
@@ -471,7 +472,7 @@ func (s *FrameTestSuite) TestStrikeFailsWhenAnOfferRuleCannotAnswer() {
 		Participants: []Participant{{Monster: target}, {Character: actionHero()}},
 		Machine: NewStrike(&StrikeInput{AttackerID: heroID, TargetID: wolfID, Definition: validMeleeDefinition(),
 			Roller: &actionRoller{singles: []int{15}, damage: [][]int{{3}}}}),
-		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		TurnDriver: passDriver{}, Roller: &actionRoller{},
 	}, newSurface(bus))
 
@@ -489,7 +490,7 @@ func (s *FrameTestSuite) TestAPlacedMemberWithNoFactionIsKnownNoSide() {
 	const shopkeeperID = "shopkeeper"
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{},
-		Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		Field: encounter.FieldInput{Canvas: hexCanvas(), Regions: []encounter.RegionInput{rectRegion("room", 0, 0, 10, 4)}},
 		Members: []encounter.MemberInput{
 			{ID: wolfID, Kind: encounter.KindMonster, Position: spatial.Position{X: 1, Y: 1}},
@@ -510,7 +511,7 @@ func (s *FrameTestSuite) TestAPlacedMemberWithNoFactionIsKnownNoSide() {
 		},
 		Machine: NewStrike(&StrikeInput{AttackerID: heroID, TargetID: wolfID, Definition: validMeleeDefinition(),
 			Roller: &actionRoller{singles: []int{15}, damage: [][]int{{3}}}}),
-		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		TurnDriver: passDriver{}, Roller: &actionRoller{},
 	}, newSurface(bus))
 	s.Require().NoError(err)
@@ -529,6 +530,7 @@ func (s *FrameTestSuite) TestAPlacedMemberWithNoFactionIsKnownNoSide() {
 	s.Require().NoError(err)
 	informed, err := informationFrame(&informationFrameInput{
 		Observed: observed, Attack: validMeleeDefinition().Attack, Target: wolfID,
+		ActorClassLevels: contributions.KnownClassLevels(),
 	})
 	s.Require().NoError(err)
 	s.Equal(contributions.Known(contributions.StanceNone), informed.Frame.Pair(heroID, shopkeeperID).Stance)

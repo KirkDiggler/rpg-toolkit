@@ -41,8 +41,8 @@ func (s *actionCensusSuite) TestEveryConditionLoaderIsClassified() {
 
 func (s *actionCensusSuite) TestAnsweringLoadersImplementActionAssessor() {
 	fixtures := map[string]dnd5eEvents.ConditionBehavior{
-		refs.Conditions.Raging().String():    &RagingCondition{CharacterID: "barb", DamageBonus: 2, Level: 1},
-		refs.Features.SneakAttack().String(): NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue", Level: 1}),
+		refs.Conditions.Raging().String():    &RagingCondition{CharacterID: "barb"},
+		refs.Features.SneakAttack().String(): NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue"}),
 		refs.Conditions.Inspired().String():  NewInspiredCondition("rogue", "bard", ""),
 
 		refs.Conditions.Prone().String():                            NewProneCondition("rogue"),
@@ -52,8 +52,8 @@ func (s *actionCensusSuite) TestAnsweringLoadersImplementActionAssessor() {
 		refs.Conditions.ViciousMockery().String():                   NewViciousMockeryCondition("rogue", "bard", refs.Spells.ViciousMockery().String()),
 		refs.Conditions.ImprovedCritical().String():                 NewImprovedCriticalCondition(ImprovedCriticalInput{MemberID: "rogue", Threshold: 19}),
 		refs.Conditions.FightingStyleArchery().String():             NewFightingStyleArcheryCondition("rogue"),
-		refs.Conditions.BrutalCritical().String():                   NewBrutalCriticalCondition(BrutalCriticalInput{MemberID: "rogue", Level: 9}),
-		refs.Conditions.MartialArts().String():                      NewMartialArtsCondition(MartialArtsInput{MemberID: "rogue", MonkLevel: 1}),
+		refs.Conditions.BrutalCritical().String():                   NewBrutalCriticalCondition(BrutalCriticalInput{MemberID: "rogue"}),
+		refs.Conditions.MartialArts().String():                      NewMartialArtsCondition(MartialArtsInput{MemberID: "rogue"}),
 		refs.Conditions.FightingStyleDueling().String():             NewFightingStyleDuelingCondition("rogue"),
 		refs.Conditions.FightingStyleGreatWeaponFighting().String(): NewFightingStyleGreatWeaponFightingCondition("rogue", nil),
 		refs.Conditions.FightingStyleTwoWeaponFighting().String():   NewFightingStyleTwoWeaponFightingCondition("rogue"),
@@ -130,7 +130,7 @@ func (s *actionCensusSuite) TestNotYetAnsweringYieldsUnavailableRow() {
 // sanctuary is a ward on the rogue, an effect whose rule cannot yet answer.
 func (s *actionCensusSuite) sanctuary() *SanctuaryCondition {
 	ward, err := NewSanctuaryCondition(NewSanctuaryConditionInput{
-		MemberID: "rogue", SourceID: "cleric", SourceRef: refs.Spells.Sanctuary(),
+		MemberID: "rogue", SourceID: "cleric", SourceRef: refs.Spells.Sanctuary(), SaveDC: 13,
 	})
 	s.Require().NoError(err)
 	return ward
@@ -146,22 +146,20 @@ func testShillelaghConfig() ShillelaghConfig {
 }
 
 func (s *actionCensusSuite) TestNotBearingYieldsNoRow() {
-	fog, err := NewInFogCondition(NewInFogConditionInput{MemberID: "rogue", SourceID: "area-1", SourceRef: refs.Spells.FogCloud()})
-	s.Require().NoError(err)
 	out, err := AssessActionEffects(&AssessActionEffectsInput{
-		Conditions: []dnd5eEvents.ConditionBehavior{&UnarmoredDefenseCondition{MemberID: "rogue"}, fog},
+		Conditions: []dnd5eEvents.ConditionBehavior{&UnarmoredDefenseCondition{MemberID: "rogue"}},
 		Frame:      rogueFrame(false),
 	})
 	s.Require().NoError(err)
-	s.Empty(out.Effects, "In Fog owns no rule, so it shows no row (R20)")
+	s.Empty(out.Effects, "Unarmored Defense bears on AC only, so it shows no row")
 
 	frame := rogueFrame(false)
 	frame.Held = []contributions.MemberHeld{{Member: "goblin", Conditions: []contributions.HeldCondition{
-		{Ref: refs.Conditions.InFog().String(), SourceID: "area-1"},
+		{Ref: refs.Conditions.UnarmoredDefense().String()},
 	}}}
 	held, err := AssessTargetHeldEffects(&AssessTargetHeldEffectsInput{Frame: frame})
 	s.Require().NoError(err)
-	s.Empty(held.Effects, "a target in the fog shows no row either (R20)")
+	s.Empty(held.Effects, "a target's AC is not the attacker's to know, so no row (R21)")
 }
 
 func (s *actionCensusSuite) TestEffectIDsUniqueAndDeterministic() {
@@ -172,7 +170,7 @@ func (s *actionCensusSuite) TestEffectIDsUniqueAndDeterministic() {
 		s.Require().NoError(err)
 		return []dnd5eEvents.ConditionBehavior{
 			a, b,
-			NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue", Level: 1}),
+			NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue"}),
 			NewFightingStyleArcheryCondition("rogue"),
 		}
 	}

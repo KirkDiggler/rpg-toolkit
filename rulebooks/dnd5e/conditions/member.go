@@ -43,12 +43,14 @@ import (
 // says no shield" and "nobody could tell me whose sheet this is" are different
 // facts, and a caller that collapses them invents a rule out of missing data.
 //
-// The caller must NOT turn a false second return into an error.
-// Character.EffectiveAC folds the AC chain, and an erroring contributor takes
-// every OTHER contributor down with it — which is how a barbarian ended up
-// fighting at 10+DEX with Unarmored Defense attached and nothing logged. Leave
-// the chain untouched instead: absent from the answer is recoverable, a
-// poisoned fold is not.
+// What the caller does with a false second return depends on what it is
+// answering. An eligibility rule — the opportunity attack, Protection — reads
+// it as "not eligible" and leaves its chain untouched. A rule whose
+// contribution is part of a folded number — Unarmored Defense on AC — returns
+// [gamectx.ErrNotInCast] instead, because leaving the contribution out answers
+// a smaller number that reads like a character without the feature
+// (rpg-toolkit#1965). Character.EffectiveAC returns fold errors, so that
+// refusal reaches its caller rather than silently degrading the total.
 func member(ctx context.Context, memberID string) (combat.Member, bool) {
 	cast, ok := gamectx.CastOf(ctx)
 	if !ok {

@@ -67,7 +67,7 @@ func (s *LanguagesSuite) TestHumanWithLanguageChoice() {
 	char, err := draft.ToCharacter(context.Background(), "char-lang-1", s.eventBus)
 	s.Require().NoError(err)
 
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	s.Require().Len(data.Languages, 2, "Human should have 2 languages (Common + chosen)")
 	s.Contains(data.Languages, languages.Common, "Human should have Common")
 	s.Contains(data.Languages, languages.Elvish, "Human should have chosen Elvish")
@@ -108,7 +108,7 @@ func (s *LanguagesSuite) TestElfDefaultLanguages() {
 	char, err := draft.ToCharacter(context.Background(), "char-lang-2", s.eventBus)
 	s.Require().NoError(err)
 
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	s.Require().Len(data.Languages, 2, "Elf should have 2 languages")
 	s.Contains(data.Languages, languages.Common, "Elf should have Common")
 	s.Contains(data.Languages, languages.Elvish, "Elf should have Elvish")
@@ -153,7 +153,7 @@ func (s *LanguagesSuite) TestDwarfDefaultLanguages() {
 	char, err := draft.ToCharacter(context.Background(), "char-lang-3", s.eventBus)
 	s.Require().NoError(err)
 
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	s.Require().Len(data.Languages, 2, "Dwarf should have 2 languages")
 	s.Contains(data.Languages, languages.Common, "Dwarf should have Common")
 	s.Contains(data.Languages, languages.Dwarvish, "Dwarf should have Dwarvish")
@@ -199,7 +199,7 @@ func (s *LanguagesSuite) TestLanguageRoundTrip() {
 	s.Require().NoError(err)
 
 	// Serialize to Data
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	s.Require().Len(data.Languages, 2)
 	s.Contains(data.Languages, languages.Common)
 	s.Contains(data.Languages, languages.Draconic)
@@ -214,7 +214,7 @@ func (s *LanguagesSuite) TestLanguageRoundTrip() {
 	defer func() { _ = restored.Cleanup(context.Background()) }()
 
 	// Verify languages survived the round trip
-	restoredData := restored.ToData()
+	restoredData := mustToData(s.T(), restored)
 	s.Require().Len(restoredData.Languages, 2, "Languages should survive round trip")
 	s.Contains(restoredData.Languages, languages.Common, "Common should survive round trip")
 	s.Contains(restoredData.Languages, languages.Draconic, "Draconic should survive round trip")
@@ -259,7 +259,7 @@ func (s *LanguagesSuite) TestHalfElfLanguages() {
 	char, err := draft.ToCharacter(context.Background(), "char-he", s.eventBus)
 	s.Require().NoError(err)
 
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	s.Require().Len(data.Languages, 3, "Half-Elf should have 3 languages")
 	s.Contains(data.Languages, languages.Common, "Half-Elf should have Common")
 	s.Contains(data.Languages, languages.Elvish, "Half-Elf should have Elvish")

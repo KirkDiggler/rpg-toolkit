@@ -75,7 +75,7 @@ func (s *CastActionTestSuite) TestStabilizationDeliveryAndRefusal() {
 			definition := stabilizationDefinition()
 			machine, err := NewAction(&ActionInput{Definition: definition, AttackerID: bardID, TargetIDs: []string{targetID}, Roller: roll})
 			s.Require().NoError(err)
-			out, err := Resolve(s.ctx, &Input{World: world, Participants: participants, Machine: machine, Cost: castCost(), Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Roller: roll})
+			out, err := Resolve(s.ctx, &Input{World: world, Participants: participants, Machine: machine, Cost: castCost(), Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: roll})
 			after, marshalErr := json.Marshal(participants)
 			s.Require().NoError(marshalErr)
 			s.JSONEq(string(before), string(after), "the caller's persisted inputs remain untouched")

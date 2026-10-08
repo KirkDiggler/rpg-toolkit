@@ -86,8 +86,9 @@ func (m *Manager) answerPostRoll(
 		Participants:  cast,
 		Initiative:    m.initiative,
 		Standing:      scope.standing,
-		Sight:         &sightSeam{members: worldMembers(world)},
+		Sight:         sheetsBeside(scope.standing),
 		Equipment:     equipmentBeside(scope.standing),
+		Sheets:        sheetsBeside(scope.standing),
 		TurnDriver:    scope.driver,
 		CheckResolver: checkSeam{m: m, scope: scope},
 		Witness:       witnessSeam{scope: scope},
@@ -96,7 +97,7 @@ func (m *Manager) answerPostRoll(
 		Roller: &diceSeam{roller: m.dice},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("react: %w", translateResolution(err))
+		return nil, fmt.Errorf("react: %w", translateAttack(err))
 	}
 	if out.Posed != nil {
 		if out.Posed.SettledStrike == nil {
@@ -113,6 +114,9 @@ func (m *Manager) answerPostRoll(
 		}
 		if _, err = scope.enc.Record(recordStrike(payload.Audience, payload.Target, *out.Posed.SettledStrike, payload.Attack, payload.PresentationID, out.ConcentrationChecks, out.ConcentrationBreaks)); err != nil {
 			return nil, reportUnrecorded(scope, translate(err))
+		}
+		if err = m.landAreas(scope.enc, scope, out); err != nil {
+			return nil, reportUnrecorded(scope, err)
 		}
 		if err = posePostHitWindow(scope, out.Posed); err != nil {
 			return nil, err
@@ -150,6 +154,9 @@ func (m *Manager) answerPostRoll(
 		out.ConcentrationChecks, out.ConcentrationBreaks,
 	)); err != nil {
 		return nil, fmt.Errorf("react: %w", reportUnrecorded(scope, translate(err)))
+	}
+	if err := m.landAreas(scope.enc, scope, out); err != nil {
+		return nil, fmt.Errorf("react: %w", reportUnrecorded(scope, err))
 	}
 
 	report, delivery, err := m.commit(ctx, scope)

@@ -47,6 +47,7 @@ func (s *RecheckSuite) SetupTest() {
 		Session: "sess", Encounter: "world", World: heirloomWorld(s.T(), true),
 	})
 	s.Require().NoError(err)
+	stockAuthoredMonsters(s.T(), s.sessions, s.encounters, "sess")
 	s.stream.published = nil
 }
 

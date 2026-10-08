@@ -35,6 +35,7 @@ func (s *DissolveTestSuite) SetupTest() {
 		Session: "sess", Encounter: "world", World: ambushWorld(s.T()),
 	})
 	s.Require().NoError(err)
+	stockAuthoredMonsters(s.T(), s.sessions, s.encounters, "sess")
 }
 
 // fight walks alice into the ogre, which starts one.

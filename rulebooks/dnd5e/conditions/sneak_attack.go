@@ -16,6 +16,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -29,21 +30,24 @@ import (
 // persisting the once-per-turn flag, a rogue would sneak-attack on every TakeAction
 // call, breaking the once-per-turn semantic across separate RPCs in the same turn.
 // See rpg-toolkit#654 for the broader sustainable-per-turn-state pattern.
+//
+// No rogue level and no dice count is stored: the dice are computed from the
+// attacker's rogue levels in the rule's frame at the moment of the attack. A
+// blob saved with the old "level" or "damage_dice" keys loads and the copy is
+// ignored.
 type SneakAttackData struct {
 	Ref          *core.Ref `json:"ref"`
 	CharacterID  string    `json:"member_id"`
-	Level        int       `json:"level"`
-	DamageDice   int       `json:"damage_dice"`
 	UsedThisTurn bool      `json:"used_this_turn"`
 }
 
 // SneakAttackCondition represents the rogue's sneak attack feature.
 // It adds extra damage dice when the rogue has advantage or an ally adjacent to the target.
+// The number of dice is one d6 per two rogue levels, rounded up, read from the
+// frame's actor class levels each time it is asked.
 // It implements the ConditionBehavior interface.
 type SneakAttackCondition struct {
 	CharacterID     string
-	Level           int
-	DamageDice      int  // Number of d6s to roll
 	UsedThisTurn    bool // Sneak attack can only be used once per turn
 	subscriptionIDs []string
 	bus             events.EventBus
@@ -79,10 +83,11 @@ func (s *SneakAttackCondition) BindRoller(roller dice.Roller) {
 	s.roller = roller
 }
 
-// SneakAttackInput provides configuration for creating a sneak attack condition
+// SneakAttackInput provides configuration for creating a sneak attack condition.
+// It takes no level: the dice are read from the attacker's rogue levels in the
+// frame when an attack asks.
 type SneakAttackInput struct {
 	MemberID string      // ID of the rogue
-	Level    int         // Rogue level (determines number of dice)
 	Roller   dice.Roller // Dice roller for rolling extra damage
 }
 
@@ -90,19 +95,19 @@ type SneakAttackInput struct {
 func NewSneakAttackCondition(input SneakAttackInput) *SneakAttackCondition {
 	return &SneakAttackCondition{
 		CharacterID: input.MemberID,
-		Level:       input.Level,
-		DamageDice:  calculateSneakAttackDice(input.Level),
 		roller:      input.Roller,
 	}
 }
 
-// calculateSneakAttackDice determines number of d6s based on rogue level
-// Sneak Attack starts at 1d6 at level 1 and increases by 1d6 every odd level
-func calculateSneakAttackDice(level int) int {
-	if level < 1 {
-		return 0
+// sneakAttackDice is the number of d6s the framed attacker's Sneak Attack
+// rolls: one per two rogue levels, rounded up (1d6 at 1, 2d6 at 3, 3d6 at 5).
+// Unknown class levels or zero rogue levels are refused, never read as one.
+func sneakAttackDice(frame contributions.Frame) (int, error) {
+	level, err := actorClassLevel(frame, classes.Rogue, "sneak attack")
+	if err != nil {
+		return 0, err
 	}
-	return (level + 1) / 2 // 1d6 at 1, 2d6 at 3, 3d6 at 5, etc.
+	return (level + 1) / 2, nil
 }
 
 // IsApplied returns true if this condition is currently applied
@@ -212,6 +217,10 @@ func (s *SneakAttackCondition) onDamageChain(
 	if executed.Answer.Decision.Applicability != contributions.Applies {
 		return c, nil
 	}
+	damageDice, err := sneakAttackDice(event.Frame)
+	if err != nil {
+		return c, err
+	}
 
 	// Roll sneak attack dice (use default roller if none configured, e.g., after JSON load)
 	roller := s.roller
@@ -225,7 +234,7 @@ func (s *SneakAttackCondition) onDamageChain(
 	}
 	var sneakDice []int
 	for range rolls {
-		rolled, err := roller.RollN(ctx, s.DamageDice, 6)
+		rolled, err := roller.RollN(ctx, damageDice, 6)
 		if err != nil {
 			return c, rpgerr.Wrap(err, "failed to roll sneak attack dice")
 		}
@@ -277,8 +286,8 @@ func (s *SneakAttackCondition) onDamageChain(
 var _ contributions.ActionAssessor = (*SneakAttackCondition)(nil)
 
 // AssessAction answers whether Sneak Attack applies to the framed attack. It
-// reads the frame and this condition's own owner, once-per-turn flag and dice;
-// it never rolls or spends.
+// reads the frame — the attacker's rogue levels included — and this
+// condition's own owner and once-per-turn flag; it never rolls or spends.
 func (s *SneakAttackCondition) AssessAction(
 	in *contributions.AssessActionInput,
 ) (*contributions.AssessActionOutput, error) {
@@ -286,7 +295,7 @@ func (s *SneakAttackCondition) AssessAction(
 }
 
 func (s *SneakAttackCondition) rule() sneakAttackRule {
-	return sneakAttackRule{owner: s.CharacterID, usedThisTurn: s.UsedThisTurn, dice: s.DamageDice}
+	return sneakAttackRule{owner: s.CharacterID, usedThisTurn: s.UsedThisTurn}
 }
 
 // sneakAttackRule holds only the facts Sneak Attack's predicate uses.
@@ -304,7 +313,6 @@ func (s *SneakAttackCondition) rule() sneakAttackRule {
 type sneakAttackRule struct {
 	owner        string
 	usedThisTurn bool
-	dice         int
 }
 
 func (r sneakAttackRule) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error) {
@@ -312,19 +320,24 @@ func (r sneakAttackRule) AssessAction(in *contributions.AssessActionInput) (*con
 	if err != nil {
 		return nil, err
 	}
+	damageDice := 0
 	answer := func(state contributions.Applicability, reason string) *contributions.AssessActionOutput {
 		out := &contributions.AssessActionOutput{Answer: contributions.Answer{
 			Decision:      contributions.Decision{Applicability: state, Reason: reason},
 			Participation: contributions.ContributesNow,
 		}}
 		if state == contributions.Applies {
-			out.Answer.Benefit = fmt.Sprintf("+%dd6 damage", r.dice)
+			out.Answer.Benefit = fmt.Sprintf("+%dd6 damage", damageDice)
 		}
 		return out
 	}
 
 	if frame.Actor != r.owner {
 		return answer(contributions.DoesNotApply, "Sneak Attack adds to its owner's attacks"), nil
+	}
+	damageDice, err = sneakAttackDice(frame)
+	if err != nil {
+		return nil, err
 	}
 	if r.usedThisTurn {
 		return answer(contributions.DoesNotApply, "Already used this turn"), nil
@@ -382,8 +395,6 @@ func (s *SneakAttackCondition) ToJSON() (json.RawMessage, error) {
 	data := SneakAttackData{
 		Ref:          refs.Features.SneakAttack(),
 		CharacterID:  s.CharacterID,
-		Level:        s.Level,
-		DamageDice:   s.DamageDice,
 		UsedThisTurn: s.UsedThisTurn,
 	}
 
@@ -403,8 +414,6 @@ func (s *SneakAttackCondition) loadJSON(data json.RawMessage) error {
 	}
 
 	s.CharacterID = sneakData.CharacterID
-	s.Level = sneakData.Level
-	s.DamageDice = sneakData.DamageDice
 	s.UsedThisTurn = sneakData.UsedThisTurn
 
 	return nil

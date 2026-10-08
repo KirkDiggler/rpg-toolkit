@@ -66,7 +66,7 @@ func (s *RecordCastSuite) TestMixedMissAndDeliveryRecordsInOrderAndSurvivesReloa
 	var data encounter.EncounterData
 	s.Require().NoError(json.Unmarshal(raw, &data))
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().NoError(err)
@@ -115,7 +115,7 @@ func (s *RecordCastSuite) TestContradictoryLaterMissRejectsWholeTransaction() {
 func (s *RecordCastSuite) scene(standing encounter.StandingWithParticipation) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: standing, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: standing, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Retention: encounter.RetentionUnbounded,
 		Field: encounter.FieldInput{
@@ -311,6 +311,42 @@ func (s *RecordCastSuite) TestAWardedTargetReachesTheStoryAndRejectsMismatches()
 			}},
 		})
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+}
+
+// TestAWardedCastOutlivesTheCasterWhoLeft is BeatCastWarded's half of
+// [OutcomeTestSuite.TestAWardOutlivesTheCasterWhoLeft]: a ward whose caster
+// has Exited still stops a spell, and the beat still names who cast it. An id
+// this encounter never held stays refused.
+func (s *RecordCastSuite) TestAWardedCastOutlivesTheCasterWhoLeft() {
+	enc := s.scene(everyoneStanding{})
+	_, err := enc.Exit(&encounter.ExitInput{Member: castFighter})
+	s.Require().NoError(err)
+
+	out, err := enc.RecordCast(&encounter.RecordCastInput{
+		Actor: castBard, Spell: viciousMockery,
+		Targets: []encounter.CastTargetResult{{
+			Target: castSkeleton, Warded: &encounter.WardedDetail{Source: castFighter, Save: wardedSave()},
+		}},
+	})
+	s.Require().NoError(err, "the ward's caster left; the ward did not")
+
+	entries := s.storyEntries(enc, castBard, out.Seqs)
+	s.Equal([]string{encounter.BeatCast, encounter.BeatCastWarded}, s.beatNames(entries))
+	var beat map[string]any
+	s.Require().NoError(json.Unmarshal(entries[1].Payload, &beat))
+	s.Equal(string(castFighter), beat["source"], "the beat still names the caster who left")
+	s.Equal(float64(15), beat["dc"], "the DC as the rulebook gave it")
+
+	s.Run("a source this encounter never held is still nobody", func() {
+		_, err := enc.RecordCast(&encounter.RecordCastInput{
+			Actor: castBard, Spell: viciousMockery,
+			Targets: []encounter.CastTargetResult{{
+				Target: castSkeleton, Warded: &encounter.WardedDetail{Source: "nobody", Save: wardedSave()},
+			}},
+		})
+		s.Require().ErrorIs(err, encounter.ErrNotMember)
+		s.NotErrorIs(err, encounter.ErrNoMember, "a non-empty id is not refused as empty")
 	})
 }
 
@@ -579,7 +615,7 @@ func (s *RecordCastSuite) TestTheCastSurvivesAReload() {
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:      enc.ToData(),
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().NoError(err)
@@ -646,13 +682,13 @@ func (s *RecordCastSuite) TestItRefusesWhatItCannotNarrate() {
 	s.Require().ErrorIs(err, encounter.ErrNoMember)
 
 	_, err = enc.RecordCast(&encounter.RecordCastInput{Actor: "nobody", Spell: viciousMockery})
-	s.Require().ErrorIs(err, encounter.ErrNoMember)
+	s.Require().ErrorIs(err, encounter.ErrNotMember)
 
 	_, err = enc.RecordCast(&encounter.RecordCastInput{
 		Actor: castBard, Spell: viciousMockery,
 		Targets: []encounter.CastTargetResult{{Target: "nobody"}},
 	})
-	s.Require().ErrorIs(err, encounter.ErrNoMember)
+	s.Require().ErrorIs(err, encounter.ErrNotMember)
 
 	_, err = enc.RecordCast(&encounter.RecordCastInput{
 		Actor: castBard, Spell: encounter.SpellIdentity{Name: "Vicious Mockery"},
@@ -673,7 +709,7 @@ func (s *RecordCastSuite) TestItRefusesWhatItCannotNarrate() {
 		{
 			"unknown saver",
 			encounter.CastSave{Saver: "nobody", Ability: "wisdom", Roll: 6, DC: 13},
-			encounter.ErrNoMember,
+			encounter.ErrNotMember,
 		},
 		{
 			"no ability",
@@ -718,7 +754,7 @@ func (s *RecordCastSuite) TestNothingLandsWhenAnythingIsRefused() {
 			},
 		}},
 	})
-	s.Require().ErrorIs(err, encounter.ErrNoMember)
+	s.Require().ErrorIs(err, encounter.ErrNotMember)
 
 	storyAfter, err := enc.Story(&encounter.StoryInput{Audience: castBard})
 	s.Require().NoError(err)
@@ -1075,7 +1111,7 @@ func (s *RecordCastSuite) TestAttackCastRecordsRollBeforeLightAndReplays() {
 	var data encounter.EncounterData
 	s.Require().NoError(json.Unmarshal(raw, &data))
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().NoError(err)

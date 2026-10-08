@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -49,9 +50,10 @@ func (s *actionEffectsSuite) assess(frame contributions.Frame, held ...dnd5eEven
 }
 
 func (s *actionEffectsSuite) TestRowsMapAnswersOneToOne() {
-	rage := &RagingCondition{CharacterID: "rogue", DamageBonus: 2}
-	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue", Level: 1})
+	rage := &RagingCondition{CharacterID: "rogue"}
+	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue"})
 	frame := rogueFrame(false)
+	frame.ActorClassLevels = rogueBarbarianLevels()
 	frame.Action.Ability = contributions.Known(abilities.STR)
 	frame.Action.Weapon = contributions.Known(refs.Weapons.Club().String())
 	frame.Action.Finesse = contributions.Known(false)
@@ -106,9 +108,10 @@ func (s *actionEffectsSuite) TestSelectedRollContributionsMatchAssessedApplies()
 		s.baned("rogue", "cultist-a"),
 		s.blessed("rogue", "cleric-b"),
 		s.baned("rogue", "cultist-b"),
-		&RagingCondition{CharacterID: "rogue", DamageBonus: 2},
+		&RagingCondition{CharacterID: "rogue"},
 	}
 	frame := rogueFrame(false)
+	frame.ActorClassLevels = rogueBarbarianLevels()
 
 	selected, err := DescribeSelectedRollContributions(&DescribeSelectedRollContributionsInput{
 		Conditions: held,
@@ -216,9 +219,9 @@ func (s *actionEffectsSuite) TestBlessAndBaneDoNotApplyToAnotherMembersAttack() 
 }
 
 func (s *actionEffectsSuite) TestAssessingSpendsNothing() {
-	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue", Level: 3})
+	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue"})
 	inspired := NewInspiredCondition("rogue", "bard", "")
-	rage := &RagingCondition{CharacterID: "rogue", DamageBonus: 2, Level: 1}
+	rage := &RagingCondition{CharacterID: "rogue"}
 	held := []dnd5eEvents.ConditionBehavior{sneak, inspired, rage}
 
 	before := make([]json.RawMessage, len(held))
@@ -229,6 +232,7 @@ func (s *actionEffectsSuite) TestAssessingSpendsNothing() {
 	}
 
 	frame := rogueFrame(true)
+	frame.ActorClassLevels = rogueBarbarianLevels()
 	frame.Pairs = []contributions.PairFacts{knownPair("goblin", "fighter", 1.0, contributions.StanceHostile)}
 	effects := s.assess(frame, held...)
 	s.Require().Len(effects, 3)
@@ -278,3 +282,11 @@ func (unclassifiedCondition) IsApplied() bool                               { re
 func (unclassifiedCondition) Apply(context.Context, events.EventBus) error  { return nil }
 func (unclassifiedCondition) Remove(context.Context, events.EventBus) error { return nil }
 func (unclassifiedCondition) ToJSON() (json.RawMessage, error)              { return json.RawMessage(`{}`), nil }
+
+// rogueBarbarianLevels is the fixture rogue's class levels when it also holds
+// a Rage: one rogue level and one barbarian level.
+func rogueBarbarianLevels() contributions.ClassLevels {
+	return contributions.KnownClassLevels(
+		contributions.ClassLevel{Class: classes.Rogue, Levels: 1},
+		contributions.ClassLevel{Class: classes.Barbarian, Levels: 1})
+}

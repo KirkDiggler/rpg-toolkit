@@ -133,7 +133,7 @@ func (s *BarbarianFinalizeSuite) TestCompleteHumanBarbarianFinalization() {
 	s.Require().NotNil(char)
 
 	// Verify character properties
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	s.Equal("Grog the Rager", data.Name)
 	s.Equal(races.Human, data.RaceID)
 	s.Equal(classes.Barbarian, data.ClassID)
@@ -197,7 +197,7 @@ func (s *BarbarianFinalizeSuite) TestFinalizedCharacterPreservesMetadata() {
 	finalized, err := draft.ToCharacter(context.Background(), "metadata-character", s.eventBus)
 	s.Require().NoError(err)
 
-	data := finalized.ToData()
+	data := mustToData(s.T(), finalized)
 	s.Equal(backgrounds.Hermit, data.BackgroundID)
 	s.Equal(expectedCreatedAt, data.CreatedAt)
 }

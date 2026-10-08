@@ -286,6 +286,7 @@ func (s *ContestHalfTestSuite) TestHalfDamageStillOwesAConcentrationCheck() {
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		Equipment: noHandsAreObserved{},
+		Sheets:    noSheetsAsked{},
 		World:     fixtures.world(),
 		Participants: []Participant{
 			{Character: fixtures.saver(40, holds.holding(heroID, wolfID)...)},

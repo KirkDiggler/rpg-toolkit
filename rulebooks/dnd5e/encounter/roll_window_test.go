@@ -142,7 +142,7 @@ func (s *RollWindowTestSuite) TestItRefusesWhatItCannotNarrate() {
 	_, err = enc.RecordRollWindow(&encounter.RollWindowInput{
 		Audience: "nobody", Offer: testBardicInspiration, Roll: 8, Total: 12,
 	})
-	s.Require().ErrorIs(err, encounter.ErrNoMember, "an audience outside the fight")
+	s.Require().ErrorIs(err, encounter.ErrNotMember, "an audience outside the fight")
 
 	_, err = enc.RecordRollWindow(&encounter.RollWindowInput{
 		Audience: encounter.MemberID(alice),

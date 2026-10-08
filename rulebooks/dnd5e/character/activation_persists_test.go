@@ -51,7 +51,7 @@ func (s *ActivationPersistsTestSuite) sheet() *Data {
 			abilities.STR: 16, abilities.DEX: 14, abilities.CON: 14,
 			abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 8,
 		},
-		HitPoints: 24, MaxHitPoints: 28, ArmorClass: 16,
+		HitPoints: 24, MaxHitPoints: 28,
 	}
 }
 
@@ -73,7 +73,7 @@ func (s *ActivationPersistsTestSuite) activated(ability *core.Ref) *Data {
 	s.Require().NoError(err)
 	s.Require().True(out.Success, "activation must succeed: %s", out.Error)
 
-	return char.ToData()
+	return mustToData(s.T(), char)
 }
 
 func conditionRefs(data *Data) []string {

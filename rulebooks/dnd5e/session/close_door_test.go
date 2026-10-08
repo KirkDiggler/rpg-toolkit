@@ -38,7 +38,7 @@ const leafDoorID = "leaf"
 // distant member's DoorSightings; it asserts what closing CHANGES (a step, a
 // sighting), which the canvas answers from the live state alone.
 func footprintLeafWorld(t fataler, state encounter.DoorState) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing:      encEveryoneStanding{},

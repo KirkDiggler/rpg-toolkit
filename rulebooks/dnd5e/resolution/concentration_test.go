@@ -140,6 +140,7 @@ func (s *ConcentrationTestSuite) strike(
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		Equipment:    noHandsAreObserved{},
+		Sheets:       noSheetsAsked{},
 		World:        fixtures.world(),
 		Participants: participants,
 		Machine: NewStrike(&StrikeInput{
@@ -505,6 +506,7 @@ func (s *ConcentrationTestSuite) resolveCast(
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		Equipment: noHandsAreObserved{},
+		Sheets:    noSheetsAsked{},
 		World:     fixtures.world(),
 		Participants: []Participant{
 			{Character: fixtures.saver(14)}, {Monster: fixtures.wolfData()}, {Character: bard},
@@ -638,6 +640,7 @@ func (s *ConcentrationTestSuite) TestBaneAllSaveRecastReplacesOnlyItsQualifiedOw
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), World: fixtures.world(),
 		Equipment:    noHandsAreObserved{},
+		Sheets:       noSheetsAsked{},
 		Participants: []Participant{{Character: target}, {Monster: unrelated}, {Character: caster}},
 		Machine:      machine, Cost: baneCost(),
 	}, newSurface(bus))
@@ -766,6 +769,7 @@ func (s *ConcentrationTestSuite) resolveBoundary(
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		Equipment:    noHandsAreObserved{},
+		Sheets:       noSheetsAsked{},
 		World:        fixtures.world(),
 		Participants: []Participant{{Character: hero}, {Monster: fixtures.wolfData()}},
 		Machine:      machine,
@@ -846,6 +850,7 @@ func (s *ConcentrationTestSuite) TestTheLastChildEndingEndsTheSpell() {
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		Equipment: noHandsAreObserved{},
+		Sheets:    noSheetsAsked{},
 		World:     fixtures.world(),
 		Participants: []Participant{
 			{Character: fixtures.saver(40, s.holding(heroID, wolfID)...)},
@@ -893,6 +898,7 @@ func (s *ConcentrationTestSuite) TestCastDamageReportsItselfAndRunsTheCheck() {
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		Equipment: noHandsAreObserved{},
+		Sheets:    noSheetsAsked{},
 		World:     fixtures.world(),
 		Participants: []Participant{
 			{Character: fixtures.saver(40, s.holding(heroID, wolfID)...)},
@@ -950,6 +956,7 @@ func (s *ConcentrationTestSuite) TestCastDamageBreaksTheTargetsConcentration() {
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		Equipment: noHandsAreObserved{},
+		Sheets:    noSheetsAsked{},
 		World:     fixtures.world(),
 		Participants: []Participant{
 			{Character: fixtures.saver(40, s.holding(heroID, wolfID)...)},

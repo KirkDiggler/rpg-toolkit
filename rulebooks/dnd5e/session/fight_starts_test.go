@@ -115,7 +115,7 @@ func buildAmbush(t fataler, alice spatial.Position, extra ...encounter.MemberInp
 	}
 	members = append(members, extra...)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)},
@@ -141,6 +141,7 @@ func (s *FightStartsTestSuite) startAmbush(extra ...encounter.MemberInput) {
 		Session: "sess", Encounter: "world", World: ambushWorld(s.T(), extra...),
 	})
 	s.Require().NoError(err)
+	stockAuthoredMonsters(s.T(), s.sessions, s.encounters, "sess")
 }
 
 // walkIntoTheAmbush walks the four-cell path that meets the ogre on cell two,
@@ -225,6 +226,7 @@ func (s *FightStartsTestSuite) TestTheDiceDecideTheOrder() {
 				}),
 		})
 		s.Require().NoError(err)
+		stockAuthoredMonsters(s.T(), sessions, encounters, "sess")
 		s.Require().Zero(dice.next, "run %d: nothing has met anything yet", i)
 
 		out, err := mgr.Move(context.Background(), &session.MoveInput{
@@ -261,6 +263,7 @@ func (s *FightStartsTestSuite) TestAnUnplayedMemberFirstInInitiativeIsAlreadyDri
 		Session: "sess", Encounter: "world", World: ambushWorld(s.T()),
 	})
 	s.Require().NoError(err)
+	stockAuthoredMonsters(s.T(), s.sessions, s.encounters, "sess")
 
 	out, err := mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
@@ -295,6 +298,7 @@ func (s *FightStartsTestSuite) TestADiceFailureAbortsTheFight() {
 		Session: "sess", Encounter: "world", World: ambushWorld(s.T()),
 	})
 	s.Require().NoError(err)
+	stockAuthoredMonsters(s.T(), s.sessions, s.encounters, "sess")
 
 	_, err = mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",

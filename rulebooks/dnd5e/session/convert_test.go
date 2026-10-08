@@ -138,26 +138,9 @@ var omitted = map[string]string{
 	// and colours by it. A placement answers a cell; who is on whose side is
 	// the roster's question, asked once, not a fact every Join, Spawn and
 	// Where has to repeat. The data is carried; this is a choice about WHICH
-	// projection carries it, the same choice SpeedFeet and friends made.
+	// projection carries it.
 	"encounter.Member.Faction":       "carried on the roster row, PublicMember.Faction; a placement answers a cell",
 	"encounter.MemberOutcome.Region": "a region id; the composition's own bookkeeping — Position already names the cell on the map",
-
-	// SpeedFeet, SightFeet, Actions, Targeting and Mind (rpg-project#254,
-	// rpg-toolkit#1725) are a
-	// member's static facts for the ONE consumer that reads them: a
-	// TurnDriver, through session.MonsterView — already fully projected
-	// there (see projectMonsterView). A roster listing is a different
-	// question ("who is here, and where"), asked by every caller of Join,
-	// Spawn, Where and View alike, and stuffing four fields only a turn's
-	// own driver ever reads into every one of those would be noise for
-	// clients that never drive a turn. The data is carried; this is a
-	// choice about WHICH projection carries it.
-	"encounter.Member.SpeedFeet": "a TurnDriver-facing fact; MonsterView.Budget.MovementFeet is the turn's " +
-		"own derived answer, and a raw speed a roster listing has no use for",
-	"encounter.Member.SightFeet": "a TurnDriver-facing fact; it gates which members even appear in " +
-		"MonsterView.Seen, and a roster listing has no use for the raw range itself",
-	"encounter.Member.Actions":   "a TurnDriver-facing fact, carried verbatim via session.MonsterView.Actions",
-	"encounter.Member.Targeting": "a TurnDriver-facing fact, carried verbatim via session.MonsterView.Targeting",
 
 	// Intimidate, Persuade, Table and Temper (rpg-project#454, #458, #465)
 	// are the placement's authored facts, read by ONE consumer: the social

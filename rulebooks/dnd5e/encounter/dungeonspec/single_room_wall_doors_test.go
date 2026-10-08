@@ -115,6 +115,7 @@ func (s *SingleRoomWallDoorSuite) play(compiled dungeonspec.Compiled, members ..
 		members = []encounter.MemberInput{{ID: "walker", Kind: encounter.KindPlayer, Position: axial(0, 0)}}
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sheets:    zeroSheets{},
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
@@ -130,6 +131,7 @@ func (s *SingleRoomWallDoorSuite) play(compiled dungeonspec.Compiled, members ..
 
 func (s *SingleRoomWallDoorSuite) reload(enc *encounter.Encounter) *encounter.Encounter {
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Sheets:    zeroSheets{},
 		Data:      enc.ToData(),
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},

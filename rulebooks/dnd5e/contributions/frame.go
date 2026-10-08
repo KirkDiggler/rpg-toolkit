@@ -101,14 +101,16 @@ type MemberHeld struct {
 // authoritative state for execution. Complete is an explicit guarantee that
 // Pairs covers every relevant member; a partial set of sightings never is.
 // Held lists the conditions members are known to hold; see [Frame.HeldBy].
-// The zero frame is invalid.
+// ActorClassLevels is the acting member's class levels, read from its own
+// sheet; see [ClassLevels]. The zero frame is invalid.
 type Frame struct {
-	Actor    string
-	Target   Fact[string]
-	Action   ActionFacts
-	Pairs    []PairFacts
-	Complete bool
-	Held     []MemberHeld
+	Actor            string
+	ActorClassLevels ClassLevels
+	Target           Fact[string]
+	Action           ActionFacts
+	Pairs            []PairFacts
+	Complete         bool
+	Held             []MemberHeld
 }
 
 // Validate refuses a frame no rule can read: no actor, a roll kind that is
@@ -118,7 +120,8 @@ type Frame struct {
 // malformed or duplicate pairs, an impossible known distance or an
 // unrecognised known stance, or a malformed held list — an empty or repeated
 // member, a condition that is not a ref, or one condition listed twice for a
-// member. Unknown facts are valid; a known value that is
+// member — or malformed actor class levels (see [ClassLevels.Validate]).
+// Unknown facts are valid; a known value that is
 // not a real value is an error, never a negative answer.
 func (f Frame) Validate() error {
 	if f.Actor == "" {
@@ -144,6 +147,9 @@ func (f Frame) Validate() error {
 	}
 	if target, known := f.Target.Get(); known && target == "" {
 		return fmt.Errorf("frame target is known but empty")
+	}
+	if err := f.ActorClassLevels.Validate(); err != nil {
+		return fmt.Errorf("frame actor %q: %w", f.Actor, err)
 	}
 	seen := make(map[[2]string]bool, len(f.Pairs))
 	for _, pair := range f.Pairs {
@@ -207,7 +213,7 @@ func (f Frame) Pair(from, to string) PairFacts {
 }
 
 // Clone detaches the frame's pairs and held lists; every fact is already a
-// scalar value.
+// scalar value, and actor class levels are immutable once made.
 func (f Frame) Clone() Frame {
 	f.Pairs = slices.Clone(f.Pairs)
 	if f.Held != nil {

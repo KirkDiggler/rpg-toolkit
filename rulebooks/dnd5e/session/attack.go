@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/play/interrupt"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
@@ -363,8 +364,9 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		Participants: cast,
 		Initiative:   m.initiative,
 		Standing:     scope.standing,
-		Sight:        &sightSeam{members: worldMembers(world)},
+		Sight:        sheetsBeside(scope.standing),
 		Equipment:    equipmentBeside(scope.standing),
+		Sheets:       sheetsBeside(scope.standing),
 		TurnDriver:   scope.driver,
 		// The concealment pair (rpg-toolkit#1378), bound to the same live
 		// scope openForWrite and adopt bind — the one-seam consistency law:
@@ -385,7 +387,7 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		Roller: &diceSeam{roller: m.dice},
 	})
 	if err != nil {
-		translated := translateResolution(err)
+		translated := translateAttack(err)
 		if errors.Is(translated, ErrOutOfReach) {
 			return nil, fmt.Errorf("attack: target %q: %w", in.Target, translated)
 		}
@@ -421,6 +423,9 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 	recorded, err := scope.enc.Record(recordFor(in, struck, definition, presentationID, out))
 	if err != nil {
 		return nil, fmt.Errorf("attack: %w", reportUnrecorded(scope, translate(err)))
+	}
+	if err := m.landAreas(scope.enc, scope, out); err != nil {
+		return nil, fmt.Errorf("attack: %w", reportUnrecorded(scope, err))
 	}
 
 	report, delivery, err := m.commit(ctx, scope)
@@ -481,6 +486,12 @@ func (m *Manager) poseAttackWindow(
 		if err := m.saveDirty(ctx, scope, out); err != nil {
 			return nil, err
 		}
+		// Called for uniformity; nothing can arrive here today. The swing stopped
+		// before any damage, an attack's price ends no concentration, and only a
+		// finished cast opens an area, so resolution reports no area change.
+		if err := m.landAreas(scope.enc, scope, out); err != nil {
+			return nil, err
+		}
 		p := pendingAttackWindowPayload{Attacker: in.Attacker, Target: in.Target, Definition: definition, PresentationID: presentationID}
 		if err := posePendingAttackWindow(scope, out.Posed, p); err != nil {
 			return nil, err
@@ -502,6 +513,9 @@ func (m *Manager) poseAttackWindow(
 		recorded, err := scope.enc.Record(recordFor(in, *out.Posed.SettledStrike, definition, presentationID, out))
 		if err != nil {
 			return nil, reportUnrecorded(scope, translate(err))
+		}
+		if err = m.landAreas(scope.enc, scope, out); err != nil {
+			return nil, reportUnrecorded(scope, err)
 		}
 		if err = posePostHitWindow(scope, out.Posed); err != nil {
 			return nil, err
@@ -529,6 +543,12 @@ func (m *Manager) poseAttackWindow(
 		return nil, fmt.Errorf("attack: %w", err)
 	}
 	if err := m.saveDirty(ctx, scope, out); err != nil {
+		return nil, fmt.Errorf("attack: %w", err)
+	}
+	// Called for uniformity; nothing can arrive here today. The swing stopped
+	// before any damage, an attack's price ends no concentration, and only a
+	// finished cast opens an area, so resolution reports no area change.
+	if err := m.landAreas(scope.enc, scope, out); err != nil {
 		return nil, fmt.Errorf("attack: %w", err)
 	}
 
@@ -626,6 +646,47 @@ func attackRefFor(definition combatActions.Definition) AttackRef {
 	return ref
 }
 
+// sheetRefusal reports which of this package's own sheet sentinels err
+// carries, or nil: the refusals the sheet seam (sheets.go) makes about a member
+// it holds no readable sheet for — absent or corrupt character, absent stat
+// block, a store that answered wrongly, a stat block that will not load or a
+// member with no roster kind (ErrInvalidSession), and a main hand the
+// projection cannot compile (ErrBadAttack).
+func sheetRefusal(err error) error {
+	for _, own := range []error{
+		ErrNoCharacter, ErrBadCharacter, ErrNoSheet, ErrBadRepository, ErrInvalidSession, ErrBadAttack,
+	} {
+		if errors.Is(err, own) {
+			return own
+		}
+	}
+	return nil
+}
+
+// badCostUnlessSheet is how Afford reports a world read that failed while it
+// was pricing: [ErrBadCost], unless the failure was a sheet the sheet seam
+// could not read — then that refusal's own sentinel, for [sheetRefusal]'s
+// reason (the repair is the sheet's, not the cost's).
+func badCostUnlessSheet(err error) error {
+	if own := sheetRefusal(err); own != nil {
+		return fmt.Errorf("%w: %v", own, err)
+	}
+	return fmt.Errorf("%w: %v", ErrBadCost, err)
+}
+
+// translateAttack is [translateResolution] for a swing: resolution's one
+// out-of-range refusal there is the delivery's, a target the weapon or the
+// spell attack cannot reach, and that stays the attack's own refusal
+// (ErrOutOfReach) rather than the out-of-range every other verb reports.
+// Resolution names one sentinel for every such refusal and leaves the word to
+// the host; this is the host choosing it by verb.
+func translateAttack(err error) error {
+	if sheetRefusal(err) == nil && errors.Is(err, resolution.ErrOutOfRange) {
+		return fmt.Errorf("%w: %v", ErrOutOfReach, err)
+	}
+	return translateResolution(err)
+}
+
 // translateResolution maps the resolution module's sentinels onto this
 // package's own.
 //
@@ -650,6 +711,15 @@ func attackRefFor(definition combatActions.Definition) AttackRef {
 // mechanical: sentinels_test.go drives the refusals a caller can produce, and
 // translate_internal_test.go covers every arm below.
 func translateResolution(err error) error {
+	// A SHEET THIS PACKAGE COULD NOT READ IS THE CAUSE, whatever resolution
+	// was doing when it asked. The sheet seam (sheets.go) is consulted from
+	// inside a resolution — a cost's witnesses ask every member's sight — and
+	// resolution wraps the seam's refusal in its own sentinel for what it was
+	// doing at the time. The host's repair is the sheet's, so the seam's own
+	// word wins, carried alone with the account as text (S2).
+	if own := sheetRefusal(err); own != nil {
+		return fmt.Errorf("%w: %v", own, err)
+	}
 	switch {
 	case errors.Is(err, resolution.ErrCannotPay):
 		// The PLAYER-FACING one, and the reason it is not folded in with the two
@@ -674,14 +744,44 @@ func translateResolution(err error) error {
 	case errors.Is(err, resolution.ErrBadActivation):
 		return fmt.Errorf("%w: %v", ErrBadActivation, err)
 	case errors.Is(err, resolution.ErrOutOfRange):
-		return fmt.Errorf("%w: %v", ErrOutOfReach, err)
+		// A target beyond what the action reaches is out of range on every
+		// verb (rpg-project#539): a cast's or a heal's range, a known creature
+		// with no believed point in range on a clear line. An attack's
+		// delivery is the one exception and keeps its own word; see
+		// [translateAttack].
+		return fmt.Errorf("%w: %v", ErrOutOfRange, err)
 	case errors.Is(err, resolution.ErrBadParticipant):
+		return fmt.Errorf("%w: %v", ErrBadCharacter, err)
+	case errors.Is(err, resolution.ErrWardUnreadable):
+		// The ward carries no DC. A Sanctuary records its caster's spell save
+		// DC when it is cast and is read from the ward alone, so the caster
+		// leaving changes nothing (rpg-toolkit#1965); a ward with no DC is one
+		// written before it kept one. It used to read as DC 0 and let every
+		// attempt through, and now refuses. That is bad stored data on the
+		// holder's sheet, so it is this package's word for a sheet it cannot
+		// use, and the inner reason rides along as text.
 		return fmt.Errorf("%w: %v", ErrBadCharacter, err)
 	case errors.Is(err, resolution.ErrNoCombatant):
 		// Reachable when a member has no stored sheet — an authored monster
 		// standing in a world nobody spawned. Refused earlier by name, so this
 		// arm is the backstop rather than the path.
 		return fmt.Errorf("%w: %v", ErrNoSheet, err)
+	case errors.Is(err, contributions.ErrRuleCannotAnswer):
+		// A class-scaled rule that cannot answer from its frame: the actor's
+		// sheet holds no levels in the class its effect scales with, or its
+		// levels are unknown (rpg-project#538). The effect fails rather than
+		// being read as level one, and the remedy is the sheet's, so it is
+		// this package's word for a sheet it cannot use.
+		return fmt.Errorf("%w: %v", ErrBadCharacter, err)
+	case errors.Is(err, resolution.ErrNoSheets), errors.Is(err, encounter.ErrNoSheets):
+		// The sheet capability was not supplied, or its answer skipped a
+		// member: either way some member's speed and reach would have to be
+		// invented, and the remedy is a sheet this seam failed to read.
+		return fmt.Errorf("%w: %v", ErrNoSheet, err)
+	case errors.Is(err, encounter.ErrRefusingSheets):
+		// A compile-only world was asked to pace, budget or reach: it has no
+		// sheets behind it and was never meant to be played as loaded.
+		return fmt.Errorf("%w: %v", ErrInvalidWorld, err)
 	case errors.Is(err, resolution.ErrNilInput), errors.Is(err, resolution.ErrNoMachine):
 		return fmt.Errorf("%w: %v", ErrNilInput, err)
 	default:
@@ -937,20 +1037,21 @@ func diceTraceFromEncounter(trace *encounter.DiceTrace) *DiceTrace {
 	return clone
 }
 
+// recordDamageComponents copies the received damage's one trace onto the
+// struck beat: the dealt lines, the save's halving, and the target's answers
+// (immune, resisted, vulnerable, reduced, cannot fall below zero) as labelled
+// modifier lines whose changes total the damage taken (rpg-project#539).
+// Resolution never sets a raw multiplier any more, so none is read here; the
+// label and the modifier on each line are the whole account.
 func recordDamageComponents(in []dnd5eEvents.DamageComponent) []encounter.DamageComponent {
 	if len(in) == 0 {
 		return nil
 	}
 	out := make([]encounter.DamageComponent, 0, len(in))
 	for _, component := range in {
-		var multiplier *float64
-		if component.Multiplier != nil {
-			value := *component.Multiplier
-			multiplier = &value
-		}
 		out = append(out, encounter.DamageComponent{
 			Source: string(component.Source), Roll: rollComponentFor(component.Roll),
-			DamageType: string(component.DamageType), Multiplier: multiplier,
+			DamageType: string(component.DamageType),
 		})
 	}
 	return out
@@ -1069,8 +1170,14 @@ func (m *Manager) compileResolutionCast(
 		return cast, failures
 	}
 
+	// A row here is resolution's own finding that this member's stored sheet
+	// will not reconstitute and attach: a corrupt sheet, named as one at the
+	// point it is known (ErrBadCharacter), so nothing downstream has to guess.
 	for _, refusal := range preflight.Unreadable {
-		failures = append(failures, resolutionDependencyFailure{member: refusal.Member, err: refusal.Reason})
+		failures = append(failures, resolutionDependencyFailure{
+			member: refusal.Member,
+			err:    fmt.Errorf("%w: %v", ErrBadCharacter, refusal.Reason),
+		})
 	}
 
 	return cast, failures
@@ -1115,6 +1222,48 @@ func (m *Manager) castFor(
 		cast = append(cast, resolution.Participant{Character: data})
 	}
 	return cast, nil
+}
+
+// landAreas applies the runtime areas an interaction closed and opened to the
+// live encounter, through the encounter's own verbs, and refreshes perception
+// over the area set they leave (rpg-project#539, "Who is in an area"). enc is
+// the encounter the outcome was recorded on: scope.enc for a verb, the calling
+// encounter for a seam the composition drives from inside its own verbs.
+//
+// IT RUNS AFTER THE OUTCOME IS RECORDED. The encounter tells every member
+// inside a changed area the moment the change is applied, so the call order is
+// the story order: the cast or the broken concentration first, then who
+// entered or who was in the area that ended. A path that records nothing of
+// its own calls it straight after [Manager.saveDirty].
+//
+// Closed before opened, as [resolution.Output.ClosedAreas] states: a recast
+// ends the old area under the id the new one takes. No area set is copied
+// back; the encounter holds the only one.
+//
+// IT CONSUMES WHAT IT LANDS: both lists are emptied on out once applied, so a
+// path that reaches it twice for one output (a resumed walk's movement arm
+// and its caller) lands each change once. A second AddSightArea of the same
+// area would be refused as already open.
+func (m *Manager) landAreas(enc *encounter.Encounter, scope *writeScope, out *resolution.Output) error {
+	if len(out.ClosedAreas) == 0 && len(out.OpenedAreas) == 0 {
+		return nil
+	}
+	for _, source := range out.ClosedAreas {
+		if _, err := enc.RemoveSightArea(source); err != nil {
+			return translate(err)
+		}
+	}
+	for i := range out.OpenedAreas {
+		if err := enc.AddSightArea(&out.OpenedAreas[i]); err != nil {
+			return translate(err)
+		}
+	}
+	out.ClosedAreas, out.OpenedAreas = nil, nil
+	if err := enc.RefreshPerception(); err != nil {
+		return translate(err)
+	}
+	scope.touched = true
+	return nil
 }
 
 // saveDirty writes back every sheet the interaction changed.
@@ -1164,19 +1313,5 @@ func (m *Manager) saveDirty(ctx context.Context, scope *writeScope, out *resolut
 		}
 		scope.replaceMonsterSheet(dirty)
 	}
-	if out.SightAreasChanged {
-		if err := scope.enc.ReplaceSightAreas(out.World.SightAreas); err != nil {
-			return translate(err)
-		}
-		if err := scope.enc.QueueSightAreaTransitions(scope.areaStoryBefore); err != nil {
-			return translate(err)
-		}
-		scope.areaStoryBefore = scope.enc.WorldView().SightAreas
-		if err := scope.enc.RefreshPerception(); err != nil {
-			return translate(err)
-		}
-		scope.touched = true
-	}
-
 	return nil
 }

@@ -236,8 +236,9 @@ func (d compelledDriver) obey(
 			Participants: cast,
 			Initiative:   d.m.initiative,
 			Standing:     d.scope.standing,
-			Sight:        &sightSeam{members: worldMembers(world)},
+			Sight:        sheetsBeside(d.scope.standing),
 			Equipment:    equipmentBeside(d.scope.standing),
+			Sheets:       sheetsBeside(d.scope.standing),
 			// This session's driver, NOT this wrapper. Resolution carries the
 			// capability without consulting it — no verb runs inside an
 			// interaction — and handing it a driver that would open a second
@@ -260,6 +261,17 @@ func (d compelledDriver) obey(
 	}
 
 	if err := d.m.saveDirty(d.ctx, d.scope, out.Resolved); err != nil {
+		return nil, fmt.Errorf("compelled turn %q: %w", member, err)
+	}
+	// Landed straight after the sheets: this path records nothing of its own,
+	// the composition records the compelled act after the driver answers. So
+	// if a word ever changes an area, the area's beats come BEFORE the
+	// composition's record of the act — the reverse of every other path. No
+	// word can today: Approach and Flee describe a move the composition walks
+	// through the mover seam (which lands its own reaction strikes' areas),
+	// and Grovel applies Prone, which ends no concentration. The first word
+	// that can close or open an area brings the test that pins this order.
+	if err := d.m.landAreas(d.scope.enc, d.scope, out.Resolved); err != nil {
 		return nil, fmt.Errorf("compelled turn %q: %w", member, err)
 	}
 	return out, nil

@@ -17,6 +17,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -26,21 +27,20 @@ import (
 // diceNotationRegex matches simple dice notation like "1d8", "2d6", etc.
 var diceNotationRegex = regexp.MustCompile(`^(\d*)[dD](\d+)`)
 
-// BrutalCriticalData is the JSON structure for persisting brutal critical condition state
+// BrutalCriticalData is the JSON structure for persisting brutal critical
+// condition state. No barbarian level and no dice count is stored; a blob saved
+// with the old "level" or "extra_dice" keys loads and the copy is ignored.
 type BrutalCriticalData struct {
-	Ref       *core.Ref `json:"ref"`
-	MemberID  string    `json:"member_id"`
-	Level     int       `json:"level"`
-	ExtraDice int       `json:"extra_dice"`
+	Ref      *core.Ref `json:"ref"`
+	MemberID string    `json:"member_id"`
 }
 
 // BrutalCriticalCondition represents the barbarian's brutal critical feature.
-// It adds extra weapon damage dice on critical hits based on barbarian level.
+// It adds extra weapon damage dice on critical hits based on the attacker's
+// barbarian levels, read from the frame each time an attack asks.
 // It implements the ConditionBehavior interface.
 type BrutalCriticalCondition struct {
 	MemberID        string
-	Level           int
-	ExtraDice       int
 	subscriptionIDs []string
 	bus             events.EventBus
 	roller          dice.Roller
@@ -56,21 +56,31 @@ var _ RollerBinder = (*BrutalCriticalCondition)(nil)
 // its ToJSON embeds and its loader routes on.
 func (b *BrutalCriticalCondition) Ref() *core.Ref { return refs.Conditions.BrutalCritical() }
 
-// BrutalCriticalInput provides configuration for creating a brutal critical condition
+// BrutalCriticalInput provides configuration for creating a brutal critical
+// condition. It takes no level: the dice are read from the attacker's
+// barbarian levels in the frame when an attack asks.
 type BrutalCriticalInput struct {
 	MemberID string      // ID of the barbarian
-	Level    int         // Barbarian level (determines extra dice)
 	Roller   dice.Roller // Dice roller for rolling extra damage
 }
 
 // NewBrutalCriticalCondition creates a brutal critical condition from input
 func NewBrutalCriticalCondition(input BrutalCriticalInput) *BrutalCriticalCondition {
 	return &BrutalCriticalCondition{
-		MemberID:  input.MemberID,
-		Level:     input.Level,
-		ExtraDice: calculateExtraDice(input.Level),
-		roller:    input.Roller,
+		MemberID: input.MemberID,
+		roller:   input.Roller,
 	}
+}
+
+// brutalCriticalDice is the number of extra weapon dice the framed attacker's
+// Brutal Critical adds: one at barbarian 9, two at 13, three at 17, none
+// below 9. Unknown class levels or zero barbarian levels are refused.
+func brutalCriticalDice(frame contributions.Frame) (int, error) {
+	level, err := actorClassLevel(frame, classes.Barbarian, "brutal critical")
+	if err != nil {
+		return 0, err
+	}
+	return calculateExtraDice(level), nil
 }
 
 // calculateExtraDice determines extra weapon dice based on barbarian level
@@ -144,10 +154,8 @@ func (b *BrutalCriticalCondition) Remove(ctx context.Context, bus events.EventBu
 // ToJSON converts the condition to JSON for persistence
 func (b *BrutalCriticalCondition) ToJSON() (json.RawMessage, error) {
 	data := BrutalCriticalData{
-		Ref:       refs.Conditions.BrutalCritical(),
-		MemberID:  b.MemberID,
-		Level:     b.Level,
-		ExtraDice: b.ExtraDice,
+		Ref:      refs.Conditions.BrutalCritical(),
+		MemberID: b.MemberID,
 	}
 	return json.Marshal(data)
 }
@@ -160,8 +168,6 @@ func (b *BrutalCriticalCondition) loadJSON(data json.RawMessage) error {
 	}
 
 	b.MemberID = bcData.MemberID
-	b.Level = bcData.Level
-	b.ExtraDice = bcData.ExtraDice
 
 	return nil
 }
@@ -178,7 +184,7 @@ func (b *BrutalCriticalCondition) AssessAction(
 }
 
 func (b *BrutalCriticalCondition) rule() brutalCriticalRule {
-	return brutalCriticalRule{owner: b.MemberID, extraDice: b.ExtraDice}
+	return brutalCriticalRule{owner: b.MemberID}
 }
 
 // brutalCriticalRule holds only the facts Brutal Critical's predicate uses.
@@ -186,8 +192,7 @@ func (b *BrutalCriticalCondition) rule() brutalCriticalRule {
 // action, so it is execution's moment to add the dice — the way Sneak Attack
 // doubles its own on a critical — and not part of this answer.
 type brutalCriticalRule struct {
-	owner     string
-	extraDice int
+	owner string
 }
 
 func (r brutalCriticalRule) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error) {
@@ -198,7 +203,11 @@ func (r brutalCriticalRule) AssessAction(in *contributions.AssessActionInput) (*
 	if frame.Actor != r.owner {
 		return assessed(contributions.DoesNotApply, "Brutal Critical affects only its holder's attacks"), nil
 	}
-	if r.extraDice == 0 {
+	extraDice, err := brutalCriticalDice(frame)
+	if err != nil {
+		return nil, err
+	}
+	if extraDice == 0 {
 		return assessed(contributions.DoesNotApply, "Brutal Critical adds dice from 9th level"), nil
 	}
 	if roll, _ := frame.Action.Roll.Get(); roll != contributions.RollKindAttack {
@@ -213,10 +222,10 @@ func (r brutalCriticalRule) AssessAction(in *contributions.AssessActionInput) (*
 	}
 	out := assessed(contributions.Applies, "The attack has a weapon damage die")
 	noun := "die"
-	if r.extraDice != 1 {
+	if extraDice != 1 {
 		noun = "dice"
 	}
-	out.Answer.Benefit = fmt.Sprintf("+%d weapon damage %s on a critical hit", r.extraDice, noun)
+	out.Answer.Benefit = fmt.Sprintf("+%d weapon damage %s on a critical hit", extraDice, noun)
 	return out, nil
 }
 
@@ -234,6 +243,10 @@ func (b *BrutalCriticalCondition) onDamageChain(
 	}
 	if executed.Answer.Decision.Applicability != contributions.Applies || !event.IsCritical {
 		return c, nil
+	}
+	extraDice, err := brutalCriticalDice(event.Frame)
+	if err != nil {
+		return c, err
 	}
 
 	// Parse marked weapon damage notation to get die size (e.g., "1d8" -> 8)
@@ -254,7 +267,7 @@ func (b *BrutalCriticalCondition) onDamageChain(
 			roller = dice.NewRoller()
 		}
 
-		extraRolls, rollErr := roller.RollN(modCtx, b.ExtraDice, dieSize)
+		extraRolls, rollErr := roller.RollN(modCtx, extraDice, dieSize)
 		if rollErr != nil {
 			return e, rpgerr.Wrap(rollErr, "failed to roll brutal critical dice")
 		}

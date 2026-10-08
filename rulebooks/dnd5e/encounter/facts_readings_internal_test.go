@@ -45,7 +45,7 @@ func readingsEnc(t *testing.T, watcherAlliedToParty bool) *Encounter {
 
 	enc, err := NewEncounter(&SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: UnobservedEquipment{}, Sheets: sheetFacts{"bystander": {SpeedFeet: 30}, "friend": {SpeedFeet: 30}, "stranger": {SpeedFeet: 30}, "watcher": {SpeedFeet: 30}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Retention: RetentionUnbounded,
 		Field: FieldInput{
@@ -66,13 +66,13 @@ func readingsEnc(t *testing.T, watcherAlliedToParty bool) *Encounter {
 			},
 		},
 		Members: []MemberInput{
-			{ID: "watcher", Kind: KindMonster, Faction: watcherCamp, Position: spatial.Position{X: 3, Y: 1}, SpeedFeet: 30, SightFeet: 60},
-			{ID: "friend", Kind: KindMonster, Faction: watcherCamp, Position: spatial.Position{X: 4, Y: 1}, SpeedFeet: 30, SightFeet: 60},
-			{ID: "stranger", Kind: KindMonster, Faction: otherCamp, Position: spatial.Position{X: 5, Y: 1}, SpeedFeet: 30, SightFeet: 60},
+			{ID: "watcher", Kind: KindMonster, Faction: watcherCamp, Position: spatial.Position{X: 3, Y: 1}},
+			{ID: "friend", Kind: KindMonster, Faction: watcherCamp, Position: spatial.Position{X: 4, Y: 1}},
+			{ID: "stranger", Kind: KindMonster, Faction: otherCamp, Position: spatial.Position{X: 5, Y: 1}},
 			// NO FACTION: a bystander is neither allied nor hostile to
 			// anyone, which is the neutral goblin's own answer and the one
 			// reading nothing here should catch.
-			{ID: "bystander", Kind: KindMonster, Position: spatial.Position{X: 6, Y: 1}, SpeedFeet: 30, SightFeet: 60},
+			{ID: "bystander", Kind: KindMonster, Position: spatial.Position{X: 6, Y: 1}},
 		},
 		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
 	})

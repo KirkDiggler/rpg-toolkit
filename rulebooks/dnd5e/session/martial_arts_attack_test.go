@@ -35,7 +35,7 @@ func quarterstaffMonk(t *testing.T, id string) *character.Data {
 		character.SlotMainHand: string(weapons.Quarterstaff),
 	}
 	martialArts, err := conditions.NewMartialArtsCondition(conditions.MartialArtsInput{
-		MemberID: id, MonkLevel: 1,
+		MemberID: id,
 	}).ToJSON()
 	require.NoError(t, err)
 	monk.Conditions = append(monk.Conditions, martialArts)

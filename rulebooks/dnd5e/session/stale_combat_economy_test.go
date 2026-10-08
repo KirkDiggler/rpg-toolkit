@@ -181,6 +181,12 @@ func (s *StaleCombatEconomySuite) TestASecondFightsFirstTurnIsNotChargedForTheFi
 	turn, err := s.mgr.Turn(context.Background(), &session.TurnInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 	s.Require().Equal(session.ClockWorld, turn.Clock, "control: defeat returned alice to free roam on her own")
+	// The cleanup itself, read from the encounter's settlement facts — the
+	// fight that ended and the members it held (rpg-project#539). Without it
+	// the economy fight 1 spent stays on her sheet, whether or not a later
+	// refresh happens to paper over it.
+	s.Nil(s.characters.byID["alice"].ActionEconomy,
+		"the fight that ended by defeat clears the economy it left mid-turn")
 
 	// Fight 2: an entirely separate skeleton, entirely separate bubble. Its
 	// own round counter starts fresh at 1 — the SAME number fight 1's stale

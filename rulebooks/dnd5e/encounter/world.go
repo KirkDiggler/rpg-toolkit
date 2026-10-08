@@ -553,8 +553,8 @@ func (w *encounterWorld) settledCause(pair factionPair, to Stance) (string, bool
 // a world NPC — is opposed to nobody. It is [Encounter.StanceBetween]'s
 // hostile, so the two cannot disagree.
 func (e *Encounter) opposed(a, b MemberID) bool {
-	stance, _ := e.StanceBetween(a, b)
-	return stance == StanceHostile
+	stance, err := e.StanceBetween(a, b)
+	return err == nil && stance == StanceHostile
 }
 
 // Stance reports the stance between two factions right now — the fold, for
@@ -598,43 +598,53 @@ func (e *Encounter) IsAllied(a, b MemberID) (allied, known bool) {
 	if _, ok := e.members[b]; !ok {
 		return false, false
 	}
-	stance, _ := e.StanceBetween(a, b)
-	return stance == StanceAllied, true
+	stance, err := e.StanceBetween(a, b)
+	return err == nil && stance == StanceAllied, true
 }
 
 // StanceBetween is THE authoritative stance between two members: hostile,
-// neutral or allied, folded from this run's own world at the moment of asking
-// and never cached (rpg-project#520, R5). It is the one fold
+// neutral or allied, or [StanceNone] when either member is in NO FACTION,
+// which a world NPC is. It is folded from this run's own world at the moment
+// of asking and never cached (rpg-project#520, R5), and it is the one fold
 // [Encounter.IsHostile] and [Encounter.IsAllied] read, so for every member
 // pair hostile here is IsHostile true and allied here is IsAllied true.
 //
-// The bool is false when NO STANCE EXISTS, in two cases:
+// No side is an ANSWER, never an absence. A member in no faction is never
+// answered neutral — neutral is a real disposition between two sides, one a
+// fact can turn — and never left for a reader to reconstruct from a missing
+// stance and a membership check (rpg-project#539, "What an observer believes
+// and reaches"). Every reader takes this answer.
 //
-//   - either id is not a member of this encounter;
-//   - either member is in NO FACTION, which a world NPC is.
-//
-// A member in no faction is NEVER answered neutral. Neutral is a real
-// disposition between two sides, one a fact can turn hostile or allied; a
-// member with no side has nothing to turn. StanceBetween OWNS this absence
-// rule: [Encounter.BelievedStance] and ObservedContext's pairs answer through
-// it (believedStanceBetween adds only the observer's membership), so with no
-// deception in play the reads agree, including on no stance, by construction.
-// A consumer that already knows both ids are members may read false as
-// "no side".
-func (e *Encounter) StanceBetween(a, b MemberID) (Stance, bool) {
-	ma, ok := e.members[a]
-	if !ok {
-		return "", false
+// Errors: ErrNoMember for an empty id; ErrNotMember for an id that names no
+// member of this encounter. A pair naming a stranger has no stance to answer.
+func (e *Encounter) StanceBetween(a, b MemberID) (Stance, error) {
+	ma, err := e.memberFor("stance", a)
+	if err != nil {
+		return "", err
 	}
-	mb, ok := e.members[b]
-	if !ok {
-		return "", false
+	mb, err := e.memberFor("stance", b)
+	if err != nil {
+		return "", err
 	}
 	fa, fb := factionOf(ma), factionOf(mb)
 	if fa == "" || fb == "" {
-		return "", false
+		return StanceNone, nil
 	}
-	return e.stanceBetween(pairOf(fa, fb)), true
+	return e.stanceBetween(pairOf(fa, fb)), nil
+}
+
+// memberFor is the member door every read asks through: an empty id is
+// refused as empty (ErrNoMember), a non-empty id naming nobody here as not a
+// member (ErrNotMember).
+func (e *Encounter) memberFor(verb string, id MemberID) (*memberRecord, error) {
+	if id == "" {
+		return nil, fmt.Errorf("%s: %w", verb, ErrNoMember)
+	}
+	m, ok := e.members[id]
+	if !ok {
+		return nil, fmt.Errorf("%s %q: %w", verb, id, ErrNotMember)
+	}
+	return m, nil
 }
 
 // BelievedStance answers what one member BELIEVES about another's side —
@@ -645,10 +655,10 @@ func (e *Encounter) StanceBetween(a, b MemberID) (Stance, bool) {
 // # Today it is the truth, and that is the honest answer
 //
 // With no deception in play, every viewer believes what the creature shows,
-// and what it shows is the derived stance between their factions — so this
-// returns exactly what [Encounter.IsHostile] and [Encounter.IsAllied] fold,
-// in one word instead of two booleans. Every viewer gets the same answer, and
-// the existing faction ring does not change colour.
+// and what it shows is [Encounter.StanceBetween]'s answer — hostile, neutral,
+// allied, or [StanceNone] for a member in no faction, in one encoding. Every
+// viewer gets the same answer, and the existing faction ring does not change
+// colour.
 //
 // # It exists per viewer BEFORE anything can lie, deliberately
 //
@@ -662,26 +672,19 @@ func (e *Encounter) StanceBetween(a, b MemberID) (Stance, bool) {
 // So THIS IS THE ONE PLACE `pretend` WILL MAKE BELIEF AND TRUTH DIVERGE: a
 // creature showing one stance and holding another changes what this function
 // answers for a viewer whose Insight did not beat its Deception, and changes
-// nothing else anywhere. Nothing today reads a per-viewer answer out of a
-// shared one, which is what makes that a later slice's edit rather than a
-// later slice's rewrite.
+// nothing else anywhere.
 //
-// # known
+// # No side
 //
-// False when there is no PAIR to have a stance about, which is two cases and
-// they are the same case: an id that is not a member of this encounter, and a
-// member in NO FACTION, which a world NPC is.
+// "Nobody is against them" and "there is no side here to be on" are different
+// statements; a world NPC is the second, answered [StanceNone], never
+// [StanceNeutral]. [Encounter.IsAllied] reports (false, true) for the same
+// pair, and that is a different question: "are they on my side" has a correct
+// false answer.
 //
-// THIS USED TO ANSWER NEUTRAL FOR A WORLD NPC, and that was wrong. "Nobody is
-// against them" and "there is no side here to be on" are different statements,
-// and reporting the second as [StanceNeutral] collapsed an ABSENCE into an
-// ANSWER — the defect this repo's own zero-value rule exists to prevent. A
-// client drawing a ring off this would have painted a vendor the same colour
-// as a goblin the party had declared a truce with, and had no way to tell.
-// [Encounter.IsAllied] reports (false, true) for the same pair, and that is a
-// different question: "are they on my side" has a correct false answer, while
-// "what is their stance" has none.
-func (e *Encounter) BelievedStance(viewer, subject MemberID) (Stance, bool) {
+// Errors: ErrNoMember for an empty id; ErrNotMember for an id that names no
+// member of this encounter, viewer or subject.
+func (e *Encounter) BelievedStance(viewer, subject MemberID) (Stance, error) {
 	return e.believedStanceBetween(viewer, viewer, subject)
 }
 
@@ -694,9 +697,9 @@ func (e *Encounter) BelievedStance(viewer, subject MemberID) (Stance, bool) {
 // returns that answer and holds no copy of its absence rule. Keep the actual
 // observer here so a future differing belief is answered here, never by
 // looking through one of the pair's private viewpoints.
-func (e *Encounter) believedStanceBetween(observer, from, to MemberID) (Stance, bool) {
-	if _, ok := e.members[observer]; !ok {
-		return "", false
+func (e *Encounter) believedStanceBetween(observer, from, to MemberID) (Stance, error) {
+	if _, err := e.memberFor("believed stance", observer); err != nil {
+		return "", err
 	}
 	return e.StanceBetween(from, to)
 }

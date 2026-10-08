@@ -472,7 +472,7 @@ func (e *Encounter) autoPassTurn(bubble *clock.Turn, member MemberID) (uint64, b
 		return 0, false, err
 	}
 	seq, err := e.appendClockBeat(map[string]interface{}{
-		"beat":   "turn-ended",
+		"beat":   BeatTurnEnded,
 		"member": string(member),
 		"next":   out.Next,
 	}, order...)
@@ -511,7 +511,14 @@ func (e *Encounter) driveOneMonsterTurn(
 		return 0, false, nil, fmt.Errorf("round: %w", rerr)
 	}
 
-	budget := TurnBudget{AttacksLeft: 1, MovementFeet: m.SpeedFeet}
+	// The speed is the sheet's at the start of this turn (rpg-project#538);
+	// once handed to the turn the budget is the turn's own and is spent down,
+	// not re-asked.
+	sheet, err := e.sheetOf(m.ID)
+	if err != nil {
+		return 0, false, nil, fmt.Errorf("turn budget: %w", err)
+	}
+	budget := TurnBudget{AttacksLeft: 1, MovementFeet: sheet.SpeedFeet}
 
 	// See the function doc: bounded so a misbehaving driver cannot spin the
 	// caller. +2 covers one attack and the terminating Pass a well-behaved
@@ -727,7 +734,7 @@ func (e *Encounter) endDrivenTurn(bubble *clock.Turn, active core.EntityID) (uin
 	}
 
 	seq, berr := e.appendClockBeat(map[string]interface{}{
-		"beat":   "turn-ended",
+		"beat":   BeatTurnEnded,
 		"member": string(activeID),
 		"next":   out.Next,
 	}, order...)
@@ -1583,6 +1590,14 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		return MonsterView{}, fmt.Errorf("held by: %w", err)
 	}
 
+	// The member's actions and targeting are its sheet's, asked as this view
+	// is built (rpg-project#538): a view built after a weapon swap reaches
+	// with the new weapon.
+	sheet, err := e.sheetOf(m.ID)
+	if err != nil {
+		return MonsterView{}, fmt.Errorf("view: %w", err)
+	}
+
 	// bestRangeCells is the farthest this member's own actions can reach,
 	// in cells — the arithmetic max of authored RangeFeet values, not a
 	// rules opinion about which action is "best" in play (this module
@@ -1593,7 +1608,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 	// member's occupied cell, whether or not this member has anything to
 	// do once it arrives.
 	bestRangeCells := 1
-	for _, a := range m.Actions {
+	for _, a := range sheet.Actions {
 		if c := CellsFromFeet(a.RangeFeet); c > bestRangeCells {
 			bestRangeCells = c
 		}
@@ -1653,8 +1668,8 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		}
 
 		dist := e.Distance(ownCell, pos)
-		inReach := make(map[core.Ref]bool, len(m.Actions))
-		for _, a := range m.Actions {
+		inReach := make(map[core.Ref]bool, len(sheet.Actions))
+		for _, a := range sheet.Actions {
 			inReach[a.Ref] = dist <= float64(CellsFromFeet(a.RangeFeet))
 		}
 
@@ -1713,8 +1728,8 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 	return MonsterView{
 		Self:       m.ID,
 		Position:   ownCell,
-		Actions:    m.Actions,
-		Targeting:  m.Targeting,
+		Actions:    sheet.Actions,
+		Targeting:  sheet.Targeting,
 		Table:      m.Table,
 		Temper:     m.Temper,
 		Deeds:      heldDeedsAgainst(holdings, m.ID),
@@ -2063,8 +2078,8 @@ type FormOutput struct {
 // lifts, the per-member overlap check below becomes the load-bearing one
 // (overlapping bubbles merge via a Merge verb then, but they never form).
 //
-// Errors: ErrNilInput, ErrClosed, ErrNoMember (empty order or a duplicated
-// entry), ErrNotMember (the order names somebody not in this encounter),
+// Errors: ErrNilInput, ErrClosed, ErrNoMember (an empty order names no
+// member), ErrInvalidData (a duplicated entry), ErrNotMember (the order names somebody not in this encounter),
 // ErrInBubble.
 func (e *Encounter) form(in *FormInput) (*FormOutput, error) {
 	return e.formWithParticipation(in, nil)
@@ -2088,7 +2103,7 @@ func (e *Encounter) formWithParticipation(
 	seen := make(map[MemberID]bool, len(in.Order))
 	for _, id := range in.Order {
 		if seen[id] {
-			return nil, fmt.Errorf("form: %q appears twice in the order: %w", id, ErrNoMember)
+			return nil, fmt.Errorf("form: %q appears twice in the order: %w", id, ErrInvalidData)
 		}
 		seen[id] = true
 		if _, ok := e.members[id]; !ok {
@@ -2131,7 +2146,7 @@ func (e *Encounter) formWithParticipation(
 	e.bubbles = append(e.bubbles, bubble)
 
 	beat := map[string]interface{}{
-		"beat":  "bubble-formed",
+		"beat":  BeatFightStarted,
 		"order": in.Order,
 	}
 	// Recorded rather than merely returned: surprise is consumed a turn later
@@ -2254,6 +2269,10 @@ func (e *Encounter) transfer(in *TransferInput, driveAfterRemove bool) (*Transfe
 	// found on a side, and a KindWorld member is on neither — but Transfer is
 	// a public verb with no other kind check, so this guards the law
 	// directly rather than leaving it an emergent property of one caller.
+	//
+	// ErrNoMember stays on this refusal on purpose: it is the roster-coherence
+	// refusal the construction checks carry (who may hold a seat in a fight),
+	// not an unknown id — the member exists and is refused as no fighter.
 	if in.To == ClockTurn && member.Kind == KindWorld {
 		return nil, fmt.Errorf("transfer %q: world npc cannot enter a fight: %w", in.Member, ErrNoMember)
 	}
@@ -2348,7 +2367,7 @@ func (e *Encounter) transfer(in *TransferInput, driveAfterRemove bool) (*Transfe
 	}
 
 	seq, err := e.appendClockBeat(map[string]interface{}{
-		"beat":   "transferred",
+		"beat":   BeatTransferred,
 		"member": string(in.Member),
 		"to":     string(in.To),
 	}, subjects...)
@@ -2495,7 +2514,7 @@ func (e *Encounter) EndTurn(in *EndTurnInput) (*EndTurnOutput, error) {
 	}
 
 	seq, err := e.appendClockBeat(map[string]interface{}{
-		"beat":   "turn-ended",
+		"beat":   BeatTurnEnded,
 		"member": string(in.Member),
 		"next":   out.Next,
 	}, order...)

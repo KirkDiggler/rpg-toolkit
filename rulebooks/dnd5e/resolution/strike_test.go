@@ -64,7 +64,7 @@ func (r *actionRoller) RollN(_ context.Context, count, sides int) ([]int, error)
 
 func actionWorld(t *testing.T, targetX float64) encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room", 0, 0, 30, 10)},
@@ -86,7 +86,7 @@ func actionHero() *character.Data {
 			abilities.STR: 16, abilities.DEX: 14, abilities.CON: 14,
 			abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 8,
 		},
-		HitPoints: 20, MaxHitPoints: 20, ArmorClass: 12, ProficiencyBonus: 2,
+		HitPoints: 20, MaxHitPoints: 20, ProficiencyBonus: 2,
 	}
 }
 
@@ -103,7 +103,7 @@ func resolveActionDefinition(
 			{Monster: monsters.NewWolf(wolfID).ToData()},
 			{Character: actionHero()},
 		},
-		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		TurnDriver: passDriver{}, Roller: dice.NewRoller(),
 	})
 }
@@ -112,7 +112,7 @@ func resolveActionDefinitionAgainstMonster(
 	t *testing.T, definition combatActions.Definition, roller dice.Roller,
 ) (*Output, error) {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room", 0, 0, 10, 10)},
@@ -134,7 +134,7 @@ func resolveActionDefinitionAgainstMonster(
 			{Monster: monsters.NewWolf(wolfID).ToData()},
 			{Monster: monsters.NewSkeleton(secondWolfID).ToData()},
 		},
-		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		TurnDriver: passDriver{}, Roller: dice.NewRoller(),
 	})
 }
@@ -160,7 +160,7 @@ func TestAttackRequiresItsRollerDuringPurePreflight(t *testing.T) {
 		Participants: []Participant{{Character: hero}, {Monster: monsters.NewWolf(wolfID).ToData()}},
 		Machine:      machine,
 		Cost:         &Cost{PayerID: heroID, Profile: oneAction(), Turn: &Turn{Number: 1, Speed: 30}},
-		Initiative:   orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Initiative:   orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		TurnDriver: passDriver{}, Roller: dice.NewRoller(),
 	}, newSurface(bus))
 	require.ErrorIs(t, err, ErrNoRoller)
@@ -195,6 +195,7 @@ func TestBaneAttackUsesOneSelectedContributionAndRecordsCalculation(t *testing.T
 		Machine:      machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, TurnDriver: passDriver{}, Roller: dice.NewRoller(),
 		Equipment: noHandsAreObserved{},
+		Sheets:    noSheetsAsked{},
 	})
 	require.NoError(t, err)
 	outcome := out.Outcome.(StrikeOutcome)
@@ -229,6 +230,7 @@ func TestBaneWithAdvantageRollsTwoD20FacesAndOneD4(t *testing.T) {
 		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, TurnDriver: passDriver{}, Roller: dice.NewRoller(),
 		Equipment: noHandsAreObserved{},
+		Sheets:    noSheetsAsked{},
 	})
 	require.NoError(t, err)
 	calculation := out.Outcome.(StrikeOutcome).Calculation
@@ -430,7 +432,7 @@ func TestCancelledAttackStopsBeforeDiceAndDamage(t *testing.T) {
 			{Monster: monsters.NewWolf(wolfID).ToData()},
 			{Character: actionHero()},
 		},
-		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		TurnDriver: passDriver{}, Roller: dice.NewRoller(),
 	}, newSurface(bus))
 
@@ -560,19 +562,17 @@ func TestStrikeWithNoAppliedDamageLeavesDeathSaveProgressUnchanged(t *testing.T)
 	t.Run("full immunity", func(t *testing.T) {
 		bus := events.NewEventBus()
 		immunityRef := &core.Ref{Module: "test", Type: "conditions", ID: "full-immunity"}
-		_, err := dnd5eEvents.DamageChain.On(bus).SubscribeWithChain(context.Background(),
-			func(_ context.Context, _ *dnd5eEvents.DamageChainEvent,
-				c chain.Chain[*dnd5eEvents.DamageChainEvent],
-			) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
+		_, err := dnd5eEvents.IncomingDamageChain.On(bus).SubscribeWithChain(context.Background(),
+			func(_ context.Context, _ *dnd5eEvents.IncomingDamageEvent,
+				c chain.Chain[*dnd5eEvents.IncomingDamageEvent],
+			) (chain.Chain[*dnd5eEvents.IncomingDamageEvent], error) {
 				return c, c.Add(combat.StageFinal, "test_full_immunity",
-					func(_ context.Context, event *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
-						event.Components = append(event.Components, dnd5eEvents.DamageComponent{
-							Source: dnd5eEvents.DamageSourceCondition,
-							Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{
-								Ref: immunityRef, Name: "Full Immunity",
-							}},
-							Multiplier: dnd5eEvents.Multiply(0),
+					func(_ context.Context, event *dnd5eEvents.IncomingDamageEvent) (*dnd5eEvents.IncomingDamageEvent, error) {
+						event.Multipliers = append(event.Multipliers, dnd5eEvents.DamageMultiplier{
+							Category:   dnd5eEvents.DamageSourceCondition,
+							Source:     dnd5eEvents.RollSource{Ref: immunityRef, Name: "Full Immunity"},
 							DamageType: damage.Slashing,
+							Factor:     dnd5eEvents.DamageFactorImmunity,
 						})
 						return event, nil
 					})
@@ -629,6 +629,7 @@ func resolveStrikeAgainstDeathSaveTarget(
 		Standing:   everyoneStanding{},
 		Sight:      everyoneSeesTheWholeMap{},
 		Equipment:  noHandsAreObserved{},
+		Sheets:     noSheetsAsked{},
 		TurnDriver: passDriver{},
 		Roller:     dice.NewRoller(),
 	}
@@ -678,7 +679,7 @@ func TestKnockingDownAnAlreadyProneTargetLeavesOneProne(t *testing.T) {
 		World:        actionWorld(t, 2),
 		Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Character: hero}},
 		Machine:      machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		TurnDriver: passDriver{}, Roller: dice.NewRoller(),
 	}, newSurface(bus))
 	require.NoError(t, err)

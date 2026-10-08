@@ -47,9 +47,9 @@ func (s *AreaDeriveSuite) SetupTest() {
 		return spatial.Position{X: float64(col), Y: float64(row)}
 	}
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{},
-		Announcer: encQuietAnnouncer{}, Sight: &sightSeam{}, Equipment: encNoHandsObserved{},
+		Announcer: encQuietAnnouncer{}, Sight: encStatedSight{}, Equipment: encNoHandsObserved{},
 		Initiative: walkOrderAsGiven{}, TurnDriver: passDriver{}, Standing: walkEveryoneStanding{},
 		Field: encounter.FieldInput{
 			Canvas:  pointyCanvas(),
@@ -224,9 +224,9 @@ func (s *AreaCoveredSuite) SetupTest() {
 		return spatial.Position{X: float64(col), Y: float64(row)}
 	}
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{},
-		Announcer: encQuietAnnouncer{}, Sight: &sightSeam{}, Equipment: encNoHandsObserved{},
+		Announcer: encQuietAnnouncer{}, Sight: encStatedSight{}, Equipment: encNoHandsObserved{},
 		Initiative: walkOrderAsGiven{}, TurnDriver: passDriver{}, Standing: walkEveryoneStanding{},
 		Field: encounter.FieldInput{
 			Canvas:  pointyCanvas(),

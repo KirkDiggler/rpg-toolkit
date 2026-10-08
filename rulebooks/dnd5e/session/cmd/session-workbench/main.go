@@ -232,7 +232,6 @@ func aliceTheFighter() *character.Data {
 		ClassID:          classes.Fighter,
 		HitPoints:        24,
 		MaxHitPoints:     28,
-		ArmorClass:       16,
 	}
 }
 
@@ -252,7 +251,6 @@ func bobTheDwarf() *character.Data {
 		ClassID:          classes.Fighter,
 		HitPoints:        24,
 		MaxHitPoints:     28,
-		ArmorClass:       16,
 	}
 }
 
@@ -354,6 +352,20 @@ func drive(out *bytes.Buffer) error {
 	if n := spawned.NPC; n != nil {
 		fmt.Fprintf(out, "   %s spawns as %s — %d/%d hp, ac %d, speed %d\n",
 			n.Name, n.ID, n.HitPoints, n.MaxHitPoints, n.ArmorClass, n.Speed)
+	}
+
+	// The ghoul is spawned, not authored onto the map: every member the world
+	// paces, budgets or sights is asked of its sheet at that moment
+	// (rpg-project#538), and an authored member with no sheet behind it would
+	// be refused the first time anybody looked. West of the rubble, three rows
+	// below the gate's lane, so the approach down row 1 looks past it and the
+	// seam wall hides it until she is through.
+	if _, err := mgr.Spawn(ctx, &session.SpawnInput{
+		Session: "crypt-run", ID: "ghoul",
+		Ref:      refs.Monsters.Ghoul().String(),
+		Position: spatial.Position{X: 7, Y: 4},
+	}); err != nil {
+		return err
 	}
 
 	atlas, err := mgr.Atlas(ctx, &session.AtlasInput{Session: "crypt-run", Member: "alice"})
@@ -506,6 +518,9 @@ func authoredCrypt() (*encounter.EncounterData, error) {
 		// reads the same however it is entered.
 		Sight:     encEveryoneSees{},
 		Equipment: encNoHandsObserved{},
+		// Asked of nobody here: Setup paces no walk and drives no turn, and
+		// once session loads the world it answers from each member's sheet.
+		Sheets: encNoSheetsAsked{},
 		Field: encounter.FieldInput{
 			// The space between the chambers is ROCK, which is the ordinary
 			// dungeon reading and the one that keeps this scene about the gate:
@@ -524,7 +539,7 @@ func authoredCrypt() (*encounter.EncounterData, error) {
 			// antechamber and the fight starts before anybody walks anywhere.
 			Walls: hexSeam(6, 6, 1),
 			// The vault is split by rubble down authored column 8 with one
-			// gap at row 3. The wight stands west of it, off the gate's own
+			// gap at row 3. The ghoul stands west of it, off the gate's own
 			// lane; the skeleton is spawned east of it, past the gap.
 			// Crossing the gate puts alice where both of them can be seen,
 			// and the fight that starts is the whole room's rather than one
@@ -541,9 +556,6 @@ func authoredCrypt() (*encounter.EncounterData, error) {
 		},
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-			// Three rows below the gate's lane, so the approach down row 1
-			// looks past it and the seam wall hides it until she is through.
-			{ID: "wight", Kind: encounter.KindMonster, Position: spatial.Position{X: 7, Y: 4}},
 		},
 		Endings:   []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
@@ -662,6 +674,18 @@ func hexSeam(east, rows, openRow int) []encounter.WallInput {
 // about equipment: every member is answered for, every answer is "no hands to
 // observe" — deliberately NOT "everybody is empty-handed", which would be
 // testimony this fixture has no standing to give.
+// encNoSheetsAsked answers an empty ask and refuses any member: the crypt is
+// assembled here and played only after session loads it with its own sheet
+// seam, so a sheet asked during construction would be a bug in this scene.
+type encNoSheetsAsked struct{}
+
+func (encNoSheetsAsked) Sheets(members []encounter.MemberID) (map[encounter.MemberID]encounter.SheetFacts, error) {
+	if len(members) > 0 {
+		return nil, fmt.Errorf("workbench: construction asked for %d members' sheets", len(members))
+	}
+	return map[encounter.MemberID]encounter.SheetFacts{}, nil
+}
+
 type encNoHandsObserved struct{}
 
 func (encNoHandsObserved) Equipment(

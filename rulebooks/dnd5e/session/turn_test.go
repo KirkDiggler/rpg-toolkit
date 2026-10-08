@@ -34,6 +34,7 @@ func (s *TurnTestSuite) SetupTest() {
 		Session: "sess", Encounter: "world", World: ambushWorld(s.T()),
 	})
 	s.Require().NoError(err)
+	stockAuthoredMonsters(s.T(), s.sessions, s.encounters, "sess")
 }
 
 // fight walks alice into the ogre so there is a bubble to ask about, and
@@ -273,8 +274,9 @@ func (s *TurnTestSuite) TestAPointerPassDrivesThroughTheSameAsAValue() {
 	// Fresh stores rather than the suite's own s.sessions/s.encounters — this
 	// scene stands alone, so it gets alice and the ogre with nobody else's
 	// "sess" session sharing the same encounter ID underneath it.
+	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
-		Dice: testDice{}, TurnDriver: pointerPass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+		Dice: testDice{}, TurnDriver: pointerPass{}, Sessions: sessions, Encounters: encounters,
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
@@ -283,6 +285,7 @@ func (s *TurnTestSuite) TestAPointerPassDrivesThroughTheSameAsAValue() {
 		Session: "ptr", Encounter: "world", World: ambushWorld(s.T()),
 	})
 	s.Require().NoError(err)
+	stockAuthoredMonsters(s.T(), sessions, encounters, "ptr")
 	_, err = mgr.Move(ctx, &session.MoveInput{
 		Session: "ptr", Member: "alice",
 		Path: ambushPath(),

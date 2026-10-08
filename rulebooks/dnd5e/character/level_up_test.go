@@ -255,7 +255,7 @@ func (s *LevelUpSuite) TestExperienceSurvivesTheRecordRoundTrip() {
 	char := s.bard()
 	char.experience = 1234
 
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	s.Equal(1234, data.Experience, "ToData is the field-by-field surface")
 
 	reloaded, err := Load(s.ctx, data)
@@ -277,7 +277,7 @@ func (s *LevelUpSuite) TestLoadDoesNotRecheckEntitlement() {
 	s.Require().NoError(err)
 	s.Require().Equal(2, out.Gained.CharacterLevel)
 
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	data.Experience = 0
 
 	reloaded, err := Load(s.ctx, data)
@@ -376,7 +376,7 @@ func (s *LevelUpSuite) TestAGrantSurvivesSaveAndLoad() {
 
 	s.Require().NoError(char.AddExperience(50))
 
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	s.Equal(300, data.Experience, "ToData carries the granted total")
 
 	reloaded, err := Load(s.ctx, data)
@@ -636,7 +636,7 @@ func (s *LevelUpSuite) TestABardIsRefusedASpellItAlreadyKnows() {
 // there is nothing to repair it to.
 func (s *LevelUpSuite) TestAStoredSheetHoldingASpellTwiceIsRefused() {
 	char := s.bard()
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	s.Require().NoError(func() error { _, err := Load(s.ctx, data); return err }(),
 		"the sheet loads before it is corrupted")
 
@@ -652,7 +652,7 @@ func (s *LevelUpSuite) TestAStoredSheetHoldingASpellTwiceIsRefused() {
 		}},
 	} {
 		s.Run(tc.name, func() {
-			corrupted := char.ToData()
+			corrupted := mustToData(s.T(), char)
 			tc.corrupt(corrupted)
 
 			loaded, err := Load(s.ctx, corrupted)

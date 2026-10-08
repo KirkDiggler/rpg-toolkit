@@ -84,7 +84,7 @@ type LootOutput struct{}
 // → closed → not a member → target not a member → target not down → not their
 // turn in a fight → not in range.
 //
-// Errors: ErrNilInput, ErrNoMember, ErrClosed, ErrNotMember, ErrNotDown,
+// Errors: ErrNilInput, ErrNoMember, ErrBadReach, ErrClosed, ErrNotMember, ErrNotDown,
 // ErrNotActive, ErrOutOfRange, ErrBadPlacement.
 func (e *Encounter) Loot(in *LootInput) (*LootOutput, error) {
 	if in == nil {
@@ -94,7 +94,7 @@ func (e *Encounter) Loot(in *LootInput) (*LootOutput, error) {
 		return nil, fmt.Errorf("loot: %w", ErrNoMember)
 	}
 	if in.Range < 0 {
-		return nil, fmt.Errorf("loot: range %d is negative: %w", in.Range, ErrNoMember)
+		return nil, fmt.Errorf("loot: range %d is negative: %w", in.Range, ErrBadReach)
 	}
 	if e.outcome != nil {
 		return nil, fmt.Errorf("loot: %w", ErrClosed)
@@ -132,7 +132,7 @@ func (e *Encounter) Loot(in *LootInput) (*LootOutput, error) {
 	// byte-identical whether the body carried the run's only secret or
 	// nothing at all (P3, pinned by test).
 	payload, err := json.Marshal(map[string]interface{}{
-		"beat":   "looted",
+		"beat":   BeatLooted,
 		"member": string(in.Member),
 		"target": string(in.Target),
 	})

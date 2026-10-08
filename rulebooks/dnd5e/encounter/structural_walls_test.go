@@ -89,7 +89,8 @@ func (s *StructuralWallSuite) build(field encounter.FieldInput, members ...encou
 	}
 
 	return encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{},
+		Sheets: zeroSheets{},
+		Sight:  everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{},
 		Announcer: quietAnnouncer{}, CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		Field:   field,
@@ -111,7 +112,8 @@ func (s *StructuralWallSuite) reload(enc *encounter.Encounter) *encounter.Encoun
 	var data encounter.EncounterData
 	s.Require().NoError(json.Unmarshal(raw, &data))
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{},
+		Sheets: zeroSheets{},
+		Data:   data, Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{},
 		Announcer: quietAnnouncer{}, CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 	})

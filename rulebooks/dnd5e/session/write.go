@@ -5,7 +5,6 @@ package session
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sort"
 
@@ -548,16 +547,11 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 	// read three of those off it; what it holds now is a record on the way in
 	// and numbers on the way out.
 	//
-	// Asked BEFORE the placement because the placement needs the name and
-	// speed. On first admission the rest is already durable, so every failure
-	// from here through commit must carry scope.written in its SaveError rather
-	// than masquerade as a no-write refusal.
+	// Asked BEFORE the placement because the placement needs the name. On
+	// first admission the rest is already durable, so every failure from here
+	// through commit must carry scope.written in its SaveError rather than
+	// masquerade as a no-write refusal.
 	projected, err := projectCharacter(ctx, in.Member, record)
-	if err != nil {
-		return nil, fmt.Errorf("join: %w", saveErrorAfterWrites(scope, "", err))
-	}
-
-	actions, err := memberActionsFrom(projected.MainHand)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", saveErrorAfterWrites(scope, "", err))
 	}
@@ -565,8 +559,13 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 	// No faction named: a player is in the reserved `party` by the
 	// composition's own rule (rpg-project#375, R4), and nothing about the
 	// players' side is authorable — see SpawnInput.Faction.
+	//
+	// NO SPEED, SIGHT OR ATTACK IS HANDED OVER (rpg-project#538): the
+	// composition asks the character's sheet for each at the moment it uses
+	// one, through the sheet seam, so a weapon swapped or a level gained after
+	// this Join is read at the next ask rather than frozen here.
 	placed, err := place(scope, in.Member, KindPlayer, projected.Sheet.Name, in.Position,
-		projected.Sheet.SpeedFeet, defaultSightFeet, actions, "", false, nil, "", nil,
+		false, nil, "", nil,
 		// A PLAYER IS NOT A SOCIAL TARGET in this build: the social verbs
 		// refuse a target with no monster stat block to derive a DC from, so
 		// there is nothing for a joining character to carry.
@@ -713,12 +712,6 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 	scope.data.NPCs = append(scope.data.NPCs, *sheet)
 	scope.touched = true
 
-	// The stat block's own authored Darkvision, UNCHANGED — zero included.
-	// sightSeam is the one place that decides what a monster's silence
-	// means: the same defaultSightFeet a character's own silence falls
-	// back to (rpg-project#254 design §5) — see sight.go's doc for why
-	// baking a decision in here, at spawn time, would be the wrong place
-	// to make it.
 	// THE THIRD LAYER GOES ON BEFORE THE MEMBER DOES. The author's two
 	// arrived already laid (SpawnInput.Table); the rulebook's default for this
 	// monster's kind goes underneath them here, which is the whole reason a
@@ -743,9 +736,11 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 		return nil, fmt.Errorf("spawn %q: %w", in.ID, err)
 	}
 
+	// No speed, sight, actions or targeting is copied onto the member
+	// (rpg-project#538): the stat block just recorded above is where the
+	// sheet seam reads each of them, at the moment the composition asks.
 	placed, err := place(scope, in.ID, KindMonster, sheet.Name, in.Position,
-		sheet.Speed.Walk, sheet.Senses.Darkvision, memberActionsFromMonster(sheet.Actions),
-		sheet.Targeting.String(), false, in.Holds, in.Faction, in.Arrives,
+		false, in.Holds, in.Faction, in.Arrives,
 		socialPlacement{
 			Intimidate: in.Intimidate, Persuade: in.Persuade, Table: folded, Temper: temper,
 		})
@@ -835,13 +830,13 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 	scope.touched = true
 
 	// A world NPC is stationary and non-acting by construction (design.md
-	// N4): zero speed/sight, no actions, no targeting strategy and no
-	// mind. encounter enforces the one real rule (no decider) itself;
-	// place() never sets one for either existing caller.
+	// N4): its recorded content is what the sheet seam answers speed,
+	// actions and sight from, and it carries no mind. encounter enforces the
+	// one real rule (no decider) itself; place() never sets one.
 	// No faction: a world NPC is never a side (rpg-toolkit#1404), and the
 	// composition puts a member of this kind in no faction at all.
 	placed, err := place(scope, in.Member, KindWorld, in.NPC.DisplayName, in.Position,
-		0, 0, nil, "", blocksMovement, nil, "", nil,
+		blocksMovement, nil, "", nil,
 		// A world NPC is not a monster and carries no authored check.
 		socialPlacement{})
 	if err != nil {
@@ -876,8 +871,7 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 // Setup and Load were made to share one validator so that a single mutation
 // kills the pins on both. Same reasoning, one layer up.
 func place(
-	scope *writeScope, id string, kind MemberKind, name string, at spatial.Position,
-	speedFeet, sightFeet int, actions []encounter.ActionView, targeting string, blocksMovement bool,
+	scope *writeScope, id string, kind MemberKind, name string, at spatial.Position, blocksMovement bool,
 	holds []string, faction string, arrives Arrival, social socialPlacement,
 ) (*encounter.JoinOutput, error) {
 	// This used to resolve the cell to a room first, because the composition's
@@ -894,19 +888,15 @@ func place(
 	//
 	// The same ordering applies to participation kind: Join can assess the
 	// newcomer during its own sight/contact refresh, so the shared kind snapshot
-	// must learn the authoritative declared kind first.
+	// must learn the authoritative declared kind first. The sheet seam reads
+	// the same snapshot, so this one line is also what lets the newcomer's own
+	// sight refresh find its sheet: each verb records the sheet (the host's
+	// character store, Spawn's stat block, PlaceNPC's content) before placing.
 	if scope.standing.kinds == nil {
 		return nil, fmt.Errorf("placing member %q without participation kinds: %w", id, ErrInvalidWorld)
 	}
 	scope.standing.kinds[id] = encounter.MemberKind(kind)
 
-	// scope.sight learns about THIS member before Join does, not after:
-	// arriving triggers its own sight refresh (does the newcomer see
-	// anyone; is the newcomer seen), and that refresh asks about the
-	// newcomer by ID — which the seam's snapshot cannot yet answer for
-	// unless this runs first (sight.go's own doc explains why a pointer
-	// makes that possible at all).
-	scope.sight.add(encounter.MemberID(id), sightFeet)
 	profile := scope.exploration[id]
 	if profile == nil {
 		profile = &ExplorationData{}
@@ -918,17 +908,7 @@ func place(
 		Kind:                encounter.MemberKind(kind),
 		Name:                name,
 		Cell:                at,
-		// SpeedFeet, SightFeet, Actions and Targeting are this member's
-		// static facts (rpg-project#254) — what a TurnDriver reads through
-		// MonsterView once the clock lands on this member with nobody
-		// playing them. Both callers (Join, Spawn) compute these off the
-		// sheet or catalog content they just loaded and hand them straight
-		// through; see each verb's own doc for where its values come from.
-		SpeedFeet:      speedFeet,
-		SightFeet:      sightFeet,
-		Actions:        actions,
-		Targeting:      targeting,
-		BlocksMovement: blocksMovement,
+		BlocksMovement:      blocksMovement,
 		// The author's placed records, converted at the boundary and nowhere
 		// else — a []string in, the composition's own IntelID out (S2: no
 		// inner type crosses this seam's exported surface).
@@ -968,25 +948,24 @@ func place(
 	return placed, nil
 }
 
-// memberActionsFrom maps a joining player's main-hand attack onto the shared
-// member record's static Actions fact (rpg-project#254).
+// memberActionsFrom maps a player's main-hand attack onto the composition's
+// action view, for the sheet seam's answer (sheets.go, rpg-project#538).
 //
-// The compiling happens in resolution now, off the same sheet the armour class
-// was folded on. What is left here is the mapping, which is the shape this seam
-// is supposed to have: facts in, a member record out.
+// The compiling happens in resolution, off the same sheet the armour class is
+// folded on. What is left here is the mapping, which is the shape this seam is
+// supposed to have: facts in, an answer out.
 //
-// FILLED FOR A PLAYER TOO, even though nothing reads it back today — a
-// TurnDriver is only ever asked about an UNPLAYED member's turn. The same
-// argument [memberRecord]'s own doc makes for Name: SpeedFeet, SightFeet,
-// Actions and Targeting are member facts for every kind, not a monster-only
-// extra, and the day a disconnected player's turn needs driving, the record
+// ANSWERED FOR A PLAYER TOO, even though nothing reads it back today — a
+// TurnDriver is only ever asked about an UNPLAYED member's turn. Speed,
+// attacks and targeting are sheet facts for every kind, not a monster-only
+// extra, and the day a disconnected player's turn needs driving, the answer
 // already has what it needs.
 //
 // NO ATTACK IS AN ERROR HERE, and it stays one. A character the rules can build
 // at all has a main hand — an empty one is an unarmed strike, which is why the
 // entry never answers nil for a sheet it could load. So nil means something
 // upstream stopped answering, and reporting it as "this member has no actions"
-// would seat a player who cannot swing and say nothing.
+// would answer a player who cannot swing and say nothing.
 func memberActionsFrom(attack *resolution.AttackFacts) ([]encounter.ActionView, error) {
 	if attack == nil {
 		return nil, fmt.Errorf("%w: no main-hand attack was compiled", ErrBadAttack)
@@ -1232,12 +1211,11 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string, extraMembe
 		encounter: data.Encounter,
 		data:      data,
 		ledger:    ledger,
-		sight:     &sightSeam{},
 		driver:    driver,
 	}
 	enc, baseline, standing, err := m.loadWorldWithBaseline(
 		ctx, data, strikerSeam{m: m, scope: scope}, moverSeam{m: m, scope: scope},
-		announcerSeam{m: m, scope: scope}, scope.sight,
+		announcerSeam{m: m, scope: scope},
 		m.checkResolverFor(scope), witnessSeam{scope: scope},
 		m.compelledDriverFor(ctx, scope),
 		// THE SESSION'S SHARED DICE, because this verb can advance a clock and
@@ -1250,7 +1228,6 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string, extraMembe
 		return nil, err
 	}
 	scope.enc = enc
-	scope.areaStoryBefore = enc.WorldView().SightAreas
 	scope.baseline = baseline
 	scope.standing = standing
 	if err := m.prepareExploration(ctx, scope, extraMembers...); err != nil {
@@ -1319,8 +1296,6 @@ type writeScope struct {
 	explorationBefore map[string]ExplorationData
 	// The already-paid remainder is frozen only if a direct walk poses.
 	walkContinuation []spatial.Position
-	// Snapshot of areas whose membership transitions have already been queued.
-	areaStoryBefore []encounter.SightAreaData
 
 	session   string
 	encounter string
@@ -1371,13 +1346,6 @@ type writeScope struct {
 	// differently it is two capabilities in one call driving turns with two
 	// different brains. Resolved once, carried, and the answer is the verb's.
 	driver encounter.Driver
-
-	// sight is the SAME *sightSeam the live encounter holds — see the
-	// type's own doc on why a pointer, not a value. place adds a member
-	// being placed by THIS verb to it before that member's own Join asks
-	// Sight about them; adopt rebuilds it from the world a resolution
-	// handed back, the same way it rebuilds standing.
-	sight *sightSeam
 
 	// touched marks the session record as changed by this verb — a spawned
 	// sheet, today — so a verb that changed only the world writes only the
@@ -1521,7 +1489,6 @@ func (m *Manager) adopt(ctx context.Context, scope *writeScope, world encounter.
 	// (Kirk's walk 4, 2026-09-05: "participation member reinforcement-1 has
 	// no roster kind"), and the character's readied sheet was already
 	// written, so the fighter's action was spent on a blow nobody was told.
-	scope.sight = &sightSeam{members: worldMembers(world)}
 	// Resolution returned this authoritative roster snapshot with the world.
 	// Replace kinds before constructing its encounter so every assessment made
 	// during load sees exactly that one snapshot.
@@ -1530,8 +1497,9 @@ func (m *Manager) adopt(ctx context.Context, scope *writeScope, world encounter.
 		Data:       world,
 		Initiative: m.initiative,
 		Standing:   scope.standing,
-		Sight:      scope.sight,
+		Sight:      sheetsBeside(scope.standing),
 		Equipment:  equipmentBeside(scope.standing),
+		Sheets:     sheetsBeside(scope.standing),
 		// Rebound here for the reason the Striker below is: this replaces
 		// scope.enc, and a compelled turn is driven from inside the
 		// composition's own verbs, so the driver the new encounter carries
@@ -1683,22 +1651,18 @@ func (m *Manager) persist(
 // must land in the SAME persist this verb already makes, never a second write
 // cycle a failure between the two could leave half-done. Both read the act's
 // own delta, because what they settle is noticed by the composition at
-// whatever sight refresh caught it rather than declared by a verb.
+// whatever sight refresh caught it rather than declared by a verb — and they
+// read it from ONE encounter read, [encounter.Encounter.Settlement] bounded by
+// the scope's baseline, so the economy reset and the experience grant can
+// never disagree about what this act settled.
 func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, DeliveryReport, error) {
-	if err := scope.enc.FlushSightAreaTransitions(); err != nil {
+	settled, err := scope.enc.Settlement(&encounter.SettlementInput{FromSeq: scope.baseline})
+	if err != nil {
 		report := SaveReport{Written: append([]string(nil), scope.written...)}
-		return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", translate(err))
-	}
-	// Reconcile after all movement (including monster and forced movement),
-	// while the verb still owns the write lock and before delivery.
-	if len(scope.enc.WorldView().SightAreas) > 0 {
-		if err := m.reconcileFogMembership(ctx, scope); err != nil {
-			report := SaveReport{Written: append([]string(nil), scope.written...)}
-			return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", err)
-		}
+		return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", fmt.Errorf("settlement: %w", translate(err)))
 	}
 
-	if err := m.exitDissolvedCombatants(ctx, scope); err != nil {
+	if err := m.exitDissolvedCombatants(ctx, scope, settled); err != nil {
 		report := SaveReport{Written: append([]string(nil), scope.written...)}
 		return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", err)
 	}
@@ -1710,7 +1674,7 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 	// different fields of different sheets — but reading them in one place,
 	// in one order, is what keeps "what commit settles" a list somebody can
 	// read rather than a search.
-	if err := m.settleExperience(ctx, scope); err != nil {
+	if err := m.settleExperience(ctx, scope, settled); err != nil {
 		report := SaveReport{Written: append([]string(nil), scope.written...)}
 		return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", err)
 	}
@@ -1786,33 +1750,30 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 // EndTurn ever called (encounter/dissolve.go's ByDefeat: "the composition
 // NOTICES defeat, never something a caller declares").
 //
-// Read off the SAME beats [Manager.projectEvents] already fans out from —
-// every ever-member's own story since the scope's baseline — rather than
-// re-deriving who dissolved from scratch: a "bubble-dissolved" beat already
-// names everyone the fight held, in its `members` field
-// (encounter/dissolve.go's dissolveBubble is the ONE place that beat is
-// written, shared by an explicit [Manager.Dissolve] and the composition
-// noticing defeat on its own — "Both endings run exactly this... Only the
-// cause differs" — so this one read covers both without needing to know
-// which produced it). TestTheLastOneDownedEndsTheFightByDefeat (death_test.go)
-// pins the payload shape this reads.
+// Read off the encounter's own settlement facts ([encounter.Encounter.Settlement])
+// bounded by the scope's baseline: every fight that ended in this act, with
+// the members it held when it ended. The composition writes that fact in one
+// place, shared by an explicit [Manager.Dissolve] and the composition noticing
+// defeat on its own, so this one read covers both without knowing which
+// produced it — and it covers every audience, because a fight that ended
+// where no player could see it ended all the same. Nothing here reads a story
+// or decodes a payload; the beat's format is the composition's
+// (rpg-project#539, "What a verb settles").
 //
-// A member whose OWN story cannot be read is skipped — the same best-effort
-// law [Manager.publish] states for delivery, and for the same reason: a
-// read failure for one member's perception must not silence the rest of the
-// table. WHAT IS NOT best-effort is a member the read DID name: a monster ID
-// (no loadable character at all, [Manager.fetchCharacterData]'s own
-// ErrNoCharacter) is skipped by design, but any OTHER error — a repository
-// outage, a sheet that will not load, a failed save — is returned and
-// FAILS THE VERB. The reason is durability, not caution: this call runs
-// BEFORE [Manager.persist], so a failure here means nothing about this
-// call's own dissolution has landed yet — a caller who retries the whole
-// verb finds this cleanup still pending against the SAME baseline. Letting
-// it fail silently instead would let the dissolve beat persist while the
-// sheet it named stays stale, and — because the next call's own baseline
-// moves past that beat — never retried again (Copilot's own finding on
-// PR #1222).
-func (m *Manager) exitDissolvedCombatants(ctx context.Context, scope *writeScope) error {
+// A SETTLEMENT THAT CANNOT BE READ FAILS THE VERB ([Manager.commit] makes the
+// read), and so does any error for a member the read DID name: a monster ID is filtered out by the roster's
+// kind before any fetch, and any OTHER error — a repository outage, a sheet
+// that will not load, a failed save — is returned. The reason is durability,
+// not caution: this call runs BEFORE [Manager.persist], so a failure here
+// means nothing about this call's own dissolution has landed yet — a caller
+// who retries the whole verb finds this cleanup still pending against the
+// SAME baseline. Letting it fail silently instead would let the dissolve beat
+// persist while the sheet it named stays stale, and — because the next call's
+// own baseline moves past that beat — never retried again (Copilot's own
+// finding on PR #1222).
+func (m *Manager) exitDissolvedCombatants(
+	ctx context.Context, scope *writeScope, settled *encounter.SettlementOutput,
+) error {
 	// A pure view, not ToData: this is a mid-verb roster read after a verb may
 	// have appended beats, so the final storage boundary still belongs to
 	// commit (encounter v0.43.0, #1385). Join's admission check is the narrow
@@ -1833,33 +1794,15 @@ func (m *Manager) exitDissolvedCombatants(ctx context.Context, scope *writeScope
 		kindByID[string(member.ID)] = member.Kind
 	}
 
-	seen := map[string]bool{}
-
-	for _, member := range data.EverMembers {
-		entries, err := scope.enc.Story(&encounter.StoryInput{
-			Audience: member, AfterSeq: scope.baseline,
-		})
-		if err != nil {
-			continue
-		}
-
-		for _, entry := range entries {
-			var peek struct {
-				Beat    string   `json:"beat"`
-				Members []string `json:"members"`
-			}
-			if json.Unmarshal(entry.Payload, &peek) != nil || peek.Beat != "bubble-dissolved" {
+	seen := map[encounter.MemberID]bool{}
+	for _, fight := range settled.FightsEnded {
+		for _, id := range fight.Members {
+			if seen[id] || kindByID[string(id)] != encounter.KindPlayer {
 				continue
 			}
-
-			for _, id := range peek.Members {
-				if seen[id] || kindByID[id] != encounter.KindPlayer {
-					continue
-				}
-				seen[id] = true
-				if err := m.exitCombatIfPlayer(ctx, scope, id); err != nil {
-					return fmt.Errorf("exit combat for dissolved member %q: %w", id, err)
-				}
+			seen[id] = true
+			if err := m.exitCombatIfPlayer(ctx, scope, string(id)); err != nil {
+				return fmt.Errorf("exit combat for dissolved member %q: %w", id, err)
 			}
 		}
 	}
@@ -1913,20 +1856,22 @@ func (m *Manager) exitCombatIfPlayer(ctx context.Context, scope *writeScope, id 
 // sheets this writes must land in the SAME persist the verb already makes —
 // never a second write cycle a failure between the two could leave half-done.
 //
-// WHAT IT READS is the act's own delta: every ever-member's story
-// AfterSeq: scope.baseline, peeked for the composition's "down" beat, the
-// identical read [Manager.projectEvents] and exitDissolvedCombatants already
-// make. That bound is also the idempotence: [Encounter.noticeDown] appends the
-// down beat exactly once per fall and the baseline moves past it with the act,
+// WHAT IT READS is the act's own falls, from the settlement facts
+// [Manager.commit] reads once for the act ([encounter.Encounter.Settlement]
+// from the scope's baseline): each fall names the member, the kind the roster
+// held at the fall, and its sequence. That bound is also the idempotence: the
+// composition tells a fall once and the baseline moves past it with the act,
 // so a fall settles once and the next verb sees nothing to settle.
 //
-// WHO IS A MONSTER comes from the ENCOUNTER's roster, never from whether an ID
+// WHO IS A MONSTER comes from the ENCOUNTER, never from whether an ID
 // happens to load out of a store — exitDissolvedCombatants' doc has the ID
 // collision that rule exists for, and it cuts the same way here: paying the
 // party for a "monster" that is really somebody's character would be the same
-// mistake wearing a credit instead of a reset. A player going down pays
-// nothing (R2 divides a MONSTER's worth), and neither does a KindWorld
-// member.
+// mistake wearing a credit instead of a reset. The kind is the one the fall
+// carries, so a monster that fell and then left the roster in the same act is
+// still paid for: its fall happened, and the grant follows the fall. A player
+// going down pays nothing (R2 divides a MONSTER's worth), and neither does a
+// KindWorld member.
 //
 // WHO IS PAID is every KindPlayer on the CURRENT roster — Members, not
 // EverMembers — at settlement time, whatever their life state. RAW pays
@@ -1960,19 +1905,19 @@ func (m *Manager) exitCombatIfPlayer(ctx context.Context, scope *writeScope, id 
 // the fix, it is the same fix that wedge already wants, and it is not this
 // slice's.
 //
-// NOTHING HERE IS FREE FOR AN ACT WITH NO FALL: the story read is the one
-// exitDissolvedCombatants already makes, and an act with no down beat records
+// NOTHING HERE IS FREE FOR AN ACT WITH NO FALL: the settlement read is the one
+// exitDissolvedCombatants already uses, and an act with no fall records
 // nothing, saves nothing and returns nil.
-func (m *Manager) settleExperience(ctx context.Context, scope *writeScope) error {
+func (m *Manager) settleExperience(
+	ctx context.Context, scope *writeScope, settled *encounter.SettlementOutput,
+) error {
 	// A pure view rather than ToData, for exitDissolvedCombatants' reason:
 	// this is a mid-verb roster read after the verb has appended beats, and
 	// the final storage boundary still belongs to commit.
 	view := scope.enc.WorldView()
 
-	kindByID := make(map[string]encounter.MemberKind, len(view.Members))
 	players := make([]string, 0, len(view.Members))
 	for _, member := range view.Members {
-		kindByID[string(member.ID)] = member.Kind
 		if member.Kind == encounter.KindPlayer {
 			players = append(players, string(member.ID))
 		}
@@ -1982,7 +1927,7 @@ func (m *Manager) settleExperience(ctx context.Context, scope *writeScope) error
 	// beat itself; this sorts what happens before the beat.
 	sort.Strings(players)
 
-	fallen := fallenMonsters(scope, &view, kindByID)
+	fallen := fallenMonsters(settled)
 
 	for _, id := range fallen {
 		if err := m.settleOneFall(ctx, scope, id, players); err != nil {
@@ -1993,57 +1938,23 @@ func (m *Manager) settleExperience(ctx context.Context, scope *writeScope) error
 	return nil
 }
 
-// fallenMonsters is every monster whose down beat this act appended, in the
-// order the falls were recorded.
+// fallenMonsters is every monster that fell in this act, in the order the
+// falls happened (C8), so two monsters falling in one act are paid — and
+// narrated — in the order they fell.
 //
-// ORDERED BY THE DOWN BEAT'S OWN SEQUENCE rather than by roster or map order,
-// so two monsters falling in one act are paid — and narrated — in the order
-// they fell, identically on every run (C8). The story is read per member
-// because that is the only read the composition offers; the same fall appears
-// in several members' stories at the same global sequence, which is exactly
-// what makes the lowest-sequence-wins dedupe below well defined.
-//
-// A member whose OWN story cannot be read is skipped, the same best-effort law
-// [Manager.publish] states for delivery and exitDissolvedCombatants keeps for
-// its own read: one unreadable perception must not fail the table. What is NOT
-// best effort is a member the read DID name — that is settleOneFall's problem
-// and it returns.
-func fallenMonsters(
-	scope *writeScope, data *encounter.EncounterData, kindByID map[string]encounter.MemberKind,
-) []string {
-	firstSeq := map[string]uint64{}
-	for _, member := range data.EverMembers {
-		entries, err := scope.enc.Story(&encounter.StoryInput{
-			Audience: member, AfterSeq: scope.baseline,
-		})
-		if err != nil {
+// ONCE PER MONSTER. The settlement lists a member who fell, recovered and fell
+// again inside the bound twice, because both falls happened; a body is worth
+// its experience once, so only its first fall here is paid.
+func fallenMonsters(settled *encounter.SettlementOutput) []string {
+	seen := make(map[encounter.MemberID]bool, len(settled.Falls))
+	fallen := make([]string, 0, len(settled.Falls))
+	for _, fall := range settled.Falls {
+		if fall.Kind != encounter.KindMonster || seen[fall.Member] {
 			continue
 		}
-
-		for _, entry := range entries {
-			var peek struct {
-				Beat   string `json:"beat"`
-				Member string `json:"member"`
-			}
-			if json.Unmarshal(entry.Payload, &peek) != nil ||
-				peek.Beat != string(encounter.OutcomeDown) || peek.Member == "" {
-				continue
-			}
-			if kindByID[peek.Member] != encounter.KindMonster {
-				continue
-			}
-			if seen, ok := firstSeq[peek.Member]; ok && seen <= entry.Seq {
-				continue
-			}
-			firstSeq[peek.Member] = entry.Seq
-		}
+		seen[fall.Member] = true
+		fallen = append(fallen, string(fall.Member))
 	}
-
-	fallen := make([]string, 0, len(firstSeq))
-	for id := range firstSeq {
-		fallen = append(fallen, id)
-	}
-	sort.Slice(fallen, func(i, j int) bool { return firstSeq[fallen[i]] < firstSeq[fallen[j]] })
 
 	return fallen
 }
@@ -2109,9 +2020,10 @@ func (m *Manager) settleOneFall(ctx context.Context, scope *writeScope, fallen s
 	// The fallen monster is the beat's actor as well as its cause — the
 	// composition names an actor on every beat and this one has no other
 	// candidate, the fall being anonymous by ruling (rpg-toolkit#959, R3).
-	// It is still on the roster: only Exit removes a member, and a body does
-	// not exit. No targets: the composition adds every grantee to the beat's
-	// subjects itself.
+	// A body that fell and then left the roster in the same act is still the
+	// actor: the composition accepts a former member on this one kind. No
+	// targets: the composition adds every grantee to the beat's subjects
+	// itself.
 	if _, err := scope.enc.Record(&encounter.RecordInput{
 		Kind:  encounter.OutcomeExperienceGained,
 		Actor: encounter.MemberID(fallen),

@@ -34,7 +34,7 @@ func deftCharacter(id string, dex int) *character.Data {
 		ID: id, PlayerID: "player-" + id, Name: "Delve", Level: 3,
 		Levels:           syntheticLevels(classes.Rogue, 3),
 		ProficiencyBonus: 2, RaceID: races.Dwarf, ClassID: classes.Rogue,
-		HitPoints: 20, MaxHitPoints: 20, ArmorClass: 14,
+		HitPoints: 20, MaxHitPoints: 20,
 		AbilityScores: shared.AbilityScores{abilities.DEX: dex},
 	}
 }
@@ -48,7 +48,7 @@ func gatedWorld(t fataler, state encounter.DoorState) *encounter.EncounterData {
 // gatedWorldSeating is gatedWorld with alice's authored seat chosen by the
 // caller, for the one scene that needs her measurably away from the gate.
 func gatedWorldSeating(t fataler, state encounter.DoorState, seat spatial.Position) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
@@ -100,10 +100,15 @@ func TestDoorsSuite(t *testing.T) {
 // stream recorded — the beats are half of what this suite pins.
 func (s *DoorsSuite) startWith(world *encounter.EncounterData, cast ...*character.Data) {
 	s.stream = &fakeStream{}
+	sessions, encounters := newFakeSessions(), newFakeEncounters()
+	characters := newFakeCharacters(cast...)
+	// The world asks every authored member's sheet how far it sees; the ones
+	// this cast leaves out are given plain ones.
+	stockAuthoredPlayers(world, characters)
 	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
-		Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
-		Characters: newFakeCharacters(cast...), Events: s.stream,
+		Sessions: sessions, Encounters: encounters,
+		Characters: characters, Events: s.stream,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -112,6 +117,7 @@ func (s *DoorsSuite) startWith(world *encounter.EncounterData, cast ...*characte
 		Session: "sess", Encounter: "world", World: world,
 	})
 	s.Require().NoError(err)
+	stockAuthoredMonsters(s.T(), sessions, encounters, "sess")
 }
 
 // doorEvents filters what the stream heard down to the door beats one

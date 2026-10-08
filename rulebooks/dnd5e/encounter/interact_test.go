@@ -28,7 +28,7 @@ func (s *InteractSuite) setup(
 	sight encounter.Sight, members ...encounter.MemberInput,
 ) (*encounter.Encounter, error) {
 	return encounter.NewEncounter(&encounter.SetupInput{
-		Sight: sight, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: sight, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field:   worldField(),
 		Members: members,
@@ -181,5 +181,5 @@ func (s *InteractSuite) TestANegativeRangeIsRefused() {
 
 	_, err = enc.Interact(&encounter.InteractInput{Actor: alice, Target: "vendor", Range: -1})
 	s.Require().Error(err)
-	s.ErrorIs(err, encounter.ErrNoMember)
+	s.ErrorIs(err, encounter.ErrBadReach)
 }

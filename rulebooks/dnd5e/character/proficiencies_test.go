@@ -102,7 +102,7 @@ func (s *ProficienciesSuite) TestFighterProficiencies() {
 	s.Require().NotNil(char)
 
 	// Get data to verify proficiencies
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 
 	// Verify armor proficiencies: light, medium, heavy, shields
 	s.ElementsMatch(
@@ -206,7 +206,7 @@ func (s *ProficienciesSuite) TestBarbarianProficiencies() {
 	s.Require().NotNil(char)
 
 	// Get data to verify proficiencies
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 
 	// Verify armor proficiencies: light, medium, shields (NOT heavy)
 	s.ElementsMatch(
@@ -297,7 +297,7 @@ func (s *ProficienciesSuite) TestMonkProficiencies() {
 	s.Require().NotNil(char)
 
 	// Get data to verify proficiencies
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 
 	// Verify armor proficiencies: NONE (empty or nil)
 	s.Empty(data.ArmorProficiencies, "Monk should have NO armor proficiencies")
@@ -370,7 +370,7 @@ func (s *ProficienciesSuite) TestProficienciesRoundTrip() {
 	s.Require().NoError(err)
 
 	// Get data (simulate save)
-	originalData := char.ToData()
+	originalData := mustToData(s.T(), char)
 	s.Require().NotEmpty(originalData.ArmorProficiencies)
 	s.Require().NotEmpty(originalData.WeaponProficiencies)
 
@@ -381,7 +381,7 @@ func (s *ProficienciesSuite) TestProficienciesRoundTrip() {
 	s.Require().NotNil(loadedChar)
 
 	// Get data again and compare
-	loadedData := loadedChar.ToData()
+	loadedData := mustToData(s.T(), loadedChar)
 
 	// Verify proficiencies survived roundtrip
 	s.ElementsMatch(originalData.ArmorProficiencies, loadedData.ArmorProficiencies,

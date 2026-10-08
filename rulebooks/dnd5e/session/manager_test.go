@@ -188,7 +188,6 @@ func dwarfCharacter(id string) *character.Data {
 		// projectCharacter folds AC rather than echoing this field, so the two
 		// disagreeing is what makes the assertion discriminating — the same
 		// trick the Speed assertion uses with a dwarf's 25.
-		ArmorClass: 16,
 		AbilityScores: shared.AbilityScores{
 			abilities.STR: 16,
 			abilities.DEX: 14, // +2

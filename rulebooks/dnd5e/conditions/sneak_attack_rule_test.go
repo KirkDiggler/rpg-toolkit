@@ -15,6 +15,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
@@ -28,9 +29,18 @@ func TestSneakAttackRuleSuite(t *testing.T) { suite.Run(t, new(sneakAttackRuleSu
 
 // rogueFrame is the rogue's shortsword attack on the goblin, with advantage
 // known false and no pairs. Complete says whether the pairs are exhaustive.
+//
+// The rogue holds one rogue level; see rogueFrameAt for another.
 func rogueFrame(complete bool) contributions.Frame {
+	return rogueFrameAt(complete, 1)
+}
+
+// rogueFrameAt is rogueFrame for a rogue holding level rogue levels.
+func rogueFrameAt(complete bool, level int) contributions.Frame {
 	return contributions.Frame{
-		Actor:  "rogue",
+		Actor: "rogue",
+		ActorClassLevels: contributions.KnownClassLevels(
+			contributions.ClassLevel{Class: classes.Rogue, Levels: level}),
 		Target: contributions.Known("goblin"),
 		Action: contributions.ActionFacts{
 			Roll:            contributions.Known(contributions.RollKindAttack),
@@ -72,7 +82,7 @@ func (s *sneakAttackRuleSuite) assess(rule sneakAttackRule, frame contributions.
 	return out.Answer
 }
 
-func rogueRule() sneakAttackRule { return sneakAttackRule{owner: "rogue", dice: 1} }
+func rogueRule() sneakAttackRule { return sneakAttackRule{owner: "rogue"} }
 
 func (s *sneakAttackRuleSuite) TestSneakAttackRuleAppliesWithKnownAdvantage() {
 	frame := rogueFrame(false)
@@ -85,10 +95,10 @@ func (s *sneakAttackRuleSuite) TestSneakAttackRuleAppliesWithKnownAdvantage() {
 }
 
 func (s *sneakAttackRuleSuite) TestSneakAttackRuleAppliesWithEnemyOfTargetAdjacent() {
-	frame := rogueFrame(false)
+	frame := rogueFrameAt(false, 5)
 	frame.Pairs = []contributions.PairFacts{knownPair("goblin", "ally", 1.0, contributions.StanceHostile)}
 
-	answer := s.assess(sneakAttackRule{owner: "rogue", dice: 3}, frame)
+	answer := s.assess(rogueRule(), frame)
 
 	s.Equal(contributions.Applies, answer.Decision.Applicability)
 	s.Equal("Another enemy of the target is within 5 feet", answer.Decision.Reason)
@@ -175,7 +185,7 @@ func (s *sneakAttackRuleSuite) TestSneakAttackRuleUsedThisTurn() {
 	frame := rogueFrame(true)
 	frame.Action.Advantage = contributions.Known(true)
 
-	answer := s.assess(sneakAttackRule{owner: "rogue", usedThisTurn: true, dice: 1}, frame)
+	answer := s.assess(sneakAttackRule{owner: "rogue", usedThisTurn: true}, frame)
 
 	s.Equal(contributions.DoesNotApply, answer.Decision.Applicability)
 	s.Equal("Already used this turn", answer.Decision.Reason)
@@ -287,7 +297,7 @@ func TestSneakAttackHandlerSuite(t *testing.T) { suite.Run(t, new(sneakAttackHan
 func (s *sneakAttackHandlerSuite) SetupTest() {
 	s.bus = events.NewEventBus()
 	s.roller = &countingRoller{}
-	s.condition = NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue", Level: 1, Roller: s.roller})
+	s.condition = NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue", Roller: s.roller})
 	s.Require().NoError(s.condition.Apply(context.Background(), s.bus))
 }
 

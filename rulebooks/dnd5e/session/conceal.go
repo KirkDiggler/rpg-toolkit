@@ -305,9 +305,9 @@ func (m *Manager) declineStagedOffer(
 // the three predicates below are [encounter]'s own percept predicates,
 // answered by the same instruments:
 //
-//   - reach comes from the SAME *sightSeam pointer the live encounter holds
-//     (scope.sight — a member placed by this very verb is already in it,
-//     sight.go's own pointer argument);
+//   - reach comes from the SAME sheet seam the live encounter asks
+//     (sheetsBeside(scope.standing) — it shares the verb's roster-kind
+//     snapshot, so a member placed by this very verb is already known to it);
 //   - line of sight is asked of the encounter's own canvas
 //     ([encounter.Encounter.Canvas]), the same geometry rebuildPercepts
 //     walks;
@@ -381,7 +381,7 @@ func (w witnessSeam) Perceivers(in *encounter.PerceiversInput) ([]encounter.Memb
 	if err != nil {
 		return nil, err
 	}
-	reach, err := w.scope.sight.Sight(rosterIDs(roster))
+	reach, err := sheetsBeside(w.scope.standing).Sight(rosterIDs(roster))
 	if err != nil {
 		return nil, err
 	}

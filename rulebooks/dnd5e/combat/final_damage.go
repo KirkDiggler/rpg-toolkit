@@ -4,171 +4,217 @@
 package combat
 
 import (
-	"sort"
+	"slices"
 
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
 // DamageInstanceInput represents a single damage amount with its type.
 // Multiple instances allow mixed-type damage (e.g., flametongue: slashing + fire).
-//
-// It lived in damage.go until rpg-project#319 Phase 6 deleted the second
-// damage flow around it, and moves here rather than dying with it: this is
-// what [FinalDamage] returns and what resolution folds into an
-// [ApplyDamageInput].
+// It is what [SettleDamageOutput.FinalDamage] returns and what resolution
+// folds into an [ApplyDamageInput].
 type DamageInstanceInput struct {
-	// Amount is the base damage before modifiers
+	// Amount is the damage that lands.
 	Amount int
 
 	// Type is the damage type (slashing, fire, etc.)
 	Type damage.Type
 }
 
-// FinalDamage turns folded damage components into the instances that land,
-// applying 5e's resistance, vulnerability, and immunity stacking, and reports
-// the total alongside them.
+// SettleDamageInput is what the target step hands the settlement: the damage
+// dealt and the target's answers to it.
+type SettleDamageInput struct {
+	// Dealt is the dealt fold's components after the save's halving: damage
+	// only. Use the components the step sent, never the folded event's copy.
+	Dealt []dnd5eEvents.DamageComponent
+	// Reductions are the target's fixed reductions, from the incoming fold.
+	Reductions []dnd5eEvents.DamageReduction
+	// Multipliers are the target's immunities, resistances and
+	// vulnerabilities, from the incoming fold, in fold order.
+	Multipliers []dnd5eEvents.DamageMultiplier
+}
+
+// TypeSettlement is what happened to one damage type. A trace that explains
+// the type sums to Taken: Dealt + Reduced + Floor + Change.
+type TypeSettlement struct {
+	// Type is the damage type.
+	Type damage.Type
+	// Dealt is the sum of the dealt components of this type.
+	Dealt int
+	// Reduced is the sum of the target's reductions on this type, zero or
+	// negative.
+	Reduced int
+	// Floor is what brings the type back to zero when Dealt + Reduced is below
+	// zero, whether a negative dealt total (a 1 rolled with a -2 modifier) or
+	// reductions put it there; zero otherwise. A type cannot heal its target.
+	Floor int
+	// Factor is the effective multiplier the stacking rules chose: 0 for
+	// immunity, 0.5 for resistance, 2 for vulnerability, 1 for none or for
+	// resistance and vulnerability cancelling. It is decided by which factors
+	// are present, never read back from an amount.
+	Factor float64
+	// DecidedBy is the first multiplier in fold order whose own factor is the
+	// effective one, the rule a trace line names. Nil when Factor is 1.
+	DecidedBy *dnd5eEvents.DamageMultiplier
+	// Change is what the effective factor did after reductions and the floor:
+	// Taken minus (Dealt + Reduced + Floor). Zero when Factor is 1.
+	Change int
+	// Taken is what the target takes of this type, zero included: an immune
+	// type is settled at zero and reported, never omitted.
+	Taken int
+}
+
+// SettleDamageOutput is the settlement: one entry per damage type dealt,
+// sorted by damage type.
+type SettleDamageOutput struct {
+	Types []TypeSettlement
+}
+
+// SettleDamage is combat's settlement of received damage, per damage type:
+// what was dealt, the target's reductions, the effective factor its stacking
+// rule chose, and what is taken. Bus-free: the target step folds on its own
+// bus and hands in what the folds settled on.
 //
-// Bus-free on purpose. This is the arithmetic half of [ResolveDamage], split
-// out so a caller that folds the damage chain on its own bus can still get the
-// multipliers right instead of reimplementing them (rpg-toolkit#965 slice 2 —
-// the resolution module owns its own folds and had no way to reach this).
-// The shape mirrors [github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves.MakeSavingThrow]:
-// fold outside, hand in what the fold settled on, take back the arithmetic.
+// The order is the 5e order. Reductions apply first, and a type whose total
+// is then below zero is floored at zero; then the multipliers, after every other
+// modifier, rounding down. Immunity wins over resistance and vulnerability;
+// resistance and vulnerability cancel; neither stacks.
 //
-// ResolveDamage calls this too, so there is one implementation rather than a
-// copy per stack.
-//
-// Components carrying a Multiplier are modifiers (resistance 0.5,
-// vulnerability 2.0, immunity 0.0); every other component contributes its
-// Total() — the authoritative dice subtotal plus any present modifier.
-// Both are grouped by damage type before the multipliers apply, because 5e
-// resists a TYPE rather than a source.
-//
-// Modifier-or-damage is decided by the Multiplier's PRESENCE, never its value:
-// immunity's factor is zero, so a value test cannot tell it from an absent
-// modifier. It could not, and immunity silently did nothing (rpg-toolkit#1012).
-//
-// Component totals come from the roll trace's authoritative subtotal and the
-// modifier POINTER — never from resumming recorded faces, which would
-// reconstruct reroll history the provider already settled. A kept-dice trace
-// (advantage, a keep-high rule) intentionally has faces that sum to more than
-// its subtotal; the subtotal is the number the provider asserted.
-//
-// Instances come back sorted by damage type, and a zero or negative instance
-// is dropped rather than reported as landing.
-func FinalDamage(components []dnd5eEvents.DamageComponent) (instances []DamageInstanceInput, total int) {
-	instances = calculateFinalDamage(components)
-	for _, instance := range instances {
-		total += instance.Amount
+// Errors: a dealt component with no damage type or carrying a multiplier (a
+// target answer on the dealt side); a malformed reduction or multiplier; or
+// an answer on a damage type nothing dealt.
+func SettleDamage(input *SettleDamageInput) (*SettleDamageOutput, error) {
+	if input == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "settle damage requires an input")
+	}
+
+	settled := make(map[damage.Type]*TypeSettlement)
+	var order []damage.Type
+	for i, component := range input.Dealt {
+		if component.DamageType == "" {
+			return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
+				"dealt component %d names no damage type", i)
+		}
+		if component.Multiplier != nil {
+			return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
+				"dealt component %d carries a multiplier; a target's answer is settled from the incoming fold", i)
+		}
+		entry, ok := settled[component.DamageType]
+		if !ok {
+			entry = &TypeSettlement{Type: component.DamageType, Factor: 1}
+			settled[component.DamageType] = entry
+			order = append(order, component.DamageType)
+		}
+		entry.Dealt += component.Total()
+	}
+
+	for _, reduction := range input.Reductions {
+		if err := reduction.Validate(); err != nil {
+			return nil, rpgerr.Wrap(err, "settle damage")
+		}
+		entry, ok := settled[reduction.DamageType]
+		if !ok {
+			return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
+				"reduction from %s names %s damage, and none was dealt", reduction.Source.Ref, reduction.DamageType)
+		}
+		entry.Reduced += reduction.Modifier
+	}
+
+	byType := make(map[damage.Type][]int)
+	for i, multiplier := range input.Multipliers {
+		if err := multiplier.Validate(); err != nil {
+			return nil, rpgerr.Wrap(err, "settle damage")
+		}
+		if _, ok := settled[multiplier.DamageType]; !ok {
+			return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
+				"multiplier from %s names %s damage, and none was dealt", multiplier.Source.Ref, multiplier.DamageType)
+		}
+		byType[multiplier.DamageType] = append(byType[multiplier.DamageType], i)
+	}
+
+	output := &SettleDamageOutput{Types: make([]TypeSettlement, 0, len(order))}
+	for _, damageType := range order {
+		entry := settled[damageType]
+		base := entry.Dealt + entry.Reduced
+		if base < 0 {
+			entry.Floor = -base
+			base = 0
+		}
+
+		factors := make([]float64, 0, len(byType[damageType]))
+		for _, index := range byType[damageType] {
+			factors = append(factors, input.Multipliers[index].Factor)
+		}
+		entry.Factor = effectiveFactor(factors)
+		if entry.Factor != 1 {
+			for _, index := range byType[damageType] {
+				if input.Multipliers[index].Factor == entry.Factor {
+					decided := input.Multipliers[index]
+					decided.Source = dnd5eEvents.CloneRollSource(decided.Source)
+					entry.DecidedBy = &decided
+					break
+				}
+			}
+		}
+
+		entry.Taken = int(float64(base) * entry.Factor)
+		entry.Change = entry.Taken - base
+		output.Types = append(output.Types, *entry)
+	}
+
+	slices.SortFunc(output.Types, func(a, b TypeSettlement) int {
+		switch {
+		case a.Type < b.Type:
+			return -1
+		case a.Type > b.Type:
+			return 1
+		default:
+			return 0
+		}
+	})
+
+	return output, nil
+}
+
+// FinalDamage is the settlement's landing instances: every type taken above
+// zero, sorted by damage type, and their total. A type taken as nothing stays
+// in [SettleDamageOutput.Types] and is not an instance.
+func (s *SettleDamageOutput) FinalDamage() (instances []DamageInstanceInput, total int) {
+	instances = make([]DamageInstanceInput, 0, len(s.Types))
+	for _, settled := range s.Types {
+		if settled.Taken <= 0 {
+			continue
+		}
+		instances = append(instances, DamageInstanceInput{Amount: settled.Taken, Type: settled.Type})
+		total += settled.Taken
 	}
 
 	return instances, total
 }
 
-// calculateFinalDamage processes damage components and applies multipliers.
-// In D&D 5e:
-// - Resistance (0.5) halves damage, Vulnerability (2.0) doubles it, Immunity (0.0) negates
-// - Multiple resistances don't stack (apply most beneficial once)
-// - If both resistance and vulnerability exist for a type, they cancel out
-func calculateFinalDamage(components []dnd5eEvents.DamageComponent) []DamageInstanceInput {
-	// Group damage and multipliers by type
-	type damageGroup struct {
-		baseDamage  int
-		multipliers []float64
+// effectiveFactor applies 5e's stacking rules to the factors present on one
+// damage type. Every factor is one of the three a [dnd5eEvents.DamageMultiplier]
+// may carry; the caller validated them.
+//   - Immunity always wins.
+//   - Resistance and vulnerability cancel when both are present.
+//   - Neither stacks: two resistances halve once.
+func effectiveFactor(factors []float64) float64 {
+	immune := slices.Contains(factors, dnd5eEvents.DamageFactorImmunity)
+	resistant := slices.Contains(factors, dnd5eEvents.DamageFactorResistance)
+	vulnerable := slices.Contains(factors, dnd5eEvents.DamageFactorVulnerability)
+
+	switch {
+	case immune:
+		return dnd5eEvents.DamageFactorImmunity
+	case resistant && vulnerable:
+		return 1
+	case resistant:
+		return dnd5eEvents.DamageFactorResistance
+	case vulnerable:
+		return dnd5eEvents.DamageFactorVulnerability
+	default:
+		return 1
 	}
-	byType := make(map[damage.Type]*damageGroup)
-
-	for _, component := range components {
-		dmgType := component.DamageType
-		if byType[dmgType] == nil {
-			byType[dmgType] = &damageGroup{}
-		}
-
-		// Presence, not value: a component either IS a modifier or is damage,
-		// and immunity's factor is zero. Testing `!= 0` conflated the two and
-		// dropped immunity entirely (rpg-toolkit#1012).
-		if component.Multiplier != nil {
-			byType[dmgType].multipliers = append(byType[dmgType].multipliers, *component.Multiplier)
-			continue
-		}
-
-		// Total() reads the dice trace's authoritative subtotal plus any
-		// present modifier pointer — the one arithmetic a damage component
-		// already owns.
-		byType[dmgType].baseDamage += component.Total()
-	}
-
-	// Apply multipliers to each damage type
-	result := make([]DamageInstanceInput, 0, len(byType))
-	for dmgType, group := range byType {
-		finalDamage := group.baseDamage
-
-		if len(group.multipliers) > 0 {
-			// Apply D&D 5e stacking rules
-			effectiveMultiplier := resolveMultipliers(group.multipliers)
-			finalDamage = int(float64(finalDamage) * effectiveMultiplier)
-		}
-
-		if finalDamage > 0 {
-			result = append(result, DamageInstanceInput{
-				Amount: finalDamage,
-				Type:   dmgType,
-			})
-		}
-	}
-
-	// Sorted, because the grouping above is a map and a map's iteration order
-	// is random per run. Nothing can correctly depend on that order — anything
-	// that did was already flaky — so ordering by damage type is the one
-	// direction of change that cannot break a correct consumer, and it makes a
-	// mixed-type hit (a flame tongue's slashing plus fire) report the same way
-	// twice. Prior art: ToData's member sort exists because map iteration made
-	// round-trips intermittently fail.
-	sort.Slice(result, func(i, j int) bool { return result[i].Type < result[j].Type })
-
-	return result
-}
-
-// resolveMultipliers applies D&D 5e stacking rules for resistance,
-// vulnerability, and immunity.
-// - Immunity (0.0) always wins
-// - Resistance (0.5) and vulnerability (2.0) cancel out if both present
-// - Multiple resistances don't stack (use 0.5 once)
-// - Multiple vulnerabilities don't stack (use 2.0 once)
-func resolveMultipliers(multipliers []float64) float64 {
-	hasImmunity := false
-	hasResistance := false
-	hasVulnerability := false
-
-	for _, m := range multipliers {
-		switch {
-		case m == 0.0:
-			hasImmunity = true
-		case m < 1.0:
-			hasResistance = true
-		case m > 1.0:
-			hasVulnerability = true
-		}
-	}
-
-	// Immunity trumps everything
-	if hasImmunity {
-		return 0.0
-	}
-
-	// Resistance and vulnerability cancel out
-	if hasResistance && hasVulnerability {
-		return 1.0
-	}
-
-	// Apply resistance (0.5) or vulnerability (2.0)
-	if hasResistance {
-		return 0.5
-	}
-	if hasVulnerability {
-		return 2.0
-	}
-
-	return 1.0
 }

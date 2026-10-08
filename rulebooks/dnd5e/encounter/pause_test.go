@@ -89,12 +89,23 @@ func (s *PauseTestSuite) sceneWithPath(
 	})
 }
 
+// pauseShortsword is what every driven monster in this file can do: walk thirty
+// feet and swing a shortsword at the closest enemy.
+var pauseShortsword = encounter.SheetFacts{SpeedFeet: 30, Actions: []encounter.ActionView{
+	{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
+}, Targeting: "closest"}
+
+// pauseSheets answers the goblin and, where a scene has one, the skeleton —
+// on the scene's Setup and on every reload of it, since the sheets are the
+// host's and nothing in the blob carries them.
+var pauseSheets = sheetFacts{goblin: pauseShortsword, "skeleton": pauseShortsword, alice: {}}
+
 func (s *PauseTestSuite) sceneWithDriver(
 	mover encounter.Mover, standing encounter.StandingWithParticipation, driver encounter.TurnDriver,
 ) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: standing, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: pauseSheets, Standing: standing, Initiative: orderAsGiven{},
 		TurnDriver: driver,
 		Striker:    passStriker{}, Mover: mover, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
@@ -105,10 +116,6 @@ func (s *PauseTestSuite) sceneWithDriver(
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
 			{
 				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 2},
-				SpeedFeet: 30, Targeting: "closest",
-				Actions: []encounter.ActionView{
-					{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
-				},
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
@@ -173,7 +180,7 @@ func (s *PauseTestSuite) windowBeat(enc *encounter.Encounter, audience encounter
 func (s *PauseTestSuite) reload(enc *encounter.Encounter, mover encounter.Mover, standing encounter.StandingWithParticipation) *encounter.Encounter {
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: standing, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: pauseSheets, Standing: standing, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: mover, Announcer: quietAnnouncer{},
 		Data: enc.ToData(),
 	})
@@ -292,7 +299,7 @@ func (s *PauseTestSuite) TestAMoverDroppedBeforeTheResumeEndsInTheLeavingCell() 
 	// turn for the resume to drive.
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: standing, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: pauseSheets, Standing: standing, Initiative: orderAsGiven{},
 		TurnDriver: &scriptedDriver{intents: []encounter.TurnIntent{
 			encounter.Move{Path: []spatial.Position{cellAt(5, 2), cellAt(4, 2), cellAt(3, 2)}},
 		}},
@@ -305,17 +312,9 @@ func (s *PauseTestSuite) TestAMoverDroppedBeforeTheResumeEndsInTheLeavingCell() 
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
 			{
 				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 2},
-				SpeedFeet: 30, Targeting: "closest",
-				Actions: []encounter.ActionView{
-					{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
-				},
 			},
 			{
 				ID: "skeleton", Kind: encounter.KindMonster, Position: spatial.Position{X: 7, Y: 2},
-				SpeedFeet: 30, Targeting: "closest",
-				Actions: []encounter.ActionView{
-					{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
-				},
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
@@ -451,7 +450,7 @@ func (s *PauseTestSuite) TestAPausedTurnLoadedWithoutItsMemberIsRefused() {
 	data.PausedTurn.Member = "nobody"
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: &downList{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: pauseSheets, Standing: &downList{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Data: data,
 	})
@@ -461,7 +460,7 @@ func (s *PauseTestSuite) TestAPausedTurnLoadedWithoutItsMemberIsRefused() {
 	data.PausedTurn.Remaining = nil
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: &downList{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: pauseSheets, Standing: &downList{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Data: data,
 	})
@@ -471,7 +470,7 @@ func (s *PauseTestSuite) TestAPausedTurnLoadedWithoutItsMemberIsRefused() {
 	data.PausedTurn.Intent = data.PausedTurn.Bound
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: &downList{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: pauseSheets, Standing: &downList{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Data: data,
 	})
@@ -485,7 +484,7 @@ func (s *PauseTestSuite) TestAPausedTurnLoadedWithoutItsMemberIsRefused() {
 	data.PausedTurn.Cause = "not-a-ref"
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: &downList{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: pauseSheets, Standing: &downList{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Data: data,
 	})
@@ -520,7 +519,7 @@ func (s *PauseTestSuite) TestTheLastMonsterDroppedInTheWindowReloadsAndResumesCl
 	// The host's own mid-verb reload: this used to be refused as corruption.
 	loaded, lerr := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: standing, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: pauseSheets, Standing: standing, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: &pausingMover{}, Announcer: quietAnnouncer{},
 		Data: data,
 	})
@@ -572,7 +571,7 @@ func (s *PauseTestSuite) routedWalkingScene(
 ) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: standing, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: pauseSheets, Standing: standing, Initiative: orderAsGiven{},
 		TurnDriver: driver,
 		Striker:    passStriker{}, Mover: mover, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
@@ -583,10 +582,6 @@ func (s *PauseTestSuite) routedWalkingScene(
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
 			{
 				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 2},
-				SpeedFeet: 30, Targeting: "closest",
-				Actions: []encounter.ActionView{
-					{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
-				},
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},

@@ -161,8 +161,9 @@ func (s moverSeam) offerStep(
 		Participants: cast,
 		Initiative:   s.m.initiative,
 		Standing:     s.scope.standing,
-		Sight:        &sightSeam{members: worldMembers(world)},
+		Sight:        sheetsBeside(s.scope.standing),
 		Equipment:    equipmentBeside(s.scope.standing),
+		Sheets:       sheetsBeside(s.scope.standing),
 		TurnDriver:   s.scope.driver,
 		// The concealment pair, bound to the same live scope every other
 		// seam on this call is — the one-seam consistency law strikerSeam
@@ -241,6 +242,9 @@ func (s moverSeam) recordMovementResults(ctx context.Context, enc *encounter.Enc
 		if _, err := enc.Record(beat); err != nil {
 			return fmt.Errorf("move: %w", translate(err))
 		}
+	}
+	if err := s.m.landAreas(enc, s.scope, out); err != nil {
+		return fmt.Errorf("move: %w", err)
 	}
 	return nil
 }

@@ -75,21 +75,27 @@ func assembleWeaponAttack(
 // (rpg-project#535), and until the pick exists the assembly refuses rather
 // than letting the order conditions sit on the sheet choose one, because an
 // order-chosen offer is a die the player never picked.
+//
+// Each provider is handed this sheet as its level record, so a die that
+// scales with a class (Martial Arts) reads the level at this swing. A provider
+// that cannot answer fails the assembly.
 func weaponAttackOverride(c *Character, slot InventorySlot) (*weaponattack.Override, error) {
 	var override *weaponattack.Override
 	var offeredBy []string
+	in := &weaponattack.OverrideInput{Slot: string(slot), ItemID: c.equipmentSlots.Get(slot), Levels: c}
 	for _, condition := range c.conditions {
-		provider, ok := condition.(interface {
-			WeaponAttackOverride(string, string) *weaponattack.Override
-		})
+		provider, ok := condition.(weaponattack.OverrideProvider)
 		if !ok {
 			continue
 		}
-		candidate := provider.WeaponAttackOverride(string(slot), c.equipmentSlots.Get(slot))
-		if candidate == nil {
+		offer, err := provider.WeaponAttackOverride(in)
+		if err != nil {
+			return nil, rpgerr.Wrapf(err, "%s cannot offer for %q", condition.Ref(), slot)
+		}
+		if offer == nil || offer.Override == nil {
 			continue
 		}
-		override = candidate
+		override = offer.Override
 		offeredBy = append(offeredBy, condition.Ref().String())
 	}
 	if len(offeredBy) > 1 {

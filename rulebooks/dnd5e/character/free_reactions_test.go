@@ -28,7 +28,7 @@ func plainFighter(id string) *Data {
 			abilities.STR: 16, abilities.DEX: 14, abilities.CON: 14,
 			abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 8,
 		},
-		HitPoints: 12, MaxHitPoints: 12, ArmorClass: 16, ProficiencyBonus: 2,
+		HitPoints: 12, MaxHitPoints: 12, ProficiencyBonus: 2,
 	}
 }
 
@@ -132,12 +132,12 @@ func TestAttachRecordsTheCarriedReactionOnTheSheet(t *testing.T) {
 	ctx := context.Background()
 	sheet, err := Load(ctx, plainFighter("fighter-1"))
 	require.NoError(t, err)
-	require.Empty(t, sheet.ToData().Conditions, "Load stays a pure read")
+	require.Empty(t, mustToData(t, sheet).Conditions, "Load stays a pure read")
 
 	require.NoError(t, Attach(ctx, sheet, events.NewEventBus()))
 
 	require.Equal(t, []string{refs.Conditions.OpportunityAttack().String()}, heldRefs(sheet.GetConditions()))
-	require.Equal(t, []string{refs.Conditions.OpportunityAttack().String()}, conditionRefs(sheet.ToData()))
+	require.Equal(t, []string{refs.Conditions.OpportunityAttack().String()}, conditionRefs(mustToData(t, sheet)))
 	require.False(t, sheet.IsDirty(), "gaining a reaction is not a change worth saving")
 }
 
@@ -150,7 +150,7 @@ func TestAttachDoesNotRecordTheCarriedReactionTwice(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, Attach(ctx, first, events.NewEventBus()))
 
-	reloaded, err := Load(ctx, first.ToData())
+	reloaded, err := Load(ctx, mustToData(t, first))
 	require.NoError(t, err)
 	bus := events.NewEventBus()
 	require.NoError(t, Attach(ctx, reloaded, bus))

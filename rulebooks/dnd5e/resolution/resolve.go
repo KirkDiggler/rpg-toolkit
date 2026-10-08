@@ -144,6 +144,23 @@ type Input struct {
 	// default.
 	Equipment encounter.EquipmentWithConditions
 
+	// Sheets reports each member's speed, attacks and targeting from its
+	// sheet. REQUIRED.
+	//
+	// Carried, never consulted, for exactly the reason Sight and Equipment
+	// above are, and by a nameable mechanism: the composition asks it only
+	// when it paces a walk on the world clock, budgets a driven turn, builds a
+	// driver's view or tests the `enemy: reach` band — and its load asks
+	// nothing. This package loads a world and reads it back out as data, so
+	// none of those is reached here.
+	//
+	// The composition refuses to load without one (encounter.ErrNoSheets,
+	// rpg-project#538), and an answer invented here would be worse than any
+	// default: the composition stores no speed or reach any more, so a number
+	// this package made up would be the only one it had. The session owns the
+	// sheets and answers from them; it is handed over.
+	Sheets encounter.Sheets
+
 	// Roller reconstitutes runtime dice dependencies for effects that roll when
 	// triggered rather than when loaded — Character conditions such as Great
 	// Weapon Fighting and Monster traits such as Undead Fortitude. REQUIRED.
@@ -225,6 +242,9 @@ func (in *Input) Validate() error {
 	if in.Equipment == nil {
 		return ErrNoEquipment
 	}
+	if in.Sheets == nil {
+		return ErrNoSheets
+	}
 	if in.TurnDriver == nil {
 		return ErrNoTurnDriver
 	}
@@ -255,8 +275,21 @@ func (in *Input) Validate() error {
 
 // Output is everything the interaction produced. All of it is data (R2).
 type Output struct {
-	// SightAreasChanged asks the host seam to refresh perception after saving dirty sheets.
-	SightAreasChanged bool
+	// OpenedAreas are the runtime areas this interaction opened — a cast whose
+	// area obscures sight opens one — in the shape the encounter opens them
+	// with. Resolution does not open them: [Output.World] carries the area set
+	// it was handed, and the host applies these to the live encounter with
+	// encounter.AddSightArea, AFTER closing [Output.ClosedAreas], so the
+	// encounter tells who is inside. Empty is the ordinary case.
+	OpenedAreas []encounter.SightAreaInput
+
+	// ClosedAreas are the sources whose runtime areas end: a caster whose
+	// concentration ended during this interaction while an area it opened
+	// stands. The host ends them with encounter.RemoveSightArea BEFORE opening
+	// [Output.OpenedAreas] — a recast ends the old area under the id the new
+	// one reuses. Membership is never written anywhere: a member is inside an
+	// area exactly when the encounter says so.
+	ClosedAreas []string
 
 	// World is the encounter after the interaction, ready to be stored.
 	//
@@ -378,6 +411,7 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		Standing:   in.Standing,
 		Sight:      in.Sight,
 		Equipment:  in.Equipment,
+		Sheets:     in.Sheets,
 		TurnDriver: in.TurnDriver,
 		// The concealment capabilities (rpg-toolkit#1378), handed over exactly
 		// as supplied: nil stays nil, so a plain world loads untouched and a
@@ -481,22 +515,11 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 
 	outcome, posed, runErr := driveStep(ctx, surf, first, cast)
 
-	// Retire old volumes before installing a replacement from this cast. The
-	// concentration event owns the lifetime; encounter owns only geometry.
-	areasChanged := false
-	for _, fact := range breaks.facts {
-		areasChanged = enc.RemoveSightArea(fact.CasterID) || areasChanged
-	}
-	if castResult, ok := outcome.(CastOutcome); ok && castResult.SightArea != nil {
-		if err := enc.AddSightArea(castResult.SightArea); err != nil {
-			return nil, errors.Join(err, breaks.stop(ctx), surf.teardown(ctx))
-		}
-		areasChanged = true
-	}
-
-	if err := reconcileFogMembership(ctx, surf.inner, cast, room, enc.WorldView().SightAreas); err != nil {
-		return nil, errors.Join(err, breaks.stop(ctx), surf.teardown(ctx))
-	}
+	// The areas this interaction opens and closes, reported for the host to
+	// apply through the encounter's own verbs. A concentration that ended
+	// closes the areas its caster opened; the encounter's current area set
+	// says whether there are any.
+	opened, closed := interactionAreas(enc.WorldView().SightAreas, breaks.facts, outcome)
 
 	// R5: revoke everything granted, whether or not the machine succeeded.
 	tearErr := errors.Join(breaks.stop(ctx), surf.teardown(ctx))
@@ -605,10 +628,16 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		ended, kept = nil, nil
 	}
 
+	dirty, err := dirtyCharacters(cast)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Output{
 		World:               enc.ToData(),
-		SightAreasChanged:   areasChanged,
-		DirtyCharacters:     dirtyCharacters(cast),
+		OpenedAreas:         opened,
+		ClosedAreas:         closed,
+		DirtyCharacters:     dirty,
 		DirtyMonsters:       dirtyMonsters(cast),
 		Outcome:             outcome,
 		Posed:               posed,
@@ -762,17 +791,24 @@ func attachMonster(
 //
 // Cleanup is never called first (R7): its first statement nils the conditions
 // that ToData is about to serialize, so a "tidy" snapshot is a lossy one.
-func dirtyCharacters(cast *Participants) []*character.Data {
+//
+// Errors: a sheet that cannot be written whole — the resolution fails rather
+// than hand back a record that silently lost an effect.
+func dirtyCharacters(cast *Participants) ([]*character.Data, error) {
 	var out []*character.Data
 	for _, id := range cast.order {
 		ch, ok := cast.characters[id]
 		if !ok || !ch.IsDirty() {
 			continue
 		}
-		out = append(out, ch.ToData())
+		data, err := ch.ToData()
+		if err != nil {
+			return nil, fmt.Errorf("resolution: write %q: %w", id, err)
+		}
+		out = append(out, data)
 	}
 
-	return out
+	return out, nil
 }
 
 func dirtyMonsters(cast *Participants) []*monster.Data {
@@ -849,12 +885,20 @@ type attachAllInput struct {
 	// writing — a new entry added by somebody who never read this comment
 	// inherits the answer that cannot destroy anything.
 	//
-	// The one entry that asks is the projection, and it is safe there for a
-	// reason that is about the ENTRY rather than about loading: it only reads,
-	// nothing on its path writes a sheet back, and refusing would put one
-	// unreadable blob between a player and the game. The drop is not silent —
-	// the loader warns by name — which is D10: fail loudly means OBSERVABLE,
-	// not refused.
+	// The one entry that asks is participation, and it is safe there for a
+	// reason that is about WHAT IT ANSWERS rather than about loading: its
+	// answer reads no condition at all. Life state comes from hit points and
+	// the sheet's death-save state, and attack-target eligibility follows from
+	// life state, so a dropped condition cannot move any number it returns —
+	// while refusing would put one unreadable blob between a player and the
+	// game. "Nothing writes back" is NOT the reason: session turns the answer
+	// into party defeat and turn removal, which encounter persists. The day a
+	// condition-sensitive field joins ParticipantParticipation, this drop stops
+	// being safe (TestParticipationIgnoresAnUnreadableCondition trips first).
+	// The projection used to ask too, and stopped when a dropped condition
+	// changed the AC its callers write back. The drop is not silent — the
+	// loader warns by name — which is D10: fail loudly means OBSERVABLE, not
+	// refused.
 	//
 	// ONE ATTACH MECHANISM, policy per entry. Both entries reach this same
 	// function, and the difference between them is this field rather than a

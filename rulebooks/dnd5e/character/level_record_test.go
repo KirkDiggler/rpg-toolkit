@@ -74,7 +74,7 @@ func (s *LevelRecordLoadTestSuite) TestTheSynthesizedEntryIsWrittenBackOnTheNext
 	loaded, err := Load(s.ctx, s.sheet(1, nil))
 	s.Require().NoError(err)
 
-	data := loaded.ToData()
+	data := mustToData(s.T(), loaded)
 
 	s.Require().Len(data.Levels, 1,
 		"the sheet leaves the load carrying a record, so it never needs synthesizing twice")
@@ -153,7 +153,7 @@ func (s *LevelRecordLoadTestSuite) TestALoadedSheetDerivesItsLevelFromTheRecordN
 	s.Equal(5, loaded.GetLevel())
 	s.Equal(3, loaded.ProficiencyBonus(),
 		"the stored +2 is ignored; level 5 is +3")
-	s.Equal(3, loaded.ToData().ProficiencyBonus,
+	s.Equal(3, mustToData(s.T(), loaded).ProficiencyBonus,
 		"and the next save corrects the projection")
 }
 

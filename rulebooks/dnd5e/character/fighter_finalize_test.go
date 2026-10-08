@@ -118,7 +118,7 @@ func (s *FighterFinalizeSuite) TestFighterWithArcheryFightingStyle() {
 
 	// Verify character was created correctly
 	s.Equal("Legolas the Archer", char.GetName())
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	s.Equal(classes.Fighter, data.ClassID)
 
 	// Verify fighting style condition was applied

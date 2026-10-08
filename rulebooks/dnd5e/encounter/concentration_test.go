@@ -192,7 +192,7 @@ func (s *RecordCastSuite) TestABreakSaysWhoAndWhyOrIsRefused() {
 		target error
 	}{
 		"no caster":      {func(b *encounter.ConcentrationBreak) { b.Caster = "" }, encounter.ErrNoMember},
-		"unknown caster": {func(b *encounter.ConcentrationBreak) { b.Caster = "nobody" }, encounter.ErrNoMember},
+		"unknown caster": {func(b *encounter.ConcentrationBreak) { b.Caster = "nobody" }, encounter.ErrNotMember},
 		"no spell ref": {
 			func(b *encounter.ConcentrationBreak) { b.Spell.Ref = "" }, encounter.ErrInvalidData,
 		},
@@ -450,7 +450,7 @@ func (s *RecordCastSuite) TestACheckSaysWhatWasAtStakeOrIsRefused() {
 		"no spell ref":  {func(c *encounter.ConcentrationCheck) { c.Spell.Ref = "" }, encounter.ErrInvalidData},
 		"no spell name": {func(c *encounter.ConcentrationCheck) { c.Spell.Name = "" }, encounter.ErrInvalidData},
 		"no saver":      {func(c *encounter.ConcentrationCheck) { c.Save.Saver = "" }, encounter.ErrNoMember},
-		"unknown saver": {func(c *encounter.ConcentrationCheck) { c.Save.Saver = "nobody" }, encounter.ErrNoMember},
+		"unknown saver": {func(c *encounter.ConcentrationCheck) { c.Save.Saver = "nobody" }, encounter.ErrNotMember},
 		"no ability":    {func(c *encounter.ConcentrationCheck) { c.Save.Ability = "" }, encounter.ErrInvalidData},
 		"not a d20":     {func(c *encounter.ConcentrationCheck) { c.Save.Roll = 21 }, encounter.ErrInvalidData},
 		"no dc":         {func(c *encounter.ConcentrationCheck) { c.Save.DC = 0 }, encounter.ErrInvalidData},

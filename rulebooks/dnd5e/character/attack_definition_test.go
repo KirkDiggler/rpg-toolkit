@@ -70,7 +70,6 @@ func (s *CharacterAttackTestSuite) heroSheet(
 		},
 		HitPoints:           14,
 		MaxHitPoints:        14,
-		ArmorClass:          14,
 		ProficiencyBonus:    2,
 		WeaponProficiencies: profs,
 		Inventory:           inventory,
@@ -489,7 +488,7 @@ func (s *CharacterAttackTestSuite) TestMartialArtsBonusAttackIsUnarmedWhateverTh
 	data.ID = id
 	data.ClassID = classes.Monk
 	martialArts, err := conditions.NewMartialArtsCondition(conditions.MartialArtsInput{
-		MemberID: id, MonkLevel: 1,
+		MemberID: id,
 	}).ToJSON()
 	s.Require().NoError(err)
 	data.Conditions = append(data.Conditions, martialArts)
@@ -633,7 +632,7 @@ func (s *CharacterAttackTestSuite) TestShillelaghBindingSurvivesReloadButNotRele
 	other, err := AssembleAttack(c, &AssembleAttackInput{Slot: SlotOffHand})
 	s.Require().NoError(err)
 	s.Equal("1d4", other.Attack.Damage[0].Dice)
-	reloaded := s.load(c.ToData())
+	reloaded := s.load(mustToData(s.T(), c))
 	attack, err = AssembleAttack(reloaded, &AssembleAttackInput{Slot: SlotMainHand})
 	s.Require().NoError(err)
 	s.Equal("1d8", attack.Attack.Damage[0].Dice)
@@ -677,7 +676,7 @@ func (s *CharacterAttackTestSuite) TestAssembleAttack_CompetingOffersFailClosed(
 	)
 	data.ClassID = classes.Monk
 	monk := s.load(data)
-	martialArts := conditions.NewMartialArtsCondition(conditions.MartialArtsInput{MemberID: monk.id, MonkLevel: 1})
+	martialArts := conditions.NewMartialArtsCondition(conditions.MartialArtsInput{MemberID: monk.id})
 	shillelagh, err := conditions.NewShillelaghCondition(monk.id, conditions.ShillelaghConfig{
 		Weapons:    []conditions.HeldWeapon{{Slot: string(SlotMainHand), ItemID: string(weapons.Club)}},
 		WeaponSlot: string(SlotMainHand),

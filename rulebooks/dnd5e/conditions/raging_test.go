@@ -14,7 +14,9 @@ import (
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -48,8 +50,6 @@ type ragingConditionInput struct {
 func newRagingCondition(input ragingConditionInput) *RagingCondition {
 	return &RagingCondition{
 		CharacterID: input.CharacterID,
-		DamageBonus: input.DamageBonus,
-		Level:       input.Level,
 		Source:      input.Source,
 	}
 }
@@ -428,7 +428,7 @@ func (s *RagingConditionTestSuite) executeDamageChain(
 		Components:       []dnd5eEvents.DamageComponent{weaponComp, abilityComp},
 		WeaponDamageType: damage.Fire,
 		IsCritical:       true,
-	}, swing{AbilityUsed: abilities.STR, IsMelee: true})
+	}, swing{ClassLevels: classLevels(classes.Barbarian, 1), AbilityUsed: abilities.STR, IsMelee: true})
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
@@ -472,7 +472,7 @@ func (s *RagingConditionTestSuite) executeDamageChainWithAbility(
 		TargetID:         "goblin-1",
 		Components:       []dnd5eEvents.DamageComponent{weaponComp, abilityComp},
 		WeaponDamageType: damage.Slashing,
-	}, swing{AbilityUsed: abilityUsed, IsMelee: isMelee})
+	}, swing{ClassLevels: classLevels(classes.Barbarian, 1), AbilityUsed: abilityUsed, IsMelee: isMelee})
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
@@ -509,7 +509,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionUsesMarkedWeaponType() {
 			},
 			DamageType: damage.Slashing,
 		}},
-	}, swing{AbilityUsed: abilities.STR, IsMelee: true})
+	}, swing{ClassLevels: classLevels(classes.Barbarian, 1), AbilityUsed: abilities.STR, IsMelee: true})
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	modified, err := dnd5eEvents.DamageChain.On(s.bus).PublishWithChain(s.ctx, withEventFrame(damageEvent), chain)
 	s.Require().NoError(err)
@@ -846,14 +846,15 @@ func (s *RagingConditionTestSuite) TestRagingConditionIgnoresOtherCharacterComba
 	s.True(raging.IsApplied(), "rage should still be applied")
 }
 
-// executeDamageChainAgainstTarget creates a damage chain event where a specific target is hit
-// and executes it through the damage chain topic. Used to test resistance.
-func (s *RagingConditionTestSuite) executeDamageChainAgainstTarget(
+// strikeAgainst runs both folds of one swing from attackerID at targetID, the
+// way the target step does: the dealt fold first, then the incoming fold over
+// what it dealt. It returns the dealt fold's event and what the target
+// received.
+func (s *RagingConditionTestSuite) strikeAgainst(
 	attackerID, targetID string,
 	baseDamage int,
 	damageType damage.Type,
-) (*dnd5eEvents.DamageChainEvent, error) {
-	// Create weapon component with base damage
+) (*dnd5eEvents.DamageChainEvent, *received) {
 	weaponComp := dnd5eEvents.DamageComponent{
 		Source:     dnd5eEvents.DamageSourceWeapon,
 		Properties: []damage.Property{damage.AddsAttackAbilityModifier},
@@ -864,61 +865,55 @@ func (s *RagingConditionTestSuite) executeDamageChainAgainstTarget(
 		DamageType: damageType,
 	}
 
-	damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
+	damageEvent := withEventFrame(swungDamage(&dnd5eEvents.DamageChainEvent{
 		AttackerID: attackerID,
 		TargetID:   targetID,
 		Components: []dnd5eEvents.DamageComponent{weaponComp},
-		IsCritical: false,
-	}, swing{AbilityUsed: abilities.STR})
+	}, swing{ClassLevels: classLevels(classes.Barbarian, 1), AbilityUsed: abilities.STR}))
 
-	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
-	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
-
-	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, withEventFrame(damageEvent), chain)
-	if err != nil {
-		return nil, err
-	}
-
-	return modifiedChain.Execute(s.ctx, damageEvent)
+	dealt, err := foldDealt(s.ctx, s.bus, damageEvent)
+	s.Require().NoError(err)
+	got, err := foldIncoming(s.ctx, s.bus, damageEvent.Frame, dealt.Components)
+	s.Require().NoError(err)
+	return dealt, got
 }
 
+// THE SPLIT. A strike against a raging barbarian folds no resistance on the
+// dealt fold; the resistance appears only on the incoming fold, as the
+// target's own answer, and the settlement halves the type.
 func (s *RagingConditionTestSuite) TestRagingConditionAppliesResistanceToPhysicalDamage() {
-	// Create a raging condition for barbarian-1
 	raging := newRagingCondition(ragingConditionInput{
 		CharacterID: "barbarian-1",
 		DamageBonus: 2,
 		Level:       5,
 		Source:      "dnd5e:features:rage",
 	})
+	s.Require().NoError(raging.Apply(s.ctx, s.bus))
 
-	// Apply it to subscribe to damage chain
-	err := raging.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-
-	// Test each physical damage type
-	physicalTypes := []damage.Type{damage.Bludgeoning, damage.Piercing, damage.Slashing}
-
-	for _, dmgType := range physicalTypes {
+	for _, dmgType := range []damage.Type{damage.Bludgeoning, damage.Piercing, damage.Slashing} {
 		s.Run(string(dmgType), func() {
-			// Execute damage chain with the barbarian as the target
-			finalEvent, err := s.executeDamageChainAgainstTarget("goblin-1", "barbarian-1", 10, dmgType)
-			s.Require().NoError(err)
+			dealt, got := s.strikeAgainst("goblin-1", "barbarian-1", 10, dmgType)
 
-			// Should have 2 components: weapon damage and resistance multiplier
-			s.Require().Len(finalEvent.Components, 2, "Should have weapon and resistance components")
+			for _, component := range dealt.Components {
+				s.Nil(component.Multiplier, "the dealt fold carries no target answer")
+				if ref := component.Roll.Source.Ref; ref != nil {
+					s.NotEqual(refs.Conditions.Raging().String(), ref.String(),
+						"the target's Rage adds nothing to the goblin's dealt damage")
+				}
+			}
 
-			// Verify weapon component
-			s.Equal(dnd5eEvents.DamageSourceWeapon, finalEvent.Components[0].Source)
-			s.Equal(10, finalEvent.Components[0].Total())
-
-			// Verify resistance component was added with 0.5 multiplier
-			s.Equal(dnd5eEvents.DamageSourceCondition, finalEvent.Components[1].Source)
-			s.Require().NotNil(finalEvent.Components[1].Multiplier)
-			s.Equal(0.5, *finalEvent.Components[1].Multiplier, "Resistance should halve damage")
+			s.Equal([]dnd5eEvents.DamageMultiplier{{
+				Category:   dnd5eEvents.DamageSourceCondition,
+				Source:     dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging"},
+				DamageType: dmgType,
+				Factor:     dnd5eEvents.DamageFactorResistance,
+			}}, got.Folded.Multipliers, "the resistance is the target's answer on the incoming fold")
+			s.Equal(5, got.taken(), "10 resisted lands as 5")
 		})
 	}
 }
 
+// One resistance per physical type dealt, none for the fire beside it.
 func (s *RagingConditionTestSuite) TestRagingConditionResistanceUsesComponentTypes() {
 	raging := newRagingCondition(ragingConditionInput{
 		CharacterID: "barbarian-1",
@@ -928,64 +923,45 @@ func (s *RagingConditionTestSuite) TestRagingConditionResistanceUsesComponentTyp
 	})
 	s.Require().NoError(raging.Apply(s.ctx, s.bus))
 
-	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID: "goblin-1",
-		TargetID:   "barbarian-1",
-		Components: []dnd5eEvents.DamageComponent{
-			{
-				Source:     dnd5eEvents.DamageSourceWeapon,
-				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
-				Roll: dnd5eEvents.RollComponent{
-					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
-					Dice:   testDiceTrace(8, 8),
-				},
-				DamageType: damage.Slashing,
+	got, err := foldIncoming(s.ctx, s.bus, testAttackFrame("goblin-1", "barbarian-1"), []dnd5eEvents.DamageComponent{
+		{
+			Source: dnd5eEvents.DamageSourceWeapon,
+			Roll: dnd5eEvents.RollComponent{
+				Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+				Dice:   testDiceTrace(8, 8),
 			},
-			{
-				Source: dnd5eEvents.DamageSourceFeature,
-				Roll: dnd5eEvents.RollComponent{
-					// Test-owned fire feature: the catalog has no real feature
-					// to borrow for synthetic fire damage.
-					Source: dnd5eEvents.RollSource{
-						Ref:  &core.Ref{Module: "dnd5e", Type: "features", ID: "fire_damage"},
-						Name: "Fire Damage",
-					},
-					Dice: testDiceTrace(7, 7),
-				},
-				DamageType: damage.Fire,
-			},
+			DamageType: damage.Slashing,
 		},
-	}
-
-	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
-	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
-	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, withEventFrame(damageEvent), chain)
+		{
+			Source: dnd5eEvents.DamageSourceFeature,
+			Roll: dnd5eEvents.RollComponent{
+				// Test-owned fire feature: the catalog has no real feature
+				// to borrow for synthetic fire damage.
+				Source: dnd5eEvents.RollSource{
+					Ref:  &core.Ref{Module: "dnd5e", Type: "features", ID: "fire_damage"},
+					Name: "Fire Damage",
+				},
+				Dice: testDiceTrace(7, 7),
+			},
+			DamageType: damage.Fire,
+		},
+	})
 	s.Require().NoError(err)
-	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
-	s.Require().NoError(err)
 
-	s.Require().Len(finalEvent.Components, 3)
-	resistance := finalEvent.Components[2]
-	s.Equal(dnd5eEvents.DamageSourceCondition, resistance.Source)
-	s.Equal(damage.Slashing, resistance.DamageType)
-	s.Require().NotNil(resistance.Multiplier)
-	s.Equal(0.5, *resistance.Multiplier)
+	s.Require().Len(got.Folded.Multipliers, 1)
+	s.Equal(damage.Slashing, got.Folded.Multipliers[0].DamageType)
+	s.Equal(4+7, got.taken(), "slashing 8 halves to 4; fire 7 lands whole")
 }
 
 func (s *RagingConditionTestSuite) TestRagingConditionDoesNotResistNonPhysicalDamage() {
-	// Create a raging condition for barbarian-1
 	raging := newRagingCondition(ragingConditionInput{
 		CharacterID: "barbarian-1",
 		DamageBonus: 2,
 		Level:       5,
 		Source:      "dnd5e:features:rage",
 	})
+	s.Require().NoError(raging.Apply(s.ctx, s.bus))
 
-	// Apply it to subscribe to damage chain
-	err := raging.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-
-	// Test non-physical damage types
 	nonPhysicalTypes := []damage.Type{
 		damage.Fire, damage.Cold, damage.Lightning, damage.Thunder,
 		damage.Acid, damage.Poison, damage.Necrotic, damage.Radiant,
@@ -994,49 +970,71 @@ func (s *RagingConditionTestSuite) TestRagingConditionDoesNotResistNonPhysicalDa
 
 	for _, dmgType := range nonPhysicalTypes {
 		s.Run(string(dmgType), func() {
-			// Execute damage chain with the barbarian as the target
-			finalEvent, err := s.executeDamageChainAgainstTarget("goblin-1", "barbarian-1", 10, dmgType)
-			s.Require().NoError(err)
-
-			// Should only have 1 component: weapon damage (no resistance)
-			s.Require().Len(finalEvent.Components, 1, "Should only have weapon component, no resistance")
-
-			// Verify weapon component
-			s.Equal(dnd5eEvents.DamageSourceWeapon, finalEvent.Components[0].Source)
-			s.Equal(10, finalEvent.Components[0].Total())
+			_, got := s.strikeAgainst("goblin-1", "barbarian-1", 10, dmgType)
+			s.Empty(got.Folded.Multipliers, "Rage resists only bludgeoning, piercing and slashing")
+			s.Equal(10, got.taken())
 		})
 	}
 }
 
 func (s *RagingConditionTestSuite) TestRagingConditionResistanceOnlyAffectsOwnCharacter() {
-	// Create a raging condition for barbarian-1
 	raging := newRagingCondition(ragingConditionInput{
 		CharacterID: "barbarian-1",
 		DamageBonus: 2,
 		Level:       5,
 		Source:      "dnd5e:features:rage",
 	})
+	s.Require().NoError(raging.Apply(s.ctx, s.bus))
 
-	// Apply it to subscribe to damage chain
-	err := raging.Apply(s.ctx, s.bus)
+	_, got := s.strikeAgainst("goblin-1", "barbarian-2", 10, damage.Slashing)
+	s.Empty(got.Folded.Multipliers, "Rage answers for its own holder only")
+	s.Equal(10, got.taken())
+}
+
+// A raging barbarian's own Rage bonus folds on the dealt fold, and the same
+// Rage answers nothing on its target's incoming fold.
+func (s *RagingConditionTestSuite) TestARagingAttackersBonusFoldsOnTheDealtFoldOnly() {
+	raging := newRagingCondition(ragingConditionInput{
+		CharacterID: "barbarian-1", DamageBonus: 2, Level: 5, Source: "dnd5e:features:rage",
+	})
+	s.Require().NoError(raging.Apply(s.ctx, s.bus))
+
+	event := swungDamage(&dnd5eEvents.DamageChainEvent{
+		AttackerID:       "barbarian-1",
+		TargetID:         "goblin-1",
+		WeaponDamageType: damage.Slashing,
+		Components: []dnd5eEvents.DamageComponent{{
+			Source:     dnd5eEvents.DamageSourceWeapon,
+			Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+			Roll: dnd5eEvents.RollComponent{
+				Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Greataxe(), Name: "Greataxe"},
+				Dice:   testDiceTrace(12, 7),
+			},
+			DamageType: damage.Slashing,
+		}},
+	}, swing{
+		WeaponRef: refs.Weapons.Greataxe(), IsMelee: true, AbilityUsed: abilities.STR,
+		ClassLevels: classLevels(classes.Barbarian, 5),
+	})
+	dealt, err := foldDealt(s.ctx, s.bus, event)
 	s.Require().NoError(err)
 
-	// Execute damage chain with a DIFFERENT character as the target
-	finalEvent, err := s.executeDamageChainAgainstTarget("goblin-1", "barbarian-2", 10, damage.Slashing)
+	var bonus int
+	for _, component := range dealt.Components {
+		if ref := component.Roll.Source.Ref; ref != nil && ref.String() == refs.Conditions.Raging().String() {
+			bonus += component.Total()
+		}
+	}
+	s.Equal(2, bonus, "Rage's +2 rides the dealt fold")
+
+	got, err := foldIncoming(s.ctx, s.bus, event.Frame, dealt.Components)
 	s.Require().NoError(err)
-
-	// Should only have 1 component: weapon damage (no resistance for other characters)
-	s.Require().Len(finalEvent.Components, 1, "Should only have weapon component, no resistance for other characters")
-
-	// Verify weapon component
-	s.Equal(dnd5eEvents.DamageSourceWeapon, finalEvent.Components[0].Source)
-	s.Equal(10, finalEvent.Components[0].Total())
+	s.Empty(got.Folded.Multipliers, "the goblin is not raging, and the attacker's Rage answers nothing for it")
+	s.Equal(9, got.taken())
 }
 
 func (s *RagingConditionTestSuite) TestRemoveContinuesOnStaleSubscription() {
-	// Apply a raging condition (creates 9 subscriptions: damage received, turn end,
-	// condition applied, damage chain, rest, saving throw chain, ability check chain,
-	// combat end, post-attack-roll chain)
+	// Apply a raging condition; it subscribes to every topic it answers on.
 	raging := newRagingCondition(ragingConditionInput{
 		CharacterID: "barbarian-1",
 		DamageBonus: 2,
@@ -1046,7 +1044,8 @@ func (s *RagingConditionTestSuite) TestRemoveContinuesOnStaleSubscription() {
 
 	err := raging.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
-	s.Require().Len(raging.subscriptionIDs, 9)
+	s.Require().NotEmpty(raging.subscriptionIDs)
+	total := len(raging.subscriptionIDs)
 
 	// Wrap the bus so that the first subscription ID fails on unsubscribe
 	failBus := &errorOnUnsubscribeBus{
@@ -1057,7 +1056,7 @@ func (s *RagingConditionTestSuite) TestRemoveContinuesOnStaleSubscription() {
 	// Remove should return an error but still clean up all other subscriptions
 	err = raging.Remove(s.ctx, failBus)
 	s.Require().Error(err, "Remove should report the failed unsubscribe")
-	s.Contains(err.Error(), "1/9", "error should report count of failures vs total")
+	s.Contains(err.Error(), fmt.Sprintf("1/%d", total), "error should report count of failures vs total")
 
 	// Condition should be fully cleaned up despite the error
 	s.Nil(raging.subscriptionIDs, "subscriptionIDs should be nil after Remove")
@@ -1476,4 +1475,101 @@ func (s *RagingConditionTestSuite) TestANegativeRoundNeverBecomesTheAnchor() {
 	s.Require().Nil(removed())
 	s.Equal(2, raging.RoundActivated)
 	s.Equal(1, raging.TurnsActive, "and its first counted turn is that one, not a number derived from -5")
+}
+
+// TestRageEndsWhenTheBarbarianDropsToZero is rpg-toolkit#1965 tier 1 #3.
+//
+// RAW: rage ends early if you are knocked unconscious. The rage used to listen
+// for a ConditionApplied fact typed Unconscious, which nothing has published
+// since life state moved onto the sheet (DeathSaveState, combat.LifeState) —
+// so a barbarian at 0 hit points kept raging. The fact that does say "this
+// member went down" is DamageTaken with DroppedToZero, published by every
+// machine that applies damage.
+func (s *RagingConditionTestSuite) TestRageEndsWhenTheBarbarianDropsToZero() {
+	raging, removed := s.ragingWithRemovalWatch()
+
+	s.Require().NoError(dnd5eEvents.DamageTakenTopic.On(s.bus).Publish(s.ctx, &dnd5eEvents.DamageTakenEvent{
+		MemberID: "barbarian-1", Amount: 14, DamageType: damage.Slashing, DroppedToZero: true,
+	}))
+
+	s.Require().NotNil(removed(), "a barbarian at 0 hit points is not raging")
+	s.Equal("barbarian-1", removed().MemberID)
+	s.Equal(refs.Conditions.Raging().String(), removed().ConditionRef)
+	s.Equal("unconscious", removed().Reason)
+	s.False(raging.IsApplied())
+}
+
+// TestRageSurvivesDamageThatDoesNotDropTheBarbarian pins the other side: being
+// hurt is not going down, and somebody else going down is not this rage's
+// business.
+func (s *RagingConditionTestSuite) TestRageSurvivesDamageThatDoesNotDropTheBarbarian() {
+	raging, removed := s.ragingWithRemovalWatch()
+	damageTaken := dnd5eEvents.DamageTakenTopic.On(s.bus)
+
+	s.Require().NoError(damageTaken.Publish(s.ctx, &dnd5eEvents.DamageTakenEvent{
+		MemberID: "barbarian-1", Amount: 5, DamageType: damage.Slashing,
+	}))
+	s.Require().NoError(damageTaken.Publish(s.ctx, &dnd5eEvents.DamageTakenEvent{
+		MemberID: "goblin-1", Amount: 7, DamageType: damage.Slashing, DroppedToZero: true,
+	}))
+
+	s.Nil(removed())
+	s.True(raging.IsApplied())
+}
+
+// TestASavingThrowFrameFoldsOnTheDamageChain answers, for rpg-toolkit#1965
+// tier 1 #1, whether DamageChainEvent forces attack-only facts on a spell or
+// save damage source: it does not.
+//
+// A contest's damage framed as a SAVING THROW — the caster as actor, the saver
+// as target, weapon pool known false, no weapon dice or type — folds without
+// error. The target's Rage still resists the bludgeoning it takes, on the
+// incoming fold, and the
+// caster's Sneak Attack, an attacker-side rule asked by the same fold, answers
+// DoesNotApply rather than Depends because the weapon pool is known. Leave the
+// weapon pool unknown and Sneak Attack answers Depends and fails the fold, so a
+// contest's frame must state it.
+func (s *RagingConditionTestSuite) TestASavingThrowFrameFoldsOnTheDamageChain() {
+	raging := newRagingCondition(ragingConditionInput{
+		CharacterID: "barbarian-1", DamageBonus: 2, Level: 5, Source: "dnd5e:features:rage",
+	})
+	s.Require().NoError(raging.Apply(s.ctx, s.bus))
+	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "caster-1"})
+	s.Require().NoError(sneak.Apply(s.ctx, s.bus))
+
+	event := dnd5eEvents.NewDamageChainEvent(dnd5eEvents.DamageChainInput{
+		AttackerID: "caster-1",
+		TargetID:   "barbarian-1",
+		Components: []dnd5eEvents.DamageComponent{{
+			Source:     dnd5eEvents.DamageSourceSpell,
+			Roll:       dnd5eEvents.RollComponent{Dice: testDiceTrace(8, 10)},
+			DamageType: damage.Bludgeoning,
+		}},
+		Frame: contributions.Frame{
+			Actor:            "caster-1",
+			ActorClassLevels: classLevels(classes.Rogue, 1),
+			Target:           contributions.Known("barbarian-1"),
+			Action: contributions.ActionFacts{
+				Roll:       contributions.Known(contributions.RollKindSavingThrow),
+				WeaponPool: contributions.Known(false),
+			},
+		},
+	})
+
+	final, err := foldDealt(s.ctx, s.bus, event)
+	s.Require().NoError(err)
+
+	for _, component := range final.Components {
+		if ref := component.Roll.Source.Ref; ref != nil {
+			s.NotEqual(refs.Conditions.SneakAttack().String(), ref.String(),
+				"Sneak Attack adds to weapon attacks, not to a spell's save damage")
+		}
+	}
+
+	got, err := foldIncoming(s.ctx, s.bus, event.Frame, final.Components)
+	s.Require().NoError(err)
+	s.Require().Len(got.Folded.Multipliers, 1)
+	s.Equal(refs.Conditions.Raging(), got.Folded.Multipliers[0].Source.Ref,
+		"the raging target resists bludgeoning whatever dealt it")
+	s.Equal(5, got.taken())
 }

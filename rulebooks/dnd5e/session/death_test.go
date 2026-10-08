@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
@@ -68,7 +69,7 @@ func cryptWorld(t fataler) *encounter.EncounterData {
 		occluders = append(occluders, spatial.Position{X: 5, Y: float64(y)})
 	}
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
@@ -563,9 +564,13 @@ var errBoundaryCharacterSave = errors.New("the boundary character save was refus
 // never committed. The stored world and NPC sheet stay at their pre-call truth,
 // while the already-written action-economy state remains durable.
 func (s *DeathTestSuite) TestAKillingAttackReportsTheNestedBoundarySaveFailure() {
+	// A barbarian, so the rage has levels to scale from: it reads them off
+	// her level record at each swing (rpg-project#538), never a copy.
 	alice := armedFighter("alice")
+	alice.ClassID = classes.Barbarian
+	alice.Levels = syntheticLevels(classes.Barbarian, 3)
 	rage, err := (&conditions.RagingCondition{
-		CharacterID: "alice", DamageBonus: 2, Level: 1, Source: "dnd5e:features:rage",
+		CharacterID: "alice", Source: "dnd5e:features:rage",
 	}).ToJSON()
 	s.Require().NoError(err)
 	alice.Conditions = []json.RawMessage{rage}
@@ -840,27 +845,26 @@ func (s *DeathTestSuite) TestTheAnswerIsAskedAgainNotRemembered() {
 	s.Require().NoError(err, "she is up, so she walks, and nothing had to be told")
 }
 
-// TestAMemberWithNoSheetIsUp is the case every existing fixture is.
-//
-// Authored content placed straight into a world has no sheet until something
-// spawns it — the ambush's ogre is exactly that — and there is nothing to read
-// hit points off. Reporting it DOWNED would kill every monster ever authored
-// into a tomb; failing the verb would make every one of those worlds
-// unplayable. So no sheet means UP, and this is the fight that has to keep
-// starting.
-func (s *DeathTestSuite) TestAMemberWithNoSheetIsUp() {
+// TestAMemberWithNoSheetIsRefusedNotWalkedPast: authored content placed
+// straight into a world with no stat block behind it — the ambush's ogre,
+// unspawned — used to be the case every fixture was, answered UP because there
+// was no hit point to read. It no longer reaches standing at all. The world
+// asks every member's sheet how fast it walks and how far it sees at the
+// moment it uses either (rpg-project#538), and a member the verb holds no
+// sheet for is refused by name rather than answered with a speed or a range
+// nobody stated. Nothing died, and nothing was walked.
+func (s *DeathTestSuite) TestAMemberWithNoSheetIsRefusedNotWalkedPast() {
 	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
 		Session: "sess", Encounter: "world", World: ambushWorld(s.T()),
 	})
 	s.Require().NoError(err)
 	s.stream.published = nil
 
-	out, err := s.mgr.Move(context.Background(), &session.MoveInput{
+	_, err = s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
 		Path: ambushPath()[:3],
 	})
-	s.Require().NoError(err, "a sheetless monster is not a broken world")
-	s.Require().NotNil(out.Formed, "and it is an enemy, not a casualty")
+	s.Require().ErrorIs(err, session.ErrNoSheet, "a sheetless monster is a member nobody can read")
 	s.Empty(s.eventsOfKind(session.EventDowned), "nothing died")
 }
 

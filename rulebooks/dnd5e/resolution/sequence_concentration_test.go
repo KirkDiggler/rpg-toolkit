@@ -50,6 +50,7 @@ func (s *ConcentrationTestSuite) multiattack(
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		Equipment:    noHandsAreObserved{},
+		Sheets:       noSheetsAsked{},
 		World:        fixtures.world(),
 		Participants: []Participant{{Character: hero}, {Monster: fixtures.wolfData()}},
 		Machine:      machine,

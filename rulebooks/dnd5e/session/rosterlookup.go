@@ -106,21 +106,27 @@ func rosterIDs(roster []encounter.Member) []encounter.MemberID {
 // same for everybody, while a stance is a fact about the pair. The viewer is
 // the member the View was taken for.
 //
-// AN UNKNOWN PAIR IS EMPTY, not "neutral". The composition reports known=false
-// for a subject who is not a member, and neutral for one in no faction; the
-// first is an absence and the second is an answer, and collapsing them would
-// tell a client a departed creature is on nobody's side.
+// NO SIDE IS EMPTY, not "neutral". The composition answers
+// [encounter.StanceNone] for a member in no faction, which a world NPC is; the
+// sighting carries that as the empty stance its own contract names, so a
+// client never paints a vendor the colour of a truce. A viewer or subject the
+// composition refuses (ErrNoMember, ErrNotMember) is an error, never a quiet
+// gap: every subject here is a roster member, so a refusal means the viewer
+// itself is not one.
 func believedStances(
 	enc *encounter.Encounter, viewer string, roster []encounter.Member,
-) map[string]string {
+) (map[string]string, error) {
 	out := make(map[string]string, len(roster))
 	for _, m := range roster {
-		stance, known := enc.BelievedStance(encounter.MemberID(viewer), m.ID)
-		if !known {
+		stance, err := enc.BelievedStance(encounter.MemberID(viewer), m.ID)
+		if err != nil {
+			return nil, translate(err)
+		}
+		if stance == encounter.StanceNone {
 			continue
 		}
 		out[string(m.ID)] = string(stance)
 	}
 
-	return out
+	return out, nil
 }
