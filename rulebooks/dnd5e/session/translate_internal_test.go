@@ -218,6 +218,26 @@ func TestTranslateResolutionLetsNoResolutionSentinelThrough(t *testing.T) {
 // resolution wraps the seam's refusal in its own sentinel for what it was
 // doing at the time. The host's repair is the sheet's, so the seam's own word
 // wins, and the resolution sentinel it was wrapped in stays unreachable.
+// TestTranslateAttackKeepsTheDeliveryRefusal pins the one place the word for
+// resolution's out-of-range refusal depends on the verb (rpg-project#539): a
+// swing's delivery that cannot reach is ErrOutOfReach, while the same
+// sentinel on a cast, a heal or a known target is ErrOutOfRange. Anything
+// else a swing returns falls through to translateResolution unchanged.
+func TestTranslateAttackKeepsTheDeliveryRefusal(t *testing.T) {
+	swing := translateAttack(fmt.Errorf("delivery: %w", resolution.ErrOutOfRange))
+	require.ErrorIs(t, swing, ErrOutOfReach)
+	require.NotErrorIs(t, swing, ErrOutOfRange, "a swing's delivery keeps its own word")
+	require.NotErrorIs(t, swing, resolution.ErrOutOfRange, "and the inner sentinel does not leak")
+
+	cast := translateResolution(fmt.Errorf("cast: %w", resolution.ErrOutOfRange))
+	require.ErrorIs(t, cast, ErrOutOfRange)
+	require.NotErrorIs(t, cast, ErrOutOfReach, "a cast, a heal or a known target is out of range")
+
+	other := translateAttack(resolution.ErrCannotPay)
+	require.ErrorIs(t, other, ErrCannotAfford, "every other sentinel is translateResolution's")
+	require.NotErrorIs(t, other, ErrOutOfReach)
+}
+
 func TestASheetTheSeamCouldNotReadIsTheCause(t *testing.T) {
 	for _, own := range []error{
 		ErrNoCharacter, ErrBadCharacter, ErrNoSheet, ErrBadRepository, ErrInvalidSession, ErrBadAttack,

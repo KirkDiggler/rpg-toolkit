@@ -486,6 +486,9 @@ func (m *Manager) poseAttackWindow(
 		if err := m.saveDirty(ctx, scope, out); err != nil {
 			return nil, err
 		}
+		// Called for uniformity; nothing can arrive here today. The swing stopped
+		// before any damage, an attack's price ends no concentration, and only a
+		// finished cast opens an area, so resolution reports no area change.
 		if err := m.landAreas(scope.enc, scope, out); err != nil {
 			return nil, err
 		}
@@ -542,6 +545,9 @@ func (m *Manager) poseAttackWindow(
 	if err := m.saveDirty(ctx, scope, out); err != nil {
 		return nil, fmt.Errorf("attack: %w", err)
 	}
+	// Called for uniformity; nothing can arrive here today. The swing stopped
+	// before any damage, an attack's price ends no concentration, and only a
+	// finished cast opens an area, so resolution reports no area change.
 	if err := m.landAreas(scope.enc, scope, out); err != nil {
 		return nil, fmt.Errorf("attack: %w", err)
 	}
@@ -1233,6 +1239,11 @@ func (m *Manager) castFor(
 // Closed before opened, as [resolution.Output.ClosedAreas] states: a recast
 // ends the old area under the id the new one takes. No area set is copied
 // back; the encounter holds the only one.
+//
+// IT CONSUMES WHAT IT LANDS: both lists are emptied on out once applied, so a
+// path that reaches it twice for one output (a resumed walk's movement arm
+// and its caller) lands each change once. A second AddSightArea of the same
+// area would be refused as already open.
 func (m *Manager) landAreas(enc *encounter.Encounter, scope *writeScope, out *resolution.Output) error {
 	if len(out.ClosedAreas) == 0 && len(out.OpenedAreas) == 0 {
 		return nil
@@ -1247,6 +1258,7 @@ func (m *Manager) landAreas(enc *encounter.Encounter, scope *writeScope, out *re
 			return translate(err)
 		}
 	}
+	out.ClosedAreas, out.OpenedAreas = nil, nil
 	if err := enc.RefreshPerception(); err != nil {
 		return translate(err)
 	}

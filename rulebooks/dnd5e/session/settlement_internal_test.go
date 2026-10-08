@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
 
 // SettlementSuite drives commit's settlement read inside one write scope,
@@ -132,4 +133,29 @@ func (s *SettlementSuite) TestAMonsterThatFellAndThenExitedStillGrants() {
 		s.Equal("goblin", beat.Experience.Member)
 	}
 	s.True(told, "the grant is told")
+}
+
+// TestAnOutputLandsItsAreasOnce: a resumed walk lands its movement output in
+// recordMovementResults, and nothing else may land the same output again. An
+// opened area landed twice would be refused as already open, so landAreas
+// consumes what it applies and a second call for the same output is a no-op.
+func (s *SettlementSuite) TestAnOutputLandsItsAreasOnce() {
+	ctx := context.Background()
+	scope, err := s.mgr.openForChange(ctx, "sess")
+	s.Require().NoError(err)
+	out := &resolution.Output{OpenedAreas: []encounter.SightAreaInput{{
+		ID: "cloud", SourceID: "fighter", Name: "Fog Cloud",
+		Center: encounter.HexCellAt(encounter.HexesArePointyTop(), 6, 3), RadiusFeet: 20,
+	}}}
+
+	s.Require().NoError(s.mgr.landAreas(scope.enc, scope, out))
+	s.Require().NoError(s.mgr.landAreas(scope.enc, scope, out), "the same output landed again changes nothing")
+	s.Empty(out.OpenedAreas, "landed changes are consumed")
+	clouds := 0
+	for _, area := range scope.enc.WorldView().SightAreas {
+		if area.ID == "cloud" {
+			clouds++
+		}
+	}
+	s.Equal(1, clouds, "the cloud is open once")
 }

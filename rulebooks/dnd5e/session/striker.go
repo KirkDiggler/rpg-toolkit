@@ -148,14 +148,25 @@ func (s strikerSeam) Strike(
 			if err := s.m.saveDirty(ctx, s.scope, out); err != nil {
 				return err
 			}
-			if err := s.m.landAreas(enc, s.scope, out); err != nil {
-				return err
-			}
 			p := pendingAttackWindowPayload{Attacker: string(attacker), Target: string(target), Definition: definition, Components: attackerData.Actions}
 			if out.Posed.Sequence != nil {
 				if err := s.m.recordPendingSequence(s.scope, &p, *out.Posed.Sequence); err != nil {
 					return err
 				}
+			}
+			// The completed swings are told; a swing that settled and then
+			// stopped to ask is NOT, until the answer resumes the sequence.
+			// An area that swing closed waits with it, carried on the window,
+			// so the story never tells "area ended" before its cause. A pose
+			// before the roll has no unrecorded swing: everything that could
+			// have closed an area is already told, and the areas land now.
+			// (Today that branch carries none: the only before-roll offer,
+			// Warding Flare, depends on the target and not the swing, so a
+			// sequence would have posed it on its first swing.)
+			if !out.Posed.BeforeRoll {
+				p.holdAreas(out)
+			} else if err := s.m.landAreas(enc, s.scope, out); err != nil {
+				return err
 			}
 			if err := posePendingAttackWindow(s.scope, out.Posed, p); err != nil {
 				return err

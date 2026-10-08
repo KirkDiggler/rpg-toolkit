@@ -7,71 +7,103 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
-// beatKinds are the composition's exported beat kinds this package reads.
-// Listed by constant, so the set follows the composition's own words.
-var beatKinds = []string{
-	encounter.BeatSceneOpened, encounter.BeatJoined, encounter.BeatExited, encounter.BeatMoved,
-	encounter.BeatTick, encounter.BeatTurnEnded, encounter.BeatFightStarted, encounter.BeatFightEnded,
-	encounter.BeatTransferred, encounter.BeatEnded, encounter.BeatActivated, encounter.BeatActivationResult,
-	encounter.BeatDoor, encounter.BeatInteracted, encounter.BeatLooted, encounter.BeatHeld,
-	encounter.BeatDropped, encounter.BeatStance, encounter.BeatArrived, encounter.BeatCast,
-	encounter.BeatCastMissed, encounter.BeatCastWarded, encounter.BeatSaved, encounter.BeatConcentrationEnded,
-	encounter.BeatRoomRevealed, encounter.BeatConcealmentRevealed, encounter.BeatDiscoveryChecked,
-	encounter.BeatSighted, encounter.BeatIntimidated, encounter.BeatPersuaded, encounter.BeatAnswered,
-	encounter.BeatTempered, encounter.BeatStayed, encounter.BeatWindowOpened, encounter.BeatRollWindowOpened,
-	string(encounter.OutcomeStruck), string(encounter.OutcomeMissed), string(encounter.OutcomeDeathSave),
-	string(encounter.OutcomeDown), string(encounter.OutcomeWarded), string(encounter.OutcomeExperienceGained),
-	string(encounter.OutcomeBought), string(encounter.OutcomeSold),
+// encounterModule is the composition whose exported beat kinds this package
+// reads.
+const encounterModule = "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+
+// coincidentalWords are string literals in this package's source that spell a
+// beat kind and are not one, each with the reason. Keyed by file, so the same
+// word anywhere else is still flagged.
+var coincidentalWords = map[string]map[string]string{
+	"convert.go":        {"held": "a sighting's status on the wire, held versus current"},
+	"declaration_id.go": {"cast": "the cast declaration's selector variant"},
+}
+
+// beatKindsOfTheEncounter derives the composition's beat kinds from its own
+// source: every exported Beat* constant, and every Outcome* constant of type
+// OutcomeKind, with the string each one holds. Derived rather than listed, so
+// a kind added upstream is checked here the day this module pins it.
+func beatKindsOfTheEncounter(t *testing.T) map[string]string {
+	t.Helper()
+	out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", encounterModule).Output()
+	require.NoError(t, err)
+	dir := strings.TrimSpace(string(out))
+	require.NotEmpty(t, dir)
+
+	files, err := filepath.Glob(filepath.Join(dir, "*.go"))
+	require.NoError(t, err)
+	kinds := map[string]string{}
+	fset := token.NewFileSet()
+	for _, name := range files {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(fset, name, nil, 0)
+		require.NoError(t, err)
+		for _, decl := range file.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok || gen.Tok != token.CONST {
+				continue
+			}
+			for _, spec := range gen.Specs {
+				value := spec.(*ast.ValueSpec)
+				for i, ident := range value.Names {
+					beat := strings.HasPrefix(ident.Name, "Beat") && value.Type == nil
+					outcome := strings.HasPrefix(ident.Name, "Outcome") && typeNamed(value.Type, "OutcomeKind")
+					if !ident.IsExported() || (!beat && !outcome) || i >= len(value.Values) {
+						continue
+					}
+					if kind, ok := stringLiteral(value.Values[i]); ok {
+						kinds[kind] = ident.Name
+					}
+				}
+			}
+		}
+	}
+	require.NotEmpty(t, kinds, "the encounter exports beat kinds")
+	return kinds
+}
+
+func typeNamed(expr ast.Expr, name string) bool {
+	ident, ok := expr.(*ast.Ident)
+	return ok && ident.Name == name
+}
+
+func stringLiteral(expr ast.Expr) (string, bool) {
+	lit, ok := expr.(*ast.BasicLit)
+	if !ok || lit.Kind != token.STRING {
+		return "", false
+	}
+	value, err := strconv.Unquote(lit.Value)
+	return value, err == nil
 }
 
 // TestNoBeatKindIsMatchedByALiteral holds rpg-project#539's line: the beat
 // kinds a client reads are constants the composition exports, and this
-// package's projection maps constants, never string literals. A literal match
-// keeps compiling after the composition renames the beat and silently answers
+// package's projection maps constants, never string literals. A literal keeps
+// compiling after the composition renames a beat and silently answers
 // "unknown"; a constant fails to compile.
 //
-// It flags a string literal naming a beat kind wherever it is MATCHED against
-// something called a beat: a case in a switch on a beat, or either side of an
-// == or != whose other side is a beat. A literal used for anything else (a
-// JSON key, a verb name that happens to share a word) is not a match on a beat
-// and is left alone.
+// EVERY string literal in non-test source is checked against the derived
+// kinds, wherever it sits. What may spell a beat kind, by shape:
+//   - the value of a constant this package declares with its own named type
+//     (EventKind, Verb, DissolveKind): this package's wire vocabulary, which
+//     the projection maps TO, and which happens to share many words;
+//   - a JSON key: an index into a decoded object, an element of a []string
+//     key list, or a case in a switch over a variable named key;
+//   - a struct tag;
+//   - a word in coincidentalWords, by file, with its reason.
 func TestNoBeatKindIsMatchedByALiteral(t *testing.T) {
-	kinds := make(map[string]bool, len(beatKinds))
-	for _, kind := range beatKinds {
-		kinds[kind] = true
-	}
-	literalKind := func(expr ast.Expr) (string, bool) {
-		lit, ok := expr.(*ast.BasicLit)
-		if !ok || lit.Kind != token.STRING {
-			return "", false
-		}
-		value, err := strconv.Unquote(lit.Value)
-		return value, err == nil && kinds[value]
-	}
-	namesABeat := func(expr ast.Expr) bool {
-		var b strings.Builder
-		ast.Inspect(expr, func(n ast.Node) bool {
-			switch v := n.(type) {
-			case *ast.Ident:
-				b.WriteString(v.Name)
-			case *ast.BasicLit:
-				b.WriteString(v.Value)
-			}
-			return true
-		})
-		return strings.Contains(strings.ToLower(b.String()), "beat")
-	}
+	kinds := beatKindsOfTheEncounter(t)
 
 	files, err := filepath.Glob("*.go")
 	require.NoError(t, err)
@@ -81,36 +113,67 @@ func TestNoBeatKindIsMatchedByALiteral(t *testing.T) {
 		if strings.HasSuffix(name, "_test.go") {
 			continue
 		}
-		src, err := os.ReadFile(name)
+		file, err := parser.ParseFile(fset, name, nil, 0)
 		require.NoError(t, err)
-		file, err := parser.ParseFile(fset, name, src, 0)
-		require.NoError(t, err)
+
+		allowed := map[*ast.BasicLit]bool{}
+		allow := func(expr ast.Expr) {
+			if lit, ok := expr.(*ast.BasicLit); ok {
+				allowed[lit] = true
+			}
+		}
 		ast.Inspect(file, func(n ast.Node) bool {
 			switch v := n.(type) {
-			case *ast.SwitchStmt:
-				if v.Tag == nil || !namesABeat(v.Tag) {
-					return true
+			case *ast.ValueSpec:
+				if v.Type != nil {
+					for _, value := range v.Values {
+						allow(value)
+					}
 				}
-				for _, stmt := range v.Body.List {
-					for _, expr := range stmt.(*ast.CaseClause).List {
-						if kind, ok := literalKind(expr); ok {
-							found = append(found, fset.Position(expr.Pos()).String()+" case "+strconv.Quote(kind))
+			case *ast.IndexExpr:
+				allow(v.Index)
+			case *ast.CompositeLit:
+				if array, ok := v.Type.(*ast.ArrayType); ok && typeNamed(array.Elt, "string") {
+					for _, elt := range v.Elts {
+						allow(elt)
+					}
+				}
+			case *ast.SwitchStmt:
+				if typeNamed(v.Tag, "key") {
+					for _, stmt := range v.Body.List {
+						for _, expr := range stmt.(*ast.CaseClause).List {
+							allow(expr)
 						}
 					}
 				}
-			case *ast.BinaryExpr:
-				if v.Op != token.EQL && v.Op != token.NEQ {
-					return true
-				}
-				if kind, ok := literalKind(v.Y); ok && namesABeat(v.X) {
-					found = append(found, fset.Position(v.Pos()).String()+" compares "+strconv.Quote(kind))
-				}
-				if kind, ok := literalKind(v.X); ok && namesABeat(v.Y) {
-					found = append(found, fset.Position(v.Pos()).String()+" compares "+strconv.Quote(kind))
+			case *ast.Field:
+				if v.Tag != nil {
+					allow(v.Tag)
 				}
 			}
 			return true
 		})
+
+		ast.Inspect(file, func(n ast.Node) bool {
+			lit, ok := n.(*ast.BasicLit)
+			if !ok || allowed[lit] {
+				return true
+			}
+			value, ok := stringLiteral(lit)
+			if !ok {
+				return true
+			}
+			constant, isKind := kinds[value]
+			if !isKind {
+				return true
+			}
+			if _, coincidental := coincidentalWords[name][value]; coincidental {
+				return true
+			}
+			found = append(found, fset.Position(lit.Pos()).String()+" spells "+strconv.Quote(value)+
+				"; use encounter."+constant)
+			return true
+		})
 	}
-	require.Empty(t, found, "a beat kind matched by a string literal; use the composition's exported constant")
+	require.Empty(t, found, "a beat kind written as a string literal")
 }

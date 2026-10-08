@@ -332,6 +332,9 @@ func (s *CastSuite) TestLethalHitBreakingFogKeepsItsStory() {
 	s.Require().NoError(err)
 	_, err = s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "cleric", DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "cleric")})
 	s.Require().NoError(err, "a lethal hit that removes fog must still record and save its outcome")
+	areas, err := s.mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "cleric"})
+	s.Require().NoError(err)
+	s.Empty(areas, "the driven strike's broken concentration ends the cloud")
 	s.Zero(s.characters.byID["cleric"].HitPoints)
 	s.Require().Len(s.beats(session.EventStruck), 1)
 	s.Require().Len(s.beats(session.EventDowned), 1)
@@ -414,4 +417,280 @@ func (s *CastSuite) TestAStrikeThatBreaksFogInsideAWalkEndsTheArea() {
 	s.Less(struck, broken)
 	s.Less(broken, ended, "the cause is told before the membership change")
 	s.Less(ended, moved, "and the area ends inside the step, before the walk goes on")
+}
+
+// fogOverTheSkeleton is aaron's fight with the tempest cleric beside him and
+// the skeleton six cells off: aaron acts first, both turns pass, and the
+// cleric casts Fog Cloud over the skeleton — holding it and neither player —
+// then the turn comes back round to aaron. Unless wrath, the cleric holds no
+// Wrath of the Storm, so a blow against her poses her nothing; with it, a hit
+// on her stops after the damage to ask whether she strikes back.
+func (s *CastSuite) fogOverTheSkeleton(wrath bool, rolls ...int) {
+	cleric := s.tempestSheet()
+	if !wrath {
+		pool := cleric.Resources[resources.WrathOfTheStorm]
+		pool.Current = 0
+		cleric.Resources[resources.WrathOfTheStorm] = pool
+	}
+	fighter := armedFighter("aaron")
+	s.sceneWithAllies(fighter, []*character.Data{cleric}, 6, rolls...)
+	ctx := context.Background()
+	endTurn := func(member string) {
+		_, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: member, DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", member)})
+		s.Require().NoError(err)
+	}
+	endTurn("aaron")
+	offered, err := s.mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "cleric"})
+	s.Require().NoError(err)
+	var fog session.Declaration
+	for _, row := range offered.Declarations {
+		if row.Spell != nil && row.Spell.Ref == refs.Spells.FogCloud().String() && row.Available {
+			fog = row
+		}
+	}
+	s.Require().NotEmpty(fog.ID, "the cleric is offered Fog Cloud on her turn")
+	_, err = s.mgr.Cast(ctx, &session.CastInput{Session: "sess", Member: "cleric", DeclarationID: fog.ID, Cell: &spatial.Position{X: 7, Y: 1}})
+	s.Require().NoError(err)
+	areas, err := s.mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "cleric"})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(areas, "control: the cloud stands")
+	endTurn("cleric")
+	turn, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "aaron"})
+	s.Require().NoError(err)
+	s.Require().Equal("aaron", turn.Active, "control: the turn is back with aaron")
+	s.stream.published = nil
+}
+
+// assertTheCloudEndedAfterItsCause is the shared verdict: the area is gone
+// from the live encounter, and the skeleton the cloud held is told it ended
+// after the strike and the broken concentration that ended it.
+func (s *CastSuite) assertTheCloudEndedAfterItsCause() {
+	s.T().Helper()
+	areas, err := s.mgr.Areas(context.Background(), &session.ViewInput{Session: "sess", Member: "cleric"})
+	s.Require().NoError(err)
+	s.Empty(areas, "the broken concentration ends the cloud")
+	seqOf := func(kind session.EventKind, match func(session.Event) bool) uint64 {
+		for _, event := range eventsFor(s.stream.published, "skeleton") {
+			if event.Kind == kind && match(event) {
+				return event.Seq
+			}
+		}
+		s.FailNow("the skeleton was never told " + string(kind))
+		return 0
+	}
+	first := func(session.Event) bool { return true }
+	struck := seqOf(session.EventStruck, first)
+	broken := seqOf(session.EventConcentrationEnded, first)
+	ended := seqOf(session.EventActivationResult, func(e session.Event) bool {
+		removed := e.Body.(session.ActivationResultBody).ConditionRemoved
+		return removed != nil && removed.Target == "skeleton" && removed.Reason == "area ended"
+	})
+	s.Less(struck, broken)
+	s.Less(broken, ended, "the cause is told before the membership change")
+}
+
+// TestAnAttackThatBreaksFogEndsTheArea is the player's Attack verb landing the
+// area its blow closed: aaron strikes the concentrating cleric, her save
+// fails, and the cloud ends for the skeleton inside it, after its cause.
+func (s *CastSuite) TestAnAttackThatBreaksFogEndsTheArea() {
+	s.fogOverTheSkeleton(false, 15, 4, 1)
+	_, err := s.mgr.Attack(context.Background(), &session.AttackInput{Session: "sess", Attacker: "aaron", Target: "cleric", DeclarationID: currentAttackID(s.T(), s.mgr, "sess", "aaron")})
+	s.Require().NoError(err)
+	s.assertTheCloudEndedAfterItsCause()
+}
+
+// TestAResumedStrikeThatBreaksFogEndsTheArea is the same blow finished through
+// a window: aaron holds a Bardic Inspiration die, so the swing stops after the
+// d20 to ask, and the strike that breaks the cleric's concentration lands only
+// when he answers. The resume lands the area its strike closed.
+func (s *CastSuite) TestAResumedStrikeThatBreaksFogEndsTheArea() {
+	s.fogOverTheSkeleton(false, 15, 4, 1)
+	s.holdInspiration("aaron")
+	ctx := context.Background()
+	out, err := s.mgr.Attack(ctx, &session.AttackInput{Session: "sess", Attacker: "aaron", Target: "cleric", DeclarationID: currentAttackID(s.T(), s.mgr, "sess", "aaron")})
+	s.Require().NoError(err)
+	s.Require().True(out.Paused, "control: the swing stops to ask about the die")
+	areas, err := s.mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "cleric"})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(areas, "control: nothing has landed while the table waits")
+
+	react := currentDeclaration(s.T(), s.mgr, "sess", "aaron", session.VerbReact)
+	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "aaron", DeclarationID: react.ID, Choice: session.ReactHold})
+	s.Require().NoError(err)
+	s.assertTheCloudEndedAfterItsCause()
+}
+
+// TestAHitThatBreaksFogEndsTheAreaBeforeItsWindow: aaron's blow breaks the
+// cleric's concentration and stops to ask whether she strikes back. The area
+// the blow closed lands before that window opens, so the table waits over a
+// world where the cloud is already gone.
+func (s *CastSuite) TestAHitThatBreaksFogEndsTheAreaBeforeItsWindow() {
+	s.fogOverTheSkeleton(true, 15, 4, 1)
+	out, err := s.mgr.Attack(context.Background(), &session.AttackInput{Session: "sess", Attacker: "aaron", Target: "cleric", DeclarationID: currentAttackID(s.T(), s.mgr, "sess", "aaron")})
+	s.Require().NoError(err)
+	s.Require().True(out.Paused, "control: the cleric is asked whether she strikes back")
+	s.assertTheCloudEndedAfterItsCause()
+}
+
+// TestAResumedHitThatBreaksFogEndsTheAreaBeforeItsNextWindow: the same blow
+// reached through aaron's own post-roll window first. Answering it lands the
+// strike, which breaks the cleric's concentration and poses her window; the
+// area lands before that window opens.
+func (s *CastSuite) TestAResumedHitThatBreaksFogEndsTheAreaBeforeItsNextWindow() {
+	s.fogOverTheSkeleton(true, 15, 4, 1)
+	s.holdInspiration("aaron")
+	ctx := context.Background()
+	out, err := s.mgr.Attack(ctx, &session.AttackInput{Session: "sess", Attacker: "aaron", Target: "cleric", DeclarationID: currentAttackID(s.T(), s.mgr, "sess", "aaron")})
+	s.Require().NoError(err)
+	s.Require().True(out.Paused, "control: the swing stops to ask about the die")
+	react := currentDeclaration(s.T(), s.mgr, "sess", "aaron", session.VerbReact)
+	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "aaron", DeclarationID: react.ID, Choice: session.ReactHold})
+	s.Require().NoError(err)
+	offered, err := s.mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "cleric"})
+	s.Require().NoError(err)
+	asked := false
+	for _, row := range offered.Declarations {
+		asked = asked || row.Verb == session.VerbReact
+	}
+	s.Require().True(asked, "control: the landed hit poses the cleric her window")
+	s.assertTheCloudEndedAfterItsCause()
+}
+
+// TestARetaliationThatBreaksFogEndsTheArea: the concentrating member is the
+// ATTACKER. Aaron, a cleric holding Fog Cloud over the skeleton, swings at the
+// tempest cleric; she answers with Wrath of the Storm, its thunder breaks his
+// concentration, and the area lands when her answer resolves.
+func (s *CastSuite) TestARetaliationThatBreaksFogEndsTheArea() {
+	aaron := s.finalizedSpareTheDyingCleric()
+	aaron.ID, aaron.PlayerID, aaron.Name = "aaron", "player-aaron", "Aaron"
+	aaron.ActionEconomy = &character.ActionEconomyData{ActionsRemaining: 1, BonusActionsRemaining: 1, ReactionsRemaining: 1}
+	aaron.KnownSpells = append(aaron.KnownSpells, refs.Spells.FogCloud().String())
+	armForSwinging(aaron)
+	// Aaron's swing hits for 3; the tempest cleric's thunder: aaron's save 1,
+	// damage 4 and 5; then aaron's concentration save 1.
+	s.sceneWithAllies(aaron, []*character.Data{s.tempestSheet()}, 6, 15, 3, 1, 4, 5, 1)
+	ctx := context.Background()
+	fog := s.castRow(spells.FogCloud)
+	_, err := s.mgr.Cast(ctx, &session.CastInput{Session: "sess", Member: "aaron", DeclarationID: fog.ID, Cell: &spatial.Position{X: 7, Y: 1}})
+	s.Require().NoError(err)
+	for _, member := range []string{"aaron", "cleric"} {
+		_, err = s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: member, DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", member)})
+		s.Require().NoError(err)
+	}
+	areas, err := s.mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "aaron"})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(areas, "control: aaron's cloud stands")
+
+	out, err := s.mgr.Attack(ctx, &session.AttackInput{Session: "sess", Attacker: "aaron", Target: "cleric", DeclarationID: currentAttackID(s.T(), s.mgr, "sess", "aaron")})
+	s.Require().NoError(err)
+	s.Require().True(out.Paused, "control: the cleric is asked whether she strikes back")
+	areas, err = s.mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "aaron"})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(areas, "control: aaron's blow ended nothing of his own")
+	s.stream.published = nil
+
+	react := currentDeclaration(s.T(), s.mgr, "sess", "cleric", session.VerbReact)
+	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: react.ID, Choice: session.ReactStrike, Option: "thunder"})
+	s.Require().NoError(err)
+
+	areas, err = s.mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "aaron"})
+	s.Require().NoError(err)
+	s.Empty(areas, "the thunder's broken concentration ends aaron's cloud")
+	var broken, ended uint64
+	for _, event := range eventsFor(s.stream.published, "skeleton") {
+		switch event.Kind {
+		case session.EventConcentrationEnded:
+			broken = event.Seq
+		case session.EventActivationResult:
+			if removed := event.Body.(session.ActivationResultBody).ConditionRemoved; removed != nil &&
+				removed.Target == "skeleton" && removed.Reason == "area ended" {
+				ended = event.Seq
+			}
+		}
+	}
+	s.Require().NotZero(broken, "the skeleton is told the concentration broke")
+	s.Require().NotZero(ended, "and that the cloud it stood in ended")
+	s.Less(broken, ended, "the cause is told before the membership change")
+}
+
+// TestADrivenHitThatBreaksFogEndsTheAreaBeforeItsWindow: the skeleton's own
+// turn lands a hit that breaks the cleric's concentration and stops to ask
+// whether she strikes back. The driven strike lands the area its hit closed
+// before that window opens.
+func (s *CastSuite) TestADrivenHitThatBreaksFogEndsTheAreaBeforeItsWindow() {
+	s.scene(s.tempestSheet(), 1, 15, 2, 1)
+	ctx := context.Background()
+	row := s.castRow(spells.FogCloud)
+	_, err := s.mgr.Cast(ctx, &session.CastInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Cell: &spatial.Position{X: 20, Y: 1}})
+	s.Require().NoError(err)
+	s.mgr, err = session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+	s.Require().NoError(err)
+	_, err = s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "cleric", DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "cleric")})
+	s.Require().NoError(err)
+	persisted, err := s.encounters.GetEncounter(ctx, "world")
+	s.Require().NoError(err)
+	s.Require().NotNil(persisted.PausedTurn, "control: the hit stops to ask the cleric")
+	areas, err := s.mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "cleric"})
+	s.Require().NoError(err)
+	s.Empty(areas, "the driven hit's broken concentration ends the cloud before the window")
+}
+
+// flareFogScene is the warding cleric holding Fog Cloud, on a world where the
+// skeleton's own turn swings at her: the swing stops BEFORE its roll to ask
+// whether she flares. With wrath she also holds Wrath of the Storm, so a hit
+// that lands after her answer stops again to ask whether she strikes back.
+func (s *CastSuite) flareFogScene(wrath bool) {
+	sheet := s.flareSheet()
+	sheet.KnownSpells = append(sheet.KnownSpells, refs.Spells.FogCloud().String())
+	if wrath {
+		raw, err := json.Marshal(features.WrathOfTheStormData{Ref: refs.Features.WrathOfTheStorm(), ID: "wrath", Name: "Wrath of the Storm", CharacterID: sheet.ID})
+		s.Require().NoError(err)
+		sheet.Features = append(sheet.Features, raw)
+		sheet.Resources[resources.WrathOfTheStorm] = character.RecoverableResourceData{Current: 3, Maximum: 3, ResetType: coreResources.ResetLongRest}
+	}
+	// The skeleton's attack 15 and damage 2, then the cleric's concentration
+	// save 1.
+	s.scene(sheet, 1, 15, 2, 1)
+	ctx := context.Background()
+	row := s.castRow(spells.FogCloud)
+	_, err := s.mgr.Cast(ctx, &session.CastInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Cell: &spatial.Position{X: 20, Y: 1}})
+	s.Require().NoError(err)
+	s.mgr, err = session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+	s.Require().NoError(err)
+	_, err = s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "cleric", DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "cleric")})
+	s.Require().NoError(err)
+	areas, err := s.mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "cleric"})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(areas, "control: nothing has landed before the roll")
+	row = s.flareReaction()
+	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Choice: session.ReactHold})
+	s.Require().NoError(err)
+}
+
+// TestAResumedDrivenHitThatBreaksFogEndsTheArea: the cleric declines to
+// flare, the resumed swing lands and breaks her concentration, and the
+// pending-attack resume lands the area it closed.
+func (s *CastSuite) TestAResumedDrivenHitThatBreaksFogEndsTheArea() {
+	s.flareFogScene(false)
+	areas, err := s.mgr.Areas(context.Background(), &session.ViewInput{Session: "sess", Member: "cleric"})
+	s.Require().NoError(err)
+	s.Empty(areas, "the resumed hit's broken concentration ends the cloud")
+}
+
+// TestAResumedDrivenHitThatBreaksFogEndsTheAreaBeforeItsWindow: the same
+// resumed swing, against a cleric who also holds Wrath of the Storm. The hit
+// poses her next window, and the area lands before it opens.
+func (s *CastSuite) TestAResumedDrivenHitThatBreaksFogEndsTheAreaBeforeItsWindow() {
+	s.flareFogScene(true)
+	ctx := context.Background()
+	offered, err := s.mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "cleric"})
+	s.Require().NoError(err)
+	asked := false
+	for _, row := range offered.Declarations {
+		asked = asked || (row.Verb == session.VerbReact && row.Reaction != nil && row.Reaction.Name == "Wrath of the Storm")
+	}
+	s.Require().True(asked, "control: the landed hit asks whether she strikes back")
+	areas, err := s.mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "cleric"})
+	s.Require().NoError(err)
+	s.Empty(areas, "the area lands before the next window opens")
 }

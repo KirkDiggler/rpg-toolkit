@@ -7,7 +7,14 @@ import (
 	"context"
 	"encoding/json"
 
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
@@ -357,4 +364,102 @@ func (s *MonsterTurnTestSuite) TestEachSwingsConcentrationCheckLandsBehindItsOwn
 
 	s.Equal([]string{"struck", "saved", "struck", "saved"}, train,
 		"each check rides in behind the blow that forced it, never folded onto the end")
+}
+
+// TestASwingThatBreaksConcentrationEndsItsAreaInTheSequence: the goblin boss's
+// Multiattack lands a blow that breaks the fighter's concentration on a spell
+// holding a runtime area, and the finished sequence lands the area it closed.
+func (s *MonsterTurnTestSuite) TestASwingThatBreaksConcentrationEndsItsAreaInTheSequence() {
+	ctx := context.Background()
+	mgr := s.bossBreaksTheFightersArea(false)
+	s.Contains(s.storyBeats(mgr, "fighter"), string(encounter.BeatConcentrationEnded), "control: a swing broke the concentration")
+	areas, err := mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "fighter"})
+	s.Require().NoError(err)
+	s.Empty(areas, "the sequence lands the area its swing closed")
+}
+
+// TestASwingThatBreaksConcentrationEndsItsAreaWhenItsSwingIsTold: the same
+// first swing, against a fighter holding Wrath of the Storm. The hit stops the
+// sequence to ask whether the fighter strikes back, and that swing is told
+// only when the answer resumes it; the area it closed is held on the window
+// and lands then, behind its cause.
+func (s *MonsterTurnTestSuite) TestASwingThatBreaksConcentrationEndsItsAreaWhenItsSwingIsTold() {
+	ctx := context.Background()
+	mgr := s.bossBreaksTheFightersArea(true)
+	persisted, err := s.encounters.GetEncounter(ctx, "world")
+	s.Require().NoError(err)
+	s.Require().NotNil(persisted.PausedTurn, "control: the sequence paused on the fighter's window")
+	s.NotContains(s.storyBeats(mgr, "fighter"), string(encounter.OutcomeStruck),
+		"control: the paused swing is not told until it resumes")
+	areas, err := mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "fighter"})
+	s.Require().NoError(err)
+	s.NotEmpty(areas, "the area waits for the swing that closed it to be told")
+
+	react := currentDeclaration(s.T(), mgr, "sess", "fighter", session.VerbReact)
+	_, err = mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "fighter", DeclarationID: react.ID, Choice: session.ReactHold})
+	s.Require().NoError(err)
+	s.Contains(s.storyBeats(mgr, "fighter"), string(encounter.OutcomeStruck), "the resumed swing is told")
+	areas, err = mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "fighter"})
+	s.Require().NoError(err)
+	s.Empty(areas, "and the area it closed lands behind it")
+}
+
+// bossBreaksTheFightersArea is the goblin boss's driven Multiattack against a
+// fighter concentrating on a spell that holds a runtime area. The area is
+// placed on the stored world directly: what is under test is the sequence
+// landing the area its swing closed, not how the area came to stand.
+func (s *MonsterTurnTestSuite) bossBreaksTheFightersArea(wrath bool) *session.Manager {
+	ctx := context.Background()
+
+	fighter := armedFighter("fighter")
+	if wrath {
+		raw, err := json.Marshal(features.WrathOfTheStormData{Ref: refs.Features.WrathOfTheStorm(), ID: "wrath", Name: "Wrath of the Storm", CharacterID: fighter.ID})
+		s.Require().NoError(err)
+		fighter.Features = append(fighter.Features, raw)
+		if fighter.Resources == nil {
+			fighter.Resources = map[coreResources.ResourceKey]character.RecoverableResourceData{}
+		}
+		fighter.Resources[resources.WrathOfTheStorm] = character.RecoverableResourceData{Current: 3, Maximum: 3, ResetType: coreResources.ResetLongRest}
+	}
+	chars := newFakeCharacters(fighter)
+	mgr, err := session.NewManager(&session.Config{
+		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: firstInReach{},
+		Sessions: s.sessions, Encounters: s.encounters,
+		Characters: chars, Events: session.DiscardEvents{},
+	})
+	s.Require().NoError(err)
+	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: tombRoom(12, 6),
+	})
+	s.Require().NoError(err)
+	_, err = mgr.Join(ctx, &session.JoinInput{
+		Session: "sess", Member: "fighter", Position: spatial.Position{X: 0, Y: 0},
+	})
+	s.Require().NoError(err)
+	s.holdSpellAfterJoin(chars, "fighter")
+	// A frail constitution, so testDice's flat 10 fails the check: CON 6 is -2.
+	seated, err := chars.GetCharacter(ctx, "fighter")
+	s.Require().NoError(err)
+	seated.AbilityScores[abilities.CON] = 6
+	s.Require().NoError(chars.SaveCharacter(ctx, seated))
+	s.encounters.byID["world"].SightAreas = append(s.encounters.byID["world"].SightAreas, encounter.SightAreaData{
+		ID: "cloud", SourceID: "fighter", Name: "Fog Cloud",
+		Center: encounter.PositionData{X: 9, Y: 4}, RadiusFeet: 10,
+	})
+
+	_, err = mgr.Spawn(ctx, &session.SpawnInput{
+		Session: "sess", ID: "goblin-boss-1", Ref: refs.Monsters.GoblinBoss().String(),
+		Position: spatial.Position{X: 1, Y: 0},
+	})
+	s.Require().NoError(err)
+	areas, err := mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "fighter"})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(areas, "control: the fighter's area stands")
+
+	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{
+		Session: "sess", Member: "fighter",
+		DeclarationID: currentEndTurnID(s.T(), mgr, "sess", "fighter"),
+	})
+	s.Require().NoError(err)
+	return mgr
 }
