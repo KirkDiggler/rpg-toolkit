@@ -1154,18 +1154,22 @@ func (m *Manager) Exit(ctx context.Context, in *ExitInput) (*ExitOutput, error) 
 
 	// THE LEAVER TAKES WHAT WAS HELD ON THEM WITH THEM (depart.go): every
 	// effect another's concentration held on them comes off, and every hold
-	// they were concentrating on ends — saved before the exit, and every
-	// removal told on the exit beat.
+	// they were concentrating on ends. TWO PHASES, Rest's shape: resolved in
+	// memory, the exit told with every removal (the encounter validates before
+	// its first write), and only then the changed sheets saved.
 	departed, err := m.depart(ctx, scope, []string{in.Member})
 	if err != nil {
-		return nil, fmt.Errorf("exit: %w", saveErrorAfterWrites(scope, "", err))
+		return nil, fmt.Errorf("exit: %w", err)
 	}
 
 	left, err := scope.enc.Exit(&encounter.ExitInput{
 		Member: encounter.MemberID(in.Member), Ended: departed.all(departed.members()),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("exit: %w", reportUnrecorded(scope, translate(err)))
+		return nil, fmt.Errorf("exit: %w", translate(err))
+	}
+	if err := departed.save(ctx, m.sheetsFor(scope)); err != nil {
+		return nil, fmt.Errorf("exit: %w", err)
 	}
 
 	roster, err := scope.enc.Members()
@@ -1235,7 +1239,7 @@ func (m *Manager) End(ctx context.Context, in *EndInput) (*EndOutput, error) {
 	}
 	departed, err := m.depart(ctx, scope, players)
 	if err != nil {
-		return nil, fmt.Errorf("end: %w", saveErrorAfterWrites(scope, "", err))
+		return nil, fmt.Errorf("end: %w", err)
 	}
 	var endedBy map[encounter.MemberID][]encounter.ActivationResult
 	for _, member := range departed.members() {
@@ -1245,9 +1249,14 @@ func (m *Manager) End(ctx context.Context, in *EndInput) (*EndOutput, error) {
 		endedBy[encounter.MemberID(member)] = departed.removedFrom[member]
 	}
 
+	// The ending is accepted (or refused, writing nothing) before any
+	// departed sheet is saved.
 	ended, err := scope.enc.End(&encounter.EndInput{Ending: in.Ending, Ended: endedBy})
 	if err != nil {
-		return nil, fmt.Errorf("end: %w", reportUnrecorded(scope, translate(err)))
+		return nil, fmt.Errorf("end: %w", translate(err))
+	}
+	if err := departed.save(ctx, m.sheetsFor(scope)); err != nil {
+		return nil, fmt.Errorf("end: %w", err)
 	}
 
 	report, delivery, err := m.commit(ctx, scope)

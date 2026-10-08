@@ -167,12 +167,21 @@ func (m *Manager) acquireCharactersFor(ctx context.Context, scope *writeScope, c
 		delete(scope.heldCharacters, character)
 	}
 
+	// ALL OR NOTHING: a guard that cannot be taken gives back every guard
+	// this pass took, retaken ones included, so a failed call leaves the verb
+	// holding no character guard it would have to release in the wrong order.
+	var taken []string
 	for _, character := range uniqueSorted(append(append([]string(nil), wanted...), retake...)) {
 		release, err := m.lockCharacter(ctx, character)
 		if err != nil {
+			for i := len(taken) - 1; i >= 0; i-- {
+				scope.heldCharacters[taken[i]]()
+				delete(scope.heldCharacters, taken[i])
+			}
 			return nil, err
 		}
 		scope.heldCharacters[character] = release
+		taken = append(taken, character)
 	}
 	return func() {
 		for i := len(wanted) - 1; i >= 0; i-- {

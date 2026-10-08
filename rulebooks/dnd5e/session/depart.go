@@ -29,14 +29,28 @@ import (
 // (ErrInvalidSession), not a bad sheet.
 
 // departure is what a run's leavers took with them: every removal, by the
-// member it came off, and the concentrations their leaving ended.
+// member it came off, the concentrations their leaving ended, and the sheets
+// it changed — not yet saved: the caller saves them only after the encounter
+// has accepted the exit or the ending, so a refused one writes nothing.
 type departure struct {
 	removedFrom map[string][]encounter.ActivationResult
 	breaks      []encounter.ConcentrationBreak
+	changed     *pendingSheets
 }
 
-// all is every removal the departure made, in leaver order then rulebook
-// order, wherever it landed.
+// save writes every sheet the departure changed, in the order each was first
+// changed. Called after the encounter accepted the exit or the ending.
+func (d *departure) save(ctx context.Context, sheets sheetStore) error {
+	for _, record := range d.changed.ordered() {
+		if err := sheets.save(ctx, record); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// all is every removal the departure made, ordered by the id of the member
+// each came off (the order given), then in rulebook order.
 func (d *departure) all(order []string) []encounter.ActivationResult {
 	var out []encounter.ActivationResult
 	for _, member := range order {
@@ -46,21 +60,21 @@ func (d *departure) all(order []string) []encounter.ActivationResult {
 }
 
 // depart resolves the departure of each leaver, in id order, over every
-// other sheet the run holds as it stands after the earlier leavers left, and
-// saves every changed sheet once all have resolved. A leaver who is not a
+// other sheet the run holds as it stands after the earlier leavers left. It
+// writes nothing: the changed sheets ride the answer ([departure.save]). A leaver who is not a
 // player held nothing a character sheet can answer for and is passed over.
 //
 // A player with no sheet — the leaver or any other — is passed over, so a
 // broken run can still be left and closed. Returns ErrInvalidSession for a
-// hold whose caster the run does not hold, ErrBadCharacter for a sheet
-// resolution cannot attach, or the store's SaveError.
+// hold whose caster the run does not hold, or ErrBadCharacter for a sheet
+// resolution cannot attach.
 func (m *Manager) depart(ctx context.Context, scope *writeScope, leavers []string) (*departure, error) {
 	ordered := append([]string(nil), leavers...)
 	sort.Strings(ordered)
 
 	sheets := m.sheetsFor(scope)
 	pending := &pendingSheets{}
-	out := &departure{removedFrom: map[string][]encounter.ActivationResult{}}
+	out := &departure{removedFrom: map[string][]encounter.ActivationResult{}, changed: pending}
 	for _, leaver := range ordered {
 		if scope.standing.kinds[leaver] != encounter.KindPlayer {
 			continue
@@ -111,11 +125,6 @@ func (m *Manager) depart(ctx context.Context, scope *writeScope, leavers []strin
 		out.breaks = append(out.breaks, left.ConcentrationBreaks...)
 	}
 
-	for _, record := range pending.ordered() {
-		if err := sheets.save(ctx, record); err != nil {
-			return nil, err
-		}
-	}
 	return out, nil
 }
 

@@ -203,3 +203,19 @@ func (s *DepartSuite) TestEndTakesEveryHoldWithTheParty() {
 	s.Contains(told, "alice:"+blessed)
 	s.Contains(told, "carol:"+blessed)
 }
+
+// TestARefusedEndingWritesNoDeparture: the departure is resolved in memory
+// and saved only after the encounter accepts the ending, so an ending it
+// refuses leaves every sheet as it was — the Bless still on all three.
+func (s *DepartSuite) TestARefusedEndingWritesNoDeparture() {
+	saves := s.characters.saves
+
+	_, err := s.mgr.End(context.Background(), &session.EndInput{Session: "sess", Ending: "no-such-ending"})
+	s.Require().ErrorIs(err, session.ErrNoEnding)
+
+	s.Equal(saves, s.characters.saves, "no sheet written")
+	blessed := refs.Conditions.Blessed().String()
+	s.True(s.holds("alice", blessed))
+	s.True(s.holds("carol", blessed))
+	s.Equal([]string{"alice", "carol"}, s.holdTargets(), "bob's hold is untouched")
+}
