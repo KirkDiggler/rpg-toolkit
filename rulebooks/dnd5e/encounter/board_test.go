@@ -111,6 +111,8 @@ func (s *BoardSuite) TestAnUnplaceableMemberPlacesNobody() {
 	enc := s.empty()
 	nextSeq, err := enc.NextStorySeq()
 	s.Require().NoError(err)
+	saved, err := json.Marshal(enc.ToData())
+	s.Require().NoError(err)
 
 	cases := map[string]func([]encounter.JoinInput) []encounter.JoinInput{
 		"off the floor": func(m []encounter.JoinInput) []encounter.JoinInput {
@@ -119,6 +121,14 @@ func (s *BoardSuite) TestAnUnplaceableMemberPlacesNobody() {
 		},
 		"a record the field never declared": func(m []encounter.JoinInput) []encounter.JoinInput {
 			m[2].Holds = []encounter.IntelID{"never-written"}
+			return m
+		},
+		"a negative retained discovery count": func(m []encounter.JoinInput) []encounter.JoinInput {
+			m[2].RetainedDiscoveries = map[encounter.ConcealmentID]encounter.DiscoveryMemoryData{"secret": {Used: -1}}
+			return m
+		},
+		"a temperament mix nothing says the meaning of": func(m []encounter.JoinInput) []encounter.JoinInput {
+			m[2].Temper = encounter.Temper{Mix: map[string]int{"coward": 1}}
 			return m
 		},
 		"the same id twice": func(m []encounter.JoinInput) []encounter.JoinInput {
@@ -147,6 +157,9 @@ func (s *BoardSuite) TestAnUnplaceableMemberPlacesNobody() {
 		after, serr := enc.NextStorySeq()
 		s.Require().NoError(serr)
 		s.Equal(nextSeq, after, "%s: no beat written", name)
+		again, merr := json.Marshal(enc.ToData())
+		s.Require().NoError(merr)
+		s.Equal(string(saved), string(again), "%s: the saved encounter is byte-identical", name)
 	}
 
 	_, err = enc.Board(&encounter.BoardInput{})

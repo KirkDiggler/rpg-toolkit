@@ -463,6 +463,30 @@ func (e *Encounter) appendTickBeat(at uint64) error {
 	return nil
 }
 
+// validateTemper refuses, before anything is written, a temperament
+// [Encounter.dealTemperFor] could not deal: a share below 1, which can never
+// come up; a word in the mix with no profile saying what it means; or a mix
+// with no die in this world to deal it with. An authored word deals nothing
+// and passes.
+func (e *Encounter) validateTemper(member MemberID, temper Temper) error {
+	if len(temper.Mix) == 0 {
+		return nil
+	}
+	for word, share := range temper.Mix {
+		if share < 1 {
+			return fmt.Errorf("member %q: temper %q has a share of %d, which can never be dealt: %w", member, word, share, ErrBadTemper)
+		}
+		if _, ok := temper.Profiles[word]; !ok {
+			return fmt.Errorf("member %q: temper %q is in the mix and nothing says what it means: %w", member, word, ErrBadTemper)
+		}
+	}
+	if e.roller == nil {
+		return fmt.Errorf("member %q: a temperament mix to deal: %w", member, ErrNoRoller)
+	}
+
+	return nil
+}
+
 // dealTemperFor resolves one member's temperament at the door it came in
 // through: an authored word passes straight through, a faction's MIX is dealt
 // once, through the world's dice, with the faction as the die's entity, and

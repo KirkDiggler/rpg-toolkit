@@ -2088,6 +2088,19 @@ func (e *Encounter) validateJoin(in *JoinInput) error {
 		return fmt.Errorf("join: cell %v is covered by placed prop %q: %w", in.Cell, prop, ErrBadPlacement)
 	}
 
+	// THE TWO REFUSALS THE ADMISSION WOULD OTHERWISE MAKE LATE, after the
+	// member is placed and its join beat written: a retained discovery count
+	// below zero, and a temperament mix that cannot be dealt. Asked here so
+	// Join and Board both refuse them before the first write.
+	for id, remembered := range in.RetainedDiscoveries {
+		if remembered.Used < 0 {
+			return fmt.Errorf("join: member %q: retained discovery %q: negative discovery count: %w", in.Member, id, ErrInvalidData)
+		}
+	}
+	if err := e.validateTemper(in.Member, in.Temper); err != nil {
+		return fmt.Errorf("join: %w", err)
+	}
+
 	return nil
 }
 
