@@ -36,21 +36,18 @@ import (
 //
 //  1. Everything that can be refused is refused before anything is written:
 //     a party bigger than the seats, an id claimed twice, a character another
-//     run holds, any sheet or monster or faction that cannot be resolved.
-//  2. The whole board stands before anyone is seated: every monster is
-//     placed on the world in memory.
-//  3. Each party character's first-admission long rest is saved, then its
-//     seat — the rested and seated sheets land before the run that holds
-//     them (seats.go says why that order).
-//  4. The party is placed, in seat order, onto the finished board; the fight
-//     forms then and holds everyone it should.
-//  5. The run is saved; one report names every aggregate written or failed.
-//
-// Placement is sequential, garrison first, and that is enough for the board
-// law: the composition forms a fight only around a player in contact, so
-// monsters that see each other while the board stands — two authored
-// factions hostile to each other included — form nothing until the party
-// arrives, and the party's arrival forms the one fight with everybody in it.
+//     run holds, any sheet or monster that cannot be resolved — and, by
+//     rehearsing the whole board on an inert copy of the world, every
+//     faction, cell or temper the encounter would refuse.
+//  2. Each party character's first-admission long rest is saved, then its
+//     seat: the rested and seated sheets land before the board is placed, so
+//     every consult the placement makes reads the rested truth, and before
+//     the run that holds them (seats.go says why that order).
+//  3. The whole board — monsters in authored order, then the party in seat
+//     order — is placed by the encounter's Board in one call: everyone stands,
+//     then one look and one formation pass, so every fight that forms holds
+//     everyone it should.
+//  4. The run is saved; one report names every aggregate written or failed.
 
 // Ending keys every launched run declares beside the dungeon's own.
 const (
@@ -94,8 +91,13 @@ type LaunchOutput struct {
 	// on the board and not here.
 	Members []Member
 
-	// Formed is present if the party's arrival started a fight.
-	Formed *Formed
+	// Discovered is what each member first saw when the board was placed.
+	Discovered map[string]Discovery
+
+	// Formed is every fight the board's one look started, each holding
+	// everyone in contact. Each Seq is in the delivered numbering of the
+	// first party member, in seat order, that the fight holds.
+	Formed []*Formed
 
 	// Saved names every aggregate written: each party character, each seat,
 	// the run's world and its session record.
@@ -168,6 +170,7 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 	// seated elsewhere, and each first-admission rest resolves (in memory).
 	sheets := m.sheetsFor(scope)
 	rested := make([]*character.Data, 0, len(in.Party))
+	names := make([]string, 0, len(in.Party))
 	for _, id := range in.Party {
 		if err := m.refuseSeatedElsewhere(ctx, in.Session, id); err != nil {
 			return nil, fmt.Errorf("launch: %w", err)
@@ -180,24 +183,50 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 		if err != nil {
 			return nil, fmt.Errorf("launch: %w", err)
 		}
-		rested = append(rested, resolved)
-	}
-
-	// 2. The whole board stands, in memory, before anyone is seated. A
-	// faction or cell the world refuses stops the launch here, with nothing
-	// written.
-	var members []Member
-	for _, monster := range monsters {
-		placed, err := m.placeLaunchMonster(scope, in.Dungeon.Field.Canvas.Orientation, monster)
+		projected, err := projectCharacter(ctx, id, resolved)
 		if err != nil {
-			return nil, fmt.Errorf("launch: monster %q: %w", monster.placement.MemberID, err)
+			return nil, fmt.Errorf("launch: %w", err)
 		}
-		if !placed.Reserved {
-			members = append(members, projectMember(placed.Member))
-		}
+		rested = append(rested, resolved)
+		names = append(names, projected.Sheet.Name)
 	}
 
-	// 3. Rested, then seated: both land before the run that holds them.
+	// 2. The whole board, monsters in authored order then the party in seat
+	// order, as one placement — and proved placeable on an inert copy of the
+	// world before anything is written (see [rehearseBoard]).
+	orientation := in.Dungeon.Field.Canvas.Orientation
+	board := make([]encounter.JoinInput, 0, len(monsters)+len(in.Party))
+	for _, monster := range monsters {
+		scope.data.NPCs = append(scope.data.NPCs, *monster.sheet)
+		at := monster.placement.At
+		join, err := joinInputFor(scope, monster.placement.MemberID, KindMonster, monster.sheet.Name,
+			encounter.HexCellAt(orientation, int(at.X), int(at.Y)),
+			false, monster.placement.Holds, monster.placement.Faction, monster.placement.Arrives,
+			socialPlacement{
+				Intimidate: monster.placement.Intimidate, Persuade: monster.placement.Persuade,
+				Table: monster.table, Temper: monster.temper,
+			})
+		if err != nil {
+			return nil, fmt.Errorf("launch: %w", err)
+		}
+		board = append(board, join)
+	}
+	for i, id := range in.Party {
+		seat := in.Dungeon.PartyStart[i].At
+		join, err := joinInputFor(scope, id, KindPlayer, names[i],
+			encounter.HexCellAt(orientation, int(seat.X), int(seat.Y)), false, nil, "", nil, socialPlacement{})
+		if err != nil {
+			return nil, fmt.Errorf("launch: %w", err)
+		}
+		board = append(board, join)
+	}
+	if err := rehearseBoard(*world, board); err != nil {
+		return nil, fmt.Errorf("launch: %w", err)
+	}
+
+	// 3. Rested, then seated: both land before the board is placed, so every
+	// standing and sheet consult the placement makes reads the rested truth,
+	// and before the run that holds them is saved.
 	for _, record := range rested {
 		if err := sheets.save(ctx, record); err != nil {
 			return nil, fmt.Errorf("launch: %w", err)
@@ -209,26 +238,16 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 		}
 	}
 
-	// 4. The party arrives onto the finished board, in seat order.
-	var (
-		formed   *encounter.FormedBubble
-		formedBy string
-	)
-	for i, record := range rested {
-		projected, err := projectCharacter(ctx, record.ID, record)
-		if err != nil {
-			return nil, fmt.Errorf("launch: %w", saveErrorAfterWrites(scope, "", err))
-		}
-		seat := in.Dungeon.PartyStart[i].At
-		cell := encounter.HexCellAt(in.Dungeon.Field.Canvas.Orientation, int(seat.X), int(seat.Y))
-		placed, err := place(scope, record.ID, KindPlayer, projected.Sheet.Name, cell,
-			false, nil, "", nil, socialPlacement{})
-		if err != nil {
-			return nil, fmt.Errorf("launch: party member %q: %w", record.ID, saveErrorAfterWrites(scope, "", err))
-		}
-		members = append(members, projectMember(placed.Member))
-		if placed.Formed != nil {
-			formed, formedBy = placed.Formed, record.ID
+	// 4. One placement, one look, one formation pass: every fight that forms
+	// holds everyone it should.
+	placed, err := scope.enc.Board(&encounter.BoardInput{Members: board})
+	if err != nil {
+		return nil, fmt.Errorf("launch: %w", saveErrorAfterWrites(scope, "", translate(err)))
+	}
+	var members []Member
+	for _, joined := range placed.Joined {
+		if !joined.Reserved {
+			members = append(members, projectMember(joined.Member))
 		}
 	}
 
@@ -237,14 +256,86 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 	if err != nil {
 		return nil, fmt.Errorf("launch: %w", err)
 	}
+	formed := make([]*Formed, 0, len(placed.Formed))
+	for _, bubble := range placed.Formed {
+		formed = append(formed, projectFormedFor(scope, firstPartyIn(in.Party, bubble), bubble))
+	}
 	return &LaunchOutput{
-		Session:  in.Session,
-		Members:  members,
-		Formed:   projectFormedFor(scope, formedBy, formed),
-		Saved:    report,
-		Delivery: delivery,
+		Session:    in.Session,
+		Members:    members,
+		Discovered: projectDiscoveries(placed.IntelDeltas),
+		Formed:     formed,
+		Saved:      report,
+		Delivery:   delivery,
 	}, nil
 }
+
+// firstPartyIn is the party member, in seat order, whose own delivered
+// numbering a formed fight's Seq is reported in: the first one the fight
+// holds, or the first seat when it holds none of them.
+func firstPartyIn(party []string, bubble *encounter.FormedBubble) string {
+	for _, id := range party {
+		for _, member := range bubble.Order {
+			if string(member) == id {
+				return id
+			}
+		}
+	}
+	return party[0]
+}
+
+// rehearseBoard places the board on an inert copy of the run's world — the
+// encounter's own compile-only stand-ins: nobody sees anybody, so no fight can
+// form, no turn is driven and no seam is asked to write — and reports the
+// first refusal. The encounter's Board validates every member before it
+// places the first, so this is the encounter's own validation, asked before
+// Launch writes a rest or a seat, and nothing about the run is decided by it:
+// the copy is dropped.
+//
+// Its die is inert for the same reason: a faction's temperament mix is dealt
+// at the door, and a deal on a copy that is thrown away must not consume the
+// session's dice.
+func rehearseBoard(world encounter.EncounterData, board []encounter.JoinInput) error {
+	load := encounter.CompileOnlyLoad(world)
+	load.Roller = &diceSeam{roller: inertDie{}}
+	load.Standing = inertStanding{}
+	inert, err := encounter.LoadEncounter(load)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidWorld, err)
+	}
+	rehearsal := append([]encounter.JoinInput(nil), board...)
+	if _, err := inert.Board(&encounter.BoardInput{Members: rehearsal}); err != nil {
+		return translate(err)
+	}
+	return nil
+}
+
+// inertStanding answers the rehearsal's one look: everyone up, nobody in
+// contact, nobody defeated. It is asked only about [rehearseBoard]'s
+// thrown-away copy, where nobody sees anybody and nothing is decided — the
+// run's own look asks the real seams over the rested sheets.
+type inertStanding struct{}
+
+// Standing answers that nobody is down.
+func (inertStanding) Standing([]encounter.MemberID) ([]encounter.MemberID, error) { return nil, nil }
+
+// Assess answers every member up, out of contact, waiting.
+func (inertStanding) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
+	out := &encounter.ParticipationAssessment{Members: make([]encounter.MemberParticipation, 0, len(members))}
+	for _, member := range members {
+		out.Members = append(out.Members, encounter.MemberParticipation{
+			Member: member, Conscious: true, Turn: encounter.TurnParticipationWait,
+		})
+	}
+	return out, nil
+}
+
+// inertDie answers every roll with one. It rolls only for [rehearseBoard]'s
+// thrown-away copy, where a face decides nothing.
+type inertDie struct{}
+
+// Roll answers one.
+func (inertDie) Roll(context.Context, int) (int, error) { return 1, nil }
 
 // validateLaunch refuses a launch that is wrong in itself, before any read: no
 // dungeon, no party, a party bigger than the seats, an empty id, or an id
@@ -381,21 +472,4 @@ func launchEndings(dungeon *dungeonspec.Compiled) ([]encounter.EndingInput, erro
 		endings = append(endings, declared.Endings...)
 	}
 	return append(endings, dungeon.Endings...), nil
-}
-
-// placeLaunchMonster records one resolved monster's sheet in the session and
-// places it at its authored cell, exactly as Spawn places one: the sheet goes
-// in before the member so the member's own sight refresh can read it.
-func (m *Manager) placeLaunchMonster(
-	scope *writeScope, orientation encounter.Orientation, monster launchMonster,
-) (*encounter.JoinOutput, error) {
-	scope.data.NPCs = append(scope.data.NPCs, *monster.sheet)
-	at := monster.placement.At
-	cell := encounter.HexCellAt(orientation, int(at.X), int(at.Y))
-	return place(scope, monster.placement.MemberID, KindMonster, monster.sheet.Name, cell,
-		false, monster.placement.Holds, monster.placement.Faction, monster.placement.Arrives,
-		socialPlacement{
-			Intimidate: monster.placement.Intimidate, Persuade: monster.placement.Persuade,
-			Table: monster.table, Temper: monster.temper,
-		})
 }

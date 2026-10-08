@@ -936,8 +936,28 @@ func place(
 	// the same snapshot, so this one line is also what lets the newcomer's own
 	// sight refresh find its sheet: each verb records the sheet (the host's
 	// character store, Spawn's stat block, PlaceNPC's content) before placing.
+	in, err := joinInputFor(scope, id, kind, name, at, blocksMovement, holds, faction, arrives, social)
+	if err != nil {
+		return nil, err
+	}
+	placed, err := scope.enc.Join(&in)
+	if err != nil {
+		return nil, translate(err)
+	}
+	return placed, nil
+}
+
+// joinInputFor is the one placement input every entry verb builds — Join,
+// Spawn and PlaceNPC one member at a time through [place], Launch a whole
+// board at once through the encounter's Board. It registers the member's
+// authoritative kind on the verb's shared snapshot first, so the newcomer's
+// own sight refresh finds its sheet.
+func joinInputFor(
+	scope *writeScope, id string, kind MemberKind, name string, at spatial.Position, blocksMovement bool,
+	holds []string, faction string, arrives encounter.Trigger, social socialPlacement,
+) (encounter.JoinInput, error) {
 	if scope.standing.kinds == nil {
-		return nil, fmt.Errorf("placing member %q without participation kinds: %w", id, ErrInvalidWorld)
+		return encounter.JoinInput{}, fmt.Errorf("placing member %q without participation kinds: %w", id, ErrInvalidWorld)
 	}
 	scope.standing.kinds[id] = encounter.MemberKind(kind)
 
@@ -945,7 +965,7 @@ func place(
 	if profile == nil {
 		profile = &ExplorationData{}
 	}
-	placed, err := scope.enc.Join(&encounter.JoinInput{
+	return encounter.JoinInput{
 		PrivateDiscoveries:  profile.PrivateDiscoveries,
 		RetainedDiscoveries: profile.Checks,
 		Member:              encounter.MemberID(id),
@@ -984,11 +1004,7 @@ func place(
 		// with the faction as the die's entity, and writes the beat that says
 		// which goblin came out the coward.
 		Temper: social.Temper,
-	})
-	if err != nil {
-		return nil, translate(err)
-	}
-	return placed, nil
+	}, nil
 }
 
 // memberActionsFrom maps a player's main-hand attack onto the composition's
@@ -1831,7 +1847,7 @@ func (m *Manager) clearSeatsOfAClosedRun(ctx context.Context, scope *writeScope)
 }
 
 // exitDissolvedCombatants clears the action economy of every player whose
-// fight THIS CALL just dissolved — the other half of [readyForTurn]'s own
+// fight THIS CALL just dissolved — the other half of [resolution.ReadyForTurn]'s own
 // ignition (economy.go). StartTurn lights a cold sheet the first time an
 // actor on the fight clock acts; nothing anywhere in this module ever put the
 // light back out. grep -rn ExitCombat rulebooks/dnd5e/session
@@ -1839,7 +1855,7 @@ func (m *Manager) clearSeatsOfAClosedRun(ctx context.Context, scope *writeScope)
 // own definition — no caller.
 //
 // Left unlit, [character.Character.InCombat] answers true forever after a
-// member's first-ever combat turn in a session, so [readyForTurn]'s
+// member's first-ever combat turn in a session, so [resolution.ReadyForTurn]'s
 // `!sheet.InCombat()` branch — the one that unconditionally reseeds via
 // StartTurn — can never fire again for that character. Every later fight
 // falls to RefreshForTurn instead, which is a deliberate no-op whenever the

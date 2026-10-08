@@ -149,6 +149,16 @@ func (s *LaunchSuite) TestAFactionTheDungeonDoesNotDeclareWritesNothing() {
 	s.assertNothingWritten()
 }
 
+func (s *LaunchSuite) TestARefusalOnTheThirdMemberWritesNothing() {
+	dungeon := s.camp()
+	s.Require().GreaterOrEqual(len(dungeon.Monsters), 3)
+	dungeon.Monsters[2].Faction = "strangers"
+
+	_, err := s.launch(dungeon, "alice", "bob")
+	s.Require().ErrorIs(err, session.ErrNoFaction, "the board refuses the third member by name")
+	s.assertNothingWritten()
+}
+
 func (s *LaunchSuite) TestACharacterAnotherRunHoldsWritesNothing() {
 	s.Require().NoError(s.seats.SaveSeat(context.Background(), &session.SeatData{Character: "bob", Session: "elsewhere"}))
 	saves := s.seats.saves
@@ -240,4 +250,92 @@ func (s *LaunchSuite) TestTwoHostileFactionsFormOneFightAfterEveryMemberIsPlaced
 		s.Equal(1, acct.fights, "%s: one contact, one fight", member)
 		s.Greater(acct.fight, acct.lastJoined, "%s: the fight forms after every member is placed", member)
 	}
+}
+
+// twoCampsSource is a hall with two camps, each hostile to the party and to
+// nobody else, standing apart.
+const twoCampsSource = `
+version: 2
+key: launch-two-camps
+name: Two Camps
+orientation: pointy
+void: opaque
+regions:
+  - id: hall
+    name: The Hall
+    archetype: crypt
+    lighting: { intensity: 0.8 }
+    cells:
+      - [[0,0],[1,0],[2,0],[3,0],[4,0],[5,0]]
+      - [[0,1],[1,1],[2,1],[3,1],[4,1],[5,1]]
+      - [[0,2],[1,2],[2,2],[3,2],[4,2],[5,2]]
+start: { at: [0,0], facing: e }
+factions:
+  - { id: wolves }
+  - { id: raiders }
+dispositions:
+  - { between: [wolves, party], stance: hostile }
+  - { between: [raiders, party], stance: hostile }
+place:
+  - { id: wolf-a,   ref: "dnd5e:monsters:zombie",   at: [5,0], faction: wolves }
+  - { id: raider-a, ref: "dnd5e:monsters:skeleton", at: [5,2], faction: raiders }
+`
+
+// TestAPartyOfTwoArrivesIntoOneFightHoldingBoth is the one-look law with a
+// party of two: the fight forms after both party members stand, and holds
+// both of them and both camps — never formed on the first arrival with the
+// second still off the board.
+func (s *LaunchSuite) TestAPartyOfTwoArrivesIntoOneFightHoldingBoth() {
+	compiled, err := dungeonspec.Load([]byte(twoCampsSource))
+	s.Require().NoError(err)
+
+	out, err := s.mgr.Launch(context.Background(), &session.LaunchInput{
+		Session: "run", Dungeon: &compiled, Party: []string{"alice", "bob"},
+	})
+	s.Require().NoError(err)
+
+	s.Require().Len(out.Formed, 1)
+	s.ElementsMatch([]string{"alice", "bob", "wolf-a", "raider-a"}, out.Formed[0].Order)
+	for _, member := range []string{"alice", "bob"} {
+		var lastJoined, fight uint64
+		fights := 0
+		for _, event := range s.stream.published {
+			if event.Recipient != member {
+				continue
+			}
+			switch event.Kind {
+			case session.EventJoined:
+				lastJoined = event.Seq
+			case session.EventFightStarted:
+				fights++
+				fight = event.Seq
+			}
+		}
+		s.Equal(1, fights, "%s: one fight", member)
+		s.Greater(fight, lastJoined, "%s: the fight forms after both party members stand", member)
+	}
+}
+
+// TestAPartyLeftDefeatedArrivesRestedIntoTheFight is the rest-before-the-
+// board law: a party that ended its last run at zero hit points is rested and
+// saved before the board's one look, so the look reads them standing and the
+// fight forms around them — rather than the run opening on a defeated party.
+func (s *LaunchSuite) TestAPartyLeftDefeatedArrivesRestedIntoTheFight() {
+	for _, id := range []string{"alice", "bob"} {
+		s.characters.byID[id].HitPoints = 0
+	}
+	compiled, err := dungeonspec.Load([]byte(twoCampsSource))
+	s.Require().NoError(err)
+
+	out, err := s.mgr.Launch(context.Background(), &session.LaunchInput{
+		Session: "run", Dungeon: &compiled, Party: []string{"alice", "bob"},
+	})
+	s.Require().NoError(err)
+
+	s.Require().Len(out.Formed, 1, "the rested party is in contact, so the fight forms")
+	s.Contains(out.Formed[0].Order, "alice")
+	s.Contains(out.Formed[0].Order, "bob")
+	status, err := s.mgr.Status(context.Background(), &session.StatusInput{Session: "run"})
+	s.Require().NoError(err)
+	s.True(status.Open, "the run did not open on a defeated party")
 }

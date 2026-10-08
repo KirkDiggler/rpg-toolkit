@@ -338,7 +338,7 @@ func (m *Manager) spendOnSocial(
 	if err != nil {
 		return err
 	}
-	if err := readyForTurn(ctx, sheet, round); err != nil {
+	if err := resolution.ReadyForTurn(ctx, sheet, resolution.Turn{Number: round, Speed: sheet.GetSpeed()}); err != nil {
 		return fmt.Errorf("member %q: %w: %v", member, ErrBadCost, err)
 	}
 
