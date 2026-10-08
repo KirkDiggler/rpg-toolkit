@@ -174,8 +174,7 @@ var persistenceShapes = map[string]string{
 	// holds either way, so no host is exposed to anything the repository did
 	// not already expose it to. A *domain* type in a verb input would be a different
 	// matter, and is what this list exists to keep out.
-	"encounter.EncounterData":       "persistence shape the host already holds (S3)",
-	"encounter.DiscoveryMemoryData": "opaque retained check memory persisted by the host",
+	"encounter.EncounterData": "persistence shape the host already holds (S3)",
 
 	// The ledger of open interrupt windows, inside SessionData.
 	//

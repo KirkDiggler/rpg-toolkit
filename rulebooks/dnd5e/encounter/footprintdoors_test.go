@@ -300,16 +300,13 @@ func (s *FootprintDoorSuite) TestADoorHasOneGeometry() {
 // because a hidden rectangle a route reads as a cell contributor would have
 // leaked its own existence through the map.
 //
-// What closed that hole is the concealment counting the cells the rectangle
-// STANDS ON as its own: the floor goes with the door, so an unaware observer
-// sees neither a door nor a hole where one is. Four claims, one per way the
-// secret could leak:
+// Explicit membership withholds the selected door and drawing identity, not
+// the floor its footprint supports. Four separate projection assertions:
 //
 //  1. the door is absent from their door list and their doorways;
-//  2. its rectangle is absent from Atlas.Placed;
-//  3. the cells it covers are absent from their Cells — no hole;
-//  4. everything else placed in the hall is STILL THERE, which is what makes
-//     claim 2 a filter rather than the old wholesale withholding.
+//  2. its selected rectangle is absent from Atlas.Placed;
+//  3. unselected floor remains present — no inferred hidden cells;
+//  4. unrelated and overlapping unselected placements remain present.
 func (s *FootprintDoorSuite) TestAFootprintDoorMayBeHidden() {
 	field := footprintDoorField(encounter.DoorIsClosed())
 	// THE V4 SHAPE, mirrored: that dialect compiles a door item into BOTH
@@ -320,12 +317,16 @@ func (s *FootprintDoorSuite) TestAFootprintDoorMayBeHidden() {
 	// well as something to withhold.
 	field.Placed = []encounter.PlacedPropInput{
 		{ID: "cellar-door", Placement: placementPtrValue(leafAcrossTheHall())},
+		{ID: "unlisted-overlap", Placement: placementPtrValue(leafAcrossTheHall())},
 		{ID: "table", Placement: thinWall(4, 4, 0, spatial.Point{X: 2.5, Y: 0})},
 	}
 	field.Concealments = []encounter.ConcealmentInput{{
 		ID:     "cellar",
 		Checks: []encounter.CheckApproach{{Ability: "perception", DC: 15}},
 		Doors:  []encounter.DoorID{theLeaf},
+		// The source compiler maps ONE selected door to both its canonical
+		// identities. Geometry overlap must not stand in for that relation.
+		Props: []encounter.PropID{"cellar-door"},
 	}}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
@@ -356,13 +357,13 @@ func (s *FootprintDoorSuite) TestAFootprintDoorMayBeHidden() {
 		placedIDs[p.ID] = true
 	}
 	s.False(placedIDs["cellar-door"],
-		"the leaf's drawn rectangle is withheld — it stands on floor this observer cannot see, "+
-			"which is how the v4 twin is covered without the concealment naming it twice")
+		"the selected door's explicit placed identity is withheld")
+	s.True(placedIDs["unlisted-overlap"],
+		"even exact footprint equality does not conceal an unlisted placement")
 	s.True(placedIDs["table"],
 		"and the table beside it is not — Atlas.Placed is FILTERED now, not withheld wholesale")
 
-	// The cells the leaf covers go with it: a hole in the floor exactly
-	// where the secret is would be the tell the masquerade exists to remove.
+	// Support cells are geometry for reach, not concealed floor membership.
 	full, err := enc.Atlas()
 	s.Require().NoError(err)
 
@@ -380,20 +381,20 @@ func (s *FootprintDoorSuite) TestAFootprintDoorMayBeHidden() {
 		s.Equal(standsOn[p.ID], p.Cells,
 			"a placement this observer is shown carries the cells the unfiltered atlas gives it")
 	}
-	s.Greater(len(full.Cells), len(blind.Cells), "the covered floor is withheld with the door")
+	s.Equal(full.Cells, blind.Cells, "selecting a door must not conceal unselected floor")
 	blindCells := map[spatial.Position]bool{}
 	for _, c := range blind.Cells {
 		blindCells[c] = true
 	}
-	s.False(blindCells[cellAt(2, 1)], "the leaf stands on this cell, so it hides with it")
-	s.False(blindCells[cellAt(2, 3)], "and on this one")
+	s.True(blindCells[cellAt(2, 1)], "floor under the leaf was not selected")
+	s.True(blindCells[cellAt(2, 3)], "nor was its other support cell")
 
 	// And finding it hands the whole secret over.
 	_, err = enc.Search(&encounter.SearchInput{Member: alice, Region: "hall"})
 	s.Require().NoError(err)
 	found, err := enc.AtlasFor(alice)
 	s.Require().NoError(err)
-	s.Equal(full.Cells, found.Cells, "the finder's floor is the whole floor again")
+	s.Equal(blind.Cells, found.Cells, "finding a door does not introduce unselected floor")
 	foundIDs := map[encounter.PropID]bool{}
 	for _, p := range found.Placed {
 		foundIDs[p.ID] = true

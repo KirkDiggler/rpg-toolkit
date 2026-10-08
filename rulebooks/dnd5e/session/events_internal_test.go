@@ -1207,6 +1207,121 @@ func TestAConcealmentRevealNamingNoSecretIsRefused(t *testing.T) {
 	require.Nil(t, body, "a patch naming no secret is refused, not guessed at")
 }
 
+// TestStructuralRowsDecodeOnBothRevealBeats is the session half of
+// rpg-project#169 P2E: the optional structural keys ride BOTH existing reveal
+// payloads, in the same row shape, and this seam reads them without inventing
+// a new event kind.
+//
+// It intentionally decodes the EXACT wire bytes the composition emits — the
+// same `id`/`ref`/`from`/`to`/`height`/`thickness`/`elevation`/`openings`
+// spelling the provider's structural_reveal.go writes — so a name drift on
+// either side fails here rather than silently dropping the layout.
+func TestStructuralRowsDecodeOnBothRevealBeats(t *testing.T) {
+	wallJSON := `{"id":"wall-presence","ref":"dnd5e:env:test:wall",` +
+		`"from":{"x":0,"y":0},"to":{"x":10,"y":0},` +
+		`"height":3,"thickness":0.3,"elevation":-1.25,` +
+		`"openings":[{"id":"gap","position":5,"width":2}]}`
+	doorJSON := `{"id":"vault/gate","ref":"dnd5e:env:test:door",` +
+		`"from":{"x":4,"y":0},"to":{"x":6,"y":0},` +
+		`"height":3,"thickness":0.3,"elevation":-1.25}`
+
+	wantWalls := []AtlasStructuralWall{{
+		ID: "wall-presence", Ref: "dnd5e:env:test:wall",
+		From: FootprintPoint{X: 0, Y: 0}, To: FootprintPoint{X: 10, Y: 0},
+		Height: 3, Thickness: 0.3, Elevation: -1.25,
+		Openings: []AtlasStructuralOpening{{ID: "gap", Position: 5, Width: 2}},
+	}}
+	wantDoors := []AtlasStructuralDoor{{
+		ID: "vault/gate", Ref: "dnd5e:env:test:door",
+		From: FootprintPoint{X: 4, Y: 0}, To: FootprintPoint{X: 6, Y: 0},
+		Height: 3, Thickness: 0.3, Elevation: -1.25,
+	}}
+
+	t.Run("concealment_revealed", func(t *testing.T) {
+		payload := `{"beat":"concealment_revealed","concealment":"vault-secret",` +
+			`"structural_walls":[` + wallJSON + `],"structural_doors":[` + doorJSON + `]}`
+		kind, body := decodeBeat([]byte(payload))
+		require.Equal(t, EventConcealmentRevealed, kind)
+		revealed, ok := body.(ConcealmentRevealedBody)
+		require.True(t, ok)
+		require.Equal(t, wantWalls, revealed.StructuralWalls)
+		require.Equal(t, wantDoors, revealed.StructuralDoors)
+	})
+
+	t.Run("room_revealed", func(t *testing.T) {
+		payload := `{"beat":"room_revealed","region":{"id":"vault"},` +
+			`"structural_walls":[` + wallJSON + `],"structural_doors":[` + doorJSON + `]}`
+		kind, body := decodeBeat([]byte(payload))
+		require.Equal(t, EventRoomRevealed, kind)
+		revealed, ok := body.(RoomRevealedBody)
+		require.True(t, ok)
+		require.Equal(t, "vault", revealed.Region.ID)
+		require.Equal(t, wantWalls, revealed.StructuralWalls)
+		require.Equal(t, wantDoors, revealed.StructuralDoors)
+	})
+}
+
+// TestLegacyRevealPayloadsOmitTheStructuralKeys is the absence law on the wire:
+// a beat written before the structural rows existed decodes with both lists
+// empty, and that absence must not be mistaken for a malformed beat. This is
+// what keeps every stored room/concealment payload from needing a migration.
+func TestLegacyRevealPayloadsOmitTheStructuralKeys(t *testing.T) {
+	kind, body := decodeBeat([]byte(`{"beat":"concealment_revealed","concealment":"tomb/hidden-way",` +
+		`"cells":[{"x":4,"y":0}],"doors":[]}`))
+	require.Equal(t, EventConcealmentRevealed, kind)
+	revealed, ok := body.(ConcealmentRevealedBody)
+	require.True(t, ok, "a legacy reveal still decodes")
+	require.Empty(t, revealed.StructuralWalls)
+	require.Empty(t, revealed.StructuralDoors)
+
+	kind, body = decodeBeat([]byte(`{"beat":"room_revealed","region":{"id":"corridor"}}`))
+	require.Equal(t, EventRoomRevealed, kind)
+	room, ok := body.(RoomRevealedBody)
+	require.True(t, ok, "and so does a legacy room beat")
+	require.Empty(t, room.StructuralWalls)
+	require.Empty(t, room.StructuralDoors)
+}
+
+// TestAMalformedStructuralRowRefusesTheWholeBeat pins the integrity half: a
+// structural row that names nothing, or a structural value of the wrong JSON
+// type, refuses the body instead of yielding a PARTIAL patch. The client's
+// cached atlas is not left half-updated by a beat the server should never have
+// written — the same required-identity rule the placed rows already follow.
+func TestAMalformedStructuralRowRefusesTheWholeBeat(t *testing.T) {
+	validDoor := `{"id":"vault/gate","ref":"r","from":{"x":4,"y":0},"to":{"x":6,"y":0},` +
+		`"height":3,"thickness":0.3,"elevation":0}`
+
+	cases := map[string]string{
+		"wall with no id": `{"beat":"concealment_revealed","concealment":"v",` +
+			`"structural_walls":[{"ref":"r","from":{"x":0,"y":0},"to":{"x":1,"y":0},"height":1,"thickness":1,"elevation":0,"openings":[]}]}`,
+		"opening with no id": `{"beat":"concealment_revealed","concealment":"v",` +
+			`"structural_walls":[{"id":"w","from":{"x":0,"y":0},"to":{"x":1,"y":0},"height":1,"thickness":1,"elevation":0,` +
+			`"openings":[{"position":0.5,"width":0.2}]}]}`,
+		"door with no id": `{"beat":"concealment_revealed","concealment":"v",` +
+			`"structural_doors":[{"from":{"x":4,"y":0},"to":{"x":6,"y":0},"height":3,"thickness":0.3,"elevation":0}]}`,
+		"structural_walls not an array": `{"beat":"concealment_revealed","concealment":"v","structural_walls":5}`,
+		"room wall with no id": `{"beat":"room_revealed","region":{"id":"vault"},` +
+			`"structural_walls":[{"ref":"r","from":{"x":0,"y":0},"to":{"x":1,"y":0},"height":1,"thickness":1,"elevation":0,"openings":[]}]}`,
+	}
+	for name, payload := range cases {
+		t.Run(name, func(t *testing.T) {
+			kind, body := decodeBeat([]byte(payload))
+			// The KIND still decodes — it is the BODY that has nothing honest to say.
+			require.Contains(t, []EventKind{EventConcealmentRevealed, EventRoomRevealed}, kind)
+			require.Nil(t, body, "a structurally malformed reveal is refused whole, not partially applied")
+		})
+	}
+
+	// The control: the SAME door row, with its id, decodes fine. Without this
+	// the refusals above could be passing because the payload was wrong for some
+	// unrelated reason.
+	kind, body := decodeBeat([]byte(`{"beat":"concealment_revealed","concealment":"v","structural_doors":[` + validDoor + `]}`))
+	require.Equal(t, EventConcealmentRevealed, kind)
+	revealed, ok := body.(ConcealmentRevealedBody)
+	require.True(t, ok)
+	require.Len(t, revealed.StructuralDoors, 1)
+}
+
 func TestDeathSaveBodyPreservesAuthoritativeTypedFacts(t *testing.T) {
 	payload := []byte(`{"beat":"death_save","actor":"alice","death_save":{"roll":20,"outcome":"recovered","successes_added":0,"failures_added":0,"successes":0,"failures":0,"successes_needed":3,"failures_remaining":3,"stabilized":false,"dead":false,"recovered":true,"hp_restored":1,"continuation":"keep_turn","presentation_id":"opaque-save"}}`)
 	kind, body := decodeBeat(payload)

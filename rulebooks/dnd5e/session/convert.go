@@ -86,17 +86,19 @@ func projectAtlas(in encounter.Atlas) Atlas {
 	out := Atlas{
 		// Hex is the field's only family as of rpg-project#256; the
 		// composition's Grid() has no other answer to give.
-		Grid:       GridHex,
-		Layout:     projectLayout(in.Orientation),
-		Cells:      append([]spatial.Position(nil), in.Cells...),
-		Props:      make([]AtlasProp, 0, len(in.Props)),
-		Placed:     make([]AtlasPlacedProp, 0, len(in.Placed)),
-		Boundaries: make([]AtlasBoundary, 0, len(in.Boundaries)),
-		Doorways:   make([]AtlasDoorway, 0, len(in.Doorways)),
-		Regions:    make([]AtlasRegion, 0, len(in.Regions)),
-		Segments:   make([]AtlasSegment, 0, len(in.Segments)),
-		Sealed:     append([]spatial.Position(nil), in.Sealed...),
-		Exits:      make([]AtlasExit, 0, len(in.Exits)),
+		Grid:            GridHex,
+		Layout:          projectLayout(in.Orientation),
+		Cells:           append([]spatial.Position(nil), in.Cells...),
+		Props:           make([]AtlasProp, 0, len(in.Props)),
+		Placed:          make([]AtlasPlacedProp, 0, len(in.Placed)),
+		Boundaries:      make([]AtlasBoundary, 0, len(in.Boundaries)),
+		Doorways:        make([]AtlasDoorway, 0, len(in.Doorways)),
+		Regions:         make([]AtlasRegion, 0, len(in.Regions)),
+		Segments:        make([]AtlasSegment, 0, len(in.Segments)),
+		StructuralWalls: make([]AtlasStructuralWall, 0, len(in.StructuralWalls)),
+		StructuralDoors: make([]AtlasStructuralDoor, 0, len(in.StructuralDoors)),
+		Sealed:          append([]spatial.Position(nil), in.Sealed...),
+		Exits:           make([]AtlasExit, 0, len(in.Exits)),
 	}
 
 	// THE HELD FILTER IS INHERITED, THE FIELDS ARE NOT. A prop somebody
@@ -124,6 +126,23 @@ func projectAtlas(in encounter.Atlas) Atlas {
 			To:     AxialPointF{Q: seg.To.Q, R: seg.To.R},
 			Height: seg.Height,
 		})
+	}
+
+	// THE STRUCTURAL LAYOUT, COPIED FIELD FOR FIELD (rpg-project#169). The
+	// composition has already done every decision this seam is forbidden to
+	// repeat: which walls and doors this recipient may know, which bound
+	// openings survive, and what a wall's cut list is. Nothing here filters,
+	// converts units, infers state or completes a parent link — the shape
+	// crossing is only S2's type rewrite, and a caller's edit to a returned
+	// slice must not reach the composition's snapshot.
+	for _, p := range in.PropPresentations {
+		out.PropPresentations = append(out.PropPresentations, projectPropPresentation(p))
+	}
+	for _, wall := range in.StructuralWalls {
+		out.StructuralWalls = append(out.StructuralWalls, projectStructuralWall(wall))
+	}
+	for _, door := range in.StructuralDoors {
+		out.StructuralDoors = append(out.StructuralDoors, projectStructuralDoor(door))
 	}
 
 	for _, prop := range in.Props {

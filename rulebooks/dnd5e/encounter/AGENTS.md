@@ -20,6 +20,7 @@ Every noun below is one this module is the truth for. Nothing else may hold a se
 | Runtime areas and who stands in them | [`sightarea.go`](./sightarea.go), [`sightarea_transition.go`](./sightarea_transition.go) | One membership function over the shared placement, asked at every step and every area change; entry, exit and "area ended" are told here. Nothing persists membership — no condition, no reconcile. The membership label is content's, carried unread. |
 | The live map | [`canvas.go`](./canvas.go) | `Canvas()` hands out the actual `spatial.Room`, behind a view that refuses every write by name. |
 | Walls, doors, props, scenery, sealed cells | [`atlas.go`](./atlas.go), [`door.go`](./door.go), [`field.go`](./field.go) | Standable is what an owner grants minus what a wall takes away. |
+| The fixed structural layout | [`structural_walls.go`](./structural_walls.go), [`projection.go`](./projection.go) | One authored line with a stable placed identity, canonical-feet dimensions and its openings, each optionally bound to an existing footprint door. Two flat reads: `Atlas.StructuralWalls` (permitted cuts, no nested door metadata) and `Atlas.StructuralDoors` (independent doors, no parent id, no state). Presence is the same explicit permitted-identity answer the placed contributors use; a hidden parent never conceals an unlisted door and a hidden door leaves no tell. |
 | Placed footprint contributors | [`placed_props.go`](./placed_props.go) | An authored rectangle in the canonical plane with independent movement/sight answers. Centre contact closes standing; segment interior closes a crossing; sight reads them as SOFT lane obstructions through `SightLanes`. No anchor cell, no fake entity, no runtime move protocol — a changed placement is a recompilation. |
 | What each member KNOWS about location | [`sight.go`](./sight.go), [`sightreach.go`](./sightreach.go), [`projection.go`](./projection.go), [`conceal.go`](./conceal.go), [`concealment.go`](./concealment.go) | `mind/perception` holds testimony opaquely; this module gives it its `Known(position)`/`Unknown` meaning ([ADR-0047](../../../docs/adr/0047-encounter-owns-location-knowledge.md)). |
 | What a field HIDES | [`concealment.go`](./concealment.go) | ONE noun per secret ([rpg-project#490](https://github.com/KirkDiggler/rpg-project/issues/490)): cells, doors and props are hidden by belonging to a `ConcealmentInput`, and a cell, a door or a prop belongs to at most one. A region no longer carries a `concealed` flag and neither does a door. |
@@ -51,16 +52,15 @@ Every noun below is one this module is the truth for. Nothing else may hold a se
 - **Storage.** It hands out `EncounterData` ([data.go](./data.go)); the host persists it.
 - **What an archetype implies.** W5: a region's archetype and lighting are authored, required,
   carried unread, and NEVER decide a mechanic.
-- **What a room LOOKS like.** Assets, transforms, lights, labels, groups, the editor's workspace
-  and its coordinate frame are the World Builder's, and the player is served them by dungeon key
-  — never by this module ([rpg-project#479](https://github.com/KirkDiggler/rpg-project/issues/479),
-  R2). The engine held the whole authored scene on `FieldInput`, on the record under `room_scene`
-  and on the atlas until 2026-09-19, and read three numbers per prop out of it. Those three
-  numbers are now lowered at the source boundary into `PlacedPropInput`
-  ([placed_props.go](./placed_props.go), and the lowering itself in
-  [dungeonspec/single_room_lowering.go](./dungeonspec/single_room_lowering.go)); no type here names an
-  asset, a transform, a light or a workspace, and a record saved with the old key simply loads
-  without it ([legacy_room_scene_key_test.go](./legacy_room_scene_key_test.go)).
+- **The editor document or what an asset means.** Groups, support/parent graphs,
+  workspace and editor coordinate vocabulary stay in content. Construction lowers
+  mechanics into `PlacedPropInput` and captures only typed immutable render facts
+  ([prop_presentation.go](./prop_presentation.go), plus structural layout). Refs and
+  visual lights are carried, not interpreted as rules or collider dimensions.
+  Member projection controls delivery; mutable observations capture their render
+  pose with the sighting. Gameplay never downloads unrestricted YAML or enriches a
+  saved encounter from an edited content key. The removed `room_scene` document
+  remains ignored ([legacy_room_scene_key_test.go](./legacy_room_scene_key_test.go)).
 
 ## Questions it answers, questions it asks
 

@@ -902,13 +902,12 @@ func place(
 		profile = &ExplorationData{}
 	}
 	placed, err := scope.enc.Join(&encounter.JoinInput{
-		PrivateDiscoveries:  profile.PrivateDiscoveries,
-		RetainedDiscoveries: profile.Checks,
-		Member:              encounter.MemberID(id),
-		Kind:                encounter.MemberKind(kind),
-		Name:                name,
-		Cell:                at,
-		BlocksMovement:      blocksMovement,
+		PrivateDiscoveries: profile.PrivateDiscoveries,
+		Member:             encounter.MemberID(id),
+		Kind:               encounter.MemberKind(kind),
+		Name:               name,
+		Cell:               at,
+		BlocksMovement:     blocksMovement,
 		// The author's placed records, converted at the boundary and nowhere
 		// else — a []string in, the composition's own IntelID out (S2: no
 		// inner type crosses this seam's exported surface).
