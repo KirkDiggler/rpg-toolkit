@@ -65,6 +65,10 @@ func (s *PlacedPropsSuite) TestPropPresentationCopiesDefinitionsAndSurvivesReloa
 	next, err := enc.AtlasFor("a")
 	s.Require().NoError(err)
 	s.Equal("#ffffff", next.PropPresentations[0].PointLight.Color)
+	bad := enc.ToData()
+	bad.Field.PropPresentations[0].HeightScale = 0
+	_, badErr := encounter.LoadEncounter(encounter.CompileOnlyLoad(bad))
+	s.Error(badErr, "malformed persisted definitions are refused on load")
 	loaded := s.loadFrom(enc.ToData())
 	after, err := loaded.AtlasFor("a")
 	s.Require().NoError(err)

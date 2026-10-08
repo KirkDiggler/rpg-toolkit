@@ -17,6 +17,12 @@ import (
 // detached fixed or captured records. Distances are canonical feet, facing is
 // canonical planar degrees, and HeightScale is a positive visual-only Y scale.
 // No field here controls collision, sight range or an object's mutable location.
+// Placed-prop bindings must match the declared origin/facing. Legacy cell-prop
+// bindings retain the legacy Facing/Offset posture: the initial visual pose is
+// caller-supplied content, not checked against the gameplay cell. Neither shipped
+// dialect emits such a binding. Observation captures that initial picture;
+// an existing movement/drop fact rebases it through the authoritative cell.
+// Raw FieldInput callers own consistency of this legacy presentation seam.
 type PropPresentation struct {
 	ID            PropID
 	Ref           string

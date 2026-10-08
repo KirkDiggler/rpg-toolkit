@@ -78,6 +78,7 @@ func (s *PropObservationSuite) TestFootprintMemoryKeepsItsShapeAndNeedsCompleteE
 	box := placed("b", coveredBox(12, centreOf(cellAt(4, 1))), false, false)
 	box.Holdable = true
 	field.Placed = []encounter.PlacedPropInput{box}
+	field.PropPresentations = []encounter.PropPresentation{{ID: "b", Ref: "test:props:chest", Origin: box.Placement.Origin, HeightScale: 1.25, Elevation: 2}}
 	var err error
 	s.enc, err = encounter.NewEncounter(&encounter.SetupInput{
 		Field: field, Sight: s.sight, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
@@ -88,6 +89,9 @@ func (s *PropObservationSuite) TestFootprintMemoryKeepsItsShapeAndNeedsCompleteE
 	s.Require().NoError(err)
 	before := s.prop(propObserver)
 	s.Require().NotNil(before.Placed)
+	s.Require().NotNil(before.Presentation)
+	s.Equal(box.Placement.Origin, before.Presentation.Origin)
+	s.Equal(1.25, before.Presentation.HeightScale)
 	s.Greater(len(before.Placed.Cells), 1)
 	s.Equal(box.Placement, before.Placed.Placement)
 	s.withdraw()
@@ -108,8 +112,10 @@ func (s *PropObservationSuite) TestFootprintMemoryKeepsItsShapeAndNeedsCompleteE
 	s.Require().NoError(err)
 	s.False(s.prop(propObserver).ObservedEmpty, "partial footprint visibility is not a complete absence witness")
 	s.Equal(before.Placed, s.prop(propObserver).Placed)
+	s.Equal(before.Presentation, s.prop(propObserver).Presentation)
 	s.reload()
 	s.Equal(before.Placed, s.prop(propObserver).Placed)
+	s.Equal(before.Presentation, s.prop(propObserver).Presentation)
 	s.sight.reach[propObserver] = 20
 	_, err = s.enc.Step(&encounter.StepInput{Member: "b", To: cellAt(3, 0)})
 	s.Require().NoError(err)
@@ -119,6 +125,7 @@ func (s *PropObservationSuite) TestFootprintMemoryKeepsItsShapeAndNeedsCompleteE
 	}
 	s.True(s.prop(propObserver).ObservedEmpty)
 	s.Empty(s.prop(propObserver).Placed.Cells)
+	s.Nil(s.prop(propObserver).Presentation)
 }
 
 func (s *PropObservationSuite) TestRoomLayoutDoesNotDiscloseAnOccludedProp() {

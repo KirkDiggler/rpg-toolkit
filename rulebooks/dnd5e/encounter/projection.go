@@ -130,6 +130,19 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 		}
 	}
 
+	// Standalone bound doors share the same known-boundary rule. Their
+	// supplied identity link must not disappear with far-side support cells,
+	// and a concealed canonical DoorID must still withhold its placed identity.
+	for _, p := range e.field.propPresentations {
+		if p.DoorID == "" {
+			continue
+		}
+		structuralBoundaries[p.ID] = true
+		if unknownDoors[p.DoorID] {
+			withheldDoorPlacements[p.ID] = true
+		}
+	}
+
 	out := Atlas{
 		Orientation:     full.Orientation,
 		Cells:           make([]spatial.Position, 0, len(full.Cells)),
