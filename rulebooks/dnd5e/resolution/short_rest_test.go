@@ -219,8 +219,7 @@ func restConditionRefs(t *testing.T, data *character.Data) []string {
 	return out
 }
 
-// An hour passes in a short rest and the clock jump runs no durations, so a
-// one-minute hold ends: the entry names it, strips its effect from the rester
+// A one-minute hold ends on the rest: the entry names it, strips its effect from the rester
 // and from the ally passed in, and the ally comes back dirty.
 func (s *ShortRestTestSuite) TestAOneMinuteHoldEndsAndIsNamed() {
 	rester, ally := s.blessHold(10)
@@ -234,7 +233,7 @@ func (s *ShortRestTestSuite) TestAOneMinuteHoldEndsAndIsNamed() {
 	held := out.ConcentrationBreaks[0]
 	s.Equal(encounter.MemberID(shortResterID), held.Caster)
 	s.Equal(refs.Spells.Bless().String(), held.Spell.Ref)
-	s.Equal(conditions.ConcentrationEndedDuration, held.Reason)
+	s.Equal("rest", held.Reason, "the rulebook ends a hold on any rest")
 	var removedFrom []encounter.MemberID
 	for _, removed := range held.Removed {
 		s.Require().NotNil(removed.Address)
@@ -254,18 +253,6 @@ func (s *ShortRestTestSuite) TestAOneMinuteHoldEndsAndIsNamed() {
 		"the ally did not rest: its short-rest pool stays spent")
 }
 
-// A hold with exactly an hour left ends with the hour.
-func (s *ShortRestTestSuite) TestAHoldWithExactlyAnHourLeftEnds() {
-	rester, ally := s.blessHold(encounter.RoundsPerHour)
-
-	out, err := ShortRest(s.ctx, &ShortRestInput{
-		Character: rester, Others: []Participant{{Character: ally}},
-	})
-	s.Require().NoError(err)
-	s.Require().Len(out.ConcentrationBreaks, 1)
-	s.NotContains(restConditionRefs(s.T(), out.Character), refs.Conditions.Concentrating().String())
-}
-
 // A hold whose effect sits on a member left out of Others refuses before
 // anything ends: the ally could never be written, so the strip would be a lie.
 func (s *ShortRestTestSuite) TestAHoldReachingAMemberNotPassedInRefuses() {
@@ -283,18 +270,33 @@ func (s *ShortRestTestSuite) TestAHoldReachingAMemberNotPassedInRefuses() {
 	s.Require().JSONEq(string(before), string(after), "the caller's record must not move")
 }
 
-// A hold with more than an hour left is not ended: the hour is not run on its
-// clock, and ending it would invent an expiry.
-func (s *ShortRestTestSuite) TestAHoldLongerThanAnHourIsKept() {
+// A short rest ends every hold, whatever its clock: the rulebook ends a
+// combat-scoped condition on any rest.
+func (s *ShortRestTestSuite) TestAHoldLongerThanAnHourEndsToo() {
 	rester, ally := s.blessHold(encounter.RoundsPerHour + 1)
 
 	out, err := ShortRest(s.ctx, &ShortRestInput{
 		Character: rester, Others: []Participant{{Character: ally}},
 	})
 	s.Require().NoError(err)
-	s.Empty(out.ConcentrationBreaks)
-	s.Contains(restConditionRefs(s.T(), out.Character), refs.Conditions.Concentrating().String())
-	s.Empty(out.DirtyCharacters)
+	s.Require().Len(out.ConcentrationBreaks, 1)
+	s.NotContains(restConditionRefs(s.T(), out.Character), refs.Conditions.Concentrating().String())
+	s.Require().Len(out.DirtyCharacters, 1)
+}
+
+// A combat-scoped condition ends on a short rest and is named.
+func (s *ShortRestTestSuite) TestACombatScopedConditionEndsAndIsNamed() {
+	prone, err := conditions.NewProneCondition(shortResterID).ToJSON()
+	s.Require().NoError(err)
+	rester := s.rester()
+	rester.Conditions = []json.RawMessage{prone}
+
+	out, err := ShortRest(s.ctx, &ShortRestInput{Character: rester})
+	s.Require().NoError(err)
+
+	s.Require().Len(out.Ended, 1)
+	s.Equal(refs.Conditions.Prone().String(), out.Ended[0].Address.ConditionRef)
+	s.NotContains(restConditionRefs(s.T(), out.Character), refs.Conditions.Prone().String())
 }
 
 // An effect that ends on any rest ends itself on the short rest's event, and

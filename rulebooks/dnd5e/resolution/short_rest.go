@@ -60,15 +60,15 @@ type ShortRestOutput struct {
 
 	// ConcentrationBreaks are the holds the rest ended on the character, each
 	// naming the effects that came off with it — the same record a Resolve
-	// returns. An hour passes in a short rest and the encounter's clock jump
-	// runs no durations, so the rest ends every hold whose remaining clock is
-	// an hour or less (reason [conditions.ConcentrationEndedDuration]). The
-	// host closes any runtime area the caster opened, as it does for a
+	// returns. A short rest is an hour, and the rulebook ends every
+	// combat-scoped condition on any rest, a hold among them (reason "rest").
+	// The host closes any runtime area the caster opened, as it does for a
 	// Resolve's breaks.
 	ConcentrationBreaks []encounter.ConcentrationBreak
 
-	// Ended are the other effects the rest took off the character — those
-	// that end on a rest of any kind — in the order they ended. A hold and its
+	// Ended are the other effects the rest took off the character — every
+	// effect that ends on a rest of any kind, combat-scoped conditions and
+	// until-rest effects alike — in the order they ended. A hold and its
 	// effects are in [ShortRestOutput.ConcentrationBreaks], not here.
 	Ended []encounter.ActivationResult
 
@@ -82,12 +82,11 @@ type ShortRestOutput struct {
 // ShortRest strictly clones, loads, attaches, rests, snapshots, and tears
 // down one character taking a short rest. It is the sibling of [LongRest].
 //
-// The rest is an hour. Before the rulebook's rest runs, the entry ends every
-// concentration the character holds that cannot outlast that hour, through
-// the hold's own removal — the one a recast or a failed check publishes — so
-// the hold strips its effects from every sheet passed in. Then the rulebook's
-// rest publishes the rest event, and every effect that ends on a rest ends
-// itself.
+// The rest is an hour. The rulebook's rest publishes the rest event, and
+// every effect that ends on a rest ends itself: each combat-scoped condition,
+// each until-rest effect, and each concentration the character holds, which
+// strips its effects from every sheet passed in. The entry hears what ended
+// and reports it.
 //
 // It installs no encounter world: whether the character may rest (not in a fight)
 // and the hour the rest takes are the encounter's and the session's
@@ -169,8 +168,7 @@ func shortRestOn(
 	}
 
 	// A rest the rulebook refuses (a negative count, more dice than remain, a
-	// dead character) refuses after the holds were ended on this transient
-	// surface, and returns no record: nothing that ended reaches a write.
+	// dead character) refuses before anything moves, and returns no record.
 	ends, err := collectConcentrationEnds(ctx, surf.inner)
 	if err != nil {
 		return nil, err
@@ -179,7 +177,7 @@ func shortRestOn(
 	if err != nil {
 		return nil, errors.Join(err, ends.stop(ctx))
 	}
-	out, err = restAnHour(ctx, surf.inner, cast, ch, in, ends, removals)
+	out, err = restAnHour(ctx, cast, ch, in, ends, removals)
 	if stopErr := errors.Join(ends.stop(ctx), removals.stop(ctx)); stopErr != nil {
 		return nil, errors.Join(err, stopErr)
 	}
@@ -201,18 +199,17 @@ func shortRestOn(
 	return out, nil
 }
 
-// restAnHour ends the holds the hour outlasts, rests, and snapshots the
-// resting character with what ended.
+// restAnHour checks the holds can reach every sheet they strip, rests, and
+// snapshots the resting character with what ended.
 func restAnHour(
-	ctx context.Context, bus events.EventBus, cast *Participants, ch *character.Character, in *ShortRestInput,
+	ctx context.Context, cast *Participants, ch *character.Character, in *ShortRestInput,
 	ends *concentrationCollector, removals *removalCollector,
 ) (*ShortRestOutput, error) {
-	// The holds are read once, before any is ended: ending one removes it
-	// from the sheet's condition list as it goes.
+	// The holds are read once, before the rest ends any: ending one removes
+	// it from the sheet's condition list as it goes.
 	var holds []*conditions.ConcentratingCondition
 	for _, condition := range ch.GetConditions() {
-		hold, ok := condition.(*conditions.ConcentratingCondition)
-		if ok && hold.TurnEndsLeft <= encounter.RoundsPerHour {
+		if hold, ok := condition.(*conditions.ConcentratingCondition); ok {
 			holds = append(holds, hold)
 		}
 	}
@@ -229,16 +226,6 @@ func restAnHour(
 				return nil, fmt.Errorf("%w: %s held by %q reaches %q, who was not passed in",
 					ErrBadParticipant, hold.SpellName, ch.GetID(), child.MemberID)
 			}
-		}
-	}
-
-	for _, hold := range holds {
-		address := hold.ConditionAddress()
-		if err := dnd5eEvents.ConditionRemovedTopic.On(bus).Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-			MemberID: address.MemberID, ConditionRef: address.ConditionRef, SourceID: address.SourceID,
-			Reason: conditions.ConcentrationEndedDuration,
-		}); err != nil {
-			return nil, fmt.Errorf("resolution: short rest %q: end %s: %w", ch.GetID(), hold.SpellName, err)
 		}
 	}
 
