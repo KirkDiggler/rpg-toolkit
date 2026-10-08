@@ -1805,6 +1805,14 @@ type JoinOutput struct {
 type ExitInput struct {
 	// Member is the ID of the member exiting.
 	Member MemberID
+
+	// Ended is every condition the departure took off the board, as the
+	// rulebook's leave returned it — the leaver's own, and those a caster's
+	// hold lost when the leaver did — in the activation-result shape. Carried
+	// on the exit beat (`ended`, omitted when empty) to the exit beat's own
+	// audience. Each must be a [ResultConditionRemoved] naming a current
+	// member, refused with ErrInvalidData before anything is written.
+	Ended []ActivationResult
 }
 
 // ExitOutput reports the results of a successful exit.
@@ -1838,6 +1846,14 @@ type ExitOutput struct {
 type EndInput struct {
 	// Ending is the key of the ending to fire (must be External).
 	Ending string
+
+	// Ended is, per member, every condition the ending took off them, as the
+	// rulebook returned it, in the activation-result shape. Carried on the
+	// ended beat (`ended`, keyed by member, omitted when empty). Every key
+	// and every removal's member must be a current member, and each entry a
+	// [ResultConditionRemoved], refused with ErrInvalidData before anything
+	// is written.
+	Ended map[MemberID][]ActivationResult
 }
 
 // EndOutput reports the results of a successful ending.

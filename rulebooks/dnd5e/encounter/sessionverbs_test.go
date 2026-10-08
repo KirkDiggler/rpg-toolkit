@@ -660,6 +660,99 @@ func withoutReason(b encounter.ConcentrationBreak) encounter.ConcentrationBreak 
 	return b
 }
 
+// removalOf is a condition removal on one member, as the rulebook returns it.
+func removalOf(member encounter.MemberID, ref, name string) encounter.ActivationResult {
+	return encounter.ActivationResult{
+		Kind:    encounter.ResultConditionRemoved,
+		Address: &encounter.ConditionAddress{MemberID: member, ConditionKey: encounter.ConditionKey{ConditionRef: ref}},
+		Name:    name, Reason: "departed",
+	}
+}
+
+// What a departure ended rides on the exit beat: the leaver's own condition
+// and the one a caster's hold lost with them, both round-tripped, told to the
+// exit beat's audience.
+func (s *SessionVerbsSuite) TestAnExitCarriesWhatItEnded() {
+	enc := s.freeRoam()
+
+	_, err := enc.Exit(&encounter.ExitInput{Member: alice, Ended: []encounter.ActivationResult{
+		removalOf(alice, "dnd5e:conditions:prone", "Prone"),
+		removalOf(bob, "dnd5e:conditions:blessed", "Blessed"),
+	}})
+	s.Require().NoError(err)
+
+	for _, watcher := range []encounter.MemberID{alice, bob, billy} {
+		beats := s.beatsOfKind(enc, watcher, encounter.BeatExited)
+		s.Require().Len(beats, 1, "%s is told the exit", watcher)
+		ended, ok := beats[0]["ended"].([]any)
+		s.Require().True(ok, watcher)
+		s.Require().Len(ended, 2, "both removals round-trip")
+		s.Contains(string(mustJSON(s.T(), ended[0])), "dnd5e:conditions:prone")
+		s.Contains(string(mustJSON(s.T(), ended[1])), "dnd5e:conditions:blessed")
+	}
+
+	// An exit that ended nothing says nothing.
+	_, err = enc.Exit(&encounter.ExitInput{Member: bob})
+	s.Require().NoError(err)
+	for _, beat := range s.beatsOfKind(enc, billy, encounter.BeatExited) {
+		if beat["member"] == string(bob) {
+			s.NotContains(beat, "ended")
+		}
+	}
+}
+
+// A removal naming a stranger refuses the exit, and nothing is written.
+func (s *SessionVerbsSuite) TestAnExitRemovalNamingAStrangerWritesNothing() {
+	enc := s.freeRoam()
+	before, err := json.Marshal(enc.ToData())
+	s.Require().NoError(err)
+
+	refused := map[string][]encounter.ActivationResult{
+		"a stranger":    {removalOf(alice, "dnd5e:conditions:prone", "Prone"), removalOf("stranger", "dnd5e:conditions:blessed", "Blessed")},
+		"not a removal": {{Kind: encounter.ResultConditionApplied, Address: removalOf(alice, "dnd5e:conditions:prone", "Prone").Address, Name: "Prone"}},
+		"nobody at all": {{Kind: encounter.ResultConditionRemoved, Name: "Prone", Reason: "departed"}},
+	}
+	for name, ended := range refused {
+		_, err := enc.Exit(&encounter.ExitInput{Member: alice, Ended: ended})
+		s.ErrorIs(err, encounter.ErrInvalidData, name)
+	}
+
+	after, err := json.Marshal(enc.ToData())
+	s.Require().NoError(err)
+	s.Equal(string(before), string(after), "nothing written")
+}
+
+// End carries, per member, what the ending took off them on the ended beat,
+// and refuses a stranger before closing anything.
+func (s *SessionVerbsSuite) TestAnEndCarriesWhatItEndedPerMember() {
+	enc := s.freeRoam()
+	before, err := json.Marshal(enc.ToData())
+	s.Require().NoError(err)
+	_, err = enc.End(&encounter.EndInput{Ending: "withdrawn", Ended: map[encounter.MemberID][]encounter.ActivationResult{
+		"stranger": {removalOf(alice, "dnd5e:conditions:prone", "Prone")},
+	}})
+	s.ErrorIs(err, encounter.ErrInvalidData, "a stranger's key")
+	_, err = enc.End(&encounter.EndInput{Ending: "withdrawn", Ended: map[encounter.MemberID][]encounter.ActivationResult{
+		alice: {removalOf("stranger", "dnd5e:conditions:prone", "Prone")},
+	}})
+	s.ErrorIs(err, encounter.ErrInvalidData, "a removal naming a stranger")
+	after, err := json.Marshal(enc.ToData())
+	s.Require().NoError(err)
+	s.Equal(string(before), string(after), "nothing written, nothing closed")
+
+	_, err = enc.End(&encounter.EndInput{Ending: "withdrawn", Ended: map[encounter.MemberID][]encounter.ActivationResult{
+		alice: {removalOf(alice, "dnd5e:conditions:prone", "Prone")},
+		bob:   {removalOf(bob, "dnd5e:conditions:blessed", "Blessed")},
+	}})
+	s.Require().NoError(err)
+	beats := s.beatsOfKind(enc, billy, encounter.BeatEnded)
+	s.Require().Len(beats, 1)
+	ended, ok := beats[0]["ended"].(map[string]any)
+	s.Require().True(ok)
+	s.Len(ended[string(alice)], 1)
+	s.Len(ended[string(bob)], 1)
+}
+
 func paceOf(data encounter.EncounterData, member encounter.MemberID) int {
 	for _, m := range data.Members {
 		if m.ID == member {

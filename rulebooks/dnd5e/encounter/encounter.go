@@ -1549,6 +1549,14 @@ func (e *Encounter) firedReachedPosition(member *memberRecord, cell spatial.Posi
 //
 // Returns a DEEP COPY (mutation-proof), like every projection.
 func (e *Encounter) closeWith(key string, at uint64, audience ...MemberID) (*Outcome, error) {
+	return e.closeWithEnded(key, at, nil, audience...)
+}
+
+// closeWithEnded is [Encounter.closeWith] with what the ending took off each
+// member carried on the ended beat (`ended`, omitted when nil).
+func (e *Encounter) closeWithEnded(
+	key string, at uint64, ended map[MemberID][]interface{}, audience ...MemberID,
+) (*Outcome, error) {
 	// A reaction can finish the encounter while a turn or directed walk is
 	// suspended. No continuation survives an ending, and closed persisted worlds
 	// must never carry resumable work.
@@ -1570,10 +1578,14 @@ func (e *Encounter) closeWith(key string, at uint64, audience ...MemberID) (*Out
 	// carrier out of the beat announcing the run they just won. Every other
 	// close still runs with nobody removed, and for those the two are the
 	// same list.
-	beatBytes, _ := json.Marshal(map[string]interface{}{
+	endedBeat := map[string]interface{}{
 		"beat":   BeatEnded,
 		"ending": key,
-	})
+	}
+	if len(ended) > 0 {
+		endedBeat["ended"] = ended
+	}
+	beatBytes, _ := json.Marshal(endedBeat)
 	if _, err := e.appendBeat(&record.AppendInput{
 		At:       at,
 		Audience: e.audienceFor(tableBeat, audience...),
@@ -2264,6 +2276,12 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 		return nil, fmt.Errorf("exit: %w", ErrNotMember)
 	}
 
+	// WHAT THE DEPARTURE ENDED, validated before the first write below.
+	ended, err := e.prepareEndedRemovals("exit", in.Ended)
+	if err != nil {
+		return nil, err
+	}
+
 	// Get the exiting member's final cell, and the region it falls in.
 	finalCell, ok := e.canvas.GetEntityPosition(string(in.Member))
 	if !ok {
@@ -2368,6 +2386,9 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 		// present so a reader never has to tell "absent" from "none".
 		"holding": departing,
 		"exit":    string(leftThrough),
+	}
+	if len(ended) > 0 {
+		beatPayload["ended"] = ended
 	}
 	beatBytes, _ := json.Marshal(beatPayload)
 
@@ -2475,7 +2496,26 @@ func (e *Encounter) End(in *EndInput) (*EndOutput, error) {
 		return nil, fmt.Errorf("end: ending %s is not External: %w", in.Ending, ErrNoEnding)
 	}
 
-	closed, err := e.closeWith(in.Ending, uint64(e.clock.ToData().HighWater))
+	// WHAT THE ENDING TOOK OFF EACH MEMBER, validated before the close.
+	var endedByMember map[MemberID][]interface{}
+	for member, results := range in.Ended {
+		if _, ok := e.members[member]; !ok {
+			return nil, fmt.Errorf("end: ended for %q, who is not a member: %w", member, ErrInvalidData)
+		}
+		prepared, err := e.prepareEndedRemovals("end", results)
+		if err != nil {
+			return nil, err
+		}
+		if len(prepared) == 0 {
+			continue
+		}
+		if endedByMember == nil {
+			endedByMember = make(map[MemberID][]interface{}, len(in.Ended))
+		}
+		endedByMember[member] = prepared
+	}
+
+	closed, err := e.closeWithEnded(in.Ending, uint64(e.clock.ToData().HighWater), endedByMember)
 	if err != nil {
 		return nil, fmt.Errorf("end: %w", err)
 	}
@@ -2520,4 +2560,33 @@ func (m *memberEntity) BlocksLineOfSight() bool {
 // every member had before this field existed.
 func (m *memberEntity) BlocksMovement() bool {
 	return m.blocksMovement
+}
+
+// prepareEndedRemovals validates and shapes the conditions a departure or an
+// ending took off the board: each must be a [ResultConditionRemoved] naming a
+// current member — a stranger is refused, never carried — and is otherwise
+// validated as every removal is ([Encounter.prepareActivationResult]).
+// Returns the beat's `ended` entries, nil when there are none. Writes
+// nothing, so a caller asks it before its first write.
+func (e *Encounter) prepareEndedRemovals(verb string, results []ActivationResult) ([]interface{}, error) {
+	var out []interface{}
+	for i, removed := range results {
+		if removed.Kind != ResultConditionRemoved {
+			return nil, fmt.Errorf("%s: ended[%d] kind %q: %w", verb, i, removed.Kind, ErrInvalidData)
+		}
+		if removed.Address == nil {
+			return nil, fmt.Errorf("%s: ended[%d] names no member: %w", verb, i, ErrInvalidData)
+		}
+		if _, ok := e.members[removed.Address.MemberID]; !ok {
+			return nil, fmt.Errorf("%s: ended[%d] names %q, who is not a member: %w",
+				verb, i, removed.Address.MemberID, ErrInvalidData)
+		}
+		payload, err := e.prepareActivationResult(fmt.Sprintf("%s: ended", verb), i, removed)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, payload)
+	}
+
+	return out, nil
 }
