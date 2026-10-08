@@ -990,10 +990,11 @@ func CastDefinition(input CastDefinitionInput) *actions.Definition {
 		profile.Healing = &declaration
 	}
 	return &actions.Definition{
-		Ref:  *ref,
-		Name: data.Name,
-		Cost: actions.CloneSpendProfile(content.cost),
-		Cast: &profile,
+		Ref:         *ref,
+		Name:        data.Name,
+		Description: data.Description,
+		Cost:        actions.CloneSpendProfile(content.cost),
+		Cast:        &profile,
 	}
 }
 

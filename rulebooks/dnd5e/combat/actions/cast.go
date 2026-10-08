@@ -201,6 +201,10 @@ type CastOption struct {
 
 	// Label is the word a person reads on the picker.
 	Label string `json:"label"`
+
+	// Description explains this choice before commitment. It is content, not
+	// selector material or execution input, and survives frozen serialization.
+	Description string `json:"description,omitempty"`
 }
 
 // HasOption reports whether the profile lists an option with this id.
