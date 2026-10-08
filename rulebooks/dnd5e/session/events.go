@@ -391,6 +391,12 @@ func kindFor(beat string) EventKind {
 	// compile here rather than producing a beat nobody renders.
 	case encounter.BeatRollWindowOpened:
 		return EventRollWindowOpened
+	// The session verbs' two beats (rpg-project#542): the composition's own
+	// exported constants, and the wire names the event for each.
+	case encounter.BeatEquipmentChanged:
+		return EventEquipmentChanged
+	case encounter.BeatRested:
+		return EventRested
 	default:
 		return EventUnknown
 	}
@@ -731,6 +737,10 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			return nil
 		}
 		return LootedBody{Looter: p.Member, Body: p.Target}
+	case EventEquipmentChanged:
+		return equipmentChangedBodyOf(payload)
+	case EventRested:
+		return restedBodyOf(payload)
 	case EventHeld:
 		var p struct {
 			Holder string `json:"holder"`
@@ -2381,4 +2391,68 @@ func decodeDamageComponent(raw json.RawMessage) (DamageComponent, bool) {
 	component.FinalRolls = scalar.FinalRolls
 	component.FlatBonus = scalar.FlatBonus
 	return component, true
+}
+
+// equipmentChangedBodyOf decodes an equip beat, or nil when a field it needs
+// is missing or the change is neither a draw nor a stow.
+func equipmentChangedBodyOf(payload []byte) EventBody {
+	var p struct {
+		Member string `json:"member"`
+		Slot   string `json:"slot"`
+		Item   string `json:"item"`
+		Change string `json:"change"`
+	}
+	if json.Unmarshal(payload, &p) != nil || p.Member == "" || p.Slot == "" || p.Item == "" {
+		return nil
+	}
+	var change EquipmentChange
+	switch encounter.EquipmentChange(p.Change) {
+	case encounter.EquipDraw:
+		change = EquipmentDrawn
+	case encounter.EquipStow:
+		change = EquipmentStowed
+	default:
+		return nil
+	}
+	return EquipmentChangedBody{Member: p.Member, Slot: p.Slot, Item: p.Item, Change: change}
+}
+
+// restedBodyOf decodes a rest beat, or nil when a field it needs is missing,
+// a count is negative, or a calculation is present and does not replay.
+func restedBodyOf(payload []byte) EventBody {
+	var p struct {
+		Member            string          `json:"member"`
+		Kind              string          `json:"kind"`
+		HitPointsRestored *int            `json:"hit_points_restored"`
+		HitPoints         *int            `json:"hit_points"`
+		HitDiceSpent      *int            `json:"hit_dice_spent"`
+		HitDiceReturned   *int            `json:"hit_dice_returned"`
+		HitDiceRemaining  *int            `json:"hit_dice_remaining"`
+		ResourcesRefilled []string        `json:"resources_refilled"`
+		Calculation       json.RawMessage `json:"calculation"`
+	}
+	if json.Unmarshal(payload, &p) != nil || p.Member == "" || p.Kind == "" {
+		return nil
+	}
+	counts := []*int{p.HitPointsRestored, p.HitPoints, p.HitDiceSpent, p.HitDiceReturned, p.HitDiceRemaining}
+	for _, count := range counts {
+		if count == nil || *count < 0 {
+			return nil
+		}
+	}
+	body := RestedBody{
+		Member: p.Member, Kind: p.Kind,
+		HitPointsRestored: *p.HitPointsRestored, HitPoints: *p.HitPoints,
+		HitDiceSpent: *p.HitDiceSpent, HitDiceReturned: *p.HitDiceReturned,
+		HitDiceRemaining:  *p.HitDiceRemaining,
+		ResourcesRefilled: p.ResourcesRefilled,
+	}
+	if len(p.Calculation) > 0 {
+		calculation, ok := decodeRollCalculation(p.Calculation)
+		if !ok {
+			return nil
+		}
+		body.Calculation = calculation
+	}
+	return body
 }

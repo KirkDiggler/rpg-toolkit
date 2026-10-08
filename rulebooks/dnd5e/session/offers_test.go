@@ -42,7 +42,7 @@ func candidateFight(t *testing.T) (*session.Manager, *fakeSessions, *fakeEncount
 	// Enough scripted rolls for the fight's initiative and nothing else:
 	// Afford is a read and rolls nothing.
 	roller := &sequenceDice{rolls: []int{10, 1, 1, 1, 1, 1, 1, 1, 1, 1}}
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: roller, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: characters, Events: session.DiscardEvents{},
 	})
@@ -342,7 +342,7 @@ func TestAffordProjectsEveryCompiledDeclarationOnTheTurnClock(t *testing.T) {
 func TestNotYourTurnBlocksEveryVerb(t *testing.T) {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	characters := newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
 		Characters: characters, Events: session.DiscardEvents{},
 	})
@@ -483,7 +483,7 @@ func TestBadAttackCompilationBlocksAttackOnly(t *testing.T) {
 
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	characters := newFakeCharacters(alice)
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{10, 1, 1, 1, 1, 1, 1, 1, 1, 1}}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: characters, Events: session.DiscardEvents{},
 	})
@@ -561,7 +561,7 @@ func TestUnreadableCharacterBlocksEveryVerbButEndTurn(t *testing.T) {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	characters := newFakeCharacters(armedFighter("alice"), dullEyed("bob"))
 
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{10, 1, 1, 1, 1, 1, 1, 1, 1, 1}}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: characters, Events: session.DiscardEvents{},
 	})

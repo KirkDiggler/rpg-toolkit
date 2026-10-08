@@ -36,7 +36,7 @@ func TestSpawnActionsSuite(t *testing.T) { suite.Run(t, new(SpawnActionsTestSuit
 
 func (s *SpawnActionsTestSuite) SetupTest() {
 	s.sessions = newFakeSessions()
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: newFakeEncounters(), Characters: testCharacters(),
 		Events: session.DiscardEvents{},

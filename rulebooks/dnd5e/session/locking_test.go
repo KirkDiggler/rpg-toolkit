@@ -15,12 +15,14 @@ import (
 )
 
 type observingLocker struct {
-	held      bool
-	calls     []string
-	releases  int
-	err       error
-	invalid   bool
-	nilResult bool
+	held  bool
+	calls []string
+	// characters are the character guards asked for, in order.
+	characters []string
+	releases   int
+	err        error
+	invalid    bool
+	nilResult  bool
 }
 
 func (l *observingLocker) LockSession(_ context.Context, in *session.LockSessionInput) (*session.LockSessionOutput, error) {
@@ -40,6 +42,13 @@ func (l *observingLocker) LockSession(_ context.Context, in *session.LockSession
 		l.held = false
 		l.releases++
 	}}, nil
+}
+
+// LockCharacter records the character guard and grants it; the session guard
+// is what these scenes observe.
+func (l *observingLocker) LockCharacter(_ context.Context, in *session.LockCharacterInput) (*session.LockCharacterOutput, error) {
+	l.characters = append(l.characters, in.Character)
+	return &session.LockCharacterOutput{Release: func() {}}, nil
 }
 
 type guardedSessions struct {
@@ -105,7 +114,7 @@ func (s *SessionLockSuite) SetupTest() {
 	}
 	probe := func() { s.probe() }
 	s.stream = &guardedStream{probe: probe}
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		Sessions:   guardedSessions{SessionRepository: s.store, probe: probe},
 		Encounters: guardedEncounters{EncounterRepository: newFakeEncounters(), probe: probe},
 		Characters: testCharacters(), Events: s.stream, Dice: testDice{},

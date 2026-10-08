@@ -77,7 +77,7 @@ func (s *EffectRowsSuite) cave(actor *character.Data) {
 	s.characters = newFakeCharacters(actor, armedFighter(erAlly))
 	s.stream = &fakeStream{}
 
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream,
 	})
@@ -554,7 +554,7 @@ func (s *EffectRowsSuite) TestAttachRunsOnlyInAfford() {
 // because the world clock compiles no attack.
 func (s *EffectRowsSuite) TestNoRowsOnTheWorldClock() {
 	s.characters = newFakeCharacters(s.fighter(s.blessedBy("alice", "bob")), armedFighter("bob"))
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: s.characters,
 		Events: session.DiscardEvents{},

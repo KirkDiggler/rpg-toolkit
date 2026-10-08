@@ -59,6 +59,14 @@ type Config struct {
 	// rather than a Config field.
 	Characters CharacterRepository
 
+	// Seats persists which run, if any, holds each character. Required.
+	//
+	// The seat decides how a character verb runs (Equip, Unequip, LevelUp):
+	// a plain sheet verb for an unseated character, the verb inside its run
+	// for a seated one (rpg-project#542, R4). Launch and Join write it; Exit,
+	// End and the commit that closes a run clear it. See [SeatRepository].
+	Seats SeatRepository
+
 	// Events is the live channel to connected clients. Required.
 	//
 	// Required because a verb's response tells the CALLER about the caller's
@@ -156,6 +164,7 @@ type Manager struct {
 	explorations      ExplorationRepository
 	encounters        EncounterRepository
 	characters        CharacterRepository
+	seats             SeatRepository
 	events            EventStream
 	initiative        encounter.InitiativeRoller
 	presentationIDs   PresentationIDGenerator
@@ -205,6 +214,7 @@ func NewManager(cfg *Config) (*Manager, error) {
 		{"Sessions", cfg.Sessions != nil},
 		{"Encounters", cfg.Encounters != nil},
 		{"Characters", cfg.Characters != nil},
+		{"Seats", cfg.Seats != nil},
 		{"Events", cfg.Events != nil},
 		{"Dice", cfg.Dice != nil},
 		{"PresentationIDs", cfg.PresentationIDs != nil},
@@ -247,6 +257,7 @@ func NewManager(cfg *Config) (*Manager, error) {
 		explorations:      cfg.Explorations,
 		encounters:        cfg.Encounters,
 		characters:        cfg.Characters,
+		seats:             cfg.Seats,
 		events:            cfg.Events,
 		initiative:        initiativeSeam{dice: cfg.Dice},
 		dice:              cfg.Dice,

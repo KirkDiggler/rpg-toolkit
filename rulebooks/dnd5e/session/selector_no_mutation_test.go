@@ -42,7 +42,7 @@ func newSelectorFixture(t *testing.T, world *encounter.EncounterData) *selectorF
 		stream:     &fakeStream{},
 		roller:     &sequenceDice{rolls: []int{15, 5}},
 	}
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: f.roller, TurnDriver: session.Pass{}, Sessions: f.sessions, Encounters: f.encounters,
 		Characters: f.characters, Events: f.stream,
 	})
@@ -280,7 +280,7 @@ func TestSuccessfulTurnAttackLoadsActorOnceBeforeExecution(t *testing.T) {
 		compiled:       map[string]int{},
 	}
 	dice := &actorLoadCheckingDice{t: t, characters: characters, rolls: []int{15, 5}}
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: dice, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
 		Characters: characters, Events: session.DiscardEvents{},
 	})

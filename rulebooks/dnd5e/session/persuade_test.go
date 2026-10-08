@@ -71,7 +71,7 @@ func (s *PersuadeSuite) front(rolls []int) *session.Manager {
 	if driver == nil {
 		driver = session.Pass{}
 	}
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: driver,
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
@@ -598,7 +598,7 @@ func (s *PersuadeSuite) TestASubjectInNoFactionHasNoStance() {
 // is the smallest world in which two viewers disagree about one subject.
 func (s *PersuadeSuite) frontWithBandit() *session.Manager {
 	s.characters = newFakeCharacters(s.sheet)
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: &sequenceDice{rolls: []int{10, 10, 10, 10}},
 		TurnDriver: session.Pass{},
 		Sessions:   s.sessions, Encounters: s.encounters,

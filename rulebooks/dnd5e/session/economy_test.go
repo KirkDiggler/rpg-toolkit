@@ -92,7 +92,7 @@ func aFight(
 	const initiativeRolls = 2
 	scripted := append(make([]int, initiativeRolls), rolls...)
 
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: scripted}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
 		Characters: characters, Events: session.DiscardEvents{},
 	})

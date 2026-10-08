@@ -721,6 +721,13 @@ func translateResolution(err error) error {
 		return fmt.Errorf("%w: %v", own, err)
 	}
 	switch {
+	case errors.Is(err, character.ErrArmorInFight):
+		// Before ErrBadEquip: the door wraps the armour refusal in its own
+		// account, and the host's answer is "not in a fight", not "a bad
+		// request".
+		return fmt.Errorf("%w: %v", ErrArmorInFight, err)
+	case errors.Is(err, resolution.ErrBadEquip):
+		return fmt.Errorf("%w: %v", ErrBadEquip, err)
 	case errors.Is(err, resolution.ErrCannotPay):
 		// The PLAYER-FACING one, and the reason it is not folded in with the two
 		// below. An actor who spent what they had is a fact about the game, and

@@ -38,7 +38,7 @@ func (s *AutomaticDiscoverySDKSuite) TestRealSheetRollPersistsAcrossRunsAndPrefe
 	ctx := context.Background()
 	profiles := &explorationStore{data: map[string]*session.ExplorationData{}}
 	sessions, encounters, characters := newFakeSessions(), newFakeEncounters(), testCharacters()
-	cfg := &session.Config{Sessions: sessions, Encounters: encounters, Characters: characters, Explorations: profiles, Events: session.DiscardEvents{}, Dice: testDice{}, PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{}}
+	cfg := &session.Config{Seats: newFakeSeats(), Sessions: sessions, Encounters: encounters, Characters: characters, Explorations: profiles, Events: session.DiscardEvents{}, Dice: testDice{}, PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{}}
 	mgr, err := session.NewManager(cfg)
 	s.Require().NoError(err)
 	world := authoredWorld(s.T())

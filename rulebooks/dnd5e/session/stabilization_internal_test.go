@@ -58,7 +58,7 @@ func (s *StabilizationSessionSuite) TestCompiledProfilePersistsAndDeliversReplay
 			encounters := &strikeEncounters{byID: map[string]*encounter.EncounterData{}}
 			stream := &stabilizationStream{}
 			dice := &scriptedDice{}
-			mgr, err := NewManager(&Config{PresentationIDs: testPresentationIDs{}, Dice: dice, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters, Characters: characters, Events: stream})
+			mgr, err := NewManager(&Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: dice, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters, Characters: characters, Events: stream})
 			s.Require().NoError(err)
 			world, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 				Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{}, Equipment: encNoHandsObserved{},

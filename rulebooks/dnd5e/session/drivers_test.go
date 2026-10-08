@@ -112,7 +112,7 @@ func driven(d *mindedPerSession) []string {
 func driverScene(t *testing.T, source session.TurnDriverSource) *session.Manager {
 	t.Helper()
 
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDrivers: source,
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 		Characters: newFakeCharacters(armedFighter("fighter-a"), armedFighter("fighter-b")),
@@ -292,7 +292,7 @@ func TestASourceThatHandsOverNoDriverIsRefused(t *testing.T) {
 // the driver it did not mean to wire take every turn in the process.
 func TestExactlyOneTurnDriverIsWired(t *testing.T) {
 	base := func() *session.Config {
-		return &session.Config{
+		return &session.Config{Seats: newFakeSeats(),
 			PresentationIDs: testPresentationIDs{}, Dice: testDice{},
 			Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 			Characters: newFakeCharacters(armedFighter("fighter-a")), Events: session.DiscardEvents{},

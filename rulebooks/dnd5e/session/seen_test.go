@@ -50,7 +50,7 @@ func TestSeenTestSuite(t *testing.T) {
 func (s *SeenTestSuite) SetupTest() {
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: newFakeCharacters(armedFighter("fighter")),
 		Events: session.DiscardEvents{},
 	})
@@ -270,7 +270,7 @@ func groundedSkeletonScene(t *testing.T) (*fakeSessions, *fakeEncounters) {
 	t.Helper()
 	ctx := context.Background()
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: newFakeCharacters(armedFighter("fighter")),
 		Events: session.DiscardEvents{},
 	})
@@ -344,7 +344,7 @@ func TestGhostSeenStandingIsWhatItLastSaw(t *testing.T) {
 	ctx := context.Background()
 	sessions, encounters := groundedSkeletonScene(t)
 
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: newFakeCharacters(armedFighter("fighter")),
 		Events: session.DiscardEvents{},
 	})
@@ -416,7 +416,7 @@ func (seamOnlyCharacters) SaveCharacter(context.Context, *character.Data) error 
 func TestViewNeverConsultsStandingEvenWithACurrentAndAGhostSighting(t *testing.T) {
 	sessions, encounters := groundedSkeletonScene(t)
 
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: seamOnlyCharacters{sheets: newFakeCharacters(armedFighter("fighter"))},
 		Events: session.DiscardEvents{},
 	})

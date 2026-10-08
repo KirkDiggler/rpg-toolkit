@@ -64,7 +64,7 @@ func (s *ConcentrationBreakSuite) scene(children []dnd5eEvents.ChildRef, rolls .
 	s.characters = newFakeCharacters(armedFighter("alice"), bob)
 	s.stream = &fakeStream{}
 
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{},
 		Dice:            &sequenceDice{rolls: rolls},
 		TurnDriver:      session.Pass{},

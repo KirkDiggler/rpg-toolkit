@@ -27,7 +27,7 @@ func (s *WriteTestSuite) SetupTest() {
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
 	s.characters = testCharacters()
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
 	})
@@ -61,7 +61,7 @@ func (s *WriteTestSuite) TestJoinPersistsTheNewMember() {
 	// room he would have to look up. The vault is anchored at (6,0), so this
 	// number only exists if the projection happened.
 	s.Equal(hexCell(2, 2), out.Member.Position)
-	s.Equal([]string{"character:bob", "encounter:world", "session:sess"}, out.Saved.Written)
+	s.Equal([]string{"character:bob", "seat:bob", "encounter:world", "session:sess"}, out.Saved.Written)
 
 	// The proof: a fresh read sees him.
 	sightings, err := s.mgr.View(ctx, &session.ViewInput{Session: "sess", Member: "bob"})
@@ -204,7 +204,7 @@ func (s *WriteTestSuite) TestWriteVerbsRejectMissingIdentifiers() {
 func (s *WriteTestSuite) TestFailedSaveIsReportedNotSwallowed() {
 	encounters := &failingEncounters{fakeEncounters: newFakeEncounters()}
 	sessions := newFakeSessions()
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
@@ -238,7 +238,7 @@ func (s *WriteTestSuite) TestFailedSaveIsReportedNotSwallowed() {
 func (s *WriteTestSuite) TestStaleWorldIsNotResurrected() {
 	ctx := context.Background()
 
-	other, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	other, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
 	})

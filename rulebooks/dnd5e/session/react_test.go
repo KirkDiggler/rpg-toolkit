@@ -67,7 +67,7 @@ func (p *pathWalker) Act(view session.MonsterView) (session.TurnIntent, error) {
 
 // managerWith builds this suite's manager over one turn driver.
 func (s *ReactWindowSuite) managerWith(driver session.TurnDriver) *session.Manager {
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: driver,
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
@@ -545,7 +545,7 @@ func (s *ReactWindowSuite) TestAStrikeThatDropsTheMoverHoldsTheRestOfTheWindows(
 // dock unable to say why the fighter dealt damage on a skeleton's turn.
 func (s *ReactWindowSuite) TestTheWindowAndTheSwingReachTheEventStreamTyped() {
 	stream := &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{},
 		TurnDriver: &pathWalker{
 			paths:  map[string][]spatial.Position{"skel-1": {hexCell(4, 0), hexCell(5, 0)}},
@@ -608,7 +608,7 @@ func (s *ReactWindowSuite) TestTheWindowAndTheSwingReachTheEventStreamTyped() {
 func (s *ReactWindowSuite) TestAnOrdinarySwingCarriesNoReaction() {
 	ctx := context.Background()
 	stream := &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: stream,

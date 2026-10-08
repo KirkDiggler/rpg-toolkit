@@ -206,6 +206,24 @@ func (m *memCharacters) SaveCharacter(_ context.Context, data *character.Data) e
 	return nil
 }
 
+// memSeats is a SeatRepository over a map: which run holds each character.
+type memSeats struct {
+	byID map[string]*session.SeatData
+}
+
+func (m *memSeats) GetSeat(_ context.Context, character string) (*session.SeatData, error) {
+	data, ok := m.byID[character]
+	if !ok {
+		return nil, session.ErrNotFound
+	}
+	return data, nil
+}
+
+func (m *memSeats) SaveSeat(_ context.Context, data *session.SeatData) error {
+	m.byID[data.Character] = data
+	return nil
+}
+
 // bobTheDwarf is the stored sheet the workbench loads.
 //
 // Note what is NOT here: speed. It is derived from race when the character is
@@ -287,6 +305,7 @@ func drive(out *bytes.Buffer) error {
 		Characters: &memCharacters{
 			byID: map[string]*character.Data{"alice": aliceTheFighter(), "bob": bobTheDwarf()},
 		},
+		Seats:  &memSeats{byID: map[string]*session.SeatData{}},
 		Events: &printStream{out: out},
 		// The workbench demonstrates verbs a human drives; nothing in it
 		// gives a monster a real behavior yet, so an unplayed member simply

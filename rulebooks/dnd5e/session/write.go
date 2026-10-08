@@ -495,47 +495,36 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
+	// THE SEAT CHANGES UNDER BOTH GUARDS: the session's is held, the
+	// character's is taken here, session first (seats.go). A character
+	// another run holds is refused before anything is written.
+	releaseCharacter, err := m.acquireCharactersFor(ctx, scope, in.Member)
+	if err != nil {
+		return nil, fmt.Errorf("join: %w", err)
+	}
+	defer releaseCharacter()
+	if err := m.refuseSeatedElsewhere(ctx, in.Session, in.Member); err != nil {
+		return nil, fmt.Errorf("join: %w", err)
+	}
+
 	// Read the durable admission record BEFORE encounter.Join can add this
 	// member to it. Current membership is deliberately not the gate: Exit keeps
 	// EverMembers, which is what makes a later Join a rejoin rather than another
 	// launch rest.
-	firstAdmission := true
 	persisted := scope.enc.ToData()
+	everAdmitted := make(map[string]bool, len(persisted.EverMembers))
 	for _, member := range persisted.EverMembers {
-		if string(member) == in.Member {
-			firstAdmission = false
-			break
-		}
+		everAdmitted[string(member)] = true
 	}
 
-	record, err := m.sheetsFor(nil).load(ctx, "character", in.Member)
+	record, err := m.sheetsFor(scope).load(ctx, "character", in.Member)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", err)
 	}
-
-	if firstAdmission {
-		resolved, restErr := resolution.LongRest(ctx, &resolution.LongRestInput{Character: record})
-		if restErr != nil {
-			// Resolution's vocabulary stays behind this seam just as it does for
-			// projection: the host can act on ErrBadCharacter, while the inner
-			// reason remains available as text for diagnosis.
-			return nil, fmt.Errorf("join: character %q: %w: long rest: %v",
-				in.Member, ErrBadCharacter, restErr)
+	if !everAdmitted[in.Member] {
+		if record, err = m.restOnFirstAdmission(ctx, scope, record); err != nil {
+			return nil, fmt.Errorf("join: %w", err)
 		}
-		if resolved == nil || resolved.Character == nil {
-			return nil, fmt.Errorf("join: character %q: %w: long rest returned no character data",
-				in.Member, ErrBadCharacter)
-		}
-
-		// Persist before ANY projection or placement callback. encounter.Join
-		// can consult standing, form a fight, and drive a monster action; each
-		// of those paths reads CharacterRepository. Saving here gives all of
-		// them the same rested truth this Join projects, and any later driven
-		// write is newer than this one rather than being overwritten by it.
-		if err := m.sheetsFor(scope).save(ctx, resolved.Character); err != nil {
-			return nil, err
-		}
-		record = resolved.Character
 	}
 
 	// ONE QUESTION, ONE ANSWER. The record goes down and everything this verb
@@ -571,6 +560,11 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		return nil, fmt.Errorf("join: %w", saveErrorAfterWrites(scope, "", err))
 	}
 
+	// Seated BEFORE the run that holds the member is saved (seats.go).
+	if err := m.seatIn(ctx, scope, in.Member); err != nil {
+		return nil, fmt.Errorf("join: %w", saveErrorAfterWrites(scope, "", err))
+	}
+
 	state := characterStateFrom(projected)
 
 	report, delivery, err := m.commit(ctx, scope)
@@ -588,6 +582,38 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		Saved:      report,
 		Delivery:   delivery,
 	}, nil
+}
+
+// restOnFirstAdmission is the first-admission rule, ONE rule shared by Launch
+// and Join (rpg-project#542, "Rest"): a character's first admission to a run
+// is a normal long rest, resolved from the persisted record and saved before
+// the board is touched. The caller decides "first" from the run's durable
+// admission record (EverMembers), so an exit and rejoin never rests again.
+//
+// Saved before any projection or placement callback: placing a member can
+// consult standing, form a fight and drive a monster action, each of which
+// reads the character store, so saving here gives all of them the rested
+// truth, and any later driven write is newer than this one rather than
+// overwritten by it. A later failure leaves the valid between-runs rest
+// durable and names it in the verb's SaveError.
+//
+// Returns the rested record, ErrBadCharacter when the rest cannot be
+// resolved (resolution's own reason kept as text), or the store's SaveError.
+func (m *Manager) restOnFirstAdmission(
+	ctx context.Context, scope *writeScope, record *character.Data,
+) (*character.Data, error) {
+	resolved, err := resolution.LongRest(ctx, &resolution.LongRestInput{Character: record})
+	if err != nil {
+		return nil, fmt.Errorf("character %q: %w: long rest: %v", record.ID, ErrBadCharacter, err)
+	}
+	if resolved == nil || resolved.Character == nil {
+		return nil, fmt.Errorf("character %q: %w: long rest returned no character data",
+			record.ID, ErrBadCharacter)
+	}
+	if err := m.sheetsFor(scope).save(ctx, resolved.Character); err != nil {
+		return nil, err
+	}
+	return resolved.Character, nil
 }
 
 // discoveryStanding batches a down-check over the WHOLE roster this scope's
@@ -1086,6 +1112,17 @@ func (m *Manager) Exit(ctx context.Context, in *ExitInput) (*ExitOutput, error) 
 		return nil, fmt.Errorf("exit: %w", err)
 	}
 
+	// A departing PLAYER gives up its seat, which changes under both guards:
+	// the session's is held, the character's is taken here, session first.
+	player := scope.standing.kinds[in.Member] == encounter.KindPlayer
+	if player {
+		releaseCharacter, err := m.acquireCharactersFor(ctx, scope, in.Member)
+		if err != nil {
+			return nil, fmt.Errorf("exit: %w", err)
+		}
+		defer releaseCharacter()
+	}
+
 	left, err := scope.enc.Exit(&encounter.ExitInput{Member: encounter.MemberID(in.Member)})
 	if err != nil {
 		return nil, fmt.Errorf("exit: %w", translate(err))
@@ -1099,6 +1136,12 @@ func (m *Manager) Exit(ctx context.Context, in *ExitInput) (*ExitOutput, error) 
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
 		return nil, fmt.Errorf("exit: %w", err)
+	}
+	if player {
+		if err := m.clearSeats(ctx, scope, []string{in.Member}); err != nil {
+			return nil, fmt.Errorf("exit: %w", err)
+		}
+		report.Written = mergeReportIdentities(report.Written, scope.written)
 	}
 
 	return &ExitOutput{
@@ -1227,6 +1270,11 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string, extraMembe
 	scope.enc = enc
 	scope.baseline = baseline
 	scope.standing = standing
+	status, err := enc.Status()
+	if err != nil {
+		return nil, translate(err)
+	}
+	scope.openAtLoad = status.Open
 	if err := m.prepareExploration(ctx, scope, extraMembers...); err != nil {
 		return nil, err
 	}
@@ -1394,6 +1442,17 @@ type writeScope struct {
 	// unchanged — the entries are added by whoever wrote, never by persist on
 	// their behalf.
 	written []string
+
+	// heldCharacters are the character guards this verb holds beside its
+	// session's (Launch's party, a seat a closing commit clears), so a guard
+	// is never asked for twice within one verb. See
+	// [Manager.acquireCharactersFor].
+	heldCharacters map[string]bool
+
+	// openAtLoad reports that the run was still open when this verb loaded
+	// it, so commit can tell a run this verb closed — whose seats it clears —
+	// from one that was already closed.
+	openAtLoad bool
 }
 
 // deliveredSeq translates one recorded beat's global sequence into a member's
@@ -1420,7 +1479,12 @@ func (s *writeScope) noteCharacterWritten(id string) {
 		s.sheetsWritten = make(map[encounter.MemberID]bool)
 	}
 	s.sheetsWritten[encounter.MemberID(id)] = true
-	aggregate := "character:" + id
+	s.noteWritten("character:" + id)
+}
+
+// noteWritten records one aggregate this verb made durable before persist,
+// once however many times it was written.
+func (s *writeScope) noteWritten(aggregate string) {
 	for _, written := range s.written {
 		if written == aggregate {
 			return
@@ -1701,7 +1765,40 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 	if err != nil {
 		return report, DeliveryReport{}, err
 	}
+
+	// THE RUN THIS VERB CLOSED RELEASES ITS SEATS, after the run that no
+	// longer holds anyone is durable (seats.go says why that order). The
+	// clear is reported on the same report: its aggregates join what persist
+	// already wrote.
+	if err := m.clearSeatsOfAClosedRun(ctx, scope); err != nil {
+		return report, DeliveryReport{}, err
+	}
+	report.Written = mergeReportIdentities(report.Written, scope.written)
 	return report, m.deliver(ctx, events), nil
+}
+
+// clearSeatsOfAClosedRun clears every player's seat when this verb closed the
+// run — an ending fired, End was called, or the last member left. A run that
+// was already closed when the verb loaded it, or is still open, clears
+// nothing.
+func (m *Manager) clearSeatsOfAClosedRun(ctx context.Context, scope *writeScope) error {
+	if !scope.openAtLoad {
+		return nil
+	}
+	status, err := scope.enc.Status()
+	if err != nil {
+		return saveErrorAfterWrites(scope, "", translate(err))
+	}
+	if status.Open || status.Outcome == nil {
+		return nil
+	}
+	var players []string
+	for _, member := range status.Outcome.Members {
+		if scope.standing.kinds[string(member.ID)] == encounter.KindPlayer {
+			players = append(players, string(member.ID))
+		}
+	}
+	return m.clearSeats(ctx, scope, players)
 }
 
 // exitDissolvedCombatants clears the action economy of every player whose

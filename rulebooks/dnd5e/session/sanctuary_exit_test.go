@@ -47,7 +47,7 @@ func (s *CastSuite) TestAWardOutlivesTheClericWhoLeft() {
 	s.Require().NoError(err, "the cleric leaves the session")
 
 	// From here the skeleton swings at the warded fighter.
-	s.mgr, err = session.NewManager(&session.Config{
+	s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: swingsAt{target: "warded"},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream,
 	})

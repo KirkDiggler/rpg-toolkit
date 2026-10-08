@@ -58,7 +58,7 @@ func (s *CastSuite) TestBlessKnownDyingAndStabilizedRecipientsPersistWithConcent
 
 func (s *CastSuite) configureBless(policy session.StaleTargetPolicy) {
 	var err error
-	s.mgr, err = session.NewManager(&session.Config{StaleTargetPolicy: policy,
+	s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(), StaleTargetPolicy: policy,
 		PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
 	s.Require().NoError(err)
@@ -82,7 +82,7 @@ func (s *CastSuite) TestBlessMissingPolicyExplainsBothOfferAndCast() {
 
 func (s *CastSuite) TestBlessInvalidPolicyFailsConfiguration() {
 	s.scene(blessCleric(), 3)
-	mgr, err := session.NewManager(&session.Config{StaleTargetPolicy: "typo",
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), StaleTargetPolicy: "typo",
 		PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
 	s.Nil(mgr)

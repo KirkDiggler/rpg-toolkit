@@ -38,7 +38,7 @@ func (s *CastSuite) reloadHealingScene() {
 		s.characters.byID[id], err = copyOf(data)
 		s.Require().NoError(err)
 	}
-	s.mgr, err = session.NewManager(&session.Config{
+	s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream,
 	})
@@ -147,7 +147,7 @@ func (s *CastPauseSuite) TestPaidCastHistorySurvivesSavedPauseAndResume() {
 		s.characters.byID[id], err = copyOf(data)
 		s.Require().NoError(err)
 	}
-	s.mgr, err = session.NewManager(&session.Config{
+	s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: whisperDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: session.DiscardEvents{},
 	})

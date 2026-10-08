@@ -105,7 +105,7 @@ func (s *DoorsSuite) startWith(world *encounter.EncounterData, cast ...*characte
 	// The world asks every authored member's sheet how far it sees; the ones
 	// this cast leaves out are given plain ones.
 	stockAuthoredPlayers(world, characters)
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters,
 		Characters: characters, Events: s.stream,
@@ -371,7 +371,7 @@ func (s *DoorsSuite) TestALockDoesNotTakeTheUntrainedRule() {
 	}))
 
 	s.stream = &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{calls: &rolled}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 		Characters: newFakeCharacters(deftCharacter("alice", 14)), Events: s.stream,

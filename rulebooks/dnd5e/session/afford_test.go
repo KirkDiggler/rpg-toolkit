@@ -262,7 +262,7 @@ func (s *AffordSuite) TestANewTurnRefillsWhatAffordSees() {
 // verb that costs a turn's economy is.
 func (s *AffordSuite) TestFreeRoamAffordsTheSocialVerbsAndNothingElse() {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
@@ -413,7 +413,7 @@ func (s *AffordSuite) TestShortfallCarriesTheStructuredCurrency() {
 func (s *AffordSuite) TestNotYourTurnIsAnnouncedByAfford() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})

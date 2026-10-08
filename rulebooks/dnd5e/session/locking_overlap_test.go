@@ -28,6 +28,13 @@ func (l *overlapLocker) LockSession(_ context.Context, _ *session.LockSessionInp
 	return &session.LockSessionOutput{Release: l.mu.Unlock}, nil
 }
 
+// LockCharacter grants every character guard at once: this coordinator
+// proves session exclusion, and a character guard taken while the session's
+// is held cannot contend with anything in these scenes.
+func (l *overlapLocker) LockCharacter(context.Context, *session.LockCharacterInput) (*session.LockCharacterOutput, error) {
+	return &session.LockCharacterOutput{Release: func() {}}, nil
+}
+
 type overlapEncounters struct {
 	*fakeEncounters
 	pause   bool
@@ -57,7 +64,7 @@ func (s *SessionLockSuite) TestOverlappingMovesBothSurviveWithoutLostUpdates() {
 	var resumeOnce sync.Once
 	resume := func() { resumeOnce.Do(func() { close(worlds.resume) }) }
 	defer resume()
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		Sessions: newFakeSessions(), Encounters: worlds, Characters: testCharacters(),
 		Events: session.DiscardEvents{}, Dice: testDice{}, PresentationIDs: testPresentationIDs{},
 		TurnDriver: session.Pass{}, Locker: locker,

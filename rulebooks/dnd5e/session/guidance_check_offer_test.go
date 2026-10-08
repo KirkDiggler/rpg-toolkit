@@ -81,7 +81,7 @@ func (s *GuidedUnlockSuite) holdsTheDie() bool {
 }
 
 func (s *GuidedUnlockSuite) sceneOverStores() *session.Manager {
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
@@ -231,7 +231,7 @@ func (s *GuidedUnlockSuite) TestTheWindowSurvivesAReload() {
 	s.guide()
 	s.tryLock(mgr)
 
-	restarted, err := session.NewManager(&session.Config{
+	restarted, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},

@@ -233,7 +233,7 @@ func (s *MonsterTurnTestSuite) TestASequenceStopsWhenTheTargetGoesDown() {
 	// asserting nothing.
 	frail.HitPoints, frail.MaxHitPoints = 6, 6
 
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: firstInReach{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: newFakeCharacters(frail), Events: session.DiscardEvents{},
@@ -322,7 +322,7 @@ func (s *MonsterTurnTestSuite) TestEachSwingsConcentrationCheckLandsBehindItsOwn
 	ctx := context.Background()
 
 	chars := newFakeCharacters(armedFighter("fighter"))
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: firstInReach{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: chars, Events: session.DiscardEvents{},
@@ -454,7 +454,7 @@ func (s *MonsterTurnTestSuite) bossBreaksTheFightersAreaWith(wrath bool, roller 
 		fighter.Resources[resources.WrathOfTheStorm] = character.RecoverableResourceData{Current: 3, Maximum: 3, ResetType: coreResources.ResetLongRest}
 	}
 	chars := newFakeCharacters(fighter)
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: firstInReach{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: chars, Events: session.DiscardEvents{},
