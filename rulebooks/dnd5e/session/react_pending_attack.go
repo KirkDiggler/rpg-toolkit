@@ -50,6 +50,10 @@ type heldAreas struct {
 // holdAreas moves out's area changes onto the window, to land when the
 // resume has told the swing that caused them. out keeps none, so nothing
 // lands them twice.
+//
+// THE RESUME IS THE ONLY PLACE THEY LAND. A future path that closes this
+// window without resuming the sequence (an expiry, a dissolve) must land
+// HeldAreas itself, or the area stands with no concentration behind it.
 func (p *pendingAttackWindowPayload) holdAreas(out *resolution.Output) {
 	if len(out.ClosedAreas) == 0 && len(out.OpenedAreas) == 0 {
 		return
@@ -66,6 +70,39 @@ func (p *pendingAttackWindowPayload) holdAreas(out *resolution.Output) {
 
 // landHeldAreas lands what an earlier pose held, once the resume has recorded
 // the swing that caused it, and clears it from the window.
+// landToldAreas lands the area changes a paused sequence has already told
+// and holds the rest. told are the swings recorded for this output: a closed
+// area whose caster's break rides one of them is told and lands; any other
+// change belongs to the swing that settled and paused, untold until the next
+// resume, and waits on the window. A pose before the roll has no such swing,
+// so everything lands.
+func (m *Manager) landToldAreas(
+	enc *encounter.Encounter, scope *writeScope, p *pendingAttackWindowPayload,
+	out *resolution.Output, told []resolution.SequenceStepOutcome,
+) error {
+	if out.Posed == nil || out.Posed.BeforeRoll {
+		return m.landAreas(enc, scope, out)
+	}
+	broken := map[string]bool{}
+	for _, step := range told {
+		for _, b := range step.ConcentrationBreaks {
+			broken[string(b.Caster)] = true
+		}
+	}
+	landing := &resolution.Output{}
+	var waiting []string
+	for _, caster := range out.ClosedAreas {
+		if broken[caster] {
+			landing.ClosedAreas = append(landing.ClosedAreas, caster)
+		} else {
+			waiting = append(waiting, caster)
+		}
+	}
+	out.ClosedAreas = waiting
+	p.holdAreas(out)
+	return m.landAreas(enc, scope, landing)
+}
+
 func (m *Manager) landHeldAreas(scope *writeScope, p *pendingAttackWindowPayload) error {
 	if p.HeldAreas == nil {
 		return nil
@@ -197,12 +234,14 @@ func (m *Manager) answerPendingAttack(ctx context.Context, scope *writeScope, wi
 	// recordMovementResults (the same call a walk's own step makes), so only
 	// the other arms land here: landing a movement output twice would re-open
 	// an opened area, which the encounter refuses.
+	var told []resolution.SequenceStepOutcome
 	if out.Posed != nil {
 		if out.Posed.Movement != nil {
 			if err = m.recordPendingMovement(ctx, scope, &p, out, *out.Posed.Movement); err != nil {
 				return nil, err
 			}
 		} else if out.Posed.Sequence != nil {
+			told = out.Posed.Sequence.Steps[min(p.RecordedSteps, len(out.Posed.Sequence.Steps)):]
 			if err = m.recordPendingSequence(scope, &p, *out.Posed.Sequence); err != nil {
 				return nil, err
 			}
@@ -216,7 +255,16 @@ func (m *Manager) answerPendingAttack(ctx context.Context, scope *writeScope, wi
 			if err = m.landHeldAreas(scope, &p); err != nil {
 				return nil, reportUnrecorded(scope, err)
 			}
-			if err = m.landAreas(scope.enc, scope, out); err != nil {
+			// A sequence that pauses AGAIN after a later swing settled holds
+			// that swing's areas exactly as the first pause did (strikerSeam):
+			// the swing is told only on the next resume. What the swings
+			// recorded now told lands.
+			if out.Posed.Sequence != nil {
+				err = m.landToldAreas(scope.enc, scope, &p, out, told)
+			} else {
+				err = m.landAreas(scope.enc, scope, out)
+			}
+			if err != nil {
 				return nil, reportUnrecorded(scope, err)
 			}
 		}

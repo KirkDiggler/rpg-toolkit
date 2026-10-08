@@ -404,11 +404,43 @@ func (s *MonsterTurnTestSuite) TestASwingThatBreaksConcentrationEndsItsAreaWhenI
 	s.Empty(areas, "and the area it closed lands behind it")
 }
 
+// TestARepausedSequenceLandsWhatItHasTold: the fighter holds back her Wrath,
+// so the sequence resumes, tells a concentration break and pauses again on a
+// later settled swing. What the resume told lands at that second pause: the
+// area and the story agree, whichever swing the break rode in on. Only a
+// change no recorded swing has told waits on the window.
+func (s *MonsterTurnTestSuite) TestARepausedSequenceLandsWhatItHasTold() {
+	ctx := context.Background()
+	// Initiative twice; swing one attack 15, damage 3, a d20 of 20 before the
+	// pause; on the resume a 15, then attack 15, damage 3 and a save of 1.
+	mgr := s.bossBreaksTheFightersAreaWith(true, &sequenceDice{rolls: []int{10, 10, 15, 3, 20, 15, 15, 3, 1}})
+	areas, err := mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "fighter"})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(areas, "control: nothing broke before the first pause")
+
+	react := currentDeclaration(s.T(), mgr, "sess", "fighter", session.VerbReact)
+	_, err = mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "fighter", DeclarationID: react.ID, Choice: session.ReactHold})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(s.sessions.byID["sess"].Windows.Windows, "control: the sequence paused again")
+	s.Require().Contains(s.storyBeats(mgr, "fighter"), string(encounter.BeatConcentrationEnded),
+		"control: the resume told the break")
+	areas, err = mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "fighter"})
+	s.Require().NoError(err)
+	s.Empty(areas, "a told break lands its area at once, even while the sequence waits")
+}
+
 // bossBreaksTheFightersArea is the goblin boss's driven Multiattack against a
 // fighter concentrating on a spell that holds a runtime area. The area is
 // placed on the stored world directly: what is under test is the sequence
 // landing the area its swing closed, not how the area came to stand.
 func (s *MonsterTurnTestSuite) bossBreaksTheFightersArea(wrath bool) *session.Manager {
+	return s.bossBreaksTheFightersAreaWith(wrath, testDice{})
+}
+
+// bossBreaksTheFightersAreaWith is bossBreaksTheFightersArea on the given dice.
+func (s *MonsterTurnTestSuite) bossBreaksTheFightersAreaWith(wrath bool, roller interface {
+	Roll(context.Context, int) (int, error)
+}) *session.Manager {
 	ctx := context.Background()
 
 	fighter := armedFighter("fighter")
@@ -423,7 +455,7 @@ func (s *MonsterTurnTestSuite) bossBreaksTheFightersArea(wrath bool) *session.Ma
 	}
 	chars := newFakeCharacters(fighter)
 	mgr, err := session.NewManager(&session.Config{
-		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: firstInReach{},
+		PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: firstInReach{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: chars, Events: session.DiscardEvents{},
 	})

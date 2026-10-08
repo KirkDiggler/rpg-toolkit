@@ -23,9 +23,19 @@ const encounterModule = "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/enco
 // coincidentalWords are string literals in this package's source that spell a
 // beat kind and are not one, each with the reason. Keyed by file, so the same
 // word anywhere else is still flagged.
+//
+// The payload decoder's JSON keys are named here one by one rather than
+// excused by shape: a lookup or a membership test against a beat kind is
+// exactly an index or a []string element, so shape cannot tell a key from a
+// match.
 var coincidentalWords = map[string]map[string]string{
 	"convert.go":        {"held": "a sighting's status on the wire, held versus current"},
 	"declaration_id.go": {"cast": "the cast declaration's selector variant"},
+	"events.go": {
+		"death_save": "the death save beat's detail object key",
+		"warded":     "the warded beat's detail object key",
+		"moved":      "a roll component's moved-flag key",
+	},
 }
 
 // beatKindsOfTheEncounter derives the composition's beat kinds from its own
@@ -94,14 +104,13 @@ func stringLiteral(expr ast.Expr) (string, bool) {
 // "unknown"; a constant fails to compile.
 //
 // EVERY string literal in non-test source is checked against the derived
-// kinds, wherever it sits. What may spell a beat kind, by shape:
+// kinds, wherever it sits. What may spell a beat kind:
 //   - the value of a constant this package declares with its own named type
 //     (EventKind, Verb, DissolveKind): this package's wire vocabulary, which
 //     the projection maps TO, and which happens to share many words;
-//   - a JSON key: an index into a decoded object, an element of a []string
-//     key list, or a case in a switch over a variable named key;
 //   - a struct tag;
-//   - a word in coincidentalWords, by file, with its reason.
+//   - a word in coincidentalWords, by file, with its reason — the payload
+//     decoder's JSON keys among them.
 func TestNoBeatKindIsMatchedByALiteral(t *testing.T) {
 	kinds := beatKindsOfTheEncounter(t)
 
@@ -128,22 +137,6 @@ func TestNoBeatKindIsMatchedByALiteral(t *testing.T) {
 				if v.Type != nil {
 					for _, value := range v.Values {
 						allow(value)
-					}
-				}
-			case *ast.IndexExpr:
-				allow(v.Index)
-			case *ast.CompositeLit:
-				if array, ok := v.Type.(*ast.ArrayType); ok && typeNamed(array.Elt, "string") {
-					for _, elt := range v.Elts {
-						allow(elt)
-					}
-				}
-			case *ast.SwitchStmt:
-				if typeNamed(v.Tag, "key") {
-					for _, stmt := range v.Body.List {
-						for _, expr := range stmt.(*ast.CaseClause).List {
-							allow(expr)
-						}
 					}
 				}
 			case *ast.Field:

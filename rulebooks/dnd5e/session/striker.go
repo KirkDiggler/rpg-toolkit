@@ -149,7 +149,9 @@ func (s strikerSeam) Strike(
 				return err
 			}
 			p := pendingAttackWindowPayload{Attacker: string(attacker), Target: string(target), Definition: definition, Components: attackerData.Actions}
+			var told []resolution.SequenceStepOutcome
 			if out.Posed.Sequence != nil {
+				told = out.Posed.Sequence.Steps
 				if err := s.m.recordPendingSequence(s.scope, &p, *out.Posed.Sequence); err != nil {
 					return err
 				}
@@ -163,9 +165,7 @@ func (s strikerSeam) Strike(
 			// (Today that branch carries none: the only before-roll offer,
 			// Warding Flare, depends on the target and not the swing, so a
 			// sequence would have posed it on its first swing.)
-			if !out.Posed.BeforeRoll {
-				p.holdAreas(out)
-			} else if err := s.m.landAreas(enc, s.scope, out); err != nil {
+			if err := s.m.landToldAreas(enc, s.scope, &p, out, told); err != nil {
 				return err
 			}
 			if err := posePendingAttackWindow(s.scope, out.Posed, p); err != nil {
