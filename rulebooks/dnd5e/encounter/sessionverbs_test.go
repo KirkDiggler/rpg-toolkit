@@ -271,12 +271,13 @@ func (s *SessionVerbsSuite) TestAnEquipThatSaysNothingIsRefused() {
 func (s *SessionVerbsSuite) TestARestInFreeRoamTellsOneBeat() {
 	enc := s.freeRoam()
 
-	out, err := enc.RecordRest(&encounter.RecordRestInput{
-		Member: alice, Kind: encounter.RestShort,
-		ResourcesRefilled: []string{"dnd5e:features:second_wind"},
-	})
+	out, err := enc.RecordRest(&encounter.RecordRestInput{Kind: encounter.RestShort, Members: []encounter.RestingMember{
+		{Member: alice, ResourcesRefilled: []string{"dnd5e:features:second_wind"}},
+	}})
 	s.Require().NoError(err)
-	s.ElementsMatch([]encounter.MemberID{alice, bob}, out.Audience)
+	s.Require().Len(out.Rested, 1)
+	s.Equal(alice, out.Rested[0].Member)
+	s.ElementsMatch([]encounter.MemberID{alice, bob}, out.Rested[0].Audience)
 
 	beats := s.beatsOfKind(enc, bob, encounter.BeatRested)
 	s.Require().Len(beats, 1)
@@ -293,9 +294,15 @@ func (s *SessionVerbsSuite) TestARestInAFightIsRefused() {
 	before := s.highWater(enc)
 
 	for _, member := range []encounter.MemberID{active, waiting} {
-		_, err := enc.RecordRest(&encounter.RecordRestInput{Member: member, Kind: encounter.RestShort})
+		_, err := enc.RecordRest(&encounter.RecordRestInput{Kind: encounter.RestShort, Members: []encounter.RestingMember{{Member: member}}})
 		s.Require().ErrorIs(err, encounter.ErrInBubble, "%s is in the fight", member)
 	}
+	// ONE MEMBER IN A FIGHT REFUSES THE WHOLE REST: billy is free, and his
+	// beat is not written either.
+	_, err := enc.RecordRest(&encounter.RecordRestInput{Kind: encounter.RestShort, Members: []encounter.RestingMember{
+		{Member: billy}, {Member: active},
+	}})
+	s.Require().ErrorIs(err, encounter.ErrInBubble)
 	for _, member := range []encounter.MemberID{alice, bob, goblin, billy} {
 		s.Empty(s.beatsOfKind(enc, member, encounter.BeatRested))
 	}
@@ -339,7 +346,7 @@ func (s *SessionVerbsSuite) TestAShortRestIsAnHourAndNothingElse() {
 	firstSeq, err := enc.NextStorySeq()
 	s.Require().NoError(err)
 
-	out, err := enc.RecordRest(&encounter.RecordRestInput{Member: billy, Kind: encounter.RestShort})
+	out, err := enc.RecordRest(&encounter.RecordRestInput{Kind: encounter.RestShort, Members: []encounter.RestingMember{{Member: billy}}})
 	s.Require().NoError(err)
 
 	after := enc.ToData()
@@ -349,7 +356,8 @@ func (s *SessionVerbsSuite) TestAShortRestIsAnHourAndNothingElse() {
 	nextSeq, err := enc.NextStorySeq()
 	s.Require().NoError(err)
 	s.Equal(firstSeq+1, nextSeq, "the rest beat and nothing else: no tick, no creature's pick")
-	s.Equal(out.Seq, firstSeq)
+	s.Require().Len(out.Rested, 1)
+	s.Equal(firstSeq, out.Rested[0].Seq)
 	s.Nil(out.Formed, "nobody moved, so nothing formed")
 
 	s.Equal(before.Members, after.Members, "nobody moved — not the denLurker, and billy's pace remainder is as it was")
@@ -372,19 +380,49 @@ func (s *SessionVerbsSuite) TestAShortRestIsAnHourAndNothingElse() {
 	s.Equal(after.Clock.HighWater+1, s.highWater(enc), "the sixth cell pays the round")
 }
 
-// The hour is a jump, so each rest is its own hour: two members resting one
-// after the other is two hours on the clock.
-func (s *SessionVerbsSuite) TestEachRestIsItsOwnHour() {
+// A rest is the party's act: two members resting in ONE call is one hour,
+// each told their own beat; two calls are two hours.
+func (s *SessionVerbsSuite) TestMembersRestingTogetherShareOneHour() {
 	enc := s.freeRoam()
 	before := s.highWater(enc)
 
-	for _, member := range []encounter.MemberID{alice, bob} {
-		_, err := enc.RecordRest(&encounter.RecordRestInput{Member: member, Kind: encounter.RestShort})
-		s.Require().NoError(err)
-	}
+	out, err := enc.RecordRest(&encounter.RecordRestInput{Kind: encounter.RestShort, Members: []encounter.RestingMember{
+		{Member: alice}, {Member: billy},
+	}})
+	s.Require().NoError(err)
+	s.Equal(before+encounter.RoundsPerHour, s.highWater(enc), "one rest, one hour")
+	s.Require().Len(out.Rested, 2)
+	s.Equal(alice, out.Rested[0].Member)
+	s.Equal(billy, out.Rested[1].Member)
+	s.ElementsMatch([]encounter.MemberID{alice, bob}, out.Rested[0].Audience, "alice's beat to alice's witnesses")
+	s.ElementsMatch([]encounter.MemberID{billy}, out.Rested[1].Audience, "billy's beat to his own, behind the wall")
+	s.Len(s.beatsOfKind(enc, bob, encounter.BeatRested), 1, "bob sees alice rest, not billy")
+	s.Len(s.beatsOfKind(enc, billy, encounter.BeatRested), 1, "billy is told his own rest")
 
-	s.Equal(before+2*encounter.RoundsPerHour, s.highWater(enc))
-	s.Len(s.beatsOfKind(enc, alice, encounter.BeatRested), 2, "each rest is told")
+	_, err = enc.RecordRest(&encounter.RecordRestInput{Kind: encounter.RestShort, Members: []encounter.RestingMember{{Member: bob}}})
+	s.Require().NoError(err)
+	s.Equal(before+2*encounter.RoundsPerHour, s.highWater(enc), "a second rest is a second hour")
+}
+
+// A rest that names nobody, or somebody twice, is refused and writes
+// nothing.
+func (s *SessionVerbsSuite) TestARestNamingNobodyOrSomebodyTwiceIsRefused() {
+	enc := s.freeRoam()
+	before := s.highWater(enc)
+
+	_, err := enc.RecordRest(&encounter.RecordRestInput{Kind: encounter.RestShort})
+	s.ErrorIs(err, encounter.ErrNoMember, "nobody rested")
+	_, err = enc.RecordRest(&encounter.RecordRestInput{Kind: encounter.RestShort, Members: []encounter.RestingMember{
+		{Member: alice}, {Member: bob}, {Member: alice},
+	}})
+	s.ErrorIs(err, encounter.ErrInvalidData, "alice twice")
+	_, err = enc.RecordRest(&encounter.RecordRestInput{Kind: encounter.RestShort, Members: []encounter.RestingMember{
+		{Member: alice}, {Member: "nobody"},
+	}})
+	s.ErrorIs(err, encounter.ErrNotMember)
+
+	s.Equal(before, s.highWater(enc))
+	s.Empty(s.beatsOfKind(enc, alice, encounter.BeatRested), "no refusal wrote alice's beat")
 }
 
 // What a rest restored is carried as told, and refused when it cannot have
@@ -405,10 +443,10 @@ func (s *SessionVerbsSuite) TestARestCarriesWhatItRestored() {
 		Total: 14,
 	}
 
-	_, err := enc.RecordRest(&encounter.RecordRestInput{
-		Member: alice, Kind: encounter.RestShort, HitDiceSpent: 2, HitPointsRestored: 12, Calculation: calc,
+	_, err := enc.RecordRest(&encounter.RecordRestInput{Kind: encounter.RestShort, Members: []encounter.RestingMember{{
+		Member: alice, HitDiceSpent: 2, HitPointsRestored: 12, Calculation: calc,
 		HitPoints: 20, HitDiceRemaining: 1,
-	})
+	}}})
 	s.Require().NoError(err)
 	beats := s.beatsOfKind(enc, alice, encounter.BeatRested)
 	s.Require().Len(beats, 1)
@@ -419,18 +457,22 @@ func (s *SessionVerbsSuite) TestARestCarriesWhatItRestored() {
 	s.Equal(float64(1), beats[0]["hit_dice_remaining"])
 	s.NotNil(beats[0]["calculation"])
 
+	short := func(m encounter.RestingMember) *encounter.RecordRestInput {
+		m.Member = alice
+		return &encounter.RecordRestInput{Kind: encounter.RestShort, Members: []encounter.RestingMember{m}}
+	}
 	refused := map[string]*encounter.RecordRestInput{
-		"no kind":                     {Member: alice},
-		"a long rest":                 {Member: alice, Kind: "long"},
-		"negative dice":               {Member: alice, Kind: encounter.RestShort, HitDiceSpent: -1},
-		"negative hit points":         {Member: alice, Kind: encounter.RestShort, HitPointsRestored: -1},
-		"dice with no arithmetic":     {Member: alice, Kind: encounter.RestShort, HitDiceSpent: 1},
-		"arithmetic with no dice":     {Member: alice, Kind: encounter.RestShort, Calculation: calc},
-		"an unnamed refill":           {Member: alice, Kind: encounter.RestShort, ResourcesRefilled: []string{""}},
-		"negative hit points now":     {Member: alice, Kind: encounter.RestShort, HitPoints: -1},
-		"negative dice returned":      {Member: alice, Kind: encounter.RestShort, HitDiceReturned: -1},
-		"a short rest returning dice": {Member: alice, Kind: encounter.RestShort, HitDiceReturned: 3},
-		"negative dice remaining":     {Member: alice, Kind: encounter.RestShort, HitDiceRemaining: -1},
+		"no kind":                     {Members: []encounter.RestingMember{{Member: alice}}},
+		"a long rest":                 {Kind: "long", Members: []encounter.RestingMember{{Member: alice}}},
+		"negative dice":               short(encounter.RestingMember{HitDiceSpent: -1}),
+		"negative hit points":         short(encounter.RestingMember{HitPointsRestored: -1}),
+		"dice with no arithmetic":     short(encounter.RestingMember{HitDiceSpent: 1}),
+		"arithmetic with no dice":     short(encounter.RestingMember{Calculation: calc}),
+		"an unnamed refill":           short(encounter.RestingMember{ResourcesRefilled: []string{""}}),
+		"negative hit points now":     short(encounter.RestingMember{HitPoints: -1}),
+		"negative dice returned":      short(encounter.RestingMember{HitDiceReturned: -1}),
+		"a short rest returning dice": short(encounter.RestingMember{HitDiceReturned: 3}),
+		"negative dice remaining":     short(encounter.RestingMember{HitDiceRemaining: -1}),
 	}
 	for name, in := range refused {
 		_, err := enc.RecordRest(in)

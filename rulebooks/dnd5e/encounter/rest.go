@@ -11,8 +11,8 @@ import (
 )
 
 // rest.go is THE COMPOSITION'S HALF OF A REST (rpg-project#542, "Rest", R5):
-// whether the member may rest where they are, the hour it takes on the world
-// clock, and who is told.
+// whether the members resting together may rest where they are, the hour it
+// takes on the world clock, and who is told.
 //
 // # The rest itself is the rulebook's
 //
@@ -26,9 +26,10 @@ import (
 // advanced here and nowhere else: the session asks for a rest by kind and
 // never counts rounds (R5). A short rest is [RoundsPerHour] on the clock.
 //
-// THE HOUR IS A JUMP, NOT A DRIVE ([Encounter.elapseWorld]): the reading
-// moves by the hour, no round of it is driven, no creature acts during it,
-// no beat but the rest's own is written, and nothing is owed to the next
+// THE HOUR IS A JUMP, NOT A DRIVE ([Encounter.elapseWorld]), ONE PER REST
+// however many members took it: the reading moves by the hour, no round of
+// it is driven, no creature acts during it, no beat but the rest's own is
+// written, and nothing is owed to the next
 // step. Nothing else in the run moves — no pace, no turn, no area, no
 // creature. A rest somebody interrupts is deferred (owner unset).
 //
@@ -48,15 +49,29 @@ const (
 	RestShort RestKind = "short"
 )
 
-// RecordRestInput is one rest a member took, as the rulebook reports it.
+// RecordRestInput is one rest the party took together, as the rulebook
+// reports it: the kind, and what it did for each member who rested.
+//
+// A REST IS THE PARTY'S ACT (rpg-project#542). The members who rest together
+// share one hour, so one call is one jump of the clock however many rested;
+// two calls are two hours.
 type RecordRestInput struct {
-	// Member is who rested. Must be a member (ErrNotMember) and placed
-	// (ErrBadPlacement), and not in a fight (ErrInBubble).
-	Member MemberID
+	// Members is everybody who rested together, each with what the rest did
+	// for them. Never empty (ErrNoMember), and no member twice
+	// (ErrInvalidData). Every one must be a member (ErrNotMember), placed
+	// (ErrBadPlacement) and not in a fight (ErrInBubble) — one refusal
+	// refuses the whole rest, and nothing is written.
+	Members []RestingMember
 
 	// Kind is the kind of rest. Only [RestShort] is recorded; any other,
 	// the zero value included, is refused (ErrInvalidData).
 	Kind RestKind
+}
+
+// RestingMember is one member who rested, and what the rest did for them.
+type RestingMember struct {
+	// Member is who rested.
+	Member MemberID
 
 	// HitPointsRestored is the hit points the rest healed, after the cap at
 	// maximum — so it can be less than the calculation's total. Negative is
@@ -97,14 +112,23 @@ type RecordRestInput struct {
 	ResourcesRefilled []string
 }
 
-// RecordRestOutput reports the beat and the clock.
-type RecordRestOutput struct {
-	// Seq is the sequence of the rested beat.
+// RestedMember is where one member's rested beat landed.
+type RestedMember struct {
+	// Member is who rested.
+	Member MemberID
+
+	// Seq is the sequence of their rested beat.
 	Seq uint64
 
-	// Audience is every member told the beat: the resting member and every
-	// member whose sight reaches their cell ([Encounter.Witnesses]). Sorted.
+	// Audience is every member told their beat: the member and every member
+	// whose sight reaches their cell ([Encounter.Witnesses]). Sorted.
 	Audience []MemberID
+}
+
+// RecordRestOutput reports the beats, the clock and the one refresh.
+type RecordRestOutput struct {
+	// Rested is one entry per member who rested, in the order given.
+	Rested []RestedMember
 
 	// Clock is the world clock's reading after the rest.
 	Clock uint64
@@ -119,92 +143,116 @@ type RecordRestOutput struct {
 	Formed *FormedBubble
 }
 
-// RecordRest records one rest: a `rested` beat told to the members who see
-// the rester, stamped with the reading the rest began at, then the rest's
-// duration jumped on the world clock ([Encounter.elapseWorld]) and one sight
-// refresh, whose results are returned.
+// RecordRest records one rest the party took together: a `rested` beat per
+// member, each told to that member's own witnesses and stamped with the
+// reading the rest began at, then ONE jump of the rest's duration on the
+// world clock ([Encounter.elapseWorld]) and one sight refresh, whose results
+// are returned.
 //
-// THE SHEET MUST ALREADY CARRY THE REST. This module reads no sheet; it
+// THE SHEETS MUST ALREADY CARRY THE REST. This module reads no sheet; it
 // records what the caller says the rest did.
 //
-// A MEMBER IN A FIGHT CANNOT REST, and is refused with [ErrInBubble] before
-// anything is written: a fight prices its own time by the round, and an hour
-// inside one is not a thing the turn clock can mean.
+// EVERY MEMBER IS CHECKED BEFORE ANYTHING IS WRITTEN. A member in a fight
+// cannot rest — a fight prices its own time by the round, and an hour inside
+// one is not a thing the turn clock can mean — so one member in a fight
+// refuses the whole rest with [ErrInBubble], and so does any other refusal.
 //
-// Validation order (R5): nil input → empty member → closed → not a member →
-// kind, counts, calculation or refills that cannot be recorded → in a fight →
-// not placed.
+// Validation order (R5): nil input → closed → kind → empty list → per
+// member, in order: empty id, repeated, not a member, what the rest restored,
+// in a fight, not placed.
 //
-// Errors: ErrNilInput, ErrNoMember, ErrClosed, ErrNotMember, ErrInvalidData,
+// Errors: ErrNilInput, ErrClosed, ErrInvalidData, ErrNoMember, ErrNotMember,
 // ErrInBubble, ErrBadPlacement, or a clock or sight-refresh failure (drop the
 // encounter unsaved — doc.go's caller rule).
 func (e *Encounter) RecordRest(in *RecordRestInput) (*RecordRestOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("record rest: %w", ErrNilInput)
 	}
-	if in.Member == "" {
-		return nil, fmt.Errorf("record rest: %w", ErrNoMember)
-	}
 	if e.outcome != nil {
 		return nil, fmt.Errorf("record rest: %w", ErrClosed)
-	}
-	if _, ok := e.members[in.Member]; !ok {
-		return nil, fmt.Errorf("record rest: member %q: %w", in.Member, ErrNotMember)
 	}
 	rounds, err := restRounds(in.Kind)
 	if err != nil {
 		return nil, err
 	}
-	if err := validateRestRestored(in); err != nil {
-		return nil, err
+	if len(in.Members) == 0 {
+		return nil, fmt.Errorf("record rest: nobody rested: %w", ErrNoMember)
 	}
 
-	bubble, err := e.bubbleFor(in.Member)
-	if err != nil {
-		return nil, fmt.Errorf("record rest: %w", err)
+	type prepared struct {
+		member    MemberID
+		witnesses []MemberID
+		payload   []byte
 	}
-	if bubble != nil {
-		return nil, fmt.Errorf("record rest: member %q: %w", in.Member, ErrInBubble)
-	}
+	beats := make([]prepared, 0, len(in.Members))
+	seen := make(map[MemberID]bool, len(in.Members))
+	for i := range in.Members {
+		m := &in.Members[i]
+		if m.Member == "" {
+			return nil, fmt.Errorf("record rest: members[%d]: %w", i, ErrNoMember)
+		}
+		if seen[m.Member] {
+			return nil, fmt.Errorf("record rest: member %q rests twice: %w", m.Member, ErrInvalidData)
+		}
+		seen[m.Member] = true
+		if _, ok := e.members[m.Member]; !ok {
+			return nil, fmt.Errorf("record rest: member %q: %w", m.Member, ErrNotMember)
+		}
+		if err := validateRestRestored(in.Kind, m); err != nil {
+			return nil, err
+		}
+		bubble, err := e.bubbleFor(m.Member)
+		if err != nil {
+			return nil, fmt.Errorf("record rest: %w", err)
+		}
+		if bubble != nil {
+			return nil, fmt.Errorf("record rest: member %q: %w", m.Member, ErrInBubble)
+		}
+		_, witnesses, err := e.audienceOf(m.Member)
+		if err != nil {
+			return nil, fmt.Errorf("record rest: %w", err)
+		}
 
-	_, witnesses, err := e.audienceOf(in.Member)
-	if err != nil {
-		return nil, fmt.Errorf("record rest: %w", err)
-	}
-
-	body := map[string]interface{}{
-		"beat":                BeatRested,
-		"member":              string(in.Member),
-		"kind":                string(in.Kind),
-		"hit_points_restored": in.HitPointsRestored,
-		"hit_points":          in.HitPoints,
-		"hit_dice_spent":      in.HitDiceSpent,
-		"hit_dice_returned":   in.HitDiceReturned,
-		"hit_dice_remaining":  in.HitDiceRemaining,
-	}
-	// ABSENT STAYS ABSENT: no dice thrown is no calculation key, and nothing
-	// refilled is no list — never a zero-valued stand-in.
-	if in.Calculation != nil {
-		body["calculation"] = in.Calculation
-	}
-	if len(in.ResourcesRefilled) > 0 {
-		body["resources_refilled"] = in.ResourcesRefilled
-	}
-	payload, err := json.Marshal(body)
-	if err != nil {
-		return nil, fmt.Errorf("record rest: marshal beat: %w", err)
+		body := map[string]interface{}{
+			"beat":                BeatRested,
+			"member":              string(m.Member),
+			"kind":                string(in.Kind),
+			"hit_points_restored": m.HitPointsRestored,
+			"hit_points":          m.HitPoints,
+			"hit_dice_spent":      m.HitDiceSpent,
+			"hit_dice_returned":   m.HitDiceReturned,
+			"hit_dice_remaining":  m.HitDiceRemaining,
+		}
+		// ABSENT STAYS ABSENT: no dice thrown is no calculation key, and
+		// nothing refilled is no list — never a zero-valued stand-in.
+		if m.Calculation != nil {
+			body["calculation"] = m.Calculation
+		}
+		if len(m.ResourcesRefilled) > 0 {
+			body["resources_refilled"] = m.ResourcesRefilled
+		}
+		payload, err := json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("record rest: marshal beat: %w", err)
+		}
+		beats = append(beats, prepared{member: m.Member, witnesses: witnesses, payload: payload})
 	}
 
 	// STAMPED WITH THE READING THE REST BEGAN AT — the stamp is the cause's
-	// ([Encounter.landDeedAt]) — and the hour passes after it is told.
-	appended, err := e.appendBeat(&record.AppendInput{
-		At:       uint64(e.clock.ToData().HighWater),
-		Audience: witnesses,
-		Tags:     map[string]string{"tag": "rest"},
-		Payload:  payload,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("record rest: append beat: %w", err)
+	// ([Encounter.landDeedAt]) — and the hour passes after they are told.
+	at := uint64(e.clock.ToData().HighWater)
+	rested := make([]RestedMember, 0, len(beats))
+	for _, b := range beats {
+		appended, err := e.appendBeat(&record.AppendInput{
+			At:       at,
+			Audience: b.witnesses,
+			Tags:     map[string]string{"tag": "rest"},
+			Payload:  b.payload,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("record rest: append beat: %w", err)
+		}
+		rested = append(rested, RestedMember{Member: b.member, Seq: appended.Seq, Audience: b.witnesses})
 	}
 
 	if err := e.elapseWorld(rounds); err != nil {
@@ -220,8 +268,7 @@ func (e *Encounter) RecordRest(in *RecordRestInput) (*RecordRestOutput, error) {
 	}
 
 	return &RecordRestOutput{
-		Seq:         appended.Seq,
-		Audience:    witnesses,
+		Rested:      rested,
 		Clock:       uint64(e.clock.ToData().HighWater),
 		IntelDeltas: deltas,
 		Formed:      formed,
@@ -244,7 +291,7 @@ func restRounds(kind RestKind) (int, error) {
 // have happened as told: negative counts, dice spent with no arithmetic or
 // arithmetic with no dice spent, arithmetic that does not add up, and a
 // refilled resource with no name.
-func validateRestRestored(in *RecordRestInput) error {
+func validateRestRestored(kind RestKind, in *RestingMember) error {
 	counts := []struct {
 		name string
 		n    int
@@ -257,26 +304,26 @@ func validateRestRestored(in *RecordRestInput) error {
 	}
 	for _, c := range counts {
 		if c.n < 0 {
-			return fmt.Errorf("record rest: %s %d: %w", c.name, c.n, ErrInvalidData)
+			return fmt.Errorf("record rest: member %q: %s %d: %w", in.Member, c.name, c.n, ErrInvalidData)
 		}
 	}
 	// A SHORT REST RETURNS NO HIT DICE — returning them is a long rest's —
 	// so a short rest reporting some is a rest that cannot have happened as
 	// told.
-	if in.Kind == RestShort && in.HitDiceReturned > 0 {
-		return fmt.Errorf("record rest: a short rest returned %d hit dice: %w", in.HitDiceReturned, ErrInvalidData)
+	if kind == RestShort && in.HitDiceReturned > 0 {
+		return fmt.Errorf("record rest: member %q: a short rest returned %d hit dice: %w", in.Member, in.HitDiceReturned, ErrInvalidData)
 	}
 	if in.HitDiceSpent == 0 && in.Calculation != nil {
-		return fmt.Errorf("record rest: a calculation with no hit dice spent: %w", ErrInvalidData)
+		return fmt.Errorf("record rest: member %q: a calculation with no hit dice spent: %w", in.Member, ErrInvalidData)
 	}
 	if in.HitDiceSpent > 0 {
 		if err := ValidateRollCalculation(in.Calculation); err != nil {
-			return fmt.Errorf("record rest: calculation: %v: %w", err, ErrInvalidData)
+			return fmt.Errorf("record rest: member %q: calculation: %v: %w", in.Member, err, ErrInvalidData)
 		}
 	}
 	for i, ref := range in.ResourcesRefilled {
 		if ref == "" {
-			return fmt.Errorf("record rest: resources refilled[%d] is empty: %w", i, ErrInvalidData)
+			return fmt.Errorf("record rest: member %q: resources refilled[%d] is empty: %w", in.Member, i, ErrInvalidData)
 		}
 	}
 
