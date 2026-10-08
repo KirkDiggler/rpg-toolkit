@@ -211,18 +211,16 @@ func TestANonPositiveWorkspaceRadiusIsOneDefect(t *testing.T) {
 	require.NoError(t, err, "a positive radius is a floor, however small")
 }
 
-// TestAnUndeclaredPropNeedsNoPose is the scoping rule the read set implies:
-// the three numbers are required of the props a declaration NAMES, because
-// those are the ones a footprint is placed from. A prop that blocks nothing
-// is visual dressing, and the engine has no business asking it for a pose.
-func TestAnUndeclaredPropNeedsNoPose(t *testing.T) {
+// Renderable decoration needs a pose even without a mechanical declaration:
+// permitted appearance replaces the old full-source read, not the blocker.
+func TestRenderableDecorationNeedsAnAuthoredPose(t *testing.T) {
 	raw := fixtureSource(t)
 	// `candles` is authored, undeclared, and loses its whole transform.
 	loose := swapOneIn(t, raw, "        transform: {x: -2.1, y: 1.2, z: 1.25, rotationY: 0.37}\n", "")
-	compiled, err := Load(loose)
-	require.NoError(t, err, "an undeclared prop's pose is nobody's requirement")
-	require.Len(t, compiled.Field.Placed, 1, "and the declared prop still places")
-	require.Equal(t, "table", compiled.Field.Placed[0].ID)
+	_, err := Load(loose)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "room.scene.items[1].transform.x")
+	require.Contains(t, err.Error(), "room.scene.items[1].transform.y")
 }
 
 // TestTheLoweringResolvesAliasesInsideTheScene keeps the node walk honest
@@ -340,7 +338,6 @@ func TestSceneNumberNamesEveryWayItCannotRead(t *testing.T) {
 func TestTheLoweringIsIndifferentToTheEditorsOldBounds(t *testing.T) {
 	raw := fixtureSource(t)
 	cases := []struct{ name, old, repl string }{
-		{"a light nobody can read", "color: '#ff9d52', intensity: 1.1, range: 2.6", "color: puce, intensity: -4, range: 900"},
 		{"a prop taller than the editor allows", "heightScale: 1.5", "heightScale: 40"},
 		{"an undeclared prop outside the drawing limit", "x: -2.1,", "x: -400,"},
 		{"a prop under the floor", "y: 1.2,", "y: -6,"},
@@ -351,11 +348,13 @@ func TestTheLoweringIsIndifferentToTheEditorsOldBounds(t *testing.T) {
 	}
 	before, err := Load(raw)
 	require.NoError(t, err)
+	before.Field.PropPresentations = nil
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			compiled, err := Load(swapOneIn(t, raw, tc.old, tc.repl))
-			require.NoError(t, err, "the web's codec owns this word, not this one")
-			require.Equal(t, before, compiled, "and the world it compiles is unchanged")
+			require.NoError(t, err, "editor-only bounds do not change mechanics")
+			compiled.Field.PropPresentations = nil
+			require.Equal(t, before, compiled, "captured appearance may differ; the mechanical world does not")
 		})
 	}
 }

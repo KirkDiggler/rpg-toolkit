@@ -91,7 +91,11 @@ import (
 // a hidden region's edge would have invented geometry the author never drew,
 // so the whole list went rather than be approximated. Nothing is sliced now.
 // A placement is WITHHELD WHOLE when it belongs to an unfound concealment, or
-// when any cell it stands on is hidden; every other placement is presented
+// touches ordinary unexplored space. Structural wall/door and fixed opaque
+// contributor boundaries, like fixed
+// wall segments, remain present when their own support also borders known space;
+// this does not reveal adjoining floor or override explicit concealment membership.
+// Concealed cells alone do not conceal an unlisted placement. Every other placement is presented
 // exactly as [Encounter.Atlas] reports it. Withholding the list wholesale
 // stopped being honest the moment a footprint DOOR could be a secret: a
 // dungeon whose tables all vanished the instant anything anywhere was hidden
@@ -106,16 +110,50 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	}
 	hidden := e.undiscoveredFrom(member)
 	hiddenCells, unknownDoors := hidden.cells, hidden.doors
+	// A structural binding explicitly identifies the drawn representation of
+	// one gameplay door. Withholding that door must withhold this identity too,
+	// even for a direct FieldInput naming only the canonical DoorID. This is
+	// an identity link, never an inference from overlapping geometry.
+	withheldDoorPlacements := make(map[PropID]bool)
+	structuralBoundaries := make(map[PropID]bool)
+	structuralWallIDs := make(map[PropID]bool)
+	for _, wall := range e.field.structuralWalls {
+		structuralBoundaries[wall.id] = true
+		structuralWallIDs[wall.id] = true
+		for _, opening := range wall.openings {
+			if opening.door != nil {
+				structuralBoundaries[opening.door.placedID] = true
+				if unknownDoors[opening.door.doorID] {
+					withheldDoorPlacements[opening.door.placedID] = true
+				}
+			}
+		}
+	}
+
+	// Standalone bound doors share the same known-boundary rule. Their
+	// supplied identity link must not disappear with far-side support cells,
+	// and a concealed canonical DoorID must still withhold its placed identity.
+	for _, p := range e.field.propPresentations {
+		if p.DoorID == "" {
+			continue
+		}
+		structuralBoundaries[p.ID] = true
+		if unknownDoors[p.DoorID] {
+			withheldDoorPlacements[p.ID] = true
+		}
+	}
 
 	out := Atlas{
-		Orientation: full.Orientation,
-		Cells:       make([]spatial.Position, 0, len(full.Cells)),
-		Regions:     make([]AtlasRegion, 0, len(full.Regions)),
-		Props:       make([]AtlasProp, 0, len(full.Props)),
-		Placed:      make([]AtlasPlacedProp, 0, len(full.Placed)),
-		Boundaries:  make([]AtlasBoundary, 0, len(full.Boundaries)),
-		Doorways:    make([]AtlasDoorway, 0, len(full.Doorways)),
-		Segments:    make([]AtlasSegment, 0, len(full.Segments)),
+		Orientation:     full.Orientation,
+		Cells:           make([]spatial.Position, 0, len(full.Cells)),
+		Regions:         make([]AtlasRegion, 0, len(full.Regions)),
+		Props:           make([]AtlasProp, 0, len(full.Props)),
+		Placed:          make([]AtlasPlacedProp, 0, len(full.Placed)),
+		Boundaries:      make([]AtlasBoundary, 0, len(full.Boundaries)),
+		Doorways:        make([]AtlasDoorway, 0, len(full.Doorways)),
+		Segments:        make([]AtlasSegment, 0, len(full.Segments)),
+		StructuralWalls: make([]AtlasStructuralWall, 0, len(full.StructuralWalls)),
+		StructuralDoors: make([]AtlasStructuralDoor, 0, len(full.StructuralDoors)),
 	}
 
 	for _, exit := range full.Exits {
@@ -125,6 +163,30 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	}
 	if full.Start != nil && !hiddenCells[full.Start.At] {
 		out.Start = full.Start
+	}
+
+	// Resolve identity permission before floor emission. Wall footing consumes
+	// this same answer; it must not grant permission to a wall or a door.
+	for _, p := range full.Placed {
+		if p.Holdable || hidden.props[p.ID] || hidden.doors[p.ID] || withheldDoorPlacements[p.ID] {
+			continue
+		}
+		unexplored := e.placedTouchesHidden(p, hidden.unexploredCells)
+		if structuralBoundaries[p.ID] || (p.BlocksMovement && p.BlocksLineOfSight) {
+			support, supportErr := e.field.footprintObservationCells(p.Placement)
+			if supportErr != nil {
+				return Atlas{}, fmt.Errorf("structural boundary %q support: %w", p.ID, supportErr)
+			}
+			for _, cell := range support {
+				if !hidden.unexploredCells[cell] {
+					unexplored = false
+					break
+				}
+			}
+		}
+		if !unexplored {
+			out.Placed = append(out.Placed, p)
+		}
 	}
 
 	// C18: a wall wholly inside hidden space is withheld with the room, and
@@ -139,6 +201,34 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 		out.Segments = append(out.Segments, full.Segments[i])
 		for _, c := range seg.Footprint {
 			footing[e.field.cellAt(c)] = true
+		}
+	}
+
+	// A known structural wall needs its own footing too, including an owned
+	// threshold under a still-closed leaf. This is presentation footing, not
+	// room discovery or permission to any prop/door on that floor. Explicit
+	// floor secrecy remains independent. Door state is not read here: finding
+	// a secret cut cannot punch a hole that the solid-wall twin did not have.
+	for _, p := range out.Placed {
+		if !structuralWallIDs[p.ID] {
+			continue
+		}
+		for _, cell := range p.Cells {
+			if _, concealed := e.field.concealmentOfCell[cell]; concealed && hiddenCells[cell] {
+				continue
+			}
+			centre := e.field.plane.CellCentre(cell)
+			contact, traceErr := spatial.TraceFootprint(spatial.FootprintTraceInput{
+				Placement: p.Placement, From: centre, To: centre,
+			})
+			if traceErr != nil {
+				return Atlas{}, fmt.Errorf("structural wall %q footing: %w", p.ID, traceErr)
+			}
+			// placedCells also includes nearest-cell support; that alone
+			// is not physical footing and cannot reveal an adjoining cell.
+			if contact.Contact {
+				footing[cell] = true
+			}
 		}
 	}
 
@@ -178,21 +268,65 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 		out.Regions = append(out.Regions, entry)
 	}
 	for _, p := range full.Props {
-		if !p.Holdable && !hiddenCells[p.At] && !hidden.props[p.ID] {
+		if !p.Holdable && !hidden.unexploredCells[p.At] && !hidden.props[p.ID] {
 			out.Props = append(out.Props, p)
 		}
 	}
-	// A PLACEMENT GOES WHOLE OR STAYS WHOLE. Withheld when it belongs to an
-	// unfound concealment — which includes a hidden footprint DOOR, whose
-	// rectangle rides this list under its own id — and withheld when any
-	// cell it stands on is hidden, because a rectangle presented over a hole
-	// in the floor marks the hole.
-	for _, p := range full.Placed {
-		if p.Holdable || hidden.props[p.ID] || hidden.doors[p.ID] || e.placedTouchesHidden(p, hiddenCells) {
-			continue
-		}
-		out.Placed = append(out.Placed, p)
+	// THE STRUCTURAL LAYOUT, ON THE SAME PRESENCE ANSWER (rpg-project#169).
+	// Presence consumes the permitted-identity answer the placed list above
+	// just computed — never a fresh visibility policy and never DoorSightings.
+	// A wall is projected only when its raw static presence survives; a bound
+	// opening is retained, and its independent door record emitted, only when
+	// the door's OWN raw static presence survives AND its canonical DoorID is
+	// not concealed. A withheld bound opening is omitted whole, so the visible
+	// wall carries no tell; a withheld parent never conceals a door that is
+	// independently permitted, because the door's own placed identity and
+	// DoorID are the only things consulted.
+	//
+	// UNKNOWN MUTABLE STATE DOES NOT TURN A KNOWN DOORWAY INTO WALL: no state
+	// is read here at all, so an absent DoorSighting leaves a known opening
+	// present with no state attached, exactly as a fixed identity must.
+	survivingPlaced := make(map[PropID]bool, len(out.Placed))
+	for _, p := range out.Placed {
+		survivingPlaced[p.ID] = true
 	}
+	for i := range e.field.structuralWalls {
+		w := &e.field.structuralWalls[i]
+		wallPresent := survivingPlaced[w.id]
+		var wall AtlasStructuralWall
+		if wallPresent {
+			wall = AtlasStructuralWall{
+				ID: w.id, Ref: w.ref, From: w.from, To: w.to,
+				Height: w.height, Thickness: w.thickness, Elevation: w.elevation,
+				Openings: make([]AtlasStructuralOpening, 0, len(w.openings)),
+			}
+		}
+		for j := range w.openings {
+			o := &w.openings[j]
+			permitted := true
+			if o.door != nil {
+				// A bound opening is permitted only when the door's OWN placed
+				// presence survives AND its canonical DoorID is not concealed.
+				// A withheld parent is not part of this answer.
+				permitted = survivingPlaced[o.door.placedID] && !unknownDoors[o.door.doorID]
+			}
+			if wallPresent && permitted {
+				wall.Openings = append(wall.Openings, AtlasStructuralOpening{ID: o.id, Position: o.position, Width: o.width})
+			}
+			if o.door != nil && permitted {
+				out.StructuralDoors = append(out.StructuralDoors, AtlasStructuralDoor{
+					ID: o.door.doorID, Ref: o.door.ref, From: o.door.from, To: o.door.to,
+					Height: w.height, Thickness: w.thickness, Elevation: w.elevation,
+				})
+			}
+		}
+		if wallPresent {
+			out.StructuralWalls = append(out.StructuralWalls, wall)
+		}
+	}
+
+	sortStructuralLayout(&out)
+	e.projectPropPresentations(&out, full, hidden)
 
 	// Boundaries, in three passes, then restored to the atlas's own sort — a
 	// mask or a synthesized wall that sorted differently from an authored
@@ -313,6 +447,10 @@ type hiddenView struct {
 	cells map[spatial.Position]bool
 	doors map[DoorID]bool
 	props map[PropID]bool
+	// unexploredCells is the ordinary discovery part of the delivery mask,
+	// populated only by undiscoveredFrom. Keep it separate from concealed
+	// cells: floor secrecy must not imply placement concealment membership.
+	unexploredCells map[spatial.Position]bool
 }
 
 // hiddenFrom folds the member's own knowledge into what their atlas
@@ -389,8 +527,9 @@ func (e *Encounter) masqueradeBlocks(member MemberID, from, to spatial.Position)
 	return hidden.cells[from] != hidden.cells[to]
 }
 
-// placedTouchesHidden reports whether a placement stands on any cell this
-// recipient cannot see. Asked of the rectangle's own cells — the one
+// placedTouchesHidden reports whether a placement touches the ordinary
+// unexplored-cell mask supplied by its caller. Explicit concealment of a floor
+// cell is not placement membership and must not be included in this mask. Asked of the rectangle's own cells — the one
 // derivation reach, the probe law and an arrival fact all ask of a
 // footprint, never a second measurement of it.
 //
@@ -409,7 +548,8 @@ func (e *Encounter) masqueradeBlocks(member MemberID, from, to spatial.Position)
 // and the map would mark the secret it was hiding. Fail closed, and the
 // forgetful caller loses a rectangle instead of giving one away.
 //
-// Ordinary undiscovered rooms also contribute to hiddenCells; absence of
+// Ordinary undiscovered rooms supply hiddenCells here; explicit placement
+// concealment is checked separately by identity in AtlasFor. Absence from a
 // concealment does not mean the observer has explored the whole field.
 func (e *Encounter) placedTouchesHidden(p AtlasPlacedProp, hiddenCells map[spatial.Position]bool) bool {
 	if len(hiddenCells) == 0 {

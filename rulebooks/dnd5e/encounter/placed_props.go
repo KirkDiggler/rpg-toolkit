@@ -374,6 +374,32 @@ func (f *field) placedCells(p spatial.FootprintPlacement) []spatial.Position {
 	return out
 }
 
+// footprintObservationCells is a footprint's support for boundary observation:
+// the declared floor cells it overlaps by positive area. A thin wall/door can
+// border both rooms without covering either cell centre. Its standing/reach
+// support (placedCells) remains unchanged and is not a floor-discovery grant.
+// Off-floor scenery retains its existing nearest-floor support when there is
+// no overlap at all. The query uses spatial's polygon coverage, not another LOS
+// evaluator; observation still asks the same sightReach for each support cell.
+func (f *field) footprintObservationCells(p spatial.FootprintPlacement) ([]spatial.Position, error) {
+	coverage, err := spatial.PlacedCoverage(spatial.PlacedCoverageInput{
+		Embedding: f.plane, Placement: p, Cells: f.cells,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]spatial.Position, 0, len(coverage.Cells))
+	for _, cell := range f.cells {
+		if coverage.Cells[cell] > 0 {
+			out = append(out, cell)
+		}
+	}
+	if len(out) == 0 {
+		return f.placedCells(p), nil
+	}
+	return out, nil
+}
+
 // placedFold is ONE journal fold per query, taken only if a query actually
 // reaches a placement that can move.
 //

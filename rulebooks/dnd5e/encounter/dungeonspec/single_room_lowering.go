@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"gopkg.in/yaml.v3"
 )
 
@@ -14,15 +15,13 @@ import (
 // what the engine reads out of the World Builder's authored presentation,
 // and the ONE place that read happens.
 //
-// The presentation is CONTENT. The room's appearance — assets, labels,
-// groups, parents, supports, height scales, point lights, the frame's axis
-// words, the workspace's drawing limit — belongs to the World Builder, is
-// served to the player by dungeon key, and is judged by the codec that owns
-// those words (the web's). This package carries the three presentation
-// subtrees as the [yaml.Node] they were authored as, walks them for exactly
-// the values play depends on, and validates nothing else about them: an
-// unknown key inside `scene` is not this decoder's business, and neither is
-// a light's colour.
+// Appearance remains content. The full editor document is not delivered to
+// gameplay: readPropPresentation captures only the typed ref/pose/style needed
+// by the existing renderer, and encounter permission selects those records.
+// This does not turn artwork into blocking. Mechanical declarations still
+// compile independently, and decorative items acquire no fabricated collider.
+// Editor groups/parents/supports are not sent or reapplied: item poses are already
+// world-posed. Unknown editor-only keys remain outside this reader's contract.
 //
 // WHAT PLAY DEPENDS ON, by path, and why each one is still read:
 //
@@ -51,10 +50,10 @@ import (
 //	                              .rotationY  names, because nothing reads the
 //	                                    pose of a prop that blocks nothing.
 //
-// Nothing else is read, required, bounded, or modelled. `transform.y` is a
-// height and play is flat; `kind`, `assetRef`, `label`, `parentId`,
-// `supportId`, `heightScale`, `pointLight` and the whole `groups` list reach
-// no gameplay fact at all.
+// The separate presentation read additionally captures assetRef, label,
+// transform.y, heightScale and pointLight for all renderable items. Those values
+// reach no mechanical fact: height remains visual and play remains planar.
+// Parent/support IDs and the groups list remain editor-only.
 //
 // THE REFUSALS THAT SURVIVED are the ones that guard a gameplay fact rather
 // than the editor's own bounds: a number play reads that was never authored
@@ -74,9 +73,8 @@ type scenePose struct {
 	RotationY float64
 }
 
-// roomRead is the engine's whole read of one room's authored presentation —
-// every value in this struct is named in this file's header, with the
-// gameplay fact that depends on it.
+// roomRead contains the mechanical read plus separately captured appearance.
+// Only Poses/ItemIDs and the field bounds feed collision lowering.
 type roomRead struct {
 	// Name is `room.scene.name`: what [CompileSingleRoom] carries out as the
 	// dungeon's display name.
@@ -99,6 +97,10 @@ type roomRead struct {
 	// authored and finite. An item nobody declared is absent from here
 	// because nothing would read it.
 	Poses map[string]scenePose
+
+	// Presentations capture appearance for every renderable source item,
+	// including decoration without a mechanical declaration.
+	Presentations []encounter.PropPresentation
 }
 
 // errNotANumber is the defect for a presentation scalar play must read as a
@@ -200,6 +202,9 @@ func readSceneItems(scene *yaml.Node, declared map[string]RoomPropDeclaration, o
 			continue
 		}
 		out.ItemIDs[id] = true
+		if presentation, ok := readPropPresentation(it, id, p, add); ok {
+			out.Presentations = append(out.Presentations, presentation)
+		}
 		if _, wanted := declared[id]; !wanted {
 			continue
 		}

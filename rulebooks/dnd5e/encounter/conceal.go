@@ -287,29 +287,12 @@ func (e *Encounter) sweepOccupancy(at uint64) error {
 	return e.sweepPresence(at)
 }
 
-// concealmentOnCell is the concealment hiding a cell, or nil — the AUTHORED
-// cells and the cells any footprint door of a concealment stands on, which
-// is the one set [Encounter.hiddenCellsOf] names and every reader of hidden
-// floor asks.
+// concealmentOnCell asks only authored floor membership. Standing on an object's
+// support cell is not occupancy of an explicitly concealed floor cell.
 func (e *Encounter) concealmentOnCell(cell spatial.Position) *concealment {
 	if id, hidden := e.field.concealmentOfCell[cell]; hidden {
 		return e.field.concealmentOf(id)
 	}
-	for i := range e.field.concealments {
-		c := &e.field.concealments[i]
-		for _, doorID := range c.doors {
-			d, ok := e.doorsByID[doorID]
-			if !ok || d.placement == nil {
-				continue
-			}
-			for _, at := range e.field.placedCells(*d.placement) {
-				if at == cell {
-					return c
-				}
-			}
-		}
-	}
-
 	return nil
 }
 

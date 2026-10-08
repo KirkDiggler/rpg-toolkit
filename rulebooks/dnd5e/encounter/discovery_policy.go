@@ -5,11 +5,15 @@ package encounter
 
 import "fmt"
 
-// DiscoveryLifetime names how long a character's discovery attempts are retained.
+// DiscoveryLifetime selects the legacy explicit-memory projection/import policy.
+// Game playthrough state is encounter-owned: the SDK never carries these counts
+// or learned facts through a character profile into a new encounter.
 type DiscoveryLifetime string
 
 const (
-	// DiscoveryLifetimeCharacter retains attempts across visits to the authored check.
+	// DiscoveryLifetimeCharacter is the legacy profile-import selector, retained
+	// for source/save compatibility. It does not authorize cross-playthrough
+	// memory in the game host; same-run state persists in EncounterData.
 	DiscoveryLifetimeCharacter DiscoveryLifetime = "character"
 	// DiscoveryLifetimeRun grants a fresh allowance in a new run, not on reconnect.
 	DiscoveryLifetimeRun DiscoveryLifetime = "run"
@@ -28,7 +32,9 @@ type DiscoveryPolicyInput struct {
 	// ResetHexes is distance from the checked content before a repeat can re-arm.
 	// Omitted means three; a value inside the one-hex trigger range is invalid.
 	ResetHexes *int
-	// Lifetime defaults to character when omitted. Explicit empty is invalid.
+	// Lifetime retains the legacy character default for source/save compatibility.
+	// The game host supplies no cross-run memory for either value. Explicit empty
+	// is invalid; new authoring policy edits select run.
 	Lifetime *DiscoveryLifetime
 }
 

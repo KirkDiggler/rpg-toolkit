@@ -6,8 +6,9 @@ package dungeonspec_test
 import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 
 // zeroSheets is the Sheets capability these tests install: every member's
-// sheet states no speed, no actions and no strategy. Nothing in this
-// package's tests walks or drives anybody, and installing it says so.
+// sheet states no speed, no actions and no strategy. Geometry tests may
+// explicitly Step, but these sheets pace no world-clock rounds and supply no
+// driven movement or attack budget. Installing it states that fixture contract.
 type zeroSheets struct{}
 
 func (zeroSheets) Sheets(members []encounter.MemberID) (map[encounter.MemberID]encounter.SheetFacts, error) {

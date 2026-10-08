@@ -123,6 +123,12 @@
 // Concealment discovery remains an independent source of learned geometry.
 // Initial room knowledge comes from the snapshot; later discovery appends
 // recipient-scoped RoomRevealed beats containing fixed data, not live contents.
+// Builder compilation can refine a painted region through [PartitionRegion]:
+// geometry-separated spaces become ordinary regions before play. Door topology
+// is measured closed so initial mutable state cannot merge room identities;
+// runtime discovery and persistence stay unchanged. Permanently occupied opaque
+// boundary footing uses existing scenery, not an undiscoverable region. Door and
+// mutable-prop cells are not made permanently unowned by this construction query.
 //
 // Holdable props and door states join the creature pass in the same perception
 // store. Subjects are qualified by kind, so equal member/prop/door names cannot
@@ -132,6 +138,60 @@
 // only when all of its former spatial support is observed empty; omission alone
 // never supplies a carrier or destination. Pickups and door changes notify
 // actual witnesses, not everybody who remembers the subject.
+//
+// # Permitted ordinary prop appearance
+//
+// FieldInput.PropPresentations captures only typed appearance facts, not the
+// editor document: opaque ref, canonical pose, visual scale/light and an optional
+// standalone door binding. Decoration needs no fabricated blocker. AtlasFor
+// filters fixed records through the same room/explicit-secret permission as the
+// associated prop, or the point's declared-floor support for pure decoration.
+// Mutable prop observations capture their presentation with the sighting: reads
+// never join remembered shape with a fresh live pose. An observed drop uses the
+// existing drop fact's floor placement/elevation; observed-empty carries no art.
+// Definitions and captured observations persist with the encounter. No profile
+// or runtime source-document fetch supplies a second answer. Opening-attached
+// doors remain exclusively in the structural layout channel.
+//
+// # Structural walls and their permitted cuts (rpg-project#169)
+//
+// The placed spans are the MECHANICAL truth — the rectangles a wall blocks
+// with. Beside them a field may carry a fixed STRUCTURAL LAYOUT: one authored
+// line with its stable placed identity, absolute canonical-feet dimensions and
+// its openings, each optionally bound to an existing footprint door. It enters
+// through [FieldInput.StructuralWalls], is validated at construction (references
+// resolve, geometry is finite and positive, openings fit and do not overlap),
+// persists through [FieldData], and leaves as two flat [Atlas] collections:
+// [Atlas.StructuralWalls] (a permitted cut list with no nested door metadata)
+// and [Atlas.StructuralDoors] (every independently permitted door's actual
+// canonical DoorID, ref, opening endpoints and dimensions).
+//
+// PRESENCE IS THE EXISTING PERMITTED-IDENTITY ANSWER, never a fresh visibility
+// policy or a [DoorSighting]. A wall is projected only when its raw static
+// presence survives [Encounter.AtlasFor]; a door, when its own raw static
+// presence survives AND the existing door-identity concealment answer permits
+// its canonical DoorID. A boundary can overlap both known and unknown floor;
+// its own positive-area floor coverage permits it from either known side without
+// revealing the adjoining interior. Footprint door observation uses that coverage
+// with the existing sight evaluator, separately from standing/holding support.
+// A permitted wall also presents floor whose centre its own footprint covers,
+// including an owned threshold beneath a closed leaf. That footing neither learns
+// the threshold's region nor permits its contents; normal room revelation supplies
+// ownership and removes temporary sealing. Explicit unfound floor secrecy remains.
+// A hidden parent never conceals an unlisted door — the
+// door record is self-contained and carries no parent id — and a hidden door
+// leaves no tell, because its whole opening record is omitted. Known identity
+// with unknown mutable state keeps the cut and copies no state.
+//
+// A REVEAL CARRIES THE DIFFERENCE (structural_reveal.go, P2E). The existing
+// room_revealed and concealment_revealed payloads gain optional
+// `structural_walls` and `structural_doors`: the new or changed projected rows
+// by identity, computed from the same recipient-scoped [Encounter.AtlasFor] on
+// both sides of the knowledge moment. A wall whose newly permitted cut changed
+// is re-sent under its same id; an independent door the recipient already had
+// is not duplicated; both keys are absent when nothing changed. An earlier
+// payload is never enriched by a later discovery, and a fixed row carries no
+// state, lock or parent association.
 //
 // # Concealment: the run composes its world (rpg-toolkit#1371, rpg-project#490)
 //
