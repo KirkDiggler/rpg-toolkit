@@ -9,8 +9,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/play/clock"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 	"github.com/KirkDiggler/rpg-toolkit/world/journal"
@@ -323,7 +321,7 @@ func (e *Encounter) arriveMember(rm *reservedMember, cause string, at uint64) er
 	record := rm.record
 	e.members[id] = &record
 	e.everMembers[id] = true
-	if _, cerr := e.clock.Join(&clock.JoinInput{ID: core.EntityID(id)}); cerr != nil {
+	if cerr := e.seatOnWorldClock(id); cerr != nil {
 		return fmt.Errorf("arrival of %q world clock: %w", id, cerr)
 	}
 	if err := e.holdings.seedIntel(id, rm.holds); err != nil {

@@ -75,6 +75,83 @@ func (e *Encounter) advanceWorld(driver MemberID, displacement int) (bool, error
 	return e.clock.ToData().HighWater > before, nil
 }
 
+// elapseWorld JUMPS the world clock by span rounds: time that passed
+// without anybody driving it (rpg-project#542 R5, a short rest's hour).
+//
+// A JUMP, NOT A DRIVE. [Encounter.advanceWorld] is time somebody lived
+// round by round: it grants every world-clock member the rounds as budget,
+// and [Encounter.worldThinks] then spends them a turn at a time. An elapse
+// grants nothing and nobody thinks — no creature acts during it, no tick
+// beat is written — and NOTHING IS OWED AFTERWARDS: every budget is exactly
+// what it was, so the next step anybody takes is not handed the hour.
+//
+// EVERY DRIVER JUMPS WITH THE READING. The clock accrues by driver as max;
+// moving the high-water alone would leave every member an hour behind it,
+// and their next walks would raise nothing until they had walked an hour of
+// paces. So each roster member's progress (zero for one who never drove)
+// and every other recorded driver's moves by span too, every gap between
+// them is what it was, and the next walk paces exactly as it would have.
+//
+// The clock leaf has no elapse verb, and this composition owns the clock: it
+// is rebuilt from its own persisted shape through [clock.LoadTick], which
+// re-checks every invariant that shape carries.
+func (e *Encounter) elapseWorld(span int) error {
+	if span <= 0 {
+		return fmt.Errorf("elapse %d rounds: %w", span, ErrInvalidData)
+	}
+	data := e.clock.ToData()
+	progress := make(map[core.EntityID]int, len(data.DriverProgress)+len(e.members))
+	for id, p := range data.DriverProgress {
+		progress[id] = p + span
+	}
+	for _, id := range e.rosterIDs() {
+		if _, ok := progress[id]; !ok {
+			progress[id] = span
+		}
+	}
+	data.DriverProgress = progress
+	data.HighWater += span
+
+	jumped, err := clock.LoadTick(data)
+	if err != nil {
+		return fmt.Errorf("elapse %d rounds: %w", span, err)
+	}
+	e.clock = jumped
+
+	return nil
+}
+
+// seatOnWorldClock puts a NEWCOMER on the world clock at the world's own
+// time: a member who joins, or arrives from reserve, into a running world.
+//
+// AT THE HIGH-WATER, NOT AT ZERO. The clock accrues by driver as max, and a
+// driver it has never heard of counts from zero; a member seated there after
+// the world has lived six hundred rounds — an hour of rest, or a long walk —
+// would have to walk all of them before a step of theirs moved time for
+// anybody. A newcomer arrives NOW, so their progress is the reading, exactly
+// where [Encounter.elapseWorld] leaves every member who was present. The
+// catch-up raises nothing (it reaches the high-water, never past it), so it
+// grants nobody budget and the world does not think on it.
+//
+// A member coming back from a fight is not a newcomer and does not come
+// through here: a fight advances its members round by round
+// ([Encounter.spendRound]), so their progress is their own.
+func (e *Encounter) seatOnWorldClock(id MemberID) error {
+	if _, err := e.clock.Join(&clock.JoinInput{ID: core.EntityID(id)}); err != nil {
+		return err
+	}
+	data := e.clock.ToData()
+	behind := data.HighWater - data.DriverProgress[core.EntityID(id)]
+	if behind <= 0 {
+		return nil
+	}
+	if _, err := e.clock.Advance(&clock.AdvanceInput{Driver: core.EntityID(id), Displacement: behind}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // spendWorldAction is what a verb the turn clock would price as an ACTION
 // costs on the world clock: one round, for the actor, once its outcome has
 // landed (design §5).
@@ -381,6 +458,36 @@ func (e *Encounter) appendTickBeat(at uint64) error {
 		Payload:  payload,
 	}); err != nil {
 		return fmt.Errorf("tick beat: %w", err)
+	}
+
+	return nil
+}
+
+// validateTemper refuses, before anything is written, a temperament
+// [Encounter.dealTemperFor] could not deal: a share below 1, which can never
+// come up; a word in the mix with no profile saying what it means; or a mix
+// with no die in this world to deal it with. An authored word deals nothing
+// and passes.
+//
+// A COPY OF mind/behavior's DEAL RULES (dealTemper in mind/behavior's
+// table.go): that module refuses the same three things, but only while it
+// deals, and it exports no way to ask without dealing. Until it exports a
+// validator this copy must change whenever those rules do; the follow-up is
+// for behavior to export one and for this function to call it.
+func (e *Encounter) validateTemper(member MemberID, temper Temper) error {
+	if len(temper.Mix) == 0 {
+		return nil
+	}
+	for word, share := range temper.Mix {
+		if share < 1 {
+			return fmt.Errorf("member %q: temper %q has a share of %d, which can never be dealt: %w", member, word, share, ErrBadTemper)
+		}
+		if _, ok := temper.Profiles[word]; !ok {
+			return fmt.Errorf("member %q: temper %q is in the mix and nothing says what it means: %w", member, word, ErrBadTemper)
+		}
+	}
+	if e.roller == nil {
+		return fmt.Errorf("member %q: a temperament mix to deal: %w", member, ErrNoRoller)
 	}
 
 	return nil
