@@ -8,10 +8,15 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
+
+	"github.com/KirkDiggler/rpg-toolkit/core"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
 // EquipInput is one equipment change on one persisted character: equip ItemID
@@ -46,18 +51,31 @@ type EquipOutput struct {
 	// the change was paid for and applied.
 	Character *character.Data
 
-	// Stowed are the item ids that left the character's hands, a shield doffed
-	// included, main hand first. One beat each.
-	Stowed []string
+	// Stowed are the items that left a slot: the hands first, main hand
+	// before off hand, then any worn slot in slot order. A shield doffed is a
+	// stow; an item that only moved between hands is neither. One beat each.
+	Stowed []EquipMove
 
-	// Drawn are the item ids that entered the character's hands, a shield
-	// donned included, main hand first. One beat each, after the stows.
-	Drawn []string
+	// Drawn are the items that entered a slot, in Stowed's order. A shield
+	// donned is a draw. One beat each, after the stows.
+	Drawn []EquipMove
 
 	// Paid is the spend profile charged to the sheet's ledger. Nil when the
 	// change cost nothing: free roam, or a change no price can see (an item
 	// that only moved between hands, a slot already as asked).
 	Paid *combat.SpendProfile
+}
+
+// EquipMove is one item leaving or entering one slot: what the session hands
+// the encounter's equip record (encounter.RecordEquipInput's Slot and its
+// Stowed or Drawn).
+type EquipMove struct {
+	// Slot is the slot the item left or entered.
+	Slot character.InventorySlot
+
+	// Ref is the item as its full ref string ("dnd5e:weapons:longsword"),
+	// read off the inventory entry that carries it.
+	Ref string
 }
 
 // Equip makes one equipment change on one character, charging its price at
@@ -143,12 +161,14 @@ func equipOn(
 	before := maps.Clone(one.Character.EquipmentSlots)
 
 	out = &EquipOutput{}
+	var stowedIDs, drawnIDs []string
 	if in.Fight != nil {
 		price, err := payForEquip(ctx, ch, in, cast)
 		if err != nil {
 			return nil, err
 		}
-		out.Stowed, out.Drawn, out.Paid = price.Stowed, price.Drawn, price.Profile
+		out.Paid = price.Profile
+		stowedIDs, drawnIDs = price.Stowed, price.Drawn
 	}
 
 	if err := applyEquip(ch, in); err != nil {
@@ -161,8 +181,27 @@ func equipOn(
 	}
 	out.Character = changed
 
+	// In a fight the moves are the ones the price was computed from; in free
+	// roam nothing was priced, and this package names them. A worn slot can
+	// only change in free roam: the price refuses it in a fight.
 	if in.Fight == nil {
-		out.Stowed, out.Drawn = handsMoved(before, changed.EquipmentSlots)
+		stowedIDs, drawnIDs = handsMoved(before, changed.EquipmentSlots)
+	}
+	out.Stowed, err = movesOf(stowedIDs, before, changed.Inventory)
+	if err != nil {
+		return nil, fmt.Errorf("resolution: equip %q: %w", one.ID(), err)
+	}
+	out.Drawn, err = movesOf(drawnIDs, changed.EquipmentSlots, changed.Inventory)
+	if err != nil {
+		return nil, fmt.Errorf("resolution: equip %q: %w", one.ID(), err)
+	}
+	if in.Fight == nil {
+		wornStowed, wornDrawn, err := wornMoved(before, changed.EquipmentSlots, changed.Inventory)
+		if err != nil {
+			return nil, fmt.Errorf("resolution: equip %q: %w", one.ID(), err)
+		}
+		out.Stowed = append(out.Stowed, wornStowed...)
+		out.Drawn = append(out.Drawn, wornDrawn...)
 	}
 
 	return out, nil
@@ -215,6 +254,104 @@ func applyEquip(ch *character.Character, in *EquipInput) error {
 		return fmt.Errorf("%w: %q: %w", ErrBadEquip, ch.GetID(), err)
 	}
 	return nil
+}
+
+// movesOf places each hand item id in the hand that holds it in slots, main
+// hand first, one hand per copy, and names it by its full ref.
+func movesOf(
+	ids []string, slots character.EquipmentSlots, inventory []character.InventoryItemData,
+) ([]EquipMove, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	taken := map[character.InventorySlot]bool{}
+	moves := make([]EquipMove, 0, len(ids))
+	for _, id := range ids {
+		slot := character.InventorySlot("")
+		for _, hand := range [...]character.InventorySlot{character.SlotMainHand, character.SlotOffHand} {
+			if !taken[hand] && slots.Get(hand) == id {
+				slot = hand
+				break
+			}
+		}
+		if slot == "" {
+			return nil, fmt.Errorf("%q moved but no hand holds it", id)
+		}
+		taken[slot] = true
+
+		ref, err := itemRef(id, inventory)
+		if err != nil {
+			return nil, err
+		}
+		moves = append(moves, EquipMove{Slot: slot, Ref: ref})
+	}
+
+	return moves, nil
+}
+
+// wornMoved names what left and entered every slot that is not a hand, in
+// slot order.
+func wornMoved(
+	before, after character.EquipmentSlots, inventory []character.InventoryItemData,
+) (stowed, drawn []EquipMove, err error) {
+	slots := map[character.InventorySlot]struct{}{}
+	for slot := range before {
+		slots[slot] = struct{}{}
+	}
+	for slot := range after {
+		slots[slot] = struct{}{}
+	}
+	ordered := slices.Sorted(maps.Keys(slots))
+
+	for _, slot := range ordered {
+		if slot == character.SlotMainHand || slot == character.SlotOffHand {
+			continue
+		}
+		was, will := before.Get(slot), after.Get(slot)
+		if was == will {
+			continue
+		}
+		if was != "" {
+			ref, refErr := itemRef(was, inventory)
+			if refErr != nil {
+				return nil, nil, refErr
+			}
+			stowed = append(stowed, EquipMove{Slot: slot, Ref: ref})
+		}
+		if will != "" {
+			ref, refErr := itemRef(will, inventory)
+			if refErr != nil {
+				return nil, nil, refErr
+			}
+			drawn = append(drawn, EquipMove{Slot: slot, Ref: ref})
+		}
+	}
+
+	return stowed, drawn, nil
+}
+
+// itemRef is the full ref of the inventory item with this id, its type read
+// off the inventory entry: a weapon, armour (a shield included), a tool, or
+// any other carried equipment.
+func itemRef(id string, inventory []character.InventoryItemData) (string, error) {
+	for _, item := range inventory {
+		if item.ID != id {
+			continue
+		}
+		kind := refs.TypeEquipment
+		switch item.Type {
+		case shared.EquipmentTypeWeapon:
+			kind = refs.TypeWeapons
+		case shared.EquipmentTypeArmor:
+			kind = refs.TypeArmor
+		case shared.EquipmentTypeTool:
+			kind = refs.TypeTools
+		}
+		return (&core.Ref{Module: refs.Module, Type: kind, ID: core.ID(id)}).String(), nil
+	}
+
+	return "", fmt.Errorf("%q moved but is not in the inventory", id)
 }
 
 // handsMoved names what left and what entered the two hands between two

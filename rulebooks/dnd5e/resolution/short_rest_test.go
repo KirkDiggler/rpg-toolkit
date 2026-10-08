@@ -8,18 +8,28 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
-const shortResterID = "short-rester"
+const (
+	shortResterID = "short-rester"
+	restAllyID    = "rest-ally"
+)
 
 var (
 	shortRestPool = coreResources.ResourceKey("short-rest-pool")
@@ -155,4 +165,140 @@ func (s *ShortRestTestSuite) TestRefusalsSpendNothingAndReturnNoRecord() {
 		s.Require().NoError(err)
 		s.Require().JSONEq(string(before), string(after), "the caller's record must not move")
 	})
+}
+
+// blessHold is the rester concentrating on Bless (a one-minute spell) with
+// turnEnds left, blessing itself and the ally.
+func (s *ShortRestTestSuite) blessHold(turnEnds int) (rester, ally *character.Data) {
+	blessed := func(memberID string) (dnd5eEvents.ConditionAddress, json.RawMessage) {
+		condition, err := conditions.NewBlessedCondition(conditions.NewBlessedConditionInput{
+			MemberID: memberID, SourceID: shortResterID, SourceRef: refs.Spells.Bless(),
+		})
+		s.Require().NoError(err)
+		raw, err := condition.ToJSON()
+		s.Require().NoError(err)
+		return dnd5eEvents.ConditionAddress{
+			MemberID: memberID, ConditionRef: refs.Conditions.Blessed().String(), SourceID: shortResterID,
+		}, raw
+	}
+	selfAddress, selfBlessed := blessed(shortResterID)
+	allyAddress, allyBlessed := blessed(restAllyID)
+
+	hold := conditions.NewConcentratingConditionWithInput(conditions.NewConcentratingConditionInput{
+		MemberID: shortResterID, SourceID: shortResterID, SpellRef: refs.Spells.Bless().String(),
+		SpellName: "Bless", TurnEnds: turnEnds,
+	})
+	s.Require().NoError(hold.AddChild(s.ctx, selfAddress))
+	s.Require().NoError(hold.AddChild(s.ctx, allyAddress))
+	holdJSON, err := hold.ToJSON()
+	s.Require().NoError(err)
+
+	rester = s.rester()
+	rester.Conditions = []json.RawMessage{holdJSON, selfBlessed}
+
+	ally = s.rester()
+	ally.ID, ally.Name = restAllyID, "Rest Ally"
+	ally.Conditions = []json.RawMessage{allyBlessed}
+	return rester, ally
+}
+
+func restConditionRefs(t *testing.T, data *character.Data) []string {
+	t.Helper()
+	var out []string
+	for _, raw := range data.Conditions {
+		var head struct {
+			Ref *core.Ref `json:"ref"`
+		}
+		require.NoError(t, json.Unmarshal(raw, &head))
+		require.NotNil(t, head.Ref)
+		out = append(out, head.Ref.String())
+	}
+	return out
+}
+
+// An hour passes in a short rest and the clock jump runs no durations, so a
+// one-minute hold ends: the entry names it, strips its effect from the rester
+// and from the ally passed in, and the ally comes back dirty.
+func (s *ShortRestTestSuite) TestAOneMinuteHoldEndsAndIsNamed() {
+	rester, ally := s.blessHold(10)
+
+	out, err := ShortRest(s.ctx, &ShortRestInput{
+		Character: rester, Others: []Participant{{Character: ally}},
+	})
+	s.Require().NoError(err)
+
+	s.Require().Len(out.ConcentrationBreaks, 1, "one hold, one break")
+	held := out.ConcentrationBreaks[0]
+	s.Equal(encounter.MemberID(shortResterID), held.Caster)
+	s.Equal(refs.Spells.Bless().String(), held.Spell.Ref)
+	s.Equal(conditions.ConcentrationEndedDuration, held.Reason)
+	var removedFrom []encounter.MemberID
+	for _, removed := range held.Removed {
+		s.Require().NotNil(removed.Address)
+		s.Equal(refs.Conditions.Blessed().String(), removed.Address.ConditionRef)
+		removedFrom = append(removedFrom, removed.Address.MemberID)
+	}
+	s.ElementsMatch([]encounter.MemberID{shortResterID, restAllyID}, removedFrom)
+
+	s.NotContains(restConditionRefs(s.T(), out.Character), refs.Conditions.Concentrating().String())
+	s.NotContains(restConditionRefs(s.T(), out.Character), refs.Conditions.Blessed().String())
+	s.Empty(out.Ended, "the hold and its effects are the break's to report")
+
+	s.Require().Len(out.DirtyCharacters, 1)
+	s.Equal(restAllyID, out.DirtyCharacters[0].ID)
+	s.NotContains(restConditionRefs(s.T(), out.DirtyCharacters[0]), refs.Conditions.Blessed().String())
+	s.Equal(0, out.DirtyCharacters[0].Resources[shortRestPool].Current,
+		"the ally did not rest: its short-rest pool stays spent")
+}
+
+// A hold with more than an hour left is not ended: the hour is not run on its
+// clock, and ending it would invent an expiry.
+func (s *ShortRestTestSuite) TestAHoldLongerThanAnHourIsKept() {
+	rester, ally := s.blessHold(encounter.RoundsPerHour + 1)
+
+	out, err := ShortRest(s.ctx, &ShortRestInput{
+		Character: rester, Others: []Participant{{Character: ally}},
+	})
+	s.Require().NoError(err)
+	s.Empty(out.ConcentrationBreaks)
+	s.Contains(restConditionRefs(s.T(), out.Character), refs.Conditions.Concentrating().String())
+	s.Empty(out.DirtyCharacters)
+}
+
+// An effect that ends on any rest ends itself on the short rest's event, and
+// the entry names it.
+func (s *ShortRestTestSuite) TestAnUntilRestEffectEndsAndIsNamed() {
+	inspired, err := conditions.NewInspiredCondition(shortResterID, restAllyID, "").ToJSON()
+	s.Require().NoError(err)
+	rester := s.rester()
+	rester.Conditions = []json.RawMessage{inspired}
+
+	out, err := ShortRest(s.ctx, &ShortRestInput{Character: rester})
+	s.Require().NoError(err)
+
+	s.Require().Len(out.Ended, 1)
+	s.Equal(encounter.ResultConditionRemoved, out.Ended[0].Kind)
+	s.Equal(refs.Conditions.Inspired().String(), out.Ended[0].Address.ConditionRef)
+	s.Empty(out.ConcentrationBreaks)
+	s.NotContains(restConditionRefs(s.T(), out.Character), refs.Conditions.Inspired().String())
+}
+
+// A refused rest ends no hold that reaches a write: no record at all.
+func (s *ShortRestTestSuite) TestARefusedRestReturnsNoBrokenHold() {
+	rester, ally := s.blessHold(10)
+
+	out, err := ShortRest(s.ctx, &ShortRestInput{
+		Character: rester, HitDice: 3, Roller: &sequenceRoller{pair: []int{1, 1, 1}},
+		Others: []Participant{{Character: ally}},
+	})
+	s.Require().Error(err)
+	s.Require().Nil(out)
+}
+
+func (s *ShortRestTestSuite) TestTheResterAmongTheOthersIsRefused() {
+	out, err := ShortRest(s.ctx, &ShortRestInput{
+		Character: s.rester(), Others: []Participant{{Character: s.rester()}},
+	})
+	s.Require().ErrorIs(err, ErrBadParticipant)
+	s.Require().Nil(out)
 }
