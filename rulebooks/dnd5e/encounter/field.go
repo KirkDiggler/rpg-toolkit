@@ -1875,9 +1875,9 @@ type EndInput struct {
 	// Ended is, per member, every condition the ending took off them, as the
 	// rulebook returned it, in the activation-result shape. Carried on the
 	// ended beat (`ended`, keyed by member, omitted when empty). Every key
-	// and every removal's member must be a current member, and each entry a
-	// [ResultConditionRemoved], refused with ErrInvalidData before anything
-	// is written.
+	// must be a current member, every removal under a key must name that
+	// same member, and each entry must be a [ResultConditionRemoved] —
+	// refused with ErrInvalidData before anything is written.
 	Ended map[MemberID][]ActivationResult
 }
 

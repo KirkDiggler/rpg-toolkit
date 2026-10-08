@@ -736,6 +736,10 @@ func (s *SessionVerbsSuite) TestAnEndCarriesWhatItEndedPerMember() {
 		alice: {removalOf("stranger", "dnd5e:conditions:prone", "Prone")},
 	}})
 	s.ErrorIs(err, encounter.ErrInvalidData, "a removal naming a stranger")
+	_, err = enc.End(&encounter.EndInput{Ending: "withdrawn", Ended: map[encounter.MemberID][]encounter.ActivationResult{
+		alice: {removalOf(bob, "dnd5e:conditions:blessed", "Blessed")},
+	}})
+	s.ErrorIs(err, encounter.ErrInvalidData, "bob's removal filed under alice")
 	after, err := json.Marshal(enc.ToData())
 	s.Require().NoError(err)
 	s.Equal(string(before), string(after), "nothing written, nothing closed")

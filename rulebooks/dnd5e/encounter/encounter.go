@@ -2502,6 +2502,14 @@ func (e *Encounter) End(in *EndInput) (*EndOutput, error) {
 		if _, ok := e.members[member]; !ok {
 			return nil, fmt.Errorf("end: ended for %q, who is not a member: %w", member, ErrInvalidData)
 		}
+		// ONE MEMBER'S REMOVALS UNDER ONE MEMBER'S KEY: an entry filed under
+		// alice that takes a condition off bob says something the beat's
+		// shape says is about alice.
+		for i, removed := range results {
+			if removed.Address != nil && removed.Address.MemberID != member {
+				return nil, fmt.Errorf("end: ended[%q][%d] names %q: %w", member, i, removed.Address.MemberID, ErrInvalidData)
+			}
+		}
 		prepared, err := e.prepareEndedRemovals("end", results)
 		if err != nil {
 			return nil, err
