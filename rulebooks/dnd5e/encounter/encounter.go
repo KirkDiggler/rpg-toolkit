@@ -2089,7 +2089,7 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	// A joiner lands on the world clock, never mid-fight. Being pulled into a
 	// running bubble is Transfer's job and is a separate decision from joining
 	// the encounter at all.
-	if _, cerr := e.clock.Join(&clock.JoinInput{ID: core.EntityID(in.Member)}); cerr != nil {
+	if cerr := e.seatOnWorldClock(in.Member); cerr != nil {
 		return nil, fmt.Errorf("join member %q world clock: %w", in.Member, cerr)
 	}
 

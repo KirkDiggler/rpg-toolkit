@@ -121,6 +121,37 @@ func (e *Encounter) elapseWorld(span int) error {
 	return nil
 }
 
+// seatOnWorldClock puts a NEWCOMER on the world clock at the world's own
+// time: a member who joins, or arrives from reserve, into a running world.
+//
+// AT THE HIGH-WATER, NOT AT ZERO. The clock accrues by driver as max, and a
+// driver it has never heard of counts from zero; a member seated there after
+// the world has lived six hundred rounds — an hour of rest, or a long walk —
+// would have to walk all of them before a step of theirs moved time for
+// anybody. A newcomer arrives NOW, so their progress is the reading, exactly
+// where [Encounter.elapseWorld] leaves every member who was present. The
+// catch-up raises nothing (it reaches the high-water, never past it), so it
+// grants nobody budget and the world does not think on it.
+//
+// A member coming back from a fight is not a newcomer and does not come
+// through here: a fight advances its members round by round
+// ([Encounter.spendRound]), so their progress is their own.
+func (e *Encounter) seatOnWorldClock(id MemberID) error {
+	if _, err := e.clock.Join(&clock.JoinInput{ID: core.EntityID(id)}); err != nil {
+		return err
+	}
+	data := e.clock.ToData()
+	behind := data.HighWater - data.DriverProgress[core.EntityID(id)]
+	if behind <= 0 {
+		return nil
+	}
+	if _, err := e.clock.Advance(&clock.AdvanceInput{Driver: core.EntityID(id), Displacement: behind}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // spendWorldAction is what a verb the turn clock would price as an ACTION
 // costs on the world clock: one round, for the actor, once its outcome has
 // landed (design §5).

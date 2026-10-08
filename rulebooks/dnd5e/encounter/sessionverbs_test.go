@@ -33,7 +33,11 @@ func TestSessionVerbsSuite(t *testing.T) {
 // holds whatever the scene hides there. Every member walks 30
 // feet, so a step accrues pace.
 func (s *SessionVerbsSuite) scene(members ...encounter.MemberInput) *encounter.Encounter {
+	// Every member this suite places or joins walks 30 feet.
 	sheets := sheetFacts{}
+	for _, id := range []encounter.MemberID{alice, bob, billy, goblin, denLurker} {
+		sheets[id] = encounter.SheetFacts{SpeedFeet: 30}
+	}
 	for _, m := range members {
 		sheets[m.ID] = encounter.SheetFacts{SpeedFeet: 30}
 	}
@@ -402,6 +406,33 @@ func (s *SessionVerbsSuite) TestMembersRestingTogetherShareOneHour() {
 	_, err = enc.RecordRest(&encounter.RecordRestInput{Kind: encounter.RestShort, Members: []encounter.RestingMember{{Member: bob}}})
 	s.Require().NoError(err)
 	s.Equal(before+2*encounter.RoundsPerHour, s.highWater(enc), "a second rest is a second hour")
+}
+
+// A member who joins after a rest arrives at the world's own time, not an
+// hour behind it: their walking paces the clock from their first step, so
+// the sixth cell of bob's first walk raises the clock past the rest's hour.
+func (s *SessionVerbsSuite) TestAMemberWhoJoinsAfterARestWalksOnTheWorldsTime() {
+	enc := s.scene(
+		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 2}},
+	)
+	_, err := enc.RecordRest(&encounter.RecordRestInput{Kind: encounter.RestShort, Members: []encounter.RestingMember{{Member: alice}}})
+	s.Require().NoError(err)
+	rested := s.highWater(enc)
+	s.Require().Equal(encounter.RoundsPerHour, rested)
+
+	_, err = enc.Join(&encounter.JoinInput{Member: bob, Kind: encounter.KindPlayer, Cell: cellAt(6, 4)})
+	s.Require().NoError(err)
+	s.Equal(rested, s.highWater(enc), "joining moves no time")
+
+	walk := []spatial.Position{cellAt(6, 3), cellAt(6, 4), cellAt(6, 3), cellAt(6, 4), cellAt(6, 3)}
+	for _, to := range walk {
+		_, err := enc.Step(&encounter.StepInput{Member: bob, To: to})
+		s.Require().NoError(err)
+	}
+	s.Equal(rested, s.highWater(enc), "five cells of bob's pace pay nothing yet")
+	_, err = enc.Step(&encounter.StepInput{Member: bob, To: cellAt(6, 4)})
+	s.Require().NoError(err)
+	s.Equal(rested+1, s.highWater(enc), "the sixth cell pays a round, an hour after nobody")
 }
 
 // A rest that names nobody, or somebody twice, is refused and writes
