@@ -165,3 +165,27 @@ func (s *BoardSuite) TestAnUnplaceableMemberPlacesNobody() {
 	_, err = enc.Board(&encounter.BoardInput{})
 	s.ErrorIs(err, encounter.ErrNoMember, "an empty board")
 }
+
+// A temperament mix in a world with no die to deal it is refused before
+// anything is written, by Join and by Board alike: dealing it would have
+// failed after the member was placed and its join beat written.
+func (s *BoardSuite) TestAMixWithNoDieIsRefusedBeforeAnyWrite() {
+	enc := s.empty()
+	saved, err := json.Marshal(enc.ToData())
+	s.Require().NoError(err)
+
+	members := launch()
+	members[0].Temper = encounter.Temper{
+		Mix:      map[string]int{"coward": 1, "soldier": 1},
+		Profiles: map[string]encounter.TemperProfile{"coward": {}, "soldier": {}},
+	}
+
+	_, err = enc.Join(&members[0])
+	s.ErrorIs(err, encounter.ErrNoRoller, "join")
+	_, err = enc.Board(&encounter.BoardInput{Members: members})
+	s.ErrorIs(err, encounter.ErrNoRoller, "board")
+
+	again, err := json.Marshal(enc.ToData())
+	s.Require().NoError(err)
+	s.Equal(string(saved), string(again), "the saved encounter is byte-identical")
+}

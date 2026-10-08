@@ -468,6 +468,12 @@ func (e *Encounter) appendTickBeat(at uint64) error {
 // come up; a word in the mix with no profile saying what it means; or a mix
 // with no die in this world to deal it with. An authored word deals nothing
 // and passes.
+//
+// A COPY OF mind/behavior's DEAL RULES (dealTemper in mind/behavior's
+// table.go): that module refuses the same three things, but only while it
+// deals, and it exports no way to ask without dealing. Until it exports a
+// validator this copy must change whenever those rules do; the follow-up is
+// for behavior to export one and for this function to call it.
 func (e *Encounter) validateTemper(member MemberID, temper Temper) error {
 	if len(temper.Mix) == 0 {
 		return nil
