@@ -54,11 +54,6 @@ func TestCloneCharacterDataOwnsEveryMutableField(t *testing.T) {
 			{Type: shared.EquipmentTypeWeapon, ID: "longsword", Quantity: 1},
 		},
 		EquipmentSlots: character.EquipmentSlots{character.SlotMainHand: "longsword"},
-		ClassResources: map[shared.ClassResourceType]character.ResourceData{
-			shared.ClassResourceSecondWind: {
-				Name: "Second Wind", Max: 1, Current: 0, Resets: shared.ResetTypeShortRest,
-			},
-		},
 		Resources: map[coreResources.ResourceKey]character.RecoverableResourceData{
 			coreResources.ResourceKey("test-pool"): {
 				Current: 0, Maximum: 1, ResetType: coreResources.ResetLongRest,

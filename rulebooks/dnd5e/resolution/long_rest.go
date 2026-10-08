@@ -134,7 +134,6 @@ func cloneCharacterData(in *character.Data) *character.Data {
 	out.ToolProficiencies = slices.Clone(in.ToolProficiencies)
 	out.Inventory = slices.Clone(in.Inventory)
 	out.EquipmentSlots = maps.Clone(in.EquipmentSlots)
-	out.ClassResources = maps.Clone(in.ClassResources)
 	out.Resources = maps.Clone(in.Resources)
 	out.KnownCantrips = slices.Clone(in.KnownCantrips)
 	out.KnownSpells = slices.Clone(in.KnownSpells)
