@@ -98,14 +98,14 @@ func (s *AtlasMapSuite) atlas() *session.Atlas {
 func (s *AtlasMapSuite) TestNothingOnTheMapNamesARoom() {
 	s.Equal(
 		[]string{"Grid", "Layout", "Cells", "Props", "Placed", "Boundaries", "Doorways", "Segments",
-			"StructuralWalls", "StructuralDoors", "Sealed", "Regions", "Exits", "Start", "DungeonKey"},
+			"StructuralWalls", "PropPresentations", "StructuralDoors", "Sealed", "Regions", "Exits", "Start", "DungeonKey"},
 		fieldsOf(session.Atlas{}),
 		"the map is a grid, which way its hexes point, its cells, the things standing on it as "+
 			"cells and as rectangles, its walls as crossings and as lines, its fixed structural "+
 			"walls and the independently permitted doors that stand in their cuts, its doorways, "+
 			"which cells nobody stands on, its regions, the authored ways out, the authored way in, "+
-			"and the content key a host fetches the room's APPEARANCE by — never the appearance "+
-			"itself (rpg-project#479)",
+			"and typed permitted prop appearances with a source key — never an editor document "+
+			"or permission to fetch unrestricted source",
 	)
 	s.Equal(
 		[]string{"At", "Facing"},

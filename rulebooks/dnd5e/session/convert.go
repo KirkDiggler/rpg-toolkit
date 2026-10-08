@@ -135,6 +135,9 @@ func projectAtlas(in encounter.Atlas) Atlas {
 	// converts units, infers state or completes a parent link — the shape
 	// crossing is only S2's type rewrite, and a caller's edit to a returned
 	// slice must not reach the composition's snapshot.
+	for _, p := range in.PropPresentations {
+		out.PropPresentations = append(out.PropPresentations, projectPropPresentation(p))
+	}
 	for _, wall := range in.StructuralWalls {
 		out.StructuralWalls = append(out.StructuralWalls, projectStructuralWall(wall))
 	}

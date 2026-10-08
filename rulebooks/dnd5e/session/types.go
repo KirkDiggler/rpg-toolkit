@@ -189,6 +189,9 @@ type Atlas struct {
 	// infers a state the composition did not send.
 	StructuralWalls []AtlasStructuralWall `json:"structural_walls,omitempty"`
 
+	// PropPresentations are permitted fixed renderer inputs, not colliders.
+	PropPresentations []PropPresentation `json:"prop_presentations,omitempty"`
+
 	// StructuralDoors is every independently permitted structural door
 	// (rpg-project#169), sorted by canonical DoorID: the actual gameplay door
 	// id the observation and verb paths use, its opaque ref, its resolved
@@ -2944,6 +2947,8 @@ type ConcealmentRevealedBody struct {
 	// StructuralWallOpeningsReplacements updates known walls atomically with
 	// the introductions, without rereading world truth or carrying door state.
 	StructuralWallOpeningsReplacements []StructuralWallOpeningsReplacement `json:"structural_wall_openings_replacements,omitempty"`
+	// PropPresentations introduce complete fixed render records by shared ID.
+	PropPresentations []PropPresentation `json:"prop_presentations,omitempty"`
 }
 
 func (ConcealmentRevealedBody) isEventBody() {}

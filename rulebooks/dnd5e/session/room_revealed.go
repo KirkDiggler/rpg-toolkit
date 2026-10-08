@@ -25,6 +25,8 @@ type RoomRevealedBody struct {
 	Doorways   []AtlasDoorway     `json:"doorways"`
 	Placed     []AtlasPlacedProp  `json:"placed"`
 	Exits      []AtlasExit        `json:"exits"`
+	// PropPresentations introduce permitted fixed renderer input by identity.
+	PropPresentations []PropPresentation `json:"prop_presentations,omitempty"`
 
 	// StructuralWalls and StructuralDoors introduce complete permitted records.
 	// Historical full changed-wall records retain whole-record upsert semantics.
@@ -59,6 +61,11 @@ func roomRevealedBody(payload []byte) EventBody {
 	if !ok {
 		return nil
 	}
+	presentations, valid := propPresentationsFromPayload(payload)
+	if !valid {
+		return nil
+	}
+	p.PropPresentations = presentations
 	p.StructuralWalls = rows.Walls
 	p.StructuralDoors = rows.Doors
 	p.StructuralWallOpeningsReplacements = rows.Replacements

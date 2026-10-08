@@ -792,6 +792,10 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		if !ok {
 			return nil
 		}
+		presentations, valid := propPresentationsFromPayload(payload)
+		if !valid {
+			return nil
+		}
 		for i := range p.Doors {
 			for j := range p.Doors[i].Doorways {
 				p.Doors[i].Doorways[j].Door = p.Doors[i].Door
@@ -803,6 +807,7 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			Segments: p.Segments, Sealed: p.Sealed,
 			StructuralWalls: rows.Walls, StructuralDoors: rows.Doors,
 			StructuralWallOpeningsReplacements: rows.Replacements,
+			PropPresentations:                  presentations,
 		}
 	case EventSighted:
 		// REFUSED IF IT NAMES NOBODY. The composition appends this beat
