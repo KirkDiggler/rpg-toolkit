@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
+
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 )
 
@@ -110,6 +112,23 @@ type RestingMember struct {
 	// said this rest refills it, and that is the rulebook's. An empty entry
 	// is refused (ErrInvalidData).
 	ResourcesRefilled []string
+
+	// ConcentrationBreaks is every concentration the rest ended on this
+	// member — a spell that outlasted nothing an hour long — each in the
+	// shape every other break takes ([ConcentrationBreak]), with the
+	// conditions it was holding as its Removed. Carried on the member's own
+	// rested beat (`concentration_ended`), not as beats of their own, so the
+	// story tells what the rest ended with the rest. Each must name this
+	// member as its Caster, and none may carry a Save: a rest asks for no
+	// check (ErrInvalidData). Otherwise validated exactly as a break
+	// recorded with a cast or a strike is.
+	ConcentrationBreaks []ConcentrationBreak
+
+	// Ended is every condition or effect the rest took off this member —
+	// prone, dodging, blessed — by ref, in the rulebook's order. Carried on
+	// the rested beat (`ended`) as canonical strings, never read. A nil or
+	// invalid ref is refused (ErrInvalidData).
+	Ended []*core.Ref
 }
 
 // RestedMember is where one member's rested beat landed.
@@ -231,6 +250,17 @@ func (e *Encounter) RecordRest(in *RecordRestInput) (*RecordRestOutput, error) {
 		if len(m.ResourcesRefilled) > 0 {
 			body["resources_refilled"] = m.ResourcesRefilled
 		}
+		// WHAT THE REST ENDED, on the same beat and omitted when nothing did.
+		ended, err := e.restEnded(m)
+		if err != nil {
+			return nil, err
+		}
+		if len(ended.concentration) > 0 {
+			body["concentration_ended"] = ended.concentration
+		}
+		if len(ended.refs) > 0 {
+			body["ended"] = ended.refs
+		}
 		payload, err := json.Marshal(body)
 		if err != nil {
 			return nil, fmt.Errorf("record rest: marshal beat: %w", err)
@@ -328,4 +358,69 @@ func validateRestRestored(kind RestKind, in *RestingMember) error {
 	}
 
 	return nil
+}
+
+// restEndedPayload is what one member's rest ended, ready for the rested
+// beat: each concentration with the conditions it was holding, and every
+// other condition or effect by its canonical ref string.
+type restEndedPayload struct {
+	concentration []restConcentrationPayload
+	refs          []string
+}
+
+// restConcentrationPayload is one concentration a rest ended, on the rested
+// beat: the caster, the spell, why, and the conditions it took off the board
+// in the activation-result shape every other removal is told in.
+type restConcentrationPayload struct {
+	Caster  MemberID             `json:"caster"`
+	Spell   spellIdentityPayload `json:"spell"`
+	Reason  string               `json:"reason"`
+	Removed []interface{}        `json:"removed,omitempty"`
+}
+
+// restEnded validates and shapes what a rest ended on one member. A break is
+// held to every rule [Encounter.prepareConcentrationBreaks] makes, plus the
+// two only a rest has: the caster is the resting member, and there is no
+// save.
+func (e *Encounter) restEnded(m *RestingMember) (restEndedPayload, error) {
+	var out restEndedPayload
+	for i, broken := range m.ConcentrationBreaks {
+		if broken.Caster != m.Member {
+			return out, fmt.Errorf("record rest: member %q: concentration break %d names caster %q: %w",
+				m.Member, i, broken.Caster, ErrInvalidData)
+		}
+		if broken.Save != nil {
+			return out, fmt.Errorf("record rest: member %q: concentration break %d carries a save, and a rest asks for none: %w",
+				m.Member, i, ErrInvalidData)
+		}
+	}
+	if _, err := e.prepareConcentrationBreaks("record rest", m.Member, m.ConcentrationBreaks); err != nil {
+		return out, err
+	}
+	for i, broken := range m.ConcentrationBreaks {
+		c := restConcentrationPayload{
+			Caster: broken.Caster,
+			Spell:  spellIdentityPayload{Ref: broken.Spell.Ref, Name: broken.Spell.Name},
+			Reason: broken.Reason,
+		}
+		for j, removed := range broken.Removed {
+			payload, err := e.prepareActivationResult(fmt.Sprintf("record rest: concentration break %d", i), j, removed)
+			if err != nil {
+				return out, err
+			}
+			c.Removed = append(c.Removed, payload)
+		}
+		out.concentration = append(out.concentration, c)
+	}
+	for i, ref := range m.Ended {
+		if ref == nil {
+			return out, fmt.Errorf("record rest: member %q: ended[%d] is nil: %w", m.Member, i, ErrInvalidData)
+		}
+		if err := ref.IsValid(); err != nil {
+			return out, fmt.Errorf("record rest: member %q: ended[%d]: %v: %w", m.Member, i, err, ErrInvalidData)
+		}
+		out.refs = append(out.refs, ref.String())
+	}
+
+	return out, nil
 }

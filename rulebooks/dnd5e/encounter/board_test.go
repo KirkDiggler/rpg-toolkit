@@ -189,3 +189,60 @@ func (s *BoardSuite) TestAMixWithNoDieIsRefusedBeforeAnyWrite() {
 	s.Require().NoError(err)
 	s.Equal(string(saved), string(again), "the saved encounter is byte-identical")
 }
+
+// ValidateBoard refuses exactly what Board refuses, through the same path,
+// and writes nothing — for a good board as well as a bad one.
+func (s *BoardSuite) TestValidateBoardRefusesWhatBoardRefuses() {
+	cases := map[string]func([]encounter.JoinInput) []encounter.JoinInput{
+		"a good board": func(m []encounter.JoinInput) []encounter.JoinInput { return m },
+		"off the floor": func(m []encounter.JoinInput) []encounter.JoinInput {
+			m[2].Cell = cellAt(40, 40)
+			return m
+		},
+		"a record the field never declared": func(m []encounter.JoinInput) []encounter.JoinInput {
+			m[2].Holds = []encounter.IntelID{"never-written"}
+			return m
+		},
+		"a negative retained discovery count": func(m []encounter.JoinInput) []encounter.JoinInput {
+			m[2].RetainedDiscoveries = map[encounter.ConcealmentID]encounter.DiscoveryMemoryData{"secret": {Used: -1}}
+			return m
+		},
+		"a temperament mix nothing says the meaning of": func(m []encounter.JoinInput) []encounter.JoinInput {
+			m[2].Temper = encounter.Temper{Mix: map[string]int{"coward": 1}}
+			return m
+		},
+		"a mix with no die": func(m []encounter.JoinInput) []encounter.JoinInput {
+			m[2].Temper = encounter.Temper{Mix: map[string]int{"coward": 1}, Profiles: map[string]encounter.TemperProfile{"coward": {}}}
+			return m
+		},
+		"the same id twice": func(m []encounter.JoinInput) []encounter.JoinInput {
+			m[2].Member = bwChief
+			return m
+		},
+		"a blocked cell": func(m []encounter.JoinInput) []encounter.JoinInput {
+			m[0].BlocksMovement = true
+			m[2].Cell = m[0].Cell
+			return m
+		},
+		"an empty board": func([]encounter.JoinInput) []encounter.JoinInput { return nil },
+	}
+	for name, edit := range cases {
+		validated := s.empty()
+		saved, err := json.Marshal(validated.ToData())
+		s.Require().NoError(err)
+
+		vErr := validated.ValidateBoard(&encounter.BoardInput{Members: edit(launch())})
+		again, err := json.Marshal(validated.ToData())
+		s.Require().NoError(err)
+		s.Equal(string(saved), string(again), "%s: validating wrote nothing", name)
+
+		_, bErr := s.empty().Board(&encounter.BoardInput{Members: edit(launch())})
+		if bErr == nil {
+			s.NoError(vErr, "%s: Board places it, so ValidateBoard passes it", name)
+			continue
+		}
+		s.Require().Error(vErr, "%s: Board refuses it, so ValidateBoard must", name)
+		s.Equal(bErr.Error(), vErr.Error(), "%s: the same refusal", name)
+	}
+	s.Error(s.empty().ValidateBoard(nil), "a nil board")
+}

@@ -563,6 +563,82 @@ func (s *SessionVerbsSuite) TestARestCarriesWhatItRestored() {
 	s.Len(s.beatsOfKind(enc, alice, encounter.BeatRested), 1, "no refusal wrote a beat")
 }
 
+// What a rest ENDED rides on the member's own rested beat: the concentration
+// it broke, with the conditions that spell was holding, and every other
+// condition or effect that came off — omitted when the rest ended nothing.
+func (s *SessionVerbsSuite) TestARestCarriesWhatItEnded() {
+	enc := s.freeRoam()
+	bless := encounter.ConcentrationBreak{
+		Caster: alice,
+		Spell:  encounter.SpellIdentity{Ref: "dnd5e:spells:bless", Name: "Bless"},
+		Reason: "duration",
+		Removed: []encounter.ActivationResult{{
+			Kind:    encounter.ResultConditionRemoved,
+			Address: &encounter.ConditionAddress{MemberID: bob, ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:blessed"}},
+			Name:    "Blessed", Reason: "concentration ended",
+		}},
+	}
+	prone := &core.Ref{Module: "dnd5e", Type: "conditions", ID: "prone"}
+
+	_, err := enc.RecordRest(&encounter.RecordRestInput{Kind: encounter.RestShort, Members: []encounter.RestingMember{
+		{Member: alice, ConcentrationBreaks: []encounter.ConcentrationBreak{bless}, Ended: []*core.Ref{prone}},
+		{Member: bob},
+	}})
+	s.Require().NoError(err)
+
+	var aliceBeat, bobBeat map[string]any
+	for _, beat := range s.beatsOfKind(enc, bob, encounter.BeatRested) {
+		switch beat["member"] {
+		case string(alice):
+			aliceBeat = beat
+		case string(bob):
+			bobBeat = beat
+		}
+	}
+	s.Require().NotNil(aliceBeat)
+	s.Require().NotNil(bobBeat)
+
+	ended, ok := aliceBeat["concentration_ended"].([]any)
+	s.Require().True(ok, "alice's Bless ended with the rest")
+	s.Require().Len(ended, 1)
+	first := ended[0].(map[string]any)
+	s.Equal(string(alice), first["caster"])
+	s.Equal("duration", first["reason"])
+	s.Equal("Bless", first["spell"].(map[string]any)["name"])
+	s.Len(first["removed"], 1, "bob's blessing came off with it")
+	s.Equal([]any{"dnd5e:conditions:prone"}, aliceBeat["ended"], "and alice is no longer prone")
+
+	s.NotContains(bobBeat, "concentration_ended", "a rest that ended nothing says nothing")
+	s.NotContains(bobBeat, "ended")
+
+	refused := map[string]encounter.RestingMember{
+		"somebody else's concentration": {Member: bob, ConcentrationBreaks: []encounter.ConcentrationBreak{bless}},
+		"a break with a save":           {Member: alice, ConcentrationBreaks: []encounter.ConcentrationBreak{withSave(bless)}},
+		"a break with no reason":        {Member: alice, ConcentrationBreaks: []encounter.ConcentrationBreak{withoutReason(bless)}},
+		"a nil ended ref":               {Member: alice, Ended: []*core.Ref{nil}},
+		"an invalid ended ref":          {Member: alice, Ended: []*core.Ref{{Module: "dnd5e"}}},
+	}
+	before, err := json.Marshal(enc.ToData())
+	s.Require().NoError(err)
+	for name, m := range refused {
+		_, err := enc.RecordRest(&encounter.RecordRestInput{Kind: encounter.RestShort, Members: []encounter.RestingMember{m}})
+		s.ErrorIs(err, encounter.ErrInvalidData, name)
+	}
+	after, err := json.Marshal(enc.ToData())
+	s.Require().NoError(err)
+	s.Equal(string(before), string(after), "no refusal wrote anything")
+}
+
+func withSave(b encounter.ConcentrationBreak) encounter.ConcentrationBreak {
+	b.Save = &encounter.CastSave{}
+	return b
+}
+
+func withoutReason(b encounter.ConcentrationBreak) encounter.ConcentrationBreak {
+	b.Reason = ""
+	return b
+}
+
 func paceOf(data encounter.EncounterData, member encounter.MemberID) int {
 	for _, m := range data.Members {
 		if m.ID == member {

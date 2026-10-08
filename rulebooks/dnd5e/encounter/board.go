@@ -73,44 +73,8 @@ type BoardOutput struct {
 // board; or a failure of the look (drop the encounter unsaved — doc.go's
 // caller rule).
 func (e *Encounter) Board(in *BoardInput) (*BoardOutput, error) {
-	if in == nil {
-		return nil, fmt.Errorf("board: %w", ErrNilInput)
-	}
-	if e.outcome != nil {
-		return nil, fmt.Errorf("board: %w", ErrClosed)
-	}
-	if len(in.Members) == 0 {
-		return nil, fmt.Errorf("board: nobody to place: %w", ErrNoMember)
-	}
-
-	seen := make(map[MemberID]int, len(in.Members))
-	blocked := make(map[[2]float64]MemberID, len(in.Members))
-	for i := range in.Members {
-		m := &in.Members[i]
-		if err := e.validateJoin(m); err != nil {
-			return nil, fmt.Errorf("board: members[%d]: %w", i, err)
-		}
-		if prev, twice := seen[m.Member]; twice {
-			return nil, fmt.Errorf("board: members[%d]: %q is members[%d] too: %w", i, m.Member, prev, ErrNoMember)
-		}
-		seen[m.Member] = i
-		if m.Arrives != nil {
-			continue
-		}
-		// The canvas refuses a cell a blocking entity already stands on, and
-		// Join would learn that at its first write. A board learns it here,
-		// against the run and against every member placed before this one.
-		entity := &memberEntity{id: string(m.Member), kind: m.Kind, blocksMovement: m.BlocksMovement}
-		if !e.canvas.CanPlaceEntity(entity, m.Cell) {
-			return nil, fmt.Errorf("board: members[%d]: cell %v is taken: %w", i, m.Cell, ErrBadPlacement)
-		}
-		cell := [2]float64{m.Cell.X, m.Cell.Y}
-		if by, taken := blocked[cell]; taken {
-			return nil, fmt.Errorf("board: members[%d]: cell %v is taken by %q: %w", i, m.Cell, by, ErrBadPlacement)
-		}
-		if m.BlocksMovement {
-			blocked[cell] = m.Member
-		}
+	if err := e.ValidateBoard(in); err != nil {
+		return nil, err
 	}
 
 	joined := make([]*JoinOutput, 0, len(in.Members))
@@ -156,4 +120,58 @@ func (e *Encounter) Board(in *BoardInput) (*BoardOutput, error) {
 	}
 
 	return result, nil
+}
+
+// ValidateBoard makes every refusal [Encounter.Board] would make for this
+// input, and writes nothing: the same seats, cells, factions, holdings,
+// temperaments and dice, through the same path Board itself runs before its
+// first write. Nil means Board would place this board.
+//
+// ONE PATH, NOT A REHEARSAL. A caller that must refuse before any write of
+// its own — a launch that saves sheets before the board — asks this rather
+// than placing the board on a throwaway world to see what happens.
+//
+// Errors: exactly [Encounter.Board]'s input refusals.
+func (e *Encounter) ValidateBoard(in *BoardInput) error {
+	if in == nil {
+		return fmt.Errorf("board: %w", ErrNilInput)
+	}
+	if e.outcome != nil {
+		return fmt.Errorf("board: %w", ErrClosed)
+	}
+	if len(in.Members) == 0 {
+		return fmt.Errorf("board: nobody to place: %w", ErrNoMember)
+	}
+
+	seen := make(map[MemberID]int, len(in.Members))
+	blocked := make(map[[2]float64]MemberID, len(in.Members))
+	for i := range in.Members {
+		m := &in.Members[i]
+		if err := e.validateJoin(m); err != nil {
+			return fmt.Errorf("board: members[%d]: %w", i, err)
+		}
+		if prev, twice := seen[m.Member]; twice {
+			return fmt.Errorf("board: members[%d]: %q is members[%d] too: %w", i, m.Member, prev, ErrNoMember)
+		}
+		seen[m.Member] = i
+		if m.Arrives != nil {
+			continue
+		}
+		// The canvas refuses a cell a blocking entity already stands on, and
+		// Join would learn that at its first write. A board learns it here,
+		// against the run and against every member placed before this one.
+		entity := &memberEntity{id: string(m.Member), kind: m.Kind, blocksMovement: m.BlocksMovement}
+		if !e.canvas.CanPlaceEntity(entity, m.Cell) {
+			return fmt.Errorf("board: members[%d]: cell %v is taken: %w", i, m.Cell, ErrBadPlacement)
+		}
+		cell := [2]float64{m.Cell.X, m.Cell.Y}
+		if by, taken := blocked[cell]; taken {
+			return fmt.Errorf("board: members[%d]: cell %v is taken by %q: %w", i, m.Cell, by, ErrBadPlacement)
+		}
+		if m.BlocksMovement {
+			blocked[cell] = m.Member
+		}
+	}
+
+	return nil
 }
