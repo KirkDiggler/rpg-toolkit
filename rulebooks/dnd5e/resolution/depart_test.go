@@ -178,8 +178,7 @@ func (s *DepartTestSuite) TestDepart() {
 		s.Equal(DepartedReason, ended[0].Reason, "concentration ended, departed")
 
 		s.NotContains(departRefs(s, out.Character), blessedRef)
-		s.Require().Len(out.Ended, 1)
-		s.Equal(DepartedReason, out.Ended[0].Reason, "the strip carries the hold's reason")
+		s.Empty(out.Ended, "the removal is the break's to report, once")
 
 		dirty := dirtyByID(out.DirtyCharacters)
 		s.Require().Contains(dirty, departBob)
@@ -190,9 +189,60 @@ func (s *DepartTestSuite) TestDepart() {
 		s.Equal(encounter.MemberID(departBob), held.Caster, "the caster to tell")
 		s.Equal(refs.Spells.Bless().String(), held.Spell.Ref)
 		s.Equal(DepartedReason, held.Reason)
+		s.Require().Len(held.Removed, 1, "alice's Blessed, once")
+		s.Equal(encounter.MemberID(departAlice), held.Removed[0].Address.MemberID)
+		s.Equal(DepartedReason, held.Removed[0].Reason)
 	})
 
-	s.Run("the caster is not passed in: refused, inputs unchanged", func() {
+	s.Run("bob departs: his own hold ends and its effects come off alice and carol", func() {
+		sheets := s.scene(departAlice, departCarol)
+
+		out, err := Depart(s.ctx, &DepartInput{
+			Character: sheets[departBob],
+			Others:    []Participant{{Character: sheets[departAlice]}, {Character: sheets[departCarol]}},
+		})
+		s.Require().NoError(err)
+
+		s.Nil(s.holdOf(out.Character), "bob holds nothing")
+		s.Empty(out.Ended, "nothing came off bob himself")
+
+		s.Require().Len(out.ConcentrationBreaks, 1, "one break for Bless")
+		held := out.ConcentrationBreaks[0]
+		s.Equal(encounter.MemberID(departBob), held.Caster)
+		s.Equal(refs.Spells.Bless().String(), held.Spell.Ref)
+		s.Equal(DepartedReason, held.Reason)
+		var removedFrom []encounter.MemberID
+		for _, removed := range held.Removed {
+			removedFrom = append(removedFrom, removed.Address.MemberID)
+		}
+		s.ElementsMatch([]encounter.MemberID{departAlice, departCarol}, removedFrom, "one removal per target")
+
+		dirty := dirtyByID(out.DirtyCharacters)
+		s.Require().Contains(dirty, departAlice)
+		s.Require().Contains(dirty, departCarol)
+		s.NotContains(departRefs(s, dirty[departAlice]), blessedRef)
+		s.NotContains(departRefs(s, dirty[departCarol]), blessedRef)
+	})
+
+	s.Run("bob departs with a target not passed in: refused, inputs unchanged", func() {
+		sheets := s.scene(departAlice, departCarol)
+		before, err := json.Marshal(sheets)
+		s.Require().NoError(err)
+
+		out, err := Depart(s.ctx, &DepartInput{
+			Character: sheets[departBob],
+			Others:    []Participant{{Character: sheets[departAlice]}},
+		})
+		s.Require().ErrorIs(err, ErrBadParticipant)
+		s.Require().ErrorContains(err, departCarol)
+		s.Require().Nil(out)
+
+		after, err := json.Marshal(sheets)
+		s.Require().NoError(err)
+		s.JSONEq(string(before), string(after))
+	})
+
+	s.Run("an absent cleric's Bless refuses: a concentration spell, per content", func() {
 		sheets := s.scene(departAlice, departCarol)
 		before, err := json.Marshal(sheets)
 		s.Require().NoError(err)
@@ -223,7 +273,7 @@ func (s *DepartTestSuite) TestDepart() {
 		s.Empty(out.DirtyMonsters)
 	})
 
-	s.Run("an effect no hold names is untouched, its source absent", func() {
+	s.Run("an absent bard's Inspired does not refuse: not a concentration effect, per content", func() {
 		alice := s.sheet(departAlice)
 		inspired, err := conditions.NewInspiredCondition(departAlice, "absent-bard", "").ToJSON()
 		s.Require().NoError(err)
@@ -233,6 +283,18 @@ func (s *DepartTestSuite) TestDepart() {
 		s.Require().NoError(err)
 		s.Empty(out.Ended)
 		s.Contains(departRefs(s, out.Character), refs.Conditions.Inspired().String())
+	})
+
+	s.Run("an absent bard's Vicious Mockery does not refuse: a spell, but not concentration, per content", func() {
+		alice := s.sheet(departAlice)
+		mocked, err := conditions.NewViciousMockeryCondition(departAlice, "absent-bard", "").ToJSON()
+		s.Require().NoError(err)
+		alice.Conditions = []json.RawMessage{mocked}
+
+		out, err := Depart(s.ctx, &DepartInput{Character: alice})
+		s.Require().NoError(err)
+		s.Empty(out.Ended)
+		s.Contains(departRefs(s, out.Character), refs.Conditions.ViciousMockery().String())
 	})
 
 	s.Run("nil input", func() {

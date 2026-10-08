@@ -45,37 +45,40 @@ type DepartOutput struct {
 	Character *character.Data
 
 	// Ended are the effects that came off the leaver, each a condition removal
-	// with reason [DepartedReason].
+	// with reason [DepartedReason], that no break accounts for: an effect of a
+	// hold that ended is in that break's Removed, once.
 	Ended []encounter.ActivationResult
 
-	// ConcentrationBreaks are the holds the departure ended because the
-	// leaver was all they still held, each with reason [DepartedReason] and
-	// the caster to tell — the same record a Resolve or a ShortRest returns.
+	// ConcentrationBreaks are the holds the departure ended — the leaver's
+	// own, and another's whose last target was the leaver — each with reason
+	// [DepartedReason], the caster to tell, and every effect that came off
+	// with it: the same record a Resolve or a ShortRest returns.
 	// A hold that continues for other targets is not here; its caster is in
 	// DirtyCharacters or DirtyMonsters.
 	ConcentrationBreaks []encounter.ConcentrationBreak
 
 	// DirtyCharacters and DirtyMonsters are the [DepartInput.Others] the
 	// departure changed, and only those: a caster whose hold no longer names
-	// the leaver, or whose hold ended because the leaver was its last target.
+	// the leaver or ended, and a target of the leaver's own holds.
 	DirtyCharacters []*character.Data
 	DirtyMonsters   []*monster.Data
 }
 
-// Depart takes off a leaving character every effect another member's
-// concentration holds on it, and tells each hold so.
+// Depart settles what concentration ties a leaving character to the run.
 //
-// A hold that still holds an effect on somebody else continues, naming only
-// them. A hold whose every effect was on the leaver ends, with reason
-// [DepartedReason], and its caster comes back dirty. The leaver's own holds
-// are not touched: today's Exit writes no sheet, so they leave with the
-// leaver exactly as they are. An effect on the leaver that no hold names is
-// not touched either.
+// Every effect another member's concentration holds on the leaver comes off
+// it, and the hold is told: a hold that still holds an effect on somebody
+// else continues, naming only them; a hold whose every effect was on the
+// leaver ends, with reason [DepartedReason]. Every hold the leaver holds ends
+// too, with the same reason, and its effects come off every remaining target:
+// the run settles what it put on its members, or a target's own departure
+// would later refuse for a caster who is gone. An effect on the leaver that
+// no hold names is not touched.
 //
 // Returns [ErrNilInput], or [ErrBadParticipant] for a record that is not one
-// sheet, a leaver also among the others, or an effect of a concentration
-// spell on the leaver whose caster was not passed in — refused before
-// anything changes. No runtime character or event bus crosses this data
+// sheet, a leaver also among the others, an effect of a concentration spell
+// on the leaver whose caster was not passed in, or a hold of the leaver's
+// reaching a member not passed in — refused before anything changes. No runtime character or event bus crosses this data
 // boundary.
 func Depart(ctx context.Context, in *DepartInput) (*DepartOutput, error) {
 	return departOn(ctx, in, newSurface(events.NewEventBus()))
@@ -147,7 +150,7 @@ func departOn(
 	if err != nil {
 		return nil, fmt.Errorf("resolution: depart %q: %w", one.ID(), err)
 	}
-	ended, err := removals.endedOutside(nil)
+	ended, err := removals.endedOutside(ends.facts)
 	if err != nil {
 		return nil, err
 	}
@@ -227,6 +230,11 @@ func heldOn(leaver *character.Data, cast *Participants) ([]heldEffects, error) {
 	named := map[dnd5eEvents.ConditionAddress]bool{}
 	for _, id := range cast.order {
 		if id == leaver.ID {
+			owned, err := ownHolds(leaver.ID, cast)
+			if err != nil {
+				return nil, err
+			}
+			held = append(held, owned...)
 			continue
 		}
 		for _, condition := range conditionsOf(cast, id) {
@@ -272,9 +280,33 @@ func heldOn(leaver *character.Data, cast *Participants) ([]heldEffects, error) {
 	return held, nil
 }
 
+// ownHolds is every hold the leaver holds, each to end with all its effects:
+// the run settles what it put on its members, so a departing caster's
+// concentration does not outlive the departure. A hold whose effect sits on a
+// member not passed in refuses, as a short rest's does, before anything ends.
+func ownHolds(leaverID string, cast *Participants) ([]heldEffects, error) {
+	var owned []heldEffects
+	for _, condition := range conditionsOf(cast, leaverID) {
+		hold, ok := condition.(*conditions.ConcentratingCondition)
+		if !ok {
+			continue
+		}
+		for _, child := range hold.Children {
+			_, isCharacter := cast.Character(child.MemberID)
+			_, isMonster := cast.Monster(child.MemberID)
+			if !isCharacter && !isMonster {
+				return nil, fmt.Errorf("%w: %s held by %q reaches %q, who was not passed in",
+					ErrBadParticipant, hold.SpellName, leaverID, child.MemberID)
+			}
+		}
+		owned = append(owned, heldEffects{hold: hold, onLeave: slices.Clone(hold.Children)})
+	}
+	return owned, nil
+}
+
 // release takes each held effect off the leaver, through the hold: a hold
-// with nothing left but the leaver ends; any other drops the leaver's effects
-// and continues.
+// with nothing left but the leaver's effects ends — every hold the leaver
+// holds among them — and any other drops the leaver's effects and continues.
 func release(ctx context.Context, bus events.EventBus, leaverID string, held []heldEffects) error {
 	removals := dnd5eEvents.ConditionRemovedTopic.On(bus)
 	for _, found := range held {
@@ -324,9 +356,9 @@ func peekEffects(data *character.Data) []peekedEffect {
 	var out []peekedEffect
 	for _, raw := range data.Conditions {
 		var head struct {
-			Ref       *core.Ref `json:"ref"`
-			SourceID  string    `json:"source_id"`
-			SourceRef *core.Ref `json:"source_ref"`
+			Ref       *core.Ref       `json:"ref"`
+			SourceID  string          `json:"source_id"`
+			SourceRef json.RawMessage `json:"source_ref"`
 		}
 		if json.Unmarshal(raw, &head) != nil || head.Ref == nil {
 			continue
@@ -335,10 +367,31 @@ func peekEffects(data *character.Data) []peekedEffect {
 			address: dnd5eEvents.ConditionAddress{
 				MemberID: data.ID, ConditionRef: head.Ref.String(), SourceID: head.SourceID,
 			},
-			sourceRef: head.SourceRef,
+			sourceRef: peekRef(head.SourceRef),
 		})
 	}
 	return out
+}
+
+// peekRef reads a persisted source ref in either form content writes it: a
+// ref object or a ref string. Anything else names no source.
+func peekRef(raw json.RawMessage) *core.Ref {
+	if len(raw) == 0 {
+		return nil
+	}
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		ref, err := core.ParseString(text)
+		if err != nil {
+			return nil
+		}
+		return ref
+	}
+	ref := &core.Ref{}
+	if json.Unmarshal(raw, ref) != nil {
+		return nil
+	}
+	return ref
 }
 
 // concentrationSpell reports whether ref names a spell this build casts as a
