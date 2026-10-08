@@ -436,3 +436,64 @@ func mustJSON(t *testing.T, v any) json.RawMessage {
 	require.NoError(t, err)
 	return raw
 }
+
+// Hit dice are counted on their own and never listed as refilled, even by the
+// long rest that returns them.
+func TestARestNeverListsHitDice(t *testing.T) {
+	ctx := context.Background()
+	char := restFighter(t)
+	_, err := char.ShortRest(ctx, &ShortRestInput{HitDice: 2, Roller: &mockHitDiceRoller{rolls: []int{1, 1}}})
+	require.NoError(t, err)
+
+	long, err := char.LongRest(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, char.GetResource(resources.HitDice).Current(), "the long rest did return a die")
+	require.NotContains(t, refilledStrings(long.Refilled), "dnd5e:resources:hit_dice")
+}
+
+// The list is sorted by ref whatever order the pools are held in: three spent
+// pools whose keys are read in reverse come back in ref order.
+func TestRefilledIsSortedByRef(t *testing.T) {
+	char := restFighter(t)
+	for _, key := range []coreResources.ResourceKey{"c_pool", "b_pool", "a_pool"} {
+		pool := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+			ID: string(key), Maximum: 1, CharacterID: char.GetID(), ResetType: coreResources.ResetLongRest,
+		})
+		require.NoError(t, pool.Use(1))
+		char.AddResource(key, pool)
+	}
+
+	long, err := char.LongRest(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		refs.Features.SecondWind().String(),
+		"dnd5e:resources:a_pool",
+		"dnd5e:resources:b_pool",
+		"dnd5e:resources:c_pool",
+		"dnd5e:resources:rage_charges",
+	}, refilledStrings(long.Refilled))
+}
+
+// A pool that rose during the rest for another reason is not a refill: the
+// rest's own reset kind has to have fired for it.
+func TestAPoolThatRoseForAnotherReasonIsNotARefill(t *testing.T) {
+	ctx := context.Background()
+	char := restFighter(t)
+	rage := char.GetResource(resources.RageCharges)
+	require.Equal(t, 0, rage.Current())
+
+	// Something else on the bus hands back a rage charge while the short
+	// rest is under way. Rage resets on a long rest; a short rest did not
+	// refill it.
+	_, err := dnd5eEvents.RestTopic.On(char.bus).Subscribe(ctx,
+		func(_ context.Context, _ dnd5eEvents.RestEvent) error {
+			rage.Restore(1)
+			return nil
+		})
+	require.NoError(t, err)
+
+	short, err := char.ShortRest(ctx, &ShortRestInput{})
+	require.NoError(t, err)
+	require.Equal(t, 1, rage.Current(), "the pool did rise")
+	require.Equal(t, []string{refs.Features.SecondWind().String()}, refilledStrings(short.Refilled))
+}

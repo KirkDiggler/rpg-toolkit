@@ -614,7 +614,7 @@ func (c *Character) ShortRest(ctx context.Context, input *ShortRestInput) (*Shor
 		return nil, rpgerr.Wrapf(err, "failed to publish rest event")
 	}
 
-	refilled, err := c.refilledSince(before)
+	refilled, err := c.refilledSince(before, coreResources.ResetShortRest)
 	if err != nil {
 		return nil, err
 	}
@@ -716,9 +716,7 @@ func (c *Character) hitDieRef() core.Ref {
 // and refill or end themselves.
 func (c *Character) recoverOnRest(rest coreResources.ResetType) {
 	for key, resource := range c.resources {
-		satisfied := resource.ResetType == rest ||
-			(rest == coreResources.ResetLongRest && resource.ResetType == coreResources.ResetShortRest)
-		if !satisfied {
+		if !restSatisfies(rest, resource.ResetType) {
 			continue
 		}
 
@@ -784,7 +782,7 @@ func (c *Character) LongRest(ctx context.Context) (*LongRestOutput, error) {
 		return nil, err
 	}
 
-	refilled, err := c.refilledSince(before)
+	refilled, err := c.refilledSince(before, coreResources.ResetLongRest)
 	if err != nil {
 		return nil, err
 	}
@@ -795,6 +793,12 @@ func (c *Character) LongRest(ctx context.Context) (*LongRestOutput, error) {
 type refillPool struct {
 	ref     core.Ref
 	current int
+
+	// reset is the pool's reset kind where the sheet holds it: every
+	// character-owned pool, a shared one a feature reports included. Empty
+	// for a pool private to a feature, which refills only through its own
+	// rest handler — so a rise across the rest is that kind firing.
+	reset coreResources.ResetType
 }
 
 // refillSnapshot reads every resource a rest can refill, keyed by resource
@@ -811,7 +815,11 @@ func (c *Character) refillSnapshot() (map[coreResources.ResourceKey]refillPool, 
 		if out == nil || out.Status == nil || out.Status.Resource == nil {
 			continue
 		}
-		pools[out.Status.Resource.Key] = refillPool{ref: out.Status.Ref, current: out.Status.Resource.Current}
+		pool := refillPool{ref: out.Status.Ref, current: out.Status.Resource.Current}
+		if shared, ok := c.resources[out.Status.Resource.Key]; ok {
+			pool.reset = shared.ResetType
+		}
+		pools[out.Status.Resource.Key] = pool
 	}
 	for key, resource := range c.resources {
 		if key == resources.HitDice {
@@ -823,27 +831,50 @@ func (c *Character) refillSnapshot() (map[coreResources.ResourceKey]refillPool, 
 		pools[key] = refillPool{
 			ref:     core.Ref{Module: refs.Module, Type: refs.TypeResources, ID: core.ID(key)},
 			current: resource.Current(),
+			reset:   resource.ResetType,
 		}
 	}
 	return pools, nil
 }
 
-// refilledSince names the pools whose count rose since the snapshot.
-func (c *Character) refilledSince(before map[coreResources.ResourceKey]refillPool) ([]*core.Ref, error) {
+// refilledSince names the pools this rest refilled: those whose count rose
+// since the snapshot AND whose reset kind the rest satisfies. A pool that
+// rose during the rest for any other reason is not a refill. Keys are read
+// in a fixed order and the refs sorted, so the list is stable.
+func (c *Character) refilledSince(
+	before map[coreResources.ResourceKey]refillPool, rest coreResources.ResetType,
+) ([]*core.Ref, error) {
 	after, err := c.refillSnapshot()
 	if err != nil {
 		return nil, err
 	}
 
+	keys := slices.Collect(maps.Keys(after))
+	slices.Sort(keys)
+	slices.Reverse(keys)
+
 	var out []*core.Ref
-	for key, now := range after {
-		if was, ok := before[key]; ok && now.current > was.current {
-			ref := now.ref
-			out = append(out, &ref)
+	for _, key := range keys {
+		now := after[key]
+		was, ok := before[key]
+		if !ok || now.current <= was.current {
+			continue
 		}
+		if now.reset != "" && !restSatisfies(rest, now.reset) {
+			continue
+		}
+		ref := now.ref
+		out = append(out, &ref)
 	}
 	slices.SortFunc(out, func(a, b *core.Ref) int { return strings.Compare(a.String(), b.String()) })
 	return out, nil
+}
+
+// restSatisfies reports whether a rest of one kind refills a pool that resets
+// on another: like for like, and a long rest also refills what resets on a
+// short one (PHB p.186).
+func restSatisfies(rest, reset coreResources.ResetType) bool {
+	return reset == rest || (rest == coreResources.ResetLongRest && reset == coreResources.ResetShortRest)
 }
 
 // EndCombat used to sit here, and it is gone (rpg-project#319 Phase 6). It
