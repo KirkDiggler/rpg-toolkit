@@ -1949,217 +1949,19 @@ func (p *propEntity) BlocksMovement() bool {
 // first percepts AND incumbents now seeing them), and a beat is recorded.
 // ReachedPosition endings are evaluated (a player could join ON the stairs — fires YES).
 func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
-	// Validation
-	if in == nil {
-		return nil, fmt.Errorf("join: %w", ErrNilInput)
+	if err := e.validateJoin(in); err != nil {
+		return nil, err
 	}
-
-	if e.outcome != nil {
-		return nil, fmt.Errorf("join: %w", ErrClosed)
-	}
-
-	if in.Member == "" {
-		return nil, fmt.Errorf("join: %w", ErrNoMember)
-	}
-
-	// Check if already a member — on the roster, or waiting in reserve
-	// (reserve.go): a reserved member is absent from every projection, but
-	// it is in the encounter, and a second joiner under its id would arrive
-	// twice.
-	if _, exists := e.members[in.Member]; exists || e.inReserve(in.Member) {
-		return nil, fmt.Errorf("join: member %s is already in the encounter: %w", in.Member, ErrNoMember)
-	}
-
-	// Nor can a world NPC (rpg-toolkit#1404, design.md N4) — see NewEncounter's
-	// own check for why.
-
-	// See NewEncounter's own call to validateMemberFacts for why — ASKED
-	// BEFORE any mutation (canvas.PlaceEntity below is the first one),
-	// unlike NewEncounter's construction-in-a-local-that-only-escapes-on-
-	// success safety net: Join mutates a LIVE *Encounter, so an invalid
-	// fact caught after PlaceEntity would need to roll a placement back
-	// rather than simply never having made one (Copilot, PR #1187).
-	if err := validateMemberFacts(memberFacts{
-		ID:         in.Member,
-		Intimidate: in.Intimidate, Persuade: in.Persuade, Table: in.Table,
-	}); err != nil {
-		return nil, fmt.Errorf("join: %w", err)
-	}
-
-	// A holder must name a record this field declares — the SAME refusal
-	// NewEncounter makes, and asked here for the reason the line above is:
-	// Join mutates a live encounter, so every refusal happens before the
-	// first mutation rather than needing to be rolled back
-	// ([JoinInput.Holds]).
-	for _, id := range in.Holds {
-		if _, declared := e.field.intelByID[id]; !declared {
-			return nil, fmt.Errorf("join: member %q holds intel %q: %w", in.Member, id, ErrNoIntel)
-		}
-	}
-
-	// The faction must be one this field has, and a member arriving under a
-	// faction's mind id must arrive in that faction — the SAME refusal
-	// NewEncounter makes, before the first mutation ([JoinInput.Faction]).
-	if err := e.field.validateMemberFaction(in.Member, in.Kind, in.Faction); err != nil {
-		return nil, fmt.Errorf("join: %w", err)
-	}
-
-	// A joiner held in reserve must be one that can wait there and one whose
-	// predicate can hold — the SAME refusal NewEncounter makes (reserve.go),
-	// before the first mutation.
-	if in.Arrives != nil {
-		if err := e.field.validateArrival(in.Member, in.Kind, in.Arrives); err != nil {
-			return nil, fmt.Errorf("join: %w", err)
-		}
-	}
-
-	// Hex fields require integral axial cells (interim tools/spatial#926
-	// enforcement — see isIntegralHexCell). Asked first, for the reason
-	// [Encounter.stepMember] asks it first: a fractional cell is an arithmetic
-	// mistake and must not be reported as a map one.
-	if !isIntegralHexCell(in.Cell) {
-		return nil, fmt.Errorf("join: position is not an integral axial cell: %w", ErrBadPlacement)
-	}
-
-	// The arrival cell must be STANDABLE — some authored region has to own
-	// it. The canvas spans the field's whole bounding box, so "on the map"
-	// and "somewhere a member can stand" are different questions, and this is
-	// the one that matters (the same check [Encounter.stepMember] makes for a
-	// step). Scenery is on the map and is not somewhere anybody stands.
-	if !e.field.isStandable(in.Cell) {
-		return nil, fmt.Errorf("join: cell %v %s: %w", in.Cell, e.field.notStandable(in.Cell), ErrBadPlacement)
-	}
-
-	// STANDABLE INCLUDES UNCOVERED (issue #1753): a movement-blocking placed
-	// footprint covering the cell's centre refuses the arrival by name — the
-	// same fact [Encounter.CellAt] would give a step here, so a join and a
-	// step cannot disagree about a table someone would land inside.
-	if prop, covered := e.field.standingBlocks(in.Cell); covered {
-		return nil, fmt.Errorf("join: cell %v is covered by placed prop %q: %w", in.Cell, prop, ErrBadPlacement)
-	}
-
-	member := &memberRecord{
-		ID:             in.Member,
-		Kind:           in.Kind,
-		Name:           in.Name,
-		Intimidate:     copyApproaches(in.Intimidate),
-		Persuade:       copyApproaches(in.Persuade),
-		Table:          cloneTable(in.Table),
-		Temper:         in.Temper,
-		BlocksMovement: in.BlocksMovement,
-		Faction:        in.Faction,
-	}
-
-	// A JOINER WITH A PREDICATE GOES INTO RESERVE (rpg-project#375, design §3
-	// Spawn; reserve.go): validated like any joiner, then held — no
-	// placement, no clock, no seed, no beat, no refresh. The output says so,
-	// and names the cell it will arrive at as its placement; nothing else in
-	// the run does.
-	if in.Arrives != nil {
-		e.reserveMember(&reservedMember{
-			record: *member, at: in.Cell, holds: in.Holds, arrives: in.Arrives,
-		})
-		region, _ := e.RegionAt(in.Cell)
-		return &JoinOutput{
-			Reserved: true,
-			Member: Member{
-				ID: in.Member, Kind: in.Kind, Name: in.Name, Region: region, Position: in.Cell,
-				Intimidate: copyApproaches(in.Intimidate), Persuade: copyApproaches(in.Persuade),
-				Table:          cloneTable(in.Table),
-				Temper:         in.Temper,
-				BlocksMovement: in.BlocksMovement, Faction: factionOf(member),
-			},
-		}, nil
-	}
-
-	entity := &memberEntity{
-		id:             string(in.Member),
-		kind:           in.Kind,
-		blocksMovement: in.BlocksMovement,
-	}
-
-	if err := e.canvas.PlaceEntity(entity, in.Cell); err != nil {
-		return nil, fmt.Errorf("join placement: %w: %w", ErrBadPlacement, err)
-	}
-
-	// Register the member
-	e.members[in.Member] = member
-	e.everMembers[in.Member] = true // Track in everMembers
-
-	// A joiner lands on the world clock, never mid-fight. Being pulled into a
-	// running bubble is Transfer's job and is a separate decision from joining
-	// the encounter at all.
-	if cerr := e.seatOnWorldClock(in.Member); cerr != nil {
-		return nil, fmt.Errorf("join member %q world clock: %w", in.Member, cerr)
-	}
-
-	// Store decider if present (monsters only, validated above)
-
-	// The joiner's placed records, seeded as the holdings they are — the
-	// SAME call NewEncounter makes for an authored member, so intel enters a
-	// run one way (design P5). Before the beat below, because a holding is
-	// state the join establishes rather than something the join narrates:
-	// nothing about it is ever narrated (design P3).
-	if err := e.holdings.seedIntel(in.Member, in.Holds); err != nil {
-		return nil, fmt.Errorf("join: %w", err)
-	}
-
-	// A member is an entity in the graph, and the mind of a faction of one
-	// is whoever is in it — so the declaration is rebuilt on arrival
-	// (world.go).
-	if err := e.buildWorld(); err != nil {
-		return nil, fmt.Errorf("join: %w", err)
-	}
-
-	// Audience for both the join beat and the sight refresh: the joiner sees
-	// incumbents, incumbents see the joiner. subjectBeat, subject is the
-	// joiner — v1 still sends everyone (audienceFor's doc); rpg-toolkit#940
-	// is where "everyone" might narrow to who can actually see them arrive.
-	memberIDs := e.audienceFor(subjectBeat, in.Member)
-
-	// Record the join beat BEFORE refreshing sight: arriving is the cause,
-	// anything trigger detection appends is its effect (see refreshSight).
-	// Audience = all members including the joiner.
-	clockReadingInt := e.clock.ToData().HighWater
-	clockReadingForBeat := uint64(clockReadingInt)
-	beatPayload := map[string]interface{}{
-		"beat":   BeatJoined,
-		"member": string(in.Member),
-	}
-	beatBytes, _ := json.Marshal(beatPayload)
-
-	appendOut, err := e.appendBeat(&record.AppendInput{
-		At:       clockReadingForBeat,
-		Audience: memberIDs,
-		Tags:     map[string]string{"tag": "membership"},
-		Payload:  beatBytes,
-	})
+	member, out, err := e.admitMember(in)
 	if err != nil {
-		return nil, fmt.Errorf("join append beat: %w", err)
+		return nil, err
 	}
-
-	seqNum := appendOut.Seq
-	if member.Kind == KindPlayer {
-		if err := e.initializeDiscovery(in.Member, in.PrivateDiscoveries, in.RetainedDiscoveries); err != nil {
-			return nil, err
-		}
+	if out.Reserved {
+		return out, nil
 	}
-
-	// The faction's mix, dealt at this door exactly as it is at Setup's
-	// (design §3): a monster that arrives mid-run gets its own nerve rolled
-	// for it, and the beat says which one it came out as.
-	//
-	// AFTER THE JOIN BEAT AND BEFORE THE SIGHT REFRESH, on both counts for a
-	// reason. The deal's beat names a member the story introduces in the join
-	// beat above, so leading with it would put a raw id on the line that
-	// introduces the creature. And the refresh below can form a bubble, which
-	// can consult a table — a creature consulted before its deal would roll
-	// its orders as the soldier an empty temperament looks like.
-	dealt, terr := e.dealTemperFor(in.Member, in.Temper, clockReadingForBeat)
-	if terr != nil {
-		return nil, fmt.Errorf("join: %w", terr)
-	}
-	member.Temper = dealt
+	memberIDs := e.audienceFor(subjectBeat, in.Member)
+	clockReadingForBeat := uint64(e.clock.ToData().HighWater)
+	seqNum := out.Seq
 
 	intelDeltas, formed, err := e.refreshSight(memberIDs)
 	if err != nil {
@@ -2191,6 +1993,238 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		Seq:         seqNum,
 		Outcome:     firedOutcome,
 	}, nil
+}
+
+// validateJoin is every refusal [Encounter.Join] makes BEFORE its first
+// mutation, shared with [Encounter.Board] so a board refuses exactly what a
+// join refuses, and refuses it before anything is written.
+func (e *Encounter) validateJoin(in *JoinInput) error {
+	// Validation
+	if in == nil {
+		return fmt.Errorf("join: %w", ErrNilInput)
+	}
+
+	if e.outcome != nil {
+		return fmt.Errorf("join: %w", ErrClosed)
+	}
+
+	if in.Member == "" {
+		return fmt.Errorf("join: %w", ErrNoMember)
+	}
+
+	// Check if already a member — on the roster, or waiting in reserve
+	// (reserve.go): a reserved member is absent from every projection, but
+	// it is in the encounter, and a second joiner under its id would arrive
+	// twice.
+	if _, exists := e.members[in.Member]; exists || e.inReserve(in.Member) {
+		return fmt.Errorf("join: member %s is already in the encounter: %w", in.Member, ErrNoMember)
+	}
+
+	// Nor can a world NPC (rpg-toolkit#1404, design.md N4) — see NewEncounter's
+	// own check for why.
+
+	// See NewEncounter's own call to validateMemberFacts for why — ASKED
+	// BEFORE any mutation (canvas.PlaceEntity below is the first one),
+	// unlike NewEncounter's construction-in-a-local-that-only-escapes-on-
+	// success safety net: Join mutates a LIVE *Encounter, so an invalid
+	// fact caught after PlaceEntity would need to roll a placement back
+	// rather than simply never having made one (Copilot, PR #1187).
+	if err := validateMemberFacts(memberFacts{
+		ID:         in.Member,
+		Intimidate: in.Intimidate, Persuade: in.Persuade, Table: in.Table,
+	}); err != nil {
+		return fmt.Errorf("join: %w", err)
+	}
+
+	// A holder must name a record this field declares — the SAME refusal
+	// NewEncounter makes, and asked here for the reason the line above is:
+	// Join mutates a live encounter, so every refusal happens before the
+	// first mutation rather than needing to be rolled back
+	// ([JoinInput.Holds]).
+	for _, id := range in.Holds {
+		if _, declared := e.field.intelByID[id]; !declared {
+			return fmt.Errorf("join: member %q holds intel %q: %w", in.Member, id, ErrNoIntel)
+		}
+	}
+
+	// The faction must be one this field has, and a member arriving under a
+	// faction's mind id must arrive in that faction — the SAME refusal
+	// NewEncounter makes, before the first mutation ([JoinInput.Faction]).
+	if err := e.field.validateMemberFaction(in.Member, in.Kind, in.Faction); err != nil {
+		return fmt.Errorf("join: %w", err)
+	}
+
+	// A joiner held in reserve must be one that can wait there and one whose
+	// predicate can hold — the SAME refusal NewEncounter makes (reserve.go),
+	// before the first mutation.
+	if in.Arrives != nil {
+		if err := e.field.validateArrival(in.Member, in.Kind, in.Arrives); err != nil {
+			return fmt.Errorf("join: %w", err)
+		}
+	}
+
+	// Hex fields require integral axial cells (interim tools/spatial#926
+	// enforcement — see isIntegralHexCell). Asked first, for the reason
+	// [Encounter.stepMember] asks it first: a fractional cell is an arithmetic
+	// mistake and must not be reported as a map one.
+	if !isIntegralHexCell(in.Cell) {
+		return fmt.Errorf("join: position is not an integral axial cell: %w", ErrBadPlacement)
+	}
+
+	// The arrival cell must be STANDABLE — some authored region has to own
+	// it. The canvas spans the field's whole bounding box, so "on the map"
+	// and "somewhere a member can stand" are different questions, and this is
+	// the one that matters (the same check [Encounter.stepMember] makes for a
+	// step). Scenery is on the map and is not somewhere anybody stands.
+	if !e.field.isStandable(in.Cell) {
+		return fmt.Errorf("join: cell %v %s: %w", in.Cell, e.field.notStandable(in.Cell), ErrBadPlacement)
+	}
+
+	// STANDABLE INCLUDES UNCOVERED (issue #1753): a movement-blocking placed
+	// footprint covering the cell's centre refuses the arrival by name — the
+	// same fact [Encounter.CellAt] would give a step here, so a join and a
+	// step cannot disagree about a table someone would land inside.
+	if prop, covered := e.field.standingBlocks(in.Cell); covered {
+		return fmt.Errorf("join: cell %v is covered by placed prop %q: %w", in.Cell, prop, ErrBadPlacement)
+	}
+
+	return nil
+}
+
+// admitMember is everything [Encounter.Join] does to put one VALIDATED joiner
+// into the run short of looking: the reserve hold, or the placement, the
+// clock seat, the seeded holdings, the world rebuilt, the join beat, the
+// discovery state and the dealt temperament. No sight refresh and no fight —
+// the caller looks once, after everybody it is admitting is in
+// ([Encounter.Join] after one, [Encounter.Board] after all of them).
+//
+// The returned output carries the reserve answer, or the join beat's Seq;
+// the caller fills in what the look produced.
+func (e *Encounter) admitMember(in *JoinInput) (*memberRecord, *JoinOutput, error) {
+	member := &memberRecord{
+		ID:             in.Member,
+		Kind:           in.Kind,
+		Name:           in.Name,
+		Intimidate:     copyApproaches(in.Intimidate),
+		Persuade:       copyApproaches(in.Persuade),
+		Table:          cloneTable(in.Table),
+		Temper:         in.Temper,
+		BlocksMovement: in.BlocksMovement,
+		Faction:        in.Faction,
+	}
+
+	// A JOINER WITH A PREDICATE GOES INTO RESERVE (rpg-project#375, design §3
+	// Spawn; reserve.go): validated like any joiner, then held — no
+	// placement, no clock, no seed, no beat, no refresh. The output says so,
+	// and names the cell it will arrive at as its placement; nothing else in
+	// the run does.
+	if in.Arrives != nil {
+		e.reserveMember(&reservedMember{
+			record: *member, at: in.Cell, holds: in.Holds, arrives: in.Arrives,
+		})
+		region, _ := e.RegionAt(in.Cell)
+		return member, &JoinOutput{
+			Reserved: true,
+			Member: Member{
+				ID: in.Member, Kind: in.Kind, Name: in.Name, Region: region, Position: in.Cell,
+				Intimidate: copyApproaches(in.Intimidate), Persuade: copyApproaches(in.Persuade),
+				Table:          cloneTable(in.Table),
+				Temper:         in.Temper,
+				BlocksMovement: in.BlocksMovement, Faction: factionOf(member),
+			},
+		}, nil
+	}
+
+	entity := &memberEntity{
+		id:             string(in.Member),
+		kind:           in.Kind,
+		blocksMovement: in.BlocksMovement,
+	}
+
+	if err := e.canvas.PlaceEntity(entity, in.Cell); err != nil {
+		return nil, nil, fmt.Errorf("join placement: %w: %w", ErrBadPlacement, err)
+	}
+
+	// Register the member
+	e.members[in.Member] = member
+	e.everMembers[in.Member] = true // Track in everMembers
+
+	// A joiner lands on the world clock, never mid-fight. Being pulled into a
+	// running bubble is Transfer's job and is a separate decision from joining
+	// the encounter at all.
+	if cerr := e.seatOnWorldClock(in.Member); cerr != nil {
+		return nil, nil, fmt.Errorf("join member %q world clock: %w", in.Member, cerr)
+	}
+
+	// Store decider if present (monsters only, validated above)
+
+	// The joiner's placed records, seeded as the holdings they are — the
+	// SAME call NewEncounter makes for an authored member, so intel enters a
+	// run one way (design P5). Before the beat below, because a holding is
+	// state the join establishes rather than something the join narrates:
+	// nothing about it is ever narrated (design P3).
+	if err := e.holdings.seedIntel(in.Member, in.Holds); err != nil {
+		return nil, nil, fmt.Errorf("join: %w", err)
+	}
+
+	// A member is an entity in the graph, and the mind of a faction of one
+	// is whoever is in it — so the declaration is rebuilt on arrival
+	// (world.go).
+	if err := e.buildWorld(); err != nil {
+		return nil, nil, fmt.Errorf("join: %w", err)
+	}
+
+	// Audience for both the join beat and the sight refresh: the joiner sees
+	// incumbents, incumbents see the joiner. subjectBeat, subject is the
+	// joiner — v1 still sends everyone (audienceFor's doc); rpg-toolkit#940
+	// is where "everyone" might narrow to who can actually see them arrive.
+	memberIDs := e.audienceFor(subjectBeat, in.Member)
+
+	// Record the join beat BEFORE refreshing sight: arriving is the cause,
+	// anything trigger detection appends is its effect (see refreshSight).
+	// Audience = all members including the joiner.
+	clockReadingInt := e.clock.ToData().HighWater
+	clockReadingForBeat := uint64(clockReadingInt)
+	beatPayload := map[string]interface{}{
+		"beat":   BeatJoined,
+		"member": string(in.Member),
+	}
+	beatBytes, _ := json.Marshal(beatPayload)
+
+	appendOut, err := e.appendBeat(&record.AppendInput{
+		At:       clockReadingForBeat,
+		Audience: memberIDs,
+		Tags:     map[string]string{"tag": "membership"},
+		Payload:  beatBytes,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("join append beat: %w", err)
+	}
+
+	seqNum := appendOut.Seq
+	if member.Kind == KindPlayer {
+		if err := e.initializeDiscovery(in.Member, in.PrivateDiscoveries, in.RetainedDiscoveries); err != nil {
+			return nil, nil, err
+		}
+	}
+
+	// The faction's mix, dealt at this door exactly as it is at Setup's
+	// (design §3): a monster that arrives mid-run gets its own nerve rolled
+	// for it, and the beat says which one it came out as.
+	//
+	// AFTER THE JOIN BEAT AND BEFORE THE SIGHT REFRESH, on both counts for a
+	// reason. The deal's beat names a member the story introduces in the join
+	// beat above, so leading with it would put a raw id on the line that
+	// introduces the creature. And the refresh below can form a bubble, which
+	// can consult a table — a creature consulted before its deal would roll
+	// its orders as the soldier an empty temperament looks like.
+	dealt, terr := e.dealTemperFor(in.Member, in.Temper, clockReadingForBeat)
+	if terr != nil {
+		return nil, nil, fmt.Errorf("join: %w", terr)
+	}
+	member.Temper = dealt
+
+	return member, &JoinOutput{Seq: seqNum}, nil
 }
 
 // Exit removes a member from the encounter. The member leaves with carry-forward:
