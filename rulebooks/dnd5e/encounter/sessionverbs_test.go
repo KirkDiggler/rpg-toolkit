@@ -4,6 +4,7 @@
 package encounter_test
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -433,6 +434,56 @@ func (s *SessionVerbsSuite) TestAMemberWhoJoinsAfterARestWalksOnTheWorldsTime() 
 	_, err = enc.Step(&encounter.StepInput{Member: bob, To: cellAt(6, 4)})
 	s.Require().NoError(err)
 	s.Equal(rested+1, s.highWater(enc), "the sixth cell pays a round, an hour after nobody")
+}
+
+// A creature that arrives from reserve after a rest arrives at the world's
+// own time too: the reserve door seats it at the clock's reading, not an
+// hour behind it.
+func (s *SessionVerbsSuite) TestAReserveArrivalAfterARestSeatsAtTheWorldsTime() {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30}, "straggler": {SpeedFeet: 30}, alice: {SpeedFeet: 30}},
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Roller: rollsLowest{},
+		Field: encounter.FieldInput{
+			Canvas:   openAir(),
+			Regions:  []encounter.RegionInput{rectRegion("front", 0, 0, 12, 6)},
+			Factions: []encounter.FactionInput{{ID: campFaction, Mind: core.EntityID(goblin)}},
+			// NEUTRAL, so nobody fights and alice may rest.
+			Dispositions: []encounter.DispositionInput{{
+				Between: [2]encounter.FactionID{campFaction, encounter.FactionParty}, Stance: encounter.StanceNeutral,
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1}, Faction: campFaction,
+				Table: encounter.Table{encounter.AnswerIntimidated: {{Weight: 1, Say: "Fine.", Fact: campFact}}}},
+			{ID: "straggler", Kind: encounter.KindMonster, Position: spatial.Position{X: 9, Y: 3}, Faction: campFaction,
+				Arrives: encounter.TriggerFact{Fact: campFact}},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	_, err = enc.RecordRest(&encounter.RecordRestInput{Kind: encounter.RestShort, Members: []encounter.RestingMember{{Member: alice}}})
+	s.Require().NoError(err)
+	rested := s.highWater(enc)
+	s.Require().Equal(encounter.RoundsPerHour, rested)
+
+	// The threat plants the fact the straggler waits on, and it arrives.
+	_, err = enc.Intimidate(context.Background(), &encounter.IntimidateInput{
+		Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
+	})
+	s.Require().NoError(err)
+	clock, err := enc.ClockOf(&encounter.ClockOfInput{Member: "straggler"})
+	s.Require().NoError(err)
+	s.Require().Equal(encounter.ClockWorld, clock.Kind, "precondition: it arrived, on the world clock")
+
+	data := enc.ToData()
+	progress := data.Clock.DriverProgress["straggler"]
+	s.GreaterOrEqual(progress, rested, "seated at the reading it arrived into, not at zero")
+	s.LessOrEqual(progress, data.Clock.HighWater)
 }
 
 // A rest that names nobody, or somebody twice, is refused and writes
