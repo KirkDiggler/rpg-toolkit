@@ -503,8 +503,9 @@ type ShortRestOutput struct {
 //
 // Each hit die spent rolls the character's class hit die plus its
 // Constitution modifier, each die floored at zero on its own (the letter),
-// and heals the sum up to maximum hit points. Then every resource whose own reset kind is a
-// short rest refills, and the rest event goes out so anything that ends on a
+// and heals the sum up to maximum hit points. Then every resource whose own
+// reset kind is a short rest refills, and the rest event goes out so anything
+// that ends on a
 // rest — Rage, a held Bardic Inspiration — ends itself and anything holding
 // its own pool refills it. No verb names a feature: Second Wind refills
 // because its resource resets on a short rest, and Rage does not because its

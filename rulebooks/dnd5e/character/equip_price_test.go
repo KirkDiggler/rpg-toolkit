@@ -304,3 +304,23 @@ func (s *EquipPriceTestSuite) TestThePriceIsWhatTheGateCharges() {
 	s.Equal(0, s.char.CapacityLeft(combat.CapacityObjectInteraction))
 	s.Equal(weapons.Longsword, s.char.equipmentSlots.Get(SlotMainHand))
 }
+
+// Two copies of one item, one per hand: emptying the off hand stows one copy,
+// even though the same id is still held in the other hand. The multiset is
+// what tells a copy put away from an id that is merely still present.
+func (s *EquipPriceTestSuite) TestStowingOneOfTwinCopiesStowsOne() {
+	handaxe := weapons.All[weapons.Handaxe]
+	s.char.inventory = []InventoryItem{{Equipment: &handaxe, Quantity: 2}}
+	s.Require().NoError(s.char.EquipItem(SlotMainHand, weapons.Handaxe))
+	s.Require().NoError(s.char.EquipItem(SlotOffHand, weapons.Handaxe))
+	s.Require().Equal(weapons.Handaxe, s.char.equipmentSlots.Get(SlotMainHand))
+	s.Require().Equal(weapons.Handaxe, s.char.equipmentSlots.Get(SlotOffHand))
+
+	out := s.price(SlotOffHand, "")
+
+	s.Equal(itemRefs(weapons.Handaxe), out.Stowed)
+	s.Empty(out.Drawn)
+	s.Require().NotNil(out.Profile)
+	s.Equal(action(1), out.Profile.Slots)
+	s.Empty(out.Profile.Capacity)
+}
