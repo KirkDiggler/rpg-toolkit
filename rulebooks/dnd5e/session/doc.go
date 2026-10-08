@@ -41,8 +41,20 @@
 // The SDK stores no mutex or lock state. A nil Locker means the host serializes
 // externally, not that concurrent load-act-save is safe. Managers sharing data
 // must share a coordination domain, and callbacks must not synchronously reenter
-// the same guarded session. Character-only operations and authoring AtlasOf do
-// not name a session and are not guarded. Partial saves remain partial saves.
+// the same guarded session. Partial saves remain partial saves.
+//
+// The same locker holds the CHARACTER guard (rpg-project#542). The character
+// verbs — Equip, Unequip, LevelUp — take no session: the character's seat
+// (SeatRepository) says which run holds it, and the verb acts under that
+// run's session guard, or under the character's own guard while unseated,
+// reading the seat again under the guard it took. A seat changes only under
+// both guards (Launch, Join, Exit, End, the commit that closes a run). Guards
+// are always taken session first, then characters in id order, and no verb
+// holds a character's guard while waiting for a session's.
+//
+// Every character record a verb reads or writes goes through that verb's one
+// sheet store (store.go): one ErrNoCharacter for an absent sheet, every save
+// recorded on the verb's report.
 //
 // # What this package does not hold
 //
@@ -328,5 +340,6 @@
 // memory without this package knowing, and it is the only structural idea here
 // worth naming.
 //
-// S13 — one repository per data type.
+// S13 — one repository per data type. The seat is its own (SeatRepository):
+// a different type with a different lifetime from the session it names.
 package session

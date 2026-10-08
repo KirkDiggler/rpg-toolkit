@@ -2,7 +2,7 @@
 
 **Charter: the game server's single point of contact with the toolkit.**
 
-A host implements three repositories and an event stream and, from then on, holds
+A host implements four repositories, a locker and an event stream and, from then on, holds
 no domain object at all — it names things and calls verbs.
 
 ## What it is
@@ -49,7 +49,12 @@ declaration, and `gorelease` gates every release.
 | `stream.go` | Per-recipient dense numbering: each member's delivered stream, counted for them |
 | `write.go` | `Join`, `Exit`, `End`, and the save/publish seam |
 | `move.go` | `Move` (walking a path) and `Traverse` |
-| `start.go` | `StartSession` |
+| `launch.go` | `Launch` — the whole board, the party seated and rested, one load-act-save |
+| `start.go` | `StartSession` (retiring as a host verb; Launch replaces it) |
+| `seats.go` | The seat: which run holds a character, and the guard a character verb acts under |
+| `store.go` | One sheet store per verb: the only caller of the character repository |
+| `equip.go` | `Equip` / `Unequip` along the path the seat decides |
+| `rest.go` | `Rest` — the party's short rest, one hour on the world clock |
 | `events.go` | Per-recipient fan-out |
 | `cmd/session-workbench` | Drives a whole session; run it |
 
