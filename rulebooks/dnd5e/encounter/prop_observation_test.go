@@ -26,6 +26,7 @@ func TestPropObservationSuite(t *testing.T) { suite.Run(t, new(PropObservationSu
 func (s *PropObservationSuite) SetupTest() {
 	field := doorField(3, encounter.DoorIsOpen(), "gate", 1)
 	field.Props = []encounter.PropInput{{ID: "b", Ref: "test:props:chest", Holdable: true, At: spatial.Position{X: 4, Y: 1}, BlocksMovement: boolPtr(false), BlocksLineOfSight: boolPtr(false)}}
+	field.PropPresentations = []encounter.PropPresentation{{ID: "b", Ref: "test:props:chest", Origin: centreOf(cellAt(4, 1)), Elevation: 2, FacingDegrees: 17, HeightScale: 1.5}}
 	s.sight = &sightList{fallback: 20}
 	var err error
 	s.enc, err = encounter.NewEncounter(&encounter.SetupInput{
@@ -163,6 +164,33 @@ func (s *PropObservationSuite) TestCreatureAndPropWithTheSameIDRemainDistinct() 
 	// Even an observer whose raw ID equals the prop's qualified ID sees it.
 	s.reload()
 	s.Contains(s.prop(propObserver).CurrentVia, perception.Sight)
+}
+
+func (s *PropObservationSuite) TestPresentationMemoryNeverJoinsAnUnseenDropPose() {
+	before := s.prop(propObserver)
+	s.Require().NotNil(before.Presentation)
+	s.Equal(2.0, before.Presentation.Elevation)
+	atlas, err := s.enc.AtlasFor(propObserver)
+	s.Require().NoError(err)
+	s.Empty(atlas.PropPresentations, "mutable appearance is not fixed room geometry")
+	s.withdraw()
+	_, err = s.enc.Hold(&encounter.HoldInput{Member: "b", Target: "b"})
+	s.Require().NoError(err)
+	s.Nil(s.prop("b").Presentation, "witnessed empty has no render pose")
+	_, err = s.enc.Exit(&encounter.ExitInput{Member: "b"})
+	s.Require().NoError(err)
+	s.Equal(before.Presentation, s.prop(propObserver).Presentation, "unseen drop must not move the remembered picture")
+	s.reload()
+	s.Equal(before.Presentation, s.prop(propObserver).Presentation)
+	s.sight.reach[propObserver] = 20
+	_, err = s.enc.Recheck(&encounter.RecheckInput{Members: []encounter.MemberID{propObserver}})
+	s.Require().NoError(err)
+	after := s.prop(propObserver)
+	s.Require().NotNil(after.Presentation)
+	s.Zero(after.Presentation.Elevation, "the existing drop fact places it on the floor")
+	s.Equal(centreOf(cellAt(3, 1)), after.Presentation.Origin)
+	s.Equal(before.Presentation.Ref, after.Presentation.Ref)
+	s.Equal(before.Presentation.HeightScale, after.Presentation.HeightScale)
 }
 
 func (s *PropObservationSuite) TestUnseenPickupAndClosePreserveMemoryUntilEmptyIsObserved() {

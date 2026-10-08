@@ -138,6 +138,20 @@
 // never supplies a carrier or destination. Pickups and door changes notify
 // actual witnesses, not everybody who remembers the subject.
 //
+// # Permitted ordinary prop appearance
+//
+// FieldInput.PropPresentations captures only typed appearance facts, not the
+// editor document: opaque ref, canonical pose, visual scale/light and an optional
+// standalone door binding. Decoration needs no fabricated blocker. AtlasFor
+// filters fixed records through the same room/explicit-secret permission as the
+// associated prop, or the point's declared-floor support for pure decoration.
+// Mutable prop observations capture their presentation with the sighting: reads
+// never join remembered shape with a fresh live pose. An observed drop uses the
+// existing drop fact's floor placement/elevation; observed-empty carries no art.
+// Definitions and captured observations persist with the encounter. No profile
+// or runtime source-document fetch supplies a second answer. Opening-attached
+// doors remain exclusively in the structural layout channel.
+//
 // # Structural walls and their permitted cuts (rpg-project#169)
 //
 // The placed spans are the MECHANICAL truth — the rectangles a wall blocks

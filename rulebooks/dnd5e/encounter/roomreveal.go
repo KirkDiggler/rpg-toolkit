@@ -109,6 +109,7 @@ func (e *Encounter) appendRoomRevealedBeat(member MemberID, id RegionID, before 
 		// new or updated wall rows by id, and independent door rows that were
 		// not already the recipient's. Omitted when nothing changed.
 		addStructuralReveal(payload, before, after)
+		addPropPresentationReveal(payload, before, after)
 		_, err := e.appendRevealBeat(member, payload, uint64(e.clock.ToData().HighWater))
 		return err
 	}

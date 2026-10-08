@@ -135,6 +135,11 @@ func singleRoomConcealmentValues(s *SingleRoomSpec, g *grammar, add errSink) map
 	// bookcase behind it. The universe is the declarations plus those two.
 	bound := boundDoorIDSet(gp.Walls)
 	walls := wallIDSet(gp.Walls)
+	read, _ := readRoom(&s.Room)
+	renderable := make(map[string]bool, len(read.Presentations))
+	for _, p := range read.Presentations {
+		renderable[p.ID] = true
+	}
 
 	for _, id := range sortedConcealmentIDs(s.Concealments) {
 		p := "concealments." + id
@@ -178,7 +183,7 @@ func singleRoomConcealmentValues(s *SingleRoomSpec, g *grammar, add errSink) map
 		for j, named := range c.Props {
 			at := fmt.Sprintf("%s.props[%d]", p, j)
 			_, isProp := gp.PropDeclarations[named]
-			if !isProp && !bound[named] && !walls[named] {
+			if !isProp && !renderable[named] && !bound[named] && !walls[named] {
 				add(at, concealmentUnknownProp)
 				continue
 			}

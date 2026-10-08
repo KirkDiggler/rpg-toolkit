@@ -313,6 +313,7 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	}
 
 	sortStructuralLayout(&out)
+	e.projectPropPresentations(&out, full, hidden)
 
 	// Boundaries, in three passes, then restored to the atlas's own sort — a
 	// mask or a synthesized wall that sorted differently from an authored

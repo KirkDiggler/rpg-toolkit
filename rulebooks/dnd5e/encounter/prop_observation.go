@@ -19,8 +19,11 @@ type PropSighting struct {
 	Prop          *AtlasProp
 	Placed        *AtlasPlacedProp
 	ObservedEmpty bool
-	CurrentVia    []perception.Channel
-	At            uint64
+	// Presentation is captured with the observation, never refreshed from a
+	// newer live pose while returning memory. Absent on observed-empty.
+	Presentation *PropPresentation
+	CurrentVia   []perception.Channel
+	At           uint64
 }
 
 // DoorSighting is an observer's latest door state, including remembered locks.
@@ -32,9 +35,10 @@ type DoorSighting struct {
 }
 
 type propObservation struct {
-	Prop          *AtlasProp       `json:"prop,omitempty"`
-	Placed        *AtlasPlacedProp `json:"placed,omitempty"`
-	ObservedEmpty bool             `json:"observed_empty,omitempty"`
+	Prop          *AtlasProp            `json:"prop,omitempty"`
+	Placed        *AtlasPlacedProp      `json:"placed,omitempty"`
+	ObservedEmpty bool                  `json:"observed_empty,omitempty"`
+	Presentation  *PropPresentationData `json:"presentation,omitempty"`
 }
 
 func (p propObservation) id() PropID {
@@ -71,6 +75,14 @@ func decodePropObservation(payload []byte) (propObservation, error) {
 	if !out.ObservedEmpty && len(out.cells()) == 0 {
 		return out, fmt.Errorf("prop testimony has no placement: %w", ErrInvalidData)
 	}
+	if out.Presentation != nil {
+		if out.ObservedEmpty || out.Presentation.ID != out.id() {
+			return out, fmt.Errorf("prop testimony has conflicting presentation: %w", ErrInvalidData)
+		}
+		if err := validatePropPresentation(propPresentationFromData(*out.Presentation)); err != nil {
+			return out, fmt.Errorf("prop testimony has invalid presentation: %w", ErrInvalidData)
+		}
+	}
 	return out, nil
 }
 
@@ -90,7 +102,12 @@ func (e *Encounter) PropSightings(in *ViewInput) ([]PropSighting, error) {
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, PropSighting{Prop: p.Prop, Placed: p.Placed, ObservedEmpty: p.ObservedEmpty, CurrentVia: h.CurrentVia, At: h.Observed})
+		var presentation *PropPresentation
+		if p.Presentation != nil {
+			value := propPresentationFromData(*p.Presentation)
+			presentation = &value
+		}
+		out = append(out, PropSighting{Prop: p.Prop, Placed: p.Placed, ObservedEmpty: p.ObservedEmpty, Presentation: presentation, CurrentVia: h.CurrentVia, At: h.Observed})
 	}
 	return out, nil
 }
@@ -185,11 +202,16 @@ func (e *Encounter) appendMutablePresences(presences []perception.Presence, geom
 	if err != nil {
 		return nil, reach, err
 	}
+	presentations := make(map[PropID]*PropPresentationData, len(atlas.PropPresentations))
+	for _, p := range atlas.PropPresentations {
+		data := propPresentationData(p)
+		presentations[p.ID] = &data
+	}
 	for _, prop := range atlas.Props {
 		if !prop.Holdable {
 			continue
 		}
-		payload, err := json.Marshal(propObservation{Prop: &prop})
+		payload, err := json.Marshal(propObservation{Prop: &prop, Presentation: presentations[prop.ID]})
 		if err != nil {
 			return nil, reach, err
 		}
@@ -201,7 +223,7 @@ func (e *Encounter) appendMutablePresences(presences []perception.Presence, geom
 		if !prop.Holdable {
 			continue
 		}
-		payload, err := json.Marshal(propObservation{Placed: &prop})
+		payload, err := json.Marshal(propObservation{Placed: &prop, Presentation: presentations[prop.ID]})
 		if err != nil {
 			return nil, reach, err
 		}
@@ -298,6 +320,7 @@ func (e *Encounter) correctEmptyProps(observer MemberID, reach observationReach,
 			continue
 		}
 		p.ObservedEmpty = true
+		p.Presentation = nil
 		if p.Prop != nil {
 			p.Prop.At = spatial.Position{}
 		}

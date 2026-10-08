@@ -277,6 +277,10 @@ type FieldData struct {
 	// declares none writes no key at all.
 	StructuralWalls []StructuralWallData `json:"structural_walls,omitempty"`
 
+	// PropPresentations freeze appearance with this encounter's definitions,
+	// never with a character profile or a later edited content key.
+	PropPresentations []PropPresentationData `json:"prop_presentations,omitempty"`
+
 	// Sealed is every cell a wall leaves no room to stand in, in the AUTHORED
 	// offset frame ([FieldInput.Sealed], rpg-project#360).
 	//
@@ -2196,6 +2200,9 @@ func fieldDataFrom(f *field) FieldData {
 		}
 	}
 
+	for _, p := range f.propPresentations {
+		out.PropPresentations = append(out.PropPresentations, propPresentationData(p))
+	}
 	if len(f.walls) > 0 {
 		out.Walls = make([]BoundaryData, len(f.walls))
 		for i, w := range f.walls {
@@ -3454,6 +3461,9 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 		in.StructuralWalls = append(in.StructuralWalls, w)
 	}
 
+	for _, p := range fd.PropPresentations {
+		in.PropPresentations = append(in.PropPresentations, propPresentationFromData(p))
+	}
 	for _, pd := range fd.Props {
 		// REQUIRED at load, both of them, by name. A persisted prop that
 		// does not say what it blocks is a blob from before this module

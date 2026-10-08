@@ -256,7 +256,7 @@ func (f *field) compileConcealments(in []ConcealmentInput) error {
 			// question to a concealment, and compilePlaced refuses a
 			// collision between the two lists, which is what makes one
 			// lookup safe.
-			if f.propIndexOf(id) < 0 && f.placedIndexOf(id) < 0 {
+			if f.propIndexOf(id) < 0 && f.placedIndexOf(id) < 0 && f.presentationIndexOf(id) < 0 {
 				return fmt.Errorf("concealment %q hides prop %q, which this field does not declare: %w",
 					c.ID, id, ErrBadConcealment)
 			}
@@ -350,6 +350,10 @@ func (e *Encounter) memberPropCells(c *concealment) []spatial.Position {
 		}
 		if i := e.field.placedIndexOf(id); i >= 0 {
 			out = append(out, e.field.placedCells(e.field.placed[i].placement)...)
+			continue
+		}
+		if i := e.field.presentationIndexOf(id); i >= 0 {
+			out = append(out, e.field.presentationCell(e.field.propPresentations[i].Origin))
 		}
 	}
 

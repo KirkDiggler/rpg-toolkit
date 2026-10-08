@@ -80,6 +80,11 @@ type Atlas struct {
 	// describe.
 	StructuralWalls []AtlasStructuralWall
 
+	// PropPresentations are detached render records, independent of collider
+	// dimensions. AtlasFor supplies permitted fixed props; mutable appearances
+	// live in PropSightings with their captured observation.
+	PropPresentations []PropPresentation
+
 	// StructuralDoors is every independently permitted structural door
 	// (rpg-project#169), sorted by canonical DoorID: its opening endpoints and
 	// the assembled dimensions it fits. See [AtlasStructuralDoor].
@@ -650,6 +655,7 @@ func (e *Encounter) Atlas() (Atlas, error) {
 		out.StructuralWalls = append(out.StructuralWalls, wall)
 	}
 	sortStructuralLayout(&out)
+	f.presentPropDefinitions(&out)
 
 	return out, nil
 }

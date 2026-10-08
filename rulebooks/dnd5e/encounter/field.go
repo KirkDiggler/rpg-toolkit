@@ -617,6 +617,11 @@ type FieldInput struct {
 	// declares none, which is every field authored before this noun existed.
 	StructuralWalls []StructuralWallInput
 
+	// PropPresentations are immutable authored appearance definitions. A row
+	// may bind an existing prop identity or name nonblocking decorative scenery;
+	// neither appearance nor lack of a blocker grants interaction permission.
+	PropPresentations []PropPresentation
+
 	// Sealed is every cell some wall leaves too little of to stand on: a cell
 	// that KEEPS ITS OWNER and loses its feet (rpg-project#360, design C10).
 	// Absolute authored offset [col,row] cells. Optional; omitted means none.

@@ -184,6 +184,7 @@ func (e *Encounter) appendConcealmentRevealedBeat(
 	// the same difference-by-id the room reveal uses, against the recipient's
 	// own prior projection. Omitted entirely when nothing changed.
 	addStructuralReveal(payload, before, scoped)
+	addPropPresentationReveal(payload, before, scoped)
 
 	return e.appendRevealBeat(recipient, payload, at)
 }

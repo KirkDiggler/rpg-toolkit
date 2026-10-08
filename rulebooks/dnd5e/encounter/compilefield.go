@@ -174,7 +174,8 @@ type field struct {
 	// back out beside the regions, props and segments. The placed spans carved
 	// from the same wall are a separate, mechanical contributor set; this is
 	// the layout a client draws and a reveal patches.
-	structuralWalls []structuralWall
+	structuralWalls   []structuralWall
+	propPresentations []PropPresentation
 
 	// exits is the authored ways out, deep-copied, in the AUTHORED frame —
 	// what ToData writes back out beside the regions and the props.
@@ -319,6 +320,9 @@ func compileField(in FieldInput) (*field, error) {
 	// authored doors a binding's DoorID must resolve to. A field that declares
 	// none is untouched.
 	if err := f.compileStructuralWalls(in.StructuralWalls, in.Doors); err != nil {
+		return nil, err
+	}
+	if err := f.compilePropPresentations(in.PropPresentations, in.Doors); err != nil {
 		return nil, err
 	}
 	// EXITS LAST, because standable is the question they ask and the sealed

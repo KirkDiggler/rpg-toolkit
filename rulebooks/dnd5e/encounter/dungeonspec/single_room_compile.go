@@ -138,9 +138,10 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 	// bindings and the attached ones.
 	sort.SliceStable(doors, func(i, j int) bool { return doors[i].ID < doors[j].ID })
 	field := encounter.FieldInput{
-		Canvas:  encounter.CanvasInput{Void: encounter.VoidIsTransparent(), Orientation: encounter.HexesArePointyTop()},
-		Regions: []encounter.RegionInput{{ID: spec.Room.Gameplay.ImplicitRegionID, Name: spec.Room.Name, Cells: cells, Archetype: "crypt", Lighting: &bright}},
-		Placed:  props,
+		Canvas:            encounter.CanvasInput{Void: encounter.VoidIsTransparent(), Orientation: encounter.HexesArePointyTop()},
+		Regions:           []encounter.RegionInput{{ID: spec.Room.Gameplay.ImplicitRegionID, Name: spec.Room.Name, Cells: cells, Archetype: "crypt", Lighting: &bright}},
+		Placed:            props,
+		PropPresentations: propPresentationsOf(read, spec),
 		// THE DOORS, standing as the footprints their prop declarations draw
 		// (rpg-project#485, single_room_doors.go). A door item is in BOTH
 		// lists and that is not a duplicate: `Placed` is the rectangle the
