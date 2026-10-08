@@ -378,7 +378,9 @@ func (e *Encounter) storyToldDown() (map[MemberID]bool, error) {
 	return told, nil
 }
 
-// appendDownBeat writes the minimal death beat: the kind, and who.
+// appendDownBeat writes the minimal death beat: the beat kind, who, and the
+// fallen member's kind ([MemberKind]) as the roster held it at the fall, so a
+// settlement read can say what fell after the member has exited.
 //
 // Ruled fork (d) on rpg-toolkit#959 — everything a client needs to render a
 // death, and nothing about hit points, which is a separate decision with its
@@ -386,9 +388,14 @@ func (e *Encounter) storyToldDown() (map[MemberID]bool, error) {
 // the same family, with the same audience rule, as the struck and missed beats
 // a client reads beside it.
 func (e *Encounter) appendDownBeat(id MemberID) error {
+	m, ok := e.members[id]
+	if !ok {
+		return fmt.Errorf("standing beat %q: %w", id, ErrNotMember)
+	}
 	payload, err := json.Marshal(map[string]string{
 		"beat":   string(OutcomeDown),
 		"member": string(id),
+		"kind":   string(m.Kind),
 	})
 	if err != nil {
 		return fmt.Errorf("standing beat payload: %w", err)

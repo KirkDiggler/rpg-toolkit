@@ -368,7 +368,7 @@ func (e *Encounter) thinkFor(member MemberID, m *memberRecord) error {
 // renders a tick does not have to learn a second name for the same event.
 func (e *Encounter) appendTickBeat(at uint64) error {
 	payload, err := json.Marshal(map[string]interface{}{
-		"beat": "tick",
+		"beat": BeatTick,
 		"tick": at,
 	})
 	if err != nil {

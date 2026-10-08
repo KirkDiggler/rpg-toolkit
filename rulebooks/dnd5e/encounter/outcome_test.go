@@ -188,7 +188,8 @@ func (s *OutcomeTestSuite) TestAWardedAttackReachesTheStoryAndRejectsMismatches(
 		_, err := enc.Record(&encounter.RecordInput{
 			Kind: encounter.OutcomeWarded, Actor: alice, Targets: []encounter.MemberID{goblin}, Warded: unknown,
 		})
-		s.Require().ErrorIs(err, encounter.ErrNoMember)
+		s.Require().ErrorIs(err, encounter.ErrNotMember)
+		s.NotErrorIs(err, encounter.ErrNoMember, "a non-empty id is not refused as empty")
 	})
 }
 
@@ -230,7 +231,8 @@ func (s *OutcomeTestSuite) TestAWardOutlivesTheCasterWhoLeft() {
 		_, err := enc.Record(&encounter.RecordInput{
 			Kind: encounter.OutcomeWarded, Actor: alice, Targets: []encounter.MemberID{goblin}, Warded: unknown,
 		})
-		s.Require().ErrorIs(err, encounter.ErrNoMember)
+		s.Require().ErrorIs(err, encounter.ErrNotMember)
+		s.NotErrorIs(err, encounter.ErrNoMember, "a non-empty id is not refused as empty")
 	})
 }
 
@@ -919,7 +921,7 @@ func (s *OutcomeTestSuite) TestRefusalsAreCheckedAgainstTheRoster() {
 		_, err := s.scene().Record(&encounter.RecordInput{
 			Kind: encounter.OutcomeStruck, Actor: "nobody",
 		})
-		s.ErrorIs(err, encounter.ErrNoMember)
+		s.ErrorIs(err, encounter.ErrNotMember)
 	})
 
 	s.Run("an empty actor", func() {
@@ -932,7 +934,7 @@ func (s *OutcomeTestSuite) TestRefusalsAreCheckedAgainstTheRoster() {
 			Kind: encounter.OutcomeStruck, Actor: alice,
 			Targets: []encounter.MemberID{"ghost"},
 		})
-		s.ErrorIs(err, encounter.ErrNoMember)
+		s.ErrorIs(err, encounter.ErrNotMember)
 	})
 
 	s.Run("a closed encounter", func() {

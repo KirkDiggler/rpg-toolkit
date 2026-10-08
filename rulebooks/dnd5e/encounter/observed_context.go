@@ -127,12 +127,13 @@ func (e *Encounter) ObservedContext(in *ViewInput) (*ObservedContextOutput, erro
 			}
 			pair := ObservedContextPair{From: from, To: to, DistanceCells: e.Distance(positions[from], positions[to])}
 			// Both ids are members (positions admits only the observer and
-			// validated sightings), so a false here is StanceBetween's other
-			// case: a member in no faction, which is a known no side.
-			pair.Stance = StanceNone
-			if stance, known := e.believedStanceBetween(in.Member, from, to); known {
-				pair.Stance = stance
+			// validated sightings), and a member in no faction is the
+			// owner's own StanceNone, so the answer is taken as given.
+			stance, err := e.believedStanceBetween(in.Member, from, to)
+			if err != nil {
+				return nil, fmt.Errorf("observed context: %w", err)
 			}
+			pair.Stance = stance
 			out.Pairs = append(out.Pairs, pair)
 		}
 	}

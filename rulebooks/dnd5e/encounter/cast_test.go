@@ -345,7 +345,8 @@ func (s *RecordCastSuite) TestAWardedCastOutlivesTheCasterWhoLeft() {
 				Target: castSkeleton, Warded: &encounter.WardedDetail{Source: "nobody", Save: wardedSave()},
 			}},
 		})
-		s.Require().ErrorIs(err, encounter.ErrNoMember)
+		s.Require().ErrorIs(err, encounter.ErrNotMember)
+		s.NotErrorIs(err, encounter.ErrNoMember, "a non-empty id is not refused as empty")
 	})
 }
 
@@ -681,13 +682,13 @@ func (s *RecordCastSuite) TestItRefusesWhatItCannotNarrate() {
 	s.Require().ErrorIs(err, encounter.ErrNoMember)
 
 	_, err = enc.RecordCast(&encounter.RecordCastInput{Actor: "nobody", Spell: viciousMockery})
-	s.Require().ErrorIs(err, encounter.ErrNoMember)
+	s.Require().ErrorIs(err, encounter.ErrNotMember)
 
 	_, err = enc.RecordCast(&encounter.RecordCastInput{
 		Actor: castBard, Spell: viciousMockery,
 		Targets: []encounter.CastTargetResult{{Target: "nobody"}},
 	})
-	s.Require().ErrorIs(err, encounter.ErrNoMember)
+	s.Require().ErrorIs(err, encounter.ErrNotMember)
 
 	_, err = enc.RecordCast(&encounter.RecordCastInput{
 		Actor: castBard, Spell: encounter.SpellIdentity{Name: "Vicious Mockery"},
@@ -708,7 +709,7 @@ func (s *RecordCastSuite) TestItRefusesWhatItCannotNarrate() {
 		{
 			"unknown saver",
 			encounter.CastSave{Saver: "nobody", Ability: "wisdom", Roll: 6, DC: 13},
-			encounter.ErrNoMember,
+			encounter.ErrNotMember,
 		},
 		{
 			"no ability",
@@ -753,7 +754,7 @@ func (s *RecordCastSuite) TestNothingLandsWhenAnythingIsRefused() {
 			},
 		}},
 	})
-	s.Require().ErrorIs(err, encounter.ErrNoMember)
+	s.Require().ErrorIs(err, encounter.ErrNotMember)
 
 	storyAfter, err := enc.Story(&encounter.StoryInput{Audience: castBard})
 	s.Require().NoError(err)

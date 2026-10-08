@@ -472,7 +472,7 @@ func (e *Encounter) autoPassTurn(bubble *clock.Turn, member MemberID) (uint64, b
 		return 0, false, err
 	}
 	seq, err := e.appendClockBeat(map[string]interface{}{
-		"beat":   "turn-ended",
+		"beat":   BeatTurnEnded,
 		"member": string(member),
 		"next":   out.Next,
 	}, order...)
@@ -734,7 +734,7 @@ func (e *Encounter) endDrivenTurn(bubble *clock.Turn, active core.EntityID) (uin
 	}
 
 	seq, berr := e.appendClockBeat(map[string]interface{}{
-		"beat":   "turn-ended",
+		"beat":   BeatTurnEnded,
 		"member": string(activeID),
 		"next":   out.Next,
 	}, order...)
@@ -2078,8 +2078,8 @@ type FormOutput struct {
 // lifts, the per-member overlap check below becomes the load-bearing one
 // (overlapping bubbles merge via a Merge verb then, but they never form).
 //
-// Errors: ErrNilInput, ErrClosed, ErrNoMember (empty order or a duplicated
-// entry), ErrNotMember (the order names somebody not in this encounter),
+// Errors: ErrNilInput, ErrClosed, ErrNoMember (an empty order names no
+// member), ErrInvalidData (a duplicated entry), ErrNotMember (the order names somebody not in this encounter),
 // ErrInBubble.
 func (e *Encounter) form(in *FormInput) (*FormOutput, error) {
 	return e.formWithParticipation(in, nil)
@@ -2103,7 +2103,7 @@ func (e *Encounter) formWithParticipation(
 	seen := make(map[MemberID]bool, len(in.Order))
 	for _, id := range in.Order {
 		if seen[id] {
-			return nil, fmt.Errorf("form: %q appears twice in the order: %w", id, ErrNoMember)
+			return nil, fmt.Errorf("form: %q appears twice in the order: %w", id, ErrInvalidData)
 		}
 		seen[id] = true
 		if _, ok := e.members[id]; !ok {
@@ -2146,7 +2146,7 @@ func (e *Encounter) formWithParticipation(
 	e.bubbles = append(e.bubbles, bubble)
 
 	beat := map[string]interface{}{
-		"beat":  "bubble-formed",
+		"beat":  BeatFightStarted,
 		"order": in.Order,
 	}
 	// Recorded rather than merely returned: surprise is consumed a turn later
@@ -2269,6 +2269,10 @@ func (e *Encounter) transfer(in *TransferInput, driveAfterRemove bool) (*Transfe
 	// found on a side, and a KindWorld member is on neither — but Transfer is
 	// a public verb with no other kind check, so this guards the law
 	// directly rather than leaving it an emergent property of one caller.
+	//
+	// ErrNoMember stays on this refusal on purpose: it is the roster-coherence
+	// refusal the construction checks carry (who may hold a seat in a fight),
+	// not an unknown id — the member exists and is refused as no fighter.
 	if in.To == ClockTurn && member.Kind == KindWorld {
 		return nil, fmt.Errorf("transfer %q: world npc cannot enter a fight: %w", in.Member, ErrNoMember)
 	}
@@ -2363,7 +2367,7 @@ func (e *Encounter) transfer(in *TransferInput, driveAfterRemove bool) (*Transfe
 	}
 
 	seq, err := e.appendClockBeat(map[string]interface{}{
-		"beat":   "transferred",
+		"beat":   BeatTransferred,
 		"member": string(in.Member),
 		"to":     string(in.To),
 	}, subjects...)
@@ -2510,7 +2514,7 @@ func (e *Encounter) EndTurn(in *EndTurnInput) (*EndTurnOutput, error) {
 	}
 
 	seq, err := e.appendClockBeat(map[string]interface{}{
-		"beat":   "turn-ended",
+		"beat":   BeatTurnEnded,
 		"member": string(in.Member),
 		"next":   out.Next,
 	}, order...)

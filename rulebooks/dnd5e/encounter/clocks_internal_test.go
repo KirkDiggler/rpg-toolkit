@@ -98,7 +98,8 @@ func TestFormRejections(t *testing.T) {
 
 	t.Run("a duplicated entry", func(t *testing.T) {
 		_, err := newEnc().form(&FormInput{Order: []MemberID{"alice", "goblin", "alice"}})
-		require.ErrorIs(t, err, ErrNoMember)
+		require.ErrorIs(t, err, ErrInvalidData)
+		require.NotErrorIs(t, err, ErrNoMember, "a duplicated id is not an empty one")
 	})
 
 	t.Run("a non-member in the order", func(t *testing.T) {

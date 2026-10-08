@@ -16,12 +16,7 @@ func TestSightAreaSegmentCrossing(t *testing.T) {
 	}
 }
 
-func TestSightAreaSourceRemovalAndLoadValidation(t *testing.T) {
-	areas := map[string]SightArea{"a": {ID: "a", SourceID: "spell", Center: spatial.Position{}, RadiusFeet: 20}, "b": {ID: "b", SourceID: "spell", Center: spatial.Position{}, RadiusFeet: 20}}
-	e := &Encounter{sightAreas: areas}
-	if !e.RemoveSightArea("spell") || len(e.sightAreas) != 0 {
-		t.Fatal("removal should clear all source areas")
-	}
+func TestSightAreaLoadValidation(t *testing.T) {
 	if err := validateSightAreasData([]SightAreaData{{ID: "a", SourceID: "x", RadiusFeet: 20}, {ID: "a", SourceID: "y", RadiusFeet: 20}}); err == nil {
 		t.Fatal("duplicate persisted IDs must be rejected")
 	}

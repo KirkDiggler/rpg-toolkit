@@ -336,7 +336,7 @@ func (s *HoldOutSuite) TestAReservedMonsterTakesNoTurnAndIsInNoPair() {
 		_, err := enc.ClockOf(&encounter.ClockOfInput{Member: id})
 		s.ErrorIs(err, encounter.ErrNotMember)
 		_, err = enc.Story(&encounter.StoryInput{Audience: id})
-		s.ErrorIs(err, encounter.ErrNoMember, "no story was ever told to it")
+		s.ErrorIs(err, encounter.ErrNotMember, "no story was ever told to it")
 		_, err = enc.Exit(&encounter.ExitInput{Member: id})
 		s.ErrorIs(err, encounter.ErrNotMember)
 		_, err = enc.AtlasFor(id)
