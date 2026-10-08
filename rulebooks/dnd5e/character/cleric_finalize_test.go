@@ -80,11 +80,6 @@ func (s *ClericFinalizeSuite) TestTempestWrathUsesFinalWisdomAndPersists() {
 	s.Equal(3, char.GetResource(resources.WrathOfTheStorm).Maximum())
 	s.Require().NoError(char.GetResource(resources.WrathOfTheStorm).Use(1))
 	s.Equal(2, char.GetResource(resources.WrathOfTheStorm).Current())
-	inFog, err := conditions.NewInFogCondition(conditions.NewInFogConditionInput{
-		MemberID: char.GetID(), SourceID: "fog-area-1", SourceRef: refs.Spells.FogCloud(),
-	})
-	s.Require().NoError(err)
-	char.conditions = append(char.conditions, inFog)
 	data := mustToData(s.T(), char)
 	encoded, err := json.Marshal(data)
 	s.Require().NoError(err)
@@ -107,16 +102,6 @@ func (s *ClericFinalizeSuite) TestTempestWrathUsesFinalWisdomAndPersists() {
 	s.Equal("Wrath of the Storm", wrath.Name)
 	s.Equal(2, wrath.Current)
 	s.Equal(3, wrath.Maximum)
-	var fog *ConditionView
-	for i := range view.View.Conditions {
-		if view.View.Conditions[i].Ref == *refs.Conditions.InFog() {
-			fog = &view.View.Conditions[i]
-			break
-		}
-	}
-	s.Require().NotNil(fog)
-	s.Equal("In Fog", fog.Name)
-	s.Nil(fog.SourceMember, "area IDs are not party-member identities")
 	s.Require().NoError(loaded.LongRest(context.Background()))
 	s.Equal(3, loaded.GetResource(resources.WrathOfTheStorm).Current())
 }

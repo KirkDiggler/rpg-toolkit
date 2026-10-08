@@ -107,7 +107,7 @@ func (r *RagingCondition) Apply(ctx context.Context, bus events.EventBus) error 
 	}
 	r.subscriptionIDs = append(r.subscriptionIDs, subID3)
 
-	// Subscribe to damage chain to add rage damage bonus and track successful hits
+	// Subscribe to the dealt fold to add rage's damage bonus to our attacks
 	damageChain := dnd5eEvents.DamageChain.On(bus)
 	subID4, err := damageChain.SubscribeWithChain(ctx, r.onDamageChain)
 	if err != nil {
@@ -116,6 +116,16 @@ func (r *RagingCondition) Apply(ctx context.Context, bus events.EventBus) error 
 		return err
 	}
 	r.subscriptionIDs = append(r.subscriptionIDs, subID4)
+
+	// Subscribe to the incoming fold to resist B/P/S damage dealt to us
+	incoming := dnd5eEvents.IncomingDamageChain.On(bus)
+	subIncoming, err := incoming.SubscribeWithChain(ctx, r.onIncomingDamage)
+	if err != nil {
+		// Rollback: unsubscribe from previous subscriptions
+		_ = r.Remove(ctx, bus)
+		return err
+	}
+	r.subscriptionIDs = append(r.subscriptionIDs, subIncoming)
 
 	// Subscribe to rest events - rage ends on any rest
 	restTopic := dnd5eEvents.RestTopic.On(bus)
@@ -414,9 +424,9 @@ func (r *RagingCondition) endRage(ctx context.Context, reason string) error {
 	return r.Remove(ctx, r.bus)
 }
 
-// onDamageChain handles both:
-// 1. Adding rage damage bonus when the raging character attacks
-// 2. Applying resistance (halve damage) when the raging character is hit by B/P/S damage
+// onDamageChain adds Rage's damage bonus when the raging character attacks.
+// It is the dealt side only: Rage's resistance is the target's answer and
+// folds on the incoming topic ([RagingCondition.onIncomingDamage]).
 //
 // The bonus is decided by ragingDamageRule from the event's frame — the same
 // rule information asks — never from the event's own ability or melee fields.
@@ -434,58 +444,71 @@ func (r *RagingCondition) onDamageChain(
 	if err != nil {
 		return c, err
 	}
-
-	// Attacker side: add the rule's own damage change.
-	if executed.Answer.Decision.Applicability == contributions.Applies {
-		change := executed.Answer.Damage[0]
-		modifyDamage := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
-			e.Components = append(e.Components, dnd5eEvents.DamageComponent{
-				Source: dnd5eEvents.DamageSourceCondition,
-				Roll: dnd5eEvents.RollComponent{
-					Source:   change.Source,
-					Modifier: change.Fixed, // No dice
-				},
-				DamageType: e.WeaponDamageType, // Same as marked primary weapon type
-				IsCritical: false,
-			})
-			return e, nil
-		}
-		if err := c.Add(combat.StageFeatures, "rage", modifyDamage); err != nil {
-			return c, rpgerr.Wrapf(err, "error applying rage damage bonus for character id %s", r.CharacterID)
-		}
+	if executed.Answer.Decision.Applicability != contributions.Applies {
+		return c, nil
 	}
 
-	// Handle defender side: apply resistance to B/P/S damage
-	if event.TargetID == r.CharacterID {
-		// Add resistance multiplier in the StageFinal stage
-		applyResistance := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
-			physicalTypes := make(map[damage.Type]struct{})
-			for _, component := range e.Components {
-				if component.Multiplier == nil && component.DamageType.IsPhysical() {
-					physicalTypes[component.DamageType] = struct{}{}
-				}
-			}
-			for damageType := range physicalTypes {
-				e.Components = append(e.Components, dnd5eEvents.DamageComponent{
-					Source: dnd5eEvents.DamageSourceCondition,
-					Roll: dnd5eEvents.RollComponent{
-						Source: dnd5eEvents.RollSource{
-							Ref:  refs.Conditions.Raging(),
-							Name: "Raging",
-						},
-					},
-					DamageType: damageType,
-					Multiplier: dnd5eEvents.Multiply(0.5), // Resistance halves damage
-				})
-			}
-			return e, nil
-		}
-		if err := c.Add(combat.StageFinal, "rage_resistance", applyResistance); err != nil {
-			return c, rpgerr.Wrapf(err, "error applying rage resistance for character id %s", r.CharacterID)
-		}
+	change := executed.Answer.Damage[0]
+	modifyDamage := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
+		e.Components = append(e.Components, dnd5eEvents.DamageComponent{
+			Source: dnd5eEvents.DamageSourceCondition,
+			Roll: dnd5eEvents.RollComponent{
+				Source:   change.Source,
+				Modifier: change.Fixed, // No dice
+			},
+			DamageType: e.WeaponDamageType, // Same as marked primary weapon type
+			IsCritical: false,
+		})
+		return e, nil
+	}
+	if err := c.Add(combat.StageFeatures, "rage", modifyDamage); err != nil {
+		return c, rpgerr.Wrapf(err, "error applying rage damage bonus for character id %s", r.CharacterID)
 	}
 
 	return c, nil
+}
+
+// onIncomingDamage resists bludgeoning, piercing and slashing dealt to the
+// raging character, from any source: one resistance per physical type dealt.
+func (r *RagingCondition) onIncomingDamage(
+	_ context.Context,
+	event *dnd5eEvents.IncomingDamageEvent,
+	c chain.Chain[*dnd5eEvents.IncomingDamageEvent],
+) (chain.Chain[*dnd5eEvents.IncomingDamageEvent], error) {
+	if event.TargetID() != r.CharacterID {
+		return c, nil
+	}
+
+	resist := func(_ context.Context, e *dnd5eEvents.IncomingDamageEvent) (*dnd5eEvents.IncomingDamageEvent, error) {
+		e.Multipliers = append(e.Multipliers, physicalResistances(e.DealtTypes(), dnd5eEvents.RollSource{
+			Ref:  refs.Conditions.Raging(),
+			Name: "Raging",
+		})...)
+		return e, nil
+	}
+	if err := c.Add(combat.StageFinal, "rage_resistance", resist); err != nil {
+		return c, rpgerr.Wrapf(err, "error applying rage resistance for character id %s", r.CharacterID)
+	}
+
+	return c, nil
+}
+
+// physicalResistances answers one resistance, from source, for each of the
+// physical damage types among dealt, in dealt order.
+func physicalResistances(dealt []damage.Type, source dnd5eEvents.RollSource) []dnd5eEvents.DamageMultiplier {
+	var resistances []dnd5eEvents.DamageMultiplier
+	for _, damageType := range dealt {
+		if !damageType.IsPhysical() {
+			continue
+		}
+		resistances = append(resistances, dnd5eEvents.DamageMultiplier{
+			Category:   dnd5eEvents.DamageSourceCondition,
+			Source:     dnd5eEvents.CloneRollSource(source),
+			DamageType: damageType,
+			Factor:     dnd5eEvents.DamageFactorResistance,
+		})
+	}
+	return resistances
 }
 
 // onSavingThrowChain grants advantage on Strength saving throws while raging (PHB rage benefits).

@@ -212,19 +212,13 @@ type DamageComponent struct {
 	DamageType damage.Type       // damage.Slashing, damage.Fire, etc.
 	Properties []damage.Property // Behavior belonging to this component's declared pool.
 	IsCritical bool              // Was this doubled for crit?
-	// Multiplier scales the other components of the same damage type rather
-	// than adding damage of its own: vulnerability (2.0), resistance (0.5),
-	// immunity (0.0).
-	//
-	// A pointer because ZERO IS A LEGAL FACTOR. This was a plain float64 whose
-	// doc read "0 means 1.0/no multiplier" and, two lines later, "immunity (0.0
-	// to negate)" — one value carrying both meanings. The dispatch had to pick
-	// one, picked "absent", and immunity silently stopped working: an immune
-	// target took full damage and the immunity branch of the stacking rules was
-	// unreachable (rpg-toolkit#1012). Nil now means "this component is damage",
-	// and any float — zero included — means "this component modifies damage".
-	//
-	// Build one with [Multiply]; &0.0 is not expressible inline.
+	// Multiplier is no longer written by any rule. A target's immunity,
+	// resistance and vulnerability are its answers on the incoming fold, as
+	// [DamageMultiplier]s settled by combat, and never ride the dealt
+	// components. The field remains only because the wire still carries it
+	// until the proto field is marked deprecated; [NewIncomingDamageEvent]
+	// refuses a dealt component that sets it. Answer on [IncomingDamageChain]
+	// with a [DamageMultiplier] instead.
 	Multiplier *float64
 }
 
@@ -238,16 +232,6 @@ func (dc DamageComponent) HasProperty(property damage.Property) bool {
 	}
 
 	return false
-}
-
-// Multiply returns a factor for [DamageComponent.Multiplier].
-//
-// It exists because the zero factor — immunity — cannot be written inline as
-// a pointer, and because a named constructor makes "this component is a
-// modifier" the visible act at every call site rather than a consequence of
-// which field happens to be set.
-func Multiply(factor float64) *float64 {
-	return &factor
 }
 
 // Total returns the total damage for this component: the dice trace's
@@ -336,7 +320,13 @@ func (e *AttackChainEvent) IsCancelled() bool {
 	return len(e.CancellationSources) > 0
 }
 
-// DamageChainEvent represents damage flowing through the modifier chain
+// DamageChainEvent is the dealt fold: what the source deals, folded by the
+// source's own rules (a weapon's dice, an ability modifier, Rage's bonus,
+// Sneak Attack). It carries nothing the target answers. A target's
+// immunity, resistance, vulnerability or reduction is its own answer on
+// [IncomingDamageChain], which the target step publishes after this fold and
+// the save's halving; TargetID is here so a source rule can ask about its
+// target, never so a target rule can answer.
 type DamageChainEvent struct {
 	AttackerID       string
 	TargetID         string
@@ -1196,8 +1186,17 @@ var (
 	// AttackChain provides typed chained topic for attack roll modifiers
 	AttackChain = events.DefineChainedTopic[AttackChainEvent]("dnd5e.combat.attack.chain")
 
-	// DamageChain provides typed chained topic for damage modifiers
+	// DamageChain is the dealt fold's topic: the source's rules add what the
+	// source deals. No target answer is published here; see IncomingDamageChain.
 	DamageChain = events.DefineChainedTopic[*DamageChainEvent]("dnd5e.combat.damage.chain")
+
+	// IncomingDamageChain is the incoming fold's topic: the target's rules
+	// answer the damage dealt to it with reductions and multipliers. The
+	// target step publishes it after the dealt fold and the save's halving,
+	// checks the folded event with IncomingDamageEvent.CheckUnaltered, and
+	// hands the answers to combat.SettleDamage. Resolution is its only
+	// publisher.
+	IncomingDamageChain = events.DefineChainedTopic[*IncomingDamageEvent]("dnd5e.combat.damage.incoming")
 
 	// SavingThrowChain provides typed chained topic for saving throw modifiers
 	SavingThrowChain = events.DefineChainedTopic[*SavingThrowChainEvent]("dnd5e.saves.chain")

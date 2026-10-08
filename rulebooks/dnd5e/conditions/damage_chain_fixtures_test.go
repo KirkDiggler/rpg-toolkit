@@ -4,12 +4,15 @@
 package conditions
 
 import (
+	"context"
 	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
+	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
@@ -184,4 +187,65 @@ func framedAgainst(
 // heldOf is the held condition a loaded condition stands for on member.
 func heldOf(member string, condition dnd5eEvents.ConditionBehavior) contributions.HeldCondition {
 	return heldAddress(member, condition)
+}
+
+// foldDealt runs the dealt fold over event on bus, as resolution does, and
+// returns what it settled on.
+func foldDealt(
+	ctx context.Context, bus events.EventBus, event *dnd5eEvents.DamageChainEvent,
+) (*dnd5eEvents.DamageChainEvent, error) {
+	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	modified, err := dnd5eEvents.DamageChain.On(bus).PublishWithChain(ctx, event, chain)
+	if err != nil {
+		return nil, err
+	}
+	return modified.Execute(ctx, event)
+}
+
+// received is what the target step settled: the folded incoming event and
+// combat's settlement of it.
+type received struct {
+	Folded     *dnd5eEvents.IncomingDamageEvent
+	Settlement *combat.SettleDamageOutput
+}
+
+// foldIncoming runs the target step's half on bus the way resolution does:
+// publish dealt on the incoming fold under frame, refuse a fold that altered
+// what it was handed, and settle the answers against the dealt components
+// sent. The frame's actor is the source and its target the target.
+func foldIncoming(
+	ctx context.Context, bus events.EventBus, frame contributions.Frame, dealt []dnd5eEvents.DamageComponent,
+) (*received, error) {
+	target, _ := frame.Target.Get()
+	sent, err := dnd5eEvents.NewIncomingDamageEvent(dnd5eEvents.IncomingDamageInput{
+		TargetID: target, SourceID: frame.Actor, Dealt: dealt, Frame: frame,
+	})
+	if err != nil {
+		return nil, err
+	}
+	chain := events.NewStagedChain[*dnd5eEvents.IncomingDamageEvent](combat.ModifierStages)
+	modified, err := dnd5eEvents.IncomingDamageChain.On(bus).PublishWithChain(ctx, sent.Clone(), chain)
+	if err != nil {
+		return nil, err
+	}
+	folded, err := modified.Execute(ctx, sent.Clone())
+	if err != nil {
+		return nil, err
+	}
+	if err := folded.CheckUnaltered(sent); err != nil {
+		return nil, err
+	}
+	settlement, err := combat.SettleDamage(&combat.SettleDamageInput{
+		Dealt: sent.Dealt(), Reductions: folded.Reductions, Multipliers: folded.Multipliers,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &received{Folded: folded, Settlement: settlement}, nil
+}
+
+// taken is the total the settlement lands.
+func (r *received) taken() int {
+	_, total := r.Settlement.FinalDamage()
+	return total
 }

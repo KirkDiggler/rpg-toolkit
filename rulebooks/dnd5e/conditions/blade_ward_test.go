@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -55,68 +55,122 @@ func (s *BladeWardConditionSuite) endTurn(subjectID string) {
 		dnd5eEvents.TurnEndEvent{SubjectID: subjectID, Round: 1}))
 }
 
-// strike drives one damage chain at targetID and returns the settled total,
-// which is what a player actually feels. Source says who dealt it -- a swing or
-// a spell -- and that distinction is the whole point of this condition.
-func (s *BladeWardConditionSuite) strike(
-	targetID string, source dnd5eEvents.DamageSourceType, amount int, damageType damage.Type,
-) int {
-	component := dnd5eEvents.DamageComponent{
+// weaponAttackFrame is a skeleton's weapon attack on targetID: an attack roll
+// whose weapon pool is known true.
+func weaponAttackFrame(targetID string) contributions.Frame {
+	frame := testAttackFrame("skeleton-1", targetID)
+	frame.Action.WeaponPool = contributions.Known(true)
+	return frame
+}
+
+// contestFrame is the frame a contest's damage folds under: the
+// instigator acting on the saver, through a saving throw, the weapon pool
+// known false.
+func contestFrame(targetID string) contributions.Frame {
+	return contributions.Frame{
+		Actor:  "skeleton-1",
+		Target: contributions.Known(targetID),
+		Action: contributions.ActionFacts{
+			Roll:       contributions.Known(contributions.RollKindSavingThrow),
+			WeaponPool: contributions.Known(false),
+		},
+	}
+}
+
+// receive runs the incoming fold for amount of damageType, stamped source,
+// under frame, and returns what the target received.
+func (s *BladeWardConditionSuite) receive(
+	frame contributions.Frame, source dnd5eEvents.DamageSourceType, amount int, damageType damage.Type,
+) (*received, error) {
+	return foldIncoming(s.ctx, s.bus, frame, []dnd5eEvents.DamageComponent{{
 		Source: source,
 		Roll: dnd5eEvents.RollComponent{
 			Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
 			Dice:   testDiceTrace(8, amount),
 		},
 		DamageType: damageType,
-	}
-	event := &dnd5eEvents.DamageChainEvent{
-		AttackerID: "skeleton-1",
-		TargetID:   targetID,
-		Components: []dnd5eEvents.DamageComponent{component},
-	}
+	}})
+}
 
-	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
-	modified, err := dnd5eEvents.DamageChain.On(s.bus).PublishWithChain(s.ctx, event, chain)
+// strike is a weapon attack's damage at targetID, returning the settled total,
+// which is what a player actually feels.
+func (s *BladeWardConditionSuite) strike(targetID string, amount int, damageType damage.Type) int {
+	got, err := s.receive(weaponAttackFrame(targetID), dnd5eEvents.DamageSourceWeapon, amount, damageType)
 	s.Require().NoError(err)
-	settled, err := modified.Execute(s.ctx, event)
-	s.Require().NoError(err)
-
-	_, total := combat.FinalDamage(settled.Components)
-	return total
+	return got.taken()
 }
 
 // The promise, asserted as the number rather than as the mechanism: a warded
-// bard takes half. combat.FinalDamage is what folds the multiplier, so folding
-// it here is what proves the component was appended in a form that actually
-// counts.
+// bard takes half. The settlement is what folds the multiplier, so settling it
+// here is what proves the answer was appended in a form that actually counts.
 func (s *BladeWardConditionSuite) TestAWardedCasterTakesHalfFromAWeaponSwing() {
 	s.warded()
 
-	s.Equal(4, s.strike(wardedID, dnd5eEvents.DamageSourceWeapon, 9, damage.Slashing),
-		"9 slashing from a weapon lands as 4, halved and rounded down")
+	got, err := s.receive(weaponAttackFrame(wardedID), dnd5eEvents.DamageSourceWeapon, 9, damage.Slashing)
+	s.Require().NoError(err)
+	s.Equal(4, got.taken(), "9 slashing from a weapon lands as 4, halved and rounded down")
+	s.Require().Len(got.Folded.Multipliers, 1)
+	s.Equal(refs.Conditions.BladeWard(), got.Folded.Multipliers[0].Source.Ref)
 }
 
 // THE SCOPING TEST, and the reason this condition does not simply copy rage's
 // predicate. RAW resists damage "dealt by weapon attacks"; rage resists all
-// B/P/S whatever dealt it. Same damage type, same amount, different source.
-func (s *BladeWardConditionSuite) TestItLeavesNonWeaponDamageAlone() {
+// B/P/S whatever dealt it. Same damage type, same amount, a saving throw's
+// frame: the ward does not answer.
+func (s *BladeWardConditionSuite) TestItLeavesSavingThrowDamageAlone() {
 	s.warded()
 
-	s.Equal(9, s.strike(wardedID, dnd5eEvents.DamageSourceSpell, 9, damage.Slashing),
-		"a spell's slashing is not a weapon attack, and the ward does not reach it")
+	got, err := s.receive(contestFrame(wardedID), dnd5eEvents.DamageSourceSpell, 9, damage.Slashing)
+	s.Require().NoError(err)
+	s.Empty(got.Folded.Multipliers)
+	s.Equal(9, got.taken(), "a saving throw's slashing is not a weapon attack")
+}
+
+// The frame decides, never the component's stamp: a weapon-stamped component
+// under a saving throw's frame is not resisted, and a spell-stamped one under
+// a weapon attack's frame is.
+func (s *BladeWardConditionSuite) TestTheFrameDecidesNotTheComponentStamp() {
+	s.warded()
+
+	underSave, err := s.receive(contestFrame(wardedID), dnd5eEvents.DamageSourceWeapon, 9, damage.Slashing)
+	s.Require().NoError(err)
+	s.Equal(9, underSave.taken(), "the stamp says weapon, the frame says saving throw")
+
+	underAttack, err := s.receive(weaponAttackFrame(wardedID), dnd5eEvents.DamageSourceSpell, 9, damage.Slashing)
+	s.Require().NoError(err)
+	s.Equal(4, underAttack.taken(), "the stamp says spell, the frame says weapon attack")
+}
+
+// A spell attack is an attack roll with no weapon pool: not a weapon attack.
+func (s *BladeWardConditionSuite) TestItLeavesASpellAttackAlone() {
+	s.warded()
+
+	frame := testAttackFrame("skeleton-1", wardedID)
+	frame.Action.WeaponPool = contributions.Known(false)
+	got, err := s.receive(frame, dnd5eEvents.DamageSourceSpell, 9, damage.Bludgeoning)
+	s.Require().NoError(err)
+	s.Equal(9, got.taken())
+}
+
+// An unknown weapon pool fails the fold rather than guessing either way.
+func (s *BladeWardConditionSuite) TestAnUnknownWeaponPoolFailsTheFold() {
+	s.warded()
+
+	_, err := s.receive(testAttackFrame("skeleton-1", wardedID), dnd5eEvents.DamageSourceWeapon, 9, damage.Slashing)
+	s.Require().ErrorIs(err, contributions.ErrRuleCannotAnswer)
 }
 
 func (s *BladeWardConditionSuite) TestItLeavesNonPhysicalWeaponDamageAlone() {
 	s.warded()
 
-	s.Equal(9, s.strike(wardedID, dnd5eEvents.DamageSourceWeapon, 9, damage.Fire),
+	s.Equal(9, s.strike(wardedID, 9, damage.Fire),
 		"the ward is against blade, point and bludgeon, not against fire")
 }
 
 func (s *BladeWardConditionSuite) TestItLeavesSomebodyElsesDamageAlone() {
 	s.warded()
 
-	s.Equal(9, s.strike("fighter-1", dnd5eEvents.DamageSourceWeapon, 9, damage.Slashing),
+	s.Equal(9, s.strike("fighter-1", 9, damage.Slashing),
 		"the ward is on the bard and reads the defender side")
 }
 
@@ -124,7 +178,7 @@ func (s *BladeWardConditionSuite) TestItWardsEveryPhysicalType() {
 	s.warded()
 
 	for _, physical := range []damage.Type{damage.Slashing, damage.Piercing, damage.Bludgeoning} {
-		s.Equal(4, s.strike(wardedID, dnd5eEvents.DamageSourceWeapon, 9, physical), "%s", physical)
+		s.Equal(4, s.strike(wardedID, 9, physical), "%s", physical)
 	}
 }
 
@@ -140,14 +194,14 @@ func (s *BladeWardConditionSuite) TestItSurvivesTheTurnItWasTracedOn() {
 	s.endTurn(wardedID)
 	s.Empty(s.removals, "the casting turn's own end must not spend the ward")
 	s.True(condition.IsApplied())
-	s.Equal(4, s.strike(wardedID, dnd5eEvents.DamageSourceWeapon, 9, damage.Slashing),
+	s.Equal(4, s.strike(wardedID, 9, damage.Slashing),
 		"and it is still warding when the swing finally comes")
 
 	s.endTurn(wardedID)
 	s.Require().Len(s.removals, 1, "the end of the caster's NEXT turn is what ends it")
 	s.Equal(refs.Conditions.BladeWard().String(), s.removals[0].ConditionRef)
 	s.Equal("expired", s.removals[0].Reason)
-	s.Equal(9, s.strike(wardedID, dnd5eEvents.DamageSourceWeapon, 9, damage.Slashing),
+	s.Equal(9, s.strike(wardedID, 9, damage.Slashing),
 		"and once it is gone the swing lands whole")
 }
 

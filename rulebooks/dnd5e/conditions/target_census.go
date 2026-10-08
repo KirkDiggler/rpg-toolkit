@@ -33,8 +33,6 @@ var targetCensus = map[string]censusEntry{
 	refs.Conditions.FightingStyleDefense().String(): notBearing,
 	refs.Spells.Shield().String():                   notBearing,
 
-	// Owns no rule; fog acts through the general sight rule (R20).
-	refs.Conditions.InFog().String(): notBearing,
 	// No handler acts on an attack against an unconscious holder.
 	refs.Conditions.Unconscious().String():                      notBearing,
 	refs.Features.SneakAttack().String():                        notBearing,

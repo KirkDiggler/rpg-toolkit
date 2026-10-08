@@ -230,6 +230,39 @@ func (s *PureLoadTestSuite) TestLegacyLoadDropsAMalformedCondition() {
 	s.Require().Len(authored(char), 1, "the unreadable condition is silently dropped")
 }
 
+// inFogBlob is an In Fog condition exactly as a sheet saved one before the
+// type retired.
+var inFogBlob = json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"in_fog"},` +
+	`"member_id":"char-load","source_id":"area-1","source_ref":{"module":"dnd5e","type":"spells","id":"fog-cloud"}}`)
+
+// A sheet saved with an In Fog condition loads and carries none, on the strict
+// path too: the type retired, membership is the encounter's answer, and the
+// sheet saves without it.
+func (s *PureLoadTestSuite) TestASheetSavedInFogLoadsAndCarriesNone() {
+	data := fullSheet(&s.Suite)
+	data.Conditions = append(data.Conditions, inFogBlob)
+
+	char, err := Load(s.ctx, data)
+	s.Require().NoError(err, "a retired condition is dropped, never a failed load")
+
+	for _, condition := range char.GetConditions() {
+		raw, err := condition.ToJSON()
+		s.Require().NoError(err)
+		s.NotContains(string(raw), `"in_fog"`)
+	}
+	saved, err := json.Marshal(mustToData(s.T(), char))
+	s.Require().NoError(err)
+	s.NotContains(string(saved), `"in_fog"`, "the sheet saves without it")
+	s.Require().Equal(marshalData(&s.Suite, fullSheet(&s.Suite)), marshalData(&s.Suite, mustToData(s.T(), char)),
+		"everything else the sheet carried survives")
+
+	legacy, err := LoadFromData(s.ctx, data, events.NewEventBus())
+	s.Require().NoError(err)
+	saved, err = json.Marshal(mustToData(s.T(), legacy))
+	s.Require().NoError(err)
+	s.NotContains(string(saved), `"in_fog"`)
+}
+
 // Features are the same species of loss as conditions, and get the same
 // treatment: a blob with no loader here fails the strict load.
 func (s *PureLoadTestSuite) TestStrictLoadRefusesAFeatureFromAnotherModule() {
