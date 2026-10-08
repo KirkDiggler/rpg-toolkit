@@ -145,7 +145,7 @@ func (s *EquipTestSuite) TestACostedStowPaysExactlyOneAction() {
 	s.Equal(1, economy.BonusActionsRemaining)
 
 	s.Empty(out.Character.EquipmentSlots.Get(character.SlotMainHand), "the change was applied")
-	s.Equal([]EquipMove{{Slot: character.SlotMainHand, Ref: "dnd5e:weapons:longsword"}}, out.Stowed)
+	s.Equal([]string{"dnd5e:weapons:longsword"}, out.Stowed)
 	s.Empty(out.Drawn)
 }
 
@@ -170,7 +170,7 @@ func (s *EquipTestSuite) TestACostedDrawPaysExactlyOneInteraction() {
 	s.Zero(economy.Granted[character.GrantedObjectInteractions], "and spent the interaction")
 
 	s.Equal(eqLongsword, out.Character.EquipmentSlots.Get(character.SlotMainHand))
-	s.Equal([]EquipMove{{Slot: character.SlotMainHand, Ref: "dnd5e:weapons:longsword"}}, out.Drawn)
+	s.Equal([]string{"dnd5e:weapons:longsword"}, out.Drawn)
 	s.Empty(out.Stowed)
 }
 
@@ -190,8 +190,8 @@ func (s *EquipTestSuite) TestACostedSwapPaysTheActionAndTheInteraction() {
 	s.Equal(eqOneInteraction(), out.Paid.Capacity)
 	s.Equal(0, out.Character.ActionEconomy.ActionsRemaining)
 	s.Zero(out.Character.ActionEconomy.Granted[character.GrantedObjectInteractions])
-	s.Equal([]EquipMove{{Slot: character.SlotMainHand, Ref: "dnd5e:weapons:handaxe"}}, out.Stowed)
-	s.Equal([]EquipMove{{Slot: character.SlotMainHand, Ref: "dnd5e:weapons:longsword"}}, out.Drawn)
+	s.Equal([]string{"dnd5e:weapons:handaxe"}, out.Stowed)
+	s.Equal([]string{"dnd5e:weapons:longsword"}, out.Drawn)
 }
 
 // The door readies the sheet for the fight's turn BEFORE it prices: a bank
@@ -231,7 +231,7 @@ func (s *EquipTestSuite) TestArmourInAFightIsRefusedUnderItsOwnName() {
 	})
 	s.Require().NoError(err)
 	s.Equal(eqChainMail, roam.Character.EquipmentSlots.Get(character.SlotArmor))
-	s.Equal([]EquipMove{{Slot: character.SlotArmor, Ref: "dnd5e:armor:chain-mail"}}, roam.Drawn,
+	s.Equal([]string{"dnd5e:armor:chain-mail"}, roam.Drawn,
 		"a worn slot's change is named in free roam, so the session can tell it")
 	s.Empty(roam.Stowed)
 }
@@ -249,8 +249,8 @@ func (s *EquipTestSuite) TestFreeRoamChargesNothingAndApplies() {
 	s.Nil(out.Paid)
 	s.Nil(out.Character.ActionEconomy, "free roam readies no turn")
 	s.Equal(eqLongsword, out.Character.EquipmentSlots.Get(character.SlotMainHand))
-	s.Equal([]EquipMove{{Slot: character.SlotMainHand, Ref: "dnd5e:weapons:handaxe"}}, out.Stowed)
-	s.Equal([]EquipMove{{Slot: character.SlotMainHand, Ref: "dnd5e:weapons:longsword"}}, out.Drawn)
+	s.Equal([]string{"dnd5e:weapons:handaxe"}, out.Stowed)
+	s.Equal([]string{"dnd5e:weapons:longsword"}, out.Drawn)
 }
 
 // Free roam, even with the stored action spent: nothing is priced, so nothing
@@ -267,20 +267,35 @@ func (s *EquipTestSuite) TestFreeRoamIgnoresASpentBank() {
 	s.Empty(out.Character.EquipmentSlots.Get(character.SlotMainHand))
 }
 
-// The free-roam hands diff is this package's; the fight's is the rulebook's.
-// Each change here is made both ways and the two must name the same items.
+// Both paths read the rulebook's plan. Each change here is made both ways,
+// and both must name exactly the plan's items.
 func (s *EquipTestSuite) TestFreeRoamNamesTheSameHandsAsTheFightsPrice() {
+	const (
+		longswordRef  = "dnd5e:weapons:longsword"
+		handaxeRef    = "dnd5e:weapons:handaxe"
+		greatswordRef = "dnd5e:weapons:greatsword"
+		shieldRef     = "dnd5e:armor:shield"
+	)
+	none := []string(nil)
 	cases := []struct {
-		name   string
-		hands  character.EquipmentSlots
-		slot   character.InventorySlot
-		itemID string
+		name          string
+		hands         character.EquipmentSlots
+		slot          character.InventorySlot
+		itemID        string
+		stowed, drawn []string
 	}{
-		{name: "draw", hands: character.EquipmentSlots{}, slot: character.SlotMainHand, itemID: eqLongsword},
-		{name: "stow", hands: character.EquipmentSlots{character.SlotMainHand: eqLongsword}, slot: character.SlotMainHand},
+		{
+			name: "draw", hands: character.EquipmentSlots{}, slot: character.SlotMainHand, itemID: eqLongsword,
+			stowed: none, drawn: []string{longswordRef},
+		},
+		{
+			name: "stow", hands: character.EquipmentSlots{character.SlotMainHand: eqLongsword}, slot: character.SlotMainHand,
+			stowed: []string{longswordRef}, drawn: none,
+		},
 		{
 			name:  "swap",
 			hands: character.EquipmentSlots{character.SlotMainHand: eqHandaxe}, slot: character.SlotMainHand, itemID: eqLongsword,
+			stowed: []string{handaxeRef}, drawn: []string{longswordRef},
 		},
 		{
 			name: "two-hander over both hands",
@@ -288,13 +303,21 @@ func (s *EquipTestSuite) TestFreeRoamNamesTheSameHandsAsTheFightsPrice() {
 				character.SlotMainHand: eqLongsword, character.SlotOffHand: eqHandaxe,
 			},
 			slot: character.SlotMainHand, itemID: eqGreatsword,
+			stowed: []string{longswordRef, handaxeRef}, drawn: []string{greatswordRef},
 		},
 		{
 			name:  "move between hands",
 			hands: character.EquipmentSlots{character.SlotMainHand: eqLongsword}, slot: character.SlotOffHand, itemID: eqLongsword,
+			stowed: none, drawn: none,
 		},
-		{name: "don shield", hands: character.EquipmentSlots{}, slot: character.SlotOffHand, itemID: eqShield},
-		{name: "doff shield", hands: character.EquipmentSlots{character.SlotOffHand: eqShield}, slot: character.SlotOffHand},
+		{
+			name: "don shield", hands: character.EquipmentSlots{}, slot: character.SlotOffHand, itemID: eqShield,
+			stowed: none, drawn: []string{shieldRef},
+		},
+		{
+			name: "doff shield", hands: character.EquipmentSlots{character.SlotOffHand: eqShield}, slot: character.SlotOffHand,
+			stowed: []string{shieldRef}, drawn: none,
+		},
 	}
 
 	for _, tc := range cases {
@@ -311,6 +334,8 @@ func (s *EquipTestSuite) TestFreeRoamNamesTheSameHandsAsTheFightsPrice() {
 			})
 			s.Require().NoError(err)
 
+			s.Equal(tc.stowed, fight.Stowed)
+			s.Equal(tc.drawn, fight.Drawn)
 			s.Equal(fight.Stowed, roam.Stowed)
 			s.Equal(fight.Drawn, roam.Drawn)
 			s.Equal(fight.Character.EquipmentSlots, roam.Character.EquipmentSlots)
@@ -368,7 +393,7 @@ func (s *EquipTestSuite) TestRequestsTheSheetCannotMakeAreBadEquip() {
 	})
 }
 
-// Each move names its slot and the item's full ref: a shield is armour, and a
+// The moves are full refs in the plan's order, and the output names the slot: a shield is armour, and a
 // two-hander drawn over two held items stows both from the hands they held.
 func (s *EquipTestSuite) TestMovesNameTheSlotAndTheFullRef() {
 	shieldOn, err := Equip(s.ctx, &EquipInput{
@@ -376,7 +401,7 @@ func (s *EquipTestSuite) TestMovesNameTheSlotAndTheFullRef() {
 		Slot:      character.SlotOffHand, ItemID: eqShield,
 	})
 	s.Require().NoError(err)
-	s.Equal([]EquipMove{{Slot: character.SlotOffHand, Ref: "dnd5e:armor:shield"}}, shieldOn.Drawn)
+	s.Equal([]string{"dnd5e:armor:shield"}, shieldOn.Drawn)
 
 	twoHanded, err := Equip(s.ctx, &EquipInput{
 		Character: s.inFight(character.EquipmentSlots{
@@ -385,11 +410,10 @@ func (s *EquipTestSuite) TestMovesNameTheSlotAndTheFullRef() {
 		Slot: character.SlotMainHand, ItemID: eqGreatsword, Fight: eqThisTurn(),
 	})
 	s.Require().NoError(err)
-	s.Equal([]EquipMove{
-		{Slot: character.SlotMainHand, Ref: "dnd5e:weapons:longsword"},
-		{Slot: character.SlotOffHand, Ref: "dnd5e:weapons:handaxe"},
-	}, twoHanded.Stowed)
-	s.Equal([]EquipMove{{Slot: character.SlotMainHand, Ref: "dnd5e:weapons:greatsword"}}, twoHanded.Drawn)
+	s.Equal([]string{"dnd5e:weapons:longsword", "dnd5e:weapons:handaxe"}, twoHanded.Stowed,
+		"main hand first, then off hand")
+	s.Equal(character.SlotMainHand, twoHanded.Slot)
+	s.Equal([]string{"dnd5e:weapons:greatsword"}, twoHanded.Drawn)
 }
 
 // The returned record is the caller's own: writing it does not reach the

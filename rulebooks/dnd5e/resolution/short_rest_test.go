@@ -97,7 +97,8 @@ func (s *ShortRestTestSuite) TestTheTraceSourcesEveryDieToTheResterAndTheRecordM
 
 	s.Equal(2, out.Result.HitDiceSpent)
 	s.Equal(0, out.Result.HitDiceRemaining)
-	s.Equal(13, out.Result.Healed)
+	s.Equal(13, out.Result.Requested)
+	s.Equal(13, out.Result.Healed, "under the cap, everything requested landed")
 
 	got := out.Character
 	s.Equal(3+out.Result.Healed, got.HitPoints, "the record healed what the result says")
@@ -117,6 +118,8 @@ func (s *ShortRestTestSuite) TestTheRecordNeverHealsPastMaximum() {
 	})
 	s.Require().NoError(err)
 	s.Equal(20, out.Character.HitPoints)
+	s.Equal(2, out.Result.Healed, "what landed after the cap")
+	s.Equal(18+out.Result.Healed, out.Character.HitPoints)
 	s.Equal(1, out.Character.Resources[resources.HitDice].Current)
 }
 

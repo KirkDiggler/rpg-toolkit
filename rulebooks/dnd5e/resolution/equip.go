@@ -7,16 +7,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
-	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
 // EquipInput is one equipment change on one persisted character: equip ItemID
@@ -51,31 +47,25 @@ type EquipOutput struct {
 	// the change was paid for and applied.
 	Character *character.Data
 
-	// Stowed are the items that left a slot: the hands first, main hand
-	// before off hand, then any worn slot in slot order. A shield doffed is a
-	// stow; an item that only moved between hands is neither. One beat each.
-	Stowed []EquipMove
+	// Slot is the slot the change named: the one the items moved through,
+	// what the session hands encounter.RecordEquipInput.Slot.
+	Slot character.InventorySlot
 
-	// Drawn are the items that entered a slot, in Stowed's order. A shield
-	// donned is a draw. One beat each, after the stows.
-	Drawn []EquipMove
+	// Stowed are the items the change took off or put away — a weapon stowed,
+	// a shield doffed, body armour taken off — as full ref strings
+	// ("dnd5e:weapons:longsword"), main hand first, then off hand, then the
+	// worn slots. They are the rulebook's plan ([character.Character.PlanEquipment]),
+	// the same plan a fight's price is computed from. One beat each.
+	Stowed []string
+
+	// Drawn are the items the change put in hand or on, in Stowed's order.
+	// One beat each, after the stows.
+	Drawn []string
 
 	// Paid is the spend profile charged to the sheet's ledger. Nil when the
 	// change cost nothing: free roam, or a change no price can see (an item
 	// that only moved between hands, a slot already as asked).
 	Paid *combat.SpendProfile
-}
-
-// EquipMove is one item leaving or entering one slot: what the session hands
-// the encounter's equip record (encounter.RecordEquipInput's Slot and its
-// Stowed or Drawn).
-type EquipMove struct {
-	// Slot is the slot the item left or entered.
-	Slot character.InventorySlot
-
-	// Ref is the item as its full ref string ("dnd5e:weapons:longsword"),
-	// read off the inventory entry that carries it.
-	Ref string
 }
 
 // Equip makes one equipment change on one character, charging its price at
@@ -156,19 +146,21 @@ func equipOn(
 		return nil, fmt.Errorf("%w: %q attached but is not in the cast", ErrBadParticipant, one.ID())
 	}
 
-	// The occupancy before the change, owned here: the loader may retain the
-	// record's map, and applying the change rewrites the sheet's in place.
-	before := maps.Clone(one.Character.EquipmentSlots)
+	// The plan comes first and in both paths: it is what the beats say, it
+	// needs no turn, and a change the rulebook refuses is refused here before
+	// anything is readied or charged.
+	plan, err := ch.PlanEquipment(&character.PlanEquipmentInput{Slot: in.Slot, ItemID: in.ItemID})
+	if err != nil {
+		return nil, fmt.Errorf("%w: %q: %w", ErrBadEquip, one.ID(), err)
+	}
 
-	out = &EquipOutput{}
-	var stowedIDs, drawnIDs []string
+	out = &EquipOutput{Slot: in.Slot, Stowed: refStrings(plan.Stowed), Drawn: refStrings(plan.Drawn)}
 	if in.Fight != nil {
 		price, err := payForEquip(ctx, ch, in, cast)
 		if err != nil {
 			return nil, err
 		}
 		out.Paid = price.Profile
-		stowedIDs, drawnIDs = price.Stowed, price.Drawn
 	}
 
 	if err := applyEquip(ch, in); err != nil {
@@ -180,29 +172,6 @@ func equipOn(
 		return nil, fmt.Errorf("resolution: equip %q: %w", one.ID(), err)
 	}
 	out.Character = changed
-
-	// In a fight the moves are the ones the price was computed from; in free
-	// roam nothing was priced, and this package names them. A worn slot can
-	// only change in free roam: the price refuses it in a fight.
-	if in.Fight == nil {
-		stowedIDs, drawnIDs = handsMoved(before, changed.EquipmentSlots)
-	}
-	out.Stowed, err = movesOf(stowedIDs, before, changed.Inventory)
-	if err != nil {
-		return nil, fmt.Errorf("resolution: equip %q: %w", one.ID(), err)
-	}
-	out.Drawn, err = movesOf(drawnIDs, changed.EquipmentSlots, changed.Inventory)
-	if err != nil {
-		return nil, fmt.Errorf("resolution: equip %q: %w", one.ID(), err)
-	}
-	if in.Fight == nil {
-		wornStowed, wornDrawn, err := wornMoved(before, changed.EquipmentSlots, changed.Inventory)
-		if err != nil {
-			return nil, fmt.Errorf("resolution: equip %q: %w", one.ID(), err)
-		}
-		out.Stowed = append(out.Stowed, wornStowed...)
-		out.Drawn = append(out.Drawn, wornDrawn...)
-	}
 
 	return out, nil
 }
@@ -256,139 +225,14 @@ func applyEquip(ch *character.Character, in *EquipInput) error {
 	return nil
 }
 
-// movesOf places each hand item id in the hand that holds it in slots, main
-// hand first, one hand per copy, and names it by its full ref.
-func movesOf(
-	ids []string, slots character.EquipmentSlots, inventory []character.InventoryItemData,
-) ([]EquipMove, error) {
-	if len(ids) == 0 {
-		return nil, nil
+// refStrings is the rulebook's refs as the strings the record carries.
+func refStrings(in []*core.Ref) []string {
+	if len(in) == 0 {
+		return nil
 	}
-
-	taken := map[character.InventorySlot]bool{}
-	moves := make([]EquipMove, 0, len(ids))
-	for _, id := range ids {
-		slot := character.InventorySlot("")
-		for _, hand := range [...]character.InventorySlot{character.SlotMainHand, character.SlotOffHand} {
-			if !taken[hand] && slots.Get(hand) == id {
-				slot = hand
-				break
-			}
-		}
-		if slot == "" {
-			return nil, fmt.Errorf("%q moved but no hand holds it", id)
-		}
-		taken[slot] = true
-
-		ref, err := itemRef(id, inventory)
-		if err != nil {
-			return nil, err
-		}
-		moves = append(moves, EquipMove{Slot: slot, Ref: ref})
+	out := make([]string, 0, len(in))
+	for _, ref := range in {
+		out = append(out, ref.String())
 	}
-
-	return moves, nil
-}
-
-// wornMoved names what left and entered every slot that is not a hand, in
-// slot order.
-func wornMoved(
-	before, after character.EquipmentSlots, inventory []character.InventoryItemData,
-) (stowed, drawn []EquipMove, err error) {
-	slots := map[character.InventorySlot]struct{}{}
-	for slot := range before {
-		slots[slot] = struct{}{}
-	}
-	for slot := range after {
-		slots[slot] = struct{}{}
-	}
-	ordered := slices.Sorted(maps.Keys(slots))
-
-	for _, slot := range ordered {
-		if slot == character.SlotMainHand || slot == character.SlotOffHand {
-			continue
-		}
-		was, will := before.Get(slot), after.Get(slot)
-		if was == will {
-			continue
-		}
-		if was != "" {
-			ref, refErr := itemRef(was, inventory)
-			if refErr != nil {
-				return nil, nil, refErr
-			}
-			stowed = append(stowed, EquipMove{Slot: slot, Ref: ref})
-		}
-		if will != "" {
-			ref, refErr := itemRef(will, inventory)
-			if refErr != nil {
-				return nil, nil, refErr
-			}
-			drawn = append(drawn, EquipMove{Slot: slot, Ref: ref})
-		}
-	}
-
-	return stowed, drawn, nil
-}
-
-// itemRef is the full ref of the inventory item with this id, its type read
-// off the inventory entry: a weapon, armour (a shield included), a tool, or
-// any other carried equipment.
-func itemRef(id string, inventory []character.InventoryItemData) (string, error) {
-	for _, item := range inventory {
-		if item.ID != id {
-			continue
-		}
-		kind := refs.TypeEquipment
-		switch item.Type {
-		case shared.EquipmentTypeWeapon:
-			kind = refs.TypeWeapons
-		case shared.EquipmentTypeArmor:
-			kind = refs.TypeArmor
-		case shared.EquipmentTypeTool:
-			kind = refs.TypeTools
-		}
-		return (&core.Ref{Module: refs.Module, Type: kind, ID: core.ID(id)}).String(), nil
-	}
-
-	return "", fmt.Errorf("%q moved but is not in the inventory", id)
-}
-
-// handsMoved names what left and what entered the two hands between two
-// occupancies, as a multiset of item ids, main hand first, so an item that
-// only changed hands is neither.
-//
-// It is the free-roam half of what [character.Character.PriceEquipment]
-// reports in a fight, where no price is compiled because nothing is charged.
-// The rulebook's own diff is unexported; the agreement between the two is
-// pinned by a test over the same changes priced in a fight.
-func handsMoved(before, after character.EquipmentSlots) (stowed, drawn []string) {
-	hands := [...]character.InventorySlot{character.SlotMainHand, character.SlotOffHand}
-	held := func(slots character.EquipmentSlots) map[string]int {
-		counts := map[string]int{}
-		for _, hand := range hands {
-			if id := slots.Get(hand); id != "" {
-				counts[id]++
-			}
-		}
-		return counts
-	}
-
-	was, will := held(before), held(after)
-	for _, hand := range hands {
-		if id := before.Get(hand); id != "" && was[id] > will[id] {
-			stowed = append(stowed, id)
-			was[id]--
-		}
-	}
-
-	was = held(before)
-	for _, hand := range hands {
-		if id := after.Get(hand); id != "" && will[id] > was[id] {
-			drawn = append(drawn, id)
-			will[id]--
-		}
-	}
-
-	return stowed, drawn
+	return out
 }
