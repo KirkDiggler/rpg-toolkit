@@ -7,6 +7,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
+
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/stretchr/testify/suite"
@@ -25,6 +27,46 @@ func (r *knowledgeEncounters) GetEncounter(ctx context.Context, id string) (*enc
 type KnowledgeSuite struct{ suite.Suite }
 
 func TestKnowledgeSuite(t *testing.T) { suite.Run(t, new(KnowledgeSuite)) }
+
+func (s *KnowledgeSuite) TestCapturedPresentationCrossesKnowledgeAndViewWithoutAliases() {
+	no := false
+	world, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Standing: encEveryoneStanding{},
+		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("room", 0, 0, 3, 2)},
+			Props: []encounter.PropInput{{ID: "book", Ref: "test:props:book", At: spatial.Position{X: 1}, Holdable: true, BlocksMovement: &no, BlocksLineOfSight: &no}},
+			PropPresentations: []encounter.PropPresentation{{ID: "book", Ref: "test:props:book", Origin: spatial.Point{X: 5}, HeightScale: 1.5,
+				PointLight: &encounter.PropPointLight{Color: "#abcdef", Range: 4}}}},
+		Members: []encounter.MemberInput{{ID: "alice", Kind: encounter.KindPlayer}},
+		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+	mgr, err := session.NewManager(&session.Config{Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: newFakeCharacters(armedFighter("alice")),
+		Events: session.DiscardEvents{}, Dice: testDice{}, TurnDriver: session.Pass{}, PresentationIDs: testPresentationIDs{}})
+	s.Require().NoError(err)
+	data := world.ToData()
+	ctx := context.Background()
+	_, err = mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: &data})
+	s.Require().NoError(err)
+	input := &session.KnowledgeInput{Session: "sess", Member: "alice", Player: "player-alice"}
+	known, err := mgr.Knowledge(ctx, input)
+	s.Require().NoError(err)
+	s.Require().Len(known.View.Props, 1)
+	s.Require().NotNil(known.View.Props[0].Presentation)
+	s.Equal("book", known.View.Props[0].Presentation.ID)
+	s.Empty(known.Atlas.PropPresentations)
+	known.View.Props[0].Presentation.PointLight.Range = 999
+	view, err := mgr.View(ctx, &session.ViewInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Equal(4.0, view.Props[0].Presentation.PointLight.Range)
+	_, err = mgr.Hold(ctx, &session.HoldInput{Session: "sess", Member: "alice", Target: "book"})
+	s.Require().NoError(err)
+	empty, err := mgr.Knowledge(ctx, input)
+	s.Require().NoError(err)
+	s.Require().Len(empty.View.Props, 1)
+	s.True(empty.View.Props[0].ObservedEmpty)
+	s.Nil(empty.View.Props[0].Presentation)
+}
 
 func (s *KnowledgeSuite) TestSnapshotUsesOneWorldAndTheExactOwnedSeat() {
 	fixture := newRosterFixture(s.T())

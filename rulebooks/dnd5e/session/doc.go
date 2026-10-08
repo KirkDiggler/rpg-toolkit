@@ -205,6 +205,19 @@
 // Reads do not roll, and delivery waits for the persistence reports. Partial
 // saves still obey S6 rather than claiming multi-store rollback.
 //
+// # Permitted prop presentation
+//
+// Atlas.PropPresentations and both reveal bodies carry the provider's fixed
+// render records in the same PropID namespace as prop/placed shapes. Mutable
+// PropSighting.Presentation is captured with its observation, never enriched from
+// current world/source state when returning memory; observed-empty carries none.
+// These SDK-owned DTOs copy canonical pose and visual style, never infer visibility
+// or collision. Opening-attached doors stay exclusively in the structural channel.
+// The shared reveal decoder refuses malformed/duplicate records and conflicting
+// door channels atomically. Missing legacy collections remain absent, not a request
+// for an unrestricted authored document. Identity/finite-pose/light validation is
+// transport integrity, not another gameplay rule or appearance lookup service.
+//
 // # Structural layout, on the same fixed-layout grain
 //
 // The promoted authored walls and doors (rpg-project#169) ride the pipeline the

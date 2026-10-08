@@ -50,6 +50,27 @@ func (s *PropPresentationDecodeSuite) TestMalformedRowsRefuseAtomicBody() {
 		}
 	}
 }
+func (s *PropPresentationDecodeSuite) TestExclusiveDoorChannelsAndStandaloneIdentity() {
+	for _, beat := range []string{"room_revealed", "concealment_revealed"} {
+		standalone := strings.Replace(validPresentationRow, `"id":"books"`, `"id":"books","door_id":"world/door"`, 1)
+		payload := fmt.Sprintf(`{"beat":%q,"region":{"id":"room"},"concealment":"secret","prop_presentations":[%s]}`, beat, standalone)
+		_, body := decodeBeat([]byte(payload))
+		s.Require().NotNil(body)
+		raw, err := json.Marshal(body)
+		s.Require().NoError(err)
+		rows, ok := propPresentationsFromPayload(raw)
+		s.Require().True(ok)
+		s.Equal("world/door", rows[0].DoorID)
+		for _, suffix := range []string{
+			`"structural_doors":[{"id":"other"},{"id":"world/door"}],"prop_presentations":[` + standalone + `]`,
+			`"prop_presentations":[` + standalone + `,` + strings.Replace(standalone, `"id":"books"`, `"id":"other"`, 1) + `]`,
+		} {
+			_, rejected := decodeBeat([]byte(fmt.Sprintf(`{"beat":%q,"region":{"id":"room"},"concealment":"secret",%s}`, beat, suffix)))
+			s.Nil(rejected, "door collision refuses the whole body on either reveal path")
+		}
+	}
+}
+
 func (s *PropPresentationDecodeSuite) TestSnapshotProjectionDoesNotAliasLight() {
 	in := encounter.Atlas{PropPresentations: []encounter.PropPresentation{{ID: "p", Ref: "r", HeightScale: 1, PointLight: &encounter.PropPointLight{Color: "#ffffff", Range: 4}}}}
 	out := projectAtlas(in)
