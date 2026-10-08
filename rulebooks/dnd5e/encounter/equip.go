@@ -32,36 +32,56 @@ import (
 // clock would price as an action. A free-roam equip is the economy-free verb
 // the design rules it.
 
-// RecordEquipInput is one equipment change a member made, as the rulebook
-// reports it.
+// EquipmentChange is which way one item moved through a slot. The values
+// are the wire words of the beat's `change` key.
+type EquipmentChange string
+
+const (
+	// EquipDraw is an item entering a slot: a weapon drawn, a shield or a
+	// suit of armour donned.
+	EquipDraw EquipmentChange = "draw"
+
+	// EquipStow is an item leaving a slot, back to the character's
+	// inventory: a weapon put away, a shield or a suit of armour doffed.
+	EquipStow EquipmentChange = "stow"
+)
+
+// RecordEquipInput is one equip a member made through one slot, as the
+// rulebook reports it: an item stowed, an item drawn, or both for a swap.
 type RecordEquipInput struct {
 	// Member is who changed their equipment. Must be a member (ErrNotMember)
 	// and placed (ErrBadPlacement).
 	Member MemberID
 
-	// Slot is the rulebook's name for the slot that changed — "main_hand",
-	// "off_hand", "armor". CARRIED, NEVER READ (C1): which slots exist and
-	// what fits in them is the rulebook's.
+	// Slot is the rulebook's key for the slot the items moved through —
+	// "main_hand", "off_hand", "armor". CARRIED, NEVER READ (C1): which slots
+	// exist and what fits in them is the rulebook's.
 	Slot string
 
-	// Item is the bare item id now in the slot ([HeldEquipment]'s
-	// convention), or empty when the change left it empty.
-	Item string
+	// Stowed is the item that left the slot, as its full ref string
+	// ("dnd5e:weapons:longsword"), or empty when the slot was empty before.
+	// Carried as a name to show; this module does not know what an item is.
+	Stowed string
 
-	// Removed is the bare item id the change took out of the slot, or empty
-	// when the slot was empty before. A swap names both.
+	// Drawn is the item that entered the slot, as its full ref string, or
+	// empty when the equip left the slot empty.
 	//
-	// A CHANGE THAT NAMES NEITHER IS REFUSED (ErrInvalidData): nothing went
+	// AN EQUIP THAT NAMES NEITHER IS REFUSED (ErrInvalidData): nothing went
 	// into the slot and nothing came out, which is not a change anybody saw.
-	Removed string
+	Drawn string
 }
 
-// RecordEquipOutput reports the beat and what the re-look produced.
+// RecordEquipOutput reports the beats and what the re-look produced.
 type RecordEquipOutput struct {
-	// Seq is the sequence of the equipped beat.
-	Seq uint64
+	// Seqs is the sequence of every equipment-changed beat, in the order
+	// told: the stow before the draw.
+	Seqs []uint64
 
-	// Audience is every member told the beat: the actor and every member
+	// Correlation is the token every beat of this equip carries, so a reader
+	// tells the two halves of a swap as one act.
+	Correlation string
+
+	// Audience is every member told the beats: the actor and every member
 	// whose sight reaches the actor's cell ([Encounter.Witnesses]). Sorted.
 	Audience []MemberID
 
@@ -74,8 +94,15 @@ type RecordEquipOutput struct {
 	Formed *FormedBubble
 }
 
-// RecordEquip records one equipment change: an `equipped` beat told to the
-// members who see the actor, then a re-look declaring the actor changed.
+// RecordEquip records one equip: an `equipment-changed` beat per item that
+// moved — the stow, then the draw — told to the members who see the actor
+// and sharing one correlation, then a re-look declaring the actor changed.
+//
+// ONE BEAT PER ITEM, ONE WAY EACH. A swap is not a third kind of change; it
+// is a stow and a draw, told in the order they happen, and the correlation
+// is what says they were one act. The correlation is minted HERE, from the
+// sequence of the equip's first beat — the story owns its own sequence, so
+// no two acts in one story can share a token, and no caller has to mint one.
 //
 // THE SHEET MUST ALREADY CARRY THE CHANGE. The re-look asks [Equipment] for
 // the actor's hands, so a caller that records before it writes the sheet
@@ -83,7 +110,7 @@ type RecordEquipOutput struct {
 //
 // THE AUDIENCE IS THE ACTOR'S WITNESSES, the set every act a member performs
 // where they stand is told to ([Encounter.Witnesses]): a member who cannot see
-// the actor is not told they drew a sword. The beat precedes the re-look —
+// the actor is not told they drew a sword. The beats precede the re-look —
 // a verb's own beat precedes its consequences ([Encounter.refreshSight]).
 //
 // IN A FIGHT, ONLY ON THE MEMBER'S OWN TURN: a member of a bubble the clock
@@ -92,7 +119,7 @@ type RecordEquipOutput struct {
 // world clock passes.
 //
 // Validation order (R5): nil input → empty member → closed → not a member →
-// empty slot or a change naming nothing → not their turn in a fight → not
+// empty slot or an equip naming nothing → not their turn in a fight → not
 // placed.
 //
 // Errors: ErrNilInput, ErrNoMember, ErrClosed, ErrNotMember, ErrInvalidData,
@@ -114,8 +141,8 @@ func (e *Encounter) RecordEquip(in *RecordEquipInput) (*RecordEquipOutput, error
 	if in.Slot == "" {
 		return nil, fmt.Errorf("record equip: slot: %w", ErrInvalidData)
 	}
-	if in.Item == "" && in.Removed == "" {
-		return nil, fmt.Errorf("record equip: slot %q: a change that names no item: %w", in.Slot, ErrInvalidData)
+	if in.Drawn == "" && in.Stowed == "" {
+		return nil, fmt.Errorf("record equip: slot %q: an equip that names no item: %w", in.Slot, ErrInvalidData)
 	}
 	if err := e.refuseOffTurn("record equip", in.Member); err != nil {
 		return nil, err
@@ -126,24 +153,48 @@ func (e *Encounter) RecordEquip(in *RecordEquipInput) (*RecordEquipOutput, error
 		return nil, fmt.Errorf("record equip: %w", err)
 	}
 
-	payload, err := json.Marshal(map[string]interface{}{
-		"beat":    BeatEquipped,
-		"member":  string(in.Member),
-		"slot":    in.Slot,
-		"item":    in.Item,
-		"removed": in.Removed,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("record equip: marshal beat: %w", err)
+	type moved struct {
+		item   string
+		change EquipmentChange
 	}
-	appended, err := e.appendBeat(&record.AppendInput{
-		At:       uint64(e.clock.ToData().HighWater),
-		Audience: witnesses,
-		Tags:     map[string]string{"tag": "equip"},
-		Payload:  payload,
-	})
+	var changes []moved
+	if in.Stowed != "" {
+		changes = append(changes, moved{item: in.Stowed, change: EquipStow})
+	}
+	if in.Drawn != "" {
+		changes = append(changes, moved{item: in.Drawn, change: EquipDraw})
+	}
+
+	first, err := e.story.NextSeq()
 	if err != nil {
-		return nil, fmt.Errorf("record equip: append beat: %w", err)
+		return nil, fmt.Errorf("record equip: %w", err)
+	}
+	correlation := fmt.Sprintf("equip:%d", first)
+	at := uint64(e.clock.ToData().HighWater)
+
+	seqs := make([]uint64, 0, len(changes))
+	for _, c := range changes {
+		payload, err := json.Marshal(map[string]interface{}{
+			"beat":   BeatEquipmentChanged,
+			"member": string(in.Member),
+			"slot":   in.Slot,
+			"item":   c.item,
+			"change": string(c.change),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("record equip: marshal beat: %w", err)
+		}
+		appended, err := e.appendBeat(&record.AppendInput{
+			At:          at,
+			Correlation: correlation,
+			Audience:    witnesses,
+			Tags:        map[string]string{"tag": "equip"},
+			Payload:     payload,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("record equip: append beat: %w", err)
+		}
+		seqs = append(seqs, appended.Seq)
 	}
 
 	deltas, formed, err := e.refreshSightDeclaring(e.rosterIDs(), []MemberID{in.Member})
@@ -152,7 +203,8 @@ func (e *Encounter) RecordEquip(in *RecordEquipInput) (*RecordEquipOutput, error
 	}
 
 	return &RecordEquipOutput{
-		Seq:         appended.Seq,
+		Seqs:        seqs,
+		Correlation: correlation,
 		Audience:    witnesses,
 		IntelDeltas: deltas,
 		Formed:      formed,

@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -118,42 +119,77 @@ func (s *SessionVerbsSuite) highWater(enc *encounter.Encounter) int {
 	return enc.ToData().Clock.HighWater
 }
 
+// equipEntries is every equipment-changed entry in one member's story, with
+// its correlation.
+func (s *SessionVerbsSuite) equipEntries(enc *encounter.Encounter, member core.EntityID) []record.Entry {
+	story, err := enc.Story(&encounter.StoryInput{Audience: member})
+	s.Require().NoError(err)
+	out := make([]record.Entry, 0)
+	for _, entry := range story {
+		var beat map[string]any
+		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		if beat["beat"] == encounter.BeatEquipmentChanged {
+			out = append(out, entry)
+		}
+	}
+	return out
+}
+
 // An equip beat reaches every member that perceives the actor and no member
 // that does not: alice and bob see each other, billy is behind the wall.
 func (s *SessionVerbsSuite) TestAnEquipIsToldToWhoeverSeesTheActor() {
 	enc := s.freeRoam()
 
-	out, err := enc.RecordEquip(&encounter.RecordEquipInput{Member: alice, Slot: "main_hand", Item: "longsword"})
+	out, err := enc.RecordEquip(&encounter.RecordEquipInput{
+		Member: alice, Slot: "main_hand", Drawn: "dnd5e:weapons:longsword",
+	})
 	s.Require().NoError(err)
 	s.ElementsMatch([]encounter.MemberID{alice, bob}, out.Audience)
 
 	for _, watcher := range []encounter.MemberID{alice, bob} {
-		beats := s.beatsOfKind(enc, watcher, encounter.BeatEquipped)
-		s.Require().Len(beats, 1, "%s sees alice", watcher)
+		beats := s.beatsOfKind(enc, watcher, encounter.BeatEquipmentChanged)
+		s.Require().Len(beats, 1, "%s sees alice draw, once", watcher)
 		s.Equal(string(alice), beats[0]["member"])
 		s.Equal("main_hand", beats[0]["slot"])
-		s.Equal("longsword", beats[0]["item"])
-		s.Equal("", beats[0]["removed"], "the hand was empty")
+		s.Equal("dnd5e:weapons:longsword", beats[0]["item"])
+		s.Equal(string(encounter.EquipDraw), beats[0]["change"])
 	}
-	s.Empty(s.beatsOfKind(enc, billy, encounter.BeatEquipped), "billy cannot see alice and is not told")
+	s.Empty(s.beatsOfKind(enc, billy, encounter.BeatEquipmentChanged), "billy cannot see alice and is not told")
 }
 
-// A swap names both items, and an equip outside a fight costs nothing on the
-// world clock (R1: the economy is a fight's).
-func (s *SessionVerbsSuite) TestASwapNamesBothAndCostsNoTime() {
+// A swap is two beats — the stow, then the draw — on one correlation, and an
+// equip outside a fight costs nothing on the world clock (R1: the economy is
+// a fight's).
+func (s *SessionVerbsSuite) TestASwapIsAStowThenADrawOnOneCorrelation() {
 	enc := s.freeRoam()
 	before := s.highWater(enc)
 
-	_, err := enc.RecordEquip(&encounter.RecordEquipInput{
-		Member: bob, Slot: "main_hand", Item: "warhammer", Removed: "longsword",
+	out, err := enc.RecordEquip(&encounter.RecordEquipInput{
+		Member: bob, Slot: "main_hand", Stowed: "dnd5e:weapons:longsword", Drawn: "dnd5e:weapons:warhammer",
 	})
 	s.Require().NoError(err)
+	s.NotEmpty(out.Correlation)
 
-	beats := s.beatsOfKind(enc, alice, encounter.BeatEquipped)
-	s.Require().Len(beats, 1)
-	s.Equal("warhammer", beats[0]["item"])
-	s.Equal("longsword", beats[0]["removed"])
+	entries := s.equipEntries(enc, alice)
+	s.Require().Len(entries, 2, "a stow and a draw")
+	s.Equal(out.Seqs, []uint64{entries[0].Seq, entries[1].Seq})
+	beats := s.beatsOfKind(enc, alice, encounter.BeatEquipmentChanged)
+	s.Equal(string(encounter.EquipStow), beats[0]["change"], "the stow is told first")
+	s.Equal("dnd5e:weapons:longsword", beats[0]["item"])
+	s.Equal(string(encounter.EquipDraw), beats[1]["change"])
+	s.Equal("dnd5e:weapons:warhammer", beats[1]["item"])
+	for _, entry := range entries {
+		s.Equal(out.Correlation, entry.Correlation, "both halves are one act")
+	}
 	s.Equal(before, s.highWater(enc), "a free-roam equip is free, in time as well")
+
+	// A second equip is a second act, on a correlation of its own.
+	again, err := enc.RecordEquip(&encounter.RecordEquipInput{
+		Member: bob, Slot: "main_hand", Stowed: "dnd5e:weapons:warhammer",
+	})
+	s.Require().NoError(err)
+	s.NotEqual(out.Correlation, again.Correlation)
+	s.Require().Len(again.Seqs, 1, "a stow alone is one beat")
 }
 
 // Recording an equip for a member in a fight on another member's turn
@@ -162,16 +198,16 @@ func (s *SessionVerbsSuite) TestASwapNamesBothAndCostsNoTime() {
 func (s *SessionVerbsSuite) TestAnEquipOffTurnInAFightIsRefused() {
 	enc, active, waiting := s.fight()
 
-	_, err := enc.RecordEquip(&encounter.RecordEquipInput{Member: waiting, Slot: "main_hand", Item: "longsword"})
+	_, err := enc.RecordEquip(&encounter.RecordEquipInput{Member: waiting, Slot: "main_hand", Drawn: "dnd5e:weapons:longsword"})
 	s.Require().ErrorIs(err, encounter.ErrNotActive)
 	s.Contains(err.Error(), "record equip:", "the refusal names the verb")
 	for _, member := range []encounter.MemberID{alice, bob, goblin, billy} {
-		s.Empty(s.beatsOfKind(enc, member, encounter.BeatEquipped), "nothing written for %s", member)
+		s.Empty(s.beatsOfKind(enc, member, encounter.BeatEquipmentChanged), "nothing written for %s", member)
 	}
 
-	_, err = enc.RecordEquip(&encounter.RecordEquipInput{Member: active, Slot: "main_hand", Item: "longsword"})
+	_, err = enc.RecordEquip(&encounter.RecordEquipInput{Member: active, Slot: "main_hand", Drawn: "dnd5e:weapons:longsword"})
 	s.Require().NoError(err, "on their own turn")
-	s.Len(s.beatsOfKind(enc, active, encounter.BeatEquipped), 1)
+	s.Len(s.beatsOfKind(enc, active, encounter.BeatEquipmentChanged), 1)
 }
 
 // A change the verb cannot record is refused before anything is written.
@@ -183,16 +219,16 @@ func (s *SessionVerbsSuite) TestAnEquipThatSaysNothingIsRefused() {
 		want error
 	}{
 		"nil":          {nil, encounter.ErrNilInput},
-		"no member":    {&encounter.RecordEquipInput{Slot: "main_hand", Item: "dagger"}, encounter.ErrNoMember},
-		"not a member": {&encounter.RecordEquipInput{Member: "nobody", Slot: "main_hand", Item: "dagger"}, encounter.ErrNotMember},
-		"no slot":      {&encounter.RecordEquipInput{Member: alice, Item: "dagger"}, encounter.ErrInvalidData},
+		"no member":    {&encounter.RecordEquipInput{Slot: "main_hand", Drawn: "dnd5e:weapons:dagger"}, encounter.ErrNoMember},
+		"not a member": {&encounter.RecordEquipInput{Member: "nobody", Slot: "main_hand", Drawn: "dnd5e:weapons:dagger"}, encounter.ErrNotMember},
+		"no slot":      {&encounter.RecordEquipInput{Member: alice, Drawn: "dnd5e:weapons:dagger"}, encounter.ErrInvalidData},
 		"no item":      {&encounter.RecordEquipInput{Member: alice, Slot: "main_hand"}, encounter.ErrInvalidData},
 	}
 	for name, tc := range cases {
 		_, err := enc.RecordEquip(tc.in)
 		s.ErrorIs(err, tc.want, name)
 	}
-	s.Empty(s.beatsOfKind(enc, alice, encounter.BeatEquipped))
+	s.Empty(s.beatsOfKind(enc, alice, encounter.BeatEquipmentChanged))
 }
 
 // Recording a rest in free roam writes one beat naming the member and the
@@ -202,7 +238,7 @@ func (s *SessionVerbsSuite) TestARestInFreeRoamTellsOneBeat() {
 
 	out, err := enc.RecordRest(&encounter.RecordRestInput{
 		Member: alice, Kind: encounter.RestShort,
-		Refilled: []string{"dnd5e:features:second_wind"},
+		ResourcesRefilled: []string{"dnd5e:features:second_wind"},
 	})
 	s.Require().NoError(err)
 	s.ElementsMatch([]encounter.MemberID{alice, bob}, out.Audience)
@@ -211,7 +247,7 @@ func (s *SessionVerbsSuite) TestARestInFreeRoamTellsOneBeat() {
 	s.Require().Len(beats, 1)
 	s.Equal(string(alice), beats[0]["member"])
 	s.Equal(string(encounter.RestShort), beats[0]["kind"])
-	s.Equal([]any{"dnd5e:features:second_wind"}, beats[0]["refilled"])
+	s.Equal([]any{"dnd5e:features:second_wind"}, beats[0]["resources_refilled"])
 	s.Empty(s.beatsOfKind(enc, billy, encounter.BeatRested), "billy cannot see alice")
 }
 
@@ -295,12 +331,16 @@ func (s *SessionVerbsSuite) TestARestCarriesWhatItRestored() {
 
 	_, err := enc.RecordRest(&encounter.RecordRestInput{
 		Member: alice, Kind: encounter.RestShort, HitDiceSpent: 2, HitPointsRestored: 12, Calculation: calc,
+		HitPoints: 20, HitDiceRemaining: 1,
 	})
 	s.Require().NoError(err)
 	beats := s.beatsOfKind(enc, alice, encounter.BeatRested)
 	s.Require().Len(beats, 1)
 	s.Equal(float64(2), beats[0]["hit_dice_spent"])
 	s.Equal(float64(12), beats[0]["hit_points_restored"], "capped by the rulebook, carried as told")
+	s.Equal(float64(20), beats[0]["hit_points"])
+	s.Equal(float64(0), beats[0]["hit_dice_returned"], "a short rest returns none, and says so")
+	s.Equal(float64(1), beats[0]["hit_dice_remaining"])
 	s.NotNil(beats[0]["calculation"])
 
 	refused := map[string]*encounter.RecordRestInput{
@@ -310,7 +350,10 @@ func (s *SessionVerbsSuite) TestARestCarriesWhatItRestored() {
 		"negative hit points":     {Member: alice, Kind: encounter.RestShort, HitPointsRestored: -1},
 		"dice with no arithmetic": {Member: alice, Kind: encounter.RestShort, HitDiceSpent: 1},
 		"arithmetic with no dice": {Member: alice, Kind: encounter.RestShort, Calculation: calc},
-		"an unnamed refill":       {Member: alice, Kind: encounter.RestShort, Refilled: []string{""}},
+		"an unnamed refill":       {Member: alice, Kind: encounter.RestShort, ResourcesRefilled: []string{""}},
+		"negative hit points now": {Member: alice, Kind: encounter.RestShort, HitPoints: -1},
+		"negative dice returned":  {Member: alice, Kind: encounter.RestShort, HitDiceReturned: -1},
+		"negative dice remaining": {Member: alice, Kind: encounter.RestShort, HitDiceRemaining: -1},
 	}
 	for name, in := range refused {
 		_, err := enc.RecordRest(in)

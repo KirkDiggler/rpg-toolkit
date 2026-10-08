@@ -62,27 +62,43 @@ type RecordRestInput struct {
 	// the zero value included, is refused (ErrInvalidData).
 	Kind RestKind
 
+	// HitPointsRestored is the hit points the rest healed, after the cap at
+	// maximum — so it can be less than the calculation's total. Negative is
+	// refused (ErrInvalidData). CARRIED, NEVER COMPARED.
+	HitPointsRestored int
+
+	// HitPoints is the character's hit points after the rest, so a reader
+	// shows the rest landing without re-reading the sheet. Negative is
+	// refused (ErrInvalidData).
+	HitPoints int
+
 	// HitDiceSpent is how many hit dice the rest spent. Negative is refused
 	// (ErrInvalidData).
 	HitDiceSpent int
 
-	// HitPointsRestored is the hit points the rest restored, after every
-	// floor and cap the rulebook applied — so it need not equal the dice's
-	// total. Negative is refused (ErrInvalidData). CARRIED, NEVER COMPARED.
-	HitPointsRestored int
+	// HitDiceReturned is how many hit dice the rest gave back — a long
+	// rest's, so zero for every rest this module records today. Negative is
+	// refused (ErrInvalidData).
+	HitDiceReturned int
+
+	// HitDiceRemaining is the hit dice the character has left to spend after
+	// the rest. Negative is refused (ErrInvalidData).
+	HitDiceRemaining int
 
 	// Calculation is the sourced arithmetic of the hit dice the rest spent:
-	// every die with the resting character as its source. Required when
-	// HitDiceSpent is above zero and refused when it is zero — dice that
-	// were never thrown are not something anybody saw. Validated as a
-	// structure ([ValidateRollCalculation]), never as a rule.
+	// every die with the resting character as its source, and the
+	// Constitution modifier each adds. Required when HitDiceSpent is above
+	// zero and refused when it is zero — dice that were never thrown are not
+	// something anybody saw. Validated as a structure
+	// ([ValidateRollCalculation]), never as a rule.
 	Calculation *RollCalculation
 
-	// Refilled is every resource the rest refilled, by its canonical ref
-	// string, in the rulebook's order. CARRIED, NEVER READ: what a resource
-	// is and why it reset is the rulebook's. An empty entry is refused
-	// (ErrInvalidData).
-	Refilled []string
+	// ResourcesRefilled is every resource the rest refilled, by its full ref
+	// string ("dnd5e:features:second_wind"), in the rulebook's order.
+	// CARRIED, NEVER READ: a resource is listed because its own reset kind
+	// said this rest refills it, and that is the rulebook's. An empty entry
+	// is refused (ErrInvalidData).
+	ResourcesRefilled []string
 }
 
 // RecordRestOutput reports the beat and the clock.
@@ -154,14 +170,19 @@ func (e *Encounter) RecordRest(in *RecordRestInput) (*RecordRestOutput, error) {
 		"beat":                BeatRested,
 		"member":              string(in.Member),
 		"kind":                string(in.Kind),
-		"hit_dice_spent":      in.HitDiceSpent,
 		"hit_points_restored": in.HitPointsRestored,
+		"hit_points":          in.HitPoints,
+		"hit_dice_spent":      in.HitDiceSpent,
+		"hit_dice_returned":   in.HitDiceReturned,
+		"hit_dice_remaining":  in.HitDiceRemaining,
 	}
+	// ABSENT STAYS ABSENT: no dice thrown is no calculation key, and nothing
+	// refilled is no list — never a zero-valued stand-in.
 	if in.Calculation != nil {
 		body["calculation"] = in.Calculation
 	}
-	if len(in.Refilled) > 0 {
-		body["refilled"] = in.Refilled
+	if len(in.ResourcesRefilled) > 0 {
+		body["resources_refilled"] = in.ResourcesRefilled
 	}
 	payload, err := json.Marshal(body)
 	if err != nil {
@@ -214,11 +235,20 @@ func restRounds(kind RestKind) (int, error) {
 // arithmetic with no dice spent, arithmetic that does not add up, and a
 // refilled resource with no name.
 func validateRestRestored(in *RecordRestInput) error {
-	if in.HitDiceSpent < 0 {
-		return fmt.Errorf("record rest: hit dice spent %d: %w", in.HitDiceSpent, ErrInvalidData)
+	counts := []struct {
+		name string
+		n    int
+	}{
+		{"hit points restored", in.HitPointsRestored},
+		{"hit points", in.HitPoints},
+		{"hit dice spent", in.HitDiceSpent},
+		{"hit dice returned", in.HitDiceReturned},
+		{"hit dice remaining", in.HitDiceRemaining},
 	}
-	if in.HitPointsRestored < 0 {
-		return fmt.Errorf("record rest: hit points restored %d: %w", in.HitPointsRestored, ErrInvalidData)
+	for _, c := range counts {
+		if c.n < 0 {
+			return fmt.Errorf("record rest: %s %d: %w", c.name, c.n, ErrInvalidData)
+		}
 	}
 	if in.HitDiceSpent == 0 && in.Calculation != nil {
 		return fmt.Errorf("record rest: a calculation with no hit dice spent: %w", ErrInvalidData)
@@ -228,9 +258,9 @@ func validateRestRestored(in *RecordRestInput) error {
 			return fmt.Errorf("record rest: calculation: %v: %w", err, ErrInvalidData)
 		}
 	}
-	for i, ref := range in.Refilled {
+	for i, ref := range in.ResourcesRefilled {
 		if ref == "" {
-			return fmt.Errorf("record rest: refilled[%d] is empty: %w", i, ErrInvalidData)
+			return fmt.Errorf("record rest: resources refilled[%d] is empty: %w", i, ErrInvalidData)
 		}
 	}
 

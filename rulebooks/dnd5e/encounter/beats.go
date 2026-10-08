@@ -74,10 +74,10 @@ const (
 	// BeatArrived records a reserve member arriving on the field.
 	BeatArrived = "arrived"
 
-	// BeatEquipped records a member changing what one equipment slot holds:
-	// the item now in it, the item taken out of it, or both for a swap
-	// ([Encounter.RecordEquip]).
-	BeatEquipped = "equipped"
+	// BeatEquipmentChanged records one item moving through one equipment
+	// slot, one way ([EquipDraw] or [EquipStow]). A swap is two of these, the
+	// stow then the draw, on one correlation ([Encounter.RecordEquip]).
+	BeatEquipmentChanged = "equipment-changed"
 
 	// BeatRested records a member resting: the kind of rest and what it
 	// restored ([Encounter.RecordRest]).
