@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
-
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 )
 
@@ -125,10 +123,13 @@ type RestingMember struct {
 	ConcentrationBreaks []ConcentrationBreak
 
 	// Ended is every condition or effect the rest took off this member —
-	// prone, dodging, blessed — by ref, in the rulebook's order. Carried on
-	// the rested beat (`ended`) as canonical strings, never read. A nil or
-	// invalid ref is refused (ErrInvalidData).
-	Ended []*core.Ref
+	// prone, dodging, blessed — in the rulebook's order, exactly as the
+	// rulebook's rest returned them, so nothing is converted on the way to
+	// the beat. Carried on the rested beat (`ended`) in the activation-result
+	// shape every other removal is told in. Each must be a
+	// [ResultConditionRemoved] and is validated as every removal is
+	// (ErrInvalidData, ErrNotMember).
+	Ended []ActivationResult
 }
 
 // RestedMember is where one member's rested beat landed.
@@ -258,8 +259,8 @@ func (e *Encounter) RecordRest(in *RecordRestInput) (*RecordRestOutput, error) {
 		if len(ended.concentration) > 0 {
 			body["concentration_ended"] = ended.concentration
 		}
-		if len(ended.refs) > 0 {
-			body["ended"] = ended.refs
+		if len(ended.ended) > 0 {
+			body["ended"] = ended.ended
 		}
 		payload, err := json.Marshal(body)
 		if err != nil {
@@ -362,10 +363,10 @@ func validateRestRestored(kind RestKind, in *RestingMember) error {
 
 // restEndedPayload is what one member's rest ended, ready for the rested
 // beat: each concentration with the conditions it was holding, and every
-// other condition or effect by its canonical ref string.
+// other condition or effect that came off, in the activation-result shape.
 type restEndedPayload struct {
 	concentration []restConcentrationPayload
-	refs          []string
+	ended         []interface{}
 }
 
 // restConcentrationPayload is one concentration a rest ended, on the rested
@@ -412,14 +413,15 @@ func (e *Encounter) restEnded(m *RestingMember) (restEndedPayload, error) {
 		}
 		out.concentration = append(out.concentration, c)
 	}
-	for i, ref := range m.Ended {
-		if ref == nil {
-			return out, fmt.Errorf("record rest: member %q: ended[%d] is nil: %w", m.Member, i, ErrInvalidData)
+	for i, removed := range m.Ended {
+		if removed.Kind != ResultConditionRemoved {
+			return out, fmt.Errorf("record rest: member %q: ended[%d] kind %q: %w", m.Member, i, removed.Kind, ErrInvalidData)
 		}
-		if err := ref.IsValid(); err != nil {
-			return out, fmt.Errorf("record rest: member %q: ended[%d]: %v: %w", m.Member, i, err, ErrInvalidData)
+		payload, err := e.prepareActivationResult(fmt.Sprintf("record rest: member %q: ended", m.Member), i, removed)
+		if err != nil {
+			return out, err
 		}
-		out.refs = append(out.refs, ref.String())
+		out.ended = append(out.ended, payload)
 	}
 
 	return out, nil

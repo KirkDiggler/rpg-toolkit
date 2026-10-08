@@ -578,10 +578,14 @@ func (s *SessionVerbsSuite) TestARestCarriesWhatItEnded() {
 			Name:    "Blessed", Reason: "concentration ended",
 		}},
 	}
-	prone := &core.Ref{Module: "dnd5e", Type: "conditions", ID: "prone"}
+	prone := encounter.ActivationResult{
+		Kind:    encounter.ResultConditionRemoved,
+		Address: &encounter.ConditionAddress{MemberID: alice, ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:prone"}},
+		Name:    "Prone", Reason: "rest",
+	}
 
 	_, err := enc.RecordRest(&encounter.RecordRestInput{Kind: encounter.RestShort, Members: []encounter.RestingMember{
-		{Member: alice, ConcentrationBreaks: []encounter.ConcentrationBreak{bless}, Ended: []*core.Ref{prone}},
+		{Member: alice, ConcentrationBreaks: []encounter.ConcentrationBreak{bless}, Ended: []encounter.ActivationResult{prone}},
 		{Member: bob},
 	}})
 	s.Require().NoError(err)
@@ -606,27 +610,44 @@ func (s *SessionVerbsSuite) TestARestCarriesWhatItEnded() {
 	s.Equal("duration", first["reason"])
 	s.Equal("Bless", first["spell"].(map[string]any)["name"])
 	s.Len(first["removed"], 1, "bob's blessing came off with it")
-	s.Equal([]any{"dnd5e:conditions:prone"}, aliceBeat["ended"], "and alice is no longer prone")
+	endedEffects, ok := aliceBeat["ended"].([]any)
+	s.Require().True(ok, "and alice is no longer prone")
+	s.Require().Len(endedEffects, 1)
+	s.Contains(string(mustJSON(s.T(), endedEffects[0])), "dnd5e:conditions:prone")
 
 	s.NotContains(bobBeat, "concentration_ended", "a rest that ended nothing says nothing")
 	s.NotContains(bobBeat, "ended")
 
-	refused := map[string]encounter.RestingMember{
-		"somebody else's concentration": {Member: bob, ConcentrationBreaks: []encounter.ConcentrationBreak{bless}},
-		"a break with a save":           {Member: alice, ConcentrationBreaks: []encounter.ConcentrationBreak{withSave(bless)}},
-		"a break with no reason":        {Member: alice, ConcentrationBreaks: []encounter.ConcentrationBreak{withoutReason(bless)}},
-		"a nil ended ref":               {Member: alice, Ended: []*core.Ref{nil}},
-		"an invalid ended ref":          {Member: alice, Ended: []*core.Ref{{Module: "dnd5e"}}},
+	removalOfNobody := encounter.ActivationResult{Kind: encounter.ResultConditionRemoved, Name: "Prone", Reason: "rest"}
+	notARemoval := encounter.ActivationResult{Kind: encounter.ResultConditionApplied, Address: prone.Address, Name: "Prone"}
+	refused := map[string]struct {
+		m    encounter.RestingMember
+		want error
+	}{
+		"somebody else's concentration":         {encounter.RestingMember{Member: bob, ConcentrationBreaks: []encounter.ConcentrationBreak{bless}}, encounter.ErrInvalidData},
+		"a break with a save":                   {encounter.RestingMember{Member: alice, ConcentrationBreaks: []encounter.ConcentrationBreak{withSave(bless)}}, encounter.ErrInvalidData},
+		"a break with no reason":                {encounter.RestingMember{Member: alice, ConcentrationBreaks: []encounter.ConcentrationBreak{withoutReason(bless)}}, encounter.ErrInvalidData},
+		"an ended result that is not a removal": {encounter.RestingMember{Member: alice, Ended: []encounter.ActivationResult{notARemoval}}, encounter.ErrInvalidData},
+		"an ended removal of nobody":            {encounter.RestingMember{Member: alice, Ended: []encounter.ActivationResult{removalOfNobody}}, encounter.ErrNoMember},
 	}
 	before, err := json.Marshal(enc.ToData())
 	s.Require().NoError(err)
-	for name, m := range refused {
-		_, err := enc.RecordRest(&encounter.RecordRestInput{Kind: encounter.RestShort, Members: []encounter.RestingMember{m}})
-		s.ErrorIs(err, encounter.ErrInvalidData, name)
+	for name, tc := range refused {
+		_, err := enc.RecordRest(&encounter.RecordRestInput{Kind: encounter.RestShort, Members: []encounter.RestingMember{tc.m}})
+		s.ErrorIs(err, tc.want, name)
 	}
 	after, err := json.Marshal(enc.ToData())
 	s.Require().NoError(err)
 	s.Equal(string(before), string(after), "no refusal wrote anything")
+}
+
+func mustJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	out, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
 }
 
 func withSave(b encounter.ConcentrationBreak) encounter.ConcentrationBreak {
