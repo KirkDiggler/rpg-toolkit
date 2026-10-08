@@ -1,0 +1,329 @@
+// Copyright (C) 2026 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package encounter_test
+
+import (
+	"encoding/json"
+	"testing"
+
+	"github.com/stretchr/testify/suite"
+
+	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+)
+
+// SessionVerbsSuite is the composition's half of the session verbs
+// (rpg-project#542, slice 2): an equip told to whoever sees the actor and
+// refused off their turn in a fight, and a short rest that is an hour on the
+// world clock and nothing else.
+type SessionVerbsSuite struct {
+	suite.Suite
+}
+
+func TestSessionVerbsSuite(t *testing.T) {
+	suite.Run(t, new(SessionVerbsSuite))
+}
+
+// scene is one yard split by a wall row at y=6: whoever stands above it
+// sees each other, billy below it sees none of them. Every member walks 30
+// feet, so a step accrues pace.
+func (s *SessionVerbsSuite) scene(members ...encounter.MemberInput) *encounter.Encounter {
+	sheets := sheetFacts{}
+	for _, m := range members {
+		sheets[m.ID] = encounter.SheetFacts{SpeedFeet: 30}
+	}
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight:     everyoneSeesTheWholeMap{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheets, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Field: encounter.FieldInput{
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(outcomeRoom, 0, 0, 12, 12)},
+			Props:   wallRow(6, 4, 8),
+		},
+		Members:   members,
+		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Retention: encounter.RetentionUnbounded,
+	})
+	s.Require().NoError(err)
+	return enc
+}
+
+// freeRoam is alice and bob in sight of each other above the wall and billy
+// below it: three players, so no fight.
+func (s *SessionVerbsSuite) freeRoam() *encounter.Encounter {
+	return s.scene(
+		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 2}},
+		encounter.MemberInput{ID: bob, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 3}},
+		encounter.MemberInput{ID: billy, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 10}},
+	)
+}
+
+// fight is alice and bob in a fight with the goblin above the wall, and
+// billy below it, free.
+func (s *SessionVerbsSuite) fight() (enc *encounter.Encounter, active, waiting encounter.MemberID) {
+	enc = s.scene(
+		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 2}},
+		encounter.MemberInput{ID: bob, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 3}},
+		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 4}},
+		encounter.MemberInput{ID: billy, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 10}},
+	)
+	clock, err := enc.ClockOf(&encounter.ClockOfInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Equal(encounter.ClockTurn, clock.Kind, "a player and a monster sharing sight is a fight")
+	billyClock, err := enc.ClockOf(&encounter.ClockOfInput{Member: billy})
+	s.Require().NoError(err)
+	s.Require().Equal(encounter.ClockWorld, billyClock.Kind, "billy, behind the wall, is not in it")
+
+	// WHO is active is trigger detection's order, not this scene's to
+	// assume; the scene asks, then names the other player as waiting.
+	switch clock.Active {
+	case alice:
+		return enc, alice, bob
+	case bob:
+		return enc, bob, alice
+	default:
+		// The goblin is up first: pass its turn so a player is active.
+		_, err := enc.EndTurn(&encounter.EndTurnInput{Member: clock.Active})
+		s.Require().NoError(err)
+		now, err := enc.ClockOf(&encounter.ClockOfInput{Member: alice})
+		s.Require().NoError(err)
+		if now.Active == alice {
+			return enc, alice, bob
+		}
+		s.Require().Equal(bob, now.Active)
+		return enc, bob, alice
+	}
+}
+
+// beatsOfKind is every beat of one kind in one member's story.
+func (s *SessionVerbsSuite) beatsOfKind(enc *encounter.Encounter, member core.EntityID, kind string) []map[string]any {
+	story, err := enc.Story(&encounter.StoryInput{Audience: member})
+	s.Require().NoError(err)
+	out := make([]map[string]any, 0)
+	for _, entry := range story {
+		var beat map[string]any
+		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		if beat["beat"] == kind {
+			out = append(out, beat)
+		}
+	}
+	return out
+}
+
+func (s *SessionVerbsSuite) highWater(enc *encounter.Encounter) int {
+	return enc.ToData().Clock.HighWater
+}
+
+// An equip beat reaches every member that perceives the actor and no member
+// that does not: alice and bob see each other, billy is behind the wall.
+func (s *SessionVerbsSuite) TestAnEquipIsToldToWhoeverSeesTheActor() {
+	enc := s.freeRoam()
+
+	out, err := enc.RecordEquip(&encounter.RecordEquipInput{Member: alice, Slot: "main_hand", Item: "longsword"})
+	s.Require().NoError(err)
+	s.ElementsMatch([]encounter.MemberID{alice, bob}, out.Audience)
+
+	for _, watcher := range []encounter.MemberID{alice, bob} {
+		beats := s.beatsOfKind(enc, watcher, encounter.BeatEquipped)
+		s.Require().Len(beats, 1, "%s sees alice", watcher)
+		s.Equal(string(alice), beats[0]["member"])
+		s.Equal("main_hand", beats[0]["slot"])
+		s.Equal("longsword", beats[0]["item"])
+		s.Equal("", beats[0]["removed"], "the hand was empty")
+	}
+	s.Empty(s.beatsOfKind(enc, billy, encounter.BeatEquipped), "billy cannot see alice and is not told")
+}
+
+// A swap names both items, and an equip outside a fight costs nothing on the
+// world clock (R1: the economy is a fight's).
+func (s *SessionVerbsSuite) TestASwapNamesBothAndCostsNoTime() {
+	enc := s.freeRoam()
+	before := s.highWater(enc)
+
+	_, err := enc.RecordEquip(&encounter.RecordEquipInput{
+		Member: bob, Slot: "main_hand", Item: "warhammer", Removed: "longsword",
+	})
+	s.Require().NoError(err)
+
+	beats := s.beatsOfKind(enc, alice, encounter.BeatEquipped)
+	s.Require().Len(beats, 1)
+	s.Equal("warhammer", beats[0]["item"])
+	s.Equal("longsword", beats[0]["removed"])
+	s.Equal(before, s.highWater(enc), "a free-roam equip is free, in time as well")
+}
+
+// Recording an equip for a member in a fight on another member's turn
+// refuses with the not-your-turn sentinel and writes no beat; the member
+// whose turn it is may.
+func (s *SessionVerbsSuite) TestAnEquipOffTurnInAFightIsRefused() {
+	enc, active, waiting := s.fight()
+
+	_, err := enc.RecordEquip(&encounter.RecordEquipInput{Member: waiting, Slot: "main_hand", Item: "longsword"})
+	s.Require().ErrorIs(err, encounter.ErrNotActive)
+	s.Contains(err.Error(), "record equip:", "the refusal names the verb")
+	for _, member := range []encounter.MemberID{alice, bob, goblin, billy} {
+		s.Empty(s.beatsOfKind(enc, member, encounter.BeatEquipped), "nothing written for %s", member)
+	}
+
+	_, err = enc.RecordEquip(&encounter.RecordEquipInput{Member: active, Slot: "main_hand", Item: "longsword"})
+	s.Require().NoError(err, "on their own turn")
+	s.Len(s.beatsOfKind(enc, active, encounter.BeatEquipped), 1)
+}
+
+// A change the verb cannot record is refused before anything is written.
+func (s *SessionVerbsSuite) TestAnEquipThatSaysNothingIsRefused() {
+	enc := s.freeRoam()
+
+	cases := map[string]struct {
+		in   *encounter.RecordEquipInput
+		want error
+	}{
+		"nil":          {nil, encounter.ErrNilInput},
+		"no member":    {&encounter.RecordEquipInput{Slot: "main_hand", Item: "dagger"}, encounter.ErrNoMember},
+		"not a member": {&encounter.RecordEquipInput{Member: "nobody", Slot: "main_hand", Item: "dagger"}, encounter.ErrNotMember},
+		"no slot":      {&encounter.RecordEquipInput{Member: alice, Item: "dagger"}, encounter.ErrInvalidData},
+		"no item":      {&encounter.RecordEquipInput{Member: alice, Slot: "main_hand"}, encounter.ErrInvalidData},
+	}
+	for name, tc := range cases {
+		_, err := enc.RecordEquip(tc.in)
+		s.ErrorIs(err, tc.want, name)
+	}
+	s.Empty(s.beatsOfKind(enc, alice, encounter.BeatEquipped))
+}
+
+// Recording a rest in free roam writes one beat naming the member and the
+// kind, told to whoever sees the rester.
+func (s *SessionVerbsSuite) TestARestInFreeRoamTellsOneBeat() {
+	enc := s.freeRoam()
+
+	out, err := enc.RecordRest(&encounter.RecordRestInput{
+		Member: alice, Kind: encounter.RestShort,
+		Refilled: []string{"dnd5e:features:second_wind"},
+	})
+	s.Require().NoError(err)
+	s.ElementsMatch([]encounter.MemberID{alice, bob}, out.Audience)
+
+	beats := s.beatsOfKind(enc, bob, encounter.BeatRested)
+	s.Require().Len(beats, 1)
+	s.Equal(string(alice), beats[0]["member"])
+	s.Equal(string(encounter.RestShort), beats[0]["kind"])
+	s.Equal([]any{"dnd5e:features:second_wind"}, beats[0]["refilled"])
+	s.Empty(s.beatsOfKind(enc, billy, encounter.BeatRested), "billy cannot see alice")
+}
+
+// Recording a rest for a member in a fight refuses, and writes nothing: no
+// beat and no time.
+func (s *SessionVerbsSuite) TestARestInAFightIsRefused() {
+	enc, active, waiting := s.fight()
+	before := s.highWater(enc)
+
+	for _, member := range []encounter.MemberID{active, waiting} {
+		_, err := enc.RecordRest(&encounter.RecordRestInput{Member: member, Kind: encounter.RestShort})
+		s.Require().ErrorIs(err, encounter.ErrInBubble, "%s is in the fight", member)
+	}
+	for _, member := range []encounter.MemberID{alice, bob, goblin, billy} {
+		s.Empty(s.beatsOfKind(enc, member, encounter.BeatRested))
+	}
+	s.Equal(before, s.highWater(enc))
+}
+
+// A short rest moves the world clock by one hour and nothing else in the
+// run moves: billy rests below the wall while the fight above it waits on
+// its turn, with a pace remainder on billy and a sight area standing.
+func (s *SessionVerbsSuite) TestAShortRestIsAnHourAndNothingElse() {
+	enc, _, _ := s.fight()
+
+	// A step accrues one cell of pace on billy, which the rest must keep.
+	_, err := enc.Step(&encounter.StepInput{Member: billy, To: cellAt(6, 11)})
+	s.Require().NoError(err)
+	s.Require().NoError(enc.AddSightArea(&encounter.SightAreaInput{
+		ID: "fog", SourceID: "caster", Center: cellAt(1, 10), RadiusFeet: 5,
+	}))
+	before := enc.ToData()
+	s.Require().NotZero(paceOf(before, billy), "the step accrued pace")
+
+	out, err := enc.RecordRest(&encounter.RecordRestInput{Member: billy, Kind: encounter.RestShort})
+	s.Require().NoError(err)
+
+	after := enc.ToData()
+	s.Equal(before.Clock.HighWater+encounter.RoundsPerHour, after.Clock.HighWater, "one hour on the world clock")
+	s.Equal(uint64(after.Clock.HighWater), out.Clock)
+	s.Equal(600, encounter.RoundsPerHour, "an hour is six hundred six-second rounds")
+
+	s.Equal(before.Members, after.Members, "nobody moved, and billy's pace remainder is as it was")
+	s.Equal(before.Bubbles, after.Bubbles, "the fight's turn did not move")
+	s.Equal(before.SightAreas, after.SightAreas, "the sight area stands")
+	s.Equal(before.Doors, after.Doors)
+}
+
+// The rester is the clock's driver, and the clock accrues by driver as max:
+// two members resting from the same reading is one hour, not two.
+func (s *SessionVerbsSuite) TestAPartyRestingTogetherIsOneHour() {
+	enc := s.freeRoam()
+	before := s.highWater(enc)
+
+	for _, member := range []encounter.MemberID{alice, bob} {
+		_, err := enc.RecordRest(&encounter.RecordRestInput{Member: member, Kind: encounter.RestShort})
+		s.Require().NoError(err)
+	}
+
+	s.Equal(before+encounter.RoundsPerHour, s.highWater(enc))
+	s.Len(s.beatsOfKind(enc, alice, encounter.BeatRested), 2, "each rest is still told")
+}
+
+// What a rest restored is carried as told, and refused when it cannot have
+// happened as told.
+func (s *SessionVerbsSuite) TestARestCarriesWhatItRestored() {
+	enc := s.freeRoam()
+	modifier := 4
+	calc := &encounter.RollCalculation{
+		Components: []encounter.RollComponent{
+			{
+				Source: encounter.RollSource{Ref: "dnd5e:classes:fighter", Name: "Hit Dice", SourceID: string(alice)},
+				Dice: &encounter.DiceTrace{
+					Notation: "2d10", DieSize: 10, OriginalRolls: []int{3, 7}, FinalRolls: []int{3, 7}, Subtotal: 10,
+				},
+			},
+			{Source: encounter.RollSource{Ref: "dnd5e:abilities:con", Name: "Constitution"}, Modifier: &modifier},
+		},
+		Total: 14,
+	}
+
+	_, err := enc.RecordRest(&encounter.RecordRestInput{
+		Member: alice, Kind: encounter.RestShort, HitDiceSpent: 2, HitPointsRestored: 12, Calculation: calc,
+	})
+	s.Require().NoError(err)
+	beats := s.beatsOfKind(enc, alice, encounter.BeatRested)
+	s.Require().Len(beats, 1)
+	s.Equal(float64(2), beats[0]["hit_dice_spent"])
+	s.Equal(float64(12), beats[0]["hit_points_restored"], "capped by the rulebook, carried as told")
+	s.NotNil(beats[0]["calculation"])
+
+	refused := map[string]*encounter.RecordRestInput{
+		"no kind":                 {Member: alice},
+		"a long rest":             {Member: alice, Kind: "long"},
+		"negative dice":           {Member: alice, Kind: encounter.RestShort, HitDiceSpent: -1},
+		"negative hit points":     {Member: alice, Kind: encounter.RestShort, HitPointsRestored: -1},
+		"dice with no arithmetic": {Member: alice, Kind: encounter.RestShort, HitDiceSpent: 1},
+		"arithmetic with no dice": {Member: alice, Kind: encounter.RestShort, Calculation: calc},
+		"an unnamed refill":       {Member: alice, Kind: encounter.RestShort, Refilled: []string{""}},
+	}
+	for name, in := range refused {
+		_, err := enc.RecordRest(in)
+		s.ErrorIs(err, encounter.ErrInvalidData, name)
+	}
+	s.Len(s.beatsOfKind(enc, alice, encounter.BeatRested), 1, "no refusal wrote a beat")
+}
+
+func paceOf(data encounter.EncounterData, member encounter.MemberID) int {
+	for _, m := range data.Members {
+		if m.ID == member {
+			return m.Pace
+		}
+	}
+	return 0
+}

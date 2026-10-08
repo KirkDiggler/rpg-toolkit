@@ -33,3 +33,15 @@ const FeetPerCell = 5
 func CellsFromFeet(feet int) int {
 	return feet / FeetPerCell
 }
+
+// SecondsPerRound is the world clock's real-world scale: one unit of the
+// world clock is one round, and a round is six seconds (PHB p. 189). Every
+// advance in worldtime.go is in rounds; this is what a round is worth.
+const SecondsPerRound = 6
+
+// RoundsPerHour is an hour on the world clock, in the rounds it counts —
+// THE ONE PLACE an hour becomes rounds, for [FeetPerCell]'s reason. A short
+// rest advances the world clock by exactly this ([Encounter.RecordRest]); a
+// caller that needs an hour asks for it by kind and never counts rounds
+// itself.
+const RoundsPerHour = 60 * 60 / SecondsPerRound

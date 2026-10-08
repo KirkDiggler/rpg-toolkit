@@ -252,6 +252,10 @@ var (
 	// the fight — Transfer still refuses ClockTurn for a member already
 	// in one — and what a NON-active bubble member cannot do is move at
 	// all, which is ErrNotActive's refusal, not this one.
+	//
+	// AND A REST (rpg-project#542): [Encounter.RecordRest] refuses a member
+	// in a fight with this, before anything is written. A fight prices its
+	// own time by the round; an hour inside one is not a thing it can mean.
 	ErrInBubble = errors.New("already in a bubble")
 
 	// ErrNoBubble is returned when a verb requires a running bubble and
