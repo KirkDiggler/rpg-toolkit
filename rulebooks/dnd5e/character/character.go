@@ -851,7 +851,6 @@ func (c *Character) refilledSince(
 
 	keys := slices.Collect(maps.Keys(after))
 	slices.Sort(keys)
-	slices.Reverse(keys)
 
 	var out []*core.Ref
 	for _, key := range keys {

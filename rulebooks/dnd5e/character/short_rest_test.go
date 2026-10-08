@@ -451,8 +451,10 @@ func TestARestNeverListsHitDice(t *testing.T) {
 	require.NotContains(t, refilledStrings(long.Refilled), "dnd5e:resources:hit_dice")
 }
 
-// The list is sorted by ref whatever order the pools are held in: three spent
-// pools whose keys are read in reverse come back in ref order.
+// The list is sorted by ref, not by the resource keys the pools are held
+// under. Here the two orders disagree: by key, second_wind comes last; by ref,
+// its feature ref (dnd5e:features:...) comes before every dnd5e:resources:
+// pool. So a list left in key order fails, on every run.
 func TestRefilledIsSortedByRef(t *testing.T) {
 	char := restFighter(t)
 	for _, key := range []coreResources.ResourceKey{"c_pool", "b_pool", "a_pool"} {
@@ -495,5 +497,34 @@ func TestAPoolThatRoseForAnotherReasonIsNotARefill(t *testing.T) {
 	short, err := char.ShortRest(ctx, &ShortRestInput{})
 	require.NoError(t, err)
 	require.Equal(t, 1, rage.Current(), "the pool did rise")
+	require.Equal(t, []string{refs.Features.SecondWind().String()}, refilledStrings(short.Refilled))
+}
+
+// The reset-kind check covers a pool a feature reports when the sheet also
+// holds it: Rage reports the sheet's long-rest rage charges, so a charge
+// handed back during a short rest is not a refill, under the feature's name
+// as under the key.
+func TestAFeatureReportedPoolKeepsItsResetKind(t *testing.T) {
+	ctx := context.Background()
+	data := restFighterData(t)
+	rageFeature, err := features.LoadJSON(mustJSON(t, features.RageData{Ref: refs.Features.Rage(), ID: "rage-kind", Name: "Rage"}))
+	require.NoError(t, err)
+	blob, err := rageFeature.ToJSON()
+	require.NoError(t, err)
+	data.Features = append(data.Features, blob)
+	char := attachRestFighter(t, data)
+	rage := char.GetResource(resources.RageCharges)
+
+	_, err = dnd5eEvents.RestTopic.On(char.bus).Subscribe(ctx,
+		func(_ context.Context, _ dnd5eEvents.RestEvent) error {
+			rage.Restore(1)
+			return nil
+		})
+	require.NoError(t, err)
+
+	short, err := char.ShortRest(ctx, &ShortRestInput{})
+	require.NoError(t, err)
+	require.Equal(t, 1, rage.Current(), "the pool did rise")
+	require.NotContains(t, refilledStrings(short.Refilled), refs.Features.Rage().String())
 	require.Equal(t, []string{refs.Features.SecondWind().String()}, refilledStrings(short.Refilled))
 }
