@@ -4,6 +4,7 @@
 package dungeonspec
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -117,19 +118,37 @@ func doorBindingsShape(gp *yaml.Node, add errSink) {
 // names can be a door at all, that its declaration leaves the blocking to the
 // state, and that the state itself is legal.
 //
-// The order is the order an author fixes them in. A binding that names an
-// arrangement template or nothing at all has no door to talk about, so its
-// geometry is reported and its declaration is not looked at; the STATE keys
-// are judged either way, because they are this binding's own fields and wrong
-// wherever the door ends up.
+// TWO KINDS OF OWNER, ONE BINDING BLOCK. A binding may name a placed item
+// with a prop declaration (the standalone door this dialect always had) or an
+// opening's attached door (single_room_walls.go), whose geometry the opening
+// resolves. A bound id is not asked for a declaration — it has none, and the
+// attachment demanded this binding by name — but its state is judged either
+// way, because the state keys are the binding's own wherever the door stands.
+//
+// The order is the order an author fixes them in. A standalone binding that
+// names an arrangement template or nothing at all has no door to talk about,
+// so its geometry is reported and its declaration is not looked at; the STATE
+// keys are judged either way, because they are this binding's own fields and
+// wrong wherever the door ends up.
 //
 // Sorted, for [sortedBindingIDs]' reason: a defect list that depends on Go's
 // map iteration is one no author can compare run to run.
 func doorBindingValues(gp *RoomGameplaySource, g *grammar, add errSink) {
 	templates := arrangementTemplateIDs(gp.ArrangementDeclarations)
+	bound := boundDoorIDSet(gp.Walls)
 	for _, id := range sortedDoorIDs(gp.DoorBindings) {
 		p := "room.room.doorBindings." + id
 		binding := gp.DoorBindings[id]
+
+		// A BOUND DOOR IS OWNED BY ITS OPENING. Its geometry is resolved from
+		// the wall (single_room_walls.go) and it carries no prop declaration,
+		// so the standalone ownership walk below does not apply: the opening
+		// already demanded this binding by name. State is still judged here,
+		// because these are the binding's own keys wherever the door stands.
+		if bound[id] {
+			g.doorState(p, binding.Locked, nil)
+			continue
+		}
 
 		decl, declared := gp.PropDeclarations[id]
 		switch {
@@ -185,9 +204,11 @@ func sortedDoorIDs(bindings map[string]RoomDoorBinding) []string {
 
 // # The lowering
 
-// singleRoomDoors is what this dialect compiles its doors to: one
-// [encounter.DoorInput] per binding, standing as the FOOTPRINT its prop
-// declaration draws and in the state the binding declares.
+// singleRoomDoors is what this dialect compiles its STANDALONE doors to: one
+// [encounter.DoorInput] per standalone binding, standing as the FOOTPRINT its
+// prop declaration draws and in the state the binding declares. A binding an
+// opening OWNS is lowered by [attachedDoorLowering] instead, because its
+// geometry is the opening's and it has no prop declaration to stand on.
 //
 // THE GEOMETRY IS THE PROP'S, converted by the one adapter
 // (single_room_placement.go): the door's rectangle and the table's go through
@@ -202,8 +223,14 @@ func sortedDoorIDs(bindings map[string]RoomDoorBinding) []string {
 // Only reachable for a validated document: every binding here has a
 // declaration and a pose, both refused by name above when it does not.
 func singleRoomDoors(key string, gp *RoomGameplaySource, read roomRead) []encounter.DoorInput {
+	bound := boundDoorIDSet(gp.Walls)
 	var out []encounter.DoorInput
 	for _, id := range sortedDoorIDs(gp.DoorBindings) {
+		if bound[id] {
+			// A bound door is lowered from its opening (attachedDoorLowering),
+			// not from a scene pose it does not have.
+			continue
+		}
 		decl, declared := gp.PropDeclarations[id]
 		pose, posed := read.Poses[id]
 		if !declared || !posed {
@@ -219,4 +246,63 @@ func singleRoomDoors(key string, gp *RoomGameplaySource, read roomRead) []encoun
 	}
 
 	return out
+}
+
+// attachedDoorLowering is what this dialect compiles its BOUND doors to: for
+// each door attached to a wall opening, the two contributions the field already
+// keeps for a door — the nonblocking [encounter.PlacedPropInput] the observer
+// atlas reports under the RAW attached id, and the [encounter.DoorInput] with
+// the v2 minting `<key>/<id>` — sharing one derived placement.
+//
+// THE GEOMETRY IS THE OPENING'S, converted exactly once through the one
+// adapter [placedFootprintFrom]: the door's width is the opening's, its depth
+// and lateral offset are the wall blocker's, and its longitudinal offset is
+// zero because the opening's centre already sits on the line. Nothing reads a
+// scene item or a prop declaration — a bound door has neither — and nothing
+// writes one back into the decoded spec.
+//
+// The placed entry asserts NO blocking of its own, exactly as a standalone
+// door's declaration does: what the rectangle closes is the door state's
+// answer and only its answer.
+//
+// Only reachable for a validated document: every attached door has a
+// doorBinding (refused at the attachment otherwise) and every opening's line
+// and width are finite and positive. It still returns an error rather than
+// panicking, because [RoomSource] is exported and a spec may be assembled in
+// Go.
+func attachedDoorLowering(key string, gp *RoomGameplaySource) ([]encounter.PlacedPropInput, []encounter.DoorInput, error) {
+	bounds := boundDoorsOf(gp.Walls)
+	placed := make([]encounter.PlacedPropInput, 0, len(bounds))
+	doors := make([]encounter.DoorInput, 0, len(bounds))
+	for i := range bounds {
+		b := bounds[i]
+		binding, bound := gp.DoorBindings[b.id]
+		if !bound {
+			return nil, nil, fmt.Errorf("%s: %s", b.path, attachedDoorNeedsBinding)
+		}
+		pose, err := attachedDoorPose(b.wall, b.opening)
+		if err != nil {
+			return nil, nil, fmt.Errorf("%s: %w", b.path, err)
+		}
+		placement := placedFootprintFrom(attachedDoorDeclaration(b.wall, b.opening), pose)
+		if err := canonicalPlacementBounds(placement); err != nil {
+			return nil, nil, fmt.Errorf("%s: %w", b.path, err)
+		}
+		// One placement, two questions: the map DRAWS the rectangle under the
+		// raw id, and the door STATE decides what that rectangle closes. The
+		// door stands in no edge crossing, so Edges stays empty.
+		doors = append(doors, encounter.DoorInput{
+			ID:        encounter.DoorID(key + "/" + b.id),
+			Placement: &placement,
+			State:     doorStateOf(binding.Locked, binding.Closed),
+		})
+		placed = append(placed, encounter.PlacedPropInput{
+			ID:                encounter.PropID(b.id),
+			Placement:         placement,
+			BlocksMovement:    false,
+			BlocksLineOfSight: false,
+		})
+	}
+
+	return placed, doors, nil
 }
