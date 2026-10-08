@@ -125,33 +125,79 @@ func (m *Manager) acquireCharacters(ctx context.Context, characters ...string) (
 }
 
 // acquireCharactersFor takes, for a verb already holding its session's guard,
-// the guards of the given characters it does not hold yet, and remembers them
-// on the scope until the returned release gives them back. A guard the verb
-// already holds is never asked for twice, so a host's non-reentrant lock is
-// safe.
+// the guards of the given characters it does not hold yet, and remembers each
+// on the scope until the returned release gives back the ones this call
+// asked for.
+//
+// THE ID ORDER IS KEPT ACROSS THE WHOLE VERB, not only within one call: a
+// verb holding carol's guard that comes to need bob's (a Join whose commit
+// closes the run clears every seat) gives carol's back and takes bob's, then
+// carol's again, so no verb ever waits on a lower id while holding a higher
+// one. Giving a guard back is safe here because the session's guard is held
+// throughout: every character it is taken for is seated in this run, and
+// both its sheet and its seat change only under that session guard.
+//
+// A guard the verb already holds is never asked for twice, so a host's
+// non-reentrant lock is safe.
 func (m *Manager) acquireCharactersFor(ctx context.Context, scope *writeScope, characters ...string) (func(), error) {
+	if scope.heldCharacters == nil {
+		scope.heldCharacters = map[string]func(){}
+	}
 	var wanted []string
 	for _, character := range uniqueSorted(characters) {
-		if !scope.heldCharacters[character] {
+		if _, held := scope.heldCharacters[character]; !held {
 			wanted = append(wanted, character)
 		}
 	}
-	release, err := m.acquireCharacters(ctx, wanted...)
-	if err != nil {
-		return nil, err
+	if len(wanted) == 0 {
+		return func() {}, nil
 	}
-	if scope.heldCharacters == nil {
-		scope.heldCharacters = map[string]bool{}
+
+	// Every held guard above the lowest wanted id is given back first, so
+	// the retake runs in one ascending pass.
+	var retake []string
+	for character := range scope.heldCharacters {
+		if character > wanted[0] {
+			retake = append(retake, character)
+		}
 	}
-	for _, character := range wanted {
-		scope.heldCharacters[character] = true
+	sort.Sort(sort.Reverse(sort.StringSlice(retake)))
+	for _, character := range retake {
+		scope.heldCharacters[character]()
+		delete(scope.heldCharacters, character)
+	}
+
+	for _, character := range uniqueSorted(append(append([]string(nil), wanted...), retake...)) {
+		release, err := m.lockCharacter(ctx, character)
+		if err != nil {
+			return nil, err
+		}
+		scope.heldCharacters[character] = release
 	}
 	return func() {
-		for _, character := range wanted {
-			delete(scope.heldCharacters, character)
+		for i := len(wanted) - 1; i >= 0; i-- {
+			if release, ok := scope.heldCharacters[wanted[i]]; ok {
+				release()
+				delete(scope.heldCharacters, wanted[i])
+			}
 		}
-		release()
 	}, nil
+}
+
+// lockCharacter takes one character's guard, or answers a release that does
+// nothing when the host serializes externally.
+func (m *Manager) lockCharacter(ctx context.Context, character string) (func(), error) {
+	if m.locker == nil {
+		return func() {}, nil
+	}
+	held, err := m.locker.LockCharacter(ctx, &LockCharacterInput{Character: character})
+	if err != nil {
+		return nil, fmt.Errorf("lock character %q: %w", character, err)
+	}
+	if held == nil || held.Release == nil {
+		return nil, fmt.Errorf("lock character %q: %w", character, ErrBadSessionLock)
+	}
+	return held.Release, nil
 }
 
 // uniqueSorted is the id order guards are taken in, each id once.

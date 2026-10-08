@@ -31,6 +31,15 @@ the session's guard (an equip in a fight is a turn action priced at
 resolution's door). `NextLevel` is a read and takes no guard. Launch and Join
 write a seat; Exit, End and the commit that closes a run clear it.
 
+**A seat naming a run that is over still holds the character.** A run that
+closes on its own (party defeated, a reached-position ending) clears its seats
+in the commit that closes it, but a run a host simply abandons — never Ended,
+its members never Exited — keeps every party member seated in it: their
+equips go to a run nobody plays, and Launch and Join elsewhere refuse them
+with `ErrSeatedElsewhere`. **The host must call `End`** (or `Exit` per member)
+for every run it stops playing. There is deliberately no verb that clears a
+seat on its own: a seat changes only with the run that holds it.
+
 **Every character record goes through the verb's one sheet store**
 ([`store.go`](./store.go)). Nothing else calls `GetCharacter` or
 `SaveCharacter` — `TestOnlyTheStoreCallsTheCharacterRepository` holds it — so

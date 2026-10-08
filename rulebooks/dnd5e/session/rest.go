@@ -166,14 +166,25 @@ func (m *Manager) Rest(ctx context.Context, in *RestInput) (*RestOutput, error) 
 		}
 	}
 
+	// EVERY RESTER IS RESOLVED BEFORE ANY IS SAVED, Launch's shape: a later
+	// rester the rulebook refuses (more hit dice than they hold) leaves the
+	// earlier ones unwritten, with no beat and no hour passed. The records a
+	// rest changes are carried to the next rester's resolution in memory
+	// ([restPending]) and saved together once every rester has resolved.
 	sheets := m.sheetsFor(scope)
+	pending := &restPending{}
 	results := make([]restResult, 0, len(in.Resters))
 	for _, rester := range in.Resters {
-		result, err := m.restOne(ctx, scope, sheets, rester)
+		result, err := m.restOne(ctx, scope, sheets, pending, rester)
 		if err != nil {
-			return nil, fmt.Errorf("rest: %w", saveErrorAfterWrites(scope, "", err))
+			return nil, fmt.Errorf("rest: %w", err)
 		}
 		results = append(results, result)
+	}
+	for _, record := range pending.ordered() {
+		if err := sheets.save(ctx, record); err != nil {
+			return nil, fmt.Errorf("rest: %w", err)
+		}
 	}
 
 	members := make([]encounter.RestingMember, 0, len(results))
@@ -278,13 +289,13 @@ func refuseRester(scope *writeScope, member string) error {
 // the run holds as it stands now (an earlier rester's already rested), and
 // shapes what the record tells.
 func (m *Manager) restOne(
-	ctx context.Context, scope *writeScope, sheets sheetStore, rester Rester,
+	ctx context.Context, scope *writeScope, sheets sheetStore, pending *restPending, rester Rester,
 ) (restResult, error) {
-	record, err := sheets.load(ctx, "rester", rester.Member)
+	record, err := pending.load(ctx, sheets, "rester", rester.Member)
 	if err != nil {
 		return restResult{}, err
 	}
-	others, err := m.othersOf(ctx, scope, sheets, rester.Member)
+	others, err := m.othersOf(ctx, scope, sheets, pending, rester.Member)
 	if err != nil {
 		return restResult{}, err
 	}
@@ -303,15 +314,10 @@ func (m *Manager) restOne(
 			rester.Member, ErrBadCharacter)
 	}
 
-	if err := sheets.save(ctx, out.Character); err != nil {
-		return restResult{}, err
-	}
+	pending.hold(out.Character)
 	for _, dirty := range out.DirtyCharacters {
-		if dirty == nil {
-			continue
-		}
-		if err := sheets.save(ctx, dirty); err != nil {
-			return restResult{}, err
+		if dirty != nil {
+			pending.hold(dirty)
 		}
 	}
 	for _, dirty := range out.DirtyMonsters {
@@ -345,12 +351,52 @@ func (m *Manager) restOne(
 	}, nil
 }
 
+// restPending is the records one Rest has changed and not yet saved: every
+// rester's rested sheet and every sheet a rest dirtied, newest record per
+// character, in the order each was first changed. It is the verb's own
+// unwritten work, not a copy of anything the repository holds — a record not
+// in it is read from the store at the moment it is asked for — and it is
+// saved, all of it, only once every rester has resolved.
+type restPending struct {
+	order []string
+	byID  map[string]*character.Data
+}
+
+// hold records a changed sheet, replacing any earlier change to it.
+func (p *restPending) hold(record *character.Data) {
+	if p.byID == nil {
+		p.byID = map[string]*character.Data{}
+	}
+	if _, seen := p.byID[record.ID]; !seen {
+		p.order = append(p.order, record.ID)
+	}
+	p.byID[record.ID] = record
+}
+
+// load answers a changed sheet from this rest's unwritten work, or reads the
+// store.
+func (p *restPending) load(ctx context.Context, sheets sheetStore, role, id string) (*character.Data, error) {
+	if record, ok := p.byID[id]; ok {
+		return record, nil
+	}
+	return sheets.load(ctx, role, id)
+}
+
+// ordered is every changed sheet, in the order each was first changed.
+func (p *restPending) ordered() []*character.Data {
+	out := make([]*character.Data, 0, len(p.order))
+	for _, id := range p.order {
+		out = append(out, p.byID[id])
+	}
+	return out
+}
+
 // othersOf is every sheet the run holds except the rester's: each other
 // player's record, read now through the verb's store, and each monster's
 // stat block from the session record. A rest can end a concentration that
 // was holding an effect on any of them.
 func (m *Manager) othersOf(
-	ctx context.Context, scope *writeScope, sheets sheetStore, rester string,
+	ctx context.Context, scope *writeScope, sheets sheetStore, pending *restPending, rester string,
 ) ([]resolution.Participant, error) {
 	roster, err := scope.enc.Members()
 	if err != nil {
@@ -364,7 +410,7 @@ func (m *Manager) othersOf(
 		}
 		switch member.Kind {
 		case encounter.KindPlayer:
-			data, err := sheets.load(ctx, "participant", id)
+			data, err := pending.load(ctx, sheets, "participant", id)
 			if err != nil {
 				return nil, err
 			}
@@ -407,15 +453,17 @@ func closeBrokenAreas(scope *writeScope, results []restResult) error {
 //
 // The rulebook's three refusals of the rest itself — more hit dice than
 // remain, a sheet with none, a dead character — are ErrBadRest with the
-// reason kept as text. A sheet resolution could not attach (an unreadable
-// condition, a hold whose effect sits on a member it was not handed) is
-// ErrBadCharacter: the repair is the sheet's, not the request's. Nothing else
-// is guessed at.
+// reason kept as text. Two refusals say the RUN is wrong, not a sheet or the
+// request, and are ErrInvalidSession: a world with no die to throw the hit
+// dice with, and a hold whose effect sits on a member the run does not hold
+// (the rest is handed every other sheet in the run, so that is an invariant
+// the run broke). A sheet resolution could not attach is ErrBadCharacter.
+// Nothing else is guessed at.
 func translateRest(member string, err error) error {
-	if errors.Is(err, resolution.ErrBadParticipant) {
-		return translateResolution(err)
+	if errors.Is(err, resolution.ErrBadParticipant) || errors.Is(err, resolution.ErrNoRoller) {
+		return fmt.Errorf("rester %q: %w: %v", member, ErrInvalidSession, err)
 	}
-	if !errors.Is(err, resolution.ErrNilInput) && !errors.Is(err, resolution.ErrNoRoller) {
+	if !errors.Is(err, resolution.ErrNilInput) {
 		switch rpgerr.GetCode(err) {
 		case rpgerr.CodeResourceExhausted, rpgerr.CodeNotFound, rpgerr.CodeInvalidState:
 			return fmt.Errorf("rester %q: %w: %v", member, ErrBadRest, err)

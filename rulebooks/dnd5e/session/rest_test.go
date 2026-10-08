@@ -8,9 +8,11 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -236,4 +238,122 @@ func (s *RestSuite) TestTheRestBeatTellsWhatItRefilledAndWhatItEnded() {
 		s.Equal("bob", removed.Target)
 	}
 	s.Contains(endedRefs, refs.Conditions.Dodging().String(), "the rest took dodging off bob")
+}
+
+// TestARefusedSecondResterLeavesTheFirstUnwritten: every rester resolves
+// before any is saved, so a later rester the rulebook refuses (nine dice
+// asked, three held) leaves the first untouched, with no beat told and no
+// hour passed.
+func (s *RestSuite) TestARefusedSecondResterLeavesTheFirstUnwritten() {
+	s.start(freeRoamDuelWorld(s.T()), woundedFighter("alice"), woundedFighter("bob"))
+	before, charSaves, worldSaves := s.clock(), s.characters.saves, s.encounters.saves
+
+	_, err := s.mgr.Rest(context.Background(), &session.RestInput{
+		Session: "sess", Kind: session.RestShort,
+		Resters: []session.Rester{{Member: "alice", HitDice: 2}, {Member: "bob", HitDice: 9}},
+	})
+	s.Require().ErrorIs(err, session.ErrBadRest)
+
+	s.Equal(charSaves, s.characters.saves, "alice's rest was not written")
+	s.Equal(10, s.stored("alice").HitPoints)
+	s.Equal(3, s.stored("alice").Resources[resources.HitDice].Current)
+	s.Equal(worldSaves, s.encounters.saves)
+	s.Equal(before, s.clock(), "no hour passed")
+	s.Empty(s.stream.published, "no beat")
+}
+
+// blessing stands bob concentrating on Bless with its effect on alice.
+func (s *RestSuite) blessing(bob, alice *character.Data) {
+	holding := conditions.NewConcentratingCondition("bob", refs.Spells.Bless().String(), "Bless", 10)
+	holding.Children = []dnd5eEvents.ChildRef{{MemberID: "alice", ConditionRef: refs.Conditions.Blessed().String(), SourceID: "bob"}}
+	held, err := holding.ToJSON()
+	s.Require().NoError(err)
+	bob.Conditions = []json.RawMessage{held}
+	bless, err := conditions.NewBlessedCondition(conditions.NewBlessedConditionInput{
+		MemberID: "alice", SourceID: "bob", SourceRef: refs.Spells.Bless(),
+	})
+	s.Require().NoError(err)
+	blessed, err := bless.ToJSON()
+	s.Require().NoError(err)
+	alice.Conditions = append(alice.Conditions, blessed)
+}
+
+// TestARestEndsAHoldOnAnotherMemberAndSavesTheirSheet is the Others path: bob
+// rests, his Bless ends, and the effect it held on alice comes off alice's
+// own sheet — saved, and told on bob's rest beat.
+func (s *RestSuite) TestARestEndsAHoldOnAnotherMemberAndSavesTheirSheet() {
+	alice, bob := armedFighter("alice"), withHitDice(armedFighter("bob"), 1)
+	s.blessing(bob, alice)
+	s.start(freeRoamDuelWorld(s.T()), alice, bob)
+	s.Require().True(s.holds("alice", refs.Conditions.Blessed().String()), "alice starts blessed")
+
+	out, err := s.mgr.Rest(context.Background(), &session.RestInput{
+		Session: "sess", Kind: session.RestShort, Resters: []session.Rester{{Member: "bob"}},
+	})
+	s.Require().NoError(err)
+
+	s.False(s.holds("alice", refs.Conditions.Blessed().String()), "the Bless came off alice's sheet")
+	s.Contains(out.Saved.Written, "character:alice")
+	beat := s.restedTo("alice")
+	s.Require().Len(beat, 1)
+	s.Require().Len(beat[0].ConcentrationEnded, 1)
+	var removed []string
+	for _, r := range beat[0].ConcentrationEnded[0].Removed {
+		removed = append(removed, r.Target+":"+r.Ref)
+	}
+	s.Contains(removed, "alice:"+refs.Conditions.Blessed().String(), "the removal is told on bob's rest beat")
+}
+
+// holds reports whether a member's stored sheet carries a condition ref.
+func (s *RestSuite) holds(member, ref string) bool {
+	for _, raw := range s.stored(member).Conditions {
+		var peek struct {
+			Ref *core.Ref `json:"ref"`
+		}
+		if json.Unmarshal(raw, &peek) == nil && peek.Ref != nil && peek.Ref.String() == ref {
+			return true
+		}
+	}
+	return false
+}
+
+// TestAnAreaClosesAfterTheRestIsTold: the rest beat comes before the
+// membership change the closed area tells — cause before consequence.
+func (s *RestSuite) TestAnAreaClosesAfterTheRestIsTold() {
+	bob := withHitDice(armedFighter("bob"), 1)
+	holding := conditions.NewConcentratingCondition("bob", refs.Spells.FogCloud().String(), "Fog Cloud", 10)
+	held, err := holding.ToJSON()
+	s.Require().NoError(err)
+	bob.Conditions = []json.RawMessage{held}
+	world := freeRoamDuelWorld(s.T())
+	world.SightAreas = []encounter.SightAreaData{{
+		ID: "fog-bob", SourceID: "bob", Name: "Fog Cloud",
+		Center: encounter.PositionData{X: 1, Y: 1}, RadiusFeet: 10,
+		MembershipRef: "dnd5e:conditions:in_fog", MembershipName: "In the fog", MembershipSourceID: "bob",
+	}}
+	s.start(world, armedFighter("alice"), bob)
+
+	_, err = s.mgr.Rest(context.Background(), &session.RestInput{
+		Session: "sess", Kind: session.RestShort, Resters: []session.Rester{{Member: "bob"}},
+	})
+	s.Require().NoError(err)
+
+	var rested, left uint64
+	for _, event := range s.stream.published {
+		if event.Recipient != "alice" {
+			continue
+		}
+		switch event.Kind {
+		case session.EventRested:
+			rested = event.Seq
+		case session.EventActivationResult:
+			if body, ok := event.Body.(session.ActivationResultBody); ok && body.ConditionRemoved != nil &&
+				body.ConditionRemoved.Target == "alice" {
+				left = event.Seq
+			}
+		}
+	}
+	s.Require().NotZero(rested, "alice witnesses the rest")
+	s.Require().NotZero(left, "alice is told she left the closed area")
+	s.Less(rested, left, "the rest is told before the area it closed")
 }

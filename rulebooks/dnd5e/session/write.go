@@ -1492,7 +1492,7 @@ type writeScope struct {
 	// session's (Launch's party, a seat a closing commit clears), so a guard
 	// is never asked for twice within one verb. See
 	// [Manager.acquireCharactersFor].
-	heldCharacters map[string]bool
+	heldCharacters map[string]func()
 
 	// openAtLoad reports that the run was still open when this verb loaded
 	// it, so commit can tell a run this verb closed — whose seats it clears —
