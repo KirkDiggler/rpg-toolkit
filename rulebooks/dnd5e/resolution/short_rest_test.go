@@ -20,6 +20,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
@@ -268,6 +269,38 @@ func (s *ShortRestTestSuite) TestAHoldReachingAMemberNotPassedInRefuses() {
 	after, err := json.Marshal(rester)
 	s.Require().NoError(err)
 	s.Require().JSONEq(string(before), string(after), "the caller's record must not move")
+}
+
+// A hold's effect on a monster comes off with it: Bane on a goblin, the goblin
+// passed in, comes back dirty without Baned.
+func (s *ShortRestTestSuite) TestAHoldStripsItsEffectFromAMonster() {
+	const goblinID = "rest-goblin"
+	goblin := monsters.NewGoblin(goblinID).ToData()
+	goblin.Conditions = append(goblin.Conditions, baneConditionJSON(s.T(), goblinID, shortResterID))
+	rester := s.rester()
+	rester.Conditions = []json.RawMessage{baneOwnerJSON(s.T(), shortResterID, 10, dnd5eEvents.ConditionAddress{
+		MemberID: goblinID, ConditionRef: refs.Conditions.Baned().String(), SourceID: shortResterID,
+	})}
+
+	out, err := ShortRest(s.ctx, &ShortRestInput{
+		Character: rester, Others: []Participant{{Monster: goblin}},
+	})
+	s.Require().NoError(err)
+
+	s.Require().Len(out.ConcentrationBreaks, 1)
+	s.Equal(refs.Spells.Bane().String(), out.ConcentrationBreaks[0].Spell.Ref)
+	s.Empty(out.DirtyCharacters)
+	s.Require().Len(out.DirtyMonsters, 1)
+	s.Equal(goblinID, out.DirtyMonsters[0].ID)
+	for _, raw := range out.DirtyMonsters[0].Conditions {
+		var head struct {
+			Ref *core.Ref `json:"ref"`
+		}
+		s.Require().NoError(json.Unmarshal(raw, &head))
+		if head.Ref != nil {
+			s.NotEqual(refs.Conditions.Baned().String(), head.Ref.String(), "Baned came off the goblin")
+		}
+	}
 }
 
 // A short rest ends every hold, whatever its clock: the rulebook ends a
