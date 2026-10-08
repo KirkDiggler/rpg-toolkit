@@ -7,21 +7,21 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
-// ExplorationData is character-owned discovery memory, independent of a run TTL.
-// Check IDs are the compiler's qualified dungeon/check identities.
+// ExplorationData stores character-owned discovery preferences only.
+// Attempts and learned facts belong to EncounterData, never this profile.
+// Legacy JSON may contain a checks member; ordinary decoding ignores that
+// obsolete duplicate rather than importing it into a new playthrough.
 type ExplorationData struct {
-	Character          string                                   `json:"character"`
-	PrivateDiscoveries bool                                     `json:"private,omitempty"`
-	Checks             map[string]encounter.DiscoveryMemoryData `json:"checks,omitempty"`
+	Character          string `json:"character"`
+	PrivateDiscoveries bool   `json:"private,omitempty"`
 }
 
-// ExplorationRepository is the host's opaque key-value discovery profile store.
+// ExplorationRepository is the host's opaque key-value preference store.
 // Hosts must coordinate operations touching the same profile, including across
 // sessions. A session-ID-only lock does not serialize those shared records.
 type ExplorationRepository interface {
@@ -58,7 +58,7 @@ func (m *Manager) prepareExploration(ctx context.Context, scope *writeScope, ext
 	for _, id := range ordered {
 		profile, loadErr := m.explorations.GetExploration(ctx, id)
 		if errors.Is(loadErr, ErrNotFound) {
-			profile = &ExplorationData{Character: id, Checks: map[string]encounter.DiscoveryMemoryData{}}
+			profile = &ExplorationData{Character: id}
 		} else if loadErr != nil {
 			return loadErr
 		}
@@ -71,10 +71,11 @@ func (m *Manager) prepareExploration(ctx context.Context, scope *writeScope, ext
 		if err = m.stageCheck(ctx, scope, "discovery observer", id); err != nil {
 			return err
 		}
-		// Existing members import retained memory before any movement can roll.
+		// Restore only the preference. Existing attempt/knowledge state comes
+		// from the loaded encounter; no character-owned checks enter this call.
 		for _, member := range roster {
 			if string(member.ID) == id {
-				if _, err = scope.enc.RestoreDiscovery(&encounter.RestoreDiscoveryInput{Member: member.ID, Private: profile.PrivateDiscoveries, Checks: profile.Checks}); err != nil {
+				if _, err = scope.enc.RestoreDiscovery(&encounter.RestoreDiscoveryInput{Member: member.ID, Private: profile.PrivateDiscoveries}); err != nil {
 					return translate(err)
 				}
 				break
@@ -85,11 +86,8 @@ func (m *Manager) prepareExploration(ctx context.Context, scope *writeScope, ext
 }
 
 func cloneExploration(in *ExplorationData) *ExplorationData {
-	out := &ExplorationData{Character: in.Character, PrivateDiscoveries: in.PrivateDiscoveries, Checks: map[string]encounter.DiscoveryMemoryData{}}
-	for id, memory := range in.Checks {
-		out.Checks[id] = memory
-	}
-	return out
+	out := *in
+	return &out
 }
 
 func (m *Manager) saveExploration(ctx context.Context, scope *writeScope) error {
@@ -106,19 +104,12 @@ func (m *Manager) saveExploration(ctx context.Context, scope *writeScope) error 
 		if profile == nil {
 			continue
 		}
-		memory, err := scope.enc.DiscoveryMemory(&encounter.DiscoveryMemoryInput{Member: member.ID})
-		if err != nil {
-			return translate(err)
-		}
-		for check, value := range memory.Checks {
-			profile.Checks[check] = value
-		}
 		sharing, err := scope.enc.DiscoverySharing(&encounter.DiscoveryMemoryInput{Member: member.ID})
 		if err != nil {
 			return translate(err)
 		}
 		profile.PrivateDiscoveries = !sharing.Sharing
-		if reflect.DeepEqual(*profile, scope.explorationBefore[id]) {
+		if *profile == scope.explorationBefore[id] {
 			continue
 		}
 		if err = m.explorations.SaveExploration(ctx, profile); err != nil {

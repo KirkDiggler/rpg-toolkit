@@ -130,6 +130,129 @@ func fieldsOfSegment() []string {
 	return out
 }
 
+// fieldNamesOf names a type's exported fields in declaration order — the
+// structural records' half of the "nothing on the wire but the fixed facts"
+// claim (rpg-project#169).
+func fieldNamesOf(v any) []string {
+	t := reflect.TypeOf(v)
+	out := make([]string, 0, t.NumField())
+	for i := 0; i < t.NumField(); i++ {
+		if t.Field(i).IsExported() {
+			out = append(out, t.Field(i).Name)
+		}
+	}
+
+	return out
+}
+
+// TestStructuralLayoutCrossesTheSeamWhole is the value half of
+// rpg-project#169: every provider field of a wall, its openings and an
+// independent door arrives, spelled in this package's own footpoint type, with
+// nothing conversion-shaped happening on the way.
+//
+// The numbers are deliberately all different (a length that is not its height,
+// an elevation that is negative, an opening position that is not the midpoint)
+// so a converter that swapped or defaulted any of them fails here instead of
+// drawing a wall at the wrong place.
+func TestStructuralLayoutCrossesTheSeamWhole(t *testing.T) {
+	in := encounter.Atlas{
+		Orientation: encounter.HexesArePointyTop(),
+		StructuralWalls: []encounter.AtlasStructuralWall{{
+			ID:        encounter.PropID("wall-presence"),
+			Ref:       "dnd5e:env:test:wall",
+			From:      spatial.Point{X: 1.5, Y: 2.25},
+			To:        spatial.Point{X: 11.5, Y: 2.25},
+			Height:    3,
+			Thickness: 0.3,
+			Elevation: -1.25,
+			Openings: []encounter.AtlasStructuralOpening{
+				{ID: "bare", Position: 2, Width: 1.5},
+				{ID: "gapped", Position: 7.25, Width: 2},
+			},
+		}},
+		StructuralDoors: []encounter.AtlasStructuralDoor{{
+			ID:        encounter.DoorID("vault/gate"),
+			Ref:       "dnd5e:env:test:door",
+			From:      spatial.Point{X: 6.25, Y: 2.25},
+			To:        spatial.Point{X: 8.25, Y: 2.25},
+			Height:    3,
+			Thickness: 0.3,
+			Elevation: -1.25,
+		}},
+	}
+
+	out := projectAtlas(in)
+
+	require.Len(t, out.StructuralWalls, 1)
+	wall := out.StructuralWalls[0]
+	require.Equal(t, "wall-presence", wall.ID, "the raw static presence id, verbatim")
+	require.Equal(t, "dnd5e:env:test:wall", wall.Ref, "opaque, unread")
+	require.Equal(t, FootprintPoint{X: 1.5, Y: 2.25}, wall.From, "canonical feet, one frame lower")
+	require.Equal(t, FootprintPoint{X: 11.5, Y: 2.25}, wall.To)
+	require.Equal(t, 3.0, wall.Height)
+	require.Equal(t, 0.3, wall.Thickness)
+	require.Equal(t, -1.25, wall.Elevation, "a structural line may be sunk; negative is an authored fact")
+	require.Equal(t, []AtlasStructuralOpening{
+		{ID: "bare", Position: 2, Width: 1.5},
+		{ID: "gapped", Position: 7.25, Width: 2},
+	}, wall.Openings, "the permitted cuts, in authored order, id/position/width only")
+
+	require.Len(t, out.StructuralDoors, 1)
+	door := out.StructuralDoors[0]
+	require.Equal(t, "vault/gate", door.ID, "the actual canonical gameplay door id")
+	require.Equal(t, "dnd5e:env:test:door", door.Ref)
+	require.Equal(t, FootprintPoint{X: 6.25, Y: 2.25}, door.From, "the resolved visual opening endpoints")
+	require.Equal(t, FootprintPoint{X: 8.25, Y: 2.25}, door.To)
+	require.Equal(t, 3.0, door.Height)
+	require.Equal(t, 0.3, door.Thickness)
+	require.Equal(t, -1.25, door.Elevation)
+
+	// NOTHING MORE AND NOTHING ELSEWHERE. A structural row is fixed layout:
+	// no state, no private placed id and no parent association may ride it,
+	// because a client that could read those would be reading world truth this
+	// seam is forbidden to send.
+	require.Equal(t, []string{"ID", "Ref", "From", "To", "Height", "Thickness", "Elevation", "Openings"},
+		fieldNamesOf(AtlasStructuralWall{}), "a wall names its line and its cuts and nothing mutable")
+	require.Equal(t, []string{"ID", "Position", "Width"},
+		fieldNamesOf(AtlasStructuralOpening{}), "an opening carries no door id and no state")
+	require.Equal(t, []string{"ID", "Ref", "From", "To", "Height", "Thickness", "Elevation"},
+		fieldNamesOf(AtlasStructuralDoor{}), "a door stands on its own identity with no parent id")
+}
+
+// TestTheStructuralSlicesAreCopiedNotShared is [TestThePlacedCellsAreCopiedNotShared]'s
+// claim on the structural collection: projectAtlas hands out its OWN backing
+// arrays for the wall list, each wall's opening list, and the door list, so a
+// caller editing a returned atlas cannot reach the composition's snapshot.
+//
+// INTERNAL for the same reason as its neighbours: a seam read reloads every
+// call, so an external version cannot fail whether or not the copy happens.
+//
+// The mutant it kills is the tidy-looking `Openings: wall.Openings`, which
+// compiles, passes every value assertion above, and shares the provider's own
+// slice with the host.
+func TestTheStructuralSlicesAreCopiedNotShared(t *testing.T) {
+	innerOpenings := []encounter.AtlasStructuralOpening{{ID: "gap", Position: 5, Width: 2}}
+	in := encounter.Atlas{
+		Orientation: encounter.HexesArePointyTop(),
+		StructuralWalls: []encounter.AtlasStructuralWall{{
+			ID: "wall-presence", From: spatial.Point{X: 0, Y: 0}, To: spatial.Point{X: 10, Y: 0},
+			Height: 3, Thickness: 0.3, Openings: innerOpenings,
+		}},
+		StructuralDoors: []encounter.AtlasStructuralDoor{{
+			ID: "vault/gate", From: spatial.Point{X: 4, Y: 0}, To: spatial.Point{X: 6, Y: 0},
+		}},
+	}
+
+	out := projectAtlas(in)
+	out.StructuralWalls[0].Openings[0] = AtlasStructuralOpening{ID: "edited"}
+	out.StructuralWalls[0].From = FootprintPoint{X: 99, Y: 99}
+	out.StructuralDoors[0].ID = "edited/gate"
+
+	require.Equal(t, "gap", innerOpenings[0].ID, "a caller's edit must not reach the composition's snapshot")
+	require.Equal(t, spatial.Point{X: 0, Y: 0}, in.StructuralWalls[0].From)
+	require.Equal(t, encounter.DoorID("vault/gate"), in.StructuralDoors[0].ID)
+}
+
 // TestAnEmptyAtlasProjectsEmptyLists — a field with no walls-as-lines and
 // nothing sealed projects empty, never nil-with-a-length, so a host that
 // ranges over either gets the same shape whatever the dungeon is.
@@ -139,6 +262,8 @@ func TestAnEmptyAtlasProjectsEmptyLists(t *testing.T) {
 	require.Empty(t, out.Segments)
 	require.Empty(t, out.Sealed)
 	require.Empty(t, out.Placed, "a dungeon whose author drew no rectangles ranges the same as one that did")
+	require.Empty(t, out.StructuralWalls, "and one whose author drew no structural walls")
+	require.Empty(t, out.StructuralDoors, "nor any independently permitted door")
 }
 
 // TestTheStartIsCopiedNotShared pins that projectAtlas hands out its OWN
