@@ -469,6 +469,45 @@ func (s *ExperienceTestSuite) TestTwoFallsInOneActAreTwoBeats() {
 		"and the second beat carries the running total, not a second first payment")
 }
 
+// TestTwoFallsArePaidInTheOrderTheyFell reads the grant order against the
+// fall order the story told, from the settlement facts (rpg-project#539).
+//
+// The ids are chosen so that the roster's own order (zeta spawned first) and
+// the fall order disagree whenever the composition notices alpha first, and
+// so that a grant ordered by anything but the fall's sequence has a way to be
+// wrong: whatever order the falls were told in is the order the party is paid.
+func (s *ExperienceTestSuite) TestTwoFallsArePaidInTheOrderTheyFell() {
+	s.startCrypt()
+	s.spawnGoblin("zeta", spatial.Position{X: 2, Y: 1})
+	s.spawnGoblin("alpha", spatial.Position{X: 3, Y: 1})
+	s.dropTo("zeta", 0)
+	s.dropTo("alpha", 0)
+
+	s.bobSteps()
+
+	firsts := func(kind session.EventKind, member func(session.Event) string) []string {
+		var order []string
+		seen := map[string]bool{}
+		for _, event := range s.stream.published {
+			if event.Kind != kind {
+				continue
+			}
+			id := member(event)
+			if !seen[id] {
+				seen[id] = true
+				order = append(order, id)
+			}
+		}
+		return order
+	}
+	fell := firsts(session.EventDowned, func(e session.Event) string { return e.Body.(session.DownedBody).Member })
+	paid := firsts(session.EventExperienceGained, func(e session.Event) string {
+		return e.Body.(session.ExperienceGainedBody).Member
+	})
+	s.Require().ElementsMatch([]string{"zeta", "alpha"}, fell, "both goblins fell in this act")
+	s.Equal(fell, paid, "the party is paid in the order the goblins fell")
+}
+
 // TestTheFallSettlesExactlyOnce is the idempotence the baseline buys.
 //
 // The act's delta is bounded by the scope's baseline and the composition

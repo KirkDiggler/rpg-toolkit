@@ -136,12 +136,18 @@ func (m *Manager) answerPostHit(ctx context.Context, scope *writeScope, window i
 		if err = posePostHitWindow(scope, out.Posed); err != nil {
 			return nil, err
 		}
+		if err = m.landAreas(scope.enc, scope, out); err != nil {
+			return nil, reportUnrecorded(scope, err)
+		}
 	} else {
 		struck, ok := out.Outcome.(resolution.StrikeOutcome)
 		if !ok {
 			return nil, fmt.Errorf("%w: resumed hit produced %T", ErrInvalidWorld, out.Outcome)
 		}
 		if err = m.recordRetaliation(scope, struck.Retaliation, out); err != nil {
+			return nil, reportUnrecorded(scope, err)
+		}
+		if err = m.landAreas(scope.enc, scope, out); err != nil {
 			return nil, reportUnrecorded(scope, err)
 		}
 		if err = m.resumeAfterLastAnswer(ctx, scope, "", nil); err != nil {

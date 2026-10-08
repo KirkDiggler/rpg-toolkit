@@ -94,7 +94,8 @@ func (s *InteractTestSuite) TestOutOfRangeRefusalPropagates() {
 
 // TestNegativeRangeRefusalPropagates is lesson 4 pinned as a test, not just
 // a claim: encounter.Interact already rejects a negative Range as a caller
-// defect (wrapping encounter.ErrNoMember, per PR2's own fix). Session must
+// defect (encounter.ErrBadReach, a malformed reach rather than a missing
+// member). Session must
 // forward Range untouched rather than re-validating it — if this passed
 // silently instead of refusing, that would mean session started
 // re-implementing (or worse, re-normalizing) a rule that already lives one
@@ -106,7 +107,8 @@ func (s *InteractTestSuite) TestNegativeRangeRefusalPropagates() {
 		Session: "sess", Actor: "alice", Target: "vendor", Range: -1,
 	})
 	s.Require().Error(err)
-	s.ErrorIs(err, session.ErrNoMember)
+	s.ErrorIs(err, session.ErrBadReach)
+	s.NotErrorIs(err, session.ErrNoMember, "a malformed reach is not a missing member")
 }
 
 func (s *InteractTestSuite) TestNilInputRejected() {

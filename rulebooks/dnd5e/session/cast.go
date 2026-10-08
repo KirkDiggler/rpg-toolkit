@@ -551,6 +551,9 @@ func (m *Manager) finishCast(
 	if err != nil {
 		return nil, fmt.Errorf("cast: %w", reportUnrecorded(scope, translate(err)))
 	}
+	if err := m.landAreas(scope.enc, scope, out); err != nil {
+		return nil, fmt.Errorf("cast: %w", reportUnrecorded(scope, err))
+	}
 
 	if completed, ok := out.Outcome.(resolution.CastOutcome); ok {
 		for _, target := range completed.Targets {
@@ -645,6 +648,9 @@ func (m *Manager) poseCastWindow(
 		return nil, fmt.Errorf("cast: %w", err)
 	}
 	if err := m.saveDirty(ctx, scope, out); err != nil {
+		return nil, fmt.Errorf("cast: %w", err)
+	}
+	if err := m.landAreas(scope.enc, scope, out); err != nil {
 		return nil, fmt.Errorf("cast: %w", err)
 	}
 

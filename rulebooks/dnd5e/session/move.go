@@ -11,7 +11,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -777,43 +776,6 @@ func nilIfEmpty(m map[string]Discovery) map[string]Discovery {
 		return nil
 	}
 	return m
-}
-
-func (m *Manager) reconcileFogMembership(ctx context.Context, scope *writeScope) error {
-	roster, err := scope.enc.Members()
-	if err != nil {
-		return err
-	}
-	participants, err := m.castFor(ctx, scope, roster, nil)
-	if err != nil {
-		return err
-	}
-	filtered := participants[:0]
-	for _, participant := range participants {
-		if participant.Character != nil || participant.Monster != nil {
-			filtered = append(filtered, participant)
-		}
-	}
-	participants = filtered
-	room, err := scope.enc.Canvas()
-	if err != nil {
-		return err
-	}
-	out, err := resolution.ReconcileFogMembership(ctx, &resolution.FogMembershipInput{
-		Participants: participants, Room: room, Areas: scope.enc.WorldView().SightAreas, Roller: &diceSeam{roller: m.dice},
-	})
-	if err != nil {
-		return err
-	}
-	for _, data := range out.DirtyCharacters {
-		if err := m.saveCharacterRecord(ctx, scope, data); err != nil {
-			return err
-		}
-	}
-	for _, data := range out.DirtyMonsters {
-		scope.replaceMonsterSheet(data)
-	}
-	return nil
 }
 
 // saveWalkProgress saves the latest walking sheet, including reaction changes
