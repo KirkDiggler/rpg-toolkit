@@ -231,6 +231,7 @@ var sessionSentinels = map[string]error{
 	"ErrBadEquip":             session.ErrBadEquip,
 	"ErrArmorInFight":         session.ErrArmorInFight,
 	"ErrBadRest":              session.ErrBadRest,
+	"ErrDuplicateMember":      session.ErrDuplicateMember,
 	"ErrInvalidWorld":         session.ErrInvalidWorld,
 	"ErrNoCalculation":        session.ErrNoCalculation,
 	"ErrInBubble":             session.ErrInBubble,

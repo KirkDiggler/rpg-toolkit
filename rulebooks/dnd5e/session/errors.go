@@ -409,6 +409,12 @@ var (
 	// The rulebook's own reason rides along as text.
 	ErrBadRest = errors.New("invalid rest request")
 
+	// ErrDuplicateMember is returned by Launch when one member id is claimed
+	// twice — two party characters, two compiled monsters, or one of each.
+	// Every member of a run needs an id of its own; refused before anything
+	// is written, naming both claimants.
+	ErrDuplicateMember = errors.New("member id claimed twice")
+
 	// ErrInvalidWorld is returned when the authored encounter handed to
 	// StartSession cannot be loaded.
 	//

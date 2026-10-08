@@ -299,6 +299,12 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 	// piece of the regenerated offer are derived from this same snapshot; a
 	// repository cannot answer standing to one gate and downed to compilation.
 	actor := m.loadActorSheet(ctx, in.Attacker)
+	if errors.Is(actor.err, ErrNoCharacter) {
+		// THE STORE'S ONE ANSWER (rpg-project#542): an attacker the store does
+		// not hold is refused by name, not as a stale offer — re-reading
+		// Afford would answer the same empty sheet forever.
+		return nil, fmt.Errorf("attack: %w", actor.err)
+	}
 	if actor.downed {
 		return nil, fmt.Errorf("attack: attacker %q: %w", in.Attacker, ErrDowned)
 	}

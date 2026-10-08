@@ -602,6 +602,21 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 func (m *Manager) restOnFirstAdmission(
 	ctx context.Context, scope *writeScope, record *character.Data,
 ) (*character.Data, error) {
+	rested, err := firstAdmissionRest(ctx, record)
+	if err != nil {
+		return nil, err
+	}
+	if err := m.sheetsFor(scope).save(ctx, rested); err != nil {
+		return nil, err
+	}
+	return rested, nil
+}
+
+// firstAdmissionRest resolves the first-admission long rest without saving
+// it: Join saves at once ([Manager.restOnFirstAdmission]); Launch, which must
+// refuse a whole board before it writes anything, saves every party member's
+// later, still before the party is placed.
+func firstAdmissionRest(ctx context.Context, record *character.Data) (*character.Data, error) {
 	resolved, err := resolution.LongRest(ctx, &resolution.LongRestInput{Character: record})
 	if err != nil {
 		return nil, fmt.Errorf("character %q: %w: long rest: %v", record.ID, ErrBadCharacter, err)
@@ -609,9 +624,6 @@ func (m *Manager) restOnFirstAdmission(
 	if resolved == nil || resolved.Character == nil {
 		return nil, fmt.Errorf("character %q: %w: long rest returned no character data",
 			record.ID, ErrBadCharacter)
-	}
-	if err := m.sheetsFor(scope).save(ctx, resolved.Character); err != nil {
-		return nil, err
 	}
 	return resolved.Character, nil
 }
@@ -643,6 +655,14 @@ func discoveryStanding(scope *writeScope) (map[string]bool, error) {
 }
 
 // Spawn instantiates content that lives in code and places it as a new member.
+//
+// RETIRING AS A HOST VERB (rpg-project#542, R7): [Manager.Launch] replaces
+// StartSession and Spawn for a host starting a run — one load-act-save that
+// stands the whole board, seats and rests the party and forms the fight last.
+// This verb stays only until the tier 3 deletion; a new host caller should
+// not be written. (Not marked with the Deprecated: convention yet, so the
+// suites that still build worlds through it keep their lint clean until that
+// deletion moves them.)
 //
 // The ref names what to build — "dnd5e:monsters:skeleton" — and the ID names
 // the member it becomes. They are separate because a template cannot carry
@@ -763,9 +783,10 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 	// (rpg-project#538): the stat block just recorded above is where the
 	// sheet seam reads each of them, at the moment the composition asks.
 	placed, err := place(scope, in.ID, KindMonster, sheet.Name, in.Position,
-		false, in.Holds, in.Faction, in.Arrives,
+		false, in.Holds, in.Faction, triggerOf(in.Arrives),
 		socialPlacement{
-			Intimidate: in.Intimidate, Persuade: in.Persuade, Table: folded, Temper: temper,
+			Intimidate: checkApproachesOf(in.Intimidate), Persuade: checkApproachesOf(in.Persuade),
+			Table: folded, Temper: temper,
 		})
 	if err != nil {
 		return nil, fmt.Errorf("spawn: %w", err)
@@ -895,7 +916,7 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 // kills the pins on both. Same reasoning, one layer up.
 func place(
 	scope *writeScope, id string, kind MemberKind, name string, at spatial.Position, blocksMovement bool,
-	holds []string, faction string, arrives Arrival, social socialPlacement,
+	holds []string, faction string, arrives encounter.Trigger, social socialPlacement,
 ) (*encounter.JoinOutput, error) {
 	// This used to resolve the cell to a room first, because the composition's
 	// verbs were room-local by law and somebody had to say which chamber owned
@@ -942,16 +963,15 @@ func place(
 		// faction reaches Join empty, and Join alone decides what that
 		// means for this kind of member.
 		Faction: faction,
-		// The author's predicate, converted at the boundary and nowhere else
-		// (reserve.go): a session Arrival in, the composition's own Trigger
-		// out, nil staying nil.
-		Arrives: triggerOf(arrives),
-		// The author's shenanigan facts (rpg-project#454), converted at the
-		// boundary like Holds: the seam's own approach type in, the
-		// composition's CheckApproach out, nil staying nil. The fact id is a
-		// string on both sides, so it crosses untouched.
-		Intimidate: checkApproachesOf(social.Intimidate),
-		Persuade:   checkApproachesOf(social.Persuade),
+		// The author's predicate in the composition's own Trigger, converted
+		// at the verb's boundary (Spawn's triggerOf) or carried straight off
+		// the compiled placement (Launch); nil stays nil.
+		Arrives: arrives,
+		// The author's shenanigan facts (rpg-project#454), already in the
+		// composition's CheckApproach: converted at Spawn's door, or carried
+		// off the compiled placement by Launch. Nil stays nil.
+		Intimidate: social.Intimidate,
+		Persuade:   social.Persuade,
 		// The creature's whole policy, already three layers deep
 		// (rpg-project#465): the rulebook's default for its kind under the
 		// author's faction orders under the author's placement orders. Laid
@@ -1216,6 +1236,16 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string, extraMembe
 	if err != nil {
 		return nil, err
 	}
+	return m.openScope(ctx, data, nil, extraMembers...)
+}
+
+// openScope builds a write scope over a session record: the stored world
+// when world is nil, or the world the caller built when it is not (Launch's
+// fresh board, which no repository holds yet).
+func (m *Manager) openScope(
+	ctx context.Context, data *SessionData, world *encounter.EncounterData, extraMembers ...string,
+) (*writeScope, error) {
+	sessionID := data.ID
 
 	// REJECT, NEVER CRASH. A stored ledger LoadLedger refuses is a blob no
 	// version of this module wrote, so the honest answer is that the session
@@ -1253,8 +1283,13 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string, extraMembe
 		ledger:    ledger,
 		driver:    driver,
 	}
-	enc, baseline, standing, err := m.loadWorldWithBaseline(
-		ctx, data, strikerSeam{m: m, scope: scope}, moverSeam{m: m, scope: scope},
+	if world == nil {
+		if world, err = m.fetchWorld(ctx, data.Encounter); err != nil {
+			return nil, err
+		}
+	}
+	enc, baseline, standing, err := m.loadGivenWorld(
+		ctx, data, world, strikerSeam{m: m, scope: scope}, moverSeam{m: m, scope: scope},
 		announcerSeam{m: m, scope: scope},
 		m.checkResolverFor(scope), witnessSeam{scope: scope},
 		m.compelledDriverFor(ctx, scope),

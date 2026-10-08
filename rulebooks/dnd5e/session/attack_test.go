@@ -1008,8 +1008,9 @@ func (s *AttackTestSuite) TestAnAbsentAttackerSheetIsAbsentRatherThanCorrupt() {
 
 	_, err := s.swing(mgr)
 	s.Require().Error(err)
-	s.ErrorIs(err, session.ErrNoDeclarationID,
-		"an unreadable dependency produces a blocker, never an executable selector")
+	s.ErrorIs(err, session.ErrNoCharacter,
+		"an absent attacker is the store's one answer, before any selector is read (rpg-project#542)")
+	s.NotErrorIs(err, session.ErrBadCharacter)
 }
 
 func (s *AttackTestSuite) TestAnUnreadableAttackerSheetIsCorruptRatherThanAbsent() {
