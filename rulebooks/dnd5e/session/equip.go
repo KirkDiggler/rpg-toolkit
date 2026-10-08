@@ -191,8 +191,8 @@ func (m *Manager) equipUnseated(
 	}
 	return &EquipOutput{
 		Character: changed.Character,
-		Stowed:    equipmentMoves(changed.Stowed),
-		Drawn:     equipmentMoves(changed.Drawn),
+		Stowed:    equipmentMoves(changed.Slot, changed.Stowed),
+		Drawn:     equipmentMoves(changed.Slot, changed.Drawn),
 		Saved:     SaveReport{Written: report.written},
 	}, nil
 }
@@ -222,7 +222,7 @@ func (m *Manager) equipSeated(
 	if err != nil {
 		return nil, err
 	}
-	fight, record, err := m.equipTurn(ctx, scope, id, record)
+	fight, err := m.equipTurn(ctx, scope, id, record)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +241,7 @@ func (m *Manager) equipSeated(
 		return nil, err
 	}
 
-	stowed, drawn := equipmentMoves(changed.Stowed), equipmentMoves(changed.Drawn)
+	stowed, drawn := equipmentMoves(changed.Slot, changed.Stowed), equipmentMoves(changed.Slot, changed.Drawn)
 	var (
 		seqs   []uint64
 		deltas = map[encounter.MemberID]*encounter.IntelDelta{}
@@ -283,47 +283,33 @@ func (m *Manager) equipSeated(
 	}, nil
 }
 
-// equipTurn is the turn an in-fight change is priced against, and the record
-// to price it on; nil and the record unchanged in free roam. In a fight it
-// refuses, before anything is written, a member whose turn it is not
-// (ErrNotYourTurn) and a downed member (ErrDowned). The turn number is the
-// bubble's round, read rather than invented, as for a swing (economy.go).
-//
-// THE RECORD IS READIED FOR THE TURN HERE, as [Manager.priceSwing] readies
-// its swing's: a sheet whose economy was never lit (a world authored straight
-// into a fight, a stale stored sheet) has no readied turn for the door's
-// refresh to find, and the rulebook refuses to price against an absent
-// economy. [readyForTurn] is idempotent on a readied sheet, so the door's own
-// refresh then finds nothing left to do. Nothing is written by readying: the
-// readied record is only saved if the change lands.
+// equipTurn is the turn an in-fight change is priced against; nil in free
+// roam. In a fight it refuses, before anything is written, a member whose turn
+// it is not (ErrNotYourTurn) and a downed member (ErrDowned). The turn number
+// is the bubble's round, read rather than invented, as for a swing
+// (economy.go). Readying a sheet whose economy was never lit is resolution's:
+// its equip entry readies the turn before it prices the change.
 func (m *Manager) equipTurn(
 	ctx context.Context, scope *writeScope, id string, record *character.Data,
-) (*resolution.Turn, *character.Data, error) {
+) (*resolution.Turn, error) {
 	clock, err := scope.enc.ClockOf(&encounter.ClockOfInput{Member: encounter.MemberID(id)})
 	if err != nil {
-		return nil, nil, translate(err)
+		return nil, translate(err)
 	}
 	if ClockKind(clock.Kind) != ClockTurn {
-		return nil, record, nil
+		return nil, nil
 	}
 	if string(clock.Active) != id {
-		return nil, nil, fmt.Errorf("character %q: %w", id, ErrNotYourTurn)
+		return nil, fmt.Errorf("character %q: %w", id, ErrNotYourTurn)
 	}
 	sheet, err := character.Load(ctx, record)
 	if err != nil {
-		return nil, nil, fmt.Errorf("character %q: %w: %v", id, ErrBadCharacter, err)
+		return nil, fmt.Errorf("character %q: %w: %v", id, ErrBadCharacter, err)
 	}
 	if combat.IsDown(sheet) {
-		return nil, nil, fmt.Errorf("character %q: %w", id, ErrDowned)
+		return nil, fmt.Errorf("character %q: %w", id, ErrDowned)
 	}
-	if err := readyForTurn(ctx, sheet, clock.Round); err != nil {
-		return nil, nil, fmt.Errorf("character %q: %w: %v", id, ErrBadCost, err)
-	}
-	readied, err := sheet.ToData()
-	if err != nil {
-		return nil, nil, fmt.Errorf("character %q: %w: %v", id, ErrBadCharacter, err)
-	}
-	return &resolution.Turn{Number: clock.Round, Speed: sheet.GetSpeed()}, readied, nil
+	return &resolution.Turn{Number: clock.Round, Speed: sheet.GetSpeed()}, nil
 }
 
 // equipBeat is one RecordEquip call: one item moving in one slot.
@@ -347,14 +333,16 @@ func equipBeats(stowed, drawn []EquipmentMove) []equipBeat {
 	return beats
 }
 
-// equipmentMoves projects resolution's moves onto this package's.
-func equipmentMoves(moves []resolution.EquipMove) []EquipmentMove {
-	if len(moves) == 0 {
+// equipmentMoves projects resolution's moved refs onto this package's moves.
+// Every move carries the slot the change named, as resolution reports it: a
+// draw that stows what was in the way tells both items against that slot.
+func equipmentMoves(slot character.InventorySlot, refs []string) []EquipmentMove {
+	if len(refs) == 0 {
 		return nil
 	}
-	out := make([]EquipmentMove, 0, len(moves))
-	for _, move := range moves {
-		out = append(out, EquipmentMove{Slot: string(move.Slot), Item: move.Ref})
+	out := make([]EquipmentMove, 0, len(refs))
+	for _, ref := range refs {
+		out = append(out, EquipmentMove{Slot: string(slot), Item: ref})
 	}
 	return out
 }
