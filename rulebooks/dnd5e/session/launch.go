@@ -36,9 +36,9 @@ import (
 //
 //  1. Everything that can be refused is refused before anything is written:
 //     a party bigger than the seats, an id claimed twice, a character another
-//     run holds, any sheet or monster that cannot be resolved — and, by
-//     rehearsing the whole board on an inert copy of the world, every
-//     faction, cell or temper the encounter would refuse.
+//     run holds, any sheet or monster that cannot be resolved — and, through
+//     the encounter's ValidateBoard (Board's own validation, placing nobody),
+//     every faction, cell or temper the encounter would refuse.
 //  2. Each party character's first-admission long rest is saved, then its
 //     seat: the rested and seated sheets land before the board is placed, so
 //     every consult the placement makes reads the rested truth, and before
@@ -192,8 +192,8 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 	}
 
 	// 2. The whole board, monsters in authored order then the party in seat
-	// order, as one placement — and proved placeable on an inert copy of the
-	// world before anything is written (see [rehearseBoard]).
+	// order, as one placement — and validated by the encounter's own Board
+	// validation before anything is written.
 	orientation := in.Dungeon.Field.Canvas.Orientation
 	board := make([]encounter.JoinInput, 0, len(monsters)+len(in.Party))
 	for _, monster := range monsters {
@@ -220,8 +220,8 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 		}
 		board = append(board, join)
 	}
-	if err := rehearseBoard(*world, board); err != nil {
-		return nil, fmt.Errorf("launch: %w", err)
+	if err := scope.enc.ValidateBoard(&encounter.BoardInput{Members: board}); err != nil {
+		return nil, fmt.Errorf("launch: %w", translate(err))
 	}
 
 	// 3. Rested, then seated: both land before the board is placed, so every
@@ -283,59 +283,6 @@ func firstPartyIn(party []string, bubble *encounter.FormedBubble) string {
 	}
 	return party[0]
 }
-
-// rehearseBoard places the board on an inert copy of the run's world — the
-// encounter's own compile-only stand-ins: nobody sees anybody, so no fight can
-// form, no turn is driven and no seam is asked to write — and reports the
-// first refusal. The encounter's Board validates every member before it
-// places the first, so this is the encounter's own validation, asked before
-// Launch writes a rest or a seat, and nothing about the run is decided by it:
-// the copy is dropped.
-//
-// Its die is inert for the same reason: a faction's temperament mix is dealt
-// at the door, and a deal on a copy that is thrown away must not consume the
-// session's dice.
-func rehearseBoard(world encounter.EncounterData, board []encounter.JoinInput) error {
-	load := encounter.CompileOnlyLoad(world)
-	load.Roller = &diceSeam{roller: inertDie{}}
-	load.Standing = inertStanding{}
-	inert, err := encounter.LoadEncounter(load)
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalidWorld, err)
-	}
-	rehearsal := append([]encounter.JoinInput(nil), board...)
-	if _, err := inert.Board(&encounter.BoardInput{Members: rehearsal}); err != nil {
-		return translate(err)
-	}
-	return nil
-}
-
-// inertStanding answers the rehearsal's one look: everyone up, nobody in
-// contact, nobody defeated. It is asked only about [rehearseBoard]'s
-// thrown-away copy, where nobody sees anybody and nothing is decided — the
-// run's own look asks the real seams over the rested sheets.
-type inertStanding struct{}
-
-// Standing answers that nobody is down.
-func (inertStanding) Standing([]encounter.MemberID) ([]encounter.MemberID, error) { return nil, nil }
-
-// Assess answers every member up, out of contact, waiting.
-func (inertStanding) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
-	out := &encounter.ParticipationAssessment{Members: make([]encounter.MemberParticipation, 0, len(members))}
-	for _, member := range members {
-		out.Members = append(out.Members, encounter.MemberParticipation{
-			Member: member, Conscious: true, Turn: encounter.TurnParticipationWait,
-		})
-	}
-	return out, nil
-}
-
-// inertDie answers every roll with one. It rolls only for [rehearseBoard]'s
-// thrown-away copy, where a face decides nothing.
-type inertDie struct{}
-
-// Roll answers one.
-func (inertDie) Roll(context.Context, int) (int, error) { return 1, nil }
 
 // validateLaunch refuses a launch that is wrong in itself, before any read: no
 // dungeon, no party, a party bigger than the seats, an empty id, or an id

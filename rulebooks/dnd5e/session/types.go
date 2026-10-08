@@ -2469,9 +2469,28 @@ type RestedBody struct {
 	// Calculation is the hit dice's roll, every die sourced; nil when no die
 	// was spent.
 	Calculation *RollCalculation `json:"calculation,omitempty"`
+
+	// ConcentrationEnded is every concentration the rest ended on the rester,
+	// each with the conditions it was holding. Told on the rest's own beat,
+	// never as beats of their own.
+	ConcentrationEnded []RestConcentrationEnded `json:"concentration_ended,omitempty"`
+
+	// Ended is every condition or effect the rest took off the rester —
+	// prone, dodging, blessed — in the rulebook's order.
+	Ended []ConditionRemovedBody `json:"ended,omitempty"`
 }
 
 func (RestedBody) isEventBody() {}
+
+// RestConcentrationEnded is one concentration a rest ended: who held it, the
+// spell, why it ended, and the conditions it was holding.
+type RestConcentrationEnded struct {
+	ConcentrationEndedBody
+
+	// Removed is every condition the concentration was holding, taken off
+	// whoever it was on.
+	Removed []ConditionRemovedBody `json:"removed,omitempty"`
+}
 
 // DroppedBody is EventDropped's typed body: who dropped which prop, and where
 // it landed.

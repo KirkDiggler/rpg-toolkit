@@ -196,3 +196,44 @@ func (s *RestSuite) TestARestEndsConcentrationAndClosesItsArea() {
 		s.NotContains(string(raw), "concentrat", "the concentration ended")
 	}
 }
+
+// TestTheRestBeatTellsWhatItRefilledAndWhatItEnded is the rest beat's whole
+// account (rpg-project#542): the resources the rest refilled by full ref, the
+// concentration it ended with its reason, and the condition it took off the
+// rester — all on the rester's own beat, carried as the rulebook answered.
+func (s *RestSuite) TestTheRestBeatTellsWhatItRefilledAndWhatItEnded() {
+	bob := withHitDice(secondWindFighter(s.T(), "bob", 10, 28), 1)
+	feature := map[string]interface{}{}
+	s.Require().NoError(json.Unmarshal(bob.Features[0], &feature))
+	feature["uses"] = 0
+	raw, err := json.Marshal(feature)
+	s.Require().NoError(err)
+	bob.Features[0] = raw
+	holding := conditions.NewConcentratingCondition("bob", refs.Spells.FogCloud().String(), "Fog Cloud", 10)
+	held, err := holding.ToJSON()
+	s.Require().NoError(err)
+	dodging, err := (&conditions.DodgingCondition{MemberID: "bob"}).ToJSON()
+	s.Require().NoError(err)
+	bob.Conditions = []json.RawMessage{held, dodging}
+	s.start(freeRoamDuelWorld(s.T()), armedFighter("alice"), bob)
+
+	out, err := s.mgr.Rest(context.Background(), &session.RestInput{
+		Session: "sess", Kind: session.RestShort, Resters: []session.Rester{{Member: "bob"}},
+	})
+	s.Require().NoError(err)
+
+	toAlice := s.restedTo("alice")
+	s.Require().Len(toAlice, 1)
+	beat := toAlice[0]
+	s.Contains(beat.ResourcesRefilled, refs.Features.SecondWind().String(), "Second Wind refilled")
+	s.Equal(beat.ResourcesRefilled, out.Rested[0].ResourcesRefilled)
+	s.Require().Len(beat.ConcentrationEnded, 1)
+	s.Equal(refs.Spells.FogCloud().String(), beat.ConcentrationEnded[0].Spell.Ref)
+	s.Equal("rest", beat.ConcentrationEnded[0].Reason)
+	endedRefs := make([]string, 0, len(beat.Ended))
+	for _, removed := range beat.Ended {
+		endedRefs = append(endedRefs, removed.Ref)
+		s.Equal("bob", removed.Target)
+	}
+	s.Contains(endedRefs, refs.Conditions.Dodging().String(), "the rest took dodging off bob")
+}

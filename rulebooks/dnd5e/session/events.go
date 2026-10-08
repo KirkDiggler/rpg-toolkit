@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -2421,15 +2422,17 @@ func equipmentChangedBodyOf(payload []byte) EventBody {
 // a count is negative, or a calculation is present and does not replay.
 func restedBodyOf(payload []byte) EventBody {
 	var p struct {
-		Member            string          `json:"member"`
-		Kind              string          `json:"kind"`
-		HitPointsRestored *int            `json:"hit_points_restored"`
-		HitPoints         *int            `json:"hit_points"`
-		HitDiceSpent      *int            `json:"hit_dice_spent"`
-		HitDiceReturned   *int            `json:"hit_dice_returned"`
-		HitDiceRemaining  *int            `json:"hit_dice_remaining"`
-		ResourcesRefilled []string        `json:"resources_refilled"`
-		Calculation       json.RawMessage `json:"calculation"`
+		Member             string            `json:"member"`
+		Kind               string            `json:"kind"`
+		HitPointsRestored  *int              `json:"hit_points_restored"`
+		HitPoints          *int              `json:"hit_points"`
+		HitDiceSpent       *int              `json:"hit_dice_spent"`
+		HitDiceReturned    *int              `json:"hit_dice_returned"`
+		HitDiceRemaining   *int              `json:"hit_dice_remaining"`
+		ResourcesRefilled  []string          `json:"resources_refilled"`
+		Calculation        json.RawMessage   `json:"calculation"`
+		ConcentrationEnded []json.RawMessage `json:"concentration_ended"`
+		Ended              []json.RawMessage `json:"ended"`
 	}
 	if json.Unmarshal(payload, &p) != nil || p.Member == "" || p.Kind == "" {
 		return nil
@@ -2454,5 +2457,62 @@ func restedBodyOf(payload []byte) EventBody {
 		}
 		body.Calculation = calculation
 	}
+	for _, raw := range p.ConcentrationEnded {
+		ended, ok := restConcentrationEndedOf(raw)
+		if !ok {
+			return nil
+		}
+		body.ConcentrationEnded = append(body.ConcentrationEnded, ended)
+	}
+	for _, raw := range p.Ended {
+		removed, ok := conditionRemovedOf(p.Member, raw)
+		if !ok {
+			return nil
+		}
+		body.Ended = append(body.Ended, removed)
+	}
 	return body
+}
+
+// restConcentrationEndedOf decodes one concentration a rest ended: the same
+// caster/spell/reason a break beat carries, and the removals it held, each
+// read by the one activation-result decoder every removal goes through.
+func restConcentrationEndedOf(raw json.RawMessage) (RestConcentrationEnded, bool) {
+	held, ok := concentrationEndedEventBody(raw).(ConcentrationEndedBody)
+	if !ok {
+		return RestConcentrationEnded{}, false
+	}
+	var p struct {
+		Removed []json.RawMessage `json:"removed"`
+	}
+	if json.Unmarshal(raw, &p) != nil {
+		return RestConcentrationEnded{}, false
+	}
+	out := RestConcentrationEnded{ConcentrationEndedBody: held}
+	for _, removed := range p.Removed {
+		body, ok := conditionRemovedOf(held.Caster, removed)
+		if !ok {
+			return RestConcentrationEnded{}, false
+		}
+		out.Removed = append(out.Removed, body)
+	}
+	return out, true
+}
+
+// conditionRemovedOf decodes one removal in the activation-result shape,
+// through [activationResultBody] itself so a removal on a rest beat is held to
+// exactly the checks a removal on an activation beat is. It refuses anything
+// but a removal.
+func conditionRemovedOf(actor string, raw json.RawMessage) (ConditionRemovedBody, bool) {
+	wrapped, err := json.Marshal(map[string]json.RawMessage{
+		"actor": json.RawMessage(strconv.Quote(actor)), "result": raw,
+	})
+	if err != nil {
+		return ConditionRemovedBody{}, false
+	}
+	body, ok := activationResultBody(wrapped).(ActivationResultBody)
+	if !ok || body.ConditionRemoved == nil {
+		return ConditionRemovedBody{}, false
+	}
+	return *body.ConditionRemoved, true
 }

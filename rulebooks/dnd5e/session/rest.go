@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -112,6 +113,10 @@ type RestedMember struct {
 	// Calculation is the hit dice's roll, every die sourced to the rester;
 	// nil when no die was spent.
 	Calculation *RollCalculation
+
+	// ResourcesRefilled names every resource the rest refilled, by full ref,
+	// in the rulebook's order.
+	ResourcesRefilled []string
 }
 
 // restResult is one rester's resolved rest, carried from resolution to the
@@ -213,6 +218,7 @@ func (m *Manager) Rest(ctx context.Context, in *RestInput) (*RestOutput, error) 
 			HitDiceSpent:      result.recording.HitDiceSpent,
 			HitDiceRemaining:  result.recording.HitDiceRemaining,
 			Calculation:       sessionRollCalculationFor(result.recording.Calculation),
+			ResourcesRefilled: result.recording.ResourcesRefilled,
 		})
 	}
 	return out, nil
@@ -328,6 +334,13 @@ func (m *Manager) restOne(
 			HitDiceSpent:      out.Result.HitDiceSpent,
 			HitDiceRemaining:  out.Result.HitDiceRemaining,
 			Calculation:       rollCalculationFor(out.Result.Healing),
+			// What the rest refilled and what it ended, the rulebook's own
+			// answers carried onto the rester's beat unconverted: refills by
+			// full ref, each broken concentration with what it held, every
+			// condition or effect the rest took off the rester.
+			ResourcesRefilled:   refStrings(out.Result.Refilled),
+			ConcentrationBreaks: out.ConcentrationBreaks,
+			Ended:               out.Ended,
 		},
 	}, nil
 }
@@ -390,18 +403,42 @@ func closeBrokenAreas(scope *writeScope, results []restResult) error {
 	return nil
 }
 
-// translateRest names a short rest's refusal in this package's words: a
-// request the rulebook calls wrong (more hit dice than remain, a sheet with
-// none) is ErrBadRest with the rulebook's reason kept as text; everything else
-// is resolution's usual translation.
+// translateRest names a short rest's refusal in this package's words.
+//
+// The rulebook's three refusals of the rest itself — more hit dice than
+// remain, a sheet with none, a dead character — are ErrBadRest with the
+// reason kept as text. A sheet resolution could not attach (an unreadable
+// condition, a hold whose effect sits on a member it was not handed) is
+// ErrBadCharacter: the repair is the sheet's, not the request's. Nothing else
+// is guessed at.
 func translateRest(member string, err error) error {
 	if errors.Is(err, resolution.ErrBadParticipant) {
 		return translateResolution(err)
 	}
-	switch rpgerr.GetCode(err) {
-	case rpgerr.CodeInvalidArgument, rpgerr.CodeResourceExhausted, rpgerr.CodeNotFound, rpgerr.CodeInvalidState:
-		return fmt.Errorf("rester %q: %w: %v", member, ErrBadRest, err)
-	default:
-		return translateResolution(err)
+	if !errors.Is(err, resolution.ErrNilInput) && !errors.Is(err, resolution.ErrNoRoller) {
+		switch rpgerr.GetCode(err) {
+		case rpgerr.CodeResourceExhausted, rpgerr.CodeNotFound, rpgerr.CodeInvalidState:
+			return fmt.Errorf("rester %q: %w: %v", member, ErrBadRest, err)
+		}
 	}
+	translated := translateResolution(err)
+	if translated == err {
+		return fmt.Errorf("rester %q: %w: %v", member, ErrBadCharacter, err)
+	}
+	return translated
+}
+
+// refStrings carries the rulebook's refs as the full ref strings the beat
+// names; nil stays nil.
+func refStrings(refs []*core.Ref) []string {
+	if len(refs) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		if ref != nil {
+			out = append(out, ref.String())
+		}
+	}
+	return out
 }
