@@ -91,8 +91,8 @@ func TestTheTestimonyCarriesWhatTheSubjectWasHolding(t *testing.T) {
 		"alice": {MainHand: "shortbow"},
 	}
 	enc, err := encounter.NewEncounter(equipmentSetup(hands,
-		encounter.MemberInput{ID: "zara", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}, SpeedFeet: 30},
-		encounter.MemberInput{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 0}, SpeedFeet: 30},
+		encounter.MemberInput{ID: "zara", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
+		encounter.MemberInput{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 0}},
 	))
 	require.NoError(t, err)
 
@@ -111,8 +111,8 @@ func TestNoHandsToObserveIsNotEmptyHands(t *testing.T) {
 		// the skeleton is deliberately absent: no sheet, no hands
 	}
 	enc, err := encounter.NewEncounter(equipmentSetup(hands,
-		encounter.MemberInput{ID: "zara", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}, SpeedFeet: 30},
-		encounter.MemberInput{ID: "skeleton", Kind: encounter.KindMonster, Position: spatial.Position{X: 1, Y: 0}, SpeedFeet: 30},
+		encounter.MemberInput{ID: "zara", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
+		encounter.MemberInput{ID: "skeleton", Kind: encounter.KindMonster, Position: spatial.Position{X: 1, Y: 0}},
 	))
 	require.NoError(t, err)
 
@@ -133,22 +133,22 @@ func TestNoHandsToObserveIsNotEmptyHands(t *testing.T) {
 
 func TestAMemberTheAnswerSkippedIsRefused(t *testing.T) {
 	_, err := encounter.NewEncounter(equipmentSetup(handsSkippingWhenTold{skip: "alice"},
-		encounter.MemberInput{ID: "zara", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}, SpeedFeet: 30},
-		encounter.MemberInput{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 0}, SpeedFeet: 30},
+		encounter.MemberInput{ID: "zara", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
+		encounter.MemberInput{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 0}},
 	))
 	require.ErrorIs(t, err, encounter.ErrNoEquipment)
 }
 
 func TestAStrangerInTheAnswerIsRefused(t *testing.T) {
 	_, err := encounter.NewEncounter(equipmentSetup(handsForAStranger{},
-		encounter.MemberInput{ID: "zara", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}, SpeedFeet: 30},
+		encounter.MemberInput{ID: "zara", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
 	))
 	require.ErrorIs(t, err, encounter.ErrNotMember)
 }
 
 func TestAnEncounterWithNoEquipmentCapabilityIsRefusedAtTheDoor(t *testing.T) {
 	setup := equipmentSetup(handsFrom{},
-		encounter.MemberInput{ID: "zara", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}, SpeedFeet: 30},
+		encounter.MemberInput{ID: "zara", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
 	)
 	setup.Equipment = nil
 	_, err := encounter.NewEncounter(setup)
@@ -183,7 +183,7 @@ func equipmentSetup(hands encounter.EquipmentWithConditions, members ...encounte
 		Initiative: orderAsGiven{},
 		Standing:   everyoneStanding{},
 		Sight:      everyoneSeesTheWholeMap{},
-		Equipment:  hands,
+		Equipment:  hands, Sheets: zeroSheets{},
 		TurnDriver: passDriver{},
 		Striker:    passStriker{}, Mover: quietMover{},
 		Announcer: quietAnnouncer{},

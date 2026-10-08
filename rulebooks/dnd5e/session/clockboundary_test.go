@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -52,7 +53,17 @@ func (s *ClockBoundaryTestSuite) SetupTest() { s.ctx = context.Background() }
 // fight wires a two-player turn clock with alice active, and gives alice
 // whatever conditions the test is about.
 func (s *ClockBoundaryTestSuite) fight(aliceConditions ...json.RawMessage) *session.Manager {
+	return s.fightAs(classes.Fighter, aliceConditions...)
+}
+
+// fightAs is fight with alice levelled in class: a class-scaled effect reads
+// its holder's levels in its own class off her level record at each use
+// (rpg-project#538), so a rage is held by a barbarian and a sneak attack by a
+// rogue, never by a fighter carrying a copied level.
+func (s *ClockBoundaryTestSuite) fightAs(class classes.Class, aliceConditions ...json.RawMessage) *session.Manager {
 	alice := armedFighter("alice")
+	alice.ClassID = class
+	alice.Levels = syntheticLevels(class, 3)
 	alice.Conditions = aliceConditions
 
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
@@ -146,8 +157,8 @@ func (s *ClockBoundaryTestSuite) TestDodgeLapsesWhenItsOwnersTurnComesAround() {
 // condition, so this asserts on the STORED BLOB rather than on presence:
 // the condition is meant to survive, with its memory cleared.
 func (s *ClockBoundaryTestSuite) TestSneakAttackForgetsItsDiceWhenTheTurnEnds() {
-	mgr := s.fight(s.raw(&conditions.SneakAttackCondition{
-		CharacterID: "alice", Level: 1, DamageDice: 1, UsedThisTurn: true,
+	mgr := s.fightAs(classes.Rogue, s.raw(&conditions.SneakAttackCondition{
+		CharacterID: "alice", UsedThisTurn: true,
 	}))
 
 	s.endTurn(mgr, "alice")
@@ -181,8 +192,8 @@ func (s *ClockBoundaryTestSuite) TestSneakAttackForgetsItsDiceWhenTheTurnEnds() 
 // through resolution, the announcer seam, and the persisted sheet, not just
 // the condition's own unit test.
 func (s *ClockBoundaryTestSuite) TestRageLapsesWhenTheBarbarianDidNothing() {
-	mgr := s.fight(s.raw(&conditions.RagingCondition{
-		CharacterID: "alice", DamageBonus: 2, Level: 1, Source: "dnd5e:features:rage",
+	mgr := s.fightAs(classes.Barbarian, s.raw(&conditions.RagingCondition{
+		CharacterID: "alice", Source: "dnd5e:features:rage",
 	}))
 	s.Require().NotNil(s.held("alice", refs.Conditions.Raging().String()), "alice starts raging")
 
@@ -385,8 +396,10 @@ func (s *ClockBoundaryTestSuite) enrage(id string) {
 	s.T().Helper()
 	sheet, err := s.characters.GetCharacter(s.ctx, id)
 	s.Require().NoError(err)
+	sheet.ClassID = classes.Barbarian
+	sheet.Levels = syntheticLevels(classes.Barbarian, 3)
 	sheet.Conditions = []json.RawMessage{s.raw(&conditions.RagingCondition{
-		CharacterID: id, DamageBonus: 2, Level: 1, Source: "dnd5e:features:rage",
+		CharacterID: id, Source: "dnd5e:features:rage",
 	})}
 	s.Require().NoError(s.characters.SaveCharacter(s.ctx, sheet))
 }
@@ -405,8 +418,8 @@ func (s *ClockBoundaryTestSuite) enrage(id string) {
 // (rpg-project#319 Phase 6); the composition announcing the fight's end is the
 // only thing that raises the boundary now, which is what this test drives.
 func (s *ClockBoundaryTestSuite) TestRageEndsWhenTheFightDoes() {
-	mgr := s.fight(s.raw(&conditions.RagingCondition{
-		CharacterID: "alice", DamageBonus: 2, Level: 1, Source: "dnd5e:features:rage",
+	mgr := s.fightAs(classes.Barbarian, s.raw(&conditions.RagingCondition{
+		CharacterID: "alice", Source: "dnd5e:features:rage",
 	}))
 	s.Require().NotNil(s.held("alice", refs.Conditions.Raging().String()), "alice starts the fight raging")
 

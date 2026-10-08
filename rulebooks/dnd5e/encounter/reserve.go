@@ -444,7 +444,7 @@ func (e *Encounter) arrivalCell(at spatial.Position, floor func(spatial.Position
 // itself included, when it is a member.
 func (e *Encounter) appendArrivedBeat(id, kind string, cell spatial.Position, at uint64) error {
 	payload, err := json.Marshal(map[string]interface{}{
-		"beat": "arrived",
+		"beat": BeatArrived,
 		"id":   id,
 		"kind": kind,
 		"cell": cell,

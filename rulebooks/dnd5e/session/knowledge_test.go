@@ -31,7 +31,8 @@ func TestKnowledgeSuite(t *testing.T) { suite.Run(t, new(KnowledgeSuite)) }
 func (s *KnowledgeSuite) TestCapturedPresentationCrossesKnowledgeAndViewWithoutAliases() {
 	no := false
 	world, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Standing: encEveryoneStanding{},
+		Sheets: encStandStill{},
+		Sight:  encEveryoneSees{}, Equipment: encNoHandsObserved{}, Standing: encEveryoneStanding{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("room", 0, 0, 3, 2)},
 			Props: []encounter.PropInput{{ID: "book", Ref: "test:props:book", At: spatial.Position{X: 1}, Holdable: true, BlocksMovement: &no, BlocksLineOfSight: &no}},

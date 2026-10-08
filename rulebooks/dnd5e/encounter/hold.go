@@ -94,7 +94,7 @@ type HoldOutput struct{}
 // no such prop) → not holdable → already held → not their turn in a fight →
 // not in range.
 //
-// Errors: ErrNilInput, ErrNoMember, ErrClosed, ErrNotMember, ErrNoProp,
+// Errors: ErrNilInput, ErrNoMember, ErrBadReach, ErrClosed, ErrNotMember, ErrNoProp,
 // ErrNotHoldable, ErrAlreadyHeld, ErrNotActive, ErrOutOfRange,
 // ErrBadPlacement.
 func (e *Encounter) Hold(in *HoldInput) (*HoldOutput, error) {
@@ -108,7 +108,7 @@ func (e *Encounter) Hold(in *HoldInput) (*HoldOutput, error) {
 		return nil, fmt.Errorf("hold: %w", ErrNoProp)
 	}
 	if in.Range < 0 {
-		return nil, fmt.Errorf("hold: range %d is negative: %w", in.Range, ErrNoMember)
+		return nil, fmt.Errorf("hold: range %d is negative: %w", in.Range, ErrBadReach)
 	}
 	if e.outcome != nil {
 		return nil, fmt.Errorf("hold: %w", ErrClosed)
@@ -324,7 +324,7 @@ func (e *Encounter) takeProp(member MemberID, target PropID) (*HoldOutput, error
 	}
 
 	payload, err := json.Marshal(map[string]interface{}{
-		"beat":   "held",
+		"beat":   BeatHeld,
 		"holder": string(member),
 		"prop":   string(target),
 	})

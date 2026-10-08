@@ -126,7 +126,7 @@ func (e *Encounter) landAttack(actor MemberID, targets []MemberID) error {
 func (e *Encounter) audienceOf(actor MemberID) (spatial.Position, []core.EntityID, error) {
 	record, ok := e.members[actor]
 	if !ok {
-		return spatial.Position{}, nil, fmt.Errorf("deed: actor %q: %w", actor, ErrNoMember)
+		return spatial.Position{}, nil, fmt.Errorf("deed: actor %q: %w", actor, ErrNotMember)
 	}
 
 	where, err := e.cellOf(record)

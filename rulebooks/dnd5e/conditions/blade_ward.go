@@ -14,7 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -40,30 +40,19 @@ type BladeWardConditionData struct {
 // member. The condition tests event.TargetID rather than AttackerID for that
 // reason — it is interested in swings coming IN.
 //
-// # It halves weapon damage the way rage does, and only weapon damage
+// # It resists weapon attacks the way rage resists everything physical
 //
-// Resistance in this rulebook is not a flag or a sheet field: it is a
-// [dnd5eEvents.DamageComponent] carrying Multiply(0.5) appended at
-// [combat.StageFinal], folded into a number by combat.FinalDamage. Rage was the
-// first tenant of that seat; this is the second.
+// Resistance in this rulebook is the target's own answer on the incoming fold:
+// a [dnd5eEvents.DamageMultiplier] at [dnd5eEvents.DamageFactorResistance],
+// settled by combat.SettleDamage after every other modifier. Rage resists
+// bludgeoning, piercing and slashing whatever dealt it; Blade Ward resists
+// those types only from weapon attacks.
 //
-// The scope is narrower than rage's, and deliberately so. Rage resists all
-// bludgeoning, piercing and slashing whatever dealt it; Blade Ward's RAW scope
-// is damage "dealt by weapon attacks", which is expressible because each
-// component is stamped [dnd5eEvents.DamageSourceWeapon] or DamageSourceSpell by
-// whoever rolled it. Copying rage's broader predicate would be correct TODAY
-// only by accident — a cast's damage skips the chain fold entirely, so a strike
-// is currently the only thing that could over-resist — and accidental
-// correctness is the kind that breaks quietly later.
-//
-// # One limit, named rather than discovered
-//
-// A Multiplier scales every component of ITS DAMAGE TYPE, not the single
-// component it was derived from. So an event carrying weapon slashing AND
-// spell slashing at once would have both halved. Nothing produces that today
-// and the alternative — skipping the ward whenever a type is mixed — would
-// under-resist instead, which is not more correct. Recorded here so the next
-// person meets it as a decision rather than a surprise.
+// "A weapon attack" is how the damage ARRIVED, so it is read from the frame —
+// an attack roll whose weapon pool is known true — never from a component's
+// source stamp. A saving throw's frame knows the weapon pool false, and the
+// ward answers "does not apply" there; an unknown weapon pool fails the fold
+// rather than guessing either way.
 //
 // # It holds its own clock, because nothing else does
 //
@@ -119,7 +108,7 @@ func NewBladeWardCondition(memberID, sourceRef string, turnEnds int) *BladeWardC
 // IsApplied returns true if this condition is currently applied.
 func (b *BladeWardCondition) IsApplied() bool { return b.bus != nil }
 
-// Apply subscribes the ward to the damage chain it softens, to the warded
+// Apply subscribes the ward to the incoming damage it softens, to the warded
 // creature's turn ends, and to the end of the fight.
 func (b *BladeWardCondition) Apply(ctx context.Context, bus events.EventBus) error {
 	if b.IsApplied() {
@@ -127,11 +116,11 @@ func (b *BladeWardCondition) Apply(ctx context.Context, bus events.EventBus) err
 	}
 	b.bus = bus
 
-	damageChain := dnd5eEvents.DamageChain.On(bus)
-	damageSub, err := damageChain.SubscribeWithChain(ctx, b.onDamageChain)
+	incoming := dnd5eEvents.IncomingDamageChain.On(bus)
+	damageSub, err := incoming.SubscribeWithChain(ctx, b.onIncomingDamage)
 	if err != nil {
 		b.bus = nil
-		return rpgerr.Wrap(err, "failed to subscribe to damage chain")
+		return rpgerr.Wrap(err, "failed to subscribe to incoming damage")
 	}
 	b.subscriptionIDs = append(b.subscriptionIDs, damageSub)
 
@@ -186,48 +175,31 @@ func (b *BladeWardCondition) Remove(ctx context.Context, bus events.EventBus) er
 	return nil
 }
 
-// onDamageChain halves incoming weapon damage of the three physical types.
+// onIncomingDamage resists the physical types dealt to the warded creature
+// when the frame says the damage arrived by a weapon attack.
 //
-// The predicate is per COMPONENT — a component with no Multiplier of its own,
-// of a physical type, stamped as weapon-sourced — and the multiplier it appends
-// is per TYPE, because that is the grain combat.FinalDamage folds on. See the
-// limit named on the type doc.
-func (b *BladeWardCondition) onDamageChain(
+// Errors: an invalid frame, or a weapon pool the frame does not know.
+func (b *BladeWardCondition) onIncomingDamage(
 	_ context.Context,
-	event *dnd5eEvents.DamageChainEvent,
-	c chain.Chain[*dnd5eEvents.DamageChainEvent],
-) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
-	if event.TargetID != b.MemberID {
+	event *dnd5eEvents.IncomingDamageEvent,
+	c chain.Chain[*dnd5eEvents.IncomingDamageEvent],
+) (chain.Chain[*dnd5eEvents.IncomingDamageEvent], error) {
+	if event.TargetID() != b.MemberID {
+		return c, nil
+	}
+	weaponAttack, err := bladeWardWeaponAttack(event.Frame())
+	if err != nil {
+		return c, err
+	}
+	if !weaponAttack {
 		return c, nil
 	}
 
-	ward := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
-		warded := make(map[damage.Type]struct{})
-		for _, component := range e.Components {
-			if component.Multiplier != nil {
-				continue
-			}
-			if component.Source != dnd5eEvents.DamageSourceWeapon {
-				continue
-			}
-			if !component.DamageType.IsPhysical() {
-				continue
-			}
-			warded[component.DamageType] = struct{}{}
-		}
-		for damageType := range warded {
-			e.Components = append(e.Components, dnd5eEvents.DamageComponent{
-				Source: dnd5eEvents.DamageSourceCondition,
-				Roll: dnd5eEvents.RollComponent{
-					Source: dnd5eEvents.RollSource{
-						Ref:  refs.Conditions.BladeWard(),
-						Name: BladeWardName,
-					},
-				},
-				DamageType: damageType,
-				Multiplier: dnd5eEvents.Multiply(0.5),
-			})
-		}
+	ward := func(_ context.Context, e *dnd5eEvents.IncomingDamageEvent) (*dnd5eEvents.IncomingDamageEvent, error) {
+		e.Multipliers = append(e.Multipliers, physicalResistances(e.DealtTypes(), dnd5eEvents.RollSource{
+			Ref:  refs.Conditions.BladeWard(),
+			Name: BladeWardName,
+		})...)
 		return e, nil
 	}
 
@@ -236,6 +208,23 @@ func (b *BladeWardCondition) onDamageChain(
 	}
 
 	return c, nil
+}
+
+// bladeWardWeaponAttack reads from the frame whether the damage arrived by a
+// weapon attack: an attack roll with the weapon pool known true. A known
+// false weapon pool is not one, whatever the roll; an unknown one is an error
+// wrapping [contributions.ErrRuleCannotAnswer].
+func bladeWardWeaponAttack(frame contributions.Frame) (bool, error) {
+	if err := frame.Validate(); err != nil {
+		return false, fmt.Errorf("blade ward: %w: %w", contributions.ErrRuleCannotAnswer, err)
+	}
+	weapon, known := frame.Action.WeaponPool.Get()
+	if !known {
+		return false, fmt.Errorf("blade ward: %w: the frame does not know whether a weapon dealt the damage",
+			contributions.ErrRuleCannotAnswer)
+	}
+	roll, _ := frame.Action.Roll.Get()
+	return weapon && roll == contributions.RollKindAttack, nil
 }
 
 // onTurnEnd spends one of the warded creature's own turn ends and ends the ward

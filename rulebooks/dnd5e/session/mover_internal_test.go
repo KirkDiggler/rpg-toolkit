@@ -73,7 +73,7 @@ func (s *ForcedStepSuite) SetupTest() {
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	world, err := encounter.NewEncounter(&encounter.SetupInput{
+	world, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{},
 		Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{},
 		Equipment: encNoHandsObserved{}, Initiative: aggregateRecordOrderAsGiven{},

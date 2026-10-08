@@ -5,6 +5,7 @@ package gamectx
 
 import (
 	"context"
+	"errors"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
@@ -47,11 +48,15 @@ import (
 // distinction conditions/prone.go:284 draws between "not within reach" and
 // "nobody knows where these two are standing".
 //
-// An effect that cannot answer its question must leave the chain unchanged. It
-// must NOT return an error: Character.EffectiveAC swallows fold errors, so an
-// erroring condition silently drops every OTHER contributor to that AC along
-// with its own. That is how a barbarian ended up fighting at 10+DEX with
-// Unarmored Defense attached and nothing logged.
+// What an effect does with "cannot answer" depends on what its answer is. A
+// rule deciding ELIGIBILITY — may I react, am I protecting — reads it as "not
+// eligible" and leaves the chain unchanged. A rule whose contribution IS part
+// of the number being folded — Unarmored Defense adding WIS to AC — must refuse
+// with [ErrNotInCast] instead: leaving its contribution out answers a smaller
+// number that looks exactly like a character without the feature, which is how
+// a monk's AC was saved without WIS (rpg-toolkit#1965). Character.EffectiveAC
+// returns fold errors rather than swallowing them, so the refusal reaches the
+// caller instead of poisoning the other contributors silently.
 type Cast interface {
 	// Member returns a participant's combat-facing READ surface.
 	//
@@ -111,6 +116,15 @@ type Cast interface {
 	// is an unknown stance.
 	StanceBetween(a, b string) (stance contributions.Stance, ok bool)
 }
+
+// ErrNotInCast is returned by an effect that had to read a participant out of
+// the installed cast to produce its contribution and could not: no cast is
+// installed on the context, or the installed cast does not hold that member.
+//
+// A caller seeing it folded on a context nobody installed truth on. The fix is
+// to fold where the one door installs it (resolution), never to install a cast
+// of one's own.
+var ErrNotInCast = errors.New("gamectx: member not in the installed cast")
 
 // castContextKey is the key type for storing a Cast in context.Context.
 type castContextKey struct{}

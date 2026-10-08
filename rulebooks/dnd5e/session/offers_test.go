@@ -48,7 +48,7 @@ func candidateFight(t *testing.T) (*session.Manager, *fakeSessions, *fakeEncount
 	})
 	require.NoError(t, err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
@@ -348,7 +348,7 @@ func TestNotYourTurnBlocksEveryVerb(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
@@ -489,7 +489,7 @@ func TestBadAttackCompilationBlocksAttackOnly(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
@@ -553,10 +553,13 @@ func TestBadAttackCompilationBlocksAttackOnly(t *testing.T) {
 // clock alone, stays compiled with a selector ID.
 func TestUnreadableCharacterBlocksEveryVerbButEndTurn(t *testing.T) {
 	// alice is armed and in the repository; bob is a player member the
-	// repository does not hold, so loading bob's sheet fails with
-	// ErrNoCharacter once bob is the active member.
+	// repository stops holding once he is the active member, so loading his
+	// sheet fails with ErrNoCharacter. He is held until then because the
+	// world asks every member's sheet how far it sees (rpg-project#538): a
+	// player the store never held is refused at the first sight refresh,
+	// before any turn is his.
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
-	characters := newFakeCharacters(armedFighter("alice"))
+	characters := newFakeCharacters(armedFighter("alice"), dullEyed("bob"))
 
 	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{10, 1, 1, 1, 1, 1, 1, 1, 1, 1}}, TurnDriver: session.Pass{},
@@ -564,7 +567,7 @@ func TestUnreadableCharacterBlocksEveryVerbButEndTurn(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
@@ -593,6 +596,7 @@ func TestUnreadableCharacterBlocksEveryVerbButEndTurn(t *testing.T) {
 		Session: "sess", Member: "alice", DeclarationID: currentEndTurnID(t, mgr, "sess", "alice"),
 	})
 	require.NoError(t, err)
+	delete(characters.byID, "bob")
 
 	out, err := mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "bob"})
 	require.NoError(t, err)
@@ -627,11 +631,14 @@ func TestUnreadableCharacterBlocksEveryVerbButEndTurn(t *testing.T) {
 	require.NotEmpty(t, endTurn.ID, "EndTurn is still compiled with a selector ID")
 	require.Equal(t, session.TargetNone, endTurn.TargetKind)
 
-	ended, err := mgr.EndTurn(ctx, &session.EndTurnInput{
+	// EndTurn's own execution has no sheet gate, but ending the turn drives
+	// the skeleton's, and a driven turn's budget asks every member's sheet
+	// (rpg-project#538). A sheet the store lost is refused there, by name,
+	// rather than answered with a speed nobody stated.
+	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{
 		Session: "sess", Member: "bob", DeclarationID: endTurn.ID,
 	})
-	require.NoError(t, err, "EndTurn execution has no sheet, standing, or economy gate")
-	require.NotNil(t, ended)
+	require.ErrorIs(t, err, session.ErrNoCharacter)
 }
 
 // TestLiveCandidateMissingPositionFailsClosed pins the fail-closed law: a

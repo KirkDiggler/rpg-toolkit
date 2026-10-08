@@ -35,10 +35,9 @@ import (
 // the failure mode is not guarded, not tolerated, but UNREPRESENTABLE — which
 // is the shape a fix takes when it stops being a check.
 //
-// The fixture keeps its trap through all three. 13 is the stale scalar on the
-// record; 15 is what the chain folds to — 10 base + 3 DEX + 2 WIS, Unarmored
-// Defense for a monk. A projection that flattened back to the record answers 13
-// and says so.
+// The record no longer carries an armour class at all (rpg-project#538, R1):
+// 15 is what the chain folds to — 10 base + 3 DEX + 2 WIS, Unarmored Defense
+// for a monk — and there is no stored scalar for a projection to fall back to.
 func TestProjectCharacterFoldsFromTheRecord(t *testing.T) {
 	ud := conditions.NewUnarmoredDefenseCondition(conditions.UnarmoredDefenseInput{
 		MemberID: "unattached", Type: conditions.UnarmoredDefenseMonk,
@@ -56,8 +55,6 @@ func TestProjectCharacterFoldsFromTheRecord(t *testing.T) {
 			abilities.INT: 10, abilities.WIS: 14, abilities.CHA: 8,
 		},
 		HitPoints: 9, MaxHitPoints: 9,
-		// The stale scalar a flattening projection would hand back.
-		ArmorClass:     13,
 		EquipmentSlots: character.EquipmentSlots{},
 		Conditions:     []json.RawMessage{raw},
 	}
@@ -68,7 +65,6 @@ func TestProjectCharacterFoldsFromTheRecord(t *testing.T) {
 	state := characterStateFrom(projected)
 	require.Equal(t, 15, state.ArmorClass,
 		"10 base + 3 DEX + 2 WIS: resolution folded the condition in")
-	require.NotEqual(t, 13, state.ArmorClass, "and did not fall back to the record's scalar")
 
 	require.Equal(t, 30, state.Speed,
 		"and Speed came off the loaded sheet — it is on no record, so echoing bytes cannot produce it")

@@ -48,11 +48,12 @@ var _ encounter.EquipmentWithConditions = equipmentSeam{}
 //
 // A monster's stored list also carries its stat-block traits, which are not
 // conditions, so they are left out ([conditions.HeldAddresses]). A stored
-// condition that cannot be read makes the member's holdings unknown (nil):
-// the sheet's own projection is lenient — it drops the blob and plays on
-// (TestACorruptConditionIsDroppedRatherThanRejected) — so failing the verb
-// would refuse every sight refresh where the sheet itself loads, and listing
-// the rest would claim the unreadable one is known to be absent.
+// condition that cannot be read makes the member's holdings unknown (nil).
+// Refusing that sheet is not this seam's job: every path that loads it to
+// play — Join's projection, Resolve — is strict and refuses it there
+// (TestARejoinPastACorruptConditionIsRefused). This seam is a read beside
+// those, asked during sight refreshes, so it neither repeats that refusal nor
+// lists the rest, which would claim the unreadable one is known to be absent.
 func (s equipmentSeam) Conditions(
 	members []encounter.MemberID,
 ) (map[encounter.MemberID]*encounter.ConditionSet, error) {
@@ -108,9 +109,9 @@ func (s equipmentSeam) Conditions(
 //
 // A sheet holding a condition that cannot be read is reported as nil —
 // nothing observed — rather than failing the verb or listing the rest: the
-// sheet still plays on under its lenient projection, but a list that left the
-// unreadable one out would claim, known, that the member does not hold it,
-// and unknown is never read as false.
+// strict loaders refuse that sheet wherever it is played, and a list that
+// left the unreadable one out would claim, known, that the member does not
+// hold it, and unknown is never read as false.
 func seenConditions(member string, raw []json.RawMessage) *encounter.ConditionSet {
 	held, err := conditions.HeldAddresses(member, raw)
 	if err != nil {

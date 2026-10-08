@@ -27,23 +27,23 @@ func (s *TurnRefreshTestSuite) TestSpellPaymentPersistsAndRestrictsBothOrders() 
 		_, err = char.StartTurn(s.ctx, &StartTurnInput{TurnNumber: 1, Speed: 30})
 		s.Require().NoError(err)
 		markSaved(char)
-		freshJSON, err := json.Marshal(char.ToData())
+		freshJSON, err := json.Marshal(mustToData(s.T(), char))
 		s.Require().NoError(err)
 		s.NotContains(string(freshJSON), "spellcasting", "omit history until a cast is recorded")
 		s.Require().NoError(char.CanPaySpell(pair[0]))
 		s.False(char.IsDirty())
 		s.Require().NoError(char.PaySpell(pair[0]))
 		s.True(char.IsDirty())
-		encoded, err := json.Marshal(char.ToData())
+		encoded, err := json.Marshal(mustToData(s.T(), char))
 		s.Require().NoError(err)
 		var data Data
 		s.Require().NoError(json.Unmarshal(encoded, &data))
 		loaded, err := Load(s.ctx, &data)
 		s.Require().NoError(err)
-		before := loaded.ToData().ActionEconomy
+		before := mustToData(s.T(), loaded).ActionEconomy
 		s.ErrorIs(loaded.CanPaySpell(pair[1]), combat.ErrBonusActionSpell)
 		s.ErrorIs(loaded.PaySpell(pair[1]), combat.ErrBonusActionSpell)
-		s.Equal(before, loaded.ToData().ActionEconomy)
+		s.Equal(before, mustToData(s.T(), loaded).ActionEconomy)
 		s.False(loaded.IsDirty())
 	}
 }
@@ -61,10 +61,10 @@ func (s *TurnRefreshTestSuite) TestSpellPaymentFailureDoesNotRecordOrSpend() {
 			Pools: map[coreResources.ResourceKey]int{resources.SpellSlotLevel1: 1},
 		},
 	}
-	before := char.ToData().ActionEconomy
+	before := mustToData(s.T(), char).ActionEconomy
 	s.Error(char.CanPaySpell(input))
 	s.Error(char.PaySpell(input))
-	s.Equal(before, char.ToData().ActionEconomy)
+	s.Equal(before, mustToData(s.T(), char).ActionEconomy)
 	s.False(char.IsDirty())
 }
 

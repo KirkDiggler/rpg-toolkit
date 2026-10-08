@@ -67,7 +67,6 @@ func (s *SheetLedgerTestSuite) monk() *Data {
 		},
 		HitPoints:    32,
 		MaxHitPoints: 32,
-		ArmorClass:   16,
 		Resources: map[coreResources.ResourceKey]RecoverableResourceData{
 			resources.Ki: {Current: 3, Maximum: 5, ResetType: coreResources.ResetShortRest},
 		},
@@ -117,7 +116,7 @@ func (s *SheetLedgerTestSuite) TestSpellSlotResourceSpendSurvivesReload() {
 	s.Require().NoError(err)
 	s.Require().NoError(char.UseResource(resources.SpellSlotLevel1, 1))
 
-	loaded, err := Load(s.ctx, char.ToData())
+	loaded, err := Load(s.ctx, mustToData(s.T(), char))
 	s.Require().NoError(err)
 	s.Equal(1, loaded.GetResource(resources.SpellSlotLevel1).Current())
 	s.Equal(2, loaded.GetResource(resources.SpellSlotLevel1).Maximum())

@@ -11,7 +11,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -234,13 +233,19 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 			left := cost.sheet.CapacityLeft(combat.CapacityMovement)
 			return nil, fmt.Errorf("move: %w: %s", ErrCannotAfford, movementShortfall(cost.feet, left))
 		}
-		scope.walker = cost.sheet.ToData()
+		walker, err := cost.sheet.ToData()
+		if err != nil {
+			return nil, fmt.Errorf("move: walker %q: %w: %v", in.Member, ErrBadCharacter, err)
+		}
+		scope.walker = walker
 	}
 
 	// runWalk asks per cell instead and this verb asks not at all.
 	res, err := m.runWalk(ctx, scope, in.Member, in.Path)
 	if err != nil {
-		return nil, fmt.Errorf("move: %w", err)
+		// A cell's opportunity attack can already have saved sheets before a
+		// later cell refuses, so the refusal names what landed (S6).
+		return nil, fmt.Errorf("move: %w", saveErrorAfterWrites(scope, "", err))
 	}
 
 	if err = m.saveWalkProgress(ctx, scope); err != nil {
@@ -315,7 +320,12 @@ func movementShortfall(needed, left int) string {
 // same contract [Manager.saveDirty] keeps for a swing's damaged sheets, sized
 // down to the one sheet a walk can ever touch.
 func (m *Manager) saveWalker(ctx context.Context, scope *writeScope, sheet *character.Character) error {
-	data := sheet.ToData()
+	data, err := sheet.ToData()
+	if err != nil {
+		// Nothing was written for this sheet; the report still names what
+		// the verb already made durable (S6).
+		return saveErrorAfterWrites(scope, "", fmt.Errorf("walker: %w: %v", ErrBadCharacter, err))
+	}
 	if err := m.characters.SaveCharacter(ctx, data); err != nil {
 		report := SaveReport{
 			Written: append([]string(nil), scope.written...),
@@ -487,7 +497,11 @@ func (m *Manager) runWalk(
 			if payErr := combat.Pay(sheet, &combat.SpendProfile{Capacity: map[combat.CapacityType]int{combat.CapacityMovement: 5}}); payErr != nil {
 				return nil, fmt.Errorf("walk step: %w", payErr)
 			}
-			scope.walker = sheet.ToData()
+			walker, dataErr := sheet.ToData()
+			if dataErr != nil {
+				return nil, fmt.Errorf("walk sheet: %w: %v", ErrBadCharacter, dataErr)
+			}
+			scope.walker = walker
 		}
 
 		// Read off what the composition says happened rather than off the
@@ -764,43 +778,6 @@ func nilIfEmpty(m map[string]Discovery) map[string]Discovery {
 	return m
 }
 
-func (m *Manager) reconcileFogMembership(ctx context.Context, scope *writeScope) error {
-	roster, err := scope.enc.Members()
-	if err != nil {
-		return err
-	}
-	participants, err := m.castFor(ctx, scope, roster, nil)
-	if err != nil {
-		return err
-	}
-	filtered := participants[:0]
-	for _, participant := range participants {
-		if participant.Character != nil || participant.Monster != nil {
-			filtered = append(filtered, participant)
-		}
-	}
-	participants = filtered
-	room, err := scope.enc.Canvas()
-	if err != nil {
-		return err
-	}
-	out, err := resolution.ReconcileFogMembership(ctx, &resolution.FogMembershipInput{
-		Participants: participants, Room: room, Areas: scope.enc.WorldView().SightAreas, Roller: &diceSeam{roller: m.dice},
-	})
-	if err != nil {
-		return err
-	}
-	for _, data := range out.DirtyCharacters {
-		if err := m.saveCharacterRecord(ctx, scope, data); err != nil {
-			return err
-		}
-	}
-	for _, data := range out.DirtyMonsters {
-		scope.replaceMonsterSheet(data)
-	}
-	return nil
-}
-
 // saveWalkProgress saves the latest walking sheet, including reaction changes
 // and only the movement actually consumed. Resumed walks use the same path.
 func (m *Manager) saveWalkProgress(ctx context.Context, scope *writeScope) error {
@@ -809,7 +786,7 @@ func (m *Manager) saveWalkProgress(ctx context.Context, scope *writeScope) error
 	}
 	sheet, err := character.Load(ctx, scope.walker)
 	if err != nil {
-		return fmt.Errorf("save walking sheet: %w", err)
+		return saveErrorAfterWrites(scope, "", fmt.Errorf("save walking sheet: %w", err))
 	}
 	return m.saveWalker(ctx, scope, sheet)
 }

@@ -716,7 +716,6 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 		abilityScores:       finalScores,
 		hitPoints:           maxHP,
 		maxHitPoints:        maxHP,
-		armorClass:          10 + finalScores.Modifier(abilities.DEX), // Base AC
 		hitDice:             classData.HitDice,
 		skills:              skillProfs,
 		savingThrows:        savingThrows,
@@ -752,16 +751,6 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 	initialConditions, err := d.compileConditions(characterID)
 	if err != nil {
 		return nil, rpgerr.Wrapf(err, "failed to compile conditions")
-	}
-
-	// Check for Unarmored Defense condition and apply its AC calculation
-	// Barbarian: AC = 10 + DEX + CON
-	// Monk: AC = 10 + DEX + WIS
-	for _, cond := range initialConditions {
-		if ud, ok := cond.(*conditions.UnarmoredDefenseCondition); ok {
-			char.armorClass = ud.CalculateAC(finalScores)
-			break
-		}
 	}
 
 	conditionTopic := dnd5eEvents.ConditionAppliedTopic.On(bus)

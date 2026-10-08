@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/weaponattack"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -177,14 +179,20 @@ func (s *weaponEffectRulesSuite) TestTwoWeaponFighting() {
 }
 
 func (s *weaponEffectRulesSuite) TestMartialArts() {
-	rule := NewMartialArtsCondition(MartialArtsInput{MemberID: "rogue", MonkLevel: 5})
+	rule := NewMartialArtsCondition(MartialArtsInput{MemberID: "rogue"})
 
 	unarmed := mutated(func(a *contributions.ActionFacts) {
 		a.Weapon = contributions.Known(refs.Weapons.UnarmedStrike().String())
 		a.Finesse = contributions.Known(false)
 	})
+	unarmed.ActorClassLevels = contributions.KnownClassLevels(contributions.ClassLevel{Class: classes.Monk, Levels: 5})
 	answer := s.expect(rule, unarmed, contributions.Applies, "The attack is an unarmed strike")
-	s.Equal("Can use Dexterity; deals the 1d6 Martial Arts die", answer.Benefit)
+	s.Equal("Can use Dexterity; deals the 1d6 Martial Arts die", answer.Benefit,
+		"the die is read from the frame's monk levels")
+
+	unarmed.ActorClassLevels = contributions.KnownClassLevels(contributions.ClassLevel{Class: classes.Rogue, Levels: 5})
+	_, err := rule.AssessAction(&contributions.AssessActionInput{Frame: unarmed})
+	s.ErrorIs(err, contributions.ErrRuleCannotAnswer, "an unarmed strike by a holder with no monk levels cannot answer its die")
 
 	answer = s.expect(rule, rogueFrame(false), contributions.Applies, "The attack is made with a monk weapon")
 	s.Equal("Can use Dexterity", answer.Benefit)
@@ -201,15 +209,21 @@ func (s *weaponEffectRulesSuite) TestMartialArts() {
 // TestMartialArtsAgreesWithAssembly: the answer applies exactly where attack
 // assembly's override offers Dexterity.
 func (s *weaponEffectRulesSuite) TestMartialArtsAgreesWithAssembly() {
-	monk := NewMartialArtsCondition(MartialArtsInput{MemberID: "rogue", MonkLevel: 1})
+	monk := NewMartialArtsCondition(MartialArtsInput{MemberID: "rogue"})
 	for _, weapon := range []string{"unarmed-strike", "shortsword", "quarterstaff", "longsword", "greatclub"} {
 		s.Run(weapon, func() {
 			ref := refs.Weapons.ByID(weapon)
 			s.Require().NotNil(ref)
-			answer := s.answer(monk, mutated(func(a *contributions.ActionFacts) {
+			frame := mutated(func(a *contributions.ActionFacts) {
 				a.Weapon = contributions.Known(ref.String())
-			}))
-			overridden := monk.WeaponAttackOverride("main_hand", weapon) != nil
+			})
+			frame.ActorClassLevels = contributions.KnownClassLevels(contributions.ClassLevel{Class: classes.Monk, Levels: 1})
+			answer := s.answer(monk, frame)
+			offer, err := monk.WeaponAttackOverride(&weaponattack.OverrideInput{
+				Slot: "main_hand", ItemID: weapon, Levels: monkLevels(1),
+			})
+			s.Require().NoError(err)
+			overridden := offer.Override != nil
 			s.Equal(overridden, answer.Decision.Applicability == contributions.Applies)
 		})
 	}
@@ -251,7 +265,9 @@ func (s *weaponEffectRulesSuite) TestShillelaghAgreesWithAssembly() {
 				a.Weapon = contributions.Known(refs.Weapons.ByID(tc.item).String())
 				a.WeaponSlot = contributions.Known(tc.slot)
 			}))
-			overridden := rule.WeaponAttackOverride(tc.slot, tc.item) != nil
+			offer, err := rule.WeaponAttackOverride(&weaponattack.OverrideInput{Slot: tc.slot, ItemID: tc.item})
+			s.Require().NoError(err)
+			overridden := offer.Override != nil
 			s.Equal(overridden, answer.Decision.Applicability == contributions.Applies)
 		})
 	}

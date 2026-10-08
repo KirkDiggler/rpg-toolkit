@@ -211,7 +211,7 @@ func (s *AdvanceTestSuite) TestAnAdvancedFighterSurvivesAJSONRoundTrip() {
 	})
 	s.Require().NoError(err)
 
-	raw, err := json.Marshal(char.ToData())
+	raw, err := json.Marshal(mustToData(s.T(), char))
 	s.Require().NoError(err)
 
 	var data Data
@@ -254,7 +254,7 @@ func (s *AdvanceTestSuite) TestASpentActionSurgeReloadsSpent() {
 		ActionEconomy: char.toToolkitActionEconomy(),
 	}))
 
-	raw, err := json.Marshal(char.ToData())
+	raw, err := json.Marshal(mustToData(s.T(), char))
 	s.Require().NoError(err)
 	var data Data
 	s.Require().NoError(json.Unmarshal(raw, &data))
@@ -361,7 +361,7 @@ func (s *AdvanceTestSuite) TestARefusedAdvanceChangesNothing() {
 	// ToData stamps UpdatedAt with the wall clock every time it is called, so
 	// the stamp is zeroed on both sides and everything else is compared whole.
 	snapshot := func() string {
-		data := char.ToData()
+		data := mustToData(s.T(), char)
 		data.UpdatedAt = time.Time{}
 		raw, err := json.Marshal(data)
 		s.Require().NoError(err)
@@ -529,7 +529,7 @@ func (s *AdvanceTestSuite) TestALevelFiveFighterReportsPlusThreeThroughEveryDoor
 	char.levels = syntheticLevels(classes.Fighter, 5)
 
 	s.Equal(3, char.ProficiencyBonus())
-	s.Equal(3, char.ToData().ProficiencyBonus, "the projection moved with it")
+	s.Equal(3, mustToData(s.T(), char).ProficiencyBonus, "the projection moved with it")
 
 	// Athletics is one of this fixture's proficient skills, so its modifier
 	// carries the bonus.
@@ -547,7 +547,7 @@ func (s *AdvanceTestSuite) TestALevelOneFighterIsUnchangedByTheRecord() {
 	s.False(s.hasFeature(char, refs.Features.ActionSurge().ID),
 		"the new level-2 grant is not reachable at level 1")
 
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	s.Equal(1, data.Level)
 	s.Equal(2, data.ProficiencyBonus)
 	s.Equal(1, char.GetResource(resources.HitDice).Maximum())
@@ -643,7 +643,7 @@ func (s *AdvanceTestSuite) TestASheetWithNoBusAttachesNothing() {
 
 func (s *AdvanceTestSuite) TestALoadedSheetWithNoBusCanStillAdvance() {
 	char := s.fighter()
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 
 	inert, err := Load(s.ctx, data)
 	s.Require().NoError(err)

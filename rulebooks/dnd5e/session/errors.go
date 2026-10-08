@@ -100,7 +100,9 @@ var (
 	ErrNoCharacter = errors.New("no such character")
 
 	// ErrBadCharacter is returned when a character's stored data exists but
-	// cannot be reconstituted into a usable character.
+	// cannot be reconstituted into a usable character, or when a loaded sheet
+	// cannot be written back whole (character.ToData refuses rather than drop
+	// an effect).
 	//
 	// Separate from ErrNoCharacter for the same reason ErrBadRepository is
 	// separate from ErrNotFound: absent and corrupt send whoever debugs it to
@@ -276,13 +278,21 @@ var (
 	// fine (rpg-toolkit#1060).
 	ErrBadPosition = errors.New("bad position")
 
-	// ErrOutOfRange is Interact's refusal when the target stands farther than
-	// the configured range (default: adjacent, one cell) from the actor —
-	// the host-seam twin of encounter.ErrOutOfRange. Distinct from
-	// ErrOutOfReach, which is Attack's own reach validation against a
-	// compiled delivery's max range; Interact has no delivery to check
-	// against, only a plain cell distance.
+	// ErrOutOfRange is returned when a target stands beyond what the verb
+	// reaches, on every verb but a swing (rpg-project#539): Interact's plain
+	// cell distance (default: adjacent, one cell), a door's reach, a cast's
+	// or a heal's range, and a known creature with no believed point in range
+	// on a clear line. It is the host-seam twin of both encounter.ErrOutOfRange
+	// and resolution.ErrOutOfRange. Distinct from ErrOutOfReach, which is
+	// Attack's own refusal for a delivery that cannot reach.
 	ErrOutOfRange = errors.New("target out of range")
+
+	// ErrBadReach is returned when a verb forwards a reach the composition
+	// refuses as malformed — a negative range on Interact, Hold, Loot or a
+	// believed aim — the host-seam twin of encounter.ErrBadReach. A caller
+	// defect, never a fact about the world: distinct from ErrOutOfRange,
+	// which answers a well-formed reach that does not get there.
+	ErrBadReach = errors.New("invalid reach")
 
 	// ErrNotVisible is Interact's refusal when the target is not in the
 	// actor's current sight — the host-seam twin of encounter.ErrNotVisible.

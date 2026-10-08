@@ -59,7 +59,7 @@ func rosterCharacter(id, name, player string, appearance *customization.Appearan
 			"str": 16, "dex": 14, "con": 14,
 			"int": 10, "wis": 12, "cha": 8,
 		},
-		HitPoints: 24, MaxHitPoints: 28, ArmorClass: 16,
+		HitPoints: 24, MaxHitPoints: 28,
 		Appearance: appearance,
 	}
 }
@@ -104,7 +104,7 @@ func newRosterFixture(t *testing.T) *rosterFixture {
 
 func rosterWorld(t *testing.T) *encounter.EncounterData {
 	t.Helper()
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
 		Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Initiative: encOrderAsGiven{},
 		TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},

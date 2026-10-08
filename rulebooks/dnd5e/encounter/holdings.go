@@ -546,7 +546,7 @@ func (e *Encounter) dropCarried(
 			return fmt.Errorf("drop %q: %w", id, err)
 		}
 		payload, err := json.Marshal(map[string]interface{}{
-			"beat":     "dropped",
+			"beat":     BeatDropped,
 			"member":   string(member),
 			"prop":     string(id),
 			"position": at,

@@ -84,7 +84,7 @@ func (s *StartSessionTestSuite) SetupTest() {
 // authoredWorld builds a small valid encounter blob standing in for content
 // from an authoring pipeline.
 func authoredWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 5, 5)}},
 		Members: []encounter.MemberInput{
@@ -281,7 +281,13 @@ func (s *StartSessionTestSuite) TestWorldSaveFailureLeavesNoDanglingSession() {
 	})
 	s.Require().Error(err)
 	s.ErrorIs(err, session.ErrSaveFailed)
+	s.ErrorIs(err, errBroken, "the repository cause is still matchable")
 	s.Empty(sessions.byID, "a session pointing at an unwritten world must never exist")
+
+	var saveErr *session.SaveError
+	s.Require().ErrorAs(err, &saveErr, "the report must reach the host (S6)")
+	s.Empty(saveErr.Report.Written, "nothing landed: a retry is safe")
+	s.Contains(saveErr.Report.Failed, "encounter:enc-1")
 }
 
 // TestSessionSaveFailureLeavesOnlyAnOrphan pins the other half of the ordering
@@ -302,9 +308,19 @@ func (s *StartSessionTestSuite) TestSessionSaveFailureLeavesOnlyAnOrphan() {
 	})
 	s.Require().Error(err)
 	s.ErrorIs(err, session.ErrSaveFailed)
+	s.ErrorIs(err, errBroken, "the repository cause is still matchable")
 
 	s.Contains(encounters.byID, "enc-1", "the world landed")
 	s.Empty(sessions.byID, "the session did not")
+
+	// The host can only tell this orphan from a total failure through the
+	// report (S6); a plain wrapped error would throw it away.
+	var saveErr *session.SaveError
+	s.Require().ErrorAs(err, &saveErr, "the report must reach the host (S6)")
+	s.Contains(saveErr.Report.Written, "encounter:enc-1", "the orphaned world is named as written")
+	s.NotContains(saveErr.Report.Written, "session:sess-1")
+	s.Contains(saveErr.Report.Failed, "session:sess-1", "the session is named as failed")
+	s.True(saveErr.Report.Partial())
 }
 
 // TestSessionsGetSeparateWorlds pins that the authored content is copied rather

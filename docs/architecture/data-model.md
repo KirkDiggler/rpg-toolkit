@@ -122,7 +122,7 @@ type Data struct {
 
 Roundtrip:
 ```go
-data := char.ToData()               // serialize to Data struct
+data, err := char.ToData()          // serialize to Data struct; refuses if any effect cannot serialize
 // rpg-api stores data as JSON in Redis
 char, err := LoadFromData(ctx, data, bus)  // reconstitute live character
 ```
@@ -158,11 +158,18 @@ Conditions and features serialize to `json.RawMessage` blobs. The blob contains 
 
 ```go
 type RagingData struct {
-    Ref         core.Ref `json:"ref"`
-    CharacterID string   `json:"character_id"`
-    DamageBonus int      `json:"damage_bonus"`
+    Ref            core.Ref `json:"ref"`
+    CharacterID    string   `json:"member_id"`
+    WasHitThisTurn bool     `json:"was_hit_this_turn"`
 }
 ```
+
+A blob holds the effect's own state, never a copy of a sheet fact. A class
+level, a number derived from one (dice count, damage bonus) or an ability
+modifier is asked where it is used: a rule reads the acting member's class
+levels from its frame, a feature asks its owner at activation, an override is
+handed the sheet's level record by attack assembly. An old blob that still
+carries such a copy loads, and the copy is ignored.
 
 `LoadJSON(data json.RawMessage)` peeks at `ref.Value`, switches to the correct constructor, unmarshals the full struct. This keeps rpg-api's stored JSON opaque — it never needs to parse condition internals.
 

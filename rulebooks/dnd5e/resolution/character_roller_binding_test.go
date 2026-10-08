@@ -121,6 +121,7 @@ func TestResolveBindsOneRollerToTheMachineAndPersistedCharacter(t *testing.T) {
 		Standing:   everyoneStanding{},
 		Sight:      everyoneSeesTheWholeMap{},
 		Equipment:  noHandsAreObserved{},
+		Sheets:     noSheetsAsked{},
 		TurnDriver: passDriver{},
 		Roller:     roller,
 	})

@@ -21,6 +21,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combatabilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/currency"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
@@ -80,7 +81,6 @@ type Character struct {
 	// Combat stats
 	hitPoints    int
 	maxHitPoints int
-	armorClass   int
 	hitDice      int // Size of hit die (d6, d8, d10, d12)
 
 	// Proficiencies and skills
@@ -193,6 +193,41 @@ func (c *Character) ClassLevel(classID classes.Class) int {
 		}
 	}
 	return count
+}
+
+// ClassLevels answers the frame's class-levels fact from this character's
+// level record: one entry per class it has taken levels in, in the order each
+// class was first taken, always known. Resolution fills
+// [contributions.Frame.ActorClassLevels] with it for a character actor; a
+// monster's sheet answers the same type, known and empty. It is asked each
+// time a frame is built and never stored.
+func (c *Character) ClassLevels() contributions.ClassLevels {
+	var held []contributions.ClassLevel
+	for _, entry := range c.levels {
+		i := slices.IndexFunc(held, func(level contributions.ClassLevel) bool { return level.Class == entry.ClassID })
+		if i < 0 {
+			held = append(held, contributions.ClassLevel{Class: entry.ClassID, Levels: 1})
+			continue
+		}
+		held[i].Levels++
+	}
+	return contributions.KnownClassLevels(held...)
+}
+
+var _ combat.SightHolder = (*Character)(nil)
+
+// SightFeet answers the named sight question ([combat.SightHolder]) for this
+// character. No race in the race table states a sight range today, so it
+// answers [combat.DefaultSightFeet], the rulebook's stated 120 feet, for every
+// character. When a race does state a range, that number comes from the race
+// table here.
+//
+// Darkvision as a race trait does not change the number: it is a rule about
+// seeing in dim light and darkness, and until a light model exists (R10)
+// there is no darkness for it to answer against. It is asked each time and
+// never stored.
+func (c *Character) SightFeet() int {
+	return combat.DefaultSightFeet
 }
 
 // cloneLevelEntries deep-copies a level record, including each entry's
@@ -790,12 +825,6 @@ func (c *Character) ApplyDamage(ctx context.Context, input *combat.ApplyDamageIn
 	}
 }
 
-// AC returns the character's armor class.
-// Implements combat.Combatant interface.
-func (c *Character) AC() int {
-	return c.armorClass
-}
-
 // IsDirty returns true if the character has been modified since last save.
 // Implements combat.Combatant interface.
 func (c *Character) IsDirty() bool {
@@ -1123,8 +1152,14 @@ func (c *Character) UnequipItem(slot InventorySlot) error {
 	return c.removeReleasedEquipmentConditions(nil)
 }
 
-// ToData converts the character to its persistent data form
-func (c *Character) ToData() *Data {
+// ToData converts the character to its persistent data form.
+//
+// It returns an error, and no data, when any feature or condition cannot
+// serialize itself. It used to skip that entry and return the rest, which
+// wrote a sheet that had silently lost an effect — the save-side twin of a
+// loader that drops what it cannot read (rpg-toolkit#948, #1965). A record
+// missing a condition is not a smaller truth; nothing may persist it.
+func (c *Character) ToData() (*Data, error) {
 	data := &Data{
 		ID:       c.id,
 		PlayerID: c.playerID,
@@ -1144,7 +1179,6 @@ func (c *Character) ToData() *Data {
 		AbilityScores:       c.abilityScores,
 		HitPoints:           c.hitPoints,
 		MaxHitPoints:        c.maxHitPoints,
-		ArmorClass:          c.armorClass,
 		Wallet:              c.wallet,
 		DeathSaveState:      cloneDeathSaveState(c.deathSaveState),
 		Skills:              maps.Clone(c.skills),
@@ -1192,9 +1226,7 @@ func (c *Character) ToData() *Data {
 		// Use the feature's ToJSON method to get the serialized form
 		jsonData, err := feature.ToJSON()
 		if err != nil {
-			// Skip features that can't be serialized
-			// TODO: Consider how to handle serialization errors
-			continue
+			return nil, rpgerr.Wrapf(err, "character %s: serialize feature %q", c.id, refString(feature.Ref()))
 		}
 		// The feature's ToJSON already includes the fully qualified ref
 		data.Features = append(data.Features, jsonData)
@@ -1215,14 +1247,21 @@ func (c *Character) ToData() *Data {
 		// Use the condition's ToJSON method to get the serialized form
 		jsonData, err := condition.ToJSON()
 		if err != nil {
-			// Skip conditions that can't be serialized
-			// TODO: Consider how to handle serialization errors
-			continue
+			return nil, rpgerr.Wrapf(err, "character %s: serialize condition %q", c.id, refString(condition.Ref()))
 		}
 		data.Conditions = append(data.Conditions, jsonData)
 	}
 
-	return data
+	return data, nil
+}
+
+// refString names an effect by its ref for an error message, saying so when
+// the effect has none rather than dereferencing nil.
+func refString(ref *core.Ref) string {
+	if ref == nil {
+		return "<nil ref>"
+	}
+	return ref.String()
 }
 
 // subscribeToEvents subscribes the character to gameplay events on the bus it
@@ -1711,8 +1750,17 @@ func calculateShieldAC(shieldItem *armor.Armor) combat.ACComponent {
 // return whatever the breakdown happened to hold, which meant a broken
 // contributor degraded the total instead of failing the read.
 //
+// Attached is not always enough. A contributor that reads its holder out of
+// the installed cast — Unarmored Defense reads WIS or CON — refuses the fold
+// with [gamectx.ErrNotInCast] when no cast holding this character is on ctx,
+// and that refusal is returned here. Attaching the sheet to a fresh bus and
+// folding on a bare context is therefore an error for a monk or barbarian, not
+// base armour (rpg-toolkit#1965). The cast is installed by resolution's one
+// door; a caller holding a record asks resolution.ProjectCharacter, which
+// loads, attaches, installs the cast and folds in one call.
+//
 // Callers holding a sheet from the bus-free [Load] must [Attach] it before
-// asking. A stat block that has no chain to fold wants [Character.AC].
+// asking. The sheet stores no armour class: this fold is the only answer.
 func (c *Character) EffectiveAC(ctx context.Context) (*combat.ACBreakdown, error) {
 	if c.bus == nil {
 		return nil, rpgerr.New(rpgerr.CodePrerequisiteNotMet,

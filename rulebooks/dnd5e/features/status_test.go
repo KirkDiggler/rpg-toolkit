@@ -32,7 +32,7 @@ func (r stubResourceReader) ResourceStatus(key coreResources.ResourceKey) (int, 
 }
 
 func TestSecondWindStatusReportsPrivateResourceWithoutJSON(t *testing.T) {
-	sw := newSecondWindForTest("second-wind-feature", 3, "fighter-1")
+	sw := newSecondWindForTest("second-wind-feature", "fighter-1")
 
 	out, err := sw.Status(&StatusInput{})
 	require.NoError(t, err)
@@ -126,7 +126,7 @@ func TestRageStatusReportsOwnerOwnedRageCharges(t *testing.T) {
 		resources.RageCharges: {2, 4},
 	}}
 
-	rage := &Rage{id: "rage", name: "Rage", level: 5}
+	rage := &Rage{id: "rage", name: "Rage"}
 
 	out, err := rage.Status(&StatusInput{Owner: owner})
 	require.NoError(t, err)

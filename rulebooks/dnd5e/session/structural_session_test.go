@@ -101,6 +101,7 @@ func structuralSecretWorld(t fataler) *encounter.EncounterData {
 				}},
 			}},
 		},
+		Sheets: encStandStill{},
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Position: cell(1, 1)},
 			{ID: "bob", Kind: encounter.KindPlayer, Position: cell(2, 1)},
@@ -159,6 +160,7 @@ func structuralRoomWorld(t fataler) *encounter.EncounterData {
 				}},
 			}},
 		},
+		Sheets: encStandStill{},
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 0}},
 		},

@@ -8,8 +8,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -33,156 +33,105 @@ func (s *ImmunityTestSuite) SetupTest() {
 	s.immunity = nil // Will be created in each test
 }
 
-func (s *ImmunityTestSuite) TestImmunityAddsZeroMultiplierComponent() {
-	// Create immunity to poison
-	s.immunity = Immunity("monster-1", damage.Poison).(*immunityCondition)
-
-	// Apply to bus
-	err := s.immunity.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-
-	// Create damage event with poison damage
-	event := &dnd5eEvents.DamageChainEvent{
-		AttackerID: "pc-1",
-		TargetID:   "monster-1",
-		Components: []dnd5eEvents.DamageComponent{
-			{
-				Source: dnd5eEvents.DamageSourceWeapon,
-				Roll: dnd5eEvents.RollComponent{
-					Source:   dnd5eEvents.RollSource{Ref: refs.Weapons.Dagger(), Name: "Dagger"},
-					Dice:     testDiceTrace(6, 3, 4),
-					Modifier: intPtr(2),
-				},
-				DamageType: damage.Poison,
-			},
+// hit is 3+4+2 = 9 of damageType from weaponRef, dealt to targetID.
+func (s *ImmunityTestSuite) hit(
+	targetID string, weaponRef *core.Ref, damageType damage.Type,
+) (*dnd5eEvents.IncomingDamageEvent, int) {
+	folded, settled, err := foldIncoming(s.ctx, s.bus, "pc-1", targetID, []dnd5eEvents.DamageComponent{{
+		Source: dnd5eEvents.DamageSourceWeapon,
+		Roll: dnd5eEvents.RollComponent{
+			Source:   dnd5eEvents.RollSource{Ref: weaponRef, Name: weaponRef.ID},
+			Dice:     testDiceTrace(6, 3, 4),
+			Modifier: intPtr(2),
 		},
-	}
-
-	// Publish damage chain event
-	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
-	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
-
-	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, event, chain)
+		DamageType: damageType,
+	}})
 	s.Require().NoError(err)
+	_, total := settled.FinalDamage()
+	return folded, total
+}
 
-	// Execute chain to get modified event
-	result, err := modifiedChain.Execute(s.ctx, event)
-	s.Require().NoError(err)
+// The trait answers on the incoming fold, as its holder's own answer, and
+// leaves the dealt damage as it was dealt.
+func (s *ImmunityTestSuite) TestImmunityAnswersOnTheIncomingFold() {
+	s.immunity = Immunity("monster-1", damage.Poison).(*immunityCondition)
+	s.Require().NoError(s.immunity.Apply(s.ctx, s.bus))
 
-	// Verify original component unchanged + immunity multiplier component added
-	s.Require().Len(result.Components, 2)
+	folded, total := s.hit("monster-1", refs.Weapons.Dagger(), damage.Poison)
 
-	// First component: original damage unchanged
-	s.Assert().Equal(9, result.Components[0].Total())
-	s.Assert().Equal([]int{3, 4}, result.Components[0].Roll.Dice.FinalRolls)
-	s.Require().NotNil(result.Components[0].Roll.Modifier)
-	s.Assert().Equal(2, *result.Components[0].Roll.Modifier)
-
-	// Second component: immunity multiplier (0 = negate damage)
-	s.Assert().Equal(dnd5eEvents.DamageSourceMonsterTrait, result.Components[1].Source)
-	s.Assert().Equal(damage.Poison, result.Components[1].DamageType)
-	s.Assert().Equal(refs.MonsterTraits.Immunity(), result.Components[1].Roll.Source.Ref,
-		"the immunity component carries its provider's canonical ref")
-	s.Assert().Equal("Immunity", result.Components[1].Roll.Source.Name,
-		"the immunity component carries its provider's display name")
-	s.Require().NotNil(result.Components[1].Multiplier,
-		"immunity is a modifier carrying the factor zero, not an absent modifier — rpg-toolkit#1012")
-	s.Assert().Equal(0.0, *result.Components[1].Multiplier)
+	dealt := folded.Dealt()
+	s.Require().Len(dealt, 1)
+	s.Equal(9, dealt[0].Total(), "the dealt damage is untouched")
+	s.Equal([]dnd5eEvents.DamageMultiplier{{
+		Category:   dnd5eEvents.DamageSourceMonsterTrait,
+		Source:     dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity"},
+		DamageType: damage.Poison,
+		Factor:     dnd5eEvents.DamageFactorImmunity,
+	}}, folded.Multipliers)
+	s.Equal(0, total)
 }
 
 func (s *ImmunityTestSuite) TestImmunityDoesNotAffectOtherDamageTypes() {
-	// Create immunity to poison
 	s.immunity = Immunity("monster-1", damage.Poison).(*immunityCondition)
+	s.Require().NoError(s.immunity.Apply(s.ctx, s.bus))
 
-	// Apply to bus
-	err := s.immunity.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
+	folded, total := s.hit("monster-1", refs.Weapons.Longsword(), damage.Slashing)
 
-	// Create damage event with slashing damage (not immune)
-	event := &dnd5eEvents.DamageChainEvent{
-		AttackerID: "pc-1",
-		TargetID:   "monster-1",
-		Components: []dnd5eEvents.DamageComponent{
-			{
-				Source: dnd5eEvents.DamageSourceWeapon,
-				Roll: dnd5eEvents.RollComponent{
-					Source:   dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
-					Dice:     testDiceTrace(6, 3, 4),
-					Modifier: intPtr(2),
-				},
-				DamageType: damage.Slashing,
-			},
-		},
-	}
-
-	// Publish damage chain event
-	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
-	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
-
-	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, event, chain)
-	s.Require().NoError(err)
-
-	// Execute chain to get modified event
-	result, err := modifiedChain.Execute(s.ctx, event)
-	s.Require().NoError(err)
-
-	// Verify no multiplier component was added (only original component)
-	s.Require().Len(result.Components, 1)
-	s.Assert().Equal(9, result.Components[0].Total())
-	s.Assert().Equal(dnd5eEvents.DamageSourceWeapon, result.Components[0].Source)
+	s.Empty(folded.Multipliers)
+	s.Equal(9, total)
 }
 
 func (s *ImmunityTestSuite) TestImmunityIgnoresOtherTargets() {
-	// Create immunity to poison for monster-1
 	s.immunity = Immunity("monster-1", damage.Poison).(*immunityCondition)
+	s.Require().NoError(s.immunity.Apply(s.ctx, s.bus))
 
-	// Apply to bus
-	err := s.immunity.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
+	folded, total := s.hit("monster-2", refs.Weapons.Dagger(), damage.Poison)
 
-	// Create damage event targeting different monster
-	event := &dnd5eEvents.DamageChainEvent{
-		AttackerID: "pc-1",
-		TargetID:   "monster-2", // Different target
-		Components: []dnd5eEvents.DamageComponent{
-			{
-				Source: dnd5eEvents.DamageSourceWeapon,
-				Roll: dnd5eEvents.RollComponent{
-					Source:   dnd5eEvents.RollSource{Ref: refs.Weapons.Dagger(), Name: "Dagger"},
-					Dice:     testDiceTrace(6, 3, 4),
-					Modifier: intPtr(2),
-				},
-				DamageType: damage.Poison,
-			},
-		},
-	}
-
-	// Publish damage chain event
-	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
-	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
-
-	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, event, chain)
-	s.Require().NoError(err)
-
-	// Execute chain to get modified event
-	result, err := modifiedChain.Execute(s.ctx, event)
-	s.Require().NoError(err)
-
-	// Verify no multiplier component was added (wrong target)
-	s.Require().Len(result.Components, 1)
-	s.Assert().Equal(9, result.Components[0].Total())
-	s.Assert().Equal(dnd5eEvents.DamageSourceWeapon, result.Components[0].Source)
+	s.Empty(folded.Multipliers)
+	s.Equal(9, total)
 }
 
 func (s *ImmunityTestSuite) TestImmunityCanBeRemoved() {
-	// Create and apply immunity
 	s.immunity = Immunity("monster-1", damage.Poison).(*immunityCondition)
-	err := s.immunity.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-	s.Assert().True(s.immunity.IsApplied())
+	s.Require().NoError(s.immunity.Apply(s.ctx, s.bus))
+	s.True(s.immunity.IsApplied())
 
-	// Remove immunity
-	err = s.immunity.Remove(s.ctx, s.bus)
+	s.Require().NoError(s.immunity.Remove(s.ctx, s.bus))
+	s.False(s.immunity.IsApplied())
+
+	folded, total := s.hit("monster-1", refs.Weapons.Dagger(), damage.Poison)
+	s.Empty(folded.Multipliers, "a removed trait answers nothing")
+	s.Equal(9, total)
+}
+
+// Two immunities on one owner, one hit dealing both types: each answers, and
+// the fold does not refuse the second as a duplicate modifier (Animated Armor
+// holds poison and psychic).
+func (s *ImmunityTestSuite) TestTwoImmunitiesAnswerOneHitOfBothTypes() {
+	poison := Immunity("monster-1", damage.Poison)
+	psychic := Immunity("monster-1", damage.Psychic)
+	s.Require().NoError(poison.Apply(s.ctx, s.bus))
+	s.Require().NoError(psychic.Apply(s.ctx, s.bus))
+
+	component := func(t damage.Type) dnd5eEvents.DamageComponent {
+		return dnd5eEvents.DamageComponent{
+			Source: dnd5eEvents.DamageSourceSpell,
+			Roll: dnd5eEvents.RollComponent{
+				Source:   dnd5eEvents.RollSource{Ref: refs.Weapons.Dagger(), Name: "Dagger"},
+				Modifier: intPtr(5),
+			},
+			DamageType: t,
+		}
+	}
+	folded, settled, err := foldIncoming(s.ctx, s.bus, "pc-1", "monster-1",
+		[]dnd5eEvents.DamageComponent{component(damage.Poison), component(damage.Psychic)})
 	s.Require().NoError(err)
-	s.Assert().False(s.immunity.IsApplied())
+
+	var immune []damage.Type
+	for _, multiplier := range folded.Multipliers {
+		immune = append(immune, multiplier.DamageType)
+	}
+	s.ElementsMatch([]damage.Type{damage.Poison, damage.Psychic}, immune)
+	_, total := settled.FinalDamage()
+	s.Zero(total)
 }

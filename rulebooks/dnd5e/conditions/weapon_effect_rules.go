@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -279,7 +280,8 @@ func (r twoWeaponFightingRule) AssessAction(in *contributions.AssessActionInput)
 // AssessAction answers whether Martial Arts bears on the framed attack. Its
 // ability and die are settled at attack assembly by WeaponAttackOverride,
 // which decides with the same weapon predicate; this answer reads the
-// assembled weapon and changes nothing.
+// assembled weapon and the actor's monk levels from the frame, and changes
+// nothing.
 func (ma *MartialArtsCondition) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error) {
 	frame, err := frameOf(in, "martial arts")
 	if err != nil {
@@ -298,8 +300,12 @@ func (ma *MartialArtsCondition) AssessAction(in *contributions.AssessActionInput
 	unarmed, monk := martialArtsWeaponID(weapon)
 	switch {
 	case unarmed:
+		level, err := actorClassLevel(frame, classes.Monk, "martial arts")
+		if err != nil {
+			return nil, err
+		}
 		out := assessed(contributions.Applies, "The attack is an unarmed strike")
-		out.Answer.Benefit = fmt.Sprintf("Can use Dexterity; deals the %s Martial Arts die", ma.getMartialArtsDice())
+		out.Answer.Benefit = fmt.Sprintf("Can use Dexterity; deals the %s Martial Arts die", martialArtsDieAt(level))
 		return out, nil
 	case monk:
 		out := assessed(contributions.Applies, "The attack is made with a monk weapon")

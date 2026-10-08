@@ -21,6 +21,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // holdResistance puts a Resistance die on the member's stored sheet —
@@ -232,4 +233,34 @@ func (s *CastSuite) TestKeepingFinishesTheCastWithoutIt() {
 		}
 	}
 	s.True(found, "declining costs nothing")
+}
+
+// TestARecastThatStopsToAskHasAlreadyEndedTheOldArea: the bard holds Fog
+// Cloud and casts Bane, a second concentration spell, at a fighter holding a
+// Resistance die. The price is paid before the door yields, and paying for a
+// new concentration ends the old one; so the cloud has ended by the time the
+// cast stops to ask, and the pose lands the area its payment closed.
+func (s *CastSuite) TestARecastThatStopsToAskHasAlreadyEndedTheOldArea() {
+	s.sceneWithAllies(castingBardWithSpells("bard", spells.Bane, spells.FogCloud), []*character.Data{armedFighter("fighter")}, 4, 10)
+	ctx := context.Background()
+	_, err := s.mgr.Cast(ctx, &session.CastInput{Session: "sess", Member: "bard", DeclarationID: s.castRow(spells.FogCloud).ID, Cell: &spatial.Position{X: 20, Y: 1}})
+	s.Require().NoError(err)
+	for _, member := range []string{"bard", "fighter"} {
+		_, err = s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: member, DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", member)})
+		s.Require().NoError(err)
+	}
+	areas, err := s.mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "bard"})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(areas, "control: the bard's cloud stands")
+	s.holdResistance("fighter", "cleric-1")
+
+	out, err := s.mgr.Cast(ctx, &session.CastInput{
+		Session: "sess", Member: "bard", DeclarationID: s.castRow(spells.Bane).ID,
+		Targets: []string{"fighter"},
+	})
+	s.Require().NoError(err)
+	s.Require().True(out.Posed, "control: Bane stops to ask the fighter")
+	areas, err = s.mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "bard"})
+	s.Require().NoError(err)
+	s.Empty(areas, "the paid recast ended the cloud before the cast stopped to ask")
 }

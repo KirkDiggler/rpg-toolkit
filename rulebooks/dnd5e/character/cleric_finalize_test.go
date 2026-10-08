@@ -3,6 +3,7 @@ package character
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -79,12 +80,7 @@ func (s *ClericFinalizeSuite) TestTempestWrathUsesFinalWisdomAndPersists() {
 	s.Equal(3, char.GetResource(resources.WrathOfTheStorm).Maximum())
 	s.Require().NoError(char.GetResource(resources.WrathOfTheStorm).Use(1))
 	s.Equal(2, char.GetResource(resources.WrathOfTheStorm).Current())
-	inFog, err := conditions.NewInFogCondition(conditions.NewInFogConditionInput{
-		MemberID: char.GetID(), SourceID: "fog-area-1", SourceRef: refs.Spells.FogCloud(),
-	})
-	s.Require().NoError(err)
-	char.conditions = append(char.conditions, inFog)
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	encoded, err := json.Marshal(data)
 	s.Require().NoError(err)
 	var stored Data
@@ -106,16 +102,6 @@ func (s *ClericFinalizeSuite) TestTempestWrathUsesFinalWisdomAndPersists() {
 	s.Equal("Wrath of the Storm", wrath.Name)
 	s.Equal(2, wrath.Current)
 	s.Equal(3, wrath.Maximum)
-	var fog *ConditionView
-	for i := range view.View.Conditions {
-		if view.View.Conditions[i].Ref == *refs.Conditions.InFog() {
-			fog = &view.View.Conditions[i]
-			break
-		}
-	}
-	s.Require().NotNil(fog)
-	s.Equal("In Fog", fog.Name)
-	s.Nil(fog.SourceMember, "area IDs are not party-member identities")
 	s.Require().NoError(loaded.LongRest(context.Background()))
 	s.Equal(3, loaded.GetResource(resources.WrathOfTheStorm).Current())
 }
@@ -132,7 +118,7 @@ func (s *ClericFinalizeSuite) TestCreationAndPersistence() {
 	s.Equal(2, char.GetResource(resources.SpellSlotLevel1).Current())
 	s.Equal(2, char.GetResource(resources.SpellSlotLevel1).Maximum())
 	s.Require().NoError(char.UseResource(resources.SpellSlotLevel1, 1))
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	s.Equal(classes.LifeDomain, data.SubclassID)
 	s.ElementsMatch([]proficiencies.Armor{
 		proficiencies.ArmorLight, proficiencies.ArmorMedium, proficiencies.ArmorShields, proficiencies.ArmorHeavy,
@@ -167,7 +153,7 @@ func (s *ClericFinalizeSuite) TestCreationAndPersistence() {
 	stored.HitPoints = 4
 	loaded, err := LoadFromData(context.Background(), &stored, events.NewEventBus())
 	s.Require().NoError(err)
-	back := loaded.ToData()
+	back := mustToData(s.T(), loaded)
 	s.Equal(data.SubclassID, back.SubclassID)
 	s.Equal(data.ArmorProficiencies, back.ArmorProficiencies)
 	s.Equal(data.WeaponProficiencies, back.WeaponProficiencies)
@@ -184,7 +170,7 @@ func (s *ClericFinalizeSuite) TestCreationAndPersistence() {
 	s.Equal(1, loaded.GetResource(resources.SpellSlotLevel1).Current())
 	s.Require().NoError(loaded.LongRest(context.Background()))
 	s.Equal(2, loaded.GetResource(resources.SpellSlotLevel1).Current())
-	s.Equal(data.KnownSpells, loaded.ToData().KnownSpells, "rest restores slots without choosing spells")
+	s.Equal(data.KnownSpells, mustToData(s.T(), loaded).KnownSpells, "rest restores slots without choosing spells")
 }
 
 func (s *ClericFinalizeSuite) TestStatusProjectionAfterFinalizationAndReload() {
@@ -210,7 +196,7 @@ func (s *ClericFinalizeSuite) TestStatusProjectionAfterFinalizationAndReload() {
 	})
 	s.Require().NoError(err)
 	char.conditions = append(char.conditions, baned)
-	encoded, err := json.Marshal(char.ToData())
+	encoded, err := json.Marshal(mustToData(s.T(), char))
 	s.Require().NoError(err)
 	var stored Data
 	s.Require().NoError(json.Unmarshal(encoded, &stored))
@@ -261,7 +247,7 @@ func (s *ClericFinalizeSuite) TestStabilizationPersistsWithoutHealingAndAllowsLa
 	})
 	char.deathSaveState = &saves.DeathSaveState{Successes: 1, Failures: 2}
 	markSaved(char)
-	resourcesBefore := char.ToData().Resources
+	resourcesBefore := mustToData(s.T(), char).Resources
 	s.True(char.CanStabilize())
 	result, err := char.Stabilize()
 	s.Require().NoError(err)
@@ -272,11 +258,11 @@ func (s *ClericFinalizeSuite) TestStabilizationPersistsWithoutHealingAndAllowsLa
 	s.Zero(result.Progress.Failures)
 	s.True(result.Progress.Stabilized)
 	s.True(char.IsDirty())
-	s.Equal(resourcesBefore, char.ToData().Resources)
+	s.Equal(resourcesBefore, mustToData(s.T(), char).Resources)
 	s.False(CanMakeDeathSave(char))
 	s.True(combat.ParticipationFor(char.ParticipationView().LifeState).AutoPassesTurn)
 
-	encoded, err := json.Marshal(char.ToData())
+	encoded, err := json.Marshal(mustToData(s.T(), char))
 	s.Require().NoError(err)
 	var stored Data
 	s.Require().NoError(json.Unmarshal(encoded, &stored))
@@ -318,12 +304,12 @@ func (s *ClericFinalizeSuite) TestStabilizationRejectsIneligibleRecipientsWithou
 				char.deathSaveState = &saves.DeathSaveState{Failures: 3, Dead: true}
 			}
 			markSaved(char)
-			before := char.ToData()
+			before := mustToData(s.T(), char)
 			s.False(char.CanStabilize())
 			out, err := char.Stabilize()
 			s.Require().Error(err)
 			s.Nil(out)
-			after := char.ToData()
+			after := mustToData(s.T(), char)
 			// ToData stamps serialization time even when no game state changed.
 			after.UpdatedAt = before.UpdatedAt
 			s.Equal(before, after)
@@ -340,13 +326,13 @@ func (s *ClericFinalizeSuite) TestStabilizationRejectsIneligibleRecipientsWithou
 func (s *ClericFinalizeSuite) TestExistingSheetDoesNotReceiveImplicitSpellGrantsOnLoad() {
 	char, err := s.draft(s.classInput()).ToCharacter(context.Background(), "older-cleric", events.NewEventBus())
 	s.Require().NoError(err)
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	data.KnownSpells = nil
 	delete(data.Resources, resources.SpellSlotLevel1)
 	loaded, err := Load(context.Background(), data)
 	s.Require().NoError(err)
 	s.Empty(loaded.KnownSpells())
-	s.NotContains(loaded.ToData().Resources, resources.SpellSlotLevel1)
+	s.NotContains(mustToData(s.T(), loaded).Resources, resources.SpellSlotLevel1)
 }
 
 func (s *ClericFinalizeSuite) TestChosenSpareTheDyingCompilesAfterDraftAndCharacterReload() {
@@ -359,7 +345,7 @@ func (s *ClericFinalizeSuite) TestChosenSpareTheDyingCompilesAfterDraftAndCharac
 	s.Require().NoError(json.Unmarshal(raw, &storedDraft))
 	char, err := LoadDraftFromData(&storedDraft).ToCharacter(context.Background(), "stabilizing-cleric", events.NewEventBus())
 	s.Require().NoError(err)
-	raw, err = json.Marshal(char.ToData())
+	raw, err = json.Marshal(mustToData(s.T(), char))
 	s.Require().NoError(err)
 	var stored Data
 	s.Require().NoError(json.Unmarshal(raw, &stored))
@@ -387,7 +373,7 @@ func (s *ClericFinalizeSuite) TestChosenResistanceCompilesAfterDraftAndCharacter
 	s.Require().NoError(json.Unmarshal(raw, &storedDraft))
 	char, err := LoadDraftFromData(&storedDraft).ToCharacter(context.Background(), "resistant-cleric", events.NewEventBus())
 	s.Require().NoError(err)
-	raw, err = json.Marshal(char.ToData())
+	raw, err = json.Marshal(mustToData(s.T(), char))
 	s.Require().NoError(err)
 	var stored Data
 	s.Require().NoError(json.Unmarshal(raw, &stored))
@@ -415,7 +401,7 @@ func (s *ClericFinalizeSuite) TestChosenTollTheDeadCompilesAfterDraftAndCharacte
 	s.Require().NoError(json.Unmarshal(raw, &storedDraft))
 	char, err := LoadDraftFromData(&storedDraft).ToCharacter(context.Background(), "tolling-cleric", events.NewEventBus())
 	s.Require().NoError(err)
-	raw, err = json.Marshal(char.ToData())
+	raw, err = json.Marshal(mustToData(s.T(), char))
 	s.Require().NoError(err)
 	var stored Data
 	s.Require().NoError(json.Unmarshal(raw, &stored))
@@ -447,7 +433,7 @@ func (s *ClericFinalizeSuite) TestChosenWordOfRadianceCompilesAfterDraftAndChara
 	s.Require().NoError(json.Unmarshal(raw, &storedDraft))
 	char, err := LoadDraftFromData(&storedDraft).ToCharacter(context.Background(), "radiant-cleric", events.NewEventBus())
 	s.Require().NoError(err)
-	raw, err = json.Marshal(char.ToData())
+	raw, err = json.Marshal(mustToData(s.T(), char))
 	s.Require().NoError(err)
 	var stored Data
 	s.Require().NoError(json.Unmarshal(raw, &stored))
@@ -473,7 +459,7 @@ func (s *ClericFinalizeSuite) TestKnownSacredFlameUsesTheClericsWisdomAfterReloa
 	draft := s.draft(s.classInput())
 	char, err := draft.ToCharacter(context.Background(), "sacred-flame-cleric", events.NewEventBus())
 	s.Require().NoError(err)
-	loaded, err := LoadFromData(context.Background(), char.ToData(), events.NewEventBus())
+	loaded, err := LoadFromData(context.Background(), mustToData(s.T(), char), events.NewEventBus())
 	s.Require().NoError(err)
 	s.Equal(13, loaded.SpellSaveDC(), "8 + level-one proficiency 2 + Wisdom 16 modifier 3")
 
@@ -540,7 +526,7 @@ func (s *ClericFinalizeSuite) TestEquipmentAlternativesAndLegacyLifeChoice() {
 	char, err := draft.ToCharacter(context.Background(), "legacy-cleric", events.NewEventBus())
 	s.Require().NoError(err)
 	carried := map[string]int{}
-	for _, item := range char.ToData().Inventory {
+	for _, item := range mustToData(s.T(), char).Inventory {
 		carried[item.ID] += item.Quantity
 	}
 	s.Equal(1, carried[string(armor.ChainMail)])
@@ -559,8 +545,8 @@ func (s *ClericFinalizeSuite) TestReplacingClassAndDomainReplacesTheirGrants() {
 	s.Require().NoError(draft.SetClass(light))
 	char, err := draft.ToCharacter(context.Background(), "light-cleric", events.NewEventBus())
 	s.Require().NoError(err)
-	s.NotContains(char.ToData().ArmorProficiencies, proficiencies.ArmorHeavy)
-	s.Equal(classes.LightDomain, char.ToData().SubclassID)
+	s.NotContains(mustToData(s.T(), char).ArmorProficiencies, proficiencies.ArmorHeavy)
+	s.Equal(classes.LightDomain, mustToData(s.T(), char).SubclassID)
 
 	fighter := &SetClassInput{ClassID: classes.Fighter, Choices: ClassChoices{
 		Skills: []skills.Skill{skills.Athletics, skills.Perception},
@@ -576,8 +562,8 @@ func (s *ClericFinalizeSuite) TestReplacingClassAndDomainReplacesTheirGrants() {
 	s.Require().NoError(draft.SetClass(s.classInput()))
 	char, err = draft.ToCharacter(context.Background(), "cleric-again", events.NewEventBus())
 	s.Require().NoError(err)
-	s.Len(char.ToData().ArmorProficiencies, 4)
-	s.Len(char.ToData().KnownCantrips, 3)
+	s.Len(mustToData(s.T(), char).ArmorProficiencies, 4)
+	s.Len(mustToData(s.T(), char).KnownCantrips, 3)
 }
 
 func TestClericFinalizeSuite(t *testing.T) { suite.Run(t, new(ClericFinalizeSuite)) }
@@ -585,7 +571,7 @@ func TestClericFinalizeSuite(t *testing.T) { suite.Run(t, new(ClericFinalizeSuit
 func (s *ClericFinalizeSuite) TestGuidingBoltCompilesFromNativeClericAfterReload() {
 	c, err := s.draft(s.classInput()).ToCharacter(context.Background(), "cleric-bolt", events.NewEventBus())
 	s.Require().NoError(err)
-	c, err = Load(context.Background(), c.ToData())
+	c, err = Load(context.Background(), mustToData(s.T(), c))
 	s.Require().NoError(err)
 	d := c.CastDefinition(spells.GuidingBolt)
 	s.Require().NotNil(d)
@@ -600,7 +586,7 @@ func (s *ClericFinalizeSuite) TestGuidingBoltCompilesFromNativeClericAfterReload
 func (s *ClericFinalizeSuite) TestInflictWoundsCompilesFromNativeClericAfterReload() {
 	c, err := s.draft(s.classInput()).ToCharacter(context.Background(), "cleric-bolt", events.NewEventBus())
 	s.Require().NoError(err)
-	c, err = Load(context.Background(), c.ToData())
+	c, err = Load(context.Background(), mustToData(s.T(), c))
 	s.Require().NoError(err)
 	d := c.CastDefinition(spells.InflictWounds)
 	s.Require().NotNil(d)
@@ -615,7 +601,7 @@ func (s *ClericFinalizeSuite) TestInflictWoundsCompilesFromNativeClericAfterRelo
 func (s *ClericFinalizeSuite) TestShieldOfFaithCompilesFromNativeClericAfterReload() {
 	c, err := s.draft(s.classInput()).ToCharacter(context.Background(), "cleric-faith", events.NewEventBus())
 	s.Require().NoError(err)
-	c, err = Load(context.Background(), c.ToData())
+	c, err = Load(context.Background(), mustToData(s.T(), c))
 	s.Require().NoError(err)
 	d := c.CastDefinition(spells.ShieldOfFaith)
 	s.Require().NotNil(d)
@@ -630,15 +616,15 @@ func (s *ClericFinalizeSuite) TestFourPreparationsPlusLifeDomainGrantsSurviveRel
 	input.Choices.Spells = []spells.Spell{spells.GuidingBolt, spells.InflictWounds, spells.ShieldOfFaith, spells.HealingWord}
 	c, err := s.draft(input).ToCharacter(context.Background(), "prepared-cleric", events.NewEventBus())
 	s.Require().NoError(err)
-	loaded, err := Load(context.Background(), c.ToData())
+	loaded, err := Load(context.Background(), mustToData(s.T(), c))
 	s.Require().NoError(err)
 	s.Len(loaded.KnownSpells(), 6)
 	s.ElementsMatch([]string{
 		refs.Spells.GuidingBolt().String(), refs.Spells.InflictWounds().String(),
 		refs.Spells.ShieldOfFaith().String(), refs.Spells.HealingWord().String(),
 		refs.Spells.Bless().String(), refs.Spells.CureWounds().String(),
-	}, loaded.ToData().KnownSpells)
-	for _, choice := range loaded.ToData().Levels[0].Choices {
+	}, mustToData(s.T(), loaded).KnownSpells)
+	for _, choice := range mustToData(s.T(), loaded).Levels[0].Choices {
 		if choice.Category == shared.ChoiceSpells {
 			s.ElementsMatch(input.Choices.Spells, choice.SpellSelection)
 			s.Len(choice.SpellSelection, 4, "domain spells never become preparation choices")
@@ -673,15 +659,15 @@ func (s *ClericFinalizeSuite) TestLightDomainAddsDeferredLightBeyondThreeCantrip
 	input.Choices.Cantrips = []spells.Spell{spells.Guidance, spells.SacredFlame, spells.Resistance}
 	c, err := s.draft(input).ToCharacter(context.Background(), "light-domain", events.NewEventBus())
 	s.Require().NoError(err)
-	loaded, err := Load(context.Background(), c.ToData())
+	loaded, err := Load(context.Background(), mustToData(s.T(), c))
 	s.Require().NoError(err)
 	s.Len(loaded.KnownCantrips(), 4)
-	s.Contains(loaded.ToData().KnownCantrips, refs.Spells.Light().String())
+	s.Contains(mustToData(s.T(), loaded).KnownCantrips, refs.Spells.Light().String())
 	s.Nil(loaded.CastDefinition(spells.Light), "Light awaits object targeting, not a no-op cast")
 	s.Len(loaded.KnownSpells(), 6)
-	s.Contains(loaded.ToData().KnownSpells, refs.Spells.BurningHands().String())
-	s.Contains(loaded.ToData().KnownSpells, refs.Spells.FaerieFire().String())
-	s.NotContains(loaded.ToData().KnownSpells, refs.Spells.CureWounds().String())
+	s.Contains(mustToData(s.T(), loaded).KnownSpells, refs.Spells.BurningHands().String())
+	s.Contains(mustToData(s.T(), loaded).KnownSpells, refs.Spells.FaerieFire().String())
+	s.NotContains(mustToData(s.T(), loaded).KnownSpells, refs.Spells.CureWounds().String())
 }
 
 func (s *ClericFinalizeSuite) TestWarProficienciesSurviveCreationReloadAndDriveAttacks() {
@@ -694,14 +680,18 @@ func (s *ClericFinalizeSuite) TestWarProficienciesSurviveCreationReloadAndDriveA
 	s.Require().NoError(json.Unmarshal(encoded, &saved))
 	char, err := LoadDraftFromData(&saved).ToCharacter(context.Background(), "war-cleric", events.NewEventBus())
 	s.Require().NoError(err)
-	encoded, err = json.Marshal(char.ToData())
+	encoded, err = json.Marshal(mustToData(s.T(), char))
 	s.Require().NoError(err)
 	var stored Data
 	s.Require().NoError(json.Unmarshal(encoded, &stored))
 	loaded, err := LoadFromData(context.Background(), &stored, events.NewEventBus())
 	s.Require().NoError(err)
-	s.ElementsMatch([]proficiencies.Armor{proficiencies.ArmorLight, proficiencies.ArmorMedium, proficiencies.ArmorShields, proficiencies.ArmorHeavy}, loaded.ToData().ArmorProficiencies)
-	s.ElementsMatch([]proficiencies.Weapon{proficiencies.WeaponSimple, proficiencies.WeaponMartial}, loaded.ToData().WeaponProficiencies)
+	loadedData := mustToData(s.T(), loaded)
+	s.ElementsMatch([]proficiencies.Armor{
+		proficiencies.ArmorLight, proficiencies.ArmorMedium, proficiencies.ArmorShields, proficiencies.ArmorHeavy,
+	}, loadedData.ArmorProficiencies)
+	s.ElementsMatch([]proficiencies.Weapon{proficiencies.WeaponSimple, proficiencies.WeaponMartial},
+		loadedData.WeaponProficiencies)
 	for _, id := range []shared.EquipmentID{weapons.Longsword, weapons.Longbow, weapons.Mace} {
 		weapon, err := weapons.GetByID(id)
 		s.Require().NoError(err)
@@ -710,7 +700,7 @@ func (s *ClericFinalizeSuite) TestWarProficienciesSurviveCreationReloadAndDriveA
 	// Exercise the attack compiler with a martial melee weapon, then a ranged
 	// one; the persisted proficiency must contribute +2 to accuracy only.
 	for _, id := range []shared.EquipmentID{weapons.Longsword, weapons.Longbow} {
-		attackData := loaded.ToData()
+		attackData := mustToData(s.T(), loaded)
 		attackData.Inventory = append(attackData.Inventory, InventoryItemData{Type: shared.EquipmentTypeWeapon, ID: string(id), Quantity: 1})
 		attackData.EquipmentSlots = EquipmentSlots{SlotMainHand: string(id)}
 		loaded, err = LoadFromData(context.Background(), attackData, events.NewEventBus())
@@ -729,7 +719,7 @@ func (s *ClericFinalizeSuite) TestWarProficienciesSurviveCreationReloadAndDriveA
 	s.Require().NoError(draft.SetClass(life))
 	char, err = draft.ToCharacter(context.Background(), "life-cleric", events.NewEventBus())
 	s.Require().NoError(err)
-	s.NotContains(char.ToData().WeaponProficiencies, proficiencies.WeaponMartial)
+	s.NotContains(mustToData(s.T(), char).WeaponProficiencies, proficiencies.WeaponMartial)
 }
 
 func (s *ClericFinalizeSuite) TestNYIDomainGrantsSurviveCreationAndReloadWithoutCasts() {
@@ -752,9 +742,10 @@ func (s *ClericFinalizeSuite) TestNYIDomainGrantsSurviveCreationAndReloadWithout
 			draft := s.draft(in)
 			c, err := draft.ToCharacter(context.Background(), "nyi-cleric", events.NewEventBus())
 			s.Require().NoError(err)
-			c, err = Load(context.Background(), c.ToData())
+			c, err = Load(context.Background(), mustToData(s.T(), c))
 			s.Require().NoError(err)
-			all := append(c.ToData().KnownCantrips, c.ToData().KnownSpells...)
+			data := mustToData(s.T(), c)
+			all := slices.Concat(data.KnownCantrips, data.KnownSpells)
 			for _, id := range tc.grants {
 				s.Contains(all, refs.Spells.ByID(id).String())
 				s.Nil(c.CastDefinition(id))
@@ -783,22 +774,24 @@ func (s *ClericFinalizeSuite) TestKnowledgeGrantsPersistAndOnlyChosenSkillsDoubl
 	s.Require().NoError(json.Unmarshal(encoded, &stored))
 	c, err := LoadDraftFromData(&stored).ToCharacter(context.Background(), "knowledge", events.NewEventBus())
 	s.Require().NoError(err)
-	c, err = Load(context.Background(), c.ToData())
+	c, err = Load(context.Background(), mustToData(s.T(), c))
 	s.Require().NoError(err)
 	for _, skill := range []skills.Skill{skills.Arcana, skills.History} {
-		s.Equal(shared.Expert, c.ToData().Skills[skill])
+		s.Equal(shared.Expert, mustToData(s.T(), c).Skills[skill])
 		s.Equal(c.GetAbilityModifier(abilities.INT)+2*c.ProficiencyBonus(), c.GetSkillModifier(skill))
 	}
-	s.Equal(shared.Proficient, c.ToData().Skills[skills.Religion])
+	s.Equal(shared.Proficient, mustToData(s.T(), c).Skills[skills.Religion])
 	s.Equal(c.GetAbilityModifier(abilities.INT)+c.ProficiencyBonus(), c.GetSkillModifier(skills.Religion))
-	s.ElementsMatch([]languages.Language{languages.Common, languages.Dwarvish, languages.Elvish, languages.Gnomish}, c.ToData().Languages)
-	s.Contains(c.ToData().KnownSpells, refs.Spells.Command().String())
-	s.Contains(c.ToData().KnownSpells, refs.Spells.Identify().String())
+	s.ElementsMatch([]languages.Language{
+		languages.Common, languages.Dwarvish, languages.Elvish, languages.Gnomish,
+	}, mustToData(s.T(), c).Languages)
+	s.Contains(mustToData(s.T(), c).KnownSpells, refs.Spells.Command().String())
+	s.Contains(mustToData(s.T(), c).KnownSpells, refs.Spells.Identify().String())
 	s.Require().NoError(draft.SetClass(s.classInput()))
 	c, err = draft.ToCharacter(context.Background(), "life", events.NewEventBus())
 	s.Require().NoError(err)
-	s.NotContains(c.ToData().Skills, skills.Arcana)
-	s.NotContains(c.ToData().Languages, languages.Elvish)
+	s.NotContains(mustToData(s.T(), c).Skills, skills.Arcana)
+	s.NotContains(mustToData(s.T(), c).Languages, languages.Elvish)
 }
 
 func (s *ClericFinalizeSuite) TestKnowledgeInvalidChoicesCannotFinalize() {
@@ -856,7 +849,7 @@ func (s *ClericFinalizeSuite) TestLightWardingFlareLifecycle() {
 	s.Require().NotNil(char.GetResource(resources.WardingFlare))
 	s.Equal(3, char.GetResource(resources.WardingFlare).Maximum(), "uses final Wisdom including ancestry")
 	s.Require().NoError(char.UseResource(resources.WardingFlare, 1))
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	loaded, err := LoadFromData(context.Background(), data, events.NewEventBus())
 	s.Require().NoError(err)
 	view, err := loaded.StatusView(&StatusViewInput{})
@@ -901,13 +894,13 @@ func (s *ClericFinalizeSuite) TestNatureCreationGrantsPersistAndProject() {
 			s.Require().NoError(json.Unmarshal(blob, &saved))
 			c, err := LoadDraftFromData(&saved).ToCharacter(context.Background(), "nature", events.NewEventBus())
 			s.Require().NoError(err)
-			blob, err = json.Marshal(c.ToData())
+			blob, err = json.Marshal(mustToData(s.T(), c))
 			s.Require().NoError(err)
 			var stored Data
 			s.Require().NoError(json.Unmarshal(blob, &stored))
 			c, err = LoadFromData(context.Background(), &stored, events.NewEventBus())
 			s.Require().NoError(err)
-			data := c.ToData()
+			data := mustToData(s.T(), c)
 			s.Contains(data.ArmorProficiencies, proficiencies.ArmorHeavy)
 			s.NotContains(data.WeaponProficiencies, proficiencies.WeaponMartial)
 			s.Equal(shared.Proficient, data.Skills[skills.Survival])
@@ -926,8 +919,8 @@ func (s *ClericFinalizeSuite) TestNatureCreationGrantsPersistAndProject() {
 			s.Require().NoError(draft.SetClass(s.classInput()))
 			changed, err := draft.ToCharacter(context.Background(), "life", events.NewEventBus())
 			s.Require().NoError(err)
-			s.NotContains(changed.ToData().Skills, skills.Survival)
-			s.Len(changed.ToData().KnownCantrips, 3)
+			s.NotContains(mustToData(s.T(), changed).Skills, skills.Survival)
+			s.Len(mustToData(s.T(), changed).KnownCantrips, 3)
 		})
 	}
 }

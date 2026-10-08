@@ -578,7 +578,7 @@ func (e *Encounter) probeDoor(door *doorRecord, actor MemberID) error {
 // mutableWitnesses. Remembering the door alone does not grant new state.
 func (e *Encounter) appendDoorBeat(door *doorRecord, audience []MemberID, extra map[string]interface{}) (uint64, error) {
 	payload := map[string]interface{}{
-		"beat":  "door",
+		"beat":  BeatDoor,
 		"door":  door.id,
 		"state": string(door.state.Kind()),
 	}

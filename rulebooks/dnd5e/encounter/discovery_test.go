@@ -101,7 +101,7 @@ func (s *AutomaticDiscoverySuite) TestThreeHexRearmAndReload() {
 	s.step(enc, 1)
 	data := enc.ToData()
 	s.True(data.Discovery["alice"].Attempts["secret"].Armed)
-	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, CheckResolver: r, Witness: nobodyPerceives{}})
+	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, CheckResolver: r, Witness: nobodyPerceives{}})
 	s.Require().NoError(err)
 	s.Equal(1, r.calls, "load does not roll")
 	s.step(loaded, 3)

@@ -72,7 +72,7 @@ type castPush struct {
 // makes it safe to run before the record: a cast refused at this point has
 // moved nobody.
 func routeCastPushes(
-	enc *encounter.Encounter, pushes []castPush, targets []encounter.CastTargetResult,
+	enc *encounter.Encounter, sheets encounter.Sheets, pushes []castPush, targets []encounter.CastTargetResult,
 ) error {
 	if len(pushes) == 0 {
 		return nil
@@ -87,7 +87,16 @@ func routeCastPushes(
 		return fmt.Errorf("cast push: %w", translate(err))
 	}
 	positions := rosterPositions(roster)
-	speeds := rosterSpeeds(roster)
+	var runners []encounter.MemberID
+	for _, push := range pushes {
+		if push.move.Speed {
+			runners = append(runners, push.target)
+		}
+	}
+	speeds, err := sheetSpeeds(sheets, runners)
+	if err != nil {
+		return fmt.Errorf("cast push: %w", err)
+	}
 
 	for i := range pushes {
 		push := &pushes[i]
@@ -99,8 +108,8 @@ func routeCastPushes(
 		// THE BUDGET, AND THE ONE THE CONTENT COULD NOT WRITE. A push in
 		// cells is a distance the spell chose; a flee is the creature's own
 		// legs, and the same whisper moves a dwarf and a horse different
-		// distances. The roster row is where that fact lives and this is the
-		// only module that reads it, so the conversion into cells happens
+		// distances. The mover's sheet is where that fact lives and this is
+		// the only module that reads it, so the conversion into cells happens
 		// here — a LOOKUP, not a ruling: nothing on this side decides what a
 		// creature's speed is, only where to find it and how many cells five
 		// feet make.
@@ -126,15 +135,16 @@ func routeCastPushes(
 		if push.move.Speed && budget <= 0 {
 			// THE THIRD ZERO, AND THE ONLY LAYER THAT CAN TELL IT APART. A
 			// route that hit a wall names the wall and a price nobody could
-			// pay names the price; a budget read off a row that carries no
-			// speed would be the one that says nothing. Asking the board is
+			// pay names the price; a budget read off a sheet whose speed is
+			// zero would be the one that says nothing. Asking the board is
 			// worse than useless here — Route answers a zero budget with an
 			// empty path and no sentence, because from down there "you were
 			// given nowhere to go" and "you got nowhere" are the same walk.
 			//
 			// NOT A THRESHOLD, WHICH IS WHY IT IS NOT A RULE. It is the
-			// fail-closed question about a looked-up fact: the row did not say
-			// how fast this creature is, so nothing on this side may guess.
+			// looked-up fact read as it was answered: the sheet says this
+			// creature does not move on its own (a sheet that could not be
+			// read was already refused by the seam, never answered zero).
 			// A speed under five feet reads the same way and is the same
 			// sentence — less than one cell on a five-foot grid is no run.
 			result.Moved = 0
@@ -160,11 +170,11 @@ func routeCastPushes(
 }
 
 // noSpeedToRunWith is what a move budgeted by the mover's own speed reports
-// when the roster row carried none.
+// when the mover's sheet answers a speed of zero.
 //
 // IT IS A REASON, NOT AN ERROR. The cast happened, the save was failed, the
 // damage landed and whatever the move was priced at was paid — the creature
-// simply has no legs the record knows about. Phrased the way resolution
+// simply has no legs of its own. Phrased the way resolution
 // phrases its own untaken move, because both end up in the same field of the
 // same beat and a reader should not be able to tell which layer wrote them.
 const noSpeedToRunWith = "has no speed to run with"

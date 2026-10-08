@@ -284,7 +284,7 @@ func TestDeathSaveStateDoesNotAliasPersistenceBoundaries(t *testing.T) {
 		char := bareCharacterAtZero(&saves.DeathSaveState{Failures: 3, Dead: true})
 		markSaved(char)
 
-		exported := char.ToData()
+		exported := mustToData(t, char)
 		require.NotNil(t, exported.DeathSaveState)
 		exported.DeathSaveState.Failures = 0
 		exported.DeathSaveState.Dead = false
@@ -301,7 +301,7 @@ func TestDeathSaveStateDoesNotAliasPersistenceBoundaries(t *testing.T) {
 		require.NoError(t, err)
 		markSaved(char)
 
-		require.Nil(t, char.ToData().DeathSaveState)
+		require.Nil(t, mustToData(t, char).DeathSaveState)
 		require.Equal(t, combat.LifeStateDying, char.LifeState())
 		require.Equal(t, &saves.DeathSaveState{}, char.GetDeathSaveState())
 		require.False(t, char.IsDirty())
@@ -316,7 +316,7 @@ func TestDeathSaveProgressRoundTripsExactly(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, char.IsDirty())
 
-	data := char.ToData()
+	data := mustToData(t, char)
 	require.Equal(t, &saves.DeathSaveState{Successes: 2, Failures: 1}, data.DeathSaveState)
 
 	loaded, err := Load(context.Background(), data)
@@ -454,7 +454,7 @@ func TestApplyDamageAtZeroOwnsDeathSaveFailures(t *testing.T) {
 
 			require.Equal(t, tc.wantDamage, result.TotalDamage)
 			require.Equal(t, tc.want, char.GetDeathSaveState())
-			require.Equal(t, tc.want, char.ToData().DeathSaveState)
+			require.Equal(t, tc.want, mustToData(t, char).DeathSaveState)
 			if tc.state.Dead {
 				require.False(t, char.IsDirty(), "dead damage causes no authoritative transition")
 			} else {
@@ -465,15 +465,20 @@ func TestApplyDamageAtZeroOwnsDeathSaveFailures(t *testing.T) {
 }
 
 func TestZeroAppliedDamageDoesNotChangeDeathSaveProgress(t *testing.T) {
-	immunity := 0.0
 	twelve := 12
-	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
-		{DamageType: damage.Fire, Roll: dnd5eEvents.RollComponent{
+	settled, err := combat.SettleDamage(&combat.SettleDamageInput{
+		Dealt: []dnd5eEvents.DamageComponent{{DamageType: damage.Fire, Roll: dnd5eEvents.RollComponent{
 			Source:   dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
 			Modifier: &twelve,
+		}}},
+		Multipliers: []dnd5eEvents.DamageMultiplier{{
+			Source:     dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity"},
+			DamageType: damage.Fire,
+			Factor:     dnd5eEvents.DamageFactorImmunity,
 		}},
-		{DamageType: damage.Fire, Multiplier: &immunity},
 	})
+	require.NoError(t, err)
+	instances, total := settled.FinalDamage()
 	require.Zero(t, total)
 	require.Empty(t, instances)
 
@@ -565,7 +570,7 @@ func TestLegacyUnconsciousBlobCannotRunASecondDeathSaveLedger(t *testing.T) {
 	require.Equal(t, &saves.DeathSaveState{Successes: 1, Failures: 1}, char.GetDeathSaveState(),
 		"only Character.ApplyDamage may author damage-at-zero failures")
 
-	persisted := char.ToData()
+	persisted := mustToData(t, char)
 	require.Equal(t, []string{refs.Conditions.Unconscious().String(), refs.Conditions.OpportunityAttack().String()},
 		conditionRefs(persisted), "the legacy blob, then the reaction attach recorded")
 	var gotLegacy conditions.UnconsciousData

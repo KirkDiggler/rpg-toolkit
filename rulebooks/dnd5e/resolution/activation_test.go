@@ -125,7 +125,7 @@ func (s *ActivationTestSuite) barbarian(charges int) *character.Data {
 			abilities.STR: 16, abilities.DEX: 14, abilities.CON: 16,
 			abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 8,
 		},
-		HitPoints: 15, MaxHitPoints: 15, ArmorClass: 15,
+		HitPoints: 15, MaxHitPoints: 15,
 		Resources: map[coreResources.ResourceKey]character.RecoverableResourceData{
 			resources.RageCharges: {
 				Current: charges, Maximum: 2, ResetType: coreResources.ResetLongRest,
@@ -144,7 +144,7 @@ func (s *ActivationTestSuite) barbarian(charges int) *character.Data {
 func (s *ActivationTestSuite) fighter(id string, hitPoints, maxHitPoints int) *character.Data {
 	secondWind, err := json.Marshal(features.SecondWindData{
 		Ref: refs.Features.SecondWind(), ID: id + "-second-wind", Name: "Second Wind",
-		Level: 1, CharacterID: id, Uses: 1, MaxUses: 1,
+		CharacterID: id, Uses: 1, MaxUses: 1,
 	})
 	s.Require().NoError(err)
 
@@ -168,7 +168,7 @@ func (s *ActivationTestSuite) world(members ...encounter.MemberInput) encounter.
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{},
-		Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -190,7 +190,7 @@ func (s *ActivationTestSuite) run(
 		World:        world,
 		Participants: participants,
 		Initiative:   orderAsGiven{}, TurnDriver: passDriver{},
-		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		Roller:  dice.NewRoller(),
 		Machine: machine,
 		// Cost stays nil ON PURPOSE — see NewActivation's doc. The ability
@@ -610,7 +610,8 @@ func (s *ActivationTestSuite) TestOffTheBusTheSameCallSucceedsAndAppliesNothing(
 	s.Require().NoError(err)
 	s.Require().True(out.Success, "the sheet reports success with no bus to publish on")
 
-	data := sheet.ToData()
+	data, err := sheet.ToData()
+	s.Require().NoError(err)
 	// The charge is gone, so something definitely happened...
 	s.Equal(1, data.Resources[resources.RageCharges].Current)
 	// ...and the barbarian is not raging.
@@ -1006,6 +1007,7 @@ func (s *ActivationTestSuite) TestActivationSuccessPreservesCollectorCleanupErro
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Machine: machine,
 		Equipment: noHandsAreObserved{},
+		Sheets:    noSheetsAsked{},
 	}, newSurface(bus))
 
 	s.Nil(out, "cleanup failure cannot accompany a successful outcome")
@@ -1027,6 +1029,7 @@ func (s *ActivationTestSuite) TestActivationErrorJoinsCollectorCleanupError() {
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Machine: machine,
 		Equipment: noHandsAreObserved{},
+		Sheets:    noSheetsAsked{},
 	}, newSurface(bus))
 
 	s.Nil(out)

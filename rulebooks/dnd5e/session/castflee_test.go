@@ -55,18 +55,19 @@ func (s *CastSuite) walkedCells(member string) int {
 	return walked
 }
 
-// slowTo rewrites a member's speed on the stored roster row, which is where
-// the budget is read from.
+// slowTo rewrites a monster's walking speed on its stored stat block, which is
+// the sheet the push budget asks at the moment the push runs
+// (rpg-project#538) — nothing on the roster row carries a speed to rewrite.
 func (s *CastSuite) slowTo(member string, feet int) {
 	s.T().Helper()
-	world := s.encounters.byID["world"]
-	for i := range world.Members {
-		if string(world.Members[i].ID) == member {
-			world.Members[i].SpeedFeet = feet
+	npcs := s.sessions.byID["sess"].NPCs
+	for i := range npcs {
+		if npcs[i].ID == member {
+			npcs[i].Speed.Walk = feet
 			return
 		}
 	}
-	s.FailNowf("no such member", "the roster has no %q to slow down", member)
+	s.FailNowf("no such sheet", "the session holds no stat block for %q to slow down", member)
 }
 
 // spendSkeletonReaction empties the monster's one reaction meter before the

@@ -56,7 +56,7 @@ func levelOneBard(id string, uses int) *character.Data {
 			abilities.STR: 8, abilities.DEX: 14, abilities.CON: 12,
 			abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 16,
 		},
-		HitPoints: 9, MaxHitPoints: 9, ArmorClass: 12, ProficiencyBonus: 2,
+		HitPoints: 9, MaxHitPoints: 9, ProficiencyBonus: 2,
 		Features: []json.RawMessage{feature},
 		Resources: map[coreResources.ResourceKey]character.RecoverableResourceData{
 			resources.Inspiration: {Current: uses, Maximum: 2, ResetType: coreResources.ResetLongRest},
@@ -67,7 +67,7 @@ func levelOneBard(id string, uses int) *character.Data {
 // bardWorld is a bard and a fighter on a turn clock with the bard active, the
 // fighter standing `apart` cells away.
 func bardWorld(t fataler, apart int) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{},
 		Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},

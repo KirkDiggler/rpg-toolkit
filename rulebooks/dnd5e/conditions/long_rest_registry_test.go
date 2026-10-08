@@ -45,13 +45,6 @@ var longRestCases = map[string]longRestCase{
 		data:    json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"shillelagh"},"member_id":"member-1","weapon":{"slot":"main_hand","item_id":"club"},"ability":"wis","turn_ends_left":10,"skip_first_turn_end":true}`),
 		ownerID: "member-1", expectedRef: refs.Conditions.Shillelagh(), expectedSourceID: "member-1", outcome: longRestRemove, removalReason: "rest",
 	},
-	refs.Conditions.InFog().String(): {
-		data:    json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"in_fog"},"member_id":"member-1","source_id":"area-1","source_ref":{"module":"dnd5e","type":"spells","id":"fog-cloud"}}`),
-		ownerID: "member-1", expectedRef: refs.Conditions.InFog(),
-		// Area reconciliation removes this membership when its cloud expires;
-		// resting the recipient cannot independently remove another caster's fog.
-		outcome: longRestRetain,
-	},
 	refs.Conditions.Raging().String(): {
 		data: json.RawMessage(`{
 			"ref":{"module":"dnd5e","type":"conditions","id":"raging"},
@@ -367,7 +360,7 @@ var longRestCases = map[string]longRestCase{
 		data: json.RawMessage(`{
 			"ref":{"module":"dnd5e","type":"conditions","id":"sanctuary"},
 			"member_id":"member-1","source_id":"cleric-1",
-			"source_ref":{"module":"dnd5e","type":"spells","id":"sanctuary"}
+			"source_ref":{"module":"dnd5e","type":"spells","id":"sanctuary"},"save_dc":13
 		}`),
 		ownerID:          "member-1",
 		expectedRef:      refs.Conditions.Sanctuary(),

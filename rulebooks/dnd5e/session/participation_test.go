@@ -395,7 +395,7 @@ func dwarfCharacterRecord(id string, hp int) *character.Data {
 	return &character.Data{
 		ID: id, PlayerID: "player-" + id, Name: id,
 		Level: 1, ProficiencyBonus: 2, RaceID: races.Dwarf, ClassID: classes.Fighter,
-		HitPoints: hp, MaxHitPoints: 10, ArmorClass: 12,
+		HitPoints: hp, MaxHitPoints: 10,
 		AbilityScores: shared.AbilityScores{
 			abilities.STR: 12, abilities.DEX: 12, abilities.CON: 12,
 			abilities.INT: 10, abilities.WIS: 10, abilities.CHA: 10,

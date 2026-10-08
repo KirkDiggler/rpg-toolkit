@@ -42,20 +42,6 @@ func (m *MockCombatant) EXPECT() *MockCombatantMockRecorder {
 	return m.recorder
 }
 
-// AC mocks base method.
-func (m *MockCombatant) AC() int {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AC")
-	ret0, _ := ret[0].(int)
-	return ret0
-}
-
-// AC indicates an expected call of AC.
-func (mr *MockCombatantMockRecorder) AC() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AC", reflect.TypeOf((*MockCombatant)(nil).AC))
-}
-
 // AbilityScores mocks base method.
 func (m *MockCombatant) AbilityScores() shared.AbilityScores {
 	m.ctrl.T.Helper()

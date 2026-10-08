@@ -168,7 +168,7 @@ func attachEffects(in *attachEffectsInput) error {
 			Observed: observed, Actor: in.Actor, Attack: attack, Targets: targets,
 		})
 		if err != nil {
-			return fmt.Errorf("effect rows for %s: %w", offer.declaration.Verb, err)
+			return fmt.Errorf("effect rows for %s: %w", offer.declaration.Verb, translateResolution(err))
 		}
 
 		rows := make([]EffectRow, 0, len(informed.Effects))

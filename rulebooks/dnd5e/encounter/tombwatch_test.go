@@ -50,6 +50,7 @@ func seen(
 // campaign's sequel. This test doubles as the composition's usage
 // documentation: a host wires the free-roam encounter exactly like this.
 func TestTombWatch(t *testing.T) {
+	sheets := sheetFacts{goblin: {SpeedFeet: 5}, alice: {}, "bella": {}, cormac: {}}
 	// ---- Beat 1: the crypt lights up -------------------------------
 	// A 12x12 crypt with a wall across the middle, x=5..7 at y=6. Alice
 	// (2,2) and Bella (3,2) enter; a goblin patrols the far end between
@@ -59,7 +60,7 @@ func TestTombWatch(t *testing.T) {
 	// cannot get through.
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheets, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(cryptRoom, 0, 0, 12, 12)}, Props: wallRow(6, 5, 7),
@@ -67,8 +68,7 @@ func TestTombWatch(t *testing.T) {
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
 			{ID: bella, Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 2}},
-			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 10},
-				SpeedFeet: 5, Table: walksTo(cellAt(5, 10))},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 10}, Table: walksTo(cellAt(5, 10))},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: endingStairs, Trigger: encounter.TriggerReachedPosition{
@@ -134,7 +134,7 @@ func TestTombWatch(t *testing.T) {
 	data := enc.ToData()
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data})
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheets, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data})
 	require.NoError(t, err, "beat 4: the suspended scene crosses a process boundary")
 	enc = enc2 // the reload IS the encounter now
 
@@ -286,7 +286,7 @@ func TestTombWatch(t *testing.T) {
 	}
 	sequel, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheets, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(cryptRoom, 0, 0, 12, 12)}, Props: wallRow(6, 5, 7),

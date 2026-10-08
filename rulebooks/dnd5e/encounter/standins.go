@@ -39,6 +39,12 @@ import "fmt"
 //   - Sight: zero cells for every member; no sighting is written.
 //   - Equipment and Conditions: nil for every member — nothing to observe,
 //     never empty hands or an empty set ([UnobservedEquipment]).
+//   - Sheets: an empty ask gets an empty answer; a non-empty ask REFUSES with
+//     ErrRefusingSheets, Participation's shape and for its reason. A speed or
+//     a reach has no "not observed" answer — zero is a real speed — and a
+//     compiled world has no sheets behind its members. Asked only when a walk
+//     is paced, a turn budgeted or a driver's view built, none of which
+//     compiling a world does.
 //   - Witness: nobody perceives any door. It answers rather than refuses,
 //     because first light asks it for an authored concealed door that stands
 //     open even with no members (legal content, rpg-api#887).
@@ -56,6 +62,7 @@ func CompileOnlySetup(field FieldInput, endings []EndingInput) *SetupInput {
 		Standing:      nobodyDown{},
 		Sight:         zeroSight{},
 		Equipment:     UnobservedEquipment{},
+		Sheets:        noSheets{},
 		TurnDriver:    PassDriver{},
 		Striker:       RefusingStriker{},
 		Mover:         RefusingMover{},
@@ -78,7 +85,7 @@ func CompileOnlySetup(field FieldInput, endings []EndingInput) *SetupInput {
 //
 // The returned value is the caller's to finish: Roller is left nil (a load
 // that rolls is not compile-only), and any capability the host CAN answer —
-// real Initiative, Standing, Sight or Equipment from the sheets behind a
+// real Initiative, Standing, Sight, Equipment or Sheets from the sheets behind a
 // world's members — it overwrites on the returned value. Left as returned:
 //
 //   - Standing: nobody down. Participation REFUSES a non-empty ask with
@@ -88,6 +95,9 @@ func CompileOnlySetup(field FieldInput, endings []EndingInput) *SetupInput {
 //   - Initiative: REFUSES with ErrRefusingInitiative. Load forms no fight.
 //   - Sight: zero cells for every member; Equipment and Conditions:
 //     [UnobservedEquipment].
+//   - Sheets: REFUSES a non-empty ask with ErrRefusingSheets, as at Setup.
+//     [LoadEncounter] never asks it, so a world with members loads; a host
+//     that walks or drives one supplies its own.
 //   - TurnDriver: [RefusingDriver], not [PassDriver] — a loaded world may
 //     hold members, and a silent pass would hide a driven turn.
 //   - Striker, Mover, Announcer: [RefusingStriker], [RefusingMover],
@@ -104,6 +114,7 @@ func CompileOnlyLoad(data EncounterData) *LoadEncounterInput {
 		Standing:      nobodyDown{},
 		Sight:         zeroSight{},
 		Equipment:     UnobservedEquipment{},
+		Sheets:        noSheets{},
 		TurnDriver:    RefusingDriver{},
 		Striker:       RefusingStriker{},
 		Mover:         RefusingMover{},
@@ -120,6 +131,7 @@ var (
 	_ StandingWithParticipation = nobodyDown{}
 	_ Sight                     = zeroSight{}
 	_ EquipmentWithConditions   = UnobservedEquipment{}
+	_ Sheets                    = noSheets{}
 	_ Driver                    = PassDriver{}
 	_ Striker                   = RefusingStriker{}
 	_ Mover                     = RefusingMover{}
@@ -170,6 +182,17 @@ func (nobodyDown) Assess(members []MemberID) (*ParticipationAssessment, error) {
 		return nil, fmt.Errorf("assess %d members: %w", len(members), ErrRefusingParticipation)
 	}
 	return &ParticipationAssessment{Members: []MemberParticipation{}}, nil
+}
+
+// noSheets answers sheets for a world being compiled with nobody in it; see
+// [CompileOnlySetup] for why it refuses members.
+type noSheets struct{}
+
+func (noSheets) Sheets(members []MemberID) (map[MemberID]SheetFacts, error) {
+	if len(members) > 0 {
+		return nil, fmt.Errorf("sheets for %d members: %w", len(members), ErrRefusingSheets)
+	}
+	return map[MemberID]SheetFacts{}, nil
 }
 
 // zeroSight gives every member a range of zero cells.

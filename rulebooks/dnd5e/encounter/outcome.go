@@ -113,6 +113,11 @@ const (
 	// happening; an encounter whose fallen monster was worth nothing simply
 	// has no experience beat in it.
 	//
+	// ITS ACTOR MAY BE A FORMER MEMBER, alone among the kinds: the fallen
+	// monster that caused the grant may have exited by the time the session
+	// records it. Any member this encounter ever held is accepted; a
+	// never-member is refused (ErrNotMember).
+	//
 	// ACCEPTED AFTER THE ENCOUNTER HAS CLOSED, alone among the kinds. The
 	// fall that pays can be the fall that ends the run — see
 	// [Encounter.prepareRecord]'s refusal site for why that door has to be
@@ -299,12 +304,36 @@ type DeathSaveDetail struct {
 // of the recipient. Save.Saver must equal the outcome's own Actor, never
 // the warded Target; the inversion is the whole point of a ward.
 type WardedDetail struct {
-	// Source is the caster whose ward blocked this attempt. Must be a
-	// current member.
+	// Source is the caster whose ward blocked this attempt. Must be a member
+	// of this encounter now or at some point before — see
+	// [Encounter.checkWardSource].
 	Source MemberID `json:"source"`
 
 	// Save is the ACTOR's own failed save against Source's DC.
 	Save CastSave `json:"save"`
+}
+
+// checkWardSource refuses a ward source this encounter has never held.
+//
+// AN EVER-MEMBER, NOT A CURRENT ONE (rpg-toolkit#1965). A ward outlives the
+// caster who cast it — Sanctuary does not end when its caster walks away, and
+// the rulebook records the ward's DC at cast so nothing has to read the
+// caster's sheet afterwards. A swing at the warded member after that caster
+// Exited is the same fact as one before, and refusing it wedged the table: a
+// driven monster turn is one of those swings. The departed source is the same
+// notion [Encounter.Story] answers by — someone who was here keeps their name
+// in the story. An id this encounter never held is still nobody.
+//
+// Errors: ErrNoMember when source is empty; ErrNotMember when it was never a
+// member.
+func (e *Encounter) checkWardSource(verb string, source MemberID) error {
+	if source == "" {
+		return fmt.Errorf("%s: warded source: %w", verb, ErrNoMember)
+	}
+	if !e.everMembers[source] {
+		return fmt.Errorf("%s: warded source %q: %w", verb, source, ErrNotMember)
+	}
+	return nil
 }
 
 // TradeDetail is the closed, rulebook-neutral story shape for one traded
@@ -664,8 +693,9 @@ type RecordOutput struct {
 //
 // Errors: ErrNilInput, ErrClosed (for every kind but
 // [OutcomeExperienceGained], which is recordable after the close — see
-// prepareRecord's refusal site for why), ErrNoMember (empty or unknown
-// actor, unknown target), ErrInvalidData (a kind or value name this
+// prepareRecord's refusal site for why), ErrNoMember (empty actor or
+// target), ErrNotMember (unknown actor or target; an experience beat's actor
+// may be any former member), ErrInvalidData (a kind or value name this
 // composition does not know, missing or mismatched DeathSave, Trade or
 // Experience detail, an experience grant naming no character or paying a
 // non-positive amount, an Attack or
@@ -724,10 +754,6 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	// already finished with.
 	if e.outcome != nil {
 		return &RecordOutput{Seq: appended.Seq, FollowUpSeqs: followUpSeqs}, nil
-	}
-
-	if err := e.FlushSightAreaTransitions(); err != nil {
-		return nil, err
 	}
 
 	// And now the world finds out what that beat just changed. AFTER the append,
@@ -833,11 +859,8 @@ func (e *Encounter) prepareRecord(in *RecordInput) ([]preparedActivationBeat, er
 		if in.Warded == nil {
 			return nil, fmt.Errorf("record: warded detail is required: %w", ErrInvalidData)
 		}
-		if in.Warded.Source == "" {
-			return nil, fmt.Errorf("record: warded source: %w", ErrNoMember)
-		}
-		if _, ok := e.members[in.Warded.Source]; !ok {
-			return nil, fmt.Errorf("record: warded source %q: %w", in.Warded.Source, ErrNoMember)
+		if err := e.checkWardSource("record", in.Warded.Source); err != nil {
+			return nil, err
 		}
 		save := in.Warded.Save
 		// THE INVERSION IS THE WHOLE POINT OF A WARD: an ordinary CastSave's
@@ -879,14 +902,27 @@ func (e *Encounter) prepareRecord(in *RecordInput) ([]preparedActivationBeat, er
 	if in.Actor == "" {
 		return nil, fmt.Errorf("record: actor: %w", ErrNoMember)
 	}
-	if _, ok := e.members[in.Actor]; !ok {
-		return nil, fmt.Errorf("record: actor %q: %w", in.Actor, ErrNoMember)
+	// AN EXPERIENCE BEAT MAY NAME A FORMER MEMBER. Its actor is the cause —
+	// the monster whose fall paid — and a fallen monster can exit before the
+	// session settles the act. It is the same notion [Encounter.Story] and
+	// [Encounter.checkWardSource] answer by: someone who was here keeps their
+	// name in the story. An id this encounter never held is still nobody.
+	// Every other kind's actor must be a current member.
+	if in.Kind == OutcomeExperienceGained {
+		if !e.everMembers[in.Actor] {
+			return nil, fmt.Errorf("record: actor %q: %w", in.Actor, ErrNotMember)
+		}
+	} else if _, ok := e.members[in.Actor]; !ok {
+		return nil, fmt.Errorf("record: actor %q: %w", in.Actor, ErrNotMember)
 	}
 
 	targets := append([]MemberID(nil), in.Targets...)
 	for _, id := range targets {
+		if id == "" {
+			return nil, fmt.Errorf("record: target: %w", ErrNoMember)
+		}
 		if _, ok := e.members[id]; !ok {
-			return nil, fmt.Errorf("record: target %q: %w", id, ErrNoMember)
+			return nil, fmt.Errorf("record: target %q: %w", id, ErrNotMember)
 		}
 		// AN NPC IS NOT A TARGET (rpg-project#493, R4), and only a swing is
 		// refused: a trade and a death save name members too, and neither is

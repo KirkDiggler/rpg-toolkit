@@ -5,6 +5,7 @@ package character
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -22,10 +23,9 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
-// UnarmoredDefenseACTestSuite tests that Unarmored Defense is correctly applied
-// to character AC during character creation.
-// Issue #450: Character AC should use UnarmoredDefenseCondition.CalculateAC()
-// for Barbarians and Monks instead of hardcoded 10 + DEX.
+// UnarmoredDefenseACTestSuite tests that a finalized character's armour class
+// is its fold, with Unarmored Defense contributing for Barbarians and Monks,
+// and that the finalized blob stores no armour class at all.
 type UnarmoredDefenseACTestSuite struct {
 	suite.Suite
 	ctx context.Context
@@ -165,10 +165,16 @@ func (s *UnarmoredDefenseACTestSuite) TestUnarmoredDefenseAC() {
 			s.Require().NoError(err)
 			s.Require().NotNil(char)
 
-			// Assert
-			data := char.ToData()
-			s.Equal(tc.expectedAC, data.ArmorClass,
-				"AC should be %s, but got %d", tc.acExplanation, data.ArmorClass)
+			// Assert: the blob carries no armour class — there is no copy
+			// to go stale — and the fold under an installed cast answers it.
+			raw, err := json.Marshal(mustToData(s.T(), char))
+			s.Require().NoError(err)
+			s.NotContains(string(raw), "armor_class", "the finalized blob stores no armour class")
+
+			breakdown, err := char.EffectiveAC(castOf(s.ctx, char))
+			s.Require().NoError(err)
+			s.Equal(tc.expectedAC, breakdown.Total,
+				"AC should be %s, but got %d", tc.acExplanation, breakdown.Total)
 		})
 	}
 }

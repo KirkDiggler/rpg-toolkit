@@ -250,7 +250,7 @@ func baneWorld(t *testing.T, targetX float64) encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{},
 		Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{},
-		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		Field: encounter.FieldInput{Canvas: hexCanvas(), Regions: []encounter.RegionInput{
 			rectRegion("room", 0, 0, 20, 10),
 		}},
@@ -299,7 +299,7 @@ func (s *CastActionTestSuite) TestBaneRefusesStaleAndOutOfRangeTargetsBeforeDrop
 				World:        baneWorld(s.T(), tc.targetX),
 				Participants: []Participant{{Character: caster}, {Character: target}},
 				Machine:      machine, Cost: baneCost(), Initiative: orderAsGiven{},
-				Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+				Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 				TurnDriver: passDriver{}, Roller: dice.NewRoller(),
 			}, newSurface(bus))
 			s.ErrorIs(err, tc.want)
@@ -681,6 +681,7 @@ func (s *CastActionTestSuite) resolveOnBus(
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		Equipment: noHandsAreObserved{},
+		Sheets:    noSheetsAsked{},
 		World:     fixtures.world(),
 		Participants: []Participant{
 			{Character: fixtures.saver(14)}, {Monster: fixtures.wolfData()}, {Character: fixtures.bard(1)},
@@ -730,6 +731,7 @@ func (s *CastActionTestSuite) TestAContestWithNoSpellCauseStillSaysDamage() {
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		Equipment:    noHandsAreObserved{},
+		Sheets:       noSheetsAsked{},
 		World:        fixtures.world(),
 		Participants: []Participant{{Character: fixtures.saver(14)}, {Monster: fixtures.wolfData()}},
 		Machine: NewContest(&ContestInput{
@@ -951,7 +953,7 @@ func (s *CastActionTestSuite) TestASecondCommandReplacesTheFirst() {
 
 	out, err := resolveOn(s.ctx, &Input{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		World:        fixtures.world(),
 		Participants: []Participant{{Character: target}, {Character: baneCaster(1, 2)}},
 		Machine:      machine, Cost: commandCost(),
@@ -993,7 +995,7 @@ func (s *CastActionTestSuite) TestAMonsterRecipientIsReplacedTheSameWay() {
 
 	out, err := resolveOn(s.ctx, &Input{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		World:        fixtures.world(),
 		Participants: []Participant{{Monster: wolf}, {Character: baneCaster(1, 2)}},
 		Machine:      machine, Cost: commandCost(),
@@ -1054,7 +1056,7 @@ func (s *CastActionTestSuite) TestTwoCastersBanesBothStandAndBothConcentrationsH
 
 	out, err := resolveOn(s.ctx, &Input{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		World:        fixtures.world(),
 		Participants: []Participant{{Character: target}, {Monster: holder}, {Character: baneCaster(1, 2)}},
 		Machine:      machine, Cost: baneCost(),
@@ -1095,7 +1097,7 @@ func (s *CastActionTestSuite) TestADifferentRefIsLeftWhereItIs() {
 
 	out, err := resolveOn(s.ctx, &Input{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		World:        fixtures.world(),
 		Participants: []Participant{{Character: fixtures.saver(14, stored)}, {Character: baneCaster(1, 2)}},
 		Machine:      machine, Cost: baneCost(),
@@ -1150,7 +1152,7 @@ func (s *CastActionTestSuite) TestTwoCastersEachKeepTheirOwnCommandAndTheFirstAp
 
 	out, err := resolveOn(s.ctx, &Input{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		World:        fixtures.world(),
 		Participants: []Participant{{Character: target}, {Character: baneCaster(1, 2)}},
 		Machine:      machine, Cost: commandCost(),

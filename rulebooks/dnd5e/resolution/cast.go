@@ -4,6 +4,8 @@
 package resolution
 
 import (
+	"fmt"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -140,29 +142,36 @@ func (v *castView) IsAllied(a, b string) (allied, known bool) {
 	return v.run.IsAllied(encounter.MemberID(a), encounter.MemberID(b))
 }
 
-// StanceBetween answers the authoritative stance between a and b from the
-// same fold [castView.IsHostile] and [castView.IsAllied] read
-// ([encounter.Encounter.StanceBetween]), so the three cannot disagree.
+// StanceBetween answers [gamectx.Cast.StanceBetween] from the encounter's own
+// answer ([encounter.Encounter.StanceBetween]), the fold [castView.IsHostile]
+// and [castView.IsAllied] read, so the three cannot disagree.
 //
-// ok is false when no stance exists: there is no run to ask, either id is not
-// a member of it, or either member belongs to no faction. It never answers
-// [contributions.StanceNone] itself — reading false as "no side" is for a
-// caller that knows both are placed members.
+// ok is false when the encounter gives no side — [encounter.StanceNone], a
+// member in no faction — or refuses the pair, or there is no run to ask: the
+// interface's contract, which never answers no side itself. A reader that
+// means no side asks [castView.stanceAnswer] instead.
 func (v *castView) StanceBetween(a, b string) (contributions.Stance, bool) {
-	if v.run == nil {
+	stance, err := v.stanceAnswer(a, b)
+	if err != nil || stance == contributions.StanceNone {
 		return "", false
 	}
-	stance, ok := v.run.StanceBetween(encounter.MemberID(a), encounter.MemberID(b))
-	if !ok {
-		return "", false
-	}
-	return contributions.Stance(stance), true
+	return stance, true
 }
 
-// answersSides reports whether a run is loaded to answer stance questions;
-// without one, StanceBetween's false is no answer at all ([sideAnswerer]).
-func (v *castView) answersSides() bool {
-	return v.run != nil
+// stanceAnswer is the encounter's whole stance answer for the pair: hostile,
+// neutral, allied, or [contributions.StanceNone] when either is in no faction.
+//
+// Errors: no run to ask ([ErrBadWorld]); the encounter's refusal of a pair
+// naming a non-member (encounter.ErrNotMember, encounter.ErrNoMember).
+func (v *castView) stanceAnswer(a, b string) (contributions.Stance, error) {
+	if v.run == nil {
+		return "", fmt.Errorf("%w: no encounter to ask a stance of", ErrBadWorld)
+	}
+	stance, err := v.run.StanceBetween(encounter.MemberID(a), encounter.MemberID(b))
+	if err != nil {
+		return "", err
+	}
+	return contributions.Stance(stance), nil
 }
 
 // SeesWithin carries the encounter's live visibility/reach answer to effects.

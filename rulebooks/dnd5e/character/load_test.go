@@ -50,8 +50,6 @@ func (s *PureLoadTestSuite) SetupTest() {
 func ragingBlob(s *suite.Suite) json.RawMessage {
 	raging := &conditions.RagingCondition{
 		CharacterID: "char-load",
-		DamageBonus: 2,
-		Level:       3,
 		Source:      "rage",
 	}
 
@@ -64,10 +62,9 @@ func ragingBlob(s *suite.Suite) json.RawMessage {
 // rageBlob is a persisted Rage feature, canonicalized the same way.
 func rageBlob(s *suite.Suite) json.RawMessage {
 	seed, err := json.Marshal(features.RageData{
-		Ref:   refs.Features.Rage(),
-		ID:    "rage-1",
-		Name:  "Rage",
-		Level: 3,
+		Ref:  refs.Features.Rage(),
+		ID:   "rage-1",
+		Name: "Rage",
 	})
 	s.Require().NoError(err)
 
@@ -84,9 +81,7 @@ func rageBlob(s *suite.Suite) json.RawMessage {
 // way, for the tests that need a sheet carrying more than one.
 func brutalCriticalBlob(s *suite.Suite) json.RawMessage {
 	brutal := &conditions.BrutalCriticalCondition{
-		MemberID:  "char-load",
-		Level:     9,
-		ExtraDice: 1,
+		MemberID: "char-load",
 	}
 
 	raw, err := brutal.ToJSON()
@@ -121,7 +116,6 @@ func fullSheet(s *suite.Suite) *Data {
 		},
 		HitPoints:    22,
 		MaxHitPoints: 34,
-		ArmorClass:   15,
 		Skills: map[skills.Skill]shared.ProficiencyLevel{
 			skills.Athletics: shared.Proficient,
 		},
@@ -179,7 +173,7 @@ func (s *PureLoadTestSuite) TestRoundTripsByteIdenticalWithNoBus() {
 	char, err := Load(s.ctx, data)
 	s.Require().NoError(err)
 
-	s.Require().Equal(marshalData(&s.Suite, data), marshalData(&s.Suite, char.ToData()))
+	s.Require().Equal(marshalData(&s.Suite, data), marshalData(&s.Suite, mustToData(s.T(), char)))
 }
 
 // Named separately because it is the one this migration exists to protect: the
@@ -190,7 +184,7 @@ func (s *PureLoadTestSuite) TestConditionsSurviveALoadWithNoBus() {
 	s.Require().NoError(err)
 
 	s.Require().Len(char.GetConditions(), 1)
-	s.Require().Equal(ragingBlob(&s.Suite), char.ToData().Conditions[0])
+	s.Require().Equal(ragingBlob(&s.Suite), mustToData(s.T(), char).Conditions[0])
 }
 
 // A loaded sheet is inert. Nothing is applied, nothing is subscribed, and no
@@ -236,6 +230,39 @@ func (s *PureLoadTestSuite) TestLegacyLoadDropsAMalformedCondition() {
 	s.Require().Len(authored(char), 1, "the unreadable condition is silently dropped")
 }
 
+// inFogBlob is an In Fog condition exactly as a sheet saved one before the
+// type retired.
+var inFogBlob = json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"in_fog"},` +
+	`"member_id":"char-load","source_id":"area-1","source_ref":{"module":"dnd5e","type":"spells","id":"fog-cloud"}}`)
+
+// A sheet saved with an In Fog condition loads and carries none, on the strict
+// path too: the type retired, membership is the encounter's answer, and the
+// sheet saves without it.
+func (s *PureLoadTestSuite) TestASheetSavedInFogLoadsAndCarriesNone() {
+	data := fullSheet(&s.Suite)
+	data.Conditions = append(data.Conditions, inFogBlob)
+
+	char, err := Load(s.ctx, data)
+	s.Require().NoError(err, "a retired condition is dropped, never a failed load")
+
+	for _, condition := range char.GetConditions() {
+		raw, err := condition.ToJSON()
+		s.Require().NoError(err)
+		s.NotContains(string(raw), `"in_fog"`)
+	}
+	saved, err := json.Marshal(mustToData(s.T(), char))
+	s.Require().NoError(err)
+	s.NotContains(string(saved), `"in_fog"`, "the sheet saves without it")
+	s.Require().Equal(marshalData(&s.Suite, fullSheet(&s.Suite)), marshalData(&s.Suite, mustToData(s.T(), char)),
+		"everything else the sheet carried survives")
+
+	legacy, err := LoadFromData(s.ctx, data, events.NewEventBus())
+	s.Require().NoError(err)
+	saved, err = json.Marshal(mustToData(s.T(), legacy))
+	s.Require().NoError(err)
+	s.NotContains(string(saved), `"in_fog"`)
+}
+
 // Features are the same species of loss as conditions, and get the same
 // treatment: a blob with no loader here fails the strict load.
 func (s *PureLoadTestSuite) TestStrictLoadRefusesAFeatureFromAnotherModule() {
@@ -255,7 +282,7 @@ func (s *PureLoadTestSuite) TestLegacyLoadDropsAFeatureFromAnotherModule() {
 	char, err := LoadFromData(s.ctx, data, events.NewEventBus())
 
 	s.Require().NoError(err)
-	s.Require().Len(char.ToData().Features, 1, "the foreign feature is silently dropped")
+	s.Require().Len(mustToData(s.T(), char).Features, 1, "the foreign feature is silently dropped")
 }
 
 // An inventory item the catalog does not know disappears from the sheet on the
@@ -308,7 +335,7 @@ func (s *PureLoadTestSuite) TestLenientLoadWarnsAndDropsNonpositiveInventoryQuan
 			loaded, err := LoadFromData(s.ctx, data, events.NewEventBus())
 
 			s.Require().NoError(err)
-			s.Require().Len(loaded.ToData().Inventory, 1,
+			s.Require().Len(mustToData(s.T(), loaded).Inventory, 1,
 				"the malformed row is dropped rather than defaulted to one")
 			s.Require().Len(logs.records, 1)
 			got := attrs(logs.records[0])
@@ -371,7 +398,7 @@ func (s *PureLoadTestSuite) TestLenientLoadDropsMalformedOwnerResourcesWithoutNo
 		s.Require().NotNil(out)
 		s.Empty(out.View.Resources,
 			"malformed persisted counts are dropped, never clamped into a valid-looking row")
-		s.Empty(loaded.ToData().Resources)
+		s.Empty(mustToData(s.T(), loaded).Resources)
 	}
 }
 
@@ -429,7 +456,7 @@ func (s *PureLoadTestSuite) TestLenientLoadDropsMalformedFeaturePrivateResource(
 	s.Require().NotNil(out)
 	s.Empty(out.View.Features)
 	s.Empty(out.View.Resources)
-	s.Empty(loaded.ToData().Features, "existing lenient policy drops the malformed feature blob")
+	s.Empty(mustToData(s.T(), loaded).Features, "existing lenient policy drops the malformed feature blob")
 }
 
 func (s *PureLoadTestSuite) TestStrictLoadPreservesCharacterMetadata() {
@@ -442,7 +469,7 @@ func (s *PureLoadTestSuite) TestStrictLoadPreservesCharacterMetadata() {
 	char, err := Load(s.ctx, data)
 	s.Require().NoError(err)
 
-	out := char.ToData()
+	out := mustToData(s.T(), char)
 	s.Equal(backgrounds.Soldier, out.BackgroundID)
 	s.Equal(data.CreatedAt, out.CreatedAt, "CreatedAt must preserve the exact persisted instant and location")
 	s.False(out.UpdatedAt.Before(beforeWrite), "UpdatedAt must be freshly generated by ToData")
@@ -459,12 +486,12 @@ func (s *PureLoadTestSuite) TestWalletRoundTripsAndDefaultsToZero() {
 
 	char, err := Load(s.ctx, data)
 	s.Require().NoError(err)
-	s.Equal(data.Wallet, char.ToData().Wallet)
+	s.Equal(data.Wallet, mustToData(s.T(), char).Wallet)
 
 	data.Wallet = currency.Money{}
 	char, err = Load(s.ctx, data)
 	s.Require().NoError(err)
-	s.Equal(currency.Money{}, char.ToData().Wallet)
+	s.Equal(currency.Money{}, mustToData(s.T(), char).Wallet)
 }
 
 func (s *PureLoadTestSuite) TestLenientLoadPreservesCharacterMetadata() {
@@ -475,7 +502,7 @@ func (s *PureLoadTestSuite) TestLenientLoadPreservesCharacterMetadata() {
 	char, err := LoadFromData(s.ctx, data, events.NewEventBus())
 	s.Require().NoError(err)
 
-	out := char.ToData()
+	out := mustToData(s.T(), char)
 	s.Equal(backgrounds.Soldier, out.BackgroundID)
 	s.Equal(data.CreatedAt, out.CreatedAt)
 }
@@ -491,7 +518,7 @@ func (s *PureLoadTestSuite) TestLoadThenAttachMatchesLoadFromData() {
 	legacy, err := LoadFromData(s.ctx, fullSheet(&s.Suite), events.NewEventBus())
 	s.Require().NoError(err)
 
-	s.Require().Equal(marshalData(&s.Suite, legacy.ToData()), marshalData(&s.Suite, pure.ToData()))
+	s.Require().Equal(marshalData(&s.Suite, mustToData(s.T(), legacy)), marshalData(&s.Suite, mustToData(s.T(), pure)))
 }
 
 // Attach is what applies the conditions and attachable features a load parsed;

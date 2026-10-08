@@ -27,12 +27,12 @@ func (s *CastActionTestSuite) blessAttempt(world encounter.EncounterData, caster
 	}
 	return Resolve(s.ctx, &Input{World: world, Participants: []Participant{{Character: caster}, {Character: target}, {Monster: s.fixtures().wolfData()}}, Machine: machine,
 		Cost:       &Cost{PayerID: bardID, Profile: d.Cost, SpellTurn: "scene/round-1/bard"},
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Roller: dice.NewRoller()})
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller()})
 }
 
 func (s *CastActionTestSuite) blessRun(world encounter.EncounterData, participants []Participant, machine Machine, cost *Cost) *Output {
 	out, err := Resolve(s.ctx, &Input{World: world, Participants: participants, Machine: machine, Cost: cost,
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Roller: dice.NewRoller()})
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller()})
 	s.Require().NoError(err)
 	return out
 }
@@ -302,12 +302,10 @@ func (s *CastActionTestSuite) TestBlessTargetProjectionHonorsPolicyWithoutReveal
 	world := f.world()
 	s.rememberedHero(&world, encounter.LocationKnown, spatial.Position{X: 1, Y: 2})
 	run, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: world,
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encounter.RefusingAnnouncer{}})
 	s.Require().NoError(err)
-	room, err := run.Canvas()
-	s.Require().NoError(err)
-	input := &KnownCreatureTargetsInput{Encounter: run, Room: room, CasterID: bardID, RangeFeet: 30,
+	input := &KnownCreatureTargetsInput{Encounter: run, CasterID: bardID, RangeFeet: 30,
 		Candidates: []string{bardID, heroID, wolfID}, Participants: []Participant{{Character: baneCaster(1, 2)}, {Character: f.saver(0)}, {Monster: f.wolfData()}}}
 	for _, policy := range []StaleTargetPolicy{StaleTargetRefuse, StaleTargetAttempt} {
 		input.StaleTargetPolicy = policy

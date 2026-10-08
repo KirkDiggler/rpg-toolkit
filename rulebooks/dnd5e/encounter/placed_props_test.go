@@ -81,7 +81,7 @@ func placedField(props ...encounter.PlacedPropInput) encounter.FieldInput {
 func (s *PlacedPropsSuite) setup(field encounter.FieldInput, members ...encounter.MemberInput) (*encounter.Encounter, error) {
 	return encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field:   field,
 		Members: members,
@@ -102,7 +102,7 @@ func (s *PlacedPropsSuite) loadFrom(data encounter.EncounterData) *encounter.Enc
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:      data,
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().NoError(err)
@@ -476,7 +476,7 @@ func (s *PlacedPropsSuite) TestAHandEditedBlobPlacementIsRefusedAtLoad() {
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:      data,
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().Error(err, "a blob whose placement is unmeasurable loads nowhere")

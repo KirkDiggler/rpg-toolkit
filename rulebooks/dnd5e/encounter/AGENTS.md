@@ -17,6 +17,7 @@ Every noun below is one this module is the truth for. Nothing else may hold a se
 | The floor, in one frame | [`compilefield.go`](./compilefield.go) | Every authored `[col,row]` becomes an absolute hex cell exactly once, at construction. There is no room-local frame and no bridge to one (W1–W6, [`doc.go`](./doc.go)). |
 | Regions | [`region.go`](./region.go), [`field.go:199`](./field.go#L199) | A region is a named set of cells ([ADR-0044](../../../docs/adr/0044-regions-replace-rooms.md)). `RegionAt` says which one holds a cell; a member's region is DERIVED from their cell, never stored beside it. |
 | The roster and where each member stands | [`Member`, field.go:1302](./field.go#L1302); [`Members()`, encounter.go:975](./encounter.go#L975) | `placementOf` ([encounter.go:1003](./encounter.go#L1003)) is the ONE projection every member read goes through, so two reads cannot disagree about a position. |
+| Runtime areas and who stands in them | [`sightarea.go`](./sightarea.go), [`sightarea_transition.go`](./sightarea_transition.go) | One membership function over the shared placement, asked at every step and every area change; entry, exit and "area ended" are told here. Nothing persists membership — no condition, no reconcile. The membership label is content's, carried unread. |
 | The live map | [`canvas.go`](./canvas.go) | `Canvas()` hands out the actual `spatial.Room`, behind a view that refuses every write by name. |
 | Walls, doors, props, scenery, sealed cells | [`atlas.go`](./atlas.go), [`door.go`](./door.go), [`field.go`](./field.go) | Standable is what an owner grants minus what a wall takes away. |
 | Placed footprint contributors | [`placed_props.go`](./placed_props.go) | An authored rectangle in the canonical plane with independent movement/sight answers. Centre contact closes standing; segment interior closes a crossing; sight reads them as SOFT lane obstructions through `SightLanes`. No anchor cell, no fake entity, no runtime move protocol — a changed placement is a recompilation. |
@@ -42,7 +43,7 @@ Every noun below is one this module is the truth for. Nothing else may hold a se
   ([standing.go:24](./standing.go#L24), [participation.go:58](./participation.go#L58)); the field is
   typed `StandingWithParticipation`, so a Standing-only value does not compile. Never
   defaulted to "everyone active" ([rpg-toolkit#1033](https://github.com/KirkDiggler/rpg-toolkit/issues/1033)).
-- **How far anybody sees.** Supplied as `Sight` ([sight.go:111](./sight.go#L111)), refused at
+- **How far anybody sees.** Supplied as `Sight` ([sight.go:114](./sight.go#L114)), refused at
   construction with `ErrNoSight`. A number meaning "everyone sees this far" would be this module
   inventing a rule 5e does not have.
 - **The bus.** No direct `events` import exists in this package. Results are returned values; a
@@ -71,7 +72,8 @@ supplied capability, never as a new import.** Every one of these is required at
 |---|---|---|
 | what order a forming fight goes in | `InitiativeRoller` ([trigger.go:25](./trigger.go#L25)) | `ErrNoInitiative` |
 | who is down, who counts as present | `StandingWithParticipation` ([participation.go:73](./participation.go#L73)) | `ErrNoStanding` (nil) |
-| how far each member sees | `Sight` ([sight.go:111](./sight.go#L111)) | `ErrNoSight` |
+| how far each member sees | `Sight` ([sight.go:114](./sight.go#L114)) | `ErrNoSight` |
+| how fast each member moves, what it can attack with and at what reach, and how it picks a target | `Sheets` ([sheets.go](./sheets.go)) — asked at pace, turn budget, reach and driver view; nothing is stored ([rpg-project#538](https://github.com/KirkDiggler/rpg-project/issues/538)) | `ErrNoSheets` |
 | what an unplayed member does on its turn | `TurnDriver` ([turndriver.go:49](./turndriver.go#L49)) | `ErrNoTurnDriver` ([ADR-0043](../../../docs/adr/0043-a-monsters-turn-has-a-driver.md)) |
 | how that member's swing resolves | `Striker` ([turndriver.go:473](./turndriver.go#L473)) | `ErrNoStriker` |
 | who should hear about a step before it happens, and what a FORCED one means | `Mover` ([turndriver.go](./turndriver.go)), asked with a [`MoveStep`](./turndriver.go) | `ErrNoMover` |
@@ -81,9 +83,11 @@ supplied capability, never as a new import.** Every one of these is required at
 
 It answers, on the other hand, in geometry, placement, knowledge and clocks: `Members`,
 `MembersIn`, `RegionAt`, `Region`, `Distance`, `Canvas`, `Grid`, `Atlas`/`AtlasFor`,
-`Doors`/`DoorsFor`, `View`, `Story`, `ClockOf`, `Stance`/`IsHostile`/`IsAllied`, `Status`, `Route`,
+`Doors`/`DoorsFor`, `View`, `Story`, `ClockOf`, `Stance`/`StanceBetween`/`IsHostile`/`IsAllied`,
+`BelievedAim`, `Settlement`, `Status`, `Route`,
 and the verbs that change them — `Join`, `Exit`, `Step`, `Direct`, `Transfer`, `EndTurn`,
 `Dissolve`, `Search`, `OpenDoor`/`CloseDoor`/`Unlock`, `Interact`, `Loot`, `Hold`, `Record`, `End`,
+`AddSightArea`/`RemoveSightArea`,
 plus the two continue-verbs a held walk is finished with — `ResumeTurn` for a paused turn and
 `ResumeDirective` for a held directive, told apart by `HeldDirective()`.
 

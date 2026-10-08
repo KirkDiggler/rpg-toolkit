@@ -117,7 +117,7 @@ func (e *Encounter) RecordRollWindow(in *RollWindowInput) (*RollWindowOutput, er
 		return nil, fmt.Errorf("record roll window: audience: %w", ErrNoMember)
 	}
 	if _, ok := e.members[in.Audience]; !ok {
-		return nil, fmt.Errorf("record roll window: audience %q: %w", in.Audience, ErrNoMember)
+		return nil, fmt.Errorf("record roll window: audience %q: %w", in.Audience, ErrNotMember)
 	}
 	if in.Offer.Ref == "" {
 		return nil, fmt.Errorf("record roll window: offer ref: %w", ErrInvalidData)

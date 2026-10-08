@@ -153,7 +153,7 @@ func (s *CategoryBasedEquipmentTestSuite) TestPersistedFighterRepeatedSelections
 	s.Require().NotNil(char)
 
 	matching := make([]character.InventoryItemData, 0, 1)
-	for _, item := range char.ToData().Inventory {
+	for _, item := range mustToData(s.T(), char).Inventory {
 		if item.ID == weapons.Longsword {
 			matching = append(matching, item)
 		}
@@ -291,7 +291,7 @@ func (s *CategoryBasedEquipmentTestSuite) TestPersistedMonkCategoryChoiceRevalid
 			s.Require().NotNil(char)
 
 			found := false
-			for _, item := range char.ToData().Inventory {
+			for _, item := range mustToData(s.T(), char).Inventory {
 				if item.ID == test.weaponID {
 					found = true
 					break

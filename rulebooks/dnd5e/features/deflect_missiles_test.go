@@ -5,19 +5,57 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
+
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
-	"github.com/stretchr/testify/suite"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
+
+// monkOwner is a monk who answers its monk level and ability scores from its
+// own sheet.
+type monkOwner struct {
+	id     string
+	levels map[classes.Class]int
+	scores shared.AbilityScores
+}
+
+func (m *monkOwner) GetID() string                       { return m.id }
+func (m *monkOwner) GetType() core.EntityType            { return "character" }
+func (m *monkOwner) ClassLevel(class classes.Class) int  { return m.levels[class] }
+func (m *monkOwner) AbilityScores() shared.AbilityScores { return m.scores }
+
+// newMonkOwner is a monk of the given level with Dexterity score dex.
+func newMonkOwner(level, dex int) *monkOwner {
+	return &monkOwner{
+		id:     "test-monk",
+		levels: map[classes.Class]int{classes.Monk: level},
+		scores: shared.AbilityScores{abilities.DEX: dex},
+	}
+}
+
+// fixedD10 rolls a fixed face.
+type fixedD10 struct{ face int }
+
+func (r fixedD10) Roll(context.Context, int) (int, error) { return r.face, nil }
+func (r fixedD10) RollN(_ context.Context, count, _ int) ([]int, error) {
+	faces := make([]int, count)
+	for i := range faces {
+		faces[i] = r.face
+	}
+	return faces, nil
+}
 
 type DeflectMissilesTestSuite struct {
 	suite.Suite
-	ctx      context.Context
-	bus      events.EventBus
-	accessor *mockResourceAccessor
-	feature  features.Feature
+	ctx     context.Context
+	bus     events.EventBus
+	feature features.Feature
 }
 
 func TestDeflectMissilesTestSuite(t *testing.T) {
@@ -27,273 +65,141 @@ func TestDeflectMissilesTestSuite(t *testing.T) {
 func (s *DeflectMissilesTestSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.bus = events.NewEventBus()
-
-	// Create a mock character
-	s.accessor = &mockResourceAccessor{
-		id: "test-monk",
-	}
-
-	// Create the Deflect Missiles feature via factory
-	// Level 3 monk with +3 DEX modifier
 	output, err := features.CreateFromRef(&features.CreateFromRefInput{
 		Ref:         refs.Features.DeflectMissiles().String(),
-		Config:      json.RawMessage(`{"monk_level": 3, "dex_modifier": 3}`),
-		CharacterID: s.accessor.id,
+		CharacterID: "test-monk",
 	})
 	s.Require().NoError(err)
 	s.feature = output.Feature
 }
 
-func (s *DeflectMissilesTestSuite) TestCreateFromRef() {
-	// Arrange
-	config := json.RawMessage(`{"monk_level": 5, "dex_modifier": 4}`)
-
-	// Act
-	output, err := features.CreateFromRef(&features.CreateFromRefInput{
-		Ref:         refs.Features.DeflectMissiles().String(),
-		Config:      config,
-		CharacterID: "test-char",
-	})
-
-	// Assert
+// trigger subscribes to the deflection event and returns what it heard.
+func (s *DeflectMissilesTestSuite) trigger() *[]dnd5eEvents.DeflectMissilesTriggerEvent {
+	heard := &[]dnd5eEvents.DeflectMissilesTriggerEvent{}
+	_, err := dnd5eEvents.DeflectMissilesTriggerTopic.On(s.bus).Subscribe(s.ctx,
+		func(_ context.Context, event dnd5eEvents.DeflectMissilesTriggerEvent) error {
+			*heard = append(*heard, event)
+			return nil
+		})
 	s.Require().NoError(err)
-	s.Require().NotNil(output)
-	s.Require().NotNil(output.Feature)
-	s.Assert().Equal(refs.Features.DeflectMissiles().ID, output.Feature.GetID())
+	return heard
 }
 
-func (s *DeflectMissilesTestSuite) TestCreateFromRef_DefaultValues() {
-	// Arrange - empty config should use defaults
-	config := json.RawMessage(`{}`)
-
-	// Act
+// An old config carrying a monk level and Dexterity modifier is accepted and
+// ignored: nothing is stored.
+func (s *DeflectMissilesTestSuite) TestCreateFromRefIgnoresAConfiguredLevel() {
 	output, err := features.CreateFromRef(&features.CreateFromRefInput{
 		Ref:         refs.Features.DeflectMissiles().String(),
-		Config:      config,
+		Config:      json.RawMessage(`{"monk_level": 5, "dex_modifier": 4}`),
 		CharacterID: "test-char",
 	})
-
-	// Assert - should succeed with default values
 	s.Require().NoError(err)
-	s.Require().NotNil(output)
-	s.Require().NotNil(output.Feature)
+	s.Equal(refs.Features.DeflectMissiles().ID, output.Feature.GetID())
+
+	raw, err := output.Feature.ToJSON()
+	s.Require().NoError(err)
+	s.NotContains(string(raw), "monk_level")
+	s.NotContains(string(raw), "dex_modifier")
 }
 
-func (s *DeflectMissilesTestSuite) TestApply_SubscribesToEvents() {
-	// Arrange
+// The deflection reduces by 1d10 + Dexterity modifier + monk level, asked of
+// the owner when the reaction is taken: the same feature reads a different
+// level and Dexterity with nothing rewritten.
+func (s *DeflectMissilesTestSuite) TestDeflectionAsksTheOwnerAtActivation() {
+	heard := s.trigger()
+
+	s.Require().NoError(s.feature.Activate(s.ctx, newMonkOwner(3, 16),
+		features.FeatureInput{Bus: s.bus, Roller: fixedD10{face: 4}}))
+	s.Require().NoError(s.feature.Activate(s.ctx, newMonkOwner(7, 18),
+		features.FeatureInput{Bus: s.bus, Roller: fixedD10{face: 4}}))
+
+	s.Require().Len(*heard, 2)
+	s.Equal(4+3+3, (*heard)[0].Reduction, "1d10 (4) + DEX 16 (+3) + monk 3")
+	s.Equal(4+4+7, (*heard)[1].Reduction, "1d10 (4) + DEX 18 (+4) + monk 7")
+	s.Equal("test-monk", (*heard)[0].CharacterID)
+	s.Equal(refs.Features.DeflectMissiles().ID, (*heard)[0].Source)
+}
+
+// An owner with no monk levels, or one that cannot answer its level, is
+// refused: the reduction cannot be computed and nothing is published.
+func (s *DeflectMissilesTestSuite) TestDeflectionRefusesAnOwnerWithNoMonkLevels() {
+	heard := s.trigger()
+	noMonk := newMonkOwner(0, 16)
+	noMonk.levels = map[classes.Class]int{classes.Fighter: 3}
+
+	s.Error(s.feature.CanActivate(s.ctx, noMonk, features.FeatureInput{}))
+	s.Error(s.feature.Activate(s.ctx, noMonk, features.FeatureInput{Bus: s.bus}))
+	s.Error(s.feature.Activate(s.ctx, &mockResourceAccessor{id: "test-monk"}, features.FeatureInput{Bus: s.bus}),
+		"an owner that cannot answer the class-level question")
+	s.Empty(*heard)
+}
+
+func (s *DeflectMissilesTestSuite) TestThrowPublishesTheThrowEvent() {
+	var received *dnd5eEvents.DeflectMissilesThrowEvent
+	_, err := dnd5eEvents.DeflectMissilesThrowTopic.On(s.bus).Subscribe(s.ctx,
+		func(_ context.Context, event dnd5eEvents.DeflectMissilesThrowEvent) error {
+			received = &event
+			return nil
+		})
+	s.Require().NoError(err)
+
+	err = s.feature.Activate(s.ctx, newMonkOwner(3, 16),
+		features.FeatureInput{Bus: s.bus, Action: features.DeflectMissilesThrow})
+
+	s.Require().NoError(err)
+	s.Require().NotNil(received)
+	s.Equal("test-monk", received.CharacterID)
+	s.Equal(refs.Features.DeflectMissiles().ID, received.Source)
+}
+
+func (s *DeflectMissilesTestSuite) TestApplyAndRemove() {
 	busEffect, ok := s.feature.(events.BusEffect)
 	s.Require().True(ok, "DeflectMissiles should implement events.BusEffect")
 
-	// Act
-	err := busEffect.Apply(s.ctx, s.bus)
+	s.Require().NoError(busEffect.Apply(s.ctx, s.bus))
+	s.True(busEffect.IsApplied())
+	s.Error(busEffect.Apply(s.ctx, s.bus), "applying twice is refused")
 
-	// Assert
-	s.Require().NoError(err)
-	s.Assert().True(busEffect.IsApplied())
+	s.Require().NoError(busEffect.Remove(s.ctx, s.bus))
+	s.False(busEffect.IsApplied())
 }
 
-func (s *DeflectMissilesTestSuite) TestApply_AlreadyApplied() {
-	// Arrange
+// A hit does not deflect on its own: the reduction is the monk's reaction,
+// taken through Activate.
+func (s *DeflectMissilesTestSuite) TestAHitAloneDoesNotDeflect() {
+	heard := s.trigger()
 	busEffect, ok := s.feature.(events.BusEffect)
 	s.Require().True(ok)
-	err := busEffect.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
+	s.Require().NoError(busEffect.Apply(s.ctx, s.bus))
 
-	// Act - try to apply again
-	err = busEffect.Apply(s.ctx, s.bus)
+	s.Require().NoError(dnd5eEvents.DamageReceivedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.DamageReceivedEvent{
+		TargetID: "test-monk", Amount: 8,
+	}))
 
-	// Assert - should fail
-	s.Require().Error(err)
-}
-
-func (s *DeflectMissilesTestSuite) TestRemove_UnsubscribesFromEvents() {
-	// Arrange
-	busEffect, ok := s.feature.(events.BusEffect)
-	s.Require().True(ok)
-	err := busEffect.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-
-	// Act
-	err = busEffect.Remove(s.ctx, s.bus)
-
-	// Assert
-	s.Require().NoError(err)
-	s.Assert().False(busEffect.IsApplied())
-}
-
-func (s *DeflectMissilesTestSuite) TestOnDamageReceived_PublishesDeflectEvent() {
-	// Arrange
-	busEffect, ok := s.feature.(events.BusEffect)
-	s.Require().True(ok)
-	err := busEffect.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-
-	var receivedEvent *dnd5eEvents.DeflectMissilesTriggerEvent
-	topic := dnd5eEvents.DeflectMissilesTriggerTopic.On(s.bus)
-	_, err = topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.DeflectMissilesTriggerEvent) error {
-		receivedEvent = &event
-		return nil
-	})
-	s.Require().NoError(err)
-
-	// Act - publish damage received event
-	damageTopic := dnd5eEvents.DamageReceivedTopic.On(s.bus)
-	err = damageTopic.Publish(s.ctx, dnd5eEvents.DamageReceivedEvent{
-		TargetID:   s.accessor.id,
-		SourceID:   "enemy-archer",
-		Amount:     10,
-		DamageType: "piercing",
-	})
-
-	// Assert
-	s.Require().NoError(err)
-	s.Require().NotNil(receivedEvent)
-	s.Assert().Equal(s.accessor.id, receivedEvent.CharacterID)
-	s.Assert().Equal(10, receivedEvent.OriginalDamage)
-	s.Assert().Greater(receivedEvent.Reduction, 0, "Reduction should be > 0")
-	// With monk level 3 + DEX 3, minimum reduction is 1 (1d10) + 3 + 3 = 7
-	s.Assert().GreaterOrEqual(receivedEvent.Reduction, 7, "Minimum reduction should be 7")
-	// Maximum reduction is 10 (1d10) + 3 + 3 = 16
-	s.Assert().LessOrEqual(receivedEvent.Reduction, 16, "Maximum reduction should be 16")
-	s.Assert().Equal(refs.Features.DeflectMissiles().ID, receivedEvent.Source)
-}
-
-func (s *DeflectMissilesTestSuite) TestOnDamageReceived_DamageReducedToZero() {
-	// Arrange
-	busEffect, ok := s.feature.(events.BusEffect)
-	s.Require().True(ok)
-	err := busEffect.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-
-	var receivedEvent *dnd5eEvents.DeflectMissilesTriggerEvent
-	topic := dnd5eEvents.DeflectMissilesTriggerTopic.On(s.bus)
-	_, err = topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.DeflectMissilesTriggerEvent) error {
-		receivedEvent = &event
-		return nil
-	})
-	s.Require().NoError(err)
-
-	// Act - publish damage received event with low damage (likely to be reduced to 0)
-	damageTopic := dnd5eEvents.DamageReceivedTopic.On(s.bus)
-	err = damageTopic.Publish(s.ctx, dnd5eEvents.DamageReceivedEvent{
-		TargetID:   s.accessor.id,
-		SourceID:   "enemy-archer",
-		Amount:     5, // Low damage, likely to be reduced to 0
-		DamageType: "piercing",
-	})
-
-	// Assert
-	s.Require().NoError(err)
-	s.Require().NotNil(receivedEvent)
-	// With min reduction of 7 and damage of 5, should be reduced to 0
-	s.Assert().True(receivedEvent.DamageReducedTo0, "Damage should be reduced to 0")
-}
-
-func (s *DeflectMissilesTestSuite) TestOnDamageReceived_IgnoresOtherCharacters() {
-	// Arrange
-	busEffect, ok := s.feature.(events.BusEffect)
-	s.Require().True(ok)
-	err := busEffect.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-
-	var receivedEvent *dnd5eEvents.DeflectMissilesTriggerEvent
-	topic := dnd5eEvents.DeflectMissilesTriggerTopic.On(s.bus)
-	_, err = topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.DeflectMissilesTriggerEvent) error {
-		receivedEvent = &event
-		return nil
-	})
-	s.Require().NoError(err)
-
-	// Act - publish damage to a different character
-	damageTopic := dnd5eEvents.DamageReceivedTopic.On(s.bus)
-	err = damageTopic.Publish(s.ctx, dnd5eEvents.DamageReceivedEvent{
-		TargetID:   "other-character",
-		SourceID:   "enemy-archer",
-		Amount:     10,
-		DamageType: "piercing",
-	})
-
-	// Assert - should not trigger deflect
-	s.Require().NoError(err)
-	s.Assert().Nil(receivedEvent, "Should not trigger deflect for other characters")
-}
-
-func (s *DeflectMissilesTestSuite) TestActivate_PublishesThrowEvent() {
-	// Arrange
-	var receivedEvent *dnd5eEvents.DeflectMissilesThrowEvent
-	topic := dnd5eEvents.DeflectMissilesThrowTopic.On(s.bus)
-	_, err := topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.DeflectMissilesThrowEvent) error {
-		receivedEvent = &event
-		return nil
-	})
-	s.Require().NoError(err)
-
-	// Act - activate the catch-and-throw
-	err = s.feature.Activate(s.ctx, s.accessor, features.FeatureInput{
-		Bus: s.bus,
-	})
-
-	// Assert
-	s.Require().NoError(err)
-	s.Require().NotNil(receivedEvent)
-	s.Assert().Equal(s.accessor.id, receivedEvent.CharacterID)
-	s.Assert().Equal(refs.Features.DeflectMissiles().ID, receivedEvent.Source)
-}
-
-func (s *DeflectMissilesTestSuite) TestCanActivate() {
-	// Act
-	err := s.feature.CanActivate(s.ctx, s.accessor, features.FeatureInput{})
-
-	// Assert - for now, CanActivate always returns nil
-	// The game server is responsible for checking Ki and reaction availability
-	s.Require().NoError(err)
+	s.Empty(*heard)
 }
 
 func (s *DeflectMissilesTestSuite) TestToJSON() {
-	// Act
 	jsonData, err := s.feature.ToJSON()
-
-	// Assert - just verify it's valid JSON
 	s.Require().NoError(err)
-	s.Assert().NotEmpty(jsonData)
 
-	// Verify it can be parsed back
 	var data map[string]interface{}
-	err = json.Unmarshal(jsonData, &data)
-	s.Require().NoError(err)
-	s.Assert().Contains(data, "ref")
-	s.Assert().Contains(data, "character_id")
-	s.Assert().Contains(data, "monk_level")
-	s.Assert().Contains(data, "dex_modifier")
-	s.Assert().Equal(s.accessor.GetID(), data["character_id"])
-	s.Assert().Equal(float64(3), data["monk_level"])   // JSON numbers are float64
-	s.Assert().Equal(float64(3), data["dex_modifier"]) // JSON numbers are float64
+	s.Require().NoError(json.Unmarshal(jsonData, &data))
+	s.Contains(data, "ref")
+	s.Equal("test-monk", data["character_id"])
+	s.NotContains(data, "monk_level", "the monk level is the sheet's, never stored")
+	s.NotContains(data, "dex_modifier", "the Dexterity modifier is the sheet's, never stored")
 }
 
-func (s *DeflectMissilesTestSuite) TestLoadJSON() {
-	// Arrange
-	originalJSON, err := s.feature.ToJSON()
+func (s *DeflectMissilesTestSuite) TestRoundTripIgnoresAnOldSavedCopy() {
+	loaded, err := features.LoadJSON(json.RawMessage(
+		`{"ref":"dnd5e:features:deflect_missiles","id":"deflect_missiles","name":"Deflect Missiles",` +
+			`"character_id":"test-monk","monk_level":3,"dex_modifier":3}`))
 	s.Require().NoError(err)
+	s.Equal(s.feature.GetID(), loaded.GetID())
 
-	// Act - use the loader to load it back
-	loaded, err := features.LoadJSON(originalJSON)
-
-	// Assert
+	resaved, err := loaded.ToJSON()
 	s.Require().NoError(err)
-	s.Assert().NotNil(loaded)
-	s.Assert().Equal(s.feature.GetID(), loaded.GetID())
-}
-
-func (s *DeflectMissilesTestSuite) TestRoundTrip() {
-	// Arrange - serialize
-	jsonData, err := s.feature.ToJSON()
-	s.Require().NoError(err)
-
-	// Act - deserialize via LoadJSON
-	loaded, err := features.LoadJSON(jsonData)
-
-	// Assert
-	s.Require().NoError(err)
-	s.Require().NotNil(loaded)
-	s.Assert().Equal(s.feature.GetID(), loaded.GetID())
+	s.NotContains(string(resaved), "monk_level")
+	s.NotContains(string(resaved), "dex_modifier")
 }

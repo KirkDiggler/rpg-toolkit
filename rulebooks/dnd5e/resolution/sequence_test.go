@@ -61,7 +61,7 @@ func resolveSequenceAgainst(
 			{Character: hero},
 		},
 		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		TurnDriver: passDriver{}, Roller: dice.NewRoller(),
 	})
 }
@@ -244,7 +244,7 @@ func TestSequencePreflightsEveryStepBeforeAnythingIsRolled(t *testing.T) {
 			{Character: actionHero()},
 		},
 		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
+		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		TurnDriver: passDriver{}, Roller: dice.NewRoller(),
 	})
 

@@ -24,6 +24,7 @@ import (
 // pursuitDecider, shared with tombwatch_test.go and pump_test.go
 // respectively (same package).
 func TestVaultChase(t *testing.T) {
+	sheets := sheetFacts{goblin: {SpeedFeet: 60}, alice: {}}
 	// ---- The set -----------------------------------------------------
 	// Two regions, one gate: an open door standing in the crossing from the
 	// corridor's [9,5] to the vault's [10,5] (rpg-project#256 — a doorway is
@@ -51,7 +52,7 @@ func TestVaultChase(t *testing.T) {
 	// the creature only says "toward the enemy" (rpg-project#465).
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheets, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(corridorRoom, 0, 0, 10, 10), rectRegion(vaultRoom, 10, 0, 10, 10)}, Walls: corridorWall,
@@ -59,8 +60,7 @@ func TestVaultChase(t *testing.T) {
 		},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 5}},
-			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 8},
-				SpeedFeet: 60, Table: hunts()},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 8}, Table: hunts()},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: sanctuaryEnding, Trigger: encounter.TriggerReachedPosition{
@@ -115,7 +115,7 @@ func TestVaultChase(t *testing.T) {
 	data := enc.ToData()
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data})
+		Equipment: encounter.UnobservedEquipment{}, Sheets: sheets, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data})
 	require.NoError(t, err, "beat 3: the suspended chase crosses a process boundary")
 	enc = enc2 // the reload IS the encounter now
 

@@ -249,7 +249,10 @@ func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOut
 	// The readied sheet goes into the cast rather than being fetched again:
 	// compileOffersFor readied this turn's economy on it, and a second read
 	// would hand resolution a ledger that had not been filled.
-	readied := selected.sheet.ToData()
+	readied, err := selected.sheet.ToData()
+	if err != nil {
+		return nil, fmt.Errorf("activate: actor %q: %w: %v", in.Member, ErrBadCharacter, err)
+	}
 	cast, failures := m.compileResolutionCast(ctx, scope.data, roster, readied)
 	if len(failures) > 0 {
 		return nil, fmt.Errorf("activate: participant %q: %w: %v",
@@ -264,8 +267,9 @@ func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOut
 		Participants: cast,
 		Initiative:   m.initiative,
 		Standing:     scope.standing,
-		Sight:        &sightSeam{members: worldMembers(world)},
+		Sight:        sheetsBeside(scope.standing),
 		Equipment:    equipmentBeside(scope.standing),
+		Sheets:       sheetsBeside(scope.standing),
 		TurnDriver:   scope.driver,
 		// The concealment pair (rpg-toolkit#1378), bound to the same live
 		// scope openForWrite and adopt bind — the one-seam consistency law:
@@ -309,6 +313,9 @@ func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOut
 		Results: activationResults(activated.Effects),
 	}); err != nil {
 		return nil, fmt.Errorf("activate: %w", reportUnrecorded(scope, translate(err)))
+	}
+	if err := m.landAreas(scope.enc, scope, out); err != nil {
+		return nil, fmt.Errorf("activate: %w", reportUnrecorded(scope, err))
 	}
 
 	report, delivery, err := m.commit(ctx, scope)

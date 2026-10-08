@@ -257,15 +257,16 @@ func (s *EntitiesTestSuite) TestARepositoryReportingSuccessWithNoDataIsRejected(
 	s.NotErrorIs(err, session.ErrNoCharacter, "broken is not the same as absent")
 }
 
-// TestACorruptConditionIsDroppedRatherThanRejected documents the lenient
-// projection behavior on a NON-FIRST Join.
+// TestARejoinPastACorruptConditionIsRefused pins that a NON-FIRST Join is as
+// strict as a first one.
 //
-// First admission is intentionally strict because it writes the rested sheet;
-// a corrupt effect must stop that write. Once EverMembers records a prior
-// admission, Join performs no rest and no character save, so the existing
-// projection behavior still applies: character.LoadFromData logs and drops a
-// condition it cannot parse while the rest of the record remains usable.
-func (s *EntitiesTestSuite) TestACorruptConditionIsDroppedRatherThanRejected() {
+// First admission is strict because it writes the rested sheet. A rejoin
+// performs no rest and no character save, and it used to project leniently —
+// dropping a condition it could not parse — on the premise that nothing wrote
+// back. That premise is gone: Join copies the projected AC and facts onto the
+// member, so the projection now refuses (rpg-toolkit#1968), and the record is
+// left exactly as the host stored it.
+func (s *EntitiesTestSuite) TestARejoinPastACorruptConditionIsRefused() {
 	clean := dwarfCharacter("corrupt-one")
 	s.characters.byID[clean.ID] = clean
 	_, err := s.mgr.Join(context.Background(), &session.JoinInput{
@@ -286,10 +287,15 @@ func (s *EntitiesTestSuite) TestACorruptConditionIsDroppedRatherThanRejected() {
 		Session: "sess", Member: "corrupt-one", Position: hexCell(3, 2),
 	})
 
-	s.Require().NoError(err, "non-first projection remains lenient")
-	s.Require().NotNil(out.Character)
-	s.Equal(25, out.Character.Speed, "the rest of the character still loaded")
-	s.Equal(beforeSaves, s.characters.saves, "a non-first Join does not save the lenient projection")
+	s.Require().ErrorIs(err, session.ErrBadCharacter, "a rejoin refuses what a first Join refuses")
+	s.Contains(err.Error(), `"ref":"nonsense"`, "and names the condition it could not read")
+	s.Nil(out)
+	s.Equal(beforeSaves, s.characters.saves, "a refused rejoin writes no sheet")
+	// The blob is not valid JSON, so the record cannot be marshalled to
+	// compare; the store still holding the very record seeded, with its bytes,
+	// is the same claim.
+	s.Same(corrupt, s.characters.byID[corrupt.ID], "the stored record is untouched")
+	s.Equal(`{"ref":"nonsense","x":`, string(s.characters.byID[corrupt.ID].Conditions[0]))
 }
 
 // nilDataCharacters violates the repository contract by reporting success with
@@ -375,9 +381,9 @@ func BenchmarkSpawnMonster(b *testing.B) {
 // Nothing recomputed it, so a monk who never changed gear reported 10+DEX
 // forever.
 //
-// The fixture makes echoing impossible: the stored scalar says 13 (the exact
-// wrong-but-plausible base-armour number this bug produced) while the folded
-// answer is 15. A projection that read the sheet would return 13 and fail here.
+// The record carries no armour class at all now (rpg-project#538, R1), so the
+// only number Join can report is the fold's: 15, where the wrong-but-plausible
+// base-armour number this bug produced was 13.
 func (s *EntitiesTestSuite) TestAMonksUnarmoredDefenseReachesTheJoinedAC() {
 	monk := dwarfCharacter("bob")
 	monk.RaceID = races.Human
@@ -390,9 +396,6 @@ func (s *EntitiesTestSuite) TestAMonksUnarmoredDefenseReachesTheJoinedAC() {
 		abilities.WIS: 14, // +2
 		abilities.CHA: 8,
 	}
-	// The stale value the bug leaves behind: 10 + DEX, no Unarmored Defense.
-	monk.ArmorClass = 13
-
 	ud := conditions.NewUnarmoredDefenseCondition(conditions.UnarmoredDefenseInput{
 		MemberID: "bob",
 		Type:     conditions.UnarmoredDefenseMonk,
@@ -410,6 +413,4 @@ func (s *EntitiesTestSuite) TestAMonksUnarmoredDefenseReachesTheJoinedAC() {
 
 	s.Equal(15, out.Character.ArmorClass,
 		"10 base + 3 DEX + 2 WIS: Unarmored Defense must reach the joined AC")
-	s.NotEqual(13, out.Character.ArmorClass,
-		"13 is the stale scalar on the sheet — reading it is the bug")
 }

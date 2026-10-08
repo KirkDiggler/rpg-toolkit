@@ -37,7 +37,9 @@ func TestHealingPublicationFailureDoesNotPromiseRollback(t *testing.T) {
 	require.NoError(t, err)
 	heal := preparedHealing{targetID: bardID, declaration: healing.Declaration{Dice: "1d8"}, roller: facedRoller{other: 5}, source: dnd5eEvents.RollSource{Ref: refs.Spells.CureWounds(), Name: "Cure Wounds", SourceID: "cleric-1"}}
 	require.ErrorIs(t, heal.deliver(ctx, bus, ""), fault)
-	require.Equal(t, 6, sheet.ToData().HitPoints, "a later subscriber failure does not undo live HP mutation")
+	written, err := sheet.ToData()
+	require.NoError(t, err)
+	require.Equal(t, 6, written.HitPoints, "a later subscriber failure does not undo live HP mutation")
 	require.Equal(t, 1, stored.HitPoints, "the caller's persisted input remains untouched")
 }
 
@@ -74,7 +76,7 @@ func (s *CastActionTestSuite) TestCureWoundsMonsterTypesAndConcentration() {
 			target.HitPoints = 1
 			out, err := Resolve(s.ctx, &Input{World: f.world(), Participants: []Participant{{Character: caster}, {Character: f.saver(14)}, {Monster: target}}, Machine: machine,
 				Cost:       &Cost{SpellTurn: "scene/round-1/bard", PayerID: bardID, Profile: definition.Cost, Turn: &Turn{Number: mockeryTurn, Speed: mockerySpeed}},
-				Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Roller: dice.NewRoller()})
+				Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller()})
 			s.Require().NoError(err)
 			outcome := s.castOutcome(out)
 			s.Require().Len(outcome.Targets, 1)
@@ -114,7 +116,7 @@ func (s *CastActionTestSuite) TestCureWoundsPhysicalBarrierRefusesBeforePayment(
 	world.Field.Walls = append(world.Field.Walls, encounter.BoundaryData{From: encounter.PositionData{X: 2, Y: 1}, To: encounter.PositionData{X: 3, Y: 1}, BlocksMovement: true, BlocksLineOfSight: true})
 	out, err := Resolve(s.ctx, &Input{World: world, Participants: []Participant{{Character: caster}, {Character: f.saver(14)}, {Monster: f.wolfData()}}, Machine: machine,
 		Cost:       &Cost{SpellTurn: "scene/round-1/bard", PayerID: bardID, Profile: definition.Cost, Turn: &Turn{Number: mockeryTurn, Speed: mockerySpeed}},
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Roller: dice.NewRoller()})
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller()})
 	s.ErrorIs(err, ErrOutOfRange)
 	s.Nil(out)
 	s.Zero(roll.calls)

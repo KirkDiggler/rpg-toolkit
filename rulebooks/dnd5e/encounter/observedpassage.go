@@ -34,7 +34,10 @@ func (e *Encounter) ObservedPassages(in *ViewInput) (map[MemberID]Passage, error
 		if !exists || seen.Down == nil || seen.BlocksMovement == nil {
 			return nil, fmt.Errorf("passage for %q: missing observed occupant facts", holding.Subject)
 		}
-		stance, _ := e.BelievedStance(in.Member, holding.Subject)
+		stance, err := e.BelievedStance(in.Member, holding.Subject)
+		if err != nil {
+			return nil, fmt.Errorf("passage for %q: %w", holding.Subject, err)
+		}
 		out[holding.Subject] = occupantPassage(occupantFacts{
 			kind: member.Kind, down: *seen.Down, blocks: *seen.BlocksMovement, hostile: stance == StanceHostile,
 		})

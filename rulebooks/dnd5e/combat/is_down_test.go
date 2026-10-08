@@ -78,7 +78,6 @@ func (s *IsDownSuite) createFighter() *character.Character {
 		},
 		HitPoints:    s.fighterHP,
 		MaxHitPoints: s.fighterHP,
-		ArmorClass:   16,
 	}
 
 	char, err := character.LoadFromData(s.ctx, data, s.bus)

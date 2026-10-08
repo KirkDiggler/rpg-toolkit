@@ -76,6 +76,12 @@ type compiledOffer struct {
 	// definition for Attack. Equality compares these bytes so two offers
 	// with the same selector material are recurrence, not a collision.
 	variant json.RawMessage
+	// unreadable is why this offer is blocked when the cause is a sheet a
+	// resolution participant needs and nobody can read: the first dependency
+	// failure, in this package's own vocabulary. Nil otherwise. Selecting a
+	// blocked offer reports it rather than calling the selector stale — the
+	// selector is current; the sheet is what refuses (rpg-project#538).
+	unreadable error
 }
 
 // targetPreflight is the shared, target-specific gate result for one
@@ -250,11 +256,11 @@ func (m *Manager) compileOffersFor(
 	if requested[VerbAttack] || requested[VerbActivate] || requested[VerbCast] {
 		var err error
 		if roster, err = enc.Members(); err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrBadCost, translate(err))
+			return nil, badCostUnlessSheet(translate(err))
 		}
 		positions = rosterPositions(roster)
 		if holdings, err = enc.View(&encounter.ViewInput{Member: encounter.MemberID(member)}); err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrBadCost, translate(err))
+			return nil, badCostUnlessSheet(translate(err))
 		}
 	}
 
@@ -313,7 +319,11 @@ func (m *Manager) compileOffersFor(
 		dependencyFailures []resolutionDependencyFailure
 	)
 	if requested[VerbAttack] || requested[VerbCast] {
-		resolutionCast, dependencyFailures = m.compileResolutionCast(ctx, data, roster, sheet.ToData())
+		readied, err := sheet.ToData()
+		if err != nil {
+			return nil, fmt.Errorf("member %q: %w: %v", member, ErrBadCharacter, err)
+		}
+		resolutionCast, dependencyFailures = m.compileResolutionCast(ctx, data, roster, readied)
 	}
 
 	var casts []compiledOffer
@@ -516,7 +526,11 @@ func compileAttackOffer(input *compileAttackOfferInput) (compiledOffer, error) {
 	// facts without sharing those mutable annotations.
 	candidates := cloneTargetPreflights(input.Candidates)
 	var dependencyWhy *Shortfall
+	var unreadable error
 	for _, failure := range input.DependencyFailures {
+		if unreadable == nil {
+			unreadable = dependencyRefusal(failure)
+		}
 		why := Shortfall{
 			Reason: ShortfallUnreadable,
 			Text:   fmt.Sprintf("resolution participant %q is unreadable: %v", failure.member, failure.err),
@@ -571,7 +585,29 @@ func compileAttackOffer(input *compileAttackOfferInput) (compiledOffer, error) {
 		},
 		attack: &definition, targets: targets, sheet: input.Sheet,
 		price: input.Price, cast: input.Cast, verb: VerbAttack, slot: slot, variant: variant,
+		unreadable: unreadable,
 	}, nil
+}
+
+// dependencyRefusal names one unreadable resolution participant in this
+// package's vocabulary. A NAMED member whose failure carries a sheet sentinel
+// (ErrNoSheet, ErrNoCharacter, ErrBadCharacter, ... — directly, or as
+// translateResolution's word for a preflight refusal) is that sheet's refusal.
+// Anything else is translateResolution's answer as it stands: a failure with
+// no member is a cast this package built wrongly, and naming a sheet for it
+// would send a host to repair one that is fine.
+func dependencyRefusal(failure resolutionDependencyFailure) error {
+	translated := translateResolution(failure.err)
+	if failure.member != "" {
+		own := sheetRefusal(failure.err)
+		if own == nil {
+			own = sheetRefusal(translated)
+		}
+		if own != nil {
+			return fmt.Errorf("resolution participant %q: %w: %v", failure.member, own, failure.err)
+		}
+	}
+	return translated
 }
 
 // finishRequestedOffers filters candidate offers to the requested verbs and
@@ -808,11 +844,11 @@ type socialAudience struct {
 func readSocialAudience(enc *encounter.Encounter, member string) (socialAudience, error) {
 	witnesses, err := enc.Witnesses(encounter.MemberID(member))
 	if err != nil {
-		return socialAudience{}, fmt.Errorf("%w: %v", ErrBadCost, translate(err))
+		return socialAudience{}, badCostUnlessSheet(translate(err))
 	}
 	roster, err := enc.Members()
 	if err != nil {
-		return socialAudience{}, fmt.Errorf("%w: %v", ErrBadCost, translate(err))
+		return socialAudience{}, badCostUnlessSheet(translate(err))
 	}
 
 	seen := make([]string, 0, len(witnesses))
@@ -1022,6 +1058,9 @@ func selectCompiledOffer(offers []compiledOffer, verb Verb, id string) (compiled
 			return compiledOffer{}, ErrStaleDeclaration
 		}
 		selected = &offers[i]
+	}
+	if selected != nil && !selected.declaration.Available && selected.unreadable != nil {
+		return compiledOffer{}, selected.unreadable
 	}
 	if selected == nil || !selected.declaration.Available {
 		return compiledOffer{}, ErrStaleDeclaration

@@ -306,7 +306,6 @@ func loadSheet(d *Data, policy effectPolicy) (*Character, error) {
 		abilityScores:       d.AbilityScores,
 		hitPoints:           d.HitPoints,
 		maxHitPoints:        d.MaxHitPoints,
-		armorClass:          d.ArmorClass,
 		wallet:              d.Wallet,
 		deathSaveState:      cloneDeathSaveState(d.DeathSaveState),
 		skills:              d.Skills,
@@ -582,6 +581,12 @@ func loadEffects(raw []json.RawMessage, characterID string, policy effectPolicy)
 	effects := make([]loadedEffect, 0, len(raw))
 
 	for i, rawCondition := range raw {
+		// A retired condition type is dropped under every policy: it carried
+		// no rule, and the sheet saves without it.
+		if conditions.IsRetired(rawCondition) {
+			continue
+		}
+
 		condition, err := conditions.LoadJSON(rawCondition)
 		if err != nil {
 			if policy == strictEffects {

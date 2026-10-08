@@ -69,7 +69,7 @@ func (s *RecordActivationSuite) TestStabilizationCastSurvivesReloadWithoutInvent
 			var data encounter.EncounterData
 			s.Require().NoError(json.Unmarshal(raw, &data))
 			reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-				Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{},
+				Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{},
 				Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 				Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			})
@@ -120,7 +120,7 @@ func (s *RecordActivationSuite) TestStabilizationRejectsMalformedResultsBeforeAn
 		want   error
 	}{
 		{"missing target", func(r *encounter.ActivationResult) { r.Target = "" }, encounter.ErrNoMember},
-		{"unknown target", func(r *encounter.ActivationResult) { r.Target = "absent" }, encounter.ErrNoMember},
+		{"unknown target", func(r *encounter.ActivationResult) { r.Target = "absent" }, encounter.ErrNotMember},
 		{"missing ref", func(r *encounter.ActivationResult) { r.Ref = "" }, encounter.ErrInvalidData},
 		{"missing name", func(r *encounter.ActivationResult) { r.Name = "" }, encounter.ErrInvalidData},
 		{"missing detail", func(r *encounter.ActivationResult) { r.Stabilization = nil }, encounter.ErrInvalidData},

@@ -323,7 +323,11 @@ func makeCheckOn(ctx context.Context, in *CheckInput, surf *surface) (*CheckOutp
 
 	out := &CheckOutput{Result: result, Applied: applied, Calculation: calculation}
 	if ch.IsDirty() {
-		out.DirtyCharacter = ch.ToData()
+		dirty, err := ch.ToData()
+		if err != nil {
+			return nil, fmt.Errorf("resolution: check for %q: %w", ch.GetID(), err)
+		}
+		out.DirtyCharacter = dirty
 	}
 
 	return out, nil

@@ -95,14 +95,14 @@ type MonsterView struct {
 	// frame every SeenMember.Position and every Move path cell speaks.
 	Position spatial.Position
 
-	// Actions are this member's own static facts about what it can do —
-	// carried forward from [MemberInput.Actions]/[Member.Actions] verbatim.
+	// Actions are what this member can attack with — its [Sheets] answer
+	// of the moment this view was built ([SheetFacts.Actions]), verbatim.
 	// An [Attack] intent must name one of these.
 	Actions []ActionView
 
 	// Targeting is this member's target-selection strategy, in the
-	// rulebook's own words — carried forward from
-	// [MemberInput.Targeting]/[Member.Targeting]. Opaque here (C1): a
+	// rulebook's own words — its [Sheets] answer of the moment this view
+	// was built ([SheetFacts.Targeting]). Opaque here (C1): a
 	// driver that cares what "closest" means already knows, because the
 	// rulebook that authored the string is the one reading it.
 	Targeting string
@@ -312,8 +312,9 @@ type TurnBudget struct {
 
 	// MovementFeet is how much further this member may move this turn, in
 	// FEET (Kirk, rpg-project#254 review — see [ActionView.RangeFeet]'s doc
-	// for the feet/cells split) — [Member.SpeedFeet] at the start of a
-	// turn, decremented by 5 feet per cell as [Move] intents execute.
+	// for the feet/cells split) — the sheet's [SheetFacts.SpeedFeet] asked at
+	// the start of the turn, decremented by 5 feet per cell as [Move]
+	// intents execute. Once handed to the turn it is the turn's own value.
 	MovementFeet int
 }
 

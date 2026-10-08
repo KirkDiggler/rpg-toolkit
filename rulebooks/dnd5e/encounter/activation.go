@@ -316,8 +316,8 @@ type capacityGrantedPayload struct {
 // transaction appended in memory and returns no output; doc.go's caller rule
 // applies: discard the encounter unsaved.
 //
-// Errors: ErrNilInput, ErrClosed, ErrNoMember (empty or unknown actor, unknown
-// selected target, or empty/unknown result target), ErrInvalidData (missing
+// Errors: ErrNilInput, ErrClosed, ErrNoMember (empty actor or result target),
+// ErrNotMember (unknown actor, selected target or result target), ErrInvalidData (missing
 // ability identity, unknown result kind, a missing/forbidden kind field, or a
 // healing whose calculation is absent, structurally inconsistent, or whose
 // Total does not equal the requested healing), an append error, or anything
@@ -341,10 +341,6 @@ func (e *Encounter) RecordActivation(in *RecordActivationInput) (*RecordActivati
 			return nil, fmt.Errorf("record activation: append beat %d: %w", i, appendErr)
 		}
 		seqs = append(seqs, appended.Seq)
-	}
-
-	if err := e.FlushSightAreaTransitions(); err != nil {
-		return nil, err
 	}
 
 	_, intelDeltas, noticeErr := e.noticeDown()
@@ -377,11 +373,11 @@ func (e *Encounter) prepareActivation(in *RecordActivationInput) ([]preparedActi
 		return nil, fmt.Errorf("record activation: actor: %w", ErrNoMember)
 	}
 	if _, ok := e.members[in.Actor]; !ok {
-		return nil, fmt.Errorf("record activation: actor %q: %w", in.Actor, ErrNoMember)
+		return nil, fmt.Errorf("record activation: actor %q: %w", in.Actor, ErrNotMember)
 	}
 	if in.Target != "" {
 		if _, ok := e.members[in.Target]; !ok {
-			return nil, fmt.Errorf("record activation: target %q: %w", in.Target, ErrNoMember)
+			return nil, fmt.Errorf("record activation: target %q: %w", in.Target, ErrNotMember)
 		}
 	}
 	if in.Ability.Ref == "" {
@@ -392,7 +388,7 @@ func (e *Encounter) prepareActivation(in *RecordActivationInput) ([]preparedActi
 	}
 
 	activationBytes, err := json.Marshal(activatedPayload{
-		Beat:  "activated",
+		Beat:  BeatActivated,
 		Actor: in.Actor,
 		Ability: activationIdentityPayload{
 			Ref:  in.Ability.Ref,
@@ -426,7 +422,7 @@ func (e *Encounter) prepareActivation(in *RecordActivationInput) ([]preparedActi
 			return nil, validationErr
 		}
 		resultBytes, marshalErr := json.Marshal(activationResultPayload{
-			Beat:   "activation-result",
+			Beat:   BeatActivationResult,
 			Actor:  in.Actor,
 			Result: resultPayload,
 		})
@@ -472,7 +468,7 @@ func (e *Encounter) prepareActivationResult(
 		return nil, fmt.Errorf("%s: result %d target: %w", verb, index, ErrNoMember)
 	}
 	if _, ok := e.members[target]; !ok {
-		return nil, fmt.Errorf("%s: result %d target %q: %w", verb, index, target, ErrNoMember)
+		return nil, fmt.Errorf("%s: result %d target %q: %w", verb, index, target, ErrNotMember)
 	}
 	// ONE GUARD RATHER THAN AN ARM APIECE. A damage type belongs to exactly
 	// one kind, so the refusal is stated once, before the switch, and a kind

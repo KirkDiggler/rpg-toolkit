@@ -71,6 +71,7 @@ func resolveHeroStrikeOn(
 		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, TurnDriver: passDriver{}, Roller: dice.NewRoller(),
 		Equipment: noHandsAreObserved{},
+		Sheets:    noSheetsAsked{},
 	}, surf)
 }
 

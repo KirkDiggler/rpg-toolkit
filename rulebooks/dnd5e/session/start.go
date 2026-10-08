@@ -72,7 +72,8 @@ type StartSessionOutput struct {
 // nil world, unloadable world, session already exists.
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoEncounterID, ErrInvalidWorld,
-// ErrSessionExists, or ErrSaveFailed with a populated SaveReport.
+// ErrSessionExists, or a *SaveError (matching ErrSaveFailed) whose Report
+// names what landed and what did not.
 func (m *Manager) StartSession(ctx context.Context, in *StartSessionInput) (*StartSessionOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("startsession: %w", ErrNilInput)
@@ -140,14 +141,22 @@ func (m *Manager) StartSession(ctx context.Context, in *StartSessionInput) (*Sta
 
 	if err := m.encounters.SaveEncounter(ctx, in.Encounter, in.World); err != nil {
 		report.Failed = append(report.Failed, "encounter:"+in.Encounter)
-		return nil, fmt.Errorf("startsession: saving world: %w: %w", ErrSaveFailed, err)
+		return nil, fmt.Errorf("startsession: %w", &SaveError{
+			Report: report,
+			Err:    fmt.Errorf("saving world: %w", err),
+		})
 	}
 	report.Written = append(report.Written, "encounter:"+in.Encounter)
 
 	data := &SessionData{ID: in.Session, Encounter: in.Encounter, Dungeon: in.Dungeon}
 	if err := m.sessions.SaveSession(ctx, data); err != nil {
+		// The world is already durable, so the report is the only way the host
+		// can tell this orphan from a total failure (S6).
 		report.Failed = append(report.Failed, "session:"+in.Session)
-		return nil, fmt.Errorf("startsession: saving session: %w: %w", ErrSaveFailed, err)
+		return nil, fmt.Errorf("startsession: %w", &SaveError{
+			Report: report,
+			Err:    fmt.Errorf("saving session: %w", err),
+		})
 	}
 	report.Written = append(report.Written, "session:"+in.Session)
 
@@ -196,7 +205,6 @@ func (m *Manager) loadAuthored(ctx context.Context, world *encounter.EncounterDa
 	input := encounter.CompileOnlyLoad(*world)
 	input.Initiative = m.initiative
 	input.Standing = standing
-	input.Sight = &sightSeam{members: worldMembers(*world)}
 	input.Equipment = equipmentBeside(standing)
 	enc, err := encounter.LoadEncounter(input)
 	if err != nil {

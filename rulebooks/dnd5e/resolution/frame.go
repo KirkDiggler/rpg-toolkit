@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
@@ -117,12 +116,15 @@ func attackActionFacts(p *combatActions.AttackProfile, opportunity bool) contrib
 // observer's own detached knowledge, the assembled attack, the target being
 // asked about, and what the observer holds by its own sheet. Target is empty
 // for the ask about no target in particular. ActorHeld is the observer's own
-// holdings, always known: nil is read as holding none.
+// holdings, always known: nil is read as holding none. ActorClassLevels is the
+// observer's class levels from its own sheet ([sheetClassLevels]); it must be
+// known, because a member always knows its own sheet.
 type informationFrameInput struct {
-	Observed  *encounter.ObservedContextOutput
-	Attack    *combatActions.AttackProfile
-	Target    string
-	ActorHeld []contributions.HeldCondition
+	Observed         *encounter.ObservedContextOutput
+	Attack           *combatActions.AttackProfile
+	Target           string
+	ActorHeld        []contributions.HeldCondition
+	ActorClassLevels contributions.ClassLevels
 }
 
 // informationFrameOutput carries the validated information frame.
@@ -157,19 +159,31 @@ type informationFrameOutput struct {
 // a member sees, including whether it sees the observer — is unknown, because
 // the observer's sightings say nothing about another creature's eyes.
 //
-// Errors: a nil observed context or attack, or a frame that fails
+// The observer's class levels are its own sheet's (rpg-project#538), the same
+// answer [strikeMachine.attackRollFrame] reads from the cast, so a
+// class-scaled row and the swing it describes compute from one level.
+//
+// Errors: a nil observed context or attack, unknown actor class levels
+// (wrapping [contributions.ErrRuleCannotAnswer], the sentinel a class-scaled
+// rule gives for the same missing fact — unreachable through [InformAttack],
+// whose character actor always knows its levels), or a frame that fails
 // [contributions.Frame.Validate].
 func informationFrame(in *informationFrameInput) (*informationFrameOutput, error) {
 	if in == nil || in.Observed == nil || in.Attack == nil {
 		return nil, fmt.Errorf("%w: an information frame needs an observed context and an attack", ErrNilInput)
 	}
 	observer := string(in.Observed.Observer)
+	if _, known := in.ActorClassLevels.Get(); !known {
+		return nil, fmt.Errorf("information frame: %w: %q's class levels are unknown; its own sheet answers them",
+			contributions.ErrRuleCannotAnswer, observer)
+	}
 	frame := contributions.Frame{
-		Actor:  observer,
-		Target: contributions.Unknown[string](),
-		Action: attackActionFacts(in.Attack, false),
-		Pairs:  make([]contributions.PairFacts, 0, len(in.Observed.Pairs)),
-		Held:   make([]contributions.MemberHeld, 0, len(in.Observed.Members)+1),
+		Actor:            observer,
+		ActorClassLevels: in.ActorClassLevels,
+		Target:           contributions.Unknown[string](),
+		Action:           attackActionFacts(in.Attack, false),
+		Pairs:            make([]contributions.PairFacts, 0, len(in.Observed.Pairs)),
+		Held:             make([]contributions.MemberHeld, 0, len(in.Observed.Members)+1),
 	}
 	if in.Target != "" {
 		frame.Target = contributions.Known(in.Target)
@@ -209,35 +223,31 @@ func informationFrame(in *informationFrameInput) (*informationFrameOutput, error
 	return &informationFrameOutput{Frame: frame}, nil
 }
 
-// sideAnswerer is a cast that can say whether anyone answered its stance
-// questions. [castView] is one: with no run loaded there is no disposition
-// graph, so its silence about a pair proves nothing.
-type sideAnswerer interface {
-	answersSides() bool
+// stanceAnswerer is a cast that carries the encounter's whole stance answer,
+// no side included. [castView] is one.
+type stanceAnswerer interface {
+	stanceAnswer(a, b string) (contributions.Stance, error)
 }
 
 // authoritativeStance is the execution answer for the stance from one member
-// toward another: the installed cast's [gamectx.Cast.StanceBetween], with no
-// stance between two members of the cast read as the known no side
-// ([contributions.StanceNone], R5). Membership is proven from the cast's own
-// Members, as StanceBetween's contract requires; a pair naming anyone the cast
-// does not hold is UNKNOWN, never no side. So is every pair when the cast has
-// no graph to ask ([sideAnswerer]), or cannot say whether it has one: silence
-// from nobody is not "no side". Every execution read of a stance goes through
-// here, so the attack frame and the cast's ward gate cannot disagree about one
-// pair.
+// toward another: the encounter's own answer, taken as given — hostile,
+// neutral, allied, or [contributions.StanceNone] for a member in no faction.
+// Nothing here reconstructs no side from a missing stance and a membership
+// check. A pair the encounter refuses (a non-member), or a cast with no
+// encounter to ask, is UNKNOWN: a rule reading it answers Depends and the
+// fold fails rather than guessing. Every execution read of a stance goes
+// through here, so the attack frame and the cast's ward gate cannot disagree
+// about one pair.
 func authoritativeStance(cast gamectx.Cast, from, to string) contributions.Fact[contributions.Stance] {
-	if stance, ok := cast.StanceBetween(from, to); ok {
-		return contributions.Known(stance)
-	}
-	if answerer, ok := cast.(sideAnswerer); !ok || !answerer.answersSides() {
+	answerer, ok := cast.(stanceAnswerer)
+	if !ok {
 		return contributions.Unknown[contributions.Stance]()
 	}
-	members := cast.Members()
-	if slices.Contains(members, from) && slices.Contains(members, to) {
-		return contributions.Known(contributions.StanceNone)
+	stance, err := answerer.stanceAnswer(from, to)
+	if err != nil {
+		return contributions.Unknown[contributions.Stance]()
 	}
-	return contributions.Unknown[contributions.Stance]()
+	return contributions.Known(stance)
 }
 
 // attackRollFrame is the strike's attack-roll frame, built from authoritative
@@ -248,9 +258,8 @@ func authoritativeStance(cast gamectx.Cast, from, to string) contributions.Fact[
 // Pairs range over every cast member the installed room places — the
 // participants are this interaction's declared universe (R3) — measured with
 // the room's own grid, the metric [encounter.Encounter.Distance] uses. The
-// stance is the installed cast's authoritative [gamectx.Cast.StanceBetween];
-// two placed members with no stance are a KNOWN no side
-// ([contributions.StanceNone]), never unknown. Complete is true because the
+// stance is the encounter's own answer ([authoritativeStance]), no side
+// ([contributions.StanceNone]) included, taken as given. Complete is true because the
 // pairs cover every placed participant. Opportunity is the strike input's own.
 //
 // Sight is the installed visibility's live answer for each placed ordered
@@ -264,13 +273,16 @@ func authoritativeStance(cast gamectx.Cast, from, to string) contributions.Fact[
 // nothing on its sheet is listed holding nothing, because the sheet is the
 // authority. The first caller is the Sanctuary step, after the attacker's own
 // ward has ended, so the frame the ward check, the attack chain and the
-// damage fold read is one frame.
+// damage fold read is one frame. ActorClassLevels is the attacker's own
+// sheet's answer ([sheetClassLevels]), asked as the frame is built and never
+// stored on an effect (rpg-project#538).
 //
 // A resumed machine builds it afresh from current truth (S3); rows a client
 // saw are never consulted.
 //
-// Errors: no installed room, cast or visibility ([ErrBadWorld]), or a frame
-// that fails [contributions.Frame.Validate]. The caller gets a detached copy.
+// Errors: no installed room, cast or visibility ([ErrBadWorld]), an attacker
+// with no sheet in the cast ([ErrNoCombatant]), or a frame that fails
+// [contributions.Frame.Validate]. The caller gets a detached copy.
 func (m *strikeMachine) attackRollFrame(ctx context.Context) (contributions.Frame, error) {
 	if m.rollFrame != nil {
 		return m.rollFrame.Clone(), nil
@@ -321,13 +333,18 @@ func (m *strikeMachine) attackRollFrame(ctx context.Context) (contributions.Fram
 	if err != nil {
 		return contributions.Frame{}, fmt.Errorf("%w: attack frame: %w", ErrBadWorld, err)
 	}
+	levels, err := sheetClassLevels(m.cast, m.in.AttackerID)
+	if err != nil {
+		return contributions.Frame{}, fmt.Errorf("attack frame: %w", err)
+	}
 	frame := contributions.Frame{
-		Actor:    m.in.AttackerID,
-		Target:   contributions.Known(m.in.TargetID),
-		Action:   attackActionFacts(m.attack, m.in.Opportunity),
-		Pairs:    pairs,
-		Complete: true,
-		Held:     held,
+		Actor:            m.in.AttackerID,
+		ActorClassLevels: levels,
+		Target:           contributions.Known(m.in.TargetID),
+		Action:           attackActionFacts(m.attack, m.in.Opportunity),
+		Pairs:            pairs,
+		Complete:         true,
+		Held:             held,
 	}
 	if err := frame.Validate(); err != nil {
 		return contributions.Frame{}, fmt.Errorf("attack frame: %w", err)
@@ -367,6 +384,25 @@ func (m *strikeMachine) executionFrame(ctx context.Context) (contributions.Frame
 	return frame.Clone(), nil
 }
 
+// sheetClassLevels is a member's class levels as its own sheet answers them
+// (rpg-project#538): a character's from its level record, a monster's known
+// and empty. Every frame that names an actor with a sheet in the cast fills
+// [contributions.Frame.ActorClassLevels] through here, so the information
+// frame and the execution frames cannot read two different levels for one
+// member. The levels are asked each time a frame is built; nothing below the
+// sheet keeps a copy.
+//
+// Errors: a member with no sheet in the cast ([ErrNoCombatant]).
+func sheetClassLevels(cast *Participants, id string) (contributions.ClassLevels, error) {
+	if character, ok := cast.Character(id); ok {
+		return character.ClassLevels(), nil
+	}
+	if monster, ok := cast.Monster(id); ok {
+		return monster.ClassLevels(), nil
+	}
+	return contributions.UnknownClassLevels(), fmt.Errorf("%w: class levels of %q", ErrNoCombatant, id)
+}
+
 // castHeld lists what each member with a sheet holds, in the given order, each
 // condition at its own address — the same address its handler asks its held
 // rule about. A member with no sheet in the cast is left out, which a frame
@@ -385,7 +421,11 @@ func castHeld(cast *Participants, members []string) ([]contributions.MemberHeld,
 	for _, id := range members {
 		var stored []json.RawMessage
 		if character, ok := cast.Character(id); ok {
-			stored = character.ToData().Conditions
+			data, err := character.ToData()
+			if err != nil {
+				return nil, fmt.Errorf("frame: %q: %w", id, err)
+			}
+			stored = data.Conditions
 		} else if monster, ok := cast.Monster(id); ok {
 			stored = monster.ToData().Conditions
 		} else {

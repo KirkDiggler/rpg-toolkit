@@ -17,6 +17,7 @@ func structuralDoorOnlyWorld(t fataler, extra ...encounter.ConcealmentInput) *en
 	wallBox := structuralBox(hexCell(4, 0), 6, 0.25)
 	doorBox := structuralBox(hexCell(4, 0), 2, 0.25)
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sheets:  encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
 		Sight: encEveryoneSees{}, Equipment: encounter.UnobservedEquipment{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},

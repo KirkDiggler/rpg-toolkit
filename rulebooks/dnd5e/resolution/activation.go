@@ -5,6 +5,7 @@ package resolution
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -15,6 +16,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
@@ -91,6 +93,48 @@ type preparedCast struct {
 type preparedDelivery struct {
 	condition   preparedCondition
 	recipientID string
+
+	// pending is set for an effect that keeps the caster's save DC
+	// ([combatActions.CastEffect.SaveDCKey]); condition is built from it when
+	// the cast starts, because the DC is on the caster's sheet.
+	pending *pendingDelivery
+}
+
+// pendingDelivery is a condition whose configuration still needs the caster's
+// spell save DC: everything else is already bound.
+type pendingDelivery struct {
+	ref        core.Ref
+	parameters json.RawMessage
+	saveDCKey  string
+	casterID   string
+	sourceRef  string
+}
+
+// build writes the caster's spell save DC under the effect's key and builds
+// the condition, so the effect owns the number it was cast with — a ward
+// rolled against long after the cast, by whoever targets its holder, does not
+// go back to a caster who may have left (rpg-toolkit#1965).
+//
+// Errors: [ErrBadAction] when the caster is not a character in the cast or
+// its sheet has no spell save DC — a creature that cannot cast this is refused
+// at the door rather than imposing an effect with DC 0, which every save beats.
+func (p *pendingDelivery) build(cast *Participants, recipientID string) (preparedCondition, error) {
+	caster, ok := cast.Character(p.casterID)
+	if !ok {
+		return preparedCondition{}, fmt.Errorf("%w: %s keeps its caster's save DC, and %q is not a character in the cast",
+			ErrBadAction, p.sourceRef, p.casterID)
+	}
+	dc := caster.SpellSaveDC()
+	if dc <= 0 {
+		return preparedCondition{}, fmt.Errorf("%w: %s keeps its caster's save DC, and %q has none to keep",
+			ErrBadAction, p.sourceRef, p.casterID)
+	}
+	bound, err := writeParameter(p.ref, p.parameters, p.saveDCKey, dc)
+	if err != nil {
+		return preparedCondition{}, fmt.Errorf("%w: %s: %w", ErrBadAction, p.sourceRef, err)
+	}
+
+	return prepareCondition(combatActions.ConditionApplication{Ref: p.ref, Parameters: bound}, recipientID, p.sourceRef)
 }
 
 // ActivationEffectKind identifies one closed kind of fact produced while an
@@ -659,6 +703,13 @@ func memberEntity(cast *Participants, id string) (core.Entity, error) {
 func (m *activationMachine) startCast(cast *Participants) (Step, error) {
 	recipients := make([]core.Entity, len(m.cast.conditions))
 	for index, delivery := range m.cast.conditions {
+		if delivery.pending != nil {
+			built, err := delivery.pending.build(cast, delivery.recipientID)
+			if err != nil {
+				return nil, err
+			}
+			m.cast.conditions[index].condition = built
+		}
 		recipient, err := cast.entity(delivery.recipientID)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %s delivers to %q: %w",

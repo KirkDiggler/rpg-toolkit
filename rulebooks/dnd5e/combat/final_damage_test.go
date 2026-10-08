@@ -14,19 +14,19 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
-type FinalDamageTestSuite struct {
+type SettleDamageTestSuite struct {
 	suite.Suite
 }
 
-func TestFinalDamageSuite(t *testing.T) {
-	suite.Run(t, new(FinalDamageTestSuite))
+func TestSettleDamageSuite(t *testing.T) {
+	suite.Run(t, new(SettleDamageTestSuite))
 }
 
 // intPtr returns a pointer to v, so a present zero modifier stays present.
 func intPtr(v int) *int { return &v }
 
-// flat builds a plain modifier-only damage component contributing Amount of a type.
-func (s *FinalDamageTestSuite) flat(amount int, t damage.Type) dnd5eEvents.DamageComponent {
+// flat builds a plain modifier-only dealt component of a type.
+func flat(amount int, t damage.Type) dnd5eEvents.DamageComponent {
 	return dnd5eEvents.DamageComponent{
 		Source: dnd5eEvents.DamageSourceWeapon,
 		Roll: dnd5eEvents.RollComponent{
@@ -37,323 +37,268 @@ func (s *FinalDamageTestSuite) flat(amount int, t damage.Type) dnd5eEvents.Damag
 	}
 }
 
-// multiplier builds a modifier component — resistance, vulnerability, immunity.
-func (s *FinalDamageTestSuite) multiplier(m float64, t damage.Type) dnd5eEvents.DamageComponent {
-	return dnd5eEvents.DamageComponent{
-		Source: dnd5eEvents.DamageSourceCondition,
-		Roll: dnd5eEvents.RollComponent{
-			Source: dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging"},
-		},
-		Multiplier: dnd5eEvents.Multiply(m),
+// resist, vulnerable and immune build one target answer each, from a named
+// rule, on one damage type.
+func resist(t damage.Type) dnd5eEvents.DamageMultiplier {
+	return dnd5eEvents.DamageMultiplier{
+		Category:   dnd5eEvents.DamageSourceCondition,
+		Source:     dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging"},
 		DamageType: t,
+		Factor:     dnd5eEvents.DamageFactorResistance,
 	}
 }
 
-// THE ORDER PIN. A mixed-type hit reports its instances sorted by damage type,
-// the same way every run.
-//
-// This is the one observable change in the split: the grouping is a map, and a
-// map's iteration order is random per run, so before this the order was
-// whatever Go felt like. Nothing can correctly depend on a random order, which
-// is why sorting cannot break a correct consumer — and why this assertion is
-// on the exact slice rather than on a set.
-func (s *FinalDamageTestSuite) TestInstancesComeBackSortedByDamageType() {
-	// Deliberately built out of alphabetical order, and not in one grouping
-	// pass either — slashing, then fire, then more slashing.
-	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
-		s.flat(7, damage.Slashing),
-		s.flat(3, damage.Fire),
-		s.flat(2, damage.Slashing),
-		s.flat(1, damage.Cold),
-	})
-
-	s.Require().Equal([]combat.DamageInstanceInput{
-		{Amount: 1, Type: damage.Cold},
-		{Amount: 3, Type: damage.Fire},
-		{Amount: 9, Type: damage.Slashing},
-	}, instances)
-	s.Require().Equal(1+3+9, total)
-}
-
-// Repeated calls agree exactly — the assertion a map-ordered implementation
-// fails intermittently rather than never.
-func (s *FinalDamageTestSuite) TestTheSameComponentsProduceTheSameOrderEveryTime() {
-	components := []dnd5eEvents.DamageComponent{
-		s.flat(4, damage.Thunder),
-		s.flat(6, damage.Acid),
-		s.flat(5, damage.Radiant),
-		s.flat(2, damage.Necrotic),
-		s.flat(8, damage.Piercing),
-	}
-
-	first, firstTotal := combat.FinalDamage(components)
-	for i := 0; i < 50; i++ {
-		again, againTotal := combat.FinalDamage(components)
-		s.Require().Equal(first, again, "run %d disagreed with the first", i)
-		s.Require().Equal(firstTotal, againTotal)
+func vulnerable(t damage.Type) dnd5eEvents.DamageMultiplier {
+	return dnd5eEvents.DamageMultiplier{
+		Category:   dnd5eEvents.DamageSourceMonsterTrait,
+		Source:     dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Vulnerability(), Name: "Vulnerability"},
+		DamageType: t,
+		Factor:     dnd5eEvents.DamageFactorVulnerability,
 	}
 }
 
-// Resistance halves, and the total follows the instances.
-func (s *FinalDamageTestSuite) TestResistanceHalvesItsOwnTypeOnly() {
-	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
-		s.flat(10, damage.Slashing),
-		s.flat(10, damage.Fire),
-		s.multiplier(0.5, damage.Fire),
-	})
-
-	s.Require().Equal([]combat.DamageInstanceInput{
-		{Amount: 5, Type: damage.Fire},
-		{Amount: 10, Type: damage.Slashing},
-	}, instances, "fire halved, slashing untouched")
-	s.Require().Equal(15, total)
+func immune(t damage.Type) dnd5eEvents.DamageMultiplier {
+	return dnd5eEvents.DamageMultiplier{
+		Category:   dnd5eEvents.DamageSourceMonsterTrait,
+		Source:     dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity"},
+		DamageType: t,
+		Factor:     dnd5eEvents.DamageFactorImmunity,
+	}
 }
 
-func (s *FinalDamageTestSuite) TestVulnerabilityDoubles() {
-	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
-		s.flat(7, damage.Fire),
-		s.multiplier(2.0, damage.Fire),
-	})
-
-	s.Require().Equal([]combat.DamageInstanceInput{{Amount: 14, Type: damage.Fire}}, instances)
-	s.Require().Equal(14, total)
+func reduce(amount int, t damage.Type) dnd5eEvents.DamageReduction {
+	return dnd5eEvents.DamageReduction{
+		Category:   dnd5eEvents.DamageSourceFeature,
+		Source:     dnd5eEvents.RollSource{Ref: refs.Features.DeflectMissiles(), Name: "Deflect Missiles"},
+		DamageType: t,
+		Modifier:   -amount,
+	}
 }
 
-// Immunity negates, and an instance that lands for nothing is not reported as
-// landing at all.
-//
-// This is rpg-toolkit#1012's fix-day assertion. Until the dispatch keyed on
-// presence rather than the value zero, immunity's 0.0 was indistinguishable
-// from "no multiplier" and the immune target took full damage — the shape of
-// bug where the rule is written, the branch exists, and nothing ever reaches it.
-func (s *FinalDamageTestSuite) TestImmunityDropsTheInstanceEntirely() {
-	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
-		s.flat(12, damage.Poison),
-		s.multiplier(0.0, damage.Poison),
-		s.flat(4, damage.Slashing),
-	})
-
-	s.Require().Equal([]combat.DamageInstanceInput{{Amount: 4, Type: damage.Slashing}}, instances,
-		"the poison instance is gone, not present at zero")
-	s.Require().Equal(4, total)
+func (s *SettleDamageTestSuite) settle(in *combat.SettleDamageInput) *combat.SettleDamageOutput {
+	out, err := combat.SettleDamage(in)
+	s.Require().NoError(err)
+	return out
 }
 
-// Immunity beats vulnerability and resistance both, whatever else is stacked —
-// the branch that was unreachable until #1012, now reached.
-func (s *FinalDamageTestSuite) TestImmunityTrumpsEverythingElse() {
-	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
-		s.flat(20, damage.Fire),
-		s.multiplier(2.0, damage.Fire),
-		s.multiplier(0.5, damage.Fire),
-		s.multiplier(0.0, damage.Fire),
-	})
-
-	s.Require().Empty(instances, "immune, so nothing lands — not the 1.0 cancel case")
-	s.Require().Zero(total)
+// only returns the one settled type, failing when it is absent.
+func (s *SettleDamageTestSuite) only(out *combat.SettleDamageOutput, t damage.Type) combat.TypeSettlement {
+	for _, settled := range out.Types {
+		if settled.Type == t {
+			return settled
+		}
+	}
+	s.FailNowf("type not settled", "%s", t)
+	return combat.TypeSettlement{}
 }
 
-// A zero factor is a MODIFIER, not an absent one. The distinction the whole
-// fix rests on, asserted directly rather than only through its consequences:
-// a component carrying Multiply(0) must never be read as damage of zero.
-func (s *FinalDamageTestSuite) TestAZeroFactorIsAModifierNotAbsentDamage() {
-	// If Multiply(0) were read as a base contribution, its Total() of 0 would
-	// add nothing and the fire would land in full.
-	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
-		s.flat(15, damage.Fire),
-		s.multiplier(0.0, damage.Fire),
+// An immune type is settled at factor 0 and taken 0, reported in the
+// settlement, and dropped from FinalDamage's landing instances.
+func (s *SettleDamageTestSuite) TestAnImmuneTypeIsSettledAtZeroAndDoesNotLand() {
+	out := s.settle(&combat.SettleDamageInput{
+		Dealt:       []dnd5eEvents.DamageComponent{flat(12, damage.Fire), flat(5, damage.Slashing)},
+		Multipliers: []dnd5eEvents.DamageMultiplier{immune(damage.Fire)},
 	})
 
-	s.Require().Empty(instances)
-	s.Require().Zero(total)
+	fire := s.only(out, damage.Fire)
+	s.Equal(12, fire.Dealt)
+	s.Equal(0.0, fire.Factor)
+	s.Equal(0, fire.Taken)
+	s.Equal(-12, fire.Change)
+	s.Require().NotNil(fire.DecidedBy)
+	s.Equal(refs.MonsterTraits.Immunity(), fire.DecidedBy.Source.Ref)
+
+	instances, total := out.FinalDamage()
+	s.Equal([]combat.DamageInstanceInput{{Amount: 5, Type: damage.Slashing}}, instances)
+	s.Equal(5, total)
 }
 
-// Resistance and vulnerability cancel exactly — not 0.5 * 2.0 applied in some
-// order, but a flat 1.0.
-func (s *FinalDamageTestSuite) TestResistanceAndVulnerabilityCancel() {
-	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
-		s.flat(9, damage.Cold),
-		s.multiplier(0.5, damage.Cold),
-		s.multiplier(2.0, damage.Cold),
+// Resistance and vulnerability together settle at factor 1: they cancel, and
+// no multiplier names the type, because none carries the effective factor.
+func (s *SettleDamageTestSuite) TestResistanceAndVulnerabilityTogetherSettleAtOne() {
+	out := s.settle(&combat.SettleDamageInput{
+		Dealt:       []dnd5eEvents.DamageComponent{flat(9, damage.Cold)},
+		Multipliers: []dnd5eEvents.DamageMultiplier{resist(damage.Cold), vulnerable(damage.Cold)},
 	})
 
-	s.Require().Equal([]combat.DamageInstanceInput{{Amount: 9, Type: damage.Cold}}, instances)
-	s.Require().Equal(9, total)
+	cold := s.only(out, damage.Cold)
+	s.Equal(1.0, cold.Factor)
+	s.Equal(9, cold.Taken)
+	s.Zero(cold.Change)
+	s.Nil(cold.DecidedBy)
 }
 
-// Two resistances are still one resistance — 5e does not stack them into a
-// quarter.
-func (s *FinalDamageTestSuite) TestMultipleResistancesDoNotStack() {
-	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
-		s.flat(20, damage.Bludgeoning),
-		s.multiplier(0.5, damage.Bludgeoning),
-		s.multiplier(0.5, damage.Bludgeoning),
+// Two resistances are still one: 0.5, not a quarter.
+func (s *SettleDamageTestSuite) TestTwoResistancesSettleAtOneHalf() {
+	second := resist(damage.Slashing)
+	second.Source = dnd5eEvents.RollSource{Ref: refs.Conditions.BladeWard(), Name: "Blade Ward"}
+	out := s.settle(&combat.SettleDamageInput{
+		Dealt:       []dnd5eEvents.DamageComponent{flat(9, damage.Slashing)},
+		Multipliers: []dnd5eEvents.DamageMultiplier{resist(damage.Slashing), second},
 	})
 
-	s.Require().Equal([]combat.DamageInstanceInput{{Amount: 10, Type: damage.Bludgeoning}}, instances,
-		"halved once, not twice")
-	s.Require().Equal(10, total)
+	slashing := s.only(out, damage.Slashing)
+	s.Equal(0.5, slashing.Factor)
+	s.Equal(4, slashing.Taken)
+	s.Equal(-5, slashing.Change)
+	s.Require().NotNil(slashing.DecidedBy)
+	s.Equal(refs.Conditions.Raging(), slashing.DecidedBy.Source.Ref,
+		"the first multiplier in fold order carrying the effective factor names the line")
 }
 
-func (s *FinalDamageTestSuite) TestMultipleVulnerabilitiesDoNotStack() {
-	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
-		s.flat(5, damage.Fire),
-		s.multiplier(2.0, damage.Fire),
-		s.multiplier(2.0, damage.Fire),
+func (s *SettleDamageTestSuite) TestVulnerabilityDoubles() {
+	out := s.settle(&combat.SettleDamageInput{
+		Dealt:       []dnd5eEvents.DamageComponent{flat(7, damage.Radiant)},
+		Multipliers: []dnd5eEvents.DamageMultiplier{vulnerable(damage.Radiant), vulnerable(damage.Radiant)},
 	})
 
-	s.Require().Equal([]combat.DamageInstanceInput{{Amount: 10, Type: damage.Fire}}, instances,
-		"doubled once, not quadrupled")
-	s.Require().Equal(10, total)
+	radiant := s.only(out, damage.Radiant)
+	s.Equal(2.0, radiant.Factor)
+	s.Equal(14, radiant.Taken)
 }
 
-// Components of one type sum before the multiplier applies — resistance halves
-// the TYPE's total, not each contribution, which rounds differently.
-func (s *FinalDamageTestSuite) TestComponentsGroupBeforeTheMultiplierApplies() {
-	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
-		s.flat(3, damage.Fire),
-		s.flat(3, damage.Fire),
-		s.flat(3, damage.Fire),
-		s.multiplier(0.5, damage.Fire),
-	})
-
-	// 9 halved is 4 (truncating). Halving each 3 first would give 1+1+1 = 3.
-	s.Require().Equal([]combat.DamageInstanceInput{{Amount: 4, Type: damage.Fire}}, instances)
-	s.Require().Equal(4, total)
-}
-
-// Dice ride through the authoritative subtotal alongside the modifier pointer.
-func (s *FinalDamageTestSuite) TestDiceAndModifierBothCount() {
-	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
-		{
-			Source: dnd5eEvents.DamageSourceWeapon,
-			Roll: dnd5eEvents.RollComponent{
-				Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
-				Dice: &dnd5eEvents.DiceTrace{
-					Notation:      "2d8",
-					DieSize:       8,
-					OriginalRolls: []int{4, 5},
-					FinalRolls:    []int{4, 5},
-					Subtotal:      9,
-				},
-				Modifier: intPtr(3),
-			},
-			DamageType: damage.Slashing,
+// Immunity wins, and names the line, even listed after the others.
+func (s *SettleDamageTestSuite) TestImmunityWinsWhereverItSits() {
+	out := s.settle(&combat.SettleDamageInput{
+		Dealt: []dnd5eEvents.DamageComponent{flat(1, damage.Poison)},
+		Multipliers: []dnd5eEvents.DamageMultiplier{
+			resist(damage.Poison), vulnerable(damage.Poison), immune(damage.Poison),
 		},
 	})
 
-	s.Require().Equal([]combat.DamageInstanceInput{{Amount: 4 + 5 + 3, Type: damage.Slashing}}, instances)
-	s.Require().Equal(12, total)
+	poison := s.only(out, damage.Poison)
+	s.Equal(0.0, poison.Factor)
+	s.Require().NotNil(poison.DecidedBy)
+	s.Equal(refs.MonsterTraits.Immunity(), poison.DecidedBy.Source.Ref,
+		"a total of 1 halves to 0 too; the factor, not the amount, names the rule")
 }
 
-// Final damage consumes the AUTHORITATIVE subtotal and the modifier POINTER.
-// A kept-dice trace whose faces sum to more than its subtotal pins both halves:
-// summing the face array would report 22, and ignoring the present modifier
-// would report 15 — the contract is subtotal 15 plus +3, which is 18.
-func (s *FinalDamageTestSuite) TestFinalDamageConsumesSubtotalsAndModifierPointers() {
-	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
+// Components of one type sum before the multiplier: resistance halves the
+// type's total, rounding down once.
+func (s *SettleDamageTestSuite) TestComponentsGroupBeforeTheMultiplierApplies() {
+	out := s.settle(&combat.SettleDamageInput{
+		Dealt:       []dnd5eEvents.DamageComponent{flat(3, damage.Slashing), flat(3, damage.Slashing)},
+		Multipliers: []dnd5eEvents.DamageMultiplier{resist(damage.Slashing)},
+	})
+
+	s.Equal(3, s.only(out, damage.Slashing).Taken, "halving 6 is 3, halving each 3 would be 2")
+}
+
+// Reductions apply before the multiplier, as every other modifier does.
+func (s *SettleDamageTestSuite) TestReductionsApplyBeforeTheMultiplier() {
+	out := s.settle(&combat.SettleDamageInput{
+		Dealt:       []dnd5eEvents.DamageComponent{flat(10, damage.Piercing)},
+		Reductions:  []dnd5eEvents.DamageReduction{reduce(4, damage.Piercing)},
+		Multipliers: []dnd5eEvents.DamageMultiplier{resist(damage.Piercing)},
+	})
+
+	piercing := s.only(out, damage.Piercing)
+	s.Equal(-4, piercing.Reduced)
+	s.Equal(3, piercing.Taken, "(10 - 4) halved, not 10 halved minus 4")
+	s.Equal(piercing.Taken, piercing.Dealt+piercing.Reduced+piercing.Floor+piercing.Change,
+		"the parts sum to what is taken")
+}
+
+// A reduction larger than the type floors it at zero, and the floor is named
+// so a trace still sums.
+func (s *SettleDamageTestSuite) TestAReductionBelowZeroFloors() {
+	out := s.settle(&combat.SettleDamageInput{
+		Dealt:      []dnd5eEvents.DamageComponent{flat(3, damage.Piercing)},
+		Reductions: []dnd5eEvents.DamageReduction{reduce(8, damage.Piercing)},
+	})
+
+	piercing := s.only(out, damage.Piercing)
+	s.Equal(5, piercing.Floor)
+	s.Equal(0, piercing.Taken)
+	s.Equal(piercing.Taken, piercing.Dealt+piercing.Reduced+piercing.Floor+piercing.Change)
+}
+
+// Types come back sorted, the same way every run.
+func (s *SettleDamageTestSuite) TestTypesComeBackSortedByDamageType() {
+	dealt := []dnd5eEvents.DamageComponent{
+		flat(5, damage.Slashing), flat(3, damage.Fire), flat(2, damage.Cold),
+	}
+	for range 20 {
+		out := s.settle(&combat.SettleDamageInput{Dealt: dealt})
+		instances, total := out.FinalDamage()
+		s.Equal([]combat.DamageInstanceInput{
+			{Amount: 2, Type: damage.Cold},
+			{Amount: 3, Type: damage.Fire},
+			{Amount: 5, Type: damage.Slashing},
+		}, instances)
+		s.Equal(10, total)
+	}
+}
+
+// Dealt totals come from the trace's authoritative subtotal plus the modifier
+// pointer: a kept-dice trace whose faces sum to more still settles at the
+// subtotal.
+func (s *SettleDamageTestSuite) TestDealtReadsSubtotalsAndModifierPointers() {
+	out := s.settle(&combat.SettleDamageInput{Dealt: []dnd5eEvents.DamageComponent{
 		{
 			Source: dnd5eEvents.DamageSourceWeapon,
 			Roll: dnd5eEvents.RollComponent{
 				Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Greatsword(), Name: "Greatsword"},
 				Dice: &dnd5eEvents.DiceTrace{
-					Notation:      "3d8",
-					DieSize:       8,
-					OriginalRolls: []int{7, 8, 4},
-					FinalRolls:    []int{7, 8, 4},
-					KeptIndices:   []int{0, 1},
-					Subtotal:      15,
+					Notation: "3d8", DieSize: 8,
+					OriginalRolls: []int{7, 8, 4}, FinalRolls: []int{7, 8, 4},
+					KeptIndices: []int{0, 1}, Subtotal: 15,
 				},
-			},
-			DamageType: damage.Slashing,
-		},
-		{
-			Source: dnd5eEvents.DamageSourceAbility,
-			Roll: dnd5eEvents.RollComponent{
-				Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
 				Modifier: intPtr(3),
 			},
 			DamageType: damage.Slashing,
 		},
-	})
+	}})
 
-	// The dropped third face keeps the face-array sum (19) away from the
-	// authoritative subtotal (15); only a consumer reading the subtotal plus
-	// the present modifier reports 18.
-	s.Require().Equal([]combat.DamageInstanceInput{{Amount: 18, Type: damage.Slashing}}, instances)
-	s.Require().Equal(18, total)
+	s.Equal(18, s.only(out, damage.Slashing).Dealt)
 }
 
-// A present zero modifier participates: it is a real pointer carrying zero,
-// not an absent modifier, and it adds nothing to the landed damage.
-func (s *FinalDamageTestSuite) TestAPresentZeroModifierRemainsPresent() {
-	component := dnd5eEvents.DamageComponent{
-		Source: dnd5eEvents.DamageSourceAbility,
-		Roll: dnd5eEvents.RollComponent{
-			Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
-			Modifier: intPtr(0),
+// A type dealt as nothing is settled and does not land.
+func (s *SettleDamageTestSuite) TestATypeDealtAsNothingDoesNotLand() {
+	out := s.settle(&combat.SettleDamageInput{Dealt: []dnd5eEvents.DamageComponent{flat(0, damage.Bludgeoning)}})
+
+	s.Equal(0, s.only(out, damage.Bludgeoning).Taken)
+	instances, total := out.FinalDamage()
+	s.Empty(instances)
+	s.Zero(total)
+}
+
+// The settlement refuses what it cannot settle truthfully.
+func (s *SettleDamageTestSuite) TestRefusals() {
+	withMultiplier := flat(5, damage.Fire)
+	half := 0.5
+	withMultiplier.Multiplier = &half
+	quarter := resist(damage.Fire)
+	quarter.Factor = 0.25
+	unnamed := resist(damage.Fire)
+	unnamed.Source = dnd5eEvents.RollSource{}
+	adding := reduce(3, damage.Fire)
+	adding.Modifier = 3
+
+	cases := map[string]*combat.SettleDamageInput{
+		"a dealt component carrying a multiplier": {Dealt: []dnd5eEvents.DamageComponent{withMultiplier}},
+		"a dealt component with no damage type":   {Dealt: []dnd5eEvents.DamageComponent{flat(5, "")}},
+		"a factor the stacking rules do not know": {
+			Dealt: []dnd5eEvents.DamageComponent{flat(5, damage.Fire)}, Multipliers: []dnd5eEvents.DamageMultiplier{quarter},
 		},
-		DamageType: damage.Slashing,
+		"a multiplier naming no source": {
+			Dealt: []dnd5eEvents.DamageComponent{flat(5, damage.Fire)}, Multipliers: []dnd5eEvents.DamageMultiplier{unnamed},
+		},
+		"a multiplier on a type nothing dealt": {
+			Dealt: []dnd5eEvents.DamageComponent{flat(5, damage.Fire)}, Multipliers: []dnd5eEvents.DamageMultiplier{resist(damage.Cold)},
+		},
+		"a reduction that adds": {
+			Dealt: []dnd5eEvents.DamageComponent{flat(5, damage.Fire)}, Reductions: []dnd5eEvents.DamageReduction{adding},
+		},
+		"a reduction on a type nothing dealt": {
+			Dealt: []dnd5eEvents.DamageComponent{flat(5, damage.Fire)}, Reductions: []dnd5eEvents.DamageReduction{reduce(1, damage.Cold)},
+		},
+		"no input": nil,
 	}
-
-	s.Require().NotNil(component.Roll.Modifier, "a present zero modifier stays present")
-	s.Require().Zero(component.Total())
-
-	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
-		component,
-		s.flat(5, damage.Slashing),
-	})
-	s.Require().Equal([]combat.DamageInstanceInput{{Amount: 5, Type: damage.Slashing}}, instances)
-	s.Require().Equal(5, total)
-}
-
-// An instance that resolves to zero is not reported as landing. Resistance
-// halving a single point of damage is the realistic way to get there — 1
-// halved truncates to 0 — and a target that took no cold damage should not
-// appear in the breakdown as having taken cold damage of zero.
-func (s *FinalDamageTestSuite) TestAnInstanceThatResolvesToZeroIsDropped() {
-	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
-		s.flat(1, damage.Cold),
-		s.multiplier(0.5, damage.Cold),
-		s.flat(6, damage.Slashing),
-	})
-
-	s.Require().Equal([]combat.DamageInstanceInput{{Amount: 6, Type: damage.Slashing}}, instances,
-		"the cold instance is absent, not present at zero")
-	s.Require().Equal(6, total)
-}
-
-// The same boundary from a component that simply carries no damage — the
-// catalog has weapons whose damage is "0" (a net).
-func (s *FinalDamageTestSuite) TestAComponentCarryingNoDamageProducesNoInstance() {
-	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
-		s.flat(0, damage.Bludgeoning),
-		s.flat(3, damage.Piercing),
-	})
-
-	s.Require().Equal([]combat.DamageInstanceInput{{Amount: 3, Type: damage.Piercing}}, instances)
-	s.Require().Equal(3, total)
-}
-
-func (s *FinalDamageTestSuite) TestNoComponentsIsNoDamage() {
-	instances, total := combat.FinalDamage(nil)
-
-	s.Require().Empty(instances)
-	s.Require().Zero(total)
-}
-
-// The reported total is the sum of the instances reported, not a separately
-// accumulated number that could drift from them.
-func (s *FinalDamageTestSuite) TestTheTotalIsTheSumOfTheInstances() {
-	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
-		s.flat(10, damage.Fire),
-		s.multiplier(0.5, damage.Fire),
-		s.flat(7, damage.Slashing),
-	})
-
-	sum := 0
-	for _, instance := range instances {
-		sum += instance.Amount
+	for name, in := range cases {
+		s.Run(name, func() {
+			_, err := combat.SettleDamage(in)
+			s.Error(err)
+		})
 	}
-	s.Require().Equal(sum, total)
-	s.Require().Equal(5+7, total, "fire halved to 5, slashing 7")
 }

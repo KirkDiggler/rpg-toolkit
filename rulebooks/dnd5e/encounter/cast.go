@@ -351,9 +351,9 @@ type concentrationEndedPayload struct {
 // returns no output; doc.go's caller rule applies: discard the encounter
 // unsaved.
 //
-// Errors: ErrNilInput, ErrClosed, ErrNoMember (empty or unknown actor, unknown
-// listed target, empty or unknown saver, or empty/unknown result target),
-// ErrInvalidData (duplicate targets, a target/save mismatch, missing spell
+// Errors: ErrNilInput, ErrClosed, ErrNoMember (empty actor, listed target,
+// saver or result target), ErrNotMember (unknown actor, listed target, saver
+// or result target), ErrInvalidData (duplicate targets, a target/save mismatch, missing spell
 // identity, a save with no ability or authoritative calculation, a roll that
 // is not a d20, unknown result kind, a missing/forbidden kind field, or a
 // healing or damage whose calculation is absent, structurally inconsistent, or
@@ -396,10 +396,6 @@ func (e *Encounter) RecordCast(in *RecordCastInput) (*RecordCastOutput, error) {
 			return nil, fmt.Errorf("record cast: %w", err)
 		}
 	}
-	if err := e.FlushSightAreaTransitions(); err != nil {
-		return nil, err
-	}
-
 	_, intelDeltas, noticeErr := e.noticeDown()
 	if noticeErr != nil {
 		return nil, fmt.Errorf("record cast: %w", noticeErr)
@@ -430,7 +426,7 @@ func (e *Encounter) prepareCast(in *RecordCastInput) ([]preparedActivationBeat, 
 		return nil, fmt.Errorf("record cast: actor: %w", ErrNoMember)
 	}
 	if _, ok := e.members[in.Actor]; !ok {
-		return nil, fmt.Errorf("record cast: actor %q: %w", in.Actor, ErrNoMember)
+		return nil, fmt.Errorf("record cast: actor %q: %w", in.Actor, ErrNotMember)
 	}
 	targets := make([]MemberID, len(in.Targets))
 	seenTargets := make(map[MemberID]struct{}, len(in.Targets))
@@ -439,7 +435,7 @@ func (e *Encounter) prepareCast(in *RecordCastInput) ([]preparedActivationBeat, 
 			return nil, fmt.Errorf("record cast: target %d: %w", i, ErrNoMember)
 		}
 		if _, ok := e.members[target.Target]; !ok {
-			return nil, fmt.Errorf("record cast: target %d %q: %w", i, target.Target, ErrNoMember)
+			return nil, fmt.Errorf("record cast: target %d %q: %w", i, target.Target, ErrNotMember)
 		}
 		if _, duplicate := seenTargets[target.Target]; duplicate {
 			return nil, fmt.Errorf("record cast: target %d %q is duplicated: %w", i, target.Target, ErrInvalidData)
@@ -574,7 +570,7 @@ func (e *Encounter) prepareCast(in *RecordCastInput) ([]preparedActivationBeat, 
 				return nil, validationErr
 			}
 			resultBytes, marshalErr := json.Marshal(activationResultPayload{
-				Beat: "activation-result", Actor: in.Actor, Result: resultPayload,
+				Beat: BeatActivationResult, Actor: in.Actor, Result: resultPayload,
 			})
 			if marshalErr != nil {
 				return nil, fmt.Errorf(
@@ -613,7 +609,7 @@ func (e *Encounter) prepareSaveBeat(
 		return nil, nil, fmt.Errorf("%s: save saver: %w", verb, ErrNoMember)
 	}
 	if _, ok := e.members[save.Saver]; !ok {
-		return nil, nil, fmt.Errorf("%s: save saver %q: %w", verb, save.Saver, ErrNoMember)
+		return nil, nil, fmt.Errorf("%s: save saver %q: %w", verb, save.Saver, ErrNotMember)
 	}
 	if save.Ability == "" {
 		return nil, nil, fmt.Errorf("%s: save ability: %w", verb, ErrInvalidData)
@@ -664,11 +660,8 @@ func (e *Encounter) prepareSaveBeat(
 func (e *Encounter) prepareWardedBeat(
 	verb string, actor, target MemberID, warded *WardedDetail, spell spellIdentityPayload,
 ) ([]byte, []MemberID, error) {
-	if warded.Source == "" {
-		return nil, nil, fmt.Errorf("%s: warded source: %w", verb, ErrNoMember)
-	}
-	if _, ok := e.members[warded.Source]; !ok {
-		return nil, nil, fmt.Errorf("%s: warded source %q: %w", verb, warded.Source, ErrNoMember)
+	if err := e.checkWardSource(verb, warded.Source); err != nil {
+		return nil, nil, err
 	}
 	save := warded.Save
 	if save.Saver == "" {
@@ -793,7 +786,7 @@ func (e *Encounter) prepareConcentrationBreaks(
 		}
 		if _, ok := e.members[broken.Caster]; !ok {
 			return nil, fmt.Errorf(
-				"%s: concentration break %d caster %q: %w", verb, i, broken.Caster, ErrNoMember,
+				"%s: concentration break %d caster %q: %w", verb, i, broken.Caster, ErrNotMember,
 			)
 		}
 		if broken.Spell.Ref == "" {
@@ -855,7 +848,7 @@ func (e *Encounter) prepareConcentrationBreaks(
 				return nil, validationErr
 			}
 			resultBytes, resultErr := json.Marshal(activationResultPayload{
-				Beat:   "activation-result",
+				Beat:   BeatActivationResult,
 				Actor:  actor,
 				Result: resultPayload,
 			})

@@ -129,7 +129,6 @@ func (s *BarbarianEncounterSuite) createLevel1Barbarian() *character.Character {
 		},
 		HitPoints:    15, // 12 base + 3 CON
 		MaxHitPoints: 15,
-		ArmorClass:   15, // Unarmored: 10 + DEX(2) + CON(3)
 		Skills: map[skills.Skill]shared.ProficiencyLevel{
 			skills.Athletics:    shared.Proficient,
 			skills.Intimidation: shared.Proficient,
@@ -149,8 +148,17 @@ func (s *BarbarianEncounterSuite) createLevel1Barbarian() *character.Character {
 			json.RawMessage(`{
 				"ref": {"module": "dnd5e", "type": "features", "id": "rage"},
 				"id": "rage",
-				"name": "Rage",
-				"level": 1
+				"name": "Rage"
+			}`),
+		},
+		// The armour class is the fold, so Unarmored Defense must be on the
+		// sheet for it to count.
+		Conditions: []json.RawMessage{
+			json.RawMessage(`{
+				"ref": {"module": "dnd5e", "type": "conditions", "id": "unarmored_defense"},
+				"type": "barbarian",
+				"member_id": "grog-barbarian",
+				"source": "dnd5e:classes:barbarian"
 			}`),
 		},
 	}
@@ -268,7 +276,10 @@ func (s *BarbarianEncounterSuite) TestUnarmoredDefense_ACCalculation() {
 		// Unarmored Defense: 10 + 2 + 3 = 15
 		expectedAC := 15
 
-		actualAC := s.barbarian.AC()
+		// Armour class is the fold, under an installed cast holding the sheet.
+		breakdown, err := s.barbarian.EffectiveAC(castOf(s.ctx, s.barbarian))
+		s.Require().NoError(err)
+		actualAC := breakdown.Total
 		s.Equal(expectedAC, actualAC, "Unarmored Defense should calculate AC correctly")
 
 		s.T().Logf("  Ability Scores:")
@@ -297,7 +308,7 @@ func (s *BarbarianEncounterSuite) TestEncounter_MultiTurnCombat() {
 		s.T().Log("")
 		s.T().Logf("  COMBATANTS:")
 		s.T().Logf("    Grog the Destroyer - Level 1 Barbarian")
-		s.T().Logf("      HP: %d/%d, AC: %d", s.barbarian.GetHitPoints(), s.barbarian.GetMaxHitPoints(), s.barbarian.AC())
+		s.T().Logf("      HP: %d/%d", s.barbarian.GetHitPoints(), s.barbarian.GetMaxHitPoints())
 		s.T().Logf("      Weapon: Greataxe (1d12 slashing)")
 		s.T().Logf("      Rage uses: %d/2", s.barbarian.GetResource(resources.RageCharges).Current())
 		s.T().Log("")
@@ -359,8 +370,9 @@ func (s *BarbarianEncounterSuite) TestEncounter_MultiTurnCombat() {
 		// Publish the canonical typed damage fold. Raging observes the fold and
 		// records this as combat activity while contributing its +2 component.
 		damageEvent := swungDamage(&dnd5eEvents.DamageChainEvent{
-			AttackerID: s.barbarian.GetID(),
-			TargetID:   s.goblin.GetID(),
+			AttackerID:       s.barbarian.GetID(),
+			TargetID:         s.goblin.GetID(),
+			WeaponDamageType: damage.Slashing,
 			Components: []dnd5eEvents.DamageComponent{{
 				Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"}, Dice: testDiceTrace(10, 10)},
 				DamageType: damage.Slashing,
@@ -368,7 +380,10 @@ func (s *BarbarianEncounterSuite) TestEncounter_MultiTurnCombat() {
 				Source: dnd5eEvents.DamageSourceAbility, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"}, Modifier: intPtr(3)},
 				DamageType: damage.Slashing,
 			}},
-		}, swing{AbilityUsed: abilities.STR, AbilityModifier: 3, IsMelee: true})
+		}, swing{
+			AbilityUsed: abilities.STR, AbilityModifier: 3, IsMelee: true,
+			ClassLevels: knownLevels(classes.Barbarian, 1),
+		})
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
 		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, framed(s.ctx, damageEvent), damageChain)
@@ -386,7 +401,9 @@ func (s *BarbarianEncounterSuite) TestEncounter_MultiTurnCombat() {
 		}
 		s.Equal(3, abilityBonus, "typed ability component should contribute +3")
 		s.Equal(2, rageBonus, "raging condition should contribute +2")
-		_, foldedDamage := combat.FinalDamage(finalEvent.Components)
+		settled, err := combat.SettleDamage(&combat.SettleDamageInput{Dealt: finalEvent.Components})
+		s.Require().NoError(err)
+		_, foldedDamage := settled.FinalDamage()
 		s.Equal(15, foldedDamage, "typed damage fold should total weapon 10 + ability 3 + rage 2")
 		s.T().Logf("    Roll: 1d20(%d)+5 = %d vs AC 13 → HIT!", 18, 23)
 		s.T().Logf("    Damage fold: weapon 1d12(%d) + ability +%d + rage +%d = %d", 10, abilityBonus, rageBonus, foldedDamage)

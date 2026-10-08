@@ -16,6 +16,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -197,9 +198,35 @@ func (m *Monster) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput)
 	}
 }
 
-// AC returns armor class
+// AC returns the stat block's authored armour class: the base the monster's
+// fold starts from. A fight asks the fold, [Monster.EffectiveAC].
 func (m *Monster) AC() int {
 	return m.ac
+}
+
+var _ combat.SightHolder = (*Monster)(nil)
+
+// SightFeet answers the named sight question ([combat.SightHolder]) from the
+// stat block: its authored darkvision range when it states one, else
+// [combat.DefaultSightFeet] — the same default a character whose race table
+// states no range answers, because silence means the same for both kinds.
+// Before a light model exists, an authored darkvision IS the monster's range,
+// so authoring senses narrows sight relative to a silent stat block — today's
+// behaviour, kept under R12; the light model (R10) revisits it.
+func (m *Monster) SightFeet() int {
+	if m.senses.Darkvision > 0 {
+		return m.senses.Darkvision
+	}
+	return combat.DefaultSightFeet
+}
+
+// ClassLevels answers the frame's class-levels fact for a monster: known, and
+// empty. A stat block holds no class levels, which is an answer rather than
+// an unknown — a class-scaled rule held by a monster refuses rather than
+// reading level one. Resolution fills [contributions.Frame.ActorClassLevels]
+// with it for a monster actor.
+func (m *Monster) ClassLevels() contributions.ClassLevels {
+	return contributions.KnownClassLevels()
 }
 
 // EffectiveAC folds temporary protection over the authored stat-block AC.
@@ -229,9 +256,9 @@ func (m *Monster) EffectiveAC(ctx context.Context) (*combat.ACBreakdown, error) 
 // A monster has no equipment slots. Whatever defence a shield gives one is
 // already inside the stat block AC returned above — the author wrote a number,
 // not a loadout — so there is nothing here to read and nothing further for a
-// rule to add. The features that ask (Unarmored Movement's speed bonus,
-// Fighting Style (Protection)'s reaction) are character features, so a monster
-// answering false is that question correctly answered, not one deferred.
+// rule to add. The feature that asks (Fighting Style (Protection)'s reaction)
+// is a character feature, so a monster answering false is that question
+// correctly answered, not one deferred.
 //
 // The day monsters carry real equipment this stops being a constant, and the
 // question is already in the right place for that to be the only edit.

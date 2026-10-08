@@ -11,32 +11,39 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
-// DeflectMissiles represents the monk's Deflect Missiles feature.
-// It implements events.BusEffect to passively reduce ranged weapon attack damage.
-// It also implements core.Action[FeatureInput] for the optional catch-and-throw attack.
+// DeflectMissilesThrow is the [FeatureInput.Action] that activates the
+// catch-and-throw instead of the deflection.
+const DeflectMissilesThrow = "throw"
+
+// DeflectMissiles represents the monk's Deflect Missiles feature: a reaction
+// that reduces a ranged weapon attack's damage by 1d10 + Dexterity modifier +
+// monk level, and an optional catch-and-throw. It implements
+// core.Action[FeatureInput]; both halves are activated by the monk.
+//
+// It stores no monk level and no Dexterity modifier. The deflection asks its
+// owner for both at the moment it is activated.
 type DeflectMissiles struct {
-	id              string
-	name            string
-	characterID     string
-	monkLevel       int
-	dexModifier     int
-	subscriptionIDs []string
-	bus             events.EventBus
-	roller          dice.Roller
+	id          string
+	name        string
+	characterID string
+	bus         events.EventBus
 }
 
-// DeflectMissilesData is the JSON structure for persisting Deflect Missiles state
+// DeflectMissilesData is the JSON structure for persisting Deflect Missiles
+// state. A blob saved with the old "monk_level" or "dex_modifier" keys loads
+// and the copies are ignored.
 type DeflectMissilesData struct {
 	Ref         *core.Ref `json:"ref"`
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
 	CharacterID string    `json:"character_id"`
-	MonkLevel   int       `json:"monk_level"`
-	DexModifier int       `json:"dex_modifier"`
 }
 
 // Ref returns the unique ref for the Deflect Missiles feature.
@@ -75,126 +82,103 @@ func (d *DeflectMissiles) IsApplied() bool {
 	return d.bus != nil
 }
 
-// Apply implements events.BusEffect
-// Subscribes to damage received events to provide damage reduction
-func (d *DeflectMissiles) Apply(ctx context.Context, bus events.EventBus) error {
+// Apply implements events.BusEffect. Deflect Missiles subscribes to nothing:
+// the reduction is the monk's reaction, taken through Activate, not a passive
+// answer to every hit — a subscriber has no owner to ask for the monk level
+// and Dexterity modifier the reduction is made of.
+func (d *DeflectMissiles) Apply(_ context.Context, bus events.EventBus) error {
 	if d.IsApplied() {
 		return rpgerr.New(rpgerr.CodeAlreadyExists, "deflect missiles already applied")
 	}
 	d.bus = bus
-
-	// Subscribe to damage received events
-	damageTopic := dnd5eEvents.DamageReceivedTopic.On(bus)
-	subID, err := damageTopic.Subscribe(ctx, d.onDamageReceived)
-	if err != nil {
-		return rpgerr.Wrap(err, "failed to subscribe to damage events")
-	}
-	d.subscriptionIDs = append(d.subscriptionIDs, subID)
-
 	return nil
 }
 
 // Remove implements events.BusEffect
-func (d *DeflectMissiles) Remove(ctx context.Context, bus events.EventBus) error {
-	if !d.IsApplied() {
-		return nil // Not applied, nothing to remove
-	}
-
-	for _, subID := range d.subscriptionIDs {
-		err := bus.Unsubscribe(ctx, subID)
-		if err != nil {
-			return rpgerr.Wrapf(err, "failed to unsubscribe from event: %s", subID)
-		}
-	}
-
-	d.subscriptionIDs = nil
+func (d *DeflectMissiles) Remove(_ context.Context, _ events.EventBus) error {
 	d.bus = nil
 	return nil
 }
 
-// CanActivate implements core.Action[FeatureInput]
-// For the catch-and-throw portion, which requires damage to have been reduced to 0
-func (d *DeflectMissiles) CanActivate(_ context.Context, _ core.Entity, _ FeatureInput) error {
-	// This would typically check if:
-	// 1. Damage was just reduced to 0 this turn
-	// 2. Character has 1 Ki available
-	// For now, we keep it simple - the game server manages this state
-	return nil
+// CanActivate implements core.Action[FeatureInput]. The deflection is refused
+// for an owner that cannot answer its monk level and ability scores, or holds
+// no monk levels. The catch-and-throw is not gated here: the game server
+// tracks whether the damage reached zero and spends the Ki.
+func (d *DeflectMissiles) CanActivate(_ context.Context, owner core.Entity, input FeatureInput) error {
+	if input.Action == DeflectMissilesThrow {
+		return nil
+	}
+	_, err := deflectionBonus(owner)
+	return err
 }
 
-// Activate implements core.Action[FeatureInput]
-// Publishes event indicating the monk is throwing the missile back
+// Activate implements core.Action[FeatureInput].
+//
+// With no action it is the deflection: it asks the owner its monk level and
+// Dexterity modifier, rolls 1d10 with the input's roller, and publishes the
+// reduction. With [DeflectMissilesThrow] it publishes the catch-and-throw,
+// which the game server resolves (Ki, attack roll, damage).
 func (d *DeflectMissiles) Activate(ctx context.Context, owner core.Entity, input FeatureInput) error {
 	if err := d.CanActivate(ctx, owner, input); err != nil {
 		return err
 	}
-
-	// Publish event for catch-and-throw
-	// The game server will handle:
-	// - Consuming 1 Ki point
-	// - Making the attack roll
-	// - Dealing damage
+	if input.Action == DeflectMissilesThrow {
+		return d.publishThrow(ctx, owner, input)
+	}
+	bonus, err := deflectionBonus(owner)
+	if err != nil {
+		return err
+	}
+	roller := input.Roller
+	if roller == nil {
+		roller = dice.NewRoller()
+	}
+	roll, err := roller.Roll(ctx, 10)
+	if err != nil {
+		return rpgerr.Wrap(err, "failed to roll deflect missiles reduction")
+	}
 	if input.Bus != nil {
-		topic := dnd5eEvents.DeflectMissilesThrowTopic.On(input.Bus)
-		err := topic.Publish(ctx, dnd5eEvents.DeflectMissilesThrowEvent{
-			CharacterID: owner.GetID(),
-			Source:      refs.Features.DeflectMissiles().ID,
-		})
-		if err != nil {
-			return rpgerr.Wrap(err, "failed to publish deflect missiles throw event")
-		}
-	}
-
-	return nil
-}
-
-// onDamageReceived handles damage events to reduce ranged weapon attack damage
-func (d *DeflectMissiles) onDamageReceived(ctx context.Context, event dnd5eEvents.DamageReceivedEvent) error {
-	// Only process damage to this character
-	if event.TargetID != d.characterID {
-		return nil
-	}
-
-	// Only deflect ranged weapon attacks
-	// The game server should mark ranged weapon attacks appropriately
-	// For now, we assume the DamageType or SourceID indicates this
-	// TODO: This needs better integration with the attack system to know if it's ranged
-
-	// Calculate reduction: 1d10 + DEX modifier + monk level
-	reduction := d.calculateReduction(ctx)
-
-	// Publish damage reduction event
-	if d.bus != nil {
-		topic := dnd5eEvents.DeflectMissilesTriggerTopic.On(d.bus)
+		topic := dnd5eEvents.DeflectMissilesTriggerTopic.On(input.Bus)
 		err := topic.Publish(ctx, dnd5eEvents.DeflectMissilesTriggerEvent{
-			CharacterID:      d.characterID,
-			OriginalDamage:   event.Amount,
-			Reduction:        reduction,
-			DamageReducedTo0: event.Amount <= reduction,
-			Source:           refs.Features.DeflectMissiles().ID,
+			CharacterID: owner.GetID(),
+			Reduction:   roll + bonus,
+			Source:      refs.Features.DeflectMissiles().ID,
 		})
 		if err != nil {
 			return rpgerr.Wrap(err, "failed to publish deflect missiles trigger event")
 		}
 	}
-
 	return nil
 }
 
-// calculateReduction calculates damage reduction: 1d10 + DEX modifier + monk level
-func (d *DeflectMissiles) calculateReduction(ctx context.Context) int {
-	if d.roller == nil {
-		d.roller = &dice.CryptoRoller{}
+// publishThrow publishes the catch-and-throw for the game server to resolve.
+func (d *DeflectMissiles) publishThrow(ctx context.Context, owner core.Entity, input FeatureInput) error {
+	if input.Bus == nil {
+		return nil
 	}
+	topic := dnd5eEvents.DeflectMissilesThrowTopic.On(input.Bus)
+	if err := topic.Publish(ctx, dnd5eEvents.DeflectMissilesThrowEvent{
+		CharacterID: owner.GetID(),
+		Source:      refs.Features.DeflectMissiles().ID,
+	}); err != nil {
+		return rpgerr.Wrap(err, "failed to publish deflect missiles throw event")
+	}
+	return nil
+}
 
-	// Roll 1d10
-	roll, err := d.roller.Roll(ctx, 10)
+// deflectionBonus is the fixed part of the reduction — Dexterity modifier
+// plus monk level — asked of the owner at activation. An owner that cannot
+// answer either, or holds no monk levels, is refused.
+func deflectionBonus(owner core.Entity) (int, error) {
+	level, err := ownerClassLevel(owner, classes.Monk, "deflect missiles")
 	if err != nil {
-		// Fallback to average on error (5.5, rounded down to 5)
-		return 5 + d.dexModifier + d.monkLevel
+		return 0, err
 	}
-
-	return roll + d.dexModifier + d.monkLevel
+	scores, ok := owner.(interface{ AbilityScores() shared.AbilityScores })
+	if !ok {
+		return 0, rpgerr.New(rpgerr.CodeInvalidArgument, "deflect missiles: owner cannot answer its ability scores")
+	}
+	return scores.AbilityScores().Modifier(abilities.DEX) + level, nil
 }
 
 // loadJSON loads Deflect Missiles state from JSON
@@ -207,8 +191,6 @@ func (d *DeflectMissiles) loadJSON(data json.RawMessage) error {
 	d.id = deflectData.ID
 	d.name = deflectData.Name
 	d.characterID = deflectData.CharacterID
-	d.monkLevel = deflectData.MonkLevel
-	d.dexModifier = deflectData.DexModifier
 
 	return nil
 }
@@ -220,8 +202,6 @@ func (d *DeflectMissiles) ToJSON() (json.RawMessage, error) {
 		ID:          d.id,
 		Name:        d.name,
 		CharacterID: d.characterID,
-		MonkLevel:   d.monkLevel,
-		DexModifier: d.dexModifier,
 	}
 
 	bytes, err := json.Marshal(data)

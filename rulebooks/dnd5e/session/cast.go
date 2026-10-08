@@ -421,7 +421,10 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 	// The readied sheet goes into the participants rather than being fetched
 	// again: compileOffersFor readied this turn's economy on it, and a second
 	// read would hand resolution a ledger that had not been filled.
-	readied := selected.sheet.ToData()
+	readied, err := selected.sheet.ToData()
+	if err != nil {
+		return nil, fmt.Errorf("cast: caster %q: %w: %v", in.Member, ErrBadCharacter, err)
+	}
 	participants, failures := m.compileResolutionCast(ctx, scope.data, roster, readied)
 	if len(failures) > 0 {
 		return nil, fmt.Errorf("cast: participant %q: %w: %v",
@@ -436,8 +439,9 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 		Participants: participants,
 		Initiative:   m.initiative,
 		Standing:     scope.standing,
-		Sight:        &sightSeam{members: worldMembers(world)},
+		Sight:        sheetsBeside(scope.standing),
 		Equipment:    equipmentBeside(scope.standing),
+		Sheets:       sheetsBeside(scope.standing),
 		TurnDriver:   scope.driver,
 		// The concealment pair (rpg-toolkit#1378), bound to the same live
 		// scope openForChange and adopt bind — the one-seam consistency law.
@@ -511,7 +515,7 @@ func (m *Manager) finishCast(
 	// one cell instead of two; the walk that follows puts the movement beats
 	// after the cast beat, which is the order a client animates them in.
 	// Thunder, then the slide. See [castPush].
-	if err := routeCastPushes(scope.enc, pushes, targetResults); err != nil {
+	if err := routeCastPushes(scope.enc, sheetsBeside(scope.standing), pushes, targetResults); err != nil {
 		return nil, fmt.Errorf("cast: %w", err)
 	}
 
@@ -546,6 +550,9 @@ func (m *Manager) finishCast(
 	})
 	if err != nil {
 		return nil, fmt.Errorf("cast: %w", reportUnrecorded(scope, translate(err)))
+	}
+	if err := m.landAreas(scope.enc, scope, out); err != nil {
+		return nil, fmt.Errorf("cast: %w", reportUnrecorded(scope, err))
 	}
 
 	if completed, ok := out.Outcome.(resolution.CastOutcome); ok {
@@ -641,6 +648,9 @@ func (m *Manager) poseCastWindow(
 		return nil, fmt.Errorf("cast: %w", err)
 	}
 	if err := m.saveDirty(ctx, scope, out); err != nil {
+		return nil, fmt.Errorf("cast: %w", err)
+	}
+	if err := m.landAreas(scope.enc, scope, out); err != nil {
 		return nil, fmt.Errorf("cast: %w", err)
 	}
 

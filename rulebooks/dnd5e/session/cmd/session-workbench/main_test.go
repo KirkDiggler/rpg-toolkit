@@ -100,7 +100,7 @@ func TestWorkbenchRuns(t *testing.T) {
 
 		// A fight that starts itself, end to end. Each of these is a different
 		// claim, and any one regressing would leave the others still true:
-		"a fight starts, in order [alice skel-1 wight]",       // contact at the doorway starts it, unasked
+		"a fight starts, in order [alice ghoul skel-1]",       // contact at the doorway starts it, unasked
 		"she walks 2 step(s) into the vault, on her own turn", // the active member still walks (rpg-toolkit#1169)
 		"bob walks on regardless, 1 step(s)",                  // while everyone not in it carries on
 

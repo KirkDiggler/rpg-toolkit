@@ -392,7 +392,7 @@ func (s *DraftTestSuite) TestCompileInventory_MinimalDraft() {
 	s.Require().NoError(err)
 
 	// Check inventory - should have equipment from choices (shortsword + dungeoneer pack)
-	inventory := char.ToData().Inventory
+	inventory := mustToData(s.T(), char).Inventory
 	s.NotEmpty(inventory, "Monk should have inventory from equipment choices")
 	// Verify specific equipment from choices
 	s.assertInventoryContains(inventory, "shortsword", 1, "Should have shortsword from choice")
@@ -407,7 +407,7 @@ func (s *DraftTestSuite) TestCompileInventory_ClassGrants() {
 		// Fighter gets specific starting equipment from grants
 		char, err := s.testData.fighterDraft.ToCharacter(s.ctx, "char-fighter", s.bus)
 		s.Require().NoError(err)
-		inventory := char.ToData().Inventory
+		inventory := mustToData(s.T(), char).Inventory
 
 		// Fighter should have starting equipment (varies by class data)
 		// For now, just verify inventory is not empty if class has grants
@@ -454,7 +454,7 @@ func (s *DraftTestSuite) TestCompileInventory_ClassGrants() {
 
 		char, err := draft.ToCharacter(s.ctx, "char-monk", s.bus)
 		s.Require().NoError(err)
-		inventory := char.ToData().Inventory
+		inventory := mustToData(s.T(), char).Inventory
 
 		// Check for monk starting equipment from new Grant system
 		grants := classes.GetGrantsForLevel(classes.Monk, 1)
@@ -495,7 +495,7 @@ func (s *DraftTestSuite) TestCompileInventory_BackgroundGrants() {
 
 	char, err := draft.ToCharacter(s.ctx, "char-fighter", s.bus)
 	s.Require().NoError(err)
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 
 	s.Equal(shared.Proficient, data.Skills[skills.Athletics], "Soldier grants Athletics")
 	s.Equal(shared.Proficient, data.Skills[skills.Intimidation], "Soldier grants Intimidation")
@@ -511,7 +511,7 @@ func (s *DraftTestSuite) TestCompileInventory_FixedClassGrants() {
 		char, err := draft.ToCharacter(s.ctx, "barbarian-fixed", s.bus)
 		s.Require().NoError(err)
 
-		inventory := char.ToData().Inventory
+		inventory := mustToData(s.T(), char).Inventory
 		s.assertInventoryStack(inventory, weapons.Javelin, 4, "Barbarian should start with four javelins")
 	})
 
@@ -521,7 +521,7 @@ func (s *DraftTestSuite) TestCompileInventory_FixedClassGrants() {
 		char, err := draft.ToCharacter(s.ctx, "monk-fixed", s.bus)
 		s.Require().NoError(err)
 
-		inventory := char.ToData().Inventory
+		inventory := mustToData(s.T(), char).Inventory
 		s.assertInventoryStack(inventory, weapons.Dart, 10, "Monk should start with ten darts")
 	})
 
@@ -545,7 +545,7 @@ func (s *DraftTestSuite) TestCompileInventory_FixedClassGrants() {
 		char, err := draft.ToCharacter(s.ctx, "rogue-fixed", s.bus)
 		s.Require().NoError(err)
 
-		inventory := char.ToData().Inventory
+		inventory := mustToData(s.T(), char).Inventory
 		s.assertInventoryStack(inventory, armor.Leather, 1, "Rogue should start with leather armor")
 		s.assertInventoryStack(inventory, weapons.Dagger, 2, "Rogue should start with two daggers")
 		s.assertInventoryStack(inventory, tools.ThievesTools, 1, "Rogue should start with thieves' tools")
@@ -578,7 +578,7 @@ func (s *DraftTestSuite) TestCompileInventory_RepeatedCategorySelectionsCompileT
 	s.Require().NoError(err)
 	char, err := draft.ToCharacter(s.ctx, "fighter-two-longswords", s.bus)
 	s.Require().NoError(err)
-	s.assertInventoryStack(char.ToData().Inventory, weapons.Longsword, 2,
+	s.assertInventoryStack(mustToData(s.T(), char).Inventory, weapons.Longsword, 2,
 		"two identical legal picks become one quantity-two stack")
 }
 
@@ -604,7 +604,7 @@ func (s *DraftTestSuite) TestCompileInventory_DuplicateRetainsFirstOccurrenceOrd
 
 	char, err := draft.ToCharacter(s.ctx, "barbarian-javelin-order", s.bus)
 	s.Require().NoError(err)
-	inventory := char.ToData().Inventory
+	inventory := mustToData(s.T(), char).Inventory
 
 	inventoryIDs := make([]string, len(inventory))
 	for i, item := range inventory {
@@ -664,7 +664,7 @@ func (s *DraftTestSuite) TestCompileInventory_PreservesBundleQuantities() {
 	char, err := draft.ToCharacter(s.ctx, "fighter-handaxes", s.bus)
 	s.Require().NoError(err)
 
-	inventory := char.ToData().Inventory
+	inventory := mustToData(s.T(), char).Inventory
 	s.assertInventoryStack(inventory, weapons.Handaxe, 2, "Fighter's two handaxes should stay a quantity-2 stack")
 }
 
@@ -689,7 +689,7 @@ func (s *DraftTestSuite) TestFinalizeAndEquipDuplicateWeapons() {
 		char, err := draft.ToCharacter(s.ctx, "rogue-dual-dagger", s.bus)
 		s.Require().NoError(err)
 
-		inventory := char.ToData().Inventory
+		inventory := mustToData(s.T(), char).Inventory
 		s.assertInventoryStack(inventory, weapons.Dagger, 2, "Rogue should keep both granted daggers")
 
 		s.Require().NoError(char.EquipItem(character.SlotMainHand, weapons.Dagger))
@@ -726,7 +726,7 @@ func (s *DraftTestSuite) TestFinalizeAndEquipDuplicateWeapons() {
 		char, err := draft.ToCharacter(s.ctx, "fighter-dual-handaxe", s.bus)
 		s.Require().NoError(err)
 
-		inventory := char.ToData().Inventory
+		inventory := mustToData(s.T(), char).Inventory
 		s.assertInventoryStack(inventory, weapons.Handaxe, 2, "Fighter should keep the full handaxe count")
 
 		s.Require().NoError(char.EquipItem(character.SlotMainHand, weapons.Handaxe))
@@ -767,7 +767,7 @@ func (s *DraftTestSuite) TestCompileInventory_EquipmentChoices() {
 
 		char, err := draft.ToCharacter(s.ctx, "char-fighter", s.bus)
 		s.Require().NoError(err)
-		inventory := char.ToData().Inventory
+		inventory := mustToData(s.T(), char).Inventory
 
 		// Should have the shield from this option
 		s.assertInventoryContains(inventory, "shield", 1, "Fighter chose shield option")
@@ -799,7 +799,7 @@ func (s *DraftTestSuite) TestCompileInventory_EquipmentChoices() {
 
 		char, err := draft.ToCharacter(s.ctx, "char-fighter", s.bus)
 		s.Require().NoError(err)
-		inventory := char.ToData().Inventory
+		inventory := mustToData(s.T(), char).Inventory
 
 		// Packs decompose into their own Contents (rpg-toolkit#1544) rather
 		// than landing as one opaque pack item — mess-kit is unique to
@@ -837,7 +837,7 @@ func (s *DraftTestSuite) TestCompileInventory_KeepsFixedHandaxeStack() {
 
 	char, err := draft.ToCharacter(s.ctx, "char-fighter", s.bus)
 	s.Require().NoError(err)
-	inventory := char.ToData().Inventory
+	inventory := mustToData(s.T(), char).Inventory
 
 	s.assertInventoryStack(inventory, weapons.Handaxe, 2, "Fighter should keep the full two-handaxe stack")
 }
@@ -869,7 +869,7 @@ func (s *DraftTestSuite) TestCompileInventory_AmmunitionHandling() {
 
 	char, err := draft.ToCharacter(s.ctx, "char-fighter", s.bus)
 	s.Require().NoError(err)
-	inventory := char.ToData().Inventory
+	inventory := mustToData(s.T(), char).Inventory
 
 	// Should have both crossbow and bolts
 	s.assertInventoryContains(inventory, weapons.LightCrossbow, 1, "Should have light crossbow")
@@ -1136,7 +1136,7 @@ func (s *DraftTestSuite) TestCompileInventory_CompleteCharacter() {
 	// Convert to character
 	char, err := draft.ToCharacter(s.ctx, "char-complete", s.bus)
 	s.Require().NoError(err)
-	inventory := char.ToData().Inventory
+	inventory := mustToData(s.T(), char).Inventory
 
 	// Should have items from all sources
 	s.NotEmpty(inventory, "Complete character should have inventory")
@@ -1246,7 +1246,7 @@ func (s *ClassChangeTestSuite) TestClassChange_ClearsOldEquipmentChoices() {
 	// Convert to character and check inventory
 	char, err := s.baseDraft.ToCharacter(s.ctx, "fighter-char", s.bus)
 	s.Require().NoError(err)
-	fighterInventory := char.ToData().Inventory
+	fighterInventory := mustToData(s.T(), char).Inventory
 
 	// Fighter should have shield and the dungeoneer pack's contents (packs
 	// decompose rather than land as one opaque item, rpg-toolkit#1544) —
@@ -1281,7 +1281,7 @@ func (s *ClassChangeTestSuite) TestClassChange_ClearsOldEquipmentChoices() {
 	// Convert to character again and check inventory
 	char, err = s.baseDraft.ToCharacter(s.ctx, "barbarian-char", s.bus)
 	s.Require().NoError(err)
-	barbarianInventory := char.ToData().Inventory
+	barbarianInventory := mustToData(s.T(), char).Inventory
 
 	// Barbarian should NOT have Fighter equipment
 	for _, item := range barbarianInventory {
@@ -1338,7 +1338,7 @@ func (s *ClassChangeTestSuite) TestClassChange_ClearsOldSkillChoices() {
 	// Check skills in character
 	char, err := s.baseDraft.ToCharacter(s.ctx, "fighter-char", s.bus)
 	s.Require().NoError(err)
-	fighterSkills := char.ToData().Skills
+	fighterSkills := mustToData(s.T(), char).Skills
 
 	// Fighter should have chosen skills
 	_, hasAcrobatics := fighterSkills[skills.Acrobatics]
@@ -1363,7 +1363,7 @@ func (s *ClassChangeTestSuite) TestClassChange_ClearsOldSkillChoices() {
 	// Check skills after class change
 	char, err = s.baseDraft.ToCharacter(s.ctx, "barbarian-char", s.bus)
 	s.Require().NoError(err)
-	barbSkills := char.ToData().Skills
+	barbSkills := mustToData(s.T(), char).Skills
 
 	// Barbarian should NOT have Fighter skills
 	_, hasAcrobatics = barbSkills[skills.Acrobatics]
@@ -1554,7 +1554,7 @@ func (s *ClassChangeTestSuite) TestMultipleClassChanges_OnlyLatestChoicesRemain(
 	s.Require().NoError(err)
 
 	// Check skills - should only have Rogue skills
-	rogueSkills := char.ToData().Skills
+	rogueSkills := mustToData(s.T(), char).Skills
 
 	// Should NOT have Barbarian's skills. Intimidation is NOT cleared by
 	// the class changes away from Fighter — createBaseDraft's Soldier
@@ -1578,7 +1578,7 @@ func (s *ClassChangeTestSuite) TestMultipleClassChanges_OnlyLatestChoicesRemain(
 	s.Assert().True(hasAcrobatics, "Should have Rogue's Acrobatics")
 
 	// Check inventory - should only have Rogue equipment
-	inventory := char.ToData().Inventory
+	inventory := mustToData(s.T(), char).Inventory
 
 	// Should NOT have Fighter or Barbarian equipment
 	for _, item := range inventory {
@@ -1692,7 +1692,7 @@ func (s *MonkToolProficiencyTestSuite) TestMonkToolProficiencyChoice() {
 	// not just pass validation (rpg-toolkit#1555).
 	char, err := draft.ToCharacter(s.ctx, "monk-tool-char", s.bus)
 	s.Require().NoError(err)
-	s.Contains(char.ToData().ToolProficiencies, proficiencies.ToolBrewer,
+	s.Contains(mustToData(s.T(), char).ToolProficiencies, proficiencies.ToolBrewer,
 		"Monk's chosen tool proficiency must be compiled onto the character")
 }
 
@@ -1741,7 +1741,7 @@ func (s *MonkToolProficiencyTestSuite) TestDwarfToolProficiencyChoiceCompiles() 
 
 	char, err := draft.ToCharacter(s.ctx, "dwarf-tool-char", s.bus)
 	s.Require().NoError(err)
-	s.Contains(char.ToData().ToolProficiencies, proficiencies.ToolSmith,
+	s.Contains(mustToData(s.T(), char).ToolProficiencies, proficiencies.ToolSmith,
 		"Dwarf's chosen artisan's tool must be compiled onto the character")
 }
 
@@ -1792,8 +1792,8 @@ func (s *MonkToolProficiencyTestSuite) TestRaceAndClassToolChoicesBothValidateAn
 
 	char, err := draft.ToCharacter(s.ctx, "dwarf-monk-collision-char", s.bus)
 	s.Require().NoError(err)
-	s.Contains(char.ToData().ToolProficiencies, proficiencies.ToolSmith, "race's tool choice must compile")
-	s.Contains(char.ToData().ToolProficiencies, proficiencies.ToolBrewer, "class's tool choice must compile")
+	s.Contains(mustToData(s.T(), char).ToolProficiencies, proficiencies.ToolSmith, "race's tool choice must compile")
+	s.Contains(mustToData(s.T(), char).ToolProficiencies, proficiencies.ToolBrewer, "class's tool choice must compile")
 }
 
 // Test #439: Monk without tool choice fails validation

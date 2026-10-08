@@ -67,7 +67,6 @@ func createTestFighterCharacter(t *testing.T, bus events.EventBus) *Character {
 		},
 		hitPoints:    28,
 		maxHitPoints: 28,
-		armorClass:   18,
 		skills:       make(map[skills.Skill]shared.ProficiencyLevel),
 		savingThrows: make(map[abilities.Ability]shared.ProficiencyLevel),
 		resources:    make(map[coreResources.ResourceKey]*combat.RecoverableResource),
@@ -126,7 +125,7 @@ func (s *ActionEconomyTestSuite) TestToData_NilActionEconomyOmitted() {
 	}
 	char.actionEconomy = nil
 
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	s.Nil(data.ActionEconomy)
 
 	// Verify it marshals without the field
@@ -154,7 +153,7 @@ func (s *ActionEconomyTestSuite) TestToData_IncludesActionEconomy() {
 		},
 	}
 
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	s.Require().NotNil(data.ActionEconomy)
 	s.Equal(1, data.ActionEconomy.ActionsRemaining)
 	s.Equal(0, data.ActionEconomy.BonusActionsRemaining)
@@ -182,7 +181,6 @@ func (s *ActionEconomyTestSuite) TestLoadFromData_RoundTrip() {
 		},
 		HitPoints:    44,
 		MaxHitPoints: 44,
-		ArmorClass:   18,
 		Skills:       make(map[skills.Skill]shared.ProficiencyLevel),
 		SavingThrows: make(map[abilities.Ability]shared.ProficiencyLevel),
 		ActionEconomy: &ActionEconomyData{
@@ -206,7 +204,7 @@ func (s *ActionEconomyTestSuite) TestLoadFromData_RoundTrip() {
 	s.True(loaded.InCombat())
 
 	// Round-trip through ToData
-	roundTripped := loaded.ToData()
+	roundTripped := mustToData(s.T(), loaded)
 	s.Require().NotNil(roundTripped.ActionEconomy)
 	s.Equal(0, roundTripped.ActionEconomy.ActionsRemaining)
 	s.Equal(1, roundTripped.ActionEconomy.BonusActionsRemaining)
@@ -235,7 +233,7 @@ func (s *ActionEconomyTestSuite) TestSeededEconomy_RoundTrip_ActivateAbility_NoN
 
 	// Serialize → JSON → back, faithfully reproducing the omitempty drop the
 	// host (rpg-api) hits when it persists and reloads the character.
-	data := char.ToData()
+	data := mustToData(s.T(), char)
 	raw, err := json.Marshal(data)
 	s.Require().NoError(err)
 
@@ -296,7 +294,6 @@ func (s *ActionEconomyTestSuite) TestLoadFromData_NilActionEconomy() {
 		},
 		HitPoints:    44,
 		MaxHitPoints: 44,
-		ArmorClass:   18,
 		Skills:       make(map[skills.Skill]shared.ProficiencyLevel),
 		SavingThrows: make(map[abilities.Ability]shared.ProficiencyLevel),
 	}
@@ -360,7 +357,7 @@ func (s *ActionEconomyTestSuite) TestToolkitEconomyBridgePersistsSpentDeathSaveC
 	char.fromToolkitActionEconomy(fielded)
 
 	s.Zero(char.CapacityLeft(combat.CapacityDeathSave))
-	exported := char.ToData()
+	exported := mustToData(s.T(), char)
 	s.Require().NotNil(exported.ActionEconomy)
 	s.NotContains(exported.ActionEconomy.Granted, GrantedDeathSaves,
 		"a spent one-shot grant must not survive persistence at its old value")
@@ -533,7 +530,6 @@ func (s *ActionEconomyTestSuite) TestTwoWeaponsDoNotSynthesizeAnActivateAbility(
 		},
 		HitPoints:    12,
 		MaxHitPoints: 12,
-		ArmorClass:   14,
 		Inventory: []InventoryItemData{
 			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Shortsword), Quantity: 1},
 			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Scimitar), Quantity: 1},

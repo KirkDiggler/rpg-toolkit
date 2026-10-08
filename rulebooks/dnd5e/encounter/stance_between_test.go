@@ -32,7 +32,7 @@ func TestStanceBetweenSuite(t *testing.T) {
 func (s *StanceBetweenTestSuite) court() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  openAir(),
@@ -64,27 +64,27 @@ func (s *StanceBetweenTestSuite) court() *encounter.Encounter {
 	return enc
 }
 
-// A member in no faction has no side, so no stance exists between them and
-// anybody: known is false and the stance is empty. Neutral is a real
-// disposition a fact can turn hostile or allied; absence is not it.
-func (s *StanceBetweenTestSuite) TestStanceBetweenFactionlessHasNoStance() {
+// A member in no faction has no side: StanceBetween answers StanceNone
+// toward every other member, in both directions and toward itself. Neutral is
+// a real disposition a fact can turn hostile or allied; no side is not it,
+// and it is an answer, not an absence a reader rebuilds.
+func (s *StanceBetweenTestSuite) TestStanceBetweenFactionlessIsNoSide() {
 	enc := s.court()
 
-	for _, pair := range [][2]encounter.MemberID{
-		{alice, "innkeeper"},
-		{"innkeeper", alice},
-		{"bandit", "innkeeper"},
-		{"innkeeper", "innkeeper"},
-	} {
-		got, known := enc.StanceBetween(pair[0], pair[1])
-		s.False(known, "%s → %s", pair[0], pair[1])
-		s.Empty(got, "%s → %s", pair[0], pair[1])
+	members, err := enc.Members()
+	s.Require().NoError(err)
+	for _, m := range members {
+		for _, pair := range [][2]encounter.MemberID{{m.ID, "innkeeper"}, {"innkeeper", m.ID}} {
+			got, err := enc.StanceBetween(pair[0], pair[1])
+			s.Require().NoError(err, "%s → %s", pair[0], pair[1])
+			s.Equal(encounter.StanceNone, got, "%s → %s", pair[0], pair[1])
+		}
 	}
 }
 
-// Somebody who is not here has no stance at all: known is false and the
-// stance is empty.
-func (s *StanceBetweenTestSuite) TestStanceBetweenNoStanceForNonMember() {
+// A pair naming somebody who is not here is refused as not a member, and an
+// empty id as an empty id: there is no stance to answer about a stranger.
+func (s *StanceBetweenTestSuite) TestStanceBetweenRefusesANonMember() {
 	enc := s.court()
 
 	for _, pair := range [][2]encounter.MemberID{
@@ -92,15 +92,18 @@ func (s *StanceBetweenTestSuite) TestStanceBetweenNoStanceForNonMember() {
 		{"nobody", alice},
 		{"nobody", "innkeeper"},
 	} {
-		got, known := enc.StanceBetween(pair[0], pair[1])
-		s.False(known, "%s → %s", pair[0], pair[1])
+		got, err := enc.StanceBetween(pair[0], pair[1])
+		s.Require().ErrorIs(err, encounter.ErrNotMember, "%s → %s", pair[0], pair[1])
+		s.NotErrorIs(err, encounter.ErrNoMember, "%s → %s", pair[0], pair[1])
 		s.Empty(got, "%s → %s", pair[0], pair[1])
 	}
+	_, err := enc.StanceBetween(alice, "")
+	s.Require().ErrorIs(err, encounter.ErrNoMember)
 }
 
 // For every ordered pair of members the one word and the two booleans agree:
-// hostile exactly when IsHostile, allied exactly when IsAllied. Where a
-// faction is missing there is no stance, and the booleans still answer known
+// hostile exactly when IsHostile, allied exactly when IsAllied. A pair with
+// the world NPC in it is StanceNone, and the booleans still answer known
 // false — "are they my enemy" and "on my side" each have a correct no.
 func (s *StanceBetweenTestSuite) TestStanceBetweenAgreesWithIsHostileAndIsAllied() {
 	enc := s.court()
@@ -118,9 +121,10 @@ func (s *StanceBetweenTestSuite) TestStanceBetweenAgreesWithIsHostileAndIsAllied
 	s.Require().NoError(err)
 	for _, a := range members {
 		for _, b := range members {
-			got, known := enc.StanceBetween(a.ID, b.ID)
+			got, err := enc.StanceBetween(a.ID, b.ID)
+			s.Require().NoError(err, "%s → %s", a.ID, b.ID)
 			factionless := a.ID == "innkeeper" || b.ID == "innkeeper"
-			s.Equal(!factionless, known, "%s → %s known", a.ID, b.ID)
+			s.Equal(factionless, got == encounter.StanceNone, "%s → %s no side", a.ID, b.ID)
 
 			hostile, hKnown := enc.IsHostile(a.ID, b.ID)
 			allied, aKnown := enc.IsAllied(a.ID, b.ID)
@@ -139,8 +143,8 @@ func (s *StanceBetweenTestSuite) TestStanceBetweenAgreesWithIsHostileAndIsAllied
 }
 
 // With every member sighted and no deception in play, what a member believes
-// about another's side is the authoritative stance — including no stance,
-// for a pair with the world NPC in it.
+// about another's side is the authoritative stance — including no side, for a
+// pair with the world NPC in it.
 func (s *StanceBetweenTestSuite) TestStanceBetweenAgreesWithBelievedStance() {
 	enc := s.court()
 
@@ -148,9 +152,10 @@ func (s *StanceBetweenTestSuite) TestStanceBetweenAgreesWithBelievedStance() {
 	s.Require().NoError(err)
 	for _, a := range members {
 		for _, b := range members {
-			truth, tKnown := enc.StanceBetween(a.ID, b.ID)
-			belief, bKnown := enc.BelievedStance(a.ID, b.ID)
-			s.Equal(tKnown, bKnown, "%s → %s known", a.ID, b.ID)
+			truth, err := enc.StanceBetween(a.ID, b.ID)
+			s.Require().NoError(err)
+			belief, err := enc.BelievedStance(a.ID, b.ID)
+			s.Require().NoError(err)
 			s.Equal(truth, belief, "%s → %s", a.ID, b.ID)
 		}
 	}

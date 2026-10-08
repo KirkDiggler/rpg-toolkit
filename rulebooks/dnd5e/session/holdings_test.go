@@ -120,7 +120,7 @@ func heirloomWorld(t fataler, holds bool) *encounter.EncounterData {
 		captain.Holds = []encounter.IntelID{veilMap}
 	}
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing:      encCaptainIsDown{},

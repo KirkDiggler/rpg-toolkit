@@ -496,12 +496,6 @@ func featureID(f features.Feature) string {
 // conditions. Unqualified conditions have no source. Hosts must apply their
 // observability policy before exposing member identities to players.
 func conditionSourceMember(condition dnd5eEvents.ConditionBehavior) *string {
-	// In Fog is qualified by an area ID, not a party-member source. Keep that
-	// identity internal to the condition address rather than exposing it through
-	// the private sheet's member-only source field.
-	if _, ok := condition.(*conditions.InFogCondition); ok {
-		return nil
-	}
 	if addressed, ok := condition.(dnd5eEvents.ConditionAddressProvider); ok {
 		if source := addressed.ConditionAddress().SourceID; source != "" {
 			return &source

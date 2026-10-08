@@ -94,8 +94,6 @@ func (s *EffectScopingTestSuite) SetupTest() {
 func (s *EffectScopingTestSuite) ragingBarbarian() *Data {
 	raging := &conditions.RagingCondition{
 		CharacterID: "char-scope",
-		DamageBonus: 2,
-		Level:       1,
 		Source:      "rage",
 	}
 

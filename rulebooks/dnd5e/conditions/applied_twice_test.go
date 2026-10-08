@@ -47,7 +47,7 @@ func (s *AppliedTwiceSuite) SetupTest() {
 			abilities.STR: 16, abilities.DEX: 14, abilities.CON: 14,
 			abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 8,
 		},
-		HitPoints: 14, MaxHitPoints: 14, ArmorClass: 14,
+		HitPoints: 14, MaxHitPoints: 14,
 	}, s.bus)
 	s.Require().NoError(err)
 	s.char = char
@@ -65,10 +65,10 @@ func (s *AppliedTwiceSuite) fixtures() map[string]func() dnd5eEvents.ConditionBe
 	id := sheetID
 	return map[string]func() dnd5eEvents.ConditionBehavior{
 		refs.Conditions.Raging().String(): func() dnd5eEvents.ConditionBehavior {
-			return &conditions.RagingCondition{CharacterID: id, DamageBonus: 2, Level: 3}
+			return &conditions.RagingCondition{CharacterID: id}
 		},
 		refs.Features.SneakAttack().String(): func() dnd5eEvents.ConditionBehavior {
-			return conditions.NewSneakAttackCondition(conditions.SneakAttackInput{MemberID: id, Level: 1})
+			return conditions.NewSneakAttackCondition(conditions.SneakAttackInput{MemberID: id})
 		},
 		refs.Conditions.Blessed().String(): func() dnd5eEvents.ConditionBehavior {
 			return s.must(conditions.NewBlessedCondition(conditions.NewBlessedConditionInput{
@@ -87,7 +87,7 @@ func (s *AppliedTwiceSuite) fixtures() map[string]func() dnd5eEvents.ConditionBe
 				WeaponSlot: "main_hand", Ability: abilities.WIS}))
 		},
 		refs.Conditions.BrutalCritical().String(): func() dnd5eEvents.ConditionBehavior {
-			return conditions.NewBrutalCriticalCondition(conditions.BrutalCriticalInput{MemberID: id, Level: 9})
+			return conditions.NewBrutalCriticalCondition(conditions.BrutalCriticalInput{MemberID: id})
 		},
 		refs.Conditions.FightingStyleArchery().String(): func() dnd5eEvents.ConditionBehavior {
 			return conditions.NewFightingStyleArcheryCondition(id)
@@ -108,7 +108,7 @@ func (s *AppliedTwiceSuite) fixtures() map[string]func() dnd5eEvents.ConditionBe
 			return conditions.NewRecklessAttackCondition(id)
 		},
 		refs.Conditions.MartialArts().String(): func() dnd5eEvents.ConditionBehavior {
-			return conditions.NewMartialArtsCondition(conditions.MartialArtsInput{MemberID: id, MonkLevel: 1})
+			return conditions.NewMartialArtsCondition(conditions.MartialArtsInput{MemberID: id})
 		},
 		refs.Conditions.Prone().String():  func() dnd5eEvents.ConditionBehavior { return conditions.NewProneCondition(id) },
 		refs.Conditions.Hidden().String(): func() dnd5eEvents.ConditionBehavior { return conditions.NewHiddenCondition(id) },
@@ -127,7 +127,7 @@ func (s *AppliedTwiceSuite) fixtures() map[string]func() dnd5eEvents.ConditionBe
 		},
 		refs.Conditions.Sanctuary().String(): func() dnd5eEvents.ConditionBehavior {
 			return s.must(conditions.NewSanctuaryCondition(conditions.NewSanctuaryConditionInput{
-				MemberID: id, SourceID: "cleric", SourceRef: refs.Spells.Sanctuary()}))
+				MemberID: id, SourceID: "cleric", SourceRef: refs.Spells.Sanctuary(), SaveDC: 13}))
 		},
 	}
 }
@@ -163,7 +163,13 @@ func (s *AppliedTwiceSuite) TestEveryBearingConditionAppliedTwiceLeavesOne() {
 		out, err := conditions.AssessActionEffects(&conditions.AssessActionEffectsInput{
 			Conditions: s.char.GetConditions(),
 			Frame: contributions.Frame{
-				Actor:  sheetID,
+				Actor: sheetID,
+				// Every class-scaled effect is applied to this one sheet, so its
+				// frame carries a level in each scaling class.
+				ActorClassLevels: contributions.KnownClassLevels(
+					contributions.ClassLevel{Class: classes.Barbarian, Levels: 1},
+					contributions.ClassLevel{Class: classes.Monk, Levels: 1},
+					contributions.ClassLevel{Class: classes.Rogue, Levels: 1}),
 				Target: contributions.Known("goblin"),
 				Action: contributions.ActionFacts{
 					Roll:       contributions.Known(contributions.RollKindAttack),

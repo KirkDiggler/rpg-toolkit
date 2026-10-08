@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
@@ -27,6 +28,9 @@ type BrutalCriticalTestSuite struct {
 	ctx    context.Context
 	bus    events.EventBus
 	roller *mock_dice.MockRoller
+	// barbarianLevel is the attacker's barbarian levels the damage frame
+	// carries; Brutal Critical reads its dice from it.
+	barbarianLevel int
 }
 
 func (s *BrutalCriticalTestSuite) SetupTest() {
@@ -34,6 +38,7 @@ func (s *BrutalCriticalTestSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.bus = events.NewEventBus()
 	s.roller = mock_dice.NewMockRoller(s.ctrl)
+	s.barbarianLevel = 9
 }
 
 func (s *BrutalCriticalTestSuite) TearDownTest() {
@@ -78,7 +83,7 @@ func (s *BrutalCriticalTestSuite) executeCriticalDamageChain(
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID:       attackerID,
-		Frame:            brutalFrame(attackerID),
+		Frame:            brutalFrame(attackerID, s.barbarianLevel),
 		TargetID:         "goblin-1",
 		Components:       []dnd5eEvents.DamageComponent{weaponComp, abilityComp},
 		WeaponDamageDice: weaponDamage,
@@ -101,7 +106,6 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalAddsExtraDieLevel9() {
 	// Level 9 barbarian gets 1 extra weapon damage die on crits
 	brutal := NewBrutalCriticalCondition(BrutalCriticalInput{
 		MemberID: "barbarian-1",
-		Level:    9,
 		Roller:   s.roller,
 	})
 
@@ -131,9 +135,9 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalAddsExtraDieLevel9() {
 
 func (s *BrutalCriticalTestSuite) TestBrutalCriticalAddsExtraDiceLevel13() {
 	// Level 13 barbarian gets 2 extra weapon damage dice on crits
+	s.barbarianLevel = 13
 	brutal := NewBrutalCriticalCondition(BrutalCriticalInput{
 		MemberID: "barbarian-1",
-		Level:    13,
 		Roller:   s.roller,
 	})
 
@@ -158,9 +162,9 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalAddsExtraDiceLevel13() {
 
 func (s *BrutalCriticalTestSuite) TestBrutalCriticalAddsExtraDiceLevel17() {
 	// Level 17 barbarian gets 3 extra weapon damage dice on crits
+	s.barbarianLevel = 17
 	brutal := NewBrutalCriticalCondition(BrutalCriticalInput{
 		MemberID: "barbarian-1",
-		Level:    17,
 		Roller:   s.roller,
 	})
 
@@ -186,7 +190,6 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalAddsExtraDiceLevel17() {
 func (s *BrutalCriticalTestSuite) TestBrutalCriticalIgnoresNonCriticalHits() {
 	brutal := NewBrutalCriticalCondition(BrutalCriticalInput{
 		MemberID: "barbarian-1",
-		Level:    9,
 		Roller:   s.roller,
 	})
 
@@ -206,7 +209,6 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalIgnoresNonCriticalHits() {
 func (s *BrutalCriticalTestSuite) TestBrutalCriticalOnlyAffectsOwnAttacks() {
 	brutal := NewBrutalCriticalCondition(BrutalCriticalInput{
 		MemberID: "barbarian-1",
-		Level:    9,
 		Roller:   s.roller,
 	})
 
@@ -229,7 +231,7 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalOnlyAffectsOwnAttacks() {
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID: "barbarian-2", // Different character
-		Frame:      brutalFrame("barbarian-2"),
+		Frame:      brutalFrame("barbarian-2", 9),
 		TargetID:   "goblin-1",
 		Components: []dnd5eEvents.DamageComponent{weaponComp},
 		IsCritical: true,
@@ -251,7 +253,6 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalOnlyAffectsOwnAttacks() {
 func (s *BrutalCriticalTestSuite) TestBrutalCriticalWorksWithDifferentWeaponDice() {
 	brutal := NewBrutalCriticalCondition(BrutalCriticalInput{
 		MemberID: "barbarian-1",
-		Level:    9,
 		Roller:   s.roller,
 	})
 
@@ -279,7 +280,7 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalWorksWithDifferentWeaponDice
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID:       "barbarian-1",
-		Frame:            brutalFrame("barbarian-1"),
+		Frame:            brutalFrame("barbarian-1", s.barbarianLevel),
 		TargetID:         "goblin-1",
 		Components:       []dnd5eEvents.DamageComponent{weaponComp},
 		WeaponDamageDice: "1d12",
@@ -307,7 +308,6 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalWorksWithDifferentWeaponDice
 func (s *BrutalCriticalTestSuite) TestBrutalCriticalRemoveUnsubscribes() {
 	brutal := NewBrutalCriticalCondition(BrutalCriticalInput{
 		MemberID: "barbarian-1",
-		Level:    9,
 		Roller:   s.roller,
 	})
 
@@ -331,7 +331,6 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalRemoveUnsubscribes() {
 func (s *BrutalCriticalTestSuite) TestBrutalCriticalToJSON() {
 	brutal := NewBrutalCriticalCondition(BrutalCriticalInput{
 		MemberID: "barbarian-1",
-		Level:    13,
 		Roller:   s.roller,
 	})
 
@@ -340,8 +339,8 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalToJSON() {
 
 	// Verify JSON contains expected fields
 	s.Contains(string(jsonData), `"member_id":"barbarian-1"`)
-	s.Contains(string(jsonData), `"level":13`)
-	s.Contains(string(jsonData), `"extra_dice":2`)
+	s.NotContains(string(jsonData), "level", "the barbarian level is the sheet's, never stored")
+	s.NotContains(string(jsonData), "dice", "the dice count derives from the level and is never stored")
 	s.Contains(string(jsonData), `"ref":"dnd5e:conditions:brutal_critical"`)
 }
 
@@ -361,22 +360,48 @@ func (s *BrutalCriticalTestSuite) TestCalculateExtraDice() {
 	}
 
 	for _, tc := range testCases {
-		brutal := NewBrutalCriticalCondition(BrutalCriticalInput{
-			MemberID: "barbarian-1",
-			Level:    tc.level,
-			Roller:   s.roller,
+		frame := brutalFrame("barbarian-1", tc.level)
+		extra, err := brutalCriticalDice(frame)
+		s.Require().NoError(err)
+		s.Equal(tc.extraDice, extra, "Level %d should have %d extra dice", tc.level, tc.extraDice)
+	}
+}
+
+// A holder with zero barbarian levels — or a frame that does not carry the
+// attacker's class levels — fails the fold: the dice cannot be answered, and
+// zero is never read as level one.
+func (s *BrutalCriticalTestSuite) TestBrutalCriticalRefusesAHolderWithNoBarbarianLevels() {
+	brutal := NewBrutalCriticalCondition(BrutalCriticalInput{MemberID: "barbarian-1", Roller: s.roller})
+	s.Require().NoError(brutal.Apply(s.ctx, s.bus))
+
+	for name, levels := range map[string]contributions.ClassLevels{
+		"no barbarian levels": contributions.KnownClassLevels(contributions.ClassLevel{Class: classes.Fighter, Levels: 9}),
+		"unknown levels":      contributions.UnknownClassLevels(),
+	} {
+		s.Run(name, func() {
+			frame := brutalFrame("barbarian-1", 9)
+			frame.ActorClassLevels = levels
+			event := &dnd5eEvents.DamageChainEvent{
+				AttackerID: "barbarian-1", Frame: frame, TargetID: "goblin-1",
+				WeaponDamageDice: "1d12", WeaponDamageType: damage.Slashing, IsCritical: true,
+			}
+			chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+			_, err := dnd5eEvents.DamageChain.On(s.bus).PublishWithChain(s.ctx, event, chain)
+			s.Require().ErrorIs(err, contributions.ErrRuleCannotAnswer)
 		})
-		s.Equal(tc.extraDice, brutal.ExtraDice, "Level %d should have %d extra dice", tc.level, tc.extraDice)
 	}
 }
 
 // Ensure we have the unused import warning suppressed
 var _ dice.Roller = (*mock_dice.MockRoller)(nil)
 
-// brutalFrame is an execution frame for a melee weapon attack by actor.
-func brutalFrame(actor string) contributions.Frame {
+// brutalFrame is an execution frame for a melee weapon attack by actor, who
+// holds barbarianLevel barbarian levels.
+func brutalFrame(actor string, barbarianLevel int) contributions.Frame {
 	return contributions.Frame{
-		Actor:  actor,
+		Actor: actor,
+		ActorClassLevels: contributions.KnownClassLevels(
+			contributions.ClassLevel{Class: classes.Barbarian, Levels: barbarianLevel}),
 		Target: contributions.Known("goblin-1"),
 		Action: contributions.ActionFacts{
 			Roll:       contributions.Known(contributions.RollKindAttack),

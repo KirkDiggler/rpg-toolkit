@@ -72,6 +72,36 @@ func axialSeam(gapRow int) []encounter.WallInput {
 	return out
 }
 
+// carolsCurtain hangs a sight-only curtain on every edge of carol's corner
+// cell — authored [0,5] — so from where she starts she sees
+// nothing beyond her own cell and nobody sees her, while her legs carry her
+// straight through it.
+//
+// IT REPLACES A FIVE-FOOT SIGHT RANGE these fixtures used to author onto her
+// member row. Sight is now asked of each member's own sheet (rpg-project#538,
+// R12), and a character's sheet answers the rulebook's stated 120 feet — no
+// sheet states five. So the fixture makes her the member the witness
+// honestly answers "no" about with the map instead: line of sight is the
+// composition's own geometry, the same the witness reads, and a curtain is
+// exactly the thing it already walls a percept off by. The moment she steps
+// past it she sees as anyone does.
+func carolsCurtain() []encounter.WallInput {
+	corner := spatial.Position{X: 0, Y: 5}
+	var out []encounter.WallInput
+	for row := 4; row <= 5; row++ {
+		for col := 0; col < 6; col++ {
+			if hexSteps(hexCell(0, 5), hexCell(col, row)) != 1 {
+				continue
+			}
+			out = append(out, encounter.WallInput{Boundary: spatial.Boundary{
+				From: corner, To: spatial.Position{X: float64(col), Y: float64(row)},
+				BlocksMovement: false, BlocksLineOfSight: true,
+			}})
+		}
+	}
+	return out
+}
+
 // encNeverResolves and encNeverWitnesses satisfy Setup's capability
 // requirement while a concealed FIXTURE world is being authored — nothing
 // searches and no concealed door stands open during authoring, so a consult
@@ -126,8 +156,11 @@ func vaultFind() []encounter.CheckApproach {
 //	  .   . . . . .  |  . . . . . .
 //	  .   . a b . veil  . . . . . .      a=alice(1,1) b=bob(2,1)
 //	                 ^ (5,0)-(6,0), closed, a member of the vault
-func concealedWorld(t fataler, doorState encounter.DoorState) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+//
+// curtains are extra authored walls for a scene that needs one: the witness
+// scene hangs [carolsCurtain] so carol perceives nothing from her corner.
+func concealedWorld(t fataler, doorState encounter.DoorState, curtains ...encounter.WallInput) *encounter.EncounterData {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing:      encEveryoneStanding{},
@@ -138,7 +171,7 @@ func concealedWorld(t fataler, doorState encounter.DoorState) *encounter.Encount
 				rectRegion("hall", 0, 0, 6, 6),
 				rectRegion("vault", 6, 0, 6, 6),
 			},
-			Walls:        axialSeam(0),
+			Walls:        append(axialSeam(0), curtains...),
 			Concealments: []encounter.ConcealmentInput{vaultConcealment()},
 			Doors: []encounter.DoorInput{{
 				ID:    "veil",
@@ -149,7 +182,7 @@ func concealedWorld(t fataler, doorState encounter.DoorState) *encounter.Encount
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Position: cell(1, 1)},
 			{ID: "bob", Kind: encounter.KindPlayer, Position: cell(2, 1)},
-			{ID: "carol", Kind: encounter.KindPlayer, Position: cell(0, 5), SightFeet: 5},
+			{ID: "carol", Kind: encounter.KindPlayer, Position: cell(0, 5)},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "out", Trigger: encounter.TriggerExternal{}},
@@ -197,7 +230,7 @@ func hexCells(authored []spatial.Position) []spatial.Position {
 // both rooms authored visible, a solid seam wall where the veil hides — the
 // move law's comparison world.
 func walledTwinWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
@@ -211,7 +244,7 @@ func walledTwinWorld(t fataler) *encounter.EncounterData {
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Position: cell(1, 1)},
 			{ID: "bob", Kind: encounter.KindPlayer, Position: cell(2, 1)},
-			{ID: "carol", Kind: encounter.KindPlayer, Position: cell(0, 5), SightFeet: 5},
+			{ID: "carol", Kind: encounter.KindPlayer, Position: cell(0, 5)},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "out", Trigger: encounter.TriggerExternal{}},
@@ -228,7 +261,7 @@ func walledTwinWorld(t fataler) *encounter.EncounterData {
 // edge is its own solid mass. The fixture for scenes about worlds with
 // nothing concealed in them.
 func plainHallWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
@@ -238,7 +271,7 @@ func plainHallWorld(t fataler) *encounter.EncounterData {
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Position: cell(1, 1)},
 			{ID: "bob", Kind: encounter.KindPlayer, Position: cell(2, 1)},
-			{ID: "carol", Kind: encounter.KindPlayer, Position: cell(0, 5), SightFeet: 5},
+			{ID: "carol", Kind: encounter.KindPlayer, Position: cell(0, 5)},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "out", Trigger: encounter.TriggerExternal{}},
@@ -258,7 +291,7 @@ func sharpEyed(id string) *character.Data {
 		ID: id, PlayerID: "player-" + id, Name: "Sharp", Level: 3,
 		Levels:           syntheticLevels(classes.Rogue, 3),
 		ProficiencyBonus: 2, RaceID: races.Dwarf, ClassID: classes.Rogue,
-		HitPoints: 20, MaxHitPoints: 20, ArmorClass: 14,
+		HitPoints: 20, MaxHitPoints: 20,
 		AbilityScores: shared.AbilityScores{abilities.WIS: 14, abilities.DEX: 14},
 		Skills:        map[skills.Skill]shared.ProficiencyLevel{skills.Perception: shared.Proficient},
 	}
@@ -269,7 +302,7 @@ func dullEyed(id string) *character.Data {
 	return &character.Data{
 		ID: id, PlayerID: "player-" + id, Name: "Dull", Level: 1,
 		ProficiencyBonus: 2, RaceID: races.Human, ClassID: classes.Fighter,
-		HitPoints: 10, MaxHitPoints: 10, ArmorClass: 10,
+		HitPoints: 10, MaxHitPoints: 10,
 		AbilityScores: shared.AbilityScores{},
 	}
 }
@@ -313,8 +346,12 @@ func (s *ConcealSuite) startDriven(
 	driver session.TurnDriver, world *encounter.EncounterData, cast ...*character.Data,
 ) {
 	s.stream = &fakeStream{}
-	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
-	s.characters = newFakeCharacters(cast...)
+	sessions, encounters := newFakeSessions(), newFakeEncounters()
+	characters := newFakeCharacters(cast...)
+	// Every authored member is somebody whose sheet the world will ask for;
+	// the ones this scene's cast leaves out are given plain ones.
+	stockAuthoredPlayers(world, characters)
+	s.sessions, s.encounters, s.characters = sessions, encounters, characters
 	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: driver,
 		Sessions: s.sessions, Encounters: s.encounters,
@@ -327,6 +364,7 @@ func (s *ConcealSuite) startDriven(
 		Session: "sess", Encounter: "world", World: world,
 	})
 	s.Require().NoError(err)
+	stockAuthoredMonsters(s.T(), sessions, encounters, "sess")
 }
 
 // eventsFor filters the published stream down to one recipient, in order.
@@ -773,7 +811,7 @@ func (s *ConcealSuite) TestTheResolverAppliesTheBestListedApproach() {
 	ctx := context.Background()
 
 	world := func() *encounter.EncounterData {
-		enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 			Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 			Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 			Standing:      encEveryoneStanding{},
@@ -816,7 +854,7 @@ func (s *ConcealSuite) TestTheResolverAppliesTheBestListedApproach() {
 		ID: "mira", PlayerID: "player-mira", Name: "Mira", Level: 3,
 		Levels:           syntheticLevels(classes.Ranger, 3),
 		ProficiencyBonus: 2, RaceID: races.Elf, ClassID: classes.Ranger,
-		HitPoints: 20, MaxHitPoints: 20, ArmorClass: 14,
+		HitPoints: 20, MaxHitPoints: 20,
 		AbilityScores: shared.AbilityScores{abilities.WIS: 16, abilities.INT: 10},
 		Skills:        map[skills.Skill]shared.ProficiencyLevel{skills.Perception: shared.Proficient},
 	}
@@ -841,7 +879,7 @@ func (s *ConcealSuite) TestUnlockPicksTheRouteAndReportsItsDC() {
 	ctx := context.Background()
 
 	world := func() *encounter.EncounterData {
-		enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 			Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 			Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 			Standing: encEveryoneStanding{},
@@ -875,7 +913,7 @@ func (s *ConcealSuite) TestUnlockPicksTheRouteAndReportsItsDC() {
 	brawn := &character.Data{
 		ID: "brawn", PlayerID: "player-brawn", Name: "Brawn", Level: 1,
 		ProficiencyBonus: 2, RaceID: races.HalfOrc, ClassID: classes.Barbarian,
-		HitPoints: 14, MaxHitPoints: 14, ArmorClass: 12,
+		HitPoints: 14, MaxHitPoints: 14,
 		AbilityScores: shared.AbilityScores{abilities.STR: 14},
 	}
 	s.startWith(world, brawn)
@@ -902,7 +940,9 @@ func (s *ConcealSuite) TestTheProbeLawHoldsAtTheSeam() {
 	rolled := 0
 	s.stream = &fakeStream{}
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
-	s.characters = newFakeCharacters(sharpEyed("alice"), dullEyed("bob"))
+	characters := newFakeCharacters(sharpEyed("alice"), dullEyed("bob"))
+	stockAuthoredPlayers(world, characters)
+	s.characters = characters
 	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{calls: &rolled}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
@@ -983,7 +1023,7 @@ func (s *ConcealSuite) TestTheMoveLawHoldsAtTheSeam() {
 // witness seam's.
 func (s *ConcealSuite) TestOpeningRevealsToThePerceiversThroughTheOneSeam() {
 	ctx := context.Background()
-	s.startWith(concealedWorld(s.T(), encounter.DoorIsClosed()),
+	s.startWith(concealedWorld(s.T(), encounter.DoorIsClosed(), carolsCurtain()...),
 		sharpEyed("alice"), dullEyed("bob"), dullEyed("carol"))
 
 	_, err := s.mgr.Search(ctx, &session.SearchInput{Session: "sess", Member: "alice", Region: "hall"})
@@ -1256,15 +1296,30 @@ func (s *ConcealSuite) TestOneVerbBiggerThanTheRetentionWindowCommitsWhole() {
 
 	for _, name := range []string{"alice", "bob", "carol"} {
 		events := eventsFor(s.stream.published, name)
-		s.Require().Len(events, steps,
-			"%s is delivered every beat of the big verb — retention govern storage, not delivery", name)
+		// Every step's beat, and whatever else the walk recorded: bob's own
+		// legs pace the world clock now (rpg-project#538), so the long walk
+		// also ticks it. The claim is that nothing the verb recorded was
+		// lost to retention — every step is here, and the stream is dense.
+		s.Require().Len(eventsOfKind(s.stream.published, name, session.EventMoved), steps,
+			"%s is delivered every step of the big verb — retention govern storage, not delivery", name)
 		whole := append(append([]session.Event{}, warmup[name]...), events...)
 		s.assertDense(whole, name)
 	}
 
-	// The mover's own output speaks their numbering for every step, densely.
-	for i := 1; i < len(out.Steps); i++ {
-		s.Equal(out.Steps[i-1].Seq+1, out.Steps[i].Seq)
+	// The mover's own output speaks their numbering for every step, in
+	// order. Not +1 apart: the world-clock ticks bob's own pace records sit
+	// between some steps, and the stream that holds both is the dense one
+	// asserted above.
+	bobs := eventsFor(s.stream.published, "bob")
+	seqs := make(map[uint64]bool, len(bobs))
+	for _, e := range bobs {
+		seqs[e.Seq] = true
+	}
+	for i := range out.Steps {
+		s.True(seqs[out.Steps[i].Seq], "step %d's number is one bob was delivered", i)
+		if i > 0 {
+			s.Less(out.Steps[i-1].Seq, out.Steps[i].Seq)
+		}
 	}
 
 	// Storage kept only the window — retention did its one job, at the one
@@ -1305,7 +1360,7 @@ func (s *ConcealSuite) TestOneVerbBiggerThanTheRetentionWindowCommitsWhole() {
 		Session: "sess", Member: "bob", Path: []spatial.Position{cell(2, 1)}})
 	s.Require().NoError(err)
 	next := eventsFor(live.published, "bob")
-	s.Require().Len(next, 1)
+	s.Require().NotEmpty(next)
 	s.Equal(bob[len(bob)-1].Seq+1, next[0].Seq,
 		"the numbering neither restarted nor skipped across the in-verb trim and the reload")
 }
@@ -1388,7 +1443,7 @@ func aLeafOn(cell spatial.Position) *spatial.FootprintPlacement {
 // the seam must answer "yes" about and one it must answer "no" about, through
 // the same sight instrument, with no second sight model anywhere.
 func hiddenLeafWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing:      encEveryoneStanding{},
@@ -1396,6 +1451,7 @@ func hiddenLeafWorld(t fataler) *encounter.EncounterData {
 		Witness:       encNeverWitnesses{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 6, 6)},
+			Walls:   carolsCurtain(),
 			Concealments: []encounter.ConcealmentInput{{
 				ID:     leafSecret,
 				Checks: vaultFind(),
@@ -1409,7 +1465,7 @@ func hiddenLeafWorld(t fataler) *encounter.EncounterData {
 		},
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Position: cell(1, 1)},
-			{ID: "carol", Kind: encounter.KindPlayer, Position: cell(0, 5), SightFeet: 5},
+			{ID: "carol", Kind: encounter.KindPlayer, Position: cell(0, 5)},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "out", Trigger: encounter.TriggerExternal{}},
@@ -1532,7 +1588,7 @@ func (s *ConcealSuite) TestTheTwoDoorGeometriesArePerceivedByTheSameMembers() {
 // as a rectangle standing on it. Everything else, members included, is
 // identical by construction rather than by inspection.
 func hiddenEdgeWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing:      encEveryoneStanding{},
@@ -1540,6 +1596,7 @@ func hiddenEdgeWorld(t fataler) *encounter.EncounterData {
 		Witness:       encNeverWitnesses{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 6, 6)},
+			Walls:   carolsCurtain(),
 			Concealments: []encounter.ConcealmentInput{{
 				ID:     leafSecret,
 				Checks: vaultFind(),
@@ -1553,7 +1610,7 @@ func hiddenEdgeWorld(t fataler) *encounter.EncounterData {
 		},
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Position: cell(1, 1)},
-			{ID: "carol", Kind: encounter.KindPlayer, Position: cell(0, 5), SightFeet: 5},
+			{ID: "carol", Kind: encounter.KindPlayer, Position: cell(0, 5)},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "out", Trigger: encounter.TriggerExternal{}},
@@ -1587,7 +1644,7 @@ func nicheCells() []spatial.Position {
 // is why the reveal beat has to carry the room back WHOLE rather than carry
 // the cells and leave the entry a trim of the truth.
 func partlySecretWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing:      encEveryoneStanding{},

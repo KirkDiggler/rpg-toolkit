@@ -92,7 +92,8 @@
 // # Time on the world clock (rpg-project#465)
 //
 // The world clock advances ONLY BECAUSE SOMEBODY ACTS. A walk pays one round
-// per PACE — every CellsFromFeet(SpeedFeet) cells, the remainder carried on
+// per PACE — every CellsFromFeet(SpeedFeet) cells of the speed the walker's
+// sheet answers through Sheets at that step, the remainder carried on
 // the member and persisted. Every verb the turn clock would price as an action
 // pays one round for its actor, after its outcome has landed: Intimidate,
 // Persuade, Search, Unlock, Interact, Loot, RecordCast, RecordActivation. A
@@ -239,7 +240,8 @@
 // pierces by). Nothing stores a stance: it is derived on every question and
 // every load from the declaration plus the facts. StanceBetween is the one
 // authoritative member-pair read — IsHostile and IsAllied are its two halves —
-// and a member in no faction has no stance there, never a neutral one.
+// and a member in no faction answers StanceNone there, never a neutral one; a
+// pair naming a non-member is refused (ErrNotMember).
 //
 // # A pair turns BOTH WAYS, and one law nobody authors (rpg-project#493)
 //

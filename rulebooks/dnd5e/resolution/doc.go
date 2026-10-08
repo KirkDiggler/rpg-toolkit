@@ -170,8 +170,11 @@
 // the last one held elsewhere: slice 1 handed resolution's bus to
 // combat.ResolveDamage, because every exported attack and damage entry point
 // in that package required one and the multiplier arithmetic was unexported.
-// Slice 2 exported that arithmetic bus-free ([combat.FinalDamage]) and moved
-// the fold here, so custody matched where the bus lives. The grep-able
+// Slice 2 exported that arithmetic bus-free and moved the fold here, so
+// custody matched where the bus lives. The target step ([receiveDamage]) now
+// holds both damage folds — the source's dealt fold and the target's incoming
+// fold — and hands what they settled on to combat's bus-free settlement
+// ([combat.SettleDamage]). The grep-able
 // worklist that tracked it — every call site marked "divestment debt — #965
 // slice 2" — is empty.
 //
@@ -180,7 +183,7 @@
 // unaided character check may be expressible — nobody can prove no condition
 // applies — so #1382 made the bus REQUIRED in [saves.MakeSavingThrow] and
 // [checks.MakeAbilityCheck] and removed the bus-free arithmetic a
-// FinalDamage-style divestment would need. Custody of those two folds
+// settlement-style divestment would need. Custody of those two folds
 // therefore follows the ruling: the rules entries fold, exactly once, and
 // this package is their one lawful bus supplier — the save machine's Gather
 // and [MakeCheck] hand over the interaction's own bus and take the result.

@@ -27,7 +27,7 @@ const (
 	//
 	// Carries no content of its own — no ref, no capabilities, no policy.
 	// Placed with exactly the same bare facts any member is (ID, Name,
-	// Position, SpeedFeet, SightFeet, Actions, Targeting); the actual NPC
+	// Position); the actual NPC
 	// content a KindWorld member was spawned from lives at the session
 	// layer, keyed by member ID, exactly parallel to how a monster's sheet
 	// never crosses into this package either.
@@ -91,8 +91,10 @@ const (
 	// is in no faction, which a world NPC is (rpg-project#520, R5). It is a
 	// KNOWN answer, never "unknown" and never neutral, and it is never
 	// authorable — a disposition or a stance trigger naming it is refused,
-	// because it describes a member, not a posture between two sides. Only
-	// [ObservedContextPair.Stance] reports it.
+	// because it describes a member, not a posture between two sides.
+	// [Encounter.StanceBetween], [Encounter.BelievedStance] and
+	// [ObservedContextPair.Stance] report it; it is the one encoding of no
+	// side.
 	StanceNone Stance = "none"
 )
 
@@ -163,7 +165,7 @@ type DispositionInput struct {
 // anything. What an intensity MEANS for sight — bright, dim, dark, darkvision
 // — is a rule, and rules live in the rulebook: this composition stores the
 // number, reports it on the [Atlas], and never branches on it, exactly as it
-// carries a monster's Targeting word or a prop's Ref. It lands on the REGION
+// carries a prop's Ref. It lands on the REGION
 // rather than the canvas because light is a fact about an area, not about the
 // space between areas (closes rpg-toolkit#1113 by relocation).
 type Lighting struct {
@@ -864,45 +866,10 @@ type MemberInput struct {
 	// (ErrBadPlacement otherwise).
 	Position spatial.Position
 
-	// SpeedFeet is how far this member can move on their own turn, in FEET
-	// (Kirk, rpg-project#254 review) — a character's walking speed, or a
-	// monster's SpeedData.Walk. Filled for every kind, the same MEMBER fact
-	// [Name] already is, not a monster-only field: a future driver for a
-	// disconnected player shares this exact seam. Zero is legal and means
-	// this member never moves on its own turn — true of every player today,
-	// whose movement is driven by [Encounter.Step] under a live hand, not by
-	// a [TurnDriver]'s Move intent.
-	SpeedFeet int
-
-	// SightFeet is how far this member can see, in FEET, before light and
-	// line-of-sight are applied — 120 for a character (this rulebook's
-	// stated default absent a stated number) or a monster's
-	// SensesData.Darkvision when the stat block sets one. A STATIC base
-	// fact, filled once at Join/Spawn — [Sight] still runs the full
-	// light-and-LOS-aware answer at every percept refresh; this is what a
-	// [Sight] implementation reads instead of reloading the sheet or stat
-	// block on every single refresh, the same static/dynamic split
-	// [Sight]'s own doc draws between "what changed" and "what this
-	// composition was told."
-	SightFeet int
-
-	// Actions are this member's own static facts about what it can do on
-	// its turn: a character's equipped weapon's swing (and the unarmed
-	// strike when no weapon is equipped), or a monster's authored action
-	// definitions. Static join-time facts, the same species as
-	// Name (rpg-toolkit#1137) — this module cannot import the rulebook
-	// (C1), so every field on [ActionView] is carried and never
-	// interpreted, exactly as [Member.Name] already is.
-	Actions []ActionView
-
-	// Targeting is a monster's target-selection strategy, in the
-	// rulebook's own words — "closest", "lowest-health", "lowest-ac" — and
-	// the only field on this member fact that is NOT filled for every
-	// kind: empty for a player, who is never asked to choose a target
-	// autonomously (today; a future disconnected-player driver would read
-	// this the same way a monster's does). Opaque here (C1): this
-	// composition carries the string and never branches on it.
-	Targeting string
+	// Speed, sight, actions and targeting are NOT here (rpg-project#538).
+	// They are the member's sheet's, asked at the moment they are used —
+	// speed, actions and targeting through [Sheets], sight through [Sight] —
+	// and this composition holds no copy to go stale.
 
 	// Intimidate is the authored check a character must beat to frighten
 	// this member ([dungeonspec.PlaceSpec.Intimidate], rpg-project#454) —
@@ -952,8 +919,7 @@ type MemberInput struct {
 	Temper Temper
 
 	// BlocksMovement says whether this member refuses a later arrival on
-	// its cell (rpg-toolkit#1434) — a bare fact, the same species as
-	// SpeedFeet and SightFeet: this composition carries it and never asks
+	// its cell (rpg-toolkit#1434) — a bare fact: this composition carries it and never asks
 	// what kind of member set it or why. False (the zero value) is legal
 	// and means what it always has for a player or monster: no member kind
 	// blocked movement before this field existed, and none does now unless
@@ -1009,8 +975,8 @@ type MemberInput struct {
 	// from every projection for every member — [Encounter.Members],
 	// [Encounter.AtlasFor], [Encounter.Story], [Encounter.ClockOf] all answer
 	// as though it were never authored (the never-authored yardstick). Its
-	// facts — Name, Speed, Sight, Actions, Targeting, BlocksMovement, Faction,
-	// Holds — are kept for the day it arrives, and Position is where
+	// facts — Name, BlocksMovement, Faction, Holds and its policy — are kept
+	// for the day it arrives, and Position is where
 	// it arrives: it must be standable, refused otherwise (ErrBadPlacement),
 	// exactly as a seat is.
 	//
@@ -1058,14 +1024,6 @@ type ActionView struct {
 	Kind string
 }
 
-// validateMemberFacts rejects a negative SpeedFeet, SightFeet, or any
-// action's RangeFeet — the three feet-denominated member facts
-// [CellsFromFeet] divides by [FeetPerCell] (Copilot, PR #1187 review). A
-// negative one is not a shorter distance; it is a caller defect that would
-// otherwise produce a nonsense movement budget or reach the moment a
-// monster's turn asks [MonsterView.Budget] or [SeenMember.InReach] for one.
-// Callers ask this BEFORE any mutation — see [Encounter.Join]'s own call for
-// why that ordering matters there specifically.
 // memberFacts is the static half of a member, in the one shape every door
 // validates it through: Setup's roster, Join's arrival and a persisted
 // reserve entry all carry the same facts and must refuse the same defects.
@@ -1075,27 +1033,17 @@ type ActionView struct {
 // from being silently swapped, and the swap would compile.
 type memberFacts struct {
 	ID         MemberID
-	SpeedFeet  int
-	SightFeet  int
-	Actions    []ActionView
 	Intimidate []CheckApproach
 	Persuade   []CheckApproach
 	Table      Table
 }
 
+// validateMemberFacts refuses a defective authored check or table. Callers ask
+// it BEFORE any mutation — see [Encounter.Join]'s own call for why that
+// ordering matters there specifically. The feet-denominated facts it once
+// refused here (Copilot, PR #1187) are the sheet's now and refused where they
+// are asked ([Encounter.sheetsNow]).
 func validateMemberFacts(in memberFacts) error {
-	if in.SpeedFeet < 0 {
-		return fmt.Errorf("member %s: speed %d feet is negative: %w", in.ID, in.SpeedFeet, ErrNoMember)
-	}
-	if in.SightFeet < 0 {
-		return fmt.Errorf("member %s: sight %d feet is negative: %w", in.ID, in.SightFeet, ErrNoMember)
-	}
-	for _, a := range in.Actions {
-		if a.RangeFeet < 0 {
-			return fmt.Errorf("member %s: action %q range %d feet is negative: %w",
-				in.ID, a.Ref, a.RangeFeet, ErrNoMember)
-		}
-	}
 	// An authored route with nothing to beat is the same defect a lock's is
 	// (validateCheck), asked of a member. AN EMPTY LIST IS NOT A DEFECT
 	// HERE, and that is the difference: a lock that lists no way through
@@ -1336,6 +1284,14 @@ type SetupInput struct {
 	// requires it to answer Conditions too (rpg-toolkit#1958).
 	Equipment EquipmentWithConditions
 
+	// Sheets reports each member's speed, actions and targeting
+	// (rpg-project#538). REQUIRED: a fight can form at first light and drive
+	// an unplayed member, whose movement budget and reach are read from this
+	// answer at that moment, and a walk on the world clock is paced from it.
+	// Refused at construction (ErrNoSheets), never defaulted. This
+	// composition stores none of these facts; see [Sheets].
+	Sheets Sheets
+
 	// TurnDriver decides what a member with no player does when it is given
 	// time — its turn in a fight, or a round of the world (rpg-toolkit#1162,
 	// rpg-project#465). REQUIRED: a fight can form at first light with an
@@ -1492,21 +1448,10 @@ type Member struct {
 	// whose cells hold this one.
 	Position spatial.Position
 
-	// SpeedFeet, SightFeet, Actions and Targeting are this member's static
-	// facts, carried forward verbatim from [MemberInput]/[JoinInput] — see
-	// those fields' own docs. Read by a [TurnDriver] through [MonsterView],
-	// which projects the same record plus the turn's own dynamic parts
-	// (Seen, Budget).
-	SpeedFeet int
-	SightFeet int
-	Actions   []ActionView
-	Targeting string
-
 	// Intimidate, Persuade, Table and Temper carry forward
 	// [MemberInput.Intimidate]/[MemberInput.Persuade]/[MemberInput.Table]/
 	// [MemberInput.Temper] verbatim — see those fields' own docs. This is
-	// where the session reads the authored checks before it rolls one,
-	// exactly as it reads Actions. Table and Temper are read by nobody
+	// where the session reads the authored checks before it rolls one. Table and Temper are read by nobody
 	// outside this composition; they are on the roster row so a host can show
 	// an author what a placement carries, and so a client can say which
 	// goblin came out the coward.
@@ -1536,22 +1481,14 @@ type Member struct {
 // and the copy this record used to carry had to be mutated by hand on every
 // crossing.
 //
-// SpeedFeet, SightFeet, Actions and Targeting joined Name here for the same
-// reason Name did (rpg-toolkit#1137): static join-time facts, the same
-// species whether the member is a player or a monster (Kirk, rpg-project#254
-// review — "MemberInput/memberRecord carries MEMBER facts, filled for every
-// kind"), round-tripped through ToData/LoadEncounter as encounter-owned
-// primitives (core.Ref, string, int) rather than imported rulebook types
-// (C1). No parallel monster-only struct: Targeting is the only field of the
-// four that is not filled for a player, and it is simply empty for one.
+// Not speed, sight, actions or targeting either, as of rpg-project#538: those
+// are the member's sheet's, asked at use through [Sheets] and [Sight]. They
+// sat here from rpg-project#254 until then as copies taken at Join that no
+// verb refreshed.
 type memberRecord struct {
 	ID             MemberID
 	Kind           MemberKind
 	Name           string
-	SpeedFeet      int
-	SightFeet      int
-	Actions        []ActionView
-	Targeting      string
 	Intimidate     []CheckApproach
 	Persuade       []CheckApproach
 	Table          Table
@@ -1764,16 +1701,8 @@ type JoinInput struct {
 	// make sense of.
 	Cell spatial.Position
 
-	// SpeedFeet, SightFeet, Actions and Targeting are this member's static
-	// facts — see [MemberInput]'s own fields of the same name for the full
-	// doc. A joiner arriving mid-scene carries them exactly as an authored
-	// one does; the caller who loaded the sheet or spawned the monster
-	// already knows them (rpg-toolkit#1101's own argument for Name, one
-	// field further).
-	SpeedFeet int
-	SightFeet int
-	Actions   []ActionView
-	Targeting string
+	// Speed, sight, actions and targeting are not carried in: they are the
+	// joiner's sheet's, asked at use (rpg-project#538, [Sheets]).
 
 	// Intimidate, Persuade, Table and Temper are this joiner's own facts,
 	// [MemberInput.Intimidate], [MemberInput.Persuade], [MemberInput.Table]

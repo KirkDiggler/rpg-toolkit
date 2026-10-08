@@ -52,6 +52,16 @@ var (
 	// (rpg-toolkit#1615).
 	ErrNoEquipment = errors.New("resolution: no equipment capability")
 
+	// ErrNoSheets indicates an interaction given no way to find out each
+	// member's speed, attacks and targeting. Carried rather than computed for
+	// [ErrNoSight]'s reason: the composition asks it only while pacing,
+	// budgeting a turn, building a driver's view or testing reach, and nothing
+	// on this package's load-act-save path reaches those. Refused rather than
+	// defaulted because the composition no longer holds a copy of any of them
+	// (rpg-project#538): a speed answered here would be invented, and zero is
+	// a real speed, not an absent one.
+	ErrNoSheets = errors.New("resolution: no sheets capability")
+
 	// ErrNoTurnDriver indicates an interaction given no way to decide what an
 	// unplayed member does when a fight's clock lands on their turn. The
 	// composition requires one to load at all, the same way it requires an
@@ -118,7 +128,12 @@ var (
 	// silently published as nothing.
 	ErrBadBoundary = errors.New("resolution: invalid boundary set")
 
-	// ErrOutOfRange indicates a valid attack whose target lies beyond its delivery.
+	// ErrOutOfRange indicates a valid action whose target lies beyond what it
+	// reaches: an attack's delivery, a cast's or a heal's range, or a known
+	// creature the caster cannot aim at — no believed point within range on a
+	// clear line, or a target displaced from it under [StaleTargetRefuse]. One
+	// sentinel for every such refusal; which word the host shows for which
+	// verb is the host's.
 	ErrOutOfRange = errors.New("resolution: target is out of range")
 
 	// ErrBadAttack indicates an attack cannot be resolved from its shared
@@ -198,4 +213,12 @@ var (
 	// the end of each of your turns" as a single save would produce a
 	// paralysis nobody ever shakes off, and it would look like it worked.
 	ErrRecurrenceUnsupported = errors.New("resolution: save gate recurrence not supported yet")
+
+	// ErrWardUnreadable indicates a Sanctuary ward that carries no save DC —
+	// one stored before wards kept the DC they were cast with. The strike or
+	// cast it would have warded is refused rather than let through, because
+	// the only number left to roll against is zero: an automatic success that
+	// would turn an old record into no ward at all. A ward never looks up its
+	// caster, so a caster who has left the interaction is not this error.
+	ErrWardUnreadable = errors.New("resolution: sanctuary ward's save DC cannot be read")
 )

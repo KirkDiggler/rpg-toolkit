@@ -11,18 +11,25 @@ var (
 	// Indicates a caller defect.
 	ErrNilInput = errors.New("nil input")
 
-	// ErrNoMember is returned when an input contains an empty or
-	// duplicate member ID (Setup, Join, and Load — Load's identical
-	// checks used to carry only ErrInvalidData, #929 hardening round F),
-	// a member is declared a player while carrying a Decider — design
+	// ErrNoMember is returned when an input contains an empty member ID. A
+	// non-empty id naming nobody here is [ErrNotMember], at every door.
+	//
+	// The construction and load checks also carry it for a roster that does
+	// not cohere: a duplicate member ID (Setup, Join, and Load — Load's
+	// identical checks used to carry only ErrInvalidData, #929 hardening
+	// round F), a member declared a player while carrying a Decider — design
 	// law C2 — at any of the three seams that accept one (NewEncounter,
-	// LoadEncounter, Join), Join names a member ID already in the
-	// encounter, Exit is called with an empty member ID, Story's
-	// audience never joined, or — Load-only, since these are persisted-
-	// state coherence checks with no Setup analogue — a persisted
-	// abandoned outcome with non-empty membership (abandonment means the
-	// membership emptied) or a current member missing from EverMembers
-	// (#929 hardening round F).
+	// LoadEncounter, Join), Join naming a member ID already in the
+	// encounter, or — Load-only, since these are persisted-state coherence
+	// checks with no Setup analogue — a persisted abandoned outcome with
+	// non-empty membership (abandonment means the membership emptied) or a
+	// current member missing from EverMembers (#929 hardening round F).
+	//
+	// Two runtime refusals keep it on a non-empty id, for the same
+	// roster-coherence reason: Transfer of a world NPC into a fight (the
+	// member exists and holds no seat there), and a reserve arrival whose
+	// kind has no reserve or whose predicate cannot hold (validateArrival,
+	// asked at Setup, Join and Load). An unknown id is never one of them.
 	ErrNoMember = errors.New("empty member id")
 
 	// ErrNotMember is returned when an entity is not a member of this encounter.
@@ -147,8 +154,12 @@ var (
 	// declared (0,0).
 	ErrBadPlacement = errors.New("bad placement")
 
-	// ErrBadReach is returned when [Encounter.MembersWithin] is handed a
-	// negative reach.
+	// ErrBadReach is returned for a negative reach or range at every door
+	// that takes one: [Encounter.MembersWithin], [Encounter.Route] (a
+	// negative budget), [Encounter.Hold], [Encounter.Loot],
+	// [Encounter.Interact] and [Encounter.BelievedAim]. It also refuses a
+	// direction that has none: [Encounter.MembersCovered] aimed at its own
+	// anchor, and a Route line whose anchor stands on the mover.
 	//
 	// REFUSED RATHER THAN ANSWERED EMPTY, though answering empty would be
 	// arithmetically honest: no distance is less than a negative number, so a
@@ -338,6 +349,14 @@ var (
 	// see [ConditionSet].
 	ErrNoConditions = errors.New("encounter: no conditions capability")
 
+	// ErrNoSheets indicates this module was not told, usably, how a member
+	// moves and what it can attack with. Two ways to earn it: Setup or Load was
+	// given no [Sheets] capability; or the capability answered without covering
+	// a member it was asked about. Both are the same defect seen from different
+	// sides — a speed and a reach this module would have to invent, which
+	// rpg-toolkit#1033 forbids it to do.
+	ErrNoSheets = errors.New("encounter: no sheets capability")
+
 	// ErrNoCheckResolver indicates Setup or Load was given a field carrying
 	// concealed structure and no CheckResolver capability. A concealed door
 	// exists to be searched for, and this module refuses to roll the find
@@ -462,6 +481,13 @@ var (
 	// answer nobody observed. A host that places members supplies its own
 	// Standing.
 	ErrRefusingParticipation = errors.New("encounter: compile-only Participation: asked about members of a world being compiled, not played")
+
+	// ErrRefusingSheets is what the [Sheets] [CompileOnlySetup] and
+	// [CompileOnlyLoad] install returns when asked about any member: a world
+	// compiled or loaded only to be inspected has no sheets behind its members,
+	// and a speed or a reach would be an answer nobody read off a sheet. A host
+	// that paces, budgets or drives a member supplies its own Sheets.
+	ErrRefusingSheets = errors.New("encounter: compile-only Sheets: asked about members of a world being compiled, not played")
 
 	// ErrRefusingDriver is what [RefusingDriver.Act] always returns: a turn
 	// was driven on a world [CompileOnlyLoad] loaded only to be inspected. A

@@ -12,6 +12,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/weaponattack"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
@@ -41,7 +42,7 @@ func (s *MartialArtsTestSuite) SetupTest() {
 
 // TestApplyAndRemove verifies basic apply/remove functionality
 func (s *MartialArtsTestSuite) TestApplyAndRemove() {
-	condition := NewMartialArtsCondition(MartialArtsInput{MemberID: "monk-1", MonkLevel: 1})
+	condition := NewMartialArtsCondition(MartialArtsInput{MemberID: "monk-1"})
 	s.False(condition.IsApplied())
 
 	s.Require().NoError(condition.Apply(s.ctx, s.bus))
@@ -53,28 +54,55 @@ func (s *MartialArtsTestSuite) TestApplyAndRemove() {
 	s.NoError(condition.Remove(s.ctx, s.bus), "removing twice is a no-op")
 }
 
+// offer asks the condition for its override for the swing, handing it the
+// level record the sheet would.
+func (s *MartialArtsTestSuite) offer(
+	condition *MartialArtsCondition, slot, itemID string, levels classes.LevelHolder,
+) *weaponattack.Override {
+	out, err := condition.WeaponAttackOverride(&weaponattack.OverrideInput{Slot: slot, ItemID: itemID, Levels: levels})
+	s.Require().NoError(err)
+	return out.Override
+}
+
+// The die is read from the level record handed in at each swing: the same
+// condition answers a different die when the sheet's monk level changes, with
+// nothing written to it.
 func (s *MartialArtsTestSuite) TestOverrideDieScalesWithMonkLevel() {
+	condition := NewMartialArtsCondition(MartialArtsInput{MemberID: "monk-1"})
 	for level, die := range map[int]string{1: "1d4", 4: "1d4", 5: "1d6", 11: "1d8", 17: "1d10", 20: "1d10"} {
-		condition := NewMartialArtsCondition(MartialArtsInput{MemberID: "monk-1", MonkLevel: level})
 		s.Equal(&weaponattack.Override{Dice: die, Ability: abilities.DEX},
-			condition.WeaponAttackOverride("main_hand", ""), "level %d", level)
+			s.offer(condition, "main_hand", "", monkLevels(level)), "level %d", level)
+	}
+}
+
+// An unarmed strike from a holder with no monk levels, or with no level record
+// handed in, cannot answer its die and fails the assembly.
+func (s *MartialArtsTestSuite) TestOverrideRefusesWithoutMonkLevels() {
+	condition := NewMartialArtsCondition(MartialArtsInput{MemberID: "monk-1"})
+	for name, levels := range map[string]classes.LevelHolder{
+		"no monk levels":  fakeLevels{classes.Fighter: 5},
+		"no level record": nil,
+	} {
+		_, err := condition.WeaponAttackOverride(&weaponattack.OverrideInput{Slot: "main_hand", Levels: levels})
+		s.Error(err, name)
 	}
 }
 
 func (s *MartialArtsTestSuite) TestOverrideByWeapon() {
-	condition := NewMartialArtsCondition(MartialArtsInput{MemberID: "monk-1", MonkLevel: 1})
+	condition := NewMartialArtsCondition(MartialArtsInput{MemberID: "monk-1"})
 	unarmed := &weaponattack.Override{Dice: "1d4", Ability: abilities.DEX}
+	levels := monkLevels(1)
 
-	s.Equal(unarmed, condition.WeaponAttackOverride("main_hand", ""), "an empty hand strikes unarmed")
-	s.Equal(unarmed, condition.WeaponAttackOverride("", ""), "the bonus unarmed strike names no hand")
-	s.Equal(unarmed, condition.WeaponAttackOverride("main_hand", string(weapons.UnarmedStrike)))
+	s.Equal(unarmed, s.offer(condition, "main_hand", "", levels), "an empty hand strikes unarmed")
+	s.Equal(unarmed, s.offer(condition, "", "", levels), "the bonus unarmed strike names no hand")
+	s.Equal(unarmed, s.offer(condition, "main_hand", string(weapons.UnarmedStrike), levels))
 	for _, monkWeapon := range []weapons.WeaponID{weapons.Quarterstaff, weapons.Club, weapons.Shortsword} {
 		s.Equal(&weaponattack.Override{Ability: abilities.DEX},
-			condition.WeaponAttackOverride("main_hand", string(monkWeapon)),
+			s.offer(condition, "main_hand", string(monkWeapon), levels),
 			"%s keeps its own die and may use Dexterity", monkWeapon)
 	}
 	for _, other := range []string{string(weapons.Greataxe), string(weapons.Longbow), "not-a-weapon"} {
-		s.Nil(condition.WeaponAttackOverride("main_hand", other), other)
+		s.Nil(s.offer(condition, "main_hand", other, levels), other)
 	}
 }
 
@@ -99,9 +127,9 @@ func (s *MartialArtsTestSuite) TestMonkWeaponDetection() {
 // hit rolls its damage die exactly once — needs the strike machine and lives
 // in resolution (rpg-toolkit#1939, TestMonkUnarmedHitRollsItsDamageDieOnce).
 func (s *MartialArtsTestSuite) TestMartialArtsFoldLeavesTheRolledDieAlone() {
-	condition := NewMartialArtsCondition(MartialArtsInput{MemberID: "monk-1", MonkLevel: 1})
+	condition := NewMartialArtsCondition(MartialArtsInput{MemberID: "monk-1"})
 	s.Require().NoError(condition.Apply(s.ctx, s.bus))
-	override := condition.WeaponAttackOverride("main_hand", "")
+	override := s.offer(condition, "main_hand", "", monkLevels(1))
 
 	event := swungDamage(&dnd5eEvents.DamageChainEvent{
 		AttackerID: "monk-1", TargetID: "goblin",
@@ -139,7 +167,7 @@ func (s *MartialArtsTestSuite) TestMartialArtsFoldLeavesTheRolledDieAlone() {
 
 // TestSerialization tests JSON serialization round-trip
 func (s *MartialArtsTestSuite) TestSerialization() {
-	original := NewMartialArtsCondition(MartialArtsInput{MemberID: "monk-1", MonkLevel: 5})
+	original := NewMartialArtsCondition(MartialArtsInput{MemberID: "monk-1"})
 
 	jsonData, err := original.ToJSON()
 	s.Require().NoError(err)
@@ -148,10 +176,9 @@ func (s *MartialArtsTestSuite) TestSerialization() {
 	s.Require().NoError(json.Unmarshal(jsonData, &data))
 	s.Equal(refs.Conditions.MartialArts(), data.Ref)
 	s.Equal("monk-1", data.MemberID)
-	s.Equal(5, data.MonkLevel)
+	s.NotContains(string(jsonData), "level", "the monk level is the sheet's, never stored")
 
 	loaded := &MartialArtsCondition{}
 	s.Require().NoError(loaded.loadJSON(jsonData))
 	s.Equal(original.MemberID, loaded.MemberID)
-	s.Equal(original.MonkLevel, loaded.MonkLevel)
 }

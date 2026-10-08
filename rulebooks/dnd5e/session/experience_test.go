@@ -103,7 +103,7 @@ func xpCryptWith(t fataler, extra ...string) *encounter.EncounterData {
 func denWith(
 	t fataler, members []encounter.MemberInput, props []encounter.PropInput, endings []encounter.EndingInput,
 ) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
 		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{},
 		Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
@@ -469,6 +469,45 @@ func (s *ExperienceTestSuite) TestTwoFallsInOneActAreTwoBeats() {
 		"and the second beat carries the running total, not a second first payment")
 }
 
+// TestTwoFallsArePaidInTheOrderTheyFell reads the grant order against the
+// fall order the story told, from the settlement facts (rpg-project#539).
+//
+// The ids are chosen so that the roster's own order (zeta spawned first) and
+// the fall order disagree whenever the composition notices alpha first, and
+// so that a grant ordered by anything but the fall's sequence has a way to be
+// wrong: whatever order the falls were told in is the order the party is paid.
+func (s *ExperienceTestSuite) TestTwoFallsArePaidInTheOrderTheyFell() {
+	s.startCrypt()
+	s.spawnGoblin("zeta", spatial.Position{X: 2, Y: 1})
+	s.spawnGoblin("alpha", spatial.Position{X: 3, Y: 1})
+	s.dropTo("zeta", 0)
+	s.dropTo("alpha", 0)
+
+	s.bobSteps()
+
+	firsts := func(kind session.EventKind, member func(session.Event) string) []string {
+		var order []string
+		seen := map[string]bool{}
+		for _, event := range s.stream.published {
+			if event.Kind != kind {
+				continue
+			}
+			id := member(event)
+			if !seen[id] {
+				seen[id] = true
+				order = append(order, id)
+			}
+		}
+		return order
+	}
+	fell := firsts(session.EventDowned, func(e session.Event) string { return e.Body.(session.DownedBody).Member })
+	paid := firsts(session.EventExperienceGained, func(e session.Event) string {
+		return e.Body.(session.ExperienceGainedBody).Member
+	})
+	s.Require().ElementsMatch([]string{"zeta", "alpha"}, fell, "both goblins fell in this act")
+	s.Equal(fell, paid, "the party is paid in the order the goblins fell")
+}
+
 // TestTheFallSettlesExactlyOnce is the idempotence the baseline buys.
 //
 // The act's delta is bounded by the scope's baseline and the composition
@@ -574,18 +613,17 @@ var errSettlementSave = errors.New("the settlement's character save was refused"
 //
 // settleOneFall refuses a fallen monster whose sheet is not in the session
 // record (ErrInvalidSession). Nothing in this module can produce that state:
-// standing.go answers "no sheet, no death" — a KindMonster with no entry in
-// SessionData.NPCs is in neither provider list and takes the Conscious
-// compatibility fact — so a sheetless monster never goes down at all, and
-// SessionData.NPCs is only ever appended to (Spawn) or rewritten in place
-// (saveDirty), never shortened. The guard is therefore fail-closed defence
-// against a hand-edited record, not a live path.
+// the world asks every member's sheet how far it sees and how fast it walks
+// at the verb's first look (rpg-project#538), and a monster whose stat block
+// the session does not hold is refused there, by name (ErrNoSheet) — so a
+// sheetless monster is never seen to fall at all, and SessionData.NPCs is only
+// ever appended to (Spawn) or rewritten in place (saveDirty), never shortened.
+// The guard is therefore fail-closed defence against a hand-edited record,
+// not a live path.
 //
 // What IS worth pinning is the behavior above it, because it is what makes the
-// guard unreachable: strip the sheet and the monster stops being able to fall,
-// so the party is never paid and nothing is recorded. A change that let a
-// sheetless monster fall would land in the settlement's refusal instead of
-// here, and this scene is what would notice.
+// guard unreachable: strip the sheet and the verb stops before any fall is
+// noticed, so the party is never paid and nothing is recorded.
 func (s *ExperienceTestSuite) TestAMonsterWithNoStoredSheetNeverFalls() {
 	s.startCrypt()
 	s.spawnGoblin("goblin", spatial.Position{X: 2, Y: 1})
@@ -600,7 +638,10 @@ func (s *ExperienceTestSuite) TestAMonsterWithNoStoredSheetNeverFalls() {
 	}
 	data.NPCs = kept
 
-	s.bobSteps()
+	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
+		Session: "sess", Member: "bob", Path: []spatial.Position{hexCell(8, 7)},
+	})
+	s.Require().ErrorIs(err, session.ErrNoSheet, "a monster the session holds no stat block for is refused, not walked past")
 
 	for _, event := range s.stream.published {
 		s.NotEqual(session.EventDowned, event.Kind, "a sheetless monster cannot be seen to fall")
@@ -613,10 +654,19 @@ func (s *ExperienceTestSuite) TestAMonsterWithNoStoredSheetNeverFalls() {
 // TestAPayeeTheStoreDoesNotHoldFailsTheVerb pins the second of the three
 // returns the settlement's safety argument runs through.
 //
-// Carol is a KindPlayer on the encounter's roster and the character store does
-// not hold her. That is a real inconsistency, not an ordinary absence, and the
-// settlement returns rather than skipping her: a party quietly paid short is
-// exactly the silent wrong this fails closed against.
+// Carol is a KindPlayer on the encounter's roster and, by the time the
+// settlement reaches her, the character store does not hold her. That is a
+// real inconsistency, not an ordinary absence, and the settlement returns
+// rather than skipping her: a party quietly paid short is exactly the silent
+// wrong this fails closed against.
+//
+// SHE VANISHES MID-VERB, AND HAS TO. Every sight refresh asks each member's
+// sheet how far it sees (rpg-project#538), so a roster player the store never
+// held is refused at the verb's first look, before anything is paid — that
+// earlier refusal is pinned by [ExperienceTestSuite.TestAPayeeMissingBeforeTheVerbIsRefusedBeforeAnythingIsPaid].
+// To reach THIS return the store loses her between the sheets the settlement
+// pays: after bob's share is saved, which is the moment the settlement turns
+// to her.
 //
 // SHE IS NEITHER IN THE FIGHT NOR WALKING, and that is the fixture's whole
 // point. A missing player who is in the dissolving fight is caught one
@@ -637,15 +687,21 @@ func (s *ExperienceTestSuite) TestAPayeeTheStoreDoesNotHoldFailsTheVerb() {
 
 	s.spawnGoblin("goblin", spatial.Position{X: 2, Y: 1})
 	s.dropTo("goblin", 0)
-	delete(s.characters.byID, "carol")
 
 	before, err := s.encounters.GetEncounter(context.Background(), "world")
+	s.Require().NoError(err)
+
+	forgetful := &forgetsAfterSaving{fakeCharacters: s.characters, saved: "bob", forget: "carol"}
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
+		Characters: forgetful, Events: s.stream,
+	})
 	s.Require().NoError(err)
 
 	// The verb's own error keeps its own name. Reusing err for the reads below
 	// would quietly replace it with a nil, and every assertion after that point
 	// would be asking questions of the wrong error.
-	_, verbErr := s.mgr.Move(context.Background(), &session.MoveInput{
+	_, verbErr := mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "bob", Path: []spatial.Position{hexCell(8, 7)},
 	})
 
@@ -667,6 +723,55 @@ func (s *ExperienceTestSuite) TestAPayeeTheStoreDoesNotHoldFailsTheVerb() {
 	// that nothing else in the suite can see.
 	s.Equal([]string{"character:alice", "character:bob"}, reported.Report.Written,
 		"the sheets paid before the failure are named, so the caller repairs rather than retries")
+}
+
+// forgetsAfterSaving is a character store that loses one sheet the moment
+// another is saved — the mid-verb disappearance
+// [ExperienceTestSuite.TestAPayeeTheStoreDoesNotHoldFailsTheVerb] needs.
+type forgetsAfterSaving struct {
+	*fakeCharacters
+	saved, forget string
+}
+
+func (f *forgetsAfterSaving) SaveCharacter(ctx context.Context, data *character.Data) error {
+	if err := f.fakeCharacters.SaveCharacter(ctx, data); err != nil {
+		return err
+	}
+	if data.ID == f.saved {
+		delete(f.byID, f.forget)
+	}
+	return nil
+}
+
+// TestAPayeeMissingBeforeTheVerbIsRefusedBeforeAnythingIsPaid: a roster
+// player the store does not hold at all is found at the verb's first sight
+// refresh — the world asks her sheet how far she sees (rpg-project#538) — so
+// the verb is refused by name before the goblin's fall is even noticed, and
+// nobody is paid.
+func (s *ExperienceTestSuite) TestAPayeeMissingBeforeTheVerbIsRefusedBeforeAnythingIsPaid() {
+	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: xpCryptWith(s.T(), "carol"),
+	})
+	s.Require().NoError(err)
+	s.stream.published = nil
+
+	s.spawnGoblin("goblin", spatial.Position{X: 2, Y: 1})
+	s.dropTo("goblin", 0)
+	delete(s.characters.byID, "carol")
+	before, err := s.encounters.GetEncounter(context.Background(), "world")
+	s.Require().NoError(err)
+
+	_, verbErr := s.mgr.Move(context.Background(), &session.MoveInput{
+		Session: "sess", Member: "bob", Path: []spatial.Position{hexCell(8, 7)},
+	})
+	s.Require().ErrorIs(verbErr, session.ErrNoCharacter)
+
+	after, err := s.encounters.GetEncounter(context.Background(), "world")
+	s.Require().NoError(err)
+	s.Equal(before, after, "refused before persist, so the world never moved")
+	s.Empty(s.grantEvents(), "no grant was announced")
+	s.Zero(s.storedExperience("alice"), "and nobody was paid")
+	s.Zero(s.storedExperience("bob"))
 }
 
 // TestASheetThatWillNotSaveFailsTheVerbBeforeTheBeat pins the third return.

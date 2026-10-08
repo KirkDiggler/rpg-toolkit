@@ -273,7 +273,11 @@ func resumeCheckOn(ctx context.Context, in *CheckResumeInput, surf *surface) (*C
 
 	var dirty *character.Data
 	if ch.IsDirty() {
-		dirty = ch.ToData()
+		written, err := ch.ToData()
+		if err != nil {
+			return nil, fmt.Errorf("resolution: check for %q: %w", ch.GetID(), err)
+		}
+		dirty = written
 	}
 
 	result := &checks.AbilityCheckResult{
