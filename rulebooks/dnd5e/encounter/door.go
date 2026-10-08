@@ -497,15 +497,9 @@ func validateDoorInputs(f *field, doors []DoorInput) error {
 // footprint goes through [validatePlacement] — the same refusals a placed
 // prop's geometry earns, because it is the same geometry in the same plane.
 //
-// A FOOTPRINT DOOR MAY BE HIDDEN NOW, and this is where it stopped being
-// refused (rpg-project#490, E1). The old sentence — "a footprint and
-// concealed, which nothing has built yet" — was right about the gap and
-// right to fail closed: a footprint door is a cell contributor, so a hidden
-// one would have leaked its own existence through the map. What closed the
-// gap is the concealment listing the cells its rectangle stands on
-// ([Encounter.hiddenCellsOf]): the floor goes with the door, so there is no
-// hole where the secret is, which is what the masquerade does for an edge
-// door's crossing.
+// Footprint doors may be explicitly concealed. Their geometry supplies support
+// for reach/discovery, but adds no cells to concealed-floor membership. The
+// member projection withholds the selected identity, not its unselected floor.
 func validateDoorGeometry(d DoorInput) error {
 	switch {
 	case len(d.Edges) == 0 && d.Placement == nil:

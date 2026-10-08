@@ -1,0 +1,63 @@
+# A v4 single-room document authored by the World Builder WITH A DOOR ATTACHED
+# TO A STRUCTURAL WALL OPENING (rpg-project#169, Task 6) — the `walls:` block
+# exactly as rpg-dnd5e-web's `validateStructuralWalls` emits it once an opening
+# carries a `door` record (structuralWalls.ts `StructuralWallOpening.door`).
+#
+# THE ATTACHED DOOR STORES ONLY IDENTITY AND APPEARANCE. There is no
+# `transform` on it and no `scene.items` entry: the owning opening resolves the
+# one placement at lowering time. The door's STATE lives at the existing
+# `room.doorBindings.long-wall-door` with that block's open/closed/locked
+# grammar; this fixture writes `{closed: true}`.
+#
+# THE WALL IS DELIBERATELY OUT OF THE CORRIDOR'S WAY. The corridor is five cells
+# along scene z = 0; the wall runs parallel to it at scene z = 3, so neither its
+# spans nor the attached door cover a cell centre and the room still compiles.
+# `appearance` is here in full and nothing in this package reads a field of it.
+version: 4
+key: wall-doors-room
+play: { void: transparent, lighting: bright, standing: centre-covered }
+
+room:
+  version: 3
+  id: room-1
+  name: Wall Doors Room
+  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
+    distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz}
+  workspace: { hexRadius: 6, horizontalLimit: 12 }
+  scene:
+    version: 1
+    id: scene-1
+    name: Wall Doors Room
+    items: []
+    groups: []
+  room:
+    implicitRegionId: room-1-region
+    walkableHexes: [{q: 0, r: 0}, {q: 1, r: 0}, {q: 2, r: 0}, {q: 3, r: 0},
+      {q: 4, r: 0}]
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    partyStart: {q: 0, r: 0}
+    monsterDeclarations: []
+    walls:
+      - id: long-wall
+        label: Long wall
+        line:
+          start: {x: 0, z: 3}
+          end: {x: 20, z: 3}
+        appearance: {assetRef: 'dnd5e:env:test:wall', height: 3, thickness: 0.3,
+          elevation: 0}
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint: {width: 30, depth: 0.5, offsetX: 0, offsetZ: 0.5}
+        openings:
+          - id: door-gap
+            position: 10
+            width: 2
+            door: {id: long-wall-door, assetRef: 'dnd5e:env:test:door'}
+    # The attached door's state: a bound door PRESENT here is a door, and `{}`
+    # would be an open one. Absence of this key would be an open doorway the
+    # author forgot to attach — refused at the opening.
+    doorBindings:
+      long-wall-door: {closed: true}

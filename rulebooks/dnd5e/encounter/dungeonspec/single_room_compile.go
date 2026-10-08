@@ -14,12 +14,15 @@ import (
 // legacy offset frame and is reached only through the canonical spatial
 // inverse.
 //
-// THE PRESENTATION DOES NOT COME WITH IT (rpg-project#479). The authored
-// scene is content, served to the player by dungeon key; what crosses into
-// the field is the geometry the lowering read out of it —
-// [encounter.PlacedPropInput] per declared prop, and nothing that names an
-// asset, a light or a workspace. single_room_lowering.go lists every value this
-// compile reads from the presentation, by path.
+// The complete editor scene does not cross this boundary. Declared props lower
+// to PlacedPropInput; structural walls additionally carry their fixed layout and
+// opaque appearance refs for permitted projection. Gameplay never needs an
+// unrestricted fetch of the source document.
+//
+// One editing document can contain several discoverable rooms. PartitionRegion
+// derives spaces from the existing geometry with doors treated as closed for
+// topology only. Their ordinary RegionInput records feed unchanged room discovery;
+// initial door state does not rename them. Party seats stay in the starting space.
 //
 // THE SITE SCOPE AND THE ORDERS COMPILE THROUGH THE SHARED COMPILERS
 // (rpg-project#477, rpg-toolkit#1826; rpg-project#484). `factions:` and
@@ -83,10 +86,62 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 	// The declaration gave the footprint; the binding gives the orders, laid
 	// onto the same placement rather than onto a second list of props.
 	applyPropBindings(spec.Key, props, spec.Room.Gameplay.PropBindings)
+	// AND THE STRUCTURAL WALLS (rpg-project#169, single_room_walls.go). One
+	// authored wall lowers to its IDENTITY-ONLY presence entry (raw wall id,
+	// complete blocker, both flags false) plus one blocking contributor per
+	// remaining blocker span — the SAME list the authored props are in,
+	// because the connected-sight contract reads one contributor set and a
+	// second one would be a second answer about what blocks. The doors are
+	// built first so a generated span id can be checked against their
+	// compiled identities rather than silently replacing one.
+	wallLowerings, err := canonicalWallLowerings(spec.Room.Gameplay.Walls)
+	if err != nil {
+		return Compiled{}, singleRoomCompileError("room.room.walls", err.Error())
+	}
+	// AND THE FIXED STRUCTURAL LAYOUT (rpg-project#169): the same authored
+	// walls as canonical lines with their openings, converted once. It rides
+	// beside the placed spans rather than replacing them — the spans are what
+	// blocks, this is what the layout IS — and a room with no walls carries
+	// none, so its bytes are untouched.
+	structuralWalls, err := canonicalStructuralWalls(spec.Key, spec.Room.Gameplay.Walls)
+	if err != nil {
+		return Compiled{}, singleRoomCompileError("room.room.walls", err.Error())
+	}
+	doors := singleRoomDoors(spec.Key, &spec.Room.Gameplay, read)
+	// AND THE DOORS ATTACHED TO A WALL OPENING (rpg-project#169). A bound door
+	// has no scene item and no prop declaration, so it brings its own
+	// nonblocking placed entry for the observer atlas plus the live door; both
+	// share the one placement resolved from the opening. They are appended
+	// BEFORE the collision walk so a generated span id cannot silently replace
+	// either the raw attached id or the minted `<key>/<id>`.
+	boundPlaced, boundDoors, err := attachedDoorLowering(spec.Key, &spec.Room.Gameplay)
+	if err != nil {
+		return Compiled{}, singleRoomCompileError("room.room.walls", err.Error())
+	}
+	props = append(props, boundPlaced...)
+	doors = append(doors, boundDoors...)
+	if err := wallCollision(props, wallLowerings, doors); err != nil {
+		return Compiled{}, err
+	}
+	for _, lowered := range wallLowerings {
+		// THE PRESENCE ENTRY FIRST, then its blocking spans. The presence
+		// carries the raw wall id the client joins by, and BOTH FLAGS FALSE
+		// so identity can never refill an opening the spans left clear.
+		props = append(props, lowered.presence)
+		props = append(props, lowered.spans...)
+	}
+	// One id order for the one list (C8), so a map or an authored wall order
+	// never leaks into which overlapping contributor a cell fold names first.
+	// A room with no walls re-sorts its already-sorted props and is unchanged.
+	sort.SliceStable(props, func(i, j int) bool { return props[i].ID < props[j].ID })
+	// And one order for the doors, which now has two sources: the standalone
+	// bindings and the attached ones.
+	sort.SliceStable(doors, func(i, j int) bool { return doors[i].ID < doors[j].ID })
 	field := encounter.FieldInput{
-		Canvas:  encounter.CanvasInput{Void: encounter.VoidIsTransparent(), Orientation: encounter.HexesArePointyTop()},
-		Regions: []encounter.RegionInput{{ID: spec.Room.Gameplay.ImplicitRegionID, Name: spec.Room.Name, Cells: cells, Archetype: "crypt", Lighting: &bright}},
-		Placed:  props,
+		Canvas:            encounter.CanvasInput{Void: encounter.VoidIsTransparent(), Orientation: encounter.HexesArePointyTop()},
+		Regions:           []encounter.RegionInput{{ID: spec.Room.Gameplay.ImplicitRegionID, Name: spec.Room.Name, Cells: cells, Archetype: "crypt", Lighting: &bright}},
+		Placed:            props,
+		PropPresentations: propPresentationsOf(read, spec),
 		// THE DOORS, standing as the footprints their prop declarations draw
 		// (rpg-project#485, single_room_doors.go). A door item is in BOTH
 		// lists and that is not a duplicate: `Placed` is the rectangle the
@@ -94,24 +149,39 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		// author left false, and this is the same rectangle with its state
 		// deciding what it blocks. One authored footprint, one adapter, two
 		// questions.
-		Doors: singleRoomDoors(spec.Key, &spec.Room.Gameplay, read),
+		Doors: doors,
 		Start: nil,
 		// THE RECORDS, minted `<key>/<id>` by the shared [intelRecordsOf] —
 		// the composition reads a record's reveals when it changes hands, so
 		// the table has to be where the field is. Nil when the site declares
 		// none.
 		Intel: intelRecordsOf(spec.Key, spec.Intel, singleRoomConcealmentOf(spec.Key)),
+		// THE FIXED STRUCTURAL LAYOUT (rpg-project#169). Nil when the room
+		// authored no walls, so a wall-less document pictures exactly as it
+		// did before this key existed.
+		StructuralWalls: structuralWalls,
 		// WHAT THIS ROOM HIDES (rpg-project#490,
 		// single_room_concealments.go): the root's `concealments:`, with the
 		// author's one list of placed ids sorted into the engine's doors and
-		// props. Nil when the room hides nothing.
-		Concealments: singleRoomConcealments(spec.Key, spec, o),
+		// props. A wall id in that list expands to the wall's presence entry
+		// and every span the SAME lowering produced (rpg-project#169). Nil
+		// when the room hides nothing.
+		Concealments: singleRoomConcealments(spec.Key, spec, o, wallSpanIDs(wallLowerings)),
 		// The sides ride the FIELD, for [Compile]'s reason: the stance graph
 		// is seeded from them at every Setup and Load, so they have to be
 		// where the field is. Nil when the site declares none.
 		Factions:     factionsOf(spec.Factions, cast),
 		Dispositions: dispositionsOf(spec.Dispositions),
 	}
+	// The editor's one document may contain several physically separated
+	// spaces. Feed those to ordinary room discovery instead of teaching the
+	// entire painted floor when its first cell is seen.
+	layout, err := singleRoomRegions(field)
+	if err != nil {
+		return Compiled{}, singleRoomCompileError("room.room", err.Error())
+	}
+	field.Regions = layout.regions
+	field.Scenery = append(field.Scenery, layout.footing...)
 	// THE WAYS OUT, lowered by the one [exitsOf] the other dialect uses, with
 	// this dialect's frame spent on the way in (rpg-project#488 R2). Held
 	// aside until every cell below has been judged: they join the field after
@@ -154,7 +224,7 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 			ID: m.ID, Ref: m.Ref, Faction: b.Faction,
 			On: on, Temper: b.Temper, Actions: b.Actions,
 		}, from)
-		mp.Region = spec.Room.Gameplay.ImplicitRegionID
+		mp.Region = layout.owner[at]
 		mp.At = at
 		mp.Facing = m.StartingCell.Facing
 		// AND THE FOUR GAMEPLAY KEYS THE BINDING CARRIES (rpg-project#488
@@ -214,10 +284,18 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 				fmt.Sprintf("at author's axial q=%d r=%d: %s", placement.cell.Q, placement.cell.R, err))
 		}
 	}
-	// Party seats are deterministic nearest-first in the authored region.
-	party := deriveSingleRoomSeats(cells, starts[0], occupied, o, field)
+	// Party seats stay nearest-first in the STARTING space, not across an
+	// opaque partition merely because both sides share an editing document.
+	entryID := layout.owner[starts[0]]
+	entryCells := make([]spatial.Position, 0, len(cells))
+	for _, cell := range cells {
+		if layout.owner[cell] == entryID {
+			entryCells = append(entryCells, cell)
+		}
+	}
+	party := deriveSingleRoomSeats(entryCells, starts[0], occupied, o, field)
 	for i := range party {
-		party[i].Region = spec.Room.Gameplay.ImplicitRegionID
+		party[i].Region = entryID
 	}
 	if len(party) == 0 {
 		return Compiled{}, singleRoomCompileError("room.room.partyStart", "has no free seat")
