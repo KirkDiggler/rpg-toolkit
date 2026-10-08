@@ -96,7 +96,7 @@ func (g *DivineFavorCondition) ConditionAddress() dnd5eEvents.ConditionAddress {
 // IsApplied returns true if this condition is currently applied.
 func (g *DivineFavorCondition) IsApplied() bool { return g.bus != nil }
 
-// Apply subscribes to weapon damage and long-rest cleanup.
+// Apply subscribes to weapon damage and rest cleanup.
 func (g *DivineFavorCondition) Apply(ctx context.Context, bus events.EventBus) error {
 	if g.IsApplied() {
 		return rpgerr.New(rpgerr.CodeAlreadyExists, "divine_favor condition already applied")
@@ -110,12 +110,12 @@ func (g *DivineFavorCondition) Apply(ctx context.Context, bus events.EventBus) e
 	}
 	g.subscriptionIDs = append(g.subscriptionIDs, acSub)
 
-	restSubID, err := subscribeRemoveOnLongRest(ctx, bus, subscribeRemoveOnLongRestInput{
+	restSubID, err := subscribeRemoveOnRest(ctx, bus, subscribeRemoveOnRestInput{
 		Address: g.ConditionAddress(), Remove: g.Remove,
 	})
 	if err != nil {
 		_ = g.Remove(ctx, bus)
-		return rpgerr.Wrap(err, "failed to subscribe divine_favor condition to long rest")
+		return rpgerr.Wrap(err, "failed to subscribe divine_favor condition to rest")
 	}
 	g.restSubID = restSubID
 

@@ -219,7 +219,11 @@ func TestShortRestSuite(t *testing.T) {
 // whose own reset kind is the long rest.
 func restFighter(t *testing.T) *Character {
 	t.Helper()
-	ctx := context.Background()
+	return attachRestFighter(t, restFighterData(t))
+}
+
+func restFighterData(t *testing.T) *Data {
+	t.Helper()
 	secondWind, err := json.Marshal(features.SecondWindData{
 		Ref:         refs.Features.SecondWind(),
 		ID:          "second-wind-short-rest",
@@ -230,7 +234,7 @@ func restFighter(t *testing.T) *Character {
 	})
 	require.NoError(t, err)
 
-	char, err := Load(ctx, &Data{Levels: syntheticLevels(classes.Fighter, 2),
+	return &Data{Levels: syntheticLevels(classes.Fighter, 2),
 		ID:               "short-rest-fighter",
 		PlayerID:         "short-rest-player",
 		Name:             "Short Rest Fighter",
@@ -249,7 +253,13 @@ func restFighter(t *testing.T) *Character {
 			resources.RageCharges: {Current: 0, Maximum: 2, ResetType: coreResources.ResetLongRest},
 		},
 		Features: []json.RawMessage{secondWind},
-	})
+	}
+}
+
+func attachRestFighter(t *testing.T, data *Data) *Character {
+	t.Helper()
+	ctx := context.Background()
+	char, err := Load(ctx, data)
 	require.NoError(t, err)
 	require.NoError(t, Attach(ctx, char, events.NewEventBus()))
 	t.Cleanup(func() { require.NoError(t, char.Cleanup(ctx)) })
@@ -340,4 +350,36 @@ func TestLongRestReturnsAtLeastOneHitDie(t *testing.T) {
 
 	require.NoError(t, char.LongRest(ctx))
 	require.Equal(t, 1, pool.Current())
+}
+
+// A short rest is an hour, and an hour ends a fight's conditions: a prone,
+// blessed fighter stands up unblessed. The legacy unconscious shell is the one
+// effect left on the long-rest path, and it stays.
+func TestShortRestEndsAFightsConditions(t *testing.T) {
+	ctx := context.Background()
+	data := restFighterData(t)
+	data.Conditions = []json.RawMessage{
+		json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"prone"},"member_id":"short-rest-fighter"}`),
+		json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"blessed"},"member_id":"short-rest-fighter","source_id":"cleric-1","source_ref":{"module":"dnd5e","type":"spells","id":"bless"}}`),
+		json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"unconscious"},"member_id":"short-rest-fighter","successes":0,"failures":0,"stabilized":false,"dead":false}`),
+	}
+	char := attachRestFighter(t, data)
+	heldNow := func() []string {
+		var out []string
+		for _, condition := range authored(char) {
+			out = append(out, condition.Ref().String())
+		}
+		return out
+	}
+	require.Subset(t, heldNow(), []string{
+		refs.Conditions.Prone().String(), refs.Conditions.Blessed().String(), refs.Conditions.Unconscious().String(),
+	}, "all three are on the sheet before the rest")
+
+	_, err := char.ShortRest(ctx, &ShortRestInput{})
+	require.NoError(t, err)
+
+	held := heldNow()
+	require.NotContains(t, held, refs.Conditions.Prone().String())
+	require.NotContains(t, held, refs.Conditions.Blessed().String())
+	require.Contains(t, held, refs.Conditions.Unconscious().String(), "long-rest-only stays through a short rest")
 }

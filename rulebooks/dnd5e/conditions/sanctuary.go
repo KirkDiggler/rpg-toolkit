@@ -57,7 +57,7 @@ type NewSanctuaryConditionInput struct {
 //
 // Concentration, up to one minute — the same duration category as
 // [BlessedCondition], [GuidedCondition] and [ResistanceCondition]. This
-// condition subscribes to long-rest cleanup and relies on the existing
+// condition subscribes to rest cleanup and relies on the existing
 // concentration teardown for everything else.
 type SanctuaryCondition struct {
 	MemberID  string
@@ -132,7 +132,7 @@ func (s *SanctuaryCondition) ConditionAddress() dnd5eEvents.ConditionAddress {
 // IsApplied reports whether the condition has joined an interaction bus.
 func (s *SanctuaryCondition) IsApplied() bool { return s.bus != nil }
 
-// Apply marks the condition active and subscribes only to long-rest cleanup.
+// Apply marks the condition active and subscribes only to rest cleanup.
 // Sanctuary contributes nothing to any roll and installs no roll subscriber.
 func (s *SanctuaryCondition) Apply(ctx context.Context, bus events.EventBus) error {
 	if bus == nil {
@@ -142,12 +142,12 @@ func (s *SanctuaryCondition) Apply(ctx context.Context, bus events.EventBus) err
 		return rpgerr.New(rpgerr.CodeAlreadyExists, "sanctuary condition already applied")
 	}
 	s.bus = bus
-	restSubID, err := subscribeRemoveOnLongRest(ctx, bus, subscribeRemoveOnLongRestInput{
+	restSubID, err := subscribeRemoveOnRest(ctx, bus, subscribeRemoveOnRestInput{
 		Address: s.ConditionAddress(), Remove: s.Remove,
 	})
 	if err != nil {
 		s.bus = nil
-		return rpgerr.Wrap(err, "failed to subscribe sanctuary condition to long rest")
+		return rpgerr.Wrap(err, "failed to subscribe sanctuary condition to rest")
 	}
 	s.restSubID = restSubID
 	return nil

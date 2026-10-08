@@ -96,12 +96,15 @@ func (c *UnconsciousCondition) Apply(ctx context.Context, bus events.EventBus) e
 	}
 	c.subscriptionIDs = append(c.subscriptionIDs, healingSubID)
 
-	restSubID, err := subscribeRemoveOnLongRest(ctx, bus, subscribeRemoveOnLongRestInput{
-		Address: ConditionAddressOf(c.CharacterID, c), Remove: c.Remove,
+	// Long rest only: the shell stands for a character at zero hit points,
+	// and whether an hour's short rest wakes one is the death-save rules'
+	// question (Character.Data.DeathSaveState), not this legacy blob's.
+	restSubID, err := subscribeRemoveOnRest(ctx, bus, subscribeRemoveOnRestInput{
+		Address: ConditionAddressOf(c.CharacterID, c), Remove: c.Remove, LongRestOnly: true,
 	})
 	if err != nil {
 		_ = c.Remove(ctx, bus)
-		return rpgerr.Wrap(err, "failed to subscribe to long rest")
+		return rpgerr.Wrap(err, "failed to subscribe to rest")
 	}
 	c.subscriptionIDs = append(c.subscriptionIDs, restSubID)
 	return nil

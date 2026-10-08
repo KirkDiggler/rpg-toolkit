@@ -244,7 +244,7 @@ func (s *ConcentrationKeeperSuite) TestLongRestRemovesOnlyTheQualifiedBaneOwnerA
 	addresses := make([]dnd5eEvents.ConditionAddress, 0, len(removals))
 	for _, removal := range removals {
 		addresses = append(addresses, removal.Address())
-		s.Equal("long rest", removal.Reason)
+		s.Equal("rest", removal.Reason)
 	}
 	s.ElementsMatch([]dnd5eEvents.ConditionAddress{
 		baneA.ConditionAddress(), holdA.ConditionAddress(),

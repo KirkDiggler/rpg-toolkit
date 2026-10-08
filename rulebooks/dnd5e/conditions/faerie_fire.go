@@ -90,7 +90,7 @@ func (g *FaerieFireCondition) ConditionAddress() dnd5eEvents.ConditionAddress {
 // IsApplied returns true if this condition is currently applied.
 func (g *FaerieFireCondition) IsApplied() bool { return g.bus != nil }
 
-// Apply subscribes to attack rolls and long-rest cleanup.
+// Apply subscribes to attack rolls and rest cleanup.
 func (g *FaerieFireCondition) Apply(ctx context.Context, bus events.EventBus) error {
 	if bus == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "event bus is required")
@@ -107,12 +107,12 @@ func (g *FaerieFireCondition) Apply(ctx context.Context, bus events.EventBus) er
 	}
 	g.subscriptionIDs = append(g.subscriptionIDs, acSub)
 
-	restSubID, err := subscribeRemoveOnLongRest(ctx, bus, subscribeRemoveOnLongRestInput{
+	restSubID, err := subscribeRemoveOnRest(ctx, bus, subscribeRemoveOnRestInput{
 		Address: g.ConditionAddress(), Remove: g.Remove,
 	})
 	if err != nil {
 		_ = g.Remove(ctx, bus)
-		return rpgerr.Wrap(err, "failed to subscribe faerie_fire condition to long rest")
+		return rpgerr.Wrap(err, "failed to subscribe faerie_fire condition to rest")
 	}
 	g.restSubID = restSubID
 

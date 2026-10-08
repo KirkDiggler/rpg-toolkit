@@ -139,14 +139,14 @@ func (v *ViciousMockeryCondition) Apply(ctx context.Context, bus events.EventBus
 
 	// A rest is not one of this condition's own ends — its turn boundary and
 	// combat end both fire first in any ordinary fight — but a blob that
-	// survived to a long rest must not outlive it, which is the registry every
+	// survived to a rest must not outlive it, which is the registry every
 	// combat-scoped condition here is in.
-	restSub, err := subscribeRemoveOnLongRest(ctx, bus, subscribeRemoveOnLongRestInput{
+	restSub, err := subscribeRemoveOnRest(ctx, bus, subscribeRemoveOnRestInput{
 		Address: ConditionAddressOf(v.MemberID, v), Remove: v.Remove,
 	})
 	if err != nil {
 		_ = v.Remove(ctx, bus)
-		return rpgerr.Wrap(err, "failed to subscribe to long rest")
+		return rpgerr.Wrap(err, "failed to subscribe to rest")
 	}
 	v.subscriptionIDs = append(v.subscriptionIDs, restSub)
 

@@ -114,12 +114,12 @@ func (s *ShieldSpellCondition) Apply(ctx context.Context, bus events.EventBus) e
 	}
 	s.subscriptionIDs = append(s.subscriptionIDs, subID)
 
-	longRestSubID, err := subscribeRemoveOnLongRest(ctx, bus, subscribeRemoveOnLongRestInput{
+	longRestSubID, err := subscribeRemoveOnRest(ctx, bus, subscribeRemoveOnRestInput{
 		Address: ConditionAddressOf(s.CharacterID, s), Remove: s.Remove,
 	})
 	if err != nil {
 		_ = s.Remove(ctx, bus)
-		return rpgerr.Wrap(err, "failed to subscribe to long rest")
+		return rpgerr.Wrap(err, "failed to subscribe to rest")
 	}
 	s.subscriptionIDs = append(s.subscriptionIDs, longRestSubID)
 
