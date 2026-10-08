@@ -96,11 +96,14 @@ func (s *SeatSuite) TestJoiningASecondRunIsRefusedBeforeAnythingIsWritten() {
 func (s *SeatSuite) TestExitClearsTheSeatAfterTheRunIsSaved() {
 	_, err := s.join("sess", "bob")
 	s.Require().NoError(err)
+	s.locker.calls, s.locker.characters = nil, nil
 
 	out, err := s.mgr.Exit(context.Background(), &session.ExitInput{Session: "sess", Member: "bob"})
 	s.Require().NoError(err)
 
 	s.Empty(s.seats.seatOf("bob"))
+	s.Equal([]string{"sess"}, s.locker.calls)
+	s.Equal([]string{"bob"}, s.locker.characters, "the seat changes under the character's guard too")
 	s.Contains(out.Saved.Written, "seat:bob")
 	s.Less(positionOf(out.Saved.Written, "encounter:world-sess"), positionOf(out.Saved.Written, "seat:bob"),
 		"the run that no longer holds bob lands before his seat is cleared")
@@ -125,6 +128,19 @@ func (s *SeatSuite) TestEndClearsEverySeatTheRunHolds() {
 	s.Equal("other", s.seats.seatOf("dave"), "another run's seat is that run's business")
 	s.Contains(out.Saved.Written, "seat:bob")
 	s.Contains(out.Saved.Written, "seat:carol")
+}
+
+func (s *SeatSuite) TestLaunchTakesTheSessionThenEachPartyGuardInIDOrder() {
+	s.locker.calls, s.locker.characters = nil, nil
+	compiled := compileCamp(s.T(), campSource(s.T()))
+
+	_, err := s.mgr.Launch(context.Background(), &session.LaunchInput{
+		Session: "run", Dungeon: &compiled, Party: []string{"carol", "bob"},
+	})
+	s.Require().NoError(err)
+
+	s.Equal([]string{"run"}, s.locker.calls)
+	s.Equal([]string{"bob", "carol"}, s.locker.characters)
 }
 
 func (s *SeatSuite) TestLevelUpTakesTheGuardItsSeatNames() {
@@ -261,6 +277,7 @@ func (s *SeatSuite) TestALoadAndAnEquipIssuedTogetherBothLand() {
 		})
 	}()
 	<-chars.paused // the rest holds the session guard and a copy of alice's sheet
+	drain(locker.requested)
 
 	wg.Add(1)
 	go func() {

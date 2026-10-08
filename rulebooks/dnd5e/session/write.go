@@ -1132,16 +1132,10 @@ func (m *Manager) Exit(ctx context.Context, in *ExitInput) (*ExitOutput, error) 
 		return nil, fmt.Errorf("exit: %w", err)
 	}
 
-	// A departing PLAYER gives up its seat, which changes under both guards:
-	// the session's is held, the character's is taken here, session first.
+	// A departing PLAYER gives up its seat after the run is saved; the seat
+	// changes under both guards, and clearSeats takes the character's under
+	// the session's this verb already holds.
 	player := scope.standing.kinds[in.Member] == encounter.KindPlayer
-	if player {
-		releaseCharacter, err := m.acquireCharactersFor(ctx, scope, in.Member)
-		if err != nil {
-			return nil, fmt.Errorf("exit: %w", err)
-		}
-		defer releaseCharacter()
-	}
 
 	left, err := scope.enc.Exit(&encounter.ExitInput{Member: encounter.MemberID(in.Member)})
 	if err != nil {
