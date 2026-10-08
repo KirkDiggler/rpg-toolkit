@@ -42,4 +42,9 @@ const (
 	TypeCombatAbilities core.Type = "combat_abilities"
 	TypeActions         core.Type = "actions"
 	TypeRules           core.Type = "rules"
+
+	// TypeResources names a character-owned pool no feature reports, by its
+	// resource key ("dnd5e:resources:spell_slots_1"). A pool a feature
+	// reports is named by that feature's ref instead.
+	TypeResources core.Type = "resources"
 )

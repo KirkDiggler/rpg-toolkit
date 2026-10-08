@@ -83,12 +83,12 @@ func (r *RecklessAttackCondition) Apply(ctx context.Context, bus events.EventBus
 	}
 	r.subscriptionIDs = append(r.subscriptionIDs, subID2)
 
-	longRestSubID, err := subscribeRemoveOnLongRest(ctx, bus, subscribeRemoveOnLongRestInput{
+	longRestSubID, err := subscribeRemoveOnRest(ctx, bus, subscribeRemoveOnRestInput{
 		Address: ConditionAddressOf(r.MemberID, r), Remove: r.Remove,
 	})
 	if err != nil {
 		_ = r.Remove(ctx, bus)
-		return rpgerr.Wrap(err, "failed to subscribe to long rest")
+		return rpgerr.Wrap(err, "failed to subscribe to rest")
 	}
 	r.subscriptionIDs = append(r.subscriptionIDs, longRestSubID)
 

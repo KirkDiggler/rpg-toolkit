@@ -93,7 +93,7 @@ func (g *ShieldOfFaithCondition) ConditionAddress() dnd5eEvents.ConditionAddress
 // IsApplied returns true if this condition is currently applied.
 func (g *ShieldOfFaithCondition) IsApplied() bool { return g.bus != nil }
 
-// Apply subscribes to AC calculation and long-rest cleanup.
+// Apply subscribes to AC calculation and rest cleanup.
 func (g *ShieldOfFaithCondition) Apply(ctx context.Context, bus events.EventBus) error {
 	if g.IsApplied() {
 		return rpgerr.New(rpgerr.CodeAlreadyExists, "shield_of_faith condition already applied")
@@ -107,12 +107,12 @@ func (g *ShieldOfFaithCondition) Apply(ctx context.Context, bus events.EventBus)
 	}
 	g.subscriptionIDs = append(g.subscriptionIDs, acSub)
 
-	restSubID, err := subscribeRemoveOnLongRest(ctx, bus, subscribeRemoveOnLongRestInput{
+	restSubID, err := subscribeRemoveOnRest(ctx, bus, subscribeRemoveOnRestInput{
 		Address: g.ConditionAddress(), Remove: g.Remove,
 	})
 	if err != nil {
 		_ = g.Remove(ctx, bus)
-		return rpgerr.Wrap(err, "failed to subscribe shield_of_faith condition to long rest")
+		return rpgerr.Wrap(err, "failed to subscribe shield_of_faith condition to rest")
 	}
 	g.restSubID = restSubID
 

@@ -278,7 +278,7 @@ func TestLongRestPersistsEveryConditionOutcomeOnAttachedCharacter(t *testing.T) 
 			require.False(t, sheet.IsDirty(), "Attach and its free reaction must not dirty a loaded sheet")
 			requireHeldOnce(t, mustToData(t, sheet), refString, carriedRef)
 
-			require.NoError(t, sheet.LongRest(ctx))
+			require.NoError(t, restErr(sheet.LongRest(ctx)))
 			if testCase.outcome == attachedLongRestRetain {
 				require.False(t, sheet.IsDirty(),
 					"an unchanged passive condition must publish no persistence fact after the checkpoint")

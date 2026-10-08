@@ -102,7 +102,7 @@ func (s *ClericFinalizeSuite) TestTempestWrathUsesFinalWisdomAndPersists() {
 	s.Equal("Wrath of the Storm", wrath.Name)
 	s.Equal(2, wrath.Current)
 	s.Equal(3, wrath.Maximum)
-	s.Require().NoError(loaded.LongRest(context.Background()))
+	s.Require().NoError(restErr(loaded.LongRest(context.Background())))
 	s.Equal(3, loaded.GetResource(resources.WrathOfTheStorm).Current())
 }
 
@@ -168,7 +168,7 @@ func (s *ClericFinalizeSuite) TestCreationAndPersistence() {
 	s.Equal(data.Resources, back.Resources)
 	s.Equal(4, back.HitPoints, "loading is not a rest")
 	s.Equal(1, loaded.GetResource(resources.SpellSlotLevel1).Current())
-	s.Require().NoError(loaded.LongRest(context.Background()))
+	s.Require().NoError(restErr(loaded.LongRest(context.Background())))
 	s.Equal(2, loaded.GetResource(resources.SpellSlotLevel1).Current())
 	s.Equal(data.KnownSpells, mustToData(s.T(), loaded).KnownSpells, "rest restores slots without choosing spells")
 }
@@ -216,7 +216,7 @@ func (s *ClericFinalizeSuite) TestStatusProjectionAfterFinalizationAndReload() {
 	}
 	s.ElementsMatch([]string{"caster-a", "caster-b"}, sources[refs.Conditions.Blessed().String()])
 	s.Equal([]string{"caster-c"}, sources[refs.Conditions.Baned().String()])
-	s.Require().NoError(loaded.LongRest(context.Background()))
+	s.Require().NoError(restErr(loaded.LongRest(context.Background())))
 	rested, err := loaded.StatusView(&StatusViewInput{})
 	s.Require().NoError(err)
 	s.Equal(2, rested.View.Resources[1].Current)
@@ -864,7 +864,7 @@ func (s *ClericFinalizeSuite) TestLightWardingFlareLifecycle() {
 	s.Equal("Warding Flare", resource.Name)
 	s.Equal(2, resource.Current)
 	s.Equal(3, resource.Maximum)
-	s.Require().NoError(loaded.LongRest(context.Background()))
+	s.Require().NoError(restErr(loaded.LongRest(context.Background())))
 	s.Equal(3, loaded.GetResource(resources.WardingFlare).Current())
 	s.Equal(2, loaded.GetResource(resources.SpellSlotLevel1).Current())
 	s.NotContains(data.ArmorProficiencies, proficiencies.ArmorHeavy)
@@ -913,7 +913,7 @@ func (s *ClericFinalizeSuite) TestNatureCreationGrantsPersistAndProject() {
 			_, err = c.StatusView(&StatusViewInput{})
 			s.Require().NoError(err)
 			s.Equal(2, c.GetResource(resources.SpellSlotLevel1).Maximum())
-			s.Require().NoError(c.LongRest(context.Background()))
+			s.Require().NoError(restErr(c.LongRest(context.Background())))
 			_, err = c.StatusView(&StatusViewInput{})
 			s.Require().NoError(err)
 			s.Require().NoError(draft.SetClass(s.classInput()))

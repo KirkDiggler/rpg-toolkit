@@ -92,7 +92,7 @@ func (b *BlessedCondition) ConditionAddress() dnd5eEvents.ConditionAddress {
 // IsApplied reports whether the condition has joined an interaction bus.
 func (b *BlessedCondition) IsApplied() bool { return b.bus != nil }
 
-// Apply marks the condition active and subscribes only to long-rest cleanup.
+// Apply marks the condition active and subscribes only to rest cleanup.
 // Bless contributes through its recipient's describe operation and deliberately
 // installs no roll subscriber.
 func (b *BlessedCondition) Apply(ctx context.Context, bus events.EventBus) error {
@@ -103,12 +103,12 @@ func (b *BlessedCondition) Apply(ctx context.Context, bus events.EventBus) error
 		return rpgerr.New(rpgerr.CodeAlreadyExists, "blessed condition already applied")
 	}
 	b.bus = bus
-	restSubID, err := subscribeRemoveOnLongRest(ctx, bus, subscribeRemoveOnLongRestInput{
+	restSubID, err := subscribeRemoveOnRest(ctx, bus, subscribeRemoveOnRestInput{
 		Address: b.ConditionAddress(), Remove: b.Remove,
 	})
 	if err != nil {
 		b.bus = nil
-		return rpgerr.Wrap(err, "failed to subscribe blessed condition to long rest")
+		return rpgerr.Wrap(err, "failed to subscribe blessed condition to rest")
 	}
 	b.restSubID = restSubID
 	return nil

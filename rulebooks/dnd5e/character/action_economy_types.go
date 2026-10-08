@@ -185,6 +185,10 @@ const (
 	// GrantedDeathSaves tracks the one death save available to a Dying
 	// character during its current turn.
 	GrantedDeathSaves GrantedActionKey = "death_saves"
+
+	// GrantedObjectInteractions tracks the turn's one free object interaction,
+	// seeded at every turn refresh and spent by drawing into an empty hand.
+	GrantedObjectInteractions GrantedActionKey = "object_interactions"
 )
 
 // ActionEconomyData is the serializable form of the action economy state.

@@ -49,6 +49,18 @@ const (
 	// CapacityDeathSave means the action consumes the one death save granted
 	// to a Dying character for its current turn.
 	CapacityDeathSave CapacityType = "death_save"
+
+	// CapacityObjectInteraction is the one free object interaction a turn
+	// holds: drawing a weapon into an empty hand, in this rulebook's equip
+	// price (rpg-project#542 R1). It is seeded with the turn, like the three
+	// slots, rather than granted by an action — a turn simply has one.
+	//
+	// It is capacity rather than a fourth slot because nothing about it is a
+	// slot: no action is "an object interaction action", and the 2014 letter's
+	// second interaction is not a second unit of this but the Use an Object
+	// action, which is the action slot. The equip price says so by charging the
+	// action once this is spent (see character.Character.PriceEquipment).
+	CapacityObjectInteraction CapacityType = "object_interaction"
 )
 
 // capacities is the closed set, as a set. CapacityNone is not in it: "no
@@ -61,6 +73,7 @@ var capacities = map[CapacityType]struct{}{
 	CapacityMartialArtsBonusAttack: {},
 	CapacityFlurryStrike:           {},
 	CapacityDeathSave:              {},
+	CapacityObjectInteraction:      {},
 }
 
 // CapacityTypes returns every capacity a profile may name and every capacity a
@@ -78,6 +91,7 @@ func CapacityTypes() []CapacityType {
 		CapacityMartialArtsBonusAttack,
 		CapacityFlurryStrike,
 		CapacityDeathSave,
+		CapacityObjectInteraction,
 	}
 }
 

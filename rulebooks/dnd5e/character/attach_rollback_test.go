@@ -112,7 +112,7 @@ func (s *AttachRollbackTestSuite) assertRetryWorks(char *Character) {
 	}))
 	s.Require().Equal(27, char.GetHitPoints(), "the keeper attached on the retry")
 
-	s.Require().NoError(char.LongRest(s.ctx))
+	s.Require().NoError(restErr(char.LongRest(s.ctx)))
 	s.Require().Equal(3, char.GetResource(resources.RageCharges).Current(),
 		"the Character rest verb still owns resources on the retry")
 }

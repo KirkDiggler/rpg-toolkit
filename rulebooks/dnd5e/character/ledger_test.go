@@ -5,6 +5,7 @@ package character
 
 import (
 	"context"
+	"maps"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -326,8 +327,9 @@ func (s *SheetLedgerTestSuite) TestASheetOutOfCombatCannotBeWrittenTo() {
 func (s *SheetLedgerTestSuite) TestCapacityNoneIsNotADrawer() {
 	char := s.loaded()
 
+	before := maps.Clone(char.GetActionEconomy().Granted)
 	char.BankCapacity(combat.CapacityNone, 3)
-	s.Empty(char.GetActionEconomy().Granted, "banking nothing banks nowhere")
+	s.Equal(before, char.GetActionEconomy().Granted, "banking nothing banks nowhere")
 	s.False(char.IsDirty())
 
 	char.GetActionEconomy().Granted[GrantedActionKey("")] = 3

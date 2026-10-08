@@ -221,7 +221,7 @@ func (s *ConcentrationKeeperSuite) TestLongRestRemovesOnlyTheQualifiedBaneOwnerA
 		})
 	s.Require().NoError(err)
 
-	s.Require().NoError(bardA.LongRest(s.ctx))
+	s.Require().NoError(restErr(bardA.LongRest(s.ctx)))
 
 	s.Empty(authored(bardA), "the qualified owner leaves its caster sheet")
 	s.True(bardA.IsDirty())
@@ -244,7 +244,7 @@ func (s *ConcentrationKeeperSuite) TestLongRestRemovesOnlyTheQualifiedBaneOwnerA
 	addresses := make([]dnd5eEvents.ConditionAddress, 0, len(removals))
 	for _, removal := range removals {
 		addresses = append(addresses, removal.Address())
-		s.Equal("long rest", removal.Reason)
+		s.Equal("rest", removal.Reason)
 	}
 	s.ElementsMatch([]dnd5eEvents.ConditionAddress{
 		baneA.ConditionAddress(), holdA.ConditionAddress(),

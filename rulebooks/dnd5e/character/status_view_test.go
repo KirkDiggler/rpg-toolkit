@@ -392,24 +392,6 @@ func TestStatusViewRejectsMalformedFeatureStatus(t *testing.T) {
 	require.Nil(t, out, "no partial output on malformed feature status")
 }
 
-// TestStatusViewExcludesLegacyClassResources confirms that legacy
-// ClassResources never surface as status resources.
-func TestStatusViewExcludesLegacyClassResources(t *testing.T) {
-	fighter := newLevel3Fighter(t)
-
-	fighter.classResources = map[shared.ClassResourceType]ResourceData{
-		shared.ClassResourceType(1): {Name: "sorcery_points", Current: 1, Max: 1},
-	}
-
-	out, err := fighter.StatusView(&StatusViewInput{})
-	require.NoError(t, err)
-	require.NotNil(t, out)
-
-	for _, r := range out.View.Resources {
-		require.NotEqual(t, coreResources.ResourceKey("sorcery_points"), r.Key)
-	}
-}
-
 // TestStatusViewConditionsSortedByRef confirms conditions are sorted by ref.
 func TestStatusViewConditionsSortedByRef(t *testing.T) {
 	fighter := newLevel3Fighter(t)

@@ -727,7 +727,6 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 		wallet:              compileWallet(bgGrant),
 		knownCantrips:       knownCantrips,
 		knownSpells:         knownSpells,
-		classResources:      make(map[shared.ClassResourceType]ResourceData),
 		resources:           make(map[coreResources.ResourceKey]*combat.RecoverableResource),
 		features:            charFeatures,
 		combatAbilities:     make([]combatabilities.CombatAbility, 0),

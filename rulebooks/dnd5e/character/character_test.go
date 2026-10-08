@@ -187,11 +187,12 @@ func (s *CharacterResourceTestSuite) TestLoadResourceDataIsInertUntilCharacterRe
 	// The Character verbs remain the sole rule owners and respect each reset
 	// type: short rest restores Ki only; long rest restores both.
 	s.character.bus = s.bus
-	s.Require().NoError(s.character.ShortRest(s.ctx))
+	_, err := s.character.ShortRest(s.ctx, &ShortRestInput{})
+	s.Require().NoError(err)
 	s.Equal(1, rage.Current())
 	s.Equal(5, ki.Current())
 	s.Require().NoError(ki.Use(2))
-	s.Require().NoError(s.character.LongRest(s.ctx))
+	s.Require().NoError(restErr(s.character.LongRest(s.ctx)))
 	s.Equal(2, rage.Current())
 	s.Equal(5, ki.Current())
 }
@@ -587,295 +588,234 @@ func (s *CharacterHitDiceTestSuite) TearDownTest() {
 	}
 }
 
-func (s *CharacterHitDiceTestSuite) TestSpendHitDice() {
+func (s *CharacterHitDiceTestSuite) hitDicePool(spent int) *combat.RecoverableResource {
+	pool := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+		ID:          string(resources.HitDice),
+		Maximum:     4,
+		CharacterID: "test-fighter",
+		ResetType:   coreResources.ResetLongRest,
+	})
+	if spent > 0 {
+		s.Require().NoError(pool.Use(spent))
+	}
+	s.character.AddResource(resources.HitDice, pool)
+	return pool
+}
+
+func (s *CharacterHitDiceTestSuite) TestShortRestHitDice() {
 	s.Run("dead character is rejected before rolling or spending", func() {
-		hitDiceResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
-			ID:          string(resources.HitDice),
-			Maximum:     4,
-			CharacterID: "test-fighter",
-			ResetType:   coreResources.ResetLongRest,
-		})
-		s.character.AddResource(resources.HitDice, hitDiceResource)
+		pool := s.hitDicePool(0)
 		s.character.hitPoints = 0
 		s.character.deathSaveState = &saves.DeathSaveState{Failures: 3, Dead: true}
 		markSaved(s.character)
 		roller := &mockHitDiceRoller{rolls: []int{10, 10}}
 
-		result, err := s.character.SpendHitDice(s.ctx, &SpendHitDiceInput{
-			Count:  2,
-			Roller: roller,
-		})
+		result, err := s.character.ShortRest(s.ctx, &ShortRestInput{HitDice: 2, Roller: roller})
 
 		s.Require().Error(err)
 		s.Equal(rpgerr.CodeInvalidState, rpgerr.GetCode(err))
 		s.Nil(result)
 		s.Zero(roller.calls)
-		s.Equal(4, hitDiceResource.Current())
+		s.Equal(4, pool.Current())
 		s.Zero(s.character.GetHitPoints())
 		s.Equal(&saves.DeathSaveState{Failures: 3, Dead: true}, s.character.GetDeathSaveState())
 		s.False(s.character.IsDirty())
 	})
 
 	s.Run("spends hit dice and heals character", func() {
-		// Setup: Add hit dice resource (4 dice for level 4)
-		hitDiceResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
-			ID:          string(resources.HitDice),
-			Maximum:     4,
-			CharacterID: "test-fighter",
-			ResetType:   coreResources.ResetLongRest,
-		})
-		s.character.AddResource(resources.HitDice, hitDiceResource)
+		s.hitDicePool(0)
+		roller := &mockHitDiceRoller{rolls: []int{6, 6}}
 
-		// Use mock roller that returns 6 for each die
-		mockRoller := &mockHitDiceRoller{rolls: []int{6, 6}}
-
-		// Spend 2 hit dice
-		result, err := s.character.SpendHitDice(s.ctx, &SpendHitDiceInput{
-			Count:  2,
-			Roller: mockRoller,
-		})
+		result, err := s.character.ShortRest(s.ctx, &ShortRestInput{HitDice: 2, Roller: roller})
 
 		s.Require().NoError(err)
 		s.Require().NotNil(result)
-
-		// Each die: 6 (roll) + 2 (CON mod) = 8, two dice = 16
-		s.Equal(2, result.DiceSpent)
-		s.Equal([]int{6, 6}, result.Rolls)
-		s.Equal(2, result.CONModifier, "CON modifier per die")
-		s.Equal(16, result.TotalHealing, "2 * (6 + 2) = 16")
-		s.Equal(2, result.Remaining, "4 - 2 = 2 remaining")
-
-		// Character should be healed (15 + 16 = 31)
-		s.Equal(31, s.character.GetHitPoints())
-
-		// Hit dice resource should be decremented
+		s.Equal(2, result.HitDiceSpent)
+		s.Equal(16, result.Healed, "2 * (6 + 2) = 16")
+		s.Equal(2, result.HitDiceRemaining, "4 - 2 = 2 remaining")
+		s.Equal(31, s.character.GetHitPoints(), "15 + 16")
 		s.Equal(2, s.character.GetResource(resources.HitDice).Current())
 	})
 
 	s.Run("caps healing at max HP", func() {
-		// Setup: Character at 35/40 HP
 		s.character.hitPoints = 35
-		hitDiceResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
-			ID:          string(resources.HitDice),
-			Maximum:     4,
-			CharacterID: "test-fighter",
-			ResetType:   coreResources.ResetLongRest,
-		})
-		s.character.AddResource(resources.HitDice, hitDiceResource)
+		s.hitDicePool(0)
 
-		// Roll 10 on a d10, + 2 CON = 12 healing (but max HP is 40)
-		mockRoller := &mockHitDiceRoller{rolls: []int{10}}
-
-		result, err := s.character.SpendHitDice(s.ctx, &SpendHitDiceInput{
-			Count:  1,
-			Roller: mockRoller,
+		result, err := s.character.ShortRest(s.ctx, &ShortRestInput{
+			HitDice: 1, Roller: &mockHitDiceRoller{rolls: []int{10}},
 		})
 
 		s.Require().NoError(err)
-		s.Equal(12, result.TotalHealing, "10 + 2 = 12 total")
+		s.Equal(12, result.Requested, "10 + 2 requested")
+		s.Equal(5, result.Healed, "35 to 40 is what landed")
 		s.Equal(40, s.character.GetHitPoints(), "should cap at max HP")
 	})
 
-	s.Run("returns error when not enough hit dice", func() {
-		// Setup: Only 1 hit die remaining
-		hitDiceResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
-			ID:          string(resources.HitDice),
-			Maximum:     4,
-			CharacterID: "test-fighter",
-			ResetType:   coreResources.ResetLongRest,
-		})
-		_ = hitDiceResource.Use(3) // Use 3, leaving 1
-		s.character.AddResource(resources.HitDice, hitDiceResource)
+	s.Run("more dice than remain spends nothing and rolls nothing", func() {
+		pool := s.hitDicePool(3)
+		markSaved(s.character)
+		roller := &mockHitDiceRoller{rolls: []int{5}}
 
-		// Try to spend 2 hit dice
-		result, err := s.character.SpendHitDice(s.ctx, &SpendHitDiceInput{
-			Count:  2,
-			Roller: &mockHitDiceRoller{rolls: []int{5}},
-		})
+		result, err := s.character.ShortRest(s.ctx, &ShortRestInput{HitDice: 2, Roller: roller})
 
-		s.Error(err)
+		s.Require().Error(err)
+		s.Equal(rpgerr.CodeResourceExhausted, rpgerr.GetCode(err))
 		s.Nil(result)
-		s.Contains(err.Error(), "not enough hit dice")
+		s.Zero(roller.calls)
+		s.Equal(1, pool.Current())
+		s.Equal(15, s.character.GetHitPoints())
+		s.False(s.character.IsDirty())
 	})
 
-	s.Run("returns error when count is zero", func() {
-		hitDiceResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
-			ID:          string(resources.HitDice),
-			Maximum:     4,
-			CharacterID: "test-fighter",
-			ResetType:   coreResources.ResetLongRest,
-		})
-		s.character.AddResource(resources.HitDice, hitDiceResource)
+	s.Run("a negative count is refused", func() {
+		s.hitDicePool(0)
 
-		result, err := s.character.SpendHitDice(s.ctx, &SpendHitDiceInput{
-			Count:  0,
-			Roller: &mockHitDiceRoller{rolls: []int{5}},
+		result, err := s.character.ShortRest(s.ctx, &ShortRestInput{
+			HitDice: -1, Roller: &mockHitDiceRoller{rolls: []int{5}},
 		})
 
-		s.Error(err)
+		s.Require().Error(err)
+		s.Equal(rpgerr.CodeInvalidArgument, rpgerr.GetCode(err))
 		s.Nil(result)
-		s.Contains(err.Error(), "must spend at least 1")
 	})
 
-	s.Run("returns error when no hit dice resource exists", func() {
-		// Don't add any hit dice resource
+	s.Run("dice with no roller are refused", func() {
+		pool := s.hitDicePool(0)
 
-		result, err := s.character.SpendHitDice(s.ctx, &SpendHitDiceInput{
-			Count:  1,
-			Roller: &mockHitDiceRoller{rolls: []int{5}},
-		})
+		result, err := s.character.ShortRest(s.ctx, &ShortRestInput{HitDice: 1})
 
-		s.Error(err)
+		s.Require().Error(err)
 		s.Nil(result)
-		s.Contains(err.Error(), "character has no hit dice resource configured")
+		s.Equal(4, pool.Current())
 	})
 
-	s.Run("returns error when input is nil", func() {
-		result, err := s.character.SpendHitDice(s.ctx, nil)
+	s.Run("dice asked of a character with no hit dice pool are refused", func() {
+		result, err := s.character.ShortRest(s.ctx, &ShortRestInput{
+			HitDice: 1, Roller: &mockHitDiceRoller{rolls: []int{5}},
+		})
 
-		s.Error(err)
+		s.Require().Error(err)
+		s.Equal(rpgerr.CodeNotFound, rpgerr.GetCode(err))
 		s.Nil(result)
-		s.Contains(err.Error(), "input cannot be nil")
+	})
+
+	s.Run("nil input is refused", func() {
+		result, err := s.character.ShortRest(s.ctx, nil)
+
+		s.Require().Error(err)
+		s.Nil(result)
+	})
+
+	// The operation it replaced dereferenced the bus to publish its healing
+	// after the die was already spent. A sheet with no bus is refused first.
+	s.Run("a sheet with no bus is refused before anything moves", func() {
+		pool := s.hitDicePool(0)
+		s.character.bus = nil
+		roller := &mockHitDiceRoller{rolls: []int{6}}
+
+		result, err := s.character.ShortRest(s.ctx, &ShortRestInput{HitDice: 1, Roller: roller})
+
+		s.Require().Error(err)
+		s.Nil(result)
+		s.Zero(roller.calls)
+		s.Equal(4, pool.Current())
 	})
 
 	s.Run("handles negative CON modifier correctly", func() {
-		// Create character with 6 CON (-2 modifier)
 		s.character.abilityScores[abilities.CON] = 6
+		s.hitDicePool(0)
 
-		// Setup: Add hit dice resource
-		hitDiceResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
-			ID:          string(resources.HitDice),
-			Maximum:     4,
-			CharacterID: "test-fighter",
-			ResetType:   coreResources.ResetLongRest,
-		})
-		s.character.AddResource(resources.HitDice, hitDiceResource)
-
-		// Use mock roller that returns 3 for each die
-		// 3 (roll) + (-2) (CON mod) = 1 per die, 2 total
-		mockRoller := &mockHitDiceRoller{rolls: []int{3, 3}}
-
-		result, err := s.character.SpendHitDice(s.ctx, &SpendHitDiceInput{
-			Count:  2,
-			Roller: mockRoller,
+		result, err := s.character.ShortRest(s.ctx, &ShortRestInput{
+			HitDice: 2, Roller: &mockHitDiceRoller{rolls: []int{3, 3}},
 		})
 
 		s.Require().NoError(err)
-		s.Require().NotNil(result)
-		s.Equal(-2, result.CONModifier, "CON 6 = -2 modifier")
-		s.Equal(2, result.TotalHealing, "2 * (3 + -2) = 2")
+		s.Equal(2, result.Healed, "2 * (3 + -2) = 2")
 		s.Equal(17, s.character.GetHitPoints(), "15 + 2 = 17")
 	})
 
-	s.Run("clamps total healing to 0 with very negative CON", func() {
-		// Create character with 4 CON (-3 modifier)
-		s.character.abilityScores[abilities.CON] = 4
+	s.Run("each die floors at zero on its own, and the floor is in the trace", func() {
+		s.character.abilityScores[abilities.CON] = 6 // -2
+		pool := s.hitDicePool(0)
 
-		// Setup: Add hit dice resource
-		hitDiceResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
-			ID:          string(resources.HitDice),
-			Maximum:     4,
-			CharacterID: "test-fighter",
-			ResetType:   coreResources.ResetLongRest,
-		})
-		s.character.AddResource(resources.HitDice, hitDiceResource)
-
-		// Use mock roller that returns 1 for each die
-		// 1 (roll) + (-3) (CON mod) = -2 per die, -4 total -> clamped to 0
-		mockRoller := &mockHitDiceRoller{rolls: []int{1, 1}}
-
-		initialHP := s.character.GetHitPoints()
-		result, err := s.character.SpendHitDice(s.ctx, &SpendHitDiceInput{
-			Count:  2,
-			Roller: mockRoller,
+		result, err := s.character.ShortRest(s.ctx, &ShortRestInput{
+			HitDice: 2, Roller: &mockHitDiceRoller{rolls: []int{1, 6}},
 		})
 
 		s.Require().NoError(err)
-		s.Require().NotNil(result)
-		s.Equal(-3, result.CONModifier, "CON 4 = -3 modifier")
-		s.Equal(0, result.TotalHealing, "negative total should be clamped to 0")
-		s.Equal(initialHP, s.character.GetHitPoints(), "HP should not change with 0 healing")
+		// Per die: max(1-2, 0) + max(6-2, 0) = 0 + 4. A per-rest floor
+		// would heal 3.
+		s.Equal(4, result.Requested)
+		s.Equal(4, result.Healed)
+		s.Equal(4, result.Healing.Total)
+		s.Equal(19, s.character.GetHitPoints())
+		s.Equal(2, pool.Current(), "the dice are spent whatever they rolled")
+		s.Require().NoError(dnd5eEvents.ValidateRollCalculation(result.Healing))
+
+		var floors []int
+		for _, component := range result.Healing.Components {
+			if component.Source.Ref != nil && component.Source.Ref.Equals(refs.Rules.HitDieFloor()) {
+				s.Require().NotNil(component.Modifier)
+				floors = append(floors, *component.Modifier)
+			}
+		}
+		s.Equal([]int{1}, floors, "one floor line, for the die that rolled 1, lifting it by 1")
+	})
+
+	s.Run("a rest whose every die floors heals nothing and never goes negative", func() {
+		s.character.abilityScores[abilities.CON] = 4 // -3
+		pool := s.hitDicePool(0)
+
+		result, err := s.character.ShortRest(s.ctx, &ShortRestInput{
+			HitDice: 2, Roller: &mockHitDiceRoller{rolls: []int{1, 1}},
+		})
+
+		s.Require().NoError(err)
+		s.Equal(0, result.Healing.Total)
+		s.Equal(0, result.Healed)
+		s.Equal(15, s.character.GetHitPoints())
+		s.Equal(2, pool.Current())
 	})
 }
 
-// TestSpendHitDiceAppliedEventCarriesLegacyRollFacts is the Hit Dice applied-event
-// regression: Hit Dice publishes nil-calculation healing with legacy Roll/Modifier
-// scalars, and the owner must mirror them onto HealingAppliedEvent — post-clamp —
-// while leaving Calculation nil.
-func (s *CharacterHitDiceTestSuite) TestSpendHitDiceAppliedEventCarriesLegacyRollFacts() {
-	s.Run("legacy roll and modifier survive the applied event unclamped", func() {
-		hitDiceResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
-			ID:          string(resources.HitDice),
-			Maximum:     4,
-			CharacterID: "test-fighter",
-			ResetType:   coreResources.ResetLongRest,
+// Every hit die names the resting character as the entity that threw it, and
+// the sheet hears the heal as that sourced calculation.
+func (s *CharacterHitDiceTestSuite) TestHitDiceKnowWhoseTheyAre() {
+	s.hitDicePool(0)
+
+	var got *dnd5eEvents.HealingAppliedEvent
+	_, err := dnd5eEvents.HealingAppliedTopic.On(s.bus).Subscribe(
+		s.ctx, func(_ context.Context, event dnd5eEvents.HealingAppliedEvent) error {
+			got = &event
+			return nil
 		})
-		s.character.AddResource(resources.HitDice, hitDiceResource)
+	s.Require().NoError(err)
 
-		var got *dnd5eEvents.HealingAppliedEvent
-		_, err := dnd5eEvents.HealingAppliedTopic.On(s.bus).Subscribe(
-			s.ctx, func(_ context.Context, event dnd5eEvents.HealingAppliedEvent) error {
-				got = &event
-				return nil
-			})
-		s.Require().NoError(err)
-
-		// 10 (roll) + 2 (CON mod) = 12 healing, below the cap.
-		result, err := s.character.SpendHitDice(s.ctx, &SpendHitDiceInput{
-			Count:  1,
-			Roller: &mockHitDiceRoller{rolls: []int{10}},
-		})
-
-		s.Require().NoError(err)
-		s.Require().Equal(12, result.TotalHealing)
-		s.Require().NotNil(got, "SpendHitDice publishes an applied healing fact")
-		s.Require().Equal(12, got.Requested)
-		s.Require().Equal(12, got.Applied)
-		s.Require().Equal(15, got.HPBefore)
-		s.Require().Equal(27, got.HPAfter)
-		s.Require().Nil(got.Calculation, "Hit Dice healing carries no calculation")
-		s.Require().Equal(10, got.Roll, "legacy roll survives the applied event")
-		s.Require().Equal(2, got.Modifier, "legacy modifier survives the applied event")
+	result, err := s.character.ShortRest(s.ctx, &ShortRestInput{
+		HitDice: 2, Roller: &mockHitDiceRoller{rolls: []int{4, 7}},
 	})
+	s.Require().NoError(err)
 
-	s.Run("legacy roll and modifier survive the post-clamp applied event", func() {
-		s.character.hitPoints = 35
-		markSaved(s.character)
-		hitDiceResource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
-			ID:          string(resources.HitDice),
-			Maximum:     4,
-			CharacterID: "test-fighter",
-			ResetType:   coreResources.ResetLongRest,
-		})
-		s.character.AddResource(resources.HitDice, hitDiceResource)
+	s.Require().NotNil(result.Healing)
+	s.Require().NoError(dnd5eEvents.ValidateRollCalculation(result.Healing))
+	var dice []int
+	for _, component := range result.Healing.Components {
+		if component.Dice == nil {
+			continue
+		}
+		s.Equal("test-fighter", component.Source.SourceID, "every die is the resting character's")
+		s.Equal(10, component.Dice.DieSize)
+		dice = append(dice, component.Dice.FinalRolls...)
+	}
+	s.ElementsMatch([]int{4, 7}, dice)
+	s.Equal(15, result.Healing.Total, "4 + 7 + 2*2")
 
-		var got *dnd5eEvents.HealingAppliedEvent
-		_, err := dnd5eEvents.HealingAppliedTopic.On(s.bus).Subscribe(
-			s.ctx, func(_ context.Context, event dnd5eEvents.HealingAppliedEvent) error {
-				got = &event
-				return nil
-			})
-		s.Require().NoError(err)
-
-		// 10 (roll) + 2 (CON mod) = 12 requested, clamped to 5 applied at max HP.
-		result, err := s.character.SpendHitDice(s.ctx, &SpendHitDiceInput{
-			Count:  1,
-			Roller: &mockHitDiceRoller{rolls: []int{10}},
-		})
-
-		s.Require().NoError(err)
-		s.Require().Equal(12, result.TotalHealing)
-		s.Require().Equal(40, s.character.GetHitPoints(), "clamped at max HP")
-		s.Require().NotNil(got)
-		s.Require().Equal(12, got.Requested)
-		s.Require().Equal(5, got.Applied, "post-clamp applied amount")
-		s.Require().Equal(35, got.HPBefore)
-		s.Require().Equal(40, got.HPAfter)
-		s.Require().Nil(got.Calculation, "Hit Dice healing carries no calculation")
-		s.Require().Equal(10, got.Roll, "legacy roll survives the post-clamp applied event")
-		s.Require().Equal(2, got.Modifier, "legacy modifier survives the post-clamp applied event")
-		s.True(s.character.IsDirty())
-	})
+	s.Require().NotNil(got, "the sheet publishes the applied heal")
+	s.Require().NotNil(got.Calculation, "the heal lands as the sourced roll, not as scalars")
+	s.Equal(15, got.Requested)
+	s.Equal(15, got.Applied)
+	s.Zero(got.Roll)
+	s.Zero(got.Modifier)
 }
 
 func TestCharacterHitDiceSuite(t *testing.T) {
@@ -921,30 +861,25 @@ func (s *CharacterLoadFromDataRoundTripSuite) TestAppearanceSurvivesRoundTrip() 
 	s.Require().Equal(expected, out.Appearance)
 }
 
-// TestClassResourcesSurviveRoundTrip is the partner regression: ClassResources
-// has the same shape and was dropped by the same code path.
-func (s *CharacterLoadFromDataRoundTripSuite) TestClassResourcesSurviveRoundTrip() {
-	in := s.minimalSpellcasterData()
-	in.ClassResources = map[shared.ClassResourceType]ResourceData{
-		shared.ClassResourceRage: {
-			Name:    "Rage",
-			Max:     2,
-			Current: 2,
-			Resets:  shared.ResetTypeLongRest,
-		},
-	}
-
-	char, err := LoadFromData(s.ctx, in, s.bus)
+// A record written before class_resources was deleted still loads, and the
+// module never writes the field again: it was round-tripped and never read.
+func (s *CharacterLoadFromDataRoundTripSuite) TestARecordCarryingClassResourcesLoadsAndDropsIt() {
+	raw, err := json.Marshal(s.minimalSpellcasterData())
 	s.Require().NoError(err)
-	s.Require().NotNil(char)
+	var record map[string]json.RawMessage
+	s.Require().NoError(json.Unmarshal(raw, &record))
+	record["class_resources"] = json.RawMessage(`{"1":{"name":"Rage","max":2,"current":2,"resets":"long_rest"}}`)
+	legacy, err := json.Marshal(record)
+	s.Require().NoError(err)
 
-	out := mustToData(s.T(), char)
-	s.Require().NotNil(out.ClassResources, "round-tripped ClassResources must not be nil")
+	var in Data
+	s.Require().NoError(json.Unmarshal(legacy, &in))
+	char, err := LoadFromData(s.ctx, &in, s.bus)
+	s.Require().NoError(err)
 
-	rage, ok := out.ClassResources[shared.ClassResourceRage]
-	s.Require().True(ok, "rage class resource must survive round-trip")
-	s.Equal(2, rage.Max, "rage Max must survive round-trip")
-	s.Equal(2, rage.Current, "rage Current must survive round-trip")
+	written, err := json.Marshal(mustToData(s.T(), char))
+	s.Require().NoError(err)
+	s.NotContains(string(written), "class_resources")
 }
 
 // minimalSpellcasterData builds the smallest valid Data shape the test needs.
