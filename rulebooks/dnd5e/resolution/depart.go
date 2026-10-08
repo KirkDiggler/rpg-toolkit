@@ -351,14 +351,15 @@ type peekedEffect struct {
 }
 
 // peekEffects reads each persisted effect on a record for its address and its
-// source ref. A blob that does not carry them is skipped: it names no caster.
+// source ref (core.Ref reads either persisted form, string or object). A blob
+// that does not carry them is skipped: it names no caster.
 func peekEffects(data *character.Data) []peekedEffect {
 	var out []peekedEffect
 	for _, raw := range data.Conditions {
 		var head struct {
-			Ref       *core.Ref       `json:"ref"`
-			SourceID  string          `json:"source_id"`
-			SourceRef json.RawMessage `json:"source_ref"`
+			Ref       *core.Ref `json:"ref"`
+			SourceID  string    `json:"source_id"`
+			SourceRef *core.Ref `json:"source_ref"`
 		}
 		if json.Unmarshal(raw, &head) != nil || head.Ref == nil {
 			continue
@@ -367,31 +368,10 @@ func peekEffects(data *character.Data) []peekedEffect {
 			address: dnd5eEvents.ConditionAddress{
 				MemberID: data.ID, ConditionRef: head.Ref.String(), SourceID: head.SourceID,
 			},
-			sourceRef: peekRef(head.SourceRef),
+			sourceRef: head.SourceRef,
 		})
 	}
 	return out
-}
-
-// peekRef reads a persisted source ref in either form content writes it: a
-// ref object or a ref string. Anything else names no source.
-func peekRef(raw json.RawMessage) *core.Ref {
-	if len(raw) == 0 {
-		return nil
-	}
-	var text string
-	if json.Unmarshal(raw, &text) == nil {
-		ref, err := core.ParseString(text)
-		if err != nil {
-			return nil
-		}
-		return ref
-	}
-	ref := &core.Ref{}
-	if json.Unmarshal(raw, ref) != nil {
-		return nil
-	}
-	return ref
 }
 
 // concentrationSpell reports whether ref names a spell this build casts as a
