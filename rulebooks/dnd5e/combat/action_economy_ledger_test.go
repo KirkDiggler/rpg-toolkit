@@ -150,3 +150,16 @@ func (s *ActionEconomyLedgerTestSuite) TestAMonstersEconomyPaysForAnAction() {
 	s.False(combat.CanPay(economy, profile))
 	s.Require().Error(combat.Pay(economy, profile))
 }
+
+// A monster's turn holds one object interaction, and Reset gives it back after
+// it was spent — the turn boundary reseeds it like the three slots.
+func (s *ActionEconomyLedgerTestSuite) TestResetRestoresTheObjectInteraction() {
+	economy := combat.NewActionEconomy()
+	s.Equal(1, economy.CapacityLeft(combat.CapacityObjectInteraction))
+
+	economy.SpendCapacity(combat.CapacityObjectInteraction, 1)
+	s.Equal(0, economy.CapacityLeft(combat.CapacityObjectInteraction))
+
+	economy.Reset()
+	s.Equal(1, economy.CapacityLeft(combat.CapacityObjectInteraction))
+}

@@ -646,7 +646,8 @@ func (s *CharacterHitDiceTestSuite) TestShortRestHitDice() {
 		})
 
 		s.Require().NoError(err)
-		s.Equal(12, result.Healed, "10 + 2 requested")
+		s.Equal(12, result.Requested, "10 + 2 requested")
+		s.Equal(5, result.Healed, "35 to 40 is what landed")
 		s.Equal(40, s.character.GetHitPoints(), "should cap at max HP")
 	})
 
@@ -733,8 +734,36 @@ func (s *CharacterHitDiceTestSuite) TestShortRestHitDice() {
 		s.Equal(17, s.character.GetHitPoints(), "15 + 2 = 17")
 	})
 
-	s.Run("clamps total healing to 0 with very negative CON, and still spends", func() {
-		s.character.abilityScores[abilities.CON] = 4
+	s.Run("each die floors at zero on its own, and the floor is in the trace", func() {
+		s.character.abilityScores[abilities.CON] = 6 // -2
+		pool := s.hitDicePool(0)
+
+		result, err := s.character.ShortRest(s.ctx, &ShortRestInput{
+			HitDice: 2, Roller: &mockHitDiceRoller{rolls: []int{1, 6}},
+		})
+
+		s.Require().NoError(err)
+		// Per die: max(1-2, 0) + max(6-2, 0) = 0 + 4. A per-rest floor
+		// would heal 3.
+		s.Equal(4, result.Requested)
+		s.Equal(4, result.Healed)
+		s.Equal(4, result.Healing.Total)
+		s.Equal(19, s.character.GetHitPoints())
+		s.Equal(2, pool.Current(), "the dice are spent whatever they rolled")
+		s.Require().NoError(dnd5eEvents.ValidateRollCalculation(result.Healing))
+
+		var floors []int
+		for _, component := range result.Healing.Components {
+			if component.Source.Ref != nil && component.Source.Ref.Equals(refs.Rules.HitDieFloor()) {
+				s.Require().NotNil(component.Modifier)
+				floors = append(floors, *component.Modifier)
+			}
+		}
+		s.Equal([]int{1}, floors, "one floor line, for the die that rolled 1, lifting it by 1")
+	})
+
+	s.Run("a rest whose every die floors heals nothing and never goes negative", func() {
+		s.character.abilityScores[abilities.CON] = 4 // -3
 		pool := s.hitDicePool(0)
 
 		result, err := s.character.ShortRest(s.ctx, &ShortRestInput{
@@ -742,10 +771,10 @@ func (s *CharacterHitDiceTestSuite) TestShortRestHitDice() {
 		})
 
 		s.Require().NoError(err)
-		s.Equal(0, result.Healed, "negative total should be clamped to 0")
-		s.Equal(-4, result.Healing.Total, "the roll record keeps what the dice said")
-		s.Equal(15, s.character.GetHitPoints(), "HP should not change with 0 healing")
-		s.Equal(2, pool.Current(), "the dice are spent whatever they rolled")
+		s.Equal(0, result.Healing.Total)
+		s.Equal(0, result.Healed)
+		s.Equal(15, s.character.GetHitPoints())
+		s.Equal(2, pool.Current())
 	})
 }
 

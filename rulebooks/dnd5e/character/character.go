@@ -483,21 +483,27 @@ type ShortRestOutput struct {
 
 	// Healing is the sourced roll the spent dice made: one dice component
 	// holding every hit die, sourced to the character's class and naming the
-	// resting character as the entity that threw it, and one Constitution
-	// modifier component for the whole count. Nil when no die was spent.
+	// resting character as the entity that threw it; one Constitution
+	// modifier component for the whole count; and, for each die whose roll
+	// plus the modifier fell below zero, one hit-die floor line lifting that
+	// die back to zero. Its total is never negative. Nil when no die was
+	// spent.
 	Healing *dnd5eEvents.RollCalculation
 
-	// Healed is the healing requested of the sheet: Healing's total, floored
-	// at zero. What landed after the maximum hit point cap is the sheet's
-	// answer; read the hit points.
+	// Requested is the healing asked of the sheet: Healing's total, before
+	// the maximum hit point cap. Zero when no die was spent.
+	Requested int
+
+	// Healed is the healing that landed: the hit points gained, after the
+	// cap.
 	Healed int
 }
 
 // ShortRest is one short rest, as one character operation (PHB p.186).
 //
 // Each hit die spent rolls the character's class hit die plus its
-// Constitution modifier, at least zero for the rest as a whole, and heals that
-// much up to maximum hit points. Then every resource whose own reset kind is a
+// Constitution modifier, each die floored at zero on its own (the letter),
+// and heals the sum up to maximum hit points. Then every resource whose own reset kind is a
 // short rest refills, and the rest event goes out so anything that ends on a
 // rest — Rage, a held Bardic Inspiration — ends itself and anything holding
 // its own pool refills it. No verb names a feature: Second Wind refills
@@ -571,13 +577,13 @@ func (c *Character) ShortRest(ctx context.Context, input *ShortRestInput) (*Shor
 	// its ki.
 	c.poolChanged()
 
-	healed := 0
+	requested, hpBefore := 0, c.hitPoints
 	if healing != nil && healing.Total > 0 {
-		healed = healing.Total
+		requested = healing.Total
 		sourceRef := c.hitDieRef()
 		err := dnd5eEvents.HealingReceivedTopic.On(c.bus).Publish(ctx, dnd5eEvents.HealingReceivedEvent{
 			TargetID:    c.id,
-			Amount:      healed,
+			Amount:      requested,
 			Calculation: healing,
 			Source:      string(resources.HitDice),
 			SourceRef:   &sourceRef,
@@ -600,16 +606,16 @@ func (c *Character) ShortRest(ctx context.Context, input *ShortRestInput) (*Shor
 		HitDiceSpent:     input.HitDice,
 		HitDiceRemaining: pool.Current(),
 		Healing:          healing,
-		Healed:           healed,
+		Requested:        requested,
+		Healed:           c.hitPoints - hpBefore,
 	}, nil
 }
 
 // rollHitDice throws count of the character's hit dice and returns the sourced
-// calculation: the dice, owned by this character, and the Constitution
-// modifier once per die.
-//
-// A total below zero is left as the roll says. The floor is the rest's rule,
-// applied to what the sheet is asked to heal, not a rewrite of the record.
+// calculation: the dice, owned by this character; the Constitution modifier
+// once per die; and a floor line for every die whose roll plus the modifier
+// fell below zero, so each die heals at least zero on its own (PHB p.186) and
+// the record says which die the floor lifted.
 func (c *Character) rollHitDice(ctx context.Context, count int, roller dice.Roller) (*dnd5eEvents.RollCalculation, error) {
 	faces, err := roller.RollN(ctx, count, c.hitDice)
 	if err != nil {
@@ -629,9 +635,10 @@ func (c *Character) rollHitDice(ctx context.Context, count int, roller dice.Roll
 	// receiver must not be able to reach the package singletons through it.
 	classRef := c.hitDieRef()
 	conRef := *refs.Abilities.Constitution()
-	modifier := c.GetAbilityModifier(abilities.CON) * count
+	perDie := c.GetAbilityModifier(abilities.CON)
+	modifier := perDie * count
 
-	calculation := dnd5eEvents.NewRollCalculation([]dnd5eEvents.RollComponent{
+	components := []dnd5eEvents.RollComponent{
 		{
 			Source: dnd5eEvents.RollSource{
 				Ref: &classRef, Name: "Hit Dice", Label: "Hit dice", SourceID: c.id,
@@ -651,7 +658,23 @@ func (c *Character) rollHitDice(ctx context.Context, count int, roller dice.Roll
 			},
 			Modifier: &modifier,
 		},
-	})
+	}
+	for i, face := range faces {
+		if face+perDie >= 0 {
+			continue
+		}
+		floorRef := *refs.Rules.HitDieFloor()
+		lift := -(face + perDie)
+		components = append(components, dnd5eEvents.RollComponent{
+			Source: dnd5eEvents.RollSource{
+				Ref: &floorRef, Name: "Hit die floor",
+				Label: fmt.Sprintf("Hit die %d (%d) heals at least zero", i+1, face), SourceID: c.id,
+			},
+			Modifier: &lift,
+		})
+	}
+
+	calculation := dnd5eEvents.NewRollCalculation(components)
 	if err := dnd5eEvents.ValidateRollCalculation(calculation); err != nil {
 		return nil, rpgerr.WrapWithCode(err, rpgerr.CodeInternal, "hit dice calculation is invalid")
 	}

@@ -276,7 +276,8 @@ func TestShortRestSpendsHitDiceAndRefillsByResetKind(t *testing.T) {
 
 	require.Equal(t, 1, roller.calls, "the roller it was handed threw the dice")
 	require.Equal(t, 2, out.HitDiceSpent)
-	require.Equal(t, 15, out.Healed, "3 + 8 + 2*2")
+	require.Equal(t, 15, out.Requested, "3 + 8 + 2*2")
+	require.Equal(t, 15, out.Healed, "all of it lands")
 	require.Equal(t, 18, char.GetHitPoints(), "3 + 15")
 	require.Equal(t, 0, char.GetResource(resources.HitDice).Current(), "exactly two dice spent")
 	require.Equal(t, 1, secondWindUses(t, char), "Second Wind resets on a short rest")
@@ -291,7 +292,8 @@ func TestShortRestNeverHealsPastMaximum(t *testing.T) {
 		HitDice: 2, Roller: &mockHitDiceRoller{rolls: []int{10, 10}},
 	})
 	require.NoError(t, err)
-	require.Equal(t, 24, out.Healed)
+	require.Equal(t, 24, out.Requested, "10 + 10 + 2*2 asked")
+	require.Equal(t, 21, out.Healed, "3 to 24 is what landed")
 	require.Equal(t, 24, char.GetHitPoints(), "capped at maximum")
 }
 

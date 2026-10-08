@@ -9,6 +9,9 @@ import "github.com/KirkDiggler/rpg-toolkit/core"
 // skill a verb uses rolls that check at disadvantage (rpg-project#457 R2).
 var ruleUntrained = &core.Ref{Module: Module, Type: TypeRules, ID: "untrained"}
 
+// ruleHitDieFloor is the letter that a hit die never heals less than zero.
+var ruleHitDieFloor = &core.Ref{Module: Module, Type: TypeRules, ID: "hit_die_floor"}
+
 // rulesNS is the namespace for refs that name a RULE rather than a piece of
 // content — a thing that modifies a roll and is not a feature, a condition or
 // a spell anybody carries.
@@ -40,3 +43,10 @@ var Rules = rulesNS{}
 // in rulebooks/dnd5e/resolution, and returning to the letter is deleting that
 // function — this ref is the handle it hangs its source on, nothing more.
 func (n rulesNS) Untrained() *core.Ref { return ruleUntrained }
+
+// HitDieFloor is the rule that a spent hit die heals at least zero: each die's
+// roll plus the Constitution modifier is floored on its own (PHB p.186), so a
+// low roll under a negative modifier heals nothing rather than costing hit
+// points. It appears in a short rest's roll as the line that lifts a floored
+// die back to zero, so the log says why that die healed nothing.
+func (n rulesNS) HitDieFloor() *core.Ref { return ruleHitDieFloor }

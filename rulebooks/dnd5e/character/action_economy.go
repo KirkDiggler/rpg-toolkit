@@ -84,8 +84,9 @@ func (c *Character) StartTurn(_ context.Context, input *StartTurnInput) (*StartT
 // Everything a turn grants is here and nothing else is: the three slots, the
 // movement the caller states (conditions modify speed, and that arithmetic
 // belongs above this), the one free object interaction, and an otherwise empty
-// bank — capacity granted last turn is not this turn's to spend. Shared by the turn-start verb and the freshness helper
-// so the two cannot drift into disagreeing about what a fresh turn looks like.
+// bank — capacity granted last turn is not this turn's to spend. Shared by
+// the turn-start verb and the freshness helper so the two cannot drift into
+// disagreeing about what a fresh turn looks like.
 func (c *Character) seedTurn(turnNumber, speed int) {
 	// Economy refresh and spell-turn history have independent identities.
 	// Preserve history here; the next explicit casting turn selects its scope.
