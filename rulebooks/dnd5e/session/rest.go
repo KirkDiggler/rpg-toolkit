@@ -170,9 +170,9 @@ func (m *Manager) Rest(ctx context.Context, in *RestInput) (*RestOutput, error) 
 	// rester the rulebook refuses (more hit dice than they hold) leaves the
 	// earlier ones unwritten, with no beat and no hour passed. The records a
 	// rest changes are carried to the next rester's resolution in memory
-	// ([restPending]) and saved together once every rester has resolved.
+	// ([pendingSheets]) and saved together once every rester has resolved.
 	sheets := m.sheetsFor(scope)
-	pending := &restPending{}
+	pending := &pendingSheets{}
 	results := make([]restResult, 0, len(in.Resters))
 	for _, rester := range in.Resters {
 		result, err := m.restOne(ctx, scope, sheets, pending, rester)
@@ -289,13 +289,13 @@ func refuseRester(scope *writeScope, member string) error {
 // the run holds as it stands now (an earlier rester's already rested), and
 // shapes what the record tells.
 func (m *Manager) restOne(
-	ctx context.Context, scope *writeScope, sheets sheetStore, pending *restPending, rester Rester,
+	ctx context.Context, scope *writeScope, sheets sheetStore, pending *pendingSheets, rester Rester,
 ) (restResult, error) {
 	record, err := pending.load(ctx, sheets, "rester", rester.Member)
 	if err != nil {
 		return restResult{}, err
 	}
-	others, err := m.othersOf(ctx, scope, sheets, pending, rester.Member)
+	others, err := m.othersOf(ctx, scope, sheets, pending, rester.Member, false)
 	if err != nil {
 		return restResult{}, err
 	}
@@ -351,19 +351,19 @@ func (m *Manager) restOne(
 	}, nil
 }
 
-// restPending is the records one Rest has changed and not yet saved: every
-// rester's rested sheet and every sheet a rest dirtied, newest record per
-// character, in the order each was first changed. It is the verb's own
+// pendingSheets is the records one verb has changed and not yet saved — a
+// Rest's rested and dirtied sheets, an Exit's or End's departures — newest
+// record per character, in the order each was first changed. It is the verb's own
 // unwritten work, not a copy of anything the repository holds — a record not
 // in it is read from the store at the moment it is asked for — and it is
 // saved, all of it, only once every rester has resolved.
-type restPending struct {
+type pendingSheets struct {
 	order []string
 	byID  map[string]*character.Data
 }
 
 // hold records a changed sheet, replacing any earlier change to it.
-func (p *restPending) hold(record *character.Data) {
+func (p *pendingSheets) hold(record *character.Data) {
 	if p.byID == nil {
 		p.byID = map[string]*character.Data{}
 	}
@@ -375,7 +375,7 @@ func (p *restPending) hold(record *character.Data) {
 
 // load answers a changed sheet from this rest's unwritten work, or reads the
 // store.
-func (p *restPending) load(ctx context.Context, sheets sheetStore, role, id string) (*character.Data, error) {
+func (p *pendingSheets) load(ctx context.Context, sheets sheetStore, role, id string) (*character.Data, error) {
 	if record, ok := p.byID[id]; ok {
 		return record, nil
 	}
@@ -383,7 +383,7 @@ func (p *restPending) load(ctx context.Context, sheets sheetStore, role, id stri
 }
 
 // ordered is every changed sheet, in the order each was first changed.
-func (p *restPending) ordered() []*character.Data {
+func (p *pendingSheets) ordered() []*character.Data {
 	out := make([]*character.Data, 0, len(p.order))
 	for _, id := range p.order {
 		out = append(out, p.byID[id])
@@ -391,12 +391,15 @@ func (p *restPending) ordered() []*character.Data {
 	return out
 }
 
-// othersOf is every sheet the run holds except the rester's: each other
+// othersOf is every sheet the run holds except the rester's (skipMissing
+// passes over a player whose sheet is absent, for a departure: Exit and End
+// still work around a sheet nobody can read): each other
 // player's record, read now through the verb's store, and each monster's
 // stat block from the session record. A rest can end a concentration that
 // was holding an effect on any of them.
 func (m *Manager) othersOf(
-	ctx context.Context, scope *writeScope, sheets sheetStore, pending *restPending, rester string,
+	ctx context.Context, scope *writeScope, sheets sheetStore, pending *pendingSheets, rester string,
+	skipMissing bool,
 ) ([]resolution.Participant, error) {
 	roster, err := scope.enc.Members()
 	if err != nil {
@@ -411,6 +414,9 @@ func (m *Manager) othersOf(
 		switch member.Kind {
 		case encounter.KindPlayer:
 			data, err := pending.load(ctx, sheets, "participant", id)
+			if skipMissing && errors.Is(err, ErrNoCharacter) {
+				continue
+			}
 			if err != nil {
 				return nil, err
 			}

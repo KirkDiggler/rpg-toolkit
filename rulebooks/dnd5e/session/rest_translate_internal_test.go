@@ -27,3 +27,11 @@ func TestARestThatTheRunBrokeIsAnInvalidSession(t *testing.T) {
 		})
 	}
 }
+
+// TestADepartureTheRunBrokeIsAnInvalidSession: a hold whose caster the run
+// does not hold is the run's fault, not the leaver's sheet.
+func TestADepartureTheRunBrokeIsAnInvalidSession(t *testing.T) {
+	err := translateDepart("alice", fmt.Errorf("resolution: depart: %w", resolution.ErrBadParticipant))
+	require.ErrorIs(t, err, ErrInvalidSession)
+	require.NotErrorIs(t, err, ErrBadCharacter)
+}

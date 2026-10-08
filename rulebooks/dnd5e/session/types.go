@@ -2510,6 +2510,12 @@ type ExitedBody struct {
 	// member walking out at a cell nobody authored as a way out. Empty is not
 	// "unknown"; it is the truth that no authored exit was used.
 	Exit string `json:"exit,omitempty"`
+
+	// Ended is every condition the departure took off the board — the
+	// leaver's, and the remaining members' a hold of the leaver's was
+	// keeping — in the rulebook's order. Empty when the leaver took nothing
+	// with them.
+	Ended []ConditionRemovedBody `json:"ended,omitempty"`
 }
 
 func (ExitedBody) isEventBody() {}
@@ -2647,6 +2653,10 @@ func (DroppedBody) isEventBody() {}
 // out of has dissolved (ruling §6.6).
 type EndedBody struct {
 	Ending string `json:"ending"`
+
+	// Ended is, per member, every condition the ending took off them as the
+	// players left with the run. Absent when nothing came off anybody.
+	Ended map[string][]ConditionRemovedBody `json:"ended,omitempty"`
 }
 
 func (EndedBody) isEventBody() {}

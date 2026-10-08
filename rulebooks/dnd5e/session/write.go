@@ -1152,9 +1152,20 @@ func (m *Manager) Exit(ctx context.Context, in *ExitInput) (*ExitOutput, error) 
 	// the session's this verb already holds.
 	player := scope.standing.kinds[in.Member] == encounter.KindPlayer
 
-	left, err := scope.enc.Exit(&encounter.ExitInput{Member: encounter.MemberID(in.Member)})
+	// THE LEAVER TAKES WHAT WAS HELD ON THEM WITH THEM (depart.go): every
+	// effect another's concentration held on them comes off, and every hold
+	// they were concentrating on ends — saved before the exit, and every
+	// removal told on the exit beat.
+	departed, err := m.depart(ctx, scope, []string{in.Member})
 	if err != nil {
-		return nil, fmt.Errorf("exit: %w", translate(err))
+		return nil, fmt.Errorf("exit: %w", saveErrorAfterWrites(scope, "", err))
+	}
+
+	left, err := scope.enc.Exit(&encounter.ExitInput{
+		Member: encounter.MemberID(in.Member), Ended: departed.all(departed.members()),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("exit: %w", reportUnrecorded(scope, translate(err)))
 	}
 
 	roster, err := scope.enc.Members()
@@ -1210,9 +1221,33 @@ func (m *Manager) End(ctx context.Context, in *EndInput) (*EndOutput, error) {
 		return nil, fmt.Errorf("end: %w", err)
 	}
 
-	ended, err := scope.enc.End(&encounter.EndInput{Ending: in.Ending})
+	// EVERY PLAYER LEAVES WITH THE RUN (depart.go), and what came off each
+	// member is told on the ended beat under that member.
+	roster, err := scope.enc.Members()
 	if err != nil {
 		return nil, fmt.Errorf("end: %w", translate(err))
+	}
+	var players []string
+	for _, member := range roster {
+		if member.Kind == encounter.KindPlayer {
+			players = append(players, string(member.ID))
+		}
+	}
+	departed, err := m.depart(ctx, scope, players)
+	if err != nil {
+		return nil, fmt.Errorf("end: %w", saveErrorAfterWrites(scope, "", err))
+	}
+	var endedBy map[encounter.MemberID][]encounter.ActivationResult
+	for _, member := range departed.members() {
+		if endedBy == nil {
+			endedBy = map[encounter.MemberID][]encounter.ActivationResult{}
+		}
+		endedBy[encounter.MemberID(member)] = departed.removedFrom[member]
+	}
+
+	ended, err := scope.enc.End(&encounter.EndInput{Ending: in.Ending, Ended: endedBy})
+	if err != nil {
+		return nil, fmt.Errorf("end: %w", reportUnrecorded(scope, translate(err)))
 	}
 
 	report, delivery, err := m.commit(ctx, scope)

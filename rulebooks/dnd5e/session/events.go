@@ -427,11 +427,16 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		return JoinedBody{Member: p.Member}
 	case EventExited:
 		var p struct {
-			Member  string   `json:"member"`
-			Holding []string `json:"holding"`
-			Exit    string   `json:"exit"`
+			Member  string            `json:"member"`
+			Holding []string          `json:"holding"`
+			Exit    string            `json:"exit"`
+			Ended   []json.RawMessage `json:"ended"`
 		}
 		if json.Unmarshal(payload, &p) != nil || p.Member == "" {
+			return nil
+		}
+		ended, ok := conditionsRemovedOf(p.Member, p.Ended)
+		if !ok {
 			return nil
 		}
 		// Neither new field gates the body. A departure carrying nothing
@@ -439,15 +444,27 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		// decode; requiring either would demote every ordinary exit to an
 		// untyped payload, which is the failure this function's own doc
 		// warns kind-and-body conflation causes.
-		return ExitedBody{Member: p.Member, Holding: p.Holding, Exit: p.Exit}
+		return ExitedBody{Member: p.Member, Holding: p.Holding, Exit: p.Exit, Ended: ended}
 	case EventEnded:
 		var p struct {
-			Ending string `json:"ending"`
+			Ending string                       `json:"ending"`
+			Ended  map[string][]json.RawMessage `json:"ended"`
 		}
 		if json.Unmarshal(payload, &p) != nil || p.Ending == "" {
 			return nil
 		}
-		return EndedBody{Ending: p.Ending}
+		body := EndedBody{Ending: p.Ending}
+		for member, raws := range p.Ended {
+			removed, ok := conditionsRemovedOf(member, raws)
+			if !ok {
+				return nil
+			}
+			if body.Ended == nil {
+				body.Ended = map[string][]ConditionRemovedBody{}
+			}
+			body.Ended[member] = removed
+		}
+		return body
 	case EventDoor:
 		var p struct {
 			Door        string          `json:"door"`
@@ -2530,4 +2547,19 @@ func conditionRemovedOf(actor string, raw json.RawMessage) (ConditionRemovedBody
 		return ConditionRemovedBody{}, false
 	}
 	return *body.ConditionRemoved, true
+}
+
+// conditionsRemovedOf decodes a list of removals in the activation-result
+// shape, each through [conditionRemovedOf]; nil for an empty list, and not ok
+// when any entry is not a removal.
+func conditionsRemovedOf(actor string, raws []json.RawMessage) ([]ConditionRemovedBody, bool) {
+	var out []ConditionRemovedBody
+	for _, raw := range raws {
+		removed, ok := conditionRemovedOf(actor, raw)
+		if !ok {
+			return nil, false
+		}
+		out = append(out, removed)
+	}
+	return out, true
 }
