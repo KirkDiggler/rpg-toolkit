@@ -154,6 +154,7 @@ func (s *DepartTestSuite) TestDepart() {
 		s.Equal([]dnd5eEvents.ConditionAddress{{
 			MemberID: departCarol, ConditionRef: blessedRef, SourceID: departBob,
 		}}, hold.Children, "the hold names only carol")
+		s.Empty(out.ConcentrationBreaks, "a hold that continues did not break")
 	})
 
 	s.Run("alice was the only target: the hold ends, departed", func() {
@@ -183,6 +184,12 @@ func (s *DepartTestSuite) TestDepart() {
 		dirty := dirtyByID(out.DirtyCharacters)
 		s.Require().Contains(dirty, departBob)
 		s.Nil(s.holdOf(dirty[departBob]), "bob's hold ended")
+
+		s.Require().Len(out.ConcentrationBreaks, 1, "the ended hold reaches the session")
+		held := out.ConcentrationBreaks[0]
+		s.Equal(encounter.MemberID(departBob), held.Caster, "the caster to tell")
+		s.Equal(refs.Spells.Bless().String(), held.Spell.Ref)
+		s.Equal(DepartedReason, held.Reason)
 	})
 
 	s.Run("the caster is not passed in: refused, inputs unchanged", func() {

@@ -48,6 +48,13 @@ type DepartOutput struct {
 	// with reason [DepartedReason].
 	Ended []encounter.ActivationResult
 
+	// ConcentrationBreaks are the holds the departure ended because the
+	// leaver was all they still held, each with reason [DepartedReason] and
+	// the caster to tell — the same record a Resolve or a ShortRest returns.
+	// A hold that continues for other targets is not here; its caster is in
+	// DirtyCharacters or DirtyMonsters.
+	ConcentrationBreaks []encounter.ConcentrationBreak
+
 	// DirtyCharacters and DirtyMonsters are the [DepartInput.Others] the
 	// departure changed, and only those: a caster whose hold no longer names
 	// the leaver, or whose hold ended because the leaver was its last target.
@@ -120,12 +127,16 @@ func departOn(
 		return nil, err
 	}
 
-	removals, err := collectRemovals(ctx, surf.inner, one.ID())
+	ends, err := collectConcentrationEnds(ctx, surf.inner)
 	if err != nil {
 		return nil, err
 	}
+	removals, err := collectRemovals(ctx, surf.inner, one.ID())
+	if err != nil {
+		return nil, errors.Join(err, ends.stop(ctx))
+	}
 	releaseErr := release(ctx, surf.inner, one.ID(), held)
-	if stopErr := removals.stop(ctx); stopErr != nil {
+	if stopErr := errors.Join(ends.stop(ctx), removals.stop(ctx)); stopErr != nil {
 		return nil, errors.Join(releaseErr, stopErr)
 	}
 	if releaseErr != nil {
@@ -141,7 +152,12 @@ func departOn(
 		return nil, err
 	}
 
-	out = &DepartOutput{Character: left, Ended: ended}
+	breaks, err := breaksFrom(ends.facts, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	out = &DepartOutput{Character: left, Ended: ended, ConcentrationBreaks: breaks}
 	dirty, err := dirtyCharacters(cast)
 	if err != nil {
 		return nil, err
@@ -232,7 +248,9 @@ func heldOn(leaver *character.Data, cast *Participants) ([]heldEffects, error) {
 	}
 
 	// An effect whose caster is not here cannot be told apart from an effect
-	// nobody holds by looking for the hold. The spell it came from can: an
+	// nobody holds by looking for the hold. The spell it came from can, and
+	// the answer is a fact content declares — the spell's cast profile
+	// carries a concentration — rather than a match on any ref here: an
 	// effect of a concentration spell is held by its caster, and leaving
 	// without telling the caster would leave a hold naming a member gone.
 	for _, effect := range peekEffects(leaver) {
