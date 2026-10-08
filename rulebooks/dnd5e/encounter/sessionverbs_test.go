@@ -420,16 +420,17 @@ func (s *SessionVerbsSuite) TestARestCarriesWhatItRestored() {
 	s.NotNil(beats[0]["calculation"])
 
 	refused := map[string]*encounter.RecordRestInput{
-		"no kind":                 {Member: alice},
-		"a long rest":             {Member: alice, Kind: "long"},
-		"negative dice":           {Member: alice, Kind: encounter.RestShort, HitDiceSpent: -1},
-		"negative hit points":     {Member: alice, Kind: encounter.RestShort, HitPointsRestored: -1},
-		"dice with no arithmetic": {Member: alice, Kind: encounter.RestShort, HitDiceSpent: 1},
-		"arithmetic with no dice": {Member: alice, Kind: encounter.RestShort, Calculation: calc},
-		"an unnamed refill":       {Member: alice, Kind: encounter.RestShort, ResourcesRefilled: []string{""}},
-		"negative hit points now": {Member: alice, Kind: encounter.RestShort, HitPoints: -1},
-		"negative dice returned":  {Member: alice, Kind: encounter.RestShort, HitDiceReturned: -1},
-		"negative dice remaining": {Member: alice, Kind: encounter.RestShort, HitDiceRemaining: -1},
+		"no kind":                     {Member: alice},
+		"a long rest":                 {Member: alice, Kind: "long"},
+		"negative dice":               {Member: alice, Kind: encounter.RestShort, HitDiceSpent: -1},
+		"negative hit points":         {Member: alice, Kind: encounter.RestShort, HitPointsRestored: -1},
+		"dice with no arithmetic":     {Member: alice, Kind: encounter.RestShort, HitDiceSpent: 1},
+		"arithmetic with no dice":     {Member: alice, Kind: encounter.RestShort, Calculation: calc},
+		"an unnamed refill":           {Member: alice, Kind: encounter.RestShort, ResourcesRefilled: []string{""}},
+		"negative hit points now":     {Member: alice, Kind: encounter.RestShort, HitPoints: -1},
+		"negative dice returned":      {Member: alice, Kind: encounter.RestShort, HitDiceReturned: -1},
+		"a short rest returning dice": {Member: alice, Kind: encounter.RestShort, HitDiceReturned: 3},
+		"negative dice remaining":     {Member: alice, Kind: encounter.RestShort, HitDiceRemaining: -1},
 	}
 	for name, in := range refused {
 		_, err := enc.RecordRest(in)

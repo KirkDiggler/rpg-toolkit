@@ -74,7 +74,7 @@ type RecordRestInput struct {
 
 	// HitDiceReturned is how many hit dice the rest gave back — a long
 	// rest's, so zero for every rest this module records today. Negative is
-	// refused (ErrInvalidData).
+	// refused, and so is any above zero on a short rest (ErrInvalidData).
 	HitDiceReturned int
 
 	// HitDiceRemaining is the hit dice the character has left to spend after
@@ -259,6 +259,12 @@ func validateRestRestored(in *RecordRestInput) error {
 		if c.n < 0 {
 			return fmt.Errorf("record rest: %s %d: %w", c.name, c.n, ErrInvalidData)
 		}
+	}
+	// A SHORT REST RETURNS NO HIT DICE — returning them is a long rest's —
+	// so a short rest reporting some is a rest that cannot have happened as
+	// told.
+	if in.Kind == RestShort && in.HitDiceReturned > 0 {
+		return fmt.Errorf("record rest: a short rest returned %d hit dice: %w", in.HitDiceReturned, ErrInvalidData)
 	}
 	if in.HitDiceSpent == 0 && in.Calculation != nil {
 		return fmt.Errorf("record rest: a calculation with no hit dice spent: %w", ErrInvalidData)
