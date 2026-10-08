@@ -187,24 +187,25 @@
 // own numbering. What makes that durable is a persisted cursor per member on
 // the session record, advanced in the same commit as the beats it counts.
 //
-// # Automatic discovery and character-retained exploration
+// # Automatic discovery and encounter-owned memory
 //
 // Config.Explorations is an optional ExplorationRepository, keyed by character
 // ID. Nil preserves the legacy explicit-search host contract. Supplying it
-// enables automaticCheckSeam and persists ExplorationData separately from an
-// expiring session: a character's sharing preference and retained check memory.
-// The host stores this data opaquely and must coordinate profiles shared across
-// runs; a session-ID-only lock is not a cross-session profile transaction.
+// enables automaticCheckSeam and persists only the sharing preference in
+// ExplorationData. The host coordinates that preference across sessions.
 //
-// prepareExploration loads the placed players' profiles and any incoming Join
-// member, validates/stages character records, and hands retained values to
-// encounter.RestoreDiscovery or Join. Encounter owns proximity, eligibility,
-// allowance, re-arming, lifetime filtering, and monotonic knowledge/count merge.
-// saveExploration copies that owner's DiscoveryMemory projection into the stored
-// profile, retaining unrelated check IDs, and writes changed records. Neither
-// helper decides a rule or recomputes a result: selecting records and carrying
-// provider-owned data is this seam's responsibility. Resolution still owns the
-// actual check and returns dirty character data and sourced arithmetic.
+// Discoveries and attempt/re-arm state belong to the encounter's own saved
+// World and Discovery data. Reloading/rejoining that encounter preserves them;
+// a new encounter from the same template and character starts fresh. They are
+// never exported to or imported from the character profile. Legacy profile JSON
+// containing checks is accepted but those obsolete values have no authority.
+//
+// prepareExploration loads preferences, stages character records and supplies
+// only the private/shared audience preference to RestoreDiscovery or Join.
+// saveExploration writes changed preferences only. Encounter owns proximity,
+// eligibility, allowance and re-arming; resolution owns the actual check and
+// returns dirty character data and sourced arithmetic. The normal first-admission
+// long rest remains independent of this encounter-local discovery lifecycle.
 //
 // SetDiscoverySharing changes the seated character's future discovery audience;
 // it neither backfills a new recipient nor erases anyone's learned knowledge.
@@ -216,11 +217,42 @@
 // Reads do not roll, and delivery waits for the persistence reports. Partial
 // saves still obey S6 rather than claiming multi-store rollback.
 //
-// ExplorationData.Checks deliberately carries encounter.DiscoveryMemoryData
-// across S2 as an opaque PERSISTENCE SHAPE, like EncounterData at its repository
-// port. The host round-trips it, never constructs a runtime encounter or decides
-// what a stored counter/knowledge bit means. The boundary allow-list pins this
-// narrow concession; runtime inner types remain forbidden.
+// # Permitted prop presentation
+//
+// Atlas.PropPresentations and both reveal bodies carry the provider's fixed
+// render records in the same PropID namespace as prop/placed shapes. Mutable
+// PropSighting.Presentation is captured with its observation, never enriched from
+// current world/source state when returning memory; observed-empty carries none.
+// These SDK-owned DTOs copy canonical pose and visual style, never infer visibility
+// or collision. Opening-attached doors stay exclusively in the structural channel.
+// The shared reveal decoder refuses malformed/duplicate records and conflicting
+// door channels atomically. Missing legacy collections remain absent, not a request
+// for an unrestricted authored document. Identity/finite-pose/light validation is
+// transport integrity, not another gameplay rule or appearance lookup service.
+//
+// # Structural layout, on the same fixed-layout grain
+//
+// The promoted authored walls and doors (rpg-project#169) ride the pipeline the
+// package already had. The composition decides which walls, cuts and doors a
+// recipient may know — a wall is presented only when its raw static presence
+// survives, a bound opening only when its own door identity is independently
+// permitted, and a withheld opening is omitted whole so a visible wall carries no
+// tell. This seam copies that answer: [Atlas.StructuralWalls] and
+// [Atlas.StructuralDoors] carry the permitted records with their canonical-feet
+// geometry. Existing room_revealed and concealment_revealed payloads introduce
+// full records through `structural_walls`/`structural_doors`, and replace a known
+// wall's opening list through `structural_wall_openings_replacements`
+// (RoomRevealedBody, ConcealmentRevealedBody). A present replacement with an
+// empty/default opening list clears it; absence is a no-op. Historical full-row
+// updates retain their whole-record upsert semantics.
+//
+// NOTHING IS DECIDED HERE. projectAtlas is a field-for-field copy; the reveal
+// decode is a shared helper that refuses a malformed or identity-less row whole
+// rather than handing a client a half-applied patch. A fixed row carries no
+// mutable state, no private placed id and no parent association, so an unknown
+// door state stays unknown instead of turning a known doorway into wall; and a
+// replay of an old beat never re-reads a newer world to enrich it. Legacy payloads
+// without structural keys decode exactly as before.
 //
 // # Holdings: Loot, Hold, and the ending on the way out
 //
@@ -312,8 +344,7 @@
 //
 // S2 — no inner type crosses the boundary. Exported signatures reference types
 // owned here plus stable value types (spatial.Position), with explicit opaque
-// persistence-shape exceptions at repository ports, including
-// ExplorationData's encounter.DiscoveryMemoryData. Never a runtime encounter,
+// persistence-shape exceptions at repository ports. Never a runtime encounter,
 // combat, clock, intel or record object. This is what allows the
 // modules underneath to be replaced without the host changing a line, and it
 // is enforced by a test rather than by good intentions.

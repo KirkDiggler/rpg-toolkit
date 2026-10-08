@@ -26,6 +26,7 @@ func TestPropObservationSuite(t *testing.T) { suite.Run(t, new(PropObservationSu
 func (s *PropObservationSuite) SetupTest() {
 	field := doorField(3, encounter.DoorIsOpen(), "gate", 1)
 	field.Props = []encounter.PropInput{{ID: "b", Ref: "test:props:chest", Holdable: true, At: spatial.Position{X: 4, Y: 1}, BlocksMovement: boolPtr(false), BlocksLineOfSight: boolPtr(false)}}
+	field.PropPresentations = []encounter.PropPresentation{{ID: "b", Ref: "test:props:chest", Origin: centreOf(cellAt(4, 1)), Elevation: 2, FacingDegrees: 17, HeightScale: 1.5}}
 	s.sight = &sightList{fallback: 20}
 	var err error
 	s.enc, err = encounter.NewEncounter(&encounter.SetupInput{
@@ -77,6 +78,7 @@ func (s *PropObservationSuite) TestFootprintMemoryKeepsItsShapeAndNeedsCompleteE
 	box := placed("b", coveredBox(12, centreOf(cellAt(4, 1))), false, false)
 	box.Holdable = true
 	field.Placed = []encounter.PlacedPropInput{box}
+	field.PropPresentations = []encounter.PropPresentation{{ID: "b", Ref: "test:props:chest", Origin: box.Placement.Origin, HeightScale: 1.25, Elevation: 2}}
 	var err error
 	s.enc, err = encounter.NewEncounter(&encounter.SetupInput{
 		Field: field, Sight: s.sight, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
@@ -87,6 +89,9 @@ func (s *PropObservationSuite) TestFootprintMemoryKeepsItsShapeAndNeedsCompleteE
 	s.Require().NoError(err)
 	before := s.prop(propObserver)
 	s.Require().NotNil(before.Placed)
+	s.Require().NotNil(before.Presentation)
+	s.Equal(box.Placement.Origin, before.Presentation.Origin)
+	s.Equal(1.25, before.Presentation.HeightScale)
 	s.Greater(len(before.Placed.Cells), 1)
 	s.Equal(box.Placement, before.Placed.Placement)
 	s.withdraw()
@@ -107,8 +112,10 @@ func (s *PropObservationSuite) TestFootprintMemoryKeepsItsShapeAndNeedsCompleteE
 	s.Require().NoError(err)
 	s.False(s.prop(propObserver).ObservedEmpty, "partial footprint visibility is not a complete absence witness")
 	s.Equal(before.Placed, s.prop(propObserver).Placed)
+	s.Equal(before.Presentation, s.prop(propObserver).Presentation)
 	s.reload()
 	s.Equal(before.Placed, s.prop(propObserver).Placed)
+	s.Equal(before.Presentation, s.prop(propObserver).Presentation)
 	s.sight.reach[propObserver] = 20
 	_, err = s.enc.Step(&encounter.StepInput{Member: "b", To: cellAt(3, 0)})
 	s.Require().NoError(err)
@@ -118,6 +125,7 @@ func (s *PropObservationSuite) TestFootprintMemoryKeepsItsShapeAndNeedsCompleteE
 	}
 	s.True(s.prop(propObserver).ObservedEmpty)
 	s.Empty(s.prop(propObserver).Placed.Cells)
+	s.Nil(s.prop(propObserver).Presentation)
 }
 
 func (s *PropObservationSuite) TestRoomLayoutDoesNotDiscloseAnOccludedProp() {
@@ -163,6 +171,33 @@ func (s *PropObservationSuite) TestCreatureAndPropWithTheSameIDRemainDistinct() 
 	// Even an observer whose raw ID equals the prop's qualified ID sees it.
 	s.reload()
 	s.Contains(s.prop(propObserver).CurrentVia, perception.Sight)
+}
+
+func (s *PropObservationSuite) TestPresentationMemoryNeverJoinsAnUnseenDropPose() {
+	before := s.prop(propObserver)
+	s.Require().NotNil(before.Presentation)
+	s.Equal(2.0, before.Presentation.Elevation)
+	atlas, err := s.enc.AtlasFor(propObserver)
+	s.Require().NoError(err)
+	s.Empty(atlas.PropPresentations, "mutable appearance is not fixed room geometry")
+	s.withdraw()
+	_, err = s.enc.Hold(&encounter.HoldInput{Member: "b", Target: "b"})
+	s.Require().NoError(err)
+	s.Nil(s.prop("b").Presentation, "witnessed empty has no render pose")
+	_, err = s.enc.Exit(&encounter.ExitInput{Member: "b"})
+	s.Require().NoError(err)
+	s.Equal(before.Presentation, s.prop(propObserver).Presentation, "unseen drop must not move the remembered picture")
+	s.reload()
+	s.Equal(before.Presentation, s.prop(propObserver).Presentation)
+	s.sight.reach[propObserver] = 20
+	_, err = s.enc.Recheck(&encounter.RecheckInput{Members: []encounter.MemberID{propObserver}})
+	s.Require().NoError(err)
+	after := s.prop(propObserver)
+	s.Require().NotNil(after.Presentation)
+	s.Zero(after.Presentation.Elevation, "the existing drop fact places it on the floor")
+	s.Equal(centreOf(cellAt(3, 1)), after.Presentation.Origin)
+	s.Equal(before.Presentation.Ref, after.Presentation.Ref)
+	s.Equal(before.Presentation.HeightScale, after.Presentation.HeightScale)
 }
 
 func (s *PropObservationSuite) TestUnseenPickupAndClosePreserveMemoryUntilEmptyIsObserved() {

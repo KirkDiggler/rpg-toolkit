@@ -269,7 +269,10 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position, endWal
 			// front-room/cellar-door" cannot tell that the answer is to open
 			// it. The sentences and the sentinels are the edge door's own,
 			// below; this is the same law reaching the second geometry.
-			if door := e.field.doorAcrossCrossing(here, to); door != nil {
+			if door := e.field.doorAcrossCrossing(here, to); door != nil && door.id == prop {
+				if e.hiddenDoorTo(member.ID, door.id) {
+					return executedAction{}, maskedStepRefusal(maskedStepInput{member: member.ID, from: here, to: to})
+				}
 				return executedAction{}, &StepObstructedError{cause: shutDoorRefusal(door)}
 			}
 			return executedAction{}, &StepObstructedError{cause: fmt.Errorf("the crossing from %v into %v is through %q: %w",
@@ -296,9 +299,7 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position, endWal
 		// illusion breaking, which is the whole of what a forced move
 		// through a secret means.
 		if e.masqueradeBlocks(member.ID, here, to) {
-			return executedAction{}, &StepObstructedError{cause: fmt.Errorf(
-				"movemember: %w: entity %s cannot cross movement-blocking boundary from %v to %v",
-				ErrBadPlacement, member.ID, here, to)}
+			return executedAction{}, maskedStepRefusal(maskedStepInput{member: member.ID, from: here, to: to})
 		}
 	}
 
@@ -329,6 +330,9 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position, endWal
 		// covers it — the same refusal a crossing through one earns, because
 		// it is the same door and the same answer: open it.
 		if door := e.field.doorStandingOn(to); door != nil {
+			if e.hiddenDoorTo(member.ID, door.id) {
+				return executedAction{}, maskedStepRefusal(maskedStepInput{member: member.ID, from: here, to: to})
+			}
 			return executedAction{}, &StepObstructedError{cause: shutDoorRefusal(door)}
 		}
 		refusal := fmt.Errorf("cell %v %s: %w", to, e.blockedBy(fact, to), ErrBadPlacement)
@@ -406,6 +410,19 @@ func (e *Encounter) crossedDoors(from, to spatial.Position) []CrossedDoor {
 	}
 
 	return out
+}
+
+type maskedStepInput struct {
+	member   MemberID
+	from, to spatial.Position
+}
+
+// maskedStepRefusal preserves the ordinary wall refusal without naming a
+// concealed door or its state. It changes disclosure, never the blocking query.
+func maskedStepRefusal(in maskedStepInput) error {
+	return &StepObstructedError{cause: fmt.Errorf(
+		"movemember: %w: entity %s cannot cross movement-blocking boundary from %v to %v",
+		ErrBadPlacement, in.member, in.from, in.to)}
 }
 
 // stepTo reports ordinary placement refusals as a stopped walk. Capability

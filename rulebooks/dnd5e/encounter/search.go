@@ -96,6 +96,11 @@ func (e *Encounter) concealmentTouchesRegion(c *concealment, region RegionID) bo
 	}
 	for _, id := range c.doors {
 		if d := e.doorsByID[id]; d != nil {
+			for _, cell := range e.doorFootprintCells(d) {
+				if inOrBeside(cell) {
+					return true
+				}
+			}
 			for _, edge := range d.edges {
 				for _, cell := range []spatial.Position{edge.From, edge.To} {
 					if r, owned := e.field.regionOf(cell); owned && r == region {

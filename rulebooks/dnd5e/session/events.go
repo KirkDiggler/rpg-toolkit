@@ -800,6 +800,18 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		if json.Unmarshal(payload, &p) != nil || p.Concealment == "" {
 			return nil
 		}
+		// THE STRUCTURAL HALF, DECODED THROUGH THE SAME SHARED HELPER THE ROOM
+		// BEAT USES (rpg-project#169, P2E). A row missing its identity refuses
+		// the whole patch rather than leaving the cache half-applied; a legacy
+		// payload with no structural keys decodes with both lists nil.
+		rows, ok := structuralRowsFromPayload(payload)
+		if !ok {
+			return nil
+		}
+		presentations, valid := propPresentationsFromPayload(payload)
+		if !valid {
+			return nil
+		}
 		for i := range p.Doors {
 			for j := range p.Doors[i].Doorways {
 				p.Doors[i].Doorways[j].Door = p.Doors[i].Door
@@ -809,6 +821,9 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			Concealment: p.Concealment, Cells: p.Cells, Props: p.Props,
 			Doors: p.Doors, Regions: p.Regions, Boundaries: p.Boundaries,
 			Segments: p.Segments, Sealed: p.Sealed,
+			StructuralWalls: rows.Walls, StructuralDoors: rows.Doors,
+			StructuralWallOpeningsReplacements: rows.Replacements,
+			PropPresentations:                  presentations,
 		}
 	case EventSighted:
 		// REFUSED IF IT NAMES NOBODY. The composition appends this beat

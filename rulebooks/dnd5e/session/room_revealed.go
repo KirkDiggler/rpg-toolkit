@@ -25,6 +25,16 @@ type RoomRevealedBody struct {
 	Doorways   []AtlasDoorway     `json:"doorways"`
 	Placed     []AtlasPlacedProp  `json:"placed"`
 	Exits      []AtlasExit        `json:"exits"`
+	// PropPresentations introduce permitted fixed renderer input by identity.
+	PropPresentations []PropPresentation `json:"prop_presentations,omitempty"`
+
+	// StructuralWalls and StructuralDoors introduce complete permitted records.
+	// Historical full changed-wall records retain whole-record upsert semantics.
+	StructuralWalls []AtlasStructuralWall `json:"structural_walls,omitempty"`
+	StructuralDoors []AtlasStructuralDoor `json:"structural_doors,omitempty"`
+	// StructuralWallOpeningsReplacements replaces cuts on known walls in the
+	// same atomic structural update. An empty/default list is a clear.
+	StructuralWallOpeningsReplacements []StructuralWallOpeningsReplacement `json:"structural_wall_openings_replacements,omitempty"`
 }
 
 func (RoomRevealedBody) isEventBody() {}
@@ -43,6 +53,22 @@ func roomRevealedBody(payload []byte) EventBody {
 	if json.Unmarshal(payload, &p) != nil || p.Region.ID == "" {
 		return nil
 	}
+	// THE STRUCTURAL ROWS ARE DECODED ONCE, SHARED WITH THE CONCEALMENT BEAT.
+	// A row missing its identity refuses the whole beat rather than handing a
+	// client a half-patched cache; an absent key is the legacy payload and
+	// leaves both lists empty.
+	rows, ok := structuralRowsFromPayload(payload)
+	if !ok {
+		return nil
+	}
+	presentations, valid := propPresentationsFromPayload(payload)
+	if !valid {
+		return nil
+	}
+	p.PropPresentations = presentations
+	p.StructuralWalls = rows.Walls
+	p.StructuralDoors = rows.Doors
+	p.StructuralWallOpeningsReplacements = rows.Replacements
 	for _, prop := range p.Placed {
 		if prop.ID == "" {
 			return nil
