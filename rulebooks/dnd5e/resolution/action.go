@@ -2,9 +2,10 @@ package resolution
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
@@ -18,6 +19,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // ActionInput identifies a shared action definition and the participants it targets.
@@ -297,8 +299,10 @@ type CastTargetOutcome struct {
 
 // CastOutcome is one paid cast with every target outcome in caller order.
 type CastOutcome struct {
-	// SightArea is the persistent volume authored by this cast, absent otherwise.
-	SightArea *encounter.SightAreaInput
+	// openedArea is the runtime area this cast opens, absent otherwise.
+	// [Resolve] reports it as [Output.OpenedAreas]; it is not a second copy
+	// on the outcome.
+	openedArea *encounter.SightAreaInput
 
 	// AttackDamageType is the authored primary attack damage type, including on a miss.
 	AttackDamageType damage.Type
@@ -366,7 +370,9 @@ func (m *castMachine) Start(ctx context.Context, cast *Participants) (Step, erro
 	m.cast = cast
 	m.outcome = CastOutcome{Spell: m.spell, CasterID: m.casterID}
 	if m.profile.Area != nil && m.profile.Area.ObscuresSight {
-		m.outcome.SightArea = &encounter.SightAreaInput{
+		// The membership label is content's: the spell declares it and the
+		// area carries it, and the encounter tells entry and exit by it.
+		m.outcome.openedArea = &encounter.SightAreaInput{
 			ID: m.casterID + "/concentration", SourceID: m.casterID,
 			Ref: m.spell.String(), Name: m.spellName, Center: *m.areaCenter,
 			RadiusFeet:     m.profile.Area.Footprint.SizeFeet,
@@ -374,7 +380,7 @@ func (m *castMachine) Start(ctx context.Context, cast *Participants) (Step, erro
 			MembershipName: m.profile.Area.MembershipName,
 		}
 		if m.profile.Area.MembershipRef != "" {
-			m.outcome.SightArea.MembershipSourceID = opaqueFogSourceID(m.outcome.SightArea.ID)
+			m.outcome.openedArea.MembershipSourceID = areaMembershipSourceID(m.outcome.openedArea.ID)
 		}
 	}
 	if m.profile.Attack != nil && len(m.profile.Attack.Damage) > 0 {
@@ -1157,4 +1163,12 @@ func newAttackCast(definition combatActions.Definition, casterID, targetID strin
 	attack := definition.Cast.Attack.Clone()
 	return NewStrike(&StrikeInput{AttackerID: casterID, TargetID: targetID,
 		Definition: combatActions.Definition{Ref: definition.Ref, Name: definition.Name, Attack: &attack}, Roller: roller}), nil
+}
+
+// areaMembershipSourceID is the opaque source id an area's membership label
+// carries: a digest of the area id, so a member told it entered learns which
+// area without learning the caster behind its id.
+func areaMembershipSourceID(areaID string) string {
+	sum := sha256.Sum256([]byte(areaID))
+	return hex.EncodeToString(sum[:16])
 }

@@ -562,19 +562,17 @@ func TestStrikeWithNoAppliedDamageLeavesDeathSaveProgressUnchanged(t *testing.T)
 	t.Run("full immunity", func(t *testing.T) {
 		bus := events.NewEventBus()
 		immunityRef := &core.Ref{Module: "test", Type: "conditions", ID: "full-immunity"}
-		_, err := dnd5eEvents.DamageChain.On(bus).SubscribeWithChain(context.Background(),
-			func(_ context.Context, _ *dnd5eEvents.DamageChainEvent,
-				c chain.Chain[*dnd5eEvents.DamageChainEvent],
-			) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
+		_, err := dnd5eEvents.IncomingDamageChain.On(bus).SubscribeWithChain(context.Background(),
+			func(_ context.Context, _ *dnd5eEvents.IncomingDamageEvent,
+				c chain.Chain[*dnd5eEvents.IncomingDamageEvent],
+			) (chain.Chain[*dnd5eEvents.IncomingDamageEvent], error) {
 				return c, c.Add(combat.StageFinal, "test_full_immunity",
-					func(_ context.Context, event *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
-						event.Components = append(event.Components, dnd5eEvents.DamageComponent{
-							Source: dnd5eEvents.DamageSourceCondition,
-							Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{
-								Ref: immunityRef, Name: "Full Immunity",
-							}},
-							Multiplier: dnd5eEvents.Multiply(0),
+					func(_ context.Context, event *dnd5eEvents.IncomingDamageEvent) (*dnd5eEvents.IncomingDamageEvent, error) {
+						event.Multipliers = append(event.Multipliers, dnd5eEvents.DamageMultiplier{
+							Category:   dnd5eEvents.DamageSourceCondition,
+							Source:     dnd5eEvents.RollSource{Ref: immunityRef, Name: "Full Immunity"},
 							DamageType: damage.Slashing,
+							Factor:     dnd5eEvents.DamageFactorImmunity,
 						})
 						return event, nil
 					})

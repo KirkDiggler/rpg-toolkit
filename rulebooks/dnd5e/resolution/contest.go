@@ -220,8 +220,8 @@ type ImposedEffect struct {
 	// the AT-STAKE effect of a contest whose dice have not been rolled yet.
 	Amount int
 
-	// Requested is what the dice and the multipliers settled on, before the
-	// sheet had a say. It equals [ImposedEffect.Calculation]'s total by
+	// Requested is what the target step settled on — the dice, the halving,
+	// the target's reductions and multipliers — before the sheet had a say. It equals [ImposedEffect.Calculation]'s total by
 	// construction, which is the rule a record validates against.
 	//
 	// It is Amount's sibling for the same reason healing has one: the two
@@ -235,9 +235,12 @@ type ImposedEffect struct {
 	Before int
 	After  int
 
-	// Components are the TYPED breakdown — how much of which damage type, with
-	// the pool's declared properties. Calculation cannot say this: a roll
-	// component carries faces and modifiers, not a damage type.
+	// Components are the TYPED damage trace, the same shape a strike's
+	// [StrikeOutcome.DamageComponents] carries: the dealt components with the
+	// pool's declared properties, the save's halving, the target's reductions,
+	// and one line per multiplied type naming the rule that decided it. No
+	// line carries a multiplier factor. Calculation cannot say the types: a
+	// roll component carries faces and modifiers, not a damage type.
 	Components []dnd5eEvents.DamageComponent
 
 	// Calculation is the roll's authoritative arithmetic — every component's
@@ -290,8 +293,8 @@ type preparedCondition struct {
 // damage and, at most, the move that damage's failure imposes.
 //
 // It must also be half of ONE DAMAGE TYPE. The halving is a single component
-// and combat.FinalDamage groups per type, so a reduction large enough to sink
-// the type it sits on leaves the trace explaining a number FinalDamage never
+// and combat's settlement groups per type, so a reduction large enough to sink
+// the type it sits on leaves the trace explaining a number the settlement never
 // produced — measured at 1d4 psychic beside 4d6 fire, where the delivery
 // refused with "dealt 20, and its roll trace explains 11". That refusal is
 // correct and it is far too late: the cast is charged and the save is rolled
@@ -613,50 +616,34 @@ func describeDamage(pools []damage.Damage) string {
 }
 
 // applyPreparedDamage is publishPreparedCondition's sibling: the other thing a
-// failed save can deliver, in the same shape, chained through the same next().
+// failed save can deliver, in the same shape.
 //
-// Bus-free on the write, exactly as a strike's damage phase is. The dice are
-// rolled HERE rather than in Start, so a contest refused at the door — an
-// invalid gate, an unpayable price — rolls nothing.
+// The dice are rolled HERE rather than in Start, so a contest refused at the
+// door — an invalid gate, an unpayable price — rolls nothing. Then the rolled
+// components go through the target step ([receiveDamage]) a strike's blow
+// goes through: the dealt fold, the halving when the save was made against a
+// Half gate, the target's incoming fold, combat's settlement, the sheet, and
+// the damage taken report. The instigator — whoever raised the save — is the
+// source, and the frame says what this damage IS: a saving throw's, with no
+// weapon pool ([contestDamageFrame]).
 //
-// # The damage chain folds it, as it folds a strike's
-//
-// The rolled components are published on [dnd5eEvents.DamageChain] through
-// [foldDamage], the one fold a strike uses, so immunity, vulnerability and
-// resistance reach spell damage the way they reach a weapon's (rpg-toolkit#1965
-// tier 1 #1). The attacker is the cause's instigator — whoever raised the save
-// — and the frame says what this damage IS: a saving throw's, with no weapon
-// pool, so an attacker-side rule that adds to weapon damage (Sneak Attack, Rage's
-// bonus) answers DoesNotApply rather than Depends ([contestDamageFrame]).
-//
-// # The order: roll, fold, halve, multiply
-//
-// The same order a strike's damage takes, with the save's halving placed where
-// the tabletop puts it. A strike builds its additive components, folds them,
-// then lets [combat.FinalDamage] apply the multipliers last. Here the dice are
-// the additive components; the fold may add more and adds the target's
-// multipliers; a made save against a Half gate then halves the ADDITIVE total —
-// the whole damage roll, including anything the fold added to it — and the
-// multipliers apply after everything, because resistance and vulnerability are
-// "applied after all other modifiers to damage". Halving before the fold would
-// leave a fold-added bonus unhalved.
-//
-// The roll trace explains the number the sheet takes: each multiplied type
-// carries one more modifier component naming the rule that multiplied it
-// ([multipliedDamage]), so [ImposedEffect.Requested] stays equal to the
-// calculation's total — the rule a record validates against.
+// landed receives the delivered effect before the report runs; followUp
+// records each check the report came back with; then runs after the last.
 func applyPreparedDamage(
 	pools []damage.Damage, roller dice.Roller, cause dnd5eEvents.SaveCause, sourceName string,
-	cast *Participants, targetID string, halved bool, next func(ImposedEffect) (Step, error),
+	cast *Participants, targetID string, halved bool,
+	landed func(ImposedEffect), followUp func(FollowUpOutcome), then func(context.Context) (Step, error),
 ) Gather {
 	described := describeDamage(pools)
+	var halving *damageHalving
 	if halved {
 		described += " (halved)"
+		halving = &damageHalving{Cause: cause, SourceName: sourceName}
 	}
 
 	return Gather{
 		name: "deal " + described,
-		run: func(ctx context.Context, _ events.EventBus) (Step, error) {
+		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
 			if _, err := combatantFor(cast, targetID); err != nil {
 				return nil, err
 			}
@@ -665,15 +652,34 @@ func applyPreparedDamage(
 				return nil, err
 			}
 
-			return foldDamage(dnd5eEvents.NewDamageChainEvent(dnd5eEvents.DamageChainInput{
-				AttackerID: cause.InstigatorID,
-				TargetID:   targetID,
-				Components: rolled,
-				Frame:      contestDamageFrame(cast, cause.InstigatorID, targetID),
-			}), func(ctx context.Context, folded *dnd5eEvents.DamageChainEvent) (Step, error) {
-				return dealFoldedDamage(ctx, folded.Components, cause, sourceName, cast, targetID,
-					halved, described, next)
-			}), nil
+			return receiveDamage(ctx, bus, targetStepInput{
+				Dealt: dnd5eEvents.NewDamageChainEvent(dnd5eEvents.DamageChainInput{
+					AttackerID: cause.InstigatorID,
+					TargetID:   targetID,
+					Components: rolled,
+					Frame:      contestDamageFrame(cast, cause.InstigatorID, targetID),
+				}),
+				Halving: halving,
+				Cast:    cast,
+				Cause:   cause,
+				Roller:  roller,
+				Received: func(received receivedDamage) {
+					landed(ImposedEffect{
+						Kind:        ImposedDamage,
+						Ref:         cloneCoreRef(cause.EffectRef),
+						Description: described,
+						RecipientID: targetID,
+						Amount:      received.Applied.TotalDamage,
+						Requested:   received.Requested,
+						Before:      received.Applied.PreviousHP,
+						After:       received.Applied.CurrentHP,
+						Components:  received.Trace,
+						Calculation: received.Calculation,
+					})
+				},
+				FollowUp: followUp,
+				Then:     then,
+			})
 		},
 	}
 }
@@ -682,8 +688,9 @@ func applyPreparedDamage(
 // instigator acting on the saver, through a saving throw, with no weapon pool.
 //
 // WeaponPool is KNOWN false, not unknown. An attacker-side rule asked by the
-// fold — Sneak Attack, Rage's bonus — gates on the weapon pool, and an unknown
-// one answers Depends and fails the fold (R13). The instigator's class levels
+// dealt fold — Sneak Attack, Rage's bonus — and a target-side rule asked by
+// the incoming fold — Blade Ward — gate on the weapon pool, and an unknown one
+// answers Depends and fails the fold (R13). The instigator's class levels
 // are its own sheet's ([sheetClassLevels]): a class-scaled rule reads its
 // level before it reads the weapon pool, so a rogue or a raging barbarian who
 // raised the save must be framed with their levels or the fold fails. An
@@ -705,188 +712,6 @@ func contestDamageFrame(cast *Participants, instigatorID, saverID string) contri
 			Roll:       contributions.Known(contributions.RollKindSavingThrow),
 			WeaponPool: contributions.Known(false),
 		},
-	}
-}
-
-// dealFoldedDamage settles what the fold returned — halves it when the save
-// was made against a Half gate, explains its multipliers on the trace — and
-// applies it to the saver's sheet.
-//
-// Errors: a halving or trace that cannot be built, or a trace that no longer
-// explains the number the sheet is about to take.
-func dealFoldedDamage(
-	ctx context.Context, components []dnd5eEvents.DamageComponent, cause dnd5eEvents.SaveCause,
-	sourceName string, cast *Participants, targetID string, halved bool, described string,
-	next func(ImposedEffect) (Step, error),
-) (Step, error) {
-	target, err := combatantFor(cast, targetID)
-	if err != nil {
-		return nil, err
-	}
-	if halved {
-		components, err = halveDamage(components, cause, sourceName)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	multiplied, err := multipliedDamage(components)
-	if err != nil {
-		return nil, err
-	}
-	calculation, err := damageCalculation(append(additiveDamage(components), multiplied...))
-	if err != nil {
-		return nil, err
-	}
-
-	final, total := combat.FinalDamage(components)
-	if total != calculation.Total {
-		// The trace no longer explains the number: a record built from this
-		// would show faces that do not add up to the damage the player took.
-		return nil, fmt.Errorf(
-			"%w: %s dealt %d, and its roll trace explains %d",
-			ErrBadAction, described, total, calculation.Total)
-	}
-
-	instances := make([]combat.DamageInstance, 0, len(final))
-	for _, instance := range final {
-		instances = append(instances, combat.DamageInstance{
-			Amount: instance.Amount,
-			Type:   string(instance.Type),
-		})
-	}
-
-	// The sheet's own business, and the same call a strike makes, so a
-	// cantrip that drops somebody to zero flows through the death-save
-	// and downed transitions Character.ApplyDamage already owns.
-	applied := target.ApplyDamage(ctx, &combat.ApplyDamageInput{Instances: instances})
-
-	return next(ImposedEffect{
-		Kind:        ImposedDamage,
-		Ref:         cloneCoreRef(cause.EffectRef),
-		Description: described,
-		RecipientID: targetID,
-		Amount:      applied.TotalDamage,
-		Requested:   calculation.Total,
-		Before:      applied.PreviousHP,
-		After:       applied.CurrentHP,
-		Components:  cloneDamageComponents(components),
-		Calculation: calculation,
-	})
-}
-
-// additiveDamage is the components that ARE damage — dice and modifiers —
-// leaving out the multipliers, which carry neither and scale the rest.
-func additiveDamage(components []dnd5eEvents.DamageComponent) []dnd5eEvents.DamageComponent {
-	additive := make([]dnd5eEvents.DamageComponent, 0, len(components))
-	for _, component := range components {
-		if component.Multiplier == nil {
-			additive = append(additive, component)
-		}
-	}
-
-	return additive
-}
-
-// multipliedDamage explains, as one modifier per damage type, what the
-// multipliers did to that type: the amount [combat.FinalDamage] settled on
-// minus the type's additive total, sourced to the multiplier that produced it.
-// A type the multipliers left unchanged (none, or resistance and vulnerability
-// cancelling) gets no component.
-//
-// The stacking rules are NOT reimplemented: FinalDamage decides the amount,
-// and FinalDamage also says which factor it applied ([effectiveMultiplier]).
-// The line names the first multiplier, in fold order, whose own factor IS
-// that effective one. Matching on the truncated product instead would let a
-// small total name the wrong rule: with a total of 1, a resistance listed
-// before an immunity reproduces the immunity's 0 too.
-//
-// Errors: a multiplied type whose effective factor no multiplier on it
-// carries — a stacking rule this trace cannot name, refused rather than
-// recorded under the wrong source.
-func multipliedDamage(components []dnd5eEvents.DamageComponent) ([]dnd5eEvents.DamageComponent, error) {
-	var types []damage.Type
-	base := make(map[damage.Type]int)
-	multipliers := make(map[damage.Type][]dnd5eEvents.DamageComponent)
-	for _, component := range components {
-		if _, seen := base[component.DamageType]; !seen {
-			types = append(types, component.DamageType)
-			base[component.DamageType] = 0
-		}
-		if component.Multiplier != nil {
-			multipliers[component.DamageType] = append(multipliers[component.DamageType], component)
-			continue
-		}
-		base[component.DamageType] += component.Total()
-	}
-
-	final, _ := combat.FinalDamage(components)
-	settled := make(map[damage.Type]int, len(final))
-	for _, instance := range final {
-		settled[instance.Type] = instance.Amount
-	}
-
-	explained := make([]dnd5eEvents.DamageComponent, 0, len(types))
-	for _, damageType := range types {
-		delta := settled[damageType] - base[damageType]
-		if len(multipliers[damageType]) == 0 || delta == 0 {
-			continue
-		}
-		effective := effectiveMultiplier(damageType, multipliers[damageType])
-		var decided *dnd5eEvents.DamageComponent
-		for i, multiplier := range multipliers[damageType] {
-			if *multiplier.Multiplier == effective {
-				decided = &multipliers[damageType][i]
-				break
-			}
-		}
-		if decided == nil {
-			return nil, fmt.Errorf(
-				"%w: %s damage settled at %d from %d, and no multiplier on it explains that",
-				ErrBadAction, damageType, settled[damageType], base[damageType])
-		}
-		source := decided.Roll.Source
-		source.Label = multipliedLabel(*decided.Multiplier)
-		explained = append(explained, dnd5eEvents.DamageComponent{
-			Source:     decided.Source,
-			Roll:       dnd5eEvents.RollComponent{Source: source, Modifier: &delta},
-			DamageType: damageType,
-		})
-	}
-
-	return explained, nil
-}
-
-// multiplierProbe is the total [effectiveMultiplier] folds its multipliers
-// over: large enough that every factor the stacking rules can settle on (0,
-// 0.5, 1, 2) comes back exact rather than truncated.
-const multiplierProbe = 1000
-
-// effectiveMultiplier asks [combat.FinalDamage] which factor its stacking
-// rules apply to one damage type's multipliers, by folding them over
-// [multiplierProbe] of that type. FinalDamage stays the one author of
-// the stacking rule; this only reads its answer back without truncation.
-func effectiveMultiplier(damageType damage.Type, multipliers []dnd5eEvents.DamageComponent) float64 {
-	probe := multiplierProbe
-	components := append([]dnd5eEvents.DamageComponent{{
-		Roll:       dnd5eEvents.RollComponent{Modifier: &probe},
-		DamageType: damageType,
-	}}, multipliers...)
-	_, total := combat.FinalDamage(components)
-
-	return float64(total) / multiplierProbe
-}
-
-// multipliedLabel is what a multiplier's line on the trace calls itself, so a
-// player reading the breakdown sees why the number moved.
-func multipliedLabel(factor float64) string {
-	switch {
-	case factor == 0:
-		return "immune"
-	case factor < 1:
-		return "resisted"
-	default:
-		return "vulnerable"
 	}
 }
 
@@ -1074,45 +899,45 @@ func imposeMove(
 	}
 }
 
-// halveDamage makes a made save's damage half of what was rolled, as ONE MORE
+// halveDamage makes a made save's damage half of what was dealt, as ONE MORE
 // COMPONENT rather than as a flag on the roll.
 //
 // The rounded half's complement rides on a modifier-only component of the same
 // damage type: 3d6 that came to 13 gains a -7, and the trace totals 6. Nothing
-// downstream has to learn a new word for it. The guard that FinalDamage and the
-// trace agree holds by construction, the encounter record's identical guard
-// holds for the same reason, and a client already rendering Bane's -1d4 renders
-// this with no change — which a Halved flag on the calculation could not have
-// claimed, since a trace showing dice that sum to 13 above a total of 6 is a
-// trace that contradicts itself everywhere it is read.
+// downstream has to learn a new word for it, and a client already rendering
+// Bane's -1d4 renders this with no change — which a Halved flag on the
+// calculation could not have claimed, since a trace showing dice that sum to
+// 13 above a total of 6 is a trace that contradicts itself everywhere it is
+// read.
+//
+// It runs between the two folds: after the dealt fold, so anything the
+// source's rules added is halved with the dice, and before the incoming fold,
+// so a target's reductions and its resistance apply to the halved number — the
+// tabletop's order, resistance after every other modifier.
 //
 // Rounding is the tabletop's: half, rounded DOWN. Integer division does that
 // for the non-negative sums a declared pool produces, and a pool small enough
-// to halve to nothing is an honest zero rather than a special case — the
-// component cancels the die exactly, FinalDamage drops a group that nets zero,
-// and both sides of the guard are zero.
+// to halve to nothing is an honest zero rather than a special case.
 //
 // It refuses rather than no-ops on an empty component set: validateGate
 // guarantees a Half gate has damage, so reaching here with nothing rolled means
-// that guarantee broke, and halving nothing would hide it.
+// that guarantee broke, and halving nothing would hide it. It refuses a second
+// damage type the dealt fold added, because one halving line cancels against
+// one type's group in the settlement.
 func halveDamage(
 	components []dnd5eEvents.DamageComponent, cause dnd5eEvents.SaveCause, sourceName string,
 ) ([]dnd5eEvents.DamageComponent, error) {
-	additive := additiveDamage(components)
-	if len(additive) == 0 {
+	if len(components) == 0 {
 		return nil, fmt.Errorf(
 			"%w: a made save cannot halve damage that was never rolled", ErrBadAction)
 	}
 
 	sum := 0
-	for _, component := range additive {
-		if component.DamageType != additive[0].DamageType {
-			// validateGate refuses two declared types at the door; this is the
-			// fold adding a second one. One reduction cancels against one
-			// type's group, so it is refused rather than halved wrongly.
+	for _, component := range components {
+		if component.DamageType != components[0].DamageType {
 			return nil, fmt.Errorf(
 				"%w: a made save halves one damage type, and the fold delivered %s beside %s",
-				ErrBadAction, component.DamageType, additive[0].DamageType)
+				ErrBadAction, component.DamageType, components[0].DamageType)
 		}
 		sum += component.Total()
 	}
@@ -1128,15 +953,9 @@ func halveDamage(
 			},
 			Modifier: &reduction,
 		},
-		// The first pool's type, which is the ONLY additive type: a Half gate
-		// over two of them is refused at the door (validateGate), and a second
-		// one the fold added is refused above, because FinalDamage groups per
-		// type and one reduction can only cancel against one group. The
-		// delivery's guard still compares the trace's arithmetic against
-		// FinalDamage's, so if either door were ever widened without a
-		// reduction per type, the delivery would say so rather than quietly
-		// deal the wrong number.
-		DamageType: additive[0].DamageType,
+		// The only dealt type: a Half gate over two is refused at the door
+		// (validateGate), and a second the fold added is refused above.
+		DamageType: components[0].DamageType,
 	}), nil
 }
 
@@ -1505,28 +1324,13 @@ func (m *contestMachine) resolve(ability abilities.Ability, dc int, save SaveOut
 	deliverDamage := func(halved bool, then func(context.Context) (Step, error)) (Step, error) {
 		return applyPreparedDamage(
 			m.in.Damage, m.in.Roller, m.in.Cause, m.in.SourceName, m.cast, m.in.SaverID, halved,
-			func(applied ImposedEffect) (Step, error) {
+			func(applied ImposedEffect) {
 				outcome.Imposed = append(outcome.Imposed, applied)
-
-				// Say what landed, then answer what came back — the same two
-				// steps the strike calls, in the same order, right after the
-				// apply. A third damage source gets concentration by calling
-				// them too, which is the whole reason they are named once.
-				return reportDamage(reportDamageInput{
-					MemberID:      m.in.SaverID,
-					Amount:        applied.Amount,
-					DamageType:    primaryComponentType(applied.Components),
-					DroppedToZero: applied.Before > 0 && applied.After == 0,
-					Cause:         m.in.Cause,
-				}, func(ctx context.Context, ups []dnd5eEvents.FollowUp) (Step, error) {
-					return runFollowUps(ctx, ups, 0, m.in.Roller,
-						func(followUp FollowUpOutcome) {
-							outcome.FollowUps = append(outcome.FollowUps, followUp)
-						},
-						then,
-					)
-				}), nil
 			},
+			func(followUp FollowUpOutcome) {
+				outcome.FollowUps = append(outcome.FollowUps, followUp)
+			},
+			then,
 		), nil
 	}
 

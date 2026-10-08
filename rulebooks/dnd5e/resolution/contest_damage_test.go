@@ -520,7 +520,8 @@ func TestTheContestsDeliveryStepsSayWhatTheyDo(t *testing.T) {
 	deal := applyPreparedDamage(
 		[]damage.Damage{{Dice: "1d4", Type: damage.Psychic}}, nil, dnd5eEvents.SaveCause{},
 		mockeryName, nil, heroID, false,
-		func(ImposedEffect) (Step, error) { return nil, nil },
+		func(ImposedEffect) {}, func(FollowUpOutcome) {},
+		func(context.Context) (Step, error) { return nil, nil },
 	)
 	require.Equal(t, "deal 1d4 psychic damage", deal.Name())
 
@@ -529,7 +530,8 @@ func TestTheContestsDeliveryStepsSayWhatTheyDo(t *testing.T) {
 	halved := applyPreparedDamage(
 		[]damage.Damage{{Dice: "1d4", Type: damage.Psychic}}, nil, dnd5eEvents.SaveCause{},
 		mockeryName, nil, heroID, true,
-		func(ImposedEffect) (Step, error) { return nil, nil },
+		func(ImposedEffect) {}, func(FollowUpOutcome) {},
+		func(context.Context) (Step, error) { return nil, nil },
 	)
 	require.Equal(t, "deal 1d4 psychic damage (halved)", halved.Name())
 

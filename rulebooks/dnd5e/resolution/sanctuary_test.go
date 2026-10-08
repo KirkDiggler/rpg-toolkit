@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -336,21 +337,24 @@ func TestSanctuaryDoesNotGateANonHostileCast(t *testing.T) {
 	require.Equal(t, 1, roller.calls, "just Bane's own save — no ward save attempted, and Bane deals no damage")
 }
 
-// rosterCast answers stances from a fixed table over a fixed roster; every
-// other Cast question is outside these tests and panics if asked.
+// rosterCast answers stances the way the encounter does, from a fixed table
+// over a fixed roster: a member pair with no entry is no side, and a pair
+// naming a non-member is refused. Every other Cast question is outside these
+// tests and panics if asked.
 type rosterCast struct {
 	gamectx.Cast
 	members []string
 	stances map[[2]string]contributions.Stance
 }
 
-func (c rosterCast) Members() []string { return c.members }
-
-func (rosterCast) answersSides() bool { return true }
-
-func (c rosterCast) StanceBetween(a, b string) (contributions.Stance, bool) {
-	stance, ok := c.stances[[2]string{a, b}]
-	return stance, ok
+func (c rosterCast) stanceAnswer(a, b string) (contributions.Stance, error) {
+	if !slices.Contains(c.members, a) || !slices.Contains(c.members, b) {
+		return "", encounter.ErrNotMember
+	}
+	if stance, ok := c.stances[[2]string{a, b}]; ok {
+		return stance, nil
+	}
+	return contributions.StanceNone, nil
 }
 
 // A harmful cast's ward gate decides from the authoritative stance and fails

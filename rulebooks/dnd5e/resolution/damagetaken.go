@@ -222,14 +222,3 @@ func primaryDamageType(instances []damage.Instance) damage.Type {
 
 	return instances[0].Type
 }
-
-// primaryComponentType is [primaryDamageType] for the other shape damage
-// arrives in — a contest holds folded components where a strike holds typed
-// instances — and it narrows the same way, for the same reason.
-func primaryComponentType(components []dnd5eEvents.DamageComponent) damage.Type {
-	if len(components) == 0 {
-		return ""
-	}
-
-	return components[0].DamageType
-}

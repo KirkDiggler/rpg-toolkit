@@ -128,7 +128,12 @@ var (
 	// silently published as nothing.
 	ErrBadBoundary = errors.New("resolution: invalid boundary set")
 
-	// ErrOutOfRange indicates a valid attack whose target lies beyond its delivery.
+	// ErrOutOfRange indicates a valid action whose target lies beyond what it
+	// reaches: an attack's delivery, a cast's or a heal's range, or a known
+	// creature the caster cannot aim at — no believed point within range on a
+	// clear line, or a target displaced from it under [StaleTargetRefuse]. One
+	// sentinel for every such refusal; which word the host shows for which
+	// verb is the host's.
 	ErrOutOfRange = errors.New("resolution: target is out of range")
 
 	// ErrBadAttack indicates an attack cannot be resolved from its shared

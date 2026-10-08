@@ -275,8 +275,21 @@ func (in *Input) Validate() error {
 
 // Output is everything the interaction produced. All of it is data (R2).
 type Output struct {
-	// SightAreasChanged asks the host seam to refresh perception after saving dirty sheets.
-	SightAreasChanged bool
+	// OpenedAreas are the runtime areas this interaction opened — a cast whose
+	// area obscures sight opens one — in the shape the encounter opens them
+	// with. Resolution does not open them: [Output.World] carries the area set
+	// it was handed, and the host applies these to the live encounter with
+	// encounter.AddSightArea, AFTER closing [Output.ClosedAreas], so the
+	// encounter tells who is inside. Empty is the ordinary case.
+	OpenedAreas []encounter.SightAreaInput
+
+	// ClosedAreas are the sources whose runtime areas end: a caster whose
+	// concentration ended during this interaction while an area it opened
+	// stands. The host ends them with encounter.RemoveSightArea BEFORE opening
+	// [Output.OpenedAreas] — a recast ends the old area under the id the new
+	// one reuses. Membership is never written anywhere: a member is inside an
+	// area exactly when the encounter says so.
+	ClosedAreas []string
 
 	// World is the encounter after the interaction, ready to be stored.
 	//
@@ -502,22 +515,11 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 
 	outcome, posed, runErr := driveStep(ctx, surf, first, cast)
 
-	// Retire old volumes before installing a replacement from this cast. The
-	// concentration event owns the lifetime; encounter owns only geometry.
-	areasChanged := false
-	for _, fact := range breaks.facts {
-		areasChanged = enc.RemoveSightArea(fact.CasterID) || areasChanged
-	}
-	if castResult, ok := outcome.(CastOutcome); ok && castResult.SightArea != nil {
-		if err := enc.AddSightArea(castResult.SightArea); err != nil {
-			return nil, errors.Join(err, breaks.stop(ctx), surf.teardown(ctx))
-		}
-		areasChanged = true
-	}
-
-	if err := reconcileFogMembership(ctx, surf.inner, cast, room, enc.WorldView().SightAreas); err != nil {
-		return nil, errors.Join(err, breaks.stop(ctx), surf.teardown(ctx))
-	}
+	// The areas this interaction opens and closes, reported for the host to
+	// apply through the encounter's own verbs. A concentration that ended
+	// closes the areas its caster opened; the encounter's current area set
+	// says whether there are any.
+	opened, closed := interactionAreas(enc.WorldView().SightAreas, breaks.facts, outcome)
 
 	// R5: revoke everything granted, whether or not the machine succeeded.
 	tearErr := errors.Join(breaks.stop(ctx), surf.teardown(ctx))
@@ -633,7 +635,8 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 
 	return &Output{
 		World:               enc.ToData(),
-		SightAreasChanged:   areasChanged,
+		OpenedAreas:         opened,
+		ClosedAreas:         closed,
 		DirtyCharacters:     dirty,
 		DirtyMonsters:       dirtyMonsters(cast),
 		Outcome:             outcome,

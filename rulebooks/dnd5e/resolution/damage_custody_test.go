@@ -163,6 +163,52 @@ func (s *DamageCustodyTestSuite) TestTypesAreGroupedSeparatelyThroughTheFold() {
 // component at capture: mutating every roll fact on the publisher's event
 // after the strike has reported cannot rewrite what it reported, and nothing
 // the fold appended afterwards leaks in.
+// A blow whose dealt total is below zero lands as nothing, not as an error:
+// a STR -3 creature's 1d4 showing 1 deals -2, and the trace floors it back to
+// zero on a line named for the dealt component that sank it.
+func (s *DamageCustodyTestSuite) TestANegativeDealtTotalLandsAsZero() {
+	definition := oozeProfile(damage.Damage{
+		Dice: "1d4", Type: damage.Bludgeoning,
+		Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+	})
+	definition.Attack.Ability = &combatActions.AbilityContribution{Ability: abilities.STR, Modifier: -3}
+
+	target := monsters.NewWolf(secondWolfID).ToData()
+	out, err := resolveOn(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
+		World:        s.roomWith(encounter.MemberID(wolfID), encounter.MemberID(target.ID)),
+		Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Monster: target}},
+		Machine: NewStrike(&StrikeInput{
+			AttackerID: wolfID, TargetID: target.ID, Definition: definition,
+			Roller: &sequenceRoller{singles: []int{15}, pair: []int{1}},
+		}),
+	}, newSurface(events.NewEventBus()))
+	s.Require().NoError(err, "a blow that deals less than nothing still lands")
+
+	struck, ok := out.Outcome.(StrikeOutcome)
+	s.Require().True(ok)
+	s.Require().True(struck.Hit)
+	s.Zero(struck.Damage)
+	s.Empty(struck.DamageInstances, "nothing landed")
+
+	total := 0
+	var floor *dnd5eEvents.DamageComponent
+	for i, component := range struck.DamageComponents {
+		total += component.Total()
+		if component.Roll.Source.Label == flooredLabel {
+			floor = &struck.DamageComponents[i]
+		}
+	}
+	s.Zero(total, "the trace explains the zero")
+	s.Require().NotNil(floor, "the floor is a line on the trace")
+	s.Require().NotNil(floor.Roll.Modifier)
+	s.Equal(2, *floor.Roll.Modifier)
+	s.Equal(refs.Abilities.Strength().String(), floor.Roll.Source.Ref.String(),
+		"named for the dealt component that sank the type")
+}
+
 func (s *DamageCustodyTestSuite) TestTheStrikeOutcomeOwnsThePublisherTraceAfterTheFold() {
 	var folded *dnd5eEvents.DamageChainEvent
 	bus := events.NewEventBus()
@@ -938,22 +984,30 @@ func (s *DamageCustodyTestSuite) onDamageChain(
 	s.Require().NoError(err)
 }
 
-// multiplyOnBus installs a modifier component carrying the given factor —
-// the shape resistance, vulnerability, and immunity all take.
+// multiplyOnBus installs a target answer on the incoming fold carrying the
+// given factor — the shape resistance, vulnerability, and immunity all take.
 func (s *DamageCustodyTestSuite) multiplyOnBus(bus events.EventBus, t damage.Type, factor float64) {
-	s.onDamageChain(bus, "test_multiplier_"+string(t), func(e *dnd5eEvents.DamageChainEvent) {
-		e.Components = append(e.Components, dnd5eEvents.DamageComponent{
-			Source: dnd5eEvents.DamageSourceCondition,
-			Roll: dnd5eEvents.RollComponent{
-				Source: dnd5eEvents.RollSource{
-					Ref:  &core.Ref{Module: "test", Type: "conditions", ID: "multiplier"},
-					Name: "Test Multiplier",
-				},
-			},
-			Multiplier: dnd5eEvents.Multiply(factor),
-			DamageType: t,
+	_, err := dnd5eEvents.IncomingDamageChain.On(bus).SubscribeWithChain(s.ctx,
+		func(_ context.Context, _ *dnd5eEvents.IncomingDamageEvent,
+			c chain.Chain[*dnd5eEvents.IncomingDamageEvent],
+		) (chain.Chain[*dnd5eEvents.IncomingDamageEvent], error) {
+			err := c.Add(combat.StageFinal, "test_multiplier_"+string(t),
+				func(_ context.Context, e *dnd5eEvents.IncomingDamageEvent) (*dnd5eEvents.IncomingDamageEvent, error) {
+					e.Multipliers = append(e.Multipliers, dnd5eEvents.DamageMultiplier{
+						Category: dnd5eEvents.DamageSourceCondition,
+						Source: dnd5eEvents.RollSource{
+							Ref:  &core.Ref{Module: "test", Type: "conditions", ID: "multiplier"},
+							Name: "Test Multiplier",
+						},
+						DamageType: t,
+						Factor:     factor,
+					})
+					return e, nil
+				})
+
+			return c, err
 		})
-	})
+	s.Require().NoError(err)
 }
 
 func (s *DamageCustodyTestSuite) halveOnBus(bus events.EventBus, t damage.Type) {
