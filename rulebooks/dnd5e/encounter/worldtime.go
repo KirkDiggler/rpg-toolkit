@@ -75,6 +75,52 @@ func (e *Encounter) advanceWorld(driver MemberID, displacement int) (bool, error
 	return e.clock.ToData().HighWater > before, nil
 }
 
+// elapseWorld JUMPS the world clock by span rounds: time that passed
+// without anybody driving it (rpg-project#542 R5, a short rest's hour).
+//
+// A JUMP, NOT A DRIVE. [Encounter.advanceWorld] is time somebody lived
+// round by round: it grants every world-clock member the rounds as budget,
+// and [Encounter.worldThinks] then spends them a turn at a time. An elapse
+// grants nothing and nobody thinks — no creature acts during it, no tick
+// beat is written — and NOTHING IS OWED AFTERWARDS: every budget is exactly
+// what it was, so the next step anybody takes is not handed the hour.
+//
+// EVERY DRIVER JUMPS WITH THE READING. The clock accrues by driver as max;
+// moving the high-water alone would leave every member an hour behind it,
+// and their next walks would raise nothing until they had walked an hour of
+// paces. So each roster member's progress (zero for one who never drove)
+// and every other recorded driver's moves by span too, every gap between
+// them is what it was, and the next walk paces exactly as it would have.
+//
+// The clock leaf has no elapse verb, and this composition owns the clock: it
+// is rebuilt from its own persisted shape through [clock.LoadTick], which
+// re-checks every invariant that shape carries.
+func (e *Encounter) elapseWorld(span int) error {
+	if span <= 0 {
+		return fmt.Errorf("elapse %d rounds: %w", span, ErrInvalidData)
+	}
+	data := e.clock.ToData()
+	progress := make(map[core.EntityID]int, len(data.DriverProgress)+len(e.members))
+	for id, p := range data.DriverProgress {
+		progress[id] = p + span
+	}
+	for _, id := range e.rosterIDs() {
+		if _, ok := progress[id]; !ok {
+			progress[id] = span
+		}
+	}
+	data.DriverProgress = progress
+	data.HighWater += span
+
+	jumped, err := clock.LoadTick(data)
+	if err != nil {
+		return fmt.Errorf("elapse %d rounds: %w", span, err)
+	}
+	e.clock = jumped
+
+	return nil
+}
+
 // spendWorldAction is what a verb the turn clock would price as an ACTION
 // costs on the world clock: one round, for the actor, once its outcome has
 // landed (design §5).

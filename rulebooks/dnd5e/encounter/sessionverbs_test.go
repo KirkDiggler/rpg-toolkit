@@ -29,7 +29,8 @@ func TestSessionVerbsSuite(t *testing.T) {
 }
 
 // scene is one yard split by a wall row at y=6: whoever stands above it
-// sees each other, billy below it sees none of them. Every member walks 30
+// sees each other, billy below it sees none of them. A den beyond the void
+// holds whatever the scene hides there. Every member walks 30
 // feet, so a step accrues pace.
 func (s *SessionVerbsSuite) scene(members ...encounter.MemberInput) *encounter.Encounter {
 	sheets := sheetFacts{}
@@ -39,10 +40,12 @@ func (s *SessionVerbsSuite) scene(members ...encounter.MemberInput) *encounter.E
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:     everyoneSeesTheWholeMap{},
 		Equipment: encounter.UnobservedEquipment{}, Sheets: sheets, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
-			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
-			Regions: []encounter.RegionInput{rectRegion(outcomeRoom, 0, 0, 12, 12)},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			// The den is cut off from the yard by void, which is opaque: a
+			// creature in it sees nobody and nobody sees it.
+			Regions: []encounter.RegionInput{rectRegion(outcomeRoom, 0, 0, 12, 12), rectRegion("den", 20, 0, 4, 3)},
 			Props:   wallRow(6, 4, 8),
 		},
 		Members:   members,
@@ -157,6 +160,35 @@ func (s *SessionVerbsSuite) TestAnEquipIsToldToWhoeverSeesTheActor() {
 	s.Empty(s.beatsOfKind(enc, billy, encounter.BeatEquipmentChanged), "billy cannot see alice and is not told")
 }
 
+// The equip's re-look DECLARES the actor changed, so a watcher who already
+// sees them is told to look again — a `sighted` beat naming the actor as
+// changed — with no second Recheck call. A member who cannot see the actor
+// is told nothing.
+func (s *SessionVerbsSuite) TestAnEquipTellsWatchersToLookAgain() {
+	enc := s.freeRoam()
+	changedSeen := func(member encounter.MemberID) int {
+		n := 0
+		for _, beat := range s.beatsOfKind(enc, member, encounter.BeatSighted) {
+			changed, _ := beat["changed"].([]any)
+			for _, who := range changed {
+				if who == string(alice) {
+					n++
+				}
+			}
+		}
+		return n
+	}
+	s.Require().Zero(changedSeen(bob), "precondition: nothing has changed about alice yet")
+
+	_, err := enc.RecordEquip(&encounter.RecordEquipInput{
+		Member: alice, Slot: "main_hand", Drawn: "dnd5e:weapons:longsword",
+	})
+	s.Require().NoError(err)
+
+	s.Equal(1, changedSeen(bob), "bob sees alice and is told her appearance changed")
+	s.Zero(changedSeen(billy), "billy cannot see alice")
+}
+
 // A swap is two beats — the stow, then the draw — on one correlation, and an
 // equip outside a fight costs nothing on the world clock (R1: the economy is
 // a fight's).
@@ -223,6 +255,9 @@ func (s *SessionVerbsSuite) TestAnEquipThatSaysNothingIsRefused() {
 		"not a member": {&encounter.RecordEquipInput{Member: "nobody", Slot: "main_hand", Drawn: "dnd5e:weapons:dagger"}, encounter.ErrNotMember},
 		"no slot":      {&encounter.RecordEquipInput{Member: alice, Drawn: "dnd5e:weapons:dagger"}, encounter.ErrInvalidData},
 		"no item":      {&encounter.RecordEquipInput{Member: alice, Slot: "main_hand"}, encounter.ErrInvalidData},
+		"the same item both ways": {&encounter.RecordEquipInput{
+			Member: alice, Slot: "main_hand", Stowed: "dnd5e:weapons:dagger", Drawn: "dnd5e:weapons:dagger",
+		}, encounter.ErrInvalidData},
 	}
 	for name, tc := range cases {
 		_, err := enc.RecordEquip(tc.in)
@@ -267,11 +302,31 @@ func (s *SessionVerbsSuite) TestARestInAFightIsRefused() {
 	s.Equal(before, s.highWater(enc))
 }
 
+// denLurker is a creature with orders, alone in the den on the world clock: if
+// the hour were driven rather than jumped it would spend six hundred rounds
+// walking to the far end of the den.
+const denLurker encounter.MemberID = "denLurker"
+
 // A short rest moves the world clock by one hour and nothing else in the
 // run moves: billy rests below the wall while the fight above it waits on
-// its turn, with a pace remainder on billy and a sight area standing.
+// its turn, with a pace remainder on billy, a sight area standing and a
+// creature with orders in the den. Exactly one beat is written, nobody acts,
+// and nothing is owed to the next step.
 func (s *SessionVerbsSuite) TestAShortRestIsAnHourAndNothingElse() {
-	enc, _, _ := s.fight()
+	enc := s.scene(
+		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 2}},
+		encounter.MemberInput{ID: bob, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 3}},
+		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 4}},
+		encounter.MemberInput{ID: billy, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 10}},
+		encounter.MemberInput{ID: denLurker, Kind: encounter.KindMonster, Position: spatial.Position{X: 20, Y: 1}, Table: walksTo(cellAt(23, 1))},
+	)
+	for member, want := range map[encounter.MemberID]encounter.ClockKind{
+		alice: encounter.ClockTurn, billy: encounter.ClockWorld, denLurker: encounter.ClockWorld,
+	} {
+		clock, err := enc.ClockOf(&encounter.ClockOfInput{Member: member})
+		s.Require().NoError(err)
+		s.Require().Equal(want, clock.Kind, "%s's clock", member)
+	}
 
 	// A step accrues one cell of pace on billy, which the rest must keep.
 	_, err := enc.Step(&encounter.StepInput{Member: billy, To: cellAt(6, 11)})
@@ -280,7 +335,9 @@ func (s *SessionVerbsSuite) TestAShortRestIsAnHourAndNothingElse() {
 		ID: "fog", SourceID: "caster", Center: cellAt(1, 10), RadiusFeet: 5,
 	}))
 	before := enc.ToData()
-	s.Require().NotZero(paceOf(before, billy), "the step accrued pace")
+	s.Require().Equal(1, paceOf(before, billy), "the step accrued pace")
+	firstSeq, err := enc.NextStorySeq()
+	s.Require().NoError(err)
 
 	out, err := enc.RecordRest(&encounter.RecordRestInput{Member: billy, Kind: encounter.RestShort})
 	s.Require().NoError(err)
@@ -289,16 +346,35 @@ func (s *SessionVerbsSuite) TestAShortRestIsAnHourAndNothingElse() {
 	s.Equal(before.Clock.HighWater+encounter.RoundsPerHour, after.Clock.HighWater, "one hour on the world clock")
 	s.Equal(uint64(after.Clock.HighWater), out.Clock)
 	s.Equal(600, encounter.RoundsPerHour, "an hour is six hundred six-second rounds")
+	nextSeq, err := enc.NextStorySeq()
+	s.Require().NoError(err)
+	s.Equal(firstSeq+1, nextSeq, "the rest beat and nothing else: no tick, no creature's pick")
+	s.Equal(out.Seq, firstSeq)
+	s.Nil(out.Formed, "nobody moved, so nothing formed")
 
-	s.Equal(before.Members, after.Members, "nobody moved, and billy's pace remainder is as it was")
+	s.Equal(before.Members, after.Members, "nobody moved — not the denLurker, and billy's pace remainder is as it was")
+	s.Equal(before.Clock.Budgets, after.Clock.Budgets, "the jump grants nothing, so nothing is owed")
 	s.Equal(before.Bubbles, after.Bubbles, "the fight's turn did not move")
 	s.Equal(before.SightAreas, after.SightAreas, "the sight area stands")
 	s.Equal(before.Doors, after.Doors)
+
+	// AND THE NEXT WALK PACES NORMALLY: five more cells finish billy's
+	// thirty-foot pace (six cells) and pay exactly one round, as they would
+	// have with no rest between.
+	cells := []spatial.Position{cellAt(6, 10), cellAt(6, 11), cellAt(6, 10), cellAt(6, 11)}
+	for _, to := range cells {
+		_, err := enc.Step(&encounter.StepInput{Member: billy, To: to})
+		s.Require().NoError(err)
+	}
+	s.Equal(after.Clock.HighWater, s.highWater(enc), "five cells of pace pay nothing yet")
+	_, err = enc.Step(&encounter.StepInput{Member: billy, To: cellAt(6, 10)})
+	s.Require().NoError(err)
+	s.Equal(after.Clock.HighWater+1, s.highWater(enc), "the sixth cell pays the round")
 }
 
-// The rester is the clock's driver, and the clock accrues by driver as max:
-// two members resting from the same reading is one hour, not two.
-func (s *SessionVerbsSuite) TestAPartyRestingTogetherIsOneHour() {
+// The hour is a jump, so each rest is its own hour: two members resting one
+// after the other is two hours on the clock.
+func (s *SessionVerbsSuite) TestEachRestIsItsOwnHour() {
 	enc := s.freeRoam()
 	before := s.highWater(enc)
 
@@ -307,8 +383,8 @@ func (s *SessionVerbsSuite) TestAPartyRestingTogetherIsOneHour() {
 		s.Require().NoError(err)
 	}
 
-	s.Equal(before+encounter.RoundsPerHour, s.highWater(enc))
-	s.Len(s.beatsOfKind(enc, alice, encounter.BeatRested), 2, "each rest is still told")
+	s.Equal(before+2*encounter.RoundsPerHour, s.highWater(enc))
+	s.Len(s.beatsOfKind(enc, alice, encounter.BeatRested), 2, "each rest is told")
 }
 
 // What a rest restored is carried as told, and refused when it cannot have

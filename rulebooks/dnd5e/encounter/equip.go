@@ -66,8 +66,9 @@ type RecordEquipInput struct {
 	// Drawn is the item that entered the slot, as its full ref string, or
 	// empty when the equip left the slot empty.
 	//
-	// AN EQUIP THAT NAMES NEITHER IS REFUSED (ErrInvalidData): nothing went
-	// into the slot and nothing came out, which is not a change anybody saw.
+	// AN EQUIP THAT NAMES NEITHER, OR NAMES ONE ITEM BOTH WAYS, IS REFUSED
+	// (ErrInvalidData): nothing changed hands, which is not a change anybody
+	// saw.
 	Drawn string
 }
 
@@ -119,7 +120,7 @@ type RecordEquipOutput struct {
 // world clock passes.
 //
 // Validation order (R5): nil input → empty member → closed → not a member →
-// empty slot or an equip naming nothing → not their turn in a fight → not
+// empty slot, an equip naming nothing, or one item both ways → not their turn in a fight → not
 // placed.
 //
 // Errors: ErrNilInput, ErrNoMember, ErrClosed, ErrNotMember, ErrInvalidData,
@@ -143,6 +144,10 @@ func (e *Encounter) RecordEquip(in *RecordEquipInput) (*RecordEquipOutput, error
 	}
 	if in.Drawn == "" && in.Stowed == "" {
 		return nil, fmt.Errorf("record equip: slot %q: an equip that names no item: %w", in.Slot, ErrInvalidData)
+	}
+	if in.Drawn == in.Stowed {
+		return nil, fmt.Errorf("record equip: slot %q: %q stowed and drawn again changes nothing: %w",
+			in.Slot, in.Drawn, ErrInvalidData)
 	}
 	if err := e.refuseOffTurn("record equip", in.Member); err != nil {
 		return nil, err

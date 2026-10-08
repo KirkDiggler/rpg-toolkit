@@ -26,18 +26,14 @@ import (
 // advanced here and nowhere else: the session asks for a rest by kind and
 // never counts rounds (R5). A short rest is [RoundsPerHour] on the clock.
 //
-// THE RESTER IS THE DRIVER, as every advance in worldtime.go names its
-// member. The clock accrues by driver as MAX, so a party resting together —
-// each member recording their own rest from the same reading — is one hour
-// on the clock, not one hour per member. A member behind the front runner
-// raises the reading only by what their own hour passes it.
+// THE HOUR IS A JUMP, NOT A DRIVE ([Encounter.elapseWorld]): the reading
+// moves by the hour, no round of it is driven, no creature acts during it,
+// no beat but the rest's own is written, and nothing is owed to the next
+// step. Nothing else in the run moves — no pace, no turn, no area, no
+// creature. A rest somebody interrupts is deferred (owner unset).
 //
-// AND THE WORLD THINKS ON IT, as it does on every raise
-// ([Encounter.worldThinks]): a creature that carries orders is owed every
-// round the hour granted it, and is given them now rather than handed them
-// all at once on the next step somebody takes. Nothing else moves — the
-// rester's pace remainder, every fight's turn and every sight area are as
-// they were.
+// DURATIONS ARE NOT RUN BY THE JUMP. An effect that lasts minutes, or until
+// a rest, is ended by the rulebook's rest entry, not by this clock moving.
 
 // RestKind names the kind of rest a member took.
 type RestKind string
@@ -112,11 +108,21 @@ type RecordRestOutput struct {
 
 	// Clock is the world clock's reading after the rest.
 	Clock uint64
+
+	// IntelDeltas is each observer's intel movement from the refresh after
+	// the hour, the same shape [RecordEquipOutput] carries.
+	IntelDeltas map[MemberID]*IntelDelta
+
+	// Formed is a fight the refresh after the hour started. Nobody moves
+	// during a rest, so none is expected; reported rather than dropped if
+	// one ever is.
+	Formed *FormedBubble
 }
 
 // RecordRest records one rest: a `rested` beat told to the members who see
 // the rester, stamped with the reading the rest began at, then the rest's
-// duration advanced on the world clock with the rester as its driver.
+// duration jumped on the world clock ([Encounter.elapseWorld]) and one sight
+// refresh, whose results are returned.
 //
 // THE SHEET MUST ALREADY CARRY THE REST. This module reads no sheet; it
 // records what the caller says the rest did.
@@ -130,8 +136,8 @@ type RecordRestOutput struct {
 // not placed.
 //
 // Errors: ErrNilInput, ErrNoMember, ErrClosed, ErrNotMember, ErrInvalidData,
-// ErrInBubble, ErrBadPlacement, or a failure of the world thinking the hour
-// (drop the encounter unsaved — doc.go's caller rule).
+// ErrInBubble, ErrBadPlacement, or a clock or sight-refresh failure (drop the
+// encounter unsaved — doc.go's caller rule).
 func (e *Encounter) RecordRest(in *RecordRestInput) (*RecordRestOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("record rest: %w", ErrNilInput)
@@ -201,20 +207,24 @@ func (e *Encounter) RecordRest(in *RecordRestInput) (*RecordRestOutput, error) {
 		return nil, fmt.Errorf("record rest: append beat: %w", err)
 	}
 
-	raised, err := e.advanceWorld(in.Member, rounds)
+	if err := e.elapseWorld(rounds); err != nil {
+		return nil, fmt.Errorf("record rest: %w", err)
+	}
+
+	// THE ONE REFRESH, returned rather than discarded. Nobody moved and
+	// nothing was driven, so nothing is expected to form or change — and if
+	// a time-keyed fact ever makes it, the caller is told.
+	deltas, formed, err := e.refreshSight(e.rosterIDs())
 	if err != nil {
 		return nil, fmt.Errorf("record rest: %w", err)
 	}
-	if raised {
-		if err := e.worldThinks(); err != nil {
-			return nil, fmt.Errorf("record rest: %w", err)
-		}
-	}
 
 	return &RecordRestOutput{
-		Seq:      appended.Seq,
-		Audience: witnesses,
-		Clock:    uint64(e.clock.ToData().HighWater),
+		Seq:         appended.Seq,
+		Audience:    witnesses,
+		Clock:       uint64(e.clock.ToData().HighWater),
+		IntelDeltas: deltas,
+		Formed:      formed,
 	}, nil
 }
 
