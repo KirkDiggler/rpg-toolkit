@@ -83,8 +83,8 @@ func (c *Character) StartTurn(_ context.Context, input *StartTurnInput) (*StartT
 //
 // Everything a turn grants is here and nothing else is: the three slots, the
 // movement the caller states (conditions modify speed, and that arithmetic
-// belongs above this), and an empty bank — capacity granted last turn is not
-// this turn's to spend. Shared by the turn-start verb and the freshness helper
+// belongs above this), the one free object interaction, and an otherwise empty
+// bank — capacity granted last turn is not this turn's to spend. Shared by the turn-start verb and the freshness helper
 // so the two cannot drift into disagreeing about what a fresh turn looks like.
 func (c *Character) seedTurn(turnNumber, speed int) {
 	// Economy refresh and spell-turn history have independent identities.
@@ -93,7 +93,9 @@ func (c *Character) seedTurn(turnNumber, speed int) {
 	if c.actionEconomy != nil {
 		spellcasting = c.actionEconomy.Spellcasting
 	}
-	granted := make(map[GrantedActionKey]int)
+	// The object interaction is the turn's own, like the three slots: every
+	// turn holds one, and the equip price spends it on a draw (R1).
+	granted := map[GrantedActionKey]int{GrantedObjectInteractions: 1}
 	if combat.ParticipationFor(c.lifeState()).NeedsDeathSave {
 		granted[GrantedDeathSaves] = 1
 	}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"maps"
 	"slices"
 	"time"
@@ -99,10 +100,9 @@ type Character struct {
 	// knownCantrips and knownSpells are the content refs this character knows.
 	// Parsed at load and kept as refs so a reader gets an identity rather than
 	// a string it has to parse again. See [Data.KnownCantrips].
-	knownCantrips  []*core.Ref
-	knownSpells    []*core.Ref
-	classResources map[shared.ClassResourceType]ResourceData
-	resources      map[coreResources.ResourceKey]*combat.RecoverableResource
+	knownCantrips []*core.Ref
+	knownSpells   []*core.Ref
+	resources     map[coreResources.ResourceKey]*combat.RecoverableResource
 
 	// Features (rage, second wind, etc) grant capacity and conditions.
 	features []features.Feature
@@ -459,115 +459,234 @@ func savingThrowAbilityRef(ability abilities.Ability) *core.Ref {
 	}
 }
 
-// SpendHitDiceInput contains parameters for spending hit dice during a short rest
-type SpendHitDiceInput struct {
-	// Count is the number of hit dice to spend (must be >= 1)
-	Count int
+// ShortRestInput asks for one short rest: how many hit dice to spend and the
+// dice to roll them with.
+type ShortRestInput struct {
+	// HitDice is how many hit dice to spend. Zero is a rest that spends none
+	// and still refills what a short rest refills; a negative count is
+	// refused.
+	HitDice int
 
-	// Roller is the dice roller to use. If nil, defaults to dice.NewRoller().
+	// Roller throws the hit dice. Required when HitDice is above zero; this
+	// operation substitutes no hidden randomness. Resolution hands it the
+	// interaction's roller, the session the world's.
 	Roller dice.Roller
 }
 
-// SpendHitDiceOutput contains the result of spending hit dice
-type SpendHitDiceOutput struct {
-	// DiceSpent is the number of hit dice that were spent
-	DiceSpent int
+// ShortRestOutput is what the rest did.
+type ShortRestOutput struct {
+	// HitDiceSpent is the number of hit dice spent — exactly the count asked.
+	HitDiceSpent int
 
-	// Rolls is the individual die roll results
-	Rolls []int
+	// HitDiceRemaining is the hit dice left after the rest.
+	HitDiceRemaining int
 
-	// CONModifier is the Constitution modifier applied per die
-	CONModifier int
+	// Healing is the sourced roll the spent dice made: one dice component
+	// holding every hit die, sourced to the character's class and naming the
+	// resting character as the entity that threw it, and one Constitution
+	// modifier component for the whole count. Nil when no die was spent.
+	Healing *dnd5eEvents.RollCalculation
 
-	// TotalHealing is the total HP healed (sum of rolls + CON mod per die)
-	TotalHealing int
-
-	// Remaining is the number of hit dice remaining after spending
-	Remaining int
+	// Healed is the healing requested of the sheet: Healing's total, floored
+	// at zero. What landed after the maximum hit point cap is the sheet's
+	// answer; read the hit points.
+	Healed int
 }
 
-// SpendHitDice spends hit dice during a short rest to heal the character.
-// Rolls the character's hit die for each die spent, adds CON modifier per die,
-// and heals the character by the total amount (capped at max HP).
-func (c *Character) SpendHitDice(ctx context.Context, input *SpendHitDiceInput) (*SpendHitDiceOutput, error) {
-	// Validate input
+// ShortRest is one short rest, as one character operation (PHB p.186).
+//
+// Each hit die spent rolls the character's class hit die plus its
+// Constitution modifier, at least zero for the rest as a whole, and heals that
+// much up to maximum hit points. Then every resource whose own reset kind is a
+// short rest refills, and the rest event goes out so anything that ends on a
+// rest — Rage, a held Bardic Inspiration — ends itself and anything holding
+// its own pool refills it. No verb names a feature: Second Wind refills
+// because its resource resets on a short rest, and Rage does not because its
+// resets on a long one.
+//
+// # For resolution and session
+//
+// The character must be on a bus with its sheet keeper attached: the healing
+// is published to the sheet as a sourced roll and lands through the keeper,
+// like every other heal. Each die names this character as its source
+// ("every die knows whose it is", rpg-project#462 R7), so the trace the door
+// returns needs no rebuilding. The operation knows nothing of a fight or a
+// world clock: refusing a rest mid-fight and advancing the hour are the
+// encounter's and session's (rpg-project#542 R5).
+//
+// # Refusals, each before anything moves
+//
+//   - nil input, a negative count, or dice to roll with no roller
+//   - a character with no bus
+//   - a dead character
+//   - dice asked of a character with no hit dice pool, or more dice than
+//     remain — nothing is rolled and nothing is spent
+//
+// A roller that fails also leaves the sheet untouched.
+func (c *Character) ShortRest(ctx context.Context, input *ShortRestInput) (*ShortRestOutput, error) {
 	if input == nil {
-		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "input cannot be nil")
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "no short rest asked for")
 	}
-	if input.Count < 1 {
-		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "must spend at least 1 hit die")
+	if input.HitDice < 0 {
+		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"cannot spend %d hit dice", input.HitDice)
+	}
+	if input.HitDice > 0 && input.Roller == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "hit dice need a roller")
+	}
+	if c.bus == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "character has no event bus")
 	}
 	if c.lifeState() == combat.LifeStateDead {
-		return nil, rpgerr.New(rpgerr.CodeInvalidState,
-			"dead characters cannot spend hit dice")
+		return nil, rpgerr.New(rpgerr.CodeInvalidState, "dead characters cannot rest")
 	}
 
-	// Get hit dice resource
-	hitDiceResource := c.GetResource(resources.HitDice)
-	if hitDiceResource.IsEmpty() && hitDiceResource.Maximum() == 0 {
-		return nil, rpgerr.New(rpgerr.CodeNotFound, "character has no hit dice resource configured")
+	pool := c.GetResource(resources.HitDice)
+	if input.HitDice > 0 && pool.Maximum() == 0 {
+		return nil, rpgerr.New(rpgerr.CodeNotFound, "character has no hit dice")
+	}
+	if pool.Current() < input.HitDice {
+		return nil, rpgerr.Newf(rpgerr.CodeResourceExhausted,
+			"not enough hit dice: have %d, asked to spend %d", pool.Current(), input.HitDice)
 	}
 
-	// Check if we have enough hit dice
-	if hitDiceResource.Current() < input.Count {
-		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
-			"not enough hit dice: have %d, need %d", hitDiceResource.Current(), input.Count)
+	var healing *dnd5eEvents.RollCalculation
+	if input.HitDice > 0 {
+		var err error
+		healing, err = c.rollHitDice(ctx, input.HitDice, input.Roller)
+		if err != nil {
+			return nil, err
+		}
+		if err := pool.Use(input.HitDice); err != nil {
+			return nil, rpgerr.Wrapf(err, "failed to spend hit dice")
+		}
 	}
 
-	// Use default roller if none provided
-	roller := input.Roller
-	if roller == nil {
-		roller = dice.NewRoller()
+	c.recoverOnRest(coreResources.ResetShortRest)
+
+	// Unconditional rather than only when a pool actually moved: the rest event
+	// published below also reaches resources and conditions that restore or
+	// remove themselves, and a rest that changed nothing costs one redundant
+	// write while a rest that changed something silently would cost the party
+	// its ki.
+	c.poolChanged()
+
+	healed := 0
+	if healing != nil && healing.Total > 0 {
+		healed = healing.Total
+		sourceRef := c.hitDieRef()
+		err := dnd5eEvents.HealingReceivedTopic.On(c.bus).Publish(ctx, dnd5eEvents.HealingReceivedEvent{
+			TargetID:    c.id,
+			Amount:      healed,
+			Calculation: healing,
+			Source:      string(resources.HitDice),
+			SourceRef:   &sourceRef,
+			SourceName:  "Hit Dice",
+		})
+		if err != nil {
+			return nil, rpgerr.Wrapf(err, "failed to publish hit dice healing")
+		}
 	}
 
-	// Roll the dice
-	rolls, err := roller.RollN(ctx, input.Count, c.hitDice)
+	err := dnd5eEvents.RestTopic.On(c.bus).Publish(ctx, dnd5eEvents.RestEvent{
+		RestType:    coreResources.ResetShortRest,
+		CharacterID: c.id,
+	})
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "failed to publish rest event")
+	}
+
+	return &ShortRestOutput{
+		HitDiceSpent:     input.HitDice,
+		HitDiceRemaining: pool.Current(),
+		Healing:          healing,
+		Healed:           healed,
+	}, nil
+}
+
+// rollHitDice throws count of the character's hit dice and returns the sourced
+// calculation: the dice, owned by this character, and the Constitution
+// modifier once per die.
+//
+// A total below zero is left as the roll says. The floor is the rest's rule,
+// applied to what the sheet is asked to heal, not a rewrite of the record.
+func (c *Character) rollHitDice(ctx context.Context, count int, roller dice.Roller) (*dnd5eEvents.RollCalculation, error) {
+	faces, err := roller.RollN(ctx, count, c.hitDice)
 	if err != nil {
 		return nil, rpgerr.Wrapf(err, "failed to roll hit dice")
 	}
-
-	// Calculate healing: sum of rolls + CON modifier per die
-	conMod := c.GetAbilityModifier(abilities.CON)
-	totalHealing := 0
-	for _, roll := range rolls {
-		totalHealing += roll + conMod
+	if len(faces) != count {
+		return nil, rpgerr.Newf(rpgerr.CodeInternal,
+			"rolled %d hit dice, asked for %d", len(faces), count)
 	}
 
-	// Ensure minimum healing is 0 (can't heal negative even with negative CON)
-	if totalHealing < 0 {
-		totalHealing = 0
+	subtotal := 0
+	for _, face := range faces {
+		subtotal += face
 	}
 
-	// Use the hit dice resource
-	if err := hitDiceResource.Use(input.Count); err != nil {
-		return nil, rpgerr.Wrapf(err, "failed to use hit dice")
-	}
+	// Fresh copies of the identity refs: the calculation is published, and a
+	// receiver must not be able to reach the package singletons through it.
+	classRef := c.hitDieRef()
+	conRef := *refs.Abilities.Constitution()
+	modifier := c.GetAbilityModifier(abilities.CON) * count
 
-	// The pool moved, and says so for itself rather than leaning on the healing
-	// below: the hit points only get marked if the sheet's keeper is on this
-	// bus, and the spent die is persisted either way.
-	c.poolChanged()
-
-	// Publish healing event (character's onHealingReceived will handle HP update)
-	healingTopic := dnd5eEvents.HealingReceivedTopic.On(c.bus)
-	err = healingTopic.Publish(ctx, dnd5eEvents.HealingReceivedEvent{
-		TargetID: c.id,
-		Amount:   totalHealing,
-		Roll:     totalHealing - (conMod * input.Count), // Sum of dice rolls
-		Modifier: conMod * input.Count,                  // Total CON modifier
-		Source:   "hit_dice",
+	calculation := dnd5eEvents.NewRollCalculation([]dnd5eEvents.RollComponent{
+		{
+			Source: dnd5eEvents.RollSource{
+				Ref: &classRef, Name: "Hit Dice", Label: "Hit dice", SourceID: c.id,
+			},
+			Dice: &dnd5eEvents.DiceTrace{
+				Notation:      fmt.Sprintf("%dd%d", count, c.hitDice),
+				DieSize:       c.hitDice,
+				OriginalRolls: faces,
+				FinalRolls:    slices.Clone(faces),
+				Subtotal:      subtotal,
+			},
+		},
+		{
+			Source: dnd5eEvents.RollSource{
+				Ref: &conRef, Name: abilities.CON.Display(), Label: "Constitution modifier per hit die",
+				SourceID: c.id,
+			},
+			Modifier: &modifier,
+		},
 	})
-	if err != nil {
-		return nil, rpgerr.Wrapf(err, "failed to publish healing event")
+	if err := dnd5eEvents.ValidateRollCalculation(calculation); err != nil {
+		return nil, rpgerr.WrapWithCode(err, rpgerr.CodeInternal, "hit dice calculation is invalid")
 	}
 
-	return &SpendHitDiceOutput{
-		DiceSpent:    input.Count,
-		Rolls:        rolls,
-		CONModifier:  conMod,
-		TotalHealing: totalHealing,
-		Remaining:    hitDiceResource.Current(),
-	}, nil
+	return calculation, nil
+}
+
+// hitDieRef is the rule a hit die answers to: the class that grants it. A
+// fresh value each call, so nothing published can reach a shared ref.
+func (c *Character) hitDieRef() core.Ref {
+	return core.Ref{Module: refs.Module, Type: refs.TypeClasses, ID: core.ID(c.classID)}
+}
+
+// recoverOnRest refills every character-owned resource the rest satisfies,
+// read off the resource's own reset kind. It is the one reset rule both rests
+// share: a short rest refills what resets on a short rest; a long rest refills
+// that and what resets on a long rest, and returns hit dice by their own rule
+// — half the total, at least one (PHB p.186) — rather than to full.
+//
+// Feature- and condition-owned pools are not here: they hear the rest event
+// and refill or end themselves.
+func (c *Character) recoverOnRest(rest coreResources.ResetType) {
+	for key, resource := range c.resources {
+		satisfied := resource.ResetType == rest ||
+			(rest == coreResources.ResetLongRest && resource.ResetType == coreResources.ResetShortRest)
+		if !satisfied {
+			continue
+		}
+
+		if key == resources.HitDice {
+			resource.Restore(max(1, resource.Maximum()/2))
+			continue
+		}
+		resource.RestoreToFull()
+	}
 }
 
 // LongRest performs a long rest, restoring HP to maximum and all long-rest resources.
@@ -584,23 +703,9 @@ func (c *Character) LongRest(ctx context.Context) error {
 	// Clear death save state (use empty struct for consistency with ResetDeathSaveState)
 	c.deathSaveState = &saves.DeathSaveState{}
 
-	// Directly restore all resources that reset on long rest
-	for key, resource := range c.resources {
-		if resource.ResetType == coreResources.ResetLongRest ||
-			resource.ResetType == coreResources.ResetShortRest {
-			// Hit dice have special recovery rules: regain half (minimum 1)
-			if key == resources.HitDice {
-				amount := resource.Maximum() / 2
-				if amount < 1 {
-					amount = 1
-				}
-				resource.Restore(amount)
-			} else {
-				// All other resources restore to full
-				resource.RestoreToFull()
-			}
-		}
-	}
+	// Every resource whose reset kind a long rest satisfies, hit dice by
+	// their own half-back rule.
+	c.recoverOnRest(coreResources.ResetLongRest)
 
 	// Covers the hit-point, death-save, and resource writes above in one
 	// place, because a rest is one change to the sheet.
@@ -618,41 +723,6 @@ func (c *Character) LongRest(ctx context.Context) error {
 
 	_, err = c.ExitCombat(ctx, nil)
 	return err
-}
-
-// ShortRest restores resources that reset on a short rest (e.g., Second Wind, Ki).
-// Unlike LongRest, ShortRest does not restore HP or clear death saves.
-// Resources with ResetShortRest type are restored to full.
-func (c *Character) ShortRest(ctx context.Context) error {
-	if c.bus == nil {
-		return rpgerr.New(rpgerr.CodeInvalidArgument, "character has no event bus")
-	}
-
-	// Restore all resources that reset on short rest
-	for _, resource := range c.resources {
-		if resource.ResetType == coreResources.ResetShortRest {
-			resource.RestoreToFull()
-		}
-	}
-
-	// Unconditional rather than only when a pool actually moved: the rest event
-	// published below also reaches resources and conditions that restore or
-	// remove themselves, and a rest that changed nothing costs one redundant
-	// write while a rest that changed something silently would cost the party
-	// its ki.
-	c.poolChanged()
-
-	// Publish RestEvent for conditions to react (e.g., RagingCondition removes itself)
-	restTopic := dnd5eEvents.RestTopic.On(c.bus)
-	err := restTopic.Publish(ctx, dnd5eEvents.RestEvent{
-		RestType:    coreResources.ResetShortRest,
-		CharacterID: c.id,
-	})
-	if err != nil {
-		return rpgerr.Wrapf(err, "failed to publish rest event")
-	}
-
-	return nil
 }
 
 // EndCombat used to sit here, and it is gone (rpg-project#319 Phase 6). It
@@ -1061,44 +1131,40 @@ func (c *Character) HasShieldEquipped() bool {
 // it cannot occupy the slot, or CodeResourceExhausted if existing occupancy has
 // already consumed every owned copy.
 func (c *Character) EquipItem(slot InventorySlot, itemID string) error {
-	// Verify item exists in inventory and count how many copies are owned.
-	var item equipment.Equipment
-	copies := 0
-	found := false
-	for _, invItem := range c.inventory {
-		if invItem.Equipment.EquipmentID() == itemID {
-			if !found {
-				item = invItem.Equipment
-				found = true
-			}
-			copies += invItem.Quantity
-		}
+	next, err := c.slotsAfterEquip(slot, itemID)
+	if err != nil {
+		return err
 	}
 
-	if !found {
-		return rpgerr.New(rpgerr.CodeNotFound, "item not found in inventory")
+	return c.applySlots(next)
+}
+
+// slotsAfterEquip is EquipItem without the write: the slots this character
+// would hold after equipping itemID into slot, or the refusal EquipItem would
+// return. The equip price reads it so the price is computed from the same
+// occupancy rules that will apply the change, never a second copy of them.
+func (c *Character) slotsAfterEquip(slot InventorySlot, itemID string) (EquipmentSlots, error) {
+	// Verify item exists in inventory and count how many copies are owned.
+	item, copies := c.ownedEquipment(itemID)
+	if item == nil {
+		return nil, rpgerr.New(rpgerr.CodeNotFound, "item not found in inventory")
 	}
 
 	if !equipmentFitsSlot(item, slot) {
-		return rpgerr.New(rpgerr.CodeInvalidArgument, "item cannot be equipped in that slot",
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "item cannot be equipped in that slot",
 			rpgerr.WithMeta("item_id", itemID),
 			rpgerr.WithMeta("slot", slot))
 	}
 
-	// Initialize map if nil
-	if c.equipmentSlots == nil {
-		c.equipmentSlots = make(EquipmentSlots)
-	}
-
-	previous := make(EquipmentSlots, len(c.equipmentSlots))
-	for occupied, id := range c.equipmentSlots {
-		previous[occupied] = id
+	next := maps.Clone(c.equipmentSlots)
+	if next == nil {
+		next = make(EquipmentSlots)
 	}
 
 	// Count copies already occupying other slots. The requested slot is
 	// excluded so equipping an item where it already sits is idempotent.
 	equipped := 0
-	for equippedSlot, id := range c.equipmentSlots {
+	for equippedSlot, id := range next {
 		if equippedSlot != slot && id == itemID {
 			equipped++
 		}
@@ -1109,16 +1175,16 @@ func (c *Character) EquipItem(slot InventorySlot, itemID string) error {
 			// A single copy moves: vacate every old reference before setting the
 			// requested slot. Clearing every match also repairs duplicate legacy
 			// references for this one-copy item.
-			for equippedSlot, id := range c.equipmentSlots {
+			for equippedSlot, id := range next {
 				if equippedSlot != slot && id == itemID {
-					c.equipmentSlots.Clear(equippedSlot)
+					next.Clear(equippedSlot)
 				}
 			}
 		} else {
 			// Today's compatible-slot taxonomy cannot overdraw a multi-copy
 			// stack, but future slots or malformed persisted maps can. Refuse
 			// rather than manufacture another equipped copy.
-			return rpgerr.ResourceExhausted("owned equipment copies",
+			return nil, rpgerr.ResourceExhausted("owned equipment copies",
 				rpgerr.WithMeta("item_id", itemID),
 				rpgerr.WithMeta("owned", copies),
 				rpgerr.WithMeta("equipped", equipped))
@@ -1129,20 +1195,58 @@ func (c *Character) EquipItem(slot InventorySlot, itemID string) error {
 	// equipmentFitsSlot above already limits two-handed weapons to main
 	// hand, so slot == SlotMainHand whenever this branch runs.
 	if isTwoHanded(item) {
-		c.equipmentSlots.Clear(SlotOffHand)
-		c.equipmentSlots.Set(SlotMainHand, itemID)
-		return c.removeReleasedEquipmentConditions(previous)
+		next.Clear(SlotOffHand)
+		next.Set(SlotMainHand, itemID)
+		return next, nil
 	}
 
 	// Main hand holding a two-handed weapon blocks the off hand until
 	// something is equipped there, which frees the main hand.
 	if slot == SlotOffHand {
-		if mainHand := c.GetEquippedSlot(SlotMainHand); mainHand != nil && isTwoHanded(mainHand.Item) {
-			c.equipmentSlots.Clear(SlotMainHand)
+		if mainHand, _ := c.ownedEquipment(next.Get(SlotMainHand)); mainHand != nil && isTwoHanded(mainHand) {
+			next.Clear(SlotMainHand)
 		}
 	}
 
-	c.equipmentSlots.Set(slot, itemID)
+	next.Set(slot, itemID)
+	return next, nil
+}
+
+// ownedEquipment finds an inventory item by id and counts the copies owned.
+// A nil item means the inventory holds none.
+func (c *Character) ownedEquipment(itemID string) (equipment.Equipment, int) {
+	if itemID == "" {
+		return nil, 0
+	}
+
+	var item equipment.Equipment
+	copies := 0
+	for _, invItem := range c.inventory {
+		if invItem.Equipment.EquipmentID() == itemID {
+			if item == nil {
+				item = invItem.Equipment
+			}
+			copies += invItem.Quantity
+		}
+	}
+
+	return item, copies
+}
+
+// applySlots writes a planned occupancy onto the sheet and releases any
+// equipment-bound condition whose item left its slot.
+//
+// It writes in place rather than swapping the map, so the sheet keeps the one
+// map it has always held.
+func (c *Character) applySlots(next EquipmentSlots) error {
+	if c.equipmentSlots == nil {
+		c.equipmentSlots = make(EquipmentSlots)
+	}
+
+	previous := maps.Clone(c.equipmentSlots)
+	clear(c.equipmentSlots)
+	maps.Copy(c.equipmentSlots, next)
+
 	return c.removeReleasedEquipmentConditions(previous)
 }
 
@@ -1204,9 +1308,6 @@ func (c *Character) ToData() (*Data, error) {
 
 	data.KnownCantrips = spellRefStrings(c.knownCantrips)
 	data.KnownSpells = spellRefStrings(c.knownSpells)
-
-	// Copy class resources map directly since ResourceData is already the data type
-	data.ClassResources = maps.Clone(c.classResources)
 
 	// Convert resources to data
 	if len(c.resources) > 0 {

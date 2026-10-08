@@ -315,11 +315,8 @@ func loadSheet(d *Data, policy effectPolicy) (*Character, error) {
 		weaponProficiencies: d.WeaponProficiencies,
 		toolProficiencies:   d.ToolProficiencies,
 		equipmentSlots:      d.EquipmentSlots,
-		// ClassResources remains legacy class state. Spell slots do not: the
-		// generic recoverable Resources map is their sole mutable authority.
-		classResources:  maps.Clone(d.ClassResources),
-		subscriptionIDs: make([]string, 0),
-		policy:          policy,
+		subscriptionIDs:     make([]string, 0),
+		policy:              policy,
 	}
 
 	// The known-spell lists, parsed back into identities. Refused rather than

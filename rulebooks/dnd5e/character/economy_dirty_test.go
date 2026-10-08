@@ -322,9 +322,9 @@ func (s *EconomyDirtyTestSuite) TestSpendingHitDiceMarksOnItsOwn() {
 	char := s.loaded()
 	char.bus = s.bus
 
-	out, err := char.SpendHitDice(s.ctx, &SpendHitDiceInput{Count: 1})
+	out, err := char.ShortRest(s.ctx, &ShortRestInput{HitDice: 1, Roller: &mockHitDiceRoller{rolls: []int{4}}})
 	s.Require().NoError(err)
-	s.Require().Equal(2, out.Remaining)
+	s.Require().Equal(2, out.HitDiceRemaining)
 
 	s.True(char.IsDirty(), "the hit-dice pool moved")
 }
@@ -335,7 +335,8 @@ func (s *EconomyDirtyTestSuite) TestAShortRestMarks() {
 	s.Require().NoError(char.UseResource(resources.Ki, 2))
 	markSaved(char)
 
-	s.Require().NoError(char.ShortRest(s.ctx))
+	_, err := char.ShortRest(s.ctx, &ShortRestInput{})
+	s.Require().NoError(err)
 
 	s.Equal(3, char.GetResource(resources.Ki).Current())
 	s.True(char.IsDirty(), "restored pools are as persisted as spent ones")

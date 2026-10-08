@@ -250,7 +250,9 @@ func TestLongRestClearsPersistedActionEconomy(t *testing.T) {
 	require.Equal(t, 1, fresh.BonusActionsRemaining)
 	require.Equal(t, 1, fresh.ReactionsRemaining)
 	require.Equal(t, 35, fresh.MovementRemaining)
-	require.Empty(t, fresh.Granted)
+	require.Equal(t, 1, fresh.Granted[GrantedObjectInteractions], "a fresh turn holds its object interaction")
+	require.NotContains(t, fresh.Granted, GrantedAttacks, "nothing banked in the old turn survives")
+	require.NotContains(t, fresh.Granted, GrantedFlurryStrikes, "nothing banked in the old turn survives")
 }
 
 func TestLongRestRetainsCombatEconomyWhenRestEventPublicationFails(t *testing.T) {
@@ -325,7 +327,8 @@ func TestShortRestRetainsPersistedActionEconomy(t *testing.T) {
 	require.NoError(t, Attach(ctx, char, bus))
 	t.Cleanup(func() { require.NoError(t, char.Cleanup(ctx)) })
 
-	require.NoError(t, char.ShortRest(ctx))
+	_, err = char.ShortRest(ctx, &ShortRestInput{})
+	require.NoError(t, err)
 	got := mustToData(t, char).ActionEconomy
 	require.NotNil(t, got, "a short rest must not leave combat")
 	require.True(t, char.InCombat())

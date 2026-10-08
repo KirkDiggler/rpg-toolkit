@@ -2,7 +2,10 @@ package character
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -10,6 +13,10 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/stretchr/testify/suite"
@@ -80,7 +87,7 @@ func (s *ShortRestTestSuite) TestShortRest() {
 		s.character.AddResource("second-wind", secondWindResource)
 
 		// Act
-		err := s.character.ShortRest(s.ctx)
+		_, err := s.character.ShortRest(s.ctx, &ShortRestInput{})
 
 		// Assert
 		s.Require().NoError(err)
@@ -101,7 +108,7 @@ func (s *ShortRestTestSuite) TestShortRest() {
 		s.character.AddResource("rage", rageResource)
 
 		// Act
-		err := s.character.ShortRest(s.ctx)
+		_, err := s.character.ShortRest(s.ctx, &ShortRestInput{})
 
 		// Assert
 		s.Require().NoError(err)
@@ -114,7 +121,7 @@ func (s *ShortRestTestSuite) TestShortRest() {
 		s.character.maxHitPoints = 20
 
 		// Act
-		err := s.character.ShortRest(s.ctx)
+		_, err := s.character.ShortRest(s.ctx, &ShortRestInput{})
 
 		// Assert
 		s.Require().NoError(err)
@@ -129,7 +136,7 @@ func (s *ShortRestTestSuite) TestShortRest() {
 		}
 
 		// Act
-		err := s.character.ShortRest(s.ctx)
+		_, err := s.character.ShortRest(s.ctx, &ShortRestInput{})
 
 		// Assert
 		s.Require().NoError(err)
@@ -151,7 +158,7 @@ func (s *ShortRestTestSuite) TestShortRest() {
 		s.Require().NoError(err)
 
 		// Act
-		err = s.character.ShortRest(s.ctx)
+		_, err = s.character.ShortRest(s.ctx, &ShortRestInput{})
 
 		// Assert
 		s.Require().NoError(err)
@@ -164,7 +171,7 @@ func (s *ShortRestTestSuite) TestShortRest() {
 		s.character.bus = nil
 
 		// Act
-		err := s.character.ShortRest(s.ctx)
+		_, err := s.character.ShortRest(s.ctx, &ShortRestInput{})
 
 		// Assert
 		s.Error(err)
@@ -193,7 +200,7 @@ func (s *ShortRestTestSuite) TestShortRest() {
 		s.character.AddResource("action-surge", actionSurgeResource)
 
 		// Act
-		err := s.character.ShortRest(s.ctx)
+		_, err := s.character.ShortRest(s.ctx, &ShortRestInput{})
 
 		// Assert
 		s.Require().NoError(err)
@@ -204,4 +211,131 @@ func (s *ShortRestTestSuite) TestShortRest() {
 
 func TestShortRestSuite(t *testing.T) {
 	suite.Run(t, new(ShortRestTestSuite))
+}
+
+// restFighter is a loaded, attached level-2 fighter with CON 14 (+2): its
+// Second Wind spent, its Rage charges spent, both hit dice still to spend.
+// Rage on a fighter is only a long-rest pool here, standing for every pool
+// whose own reset kind is the long rest.
+func restFighter(t *testing.T) *Character {
+	t.Helper()
+	ctx := context.Background()
+	secondWind, err := json.Marshal(features.SecondWindData{
+		Ref:         refs.Features.SecondWind(),
+		ID:          "second-wind-short-rest",
+		Name:        "Second Wind",
+		CharacterID: "short-rest-fighter",
+		Uses:        0,
+		MaxUses:     1,
+	})
+	require.NoError(t, err)
+
+	char, err := Load(ctx, &Data{Levels: syntheticLevels(classes.Fighter, 2),
+		ID:               "short-rest-fighter",
+		PlayerID:         "short-rest-player",
+		Name:             "Short Rest Fighter",
+		Level:            2,
+		ProficiencyBonus: 2,
+		RaceID:           races.Human,
+		ClassID:          classes.Fighter,
+		AbilityScores: shared.AbilityScores{
+			abilities.STR: 16, abilities.DEX: 12, abilities.CON: 14,
+			abilities.INT: 10, abilities.WIS: 10, abilities.CHA: 10,
+		},
+		HitPoints:    3,
+		MaxHitPoints: 24,
+		Resources: map[coreResources.ResourceKey]RecoverableResourceData{
+			resources.HitDice:     {Current: 2, Maximum: 2, ResetType: coreResources.ResetLongRest},
+			resources.RageCharges: {Current: 0, Maximum: 2, ResetType: coreResources.ResetLongRest},
+		},
+		Features: []json.RawMessage{secondWind},
+	})
+	require.NoError(t, err)
+	require.NoError(t, Attach(ctx, char, events.NewEventBus()))
+	t.Cleanup(func() { require.NoError(t, char.Cleanup(ctx)) })
+	return char
+}
+
+func secondWindUses(t *testing.T, char *Character) int {
+	t.Helper()
+	var data features.SecondWindData
+	require.NoError(t, json.Unmarshal(featureByRef(t, mustToData(t, char).Features, refs.Features.SecondWind()), &data))
+	return data.Uses
+}
+
+// Two hit dice for a level-2 fighter with CON +2 heal both rolls plus 4 and
+// spend exactly two; the short-rest resource refills and the long-rest one
+// does not.
+func TestShortRestSpendsHitDiceAndRefillsByResetKind(t *testing.T) {
+	ctx := context.Background()
+	char := restFighter(t)
+	roller := &mockHitDiceRoller{rolls: []int{3, 8}}
+
+	out, err := char.ShortRest(ctx, &ShortRestInput{HitDice: 2, Roller: roller})
+	require.NoError(t, err)
+
+	require.Equal(t, 1, roller.calls, "the roller it was handed threw the dice")
+	require.Equal(t, 2, out.HitDiceSpent)
+	require.Equal(t, 15, out.Healed, "3 + 8 + 2*2")
+	require.Equal(t, 18, char.GetHitPoints(), "3 + 15")
+	require.Equal(t, 0, char.GetResource(resources.HitDice).Current(), "exactly two dice spent")
+	require.Equal(t, 1, secondWindUses(t, char), "Second Wind resets on a short rest")
+	require.Equal(t, 0, char.GetResource(resources.RageCharges).Current(), "Rage resets on a long rest only")
+	require.True(t, char.IsDirty())
+}
+
+func TestShortRestNeverHealsPastMaximum(t *testing.T) {
+	char := restFighter(t)
+
+	out, err := char.ShortRest(context.Background(), &ShortRestInput{
+		HitDice: 2, Roller: &mockHitDiceRoller{rolls: []int{10, 10}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 24, out.Healed)
+	require.Equal(t, 24, char.GetHitPoints(), "capped at maximum")
+}
+
+// Asking for more dice than remain refuses and spends nothing — not a die,
+// not a pool, not a resource the rest would otherwise have refilled.
+func TestShortRestRefusingTheCountSpendsNothing(t *testing.T) {
+	char := restFighter(t)
+	markSaved(char)
+	roller := &mockHitDiceRoller{rolls: []int{5}}
+
+	out, err := char.ShortRest(context.Background(), &ShortRestInput{HitDice: 3, Roller: roller})
+	require.Error(t, err)
+	require.Nil(t, out)
+	require.Zero(t, roller.calls)
+	require.Equal(t, 2, char.GetResource(resources.HitDice).Current())
+	require.Equal(t, 3, char.GetHitPoints())
+	require.Equal(t, 0, secondWindUses(t, char), "a refused rest refills nothing")
+	require.False(t, char.IsDirty())
+}
+
+// A long rest refills both kinds and returns half the hit dice.
+func TestLongRestRefillsBothKindsAndHalfTheHitDice(t *testing.T) {
+	ctx := context.Background()
+	char := restFighter(t)
+	_, err := char.ShortRest(ctx, &ShortRestInput{HitDice: 2, Roller: &mockHitDiceRoller{rolls: []int{1, 1}}})
+	require.NoError(t, err)
+	require.Equal(t, 0, char.GetResource(resources.HitDice).Current())
+
+	require.NoError(t, char.LongRest(ctx))
+
+	require.Equal(t, 1, secondWindUses(t, char))
+	require.Equal(t, 2, char.GetResource(resources.RageCharges).Current())
+	require.Equal(t, 1, char.GetResource(resources.HitDice).Current(), "half of two")
+	require.Equal(t, 24, char.GetHitPoints())
+}
+
+// Half of one hit die is none; the long rest returns at least one.
+func TestLongRestReturnsAtLeastOneHitDie(t *testing.T) {
+	ctx := context.Background()
+	char := restFighter(t)
+	pool := resources.NewHitDiceResource(resources.HitDiceResourceConfig{CharacterID: char.GetID(), Level: 1})
+	require.NoError(t, pool.Use(1))
+	char.AddResource(resources.HitDice, pool)
+
+	require.NoError(t, char.LongRest(ctx))
+	require.Equal(t, 1, pool.Current())
 }

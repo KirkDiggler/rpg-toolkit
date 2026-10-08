@@ -95,12 +95,13 @@ func (s *ActionEconomyLedgerTestSuite) TestKeyedCapacityIsTheFieldedCapacity() {
 func (s *ActionEconomyLedgerTestSuite) TestEveryDeclaredCapacityRoundTrips() {
 	for _, key := range combat.CapacityTypes() {
 		economy := combat.NewActionEconomy()
+		before := economy.CapacityLeft(key)
 
 		economy.BankCapacity(key, 3)
-		s.Require().Equalf(3, economy.CapacityLeft(key), "banked %q", key)
+		s.Require().Equalf(before+3, economy.CapacityLeft(key), "banked %q", key)
 
 		economy.SpendCapacity(key, 2)
-		s.Require().Equalf(1, economy.CapacityLeft(key), "spent %q", key)
+		s.Require().Equalf(before+1, economy.CapacityLeft(key), "spent %q", key)
 	}
 }
 
