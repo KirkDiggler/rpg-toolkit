@@ -167,9 +167,8 @@ var (
 	ErrCannotPay = errors.New("resolution: cost cannot be paid")
 
 	// ErrBadEquip indicates an equipment change the sheet cannot make: no slot
-	// named, an item the character does not carry, a slot the item cannot
-	// occupy, or a fight's change asked of a sheet with no readied turn. The
-	// rulebook's own error is wrapped rather than replaced.
+	// named, an item the character does not carry, or a slot the item cannot
+	// occupy. The rulebook's own error is wrapped rather than replaced.
 	//
 	// Kept distinct from [ErrCannotPay] for [ErrBadCost]'s reason, and from
 	// character.ErrArmorInFight, which is a refusal of a change that would be

@@ -381,16 +381,27 @@ func (s *EquipTestSuite) TestRequestsTheSheetCannotMakeAreBadEquip() {
 		s.Require().Nil(out)
 	})
 
-	// A fight's change against a sheet with no stored economy: the refresh has
-	// nothing to ready, and the rulebook will not price an absent turn.
-	s.Run("in a fight with no readied turn", func() {
-		out, err := Equip(s.ctx, &EquipInput{
-			Character: s.fighter(character.EquipmentSlots{}),
-			Slot:      character.SlotMainHand, ItemID: eqLongsword, Fight: eqThisTurn(),
-		})
-		s.Require().ErrorIs(err, ErrBadEquip)
-		s.Require().Nil(out)
+}
+
+// The first act of a fight can be an equip: a sheet with no stored economy
+// starts the turn, and the draw costs the turn's object interaction.
+func (s *EquipTestSuite) TestAFirstActDrawStartsTheTurnAndCostsTheInteraction() {
+	out, err := Equip(s.ctx, &EquipInput{
+		Character: s.fighter(character.EquipmentSlots{}),
+		Slot:      character.SlotMainHand, ItemID: eqLongsword, Fight: eqThisTurn(),
 	})
+	s.Require().NoError(err)
+
+	s.Require().NotNil(out.Paid)
+	s.Empty(out.Paid.Slots)
+	s.Equal(eqOneInteraction(), out.Paid.Capacity)
+
+	economy := out.Character.ActionEconomy
+	s.Require().NotNil(economy, "the turn was started")
+	s.Equal(equipTurn, economy.TurnNumber)
+	s.Equal(1, economy.ActionsRemaining)
+	s.Zero(economy.Granted[character.GrantedObjectInteractions])
+	s.Equal(eqLongsword, out.Character.EquipmentSlots.Get(character.SlotMainHand))
 }
 
 // The moves are full refs in the plan's order, and the output names the slot: a shield is armour, and a

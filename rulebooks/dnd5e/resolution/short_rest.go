@@ -39,8 +39,9 @@ type ShortRestInput struct {
 
 	// Others are the other sheets of the run the character rests in, every
 	// one of them (R3). A concentration the rest ends takes its effects off
-	// whoever carries them, and only a sheet passed in can hear that. A sheet
-	// left out keeps the effect of a hold that has ended.
+	// whoever carries them, and only a sheet passed in can hear that. A hold that
+	// reaches a member left out refuses the rest with [ErrBadParticipant]
+	// before anything ends.
 	Others []Participant
 }
 
@@ -94,7 +95,8 @@ type ShortRestOutput struct {
 // boundary.
 //
 // Returns [ErrNilInput], [ErrNoRoller] when dice are asked with no roller,
-// [ErrBadParticipant] for a record that is not one sheet, or the rulebook's
+// [ErrBadParticipant] for a record that is not one sheet or a hold that
+// reaches a member not passed in, or the rulebook's
 // own refusal wrapped (a negative count, more dice than remain, a dead
 // character), with nothing spent.
 func ShortRest(ctx context.Context, in *ShortRestInput) (*ShortRestOutput, error) {
@@ -177,7 +179,7 @@ func shortRestOn(
 	if err != nil {
 		return nil, errors.Join(err, ends.stop(ctx))
 	}
-	out, err = restAnHour(ctx, surf.inner, ch, in, ends, removals)
+	out, err = restAnHour(ctx, surf.inner, cast, ch, in, ends, removals)
 	if stopErr := errors.Join(ends.stop(ctx), removals.stop(ctx)); stopErr != nil {
 		return nil, errors.Join(err, stopErr)
 	}
@@ -202,14 +204,35 @@ func shortRestOn(
 // restAnHour ends the holds the hour outlasts, rests, and snapshots the
 // resting character with what ended.
 func restAnHour(
-	ctx context.Context, bus events.EventBus, ch *character.Character, in *ShortRestInput,
+	ctx context.Context, bus events.EventBus, cast *Participants, ch *character.Character, in *ShortRestInput,
 	ends *concentrationCollector, removals *removalCollector,
 ) (*ShortRestOutput, error) {
+	// The holds are read once, before any is ended: ending one removes it
+	// from the sheet's condition list as it goes.
+	var holds []*conditions.ConcentratingCondition
 	for _, condition := range ch.GetConditions() {
 		hold, ok := condition.(*conditions.ConcentratingCondition)
-		if !ok || hold.TurnEndsLeft > encounter.RoundsPerHour {
-			continue
+		if ok && hold.TurnEndsLeft <= encounter.RoundsPerHour {
+			holds = append(holds, hold)
 		}
+	}
+
+	// A hold strips its effects from every sheet that carries one, and only a
+	// sheet in the cast hears it. An effect on a member who was not passed in
+	// would be reported as removed and never written, so the rest refuses
+	// before anything ends.
+	for _, hold := range holds {
+		for _, child := range hold.Children {
+			_, isCharacter := cast.Character(child.MemberID)
+			_, isMonster := cast.Monster(child.MemberID)
+			if !isCharacter && !isMonster {
+				return nil, fmt.Errorf("%w: %s held by %q reaches %q, who was not passed in",
+					ErrBadParticipant, hold.SpellName, ch.GetID(), child.MemberID)
+			}
+		}
+	}
+
+	for _, hold := range holds {
 		address := hold.ConditionAddress()
 		if err := dnd5eEvents.ConditionRemovedTopic.On(bus).Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
 			MemberID: address.MemberID, ConditionRef: address.ConditionRef, SourceID: address.SourceID,

@@ -254,6 +254,35 @@ func (s *ShortRestTestSuite) TestAOneMinuteHoldEndsAndIsNamed() {
 		"the ally did not rest: its short-rest pool stays spent")
 }
 
+// A hold with exactly an hour left ends with the hour.
+func (s *ShortRestTestSuite) TestAHoldWithExactlyAnHourLeftEnds() {
+	rester, ally := s.blessHold(encounter.RoundsPerHour)
+
+	out, err := ShortRest(s.ctx, &ShortRestInput{
+		Character: rester, Others: []Participant{{Character: ally}},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(out.ConcentrationBreaks, 1)
+	s.NotContains(restConditionRefs(s.T(), out.Character), refs.Conditions.Concentrating().String())
+}
+
+// A hold whose effect sits on a member left out of Others refuses before
+// anything ends: the ally could never be written, so the strip would be a lie.
+func (s *ShortRestTestSuite) TestAHoldReachingAMemberNotPassedInRefuses() {
+	rester, _ := s.blessHold(10)
+	before, err := json.Marshal(rester)
+	s.Require().NoError(err)
+
+	out, err := ShortRest(s.ctx, &ShortRestInput{Character: rester})
+	s.Require().ErrorIs(err, ErrBadParticipant)
+	s.Require().ErrorContains(err, restAllyID)
+	s.Require().Nil(out)
+
+	after, err := json.Marshal(rester)
+	s.Require().NoError(err)
+	s.Require().JSONEq(string(before), string(after), "the caller's record must not move")
+}
+
 // A hold with more than an hour left is not ended: the hour is not run on its
 // clock, and ending it would invent an expiry.
 func (s *ShortRestTestSuite) TestAHoldLongerThanAnHourIsKept() {

@@ -75,8 +75,9 @@ type EquipOutput struct {
 // and unequip"); the session compiles nothing and pays nothing. In a fight
 // the order is the door's, and every step comes before anything is applied:
 //
-//   - the sheet is readied for [EquipInput.Fight]'s turn, so a bank left from
-//     an earlier turn is full before it is priced, which is the ordering
+//   - the sheet is readied for [EquipInput.Fight]'s turn ([ReadyForTurn]):
+//     its first act of the fight starts the turn, and a bank left from an
+//     earlier turn is full before it is priced, which is the ordering
 //     rpg-toolkit#1100 asks callers of a precompiled price to compensate for;
 //   - the change is priced against that readied ledger by the rulebook;
 //   - the price is charged, all or none.
@@ -176,16 +177,34 @@ func equipOn(
 	return out, nil
 }
 
+// ReadyForTurn puts a live sheet into the turn it is about to act in: a sheet
+// with no economy yet (its first act of the fight) starts the turn, and one
+// already in combat is refreshed for it — an economy filed under this turn is
+// left exactly as it is, so a second act cannot refill what the first spent.
+//
+// It is the one readiness rule for every caller that prices against a turn:
+// [Equip] calls it before the rulebook prices the change, and the session
+// calls it before it compiles a swing's price. The speed seeded is
+// turn.Speed, which the caller computes ([Turn]).
+//
+// Returns the rulebook's own error from StartTurn or RefreshForTurn.
+func ReadyForTurn(ctx context.Context, sheet *character.Character, turn Turn) error {
+	if !sheet.InCombat() {
+		_, err := sheet.StartTurn(ctx, &character.StartTurnInput{TurnNumber: turn.Number, Speed: turn.Speed})
+		return err
+	}
+
+	_, err := sheet.RefreshForTurn(ctx, &character.RefreshForTurnInput{TurnNumber: turn.Number, Speed: turn.Speed})
+	return err
+}
+
 // payForEquip readies the sheet for the fight's turn, prices the change and
 // charges the price, and returns the price it charged.
 func payForEquip(
 	ctx context.Context, ch *character.Character, in *EquipInput, cast *Participants,
 ) (*character.PriceEquipmentOutput, error) {
-	if _, err := ch.RefreshForTurn(ctx, &character.RefreshForTurnInput{
-		TurnNumber: in.Fight.Number,
-		Speed:      in.Fight.Speed,
-	}); err != nil {
-		return nil, fmt.Errorf("resolution: refresh %q for turn %d: %w", ch.GetID(), in.Fight.Number, err)
+	if err := ReadyForTurn(ctx, ch, *in.Fight); err != nil {
+		return nil, fmt.Errorf("resolution: ready %q for turn %d: %w", ch.GetID(), in.Fight.Number, err)
 	}
 
 	price, err := ch.PriceEquipment(&character.PriceEquipmentInput{Slot: in.Slot, ItemID: in.ItemID})
