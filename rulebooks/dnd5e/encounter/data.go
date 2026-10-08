@@ -267,6 +267,20 @@ type FieldData struct {
 	// existed simply loads with none.
 	Segments []SegmentData `json:"segments,omitempty"`
 
+	// StructuralWalls are the authored structural wall definitions
+	// ([FieldInput.StructuralWalls], rpg-project#169), in authored order, with
+	// their lines and dimensions in the CANONICAL feet frame — the geometry is
+	// already the compiled layout and is never re-converted on the wire.
+	//
+	// Scenery's omitempty rule: omitted and empty are the same fact, so a blob
+	// written before this noun existed simply loads with none, and a field that
+	// declares none writes no key at all.
+	StructuralWalls []StructuralWallData `json:"structural_walls,omitempty"`
+
+	// PropPresentations freeze appearance with this encounter's definitions,
+	// never with a character profile or a later edited content key.
+	PropPresentations []PropPresentationData `json:"prop_presentations,omitempty"`
+
 	// Sealed is every cell a wall leaves no room to stand in, in the AUTHORED
 	// offset frame ([FieldInput.Sealed], rpg-project#360).
 	//
@@ -688,6 +702,47 @@ type SegmentData struct {
 type AxialPointData struct {
 	Q float64 `json:"q"`
 	R float64 `json:"r"`
+}
+
+// StructuralWallData is the persistent representation of a
+// [StructuralWallInput]: a stable identity, an opaque appearance reference, a
+// canonical-feet line with its assembled dimensions, and the openings cut into
+// it.
+//
+// The endpoints and dimensions are written without omitempty because zero is an
+// ordinary canonical value (a wall may start at the origin and sit at the floor
+// with no elevation), so absence and zero have to be told apart by the shape.
+// Openings omit when there are none, which is the same fact as an absent list.
+type StructuralWallData struct {
+	ID        string                  `json:"id"`
+	Ref       string                  `json:"ref"`
+	From      PositionData            `json:"from"`
+	To        PositionData            `json:"to"`
+	Height    float64                 `json:"height"`
+	Thickness float64                 `json:"thickness"`
+	Elevation float64                 `json:"elevation"`
+	Openings  []StructuralOpeningData `json:"openings,omitempty"`
+}
+
+// StructuralOpeningData is the persistent representation of a
+// [StructuralOpeningInput]: its identity, its centre along the line and its
+// width, all canonical feet, plus its optional bound door.
+type StructuralOpeningData struct {
+	ID       string                     `json:"id"`
+	Position float64                    `json:"position"`
+	Width    float64                    `json:"width"`
+	Door     *StructuralDoorBindingData `json:"door,omitempty"`
+}
+
+// StructuralDoorBindingData is the persistent representation of a
+// [StructuralDoorBindingInput]: the two existing world identities it ties
+// together and the resolved visual opening endpoints, in canonical feet.
+type StructuralDoorBindingData struct {
+	PlacedID string       `json:"placed_id"`
+	DoorID   string       `json:"door_id"`
+	Ref      string       `json:"ref"`
+	From     PositionData `json:"from"`
+	To       PositionData `json:"to"`
 }
 
 // DoorData is the persistent representation of a door: what it is called,
@@ -2092,6 +2147,43 @@ func fieldDataFrom(f *field) FieldData {
 		}
 	}
 
+	// THE STRUCTURAL LAYOUT, deep-copied so two ToData calls cannot alias one
+	// record and a caller mutating the output cannot reach the field
+	// (rpg-project#169).
+	if len(f.structuralWalls) > 0 {
+		out.StructuralWalls = make([]StructuralWallData, len(f.structuralWalls))
+		for i := range f.structuralWalls {
+			w := &f.structuralWalls[i]
+			swd := StructuralWallData{
+				ID:        w.id,
+				Ref:       w.ref,
+				From:      PositionData{X: w.from.X, Y: w.from.Y},
+				To:        PositionData{X: w.to.X, Y: w.to.Y},
+				Height:    w.height,
+				Thickness: w.thickness,
+				Elevation: w.elevation,
+			}
+			for j := range w.openings {
+				o := &w.openings[j]
+				od := StructuralOpeningData{ID: o.id, Position: o.position, Width: o.width}
+				if o.door != nil {
+					od.Door = &StructuralDoorBindingData{
+						PlacedID: o.door.placedID,
+						DoorID:   o.door.doorID,
+						Ref:      o.door.ref,
+						From:     PositionData{X: o.door.from.X, Y: o.door.from.Y},
+						To:       PositionData{X: o.door.to.X, Y: o.door.to.Y},
+					}
+				}
+				swd.Openings = append(swd.Openings, od)
+			}
+			out.StructuralWalls[i] = swd
+		}
+	}
+
+	for _, p := range f.propPresentations {
+		out.PropPresentations = append(out.PropPresentations, propPresentationData(p))
+	}
 	if len(f.walls) > 0 {
 		out.Walls = make([]BoundaryData, len(f.walls))
 		for i, w := range f.walls {
@@ -2399,16 +2491,22 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
-	f, err := compileField(fieldInput)
-	if err != nil {
-		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
-	}
 
 	// Doors, through the SAME validator Setup runs (rpg-toolkit#1123). The
 	// load-only part is resolving the persisted word and lock back into a
 	// state; everything else a door can get wrong is checked once, in one
 	// place, for both seams.
 	doorInputs, err := convertDoorDataToDoorInput(data.Doors)
+	if err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+	// THE DOOR LIST RIDES THE FIELD INPUT, restored from its own wire half:
+	// the persisted doors live on EncounterData rather than on FieldData, so
+	// the two are put back together here, before the ONE shared compile, and
+	// a bound structural door's DoorID resolves at Load exactly as it does at
+	// Setup (rpg-project#169).
+	fieldInput.Doors = doorInputs
+	f, err := compileField(fieldInput)
 	if err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
@@ -3291,6 +3389,35 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 		in.Segments = append(in.Segments, seg)
 	}
 
+	for _, swd := range fd.StructuralWalls {
+		w := StructuralWallInput{
+			ID:        swd.ID,
+			Ref:       swd.Ref,
+			From:      spatial.Point{X: swd.From.X, Y: swd.From.Y},
+			To:        spatial.Point{X: swd.To.X, Y: swd.To.Y},
+			Height:    swd.Height,
+			Thickness: swd.Thickness,
+			Elevation: swd.Elevation,
+		}
+		for _, sod := range swd.Openings {
+			o := StructuralOpeningInput{ID: sod.ID, Position: sod.Position, Width: sod.Width}
+			if sod.Door != nil {
+				o.Door = &StructuralDoorBindingInput{
+					PlacedID: sod.Door.PlacedID,
+					DoorID:   sod.Door.DoorID,
+					Ref:      sod.Door.Ref,
+					From:     spatial.Point{X: sod.Door.From.X, Y: sod.Door.From.Y},
+					To:       spatial.Point{X: sod.Door.To.X, Y: sod.Door.To.Y},
+				}
+			}
+			w.Openings = append(w.Openings, o)
+		}
+		in.StructuralWalls = append(in.StructuralWalls, w)
+	}
+
+	for _, p := range fd.PropPresentations {
+		in.PropPresentations = append(in.PropPresentations, propPresentationFromData(p))
+	}
 	for _, pd := range fd.Props {
 		// REQUIRED at load, both of them, by name. A persisted prop that
 		// does not say what it blocks is a blob from before this module

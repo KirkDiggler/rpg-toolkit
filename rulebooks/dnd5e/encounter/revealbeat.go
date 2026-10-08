@@ -86,6 +86,12 @@ const BeatConcealmentRevealed = "concealment_revealed"
 // door the recipient has NOT found rides the slice exactly as their atlas
 // draws it. The recipient's knowledge fact is already written when this runs,
 // so the concealment being revealed is present in its own patch.
+//
+// THE FIXED STRUCTURAL LAYOUT IS PART OF THE PATCH (rpg-project#169,
+// structural_reveal.go). `structural_walls` and `structural_doors` introduce
+// permitted identities; `structural_wall_openings_replacements` updates cuts
+// on known walls without resending their fixed fields. An independently known
+// door is not repeated when its parent arrives. Empty collections add no key.
 func (e *Encounter) appendConcealmentRevealedBeat(
 	recipient MemberID, c *concealment, before Atlas, at uint64,
 ) (uint64, error) {
@@ -174,6 +180,11 @@ func (e *Encounter) appendConcealmentRevealedBeat(
 		"segments":    revealSegmentsPayload(newSegments(before.Segments, scoped.Segments)),
 		"sealed":      sealed,
 	}
+	// THE FIXED STRUCTURAL LAYOUT the secret was withholding, when it changed:
+	// the same difference-by-id the room reveal uses, against the recipient's
+	// own prior projection. Omitted entirely when nothing changed.
+	addStructuralReveal(payload, before, scoped)
+	addPropPresentationReveal(payload, before, scoped)
 
 	return e.appendRevealBeat(recipient, payload, at)
 }

@@ -605,6 +605,25 @@ type FieldInput struct {
 	// which floor a presented wall stands on. See [SegmentInput].
 	Segments []SegmentInput
 
+	// StructuralWalls are the authored structural walls (rpg-project#169): one
+	// canonical line with its assembled dimensions and its openings, each
+	// opening optionally bound to an existing footprint door. Optional and
+	// inert to the mechanics — the blocking contributors are still [Walls],
+	// [Placed] and [Doors] — this is the fixed layout a host draws and the
+	// projection filters. See [StructuralWallInput].
+	//
+	// IT IS NOT A SECOND AUTHORED POSE. A wall's [StructuralWallInput.ID] is
+	// the raw identity of its placed presence entry, a bound door's endpoints
+	// are resolved by the source compiler from its owning opening, and no
+	// transform, asset or catalog reference reaches a rule. Nil when the field
+	// declares none, which is every field authored before this noun existed.
+	StructuralWalls []StructuralWallInput
+
+	// PropPresentations are immutable authored appearance definitions. A row
+	// may bind an existing prop identity or name nonblocking decorative scenery;
+	// neither appearance nor lack of a blocker grants interaction permission.
+	PropPresentations []PropPresentation
+
 	// Sealed is every cell some wall leaves too little of to stand on: a cell
 	// that KEEPS ITS OWNER and loses its feet (rpg-project#360, design C10).
 	// Absolute authored offset [col,row] cells. Optional; omitted means none.
@@ -844,8 +863,11 @@ type FieldStart struct {
 // play data have different shapes for a reason, and this is the construction
 // one.
 type MemberInput struct {
-	// PrivateDiscoveries and RetainedDiscoveries are a player's loaded profile.
-	PrivateDiscoveries  bool
+	// PrivateDiscoveries is the player's audience preference.
+	PrivateDiscoveries bool
+	// RetainedDiscoveries is a legacy explicit-import input, not game persistence.
+	// Compatibility only: game hosts must not seed new playthroughs from character memory;
+	// restore an existing encounter through EncounterData instead.
 	RetainedDiscoveries map[ConcealmentID]DiscoveryMemoryData
 	// ID is the member's unique identifier.
 	ID MemberID
@@ -1677,8 +1699,11 @@ type StepOutput struct {
 // two PRs on: two ways in is two places for a rule to land, and eventually one
 // of them misses.
 type JoinInput struct {
-	// PrivateDiscoveries and RetainedDiscoveries are restored before first sight.
-	PrivateDiscoveries  bool
+	// PrivateDiscoveries is applied before first sight; run knowledge stays in
+	// this encounter rather than coming from the character profile.
+	PrivateDiscoveries bool
+	// RetainedDiscoveries remains for legacy explicit-import callers.
+	// Compatibility only: game hosts do not populate this; EncounterData owns run state.
 	RetainedDiscoveries map[ConcealmentID]DiscoveryMemoryData
 	// Member is the joining member's unique identifier.
 	Member MemberID

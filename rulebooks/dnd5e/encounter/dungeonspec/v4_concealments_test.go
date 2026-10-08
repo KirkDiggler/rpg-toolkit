@@ -54,8 +54,8 @@ func TestTheTwoDialectsHideTheSameVault(t *testing.T) {
 	require.Len(t, hidden4.Doors, 1, "and the same one door, a member of the secret rather than a flagged thing")
 	require.Len(t, hidden2.Doors, 1)
 
-	require.Equal(t, []string{"heirloom"}, hidden4.Props,
-		"and the prize named outright, which is the thing v2 can only say by standing it on hidden floor")
+	require.Equal(t, []string{"vault-door", "heirloom"}, hidden4.Props,
+		"explicit source membership includes the door's drawn identity and the named prize")
 	require.Nil(t, hidden2.Props)
 
 	require.Equal(t, []encounter.CheckApproach{{Ability: "investigation", DC: 12}}, hidden4.Notice,
@@ -225,5 +225,6 @@ func TestADoorIsHiddenByBelongingRatherThanByAFlag(t *testing.T) {
 	require.Equal(t, encounter.DoorID("refusal-fixture/table"), compiled.Field.Doors[0].ID)
 	require.Equal(t, []encounter.DoorID{"refusal-fixture/table"}, compiled.Concealments[0].Doors,
 		"the author wrote the item id in `props:` and the lowering sorted it into the doors")
-	require.Empty(t, compiled.Concealments[0].Props, "so it is not also a prop member")
+	require.Equal(t, []string{"table"}, compiled.Concealments[0].Props,
+		"the same explicitly selected source item also names its drawn placement; no overlap inference")
 }
