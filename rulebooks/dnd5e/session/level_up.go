@@ -79,7 +79,7 @@ func (m *Manager) LevelUp(ctx context.Context, in *LevelUpInput) (*LevelUpOutput
 		return nil, fmt.Errorf("level up: %w", err)
 	}
 
-	data, err := m.fetchCharacterData(ctx, "character", in.Character)
+	data, err := m.sheetsFor(nil).load(ctx, "character", in.Character)
 	if err != nil {
 		return nil, fmt.Errorf("level up: %w", err)
 	}
@@ -109,16 +109,13 @@ func (m *Manager) LevelUp(ctx context.Context, in *LevelUpInput) (*LevelUpOutput
 	if err != nil {
 		return nil, fmt.Errorf("level up: character %q: %w: %v", in.Character, ErrBadCharacter, err)
 	}
-	aggregate := "character:" + record.ID
-	if err := m.characters.SaveCharacter(ctx, record); err != nil {
-		return nil, fmt.Errorf("level up: %w", &SaveError{
-			Report: SaveReport{Failed: []string{aggregate}},
-			Err:    fmt.Errorf("saving character: %w", err),
-		})
+	report := &writeScope{}
+	if err := m.sheetsFor(report).save(ctx, record); err != nil {
+		return nil, fmt.Errorf("level up: %w", err)
 	}
 
 	return &LevelUpOutput{
-		Saved:  SaveReport{Written: []string{aggregate}},
+		Saved:  SaveReport{Written: report.written},
 		Gained: levelGained(data.ClassID, advanced.Gained),
 	}, nil
 }

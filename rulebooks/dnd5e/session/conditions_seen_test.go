@@ -32,7 +32,7 @@ func (s *ConditionSeamSuite) SetupTest() {
 	s.data = &SessionData{}
 	s.chars = &equipmentCharacters{byID: map[string]*character.Data{}}
 	s.seam = equipmentBeside(standingSeam{
-		ctx: context.Background(), chars: s.chars, data: s.data,
+		ctx: context.Background(), sheets: storeOf(s.chars), data: s.data,
 		kinds: map[string]encounter.MemberKind{
 			"player": encounter.KindPlayer, "ghost": encounter.KindPlayer,
 			"goblin": encounter.KindMonster, "unsheeted": encounter.KindMonster,

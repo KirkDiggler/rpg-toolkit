@@ -53,9 +53,9 @@ func (s *SheetSeamSuite) SetupTest() {
 		}},
 	}
 	s.seam = sheetsBeside(standingSeam{
-		ctx:   context.Background(),
-		chars: s.chars,
-		data:  s.data,
+		ctx:    context.Background(),
+		sheets: storeOf(s.chars),
+		data:   s.data,
 		kinds: map[string]encounter.MemberKind{
 			"alice":    encounter.KindPlayer,
 			"skel-1":   encounter.KindMonster,
@@ -219,4 +219,10 @@ func (s *SheetSeamSuite) TestThePushBudgetAsksTheSameAnswer() {
 
 	_, err = sheetSpeeds(s.seam, []encounter.MemberID{"nobody"})
 	s.ErrorIs(err, ErrInvalidSession, "a member the verb cannot classify is refused, not answered zero")
+}
+
+// storeOf wraps a test repository in the read-only sheet store a seam reads
+// through, so a seam built by hand reads exactly the way a verb's does.
+func storeOf(repo CharacterRepository) sheetStore {
+	return sheetStore{repo: repo}
 }

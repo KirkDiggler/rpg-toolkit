@@ -277,7 +277,7 @@ func (m *Manager) concentrating(
 		return false, nil
 	}
 
-	data, err := m.fetchCharacterData(ctx, "turn", member)
+	data, err := m.sheetsFor(nil).load(ctx, "turn", member)
 	if err != nil {
 		if errors.Is(err, ErrNoCharacter) {
 			return false, nil

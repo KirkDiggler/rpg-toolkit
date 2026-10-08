@@ -508,7 +508,7 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		}
 	}
 
-	record, err := m.fetchCharacterData(ctx, "character", in.Member)
+	record, err := m.sheetsFor(nil).load(ctx, "character", in.Member)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", err)
 	}
@@ -532,12 +532,9 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		// of those paths reads CharacterRepository. Saving here gives all of
 		// them the same rested truth this Join projects, and any later driven
 		// write is newer than this one rather than being overwritten by it.
-		aggregate := "character:" + in.Member
-		if err := m.characters.SaveCharacter(ctx, resolved.Character); err != nil {
-			return nil, saveErrorAfterWrites(scope, aggregate,
-				fmt.Errorf("saving character: %w", err))
+		if err := m.sheetsFor(scope).save(ctx, resolved.Character); err != nil {
+			return nil, err
 		}
-		scope.noteCharacterWritten(in.Member)
 		record = resolved.Character
 	}
 
@@ -1537,25 +1534,6 @@ func (m *Manager) adopt(ctx context.Context, scope *writeScope, world encounter.
 	return nil
 }
 
-// saveCharacterRecord writes one authoritative character snapshot and records
-// the durable aggregate on the active write scope. It is shared by resolution
-// dirty-sheet writes and Death Save's required character-first ordering.
-func (m *Manager) saveCharacterRecord(
-	ctx context.Context, scope *writeScope, data *character.Data,
-) error {
-	if err := m.characters.SaveCharacter(ctx, data); err != nil {
-		return &SaveError{
-			Report: SaveReport{
-				Written: append([]string(nil), scope.written...),
-				Failed:  []string{"character:" + data.ID},
-			},
-			Err: fmt.Errorf("saving character: %w", err),
-		}
-	}
-	scope.noteCharacterWritten(data.ID)
-	return nil
-}
-
 // persist writes the mutated aggregates back and reports the result.
 //
 // The encounter is written first and the session second, and the order is a
@@ -1813,7 +1791,7 @@ func (m *Manager) exitDissolvedCombatants(
 // exitCombatIfPlayer clears one member's action economy. The caller has
 // already confirmed this ID is a PLAYER on the encounter's own roster
 // (exitDissolvedCombatants) — a monster ID never reaches here at all, so an
-// ErrNoCharacter from [Manager.fetchCharacterData] below would be a real
+// ErrNoCharacter from [sheetStore.load] below would be a real
 // inconsistency (a roster naming a player the character store does not
 // hold), not the ordinary case it would be without that filter, and is
 // returned rather than swallowed for the same reason every other fetch
@@ -1829,7 +1807,7 @@ func (m *Manager) exitDissolvedCombatants(
 // failed here would report success while the stale economy it was
 // supposed to clear stayed exactly as stale as it started.
 func (m *Manager) exitCombatIfPlayer(ctx context.Context, scope *writeScope, id string) error {
-	data, err := m.fetchCharacterData(ctx, "member", id)
+	data, err := m.sheetsFor(nil).load(ctx, "member", id)
 	if err != nil {
 		return err
 	}
@@ -1880,7 +1858,7 @@ func (m *Manager) exitCombatIfPlayer(ctx context.Context, scope *writeScope, id 
 // same "at that moment" the ruling names.
 //
 // THE ORDER IS THE LAW (R5, and Death Save's character-first ordering at
-// [Manager.saveCharacterRecord]): every sheet is saved BEFORE the beat that
+// [sheetStore.save]): every sheet is saved BEFORE the beat that
 // promises its total is recorded. A beat claiming a total the store does not
 // hold is the lie this refuses to tell, so a save failure fails the verb with
 // no beat written rather than announcing a grant that is not there.
@@ -1995,7 +1973,7 @@ func (m *Manager) settleOneFall(ctx context.Context, scope *writeScope, fallen s
 
 	grants := make([]encounter.ExperienceGrant, 0, len(players))
 	for _, id := range players {
-		data, err := m.fetchCharacterData(ctx, "member", id)
+		data, err := m.sheetsFor(nil).load(ctx, "member", id)
 		if err != nil {
 			return err
 		}

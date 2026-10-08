@@ -1074,7 +1074,7 @@ func recordDamageComponents(in []dnd5eEvents.DamageComponent) []encounter.Damage
 // Load errors keep their inner reason as text so the host sees only this seam's
 // sentinel vocabulary.
 func (m *Manager) loadAttackSheet(ctx context.Context, attacker string) (*character.Character, error) {
-	data, err := m.fetchCharacterData(ctx, "attacker", attacker)
+	data, err := m.sheetsFor(nil).load(ctx, "attacker", attacker)
 	if err != nil {
 		return nil, err
 	}
@@ -1130,7 +1130,7 @@ func (m *Manager) compileResolutionCast(
 			continue
 		}
 
-		sheet, err := m.fetchCharacterData(ctx, "participant", id)
+		sheet, err := m.sheetsFor(nil).load(ctx, "participant", id)
 		if err != nil {
 			failures = append(failures, resolutionDependencyFailure{member: id, err: err})
 			continue
@@ -1215,7 +1215,7 @@ func (m *Manager) castFor(
 			continue
 		}
 
-		data, err := m.fetchCharacterData(ctx, "participant", id)
+		data, err := m.sheetsFor(nil).load(ctx, "participant", id)
 		if err != nil {
 			return nil, err
 		}
@@ -1294,7 +1294,7 @@ func (m *Manager) saveDirty(ctx context.Context, scope *writeScope, out *resolut
 		if data == nil {
 			continue
 		}
-		if err := m.saveCharacterRecord(ctx, scope, data); err != nil {
+		if err := m.sheetsFor(scope).save(ctx, data); err != nil {
 			return err
 		}
 		// The walker's own sheet follows what the interaction did to it, so

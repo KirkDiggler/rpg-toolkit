@@ -69,7 +69,7 @@ type stagedCheck struct {
 // ErrNoCharacter does, and the sheet resolution rolls is the one RESOLUTION
 // loads, inside its own interaction.
 func (m *Manager) stageCheck(ctx context.Context, scope *writeScope, role, member string) error {
-	data, err := m.fetchCharacterData(ctx, role, member)
+	data, err := m.sheetsFor(nil).load(ctx, role, member)
 	if err != nil {
 		return err
 	}
@@ -178,14 +178,9 @@ func (m *Manager) resolveStagedCheckPoseable(
 	}
 
 	if out.DirtyCharacter != nil {
-		if err := m.characters.SaveCharacter(staged.ctx, out.DirtyCharacter); err != nil {
-			report := SaveReport{
-				Written: append([]string(nil), scope.written...),
-				Failed:  []string{"character:" + out.DirtyCharacter.ID},
-			}
-			return nil, &SaveError{Report: report, Err: fmt.Errorf("saving checker: %w", err)}
+		if err := m.sheetsFor(scope).save(staged.ctx, out.DirtyCharacter); err != nil {
+			return nil, err
 		}
-		scope.noteCharacterWritten(out.DirtyCharacter.ID)
 		staged.data = out.DirtyCharacter
 		if scope.walker != nil && scope.walker.ID == out.DirtyCharacter.ID {
 			scope.walker = out.DirtyCharacter

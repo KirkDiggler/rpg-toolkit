@@ -80,17 +80,13 @@ func (s equipmentSeam) Conditions(
 			}
 			set = seenConditions(name, sheet.Conditions)
 		case encounter.KindPlayer:
-			data, fetchErr := s.chars.GetCharacter(s.ctx, name)
+			data, fetchErr := s.sheets.load(s.ctx, "character", name)
 			if fetchErr != nil {
-				if errors.Is(fetchErr, ErrNotFound) {
+				if errors.Is(fetchErr, ErrNoCharacter) {
 					out[id] = nil
 					continue
 				}
 				return nil, fetchErr
-			}
-			if data == nil {
-				return nil, fmt.Errorf(
-					"character %q: GetCharacter reported success with no data: %w", name, ErrBadRepository)
 			}
 			set = seenConditions(name, data.Conditions)
 		default:

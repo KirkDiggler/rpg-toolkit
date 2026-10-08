@@ -179,7 +179,7 @@ func (m *Manager) DeathSave(ctx context.Context, in *DeathSaveInput) (*DeathSave
 
 	// Save first: Record immediately re-assesses participation through the
 	// repository and must see this result, not the pre-roll character.
-	if err := m.saveCharacterRecord(ctx, scope, resolved.Character); err != nil {
+	if err := m.sheetsFor(scope).save(ctx, resolved.Character); err != nil {
 		return nil, fmt.Errorf("death save: %w", err)
 	}
 

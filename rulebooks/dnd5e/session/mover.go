@@ -380,7 +380,7 @@ func (m *Manager) walkCast(
 				cast = append(cast, resolution.Participant{Character: scope.walker})
 				continue
 			}
-			data, err := m.fetchCharacterData(ctx, "participant", id)
+			data, err := m.sheetsFor(nil).load(ctx, "participant", id)
 			if err != nil {
 				continue
 			}

@@ -63,9 +63,9 @@ func TestParticipationMapsProviderFactsWithoutThresholds(t *testing.T) {
 
 	seam := standingSeam{
 		ctx: context.Background(),
-		chars: participationCharacterStore{byID: map[string]*character.Data{
+		sheets: storeOf(participationCharacterStore{byID: map[string]*character.Data{
 			"dying": dying, "stabilized": stabilized, "dead": dead, "conscious": conscious,
-		}},
+		}}),
 		data: &SessionData{NPCs: []monster.Data{*monsterSheet}},
 		kinds: map[string]encounter.MemberKind{
 			"dying": encounter.KindPlayer, "stabilized": encounter.KindPlayer,
@@ -117,13 +117,13 @@ func TestParticipationRoutesAuthoredSheetlessMonsterByRosterKind(t *testing.T) {
 	asked := map[string]int{}
 	seam := standingSeam{
 		ctx: context.Background(),
-		chars: participationCharacterStore{
+		sheets: storeOf(participationCharacterStore{
 			byID: map[string]*character.Data{
 				"dying": dying, "authored-monster": monsterCollision,
 				"world-collision": worldCollision,
 			},
 			asked: asked,
-		},
+		}),
 		data: &SessionData{WorldNPCs: []PlacedWorldNPC{{
 			MemberID: "world-collision", NPC: *merchant.NPC().ToData(),
 		}}},
@@ -165,36 +165,28 @@ func TestParticipationRoutesAuthoredSheetlessMonsterByRosterKind(t *testing.T) {
 	require.False(t, snapshot.views["world-collision"].attackTarget)
 }
 
-func TestParticipationMissingPlayerFallbackDrivesTheSameViewsAndPolicy(t *testing.T) {
-	dying := dwarfCharacterRecord("dying", 0)
+// A player the roster names and the host's store does not hold is one answer
+// everywhere (rpg-project#542, "One sheet store per verb"): the standing
+// consult refuses with ErrNoCharacter rather than answering a fallback
+// "conscious", so no fight is scheduled, contacted or decided around a sheet
+// nobody can read.
+func TestParticipationRefusesAPlayerWithNoSheet(t *testing.T) {
 	asked := map[string]int{}
 	seam := standingSeam{
 		ctx: context.Background(),
-		chars: participationCharacterStore{
-			byID:  map[string]*character.Data{"dying": dying},
+		sheets: storeOf(participationCharacterStore{
+			byID:  map[string]*character.Data{"dying": dwarfCharacterRecord("dying", 0)},
 			asked: asked,
-		},
+		}),
 		kinds: map[string]encounter.MemberKind{
 			"dying": encounter.KindPlayer, "missing-player": encounter.KindPlayer,
 		},
 	}
 
-	ids := []encounter.MemberID{"dying", "missing-player"}
-	snapshot, err := seam.participation(ids)
-	require.NoError(t, err)
-	require.Equal(t, &encounter.ParticipationAssessment{
-		Members: []encounter.MemberParticipation{
-			{Member: "dying", Down: true, Turn: encounter.TurnParticipationWait},
-			{Member: "missing-player", Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait},
-		},
-		KeepTurnOrder: true,
-	}, snapshot.assessment)
-	require.False(t, snapshot.assessment.PartyDefeated,
-		"the Conscious KindPlayer fallback used by the row must also keep the party alive")
-	require.Equal(t, LifeStateConscious, snapshot.views["missing-player"].LifeState)
-	require.Nil(t, snapshot.views["missing-player"].DeathSaves)
-	require.True(t, snapshot.views["missing-player"].attackTarget)
-	require.Equal(t, 1, asked["dying"])
+	snapshot, err := seam.participation([]encounter.MemberID{"dying", "missing-player"})
+	require.ErrorIs(t, err, ErrNoCharacter)
+	require.ErrorContains(t, err, "missing-player")
+	require.Nil(t, snapshot, "no partial policy is answered around a missing sheet")
 	require.Equal(t, 1, asked["missing-player"])
 }
 
@@ -202,13 +194,13 @@ func TestParticipationRefusesWrongPlayerRecordIDBeforeResolutionOrPolicy(t *test
 	asked := map[string]int{}
 	seam := standingSeam{
 		ctx: context.Background(),
-		chars: participationCharacterStore{
+		sheets: storeOf(participationCharacterStore{
 			byID: map[string]*character.Data{
 				"dying": dwarfCharacterRecord("dying", 0),
 				"alice": dwarfCharacterRecord("different-player", 10),
 			},
 			asked: asked,
-		},
+		}),
 		kinds: map[string]encounter.MemberKind{
 			"dying": encounter.KindPlayer, "alice": encounter.KindPlayer,
 		},
@@ -235,13 +227,13 @@ func TestParticipationWorldNPCIdentityWinsBeforeCombatantLookup(t *testing.T) {
 	asked := map[string]int{}
 	seam := standingSeam{
 		ctx: context.Background(),
-		chars: participationCharacterStore{
+		sheets: storeOf(participationCharacterStore{
 			byID: map[string]*character.Data{
 				"dying": dying, "character-collision": characterCollision,
 				"monster-collision": monsterCollisionCharacter,
 			},
 			asked: asked,
-		},
+		}),
 		data: &SessionData{
 			NPCs: []monster.Data{*monsterCollision},
 			WorldNPCs: []PlacedWorldNPC{
@@ -287,9 +279,9 @@ func TestParticipationPartyDefeatUsesOnlyRequestedPlayers(t *testing.T) {
 	require.NoError(t, err)
 
 	seam := standingSeam{
-		ctx:   context.Background(),
-		chars: participationCharacterStore{byID: map[string]*character.Data{"dying": dying}},
-		data:  &SessionData{NPCs: []monster.Data{*monsterSheet}},
+		ctx:    context.Background(),
+		sheets: storeOf(participationCharacterStore{byID: map[string]*character.Data{"dying": dying}}),
+		data:   &SessionData{NPCs: []monster.Data{*monsterSheet}},
 		kinds: map[string]encounter.MemberKind{
 			"dying": encounter.KindPlayer, "upright-monster": encounter.KindMonster,
 		},
@@ -311,14 +303,14 @@ func TestParticipationKeepsLifeStateWhenProgressIsAbsent(t *testing.T) {
 func TestParticipationResolutionFailuresUseSessionVocabulary(t *testing.T) {
 	seam := standingSeam{
 		ctx: context.Background(),
-		chars: participationCharacterStore{byID: map[string]*character.Data{
+		sheets: storeOf(participationCharacterStore{byID: map[string]*character.Data{
 			"broken": {
 				ID: "broken",
 				Appearance: &customization.Appearance{Hair: &customization.HairCustomization{
 					Scalp: &customization.StyleSelection{Kind: "unknown"},
 				}},
 			},
-		}},
+		}}),
 		kinds: map[string]encounter.MemberKind{"broken": encounter.KindPlayer},
 	}
 	assessment, err := seam.Assess([]encounter.MemberID{"broken"})
@@ -359,10 +351,10 @@ func TestParticipationRefusesMissingOrUnknownRosterKindBeforeStorage(t *testing.
 			asked := map[string]int{}
 			seam := standingSeam{
 				ctx: context.Background(),
-				chars: participationCharacterStore{
+				sheets: storeOf(participationCharacterStore{
 					byID:  map[string]*character.Data{"alice": dwarfCharacterRecord("alice", 10)},
 					asked: asked,
-				},
+				}),
 				kinds: tc.kinds,
 			}
 			assessment, err := seam.Assess([]encounter.MemberID{"alice"})
@@ -383,7 +375,7 @@ func TestParticipationContainsNoHitPointThreshold(t *testing.T) {
 func TestParticipationRepositoryErrorsRemainReachable(t *testing.T) {
 	hostErr := errors.New("character store unavailable")
 	seam := standingSeam{
-		ctx: context.Background(), chars: participationCharacterStore{err: hostErr},
+		ctx: context.Background(), sheets: storeOf(participationCharacterStore{err: hostErr}),
 		kinds: map[string]encounter.MemberKind{"alice": encounter.KindPlayer},
 	}
 	assessment, err := seam.Assess([]encounter.MemberID{"alice"})
@@ -432,9 +424,9 @@ func TestACommandedMemberIsDrivenWhoeverTheyAre(t *testing.T) {
 
 	seam := standingSeam{
 		ctx: context.Background(),
-		chars: participationCharacterStore{byID: map[string]*character.Data{
+		sheets: storeOf(participationCharacterStore{byID: map[string]*character.Data{
 			"fighter": player, "wizard": free,
-		}},
+		}}),
 		data: &SessionData{NPCs: []monster.Data{*skeleton}},
 		kinds: map[string]encounter.MemberKind{
 			"fighter": encounter.KindPlayer, "skeleton": encounter.KindMonster,
@@ -476,9 +468,9 @@ func TestAMemberWhoIsNotUpIsNeverDriven(t *testing.T) {
 
 	seam := standingSeam{
 		ctx: context.Background(),
-		chars: participationCharacterStore{byID: map[string]*character.Data{
+		sheets: storeOf(participationCharacterStore{byID: map[string]*character.Data{
 			"dying": dying, "stabilized": stabilized, "dead": dead,
-		}},
+		}}),
 		kinds: map[string]encounter.MemberKind{
 			"dying": encounter.KindPlayer, "stabilized": encounter.KindPlayer,
 			"dead": encounter.KindPlayer,
@@ -516,9 +508,9 @@ func TestAnUnreadableConditionIsNotACompulsion(t *testing.T) {
 
 	seam := standingSeam{
 		ctx: context.Background(),
-		chars: participationCharacterStore{byID: map[string]*character.Data{
+		sheets: storeOf(participationCharacterStore{byID: map[string]*character.Data{
 			"broken": broken, "commanded": commanded,
-		}},
+		}}),
 		kinds: map[string]encounter.MemberKind{
 			"broken": encounter.KindPlayer, "commanded": encounter.KindPlayer,
 		},
@@ -545,9 +537,9 @@ func TestAnUncommandedSheetIsUntouched(t *testing.T) {
 
 	seam := standingSeam{
 		ctx: context.Background(),
-		chars: participationCharacterStore{byID: map[string]*character.Data{
+		sheets: storeOf(participationCharacterStore{byID: map[string]*character.Data{
 			"fighter": raging,
-		}},
+		}}),
 		kinds: map[string]encounter.MemberKind{"fighter": encounter.KindPlayer},
 	}
 

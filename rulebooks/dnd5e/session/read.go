@@ -155,7 +155,7 @@ func (m *Manager) rosterFrom(ctx context.Context, enc *encounter.Encounter, data
 			continue
 		}
 		id := string(member.ID)
-		stored, fetchErr := m.fetchCharacterData(ctx, "roster", id)
+		stored, fetchErr := m.sheetsFor(nil).load(ctx, "roster", id)
 		characters[id] = rosterCharacterRow{data: stored, err: fetchErr}
 		if fetchErr == nil && stored.PlayerID == in.Player {
 			seated = true
@@ -191,7 +191,7 @@ func (m *Manager) rosterFrom(ctx context.Context, enc *encounter.Encounter, data
 		case encounter.KindPlayer:
 			row, cached := characters[id]
 			if !cached {
-				row.data, row.err = m.fetchCharacterData(ctx, "roster", id)
+				row.data, row.err = m.sheetsFor(nil).load(ctx, "roster", id)
 			}
 			if row.err != nil {
 				return nil, fmt.Errorf("roster: %w", row.err)

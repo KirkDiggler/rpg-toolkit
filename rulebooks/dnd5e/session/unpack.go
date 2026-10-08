@@ -103,7 +103,7 @@ func (m *Manager) Unpack(ctx context.Context, in *UnpackInput) (*UnpackOutput, e
 		return nil, fmt.Errorf("unpack: %w", err)
 	}
 
-	actorData, err := m.fetchCharacterData(ctx, "actor", in.Actor)
+	actorData, err := m.sheetsFor(nil).load(ctx, "actor", in.Actor)
 	if err != nil {
 		return nil, fmt.Errorf("unpack: %w", err)
 	}
@@ -122,7 +122,7 @@ func (m *Manager) Unpack(ctx context.Context, in *UnpackInput) (*UnpackOutput, e
 		}
 	}
 
-	if err := m.saveCharacterRecord(ctx, scope, actorData); err != nil {
+	if err := m.sheetsFor(scope).save(ctx, actorData); err != nil {
 		return nil, fmt.Errorf("unpack: %w", err)
 	}
 
