@@ -116,6 +116,13 @@ func (s *LongRestTestSuite) TestFighterRecoveryIsCompleteAndIndependent() {
 	s.Require().Equal(2, got.Resources[fighterRestPool].Current,
 		"a character-owned short-rest pool also refills on a long rest")
 
+	var refilled []string
+	for _, ref := range out.Result.Refilled {
+		refilled = append(refilled, ref.String())
+	}
+	s.Contains(refilled, "dnd5e:resources:fighter-rest-pool")
+	s.Contains(refilled, "dnd5e:features:second_wind", "the root's answer is carried through")
+
 	s.Require().Len(got.Features, 2)
 	var secondWind features.SecondWindData
 	s.Require().NoError(json.Unmarshal(featureWithRef(s.T(), got.Features, refs.Features.SecondWind()), &secondWind))
