@@ -107,6 +107,13 @@ func (s *ShortRestTestSuite) TestTheTraceSourcesEveryDieToTheResterAndTheRecordM
 		"the record spent what the result says")
 	s.Equal(1, got.Resources[shortRestPool].Current, "a short-rest pool refilled")
 	s.Equal(0, got.Resources[longRestPool].Current, "a long-rest pool did not")
+
+	var refilled []string
+	for _, ref := range out.Result.Refilled {
+		refilled = append(refilled, ref.String())
+	}
+	s.Contains(refilled, "dnd5e:resources:short-rest-pool", "the session can name what refilled")
+	s.NotContains(refilled, "dnd5e:resources:long-rest-pool")
 }
 
 // The healing is capped at maximum hit points on the record.
