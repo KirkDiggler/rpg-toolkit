@@ -31,7 +31,7 @@ func Example_theSession() {
 	ctx := context.Background()
 
 	// The host's entire integration: two stores.
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions:   newFakeSessions(),
 		Encounters: newFakeEncounters(), Characters: testCharacters(),
 		Events: session.DiscardEvents{},
@@ -133,7 +133,7 @@ func Example_theSession() {
 func Example_theFightThatStartsItself() {
 	ctx := context.Background()
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
 		Events: session.DiscardEvents{},
 	})

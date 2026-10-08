@@ -59,7 +59,7 @@ func (m *Manager) NextLevel(ctx context.Context, in *NextLevelInput) (*NextLevel
 		return nil, fmt.Errorf("next level: %w", ErrNoMemberID)
 	}
 
-	data, err := m.fetchCharacterData(ctx, "character", in.Character)
+	data, err := m.sheetsFor(nil).load(ctx, "character", in.Character)
 	if err != nil {
 		return nil, fmt.Errorf("next level: %w", err)
 	}

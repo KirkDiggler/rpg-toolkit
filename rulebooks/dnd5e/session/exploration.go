@@ -186,7 +186,7 @@ func (c automaticCheckSeam) ResolveDiscoveryCheck(in *encounter.ResolveCheckInpu
 		// guard does not make the old record current after an in-verb save.
 		// The walker above is the exception: its unpaid/in-flight movement
 		// state lives on the scope and must not be replaced from storage.
-		fresh, err := c.m.fetchCharacterData(staged.ctx, "discovery observer", string(in.Member))
+		fresh, err := c.m.sheetsFor(nil).load(staged.ctx, "discovery observer", string(in.Member))
 		if err != nil {
 			return nil, err
 		}

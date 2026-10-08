@@ -203,7 +203,7 @@ func advancementManager(
 func advancementManagerWith(
 	t fataler, roller session.Roller, characters session.CharacterRepository,
 ) *session.Manager {
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		Sessions:        newFakeSessions(),
 		Encounters:      newFakeEncounters(),
 		Characters:      characters,

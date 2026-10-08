@@ -185,7 +185,7 @@ func TestStructuralSessionSuite(t *testing.T) { suite.Run(t, new(StructuralSessi
 
 func (s *StructuralSessionSuite) startWith(world *encounter.EncounterData, cast ...*character.Data) {
 	s.stream = &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 		Characters: newFakeCharacters(cast...), Events: s.stream,

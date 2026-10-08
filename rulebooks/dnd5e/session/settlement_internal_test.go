@@ -36,7 +36,7 @@ func (s *SettlementSuite) SetupTest() {
 	s.characters = &strikeCharacters{byID: map[string]*character.Data{
 		"fighter": strikeFixtureFighter("fighter"),
 	}}
-	mgr, err := NewManager(&Config{
+	mgr, err := NewManager(&Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: &scriptedDice{rolls: []int{10, 10, 10, 10, 10, 10}}, TurnDriver: Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: DiscardEvents{},
 	})

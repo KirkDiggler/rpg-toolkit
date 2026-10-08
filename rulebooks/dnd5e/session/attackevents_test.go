@@ -59,7 +59,7 @@ func (s *AttackEventsTestSuite) duelWithStreamAndIDs(
 	s.characters = newFakeCharacters(alice, armedFighter("bob"))
 	s.stream = &fakeStream{}
 
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: ids,
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: ids,
 		Dice: dice, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
 	})

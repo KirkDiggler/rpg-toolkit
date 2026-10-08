@@ -202,7 +202,7 @@ func (m *Manager) compileOffersFor(
 		// operation. Ready this ephemeral snapshot before asking eligibility;
 		// Afford never saves it, while execution hands this exact readied record
 		// to resolution for charge-and-save.
-		if err := readyForTurn(ctx, sheet, clock.Round); err != nil {
+		if err := resolution.ReadyForTurn(ctx, sheet, resolution.Turn{Number: clock.Round, Speed: sheet.GetSpeed()}); err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrBadCost, err)
 		}
 	}
@@ -232,7 +232,7 @@ func (m *Manager) compileOffersFor(
 	// sheet, and Attack's price is the same readying's CostOfSwing. One
 	// readying serves both — priceSwing below re-readies idempotently, a
 	// no-op once the economy is filed under this turn.
-	if err := readyForTurn(ctx, sheet, clock.Round); err != nil {
+	if err := resolution.ReadyForTurn(ctx, sheet, resolution.Turn{Number: clock.Round, Speed: sheet.GetSpeed()}); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrBadCost, err)
 	}
 

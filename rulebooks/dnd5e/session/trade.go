@@ -216,7 +216,7 @@ func (m *Manager) buy(ctx context.Context, in *TradeInput) (*TradeOutput, error)
 		return nil, fmt.Errorf("trade: %w: %w", ErrOutOfStock, err)
 	}
 
-	actorData, err := m.fetchCharacterData(ctx, "actor", in.Actor)
+	actorData, err := m.sheetsFor(nil).load(ctx, "actor", in.Actor)
 	if err != nil {
 		return nil, fmt.Errorf("trade: %w", err)
 	}
@@ -232,7 +232,7 @@ func (m *Manager) buy(ctx context.Context, in *TradeInput) (*TradeOutput, error)
 	}); err != nil {
 		return nil, fmt.Errorf("trade: %w", err)
 	}
-	if err := m.saveCharacterRecord(ctx, scope, actorData); err != nil {
+	if err := m.sheetsFor(scope).save(ctx, actorData); err != nil {
 		return nil, fmt.Errorf("trade: %w", err)
 	}
 
@@ -286,7 +286,7 @@ func (m *Manager) sell(ctx context.Context, in *TradeInput) (*TradeOutput, error
 		return nil, fmt.Errorf("trade: %w: %w", ErrInsufficientFunds, err)
 	}
 
-	actorData, err := m.fetchCharacterData(ctx, "actor", in.Actor)
+	actorData, err := m.sheetsFor(nil).load(ctx, "actor", in.Actor)
 	if err != nil {
 		return nil, fmt.Errorf("trade: %w", err)
 	}
@@ -301,7 +301,7 @@ func (m *Manager) sell(ctx context.Context, in *TradeInput) (*TradeOutput, error
 	}
 	actorData.Wallet = actorData.Wallet.Add(price)
 
-	if err := m.saveCharacterRecord(ctx, scope, actorData); err != nil {
+	if err := m.sheetsFor(scope).save(ctx, actorData); err != nil {
 		return nil, fmt.Errorf("trade: %w", err)
 	}
 

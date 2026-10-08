@@ -43,7 +43,7 @@ func (s *MonsterWeaponObservationSuite) SetupTest() {
 func (s *MonsterWeaponObservationSuite) SetupSubTest() { s.SetupTest() }
 
 func (s *MonsterWeaponObservationSuite) manager() *session.Manager {
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: newFakeCharacters(armedFighter("fighter")), Events: session.DiscardEvents{},

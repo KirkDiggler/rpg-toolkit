@@ -16,7 +16,7 @@ func (s *AutomaticDiscoverySDKSuite) TestSharingRefusalsKeepTheVerbAndSentinel()
 	ctx := context.Background()
 	sessions := newFakeSessions()
 	encounters := &failingEncounters{fakeEncounters: newFakeEncounters()}
-	cfg := &session.Config{
+	cfg := &session.Config{Seats: newFakeSeats(),
 		Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
 		Explorations: &explorationStore{data: map[string]*session.ExplorationData{}},
 		Events:       session.DiscardEvents{}, Dice: testDice{},
@@ -77,7 +77,7 @@ func (s *AutomaticDiscoverySDKSuite) TestJoinDiscoveryUsesTheRestedRecordRatherT
 			ctx := context.Background()
 			characters := newFakeCharacters(dwarfCharacter("alice"), ragingDwarf("bob"))
 			dice := &discoveryReviewDice{}
-			mgr, err := session.NewManager(&session.Config{
+			mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 				Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: characters,
 				Explorations: &explorationStore{data: map[string]*session.ExplorationData{}},
 				Events:       session.DiscardEvents{}, Dice: dice,

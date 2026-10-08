@@ -72,7 +72,7 @@ func (s *CastSuite) TestCureWoundsLifeBonusClampingAndStoryReload() {
 		s.characters.byID[id], err = copyOf(data)
 		s.Require().NoError(err)
 	}
-	s.mgr, err = session.NewManager(&session.Config{
+	s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: brokenDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream,
 	})
@@ -167,7 +167,7 @@ func (s *CastSuite) TestCureWoundsUntypedMonsterSelectionHealingAndReload() {
 				s.characters.byID[id], err = copyOf(data)
 				s.Require().NoError(err)
 			}
-			s.mgr, err = session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: brokenDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+			s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: brokenDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
 			s.Require().NoError(err)
 			story, err := s.mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "cleric", FromSeq: beats[0].Seq})
 			s.Require().NoError(err)
@@ -288,7 +288,7 @@ func (s *CastSuite) TestCureWoundsFailureBoundaries() {
 			sheet.HitPoints = 2
 			s.scene(sheet, 2, 5)
 			id := s.castRow(spells.CureWounds).ID
-			config := &session.Config{PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream}
+			config := &session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream}
 			fault := errors.New("injected failure")
 			switch failure {
 			case "roller":

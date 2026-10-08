@@ -67,6 +67,14 @@ type StartSessionOutput struct {
 
 // StartSession creates a session playing in a copy of the given authored world.
 //
+// RETIRING AS A HOST VERB (rpg-project#542, R7): [Manager.Launch] replaces
+// StartSession and Spawn for a host starting a run — one load-act-save that
+// stands the whole board, seats and rests the party and forms the fight last.
+// This verb stays only until the tier 3 deletion; a new host caller should
+// not be written. (Not marked with the Deprecated: convention yet, so the
+// suites that still build worlds through it keep their lint clean until that
+// deletion moves them.)
+//
 // Validation order, all before anything is written (nothing observable until
 // the whole call succeeds): nil input, empty session ID, empty encounter ID,
 // nil world, unloadable world, session already exists.

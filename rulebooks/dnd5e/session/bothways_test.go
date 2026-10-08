@@ -88,7 +88,7 @@ func (s *BothWaysSuite) yard(until encounter.Trigger) {
 	// acts first), then the 1 is alice's d20.
 	rolls := append([]int{10, 10, 10, 1}, ordinaryRolls(40)...)
 
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: &sequenceDice{rolls: rolls}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters,
 		Characters: characters, Events: s.stream,

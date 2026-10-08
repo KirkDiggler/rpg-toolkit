@@ -49,7 +49,7 @@ func (m *Manager) answerCheckOffer(
 		answer = resolution.OfferSpend
 	}
 
-	data, err := m.fetchCharacterData(ctx, "member", payload.Audience)
+	data, err := m.sheetsFor(nil).load(ctx, "member", payload.Audience)
 	if err != nil {
 		return nil, fmt.Errorf("react: %w", err)
 	}
@@ -67,14 +67,9 @@ func (m *Manager) answerCheckOffer(
 	}
 
 	if out.DirtyCharacter != nil {
-		if err := m.characters.SaveCharacter(ctx, out.DirtyCharacter); err != nil {
-			report := SaveReport{
-				Written: append([]string(nil), scope.written...),
-				Failed:  []string{"character:" + out.DirtyCharacter.ID},
-			}
-			return nil, &SaveError{Report: report, Err: fmt.Errorf("saving checker: %w", err)}
+		if err := m.sheetsFor(scope).save(ctx, out.DirtyCharacter); err != nil {
+			return nil, err
 		}
-		scope.noteCharacterWritten(out.DirtyCharacter.ID)
 	}
 
 	// Finish the verb this check was for. Each composition op records its

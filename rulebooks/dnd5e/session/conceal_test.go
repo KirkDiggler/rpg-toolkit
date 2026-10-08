@@ -352,7 +352,7 @@ func (s *ConcealSuite) startDriven(
 	// the ones this scene's cast leaves out are given plain ones.
 	stockAuthoredPlayers(world, characters)
 	s.sessions, s.encounters, s.characters = sessions, encounters, characters
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: driver,
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
@@ -943,7 +943,7 @@ func (s *ConcealSuite) TestTheProbeLawHoldsAtTheSeam() {
 	characters := newFakeCharacters(sharpEyed("alice"), dullEyed("bob"))
 	stockAuthoredPlayers(world, characters)
 	s.characters = characters
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{calls: &rolled}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
@@ -1206,7 +1206,7 @@ func (s *ConcealSuite) TestPerRecipientNumberingSurvivesLoadAndTrim() {
 	// A different process picks the session up: same repositories, fresh
 	// Manager, fresh stream. Numbering must continue, not restart.
 	live := &fakeStream{}
-	mgr2, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr2, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: live,
@@ -1350,7 +1350,7 @@ func (s *ConcealSuite) TestOneVerbBiggerThanTheRetentionWindowCommitsWhole() {
 	// And the count survives a load that happened entirely after the
 	// single-verb trim: a fresh Manager continues bob's stream exactly.
 	live := &fakeStream{}
-	mgr2, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr2, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: live,

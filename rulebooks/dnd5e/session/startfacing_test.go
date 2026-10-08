@@ -62,7 +62,7 @@ func startWorld(t fataler, start *encounter.FieldStart) *encounter.EncounterData
 }
 
 func (s *StartFacingSuite) start(world *encounter.EncounterData) {
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 		Characters: testCharacters(), Events: session.DiscardEvents{},

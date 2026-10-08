@@ -102,7 +102,7 @@ func (s *TwoPlayersTestSuite) SetupTest() {
 	barbarian := armedBarbarian("barbarian")
 	barbarian.HitPoints, barbarian.MaxHitPoints = 100, 100
 
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: newFakeCharacters(fighter, barbarian),
@@ -353,7 +353,7 @@ func TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers(t *testing.T) {
 	barbarian.HitPoints, barbarian.MaxHitPoints = 8, 8
 	stream := &fakeStream{}
 
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: sessions, Encounters: encounters,
 		Characters: newFakeCharacters(fighter, barbarian),

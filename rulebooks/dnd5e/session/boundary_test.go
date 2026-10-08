@@ -124,6 +124,17 @@ var contractTypes = map[string]string{
 	// spatial.Position makes above.
 	"shared.EquipmentType": "contract type: reachable from TradeItem, a caller-constructed field naming what's being traded",
 
+	// Reachable from LaunchInput.Dungeon (launch.go, rpg-project#542). The
+	// toolkit's own compiler produces it and the host holds it in its dungeon
+	// registry; Launch reads the board off it so the host re-projects
+	// nothing. Shared vocabulary both sides already agree on — the same
+	// compiled value rpg-api's registry stores today — and not a shape we
+	// would swap without telling the host, so it sits here rather than under
+	// persistenceShapes. Its own fields reach composition types (the field,
+	// placements, triggers, tables) that are dungeonspec's output, read here
+	// and never constructed by the host.
+	"dungeonspec.Compiled": "contract type: the compiled dungeon the host registers and hands to Launch",
+
 	// Reachable from SpawnInput.Table and SpawnInput.Temper (write.go,
 	// rpg-project#465) — the creature's authored policy and the temperament
 	// loading its die.

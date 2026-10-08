@@ -5,7 +5,6 @@ package session
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -68,8 +67,8 @@ type standingSeam struct {
 	// ctx is the verb's own. See the type's godoc.
 	ctx context.Context
 
-	// chars is the host's sheet store, for the members it owns.
-	chars CharacterRepository
+	// sheets is the verb's sheet store, for the members the host owns.
+	sheets sheetStore
 
 	// kinds is the authoritative encounter roster classification copied at the
 	// load/setup boundary. One assessment reads this one snapshot and never
@@ -96,7 +95,7 @@ func (m *Manager) standingFor(
 	for id, kind := range kinds {
 		copiedKinds[id] = kind
 	}
-	return standingSeam{ctx: ctx, chars: m.characters, data: data, kinds: copiedKinds}
+	return standingSeam{ctx: ctx, sheets: m.sheetsFor(nil), data: data, kinds: copiedKinds}
 }
 
 // Standing reports which of the given members are down — downed, in the
@@ -149,22 +148,18 @@ func (s standingSeam) Assess(members []encounter.MemberID) (*encounter.Participa
 // holds every one of them for the call in progress. Reconstituting them is not:
 // that needs a bus, and a bus in this package is a fold waiting to happen.
 //
-// # No sheet, no death
+// # A player with no sheet is refused
 //
-// A member whose authoritative store says not found is in neither provider
-// input list. participation.go then supplies one final Conscious compatibility
-// fact for its required answer row. For KindPlayer that exact fact also enters
-// party policy; KindMonster and KindWorld never do. Answering DOWNED instead
-// would kill a member because nobody can read it, which is not a rule this
-// package gets to write.
+// A player the roster names and the host's store does not hold is
+// [ErrNoCharacter], the store's one answer for an absent sheet
+// (rpg-project#542): answering "conscious" for a body nobody can read would
+// keep a fight running around it, and answering "down" would kill it because
+// a database blinked. Exit and End do not consult standing, so a run with a
+// missing sheet can still be left and closed.
 //
-// It is no longer how a sheetless member is PLAYED. The sheet seam
-// (sheets.go) is asked how fast every member walks and how far it sees
-// whenever the world paces, budgets or refreshes sight, and it refuses a
-// member the verb holds no sheet for (rpg-project#538) — so a world with an
-// authored, never-spawned monster refuses its first such verb by name. This
-// tolerance is standing's own answer to its own question, kept for the reads
-// that ask it alone (a compile-only load has no session record at all).
+// A sheetless MONSTER (authored, never spawned) is still in neither provider
+// input list, and participation.go supplies its one Conscious compatibility
+// fact; the sheet seam refuses it the first time the world asks how it moves.
 func (s standingSeam) recordsFor(
 	members []encounter.MemberID,
 ) (characters, monsters []resolution.Participant, err error) {
@@ -197,21 +192,9 @@ func (s standingSeam) recordsFor(
 				name, kind, ErrInvalidSession)
 		}
 
-		data, fetchErr := s.chars.GetCharacter(s.ctx, name)
+		data, fetchErr := s.sheets.load(s.ctx, "character", name)
 		if fetchErr != nil {
-			if errors.Is(fetchErr, ErrNotFound) {
-				continue
-			}
-
 			return nil, nil, fetchErr
-		}
-		if data == nil {
-			return nil, nil, fmt.Errorf(
-				"character %q: GetCharacter reported success with no data: %w", name, ErrBadRepository)
-		}
-		if data.ID != name {
-			return nil, nil, fmt.Errorf(
-				"character %q: GetCharacter returned %q instead: %w", name, data.ID, ErrBadRepository)
 		}
 
 		characters = append(characters, resolution.Participant{Character: data})

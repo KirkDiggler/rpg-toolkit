@@ -155,7 +155,7 @@ func (m *Manager) rosterFrom(ctx context.Context, enc *encounter.Encounter, data
 			continue
 		}
 		id := string(member.ID)
-		stored, fetchErr := m.fetchCharacterData(ctx, "roster", id)
+		stored, fetchErr := m.sheetsFor(nil).load(ctx, "roster", id)
 		characters[id] = rosterCharacterRow{data: stored, err: fetchErr}
 		if fetchErr == nil && stored.PlayerID == in.Player {
 			seated = true
@@ -191,7 +191,7 @@ func (m *Manager) rosterFrom(ctx context.Context, enc *encounter.Encounter, data
 		case encounter.KindPlayer:
 			row, cached := characters[id]
 			if !cached {
-				row.data, row.err = m.fetchCharacterData(ctx, "roster", id)
+				row.data, row.err = m.sheetsFor(nil).load(ctx, "roster", id)
 			}
 			if row.err != nil {
 				return nil, fmt.Errorf("roster: %w", row.err)
@@ -696,19 +696,41 @@ func (m *Manager) loadWorldWithBaseline(
 	resolver encounter.CheckResolver, witness encounter.Witness, driver encounter.Driver,
 	roller dice.Roller,
 ) (*encounter.Encounter, uint64, standingSeam, error) {
-	encID := data.Encounter
+	world, err := m.fetchWorld(ctx, data.Encounter)
+	if err != nil {
+		return nil, 0, standingSeam{}, err
+	}
+	return m.loadGivenWorld(ctx, data, world, striker, mover, announcer, resolver, witness, driver, roller)
+}
 
+// fetchWorld reads one stored world and checks the repository kept its side
+// of the contract: ErrNoEncounter when it is absent, ErrBadRepository for a
+// success with no data.
+func (m *Manager) fetchWorld(ctx context.Context, encID string) (*encounter.EncounterData, error) {
 	world, err := m.encounters.GetEncounter(ctx, encID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			return nil, 0, standingSeam{}, fmt.Errorf("%q: %w", encID, ErrNoEncounter)
+			return nil, fmt.Errorf("%q: %w", encID, ErrNoEncounter)
 		}
-		return nil, 0, standingSeam{}, err
+		return nil, err
 	}
 	if world == nil {
-		return nil, 0, standingSeam{}, fmt.Errorf(
-			"%q: GetEncounter reported success with no data: %w", encID, ErrBadRepository)
+		return nil, fmt.Errorf("%q: GetEncounter reported success with no data: %w", encID, ErrBadRepository)
 	}
+	return world, nil
+}
+
+// loadGivenWorld is [Manager.loadWorldWithBaseline] over a world the caller
+// already holds rather than one fetched from the repository: Launch builds
+// its world in memory and loads it through exactly the seams every write
+// verb's world is loaded through.
+func (m *Manager) loadGivenWorld(
+	ctx context.Context, data *SessionData, world *encounter.EncounterData,
+	striker encounter.Striker, mover encounter.Mover, announcer encounter.Announcer,
+	resolver encounter.CheckResolver, witness encounter.Witness, driver encounter.Driver,
+	roller dice.Roller,
+) (*encounter.Encounter, uint64, standingSeam, error) {
+	encID := data.Encounter
 
 	// Placed AND waiting (reserve.go): an arrival happens mid-verb, and its
 	// own sight refresh asks the seams about the newcomer at once.

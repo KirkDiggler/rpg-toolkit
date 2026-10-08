@@ -75,7 +75,7 @@ func (s *IntimidateSuite) aYardDriven(
 	// The scene with a wall forms no fight and never reaches a check, so the
 	// unused faces cost it nothing.
 	roller := &sequenceDice{rolls: append([]int{10, 10}, rolls...)}
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: roller,
 		TurnDriver: driver,
 		Sessions:   s.sessions, Encounters: s.encounters,
@@ -718,7 +718,7 @@ func (s *IntimidateSuite) TestAnAuthoredFactSurvivesTheSpawnAndIsTaught() {
 // teaching a fact is observable at this seam.
 func (s *IntimidateSuite) aCamp(fact string, rolls []int) *session.Manager {
 	roller := &sequenceDice{rolls: append([]int{10, 10}, rolls...)}
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},

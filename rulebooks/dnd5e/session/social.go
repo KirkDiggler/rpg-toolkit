@@ -338,7 +338,7 @@ func (m *Manager) spendOnSocial(
 	if err != nil {
 		return err
 	}
-	if err := readyForTurn(ctx, sheet, round); err != nil {
+	if err := resolution.ReadyForTurn(ctx, sheet, resolution.Turn{Number: round, Speed: sheet.GetSpeed()}); err != nil {
 		return fmt.Errorf("member %q: %w: %v", member, ErrBadCost, err)
 	}
 
@@ -443,7 +443,7 @@ func (m *Manager) poseSocialWindow(
 // and what it DOES — what an author priced, and the table it answers from.
 //
 // A STRUCT RATHER THAN FOUR MORE POSITIONAL ARGUMENTS on [place], which already
-// takes thirteen: two adjacent []DoorApproach parameters are one careless call
+// takes thirteen: two adjacent approach lists are one careless call
 // away from being silently swapped, and the swap would compile.
 //
 // `Answers` USED TO SIT HERE, with a [session.Answer] twin beside it and a
@@ -453,8 +453,8 @@ func (m *Manager) poseSocialWindow(
 // a host filling one and not the other would get a creature whose social
 // answers and whose turns came from different files.
 type socialPlacement struct {
-	Intimidate []DoorApproach
-	Persuade   []DoorApproach
+	Intimidate []encounter.CheckApproach
+	Persuade   []encounter.CheckApproach
 
 	// Table is the creature's whole policy, ALREADY FOLDED: the rulebook's
 	// default for its kind under the author's two layers. Whichever verb built

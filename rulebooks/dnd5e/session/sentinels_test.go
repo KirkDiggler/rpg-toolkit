@@ -227,6 +227,11 @@ var sessionSentinels = map[string]error{
 	"ErrNoSessionID":          session.ErrNoSessionID,
 	"ErrNoEncounterID":        session.ErrNoEncounterID,
 	"ErrSessionExists":        session.ErrSessionExists,
+	"ErrSeatedElsewhere":      session.ErrSeatedElsewhere,
+	"ErrBadEquip":             session.ErrBadEquip,
+	"ErrArmorInFight":         session.ErrArmorInFight,
+	"ErrBadRest":              session.ErrBadRest,
+	"ErrDuplicateMember":      session.ErrDuplicateMember,
 	"ErrInvalidWorld":         session.ErrInvalidWorld,
 	"ErrNoCalculation":        session.ErrNoCalculation,
 	"ErrInBubble":             session.ErrInBubble,
@@ -349,7 +354,7 @@ func TestDeclarationSentinelVocabulary(t *testing.T) {
 
 func (s *SentinelSuite) SetupTest() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
@@ -401,7 +406,7 @@ func (s *SentinelSuite) refusedInOurVocabulary(err error, want error) {
 // what the host stored — an empty hand, one sheet under two names — which is
 // the only part of a duel these refusals differ in.
 func (s *SentinelSuite) armedDuel(chars *fakeCharacters) *session.Manager {
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 		Characters: chars, Events: session.DiscardEvents{},
 	})

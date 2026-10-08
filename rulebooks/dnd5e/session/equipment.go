@@ -62,8 +62,8 @@ type equipmentSeam struct {
 	// ctx is the verb's own. See the type's godoc.
 	ctx context.Context
 
-	// chars is the host's sheet store, for the members it owns.
-	chars CharacterRepository
+	// sheets is the verb's sheet store, for the members the host owns.
+	sheets sheetStore
 
 	// kinds is the authoritative encounter roster classification copied at the
 	// load/setup boundary, so nothing guesses kind from whichever storage
@@ -138,17 +138,13 @@ func (s equipmentSeam) Equipment(
 				"equipment member %q has unknown roster kind %q: %w", name, kind, ErrInvalidSession)
 		}
 
-		data, fetchErr := s.chars.GetCharacter(s.ctx, name)
+		data, fetchErr := s.sheets.load(s.ctx, "character", name)
 		if fetchErr != nil {
-			if errors.Is(fetchErr, ErrNotFound) {
+			if errors.Is(fetchErr, ErrNoCharacter) {
 				out[id] = nil
 				continue
 			}
 			return nil, fetchErr
-		}
-		if data == nil {
-			return nil, fmt.Errorf(
-				"character %q: GetCharacter reported success with no data: %w", name, ErrBadRepository)
 		}
 
 		out[id] = &encounter.HeldEquipment{

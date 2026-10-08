@@ -299,6 +299,12 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 	// piece of the regenerated offer are derived from this same snapshot; a
 	// repository cannot answer standing to one gate and downed to compilation.
 	actor := m.loadActorSheet(ctx, in.Attacker)
+	if errors.Is(actor.err, ErrNoCharacter) {
+		// THE STORE'S ONE ANSWER (rpg-project#542): an attacker the store does
+		// not hold is refused by name, not as a stale offer — re-reading
+		// Afford would answer the same empty sheet forever.
+		return nil, fmt.Errorf("attack: %w", actor.err)
+	}
 	if actor.downed {
 		return nil, fmt.Errorf("attack: attacker %q: %w", in.Attacker, ErrDowned)
 	}
@@ -721,6 +727,13 @@ func translateResolution(err error) error {
 		return fmt.Errorf("%w: %v", own, err)
 	}
 	switch {
+	case errors.Is(err, character.ErrArmorInFight):
+		// Before ErrBadEquip: the door wraps the armour refusal in its own
+		// account, and the host's answer is "not in a fight", not "a bad
+		// request".
+		return fmt.Errorf("%w: %v", ErrArmorInFight, err)
+	case errors.Is(err, resolution.ErrBadEquip):
+		return fmt.Errorf("%w: %v", ErrBadEquip, err)
 	case errors.Is(err, resolution.ErrCannotPay):
 		// The PLAYER-FACING one, and the reason it is not folded in with the two
 		// below. An actor who spent what they had is a fact about the game, and
@@ -1074,7 +1087,7 @@ func recordDamageComponents(in []dnd5eEvents.DamageComponent) []encounter.Damage
 // Load errors keep their inner reason as text so the host sees only this seam's
 // sentinel vocabulary.
 func (m *Manager) loadAttackSheet(ctx context.Context, attacker string) (*character.Character, error) {
-	data, err := m.fetchCharacterData(ctx, "attacker", attacker)
+	data, err := m.sheetsFor(nil).load(ctx, "attacker", attacker)
 	if err != nil {
 		return nil, err
 	}
@@ -1130,7 +1143,7 @@ func (m *Manager) compileResolutionCast(
 			continue
 		}
 
-		sheet, err := m.fetchCharacterData(ctx, "participant", id)
+		sheet, err := m.sheetsFor(nil).load(ctx, "participant", id)
 		if err != nil {
 			failures = append(failures, resolutionDependencyFailure{member: id, err: err})
 			continue
@@ -1215,7 +1228,7 @@ func (m *Manager) castFor(
 			continue
 		}
 
-		data, err := m.fetchCharacterData(ctx, "participant", id)
+		data, err := m.sheetsFor(nil).load(ctx, "participant", id)
 		if err != nil {
 			return nil, err
 		}
@@ -1294,7 +1307,7 @@ func (m *Manager) saveDirty(ctx context.Context, scope *writeScope, out *resolut
 		if data == nil {
 			continue
 		}
-		if err := m.saveCharacterRecord(ctx, scope, data); err != nil {
+		if err := m.sheetsFor(scope).save(ctx, data); err != nil {
 			return err
 		}
 		// The walker's own sheet follows what the interaction did to it, so

@@ -51,7 +51,7 @@ func (s *SocialOfferSuite) SetupTest() {
 func (s *SocialOfferSuite) aRoom(
 	entries map[string]session.SpawnInput, props ...encounter.PropInput,
 ) *session.Manager {
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: &sequenceDice{rolls: []int{10, 10, 10, 10}},
 		TurnDriver: session.Pass{},
 		Sessions:   s.sessions, Encounters: s.encounters,

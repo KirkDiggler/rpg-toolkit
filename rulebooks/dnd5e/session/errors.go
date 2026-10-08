@@ -385,6 +385,36 @@ var (
 	// deletes first, deliberately.
 	ErrSessionExists = errors.New("session already exists")
 
+	// ErrSeatedElsewhere is returned when a character another run already
+	// holds is launched or joined into this one. A character is seated in at
+	// most one session (rpg-project#542, "The seat"); it leaves one run
+	// before it enters the next.
+	ErrSeatedElsewhere = errors.New("character is seated in another session")
+
+	// ErrBadEquip is returned when an equipment change is one the sheet
+	// cannot make: no slot named, an item the inventory does not hold, an
+	// item that does not fit the slot. A request that is wrong, distinct from
+	// ErrCannotAfford (a right request the turn cannot pay for) and from
+	// ErrArmorInFight (a right request a fight forbids).
+	ErrBadEquip = errors.New("invalid equipment change")
+
+	// ErrArmorInFight is returned when a character in a fight asks to put on
+	// or take off body armour. Body armour cannot change in a fight; a shield
+	// can, for the action (R6).
+	ErrArmorInFight = errors.New("body armour cannot change in a fight")
+
+	// ErrBadRest is returned when a rest request is one a run does not take:
+	// a long rest (R13 — the long rest is the first-admission rest only), no
+	// resters, a rester named twice, or more hit dice than the rester has.
+	// The rulebook's own reason rides along as text.
+	ErrBadRest = errors.New("invalid rest request")
+
+	// ErrDuplicateMember is returned by Launch when one member id is claimed
+	// twice — two party characters, two compiled monsters, or one of each.
+	// Every member of a run needs an id of its own; refused before anything
+	// is written, naming both claimants.
+	ErrDuplicateMember = errors.New("member id claimed twice")
+
 	// ErrInvalidWorld is returned when the authored encounter handed to
 	// StartSession cannot be loaded.
 	//

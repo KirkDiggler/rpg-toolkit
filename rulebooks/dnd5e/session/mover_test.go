@@ -40,7 +40,7 @@ func (s *MoverSeamSuite) SetupTest() {
 
 // managerWith builds this suite's manager over one turn driver.
 func (s *MoverSeamSuite) managerWith(driver session.TurnDriver) *session.Manager {
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: driver,
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},

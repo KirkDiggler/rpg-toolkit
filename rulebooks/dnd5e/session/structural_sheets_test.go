@@ -19,7 +19,7 @@ func (s *StructuralSessionSuite) TestStructuralWalkReadsLiveSheetsWithoutRewriti
 	ctx := context.Background()
 	characters := newFakeCharacters(armedFighter("alice"))
 	worlds := newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		Sessions: newFakeSessions(), Encounters: worlds, Characters: characters,
 		Events: session.DiscardEvents{}, Dice: testDice{}, TurnDriver: session.Pass{}, PresentationIDs: testPresentationIDs{},
 	})

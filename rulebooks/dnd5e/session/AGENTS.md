@@ -15,24 +15,41 @@ for why the split exists at all.
 return — no setup call, no teardown, no ordering for the caller to get
 wrong. They include `Move`, `Attack`, `Cast`, `Activate`, `DeathSave`, `EndTurn`, `React`,
 `Search`, `Loot`, `Hold`, `Trade`, `Interact`, `OpenDoor`, `CloseDoor`, `Unlock`, `Join`,
-`Exit`, `End`, `Spawn`, `PlaceNPC`, `Dissolve`, `Unpack`, `LevelUp`,
-`StartSession`, and the reads `Afford`, `Roster`, `Atlas`, `AtlasOf`, `Status`,
+`Exit`, `End`, `Launch`, `Rest`, `Equip`, `Unequip`, `PlaceNPC`, `Dissolve`, `Unpack`,
+`LevelUp`, the retiring `StartSession` and `Spawn` (Launch replaces both as host
+verbs, R7), and the reads `Afford`, `Roster`, `Atlas`, `AtlasOf`, `Status`,
 `View`, `Story`, `Where`, `Turn`, `Doors`, `NextLevel`. A verb is a file; the
 file is the unit of ownership.
 
-**Two of them are not seated.** `NextLevel` ([`next_level.go`](./next_level.go))
-and `LevelUp` ([`level_up.go`](./level_up.go)) take a character id and no
-session, because a level is taken between runs: there is no world to freeze, no
-story to tell, and therefore no `writeScope` and no `commit` — `LevelUp` writes
-one character aggregate and reports it. They are the ruling *"our level up
-should be contained in our session package"* (Kirk, 2026-09-16), and the trap
-they carry is named in their own godoc: **this Manager has no index from a
-character to a session**, so "seated in a run" cannot be checked here and the
-in-combat refusal is exactly the sheet's own.
+**Character verbs take a character, and the seat decides the rest.**
+`Equip`, `Unequip` ([`equip.go`](./equip.go)) and `LevelUp`
+([`level_up.go`](./level_up.go)) take a character id and no session. The
+character's SEAT ([`seats.go`](./seats.go), a host repository keyed by
+character, R4) says which run holds it: unseated, the verb is a plain sheet
+verb under the character's own guard; seated, it acts inside that run under
+the session's guard (an equip in a fight is a turn action priced at
+resolution's door). `NextLevel` is a read and takes no guard. Launch and Join
+write a seat; Exit, End and the commit that closes a run clear it.
 
-**The three repositories and the capabilities beside them.**
+**A seat naming a run that is over still holds the character.** A run that
+closes on its own (party defeated, a reached-position ending) clears its seats
+in the commit that closes it, but a run a host simply abandons — never Ended,
+its members never Exited — keeps every party member seated in it: their
+equips go to a run nobody plays, and Launch and Join elsewhere refuse them
+with `ErrSeatedElsewhere`. **The host must call `End`** (or `Exit` per member)
+for every run it stops playing. There is deliberately no verb that clears a
+seat on its own: a seat changes only with the run that holds it.
+
+**Every character record goes through the verb's one sheet store**
+([`store.go`](./store.go)). Nothing else calls `GetCharacter` or
+`SaveCharacter` — `TestOnlyTheStoreCallsTheCharacterRepository` holds it — so
+an absent sheet is one answer (`ErrNoCharacter`) and every save lands on the
+verb's report.
+
+**The four repositories and the capabilities beside them.**
 [`repositories.go`](./repositories.go) declares `SessionRepository`,
-`EncounterRepository`, `CharacterRepository` — key-value, get-by-id and put-by-id
+`EncounterRepository`, `CharacterRepository`, and [`seats.go`](./seats.go)
+`SeatRepository` — key-value, get-by-id and put-by-id
 only (S12), trading in data and never in domain objects (S3). They point OUTWARD:
 this package calls, the host implements. [`session.go`](./session.go) adds the
 four supplied capabilities the host wires once — `Events`, `Dice`,

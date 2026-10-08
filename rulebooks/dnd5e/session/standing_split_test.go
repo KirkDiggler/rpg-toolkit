@@ -42,7 +42,7 @@ func (s *StandingSplitSuite) SetupTest() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
 
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions,
 		Encounters: s.encounters, Characters: s.characters, Events: session.DiscardEvents{},
 	})

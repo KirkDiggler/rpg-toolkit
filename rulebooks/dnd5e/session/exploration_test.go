@@ -78,7 +78,7 @@ func (s *AutomaticDiscoverySDKSuite) TestLegacyCharacterChecksCannotSeedANewEnco
 	s.Require().NoError(json.Unmarshal([]byte(`{"character":"alice","private":true,"checks":{"same-dungeon/secret":{"used":9,"learned":true}}}`), &legacy))
 	profiles := &explorationStore{data: map[string]*session.ExplorationData{"alice": &legacy}}
 	encounters := newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		Sessions: newFakeSessions(), Encounters: encounters, Characters: testCharacters(),
 		Explorations: profiles, Events: session.DiscardEvents{}, Dice: testDice{},
 		PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{},
@@ -110,7 +110,7 @@ func (s *AutomaticDiscoverySDKSuite) TestDiscoveryBelongsToTheEncounterNotTheCha
 			ctx := context.Background()
 			profiles := &explorationStore{data: map[string]*session.ExplorationData{}}
 			sessions, encounters := newFakeSessions(), newFakeEncounters()
-			cfg := &session.Config{Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
+			cfg := &session.Config{Seats: newFakeSeats(), Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
 				Explorations: profiles, Events: session.DiscardEvents{}, Dice: testDice{},
 				PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{}}
 			mgr, err := session.NewManager(cfg)
@@ -158,6 +158,10 @@ func (s *AutomaticDiscoverySDKSuite) TestDiscoveryBelongsToTheEncounterNotTheCha
 			approach("first")
 			s.Equal(1, s.checkCount(mgr, "first"), "exit/rejoin of the same encounter is not a new playthrough")
 
+			// A character is seated in one run at a time (rpg-project#542, the
+			// seat): alice leaves the first run before she enters the second.
+			_, err = mgr.Exit(ctx, &session.ExitInput{Session: "first", Member: "alice"})
+			s.Require().NoError(err)
 			start("second") // SAME template and SAME character, new encounter identity
 			fresh, err := encounters.GetEncounter(ctx, "second")
 			s.Require().NoError(err)

@@ -90,7 +90,7 @@ func (s *CastPauseSuite) scene(sheets []*character.Data, at map[string]spatial.P
 	s.encounters = newFakeEncounters()
 	s.characters = newFakeCharacters(sheets...)
 
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: whisperDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
@@ -430,7 +430,7 @@ func realPostHitFrozen(t *testing.T) []byte {
 	wrath := &CastSuite{}
 	wrath.SetT(t)
 	wrath.scene(wrath.tempestSheet(), 1, 15, 2, 1, 4, 5)
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: wrath.dice, TurnDriver: reachlessAttacker{}, Sessions: wrath.sessions, Encounters: wrath.encounters, Characters: wrath.characters, Events: wrath.stream})
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: wrath.dice, TurnDriver: reachlessAttacker{}, Sessions: wrath.sessions, Encounters: wrath.encounters, Characters: wrath.characters, Events: wrath.stream})
 	require.NoError(t, err)
 	_, err = mgr.EndTurn(context.Background(), &session.EndTurnInput{Session: "sess", Member: "cleric", DeclarationID: currentEndTurnID(t, mgr, "sess", "cleric")})
 	require.NoError(t, err)

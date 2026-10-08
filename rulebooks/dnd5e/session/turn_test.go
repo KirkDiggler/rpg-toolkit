@@ -275,7 +275,7 @@ func (s *TurnTestSuite) TestAPointerPassDrivesThroughTheSameAsAValue() {
 	// scene stands alone, so it gets alice and the ogre with nobody else's
 	// "sess" session sharing the same encounter ID underneath it.
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: pointerPass{}, Sessions: sessions, Encounters: encounters,
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
@@ -305,7 +305,7 @@ func (s *TurnTestSuite) TestTheTurnEndingReachesClients() {
 	s.fight()
 
 	stream := &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: testCharacters(), Events: stream,
 	})

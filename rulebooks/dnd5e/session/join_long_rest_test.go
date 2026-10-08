@@ -145,7 +145,7 @@ func (s *JoinLongRestTestSuite) SetupTest() {
 func (s *JoinLongRestTestSuite) manager(
 	encounters session.EncounterRepository, characters session.CharacterRepository,
 ) *session.Manager {
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Events: session.DiscardEvents{},
 		Sessions: s.sessions, Encounters: encounters, Characters: characters,
 	})
@@ -162,7 +162,7 @@ func (s *JoinLongRestTestSuite) TestFirstAdmissionRestsPersistsAndProjectsTheCom
 	s.Require().NotNil(out.Character)
 	s.Equal(36, out.Character.HitPoints, "JoinOutput is projected from the rested record")
 	s.Equal(36, out.Character.MaxHitPoints)
-	s.Equal([]string{"character:bob", "encounter:world", "session:sess"}, out.Saved.Written)
+	s.Equal([]string{"character:bob", "seat:bob", "encounter:world", "session:sess"}, out.Saved.Written)
 	s.Empty(out.Saved.Failed)
 	s.Equal(1, s.characters.saves, "first admission performs one durable character save")
 
@@ -388,7 +388,7 @@ func (s *JoinLongRestTestSuite) TestCorruptStreamAfterEarlyRestReportsWriteAndSa
 	})
 	s.Require().Error(err)
 	s.ErrorIs(err, session.ErrInvalidWorld)
-	s.assertWrittenOnly(err, "character:bob")
+	s.assertWrittenOnly(err, "character:bob", "seat:bob")
 	s.Nil(out)
 	s.Equal(1, s.characters.saves)
 	s.Equal(beforeEncounterSaves, s.encounters.saves)
@@ -458,7 +458,7 @@ func (s *JoinLongRestTestSuite) TestEncounterSaveFailureLeavesRestedCharacterDur
 	var saveErr *session.SaveError
 	s.Require().True(errors.As(err, &saveErr))
 	s.Equal(session.SaveReport{
-		Written: []string{"character:bob"},
+		Written: []string{"character:bob", "seat:bob"},
 		Failed:  []string{"encounter:world"},
 	}, saveErr.Report)
 	s.True(saveErr.Report.Partial())
@@ -470,7 +470,7 @@ func (s *JoinLongRestTestSuite) TestEncounterSaveFailureLeavesRestedCharacterDur
 
 func (s *JoinLongRestTestSuite) TestSessionSaveFailureReportsEarlyRestAndPersistedEncounter() {
 	failing := &failingSessions{fakeSessions: s.sessions, saveErr: errBroken}
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Events: session.DiscardEvents{},
 		Sessions: failing, Encounters: s.encounters, Characters: s.characters,
 	})
@@ -487,7 +487,7 @@ func (s *JoinLongRestTestSuite) TestSessionSaveFailureReportsEarlyRestAndPersist
 	var saveErr *session.SaveError
 	s.Require().True(errors.As(err, &saveErr))
 	s.Equal(session.SaveReport{
-		Written: []string{"character:bob", "encounter:world"},
+		Written: []string{"character:bob", "seat:bob", "encounter:world"},
 		Failed:  []string{"session:sess"},
 	}, saveErr.Report)
 	s.Equal(beforeEncounterSaves+1, s.encounters.saves)
@@ -504,7 +504,7 @@ func (s *JoinLongRestTestSuite) TestZeroHPFirstAdmissionIsStandingAndCannotFireM
 	zero := spentJoinFighter(s.T(), "bob")
 	zero.HitPoints = 0
 	characters := newCopyingCharacters(s.T(), zero)
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Events: session.DiscardEvents{},
 		Sessions: sessions, Encounters: encounters, Characters: characters,
 	})
@@ -537,7 +537,7 @@ func (s *JoinLongRestTestSuite) TestPlacementDrivenStrikeReadsRestedTruthAndIsNo
 	// creature with an enemy in sight (rpg-project#465) — hits on 15, and the
 	// remaining fixed rolls drive its damage and its later picks.
 	dice := &sequenceDice{rolls: []int{1, 20, 15, 15, 4, 4, 4, 4, 4, 4}}
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: dice, TurnDriver: session.Driver(), Events: session.DiscardEvents{},
 		Sessions: sessions, Encounters: encounters, Characters: characters,
 	})

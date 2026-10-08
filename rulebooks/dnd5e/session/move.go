@@ -326,16 +326,7 @@ func (m *Manager) saveWalker(ctx context.Context, scope *writeScope, sheet *char
 		// the verb already made durable (S6).
 		return saveErrorAfterWrites(scope, "", fmt.Errorf("walker: %w: %v", ErrBadCharacter, err))
 	}
-	if err := m.characters.SaveCharacter(ctx, data); err != nil {
-		report := SaveReport{
-			Written: append([]string(nil), scope.written...),
-			Failed:  []string{"character:" + data.ID},
-		}
-		return &SaveError{Report: report, Err: fmt.Errorf("saving character: %w", err)}
-	}
-
-	scope.noteCharacterWritten(data.ID)
-	return nil
+	return m.sheetsFor(scope).save(ctx, data)
 }
 
 // walkResult is what one run of the walk produced.
@@ -455,7 +446,7 @@ func (m *Manager) runWalk(
 				return res, nil
 			}
 			if scope.walker == nil {
-				data, loadErr := m.fetchCharacterData(ctx, "walker", member)
+				data, loadErr := m.sheetsFor(nil).load(ctx, "walker", member)
 				if loadErr != nil {
 					return nil, loadErr
 				}

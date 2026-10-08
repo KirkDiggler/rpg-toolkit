@@ -1555,6 +1555,20 @@ const (
 	// between a pause and a hang.
 	EventRollWindowOpened EventKind = "roll_window_opened"
 
+	// EventEquipmentChanged reports one item a member drew or stowed
+	// (rpg-project#542, R8). One event per item: a swap is a stow and then a
+	// draw, two events sharing one correlation. It reaches every member the
+	// encounter tells that member's acts — the watchers learn the new
+	// appearance from it without refetching. A draw into an empty hand is
+	// told too.
+	EventEquipmentChanged EventKind = "equipment_changed"
+
+	// EventRested reports one member's short rest: what it restored and what
+	// it spent (rpg-project#542, "Rest"). A rest is the party's act, so a rest
+	// of three members is three of these, one per rester, to that rester's
+	// witnesses; the hour it took moved the world clock once.
+	EventRested EventKind = "rested"
+
 	// EventUnknown is a beat this version does not recognise.
 	//
 	// Delivered rather than dropped on purpose: a client that cannot interpret
@@ -2496,6 +2510,12 @@ type ExitedBody struct {
 	// member walking out at a cell nobody authored as a way out. Empty is not
 	// "unknown"; it is the truth that no authored exit was used.
 	Exit string `json:"exit,omitempty"`
+
+	// Ended is every condition the departure took off the board — the
+	// leaver's, and the remaining members' a hold of the leaver's was
+	// keeping — in the rulebook's order. Empty when the leaver took nothing
+	// with them.
+	Ended []ConditionRemovedBody `json:"ended,omitempty"`
 }
 
 func (ExitedBody) isEventBody() {}
@@ -2525,6 +2545,89 @@ type HeldBody struct {
 
 func (HeldBody) isEventBody() {}
 
+// EquipmentChange is which way an item moved in an [EquipmentChangedBody].
+type EquipmentChange string
+
+const (
+	// EquipmentDrawn is an item taken into hand or donned.
+	EquipmentDrawn EquipmentChange = "draw"
+
+	// EquipmentStowed is an item put away.
+	EquipmentStowed EquipmentChange = "stow"
+)
+
+// EquipmentChangedBody is EventEquipmentChanged's typed body: one item that
+// moved in one of a member's slots.
+type EquipmentChangedBody struct {
+	// Member is who changed their equipment.
+	Member string `json:"member"`
+
+	// Slot is the slot the item left or entered, in the rulebook's words.
+	Slot string `json:"slot"`
+
+	// Item is the item's full ref.
+	Item string `json:"item"`
+
+	// Change is whether the item was drawn or stowed.
+	Change EquipmentChange `json:"change"`
+}
+
+func (EquipmentChangedBody) isEventBody() {}
+
+// RestedBody is EventRested's typed body: one member's rest, what it
+// restored, and what it spent.
+type RestedBody struct {
+	// Member is who rested.
+	Member string `json:"member"`
+
+	// Kind is the rest's kind; "short" is the only one a run takes (R13).
+	Kind string `json:"kind"`
+
+	// HitPointsRestored is how many hit points the rest restored.
+	HitPointsRestored int `json:"hit_points_restored"`
+
+	// HitPoints is the member's hit points after the rest.
+	HitPoints int `json:"hit_points"`
+
+	// HitDiceSpent is how many hit dice the rest spent.
+	HitDiceSpent int `json:"hit_dice_spent"`
+
+	// HitDiceReturned is how many hit dice the rest gave back; zero for a
+	// short rest.
+	HitDiceReturned int `json:"hit_dice_returned"`
+
+	// HitDiceRemaining is how many hit dice the member has left.
+	HitDiceRemaining int `json:"hit_dice_remaining"`
+
+	// ResourcesRefilled names every resource the rest refilled, by ref.
+	ResourcesRefilled []string `json:"resources_refilled,omitempty"`
+
+	// Calculation is the hit dice's roll, every die sourced; nil when no die
+	// was spent.
+	Calculation *RollCalculation `json:"calculation,omitempty"`
+
+	// ConcentrationEnded is every concentration the rest ended on the rester,
+	// each with the conditions it was holding. Told on the rest's own beat,
+	// never as beats of their own.
+	ConcentrationEnded []RestConcentrationEnded `json:"concentration_ended,omitempty"`
+
+	// Ended is every condition or effect the rest took off the rester —
+	// prone, dodging, blessed — in the rulebook's order.
+	Ended []ConditionRemovedBody `json:"ended,omitempty"`
+}
+
+func (RestedBody) isEventBody() {}
+
+// RestConcentrationEnded is one concentration a rest ended: who held it, the
+// spell, why it ended, and the conditions it was holding.
+type RestConcentrationEnded struct {
+	ConcentrationEndedBody
+
+	// Removed is every condition the concentration was holding, taken off
+	// whoever it was on.
+	Removed []ConditionRemovedBody `json:"removed,omitempty"`
+}
+
 // DroppedBody is EventDropped's typed body: who dropped which prop, and where
 // it landed.
 type DroppedBody struct {
@@ -2550,6 +2653,10 @@ func (DroppedBody) isEventBody() {}
 // out of has dissolved (ruling §6.6).
 type EndedBody struct {
 	Ending string `json:"ending"`
+
+	// Ended is, per member, every condition the ending took off them as the
+	// players left with the run. Absent when nothing came off anybody.
+	Ended map[string][]ConditionRemovedBody `json:"ended,omitempty"`
 }
 
 func (EndedBody) isEventBody() {}

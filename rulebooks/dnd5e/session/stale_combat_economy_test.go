@@ -28,7 +28,7 @@ import (
 // a walk that starts on the world clock is priced nothing for the whole
 // call regardless of what a mid-path step does. A genuinely first-ever
 // combat entrant seeds a full 30ft via [character.StartTurn] exactly as
-// economy.go's readyForTurn already intends.
+// resolution.ReadyForTurn already intends.
 //
 // What actually reproduces "5ft left, not 30" — traced to the character
 // package directly, sheet in hand, no session or encounter involved — is
@@ -36,7 +36,7 @@ import (
 // module (`grep -rn ExitCombat rulebooks/dnd5e/session
 // rulebooks/dnd5e/encounter` finds only its own definition). So
 // [character.Character.InCombat] never returns to false once a member has
-// taken a single combat turn in a session, and readyForTurn's
+// taken a single combat turn in a session, and resolution.ReadyForTurn's
 // `!sheet.InCombat()` branch — the one that unconditionally reseeds via
 // StartTurn — can never fire again for them. Every LATER fight falls to
 // RefreshForTurn, whose documented no-op ("a second swing cannot refill
@@ -70,7 +70,7 @@ func (s *StaleCombatEconomySuite) SetupTest() {
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
 	s.stream = &fakeStream{}
 
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
 	})

@@ -42,7 +42,7 @@ func (s *CastSuite) TestFlareMonsterTurnReloadResumesWithoutRepeatingAttack() {
 			ctx := context.Background()
 			newManager := func() {
 				var err error
-				s.mgr, err = session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+				s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
 				s.Require().NoError(err)
 			}
 			newManager()
@@ -140,7 +140,7 @@ func (s *CastSuite) TestFlareLethalResumeCommitsDefeatAndClosesWindow() {
 			s.scene(sheet, 1, rolls...)
 			ctx := context.Background()
 			var err error
-			s.mgr, err = session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+			s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
 			s.Require().NoError(err)
 			_, err = s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "cleric", DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "cleric")})
 			s.Require().NoError(err)
