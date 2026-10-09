@@ -55,9 +55,6 @@ func (s *DiscoveryPolicySuite) TestInvalidValuesAreNotDefaulted() {
 
 func (s *DiscoveryPolicySuite) world(policy *encounter.DiscoveryPolicyInput) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{},
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Mover: quietMover{}, Announcer: quietAnnouncer{}, CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		Field: encounter.FieldInput{
 			Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 3)},
 			Concealments: []encounter.ConcealmentInput{{
@@ -67,6 +64,21 @@ func (s *DiscoveryPolicySuite) world(policy *encounter.DiscoveryPolicyInput) *en
 		},
 		Members: []encounter.MemberInput{{ID: "walker", Kind: encounter.KindPlayer, Position: spatial.Position{}}},
 		Endings: []encounter.EndingInput{{Key: "exit", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Standing:      everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			CheckResolver: findsNothing{},
+			Witness:       nobodyPerceives{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	return enc
@@ -74,9 +86,22 @@ func (s *DiscoveryPolicySuite) world(policy *encounter.DiscoveryPolicyInput) *en
 
 func (s *DiscoveryPolicySuite) load(data encounter.EncounterData) (*encounter.Encounter, error) {
 	return encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{},
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Mover: quietMover{}, Announcer: quietAnnouncer{}, CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
+		Data: data,
+		Capabilities: encounter.Capabilities{
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Standing:      everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			CheckResolver: findsNothing{},
+			Witness:       nobodyPerceives{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 }
 

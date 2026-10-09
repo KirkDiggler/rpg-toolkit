@@ -101,9 +101,6 @@ func (s *sightingConditionsSuite) SetupSubTest() { s.SetupTest() }
 
 func (s *sightingConditionsSuite) setup(equipment encounter.EquipmentWithConditions) *encounter.SetupInput {
 	return &encounter.SetupInput{
-		Sight: s.sight, Equipment: equipment, Sheets: zeroSheets{}, Standing: everyoneStanding{},
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("yard", 0, 0, 6, 1)},
 		},
@@ -114,14 +111,38 @@ func (s *sightingConditionsSuite) setup(equipment encounter.EquipmentWithConditi
 			{ID: bob, Kind: encounter.KindPlayer, Position: cellAt(1, 0)},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      s.sight,
+			Equipment:  equipment,
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	}
 }
 
 func (s *sightingConditionsSuite) loadInput(data encounter.EncounterData, equipment encounter.EquipmentWithConditions) *encounter.LoadEncounterInput {
 	return &encounter.LoadEncounterInput{
-		Data: data, Sight: s.sight, Equipment: equipment, Sheets: zeroSheets{}, Standing: everyoneStanding{},
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Data: data,
+		Capabilities: encounter.Capabilities{
+			Sight:      s.sight,
+			Equipment:  equipment,
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	}
 }
 

@@ -44,9 +44,6 @@ func (s *MemberDownSuite) doomed(standing encounter.StandingWithParticipation) *
 	s.T().Helper()
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: standing,
 		Retention: encounter.RetentionUnbounded,
 		Field:     encounter.FieldInput{Canvas: openAir(), Regions: []encounter.RegionInput{rectRegion(cryptID, 0, 0, 12, 12)}},
 		Members: []encounter.MemberInput{
@@ -57,6 +54,19 @@ func (s *MemberDownSuite) doomed(standing encounter.StandingWithParticipation) *
 		Endings: []encounter.EndingInput{
 			{Key: "withdrawn", Trigger: encounter.TriggerExternal{}},
 			{Key: doomKey, Trigger: encounter.TriggerMemberDown{Member: wolf}},
+		},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   standing,
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
 		},
 	})
 	s.Require().NoError(err)
@@ -111,9 +121,6 @@ func (s *MemberDownSuite) TestAnotherBodyIsNotTheDoom() {
 // brings death saves (TriggerMemberDown's doc).
 func (s *MemberDownSuite) TestSetupRefusesADoomNamingNobody() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: &downList{},
 		Retention: encounter.RetentionUnbounded,
 		Field:     encounter.FieldInput{Canvas: openAir(), Regions: []encounter.RegionInput{rectRegion(cryptID, 0, 0, 12, 12)}},
 		Members: []encounter.MemberInput{
@@ -121,6 +128,19 @@ func (s *MemberDownSuite) TestSetupRefusesADoomNamingNobody() {
 		},
 		Endings: []encounter.EndingInput{
 			{Key: doomKey, Trigger: encounter.TriggerMemberDown{}},
+		},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   &downList{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
 		},
 	})
 	s.Require().ErrorIs(err, encounter.ErrNoEnding)
@@ -140,10 +160,20 @@ func (s *MemberDownSuite) TestTheDoomSurvivesTheRoundTrip() {
 
 	down := &downList{down: []encounter.MemberID{goblin, wolf}}
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:       saved,
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: down,
+		Data: saved,
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   down,
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -165,10 +195,20 @@ func (s *MemberDownSuite) TestLoadRefusesADoomNamingNobody() {
 	saved.Endings[1].Member = ""
 
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:       saved,
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: &downList{},
+		Data: saved,
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   &downList{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoEnding)

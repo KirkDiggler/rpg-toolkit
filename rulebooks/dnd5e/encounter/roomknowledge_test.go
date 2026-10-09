@@ -27,9 +27,6 @@ func (s *RoomKnowledgeSuite) SetupTest() {
 	s.sight = &sightList{fallback: 20}
 	var err error
 	s.enc, err = encounter.NewEncounter(&encounter.SetupInput{
-		Sight: s.sight, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{},
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{
@@ -51,6 +48,19 @@ func (s *RoomKnowledgeSuite) SetupTest() {
 			{ID: "b", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 4}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      s.sight,
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 }
@@ -141,9 +151,20 @@ func (s *RoomKnowledgeSuite) TestInvalidRoomKnowledgeIsRejectedOnLoad() {
 				fact.Actor = "other"
 			}
 			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-				Data: data, Sight: s.sight, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{},
-				Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-				Mover: quietMover{}, Announcer: quietAnnouncer{},
+				Data: data,
+				Capabilities: encounter.Capabilities{
+					Sight:      s.sight,
+					Equipment:  encounter.UnobservedEquipment{},
+					Sheets:     zeroSheets{},
+					Standing:   everyoneStanding{},
+					Initiative: orderAsGiven{},
+					Driver:     passDriver{},
+					Actors: encounter.Actors{
+						Striker:   passStriker{},
+						Mover:     quietMover{},
+						Announcer: quietAnnouncer{},
+					},
+				},
 			})
 			s.ErrorIs(err, encounter.ErrInvalidData)
 		})
@@ -198,9 +219,20 @@ func (s *RoomKnowledgeSuite) TestKnowledgeSurvivesLossOfSightAndJSONReload() {
 	var data encounter.EncounterData
 	s.Require().NoError(json.Unmarshal(bytes, &data))
 	s.enc, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data, Sight: s.sight, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{},
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Data: data,
+		Capabilities: encounter.Capabilities{
+			Sight:      s.sight,
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	s.Equal(learned, s.atlas("a"))

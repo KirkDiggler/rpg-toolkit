@@ -54,9 +54,6 @@ func (s *ShapeSuite) SetupTest() {
 	s.farAt = cellAt(farCol, row)
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{},
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
-		Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion(string(shapeRegion), 0, 0, 14, 14)},
@@ -68,6 +65,19 @@ func (s *ShapeSuite) SetupTest() {
 			{ID: "vendor", Kind: encounter.KindWorld, Position: offset(bardCol)},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	s.enc = enc
@@ -226,9 +236,6 @@ func (s *CoveredSuite) SetupTest() {
 	s.farAheadAt = cellAt(farAheadCol, row)
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{},
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
-		Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion(string(shapeRegion), 0, 0, 14, 14)},
@@ -240,6 +247,19 @@ func (s *CoveredSuite) SetupTest() {
 			{ID: "far-ahead", Kind: encounter.KindMonster, Position: offset(farAheadCol)},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	s.enc = enc

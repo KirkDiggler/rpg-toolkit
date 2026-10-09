@@ -114,13 +114,24 @@ func (s *SingleRoomDoorSuite) TestTheClosedLeafSealsTheGoblinOff() {
 	s.Require().NoError(err)
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		CheckResolver: nothingIsEverFound{}, Witness: nobodyPerceivesAnything{},
 		Field:   compiled.Field,
 		Members: []encounter.MemberInput{{ID: "walker", Kind: encounter.KindPlayer, Position: axial(1, 0)}},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Standing:      everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			CheckResolver: nothingIsEverFound{},
+			Witness:       nobodyPerceivesAnything{},
+			Actors: encounter.Actors{
+				Striker:   noAttacksExpected{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 

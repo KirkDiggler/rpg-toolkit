@@ -191,12 +191,22 @@ func (s *PlacedOrdersSuite) open(
 		members = append(members, encounter.MemberInput{ID: id, Kind: encounter.KindPlayer, Position: cell})
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field:   ordersField(),
 		Members: members,
 		Endings: append([]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, endings...),
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -207,12 +217,22 @@ func (s *PlacedOrdersSuite) open(
 // construction answered — the seam the refusal scenes are about.
 func (s *PlacedOrdersSuite) build(field encounter.FieldInput) (*encounter.Encounter, error) {
 	return encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field:   field,
 		Members: []encounter.MemberInput{{ID: alice, Kind: encounter.KindPlayer, Position: authoredAt(2, 2)}},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 }
 
@@ -570,14 +590,24 @@ func (s *PlacedOrdersSuite) TestCarryingAPlacedArtifactOutEndsTheRun() {
 // index answers for both kinds of thing.
 func (s *PlacedOrdersSuite) TestAnEndingOnAPlacementNobodyCanTakeIsRefused() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field:   ordersField(),
 		Members: []encounter.MemberInput{{ID: alice, Kind: encounter.KindPlayer, Position: authoredAt(1, 4)}},
 		Endings: []encounter.EndingInput{{Key: "recovered", Trigger: encounter.TriggerExitedHolding{
 			Exit: theWayOut, Item: theBarricade,
 		}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().ErrorIs(err, encounter.ErrNoEnding)
 }
@@ -627,10 +657,20 @@ func (s *PlacedOrdersSuite) TestAPlacementHoldingARecordNobodyDeclaredIsRefused(
 // at the host seam, where a blob is checked before it is trusted.
 func (s *PlacedOrdersSuite) reloadOf(enc *encounter.Encounter) *encounter.Encounter {
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:      enc.ToData(),
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Data: enc.ToData(),
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err, "the run this module just wrote is one it can read")
 

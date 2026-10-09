@@ -127,8 +127,6 @@ func vaultChaseHexSetup() *encounter.SetupInput {
 		Doors: []encounter.DoorInput{gate},
 	}
 	return &encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 60}, alice: {}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: field,
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 5}},
@@ -156,6 +154,19 @@ func vaultChaseHexSetup() *encounter.SetupInput {
 		Endings: []encounter.EndingInput{
 			{Key: "sanctuary", Trigger: encounter.TriggerReachedPosition{
 				Position: spatial.Position{X: 12, Y: 6}}}, // the vault's own [2,6]
+		},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheetFacts{goblin: {SpeedFeet: 60}, alice: {}},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     tableDriver(),
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
 		},
 	}
 }
@@ -345,8 +356,21 @@ func TestVaultChaseAbsoluteContinuity(t *testing.T) {
 	beforeReload := alicePath[len(alicePath)-1]
 	data := enc.ToData()
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 60}, alice: {}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data})
+		Data: data,
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheetFacts{goblin: {SpeedFeet: 60}, alice: {}},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     tableDriver(),
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
+	})
 	require.NoError(t, err, "the suspended chase crosses a process boundary")
 	enc = enc2
 	proj.useEncounter(enc) // SAME projector, reloaded enc — the transcript keeps accumulating

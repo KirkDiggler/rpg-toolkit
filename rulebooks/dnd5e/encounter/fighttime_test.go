@@ -35,11 +35,8 @@ func TestFightTimeSuite(t *testing.T) {
 // scene is alice and a goblin alone in an open room, close enough that the
 // first sight pass forms the fight — so round 1 is running before the first
 // verb and alice holds the first turn (orderAsGiven).
-func (s *FightTimeTestSuite) scene(driver encounter.TurnDriver) *encounter.Encounter {
+func (s *FightTimeTestSuite) scene(driver encounter.Driver) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, RangeFeet: 5}}}, alice: {}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: driver, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(outcomeRoom, 0, 0, 12, 12)},
@@ -49,6 +46,19 @@ func (s *FightTimeTestSuite) scene(driver encounter.TurnDriver) *encounter.Encou
 			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 4}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheetFacts{goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, RangeFeet: 5}}}, alice: {}},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     driver,
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	return enc

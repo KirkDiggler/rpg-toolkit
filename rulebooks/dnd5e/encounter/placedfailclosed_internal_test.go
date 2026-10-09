@@ -37,15 +37,25 @@ import (
 func failClosedEncounter(t *testing.T) *Encounter {
 	t.Helper()
 	enc, err := NewEncounter(&SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: FieldInput{
 			Canvas:  openAir(),
 			Regions: []RegionInput{rectRegion("hall", 0, 0, 6, 6)},
 		},
 		Members: []MemberInput{{ID: "walker", Kind: KindPlayer, Position: spatial.Position{X: 0, Y: 0}}},
 		Endings: []EndingInput{{Key: "withdrawn", Trigger: TriggerExternal{}}},
+		Capabilities: Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 

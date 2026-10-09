@@ -48,9 +48,6 @@ var heldSheets = sheetFacts{goblin: {SpeedFeet: 30, Actions: []encounter.ActionV
 
 func (s *HeldTestSuite) scene(mover encounter.Mover, standing encounter.StandingWithParticipation) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: heldSheets, Standing: standing, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: mover, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
@@ -62,6 +59,19 @@ func (s *HeldTestSuite) scene(mover encounter.Mover, standing encounter.Standing
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     heldSheets,
+			Standing:   standing,
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     mover,
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	return enc
@@ -113,10 +123,20 @@ func (s *HeldTestSuite) beatsNamed(enc *encounter.Encounter, audience encounter.
 func loadInput(data encounter.EncounterData, mover encounter.Mover, standing encounter.StandingWithParticipation,
 ) *encounter.LoadEncounterInput {
 	return &encounter.LoadEncounterInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: heldSheets, Standing: standing, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: mover, Announcer: quietAnnouncer{},
 		Data: data,
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     heldSheets,
+			Standing:   standing,
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     mover,
+				Announcer: quietAnnouncer{},
+			},
+		},
 	}
 }
 

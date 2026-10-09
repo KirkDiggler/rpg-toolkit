@@ -17,15 +17,25 @@ import (
 // the old shape any more: the beat is appended as a saved world would hold it.
 func TestAnOldDownBeatTakesItsKindFromTheRoster(t *testing.T) {
 	enc, err := NewEncounter(&SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Equipment: UnobservedEquipment{}, Sheets: zeroSheets{},
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: FieldInput{Canvas: openAir(), Regions: []RegionInput{rectRegion("crypt", 0, 0, 12, 12)}},
 		Members: []MemberInput{
 			{ID: "alice", Kind: KindPlayer, Position: spatial.Position{X: 0, Y: 2}},
 			{ID: "goblin", Kind: KindMonster, Position: spatial.Position{X: 0, Y: 10}},
 		},
 		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
+		Capabilities: Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 	baseline, err := enc.NextStorySeq()

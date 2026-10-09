@@ -101,13 +101,9 @@ var pauseShortsword = encounter.SheetFacts{SpeedFeet: 30, Actions: []encounter.A
 var pauseSheets = sheetFacts{goblin: pauseShortsword, "skeleton": pauseShortsword, alice: {}}
 
 func (s *PauseTestSuite) sceneWithDriver(
-	mover encounter.Mover, standing encounter.StandingWithParticipation, driver encounter.TurnDriver,
+	mover encounter.Mover, standing encounter.StandingWithParticipation, driver encounter.Driver,
 ) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: pauseSheets, Standing: standing, Initiative: orderAsGiven{},
-		TurnDriver: driver,
-		Striker:    passStriker{}, Mover: mover, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
@@ -119,6 +115,19 @@ func (s *PauseTestSuite) sceneWithDriver(
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     pauseSheets,
+			Standing:   standing,
+			Initiative: orderAsGiven{},
+			Driver:     driver,
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     mover,
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	return enc
@@ -179,10 +188,20 @@ func (s *PauseTestSuite) windowBeat(enc *encounter.Encounter, audience encounter
 // reload round-trips an encounter through the storage boundary.
 func (s *PauseTestSuite) reload(enc *encounter.Encounter, mover encounter.Mover, standing encounter.StandingWithParticipation) *encounter.Encounter {
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: pauseSheets, Standing: standing, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: mover, Announcer: quietAnnouncer{},
 		Data: enc.ToData(),
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     pauseSheets,
+			Standing:   standing,
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     mover,
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	return loaded
@@ -298,12 +317,6 @@ func (s *PauseTestSuite) TestAMoverDroppedBeforeTheResumeEndsInTheLeavingCell() 
 	// A second monster, so the fight outlives the mover and there is a next
 	// turn for the resume to drive.
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: pauseSheets, Standing: standing, Initiative: orderAsGiven{},
-		TurnDriver: &scriptedDriver{intents: []encounter.TurnIntent{
-			encounter.Move{Path: []spatial.Position{cellAt(5, 2), cellAt(4, 2), cellAt(3, 2)}},
-		}},
-		Striker: passStriker{}, Mover: mover, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
@@ -318,6 +331,21 @@ func (s *PauseTestSuite) TestAMoverDroppedBeforeTheResumeEndsInTheLeavingCell() 
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     pauseSheets,
+			Standing:   standing,
+			Initiative: orderAsGiven{},
+			Driver: &scriptedDriver{intents: []encounter.TurnIntent{
+				encounter.Move{Path: []spatial.Position{cellAt(5, 2), cellAt(4, 2), cellAt(3, 2)}},
+			}},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     mover,
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -449,30 +477,60 @@ func (s *PauseTestSuite) TestAPausedTurnLoadedWithoutItsMemberIsRefused() {
 	data := enc.ToData()
 	data.PausedTurn.Member = "nobody"
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: pauseSheets, Standing: &downList{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Data: data,
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     pauseSheets,
+			Standing:   &downList{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 
 	data = enc.ToData()
 	data.PausedTurn.Remaining = nil
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: pauseSheets, Standing: &downList{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Data: data,
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     pauseSheets,
+			Standing:   &downList{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().ErrorIs(err, encounter.ErrInvalidData, "a pause with nothing left to walk is not a pause")
 
 	data = enc.ToData()
 	data.PausedTurn.Intent = data.PausedTurn.Bound
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: pauseSheets, Standing: &downList{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Data: data,
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     pauseSheets,
+			Standing:   &downList{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().ErrorIs(err, encounter.ErrInvalidData, "an intent outside the turn's bound is not resumable")
 
@@ -483,10 +541,20 @@ func (s *PauseTestSuite) TestAPausedTurnLoadedWithoutItsMemberIsRefused() {
 	data = enc.ToData()
 	data.PausedTurn.Cause = "not-a-ref"
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: pauseSheets, Standing: &downList{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Data: data,
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     pauseSheets,
+			Standing:   &downList{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().ErrorIs(err, encounter.ErrInvalidData,
 		"a compelled walk names its cause, and a resumed one still has to")
@@ -518,10 +586,20 @@ func (s *PauseTestSuite) TestTheLastMonsterDroppedInTheWindowReloadsAndResumesCl
 
 	// The host's own mid-verb reload: this used to be refused as corruption.
 	loaded, lerr := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: pauseSheets, Standing: standing, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: &pausingMover{}, Announcer: quietAnnouncer{},
 		Data: data,
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     pauseSheets,
+			Standing:   standing,
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     &pausingMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(lerr, "a paused member in no fight is legal, not corruption")
 	s.Require().True(loaded.Paused())
@@ -567,13 +645,9 @@ func (s *PauseTestSuite) TestAResumedWalkContinuesFromTheReloadedTurn() {
 // routedWalkingScene is walkingScene with a Routed intent instead of a Move:
 // alice at [2,2] and the goblin at [6,2], compelled to approach her.
 func (s *PauseTestSuite) routedWalkingScene(
-	mover encounter.Mover, standing encounter.StandingWithParticipation, driver encounter.TurnDriver,
+	mover encounter.Mover, standing encounter.StandingWithParticipation, driver encounter.Driver,
 ) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: pauseSheets, Standing: standing, Initiative: orderAsGiven{},
-		TurnDriver: driver,
-		Striker:    passStriker{}, Mover: mover, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
@@ -585,6 +659,19 @@ func (s *PauseTestSuite) routedWalkingScene(
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     pauseSheets,
+			Standing:   standing,
+			Initiative: orderAsGiven{},
+			Driver:     driver,
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     mover,
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	return enc

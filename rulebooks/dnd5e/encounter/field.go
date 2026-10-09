@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -1272,113 +1271,11 @@ type SetupInput struct {
 	// Endings are the declared ways the encounter can close.
 	Endings []EndingInput
 
-	// Initiative rolls the order a bubble forms in when trigger detection
-	// starts a fight (rpg-toolkit#964). REQUIRED — trigger detection runs from
-	// first light, so a fight can start before the caller does anything, and
-	// an encounter that cannot order one is a misconfiguration. Setup refuses
-	// without it (ErrNoInitiative).
-	Initiative InitiativeRoller
-
-	// Standing answers who is down and who participates. REQUIRED (nil is
-	// ErrNoStanding), and typed [StandingWithParticipation] so the compiler,
-	// not a runtime assertion, refuses a Standing-only value (rpg-toolkit#1958).
-	// Play consults the richer assessment only; nothing defaults to everyone
-	// active.
-	Standing StandingWithParticipation
-
-	// Sight reports how far each member can see, in cells (rpg-toolkit#1111).
-	// REQUIRED, for the same reason Standing is: the consult runs at every
-	// sight refresh including first light, so an encounter that cannot ask
-	// cannot build a percept. Refused at construction (ErrNoSight). There is no
-	// default — a number meaning "everyone sees this far" would be this module
-	// inventing a rule 5e does not have, since sight is per-creature and
-	// per-light-source.
-	Sight Sight
-
-	// Equipment reports what each member is holding (rpg-toolkit#1615). REQUIRED,
-	// for the same reason Sight is: the consult runs at every sight refresh
-	// including first light, so an encounter that cannot ask cannot snapshot a
-	// complete percept. Refused at construction (ErrNoEquipment). There is no
-	// default — empty hands for everybody would be this module inventing
-	// testimony, and the difference between "no hands to observe" and "observed
-	// empty" is a distinction only the rulebook can draw. Typed
-	// [EquipmentWithConditions] so the compiler, not a runtime assertion,
-	// requires it to answer Conditions too (rpg-toolkit#1958).
-	Equipment EquipmentWithConditions
-
-	// Sheets reports each member's speed, actions and targeting
-	// (rpg-project#538). REQUIRED: a fight can form at first light and drive
-	// an unplayed member, whose movement budget and reach are read from this
-	// answer at that moment, and a walk on the world clock is paced from it.
-	// Refused at construction (ErrNoSheets), never defaulted. This
-	// composition stores none of these facts; see [Sheets].
-	Sheets Sheets
-
-	// TurnDriver decides what a member with no player does when it is given
-	// time — its turn in a fight, or a round of the world (rpg-toolkit#1162,
-	// rpg-project#465). REQUIRED: a fight can form at first light with an
-	// unplayed member first in initiative, so an encounter that cannot answer
-	// this would stall before its caller does anything. Refused at
-	// construction (ErrNoTurnDriver), with no default — see ADR-0043.
-	//
-	// THE TYPE IS [Driver] NOW; the FIELD keeps its old name for one release,
-	// alongside the deprecated [TurnDriver] alias, so a caller can adopt the
-	// rename in its own PR rather than in this module's. Both go together in
-	// the release after.
-	TurnDriver Driver
-
-	// Roller is THE WORLD'S DIE: the shared dice every pick this composition
-	// makes is rolled through — a creature's `time` table on its turn and on
-	// a round of the world, and a faction's temperament mix at the door
-	// (table.go, rpg-project#465).
-	//
-	// OPTIONAL, AND REFUSED LOUDLY AT THE ROLL when it is absent
-	// ([ErrNoRoller]) — the shape Initiative already has. A scene with no
-	// table and no mix rolls nothing, and requiring a die at every door would
-	// make every caller declare one it never uses.
-	//
-	// IT CANNOT BE PER VERB, which is why it is here rather than on an input.
-	// The round site raises the world clock from inside EndTurn, which takes
-	// no die, and a creature's `time` pick happens there.
-	Roller dice.Roller
-
-	// Striker resolves and records a member's attack when a [Driver]
-	// returns an [Attack] intent (rpg-project#254). REQUIRED, for the same
-	// reason TurnDriver is and at the same door: a fight can form with an
-	// unplayed member ready to swing the moment it forms, so an encounter
-	// that cannot resolve that swing would stall or silently drop it.
-	// Refused at construction (ErrNoStriker). There is no default — see
-	// [Striker]'s own doc.
-	Striker Striker
-
-	// Mover announces a member's step before the encounter takes it, so
-	// whatever reacts to movement can (rpg-project#316). REQUIRED, for the
-	// same reason Striker is and at the same door: a fight can form with an
-	// unplayed member ready to walk the moment it forms, and a step nothing
-	// observed is a reaction that silently never happened. Refused at
-	// construction (ErrNoMover). There is no default — see [Mover]'s own doc.
-	Mover Mover
-
-	// Announcer publishes the temporal boundaries a clock advance crossed —
-	// a turn ending, a fight forming. REQUIRED, refused at construction
-	// (ErrNoAnnouncer). There is no default, and the reason it cannot have
-	// one is in [Announcer]'s own doc: a silent Announcer and a missing one
-	// look identical, and one of them is the bug.
-	Announcer Announcer
-
-	// CheckResolver resolves an authored find check when a member searches
-	// (rpg-toolkit#1371). REQUIRED exactly when the field declares a
-	// [ConcealmentInput], and refused there at construction
-	// (ErrNoCheckResolver): a concealment exists to be searched for, and
-	// this module may not roll the find itself (rpg-toolkit#1033). Unread,
-	// and legally nil, for a field that hides nothing.
-	CheckResolver CheckResolver
-
-	// Witness answers who currently perceives a concealment's door standing
-	// open (rpg-toolkit#1371). REQUIRED under exactly the same rule as
-	// CheckResolver, refused at the same door (ErrNoWitness): perception's
-	// reach is the host's light-and-sight truth, never this module's guess.
-	Witness Witness
+	// Capabilities is every capability the encounter asks of its host; see
+	// [Capabilities] for each member's contract. [NewEncounter] refuses a
+	// missing one with that member's sentinel, and a missing CheckResolver or
+	// Witness exactly when Field declares a [ConcealmentInput].
+	Capabilities
 
 	// Retention is how many story beats the encounter keeps. Older beats are
 	// trimmed at the storage boundary — when ToData snapshots the encounter —

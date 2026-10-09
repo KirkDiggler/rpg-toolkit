@@ -95,12 +95,25 @@ func (s *BothWaysSuite) open(
 	field encounter.FieldInput, members []encounter.MemberInput,
 ) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.standing, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
-		Field: field, Members: members, Endings: []encounter.EndingInput{withdrawn()},
+		Field:     field,
+		Members:   members,
+		Endings:   []encounter.EndingInput{withdrawn()},
 		Retention: encounter.RetentionUnbounded,
+		Capabilities: encounter.Capabilities{
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Standing:      s.standing,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			CheckResolver: findsNothing{},
+			Witness:       nobodyPerceives{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	return enc
@@ -614,11 +627,22 @@ func (s *BothWaysSuite) TestATurnedPairSurvivesASaveAndLoad() {
 	s.Require().Equal(encounter.StanceHostile, s.stance(enc, bwGoblins, encounter.FactionParty))
 
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:      enc.ToData(),
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.standing, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
+		Data: enc.ToData(),
+		Capabilities: encounter.Capabilities{
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Standing:      s.standing,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			CheckResolver: findsNothing{},
+			Witness:       nobodyPerceives{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 

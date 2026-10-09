@@ -156,14 +156,25 @@ func withdrawn() encounter.EndingInput {
 
 func (s *HoldOutSuite) open(field encounter.FieldInput, members []encounter.MemberInput, endings ...encounter.EndingInput) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.standing, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: journalAnnouncer{j: s.heard},
-		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		Field:     field,
 		Members:   members,
 		Endings:   endings,
 		Retention: encounter.RetentionUnbounded,
+		Capabilities: encounter.Capabilities{
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Standing:      s.standing,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			CheckResolver: findsNothing{},
+			Witness:       nobodyPerceives{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: journalAnnouncer{j: s.heard},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	return enc
@@ -176,11 +187,22 @@ func (s *HoldOutSuite) camp(endings ...encounter.EndingInput) *encounter.Encount
 
 func (s *HoldOutSuite) reload(enc *encounter.Encounter) *encounter.Encounter {
 	out, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:      enc.ToData(),
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: holdOutSheets, Standing: s.standing, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: journalAnnouncer{j: s.heard},
-		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
+		Data: enc.ToData(),
+		Capabilities: encounter.Capabilities{
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Sheets:        holdOutSheets,
+			Standing:      s.standing,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			CheckResolver: findsNothing{},
+			Witness:       nobodyPerceives{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: journalAnnouncer{j: s.heard},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	return out
@@ -638,11 +660,22 @@ func (s *HoldOutSuite) TestLoadRefusesKnowledgeThisFieldCannotMint() {
 
 	load := func(data encounter.EncounterData) error {
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Data:      data,
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.standing, Initiative: orderAsGiven{},
-			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-			CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
+			Data: data,
+			Capabilities: encounter.Capabilities{
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Standing:      s.standing,
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
+				CheckResolver: findsNothing{},
+				Witness:       nobodyPerceives{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
+			},
 		})
 		return err
 	}
@@ -692,16 +725,27 @@ func (s *HoldOutSuite) TestLoadRefusesKnowledgeThisFieldCannotMint() {
 // and reads every side exactly as it did.
 func (s *HoldOutSuite) TestAPlainDungeonWritesNoSides() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		Field: heirloomField(),
 		Members: []encounter.MemberInput{
 			{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell},
 			{ID: captain, Kind: encounter.KindMonster, Position: captainCell},
 		},
 		Endings: []encounter.EndingInput{withdrawn()},
+		Capabilities: encounter.Capabilities{
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Standing:      everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			CheckResolver: findsNothing{},
+			Witness:       nobodyPerceives{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -724,11 +768,24 @@ func (s *HoldOutSuite) TestAPlainDungeonWritesNoSides() {
 func (s *HoldOutSuite) TestTheRunRefusesWhatItCannotKeep() {
 	open := func(field encounter.FieldInput, endings ...encounter.EndingInput) error {
 		_, err := encounter.NewEncounter(&encounter.SetupInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-			CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
-			Field: field, Members: s.cast(true), Endings: append([]encounter.EndingInput{withdrawn()}, endings...),
+			Field:   field,
+			Members: s.cast(true),
+			Endings: append([]encounter.EndingInput{withdrawn()}, endings...),
+			Capabilities: encounter.Capabilities{
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Standing:      everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
+				CheckResolver: findsNothing{},
+				Witness:       nobodyPerceives{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
+			},
 		})
 		return err
 	}
@@ -874,17 +931,28 @@ var holdOutSheets = sheetFacts{
 // scenes about what a driven monster does, which passDriver cannot say.
 func (s *HoldOutSuite) openWith(
 	field encounter.FieldInput, members []encounter.MemberInput,
-	driver encounter.TurnDriver, striker encounter.Striker, endings ...encounter.EndingInput,
+	driver encounter.Driver, striker encounter.Striker, endings ...encounter.EndingInput,
 ) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: holdOutSheets, Standing: s.standing, Initiative: orderAsGiven{},
-		TurnDriver: driver, Striker: striker, Mover: quietMover{}, Announcer: journalAnnouncer{j: s.heard},
-		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		Field:     field,
 		Members:   members,
 		Endings:   endings,
 		Retention: encounter.RetentionUnbounded,
+		Capabilities: encounter.Capabilities{
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Sheets:        holdOutSheets,
+			Standing:      s.standing,
+			Initiative:    orderAsGiven{},
+			Driver:        driver,
+			CheckResolver: findsNothing{},
+			Witness:       nobodyPerceives{},
+			Actors: encounter.Actors{
+				Striker:   striker,
+				Mover:     quietMover{},
+				Announcer: journalAnnouncer{j: s.heard},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	return enc
