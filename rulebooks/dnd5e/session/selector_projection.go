@@ -4,13 +4,12 @@
 package session
 
 import (
-	"encoding/json"
-
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/healing"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
 
 // selectorDefinition is the declaration selector's ALLOW-LIST projection of a
@@ -49,29 +48,24 @@ type selectorDefinition struct {
 // identical tag. Its only departure is Options, whose elements drop the
 // option's description.
 type selectorCastProfile struct {
-	Attack             *combatActions.AttackProfile `json:"attack,omitempty"`
-	RecipientBlockedBy []core.Ref                   `json:"recipient_blocked_by,omitempty"`
-	Casting            *combat.SpellCasting         `json:"casting,omitempty"`
-	Healing            *healing.Declaration         `json:"healing,omitempty"`
-	HealingExcludes    []string                     `json:"healing_excludes,omitempty"`
-	Stabilize          bool                         `json:"stabilize,omitempty"`
-	RangeFeet          int                          `json:"range_feet"`
-	Target             combatActions.CastTargetRule `json:"target"`
-	MinTargets         int                          `json:"min_targets"`
-	MaxTargets         int                          `json:"max_targets"`
-	// Save is the profile's *saves.SaveGate held as the json.Marshaler it is.
-	// Session never imports the saves package (TestSessionConstructsNoCheck:
-	// a DC or a saving throw is resolution's work), and the selector only
-	// needs the gate's own encoding. Set only when the gate is non-nil, so a
-	// gateless cast omits the key exactly as the definition does.
-	Save            json.Marshaler                   `json:"save,omitempty"`
-	Damage          []damage.Damage                  `json:"damage,omitempty"`
-	DamageIfInjured []damage.Damage                  `json:"damage_if_injured,omitempty"`
-	Effects         []combatActions.CastEffect       `json:"effects,omitempty"`
-	Area            *combatActions.CastArea          `json:"area,omitempty"`
-	Move            *combatActions.CastMove          `json:"move,omitempty"`
-	Concentration   *combatActions.CastConcentration `json:"concentration,omitempty"`
-	Options         []selectorCastOption             `json:"options,omitempty"`
+	Attack             *combatActions.AttackProfile     `json:"attack,omitempty"`
+	RecipientBlockedBy []core.Ref                       `json:"recipient_blocked_by,omitempty"`
+	Casting            *combat.SpellCasting             `json:"casting,omitempty"`
+	Healing            *healing.Declaration             `json:"healing,omitempty"`
+	HealingExcludes    []string                         `json:"healing_excludes,omitempty"`
+	Stabilize          bool                             `json:"stabilize,omitempty"`
+	RangeFeet          int                              `json:"range_feet"`
+	Target             combatActions.CastTargetRule     `json:"target"`
+	MinTargets         int                              `json:"min_targets"`
+	MaxTargets         int                              `json:"max_targets"`
+	Save               *saves.SaveGate                  `json:"save,omitempty"`
+	Damage             []damage.Damage                  `json:"damage,omitempty"`
+	DamageIfInjured    []damage.Damage                  `json:"damage_if_injured,omitempty"`
+	Effects            []combatActions.CastEffect       `json:"effects,omitempty"`
+	Area               *combatActions.CastArea          `json:"area,omitempty"`
+	Move               *combatActions.CastMove          `json:"move,omitempty"`
+	Concentration      *combatActions.CastConcentration `json:"concentration,omitempty"`
+	Options            []selectorCastOption             `json:"options,omitempty"`
 }
 
 // selectorCastOption is a cast option's identity: the id execution reads and
@@ -111,7 +105,7 @@ func selectorCastProfileOf(profile *combatActions.CastProfile) *selectorCastProf
 			options[i] = selectorCastOption{ID: option.ID, Label: option.Label}
 		}
 	}
-	projected := &selectorCastProfile{
+	return &selectorCastProfile{
 		Attack:             profile.Attack,
 		RecipientBlockedBy: profile.RecipientBlockedBy,
 		Casting:            profile.Casting,
@@ -122,6 +116,7 @@ func selectorCastProfileOf(profile *combatActions.CastProfile) *selectorCastProf
 		Target:             profile.Target,
 		MinTargets:         profile.MinTargets,
 		MaxTargets:         profile.MaxTargets,
+		Save:               profile.Save,
 		Damage:             profile.Damage,
 		DamageIfInjured:    profile.DamageIfInjured,
 		Effects:            profile.Effects,
@@ -130,8 +125,4 @@ func selectorCastProfileOf(profile *combatActions.CastProfile) *selectorCastProf
 		Concentration:      profile.Concentration,
 		Options:            options,
 	}
-	if profile.Save != nil {
-		projected.Save = profile.Save
-	}
-	return projected
 }

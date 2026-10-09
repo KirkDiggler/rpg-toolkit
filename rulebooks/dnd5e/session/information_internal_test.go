@@ -103,16 +103,6 @@ func TestExecutionPathsNeverAttachInformation(t *testing.T) {
 	require.Equal(t, map[string]int{"Afford": 1}, callers)
 }
 
-// TestSaveWordsMatchTheSavesPackage: the renderer matches save outcomes and
-// recurrences by value because session never imports saves outside tests.
-// This is where a renamed constant is caught.
-func TestSaveWordsMatchTheSavesPackage(t *testing.T) {
-	require.Equal(t, string(saves.Negated), saveOutcomeNegated)
-	require.Equal(t, string(saves.Half), saveOutcomeHalf)
-	require.Equal(t, string(saves.RecurrenceNone), saveRecurrenceNone)
-	require.Equal(t, string(saves.RecurrenceEndOfTurn), saveRecurrenceTurnEnd)
-}
-
 // TestRenderFactsBranchesTheAffordScenesDoNotReach covers the rows no Afford
 // scene in this package produces today: a ranged weapon, a two-handed grip,
 // flat bonuses, a repeating save with an unknown DC, a self range, a

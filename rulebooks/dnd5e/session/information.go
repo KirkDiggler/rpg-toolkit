@@ -11,6 +11,7 @@ import (
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
 
 // Action information: what a declaration IS, for the card a player reads
@@ -255,17 +256,6 @@ func renderGrip(grip combatActions.Grip) (string, error) {
 	}
 }
 
-// The save outcome and recurrence words, matched by value. Session never
-// imports the saves package (TestSessionConstructsNoCheck: a DC or a saving
-// throw is resolution's work), so these mirror its constants and
-// TestSaveWordsMatchTheSavesPackage pins that they still do.
-const (
-	saveOutcomeNegated    = "negated"
-	saveOutcomeHalf       = "half"
-	saveRecurrenceNone    = "none"
-	saveRecurrenceTurnEnd = "end_of_turn"
-)
-
 // renderSave is "CHA save · DC 13 · success: negated". The DC appears only
 // when its source is static; an unknown DC is never guessed.
 func renderSave(save *combatActions.SaveFact) (string, error) {
@@ -279,17 +269,17 @@ func renderSave(save *combatActions.SaveFact) (string, error) {
 	if save.DCKnown {
 		fmt.Fprintf(&b, " · DC %d", save.DC)
 	}
-	switch string(save.OnSuccess) {
-	case saveOutcomeNegated:
+	switch save.OnSuccess {
+	case saves.Negated:
 		b.WriteString(" · success: negated")
-	case saveOutcomeHalf:
+	case saves.Half:
 		b.WriteString(" · success: half damage")
 	default:
 		return "", fmt.Errorf("%w: unrenderable save outcome %q", ErrBadAttack, save.OnSuccess)
 	}
-	switch string(save.Recurrence) {
-	case "", saveRecurrenceNone:
-	case saveRecurrenceTurnEnd:
+	switch save.Recurrence {
+	case "", saves.RecurrenceNone:
+	case saves.RecurrenceEndOfTurn:
 		b.WriteString(" · repeats at end of turn")
 	default:
 		return "", fmt.Errorf("%w: unrenderable save recurrence %q", ErrBadAttack, save.Recurrence)
