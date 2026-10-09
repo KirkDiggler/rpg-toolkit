@@ -33,7 +33,7 @@ groups: []
 	before, err := initial.AtlasFor("walker")
 	s.Require().NoError(err)
 	s.Empty(before.PropPresentations)
-	load := encounter.CompileOnlyLoad(initial.ToData())
+	load := &encounter.LoadEncounterInput{Data: initial.ToData(), Capabilities: encounter.RefusingCapabilities()}
 	load.Standing = everyoneStanding{}
 	load.Sight = everyoneSeesTheWholeMap{}
 	load.CheckResolver = presentationSearchCheck{}
@@ -124,7 +124,7 @@ func (s *SingleRoomWallDoorSuite) TestRawPresentationCannotDuplicateStructuralCh
 	for _, id := range []string{"long-wall", "long-wall-door"} {
 		field := compiled.Field
 		field.PropPresentations = []encounter.PropPresentation{{ID: id, Ref: "test:props:door", HeightScale: 1}}
-		_, err := encounter.NewEncounter(encounter.CompileOnlySetup(field, []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}}))
+		_, err := encounter.NewEncounter(&encounter.SetupInput{Field: field, Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}}, Capabilities: encounter.RefusingCapabilities()})
 		s.ErrorIs(err, encounter.ErrNoField)
 	}
 	field := compiled.Field
@@ -133,7 +133,7 @@ func (s *SingleRoomWallDoorSuite) TestRawPresentationCannotDuplicateStructuralCh
 	bound.ID = "duplicate"
 	field.Placed = append(append([]encounter.PlacedPropInput(nil), field.Placed...), bound)
 	field.PropPresentations = []encounter.PropPresentation{{ID: "duplicate", Ref: "test:props:door", Origin: bound.Placement.Origin, FacingDegrees: bound.Placement.Facing, HeightScale: 1, DoorID: boundDoorID}}
-	_, err := encounter.NewEncounter(encounter.CompileOnlySetup(field, []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}}))
+	_, err := encounter.NewEncounter(&encounter.SetupInput{Field: field, Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}}, Capabilities: encounter.RefusingCapabilities()})
 	s.ErrorIs(err, encounter.ErrNoField, "a different raw ID cannot duplicate the structural DoorID")
 }
 

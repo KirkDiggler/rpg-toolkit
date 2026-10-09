@@ -94,8 +94,6 @@ func (s *DirtyTestSuite) ragingHero() *character.Data {
 
 func (s *DirtyTestSuite) world() encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{},
-		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -105,6 +103,19 @@ func (s *DirtyTestSuite) world() encounter.EncounterData {
 			{ID: wolfID, Kind: encounter.KindMonster, Position: spatial.Position{X: 5, Y: 6}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors: encounter.Actors{
+				Striker:   noAttacksExpected{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -123,10 +134,6 @@ func (s *DirtyTestSuite) TestAConditionThatChangesItselfComesBackToBeStored() {
 	bite := monsters.NewWolf(wolfID).ToData().Actions[0]
 
 	out, err := Resolve(s.ctx, &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		Equipment:    noHandsAreObserved{},
-		Sheets:       noSheetsAsked{},
 		World:        s.world(),
 		Participants: []Participant{{Character: hero}, {Monster: monsters.NewWolf(wolfID).ToData()}},
 		Machine: NewStrike(&StrikeInput{
@@ -135,8 +142,16 @@ func (s *DirtyTestSuite) TestAConditionThatChangesItselfComesBackToBeStored() {
 			Definition: bite,
 			Roller:     &sequenceRoller{singles: []int{18, 18}, pair: []int{3, 4}},
 		}),
-		// No Cost. A free action, which is what every Resolve was before the
-		// door existed — and the point: nothing here debits an economy.
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Roller:     dice.NewRoller(),
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors:     Actors,
+		},
 	})
 	s.Require().NoError(err)
 
@@ -166,8 +181,6 @@ func (s *DirtyTestSuite) TestAnUntouchedParticipantIsNotReturned() {
 	bite := monsters.NewWolf(wolfID).ToData().Actions[0]
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{},
-		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -178,15 +191,24 @@ func (s *DirtyTestSuite) TestAnUntouchedParticipantIsNotReturned() {
 			{ID: secondWolfID, Kind: encounter.KindMonster, Position: spatial.Position{X: 1, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors: encounter.Actors{
+				Striker:   noAttacksExpected{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
 	out, err := Resolve(s.ctx, &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		Equipment: noHandsAreObserved{},
-		Sheets:    noSheetsAsked{},
-		World:     enc.ToData(),
+		World: enc.ToData(),
 		Participants: []Participant{
 			{Character: hero},
 			{Monster: monsters.NewWolf(wolfID).ToData()},
@@ -198,6 +220,16 @@ func (s *DirtyTestSuite) TestAnUntouchedParticipantIsNotReturned() {
 			Definition: bite,
 			Roller:     &sequenceRoller{singles: []int{18, 18}, pair: []int{3, 4}},
 		}),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Roller:     dice.NewRoller(),
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors:     Actors,
+		},
 	})
 	s.Require().NoError(err)
 

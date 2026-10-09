@@ -46,9 +46,6 @@ func (s *PersuadeTestSuite) scene(members ...encounter.MemberInput) *encounter.E
 		}
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(outcomeRoom, 0, 0, 12, 12)},
@@ -56,6 +53,19 @@ func (s *PersuadeTestSuite) scene(members ...encounter.MemberInput) *encounter.E
 		},
 		Members: members,
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -215,9 +225,20 @@ func (s *PersuadeTestSuite) TestTheAuthoredAppealCrossesAndSurvivesAReload() {
 	s.Equal(table, read(enc).Table)
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: enc.ToData(), Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{},
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
-		Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Data: enc.ToData(),
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	s.Equal(approaches, read(reloaded).Persuade, "and survives a reload")
@@ -228,9 +249,6 @@ func (s *PersuadeTestSuite) TestTheAuthoredAppealCrossesAndSurvivesAReload() {
 // is. An ABSENT list is not a defect — that is every monster.
 func (s *PersuadeTestSuite) TestAnApproachWithNothingToBeatIsRefused() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  openAir(),
 			Regions: []encounter.RegionInput{rectRegion("yard", 0, 0, 6, 6)},
@@ -241,6 +259,19 @@ func (s *PersuadeTestSuite) TestAnApproachWithNothingToBeatIsRefused() {
 				Persuade: []encounter.CheckApproach{{Ability: "persuasion"}}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().ErrorIs(err, encounter.ErrNoMember)
 }

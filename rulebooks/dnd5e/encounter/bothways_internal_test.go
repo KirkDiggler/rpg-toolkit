@@ -41,9 +41,6 @@ func TestTheProvokedCampReadsAnEnemyAndADeedInOnePick(t *testing.T) {
 	}
 
 	enc, err := NewEncounter(&SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: UnobservedEquipment{}, Sheets: sheetFacts{"alice": {SpeedFeet: 30}, "watcher": {SpeedFeet: 30, Actions: []ActionView{scimitar}}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Retention: RetentionUnbounded,
 		Field: FieldInput{
 			Canvas:   CanvasInput{Void: VoidIsTransparent(), Orientation: HexesArePointyTop()},
@@ -60,6 +57,19 @@ func TestTheProvokedCampReadsAnEnemyAndADeedInOnePick(t *testing.T) {
 			},
 		},
 		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
+		Capabilities: Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  UnobservedEquipment{},
+			Sheets:     sheetFacts{"alice": {SpeedFeet: 30}, "watcher": {SpeedFeet: 30, Actions: []ActionView{scimitar}}},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 
@@ -108,9 +118,6 @@ func TestTheMockedWatcherReadsAnEnemyAndADeedInOnePick(t *testing.T) {
 	}
 
 	enc, err := NewEncounter(&SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: UnobservedEquipment{}, Sheets: sheetFacts{"alice": {SpeedFeet: 30}, "watcher": {SpeedFeet: 30, Actions: []ActionView{scimitar}}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Retention: RetentionUnbounded,
 		Field: FieldInput{
 			Canvas:   CanvasInput{Void: VoidIsTransparent(), Orientation: HexesArePointyTop()},
@@ -127,6 +134,19 @@ func TestTheMockedWatcherReadsAnEnemyAndADeedInOnePick(t *testing.T) {
 			},
 		},
 		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
+		Capabilities: Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  UnobservedEquipment{},
+			Sheets:     sheetFacts{"alice": {SpeedFeet: 30}, "watcher": {SpeedFeet: 30, Actions: []ActionView{scimitar}}},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 
@@ -208,9 +228,6 @@ func TestTheMissiledWatcherReadsAnEnemyAndADeedInOnePick(t *testing.T) {
 	}
 
 	enc, err := NewEncounter(&SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: UnobservedEquipment{}, Sheets: sheetFacts{"alice": {SpeedFeet: 30}, "watcher": {SpeedFeet: 30, Actions: []ActionView{scimitar}}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Retention: RetentionUnbounded,
 		Field: FieldInput{
 			Canvas:   CanvasInput{Void: VoidIsTransparent(), Orientation: HexesArePointyTop()},
@@ -227,6 +244,19 @@ func TestTheMissiledWatcherReadsAnEnemyAndADeedInOnePick(t *testing.T) {
 			},
 		},
 		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
+		Capabilities: Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  UnobservedEquipment{},
+			Sheets:     sheetFacts{"alice": {SpeedFeet: 30}, "watcher": {SpeedFeet: 30, Actions: []ActionView{scimitar}}},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 

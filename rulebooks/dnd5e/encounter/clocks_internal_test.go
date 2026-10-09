@@ -28,8 +28,6 @@ import (
 // save. With it, the defect is loud: ErrInvalidData, never a guess.
 func TestClockOfReportsAMemberOnNoClockInsteadOfGuessing(t *testing.T) {
 	enc, err := NewEncounter(&SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: FieldInput{
 			Canvas:  CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()},
 			Regions: []RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -40,6 +38,19 @@ func TestClockOfReportsAMemberOnNoClockInsteadOfGuessing(t *testing.T) {
 		},
 		Endings: []EndingInput{
 			{Key: "called", Trigger: TriggerExternal{}},
+		},
+		Capabilities: Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
 		},
 	})
 	require.NoError(t, err)
@@ -73,8 +84,6 @@ func TestClockOfReportsAMemberOnNoClockInsteadOfGuessing(t *testing.T) {
 func TestFormRejections(t *testing.T) {
 	newEnc := func() *Encounter {
 		enc, err := NewEncounter(&SetupInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field: FieldInput{Canvas: CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()}, Regions: []RegionInput{rectRegion("r1", 0, 0, 8, 8), rectRegion("r2", 8, 0, 8, 8)}, Walls: sealedSeam(7, 8)},
 			Members: []MemberInput{
 				{ID: "alice", Kind: KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
@@ -86,6 +95,19 @@ func TestFormRejections(t *testing.T) {
 				{ID: "goblin", Kind: KindMonster, Position: spatial.Position{X: 14, Y: 6}},
 			},
 			Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
+			Capabilities: Capabilities{
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  UnobservedEquipment{},
+				Sheets:     zeroSheets{},
+				Standing:   everyoneStanding{},
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Actors: Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
+			},
 		})
 		require.NoError(t, err)
 		return enc
@@ -188,14 +210,25 @@ func sealedSeam(atX, height int) []WallInput {
 // form directly, the same white-box reason TestFormRejections does.
 func TestFormRefusesAPlayerFreeBubble(t *testing.T) {
 	enc, err := NewEncounter(&SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: FieldInput{Canvas: CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()}, Regions: []RegionInput{rectRegion("r1", 0, 0, 8, 8)}},
 		Members: []MemberInput{
 			{ID: "goblin", Kind: KindMonster, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: "wolf", Kind: KindMonster, Position: spatial.Position{X: 2, Y: 1}},
 		},
 		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
+		Capabilities: Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 
@@ -228,9 +261,6 @@ func (rogueDriver) Act(MonsterView) (Decision, error) {
 // driveMonsterTurns' switch.
 func TestADriverReturningAnUnrecognisedIntentIsErrBadTurnOutcome(t *testing.T) {
 	enc, err := NewEncounter(&SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: rogueDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: FieldInput{
 			Canvas:  CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()},
 			Regions: []RegionInput{rectRegion("room-1", 0, 0, 8, 8)},
@@ -240,6 +270,19 @@ func TestADriverReturningAnUnrecognisedIntentIsErrBadTurnOutcome(t *testing.T) {
 			{ID: "goblin", Kind: KindMonster, Position: spatial.Position{X: 2, Y: 1}},
 		},
 		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
+		Capabilities: Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     rogueDriver{},
+			Actors: Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 

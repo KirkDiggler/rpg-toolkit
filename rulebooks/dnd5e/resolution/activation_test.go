@@ -167,14 +167,25 @@ func (s *ActivationTestSuite) world(members ...encounter.MemberInput) encounter.
 		}
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{},
-		Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
 		},
 		Members: members,
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors: encounter.Actors{
+				Striker:   noAttacksExpected{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	return enc.ToData()
@@ -189,13 +200,17 @@ func (s *ActivationTestSuite) run(
 	return Resolve(s.ctx, &Input{
 		World:        world,
 		Participants: participants,
-		Initiative:   orderAsGiven{}, TurnDriver: passDriver{},
-		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
-		Roller:  dice.NewRoller(),
-		Machine: machine,
-		// Cost stays nil ON PURPOSE — see NewActivation's doc. The ability
-		// spends its own slot, and a Cost here would charge the same ledger
-		// twice.
+		Machine:      machine,
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 }
 
@@ -1003,11 +1018,19 @@ func (s *ActivationTestSuite) TestActivationSuccessPreservesCollectorCleanupErro
 	s.Require().NoError(err)
 
 	out, err := resolveOn(s.ctx, &Input{
-		World: s.world(), Participants: []Participant{{Character: s.barbarian(2)}},
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Machine: machine,
-		Equipment: noHandsAreObserved{},
-		Sheets:    noSheetsAsked{},
+		World:        s.world(),
+		Participants: []Participant{{Character: s.barbarian(2)}},
+		Machine:      machine,
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Roller:     dice.NewRoller(),
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors:     Actors,
+		},
 	}, newSurface(bus))
 
 	s.Nil(out, "cleanup failure cannot accompany a successful outcome")
@@ -1025,11 +1048,19 @@ func (s *ActivationTestSuite) TestActivationErrorJoinsCollectorCleanupError() {
 	s.Require().NoError(err)
 
 	out, err := resolveOn(s.ctx, &Input{
-		World: s.world(), Participants: []Participant{{Character: s.barbarian(0)}},
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), Machine: machine,
-		Equipment: noHandsAreObserved{},
-		Sheets:    noSheetsAsked{},
+		World:        s.world(),
+		Participants: []Participant{{Character: s.barbarian(0)}},
+		Machine:      machine,
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Roller:     dice.NewRoller(),
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors:     Actors,
+		},
 	}, newSurface(bus))
 
 	s.Nil(out)

@@ -60,11 +60,21 @@ func (s *ConcentrationTestSuite) TestAFogCloudReportsOneOpenedAreaAndWritesNoShe
 
 	fixtures := s.fixtures()
 	out, err := Resolve(s.ctx, &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
-		Roller: dice.NewRoller(), World: fixtures.world(), Machine: machine, Cost: castCost(),
+		World:   fixtures.world(),
+		Machine: machine,
+		Cost:    castCost(),
 		Participants: []Participant{
 			{Character: fixtures.saver(14)}, {Monster: fixtures.wolfData()}, {Character: baneCaster(1, 2)},
+		},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
 		},
 	})
 	s.Require().NoError(err)
@@ -93,14 +103,22 @@ func (s *ConcentrationTestSuite) TestBreakingConcentrationReportsTheAreaClosed()
 		// The claw's d20, then the concentration save's: CON +2 against DC
 		// 10 fails on a 3.
 		out, err := resolveOn(s.ctx, &Input{
-			Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-			Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
-			Roller: dice.NewRoller(), World: world,
+			World:        world,
 			Participants: []Participant{{Character: fixtures.saver(40, holdJSON)}, {Monster: fixtures.wolfData()}},
 			Machine: NewStrike(&StrikeInput{
 				AttackerID: wolfID, TargetID: heroID, Definition: claw("1d6"),
 				Roller: &sequenceRoller{singles: []int{straightRoll, straightRoll}, pair: []int{6}},
 			}),
+			Capabilities: encounter.Capabilities{
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Standing:   everyoneStanding{},
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  noHandsAreObserved{},
+				Sheets:     noSheetsAsked{},
+				Roller:     dice.NewRoller(),
+				Actors:     Actors,
+			},
 		}, newSurface(events.NewEventBus()))
 		s.Require().NoError(err)
 		s.Require().Len(out.ConcentrationBreaks, 1, "the hold broke")
@@ -143,11 +161,21 @@ func (s *ConcentrationTestSuite) TestARecastClosesTheOldAreaAndOpensTheNew() {
 	world := fixtures.world()
 	world.SightAreas = []encounter.SightAreaData{fogCloudArea(bardID)}
 	out, err := Resolve(s.ctx, &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
-		Roller: dice.NewRoller(), World: world, Machine: machine, Cost: castCost(),
+		World:   world,
+		Machine: machine,
+		Cost:    castCost(),
 		Participants: []Participant{
 			{Character: fixtures.saver(14)}, {Monster: fixtures.wolfData()}, {Character: bard},
+		},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
 		},
 	})
 	s.Require().NoError(err)

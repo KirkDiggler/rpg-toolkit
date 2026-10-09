@@ -32,9 +32,6 @@ var glaive = core.Ref{Module: "dnd5e", Type: "monster_actions", ID: "glaive"}
 // opposed to her, so no fight forms and every step she takes is paced.
 func hallSetup(sheets encounter.Sheets, extra ...encounter.MemberInput) *encounter.SetupInput {
 	return &encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheets, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  openAir(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 30, 8)},
@@ -43,6 +40,19 @@ func hallSetup(sheets encounter.Sheets, extra ...encounter.MemberInput) *encount
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 		}, extra...),
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheets,
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	}
 }
 
@@ -92,9 +102,6 @@ func (s *SheetsTestSuite) drivenPair(sheets encounter.Sheets) (*encounter.Encoun
 	s.T().Helper()
 	driver := &scriptedDriver{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheets, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: driver, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
@@ -104,6 +111,19 @@ func (s *SheetsTestSuite) drivenPair(sheets encounter.Sheets) (*encounter.Encoun
 			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 4, Y: 2}},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheets,
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     driver,
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -210,9 +230,20 @@ func (s *SheetsTestSuite) TestABlobCarryingTheOldCopiesLoadsAndTheSheetWins() {
 	s.Require().NoError(json.Unmarshal(old, &data))
 
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: sheets,
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Data: data,
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheets,
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err, "a blob carrying the old copies loads")
 
@@ -310,25 +341,35 @@ func (s *SheetsTestSuite) TestSetupAndLoadRefuseWithoutSheets() {
 	s.Require().ErrorIs(err, encounter.ErrNoSheets)
 
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: built.ToData(), Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{},
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Data: built.ToData(),
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().ErrorIs(err, encounter.ErrNoSheets)
 }
 
-// TestACompileOnlyWorldRefusesToPaceAMember: the stand-in a compiled world
+// TestARefusingWorldRefusesToPaceAMember: the stand-in a compiled world
 // gets has no sheets behind anybody, so a walk in one is refused by name
 // rather than paced at an invented speed — and a world with members still
 // builds and loads, because neither asks.
-func (s *SheetsTestSuite) TestACompileOnlyWorldRefusesToPaceAMember() {
-	setup := encounter.CompileOnlySetup(hallSetup(nil).Field, hallSetup(nil).Endings)
+func (s *SheetsTestSuite) TestARefusingWorldRefusesToPaceAMember() {
+	setup := &encounter.SetupInput{Field: hallSetup(nil).Field, Endings: hallSetup(nil).Endings, Capabilities: encounter.RefusingCapabilities()}
 	setup.Standing = everyoneStanding{}
 	setup.Members = hallSetup(nil).Members
 	built, err := encounter.NewEncounter(setup)
 	s.Require().NoError(err, "building a world with a member asks no sheet")
 
-	load := encounter.CompileOnlyLoad(built.ToData())
+	load := &encounter.LoadEncounterInput{Data: built.ToData(), Capabilities: encounter.RefusingCapabilities()}
 	load.Standing = everyoneStanding{} // the one capability this test answers itself, so the walk reaches the pace
 	loaded, err := encounter.LoadEncounter(load)
 	s.Require().NoError(err, "nor does loading it")

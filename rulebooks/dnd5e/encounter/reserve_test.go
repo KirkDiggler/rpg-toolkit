@@ -436,11 +436,22 @@ func (s *HoldOutSuite) TestReloadMidReserveKeepsTheReserve() {
 			Arrives: encounter.TriggerData{Kind: "member_down", Member: campChief},
 		}}
 		_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Data:      edited,
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.standing, Initiative: orderAsGiven{},
-			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-			CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
+			Data: edited,
+			Capabilities: encounter.Capabilities{
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Standing:      s.standing,
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
+				CheckResolver: findsNothing{},
+				Witness:       nobodyPerceives{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
+			},
 		})
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 		s.Contains(err.Error(), "already arrived")
@@ -652,11 +663,24 @@ func (s *HoldOutSuite) compileWithEndings(entries string) dungeonspec.Compiled {
 func (s *HoldOutSuite) TestTheRunRefusesAReserveItCannotKeep() {
 	open := func(field encounter.FieldInput, members []encounter.MemberInput) error {
 		_, err := encounter.NewEncounter(&encounter.SetupInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-			CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
-			Field: field, Members: members, Endings: []encounter.EndingInput{withdrawn()},
+			Field:   field,
+			Members: members,
+			Endings: []encounter.EndingInput{withdrawn()},
+			Capabilities: encounter.Capabilities{
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Standing:      everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
+				CheckResolver: findsNothing{},
+				Witness:       nobodyPerceives{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
+			},
 		})
 		return err
 	}

@@ -23,14 +23,24 @@ func TestExplicitConcealmentSuite(t *testing.T) {
 
 func (s *ExplicitConcealmentSuite) setup(field encounter.FieldInput, at spatial.Position) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sheets: zeroSheets{},
-		Sight:  everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{},
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		Field:   field,
 		Members: []encounter.MemberInput{{ID: "walker", Kind: encounter.KindPlayer, Position: at}},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sheets:        zeroSheets{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Standing:      everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			CheckResolver: findsNothing{},
+			Witness:       nobodyPerceives{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	return enc
@@ -38,11 +48,22 @@ func (s *ExplicitConcealmentSuite) setup(field encounter.FieldInput, at spatial.
 
 func (s *ExplicitConcealmentSuite) reload(enc *encounter.Encounter) *encounter.Encounter {
 	out, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sheets: zeroSheets{},
-		Data:   enc.ToData(), Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{},
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
+		Data: enc.ToData(),
+		Capabilities: encounter.Capabilities{
+			Sheets:        zeroSheets{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Standing:      everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			CheckResolver: findsNothing{},
+			Witness:       nobodyPerceives{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	return out
@@ -147,14 +168,24 @@ func (s *ExplicitConcealmentSuite) TestConcealedCellDoesNotSelectUnlistedWallOrP
 // path.
 func (s *ExplicitConcealmentSuite) searchSetup(field encounter.FieldInput, at spatial.Position) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sheets: zeroSheets{},
-		Sight:  everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{},
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		CheckResolver: findsEverything{}, Witness: nobodyPerceives{},
 		Field:   field,
 		Members: []encounter.MemberInput{{ID: "walker", Kind: encounter.KindPlayer, Position: at}},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sheets:        zeroSheets{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Standing:      everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			CheckResolver: findsEverything{},
+			Witness:       nobodyPerceives{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	return enc

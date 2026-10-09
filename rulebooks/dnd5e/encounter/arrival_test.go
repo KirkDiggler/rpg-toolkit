@@ -98,13 +98,24 @@ func (s *ArrivalSuite) arrivalEncounter(filter encounter.MemberID, walker encoun
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheets, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field:   arrivalField(),
 		Members: members,
 		Endings: []encounter.EndingInput{
 			{Key: "found-it", Trigger: encounter.TriggerReachedPosition{
 				Position: arrivalTarget.Add(arrivalVaultOrigin), Member: filter}},
+		},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheets,
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     tableDriver(),
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
 		},
 	})
 	s.Require().NoError(err)

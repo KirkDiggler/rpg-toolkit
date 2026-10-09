@@ -40,9 +40,6 @@ func (s *AnswerTestSuite) SetupTest() {
 // hostile, nobody rolled initiative, and the goblin still gets to act.
 func (s *AnswerTestSuite) front(table encounter.Table) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30}, alice: {}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:   openAir(),
 			Regions:  []encounter.RegionInput{rectRegion("front", 0, 0, 12, 6)},
@@ -58,6 +55,19 @@ func (s *AnswerTestSuite) front(table encounter.Table) *encounter.Encounter {
 				Faction: campFaction, Table: table},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheetFacts{goblin: {SpeedFeet: 30}, alice: {}},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -219,12 +229,6 @@ func (s *AnswerTestSuite) TestAFactEntryTeachesEveryWitnessAndTurnsTheCamp() {
 // exists for.
 func (s *AnswerTestSuite) neutralFront(table encounter.Table) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30}, "latecomer": {SpeedFeet: 30}, alice: {}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		// The WORLD's die, which only a deal reads here: nobody in this room
-		// has a mix until somebody joins carrying one.
-		Roller: rollsLowest{},
 		Field: encounter.FieldInput{
 			Canvas:   openAir(),
 			Regions:  []encounter.RegionInput{rectRegion("front", 0, 0, 30, 6)},
@@ -240,6 +244,22 @@ func (s *AnswerTestSuite) neutralFront(table encounter.Table) *encounter.Encount
 				Faction: "goblins", Table: table},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheetFacts{goblin: {SpeedFeet: 30}, "latecomer": {SpeedFeet: 30}, alice: {}},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     tableDriver(),
+			// The WORLD's die, which only a deal reads here: nobody in this room
+			// has a mix until somebody joins carrying one.
+			Roller: rollsLowest{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -330,9 +350,6 @@ func (s *AnswerTestSuite) TestAFleeEntryLandsTheDeedAndTheTableDoesTheRunning() 
 // fired. Not going anywhere is an outcome, not an error.
 func (s *AnswerTestSuite) TestAPinnedCreatureStaysAndTheBeatStillFires() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30}, alice: {}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  openAir(),
 			Regions: []encounter.RegionInput{rectRegion("cell", 0, 0, 2, 1)},
@@ -345,6 +362,19 @@ func (s *AnswerTestSuite) TestAPinnedCreatureStaysAndTheBeatStillFires() {
 				}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheetFacts{goblin: {SpeedFeet: 30}, alice: {}},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -435,9 +465,6 @@ func (s *AnswerTestSuite) TestAnUnrollableTableIsRefusedAtTheDoor() {
 // setupWith is the front room with one table, for the refusal scenes.
 func (s *AnswerTestSuite) setupWith(table encounter.Table) *encounter.SetupInput {
 	return &encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  openAir(),
 			Regions: []encounter.RegionInput{rectRegion("front", 0, 0, 6, 6)},
@@ -447,6 +474,19 @@ func (s *AnswerTestSuite) setupWith(table encounter.Table) *encounter.SetupInput
 			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1}, Table: table},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	}
 }
 
@@ -470,10 +510,6 @@ var (
 // the door it arrives through and not when it was written down.
 func (s *AnswerTestSuite) straggler() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30}, "straggler": {SpeedFeet: 30}, alice: {}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		Roller: rollsLowest{},
 		Field: encounter.FieldInput{
 			Canvas:   openAir(),
 			Regions:  []encounter.RegionInput{rectRegion("front", 0, 0, 12, 6)},
@@ -496,6 +532,20 @@ func (s *AnswerTestSuite) straggler() *encounter.Encounter {
 				Temper:  encounter.Temper{Mix: banditMix, Profiles: banditProfiles}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheetFacts{goblin: {SpeedFeet: 30}, "straggler": {SpeedFeet: 30}, alice: {}},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     tableDriver(),
+			Roller:     rollsLowest{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -506,11 +556,21 @@ func (s *AnswerTestSuite) straggler() *encounter.Encounter {
 // between two RPCs — which on a live stack is between EVERY two.
 func (s *AnswerTestSuite) reload(enc *encounter.Encounter) *encounter.Encounter {
 	out, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:      enc.ToData(),
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30}, "straggler": {SpeedFeet: 30}, alice: {}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		Roller: rollsLowest{},
+		Data: enc.ToData(),
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheetFacts{goblin: {SpeedFeet: 30}, "straggler": {SpeedFeet: 30}, alice: {}},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     tableDriver(),
+			Roller:     rollsLowest{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -592,9 +652,6 @@ func (s *AnswerTestSuite) TestAReservedMemberIsDealtFromTheMixItWasSavedWith() {
 // somebody else.
 func (s *AnswerTestSuite) neutralFrontPair(table encounter.Table) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{"cousin": {SpeedFeet: 30}, goblin: {SpeedFeet: 30}, alice: {}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:   openAir(),
 			Regions:  []encounter.RegionInput{rectRegion("front", 0, 0, 30, 6)},
@@ -612,6 +669,19 @@ func (s *AnswerTestSuite) neutralFrontPair(table encounter.Table) *encounter.Enc
 				Faction: "goblins"},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheetFacts{"cousin": {SpeedFeet: 30}, goblin: {SpeedFeet: 30}, alice: {}},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     tableDriver(),
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 

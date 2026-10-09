@@ -88,12 +88,22 @@ var (
 // it is has nothing to do with whether a door is within arm's length.
 func (s *DoorReachSuite) edgeDoorAt(state encounter.DoorState, seat spatial.Position) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field:   doorField(3, state, theDoor, reachRow),
 		Members: []encounter.MemberInput{{ID: alice, Kind: encounter.KindPlayer, Position: seat}},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -123,12 +133,22 @@ func placedDoorHall(doors ...encounter.DoorInput) encounter.FieldInput {
 // placedDoorAt opens the hall with alice alone in the authored seat given.
 func (s *DoorReachSuite) placedDoorAt(field encounter.FieldInput, seat spatial.Position) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field:   field,
 		Members: []encounter.MemberInput{{ID: alice, Kind: encounter.KindPlayer, Position: seat}},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -425,13 +445,24 @@ func (s *DoorReachSuite) TestTheProbeLawStillOutranksReach() {
 	answers := make([]string, 0, 2)
 	for _, seat := range []spatial.Position{authoredAt(1, reachRow), authoredAt(0, reachRow)} {
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-			CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 			Field:   field,
 			Members: []encounter.MemberInput{{ID: alice, Kind: encounter.KindPlayer, Position: seat}},
 			Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+			Capabilities: encounter.Capabilities{
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Standing:      everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
+				CheckResolver: findsNothing{},
+				Witness:       nobodyPerceives{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
+			},
 		})
 		s.Require().NoError(err)
 

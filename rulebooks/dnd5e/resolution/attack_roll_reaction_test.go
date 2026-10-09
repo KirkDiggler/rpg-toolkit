@@ -3,19 +3,21 @@ package resolution
 import (
 	"context"
 	"encoding/json"
+	"testing"
+
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dndEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func flareHero(t *testing.T) *character.Data {
@@ -44,7 +46,7 @@ func TestWardingFlarePausesBeforeDiceAndResumesOnlyOnce(t *testing.T) {
 					return c, nil
 				})
 				require.NoError(t, err)
-				return resolveOn(context.Background(), &Input{World: actionWorld(t, 2), Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Character: hero}}, Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, TurnDriver: passDriver{}, Roller: dice.NewRoller()}, newSurface(bus))
+				return resolveOn(context.Background(), &Input{World: actionWorld(t, 2), Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Character: hero}}, Machine: machine, Capabilities: encounter.Capabilities{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Driver: passDriver{}, Roller: dice.NewRoller(), Actors: Actors}}, newSurface(bus))
 			}
 			out, err := run(NewStrike(&StrikeInput{AttackerID: wolfID, TargetID: heroID, Definition: validMeleeDefinition(), Roller: roller}))
 			require.NoError(t, err)
@@ -94,7 +96,7 @@ func TestWardingFlareSequenceCanDeclineFirstAndSpendOnSecond(t *testing.T) {
 		if len(out.DirtyCharacters) > 0 {
 			hero = out.DirtyCharacters[0]
 		}
-		out, e = Resolve(context.Background(), &Input{World: out.World, Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Character: hero}}, Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, TurnDriver: passDriver{}, Roller: dice.NewRoller()})
+		out, e = Resolve(context.Background(), &Input{World: out.World, Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Character: hero}}, Machine: machine, Capabilities: encounter.Capabilities{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Driver: passDriver{}, Roller: dice.NewRoller(), Actors: Actors}})
 		require.NoError(t, e)
 	}
 	resume(OfferKeep, "")

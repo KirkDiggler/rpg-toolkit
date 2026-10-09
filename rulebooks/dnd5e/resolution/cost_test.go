@@ -138,7 +138,7 @@ func (s *CostTestSuite) strikeCost(data *character.Data) *combat.SpendProfile {
 }
 
 func (s *CostTestSuite) world() encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -148,6 +148,19 @@ func (s *CostTestSuite) world() encounter.EncounterData {
 			{ID: wolfID, Kind: encounter.KindMonster, Position: spatial.Position{X: 5, Y: 6}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors: encounter.Actors{
+				Striker:   noAttacksExpected{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -214,11 +227,21 @@ func (s *CostTestSuite) swing(
 		Roller:     roller,
 	})}
 
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{
 		World:        s.world(),
 		Participants: []Participant{{Character: hero}, {Monster: monsters.NewWolf(wolfID).ToData()}},
 		Machine:      machine,
 		Cost:         cost,
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 
 	return out, machine, err
@@ -230,11 +253,21 @@ func (s *CostTestSuite) swing(
 // ErrNoMachine's own doc blesses the form ("distinct from a machine that
 // finishes immediately, which is legal").
 func (s *CostTestSuite) declare(hero *character.Data, cost *Cost) (*Output, error) {
-	return Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	return Resolve(s.ctx, &Input{
 		World:        s.world(),
 		Participants: []Participant{{Character: hero}, {Monster: monsters.NewWolf(wolfID).ToData()}},
 		Machine:      &captureMachine{},
 		Cost:         cost,
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 }
 
@@ -258,10 +291,20 @@ func (s *CostTestSuite) TestStartFailurePaysNothing() {
 	machine := &failingPreflightMachine{}
 
 	out, err := Resolve(s.ctx, &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
-		World: s.world(), Participants: []Participant{{Character: hero}, {Monster: monsters.NewWolf(wolfID).ToData()}},
-		Machine: machine,
-		Cost:    &Cost{PayerID: heroID, Profile: s.strikeCost(hero), Turn: s.thisTurn()},
+		World:        s.world(),
+		Participants: []Participant{{Character: hero}, {Monster: monsters.NewWolf(wolfID).ToData()}},
+		Machine:      machine,
+		Cost:         &Cost{PayerID: heroID, Profile: s.strikeCost(hero), Turn: s.thisTurn()},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 
 	s.Require().ErrorIs(err, errPreflight)
@@ -318,15 +361,22 @@ func (s *CostTestSuite) TestAnUnaffordableStrikePublishesNoACChain() {
 	wolf := monsters.NewWolf(wolfID).ToData()
 	roller := &countingRoller{}
 	out, err := resolveOn(s.ctx, &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		Equipment: noHandsAreObserved{},
-		Sheets:    noSheetsAsked{},
-		World:     s.world(), Participants: []Participant{{Character: hero}, {Monster: wolf}},
+		World:        s.world(),
+		Participants: []Participant{{Character: hero}, {Monster: wolf}},
 		Machine: NewStrike(&StrikeInput{
 			AttackerID: wolfID, TargetID: heroID, Definition: wolf.Actions[0], Roller: roller,
 		}),
 		Cost: &Cost{PayerID: heroID, Profile: s.strikeCost(hero), Turn: s.thisTurn()},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Roller:     dice.NewRoller(),
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors:     Actors,
+		},
 	}, newSurface(bus))
 
 	s.Require().ErrorIs(err, ErrCannotPay)
@@ -369,13 +419,20 @@ func (s *CostTestSuite) TestARecurringOnHitGateFailsBeforePaymentDiceOrMutation(
 
 	wolf := monsters.NewWolf(wolfID).ToData()
 	out, err := Resolve(s.ctx, &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		Equipment: noHandsAreObserved{},
-		Sheets:    noSheetsAsked{},
-		World:     s.world(), Participants: []Participant{{Character: hero}, {Monster: wolf}},
-		Machine: machine,
-		Cost:    &Cost{PayerID: heroID, Profile: s.strikeCost(hero), Turn: s.thisTurn()},
+		World:        s.world(),
+		Participants: []Participant{{Character: hero}, {Monster: wolf}},
+		Machine:      machine,
+		Cost:         &Cost{PayerID: heroID, Profile: s.strikeCost(hero), Turn: s.thisTurn()},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Roller:     dice.NewRoller(),
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors:     Actors,
+		},
 	})
 
 	s.Require().ErrorIs(err, ErrRecurrenceUnsupported)
@@ -430,13 +487,20 @@ func (s *CostTestSuite) TestAHalfOnHitRiderFailsBeforePaymentDiceOrMutation() {
 
 	wolf := monsters.NewWolf(wolfID).ToData()
 	out, err := Resolve(s.ctx, &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		Equipment: noHandsAreObserved{},
-		Sheets:    noSheetsAsked{},
-		World:     s.world(), Participants: []Participant{{Character: hero}, {Monster: wolf}},
-		Machine: machine,
-		Cost:    &Cost{PayerID: heroID, Profile: s.strikeCost(hero), Turn: s.thisTurn()},
+		World:        s.world(),
+		Participants: []Participant{{Character: hero}, {Monster: wolf}},
+		Machine:      machine,
+		Cost:         &Cost{PayerID: heroID, Profile: s.strikeCost(hero), Turn: s.thisTurn()},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Roller:     dice.NewRoller(),
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors:     Actors,
+		},
 	})
 
 	s.Require().ErrorIs(err, ErrBadAction)
@@ -654,11 +718,21 @@ func (s *CostTestSuite) TestACostKeyedToACurrencyNoLedgerHoldsIsRefused() {
 func (s *CostTestSuite) TestAMalformedCostIsRefusedBeforeTheWorldIsLoaded() {
 	hero := s.hero(s.economy(firstTurn, 1, bankedAttacks))
 
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{
 		World:        encounter.EncounterData{},
 		Participants: []Participant{{Character: hero}},
 		Machine:      &captureMachine{},
 		Cost:         &Cost{Profile: s.strikeCost(hero)},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 
 	s.Require().ErrorIs(err, ErrBadCost)
@@ -760,11 +834,21 @@ func (s *CostTestSuite) TestARefusedPaymentLeavesNothingOnTheBus() {
 	hero := s.hero(s.economy(firstTurn, 1, 0))
 	hero.Conditions = []json.RawMessage{s.raging()}
 
-	out, err := resolveOn(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	out, err := resolveOn(s.ctx, &Input{
 		World:        s.world(),
 		Participants: []Participant{{Character: hero}, {Monster: monsters.NewWolf(wolfID).ToData()}},
 		Machine:      &captureMachine{},
 		Cost:         &Cost{PayerID: heroID, Profile: s.strikeCost(hero), Turn: s.thisTurn()},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	}, newSurface(inner))
 
 	s.Require().ErrorIs(err, ErrCannotPay)

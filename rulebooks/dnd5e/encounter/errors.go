@@ -389,7 +389,7 @@ var (
 	// DiscoveryCheckResolver; only proximity can consume that allowance.
 	ErrSearchRetired = errors.New("search is retired; discovery checks are automatic")
 
-	// ErrNoTurnDriver indicates Setup or Load was given no TurnDriver
+	// ErrNoTurnDriver indicates Setup or Load was given no Driver
 	// capability. A member with no player can land on a fight's clock — a
 	// turn ending, or a fight forming with an unplayed member first in
 	// initiative — and this module refuses to guess what they do, exactly as
@@ -409,7 +409,7 @@ var (
 	// invariant is ever broken elsewhere.
 	ErrNoPlayerInBubble = errors.New("encounter: bubble has no player to end on")
 
-	// ErrBadTurnOutcome indicates a TurnDriver returned a TurnIntent this
+	// ErrBadTurnOutcome indicates a Driver returned a TurnIntent this
 	// version of the module does not recognise — a value outside the sealed
 	// Pass/Attack/Move/Routed vocabulary.
 	//
@@ -473,33 +473,33 @@ var (
 	// world — not a legal outcome any caller is meant to recover from.
 	ErrRefusingAnnouncer = errors.New("encounter: RefusingAnnouncer: a clock advanced on a construction-only world")
 
-	// ErrRefusingInitiative is what the InitiativeRoller [CompileOnlySetup]
+	// ErrRefusingInitiative is what the InitiativeRoller [RefusingCapabilities]
 	// installs always returns: a fight tried to form in a world being
 	// compiled, not played. A host bug — the compiled world's zero sight forms
 	// no fight, and a session supplies its own roller at load.
 	ErrRefusingInitiative = errors.New("encounter: compile-only InitiativeRoller: a fight formed in a world being compiled, not played")
 
-	// ErrRefusingParticipation is what the Participation [CompileOnlySetup]
+	// ErrRefusingParticipation is what the Participation [RefusingCapabilities]
 	// installs returns when asked about any member: a compiled world has
 	// nobody in it, and claiming a member conscious and in contact would be an
 	// answer nobody observed. A host that places members supplies its own
 	// Standing.
 	ErrRefusingParticipation = errors.New("encounter: compile-only Participation: asked about members of a world being compiled, not played")
 
-	// ErrRefusingSheets is what the [Sheets] [CompileOnlySetup] and
-	// [CompileOnlyLoad] install returns when asked about any member: a world
-	// compiled or loaded only to be inspected has no sheets behind its members,
-	// and a speed or a reach would be an answer nobody read off a sheet. A host
-	// that paces, budgets or drives a member supplies its own Sheets.
+	// ErrRefusingSheets is what the [Sheets] that [RefusingCapabilities]
+	// installs returns when asked about any member: a world compiled or
+	// previewed has no sheets behind its members, and a speed or a reach would
+	// be an answer nobody read off a sheet. A host that paces, budgets or
+	// drives a member supplies its own Sheets.
 	ErrRefusingSheets = errors.New("encounter: compile-only Sheets: asked about members of a world being compiled, not played")
 
 	// ErrRefusingDriver is what [RefusingDriver.Act] always returns: a turn
-	// was driven on a world [CompileOnlyLoad] loaded only to be inspected. A
-	// host bug, the twin of [ErrRefusingStriker], not an outcome to recover
+	// was driven on a world [RefusingCapabilities] compiled or previewed. A host
+	// bug, the twin of [ErrRefusingStriker], not an outcome to recover
 	// from.
 	ErrRefusingDriver = errors.New("encounter: RefusingDriver: a turn was driven on a world loaded only to be inspected")
 
-	// ErrRefusingCheckResolver is what the CheckResolver [CompileOnlySetup]
+	// ErrRefusingCheckResolver is what the CheckResolver [RefusingCapabilities]
 	// installs always returns: an authored check was rolled against a world
 	// still being compiled, not played. A host bug — a check is rolled only
 	// through an explicit Search — not an outcome to recover from.
@@ -517,14 +517,14 @@ var (
 	// stayed there.
 	ErrNoDissolveMilestone = errors.New("encounter: bubble dissolved without a dissolved milestone")
 
-	// ErrBadIntent indicates a TurnDriver returned a syntactically valid
+	// ErrBadIntent indicates a Driver returned a syntactically valid
 	// TurnIntent this composition cannot execute: an Attack naming a target
 	// that is not currently Seen, not Standing, or out of the named
 	// action's reach; an Attack naming an action Ref that is not among the
 	// member's own [MonsterView.Actions]; or a Move whose path this member
 	// cannot afford against its remaining movement budget.
 	//
-	// NOT A DRIVER MALFUNCTION (compare the plain Go error [TurnDriver.Act]
+	// NOT A DRIVER MALFUNCTION (compare the plain Go error [Driver.Act]
 	// itself can return, which aborts the caller's whole verb). A bad
 	// intent is a bad DECISION, not a broken driver: it simply ends this
 	// member's turn exactly as [Pass] would, and the caller's own verb

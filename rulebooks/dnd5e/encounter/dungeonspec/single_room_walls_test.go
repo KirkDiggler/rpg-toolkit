@@ -153,13 +153,22 @@ func generatedSpans(field encounter.FieldInput) []encounter.PlacedPropInput {
 // capabilities every one of these geometry scenes supplies.
 func (s *SingleRoomWallSuite) wallEncounter(compiled dungeonspec.Compiled) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sheets:    zeroSheets{},
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field:   compiled.Field,
 		Members: []encounter.MemberInput{{ID: "walker", Kind: encounter.KindPlayer, Position: axial(0, 0)}},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sheets:     zeroSheets{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   noAttacksExpected{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -168,11 +177,20 @@ func (s *SingleRoomWallSuite) wallEncounter(compiled dungeonspec.Compiled) *enco
 
 func (s *SingleRoomWallSuite) reload(enc *encounter.Encounter) *encounter.Encounter {
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sheets:    zeroSheets{},
-		Data:      enc.ToData(),
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Data: enc.ToData(),
+		Capabilities: encounter.Capabilities{
+			Sheets:     zeroSheets{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   noAttacksExpected{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 

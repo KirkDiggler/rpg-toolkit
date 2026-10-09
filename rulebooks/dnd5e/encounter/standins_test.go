@@ -25,15 +25,12 @@ func TestStandInsSuite(t *testing.T) {
 
 // emptyWorld is what a host writes for a world nobody is in yet: one call.
 func emptyWorld(members ...encounter.MemberInput) *encounter.SetupInput {
-	setup := encounter.CompileOnlySetup(
-		encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("yard", 0, 0, 6, 1)}},
-		[]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-	)
+	setup := &encounter.SetupInput{Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("yard", 0, 0, 6, 1)}}, Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, Capabilities: encounter.RefusingCapabilities()}
 	setup.Members = members
 	return setup
 }
 
-func (s *standInsSuite) TestNewEncounterConstructsFromCompileOnlySetup() {
+func (s *standInsSuite) TestNewEncounterConstructsFromRefusingCapabilities() {
 	enc, err := encounter.NewEncounter(emptyWorld())
 	s.Require().NoError(err)
 	s.NotNil(enc)
@@ -77,8 +74,7 @@ func (s *standInsSuite) TestNewEncounterConstructsFromCompileOnlySetup() {
 				field.Doors[i].State = encounter.DoorIsOpen()
 			}
 		}
-		enc, err := encounter.NewEncounter(encounter.CompileOnlySetup(field,
-			[]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}))
+		enc, err := encounter.NewEncounter(&encounter.SetupInput{Field: field, Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, Capabilities: encounter.RefusingCapabilities()})
 		s.Require().NoError(err)
 		s.NotNil(enc)
 	})
@@ -92,15 +88,15 @@ func (refusingWitness) Perceivers(*encounter.PerceiversInput) ([]encounter.Membe
 	return nil, errors.New("the witness was asked")
 }
 
-// TestLoadEncounterLoadsFromCompileOnlyLoad is the load-side host's path: a
+// TestLoadEncounterLoadsFromRefusingCapabilities is the load-side host's path: a
 // persisted world loaded only to be inspected, with no stand-ins of its own.
-func (s *standInsSuite) TestLoadEncounterLoadsFromCompileOnlyLoad() {
+func (s *standInsSuite) TestLoadEncounterLoadsFromRefusingCapabilities() {
 	withdrawn := []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}
 
 	s.Run("an empty compiled world loads", func() {
 		built, err := encounter.NewEncounter(emptyWorld())
 		s.Require().NoError(err)
-		loaded, err := encounter.LoadEncounter(encounter.CompileOnlyLoad(built.ToData()))
+		loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: built.ToData(), Capabilities: encounter.RefusingCapabilities()})
 		s.Require().NoError(err)
 		s.Equal(built.ToData(), loaded.ToData(), "loading changes nothing it re-serializes")
 	})
@@ -114,7 +110,7 @@ func (s *standInsSuite) TestLoadEncounterLoadsFromCompileOnlyLoad() {
 		built, err := encounter.NewEncounter(setup)
 		s.Require().NoError(err)
 
-		loaded, err := encounter.LoadEncounter(encounter.CompileOnlyLoad(built.ToData()))
+		loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: built.ToData(), Capabilities: encounter.RefusingCapabilities()})
 		s.Require().NoError(err, "load asks no participation, so the stand-in's refusal does not fire")
 		out, err := loaded.ObservedContext(&encounter.ViewInput{Member: alice})
 		s.Require().NoError(err)
@@ -128,13 +124,13 @@ func (s *standInsSuite) TestLoadEncounterLoadsFromCompileOnlyLoad() {
 				field.Doors[i].State = encounter.DoorIsOpen()
 			}
 		}
-		built, err := encounter.NewEncounter(encounter.CompileOnlySetup(field, withdrawn))
+		built, err := encounter.NewEncounter(&encounter.SetupInput{Field: field, Endings: withdrawn, Capabilities: encounter.RefusingCapabilities()})
 		s.Require().NoError(err)
 
-		_, err = encounter.LoadEncounter(encounter.CompileOnlyLoad(built.ToData()))
+		_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: built.ToData(), Capabilities: encounter.RefusingCapabilities()})
 		s.Require().NoError(err, "the stock witness answers nobody")
 
-		probe := encounter.CompileOnlyLoad(built.ToData())
+		probe := &encounter.LoadEncounterInput{Data: built.ToData(), Capabilities: encounter.RefusingCapabilities()}
 		probe.Witness = refusingWitness{}
 		_, err = encounter.LoadEncounter(probe)
 		s.Require().NoError(err, "a witness that refuses is never reached by load")
@@ -166,9 +162,20 @@ func (s *standInsSuite) TestAStandInWorldLoadsWithRealCapabilities() {
 		goblin: heldSet(encounter.ConditionKey{ConditionRef: faerieFire, SourceID: clericSource}),
 	}}
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: built.ToData(), Sight: everyoneSeesTheWholeMap{}, Equipment: table, Sheets: zeroSheets{}, Standing: everyoneStanding{},
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Data: built.ToData(),
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  table,
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 

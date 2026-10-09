@@ -44,9 +44,6 @@ func readingsEnc(t *testing.T, watcherAlliedToParty bool) *Encounter {
 	}
 
 	enc, err := NewEncounter(&SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: UnobservedEquipment{}, Sheets: sheetFacts{"bystander": {SpeedFeet: 30}, "friend": {SpeedFeet: 30}, "stranger": {SpeedFeet: 30}, "watcher": {SpeedFeet: 30}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Retention: RetentionUnbounded,
 		Field: FieldInput{
 			Canvas:  CanvasInput{Void: VoidIsTransparent(), Orientation: HexesArePointyTop()},
@@ -75,6 +72,19 @@ func readingsEnc(t *testing.T, watcherAlliedToParty bool) *Encounter {
 			{ID: "bystander", Kind: KindMonster, Position: spatial.Position{X: 6, Y: 1}},
 		},
 		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
+		Capabilities: Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  UnobservedEquipment{},
+			Sheets:     sheetFacts{"bystander": {SpeedFeet: 30}, "friend": {SpeedFeet: 30}, "stranger": {SpeedFeet: 30}, "watcher": {SpeedFeet: 30}},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 

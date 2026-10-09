@@ -75,8 +75,6 @@ func (s *CanvasReadSuite) TestBoundaryFactsAreReadableWithoutMutationCapability(
 // point: a map with nothing in the way agrees with any other map.
 func (s *CanvasReadSuite) SetupTest() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: tombField(),
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: tombSeat(tombEntranceOrigin, 5, tombDoorRow)},
@@ -85,6 +83,19 @@ func (s *CanvasReadSuite) SetupTest() {
 			{ID: dave, Kind: encounter.KindPlayer, Position: tombSeat(tombHallOrigin, 0, tombDoorRow-1)},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	s.enc = enc

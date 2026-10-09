@@ -87,130 +87,29 @@ type Input struct {
 	// "The door pays" in this package's doc.
 	Cost *Cost
 
-	// Initiative orders a fight that starts while this interaction runs.
-	// REQUIRED.
+	// Capabilities is every capability the encounter asks of its host,
+	// handed to the world exactly as supplied. [encounter.Capabilities] is
+	// the one list; resolution copies, defaults and swaps none of it.
 	//
-	// The composition asks for one at construction and refuses without it
-	// (rpg-toolkit#964): sight starts fights on its own, so an encounter that
-	// cannot order one is an encounter that cannot be loaded. This package
-	// does not know what initiative is and does not want to — it hands over
-	// what the caller supplied, the way every other capability on this input
-	// is handed over.
-	Initiative encounter.InitiativeRoller
-
-	// Standing carries the rulebook's standing and participation answers.
-	// REQUIRED. Typed as the composition types it, so a Standing-only value
-	// does not compile.
+	// Carried, never consulted. This package loads the world, runs one
+	// interaction and reads the world back out as data. It calls no encounter
+	// verb: no EndTurn, form, Transfer, Exit, walk, search or sight refresh,
+	// so no initiative, standing, sight, equipment, sheets, driver, check
+	// resolver, witness or actor is ever asked. The encounter still refuses to
+	// load without them, and an answer invented here would be this package
+	// deciding a rule it holds none of: the caller that owns the sheets owns
+	// the answers. Use [Actors] for the three actors a resolution never calls.
 	//
-	// Carried, never consulted. This package loads the world and reads it back
-	// out as data; no encounter verb runs in between, so neither half is asked
-	// here. The caller owns the sheets and therefore owns this answer; inventing
-	// "nobody is down" or "everyone participates" would put a rule in wiring.
-	Standing encounter.StandingWithParticipation
-
-	// Sight reports how far each member can see, in cells. REQUIRED.
+	// Roller is the one member this package reads. It reconstitutes runtime
+	// dice dependencies for effects that roll when triggered rather than when
+	// loaded, such as Great Weapon Fighting and Undead Fortitude, and
+	// resolution offers it to every attach path. It is REQUIRED here
+	// ([ErrNoRoller]) although the encounter treats it as optional. It is not
+	// the machine's roller: a machine that rolls carries its own.
 	//
-	// Carried, never consulted, for exactly the reason Standing one field up
-	// is — and the mechanism is worth naming rather than asserting. The
-	// composition asks how far somebody can see at one choke point, where it
-	// rebuilds percepts; the only two callers of that are its own Setup and
-	// its refreshSight, and this package calls neither. It loads a world and
-	// reads it back out as data, so the question is never put.
-	//
-	// The composition still refuses to load without one (rpg-toolkit#1111),
-	// and answering on the caller's behalf — any number at all — would be this
-	// package deciding a 5e rule about light and darkvision it holds none of.
-	// So it is handed over, the way Initiative and Standing above are handed
-	// over, and the caller that owns the sheets owns the answer.
-	Sight encounter.Sight
-
-	// Equipment reports what each member is holding. REQUIRED.
-	//
-	// Carried, never consulted, for exactly the reason Sight one field up is:
-	// the composition asks what somebody is holding at the one choke point where
-	// it rebuilds percepts, and this package calls neither of that choke point's
-	// two callers. It loads a world and reads it back out as data, so the
-	// question is never put here.
-	//
-	// The composition still refuses to load without one (rpg-toolkit#1615), and
-	// answering on the caller's behalf would be worse than a guess about light:
-	// "everybody is empty-handed" is not a missing answer, it is TESTIMONY, and
-	// inventing testimony is the one thing the sight seam must never do. So it
-	// is handed over, and the caller that owns the sheets owns the answer.
-	//
-	// It also answers what each member holds: the composition snapshots
-	// conditions into sight testimony beside hands (rpg-project#520 R16). The
-	// same reasoning applies: "nobody holds anything" is testimony, never a
-	// default.
-	Equipment encounter.EquipmentWithConditions
-
-	// Sheets reports each member's speed, attacks and targeting from its
-	// sheet. REQUIRED.
-	//
-	// Carried, never consulted, for exactly the reason Sight and Equipment
-	// above are, and by a nameable mechanism: the composition asks it only
-	// when it paces a walk on the world clock, budgets a driven turn, builds a
-	// driver's view or tests the `enemy: reach` band — and its load asks
-	// nothing. This package loads a world and reads it back out as data, so
-	// none of those is reached here.
-	//
-	// The composition refuses to load without one (encounter.ErrNoSheets,
-	// rpg-project#538), and an answer invented here would be worse than any
-	// default: the composition stores no speed or reach any more, so a number
-	// this package made up would be the only one it had. The session owns the
-	// sheets and answers from them; it is handed over.
-	Sheets encounter.Sheets
-
-	// Roller reconstitutes runtime dice dependencies for effects that roll when
-	// triggered rather than when loaded — Character conditions such as Great
-	// Weapon Fighting and Monster traits such as Undead Fortitude. REQUIRED.
-	// Resolution offers the same roller to every attach path; it does not choose
-	// which effects bind one or switch on their refs. It is not the machine's
-	// roller: a machine that rolls carries its own.
-	//
-	// It used to say "nil takes the default roller", and that stopped being
-	// true when rpg-toolkit#1033 refused the default — a nil silently became
-	// real randomness, which put unreproducible rolls into results that looked
-	// fine. Validate has answered ErrNoRoller ever since; only this line had
-	// not caught up.
-	Roller dice.Roller
-
-	// TurnDriver decides what a member with no player does when a fight's
-	// clock lands on their turn. REQUIRED.
-	//
-	// Carried, never consulted — the same shape as Standing and Sight, and for
-	// the same reason: this package loads the world, runs one interaction, and
-	// reads it back out as data, so it never calls EndTurn, form, Transfer or
-	// Exit itself. The composition still refuses to load without one
-	// (rpg-toolkit#1162), and answering on the caller's behalf — "it passes" —
-	// would be this package deciding a rule it holds no opinion on. So it is
-	// handed over, the way Initiative, Standing and Sight above are.
-	//
-	// TYPED AT [encounter.Driver], the seam's live name: `TurnDriver` is now
-	// a deprecated alias for it and goes in the release after this one
-	// (rpg-project#465). The FIELD keeps its name, because renaming it would
-	// break every caller that sets it for no gain this slice asks for.
-	TurnDriver encounter.Driver
-
-	// CheckResolver resolves an authored find check when a member searches.
-	// REQUIRED EXACTLY WHEN World CARRIES CONCEALED STRUCTURE, and legally
-	// nil otherwise — which is why Validate says nothing about it, unlike the
-	// five capabilities above. Whether this blob conceals anything is written
-	// in the blob, the composition's load door already refuses a concealed
-	// one without the capability (encounter.ErrNoCheckResolver,
-	// rpg-toolkit#1371), and a gate here — in either direction — would be
-	// this package reading a world it only carries.
-	//
-	// Carried, never consulted, exactly like Standing and Sight: searching is
-	// a verb of the composition's, and this package calls no verbs. It is
-	// handed over so a concealed world can be LOADED at all — which is what a
-	// fight on a concealed dungeon is (rpg-toolkit#1378).
-	CheckResolver encounter.CheckResolver
-
-	// Witness answers who currently perceives an open concealed door.
-	// Required, refused, carried and never consulted under exactly
-	// CheckResolver's rule (encounter.ErrNoWitness), one line up.
-	Witness encounter.Witness
+	// CheckResolver and Witness are required exactly when World carries
+	// concealed structure, which the load door decides by reading the blob.
+	encounter.Capabilities
 }
 
 // Validate reports whether this input describes a resolvable interaction.
@@ -223,30 +122,13 @@ func (in *Input) Validate() error {
 		return ErrNoMachine
 	}
 
-	// CAPABILITIES ARE SUPPLIED, NEVER DEFAULTED. Both of these are things
-	// only the caller can provide, and both used to be forgivable — Initiative
-	// was absent entirely, and a nil Roller quietly became real randomness.
-	// Kirk's ruling on the composition's own roller applies to each: "a nil
-	// initiative is an error returned way upstream". A silent default masks
-	// missing wiring, and for a roller it does it in the worst possible way,
-	// by putting untestable randomness into a result that looks fine.
-	if in.Initiative == nil {
-		return ErrNoInitiative
-	}
-	if in.Standing == nil {
-		return ErrNoStanding
-	}
-	if in.Sight == nil {
-		return ErrNoSight
-	}
-	if in.Equipment == nil {
-		return ErrNoEquipment
-	}
-	if in.Sheets == nil {
-		return ErrNoSheets
-	}
-	if in.TurnDriver == nil {
-		return ErrNoTurnDriver
+	// CAPABILITIES ARE SUPPLIED, NEVER DEFAULTED. The encounter owns the one
+	// presence check and its sentinels; the sentinel is wrapped with %w so
+	// errors.Is reaches it. The Roller is the one capability this package asks
+	// for beyond that list, because its machines roll.
+	//nolint:staticcheck // explicit: Validate checks capabilities only
+	if err := in.Capabilities.Validate(); err != nil {
+		return fmt.Errorf("resolution input: %w", err)
 	}
 	if in.Roller == nil {
 		return ErrNoRoller
@@ -406,48 +288,8 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 	roller := in.Roller
 
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:       in.World,
-		Initiative: in.Initiative,
-		Standing:   in.Standing,
-		Sight:      in.Sight,
-		Equipment:  in.Equipment,
-		Sheets:     in.Sheets,
-		TurnDriver: in.TurnDriver,
-		// The concealment capabilities (rpg-toolkit#1378), handed over exactly
-		// as supplied: nil stays nil, so a plain world loads untouched and a
-		// concealed one is refused or admitted by the load door's own rule,
-		// never softened here.
-		CheckResolver: in.CheckResolver,
-		Witness:       in.Witness,
-		// A construction-only Striker (rpg-project#254): this package runs
-		// ONE interaction machine against a loaded snapshot and returns — it
-		// never drives a monster's whole turn (that is driveMonsterTurns'
-		// own job, reached through EndTurn/form, neither of which this
-		// package's Resolve calls). A driven turn reaching this Striker
-		// would mean this reconstruction is being asked to do something it
-		// was never built for; RefusingStriker names that loudly rather
-		// than fabricating a hit.
-		Striker: encounter.RefusingStriker{},
-		// A construction-only Mover, by the Striker's own argument one line
-		// up. This package announces a step through its OWN machine
-		// ([NewMovement]) on the bus it just made; the encounter it
-		// reconstitutes here is a snapshot to read rules off, and nothing
-		// inside a resolution ever asks it to walk anybody. A driven walk
-		// reaching this Mover would mean this reconstruction is being asked to
-		// do something it was never built for, and RefusingMover names that
-		// loudly rather than silently swallowing the announcement — which is
-		// exactly the unobservable walk the capability exists to end.
-		Mover: encounter.RefusingMover{},
-		// And a construction-only Announcer, for the same reason and by the
-		// same argument. It READS like recursion — an Announcer's job is to
-		// call this package, and here this package is handing one over — and
-		// it is not: no clock advances inside a resolution. Boundaries are
-		// crossed by EndTurn and form, and the sentence directly above is
-		// that this package calls neither. A boundary reaching here would
-		// mean this reconstruction is being asked to do something it was
-		// never built for; RefusingAnnouncer names that loudly rather than
-		// swallowing it.
-		Announcer: encounter.RefusingAnnouncer{},
+		Data:         in.World,
+		Capabilities: in.Capabilities,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("resolution: load world: %w", err)

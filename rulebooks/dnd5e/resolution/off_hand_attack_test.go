@@ -13,6 +13,7 @@ import (
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -55,14 +56,17 @@ func resolveHeroAttack(
 			{Monster: monsters.NewWolf(wolfID).ToData()},
 			{Character: hero},
 		},
-		Machine:    machine,
-		Initiative: orderAsGiven{},
-		Standing:   everyoneStanding{},
-		Sight:      everyoneSeesTheWholeMap{},
-		Equipment:  noHandsAreObserved{},
-		Sheets:     noSheetsAsked{},
-		TurnDriver: passDriver{},
-		Roller:     dice.NewRoller(),
+		Machine: machine,
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Driver:     passDriver{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 }
 
