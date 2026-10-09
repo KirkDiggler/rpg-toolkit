@@ -391,6 +391,13 @@ var (
 	// before it enters the next.
 	ErrSeatedElsewhere = errors.New("character is seated in another session")
 
+	// ErrNoSeat is returned by [Manager.Seat] when the character holds no live
+	// seat: it was never seated, or a run has cleared its seat (an Exit, an
+	// End, or the commit that closed the run). The two are one answer, because
+	// a cleared seat is stored as a record with no session and a caller has
+	// no use for the difference. A host maps it to NotFound.
+	ErrNoSeat = errors.New("character holds no seat")
+
 	// ErrBadEquip is returned when an equipment change is one the sheet
 	// cannot make: no slot named, an item the inventory does not hold, an
 	// item that does not fit the slot. A request that is wrong, distinct from
