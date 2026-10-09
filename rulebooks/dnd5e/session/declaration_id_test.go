@@ -16,6 +16,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
 )
 
 // goldenAttackDefinition mirrors the validated fixture in the actions package
@@ -85,6 +86,36 @@ func TestAttackDeclarationIDGolden(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, "v2.HXq0p1bPN6Vf3EnZiyXYbd79wKnRT8mosqD90XfzTWY", got)
+}
+
+// goldenCastDefinition is the COMPILED Command definition, built by the spell
+// catalogue the way offer compilation builds it, so the cast golden pins the
+// selector of a real cast with options, a save gate and an applied condition
+// rather than a hand-authored profile.
+func goldenCastDefinition(t *testing.T) *combatActions.Definition {
+	t.Helper()
+	def := spells.CastDefinition(spells.CastDefinitionInput{
+		Spell:               spells.Command,
+		SpellSaveDC:         13,
+		SpellAttackBonus:    5,
+		SpellcastingAbility: abilities.CHA,
+	})
+	require.NotNil(t, def, "this build must carry Command cast content")
+	require.NoError(t, def.Validate())
+	return def
+}
+
+// TestCastDeclarationIDGolden pins the CAST selector for a compiled Command.
+// Its value was captured against the session that hashed the raw definition,
+// before the allow-list projection existed, so it is the proof that moving to
+// the projection left every held cast declaration ID byte-identical.
+func TestCastDeclarationIDGolden(t *testing.T) {
+	got, err := declarationID(declarationIDInput{
+		Session: "session-1", Member: "bard-1",
+		Verb: VerbCast, Slot: SlotAction, Cast: goldenCastDefinition(t),
+	})
+	require.NoError(t, err)
+	require.Equal(t, "v2.20LuucKEVel3O2BUX4VMOOTTBlQXBpRP8MleeahlCWY", got)
 }
 
 func TestDeclarationIDMapInsertionOrderIsCanonical(t *testing.T) {
