@@ -46,3 +46,6 @@ bin/
 # a module was swept into a PR by `git add -A <dir>` and had to be removed.
 .pi-subagents/
 .pi/agents/
+
+# Built by `go build` in the session workbench directory
+rulebooks/dnd5e/session/cmd/session-workbench/session-workbench

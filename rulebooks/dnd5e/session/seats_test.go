@@ -9,10 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/suite"
+
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
-	"github.com/stretchr/testify/suite"
 )
 
 // SeatSuite covers the seat (rpg-project#542, "The seat"): Join seats, Exit
@@ -43,11 +44,14 @@ func (s *SeatSuite) SetupTest() {
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
-	for _, id := range []string{"sess", "other"} {
-		_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-			Session: id, Encounter: "world-" + id, World: hexWorld(s.T()),
-		})
-		s.Require().NoError(err)
+	// A character is seated in one run at a time, so the second run's party
+	// is a character no test here joins.
+	s.characters.byID["frank"] = dwarfCharacter("frank")
+	for id, seated := range map[string]string{"sess": "alice", "other": "frank"} {
+		run := hexWorld()
+		run.Session = id
+		run.Party = []sceneSeat{{ID: seated, At: run.Party[0].At}}
+		launchScene(s.T(), mgr, run)
 	}
 }
 
@@ -105,7 +109,7 @@ func (s *SeatSuite) TestExitClearsTheSeatAfterTheRunIsSaved() {
 	s.Equal([]string{"sess"}, s.locker.calls)
 	s.Equal([]string{"bob"}, s.locker.characters, "the seat changes under the character's guard too")
 	s.Contains(out.Saved.Written, "seat:bob")
-	s.Less(positionOf(out.Saved.Written, "encounter:world-sess"), positionOf(out.Saved.Written, "seat:bob"),
+	s.Less(positionOf(out.Saved.Written, "encounter:sess"), positionOf(out.Saved.Written, "seat:bob"),
 		"the run that no longer holds bob lands before his seat is cleared")
 
 	_, err = s.join("other", "bob")
@@ -248,8 +252,8 @@ func (s *SeatSuite) TestALoadAndAnEquipIssuedTogetherBothLand() {
 	wounded := withHitDice(quickFighter("alice"), 3)
 	wounded.HitPoints = 10
 	chars := &pausingCharacters{
-		byID:    map[string]*character.Data{"alice": wounded, "bob": quickFighter("bob")},
-		pauseOn: "alice", paused: make(chan struct{}), resume: make(chan struct{}),
+		byID:   map[string]*character.Data{"alice": wounded, "bob": quickFighter("bob")},
+		paused: make(chan struct{}), resume: make(chan struct{}),
 	}
 	locker := newKeyedLocker()
 	seats := newFakeSeats()
@@ -259,10 +263,11 @@ func (s *SeatSuite) TestALoadAndAnEquipIssuedTogetherBothLand() {
 		Sessions: sessions, Encounters: encounters, Characters: chars, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: freeRoamDuelWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, freeRoamDuelWorld())
+	// Launch rests the party (reading alice, so the pause is armed only after
+	// it); alice's wounds are written back after it.
+	chars.byID["alice"] = wounded
+	chars.pauseOn = "alice"
 	s.Require().NoError(seats.SaveSeat(context.Background(), &session.SeatData{Character: "alice", Session: "sess"}))
 	s.Require().NoError(seats.SaveSeat(context.Background(), &session.SeatData{Character: "bob", Session: "sess"}))
 	drain(locker.requested)

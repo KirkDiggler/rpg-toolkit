@@ -127,7 +127,7 @@ func instantiate(id string, ref string, actions []string) (*monster.Data, error)
 }
 
 // arm replaces a freshly built monster's actions with the ones the author
-// named, in the author's order (rpg-project#448, [SpawnInput.Actions]).
+// named, in the author's order (rpg-project#448, [dungeonspec.MonsterPlacement.Actions]).
 //
 // ASSEMBLED NOW, STORED ONCE. The sheet is what gets rehydrated (S4), so the
 // numbers a monster is spawned with are the numbers it keeps: a later change
@@ -172,37 +172,6 @@ func arm(built *monster.Monster, actions []string) error {
 		return fmt.Errorf("arming %q: %w", built.Name(), err)
 	}
 	return nil
-}
-
-// projectMonster reports the state of an instantiated NPC.
-//
-// Read from the data rather than from a live monster, because Spawn already
-// holds the data — it is what gets stored. That is the opposite of
-// projectCharacter's rule, and for the opposite reason: there, serialising to
-// read was the expensive path; here the serialisation has already happened and
-// re-hydrating a monster to ask it questions would be the wasteful one.
-//
-// Only the walking speed is reported. Fly, swim, climb and burrow exist on the
-// stored sheet, and a client that needs them is asking a movement question this
-// projection does not answer — pretending otherwise by summing or maxing them
-// would invent a number the rules do not have.
-func projectMonster(data *monster.Data) *MonsterState {
-	if data == nil {
-		return nil
-	}
-	state := &MonsterState{
-		ID:               data.ID,
-		Name:             data.Name,
-		HitPoints:        data.HitPoints,
-		MaxHitPoints:     data.MaxHitPoints,
-		ArmorClass:       data.ArmorClass,
-		Speed:            data.Speed.Walk,
-		ProficiencyBonus: data.ProficiencyBonus,
-	}
-	if data.Ref != nil {
-		state.Ref = data.Ref.String()
-	}
-	return state
 }
 
 // projectCharacter asks resolution what this character is, and takes back an

@@ -38,8 +38,8 @@ func TestAtlasMapSuite(t *testing.T) {
 // map concatenated region by region comes out in coordinate order BY ACCIDENT
 // — and an order pin written against it passes with the sorting deleted,
 // which is exactly what the first version of this file did.
-func backwardsWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+func backwardsWorld() scene {
+	return scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{
 				rectRegion("alpha", 4, 0, 4, 4),
@@ -51,29 +51,9 @@ func backwardsWorld(t fataler) *encounter.EncounterData {
 				State: encounter.DoorIsOpen(),
 			}},
 		},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-		},
+		Party:   []sceneSeat{seatAt("alice", 1, 1)},
 		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Standing:   encEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("building backwards world: %v", err)
 	}
-	data := enc.ToData()
-	return &data
 }
 
 func (s *AtlasMapSuite) SetupTest() {
@@ -86,10 +66,7 @@ func (s *AtlasMapSuite) SetupTest() {
 	// Alpha is painted away from the origin, so its cells only exist at
 	// coordinates a projection that dropped or duplicated a region could
 	// not produce by accident.
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: backwardsWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, backwardsWorld())
 	s.mgr = mgr
 }
 

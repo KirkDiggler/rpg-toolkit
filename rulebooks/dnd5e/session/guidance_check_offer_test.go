@@ -87,10 +87,7 @@ func (s *GuidedUnlockSuite) sceneOverStores() *session.Manager {
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: gatedWorld(s.T(), tombLock()),
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, gatedWorld(tombLock()))
 	return mgr
 }
 

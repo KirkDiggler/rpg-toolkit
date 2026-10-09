@@ -77,7 +77,7 @@ const (
 // answered for a world nobody has started by [Manager.AtlasOf].
 //
 // The INBOUND direction is a different shape, and worth saying out loud so
-// the asymmetry is not read as an oversight: StartSessionInput.World is
+// the asymmetry is not read as an oversight: LaunchInput.Dungeon is
 // authored content, whose cells are offset pairs under an orientation.
 // Authoring is construction data, and the one-map rule governs what a
 // session SEES while it plays.
@@ -3382,7 +3382,7 @@ type CharacterState struct {
 // merging them was considered and rejected: the two genuinely differ (a
 // character has a Level, a monster has a challenge rating), and one type with
 // fields that are meaningful for only half its values reintroduces exactly the
-// guessing that giving Join and Spawn separate verbs removed.
+// guessing that giving characters and monsters separate content paths removed.
 //
 // Ref is here and has no counterpart on CharacterState, which is the same
 // asymmetry stated at the seam: a monster is content built from a named recipe,

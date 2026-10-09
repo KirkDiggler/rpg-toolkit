@@ -77,29 +77,6 @@ type ArrivesOnStance struct {
 
 func (ArrivesOnStance) isArrival() {}
 
-// triggerOf converts an arrival into the composition's own predicate, at the
-// boundary and nowhere else. nil crosses as nil: no predicate, placed at once.
-// The set is sealed, so every form has an arm; what each form MEANS — and
-// whether it can ever hold — is the composition's to judge, and it refuses by
-// name (ErrNoMember) a predicate nothing could fire.
-func triggerOf(a Arrival) encounter.Trigger {
-	switch a := a.(type) {
-	case ArrivesAtRound:
-		return encounter.TriggerRound{Round: a.Round}
-	case ArrivesOnFall:
-		return encounter.TriggerMemberDown{Member: encounter.MemberID(a.Member)}
-	case ArrivesOnFact:
-		return encounter.TriggerFact{Fact: a.Fact}
-	case ArrivesOnStance:
-		return encounter.TriggerStance{
-			Between: [2]encounter.FactionID{a.Between[0], a.Between[1]},
-			Stance:  encounter.Stance(a.Stance),
-		}
-	default:
-		return nil
-	}
-}
-
 // PlacementKind names what arrived: a member or a thing. A closed set, because
 // a client branches on it — a monster gets a roster row and a prop does not —
 // and it maps onto a proto enum (PlacementKind MONSTER | PROP).
@@ -121,8 +98,8 @@ const (
 // so a plain world's kinds are seeded exactly as they always were.
 //
 // No speed, sight, attacks or targeting: neither record carries them
-// (rpg-project#538). An arriving monster's sheet was recorded at Spawn, and
-// the sheet seam reads it there.
+// (rpg-project#538). An arriving monster's sheet is recorded when it is
+// placed, and the sheet seam reads it there.
 func worldMembers(world encounter.EncounterData) []encounter.MemberData {
 	out := make([]encounter.MemberData, 0, len(world.Members)+len(world.Reserve))
 	out = append(out, world.Members...)

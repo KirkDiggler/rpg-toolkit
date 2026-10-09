@@ -4,6 +4,7 @@ package session_test
 
 import (
 	"context"
+
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
@@ -76,10 +77,12 @@ func (s *CastSuite) TestGuidingBoltPublicCastAndStoryReplay() {
 func (s *CastSuite) TestGuidingBoltAttackOfferResumesWithoutPayingOrRollingAgain() {
 	cleric := healingWordCleric()
 	cleric.KnownSpells = append(cleric.KnownSpells, refs.Spells.GuidingBolt().String())
+	s.scene(cleric, 4, 18, 1, 1, 1, 1)
+	// Inspired after the launch: its first-admission long rest ends the die.
 	inspired, err := conditions.NewInspiredCondition("cleric", "bard", conditions.InspiredDie).ToJSON()
 	s.Require().NoError(err)
-	cleric.Conditions = append(cleric.Conditions, inspired)
-	s.scene(cleric, 4, 18, 1, 1, 1, 1)
+	stored := s.characters.byID["cleric"]
+	stored.Conditions = append(stored.Conditions, inspired)
 	out, err := s.cast(spells.GuidingBolt)
 	s.Require().NoError(err)
 	s.True(out.Posed)

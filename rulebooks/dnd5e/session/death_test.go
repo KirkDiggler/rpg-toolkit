@@ -16,6 +16,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -63,43 +64,19 @@ func TestDeathSuite(t *testing.T) { suite.Run(t, new(DeathTestSuite)) }
 // Unbounded retention because the story is the ledger the composition reads
 // back to decide whether a death is news (rpg-toolkit#1077). A window that
 // trimmed mid-scene would re-narrate a death these tests are counting.
-func cryptWorld(t fataler) *encounter.EncounterData {
+func cryptWorld() scene {
 	occluders := make([]spatial.Position, 0, 10)
 	for y := 0; y < 10; y++ {
 		occluders = append(occluders, spatial.Position{X: 5, Y: float64(y)})
 	}
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	return scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
 			Props:   occludingProps(occluders...),
 		},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 8, Y: 8}},
-		},
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Standing:   encEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("building the crypt: %v", err)
+		Party: []sceneSeat{seatAt("alice", 1, 1), seatAt("bob", 8, 8)},
 	}
-	data := enc.ToData()
-
-	return &data
 }
 
 func (s *DeathTestSuite) SetupTest() {
@@ -116,25 +93,24 @@ func (s *DeathTestSuite) SetupTest() {
 }
 
 func (s *DeathTestSuite) startCrypt() {
-	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: cryptWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), s.mgr, cryptWorld())
 	s.stream.published = nil
 }
 
-// spawnSkeleton puts a catalog skeleton next to alice, which starts a fight.
+// startCryptWithSkeleton launches the crypt with a catalog skeleton next to
+// alice, which starts a fight. More monsters, when given, stand beside it.
 //
 // Adjacent and in plain sight, so contact is immediate — asserted rather than
 // assumed, because every scene below depends on there being a fight to end.
-func (s *DeathTestSuite) spawnSkeleton() {
-	out, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
-		Session: "sess", ID: "skeleton", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 2, Y: 1},
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(out.Formed, "arriving in plain sight of alice starts a fight")
-	s.Require().Equal(13, out.NPC.HitPoints, "the catalog skeleton, whole")
+func (s *DeathTestSuite) startCryptWithSkeleton(more ...dungeonspec.MonsterPlacement) {
+	sc := cryptWorld()
+	sc.Monsters = append([]dungeonspec.MonsterPlacement{
+		monsterAt("skeleton", refs.Monsters.Skeleton().String(), 2, 1),
+	}, more...)
+	out := launchScene(s.T(), s.mgr, sc)
+	s.stream.published = nil
+	s.Require().NotEmpty(out.Formed, "standing in plain sight of alice starts a fight")
+	s.Require().Equal(13, s.storedHP("skeleton"), "the catalog skeleton, whole")
 }
 
 // aliceSwings runs one strike at the skeleton and returns what it did.
@@ -228,8 +204,7 @@ func (s *DeathTestSuite) swingUntilTheSkeletonFalls() {
 // blow is now the moment the world looks (rpg-toolkit#1083). Nothing after this
 // helper has to walk, tick, or ask.
 func (s *DeathTestSuite) dropTheSkeleton() {
-	s.startCrypt()
-	s.spawnSkeleton()
+	s.startCryptWithSkeleton()
 	s.swingUntilTheSkeletonFalls()
 }
 
@@ -403,8 +378,7 @@ func (s *DeathTestSuite) TestTheEncounterOutlivesTheFight() {
 // outlived it; it now has to sit before, which is the whole change stated as a
 // scene rather than as a claim.
 func (s *DeathTestSuite) TestTheSurvivorWalksAgain() {
-	s.startCrypt()
-	s.spawnSkeleton()
+	s.startCryptWithSkeleton()
 
 	// Control: mid-fight, she is on the turn clock, not free-roaming — a
 	// direct blocked Move no longer proves this alone since rpg-toolkit#1169,
@@ -453,13 +427,11 @@ func (s *DeathTestSuite) duelAtZero() {
 	// swings (22) must be enough to end alice: 12 hit points keeps the whole
 	// takedown inside bob's own two-attack turn, which is what the fixture
 	// always needed from the dice.
+	launchOnClock(s.T(), s.mgr, s.encounters, freeRoamDuelWorld(), []string{"alice", "bob"}, 1)
+	// After the launch, whose first-admission long rest heals her to full.
 	s.characters.byID["alice"].HitPoints = 12
-	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world",
-		World: turnWorld(freeRoamDuelWorld(s.T()), []string{"alice", "bob"}, 1),
-	})
-	s.Require().NoError(err)
 
+	var err error
 	for i := 0; i < 4 && s.characters.byID["alice"].HitPoints > 0; i++ {
 		_, err = s.mgr.Attack(context.Background(), &session.AttackInput{
 			Session: "sess", Attacker: "bob", Target: "alice",
@@ -493,12 +465,9 @@ func (s *DeathTestSuite) TestTheKillingBlowNoticesACHARACTERToo() {
 	setLevel(s.characters.byID["bob"], 5)
 	// Same arithmetic duelAtZero keeps: 12 hit points lets bob's two-attack
 	// turn carry the takedown under the lawful damage die.
+	launchOnClock(s.T(), s.mgr, s.encounters, freeRoamDuelWorld(), []string{"alice", "bob"}, 1)
+	// After the launch, whose first-admission long rest heals her to full.
 	s.characters.byID["alice"].HitPoints = 12
-	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world",
-		World: turnWorld(freeRoamDuelWorld(s.T()), []string{"alice", "bob"}, 1),
-	})
-	s.Require().NoError(err)
 	s.stream.published = nil
 
 	for i := 0; i < 4 && s.characters.byID["alice"].HitPoints > 0; i++ {
@@ -520,13 +489,18 @@ func (s *DeathTestSuite) TestTheKillingBlowNoticesACHARACTERToo() {
 // mid-verb, at the one moment this verb now has something durable to lose.
 type brokenAfterWriting struct {
 	*fakeCharacters
+	// armed is set once the scene is launched: the launch's own seating
+	// writes are setup, not the swing under test.
+	armed bool
 	wrote bool
 }
 
 var errStoreWentAway = errors.New("the character store went away")
 
 func (b *brokenAfterWriting) SaveCharacter(ctx context.Context, data *character.Data) error {
-	b.wrote = true
+	if b.armed {
+		b.wrote = true
+	}
 
 	return b.fakeCharacters.SaveCharacter(ctx, data)
 }
@@ -585,7 +559,6 @@ func (s *DeathTestSuite) TestAKillingAttackReportsTheNestedBoundarySaveFailure()
 		CharacterID: "alice", Source: "dnd5e:features:rage",
 	}).ToJSON()
 	s.Require().NoError(err)
-	alice.Conditions = []json.RawMessage{rage}
 
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(alice, armedFighter("bob"))
@@ -601,8 +574,10 @@ func (s *DeathTestSuite) TestAKillingAttackReportsTheNestedBoundarySaveFailure()
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	s.startCrypt()
-	s.spawnSkeleton()
+	s.startCryptWithSkeleton()
+	// Raging is written AFTER the launch, whose first-admission long rest
+	// would otherwise be free to end it before the swing.
+	s.characters.byID["alice"].Conditions = []json.RawMessage{rage}
 	for i := range s.sessions.byID["sess"].NPCs {
 		if s.sessions.byID["sess"].NPCs[i].ID == "skeleton" {
 			s.sessions.byID["sess"].NPCs[i].HitPoints = 1
@@ -611,7 +586,7 @@ func (s *DeathTestSuite) TestAKillingAttackReportsTheNestedBoundarySaveFailure()
 	s.Require().Equal(1, s.storedHP("skeleton"), "the next hit will decide the fight")
 
 	declaration := currentAttackID(s.T(), mgr, "sess", "alice")
-	beforeWorld, err := s.encounters.GetEncounter(context.Background(), "world")
+	beforeWorld, err := s.encounters.GetEncounter(context.Background(), testSession)
 	s.Require().NoError(err)
 	beforeAlice, err := s.characters.GetCharacter(context.Background(), "alice")
 	s.Require().NoError(err)
@@ -632,10 +607,10 @@ func (s *DeathTestSuite) TestAKillingAttackReportsTheNestedBoundarySaveFailure()
 	var reported *session.SaveError
 	s.Require().True(errors.As(err, &reported), "ordinary errors.As reaches the complete report")
 	s.Equal([]string{"character:alice"}, reported.Report.Written)
-	s.Equal([]string{"character:alice", "encounter:world"}, reported.Report.Failed,
+	s.Equal([]string{"character:alice", "encounter:sess"}, reported.Report.Failed,
 		"the nested failed aggregate must not be hidden by the recording boundary")
 
-	afterWorld, getErr := s.encounters.GetEncounter(context.Background(), "world")
+	afterWorld, getErr := s.encounters.GetEncounter(context.Background(), testSession)
 	s.Require().NoError(getErr)
 	s.Equal(beforeWorld, afterWorld, "the failed recording never commits its in-memory story or dissolve")
 	s.Equal(1, s.storedHP("skeleton"), "the session-held monster damage was not persisted")
@@ -665,11 +640,8 @@ func (s *DeathTestSuite) TestASwingThatCannotRecordStillNamesTheSheetItWrote() {
 	})
 	s.Require().NoError(err)
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world",
-		World: turnWorld(freeRoamDuelWorld(s.T()), []string{"alice", "bob"}, 1),
-	})
-	s.Require().NoError(err)
+	launchOnClock(s.T(), mgr, s.encounters, freeRoamDuelWorld(), []string{"alice", "bob"}, 1)
+	chars.armed = true
 
 	_, err = mgr.Attack(context.Background(), &session.AttackInput{
 		Session: "sess", Attacker: "bob", Target: "alice",
@@ -682,7 +654,7 @@ func (s *DeathTestSuite) TestASwingThatCannotRecordStillNamesTheSheetItWrote() {
 	s.Require().ErrorAs(err, &reported,
 		"a swing that wrote a sheet and then failed reports what it wrote")
 	s.NotEmpty(reported.Report.Written, "and names it, so the caller repairs rather than retries")
-	s.Contains(reported.Report.Failed, "encounter:world", "while the world it describes did not land")
+	s.Contains(reported.Report.Failed, "encounter:sess", "while the world it describes did not land")
 }
 
 // TestADownedActorCannotSwing is rpg-toolkit#845 refused by name.
@@ -786,14 +758,8 @@ func (s *DeathTestSuite) TestAKillingBlowAboutADownedMemberIsStillLegal() {
 // which would leave nothing for THIS test to read Participants off of. A
 // second skeleton keeps the fight alive with the first one down inside it.
 func (s *DeathTestSuite) TestADownedMemberIsSplicedOutOfParticipantsToo() {
-	s.startCrypt()
-	s.spawnSkeleton()
-
-	_, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
-		Session: "sess", ID: "skeleton-2", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 2, Y: 2},
-	})
-	s.Require().NoError(err)
+	// skeleton-2 at axial (2,2), authored (3,2).
+	s.startCryptWithSkeleton(monsterAt("skeleton-2", refs.Monsters.Skeleton().String(), 3, 2))
 
 	s.swingUntilTheSkeletonFalls()
 
@@ -866,10 +832,37 @@ func (s *DeathTestSuite) TestTheAnswerIsAskedAgainNotRemembered() {
 // sheet for is refused by name rather than answered with a speed or a range
 // nobody stated. Nothing died, and nothing was walked.
 func (s *DeathTestSuite) TestAMemberWithNoSheetIsRefusedNotWalkedPast() {
-	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: ambushWorld(s.T()),
+	// Seeded, not launched: Launch resolves every placement to a sheet from
+	// its ref, so a member with no stat block behind it is a stored shape no
+	// launch can produce — the ambush world as an older writer left it.
+	ambush := ambushWorld()
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: ambush.Field,
+		Members: []encounter.MemberInput{
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 0}},
+			{ID: "ogre", Kind: encounter.KindMonster, Position: spatial.Position{X: 5, Y: 3}},
+		},
+		Endings:   ambush.Endings,
+		Retention: encounter.RetentionUnbounded,
+		// Stand-ins, not RefusingCapabilities: a world with members runs a
+		// participation pass at first light, which the refusing set refuses.
+		Capabilities: encounter.Capabilities{
+			Sheets:     encStandStill{},
+			Sight:      encEveryoneSees{},
+			Equipment:  encNoHandsObserved{},
+			Initiative: encOrderAsGiven{},
+			Driver:     encPassDriver{},
+			Standing:   encEveryoneStanding{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
+	world := enc.ToData()
+	seedRun(s.T(), s.sessions, s.encounters, testSession, &world)
 	s.stream.published = nil
 
 	_, err = s.mgr.Move(context.Background(), &session.MoveInput{
@@ -913,8 +906,7 @@ func (s *DeathTestSuite) TestTheAnswerNamesOnlyWhoWasAsked() {
 // would report a decision for a fight that ended in defeat the instant the two
 // could disagree.
 func (s *DeathTestSuite) TestACallerEndingAFightStillSaysDecision() {
-	s.startCrypt()
-	s.spawnSkeleton()
+	s.startCryptWithSkeleton()
 
 	out, err := s.mgr.Dissolve(context.Background(), &session.DissolveInput{
 		Session: "sess", Member: "alice", Cause: session.ByDecision(),
@@ -939,8 +931,7 @@ func (s *DeathTestSuite) TestACallerEndingAFightStillSaysDecision() {
 // says, and the answer corrects the account. A refusal here would be a fourth
 // sentinel earning nothing.
 func (s *DeathTestSuite) TestACallerCannotDeclareDefeat() {
-	s.startCrypt()
-	s.spawnSkeleton()
+	s.startCryptWithSkeleton()
 
 	out, err := s.mgr.Dissolve(context.Background(), &session.DissolveInput{
 		Session: "sess", Member: "alice", Cause: session.ByDefeat(),
@@ -988,9 +979,7 @@ func (s *DeathTestSuite) TestTheSeamReadsOnTheCallersContext() {
 	s.Require().NoError(err)
 
 	marked := context.WithValue(context.Background(), ctxKey{}, true)
-	_, err = mgr.StartSession(marked, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: cryptWorld(s.T()),
-	})
+	_, err = mgr.Launch(marked, sceneInput(cryptWorld()))
 	s.Require().NoError(err)
 
 	_, err = mgr.Move(marked, &session.MoveInput{
@@ -1037,7 +1026,6 @@ func (f *failingCharacters) GetCharacter(ctx context.Context, id string) (*chara
 func (s *DeathTestSuite) TestAStoreThatCannotAnswerFailsTheVerb() {
 	chars := &failingCharacters{
 		fakeCharacters: newFakeCharacters(armedFighter("alice"), armedFighter("bob")),
-		broken:         "bob",
 	}
 	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
@@ -1045,10 +1033,10 @@ func (s *DeathTestSuite) TestAStoreThatCannotAnswerFailsTheVerb() {
 	})
 	s.Require().NoError(err)
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: cryptWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, cryptWorld())
+	// Broken only after the launch, which reads every party sheet to seat it:
+	// the subject is a verb on a running world whose store then blinks.
+	chars.broken = "bob"
 
 	_, err = mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 1, Y: 2}},

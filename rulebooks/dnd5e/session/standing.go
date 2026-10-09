@@ -78,9 +78,8 @@ type standingSeam struct {
 	// data is the session record, ALIASED rather than copied, so a sheet this
 	// verb has already written back is what the next consult reads.
 	//
-	// Nil is legal and means "no session-scoped sheets", which is what
-	// StartSession's validation load has: it is proving an authored blob can be
-	// reconstituted, and no session record exists yet to hold anything.
+	// Nil is legal and means "no session-scoped sheets", which is what a load
+	// with no session record behind it has: nothing exists yet to hold anything.
 	data *SessionData
 }
 

@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
@@ -15,8 +17,6 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
-	"github.com/stretchr/testify/suite"
 )
 
 // DepartSuite holds the #1983 gate ruling: a member who leaves a run takes
@@ -39,35 +39,11 @@ type DepartSuite struct {
 func TestDepartSuite(t *testing.T) { suite.Run(t, new(DepartSuite)) }
 
 // partyOfThree is alice, bob and carol in one hall, free roaming.
-func partyOfThree(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+func partyOfThree() scene {
+	return scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
-			{ID: "carol", Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 1}},
-		},
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Standing:   encEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("building the hall: %v", err)
+		Party: []sceneSeat{seatAt("alice", 1, 1), seatAt("bob", 2, 1), seatAt("carol", 3, 1)},
 	}
-	data := enc.ToData()
-	return &data
 }
 
 // SetupTest stands bob concentrating on Bless, its effect on alice and carol.
@@ -93,7 +69,7 @@ func (s *DepartSuite) SetupTest() {
 		target.Conditions = append(target.Conditions, blessed)
 	}
 
-	s.characters = newFakeCharacters(alice, bob, carol)
+	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"), armedFighter("carol"))
 	s.stream = &fakeStream{}
 	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
@@ -101,10 +77,12 @@ func (s *DepartSuite) SetupTest() {
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: partyOfThree(s.T()),
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, partyOfThree())
+	// Launch long-rests the party, which would end the Bless: the held
+	// sheets are written after it, as a rejoin's were after Join.
+	for _, sheet := range []*character.Data{alice, bob, carol} {
+		s.characters.byID[sheet.ID] = sheet
+	}
 	s.stream.published = nil
 }
 

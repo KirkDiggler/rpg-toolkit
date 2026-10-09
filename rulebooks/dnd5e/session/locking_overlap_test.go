@@ -70,10 +70,10 @@ func (s *SessionLockSuite) TestOverlappingMovesBothSurviveWithoutLostUpdates() {
 		TurnDriver: session.Pass{}, Locker: locker,
 	})
 	s.Require().NoError(err)
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{Session: "run", Encounter: "world", World: authoredWorld(s.T())})
-	s.Require().NoError(err)
-	_, err = mgr.Join(ctx, &session.JoinInput{Session: "run", Member: "bob", Position: spatial.Position{X: 2, Y: 2}})
-	s.Require().NoError(err)
+	world := authoredWorld()
+	world.Session = "run"
+	world.Party = append(world.Party, sceneSeat{ID: "bob", At: authoredOf(spatial.Position{X: 2, Y: 2})})
+	launchScene(s.T(), mgr, world)
 
 	worlds.pause = true
 	locker.requests = make(chan struct{}, 2)

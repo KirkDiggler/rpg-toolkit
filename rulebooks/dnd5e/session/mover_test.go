@@ -12,6 +12,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -140,22 +141,18 @@ func oaRef() string { return refs.Conditions.OpportunityAttack().String() }
 
 // duel starts the standard scene: one fighter and one skeleton standing next to
 // each other in an open tomb, in a fight, with the fighter holding a reaction.
+// The cells are the axial cells the verbs speak.
 func (s *MoverSeamSuite) duel(mgr *session.Manager, fighterAt, skeletonAt spatial.Position, reactions int) {
-	ctx := context.Background()
-	_, err := mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: tombRoom(12, 6),
-	})
-	s.Require().NoError(err)
-
-	_, err = mgr.Join(ctx, &session.JoinInput{Session: "sess", Member: "fighter", Position: fighterAt})
-	s.Require().NoError(err)
+	sc := tombRoom(12, 6)
+	sc.Party = []sceneSeat{{ID: "fighter", At: authoredOf(fighterAt)}}
+	at := authoredOf(skeletonAt)
+	sc.Monsters = []dungeonspec.MonsterPlacement{
+		monsterAt("skel-1", refs.Monsters.Skeleton().String(), int(at.X), int(at.Y)),
+	}
+	launched := launchScene(s.T(), mgr, sc)
+	s.Require().NotEmpty(launched.Formed, "adjacent and in sight starts the fight")
+	// After the launch: its first-admission rest would refill what this sets.
 	s.inCombat("fighter", reactions)
-
-	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(), Position: skeletonAt,
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(spawned.Formed, "adjacent and in sight starts the fight")
 }
 
 // TestAMonsterLeavingTheFightersReachAsksTheFighter is rung 2's first
@@ -256,14 +253,9 @@ func (s *MoverSeamSuite) TestAnAlliedReactorDoesNotSwing() {
 	ctx := context.Background()
 	mgr := s.managerWith(session.Pass{})
 
-	_, err := mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: tombRoom(12, 6),
-	})
-	s.Require().NoError(err)
-	_, err = mgr.Join(ctx, &session.JoinInput{Session: "sess", Member: "fighter", Position: hexCell(2, 0)})
-	s.Require().NoError(err)
-	_, err = mgr.Join(ctx, &session.JoinInput{Session: "sess", Member: "ally", Position: hexCell(3, 0)})
-	s.Require().NoError(err)
+	sc := tombRoom(12, 6)
+	sc.Party = []sceneSeat{seatAt("fighter", 2, 0), seatAt("ally", 3, 0)}
+	launchScene(s.T(), mgr, sc)
 	s.inCombat("ally", 1)
 
 	// Free roam: two players and no monster, so no fight forms and no

@@ -110,9 +110,9 @@ var (
 	// stored bytes are refused rather than carried into a resolution.
 	ErrBadCharacter = errors.New("character data could not be loaded")
 
-	// ErrNoRef is returned when Spawn is given an empty ref.
+	// ErrNoRef is returned when a monster placement carries an empty ref.
 	//
-	// Spawn instantiates content that lives in code, and the ref is how that
+	// A launch instantiates content that lives in code, and the ref is how that
 	// content is named. There is no default worth guessing at.
 	ErrNoRef = errors.New("empty ref")
 
@@ -376,7 +376,7 @@ var (
 	// ErrNoEncounterID is returned when a verb is given an empty encounter ID.
 	ErrNoEncounterID = errors.New("empty encounter id")
 
-	// ErrSessionExists is returned by StartSession when the ID is already in
+	// ErrSessionExists is returned by Launch when the ID is already in
 	// use.
 	//
 	// Starting over an existing session must never be silent: the ID names a
@@ -415,8 +415,8 @@ var (
 	// is written, naming both claimants.
 	ErrDuplicateMember = errors.New("member id claimed twice")
 
-	// ErrInvalidWorld is returned when the authored encounter handed to
-	// StartSession cannot be loaded.
+	// ErrInvalidWorld is returned when the dungeon handed to Launch or
+	// AtlasOf cannot be built or loaded.
 	//
 	// Validated by loading it before anything is written, so a world that
 	// cannot be reconstituted is rejected at the door rather than persisted

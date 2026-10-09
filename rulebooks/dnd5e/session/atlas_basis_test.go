@@ -20,7 +20,7 @@ import (
 // by 6 rows. An external reference (the formula), not a round-trip — the only
 // kind of test that could see the basis this seam used to hand out.
 func (s *ReadTestSuite) TestAtlasCellsDrawTheAuthoredShape() {
-	s.startWith(hexWorld(s.T()))
+	launchScene(s.T(), s.mgr, hexWorld())
 	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 	s.Require().Equal(session.HexLayoutPointyTop, atlas.Layout)

@@ -31,11 +31,7 @@ func (s *DissolveTestSuite) SetupTest() {
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
 	s.mgr = managerOverRepos(s.T(), s.sessions, s.encounters)
-	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: ambushWorld(s.T()),
-	})
-	s.Require().NoError(err)
-	stockAuthoredMonsters(s.T(), s.sessions, s.encounters, "sess")
+	launchScene(s.T(), s.mgr, ambushWorld())
 }
 
 // fight walks alice into the ogre, which starts one.

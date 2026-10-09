@@ -45,47 +45,21 @@ func (s *EventsTestSuite) SetupTest() {
 
 // twoRoomParty puts alice and dave in the corridor and carol in the sealed
 // vault, so one member is genuinely unable to perceive what the others do.
-func twoRoomParty(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+func twoRoomParty() scene {
+	return scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{
 				rectRegion("corridor", 0, 0, 8, 8),
 				rectRegion("vault", 20, 0, 8, 8),
 			},
 		},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "dave", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
-			{ID: "carol", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-		},
-		Endings:   []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Standing:   encEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("building two-room party: %v", err)
+		Party:   []sceneSeat{seatAt("alice", 1, 1), seatAt("dave", 2, 2), seatAt("carol", 1, 1)},
+		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
 	}
-	data := enc.ToData()
-	return &data
 }
 
 func (s *EventsTestSuite) start() {
-	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: twoRoomParty(s.T()),
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), s.mgr, twoRoomParty())
 	s.stream.published = nil // setup beats predate any client
 }
 
@@ -171,10 +145,7 @@ func (s *EventsTestSuite) TestNothingIsPublishedWhenTheSaveFails() {
 	s.Require().NoError(err)
 
 	ctx := context.Background()
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: twoRoomParty(s.T()),
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, twoRoomParty())
 	encounters.saveErr = errBroken
 	stream.published = nil
 
@@ -200,10 +171,7 @@ func (s *EventsTestSuite) TestDeliveryFailureDoesNotFailTheVerb() {
 	s.Require().NoError(err)
 
 	ctx := context.Background()
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: twoRoomParty(s.T()),
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, twoRoomParty())
 
 	out, err := mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 2, Y: 1}},
@@ -234,10 +202,7 @@ func (s *EventsTestSuite) TestDiscardingEventsStillReportsHonestly() {
 	s.Require().NoError(err)
 
 	ctx := context.Background()
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: twoRoomParty(s.T()),
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, twoRoomParty())
 
 	out, err := mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 2, Y: 1}},

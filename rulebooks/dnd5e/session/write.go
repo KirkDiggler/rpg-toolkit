@@ -73,264 +73,16 @@ type JoinOutput struct {
 	Delivery DeliveryReport
 }
 
-// SpawnInput instantiates content that lives in code as a new member.
-type SpawnInput struct {
-	// Session is the session to spawn into.
-	Session string
-
-	// ID is the ID the new member is known by inside the encounter.
-	//
-	// Separate from Ref because a template carries no identity: one catalog
-	// entry makes five skeletons, and the encounter has to tell them apart.
-	ID string
-
-	// Ref names what to build — "dnd5e:monsters:skeleton".
-	//
-	// It routes on (Module, Type), which is what a ref is for: it says which
-	// package can produce this data. A ref this build has no loader for is
-	// rejected rather than guessed at.
-	Ref string
-
-	// Position is the cell to place it on, in dungeon-absolute space. See
-	// JoinInput.Position.
-	Position spatial.Position
-
-	// Holds is the intel records this monster carries, by record id — the
-	// author's placement from the dungeon file's `place[].holds`
-	// (rpg-project#372, design §3), forwarded to the composition untouched.
-	//
-	// THIS IS THE ONLY WAY AN AUTHORED RECORD REACHES A LIVE MONSTER. A host
-	// that resolves monster content at runtime builds its world empty of
-	// members and brings every monster in through this verb, so a record
-	// that could only be read at construction was a record the game never
-	// saw: the captain who holds the vault map would be looted for nothing.
-	//
-	// COMPILED RECORD IDS, not the author's own. dungeonspec mints
-	// `<key>/<id>` so two dungeons in one process cannot collide, and its
-	// MonsterPlacement.Holds already carries the minted form. Passing the raw
-	// authored id names a record the composition does not have, and the spawn
-	// is refused by name rather than silently arriving ignorant.
-	//
-	// WHAT THE RECORD REVEALS IS NOT THIS SEAM'S BUSINESS. It forwards an id;
-	// the composition reads what the record means from the dungeon's own
-	// intel table when the holding changes hands. That is why this field
-	// carries no target and never will — a second kind of target is a
-	// dungeonspec and encounter change, and nothing here moves.
-	//
-	// Empty is the ordinary case: most monsters hold nothing.
-	Holds []string
-
-	// Actions is what this monster can do, in the author's order — the
-	// author's placement from the dungeon file's `place[].actions`
-	// (rpg-project#448), forwarded to the sheet at spawn.
-	//
-	// WEAPON REFS, `dnd5e:weapons:shortbow`, and nothing else today. A
-	// monster's weapon attack is the catalog's weapon assembled against that
-	// monster's own scores, so a goblin's shortbow and a skeleton's carry the
-	// same ref and differ only in who is holding them. The design keeps
-	// authored non-weapon actions (claw, bite, multiattack) in this same
-	// list; none exists on any monster this build ships, so anything that is
-	// not `dnd5e:weapons:*` is refused with ErrUnknownContent rather than
-	// carried through to a turn that could not use it.
-	//
-	// NON-EMPTY REPLACES, EMPTY KEEPS. A list replaces the instantiated
-	// monster's whole action list with the weapons named, in order; empty —
-	// the ordinary case — leaves the stat block's own arms alone. It is not
-	// additive, because "this goblin carries a bow and nothing else" is a
-	// thing an author must be able to say.
-	//
-	// THE ORDER IS THE INSTRUCTION. Both drivers take the first action whose
-	// target is in reach, so a placement listing the blade first swings when
-	// you close on it and one listing only a bow shoots you point blank.
-	// Nothing here sorts or deduplicates the list.
-	//
-	// IT FAILS HERE OR NOWHERE. An unknown ref refuses the spawn with
-	// ErrUnknownContent, carrying the ref's own text — the sentinel a bad
-	// monster ref already returns. A host boots a shipped dungeon through
-	// this verb, so a bad weapon refuses boot; a turn never meets one.
-	//
-	// ASSEMBLED NOW, STORED ON THE SHEET. A saved run keeps the numbers it
-	// was spawned with, and a later change to the catalog or to the stat
-	// block does not re-arm a monster mid-run.
-	Actions []string
-
-	// Intimidate is the check a character must beat to frighten this monster
-	// — the author's placement from the dungeon file's `place[].intimidate`
-	// (rpg-project#454), forwarded to the composition untouched.
-	//
-	// THIS IS THE ONLY WAY A DC REACHES A LIVE MONSTER, and it is Holds's
-	// argument again: a host that resolves monster content at runtime builds
-	// its world empty of members and brings every monster in through this
-	// verb, so a DC that could only be set at construction is a DC the game
-	// never sees. Without this field the sergeant priced at 12 cannot be
-	// threatened at all.
-	//
-	// EMPTY MEANS THE VERB IS NOT OFFERED (rpg-project#494 R1). Absent,
-	// [Manager.Intimidate] refuses this monster with ErrNoSocialEntry and
-	// Afford never lists it as a candidate. There is no derived difficulty:
-	// a creature gains a social verb in the World Builder or not at all.
-	//
-	// The seam's own approach type, converted at the boundary like Holds and
-	// Actions (S2: no inner type crosses this seam's exported surface).
-	Intimidate []DoorApproach
-
-	// Persuade is the check a character must beat to talk this monster round
-	// — the author's `place[].persuade` (rpg-project#458), forwarded
-	// untouched. [SpawnInput.Intimidate]'s twin, with its contracts: empty
-	// means the verb is NOT OFFERED on this monster.
-	Persuade []DoorApproach
-
-	// Table is what this monster DOES — its whole policy, keyed by what
-	// happened: the four social verdicts and `time`, the creature's own turn
-	// (rpg-project#465, ideas/creature-table/design.md §1).
-	//
-	// THE AUTHOR'S TWO LAYERS, ALREADY LAID. Hand over
-	// [dungeonspec.MonsterPlacement.Table] verbatim: the compiler laid the
-	// placement's `on:` over its faction's before it ever reached the host.
-	// This verb lays the THIRD layer — the rulebook's default table for the
-	// monster's kind — UNDERNEATH, so a placement with no `on:` at all still
-	// fights, and a placement that named `time` replaces the default's `time`
-	// wholesale rather than adding to it.
-	//
-	// IT REPLACED TWO FIELDS. `Answers` said what a creature did about a
-	// social verdict and the sheet's `mind` word named a Go preset that
-	// decided everything else — two surfaces for one question, one of them a
-	// black box an author could not open. There is no second spelling beside
-	// this one: the social keys are keys of this same table.
-	//
-	// Nil is the ordinary case, and it does NOT mean a creature that does
-	// nothing: it means the rulebook's default speaks alone.
-	Table encounter.Table
-
-	// Temper is the temperament loading this monster's die — the author's
-	// `place[].temper`, or the word its faction's mix deals it
-	// (design §3, R5). Hand over [dungeonspec.MonsterPlacement.Temper]
-	// verbatim; this verb fills in what the word MEANS from the rulebook
-	// before the composition sees it.
-	//
-	// A WEIGHT PROFILE AND NOTHING ELSE. It adds no entries where a table is
-	// silent, it has no triggers, and it holds no memory. Four goblins off
-	// one sheet with one table are four different creatures because their
-	// dice are loaded differently, not because they were given different
-	// orders.
-	//
-	// The zero value is a soldier — every word at 100 — so a monster nobody
-	// gave a temperament and one authored `temper: soldier` are the same
-	// creature. A word this rulebook does not know REFUSES the spawn rather
-	// than degrading to a soldier: a placement whose `temper:` was mistyped
-	// would otherwise play perfectly well and nobody would learn the word
-	// never landed.
-	Temper encounter.Temper
-
-	// Faction is the side this monster fights on — the author's placement
-	// from the dungeon file's `place[].faction` (rpg-project#375, the
-	// hold-out design §3 "Spawn"), forwarded to the composition untouched,
-	// exactly as Holds is and for the same reason: a host that resolves
-	// monster content at runtime brings every monster in through this verb,
-	// so a faction that could only be read at construction was a side the
-	// game never saw — the camp's chief would arrive in `monsters`, and the
-	// composition would refuse the mind of `goblins` joining anywhere else.
-	//
-	// A FREE-FORM ID, never an enum: factions are content, declared per
-	// dungeon, and the composition carries the word without interpreting
-	// it. It must name a faction the dungeon declares; the spawn is refused
-	// by name otherwise (ErrNoFaction) rather than silently arriving on the
-	// wrong side.
-	//
-	// EMPTY IS THE DEFAULT FOR THE KIND, decided in ONE place — the
-	// composition's own rule (design R4): a monster placed with no faction
-	// line is in the reserved `monsters`, hostile to the party as every
-	// monster always was. Nothing here defaults it a second time.
-	//
-	// WHAT A FACTION MEANS — who fights whom, and what turns it — is not
-	// this seam's business. It forwards a name; the run's world folds the
-	// stance between factions from the dungeon's dispositions and the facts
-	// its members come to know, and a change reaches a client as
-	// EventStanceChanged.
-	Faction string
-
-	// Arrives is the predicate this monster waits in reserve on — the
-	// author's `place[].arrives` (rpg-project#375, the hold-out design §3.7,
-	// R6), hand-carried to the composition exactly as Holds and Faction are.
-	// Nil is the ordinary case: placed at once.
-	//
-	// WITH ONE, THE MONSTER IS NOT PLACED. It waits in reserve — no cell, no
-	// turn, no roster row, absent from every member's map and story, as if
-	// never written — and is placed on the first verb after its predicate
-	// holds, with an EventArrived to everyone. The response says so
-	// (SpawnOutput.Reserved). Its sheet is recorded now, like any spawned
-	// monster's: content resolves at launch, the run holds the member back.
-	//
-	// In this package's own words ([Arrival], reserve.go): a host holding
-	// the compiled placement's predicate spells it as one of the four forms.
-	// A predicate nothing could fire — a round counted from 0, a member
-	// waiting for its own fall, a stance the pair already holds — is refused
-	// by name (ErrNoMember) rather than reserving a monster forever.
-	Arrives Arrival
-}
-
-// SpawnOutput reports the spawn and what it revealed.
-type SpawnOutput struct {
-	// Member is the new member's placement — or, when Reserved, the placement
-	// it WILL take: Position is the authored cell it arrives at (or the
-	// nearest free one, if that is taken when the time comes), not a cell it
-	// stands on now. See Reserved.
-	Member Member
-
-	// Reserved reports that the monster went into reserve rather than onto
-	// the map (SpawnInput.Arrives): nothing was placed, no beat was written,
-	// no fight formed, nobody perceived anything — Seq is 0, Formed and
-	// Discovered are empty, and the roster and every atlas omit it until it
-	// arrives. A reader that treats Member.Position as "where it stands"
-	// must read this first.
-	Reserved bool `json:"reserved"`
-
-	// NPC is the instantiated sheet's state.
-	NPC *MonsterState
-
-	// Discovered is what changed in each observer's perception, keyed by
-	// observer. Absent observers saw nothing new.
-	Discovered map[string]Discovery
-
-	// Seq is the story sequence of the recorded arrival — the RECORD's own
-	// numbering, because Spawn has no acting member to number for: the
-	// caller is the host, and the host's view is the whole record. Every
-	// member-driven verb reports in its actor's delivered numbering
-	// instead (stream.go).
-	Seq uint64
-
-	// Outcome is present if an ending fired on the spawn.
-	Outcome *Outcome
-
-	// Formed is present if the spawned content arrived in sight of the party
-	// and a fight started. This is the reason Formed is not a movement-only
-	// field: nobody walked anywhere, and a fight started.
-	//
-	// Its Seq is the RECORD's numbering, like the sibling Seq above and for
-	// the same reason: Spawn has no acting member to number for. THE HOST
-	// MUST NEVER FORWARD SpawnOutput's Seq or Formed.Seq to a client beside
-	// per-recipient events — a record number next to a member's own dense
-	// stream is the gap oracle returning through a side door; clients hear
-	// about the arrival through their own numbered beats.
-	Formed *Formed
-
-	// Saved names what was persisted.
-	Saved SaveReport
-
-	// Delivery names what reached the event stream.
-	Delivery DeliveryReport
-}
-
 // PlaceNPCInput places a caller-supplied world NPC into a session's
 // encounter (rpg-toolkit#1404).
 //
 // NPC IS CALLER-SUPPLIED, NOT RESOLVED FROM A REF — the one place this
-// verb's shape diverges from Spawn's, deliberately. instantiate() resolves
-// a monster's ref through monsters.ByRef, a real toolkit-shipped catalog of
+// verb's shape diverges from a launched monster's, deliberately. instantiate()
+// resolves a monster's ref through monsters.ByRef, a real toolkit-shipped catalog of
 // code-built stat blocks; no NPC equivalent exists or is planned
 // (docs/ideas/dnd5e-npcs/design.md already ruled out a NewBlacksmith-style
-// toolkit archetype). So where Spawn takes a Ref string and builds the
-// content itself, PlaceNPC takes the already-built content directly — the
+// toolkit archetype). So where a monster placement takes a Ref string and the
+// launch builds the content itself, PlaceNPC takes the already-built content directly — the
 // caller decided default-vs-explicit (npcs.NewMerchant's nil-vs-config
 // signal) before this verb is ever called, and this verb does not
 // re-interpret that decision a second time.
@@ -346,8 +98,8 @@ type PlaceNPCInput struct {
 	Position spatial.Position
 
 	// NPC is the already-built content this member is placed from. Required
-	// — nil is refused with ErrNoRef, the same sentinel Spawn uses for an
-	// empty Ref: the same shape of caller mistake, the same error.
+	// — nil is refused with ErrNoRef, the same sentinel a monster placement
+	// uses for an empty Ref: the same shape of caller mistake, the same error.
 	NPC *npc.Data
 }
 
@@ -361,8 +113,8 @@ type PlaceNPCOutput struct {
 	Discovered map[string]Discovery
 
 	// Seq is the story sequence of the recorded arrival — the RECORD's own
-	// numbering, for the same reason SpawnOutput.Seq is (PlaceNPC has no
-	// acting member to number for either).
+	// numbering, because an arrival has no acting member to number for (PlaceNPC has
+	// none either).
 	Seq uint64
 
 	// Outcome is present if an ending fired on the placement.
@@ -371,9 +123,8 @@ type PlaceNPCOutput struct {
 	// Formed is present if the placed NPC arrived in sight of both sides and
 	// a fight started around it. In the MVP this should never actually
 	// happen — KindWorld is on neither side of sidesInContactOrder,
-	// structurally — but the field exists for the same reason SpawnOutput's
-	// does: this verb reports what encounter.Join actually returned rather
-	// than assuming a shape.
+	// structurally — but the field exists so this verb reports what
+	// encounter.Join actually returned rather than assuming a shape.
 	Formed *Formed
 
 	// Saved names what was persisted.
@@ -443,7 +194,7 @@ type EndOutput struct {
 // Join brings a PLAYER into the session's encounter and reports what came into
 // view as a result.
 //
-// Players only. Content that lives in code — monsters — enters through Spawn,
+// Players only. Content that lives in code — monsters — enters through Launch,
 // and the split is by where the data comes from rather than by what the thing
 // is: a character is loaded from the host's repository, a monster is built from
 // a ref. That distinction survives contact with the future, where "player or
@@ -544,7 +295,7 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 
 	// No faction named: a player is in the reserved `party` by the
 	// composition's own rule (rpg-project#375, R4), and nothing about the
-	// players' side is authorable — see SpawnInput.Faction.
+	// players' side is authorable — see MonsterPlacement.Faction.
 	//
 	// NO SPEED, SIGHT OR ATTACK IS HANDED OVER (rpg-project#538): the
 	// composition asks the character's sheet for each at the moment it uses
@@ -654,166 +405,10 @@ func discoveryStanding(scope *writeScope) (map[string]bool, error) {
 	return standingSet(scope.standing, rosterIDs(roster))
 }
 
-// Spawn instantiates content that lives in code and places it as a new member.
-//
-// RETIRING AS A HOST VERB (rpg-project#542, R7): [Manager.Launch] replaces
-// StartSession and Spawn for a host starting a run — one load-act-save that
-// stands the whole board, seats and rests the party and forms the fight last.
-// This verb stays only until the tier 3 deletion; a new host caller should
-// not be written. (Not marked with the Deprecated: convention yet, so the
-// suites that still build worlds through it keep their lint clean until that
-// deletion moves them.)
-//
-// The ref names what to build — "dnd5e:monsters:skeleton" — and the ID names
-// the member it becomes. They are separate because a template cannot carry
-// identity: one catalog entry makes five skeletons, and each needs its own name
-// in the encounter.
-//
-// The resulting sheet is stored in the session rather than behind a repository,
-// because a spawned monster is session-scoped: it has no existence outside this
-// fight and nothing durable to look up.
-//
-// WHAT IT DOES IS SETTLED HERE, ONCE. The author's orders arrive on Table, the
-// rulebook's default for the monster's kind is laid underneath them, and the
-// temperament's word is resolved to the numbers it means — all before the
-// member exists, so a creature that reaches the board has a policy or the
-// spawn was refused (rpg-project#465). Nothing re-registers at load and nothing
-// arrives later: the table is persisted with the member.
-//
-// Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoRef, ErrBadRef,
-// ErrNoLoader, ErrUnknownContent, ErrNoSession, ErrNoEncounter,
-// ErrBadPosition if no room owns the cell, ErrClosed, or ErrSaveFailed with a
-// populated report.
-func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, error) {
-	if in == nil {
-		return nil, fmt.Errorf("spawn: %w", ErrNilInput)
-	}
-	release, lockErr := m.acquireSession(ctx, in.Session)
-	if lockErr != nil {
-		return nil, lockErr
-	}
-	defer release()
-	if in.ID == "" {
-		return nil, fmt.Errorf("spawn: %w", ErrNoMemberID)
-	}
-
-	scope, err := m.openForChange(ctx, in.Session)
-	if err != nil {
-		return nil, fmt.Errorf("spawn: %w", err)
-	}
-
-	// Built before the placement — a preference, NOT a correctness argument,
-	// and worth stating plainly because the correctness version is tempting
-	// and wrong.
-	//
-	// Swapping these two survives as a mutant. Under load-act-save (S4) the
-	// in-memory encounter is discarded whenever a verb returns before commit,
-	// so a bad ref cannot leave a member placed no matter which order these
-	// run in. The rejection table's "a rejected spawn stores nothing" passes
-	// either way, and it is honest about why.
-	//
-	// This is the second time the same shape has appeared here — the join's
-	// load-versus-placement ordering had it too — which is the general lesson
-	// rather than a coincidence: in a load-act-save verb, ordering with respect
-	// to PERSISTENCE is never load-bearing before the commit. What is
-	// load-bearing is that the error stops the verb, and that is pinned
-	// separately.
-	//
-	// The lesson holds where the ordering is about persistence ALONE. It stops
-	// holding the moment something READS BACK what was written inside the same
-	// verb — which is what the exception below is, and what Attack's is too.
-	//
-	// The order is still chosen: there is no reason to touch the world when
-	// the call is already doomed.
-	sheet, err := instantiate(in.ID, in.Ref, in.Actions)
-	if err != nil {
-		return nil, fmt.Errorf("spawn: %w", err)
-	}
-
-	// THE SHEET IS RECORDED BEFORE THE PLACEMENT, and here the ordering IS
-	// load-bearing — an exception to the paragraph above, which is why it is
-	// stated separately rather than folded into it.
-	//
-	// Arriving refreshes sight, and every sight refresh asks who is standing
-	// (rpg-toolkit#1079). That consult reads the session's own sheets, so a
-	// monster placed before its sheet was recorded is asked about while the
-	// record still has nothing to say — answered "standing" for the right
-	// reason by accident, and paying a pointless character-repository miss on
-	// the way past. A member the world can see is a member the world can read.
-	//
-	// Nothing durable changes by moving it: a failed placement returns before
-	// the commit and the whole scope is dropped, sheet and all.
-	//
-	// It stopped being the ONLY exception at rpg-toolkit#1083, and the second one
-	// names what the two have in common. [Manager.Attack] must write its damaged
-	// sheets BEFORE it records the outcome, because recording now runs the same
-	// standing consult and it reads the same sheets — and there the write really
-	// is durable, so that ordering has a cost the paragraph above says cannot
-	// exist. The rule underneath both: ordering against persistence is free only
-	// while nothing READS BACK what was written inside the same verb. A consult
-	// is a read-back.
-	scope.data.NPCs = append(scope.data.NPCs, *sheet)
-	scope.touched = true
-
-	// THE THIRD LAYER GOES ON BEFORE THE MEMBER DOES. The author's two
-	// arrived already laid (SpawnInput.Table); the rulebook's default for this
-	// monster's kind goes underneath them here, which is the whole reason a
-	// placement with no `on:` still fights. Refused rather than defaulted: a
-	// creature placed with no policy would stand there looking like a choice
-	// somebody made.
-	// The sheet's own ref, which instantiate just resolved from in.Ref: the
-	// rulebook answers a default table for a KIND, and a ref is what names a
-	// kind.
-	folded, err := foldedTable(sheet.Ref, in.Table)
-	if err != nil {
-		return nil, fmt.Errorf("spawn %q: %w", in.ID, err)
-	}
-
-	// AND WHAT LOADS ITS DIE. An authored word becomes the percent profile the
-	// rulebook says it means; a faction's mix becomes every word's profile for
-	// the composition to deal one from at Join, with the faction as the die's
-	// entity; nothing stays nothing, which is a soldier. An unknown word
-	// refuses the spawn — see [resolvedTemper].
-	temper, err := resolvedTemper(in.Temper)
-	if err != nil {
-		return nil, fmt.Errorf("spawn %q: %w", in.ID, err)
-	}
-
-	// No speed, sight, actions or targeting is copied onto the member
-	// (rpg-project#538): the stat block just recorded above is where the
-	// sheet seam reads each of them, at the moment the composition asks.
-	placed, err := place(scope, in.ID, KindMonster, sheet.Name, in.Position,
-		false, in.Holds, in.Faction, triggerOf(in.Arrives),
-		socialPlacement{
-			Intimidate: checkApproachesOf(in.Intimidate), Persuade: checkApproachesOf(in.Persuade),
-			Table: folded, Temper: temper,
-		})
-	if err != nil {
-		return nil, fmt.Errorf("spawn: %w", err)
-	}
-
-	report, delivery, err := m.commit(ctx, scope)
-	if err != nil {
-		return nil, fmt.Errorf("spawn: %w", err)
-	}
-
-	return &SpawnOutput{
-		Member:     projectMember(placed.Member),
-		Reserved:   placed.Reserved,
-		NPC:        projectMonster(sheet),
-		Discovered: projectDiscoveries(placed.IntelDeltas),
-		Seq:        placed.Seq,
-		Outcome:    projectOutcome(placed.Outcome),
-		Formed:     projectFormed(placed.Formed),
-		Saved:      report,
-		Delivery:   delivery,
-	}, nil
-}
-
 // PlaceNPC places a caller-supplied world NPC into the session's encounter
 // (rpg-toolkit#1404). See PlaceNPCInput's own doc for why this takes
 // already-built content rather than resolving a ref, the one place its
-// shape diverges from Spawn's.
+// shape diverges from a launched monster's.
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoRef (a nil NPC),
 // ErrBadNPC (npc.Data with an empty or unrecognized MovementPolicy — see
@@ -834,7 +429,7 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 		return nil, fmt.Errorf("place npc: %w", ErrNoMemberID)
 	}
 	if in.NPC == nil {
-		// ErrNoRef's own text is "empty ref" — accurate for Spawn's empty
+		// ErrNoRef's own text is "empty ref" — accurate for a placement's empty
 		// Ref string, misleading here where the whole NPC pointer is nil,
 		// not a Ref field within it. Kept as the wrapped sentinel (Copilot,
 		// PR #1414 review) so errors.Is(err, ErrNoRef) still matches; only
@@ -858,15 +453,14 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 		return nil, fmt.Errorf("place npc: %w", err)
 	}
 
-	// THE CONTENT IS RECORDED BEFORE THE PLACEMENT — Spawn's own exception
-	// to "ordering against persistence is free only before the commit"
-	// (write.go's Spawn doc explains the general rule and this exception to
-	// it in full). Arriving refreshes sight, and every sight refresh asks
+	// THE CONTENT IS RECORDED BEFORE THE PLACEMENT — an exception
+	// to "ordering against persistence is free only before the commit".
+	// Arriving refreshes sight, and every sight refresh asks
 	// who is standing; a member placed before its record exists is asked
 	// about while the record still has nothing to say. A non-combatant
 	// world NPC has no standing question to answer, but the ordering stays
-	// identical to Spawn's on purpose — one placement shape, not two, for
-	// the same reason `place()` itself is shared rather than duplicated.
+	// identical to a launched monster's on purpose — one placement shape, not
+	// two, for the same reason `place()` itself is shared rather than duplicated.
 	scope.data.WorldNPCs = append(scope.data.WorldNPCs, PlacedWorldNPC{
 		MemberID: in.Member,
 		NPC:      *in.NPC,
@@ -905,7 +499,7 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 
 // place puts a member into the encounter.
 //
-// ONE placement path, shared by both entry verbs. Join and Spawn differ in
+// ONE placement path, shared by every entry verb. Join, Launch and PlaceNPC differ in
 // where a sheet comes from and in nothing else — the same validation, the same
 // adjacency rules, the same perception refresh, the same story beat. Two copies
 // of this would be free to drift, and the drift would be invisible until a rule
@@ -935,7 +529,7 @@ func place(
 	// must learn the authoritative declared kind first. The sheet seam reads
 	// the same snapshot, so this one line is also what lets the newcomer's own
 	// sight refresh find its sheet: each verb records the sheet (the host's
-	// character store, Spawn's stat block, PlaceNPC's content) before placing.
+	// character store, a placement's stat block, PlaceNPC's content) before placing.
 	in, err := joinInputFor(scope, id, kind, name, at, blocksMovement, holds, faction, arrives, social)
 	if err != nil {
 		return nil, err
@@ -947,9 +541,9 @@ func place(
 	return placed, nil
 }
 
-// joinInputFor is the one placement input every entry verb builds — Join,
-// Spawn and PlaceNPC one member at a time through [place], Launch a whole
-// board at once through the encounter's Board. It registers the member's
+// joinInputFor is the one placement input every entry verb builds — Join
+// and PlaceNPC one member at a time through [place], Launch a whole board at
+// once through the encounter's Board. It registers the member's
 // authoritative kind on the verb's shared snapshot first, so the newcomer's
 // own sight refresh finds its sheet.
 func joinInputFor(
@@ -983,12 +577,10 @@ func joinInputFor(
 		// means for this kind of member.
 		Faction: faction,
 		// The author's predicate in the composition's own Trigger, converted
-		// at the verb's boundary (Spawn's triggerOf) or carried straight off
-		// the compiled placement (Launch); nil stays nil.
+		// carried straight off the compiled placement (Launch); nil stays nil.
 		Arrives: arrives,
 		// The author's shenanigan facts (rpg-project#454), already in the
-		// composition's CheckApproach: converted at Spawn's door, or carried
-		// off the compiled placement by Launch. Nil stays nil.
+		// composition's CheckApproach: carried off the compiled placement by Launch. Nil stays nil.
 		Intimidate: social.Intimidate,
 		Persuade:   social.Persuade,
 		// The creature's whole policy, already three layers deep
@@ -1673,9 +1265,8 @@ func (m *Manager) adopt(ctx context.Context, scope *writeScope, world encounter.
 // that describes it goes second.
 //
 // NOTE WHAT THIS DOES NOT PROMISE. Retrying the verb does not repair the first
-// case: Spawn is not idempotent, and a second attempt is refused because the
-// member ID is already in the world (see TestADuplicateArrivalIsRejectedButMisreported,
-// which pins that rejection including the part of it that is wrong). The caller
+// case: an entry verb is not idempotent, and a second attempt is refused because
+// the member ID is already in the world. The caller
 // is told exactly which aggregate is missing — that is S6's whole job — and
 // repairing it needs a decision, not a retry. Making the entry verbs idempotent
 // for this case is the fix, and it is not this wave's.
@@ -1913,7 +1504,7 @@ func (m *Manager) exitDissolvedCombatants(
 
 	// Kind, from the ENCOUNTER's own authoritative roster — never inferred
 	// from whether an ID happens to load out of the character repository
-	// (Copilot's own finding on PR #1222). Spawn's only uniqueness guard is
+	// (Copilot's own finding on PR #1222). An entry verb's only uniqueness guard is
 	// "not a CURRENT member of this encounter"; nothing stops a monster ID
 	// from colliding with a real character ID belonging to a different
 	// session entirely. Asking the character store "does this load" would

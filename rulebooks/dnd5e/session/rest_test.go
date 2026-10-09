@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
@@ -16,7 +18,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
-	"github.com/stretchr/testify/suite"
 )
 
 // RestSuite covers slice 4's rest done-when: a short rest inside a run spends
@@ -41,9 +42,22 @@ func woundedFighter(id string) *character.Data {
 	return data
 }
 
-func (s *RestSuite) start(world *encounter.EncounterData, alice, bob *character.Data) {
+func (s *RestSuite) start(sc scene, alice, bob *character.Data, areas ...encounter.SightAreaData) {
+	s.launch(sc, nil, alice, bob, areas...)
+}
+
+// startInFight launches the duel with alice's turn already running.
+func (s *RestSuite) startInFight(alice, bob *character.Data) {
+	s.launch(freeRoamDuelWorld(), duelClock, alice, bob)
+}
+
+// launch launches sc, then lays the suite's sheets and sight areas on the
+// stored run. Launch long-rests every party member, so a wounded or
+// concentrating sheet is written back afterwards, as a rejoin's sheet was;
+// the areas stand on the world as the old authored world carried them.
+func (s *RestSuite) launch(sc scene, clock []string, alice, bob *character.Data, areas ...encounter.SightAreaData) {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
-	s.characters = newFakeCharacters(alice, bob)
+	s.characters = newFakeCharacters(armedFighter(alice.ID), armedFighter(bob.ID))
 	s.stream = &fakeStream{}
 	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
@@ -51,10 +65,13 @@ func (s *RestSuite) start(world *encounter.EncounterData, alice, bob *character.
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: world,
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, sc)
+	if clock != nil {
+		authorTurnClock(s.T(), s.encounters, testSession, clock, 0)
+	}
+	s.characters.byID[alice.ID] = alice
+	s.characters.byID[bob.ID] = bob
+	s.encounters.byID[testSession].SightAreas = append(s.encounters.byID[testSession].SightAreas, areas...)
 	s.stream.published = nil
 }
 
@@ -64,7 +81,7 @@ func (s *RestSuite) stored(id string) *character.Data {
 	return data
 }
 
-func (s *RestSuite) clock() int { return s.encounters.byID["world"].Clock.HighWater }
+func (s *RestSuite) clock() int { return s.encounters.byID[testSession].Clock.HighWater }
 
 func (s *RestSuite) restedTo(recipient string) []session.RestedBody {
 	var out []session.RestedBody
@@ -80,7 +97,7 @@ func (s *RestSuite) restedTo(recipient string) []session.RestedBody {
 }
 
 func (s *RestSuite) TestAShortRestSpendsTheAskedHitDiceAndTellsABeat() {
-	s.start(freeRoamDuelWorld(s.T()), woundedFighter("alice"), armedFighter("bob"))
+	s.start(freeRoamDuelWorld(), woundedFighter("alice"), armedFighter("bob"))
 	before := s.clock()
 
 	out, err := s.mgr.Rest(context.Background(), &session.RestInput{
@@ -97,7 +114,7 @@ func (s *RestSuite) TestAShortRestSpendsTheAskedHitDiceAndTellsABeat() {
 	s.Equal(alice.HitPoints-10, out.Rested[0].HitPointsRestored)
 	s.Require().NotNil(out.Rested[0].Calculation, "the dice's roll is carried")
 	s.Contains(out.Saved.Written, "character:alice")
-	s.Contains(out.Saved.Written, "encounter:world")
+	s.Contains(out.Saved.Written, "encounter:sess")
 	s.Equal(before+encounter.RoundsPerHour, s.clock(), "the hour is one jump on the world clock")
 
 	toBob := s.restedTo("bob")
@@ -109,7 +126,7 @@ func (s *RestSuite) TestAShortRestSpendsTheAskedHitDiceAndTellsABeat() {
 }
 
 func (s *RestSuite) TestThePartyRestsTogetherInOneHour() {
-	s.start(freeRoamDuelWorld(s.T()), woundedFighter("alice"), woundedFighter("bob"))
+	s.start(freeRoamDuelWorld(), woundedFighter("alice"), woundedFighter("bob"))
 	before := s.clock()
 
 	out, err := s.mgr.Rest(context.Background(), &session.RestInput{
@@ -126,7 +143,7 @@ func (s *RestSuite) TestThePartyRestsTogetherInOneHour() {
 }
 
 func (s *RestSuite) TestARestInAFightRefusesAndWritesNothing() {
-	s.start(duelWorld(s.T()), woundedFighter("alice"), armedFighter("bob"))
+	s.startInFight(woundedFighter("alice"), armedFighter("bob"))
 	charSaves, worldSaves := s.characters.saves, s.encounters.saves
 
 	_, err := s.mgr.Rest(context.Background(), &session.RestInput{
@@ -141,7 +158,7 @@ func (s *RestSuite) TestARestInAFightRefusesAndWritesNothing() {
 }
 
 func (s *RestSuite) TestRequestsARunDoesNotTakeAreRefused() {
-	s.start(freeRoamDuelWorld(s.T()), woundedFighter("alice"), armedFighter("bob"))
+	s.start(freeRoamDuelWorld(), woundedFighter("alice"), armedFighter("bob"))
 	for name, in := range map[string]*session.RestInput{
 		"long":     {Session: "sess", Kind: session.RestLong, Resters: []session.Rester{{Member: "alice"}}},
 		"nobody":   {Session: "sess", Kind: session.RestShort},
@@ -158,7 +175,7 @@ func (s *RestSuite) TestRequestsARunDoesNotTakeAreRefused() {
 }
 
 func (s *RestSuite) TestAStrangerCannotRest() {
-	s.start(freeRoamDuelWorld(s.T()), woundedFighter("alice"), armedFighter("bob"))
+	s.start(freeRoamDuelWorld(), woundedFighter("alice"), armedFighter("bob"))
 	_, err := s.mgr.Rest(context.Background(), &session.RestInput{
 		Session: "sess", Kind: session.RestShort, Resters: []session.Rester{{Member: "carol"}},
 	})
@@ -176,12 +193,11 @@ func (s *RestSuite) TestARestEndsConcentrationAndClosesItsArea() {
 	s.Require().NoError(err)
 	bob.Conditions = []json.RawMessage{blob}
 
-	world := freeRoamDuelWorld(s.T())
-	world.SightAreas = []encounter.SightAreaData{{
+	fog := []encounter.SightAreaData{{
 		ID: "fog-bob", SourceID: "bob", Name: "Fog Cloud",
 		Center: encounter.PositionData{X: 5, Y: 5}, RadiusFeet: 10,
 	}}
-	s.start(world, armedFighter("alice"), bob)
+	s.start(freeRoamDuelWorld(), armedFighter("alice"), bob, fog...)
 	areas, err := s.mgr.Areas(context.Background(), &session.ViewInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 	s.Require().Len(areas, 1, "the fog stands before the rest")
@@ -217,7 +233,7 @@ func (s *RestSuite) TestTheRestBeatTellsWhatItRefilledAndWhatItEnded() {
 	dodging, err := (&conditions.DodgingCondition{MemberID: "bob"}).ToJSON()
 	s.Require().NoError(err)
 	bob.Conditions = []json.RawMessage{held, dodging}
-	s.start(freeRoamDuelWorld(s.T()), armedFighter("alice"), bob)
+	s.start(freeRoamDuelWorld(), armedFighter("alice"), bob)
 
 	out, err := s.mgr.Rest(context.Background(), &session.RestInput{
 		Session: "sess", Kind: session.RestShort, Resters: []session.Rester{{Member: "bob"}},
@@ -245,7 +261,7 @@ func (s *RestSuite) TestTheRestBeatTellsWhatItRefilledAndWhatItEnded() {
 // asked, three held) leaves the first untouched, with no beat told and no
 // hour passed.
 func (s *RestSuite) TestARefusedSecondResterLeavesTheFirstUnwritten() {
-	s.start(freeRoamDuelWorld(s.T()), woundedFighter("alice"), woundedFighter("bob"))
+	s.start(freeRoamDuelWorld(), woundedFighter("alice"), woundedFighter("bob"))
 	before, charSaves, worldSaves := s.clock(), s.characters.saves, s.encounters.saves
 
 	_, err := s.mgr.Rest(context.Background(), &session.RestInput{
@@ -284,7 +300,7 @@ func (s *RestSuite) blessing(bob, alice *character.Data) {
 func (s *RestSuite) TestARestEndsAHoldOnAnotherMemberAndSavesTheirSheet() {
 	alice, bob := armedFighter("alice"), withHitDice(armedFighter("bob"), 1)
 	s.blessing(bob, alice)
-	s.start(freeRoamDuelWorld(s.T()), alice, bob)
+	s.start(freeRoamDuelWorld(), alice, bob)
 	s.Require().True(s.holds("alice", refs.Conditions.Blessed().String()), "alice starts blessed")
 
 	out, err := s.mgr.Rest(context.Background(), &session.RestInput{
@@ -325,13 +341,12 @@ func (s *RestSuite) TestAnAreaClosesAfterTheRestIsTold() {
 	held, err := holding.ToJSON()
 	s.Require().NoError(err)
 	bob.Conditions = []json.RawMessage{held}
-	world := freeRoamDuelWorld(s.T())
-	world.SightAreas = []encounter.SightAreaData{{
+	fog := []encounter.SightAreaData{{
 		ID: "fog-bob", SourceID: "bob", Name: "Fog Cloud",
 		Center: encounter.PositionData{X: 1, Y: 1}, RadiusFeet: 10,
 		MembershipRef: "dnd5e:conditions:in_fog", MembershipName: "In the fog", MembershipSourceID: "bob",
 	}}
-	s.start(world, armedFighter("alice"), bob)
+	s.start(freeRoamDuelWorld(), armedFighter("alice"), bob, fog...)
 
 	_, err = s.mgr.Rest(context.Background(), &session.RestInput{
 		Session: "sess", Kind: session.RestShort, Resters: []session.Rester{{Member: "bob"}},

@@ -58,13 +58,13 @@ func structuralBox(at spatial.Position, widthFeet, depthFeet float64) spatial.Fo
 // the door's presence is listed under the concealment's Props — they are
 // withheld because they stand on concealed, unexplored floor and because the
 // door id is named — and the whole vault's floor is the secret.
-func structuralSecretWorld(t fataler) *encounter.EncounterData {
+func structuralSecretWorld() scene {
 	wallBox := structuralBox(hexCell(7, 2), 6, 0.5)
 	doorBox := structuralBox(hexCell(7, 3), 1, 1)
 	origin := hallPlane().CellCentre(hexCell(7, 2))
 	at := func(dx float64) spatial.Point { return spatial.Point{X: origin.X + dx, Y: origin.Y} }
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	return scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{
 				rectRegion("hall", 0, 0, 6, 6),
@@ -96,33 +96,9 @@ func structuralSecretWorld(t fataler) *encounter.EncounterData {
 				}},
 			}},
 		},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: cell(1, 1)},
-			{ID: "bob", Kind: encounter.KindPlayer, Position: cell(2, 1)},
-		},
+		Party:   []sceneSeat{{ID: "alice", At: cell(1, 1)}, {ID: "bob", At: cell(2, 1)}},
 		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
-		Capabilities: encounter.Capabilities{
-			Sight:         encEveryoneSees{},
-			Equipment:     encNoHandsObserved{},
-			Initiative:    encOrderAsGiven{},
-			Driver:        encPassDriver{},
-			Standing:      encEveryoneStanding{},
-			CheckResolver: encNeverResolves{},
-			Witness:       encNeverWitnesses{},
-			Sheets:        encStandStill{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("building structural secret world: %v", err)
 	}
-	data := enc.ToData()
-
-	return &data
 }
 
 // structuralRoomWorld is gatedWorld-style two-region dungeon with a structural
@@ -130,13 +106,13 @@ func structuralSecretWorld(t fataler) *encounter.EncounterData {
 // is concealed: the vault is ordinary unexplored floor, so OPENING the gate is
 // what teaches the layout — the room_revealed half of P2E, as opposed to the
 // concealment half the suite above drives with Search.
-func structuralRoomWorld(t fataler) *encounter.EncounterData {
+func structuralRoomWorld() scene {
 	wallBox := structuralBox(hexCell(7, 2), 6, 0.5)
 	doorBox := structuralBox(hexCell(7, 3), 1, 1)
 	origin := hallPlane().CellCentre(hexCell(7, 2))
 	at := func(dx float64) spatial.Point { return spatial.Point{X: origin.X + dx, Y: origin.Y} }
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	return scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{
 				rectRegion("corridor", 0, 0, 6, 6),
@@ -164,32 +140,9 @@ func structuralRoomWorld(t fataler) *encounter.EncounterData {
 				}},
 			}},
 		},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 0}},
-		},
+		Party:   []sceneSeat{seatAt("alice", 5, 0)},
 		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
-		Capabilities: encounter.Capabilities{
-			Sight:         encEveryoneSees{},
-			Equipment:     encNoHandsObserved{},
-			Initiative:    encOrderAsGiven{},
-			Driver:        encPassDriver{},
-			Standing:      encEveryoneStanding{},
-			CheckResolver: encNeverResolves{},
-			Witness:       encNeverWitnesses{},
-			Sheets:        encStandStill{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("building structural room world: %v", err)
 	}
-	data := enc.ToData()
-
-	return &data
 }
 
 type StructuralSessionSuite struct {
@@ -201,20 +154,19 @@ type StructuralSessionSuite struct {
 
 func TestStructuralSessionSuite(t *testing.T) { suite.Run(t, new(StructuralSessionSuite)) }
 
-func (s *StructuralSessionSuite) startWith(world *encounter.EncounterData, cast ...*character.Data) {
+func (s *StructuralSessionSuite) startWith(world scene, cast ...*character.Data) {
 	s.stream = &fakeStream{}
+	characters := newFakeCharacters(cast...)
+	stockAuthoredPlayers(world, characters)
 	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
-		Characters: newFakeCharacters(cast...), Events: s.stream,
+		Characters: characters, Events: s.stream,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	_, err = s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: world,
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), s.mgr, world)
 }
 
 // TestKnowledgeCarriesThePermittedStructuralLayout is the headline: a real
@@ -227,7 +179,7 @@ func (s *StructuralSessionSuite) startWith(world *encounter.EncounterData, cast 
 // learns nothing.
 func (s *StructuralSessionSuite) TestKnowledgeCarriesThePermittedStructuralLayout() {
 	ctx := context.Background()
-	s.startWith(structuralSecretWorld(s.T()), sharpEyed("alice"), dullEyed("bob"))
+	s.startWith(structuralSecretWorld(), sharpEyed("alice"), dullEyed("bob"))
 	input := &session.KnowledgeInput{Session: "sess", Member: "alice", Player: "player-alice"}
 
 	before, err := s.mgr.Knowledge(ctx, input)
@@ -299,7 +251,7 @@ func (s *StructuralSessionSuite) TestKnowledgeCarriesThePermittedStructuralLayou
 // one that refetches agree, exactly as P2S requires.
 func (s *StructuralSessionSuite) TestOpenDoorRoomRevealCarriesStructuralRows() {
 	ctx := context.Background()
-	s.startWith(structuralRoomWorld(s.T()), sharpEyed("alice"))
+	s.startWith(structuralRoomWorld(), sharpEyed("alice"))
 	input := &session.KnowledgeInput{Session: "sess", Member: "alice", Player: "player-alice"}
 
 	before, err := s.mgr.Knowledge(ctx, input)
@@ -338,7 +290,7 @@ func (s *StructuralSessionSuite) TestOpenDoorRoomRevealCarriesStructuralRows() {
 // the host repository) answers identically.
 func (s *StructuralSessionSuite) TestKnowledgeStructuralLayoutSurvivesARepositoryReload() {
 	ctx := context.Background()
-	s.startWith(structuralSecretWorld(s.T()), sharpEyed("alice"), dullEyed("bob"))
+	s.startWith(structuralSecretWorld(), sharpEyed("alice"), dullEyed("bob"))
 
 	_, err := s.mgr.Search(ctx, &session.SearchInput{Session: "sess", Member: "alice", Region: "hall"})
 	s.Require().NoError(err)
@@ -359,7 +311,7 @@ func (s *StructuralSessionSuite) TestKnowledgeStructuralLayoutSurvivesARepositor
 // snapshot, so it inherits the seat check and never becomes a side channel.
 func (s *StructuralSessionSuite) TestAnUnownedSeatCannotReadTheStructuralLayout() {
 	ctx := context.Background()
-	s.startWith(structuralSecretWorld(s.T()), sharpEyed("alice"), dullEyed("bob"))
+	s.startWith(structuralSecretWorld(), sharpEyed("alice"), dullEyed("bob"))
 
 	denied, err := s.mgr.Knowledge(ctx, &session.KnowledgeInput{Session: "sess", Member: "alice", Player: "player-bob"})
 	s.Require().ErrorIs(err, session.ErrNotSeated)

@@ -4,12 +4,14 @@
 package session_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -84,56 +86,52 @@ func (s *EffectRowsSuite) cave(actor *character.Data) {
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	sc := scene{
 		Field: encounter.FieldInput{
 			Canvas:   pointyCanvas(),
 			Regions:  []encounter.RegionInput{rectRegion("cave", 0, 0, 10, 5)},
 			Factions: []encounter.FactionInput{{ID: erGoblins}},
 		},
-		Members: []encounter.MemberInput{
-			{ID: encounter.MemberID(actor.ID), Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: erAlly, Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 1}},
-		},
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Standing:   encEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	s.Require().NoError(err)
-	data := enc.ToData()
-	_, err = mgr.StartSession(s.ctx, &session.StartSessionInput{Session: erSession, Encounter: "world", World: &data})
-	s.Require().NoError(err)
-
+		Party:   []sceneSeat{seatAt(actor.ID, 1, 1), seatAt(erAlly, 3, 1)},
+		Session: erSession,
+	}
 	for _, goblin := range []struct {
 		id string
-		at spatial.Position
+		at spatial.Position // axial
 	}{
 		{erGoblin1, spatial.Position{X: 2, Y: 1}},
 		{erGoblin2, spatial.Position{X: 7, Y: 3}},
 	} {
-		_, err := mgr.Spawn(s.ctx, &session.SpawnInput{
-			Session: erSession, ID: goblin.id, Ref: refs.Monsters.Goblin().String(),
-			Position: goblin.at, Faction: erGoblins,
-		})
-		s.Require().NoError(err)
+		at := authoredOf(goblin.at)
+		placement := monsterAt(goblin.id, refs.Monsters.Goblin().String(), int(at.X), int(at.Y))
+		placement.Faction = erGoblins
+		sc.Monsters = append(sc.Monsters, placement)
 	}
+	held := append([]json.RawMessage(nil), actor.Conditions...)
+	launchScene(s.T(), mgr, sc)
+	s.restoreConditions(actor.ID, held)
 
 	turn, err := mgr.Turn(s.ctx, &session.TurnInput{Session: erSession, Member: actor.ID})
 	s.Require().NoError(err)
 	s.Require().Equal(session.ClockTurn, turn.Clock, "precondition: the goblins started a fight")
 	s.Require().Equal(actor.ID, turn.Active, "precondition: the actor acts first")
 	s.stream.published = nil
+}
+
+// restoreConditions puts back the conditions a fixture's sheet held before
+// the launch, whose first-admission long rest ends them: every scene here is
+// about a condition the actor holds mid-fight. They go first, in the
+// fixture's own order; whatever the launch itself added stays after them.
+func (s *EffectRowsSuite) restoreConditions(id string, held []json.RawMessage) {
+	s.T().Helper()
+	stored := s.characters.byID[id]
+	merged := append([]json.RawMessage(nil), held...)
+	for _, raw := range stored.Conditions {
+		if !slices.ContainsFunc(held, func(h json.RawMessage) bool { return bytes.Equal(h, raw) }) {
+			merged = append(merged, raw)
+		}
+	}
+	stored.Conditions = merged
 }
 
 func (s *EffectRowsSuite) afford(member string) *session.AffordOutput {
@@ -570,10 +568,9 @@ func (s *EffectRowsSuite) TestNoRowsOnTheWorldClock() {
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
-	_, err = mgr.StartSession(s.ctx, &session.StartSessionInput{
-		Session: erSession, Encounter: "world", World: freeRoamDuelWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	sc := freeRoamDuelWorld()
+	sc.Session = erSession
+	launchScene(s.T(), mgr, sc)
 
 	out, err := mgr.Afford(s.ctx, &session.AffordInput{Session: erSession, Member: "alice"})
 	s.Require().NoError(err)

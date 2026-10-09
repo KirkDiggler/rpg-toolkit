@@ -36,7 +36,7 @@
 //
 // Config.Locker supplies host-owned exclusion for every public operation that
 // names a session, from before its first repository read through its final
-// save and event delivery. Reads and StartSession use the same guard as writes.
+// save and event delivery. Reads and Launch use the same guard as writes.
 // Release is deferred on the public call, so failures and panics release it too.
 // The SDK stores no mutex or lock state. A nil Locker means the host serializes
 // externally, not that concurrent load-act-save is safe. Managers sharing data

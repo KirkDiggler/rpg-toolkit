@@ -29,6 +29,13 @@ type AttackEventsTestSuite struct {
 	encounters *fakeEncounters
 	characters *fakeCharacters
 	stream     *fakeStream
+
+	// opened is each recipient's last delivered sequence when the launch's
+	// opening beats were cleared. Sequences are recipient-local, and a launch
+	// does not hand alice and bob the same number of opening beats, so a
+	// sequence alice's AttackOutput reports names the same beat in bob's
+	// stream only after shifting by the difference ([seqFor]).
+	opened map[string]uint64
 }
 
 func TestAttackEventsSuite(t *testing.T) {
@@ -65,10 +72,11 @@ func (s *AttackEventsTestSuite) duelWithStreamAndIDs(
 	})
 	s.Require().NoError(err)
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: duelWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	launchDuel(s.T(), mgr, s.encounters)
+	s.opened = map[string]uint64{}
+	for _, event := range s.stream.published {
+		s.opened[event.Recipient] = max(s.opened[event.Recipient], event.Seq)
+	}
 	s.stream.published = nil // the opening beats predate any client
 	return mgr
 }
@@ -88,13 +96,21 @@ func (s *AttackEventsTestSuite) swingBy(mgr *session.Manager, attacker, target s
 	return out
 }
 
-// kindsAtSeq collects the event kinds delivered for one story sequence, keyed
+// seqFor is the sequence in recipient's own stream of the beat alice's stream
+// numbers aliceSeq. After the launch both duellists receive every beat, so the
+// two numberings differ only by the opening beats each was handed.
+func (s *AttackEventsTestSuite) seqFor(recipient string, aliceSeq uint64) uint64 {
+	return aliceSeq - s.opened["alice"] + s.opened[recipient]
+}
+
+// kindsAtSeq collects the event kinds delivered for one story sequence (in
+// alice's numbering, the attacker's AttackOutput.Seq), keyed
 // by recipient — so an assertion can name WHO was told WHAT, rather than
 // counting events and hoping the count means what it looks like.
 func (s *AttackEventsTestSuite) kindsAtSeq(seq uint64) map[string]session.EventKind {
 	out := map[string]session.EventKind{}
 	for _, event := range s.stream.published {
-		if event.Seq != seq {
+		if event.Seq != s.seqFor(event.Recipient, seq) {
 			continue
 		}
 		s.Require().NotContains(out, event.Recipient, "one event per recipient per beat")
@@ -174,7 +190,7 @@ func (s *AttackEventsTestSuite) TestTheSwingLeavesNothingUnknown() {
 func (s *AttackEventsTestSuite) bodiesAtSeq(seq uint64) map[string]session.EventBody {
 	out := map[string]session.EventBody{}
 	for _, event := range s.stream.published {
-		if event.Seq != seq {
+		if event.Seq != s.seqFor(event.Recipient, seq) {
 			continue
 		}
 		out[event.Recipient] = event.Body

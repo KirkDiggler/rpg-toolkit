@@ -5,13 +5,15 @@ package session_test
 
 import (
 	"context"
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // StaleCombatEconomySuite pins rpg-project#253: a member's first turn in a
@@ -51,8 +53,8 @@ import (
 // already exercise: alice fights and kills a skeleton (round 1, defeat ends
 // the bubble with no EndTurn ever called — encounter/dissolve.go's ByDefeat
 // is a fact the composition NOTICES, never something a caller declares),
-// then a second, unrelated skeleton arrives and starts a second fight —
-// also its own round 1.
+// then opens a door on a second, unrelated skeleton, which starts a second
+// fight — also its own round 1.
 type StaleCombatEconomySuite struct {
 	suite.Suite
 
@@ -61,6 +63,7 @@ type StaleCombatEconomySuite struct {
 	characters *fakeCharacters
 	stream     *fakeStream
 	mgr        *session.Manager
+	launched   *session.LaunchOutput
 }
 
 func TestStaleCombatEconomySuite(t *testing.T) { suite.Run(t, new(StaleCombatEconomySuite)) }
@@ -77,25 +80,48 @@ func (s *StaleCombatEconomySuite) SetupTest() {
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	ctx := context.Background()
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: cryptWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	s.launched = launchScene(s.T(), mgr, twoSkeletonsWorld())
 }
 
-// spawnAdjacentSkeleton spawns a skeleton beside alice, in plain sight —
-// cryptWorld's own (2,1), one cell from alice's (1,1), which
-// death_test.go's spawnSkeleton already proves both starts a fight AND
-// leaves alice able to swing without moving first.
-func (s *StaleCombatEconomySuite) spawnAdjacentSkeleton(id string) *session.SpawnOutput {
+// twoSkeletonsWorld is doors_test's gated corridor with alice at the gate's
+// west cell: skel-1 stands beside her in the corridor, in plain sight, and
+// skel-2 stands beside her too but on the far side of the shut gate, where
+// nobody sees it. The first fight forms at launch; the second waits for the
+// gate to open, after the first has ended.
+func twoSkeletonsWorld() scene {
+	sc := gatedWorld(encounter.DoorIsClosed())
+	sc.Monsters = []dungeonspec.MonsterPlacement{
+		monsterAt("skel-1", refs.Monsters.Skeleton().String(), 4, 0),
+		monsterAt("skel-2", refs.Monsters.Skeleton().String(), 6, 0),
+	}
+	return sc
+}
+
+// fightsSkel1 is the launch's own fight: skel-1, one cell from alice, in plain
+// sight, which both starts a fight AND leaves alice able to swing without
+// moving first.
+func (s *StaleCombatEconomySuite) fightsSkel1() {
 	s.T().Helper()
-	out, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
-		Session: "sess", ID: id, Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 2, Y: 1},
+	s.Require().Len(s.launched.Formed, 1, "arriving in plain sight of alice must start a fight")
+	s.Equal([]string{"alice", "skel-1"}, sortedCopy(s.launched.Formed[0].Order),
+		"control: skel-2 is behind the shut gate and not in it")
+}
+
+// opensOnSkel2 opens the gate alice stands at, revealing skel-2 one cell
+// beyond it, which starts the second fight.
+func (s *StaleCombatEconomySuite) opensOnSkel2() {
+	s.T().Helper()
+	out, err := s.mgr.OpenDoor(context.Background(), &session.OpenDoorInput{
+		Session: "sess", Member: "alice", Door: "gate",
 	})
 	s.Require().NoError(err)
-	s.Require().NotNil(out.Formed, "arriving in plain sight of alice must start a fight")
+	s.Require().NotNil(out.Formed, "the gate revealing skel-2 in plain sight of alice must start a fight")
+}
+
+// sortedCopy is ids sorted, leaving ids alone.
+func sortedCopy(ids []string) []string {
+	out := append([]string(nil), ids...)
+	sort.Strings(out)
 	return out
 }
 
@@ -175,7 +201,7 @@ func (s *StaleCombatEconomySuite) TestASecondFightsFirstTurnIsNotChargedForTheFi
 	// death_test.go's TestTheLastOneDownedEndsTheFightByDefeat pins. Her
 	// sheet is left mid-turn: TurnNumber 1, no action remaining (spent on
 	// the swing that landed), nothing telling it the fight is over.
-	s.spawnAdjacentSkeleton("skel-1")
+	s.fightsSkel1()
 	s.killAdjacentSkeleton("skel-1")
 
 	turn, err := s.mgr.Turn(context.Background(), &session.TurnInput{Session: "sess", Member: "alice"})
@@ -191,7 +217,7 @@ func (s *StaleCombatEconomySuite) TestASecondFightsFirstTurnIsNotChargedForTheFi
 	// Fight 2: an entirely separate skeleton, entirely separate bubble. Its
 	// own round counter starts fresh at 1 — the SAME number fight 1's stale
 	// TurnNumber already holds.
-	s.spawnAdjacentSkeleton("skel-2")
+	s.opensOnSkel2()
 
 	turn2, err := s.mgr.Turn(context.Background(), &session.TurnInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)

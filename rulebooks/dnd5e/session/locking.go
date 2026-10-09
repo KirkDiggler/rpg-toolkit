@@ -20,7 +20,7 @@ var ErrBadSessionLock = errors.New("session locker returned no release")
 // They must not expire a held lock while the operation can still write.
 //
 // The SDK calls this before repository access for every public operation with a
-// Session input, including reads and StartSession, and releases after the last
+// Session input, including reads and Launch, and releases after the last
 // save/delivery or error. A callback invoked during that operation must not
 // synchronously re-enter a Manager operation for the same session.
 //

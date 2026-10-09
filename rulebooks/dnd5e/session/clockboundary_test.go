@@ -13,13 +13,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
+
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
-	"github.com/stretchr/testify/suite"
 )
 
 // ClockBoundaryTestSuite is the acceptance for rpg-project#294, and every test in it
@@ -64,35 +65,50 @@ func (s *ClockBoundaryTestSuite) fightAs(class classes.Class, aliceConditions ..
 	alice := armedFighter("alice")
 	alice.ClassID = class
 	alice.Levels = syntheticLevels(class, 3)
-	alice.Conditions = aliceConditions
 
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(alice, armedFighter("bob"))
 
+	dice := &sequenceDice{}
 	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
-		Dice: &sequenceDice{rolls: []int{15, 5}}, TurnDriver: session.Pass{},
+		Dice: dice, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
-	_, err = mgr.StartSession(s.ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: duelWorld(s.T()),
-	})
-	s.Require().NoError(err)
-
-	// The composition's participation census decides a fight by CONTACT
-	// sides, and two armed players are one side: without a monster standing
-	// in the fight, the very first turn end reconciles the bubble away. A
-	// skeleton beside alice keeps the fight a real two-sided one, so the
-	// boundaries below fire on turns that survive it — the skeleton's own
-	// driven turn passes, which is all the scene ever needed of it.
-	_, err = mgr.Spawn(s.ctx, &session.SpawnInput{
-		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 3, Y: 1},
-	})
-	s.Require().NoError(err)
+	s.launchFight(mgr, dice, aliceConditions)
 	return mgr
+}
+
+// launchFight launches the duel on a turn clock of alice, bob and a skeleton,
+// alice active, and only then gives alice the conditions the scene is about.
+//
+// The composition's participation census decides a fight by CONTACT sides,
+// and two armed players are one side: without a monster standing in the
+// fight, the very first turn end reconciles the bubble away. A skeleton beside
+// alice keeps the fight a real two-sided one, so the boundaries below fire on
+// turns that survive it — the skeleton's own driven turn passes, which is all
+// the scene ever needed of it. It stands last in the order, where a monster
+// that joined the running duel always stood.
+//
+// The fight forms at launch and rolls initiative there; the clock is then
+// authored over it, so those rolls come from a script of their own and the
+// scene's {15, 5} starts unspent, as it did when the duel was authored. The
+// conditions are written after launch because a launch long-rests every
+// party sheet first.
+func (s *ClockBoundaryTestSuite) launchFight(mgr *session.Manager, dice *sequenceDice, aliceConditions []json.RawMessage) {
+	s.T().Helper()
+	dice.rolls = []int{10, 10, 10, 10, 10, 10}
+	sc := freeRoamDuelWorld()
+	sc.Monsters = []dungeonspec.MonsterPlacement{monsterAt("skel-1", refs.Monsters.Skeleton().String(), 3, 1)}
+	launchScene(s.T(), mgr, sc)
+	authorTurnClock(s.T(), s.encounters, testSession, []string{"alice", "bob", "skel-1"}, 0)
+	dice.rolls, dice.next = []int{15, 5}, 0
+
+	sheet := *s.characters.byID["alice"]
+	sheet.Conditions = aliceConditions
+	s.characters.byID["alice"] = &sheet
 }
 
 func (s *ClockBoundaryTestSuite) endTurn(mgr *session.Manager, member string) {
@@ -376,11 +392,8 @@ func (i *impersonatingCharacters) GetCharacter(ctx context.Context, id string) (
 // boundary: the fight is already real, the clock is already running, and the
 // only thing that has gone wrong is one lookup.
 func (s *ClockBoundaryTestSuite) TestASheetReturnedUnderTheWrongIDIsRefused() {
-	alice := armedFighter("alice")
-	alice.Conditions = []json.RawMessage{s.raw(&conditions.DodgingCondition{MemberID: "alice"})}
-
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
-	s.characters = newFakeCharacters(alice, armedFighter("bob"))
+	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
 	liar := &impersonatingCharacters{fakeCharacters: s.characters, always: armedFighter("bob")}
 
 	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
@@ -390,10 +403,11 @@ func (s *ClockBoundaryTestSuite) TestASheetReturnedUnderTheWrongIDIsRefused() {
 	})
 	s.Require().NoError(err)
 
-	_, err = mgr.StartSession(s.ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: duelWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	launchDuel(s.T(), mgr, s.encounters)
+	// Written after launch: a launch long-rests every party sheet first.
+	alice := *s.characters.byID["alice"]
+	alice.Conditions = []json.RawMessage{s.raw(&conditions.DodgingCondition{MemberID: "alice"})}
+	s.characters.byID["alice"] = &alice
 
 	declaration := currentEndTurnID(s.T(), mgr, "sess", "alice")
 	liar.armed = true

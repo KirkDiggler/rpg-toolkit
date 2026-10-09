@@ -43,8 +43,8 @@ func TestOneMapSuite(t *testing.T) {
 // The door joins authored [45,22] to [46,22], the one open crossing on the
 // seam. Every authored pair in this fixture is ABSOLUTE offset, and every
 // cell a verb takes or reports is the axial one hexCell makes of it.
-func offsetWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+func offsetWorld() scene {
+	return scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{
 				rectRegion("hall", 40, 20, 6, 6),
@@ -57,40 +57,11 @@ func offsetWorld(t fataler) *encounter.EncounterData {
 				State: encounter.DoorIsOpen(),
 			}},
 		},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 41, Y: 21}},
-		},
-		Endings: []encounter.EndingInput{
-			// Fires where the walk below ends, so the outcome's own placement
-			// report is exercised in the same scene.
-			{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
-				Position: spatial.Position{X: 44, Y: 21}}},
-			// And one on the FAR SIDE of the doorway, for the pin that a
-			// crossing is an ordinary step: an ending there must fire as the
-			// crossing lands, inside the same Move.
-			{Key: "beyond", Trigger: encounter.TriggerReachedPosition{
-				Position: spatial.Position{X: 46, Y: 22}}},
-		},
-		Retention: encounter.RetentionUnbounded,
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Standing:   encEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("building the offset world: %v", err)
+		Party: []sceneSeat{seatAt("alice", 41, 21)},
+		Endings: []encounter.EndingInput{{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
+			Position: spatial.Position{X: 44, Y: 21}}}, {Key: "beyond", Trigger: encounter.TriggerReachedPosition{
+			Position: spatial.Position{X: 46, Y: 22}}}},
 	}
-	data := enc.ToData()
-	return &data
 }
 
 func (s *OneMapSuite) SetupTest() {
@@ -101,10 +72,7 @@ func (s *OneMapSuite) SetupTest() {
 	})
 	s.Require().NoError(err)
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: offsetWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, offsetWorld())
 	s.mgr = mgr
 }
 
@@ -261,12 +229,12 @@ func (s *OneMapSuite) TestAWalkIntoTheVoidIsRefused() {
 //
 // The types are the contract: a room id cannot come back through an input a
 // caller fills in or an output a client renders, because there is nowhere to
-// put one. Authoring is deliberately not on this list — StartSessionInput
-// carries an authored world, which is construction data and still speaks
+// put one. Authoring is deliberately not on this list — LaunchInput
+// carries an authored dungeon, which is construction data and still speaks
 // rooms.
 func (s *OneMapSuite) TestNothingOnThePlaySurfaceNamesARoom() {
 	for _, shape := range []any{
-		session.JoinInput{}, session.SpawnInput{}, session.MoveInput{},
+		session.JoinInput{}, session.MoveInput{},
 		session.Member{}, session.MemberOutcome{}, session.Step{},
 		session.Atlas{}, session.AtlasDoorway{},
 	} {
@@ -391,38 +359,15 @@ func (s *OneMapSuite) TestASightingAndAPlacementAgree() {
 
 // shallowAnchoredWorld is one 10x10 region painted at [2,3], off the origin
 // by less than its own span.
-func shallowAnchoredWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+func shallowAnchoredWorld() scene {
+	return scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 2, 3, 10, 10)},
 		},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 3}},
-		},
-		Endings: []encounter.EndingInput{
-			{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
-				Position: spatial.Position{X: 5, Y: 3}}},
-		},
-		Retention: encounter.RetentionUnbounded,
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Standing:   encEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("building the shallow-anchored world: %v", err)
+		Party: []sceneSeat{seatAt("alice", 2, 3)},
+		Endings: []encounter.EndingInput{{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
+			Position: spatial.Position{X: 5, Y: 3}}}},
 	}
-	data := enc.ToData()
-	return &data
 }
 
 // shallowSession starts a session on that world. Alice stands on authored
@@ -435,10 +380,9 @@ func (s *OneMapSuite) shallowSession() *session.Manager {
 	})
 	s.Require().NoError(err)
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "shallow", Encounter: "shallow-world", World: shallowAnchoredWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	shallow := shallowAnchoredWorld()
+	shallow.Session = "shallow"
+	launchScene(s.T(), mgr, shallow)
 	return mgr
 }
 

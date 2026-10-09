@@ -48,11 +48,7 @@ func (s *TurnConcentrationSuite) SetupTest() {
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: ambushWorld(s.T()),
-	})
-	s.Require().NoError(err)
-	stockAuthoredMonsters(s.T(), sessions, encounters, "sess")
+	launchScene(s.T(), mgr, ambushWorld())
 }
 
 // fight walks alice into the ogre so there is a turn clock to read. The world

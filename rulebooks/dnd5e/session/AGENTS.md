@@ -16,8 +16,7 @@ return — no setup call, no teardown, no ordering for the caller to get
 wrong. They include `Move`, `Attack`, `Cast`, `Activate`, `DeathSave`, `EndTurn`, `React`,
 `Search`, `Loot`, `Hold`, `Trade`, `Interact`, `OpenDoor`, `CloseDoor`, `Unlock`, `Join`,
 `Exit`, `End`, `Launch`, `Rest`, `Equip`, `Unequip`, `PlaceNPC`, `Dissolve`, `Unpack`,
-`LevelUp`, the retiring `StartSession` and `Spawn` (Launch replaces both as host
-verbs, R7), and the reads `Afford`, `Roster`, `Atlas`, `AtlasOf`, `Status`,
+`LevelUp`, and the reads `Afford`, `Roster`, `Atlas`, `AtlasOf`, `Status`,
 `View`, `Story`, `Where`, `Turn`, `Doors`, `NextLevel`. A verb is a file; the
 file is the unit of ownership.
 

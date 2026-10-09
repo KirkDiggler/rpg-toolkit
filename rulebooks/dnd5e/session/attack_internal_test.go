@@ -22,6 +22,7 @@ import (
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
@@ -633,34 +634,12 @@ func TestMoveRegenerationSkipsAttackTargetPreflight(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	world, err := encounter.NewEncounter(&encounter.SetupInput{
+	sc := scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)}},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
-		},
-		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      aggregateRecordEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: aggregateRecordOrderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   aggregateRecordEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	require.NoError(t, err)
-	data := world.ToData()
-	delete(data.Clock.Budgets, core.EntityID("alice"))
-	delete(data.Clock.Budgets, core.EntityID("bob"))
-	require.NoError(t, json.Unmarshal([]byte(`[{"order":["alice","bob"],"round":1}]`), &data.Bubbles))
-	_, err = mgr.StartSession(ctx, &StartSessionInput{Session: "sess", Encounter: "world", World: &data})
-	require.NoError(t, err)
+		Party: []sceneSeat{seatAt("alice", 1, 1), seatAt("bob", 2, 1)},
+	}
+	launchScene(t, mgr, sc)
+	authorTurnClock(t, encounters.byID["sess"], []string{"alice", "bob"}, 0)
 
 	afford, err := mgr.Afford(ctx, &AffordInput{Session: "sess", Member: "alice"})
 	require.NoError(t, err)
@@ -710,38 +689,12 @@ func TestInjectedTargetPreflightRefusalChangesAffordAndAttack(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	world, err := encounter.NewEncounter(&encounter.SetupInput{
+	sc := scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)}},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
-		},
-		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      aggregateRecordEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: aggregateRecordOrderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   aggregateRecordEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	require.NoError(t, err)
-	data := world.ToData()
-	delete(data.Clock.Budgets, core.EntityID("alice"))
-	delete(data.Clock.Budgets, core.EntityID("bob"))
-	require.NoError(t, json.Unmarshal(
-		[]byte(`[{"order":["alice","bob"],"round":1}]`), &data.Bubbles,
-	))
-	require.NoError(t, func() error {
-		_, startErr := mgr.StartSession(ctx, &StartSessionInput{Session: "sess", Encounter: "world", World: &data})
-		return startErr
-	}())
+		Party: []sceneSeat{seatAt("alice", 1, 1), seatAt("bob", 2, 1)},
+	}
+	launchScene(t, mgr, sc)
+	authorTurnClock(t, encounters.byID["sess"], []string{"alice", "bob"}, 0)
 
 	injected := Shortfall{Reason: ShortfallTargetOutOfReach, Text: "injected target refusal"}
 	calls := 0
@@ -776,7 +729,7 @@ func TestInjectedTargetPreflightRefusalChangesAffordAndAttack(t *testing.T) {
 		Clock   any
 		Bubbles any
 		Members any
-	}{encounters.byID["world"].Clock, encounters.byID["world"].Bubbles, encounters.byID["world"].Members})
+	}{encounters.byID["sess"].Clock, encounters.byID["sess"].Bubbles, encounters.byID["sess"].Members})
 	require.NoError(t, err)
 
 	out, err := mgr.Attack(ctx, &AttackInput{
@@ -794,7 +747,7 @@ func TestInjectedTargetPreflightRefusalChangesAffordAndAttack(t *testing.T) {
 		Clock   any
 		Bubbles any
 		Members any
-	}{encounters.byID["world"].Clock, encounters.byID["world"].Bubbles, encounters.byID["world"].Members})
+	}{encounters.byID["sess"].Clock, encounters.byID["sess"].Bubbles, encounters.byID["sess"].Members})
 	require.NoError(t, err)
 	require.JSONEq(t, string(beforeState), string(afterState), "target preflight refusal changes no position or clock")
 }
@@ -827,34 +780,15 @@ func TestAttackVariantsShareOneTargetPreflight(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	world, err := encounter.NewEncounter(&encounter.SetupInput{
+	sc := scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)}},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
-		},
-		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      aggregateRecordEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: aggregateRecordOrderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   aggregateRecordEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	require.NoError(t, err)
-	data := world.ToData()
-	delete(data.Clock.Budgets, core.EntityID("alice"))
-	delete(data.Clock.Budgets, core.EntityID("bob"))
-	require.NoError(t, json.Unmarshal([]byte(`[{"order":["alice","bob"],"round":1}]`), &data.Bubbles))
-	_, err = mgr.StartSession(ctx, &StartSessionInput{Session: "sess", Encounter: "world", World: &data})
-	require.NoError(t, err)
+		Party: []sceneSeat{seatAt("alice", 1, 1), seatAt("bob", 2, 1)},
+	}
+	launchScene(t, mgr, sc)
+	authorTurnClock(t, encounters.byID["sess"], []string{"alice", "bob"}, 0)
+	// Launch long-rests alice, which restores the action this fixture spent;
+	// the spent economy is written back after it.
+	characters.byID["alice"] = alice
 
 	calls := 0
 	mgr.targetPreflight = func(
@@ -922,33 +856,12 @@ func TestStrikeRefusesAPersistedMonsterPriceBeforeRolling(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	world, err := encounter.NewEncounter(&encounter.SetupInput{
-		Field:     encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("tomb", 0, 0, 12, 6)}},
-		Endings:   []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      aggregateRecordEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: aggregateRecordOrderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   aggregateRecordEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
+	launchScene(t, mgr, scene{
+		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("tomb", 0, 0, 12, 6)}},
+		Party:    []sceneSeat{seatAt("fighter", 0, 0)},
+		Monsters: []dungeonspec.MonsterPlacement{monsterAt("skel-1", refs.Monsters.Skeleton().String(), 1, 0)},
+		Endings:  []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
 	})
-	require.NoError(t, err)
-	worldData := world.ToData()
-
-	_, err = mgr.StartSession(ctx, &StartSessionInput{Session: "sess", Encounter: "world", World: &worldData})
-	require.NoError(t, err)
-	_, err = mgr.Join(ctx, &JoinInput{Session: "sess", Member: "fighter", Position: spatial.Position{X: 0, Y: 0}})
-	require.NoError(t, err)
-	_, err = mgr.Spawn(ctx, &SpawnInput{Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(), Position: spatial.Position{X: 1, Y: 0}})
-	require.NoError(t, err)
 
 	stored, err := sessions.GetSession(ctx, "sess")
 	require.NoError(t, err)

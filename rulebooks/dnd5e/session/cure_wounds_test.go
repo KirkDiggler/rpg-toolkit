@@ -35,8 +35,10 @@ func (s *CastSuite) TestCureWoundsLifeBonusClampingAndStoryReload() {
 	sheet := healingCleric()
 	sheet.SubclassID = classes.LifeDomain
 	patient := armedFighter("patient")
-	patient.HitPoints, patient.MaxHitPoints = 16, 20
+	patient.MaxHitPoints = 20
 	s.sceneWithAllies(sheet, []*character.Data{patient}, 4, 5)
+	// Wounded after the launch: its first-admission rest would heal her.
+	s.characters.byID["patient"].HitPoints = 16
 	_, err := s.mgr.Cast(context.Background(), &session.CastInput{
 		Session: "sess", Member: "cleric", DeclarationID: s.castRow(spells.CureWounds).ID, Targets: []string{"patient"},
 	})
@@ -87,10 +89,11 @@ func (s *CastSuite) TestCureWoundsLifeBonusClampingAndStoryReload() {
 func (s *CastSuite) TestCureWoundsRestoresDyingAndStabilizedCharacters() {
 	for _, stabilized := range []bool{false, true} {
 		s.Run(fmt.Sprint(stabilized), func() {
-			patient := armedFighter("patient")
+			s.sceneWithAllies(healingCleric(), []*character.Data{armedFighter("patient")}, 4, 5)
+			// Down after the launch: its first-admission rest would stand her up.
+			patient := s.characters.byID["patient"]
 			patient.HitPoints = 0
 			patient.DeathSaveState = &saves.DeathSaveState{Successes: 1, Failures: 1, Stabilized: stabilized}
-			s.sceneWithAllies(healingCleric(), []*character.Data{patient}, 4, 5)
 			s.dice.rolls, s.dice.next = []int{5}, 0 // down characters do not roll initiative
 			_, err := s.mgr.Cast(context.Background(), &session.CastInput{Session: "sess", Member: "cleric", DeclarationID: s.castRow(spells.CureWounds).ID, Targets: []string{"patient"}})
 			s.Require().NoError(err)
@@ -267,9 +270,9 @@ func (s *CastSuite) TestCureWoundsRejectsExhaustedSlotsRemovedAccessAndDeadTarge
 }
 
 func (s *CastSuite) TestCureWoundsCanTouchKnownCreatureInDarkness() {
-	patient := armedFighter("patient")
-	patient.HitPoints = 1
-	s.sceneWithAllies(healingCleric(), []*character.Data{patient}, 4, 5)
+	s.sceneWithAllies(healingCleric(), []*character.Data{armedFighter("patient")}, 4, 5)
+	// Wounded after the launch: its first-admission rest would heal her.
+	s.characters.byID["patient"].HitPoints = 1
 	for _, world := range s.encounters.byID {
 		for i := range world.Field.Regions {
 			dark := 0.0
@@ -284,9 +287,9 @@ func (s *CastSuite) TestCureWoundsCanTouchKnownCreatureInDarkness() {
 func (s *CastSuite) TestCureWoundsFailureBoundaries() {
 	for _, failure := range []string{"roller", "encounter save", "delivery"} {
 		s.Run(failure, func() {
-			sheet := healingCleric()
-			sheet.HitPoints = 2
-			s.scene(sheet, 2, 5)
+			s.scene(healingCleric(), 2, 5)
+			// Wounded after the launch: its first-admission rest would heal her.
+			s.characters.byID["cleric"].HitPoints = 2
 			id := s.castRow(spells.CureWounds).ID
 			config := &session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream}
 			fault := errors.New("injected failure")
@@ -317,7 +320,7 @@ func (s *CastSuite) TestCureWoundsFailureBoundaries() {
 				var saveErr *session.SaveError
 				s.Require().ErrorAs(err, &saveErr)
 				s.Contains(saveErr.Report.Written, "character:cleric")
-				s.Contains(saveErr.Report.Failed, "encounter:world")
+				s.Contains(saveErr.Report.Failed, "encounter:sess")
 			} else {
 				s.Require().NoError(err)
 				s.Require().NotNil(out)

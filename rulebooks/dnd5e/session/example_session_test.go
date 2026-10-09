@@ -41,19 +41,13 @@ func Example_theSession() {
 	}
 
 	// -- the party enters the tomb --
-	if _, err := mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "tomb-run", Encounter: "tomb", World: authoredTomb(),
-	}); err != nil {
+	tomb := authoredTomb()
+	tomb.Session = "tomb-run"
+	tomb.Party = append(tomb.Party, seatAt("bob", 6, 2))
+	if _, err := mgr.Launch(ctx, sceneInput(tomb)); err != nil {
 		panic(err)
 	}
 	fmt.Println("-- the party enters --")
-
-	if _, err := mgr.Join(ctx, &session.JoinInput{
-		Session: "tomb-run", Member: "bob",
-		Position: hexCell(6, 2),
-	}); err != nil {
-		panic(err)
-	}
 
 	atlas, err := mgr.Atlas(ctx, &session.AtlasInput{Session: "tomb-run", Member: "bob"})
 	if err != nil {
@@ -140,14 +134,11 @@ func Example_theFightThatStartsItself() {
 	if err != nil {
 		panic(err)
 	}
-	if _, err := mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "run", Encounter: "tomb", World: ambushWorld(panicFataler{}),
-	}); err != nil {
+	ambush := ambushWorld()
+	ambush.Session = "run"
+	if _, err := mgr.Launch(ctx, sceneInput(ambush)); err != nil {
 		panic(err)
 	}
-	// The ogre the tomb authored gets the stat block a Spawn would have
-	// recorded: the world asks every member's sheet how fast it walks.
-	stockAuthoredMonsters(panicFataler{}, sessions, encounters, "run")
 
 	path := ambushPath()
 	out, err := mgr.Move(ctx, &session.MoveInput{Session: "run", Member: "alice", Path: path})
@@ -192,35 +183,12 @@ func (panicFataler) Fatalf(format string, args ...any) {
 
 // authoredTomb is content, not a live encounter: the blob a host would have
 // sitting in storage from an authoring pipeline.
-func authoredTomb() *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+func authoredTomb() scene {
+	return scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-		},
-		Endings: []encounter.EndingInput{
-			{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
-				Position: spatial.Position{X: 4, Y: 1},
-			}},
-		},
-		Retention: encounter.RetentionUnbounded,
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Standing:   encEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	if err != nil {
-		panic(err)
+		Party: []sceneSeat{seatAt("alice", 1, 1)},
+		Endings: []encounter.EndingInput{{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
+			Position: spatial.Position{X: 4, Y: 1},
+		}}},
 	}
-	data := enc.ToData()
-	return &data
 }

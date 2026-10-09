@@ -30,11 +30,7 @@ func (s *TurnTestSuite) SetupTest() {
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
 	s.mgr = managerOverRepos(s.T(), s.sessions, s.encounters)
-	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: ambushWorld(s.T()),
-	})
-	s.Require().NoError(err)
-	stockAuthoredMonsters(s.T(), s.sessions, s.encounters, "sess")
+	launchScene(s.T(), s.mgr, ambushWorld())
 }
 
 // fight walks alice into the ogre so there is a bubble to ask about, and
@@ -156,7 +152,7 @@ func (s *TurnTestSuite) TestEndingATurnHandsItOn() {
 		"the ogre has no player; TurnDriver passes its turn and the round wraps straight back to her")
 	s.True(out.RoundWrapped, "two in the fight, so the ogre's driven-through pass closes the round")
 	s.NotZero(out.Seq)
-	s.Equal([]string{"character:alice", "encounter:world", "session:sess"}, out.Saved.Written)
+	s.Equal([]string{"character:alice", "encounter:sess", "session:sess"}, out.Saved.Written)
 
 	after, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
@@ -281,11 +277,9 @@ func (s *TurnTestSuite) TestAPointerPassDrivesThroughTheSameAsAValue() {
 	})
 	s.Require().NoError(err)
 
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "ptr", Encounter: "world", World: ambushWorld(s.T()),
-	})
-	s.Require().NoError(err)
-	stockAuthoredMonsters(s.T(), sessions, encounters, "ptr")
+	ptr := ambushWorld()
+	ptr.Session = "ptr"
+	launchScene(s.T(), mgr, ptr)
 	_, err = mgr.Move(ctx, &session.MoveInput{
 		Session: "ptr", Member: "alice",
 		Path: ambushPath(),
@@ -330,11 +324,10 @@ func (s *TurnTestSuite) TestTheTurnEndingReachesClients() {
 // that already gave it Order — no second lookup, no roster read this seam
 // otherwise refuses to offer.
 func (s *TurnTestSuite) TestTurnCarriesParticipants() {
-	// SetupTest already started ambushWorld — alice and the ogre, neither
-	// carrying a Name (buildAmbush's own fixture predates rpg-toolkit#1137).
-	// That is fine: the point of this test is the PROJECTION reaching
-	// Participant correctly, not the authoring, so Name is asserted as
-	// empty rather than faked.
+	// SetupTest already launched ambushWorld — alice and the ogre. The launch
+	// names each party member from her own sheet, so alice's Name is the one
+	// her stored sheet carries: the PROJECTION reaching Participant is what
+	// is under test, and the name it carries is the launch's own.
 	out, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
 		Path: ambushPath(),
@@ -355,7 +348,7 @@ func (s *TurnTestSuite) TestTurnCarriesParticipants() {
 	s.Require().True(ok)
 	s.Equal(session.KindPlayer, alice.Kind)
 	s.Equal(session.StandingUp, alice.Standing)
-	s.Empty(alice.Name, "this fixture never authored one — see the comment above")
+	s.Equal("Alice", alice.Name, "the name the launch read off her sheet — see the comment above")
 
 	ogre, ok := byID["ogre"]
 	s.Require().True(ok)

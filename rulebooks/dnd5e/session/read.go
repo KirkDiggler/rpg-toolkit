@@ -11,6 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 )
 
 // AtlasInput asks for a session's static world map, as one member knows it.
@@ -30,16 +31,15 @@ type AtlasInput struct {
 	Member string
 }
 
-// AtlasOfInput asks for the static map of an authored world that no session
-// holds — the same shape [StartSessionInput.World] takes.
+// AtlasOfInput asks for the static map of a compiled dungeon that no session
+// holds.
 type AtlasOfInput struct {
-	// World is the authored content to describe. Required.
-	World *encounter.EncounterData
+	// Dungeon is the compiled authored dungeon to preview. Required.
+	Dungeon *dungeonspec.Compiled
 
-	// Dungeon is the content key [AtlasOfInput.World] was loaded under, and
-	// it reaches [Atlas.DungeonKey] unchanged — the same field
-	// [Manager.Atlas] fills from the session record, filled here from what
-	// the caller passed because there is no record to ask (rpg-project#479).
+	// DungeonKey is echoed onto [Atlas.DungeonKey], as [LaunchInput.DungeonKey]
+	// reaches the session record [Manager.Atlas] reads it from
+	// (rpg-project#479).
 	//
 	// THE ECHO IS THE POINT. An author previewing an entry it has just
 	// compiled gets back the same map a player will get, key included, so
@@ -49,7 +49,7 @@ type AtlasOfInput struct {
 	// has no way to know and no business guessing.
 	//
 	// Optional. Empty means no key was given and the atlas carries none.
-	Dungeon string
+	DungeonKey string
 }
 
 // StatusInput asks whether a session's encounter is still running.
@@ -276,51 +276,47 @@ func (m *Manager) Atlas(ctx context.Context, in *AtlasInput) (*Atlas, error) {
 	return &projected, nil
 }
 
-// AtlasOf projects the map of an authored world that no session holds.
+// AtlasOf projects the map of a compiled dungeon that no session holds.
 //
-// The same map [Manager.Atlas] answers for a started session — the same load
-// ([Manager.loadAuthored], shared with StartSession's own validation), the
-// same projection — for a world a host has only compiled. A dungeon registry
-// answers "what does this dungeon look like" with it (rpg-api's
-// PutDungeonResponse.atlas, rpg-project#256) without starting anything, and
-// because the producer is shared, what a builder previews is what the game
-// will play: one projection, one producer, no second geometry to keep in
-// step.
+// The same map [Manager.Atlas] answers for a launched session: the world is
+// built by the one builder [Manager.Launch] uses (the same field, the same
+// endings), loaded with refusing capabilities because nothing is driven, and
+// projected by the same projection. A dungeon registry answers "what does this
+// dungeon look like" with it (rpg-api's PutDungeonResponse.atlas,
+// rpg-project#256) without starting anything, and because the producer is
+// shared, what a builder previews is what the game will play: one world
+// builder, two readers, no second geometry to keep in step.
 //
-// A Manager method rather than a package function, deliberately. A load
-// needs the capabilities a Manager is built with — initiative, standing,
-// sight, a turn driver — and the only construction-only stand-in the
-// composition exports is its Striker. A free function would have to invent
-// the other four, which is exactly the defaulted capability this stack
-// forbids.
+// [AtlasOfInput.DungeonKey] is the one thing this read cannot derive: there is
+// no session record to ask which entry the dungeon came from, so the caller's
+// own key is echoed onto [Atlas.DungeonKey] (rpg-project#479).
 //
-// [AtlasOfInput.Dungeon] is the one thing this read cannot derive: there is no
-// session record to ask which entry the world came from, so the caller's own
-// key is echoed onto [Atlas.DungeonKey] — the same field [Manager.Atlas]
-// fills from the record, so a preview and a live map name their dungeon the
-// same way (rpg-project#479).
-//
-// Returns ErrNilInput for a nil input, ErrInvalidWorld for a nil world or one
-// that will not load.
-func (m *Manager) AtlasOf(ctx context.Context, in *AtlasOfInput) (*Atlas, error) {
+// Returns ErrNilInput for a nil input, ErrInvalidWorld for a nil dungeon or one
+// whose world will not build or load (two bosses, an unknown scenario).
+func (m *Manager) AtlasOf(_ context.Context, in *AtlasOfInput) (*Atlas, error) {
 	if in == nil {
 		return nil, fmt.Errorf("atlasof: %w", ErrNilInput)
 	}
-	enc, err := m.loadAuthored(ctx, in.World)
+	if in.Dungeon == nil {
+		return nil, fmt.Errorf("atlasof: no dungeon: %w", ErrInvalidWorld)
+	}
+	world, err := launchWorld(in.Dungeon)
 	if err != nil {
 		return nil, fmt.Errorf("atlasof: %w", err)
 	}
-
+	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data:         *world,
+		Capabilities: encounter.RefusingCapabilities(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("atlasof: %w: %v", ErrInvalidWorld, err)
+	}
 	atlas, err := enc.Atlas()
 	if err != nil {
 		return nil, fmt.Errorf("atlasof: %w", translate(err))
 	}
-
 	projected := projectAtlas(atlas)
-	// No record to ask, so the caller's own key is echoed back — the same
-	// field [Manager.Atlas] fills from the session record, so what a builder
-	// previews is what the game will play, key included.
-	projected.DungeonKey = in.Dungeon
+	projected.DungeonKey = in.DungeonKey
 	return &projected, nil
 }
 
@@ -637,8 +633,7 @@ func (m *Manager) loadSessionData(ctx context.Context, sessionID string) (*Sessi
 
 // loadWorld fetches and reconstitutes the encounter a session points at.
 //
-// A construction-only Striker (rpg-project#254), exactly as StartSession's
-// own validation load uses: every caller reaching here is a READ verb (open,
+// Every caller reaching here is a READ verb (open,
 // and View directly) that never drives a turn, so a driven turn landing here
 // at all would be this package's own bug rather than anything a caller did.
 func (m *Manager) loadWorld(ctx context.Context, data *SessionData) (*encounter.Encounter, error) {

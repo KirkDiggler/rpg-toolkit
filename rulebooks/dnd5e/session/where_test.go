@@ -42,10 +42,7 @@ func (s *WhereSuite) SetupTest() {
 	})
 	s.Require().NoError(err)
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: offsetWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, offsetWorld())
 	s.mgr = mgr
 }
 

@@ -22,9 +22,11 @@ package session_test
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -61,6 +63,48 @@ func (s *HoldOutSessionSuite) arrivalsOn(recipient string) []session.ArrivedBody
 	return out
 }
 
+// launchShippedCamp is startWith for the scenes that read the launch's own
+// answer or refusal: a fresh manager around the SHIPPED camp with only the
+// named placements on its board (every one when keep is nil), plus any extra
+// placements, launched by the host's one verb. The stream is left as the
+// launch delivered it.
+func (s *HoldOutSessionSuite) launchShippedCamp(
+	keep []string, cast []*character.Data, extra ...dungeonspec.MonsterPlacement,
+) (*session.LaunchOutput, error) {
+	s.T().Helper()
+	if cast == nil {
+		cast = []*character.Data{sharpEyed("alice"), dullEyed("bob")}
+	}
+	camp := s.canonical
+	camp.Monsters = nil
+	for _, m := range s.canonical.Monsters {
+		if keep == nil || slices.Contains(keep, m.ID) {
+			camp.Monsters = append(camp.Monsters, m)
+		}
+	}
+	camp.Monsters = append(camp.Monsters, extra...)
+	s.camp = camp
+	s.stream = &fakeStream{}
+	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
+	s.characters = newFakeCharacters(cast...)
+
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+		Dice: testDice{}, TurnDriver: session.Pass{},
+		Sessions: s.sessions, Encounters: s.encounters,
+		Characters: s.characters, Events: s.stream,
+	})
+	s.Require().NoError(err)
+	s.mgr = mgr
+
+	party := make([]string, 0, len(cast))
+	for _, sheet := range cast {
+		party = append(party, sheet.ID)
+	}
+	return mgr.Launch(context.Background(), &session.LaunchInput{
+		Session: campSession, DungeonKey: campKey, Dungeon: &camp, Party: party,
+	})
+}
+
 // assertDense fails unless a recipient's delivered numbers are consecutive.
 func (s *HoldOutSessionSuite) assertDense(who string) {
 	s.T().Helper()
@@ -72,28 +116,46 @@ func (s *HoldOutSessionSuite) assertDense(who string) {
 }
 
 // TestASpawnWithAPredicateWaitsInReserveForEveryone is the reserve at the
-// seam: the shipped camp's reinforcements arrive through Spawn with their
-// predicate hand-carried, and go nowhere — the response says Reserved, nothing
-// is narrated, and no roster, map or read shows them to anybody. A verb after
-// that reloads the stored world, and they are still waiting.
+// seam: the shipped camp's reinforcements are launched with the predicate the
+// file gave them, and go nowhere — the launch places none of them, nothing
+// narrates them, and no roster, map or read shows them to anybody. A verb
+// after that reloads the stored world, and they are still waiting.
 func (s *HoldOutSessionSuite) TestASpawnWithAPredicateWaitsInReserveForEveryone() {
-	s.startWith(campOptions{shipped: true, spawn: []string{campChief, campScout}})
+	out, err := s.launchShippedCamp(nil, nil)
+	s.Require().NoError(err)
 
-	s.Run("the spawn says the monster went into reserve", func() {
-		for _, id := range campReinforcements {
-			m := s.placement(id)
-			out := s.spawn(m)
-			s.True(out.Reserved, "%s waits", id)
-			s.Equal(id, out.Member.ID)
-			s.Equal(absolute(m.At), out.Member.Position, "the cell it will arrive at, not one it stands on")
-			s.Zero(out.Seq, "no beat was written")
-			s.Nil(out.Formed)
-			s.Empty(out.Discovered)
-			s.Require().NotNil(out.NPC, "its sheet is recorded now; the run holds the member back")
-			s.Zero(out.Delivery.Events)
+	s.Run("the launch holds the reinforcements back", func() {
+		placed := map[string]bool{}
+		for _, member := range out.Members {
+			placed[member.ID] = true
 		}
-		s.Empty(s.stream.published, "the reserve is silent")
+		sheets := map[string]bool{}
+		for _, npc := range s.sessions.byID[campSession].NPCs {
+			sheets[npc.ID] = true
+		}
+		for _, id := range campReinforcements {
+			s.Require().NotNil(s.placement(id).Arrives, "%s: the file gave it a predicate", id)
+			s.False(placed[id], "%s waits: it is not on the board", id)
+			s.NotContains(out.Discovered, id, "%s saw nothing", id)
+			for _, formed := range out.Formed {
+				s.NotContains(formed.Order, id, "%s is in no fight", id)
+			}
+			s.True(sheets[id], "%s: its sheet is recorded now; the run holds the member back", id)
+		}
+		for _, who := range []string{"alice", "bob"} {
+			s.Empty(s.arrivalsOn(who), "the reserve is silent to %s", who)
+		}
+		// Silent in every kind, not only arrivals: no event of any kind is
+		// addressed to a reinforcement or carries one's id (joined, sighted,
+		// arrived, or anything else).
+		for _, event := range s.stream.published {
+			for _, id := range campReinforcements {
+				s.NotEqual(id, event.Recipient, "nothing is delivered to %s", id)
+				s.NotContains(string(event.Payload), id, "no %s event names %s", event.Kind, id)
+			}
+		}
 	})
+	s.stream.published = nil
 
 	s.Run("on no roster, no map, and answerable by no read, for anyone", func() {
 		rows := s.roster()
@@ -109,17 +171,19 @@ func (s *HoldOutSessionSuite) TestASpawnWithAPredicateWaitsInReserveForEveryone(
 	})
 
 	s.Run("the stored world holds the reserve and the next verb keeps it", func() {
-		stored := s.encounters.byID[campWorldID]
+		stored := s.encounters.byID[campSession]
 		s.Require().Len(stored.Reserve, 3)
 		for i, r := range stored.Reserve {
 			s.Equal(encounter.MemberID(campReinforcements[i]), r.ID)
 			s.Equal(campFaction, r.Faction)
+			s.Equal(absolute(s.placement(campReinforcements[i]).At),
+				spatial.Position{X: r.Cell.X, Y: r.Cell.Y}, "the cell it will arrive at, not one it stands on")
 		}
 		// A step at the gate: a verb that loads the blob back and refreshes
 		// sight with the reserve seeded into the seams.
 		s.walk("bob", s.freeNeighbour("bob"))
 		s.Len(s.roster(), 4, "still waiting")
-		s.Len(s.encounters.byID[campWorldID].Reserve, 3)
+		s.Len(s.encounters.byID[campSession].Reserve, 3)
 	})
 }
 
@@ -206,7 +270,7 @@ func (s *HoldOutSessionSuite) TestTheChiefsFallBringsTheReinforcementsToEveryone
 	})
 
 	s.Run("nothing is waiting any more, and a reload agrees", func() {
-		s.Nil(s.encounters.byID[campWorldID].Reserve)
+		s.Nil(s.encounters.byID[campSession].Reserve)
 		for _, id := range campReinforcements {
 			s.Contains(s.roster(), id)
 		}
@@ -255,24 +319,22 @@ func (s *HoldOutSessionSuite) TestTheLetterArrivesAtRoundSixThroughTheSeam() {
 }
 
 // TestASpawnCannotWaitOnAPredicateNothingCouldFire is the fail-closed half:
-// a monster waiting for its own fall would wait forever, and the composition
+// a monster waiting for its own fall would wait forever, and the launch
 // refuses it by name before anything is reserved — crossing as this package's
 // own sentinel, with nothing left behind.
 func (s *HoldOutSessionSuite) TestASpawnCannotWaitOnAPredicateNothingCouldFire() {
-	s.startWith(campOptions{shipped: true})
-	at := s.compiled.PartyStart[0].At
+	at := s.canonical.PartyStart[0].At
+	stray := dungeonspec.MonsterPlacement{
+		Ref: refs.Monsters.Zombie().String(), ID: "stray", MemberID: "stray",
+		At: spatial.Position{X: at.X, Y: at.Y + 2}, Faction: campFaction,
+		Arrives: encounter.TriggerMemberDown{Member: "stray"},
+	}
 
-	_, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
-		Session: campSession, ID: "stray", Ref: refs.Monsters.Zombie().String(),
-		Position: absolute(spatial.Position{X: at.X, Y: at.Y + 2}), Faction: campFaction,
-		Arrives: session.ArrivesOnFall{Member: "stray"},
-	})
+	_, err := s.launchShippedCamp(nil, nil, stray)
 	s.Require().ErrorIs(err, session.ErrNoMember)
 
-	for _, npc := range s.sessions.byID[campSession].NPCs {
-		s.NotEqual("stray", npc.ID, "the refusal left nothing behind")
-	}
-	s.Len(s.encounters.byID[campWorldID].Reserve, 3, "the shipped reserve alone")
+	s.NotContains(s.sessions.byID, campSession, "the refusal left no session behind")
+	s.NotContains(s.encounters.byID, campSession, "and no world, so nothing was reserved")
 	s.Empty(s.stream.published, "and told nobody")
 }
 
@@ -297,17 +359,18 @@ func (s *HoldOutSessionSuite) weakenTheChief() {
 // the chief is down, three zombies stand at the gate, and the attacker's
 // action was spent on a blow that was told.
 func (s *HoldOutSessionSuite) TestTheBlowThatFellsTheChiefBringsTheReinforcements() {
-	s.startWith(campOptions{shipped: true, spawn: campReinforcements,
-		cast: []*character.Data{stout("alice"), stout("bob")}})
-	s.Require().Len(s.encounters.byID[campWorldID].Reserve, 3, "the zombies wait on the chief")
+	_, err := s.launchShippedCamp(append([]string{campChief}, campReinforcements...),
+		[]*character.Data{stout("alice"), stout("bob")})
+	s.Require().NoError(err)
+	s.stream.published = nil
+	s.Require().Len(s.encounters.byID[campSession].Reserve, 3, "the zombies wait on the chief")
 
-	// alice walks into the hut and stands beside the chief's own cell; the
-	// chief spawns there and the fight forms with the two of them in reach.
+	// alice walks into the hut and stands beside the chief's own cell, and
+	// the fight forms with the two of them in reach.
 	chief := s.placement(campChief)
 	at := absolute(chief.At)
-	s.Require().Nil(s.walk("alice", spatial.Position{X: at.X - 1, Y: at.Y}).Formed)
-	formed := s.spawn(chief)
-	s.Require().NotNil(formed.Formed, "the chief arrives in alice's face")
+	s.walk("alice", spatial.Position{X: at.X - 1, Y: at.Y})
+	s.Require().Equal(session.ClockTurn, s.turn("alice").Clock, "alice is in the chief's face")
 	s.weakenTheChief()
 	s.stream.published = nil
 	s.Require().Equal("alice", s.turn("alice").Active)
@@ -327,7 +390,7 @@ func (s *HoldOutSessionSuite) TestTheBlowThatFellsTheChiefBringsTheReinforcement
 			s.Require().Contains(rows, id)
 			s.Equal(campFaction, rows[id].Faction)
 		}
-		s.Nil(s.encounters.byID[campWorldID].Reserve)
+		s.Nil(s.encounters.byID[campSession].Reserve)
 	})
 
 	s.Run("the arrivals are narrated to everyone who was there, after the fall", func() {
@@ -359,7 +422,7 @@ func (s *HoldOutSessionSuite) TestTheBlowThatFellsTheChiefBringsTheReinforcement
 		// verb (the swing's damage, then her share), because the report names
 		// aggregates and not touches.
 		s.Equal([]string{
-			"character:alice", "character:bob", "encounter:" + campWorldID, "session:" + campSession,
+			"character:alice", "character:bob", "encounter:" + campSession, "session:" + campSession,
 		}, out.Saved.Written)
 		s.Empty(out.Saved.Failed)
 	})

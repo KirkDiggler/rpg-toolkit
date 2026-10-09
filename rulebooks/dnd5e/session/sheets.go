@@ -24,7 +24,7 @@ import (
 //
 // # One owner per fact, no copies
 //
-// Join, Spawn and PlaceNPC hand the composition none of these facts; it asks
+// Join, Launch and PlaceNPC hand the composition none of these facts; it asks
 // at the moment it paces a walk, budgets a driven turn, tests reach, builds a
 // driver's view or refreshes a percept. A level gained, a weapon swapped or a
 // stat block changed is read at the next ask without any verb owning a

@@ -47,10 +47,12 @@ func (s *DungeonKeySuite) SetupTest() {
 // start launches a session in the plain hall under the given key. An empty
 // key is a host that had no entry to name, which is the other case under test
 // rather than an omission in the fixture.
-func (s *DungeonKeySuite) start(sessionID, encounterID, dungeon string) {
-	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: sessionID, Encounter: encounterID, World: plainHallWorld(s.T()), Dungeon: dungeon,
-	})
+func (s *DungeonKeySuite) start(sessionID, dungeon string) {
+	sc := plainHallWorld()
+	sc.Session = sessionID
+	in := sceneInput(sc)
+	in.DungeonKey = dungeon
+	_, err := s.mgr.Launch(context.Background(), in)
 	s.Require().NoError(err)
 }
 
@@ -65,7 +67,7 @@ func (s *DungeonKeySuite) atlas(sessionID string) *session.Atlas {
 // the map every play view already fetches, which is the only reason it is on
 // the session record at all.
 func (s *DungeonKeySuite) TestTheAtlasNamesTheDungeonTheSessionWasLaunchedFrom() {
-	s.start("sess", "world", "workshop-room")
+	s.start("sess", "workshop-room")
 
 	s.Equal("workshop-room", s.atlas("sess").DungeonKey,
 		"the map names the entry a host fetches the room's appearance from")
@@ -76,7 +78,7 @@ func (s *DungeonKeySuite) TestTheAtlasNamesTheDungeonTheSessionWasLaunchedFrom()
 // which is what every session before this field was — and the answer must be
 // nothing rather than a stand-in a client would try to fetch.
 func (s *DungeonKeySuite) TestASessionLaunchedWithNoKeyNamesNone() {
-	s.start("sess", "world", "")
+	s.start("sess", "")
 
 	s.Empty(s.atlas("sess").DungeonKey,
 		"no key given, so no key reported — not a default and not the encounter id")
@@ -91,7 +93,7 @@ func (s *DungeonKeySuite) TestASessionLaunchedWithNoKeyNamesNone() {
 // leave alone.
 func (s *DungeonKeySuite) TestTheKeyIsCarriedVerbatim() {
 	const awkward = "  Workshop Room/ONE:v3  "
-	s.start("sess", "world", awkward)
+	s.start("sess", awkward)
 
 	s.Equal(awkward, s.atlas("sess").DungeonKey, "the host's own string, byte for byte")
 }
@@ -101,7 +103,7 @@ func (s *DungeonKeySuite) TestTheKeyIsCarriedVerbatim() {
 // entry from a dead one — and refusing here would be a refusal invented from
 // no evidence.
 func (s *DungeonKeySuite) TestAKeyNamingNothingIsStillCarried() {
-	s.start("sess", "world", "no-such-entry")
+	s.start("sess", "no-such-entry")
 
 	s.Equal("no-such-entry", s.atlas("sess").DungeonKey,
 		"a content miss is discovered by the host that fetches, not refused here")
@@ -112,7 +114,7 @@ func (s *DungeonKeySuite) TestAKeyNamingNothingIsStillCarried() {
 // is exactly the shape S1 forbids — nothing is retained between verbs, so a
 // key that is not on the record is a key that is gone by the next read.
 func (s *DungeonKeySuite) TestTheKeyIsPersistedOnTheRecord() {
-	s.start("sess", "world", "workshop-room")
+	s.start("sess", "workshop-room")
 
 	stored, err := json.Marshal(s.sessions.byID["sess"])
 	s.Require().NoError(err)
@@ -124,7 +126,7 @@ func (s *DungeonKeySuite) TestTheKeyIsPersistedOnTheRecord() {
 // shape: a session that named no dungeon writes no key, rather than an empty
 // string a reader would have to know to ignore.
 func (s *DungeonKeySuite) TestARecordWrittenWithNoKeyOmitsIt() {
-	s.start("sess", "world", "")
+	s.start("sess", "")
 
 	stored, err := json.Marshal(s.sessions.byID["sess"])
 	s.Require().NoError(err)
@@ -140,10 +142,10 @@ func (s *DungeonKeySuite) TestARecordWrittenWithNoKeyOmitsIt() {
 // back those bytes, the Manager reads them, and the atlas reports what it
 // found.
 func (s *DungeonKeySuite) TestARecordWrittenBeforeTheKeyExistedLoadsWithNone() {
-	s.start("sess", "world", "workshop-room")
+	s.start("sess", "workshop-room")
 
 	var older session.SessionData
-	s.Require().NoError(json.Unmarshal([]byte(`{"id":"sess","encounter":"world"}`), &older))
+	s.Require().NoError(json.Unmarshal([]byte(`{"id":"sess","encounter":"sess"}`), &older))
 	s.Empty(older.Dungeon, "an absent key unmarshals to no key")
 	s.sessions.byID["sess"] = &older
 
@@ -154,11 +156,11 @@ func (s *DungeonKeySuite) TestARecordWrittenBeforeTheKeyExistedLoadsWithNone() {
 // either one evidence: without this, a projection that ignored the record
 // entirely would pass the test above.
 func (s *DungeonKeySuite) TestARecordWithAKeyLoadsWithIt() {
-	s.start("sess", "world", "")
+	s.start("sess", "")
 
 	var stored session.SessionData
 	s.Require().NoError(json.Unmarshal(
-		[]byte(`{"id":"sess","encounter":"world","dungeon":"workshop-room"}`), &stored))
+		[]byte(`{"id":"sess","encounter":"sess","dungeon":"workshop-room"}`), &stored))
 	s.sessions.byID["sess"] = &stored
 
 	s.Equal("workshop-room", s.atlas("sess").DungeonKey,
@@ -171,12 +173,12 @@ func (s *DungeonKeySuite) TestARecordWithAKeyLoadsWithIt() {
 // and lets one client code path draw both.
 func (s *DungeonKeySuite) TestAtlasOfEchoesTheAuthorsOwnKey() {
 	preview, err := s.mgr.AtlasOf(context.Background(), &session.AtlasOfInput{
-		World: plainHallWorld(s.T()), Dungeon: "workshop-room",
+		Dungeon: sceneInput(plainHallWorld()).Dungeon, DungeonKey: "workshop-room",
 	})
 	s.Require().NoError(err)
 	s.Equal("workshop-room", preview.DungeonKey)
 
-	s.start("sess", "world", "workshop-room")
+	s.start("sess", "workshop-room")
 	live := s.atlas("sess")
 	s.Equal(preview.DungeonKey, live.DungeonKey, "what a builder previews is what the game plays")
 	s.Equal(preview.Cells, live.Cells, "and the map underneath it is the same map it always was")
@@ -186,7 +188,7 @@ func (s *DungeonKeySuite) TestAtlasOfEchoesTheAuthorsOwnKey() {
 // world whose caller named no entry reports none, rather than inventing one
 // from the world it was handed.
 func (s *DungeonKeySuite) TestAtlasOfWithNoKeyNamesNone() {
-	preview, err := s.mgr.AtlasOf(context.Background(), &session.AtlasOfInput{World: plainHallWorld(s.T())})
+	preview, err := s.mgr.AtlasOf(context.Background(), &session.AtlasOfInput{Dungeon: sceneInput(plainHallWorld()).Dungeon})
 	s.Require().NoError(err)
 	s.Empty(preview.DungeonKey)
 }

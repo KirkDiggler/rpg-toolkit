@@ -58,10 +58,7 @@ func (s *JoinFoldsACTestSuite) SetupTest() {
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: hexWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, hexWorld())
 }
 
 const ragingID = "standre"

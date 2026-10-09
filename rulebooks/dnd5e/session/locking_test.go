@@ -8,10 +8,11 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
+
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
-	"github.com/stretchr/testify/suite"
 )
 
 type observingLocker struct {
@@ -126,9 +127,7 @@ func (s *SessionLockSuite) SetupTest() {
 
 func (s *SessionLockSuite) TestCreationReadAndMoveHoldThroughDelivery() {
 	ctx := context.Background()
-	_, err := s.mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "enc", World: authoredWorld(s.T()),
-	})
+	_, err := s.mgr.Launch(ctx, sceneInput(authoredWorld()))
 	s.Require().NoError(err)
 	s.Equal(1, s.locker.releases)
 	_, err = s.mgr.Status(ctx, &session.StatusInput{Session: "sess"})

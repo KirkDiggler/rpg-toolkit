@@ -95,3 +95,52 @@ func TestOnlyTheLandingLandsAndOnlyTheBuildersCompose(t *testing.T) {
 	require.True(t, composedInBuilders["resolution.Input"], "the builders compose the resolution input")
 	require.True(t, composedInBuilders["encounter.Capabilities"], "the builders compose the capabilities")
 }
+
+// TestAWorldIsLoadedOrSetUpOnlyWhereTheReadersAndTheLandingAre holds the law
+// that one world builder serves two readers. An encounter.LoadEncounterInput
+// or encounter.SetupInput literal is how a world is stood up, so it appears
+// only in read.go (loadGivenWorld and AtlasOf), write.go (adopt, which land.go
+// calls) and launch.go (launchWorld); a verb standing up its own would be a second builder for the
+// question of which world a call reads.
+func TestAWorldIsLoadedOrSetUpOnlyWhereTheReadersAndTheLandingAre(t *testing.T) {
+	allowed := map[string]bool{"read.go": true, "write.go": true, "launch.go": true}
+	files, err := filepath.Glob("*.go")
+	require.NoError(t, err)
+	fset := token.NewFileSet()
+	var found []string
+	seenIn := map[string]bool{}
+	for _, name := range files {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(fset, name, nil, 0)
+		require.NoError(t, err)
+		ast.Inspect(file, func(node ast.Node) bool {
+			lit, ok := node.(*ast.CompositeLit)
+			if !ok {
+				return true
+			}
+			selector, ok := lit.Type.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			pkg, ok := selector.X.(*ast.Ident)
+			if !ok {
+				return true
+			}
+			composed := pkg.Name + "." + selector.Sel.Name
+			if composed != "encounter.LoadEncounterInput" && composed != "encounter.SetupInput" {
+				return true
+			}
+			seenIn[name] = true
+			if !allowed[name] {
+				found = append(found, fset.Position(lit.Pos()).String()+": composes "+composed)
+			}
+			return true
+		})
+	}
+	require.Empty(t, found, "a world is loaded or set up only in read.go, write.go and launch.go")
+	for name := range allowed {
+		require.True(t, seenIn[name], "%s stands up a world", name)
+	}
+}

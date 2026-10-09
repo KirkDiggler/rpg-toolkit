@@ -19,6 +19,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -37,7 +38,7 @@ type IntimidateSuite struct {
 	// dungeonspec's MonsterPlacement compiles to and a host forwards. Most
 	// scenes leave it nil, which is the ordinary placement that prices
 	// nothing and plants nothing.
-	authored func(*session.SpawnInput)
+	authored func(*dungeonspec.MonsterPlacement)
 }
 
 func TestIntimidateSuite(t *testing.T) {
@@ -83,68 +84,38 @@ func (s *IntimidateSuite) aYardDriven(
 	})
 	s.Require().NoError(err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	sc := scene{
 		Field: encounter.FieldInput{
 			Canvas:  pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)},
 			Props:   props,
 		},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-		},
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Standing:   encEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	s.Require().NoError(err)
-	data := enc.ToData()
+		Party: []sceneSeat{seatAt("alice", 1, 1)},
+	}
 
 	ctx := context.Background()
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: &data,
-	})
-	s.Require().NoError(err)
-
-	spawn := &session.SpawnInput{
-		Session: "sess", ID: "goblin", Ref: refs.Monsters.Goblin().String(),
-		Position: spatial.Position{X: 5, Y: 1},
-		// THE AUTHOR'S HAND IS ON EVERY SCENE IN THIS SUITE, because after
-		// rpg-project#494 a creature carries a social verb only when its
-		// binding priced one: a goblin nobody wrote `intimidate:` on cannot
-		// be threatened at all, and every scene below would be about that
-		// refusal instead of the thing it says it tests. DC 9 is the number
-		// the retired derived approach used to produce for a goblin — 10 plus
-		// its WIS 8 — so every scripted die here still means what its comment
-		// says it means. A scene that wants an unauthored creature clears
-		// this through [IntimidateSuite.authored].
-		Intimidate: []session.DoorApproach{{Ability: "intimidation", DC: 9}},
-	}
+	goblin := monsterAt("goblin", refs.Monsters.Goblin().String(), 5, 1)
+	// THE AUTHOR'S HAND IS ON EVERY SCENE IN THIS SUITE, because after
+	// rpg-project#494 a creature carries a social verb only when its
+	// binding priced one: a goblin nobody wrote `intimidate:` on cannot
+	// be threatened at all, and every scene below would be about that
+	// refusal instead of the thing it says it tests. DC 9 is the number
+	// the retired derived approach used to produce for a goblin — 10 plus
+	// its WIS 8 — so every scripted die here still means what its comment
+	// says it means. A scene that wants an unauthored creature clears
+	// this through [IntimidateSuite.authored].
+	goblin.Intimidate = []encounter.CheckApproach{{Ability: "intimidation", DC: 9}}
 	if s.authored != nil {
-		s.authored(spawn)
+		s.authored(&goblin)
 	}
-	_, err = mgr.Spawn(ctx, spawn)
-	s.Require().NoError(err)
+	sc.Monsters = []dungeonspec.MonsterPlacement{goblin}
+	launchScene(s.T(), mgr, sc)
 
-	// THE CLOCK IS AUTHORED, not rolled for — [turnWorld]'s own reason, and
+	// THE CLOCK IS AUTHORED, not rolled for — [launchOnClock]'s own reason, and
 	// one more: a wall between the two means no fight forms on sight at all,
 	// and every scene here needs alice on the turn clock so the refusal under
 	// test is the one it says it is.
-	stored, err := s.encounters.GetEncounter(ctx, "world")
-	s.Require().NoError(err)
-	s.Require().NoError(s.encounters.SaveEncounter(ctx, "world",
-		turnWorld(stored, []string{"alice", "goblin"}, 0)))
+	authorTurnClock(s.T(), s.encounters, testSession, []string{"alice", "goblin"}, 0)
 
 	turn, err := mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
@@ -231,14 +202,14 @@ func (s *IntimidateSuite) TestAMissedThreatLandsNothing() {
 func (s *IntimidateSuite) TestTheCurrentAuthoredListIsWhatIsBeaten() {
 	mgr := s.aYard([]int{10})
 
-	stored, err := s.encounters.GetEncounter(context.Background(), "world")
+	stored, err := s.encounters.GetEncounter(context.Background(), testSession)
 	s.Require().NoError(err)
 	for i := range stored.Members {
 		if stored.Members[i].ID == "goblin" {
 			stored.Members[i].Intimidate = []encounter.CheckApproachData{{Ability: "intimidation", DC: 18}}
 		}
 	}
-	s.Require().NoError(s.encounters.SaveEncounter(context.Background(), "world", stored))
+	s.Require().NoError(s.encounters.SaveEncounter(context.Background(), testSession, stored))
 
 	out, err := s.threaten(mgr)
 	s.Require().NoError(err)
@@ -462,7 +433,7 @@ func (s *IntimidateSuite) goblinAt(mgr *session.Manager) spatial.Position {
 // decide to run is deleted, and nothing was lost: a streamer can read both of
 // those lines and change either.
 func (s *IntimidateSuite) TestACowedGoblinRunsInsteadOfShooting() {
-	s.authored = func(in *session.SpawnInput) {
+	s.authored = func(in *dungeonspec.MonsterPlacement) {
 		in.Table = encounter.Table{encounter.AnswerIntimidated: {{Weight: 1, Flee: true}}}
 	}
 	mgr := s.aYardDriven(session.Driver(), []int{10, 1, 1})
@@ -535,7 +506,7 @@ func (s *IntimidateSuite) TestAnUncowedGoblinStandsAndShoots() {
 // an `intimidated` entry that says `attack: actor` instead of `flee`, or a
 // weight that leaves room for the bow.
 func (s *IntimidateSuite) TestACorneredCowardSpendsItsTurnRunning() {
-	s.authored = func(in *session.SpawnInput) {
+	s.authored = func(in *dungeonspec.MonsterPlacement) {
 		in.Table = encounter.Table{encounter.AnswerIntimidated: {{Weight: 1, Flee: true}}}
 	}
 	mgr := s.aYardDriven(session.Driver(), []int{10, 1, 1})
@@ -640,14 +611,14 @@ func (s *IntimidateSuite) TestAGuidedThreatKeptFallsShort() {
 	s.False(s.held(mgr, encounter.DeedIntimidate), "a 5 does not reach 9")
 }
 
-// AN AUTHORED DC HAS TO REACH A LIVE RUN, and SpawnInput is the only road it
+// AN AUTHORED DC HAS TO REACH A LIVE RUN, and the placement is the only road it
 // can travel: a host that resolves monster content at runtime builds its
-// world empty of members and brings every monster in through Spawn. Without
+// world empty of members and brings every monster in through Launch. Without
 // the field the sergeant priced at 12 is talked down on its stat block's 9
 // and nobody can tell (rpg-project#454).
 func (s *IntimidateSuite) TestAnAuthoredCheckSurvivesTheSpawn() {
-	s.authored = func(in *session.SpawnInput) {
-		in.Intimidate = []session.DoorApproach{{Ability: "intimidation", DC: 12}}
+	s.authored = func(in *dungeonspec.MonsterPlacement) {
+		in.Intimidate = []encounter.CheckApproach{{Ability: "intimidation", DC: 12}}
 	}
 	mgr := s.aYard([]int{10})
 
@@ -662,7 +633,7 @@ func (s *IntimidateSuite) TestAnAuthoredCheckSurvivesTheSpawn() {
 // authored cannot be threatened at all, and the panel said so before anybody
 // tried (rpg-project#494 R1/R2/R3).
 func (s *IntimidateSuite) TestAnUnauthoredSpawnCannotBeThreatened() {
-	s.authored = func(in *session.SpawnInput) { in.Intimidate = nil }
+	s.authored = func(in *dungeonspec.MonsterPlacement) { in.Intimidate = nil }
 	mgr := s.aYard([]int{10})
 
 	_, err := s.threaten(mgr)
@@ -690,7 +661,7 @@ func (s *IntimidateSuite) TestAnUnauthoredSpawnCannotBeThreatened() {
 // flips, which is the only thing the fact is FOR.
 func (s *IntimidateSuite) TestAnAuthoredFactSurvivesTheSpawnAndIsTaught() {
 	const fact = "sergeant-cowed"
-	s.authored = func(in *session.SpawnInput) {
+	s.authored = func(in *dungeonspec.MonsterPlacement) {
 		in.Table = encounter.Table{
 			encounter.AnswerIntimidated: {{Weight: 1, Fact: encounter.FactID(fact)}},
 		}
@@ -735,7 +706,7 @@ func (s *IntimidateSuite) aCamp(fact string, rolls []int) *session.Manager {
 	})
 	s.Require().NoError(err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	sc := scene{
 		Field: encounter.FieldInput{
 			Canvas:   pointyCanvas(),
 			Regions:  []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)},
@@ -746,48 +717,18 @@ func (s *IntimidateSuite) aCamp(fact string, rolls []int) *session.Manager {
 				Until:   encounter.TriggerFact{Fact: fact},
 			}},
 		},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-		},
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Standing:   encEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	s.Require().NoError(err)
-	data := enc.ToData()
+		Party: []sceneSeat{seatAt("alice", 1, 1)},
+	}
 
 	ctx := context.Background()
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: &data,
-	})
-	s.Require().NoError(err)
+	goblin := monsterAt("goblin", refs.Monsters.Goblin().String(), 5, 1)
+	// [IntimidateSuite.aYard]'s authored check, for the same reason.
+	goblin.Intimidate = []encounter.CheckApproach{{Ability: "intimidation", DC: 9}}
+	s.authored(&goblin)
+	sc.Monsters = []dungeonspec.MonsterPlacement{goblin}
+	launchScene(s.T(), mgr, sc)
 
-	spawn := &session.SpawnInput{
-		Session: "sess", ID: "goblin", Ref: refs.Monsters.Goblin().String(),
-		Position: spatial.Position{X: 5, Y: 1},
-		// [IntimidateSuite.aYard]'s authored check, for the same reason.
-		Intimidate: []session.DoorApproach{{Ability: "intimidation", DC: 9}},
-	}
-	s.authored(spawn)
-	_, err = mgr.Spawn(ctx, spawn)
-	s.Require().NoError(err)
-
-	stored, err := s.encounters.GetEncounter(ctx, "world")
-	s.Require().NoError(err)
-	s.Require().NoError(s.encounters.SaveEncounter(ctx, "world",
-		turnWorld(stored, []string{"alice", "goblin"}, 0)))
+	authorTurnClock(s.T(), s.encounters, testSession, []string{"alice", "goblin"}, 0)
 
 	turn, err := mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
