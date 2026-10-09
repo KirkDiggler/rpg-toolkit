@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -391,6 +392,12 @@ func kindFor(beat string) EventKind {
 	// compile here rather than producing a beat nobody renders.
 	case encounter.BeatRollWindowOpened:
 		return EventRollWindowOpened
+	// The session verbs' two beats (rpg-project#542): the composition's own
+	// exported constants, and the wire names the event for each.
+	case encounter.BeatEquipmentChanged:
+		return EventEquipmentChanged
+	case encounter.BeatRested:
+		return EventRested
 	default:
 		return EventUnknown
 	}
@@ -420,11 +427,16 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		return JoinedBody{Member: p.Member}
 	case EventExited:
 		var p struct {
-			Member  string   `json:"member"`
-			Holding []string `json:"holding"`
-			Exit    string   `json:"exit"`
+			Member  string            `json:"member"`
+			Holding []string          `json:"holding"`
+			Exit    string            `json:"exit"`
+			Ended   []json.RawMessage `json:"ended"`
 		}
 		if json.Unmarshal(payload, &p) != nil || p.Member == "" {
+			return nil
+		}
+		ended, ok := conditionsRemovedOf(p.Member, p.Ended)
+		if !ok {
 			return nil
 		}
 		// Neither new field gates the body. A departure carrying nothing
@@ -432,15 +444,27 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		// decode; requiring either would demote every ordinary exit to an
 		// untyped payload, which is the failure this function's own doc
 		// warns kind-and-body conflation causes.
-		return ExitedBody{Member: p.Member, Holding: p.Holding, Exit: p.Exit}
+		return ExitedBody{Member: p.Member, Holding: p.Holding, Exit: p.Exit, Ended: ended}
 	case EventEnded:
 		var p struct {
-			Ending string `json:"ending"`
+			Ending string                       `json:"ending"`
+			Ended  map[string][]json.RawMessage `json:"ended"`
 		}
 		if json.Unmarshal(payload, &p) != nil || p.Ending == "" {
 			return nil
 		}
-		return EndedBody{Ending: p.Ending}
+		body := EndedBody{Ending: p.Ending}
+		for member, raws := range p.Ended {
+			removed, ok := conditionsRemovedOf(member, raws)
+			if !ok {
+				return nil
+			}
+			if body.Ended == nil {
+				body.Ended = map[string][]ConditionRemovedBody{}
+			}
+			body.Ended[member] = removed
+		}
+		return body
 	case EventDoor:
 		var p struct {
 			Door        string          `json:"door"`
@@ -731,6 +755,10 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			return nil
 		}
 		return LootedBody{Looter: p.Member, Body: p.Target}
+	case EventEquipmentChanged:
+		return equipmentChangedBodyOf(payload)
+	case EventRested:
+		return restedBodyOf(payload)
 	case EventHeld:
 		var p struct {
 			Holder string `json:"holder"`
@@ -789,6 +817,18 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		if json.Unmarshal(payload, &p) != nil || p.Concealment == "" {
 			return nil
 		}
+		// THE STRUCTURAL HALF, DECODED THROUGH THE SAME SHARED HELPER THE ROOM
+		// BEAT USES (rpg-project#169, P2E). A row missing its identity refuses
+		// the whole patch rather than leaving the cache half-applied; a legacy
+		// payload with no structural keys decodes with both lists nil.
+		rows, ok := structuralRowsFromPayload(payload)
+		if !ok {
+			return nil
+		}
+		presentations, valid := propPresentationsFromPayload(payload)
+		if !valid {
+			return nil
+		}
 		for i := range p.Doors {
 			for j := range p.Doors[i].Doorways {
 				p.Doors[i].Doorways[j].Door = p.Doors[i].Door
@@ -798,6 +838,9 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			Concealment: p.Concealment, Cells: p.Cells, Props: p.Props,
 			Doors: p.Doors, Regions: p.Regions, Boundaries: p.Boundaries,
 			Segments: p.Segments, Sealed: p.Sealed,
+			StructuralWalls: rows.Walls, StructuralDoors: rows.Doors,
+			StructuralWallOpeningsReplacements: rows.Replacements,
+			PropPresentations:                  presentations,
 		}
 	case EventSighted:
 		// REFUSED IF IT NAMES NOBODY. The composition appends this beat
@@ -2381,4 +2424,142 @@ func decodeDamageComponent(raw json.RawMessage) (DamageComponent, bool) {
 	component.FinalRolls = scalar.FinalRolls
 	component.FlatBonus = scalar.FlatBonus
 	return component, true
+}
+
+// equipmentChangedBodyOf decodes an equip beat, or nil when a field it needs
+// is missing or the change is neither a draw nor a stow.
+func equipmentChangedBodyOf(payload []byte) EventBody {
+	var p struct {
+		Member string `json:"member"`
+		Slot   string `json:"slot"`
+		Item   string `json:"item"`
+		Change string `json:"change"`
+	}
+	if json.Unmarshal(payload, &p) != nil || p.Member == "" || p.Slot == "" || p.Item == "" {
+		return nil
+	}
+	var change EquipmentChange
+	switch encounter.EquipmentChange(p.Change) {
+	case encounter.EquipDraw:
+		change = EquipmentDrawn
+	case encounter.EquipStow:
+		change = EquipmentStowed
+	default:
+		return nil
+	}
+	return EquipmentChangedBody{Member: p.Member, Slot: p.Slot, Item: p.Item, Change: change}
+}
+
+// restedBodyOf decodes a rest beat, or nil when a field it needs is missing,
+// a count is negative, or a calculation is present and does not replay.
+func restedBodyOf(payload []byte) EventBody {
+	var p struct {
+		Member             string            `json:"member"`
+		Kind               string            `json:"kind"`
+		HitPointsRestored  *int              `json:"hit_points_restored"`
+		HitPoints          *int              `json:"hit_points"`
+		HitDiceSpent       *int              `json:"hit_dice_spent"`
+		HitDiceReturned    *int              `json:"hit_dice_returned"`
+		HitDiceRemaining   *int              `json:"hit_dice_remaining"`
+		ResourcesRefilled  []string          `json:"resources_refilled"`
+		Calculation        json.RawMessage   `json:"calculation"`
+		ConcentrationEnded []json.RawMessage `json:"concentration_ended"`
+		Ended              []json.RawMessage `json:"ended"`
+	}
+	if json.Unmarshal(payload, &p) != nil || p.Member == "" || p.Kind == "" {
+		return nil
+	}
+	counts := []*int{p.HitPointsRestored, p.HitPoints, p.HitDiceSpent, p.HitDiceReturned, p.HitDiceRemaining}
+	for _, count := range counts {
+		if count == nil || *count < 0 {
+			return nil
+		}
+	}
+	body := RestedBody{
+		Member: p.Member, Kind: p.Kind,
+		HitPointsRestored: *p.HitPointsRestored, HitPoints: *p.HitPoints,
+		HitDiceSpent: *p.HitDiceSpent, HitDiceReturned: *p.HitDiceReturned,
+		HitDiceRemaining:  *p.HitDiceRemaining,
+		ResourcesRefilled: p.ResourcesRefilled,
+	}
+	if len(p.Calculation) > 0 {
+		calculation, ok := decodeRollCalculation(p.Calculation)
+		if !ok {
+			return nil
+		}
+		body.Calculation = calculation
+	}
+	for _, raw := range p.ConcentrationEnded {
+		ended, ok := restConcentrationEndedOf(raw)
+		if !ok {
+			return nil
+		}
+		body.ConcentrationEnded = append(body.ConcentrationEnded, ended)
+	}
+	for _, raw := range p.Ended {
+		removed, ok := conditionRemovedOf(p.Member, raw)
+		if !ok {
+			return nil
+		}
+		body.Ended = append(body.Ended, removed)
+	}
+	return body
+}
+
+// restConcentrationEndedOf decodes one concentration a rest ended: the same
+// caster/spell/reason a break beat carries, and the removals it held, each
+// read by the one activation-result decoder every removal goes through.
+func restConcentrationEndedOf(raw json.RawMessage) (RestConcentrationEnded, bool) {
+	held, ok := concentrationEndedEventBody(raw).(ConcentrationEndedBody)
+	if !ok {
+		return RestConcentrationEnded{}, false
+	}
+	var p struct {
+		Removed []json.RawMessage `json:"removed"`
+	}
+	if json.Unmarshal(raw, &p) != nil {
+		return RestConcentrationEnded{}, false
+	}
+	out := RestConcentrationEnded{ConcentrationEndedBody: held}
+	for _, removed := range p.Removed {
+		body, ok := conditionRemovedOf(held.Caster, removed)
+		if !ok {
+			return RestConcentrationEnded{}, false
+		}
+		out.Removed = append(out.Removed, body)
+	}
+	return out, true
+}
+
+// conditionRemovedOf decodes one removal in the activation-result shape,
+// through [activationResultBody] itself so a removal on a rest beat is held to
+// exactly the checks a removal on an activation beat is. It refuses anything
+// but a removal.
+func conditionRemovedOf(actor string, raw json.RawMessage) (ConditionRemovedBody, bool) {
+	wrapped, err := json.Marshal(map[string]json.RawMessage{
+		"actor": json.RawMessage(strconv.Quote(actor)), "result": raw,
+	})
+	if err != nil {
+		return ConditionRemovedBody{}, false
+	}
+	body, ok := activationResultBody(wrapped).(ActivationResultBody)
+	if !ok || body.ConditionRemoved == nil {
+		return ConditionRemovedBody{}, false
+	}
+	return *body.ConditionRemoved, true
+}
+
+// conditionsRemovedOf decodes a list of removals in the activation-result
+// shape, each through [conditionRemovedOf]; nil for an empty list, and not ok
+// when any entry is not a removal.
+func conditionsRemovedOf(actor string, raws []json.RawMessage) ([]ConditionRemovedBody, bool) {
+	var out []ConditionRemovedBody
+	for _, raw := range raws {
+		removed, ok := conditionRemovedOf(actor, raw)
+		if !ok {
+			return nil, false
+		}
+		out = append(out, removed)
+	}
+	return out, true
 }

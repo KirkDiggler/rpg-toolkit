@@ -41,17 +41,14 @@ func deftCharacter(id string, dex int) *character.Data {
 
 // gatedWorld is read_test's hexWorld with the gate in a caller-chosen state
 // and alice standing at its west cell, one step from crossing it.
-func gatedWorld(t fataler, state encounter.DoorState) *encounter.EncounterData {
-	return gatedWorldSeating(t, state, spatial.Position{X: 5, Y: 0})
+func gatedWorld(state encounter.DoorState) scene {
+	return gatedWorldSeating(state, spatial.Position{X: 5, Y: 0})
 }
 
 // gatedWorldSeating is gatedWorld with alice's authored seat chosen by the
 // caller, for the one scene that needs her measurably away from the gate.
-func gatedWorldSeating(t fataler, state encounter.DoorState, seat spatial.Position) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing: encEveryoneStanding{},
+func gatedWorldSeating(state encounter.DoorState, seat spatial.Position) scene {
+	return scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{
 				rectRegion("corridor", 0, 0, 6, 6),
@@ -64,18 +61,9 @@ func gatedWorldSeating(t fataler, state encounter.DoorState, seat spatial.Positi
 				State: state,
 			}},
 		},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: seat},
-		},
-		Endings: []encounter.EndingInput{
-			{Key: "out", Trigger: encounter.TriggerExternal{}},
-		},
-	})
-	if err != nil {
-		t.Fatalf("building gated world: %v", err)
+		Party:   []sceneSeat{{ID: "alice", At: seat}},
+		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
 	}
-	data := enc.ToData()
-	return &data
 }
 
 const tombDC = 12
@@ -98,14 +86,14 @@ func TestDoorsSuite(t *testing.T) {
 
 // startWith wires a fresh manager around the given world and cast, with the
 // stream recorded — the beats are half of what this suite pins.
-func (s *DoorsSuite) startWith(world *encounter.EncounterData, cast ...*character.Data) {
+func (s *DoorsSuite) startWith(world scene, cast ...*character.Data) {
 	s.stream = &fakeStream{}
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	characters := newFakeCharacters(cast...)
 	// The world asks every authored member's sheet how far it sees; the ones
 	// this cast leaves out are given plain ones.
 	stockAuthoredPlayers(world, characters)
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters,
 		Characters: characters, Events: s.stream,
@@ -113,11 +101,7 @@ func (s *DoorsSuite) startWith(world *encounter.EncounterData, cast ...*characte
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: world,
-	})
-	s.Require().NoError(err)
-	stockAuthoredMonsters(s.T(), sessions, encounters, "sess")
+	launchScene(s.T(), mgr, world)
 }
 
 // doorEvents filters what the stream heard down to the door beats one
@@ -141,7 +125,7 @@ func (s *DoorsSuite) TestDoorsReadsTheLiveState() {
 	ctx := context.Background()
 
 	s.Run("an open gate has no lock to report", func() {
-		s.startWith(hexWorld(s.T()))
+		s.startWith(hexWorld())
 		out, err := s.mgr.Doors(ctx, &session.DoorsInput{Session: "sess", Member: "alice"})
 		s.Require().NoError(err)
 		s.Require().Len(out.Doors, 1)
@@ -149,7 +133,7 @@ func (s *DoorsSuite) TestDoorsReadsTheLiveState() {
 	})
 
 	s.Run("a locked gate reports its lock, DC and all", func() {
-		s.startWith(gatedWorld(s.T(), tombLock()))
+		s.startWith(gatedWorld(tombLock()))
 		out, err := s.mgr.Doors(ctx, &session.DoorsInput{Session: "sess", Member: "alice"})
 		s.Require().NoError(err)
 		s.Require().Len(out.Doors, 1)
@@ -168,7 +152,7 @@ func (s *DoorsSuite) TestAWalkIntoTheDoorSaysWhatStoppedIt() {
 		{tombLock(), "locked"}, {encounter.DoorIsClosed(), "shut"},
 	} {
 		s.Run(row.reason, func() {
-			s.startWith(gatedWorld(s.T(), row.state))
+			s.startWith(gatedWorld(row.state))
 			out, err := s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: []spatial.Position{hexCell(6, 0)}})
 			s.Require().NoError(err)
 			s.Equal(session.MovementStopped, out.Status)
@@ -180,7 +164,7 @@ func (s *DoorsSuite) TestAWalkIntoTheDoorSaysWhatStoppedIt() {
 
 func (s *DoorsSuite) TestOpenDoorOpensAndTheTableHears() {
 	ctx := context.Background()
-	s.startWith(gatedWorld(s.T(), encounter.DoorIsClosed()))
+	s.startWith(gatedWorld(encounter.DoorIsClosed()))
 
 	out, err := s.mgr.OpenDoor(ctx, &session.OpenDoorInput{
 		Session: "sess", Member: "alice", Door: "gate"})
@@ -207,7 +191,7 @@ func (s *DoorsSuite) TestOpenDoorOpensAndTheTableHears() {
 }
 
 func (s *DoorsSuite) TestOpenDoorRefusesALockedOne() {
-	s.startWith(gatedWorld(s.T(), tombLock()))
+	s.startWith(gatedWorld(tombLock()))
 	_, err := s.mgr.OpenDoor(context.Background(), &session.OpenDoorInput{
 		Session: "sess", Member: "alice", Door: "gate"})
 	s.Require().ErrorIs(err, session.ErrLocked, "Unlock is the way through a lock")
@@ -223,7 +207,7 @@ func (s *DoorsSuite) TestOpenDoorRefusesALockedOne() {
 // the boundary itself and not merely a verb that refuses.
 func (s *DoorsSuite) TestTheReachRefusalArrivesAsThisPackagesOwn() {
 	ctx := context.Background()
-	s.startWith(gatedWorldSeating(s.T(), encounter.DoorIsClosed(), spatial.Position{X: 3, Y: 0}),
+	s.startWith(gatedWorldSeating(encounter.DoorIsClosed(), spatial.Position{X: 3, Y: 0}),
 		deftCharacter("alice", 14))
 
 	_, err := s.mgr.OpenDoor(ctx, &session.OpenDoorInput{
@@ -251,7 +235,7 @@ func (s *DoorsSuite) TestTheReachRefusalArrivesAsThisPackagesOwn() {
 
 func (s *DoorsSuite) TestUnlockRollsTheSheetAgainstTheDC() {
 	ctx := context.Background()
-	s.startWith(gatedWorld(s.T(), tombLock()), deftCharacter("alice", 14))
+	s.startWith(gatedWorld(tombLock()), deftCharacter("alice", 14))
 
 	out, err := s.mgr.Unlock(ctx, &session.UnlockInput{
 		Session: "sess", Member: "alice", Door: "gate"})
@@ -276,7 +260,7 @@ func (s *DoorsSuite) TestUnlockRollsTheSheetAgainstTheDC() {
 
 func (s *DoorsSuite) TestAFailedUnlockIsAnOutcomeNotAnError() {
 	ctx := context.Background()
-	s.startWith(gatedWorld(s.T(), tombLock()), deftCharacter("alice", 10))
+	s.startWith(gatedWorld(tombLock()), deftCharacter("alice", 10))
 
 	out, err := s.mgr.Unlock(ctx, &session.UnlockInput{
 		Session: "sess", Member: "alice", Door: "gate"})
@@ -305,7 +289,7 @@ func (s *DoorsSuite) TestAFailedUnlockIsAnOutcomeNotAnError() {
 
 func (s *DoorsSuite) TestALockNamingNoRulebookAbilityIsRefusedLoudly() {
 	s.startWith(
-		gatedWorld(s.T(), encounter.DoorIsLocked(encounter.Lock{
+		gatedWorld(encounter.DoorIsLocked(encounter.Lock{
 			Approaches: []encounter.CheckApproach{{Ability: "luck", DC: tombDC}}})),
 		deftCharacter("alice", 14))
 	_, err := s.mgr.Unlock(context.Background(), &session.UnlockInput{
@@ -317,7 +301,7 @@ func (s *DoorsSuite) TestALockNamingNoRulebookAbilityIsRefusedLoudly() {
 
 func (s *DoorsSuite) TestUnlockOfAnUnlockedDoorIsRefused() {
 	ctx := context.Background()
-	s.startWith(hexWorld(s.T()), deftCharacter("alice", 14))
+	s.startWith(hexWorld(), deftCharacter("alice", 14))
 
 	// hexWorld seats alice at the corridor's west end; she walks up to the
 	// gate first, because a hand out of reach is told THAT and never reaches
@@ -336,7 +320,7 @@ func (s *DoorsSuite) TestUnlockOfAnUnlockedDoorIsRefused() {
 
 func (s *DoorsSuite) TestTheEndedBeatCarriesItsKey() {
 	ctx := context.Background()
-	s.startWith(hexWorld(s.T()))
+	s.startWith(hexWorld())
 
 	_, err := s.mgr.End(ctx, &session.EndInput{Session: "sess", Ending: "out"})
 	s.Require().NoError(err)
@@ -366,21 +350,18 @@ func (s *DoorsSuite) TestTheEndedBeatCarriesItsKey() {
 // against a checker who never took it.
 func (s *DoorsSuite) TestALockDoesNotTakeTheUntrainedRule() {
 	rolled := 0
-	world := gatedWorld(s.T(), encounter.DoorIsLocked(encounter.Lock{
+	world := gatedWorld(encounter.DoorIsLocked(encounter.Lock{
 		Approaches: []encounter.CheckApproach{{Ability: "sleight-of-hand", DC: tombDC}},
 	}))
 
 	s.stream = &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{calls: &rolled}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 		Characters: newFakeCharacters(deftCharacter("alice", 14)), Events: s.stream,
 	})
 	s.Require().NoError(err)
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: world,
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, world)
 
 	out, err := mgr.Unlock(context.Background(), &session.UnlockInput{
 		Session: "sess", Member: "alice", Door: "gate"})

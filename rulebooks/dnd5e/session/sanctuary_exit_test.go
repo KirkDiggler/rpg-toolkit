@@ -14,69 +14,71 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
 )
 
-// TestAWardOutlivesTheClericWhoLeft is the probe that found the stall, kept.
+// TestAWardEndsWithTheClericWhoLeft: in this build Sanctuary is the cleric's
+// owned concentration, and a member who leaves a run takes their holds with
+// them (rpg-project#542, the #1983 gate ruling): the cleric's Exit ends the
+// hold, the ward comes off the fighter it protected, the removal is told on
+// the exit beat, and the skeleton's next swing meets no ward — the table
+// moves without a sheet nobody can read.
 //
-// The ward used to read its DC off the caster's sheet, so a cleric who Exited
-// left a Sanctuary nobody could read: every swing at its holder refused, a
-// driven monster turn is one of those swings, and EndTurn wedged the table
-// under ErrBadCharacter. The ward now records the caster's spell save DC when
-// it is cast (rpg-toolkit#1967/#1968), so the goblin-side save rolls at that
-// recorded number whether or not the cleric is still in the room — which is
-// also RAW: Sanctuary does not end when its caster walks away.
-//
-// Cast through the verb rather than seeded, so the DC on the ward is the one
-// resolution wrote at impose, not one this test chose.
-func (s *CastSuite) TestAWardOutlivesTheClericWhoLeft() {
+// It replaces the probe that pinned the opposite, when a ward outlived its
+// cleric by recording the caster's DC (rpg-toolkit#1967/#1968): no hold
+// outlives its caster's departure now, so no ward needs to.
+func (s *CastSuite) TestAWardEndsWithTheClericWhoLeft() {
 	cleric := castingCleric()
 	cleric.KnownSpells = []string{refs.Spells.Sanctuary().String()}
 	cleric.Resources = map[coreResources.ResourceKey]character.RecoverableResourceData{
 		resources.SpellSlotLevel1: {Current: 2, Maximum: 2, ResetType: coreResources.ResetLongRest},
 	}
-	// The skeleton stands beside alice. Its one Wisdom save is the only die the
-	// scene rolls after initiative: a 5 fails the cleric's DC 13 (8 + 2 + WIS 3).
-	s.sceneWithAllies(cleric, []*character.Data{armedFighter("warded")}, 2, 5)
+	// Initiative, then the skeleton's attack roll: a natural 1, so the swing
+	// misses and asks for no damage die.
+	s.sceneWithAllies(cleric, []*character.Data{armedFighter("warded")}, 2, 1)
 	ctx := context.Background()
-
 	_, err := s.mgr.Cast(ctx, &session.CastInput{
 		Session: "sess", Member: "cleric", DeclarationID: s.castRow(spells.Sanctuary).ID,
 		Targets: []string{"warded"},
 	})
 	s.Require().NoError(err)
+	s.stream.published = nil
 
 	_, err = s.mgr.Exit(ctx, &session.ExitInput{Session: "sess", Member: "cleric"})
 	s.Require().NoError(err, "the cleric leaves the session")
 
-	// From here the skeleton swings at the warded fighter.
-	s.mgr, err = session.NewManager(&session.Config{
+	exited := ofKinds(eventsFor(s.stream.published, "warded"), session.EventExited)
+	s.Require().Len(exited, 1)
+	body, ok := exited[0].Body.(session.ExitedBody)
+	s.Require().True(ok)
+	var offWarded []string
+	for _, removed := range body.Ended {
+		if removed.Target == "warded" {
+			offWarded = append(offWarded, removed.Ref)
+		}
+	}
+	s.NotEmpty(offWarded, "the ward came off the fighter, told on the exit beat")
+	stored, err := s.characters.GetCharacter(ctx, "warded")
+	s.Require().NoError(err)
+	for _, raw := range stored.Conditions {
+		for _, ref := range offWarded {
+			s.NotContains(string(raw), `"`+ref+`"`, "the stored sheet no longer carries the ward")
+		}
+	}
+
+	// From here the skeleton swings at the fighter, who is no longer warded.
+	s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: swingsAt{target: "warded"},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream,
 	})
 	s.Require().NoError(err)
-
 	turn, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "warded"})
 	s.Require().NoError(err)
 	s.Require().Equal("warded", turn.Active, "precondition: the warded fighter acts before the skeleton")
 	s.stream.published = nil
-
 	_, err = s.mgr.EndTurn(ctx, &session.EndTurnInput{
 		Session: "sess", Member: "warded", DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "warded"),
 	})
-	s.Require().NoError(err, "the skeleton's driven swing resolves against the ward; the table moves")
-
-	// Read as the warded fighter: the cleric is gone and is delivered nothing.
-	warded := ofKinds(eventsFor(s.stream.published, "warded"), session.EventWarded)
-	s.Require().NotEmpty(warded, "the skeleton's swing met the ward")
-	body, ok := warded[0].Body.(session.WardedBody)
-	s.Require().True(ok)
-	s.Equal("skeleton", body.Attacker)
-	s.Equal("warded", body.Target)
-	s.Equal("cleric", body.Source, "the ward still names the cleric who cast it")
-	s.Equal(13, body.DC, "the save rolled at the DC the ward recorded when it was cast")
-	s.Equal(5, body.Roll)
-
-	turn, err = s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "warded"})
-	s.Require().NoError(err)
-	s.Equal("warded", turn.Active, "the fight proceeds: the round came back around")
+	s.Require().NoError(err, "the skeleton's driven swing resolves; the table moves")
+	s.Empty(ofKinds(eventsFor(s.stream.published, "warded"), session.EventWarded), "no ward stood in its way")
+	s.NotEmpty(ofKinds(eventsFor(s.stream.published, "warded"), session.EventMissed), "the swing was rolled")
 }
 
 // swingsAt declares its first action against one named member, or passes when

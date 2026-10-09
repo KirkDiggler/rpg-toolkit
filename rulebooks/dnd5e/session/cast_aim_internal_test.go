@@ -1,9 +1,11 @@
 package session
 
 import (
-	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
-	"github.com/stretchr/testify/require"
 	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 )
 
 func TestAimPreviewDoesNotRevealUnseenOrRememberedMembers(t *testing.T) {

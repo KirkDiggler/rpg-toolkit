@@ -388,7 +388,7 @@ func (s *ConcentratingConditionSuite) TestEveryEndPathPublishesOneFact() {
 				ConditionRef: condition.Ref().String(),
 			}, ConcentrationEndedRecast)
 		}},
-		{"a long rest takes it", "long rest", func(*ConcentratingCondition) {
+		{"a long rest takes it", "rest", func(*ConcentratingCondition) {
 			s.Require().NoError(dnd5eEvents.RestTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.RestEvent{
 				CharacterID: testCasterID,
 				RestType:    coreResources.ResetLongRest,

@@ -44,16 +44,12 @@ import (
 // it. The day that seam opens, this input gains the class, the way the
 // rulebook's own AdvanceInput already states it.
 //
-// **This seam cannot tell whether the character is seated in a run.** The
-// rulebook refuses a level to a sheet that is [character.Character.InCombat],
-// which is what the sheet itself can answer — it holds a live action economy
-// from its first turn in a fight until a session clears it. A character seated
-// in an encounter that has not reached its first turn is invisible to that
-// check, and it is invisible HERE too: this Manager has no index from a
-// character id to the sessions holding it, only the reverse (a session names
-// one encounter, and an encounter names its members). THAT INDEX IS THE SEAM.
-// It is not built here, and until it exists this verb's in-combat refusal is
-// exactly the sheet's, no narrower and no wider.
+// **It acts under the seat's guard** (rpg-project#542, "The seat"): the
+// character's own guard while no run holds it, the run's session guard while
+// one does, so a level and a verb inside the run never write the sheet over
+// each other. The seat does not add a refusal: the rulebook refuses a level to
+// a sheet that is [character.Character.InCombat], and that remains exactly
+// this verb's in-combat refusal, no narrower and no wider.
 //
 // Returns ErrNilInput, ErrNoMemberID (empty character), ErrBadLevelRequest (an
 // unknown hit point method, a choice the level did not ask for, a selection
@@ -61,7 +57,7 @@ import (
 // argument), ErrLevelNotOffered (a requirement kind this seam cannot
 // translate), ErrCannotAdvance (not enough experience, in a fight, nothing to
 // advance from), ErrNoCharacter / ErrBadCharacter / ErrBadRepository (loading
-// the stored sheet), or ErrSaveFailed with a populated report.
+// the stored sheet or the seat), or ErrSaveFailed with a populated report.
 func (m *Manager) LevelUp(ctx context.Context, in *LevelUpInput) (*LevelUpOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("level up: %w", ErrNilInput)
@@ -79,7 +75,17 @@ func (m *Manager) LevelUp(ctx context.Context, in *LevelUpInput) (*LevelUpOutput
 		return nil, fmt.Errorf("level up: %w", err)
 	}
 
-	data, err := m.fetchCharacterData(ctx, "character", in.Character)
+	// UNDER THE SEAT'S GUARD (rpg-project#542): the character's own guard
+	// while unseated, its session's while a run holds it, so a level and a
+	// verb inside the run can never write the sheet over each other. The
+	// refusals are the sheet's own, unchanged.
+	guard, err := m.guardBySeat(ctx, in.Character)
+	if err != nil {
+		return nil, fmt.Errorf("level up: %w", err)
+	}
+	defer guard.release()
+
+	data, err := m.sheetsFor(nil).load(ctx, "character", in.Character)
 	if err != nil {
 		return nil, fmt.Errorf("level up: %w", err)
 	}
@@ -109,16 +115,13 @@ func (m *Manager) LevelUp(ctx context.Context, in *LevelUpInput) (*LevelUpOutput
 	if err != nil {
 		return nil, fmt.Errorf("level up: character %q: %w: %v", in.Character, ErrBadCharacter, err)
 	}
-	aggregate := "character:" + record.ID
-	if err := m.characters.SaveCharacter(ctx, record); err != nil {
-		return nil, fmt.Errorf("level up: %w", &SaveError{
-			Report: SaveReport{Failed: []string{aggregate}},
-			Err:    fmt.Errorf("saving character: %w", err),
-		})
+	report := &writeScope{}
+	if err := m.sheetsFor(report).save(ctx, record); err != nil {
+		return nil, fmt.Errorf("level up: %w", err)
 	}
 
 	return &LevelUpOutput{
-		Saved:  SaveReport{Written: []string{aggregate}},
+		Saved:  SaveReport{Written: report.written},
 		Gained: levelGained(data.ClassID, advanced.Gained),
 	}, nil
 }

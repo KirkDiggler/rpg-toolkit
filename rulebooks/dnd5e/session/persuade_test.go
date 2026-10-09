@@ -10,6 +10,7 @@ package session_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -18,6 +19,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -36,7 +38,7 @@ type PersuadeSuite struct {
 
 	// authored is the dungeon author's hand on the spawn, when a scene has
 	// one.
-	authored func(*session.SpawnInput)
+	authored func(*dungeonspec.MonsterPlacement)
 
 	// turnClock puts alice and the goblin into one authored bubble. False —
 	// the default — leaves both in FREE ROAM, which is the front room the
@@ -71,17 +73,14 @@ func (s *PersuadeSuite) front(rolls []int) *session.Manager {
 	if driver == nil {
 		driver = session.Pass{}
 	}
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: driver,
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{},
-		Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
+	sc := scene{
 		Field: encounter.FieldInput{
 			Canvas:   pointyCanvas(),
 			Regions:  []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)},
@@ -91,44 +90,36 @@ func (s *PersuadeSuite) front(rolls []int) *session.Manager {
 				Stance:  encounter.StanceNeutral,
 			}},
 		},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-		},
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-	})
-	s.Require().NoError(err)
-	data := enc.ToData()
-
-	ctx := context.Background()
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: &data,
-	})
-	s.Require().NoError(err)
-
-	spawn := &session.SpawnInput{
-		Session: "sess", ID: "goblin", Ref: refs.Monsters.Goblin().String(),
-		Position: spatial.Position{X: 5, Y: 1}, Faction: "goblins",
-		// THE AUTHOR WROTE BOTH VERBS ON THIS GOBLIN, because after
-		// rpg-project#494 a creature carries a social verb only when its
-		// binding priced one — an unpriced goblin is refused before any die
-		// is thrown, and every scene here is about what happens after one.
-		// DC 9 is the number the retired derived approach used to produce for
-		// a goblin, so every scripted die still means what its comment says.
-		Intimidate: []session.DoorApproach{{Ability: "intimidation", DC: 9}},
-		Persuade:   []session.DoorApproach{{Ability: "persuasion", DC: 9}},
+		Party: []sceneSeat{seatAt("alice", 1, 1)},
 	}
+
+	goblin := monsterAt("goblin", refs.Monsters.Goblin().String(), 5, 1)
+	goblin.Faction = "goblins"
+	// THE AUTHOR WROTE BOTH VERBS ON THIS GOBLIN, because after
+	// rpg-project#494 a creature carries a social verb only when its
+	// binding priced one — an unpriced goblin is refused before any die
+	// is thrown, and every scene here is about what happens after one.
+	// DC 9 is the number the retired derived approach used to produce for
+	// a goblin, so every scripted die still means what its comment says.
+	goblin.Intimidate = []encounter.CheckApproach{{Ability: "intimidation", DC: 9}}
+	goblin.Persuade = []encounter.CheckApproach{{Ability: "persuasion", DC: 9}}
 	if s.authored != nil {
-		s.authored(spawn)
+		s.authored(&goblin)
 	}
-	_, err = mgr.Spawn(ctx, spawn)
-	s.Require().NoError(err)
+	sc.Monsters = []dungeonspec.MonsterPlacement{goblin}
+	// The scene's own conditions (a Guidance die already held) are written
+	// AFTER the launch: the launch's first-admission long rest ends them.
+	conditionsBefore := append([]json.RawMessage(nil), s.sheet.Conditions...)
+	launchScene(s.T(), mgr, sc)
+	if len(conditionsBefore) > 0 {
+		stored, err := s.characters.GetCharacter(context.Background(), s.sheet.ID)
+		s.Require().NoError(err)
+		stored.Conditions = append(stored.Conditions, conditionsBefore...)
+		s.Require().NoError(s.characters.SaveCharacter(context.Background(), stored))
+	}
 
 	if s.turnClock {
-		stored, err := s.encounters.GetEncounter(ctx, "world")
-		s.Require().NoError(err)
-		s.Require().NoError(s.encounters.SaveEncounter(ctx, "world",
-			turnWorld(stored, []string{"alice", "goblin"}, 0)))
+		authorTurnClock(s.T(), s.encounters, testSession, []string{"alice", "goblin"}, 0)
 	}
 
 	return mgr
@@ -282,7 +273,7 @@ func (s *PersuadeSuite) TestAnUntrainedCheckerRollsTheVerbAtDisadvantage() {
 // The author's table arrives as a typed beat: the creature, the verb, the die
 // it was rolled with, the entry that fired and the line the author wrote.
 func (s *PersuadeSuite) TestTheReactionReachesTheStreamAsATypedBeat() {
-	s.authored = func(in *session.SpawnInput) {
+	s.authored = func(in *dungeonspec.MonsterPlacement) {
 		in.Table = encounter.Table{
 			encounter.AnswerPersuaded: {
 				{Weight: 3, Say: "Bandits took the cellar. Go left at the rope."},
@@ -328,7 +319,7 @@ func (s *PersuadeSuite) TestTheReactionReachesTheStreamAsATypedBeat() {
 // Absent means absent, which is what makes an entry that fires and does
 // nothing distinguishable from nothing being authored.
 func (s *PersuadeSuite) TestAnUnauthoredOutcomeRollsNothing() {
-	s.authored = func(in *session.SpawnInput) {
+	s.authored = func(in *dungeonspec.MonsterPlacement) {
 		in.Table = encounter.Table{
 			encounter.AnswerPersuadeFailed: {{Weight: 1, Say: "Nothing down there, friend."}},
 		}
@@ -395,12 +386,9 @@ func (s *PersuadeSuite) TestSomebodyElsesTurnStillRefuses() {
 	s.turnClock = true
 	mgr := s.front([]int{10})
 
-	stored, err := s.encounters.GetEncounter(context.Background(), "world")
-	s.Require().NoError(err)
-	s.Require().NoError(s.encounters.SaveEncounter(context.Background(), "world",
-		turnWorld(stored, []string{"alice", "goblin"}, 1)))
+	authorTurnClock(s.T(), s.encounters, testSession, []string{"alice", "goblin"}, 1)
 
-	_, err = s.persuade(mgr)
+	_, err := s.persuade(mgr)
 	s.ErrorIs(err, session.ErrNotYourTurn, "it is the goblin's turn")
 }
 
@@ -473,7 +461,7 @@ func guidedTalker(id string) *character.Data {
 // the answer the author wrote.
 func (s *PersuadeSuite) TestAResumedAppealFinishesAsAnAppealAndRollsItsReaction() {
 	s.sheet = guidedTalker("alice")
-	s.authored = func(in *session.SpawnInput) {
+	s.authored = func(in *dungeonspec.MonsterPlacement) {
 		in.Table = encounter.Table{
 			encounter.AnswerPersuaded: {{Weight: 1, Say: "Go left at the rope.", Fact: "bandits-in-cellar"}},
 		}
@@ -598,7 +586,7 @@ func (s *PersuadeSuite) TestASubjectInNoFactionHasNoStance() {
 // is the smallest world in which two viewers disagree about one subject.
 func (s *PersuadeSuite) frontWithBandit() *session.Manager {
 	s.characters = newFakeCharacters(s.sheet)
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: &sequenceDice{rolls: []int{10, 10, 10, 10}},
 		TurnDriver: session.Pass{},
 		Sessions:   s.sessions, Encounters: s.encounters,
@@ -606,10 +594,11 @@ func (s *PersuadeSuite) frontWithBandit() *session.Manager {
 	})
 	s.Require().NoError(err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{},
-		Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
+	goblin := monsterAt("goblin", refs.Monsters.Goblin().String(), 5, 1)
+	goblin.Faction = "goblins"
+	bandit := monsterAt("bandit", refs.Monsters.Bandit().String(), 6, 1)
+	bandit.Faction = "bandits"
+	sc := scene{
 		Field: encounter.FieldInput{
 			Canvas:   pointyCanvas(),
 			Regions:  []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)},
@@ -625,23 +614,10 @@ func (s *PersuadeSuite) frontWithBandit() *session.Manager {
 				},
 			},
 		},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "goblin", Kind: encounter.KindMonster, Position: spatial.Position{X: 5, Y: 1},
-				Faction: "goblins"},
-			{ID: "bandit", Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 1},
-				Faction: "bandits"},
-		},
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-	})
-	s.Require().NoError(err)
-	data := enc.ToData()
-
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: &data,
-	})
-	s.Require().NoError(err)
+		Party:    []sceneSeat{seatAt("alice", 1, 1)},
+		Monsters: []dungeonspec.MonsterPlacement{goblin, bandit},
+	}
+	launchScene(s.T(), mgr, sc)
 
 	return mgr
 }
@@ -727,7 +703,7 @@ func (s *PersuadeSuite) TestAWorldRoundRollsThroughTheSessionsOwnDice() {
 	// that a die was thrown and whose faces it landed on, not what the creature
 	// decided. One entry at weight 1, loaded by the soldier's 100, is a d100.
 	s.driver = session.Driver()
-	s.authored = func(in *session.SpawnInput) {
+	s.authored = func(in *dungeonspec.MonsterPlacement) {
 		in.Table = encounter.Table{encounter.AnswerTime: {{Weight: 1, Hold: true}}}
 	}
 	// The d20 for the appeal, then the world's own die for the goblin's turn.
@@ -767,14 +743,14 @@ func (s *PersuadeSuite) TestAWorldRoundRollsThroughTheSessionsOwnDice() {
 // place the session's shared dice have to have reached the composition, the
 // first being the picks themselves.
 func (s *PersuadeSuite) TestAFactionsMixDealsATemperamentAndSaysSo() {
-	s.authored = func(in *session.SpawnInput) {
+	s.authored = func(in *dungeonspec.MonsterPlacement) {
 		// The design's own example spread. Walked in sorted order by the
 		// composition so a seeded roller deals the same word every run:
 		// aggressive 1, coward 1, soldier 2 — a d4 whose first face is the
 		// aggressive one.
 		in.Temper = encounter.Temper{Mix: map[string]int{"coward": 1, "soldier": 2, "aggressive": 1}}
 	}
-	// The one face the deal needs, spent at Spawn. Nothing else rolls: the
+	// The one face the deal needs, spent at the launch. Nothing else rolls: the
 	// appeal below never happens.
 	mgr := s.front([]int{1})
 
@@ -799,7 +775,7 @@ func (s *PersuadeSuite) TestAFactionsMixDealsATemperamentAndSaysSo() {
 // An authored WORD is never dealt for, and writes no beat: the author already
 // answered the question the mix exists to ask.
 func (s *PersuadeSuite) TestAnAuthoredTemperamentIsNotDealtFor() {
-	s.authored = func(in *session.SpawnInput) {
+	s.authored = func(in *dungeonspec.MonsterPlacement) {
 		in.Temper = encounter.Temper{Word: "coward"}
 	}
 	// NO FACES AT ALL. A deal would ask for one and fail the spawn, which is

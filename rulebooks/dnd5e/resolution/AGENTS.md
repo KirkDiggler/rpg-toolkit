@@ -50,11 +50,14 @@ which part is [`../CLAUDE.md`](../CLAUDE.md).
 - **The door, and the door pays.** `Machine.Start` is pure preflight; the cost
   is charged after it and before the first step — [`resolve.go:452-459`](./resolve.go),
   `payAtTheDoor` at [`cost.go:148`](./cost.go). A resolution nobody can pay for
-  executes no step and writes nothing.
+  executes no step and writes nothing. `Equip` ([`equip.go`](./equip.go)) is the
+  same door for an in-fight equipment change: it readies the turn, has the
+  rulebook price the change, charges it through `payAtTheDoor`, and only then
+  applies it; an unpaid change returns no record.
 - **Ambient truth.** `installTruth` at [`truth.go:60`](./truth.go) is the ONE
   function allowed to call a `gamectx.With*`: the room, the cast, reaction
-  readiness. Six attached-behaviour entries reach it and a seventh is deliberately
-  not one — see [`preflight.go`](./preflight.go).
+  readiness. Nine attached-behaviour entries reach it and `Preflight` is
+  deliberately not one — see [`preflight.go`](./preflight.go).
 - **The attach loop and its teardown.** Sheets are loaded purely, attached in
   sorted order, and every subscription this package granted is revoked, success
   or failure. `Output.Hooks` is the record of what attached.
@@ -62,6 +65,8 @@ which part is [`../CLAUDE.md`](../CLAUDE.md).
   ([`projection.go`](./projection.go)), `Participation` / `Standing`
   ([`participation.go`](./participation.go), [`standing.go`](./standing.go)),
   `MakeCheck` ([`check.go`](./check.go)), `LongRest` ([`long_rest.go`](./long_rest.go)),
+  `ShortRest` ([`short_rest.go`](./short_rest.go)), `Equip` ([`equip.go`](./equip.go)),
+  `Depart` ([`depart.go`](./depart.go)),
   `DeathSave` ([`death_save.go`](./death_save.go)). Each goes through the same
   door; none is a mode of another. `InformAttack` ([`inform.go`](./inform.go))
   opens no door at all: it asks the actor's own effects how they bear on an
@@ -119,10 +124,12 @@ outcome or the pose, the hooks, the concentration checks and breaks, and the
 runtime areas the interaction opened and closed. No
 runtime object crosses either way.
 
-It ASKS the caller for everything else, and the `Input` fields say so in their
-own godoc: `Standing`, `Sight`, `Equipment`, `Sheets`, `TurnDriver`,
-`CheckResolver`, `Witness` are **carried, never consulted** — handed to the
-composition so a world can be loaded at all. `Initiative` likewise. `Roller` is REQUIRED and
+It ASKS the caller for everything else, through the embedded
+`encounter.Capabilities`, whose godoc on `Input` says so: `Initiative`,
+`Standing`, `Sight`, `Equipment`, `Sheets`, `Driver`, `CheckResolver`,
+`Witness` and the `Actors` are **carried, never consulted** — handed to the
+composition so a world can be loaded at all. `resolution.Actors` is the value
+for the three actors. `Roller` is REQUIRED and
 never defaulted (rpg-toolkit#1033): a silent default is unreproducible dice in a
 result that looks fine.
 

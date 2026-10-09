@@ -25,20 +25,28 @@ func TestASocialVerdictAndADrivenTurnAgreeOnEnemyInReach(t *testing.T) {
 	rulebook := &oneDown{}
 	club := ActionView{Ref: core.Ref{Module: "test", Type: "actions", ID: "club"}, Name: "Club", RangeFeet: 5}
 	enc, err := NewEncounter(&SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: UnobservedEquipment{},
-		Sheets: sheetFacts{
-			"alice":  {SpeedFeet: 30},
-			"goblin": {SpeedFeet: 30, Actions: []ActionView{club}},
-		},
-		Standing: rulebook, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: FieldInput{Canvas: openAir(), Regions: []RegionInput{rectRegion("crypt", 0, 0, 12, 12)}},
 		Members: []MemberInput{
 			{ID: "alice", Kind: KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
 			{ID: "goblin", Kind: KindMonster, Position: spatial.Position{X: 3, Y: 2}},
 		},
 		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
+		Capabilities: Capabilities{
+			Sight:     everyoneSeesTheWholeMap{},
+			Equipment: UnobservedEquipment{},
+			Sheets: sheetFacts{
+				"alice":  {SpeedFeet: 30},
+				"goblin": {SpeedFeet: 30, Actions: []ActionView{club}},
+			},
+			Standing:   rulebook,
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 

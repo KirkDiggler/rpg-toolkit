@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/npc"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -36,20 +37,21 @@ type PlaceNPCTestSuite struct {
 func TestPlaceNPCSuite(t *testing.T) { suite.Run(t, new(PlaceNPCTestSuite)) }
 
 func (s *PlaceNPCTestSuite) SetupTest() {
+	s.wire()
+	launchScene(s.T(), s.mgr, hexWorld())
+}
+
+// wire builds a fresh manager over fresh stores, with nothing launched yet.
+func (s *PlaceNPCTestSuite) wire() {
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
 	s.characters = testCharacters()
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
-
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: hexWorld(s.T()),
-	})
-	s.Require().NoError(err)
 }
 
 func (s *PlaceNPCTestSuite) SetupSubTest() { s.SetupTest() }
@@ -129,13 +131,16 @@ func (s *PlaceNPCTestSuite) TestPlaceNPCNeverFormsAFight() {
 // (which already means monster sheets, N1) and a monster must never land in
 // WorldNPCs.
 func (s *PlaceNPCTestSuite) TestExistingSpawnedMonsterBehaviorIsUnchanged() {
-	_, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
-		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 0, Y: 0},
-	})
-	s.Require().NoError(err)
+	// A run whose board holds a monster from the start, in place of the one
+	// SetupTest launched.
+	s.wire()
+	withMonster := hexWorld()
+	withMonster.Monsters = []dungeonspec.MonsterPlacement{
+		monsterAt("skel-1", refs.Monsters.Skeleton().String(), 1, 0),
+	}
+	launchScene(s.T(), s.mgr, withMonster)
 
-	_, err = s.place("vendor-1", merchantData(), hexCell(3, 0))
+	_, err := s.place("vendor-1", merchantData(), hexCell(3, 0))
 	s.Require().NoError(err)
 
 	stored := s.sessions.byID["sess"]

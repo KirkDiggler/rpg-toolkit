@@ -323,14 +323,14 @@ func (c *ConcentratingCondition) Apply(ctx context.Context, bus events.EventBus)
 
 	// A rest is not one of this condition's own ends — its clock and combat
 	// end both fire first in any ordinary fight — but a blob that survived to
-	// a long rest must not outlive it, which is the registry every
+	// a rest, short or long, must not outlive it, which is the registry every
 	// combat-scoped condition here is in.
-	restSub, err := subscribeRemoveOnLongRest(ctx, bus, subscribeRemoveOnLongRestInput{
+	restSub, err := subscribeRemoveOnRest(ctx, bus, subscribeRemoveOnRestInput{
 		Address: ConditionAddressOf(c.MemberID, c), Remove: c.Remove,
 	})
 	if err != nil {
 		_ = c.Remove(ctx, bus)
-		return rpgerr.Wrap(err, "failed to subscribe to long rest")
+		return rpgerr.Wrap(err, "failed to subscribe to rest")
 	}
 	c.subscriptionIDs = append(c.subscriptionIDs, restSub)
 
@@ -481,7 +481,7 @@ func (c *ConcentratingCondition) onCombatEnd(
 //
 // The second is not hypothetical and it is not rare. Three of the six reasons
 // reach this condition as a removal published elsewhere — a failed check's
-// consequence, the recast drop, and the long-rest net — because the thing that
+// consequence, the recast drop, and the rest net — because the thing that
 // decided is the thing that publishes. So a removal addressed to this
 // condition is an END, honoured here with the reason it arrived carrying.
 //

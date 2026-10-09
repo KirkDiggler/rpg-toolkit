@@ -197,18 +197,18 @@ func (c *CommandedCondition) Apply(ctx context.Context, bus events.EventBus) err
 	}
 	c.subscriptionIDs = append(c.subscriptionIDs, combatSub)
 
-	// A compulsion that lasts one turn end should never SEE a long rest, and
+	// A compulsion that lasts one turn end should never SEE a rest, and
 	// that is the argument for subscribing rather than against it: the two
 	// clocks that normally take it are a turn end and the end of a fight, and
 	// a sheet that reaches a rest still carrying one has had neither. Every
 	// other spell-delivered condition in this package ends there for the same
 	// reason.
-	restSub, err := subscribeRemoveOnLongRest(ctx, bus, subscribeRemoveOnLongRestInput{
+	restSub, err := subscribeRemoveOnRest(ctx, bus, subscribeRemoveOnRestInput{
 		Address: c.ConditionAddress(), Remove: c.Remove,
 	})
 	if err != nil {
 		_ = c.Remove(ctx, bus)
-		return rpgerr.Wrap(err, "failed to subscribe to long rest")
+		return rpgerr.Wrap(err, "failed to subscribe to rest")
 	}
 	c.subscriptionIDs = append(c.subscriptionIDs, restSub)
 

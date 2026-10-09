@@ -17,9 +17,11 @@ package session_test
 
 import (
 	"context"
+	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/scenarios"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -33,30 +35,72 @@ func stout(id string) *character.Data {
 	return c
 }
 
-// arrangeTheChiefAtTheDoor is the redis state: the holder carries the letter
-// to the yard cell one step beyond the hut's doorway, the other player one
-// step further along the same line, and then the chief is spawned ON the
-// doorway's hut-side cell — in plain sight of both through the doorway, so
-// a fight forms with him in it and his driven turn steps him into the yard.
-func (s *HoldOutSessionSuite) arrangeTheChiefAtTheDoor(holder, other string) {
+// launchTheChiefAtTheDoor launches the redis state as one board: the holder
+// on the yard cell one step beyond the hut's doorway, with the letter lying
+// there, the other player one step further along the same line, and the chief
+// ON the doorway's hut-side cell — in plain sight of both through the
+// doorway, so the launch forms a fight with him in it and his driven turn
+// steps him into the yard. The holder then picks the letter up, on her own
+// turn when it is hers, so the scene opens with it in hand.
+//
+// The old scene reached the same board through two walks, a Hold at the gate
+// and a mid-run Spawn. Spawn is gone and no `arrives` form can bring a monster
+// into a free-roam run after a walk (a round is a fight's clock, the camp's one
+// fact is the one that turns it, nobody falls), so the board the walks
+// produced is placed directly, and the letter lies where the holder carried
+// it. The camp's own letter placement is moved on a copy of the field.
+func (s *HoldOutSessionSuite) launchTheChiefAtTheDoor(opts campOptions, holder, other string) {
 	s.T().Helper()
-	near, far := s.doorway(yardHut, "yard")
+	in := s.prepare(opts)
+
+	atlas, err := s.mgr.AtlasOf(context.Background(), &session.AtlasOfInput{Dungeon: in.Dungeon, DungeonKey: campKey})
+	s.Require().NoError(err)
+	var near, far spatial.Position
+	found := false
+	for _, dw := range atlas.Doorways {
+		if dw.Door != yardHut {
+			continue
+		}
+		near, far, found = dw.To, dw.From, true
+		if regionOf(atlas, dw.From) == "yard" {
+			near, far = dw.From, dw.To
+		}
+	}
+	s.Require().True(found, "%s is not in the atlas", yardHut)
 	step := spatial.Position{X: near.X - far.X, Y: near.Y - far.Y}
 	beyond := spatial.Position{X: near.X + step.X, Y: near.Y + step.Y}
 	further := spatial.Position{X: beyond.X + step.X, Y: beyond.Y + step.Y}
 
-	s.hold(holder, campLetter)
-	s.Require().Nil(s.walk(holder, beyond).Formed, "nobody to fight yet")
-	s.Require().Nil(s.walk(other, further).Formed)
+	seats := map[string]spatial.Position{holder: authoredOf(beyond), other: authoredOf(further)}
+	in.Dungeon.PartyStart = []dungeonspec.Seat{{At: seats[in.Party[0]]}, {At: seats[in.Party[1]]}}
+
+	props := append([]encounter.PropInput(nil), in.Dungeon.Field.Props...)
+	moved := false
+	for i := range props {
+		if props[i].ID == campLetter {
+			props[i].At, moved = authoredOf(beyond), true
+		}
+	}
+	s.Require().True(moved, "the camp places no %s", campLetter)
+	in.Dungeon.Field.Props = props
 
 	chief := s.placement(campChief)
-	out, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
-		Session: campSession, ID: chief.ID, Ref: chief.Ref, Position: far,
-		Holds: chief.Holds, Faction: chief.Faction,
-	})
+	chief.At = authoredOf(far)
+	in.Dungeon.Monsters = append(in.Dungeon.Monsters, chief)
+
+	out, err := s.mgr.Launch(context.Background(), in)
 	s.Require().NoError(err)
-	s.Require().NotNil(out.Formed, "the chief at the door sees the party in the yard")
-	s.Require().Contains(out.Formed.Order, campChief)
+	var formed *session.Formed
+	for _, f := range out.Formed {
+		if slices.Contains(f.Order, campChief) {
+			formed = f
+		}
+	}
+	s.Require().NotNil(formed, "the chief at the door sees the party in the yard")
+
+	if s.turn(holder).Active == holder {
+		s.hold(holder, campLetter)
+	}
 	s.stream.published = nil
 }
 
@@ -133,9 +177,8 @@ func after(kinds []session.EventKind, from session.EventKind) []session.EventKin
 // the hold-out ends — and his turn ends THERE. The verb succeeds, the
 // ending reaches everyone, and nothing swings after the run closed.
 func (s *HoldOutSessionSuite) TestTheChiefsOwnStepTurnsTheCampAndEndsHisTurn() {
-	s.startWith(campOptions{withEnding: true, driver: closingDriver{},
-		cast: []*character.Data{stout("alice"), stout("bob")}, spawn: []string{}})
-	s.arrangeTheChiefAtTheDoor("alice", "bob")
+	s.launchTheChiefAtTheDoor(campOptions{withEnding: true, driver: closingDriver{},
+		cast: []*character.Data{stout("alice"), stout("bob")}, spawn: []string{}}, "alice", "bob")
 
 	s.Require().NoError(s.endTurnOf("alice"))
 	s.Require().NoError(s.endTurnOf("bob"), "the chief's driven turn is inside this verb")
@@ -158,9 +201,8 @@ func (s *HoldOutSessionSuite) TestTheChiefsOwnStepTurnsTheCampAndEndsHisTurn() {
 // dissolves — and a chief opposed to nobody does not strike the player he
 // was walking toward. Everyone is back on the world clock, unstruck.
 func (s *HoldOutSessionSuite) TestAChiefWhoseCampTurnedDoesNotSwing() {
-	s.startWith(campOptions{withEnding: false, driver: closingDriver{},
-		cast: []*character.Data{stout("alice"), stout("bob")}, spawn: []string{}})
-	s.arrangeTheChiefAtTheDoor("alice", "bob")
+	s.launchTheChiefAtTheDoor(campOptions{withEnding: false, driver: closingDriver{},
+		cast: []*character.Data{stout("alice"), stout("bob")}, spawn: []string{}}, "alice", "bob")
 
 	s.Require().NoError(s.endTurnOf("alice"))
 	s.Require().NoError(s.endTurnOf("bob"))
@@ -179,11 +221,11 @@ func (s *HoldOutSessionSuite) TestAChiefWhoseCampTurnedDoesNotSwing() {
 // who steps into the yard and strikes the player still there. The departure
 // must not leave a half-removed member on the roster the strike reads.
 func (s *HoldOutSessionSuite) TestTheActiveHolderExitingMidFightLetsTheChiefSwing() {
-	s.startWith(campOptions{withEnding: true, driver: closingDriver{},
-		cast: []*character.Data{stout("alice"), stout("bob")}, spawn: []string{}})
-	s.arrangeTheChiefAtTheDoor("bob", "alice")
+	s.launchTheChiefAtTheDoor(campOptions{withEnding: true, driver: closingDriver{},
+		cast: []*character.Data{stout("alice"), stout("bob")}, spawn: []string{}}, "bob", "alice")
 	s.Require().NoError(s.endTurnOf("alice"))
 	s.Require().Equal("bob", s.turn("bob").Active)
+	s.hold("bob", campLetter) // the letter in hand on his own turn, before he leaves
 
 	out, err := s.mgr.Exit(context.Background(), &session.ExitInput{Session: campSession, Member: "bob"})
 	s.Require().NoError(err, "bob leaves; the chief's driven turn is inside this verb")

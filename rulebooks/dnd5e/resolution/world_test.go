@@ -83,10 +83,6 @@ func walledWorld(t *testing.T) encounter.EncounterData {
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{},
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{},
-		Sheets:    noSheetsAsked{},
 		Field: encounter.FieldInput{
 			Canvas: hexCanvas(),
 			// Two regions on ONE canvas in ONE absolute frame: room-1 owns
@@ -105,6 +101,19 @@ func walledWorld(t *testing.T) encounter.EncounterData {
 			{ID: heroID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 9, Y: 4}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors: encounter.Actors{
+				Striker:   noAttacksExpected{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 
@@ -126,14 +135,19 @@ func runProbe(t *testing.T, world encounter.EncounterData, participants []Partic
 
 	probe := &worldProbe{}
 	out, err := Resolve(context.Background(), &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight:        everyoneSeesTheWholeMap{},
-		Equipment:    noHandsAreObserved{},
-		Sheets:       noSheetsAsked{},
-		Roller:       dice.NewRoller(),
 		World:        world,
 		Participants: participants,
 		Machine:      probe,
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 	require.NoError(t, err)
 	require.NotNil(t, out)

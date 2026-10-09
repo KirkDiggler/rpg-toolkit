@@ -11,7 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
-// passDriver is the TurnDriver capability these tests install by default.
+// passDriver is the Driver capability these tests install by default.
 //
 // Every unplayed member always passes, which is what every fixture written
 // before rpg-toolkit#1162 closed was already assuming a monster's turn would
@@ -22,7 +22,7 @@ import (
 //
 // A thin wrapper over the production [encounter.PassDriver] (rpg-toolkit#1167)
 // rather than encounter.PassDriver itself, so a test file that wants ITS OWN
-// TurnDriver behaviour can still name this type in a mutate-the-fixture table
+// Driver behaviour can still name this type in a mutate-the-fixture table
 // without reaching for the production one by accident.
 type passDriver struct{}
 

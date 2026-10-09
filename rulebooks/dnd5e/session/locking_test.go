@@ -8,19 +8,22 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
+
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
-	"github.com/stretchr/testify/suite"
 )
 
 type observingLocker struct {
-	held      bool
-	calls     []string
-	releases  int
-	err       error
-	invalid   bool
-	nilResult bool
+	held  bool
+	calls []string
+	// characters are the character guards asked for, in order.
+	characters []string
+	releases   int
+	err        error
+	invalid    bool
+	nilResult  bool
 }
 
 func (l *observingLocker) LockSession(_ context.Context, in *session.LockSessionInput) (*session.LockSessionOutput, error) {
@@ -40,6 +43,13 @@ func (l *observingLocker) LockSession(_ context.Context, in *session.LockSession
 		l.held = false
 		l.releases++
 	}}, nil
+}
+
+// LockCharacter records the character guard and grants it; the session guard
+// is what these scenes observe.
+func (l *observingLocker) LockCharacter(_ context.Context, in *session.LockCharacterInput) (*session.LockCharacterOutput, error) {
+	l.characters = append(l.characters, in.Character)
+	return &session.LockCharacterOutput{Release: func() {}}, nil
 }
 
 type guardedSessions struct {
@@ -105,7 +115,7 @@ func (s *SessionLockSuite) SetupTest() {
 	}
 	probe := func() { s.probe() }
 	s.stream = &guardedStream{probe: probe}
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		Sessions:   guardedSessions{SessionRepository: s.store, probe: probe},
 		Encounters: guardedEncounters{EncounterRepository: newFakeEncounters(), probe: probe},
 		Characters: testCharacters(), Events: s.stream, Dice: testDice{},
@@ -117,9 +127,7 @@ func (s *SessionLockSuite) SetupTest() {
 
 func (s *SessionLockSuite) TestCreationReadAndMoveHoldThroughDelivery() {
 	ctx := context.Background()
-	_, err := s.mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "enc", World: authoredWorld(s.T()),
-	})
+	_, err := s.mgr.Launch(ctx, sceneInput(authoredWorld()))
 	s.Require().NoError(err)
 	s.Equal(1, s.locker.releases)
 	_, err = s.mgr.Status(ctx, &session.StatusInput{Session: "sess"})

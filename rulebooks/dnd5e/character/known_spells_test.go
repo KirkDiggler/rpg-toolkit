@@ -213,7 +213,7 @@ func (s *KnownSpellsSuite) TestBaneKnowledgeAndSpellSlotResourceSurviveReloadAnd
 	bus := events.NewEventBus()
 	s.Require().NoError(Attach(ctx, loaded, bus))
 	s.T().Cleanup(func() { s.Require().NoError(loaded.Cleanup(ctx)) })
-	s.Require().NoError(loaded.LongRest(ctx))
+	s.Require().NoError(restErr(loaded.LongRest(ctx)))
 	s.Equal(2, loaded.GetResource(resources.SpellSlotLevel1).Current())
 }
 

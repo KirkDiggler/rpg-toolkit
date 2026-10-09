@@ -12,6 +12,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
@@ -30,41 +31,28 @@ type SettlementSuite struct {
 func TestSettlementSuite(t *testing.T) { suite.Run(t, new(SettlementSuite)) }
 
 func (s *SettlementSuite) SetupTest() {
-	ctx := context.Background()
 	s.sessions = &strikeSessions{byID: map[string]*SessionData{}}
 	s.encounters = &strikeEncounters{byID: map[string]*encounter.EncounterData{}}
 	s.characters = &strikeCharacters{byID: map[string]*character.Data{
 		"fighter": strikeFixtureFighter("fighter"),
 	}}
-	mgr, err := NewManager(&Config{
+	mgr, err := NewManager(&Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: &scriptedDice{rolls: []int{10, 10, 10, 10, 10, 10}}, TurnDriver: Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: DiscardEvents{},
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	world, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{},
-		Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{},
-		Equipment: encNoHandsObserved{}, Initiative: aggregateRecordOrderAsGiven{},
-		TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
+	sc := scene{
 		Field: encounter.FieldInput{
 			Canvas:  pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("tomb", 0, 0, 12, 6)},
 		},
-		Endings:   []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-	})
-	s.Require().NoError(err)
-	data := world.ToData()
-	_, err = mgr.StartSession(ctx, &StartSessionInput{Session: "sess", Encounter: "world", World: &data})
-	s.Require().NoError(err)
-	_, err = mgr.Join(ctx, &JoinInput{Session: "sess", Member: "fighter",
-		Position: encounter.HexCellAt(encounter.HexesArePointyTop(), 2, 0)})
-	s.Require().NoError(err)
-	_, err = mgr.Spawn(ctx, &SpawnInput{Session: "sess", ID: "goblin", Ref: refs.Monsters.Goblin().String(),
-		Position: encounter.HexCellAt(encounter.HexesArePointyTop(), 3, 0)})
-	s.Require().NoError(err)
+		Endings: []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
+	}
+	sc.Party = []sceneSeat{seatAt("fighter", 2, 0)}
+	sc.Monsters = []dungeonspec.MonsterPlacement{monsterAt("goblin", refs.Monsters.Goblin().String(), 3, 0)}
+	launchScene(s.T(), mgr, sc)
 }
 
 // TestAMonsterThatFellAndThenExitedStillGrants: the grant follows the fall,
@@ -135,8 +123,8 @@ func (s *SettlementSuite) TestAMonsterThatFellAndThenExitedStillGrants() {
 	s.True(told, "the grant is told")
 }
 
-// TestAnOutputLandsItsAreasOnce: a resumed walk lands its movement output in
-// recordMovementResults, and nothing else may land the same output again. An
+// TestAnOutputLandsItsAreasOnce: an output's areas land once, in the landing,
+// and nothing else may land the same output again. An
 // opened area landed twice would be refused as already open, so landAreas
 // consumes what it applies and a second call for the same output is a no-op.
 func (s *SettlementSuite) TestAnOutputLandsItsAreasOnce() {

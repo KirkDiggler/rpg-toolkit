@@ -319,7 +319,7 @@ func factsOf(ch *character.Character) (CharacterFacts, *AttackFacts, error) {
 // refusingRoller is the roller handed to attachAll on a path where nothing may
 // roll.
 //
-// The same argument RefusingStriker and RefusingAnnouncer make in resolveOn. A
+// The same argument [Actors] makes for the actors a resolution loads with. A
 // projection attaches exactly one CHARACTER, and the roller exists for the
 // monster branch — traits like Undead Fortitude that roll when triggered. This
 // path builds its own participant and never builds a monster one, so the

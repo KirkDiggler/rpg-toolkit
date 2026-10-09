@@ -29,6 +29,10 @@ type LongRestOutput struct {
 	// Character is an independently owned snapshot of the attached sheet after
 	// its long rest completed.
 	Character *character.Data
+
+	// Result is character.LongRest's answer by value: Result.Refilled names
+	// every resource the rest refilled, as fresh refs, for the rest beat.
+	Result character.LongRestOutput
 }
 
 // LongRest strictly loads and attaches one character, invokes the root D&D
@@ -92,7 +96,8 @@ func longRestOn(
 		return nil, fmt.Errorf("%w: %q attached but is not in the cast", ErrBadParticipant, one.ID())
 	}
 
-	if err := ch.LongRest(ctx); err != nil {
+	result, err := ch.LongRest(ctx)
+	if err != nil {
 		return nil, fmt.Errorf("resolution: long rest %q: %w", one.ID(), err)
 	}
 
@@ -104,7 +109,7 @@ func longRestOn(
 		return nil, fmt.Errorf("resolution: long rest %q: %w", one.ID(), err)
 	}
 
-	return &LongRestOutput{Character: rested}, nil
+	return &LongRestOutput{Character: rested, Result: *result}, nil
 }
 
 // cloneCharacterData returns a deep-enough record copy for every mutable field
@@ -134,7 +139,6 @@ func cloneCharacterData(in *character.Data) *character.Data {
 	out.ToolProficiencies = slices.Clone(in.ToolProficiencies)
 	out.Inventory = slices.Clone(in.Inventory)
 	out.EquipmentSlots = maps.Clone(in.EquipmentSlots)
-	out.ClassResources = maps.Clone(in.ClassResources)
 	out.Resources = maps.Clone(in.Resources)
 	out.KnownCantrips = slices.Clone(in.KnownCantrips)
 	out.KnownSpells = slices.Clone(in.KnownSpells)

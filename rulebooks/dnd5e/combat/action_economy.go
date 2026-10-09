@@ -23,15 +23,22 @@ type ActionEconomy struct {
 	MartialArtsBonusAttacksRemaining int // Set after a qualifying Martial Arts Attack action
 	FlurryStrikesRemaining           int // Set by FlurryOfBlows feature (usually 2)
 	DeathSavesRemaining              int // Set once for a Dying character's turn
+
+	// ObjectInteractionsRemaining is the turn's one free object interaction.
+	// Seeded with the turn, like the three slots: a turn holds one whether or
+	// not anything spends it. Nothing a monster does spends it today; it is
+	// kept so this ledger stores every capacity the vocabulary names.
+	ObjectInteractionsRemaining int
 }
 
 // NewActionEconomy creates a new ActionEconomy with default values (1/1/1)
 // Purpose: Standard constructor for initializing a combatant's action economy at the start of their turn
 func NewActionEconomy() *ActionEconomy {
 	return &ActionEconomy{
-		ActionsRemaining:      1,
-		BonusActionsRemaining: 1,
-		ReactionsRemaining:    1,
+		ActionsRemaining:            1,
+		BonusActionsRemaining:       1,
+		ReactionsRemaining:          1,
+		ObjectInteractionsRemaining: 1,
 	}
 }
 
@@ -88,7 +95,7 @@ func (ae *ActionEconomy) UseReaction() error {
 // Note: Does NOT reset AttacksRemaining (stays 0 until Attack ability is used) or
 // MovementRemaining (should be set separately via SetMovement at turn start).
 // Resets turn-granted capacity (OffHandAttacks, MartialArtsBonusAttacks,
-// FlurryStrikes) to 0.
+// FlurryStrikes) to 0, and restores the turn's one object interaction.
 func (ae *ActionEconomy) Reset() {
 	ae.ActionsRemaining = 1
 	ae.BonusActionsRemaining = 1
@@ -99,6 +106,7 @@ func (ae *ActionEconomy) Reset() {
 	ae.MartialArtsBonusAttacksRemaining = 0
 	ae.FlurryStrikesRemaining = 0
 	ae.DeathSavesRemaining = 0
+	ae.ObjectInteractionsRemaining = 1
 }
 
 // GrantExtraAction grants an additional action

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -34,16 +35,20 @@ func TestMonsterWeaponObservationSuite(t *testing.T) {
 func (s *MonsterWeaponObservationSuite) SetupTest() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.mgr = s.manager()
-	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: groundedSkeletonWorld(s.T()),
-	})
-	s.Require().NoError(err)
+}
+
+// launchWith launches the grounded-skeleton hall with the given monsters on
+// the board beside the fighter.
+func (s *MonsterWeaponObservationSuite) launchWith(monsters ...dungeonspec.MonsterPlacement) *session.LaunchOutput {
+	sc := groundedSkeletonWorld()
+	sc.Monsters = append(sc.Monsters, monsters...)
+	return launchScene(s.T(), s.mgr, sc)
 }
 
 func (s *MonsterWeaponObservationSuite) SetupSubTest() { s.SetupTest() }
 
 func (s *MonsterWeaponObservationSuite) manager() *session.Manager {
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: newFakeCharacters(armedFighter("fighter")), Events: session.DiscardEvents{},
@@ -54,12 +59,10 @@ func (s *MonsterWeaponObservationSuite) manager() *session.Manager {
 
 func (s *MonsterWeaponObservationSuite) spawnAndSee(ref string, actions []string) *session.Sighting {
 	ctx := context.Background()
-	out, err := s.mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skeleton-1", Ref: ref, Actions: actions,
-		Position: hexCell(9, 3),
-	})
-	s.Require().NoError(err)
-	s.Nil(out.Formed, "the wall must block the monster before the walk")
+	skeleton := monsterAt("skeleton-1", ref, 9, 3)
+	skeleton.Actions = actions
+	out := s.launchWith(skeleton)
+	s.Empty(out.Formed, "the wall must block the monster before the walk")
 	crossed, err := s.mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "fighter",
 		Path: []spatial.Position{hexCell(5, 1), hexCell(5, 2), hexCell(6, 2)},
@@ -92,11 +95,7 @@ func (s *MonsterWeaponObservationSuite) spawnAndSee(ref string, actions []string
 
 func (s *MonsterWeaponObservationSuite) TestVisibleSpawnCarriesEquipmentInArrivalDiscoveryAndReload() {
 	ctx := context.Background()
-	out, err := s.mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "boss", Ref: refs.Monsters.GoblinBoss().String(),
-		Position: hexCell(4, 0),
-	})
-	s.Require().NoError(err)
+	out := s.launchWith(monsterAt("boss", refs.Monsters.GoblinBoss().String(), 4, 0))
 	discovery, ok := out.Discovered["fighter"]
 	s.Require().True(ok)
 	var report *session.Report
@@ -105,7 +104,7 @@ func (s *MonsterWeaponObservationSuite) TestVisibleSpawnCarriesEquipmentInArriva
 			report = &discovery.FirstContact[i]
 		}
 	}
-	s.Require().NotNil(report, "Spawn itself must discover the visible arrival")
+	s.Require().NotNil(report, "Launch itself must discover the visible monster")
 	s.Require().NotNil(report.Seen)
 	s.Require().NotNil(report.Seen.Equipment)
 	s.Equal("scimitar", report.Seen.Equipment.MainHand)
@@ -208,11 +207,7 @@ func (s *MonsterWeaponObservationSuite) TestNaturalActionMonsterDoesNotInventObs
 // report delivers what was seen, and conditions are not among it — they are
 // testimony for rules (rpg-project#520, R16), never delivered.
 func (s *MonsterWeaponObservationSuite) TestFirstContactPayloadCarriesNoConditions() {
-	out, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
-		Session: "sess", ID: "boss", Ref: refs.Monsters.GoblinBoss().String(),
-		Position: hexCell(4, 0),
-	})
-	s.Require().NoError(err)
+	out := s.launchWith(monsterAt("boss", refs.Monsters.GoblinBoss().String(), 4, 0))
 	reports := 0
 	for watcher, discovery := range out.Discovered {
 		for _, report := range discovery.FirstContact {

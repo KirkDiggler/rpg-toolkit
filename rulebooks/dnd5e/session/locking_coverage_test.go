@@ -12,8 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 )
 
 // The host supplies exclusion, but the SDK owns the entire operation lifetime.

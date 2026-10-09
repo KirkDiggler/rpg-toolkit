@@ -268,7 +268,7 @@ func (e *Encounter) lastRecordedSeq() uint64 {
 // moment discovers it — a turn ending, or a fight forming with an unplayed
 // member first in initiative (rpg-toolkit#1162, ADR-0043).
 //
-// v1's TurnDriver has exactly one outcome (Pass), so every step here is
+// v1's Driver has exactly one outcome (Pass), so every step here is
 // bubble.End plus the same "turn-ended" beat EndTurn's own acting-member step
 // already produces — the story and the EventTurnEnded stream need no new
 // vocabulary to show a monster's pass. wrapped is true if ANY step in the
@@ -436,7 +436,7 @@ func (e *Encounter) driveTurnsWithParticipation(
 			// behaviour: the switch ends and the loop reaches
 			// driveOneMonsterTurn below without the Wait case's player
 			// check, so a compelled player's turn is taken by the
-			// TurnDriver exactly as a monster's is. The rulebook owns the reason a member is
+			// Driver exactly as a monster's is. The rulebook owns the reason a member is
 			// Driven; this module owns only that the clock does not rest
 			// here. Every player verb already refuses a member who does
 			// not hold the active slot, so a compelled player has no verb
@@ -497,7 +497,7 @@ func (e *Encounter) autoPassTurn(bubble *clock.Turn, member MemberID) (uint64, b
 // call) so a driver that never returns Pass cannot spin this forever.
 //
 // A DRIVER'S OWN Go ERROR ABORTS THE WHOLE CALL, exactly as it always has —
-// see [TurnDriver.Act]'s doc. A syntactically valid but unexecutable intent
+// see [Driver.Act]'s doc. A syntactically valid but unexecutable intent
 // does NOT: it is [ErrBadIntent], and this member's turn simply ends as
 // [Pass] would, so the caller's own verb (EndTurn, form) still succeeds.
 // This is the asymmetry the brief calls for: a driver malfunction is this
@@ -1569,7 +1569,7 @@ func attackIsInReach(view MonsterView, intent Attack) bool {
 }
 
 // buildMonsterView projects member's own static facts, its currently active
-// sight intel, and the turn's remaining budget into the shape a [TurnDriver]
+// sight intel, and the turn's remaining budget into the shape a [Driver]
 // is allowed to see — the same anti-wall-hack contract [Decider]'s Snapshot
 // keeps (C2), extended to a turn's own questions.
 func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round int) (MonsterView, error) {
@@ -2389,7 +2389,7 @@ type EndTurnInput struct {
 type EndTurnOutput struct {
 	// Next is whose turn it now is in the same bubble — ALWAYS a member with
 	// a player. If the clock would otherwise have landed on one or more
-	// unplayed members, this call already drove them forward via TurnDriver
+	// unplayed members, this call already drove them forward via Driver
 	// before returning (rpg-toolkit#1162): the caller never receives a Next
 	// nobody can act for.
 	//
@@ -2438,7 +2438,7 @@ type EndTurnOutput struct {
 // turn (with no state change — translated from play/clock's own sentinel,
 // rpg-toolkit#1169, the same refusal Step now shares), and whatever
 // driveMonsterTurns can return (ErrNoPlayerInBubble, ErrBadTurnOutcome, or a
-// TurnDriver's own error) if an unplayed member follows. A driver error here
+// Driver's own error) if an unplayed member follows. A driver error here
 // means NOTHING this call did is persisted — not even the acting member's
 // own end — since nothing is saved until the caller's commit; see
 // driveMonsterTurns's own doc.

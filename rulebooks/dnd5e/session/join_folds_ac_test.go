@@ -50,7 +50,7 @@ func (s *JoinFoldsACTestSuite) SetupTest() {
 	s.characters.byID[ragingID] = barbarianCharacter(ragingID)
 	s.encounters = newFakeEncounters()
 
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
@@ -58,10 +58,7 @@ func (s *JoinFoldsACTestSuite) SetupTest() {
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: hexWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, hexWorld())
 }
 
 const ragingID = "standre"

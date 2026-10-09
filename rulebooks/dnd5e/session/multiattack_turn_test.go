@@ -9,6 +9,7 @@ import (
 
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 
@@ -18,7 +19,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // firstInReach takes the first action it can reach an opposed player with,
@@ -113,22 +113,8 @@ func (s *MonsterTurnTestSuite) TestAGoblinBossMultiattackIsTwoBeatsInOneTurn() {
 	ctx := context.Background()
 	mgr := s.tombManager(firstInReach{}, testDice{})
 
-	_, err := mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: tombRoom(12, 6),
-	})
-	s.Require().NoError(err)
-
-	_, err = mgr.Join(ctx, &session.JoinInput{
-		Session: "sess", Member: "fighter", Position: spatial.Position{X: 0, Y: 0},
-	})
-	s.Require().NoError(err)
-
-	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "goblin-boss-1", Ref: refs.Monsters.GoblinBoss().String(),
-		Position: spatial.Position{X: 1, Y: 0}, // adjacent, so both scimitar swings reach
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(spawned.Formed)
+	launched := launchScene(s.T(), mgr, bossBesideFighter())
+	s.Require().NotEmpty(launched.Formed)
 
 	before := len(s.storyBeats(mgr, "fighter"))
 	out, err := mgr.EndTurn(ctx, &session.EndTurnInput{
@@ -186,26 +172,12 @@ func (s *MonsterTurnTestSuite) TestAMultiattackSpendsTheTurnsOneAttack() {
 	ctx := context.Background()
 	mgr := s.tombManager(firstInReach{}, testDice{})
 
-	_, err := mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: tombRoom(12, 6),
-	})
-	s.Require().NoError(err)
-
-	_, err = mgr.Join(ctx, &session.JoinInput{
-		Session: "sess", Member: "fighter", Position: spatial.Position{X: 0, Y: 0},
-	})
-	s.Require().NoError(err)
-
-	_, err = mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "goblin-boss-1", Ref: refs.Monsters.GoblinBoss().String(),
-		Position: spatial.Position{X: 1, Y: 0},
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, bossBesideFighter())
 
 	// firstInReach asks to attack on every view it is given, so a turn loop
 	// that granted a sequence a fresh attack each time would swing forever.
 	before := len(s.storyBeats(mgr, "fighter"))
-	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{
+	_, err := mgr.EndTurn(ctx, &session.EndTurnInput{
 		Session: "sess", Member: "fighter",
 		DeclarationID: currentEndTurnID(s.T(), mgr, "sess", "fighter"),
 	})
@@ -233,28 +205,14 @@ func (s *MonsterTurnTestSuite) TestASequenceStopsWhenTheTargetGoesDown() {
 	// asserting nothing.
 	frail.HitPoints, frail.MaxHitPoints = 6, 6
 
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: firstInReach{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: newFakeCharacters(frail), Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: tombRoom(12, 6),
-	})
-	s.Require().NoError(err)
-
-	_, err = mgr.Join(ctx, &session.JoinInput{
-		Session: "sess", Member: "fighter", Position: spatial.Position{X: 0, Y: 0},
-	})
-	s.Require().NoError(err)
-
-	_, err = mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "goblin-boss-1", Ref: refs.Monsters.GoblinBoss().String(),
-		Position: spatial.Position{X: 1, Y: 0},
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, bossBesideFighter())
 
 	before := len(s.storyBeats(mgr, "fighter"))
 	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{
@@ -273,6 +231,18 @@ func (s *MonsterTurnTestSuite) TestASequenceStopsWhenTheTargetGoesDown() {
 		"and nothing swung at her afterwards")
 }
 
+// bossBesideFighter is the tomb with the fighter on its corner cell and a
+// goblin boss on the next cell over, adjacent so both scimitar swings reach.
+// They see each other, so the fight forms at launch.
+func bossBesideFighter() scene {
+	sc := tombRoom(12, 6)
+	sc.Party = []sceneSeat{seatAt("fighter", 0, 0)}
+	sc.Monsters = []dungeonspec.MonsterPlacement{
+		monsterAt("goblin-boss-1", refs.Monsters.GoblinBoss().String(), 1, 0),
+	}
+	return sc
+}
+
 // indexOf is the position of the first beat of a kind, or zero when there is
 // none — enough for the one slice above, where the caller has already
 // asserted the kind is present.
@@ -287,10 +257,10 @@ func indexOf(beats []string, kind string) int {
 }
 
 // holdSpellAfterJoin puts a concentration hold on a sheet that is already
-// seated, and it has to happen AFTER Join: Join rebuilds the sheet from the
-// character store and a condition authored before it is simply gone by the
-// time anybody swings (it also refreshes hit points to maximum, which is the
-// same trap one floor down).
+// seated, and it has to happen AFTER the launch: the launch's first-admission
+// long rest rewrites the sheet in the character store, and a hold authored
+// before it is simply gone by the time anybody swings (the rest also refreshes
+// hit points to maximum, which is the same trap one floor down).
 //
 // Only the hold, no child — a passed check strips nothing, so a child would
 // be scenery.
@@ -322,29 +292,15 @@ func (s *MonsterTurnTestSuite) TestEachSwingsConcentrationCheckLandsBehindItsOwn
 	ctx := context.Background()
 
 	chars := newFakeCharacters(armedFighter("fighter"))
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: firstInReach{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: chars, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: tombRoom(12, 6),
-	})
-	s.Require().NoError(err)
-
-	_, err = mgr.Join(ctx, &session.JoinInput{
-		Session: "sess", Member: "fighter", Position: spatial.Position{X: 0, Y: 0},
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, bossBesideFighter())
 	s.holdSpellAfterJoin(chars, "fighter")
-
-	_, err = mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "goblin-boss-1", Ref: refs.Monsters.GoblinBoss().String(),
-		Position: spatial.Position{X: 1, Y: 0},
-	})
-	s.Require().NoError(err)
 
 	before := len(s.storyBeats(mgr, "fighter"))
 	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{
@@ -386,7 +342,7 @@ func (s *MonsterTurnTestSuite) TestASwingThatBreaksConcentrationEndsItsAreaInThe
 func (s *MonsterTurnTestSuite) TestASwingThatBreaksConcentrationEndsItsAreaWhenItsSwingIsTold() {
 	ctx := context.Background()
 	mgr := s.bossBreaksTheFightersArea(true)
-	persisted, err := s.encounters.GetEncounter(ctx, "world")
+	persisted, err := s.encounters.GetEncounter(ctx, "sess")
 	s.Require().NoError(err)
 	s.Require().NotNil(persisted.PausedTurn, "control: the sequence paused on the fighter's window")
 	s.NotContains(s.storyBeats(mgr, "fighter"), string(encounter.OutcomeStruck),
@@ -454,36 +410,23 @@ func (s *MonsterTurnTestSuite) bossBreaksTheFightersAreaWith(wrath bool, roller 
 		fighter.Resources[resources.WrathOfTheStorm] = character.RecoverableResourceData{Current: 3, Maximum: 3, ResetType: coreResources.ResetLongRest}
 	}
 	chars := newFakeCharacters(fighter)
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: firstInReach{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: chars, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: tombRoom(12, 6),
-	})
-	s.Require().NoError(err)
-	_, err = mgr.Join(ctx, &session.JoinInput{
-		Session: "sess", Member: "fighter", Position: spatial.Position{X: 0, Y: 0},
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, bossBesideFighter())
 	s.holdSpellAfterJoin(chars, "fighter")
 	// A frail constitution, so testDice's flat 10 fails the check: CON 6 is -2.
 	seated, err := chars.GetCharacter(ctx, "fighter")
 	s.Require().NoError(err)
 	seated.AbilityScores[abilities.CON] = 6
 	s.Require().NoError(chars.SaveCharacter(ctx, seated))
-	s.encounters.byID["world"].SightAreas = append(s.encounters.byID["world"].SightAreas, encounter.SightAreaData{
+	s.encounters.byID["sess"].SightAreas = append(s.encounters.byID["sess"].SightAreas, encounter.SightAreaData{
 		ID: "cloud", SourceID: "fighter", Name: "Fog Cloud",
 		Center: encounter.PositionData{X: 9, Y: 4}, RadiusFeet: 10,
 	})
-
-	_, err = mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "goblin-boss-1", Ref: refs.Monsters.GoblinBoss().String(),
-		Position: spatial.Position{X: 1, Y: 0},
-	})
-	s.Require().NoError(err)
 	areas, err := mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "fighter"})
 	s.Require().NoError(err)
 	s.Require().NotEmpty(areas, "control: the fighter's area stands")
@@ -494,4 +437,52 @@ func (s *MonsterTurnTestSuite) bossBreaksTheFightersAreaWith(wrath bool, roller 
 	})
 	s.Require().NoError(err)
 	return mgr
+}
+
+// TestASequenceThatPausesOnItsSecondSwingTellsTheFirst: the goblin boss's
+// first swing misses and its second hits a fighter holding Wrath of the
+// Storm, which stops the sequence to ask. The completed first swing is told
+// when the sequence pauses — the pending sequence is recorded by the strike
+// landing — and the settled second swing waits for the answer.
+func (s *MonsterTurnTestSuite) TestASequenceThatPausesOnItsSecondSwingTellsTheFirst() {
+	ctx := context.Background()
+	// Initiative twice; swing one attacks with a 1 and misses; swing two
+	// rolls at disadvantage, 15 and 15, damage 3, and the fighter's
+	// concentration save is a 20.
+	mgr := s.bossBreaksTheFightersAreaWith(true, &sequenceDice{rolls: []int{10, 10, 1, 15, 15, 3, 20, 20, 20, 20}})
+	persisted, err := s.encounters.GetEncounter(ctx, "sess")
+	s.Require().NoError(err)
+	s.Require().NotNil(persisted.PausedTurn, "control: the sequence paused on the fighter's window")
+
+	beats := s.storyBeats(mgr, "fighter")
+	s.Contains(beats, string(encounter.OutcomeMissed), "the completed first swing is told at the pause")
+	s.NotContains(beats, string(encounter.OutcomeStruck), "the settled second swing waits for the answer")
+}
+
+// TestACompletedSequenceLandsTheAreaItsPauseHeld: the goblin boss's first
+// swing hits, breaks the fighter's concentration and stops to ask about Wrath
+// of the Storm, so the area it closed waits on the window. The fighter holds
+// back, the second swing misses and the sequence completes; the resume lands
+// the held area behind the swing that closed it.
+func (s *MonsterTurnTestSuite) TestACompletedSequenceLandsTheAreaItsPauseHeld() {
+	ctx := context.Background()
+	// Initiative twice; swing one attacks 15, damage 3, and the fighter's
+	// concentration save is a 1; on the resume swing two rolls at
+	// disadvantage, 1 and 1, and misses.
+	mgr := s.bossBreaksTheFightersAreaWith(true, &sequenceDice{rolls: []int{10, 10, 15, 3, 1, 1, 1, 20, 20, 20}})
+	areas, err := mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "fighter"})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(areas, "control: the area waits on the window")
+	s.Require().NotEmpty(s.sessions.byID["sess"].Windows.Windows, "control: the sequence paused")
+
+	react := currentDeclaration(s.T(), mgr, "sess", "fighter", session.VerbReact)
+	_, err = mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "fighter", DeclarationID: react.ID, Choice: session.ReactHold})
+	s.Require().NoError(err)
+
+	s.Require().Empty(s.sessions.byID["sess"].Windows.Windows, "control: the sequence completed rather than pausing again")
+	beats := s.storyBeats(mgr, "fighter")
+	s.Contains(beats, string(encounter.OutcomeMissed), "control: the second swing missed")
+	areas, err = mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "fighter"})
+	s.Require().NoError(err)
+	s.Empty(areas, "the completed sequence lands the area its pause held")
 }

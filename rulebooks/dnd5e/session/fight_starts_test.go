@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -56,7 +57,7 @@ func managerOver(t fataler, sessions *fakeSessions, encounters *fakeEncounters) 
 func managerOverRepos(
 	t fataler, sessions session.SessionRepository, encounters session.EncounterRepository,
 ) *session.Manager {
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
 	if err != nil {
@@ -84,8 +85,9 @@ func managerOverRepos(
 // a fixture that was describing the world rather than the code.
 // ambushWorldWithAliceAt is ambushWorld with alice moved, for tests that ask
 // what the wall does from a particular spot rather than what a walk produces.
-func ambushWorldWithAliceAt(t fataler, at spatial.Position) *encounter.EncounterData {
-	return buildAmbush(t, at)
+// Alice's cell is authored, as a seat is.
+func ambushWorldWithAliceAt(at spatial.Position) scene {
+	return buildAmbush(at)
 }
 
 // ambushPath is the four-cell walk north along authored column 1 that meets
@@ -96,11 +98,11 @@ func ambushPath() []spatial.Position {
 	return []spatial.Position{hexCell(1, 1), hexCell(1, 2), hexCell(1, 3), hexCell(1, 4)}
 }
 
-func ambushWorld(t fataler, extra ...encounter.MemberInput) *encounter.EncounterData {
-	return buildAmbush(t, spatial.Position{X: 1, Y: 0}, extra...)
+func ambushWorld(extra ...dungeonspec.MonsterPlacement) scene {
+	return buildAmbush(spatial.Position{X: 1, Y: 0}, extra...)
 }
 
-func buildAmbush(t fataler, alice spatial.Position, extra ...encounter.MemberInput) *encounter.EncounterData {
+func buildAmbush(alice spatial.Position, extra ...dungeonspec.MonsterPlacement) scene {
 	occluders := make([]spatial.Position, 0, 7)
 	for y := 0; y < 8; y++ {
 		if y == 3 {
@@ -109,39 +111,30 @@ func buildAmbush(t fataler, alice spatial.Position, extra ...encounter.MemberInp
 		occluders = append(occluders, spatial.Position{X: 3, Y: float64(y)})
 	}
 
-	members := []encounter.MemberInput{
-		{ID: "alice", Kind: encounter.KindPlayer, Position: alice},
-		{ID: "ogre", Kind: encounter.KindMonster, Position: spatial.Position{X: 5, Y: 3}},
-	}
-	members = append(members, extra...)
-
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing: encEveryoneStanding{},
+	return scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)},
 			Props:   occludingProps(occluders...),
 		},
-		Members: members,
+		Party:    []sceneSeat{{ID: "alice", At: alice}},
+		Monsters: append([]dungeonspec.MonsterPlacement{monsterAt("ogre", refs.Monsters.Goblin().String(), 5, 3)}, extra...),
 		Endings: []encounter.EndingInput{
 			{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
 				Position: spatial.Position{X: 7, Y: 7},
 			}},
 		},
-		Retention: encounter.RetentionUnbounded,
-	})
-	if err != nil {
-		t.Fatalf("building ambush world: %v", err)
 	}
-	data := enc.ToData()
-	return &data
 }
 
-func (s *FightStartsTestSuite) startAmbush(extra ...encounter.MemberInput) {
-	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: ambushWorld(s.T(), extra...),
-	})
-	s.Require().NoError(err)
-	stockAuthoredMonsters(s.T(), s.sessions, s.encounters, "sess")
+// aardvark is a second monster beside the ogre whose id sorts before
+// everybody's, for the scenes that ask whether order follows the dice or the
+// alphabet.
+func aardvark() dungeonspec.MonsterPlacement {
+	return monsterAt("aardvark", refs.Monsters.Goblin().String(), 5, 3)
+}
+
+func (s *FightStartsTestSuite) startAmbush(extra ...dungeonspec.MonsterPlacement) {
+	launchScene(s.T(), s.mgr, ambushWorld(extra...))
 }
 
 // walkIntoTheAmbush walks the four-cell path that meets the ogre on cell two,
@@ -213,20 +206,12 @@ func (s *FightStartsTestSuite) TestTheDiceDecideTheOrder() {
 	for i := 0; i < runs; i++ {
 		sessions, encounters := newFakeSessions(), newFakeEncounters()
 		dice := &sequenceDice{rolls: []int{5, 18, 11}}
-		mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+		mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 			Dice: dice, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
 			Characters: testCharacters(), Events: session.DiscardEvents{},
 		})
 		s.Require().NoError(err)
-		_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-			Session: "sess", Encounter: "world", World: ambushWorld(s.T(),
-				encounter.MemberInput{
-					ID: "aardvark", Kind: encounter.KindMonster,
-					Position: spatial.Position{X: 5, Y: 3},
-				}),
-		})
-		s.Require().NoError(err)
-		stockAuthoredMonsters(s.T(), sessions, encounters, "sess")
+		launchScene(s.T(), mgr, ambushWorld(aardvark()))
 		s.Require().Zero(dice.next, "run %d: nothing has met anything yet", i)
 
 		out, err := mgr.Move(context.Background(), &session.MoveInput{
@@ -254,16 +239,12 @@ func (s *FightStartsTestSuite) TestTheDiceDecideTheOrder() {
 // strand it.
 func (s *FightStartsTestSuite) TestAnUnplayedMemberFirstInInitiativeIsAlreadyDrivenPastFightStart() {
 	dice := &sequenceDice{rolls: []int{1, 20}} // alice, then ogre — alphabetical asking order
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: dice, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: ambushWorld(s.T()),
-	})
-	s.Require().NoError(err)
-	stockAuthoredMonsters(s.T(), s.sessions, s.encounters, "sess")
+	launchScene(s.T(), mgr, ambushWorld())
 
 	out, err := mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
@@ -289,16 +270,12 @@ func (s *FightStartsTestSuite) TestAnUnplayedMemberFirstInInitiativeIsAlreadyDri
 // — an order that looks fine and is not. The seam keeps the error the rulebook
 // threw away, and a fight that cannot be ordered does not half-start.
 func (s *FightStartsTestSuite) TestADiceFailureAbortsTheFight() {
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: brokenDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: ambushWorld(s.T()),
-	})
-	s.Require().NoError(err)
-	stockAuthoredMonsters(s.T(), s.sessions, s.encounters, "sess")
+	launchScene(s.T(), mgr, ambushWorld())
 
 	_, err = mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
@@ -405,11 +382,7 @@ func (s *FightStartsTestSuite) TestSightIsSymmetric() {
 	} {
 		sessions, encounters := newFakeSessions(), newFakeEncounters()
 		mgr := managerOverRepos(s.T(), sessions, encounters)
-		_, err := mgr.StartSession(ctx, &session.StartSessionInput{
-			Session: "sess", Encounter: "world",
-			World: ambushWorldWithAliceAt(s.T(), at),
-		})
-		s.Require().NoError(err)
+		launchScene(s.T(), mgr, ambushWorldWithAliceAt(at))
 
 		aliceSees, err := mgr.View(ctx, &session.ViewInput{Session: "sess", Member: "alice"})
 		s.Require().NoError(err)
@@ -477,10 +450,7 @@ func (s *FightStartsTestSuite) TestAFightOnTheFinalCellIsStillReported() {
 func (s *FightStartsTestSuite) TestTheFightsOrderIsAFunctionOfPersistedData() {
 	// "aardvark" sorts before "ogre"; declared after it, so insertion order and
 	// sorted order disagree.
-	s.startAmbush(encounter.MemberInput{
-		ID: "aardvark", Kind: encounter.KindMonster,
-		Position: spatial.Position{X: 5, Y: 3},
-	})
+	s.startAmbush(aardvark())
 
 	out := s.walkIntoTheAmbush()
 	s.Require().NotNil(out.Formed)
@@ -504,7 +474,7 @@ func (s *FightStartsTestSuite) TestAWalkWritesWhatAWalkChanges() {
 		Path: []spatial.Position{{X: 2, Y: 0}},
 	})
 	s.Require().NoError(err)
-	s.Equal([]string{"encounter:world", "session:sess"}, out.Saved.Written,
+	s.Equal([]string{"encounter:sess", "session:sess"}, out.Saved.Written,
 		"the walk's beats advance the stream cursors, and the cursors are session state")
 }
 
@@ -518,8 +488,10 @@ func (s *FightStartsTestSuite) TestAWalkWritesWhatAWalkChanges() {
 //
 // It used to be driven by a walk that suspended: the world landed, the window
 // it owed did not. Nothing owes a window now, so the pin moved to the verb that
-// still writes both aggregates — Spawn puts the NPC's sheet in the session
-// record. Same failure, same report, a producer that exists.
+// still writes both aggregates. That was Spawn, which put the NPC's sheet in
+// the session record; Spawn is gone, and a walk now writes both — its beats
+// advance the stream cursors the session record carries. Same failure, same
+// report, a producer that exists.
 func (s *FightStartsTestSuite) TestAPartialSaveTellsTheCallerWhichHalfLanded() {
 	s.startAmbush()
 
@@ -527,20 +499,20 @@ func (s *FightStartsTestSuite) TestAPartialSaveTellsTheCallerWhichHalfLanded() {
 	sessions := &failingSessions{fakeSessions: s.sessions, saveErr: errBroken}
 	mgr := managerOverRepos(s.T(), sessions, s.encounters)
 
-	_, err := mgr.Spawn(context.Background(), &session.SpawnInput{
-		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
-		Position: hexCell(6, 6),
+	_, err := mgr.Move(context.Background(), &session.MoveInput{
+		Session: "sess", Member: "alice",
+		Path: []spatial.Position{{X: 2, Y: 0}},
 	})
-	s.Require().Error(err, "the spawned sheet had to be written to the session")
+	s.Require().Error(err, "the walk's advanced cursors had to be written to the session")
 	s.Require().ErrorIs(err, session.ErrSaveFailed, "the condition is matchable")
 	s.ErrorIs(err, errBroken, "and so is the store's own failure")
 
 	var saved *session.SaveError
 	s.Require().ErrorAs(err, &saved, "the report must survive the error, not die in persist")
-	s.Equal([]string{"character:alice", "encounter:world"}, saved.Report.Written,
-		"the world landed — the skeleton is really standing there")
+	s.Equal([]string{"encounter:sess"}, saved.Report.Written,
+		"the world landed — alice really took the step")
 	s.Equal([]string{"session:sess"}, saved.Report.Failed,
-		"its sheet did not — this is a repair, not a retry")
+		"the cursors did not — this is a repair, not a retry")
 }
 
 // TestATotalSaveFailureNamesOnlyWhatWasAttempted is the contrast that gives the
@@ -560,7 +532,7 @@ func (s *FightStartsTestSuite) TestATotalSaveFailureNamesOnlyWhatWasAttempted() 
 	var saved *session.SaveError
 	s.Require().ErrorAs(err, &saved)
 	s.Empty(saved.Report.Written, "nothing landed")
-	s.Equal([]string{"encounter:world"}, saved.Report.Failed)
+	s.Equal([]string{"encounter:sess"}, saved.Report.Failed)
 }
 
 func TestFightStartsSuite(t *testing.T) {

@@ -124,8 +124,19 @@ var contractTypes = map[string]string{
 	// spatial.Position makes above.
 	"shared.EquipmentType": "contract type: reachable from TradeItem, a caller-constructed field naming what's being traded",
 
-	// Reachable from SpawnInput.Table and SpawnInput.Temper (write.go,
-	// rpg-project#465) — the creature's authored policy and the temperament
+	// Reachable from LaunchInput.Dungeon (launch.go, rpg-project#542). The
+	// toolkit's own compiler produces it and the host holds it in its dungeon
+	// registry; Launch reads the board off it so the host re-projects
+	// nothing. Shared vocabulary both sides already agree on — the same
+	// compiled value rpg-api's registry stores today — and not a shape we
+	// would swap without telling the host, so it sits here rather than under
+	// persistenceShapes. Its own fields reach composition types (the field,
+	// placements, triggers, tables) that are dungeonspec's output, read here
+	// and never constructed by the host.
+	"dungeonspec.Compiled": "contract type: the compiled dungeon the host registers and hands to Launch",
+
+	// Reachable from LaunchInput.Dungeon's MonsterPlacement.Table and .Temper
+	// (launch.go, rpg-project#465, #542) — the creature's authored policy and the temperament
 	// loading its die.
 	//
 	// THE HOST NEVER BUILDS ONE, and that is what settles it. A table is
@@ -143,7 +154,7 @@ var contractTypes = map[string]string{
 	// the author's grammar, and dungeon files in rpg-game-assets are written
 	// against it. A change to its shape is a change we ANNOUNCE — which is
 	// exactly what a contract type means.
-	"encounter.Table":  "contract type: the author's own compiled policy, carried from dungeonspec to Spawn",
+	"encounter.Table":  "contract type: the author's own compiled policy, carried from dungeonspec to Launch",
 	"encounter.Temper": "contract type: the temperament the same compiler read, carried beside the table",
 
 	// Reachable from TradeOffer.Currency (trade.go, rpg-toolkit#1534, Wave
@@ -169,13 +180,12 @@ var persistenceShapes = map[string]string{
 	// are the slowest-moving surface in the toolkit and carry their own
 	// compatibility discipline; domain types do not.
 	//
-	// It appears on EncounterRepository and in StartSession, which hands in
-	// authored content. That is not a widening: it is the same bytes the host
+	// It appears on EncounterRepository, the bytes the host round-trips.
+	// That is not a widening: it is the same bytes the host
 	// holds either way, so no host is exposed to anything the repository did
 	// not already expose it to. A *domain* type in a verb input would be a different
 	// matter, and is what this list exists to keep out.
-	"encounter.EncounterData":       "persistence shape the host already holds (S3)",
-	"encounter.DiscoveryMemoryData": "opaque retained check memory persisted by the host",
+	"encounter.EncounterData": "persistence shape the host already holds (S3)",
 
 	// The ledger of open interrupt windows, inside SessionData.
 	//
@@ -200,8 +210,8 @@ var persistenceShapes = map[string]string{
 	// and the two are worth contrasting because they look alike and are not.
 	// The host CONSTRUCTS a character.Data — it owns character storage, and a
 	// change to that shape is a change to code it writes, so we announce it.
-	// The host never constructs a monster.Data: Spawn builds it from a ref and
-	// hands it back already made, and the host's only job is to round-trip the
+	// The host never constructs a monster.Data: Launch builds it from a
+	// placement's ref, and the host's only job is to round-trip the
 	// session blob it sits in.
 	//
 	// So the promise here is replaceability. If monster.Data is reshaped, or
@@ -211,11 +221,11 @@ var persistenceShapes = map[string]string{
 	//
 	// The test to apply, from the header above: would the host have to build
 	// one field by field? For a character, yes. For a monster, no — it names a
-	// ref instead, which is the whole point of the split between Join and
-	// Spawn.
+	// ref on a compiled placement instead, which is the whole point of the
+	// split between a party seat and a monster placement.
 	//
-	// What is NOT admitted: monster.Monster, the runtime object. Spawn returns
-	// an SDK-owned MonsterState, and the loaded monster never crosses.
+	// What is NOT admitted: monster.Monster, the runtime object. The loaded
+	// monster never crosses.
 	"monster.Data": "persistence shape: an NPC sheet the host stores but never builds",
 }
 

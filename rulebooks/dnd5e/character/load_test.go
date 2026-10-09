@@ -130,9 +130,6 @@ func fullSheet(s *suite.Suite) *Data {
 		},
 		Wallet:         currency.FromGold(15),
 		EquipmentSlots: EquipmentSlots{SlotMainHand: string(weapons.Longsword)},
-		ClassResources: map[shared.ClassResourceType]ResourceData{
-			shared.ClassResourceRage: {Name: "Rage", Max: 3, Current: 2, Resets: shared.ResetTypeLongRest},
-		},
 		Resources: map[coreResources.ResourceKey]RecoverableResourceData{
 			resources.RageCharges: {Current: 2, Maximum: 3, ResetType: coreResources.ResetLongRest},
 		},

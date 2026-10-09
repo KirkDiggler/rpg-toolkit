@@ -77,7 +77,7 @@ func temporaryConditionTestCases() map[string]temporaryConditionTestCase {
 	}
 }
 
-func TestTemporaryConditionsEndOnLongRest(t *testing.T) {
+func TestTemporaryConditionsEndOnRest(t *testing.T) {
 	for name, testCase := range temporaryConditionTestCases() {
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
@@ -100,23 +100,29 @@ func TestTemporaryConditionsEndOnLongRest(t *testing.T) {
 			require.Empty(t, removed, "another character's long rest must not remove the condition")
 			require.True(t, condition.IsApplied())
 
+			// A short rest is an hour and ends a fight's conditions; only the
+			// legacy unconscious shell waits for the long rest.
 			require.NoError(t, dnd5eEvents.RestTopic.On(bus).Publish(ctx, dnd5eEvents.RestEvent{
 				RestType:    coreResources.ResetShortRest,
 				CharacterID: restTestMemberID,
 			}))
-			require.Empty(t, removed, "short rest must not remove the condition")
-			require.True(t, condition.IsApplied())
+			reason := "rest"
+			if name == "Unconscious" {
+				require.Empty(t, removed, "a short rest leaves the long-rest-only shell")
+				require.True(t, condition.IsApplied())
 
-			require.NoError(t, dnd5eEvents.RestTopic.On(bus).Publish(ctx, dnd5eEvents.RestEvent{
-				RestType:    coreResources.ResetLongRest,
-				CharacterID: restTestMemberID,
-			}))
+				require.NoError(t, dnd5eEvents.RestTopic.On(bus).Publish(ctx, dnd5eEvents.RestEvent{
+					RestType:    coreResources.ResetLongRest,
+					CharacterID: restTestMemberID,
+				}))
+				reason = "long rest"
+			}
 			require.Equal(t, []dnd5eEvents.ConditionRemovedEvent{{
 				MemberID:     restTestMemberID,
 				ConditionRef: testCase.expectedRef.String(),
-				Reason:       "long rest",
+				Reason:       reason,
 			}}, removed)
-			require.False(t, condition.IsApplied(), "the owner's long rest must remove the condition's subscriptions")
+			require.False(t, condition.IsApplied(), "the owner's rest must remove the condition's subscriptions")
 
 			require.NoError(t, dnd5eEvents.RestTopic.On(bus).Publish(ctx, dnd5eEvents.RestEvent{
 				RestType:    coreResources.ResetLongRest,

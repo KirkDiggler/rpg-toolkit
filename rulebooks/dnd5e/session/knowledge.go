@@ -26,9 +26,11 @@ type PropSighting struct {
 	Prop          *AtlasProp       `json:"prop,omitempty"`
 	Placed        *AtlasPlacedProp `json:"placed,omitempty"`
 	ObservedEmpty bool             `json:"observed_empty"`
-	CurrentVia    []string         `json:"current_via"`
-	Status        string           `json:"status"`
-	At            uint64           `json:"at"`
+	// Presentation was captured by the provider with this observation.
+	Presentation *PropPresentation `json:"presentation,omitempty"`
+	CurrentVia   []string          `json:"current_via"`
+	Status       string            `json:"status"`
+	At           uint64            `json:"at"`
 }
 
 // DoorSighting carries an observed door state, current or remembered.
@@ -142,6 +144,10 @@ func projectObjectSightings(enc *encounter.Encounter, member string) ([]PropSigh
 		if p.Placed != nil {
 			projected := projectAtlasPlaced(*p.Placed)
 			out.Placed = &projected
+		}
+		if p.Presentation != nil {
+			projected := projectPropPresentation(*p.Presentation)
+			out.Presentation = &projected
 		}
 		propOut = append(propOut, out)
 	}

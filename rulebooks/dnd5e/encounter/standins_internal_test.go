@@ -10,30 +10,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCompileOnlyInputsLeaveNoInterfaceSlotNil checks only that no
-// interface-typed field of either compile-only input is left nil, except
-// Roller, which is optional and refused loudly at the roll. It cannot see
-// whether a stand-in answers what the door actually asks — that invariant is
-// held by the behavioural tests in standins_test.go, which construct and
-// load from these inputs (TestNewEncounterConstructsFromCompileOnlySetup,
-// TestLoadEncounterLoadsFromCompileOnlyLoad), and by the field types, which
-// name the wide capability interfaces.
-func TestCompileOnlyInputsLeaveNoInterfaceSlotNil(t *testing.T) {
-	for name, input := range map[string]reflect.Value{
-		"CompileOnlySetup": reflect.ValueOf(*CompileOnlySetup(FieldInput{}, nil)),
-		"CompileOnlyLoad":  reflect.ValueOf(*CompileOnlyLoad(EncounterData{})),
-	} {
-		for i := 0; i < input.NumField(); i++ {
-			field := input.Type().Field(i)
-			if field.Type.Kind() != reflect.Interface || field.Name == "Roller" {
+// TestRefusingCapabilitiesLeaveNoInterfaceSlotNil checks only that no
+// interface-typed field of RefusingCapabilities (or of its Actors) is left nil,
+// except Roller, which is optional and refused loudly at the roll. It cannot
+// see whether a stand-in answers what the door actually asks — that invariant
+// is held by the behavioural tests in standins_test.go, which construct and
+// load from this value (TestNewEncounterConstructsFromRefusingCapabilities,
+// TestLoadEncounterLoadsFromRefusingCapabilities), and by the field types,
+// which name the wide capability interfaces.
+func TestRefusingCapabilitiesLeaveNoInterfaceSlotNil(t *testing.T) {
+	var walk func(path string, v reflect.Value)
+	walk = func(path string, v reflect.Value) {
+		for i := 0; i < v.NumField(); i++ {
+			field := v.Type().Field(i)
+			name := path + "." + field.Name
+			switch {
+			case field.Type.Kind() == reflect.Struct:
+				walk(name, v.Field(i))
+			case field.Type.Kind() != reflect.Interface || field.Name == "Roller":
 				continue
+			default:
+				require.False(t, v.Field(i).IsNil(), "%s is nil", name)
 			}
-			require.False(t, input.Field(i).IsNil(), "%s leaves %s nil", name, field.Name)
 		}
 	}
+	walk("RefusingCapabilities()", reflect.ValueOf(RefusingCapabilities()))
+	walk("RefusingActors()", reflect.ValueOf(RefusingActors()))
 }
 
-func TestCompileOnlyStandInAnswers(t *testing.T) {
+func TestRefusingCapabilitiesStandInAnswers(t *testing.T) {
 	asked := []MemberID{"b", "a"}
 
 	t.Run("standing: nobody down, as a list", func(t *testing.T) {

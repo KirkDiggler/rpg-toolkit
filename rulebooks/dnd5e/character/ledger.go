@@ -42,6 +42,7 @@ var grantedKeyFor = map[combat.CapacityType]GrantedActionKey{
 	combat.CapacityMartialArtsBonusAttack: GrantedMartialArtsBonus,
 	combat.CapacityFlurryStrike:           GrantedFlurryStrikes,
 	combat.CapacityDeathSave:              GrantedDeathSaves,
+	combat.CapacityObjectInteraction:      GrantedObjectInteractions,
 }
 
 // grantedKey translates a capacity into the key the sheet files it under.

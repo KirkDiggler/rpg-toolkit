@@ -225,11 +225,15 @@ func (s *ActionEconomyTestSuite) TestLoadFromData_RoundTrip() {
 func (s *ActionEconomyTestSuite) TestSeededEconomy_RoundTrip_ActivateAbility_NoNilMapPanic() {
 	char := createTestFighterCharacter(s.T(), s.bus)
 
-	// Seed the turn economy — this sets Granted to an empty map.
+	// Seed the turn economy, then empty its bank. A turn now seeds its object
+	// interaction into Granted, so an empty bank is no longer what StartTurn
+	// writes — but it is what a turn whose interaction was spent and whose
+	// zeros were dropped looks like, and what an older host seeded (#598), and
+	// it is the shape the omitempty drop needs.
 	_, err := char.StartTurn(s.ctx, &StartTurnInput{Speed: 30})
 	s.Require().NoError(err)
 	s.Require().NotNil(char.actionEconomy)
-	s.Require().Empty(char.actionEconomy.Granted, "StartTurn seeds an empty Granted map")
+	char.actionEconomy.Granted = map[GrantedActionKey]int{}
 
 	// Serialize → JSON → back, faithfully reproducing the omitempty drop the
 	// host (rpg-api) hits when it persists and reloads the character.

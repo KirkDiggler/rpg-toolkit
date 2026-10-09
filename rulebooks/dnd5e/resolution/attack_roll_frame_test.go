@@ -304,10 +304,19 @@ func (s *FrameTestSuite) TestEveryFreezeCarriesOpportunity() {
 	s.Run("before the roll", func() {
 		roller := &actionRoller{singles: []int{15}, pairs: [][]int{{15, 2}}, damage: [][]int{{3}}}
 		out, err := resolveOn(s.ctx, &Input{
-			World: actionWorld(s.T(), 2), Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Character: flareHero(s.T())}},
-			Machine:    NewStrike(&StrikeInput{AttackerID: wolfID, TargetID: heroID, Definition: validMeleeDefinition(), Opportunity: true, Roller: roller}),
-			Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
-			TurnDriver: passDriver{}, Roller: roller,
+			World:        actionWorld(s.T(), 2),
+			Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Character: flareHero(s.T())}},
+			Machine:      NewStrike(&StrikeInput{AttackerID: wolfID, TargetID: heroID, Definition: validMeleeDefinition(), Opportunity: true, Roller: roller}),
+			Capabilities: encounter.Capabilities{
+				Initiative: orderAsGiven{},
+				Standing:   everyoneStanding{},
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  noHandsAreObserved{},
+				Sheets:     noSheetsAsked{},
+				Driver:     passDriver{},
+				Roller:     roller,
+				Actors:     Actors,
+			},
 		}, newSurface(events.NewEventBus()))
 		s.Require().NoError(err)
 		s.Require().NotNil(out.Posed)

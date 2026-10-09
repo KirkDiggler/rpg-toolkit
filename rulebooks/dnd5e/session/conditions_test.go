@@ -56,11 +56,10 @@ func (s *ConditionsTestSuite) SetupTest() {
 	s.characters = newFakeCharacters(ragingDwarf("alice"), dwarfCharacter("bob"))
 	s.mgr = s.managerOverStores(s.sessions, s.encounters, s.characters)
 
-	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: ambushWorld(s.T()),
-	})
-	s.Require().NoError(err)
-	stockAuthoredMonsters(s.T(), s.sessions, s.encounters, "sess")
+	launchScene(s.T(), s.mgr, ambushWorld())
+	// The launch long-rests every party sheet, and a long rest ends a rage:
+	// alice is put back mid-rage after it, as the suite's subject needs.
+	s.characters.byID["alice"] = ragingDwarf("alice")
 }
 
 func (s *ConditionsTestSuite) SetupSubTest() { s.SetupTest() }
@@ -68,7 +67,7 @@ func (s *ConditionsTestSuite) SetupSubTest() { s.SetupTest() }
 func (s *ConditionsTestSuite) managerOverStores(
 	sessions *fakeSessions, encounters *fakeEncounters, characters *fakeCharacters,
 ) *session.Manager {
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters,
 		Characters: characters, Events: session.DiscardEvents{},
 	})

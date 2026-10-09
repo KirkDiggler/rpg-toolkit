@@ -124,10 +124,9 @@ type Data struct {
 	// different rules — a cantrip is never forgotten and a known spell can be
 	// swapped on level-up. One list would need a level beside every entry to
 	// answer a question the split already answers.
-	KnownCantrips  []string                                              `json:"known_cantrips,omitempty"`
-	KnownSpells    []string                                              `json:"known_spells,omitempty"`
-	ClassResources map[shared.ClassResourceType]ResourceData             `json:"class_resources,omitempty"`
-	Resources      map[coreResources.ResourceKey]RecoverableResourceData `json:"resources,omitempty"`
+	KnownCantrips []string                                              `json:"known_cantrips,omitempty"`
+	KnownSpells   []string                                              `json:"known_spells,omitempty"`
+	Resources     map[coreResources.ResourceKey]RecoverableResourceData `json:"resources,omitempty"`
 
 	// Features (rage, second wind, etc)
 	Features []json.RawMessage `json:"features,omitempty"`
@@ -195,14 +194,6 @@ type InventoryItemData struct {
 	Type     shared.EquipmentType `json:"type"` // weapon, armor, tool, pack, item, ammunition
 	ID       string               `json:"id"`   // The specific item ID (e.g., "longsword", "leather_armor")
 	Quantity int                  `json:"quantity"`
-}
-
-// ResourceData represents serializable class resource info
-type ResourceData struct {
-	Name    string           `json:"name"`
-	Max     int              `json:"max"`
-	Current int              `json:"current"`
-	Resets  shared.ResetType `json:"resets"`
 }
 
 // RecoverableResourceData represents serializable recoverable resource state

@@ -12,8 +12,8 @@ package session_test
 // the encounter suite (holdout_test.go there). What is pinned HERE is that
 // they SURVIVE THE SEAM:
 //
-//   - a monster's faction reaches the composition through Spawn, the one
-//     verb every monster actually enters a run by (design §3 "Spawn");
+//   - a monster's faction reaches the composition through Launch, which
+//     places every authored monster off the compiled dungeon;
 //   - the roster row says whose side everyone is on;
 //   - the `stance` beat crosses as a typed EventStanceChanged in every
 //     recipient's own dense numbering, followed by a FIGHT_ENDED whose cause
@@ -30,9 +30,9 @@ package session_test
 // PINNED encounter module rather than a local checkout or a fourth copy
 // (the plan keeps three, byte-identical by test). The party sits at the gate
 // with the Wiseman's letter on the ground beside it; the scout stands in the
-// yard and the chief, the camp's MIND, in the hut. The camp is spawned
-// through Spawn — id, ref, cell, faction and holdings straight off the
-// compiled placements, the way rpg-api spawns it.
+// yard and the chief, the camp's MIND, in the hut. The camp is placed by
+// Launch — id, ref, cell, faction and holdings straight off the compiled
+// placements, the way a host launches it.
 
 import (
 	"context"
@@ -58,7 +58,9 @@ import (
 
 const (
 	campSession = "camp"
-	campWorldID = "camp-world"
+	// campWorldID is where the run's world is stored: a launched run's world
+	// is stored under its session id.
+	campWorldID = campSession
 	campModule  = "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	campFile    = "dungeonspec/testdata/reference-raider-camp.yaml"
 	campKey     = "reference-raider-camp"
@@ -131,75 +133,6 @@ func stepASource(t *testing.T, source string) string {
 	return source
 }
 
-// arrivalOf spells a compiled placement's predicate in this package's own
-// words — the switch a host writes to hand the composition's Trigger to
-// Spawn, one arm per form of the grammar. Nil stays nil.
-func arrivalOf(t *testing.T, trigger encounter.Trigger) session.Arrival {
-	t.Helper()
-	switch p := trigger.(type) {
-	case nil:
-		return nil
-	case encounter.TriggerRound:
-		return session.ArrivesAtRound{Round: p.Round}
-	case encounter.TriggerMemberDown:
-		return session.ArrivesOnFall{Member: string(p.Member)}
-	case encounter.TriggerFact:
-		return session.ArrivesOnFact{Fact: p.Fact}
-	case encounter.TriggerStance:
-		return session.ArrivesOnStance{Between: [2]string{p.Between[0], p.Between[1]}, Stance: string(p.Stance)}
-	default:
-		t.Fatalf("no arrival form for %T", trigger)
-		return nil
-	}
-}
-
-// campWorld is the authored world a session starts in: the compiled field,
-// the party at the gate, and — when the scene wants the run to be able to
-// END on the flip — the hold-out scenario's own ending, read from the file's
-// binding through the scenario package, the same path a host takes. Without
-// it the run stays open after the camp turns, which is what A9 needs.
-//
-// NO MONSTERS ARE AUTHORED. The world is built empty of them and each is
-// brought in through Spawn, because that is how every monster enters a live
-// run — the whole reason Spawn carries a faction at all.
-func campWorld(t *testing.T, compiled dungeonspec.Compiled, withEnding bool) *encounter.EncounterData {
-	t.Helper()
-	endings := []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}
-	if withEnding {
-		scenario, ok := scenarios.Lookup(scenarios.HoldOutID)
-		if !ok {
-			t.Fatalf("no %s scenario", scenarios.HoldOutID)
-		}
-		declared, err := scenario.New(compiled.Scenarios[scenarios.HoldOutID], scenarios.FactsFrom(compiled.Field))
-		if err != nil {
-			t.Fatalf("binding the hold-out: %v", err)
-		}
-		endings = append(endings, declared.Endings...)
-	}
-
-	seats := compiled.PartyStart
-	if len(seats) < 2 {
-		t.Fatalf("the camp seats %d, and the party is two", len(seats))
-	}
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
-		CheckResolver: encNeverResolves{}, Witness: encNeverWitnesses{},
-		Field: compiled.Field,
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: seats[0].At},
-			{ID: "bob", Kind: encounter.KindPlayer, Position: seats[1].At},
-		},
-		Endings:   endings,
-		Retention: encounter.RetentionUnbounded,
-	})
-	if err != nil {
-		t.Fatalf("building the camp: %v", err)
-	}
-	data := enc.ToData()
-	return &data
-}
-
 type HoldOutSessionSuite struct {
 	suite.Suite
 
@@ -230,17 +163,19 @@ func (s *HoldOutSessionSuite) SetupSuite() {
 
 // campOptions is how a scene opens the camp: the shipped file or the step-A
 // variant, whether the hold-out ending is bound, who drives the monsters, who
-// the party is, and which authored placements are spawned at the start (nil
-// means all of them).
+// the party is, which authored placements are on the board at launch (nil
+// means all of them), and any monsters the scene adds.
 type campOptions struct {
 	shipped    bool
 	withEnding bool
 	driver     session.TurnDriver
 	cast       []*character.Data
 	spawn      []string
+	// extra are monsters the scene places beside the camp's own.
+	extra []dungeonspec.MonsterPlacement
 }
 
-// start wires a fresh manager around the camp and spawns it: the letter on
+// start wires a fresh manager around the camp and launches it: the letter on
 // the ground, nobody knowing anything, the monsters passing their turns, the
 // stream cleared so a scene reads only what its own verbs caused.
 func (s *HoldOutSessionSuite) start(withEnding bool) {
@@ -249,7 +184,24 @@ func (s *HoldOutSessionSuite) start(withEnding bool) {
 
 // startWith is start with the scene's own choices; every zero value is the
 // default start makes.
-func (s *HoldOutSessionSuite) startWith(opts campOptions) {
+func (s *HoldOutSessionSuite) startWith(opts campOptions) *session.LaunchOutput {
+	s.T().Helper()
+	out, err := s.mgr.Launch(context.Background(), s.prepare(opts))
+	s.Require().NoError(err)
+	s.stream.published = nil
+	return out
+}
+
+// prepare wires a fresh manager around the camp and returns the launch that
+// opens it, for a scene whose subject is that launch being refused.
+//
+// The camp is launched as a host launches it: the compiled dungeon, its
+// monsters placed by the launch with id, ref, cell, faction, holdings and
+// arrival straight off the compiled placements. Without the ending the
+// hold-out binding is left off, so the run stays open after the camp turns,
+// which is what A9 needs.
+func (s *HoldOutSessionSuite) prepare(opts campOptions) *session.LaunchInput {
+	s.T().Helper()
 	if opts.driver == nil {
 		opts.driver = session.Pass{}
 	}
@@ -264,7 +216,7 @@ func (s *HoldOutSessionSuite) startWith(opts campOptions) {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(opts.cast...)
 
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: opts.driver,
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
@@ -272,17 +224,23 @@ func (s *HoldOutSessionSuite) startWith(opts campOptions) {
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: campSession, Encounter: campWorldID, World: campWorld(s.T(), s.camp, opts.withEnding),
-	})
-	s.Require().NoError(err)
-
+	dungeon := s.camp
+	if len(dungeon.PartyStart) < 2 {
+		s.T().Fatalf("the camp seats %d, and the party is two", len(dungeon.PartyStart))
+	}
+	if !opts.withEnding {
+		dungeon.Scenarios = nil
+	}
+	dungeon.Monsters = nil
 	for _, m := range s.camp.Monsters {
 		if opts.spawn == nil || slices.Contains(opts.spawn, m.ID) {
-			s.spawn(m)
+			dungeon.Monsters = append(dungeon.Monsters, m)
 		}
 	}
-	s.stream.published = nil
+	dungeon.Monsters = append(dungeon.Monsters, opts.extra...)
+	return &session.LaunchInput{
+		Session: campSession, DungeonKey: campKey, Dungeon: &dungeon, Party: []string{"alice", "bob"},
+	}
 }
 
 // placement is one authored placement by id.
@@ -295,19 +253,6 @@ func (s *HoldOutSessionSuite) placement(id string) dungeonspec.MonsterPlacement 
 	}
 	s.Require().Failf("no placement", "%q is not placed in the camp", id)
 	return dungeonspec.MonsterPlacement{}
-}
-
-// spawn brings one authored placement into the run through the host's verb:
-// id, ref, cell, faction, holdings and arrival straight off the compiled
-// placement.
-func (s *HoldOutSessionSuite) spawn(m dungeonspec.MonsterPlacement) *session.SpawnOutput {
-	s.T().Helper()
-	out, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
-		Session: campSession, ID: m.ID, Ref: m.Ref, Position: absolute(m.At),
-		Holds: m.Holds, Faction: m.Faction, Arrives: arrivalOf(s.T(), m.Arrives),
-	})
-	s.Require().NoError(err, "spawning %s", m.ID)
-	return out
 }
 
 func (s *HoldOutSessionSuite) hold(member, prop string) {
@@ -350,10 +295,22 @@ func (s *HoldOutSessionSuite) roster() map[string]session.PublicMember {
 	// These scenario assertions inspect membership/reserve truth, not Alice's
 	// discovered identities. Gameplay Roster deliberately excludes unseen NPCs.
 	world, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: *s.encounters.byID[campWorldID], Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Sheets: encStandStill{},
-		Standing: encEveryoneStanding{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
-		CheckResolver: encNeverResolves{}, Witness: encNeverWitnesses{},
+		Data: *s.encounters.byID[campWorldID],
+		Capabilities: encounter.Capabilities{
+			Sight:         encEveryoneSees{},
+			Equipment:     encNoHandsObserved{},
+			Sheets:        encStandStill{},
+			Standing:      encEveryoneStanding{},
+			Initiative:    encOrderAsGiven{},
+			Driver:        encPassDriver{},
+			CheckResolver: encNeverResolves{},
+			Witness:       encNeverWitnesses{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	members, err := world.Members()
@@ -414,7 +371,7 @@ func (s *HoldOutSessionSuite) pathTo(member string, to spatial.Position) []spati
 	s.T().Helper()
 	// A scripted fixture plans the full walk from authored truth. The game
 	// client only receives discovered rooms and does not use this helper.
-	atlas, err := s.mgr.AtlasOf(context.Background(), &session.AtlasOfInput{World: s.encounters.byID[campWorldID]})
+	atlas, err := s.mgr.AtlasOf(context.Background(), &session.AtlasOfInput{Dungeon: &s.camp, DungeonKey: campKey})
 	s.Require().NoError(err)
 	from := s.where(member)
 
@@ -630,17 +587,19 @@ func (s *HoldOutSessionSuite) TestSpawnedMonstersCarryTheirFactionAndAFightForms
 // was — the composition's default, not this seam's — and a fight forms the
 // moment it stands in the party's sight.
 func (s *HoldOutSessionSuite) TestAMonsterSpawnedWithNoFactionIsInMonstersAndFightsAsItAlwaysDid() {
-	s.start(false)
-
 	// Two cells down the gate's own column from alice: in plain sight.
 	at := s.compiled.PartyStart[0].At
-	out, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
-		Session: campSession, ID: "stray", Ref: refs.Monsters.Zombie().String(),
-		Position: absolute(spatial.Position{X: at.X, Y: at.Y + 2}),
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(out.Formed, "arriving in plain sight starts a fight, on the default table")
-	s.Contains(out.Formed.Order, "stray")
+	out := s.startWith(campOptions{extra: []dungeonspec.MonsterPlacement{
+		monsterAt("stray", refs.Monsters.Zombie().String(), int(at.X), int(at.Y)+2),
+	}})
+	var formed *session.Formed
+	for _, f := range out.Formed {
+		if slices.Contains(f.Order, "stray") {
+			formed = f
+		}
+	}
+	s.Require().NotNil(formed, "arriving in plain sight starts a fight, on the default table")
+	s.Contains(formed.Order, "stray")
 	s.Equal("monsters", s.roster()["stray"].Faction, "the kind's default, decided once, in the composition")
 }
 
@@ -788,23 +747,16 @@ func (s *HoldOutSessionSuite) TestTheStanceSurvivesSaveAndLoadAsAFoldNotAField()
 // host makes by forwarding a word the dungeon does not have, made loud
 // rather than arriving on the wrong side.
 func (s *HoldOutSessionSuite) TestASpawnCannotJoinAFactionTheDungeonDoesNotDeclare() {
-	s.start(false)
 	at := s.compiled.PartyStart[0].At
+	stray := monsterAt("stray", refs.Monsters.Zombie().String(), int(at.X), int(at.Y)+2)
+	stray.Faction = "kobolds"
+	in := s.prepare(campOptions{extra: []dungeonspec.MonsterPlacement{stray}})
 
-	_, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
-		Session: campSession, ID: "stray", Ref: refs.Monsters.Zombie().String(),
-		Position: absolute(spatial.Position{X: at.X, Y: at.Y + 2}), Faction: "kobolds",
-	})
+	_, err := s.mgr.Launch(context.Background(), in)
 	s.Require().ErrorIs(err, session.ErrNoFaction)
 	s.Require().NotErrorIs(err, session.ErrNoIntel, "a faction is not a record")
 
-	var placed bool
-	for _, npc := range s.sessions.byID[campSession].NPCs {
-		if npc.ID == "stray" {
-			placed = true
-		}
-	}
-	s.False(placed, "the refusal left nothing behind")
+	s.NotContains(s.sessions.byID, campSession, "the refusal left nothing behind")
+	s.NotContains(s.encounters.byID, campWorldID, "no world either")
 	s.Empty(s.stream.published, "and told nobody")
-	s.NotContains(s.roster(), "stray")
 }

@@ -146,7 +146,7 @@ var longRestCases = map[string]longRestCase{
 		ownerID:       "member-1",
 		expectedRef:   refs.Conditions.RecklessAttack(),
 		outcome:       longRestRemove,
-		removalReason: "long rest",
+		removalReason: "rest",
 	},
 	refs.Conditions.MartialArts().String(): {
 		data: json.RawMessage(`{
@@ -183,7 +183,7 @@ var longRestCases = map[string]longRestCase{
 		ownerID:       "member-1",
 		expectedRef:   refs.Conditions.Disengaging(),
 		outcome:       longRestRemove,
-		removalReason: "long rest",
+		removalReason: "rest",
 	},
 	refs.Conditions.Dodging().String(): {
 		data: json.RawMessage(`{
@@ -193,7 +193,7 @@ var longRestCases = map[string]longRestCase{
 		ownerID:       "member-1",
 		expectedRef:   refs.Conditions.Dodging(),
 		outcome:       longRestRemove,
-		removalReason: "long rest",
+		removalReason: "rest",
 	},
 	refs.Conditions.Prone().String(): {
 		data: json.RawMessage(`{
@@ -203,7 +203,7 @@ var longRestCases = map[string]longRestCase{
 		ownerID:       "member-1",
 		expectedRef:   refs.Conditions.Prone(),
 		outcome:       longRestRemove,
-		removalReason: "long rest",
+		removalReason: "rest",
 	},
 	refs.Conditions.Hidden().String(): {
 		data: json.RawMessage(`{
@@ -213,7 +213,7 @@ var longRestCases = map[string]longRestCase{
 		ownerID:       "member-1",
 		expectedRef:   refs.Conditions.Hidden(),
 		outcome:       longRestRemove,
-		removalReason: "long rest",
+		removalReason: "rest",
 	},
 	refs.Conditions.Helped().String(): {
 		data: json.RawMessage(`{
@@ -223,7 +223,7 @@ var longRestCases = map[string]longRestCase{
 		ownerID:       "member-1",
 		expectedRef:   refs.Conditions.Helped(),
 		outcome:       longRestRemove,
-		removalReason: "long rest",
+		removalReason: "rest",
 	},
 	refs.Conditions.Inspired().String(): {
 		data: json.RawMessage(`{
@@ -271,7 +271,7 @@ var longRestCases = map[string]longRestCase{
 		// identity, so the removal the rest publishes names them too.
 		expectedSourceID: "bard-1",
 		outcome:          longRestRemove,
-		removalReason:    "long rest",
+		removalReason:    "rest",
 	},
 	refs.Conditions.Concentrating().String(): {
 		data: json.RawMessage(`{
@@ -282,7 +282,7 @@ var longRestCases = map[string]longRestCase{
 		ownerID:       "member-1",
 		expectedRef:   refs.Conditions.Concentrating(),
 		outcome:       longRestRemove,
-		removalReason: "long rest",
+		removalReason: "rest",
 	},
 	refs.Conditions.Blessed().String(): {
 		data: json.RawMessage(`{
@@ -294,7 +294,7 @@ var longRestCases = map[string]longRestCase{
 		expectedRef:      refs.Conditions.Blessed(),
 		expectedSourceID: "cleric-1",
 		outcome:          longRestRemove,
-		removalReason:    "long rest",
+		removalReason:    "rest",
 	},
 	refs.Conditions.DivineFavor().String(): {
 		data: json.RawMessage(`{
@@ -306,7 +306,7 @@ var longRestCases = map[string]longRestCase{
 		expectedRef:      refs.Conditions.DivineFavor(),
 		expectedSourceID: "member-1",
 		outcome:          longRestRemove,
-		removalReason:    "long rest",
+		removalReason:    "rest",
 	},
 	refs.Conditions.FaerieFire().String(): {
 		data: json.RawMessage(`{
@@ -318,7 +318,7 @@ var longRestCases = map[string]longRestCase{
 		expectedRef:      refs.Conditions.FaerieFire(),
 		expectedSourceID: "cleric-1",
 		outcome:          longRestRemove,
-		removalReason:    "long rest",
+		removalReason:    "rest",
 	},
 	refs.Conditions.ShieldOfFaith().String(): {
 		data: json.RawMessage(`{
@@ -330,7 +330,7 @@ var longRestCases = map[string]longRestCase{
 		expectedRef:      refs.Conditions.ShieldOfFaith(),
 		expectedSourceID: "cleric-1",
 		outcome:          longRestRemove,
-		removalReason:    "long rest",
+		removalReason:    "rest",
 	},
 	refs.Conditions.Guided().String(): {
 		data: json.RawMessage(`{
@@ -342,7 +342,7 @@ var longRestCases = map[string]longRestCase{
 		expectedRef:      refs.Conditions.Guided(),
 		expectedSourceID: "cleric-1",
 		outcome:          longRestRemove,
-		removalReason:    "long rest",
+		removalReason:    "rest",
 	},
 	refs.Conditions.Resistance().String(): {
 		data: json.RawMessage(`{
@@ -354,7 +354,7 @@ var longRestCases = map[string]longRestCase{
 		expectedRef:      refs.Conditions.Resistance(),
 		expectedSourceID: "cleric-1",
 		outcome:          longRestRemove,
-		removalReason:    "long rest",
+		removalReason:    "rest",
 	},
 	refs.Conditions.Sanctuary().String(): {
 		data: json.RawMessage(`{
@@ -366,7 +366,7 @@ var longRestCases = map[string]longRestCase{
 		expectedRef:      refs.Conditions.Sanctuary(),
 		expectedSourceID: "cleric-1",
 		outcome:          longRestRemove,
-		removalReason:    "long rest",
+		removalReason:    "rest",
 	},
 	refs.Conditions.SanctuaryImmune().String(): {
 		data: json.RawMessage(`{
@@ -406,7 +406,7 @@ var longRestCases = map[string]longRestCase{
 		expectedRef:      refs.Conditions.Baned(),
 		expectedSourceID: "bard-1",
 		outcome:          longRestRemove,
-		removalReason:    "long rest",
+		removalReason:    "rest",
 	},
 	refs.Conditions.BladeWard().String(): {
 		data: json.RawMessage(`{
@@ -416,7 +416,7 @@ var longRestCases = map[string]longRestCase{
 		ownerID:       "member-1",
 		expectedRef:   refs.Conditions.BladeWard(),
 		outcome:       longRestRemove,
-		removalReason: "long rest",
+		removalReason: "rest",
 	},
 	refs.Conditions.TrueStrike().String(): {
 		data: json.RawMessage(`{
@@ -426,7 +426,7 @@ var longRestCases = map[string]longRestCase{
 		ownerID:       "member-1",
 		expectedRef:   refs.Conditions.TrueStrike(),
 		outcome:       longRestRemove,
-		removalReason: "long rest",
+		removalReason: "rest",
 	},
 	refs.Conditions.ViciousMockery().String(): {
 		data: json.RawMessage(`{
@@ -436,7 +436,7 @@ var longRestCases = map[string]longRestCase{
 		ownerID:       "member-1",
 		expectedRef:   refs.Conditions.ViciousMockery(),
 		outcome:       longRestRemove,
-		removalReason: "long rest",
+		removalReason: "rest",
 	},
 	refs.Spells.Shield().String(): {
 		data: json.RawMessage(`{
@@ -446,7 +446,7 @@ var longRestCases = map[string]longRestCase{
 		ownerID:       "member-1",
 		expectedRef:   refs.Spells.Shield(),
 		outcome:       longRestRemove,
-		removalReason: "long rest",
+		removalReason: "rest",
 	},
 }
 
@@ -530,6 +530,51 @@ func TestLongRestRegistryBehavior(t *testing.T) {
 			default:
 				t.Fatalf("unknown long-rest outcome %q", testCase.outcome)
 			}
+		})
+	}
+}
+
+// A short rest is an hour, and an hour ends a fight's conditions: every
+// condition the long rest removes with reason "rest" is removed by a short
+// rest too. One that keeps its own long-rest-only reason survives the short
+// rest untouched (rpg-project#542).
+func TestShortRestRegistryBehavior(t *testing.T) {
+	for refString, testCase := range longRestCases {
+		t.Run(refString, func(t *testing.T) {
+			ctx := context.Background()
+			bus := events.NewEventBus()
+
+			var removed []dnd5eEvents.ConditionRemovedEvent
+			_, err := dnd5eEvents.ConditionRemovedTopic.On(bus).Subscribe(ctx,
+				func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
+					removed = append(removed, event)
+					return nil
+				})
+			require.NoError(t, err)
+
+			condition, err := LoadJSON(testCase.data)
+			require.NoError(t, err)
+			require.NoError(t, condition.Apply(ctx, bus))
+			t.Cleanup(func() { require.NoError(t, condition.Remove(ctx, bus)) })
+
+			require.NoError(t, dnd5eEvents.RestTopic.On(bus).Publish(ctx, dnd5eEvents.RestEvent{
+				RestType:    coreResources.ResetShortRest,
+				CharacterID: testCase.ownerID,
+			}))
+
+			if testCase.outcome == longRestRemove && testCase.removalReason == "rest" {
+				require.False(t, condition.IsApplied(), "a short rest ends it")
+				require.Equal(t, []dnd5eEvents.ConditionRemovedEvent{{
+					MemberID:     testCase.ownerID,
+					ConditionRef: testCase.expectedRef.String(),
+					SourceID:     testCase.expectedSourceID,
+					Reason:       "rest",
+				}}, removed)
+				return
+			}
+
+			require.True(t, condition.IsApplied(), "a short rest leaves it")
+			require.Empty(t, removed)
 		})
 	}
 }

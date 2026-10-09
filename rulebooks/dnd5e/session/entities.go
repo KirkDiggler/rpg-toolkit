@@ -50,55 +50,6 @@ import (
 // bus rather than mutating character fields, so there is no modification left
 // un-reversed when the character is dropped.
 
-// fetchCharacterData reads one stored sheet and checks that the repository kept
-// its side of the contract.
-//
-// The fetch-and-validate half of loading a character, factored out because
-// three call sites need it and only one of them goes on to reconstitute
-// anything. Its whole job is the vocabulary: ErrNoCharacter when the repository
-// does not hold the ID, ErrBadRepository when it reports success with no data.
-//
-// It exists as ONE function because it used to exist as three, and the copies
-// disagreed. compileAttack and castFor each reported an ABSENT sheet as a
-// corrupt one (rpg-toolkit#1057), so the same package answered the same
-// question two different ways depending on which verb a host called. A sentinel
-// a host branches on cannot be restated per call site and stay honest.
-//
-// role names the part the member is playing — "attacker", "participant",
-// plain "character" — and is the one thing a call site still gets to say for
-// itself. The sentinel is not negotiable; which member of the roster the host
-// should go look at is local knowledge, and castFor in particular reaches for
-// sheets the host never named.
-func (m *Manager) fetchCharacterData(ctx context.Context, role, id string) (*character.Data, error) {
-	data, err := m.characters.GetCharacter(ctx, id)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, fmt.Errorf("%s %q: %w", role, id, ErrNoCharacter)
-		}
-		return nil, fmt.Errorf("%s %q: %w", role, id, err)
-	}
-	if data == nil {
-		// A repository reporting success with no data has violated its
-		// contract. Guessing in either direction — treating it as absent, or
-		// carrying a nil into a loader — is worse than saying so.
-		return nil, fmt.Errorf(
-			"%s %q: GetCharacter reported success with no data: %w", role, id, ErrBadRepository)
-	}
-	if data.ID != id {
-		// The same contract, one field over, and the failure it prevents is
-		// quieter than the nil above. A sheet returned under the wrong ID is
-		// perfectly loadable: the caller attaches SOMEBODY, so nothing errors,
-		// and what actually happened is that the character who was asked for
-		// was never in the interaction at all. On a boundary announcement that
-		// means their turn-scoped conditions silently do not expire — which is
-		// the exact defect this whole slice exists to close, arriving by a
-		// different door (Copilot, rpg-toolkit#1261).
-		return nil, fmt.Errorf(
-			"%s %q: GetCharacter returned %q instead: %w", role, id, data.ID, ErrBadRepository)
-	}
-	return data, nil
-}
-
 // instantiate builds catalog content into a new member's sheet.
 //
 // This is the other half of how an entity enters a session, and the split is
@@ -176,7 +127,7 @@ func instantiate(id string, ref string, actions []string) (*monster.Data, error)
 }
 
 // arm replaces a freshly built monster's actions with the ones the author
-// named, in the author's order (rpg-project#448, [SpawnInput.Actions]).
+// named, in the author's order (rpg-project#448, [dungeonspec.MonsterPlacement.Actions]).
 //
 // ASSEMBLED NOW, STORED ONCE. The sheet is what gets rehydrated (S4), so the
 // numbers a monster is spawned with are the numbers it keeps: a later change
@@ -221,37 +172,6 @@ func arm(built *monster.Monster, actions []string) error {
 		return fmt.Errorf("arming %q: %w", built.Name(), err)
 	}
 	return nil
-}
-
-// projectMonster reports the state of an instantiated NPC.
-//
-// Read from the data rather than from a live monster, because Spawn already
-// holds the data — it is what gets stored. That is the opposite of
-// projectCharacter's rule, and for the opposite reason: there, serialising to
-// read was the expensive path; here the serialisation has already happened and
-// re-hydrating a monster to ask it questions would be the wasteful one.
-//
-// Only the walking speed is reported. Fly, swim, climb and burrow exist on the
-// stored sheet, and a client that needs them is asking a movement question this
-// projection does not answer — pretending otherwise by summing or maxing them
-// would invent a number the rules do not have.
-func projectMonster(data *monster.Data) *MonsterState {
-	if data == nil {
-		return nil
-	}
-	state := &MonsterState{
-		ID:               data.ID,
-		Name:             data.Name,
-		HitPoints:        data.HitPoints,
-		MaxHitPoints:     data.MaxHitPoints,
-		ArmorClass:       data.ArmorClass,
-		Speed:            data.Speed.Walk,
-		ProficiencyBonus: data.ProficiencyBonus,
-	}
-	if data.Ref != nil {
-		state.Ref = data.Ref.String()
-	}
-	return state
 }
 
 // projectCharacter asks resolution what this character is, and takes back an

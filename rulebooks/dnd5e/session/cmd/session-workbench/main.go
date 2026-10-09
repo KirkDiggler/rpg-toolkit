@@ -26,6 +26,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -93,59 +94,6 @@ type loadedDice struct{}
 
 func (loadedDice) Roll(_ context.Context, _ int) (int, error) { return 10, nil }
 
-// encOrderAsGiven is the same for the authored world this workbench builds
-// with the composition directly, before any session exists to own it.
-// encEveryoneStanding is the standing capability the authored world is BUILT
-// with: nobody is down when the scene is written.
-//
-// Construction only, like encOrderAsGiven beside it. Once the workbench hands
-// the blob to a session, the session supplies the real capability from the
-// sheets it holds (rpg-toolkit#1079) and this one is never consulted again.
-type encEveryoneStanding struct{}
-
-func (encEveryoneStanding) Standing(_ []encounter.MemberID) ([]encounter.MemberID, error) {
-	return nil, nil
-}
-
-// Assess mirrors Standing: nobody is ever down, so every asked member waits
-// in contact and conscious.
-func (encEveryoneStanding) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
-	assessment := &encounter.ParticipationAssessment{}
-	for _, id := range members {
-		assessment.Members = append(assessment.Members, encounter.MemberParticipation{
-			Member: id, Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait,
-		})
-	}
-	return assessment, nil
-}
-
-type encOrderAsGiven struct{}
-
-func (encOrderAsGiven) RollInitiative(m []encounter.MemberID) ([]encounter.MemberID, error) {
-	return m, nil
-}
-
-// encQuietAnnouncer is this construction's Announcer. It hears the boundaries
-// assembling the scene crosses and does nothing with them: there is no rulebook
-// attached to a world being built, so a turn boundary means nothing here yet.
-type encQuietAnnouncer struct{}
-
-func (encQuietAnnouncer) Announce(context.Context, *encounter.Encounter, []encounter.Boundary) error {
-	return nil
-}
-
-// encPassDriver is this construction's TurnDriver: every unplayed member
-// passes. Matched to session.Pass, the workbench's own answer, for the same
-// reason encEveryoneStanding is matched to session's — the scene reads the
-// same however it is entered.
-type encPassDriver struct{}
-
-func (encPassDriver) Act(encounter.MonsterView) (encounter.Decision, error) {
-	// A nil pick: this driver rolls no table, so the world writes no answer
-	// beat for the turns it takes.
-	return encounter.Decision{Intent: encounter.Pass{}}, nil
-}
-
 // memSessions is a SessionRepository over a map. Get-by-id and put-by-id is
 // the whole interface (S12), which is why this is six lines rather than a
 // schema.
@@ -203,6 +151,24 @@ func (m *memCharacters) GetCharacter(_ context.Context, id string) (*character.D
 
 func (m *memCharacters) SaveCharacter(_ context.Context, data *character.Data) error {
 	m.byID[data.ID] = data
+	return nil
+}
+
+// memSeats is a SeatRepository over a map: which run holds each character.
+type memSeats struct {
+	byID map[string]*session.SeatData
+}
+
+func (m *memSeats) GetSeat(_ context.Context, character string) (*session.SeatData, error) {
+	data, ok := m.byID[character]
+	if !ok {
+		return nil, session.ErrNotFound
+	}
+	return data, nil
+}
+
+func (m *memSeats) SaveSeat(_ context.Context, data *session.SeatData) error {
+	m.byID[data.Character] = data
 	return nil
 }
 
@@ -287,6 +253,7 @@ func drive(out *bytes.Buffer) error {
 		Characters: &memCharacters{
 			byID: map[string]*character.Data{"alice": aliceTheFighter(), "bob": bobTheDwarf()},
 		},
+		Seats:  &memSeats{byID: map[string]*session.SeatData{}},
 		Events: &printStream{out: out},
 		// The workbench demonstrates verbs a human drives; nothing in it
 		// gives a monster a real behavior yet, so an unplayed member simply
@@ -297,14 +264,16 @@ func drive(out *bytes.Buffer) error {
 		return err
 	}
 
-	world, err := authoredCrypt()
-	if err != nil {
-		return err
-	}
-
 	fmt.Fprintln(out, "== the party enters the crypt ==")
-	if _, err := mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "crypt-run", Encounter: "crypt", World: world,
+	// One launch: the floor, the party in seat order, and both monsters. The
+	// skeleton stands in the vault, behind the rubble, and that placement is
+	// load-bearing: placed in plain view of the party it would start a fight on
+	// the spot, before anybody had walked a step. The ghoul stands west of the
+	// rubble, three rows below the gate's lane, so the approach down row 1
+	// looks past it and the seam wall hides it until she is through.
+	dungeon := authoredCrypt()
+	if _, err := mgr.Launch(ctx, &session.LaunchInput{
+		Session: "crypt-run", DungeonKey: "crypt", Dungeon: dungeon, Party: []string{"alice"},
 	}); err != nil {
 		return err
 	}
@@ -325,47 +294,6 @@ func drive(out *bytes.Buffer) error {
 	if c := joined.Character; c != nil {
 		fmt.Fprintf(out, "   %s, level %d — %d/%d hp, ac %d, speed %d\n",
 			c.Name, c.Level, c.HitPoints, c.MaxHitPoints, c.ArmorClass, c.Speed)
-	}
-
-	// Bob was LOADED — the host owns his sheet and named him by ID. The
-	// skeleton is INSTANTIATED from a ref, because it exists in code and
-	// nobody stored it. Two verbs, because the two are genuinely different;
-	// the caller never has to say which kind of thing it is.
-	//
-	// It arrives in the vault, behind the rubble, and that placement is now
-	// load-bearing: spawning it into the antechamber in plain view of the party
-	// would start a fight on the spot, before anybody had walked a step. That
-	// is why SpawnOutput carries Formed at all.
-	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "crypt-run", ID: "skel-1",
-		Ref: refs.Monsters.Skeleton().String(),
-		// Authored [10,5], as the map speaks it. It stands OFF THE ARCH'S
-		// LANE: from the threshold the open gate is a corridor of sight
-		// down row 1 and this is four rows off it, so the approach sees
-		// nothing. Stepping through puts her in the room, where the lane
-		// becomes the whole chamber.
-		Position: cellAt(10, 5),
-	})
-	if err != nil {
-		return err
-	}
-	if n := spawned.NPC; n != nil {
-		fmt.Fprintf(out, "   %s spawns as %s — %d/%d hp, ac %d, speed %d\n",
-			n.Name, n.ID, n.HitPoints, n.MaxHitPoints, n.ArmorClass, n.Speed)
-	}
-
-	// The ghoul is spawned, not authored onto the map: every member the world
-	// paces, budgets or sights is asked of its sheet at that moment
-	// (rpg-project#538), and an authored member with no sheet behind it would
-	// be refused the first time anybody looked. West of the rubble, three rows
-	// below the gate's lane, so the approach down row 1 looks past it and the
-	// seam wall hides it until she is through.
-	if _, err := mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "crypt-run", ID: "ghoul",
-		Ref:      refs.Monsters.Ghoul().String(),
-		Position: spatial.Position{X: 7, Y: 4},
-	}); err != nil {
-		return err
 	}
 
 	atlas, err := mgr.Atlas(ctx, &session.AtlasInput{Session: "crypt-run", Member: "alice"})
@@ -479,7 +407,7 @@ func drive(out *bytes.Buffer) error {
 	}
 
 	fmt.Fprintln(out, "\n== the party leaves ==")
-	ended, err := mgr.End(ctx, &session.EndInput{Session: "crypt-run", Ending: "withdraw"})
+	ended, err := mgr.End(ctx, &session.EndInput{Session: "crypt-run", Ending: session.EndingWithdrawn})
 	if err != nil {
 		return err
 	}
@@ -496,31 +424,16 @@ func drive(out *bytes.Buffer) error {
 	return nil
 }
 
-// authoredCrypt is the content a pipeline would have produced: two chambers
-// and a gate between them, painted side by side so the gate's two cells are
-// adjacent on the map.
+// authoredCrypt is the content a pipeline would have produced, in the shape the
+// toolkit's compiler produces it: two chambers and a gate between them,
+// painted side by side so the gate's two cells are adjacent on the map, the
+// party's two seats, and the two monsters that wait in the vault.
 //
 // Every pair below is an AUTHORED offset [col,row] under pointy-top hexes,
-// converted once at construction; the verbs above speak the axial cells
+// converted once by the launch; the verbs further down speak the axial cells
 // cellAt makes of them.
-func authoredCrypt() (*encounter.EncounterData, error) {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{},
-		// Governs THIS construction only, exactly as the sight seam below
-		// does: session installs its own announcer the moment it loads this
-		// world, and the walk runs on that one. Quiet rather than refusing
-		// because a bubble can form while the scene is being assembled.
-		Announcer: encQuietAnnouncer{},
-		Standing:  encEveryoneStanding{},
-		// Governs THIS construction only: once session loads the world it
-		// supplies its own sight seam, so the walk below runs on session's
-		// answer rather than this one. Matched to it anyway, so the scene
-		// reads the same however it is entered.
-		Sight:     encEveryoneSees{},
-		Equipment: encNoHandsObserved{},
-		// Asked of nobody here: Setup paces no walk and drives no turn, and
-		// once session loads the world it answers from each member's sheet.
-		Sheets: encNoSheetsAsked{},
+func authoredCrypt() *dungeonspec.Compiled {
+	return &dungeonspec.Compiled{
 		Field: encounter.FieldInput{
 			// The space between the chambers is ROCK, which is the ordinary
 			// dungeon reading and the one that keeps this scene about the gate:
@@ -554,17 +467,17 @@ func authoredCrypt() (*encounter.EncounterData, error) {
 				State: encounter.DoorIsOpen(),
 			}},
 		},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+		PartyStart: []dungeonspec.Seat{{At: spatial.Position{X: 1, Y: 1}}},
+		Monsters: []dungeonspec.MonsterPlacement{
+			// Authored [10,5]. It stands OFF THE ARCH'S LANE: from the
+			// threshold the open gate is a corridor of sight down row 1 and
+			// this is four rows off it, so the approach sees nothing. Stepping
+			// through puts her in the room, where the lane becomes the whole
+			// chamber.
+			{Ref: refs.Monsters.Skeleton().String(), ID: "skel-1", MemberID: "skel-1", At: spatial.Position{X: 10, Y: 5}},
+			{Ref: refs.Monsters.Ghoul().String(), ID: "ghoul", MemberID: "ghoul", At: spatial.Position{X: 9, Y: 4}},
 		},
-		Endings:   []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-	})
-	if err != nil {
-		return nil, err
 	}
-	data := enc.ToData()
-	return &data, nil
 }
 
 // chamber paints a w x h rectangle of authored cells at [col,row] as one
@@ -609,30 +522,6 @@ func rubble(at ...spatial.Position) []encounter.PropInput {
 	return out
 }
 
-// encEveryoneSees gives every member the same sight radius.
-type encEveryoneSees struct{}
-
-func (encEveryoneSees) Sight(members []encounter.MemberID) (map[encounter.MemberID]int, error) {
-	out := make(map[encounter.MemberID]int, len(members))
-	for _, id := range members {
-		out[id] = sightRadius
-	}
-
-	return out, nil
-}
-
-// sightRadius is how far anybody in this crypt can see, in cells.
-//
-// Four, matching session's own answer (sightRangeCells) so this scene behaves
-// the same whether it is driven through session or built directly here. Twenty
-// feet at five feet to the cell: a torch's bright light.
-//
-// It is a NUMBER and not a shrug. Unbounded, the open arch on row 1 shows the
-// whole vault from halfway down the antechamber, the fight starts before
-// anybody reaches the gate, and bob — whose entire purpose in this scene is to
-// keep exploring while alice fights — is pulled into it from the far room.
-const sightRadius = 4
-
 // hexSeam is the wall between authored column east-1 and column east over
 // rows 0..rows-1, with the straight crossing on openRow left open for the
 // gate.
@@ -669,45 +558,3 @@ func hexSeam(east, rows, openRow int) []encounter.WallInput {
 
 	return out
 }
-
-// encNoHandsObserved answers the equipment question for fixtures that are not
-// about equipment: every member is answered for, every answer is "no hands to
-// observe" — deliberately NOT "everybody is empty-handed", which would be
-// testimony this fixture has no standing to give.
-// encNoSheetsAsked answers an empty ask and refuses any member: the crypt is
-// assembled here and played only after session loads it with its own sheet
-// seam, so a sheet asked during construction would be a bug in this scene.
-type encNoSheetsAsked struct{}
-
-func (encNoSheetsAsked) Sheets(members []encounter.MemberID) (map[encounter.MemberID]encounter.SheetFacts, error) {
-	if len(members) > 0 {
-		return nil, fmt.Errorf("workbench: construction asked for %d members' sheets", len(members))
-	}
-	return map[encounter.MemberID]encounter.SheetFacts{}, nil
-}
-
-type encNoHandsObserved struct{}
-
-func (encNoHandsObserved) Equipment(
-	members []encounter.MemberID,
-) (map[encounter.MemberID]*encounter.HeldEquipment, error) {
-	out := make(map[encounter.MemberID]*encounter.HeldEquipment, len(members))
-	for _, id := range members {
-		out[id] = nil
-	}
-	return out, nil
-}
-
-// Conditions answers "nothing to observe" for every member asked, for the same
-// reason Equipment does: this fixture has no sheets to report from.
-func (encNoHandsObserved) Conditions(
-	members []encounter.MemberID,
-) (map[encounter.MemberID]*encounter.ConditionSet, error) {
-	out := make(map[encounter.MemberID]*encounter.ConditionSet, len(members))
-	for _, id := range members {
-		out[id] = nil
-	}
-	return out, nil
-}
-
-var _ encounter.EquipmentWithConditions = encNoHandsObserved{}

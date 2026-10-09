@@ -73,4 +73,5 @@ Example: Taking the Attack ability (spends action) grants attacks (capacity). Ea
 
 Key fields in `ActionEconomy`:
 - Primary: `ActionsRemaining`, `BonusActionsRemaining`, `ReactionsRemaining`
-- Capacity: keyed `combat.CapacityType` values stored on characters in `ActionEconomyData.Granted`; the fielded combat ledger mirrors attacks, movement, off-hand attacks, Martial Arts bonus attacks, and flurry strikes
+- Capacity: keyed `combat.CapacityType` values stored on characters in `ActionEconomyData.Granted`; the fielded combat ledger mirrors attacks, movement, off-hand attacks, Martial Arts bonus attacks, flurry strikes, death saves and the object interaction
+- The object interaction is the one capacity a turn seeds rather than an action granting it; `Character.PriceEquipment` spends it on a draw (rpg-project#542 R1)

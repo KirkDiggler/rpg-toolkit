@@ -299,6 +299,12 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 	// piece of the regenerated offer are derived from this same snapshot; a
 	// repository cannot answer standing to one gate and downed to compilation.
 	actor := m.loadActorSheet(ctx, in.Attacker)
+	if errors.Is(actor.err, ErrNoCharacter) {
+		// THE STORE'S ONE ANSWER (rpg-project#542): an attacker the store does
+		// not hold is refused by name, not as a stale offer — re-reading
+		// Afford would answer the same empty sheet forever.
+		return nil, fmt.Errorf("attack: %w", actor.err)
+	}
 	if actor.downed {
 		return nil, fmt.Errorf("attack: attacker %q: %w", in.Attacker, ErrDowned)
 	}
@@ -357,35 +363,18 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 	}
 
 	// A pure view for resolution's Input.World — a mid-verb read, never the
-	// storage boundary (encounter v0.43.0, #1385).
+	// storage boundary (encounter v0.43.0, #1385). The machine rolls the attack
+	// and its damage; the input's Roller only reconstitutes effects that need
+	// one. Two rollers because they are two jobs — and BOTH are the host's
+	// (resolutionInput installs this session's dice), or the swing is resolved
+	// with randomness the host never supplied.
 	world := scope.enc.WorldView()
-	out, err := resolution.Resolve(ctx, &resolution.Input{
+	out, err := resolution.Resolve(ctx, m.resolutionInput(ctx, scope, resolutionAsk{
 		World:        world,
 		Participants: cast,
-		Initiative:   m.initiative,
-		Standing:     scope.standing,
-		Sight:        sheetsBeside(scope.standing),
-		Equipment:    equipmentBeside(scope.standing),
-		Sheets:       sheetsBeside(scope.standing),
-		TurnDriver:   scope.driver,
-		// The concealment pair (rpg-toolkit#1378), bound to the same live
-		// scope openForWrite and adopt bind — the one-seam consistency law:
-		// a concealed world refuses to reconstruct without them, and
-		// resolution carries them without consulting either, since no verb
-		// runs inside an interaction.
-		CheckResolver: checkSeam{m: m, scope: scope},
-		Witness:       witnessSeam{scope: scope},
-		Cost:          cost,
-		Machine:       machine,
-		// The machine rolls the attack and its damage; Input.Roller only
-		// reconstitutes effects that need one. Two rollers because they
-		// are two jobs — and BOTH must be the host's, or the swing is
-		// resolved with randomness the host never supplied. ActionInput's
-		// still defaults silently when nil, which is the class resolution
-		// just closed on its own Input (#1033); leaving it unset here is
-		// how this verb first resolved with unreproducible dice.
-		Roller: &diceSeam{roller: m.dice},
-	})
+		Machine:      machine,
+		Cost:         cost,
+	}))
 	if err != nil {
 		translated := translateAttack(err)
 		if errors.Is(translated, ErrOutOfReach) {
@@ -409,26 +398,17 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		return nil, fmt.Errorf("attack: %w: strike produced %T", ErrInvalidWorld, out.Outcome)
 	}
 
-	// The world that came back is the only true one now.
-	if err := m.adopt(ctx, scope, out.World); err != nil {
-		return nil, fmt.Errorf("attack: %w", err)
-	}
-
-	if err := m.saveDirty(ctx, scope, out); err != nil {
-		return nil, fmt.Errorf("attack: %w", err)
-	}
-
-	// And now the beat, on a world whose sheets say what the swing did — see the
-	// godoc for why this is not the other way round.
-	recorded, err := scope.enc.Record(recordFor(in, struck, definition, presentationID, out))
-	if err != nil {
-		return nil, fmt.Errorf("attack: %w", reportUnrecorded(scope, translate(err)))
-	}
-	if err := m.landAreas(scope.enc, scope, out); err != nil {
-		return nil, fmt.Errorf("attack: %w", reportUnrecorded(scope, err))
-	}
-
-	report, delivery, err := m.commit(ctx, scope)
+	// The world that came back is adopted, the sheets saved, and only then the
+	// beat, on a world whose sheets say what the swing did — see the godoc for
+	// why this is not the other way round.
+	var recorded *encounter.RecordOutput
+	result, err := m.land(ctx, scope, out, &landing{
+		Record: func(enc *encounter.Encounter, told concentration) error {
+			var err error
+			recorded, err = enc.Record(recordFor(in, struck, definition, presentationID, told))
+			return err
+		},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("attack: %w", err)
 	}
@@ -448,8 +428,8 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		WardedBy:     wardedBy,
 		Seq:          scope.deliveredSeq(in.Attacker, recorded.Seq),
 		FollowUpSeqs: deliveredSeqs(scope, in.Attacker, recorded.FollowUpSeqs),
-		Saved:        report,
-		Delivery:     delivery,
+		Saved:        result.Saved,
+		Delivery:     result.Delivery,
 		Attack:       attackRefFor(definition),
 		Calculation:  sessionRollCalculationFor(rollCalculationFor(struck.Calculation)),
 
@@ -480,51 +460,39 @@ func (m *Manager) poseAttackWindow(
 ) (*AttackOutput, error) {
 
 	if out.Posed.BeforeRoll {
-		if err := m.adopt(ctx, scope, out.World); err != nil {
-			return nil, err
-		}
-		if err := m.saveDirty(ctx, scope, out); err != nil {
-			return nil, err
-		}
-		// Called for uniformity; nothing can arrive here today. The swing stopped
-		// before any damage, an attack's price ends no concentration, and only a
-		// finished cast opens an area, so resolution reports no area change.
-		if err := m.landAreas(scope.enc, scope, out); err != nil {
-			return nil, err
-		}
+		// Areas land for uniformity; nothing can arrive here today. The swing
+		// stopped before any damage, an attack's price ends no concentration,
+		// and only a finished cast opens an area, so resolution reports no area
+		// change. Nothing is told before the roll (R9).
 		p := pendingAttackWindowPayload{Attacker: in.Attacker, Target: in.Target, Definition: definition, PresentationID: presentationID}
-		if err := posePendingAttackWindow(scope, out.Posed, p); err != nil {
-			return nil, err
-		}
-		report, delivery, err := m.commit(ctx, scope)
+		result, err := m.land(ctx, scope, out, &landing{
+			Untold: true,
+			Window: func(*encounter.Encounter) error {
+				return posePendingAttackWindow(scope, out.Posed, p)
+			},
+		})
 		if err != nil {
 			return nil, err
 		}
-		return &AttackOutput{Paused: true, Saved: report, Delivery: delivery, Attack: attackRefFor(definition), PresentationID: presentationID}, nil
+		return &AttackOutput{Paused: true, Saved: result.Saved, Delivery: result.Delivery, Attack: attackRefFor(definition), PresentationID: presentationID}, nil
 	}
 
 	if out.Posed.SettledStrike != nil {
-		if err := m.adopt(ctx, scope, out.World); err != nil {
-			return nil, err
-		}
-		if err := m.saveDirty(ctx, scope, out); err != nil {
-			return nil, err
-		}
-		recorded, err := scope.enc.Record(recordFor(in, *out.Posed.SettledStrike, definition, presentationID, out))
-		if err != nil {
-			return nil, reportUnrecorded(scope, translate(err))
-		}
-		if err = m.landAreas(scope.enc, scope, out); err != nil {
-			return nil, reportUnrecorded(scope, err)
-		}
-		if err = posePostHitWindow(scope, out.Posed); err != nil {
-			return nil, err
-		}
-		report, delivery, err := m.commit(ctx, scope)
+		var recorded *encounter.RecordOutput
+		result, err := m.land(ctx, scope, out, &landing{
+			Record: func(enc *encounter.Encounter, told concentration) error {
+				var err error
+				recorded, err = enc.Record(recordFor(in, *out.Posed.SettledStrike, definition, presentationID, told))
+				return err
+			},
+			Window: func(*encounter.Encounter) error {
+				return posePostHitWindow(scope, out.Posed)
+			},
+		})
 		if err != nil {
 			return nil, err
 		}
-		return &AttackOutput{Paused: true, Roll: out.Posed.SettledStrike.Roll, Total: out.Posed.SettledStrike.Total, Seq: scope.deliveredSeq(in.Attacker, recorded.Seq), Saved: report, Delivery: delivery, Attack: attackRefFor(definition), PresentationID: presentationID}, nil
+		return &AttackOutput{Paused: true, Roll: out.Posed.SettledStrike.Roll, Total: out.Posed.SettledStrike.Total, Seq: scope.deliveredSeq(in.Attacker, recorded.Seq), Saved: result.Saved, Delivery: result.Delivery, Attack: attackRefFor(definition), PresentationID: presentationID}, nil
 	}
 	ask := out.Posed.Ask
 	if ask.Audience != in.Attacker {
@@ -539,70 +507,63 @@ func (m *Manager) poseAttackWindow(
 		return nil, fmt.Errorf("attack: %w: the machine asked about an unnamed offer", ErrInvalidWorld)
 	}
 
-	if err := m.adopt(ctx, scope, out.World); err != nil {
-		return nil, fmt.Errorf("attack: %w", err)
-	}
-	if err := m.saveDirty(ctx, scope, out); err != nil {
-		return nil, fmt.Errorf("attack: %w", err)
-	}
-	// Called for uniformity; nothing can arrive here today. The swing stopped
-	// before any damage, an attack's price ends no concentration, and only a
-	// finished cast opens an area, so resolution reports no area change.
-	if err := m.landAreas(scope.enc, scope, out); err != nil {
-		return nil, fmt.Errorf("attack: %w", err)
-	}
+	// Areas land for uniformity; nothing can arrive here today. The swing
+	// stopped before any damage, an attack's price ends no concentration, and
+	// only a finished cast opens an area, so resolution reports no area change.
+	// No outcome is told before the answer (R9): the window's own beat is the
+	// roll-window beat, told with the window.
+	var recorded *encounter.RollWindowOutput
+	result, err := m.land(ctx, scope, out, &landing{
+		Untold: true,
+		Window: func(enc *encounter.Encounter) error {
+			offer := ReactionRef{Ref: ask.Offer.Ref.String(), Name: ask.Offer.Name}
+			payload, err := marshalPostRollPayload(postRollWindowPayload{
+				Audience:       ask.Audience,
+				Target:         in.Target,
+				Attack:         attackRefFor(definition),
+				PresentationID: presentationID,
+				Offer:          offer,
+				Roll:           ask.Roll,
+				Total:          ask.Total,
+				Frozen:         out.Posed.Frozen,
+			})
+			if err != nil {
+				return fmt.Errorf("%w: %v", ErrInvalidSession, err)
+			}
 
-	offer := ReactionRef{Ref: ask.Offer.Ref.String(), Name: ask.Offer.Name}
-	payload, err := marshalPostRollPayload(postRollWindowPayload{
-		Audience:       ask.Audience,
-		Target:         in.Target,
-		Attack:         attackRefFor(definition),
-		PresentationID: presentationID,
-		Offer:          offer,
-		Roll:           ask.Roll,
-		Total:          ask.Total,
-		Frozen:         out.Posed.Frozen,
+			// THE TWO ANSWERS ARE THIS SEAM'S, and the machine's own words are
+			// checked against them rather than copied. Resolution asks "spend
+			// or keep"; this seam has said "strike or hold" since the first
+			// reaction window shipped, and a client that learned two
+			// vocabularies for take and decline would be a client with two
+			// ways to say one thing. A machine that posed a different number
+			// of answers is refused here rather than having one of them
+			// quietly dropped — that is the third reaction's design arriving,
+			// and it lands with the window owning its own option strings on
+			// the wire.
+			if len(ask.Options) != 2 {
+				return fmt.Errorf("%w: the machine posed %d answers and this seam poses two",
+					ErrInvalidWorld, len(ask.Options))
+			}
+			if _, err := scope.ledger.Pose(&interrupt.PoseInput{
+				Audience: core.EntityID(ask.Audience),
+				Options:  []interrupt.Option{interrupt.Option(ReactStrike), interrupt.Option(ReactHold)},
+				Payload:  payload,
+				At:       scope.baseline,
+			}); err != nil {
+				return fmt.Errorf("%w: %v", ErrInvalidSession, err)
+			}
+
+			recorded, err = enc.RecordRollWindow(&encounter.RollWindowInput{
+				PresentationID: presentationID,
+				Audience:       encounter.MemberID(ask.Audience),
+				Offer:          encounter.ReactionIdentity{Ref: offer.Ref, Name: offer.Name},
+				Roll:           ask.Roll,
+				Total:          ask.Total,
+			})
+			return err
+		},
 	})
-	if err != nil {
-		return nil, fmt.Errorf("attack: %w: %v", ErrInvalidSession, err)
-	}
-
-	// THE TWO ANSWERS ARE THIS SEAM'S, and the machine's own words are
-	// checked against them rather than copied. Resolution asks "spend or
-	// keep"; this seam has said "strike or hold" since the first reaction
-	// window shipped, and a client that learned two vocabularies for take and
-	// decline would be a client with two ways to say one thing. A machine that
-	// posed a different number of answers is refused here rather than having
-	// one of them quietly dropped — that is the third reaction's design
-	// arriving, and it lands with the window owning its own option strings on
-	// the wire.
-	if len(ask.Options) != 2 {
-		return nil, fmt.Errorf("%w: the machine posed %d answers and this seam poses two",
-			ErrInvalidWorld, len(ask.Options))
-	}
-	if _, err := scope.ledger.Pose(&interrupt.PoseInput{
-		Audience: core.EntityID(ask.Audience),
-		Options:  []interrupt.Option{interrupt.Option(ReactStrike), interrupt.Option(ReactHold)},
-		Payload:  payload,
-		At:       scope.baseline,
-	}); err != nil {
-		return nil, fmt.Errorf("attack: %w: %v", ErrInvalidSession, err)
-	}
-	scope.data.Windows = scope.ledger.ToData()
-	scope.touched = true
-
-	recorded, err := scope.enc.RecordRollWindow(&encounter.RollWindowInput{
-		PresentationID: presentationID,
-		Audience:       encounter.MemberID(ask.Audience),
-		Offer:          encounter.ReactionIdentity{Ref: offer.Ref, Name: offer.Name},
-		Roll:           ask.Roll,
-		Total:          ask.Total,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("attack: %w", reportUnrecorded(scope, translate(err)))
-	}
-
-	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
 		return nil, fmt.Errorf("attack: %w", err)
 	}
@@ -615,8 +576,8 @@ func (m *Manager) poseAttackWindow(
 		Roll:           ask.Roll,
 		Total:          ask.Total,
 		Seq:            scope.deliveredSeq(in.Attacker, recorded.Seq),
-		Saved:          report,
-		Delivery:       delivery,
+		Saved:          result.Saved,
+		Delivery:       result.Delivery,
 		Attack:         attackRefFor(definition),
 		PresentationID: presentationID,
 	}, nil
@@ -721,6 +682,13 @@ func translateResolution(err error) error {
 		return fmt.Errorf("%w: %v", own, err)
 	}
 	switch {
+	case errors.Is(err, character.ErrArmorInFight):
+		// Before ErrBadEquip: the door wraps the armour refusal in its own
+		// account, and the host's answer is "not in a fight", not "a bad
+		// request".
+		return fmt.Errorf("%w: %v", ErrArmorInFight, err)
+	case errors.Is(err, resolution.ErrBadEquip):
+		return fmt.Errorf("%w: %v", ErrBadEquip, err)
 	case errors.Is(err, resolution.ErrCannotPay):
 		// The PLAYER-FACING one, and the reason it is not folded in with the two
 		// below. An actor who spent what they had is a fact about the game, and
@@ -773,7 +741,7 @@ func translateResolution(err error) error {
 		// being read as level one, and the remedy is the sheet's, so it is
 		// this package's word for a sheet it cannot use.
 		return fmt.Errorf("%w: %v", ErrBadCharacter, err)
-	case errors.Is(err, resolution.ErrNoSheets), errors.Is(err, encounter.ErrNoSheets):
+	case errors.Is(err, encounter.ErrNoSheets):
 		// The sheet capability was not supplied, or its answer skipped a
 		// member: either way some member's speed and reach would have to be
 		// invented, and the remedy is a sheet this seam failed to read.
@@ -821,10 +789,10 @@ func deliveredSeqs(scope *writeScope, member string, seqs []uint64) []uint64 {
 
 func recordFor(
 	in *AttackInput, struck resolution.StrikeOutcome, definition combatActions.Definition,
-	presentationID string, out *resolution.Output,
+	presentationID string, told concentration,
 ) *encounter.RecordInput {
 	return recordStrike(in.Attacker, in.Target, struck, attackRefFor(definition), presentationID,
-		out.ConcentrationChecks, out.ConcentrationBreaks)
+		told.Checks, told.Breaks)
 }
 
 // rollSourceFor projects the rulebook's sourced roll identity onto the
@@ -1074,7 +1042,7 @@ func recordDamageComponents(in []dnd5eEvents.DamageComponent) []encounter.Damage
 // Load errors keep their inner reason as text so the host sees only this seam's
 // sentinel vocabulary.
 func (m *Manager) loadAttackSheet(ctx context.Context, attacker string) (*character.Character, error) {
-	data, err := m.fetchCharacterData(ctx, "attacker", attacker)
+	data, err := m.sheetsFor(nil).load(ctx, "attacker", attacker)
 	if err != nil {
 		return nil, err
 	}
@@ -1130,7 +1098,7 @@ func (m *Manager) compileResolutionCast(
 			continue
 		}
 
-		sheet, err := m.fetchCharacterData(ctx, "participant", id)
+		sheet, err := m.sheetsFor(nil).load(ctx, "participant", id)
 		if err != nil {
 			failures = append(failures, resolutionDependencyFailure{member: id, err: err})
 			continue
@@ -1215,103 +1183,11 @@ func (m *Manager) castFor(
 			continue
 		}
 
-		data, err := m.fetchCharacterData(ctx, "participant", id)
+		data, err := m.sheetsFor(nil).load(ctx, "participant", id)
 		if err != nil {
 			return nil, err
 		}
 		cast = append(cast, resolution.Participant{Character: data})
 	}
 	return cast, nil
-}
-
-// landAreas applies the runtime areas an interaction closed and opened to the
-// live encounter, through the encounter's own verbs, and refreshes perception
-// over the area set they leave (rpg-project#539, "Who is in an area"). enc is
-// the encounter the outcome was recorded on: scope.enc for a verb, the calling
-// encounter for a seam the composition drives from inside its own verbs.
-//
-// IT RUNS AFTER THE OUTCOME IS RECORDED. The encounter tells every member
-// inside a changed area the moment the change is applied, so the call order is
-// the story order: the cast or the broken concentration first, then who
-// entered or who was in the area that ended. A path that records nothing of
-// its own calls it straight after [Manager.saveDirty].
-//
-// Closed before opened, as [resolution.Output.ClosedAreas] states: a recast
-// ends the old area under the id the new one takes. No area set is copied
-// back; the encounter holds the only one.
-//
-// IT CONSUMES WHAT IT LANDS: both lists are emptied on out once applied, so a
-// path that reaches it twice for one output (a resumed walk's movement arm
-// and its caller) lands each change once. A second AddSightArea of the same
-// area would be refused as already open.
-func (m *Manager) landAreas(enc *encounter.Encounter, scope *writeScope, out *resolution.Output) error {
-	if len(out.ClosedAreas) == 0 && len(out.OpenedAreas) == 0 {
-		return nil
-	}
-	for _, source := range out.ClosedAreas {
-		if _, err := enc.RemoveSightArea(source); err != nil {
-			return translate(err)
-		}
-	}
-	for i := range out.OpenedAreas {
-		if err := enc.AddSightArea(&out.OpenedAreas[i]); err != nil {
-			return translate(err)
-		}
-	}
-	out.ClosedAreas, out.OpenedAreas = nil, nil
-	if err := enc.RefreshPerception(); err != nil {
-		return translate(err)
-	}
-	scope.touched = true
-	return nil
-}
-
-// saveDirty writes back every sheet the interaction changed.
-//
-// Characters go to the host's repository; NPCs live in the session record, so
-// they are folded into it and the record is marked touched. This is the first
-// verb in the package that writes a character at all — damage has to persist —
-// and the no-clobber pin gained a row for it rather than losing its guard.
-//
-// IT RUNS BEFORE THE OUTCOME IS RECORDED, and that is a correctness ordering
-// rather than a convenience: the composition's Record consults who is standing,
-// [standingSeam] answers out of exactly these two stores, and a consult run
-// against sheets this verb has not written back yet is a consult about a world
-// that no longer exists. See [Manager.Attack].
-func (m *Manager) saveDirty(ctx context.Context, scope *writeScope, out *resolution.Output) error {
-	// The report names what LANDED as well as what did not (S6). A sheet
-	// written before the failure is durable, and a caller told only about the
-	// failure would retry a write that already succeeded — which is the
-	// difference between repair and retry that the report exists to carry.
-	//
-	// Every entry goes on the SCOPE rather than a local, so it outlives this
-	// call: the sheets are durable whether the next write succeeds or fails,
-	// and persist opens its report with them either way. Kept in a local, they
-	// were reported only when saveDirty itself failed — so a swing whose WORLD
-	// save failed named nothing at all, and the host retried a swing whose
-	// damage was already on disk (rpg-toolkit#1056).
-	for _, data := range out.DirtyCharacters {
-		if data == nil {
-			continue
-		}
-		if err := m.saveCharacterRecord(ctx, scope, data); err != nil {
-			return err
-		}
-		// The walker's own sheet follows what the interaction did to it, so
-		// the NEXT step of the same walk resolves over the damage this one
-		// dealt rather than over the sheet the walk started with. See
-		// [writeScope.walker].
-		if scope.walker != nil && scope.walker.ID == data.ID {
-			scope.walker = data
-			scope.walkerDirtied = true
-		}
-	}
-
-	for _, dirty := range out.DirtyMonsters {
-		if dirty == nil {
-			continue
-		}
-		scope.replaceMonsterSheet(dirty)
-	}
-	return nil
 }

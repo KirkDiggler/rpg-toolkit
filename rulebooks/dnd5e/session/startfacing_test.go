@@ -39,39 +39,26 @@ func TestStartFacingSuite(t *testing.T) { suite.Run(t, new(StartFacingSuite)) }
 // startWorld is the plain hall with a start declared however the caller says
 // — nil for a dungeon that declares none, which is every dungeon stored
 // before this field existed.
-func startWorld(t fataler, start *encounter.FieldStart) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing: encEveryoneStanding{},
+func startWorld(start *encounter.FieldStart) scene {
+	return scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 6, 6)},
 			Start:   start,
 		},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: cell(1, 1)},
-			{ID: "bob", Kind: encounter.KindPlayer, Position: cell(2, 1)},
-		},
+		Party:   []sceneSeat{{ID: "alice", At: cell(1, 1)}, {ID: "bob", At: cell(2, 1)}},
 		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
-	})
-	if err != nil {
-		t.Fatalf("building the start world: %v", err)
 	}
-	data := enc.ToData()
-	return &data
 }
 
-func (s *StartFacingSuite) start(world *encounter.EncounterData) {
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+func (s *StartFacingSuite) start(world scene) {
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: world})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, world)
 }
 
 func (s *StartFacingSuite) atlasOf(member string) *session.Atlas {
@@ -85,7 +72,7 @@ func (s *StartFacingSuite) atlasOf(member string) *session.Atlas {
 // TestAnAuthoredStartReachesEveryMembersMap is the mirror's whole claim: the
 // fact the composition carries arrives here, in the same frame, for everybody.
 func (s *StartFacingSuite) TestAnAuthoredStartReachesEveryMembersMap() {
-	s.start(startWorld(s.T(), &encounter.FieldStart{At: cell(1, 1), Facing: "e"}))
+	s.start(startWorld(&encounter.FieldStart{At: cell(1, 1), Facing: "e"}))
 
 	want := &session.AtlasStart{At: hexCell(1, 1), Facing: "e"}
 	for _, member := range []string{"alice", "bob"} {
@@ -97,7 +84,7 @@ func (s *StartFacingSuite) TestAnAuthoredStartReachesEveryMembersMap() {
 
 	s.Run("the unscoped read carries it too", func() {
 		authored, err := s.mgr.AtlasOf(context.Background(), &session.AtlasOfInput{
-			World: startWorld(s.T(), &encounter.FieldStart{At: cell(1, 1), Facing: "e"})})
+			Dungeon: sceneInput(startWorld(&encounter.FieldStart{At: cell(1, 1), Facing: "e"})).Dungeon})
 		s.Require().NoError(err)
 		s.Require().NotNil(authored.Start)
 		s.Equal(want, authored.Start)
@@ -110,7 +97,7 @@ func (s *StartFacingSuite) TestAnAuthoredStartReachesEveryMembersMap() {
 // received "n" for a dungeon whose author never chose one would open the
 // camera on a decision nobody made.
 func (s *StartFacingSuite) TestABareStartCarriesNoFacing() {
-	s.start(startWorld(s.T(), &encounter.FieldStart{At: cell(1, 1)}))
+	s.start(startWorld(&encounter.FieldStart{At: cell(1, 1)}))
 
 	atlas := s.atlasOf("alice")
 	s.Require().NotNil(atlas.Start, "the cell is authored — only the direction was not")
@@ -124,7 +111,7 @@ func (s *StartFacingSuite) TestABareStartCarriesNoFacing() {
 // party standing at the origin looking nowhere — which is a real dungeon
 // somebody could author.
 func (s *StartFacingSuite) TestAWorldFromBeforeStartsExistedProjectsNone() {
-	s.start(startWorld(s.T(), nil))
+	s.start(startWorld(nil))
 
 	s.Nil(s.atlasOf("alice").Start, "this world declares no way in, and says so by saying nothing")
 	s.Nil(s.atlasOf("bob").Start)
@@ -144,7 +131,7 @@ func (s *StartFacingSuite) TestAWorldFromBeforeStartsExistedProjectsNone() {
 // separate from the third.
 func (s *StartFacingSuite) TestTheThreeCasesAreDistinguishable() {
 	read := func(start *encounter.FieldStart) *session.AtlasStart {
-		s.start(startWorld(s.T(), start))
+		s.start(startWorld(start))
 		return s.atlasOf("alice").Start
 	}
 

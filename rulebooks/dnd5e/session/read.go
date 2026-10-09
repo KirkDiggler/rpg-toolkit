@@ -8,10 +8,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 )
 
 // AtlasInput asks for a session's static world map, as one member knows it.
@@ -31,16 +31,15 @@ type AtlasInput struct {
 	Member string
 }
 
-// AtlasOfInput asks for the static map of an authored world that no session
-// holds — the same shape [StartSessionInput.World] takes.
+// AtlasOfInput asks for the static map of a compiled dungeon that no session
+// holds.
 type AtlasOfInput struct {
-	// World is the authored content to describe. Required.
-	World *encounter.EncounterData
+	// Dungeon is the compiled authored dungeon to preview. Required.
+	Dungeon *dungeonspec.Compiled
 
-	// Dungeon is the content key [AtlasOfInput.World] was loaded under, and
-	// it reaches [Atlas.DungeonKey] unchanged — the same field
-	// [Manager.Atlas] fills from the session record, filled here from what
-	// the caller passed because there is no record to ask (rpg-project#479).
+	// DungeonKey is echoed onto [Atlas.DungeonKey], as [LaunchInput.DungeonKey]
+	// reaches the session record [Manager.Atlas] reads it from
+	// (rpg-project#479).
 	//
 	// THE ECHO IS THE POINT. An author previewing an entry it has just
 	// compiled gets back the same map a player will get, key included, so
@@ -50,7 +49,7 @@ type AtlasOfInput struct {
 	// has no way to know and no business guessing.
 	//
 	// Optional. Empty means no key was given and the atlas carries none.
-	Dungeon string
+	DungeonKey string
 }
 
 // StatusInput asks whether a session's encounter is still running.
@@ -155,7 +154,7 @@ func (m *Manager) rosterFrom(ctx context.Context, enc *encounter.Encounter, data
 			continue
 		}
 		id := string(member.ID)
-		stored, fetchErr := m.fetchCharacterData(ctx, "roster", id)
+		stored, fetchErr := m.sheetsFor(nil).load(ctx, "roster", id)
 		characters[id] = rosterCharacterRow{data: stored, err: fetchErr}
 		if fetchErr == nil && stored.PlayerID == in.Player {
 			seated = true
@@ -191,7 +190,7 @@ func (m *Manager) rosterFrom(ctx context.Context, enc *encounter.Encounter, data
 		case encounter.KindPlayer:
 			row, cached := characters[id]
 			if !cached {
-				row.data, row.err = m.fetchCharacterData(ctx, "roster", id)
+				row.data, row.err = m.sheetsFor(nil).load(ctx, "roster", id)
 			}
 			if row.err != nil {
 				return nil, fmt.Errorf("roster: %w", row.err)
@@ -277,51 +276,47 @@ func (m *Manager) Atlas(ctx context.Context, in *AtlasInput) (*Atlas, error) {
 	return &projected, nil
 }
 
-// AtlasOf projects the map of an authored world that no session holds.
+// AtlasOf projects the map of a compiled dungeon that no session holds.
 //
-// The same map [Manager.Atlas] answers for a started session — the same load
-// ([Manager.loadAuthored], shared with StartSession's own validation), the
-// same projection — for a world a host has only compiled. A dungeon registry
-// answers "what does this dungeon look like" with it (rpg-api's
-// PutDungeonResponse.atlas, rpg-project#256) without starting anything, and
-// because the producer is shared, what a builder previews is what the game
-// will play: one projection, one producer, no second geometry to keep in
-// step.
+// The same map [Manager.Atlas] answers for a launched session: the world is
+// built by the one builder [Manager.Launch] uses (the same field, the same
+// endings), loaded with refusing capabilities because nothing is driven, and
+// projected by the same projection. A dungeon registry answers "what does this
+// dungeon look like" with it (rpg-api's PutDungeonResponse.atlas,
+// rpg-project#256) without starting anything, and because the producer is
+// shared, what a builder previews is what the game will play: one world
+// builder, two readers, no second geometry to keep in step.
 //
-// A Manager method rather than a package function, deliberately. A load
-// needs the capabilities a Manager is built with — initiative, standing,
-// sight, a turn driver — and the only construction-only stand-in the
-// composition exports is its Striker. A free function would have to invent
-// the other four, which is exactly the defaulted capability this stack
-// forbids.
+// [AtlasOfInput.DungeonKey] is the one thing this read cannot derive: there is
+// no session record to ask which entry the dungeon came from, so the caller's
+// own key is echoed onto [Atlas.DungeonKey] (rpg-project#479).
 //
-// [AtlasOfInput.Dungeon] is the one thing this read cannot derive: there is no
-// session record to ask which entry the world came from, so the caller's own
-// key is echoed onto [Atlas.DungeonKey] — the same field [Manager.Atlas]
-// fills from the record, so a preview and a live map name their dungeon the
-// same way (rpg-project#479).
-//
-// Returns ErrNilInput for a nil input, ErrInvalidWorld for a nil world or one
-// that will not load.
-func (m *Manager) AtlasOf(ctx context.Context, in *AtlasOfInput) (*Atlas, error) {
+// Returns ErrNilInput for a nil input, ErrInvalidWorld for a nil dungeon or one
+// whose world will not build or load (two bosses, an unknown scenario).
+func (m *Manager) AtlasOf(_ context.Context, in *AtlasOfInput) (*Atlas, error) {
 	if in == nil {
 		return nil, fmt.Errorf("atlasof: %w", ErrNilInput)
 	}
-	enc, err := m.loadAuthored(ctx, in.World)
+	if in.Dungeon == nil {
+		return nil, fmt.Errorf("atlasof: no dungeon: %w", ErrInvalidWorld)
+	}
+	world, err := launchWorld(in.Dungeon)
 	if err != nil {
 		return nil, fmt.Errorf("atlasof: %w", err)
 	}
-
+	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data:         *world,
+		Capabilities: encounter.RefusingCapabilities(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("atlasof: %w: %v", ErrInvalidWorld, err)
+	}
 	atlas, err := enc.Atlas()
 	if err != nil {
 		return nil, fmt.Errorf("atlasof: %w", translate(err))
 	}
-
 	projected := projectAtlas(atlas)
-	// No record to ask, so the caller's own key is echoed back — the same
-	// field [Manager.Atlas] fills from the session record, so what a builder
-	// previews is what the game will play, key included.
-	projected.DungeonKey = in.Dungeon
+	projected.DungeonKey = in.DungeonKey
 	return &projected, nil
 }
 
@@ -638,8 +633,7 @@ func (m *Manager) loadSessionData(ctx context.Context, sessionID string) (*Sessi
 
 // loadWorld fetches and reconstitutes the encounter a session points at.
 //
-// A construction-only Striker (rpg-project#254), exactly as StartSession's
-// own validation load uses: every caller reaching here is a READ verb (open,
+// Every caller reaching here is a READ verb (open,
 // and View directly) that never drives a turn, so a driven turn landing here
 // at all would be this package's own bug rather than anything a caller did.
 func (m *Manager) loadWorld(ctx context.Context, data *SessionData) (*encounter.Encounter, error) {
@@ -654,21 +648,10 @@ func (m *Manager) loadWorld(ctx context.Context, data *SessionData) (*encounter.
 		return nil, err
 	}
 
-	enc, _, _, err := m.loadWorldWithBaseline(
-		ctx, data, encounter.RefusingStriker{}, encounter.RefusingMover{}, encounter.RefusingAnnouncer{},
-		encounter.RefusingCheckResolver{}, encounter.NobodyPerceives{},
-		// The plain seam, not a compelled driver. A read advances no clock —
-		// the three refusing capabilities above are what says so — and a
-		// compelled driver here would have no scope to save the condition an
-		// obeyed word can leave behind.
-		driver,
-		// AND NO DIE, in the same spirit as the three refusing capabilities
-		// above: a read advances no clock, so no creature is ever given time on
-		// this world and no table is ever rolled. The composition refuses a
-		// roll with no roller by name (encounter.ErrNoRoller), so a read that
-		// somehow reached one fails loudly rather than quietly throwing dice
-		// nobody meant to throw (rpg-project#465).
-		nil)
+	// The plain seam, not a compelled driver, and no scope: a read advances
+	// no clock, so the read capabilities refuse every actor, carry no die and
+	// stand in for the concealment pair ([Manager.readCapabilities]).
+	enc, _, _, err := m.loadWorldWithBaseline(ctx, data, nil, driver)
 	return enc, err
 }
 
@@ -691,73 +674,61 @@ func (m *Manager) loadWorld(ctx context.Context, data *SessionData) (*encounter.
 // same standing capability, so a member [place] classifies mid-verb is one
 // whose sheet both can find (sheets.go).
 func (m *Manager) loadWorldWithBaseline(
-	ctx context.Context, data *SessionData,
-	striker encounter.Striker, mover encounter.Mover, announcer encounter.Announcer,
-	resolver encounter.CheckResolver, witness encounter.Witness, driver encounter.Driver,
-	roller dice.Roller,
+	ctx context.Context, data *SessionData, scope *writeScope, driver encounter.Driver,
 ) (*encounter.Encounter, uint64, standingSeam, error) {
-	encID := data.Encounter
+	world, err := m.fetchWorld(ctx, data.Encounter)
+	if err != nil {
+		return nil, 0, standingSeam{}, err
+	}
+	return m.loadGivenWorld(ctx, data, world, scope, driver)
+}
 
+// fetchWorld reads one stored world and checks the repository kept its side
+// of the contract: ErrNoEncounter when it is absent, ErrBadRepository for a
+// success with no data.
+func (m *Manager) fetchWorld(ctx context.Context, encID string) (*encounter.EncounterData, error) {
 	world, err := m.encounters.GetEncounter(ctx, encID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			return nil, 0, standingSeam{}, fmt.Errorf("%q: %w", encID, ErrNoEncounter)
+			return nil, fmt.Errorf("%q: %w", encID, ErrNoEncounter)
 		}
-		return nil, 0, standingSeam{}, err
+		return nil, err
 	}
 	if world == nil {
-		return nil, 0, standingSeam{}, fmt.Errorf(
-			"%q: GetEncounter reported success with no data: %w", encID, ErrBadRepository)
+		return nil, fmt.Errorf("%q: GetEncounter reported success with no data: %w", encID, ErrBadRepository)
 	}
+	return world, nil
+}
+
+// loadGivenWorld is [Manager.loadWorldWithBaseline] over a world the caller
+// already holds rather than one fetched from the repository: Launch builds
+// its world in memory and loads it through exactly the seams every write
+// verb's world is loaded through.
+//
+// scope says which capabilities the world carries. A write verb passes its
+// scope: the standing is set on it first, then [Manager.writeCapabilities]
+// binds every capability to it. A read passes nil and its own driver, and
+// gets [Manager.readCapabilities]. driver is read only for a read; a write
+// verb's driver is already on its scope.
+func (m *Manager) loadGivenWorld(
+	ctx context.Context, data *SessionData, world *encounter.EncounterData,
+	scope *writeScope, driver encounter.Driver,
+) (*encounter.Encounter, uint64, standingSeam, error) {
+	encID := data.Encounter
 
 	// Placed AND waiting (reserve.go): an arrival happens mid-verb, and its
 	// own sight refresh asks the seams about the newcomer at once.
 	standing := m.standingFor(ctx, data, encounterDataKinds(worldMembers(*world)))
+	var capabilities encounter.Capabilities
+	if scope != nil {
+		scope.standing = standing
+		capabilities = m.writeCapabilities(ctx, scope)
+	} else {
+		capabilities = m.readCapabilities(standing, driver)
+	}
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:       *world,
-		Initiative: m.initiative,
-		Standing:   standing,
-		Sight:      sheetsBeside(standing),
-		Equipment:  equipmentBeside(standing),
-		Sheets:     sheetsBeside(standing),
-		// And the same, one capability over: a compelledDriver bound to a
-		// write verb's scope, or the plain seam for a read that advances no
-		// clock. A compulsion is read off a SHEET, so the thing that takes a
-		// commanded member's turn has to be built where the sheets are — and
-		// it has to be able to save what the word left behind, which is the
-		// scope this function has not got. See [compelledDriver].
-		TurnDriver: driver,
-		// THE WORLD'S DIE, and the caller says whether there is one: this
-		// session's shared dice for a write verb, absent for a read that can
-		// never give a creature time (rpg-project#465, design §6). Every pick
-		// a creature makes is rolled through it with the creature as the die's
-		// entity, and a faction's temperament mix is dealt through it at the
-		// door with the faction as the entity.
-		Roller: roller,
-		// The caller says which: a real one bound to a write verb's own
-		// scope, or RefusingStriker{} for a read that must never drive a
-		// turn. See [Manager.loadWorld] and [Manager.openForWrite].
-		Striker: striker,
-		// And the same, one capability over again: a real moverSeam bound to
-		// a write verb's scope, or RefusingMover{} for a read that can never
-		// walk anybody. A step is not inert — something may be waiting to
-		// react to it — so this is supplied, never defaulted (encounter.Mover).
-		Mover: mover,
-		// And the same, one capability over. A read verb cannot advance a
-		// clock, so a boundary announced on a read path is a bug rather
-		// than an event — RefusingAnnouncer says so at the point of
-		// failure, where a silently-succeeding no-op would be
-		// indistinguishable from the boundary that never got published.
-		Announcer: announcer,
-		// The concealment pair, caller-chosen the same way: real seams
-		// bound to a write verb's scope, or the composition's own
-		// stand-ins for a read that never rolls a check or refreshes sight
-		// (encounter.RefusingCheckResolver, encounter.NobodyPerceives).
-		// Supplied non-nil either way — the composition requires them
-		// exactly when the field carries concealed structure. The witness
-		// is asked only inside a sight refresh, which no read runs.
-		CheckResolver: resolver,
-		Witness:       witness,
+		Data:         *world,
+		Capabilities: capabilities,
 	})
 	if err != nil {
 		// The reason is kept as TEXT, not as a chain. A blob this seam cannot

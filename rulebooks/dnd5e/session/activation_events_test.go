@@ -13,6 +13,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
@@ -37,22 +38,19 @@ func newActivationEventScene(
 ) *activationEventScene {
 	t.Helper()
 
-	scene := &activationEventScene{
+	es := &activationEventScene{
 		sessions: newFakeSessions(), encounters: newFakeEncounters(),
 		characters: newFakeCharacters(alice, bob), stream: &fakeStream{},
 	}
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
-		Sessions: scene.sessions, Encounters: scene.encounters,
-		Characters: scene.characters, Events: scene.stream,
+		Sessions: es.sessions, Encounters: es.encounters,
+		Characters: es.characters, Events: es.stream,
 	})
 	require.NoError(t, err)
-	scene.mgr = mgr
+	es.mgr = mgr
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
-		Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Initiative: encOrderAsGiven{},
-		TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
+	sc := scene{
 		Field: encounter.FieldInput{
 			Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{
@@ -60,32 +58,20 @@ func newActivationEventScene(
 				rectRegion("vault", 20, 0, 8, 8),
 			},
 		},
-		Members: []encounter.MemberInput{
-			{ID: encounter.MemberID(alice.ID), Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: encounter.MemberID(bob.ID), Kind: encounter.KindPlayer, Position: spatial.Position{X: 21, Y: 1}},
+		Party: []sceneSeat{seatAt(alice.ID, 1, 1), seatAt(bob.ID, 21, 1)},
+		Monsters: []dungeonspec.MonsterPlacement{
+			monsterAt("skeleton", refs.Monsters.Skeleton().String(), 2, 1),
 		},
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-	})
-	require.NoError(t, err)
-	data := enc.ToData()
+	}
 
 	ctx := context.Background()
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: &data,
-	})
-	require.NoError(t, err)
-	_, err = mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skeleton", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 2, Y: 1},
-	})
-	require.NoError(t, err)
+	launchScene(t, mgr, sc)
 
 	turn, err := mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
 	require.NoError(t, err)
 	require.Equal(t, "alice", turn.Active, "the deterministic initiative fixture must leave alice active")
-	scene.stream.published = nil
-	return scene
+	es.stream.published = nil
+	return es
 }
 
 func secondWindFighter(t *testing.T, id string, hp, maxHP int) *character.Data {
@@ -327,39 +313,27 @@ func TestActivationRecordFailureReportsTheDurableSheetAndDropsTheEncounterScope(
 	innerCharacters := newFakeCharacters(alice)
 	standingErr := errors.New("standing unavailable after character save")
 	characters := &failAfterCharacterSave{inner: innerCharacters, err: standingErr}
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions,
 		Encounters: encounters, Characters: characters, Events: session.DiscardEvents{},
 	})
 	require.NoError(t, err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
-		Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Initiative: encOrderAsGiven{},
-		TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
+	sc := scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{
 			rectRegion("hall", 0, 0, 8, 8),
 		}},
-		Members: []encounter.MemberInput{{
-			ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1},
-		}},
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-	})
-	require.NoError(t, err)
-	world := enc.ToData()
+		Party: []sceneSeat{seatAt("alice", 1, 1)},
+		Monsters: []dungeonspec.MonsterPlacement{
+			monsterAt("skeleton", refs.Monsters.Skeleton().String(), 2, 1),
+		},
+	}
 	ctx := context.Background()
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: &world})
-	require.NoError(t, err)
-	_, err = mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skeleton", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 2, Y: 1},
-	})
-	require.NoError(t, err)
+	launchScene(t, mgr, sc)
 
 	id := activationSelector(t, mgr, "alice", refs.Features.Rage().String())
 	characters.armed = true
-	persistedBefore, err := copyOf(encounters.byID["world"])
+	persistedBefore, err := copyOf(encounters.byID[testSession])
 	require.NoError(t, err)
 	encounterSavesBefore := encounters.saves
 
@@ -372,7 +346,7 @@ func TestActivationRecordFailureReportsTheDurableSheetAndDropsTheEncounterScope(
 	var saveErr *session.SaveError
 	require.ErrorAs(t, err, &saveErr)
 	require.Equal(t, session.SaveReport{
-		Written: []string{"character:alice"}, Failed: []string{"encounter:world"},
+		Written: []string{"character:alice"}, Failed: []string{"encounter:sess"},
 	}, saveErr.Report)
 	require.True(t, saveErr.Report.Partial())
 	require.Positive(t, characters.failedReads,
@@ -380,7 +354,7 @@ func TestActivationRecordFailureReportsTheDurableSheetAndDropsTheEncounterScope(
 
 	require.Equal(t, encounterSavesBefore, encounters.saves,
 		"the encounter scope whose post-append notice failed must never be committed")
-	require.Equal(t, persistedBefore, encounters.byID["world"],
+	require.Equal(t, persistedBefore, encounters.byID[testSession],
 		"the activated/result beats existed only in the discarded write scope")
 	require.Contains(t, storedConditionRefs(t, innerCharacters, "alice"), refs.Conditions.Raging().String(),
 		"the mechanical condition write remains durable and must be reported")
@@ -409,21 +383,15 @@ func TestActivationDissolveReportsNestedBoundarySaveFailure(t *testing.T) {
 		err:            errors.Join(boundaryStoreUnavailable, boundaryWriteRefused),
 	}
 	stream := &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions,
 		Encounters: encounters, Characters: characters, Events: stream,
 	})
 	require.NoError(t, err)
 
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: cryptWorld(t),
-	})
-	require.NoError(t, err)
-	_, err = mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skeleton", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 2, Y: 1},
-	})
-	require.NoError(t, err)
+	sc := cryptWorld()
+	sc.Monsters = append(sc.Monsters, monsterAt("skeleton", refs.Monsters.Skeleton().String(), 2, 1))
+	launchScene(t, mgr, sc)
 	for i := range sessions.byID["sess"].NPCs {
 		if sessions.byID["sess"].NPCs[i].ID == "skeleton" {
 			sessions.byID["sess"].NPCs[i].HitPoints = 0
@@ -431,7 +399,7 @@ func TestActivationDissolveReportsNestedBoundarySaveFailure(t *testing.T) {
 	}
 
 	declaration := activationSelector(t, mgr, "alice", refs.Features.Rage().String())
-	persistedWorldBefore, err := encounters.GetEncounter(ctx, "world")
+	persistedWorldBefore, err := encounters.GetEncounter(ctx, testSession)
 	require.NoError(t, err)
 	persistedSessionBefore, err := sessions.GetSession(ctx, "sess")
 	require.NoError(t, err)
@@ -453,7 +421,7 @@ func TestActivationDissolveReportsNestedBoundarySaveFailure(t *testing.T) {
 	require.ErrorAs(t, err, &reported, "ordinary errors.As must reach the complete outer report")
 	require.Equal(t, session.SaveReport{
 		Written: []string{"character:alice"},
-		Failed:  []string{"character:alice", "encounter:world"},
+		Failed:  []string{"character:alice", "encounter:sess"},
 	}, reported.Report)
 	require.Contains(t, reported.Report.Written, "character:alice")
 	require.Contains(t, reported.Report.Failed, "character:alice",
@@ -468,7 +436,7 @@ func TestActivationDissolveReportsNestedBoundarySaveFailure(t *testing.T) {
 	require.Zero(t, storedAlice.ActionEconomy.BonusActionsRemaining,
 		"the initial activation economy spend is durable")
 
-	persistedWorldAfter, getErr := encounters.GetEncounter(ctx, "world")
+	persistedWorldAfter, getErr := encounters.GetEncounter(ctx, testSession)
 	require.NoError(t, getErr)
 	require.Equal(t, persistedWorldBefore, persistedWorldAfter,
 		"activation, result, down, and dissolve beats remain only on the discarded scope")

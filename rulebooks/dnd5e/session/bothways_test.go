@@ -38,6 +38,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -45,7 +46,6 @@ import (
 
 const (
 	bwSession  = "sess"
-	bwWorld    = "world"
 	bwGoblins  = "goblins"
 	bwUndead   = "undead"
 	bwChief    = "chief"
@@ -66,9 +66,9 @@ func TestBothWaysSuite(t *testing.T) { suite.Run(t, new(BothWaysSuite)) }
 // yard opens a hall with two players, a neutral goblin camp beside them and a
 // skeleton across the room, and returns with the skeleton's fight already on.
 //
-// THE CAMP IS SPAWNED, not placed at construction, because Spawn is the verb
-// every monster really enters a run by and the only one that records a sheet
-// — and a camp with no sheet cannot be swung at. The undead are declared and
+// THE CAMP IS A PLACEMENT ON THE LAUNCHED BOARD, because Launch is the verb
+// every monster really enters a run by and it records each one's sheet — and
+// a camp with no sheet cannot be swung at. The undead are declared and
 // say nothing about the party, which by the composition's own default makes
 // them hostile; that is the whole of their job.
 func (s *BothWaysSuite) yard(until encounter.Trigger) {
@@ -88,7 +88,7 @@ func (s *BothWaysSuite) yard(until encounter.Trigger) {
 	// acts first), then the 1 is alice's d20.
 	rolls := append([]int{10, 10, 10, 1}, ordinaryRolls(40)...)
 
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: &sequenceDice{rolls: rolls}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters,
 		Characters: characters, Events: s.stream,
@@ -96,10 +96,7 @@ func (s *BothWaysSuite) yard(until encounter.Trigger) {
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{},
-		Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
+	sc := scene{
 		Field: encounter.FieldInput{
 			Canvas:   pointyCanvas(),
 			Regions:  []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)},
@@ -110,51 +107,51 @@ func (s *BothWaysSuite) yard(until encounter.Trigger) {
 				Until:   until,
 			}},
 		},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 3}},
+		Party: []sceneSeat{
+			{ID: "alice", At: spatial.Position{X: 1, Y: 1}},
+			{ID: "bob", At: spatial.Position{X: 1, Y: 3}},
 		},
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-	})
-	s.Require().NoError(err)
-	data := enc.ToData()
-
-	ctx := context.Background()
-	_, err = s.mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: bwSession, Encounter: bwWorld, World: &data,
-	})
-	s.Require().NoError(err)
-
-	// The camp first, civil, in plain sight of both players: no fight forms,
-	// which is the precondition the whole file is about.
-	for _, spawn := range []struct {
-		id string
-		at spatial.Position
-	}{
-		{bwChief, spatial.Position{X: 2, Y: 1}},
-		{bwWarrior, spatial.Position{X: 2, Y: 2}},
-	} {
-		out, err := s.mgr.Spawn(ctx, &session.SpawnInput{
-			Session: bwSession, ID: spawn.id, Ref: refs.Monsters.Goblin().String(),
-			Position: spawn.at, Faction: bwGoblins,
-		})
-		s.Require().NoError(err)
-		s.Require().Nil(out.Formed, "a neutral camp in plain sight starts no fight — that is the gap #493 closes")
+		Monsters: []dungeonspec.MonsterPlacement{
+			// The camp, civil, in plain sight of both players: it starts no
+			// fight, which is the precondition the whole file is about.
+			bwPlacement(bwChief, refs.Monsters.Goblin().String(), spatial.Position{X: 2, Y: 1}, bwGoblins),
+			bwPlacement(bwWarrior, refs.Monsters.Goblin().String(), spatial.Position{X: 2, Y: 2}, bwGoblins),
+			// And the thing that is actually hostile, which is what gives the
+			// party a turn to act on at all.
+			bwPlacement(bwSkeleton, refs.Monsters.Skeleton().String(), spatial.Position{X: 5, Y: 5}, bwUndead),
+		},
 	}
 
-	// And then the thing that is actually hostile, which is what gives the
-	// party a turn to act on at all.
-	formed, err := s.mgr.Spawn(ctx, &session.SpawnInput{
-		Session: bwSession, ID: bwSkeleton, Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 5, Y: 5}, Faction: bwUndead,
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(formed.Formed, "precondition: the skeleton's fight is on")
+	formed := launchScene(s.T(), s.mgr, sc)
+	s.Require().Len(formed.Formed, 1, "precondition: the skeleton's fight is on, and it is the only one")
+	s.Require().NotContains(formed.Formed[0].Order, bwChief,
+		"a neutral camp in plain sight starts no fight — that is the gap #493 closes")
+	s.Require().NotContains(formed.Formed[0].Order, bwWarrior,
+		"a neutral camp in plain sight starts no fight — that is the gap #493 closes")
 	s.Require().Equal(session.ClockTurn, s.clockOf("alice"), "precondition: alice has a turn to swing on")
 	s.Require().Equal(session.ClockWorld, s.clockOf(bwChief), "precondition: the camp is not in it")
 
+	// Where each member stands, in the cells the verbs speak: the party seats
+	// were authored offsets, the monsters were placed at these absolute cells.
+	for id, want := range map[string]spatial.Position{
+		"alice": hexCell(1, 1), "bob": hexCell(1, 3),
+		bwChief: {X: 2, Y: 1}, bwWarrior: {X: 2, Y: 2}, bwSkeleton: {X: 5, Y: 5},
+	} {
+		where, err := s.mgr.Where(context.Background(), &session.WhereInput{Session: testSession, Member: id})
+		s.Require().NoError(err)
+		s.Equal(want, where.Position, "%s stands where the scene put them", id)
+	}
+
 	s.stream.published = nil
+}
+
+// bwPlacement is a monster of a faction on the dungeon-absolute axial cell it
+// was first placed at; the party seats above were already authored offsets.
+func bwPlacement(id, ref string, axial spatial.Position, faction string) dungeonspec.MonsterPlacement {
+	placement := monsterAt(id, ref, 0, 0)
+	placement.At = authoredOf(axial)
+	placement.Faction = faction
+	return placement
 }
 
 // ordinaryRolls is a tail of unremarkable faces for the dice a scene does not

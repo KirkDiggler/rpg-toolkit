@@ -19,6 +19,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -136,16 +137,17 @@ func (s *JoinLongRestTestSuite) SetupTest() {
 		dwarfCharacter("alice"), spentJoinFighter(s.T(), "bob"), spentJoinFighter(s.T(), "carol"))
 	s.mgr = s.manager(s.encounters, s.characters)
 
-	_, err := s.mgr.StartSession(s.ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: hexWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	// The run starts with alice seated; bob and carol are this suite's late
+	// arrivals. Every save count below is of what a Join writes, so the
+	// launch's own writes are not counted.
+	launchScene(s.T(), s.mgr, hexWorld())
+	s.characters.saves, s.characters.saveAttempts = 0, 0
 }
 
 func (s *JoinLongRestTestSuite) manager(
 	encounters session.EncounterRepository, characters session.CharacterRepository,
 ) *session.Manager {
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Events: session.DiscardEvents{},
 		Sessions: s.sessions, Encounters: encounters, Characters: characters,
 	})
@@ -162,7 +164,7 @@ func (s *JoinLongRestTestSuite) TestFirstAdmissionRestsPersistsAndProjectsTheCom
 	s.Require().NotNil(out.Character)
 	s.Equal(36, out.Character.HitPoints, "JoinOutput is projected from the rested record")
 	s.Equal(36, out.Character.MaxHitPoints)
-	s.Equal([]string{"character:bob", "encounter:world", "session:sess"}, out.Saved.Written)
+	s.Equal([]string{"character:bob", "seat:bob", "encounter:sess", "session:sess"}, out.Saved.Written)
 	s.Empty(out.Saved.Failed)
 	s.Equal(1, s.characters.saves, "first admission performs one durable character save")
 
@@ -376,8 +378,10 @@ func (s *JoinLongRestTestSuite) TestDiscoveryFailureLeavesEarlyRestDurableAndRep
 func (s *JoinLongRestTestSuite) TestCorruptStreamAfterEarlyRestReportsWriteAndSavesNoEncounter() {
 	data, err := s.sessions.GetSession(s.ctx, "sess")
 	s.Require().NoError(err)
+	// alice's cursor claims nothing delivered through a seq her launch-time
+	// beats already sit below: a count the surviving log contradicts.
 	data.Streams = map[string]session.StreamCursor{
-		"alice": {UpTo: 1, Count: 0},
+		"alice": {UpTo: 1 << 32, Count: 0},
 	}
 	s.Require().NoError(s.sessions.SaveSession(s.ctx, data))
 	beforeWorld := s.storedWorldJSON()
@@ -388,7 +392,7 @@ func (s *JoinLongRestTestSuite) TestCorruptStreamAfterEarlyRestReportsWriteAndSa
 	})
 	s.Require().Error(err)
 	s.ErrorIs(err, session.ErrInvalidWorld)
-	s.assertWrittenOnly(err, "character:bob")
+	s.assertWrittenOnly(err, "character:bob", "seat:bob")
 	s.Nil(out)
 	s.Equal(1, s.characters.saves)
 	s.Equal(beforeEncounterSaves, s.encounters.saves)
@@ -458,8 +462,8 @@ func (s *JoinLongRestTestSuite) TestEncounterSaveFailureLeavesRestedCharacterDur
 	var saveErr *session.SaveError
 	s.Require().True(errors.As(err, &saveErr))
 	s.Equal(session.SaveReport{
-		Written: []string{"character:bob"},
-		Failed:  []string{"encounter:world"},
+		Written: []string{"character:bob", "seat:bob"},
+		Failed:  []string{"encounter:sess"},
 	}, saveErr.Report)
 	s.True(saveErr.Report.Partial())
 	s.Equal(1, s.characters.saves)
@@ -470,7 +474,7 @@ func (s *JoinLongRestTestSuite) TestEncounterSaveFailureLeavesRestedCharacterDur
 
 func (s *JoinLongRestTestSuite) TestSessionSaveFailureReportsEarlyRestAndPersistedEncounter() {
 	failing := &failingSessions{fakeSessions: s.sessions, saveErr: errBroken}
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Events: session.DiscardEvents{},
 		Sessions: failing, Encounters: s.encounters, Characters: s.characters,
 	})
@@ -487,7 +491,7 @@ func (s *JoinLongRestTestSuite) TestSessionSaveFailureReportsEarlyRestAndPersist
 	var saveErr *session.SaveError
 	s.Require().True(errors.As(err, &saveErr))
 	s.Equal(session.SaveReport{
-		Written: []string{"character:bob", "encounter:world"},
+		Written: []string{"character:bob", "seat:bob", "encounter:sess"},
 		Failed:  []string{"session:sess"},
 	}, saveErr.Report)
 	s.Equal(beforeEncounterSaves+1, s.encounters.saves)
@@ -503,16 +507,16 @@ func (s *JoinLongRestTestSuite) TestZeroHPFirstAdmissionIsStandingAndCannotFireM
 	encounters := newFakeEncounters()
 	zero := spentJoinFighter(s.T(), "bob")
 	zero.HitPoints = 0
-	characters := newCopyingCharacters(s.T(), zero)
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	characters := newCopyingCharacters(s.T(), zero, armedFighter("alice"))
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Events: session.DiscardEvents{},
 		Sessions: sessions, Encounters: encounters, Characters: characters,
 	})
 	s.Require().NoError(err)
-	_, err = mgr.StartSession(s.ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: memberDownJoinWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	// alice starts the run; bob is the first admission under test.
+	sc := memberDownJoinWorld()
+	sc.Party = []sceneSeat{seatAt("alice", 3, 3)}
+	launchScene(s.T(), mgr, sc)
 
 	out, err := mgr.Join(s.ctx, &session.JoinInput{
 		Session: "sess", Member: "bob", Position: hexCell(1, 1),
@@ -537,29 +541,23 @@ func (s *JoinLongRestTestSuite) TestPlacementDrivenStrikeReadsRestedTruthAndIsNo
 	// creature with an enemy in sight (rpg-project#465) — hits on 15, and the
 	// remaining fixed rolls drive its damage and its later picks.
 	dice := &sequenceDice{rolls: []int{1, 20, 15, 15, 4, 4, 4, 4, 4, 4}}
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: dice, TurnDriver: session.Driver(), Events: session.DiscardEvents{},
 		Sessions: sessions, Encounters: encounters, Characters: characters,
 	})
 	s.Require().NoError(err)
-	_, err = mgr.StartSession(s.ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: tombRoom(6, 6),
-	})
+	// bob's seat at launch puts him beside the skeleton: the board's one
+	// look forms the fight and drives the skeleton's turn, after bob's
+	// first-admission rest landed.
+	sc := tombRoom(6, 6)
+	sc.Party = []sceneSeat{seatAt("bob", 0, 0)}
+	sc.Monsters = []dungeonspec.MonsterPlacement{monsterAt("skel-1", refs.Monsters.Skeleton().String(), 1, 0)}
+	launched, err := mgr.Launch(s.ctx, sceneInput(sc))
 	s.Require().NoError(err)
-	spawned, err := mgr.Spawn(s.ctx, &session.SpawnInput{
-		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(), Position: hexCell(1, 0),
-	})
-	s.Require().NoError(err)
-	s.Nil(spawned.Formed, "the skeleton alone cannot form a fight")
-
-	joined, err := mgr.Join(s.ctx, &session.JoinInput{
-		Session: "sess", Member: "bob", Position: hexCell(0, 0),
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(joined.Formed, "the arrival must trigger the driven monster turn")
-	s.Equal([]string{"skel-1", "bob"}, joined.Formed.Order)
+	s.Require().Len(launched.Formed, 1, "the placement must trigger the driven monster turn")
+	s.Equal([]string{"skel-1", "bob"}, launched.Formed[0].Order)
 	writtenBob := 0
-	for _, aggregate := range joined.Saved.Written {
+	for _, aggregate := range launched.Saved.Written {
 		if aggregate == "character:bob" {
 			writtenBob++
 		}
@@ -583,7 +581,7 @@ func (s *JoinLongRestTestSuite) assertWrittenOnly(err error, identities ...strin
 
 func (s *JoinLongRestTestSuite) storedWorldJSON() string {
 	s.T().Helper()
-	raw, err := json.Marshal(s.encounters.byID["world"])
+	raw, err := json.Marshal(s.encounters.byID[testSession])
 	s.Require().NoError(err)
 	return string(raw)
 }
@@ -658,27 +656,14 @@ func spentJoinFighter(t *testing.T, id string) *character.Data {
 	}
 }
 
-func memberDownJoinWorld(t *testing.T) *encounter.EncounterData {
-	t.Helper()
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
-		Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing: encEveryoneStanding{},
+func memberDownJoinWorld() scene {
+	return scene{
 		Field: encounter.FieldInput{
 			Canvas:  pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)},
 		},
-		Endings: []encounter.EndingInput{
-			{Key: "bob-down", Trigger: encounter.TriggerMemberDown{Member: "bob"}},
-			{Key: "withdraw", Trigger: encounter.TriggerExternal{}},
-		},
-		Retention: encounter.RetentionUnbounded,
-	})
-	if err != nil {
-		t.Fatalf("build member-down Join world: %v", err)
+		Endings: []encounter.EndingInput{{Key: "bob-down", Trigger: encounter.TriggerMemberDown{Member: "bob"}}, {Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
 	}
-	data := enc.ToData()
-	return &data
 }
 
 func malformedRage(id string) json.RawMessage {

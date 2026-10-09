@@ -24,3 +24,9 @@ func TestUntrainedRefIsASingleton(t *testing.T) {
 func TestUntrainedRefIsCanonical(t *testing.T) {
 	assert.Equal(t, "dnd5e:rules:untrained", refs.Rules.Untrained().String())
 }
+
+// The hit-die floor reads as a rule, the same way.
+func TestHitDieFloorRefIsCanonical(t *testing.T) {
+	assert.Same(t, refs.Rules.HitDieFloor(), refs.Rules.HitDieFloor())
+	assert.Equal(t, "dnd5e:rules:hit_die_floor", refs.Rules.HitDieFloor().String())
+}

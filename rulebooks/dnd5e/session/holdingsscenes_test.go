@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -32,7 +33,7 @@ func (s *HoldingsSuite) TestLootOnTheCaptainRevealsTheVaultToTheLooterAlone() {
 	out, err := s.mgr.Loot(ctx, &session.LootInput{
 		Session: "sess", Member: "alice", Target: "captain"})
 	s.Require().NoError(err)
-	s.Equal([]string{"encounter:world", "session:sess"}, out.Saved.Written,
+	s.Equal([]string{"encounter:sess", "session:sess"}, out.Saved.Written,
 		"the transferred fact rides the world; the advanced stream cursors ride the session")
 
 	s.Run("the looter alone is told about the secret", func() {
@@ -405,12 +406,10 @@ func (s *HoldingsSuite) TestTheTurnClockGatesBothVerbsAtTheSeam() {
 		s.Require().NoError(err)
 	})
 
-	s.start(true, armedFighter("alice"), armedFighter("bob"))
-	spawned, err := s.mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 2, Y: 2}})
-	s.Require().NoError(err)
-	s.Require().NotNil(spawned.Formed, "arriving in plain sight starts a fight")
+	launched := s.launchHeirloom(true,
+		[]dungeonspec.MonsterPlacement{monsterAt("skel-1", refs.Monsters.Skeleton().String(), 3, 2)},
+		armedFighter("alice"), armedFighter("bob"))
+	s.Require().NotEmpty(launched.Formed, "standing in plain sight starts a fight")
 
 	turn, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
@@ -476,7 +475,7 @@ func (s *HoldingsSuite) TestTheAtlasCarriesTheWaysOutAndWhatCanBePickedUp() {
 	s.Run("the unscoped read carries them too", func() {
 		// AtlasOf answers the host's own whole truth about authored content —
 		// no member, no concealment — and it is the read the builder uses.
-		authored, err := s.mgr.AtlasOf(ctx, &session.AtlasOfInput{World: heirloomWorld(s.T(), true)})
+		authored, err := s.mgr.AtlasOf(ctx, &session.AtlasOfInput{Dungeon: sceneInput(heirloomWorld(true)).Dungeon})
 		s.Require().NoError(err)
 		s.Len(authored.Exits, 2)
 		s.Contains(propIDs(authored), relicID, "including what is concealed from every member")

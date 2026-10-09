@@ -158,16 +158,27 @@ func compiledAtlas(t *testing.T, path string) (dungeonspec.Compiled, encounter.A
 	compiled, err := dungeonspec.Load(raw)
 	require.NoError(t, err)
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		// Required exactly when the field carries concealed structure, which
-		// the heirloom tomb does — supplied unconditionally here so one
-		// helper compiles every content file (encounter reads neither for a
-		// field with none).
-		CheckResolver: nothingIsEverFound{}, Witness: nobodyPerceivesAnything{},
 		Field:   compiled.Field,
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			// Required exactly when the field carries concealed structure, which
+			// the heirloom tomb does — supplied unconditionally here so one
+			// helper compiles every content file (encounter reads neither for a
+			// field with none).
+			CheckResolver: nothingIsEverFound{},
+			Witness:       nobodyPerceivesAnything{},
+			Actors: encounter.Actors{
+				Striker:   noAttacksExpected{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 	atlas, err := enc.Atlas()

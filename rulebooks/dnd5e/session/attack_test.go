@@ -10,13 +10,13 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -99,29 +99,6 @@ func armedFighter(id string) *character.Data {
 // field to make a swing miss changes nothing at all.
 const duelAC = 12
 
-// turnWorld moves the named members from the world clock into one authored
-// turn clock. Tests author the clock directly so initiative never consumes the
-// attack dice whose exact faces they assert.
-func turnWorld(data *encounter.EncounterData, order []string, active int) *encounter.EncounterData {
-	ids := make([]core.EntityID, 0, len(order))
-	for _, member := range order {
-		delete(data.Clock.Budgets, core.EntityID(member))
-		ids = append(ids, core.EntityID(member))
-	}
-	raw, err := json.Marshal([]struct {
-		Order     []core.EntityID `json:"order"`
-		ActiveIdx int             `json:"active_idx"`
-		Round     int             `json:"round"`
-	}{{Order: ids, ActiveIdx: active, Round: 1}})
-	if err != nil {
-		panic(err)
-	}
-	if err := json.Unmarshal(raw, &data.Bubbles); err != nil {
-		panic(err)
-	}
-	return data
-}
-
 // freeRoamDuelWorld is two armed characters standing next to each other, which
 // is the smallest world where a swing means anything.
 //
@@ -131,29 +108,22 @@ func turnWorld(data *encounter.EncounterData, order []string, active int) *encou
 // Shared with the event-kind pins (attackevents_test.go), which need the same
 // duel delivered to a real stream rather than discarded. One world, so a
 // fixture drift cannot make the two suites disagree about what was swung at.
-func freeRoamDuelWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing: encEveryoneStanding{},
-		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
-		},
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-	})
-	if err != nil {
-		t.Fatalf("building the duel: %v", err)
+func freeRoamDuelWorld() scene {
+	return scene{
+		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
+		Party: []sceneSeat{seatAt("alice", 1, 1), seatAt("bob", 2, 1)},
 	}
-	data := enc.ToData()
-	return &data
 }
 
-// duelWorld is the same adjacent-character scene on a turn clock with alice
-// active, so Attack can execute only through the selector Afford authored.
-func duelWorld(t fataler) *encounter.EncounterData {
-	return turnWorld(freeRoamDuelWorld(t), []string{"alice", "bob"}, 0)
+// duelClock is the authored turn clock the duel runs on: alice active, so
+// Attack can execute only through the selector Afford authored.
+var duelClock = []string{"alice", "bob"}
+
+// launchDuel launches the adjacent-character scene on a turn clock with alice
+// active.
+func launchDuel(t *testing.T, m *session.Manager, stored *fakeEncounters) {
+	t.Helper()
+	launchOnClock(t, m, stored, freeRoamDuelWorld(), duelClock, 0)
 }
 
 // duel wires the duel world to a manager whose events go nowhere.
@@ -166,7 +136,7 @@ func (s *AttackTestSuite) duel(dice session.Roller) *session.Manager {
 // the world save to fail.
 //
 // Unarmed the wrapper delegates, so every duel goes through ONE wiring path
-// rather than two that could drift. The failure is armed after StartSession
+// rather than two that could drift. The failure is armed after the launch
 // because the interesting moment is late: the swing has already made a damaged
 // sheet durable, and only the world save is left to fail.
 func (s *AttackTestSuite) breakableDuel(dice session.Roller) (*session.Manager, *failingEncounters) {
@@ -174,17 +144,24 @@ func (s *AttackTestSuite) breakableDuel(dice session.Roller) (*session.Manager, 
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
 	encounters := &failingEncounters{fakeEncounters: s.encounters}
 
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: dice, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: duelWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	launchDuel(s.T(), mgr, s.encounters)
+	rewound(s.characters, armedFighter("alice"), armedFighter("bob"))
 	return mgr, encounters
+}
+
+// rewound writes the fixture sheets back over the rested ones a launch saved.
+// Launch long-rests the party it seats; these suites assert the fixtures' own
+// hit points (24 of 28), exactly as the sheets were stored before the run.
+func rewound(characters *fakeCharacters, sheets ...*character.Data) {
+	for _, sheet := range sheets {
+		characters.byID[sheet.ID] = sheet
+	}
 }
 
 func (s *AttackTestSuite) swing(mgr *session.Manager) (*session.AttackOutput, error) {
@@ -237,17 +214,14 @@ func (s *AttackTestSuite) TestAnArmedDuelingFighterResolvesOnTheSessionStack() {
 
 	s.characters = newFakeCharacters(alice, armedFighter("bob"))
 
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{15, 5}}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: duelWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	launchDuel(s.T(), mgr, s.encounters)
 
 	_, err = mgr.Attack(context.Background(), &session.AttackInput{
 		Session: "sess", Attacker: "alice", Target: "bob",
@@ -303,17 +277,14 @@ func (s *AttackTestSuite) TestUnarmoredDefenseDefendsOnTheSessionStack() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"), s.unarmoredBarbarian("bob"))
 
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{15, 5}}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: duelWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	launchDuel(s.T(), mgr, s.encounters)
 
 	out, err := mgr.Attack(context.Background(), &session.AttackInput{
 		Session: "sess", Attacker: "alice", Target: "bob",
@@ -378,32 +349,20 @@ func (s *AttackTestSuite) TestProtectionReactsToANearbyAllysAttackOnTheSessionSt
 
 	s.characters = newFakeCharacters(alice, bob, carol)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing: encEveryoneStanding{},
+	sc := scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},   // adjacent to alice
-			{ID: "carol", Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 1}}, // adjacent to bob, in melee reach
-		},
-		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-	})
-	s.Require().NoError(err)
-	world := enc.ToData()
+		Party: []sceneSeat{seatAt("alice", 1, 1), seatAt("bob", 2, 1), seatAt("carol", 3, 1)},
+	}
 
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{15, 5}}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: turnWorld(&world, []string{"alice", "bob", "carol"}, 2),
-	})
-	s.Require().NoError(err)
+	launchOnClock(s.T(), mgr, s.encounters, sc, []string{"alice", "bob", "carol"}, 2)
 
 	_, err = mgr.Attack(context.Background(), &session.AttackInput{
 		Session: "sess", Attacker: "carol", Target: "bob",
@@ -450,7 +409,10 @@ func (s *AttackTestSuite) TestASwingLandsAndTheStoryRecordsIt() {
 	s.Equal("alice", d20.Source.SourceID)
 	s.Nil(d20.Dice.Keep, "nothing granted or imposed, so nothing is recorded over it")
 
-	story, err := mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "bob"})
+	// AttackOutput.Seq is in the ATTACKER's numbering, and a launch hands
+	// alice and bob different counts of opening beats, so the beat is read
+	// back from alice's own story.
+	story, err := mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 	last := story[len(story)-1]
 	s.Equal(out.Seq, last.Seq, "AttackOutput.Seq references the recorded beat")
@@ -534,7 +496,7 @@ func (s *AttackTestSuite) TestASwingNamesTheSheetItWrote() {
 	s.Require().NoError(err)
 	s.Require().True(out.Hit)
 
-	s.Equal([]string{"character:alice", "character:bob", "encounter:world", "session:sess"}, out.Saved.Written,
+	s.Equal([]string{"character:alice", "character:bob", "encounter:sess", "session:sess"}, out.Saved.Written,
 		"the paid attacker and damaged target are durable and the report says so")
 	s.Empty(out.Saved.Failed)
 	s.False(out.Saved.Partial(), "a whole save is not a partial one")
@@ -554,7 +516,7 @@ func (s *AttackTestSuite) TestAMissNamesNoCharacterWrite() {
 	s.Require().NoError(err)
 	s.Require().False(out.Hit)
 
-	s.Equal([]string{"character:alice", "encounter:world", "session:sess"}, out.Saved.Written,
+	s.Equal([]string{"character:alice", "encounter:sess", "session:sess"}, out.Saved.Written,
 		"a miss changes no target sheet, but the attacker's paid economy is durable")
 }
 
@@ -589,7 +551,7 @@ func (s *AttackTestSuite) TestAFailedWorldSaveStillNamesTheSheetThatLanded() {
 	s.Require().ErrorAs(err, &saved, "the report must survive the error")
 	s.Equal([]string{"character:alice", "character:bob"}, saved.Report.Written,
 		"the paid attacker and damaged target are already durable — retrying would spend and damage twice")
-	s.Equal([]string{"encounter:world"}, saved.Report.Failed,
+	s.Equal([]string{"encounter:sess"}, saved.Report.Failed,
 		"and the world that would have recorded the blow is what needs repair")
 	s.True(saved.Report.Partial(), "half a save is a repair, not a retry")
 
@@ -604,15 +566,13 @@ func (s *AttackTestSuite) TestFreeRoamAttackHasNoDeclaration() {
 	roller := &sequenceDice{rolls: []int{15, 5}}
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: roller, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: freeRoamDuelWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, freeRoamDuelWorld())
+	rewound(s.characters, armedFighter("alice"), armedFighter("bob"))
 
 	out, err := mgr.Attack(context.Background(), &session.AttackInput{
 		Session: "sess", Attacker: "alice", Target: "bob",
@@ -633,28 +593,18 @@ func (s *AttackTestSuite) TestFreeRoamAttackHasNoDeclaration() {
 func (s *AttackTestSuite) TestAMonsterAttackerIsRefused() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"))
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing: encEveryoneStanding{},
+	sc := scene{
 		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "ogre", Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 1}},
-		},
-		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-	})
-	s.Require().NoError(err)
-	data := enc.ToData()
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: &data,
-	})
-	s.Require().NoError(err)
+		Party:    []sceneSeat{seatAt("alice", 1, 1)},
+		Monsters: []dungeonspec.MonsterPlacement{monsterAt("ogre", refs.Monsters.Goblin().String(), 2, 1)},
+	}
+	launchScene(s.T(), mgr, sc)
 
 	_, err = mgr.Attack(context.Background(), &session.AttackInput{
 		Session: "sess", Attacker: "ogre", Target: "alice",
@@ -709,29 +659,18 @@ func (s *AttackTestSuite) TestRefusals() {
 func (s *AttackTestSuite) TestAnEmptyHandThrowsAnUnarmedStrike() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(unarmedFighter("alice"), armedFighter("bob"))
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{15, 1}}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing: encEveryoneStanding{},
-		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
-		},
-		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-	})
-	s.Require().NoError(err)
-	data := enc.ToData()
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: turnWorld(&data, []string{"alice", "bob"}, 0),
-	})
-	s.Require().NoError(err)
+	sc := scene{
+		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
+		Party: []sceneSeat{seatAt("alice", 1, 1), seatAt("bob", 2, 1)},
+	}
+	launchOnClock(s.T(), mgr, s.encounters, sc, []string{"alice", "bob"}, 0)
 
 	out, err := s.swing(mgr)
 	s.Require().NoError(err)
@@ -748,24 +687,12 @@ func (s *AttackTestSuite) TestAnEmptyHandThrowsAnUnarmedStrike() {
 // encEveryoneSees keeps the two in contact (and so in one fight) regardless
 // of how far apart they stand, which is what lets this fixture isolate
 // reach from perception.
-func reachWorld(t fataler, bobAt spatial.Position) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing: encEveryoneStanding{},
+func reachWorld(bobAt spatial.Position) scene {
+	return scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 20, 20)}},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "bob", Kind: encounter.KindPlayer, Position: bobAt},
-		},
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-	})
-	if err != nil {
-		t.Fatalf("building the reach world: %v", err)
+		Party: []sceneSeat{seatAt("alice", 1, 1), {ID: "bob", At: bobAt}},
 	}
-	data := enc.ToData()
-	return turnWorld(&data, []string{"alice", "bob"}, 0)
 }
 
 // TestOutOfReachIsRefused pins rpg-toolkit#1010 at the seam: a target beyond
@@ -776,17 +703,14 @@ func reachWorld(t fataler, bobAt spatial.Position) *encounter.EncounterData {
 func (s *AttackTestSuite) TestOutOfReachIsRefused() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
 	// A longsword reaches 1 cell; bob stands 4 away.
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: reachWorld(s.T(), spatial.Position{X: 5, Y: 1}),
-	})
-	s.Require().NoError(err)
+	launchOnClock(s.T(), mgr, s.encounters, reachWorld(spatial.Position{X: 5, Y: 1}), duelClock, 0)
 
 	_, err = s.swing(mgr)
 	s.ErrorIs(err, session.ErrStaleDeclaration,
@@ -803,17 +727,14 @@ func (s *AttackTestSuite) TestReachPropertyExtendsToTwoCells() {
 	}
 	glaiveAlice.EquipmentSlots = character.EquipmentSlots{character.SlotMainHand: string(weapons.Glaive)}
 	s.characters = newFakeCharacters(glaiveAlice, armedFighter("bob"))
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{2, 1}}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: reachWorld(s.T(), spatial.Position{X: 3, Y: 1}),
-	})
-	s.Require().NoError(err)
+	launchOnClock(s.T(), mgr, s.encounters, reachWorld(spatial.Position{X: 3, Y: 1}), duelClock, 0)
 
 	_, err = s.swing(mgr)
 	s.Require().NoError(err, "a glaive reaches 2 cells; bob stands 2 away")
@@ -832,37 +753,22 @@ func (s *AttackTestSuite) TestReachPropertyExtendsToTwoCells() {
 func (s *AttackTestSuite) TestNotYourTurnIsRefused() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing: encEveryoneStanding{},
+	sc := scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 5}},
-		},
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-	})
-	s.Require().NoError(err)
-	data := enc.ToData()
+		Party:    []sceneSeat{seatAt("alice", 1, 1), seatAt("bob", 5, 5)},
+		Monsters: []dungeonspec.MonsterPlacement{monsterAt("skel-1", refs.Monsters.Skeleton().String(), 2, 1)},
+	}
 
 	ctx := context.Background()
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: &data})
-	s.Require().NoError(err)
-
-	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 2, Y: 1},
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(spawned.Formed, "arriving in plain sight must start a fight")
+	launched := launchScene(s.T(), mgr, sc)
+	s.Require().NotEmpty(launched.Formed, "standing in plain sight must start a fight")
 
 	turn, err := mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
@@ -896,29 +802,18 @@ func (s *AttackTestSuite) TestNotYourTurnIsRefused() {
 func (s *AttackTestSuite) TestAffordThenAttackRefusesASheetlessTargetBeforeExecution() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"))
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing: encEveryoneStanding{},
+	sc := scene{
 		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "ogre", Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 1}},
-		},
-		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-	})
-	s.Require().NoError(err)
-	data := enc.ToData()
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: turnWorld(&data, []string{"alice", "ogre"}, 0),
-	})
-	s.Require().NoError(err)
-	stockAuthoredMonsters(s.T(), s.sessions, s.encounters, "sess")
+		Party:    []sceneSeat{seatAt("alice", 1, 1)},
+		Monsters: []dungeonspec.MonsterPlacement{monsterAt("ogre", refs.Monsters.Goblin().String(), 2, 1)},
+	}
+	launchOnClock(s.T(), mgr, s.encounters, sc, []string{"alice", "ogre"}, 0)
 	declaration := currentAttackID(s.T(), mgr, "sess", "alice")
 
 	// The stat block goes; the roster row stays.
@@ -949,33 +844,30 @@ func (s *AttackTestSuite) duelAmong(members []string, sheets ...*character.Data)
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(sheets...)
 
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
-	placed := make([]encounter.MemberInput, 0, len(members))
+	// Launch refuses a party member the repository does not hold, and rests
+	// (so loads) every one it seats: the run is launched with a readable sheet
+	// for each member, and the repository is then left holding exactly the
+	// sheets given — the absent or corrupt state the host produces later.
+	seats := make([]sceneSeat, 0, len(members))
 	for i, id := range members {
-		placed = append(placed, encounter.MemberInput{
-			ID: encounter.MemberID(id), Kind: encounter.KindPlayer, Position: spatial.Position{X: float64(i + 1), Y: 1},
-		})
+		seats = append(seats, seatAt(id, i+1, 1))
+		s.characters.byID[id] = armedFighter(id)
 	}
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing:  encEveryoneStanding{},
-		Field:     encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
-		Members:   placed,
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-	})
-	s.Require().NoError(err)
-	data := enc.ToData()
+	launchOnClock(s.T(), mgr, s.encounters, scene{
+		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
+		Party: seats,
+	}, members, 0)
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: turnWorld(&data, members, 0),
-	})
-	s.Require().NoError(err)
+	s.characters.byID = map[string]*character.Data{}
+	for _, sheet := range sheets {
+		s.characters.byID[sheet.ID] = sheet
+	}
 	return mgr
 }
 
@@ -1008,8 +900,9 @@ func (s *AttackTestSuite) TestAnAbsentAttackerSheetIsAbsentRatherThanCorrupt() {
 
 	_, err := s.swing(mgr)
 	s.Require().Error(err)
-	s.ErrorIs(err, session.ErrNoDeclarationID,
-		"an unreadable dependency produces a blocker, never an executable selector")
+	s.ErrorIs(err, session.ErrNoCharacter,
+		"an absent attacker is the store's one answer, before any selector is read (rpg-project#542)")
+	s.NotErrorIs(err, session.ErrBadCharacter)
 }
 
 func (s *AttackTestSuite) TestAnUnreadableAttackerSheetIsCorruptRatherThanAbsent() {
@@ -1069,21 +962,11 @@ func (s *AttackTestSuite) TestUnreadableTargetAndParticipantBlockAffordBeforeUnc
 	}
 }
 
-func rangedDuelWorld(t fataler, targetX float64) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
+func rangedDuelWorld(targetX float64) scene {
+	return scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("range", 0, 0, 140, 8)}},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: targetX, Y: 1}},
-		},
-		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, Retention: encounter.RetentionUnbounded,
-	})
-	if err != nil {
-		t.Fatalf("building ranged duel: %v", err)
+		Party: []sceneSeat{seatAt("alice", 1, 1), {ID: "bob", At: spatial.Position{X: targetX, Y: 1}}},
 	}
-	data := enc.ToData()
-	return turnWorld(&data, []string{"alice", "bob"}, 0)
 }
 
 // rangedDuel puts bob targetX-1 cells down the range from alice, who holds
@@ -1101,10 +984,9 @@ func (s *AttackTestSuite) rangedDuel(targetX float64, weapon weapons.WeaponID, r
 	alice.EquipmentSlots = character.EquipmentSlots{character.SlotMainHand: string(weapon)}
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(alice, bob)
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: session.DiscardEvents{}})
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: session.DiscardEvents{}})
 	s.Require().NoError(err)
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{Session: "sess", Encounter: "world", World: rangedDuelWorld(s.T(), targetX)})
-	s.Require().NoError(err)
+	launchOnClock(s.T(), mgr, s.encounters, rangedDuelWorld(targetX), duelClock, 0)
 	return mgr
 }
 

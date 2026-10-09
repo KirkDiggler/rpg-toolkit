@@ -6,9 +6,10 @@ package session_test
 import (
 	"context"
 	"encoding/json"
-	"github.com/stretchr/testify/require"
 	"slices"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/stretchr/testify/suite"
 
@@ -287,28 +288,28 @@ func (s *ManagerTestSuite) TestEachRequirementIsCheckedByName() {
 	}{
 		{
 			name: "sessions absent",
-			config: &session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Encounters: newFakeEncounters(),
+			config: &session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Encounters: newFakeEncounters(),
 				Characters: testCharacters(), Events: session.DiscardEvents{},
 			},
 			expect: "Sessions",
 		},
 		{
 			name: "encounters absent",
-			config: &session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(),
+			config: &session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(),
 				Characters: testCharacters(), Events: session.DiscardEvents{},
 			},
 			expect: "Encounters",
 		},
 		{
 			name: "characters absent",
-			config: &session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+			config: &session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 				Events: session.DiscardEvents{},
 			},
 			expect: "Characters",
 		},
 		{
 			name: "events absent",
-			config: &session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+			config: &session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 				Characters: testCharacters(),
 			},
 			expect: "Events",
@@ -320,14 +321,14 @@ func (s *ManagerTestSuite) TestEachRequirementIsCheckedByName() {
 			// other — which is exactly the mid-turn panic S8 exists to convert
 			// into a startup failure.
 			name: "dice absent",
-			config: &session.Config{PresentationIDs: testPresentationIDs{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+			config: &session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 				Characters: testCharacters(), Events: session.DiscardEvents{},
 			},
 			expect: "Dice",
 		},
 		{
 			name: "presentation IDs absent",
-			config: &session.Config{Dice: testDice{}, TurnDriver: session.Pass{},
+			config: &session.Config{Seats: newFakeSeats(), Dice: testDice{}, TurnDriver: session.Pass{},
 				Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 				Characters: testCharacters(), Events: session.DiscardEvents{},
 			},
@@ -340,7 +341,7 @@ func (s *ManagerTestSuite) TestEachRequirementIsCheckedByName() {
 			// stalled the first time initiative rolled a monster first, or a
 			// player ended their turn ahead of one (rpg-toolkit#1162).
 			name: "turndriver absent",
-			config: &session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+			config: &session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 				Characters: testCharacters(), Events: session.DiscardEvents{},
 			},
 			expect: "TurnDriver",
@@ -364,7 +365,7 @@ func (s *ManagerTestSuite) TestEachRequirementIsCheckedByName() {
 // between "fix these in order" and "guess again."
 func (s *ManagerTestSuite) TestMissingReportIsDeterministic() {
 	for i := 0; i < 20; i++ {
-		_, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}})
+		_, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}})
 		s.Require().Error(err)
 		s.Contains(err.Error(), "Sessions", "the first missing name must be stable across runs")
 	}
@@ -381,7 +382,7 @@ func (s *ManagerTestSuite) TestMissingReportIsDeterministic() {
 // being a stated decision. A nil reads as an oversight; this reads as a choice,
 // and it greps.
 func (s *ManagerTestSuite) TestDiscardEventsIsAcceptedAsAStream() {
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions:   newFakeSessions(),
 		Encounters: newFakeEncounters(),
 		Characters: testCharacters(),
@@ -394,7 +395,7 @@ func (s *ManagerTestSuite) TestDiscardEventsIsAcceptedAsAStream() {
 // TestFullyWiredConstructs is the other positive control: a real stream,
 // which is what any actual game supplies.
 func (s *ManagerTestSuite) TestFullyWiredConstructs() {
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions:   newFakeSessions(),
 		Encounters: newFakeEncounters(),
 		Characters: testCharacters(),

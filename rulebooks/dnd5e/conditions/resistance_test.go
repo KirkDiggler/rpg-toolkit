@@ -138,7 +138,7 @@ func (s *ResistanceConditionTestSuite) TestALongRestTakesIt() {
 	}))
 
 	s.Require().Len(s.removed, 1)
-	s.Equal("long rest", s.removed[0].Reason)
+	s.Equal("rest", s.removed[0].Reason)
 	s.False(s.condition.IsApplied())
 }
 

@@ -65,9 +65,17 @@ func (s *FrameTestSuite) resolveCamp(bus events.EventBus, strike *StrikeInput) (
 			{Character: camp.rogue()}, {Character: camp.ally()},
 			{Monster: camp.raider(holdOutScout)}, {Monster: camp.raider(holdOutChief)},
 		},
-		Machine:    NewStrike(strike),
-		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
-		TurnDriver: passDriver{}, Roller: strike.Roller,
+		Machine: NewStrike(strike),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Driver:     passDriver{},
+			Roller:     strike.Roller,
+			Actors:     Actors,
+		},
 	}, newSurface(bus))
 }
 
@@ -162,8 +170,16 @@ func (s *FrameTestSuite) TestMonkUnarmedHitRollsItsDamageDieOnce() {
 		World:        actionWorld(s.T(), 2),
 		Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Character: monk}},
 		Machine:      NewStrike(&StrikeInput{AttackerID: heroID, TargetID: wolfID, Definition: definition, Roller: roller}),
-		Initiative:   orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
-		TurnDriver: passDriver{}, Roller: roller,
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Driver:     passDriver{},
+			Roller:     roller,
+			Actors:     Actors,
+		},
 	})
 	s.Require().NoError(err)
 
@@ -306,8 +322,16 @@ func (s *FrameTestSuite) TestStrikeFailsWhenARuleCannotAnswer() {
 		Participants: []Participant{{Monster: target}, {Character: actionHero()}},
 		Machine: NewStrike(&StrikeInput{AttackerID: heroID, TargetID: wolfID, Definition: validMeleeDefinition(),
 			Roller: &actionRoller{singles: []int{15}, damage: [][]int{{3}}}}),
-		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
-		TurnDriver: passDriver{}, Roller: &actionRoller{},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Driver:     passDriver{},
+			Roller:     &actionRoller{},
+			Actors:     Actors,
+		},
 	}, newSurface(bus))
 
 	s.Require().Error(err)
@@ -333,8 +357,16 @@ func (s *FrameTestSuite) TestStrikeFailsWhenAHeldRuleCannotAnswer() {
 		Participants: []Participant{{Monster: target}, {Character: actionHero()}},
 		Machine: NewStrike(&StrikeInput{AttackerID: heroID, TargetID: wolfID, Definition: validMeleeDefinition(),
 			Roller: &actionRoller{singles: []int{15}, damage: [][]int{{3}}}}),
-		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
-		TurnDriver: passDriver{}, Roller: &actionRoller{},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Driver:     passDriver{},
+			Roller:     &actionRoller{},
+			Actors:     Actors,
+		},
 	}, newSurface(bus))
 
 	s.Require().Error(err)
@@ -472,8 +504,16 @@ func (s *FrameTestSuite) TestStrikeFailsWhenAnOfferRuleCannotAnswer() {
 		Participants: []Participant{{Monster: target}, {Character: actionHero()}},
 		Machine: NewStrike(&StrikeInput{AttackerID: heroID, TargetID: wolfID, Definition: validMeleeDefinition(),
 			Roller: &actionRoller{singles: []int{15}, damage: [][]int{{3}}}}),
-		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
-		TurnDriver: passDriver{}, Roller: &actionRoller{},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Driver:     passDriver{},
+			Roller:     &actionRoller{},
+			Actors:     Actors,
+		},
 	}, newSurface(bus))
 
 	s.Require().Error(err)
@@ -489,8 +529,6 @@ func (s *FrameTestSuite) TestStrikeFailsWhenAnOfferRuleCannotAnswer() {
 func (s *FrameTestSuite) TestAPlacedMemberWithNoFactionIsKnownNoSide() {
 	const shopkeeperID = "shopkeeper"
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{},
-		Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		Field: encounter.FieldInput{Canvas: hexCanvas(), Regions: []encounter.RegionInput{rectRegion("room", 0, 0, 10, 4)}},
 		Members: []encounter.MemberInput{
 			{ID: wolfID, Kind: encounter.KindMonster, Position: spatial.Position{X: 1, Y: 1}},
@@ -498,6 +536,19 @@ func (s *FrameTestSuite) TestAPlacedMemberWithNoFactionIsKnownNoSide() {
 			{ID: shopkeeperID, Kind: encounter.KindWorld, Position: spatial.Position{X: 0, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors: encounter.Actors{
+				Striker:   noAttacksExpected{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	shopkeeper := monsters.NewWolf(shopkeeperID).ToData()
@@ -511,8 +562,16 @@ func (s *FrameTestSuite) TestAPlacedMemberWithNoFactionIsKnownNoSide() {
 		},
 		Machine: NewStrike(&StrikeInput{AttackerID: heroID, TargetID: wolfID, Definition: validMeleeDefinition(),
 			Roller: &actionRoller{singles: []int{15}, damage: [][]int{{3}}}}),
-		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
-		TurnDriver: passDriver{}, Roller: &actionRoller{},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Driver:     passDriver{},
+			Roller:     &actionRoller{},
+			Actors:     Actors,
+		},
 	}, newSurface(bus))
 	s.Require().NoError(err)
 

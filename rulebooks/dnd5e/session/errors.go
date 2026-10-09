@@ -110,9 +110,9 @@ var (
 	// stored bytes are refused rather than carried into a resolution.
 	ErrBadCharacter = errors.New("character data could not be loaded")
 
-	// ErrNoRef is returned when Spawn is given an empty ref.
+	// ErrNoRef is returned when a monster placement carries an empty ref.
 	//
-	// Spawn instantiates content that lives in code, and the ref is how that
+	// A launch instantiates content that lives in code, and the ref is how that
 	// content is named. There is no default worth guessing at.
 	ErrNoRef = errors.New("empty ref")
 
@@ -376,7 +376,7 @@ var (
 	// ErrNoEncounterID is returned when a verb is given an empty encounter ID.
 	ErrNoEncounterID = errors.New("empty encounter id")
 
-	// ErrSessionExists is returned by StartSession when the ID is already in
+	// ErrSessionExists is returned by Launch when the ID is already in
 	// use.
 	//
 	// Starting over an existing session must never be silent: the ID names a
@@ -385,8 +385,38 @@ var (
 	// deletes first, deliberately.
 	ErrSessionExists = errors.New("session already exists")
 
-	// ErrInvalidWorld is returned when the authored encounter handed to
-	// StartSession cannot be loaded.
+	// ErrSeatedElsewhere is returned when a character another run already
+	// holds is launched or joined into this one. A character is seated in at
+	// most one session (rpg-project#542, "The seat"); it leaves one run
+	// before it enters the next.
+	ErrSeatedElsewhere = errors.New("character is seated in another session")
+
+	// ErrBadEquip is returned when an equipment change is one the sheet
+	// cannot make: no slot named, an item the inventory does not hold, an
+	// item that does not fit the slot. A request that is wrong, distinct from
+	// ErrCannotAfford (a right request the turn cannot pay for) and from
+	// ErrArmorInFight (a right request a fight forbids).
+	ErrBadEquip = errors.New("invalid equipment change")
+
+	// ErrArmorInFight is returned when a character in a fight asks to put on
+	// or take off body armour. Body armour cannot change in a fight; a shield
+	// can, for the action (R6).
+	ErrArmorInFight = errors.New("body armour cannot change in a fight")
+
+	// ErrBadRest is returned when a rest request is one a run does not take:
+	// a long rest (R13 — the long rest is the first-admission rest only), no
+	// resters, a rester named twice, or more hit dice than the rester has.
+	// The rulebook's own reason rides along as text.
+	ErrBadRest = errors.New("invalid rest request")
+
+	// ErrDuplicateMember is returned by Launch when one member id is claimed
+	// twice — two party characters, two compiled monsters, or one of each.
+	// Every member of a run needs an id of its own; refused before anything
+	// is written, naming both claimants.
+	ErrDuplicateMember = errors.New("member id claimed twice")
+
+	// ErrInvalidWorld is returned when the dungeon handed to Launch or
+	// AtlasOf cannot be built or loaded.
 	//
 	// Validated by loading it before anything is written, so a world that
 	// cannot be reconstituted is rejected at the door rather than persisted

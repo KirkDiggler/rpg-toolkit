@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -36,17 +37,14 @@ func (s *EntitiesTestSuite) SetupTest() {
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
 	s.characters = testCharacters()
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: hexWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, hexWorld())
 }
 
 func (s *EntitiesTestSuite) SetupSubTest() { s.SetupTest() }
@@ -174,7 +172,8 @@ func (s *EntitiesTestSuite) TestARejectedJoinPlacesNobody() {
 // stopped being true for a reason worth reading rather than worth suppressing.
 // Every sight refresh now consults the standing capability, and that capability
 // reads the PLAYERS' sheets to answer — so a spawn does touch the store, on
-// behalf of everybody already in the room (rpg-toolkit#1079).
+// behalf of everybody already in the room (rpg-toolkit#1079). The monster is
+// placed by the launch now, which reads the party's sheets to seat them too.
 //
 // The claim this test was always making survives the change intact, and is now
 // stated as itself: the spawned ID is never looked up. The second assertion is
@@ -182,15 +181,29 @@ func (s *EntitiesTestSuite) TestARejectedJoinPlacesNobody() {
 // zero, something has started answering the standing question without reading
 // a sheet, which is the cache this design refuses.
 func (s *EntitiesTestSuite) TestSpawnedContentIsNeverLookedUpAsACharacter() {
+	// A run of its own, launched with the monster on its board: the suite's
+	// run already seats alice, and a character sits in one run at a time.
+	characters := testCharacters()
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: characters,
+		Events: session.DiscardEvents{},
+	})
+	s.Require().NoError(err)
+	s.characters = characters
 	before := s.characters.loads
 
-	out, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
-		Session: "sess", ID: "ogre-7", Ref: refs.Monsters.Skeleton().String(),
-		Position: hexCell(3, 2),
-	})
+	sc := hexWorld()
+	sc.Monsters = []dungeonspec.MonsterPlacement{monsterAt("ogre-7", refs.Monsters.Skeleton().String(), 3, 2)}
+	out, err := mgr.Launch(context.Background(), sceneInput(sc))
 	s.Require().NoError(err, "content that lives in code needs no stored sheet")
-	s.Require().NotNil(out.NPC)
-	s.Equal("Skeleton", out.NPC.Name, "and it was really built, not echoed")
+	var ogre *session.Member
+	for i := range out.Members {
+		if out.Members[i].ID == "ogre-7" {
+			ogre = &out.Members[i]
+		}
+	}
+	s.Require().NotNil(ogre)
+	s.Equal("Skeleton", ogre.Name, "and it was really built, not echoed")
 
 	s.Zero(s.characters.asked["ogre-7"],
 		"content that lives in code is never looked up as a character")
@@ -241,7 +254,7 @@ func (s *EntitiesTestSuite) TestEveryPlayerJoinConsultsTheRepository() {
 // violation rather than the absence: a store that returns (nil, nil) is broken,
 // and guessing in either direction is worse than saying so.
 func (s *EntitiesTestSuite) TestARepositoryReportingSuccessWithNoDataIsRejected() {
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: &nilDataCharacters{},
 		Events:     session.DiscardEvents{},
@@ -310,32 +323,24 @@ func (n *nilDataCharacters) SaveCharacter(_ context.Context, _ *character.Data) 
 
 func TestEntitiesSuite(t *testing.T) { suite.Run(t, new(EntitiesTestSuite)) }
 
-// benchManager builds a fresh, started session for one benchmark iteration.
-type benchFataler struct{ b *testing.B }
-
-func (f benchFataler) Fatalf(format string, args ...any) { f.b.Fatalf(format, args...) }
-
+// benchManager builds a fresh, launched session for one benchmark iteration.
 func benchManager(b *testing.B) *session.Manager {
 	b.Helper()
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
 	if err != nil {
 		b.Fatalf("manager: %v", err)
 	}
-	if _, err := mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: hexWorld(benchFataler{b}),
-	}); err != nil {
-		b.Fatalf("start: %v", err)
+	if _, err := mgr.Launch(context.Background(), sceneInput(hexWorld())); err != nil {
+		b.Fatalf("launch: %v", err)
 	}
 	return mgr
 }
 
-// BenchmarkJoinPlayer and BenchmarkSpawnMonster differ by exactly one thing: the
-// player join loads a character and the monster join does not. The DELTA is the
-// per-verb cost of reconstituting a sheet and attaching its features and
-// conditions to the call's bus.
+// BenchmarkJoinPlayer measures the per-verb cost of reconstituting a sheet and
+// attaching its features and conditions to the call's bus, on a join.
 //
 // That cost is the wave's stated risk — "stateless-per-call proves too slow once
 // entities load on every verb" — and the reason to measure it rather than design
@@ -352,22 +357,6 @@ func BenchmarkJoinPlayer(b *testing.B) {
 			Position: hexCell(2, 2),
 		}); err != nil {
 			b.Fatalf("join: %v", err)
-		}
-	}
-}
-
-func BenchmarkSpawnMonster(b *testing.B) {
-	ctx := context.Background()
-	for i := 0; i < b.N; i++ {
-		b.StopTimer()
-		mgr := benchManager(b)
-		b.StartTimer()
-
-		if _, err := mgr.Spawn(ctx, &session.SpawnInput{
-			Session: "sess", ID: "ogre-7", Ref: refs.Monsters.Skeleton().String(),
-			Position: hexCell(2, 2),
-		}); err != nil {
-			b.Fatalf("spawn: %v", err)
 		}
 	}
 }

@@ -300,6 +300,10 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 	if len(party) == 0 {
 		return Compiled{}, singleRoomCompileError("room.room.partyStart", "has no free seat")
 	}
+	monsters, err = mintMemberIDs(monsters)
+	if err != nil {
+		return Compiled{}, err
+	}
 	field.Start = &encounter.FieldStart{At: starts[0]}
 	// AND THE WAYS OUT RIDE THE FIELD, for the start's reason ([Compiled.Field]):
 	// they are part of the world the composition runs, so a copy kept only on

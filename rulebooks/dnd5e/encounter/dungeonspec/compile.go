@@ -180,6 +180,22 @@ type MonsterPlacement struct {
 	// none ([PlaceSpec.ID]).
 	ID string
 
+	// MemberID is the id this monster joins the encounter under — minted by
+	// the compile ([mintMemberIDs]), never by a host, so every host that
+	// launches this dungeon spawns the same members under the same names.
+	//
+	// THE AUTHOR'S ID, VERBATIM, WHEN THEY GAVE ONE: a placement named
+	// `chief` is the member `chief`, which is what lets `factions[].mind:
+	// chief` and `{ down: chief }` mean the same member in the run.
+	//
+	// OTHERWISE THE REF'S OWN ID PLUS A PER-REF ORDINAL — skeleton-1,
+	// skeleton-2 — legible in a log, a beat and a client, which see nothing
+	// else of a monster. Numbered PER REF so adding a prop or another kind of
+	// creature cannot renumber one nothing about it changed, and an ordinal
+	// is spent on EVERY placement of the ref, named or not, so naming one
+	// skeleton `scout` does not renumber the one after it.
+	MemberID string
+
 	// Holds is the intel records this monster carries, by record id
 	// ([PlaceSpec.Holds]) — for a host to hand to
 	// [encounter.MemberInput.Holds] when it spawns the sheet. Nil when the
@@ -379,13 +395,18 @@ func Compile(spec *Spec) (Compiled, error) {
 		return Compiled{}, err
 	}
 
+	monsters, err := mintMemberIDs(monstersOf(spec, orientation))
+	if err != nil {
+		return Compiled{}, err
+	}
+
 	return Compiled{
 		Key:          spec.Key,
 		Name:         spec.Name,
 		Field:        field,
 		PartyStart:   start,
 		StartFacing:  spec.Start.Facing,
-		Monsters:     monstersOf(spec, orientation),
+		Monsters:     monsters,
 		Scenarios:    scenariosOf(spec.Scenarios),
 		Endings:      endingsOf(spec.Endings),
 		Intel:        field.Intel,

@@ -30,6 +30,7 @@ type ConcentrationBreakSuite struct {
 	suite.Suite
 
 	sessions   *fakeSessions
+	encounters *fakeEncounters
 	characters *fakeCharacters
 	stream     *fakeStream
 	mgr        *session.Manager
@@ -60,24 +61,30 @@ func (s *ConcentrationBreakSuite) scene(children []dnd5eEvents.ChildRef, rolls .
 	bob := armedFighter("bob")
 	bob.Conditions = []json.RawMessage{s.holdingBlob("bob", children)}
 
-	s.sessions = newFakeSessions()
+	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"), bob)
 	s.stream = &fakeStream{}
 
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{},
 		Dice:            &sequenceDice{rolls: rolls},
 		TurnDriver:      session.Pass{},
-		Sessions:        s.sessions, Encounters: newFakeEncounters(),
+		Sessions:        s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: duelWorld(s.T()),
-	})
+	launchDuel(s.T(), mgr, s.encounters)
+	// Launch long-rests the party, which ends bob's concentration: the
+	// concentrating sheet is written back after it, as the host's would be
+	// once he cast. The launch's opening beats predate the scene.
+	rewound(s.characters, armedFighter("alice"), bob)
+	// The launch observed bob rested; the table re-looks at him holding the
+	// spell, so the testimony matches the sheet before the swing.
+	_, err = mgr.Recheck(context.Background(), &session.RecheckInput{Session: "sess", Members: []string{"bob"}})
 	s.Require().NoError(err)
+	s.stream.published = nil
 }
 
 // holdingBlob is one concentrating condition as the host stores it: an opaque
@@ -144,11 +151,15 @@ func (s *ConcentrationBreakSuite) TestOneBlowIsOneTrain() {
 	s.Require().NoError(err)
 	s.Require().True(out.Hit, "the swing landed, which is what provokes the check")
 
+	// The last beat is the commit's freshness step (rpg-project#520, R19):
+	// alice watched bob holding the spell, and he no longer is, so she is
+	// told to look at him again.
 	s.Equal([]session.EventKind{
 		session.EventStruck,
 		session.EventSaved,
 		session.EventConcentrationEnded,
 		session.EventActivationResult,
+		session.EventSighted,
 	}, s.kinds("alice"),
 		"one call, one train: the blow, the check it forced, the spell it ended, and the "+
 			"effect that came off with it")

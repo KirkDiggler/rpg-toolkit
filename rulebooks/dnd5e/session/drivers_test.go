@@ -10,9 +10,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // perSessionDrivers is the host side of the seam, written as small as
@@ -112,7 +112,7 @@ func driven(d *mindedPerSession) []string {
 func driverScene(t *testing.T, source session.TurnDriverSource) *session.Manager {
 	t.Helper()
 
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDrivers: source,
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 		Characters: newFakeCharacters(armedFighter("fighter-a"), armedFighter("fighter-b")),
@@ -126,23 +126,15 @@ func driverScene(t *testing.T, source session.TurnDriverSource) *session.Manager
 func startDungeon(t *testing.T, mgr *session.Manager, sessionID, fighter string, skeletons ...string) {
 	t.Helper()
 
-	ctx := context.Background()
-	_, err := mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: sessionID, Encounter: sessionID + "-world", World: tombRoom(40, 6),
-	})
-	require.NoError(t, err)
-	_, err = mgr.Join(ctx, &session.JoinInput{
-		Session: sessionID, Member: fighter, Position: spatial.Position{X: 0, Y: 0},
-	})
-	require.NoError(t, err)
-
+	monsters := make([]dungeonspec.MonsterPlacement, 0, len(skeletons))
 	for i, id := range skeletons {
-		_, err = mgr.Spawn(ctx, &session.SpawnInput{
-			Session: sessionID, ID: id, Ref: refs.Monsters.Skeleton().String(),
-			Position: spatial.Position{X: float64(i + 1), Y: 0},
-		})
-		require.NoError(t, err)
+		monsters = append(monsters, monsterAt(id, refs.Monsters.Skeleton().String(), i+1, 0))
 	}
+	sc := tombRoom(40, 6)
+	sc.Session = sessionID
+	sc.Party = []sceneSeat{seatAt(fighter, 0, 0)}
+	sc.Monsters = monsters
+	launchScene(t, mgr, sc)
 }
 
 // endTurn hands the clock to whatever the session's driver has to answer for,
@@ -292,7 +284,7 @@ func TestASourceThatHandsOverNoDriverIsRefused(t *testing.T) {
 // the driver it did not mean to wire take every turn in the process.
 func TestExactlyOneTurnDriverIsWired(t *testing.T) {
 	base := func() *session.Config {
-		return &session.Config{
+		return &session.Config{Seats: newFakeSeats(),
 			PresentationIDs: testPresentationIDs{}, Dice: testDice{},
 			Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 			Characters: newFakeCharacters(armedFighter("fighter-a")), Events: session.DiscardEvents{},

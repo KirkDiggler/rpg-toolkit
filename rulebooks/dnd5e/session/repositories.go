@@ -115,6 +115,9 @@ type CharacterRepository interface {
 	GetCharacter(ctx context.Context, id string) (*character.Data, error)
 
 	// SaveCharacter writes the character, creating or replacing it wholesale.
+	// It stays a whole-record write: the SDK is its only caller (through one
+	// sheet store per verb, store.go), and every caller holds the guard the
+	// character's seat names.
 	SaveCharacter(ctx context.Context, data *character.Data) error
 }
 
@@ -129,6 +132,8 @@ type CharacterRepository interface {
 // different process or an out-of-band repository writer.
 //
 // Exclusion is not a transaction: a failed multi-repository save still carries
-// the existing partial SaveReport. Character-only operations have no session
-// identity and are outside this guard. Cross-session use of shared characters
-// or future durable exploration profiles needs its own host consistency policy.
+// the existing partial SaveReport. Character verbs (Equip, Unequip, LevelUp)
+// act under the guard their character's seat names — the session's, or the
+// character's own while unseated (seats.go) — so every writer of a character
+// record holds the right guard. Durable exploration profiles shared across
+// sessions still need their own host consistency policy.

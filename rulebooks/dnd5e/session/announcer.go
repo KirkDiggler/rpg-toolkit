@@ -88,33 +88,19 @@ func (a announcerSeam) Announce(
 	// A pure view for resolution's Input.World — a mid-verb read, never the
 	// storage boundary (encounter v0.43.0, #1385).
 	world := enc.WorldView()
-	out, err := resolution.Resolve(ctx, &resolution.Input{
+	out, err := resolution.Resolve(ctx, a.m.resolutionInput(ctx, a.scope, resolutionAsk{
 		World:        world,
 		Participants: cast,
-		Initiative:   a.m.initiative,
-		Standing:     a.scope.standing,
-		Sight:        sheetsBeside(a.scope.standing),
-		Equipment:    equipmentBeside(a.scope.standing),
-		Sheets:       sheetsBeside(a.scope.standing),
-		TurnDriver:   a.scope.driver,
-		// The concealment pair (rpg-toolkit#1378), bound to the same live
-		// scope openForWrite and adopt bind — the one-seam consistency law:
-		// a concealed world refuses to reconstruct without them, and
-		// resolution carries them without consulting either, since no verb
-		// runs inside an interaction.
-		CheckResolver: checkSeam(a),
-		Witness:       witnessSeam{scope: a.scope},
-		Machine:       machine,
-		Roller:        &diceSeam{roller: a.m.dice},
-	})
+		Machine:      machine,
+	}))
 	if err != nil {
 		return fmt.Errorf("announce: %w", translateResolution(err))
 	}
 
-	if err := a.m.saveDirty(ctx, a.scope, out); err != nil {
-		return err
-	}
-	return a.m.landAreas(enc, a.scope, out)
+	// Landed on the encounter that crossed the boundary, which is mid-verb: no
+	// adopt and no commit. A boundary's effects tell no concentration (R9).
+	_, err = a.m.land(ctx, a.scope, out, &landing{Live: enc, Untold: true})
+	return err
 }
 
 // boundaryCast gathers everyone in the fight, and TOLERATES a member the
@@ -175,7 +161,7 @@ func (a announcerSeam) boundaryCast(
 			continue // placed world NPC — no sheet, contributes nothing to the cast
 		}
 
-		data, err := a.m.fetchCharacterData(ctx, "participant", id)
+		data, err := a.m.sheetsFor(nil).load(ctx, "participant", id)
 		if err != nil {
 			if errors.Is(err, ErrNoCharacter) {
 				continue

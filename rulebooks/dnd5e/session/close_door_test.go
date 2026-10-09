@@ -37,13 +37,8 @@ const leafDoorID = "leaf"
 // FOOTPRINT-DOOR OBSERVATION IS O1 AND STILL RED, so this file never asserts a
 // distant member's DoorSightings; it asserts what closing CHANGES (a step, a
 // sighting), which the canvas answers from the live state alone.
-func footprintLeafWorld(t fataler, state encounter.DoorState) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing:      encEveryoneStanding{},
-		CheckResolver: encNeverResolves{},
-		Witness:       encNeverWitnesses{},
+func footprintLeafWorld(state encounter.DoorState) scene {
+	return scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 6, 6)},
 			Doors: []encounter.DoorInput{{
@@ -52,19 +47,9 @@ func footprintLeafWorld(t fataler, state encounter.DoorState) *encounter.Encount
 				State:     state,
 			}},
 		},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: cell(3, 1)},
-			{ID: "bob", Kind: encounter.KindPlayer, Position: cell(5, 1)},
-			{ID: "carol", Kind: encounter.KindPlayer, Position: cell(0, 4)},
-		},
+		Party:   []sceneSeat{{ID: "alice", At: cell(3, 1)}, {ID: "bob", At: cell(5, 1)}, {ID: "carol", At: cell(0, 4)}},
 		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
-	})
-	if err != nil {
-		t.Fatalf("building footprint leaf world: %v", err)
 	}
-	data := enc.ToData()
-
-	return &data
 }
 
 type CloseDoorSuite struct {
@@ -80,12 +65,12 @@ func TestCloseDoorSuite(t *testing.T) { suite.Run(t, new(CloseDoorSuite)) }
 
 // startWith wires a fresh manager over the given world and leaves the counters
 // at zero, so a failure test's "nothing was written" assertion is about the
-// operation and not about StartSession's own initial save.
-func (s *CloseDoorSuite) startWith(world *encounter.EncounterData) {
+// operation and not about Launch's own initial saves.
+func (s *CloseDoorSuite) startWith(world scene) {
 	s.stream = &fakeStream{}
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: testCharacters(), Events: s.stream,
@@ -93,10 +78,7 @@ func (s *CloseDoorSuite) startWith(world *encounter.EncounterData) {
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	_, err = s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: world,
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), s.mgr, world)
 
 	s.sessions.saves = 0
 	s.encounters.saves = 0
@@ -136,7 +118,7 @@ func (s *CloseDoorSuite) walkOntoLeaf(mgr *session.Manager) *session.MoveOutput 
 // running backwards.
 func (s *CloseDoorSuite) TestAnOpenFootprintDoorClosesAndBlocksAgain() {
 	ctx := context.Background()
-	s.startWith(footprintLeafWorld(s.T(), encounter.DoorIsClosed()))
+	s.startWith(footprintLeafWorld(encounter.DoorIsClosed()))
 
 	// SHUT TO BEGIN: the way onto the door's own cell is refused as a DOOR,
 	// by this seam's word, and it is a wall to sight.
@@ -166,7 +148,7 @@ func (s *CloseDoorSuite) TestAnOpenFootprintDoorClosesAndBlocksAgain() {
 	s.Require().NoError(err)
 	s.Equal(session.Door{ID: leafDoorID, State: "closed"}, closed.Door)
 	s.NotEmpty(closed.Saved.Written, "the closed world was saved")
-	s.Contains(closed.Saved.Written, "encounter:world", "the world carries the new state")
+	s.Contains(closed.Saved.Written, "encounter:sess", "the world carries the new state")
 	s.Require().Contains(closed.Discovered["alice"].Faded, "bob", "the close result carries Alice's lost sighting")
 	s.Require().Contains(closed.Discovered["bob"].Faded, "alice", "the close result carries Bob's lost sighting")
 
@@ -181,13 +163,13 @@ func (s *CloseDoorSuite) TestAnOpenFootprintDoorClosesAndBlocksAgain() {
 // repositories loads the shut door and still refuses the crossing.
 func (s *CloseDoorSuite) TestAClosedDoorSurvivesARepositoryReload() {
 	ctx := context.Background()
-	s.startWith(footprintLeafWorld(s.T(), encounter.DoorIsClosed()))
+	s.startWith(footprintLeafWorld(encounter.DoorIsClosed()))
 	_, err := s.mgr.OpenDoor(ctx, &session.OpenDoorInput{Session: "sess", Member: "alice", Door: leafDoorID})
 	s.Require().NoError(err)
 	_, err = s.mgr.CloseDoor(ctx, &session.CloseDoorInput{Session: "sess", Member: "alice", Door: leafDoorID})
 	s.Require().NoError(err)
 
-	reloaded, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	reloaded, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: testCharacters(), Events: &fakeStream{},
@@ -206,7 +188,7 @@ func (s *CloseDoorSuite) TestAClosedDoorSurvivesARepositoryReload() {
 // output's Seq is that beat's own number in the actor's dense stream.
 func (s *CloseDoorSuite) TestTheCloseBeatNamesTheActorAndState() {
 	ctx := context.Background()
-	s.startWith(footprintLeafWorld(s.T(), encounter.DoorIsClosed()))
+	s.startWith(footprintLeafWorld(encounter.DoorIsClosed()))
 	_, err := s.mgr.OpenDoor(ctx, &session.OpenDoorInput{Session: "sess", Member: "alice", Door: leafDoorID})
 	s.Require().NoError(err)
 	s.stream.published = nil
@@ -233,7 +215,7 @@ func (s *CloseDoorSuite) TestTheCloseBeatNamesTheActorAndState() {
 // integration coverage remains on the separate structural-layout branch.
 func (s *CloseDoorSuite) TestTheKnownRoomAndFloorAreUntouched() {
 	ctx := context.Background()
-	s.startWith(footprintLeafWorld(s.T(), encounter.DoorIsOpen()))
+	s.startWith(footprintLeafWorld(encounter.DoorIsOpen()))
 	before, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 	s.Require().NotEmpty(before.Cells)
@@ -254,69 +236,72 @@ func (s *CloseDoorSuite) TestCloseDoorRefusalsCarryNoWrite() {
 
 	cases := []struct {
 		name  string
-		world func(t fataler) *encounter.EncounterData
+		world func() scene
 		in    *session.CloseDoorInput
 		want  error
 	}{
 		{
 			name:  "no member",
-			world: func(t fataler) *encounter.EncounterData { return footprintLeafWorld(t, encounter.DoorIsClosed()) },
+			world: func() scene { return footprintLeafWorld(encounter.DoorIsClosed()) },
 			in:    &session.CloseDoorInput{Session: "sess", Door: leafDoorID},
 			want:  session.ErrNoMemberID,
 		},
 		{
 			name:  "unknown member",
-			world: func(t fataler) *encounter.EncounterData { return footprintLeafWorld(t, encounter.DoorIsOpen()) },
+			world: func() scene { return footprintLeafWorld(encounter.DoorIsOpen()) },
 			in:    &session.CloseDoorInput{Session: "sess", Member: "stranger", Door: leafDoorID},
 			want:  session.ErrNoMember,
 		},
 		{
 			name:  "no session",
-			world: func(t fataler) *encounter.EncounterData { return footprintLeafWorld(t, encounter.DoorIsClosed()) },
+			world: func() scene { return footprintLeafWorld(encounter.DoorIsClosed()) },
 			in:    &session.CloseDoorInput{Member: "alice", Door: leafDoorID},
 			want:  session.ErrNoSessionID,
 		},
 		{
 			name:  "no door",
-			world: func(t fataler) *encounter.EncounterData { return footprintLeafWorld(t, encounter.DoorIsClosed()) },
+			world: func() scene { return footprintLeafWorld(encounter.DoorIsClosed()) },
 			in:    &session.CloseDoorInput{Session: "sess", Member: "alice"},
 			want:  session.ErrNoConnection,
 		},
 		{
 			name:  "already closed",
-			world: func(t fataler) *encounter.EncounterData { return footprintLeafWorld(t, encounter.DoorIsClosed()) },
+			world: func() scene { return footprintLeafWorld(encounter.DoorIsClosed()) },
 			in:    &session.CloseDoorInput{Session: "sess", Member: "alice", Door: leafDoorID},
 			want:  session.ErrNoConnection,
 		},
 		{
 			name:  "locked",
-			world: func(t fataler) *encounter.EncounterData { return footprintLeafWorld(t, tombLock()) },
+			world: func() scene { return footprintLeafWorld(tombLock()) },
 			in:    &session.CloseDoorInput{Session: "sess", Member: "alice", Door: leafDoorID},
 			want:  session.ErrNoConnection,
 		},
 		{
 			name:  "unknown door",
-			world: func(t fataler) *encounter.EncounterData { return footprintLeafWorld(t, encounter.DoorIsOpen()) },
+			world: func() scene { return footprintLeafWorld(encounter.DoorIsOpen()) },
 			in:    &session.CloseDoorInput{Session: "sess", Member: "alice", Door: "no-such-door"},
 			want:  session.ErrNoConnection,
 		},
 		{
 			name:  "out of reach",
-			world: func(t fataler) *encounter.EncounterData { return footprintLeafWorld(t, encounter.DoorIsOpen()) },
+			world: func() scene { return footprintLeafWorld(encounter.DoorIsOpen()) },
 			in:    &session.CloseDoorInput{Session: "sess", Member: "carol", Door: leafDoorID},
 			want:  session.ErrOutOfRange,
 		},
 		{
-			name:  "unfound concealed door",
+			name: "unfound concealed door",
+			// carol, walled into her corner, has never seen the leaf. alice
+			// would have: Launch refreshes sight as it seats her, and the
+			// open leaf stands in her view, which reveals its secret.
 			world: hiddenLeafWorld,
-			in:    &session.CloseDoorInput{Session: "sess", Member: "alice", Door: leafDoorID},
+			in:    &session.CloseDoorInput{Session: "sess", Member: "carol", Door: leafDoorID},
 			want:  session.ErrNoConnection,
 		},
 	}
 
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
-			s.startWith(tc.world(s.T()))
+			s.startWith(tc.world())
 			_, err := s.mgr.CloseDoor(ctx, tc.in)
 			s.Require().ErrorIs(err, tc.want)
 			s.Zero(s.sessions.saves, "a refusal does not save the session")
@@ -326,7 +311,7 @@ func (s *CloseDoorSuite) TestCloseDoorRefusalsCarryNoWrite() {
 	}
 
 	s.Run("nil input", func() {
-		s.startWith(footprintLeafWorld(s.T(), encounter.DoorIsClosed()))
+		s.startWith(footprintLeafWorld(encounter.DoorIsClosed()))
 		_, err := s.mgr.CloseDoor(ctx, nil)
 		s.Require().ErrorIs(err, session.ErrNilInput)
 		s.Zero(s.sessions.saves)
@@ -340,7 +325,7 @@ func (s *CloseDoorSuite) TestCloseDoorRefusalsCarryNoWrite() {
 // host's guard, and the guard is released however the call ends.
 func (s *CloseDoorSuite) TestCloseDoorRunsUnderTheSessionLock() {
 	ctx := context.Background()
-	s.startWith(footprintLeafWorld(s.T(), encounter.DoorIsOpen()))
+	s.startWith(footprintLeafWorld(encounter.DoorIsOpen()))
 
 	locker := &observingLocker{}
 	accesses := 0
@@ -349,7 +334,7 @@ func (s *CloseDoorSuite) TestCloseDoorRunsUnderTheSessionLock() {
 		s.True(locker.held, "repository and delivery operations must hold the session guard")
 	}
 	stream := &guardedStream{probe: probe}
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions:   guardedSessions{SessionRepository: s.sessions, probe: probe},
 		Encounters: guardedEncounters{EncounterRepository: s.encounters, probe: probe},
@@ -377,7 +362,7 @@ func (s *CloseDoorSuite) TestCloseDoorRunsUnderTheSessionLock() {
 // the sightings it takes away — never a "changed" beat telling an observer to
 // look again at somebody it can still see.
 func (s *CloseDoorSuite) TestClosingADoorTellsNobodyToLookAgain() {
-	s.startWith(footprintLeafWorld(s.T(), encounter.DoorIsOpen()))
+	s.startWith(footprintLeafWorld(encounter.DoorIsOpen()))
 	s.Require().True(s.bobIsCurrentlySeen(), "precondition: the open door lets alice see bob")
 
 	_, err := s.mgr.CloseDoor(context.Background(),

@@ -18,15 +18,18 @@ package session_test
 // # The fixture
 //
 // One 10x6 hall in the authored frame, with the far two columns held by a
-// concealment nobody in this file ever finds. Three rectangles stand in it:
+// concealment nobody in this file ever finds. Four rectangles stand in it:
 //
 //	ALTAR-SLAB   a one-foot box on the centre of the cell east of alice —
 //	             holdable, blocking nothing, standing on exactly one cell
 //	LONG-BENCH   a wide box drawn across its facing, so it stands on MORE
 //	             than one cell and the reach question has a real answer
-//	VAULT-PLINTH inside the concealment, blocking movement and sight — the
+//	VAULT-PLINTH inside the concealment, LISTED under its Props — the
 //	             per-observer clause's subject, and the one placement whose
 //	             two flags are both true
+//	VAULT-STOOL  on a concealed cell but NOT listed — R12's control: explicit
+//	             membership withholds a placement, overlapping hidden floor
+//	             does not
 //
 // Everything a scene asserts about a pose is stated by the fixture in the
 // same terms the fixture authored it in. Nothing here re-traces a rectangle
@@ -49,6 +52,11 @@ const (
 	slabID   = "altar-slab"
 	benchID  = "long-bench"
 	plinthID = "vault-plinth"
+	// stoolID stands on a concealed cell WITHOUT being listed under the
+	// concealment's Props. Under R12 explicit membership governs, so it stays
+	// on every member's atlas — the control that the floor mask alone no longer
+	// conceals an unlisted placement (rpg-project#169, R12).
+	stoolID = "vault-stool"
 )
 
 // slabCell is where the one-foot slab stands: the cell east of alice, so
@@ -61,6 +69,10 @@ func benchCell() spatial.Position { return hexCell(5, 1) }
 
 // plinthCell is inside the concealed columns.
 func plinthCell() spatial.Position { return hexCell(8, 2) }
+
+// stoolCell is a different cell in the same concealed columns — the placement
+// the concealment deliberately does NOT name.
+func stoolCell() spatial.Position { return hexCell(9, 4) }
 
 // aBoxOn is a rectangle of the given size in feet, anchored on one cell's own
 // centre in the hall's plane — hallPlane() is the same frame the field
@@ -76,18 +88,17 @@ func aBoxOn(at spatial.Position, widthFeet, depthFeet float64) spatial.Footprint
 }
 
 // placedWorld is the hall described at the top of this file.
-func placedWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{},
-		Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing:      encEveryoneStanding{},
-		CheckResolver: encNeverResolves{},
-		Witness:       encNeverWitnesses{},
+func placedWorld() scene {
+	return scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 10, 6)},
 			Concealments: []encounter.ConcealmentInput{{
 				ID: vaultSecret, Checks: vaultFind(), Cells: rectCells(8, 0, 2, 6),
+				// EXPLICIT MEMBERSHIP, NOT FLOOR OVERLAP (R12). The plinth is
+				// withheld because the author named it, not because it happens to
+				// stand on a concealed cell — which is exactly why the stool
+				// below, on the same floor and unnamed, stays visible.
+				Props: []encounter.PropID{plinthID},
 			}},
 			Placed: []encounter.PlacedPropInput{
 				{
@@ -109,19 +120,16 @@ func placedWorld(t fataler) *encounter.EncounterData {
 					BlocksMovement:    true,
 					BlocksLineOfSight: true,
 				},
+				{
+					// Over concealed floor, deliberately UNLISTED: R12's control.
+					ID:        stoolID,
+					Placement: aBoxOn(stoolCell(), 2, 2),
+				},
 			},
 		},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: hexCell(1, 1)},
-			{ID: "bob", Kind: encounter.KindPlayer, Position: hexCell(5, 4)},
-		},
+		Party:   []sceneSeat{{ID: "alice", At: hexCell(1, 1)}, {ID: "bob", At: hexCell(5, 4)}},
 		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
-	})
-	if err != nil {
-		t.Fatalf("building placed world: %v", err)
 	}
-	data := enc.ToData()
-	return &data
 }
 
 type PlacedAtlasSuite struct {
@@ -133,7 +141,7 @@ type PlacedAtlasSuite struct {
 func TestPlacedAtlasSuite(t *testing.T) { suite.Run(t, new(PlacedAtlasSuite)) }
 
 func (s *PlacedAtlasSuite) SetupTest() {
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 		Characters: testCharacters(), Events: session.DiscardEvents{},
@@ -141,10 +149,7 @@ func (s *PlacedAtlasSuite) SetupTest() {
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: placedWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, placedWorld())
 }
 
 // placedOf is one member's own placements, keyed by the author's id.
@@ -296,7 +301,7 @@ func (s *PlacedAtlasSuite) TestAConcealedPlacementIsWithheldWhole() {
 			"%s has not found the vault and is told nothing about what stands in it", who)
 	}
 
-	authored, err := s.mgr.AtlasOf(ctx, &session.AtlasOfInput{World: placedWorld(s.T())})
+	authored, err := s.mgr.AtlasOf(ctx, &session.AtlasOfInput{Dungeon: sceneInput(placedWorld()).Dungeon})
 	s.Require().NoError(err)
 
 	whole := map[string]session.AtlasPlacedProp{}
@@ -317,4 +322,26 @@ func (s *PlacedAtlasSuite) TestAConcealedPlacementIsWithheldWhole() {
 		s.Equal(whole[id].Cells, alice[id].Cells, "%s: the whole footing, or none of it", id)
 		s.Equal(whole[id].Placement, alice[id].Placement, "%s: and the same pose", id)
 	}
+}
+
+// TestAnUnlistedPlacementOnConcealedFloorStaysVisible is R12's control, and
+// the reason the plinth above had to be NAMED rather than merely overlapped:
+// concealment membership is explicit. A placement standing on concealed floor
+// that the author did not list is presented exactly as authored, while the
+// listed one beside it stays withheld.
+//
+// WITHOUT THIS the corrected fixture would prove only that listing works, and
+// an accidental return to floor-overlap concealment would read as a green
+// test. Together they pin both halves of the contract.
+func (s *PlacedAtlasSuite) TestAnUnlistedPlacementOnConcealedFloorStaysVisible() {
+	for _, who := range []string{"alice", "bob"} {
+		placed := s.placedOf(who)
+		s.Require().Contains(placed, stoolID,
+			"%s: an unlisted placement is not concealed by the floor it happens to stand on", who)
+		s.NotContains(placed, plinthID,
+			"%s: while the one the author NAMED on that same floor stays withheld", who)
+	}
+
+	s.Equal([]spatial.Position{stoolCell()}, s.placedOf("alice")[stoolID].Cells,
+		"and its whole footing crosses: withheld is explicit membership, never a trim")
 }

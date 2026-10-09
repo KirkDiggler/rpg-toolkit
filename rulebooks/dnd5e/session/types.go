@@ -77,7 +77,7 @@ const (
 // answered for a world nobody has started by [Manager.AtlasOf].
 //
 // The INBOUND direction is a different shape, and worth saying out loud so
-// the asymmetry is not read as an oversight: StartSessionInput.World is
+// the asymmetry is not read as an oversight: LaunchInput.Dungeon is
 // authored content, whose cells are offset pairs under an orientation.
 // Authoring is construction data, and the one-map rule governs what a
 // session SEES while it plays.
@@ -175,6 +175,33 @@ type Atlas struct {
 	// so they cannot disagree. A door's gap is the reader's own arithmetic:
 	// the doorway's crossing, projected onto the segment it stands in.
 	Segments []AtlasSegment `json:"segments,omitempty"`
+
+	// StructuralWalls is every authored structural wall the recipient may know
+	// (rpg-project#169), sorted by ID: its stable identity, opaque appearance
+	// ref, canonical-feet line, assembled dimensions and permitted cut list.
+	// See [AtlasStructuralWall].
+	//
+	// FIXED LAYOUT, FILTERED BY THE COMPOSITION on the same explicit-membership
+	// answer as [Atlas.Placed]: a wall is presented only when its raw static
+	// presence survives, and a bound opening only when its own door identity is
+	// independently permitted. AN ABSENT WALL IS WITHHELD WHOLE — no trimmed
+	// geometry, no tell — and this seam neither re-evaluates that answer nor
+	// infers a state the composition did not send.
+	StructuralWalls []AtlasStructuralWall `json:"structural_walls,omitempty"`
+
+	// PropPresentations are permitted fixed renderer inputs, not colliders.
+	PropPresentations []PropPresentation `json:"prop_presentations,omitempty"`
+
+	// StructuralDoors is every independently permitted structural door
+	// (rpg-project#169), sorted by canonical DoorID: the actual gameplay door
+	// id the observation and verb paths use, its opaque ref, its resolved
+	// opening endpoints and the assembled dimensions it fits. See
+	// [AtlasStructuralDoor].
+	//
+	// ONE FLAT COLLECTION, NOT A PARENT-DEPENDENT SUBTYPE: a door stands on its
+	// own identity, so a withheld parent never conceals an independently
+	// permitted door, and no record here carries a parent id or mutable state.
+	StructuralDoors []AtlasStructuralDoor `json:"structural_doors,omitempty"`
 
 	// Sealed is every cell in Cells NOBODY CAN STAND ON, sorted by coordinate:
 	// scenery, and the cells walls leave no room in.
@@ -643,6 +670,109 @@ type AtlasSegment struct {
 	// Height is the authored wall-height multiplier, carried verbatim.
 	// 0 = not authored = standard height.
 	Height float64 `json:"height,omitempty"`
+}
+
+// AtlasStructuralWall is one authored structural wall as this seam reports it:
+// its stable identity, its opaque appearance reference, its line in canonical
+// feet, the assembled dimensions it is drawn at, and its permitted cut list
+// (rpg-project#169). It is the composition's [encounter.AtlasStructuralWall] as
+// a type this package owns (S2).
+//
+// CANONICAL FEET, AND THE SAME FRAME [AtlasPlacedProp] IS MEASURED IN. From and
+// To are copied into [FootprintPoint], this package's local two-number point,
+// rather than carried as their own type: a caller reads feet on the plane the
+// engine traces rectangles in, with no second frame to convert between.
+//
+// NO NESTED DOOR METADATA. An opening carries only its identity, position and
+// width. A door bound to it, when independently permitted, is its own
+// [AtlasStructuralDoor] — so a hidden parent cannot leak through a nested child
+// and a hidden door leaves no tell behind.
+//
+// NO STATE, NO PARENT ID, NO PLACED ID. Every field here is a fixed layout
+// fact; where a door is and what state it is in are other verbs' answers.
+type AtlasStructuralWall struct {
+	// ID is the raw placed presence identity the wall's contributors are keyed
+	// by, carried verbatim.
+	ID string `json:"id"`
+
+	// Ref is content's identifier for the wall's appearance, carried verbatim
+	// and never inspected.
+	Ref string `json:"ref"`
+
+	// From and To are the wall's two ends, in canonical feet.
+	From FootprintPoint `json:"from"`
+	To   FootprintPoint `json:"to"`
+
+	// Height, Thickness and Elevation are the assembled dimensions in canonical
+	// feet, carried verbatim.
+	Height    float64 `json:"height"`
+	Thickness float64 `json:"thickness"`
+	Elevation float64 `json:"elevation"`
+
+	// Openings is the permitted cut list, in authored order: every bare
+	// opening, and a bound opening only when its door is independently
+	// permitted. A withheld bound opening is omitted WHOLE, so the visible wall
+	// does not disclose the secret.
+	Openings []AtlasStructuralOpening `json:"openings"`
+}
+
+// AtlasStructuralOpening is one permitted gap in an [AtlasStructuralWall]: its
+// identity, its centre along the line and its width, all canonical feet. It
+// deliberately carries no door id, no state and no hidden association — the
+// door, when permitted, is its own [AtlasStructuralDoor].
+type AtlasStructuralOpening struct {
+	// ID names this opening.
+	ID string `json:"id"`
+
+	// Position is the gap's centre, measured along From->To from the wall's
+	// start, in canonical feet.
+	Position float64 `json:"position"`
+
+	// Width is the gap's width along the line, in canonical feet.
+	Width float64 `json:"width"`
+}
+
+// StructuralWallOpeningsReplacement replaces a known wall's complete permitted
+// cut list without repeating its fixed layout. A present record with empty or
+// default Openings clears that component; absence of a record is a no-op. Apply
+// with sibling structural introductions atomically after the snapshot cutoff.
+// A missing local wall requires Knowledge recovery, never a partial wall.
+type StructuralWallOpeningsReplacement struct {
+	// WallID is the known AtlasStructuralWall identity, not a withheld parent.
+	WallID string `json:"wall_id"`
+	// Openings is the complete permitted list in snapshot order and feet.
+	Openings []AtlasStructuralOpening `json:"openings"`
+}
+
+// AtlasStructuralDoor is one independently permitted structural door: its
+// canonical gameplay door id, its opaque appearance reference, its resolved
+// visual opening endpoints in canonical feet, and the assembled dimensions it
+// fits (rpg-project#169). It is the composition's
+// [encounter.AtlasStructuralDoor] as a type this package owns (S2).
+//
+// SELF-CONTAINED, WITH NO PARENT. It carries no parent wall id and no opening
+// association, so a client places it without a withheld parent's identity and
+// one collection holds every permitted attached door. No state is carried: an
+// unknown door state is an unknown door state, never a vanished doorway.
+type AtlasStructuralDoor struct {
+	// ID is the actual canonical gameplay door id the observation and verb
+	// paths use, carried verbatim.
+	ID string `json:"id"`
+
+	// Ref is content's identifier for the door's appearance, carried verbatim
+	// and never inspected.
+	Ref string `json:"ref"`
+
+	// From and To are the resolved visual opening endpoints, in canonical feet;
+	// their nonzero distance is the door's width.
+	From FootprintPoint `json:"from"`
+	To   FootprintPoint `json:"to"`
+
+	// Height, Thickness and Elevation are the assembled dimensions the door
+	// fits, in canonical feet.
+	Height    float64 `json:"height"`
+	Thickness float64 `json:"thickness"`
+	Elevation float64 `json:"elevation"`
 }
 
 // AxialPointF is a point in FRACTIONAL axial coordinates: the frame every cell
@@ -1424,6 +1554,20 @@ const (
 	// reason: the table seeing "the fight is waiting on Ana" is the difference
 	// between a pause and a hang.
 	EventRollWindowOpened EventKind = "roll_window_opened"
+
+	// EventEquipmentChanged reports one item a member drew or stowed
+	// (rpg-project#542, R8). One event per item: a swap is a stow and then a
+	// draw, two events sharing one correlation. It reaches every member the
+	// encounter tells that member's acts — the watchers learn the new
+	// appearance from it without refetching. A draw into an empty hand is
+	// told too.
+	EventEquipmentChanged EventKind = "equipment_changed"
+
+	// EventRested reports one member's short rest: what it restored and what
+	// it spent (rpg-project#542, "Rest"). A rest is the party's act, so a rest
+	// of three members is three of these, one per rester, to that rester's
+	// witnesses; the hour it took moved the world clock once.
+	EventRested EventKind = "rested"
 
 	// EventUnknown is a beat this version does not recognise.
 	//
@@ -2366,6 +2510,12 @@ type ExitedBody struct {
 	// member walking out at a cell nobody authored as a way out. Empty is not
 	// "unknown"; it is the truth that no authored exit was used.
 	Exit string `json:"exit,omitempty"`
+
+	// Ended is every condition the departure took off the board — the
+	// leaver's, and the remaining members' a hold of the leaver's was
+	// keeping — in the rulebook's order. Empty when the leaver took nothing
+	// with them.
+	Ended []ConditionRemovedBody `json:"ended,omitempty"`
 }
 
 func (ExitedBody) isEventBody() {}
@@ -2395,6 +2545,89 @@ type HeldBody struct {
 
 func (HeldBody) isEventBody() {}
 
+// EquipmentChange is which way an item moved in an [EquipmentChangedBody].
+type EquipmentChange string
+
+const (
+	// EquipmentDrawn is an item taken into hand or donned.
+	EquipmentDrawn EquipmentChange = "draw"
+
+	// EquipmentStowed is an item put away.
+	EquipmentStowed EquipmentChange = "stow"
+)
+
+// EquipmentChangedBody is EventEquipmentChanged's typed body: one item that
+// moved in one of a member's slots.
+type EquipmentChangedBody struct {
+	// Member is who changed their equipment.
+	Member string `json:"member"`
+
+	// Slot is the slot the item left or entered, in the rulebook's words.
+	Slot string `json:"slot"`
+
+	// Item is the item's full ref.
+	Item string `json:"item"`
+
+	// Change is whether the item was drawn or stowed.
+	Change EquipmentChange `json:"change"`
+}
+
+func (EquipmentChangedBody) isEventBody() {}
+
+// RestedBody is EventRested's typed body: one member's rest, what it
+// restored, and what it spent.
+type RestedBody struct {
+	// Member is who rested.
+	Member string `json:"member"`
+
+	// Kind is the rest's kind; "short" is the only one a run takes (R13).
+	Kind string `json:"kind"`
+
+	// HitPointsRestored is how many hit points the rest restored.
+	HitPointsRestored int `json:"hit_points_restored"`
+
+	// HitPoints is the member's hit points after the rest.
+	HitPoints int `json:"hit_points"`
+
+	// HitDiceSpent is how many hit dice the rest spent.
+	HitDiceSpent int `json:"hit_dice_spent"`
+
+	// HitDiceReturned is how many hit dice the rest gave back; zero for a
+	// short rest.
+	HitDiceReturned int `json:"hit_dice_returned"`
+
+	// HitDiceRemaining is how many hit dice the member has left.
+	HitDiceRemaining int `json:"hit_dice_remaining"`
+
+	// ResourcesRefilled names every resource the rest refilled, by ref.
+	ResourcesRefilled []string `json:"resources_refilled,omitempty"`
+
+	// Calculation is the hit dice's roll, every die sourced; nil when no die
+	// was spent.
+	Calculation *RollCalculation `json:"calculation,omitempty"`
+
+	// ConcentrationEnded is every concentration the rest ended on the rester,
+	// each with the conditions it was holding. Told on the rest's own beat,
+	// never as beats of their own.
+	ConcentrationEnded []RestConcentrationEnded `json:"concentration_ended,omitempty"`
+
+	// Ended is every condition or effect the rest took off the rester —
+	// prone, dodging, blessed — in the rulebook's order.
+	Ended []ConditionRemovedBody `json:"ended,omitempty"`
+}
+
+func (RestedBody) isEventBody() {}
+
+// RestConcentrationEnded is one concentration a rest ended: who held it, the
+// spell, why it ended, and the conditions it was holding.
+type RestConcentrationEnded struct {
+	ConcentrationEndedBody
+
+	// Removed is every condition the concentration was holding, taken off
+	// whoever it was on.
+	Removed []ConditionRemovedBody `json:"removed,omitempty"`
+}
+
 // DroppedBody is EventDropped's typed body: who dropped which prop, and where
 // it landed.
 type DroppedBody struct {
@@ -2420,6 +2653,10 @@ func (DroppedBody) isEventBody() {}
 // out of has dissolved (ruling §6.6).
 type EndedBody struct {
 	Ending string `json:"ending"`
+
+	// Ended is, per member, every condition the ending took off them as the
+	// players left with the run. Absent when nothing came off anybody.
+	Ended map[string][]ConditionRemovedBody `json:"ended,omitempty"`
 }
 
 func (EndedBody) isEventBody() {}
@@ -2809,6 +3046,16 @@ type ConcealmentRevealedBody struct {
 	// this list is the whole answer and the cache's previous one is
 	// discarded; everything outside them is untouched.
 	Sealed []spatial.Position `json:"sealed,omitempty"`
+
+	// StructuralWalls and StructuralDoors introduce complete permitted records.
+	// Historical full changed-wall records retain whole-record upsert semantics.
+	StructuralWalls []AtlasStructuralWall `json:"structural_walls,omitempty"`
+	StructuralDoors []AtlasStructuralDoor `json:"structural_doors,omitempty"`
+	// StructuralWallOpeningsReplacements updates known walls atomically with
+	// the introductions, without rereading world truth or carrying door state.
+	StructuralWallOpeningsReplacements []StructuralWallOpeningsReplacement `json:"structural_wall_openings_replacements,omitempty"`
+	// PropPresentations introduce complete fixed render records by shared ID.
+	PropPresentations []PropPresentation `json:"prop_presentations,omitempty"`
 }
 
 func (ConcealmentRevealedBody) isEventBody() {}
@@ -3135,7 +3382,7 @@ type CharacterState struct {
 // merging them was considered and rejected: the two genuinely differ (a
 // character has a Level, a monster has a challenge rating), and one type with
 // fields that are meaningful for only half its values reintroduces exactly the
-// guessing that giving Join and Spawn separate verbs removed.
+// guessing that giving characters and monsters separate content paths removed.
 //
 // Ref is here and has no counterpart on CharacterState, which is the same
 // asymmetry stated at the seam: a monster is content built from a named recipe,

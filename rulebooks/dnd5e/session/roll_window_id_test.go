@@ -1,8 +1,9 @@
 package session
 
 import (
-	"github.com/stretchr/testify/require"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestRollWindowBodyPreservesPresentationIDAndLegacyAbsence(t *testing.T) {

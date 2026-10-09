@@ -95,12 +95,13 @@ func (s *ActionEconomyLedgerTestSuite) TestKeyedCapacityIsTheFieldedCapacity() {
 func (s *ActionEconomyLedgerTestSuite) TestEveryDeclaredCapacityRoundTrips() {
 	for _, key := range combat.CapacityTypes() {
 		economy := combat.NewActionEconomy()
+		before := economy.CapacityLeft(key)
 
 		economy.BankCapacity(key, 3)
-		s.Require().Equalf(3, economy.CapacityLeft(key), "banked %q", key)
+		s.Require().Equalf(before+3, economy.CapacityLeft(key), "banked %q", key)
 
 		economy.SpendCapacity(key, 2)
-		s.Require().Equalf(1, economy.CapacityLeft(key), "spent %q", key)
+		s.Require().Equalf(before+1, economy.CapacityLeft(key), "spent %q", key)
 	}
 }
 
@@ -148,4 +149,17 @@ func (s *ActionEconomyLedgerTestSuite) TestAMonstersEconomyPaysForAnAction() {
 
 	s.False(combat.CanPay(economy, profile))
 	s.Require().Error(combat.Pay(economy, profile))
+}
+
+// A monster's turn holds one object interaction, and Reset gives it back after
+// it was spent — the turn boundary reseeds it like the three slots.
+func (s *ActionEconomyLedgerTestSuite) TestResetRestoresTheObjectInteraction() {
+	economy := combat.NewActionEconomy()
+	s.Equal(1, economy.CapacityLeft(combat.CapacityObjectInteraction))
+
+	economy.SpendCapacity(combat.CapacityObjectInteraction, 1)
+	s.Equal(0, economy.CapacityLeft(combat.CapacityObjectInteraction))
+
+	economy.Reset()
+	s.Equal(1, economy.CapacityLeft(combat.CapacityObjectInteraction))
 }

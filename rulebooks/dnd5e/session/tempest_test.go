@@ -7,8 +7,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
@@ -144,13 +147,13 @@ func (s *CastSuite) TestWrathMonsterTurnReloadResumesWithoutSecondStrike() {
 	ctx := context.Background()
 	newManager := func() {
 		var err error
-		s.mgr, err = session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+		s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
 		s.Require().NoError(err)
 	}
 	newManager()
 	_, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "cleric", DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "cleric")})
 	s.Require().NoError(err)
-	persisted, err := s.encounters.GetEncounter(ctx, "world")
+	persisted, err := s.encounters.GetEncounter(ctx, "sess")
 	s.Require().NoError(err)
 	s.Require().NotNil(persisted.PausedTurn)
 	s.True(persisted.PausedTurn.AfterStrike)
@@ -168,7 +171,7 @@ func (s *CastSuite) TestWrathMonsterTurnReloadResumesWithoutSecondStrike() {
 	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Choice: session.ReactStrike, Option: "thunder"})
 	s.Require().NoError(err)
 	s.Equal(hp, s.characters.byID["cleric"].HitPoints)
-	persisted, err = s.encounters.GetEncounter(ctx, "world")
+	persisted, err = s.encounters.GetEncounter(ctx, "sess")
 	s.Require().NoError(err)
 	s.Nil(persisted.PausedTurn)
 	turn, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "cleric"})
@@ -318,17 +321,18 @@ func (s *CastSuite) TestFogMembershipFollowsPublicMovement() {
 // A concentration-ending hit must be recorded before refreshed perception can
 // notice the final downed player and close the encounter.
 func (s *CastSuite) TestLethalHitBreakingFogKeepsItsStory() {
-	sheet := s.tempestSheet()
-	sheet.HitPoints = 2
-	pool := sheet.Resources[resources.WrathOfTheStorm]
-	pool.Current = 0
-	sheet.Resources[resources.WrathOfTheStorm] = pool
-	s.scene(sheet, 1, 15, 4, 1)
+	s.scene(s.tempestSheet(), 1, 15, 4, 1)
+	// Wounded and spent after the launch, whose long rest would have restored
+	// both.
+	s.editStored("cleric", func(sheet *character.Data) {
+		sheet.HitPoints = 2
+		spendWrath(sheet)
+	})
 	ctx := context.Background()
 	row := s.castRow(spells.FogCloud)
 	_, err := s.mgr.Cast(ctx, &session.CastInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Cell: &spatial.Position{X: 20, Y: 1}})
 	s.Require().NoError(err)
-	s.mgr, err = session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+	s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
 	s.Require().NoError(err)
 	_, err = s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "cleric", DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "cleric")})
 	s.Require().NoError(err, "a lethal hit that removes fog must still record and save its outcome")
@@ -363,9 +367,6 @@ func (s *CastSuite) TestAStrikeThatBreaksFogInsideAWalkEndsTheArea() {
 	// No Wrath of the Storm to spend, so the opportunity attack lands without
 	// posing the cleric a reaction.
 	cleric := s.tempestSheet()
-	pool := cleric.Resources[resources.WrathOfTheStorm]
-	pool.Current = 0
-	cleric.Resources[resources.WrathOfTheStorm] = pool
 	dana := s.finalizedSpareTheDyingCleric()
 	dana.ID, dana.PlayerID, dana.Name = "dana", "player-dana", "Dana"
 	// The skeleton stands at the cleric's back (cells -1 puts it on (0,1)),
@@ -373,6 +374,8 @@ func (s *CastSuite) TestAStrikeThatBreaksFogInsideAWalkEndsTheArea() {
 	// it holds dana and neither the cleric nor the skeleton, who can still see
 	// each other.
 	s.sceneWithAllies(cleric, []*character.Data{dana}, -1, 15, 4, 1)
+	// Spent after the launch, whose long rest would have restored it.
+	s.editStored("cleric", spendWrath)
 	ctx := context.Background()
 	row := s.castRow(spells.FogCloud)
 	_, err := s.mgr.Cast(ctx, &session.CastInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Cell: &spatial.Position{X: 6, Y: 1}})
@@ -426,14 +429,12 @@ func (s *CastSuite) TestAStrikeThatBreaksFogInsideAWalkEndsTheArea() {
 // Wrath of the Storm, so a blow against her poses her nothing; with it, a hit
 // on her stops after the damage to ask whether she strikes back.
 func (s *CastSuite) fogOverTheSkeleton(wrath bool, rolls ...int) {
-	cleric := s.tempestSheet()
-	if !wrath {
-		pool := cleric.Resources[resources.WrathOfTheStorm]
-		pool.Current = 0
-		cleric.Resources[resources.WrathOfTheStorm] = pool
-	}
 	fighter := armedFighter("aaron")
-	s.sceneWithAllies(fighter, []*character.Data{cleric}, 6, rolls...)
+	s.sceneWithAllies(fighter, []*character.Data{s.tempestSheet()}, 6, rolls...)
+	if !wrath {
+		// Spent after the launch, whose long rest would have restored it.
+		s.editStored("cleric", spendWrath)
+	}
 	ctx := context.Background()
 	endTurn := func(member string) {
 		_, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: member, DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", member)})
@@ -623,11 +624,11 @@ func (s *CastSuite) TestADrivenHitThatBreaksFogEndsTheAreaBeforeItsWindow() {
 	row := s.castRow(spells.FogCloud)
 	_, err := s.mgr.Cast(ctx, &session.CastInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Cell: &spatial.Position{X: 20, Y: 1}})
 	s.Require().NoError(err)
-	s.mgr, err = session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+	s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
 	s.Require().NoError(err)
 	_, err = s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "cleric", DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "cleric")})
 	s.Require().NoError(err)
-	persisted, err := s.encounters.GetEncounter(ctx, "world")
+	persisted, err := s.encounters.GetEncounter(ctx, "sess")
 	s.Require().NoError(err)
 	s.Require().NotNil(persisted.PausedTurn, "control: the hit stops to ask the cleric")
 	areas, err := s.mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "cleric"})
@@ -655,7 +656,7 @@ func (s *CastSuite) flareFogScene(wrath bool) {
 	row := s.castRow(spells.FogCloud)
 	_, err := s.mgr.Cast(ctx, &session.CastInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Cell: &spatial.Position{X: 20, Y: 1}})
 	s.Require().NoError(err)
-	s.mgr, err = session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+	s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
 	s.Require().NoError(err)
 	_, err = s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "cleric", DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "cleric")})
 	s.Require().NoError(err)
@@ -693,4 +694,88 @@ func (s *CastSuite) TestAResumedDrivenHitThatBreaksFogEndsTheAreaBeforeItsWindow
 	areas, err := s.mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "cleric"})
 	s.Require().NoError(err)
 	s.Empty(areas, "the area lands before the next window opens")
+}
+
+// TestAWalkThatPausesOnItsSecondReactionTellsTheFirst: a step that provokes
+// two skeletons, where the first swing misses and the second hits and asks
+// the walking cleric about Wrath of the Storm. The walk pauses on the second
+// reaction, and the first — already resolved — is told before the window
+// opens, by the movement landing's record step.
+func (s *CastSuite) TestAWalkThatPausesOnItsSecondReactionTellsTheFirst() {
+	s.sceneWithSecondSkeleton(s.tempestSheet(), 1, 1, 15, 3, 3, 3, 3, 3, 3, 3, 3)
+	ctx := context.Background()
+
+	out, err := s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "cleric", DeclarationID: currentMoveID(s.T(), s.mgr, "sess", "cleric"), Path: []spatial.Position{{X: 0, Y: 1}}})
+	s.Require().NoError(err)
+
+	s.Equal(session.MovementPaused, out.Status, "the second reaction asks the walker")
+	told := s.beats(session.EventStruck, session.EventMissed)
+	s.Require().Len(told, 1, "the first reaction is told before the window")
+	s.Equal(session.EventMissed, told[0].Kind)
+	offered, err := s.mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "cleric"})
+	s.Require().NoError(err)
+	asked := false
+	for _, d := range offered.Declarations {
+		if d.Verb == session.VerbReact && d.Reaction != nil && d.Reaction.Ref == refs.Features.WrathOfTheStorm().String() {
+			asked = true
+		}
+	}
+	s.True(asked, "and the cleric is asked about Wrath of the Storm")
+}
+
+// sceneWithSecondSkeleton is the cast scene with a second skeleton standing at
+// authored [2,0], beside the first, both in the fight.
+//
+// The launch places both and the fight forms with all three, so one die per
+// member goes to initiative ahead of the scene's script. The clock is then
+// authored with the second skeleton last, where a monster that joined the
+// running fight always stood, and the caster active.
+func (s *CastSuite) sceneWithSecondSkeleton(sheet *character.Data, cells int, rolls ...int) {
+	s.T().Helper()
+	s.characters = newFakeCharacters(sheet)
+	s.member = sheet.ID
+	s.sessions = newFakeSessions()
+	s.encounters = newFakeEncounters()
+	s.stream = &fakeStream{}
+	s.dice = &sequenceDice{rolls: append(make([]int, 3), rolls...)}
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
+		PresentationIDs: testPresentationIDs{}, Dice: s.dice,
+		TurnDriver: session.Pass{},
+		Sessions:   s.sessions, Encounters: s.encounters,
+		Characters: s.characters, Events: s.stream,
+	})
+	s.Require().NoError(err)
+	s.mgr = mgr
+
+	launched := launchScene(s.T(), mgr, scene{
+		Field: encounter.FieldInput{
+			Canvas:  pointyCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 40, 8)},
+		},
+		Party: []sceneSeat{seatAt(sheet.ID, 1, 1)},
+		Monsters: []dungeonspec.MonsterPlacement{
+			monsterAt("skeleton", refs.Monsters.Skeleton().String(), 1+cells, 1),
+			monsterAt("skeleton2", refs.Monsters.Skeleton().String(), 2, 0),
+		},
+	})
+	s.Require().NotEmpty(launched.Formed, "standing in plain sight must start a fight")
+	authorTurnClock(s.T(), s.encounters, testSession, []string{sheet.ID, "skeleton", "skeleton2"}, 0)
+	s.stream.published = nil
+}
+
+// spendWrath empties a sheet's Wrath of the Storm pool.
+func spendWrath(sheet *character.Data) {
+	pool := sheet.Resources[resources.WrathOfTheStorm]
+	pool.Current = 0
+	sheet.Resources[resources.WrathOfTheStorm] = pool
+}
+
+// editStored rewrites a character's stored sheet in place of the one the
+// launch's long rest saved.
+func (s *CastSuite) editStored(id string, edit func(*character.Data)) {
+	s.T().Helper()
+	stored, err := s.characters.GetCharacter(context.Background(), id)
+	s.Require().NoError(err)
+	edit(stored)
+	s.Require().NoError(s.characters.SaveCharacter(context.Background(), stored))
 }

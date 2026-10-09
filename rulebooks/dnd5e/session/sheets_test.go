@@ -35,7 +35,7 @@ func TestSheetFactsSuite(t *testing.T) {
 func (s *SheetFactsSuite) SetupTest() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"))
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
@@ -43,23 +43,11 @@ func (s *SheetFactsSuite) SetupTest() {
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
-		Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Initiative: encOrderAsGiven{},
-		TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
+	sc := scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 16, 3)}},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-		},
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-	})
-	s.Require().NoError(err)
-	data := enc.ToData()
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: &data,
-	})
-	s.Require().NoError(err)
+		Party: []sceneSeat{seatAt("alice", 1, 1)},
+	}
+	launchScene(s.T(), mgr, sc)
 }
 
 // walk moves alice n cells east along row 1 from column from.
@@ -77,7 +65,7 @@ func (s *SheetFactsSuite) walk(from, n int) {
 // rounds is how many world rounds the stored clock has seen.
 func (s *SheetFactsSuite) rounds() int {
 	s.T().Helper()
-	return s.encounters.byID["world"].Clock.HighWater
+	return s.encounters.byID[testSession].Clock.HighWater
 }
 
 // TestAPlayerWalkingOutsideAFightPacesFromTheSheetsSpeedOfThatMoment is slice

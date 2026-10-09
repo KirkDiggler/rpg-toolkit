@@ -31,11 +31,7 @@ func (s *DissolveTestSuite) SetupTest() {
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
 	s.mgr = managerOverRepos(s.T(), s.sessions, s.encounters)
-	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: ambushWorld(s.T()),
-	})
-	s.Require().NoError(err)
-	stockAuthoredMonsters(s.T(), s.sessions, s.encounters, "sess")
+	launchScene(s.T(), s.mgr, ambushWorld())
 }
 
 // fight walks alice into the ogre, which starts one.
@@ -168,7 +164,7 @@ func (s *DissolveTestSuite) TestTheEndingReachesClients() {
 	s.fight()
 
 	stream := &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: testCharacters(), Events: stream,
 	})

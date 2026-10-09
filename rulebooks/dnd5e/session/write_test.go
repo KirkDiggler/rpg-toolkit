@@ -27,17 +27,14 @@ func (s *WriteTestSuite) SetupTest() {
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
 	s.characters = testCharacters()
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: hexWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, hexWorld())
 }
 
 // TestJoinPersistsTheNewMember is the round-trip that matters most.
@@ -61,7 +58,7 @@ func (s *WriteTestSuite) TestJoinPersistsTheNewMember() {
 	// room he would have to look up. The vault is anchored at (6,0), so this
 	// number only exists if the projection happened.
 	s.Equal(hexCell(2, 2), out.Member.Position)
-	s.Equal([]string{"character:bob", "encounter:world", "session:sess"}, out.Saved.Written)
+	s.Equal([]string{"character:bob", "seat:bob", "encounter:sess", "session:sess"}, out.Saved.Written)
 
 	// The proof: a fresh read sees him.
 	sightings, err := s.mgr.View(ctx, &session.ViewInput{Session: "sess", Member: "bob"})
@@ -99,7 +96,8 @@ func (s *WriteTestSuite) TestExitCarriesKnowledgeOut() {
 	s.Equal(map[string]session.Discovery{
 		"bob": {Faded: []string{"alice"}},
 	}, out.Discovered, "the remaining observer must learn that Alice faded")
-	s.Equal([]string{"encounter:world", "session:sess"}, out.Saved.Written)
+	s.Equal([]string{"encounter:sess", "session:sess", "seat:alice"}, out.Saved.Written,
+		"the run is saved, and the seat she held is released with her exit")
 
 	// And she is really gone, not merely reported gone.
 	_, err = s.mgr.View(ctx, &session.ViewInput{Session: "sess", Member: "alice"})
@@ -113,7 +111,8 @@ func (s *WriteTestSuite) TestEndClosesTheEncounter() {
 	out, err := s.mgr.End(ctx, &session.EndInput{Session: "sess", Ending: "out"})
 	s.Require().NoError(err)
 	s.Equal("out", out.Outcome.Ending)
-	s.Equal([]string{"encounter:world", "session:sess"}, out.Saved.Written)
+	s.Equal([]string{"encounter:sess", "session:sess", "seat:alice"}, out.Saved.Written,
+		"the run is saved, and the seat the ending frees is released with it")
 
 	status, err := s.mgr.Status(ctx, &session.StatusInput{Session: "sess"})
 	s.Require().NoError(err)
@@ -204,16 +203,13 @@ func (s *WriteTestSuite) TestWriteVerbsRejectMissingIdentifiers() {
 func (s *WriteTestSuite) TestFailedSaveIsReportedNotSwallowed() {
 	encounters := &failingEncounters{fakeEncounters: newFakeEncounters()}
 	sessions := newFakeSessions()
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
 	ctx := context.Background()
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: hexWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, hexWorld())
 
 	// Arm the failure only now, so setup could succeed.
 	encounters.saveErr = errBroken
@@ -238,7 +234,7 @@ func (s *WriteTestSuite) TestFailedSaveIsReportedNotSwallowed() {
 func (s *WriteTestSuite) TestStaleWorldIsNotResurrected() {
 	ctx := context.Background()
 
-	other, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	other, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
 	})

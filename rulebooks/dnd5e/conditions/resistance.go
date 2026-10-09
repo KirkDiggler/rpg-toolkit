@@ -54,11 +54,11 @@ type NewResistanceConditionInput struct {
 // Resistance is concentration, up to one minute — the same duration
 // category as [BlessedCondition] and [GuidedCondition], not Bardic
 // Inspiration's ten-minutes-or-combat-end. So this condition subscribes to
-// long-rest cleanup (Bless's precedent) and relies on the existing
+// rest cleanup (Bless's precedent) and relies on the existing
 // concentration teardown for everything else — no combat-end subscription
 // of its own, unlike [InspiredCondition].
 //
-// # Three subscriptions: the offer, the take, and the long rest
+// # Three subscriptions: the offer, the take, and the rest
 //
 // No ability filter: RAW says "one saving throw of its choice," so the
 // offer fires on whichever save the recipient next makes, not a particular
@@ -114,7 +114,7 @@ func (r *ResistanceCondition) ConditionAddress() dnd5eEvents.ConditionAddress {
 func (r *ResistanceCondition) IsApplied() bool { return r.bus != nil }
 
 // Apply subscribes the die to the save-offer chain, to the taken topic that
-// spends it, and to long-rest cleanup.
+// spends it, and to rest cleanup.
 func (r *ResistanceCondition) Apply(ctx context.Context, bus events.EventBus) error {
 	if r.IsApplied() {
 		return rpgerr.New(rpgerr.CodeAlreadyExists, "resistance condition already applied")
@@ -137,12 +137,12 @@ func (r *ResistanceCondition) Apply(ctx context.Context, bus events.EventBus) er
 	}
 	r.subscriptionIDs = append(r.subscriptionIDs, takenSub)
 
-	restSubID, err := subscribeRemoveOnLongRest(ctx, bus, subscribeRemoveOnLongRestInput{
+	restSubID, err := subscribeRemoveOnRest(ctx, bus, subscribeRemoveOnRestInput{
 		Address: r.ConditionAddress(), Remove: r.Remove,
 	})
 	if err != nil {
 		_ = r.Remove(ctx, bus)
-		return rpgerr.Wrap(err, "failed to subscribe resistance condition to long rest")
+		return rpgerr.Wrap(err, "failed to subscribe resistance condition to rest")
 	}
 	r.restSubID = restSubID
 

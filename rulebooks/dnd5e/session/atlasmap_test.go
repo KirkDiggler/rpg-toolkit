@@ -38,9 +38,8 @@ func TestAtlasMapSuite(t *testing.T) {
 // map concatenated region by region comes out in coordinate order BY ACCIDENT
 // — and an order pin written against it passes with the sorting deleted,
 // which is exactly what the first version of this file did.
-func backwardsWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing: encEveryoneStanding{},
+func backwardsWorld() scene {
+	return scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{
 				rectRegion("alpha", 4, 0, 4, 4),
@@ -52,20 +51,13 @@ func backwardsWorld(t fataler) *encounter.EncounterData {
 				State: encounter.DoorIsOpen(),
 			}},
 		},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-		},
+		Party:   []sceneSeat{seatAt("alice", 1, 1)},
 		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
-	})
-	if err != nil {
-		t.Fatalf("building backwards world: %v", err)
 	}
-	data := enc.ToData()
-	return &data
 }
 
 func (s *AtlasMapSuite) SetupTest() {
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
@@ -74,10 +66,7 @@ func (s *AtlasMapSuite) SetupTest() {
 	// Alpha is painted away from the origin, so its cells only exist at
 	// coordinates a projection that dropped or duplicated a region could
 	// not produce by accident.
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: backwardsWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, backwardsWorld())
 	s.mgr = mgr
 }
 
@@ -98,13 +87,14 @@ func (s *AtlasMapSuite) atlas() *session.Atlas {
 func (s *AtlasMapSuite) TestNothingOnTheMapNamesARoom() {
 	s.Equal(
 		[]string{"Grid", "Layout", "Cells", "Props", "Placed", "Boundaries", "Doorways", "Segments",
-			"Sealed", "Regions", "Exits", "Start", "DungeonKey"},
+			"StructuralWalls", "PropPresentations", "StructuralDoors", "Sealed", "Regions", "Exits", "Start", "DungeonKey"},
 		fieldsOf(session.Atlas{}),
 		"the map is a grid, which way its hexes point, its cells, the things standing on it as "+
-			"cells and as rectangles, its walls as crossings and as lines, its doorways, which "+
-			"cells nobody stands on, its regions, the authored ways out, the authored way in, "+
-			"and the content key a host fetches the room's APPEARANCE by — never the appearance "+
-			"itself (rpg-project#479)",
+			"cells and as rectangles, its walls as crossings and as lines, its fixed structural "+
+			"walls and the independently permitted doors that stand in their cuts, its doorways, "+
+			"which cells nobody stands on, its regions, the authored ways out, the authored way in, "+
+			"and typed permitted prop appearances with a source key — never an editor document "+
+			"or permission to fetch unrestricted source",
 	)
 	s.Equal(
 		[]string{"At", "Facing"},
@@ -161,6 +151,26 @@ func (s *AtlasMapSuite) TestNothingOnTheMapNamesARoom() {
 		fieldsOf(session.FootprintPoint{}),
 		"a point on the plane is two numbers IN FEET — not a cell, and not the atlas's axial "+
 			"frame, which carries different numbers for the same spot",
+	)
+	s.Equal(
+		[]string{"ID", "Ref", "From", "To", "Height", "Thickness", "Elevation", "Openings"},
+		fieldsOf(session.AtlasStructuralWall{}),
+		"a structural wall is its stable presence id, an opaque ref, its line in feet, its "+
+			"assembled dimensions, and its permitted cuts — and NO mutable state, private "+
+			"placed id or parent association (rpg-project#169)",
+	)
+	s.Equal(
+		[]string{"ID", "Position", "Width"},
+		fieldsOf(session.AtlasStructuralOpening{}),
+		"an opening is a name, a centre and a width — never a door id, so a withheld cut "+
+			"leaves no tell",
+	)
+	s.Equal(
+		[]string{"ID", "Ref", "From", "To", "Height", "Thickness", "Elevation"},
+		fieldsOf(session.AtlasStructuralDoor{}),
+		"a structural door is the actual gameplay door id, an opaque ref, its resolved "+
+			"opening endpoints and the dimensions it fits — one flat record with no parent id "+
+			"and no state",
 	)
 }
 

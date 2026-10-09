@@ -97,6 +97,8 @@ func (ae *ActionEconomy) CapacityLeft(key CapacityType) int {
 		return ae.FlurryStrikesRemaining
 	case CapacityDeathSave:
 		return ae.DeathSavesRemaining
+	case CapacityObjectInteraction:
+		return ae.ObjectInteractionsRemaining
 	case CapacityNone:
 		return 0
 	default:
@@ -132,6 +134,8 @@ func (ae *ActionEconomy) BankCapacity(key CapacityType, n int) {
 		ae.FlurryStrikesRemaining += n
 	case CapacityDeathSave:
 		ae.DeathSavesRemaining += n
+	case CapacityObjectInteraction:
+		ae.ObjectInteractionsRemaining += n
 	case CapacityNone:
 	default:
 	}

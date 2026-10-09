@@ -4,7 +4,6 @@
 package session
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
@@ -25,7 +24,7 @@ import (
 //
 // # One owner per fact, no copies
 //
-// Join, Spawn and PlaceNPC hand the composition none of these facts; it asks
+// Join, Launch and PlaceNPC hand the composition none of these facts; it asks
 // at the moment it paces a walk, budgets a driven turn, tests reach, builds a
 // driver's view or refreshes a percept. A level gained, a weapon swapped or a
 // stat block changed is read at the next ask without any verb owning a
@@ -173,20 +172,9 @@ func (s sheetSeam) sheetOf(id encounter.MemberID) (heldSheet, error) {
 		return heldSheet{}, fmt.Errorf("member %q has unknown roster kind %q: %w", name, kind, ErrInvalidSession)
 	}
 
-	data, err := s.chars.GetCharacter(s.ctx, name)
+	data, err := s.sheets.load(s.ctx, "character", name)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return heldSheet{}, fmt.Errorf("character %q: %w", name, ErrNoCharacter)
-		}
 		return heldSheet{}, err
-	}
-	if data == nil {
-		return heldSheet{}, fmt.Errorf(
-			"character %q: GetCharacter reported success with no data: %w", name, ErrBadRepository)
-	}
-	if data.ID != name {
-		return heldSheet{}, fmt.Errorf(
-			"character %q: GetCharacter returned %q instead: %w", name, data.ID, ErrBadRepository)
 	}
 
 	return heldSheet{character: data}, nil

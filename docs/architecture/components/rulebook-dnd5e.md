@@ -92,7 +92,8 @@ The identity chain is explicit rather than persistence-driven:
   the whole projection.
 
 Unknown/unrenderable loaded effects fail loudly instead of disappearing.
-`SpellSlots` and legacy `ClassResources` are excluded: this wave is explicitly
+`SpellSlots` are excluded (the legacy `ClassResources` field is deleted
+outright, rpg-project#542 slice 1): this wave is explicitly
 non-magical and does not reserve a magic status or action shelf. Strict
 `character.Load` also rejects negative/over-maximum owner and feature-private
 resource persistence before construction; the legacy lenient loader drops a

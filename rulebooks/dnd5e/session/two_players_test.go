@@ -13,7 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -52,6 +52,9 @@ type TwoPlayersTestSuite struct {
 	encounters *fakeEncounters
 	stream     *fakeStream
 	mgr        *session.Manager
+	// launched is the one launch SetupTest made: both players and both
+	// skeletons on the board at once.
+	launched *session.LaunchOutput
 }
 
 func TestTwoPlayersSuite(t *testing.T) {
@@ -75,22 +78,14 @@ func armedBarbarian(id string) *character.Data {
 // same hexSeamWalls every seam in this package is drawn with, reused rather
 // than re-derived so a wall in this suite means what it already means
 // everywhere else.
-func twoPlayerTomb(t fataler, width, height, atX int) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
+func twoPlayerTomb(width, height, atX int) scene {
+	return scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("tomb", 0, 0, width, height)},
 			Walls:   hexSeamWalls(atX+1, height, -1),
 		},
-		Endings:   []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-	})
-	if err != nil {
-		t.Fatalf("building the two-player tomb: %v", err)
+		Endings: []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
 	}
-	data := enc.ToData()
-	return &data
 }
 
 func (s *TwoPlayersTestSuite) SetupTest() {
@@ -102,7 +97,7 @@ func (s *TwoPlayersTestSuite) SetupTest() {
 	barbarian := armedBarbarian("barbarian")
 	barbarian.HitPoints, barbarian.MaxHitPoints = 100, 100
 
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: newFakeCharacters(fighter, barbarian),
@@ -111,15 +106,13 @@ func (s *TwoPlayersTestSuite) SetupTest() {
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	ctx := context.Background()
-	world := twoPlayerTomb(s.T(), 12, 6, 6)
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: world})
-	s.Require().NoError(err)
-
-	_, err = mgr.Join(ctx, &session.JoinInput{Session: "sess", Member: "fighter", Position: spatial.Position{X: 0, Y: 0}})
-	s.Require().NoError(err)
-	_, err = mgr.Join(ctx, &session.JoinInput{Session: "sess", Member: "barbarian", Position: spatial.Position{X: 1, Y: 0}})
-	s.Require().NoError(err)
+	world := twoPlayerTomb(12, 6, 6)
+	world.Party = []sceneSeat{seatAt("fighter", 0, 0), seatAt("barbarian", 1, 0)}
+	world.Monsters = []dungeonspec.MonsterPlacement{
+		skeletonAt("skel-1", 3, 0),
+		skeletonAt("skel-2", 8, 0), // past the wall at column 6
+	}
+	s.launched = launchScene(s.T(), mgr, world)
 }
 
 // recipientKinds is every kind one recipient was delivered in a window, in
@@ -165,26 +158,16 @@ func (s *TwoPlayersTestSuite) assertContiguous(seqs []uint64, who string) {
 func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 	ctx := context.Background()
 
-	spawned1, err := s.mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 3, Y: 0},
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(spawned1.Formed, "skel-1 is in plain sight of both players and must pull them into one bubble")
+	s.Require().Len(s.launched.Formed, 1,
+		"skel-1 is in plain sight of both players and must pull them into one bubble, and the only one")
 	// testDice{}'s flat rolls tie every initiative roll, so the order falls
 	// to the ID tie-break the seam documents (initiative.go) — alphabetical,
 	// same as TestSkeletonAttacksFromRange's own "fighter's ID sorts first"
 	// comment. "barbarian" < "fighter" < "skel-1", so the REAL order this
 	// dice+ID combination produces is barbarian first, not the fighter-first
 	// prose a walkthrough might expect — asserted here rather than fought.
-	s.Equal([]string{"barbarian", "fighter", "skel-1"}, spawned1.Formed.Order)
-
-	spawned2, err := s.mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skel-2", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 8, Y: 0}, // past the wall at column 6
-	})
-	s.Require().NoError(err)
-	s.Require().Nil(spawned2.Formed, "a wall in the way must keep skel-2 a spawn, not an ambush")
+	s.Equal([]string{"barbarian", "fighter", "skel-1"}, s.launched.Formed[0].Order,
+		"and a wall in the way keeps skel-2 out of it: a placement, not an ambush")
 
 	turn, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "skel-2"})
 	s.Require().NoError(err)
@@ -328,7 +311,7 @@ func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 // fighter and barbarian both start at 8 HP — one hit (8 damage under the
 // lawful testDice{}, a d6 rolling its face plus the shortsword's 2, verified
 // the same way every other fixture in this package is) downs either outright.
-// skel-1 spawns adjacent to barbarian, one cell short of fighter.
+// skel-1 is placed adjacent to barbarian, one cell short of fighter.
 //
 // Round 1: barbarian's own turn passes. Fighter's own EndTurn drives skel-1,
 // whose ONE attack downs barbarian — the fight is NOT decided (fighter still
@@ -353,7 +336,7 @@ func TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers(t *testing.T) {
 	barbarian.HitPoints, barbarian.MaxHitPoints = 8, 8
 	stream := &fakeStream{}
 
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: sessions, Encounters: encounters,
 		Characters: newFakeCharacters(fighter, barbarian),
@@ -362,23 +345,11 @@ func TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: tombRoom(12, 6),
-	})
-	require.NoError(t, err)
-
-	_, err = mgr.Join(ctx, &session.JoinInput{Session: "sess", Member: "fighter", Position: spatial.Position{X: 0, Y: 0}})
-	require.NoError(t, err)
-	_, err = mgr.Join(ctx, &session.JoinInput{Session: "sess", Member: "barbarian", Position: spatial.Position{X: 1, Y: 0}})
-	require.NoError(t, err)
-
-	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 2, Y: 0},
-	})
-	require.NoError(t, err)
-	require.NotNil(t, spawned.Formed)
-	require.Equal(t, []string{"barbarian", "fighter", "skel-1"}, spawned.Formed.Order,
+	sc := tombWith(12, 6, skeletonAt("skel-1", 2, 0))
+	sc.Party = append(sc.Party, seatAt("barbarian", 1, 0))
+	spawned := launchScene(t, mgr, sc)
+	require.Len(t, spawned.Formed, 1)
+	require.Equal(t, []string{"barbarian", "fighter", "skel-1"}, spawned.Formed[0].Order,
 		"same tie-break as TestTwoPlayersOneSession's own — barbarian sorts first")
 
 	// Round 1: barbarian passes her own turn.

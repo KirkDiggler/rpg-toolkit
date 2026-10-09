@@ -87,8 +87,9 @@ func installTruth(ctx context.Context, room spatial.Room, cast *Participants, ru
 	// is the run's to answer: the encounter's graph folds the dungeon's
 	// factions and dispositions with the facts the run has learned, and the
 	// cast asks it rather than keeping a table of sides (rpg-project#375,
-	// design §4). The six entries with no world to load — MakeCheck, its
-	// resumed pose, DeathSave, LongRest, Participation and ProjectCharacter —
+	// design §4). The entries with no world to load — MakeCheck, its resumed
+	// pose, DeathSave, LongRest, ShortRest, Equip, Depart, Participation and
+	// ProjectCharacter —
 	// pass a nil run and a nil room. The room is still installed above, and a
 	// nil room reads as absent ([gamectx.Room]); with a nil run every side and
 	// sight question is unknown, the absent value that says what the author

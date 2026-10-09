@@ -140,12 +140,12 @@ func (b *BladeWardCondition) Apply(ctx context.Context, bus events.EventBus) err
 	}
 	b.subscriptionIDs = append(b.subscriptionIDs, combatSub)
 
-	restSub, err := subscribeRemoveOnLongRest(ctx, bus, subscribeRemoveOnLongRestInput{
+	restSub, err := subscribeRemoveOnRest(ctx, bus, subscribeRemoveOnRestInput{
 		Address: ConditionAddressOf(b.MemberID, b), Remove: b.Remove,
 	})
 	if err != nil {
 		_ = b.Remove(ctx, bus)
-		return rpgerr.Wrap(err, "failed to subscribe to long rest")
+		return rpgerr.Wrap(err, "failed to subscribe to rest")
 	}
 	b.subscriptionIDs = append(b.subscriptionIDs, restSub)
 

@@ -103,8 +103,6 @@ func solidPillar(x, y float64) encounter.PropInput {
 
 func dungeonSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
-		Sight: torchAndDarkvision{}, Equipment: encounter.UnobservedEquipment{}, Sheets: goblinWalksThirty{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{},
-		TurnDriver: encounter.PassDriver{}, Striker: noAttacksExpected{}, Mover: nothingReactsHere{}, Announcer: nobodyIsListening{},
 		Field: encounter.FieldInput{
 			// You cannot see across the space the crypt's two regions do not
 			// cover — the fiction is the mountain they were cut from, and the
@@ -143,6 +141,19 @@ func dungeonSetup() *encounter.SetupInput {
 			{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
 				Position: spatial.Position{X: 11, Y: 11}}},
 			{Key: "withdrew", Trigger: encounter.TriggerExternal{}},
+		},
+		Capabilities: encounter.Capabilities{
+			Sight:      torchAndDarkvision{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     goblinWalksThirty{},
+			Standing:   rollAllStanding{},
+			Initiative: rollOrderAsGiven{},
+			Driver:     encounter.PassDriver{},
+			Actors: encounter.Actors{
+				Striker:   noAttacksExpected{},
+				Mover:     nothingReactsHere{},
+				Announcer: nobodyIsListening{},
+			},
 		},
 	}
 }
@@ -565,7 +576,21 @@ func main() {
 				continue
 			}
 			loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-				Sight: torchAndDarkvision{}, Equipment: encounter.UnobservedEquipment{}, Sheets: goblinWalksThirty{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{}, TurnDriver: encounter.PassDriver{}, Striker: noAttacksExpected{}, Mover: nothingReactsHere{}, Announcer: nobodyIsListening{}, Data: data})
+				Data: data,
+				Capabilities: encounter.Capabilities{
+					Sight:      torchAndDarkvision{},
+					Equipment:  encounter.UnobservedEquipment{},
+					Sheets:     goblinWalksThirty{},
+					Standing:   rollAllStanding{},
+					Initiative: rollOrderAsGiven{},
+					Driver:     encounter.PassDriver{},
+					Actors: encounter.Actors{
+						Striker:   noAttacksExpected{},
+						Mover:     nothingReactsHere{},
+						Announcer: nobodyIsListening{},
+					},
+				},
+			})
 			if err != nil {
 				fmt.Println(" ", err)
 				continue
@@ -655,7 +680,7 @@ func (nobodyIsListening) Announce(
 }
 
 // noAttacksExpected is the workbench's Striker capability. The workbench
-// demonstrates free roam and sight, not combat — its TurnDriver is
+// demonstrates free roam and sight, not combat — its Driver is
 // [encounter.PassDriver], which never returns an Attack intent — so this is
 // never actually called; it exists only because the capability is required
 // (rpg-toolkit#1033, rpg-project#254) and says so honestly rather than

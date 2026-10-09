@@ -12,6 +12,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -40,6 +41,9 @@ type ExperienceTestSuite struct {
 	characters *fakeCharacters
 	stream     *fakeStream
 	mgr        *session.Manager
+
+	// goblins are the monsters the next launch places.
+	goblins []dungeonspec.MonsterPlacement
 }
 
 func TestExperienceSuite(t *testing.T) { suite.Run(t, new(ExperienceTestSuite)) }
@@ -55,16 +59,13 @@ func TestExperienceSuite(t *testing.T) { suite.Run(t, new(ExperienceTestSuite)) 
 // Unbounded retention for the death suite's reason: the story is the ledger
 // the settlement reads back to find this act's falls, and a window that
 // trimmed mid-scene would hide a fall these tests are counting.
-func xpRoom(t fataler, endings []encounter.EndingInput, players ...string) *encounter.EncounterData {
-	members := make([]encounter.MemberInput, 0, len(players))
+func xpRoom(endings []encounter.EndingInput, players ...string) scene {
+	seats := make([]sceneSeat, 0, len(players))
 	for i, id := range players {
-		members = append(members, encounter.MemberInput{
-			ID: encounter.MemberID(id), Kind: encounter.KindPlayer,
-			Position: spatial.Position{X: float64(1 + 2*i), Y: 1},
-		})
+		seats = append(seats, seatAt(id, 1+2*i, 1))
 	}
 
-	return denWith(t, members, nil, endings)
+	return denWith(seats, nil, endings)
 }
 
 // xpCrypt is alice's half of a room, a solid wall, and bob on the far side of
@@ -75,62 +76,40 @@ func xpRoom(t fataler, endings []encounter.EndingInput, players ...string) *enco
 // by writing the stored sheets and then let somebody walk, so the world looks;
 // if the walker were in contact with the monsters, the step would be a turn in
 // a fight and the scene would be about initiative instead.
-func xpCrypt(t fataler) *encounter.EncounterData { return xpCryptWith(t) }
+func xpCrypt() scene { return xpCryptWith() }
 
 // xpCryptWith is the crypt plus any extra players, parked on bob's side of the
 // wall where the fight cannot reach them.
-func xpCryptWith(t fataler, extra ...string) *encounter.EncounterData {
+func xpCryptWith(extra ...string) scene {
 	occluders := make([]spatial.Position, 0, 10)
 	for y := 0; y < 10; y++ {
 		occluders = append(occluders, spatial.Position{X: 5, Y: float64(y)})
 	}
 
-	members := []encounter.MemberInput{
-		{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-		{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 8, Y: 8}},
-	}
+	seats := []sceneSeat{seatAt("alice", 1, 1), seatAt("bob", 8, 8)}
 	for i, id := range extra {
-		members = append(members, encounter.MemberInput{
-			ID: encounter.MemberID(id), Kind: encounter.KindPlayer,
-			Position: spatial.Position{X: float64(7 - i), Y: 8},
-		})
+		seats = append(seats, seatAt(id, 7-i, 8))
 	}
 
-	return denWith(t, members, occludingProps(occluders...), withdrawable())
+	return denWith(seats, occludingProps(occluders...), withdrawable())
 }
 
 // denWith builds the one world shape both fixtures above are variations of.
-func denWith(
-	t fataler, members []encounter.MemberInput, props []encounter.PropInput, endings []encounter.EndingInput,
-) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{},
-		Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
+func denWith(seats []sceneSeat, props []encounter.PropInput, endings []encounter.EndingInput) scene {
+	return scene{
 		Field: encounter.FieldInput{
 			Canvas:  pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("den", 0, 0, 10, 10)},
 			Props:   props,
 		},
-		Members:   members,
-		Endings:   endings,
-		Retention: encounter.RetentionUnbounded,
-	})
-	if err != nil {
-		t.Fatalf("building the den: %v", err)
+		Party:   seats,
+		Endings: endings,
 	}
-	data := enc.ToData()
-
-	return &data
 }
 
 // startCrypt opens a session on the walled den.
 func (s *ExperienceTestSuite) startCrypt() {
-	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: xpCrypt(s.T()),
-	})
-	s.Require().NoError(err)
-	s.stream.published = nil
+	s.launchDen(xpCrypt())
 }
 
 // bobSteps is the plainest thing a player on the far side of the wall does,
@@ -158,11 +137,12 @@ func withdrawable() []encounter.EndingInput {
 }
 
 func (s *ExperienceTestSuite) SetupTest() {
+	s.goblins = nil
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"), armedFighter("carol"))
 	s.stream = &fakeStream{}
 
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
 	})
@@ -172,26 +152,43 @@ func (s *ExperienceTestSuite) SetupTest() {
 
 // startDen opens a session on a den holding the named players.
 func (s *ExperienceTestSuite) startDen(endings []encounter.EndingInput, players ...string) {
-	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: xpRoom(s.T(), endings, players...),
-	})
-	s.Require().NoError(err)
-	s.stream.published = nil
+	s.launchDen(xpRoom(endings, players...))
 }
 
-// spawnGoblin puts a catalog goblin on a cell, and says what it is worth.
+// launchDen launches the scene with every goblin placed so far on its board,
+// then checks what each is worth.
 //
 // The worth assertion is the fixture declaring its own premise: every number
 // the scenes below divide comes from this one, so a catalog change that moved
 // it would fail here, saying so, instead of moving every expected total
 // silently.
-func (s *ExperienceTestSuite) spawnGoblin(id string, at spatial.Position) {
-	out, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
-		Session: "sess", ID: id, Ref: refs.Monsters.Goblin().String(), Position: at,
-	})
-	s.Require().NoError(err)
-	s.Require().Equal(7, out.NPC.HitPoints, "the catalog goblin, whole")
-	s.Require().Equal(50, s.storedWorth(id), "and worth 50, which is every share below")
+func (s *ExperienceTestSuite) launchDen(sc scene) {
+	s.T().Helper()
+	sc.Monsters = append(sc.Monsters, s.goblins...)
+	launchScene(s.T(), s.mgr, sc)
+	s.stream.published = nil
+	for _, goblin := range s.goblins {
+		s.Require().Equal(7, s.storedNPC(goblin.ID).HitPoints, "the catalog goblin, whole")
+		s.Require().Equal(50, s.storedWorth(goblin.ID), "and worth 50, which is every share below")
+	}
+}
+
+// placeGoblin puts a catalog goblin on an authored cell of the scene the next
+// launch places.
+func (s *ExperienceTestSuite) placeGoblin(id string, col, row int) {
+	s.goblins = append(s.goblins, monsterAt(id, refs.Monsters.Goblin().String(), col, row))
+}
+
+// storedNPC reads a placed NPC's sheet back out of the session record.
+func (s *ExperienceTestSuite) storedNPC(id string) monster.Data {
+	for _, npc := range s.sessions.byID["sess"].NPCs {
+		if npc.ID == id {
+			return npc
+		}
+	}
+	s.Require().Fail("no stored sheet for " + id)
+
+	return monster.Data{}
 }
 
 // storedWorth reads a spawned NPC's authored experience back out of the
@@ -295,8 +292,8 @@ func (s *ExperienceTestSuite) grantBodies() map[string]session.ExperienceGainedB
 // if the share arithmetic were wrong in either direction, this is where it
 // shows as a number a reader can check against the stat block.
 func (s *ExperienceTestSuite) TestOnePlayerTakesTheWholeWorth() {
+	s.placeGoblin("goblin", 2, 1)
 	s.startDen(withdrawable(), "alice")
-	s.spawnGoblin("goblin", spatial.Position{X: 2, Y: 1})
 
 	s.swing("alice", "goblin")
 
@@ -316,8 +313,8 @@ func (s *ExperienceTestSuite) TestOnePlayerTakesTheWholeWorth() {
 // generous. Carol never moves and never sees the goblin; she is paid the same
 // as alice, who killed it, because taking part is being on the roster.
 func (s *ExperienceTestSuite) TestTheWholePartyHearsItsShare() {
+	s.placeGoblin("goblin", 2, 1)
 	s.startDen(withdrawable(), "alice", "bob", "carol")
-	s.spawnGoblin("goblin", spatial.Position{X: 2, Y: 1})
 
 	s.swing("alice", "goblin")
 
@@ -340,8 +337,8 @@ func (s *ExperienceTestSuite) TestTheWholePartyHearsItsShare() {
 // alice does, including alice's own line, so a client can narrate what the
 // party gained rather than only what its own character did.
 func (s *ExperienceTestSuite) TestEveryPlayerIsToldTheWholeGrant() {
+	s.placeGoblin("goblin", 2, 1)
 	s.startDen(withdrawable(), "alice", "bob")
-	s.spawnGoblin("goblin", spatial.Position{X: 2, Y: 1})
 
 	s.swing("alice", "goblin")
 
@@ -365,8 +362,9 @@ func (s *ExperienceTestSuite) TestEveryPlayerIsToldTheWholeGrant() {
 // absence of a beat — a zero-amount grant would have been refused by the
 // composition, so a settlement that tried would have failed the verb.
 func (s *ExperienceTestSuite) TestAMonsterWorthNothingPaysNothing() {
+	s.placeGoblin("goblin", 2, 1)
 	s.startDen(withdrawable(), "alice")
-	s.spawnGoblin("goblin", spatial.Position{X: 2, Y: 1})
+
 	s.setStoredWorth("goblin", 0)
 
 	s.swing("alice", "goblin")
@@ -383,8 +381,9 @@ func (s *ExperienceTestSuite) TestAMonsterWorthNothingPaysNothing() {
 // here is not whether to pay zero but whether to say so — and there is nothing
 // to say.
 func (s *ExperienceTestSuite) TestAShareThatFloorsToZeroIsNotABeat() {
+	s.placeGoblin("goblin", 2, 1)
 	s.startDen(withdrawable(), "alice", "bob", "carol")
-	s.spawnGoblin("goblin", spatial.Position{X: 2, Y: 1})
+
 	s.setStoredWorth("goblin", 2)
 
 	s.swing("alice", "goblin")
@@ -408,8 +407,9 @@ func (s *ExperienceTestSuite) TestAShareThatFloorsToZeroIsNotABeat() {
 //     everyone who took part and a dying character took part, so the share is
 //     halved between the two of them exactly as if she were standing.
 func (s *ExperienceTestSuite) TestAFallenPlayerPaysNobodyAndIsStillPaid() {
+	s.placeGoblin("goblin", 2, 1)
 	s.startCrypt()
-	s.spawnGoblin("goblin", spatial.Position{X: 2, Y: 1})
+
 	s.dropTo("goblin", 0)
 	s.dropPlayerTo("alice", 0)
 
@@ -445,9 +445,10 @@ func (s *ExperienceTestSuite) TestAFallenPlayerPaysNobodyAndIsStillPaid() {
 // act. What the settlement reads is the act's down beats, and the composition
 // writes one per body it notices on the next consult, whatever put them there.
 func (s *ExperienceTestSuite) TestTwoFallsInOneActAreTwoBeats() {
+	s.placeGoblin("first", 2, 1)
+	s.placeGoblin("second", 3, 1)
 	s.startCrypt()
-	s.spawnGoblin("first", spatial.Position{X: 2, Y: 1})
-	s.spawnGoblin("second", spatial.Position{X: 3, Y: 1})
+
 	s.dropTo("first", 0)
 	s.dropTo("second", 0)
 
@@ -477,9 +478,10 @@ func (s *ExperienceTestSuite) TestTwoFallsInOneActAreTwoBeats() {
 // so that a grant ordered by anything but the fall's sequence has a way to be
 // wrong: whatever order the falls were told in is the order the party is paid.
 func (s *ExperienceTestSuite) TestTwoFallsArePaidInTheOrderTheyFell() {
+	s.placeGoblin("zeta", 2, 1)
+	s.placeGoblin("alpha", 3, 1)
 	s.startCrypt()
-	s.spawnGoblin("zeta", spatial.Position{X: 2, Y: 1})
-	s.spawnGoblin("alpha", spatial.Position{X: 3, Y: 1})
+
 	s.dropTo("zeta", 0)
 	s.dropTo("alpha", 0)
 
@@ -516,8 +518,8 @@ func (s *ExperienceTestSuite) TestTwoFallsArePaidInTheOrderTheyFell() {
 // would pay the party again on every step anybody took for the rest of the
 // run.
 func (s *ExperienceTestSuite) TestTheFallSettlesExactlyOnce() {
+	s.placeGoblin("goblin", 2, 1)
 	s.startDen(withdrawable(), "alice")
-	s.spawnGoblin("goblin", spatial.Position{X: 2, Y: 1})
 
 	s.swing("alice", "goblin")
 	s.Require().Equal(50, s.storedExperience("alice"))
@@ -541,11 +543,11 @@ func (s *ExperienceTestSuite) TestTheFallSettlesExactlyOnce() {
 // this one is not, because refusing would mean the one death that mattered
 // most is the only death nobody was paid for.
 func (s *ExperienceTestSuite) TestTheFallThatEndsTheRunStillPays() {
+	s.placeGoblin("goblin", 2, 1)
 	s.startDen([]encounter.EndingInput{
 		{Key: "boss-down", Trigger: encounter.TriggerMemberDown{Member: "goblin"}},
 		{Key: "withdrawn", Trigger: encounter.TriggerExternal{}},
 	}, "alice", "bob")
-	s.spawnGoblin("goblin", spatial.Position{X: 2, Y: 1})
 
 	s.swing("alice", "goblin")
 
@@ -578,7 +580,7 @@ func (s *ExperienceTestSuite) TestCrossingAThresholdOpensALevel() {
 	seeded.Experience = 250
 	s.characters = newFakeCharacters(seeded)
 
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
 	})
@@ -590,8 +592,9 @@ func (s *ExperienceTestSuite) TestCrossingAThresholdOpensALevel() {
 	s.Require().Equal(1, before.EntitledLevel, "250 has earned nothing past level 1")
 	s.Require().Equal(character.ExperienceThresholdForLevel(2), before.NextLevelThreshold)
 
+	s.placeGoblin("goblin", 2, 1)
 	s.startDen(withdrawable(), "alice")
-	s.spawnGoblin("goblin", spatial.Position{X: 2, Y: 1})
+
 	s.swing("alice", "goblin")
 
 	s.Require().Equal(300, s.storedExperience("alice"))
@@ -625,8 +628,9 @@ var errSettlementSave = errors.New("the settlement's character save was refused"
 // guard unreachable: strip the sheet and the verb stops before any fall is
 // noticed, so the party is never paid and nothing is recorded.
 func (s *ExperienceTestSuite) TestAMonsterWithNoStoredSheetNeverFalls() {
+	s.placeGoblin("goblin", 2, 1)
 	s.startCrypt()
-	s.spawnGoblin("goblin", spatial.Position{X: 2, Y: 1})
+
 	s.dropTo("goblin", 0)
 
 	data := s.sessions.byID["sess"]
@@ -679,20 +683,16 @@ func (s *ExperienceTestSuite) TestAMonsterWithNoStoredSheetNeverFalls() {
 // are named in the report — which is the difference between a caller who
 // repairs and one who retries.
 func (s *ExperienceTestSuite) TestAPayeeTheStoreDoesNotHoldFailsTheVerb() {
-	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: xpCryptWith(s.T(), "carol"),
-	})
-	s.Require().NoError(err)
-	s.stream.published = nil
+	s.placeGoblin("goblin", 2, 1)
+	s.launchDen(xpCryptWith("carol"))
 
-	s.spawnGoblin("goblin", spatial.Position{X: 2, Y: 1})
 	s.dropTo("goblin", 0)
 
-	before, err := s.encounters.GetEncounter(context.Background(), "world")
+	before, err := s.encounters.GetEncounter(context.Background(), "sess")
 	s.Require().NoError(err)
 
 	forgetful := &forgetsAfterSaving{fakeCharacters: s.characters, saved: "bob", forget: "carol"}
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: forgetful, Events: s.stream,
 	})
@@ -708,7 +708,7 @@ func (s *ExperienceTestSuite) TestAPayeeTheStoreDoesNotHoldFailsTheVerb() {
 	s.Require().Error(verbErr)
 	s.ErrorIs(verbErr, session.ErrNoCharacter, "a roster player the store does not hold is an inconsistency")
 
-	after, err := s.encounters.GetEncounter(context.Background(), "world")
+	after, err := s.encounters.GetEncounter(context.Background(), "sess")
 	s.Require().NoError(err)
 	s.Equal(before, after, "the verb failed before persist, so the world never moved")
 	s.Empty(s.grantEvents(), "and no grant was announced")
@@ -749,16 +749,12 @@ func (f *forgetsAfterSaving) SaveCharacter(ctx context.Context, data *character.
 // the verb is refused by name before the goblin's fall is even noticed, and
 // nobody is paid.
 func (s *ExperienceTestSuite) TestAPayeeMissingBeforeTheVerbIsRefusedBeforeAnythingIsPaid() {
-	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: xpCryptWith(s.T(), "carol"),
-	})
-	s.Require().NoError(err)
-	s.stream.published = nil
+	s.placeGoblin("goblin", 2, 1)
+	s.launchDen(xpCryptWith("carol"))
 
-	s.spawnGoblin("goblin", spatial.Position{X: 2, Y: 1})
 	s.dropTo("goblin", 0)
 	delete(s.characters.byID, "carol")
-	before, err := s.encounters.GetEncounter(context.Background(), "world")
+	before, err := s.encounters.GetEncounter(context.Background(), "sess")
 	s.Require().NoError(err)
 
 	_, verbErr := s.mgr.Move(context.Background(), &session.MoveInput{
@@ -766,7 +762,7 @@ func (s *ExperienceTestSuite) TestAPayeeMissingBeforeTheVerbIsRefusedBeforeAnyth
 	})
 	s.Require().ErrorIs(verbErr, session.ErrNoCharacter)
 
-	after, err := s.encounters.GetEncounter(context.Background(), "world")
+	after, err := s.encounters.GetEncounter(context.Background(), "sess")
 	s.Require().NoError(err)
 	s.Equal(before, after, "refused before persist, so the world never moved")
 	s.Empty(s.grantEvents(), "no grant was announced")
@@ -802,18 +798,19 @@ func (s *ExperienceTestSuite) TestASheetThatWillNotSaveFailsTheVerbBeforeTheBeat
 	failing := &failNthArmedSaveCharacters{
 		fakeCharacters: s.characters, failAt: 3, err: errSettlementSave,
 	}
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: failing, Events: s.stream,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
 
+	s.placeGoblin("goblin", 2, 1)
 	s.startCrypt()
-	s.spawnGoblin("goblin", spatial.Position{X: 2, Y: 1})
+
 	s.dropTo("goblin", 0)
 
-	before, err := s.encounters.GetEncounter(context.Background(), "world")
+	before, err := s.encounters.GetEncounter(context.Background(), "sess")
 	s.Require().NoError(err)
 	failing.armed = true
 
@@ -827,7 +824,7 @@ func (s *ExperienceTestSuite) TestASheetThatWillNotSaveFailsTheVerbBeforeTheBeat
 	s.ErrorIs(verbErr, errSettlementSave, "and the host's own cause stays matchable")
 	s.Equal(3, failing.attempts, "combat-end cleanup and alice's share landed before bob's was refused")
 
-	after, err := s.encounters.GetEncounter(context.Background(), "world")
+	after, err := s.encounters.GetEncounter(context.Background(), "sess")
 	s.Require().NoError(err)
 	s.Equal(before, after, "the verb failed before persist, so the world never moved")
 	s.Empty(s.grantEvents(), "and no grant reached a client")

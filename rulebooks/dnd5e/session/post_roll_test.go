@@ -96,7 +96,7 @@ func (s *PostRollWindowSuite) duel() *session.Manager {
 // duelOverStores builds a manager over this suite's stores. A second call with
 // the stores unchanged is a RESTART: nothing in memory survives it.
 func (s *PostRollWindowSuite) duelOverStores() *session.Manager {
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
@@ -107,10 +107,7 @@ func (s *PostRollWindowSuite) duelOverStores() *session.Manager {
 
 // open starts the session on the authored duel world.
 func (s *PostRollWindowSuite) open(mgr *session.Manager) {
-	_, err := mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: duelWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	launchDuel(s.T(), mgr, s.encounters)
 }
 
 // scene is the whole setup: stores, manager, world.
@@ -358,13 +355,13 @@ func (s *PostRollWindowSuite) TestTheEncounterIsNeverPaused() {
 	s.inspire("alice")
 	s.swing(mgr)
 
-	data, err := s.encounters.GetEncounter(context.Background(), "world")
+	data, err := s.encounters.GetEncounter(context.Background(), "sess")
 	s.Require().NoError(err)
 	s.Nil(data.PausedTurn, "the encounter is not the thing that is waiting")
 
 	s.answer(mgr, session.ReactStrike)
 
-	data, err = s.encounters.GetEncounter(context.Background(), "world")
+	data, err = s.encounters.GetEncounter(context.Background(), "sess")
 	s.Require().NoError(err)
 	s.Nil(data.PausedTurn)
 }
@@ -419,7 +416,7 @@ func (s *PostRollWindowSuite) TestTheWindowSurvivesAReload() {
 
 	// A second manager over the same stored records: nothing in memory
 	// survives, only what was written.
-	restarted, err := session.NewManager(&session.Config{
+	restarted, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},

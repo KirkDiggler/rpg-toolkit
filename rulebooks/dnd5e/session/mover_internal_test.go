@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -62,7 +63,7 @@ func (s *ForcedStepSuite) SetupTest() {
 		"fighter": strikeFixtureFighter("fighter"),
 	}}
 
-	mgr, err := NewManager(&Config{
+	mgr, err := NewManager(&Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{},
 		// Faces for the one swing this scene can produce, and no more: a roll
 		// nobody expected exhausts the roller and says so out loud.
@@ -73,35 +74,22 @@ func (s *ForcedStepSuite) SetupTest() {
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	world, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{},
-		Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{},
-		Equipment: encNoHandsObserved{}, Initiative: aggregateRecordOrderAsGiven{},
-		TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
+	sc := scene{
 		Field: encounter.FieldInput{
 			Canvas:  pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("tomb", 0, 0, 12, 6)},
 		},
-		Endings:   []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-	})
-	s.Require().NoError(err)
-	data := world.ToData()
-
-	_, err = mgr.StartSession(ctx, &StartSessionInput{Session: "sess", Encounter: "world", World: &data})
-	s.Require().NoError(err)
+		Endings: []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
+	}
 
 	s.fighterAt = encounter.HexCellAt(encounter.HexesArePointyTop(), 2, 0)
 	s.skeletonAt = encounter.HexCellAt(encounter.HexesArePointyTop(), 3, 0)
 	s.awayAt = encounter.HexCellAt(encounter.HexesArePointyTop(), 1, 0)
 
-	_, err = mgr.Join(ctx, &JoinInput{Session: "sess", Member: "fighter", Position: s.fighterAt})
-	s.Require().NoError(err)
-
-	// THE ECONOMY IS LOAD-BEARING, and written after Join because Join writes
-	// the joined member's sheet from a freshly loaded character. It is the
-	// walker's here rather than the reactor's — the skeleton is metered by its
-	// own once-per-turn flag and holds no purse.
+	// THE ECONOMY IS LOAD-BEARING, and written before the launch reads the
+	// fighter: the launch seats the stored sheet. It is the walker's here
+	// rather than the reactor's — the skeleton is metered by its own
+	// once-per-turn flag and holds no purse.
 	stored, err := s.characters.GetCharacter(ctx, "fighter")
 	s.Require().NoError(err)
 	stored.ActionEconomy = &character.ActionEconomyData{
@@ -110,12 +98,10 @@ func (s *ForcedStepSuite) SetupTest() {
 	}
 	s.Require().NoError(s.characters.SaveCharacter(ctx, stored))
 
-	spawned, err := mgr.Spawn(ctx, &SpawnInput{
-		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
-		Position: s.skeletonAt,
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(spawned.Formed, "adjacent and in sight starts the fight")
+	sc.Party = []sceneSeat{seatAt("fighter", 2, 0)}
+	sc.Monsters = []dungeonspec.MonsterPlacement{monsterAt("skel-1", refs.Monsters.Skeleton().String(), 3, 0)}
+	launched := launchScene(s.T(), mgr, sc)
+	s.Require().NotEmpty(launched.Formed, "adjacent and in sight starts the fight")
 }
 
 // takeStep announces one step of the fighter's out of the skeleton's reach

@@ -3,6 +3,7 @@ package session_test
 import (
 	"context"
 	"encoding/json"
+
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
@@ -42,7 +43,7 @@ func (s *CastSuite) TestFlareMonsterTurnReloadResumesWithoutRepeatingAttack() {
 			ctx := context.Background()
 			newManager := func() {
 				var err error
-				s.mgr, err = session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+				s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
 				s.Require().NoError(err)
 			}
 			newManager()
@@ -131,16 +132,16 @@ func (s *CastSuite) TestFlareDuringOpportunityAttackResumesWithoutRepeatingStep(
 func (s *CastSuite) TestFlareLethalResumeCommitsDefeatAndClosesWindow() {
 	for _, spend := range []bool{false, true} {
 		s.Run(map[bool]string{false: "decline", true: "use"}[spend], func() {
-			sheet := s.flareSheet()
-			sheet.HitPoints = 1
 			rolls := []int{20, 6, 6}
 			if spend {
 				rolls = []int{20, 20, 6, 6}
 			}
-			s.scene(sheet, 1, rolls...)
+			s.scene(s.flareSheet(), 1, rolls...)
+			// Wounded after the launch: its first-admission rest would heal her.
+			s.characters.byID["cleric"].HitPoints = 1
 			ctx := context.Background()
 			var err error
-			s.mgr, err = session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+			s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
 			s.Require().NoError(err)
 			_, err = s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "cleric", DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "cleric")})
 			s.Require().NoError(err)
@@ -153,8 +154,8 @@ func (s *CastSuite) TestFlareLethalResumeCommitsDefeatAndClosesWindow() {
 			_, err = s.mgr.React(ctx, in)
 			s.Require().NoError(err, "a finishing attack must commit rather than resume a closed encounter")
 			s.Zero(s.characters.byID["cleric"].HitPoints)
-			s.Require().NotNil(s.encounters.byID["world"].Outcome)
-			s.Nil(s.encounters.byID["world"].PausedTurn)
+			s.Require().NotNil(s.encounters.byID["sess"].Outcome)
+			s.Nil(s.encounters.byID["sess"].PausedTurn)
 			s.Len(s.beats(session.EventStruck), 1)
 			expected := 3
 			if spend {
@@ -166,4 +167,57 @@ func (s *CastSuite) TestFlareLethalResumeCommitsDefeatAndClosesWindow() {
 			s.Require().NoError(err, "closed world reloads")
 		})
 	}
+}
+
+// TestThePendingMovementResumeSavesEachSheetOnce: a resumed walk whose
+// reaction damages the walker writes the walker's sheet once for the
+// interaction, then once for the walk's own progress.
+//
+// The resume used to write the interaction's sheets twice: once on the
+// resumed output, and again where the movement beats were recorded, which
+// saved the same dirty sheets a second time (three writes in all). The
+// landing writes them once. The second write here is a different edit — the
+// remainder of the walk charging its movement — and is not the duplicate.
+func (s *CastSuite) TestThePendingMovementResumeSavesEachSheetOnce() {
+	s.scene(s.flareSheet(), 1, 15, 2, 1)
+	ctx := context.Background()
+	movement := s.characters.byID["cleric"].ActionEconomy.MovementRemaining
+	out, err := s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "cleric", DeclarationID: currentMoveID(s.T(), s.mgr, "sess", "cleric"), Path: []spatial.Position{{X: 0, Y: 1}}})
+	s.Require().NoError(err)
+	s.Require().Equal(session.MovementPaused, out.Status)
+	s.reloadHealingScene()
+	row := s.flareReaction()
+	hp := s.characters.byID["cleric"].HitPoints
+	before := s.characters.saves
+
+	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Choice: session.ReactHold})
+	s.Require().NoError(err)
+
+	s.Less(s.characters.byID["cleric"].HitPoints, hp, "the reaction damaged the walker")
+	s.Equal(movement-5, s.characters.byID["cleric"].ActionEconomy.MovementRemaining, "and the walk went on")
+	s.Equal(2, s.characters.saves-before, "one write for the interaction, one for the walk's progress")
+}
+
+// TestFlareBeforeAPlayersSwingPosesTheWindowAndCommitsThePrice: a player's
+// Attack on a target who holds Warding Flare stops before the roll. The
+// landing adopts the world the swing produced, writes the attacker's charged
+// sheet, poses the target's window and commits — with no die thrown and no
+// strike told.
+func (s *CastSuite) TestFlareBeforeAPlayersSwingPosesTheWindowAndCommitsThePrice() {
+	s.sceneWithAllies(armedFighter("aaron"), []*character.Data{s.flareSheet()}, 1, 15, 2, 1, 4, 5)
+	ctx := context.Background()
+	rolls := s.dice.next
+	actions := s.characters.byID["aaron"].ActionEconomy.ActionsRemaining
+
+	out, err := s.mgr.Attack(ctx, &session.AttackInput{Session: "sess", Attacker: "aaron", Target: "cleric", DeclarationID: currentAttackID(s.T(), s.mgr, "sess", "aaron")})
+	s.Require().NoError(err)
+
+	s.True(out.Paused, "the swing stopped to ask before the roll")
+	s.Equal(rolls, s.dice.next, "no die was thrown")
+	s.Empty(s.beats(session.EventStruck, session.EventMissed), "no strike is told before the answer")
+	s.Equal(actions-1, s.characters.byID["aaron"].ActionEconomy.ActionsRemaining, "the price is written to the attacker's sheet")
+	s.Contains(out.Saved.Written, "encounter:sess", "the adopted world is committed")
+	s.Contains(out.Saved.Written, "session:sess", "and the session record with the window")
+	row := s.flareReaction()
+	s.Equal("Warding Flare", row.Reaction.Name, "the target is asked")
 }

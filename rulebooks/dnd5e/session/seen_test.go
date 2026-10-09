@@ -12,6 +12,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -50,7 +51,7 @@ func TestSeenTestSuite(t *testing.T) {
 func (s *SeenTestSuite) SetupTest() {
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: newFakeCharacters(armedFighter("fighter")),
 		Events: session.DiscardEvents{},
 	})
@@ -62,9 +63,8 @@ func (s *SeenTestSuite) SetupTest() {
 // [6,0], each 6x6, joined by one door on row 2 with a solid wall everywhere
 // else along the shared edge. skeleton-1 stands well inside hall at authored
 // [9,3], where nothing but the doorway can put it in sight.
-func skeletonBehindADoor(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
-		Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
+func skeletonBehindADoor() scene {
+	return scene{
 		Field: encounter.FieldInput{
 			Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{
@@ -78,17 +78,10 @@ func skeletonBehindADoor(t fataler) *encounter.EncounterData {
 				State: encounter.DoorIsOpen(),
 			}},
 		},
-		Members: []encounter.MemberInput{
-			{ID: "fighter", Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 0}},
-			{ID: "skeleton-1", Kind: encounter.KindMonster, Position: spatial.Position{X: 9, Y: 3}},
-		},
-		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-	})
-	if err != nil {
-		t.Fatalf("building skeletonBehindADoor: %v", err)
+		Party:    []sceneSeat{seatAt("fighter", 5, 0)},
+		Monsters: []dungeonspec.MonsterPlacement{monsterAt("skeleton-1", refs.Monsters.Goblin().String(), 9, 3)},
+		Endings:  []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	}
-	data := enc.ToData()
-	return &data
 }
 
 // TestSeenIsPopulatedAfterCrossingTheDoorway is #1157's headline case: the
@@ -99,11 +92,7 @@ func skeletonBehindADoor(t fataler) *encounter.EncounterData {
 // sides sharing the same typo.
 func (s *SeenTestSuite) TestSeenIsPopulatedAfterCrossingTheDoorway() {
 	ctx := context.Background()
-	_, err := s.mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "skeleton-behind-a-door", World: skeletonBehindADoor(s.T()),
-	})
-	s.Require().NoError(err)
-	stockAuthoredMonsters(s.T(), s.sessions, s.encounters, "sess")
+	launchScene(s.T(), s.mgr, skeletonBehindADoor())
 
 	// Before: the wall genuinely blocks it. Asserted first so a fixture that
 	// accidentally puts the skeleton in the open cannot make the "after"
@@ -158,13 +147,9 @@ func (s *SeenTestSuite) TestSeenIsPopulatedAfterCrossingTheDoorway() {
 // a lie expressible at all, since a live read could only ever be true.
 func (s *SeenTestSuite) TestSeenEquipmentComesFromTheSnapshotNotTheSheet() {
 	ctx := context.Background()
-	_, err := s.mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "skeleton-behind-a-door", World: skeletonBehindADoor(s.T()),
-	})
-	s.Require().NoError(err)
-	stockAuthoredMonsters(s.T(), s.sessions, s.encounters, "sess")
+	launchScene(s.T(), s.mgr, skeletonBehindADoor())
 
-	_, err = s.mgr.Move(ctx, &session.MoveInput{
+	_, err := s.mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "fighter",
 		Path: []spatial.Position{hexCell(5, 1), hexCell(5, 2), hexCell(6, 2)},
 	})
@@ -191,11 +176,7 @@ func (s *SeenTestSuite) TestSeenEquipmentComesFromTheSnapshotNotTheSheet() {
 // this asserts against out.Discovered directly rather than repeating the walk.
 func (s *SeenTestSuite) TestDiscoveredAlsoCarriesSeen() {
 	ctx := context.Background()
-	_, err := s.mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "skeleton-behind-a-door", World: skeletonBehindADoor(s.T()),
-	})
-	s.Require().NoError(err)
-	stockAuthoredMonsters(s.T(), s.sessions, s.encounters, "sess")
+	launchScene(s.T(), s.mgr, skeletonBehindADoor())
 
 	out, err := s.mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "fighter",
@@ -227,9 +208,8 @@ func (s *SeenTestSuite) TestDiscoveredAlsoCarriesSeen() {
 // direct hit-point edit can later floor (rpg-toolkit#1702, test cases 1 and
 // 5): an authored member with no sheet always reads Conscious, and could
 // never actually go down for this proof to mean anything.
-func groundedSkeletonWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
-		Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
+func groundedSkeletonWorld() scene {
+	return scene{
 		Field: encounter.FieldInput{
 			Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{
@@ -243,16 +223,9 @@ func groundedSkeletonWorld(t fataler) *encounter.EncounterData {
 				State: encounter.DoorIsOpen(),
 			}},
 		},
-		Members: []encounter.MemberInput{
-			{ID: "fighter", Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 0}},
-		},
+		Party:   []sceneSeat{seatAt("fighter", 5, 0)},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-	})
-	if err != nil {
-		t.Fatalf("building groundedSkeletonWorld: %v", err)
 	}
-	data := enc.ToData()
-	return &data
 }
 
 // groundedSkeletonScene drives the shared setup both Standing tests below
@@ -270,23 +243,18 @@ func groundedSkeletonScene(t *testing.T) (*fakeSessions, *fakeEncounters) {
 	t.Helper()
 	ctx := context.Background()
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: newFakeCharacters(armedFighter("fighter")),
 		Events: session.DiscardEvents{},
 	})
 	require.NoError(t, err)
 
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: groundedSkeletonWorld(t),
-	})
-	require.NoError(t, err)
-
-	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skeleton-1", Ref: refs.Monsters.Skeleton().String(),
-		Position: hexCell(9, 3),
-	})
-	require.NoError(t, err)
-	require.Nil(t, spawned.Formed, "fighter cannot see into the hall from behind the wall yet")
+	// The skeleton stands well inside the hall at authored [9,3], a real
+	// member with its own sheet.
+	sc := groundedSkeletonWorld()
+	sc.Monsters = []dungeonspec.MonsterPlacement{monsterAt("skeleton-1", refs.Monsters.Skeleton().String(), 9, 3)}
+	launched := launchScene(t, mgr, sc)
+	require.Empty(t, launched.Formed, "fighter cannot see into the hall from behind the wall yet")
 
 	crossed, err := mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "fighter",
@@ -344,7 +312,7 @@ func TestGhostSeenStandingIsWhatItLastSaw(t *testing.T) {
 	ctx := context.Background()
 	sessions, encounters := groundedSkeletonScene(t)
 
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: newFakeCharacters(armedFighter("fighter")),
 		Events: session.DiscardEvents{},
 	})
@@ -416,7 +384,7 @@ func (seamOnlyCharacters) SaveCharacter(context.Context, *character.Data) error 
 func TestViewNeverConsultsStandingEvenWithACurrentAndAGhostSighting(t *testing.T) {
 	sessions, encounters := groundedSkeletonScene(t)
 
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: seamOnlyCharacters{sheets: newFakeCharacters(armedFighter("fighter"))},
 		Events: session.DiscardEvents{},
 	})

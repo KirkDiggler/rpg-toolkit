@@ -560,7 +560,7 @@ func (s *SheetKeeperTestSuite) TestCharacterResourcesRecoverOnlyThroughCharacter
 	s.Require().Equal(1, s.char.GetResource(resources.RageCharges).Current(),
 		"a naked RestEvent does not own character pools")
 
-	s.Require().NoError(s.char.LongRest(s.ctx))
+	s.Require().NoError(restErr(s.char.LongRest(s.ctx)))
 	s.Require().Equal(3, s.char.GetResource(resources.RageCharges).Current(),
 		"the Character rest verb owns pool recovery")
 }

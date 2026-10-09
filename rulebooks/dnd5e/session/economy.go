@@ -103,7 +103,7 @@ func (m *Manager) priceSwing(
 		return &swingPrice{}, nil
 	}
 
-	if err := readyForTurn(ctx, sheet, clock.Round); err != nil {
+	if err := resolution.ReadyForTurn(ctx, sheet, resolution.Turn{Number: clock.Round, Speed: sheet.GetSpeed()}); err != nil {
 		return nil, fmt.Errorf("attacker %q: %w: %v", attacker, ErrBadCost, err)
 	}
 
@@ -120,7 +120,7 @@ func (m *Manager) priceSwing(
 		cost: &resolution.Cost{
 			PayerID: attacker,
 			Profile: profile,
-			// Handed over even though readyForTurn has already done it on the
+			// Handed over even though resolution.ReadyForTurn has already done it on the
 			// sheet below, and the redundancy is deliberate rather than
 			// forgotten. The door's refresh is the contract E2 built and this is
 			// its caller honouring it; finding the economy already filed under
@@ -137,41 +137,4 @@ func (m *Manager) priceSwing(
 		},
 		payer: ready,
 	}, nil
-}
-
-// readyForTurn puts a sheet into the turn it is about to act in.
-//
-// Combat boundaries initialize every participant on a fight clock, so an idle
-// character can react before their first action. This remains an idempotent
-// backstop when compiling a price from a cold or stale stored sheet.
-//
-// # And it runs BEFORE the price is compiled, which is not an ordering detail
-//
-// What a swing costs depends on what is banked, and the door refreshes AFTER the
-// caller compiled the price ([resolution.payAtTheDoor] finds the payer, then
-// refreshes, then charges). A price compiled against a pre-refresh bank is a
-// price for a bank that is about to be replaced: a level-5 fighter who swung
-// once last turn carries a banked attack into this one, would be priced as
-// though the bank could pay, and would then be refused by a door that had just
-// wiped it. So the refresh happens here, on the sheet this seam is about to hand
-// over, and the [resolution.Cost.Turn] passed alongside finds nothing left to do.
-//
-// This is the CALLER COMPENSATING FOR AN ORDERING IT CANNOT SEE, which is a
-// seam wart rather than a fact of nature — filed as rpg-toolkit#1100, whose
-// current lean is to move the refresh out of the door entirely now that this
-// slice shows the caller must do it anyway. Nothing is broken today and the
-// workaround is pinned; the next caller to compile a state-dependent price is
-// who would otherwise hit it fresh.
-func readyForTurn(ctx context.Context, sheet *character.Character, turn int) error {
-	// Speed is read once and used for whichever verb applies, so the two cannot
-	// seed different movement for the same turn.
-	speed := sheet.GetSpeed()
-
-	if !sheet.InCombat() {
-		_, err := sheet.StartTurn(ctx, &character.StartTurnInput{TurnNumber: turn, Speed: speed})
-		return err
-	}
-
-	_, err := sheet.RefreshForTurn(ctx, &character.RefreshForTurnInput{TurnNumber: turn, Speed: speed})
-	return err
 }

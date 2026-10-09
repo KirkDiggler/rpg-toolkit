@@ -15,10 +15,10 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 type literalDeathSaveDice struct {
@@ -105,7 +105,7 @@ func newDeathSaveFixture(t *testing.T, face int) *deathSaveFixture {
 		characters: newFakeCharacters(armedFighter("alice"), armedFighter("bob")),
 		stream:     &fakeStream{}, token: "opaque-save-token",
 	}
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		Dice: literalDeathSaveDice{face: face, calls: &f.rolls}, TurnDriver: session.Pass{},
 		PresentationIDs: testPresentationIDs{value: f.token, calls: &f.ids},
 		Sessions:        f.sessions, Encounters: f.encounters, Characters: f.characters, Events: f.stream,
@@ -113,15 +113,9 @@ func newDeathSaveFixture(t *testing.T, face int) *deathSaveFixture {
 	require.NoError(t, err)
 	f.mgr = mgr
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: cryptWorld(t),
-	})
-	require.NoError(t, err)
-	_, err = mgr.Spawn(context.Background(), &session.SpawnInput{
-		Session: "sess", ID: "skeleton", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 2, Y: 1},
-	})
-	require.NoError(t, err)
+	crypt := cryptWorld()
+	crypt.Monsters = []dungeonspec.MonsterPlacement{monsterAt("skeleton", refs.Monsters.Skeleton().String(), 2, 1)}
+	launchScene(t, mgr, crypt)
 	f.rolls = 0
 	f.ids = 0
 	f.stream.published = nil
@@ -161,7 +155,7 @@ func (f *deathSaveFixture) execute(id string) (*session.DeathSaveOutput, error) 
 func TestDeathSaveRejectsEmptyDeclarationBeforeAnyIO(t *testing.T) {
 	stores := &deathSaveForbiddenIO{}
 	rolls, ids := 0, 0
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		Sessions: stores, Encounters: stores, Characters: stores, Events: stores,
 		Dice:            literalDeathSaveDice{face: 10, calls: &rolls},
 		PresentationIDs: literalPresentationIDs{value: "must-not-generate", calls: &ids},
@@ -242,17 +236,13 @@ func TestDeathSaveAffordIsExplicitAndExclusive(t *testing.T) {
 func TestDeathSaveIsNotOfferedToNonActiveDyingCharacter(t *testing.T) {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	characters := newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		Dice: testDice{}, TurnDriver: session.Pass{}, PresentationIDs: testPresentationIDs{},
 		Sessions: sessions, Encounters: encounters, Characters: characters,
 		Events: session.DiscardEvents{},
 	})
 	require.NoError(t, err)
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world",
-		World: turnWorld(freeRoamDuelWorld(t), []string{"alice", "bob"}, 0),
-	})
-	require.NoError(t, err)
+	launchOnClock(t, mgr, encounters, freeRoamDuelWorld(), []string{"alice", "bob"}, 0)
 	characters.byID["bob"].HitPoints = 0
 
 	out, err := mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "bob"})
@@ -344,7 +334,7 @@ func TestDeathSaveOutcomesAndContinuations(t *testing.T) {
 			require.Equal(t, 1, f.rolls, "an accepted declaration rolls exactly once")
 			require.Equal(t, 1, f.ids, "an accepted declaration generates exactly one opaque token")
 			require.Contains(t, out.Saved.Written, "character:alice")
-			require.Contains(t, out.Saved.Written, "encounter:world")
+			require.Contains(t, out.Saved.Written, "encounter:sess")
 			deathRecipients := map[string]bool{}
 			for _, event := range f.stream.published {
 				if event.Kind == session.EventDeathSave {
@@ -420,7 +410,7 @@ func TestDeathSaveStoryAndResponseShareOpaqueFactsAcrossLocalSequences(t *testin
 	// Turn one already-persisted shared beat into an Alice-only beat and update
 	// Bob's cursor to the matching honest count. Their next shared beat then has
 	// different recipient-local numbers without an invalid cursor.
-	world := f.encounters.byID["world"]
+	world := f.encounters.byID["sess"]
 	removed := false
 	for i := range world.Log.Entries {
 		audience := world.Log.Entries[i].Audience[:0]
@@ -508,7 +498,7 @@ func TestDeathSaveRejectsInvalidGeneratedPresentationIDBeforeRoll(t *testing.T) 
 			f := newDeathSaveFixture(t, 10)
 			f.makeDying(0, 0)
 			declaration := f.declaration()
-			mgr, err := session.NewManager(&session.Config{
+			mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 				Dice: literalDeathSaveDice{face: 10, calls: &f.rolls}, TurnDriver: session.Pass{},
 				PresentationIDs: literalPresentationIDs{value: token, calls: &f.ids},
 				Sessions:        f.sessions, Encounters: f.encounters,
@@ -535,7 +525,7 @@ func TestDeathSavePartialWritePreventsRetry(t *testing.T) {
 	f.makeDying(0, 0)
 	declaration := f.declaration()
 	failing := &failingEncounters{fakeEncounters: f.encounters, saveErr: errors.New("world unavailable")}
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		Dice: literalDeathSaveDice{face: 10, calls: &f.rolls}, TurnDriver: session.Pass{},
 		PresentationIDs: testPresentationIDs{value: f.token, calls: &f.ids},
 		Sessions:        f.sessions, Encounters: failing, Characters: f.characters, Events: f.stream,
@@ -550,7 +540,7 @@ func TestDeathSavePartialWritePreventsRetry(t *testing.T) {
 	var saveErr *session.SaveError
 	require.ErrorAs(t, err, &saveErr)
 	require.Contains(t, saveErr.Report.Written, "character:alice")
-	require.Contains(t, saveErr.Report.Failed, "encounter:world")
+	require.Contains(t, saveErr.Report.Failed, "encounter:sess")
 
 	rolls, ids := f.rolls, f.ids
 	retry, err := mgr.DeathSave(context.Background(), &session.DeathSaveInput{

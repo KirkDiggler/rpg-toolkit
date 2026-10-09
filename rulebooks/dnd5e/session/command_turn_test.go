@@ -12,6 +12,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
@@ -63,8 +64,8 @@ func commandingBard(id string) *character.Data {
 	return castingBardWithSpells(id, spells.Command)
 }
 
-// scene opens a tomb, joins the players at their cells, and spawns the
-// skeleton. whisperDice rolls a 10 on every d20, which fails the bard's DC 13
+// scene launches a tomb with the players on their cells and the skeleton on
+// its own. whisperDice rolls a 10 on every d20, which fails the bard's DC 13
 // and leaves the skeleton standing through any damage it takes.
 func (s *CommandTurnSuite) scene(
 	sheets []*character.Data, at map[string]spatial.Position, skeletonAt spatial.Position,
@@ -88,7 +89,7 @@ func (s *CommandTurnSuite) scene(
 	}
 	s.driver = &recordingBehavior{next: s.behind}
 
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: whisperDice{}, TurnDriver: s.driver,
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
@@ -96,29 +97,25 @@ func (s *CommandTurnSuite) scene(
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: tombRoom(12, 6),
-	})
-	s.Require().NoError(err)
-
+	// The cells this scene is handed are axial, the frame verbs speak; a
+	// seat and a placement are authored offsets.
+	tomb := tombRoom(12, 6)
 	for _, sheet := range sheets {
 		cell, placed := at[sheet.ID]
 		s.Require().True(placed, "the scene gave %q no cell", sheet.ID)
-		_, jerr := mgr.Join(ctx, &session.JoinInput{
-			Session: "sess", Member: sheet.ID, Position: cell,
-		})
-		s.Require().NoError(jerr)
-		// AFTER Join, for CastPauseSuite's reason: Join writes the joined
-		// member's sheet from a freshly loaded character, so an economy
-		// written first would be overwritten.
+		tomb.Party = append(tomb.Party, sceneSeat{ID: sheet.ID, At: authoredOf(cell)})
+	}
+	tomb.Monsters = []dungeonspec.MonsterPlacement{{
+		Ref: refs.Monsters.Skeleton().String(), ID: "skeleton", MemberID: "skeleton", At: authoredOf(skeletonAt),
+	}}
+	launched := launchScene(s.T(), mgr, tomb)
+	s.Require().NotEmpty(launched.Formed, "arriving in plain sight must start a fight")
+	for _, sheet := range sheets {
+		// AFTER the launch, for CastPauseSuite's reason: the launch rests and
+		// writes each seated member's sheet, so an economy written first
+		// would be overwritten.
 		s.inFight(sheet.ID)
 	}
-
-	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skeleton", Ref: refs.Monsters.Skeleton().String(), Position: skeletonAt,
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(spawned.Formed, "arriving in plain sight must start a fight")
 
 	turn, err := mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "bard"})
 	s.Require().NoError(err)

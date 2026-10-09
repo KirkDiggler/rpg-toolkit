@@ -52,11 +52,11 @@ type NewGuidedConditionInput struct {
 //
 // Guidance is concentration, up to one minute — the same duration category
 // as [BlessedCondition], not Bardic Inspiration's ten-minutes-or-combat-end.
-// So this condition subscribes to long-rest cleanup (Bless's precedent) and
+// So this condition subscribes to rest cleanup (Bless's precedent) and
 // relies on the existing concentration teardown for everything else — no
 // combat-end subscription of its own, unlike [InspiredCondition].
 //
-// # Three subscriptions: the offer, the take, and the long rest
+// # Three subscriptions: the offer, the take, and the rest
 //
 // No skill filter: RAW says "one ability check of its choice," so the offer
 // fires on whichever check the recipient next makes, not a particular skill.
@@ -111,7 +111,7 @@ func (g *GuidedCondition) ConditionAddress() dnd5eEvents.ConditionAddress {
 func (g *GuidedCondition) IsApplied() bool { return g.bus != nil }
 
 // Apply subscribes the die to the check-offer chain, to the taken topic that
-// spends it, and to long-rest cleanup.
+// spends it, and to rest cleanup.
 func (g *GuidedCondition) Apply(ctx context.Context, bus events.EventBus) error {
 	if g.IsApplied() {
 		return rpgerr.New(rpgerr.CodeAlreadyExists, "guided condition already applied")
@@ -134,12 +134,12 @@ func (g *GuidedCondition) Apply(ctx context.Context, bus events.EventBus) error 
 	}
 	g.subscriptionIDs = append(g.subscriptionIDs, takenSub)
 
-	restSubID, err := subscribeRemoveOnLongRest(ctx, bus, subscribeRemoveOnLongRestInput{
+	restSubID, err := subscribeRemoveOnRest(ctx, bus, subscribeRemoveOnRestInput{
 		Address: g.ConditionAddress(), Remove: g.Remove,
 	})
 	if err != nil {
 		_ = g.Remove(ctx, bus)
-		return rpgerr.Wrap(err, "failed to subscribe guided condition to long rest")
+		return rpgerr.Wrap(err, "failed to subscribe guided condition to rest")
 	}
 	g.restSubID = restSubID
 

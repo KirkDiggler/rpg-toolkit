@@ -46,7 +46,8 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -108,29 +109,35 @@ func scenery(id, ref string, at spatial.Position) encounter.PropInput {
 // (rpg-project#372).
 const veilMap = "veil-map"
 
+// fallenFaction is the captain's own side, neutral to the party.
+const fallenFaction encounter.FactionID = "fallen"
+
 // heirloomWorld is the fixture described at the top of this file. holds says
 // whether the captain was authored holding the veil map — the ONE difference
 // the secrecy scenes vary, so that everything else about the two worlds is
 // identical by construction rather than by inspection.
-func heirloomWorld(t fataler, holds bool) *encounter.EncounterData {
-	captain := encounter.MemberInput{
-		ID: "captain", Kind: encounter.KindMonster, Position: captainCell,
-	}
+func heirloomWorld(holds bool) scene {
+	// The captain is a skeleton of its own faction, neutral to the party, so
+	// the launch's one look forms no fight with it before start floors its
+	// sheet: a captain standing beside two players at full hit points would
+	// put all three in a bubble before any scene had run. What makes it a
+	// BODY is still only its sheet (see start).
+	captain := monsterAt("captain", refs.Monsters.Skeleton().String(), int(captainCell.X), int(captainCell.Y))
+	captain.Faction = fallenFaction
 	if holds {
-		captain.Holds = []encounter.IntelID{veilMap}
+		captain.Holds = []string{veilMap}
 	}
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing:      encCaptainIsDown{},
-		CheckResolver: encNeverResolves{},
-		Witness:       encNeverWitnesses{},
+	return scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{
 				rectRegion("hall", 0, 0, 6, 6),
 				rectRegion("vault", 6, 0, 6, 6),
 			},
+			Factions: []encounter.FactionInput{{ID: fallenFaction}},
+			Dispositions: []encounter.DispositionInput{{
+				Between: [2]encounter.FactionID{fallenFaction, encounter.FactionParty}, Stance: encounter.StanceNeutral,
+			}},
 			Walls:        axialSeam(0),
 			Concealments: []encounter.ConcealmentInput{vaultConcealment()},
 			Intel: []encounter.IntelRecord{
@@ -164,57 +171,12 @@ func heirloomWorld(t fataler, holds bool) *encounter.EncounterData {
 				{ID: sideDoor, At: bobCell},
 			},
 		},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: aliceCell},
-			{ID: "bob", Kind: encounter.KindPlayer, Position: bobCell},
-			captain,
-		},
-		Endings: []encounter.EndingInput{
-			{Key: "out", Trigger: encounter.TriggerExternal{}},
-			{Key: recovered, Trigger: encounter.TriggerExitedHolding{
-				Exit: frontGate, Item: heirloomID,
-			}},
-		},
-		Retention: encounter.RetentionUnbounded,
-	})
-	if err != nil {
-		t.Fatalf("building heirloom world: %v", err)
+		Party:    []sceneSeat{{ID: "alice", At: aliceCell}, {ID: "bob", At: bobCell}},
+		Monsters: []dungeonspec.MonsterPlacement{captain},
+		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}, {Key: recovered, Trigger: encounter.TriggerExitedHolding{
+			Exit: frontGate, Item: heirloomID,
+		}}},
 	}
-	data := enc.ToData()
-	return &data
-}
-
-// encCaptainIsDown is the composition's Standing capability WHILE THE FIXTURE
-// IS BEING AUTHORED, and it exists so that no fight has already formed by the
-// time a session loads the blob: the captain is a monster standing beside two
-// players, and a captain reported up at authoring time would put all three in
-// a bubble before any scene had run.
-//
-// It answers for the fixture build ALONE. Once the session owns the world,
-// the real standingSeam answers out of the captain's stored sheet — which is
-// why every suite below seeds that sheet at zero hit points before the first
-// verb, and why TestTheBodyIsDownBecauseItsSheetSaysSo pins that it is the
-// SHEET doing the work rather than this stand-in.
-type encCaptainIsDown struct{}
-
-func (encCaptainIsDown) Standing(_ []encounter.MemberID) ([]encounter.MemberID, error) {
-	return []encounter.MemberID{"captain"}, nil
-}
-
-func (encCaptainIsDown) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
-	assessment := &encounter.ParticipationAssessment{}
-	for _, id := range members {
-		participation := encounter.MemberParticipation{
-			Member: id, Contact: false, Conscious: true, Turn: encounter.TurnParticipationWait,
-		}
-		if id == "captain" {
-			participation.Down = true
-			participation.Conscious = false
-			participation.Turn = encounter.TurnParticipationRemove
-		}
-		assessment.Members = append(assessment.Members, participation)
-	}
-	return assessment, nil
 }
 
 type HoldingsSuite struct {
@@ -229,9 +191,16 @@ type HoldingsSuite struct {
 
 func TestHoldingsSuite(t *testing.T) { suite.Run(t, new(HoldingsSuite)) }
 
-// start wires a fresh manager around the fixture and seeds the captain's
+// start wires a fresh manager around the fixture and floors the captain's
 // sheet at zero, which is what makes the body a body.
 func (s *HoldingsSuite) start(knows bool, cast ...*character.Data) {
+	s.launchHeirloom(knows, nil, cast...)
+}
+
+// launchHeirloom is start with more monsters placed on the board at launch.
+func (s *HoldingsSuite) launchHeirloom(
+	knows bool, monsters []dungeonspec.MonsterPlacement, cast ...*character.Data,
+) *session.LaunchOutput {
 	if len(cast) == 0 {
 		cast = []*character.Data{sharpEyed("alice"), dullEyed("bob")}
 	}
@@ -239,7 +208,7 @@ func (s *HoldingsSuite) start(knows bool, cast ...*character.Data) {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(cast...)
 
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
@@ -247,20 +216,31 @@ func (s *HoldingsSuite) start(knows bool, cast ...*character.Data) {
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: heirloomWorld(s.T(), knows),
-	})
-	s.Require().NoError(err)
+	sc := heirloomWorld(knows)
+	sc.Monsters = append(sc.Monsters, monsters...)
+	launched := launchScene(s.T(), mgr, sc)
 
 	// THE BODY IS A BODY BECAUSE ITS SHEET SAYS SO. The session's standing
-	// seam reads this record, so a captain with no sheet would be reported
-	// UP — and Loot would refuse with ErrNotDown before any scene got going.
+	// seam reads this record, so a captain whose sheet said otherwise would
+	// be reported UP — and Loot would refuse with ErrNotDown before any
+	// scene got going.
 	stored := s.sessions.byID["sess"]
-	stored.NPCs = append(stored.NPCs, monster.Data{
-		ID: "captain", Name: "Skeleton Captain", HitPoints: 0, MaxHitPoints: 22, ArmorClass: 15,
-	})
+	floored := false
+	for i := range stored.NPCs {
+		if stored.NPCs[i].ID == "captain" {
+			stored.NPCs[i].HitPoints = 0
+			floored = true
+		}
+	}
+	s.Require().True(floored, "the launch recorded the captain's sheet")
+	// The run is told the captain changed, so it falls here, before any
+	// scene: every scene below starts beside a body, as the authored world
+	// always did, rather than watching it fall on its first verb.
+	_, err = mgr.Recheck(context.Background(), &session.RecheckInput{Session: "sess", Members: []string{"captain"}})
+	s.Require().NoError(err)
 
 	s.stream.published = nil
+	return launched
 }
 
 // events returns everything published to one recipient, in order.

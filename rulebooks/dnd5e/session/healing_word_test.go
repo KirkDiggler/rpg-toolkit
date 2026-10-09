@@ -38,7 +38,7 @@ func (s *CastSuite) reloadHealingScene() {
 		s.characters.byID[id], err = copyOf(data)
 		s.Require().NoError(err)
 	}
-	s.mgr, err = session.NewManager(&session.Config{
+	s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream,
 	})
@@ -92,7 +92,7 @@ func (s *StaleCombatEconomySuite) TestSpellHistoryEndsWithCombatBeforeRoundOneIs
 	sheet.ID = "alice"
 	armForSwinging(sheet)
 	s.characters.byID["alice"] = sheet
-	s.spawnAdjacentSkeleton("skel-1")
+	s.fightsSkel1()
 	row := currentDeclaration(s.T(), s.mgr, "sess", "alice", session.VerbCast)
 	// Pick Healing Word explicitly; acquisition and spell sorting are separate.
 	for _, d := range s.afford("alice").Declarations {
@@ -109,7 +109,7 @@ func (s *StaleCombatEconomySuite) TestSpellHistoryEndsWithCombatBeforeRoundOneIs
 	}
 	s.killAdjacentSkeleton("skel-1")
 	s.Nil(s.characters.byID["alice"].ActionEconomy, "defeat cleanup clears spell history too")
-	s.spawnAdjacentSkeleton("skel-2")
+	s.opensOnSkel2()
 	turn, err := s.mgr.Turn(context.Background(), &session.TurnInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 	s.Equal(1, turn.Round)
@@ -147,7 +147,7 @@ func (s *CastPauseSuite) TestPaidCastHistorySurvivesSavedPauseAndResume() {
 		s.characters.byID[id], err = copyOf(data)
 		s.Require().NoError(err)
 	}
-	s.mgr, err = session.NewManager(&session.Config{
+	s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: whisperDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: session.DiscardEvents{},
 	})
@@ -252,10 +252,11 @@ func (s *CastSuite) TestSpellTurnIdentityDistinguishesActiveMembersInOneRound() 
 func (s *CastSuite) TestHealingWordRestoresDyingAndStabilizedPatients() {
 	for _, stabilized := range []bool{false, true} {
 		s.Run(fmt.Sprint(stabilized), func() {
-			patient := armedFighter("patient")
+			s.sceneWithAllies(healingWordCleric(), []*character.Data{armedFighter("patient")}, 4)
+			// Down after the launch: its first-admission rest would stand her up.
+			patient := s.characters.byID["patient"]
 			patient.HitPoints = 0
 			patient.DeathSaveState = &saves.DeathSaveState{Successes: 1, Failures: 1, Stabilized: stabilized}
-			s.sceneWithAllies(healingWordCleric(), []*character.Data{patient}, 4)
 			s.dice.rolls, s.dice.next = []int{4}, 0
 			_, err := s.mgr.Cast(context.Background(), &session.CastInput{Session: "sess", Member: "cleric", DeclarationID: s.castRow(spells.HealingWord).ID, Targets: []string{"patient"}})
 			s.Require().NoError(err)

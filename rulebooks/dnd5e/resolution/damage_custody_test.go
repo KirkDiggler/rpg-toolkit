@@ -64,7 +64,7 @@ func (s *DamageCustodyTestSuite) biteOnBus(
 	data := monsters.NewWolf(wolfID).ToData()
 	attack := data.Actions[0]
 
-	return resolveOn(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	return resolveOn(s.ctx, &Input{
 		World:        s.roomWith(encounter.MemberID(wolfID), encounter.MemberID(target.ID)),
 		Participants: []Participant{{Monster: data}, {Monster: target}},
 		Machine: NewStrike(&StrikeInput{
@@ -73,6 +73,16 @@ func (s *DamageCustodyTestSuite) biteOnBus(
 			Definition: attack,
 			Roller:     roller,
 		}),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	}, newSurface(bus))
 }
 
@@ -175,15 +185,22 @@ func (s *DamageCustodyTestSuite) TestANegativeDealtTotalLandsAsZero() {
 
 	target := monsters.NewWolf(secondWolfID).ToData()
 	out, err := resolveOn(s.ctx, &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		World:        s.roomWith(encounter.MemberID(wolfID), encounter.MemberID(target.ID)),
 		Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Monster: target}},
 		Machine: NewStrike(&StrikeInput{
 			AttackerID: wolfID, TargetID: target.ID, Definition: definition,
 			Roller: &sequenceRoller{singles: []int{15}, pair: []int{1}},
 		}),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Roller:     dice.NewRoller(),
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors:     Actors,
+		},
 	}, newSurface(events.NewEventBus()))
 	s.Require().NoError(err, "a blow that deals less than nothing still lands")
 
@@ -229,10 +246,6 @@ func (s *DamageCustodyTestSuite) TestTheStrikeOutcomeOwnsThePublisherTraceAfterT
 
 	target := monsters.NewWolf(secondWolfID).ToData()
 	out, err := resolveOn(s.ctx, &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		Equipment:    noHandsAreObserved{},
-		Sheets:       noSheetsAsked{},
 		World:        s.roomWith(encounter.MemberID(wolfID), encounter.MemberID(target.ID)),
 		Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Monster: target}},
 		Machine: NewStrike(&StrikeInput{
@@ -241,6 +254,16 @@ func (s *DamageCustodyTestSuite) TestTheStrikeOutcomeOwnsThePublisherTraceAfterT
 			Definition: definition,
 			Roller:     &sequenceRoller{singles: []int{15}, pair: []int{5}},
 		}),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Roller:     dice.NewRoller(),
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors:     Actors,
+		},
 	}, newSurface(bus))
 	s.Require().NoError(err)
 
@@ -350,13 +373,19 @@ func TestGreatWeaponFightingTraceSurvivesTheStrike(t *testing.T) {
 		Roller:     &sequenceRoller{singles: []int{hitRoll}, pair: []int{1, 5}},
 	}
 	out, err := resolveOn(context.Background(), &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		Equipment:    noHandsAreObserved{},
-		Sheets:       noSheetsAsked{},
 		World:        actionWorld(t, 2),
 		Participants: []Participant{{Character: actionHero()}, {Monster: monsters.NewWolf(wolfID).ToData()}},
 		Machine:      NewStrike(in),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Roller:     dice.NewRoller(),
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors:     Actors,
+		},
 	}, newSurface(bus))
 	require.NoError(t, err)
 
@@ -460,10 +489,6 @@ func TestUppercaseDamageNotationRollsAndTraces(t *testing.T) {
 	require.NoError(t, definition.Validate(), "the compiled definition itself is valid")
 
 	out, err := resolveOn(context.Background(), &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		Equipment:    noHandsAreObserved{},
-		Sheets:       noSheetsAsked{},
 		World:        actionWorld(t, 2),
 		Participants: []Participant{{Character: actionHero()}, {Monster: monsters.NewWolf(wolfID).ToData()}},
 		Machine: NewStrike(&StrikeInput{
@@ -472,6 +497,16 @@ func TestUppercaseDamageNotationRollsAndTraces(t *testing.T) {
 			Definition: definition,
 			Roller:     &sequenceRoller{singles: []int{hitRoll}, pair: []int{4}},
 		}),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Roller:     dice.NewRoller(),
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors:     Actors,
+		},
 	}, newSurface(events.NewEventBus()))
 	require.NoError(t, err, "the uppercase pool must roll, not die after the dice were thrown")
 
@@ -534,13 +569,19 @@ func TestProvenanceKeepsTheTraceSourcePairedToTheDefinition(t *testing.T) {
 		Roller:     &sequenceRoller{singles: []int{hitRoll}, pair: []int{3}},
 	}
 	out, err := resolveOn(context.Background(), &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		Equipment:    noHandsAreObserved{},
-		Sheets:       noSheetsAsked{},
 		World:        actionWorld(t, 2),
 		Participants: []Participant{{Character: actionHero()}, {Monster: monsters.NewWolf(wolfID).ToData()}},
 		Machine:      NewStrike(in),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Roller:     dice.NewRoller(),
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors:     Actors,
+		},
 	}, newSurface(bus))
 	require.NoError(t, err)
 
@@ -601,10 +642,6 @@ func TestCriticalStrikeTracesTheDoubledPool(t *testing.T) {
 	}
 
 	out, err := resolveOn(context.Background(), &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		Equipment:    noHandsAreObserved{},
-		Sheets:       noSheetsAsked{},
 		World:        actionWorld(t, 2),
 		Participants: []Participant{{Character: actionHero()}, {Monster: monsters.NewWolf(wolfID).ToData()}},
 		Machine: NewStrike(&StrikeInput{
@@ -614,6 +651,16 @@ func TestCriticalStrikeTracesTheDoubledPool(t *testing.T) {
 			// Natural 20, then the pool twice: [3,4] and the crit's [5,6].
 			Roller: &sequenceRoller{singles: []int{20}, pair: []int{3, 4, 5, 6}},
 		}),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Roller:     dice.NewRoller(),
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors:     Actors,
+		},
 	}, newSurface(events.NewEventBus()))
 	require.NoError(t, err)
 
@@ -671,10 +718,6 @@ func TestZeroAbilityModifierIsAPresentZero(t *testing.T) {
 	}
 
 	out, err := resolveOn(context.Background(), &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		Equipment:    noHandsAreObserved{},
-		Sheets:       noSheetsAsked{},
 		World:        actionWorld(t, 2),
 		Participants: []Participant{{Character: actionHero()}, {Monster: monsters.NewWolf(wolfID).ToData()}},
 		Machine: NewStrike(&StrikeInput{
@@ -683,6 +726,16 @@ func TestZeroAbilityModifierIsAPresentZero(t *testing.T) {
 			Definition: definition,
 			Roller:     &sequenceRoller{singles: []int{hitRoll}, pair: []int{3}},
 		}),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Roller:     dice.NewRoller(),
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors:     Actors,
+		},
 	}, newSurface(events.NewEventBus()))
 	require.NoError(t, err)
 
@@ -712,10 +765,6 @@ func TestNegativeFlatBonusIsAPresentNegativeModifier(t *testing.T) {
 	require.NoError(t, definition.Validate(), "a negative flat bonus is a legal compiled pool")
 
 	out, err := resolveOn(context.Background(), &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		Equipment:    noHandsAreObserved{},
-		Sheets:       noSheetsAsked{},
 		World:        actionWorld(t, 2),
 		Participants: []Participant{{Character: actionHero()}, {Monster: monsters.NewWolf(wolfID).ToData()}},
 		Machine: NewStrike(&StrikeInput{
@@ -724,6 +773,16 @@ func TestNegativeFlatBonusIsAPresentNegativeModifier(t *testing.T) {
 			Definition: definition,
 			Roller:     &sequenceRoller{singles: []int{hitRoll}, pair: []int{5}},
 		}),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Roller:     dice.NewRoller(),
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors:     Actors,
+		},
 	}, newSurface(events.NewEventBus()))
 	require.NoError(t, err)
 
@@ -760,13 +819,19 @@ func TestLongRangeModifierSourceSurvivesCallerMutation(t *testing.T) {
 	}
 
 	out, err := resolveOn(context.Background(), &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		Equipment:    noHandsAreObserved{},
-		Sheets:       noSheetsAsked{},
 		World:        actionWorld(t, 7),
 		Participants: []Participant{{Character: actionHero()}, {Monster: monsters.NewWolf(wolfID).ToData()}},
 		Machine:      NewStrike(in),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Roller:     dice.NewRoller(),
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors:     Actors,
+		},
 	}, newSurface(events.NewEventBus()))
 	require.NoError(t, err)
 
@@ -827,16 +892,22 @@ func (s *DamageCustodyTestSuite) TestTwoPoolsUseOneFoldAndOneApplication() {
 	}
 
 	out, err := resolveOn(s.ctx, &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		Equipment: noHandsAreObserved{},
-		Sheets:    noSheetsAsked{},
-		World:     s.roomWith(encounter.MemberID(wolfID), encounter.MemberID(target.ID)),
+		World: s.roomWith(encounter.MemberID(wolfID), encounter.MemberID(target.ID)),
 		Participants: []Participant{
 			{Monster: monsters.NewWolf(wolfID).ToData()},
 			{Monster: target},
 		},
 		Machine: machine,
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Roller:     dice.NewRoller(),
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors:     Actors,
+		},
 	}, newSurface(bus))
 	s.Require().NoError(err)
 
@@ -862,7 +933,7 @@ func (s *DamageCustodyTestSuite) TestTypedOutcomePreservesMixedVulnerabilityAndI
 		damage.Damage{Dice: "1d6", Type: damage.Acid},
 	)
 	target := monsters.NewWolf(secondWolfID).ToData()
-	out, err := resolveOn(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	out, err := resolveOn(s.ctx, &Input{
 		World:        s.roomWith(encounter.MemberID(wolfID), encounter.MemberID(target.ID)),
 		Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Monster: target}},
 		Machine: NewStrike(&StrikeInput{
@@ -871,6 +942,16 @@ func (s *DamageCustodyTestSuite) TestTypedOutcomePreservesMixedVulnerabilityAndI
 			Definition: profile,
 			Roller:     &sequenceRoller{singles: []int{15}, pair: []int{4, 5}},
 		}),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	}, newSurface(bus))
 	s.Require().NoError(err)
 
@@ -890,7 +971,7 @@ func (s *DamageCustodyTestSuite) TestTypedOutcomePreservesMixedVulnerabilityAndI
 // Real content, and the case a synthetic subscriber cannot pin: a raging
 // barbarian takes half from the wolf's piercing bite.
 func (s *DamageCustodyTestSuite) TestARagingTargetsResistanceReadsTheEventsDamageType() {
-	world, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
+	world, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -900,6 +981,19 @@ func (s *DamageCustodyTestSuite) TestARagingTargetsResistanceReadsTheEventsDamag
 			{ID: wolfID, Kind: encounter.KindMonster, Position: spatial.Position{X: 5, Y: 6}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors: encounter.Actors{
+				Striker:   noAttacksExpected{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -912,7 +1006,7 @@ func (s *DamageCustodyTestSuite) TestARagingTargetsResistanceReadsTheEventsDamag
 	}).ToJSON()
 	s.Require().NoError(err)
 
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{
 		World: world.ToData(),
 		Participants: []Participant{
 			{Character: s.ragingHero(raging)},
@@ -924,6 +1018,16 @@ func (s *DamageCustodyTestSuite) TestARagingTargetsResistanceReadsTheEventsDamag
 			Definition: attack,
 			Roller:     &sequenceRoller{singles: []int{hitRoll}, pair: []int{3, 4, 18, 2}},
 		}),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 	s.Require().NoError(err)
 
@@ -1037,7 +1141,7 @@ func (s *DamageCustodyTestSuite) addFlatOnBus(bus events.EventBus, amount int, t
 // it keeps a character's AC chain out of the arithmetic under test, and the
 // damage fold is the same fold whoever is swinging.
 func (s *DamageCustodyTestSuite) roomWith(attacker, target encounter.MemberID) encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -1047,6 +1151,19 @@ func (s *DamageCustodyTestSuite) roomWith(attacker, target encounter.MemberID) e
 			{ID: target, Kind: encounter.KindMonster, Position: spatial.Position{X: 5, Y: 6}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors: encounter.Actors{
+				Striker:   noAttacksExpected{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 

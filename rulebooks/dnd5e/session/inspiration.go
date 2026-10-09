@@ -123,8 +123,8 @@ func (m *Manager) inspirationCandidates(
 // produce — holds nothing this seam can see, which is the honest answer to a
 // question about a character sheet that does not exist.
 func (m *Manager) holdsInspiration(ctx context.Context, member string) (bool, error) {
-	data, err := m.characters.GetCharacter(ctx, member)
-	if err != nil || data == nil {
+	data, err := m.sheetsFor(nil).load(ctx, "ally", member)
+	if err != nil {
 		return false, nil
 	}
 	for _, raw := range data.Conditions {

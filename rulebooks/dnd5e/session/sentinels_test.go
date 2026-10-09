@@ -45,7 +45,9 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -113,8 +115,6 @@ var compositionSentinels = map[string]error{
 // arm for it.
 var resolutionSentinels = map[string]error{
 	"resolution.ErrNilInput":              resolution.ErrNilInput,
-	"resolution.ErrNoInitiative":          resolution.ErrNoInitiative,
-	"resolution.ErrNoStanding":            resolution.ErrNoStanding,
 	"resolution.ErrNoRoller":              resolution.ErrNoRoller,
 	"resolution.ErrNoMachine":             resolution.ErrNoMachine,
 	"resolution.ErrBadParticipant":        resolution.ErrBadParticipant,
@@ -147,9 +147,6 @@ var resolutionSentinels = map[string]error{
 	// A Sanctuary ward that carries no DC (rpg-toolkit#1965): translated to
 	// ErrBadCharacter with %v, so it is not in the chain a host sees.
 	"resolution.ErrWardUnreadable": resolution.ErrWardUnreadable,
-	// The sheet capability not supplied (rpg-project#538): translated to
-	// ErrNoSheet with %v.
-	"resolution.ErrNoSheets": resolution.ErrNoSheets,
 }
 
 // refSentinels is core's identifier vocabulary — what a malformed ref is
@@ -227,6 +224,11 @@ var sessionSentinels = map[string]error{
 	"ErrNoSessionID":          session.ErrNoSessionID,
 	"ErrNoEncounterID":        session.ErrNoEncounterID,
 	"ErrSessionExists":        session.ErrSessionExists,
+	"ErrSeatedElsewhere":      session.ErrSeatedElsewhere,
+	"ErrBadEquip":             session.ErrBadEquip,
+	"ErrArmorInFight":         session.ErrArmorInFight,
+	"ErrBadRest":              session.ErrBadRest,
+	"ErrDuplicateMember":      session.ErrDuplicateMember,
 	"ErrInvalidWorld":         session.ErrInvalidWorld,
 	"ErrNoCalculation":        session.ErrNoCalculation,
 	"ErrInBubble":             session.ErrInBubble,
@@ -349,7 +351,7 @@ func TestDeclarationSentinelVocabulary(t *testing.T) {
 
 func (s *SentinelSuite) SetupTest() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
@@ -361,10 +363,7 @@ func (s *SentinelSuite) SetupTest() {
 	// sides. Painting it out there matters — a cell outside every region is
 	// a real coordinate rather than a negative number, which is the mistake
 	// a client actually makes.
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: offsetWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, offsetWorld())
 }
 
 // refusedInOurVocabulary is the whole assertion of this file, in both
@@ -401,16 +400,32 @@ func (s *SentinelSuite) refusedInOurVocabulary(err error, want error) {
 // what the host stored — an empty hand, one sheet under two names — which is
 // the only part of a duel these refusals differ in.
 func (s *SentinelSuite) armedDuel(chars *fakeCharacters) *session.Manager {
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
-		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+	encounters := newFakeEncounters()
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: encounters,
 		Characters: chars, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: duelWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	// Launch rests and re-saves every party sheet, and refuses one it cannot
+	// read. What the host stored is this case's whole subject, so the duel is
+	// launched on plain sheets and the stored ones are put back afterwards —
+	// the state a host's repository is in once the run is under way.
+	stored := map[string]*character.Data{}
+	for _, id := range []string{"alice", "bob"} {
+		if sheet, ok := chars.byID[id]; ok {
+			stored[id] = sheet
+		}
+		chars.byID[id] = armedFighter(id)
+	}
+	launchDuel(s.T(), mgr, encounters)
+	for _, id := range []string{"alice", "bob"} {
+		if sheet, ok := stored[id]; ok {
+			chars.byID[id] = sheet
+		} else {
+			delete(chars.byID, id)
+		}
+	}
 	return mgr
 }
 
@@ -441,9 +456,9 @@ func (s *SentinelSuite) TestAWalkOffTheMap() {
 		"and the refusal still names the cell that was refused")
 }
 
-// TestAnEntryOffTheMap covers both doors into a session with the same mistake.
+// TestAnEntryOffTheMap covers both doors onto a board with the same mistake.
 //
-// Join and Spawn share one placement path, so a leak in it is a leak in both;
+// Join and Launch share one placement path, so a leak in it is a leak in both;
 // asserting through both is what proves the sharing is real rather than
 // remembered.
 func (s *SentinelSuite) TestAnEntryOffTheMap() {
@@ -454,10 +469,15 @@ func (s *SentinelSuite) TestAnEntryOffTheMap() {
 	})
 	s.refusedInOurVocabulary(joinErr, session.ErrBadPosition)
 
-	_, spawnErr := s.mgr.Spawn(context.Background(), &session.SpawnInput{
-		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(), Position: nowhere,
-	})
-	s.refusedInOurVocabulary(spawnErr, session.ErrBadPosition)
+	// A second run, so the monster is the only thing wrong with it: bob is
+	// seated nowhere yet, and the authored cell is as far off the map as the
+	// joiner's.
+	sc := offsetWorld()
+	sc.Session = "another"
+	sc.Party = []sceneSeat{seatAt("bob", 41, 21)}
+	sc.Monsters = []dungeonspec.MonsterPlacement{monsterAt("skel-1", refs.Monsters.Skeleton().String(), 900, 900)}
+	_, launchErr := s.mgr.Launch(context.Background(), sceneInput(sc))
+	s.refusedInOurVocabulary(launchErr, session.ErrBadPosition)
 }
 
 // TestACorruptStoredWorld is the case every verb shares, because every verb
@@ -473,7 +493,7 @@ func (s *SentinelSuite) TestACorruptStoredWorld() {
 	// A cell no region owns — the stored world naming somewhere that is
 	// not on the map. Was `Room = "nowhere"` before members stopped
 	// carrying a room at all (rpg-toolkit#1059).
-	s.encounters.byID["world"].Members[0].Cell = &encounter.PositionData{X: 9999, Y: 9999}
+	s.encounters.byID["sess"].Members[0].Cell = &encounter.PositionData{X: 9999, Y: 9999}
 	ctx := context.Background()
 
 	_, err := s.mgr.Status(ctx, &session.StatusInput{Session: "sess"})
@@ -499,15 +519,15 @@ func (s *SentinelSuite) TestACorruptStoredWorld() {
 // answers it with several sentinels stacked, which is several ways to couple a
 // host to a module we intend to replace.
 func (s *SentinelSuite) TestAWorldThatWillNotLoad() {
-	broken := offsetWorld(s.T())
-	broken.Members[0].Cell = &encounter.PositionData{X: 9999, Y: 9999}
+	// A field that paints no floor at all: the authoring mistake a launch
+	// builds the world from, refused before anything is stored.
+	broken := offsetWorld()
+	broken.Session = "another"
+	broken.Party = []sceneSeat{seatAt("bob", 41, 21)}
+	broken.Field.Regions = nil
 
-	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "another", Encounter: "another-world", World: broken,
-	})
+	_, err := s.mgr.Launch(context.Background(), sceneInput(broken))
 	s.refusedInOurVocabulary(err, session.ErrInvalidWorld)
-	s.Contains(err.Error(), "owned by no region",
-		"and the refusal still names the room the world invented")
 }
 
 // TestATrimmedStory is the case that already held, kept here so the list of
@@ -520,10 +540,9 @@ func (s *SentinelSuite) TestAWorldThatWillNotLoad() {
 func (s *SentinelSuite) TestATrimmedStory() {
 	ctx := context.Background()
 	world := trimmedWorld(s.T())
-	_, err := s.mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "trimmed", Encounter: "trimmed-world", World: world,
-	})
-	s.Require().NoError(err)
+	// Seeded: a bounded retention whose window has already aged entries out is
+	// a stored shape Launch never produces (it always launches unbounded).
+	seedRun(s.T(), s.sessions, s.encounters, "trimmed", world)
 
 	// Five beats were delivered to alice before the surviving window — the
 	// state a long-running session reaches on its own, planted through the
@@ -720,18 +739,19 @@ func (s *SentinelSuite) TestASecondSwingInOneTurn() {
 	s.refusedInOurVocabulary(err, session.ErrStaleDeclaration)
 }
 
-// TestASpawnNamingAMalformedRef is the third module and the second door.
+// TestALaunchPlacingAMalformedRef is the third module and the second door.
 //
 // A ref crosses this seam as a string, so getting one wrong is the most
 // ordinary mistake a host can make — a bare "skeleton" where the catalog wanted
 // "dnd5e:monsters:skeleton". The parser underneath answers in core's
 // vocabulary, and a host that matched on core.ErrTooFewSegments would be
 // coupled to the fact that this package parses refs with core at all.
-func (s *SentinelSuite) TestASpawnNamingAMalformedRef() {
-	_, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
-		Session: "sess", ID: "skel-1", Ref: "skeleton",
-		Position: hexCell(42, 22),
-	})
+func (s *SentinelSuite) TestALaunchPlacingAMalformedRef() {
+	sc := offsetWorld()
+	sc.Session = "another"
+	sc.Party = []sceneSeat{seatAt("bob", 41, 21)}
+	sc.Monsters = []dungeonspec.MonsterPlacement{monsterAt("skel-1", "skeleton", 42, 22)}
+	_, err := s.mgr.Launch(context.Background(), sceneInput(sc))
 	s.refusedInOurVocabulary(err, session.ErrBadRef)
 	s.Contains(err.Error(), "skeleton",
 		"and the refusal still names the ref it could not read")

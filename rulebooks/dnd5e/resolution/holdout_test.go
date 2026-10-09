@@ -68,8 +68,6 @@ func TestHoldOutSuite(t *testing.T) {
 func (s *HoldOutSuite) camp() *encounter.Encounter {
 	no := false
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{},
-		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("yard", 0, 0, 8, 4)},
@@ -92,6 +90,19 @@ func (s *HoldOutSuite) camp() *encounter.Encounter {
 			{ID: holdOutChief, Kind: encounter.KindMonster, Position: spatial.Position{X: 4, Y: 1}, Faction: holdOutCamp},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors: encounter.Actors{
+				Striker:   noAttacksExpected{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -193,9 +204,17 @@ func (s *HoldOutSuite) resolve(world encounter.EncounterData, strike *StrikeInpu
 			{Character: s.rogue()}, {Character: s.ally()},
 			{Monster: s.raider(holdOutScout)}, {Monster: s.raider(holdOutChief)},
 		},
-		Machine:    NewStrike(strike),
-		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
-		TurnDriver: passDriver{}, Roller: strike.Roller,
+		Machine: NewStrike(strike),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Driver:     passDriver{},
+			Roller:     strike.Roller,
+			Actors:     Actors,
+		},
 	})
 	s.Require().NoError(err)
 	outcome, ok := out.Outcome.(StrikeOutcome)

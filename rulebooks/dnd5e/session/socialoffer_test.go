@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -49,9 +50,9 @@ func (s *SocialOfferSuite) SetupTest() {
 // authored, keyed by member ID; a goblin missing from it is spawned with
 // nothing, which is the creature the ruling is about.
 func (s *SocialOfferSuite) aRoom(
-	entries map[string]session.SpawnInput, props ...encounter.PropInput,
+	entries map[string]dungeonspec.MonsterPlacement, props ...encounter.PropInput,
 ) *session.Manager {
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: &sequenceDice{rolls: []int{10, 10, 10, 10}},
 		TurnDriver: session.Pass{},
 		Sessions:   s.sessions, Encounters: s.encounters,
@@ -59,10 +60,7 @@ func (s *SocialOfferSuite) aRoom(
 	})
 	s.Require().NoError(err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{},
-		Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
+	sc := scene{
 		Field: encounter.FieldInput{
 			Canvas:   pointyCanvas(),
 			Regions:  []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)},
@@ -75,51 +73,35 @@ func (s *SocialOfferSuite) aRoom(
 				Stance:  encounter.StanceNeutral,
 			}},
 		},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-		},
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-	})
-	s.Require().NoError(err)
-	data := enc.ToData()
-
-	ctx := context.Background()
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: &data,
-	})
-	s.Require().NoError(err)
+		Party: []sceneSeat{seatAt("alice", 1, 1)},
+	}
 
 	for i, id := range []string{"written", "unwritten"} {
-		spawn := entries[id]
-		spawn.Session, spawn.ID = "sess", id
-		spawn.Ref = refs.Monsters.Goblin().String()
-		spawn.Position = spatial.Position{X: 5, Y: float64(1 + i*2)}
-		spawn.Faction = "goblins"
-		_, err = mgr.Spawn(ctx, &spawn)
-		s.Require().NoError(err)
+		goblin := entries[id]
+		goblin.ID, goblin.MemberID = id, id
+		goblin.Ref = refs.Monsters.Goblin().String()
+		goblin.At = authoredOf(spatial.Position{X: 5, Y: float64(1 + i*2)})
+		goblin.Faction = "goblins"
+		sc.Monsters = append(sc.Monsters, goblin)
 	}
+	launchScene(s.T(), mgr, sc)
 
 	return mgr
 }
 
 // written is the goblin an author gave both social verbs to; unwritten is its
 // twin, spawned with nothing.
-func (s *SocialOfferSuite) bothVerbsOnTheWrittenGoblin() map[string]session.SpawnInput {
-	return map[string]session.SpawnInput{"written": {
-		Intimidate: []session.DoorApproach{{Ability: "intimidation", DC: 9}},
-		Persuade:   []session.DoorApproach{{Ability: "persuasion", DC: 9}},
+func (s *SocialOfferSuite) bothVerbsOnTheWrittenGoblin() map[string]dungeonspec.MonsterPlacement {
+	return map[string]dungeonspec.MonsterPlacement{"written": {
+		Intimidate: []encounter.CheckApproach{{Ability: "intimidation", DC: 9}},
+		Persuade:   []encounter.CheckApproach{{Ability: "persuasion", DC: 9}},
 	}}
 }
 
 // intoAFight rolls the room into an authored turn order, so the same room can
 // be asked the same questions on the other clock.
 func (s *SocialOfferSuite) intoAFight() {
-	ctx := context.Background()
-	stored, err := s.encounters.GetEncounter(ctx, "world")
-	s.Require().NoError(err)
-	s.Require().NoError(s.encounters.SaveEncounter(ctx, "world",
-		turnWorld(stored, []string{"alice", "written", "unwritten"}, 0)))
+	authorTurnClock(s.T(), s.encounters, testSession, []string{"alice", "written", "unwritten"}, 0)
 }
 
 // candidatesFor is who a verb's row offers alice, by member ID and in the
@@ -222,9 +204,9 @@ func (s *SocialOfferSuite) TestTheAuthoredGoblinAnswersBothVerbs() {
 // one row offers it and the other does not, in the same room on the same
 // sightline.
 func (s *SocialOfferSuite) TestAVerbIsOfferedPerVerbAndNotPerCreature() {
-	mgr := s.aRoom(map[string]session.SpawnInput{
-		"written":   {Intimidate: []session.DoorApproach{{Ability: "intimidation", DC: 9}}},
-		"unwritten": {Persuade: []session.DoorApproach{{Ability: "persuasion", DC: 9}}},
+	mgr := s.aRoom(map[string]dungeonspec.MonsterPlacement{
+		"written":   {Intimidate: []encounter.CheckApproach{{Ability: "intimidation", DC: 9}}},
+		"unwritten": {Persuade: []encounter.CheckApproach{{Ability: "persuasion", DC: 9}}},
 	})
 
 	s.Equal([]string{"written"}, s.candidatesFor(mgr, session.VerbIntimidate),

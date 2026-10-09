@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -42,47 +43,28 @@ func candidateFight(t *testing.T) (*session.Manager, *fakeSessions, *fakeEncount
 	// Enough scripted rolls for the fight's initiative and nothing else:
 	// Afford is a read and rolls nothing.
 	roller := &sequenceDice{rolls: []int{10, 1, 1, 1, 1, 1, 1, 1, 1, 1}}
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: roller, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: characters, Events: session.DiscardEvents{},
 	})
 	require.NoError(t, err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing: encEveryoneStanding{},
-		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+	sc := scene{
+		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
+		Party: []sceneSeat{seatAt("alice", 1, 1)},
+		// skeleton-near stands one cell from alice and forms the fight.
+		// skeleton-far is well outside a longsword's one-cell reach but in
+		// plain sight, so it is a LIVE candidate that fails the reach gate
+		// rather than a stale memory.
+		Monsters: []dungeonspec.MonsterPlacement{
+			monsterAt("skeleton-near", refs.Monsters.Skeleton().String(), 2, 1),
+			monsterAt("skeleton-far", refs.Monsters.Skeleton().String(), 7, 1),
 		},
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-	})
-	require.NoError(t, err)
-	data := enc.ToData()
+	}
 
 	ctx := context.Background()
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: &data})
-	require.NoError(t, err)
-
-	// skeleton-near lands one cell from alice and forms the fight, putting
-	// alice on the turn clock as the active member.
-	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skeleton-near", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 2, Y: 1},
-	})
-	require.NoError(t, err)
-	require.NotNil(t, spawned.Formed, "skeleton-near in plain sight of alice must start a fight")
-
-	// skeleton-far is well outside a longsword's one-cell reach but inside
-	// encEveryoneSees' unbounded sight, so it is a LIVE candidate that fails
-	// the reach gate rather than a stale memory.
-	_, err = mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skeleton-far", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 7, Y: 1},
-	})
-	require.NoError(t, err)
+	launched := launchOnClock(t, mgr, encounters, sc, []string{"alice", "skeleton-near", "skeleton-far"}, 0)
+	require.NotEmpty(t, launched.Formed, "skeleton-near in plain sight of alice must start a fight")
 
 	turn, err := mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
 	require.NoError(t, err)
@@ -103,7 +85,7 @@ func injectHolding(
 		Position: spatial.Position{X: 1, Y: 1},
 	})
 	require.NoError(t, err)
-	stored, err := encounters.GetEncounter(context.Background(), "world")
+	stored, err := encounters.GetEncounter(context.Background(), testSession)
 	require.NoError(t, err)
 	if stored.Perception.Intel.Holdings == nil {
 		stored.Perception.Intel.Holdings = map[core.EntityID]map[intel.Subject]intel.HoldingData{}
@@ -117,7 +99,7 @@ func injectHolding(
 		CurrentVia: currentVia,
 		Payload:    payload,
 	}
-	require.NoError(t, encounters.SaveEncounter(context.Background(), "world", stored))
+	require.NoError(t, encounters.SaveEncounter(context.Background(), testSession, stored))
 }
 
 // runAffordCandidateFixture builds the candidate universe fixture: in-range
@@ -342,35 +324,20 @@ func TestAffordProjectsEveryCompiledDeclarationOnTheTurnClock(t *testing.T) {
 func TestNotYourTurnBlocksEveryVerb(t *testing.T) {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	characters := newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
 		Characters: characters, Events: session.DiscardEvents{},
 	})
 	require.NoError(t, err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
-		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 5}},
-		},
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-	})
-	require.NoError(t, err)
-	data := enc.ToData()
+	sc := scene{
+		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
+		Party:    []sceneSeat{seatAt("alice", 1, 1), seatAt("bob", 5, 5)},
+		Monsters: []dungeonspec.MonsterPlacement{monsterAt("skel-1", refs.Monsters.Skeleton().String(), 2, 1)},
+	}
 
 	ctx := context.Background()
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: &data})
-	require.NoError(t, err)
-
-	_, err = mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 2, Y: 1},
-	})
-	require.NoError(t, err)
+	launchOnClock(t, mgr, encounters, sc, []string{"alice", "skel-1", "bob"}, 0)
 
 	out, err := mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "bob"})
 	require.NoError(t, err)
@@ -473,6 +440,7 @@ func TestDownedBlocksEveryVerbButEndTurn(t *testing.T) {
 // continue off the readied sheet and the clock.
 func TestBadAttackCompilationBlocksAttackOnly(t *testing.T) {
 	alice := armedFighter("alice")
+	admitted := armedFighter("alice")
 	// A shield is valid equipment (so the sheet loads) but not a weapon, so
 	// AssembleAttack fails with "holds no weapon" where Move and EndTurn do
 	// not — the per-verb blocker matrix for a bad Attack compilation.
@@ -482,34 +450,24 @@ func TestBadAttackCompilationBlocksAttackOnly(t *testing.T) {
 	}
 
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
-	characters := newFakeCharacters(alice)
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	// Launch refuses a party sheet that cannot project its attack, so alice
+	// is admitted armed and her sheet goes bad after the fight formed.
+	characters := newFakeCharacters(admitted)
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{10, 1, 1, 1, 1, 1, 1, 1, 1, 1}}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: characters, Events: session.DiscardEvents{},
 	})
 	require.NoError(t, err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
-		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-		},
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-	})
-	require.NoError(t, err)
-	data := enc.ToData()
+	sc := scene{
+		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
+		Party:    []sceneSeat{seatAt("alice", 1, 1)},
+		Monsters: []dungeonspec.MonsterPlacement{monsterAt("skeleton-near", refs.Monsters.Skeleton().String(), 2, 1)},
+	}
 
 	ctx := context.Background()
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: &data})
-	require.NoError(t, err)
-	_, err = mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skeleton-near", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 2, Y: 1},
-	})
-	require.NoError(t, err)
+	launchOnClock(t, mgr, encounters, sc, []string{"alice", "skeleton-near"}, 0)
+	characters.byID["alice"] = alice
 
 	out, err := mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "alice"})
 	require.NoError(t, err)
@@ -561,34 +519,20 @@ func TestUnreadableCharacterBlocksEveryVerbButEndTurn(t *testing.T) {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	characters := newFakeCharacters(armedFighter("alice"), dullEyed("bob"))
 
-	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{10, 1, 1, 1, 1, 1, 1, 1, 1, 1}}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: characters, Events: session.DiscardEvents{},
 	})
 	require.NoError(t, err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
-		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 1}},
-		},
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-	})
-	require.NoError(t, err)
-	data := enc.ToData()
+	sc := scene{
+		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
+		Party:    []sceneSeat{seatAt("alice", 1, 1), seatAt("bob", 3, 1)},
+		Monsters: []dungeonspec.MonsterPlacement{monsterAt("skeleton-near", refs.Monsters.Skeleton().String(), 2, 1)},
+	}
 
 	ctx := context.Background()
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: &data})
-	require.NoError(t, err)
-	_, err = mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skeleton-near", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 2, Y: 1},
-	})
-	require.NoError(t, err)
+	launchOnClock(t, mgr, encounters, sc, []string{"alice", "skeleton-near", "bob"}, 0)
 
 	// End alice's turn: the skeleton's turn is driven through (Pass driver)
 	// and bob — a player — becomes active.
@@ -676,7 +620,7 @@ func TestAttackSelectorGatesFailBeforeDiceOrDurableMutation(t *testing.T) {
 	beforeRolls := roller.next
 	beforeSession, err := json.Marshal(sessions.byID["sess"])
 	require.NoError(t, err)
-	beforeEncounter, err := json.Marshal(encounters.byID["world"])
+	beforeEncounter, err := json.Marshal(encounters.byID[testSession])
 	require.NoError(t, err)
 	beforeCharacter := cloneCharacter(characters.byID["alice"])
 	beforeStory, err := mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice"})
@@ -704,7 +648,7 @@ func TestAttackSelectorGatesFailBeforeDiceOrDurableMutation(t *testing.T) {
 	require.Equal(t, beforeRolls, roller.next, "selector refusals roll no dice")
 	afterSession, err := json.Marshal(sessions.byID["sess"])
 	require.NoError(t, err)
-	afterEncounter, err := json.Marshal(encounters.byID["world"])
+	afterEncounter, err := json.Marshal(encounters.byID[testSession])
 	require.NoError(t, err)
 	require.JSONEq(t, string(beforeSession), string(afterSession), "selector refusals write no session state")
 	require.JSONEq(t, string(beforeEncounter), string(afterEncounter), "selector refusals record no story")

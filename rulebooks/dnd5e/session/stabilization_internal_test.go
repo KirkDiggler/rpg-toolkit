@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
@@ -21,7 +23,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
-	"github.com/stretchr/testify/suite"
 )
 
 type StabilizationSessionSuite struct{ suite.Suite }
@@ -58,19 +59,17 @@ func (s *StabilizationSessionSuite) TestCompiledProfilePersistsAndDeliversReplay
 			encounters := &strikeEncounters{byID: map[string]*encounter.EncounterData{}}
 			stream := &stabilizationStream{}
 			dice := &scriptedDice{}
-			mgr, err := NewManager(&Config{PresentationIDs: testPresentationIDs{}, Dice: dice, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters, Characters: characters, Events: stream})
+			mgr, err := NewManager(&Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: dice, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters, Characters: characters, Events: stream})
 			s.Require().NoError(err)
-			world, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-				Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{}, Equipment: encNoHandsObserved{},
-				Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
+			sc := scene{
 				Field:   encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 5, 5)}},
-				Members: []encounter.MemberInput{{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}}, {ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}}},
+				Party:   []sceneSeat{seatAt("alice", 1, 1), seatAt("bob", 2, 1)},
 				Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-			})
-			s.Require().NoError(err)
-			data := world.ToData()
-			_, err = mgr.StartSession(ctx, &StartSessionInput{Session: "sess", Encounter: "world", World: &data})
-			s.Require().NoError(err)
+			}
+			launchScene(s.T(), mgr, sc)
+			// Launch rests whoever it seats, so the dying sheet is written
+			// once they are on the board: it is the state under test.
+			characters.byID["bob"] = bob
 			scope, err := mgr.openForChange(ctx, "sess")
 			s.Require().NoError(err)
 			roster, err := scope.enc.Members()
@@ -95,9 +94,22 @@ func (s *StabilizationSessionSuite) TestCompiledProfilePersistsAndDeliversReplay
 			s.Require().NoError(err)
 			machine, err := resolution.NewAction(&resolution.ActionInput{Definition: definition, AttackerID: "alice", TargetIDs: targets, Roller: &diceSeam{roller: dice}})
 			s.Require().NoError(err)
-			out, err := resolution.Resolve(ctx, &resolution.Input{World: scope.enc.WorldView(), Participants: participants, Machine: machine,
-				Cost: &resolution.Cost{PayerID: "alice", Profile: definition.Cost, SpellTurn: "turn1", Turn: &resolution.Turn{Number: 1}}, Roller: &diceSeam{roller: dice},
-				Initiative: mgr.initiative, TurnDriver: scope.driver, Standing: scope.standing, Sight: aggregateRecordEveryoneSees{}, Equipment: encNoHandsObserved{}, Sheets: sheetsBeside(scope.standing)})
+			out, err := resolution.Resolve(ctx, &resolution.Input{
+				World:        scope.enc.WorldView(),
+				Participants: participants,
+				Machine:      machine,
+				Cost:         &resolution.Cost{PayerID: "alice", Profile: definition.Cost, SpellTurn: "turn1", Turn: &resolution.Turn{Number: 1}},
+				Capabilities: encounter.Capabilities{
+					Roller:     &diceSeam{roller: dice},
+					Initiative: mgr.initiative,
+					Driver:     scope.driver,
+					Standing:   scope.standing,
+					Sight:      aggregateRecordEveryoneSees{},
+					Equipment:  encNoHandsObserved{},
+					Sheets:     sheetsBeside(scope.standing),
+					Actors:     resolution.Actors,
+				},
+			})
 			s.Require().NoError(err)
 			results, pushes, err := castOutcome(out.Outcome, "alice", *offer.declaration.Spell)
 			s.Require().NoError(err)

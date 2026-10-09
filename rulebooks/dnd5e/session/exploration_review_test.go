@@ -16,7 +16,7 @@ func (s *AutomaticDiscoverySDKSuite) TestSharingRefusalsKeepTheVerbAndSentinel()
 	ctx := context.Background()
 	sessions := newFakeSessions()
 	encounters := &failingEncounters{fakeEncounters: newFakeEncounters()}
-	cfg := &session.Config{
+	cfg := &session.Config{Seats: newFakeSeats(),
 		Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
 		Explorations: &explorationStore{data: map[string]*session.ExplorationData{}},
 		Events:       session.DiscardEvents{}, Dice: testDice{},
@@ -31,8 +31,9 @@ func (s *AutomaticDiscoverySDKSuite) TestSharingRefusalsKeepTheVerbAndSentinel()
 	s.ErrorIs(err, session.ErrNoSession)
 	s.ErrorContains(err, "set discovery sharing:")
 
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{Session: "run", Encounter: "enc", World: authoredWorld(s.T())})
-	s.Require().NoError(err)
+	run := authoredWorld()
+	run.Session = "run"
+	launchScene(s.T(), mgr, run)
 	_, err = mgr.SetDiscoverySharing(ctx, &session.SetDiscoverySharingInput{Session: "run", Member: "stranger"})
 	s.ErrorIs(err, session.ErrNoMember)
 	s.ErrorContains(err, "set discovery sharing:")
@@ -77,20 +78,20 @@ func (s *AutomaticDiscoverySDKSuite) TestJoinDiscoveryUsesTheRestedRecordRatherT
 			ctx := context.Background()
 			characters := newFakeCharacters(dwarfCharacter("alice"), ragingDwarf("bob"))
 			dice := &discoveryReviewDice{}
-			mgr, err := session.NewManager(&session.Config{
+			mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 				Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: characters,
 				Explorations: &explorationStore{data: map[string]*session.ExplorationData{}},
 				Events:       session.DiscardEvents{}, Dice: dice,
 				PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{},
 			})
 			s.Require().NoError(err)
-			world := authoredWorld(s.T())
-			world.Field.Concealments = []encounter.ConcealmentData{{
-				ID: "hall/strength-secret", Checks: []encounter.CheckApproachData{{Ability: "athletics", DC: 99}},
-				Cells: []encounter.PositionData{{X: 3, Y: 1}},
+			world := authoredWorld()
+			world.Session = "run"
+			world.Field.Concealments = []encounter.ConcealmentInput{{
+				ID: "hall/strength-secret", Checks: []encounter.CheckApproach{{Ability: "athletics", DC: 99}},
+				Cells: []spatial.Position{{X: 3, Y: 1}},
 			}}
-			_, err = mgr.StartSession(ctx, &session.StartSessionInput{Session: "run", Encounter: "enc", World: world})
-			s.Require().NoError(err)
+			launchScene(s.T(), mgr, world)
 			position := spatial.Position{X: 2, Y: 1}
 			if rageAfterJoin {
 				position = spatial.Position{} // out of range during admission/rest

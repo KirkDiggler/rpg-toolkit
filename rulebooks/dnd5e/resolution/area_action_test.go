@@ -47,9 +47,20 @@ func (s *AreaActionTestSuite) resolveArea(
 		participants = append(participants, Participant{Character: payer})
 	}
 	return Resolve(s.ctx, &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
-		World: world, Participants: participants, Machine: machine, Cost: castCost(),
+		World:        world,
+		Participants: participants,
+		Machine:      machine,
+		Cost:         castCost(),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 }
 

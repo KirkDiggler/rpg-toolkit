@@ -16,6 +16,7 @@ import (
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
@@ -136,8 +137,8 @@ func (s *CastSuite) build(
 ) {
 	s.T().Helper()
 
-	// One die per member of the bubble the spawn forms, ahead of whatever this
-	// scene scripted.
+	// One die per member of the bubble the launch forms, ahead of whatever
+	// this scene scripted.
 	initiativeRolls := 2 + len(allies)
 	scripted := append(make([]int, initiativeRolls), rolls...)
 
@@ -148,7 +149,7 @@ func (s *CastSuite) build(
 	s.encounters = newFakeEncounters()
 	s.stream = &fakeStream{}
 	s.dice = &sequenceDice{rolls: scripted}
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: s.dice,
 		TurnDriver: session.Pass{},
 		Sessions:   s.sessions, Encounters: s.encounters,
@@ -157,52 +158,44 @@ func (s *CastSuite) build(
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	members := []encounter.MemberInput{{
-		ID: encounter.MemberID(bard.ID), Kind: encounter.KindPlayer,
-		Position: spatial.Position{X: 1, Y: 1},
-	}}
+	party := []sceneSeat{seatAt(bard.ID, 1, 1)}
 	for i, ally := range allies {
-		members = append(members, encounter.MemberInput{
-			ID: encounter.MemberID(ally.ID), Kind: encounter.KindPlayer,
-			Position: spatial.Position{X: float64(2 + i), Y: 1},
-		})
+		party = append(party, seatAt(ally.ID, 2+i, 1))
 	}
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{},
-		Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing: encEveryoneStanding{},
+	ctx := context.Background()
+	launched := launchScene(s.T(), mgr, scene{
 		Field: encounter.FieldInput{
 			Canvas:  pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 40, 8)},
 			Props:   props,
 		},
-		Members:   members,
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
+		Party: party,
+		Monsters: []dungeonspec.MonsterPlacement{
+			monsterAt("skeleton", refs.Monsters.Skeleton().String(), 1+cells, 1),
+		},
 	})
-	s.Require().NoError(err)
-	data := enc.ToData()
-
-	ctx := context.Background()
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: &data,
-	})
-	s.Require().NoError(err)
-
-	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skeleton", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: float64(1 + cells), Y: 1},
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(spawned.Formed, "arriving in plain sight must start a fight")
+	s.Require().NotEmpty(launched.Formed, "standing in plain sight must start a fight")
 
 	turn, err := mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: bard.ID})
 	s.Require().NoError(err)
 	s.Require().Equal(session.ClockTurn, turn.Clock, "a cast is priced on the turn clock")
 	s.Require().Equal(bard.ID, turn.Active)
 	s.stream.published = nil
+}
+
+// spendFirstLevelSlots empties the member's 1st-level spell slots on the
+// stored sheet. After the launch, because its first-admission long rest
+// refills every slot a sheet was stored without.
+func (s *CastSuite) spendFirstLevelSlots(member string) {
+	s.T().Helper()
+	ctx := context.Background()
+	stored, err := s.characters.GetCharacter(ctx, member)
+	s.Require().NoError(err)
+	spent := stored.Resources[resources.SpellSlotLevel1]
+	spent.Current = 0
+	stored.Resources[resources.SpellSlotLevel1] = spent
+	s.Require().NoError(s.characters.SaveCharacter(ctx, stored))
 }
 
 // holdInspiration puts a Bardic Inspiration die on the member's stored sheet.
@@ -296,11 +289,8 @@ func (s *CastSuite) TestBaneKnownSpellCompilesProviderBoundsAndGenericPrice() {
 }
 
 func (s *CastSuite) TestBaneWithoutASpellSlotReportsProviderLabelledChargeShortfall() {
-	bard := castingBardWithSpells("bard", spells.Bane)
-	spent := bard.Resources[resources.SpellSlotLevel1]
-	spent.Current = 0
-	bard.Resources[resources.SpellSlotLevel1] = spent
-	s.scene(bard, 2)
+	s.scene(castingBardWithSpells("bard", spells.Bane), 2)
+	s.spendFirstLevelSlots("bard")
 
 	row := s.castRow(spells.Bane)
 	s.False(row.Available)
@@ -980,11 +970,8 @@ func (s *CastSuite) TestThunderwaveIsOfferedAsACellToAimAt() {
 // content. Presentation survives the former so the dock does not change shape
 // merely because the spell slot ran out.
 func (s *CastSuite) TestACompiledUnavailableAreaKeepsItsFootprint() {
-	bard := castingBardWithSpells("bard", spells.Thunderwave)
-	spent := bard.Resources[resources.SpellSlotLevel1]
-	spent.Current = 0
-	bard.Resources[resources.SpellSlotLevel1] = spent
-	s.scene(bard, 1)
+	s.scene(castingBardWithSpells("bard", spells.Thunderwave), 1)
+	s.spendFirstLevelSlots("bard")
 
 	row := s.castRow(spells.Thunderwave)
 	s.False(row.Available)
