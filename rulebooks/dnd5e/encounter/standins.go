@@ -100,7 +100,7 @@ func (refusingInitiative) RollInitiative([]MemberID) ([]MemberID, error) {
 // find check is rolled only through an explicit Search, which nothing that
 // compiles, previews or re-serializes a world does, so reaching it is a HOST
 // BUG reported by name rather than answered with an invented roll.
-// [RefusingCapabilities] install it.
+// [RefusingCapabilities] installs it.
 type RefusingCheckResolver struct{}
 
 // ResolveCheck always fails with ErrRefusingCheckResolver.
@@ -109,7 +109,7 @@ func (RefusingCheckResolver) ResolveCheck(*ResolveCheckInput) (*ResolveCheckOutp
 }
 
 // NobodyPerceives is a Witness that answers nobody perceives the door, as an
-// empty list. [RefusingCapabilities] install it.
+// empty list. [RefusingCapabilities] installs it.
 //
 // IT ANSWERS RATHER THAN REFUSES, unlike the other stand-ins, because the
 // witness is asked by every sight refresh, not by a verb a compile-only host
@@ -127,11 +127,11 @@ func (NobodyPerceives) Perceivers(*PerceiversInput) ([]MemberID, error) {
 	return []MemberID{}, nil
 }
 
-// RefusingDriver is a [Driver] for a world loaded only to be inspected —
-// [RefusingStriker]'s pattern one capability over. [RefusingCapabilities] installs
-// it rather than [PassDriver] because a loaded world may hold members: a
-// silent Pass would turn a host that drove a compile-only world into a board
-// of idle monsters, where this names the bug.
+// RefusingDriver is a [Driver] for a world compiled or previewed and never
+// played — [RefusingStriker]'s pattern one capability over.
+// [RefusingCapabilities] installs it rather than [PassDriver] because such a
+// world may hold members: a silent Pass would turn a host that drove it into a
+// board of idle monsters, where this names the bug.
 type RefusingDriver struct{}
 
 // Act always fails with ErrRefusingDriver.

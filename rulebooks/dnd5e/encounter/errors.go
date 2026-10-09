@@ -486,15 +486,16 @@ var (
 	// Standing.
 	ErrRefusingParticipation = errors.New("encounter: compile-only Participation: asked about members of a world being compiled, not played")
 
-	// ErrRefusingSheets is what the [Sheets] [RefusingCapabilities] install returns when asked about any member: a world
-	// compiled or loaded only to be inspected has no sheets behind its members,
-	// and a speed or a reach would be an answer nobody read off a sheet. A host
-	// that paces, budgets or drives a member supplies its own Sheets.
+	// ErrRefusingSheets is what the [Sheets] that [RefusingCapabilities]
+	// installs returns when asked about any member: a world compiled or
+	// previewed has no sheets behind its members, and a speed or a reach would
+	// be an answer nobody read off a sheet. A host that paces, budgets or
+	// drives a member supplies its own Sheets.
 	ErrRefusingSheets = errors.New("encounter: compile-only Sheets: asked about members of a world being compiled, not played")
 
 	// ErrRefusingDriver is what [RefusingDriver.Act] always returns: a turn
-	// was driven on a world [RefusingCapabilities] loaded only to be inspected. A
-	// host bug, the twin of [ErrRefusingStriker], not an outcome to recover
+	// was driven on a world [RefusingCapabilities] compiled or previewed. A host
+	// bug, the twin of [ErrRefusingStriker], not an outcome to recover
 	// from.
 	ErrRefusingDriver = errors.New("encounter: RefusingDriver: a turn was driven on a world loaded only to be inspected")
 

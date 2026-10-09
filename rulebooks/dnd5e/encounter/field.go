@@ -1274,7 +1274,8 @@ type SetupInput struct {
 	// Capabilities is every capability the encounter asks of its host; see
 	// [Capabilities] for each member's contract. [NewEncounter] refuses a
 	// missing one with that member's sentinel, and a missing CheckResolver or
-	// Witness exactly when Field declares a [ConcealmentInput].
+	// Witness exactly when Field declares a [ConcealmentInput]. The promoted
+	// Validate checks the capabilities only, not the whole input.
 	Capabilities
 
 	// Retention is how many story beats the encounter keeps. Older beats are
