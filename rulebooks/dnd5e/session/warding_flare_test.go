@@ -167,3 +167,32 @@ func (s *CastSuite) TestFlareLethalResumeCommitsDefeatAndClosesWindow() {
 		})
 	}
 }
+
+// TestThePendingMovementResumeSavesEachSheetOnce: a resumed walk whose
+// reaction damages the walker writes the walker's sheet once for the
+// interaction, then once for the walk's own progress.
+//
+// The resume used to write the interaction's sheets twice: once on the
+// resumed output, and again where the movement beats were recorded, which
+// saved the same dirty sheets a second time (three writes in all). The
+// landing writes them once. The second write here is a different edit — the
+// remainder of the walk charging its movement — and is not the duplicate.
+func (s *CastSuite) TestThePendingMovementResumeSavesEachSheetOnce() {
+	s.scene(s.flareSheet(), 1, 15, 2, 1)
+	ctx := context.Background()
+	movement := s.characters.byID["cleric"].ActionEconomy.MovementRemaining
+	out, err := s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "cleric", DeclarationID: currentMoveID(s.T(), s.mgr, "sess", "cleric"), Path: []spatial.Position{{X: 0, Y: 1}}})
+	s.Require().NoError(err)
+	s.Require().Equal(session.MovementPaused, out.Status)
+	s.reloadHealingScene()
+	row := s.flareReaction()
+	hp := s.characters.byID["cleric"].HitPoints
+	before := s.characters.saves
+
+	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Choice: session.ReactHold})
+	s.Require().NoError(err)
+
+	s.Less(s.characters.byID["cleric"].HitPoints, hp, "the reaction damaged the walker")
+	s.Equal(movement-5, s.characters.byID["cleric"].ActionEconomy.MovementRemaining, "and the walk went on")
+	s.Equal(2, s.characters.saves-before, "one write for the interaction, one for the walk's progress")
+}
