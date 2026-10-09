@@ -5,6 +5,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -302,4 +303,69 @@ func TestRenderSaveComparesSavesConstants(t *testing.T) {
 		})
 	}
 	require.GreaterOrEqual(t, cases, 4, "precondition: renderSave's switches were found")
+}
+
+// TestAffordFailsClosedOnInformation: an information failure refuses the
+// whole Afford — the panel never ships with a missing or guessed row. Driven
+// through the real verb, so an Afford that swallowed attachInformation's
+// error would go red here and not only in TestAttachInformationFailsClosed.
+// The rulebook's describer is swapped for the two failures today's catalogue
+// cannot produce: a refusal, and a fact naming a condition the display
+// catalogue does not hold.
+func TestAffordFailsClosedOnInformation(t *testing.T) {
+	uncatalogued := core.Ref{Module: "dnd5e", Type: "conditions", ID: "nowhere"}
+	for _, tc := range []struct {
+		name     string
+		describe func(*combatActions.DescribeInput) (*combatActions.DescribeOutput, error)
+		want     error
+	}{
+		{
+			name: "the rulebook refuses to describe",
+			describe: func(*combatActions.DescribeInput) (*combatActions.DescribeOutput, error) {
+				return nil, errors.New("injected describe refusal")
+			},
+			want: ErrBadInformation,
+		},
+		{
+			name: "an applied condition has no display entry",
+			describe: func(*combatActions.DescribeInput) (*combatActions.DescribeOutput, error) {
+				return &combatActions.DescribeOutput{Facts: combatActions.BaseFacts{Cast: &combatActions.CastFacts{
+					Targets: combatActions.TargetsFact{Rule: combatActions.CastTargetOneCreature, Min: 1, Max: 1},
+					Effects: []combatActions.EffectFact{{Ref: uncatalogued, Recipient: combatActions.CastRecipientTarget}},
+				}}}, nil
+			},
+			want: ErrUnknownContent,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			sessions := &strikeSessions{byID: map[string]*SessionData{}}
+			encounters := &strikeEncounters{byID: map[string]*encounter.EncounterData{}}
+			characters := &strikeCharacters{byID: map[string]*character.Data{
+				"alice": strikeFixtureFighter("alice"),
+				"bob":   strikeFixtureFighter("bob"),
+			}}
+			mgr, err := NewManager(&Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+				Dice: &scriptedDice{}, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters,
+				Characters: characters, Events: DiscardEvents{},
+			})
+			require.NoError(t, err)
+			launchScene(t, mgr, scene{
+				Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)}},
+				Party: []sceneSeat{seatAt("alice", 1, 1), seatAt("bob", 2, 1)},
+			})
+			authorTurnClock(t, encounters.byID["sess"], []string{"alice", "bob"}, 0)
+
+			_, err = mgr.Afford(ctx, &AffordInput{Session: "sess", Member: "alice"})
+			require.NoError(t, err, "precondition: the real describer describes this panel")
+
+			original := describeAction
+			describeAction = tc.describe
+			t.Cleanup(func() { describeAction = original })
+
+			out, err := mgr.Afford(ctx, &AffordInput{Session: "sess", Member: "alice"})
+			require.ErrorIs(t, err, tc.want)
+			require.Nil(t, out, "a refused Afford hands back no panel")
+		})
+	}
 }

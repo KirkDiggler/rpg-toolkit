@@ -121,10 +121,17 @@ func attachInformation(in *attachInformationInput) error {
 	return nil
 }
 
+// describeAction is the rulebook's describer, [combatActions.Describe]. It is
+// a variable only so TestAffordFailsClosedOnInformation can make the rulebook
+// refuse, or state a condition the display catalogue lacks, through a real
+// Afford — neither is reachable with today's catalogue. Nothing else assigns
+// it.
+var describeAction = combatActions.Describe
+
 // describedInformation states one definition's prose and rendered facts.
 // Either may be empty; nothing is synthesised to fill one.
 func describedInformation(definition *combatActions.Definition) (ActionInformation, error) {
-	described, err := combatActions.Describe(&combatActions.DescribeInput{Definition: *definition})
+	described, err := describeAction(&combatActions.DescribeInput{Definition: *definition})
 	if err != nil {
 		return ActionInformation{}, fmt.Errorf("%w: %v", ErrBadInformation, err)
 	}
