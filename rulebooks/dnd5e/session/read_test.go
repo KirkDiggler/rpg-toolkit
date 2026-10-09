@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -38,18 +40,17 @@ func (s *ReadTestSuite) SetupTest() {
 	s.mgr = mgr
 }
 
-// startWith puts the given world behind a session named "sess".
-func (s *ReadTestSuite) startWith(world *encounter.EncounterData) {
-	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: world,
-	})
-	s.Require().NoError(err)
+// startWith launches the given scene as the session named "sess", stocking a
+// sheet for any party member the repository does not already hold.
+func (s *ReadTestSuite) startWith(world scene) {
+	stockAuthoredPlayers(world, s.characters)
+	launchScene(s.T(), s.mgr, world)
 }
 
 // hexWorld is a two-region hex field with a door, an occluder and a wall —
 // rich enough that a projection dropping any one field is visible.
-func hexWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+func hexWorld() scene {
+	return scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			// Two chambers side by side in the AUTHORED frame: the corridor
 			// owns columns 0..5 and the vault 6..11, rows 0..5 each.
@@ -70,31 +71,9 @@ func hexWorld(t fataler) *encounter.EncounterData {
 				State: encounter.DoorIsOpen(),
 			}},
 		},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
-		},
-		Endings: []encounter.EndingInput{
-			{Key: "out", Trigger: encounter.TriggerExternal{}},
-		},
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Standing:   encEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("building hex world: %v", err)
+		Party:   []sceneSeat{seatAt("alice", 0, 0)},
+		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
 	}
-	data := enc.ToData()
-	return &data
 }
 
 // TestReadVerbsRejectMissingIdentifiers walks every read verb through the same
@@ -159,7 +138,7 @@ func (s *ReadTestSuite) TestMissingWorldIsDistinctFromMissingSession() {
 // the ones an incomplete projection is most likely to forget: occluders,
 // boundaries and the doorway pair.
 func (s *ReadTestSuite) TestAtlasProjectsTheWholeWorld() {
-	s.startWith(hexWorld(s.T()))
+	s.startWith(hexWorld())
 
 	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
@@ -182,7 +161,7 @@ func (s *ReadTestSuite) TestAtlasProjectsTheWholeWorld() {
 // TestStatusReportsOpen covers the ordinary case; a closed encounter's outcome
 // projection is exercised once End exists.
 func (s *ReadTestSuite) TestStatusReportsOpen() {
-	s.startWith(hexWorld(s.T()))
+	s.startWith(hexWorld())
 
 	status, err := s.mgr.Status(context.Background(), &session.StatusInput{Session: "sess"})
 	s.Require().NoError(err)
@@ -192,7 +171,7 @@ func (s *ReadTestSuite) TestStatusReportsOpen() {
 
 // TestViewReturnsProjectedSightings pins that perception survives the boundary.
 func (s *ReadTestSuite) TestViewReturnsProjectedSightings() {
-	s.startWith(hexWorld(s.T()))
+	s.startWith(hexWorld())
 
 	sightings, err := s.mgr.View(context.Background(),
 		&session.ViewInput{Session: "sess", Member: "alice"})
@@ -202,7 +181,7 @@ func (s *ReadTestSuite) TestViewReturnsProjectedSightings() {
 
 // TestViewRejectsUnknownMember pins the sentinel translation for members.
 func (s *ReadTestSuite) TestViewRejectsUnknownMember() {
-	s.startWith(hexWorld(s.T()))
+	s.startWith(hexWorld())
 
 	_, err := s.mgr.View(context.Background(),
 		&session.ViewInput{Session: "sess", Member: "nobody"})
@@ -221,7 +200,7 @@ func (s *ReadTestSuite) TestViewRejectsUnknownMember() {
 // It is written against the type rather than a value so it fails at compile
 // time if the field is reintroduced, which is the earliest possible moment.
 func (s *ReadTestSuite) TestStoryOmitsTheAudienceRoster() {
-	s.startWith(hexWorld(s.T()))
+	s.startWith(hexWorld())
 
 	entries, err := s.mgr.Story(context.Background(),
 		&session.StoryInput{Session: "sess", Member: "alice", FromSeq: 0})
@@ -240,7 +219,7 @@ func (s *ReadTestSuite) TestStoryOmitsTheAudienceRoster() {
 // TestStoryFromSeqIsInclusive pins the semantics our field name promises,
 // independent of the composition's misnamed one.
 func (s *ReadTestSuite) TestStoryFromSeqIsInclusive() {
-	s.startWith(hexWorld(s.T()))
+	s.startWith(hexWorld())
 	ctx := context.Background()
 
 	all, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice"})
@@ -266,7 +245,10 @@ func (s *ReadTestSuite) TestStoryFromSeqIsInclusive() {
 func (s *ReadTestSuite) TestTrimmedStoryUsesOurSentinelNotTheirs() {
 	ctx := context.Background()
 	world := trimmedWorld(s.T())
-	s.startWith(world)
+	// Launch always stores an unbounded log with only the launch's own beats;
+	// a log already aged past a bounded retention window is a stored shape no
+	// launch produces.
+	seedRun(s.T(), s.sessions, s.encounters, "sess", world)
 
 	// Under per-recipient numbering a cursorless session seeds from the
 	// retained window and FromSeq 1 is answerable — the trimmed refusal
@@ -342,7 +324,7 @@ func TestReadSuite(t *testing.T) {
 // composition keeps, because confusing those two is exactly how the staircase
 // happened.
 func (s *ReadTestSuite) TestAtlasSaysWhichWayTheHexesPoint() {
-	s.startWith(hexWorld(s.T()))
+	s.startWith(hexWorld())
 	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 	s.Equal(session.HexLayoutPointyTop, atlas.Layout,
@@ -352,31 +334,14 @@ func (s *ReadTestSuite) TestAtlasSaysWhichWayTheHexesPoint() {
 // TestAtlasLayoutCoversBothHexLayouts guards the mapping in both directions:
 // a projection hard-coded to pointy would pass every fixture in this file.
 func (s *ReadTestSuite) TestAtlasLayoutCoversBothHexLayouts() {
-	flat, err := encounter.NewEncounter(&encounter.SetupInput{
+	sc := scene{
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesAreFlatTop()},
 			Regions: []encounter.RegionInput{rectRegion("cell", 0, 0, 4, 4)},
 		},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
-		},
+		Party:   []sceneSeat{seatAt("alice", 0, 0)},
 		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Standing:   encEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	s.Require().NoError(err)
-	data := flat.ToData()
-	s.startWith(&data)
+	}
+	s.startWith(sc)
 
 	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
@@ -414,35 +379,13 @@ func (s *ReadTestSuite) TestViewCarriesNameAndStanding() {
 // both mutually visible from the moment the session starts — no walk needed
 // to open sight, unlike seen_test.go's doorway scenes, because this is about
 // what Kind reports once a sighting exists, not about how one opens.
-func twoObservedWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 6, 6)}},
-		Members: []encounter.MemberInput{
-			{ID: "scout", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
-			{ID: "ally", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 0}},
-			{ID: "goblin", Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 0}},
-		},
-		Endings:   []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Standing:   encEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("building twoObservedWorld: %v", err)
+func twoObservedWorld() scene {
+	return scene{
+		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 6, 6)}},
+		Party:    []sceneSeat{seatAt("scout", 0, 0), seatAt("ally", 1, 0)},
+		Monsters: []dungeonspec.MonsterPlacement{monsterAt("goblin", refs.Monsters.Goblin().String(), 2, 0)},
+		Endings:  []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
 	}
-	data := enc.ToData()
-	return &data
 }
 
 // TestViewCarriesKind pins rpg-toolkit#1230: a Sighting reports what kind of
@@ -452,7 +395,7 @@ func twoObservedWorld(t fataler) *encounter.EncounterData {
 // monster besides the observer, one View call — both kinds must come back
 // right, not just whichever one a hard-coded default would fake.
 func (s *ReadTestSuite) TestViewCarriesKind() {
-	s.startWith(twoObservedWorld(s.T()))
+	s.startWith(twoObservedWorld())
 
 	sightings, err := s.mgr.View(context.Background(),
 		&session.ViewInput{Session: "sess", Member: "scout"})

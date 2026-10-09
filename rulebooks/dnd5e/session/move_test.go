@@ -42,44 +42,25 @@ func (s *MoveTestSuite) SetupTest() {
 // corridorWorld is an 8x8 hall with alice at [1,1] and an ending at (4,1),
 // three steps to her east — near enough to walk onto, far enough that a walk
 // can be interrupted before reaching it.
-func corridorWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+func corridorWorld() scene {
+	return scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-		},
-		Endings: []encounter.EndingInput{
-			{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
-				Position: spatial.Position{X: 4, Y: 1},
-			}},
-		},
-		Retention: encounter.RetentionUnbounded,
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Standing:   encEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("building corridor world: %v", err)
+		Party: []sceneSeat{seatAt("alice", 1, 1)},
+		Endings: []encounter.EndingInput{{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
+			Position: spatial.Position{X: 4, Y: 1},
+		}}},
 	}
-	data := enc.ToData()
-	return &data
 }
 
 func (s *MoveTestSuite) startCorridor() {
-	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: corridorWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), s.mgr, corridorWorld())
+}
+
+// launchHex launches hexWorld as the run "hex".
+func (s *MoveTestSuite) launchHex() {
+	hex := hexWorld()
+	hex.Session = "hex"
+	launchScene(s.T(), s.mgr, hex)
 }
 
 // TestWalksEveryCellOfThePath is the property the composition cannot provide.
@@ -196,13 +177,10 @@ func (s *MoveTestSuite) TestSingleCellPathIsLegal() {
 // previously-shipped defect class in this codebase, which is why adjacency is
 // delegated to spatial's own grid rather than hand-rolled.
 func (s *MoveTestSuite) TestHexAdjacencyUsesCubeDistance() {
-	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "hex", Encounter: "hexworld", World: hexWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	s.launchHex()
 
 	// alice is at axial (0,0) in the corridor. (1,1) is cube distance 2.
-	_, err = s.mgr.Move(context.Background(), &session.MoveInput{
+	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "hex", Member: "alice", Path: []spatial.Position{{X: 1, Y: 1}},
 	})
 	s.Require().Error(err)
@@ -259,10 +237,7 @@ func (s *MoveTestSuite) TestWalkPersists() {
 // the next cell in the path.
 func (s *MoveTestSuite) TestAWalkCrossesTheDoorway() {
 	ctx := context.Background()
-	_, err := s.mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "hex", Encounter: "hexworld", World: hexWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	s.launchHex()
 
 	out, err := s.mgr.Move(ctx, &session.MoveInput{
 		Session: "hex", Member: "alice",
@@ -294,10 +269,7 @@ func (s *MoveTestSuite) TestAWalkCrossesTheDoorway() {
 // it lands the assertion below should get sharper, not disappear.
 func (s *MoveTestSuite) TestAStepWithNoDoorwayIsRefused() {
 	ctx := context.Background()
-	_, err := s.mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "hex", Encounter: "hexworld", World: hexWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	s.launchHex()
 
 	// Alice walks to a threshold on the seam — the corridor's last column,
 	// ROW ONE, because the scene needs her standing somewhere that has a vault
@@ -313,7 +285,7 @@ func (s *MoveTestSuite) TestAStepWithNoDoorwayIsRefused() {
 	// projection by hand. The pillar at local (1,1) is on the map but blocks
 	// sight only, never movement (see occludingProps) — the walk has nothing
 	// to route around.
-	_, err = s.mgr.Move(ctx, &session.MoveInput{
+	_, err := s.mgr.Move(ctx, &session.MoveInput{
 		Session: "hex", Member: "alice",
 		Path: []spatial.Position{
 			hexCell(1, 0), hexCell(2, 0), hexCell(3, 0), hexCell(3, 1), hexCell(4, 1), hexCell(5, 1),
@@ -350,10 +322,7 @@ func (s *MoveTestSuite) TestAStepWithNoDoorwayIsRefused() {
 // A round trip needs a world with nothing underfoot at the far end.
 func (s *MoveTestSuite) TestAWalkComesBackThroughTheSameDoorway() {
 	ctx := context.Background()
-	_, err := s.mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "hex", Encounter: "hexworld", World: hexWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	s.launchHex()
 
 	// Out: the corridor owns authored columns 0..5 and the vault 6..11, and the
 	// gate joins the corridor's last column to the vault's first on row 0 —
@@ -543,9 +512,9 @@ func (s *MoveTestSuite) TestThereAndBackIsLegal() {
 // A teammate sees the fight through the gap; Alice sees only the teammate.
 func (s *MoveTestSuite) TestVisibleCombatTeammateJoinsBeforeAnyStep() {
 	ctx := context.Background()
-	world := ambushWorld(s.T(), encounter.MemberInput{ID: "bob", Kind: encounter.KindPlayer, Position: hexCell(1, 3)})
-	_, err := s.mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: world})
-	s.Require().NoError(err)
+	world := ambushWorld()
+	world.Party = append(world.Party, seatAt("bob", 1, 3))
+	launchScene(s.T(), s.mgr, world)
 	before, err := s.mgr.Where(ctx, &session.WhereInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 	out, err := s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: ambushPath()})
@@ -563,11 +532,10 @@ func TestMoveSuite(t *testing.T) {
 
 func (s *MoveTestSuite) TestSeenAllyDestinationRefusedBeforeCompletedPrefix() {
 	ctx := context.Background()
-	_, err := s.mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: offsetWorld(s.T())})
-	s.Require().NoError(err)
-	_, err = s.mgr.Join(ctx, &session.JoinInput{Session: "sess", Member: "bob", Position: hexCell(43, 21)})
-	s.Require().NoError(err)
-	_, err = s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice",
+	world := offsetWorld()
+	world.Party = append(world.Party, seatAt("bob", 43, 21))
+	launchScene(s.T(), s.mgr, world)
+	_, err := s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice",
 		Path: []spatial.Position{hexCell(42, 21), hexCell(43, 21)},
 	})
 	s.Require().ErrorIs(err, session.ErrBadPosition)
@@ -578,10 +546,9 @@ func (s *MoveTestSuite) TestSeenAllyDestinationRefusedBeforeCompletedPrefix() {
 
 func (s *MoveTestSuite) TestMoveCrossesSeenAllyAndStopsBeyond() {
 	ctx := context.Background()
-	_, err := s.mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: offsetWorld(s.T())})
-	s.Require().NoError(err)
-	_, err = s.mgr.Join(ctx, &session.JoinInput{Session: "sess", Member: "bob", Position: hexCell(42, 21)})
-	s.Require().NoError(err)
+	world := offsetWorld()
+	world.Party = append(world.Party, seatAt("bob", 42, 21))
+	launchScene(s.T(), s.mgr, world)
 	out, err := s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice",
 		Path: []spatial.Position{hexCell(42, 21), hexCell(43, 21)},
 	})

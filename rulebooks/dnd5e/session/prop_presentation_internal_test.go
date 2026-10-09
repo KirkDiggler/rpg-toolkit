@@ -9,8 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
 type PropPresentationDecodeSuite struct{ suite.Suite }

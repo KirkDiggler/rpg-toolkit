@@ -11,12 +11,13 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-func structuralDoorOnlyWorld(t fataler, extra ...encounter.ConcealmentInput) *encounter.EncounterData {
+func structuralDoorOnlyWorld(extra ...encounter.ConcealmentInput) scene {
 	centre := hallPlane().CellCentre(hexCell(4, 0))
 	point := func(dx float64) spatial.Point { return spatial.Point{X: centre.X + dx, Y: centre.Y} }
 	wallBox := structuralBox(hexCell(4, 0), 6, 0.25)
 	doorBox := structuralBox(hexCell(4, 0), 2, 0.25)
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+
+	return scene{
 		Field: encounter.FieldInput{
 			Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 6)},
 			Concealments: append([]encounter.ConcealmentInput{{
@@ -40,34 +41,14 @@ func structuralDoorOnlyWorld(t fataler, extra ...encounter.ConcealmentInput) *en
 				}},
 			}},
 		},
-		Members: []encounter.MemberInput{{ID: "alice", Kind: encounter.KindPlayer, Position: cell(1, 1)}},
+		Party:   []sceneSeat{{ID: "alice", At: cell(1, 1)}},
 		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
-		Capabilities: encounter.Capabilities{
-			Sheets:        encStandStill{},
-			Sight:         encEveryoneSees{},
-			Equipment:     encounter.UnobservedEquipment{},
-			Initiative:    encOrderAsGiven{},
-			Driver:        encPassDriver{},
-			Standing:      encEveryoneStanding{},
-			CheckResolver: encNeverResolves{},
-			Witness:       encNeverWitnesses{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("structural door-only world: %v", err)
 	}
-	data := enc.ToData()
-	return &data
 }
 
 func (s *StructuralSessionSuite) TestIndependentDoorIntroductionDoesNotRequireItsHiddenParent() {
 	ctx := context.Background()
-	world := structuralDoorOnlyWorld(s.T(), encounter.ConcealmentInput{
+	world := structuralDoorOnlyWorld(encounter.ConcealmentInput{
 		ID: "hidden-parent", Props: []encounter.PropID{structWallPresence},
 		Checks: []encounter.CheckApproach{{Ability: "perception", DC: 100}},
 	})
@@ -99,7 +80,7 @@ func (s *StructuralSessionSuite) TestIndependentDoorIntroductionDoesNotRequireIt
 
 func (s *StructuralSessionSuite) TestKnownWallOpeningReplacementMatchesSnapshotAndReplay() {
 	ctx := context.Background()
-	s.startWith(structuralDoorOnlyWorld(s.T()), sharpEyed("alice"))
+	s.startWith(structuralDoorOnlyWorld(), sharpEyed("alice"))
 	in := &session.KnowledgeInput{Session: "sess", Member: "alice", Player: "player-alice"}
 	before, err := s.mgr.Knowledge(ctx, in)
 	s.Require().NoError(err)

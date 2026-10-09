@@ -55,7 +55,7 @@ type SessionData struct {
 	//
 	// VERBATIM, AND NOTHING READS IT. No verb resolves it, no rule consults
 	// it, and this package never asks a registry anything: it is carried
-	// from [StartSessionInput.Dungeon] to the atlas and no further. A key
+	// from [LaunchInput.DungeonKey] to the atlas and no further. A key
 	// that names nothing is a content miss the host discovers when it
 	// fetches.
 	//

@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
@@ -19,7 +21,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
-	"github.com/stretchr/testify/require"
 )
 
 // ragingBarbarian is a level-1 barbarian carrying Rage, with a weapon so the
@@ -52,6 +53,15 @@ func ragingBarbarian(id string, charges int) *character.Data {
 			`{"ref":{"module":"dnd5e","type":"features","id":"rage"},` +
 				`"id":"rage","name":"Rage","level":1}`)},
 	}
+}
+
+// spendRage empties a stored barbarian's rage charges. A sheet that starts
+// with none is refilled by the launch's first-admission long rest, so a scene
+// about charges that ran out spends them after the launch.
+func spendRage(chars *fakeCharacters, id string) {
+	charges := chars.byID[id].Resources[resources.RageCharges]
+	charges.Current = 0
+	chars.byID[id].Resources[resources.RageCharges] = charges
 }
 
 func activations(decls []session.Declaration) []session.Declaration {
@@ -170,7 +180,10 @@ func TestOnlyHelpAsksForATarget(t *testing.T) {
 // tell the player "come back after a rest", which is a different sentence from
 // "this will never light while you are raging".
 func TestNoChargesIsABudgetRefusalInACurrencyOfItsOwn(t *testing.T) {
-	out := affordFor(t, ragingBarbarian("alice", 0))
+	mgr, _, _, chars := aFight(t, ragingBarbarian("alice", 0), []int{1, 1})
+	spendRage(chars, "alice")
+	out, err := mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "alice"})
+	require.NoError(t, err)
 
 	rage := activationFor(t, out.Declarations, "dnd5e:features:rage")
 

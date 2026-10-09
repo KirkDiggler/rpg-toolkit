@@ -43,33 +43,11 @@ func (s *SheetFactsSuite) SetupTest() {
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	sc := scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 16, 3)}},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-		},
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Standing:   encEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	s.Require().NoError(err)
-	data := enc.ToData()
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: &data,
-	})
-	s.Require().NoError(err)
+		Party: []sceneSeat{seatAt("alice", 1, 1)},
+	}
+	launchScene(s.T(), mgr, sc)
 }
 
 // walk moves alice n cells east along row 1 from column from.
@@ -87,7 +65,7 @@ func (s *SheetFactsSuite) walk(from, n int) {
 // rounds is how many world rounds the stored clock has seen.
 func (s *SheetFactsSuite) rounds() int {
 	s.T().Helper()
-	return s.encounters.byID["world"].Clock.HighWater
+	return s.encounters.byID[testSession].Clock.HighWater
 }
 
 // TestAPlayerWalkingOutsideAFightPacesFromTheSheetsSpeedOfThatMoment is slice

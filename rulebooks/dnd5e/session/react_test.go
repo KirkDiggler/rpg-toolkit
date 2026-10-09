@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -117,27 +118,23 @@ func (s *ReactWindowSuite) frail(id string) {
 	s.Require().NoError(s.sessions.SaveSession(ctx, data))
 }
 
-// start opens the standard room and joins the given players, each with one
-// reaction in hand.
-func (s *ReactWindowSuite) start(mgr *session.Manager, players map[string]spatial.Position) {
-	ctx := context.Background()
-	_, err := mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: tombRoom(12, 6),
-	})
-	s.Require().NoError(err)
-	for id, at := range players {
-		_, jerr := mgr.Join(ctx, &session.JoinInput{Session: "sess", Member: id, Position: at})
-		s.Require().NoError(jerr)
-		s.inCombat(id, 1)
+// start launches the standard room with the given players seated and the
+// given monsters placed, then puts each player in a fight's economy with one
+// reaction in hand. AFTER the launch, never before — the launch long-rests and
+// writes each seated member's sheet.
+func (s *ReactWindowSuite) start(mgr *session.Manager, players []sceneSeat, monsters ...dungeonspec.MonsterPlacement) {
+	sc := tombRoom(12, 6)
+	sc.Party = players
+	sc.Monsters = monsters
+	launchScene(s.T(), mgr, sc)
+	for _, seat := range players {
+		s.inCombat(seat.ID, 1)
 	}
 }
 
-// spawn places one skeleton.
-func (s *ReactWindowSuite) spawn(mgr *session.Manager, id string, at spatial.Position) {
-	_, err := mgr.Spawn(context.Background(), &session.SpawnInput{
-		Session: "sess", ID: id, Ref: refs.Monsters.Skeleton().String(), Position: at,
-	})
-	s.Require().NoError(err)
+// reactSkeleton is one skeleton placed on an authored cell.
+func reactSkeleton(id string, col, row int) dungeonspec.MonsterPlacement {
+	return monsterAt(id, refs.Monsters.Skeleton().String(), col, row)
 }
 
 // reactRow is the member's own open REACT declaration, or the zero value when
@@ -231,9 +228,7 @@ func (s *ReactWindowSuite) twoSkeletons() *session.Manager {
 		},
 		walked: map[string]bool{},
 	})
-	s.start(mgr, map[string]spatial.Position{"fighter": hexCell(3, 0)})
-	s.spawn(mgr, "skel-1", hexCell(4, 0))
-	s.spawn(mgr, "skel-2", hexCell(2, 0))
+	s.start(mgr, []sceneSeat{seatAt("fighter", 3, 0)}, reactSkeleton("skel-1", 4, 0), reactSkeleton("skel-2", 2, 0))
 	return mgr
 }
 
@@ -362,8 +357,7 @@ func (s *ReactWindowSuite) TestASpentReactionAsksNobody() {
 func (s *ReactWindowSuite) TestAPlayersOwnWalkNeverAsksAnybody() {
 	ctx := context.Background()
 	mgr := s.managerWith(session.Pass{})
-	s.start(mgr, map[string]spatial.Position{"fighter": hexCell(2, 0)})
-	s.spawn(mgr, "skel-1", hexCell(3, 0))
+	s.start(mgr, []sceneSeat{seatAt("fighter", 2, 0)}, reactSkeleton("skel-1", 3, 0))
 
 	out, err := mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "fighter", Path: []spatial.Position{hexCell(1, 0)},
@@ -463,14 +457,13 @@ func (s *ReactWindowSuite) twoFightersOneSkeleton(bystanders ...string) *session
 		paths:  map[string][]spatial.Position{"skel-1": {hexCell(4, 0), hexCell(5, 0)}},
 		walked: map[string]bool{},
 	})
-	s.start(mgr, map[string]spatial.Position{"fighter": hexCell(2, 0), "second": hexCell(2, 1)})
-	s.spawn(mgr, "skel-1", hexCell(3, 0))
-	// Spawned before the first turn ends, because a window freezes Spawn too —
-	// which the fight-survives scene below needs and which this helper's own
-	// first draft proved by being refused.
+	monsters := []dungeonspec.MonsterPlacement{reactSkeleton("skel-1", 3, 0)}
+	// On the board from the start, before the first turn ends: the
+	// fight-survives scene below needs them standing when the window opens.
 	for i, id := range bystanders {
-		s.spawn(mgr, id, hexCell(9, 4+i))
+		monsters = append(monsters, reactSkeleton(id, 9, 4+i))
 	}
+	s.start(mgr, []sceneSeat{seatAt("fighter", 2, 0), seatAt("second", 2, 1)}, monsters...)
 	s.endTurn(mgr, "fighter")
 	s.endTurn(mgr, "second")
 	return mgr
@@ -555,8 +548,7 @@ func (s *ReactWindowSuite) TestTheWindowAndTheSwingReachTheEventStreamTyped() {
 		Events: stream,
 	})
 	s.Require().NoError(err)
-	s.start(mgr, map[string]spatial.Position{"fighter": hexCell(2, 0)})
-	s.spawn(mgr, "skel-1", hexCell(3, 0))
+	s.start(mgr, []sceneSeat{seatAt("fighter", 2, 0)}, reactSkeleton("skel-1", 3, 0))
 	s.endTurn(mgr, "fighter")
 
 	var opened *session.WindowOpenedBody
@@ -614,8 +606,7 @@ func (s *ReactWindowSuite) TestAnOrdinarySwingCarriesNoReaction() {
 		Events: stream,
 	})
 	s.Require().NoError(err)
-	s.start(mgr, map[string]spatial.Position{"fighter": hexCell(2, 0)})
-	s.spawn(mgr, "skel-1", hexCell(3, 0))
+	s.start(mgr, []sceneSeat{seatAt("fighter", 2, 0)}, reactSkeleton("skel-1", 3, 0))
 
 	_, err = mgr.Attack(ctx, &session.AttackInput{
 		Session: "sess", Attacker: "fighter", Target: "skel-1",

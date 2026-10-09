@@ -104,7 +104,7 @@ func TestWorkbenchRuns(t *testing.T) {
 		"she walks 2 step(s) into the vault, on her own turn", // the active member still walks (rpg-toolkit#1169)
 		"bob walks on regardless, 1 step(s)",                  // while everyone not in it carries on
 
-		`ended by "withdraw"`,
+		`ended by "withdrawn"`,
 		"alice at (6,2)", // authored [7,2] on the map: where her own turn's walk left her, and it persisted
 	} {
 		if !strings.Contains(got, want) {

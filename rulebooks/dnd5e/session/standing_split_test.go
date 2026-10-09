@@ -13,7 +13,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // StandingSplitSuite covers the standing seam asking resolution in two calls,
@@ -48,20 +47,14 @@ func (s *StandingSplitSuite) SetupTest() {
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
-
-	_, err = s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: cryptWorld(s.T()),
-	})
-	s.Require().NoError(err)
 }
 
-func (s *StandingSplitSuite) spawnSkeleton() {
+// launchWithSkeleton launches the crypt with a catalog skeleton next to alice.
+func (s *StandingSplitSuite) launchWithSkeleton() {
 	s.T().Helper()
-	_, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
-		Session: "sess", ID: "skeleton", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 2, Y: 1},
-	})
-	s.Require().NoError(err)
+	crypt := cryptWorld()
+	crypt.Monsters = append(crypt.Monsters, monsterAt("skeleton", refs.Monsters.Skeleton().String(), 2, 1))
+	launchScene(s.T(), s.mgr, crypt)
 }
 
 // A CHARACTER and a MONSTER, both at zero, in one consult.
@@ -71,7 +64,7 @@ func (s *StandingSplitSuite) spawnSkeleton() {
 // or only the monsters, passes every test that has one kind in it — so this
 // fixture has both, each downed, and asserts both come back.
 func (s *StandingSplitSuite) TestBothHalvesOfTheSplitAreReported() {
-	s.spawnSkeleton()
+	s.launchWithSkeleton()
 
 	s.floorCharacter("alice")
 	s.floorNPC("skeleton")
@@ -92,7 +85,7 @@ func (s *StandingSplitSuite) TestBothHalvesOfTheSplitAreReported() {
 // seam that replied out of its whole store would abort every verb. The store
 // really does hold strangers: bob has a sheet and is not on this roster.
 func (s *StandingSplitSuite) TestOnlyTheMembersAskedAboutAreNamed() {
-	s.spawnSkeleton()
+	s.launchWithSkeleton()
 	s.floorCharacter("alice")
 	s.floorCharacter("bob") // has a sheet, is not a member
 
@@ -111,7 +104,7 @@ func (s *StandingSplitSuite) TestOnlyTheMembersAskedAboutAreNamed() {
 // loader, so a trait blob this build cannot parse refuses however leniently the
 // entry was asked to read.
 func (s *StandingSplitSuite) TestACorruptNPCIsCorruptSessionState() {
-	s.spawnSkeleton()
+	s.launchWithSkeleton()
 	s.corruptNPC("skeleton")
 
 	_, err := s.mgr.Turn(context.Background(), &session.TurnInput{Session: "sess", Member: "alice"})
@@ -130,7 +123,7 @@ func (s *StandingSplitSuite) TestACorruptNPCIsCorruptSessionState() {
 // character data that resolution cannot load. The entry refuses it as a
 // CHARACTER problem, which is where the repair is.
 func (s *StandingSplitSuite) TestAnUnusableCharacterRecordIsACharacterProblem() {
-	s.spawnSkeleton()
+	s.launchWithSkeleton()
 
 	stored := s.characters.byID["alice"]
 	stored.Appearance = &customization.Appearance{Hair: &customization.HairCustomization{

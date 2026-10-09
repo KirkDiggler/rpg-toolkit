@@ -88,8 +88,8 @@ func aBoxOn(at spatial.Position, widthFeet, depthFeet float64) spatial.Footprint
 }
 
 // placedWorld is the hall described at the top of this file.
-func placedWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+func placedWorld() scene {
+	return scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 10, 6)},
 			Concealments: []encounter.ConcealmentInput{{
@@ -127,32 +127,9 @@ func placedWorld(t fataler) *encounter.EncounterData {
 				},
 			},
 		},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: hexCell(1, 1)},
-			{ID: "bob", Kind: encounter.KindPlayer, Position: hexCell(5, 4)},
-		},
+		Party:   []sceneSeat{{ID: "alice", At: hexCell(1, 1)}, {ID: "bob", At: hexCell(5, 4)}},
 		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
-		Capabilities: encounter.Capabilities{
-			Sheets:        encStandStill{},
-			Sight:         encEveryoneSees{},
-			Equipment:     encNoHandsObserved{},
-			Initiative:    encOrderAsGiven{},
-			Driver:        encPassDriver{},
-			Standing:      encEveryoneStanding{},
-			CheckResolver: encNeverResolves{},
-			Witness:       encNeverWitnesses{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("building placed world: %v", err)
 	}
-	data := enc.ToData()
-	return &data
 }
 
 type PlacedAtlasSuite struct {
@@ -172,10 +149,7 @@ func (s *PlacedAtlasSuite) SetupTest() {
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: placedWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, placedWorld())
 }
 
 // placedOf is one member's own placements, keyed by the author's id.
@@ -327,7 +301,7 @@ func (s *PlacedAtlasSuite) TestAConcealedPlacementIsWithheldWhole() {
 			"%s has not found the vault and is told nothing about what stands in it", who)
 	}
 
-	authored, err := s.mgr.AtlasOf(ctx, &session.AtlasOfInput{World: placedWorld(s.T())})
+	authored, err := s.mgr.AtlasOf(ctx, &session.AtlasOfInput{Dungeon: sceneInput(placedWorld()).Dungeon})
 	s.Require().NoError(err)
 
 	whole := map[string]session.AtlasPlacedProp{}

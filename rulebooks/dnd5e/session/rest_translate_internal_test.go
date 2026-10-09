@@ -7,8 +7,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 	"github.com/stretchr/testify/require"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
 
 // TestARestThatTheRunBrokeIsAnInvalidSession: a world with no die, and a hold

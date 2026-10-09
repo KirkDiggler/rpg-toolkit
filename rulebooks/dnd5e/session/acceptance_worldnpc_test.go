@@ -11,6 +11,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/npc"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -40,37 +41,33 @@ func (s *AcceptanceWorldNPCSuite) TestVendorSurvivesAFightItNeverJoins() {
 	})
 	s.Require().NoError(err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
-		Members: []encounter.MemberInput{
-			{ID: encounter.MemberID(alice.ID), Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-		},
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Standing:   encEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
+	// The skeleton is on the board from the start, in the room behind a shut
+	// door alice stands at: nothing to fight until she opens it.
+	sc := scene{
+		Field: encounter.FieldInput{
+			Canvas: pointyCanvas(),
+			Regions: []encounter.RegionInput{
+				rectRegion("hall", 0, 0, 6, 6),
+				rectRegion("crypt", 6, 0, 6, 6),
 			},
+			Walls: hexSeamWalls(6, 6, 0),
+			Doors: []encounter.DoorInput{{
+				ID:    "crypt-door",
+				Edges: []encounter.DoorEdge{{From: hexCell(5, 0), To: hexCell(6, 0)}},
+				State: encounter.DoorIsClosed(),
+			}},
 		},
-	})
-	s.Require().NoError(err)
-	data := enc.ToData()
+		Party:    []sceneSeat{seatAt(alice.ID, 5, 0)},
+		Monsters: []dungeonspec.MonsterPlacement{monsterAt("skeleton", refs.Monsters.Skeleton().String(), 8, 0)},
+	}
 
 	ctx := context.Background()
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: &data})
-	s.Require().NoError(err)
+	launched := launchScene(s.T(), mgr, sc)
+	s.Require().Empty(launched.Formed, "the curtain keeps the skeleton out of sight at launch")
 
 	// The vendor arrives first, in plain free-roam — nothing to fight yet.
 	placed, err := mgr.PlaceNPC(ctx, &session.PlaceNPCInput{
-		Session: "sess", Member: "vendor", Position: spatial.Position{X: 2, Y: 1}, NPC: merchantData(),
+		Session: "sess", Member: "vendor", Position: spatial.Position{X: 4, Y: 0}, NPC: merchantData(),
 	})
 	s.Require().NoError(err)
 	s.Nil(placed.Formed, "a world NPC arriving must never start a fight")
@@ -82,16 +79,12 @@ func (s *AcceptanceWorldNPCSuite) TestVendorSurvivesAFightItNeverJoins() {
 	s.Contains(interacted.Descriptor.Capabilities, npc.CapabilityVendor)
 	s.Equal(npc.CombatPolicyNonCombatant, interacted.Descriptor.CombatPolicy)
 
-	// Now a monster arrives — under this fixture's unconditional sight, this
-	// IS the contact: a fight forms the instant it is in the map, the same
-	// shape aFight's own scene proves elsewhere in this package.
-	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skeleton", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 5, Y: 5},
-	})
+	// Now alice opens the door — this IS the contact: a fight forms the
+	// instant the skeleton is in her sight, with the vendor on the map.
+	opened, err := mgr.OpenDoor(ctx, &session.OpenDoorInput{Session: "sess", Member: "alice", Door: "crypt-door"})
 	s.Require().NoError(err)
-	s.Require().NotNil(spawned.Formed, "arriving in plain sight of alice must start a fight")
-	s.ElementsMatch([]string{"alice", "skeleton"}, spawned.Formed.Order,
+	s.Require().NotNil(opened.Formed, "opening onto the skeleton in plain sight must start a fight")
+	s.ElementsMatch([]string{"alice", "skeleton"}, opened.Formed.Order,
 		"the vendor must never be named in the fight's initiative order")
 
 	// The vendor is still queryable, mid-fight, from outside it.

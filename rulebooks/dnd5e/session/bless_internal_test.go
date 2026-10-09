@@ -7,9 +7,10 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
+
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
-	"github.com/stretchr/testify/suite"
 )
 
 type BlessProjectionSuite struct{ suite.Suite }

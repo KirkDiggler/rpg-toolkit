@@ -5,14 +5,20 @@ package session_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
+
+	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
-	"github.com/stretchr/testify/suite"
 )
 
 // LaunchSuite covers slice 4's launch done-when: one load-act-save that
@@ -338,4 +344,302 @@ func (s *LaunchSuite) TestAPartyLeftDefeatedArrivesRestedIntoTheFight() {
 	status, err := s.mgr.Status(context.Background(), &session.StatusInput{Session: "run"})
 	s.Require().NoError(err)
 	s.True(status.Open, "the run did not open on a defeated party")
+}
+
+// TestALaunchCannotPlaceAMonsterHoldingARecordThatIsNotThere is the
+// fail-closed half of an authored `holds:` at the seam: an undeclared record
+// is refused by name rather than arriving ignorant, crosses as this package's
+// own sentinel, and leaves nothing behind.
+//
+// This is the failure a host hits by forwarding the AUTHOR's raw record id
+// instead of the compiled `<key>/<id>` dungeonspec mints, which is the one
+// mistake worth making loud.
+func (s *LaunchSuite) TestALaunchCannotPlaceAMonsterHoldingARecordThatIsNotThere() {
+	dungeon := s.camp()
+	dungeon.Monsters[0].Holds = []string{"no-such-record"}
+
+	_, err := s.launch(dungeon, "alice", "bob")
+	s.Require().ErrorIs(err, session.ErrNoIntel,
+		"a record this dungeon does not declare — not ErrNoConnection, which is about geometry")
+	s.assertNothingWritten()
+}
+
+// launchHoldingLatecomer launches the heirloom hall with nobody authored
+// knowing the way in except a skeleton placed beside alice carrying holds,
+// then puts it on the floor by zeroing its stored sheet — the same way the
+// holdings suite makes a body, because it is the same mechanism: the
+// composition is TOLD who is down.
+//
+// This is the live shape (rpg-project#368 P1, carried to the intel record by
+// rpg-project#372): a host brings every monster onto the board through the
+// placements of the dungeon it launches, so a placement's `holds:` is the
+// only way an authored record reaches a live monster.
+func launchHoldingLatecomer(t *testing.T, holds []string) (*session.Manager, *fakeStream) {
+	t.Helper()
+	sessions, stream := newFakeSessions(), &fakeStream{}
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+		Dice: testDice{}, TurnDriver: session.Pass{},
+		Sessions: sessions, Encounters: newFakeEncounters(),
+		Characters: newFakeCharacters(sharpEyed("alice"), dullEyed("bob")), Events: stream,
+	})
+	require.NoError(t, err)
+
+	sc := heirloomWorld(false) // nobody ELSE was authored knowing anything
+	latecomer := monsterAt("latecomer", refs.Monsters.Skeleton().String(), 0, 1)
+	latecomer.Holds = holds
+	sc.Monsters = append(sc.Monsters, latecomer)
+	launchScene(t, mgr, sc)
+
+	stored := sessions.byID[testSession]
+	downed := false
+	for i := range stored.NPCs {
+		if stored.NPCs[i].ID == "latecomer" {
+			stored.NPCs[i].HitPoints = 0
+			downed = true
+		}
+	}
+	require.True(t, downed, "the launch recorded no sheet to put on the floor")
+	stream.published = nil
+	return mgr, stream
+}
+
+// TestALaunchedMonsterCarriesTheRecordsItWasPlacedWith is the scene: a
+// placement with Holds, loot, and the looter alone learns the way in.
+func TestALaunchedMonsterCarriesTheRecordsItWasPlacedWith(t *testing.T) {
+	ctx := context.Background()
+	mgr, stream := launchHoldingLatecomer(t, []string{veilMap})
+
+	_, err := mgr.Loot(ctx, &session.LootInput{
+		Session: testSession, Member: "alice", Target: "latecomer", Range: 2})
+	require.NoError(t, err)
+
+	t.Run("the looter alone is told about the secret", func(t *testing.T) {
+		require.Equal(t, []session.EventKind{session.EventLooted, session.EventConcealmentRevealed, session.EventSighted},
+			recipientKinds(stream.published, "alice"))
+		var revealed []session.Event
+		for _, e := range eventsFor(stream.published, "alice") {
+			if e.Kind == session.EventConcealmentRevealed {
+				revealed = append(revealed, e)
+			}
+		}
+		require.Len(t, revealed, 1)
+		body, ok := revealed[0].Body.(session.ConcealmentRevealedBody)
+		require.True(t, ok)
+		require.Equal(t, vaultSecret, body.Concealment, "the way in came off the body that was placed carrying it")
+	})
+
+	t.Run("the bystander hears the beat and learns nothing", func(t *testing.T) {
+		require.Equal(t, []session.EventKind{session.EventLooted}, recipientKinds(stream.published, "bob"))
+		blind, err := mgr.Doors(ctx, &session.DoorsInput{Session: testSession, Member: "bob"})
+		require.NoError(t, err)
+		require.Empty(t, blind.Doors)
+	})
+}
+
+// TestALaunchedMonsterHoldingNothingRevealsNothing is the negative that makes
+// the scene above a claim about Holds rather than about placing.
+//
+// Same verb, same body, same loot — the ONE difference is the field — and the
+// bystander's bytes are identical either way, which is design P3 asked of the
+// live path.
+func TestALaunchedMonsterHoldingNothingRevealsNothing(t *testing.T) {
+	ctx := context.Background()
+
+	loot := func(holds []string) ([]session.EventKind, string) {
+		mgr, stream := launchHoldingLatecomer(t, holds)
+		_, err := mgr.Loot(ctx, &session.LootInput{
+			Session: testSession, Member: "alice", Target: "latecomer", Range: 2})
+		require.NoError(t, err)
+		story, err := mgr.Story(ctx, &session.StoryInput{Session: testSession, Member: "bob"})
+		require.NoError(t, err)
+		raw, err := json.Marshal(story)
+		require.NoError(t, err)
+		return recipientKinds(stream.published, "bob"), string(raw)
+	}
+
+	richKinds, richStory := loot([]string{veilMap})
+	poorKinds, poorStory := loot(nil)
+
+	require.Equal(t, []session.EventKind{session.EventLooted}, poorKinds)
+	require.Equal(t, poorKinds, richKinds)
+	require.Equal(t, poorStory, richStory,
+		"a monster placed knowing nothing and one placed knowing the run's "+
+			"only secret are indistinguishable to everybody but the looter")
+}
+
+// LaunchActionsSuite is the driving case of rpg-project#448 at this seam,
+// folded here from the retired Spawn verb's own file: a dungeon places goblin
+// archers — one with a scimitar as backup, one with nothing but the bow —
+// without touching Go, and the launch arms each from its placement.
+//
+// Everything below is chosen so it cannot pass on a value the caller supplied.
+// The placement carries weapon REFS. What is asserted is +4 to hit for 1d6+2
+// piercing at 80/320 feet, which exists only because the shortbow was
+// assembled against a goblin's DEX 14 and its CR-based +2.
+type LaunchActionsSuite struct {
+	suite.Suite
+
+	sessions *fakeSessions
+	mgr      *session.Manager
+}
+
+func TestLaunchActionsSuite(t *testing.T) { suite.Run(t, new(LaunchActionsSuite)) }
+
+func (s *LaunchActionsSuite) SetupTest() {
+	s.sessions = newFakeSessions()
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
+		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+		Sessions: s.sessions, Encounters: newFakeEncounters(), Characters: testCharacters(),
+		Events: session.DiscardEvents{},
+	})
+	s.Require().NoError(err)
+	s.mgr = mgr
+}
+
+func (s *LaunchActionsSuite) SetupSubTest() { s.SetupTest() }
+
+// armedGoblinAt is a goblin placement in the vault carrying the author's
+// action list.
+func armedGoblinAt(id string, col int, actions []string) dungeonspec.MonsterPlacement {
+	placement := monsterAt(id, refs.Monsters.Goblin().String(), col, 2)
+	placement.Actions = actions
+	return placement
+}
+
+// launchArmed launches hexWorld with the given goblins on its board.
+func (s *LaunchActionsSuite) launchArmed(goblins ...dungeonspec.MonsterPlacement) error {
+	sc := hexWorld()
+	sc.Monsters = goblins
+	_, err := s.mgr.Launch(context.Background(), sceneInput(sc))
+	return err
+}
+
+// storedActions returns the actions on a monster's STORED sheet — the sheet a
+// rehydrated run reads, not a projection built for this call.
+func (s *LaunchActionsSuite) storedActions(id string) []combatActions.Definition {
+	s.T().Helper()
+	for _, npc := range s.sessions.byID[testSession].NPCs {
+		if npc.ID == id {
+			return npc.Actions
+		}
+	}
+	s.Require().Failf("no sheet", "the launch recorded no sheet for %q", id)
+	return nil
+}
+
+// TestAnArcherWithNothingButTheBow is the second of the two goblins: the
+// author armed it with one weapon, and one weapon is all it has.
+func (s *LaunchActionsSuite) TestAnArcherWithNothingButTheBow() {
+	s.Require().NoError(s.launchArmed(armedGoblinAt("coward", 8, []string{refs.Weapons.Shortbow().String()})))
+	actions := s.storedActions("coward")
+
+	s.Require().Len(actions, 1, "the author said bow, so the scimitar its stat block gives it is gone")
+	bow := actions[0]
+	s.Equal(refs.Weapons.Shortbow().String(), bow.Ref.String(),
+		"the action's ref is the weapon's, as it is for a character")
+	s.Equal("Shortbow", bow.Name)
+
+	s.Require().NotNil(bow.Attack)
+	s.Equal(4, bow.Attack.AttackBonus, "DEX 14 and the goblin's own +2, which the caller never passed")
+	s.Require().NotNil(bow.Attack.Ability)
+	s.Equal(2, bow.Attack.Ability.Modifier, "the +2 on 1d6+2")
+	s.Require().Len(bow.Attack.Damage, 1)
+	s.Equal("1d6", bow.Attack.Damage[0].Dice)
+	s.Equal(damage.Piercing, bow.Attack.Damage[0].Type)
+	s.Equal(&combatActions.RangedDelivery{NormalFeet: 80, LongFeet: 320}, bow.Attack.Delivery.Ranged)
+	s.Nil(bow.Attack.Delivery.Melee, "there is no blade on this one")
+}
+
+// TestAnArcherWithABladeForWhenYouGetClose is the first goblin, and the
+// ORDER is the whole of what makes it different.
+func (s *LaunchActionsSuite) TestAnArcherWithABladeForWhenYouGetClose() {
+	s.Require().NoError(s.launchArmed(armedGoblinAt("backup", 9, []string{
+		refs.Weapons.Scimitar().String(), refs.Weapons.Shortbow().String(),
+	})))
+	actions := s.storedActions("backup")
+
+	s.Require().Len(actions, 2)
+	s.Equal(refs.Weapons.Scimitar().String(), actions[0].Ref.String(),
+		"the author listed the blade first, and the driver takes the first action in reach")
+	s.Equal(refs.Weapons.Shortbow().String(), actions[1].Ref.String())
+	s.Equal(&combatActions.MeleeDelivery{ReachFeet: 5}, actions[0].Attack.Delivery.Melee)
+}
+
+// TestTheAuthorsOrderIsNotNormalised is the mutant that made the two tests
+// above worth writing.
+//
+// Drop the ordering from the launch — sort the list, deduplicate it, or
+// forward it in any order but the one written — and the two goblins stop being
+// different creatures: the one meant to swing when cornered shoots point blank
+// instead. So the same two weapons are placed the other way round here, and
+// the bow has to be first.
+func (s *LaunchActionsSuite) TestTheAuthorsOrderIsNotNormalised() {
+	s.Require().NoError(s.launchArmed(
+		armedGoblinAt("blade-first", 8, []string{
+			refs.Weapons.Scimitar().String(), refs.Weapons.Shortbow().String(),
+		}),
+		armedGoblinAt("bow-first", 9, []string{
+			refs.Weapons.Shortbow().String(), refs.Weapons.Scimitar().String(),
+		}),
+	))
+
+	blade := s.storedActions("blade-first")
+	s.Equal(refs.Weapons.Scimitar().String(), blade[0].Ref.String())
+
+	bow := s.storedActions("bow-first")
+	s.Equal(refs.Weapons.Shortbow().String(), bow[0].Ref.String(),
+		"the same two weapons the other way round stay the other way round")
+	s.Equal(refs.Weapons.Scimitar().String(), bow[1].Ref.String())
+}
+
+// TestAnUnarmedPlacementKeepsTheStatBlocksOwnArms is the negative that makes
+// the tests above claims about Actions rather than about placing.
+func (s *LaunchActionsSuite) TestAnUnarmedPlacementKeepsTheStatBlocksOwnArms() {
+	s.Require().NoError(s.launchArmed(armedGoblinAt("default", 8, nil)))
+	actions := s.storedActions("default")
+
+	s.Require().Len(actions, 2, "a goblin's own scimitar and shortbow")
+	s.Equal(refs.Weapons.Scimitar().String(), actions[0].Ref.String())
+	s.Equal(refs.Weapons.Shortbow().String(), actions[1].Ref.String())
+}
+
+// TestALaunchRefusesAWeaponNothingCanBuild is decision 5 at this seam: it
+// fails here, reading the dungeon, not at a turn.
+func (s *LaunchActionsSuite) TestALaunchRefusesAWeaponNothingCanBuild() {
+	for _, tc := range []struct {
+		name   string
+		action string
+		is     error
+	}{
+		{"a weapon the catalog does not have", "dnd5e:weapons:trebuchet", session.ErrUnknownContent},
+		{"a ref that is not a weapon", "dnd5e:monster_actions:wolf-bite", session.ErrUnknownContent},
+		// The row that makes the TYPE check load-bearing rather than
+		// decorative. Deleting the module/type test leaves the two rows
+		// above passing — nothing answers to "wolf-bite" in the weapons
+		// catalog either — but `dnd5e:monster_actions:mace` has a weapon's
+		// id in a namespace that is not the weapons catalog, and only the
+		// type check refuses it. Found by running that mutant.
+		{"an authored action whose id collides with a weapon's",
+			"dnd5e:monster_actions:mace", session.ErrUnknownContent},
+		{"another module's weapon", "homebrew:weapons:shortbow", session.ErrUnknownContent},
+		{"a bare weapon id", "shortbow", session.ErrBadRef},
+	} {
+		s.Run(tc.name, func() {
+			err := s.launchArmed(armedGoblinAt("doomed", 8, []string{tc.action}))
+			s.Require().Error(err)
+			s.ErrorIs(err, tc.is)
+			s.ErrorContains(err, tc.action, "the refusal names the ref the author wrote")
+			s.NotContains(s.sessions.byID, testSession, "a refused launch stores nothing")
+		})
+	}
+}
+
+// TestABadWeaponLateInTheListStillRefusesTheWholeLaunch: the monster is armed
+// all at once, so it cannot arrive holding the half of the list that parsed.
+func (s *LaunchActionsSuite) TestABadWeaponLateInTheListStillRefusesTheWholeLaunch() {
+	err := s.launchArmed(armedGoblinAt("doomed", 8,
+		[]string{refs.Weapons.Shortbow().String(), "dnd5e:weapons:trebuchet"}))
+	s.Require().Error(err)
+	s.ErrorIs(err, session.ErrUnknownContent)
+	s.NotContains(s.sessions.byID, testSession)
 }

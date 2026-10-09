@@ -20,7 +20,7 @@ import (
 //
 // One call builds the whole board, seats the party and lets the fight form,
 // in one load-act-save under the session's guard and each party character's
-// guard. It replaces StartSession and Spawn as host verbs; Join stays for a
+// guard. It is the one host verb that starts a run; Join stays for a
 // rejoin, and PlaceNPC for the demo vendor until authored world NPCs (R11).
 //
 // # What the host hands over, and what it no longer does
@@ -322,8 +322,8 @@ func validateLaunch(in *LaunchInput) error {
 	return nil
 }
 
-// refuseExistingSession refuses a session id already in use, as StartSession
-// does: the id names a game in progress.
+// refuseExistingSession refuses a session id already in use: the id names a
+// game in progress.
 func (m *Manager) refuseExistingSession(ctx context.Context, id string) error {
 	existing, err := m.sessions.GetSession(ctx, id)
 	switch {

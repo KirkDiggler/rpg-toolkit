@@ -13,7 +13,7 @@ import (
 // adapter and its released-provider tests are owned by the merged main version.
 func (s *CloseDoorSuite) TestTheStructuralLayoutIsUntouched() {
 	ctx := context.Background()
-	s.startWith(structuralRoomWorld(s.T()))
+	s.startWith(structuralRoomWorld())
 	_, err := s.mgr.OpenDoor(ctx, &session.OpenDoorInput{Session: "sess", Member: "alice", Door: "gate"})
 	s.Require().NoError(err)
 	before, err := s.mgr.Knowledge(ctx, &session.KnowledgeInput{Session: "sess", Member: "alice", Player: "player-alice"})

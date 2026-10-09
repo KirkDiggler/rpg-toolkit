@@ -24,15 +24,14 @@ func (s *StructuralSessionSuite) TestStructuralWalkReadsLiveSheetsWithoutRewriti
 		Events: session.DiscardEvents{}, Dice: testDice{}, TurnDriver: session.Pass{}, PresentationIDs: testPresentationIDs{},
 	})
 	s.Require().NoError(err)
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: structuralRoomWorld(s.T())})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, structuralRoomWorld())
 	_, err = mgr.OpenDoor(ctx, &session.OpenDoorInput{Session: "sess", Member: "alice", Door: "gate"})
 	s.Require().NoError(err)
 	input := &session.KnowledgeInput{Session: "sess", Member: "alice", Player: "player-alice"}
 	known, err := mgr.Knowledge(ctx, input)
 	s.Require().NoError(err)
 	s.Require().NotEmpty(known.Atlas.StructuralWalls)
-	baseline := worlds.byID["world"].Clock.HighWater
+	baseline := worlds.byID["sess"].Clock.HighWater
 	path := make([]spatial.Position, 0, 6)
 	for x := 6; x <= 11; x++ {
 		path = append(path, spatial.Position{X: float64(x)})
@@ -40,7 +39,7 @@ func (s *StructuralSessionSuite) TestStructuralWalkReadsLiveSheetsWithoutRewriti
 	moved, err := mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: path})
 	s.Require().NoError(err)
 	s.Require().Len(moved.Steps, 6)
-	s.Equal(baseline+1, worlds.byID["world"].Clock.HighWater, "human sheet: six cells pace one round")
+	s.Equal(baseline+1, worlds.byID["sess"].Clock.HighWater, "human sheet: six cells pace one round")
 
 	characters.byID["alice"].RaceID = races.Dwarf
 	path = nil
@@ -50,19 +49,19 @@ func (s *StructuralSessionSuite) TestStructuralWalkReadsLiveSheetsWithoutRewriti
 	moved, err = mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: path})
 	s.Require().NoError(err)
 	s.Require().Len(moved.Steps, 5)
-	s.Equal(baseline+2, worlds.byID["world"].Clock.HighWater, "changed sheet: five cells pace one round without rejoin")
+	s.Equal(baseline+2, worlds.byID["sess"].Clock.HighWater, "changed sheet: five cells pace one round without rejoin")
 	after, err := mgr.Knowledge(ctx, input)
 	s.Require().NoError(err)
 	s.Equal(known.Atlas.StructuralWalls, after.Atlas.StructuralWalls)
 	s.Equal(known.Atlas.StructuralDoors, after.Atlas.StructuralDoors)
 	s.Equal(known.Atlas.Cells, after.Atlas.Cells)
 
-	beforeMissing, err := json.Marshal(worlds.byID["world"])
+	beforeMissing, err := json.Marshal(worlds.byID["sess"])
 	s.Require().NoError(err)
 	delete(characters.byID, "alice")
 	_, err = mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: []spatial.Position{{X: 5}}})
 	s.ErrorIs(err, session.ErrNoCharacter, "missing sheet is not a zero-speed/default sheet")
-	afterMissing, err := json.Marshal(worlds.byID["world"])
+	afterMissing, err := json.Marshal(worlds.byID["sess"])
 	s.Require().NoError(err)
 	s.Equal(beforeMissing, afterMissing, "refused verb cannot mutate encounter knowledge or placement")
 }

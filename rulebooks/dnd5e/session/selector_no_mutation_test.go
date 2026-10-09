@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -32,7 +31,9 @@ type selectorFixture struct {
 	roller     *sequenceDice
 }
 
-func newSelectorFixture(t *testing.T, world *encounter.EncounterData) *selectorFixture {
+// newSelectorFixture launches world; a non-empty order also authors a turn
+// clock over those members with order[0] active.
+func newSelectorFixture(t *testing.T, world scene, order ...string) *selectorFixture {
 	t.Helper()
 	f := &selectorFixture{
 		t:          t,
@@ -48,10 +49,11 @@ func newSelectorFixture(t *testing.T, world *encounter.EncounterData) *selectorF
 	})
 	require.NoError(t, err)
 	f.mgr = mgr
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: world,
-	})
-	require.NoError(t, err)
+	if len(order) > 0 {
+		launchOnClock(t, mgr, f.encounters, world, order, 0)
+	} else {
+		launchScene(t, mgr, world)
+	}
 	f.resetMutationCounters()
 	return f
 }
@@ -72,7 +74,7 @@ type selectorState struct {
 
 func (f *selectorFixture) state(member string) selectorState {
 	f.t.Helper()
-	world := f.encounters.byID["world"]
+	world := f.encounters.byID[testSession]
 	var position spatial.Position
 	found := false
 	for _, candidate := range world.Members {
@@ -105,24 +107,28 @@ func (f *selectorFixture) requireNoMutation(before selectorState) {
 func TestAttackSelectorRefusalsMutateNothing(t *testing.T) {
 	tests := []struct {
 		name     string
-		world    func() *encounter.EncounterData
+		world    func() scene
+		order    []string
 		selector func(*selectorFixture) string
 	}{
 		{
 			name:     "stale selector",
-			world:    func() *encounter.EncounterData { return turnWorld(freeRoamDuelWorld(t), []string{"alice", "bob"}, 0) },
+			world:    freeRoamDuelWorld,
+			order:    duelClock,
 			selector: func(*selectorFixture) string { return "v1.stale" },
 		},
 		{
 			name:  "wrong verb selector",
-			world: func() *encounter.EncounterData { return turnWorld(freeRoamDuelWorld(t), []string{"alice", "bob"}, 0) },
+			world: freeRoamDuelWorld,
+			order: duelClock,
 			selector: func(f *selectorFixture) string {
 				return currentMoveID(t, f.mgr, "sess", "alice")
 			},
 		},
 		{
 			name:  "currently unavailable selector",
-			world: func() *encounter.EncounterData { return reachWorld(t, spatial.Position{X: 5, Y: 1}) },
+			world: func() scene { return reachWorld(spatial.Position{X: 5, Y: 1}) },
+			order: duelClock,
 			selector: func(f *selectorFixture) string {
 				declaration := currentDeclaration(t, f.mgr, "sess", "alice", session.VerbAttack)
 				require.False(t, declaration.Available)
@@ -133,7 +139,7 @@ func TestAttackSelectorRefusalsMutateNothing(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			f := newSelectorFixture(t, tc.world())
+			f := newSelectorFixture(t, tc.world(), tc.order...)
 			id := tc.selector(f)
 			f.resetMutationCounters()
 			before := f.state("alice")
@@ -149,7 +155,7 @@ func TestAttackSelectorRefusalsMutateNothing(t *testing.T) {
 }
 
 func TestStaleTurnMoveAfterWorldTransitionMutatesNothing(t *testing.T) {
-	f := newSelectorFixture(t, turnWorld(freeRoamDuelWorld(t), []string{"alice", "bob"}, 0))
+	f := newSelectorFixture(t, freeRoamDuelWorld(), duelClock...)
 	id := currentMoveID(t, f.mgr, "sess", "alice")
 	_, err := f.mgr.Dissolve(context.Background(), &session.DissolveInput{
 		Session: "sess", Member: "alice", Cause: session.ByDecision(),
@@ -167,8 +173,7 @@ func TestStaleTurnMoveAfterWorldTransitionMutatesNothing(t *testing.T) {
 }
 
 func TestStaleEndTurnMutatesNothingEvenWhenARealEndWouldWrapBack(t *testing.T) {
-	world := turnWorld(ambushWorld(t), []string{"alice", "ogre"}, 0)
-	f := newSelectorFixture(t, world)
+	f := newSelectorFixture(t, ambushWorld(), "alice", "ogre")
 	f.resetMutationCounters()
 	before := f.state("alice")
 
@@ -181,7 +186,7 @@ func TestStaleEndTurnMutatesNothingEvenWhenARealEndWouldWrapBack(t *testing.T) {
 }
 
 func TestEndTurnNotYourTurnPrecedesSelectorAndMutatesNothing(t *testing.T) {
-	f := newSelectorFixture(t, turnWorld(freeRoamDuelWorld(t), []string{"alice", "bob"}, 0))
+	f := newSelectorFixture(t, freeRoamDuelWorld(), duelClock...)
 	f.resetMutationCounters()
 	before := f.state("alice")
 
@@ -195,7 +200,7 @@ func TestEndTurnNotYourTurnPrecedesSelectorAndMutatesNothing(t *testing.T) {
 }
 
 func TestAffordThenEndTurnRejectsRepositorySessionIDMismatch(t *testing.T) {
-	f := newSelectorFixture(t, turnWorld(freeRoamDuelWorld(t), []string{"alice", "bob"}, 0))
+	f := newSelectorFixture(t, freeRoamDuelWorld(), duelClock...)
 	id := currentEndTurnID(t, f.mgr, "sess", "alice")
 	f.sessions.byID["sess"].ID = "different-session"
 	f.resetMutationCounters()
@@ -285,11 +290,7 @@ func TestSuccessfulTurnAttackLoadsActorOnceBeforeExecution(t *testing.T) {
 		Characters: characters, Events: session.DiscardEvents{},
 	})
 	require.NoError(t, err)
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world",
-		World: turnWorld(freeRoamDuelWorld(t), []string{"alice", "bob"}, 0),
-	})
-	require.NoError(t, err)
+	launchOnClock(t, mgr, encounters, freeRoamDuelWorld(), []string{"alice", "bob"}, 0)
 	id := currentAttackID(t, mgr, "sess", "alice")
 	characters.compiled["alice"] = 0
 	characters.compiled["bob"] = 0

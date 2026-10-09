@@ -44,10 +44,7 @@ func (s *InteractTestSuite) SetupTest() {
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	_, err = s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: hexWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), s.mgr, hexWorld())
 }
 
 func (s *InteractTestSuite) placeVendor(at spatial.Position) {

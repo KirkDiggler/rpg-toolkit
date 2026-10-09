@@ -9,9 +9,10 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 
+	"github.com/stretchr/testify/suite"
+
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
-	"github.com/stretchr/testify/suite"
 )
 
 type knowledgeEncounters struct {
@@ -30,35 +31,19 @@ func TestKnowledgeSuite(t *testing.T) { suite.Run(t, new(KnowledgeSuite)) }
 
 func (s *KnowledgeSuite) TestCapturedPresentationCrossesKnowledgeAndViewWithoutAliases() {
 	no := false
-	world, err := encounter.NewEncounter(&encounter.SetupInput{
+	sc := scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("room", 0, 0, 3, 2)},
 			Props: []encounter.PropInput{{ID: "book", Ref: "test:props:book", At: spatial.Position{X: 1}, Holdable: true, BlocksMovement: &no, BlocksLineOfSight: &no}},
 			PropPresentations: []encounter.PropPresentation{{ID: "book", Ref: "test:props:book", Origin: spatial.Point{X: 5}, HeightScale: 1.5,
 				PointLight: &encounter.PropPointLight{Color: "#abcdef", Range: 4}}}},
-		Members: []encounter.MemberInput{{ID: "alice", Kind: encounter.KindPlayer}},
+		Party:   []sceneSeat{seatAt("alice", 0, 0)},
 		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Standing:   encEveryoneStanding{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	s.Require().NoError(err)
+	}
 	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: newFakeCharacters(armedFighter("alice")),
 		Events: session.DiscardEvents{}, Dice: testDice{}, TurnDriver: session.Pass{}, PresentationIDs: testPresentationIDs{}})
 	s.Require().NoError(err)
-	data := world.ToData()
 	ctx := context.Background()
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: &data})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, sc)
 	input := &session.KnowledgeInput{Session: "sess", Member: "alice", Player: "player-alice"}
 	known, err := mgr.Knowledge(ctx, input)
 	s.Require().NoError(err)
@@ -120,8 +105,7 @@ func (s *KnowledgeSuite) TestRoomRevealAndObservationsSurviveTheSessionPath() {
 		Events: stream, Dice: testDice{}, TurnDriver: session.Pass{}, PresentationIDs: testPresentationIDs{},
 	})
 	s.Require().NoError(err)
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: gatedWorld(s.T(), encounter.DoorIsClosed())})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, gatedWorld(encounter.DoorIsClosed()))
 	input := &session.KnowledgeInput{Session: "sess", Member: "alice", Player: "player-alice"}
 	before, err := mgr.Knowledge(ctx, input)
 	s.Require().NoError(err)

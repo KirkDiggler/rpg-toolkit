@@ -7,10 +7,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/stretchr/testify/suite"
+
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
-	"github.com/stretchr/testify/suite"
 )
 
 // MissingSheetSuite holds the store's one answer (rpg-project#542, "One sheet
@@ -22,30 +22,39 @@ type MissingSheetSuite struct {
 	suite.Suite
 
 	characters *fakeCharacters
+	encounters *fakeEncounters
 	mgr        *session.Manager
 }
 
 func TestMissingSheetSuite(t *testing.T) { suite.Run(t, new(MissingSheetSuite)) }
 
-// start opens the duel on world; lose drops a sheet afterwards.
-func (s *MissingSheetSuite) start(world *encounter.EncounterData) {
+// manager wires the suite's manager over fresh fakes.
+func (s *MissingSheetSuite) manager() *session.Manager {
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
+	s.encounters = newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
-		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: world,
-	})
-	s.Require().NoError(err)
+	return mgr
+}
+
+// start opens the duel on sc; lose drops a sheet afterwards.
+func (s *MissingSheetSuite) start(sc scene) {
+	launchScene(s.T(), s.manager(), sc)
+}
+
+// startDuel opens the duel with alice's turn already running.
+func (s *MissingSheetSuite) startDuel() {
+	launchDuel(s.T(), s.manager(), s.encounters)
 }
 
 func (s *MissingSheetSuite) lose(id string) { delete(s.characters.byID, id) }
 
 func (s *MissingSheetSuite) TestTheAttackPathRefuses() {
-	s.start(duelWorld(s.T()))
+	s.startDuel()
 	id := currentAttackID(s.T(), s.mgr, "sess", "alice")
 	s.lose("alice")
 	_, err := s.mgr.Attack(context.Background(), &session.AttackInput{
@@ -55,7 +64,7 @@ func (s *MissingSheetSuite) TestTheAttackPathRefuses() {
 }
 
 func (s *MissingSheetSuite) TestTheMovePathRefuses() {
-	s.start(freeRoamDuelWorld(s.T()))
+	s.start(freeRoamDuelWorld())
 	s.lose("bob")
 	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "bob", Path: []spatial.Position{{X: 3, Y: 1}},
@@ -64,7 +73,7 @@ func (s *MissingSheetSuite) TestTheMovePathRefuses() {
 }
 
 func (s *MissingSheetSuite) TestTheBoundaryPathRefuses() {
-	s.start(duelWorld(s.T()))
+	s.startDuel()
 	id := currentEndTurnID(s.T(), s.mgr, "sess", "alice")
 	s.lose("bob")
 	_, err := s.mgr.EndTurn(context.Background(), &session.EndTurnInput{Session: "sess", Member: "alice", DeclarationID: id})
@@ -72,7 +81,7 @@ func (s *MissingSheetSuite) TestTheBoundaryPathRefuses() {
 }
 
 func (s *MissingSheetSuite) TestTheStandingPathRefuses() {
-	s.start(freeRoamDuelWorld(s.T()))
+	s.start(freeRoamDuelWorld())
 	s.lose("bob")
 	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 1, Y: 2}},
@@ -81,7 +90,7 @@ func (s *MissingSheetSuite) TestTheStandingPathRefuses() {
 }
 
 func (s *MissingSheetSuite) TestTheRunCanStillBeLeftAndClosed() {
-	s.start(freeRoamDuelWorld(s.T()))
+	s.start(freeRoamDuelWorld())
 	s.lose("bob")
 
 	_, err := s.mgr.Status(context.Background(), &session.StatusInput{Session: "sess"})

@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 )
 
@@ -43,12 +44,23 @@ func (s *RecheckSuite) SetupTest() {
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: heirloomWorld(s.T(), true),
-	})
-	s.Require().NoError(err)
-	stockAuthoredMonsters(s.T(), s.sessions, s.encounters, "sess")
+	launchScene(s.T(), mgr, withCaptain(heirloomWorld(true)))
 	s.stream.published = nil
+}
+
+// withCaptain makes sure the hall's captain stands on the board as a placed
+// monster: a member Recheck can name beside alice. A scene that already places
+// it is returned as it is.
+func withCaptain(sc scene) scene {
+	for _, placed := range sc.Monsters {
+		if placed.MemberID == "captain" {
+			return sc
+		}
+	}
+	captain := monsterAt("captain", refs.Monsters.Skeleton().String(), 0, 0)
+	captain.At = authoredOf(captainCell)
+	sc.Monsters = append(sc.Monsters, captain)
+	return sc
 }
 
 // sightedFor is every sighting body one recipient was told about.

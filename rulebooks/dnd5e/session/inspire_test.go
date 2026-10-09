@@ -66,37 +66,14 @@ func levelOneBard(id string, uses int) *character.Data {
 
 // bardWorld is a bard and a fighter on a turn clock with the bard active, the
 // fighter standing `apart` cells away.
-func bardWorld(t fataler, apart int) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+func bardWorld(apart int) scene {
+	return scene{
 		Field: encounter.FieldInput{
 			Canvas:  pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 30, 8)},
 		},
-		Members: []encounter.MemberInput{
-			{ID: "bard", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "fighter", Kind: encounter.KindPlayer, Position: spatial.Position{X: float64(1 + apart), Y: 1}},
-		},
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Standing:   encEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("building the bard's scene: %v", err)
+		Party: []sceneSeat{seatAt("bard", 1, 1), {ID: "fighter", At: spatial.Position{X: float64(1 + apart), Y: 1}}},
 	}
-	data := enc.ToData()
-	return turnWorld(&data, []string{"bard", "fighter"}, 0)
 }
 
 // scene opens a session with the bard holding `uses` and the fighter `apart`
@@ -111,10 +88,10 @@ func (s *InspireSuite) scene(uses, apart int) *session.Manager {
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: bardWorld(s.T(), apart),
-	})
-	s.Require().NoError(err)
+	launchOnClock(s.T(), mgr, s.encounters, bardWorld(apart), []string{"bard", "fighter"}, 0)
+	// Launch long-rests the party, refilling the pool: the bard's sheet with
+	// exactly `uses` is written after it.
+	s.characters.byID["bard"] = levelOneBard("bard", uses)
 	return mgr
 }
 

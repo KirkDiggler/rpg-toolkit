@@ -17,6 +17,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -69,22 +70,10 @@ func task6ArrivalFixture(t *testing.T) (*session.Manager, *fakeSessions, *fakeEn
 	})
 	require.NoError(t, err)
 	ctx := context.Background()
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: tombRoom(40, 6),
-	})
-	require.NoError(t, err)
-	_, err = mgr.Join(ctx, &session.JoinInput{
-		Session: "sess", Member: "fighter", Position: spatial.Position{X: 0, Y: 0},
-	})
-	require.NoError(t, err)
-	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 1, Y: 0},
-	})
-	require.NoError(t, err)
-	require.NotNil(t, spawned.Formed)
+	spawned := launchScene(t, mgr, tombWith(40, 6, skeletonAt("skel-1", 1, 0)))
+	require.NotEmpty(t, spawned.Formed)
 
-	data, err := encounters.GetEncounter(ctx, "world")
+	data, err := encounters.GetEncounter(ctx, "sess")
 	require.NoError(t, err)
 	oldCell := spatial.Position{X: 0, Y: 0}
 	payload, err := encounter.EncodeSightTestimony(encounter.SightTestimony{
@@ -101,14 +90,14 @@ func task6ArrivalFixture(t *testing.T) (*session.Manager, *fakeSessions, *fakeEn
 			data.Members[i].Cell = &encounter.PositionData{X: 30, Y: 5}
 		}
 	}
-	require.NoError(t, encounters.SaveEncounter(ctx, "world", data))
+	require.NoError(t, encounters.SaveEncounter(ctx, "sess", data))
 	stream.published = nil
 	return mgr, sessions, encounters, stream
 }
 
 func task6StoredLocation(t *testing.T, encounters *fakeEncounters) encounter.SightTestimony {
 	t.Helper()
-	data, err := encounters.GetEncounter(context.Background(), "world")
+	data, err := encounters.GetEncounter(context.Background(), "sess")
 	require.NoError(t, err)
 	holding := data.Perception.Intel.Holdings[core.EntityID("member|skel-1")][intel.Subject("member|fighter")]
 	location, ok := encounter.DecodeSightTestimony(holding.Payload)
@@ -165,7 +154,7 @@ func TestSessionMonsterArrivalPersistsCorrection(t *testing.T) {
 	require.Equal(t, encounter.LocationKnown, location.State,
 		"the ghost keeps the stale cell it actually observed rather than being rewritten to unknown")
 	require.Equal(t, spatial.Position{X: 0, Y: 0}, location.Position)
-	data, err := encounters.GetEncounter(context.Background(), "world")
+	data, err := encounters.GetEncounter(context.Background(), "sess")
 	require.NoError(t, err)
 	holding := data.Perception.Intel.Holdings[core.EntityID("member|skel-1")][intel.Subject("member|fighter")]
 	require.Empty(t, holding.CurrentVia, "persisted stale sight holding must remain Held")
@@ -176,12 +165,12 @@ func TestSessionMonsterArrivalPersistsCorrection(t *testing.T) {
 // and never reaches a projected View result.
 func TestMalformedSightTestimonyFailsSessionLoadBeforeProjection(t *testing.T) {
 	_, sessions, encounters, _ := task6ArrivalFixture(t)
-	data, err := encounters.GetEncounter(context.Background(), "world")
+	data, err := encounters.GetEncounter(context.Background(), "sess")
 	require.NoError(t, err)
 	holding := data.Perception.Intel.Holdings[core.EntityID("member|skel-1")][intel.Subject("member|fighter")]
 	holding.Payload = nil
 	data.Perception.Intel.Holdings[core.EntityID("member|skel-1")][intel.Subject("member|fighter")] = holding
-	require.NoError(t, encounters.SaveEncounter(context.Background(), "world", data))
+	require.NoError(t, encounters.SaveEncounter(context.Background(), "sess", data))
 
 	// Use a fresh manager to make this a load-path assertion, not an in-memory
 	// object assertion.
@@ -200,7 +189,7 @@ func TestMalformedSightTestimonyFailsSessionLoadBeforeProjection(t *testing.T) {
 // MonsterTurnTestSuite is the tomb: the gate this whole wave (rpg-project#254)
 // lands or does not land on. Five claims, one seam under test throughout —
 // session's own Striker bound to the live scope.enc, the shared member
-// record filled at Join and Spawn, and sight read from data rather than a
+// record filled at Launch, and sight read from data rather than a
 // flat constant.
 type MonsterTurnTestSuite struct {
 	suite.Suite
@@ -220,37 +209,32 @@ func (s *MonsterTurnTestSuite) SetupTest() {
 
 // tombRoom is one open hall, wide enough to close a few cells of distance
 // in — everything these tests need except (b), which adds its own wall.
-func tombRoom(width, height int) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+func tombRoom(width, height int) scene {
+	return scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("tomb", 0, 0, width, height)},
 		},
-		Endings:   []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Standing:   encEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	if err != nil {
-		panic(err) // construction-time only; every call site is a fixed literal
+		Endings: []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
 	}
-	data := enc.ToData()
-	return &data
+}
+
+// tombWith is tombRoom with the fighter seated on its corner and the given
+// monsters placed, launched as one board.
+func tombWith(width, height int, monsters ...dungeonspec.MonsterPlacement) scene {
+	sc := tombRoom(width, height)
+	sc.Party = []sceneSeat{seatAt("fighter", 0, 0)}
+	sc.Monsters = monsters
+	return sc
+}
+
+// skeletonAt is a skeleton placed on an authored cell.
+func skeletonAt(id string, col, row int) dungeonspec.MonsterPlacement {
+	return monsterAt(id, refs.Monsters.Skeleton().String(), col, row)
 }
 
 // tombManager builds a manager over this suite's stores, with the driver
 // and dice each test declares — a fighter and any monsters go through
-// session's own Join/Spawn, never authored straight into MemberInput, so
+// session's own Launch, never authored straight into MemberInput, so
 // every gate test exercises the real member-record-filling this wave built.
 func (s *MonsterTurnTestSuite) tombManager(driver session.TurnDriver, dice session.Roller) *session.Manager {
 	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
@@ -292,23 +276,10 @@ func (s *MonsterTurnTestSuite) TestSkeletonAttacksFromRange() {
 	ctx := context.Background()
 	mgr := s.tombManager(session.Driver(), testDice{})
 
-	_, err := mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: tombRoom(12, 6),
-	})
-	s.Require().NoError(err)
-
-	_, err = mgr.Join(ctx, &session.JoinInput{
-		Session: "sess", Member: "fighter", Position: spatial.Position{X: 0, Y: 0},
-	})
-	s.Require().NoError(err)
-
-	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 4, Y: 0}, // four cells off, well within the shared 24-cell default range
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(spawned.Formed, "spawning in sight and in range must start the fight on the spot")
-	s.Equal([]string{"fighter", "skel-1"}, spawned.Formed.Order, "fighter's ID sorts first, so the tied roll breaks to her")
+	// Four cells off, well within the shared 24-cell default range.
+	spawned := launchScene(s.T(), mgr, tombWith(12, 6, skeletonAt("skel-1", 4, 0)))
+	s.Require().NotEmpty(spawned.Formed, "spawning in sight and in range must start the fight on the spot")
+	s.Equal([]string{"fighter", "skel-1"}, spawned.Formed[0].Order, "fighter's ID sorts first, so the tied roll breaks to her")
 
 	before := len(s.storyBeats(mgr, "fighter"))
 	out, err := mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter", DeclarationID: currentEndTurnID(s.T(), mgr, "sess", "fighter")})
@@ -387,7 +358,7 @@ func (s *MonsterTurnTestSuite) TestSkeletonAttacksFromRange() {
 	s.NotEmpty(swingBody.Attack.Ref, "Attack{ref, name}: the ref side")
 	s.NotEmpty(swingBody.Attack.Name, "Attack{ref, name}: the name side (resolution#1196)")
 
-	char, err := s.encounters.GetEncounter(ctx, "world") // sanity: world persisted at all
+	char, err := s.encounters.GetEncounter(ctx, "sess") // sanity: world persisted at all
 	s.Require().NoError(err)
 	s.NotNil(char)
 }
@@ -401,15 +372,8 @@ func (s *MonsterTurnTestSuite) TestPlacedWorldNPCDoesNotBreakTheMonstersTurn() {
 	ctx := context.Background()
 	mgr := s.tombManager(session.Driver(), testDice{})
 
-	_, err := mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: tombRoom(12, 6),
-	})
-	s.Require().NoError(err)
-
-	_, err = mgr.Join(ctx, &session.JoinInput{
-		Session: "sess", Member: "fighter", Position: spatial.Position{X: 0, Y: 0},
-	})
-	s.Require().NoError(err)
+	spawned := launchScene(s.T(), mgr, tombWith(12, 6, skeletonAt("skel-1", 4, 0)))
+	s.Require().NotEmpty(spawned.Formed, "a skeleton in sight and in range must start the fight at launch")
 
 	merchant, err := npc.New(npc.Config{
 		Ref: refs.NPCs.Merchant(), DisplayName: "Demo Merchant",
@@ -420,13 +384,6 @@ func (s *MonsterTurnTestSuite) TestPlacedWorldNPCDoesNotBreakTheMonstersTurn() {
 		Session: "sess", Member: "vendor-1", Position: spatial.Position{X: 1, Y: 1}, NPC: merchant.ToData(),
 	})
 	s.Require().NoError(err)
-
-	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 4, Y: 0},
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(spawned.Formed, "spawning in sight and in range must start the fight on the spot")
 
 	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{
 		Session: "sess", Member: "fighter", DeclarationID: currentEndTurnID(s.T(), mgr, "sess", "fighter"),
@@ -441,7 +398,7 @@ func (s *MonsterTurnTestSuite) TestBlindSkeletonBehindAWallNeverJoinsTheFight() 
 	ctx := context.Background()
 	mgr := s.tombManager(session.Driver(), testDice{})
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	sc := scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("tomb", 0, 0, 12, 6)},
 			// Every crossing between columns 6 and 7, no gap — unlike a
@@ -449,39 +406,14 @@ func (s *MonsterTurnTestSuite) TestBlindSkeletonBehindAWallNeverJoinsTheFight() 
 			// nothing to peek through blocks contact outright.
 			Walls: hexSeamWalls(7, 6, -1),
 		},
-		Endings:   []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Standing:   encEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	s.Require().NoError(err)
-	world := enc.ToData()
+		Party: []sceneSeat{seatAt("fighter", 0, 0)},
+		// Two cells past the wall — in range, blocked by it.
+		Monsters: []dungeonspec.MonsterPlacement{skeletonAt("skel-2", 8, 0)},
+		Endings:  []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
+	}
 
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: &world})
-	s.Require().NoError(err)
-
-	_, err = mgr.Join(ctx, &session.JoinInput{
-		Session: "sess", Member: "fighter", Position: spatial.Position{X: 0, Y: 0},
-	})
-	s.Require().NoError(err)
-
-	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skel-2", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 8, Y: 0}, // two cells past the wall — in range, blocked by it
-	})
-	s.Require().NoError(err)
-	s.Nil(spawned.Formed, "a wall in the way must keep this a spawn, not an ambush")
+	spawned := launchScene(s.T(), mgr, sc)
+	s.Empty(spawned.Formed, "a wall in the way must keep this a placement, not an ambush")
 
 	turn, err := mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "skel-2"})
 	s.Require().NoError(err)
@@ -495,22 +427,8 @@ func (s *MonsterTurnTestSuite) TestBadIntentEndsOnlyTheMonstersTurn() {
 	ctx := context.Background()
 	mgr := s.tombManager(reachlessAttacker{}, testDice{})
 
-	_, err := mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: tombRoom(12, 6),
-	})
-	s.Require().NoError(err)
-
-	_, err = mgr.Join(ctx, &session.JoinInput{
-		Session: "sess", Member: "fighter", Position: spatial.Position{X: 0, Y: 0},
-	})
-	s.Require().NoError(err)
-
-	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 4, Y: 0},
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(spawned.Formed)
+	spawned := launchScene(s.T(), mgr, tombWith(12, 6, skeletonAt("skel-1", 4, 0)))
+	s.Require().NotEmpty(spawned.Formed)
 
 	before := len(s.storyBeats(mgr, "fighter"))
 	out, err := mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter", DeclarationID: currentEndTurnID(s.T(), mgr, "sess", "fighter")})
@@ -531,44 +449,18 @@ func (s *MonsterTurnTestSuite) TestBadIntentEndsOnlyTheMonstersTurn() {
 // player at 24 cells and not at 25, defaultSightFeet's own boundary
 // (120 feet — sight.go).
 func (s *MonsterTurnTestSuite) TestSightRangeGatesContact() {
-	ctx := context.Background()
-
 	s.Run("twenty-five cells: out of range", func() {
 		s.SetupTest()
 		mgr := s.tombManager(session.Pass{}, testDice{})
-		_, err := mgr.StartSession(ctx, &session.StartSessionInput{
-			Session: "sess", Encounter: "world", World: tombRoom(30, 6),
-		})
-		s.Require().NoError(err)
-		_, err = mgr.Join(ctx, &session.JoinInput{
-			Session: "sess", Member: "fighter", Position: spatial.Position{X: 0, Y: 0},
-		})
-		s.Require().NoError(err)
-		spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
-			Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
-			Position: spatial.Position{X: 25, Y: 0},
-		})
-		s.Require().NoError(err)
-		s.Nil(spawned.Formed, "twenty-five cells is one past the shared 24-cell default")
+		spawned := launchScene(s.T(), mgr, tombWith(30, 6, skeletonAt("skel-1", 25, 0)))
+		s.Empty(spawned.Formed, "twenty-five cells is one past the shared 24-cell default")
 	})
 
 	s.Run("twenty-four cells: in range", func() {
 		s.SetupTest()
 		mgr := s.tombManager(session.Pass{}, testDice{})
-		_, err := mgr.StartSession(ctx, &session.StartSessionInput{
-			Session: "sess", Encounter: "world", World: tombRoom(30, 6),
-		})
-		s.Require().NoError(err)
-		_, err = mgr.Join(ctx, &session.JoinInput{
-			Session: "sess", Member: "fighter", Position: spatial.Position{X: 0, Y: 0},
-		})
-		s.Require().NoError(err)
-		spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
-			Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
-			Position: spatial.Position{X: 24, Y: 0},
-		})
-		s.Require().NoError(err)
-		s.Require().NotNil(spawned.Formed, "twenty-four cells is exactly the shared default's own boundary")
+		spawned := launchScene(s.T(), mgr, tombWith(30, 6, skeletonAt("skel-1", 24, 0)))
+		s.Require().NotEmpty(spawned.Formed, "twenty-four cells is exactly the shared default's own boundary")
 	})
 }
 
@@ -579,22 +471,8 @@ func (s *MonsterTurnTestSuite) TestPassDriverStillPasses() {
 	ctx := context.Background()
 	mgr := s.tombManager(session.Pass{}, testDice{})
 
-	_, err := mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: tombRoom(12, 6),
-	})
-	s.Require().NoError(err)
-
-	_, err = mgr.Join(ctx, &session.JoinInput{
-		Session: "sess", Member: "fighter", Position: spatial.Position{X: 0, Y: 0},
-	})
-	s.Require().NoError(err)
-
-	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 4, Y: 0},
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(spawned.Formed)
+	spawned := launchScene(s.T(), mgr, tombWith(12, 6, skeletonAt("skel-1", 4, 0)))
+	s.Require().NotEmpty(spawned.Formed)
 
 	before := len(s.storyBeats(mgr, "fighter"))
 	out, err := mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter", DeclarationID: currentEndTurnID(s.T(), mgr, "sess", "fighter")})
@@ -669,22 +547,9 @@ func (s *MonsterTurnTestSuite) TestRoundTwoStruckReachesTheLiveSubscriber() {
 	})
 	s.Require().NoError(err)
 
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: tombRoom(12, 6),
-	})
-	s.Require().NoError(err)
-
-	_, err = mgr.Join(ctx, &session.JoinInput{
-		Session: "sess", Member: "fighter", Position: spatial.Position{X: 0, Y: 0},
-	})
-	s.Require().NoError(err)
-
-	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 1, Y: 0}, // adjacent: no run-up, every round is a swing
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(spawned.Formed)
+	// Adjacent: no run-up, every round is a swing.
+	spawned := launchScene(s.T(), mgr, tombWith(12, 6, skeletonAt("skel-1", 1, 0)))
+	s.Require().NotEmpty(spawned.Formed)
 
 	// joinMember is the exact string handed to Join — the same string a
 	// real StreamEvents caller subscribes with (h.broker.Subscribe(session,
@@ -793,22 +658,9 @@ func (s *MonsterTurnTestSuite) TestLiveDeliveryAndStoryCatchUpAreByteEqual() {
 	})
 	s.Require().NoError(err)
 
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: tombRoom(12, 6),
-	})
-	s.Require().NoError(err)
-
-	_, err = mgr.Join(ctx, &session.JoinInput{
-		Session: "sess", Member: "fighter", Position: spatial.Position{X: 0, Y: 0},
-	})
-	s.Require().NoError(err)
-
-	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 4, Y: 0}, // four cells off: attacks from shortbow range (TestSkeletonAttacksFromRange)
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(spawned.Formed, "the skeleton's driven turn is this test's whole point")
+	// Four cells off: attacks from shortbow range (TestSkeletonAttacksFromRange).
+	spawned := launchScene(s.T(), mgr, tombWith(12, 6, skeletonAt("skel-1", 4, 0)))
+	s.Require().NotEmpty(spawned.Formed, "the skeleton's driven turn is this test's whole point")
 
 	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter", DeclarationID: currentEndTurnID(s.T(), mgr, "sess", "fighter")})
 	s.Require().NoError(err, "the skeleton's whole turn — strike, end — drives inside this one call")
@@ -1068,7 +920,7 @@ func requireNeverContainsIntentPosition(t *testing.T, intents []session.TurnInte
 
 func persistedMonsterPosition(t *testing.T, repo *fakeEncounters, id string) spatial.Position {
 	t.Helper()
-	data, err := repo.GetEncounter(context.Background(), "world")
+	data, err := repo.GetEncounter(context.Background(), "sess")
 	require.NoError(t, err)
 	for _, member := range data.Members {
 		if string(member.ID) != id {
@@ -1085,7 +937,7 @@ func requireHeldKnownStoredLocation(
 	t *testing.T, repo *fakeEncounters, observer, subject string, want spatial.Position,
 ) {
 	t.Helper()
-	data, err := repo.GetEncounter(context.Background(), "world")
+	data, err := repo.GetEncounter(context.Background(), "sess")
 	require.NoError(t, err)
 	holding, ok := data.Perception.Intel.Holdings[core.EntityID("member|"+observer)][intel.Subject("member|"+subject)]
 	require.True(t, ok, "persisted %s testimony for %s must exist", observer, subject)
@@ -1098,7 +950,7 @@ func requireHeldKnownStoredLocation(
 
 func persistedKnownLocation(t *testing.T, repo *fakeEncounters, observer, subject string) spatial.Position {
 	t.Helper()
-	data, err := repo.GetEncounter(context.Background(), "world")
+	data, err := repo.GetEncounter(context.Background(), "sess")
 	require.NoError(t, err)
 	holding, ok := data.Perception.Intel.Holdings[core.EntityID("member|"+observer)][intel.Subject("member|"+subject)]
 	require.True(t, ok, "persisted %s testimony for %s must exist", observer, subject)
@@ -1109,8 +961,7 @@ func persistedKnownLocation(t *testing.T, repo *fakeEncounters, observer, subjec
 	return location.Position
 }
 
-func doubleDoorWorld(t *testing.T, withDavid bool) *encounter.EncounterData {
-	t.Helper()
+func doubleDoorWorld(withDavid bool) scene {
 	walls := append(hexSeamWallsFrom(20, 0, 5, 1), hexSeamWallsFrom(22, 0, 5, -1)...)
 	filtered := walls[:0]
 	from, to := spatial.Position{X: 21, Y: 1}, spatial.Position{X: 22, Y: 0}
@@ -1131,7 +982,8 @@ func doubleDoorWorld(t *testing.T, withDavid bool) *encounter.EncounterData {
 			BlocksMovement: true, BlocksLineOfSight: true,
 		}})
 	}
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+
+	return scene{
 		Field: encounter.FieldInput{
 			Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{
@@ -1145,25 +997,8 @@ func doubleDoorWorld(t *testing.T, withDavid bool) *encounter.EncounterData {
 				{ID: "door-b", Edges: []encounter.DoorEdge{{From: hexCell(21, 1), To: hexCell(22, 0)}}, State: encounter.DoorIsOpen()},
 			},
 		},
-		Endings:   []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Standing:   encEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	require.NoError(t, err)
-	data := enc.ToData()
-	return &data
+		Endings: []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
+	}
 }
 
 func doubleDoorFixture(t *testing.T, withDavid bool) (*session.Manager, *fakeSessions, *fakeEncounters, *recordingBehavior) {
@@ -1180,10 +1015,14 @@ func doubleDoorFixture(t *testing.T, withDavid bool) (*session.Manager, *fakeSes
 	})
 	require.NoError(t, err)
 	ctx := context.Background()
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: doubleDoorWorld(t, withDavid)})
-	require.NoError(t, err)
-	_, err = mgr.Join(ctx, &session.JoinInput{Session: "sess", Member: "billy", Position: hexCell(21, 1)})
-	require.NoError(t, err)
+	sc := doubleDoorWorld(withDavid)
+	sc.Party = []sceneSeat{seatAt("billy", 21, 1)}
+	if withDavid {
+		sc.Party = append(sc.Party, seatAt("david", 2, 3))
+	}
+	sc.Monsters = []dungeonspec.MonsterPlacement{monsterAt("goblin", refs.Monsters.Goblin().String(), 0, 1)}
+	spawned := launchScene(t, mgr, sc)
+	require.NotEmpty(t, spawned.Formed, "the open first door must make Billy's carpet sight start a fight")
 	// Doors answers as one member now (rpg-toolkit#1375), so the fixture's
 	// sanity read happens through Billy once he is seated — nothing here is
 	// concealed, so his answer IS the whole truth.
@@ -1193,15 +1032,6 @@ func doubleDoorFixture(t *testing.T, withDavid bool) (*session.Manager, *fakeSes
 		{ID: "door-a", State: "open"},
 		{ID: "door-b", State: "open"},
 	}, doors.Doors, "the scene must contain two real open session doors")
-	if withDavid {
-		_, err = mgr.Join(ctx, &session.JoinInput{Session: "sess", Member: "david", Position: hexCell(2, 3)})
-		require.NoError(t, err)
-	}
-	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "goblin", Ref: refs.Monsters.Goblin().String(), Position: hexCell(0, 1),
-	})
-	require.NoError(t, err)
-	require.NotNil(t, spawned.Formed, "the open first door must make Billy's carpet sight start a fight")
 	return mgr, sessions, encounters, recorder
 }
 
@@ -1212,7 +1042,7 @@ func TestSessionDoubleDoorGhostPursuit(t *testing.T) {
 	carpet := hexCell(21, 1)
 	hiddenRightCell := hexCell(23, 1)
 
-	// Spawn's real sight refresh persists the first current testimony at the
+	// Launch's real sight refresh persists the first current testimony at the
 	// carpet. Read that repository copy before any driven turn so the proof
 	// does not confuse the driver's later stale-memory view with first sight.
 	require.Equal(t, firstSeen, persistedKnownLocation(t, repo, "goblin", "billy"))

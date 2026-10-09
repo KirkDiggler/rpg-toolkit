@@ -7,15 +7,15 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
+
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
-	"github.com/stretchr/testify/suite"
 )
 
 // EquipSuite covers rpg-project#542 slice 4's equip done-when: the seat
@@ -56,9 +56,23 @@ func withHitDice(data *character.Data, n int) *character.Data {
 	return data
 }
 
-// start wires a manager over world with alice and bob as quickFighters. When
-// seated, both characters are seated in "sess".
-func (s *EquipSuite) start(world *encounter.EncounterData, seated bool, dice session.Roller) {
+// start wires a manager over world with alice and bob as quickFighters and
+// launches it. The launch seats both in "sess"; an unseated scene takes the
+// seats back out, so the characters stand in the run with no seat naming it.
+func (s *EquipSuite) start(world scene, seated bool, dice session.Roller) {
+	s.open(dice)
+	launchScene(s.T(), s.mgr, world)
+	s.settle(seated)
+}
+
+// startDuel is start over the duel on an authored turn clock, alice active.
+func (s *EquipSuite) startDuel(seated bool, dice session.Roller) {
+	s.open(dice)
+	launchDuel(s.T(), s.mgr, s.encounters)
+	s.settle(seated)
+}
+
+func (s *EquipSuite) open(dice session.Roller) {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(quickFighter("alice"), quickFighter("bob"))
 	s.seats = newFakeSeats()
@@ -69,13 +83,15 @@ func (s *EquipSuite) start(world *encounter.EncounterData, seated bool, dice ses
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: world,
-	})
-	s.Require().NoError(err)
+}
+
+func (s *EquipSuite) settle(seated bool) {
 	if seated {
 		s.seat("alice", "sess")
 		s.seat("bob", "sess")
+	} else {
+		delete(s.seats.byID, "alice")
+		delete(s.seats.byID, "bob")
 	}
 	s.stream.published = nil
 }
@@ -105,7 +121,7 @@ func (s *EquipSuite) equipBeatsTo(recipient string) []session.EquipmentChangedBo
 }
 
 func (s *EquipSuite) TestAnUnseatedEquipCostsNothingAndTellsNoBeat() {
-	s.start(freeRoamDuelWorld(s.T()), false, testDice{})
+	s.start(freeRoamDuelWorld(), false, testDice{})
 	worldSaves := s.encounters.saves
 
 	out, err := s.mgr.Equip(context.Background(), &session.EquipInput{
@@ -124,9 +140,10 @@ func (s *EquipSuite) TestAnUnseatedEquipCostsNothingAndTellsNoBeat() {
 }
 
 func (s *EquipSuite) TestASeatedFreeRoamEquipCostsNothingTellsOneBeatAndRechecksSight() {
-	s.start(freeRoamDuelWorld(s.T()), true, testDice{})
+	s.start(freeRoamDuelWorld(), true, testDice{})
 	before := s.stored("alice").ActionEconomy
-	s.Nil(s.handsBobSees(), "the authored world's snapshot observed no hands yet")
+	s.Equal(&session.SeenEquipment{MainHand: string(weapons.Longsword)}, s.handsBobSees(),
+		"the launch's one look already observed the longsword in alice's hand")
 
 	out, err := s.mgr.Unequip(context.Background(), &session.UnequipInput{
 		Character: "alice", Slot: string(character.SlotMainHand),
@@ -138,7 +155,7 @@ func (s *EquipSuite) TestASeatedFreeRoamEquipCostsNothingTellsOneBeatAndRechecks
 	s.Equal(before, s.stored("alice").ActionEconomy, "free roam charges nothing")
 	s.Len(out.Seqs, 1, "one item stowed, one beat")
 	s.Contains(out.Saved.Written, "character:alice")
-	s.Contains(out.Saved.Written, "encounter:world")
+	s.Contains(out.Saved.Written, "encounter:sess")
 
 	toBob := s.equipBeatsTo("bob")
 	s.Require().Len(toBob, 1, "the watcher hears the stow")
@@ -171,7 +188,7 @@ func (s *EquipSuite) handsBobSees() *session.SeenEquipment {
 }
 
 func (s *EquipSuite) TestASwapTellsTheStowBeforeTheDraw() {
-	s.start(freeRoamDuelWorld(s.T()), true, testDice{})
+	s.start(freeRoamDuelWorld(), true, testDice{})
 
 	out, err := s.mgr.Equip(context.Background(), &session.EquipInput{
 		Character: "alice", Slot: string(character.SlotMainHand), Item: string(weapons.Dagger),
@@ -187,7 +204,7 @@ func (s *EquipSuite) TestASwapTellsTheStowBeforeTheDraw() {
 }
 
 func (s *EquipSuite) TestAnInFightEquipOffTurnRefusesAndWritesNothing() {
-	s.start(duelWorld(s.T()), true, testDice{})
+	s.startDuel(true, testDice{})
 	charSaves, worldSaves := s.characters.saves, s.encounters.saves
 
 	_, err := s.mgr.Unequip(context.Background(), &session.UnequipInput{
@@ -202,7 +219,7 @@ func (s *EquipSuite) TestAnInFightEquipOffTurnRefusesAndWritesNothing() {
 }
 
 func (s *EquipSuite) TestAnInFightStowWithTheActionSpentRefusesAndWritesNothing() {
-	s.start(duelWorld(s.T()), true, &sequenceDice{rolls: []int{15, 5}})
+	s.startDuel(true, &sequenceDice{rolls: []int{15, 5}})
 	_, err := s.mgr.Attack(context.Background(), &session.AttackInput{
 		Session: "sess", Attacker: "alice", Target: "bob",
 		DeclarationID: currentAttackID(s.T(), s.mgr, "sess", "alice"),
@@ -223,7 +240,7 @@ func (s *EquipSuite) TestAnInFightStowWithTheActionSpentRefusesAndWritesNothing(
 }
 
 func (s *EquipSuite) TestAnInFightDrawOnTurnPaysTheInteractionAndTellsTheBeat() {
-	s.start(duelWorld(s.T()), true, testDice{})
+	s.startDuel(true, testDice{})
 
 	out, err := s.mgr.Equip(context.Background(), &session.EquipInput{
 		Character: "alice", Slot: string(character.SlotOffHand), Item: string(weapons.Dagger),
@@ -252,7 +269,7 @@ func (s *EquipSuite) TestAnInFightDrawOnTurnPaysTheInteractionAndTellsTheBeat() 
 }
 
 func (s *EquipSuite) TestBodyArmourInAFightRefusesAndWritesNothing() {
-	s.start(duelWorld(s.T()), true, testDice{})
+	s.startDuel(true, testDice{})
 	charSaves := s.characters.saves
 
 	_, err := s.mgr.Equip(context.Background(), &session.EquipInput{
@@ -263,7 +280,7 @@ func (s *EquipSuite) TestBodyArmourInAFightRefusesAndWritesNothing() {
 }
 
 func (s *EquipSuite) TestADownedMemberInAFightRefusesAndWritesNothing() {
-	s.start(duelWorld(s.T()), true, testDice{})
+	s.startDuel(true, testDice{})
 	alice := s.stored("alice")
 	alice.HitPoints = 0
 	s.Require().NoError(s.characters.SaveCharacter(context.Background(), alice))
@@ -277,7 +294,7 @@ func (s *EquipSuite) TestADownedMemberInAFightRefusesAndWritesNothing() {
 }
 
 func (s *EquipSuite) TestAnItemTheInventoryDoesNotHoldIsABadEquip() {
-	s.start(freeRoamDuelWorld(s.T()), true, testDice{})
+	s.start(freeRoamDuelWorld(), true, testDice{})
 	charSaves := s.characters.saves
 
 	_, err := s.mgr.Equip(context.Background(), &session.EquipInput{
@@ -289,7 +306,7 @@ func (s *EquipSuite) TestAnItemTheInventoryDoesNotHoldIsABadEquip() {
 }
 
 func (s *EquipSuite) TestASeatNamingARunThatDoesNotHoldTheCharacterRefuses() {
-	s.start(freeRoamDuelWorld(s.T()), false, testDice{})
+	s.start(freeRoamDuelWorld(), false, testDice{})
 	s.characters.byID["carol"] = quickFighter("carol")
 	s.seat("carol", "sess")
 

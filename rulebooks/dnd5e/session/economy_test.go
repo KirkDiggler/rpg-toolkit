@@ -12,10 +12,10 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // EconomySuite is what rpg-toolkit#1097 bought: a swing that costs something.
@@ -88,61 +88,38 @@ func aFight(
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	characters := newFakeCharacters(alice)
 
-	// initiativeRolls is one die per member of the bubble the spawn forms.
+	// initiativeRolls is one die per member of the bubble the launch forms.
 	const initiativeRolls = 2
 	scripted := append(make([]int, initiativeRolls), rolls...)
+	roller := &sequenceDice{rolls: scripted}
 
 	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
-		Dice: &sequenceDice{rolls: scripted}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
+		Dice: roller, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
 		Characters: characters, Events: session.DiscardEvents{},
 	})
 	if err != nil {
 		t.Fatalf("building manager: %v", err)
 	}
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
-		Members: []encounter.MemberInput{
-			{ID: encounter.MemberID(alice.ID), Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-		},
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Standing:   encEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
+	// The skeleton stands next to alice in plain sight, so the launch forms
+	// the fight.
+	in := sceneInput(scene{
+		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
+		Party:    []sceneSeat{seatAt(alice.ID, 1, 1)},
+		Monsters: []dungeonspec.MonsterPlacement{monsterAt("skeleton", refs.Monsters.Skeleton().String(), 2, 1)},
 	})
-	if err != nil {
-		t.Fatalf("building the hall: %v", err)
-	}
-	data := enc.ToData()
 
 	ctx := context.Background()
-	if _, err := mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: &data,
-	}); err != nil {
-		t.Fatalf("starting the session: %v", err)
-	}
-
-	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skeleton", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 2, Y: 1},
-	})
+	launched, err := mgr.Launch(ctx, in)
 	if err != nil {
-		t.Fatalf("spawning the skeleton: %v", err)
+		t.Fatalf("launching the scene: %v", err)
 	}
-	if spawned.Formed == nil {
-		t.Fatalf("arriving in plain sight of %s must start a fight", alice.ID)
+	if len(launched.Formed) == 0 {
+		t.Fatalf("standing in plain sight of %s must start a fight", alice.ID)
 	}
+	// The swings get exactly the dice the caller scripted, whatever the
+	// launch's initiative drew.
+	roller.next = initiativeRolls
 
 	turn, err := mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: alice.ID})
 	if err != nil {

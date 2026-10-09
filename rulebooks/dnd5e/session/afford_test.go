@@ -11,6 +11,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -43,6 +44,33 @@ func (s *AffordSuite) fightScene(level int, rolls ...int) {
 	setLevel(alice, level)
 
 	s.mgr, s.sessions, s.encounters, s.characters = aFight(s.T(), alice, rolls)
+}
+
+// twoSkeletonFight is aFight's own scene with a second skeleton standing
+// adjacent to alice from the start: the launch places both, and the one fight
+// that forms holds all three, so the launch rolls one initiative die each.
+func (s *AffordSuite) twoSkeletonFight() {
+	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
+	s.characters = newFakeCharacters(armedFighter("alice"))
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+		Dice: &sequenceDice{rolls: []int{0, 0, 0}}, TurnDriver: session.Pass{},
+		Sessions: s.sessions, Encounters: s.encounters,
+		Characters: s.characters, Events: session.DiscardEvents{},
+	})
+	s.Require().NoError(err)
+	s.mgr = mgr
+
+	skeleton := refs.Monsters.Skeleton().String()
+	out := launchScene(s.T(), mgr, scene{
+		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
+		Party: []sceneSeat{seatAt("alice", 1, 1)},
+		Monsters: []dungeonspec.MonsterPlacement{
+			monsterAt("skeleton", skeleton, 2, 1),
+			// adjacent to alice, same as "skeleton": axial (1,2).
+			{Ref: skeleton, ID: "skeleton-2", MemberID: "skeleton-2", At: authoredOf(spatial.Position{X: 1, Y: 2})},
+		},
+	})
+	s.Require().NotEmpty(out.Formed, "two skeletons in plain sight of alice start a fight")
 }
 
 func (s *AffordSuite) afford() *session.AffordOutput {
@@ -268,10 +296,7 @@ func (s *AffordSuite) TestFreeRoamAffordsTheSocialVerbsAndNothingElse() {
 	})
 	s.Require().NoError(err)
 
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: offsetWorld(s.T()),
-	})
-	s.Require().NoError(err)
+	launchScene(s.T(), mgr, offsetWorld())
 
 	out, err := mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
@@ -328,13 +353,7 @@ func (s *AffordSuite) TestAffordSavesNothing() {
 // declaration. Each candidate carries the SAME slot the economy decided; only
 // the member varies.
 func (s *AffordSuite) TestAttackDeclarationCarriesEveryCandidateInReach() {
-	s.fightScene(1, 15, 5, 1, 1)
-
-	_, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
-		Session: "sess", ID: "skeleton-2", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 1, Y: 2}, // adjacent to alice, same as "skeleton"
-	})
-	s.Require().NoError(err)
+	s.twoSkeletonFight()
 
 	attack := s.attackDecl(s.afford())
 	s.ElementsMatch([]string{"skeleton", "skeleton-2"}, candidateIDs(attack.Candidates))
@@ -419,42 +438,16 @@ func (s *AffordSuite) TestNotYourTurnIsAnnouncedByAfford() {
 	})
 	s.Require().NoError(err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	sc := scene{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 5}},
-		},
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Standing:   encEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	s.Require().NoError(err)
-	data := enc.ToData()
+		Party:    []sceneSeat{seatAt("alice", 1, 1), {ID: "bob", At: authoredOf(spatial.Position{X: 5, Y: 5})}},
+		Monsters: []dungeonspec.MonsterPlacement{monsterAt("skel-1", refs.Monsters.Skeleton().String(), 2, 1)},
+	}
 
 	ctx := context.Background()
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: &data})
-	s.Require().NoError(err)
-
-	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 2, Y: 1},
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(spawned.Formed)
+	launched := launchScene(s.T(), mgr, sc)
+	s.Require().NotEmpty(launched.Formed)
 
 	out, err := mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "bob"})
 	s.Require().NoError(err)

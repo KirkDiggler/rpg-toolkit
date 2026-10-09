@@ -50,7 +50,6 @@ declaration, and `gorelease` gates every release.
 | `write.go` | `Join`, `Exit`, `End`, and the save/publish seam |
 | `move.go` | `Move` (walking a path) and `Traverse` |
 | `launch.go` | `Launch` — the whole board, the party seated and rested, one load-act-save |
-| `start.go` | `StartSession` (retiring as a host verb; Launch replaces it) |
 | `seats.go` | The seat: which run holds a character, and the guard a character verb acts under |
 | `store.go` | One sheet store per verb: the only caller of the character repository |
 | `equip.go` | `Equip` / `Unequip` along the path the seat decides |

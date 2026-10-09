@@ -40,7 +40,7 @@ func TestAutomaticDiscoverySDKSuite(t *testing.T) { suite.Run(t, new(AutomaticDi
 
 const runSecret = "same-dungeon/secret"
 
-func discoveryRunWorld(t fataler, dc int) *encounter.EncounterData {
+func discoveryRunWorld(dc int) scene {
 	field := encounter.FieldInput{
 		Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 6, 6)},
 		Concealments: []encounter.ConcealmentInput{{
@@ -48,16 +48,11 @@ func discoveryRunWorld(t fataler, dc int) *encounter.EncounterData {
 			Cells: []spatial.Position{{X: 3, Y: 1}},
 		}},
 	}
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Field:        field,
-		Endings:      []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
-		Capabilities: encounter.RefusingCapabilities(),
-	})
-	if err != nil {
-		t.Fatalf("discovery run fixture: %v", err)
+
+	return scene{
+		Field:   field,
+		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
 	}
-	data := enc.ToData()
-	return &data
 }
 
 func (s *AutomaticDiscoverySDKSuite) checkCount(mgr *session.Manager, run string) int {
@@ -87,10 +82,10 @@ func (s *AutomaticDiscoverySDKSuite) TestLegacyCharacterChecksCannotSeedANewEnco
 		PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{},
 	})
 	s.Require().NoError(err)
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{Session: "fresh", Encounter: "fresh", World: discoveryRunWorld(s.T(), 99)})
-	s.Require().NoError(err)
-	_, err = mgr.Join(ctx, &session.JoinInput{Session: "fresh", Member: "alice", Position: spatial.Position{X: 0, Y: 1}})
-	s.Require().NoError(err)
+	sc := discoveryRunWorld(99)
+	sc.Session = "fresh"
+	sc.Party = []sceneSeat{seatAt("alice", 0, 1)}
+	launchScene(s.T(), mgr, sc)
 	stored, err := encounters.GetEncounter(ctx, "fresh")
 	s.Require().NoError(err)
 	s.Empty(stored.Discovery["alice"].Attempts)
@@ -118,20 +113,23 @@ func (s *AutomaticDiscoverySDKSuite) TestDiscoveryBelongsToTheEncounterNotTheCha
 				PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{}}
 			mgr, err := session.NewManager(cfg)
 			s.Require().NoError(err)
-			world := discoveryRunWorld(s.T(), tc.dc)
-			start := func(run string) {
-				_, startErr := mgr.StartSession(ctx, &session.StartSessionInput{Session: run, Encounter: run, Dungeon: "same-dungeon", World: world})
+			world := discoveryRunWorld(tc.dc)
+			start := func(run string, party ...sceneSeat) {
+				sc := world
+				sc.Session = run
+				sc.Party = append([]sceneSeat{seatAt("alice", 0, 1)}, party...)
+				in := sceneInput(sc)
+				in.DungeonKey = "same-dungeon"
+				_, startErr := mgr.Launch(ctx, in)
 				s.Require().NoError(startErr)
-				_, joinErr := mgr.Join(ctx, &session.JoinInput{Session: run, Member: "alice", Position: spatial.Position{X: 0, Y: 1}})
-				s.Require().NoError(joinErr)
 			}
 			approach := func(run string) {
 				_, moveErr := mgr.Move(ctx, &session.MoveInput{Session: run, Member: "alice", Path: []spatial.Position{{X: 1, Y: 1}, {X: 2, Y: 1}}})
 				s.Require().NoError(moveErr)
 			}
-			start("first")
-			_, err = mgr.Join(ctx, &session.JoinInput{Session: "first", Member: "bob", Position: spatial.Position{X: 0, Y: 4}})
-			s.Require().NoError(err, "a second party member keeps the encounter open during exit/rejoin")
+			// A second party member (bob, at axial (0,4)) keeps the encounter
+			// open during exit/rejoin.
+			start("first", seatAt("bob", 2, 4))
 			_, err = mgr.SetDiscoverySharing(ctx, &session.SetDiscoverySharingInput{Session: "first", Member: "alice", Sharing: false})
 			s.Require().NoError(err)
 			approach("first")

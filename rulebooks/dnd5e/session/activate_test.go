@@ -8,14 +8,16 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
-	"github.com/stretchr/testify/require"
 )
 
 // activationSelector asks Afford for the current offer for one ability and
@@ -156,6 +158,7 @@ func TestActivatingWithoutASelectorIsRefused(t *testing.T) {
 func TestAnUnavailableAbilityCannotBeActivated(t *testing.T) {
 	alice := ragingBarbarian("alice", 0)
 	mgr, _, _, chars := aFight(t, alice, []int{1, 1})
+	spendRage(chars, "alice")
 
 	out, err := mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "alice"})
 	require.NoError(t, err)
@@ -211,47 +214,19 @@ func aTwoPlayerFightAt(
 	})
 	require.NoError(t, err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	sc := scene{
 		Field: encounter.FieldInput{
 			Canvas:  pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)},
 		},
-		Members: []encounter.MemberInput{
-			{ID: encounter.MemberID(alice.ID), Kind: encounter.KindPlayer,
-				Position: aliceAt},
-			{ID: encounter.MemberID(bob.ID), Kind: encounter.KindPlayer,
-				Position: bobAt},
+		// The seats are given as axial cells, the frame the callers' verbs
+		// speak; a scene is written in authored offsets.
+		Party: []sceneSeat{{ID: alice.ID, At: authoredOf(aliceAt)}, {ID: bob.ID, At: authoredOf(bobAt)}},
+		Monsters: []dungeonspec.MonsterPlacement{
+			monsterAt("skel-1", refs.Monsters.Skeleton().String(), 2, 1),
 		},
-		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention: encounter.RetentionUnbounded,
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Standing:   encEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	require.NoError(t, err)
-	data := enc.ToData()
-
-	ctx := context.Background()
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: &data,
-	})
-	require.NoError(t, err)
-
-	_, err = mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 2, Y: 1},
-	})
-	require.NoError(t, err)
+	}
+	launchScene(t, mgr, sc)
 
 	return mgr, chars
 }

@@ -98,27 +98,25 @@ func (s *CastPauseSuite) scene(sheets []*character.Data, at map[string]spatial.P
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: tombRoom(12, 6),
-	})
-	s.Require().NoError(err)
-
+	// The cells are axial, the frame the verbs speak; a scene is authored.
+	sc := tombRoom(12, 6)
 	for _, sheet := range sheets {
 		cell, placed := at[sheet.ID]
 		s.Require().True(placed, "the scene gave %q no cell", sheet.ID)
-		_, jerr := mgr.Join(ctx, &session.JoinInput{Session: "sess", Member: sheet.ID, Position: cell})
-		s.Require().NoError(jerr)
-		// AFTER Join, never before: Join writes the joined member's sheet from
-		// a freshly loaded character. A reactor with no reaction in hand is
-		// never asked, which would make every scene here pass vacuously.
+		sc.Party = append(sc.Party, sceneSeat{ID: sheet.ID, At: authoredOf(cell)})
+	}
+	skeleton := authoredOf(skeletonAt)
+	sc.Monsters = append(sc.Monsters,
+		monsterAt("skeleton", refs.Monsters.Skeleton().String(), int(skeleton.X), int(skeleton.Y)))
+	launched := launchScene(s.T(), mgr, sc)
+	s.Require().NotEmpty(launched.Formed, "standing in plain sight must start a fight")
+
+	for _, sheet := range sheets {
+		// AFTER the launch, never before: Launch writes each seated member's
+		// rested sheet. A reactor with no reaction in hand is never asked,
+		// which would make every scene here pass vacuously.
 		s.inFight(sheet.ID)
 	}
-
-	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
-		Session: "sess", ID: "skeleton", Ref: refs.Monsters.Skeleton().String(), Position: skeletonAt,
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(spawned.Formed, "arriving in plain sight must start a fight")
 
 	turn, err := mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "bard"})
 	s.Require().NoError(err)

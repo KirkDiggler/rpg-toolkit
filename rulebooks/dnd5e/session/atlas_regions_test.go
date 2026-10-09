@@ -5,7 +5,6 @@ package session_test
 
 import (
 	"context"
-	"fmt"
 	"math"
 	"testing"
 
@@ -58,7 +57,7 @@ var tombRegions = []struct {
 }
 
 // tomb builds the three-region tomb under the given orientation.
-func tomb(o encounter.Orientation) *encounter.EncounterData {
+func tomb(o encounter.Orientation) scene {
 	regions := make([]encounter.RegionInput, 0, len(tombRegions))
 	for _, r := range tombRegions {
 		regions = append(regions, encounter.RegionInput{
@@ -66,40 +65,20 @@ func tomb(o encounter.Orientation) *encounter.EncounterData {
 			Lighting: &encounter.Lighting{Intensity: r.intensity},
 		})
 	}
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+
+	return scene{
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: o},
 			Regions: regions,
 		},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-		},
+		Party:   []sceneSeat{seatAt("alice", 1, 1)},
 		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
-		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Standing:   encEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	if err != nil {
-		panic(fmt.Sprintf("building the tomb: %v", err))
 	}
-	data := enc.ToData()
-	return &data
 }
 
-func (s *AtlasRegionsSuite) started(world *encounter.EncounterData) *session.Atlas {
+func (s *AtlasRegionsSuite) started(world scene) *session.Atlas {
 	ctx := context.Background()
-	_, err := s.mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: world})
-	s.Require().NoError(err)
+	launchScene(s.T(), s.mgr, world)
 	atlas, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 	return atlas
@@ -235,7 +214,7 @@ func (s *AtlasRegionsSuite) TestARegionCellDrawsWhereItWasAuthored() {
 func (s *AtlasRegionsSuite) TestAtlasOfIsTheSameMapAStartedSessionAnswers() {
 	world := tomb(encounter.HexesArePointyTop())
 
-	preview, err := s.mgr.AtlasOf(context.Background(), &session.AtlasOfInput{World: world})
+	preview, err := s.mgr.AtlasOf(context.Background(), &session.AtlasOfInput{Dungeon: sceneInput(world).Dungeon})
 	s.Require().NoError(err)
 
 	played := s.started(world)
@@ -243,26 +222,27 @@ func (s *AtlasRegionsSuite) TestAtlasOfIsTheSameMapAStartedSessionAnswers() {
 	s.Len(preview.Regions, 3, "and it is not trivially equal by being empty")
 }
 
-// TestAtlasOfRefusesWhatStartSessionRefuses: the two share a load, so a world
-// that cannot be previewed is a world that cannot be started, in the same
-// vocabulary.
-func (s *AtlasRegionsSuite) TestAtlasOfRefusesWhatStartSessionRefuses() {
+// TestAtlasOfRefusesWhatLaunchRefuses: the two share a world builder, so a
+// dungeon that cannot be previewed is a dungeon that cannot be launched, in
+// the same vocabulary.
+func (s *AtlasRegionsSuite) TestAtlasOfRefusesWhatLaunchRefuses() {
 	ctx := context.Background()
 
 	_, err := s.mgr.AtlasOf(ctx, nil)
 	s.ErrorIs(err, session.ErrNilInput)
 
 	_, err = s.mgr.AtlasOf(ctx, &session.AtlasOfInput{})
-	s.ErrorIs(err, session.ErrInvalidWorld, "a nil world is not a map")
+	s.ErrorIs(err, session.ErrInvalidWorld, "a nil dungeon is not a map")
 
+	// A field with no orientation is a world the composition will not build.
 	broken := tomb(encounter.HexesArePointyTop())
-	broken.Field.Canvas.Orientation = "sideways"
-	_, err = s.mgr.AtlasOf(ctx, &session.AtlasOfInput{World: broken})
+	broken.Field.Canvas.Orientation = nil
+	_, err = s.mgr.AtlasOf(ctx, &session.AtlasOfInput{Dungeon: sceneInput(broken).Dungeon})
 	s.ErrorIs(err, session.ErrInvalidWorld, "a world that will not load is refused")
 	s.NotErrorIs(err, encounter.ErrNoField, "in this package's vocabulary, not the composition's")
 
-	_, err = s.mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: broken})
-	s.ErrorIs(err, session.ErrInvalidWorld, "and StartSession refuses the same world the same way")
+	_, err = s.mgr.Launch(ctx, sceneInput(broken))
+	s.ErrorIs(err, session.ErrInvalidWorld, "and Launch refuses the same dungeon the same way")
 }
 
 // untouchableStores is every repository a Manager is wired with, each
@@ -317,7 +297,9 @@ func (s *AtlasRegionsSuite) TestAtlasOfTouchesNoStore() {
 	})
 	s.Require().NoError(err)
 
-	atlas, err := mgr.AtlasOf(context.Background(), &session.AtlasOfInput{World: tomb(encounter.HexesArePointyTop())})
+	atlas, err := mgr.AtlasOf(context.Background(), &session.AtlasOfInput{
+		Dungeon: sceneInput(tomb(encounter.HexesArePointyTop())).Dungeon,
+	})
 	s.Require().NoError(err)
 	s.Len(atlas.Regions, 3)
 }
