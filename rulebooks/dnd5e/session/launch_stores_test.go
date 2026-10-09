@@ -12,8 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 )
 
-// LaunchStoresSuite carries what the deleted StartSession suite pinned about
-// the stores a run is born into, for the verb that now does the birthing:
+// LaunchStoresSuite pins what the stores a run is born into must see:
 // rejection before any write, an id in use, a broken store that is neither
 // absent nor present, and the write order whose failure modes are chosen.
 type LaunchStoresSuite struct {

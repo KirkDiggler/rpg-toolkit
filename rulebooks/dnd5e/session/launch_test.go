@@ -140,6 +140,22 @@ func (s *LaunchSuite) TestAnIDClaimedTwiceWritesNothing() {
 	s.assertNothingWritten()
 }
 
+func (s *LaunchSuite) TestTwoMonstersSharingAMemberIDWriteNothing() {
+	dungeon := s.camp()
+	s.Require().GreaterOrEqual(len(dungeon.Monsters), 2)
+	dungeon.Monsters[1].MemberID = dungeon.Monsters[0].MemberID
+
+	_, err := s.launch(dungeon, "alice", "bob")
+	s.Require().ErrorIs(err, session.ErrDuplicateMember)
+	s.assertNothingWritten()
+}
+
+func (s *LaunchSuite) TestTheSameCharacterSeatedTwiceWritesNothing() {
+	_, err := s.launch(s.camp(), "alice", "alice")
+	s.Require().ErrorIs(err, session.ErrDuplicateMember)
+	s.assertNothingWritten()
+}
+
 func (s *LaunchSuite) TestAnUnresolvableSheetWritesNothing() {
 	_, err := s.launch(s.camp(), "alice", "nobody")
 	s.Require().ErrorIs(err, session.ErrNoCharacter)

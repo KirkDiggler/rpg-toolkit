@@ -108,8 +108,8 @@ func (s *BothWaysSuite) yard(until encounter.Trigger) {
 			}},
 		},
 		Party: []sceneSeat{
-			{ID: "alice", At: authoredOf(spatial.Position{X: 1, Y: 1})},
-			{ID: "bob", At: authoredOf(spatial.Position{X: 1, Y: 3})},
+			{ID: "alice", At: spatial.Position{X: 1, Y: 1}},
+			{ID: "bob", At: spatial.Position{X: 1, Y: 3}},
 		},
 		Monsters: []dungeonspec.MonsterPlacement{
 			// The camp, civil, in plain sight of both players: it starts no
@@ -134,11 +134,10 @@ func (s *BothWaysSuite) yard(until encounter.Trigger) {
 	s.stream.published = nil
 }
 
-// bwPlacement is a monster of a faction on the axial cell the scene was
-// first written in.
-func bwPlacement(id, ref string, axial spatial.Position, faction string) dungeonspec.MonsterPlacement {
+// bwPlacement is a monster of a faction on an authored cell.
+func bwPlacement(id, ref string, at spatial.Position, faction string) dungeonspec.MonsterPlacement {
 	placement := monsterAt(id, ref, 0, 0)
-	placement.At = authoredOf(axial)
+	placement.At = at
 	placement.Faction = faction
 	return placement
 }

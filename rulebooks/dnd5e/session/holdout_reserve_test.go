@@ -145,6 +145,15 @@ func (s *HoldOutSessionSuite) TestASpawnWithAPredicateWaitsInReserveForEveryone(
 		for _, who := range []string{"alice", "bob"} {
 			s.Empty(s.arrivalsOn(who), "the reserve is silent to %s", who)
 		}
+		// Silent in every kind, not only arrivals: no event of any kind is
+		// addressed to a reinforcement or carries one's id (joined, sighted,
+		// arrived, or anything else).
+		for _, event := range s.stream.published {
+			for _, id := range campReinforcements {
+				s.NotEqual(id, event.Recipient, "nothing is delivered to %s", id)
+				s.NotContains(string(event.Payload), id, "no %s event names %s", event.Kind, id)
+			}
+		}
 	})
 	s.stream.published = nil
 
@@ -167,6 +176,8 @@ func (s *HoldOutSessionSuite) TestASpawnWithAPredicateWaitsInReserveForEveryone(
 		for i, r := range stored.Reserve {
 			s.Equal(encounter.MemberID(campReinforcements[i]), r.ID)
 			s.Equal(campFaction, r.Faction)
+			s.Equal(absolute(s.placement(campReinforcements[i]).At),
+				spatial.Position{X: r.Cell.X, Y: r.Cell.Y}, "the cell it will arrive at, not one it stands on")
 		}
 		// A step at the gate: a verb that loads the blob back and refreshes
 		// sight with the reserve seeded into the seams.
