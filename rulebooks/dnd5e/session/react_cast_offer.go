@@ -103,11 +103,11 @@ func (m *Manager) answerCastOffer(
 		return nil, fmt.Errorf("react: %w", translateResolution(err))
 	}
 
-	// Answered by the tail's landing, before it poses or continues
-	// ([answerCheckOffer]'s ordering): a failure to save leaves a session
-	// whose ledger and story disagree in the direction that fails closed, and
-	// a re-pose below opens its OWN new window rather than leaving this one
-	// both closed and open.
+	// Answered by the tail's landing, in the landing's order: the cast is
+	// recorded and its areas land, then this window is answered, then a
+	// re-pose opens its OWN new window (or the finished cast continues). A
+	// failure anywhere drops the scope, so neither the answer nor the record
+	// is ever saved without the other.
 	answered := &windowAnswer{Window: window, Choice: choice}
 
 	if out.Posed != nil {

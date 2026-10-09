@@ -282,7 +282,6 @@ func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOut
 	// the activation produced, matching Attack's save -> record -> commit path.
 	// If that consult fails, the mechanical sheet writes remain durable and are
 	// named by reportUnrecorded while this unsaved encounter scope is dropped.
-	// An activation's beat tells no concentration (R9).
 	result, err := m.land(ctx, scope, out, &landing{
 		Record: func(enc *encounter.Encounter, _ concentration) error {
 			_, err := enc.RecordActivation(&encounter.RecordActivationInput{
@@ -296,7 +295,6 @@ func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOut
 			})
 			return err
 		},
-		Untold: true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("activate: %w", err)
