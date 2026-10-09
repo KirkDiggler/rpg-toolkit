@@ -1154,8 +1154,9 @@ func TestResolveRefusesAWorldWithoutActors(t *testing.T) {
 		in.World = actionWorld(t, 2)
 		in.Participants = []Participant{{Monster: monsters.NewWolf("wolf").ToData()}}
 		_, err := Resolve(context.Background(), in)
-		require.NotErrorIs(t, err, encounter.ErrNoStriker)
-		require.NotErrorIs(t, err, ErrBadWorld)
+		// ErrNoSaver is the error the machine raises once the world has
+		// loaded and the participants attached, so it proves the load worked.
+		require.ErrorIs(t, err, ErrNoSaver)
 	})
 
 	t.Run("without Actors it refuses before any participant attaches", func(t *testing.T) {
