@@ -72,6 +72,52 @@ type SeatRepository interface {
 	SaveSeat(ctx context.Context, data *SeatData) error
 }
 
+// SeatInput names the character whose seat is asked for.
+type SeatInput struct {
+	// Character is the character to look up. Required.
+	Character string
+}
+
+// SeatOutput is the seat a character holds.
+type SeatOutput struct {
+	// Seat is the character's live seat. It is a copy: changing it changes
+	// nothing in the repository. Its Session is never empty.
+	Seat *SeatData
+}
+
+// Seat answers which run holds a character, so a caller outside the run can
+// read the fact the run keeps (rpg-project#548, "The seat is visible").
+//
+// The seat is a fact the character can read. Seat only reads: it never
+// creates a seat, never moves one and never clears one, and it takes no
+// guard, so it answers even while a verb is writing the seat. A caller that
+// needs the seat to hold still takes the guard it names.
+//
+// Seat answers [ErrNoSeat] whenever the character holds no live seat, whether
+// it was never seated or a run has cleared it. A successful answer always
+// names a non-empty session.
+//
+// Errors: [ErrNilInput] for a nil input, [ErrNoCharacter] for an empty
+// character, [ErrNoSeat] as above, [ErrBadRepository] for a repository that
+// reports success with no data or another character's seat, and any other
+// repository error wrapped.
+func (m *Manager) Seat(ctx context.Context, in *SeatInput) (*SeatOutput, error) {
+	if in == nil {
+		return nil, ErrNilInput
+	}
+	if in.Character == "" {
+		return nil, fmt.Errorf("seat: no character named: %w", ErrNoCharacter)
+	}
+	held, err := m.seatOf(ctx, in.Character)
+	if err != nil {
+		return nil, err
+	}
+	if held == "" {
+		return nil, fmt.Errorf("character %q: %w", in.Character, ErrNoSeat)
+	}
+	return &SeatOutput{Seat: &SeatData{Character: in.Character, Session: held}}, nil
+}
+
 // seatOf reads which session holds a character: its id, or empty when the
 // character is unseated (never seated, or cleared).
 //
