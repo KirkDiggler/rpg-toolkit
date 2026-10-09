@@ -52,12 +52,6 @@ func concealedWorld(t *testing.T) encounter.EncounterData {
 	t.Helper()
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{},
-		Sight:         everyoneSeesTheWholeMap{},
-		Equipment:     noHandsAreObserved{},
-		Sheets:        noSheetsAsked{},
-		CheckResolver: neverResolves{},
-		Witness:       neverWitnesses{},
 		Field: encounter.FieldInput{
 			Canvas: hexCanvas(),
 			Regions: []encounter.RegionInput{
@@ -73,6 +67,21 @@ func concealedWorld(t *testing.T) encounter.EncounterData {
 			{ID: heroID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Standing:      everyoneStanding{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			CheckResolver: neverResolves{},
+			Witness:       neverWitnesses{},
+			Actors: encounter.Actors{
+				Striker:   noAttacksExpected{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 
@@ -121,16 +130,21 @@ func TestTheConcealmentCapabilitiesAreCarriedAndNeverAsked(t *testing.T) {
 
 	probe := &worldProbe{}
 	out, err := Resolve(context.Background(), &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight:         everyoneSeesTheWholeMap{},
-		Equipment:     noHandsAreObserved{},
-		Sheets:        noSheetsAsked{},
-		Roller:        dice.NewRoller(),
-		CheckResolver: resolver,
-		Witness:       witness,
-		World:         concealedWorld(t),
-		Participants:  []Participant{{Character: probeSheet(heroID)}},
-		Machine:       probe,
+		World:        concealedWorld(t),
+		Participants: []Participant{{Character: probeSheet(heroID)}},
+		Machine:      probe,
+		Capabilities: encounter.Capabilities{
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Standing:      everyoneStanding{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Roller:        dice.NewRoller(),
+			CheckResolver: resolver,
+			Witness:       witness,
+			Actors:        Actors,
+		},
 	})
 
 	require.NoError(t, err, "the concealed world loads, which it cannot do without both capabilities")
@@ -154,14 +168,19 @@ func TestTheConcealmentCapabilitiesAreCarriedAndNeverAsked(t *testing.T) {
 func TestAConcealedWorldIsRefusedAtEncountersOwnDoor(t *testing.T) {
 	input := func(world encounter.EncounterData) *Input {
 		return &Input{
-			Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-			Sight:        everyoneSeesTheWholeMap{},
-			Equipment:    noHandsAreObserved{},
-			Sheets:       noSheetsAsked{},
-			Roller:       dice.NewRoller(),
 			World:        world,
 			Participants: []Participant{{Character: probeSheet(heroID)}},
 			Machine:      &worldProbe{},
+			Capabilities: encounter.Capabilities{
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Standing:   everyoneStanding{},
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  noHandsAreObserved{},
+				Sheets:     noSheetsAsked{},
+				Roller:     dice.NewRoller(),
+				Actors:     Actors,
+			},
 		}
 	}
 

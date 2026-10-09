@@ -137,10 +137,6 @@ func (s *ConcentrationTestSuite) strike(
 		[]Participant{{Character: hero}, {Monster: fixtures.wolfData()}}, extra...)
 
 	return resolveOn(s.ctx, &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		Equipment:    noHandsAreObserved{},
-		Sheets:       noSheetsAsked{},
 		World:        fixtures.world(),
 		Participants: participants,
 		Machine: NewStrike(&StrikeInput{
@@ -149,6 +145,16 @@ func (s *ConcentrationTestSuite) strike(
 			Definition: definition,
 			Roller:     roller,
 		}),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Roller:     dice.NewRoller(),
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors:     Actors,
+		},
 	}, newSurface(bus))
 }
 
@@ -503,16 +509,22 @@ func (s *ConcentrationTestSuite) resolveCast(
 	fixtures := s.fixtures()
 
 	return resolveOn(s.ctx, &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		Equipment: noHandsAreObserved{},
-		Sheets:    noSheetsAsked{},
-		World:     fixtures.world(),
+		World: fixtures.world(),
 		Participants: []Participant{
 			{Character: fixtures.saver(14)}, {Monster: fixtures.wolfData()}, {Character: bard},
 		},
 		Machine: machine,
 		Cost:    castCost(),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Roller:     dice.NewRoller(),
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors:     Actors,
+		},
 	}, newSurface(bus))
 }
 
@@ -637,12 +649,20 @@ func (s *ConcentrationTestSuite) TestBaneAllSaveRecastReplacesOnlyItsQualifiedOw
 	s.Require().NoError(err)
 
 	out, err := resolveOn(s.ctx, &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(), World: fixtures.world(),
-		Equipment:    noHandsAreObserved{},
-		Sheets:       noSheetsAsked{},
+		World:        fixtures.world(),
 		Participants: []Participant{{Character: target}, {Monster: unrelated}, {Character: caster}},
-		Machine:      machine, Cost: baneCost(),
+		Machine:      machine,
+		Cost:         baneCost(),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Roller:     dice.NewRoller(),
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors:     Actors,
+		},
 	}, newSurface(bus))
 	s.Require().NoError(err)
 	s.Equal([]string{
@@ -766,13 +786,19 @@ func (s *ConcentrationTestSuite) resolveBoundary(
 	s.Require().NoError(err)
 
 	out, err := resolveOn(s.ctx, &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		Equipment:    noHandsAreObserved{},
-		Sheets:       noSheetsAsked{},
 		World:        fixtures.world(),
 		Participants: []Participant{{Character: hero}, {Monster: fixtures.wolfData()}},
 		Machine:      machine,
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Roller:     dice.NewRoller(),
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors:     Actors,
+		},
 	}, newSurface(events.NewEventBus()))
 	s.Require().NoError(err)
 
@@ -847,11 +873,7 @@ func (s *ConcentrationTestSuite) TestTheLastChildEndingEndsTheSpell() {
 	fixtures := s.fixtures()
 
 	out, err := resolveOn(s.ctx, &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		Equipment: noHandsAreObserved{},
-		Sheets:    noSheetsAsked{},
-		World:     fixtures.world(),
+		World: fixtures.world(),
 		Participants: []Participant{
 			{Character: fixtures.saver(40, s.holding(heroID, wolfID)...)},
 			{Monster: fixtures.wolfData()},
@@ -866,6 +888,16 @@ func (s *ConcentrationTestSuite) TestTheLastChildEndingEndsTheSpell() {
 			// its job.
 			Roller: &sequenceRoller{pair: []int{straightRoll, straightRoll, 6}},
 		}),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Roller:     dice.NewRoller(),
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors:     Actors,
+		},
 	}, newSurface(events.NewEventBus()))
 	s.Require().NoError(err)
 
@@ -895,11 +927,7 @@ func (s *ConcentrationTestSuite) TestCastDamageReportsItselfAndRunsTheCheck() {
 	s.Require().NoError(err)
 
 	out, err := resolveOn(s.ctx, &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		Equipment: noHandsAreObserved{},
-		Sheets:    noSheetsAsked{},
-		World:     fixtures.world(),
+		World: fixtures.world(),
 		Participants: []Participant{
 			{Character: fixtures.saver(40, s.holding(heroID, wolfID)...)},
 			{Monster: fixtures.wolfData()},
@@ -907,6 +935,16 @@ func (s *ConcentrationTestSuite) TestCastDamageReportsItselfAndRunsTheCheck() {
 		},
 		Machine: machine,
 		Cost:    castCost(),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Roller:     dice.NewRoller(),
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors:     Actors,
+		},
 	}, newSurface(events.NewEventBus()))
 	s.Require().NoError(err)
 
@@ -953,11 +991,7 @@ func (s *ConcentrationTestSuite) TestCastDamageBreaksTheTargetsConcentration() {
 	s.Require().NoError(err)
 
 	out, err := resolveOn(s.ctx, &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		Equipment: noHandsAreObserved{},
-		Sheets:    noSheetsAsked{},
-		World:     fixtures.world(),
+		World: fixtures.world(),
 		Participants: []Participant{
 			{Character: fixtures.saver(40, s.holding(heroID, wolfID)...)},
 			{Monster: fixtures.wolfData()},
@@ -965,6 +999,16 @@ func (s *ConcentrationTestSuite) TestCastDamageBreaksTheTargetsConcentration() {
 		},
 		Machine: machine,
 		Cost:    castCost(),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Roller:     dice.NewRoller(),
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors:     Actors,
+		},
 	}, newSurface(events.NewEventBus()))
 	s.Require().NoError(err)
 

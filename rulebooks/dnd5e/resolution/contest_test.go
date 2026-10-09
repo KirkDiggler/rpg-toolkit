@@ -56,7 +56,7 @@ func (s *ContestTestSuite) wolfsKnockdown() *saves.SaveGate {
 }
 
 func (s *ContestTestSuite) world() encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -66,6 +66,19 @@ func (s *ContestTestSuite) world() encounter.EncounterData {
 			{ID: wolfID, Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors: encounter.Actors{
+				Striker:   noAttacksExpected{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -133,10 +146,20 @@ func (s *ContestTestSuite) contest(gate *saves.SaveGate, roller *scriptedRoller)
 }
 
 func (s *ContestTestSuite) resolve(hero *character.Data, machine Machine) *Output {
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{
 		World:        s.world(),
 		Participants: []Participant{{Character: hero}, {Monster: s.wolfData()}},
 		Machine:      machine,
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 	s.Require().NoError(err)
 
@@ -233,17 +256,37 @@ func (s *ContestTestSuite) TestRegistrationsDoNotDependOnInputOrder() {
 		return &scriptedRoller{single: straightRoll, pair: []int{straightRoll, straightRoll}}
 	}
 
-	forward, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	forward, err := Resolve(s.ctx, &Input{
 		World:        s.world(),
 		Participants: []Participant{{Character: s.hero(s.raging())}, {Monster: s.wolfData()}},
 		Machine:      s.contest(s.wolfsKnockdown(), roller()),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 	s.Require().NoError(err)
 
-	reversed, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	reversed, err := Resolve(s.ctx, &Input{
 		World:        s.world(),
 		Participants: []Participant{{Monster: s.wolfData()}, {Character: s.hero(s.raging())}},
 		Machine:      s.contest(s.wolfsKnockdown(), roller()),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 	s.Require().NoError(err)
 
@@ -292,7 +335,7 @@ func (s *ContestTestSuite) TestTheDCComesFromTheGate() {
 		Recurrence: saves.RecurrenceNone,
 	}
 
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{
 		World:        s.world(),
 		Participants: []Participant{{Character: s.hero()}, {Monster: s.wolfData()}},
 		Machine: NewContest(&ContestInput{
@@ -302,6 +345,16 @@ func (s *ContestTestSuite) TestTheDCComesFromTheGate() {
 			DamageTaken: 9,
 			Roller:      &scriptedRoller{single: advantageRoll},
 		}),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 	s.Require().NoError(err)
 
@@ -315,10 +368,20 @@ func (s *ContestTestSuite) TestARecurringGateIsRefused() {
 	gate := saves.NewSaveGate(abilities.STR, 11)
 	gate.Recurrence = saves.RecurrenceEndOfTurn
 
-	_, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	_, err := Resolve(s.ctx, &Input{
 		World:        s.world(),
 		Participants: []Participant{{Character: s.hero()}, {Monster: s.wolfData()}},
 		Machine:      s.contest(gate, &scriptedRoller{single: straightRoll}),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 
 	s.Require().Error(err)
@@ -328,19 +391,29 @@ func (s *ContestTestSuite) TestARecurringGateIsRefused() {
 
 func (s *ContestTestSuite) TestRefusesAContestItCannotRun() {
 	s.Run("no gate", func() {
-		_, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+		_, err := Resolve(s.ctx, &Input{
 			World:        s.world(),
 			Participants: []Participant{{Character: s.hero()}},
 			Machine: NewContest(&ContestInput{
 				SaverID:     heroID,
 				Application: combatActions.ConditionApplication{Ref: *refs.Conditions.Prone()},
 			}),
+			Capabilities: encounter.Capabilities{
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Standing:   everyoneStanding{},
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  noHandsAreObserved{},
+				Sheets:     noSheetsAsked{},
+				Roller:     dice.NewRoller(),
+				Actors:     Actors,
+			},
 		})
 		s.Require().ErrorIs(err, ErrNilInput)
 	})
 
 	s.Run("an invalid gate", func() {
-		_, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+		_, err := Resolve(s.ctx, &Input{
 			World:        s.world(),
 			Participants: []Participant{{Character: s.hero()}},
 			Machine: NewContest(&ContestInput{
@@ -348,13 +421,23 @@ func (s *ContestTestSuite) TestRefusesAContestItCannotRun() {
 				SaverID:     heroID,
 				Application: combatActions.ConditionApplication{Ref: *refs.Conditions.Prone()},
 			}),
+			Capabilities: encounter.Capabilities{
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Standing:   everyoneStanding{},
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  noHandsAreObserved{},
+				Sheets:     noSheetsAsked{},
+				Roller:     dice.NewRoller(),
+				Actors:     Actors,
+			},
 		})
 		s.Require().ErrorIs(err, ErrBadGate)
 	})
 
 	s.Run("unknown save ability", func() {
 		gate := saves.NewSaveGate(abilities.Ability("bogus"), 11)
-		_, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+		_, err := Resolve(s.ctx, &Input{
 			World:        s.world(),
 			Participants: []Participant{{Character: s.hero()}},
 			Machine: NewContest(&ContestInput{
@@ -362,21 +445,41 @@ func (s *ContestTestSuite) TestRefusesAContestItCannotRun() {
 				SaverID:     heroID,
 				Application: combatActions.ConditionApplication{Ref: *refs.Conditions.Prone()},
 			}),
+			Capabilities: encounter.Capabilities{
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Standing:   everyoneStanding{},
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  noHandsAreObserved{},
+				Sheets:     noSheetsAsked{},
+				Roller:     dice.NewRoller(),
+				Actors:     Actors,
+			},
 		})
 		s.Require().ErrorIs(err, ErrBadGate)
 	})
 
 	s.Run("no condition application", func() {
-		_, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+		_, err := Resolve(s.ctx, &Input{
 			World:        s.world(),
 			Participants: []Participant{{Character: s.hero()}},
 			Machine:      NewContest(&ContestInput{Gate: s.wolfsKnockdown(), SaverID: heroID}),
+			Capabilities: encounter.Capabilities{
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Standing:   everyoneStanding{},
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  noHandsAreObserved{},
+				Sheets:     noSheetsAsked{},
+				Roller:     dice.NewRoller(),
+				Actors:     Actors,
+			},
 		})
 		s.Require().ErrorIs(err, ErrBadAction)
 	})
 
 	s.Run("a saver who is not a participant", func() {
-		_, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+		_, err := Resolve(s.ctx, &Input{
 			World:        s.world(),
 			Participants: []Participant{{Character: s.hero()}},
 			Machine: NewContest(&ContestInput{
@@ -384,6 +487,16 @@ func (s *ContestTestSuite) TestRefusesAContestItCannotRun() {
 				SaverID:     "nobody",
 				Application: combatActions.ConditionApplication{Ref: *refs.Conditions.Prone()},
 			}),
+			Capabilities: encounter.Capabilities{
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Standing:   everyoneStanding{},
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  noHandsAreObserved{},
+				Sheets:     noSheetsAsked{},
+				Roller:     dice.NewRoller(),
+				Actors:     Actors,
+			},
 		})
 		s.Require().ErrorIs(err, ErrNoSaver)
 	})

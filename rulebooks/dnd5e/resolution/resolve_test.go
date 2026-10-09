@@ -6,6 +6,12 @@ package resolution
 import (
 	"context"
 	"encoding/json"
+	"go/ast"
+	"go/format"
+	"go/parser"
+	"go/token"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -69,7 +75,7 @@ func (s *ResolveTestSuite) SetupTest() {
 // world is a two-member encounter, already normalised by a load/save cycle so
 // that "unchanged" can be asserted literally.
 func (s *ResolveTestSuite) world() encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -79,6 +85,19 @@ func (s *ResolveTestSuite) world() encounter.EncounterData {
 			{ID: skeletonID, Kind: encounter.KindMonster, Position: spatial.Position{X: 5, Y: 5}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors: encounter.Actors{
+				Striker:   noAttacksExpected{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -215,10 +234,20 @@ func (s *ResolveTestSuite) outcomeOf(out *Output) SaveOutcome {
 // own predicate decided it applied. This single assertion is ADR-0038 end to
 // end.
 func (s *ResolveTestSuite) TestRagingBarbarianGetsAdvantageOnAStrengthSave() {
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{
 		World:        s.world(),
 		Participants: []Participant{{Character: s.barbarian(s.raging())}},
 		Machine:      s.save(abilities.STR),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 	s.Require().NoError(err)
 
@@ -238,10 +267,20 @@ func (s *ResolveTestSuite) TestRagingBarbarianGetsAdvantageOnAStrengthSave() {
 // The control that makes the headline mean something: the same barbarian, the
 // same save, no condition — a straight roll.
 func (s *ResolveTestSuite) TestTheSameBarbarianWithoutRageRollsStraight() {
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{
 		World:        s.world(),
 		Participants: []Participant{{Character: s.barbarian()}},
 		Machine:      s.save(abilities.STR),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 	s.Require().NoError(err)
 
@@ -252,10 +291,20 @@ func (s *ResolveTestSuite) TestTheSameBarbarianWithoutRageRollsStraight() {
 
 // The second effect, on a different chain, through the same machinery.
 func (s *ResolveTestSuite) TestDodgingGrantsAdvantageOnADexteritySave() {
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{
 		World:        s.world(),
 		Participants: []Participant{{Character: s.barbarian(s.dodging())}},
 		Machine:      s.save(abilities.DEX),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 	s.Require().NoError(err)
 
@@ -268,10 +317,20 @@ func (s *ResolveTestSuite) TestDodgingGrantsAdvantageOnADexteritySave() {
 // Applicability is the effect's own predicate, never resolution's. Raging is
 // attached for a DEX save exactly as it is for a STR save, and declines.
 func (s *ResolveTestSuite) TestRagingDeclinesADexteritySaveOnItsOwn() {
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{
 		World:        s.world(),
 		Participants: []Participant{{Character: s.barbarian(s.raging())}},
 		Machine:      s.save(abilities.DEX),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 	s.Require().NoError(err)
 
@@ -286,21 +345,41 @@ func (s *ResolveTestSuite) TestRagingDeclinesADexteritySaveOnItsOwn() {
 // R3. A participant nobody expected to matter is passed in, attaches, and folds
 // nothing. Pass-everyone-in costs correctness nothing.
 func (s *ResolveTestSuite) TestAnIrrelevantParticipantAttachesAndFoldsNothing() {
-	alone, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	alone, err := Resolve(s.ctx, &Input{
 		World:        s.world(),
 		Participants: []Participant{{Character: s.barbarian(s.raging())}},
 		Machine:      s.save(abilities.STR),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 	s.Require().NoError(err)
 
 	s.SetupTest()
-	together, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	together, err := Resolve(s.ctx, &Input{
 		World: s.world(),
 		Participants: []Participant{
 			{Character: s.barbarian(s.raging())},
 			{Monster: s.skeleton()},
 		},
 		Machine: s.save(abilities.STR),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 	s.Require().NoError(err)
 
@@ -316,24 +395,44 @@ func (s *ResolveTestSuite) TestAnIrrelevantParticipantAttachesAndFoldsNothing() 
 // caller happened to list participants in. Without this, a resumed suspension
 // could attach into a differently-ordered world.
 func (s *ResolveTestSuite) TestRegistrationsDoNotDependOnInputOrder() {
-	forward, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	forward, err := Resolve(s.ctx, &Input{
 		World: s.world(),
 		Participants: []Participant{
 			{Character: s.barbarian(s.raging())},
 			{Monster: s.skeleton()},
 		},
 		Machine: s.save(abilities.STR),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 	s.Require().NoError(err)
 
 	s.SetupTest()
-	reversed, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	reversed, err := Resolve(s.ctx, &Input{
 		World: s.world(),
 		Participants: []Participant{
 			{Monster: s.skeleton()},
 			{Character: s.barbarian(s.raging())},
 		},
 		Machine: s.save(abilities.STR),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 	s.Require().NoError(err)
 
@@ -348,10 +447,20 @@ func (s *ResolveTestSuite) TestRegistrationsDoNotDependOnInputOrder() {
 func (s *ResolveTestSuite) TestNothingSurvivesTheCall() {
 	inner := events.NewEventBus()
 
-	out, err := resolveOn(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	out, err := resolveOn(s.ctx, &Input{
 		World:        s.world(),
 		Participants: []Participant{{Character: s.barbarian(s.raging())}},
 		Machine:      s.save(abilities.STR),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	}, newSurface(inner))
 	s.Require().NoError(err)
 	s.Require().NotEmpty(out.Hooks, "there was something to tear down")
@@ -379,10 +488,20 @@ func (s *ResolveTestSuite) TestTheWorldRoundTripsUnchanged() {
 	before, err := json.Marshal(world)
 	s.Require().NoError(err)
 
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{
 		World:        world,
 		Participants: []Participant{{Character: s.barbarian(s.raging())}},
 		Machine:      s.save(abilities.STR),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 	s.Require().NoError(err)
 
@@ -410,10 +529,20 @@ func (s *ResolveTestSuite) TestTheWorldRoundTripsUnchanged() {
 func (s *ResolveTestSuite) TestAMonstersActionsSurviveResolution() {
 	machine := &captureMachine{}
 
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{
 		World:        s.world(),
 		Participants: []Participant{{Monster: s.skeleton()}},
 		Machine:      machine,
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 	s.Require().NoError(err)
 	s.Require().NotNil(out)
@@ -432,13 +561,23 @@ func (s *ResolveTestSuite) TestAMonstersActionsSurviveResolution() {
 // A save changes nobody, so nobody comes back dirty. The point is that dirty
 // means dirty rather than "was present".
 func (s *ResolveTestSuite) TestASaveLeavesNobodyDirty() {
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{
 		World: s.world(),
 		Participants: []Participant{
 			{Character: s.barbarian(s.raging())},
 			{Monster: s.skeleton()},
 		},
 		Machine: s.save(abilities.STR),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 	s.Require().NoError(err)
 
@@ -455,34 +594,64 @@ func (s *ResolveTestSuite) TestNilInputRejected() {
 }
 
 func (s *ResolveTestSuite) TestMissingMachineRejected() {
-	_, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(), World: s.world()})
+	_, err := Resolve(s.ctx, &Input{World: s.world(), Capabilities: encounter.Capabilities{Initiative: orderAsGiven{}, Driver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(), Actors: Actors}})
 	s.Require().ErrorIs(err, ErrNoMachine)
 }
 
 func (s *ResolveTestSuite) TestBadParticipantsRejected() {
 	s.Run("empty", func() {
-		_, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+		_, err := Resolve(s.ctx, &Input{
 			World:        s.world(),
 			Participants: []Participant{{}},
 			Machine:      s.save(abilities.STR),
+			Capabilities: encounter.Capabilities{
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Standing:   everyoneStanding{},
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  noHandsAreObserved{},
+				Sheets:     noSheetsAsked{},
+				Roller:     dice.NewRoller(),
+				Actors:     Actors,
+			},
 		})
 		s.Require().ErrorIs(err, ErrBadParticipant)
 	})
 
 	s.Run("both a character and a monster", func() {
-		_, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+		_, err := Resolve(s.ctx, &Input{
 			World:        s.world(),
 			Participants: []Participant{{Character: s.barbarian(), Monster: s.skeleton()}},
 			Machine:      s.save(abilities.STR),
+			Capabilities: encounter.Capabilities{
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Standing:   everyoneStanding{},
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  noHandsAreObserved{},
+				Sheets:     noSheetsAsked{},
+				Roller:     dice.NewRoller(),
+				Actors:     Actors,
+			},
 		})
 		s.Require().ErrorIs(err, ErrBadParticipant)
 	})
 
 	s.Run("the same id twice", func() {
-		_, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+		_, err := Resolve(s.ctx, &Input{
 			World:        s.world(),
 			Participants: []Participant{{Character: s.barbarian()}, {Character: s.barbarian(s.raging())}},
 			Machine:      s.save(abilities.STR),
+			Capabilities: encounter.Capabilities{
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Standing:   everyoneStanding{},
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  noHandsAreObserved{},
+				Sheets:     noSheetsAsked{},
+				Roller:     dice.NewRoller(),
+				Actors:     Actors,
+			},
 		})
 		s.Require().ErrorIs(err, ErrBadParticipant)
 	})
@@ -491,7 +660,7 @@ func (s *ResolveTestSuite) TestBadParticipantsRejected() {
 // Rolling a save for someone who was not passed in would silently drop their
 // modifier and every effect they carry, and still return a plausible number.
 func (s *ResolveTestSuite) TestASaverWhoIsNotAParticipantIsRefused() {
-	_, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	_, err := Resolve(s.ctx, &Input{
 		World:        s.world(),
 		Participants: []Participant{{Monster: s.skeleton()}},
 		Machine: NewSave(&SaveInput{
@@ -499,6 +668,16 @@ func (s *ResolveTestSuite) TestASaverWhoIsNotAParticipantIsRefused() {
 			D20Source: dnd5eEvents.RollSource{Ref: refs.Spells.ViciousMockery(), Name: "Test Save"},
 			Roller:    s.roller,
 		}),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 	s.Require().ErrorIs(err, ErrNoSaver)
 }
@@ -506,7 +685,7 @@ func (s *ResolveTestSuite) TestASaverWhoIsNotAParticipantIsRefused() {
 func (s *ResolveTestSuite) TestAMonsterCanSucceedOnASavingThrow() {
 	s.roller.single = 11
 
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{
 		World:        s.world(),
 		Participants: []Participant{{Monster: s.wolf()}},
 		Machine: NewSave(&SaveInput{
@@ -518,6 +697,16 @@ func (s *ResolveTestSuite) TestAMonsterCanSucceedOnASavingThrow() {
 			},
 			Roller: s.roller,
 		}),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 	s.Require().NoError(err)
 
@@ -530,7 +719,7 @@ func (s *ResolveTestSuite) TestAMonsterCanSucceedOnASavingThrow() {
 func (s *ResolveTestSuite) TestAMonsterCanFailASavingThrowWithANegativeModifier() {
 	s.roller.single = 10
 
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{
 		World:        s.world(),
 		Participants: []Participant{{Monster: s.wolf()}},
 		Machine: NewSave(&SaveInput{
@@ -542,6 +731,16 @@ func (s *ResolveTestSuite) TestAMonsterCanFailASavingThrowWithANegativeModifier(
 			},
 			Roller: s.roller,
 		}),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 	s.Require().NoError(err)
 
@@ -588,20 +787,27 @@ func TestCapabilitiesAreSuppliedNeverDefaulted(t *testing.T) {
 	})
 
 	t.Run("no initiative", func(t *testing.T) {
-		err := (&Input{Machine: machine, Roller: dice.NewRoller()}).Validate()
-		require.ErrorIs(t, err, ErrNoInitiative)
+		err := (&Input{Machine: machine, Capabilities: encounter.Capabilities{Roller: dice.NewRoller(), Actors: Actors}}).Validate()
+		require.ErrorIs(t, err, encounter.ErrNoInitiative)
 	})
 
 	t.Run("no standing", func(t *testing.T) {
-		err := (&Input{Machine: machine, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Roller: dice.NewRoller()}).Validate()
-		require.ErrorIs(t, err, ErrNoStanding)
+		err := (&Input{Machine: machine, Capabilities: encounter.Capabilities{Initiative: orderAsGiven{}, Driver: passDriver{}, Roller: dice.NewRoller(), Actors: Actors}}).Validate()
+		require.ErrorIs(t, err, encounter.ErrNoStanding)
 	})
 
 	t.Run("no sight", func(t *testing.T) {
 		err := (&Input{
-			Machine: machine, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Roller: dice.NewRoller(),
+			Machine: machine,
+			Capabilities: encounter.Capabilities{
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Standing:   everyoneStanding{},
+				Roller:     dice.NewRoller(),
+				Actors:     Actors,
+			},
 		}).Validate()
-		require.ErrorIs(t, err, ErrNoSight)
+		require.ErrorIs(t, err, encounter.ErrNoSight)
 	})
 
 	// An absent equipment answer cannot be replaced with "everybody is
@@ -609,10 +815,17 @@ func TestCapabilitiesAreSuppliedNeverDefaulted(t *testing.T) {
 	// that would be testimony nobody gave (rpg-toolkit#1615).
 	t.Run("no equipment", func(t *testing.T) {
 		err := (&Input{
-			Machine: machine, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
-			Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+			Machine: machine,
+			Capabilities: encounter.Capabilities{
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Standing:   everyoneStanding{},
+				Sight:      everyoneSeesTheWholeMap{},
+				Roller:     dice.NewRoller(),
+				Actors:     Actors,
+			},
 		}).Validate()
-		require.ErrorIs(t, err, ErrNoEquipment)
+		require.ErrorIs(t, err, encounter.ErrNoEquipment)
 	})
 
 	// The composition no longer stores a speed or a reach (rpg-project#538), so
@@ -620,36 +833,101 @@ func TestCapabilitiesAreSuppliedNeverDefaulted(t *testing.T) {
 	// made up — and zero is a real speed, not a missing one.
 	t.Run("no sheets", func(t *testing.T) {
 		err := (&Input{
-			Machine: machine, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
-			Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{},
-			Roller: dice.NewRoller(),
+			Machine: machine,
+			Capabilities: encounter.Capabilities{
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Standing:   everyoneStanding{},
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  noHandsAreObserved{},
+				Roller:     dice.NewRoller(),
+				Actors:     Actors,
+			},
 		}).Validate()
-		require.ErrorIs(t, err, ErrNoSheets)
+		require.ErrorIs(t, err, encounter.ErrNoSheets)
 	})
 
 	t.Run("no turn driver", func(t *testing.T) {
 		err := (&Input{
-			Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{},
-			Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-			Equipment: noHandsAreObserved{},
-			Sheets:    noSheetsAsked{},
+			Machine: machine,
+			Capabilities: encounter.Capabilities{
+				Initiative: orderAsGiven{},
+				Standing:   everyoneStanding{},
+				Sight:      everyoneSeesTheWholeMap{},
+				Roller:     dice.NewRoller(),
+				Equipment:  noHandsAreObserved{},
+				Sheets:     noSheetsAsked{},
+				Actors:     Actors,
+			},
 		}).Validate()
-		require.ErrorIs(t, err, ErrNoTurnDriver)
+		require.ErrorIs(t, err, encounter.ErrNoTurnDriver)
+	})
+
+	// Actors are capabilities like any other, and the encounter's own sentinels
+	// name them, in the order its Validate checks them.
+	t.Run("no striker", func(t *testing.T) {
+		in := fullInput(machine)
+		in.Striker = nil
+		require.ErrorIs(t, in.Validate(), encounter.ErrNoStriker)
+	})
+
+	t.Run("no mover", func(t *testing.T) {
+		in := fullInput(machine)
+		in.Mover = nil
+		require.ErrorIs(t, in.Validate(), encounter.ErrNoMover)
+	})
+
+	t.Run("no announcer", func(t *testing.T) {
+		in := fullInput(machine)
+		in.Announcer = nil
+		require.ErrorIs(t, in.Validate(), encounter.ErrNoAnnouncer)
+	})
+
+	// The capabilities are checked before the roller, so a bare input is
+	// refused by the encounter's own first sentinel and not by ours.
+	t.Run("capabilities before roller", func(t *testing.T) {
+		err := (&Input{Machine: machine}).Validate()
+		require.ErrorIs(t, err, encounter.ErrNoInitiative)
+		require.NotErrorIs(t, err, ErrNoRoller)
+	})
+
+	// The sentinel comes back bare, so nothing here can be mistaken for a
+	// resolution error that wraps it.
+	t.Run("the sentinel is returned unwrapped", func(t *testing.T) {
+		in := fullInput(machine)
+		in.Sight = nil
+		require.Equal(t, encounter.ErrNoSight, in.Validate())
 	})
 
 	t.Run("no roller", func(t *testing.T) {
 		err := (&Input{
-			Machine: machine, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: noHandsAreObserved{},
-			Sheets:    noSheetsAsked{},
+			Machine: machine,
+			Capabilities: encounter.Capabilities{
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Standing:   everyoneStanding{},
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  noHandsAreObserved{},
+				Sheets:     noSheetsAsked{},
+				Actors:     Actors,
+			},
 		}).Validate()
 		require.ErrorIs(t, err, ErrNoRoller)
 	})
 
 	t.Run("all supplied", func(t *testing.T) {
 		err := (&Input{
-			Machine: machine, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(),
+			Machine: machine,
+			Capabilities: encounter.Capabilities{
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Standing:   everyoneStanding{},
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  noHandsAreObserved{},
+				Sheets:     noSheetsAsked{},
+				Roller:     dice.NewRoller(),
+				Actors:     Actors,
+			},
 		}).Validate()
 		require.NoError(t, err)
 	})
@@ -697,7 +975,6 @@ var _ encounter.StandingWithParticipation = (*countingStanding)(nil)
 // zero is how that stays a decision rather than a coincidence.
 func TestTheStandingCapabilityIsCarriedAndNeverAsked(t *testing.T) {
 	world, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -706,14 +983,25 @@ func TestTheStandingCapabilityIsCarriedAndNeverAsked(t *testing.T) {
 			{ID: heroID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors: encounter.Actors{
+				Striker:   noAttacksExpected{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 
 	counter := &countingStanding{}
 	out, err := Resolve(context.Background(), &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: counter, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
-		Roller: dice.NewRoller(),
-		World:  world.ToData(),
+		World: world.ToData(),
 		Participants: []Participant{{Character: &character.Data{
 			ID: heroID, PlayerID: "player-1", Name: "Grog", Level: 1,
 			ClassID: classes.Barbarian, RaceID: races.Human,
@@ -728,6 +1016,16 @@ func TestTheStandingCapabilityIsCarriedAndNeverAsked(t *testing.T) {
 			D20Source: dnd5eEvents.RollSource{Ref: refs.Spells.ViciousMockery(), Name: "Test Save"},
 			Roller:    dice.NewRoller(),
 		}),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   counter,
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 
 	require.NoError(t, err, "the world loads, which it cannot do without the capability")
@@ -765,7 +1063,6 @@ func (c *countingSight) Sight(members []encounter.MemberID) (map[encounter.Membe
 // darkvision it holds nothing of.
 func TestTheSightCapabilityIsCarriedAndNeverAsked(t *testing.T) {
 	world, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -774,14 +1071,25 @@ func TestTheSightCapabilityIsCarriedAndNeverAsked(t *testing.T) {
 			{ID: heroID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors: encounter.Actors{
+				Striker:   noAttacksExpected{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 
 	counter := &countingSight{}
 	out, err := Resolve(context.Background(), &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: counter, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
-		Roller: dice.NewRoller(),
-		World:  world.ToData(),
+		World: world.ToData(),
 		Participants: []Participant{{Character: &character.Data{
 			ID: heroID, PlayerID: "player-1", Name: "Grog", Level: 1,
 			ClassID: classes.Barbarian, RaceID: races.Human,
@@ -796,9 +1104,124 @@ func TestTheSightCapabilityIsCarriedAndNeverAsked(t *testing.T) {
 			D20Source: dnd5eEvents.RollSource{Ref: refs.Spells.ViciousMockery(), Name: "Test Save"},
 			Roller:    dice.NewRoller(),
 		}),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      counter,
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 
 	require.NoError(t, err, "the world loads, which it cannot do without the capability")
 	require.NotNil(t, out)
 	require.Zero(t, counter.asks, "and this package never asks how far anybody can see")
+}
+
+// fullInput is an input every presence check passes.
+func fullInput(machine Machine) *Input {
+	return &Input{
+		Machine: machine,
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
+	}
+}
+
+// TestResolveRefusesAWorldWithoutActors pins both halves of resolution.Actors:
+// with them the world loads, and without them Resolve refuses by the
+// encounter's own sentinel before any participant attaches.
+func TestResolveRefusesAWorldWithoutActors(t *testing.T) {
+	machine := NewSave(&SaveInput{
+		SaverID: "x", Ability: abilities.CON, DC: 10,
+		D20Source: dnd5eEvents.RollSource{Ref: refs.Spells.ViciousMockery(), Name: "Test Save"},
+		Roller:    dice.NewRoller(),
+	})
+
+	t.Run("with Actors the world loads", func(t *testing.T) {
+		in := fullInput(machine)
+		in.World = actionWorld(t, 2)
+		in.Participants = []Participant{{Monster: monsters.NewWolf("wolf").ToData()}}
+		_, err := Resolve(context.Background(), in)
+		require.NotErrorIs(t, err, encounter.ErrNoStriker)
+		require.NotErrorIs(t, err, ErrBadWorld)
+	})
+
+	t.Run("without Actors it refuses before any participant attaches", func(t *testing.T) {
+		in := fullInput(machine)
+		in.Actors = encounter.Actors{}
+		in.World = actionWorld(t, 2)
+		// A participant that would fail to attach proves the order: the actor
+		// refusal comes first.
+		in.Participants = []Participant{{}}
+		_, err := Resolve(context.Background(), in)
+		require.ErrorIs(t, err, encounter.ErrNoStriker)
+		require.NotErrorIs(t, err, ErrBadParticipant)
+	})
+}
+
+// TestResolveLoadsWithTheCapabilitiesItWasHanded pins the law that resolution
+// swaps no member of the capabilities it was handed: the one
+// encounter.LoadEncounterInput literal in the module's non-test files has
+// exactly the keys Data and Capabilities, and Capabilities is in.Capabilities.
+func TestResolveLoadsWithTheCapabilitiesItWasHanded(t *testing.T) {
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, ".", func(fi os.FileInfo) bool {
+		return !strings.HasSuffix(fi.Name(), "_test.go")
+	}, 0)
+	require.NoError(t, err)
+
+	var lits []*ast.CompositeLit
+	for _, pkg := range pkgs {
+		for _, f := range pkg.Files {
+			ast.Inspect(f, func(n ast.Node) bool {
+				cl, ok := n.(*ast.CompositeLit)
+				if !ok {
+					return true
+				}
+				sel, ok := cl.Type.(*ast.SelectorExpr)
+				if ok && sel.Sel.Name == "LoadEncounterInput" {
+					lits = append(lits, cl)
+				}
+				return true
+			})
+		}
+	}
+	require.Len(t, lits, 1, "exactly one LoadEncounterInput literal in non-test files")
+
+	keys := map[string]string{}
+	for _, e := range lits[0].Elts {
+		kv, ok := e.(*ast.KeyValueExpr)
+		require.True(t, ok, "keyed elements only")
+		var sb strings.Builder
+		require.NoError(t, format.Node(&sb, fset, kv.Value))
+		keys[kv.Key.(*ast.Ident).Name] = sb.String()
+	}
+	require.Len(t, keys, 2)
+	require.Equal(t, "in.World", keys["Data"])
+	require.Equal(t, "in.Capabilities", keys["Capabilities"])
+
+	// Refusing stand-ins live in actors.go and nowhere else.
+	for _, name := range []string{"RefusingStriker", "RefusingMover", "RefusingAnnouncer"} {
+		for _, pkg := range pkgs {
+			for fname, f := range pkg.Files {
+				ast.Inspect(f, func(n ast.Node) bool {
+					if id, ok := n.(*ast.Ident); ok && id.Name == name && !strings.HasSuffix(fname, "actors.go") {
+						t.Errorf("%s names %s outside actors.go", fname, name)
+					}
+					return true
+				})
+			}
+		}
+	}
 }

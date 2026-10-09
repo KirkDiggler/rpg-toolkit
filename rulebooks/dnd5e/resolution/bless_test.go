@@ -25,14 +25,41 @@ func (s *CastActionTestSuite) blessAttempt(world encounter.EncounterData, caster
 	if err != nil {
 		return nil, err
 	}
-	return Resolve(s.ctx, &Input{World: world, Participants: []Participant{{Character: caster}, {Character: target}, {Monster: s.fixtures().wolfData()}}, Machine: machine,
-		Cost:       &Cost{PayerID: bardID, Profile: d.Cost, SpellTurn: "scene/round-1/bard"},
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller()})
+	return Resolve(s.ctx, &Input{
+		World:        world,
+		Participants: []Participant{{Character: caster}, {Character: target}, {Monster: s.fixtures().wolfData()}},
+		Machine:      machine,
+		Cost:         &Cost{PayerID: bardID, Profile: d.Cost, SpellTurn: "scene/round-1/bard"},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
+	})
 }
 
 func (s *CastActionTestSuite) blessRun(world encounter.EncounterData, participants []Participant, machine Machine, cost *Cost) *Output {
-	out, err := Resolve(s.ctx, &Input{World: world, Participants: participants, Machine: machine, Cost: cost,
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller()})
+	out, err := Resolve(s.ctx, &Input{
+		World:        world,
+		Participants: participants,
+		Machine:      machine,
+		Cost:         cost,
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
+	})
 	s.Require().NoError(err)
 	return out
 }
@@ -301,9 +328,22 @@ func (s *CastActionTestSuite) TestBlessTargetProjectionHonorsPolicyWithoutReveal
 	f := s.fixtures()
 	world := f.world()
 	s.rememberedHero(&world, encounter.LocationKnown, spatial.Position{X: 1, Y: 2})
-	run, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: world,
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encounter.RefusingAnnouncer{}})
+	run, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data: world,
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encounter.RefusingAnnouncer{},
+			},
+		},
+	})
 	s.Require().NoError(err)
 	input := &KnownCreatureTargetsInput{Encounter: run, CasterID: bardID, RangeFeet: 30,
 		Candidates: []string{bardID, heroID, wolfID}, Participants: []Participant{{Character: baneCaster(1, 2)}, {Character: f.saver(0)}, {Monster: f.wolfData()}}}

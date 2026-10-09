@@ -8,7 +8,7 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/events v0.6.3
 	github.com/KirkDiggler/rpg-toolkit/mind/perception v0.3.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.206.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.119.0
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.119.1-0.20261009042133-8de007ddb1be
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.16.1
 	github.com/stretchr/testify v1.11.1
 )

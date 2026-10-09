@@ -16,6 +16,7 @@ import (
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
@@ -283,11 +284,7 @@ func (s *ContestHalfTestSuite) TestHalfDamageStillOwesAConcentrationCheck() {
 	s.Require().NoError(err)
 
 	out, err := resolveOn(s.ctx, &Input{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		Equipment: noHandsAreObserved{},
-		Sheets:    noSheetsAsked{},
-		World:     fixtures.world(),
+		World: fixtures.world(),
 		Participants: []Participant{
 			{Character: fixtures.saver(40, holds.holding(heroID, wolfID)...)},
 			{Monster: fixtures.wolfData()},
@@ -295,6 +292,16 @@ func (s *ContestHalfTestSuite) TestHalfDamageStillOwesAConcentrationCheck() {
 		},
 		Machine: machine,
 		Cost:    castCost(),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Roller:     dice.NewRoller(),
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors:     Actors,
+		},
 	}, newSurface(events.NewEventBus()))
 	s.Require().NoError(err)
 
