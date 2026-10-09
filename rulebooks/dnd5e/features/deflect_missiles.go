@@ -67,6 +67,12 @@ func (d *DeflectMissiles) Status(*StatusInput) (*StatusOutput, error) {
 // Name returns the display name for the Deflect Missiles feature.
 func (d *DeflectMissiles) Name() string { return d.name }
 
+// Description returns "" on purpose. Activation spends the reaction and
+// publishes the reduction and throw events, but nothing consumes them, so no
+// damage is reduced (toolkit#1992). The card shows missing information rather
+// than a benefit the code does not deliver. The prose lands with that repair.
+func (d *DeflectMissiles) Description() string { return "" }
+
 // GetID implements core.Entity
 func (d *DeflectMissiles) GetID() string {
 	return d.id

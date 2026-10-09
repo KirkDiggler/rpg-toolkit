@@ -402,7 +402,7 @@ func (m *strikeMachine) posePostHit(offer dnd5eEvents.PostHitOffer) (Step, error
 	choices := make([]Choice, 0, len(offer.Options))
 	for _, option := range offer.Options {
 		options = append(options, option.ID)
-		choices = append(choices, Choice{ID: option.ID, Label: option.Label})
+		choices = append(choices, Choice{ID: option.ID, Label: option.Label, Description: option.Description})
 	}
 	options = append(options, string(ReactionDecline))
 	frozen, err := json.Marshal(frozenStrike{Kind: frozenStrikeKind, Version: frozenStrikeVersion, AttackerID: m.in.AttackerID, TargetID: m.in.TargetID, Definition: m.in.Definition, Opportunity: m.in.Opportunity, PostHitPhase: true, Outcome: &m.outcome, PostHit: &offer})
@@ -410,5 +410,5 @@ func (m *strikeMachine) posePostHit(offer dnd5eEvents.PostHitOffer) (Step, error
 		return nil, fmt.Errorf("%w: freeze post-hit reaction: %v", ErrBadFrozen, err)
 	}
 	settled := m.reported()
-	return Pose{SettledStrike: &settled, Ask: Ask{Audience: offer.ReactorID, Choices: choices, Offer: dnd5eEvents.Offer{Audience: offer.ReactorID, Ref: &offer.Ref, Name: offer.Name}, Options: options}, Frozen: frozen}, nil
+	return Pose{SettledStrike: &settled, Ask: Ask{Audience: offer.ReactorID, Choices: choices, Offer: dnd5eEvents.Offer{Audience: offer.ReactorID, Ref: &offer.Ref, Name: offer.Name, Description: offer.Description}, Options: options}, Frozen: frozen}, nil
 }

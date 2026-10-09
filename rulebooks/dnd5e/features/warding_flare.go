@@ -40,6 +40,11 @@ func (w *WardingFlare) Ref() *core.Ref { return refs.Features.WardingFlare() }
 // Name returns the authored display name.
 func (w *WardingFlare) Name() string { return w.name }
 
+// Description returns what activating this feature does, in the player's voice.
+func (w *WardingFlare) Description() string {
+	return "As a reaction, spend a use to impose disadvantage on an attack roll against you from a creature you can see within 30 feet."
+}
+
 // GetID returns the feature's identity.
 func (w *WardingFlare) GetID() string { return w.id }
 
@@ -137,7 +142,7 @@ func (w *WardingFlare) onAttack(_ context.Context, e dndEvents.AttackChainEvent,
 		// condition-immunity model can report immunity to blindness. Eligibility
 		// belongs here, before the reaction is offered, not in strike resolution.
 		e.BeforeRollOffers = append(e.BeforeRollOffers, dndEvents.AttackRollOffer{
-			ReactorID: w.characterID, Ref: *w.Ref(), Name: w.name,
+			ReactorID: w.characterID, Ref: *w.Ref(), Name: w.name, Description: w.Description(),
 			ResourceKey:  string(resources.WardingFlare),
 			Disadvantage: dndEvents.AttackModifierSource{SourceRef: w.Ref(), SourceID: w.characterID, Reason: w.name},
 		})

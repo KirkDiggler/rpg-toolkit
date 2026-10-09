@@ -746,7 +746,7 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 	if err != nil {
 		return nil, err
 	}
-	if primary != nil && (!offHand || modifier < 0) {
+	if primary != nil && damage.IncludesAbilityModifier(damage.AbilityModifierInput{Modifier: modifier, OffHand: offHand}) {
 		components = append(components, dnd5eEvents.DamageComponent{
 			Source: dnd5eEvents.DamageSourceAbility,
 			Roll: dnd5eEvents.RollComponent{

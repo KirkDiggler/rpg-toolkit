@@ -21,6 +21,9 @@ import (
 const (
 	// GuidedName is the display name for a creature holding a Guidance die.
 	GuidedName = "Guidance"
+
+	// GuidedOfferDescription is what the offer tells the player taking it.
+	GuidedOfferDescription = "Add your Guidance die to this ability check. The die is spent when you take it."
 	// GuidedDie is the die Guidance grants — 1d4 at every level (no scaling).
 	GuidedDie = "1d4"
 )
@@ -210,7 +213,7 @@ func (g *GuidedCondition) onPostCheckRollOffer(
 		_ context.Context, e *dnd5eEvents.PostCheckRollOfferEvent,
 	) (*dnd5eEvents.PostCheckRollOfferEvent, error) {
 		e.Offers = append(e.Offers, dnd5eEvents.Offer{
-			Ref: refs.Conditions.Guided(), Name: GuidedName, Audience: g.MemberID, Die: GuidedDie,
+			Ref: refs.Conditions.Guided(), Name: GuidedName, Description: GuidedOfferDescription, Audience: g.MemberID, Die: GuidedDie,
 			SourceID: g.SourceID,
 		})
 		return e, nil

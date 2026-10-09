@@ -704,11 +704,18 @@ func (s *CastContentSuite) TestCommandCarriesItsMenuAndBindsBothKeys() {
 	// Swap two ids and every other assertion here still passes, while a player
 	// pressing Approach gets a creature that runs. Asserted as the whole slice
 	// because the ORDER is what a picker draws top to bottom.
+	// The prose beside each word is asserted by its own test; this one claims
+	// only the pairing, so descriptions are cleared on a copy.
+	pairs := make([]actions.CastOption, 0, len(profile.Options))
+	for _, option := range profile.Options {
+		option.Description = ""
+		pairs = append(pairs, option)
+	}
 	s.Equal([]actions.CastOption{
 		{ID: spells.CommandWordApproach, Label: "Approach"},
 		{ID: spells.CommandWordFlee, Label: "Flee"},
 		{ID: spells.CommandWordGrovel, Label: "Grovel"},
-	}, profile.Options)
+	}, pairs)
 	s.Equal("approach", spells.CommandWordApproach, "the id the request sends back and the condition stores")
 	s.Equal("flee", spells.CommandWordFlee)
 	s.Equal("grovel", spells.CommandWordGrovel)

@@ -17,11 +17,15 @@ import (
 // declare, and the machine that reads it is chosen by which arm is populated
 // rather than by what the definition is called.
 type Definition struct {
-	Ref    core.Ref             `json:"ref"`
-	Name   string               `json:"name"`
-	Cost   *combat.SpendProfile `json:"cost,omitempty"`
-	Attack *AttackProfile       `json:"attack,omitempty"`
-	Cast   *CastProfile         `json:"cast,omitempty"`
+	// Description is rulebook-authored explanatory content. It is prose, not a
+	// rule: it is not in a declaration selector's allow-list, so editing it can
+	// never change an action's identity.
+	Description string               `json:"description,omitempty"`
+	Ref         core.Ref             `json:"ref"`
+	Name        string               `json:"name"`
+	Cost        *combat.SpendProfile `json:"cost,omitempty"`
+	Attack      *AttackProfile       `json:"attack,omitempty"`
+	Cast        *CastProfile         `json:"cast,omitempty"`
 
 	// Sequence is the script arm: several component actions the same actor
 	// performs under one declaration, which is the SRD's Multiattack. The

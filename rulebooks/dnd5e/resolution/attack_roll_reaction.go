@@ -20,7 +20,7 @@ func (m *strikeMachine) poseBeforeRoll(folded dndEvents.AttackChainEvent) (Step,
 	if err != nil {
 		return nil, fmt.Errorf("%w: freeze pre-roll reaction: %v", ErrBadFrozen, err)
 	}
-	return Pose{BeforeRoll: true, Ask: Ask{Audience: offer.ReactorID, Offer: dndEvents.Offer{Audience: offer.ReactorID, Ref: &offer.Ref, Name: offer.Name}, Choices: []Choice{{ID: ReactionUse, Label: "Use " + offer.Name}}, Options: []string{ReactionUse, ReactionDecline}}, Frozen: frozen}, nil
+	return Pose{BeforeRoll: true, Ask: Ask{Audience: offer.ReactorID, Offer: dndEvents.Offer{Audience: offer.ReactorID, Ref: &offer.Ref, Name: offer.Name, Description: offer.Description}, Choices: []Choice{{ID: ReactionUse, Label: "Use " + offer.Name}}, Options: []string{ReactionUse, ReactionDecline}}, Frozen: frozen}, nil
 }
 
 func (m *strikeMachine) resumeBeforeRoll() Step {

@@ -12,6 +12,7 @@ type AttackRollOffer struct {
 	ReactorID    string               `json:"reactor_id"`
 	Ref          core.Ref             `json:"ref"`
 	Name         string               `json:"name"`
+	Description  string               `json:"description,omitempty"`
 	ResourceKey  string               `json:"resource_key"`
 	Disadvantage AttackModifierSource `json:"disadvantage"`
 }
