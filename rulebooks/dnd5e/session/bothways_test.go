@@ -131,13 +131,25 @@ func (s *BothWaysSuite) yard(until encounter.Trigger) {
 	s.Require().Equal(session.ClockTurn, s.clockOf("alice"), "precondition: alice has a turn to swing on")
 	s.Require().Equal(session.ClockWorld, s.clockOf(bwChief), "precondition: the camp is not in it")
 
+	// Where each member stands, in the cells the verbs speak: the party seats
+	// were authored offsets, the monsters were placed at these absolute cells.
+	for id, want := range map[string]spatial.Position{
+		"alice": hexCell(1, 1), "bob": hexCell(1, 3),
+		bwChief: {X: 2, Y: 1}, bwWarrior: {X: 2, Y: 2}, bwSkeleton: {X: 5, Y: 5},
+	} {
+		where, err := s.mgr.Where(context.Background(), &session.WhereInput{Session: testSession, Member: id})
+		s.Require().NoError(err)
+		s.Equal(want, where.Position, "%s stands where the scene put them", id)
+	}
+
 	s.stream.published = nil
 }
 
-// bwPlacement is a monster of a faction on an authored cell.
-func bwPlacement(id, ref string, at spatial.Position, faction string) dungeonspec.MonsterPlacement {
+// bwPlacement is a monster of a faction on the dungeon-absolute axial cell it
+// was first placed at; the party seats above were already authored offsets.
+func bwPlacement(id, ref string, axial spatial.Position, faction string) dungeonspec.MonsterPlacement {
 	placement := monsterAt(id, ref, 0, 0)
-	placement.At = at
+	placement.At = authoredOf(axial)
 	placement.Faction = faction
 	return placement
 }
