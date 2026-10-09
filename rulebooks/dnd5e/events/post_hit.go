@@ -25,6 +25,7 @@ type PostHitOffer struct {
 	ReactorID   string          `json:"reactor_id"`
 	Ref         core.Ref        `json:"ref"`
 	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
 	ResourceKey string          `json:"resource_key"`
 	Options     []PostHitOption `json:"options"`
 }
@@ -32,13 +33,14 @@ type PostHitOffer struct {
 // PostHitOption describes a retaliation save and damage, never its outcome.
 // The selected option is validated before its reaction and resource are spent.
 type PostHitOption struct {
-	ID         string            `json:"id"`
-	Label      string            `json:"label"`
-	Ability    abilities.Ability `json:"ability"`
-	DC         int               `json:"dc"`
-	Dice       string            `json:"dice"`
-	DamageType damage.Type       `json:"damage_type"`
-	HalfOnSave bool              `json:"half_on_save"`
+	ID          string            `json:"id"`
+	Label       string            `json:"label"`
+	Description string            `json:"description,omitempty"`
+	Ability     abilities.Ability `json:"ability"`
+	DC          int               `json:"dc"`
+	Dice        string            `json:"dice"`
+	DamageType  damage.Type       `json:"damage_type"`
+	HalfOnSave  bool              `json:"half_on_save"`
 }
 
 // PostHitChain collects optional reactions using the publisher's live context.

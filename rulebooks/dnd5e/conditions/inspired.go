@@ -31,6 +31,9 @@ const InspiredDie = "1d6"
 // that spends it. One constant because those three must not drift.
 const InspiredName = "Bardic Inspiration"
 
+// InspiredOfferDescription is what the offer tells the player taking it.
+const InspiredOfferDescription = "Add your Bardic Inspiration die to this attack roll. The die is spent when you take it."
+
 // InspiredConditionData is the serializable form of the inspired condition,
 // stored by the game server as an opaque JSON blob.
 type InspiredConditionData struct {
@@ -237,11 +240,12 @@ func (i *InspiredCondition) onPostRollOffer(
 		_ context.Context, e *dnd5eEvents.PostRollOfferEvent,
 	) (*dnd5eEvents.PostRollOfferEvent, error) {
 		e.Offers = append(e.Offers, dnd5eEvents.Offer{
-			Ref:      refs.Conditions.Inspired(),
-			Name:     InspiredName,
-			Audience: i.MemberID,
-			Die:      i.Die,
-			SourceID: i.SourceID,
+			Ref:         refs.Conditions.Inspired(),
+			Name:        InspiredName,
+			Description: InspiredOfferDescription,
+			Audience:    i.MemberID,
+			Die:         i.Die,
+			SourceID:    i.SourceID,
 		})
 		return e, nil
 	}

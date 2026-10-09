@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
@@ -90,6 +91,63 @@ func (s *CatalogCoverageSuite) TestExecutableNamesAgreeWithTheCatalogue() {
 			data := GetData(id)
 			s.Require().NotNil(data)
 			s.Equal(data.Name, definition.Name)
+		})
+	}
+}
+
+// coverageInput compiles a spell the way a caster with a quarterstaff would, so
+// Shillelagh binds; twoWeapons adds the club that makes it a menu.
+func coverageInput(id Spell, twoWeapons bool) CastDefinitionInput {
+	held := []HeldWeapon{{Slot: "main_hand", ItemID: "held-quarterstaff", WeaponID: weapons.Quarterstaff, Name: "Quarterstaff"}}
+	if twoWeapons {
+		held = append(held, HeldWeapon{Slot: "off_hand", ItemID: "held-club", WeaponID: weapons.Club, Name: "Club"})
+	}
+	return CastDefinitionInput{
+		Spell: id, SpellSaveDC: 13, SpellAttackBonus: 5,
+		SpellcastingAbility: abilities.WIS, HeldWeapons: held,
+	}
+}
+
+func (s *CatalogCoverageSuite) TestEveryDeclaredCastOptionIsDescribed() {
+	menus := 0
+	check := func(name string, input CastDefinitionInput) {
+		s.Run(name, func() {
+			definition := CastDefinition(input)
+			s.Require().NotNil(definition)
+			for _, option := range definition.Cast.Options {
+				menus++
+				s.NotEmpty(option.Label, option.ID)
+				s.NotEmpty(option.Description, "option %q of %s is chosen before commitment", option.ID, name)
+			}
+		})
+	}
+	for id := range castContent {
+		check(id, coverageInput(id, false))
+	}
+	check("shillelagh-two-weapons", coverageInput(Shillelagh, true))
+	s.Greater(menus, 0, "the loop must reach at least one real menu")
+}
+
+func (s *CatalogCoverageSuite) TestShillelaghOptionNamesItsWeapon() {
+	definition := CastDefinition(coverageInput(Shillelagh, true))
+	s.Require().NotNil(definition)
+	s.Require().Len(definition.Cast.Options, 2)
+	for _, option := range definition.Cast.Options {
+		s.Contains(option.Description, option.Label)
+	}
+}
+
+func (s *CatalogCoverageSuite) TestEveryCastAppliedConditionHasDetail() {
+	for id := range castContent {
+		s.Run(id, func() {
+			definition := CastDefinition(coverageInput(id, false))
+			s.Require().NotNil(definition)
+			for _, effect := range definition.Cast.Effects {
+				display, ok := conditions.DisplayFor(effect.Ref)
+				s.Require().True(ok, "%s applies %s, which has no display entry", id, effect.Ref.String())
+				s.NotEmpty(display.Name)
+				s.NotEmpty(display.Detail, "%s applies %s, a condition with no authored detail", id, effect.Ref.String())
+			}
 		})
 	}
 }

@@ -14,6 +14,9 @@ type Feature interface {
 	core.Action[FeatureInput] // Can be activated
 	Ref() *core.Ref           // Returns the feature's unique ref
 	Name() string             // Returns the feature's display name
+	// Description is the feature's authored prose: what using it does. It is
+	// empty when the feature has none; nothing is synthesised from its name.
+	Description() string
 	ToJSON() (json.RawMessage, error)
 	ActionType() combat.ActionType // Returns action economy cost to activate
 

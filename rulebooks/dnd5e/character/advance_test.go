@@ -577,6 +577,7 @@ func (f *attachingFeature) GetID() string            { return f.ref.ID }
 func (f *attachingFeature) GetType() core.EntityType { return features.EntityTypeFeature }
 func (f *attachingFeature) Ref() *core.Ref           { return f.ref }
 func (f *attachingFeature) Name() string             { return f.ref.ID }
+func (f *attachingFeature) Description() string      { return "" }
 
 func (f *attachingFeature) ActionType() coreCombat.ActionType { return coreCombat.ActionFree }
 

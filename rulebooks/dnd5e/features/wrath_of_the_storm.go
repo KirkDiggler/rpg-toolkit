@@ -42,6 +42,11 @@ func (w *WrathOfTheStorm) Ref() *core.Ref { return refs.Features.WrathOfTheStorm
 // Name returns the authored display name.
 func (w *WrathOfTheStorm) Name() string { return w.name }
 
+// Description returns what activating this feature does, in the player's voice.
+func (w *WrathOfTheStorm) Description() string {
+	return "As a reaction when a creature you can see within 5 feet hits you, spend a use to deal 2d8 lightning or thunder damage to it. It makes a Dexterity saving throw and takes half damage on a success."
+}
+
 // GetID returns the feature's identity.
 func (w *WrathOfTheStorm) GetID() string { return w.id }
 
@@ -136,9 +141,9 @@ func (w *WrathOfTheStorm) onHit(_ context.Context, e *dndEvents.PostHitEvent, c 
 			return e, nil
 		}
 		dc := 8 + owner.ProficiencyBonus() + owner.AbilityScores().Modifier(abilities.WIS)
-		e.Offers = append(e.Offers, dndEvents.PostHitOffer{ReactorID: w.characterID, Ref: *w.Ref(), Name: w.name, ResourceKey: string(resources.WrathOfTheStorm), Options: []dndEvents.PostHitOption{
-			{ID: "lightning", Label: "Lightning", Ability: abilities.DEX, DC: dc, Dice: "2d8", DamageType: damage.Lightning, HalfOnSave: true},
-			{ID: "thunder", Label: "Thunder", Ability: abilities.DEX, DC: dc, Dice: "2d8", DamageType: damage.Thunder, HalfOnSave: true},
+		e.Offers = append(e.Offers, dndEvents.PostHitOffer{ReactorID: w.characterID, Ref: *w.Ref(), Name: w.name, Description: w.Description(), ResourceKey: string(resources.WrathOfTheStorm), Options: []dndEvents.PostHitOption{
+			{ID: "lightning", Label: "Lightning", Description: "Deal 2d8 lightning damage to the attacker. It makes a Dexterity saving throw and takes half damage on a success.", Ability: abilities.DEX, DC: dc, Dice: "2d8", DamageType: damage.Lightning, HalfOnSave: true},
+			{ID: "thunder", Label: "Thunder", Description: "Deal 2d8 thunder damage to the attacker. It makes a Dexterity saving throw and takes half damage on a success.", Ability: abilities.DEX, DC: dc, Dice: "2d8", DamageType: damage.Thunder, HalfOnSave: true},
 		}})
 		return e, nil
 	})

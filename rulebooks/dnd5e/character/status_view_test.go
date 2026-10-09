@@ -802,6 +802,7 @@ func (m *malformedStatusFeature) Ref() *core.Ref {
 	return &core.Ref{Module: refs.Module, Type: refs.TypeFeatures, ID: "malformed"}
 }
 func (m *malformedStatusFeature) Name() string                      { return "Malformed" }
+func (m *malformedStatusFeature) Description() string               { return "" }
 func (m *malformedStatusFeature) ToJSON() (json.RawMessage, error)  { return nil, nil }
 func (m *malformedStatusFeature) ActionType() coreCombat.ActionType { return "" }
 func (m *malformedStatusFeature) Status(*features.StatusInput) (*features.StatusOutput, error) {

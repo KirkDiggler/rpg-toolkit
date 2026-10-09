@@ -64,6 +64,11 @@ func (a *ActionSurge) Status(*StatusInput) (*StatusOutput, error) {
 // Name returns the display name for the Action Surge feature.
 func (a *ActionSurge) Name() string { return a.name }
 
+// Description returns what activating this feature does, in the player's voice.
+func (a *ActionSurge) Description() string {
+	return "Spend a use to take one additional action this turn."
+}
+
 // GetID implements core.Entity
 func (a *ActionSurge) GetID() string {
 	return a.id

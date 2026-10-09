@@ -46,6 +46,12 @@ func (p *PatientDefense) Status(in *StatusInput) (*StatusOutput, error) {
 // Name returns the display name for the Patient Defense feature.
 func (p *PatientDefense) Name() string { return p.name }
 
+// Description returns "" on purpose. Patient Defense spends ki without
+// delivering the Dodge it promises (toolkit#1986), so the card shows missing
+// information rather than a benefit the code does not deliver. The prose lands
+// with that repair.
+func (p *PatientDefense) Description() string { return "" }
+
 // GetID implements core.Entity
 func (p *PatientDefense) GetID() string {
 	return p.id

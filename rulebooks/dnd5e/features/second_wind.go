@@ -70,6 +70,11 @@ func (s *SecondWind) Status(*StatusInput) (*StatusOutput, error) {
 // Name returns the display name for the Second Wind feature.
 func (s *SecondWind) Name() string { return s.name }
 
+// Description returns what activating this feature does, in the player's voice.
+func (s *SecondWind) Description() string {
+	return "Spend a use to regain 1d10 hit points plus your fighter level."
+}
+
 // GetID implements core.Entity
 func (s *SecondWind) GetID() string {
 	return s.id

@@ -166,10 +166,15 @@ func Assemble(in *Input) (combatActions.Definition, error) {
 		}
 	}
 
+	description := "Make a ranged attack against a creature within range."
+	if delivery.IsMelee() {
+		description = "Make a melee attack against a creature in reach."
+	}
 	definition := combatActions.Definition{
-		Ref:  *weaponRef,
-		Name: weapon.Name,
-		Cost: combatActions.CloneSpendProfile(in.Cost),
+		Ref:         *weaponRef,
+		Name:        weapon.Name,
+		Description: description,
+		Cost:        combatActions.CloneSpendProfile(in.Cost),
 		Attack: &combatActions.AttackProfile{
 			Category:    combatActions.AttackCategoryWeapon,
 			Delivery:    delivery,
