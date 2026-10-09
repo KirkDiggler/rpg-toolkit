@@ -90,50 +90,49 @@ type attachInformationInput struct {
 // attachInformation sets Information on each compiled offer by verb: an
 // attack or cast from its definition's described facts, an activation from
 // its ability's prose, a session verb from [sessionVerbProse]. It writes
-// Information and nothing else.
+// Information and nothing else. A blocker that compiled no definition, and a
+// definition with neither prose nor facts, stay nil. A definition the
+// rulebook will not describe, or a fact with no word here, fails it closed.
 func attachInformation(in *attachInformationInput) error {
 	for i := range in.Offers {
 		offer := &in.Offers[i]
-		var (
-			info *ActionInformation
-			err  error
-		)
 		switch offer.declaration.Verb {
-		case VerbAttack:
-			info, err = describedInformation(offer.attack)
-		case VerbCast:
-			info, err = describedInformation(offer.spell)
+		case VerbAttack, VerbCast:
+			definition := offer.attack
+			if offer.declaration.Verb == VerbCast {
+				definition = offer.spell
+			}
+			if definition == nil {
+				continue
+			}
+			described, err := describedInformation(definition)
+			if err != nil {
+				return fmt.Errorf("information for %s: %w", offer.declaration.Verb, err)
+			}
+			if described.Description != "" || len(described.Details) > 0 {
+				offer.declaration.Information = &described
+			}
 		case VerbActivate:
-			info = proseInformation(offer.abilityDescription)
+			offer.declaration.Information = proseInformation(offer.abilityDescription)
 		default:
-			info = sessionVerbInformation(offer.declaration.Verb)
+			offer.declaration.Information = sessionVerbInformation(offer.declaration.Verb)
 		}
-		if err != nil {
-			return fmt.Errorf("information for %s: %w", offer.declaration.Verb, err)
-		}
-		offer.declaration.Information = info
 	}
 	return nil
 }
 
-// describedInformation is a compiled definition's information, or nil for a
-// blocker that compiled none or a definition with neither prose nor facts.
-func describedInformation(definition *combatActions.Definition) (*ActionInformation, error) {
-	if definition == nil {
-		return nil, nil
-	}
+// describedInformation states one definition's prose and rendered facts.
+// Either may be empty; nothing is synthesised to fill one.
+func describedInformation(definition *combatActions.Definition) (ActionInformation, error) {
 	described, err := combatActions.Describe(&combatActions.DescribeInput{Definition: *definition})
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrBadAttack, err)
+		return ActionInformation{}, fmt.Errorf("%w: %v", ErrBadInformation, err)
 	}
 	details, err := renderFacts(described.Facts)
 	if err != nil {
-		return nil, err
+		return ActionInformation{}, err
 	}
-	if described.Description == "" && len(details) == 0 {
-		return nil, nil
-	}
-	return &ActionInformation{Description: described.Description, Details: details}, nil
+	return ActionInformation{Description: described.Description, Details: details}, nil
 }
 
 // renderFacts renders typed base facts into rows, in this fixed order: base
@@ -177,7 +176,7 @@ func renderFacts(facts combatActions.BaseFacts) ([]ActionInformationDetail, erro
 			display, known := conditions.DisplayFor(effect.Ref)
 			if !known {
 				return nil, fmt.Errorf("%w: applied condition %s has no display catalogue entry",
-					ErrBadAttack, effect.Ref.String())
+					ErrUnknownContent, effect.Ref.String())
 			}
 			label, err := effectLabel(effect)
 			if err != nil {
@@ -225,7 +224,16 @@ func abilityAbbreviation(ability abilities.Ability) string {
 	return strings.ToUpper(string(ability))
 }
 
-// renderDamage is "1d8 + STR modifier (+3) · Bludgeoning". The ability
+// signedTerm is " + 2" or " - 2": an operator spaced on both sides, so a flat
+// number reads the way the ability clause beside it does.
+func signedTerm(amount int) string {
+	if amount < 0 {
+		return fmt.Sprintf(" - %d", -amount)
+	}
+	return fmt.Sprintf(" + %d", amount)
+}
+
+// renderDamage is "1d8 + 2 + STR modifier (+3) · Bludgeoning". The ability
 // clause appears only when the modifier participates (damage.
 // IncludesAbilityModifier's answer, carried on the fact); a stated but
 // non-participating modifier renders nothing.
@@ -233,7 +241,7 @@ func renderDamage(pool combatActions.DamageFact) string {
 	var b strings.Builder
 	b.WriteString(pool.Dice)
 	if pool.FlatBonus != 0 {
-		fmt.Fprintf(&b, " %+d", pool.FlatBonus)
+		b.WriteString(signedTerm(pool.FlatBonus))
 	}
 	if pool.Ability != nil && pool.Ability.Participates {
 		fmt.Fprintf(&b, " + %s modifier (%+d)", abilityAbbreviation(pool.Ability.Ability), pool.Ability.Modifier)
@@ -252,7 +260,7 @@ func renderGrip(grip combatActions.Grip) (string, error) {
 	case combatActions.GripOffHand:
 		return "Off-hand", nil
 	default:
-		return "", fmt.Errorf("%w: unrenderable grip %q", ErrBadAttack, grip)
+		return "", fmt.Errorf("%w: unrenderable grip %q", ErrBadInformation, grip)
 	}
 }
 
@@ -275,14 +283,14 @@ func renderSave(save *combatActions.SaveFact) (string, error) {
 	case saves.Half:
 		b.WriteString(" · success: half damage")
 	default:
-		return "", fmt.Errorf("%w: unrenderable save outcome %q", ErrBadAttack, save.OnSuccess)
+		return "", fmt.Errorf("%w: unrenderable save outcome %q", ErrBadInformation, save.OnSuccess)
 	}
 	switch save.Recurrence {
 	case "", saves.RecurrenceNone:
 	case saves.RecurrenceEndOfTurn:
 		b.WriteString(" · repeats at end of turn")
 	default:
-		return "", fmt.Errorf("%w: unrenderable save recurrence %q", ErrBadAttack, save.Recurrence)
+		return "", fmt.Errorf("%w: unrenderable save recurrence %q", ErrBadInformation, save.Recurrence)
 	}
 	return b.String(), nil
 }
@@ -297,17 +305,19 @@ func effectLabel(effect combatActions.EffectFact) (string, error) {
 	case combatActions.CastRecipientCaster:
 		return "On you", nil
 	default:
-		return "", fmt.Errorf("%w: unrenderable effect recipient %q", ErrBadAttack, effect.Recipient)
+		return "", fmt.Errorf("%w: unrenderable effect recipient %q", ErrBadInformation, effect.Recipient)
 	}
 }
 
-// renderHealing is "1d8 + 3 (Wisdom)", one clause per sourced modifier in
-// order.
+// renderHealing is "1d8 + Charisma (+3) + Disciple of Life (+2)": one
+// clause per sourced modifier in order, each its content-authored name and
+// signed amount, as a damage row renders its ability clause. A negative reads
+// "+ Charisma (-1)" and a zero "(+0)": the fact states it, so the row shows it.
 func renderHealing(healing *combatActions.HealingFact) string {
 	var b strings.Builder
 	b.WriteString(healing.Dice)
 	for _, modifier := range healing.Modifiers {
-		fmt.Fprintf(&b, " + %d (%s)", modifier.Amount, modifier.Name)
+		fmt.Fprintf(&b, " + %s (%+d)", modifier.Name, modifier.Amount)
 	}
 	return b.String()
 }
@@ -352,7 +362,7 @@ func renderArea(area *combatActions.CastArea) (string, error) {
 	case combatActions.AreaTriangle:
 		shape = "cone"
 	default:
-		return "", fmt.Errorf("%w: unrenderable area shape %q", ErrBadAttack, area.Footprint.Shape)
+		return "", fmt.Errorf("%w: unrenderable area shape %q", ErrBadInformation, area.Footprint.Shape)
 	}
 	var origin string
 	switch area.Footprint.Origin {
@@ -363,7 +373,7 @@ func renderArea(area *combatActions.CastArea) (string, error) {
 	case combatActions.AreaOriginPoint:
 		origin = "at a point"
 	default:
-		return "", fmt.Errorf("%w: unrenderable area origin %q", ErrBadAttack, area.Footprint.Origin)
+		return "", fmt.Errorf("%w: unrenderable area origin %q", ErrBadInformation, area.Footprint.Origin)
 	}
 	var catches string
 	switch area.Catches {
@@ -372,7 +382,7 @@ func renderArea(area *combatActions.CastArea) (string, error) {
 	case combatActions.AreaCatchesEveryone:
 		catches = "affects everyone"
 	default:
-		return "", fmt.Errorf("%w: unrenderable area catch %q", ErrBadAttack, area.Catches)
+		return "", fmt.Errorf("%w: unrenderable area catch %q", ErrBadInformation, area.Catches)
 	}
 	return fmt.Sprintf("%d ft %s %s · %s", area.Footprint.SizeFeet, shape, origin, catches), nil
 }

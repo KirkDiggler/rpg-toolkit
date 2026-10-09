@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/cyberphone/json-canonicalization/go/src/webpki.org/jsoncanonicalizer"
@@ -32,10 +33,17 @@ import (
 // reuses whole.
 //
 // Display words that were already selector material before the projection
-// existed stay mechanical so every held ID is unchanged (provider-design O1):
-// Definition.Name, CastOption.Label, and the two below that ride reused types
-// — CastArea.MembershipName and contributions.Source's Name and Label. They
-// name things; none of them is explanatory prose.
+// existed stay mechanical so every held ID is unchanged. Provider-design O1
+// settled two: Definition.Name and CastOption.Label. The same reasoning keeps
+// three more that ride types the projection reuses whole, named here because
+// a ruling carries its scope and does not self-extend (recorded on
+// rpg-project#550):
+//   - actions.CastArea.MembershipName
+//   - contributions.Source.Name
+//   - contributions.Source.Label
+//
+// They name things; none of them is explanatory prose. Removing any of them is
+// a selector-version bump that waits for a use case.
 var selectorMechanicalFields = []string{
 	"actions.AbilityContribution.Ability",
 	"actions.AbilityContribution.Modifier",
@@ -228,6 +236,12 @@ func TestSelectorProjectionClassifiesEveryDefinitionField(t *testing.T) {
 		require.Contains(t, tree, f, "%s is classified but no longer exists in the definition's type tree", f)
 	}
 
+	// THE BACKSTOP. Classification is judgment, so a prose field listed as
+	// mechanical would pass the lists above. A field whose name says it is a
+	// description is prose, whatever list it was put in.
+	require.Empty(t, misclassifiedDescriptions(tree, classified),
+		"a field named as a description is prose and must never reach the selector")
+
 	for _, f := range selectorProseFields {
 		owner := tree[f]
 		require.Contains(t, selectorMirrors, owner,
@@ -254,6 +268,37 @@ func TestSelectorProjectionClassifiesEveryDefinitionField(t *testing.T) {
 		}
 		require.Empty(t, mirrored, "%s carries fields %s does not have", mirror, source)
 	}
+}
+
+// misclassifiedDescriptions is the guard's backstop: every field of the tree
+// whose name ends in Description and is not classified prose.
+func misclassifiedDescriptions(tree map[string]reflect.Type, classified map[string]string) []string {
+	var out []string
+	for f := range tree {
+		if strings.HasSuffix(f, "Description") && classified[f] != "prose" {
+			out = append(out, f)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// TestTheDescriptionBackstopBites runs the backstop over the gate's probe: a
+// Description added to a type the projection reuses whole and listed as
+// mechanical. The mirror checks never look at a reused type, so this is the
+// only thing that refuses it.
+func TestTheDescriptionBackstopBites(t *testing.T) {
+	tree := map[string]reflect.Type{
+		"actions.CastArea.Catches":     reflect.TypeOf(combatActions.CastArea{}),
+		"actions.CastArea.Description": reflect.TypeOf(combatActions.CastArea{}),
+	}
+	classified := map[string]string{
+		"actions.CastArea.Catches":     "mechanical",
+		"actions.CastArea.Description": "mechanical",
+	}
+	require.Equal(t, []string{"actions.CastArea.Description"}, misclassifiedDescriptions(tree, classified))
+	classified["actions.CastArea.Description"] = "prose"
+	require.Empty(t, misclassifiedDescriptions(tree, classified))
 }
 
 // warhammerDefinition is a real compiled warhammer swing, assembled from a

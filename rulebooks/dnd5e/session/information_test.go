@@ -215,7 +215,7 @@ func TestAffordCureWoundsFacts(t *testing.T) {
 
 	require.NotNil(t, row.Information)
 	require.Equal(t, spellDescription(t, spells.CureWounds), row.Information.Description)
-	require.Contains(t, row.Information.Details, detail("Healing", "1d8 + 3 (Charisma)"))
+	require.Contains(t, row.Information.Details, detail("Healing", "1d8 + Charisma (+3)"))
 	require.Contains(t, row.Information.Details, detail("Range", "Touch"))
 	for _, row := range row.Information.Details {
 		require.NotEqual(t, "Save", row.Label, "Cure Wounds asks no save")

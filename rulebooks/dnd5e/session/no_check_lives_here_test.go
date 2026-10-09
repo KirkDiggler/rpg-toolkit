@@ -44,6 +44,21 @@ const conditionsPath = "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/condi
 // this test. Rendering "success: half damage" by comparing against
 // saves.Half reads the owner's constant; spelling "half" here would be a
 // second copy of it that a rename leaves silently wrong.
+//
+// # What this pin does not see, and why that is harmless
+//
+// It reads syntax, not types, so a METHOD called through a value of an
+// allowed type — (&saves.SaveGate{}).Validate() — is invisible to it. That is
+// the carve-out, and it is harmless by construction: the one method that
+// computes a DC takes a saves.DCInput, which is not on this list, so calling
+// it needs a name this pin refuses. What remains reachable through a gate
+// value are readers (Validate, Kind, MarshalJSON). Catching methods properly
+// needs a type-checked load of the package and its dependencies, which costs
+// more than it buys here.
+//
+// A string literal written back in place of a constant is caught by
+// TestRenderSaveComparesSavesConstants (information_internal_test.go) for the
+// renderer, the one place that compares them.
 var savesReaders = map[string]bool{
 	"SaveGate":            true,
 	"SaveEffect":          true,
