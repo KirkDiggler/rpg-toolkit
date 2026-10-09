@@ -262,26 +262,12 @@ func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOut
 	// A pure view for resolution's Input.World — a mid-verb read, never the
 	// storage boundary (encounter v0.43.0, #1385).
 	world := scope.enc.WorldView()
-	out, err := resolution.Resolve(ctx, &resolution.Input{
+	// Cost is nil ON PURPOSE — see this verb's own doc.
+	out, err := resolution.Resolve(ctx, m.resolutionInput(ctx, scope, resolutionAsk{
 		World:        world,
 		Participants: cast,
-		Initiative:   m.initiative,
-		Standing:     scope.standing,
-		Sight:        sheetsBeside(scope.standing),
-		Equipment:    equipmentBeside(scope.standing),
-		Sheets:       sheetsBeside(scope.standing),
-		TurnDriver:   scope.driver,
-		// The concealment pair (rpg-toolkit#1378), bound to the same live
-		// scope openForWrite and adopt bind — the one-seam consistency law:
-		// a concealed world refuses to reconstruct without them, and
-		// resolution carries them without consulting either, since no verb
-		// runs inside an interaction.
-		CheckResolver: checkSeam{m: m, scope: scope},
-		Witness:       witnessSeam{scope: scope},
-		Machine:       machine,
-		// Cost is nil ON PURPOSE — see this verb's own doc.
-		Roller: &diceSeam{roller: m.dice},
-	})
+		Machine:      machine,
+	}))
 	if err != nil {
 		return nil, fmt.Errorf("activate: %w", translateResolution(err))
 	}
@@ -291,43 +277,35 @@ func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOut
 		return nil, fmt.Errorf("activate: %w: activation produced %T", ErrInvalidWorld, out.Outcome)
 	}
 
-	if err := m.adopt(ctx, scope, out.World); err != nil {
-		return nil, fmt.Errorf("activate: %w", err)
-	}
-	if err := m.saveDirty(ctx, scope, out); err != nil {
-		return nil, fmt.Errorf("activate: %w", err)
-	}
-
 	// Record only after the adopted sheets are durable. RecordActivation's
 	// post-append noticeDown consult must see the same hit points and conditions
 	// the activation produced, matching Attack's save -> record -> commit path.
 	// If that consult fails, the mechanical sheet writes remain durable and are
 	// named by reportUnrecorded while this unsaved encounter scope is dropped.
-	if _, err := scope.enc.RecordActivation(&encounter.RecordActivationInput{
-		Actor:  encounter.MemberID(in.Member),
-		Target: encounter.MemberID(in.Target),
-		Ability: encounter.ActivationIdentity{
-			Ref:  selected.declaration.Ability.Ref,
-			Name: selected.declaration.Ability.Name,
+	// An activation's beat tells no concentration (R9).
+	result, err := m.land(ctx, scope, out, &landing{
+		Record: func(enc *encounter.Encounter, _ concentration) error {
+			_, err := enc.RecordActivation(&encounter.RecordActivationInput{
+				Actor:  encounter.MemberID(in.Member),
+				Target: encounter.MemberID(in.Target),
+				Ability: encounter.ActivationIdentity{
+					Ref:  selected.declaration.Ability.Ref,
+					Name: selected.declaration.Ability.Name,
+				},
+				Results: activationResults(activated.Effects),
+			})
+			return err
 		},
-		Results: activationResults(activated.Effects),
-	}); err != nil {
-		return nil, fmt.Errorf("activate: %w", reportUnrecorded(scope, translate(err)))
-	}
-	if err := m.landAreas(scope.enc, scope, out); err != nil {
-		return nil, fmt.Errorf("activate: %w", reportUnrecorded(scope, err))
-	}
-
-	report, delivery, err := m.commit(ctx, scope)
+		Untold: true,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("activate: %w", err)
 	}
-
 	return &ActivateOutput{
 		Ability:         activated.Ability,
 		GrantedCapacity: activated.GrantedCapacity,
-		Saved:           report,
-		Delivery:        delivery,
+		Saved:           result.Saved,
+		Delivery:        result.Delivery,
 	}, nil
 }
 

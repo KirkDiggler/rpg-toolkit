@@ -189,7 +189,6 @@ func TestTranslateResolutionLetsNoResolutionSentinelThrough(t *testing.T) {
 		{"a class-scaled rule with no levels to read", contributions.ErrRuleCannotAnswer, ErrBadCharacter},
 		// The sheet capability not supplied, or its answer skipping a member,
 		// as resolution reports them back out of its own load.
-		{"no sheets capability", resolution.ErrNoSheets, ErrNoSheet},
 		{"sheet answer skipped a member", encounter.ErrNoSheets, ErrNoSheet},
 		{"compiled world asked for sheets", encounter.ErrRefusingSheets, ErrInvalidWorld},
 		// Defects here rather than in the call, and unreachable for that

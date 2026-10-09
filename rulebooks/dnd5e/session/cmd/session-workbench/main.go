@@ -523,23 +523,7 @@ func drive(out *bytes.Buffer) error {
 // converted once at construction; the verbs above speak the axial cells
 // cellAt makes of them.
 func authoredCrypt() (*encounter.EncounterData, error) {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{},
-		// Governs THIS construction only, exactly as the sight seam below
-		// does: session installs its own announcer the moment it loads this
-		// world, and the walk runs on that one. Quiet rather than refusing
-		// because a bubble can form while the scene is being assembled.
-		Announcer: encQuietAnnouncer{},
-		Standing:  encEveryoneStanding{},
-		// Governs THIS construction only: once session loads the world it
-		// supplies its own sight seam, so the walk below runs on session's
-		// answer rather than this one. Matched to it anyway, so the scene
-		// reads the same however it is entered.
-		Sight:     encEveryoneSees{},
-		Equipment: encNoHandsObserved{},
-		// Asked of nobody here: Setup paces no walk and drives no turn, and
-		// once session loads the world it answers from each member's sheet.
-		Sheets: encNoSheetsAsked{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			// The space between the chambers is ROCK, which is the ordinary
 			// dungeon reading and the one that keeps this scene about the gate:
@@ -578,6 +562,29 @@ func authoredCrypt() (*encounter.EncounterData, error) {
 		},
 		Endings:   []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
+		Capabilities: encounter.Capabilities{
+			Initiative: encOrderAsGiven{},
+			Driver:     encPassDriver{},
+			Standing:   encEveryoneStanding{},
+			// Governs THIS construction only: once session loads the world it
+			// supplies its own sight seam, so the walk below runs on session's
+			// answer rather than this one. Matched to it anyway, so the scene
+			// reads the same however it is entered.
+			Sight:     encEveryoneSees{},
+			Equipment: encNoHandsObserved{},
+			// Asked of nobody here: Setup paces no walk and drives no turn, and
+			// once session loads the world it answers from each member's sheet.
+			Sheets: encNoSheetsAsked{},
+			Actors: encounter.Actors{
+				Striker: encounter.RefusingStriker{},
+				Mover:   encounter.RefusingMover{},
+				// Governs THIS construction only, exactly as the sight seam below
+				// does: session installs its own announcer the moment it loads this
+				// world, and the walk runs on that one. Quiet rather than refusing
+				// because a bubble can form while the scene is being assembled.
+				Announcer: encQuietAnnouncer{},
+			},
+		},
 	})
 	if err != nil {
 		return nil, err

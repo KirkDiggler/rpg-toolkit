@@ -48,8 +48,11 @@ func discoveryRunWorld(t fataler, dc int) *encounter.EncounterData {
 			Cells: []spatial.Position{{X: 3, Y: 1}},
 		}},
 	}
-	enc, err := encounter.NewEncounter(encounter.CompileOnlySetup(field,
-		[]encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}}))
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field:        field,
+		Endings:      []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.RefusingCapabilities(),
+	})
 	if err != nil {
 		t.Fatalf("discovery run fixture: %v", err)
 	}

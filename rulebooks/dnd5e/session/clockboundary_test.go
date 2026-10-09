@@ -256,9 +256,12 @@ func (s *ClockBoundaryTestSuite) TestOneAdvanceReachesEveryoneAndEachDecidesForI
 // (rpg-toolkit#1251).
 //
 // So this reads the package's own source and asserts the claim mechanically:
-// every LoadEncounterInput literal names an Announcer. Which one is a judgement
-// the load site makes and this test refuses to make for it — the point is that
-// nobody gets to be silent.
+// every LoadEncounterInput literal takes its capabilities from a builder call,
+// and every encounter.Capabilities literal (capabilities.go's builders) names
+// its Actors, either as an encounter.Actors literal that names an Announcer or
+// as a call to a value that does (encounter.RefusingActors). Which announcer is
+// a judgement the builder makes and this test refuses to make for it — the
+// point is that nobody gets to be silent.
 //
 // The sibling of TestNoCodePathProducesACastlessInteraction and
 // TestNoCodePathProducesARoomlessInteraction, one module up.
@@ -269,7 +272,20 @@ func TestNoCodePathLoadsAWorldWithoutNamingAnAnnouncer(t *testing.T) {
 		t.Fatalf("listing sources: %v", err)
 	}
 
-	literals := 0
+	keyed := func(lit *ast.CompositeLit, name string) ast.Expr {
+		for _, elt := range lit.Elts {
+			kv, ok := elt.(*ast.KeyValueExpr)
+			if !ok {
+				continue
+			}
+			if key, ok := kv.Key.(*ast.Ident); ok && key.Name == name {
+				return kv.Value
+			}
+		}
+		return nil
+	}
+
+	loads, builders := 0, 0
 	for _, path := range entries {
 		if strings.HasSuffix(path, "_test.go") {
 			continue
@@ -285,25 +301,34 @@ func TestNoCodePathLoadsAWorldWithoutNamingAnAnnouncer(t *testing.T) {
 				return true
 			}
 			sel, ok := lit.Type.(*ast.SelectorExpr)
-			if !ok || sel.Sel.Name != "LoadEncounterInput" {
+			if !ok {
 				return true
 			}
-			literals++
-
-			named := false
-			for _, elt := range lit.Elts {
-				kv, ok := elt.(*ast.KeyValueExpr)
-				if !ok {
-					continue
+			switch sel.Sel.Name {
+			case "LoadEncounterInput":
+				loads++
+				if _, call := keyed(lit, "Capabilities").(*ast.CallExpr); !call {
+					if id, ok := keyed(lit, "Capabilities").(*ast.Ident); !ok || id == nil {
+						t.Errorf("%s: a LoadEncounterInput takes its capabilities from no builder — "+
+							"a world whose clock can advance with nobody listening",
+							fset.Position(lit.Pos()))
+					}
 				}
-				if key, ok := kv.Key.(*ast.Ident); ok && key.Name == "Announcer" {
-					named = true
+			case "Capabilities":
+				builders++
+				switch actors := keyed(lit, "Actors").(type) {
+				case *ast.CallExpr:
+				case *ast.CompositeLit:
+					if keyed(actors, "Announcer") == nil {
+						t.Errorf("%s: an encounter.Actors names no Announcer — "+
+							"a world whose clock can advance with nobody listening",
+							fset.Position(actors.Pos()))
+					}
+				default:
+					t.Errorf("%s: an encounter.Capabilities names no Actors — "+
+						"a world whose clock can advance with nobody listening",
+						fset.Position(lit.Pos()))
 				}
-			}
-			if !named {
-				t.Errorf("%s: a LoadEncounterInput names no Announcer — "+
-					"a world whose clock can advance with nobody listening",
-					fset.Position(lit.Pos()))
 			}
 			return true
 		})
@@ -312,8 +337,9 @@ func TestNoCodePathLoadsAWorldWithoutNamingAnAnnouncer(t *testing.T) {
 	// A guard on the guard. If this package stops loading encounters the way it
 	// does today, the loop above would pass by examining nothing at all — which
 	// is the failure mode of every structural test, and worth one line to close.
-	if literals == 0 {
-		t.Fatal("found no LoadEncounterInput literals at all: this test has stopped testing anything")
+	if loads == 0 || builders == 0 {
+		t.Fatalf("found %d LoadEncounterInput and %d Capabilities literals: this test has stopped testing anything",
+			loads, builders)
 	}
 }
 

@@ -1341,17 +1341,13 @@ func (m *Manager) openScope(
 			return nil, err
 		}
 	}
-	enc, baseline, standing, err := m.loadGivenWorld(
-		ctx, data, world, strikerSeam{m: m, scope: scope}, moverSeam{m: m, scope: scope},
-		announcerSeam{m: m, scope: scope},
-		m.checkResolverFor(scope), witnessSeam{scope: scope},
-		m.compelledDriverFor(ctx, scope),
-		// THE SESSION'S SHARED DICE, because this verb can advance a clock and
-		// a clock that advances gives creatures time (rpg-project#465). Every
-		// write verb loads through here, so there is one answer to "can a table
-		// be rolled on this world" and it is yes for every write and no for
-		// every read.
-		m.encounterDice())
+	// Every capability bound to this scope ([Manager.writeCapabilities]): the
+	// seams, the compelled driver over the driver resolved above, and THE
+	// SESSION'S SHARED DICE, because this verb can advance a clock and a clock
+	// that advances gives creatures time (rpg-project#465). Every write verb
+	// loads through here, so there is one answer to "can a table be rolled on
+	// this world" and it is yes for every write and no for every read.
+	enc, baseline, standing, err := m.loadGivenWorld(ctx, data, world, scope, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1642,42 +1638,14 @@ func (m *Manager) adopt(ctx context.Context, scope *writeScope, world encounter.
 	// Replace kinds before constructing its encounter so every assessment made
 	// during load sees exactly that one snapshot.
 	scope.standing.kinds = encounterDataKinds(worldMembers(world))
+	// Every capability rebound to this scope ([Manager.writeCapabilities]),
+	// built after the kinds above so the seams answer from the returned roster.
+	// adopt REPLACES scope.enc, and the composition drives turns, walks,
+	// announces and rolls from inside its own verbs, so every capability the
+	// new encounter carries must be one that reads this scope.
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:       world,
-		Initiative: m.initiative,
-		Standing:   scope.standing,
-		Sight:      sheetsBeside(scope.standing),
-		Equipment:  equipmentBeside(scope.standing),
-		Sheets:     sheetsBeside(scope.standing),
-		// Rebound here for the reason the Striker below is: this replaces
-		// scope.enc, and a compelled turn is driven from inside the
-		// composition's own verbs, so the driver the new encounter carries
-		// must be the one that reads this scope.
-		TurnDriver: m.compelledDriverFor(ctx, scope),
-		// And the die, rebound for the same reason: this replaces scope.enc,
-		// and the world that comes back from a resolution is still one a
-		// creature can be given time on before this verb commits.
-		Roller: m.encounterDice(),
-		// Bound to the SAME scope, not rebuilt: this replaces scope.enc, and
-		// strikerSeam only ever reads scope.enc from inside a later Strike
-		// call, well after this assignment lands (rpg-project#254).
-		Striker: strikerSeam{m: m, scope: scope},
-		// The real Mover, bound to the same scope and rebound here for
-		// adopt's own reason: this replaces scope.enc, and the composition
-		// walks from inside its own verbs, so the seam the new encounter
-		// carries must be the one that reads this scope.
-		Mover: moverSeam{m: m, scope: scope},
-		// Bound to the same scope for the same reason, and rebound here for
-		// a sharper one: adopt REPLACES scope.enc, and the composition
-		// announces from inside its own verbs, so the seam the new
-		// encounter carries must be the one that reads this scope.
-		Announcer: announcerSeam{m: m, scope: scope},
-		// The concealment pair, bound to the same scope for the same
-		// reason: the world coming back may carry concealed structure, and
-		// the seams read scope.enc — which this assignment is about to
-		// replace — only at consult time.
-		CheckResolver: m.checkResolverFor(scope),
-		Witness:       witnessSeam{scope: scope},
+		Data:         world,
+		Capabilities: m.writeCapabilities(ctx, scope),
 	})
 	if err != nil {
 		return fmt.Errorf("%q: %w: %v", scope.encounter, ErrInvalidWorld, err)

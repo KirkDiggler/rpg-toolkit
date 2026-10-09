@@ -93,40 +93,28 @@ func (m *Manager) answerCastOffer(
 	}
 
 	world := scope.enc.WorldView()
-	out, err := resolution.Resolve(ctx, &resolution.Input{
-		World:         world,
-		Participants:  participants,
-		Initiative:    m.initiative,
-		Standing:      scope.standing,
-		Sight:         sheetsBeside(scope.standing),
-		Equipment:     equipmentBeside(scope.standing),
-		Sheets:        sheetsBeside(scope.standing),
-		TurnDriver:    scope.driver,
-		CheckResolver: checkSeam{m: m, scope: scope},
-		Witness:       witnessSeam{scope: scope},
-		Machine:       resumed,
-		Roller:        &diceSeam{roller: m.dice},
+	out, err := resolution.Resolve(ctx, m.resolutionInput(ctx, scope, resolutionAsk{
+		World:        world,
+		Participants: participants,
+		Machine:      resumed,
 		// Cost is deliberately absent — see this function's own doc.
-	})
+	}))
 	if err != nil {
 		return nil, fmt.Errorf("react: %w", translateResolution(err))
 	}
 
-	// Closed BEFORE either tail runs, [answerCheckOffer]'s own ordering: a
-	// failure to save leaves a session whose ledger and story disagree in
-	// the direction that fails closed, and a re-pose below opens its OWN
-	// new window rather than leaving this one both closed and open.
-	if err := answerWindow(scope, window, choice); err != nil {
-		return nil, fmt.Errorf("react: %w", err)
-	}
-	scope.data.Windows = scope.ledger.ToData()
-	scope.touched = true
+	// Answered by the tail's landing, before it poses or continues
+	// ([answerCheckOffer]'s ordering): a failure to save leaves a session
+	// whose ledger and story disagree in the direction that fails closed, and
+	// a re-pose below opens its OWN new window rather than leaving this one
+	// both closed and open.
+	answered := &windowAnswer{Window: window, Choice: choice}
 
 	if out.Posed != nil {
 		// ANOTHER target holds an offer. The same function the fresh cast
 		// door calls, because a re-pose is not a different question — it is
 		// the same one, asked of somebody else.
-		castOut, err := m.poseCastWindow(ctx, scope, payload.Caster, payload.Spell, payload.Caught, out)
+		castOut, err := m.poseCastWindow(ctx, scope, payload.Caster, payload.Spell, payload.Caught, out, answered)
 		if err != nil {
 			return nil, fmt.Errorf("react: %w", err)
 		}
@@ -137,7 +125,7 @@ func (m *Manager) answerCastOffer(
 	if err != nil {
 		return nil, fmt.Errorf("react: %w: %v", ErrInvalidSession, err)
 	}
-	castOut, err := m.finishCast(ctx, scope, payload.Caster, payload.Spell, *spellRef, payload.Caught, out)
+	castOut, err := m.finishCast(ctx, scope, payload.Caster, payload.Spell, *spellRef, payload.Caught, out, answered)
 	if err != nil {
 		return nil, fmt.Errorf("react: %w", err)
 	}

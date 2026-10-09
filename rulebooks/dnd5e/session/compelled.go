@@ -231,26 +231,14 @@ func (d compelledDriver) obey(
 	// storage boundary (encounter v0.43.0, #1385).
 	world := d.scope.enc.WorldView()
 	out, err := resolution.Obey(d.ctx, &resolution.ObeyInput{
-		Interaction: &resolution.Input{
+		Interaction: d.m.resolutionInput(d.ctx, d.scope, resolutionAsk{
+			// Machine is deliberately absent: the word is the machine, and
+			// Obey refuses an interaction that already carries one. The
+			// driver the input carries is never consulted: no verb runs
+			// inside an interaction.
 			World:        world,
 			Participants: cast,
-			Initiative:   d.m.initiative,
-			Standing:     d.scope.standing,
-			Sight:        sheetsBeside(d.scope.standing),
-			Equipment:    equipmentBeside(d.scope.standing),
-			Sheets:       sheetsBeside(d.scope.standing),
-			// This session's driver, NOT this wrapper. Resolution carries the
-			// capability without consulting it — no verb runs inside an
-			// interaction — and handing it a driver that would open a second
-			// interaction of its own is a loop waiting for the first caller
-			// who does.
-			TurnDriver:    d.scope.driver,
-			CheckResolver: checkSeam{m: d.m, scope: d.scope},
-			Witness:       witnessSeam{scope: d.scope},
-			// Machine is deliberately absent: the word is the machine, and
-			// Obey refuses an interaction that already carries one.
-			Roller: &diceSeam{roller: d.m.dice},
-		},
+		}),
 		Member:   string(member),
 		CasterID: commanded.CasterID,
 		Word:     commanded.Word,
@@ -260,18 +248,17 @@ func (d compelledDriver) obey(
 		return nil, fmt.Errorf("compelled turn %q: %w", member, translateResolution(err))
 	}
 
-	if err := d.m.saveDirty(d.ctx, d.scope, out.Resolved); err != nil {
-		return nil, fmt.Errorf("compelled turn %q: %w", member, err)
-	}
-	// Landed straight after the sheets: this path records nothing of its own,
-	// the composition records the compelled act after the driver answers. So
-	// if a word ever changes an area, the area's beats come BEFORE the
-	// composition's record of the act — the reverse of every other path. No
+	// Landed on the encounter the compelled turn is driven from, mid-verb: no
+	// adopt and no commit. This path records nothing of its own — the
+	// composition records the compelled act after the driver answers — so if
+	// a word ever changes an area, the area's beats come BEFORE the
+	// composition's record of the act, the reverse of every other path. No
 	// word can today: Approach and Flee describe a move the composition walks
 	// through the mover seam (which lands its own reaction strikes' areas),
 	// and Grovel applies Prone, which ends no concentration. The first word
 	// that can close or open an area brings the test that pins this order.
-	if err := d.m.landAreas(d.scope.enc, d.scope, out.Resolved); err != nil {
+	// Nothing is told here (R9).
+	if _, err := d.m.land(d.ctx, d.scope, out.Resolved, &landing{Live: d.scope.enc, Untold: true}); err != nil {
 		return nil, fmt.Errorf("compelled turn %q: %w", member, err)
 	}
 	return out, nil

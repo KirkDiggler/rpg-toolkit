@@ -73,17 +73,26 @@ func (s *ForcedStepSuite) SetupTest() {
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	world, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{},
-		Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{},
-		Equipment: encNoHandsObserved{}, Initiative: aggregateRecordOrderAsGiven{},
-		TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
+	world, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("tomb", 0, 0, 12, 6)},
 		},
 		Endings:   []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
+		Capabilities: encounter.Capabilities{
+			Sheets:     encStandStill{},
+			Sight:      aggregateRecordEveryoneSees{},
+			Equipment:  encNoHandsObserved{},
+			Initiative: aggregateRecordOrderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   aggregateRecordEveryoneStanding{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	data := world.ToData()

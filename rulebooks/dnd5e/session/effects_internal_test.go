@@ -55,10 +55,7 @@ func (s shortSight) Sight(members []encounter.MemberID) (map[encounter.MemberID]
 // their whole panel to it.
 func TestAbsentCandidateKeepsItsRowAndThePanel(t *testing.T) {
 	ctx := context.Background()
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
-		Sight: shortSight{"alice": 1}, Equipment: encNoHandsObserved{},
-		Standing: aggregateRecordEveryoneStanding{}, Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:   pointyCanvas(),
 			Regions:  []encounter.RegionInput{rectRegion("cave", 0, 0, 10, 5)},
@@ -70,6 +67,19 @@ func TestAbsentCandidateKeepsItsRowAndThePanel(t *testing.T) {
 			{ID: "goblin-2", Kind: encounter.KindMonster, Position: spatial.Position{X: 7, Y: 3}, Faction: "goblins"},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sheets:     encStandStill{},
+			Sight:      shortSight{"alice": 1},
+			Equipment:  encNoHandsObserved{},
+			Standing:   aggregateRecordEveryoneStanding{},
+			Initiative: aggregateRecordOrderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 

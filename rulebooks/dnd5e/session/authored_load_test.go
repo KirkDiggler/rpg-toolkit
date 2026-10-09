@@ -48,9 +48,10 @@ func (s *ConcealSuite) TestLoadingAnAuthoredWorldNeedsNothingSessionInvented() {
 // TestTheAuthoredLoadIsTheCompositionsOwn is the structural half: session
 // holds no copy of an encounter stand-in.
 //
-// loadAuthored must start from encounter.CompileOnlyLoad and build no
-// LoadEncounterInput of its own, so a capability added to LoadEncounter is
-// stood in by the composition and this package's call does not change. And
+// loadAuthored must take its capabilities from encounter.RefusingCapabilities
+// and compose no encounter.Capabilities of its own, so a capability added to
+// LoadEncounter is stood in by the composition and this package's call does
+// not change. And
 // every witness, check resolver and turn driver this package declares is one
 // of a closed list of real ones — a refusing or answering twin of encounter's
 // stand-in is the copy item 8 deleted, and this is what keeps it deleted.
@@ -98,26 +99,26 @@ func TestTheAuthoredLoadIsTheCompositionsOwn(t *testing.T) {
 				continue
 			}
 			foundLoad = true
-			callsCompileOnly, literals := false, 0
+			callsRefusing, literals := false, 0
 			ast.Inspect(fn.Body, func(n ast.Node) bool {
 				switch node := n.(type) {
 				case *ast.CallExpr:
-					if sel, ok := node.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "CompileOnlyLoad" {
-						callsCompileOnly = true
+					if sel, ok := node.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "RefusingCapabilities" {
+						callsRefusing = true
 					}
 				case *ast.CompositeLit:
-					if sel, ok := node.Type.(*ast.SelectorExpr); ok && sel.Sel.Name == "LoadEncounterInput" {
+					if sel, ok := node.Type.(*ast.SelectorExpr); ok && sel.Sel.Name == "Capabilities" {
 						literals++
 					}
 				}
 				return true
 			})
-			if !callsCompileOnly {
-				t.Errorf("%s: loadAuthored does not start from encounter.CompileOnlyLoad",
+			if !callsRefusing {
+				t.Errorf("%s: loadAuthored does not start from encounter.RefusingCapabilities",
 					fset.Position(fn.Pos()))
 			}
 			if literals != 0 {
-				t.Errorf("%s: loadAuthored builds its own LoadEncounterInput — "+
+				t.Errorf("%s: loadAuthored composes its own encounter.Capabilities — "+
 					"the capabilities it does not answer are encounter's to stand in",
 					fset.Position(fn.Pos()))
 			}

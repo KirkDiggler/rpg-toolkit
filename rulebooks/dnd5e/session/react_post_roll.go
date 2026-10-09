@@ -81,51 +81,34 @@ func (m *Manager) answerPostRoll(
 	cast := m.walkCast(ctx, scope, roster)
 
 	world := scope.enc.WorldView()
-	out, err := resolution.Resolve(ctx, &resolution.Input{
-		World:         world,
-		Participants:  cast,
-		Initiative:    m.initiative,
-		Standing:      scope.standing,
-		Sight:         sheetsBeside(scope.standing),
-		Equipment:     equipmentBeside(scope.standing),
-		Sheets:        sheetsBeside(scope.standing),
-		TurnDriver:    scope.driver,
-		CheckResolver: checkSeam{m: m, scope: scope},
-		Witness:       witnessSeam{scope: scope},
-		Machine:       machine,
+	out, err := resolution.Resolve(ctx, m.resolutionInput(ctx, scope, resolutionAsk{
+		World:        world,
+		Participants: cast,
+		Machine:      machine,
 		// Cost is nil ON PURPOSE — see this function's own doc.
-		Roller: &diceSeam{roller: m.dice},
-	})
+	}))
 	if err != nil {
 		return nil, fmt.Errorf("react: %w", translateAttack(err))
 	}
+	answered := &windowAnswer{Window: window, Choice: choice}
 	if out.Posed != nil {
 		if out.Posed.SettledStrike == nil {
 			return nil, fmt.Errorf("react: %w: unsupported repeated roll question", ErrInvalidWorld)
 		}
-		if err = m.adopt(ctx, scope, out.World); err != nil {
-			return nil, err
-		}
-		if err = m.saveDirty(ctx, scope, out); err != nil {
-			return nil, err
-		}
-		if err = answerWindow(scope, window, choice); err != nil {
-			return nil, err
-		}
-		if _, err = scope.enc.Record(recordStrike(payload.Audience, payload.Target, *out.Posed.SettledStrike, payload.Attack, payload.PresentationID, out.ConcentrationChecks, out.ConcentrationBreaks)); err != nil {
-			return nil, reportUnrecorded(scope, translate(err))
-		}
-		if err = m.landAreas(scope.enc, scope, out); err != nil {
-			return nil, reportUnrecorded(scope, err)
-		}
-		if err = posePostHitWindow(scope, out.Posed); err != nil {
-			return nil, err
-		}
-		report, delivery, err := m.commit(ctx, scope)
+		result, err := m.land(ctx, scope, out, &landing{
+			Record: func(enc *encounter.Encounter, told concentration) error {
+				_, err := enc.Record(recordStrike(payload.Audience, payload.Target, *out.Posed.SettledStrike, payload.Attack, payload.PresentationID, told.Checks, told.Breaks))
+				return err
+			},
+			Answer: answered,
+			Window: func(*encounter.Encounter) error {
+				return posePostHitWindow(scope, out.Posed)
+			},
+		})
 		if err != nil {
 			return nil, err
 		}
-		return &ReactOutput{Saved: report, Delivery: delivery}, nil
+		return &ReactOutput{Saved: result.Saved, Delivery: result.Delivery}, nil
 	}
 
 	struck, ok := out.Outcome.(resolution.StrikeOutcome)
@@ -133,37 +116,20 @@ func (m *Manager) answerPostRoll(
 		return nil, fmt.Errorf("react: %w: resumed strike produced %T", ErrInvalidWorld, out.Outcome)
 	}
 
-	if err := m.adopt(ctx, scope, out.World); err != nil {
-		return nil, fmt.Errorf("react: %w", err)
-	}
-	if err := m.saveDirty(ctx, scope, out); err != nil {
-		return nil, fmt.Errorf("react: %w", err)
-	}
-
-	// Closed BEFORE the beat, so a failure to record leaves a session whose
-	// ledger and story disagree in the direction that fails closed: the window
-	// stays open only if nothing was written at all.
-	if err := answerWindow(scope, window, choice); err != nil {
-		return nil, fmt.Errorf("react: %w", err)
-	}
-	scope.data.Windows = scope.ledger.ToData()
-	scope.touched = true
-
-	if _, err := scope.enc.Record(recordStrike(
-		payload.Audience, payload.Target, struck, payload.Attack, payload.PresentationID,
-		out.ConcentrationChecks, out.ConcentrationBreaks,
-	)); err != nil {
-		return nil, fmt.Errorf("react: %w", reportUnrecorded(scope, translate(err)))
-	}
-	if err := m.landAreas(scope.enc, scope, out); err != nil {
-		return nil, fmt.Errorf("react: %w", reportUnrecorded(scope, err))
-	}
-
-	report, delivery, err := m.commit(ctx, scope)
+	result, err := m.land(ctx, scope, out, &landing{
+		Record: func(enc *encounter.Encounter, told concentration) error {
+			_, err := enc.Record(recordStrike(
+				payload.Audience, payload.Target, struck, payload.Attack, payload.PresentationID,
+				told.Checks, told.Breaks,
+			))
+			return err
+		},
+		Answer: answered,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("react: %w", err)
 	}
-	return &ReactOutput{Saved: report, Delivery: delivery}, nil
+	return &ReactOutput{Saved: result.Saved, Delivery: result.Delivery}, nil
 }
 
 // postRollDeclaration compiles one open post-roll window into the row its
