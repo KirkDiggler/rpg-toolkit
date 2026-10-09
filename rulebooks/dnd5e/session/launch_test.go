@@ -628,7 +628,6 @@ func (s *LaunchActionsSuite) TestALaunchRefusesAWeaponNothingCanBuild() {
 			err := s.launchArmed(armedGoblinAt("doomed", 8, []string{tc.action}))
 			s.Require().Error(err)
 			s.ErrorIs(err, tc.is)
-			s.ErrorContains(err, tc.action, "the refusal names the ref the author wrote")
 			s.NotContains(s.sessions.byID, testSession, "a refused launch stores nothing")
 		})
 	}

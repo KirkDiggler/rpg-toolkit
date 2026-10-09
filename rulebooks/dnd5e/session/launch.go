@@ -43,8 +43,9 @@ import (
 //     seat: the rested and seated sheets land before the board is placed, so
 //     every consult the placement makes reads the rested truth, and before
 //     the run that holds them (seats.go says why that order).
-//  3. The whole board — monsters in authored order, then the party in seat
-//     order — is placed by the encounter's Board in one call: everyone stands,
+//  3. The whole board — the party in seat order, then the monsters in
+//     authored order, so the party is on the board to hear what a monster's
+//     placement tells — is placed by the encounter's Board in one call: everyone stands,
 //     then one look and one formation pass, so every fight that forms holds
 //     everyone it should.
 //  4. The run is saved; one report names every aggregate written or failed.
@@ -86,8 +87,8 @@ type LaunchOutput struct {
 	// Session is the launched run's id.
 	Session string
 
-	// Members is every member placed on the board — monsters in authored
-	// order, then the party in seat order. A monster held in reserve is not
+	// Members is every member placed on the board — the party in seat
+	// order, then the monsters in authored order. A monster held in reserve is not
 	// on the board and not here.
 	Members []Member
 
@@ -191,11 +192,20 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 		names = append(names, projected.Sheet.Name)
 	}
 
-	// 2. The whole board, monsters in authored order then the party in seat
+	// 2. The whole board, the party in seat order then the monsters in authored
 	// order, as one placement — and validated by the encounter's own Board
 	// validation before anything is written.
 	orientation := in.Dungeon.Field.Canvas.Orientation
 	board := make([]encounter.JoinInput, 0, len(monsters)+len(in.Party))
+	for i, id := range in.Party {
+		seat := in.Dungeon.PartyStart[i].At
+		join, err := joinInputFor(scope, id, KindPlayer, names[i],
+			encounter.HexCellAt(orientation, int(seat.X), int(seat.Y)), false, nil, "", nil, socialPlacement{})
+		if err != nil {
+			return nil, fmt.Errorf("launch: %w", err)
+		}
+		board = append(board, join)
+	}
 	for _, monster := range monsters {
 		scope.data.NPCs = append(scope.data.NPCs, *monster.sheet)
 		at := monster.placement.At
@@ -206,15 +216,6 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 				Intimidate: monster.placement.Intimidate, Persuade: monster.placement.Persuade,
 				Table: monster.table, Temper: monster.temper,
 			})
-		if err != nil {
-			return nil, fmt.Errorf("launch: %w", err)
-		}
-		board = append(board, join)
-	}
-	for i, id := range in.Party {
-		seat := in.Dungeon.PartyStart[i].At
-		join, err := joinInputFor(scope, id, KindPlayer, names[i],
-			encounter.HexCellAt(orientation, int(seat.X), int(seat.Y)), false, nil, "", nil, socialPlacement{})
 		if err != nil {
 			return nil, fmt.Errorf("launch: %w", err)
 		}

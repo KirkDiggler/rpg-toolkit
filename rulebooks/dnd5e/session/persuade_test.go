@@ -754,12 +754,8 @@ func (s *PersuadeSuite) TestAFactionsMixDealsATemperamentAndSaysSo() {
 	// appeal below never happens.
 	mgr := s.front([]int{1})
 
-	// READ OFF THE GOBLIN'S OWN STORY. A launch places the monsters before the
-	// party in one Board call, and the deal is told to whoever is on the board
-	// when it is made, so the party is not in that audience (an open ruling,
-	// named in the PR that moved this test off Spawn).
 	var dealt *session.Event
-	for _, event := range s.events(mgr, "goblin") {
+	for _, event := range s.events(mgr, "alice") {
 		if event.Kind == session.EventTempered {
 			dealt = &event
 		}

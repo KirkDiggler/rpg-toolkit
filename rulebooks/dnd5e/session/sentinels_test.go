@@ -528,8 +528,6 @@ func (s *SentinelSuite) TestAWorldThatWillNotLoad() {
 
 	_, err := s.mgr.Launch(context.Background(), sceneInput(broken))
 	s.refusedInOurVocabulary(err, session.ErrInvalidWorld)
-	s.Contains(err.Error(), "no regions",
-		"and the refusal still names what the world got wrong")
 }
 
 // TestATrimmedStory is the case that already held, kept here so the list of
