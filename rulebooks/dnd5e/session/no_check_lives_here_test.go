@@ -54,6 +54,10 @@ var conditionReaders = map[string]bool{
 	"HoldsRef":               true,
 	"DecodeCommanded":        true,
 	"CommandedConditionData": true,
+	// DisplayFor reads the condition display catalogue: a condition's name and
+	// its owner's explanation, by ref (provider-design R14). It is a lookup
+	// over data, and holds, builds and runs nothing.
+	"DisplayFor": true,
 }
 
 // checkMachinery are the entries in the rulebook's events package that stand a

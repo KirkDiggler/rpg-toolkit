@@ -118,11 +118,12 @@ func (m *Manager) buildActivationOffers(
 		}
 
 		offers = append(offers, compiledOffer{
-			declaration: declaration,
-			sheet:       sheet,
-			verb:        VerbActivate,
-			slot:        slot,
-			variant:     variant,
+			declaration:        declaration,
+			sheet:              sheet,
+			verb:               VerbActivate,
+			slot:               slot,
+			variant:            variant,
+			abilityDescription: ability.Description,
 		})
 	}
 

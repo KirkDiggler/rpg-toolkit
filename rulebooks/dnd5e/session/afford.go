@@ -424,6 +424,34 @@ type Declaration struct {
 	// blocker, off turn and while a window is frozen. Rows never grant or
 	// refuse the action and are not selector material.
 	Effects []EffectRow `json:"effects,omitempty"`
+
+	// Information is what the action IS, for the card a player reads before
+	// committing: its owner's prose and its base facts rendered as label and
+	// value rows (provider-design R10, R12, R14). Attached in Afford alone,
+	// after every gate and selector is settled, so it never changes
+	// Available, Why, ID, Candidates or Effects and is never selector
+	// material. Nil when the action has neither prose nor facts; nothing is
+	// synthesised from a ref, an id or a name.
+	Information *ActionInformation `json:"information,omitempty"`
+}
+
+// ActionInformation is one declaration's information: the noun owner's
+// authored description and its base facts, each fact rendered once, here, as
+// a label and value row. A host copies both and never re-derives either.
+type ActionInformation struct {
+	// Description is the owner's prose verbatim. Empty when it has none.
+	Description string `json:"description,omitempty"`
+
+	// Details are the rendered base facts, in the renderer's fixed order.
+	// Empty when the action states none.
+	Details []ActionInformationDetail `json:"details,omitempty"`
+}
+
+// ActionInformationDetail is one rendered fact — "Base damage" / "1d8 + STR
+// modifier (+3) · Bludgeoning".
+type ActionInformationDetail struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
 }
 
 // AffordOutput is what one member can still declare this turn.
@@ -653,6 +681,12 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 	}); err != nil {
 		return nil, fmt.Errorf("afford: %w", err)
 	}
+	// INFORMATION, HERE AND NOWHERE ELSE, beside the effect rows and for
+	// their reason: it is attached after every gate and selector is settled,
+	// so it describes an action and never changes one (information.go).
+	if err := attachInformation(&attachInformationInput{Offers: offers}); err != nil {
+		return nil, fmt.Errorf("afford: %w", err)
+	}
 
 	declarations := make([]Declaration, 0, len(offers))
 	for _, o := range offers {
@@ -671,15 +705,20 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 // and the fixed target kind for the verb. It never carries a selector id or an
 // AttackRef — those belong to a compiled offer, and a blocker has not
 // compiled one.
+//
+// A session-owned verb still says what it is: its prose is session's own and
+// needs nothing compiled. A blocked Attack, Activate or Cast carries none,
+// because its prose belongs to a definition the blocker never compiled.
 func blockedDeclaration(verb Verb, kind TargetKind, why Shortfall) Declaration {
 	return Declaration{
-		Verb:       verb,
-		Slot:       SlotNone,
-		Available:  false,
-		Why:        &why,
-		ID:         "",
-		TargetKind: kind,
-		Candidates: []TargetCandidate{},
+		Verb:        verb,
+		Slot:        SlotNone,
+		Available:   false,
+		Why:         &why,
+		ID:          "",
+		TargetKind:  kind,
+		Candidates:  []TargetCandidate{},
+		Information: sessionVerbInformation(verb),
 	}
 }
 
@@ -893,6 +932,8 @@ func reactDeclaration(session, member string, window interrupt.Window) (Declarat
 		Reaction:   &ReactionRef{Ref: payload.Reaction, Name: name},
 		TargetKind: TargetMember,
 		Candidates: []TargetCandidate{{Member: payload.Mover, Available: true}},
+		// The reaction session names, explained beside its name (mover.go).
+		Information: proseInformation(reactionDescription[payload.Reaction]),
 	}, nil
 }
 
@@ -944,6 +985,7 @@ func (m *Manager) socialRowsOnTheWorldClock(
 		decl := Declaration{
 			Verb: spec.verb, Slot: SlotNone, ID: id,
 			TargetKind: TargetMember, Candidates: projectCandidates(candidates),
+			Information: sessionVerbInformation(spec.verb),
 		}
 		// NO SHEET AND NO PROFILE: free roam has no economy to fall short of,
 		// so the shared order skips its price arm rather than waiving one.

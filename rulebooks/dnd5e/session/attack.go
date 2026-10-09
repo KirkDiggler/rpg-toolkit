@@ -518,14 +518,15 @@ func (m *Manager) poseAttackWindow(
 		Window: func(enc *encounter.Encounter) error {
 			offer := ReactionRef{Ref: ask.Offer.Ref.String(), Name: ask.Offer.Name}
 			payload, err := marshalPostRollPayload(postRollWindowPayload{
-				Audience:       ask.Audience,
-				Target:         in.Target,
-				Attack:         attackRefFor(definition),
-				PresentationID: presentationID,
-				Offer:          offer,
-				Roll:           ask.Roll,
-				Total:          ask.Total,
-				Frozen:         out.Posed.Frozen,
+				Audience:         ask.Audience,
+				Target:           in.Target,
+				Attack:           attackRefFor(definition),
+				PresentationID:   presentationID,
+				Offer:            offer,
+				OfferDescription: ask.Offer.Description,
+				Roll:             ask.Roll,
+				Total:            ask.Total,
+				Frozen:           out.Posed.Frozen,
 			})
 			if err != nil {
 				return fmt.Errorf("%w: %v", ErrInvalidSession, err)

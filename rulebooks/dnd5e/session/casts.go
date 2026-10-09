@@ -384,7 +384,7 @@ func castOptions(profile *combatActions.CastProfile) []CastOption {
 	}
 	out := make([]CastOption, 0, len(profile.Options))
 	for _, option := range profile.Options {
-		out = append(out, CastOption{ID: option.ID, Label: option.Label})
+		out = append(out, CastOption{ID: option.ID, Label: option.Label, Description: option.Description})
 	}
 	return out
 }

@@ -19,11 +19,15 @@ const windowKindPostHit = "post_hit"
 // The hit is already durable before this window opens. Frozen belongs to
 // resolution; resuming records only the reaction, never the original hit.
 type postHitWindowPayload struct {
-	Kind     string       `json:"kind"`
-	Audience string       `json:"audience"`
-	Offer    ReactionRef  `json:"offer"`
-	Options  []CastOption `json:"options,omitempty"`
-	Frozen   []byte       `json:"frozen"`
+	Kind     string      `json:"kind"`
+	Audience string      `json:"audience"`
+	Offer    ReactionRef `json:"offer"`
+	// OfferDescription is the offering owner's prose for this reaction,
+	// copied from the posed offer. It rides the window, not [ReactionRef],
+	// because ReactionRef also rides stream events and no beat carries prose.
+	OfferDescription string       `json:"offer_description,omitempty"`
+	Options          []CastOption `json:"options,omitempty"`
+	Frozen           []byte       `json:"frozen"`
 }
 
 func thawPostHitPayload(raw []byte, audience string) (postHitWindowPayload, error) {
@@ -51,9 +55,9 @@ func posePostHitWindow(scope *writeScope, posed *resolution.Pose) error {
 	}
 	options := make([]CastOption, 0, len(ask.Choices))
 	for _, o := range ask.Choices {
-		options = append(options, CastOption{ID: o.ID, Label: o.Label})
+		options = append(options, CastOption{ID: o.ID, Label: o.Label, Description: o.Description})
 	}
-	payload, err := json.Marshal(postHitWindowPayload{Kind: windowKindPostHit, Audience: ask.Audience, Offer: ReactionRef{Ref: ask.Offer.Ref.String(), Name: ask.Offer.Name}, Options: options, Frozen: posed.Frozen})
+	payload, err := json.Marshal(postHitWindowPayload{Kind: windowKindPostHit, Audience: ask.Audience, Offer: ReactionRef{Ref: ask.Offer.Ref.String(), Name: ask.Offer.Name}, OfferDescription: ask.Offer.Description, Options: options, Frozen: posed.Frozen})
 	if err != nil {
 		return err
 	}
@@ -81,7 +85,7 @@ func postHitDeclaration(session, member string, window interrupt.Window) (Declar
 	if len(p.Options) == 0 {
 		slot = SlotNone
 	}
-	return Declaration{Verb: VerbReact, Slot: slot, Available: true, ID: id, Reaction: &p.Offer, TargetKind: TargetNone, Candidates: []TargetCandidate{}, Options: p.Options}, nil
+	return Declaration{Verb: VerbReact, Slot: slot, Available: true, ID: id, Reaction: &p.Offer, TargetKind: TargetNone, Candidates: []TargetCandidate{}, Options: p.Options, Information: proseInformation(p.OfferDescription)}, nil
 }
 
 func (m *Manager) answerPostHit(ctx context.Context, scope *writeScope, window interrupt.Window, in *ReactInput) (*ReactOutput, error) {
