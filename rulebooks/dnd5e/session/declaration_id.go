@@ -290,17 +290,19 @@ func selectorVariant(
 	}
 }
 
-// definitionVariant serializes one complete action definition as selector
-// material. Shared by the two verbs whose variant IS their definition, so a
-// cast and a swing cannot drift on what "the whole definition" means.
+// definitionVariant serializes one complete action definition's MECHANICS as
+// selector material: the allow-list projection [selectorDefinitionOf], never
+// the raw definition, so the definition's prose cannot reach identity (R11).
+// Shared by the two verbs whose variant IS their definition, so a cast and a
+// swing cannot drift on what "the whole definition" means.
 //
-// Validate runs FIRST: it is the gate that rejects an unvalidated profile and
-// malformed embedded raw JSON (a condition's opaque parameters) upstream of
-// canonicalization. label names the verb in a refusal.
+// Validate runs FIRST, on the REAL definition: it is the gate that rejects an
+// unvalidated profile and malformed embedded raw JSON (a condition's opaque
+// parameters) upstream of canonicalization. label names the verb in a refusal.
 //
-// IT TAKES A POINTER, and that is load-bearing rather than a style choice.
-// [core.Ref] carries MarshalJSON on its POINTER receiver, so a definition
-// marshaled as a value has a non-addressable Ref field and falls back to the
+// THE PROJECTION IS MARSHALED THROUGH A POINTER, and that is load-bearing
+// rather than a style choice. [core.Ref] carries MarshalJSON on its POINTER
+// receiver, so a ref marshaled as a non-addressable value falls back to the
 // struct-tag encoding — the ref goes out as {"module":…,"type":…,"id":…}
 // instead of "dnd5e:weapons:longsword", every selector in the build changes,
 // and every declaration a client is holding turns stale at once. Pinned by
@@ -309,7 +311,7 @@ func definitionVariant(definition *combatActions.Definition, label string) (json
 	if err := definition.Validate(); err != nil {
 		return nil, fmt.Errorf("%s definition is invalid: %w", label, err)
 	}
-	raw, err := json.Marshal(definition)
+	raw, err := json.Marshal(selectorDefinitionOf(definition))
 	if err != nil {
 		return nil, fmt.Errorf("%s definition marshal: %w", label, err)
 	}
