@@ -29,6 +29,11 @@ type Offer struct {
 	// Inspiration". Authored by the offerer, never derived from Ref.
 	Name string
 
+	// Description is the offerer's authored prose: what taking this offer does.
+	// It is content for the player reading the offer, never an input to any
+	// roll, and may be empty.
+	Description string
+
 	// Audience is the member whose choice this is. The subscriber names it,
 	// which is what makes the chain wide enough for an offer posed to somebody
 	// other than the roller without this type learning about that case.

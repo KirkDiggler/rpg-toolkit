@@ -17,8 +17,9 @@ import (
 // declare, and the machine that reads it is chosen by which arm is populated
 // rather than by what the definition is called.
 type Definition struct {
-	// Description is rulebook-authored explanatory content. It is not a rule
-	// or selector input; hosts exclude it from selector serialization.
+	// Description is rulebook-authored explanatory content. It is prose, not a
+	// rule: it is not in a declaration selector's allow-list, so editing it can
+	// never change an action's identity.
 	Description string               `json:"description,omitempty"`
 	Ref         core.Ref             `json:"ref"`
 	Name        string               `json:"name"`

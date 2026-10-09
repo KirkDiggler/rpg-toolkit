@@ -67,6 +67,11 @@ func (d *DeflectMissiles) Status(*StatusInput) (*StatusOutput, error) {
 // Name returns the display name for the Deflect Missiles feature.
 func (d *DeflectMissiles) Name() string { return d.name }
 
+// Description returns what activating this feature does, in the player's voice.
+func (d *DeflectMissiles) Description() string {
+	return "As a reaction, reduce the damage from a ranged weapon attack by 1d10 plus your Dexterity modifier plus your monk level. You may then catch the missile and throw it back."
+}
+
 // GetID implements core.Entity
 func (d *DeflectMissiles) GetID() string {
 	return d.id

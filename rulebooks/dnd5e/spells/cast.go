@@ -320,9 +320,13 @@ var castContent = map[Spell]castProfileBuilder{
 		build: func(_ int) actions.CastProfile {
 			return actions.CastProfile{
 				RangeFeet: 30, Target: actions.CastTargetOneCreature, MinTargets: 1, MaxTargets: 1,
-				Attack:  &actions.AttackProfile{Category: actions.AttackCategorySpell, Delivery: actions.AttackDelivery{Melee: &actions.MeleeDelivery{ReachFeet: 30}}, Damage: []damage.Damage{{Dice: "1d6", Type: damage.Piercing}}},
-				Options: []actions.CastOption{{ID: "no-pull", Label: "No pull"}, {ID: "pull-5", Label: "Pull 5 feet"}, {ID: "pull-10", Label: "Pull 10 feet"}},
-				Move:    &actions.CastMove{Policy: actions.MovePull, Cells: 2, CellsByOption: map[string]int{"no-pull": 0, "pull-5": 1, "pull-10": 2}},
+				Attack: &actions.AttackProfile{Category: actions.AttackCategorySpell, Delivery: actions.AttackDelivery{Melee: &actions.MeleeDelivery{ReachFeet: 30}}, Damage: []damage.Damage{{Dice: "1d6", Type: damage.Piercing}}},
+				Options: []actions.CastOption{
+					{ID: "no-pull", Label: "No pull", Description: "The creature stays where it is."},
+					{ID: "pull-5", Label: "Pull 5 feet", Description: "On a hit, draws the creature up to 5 feet toward you, as far as the terrain permits."},
+					{ID: "pull-10", Label: "Pull 10 feet", Description: "On a hit, draws the creature up to 10 feet toward you, as far as the terrain permits."},
+				},
+				Move: &actions.CastMove{Policy: actions.MovePull, Cells: 2, CellsByOption: map[string]int{"no-pull": 0, "pull-5": 1, "pull-10": 2}},
 			}
 		},
 	},
@@ -699,9 +703,9 @@ var castContent = map[Spell]castProfileBuilder{
 				// your language" has nothing to read. No shelf is carved,
 				// because nothing else wants one.
 				Options: []actions.CastOption{
-					{ID: CommandWordApproach, Label: "Approach"},
-					{ID: CommandWordFlee, Label: "Flee"},
-					{ID: CommandWordGrovel, Label: "Grovel"},
+					{ID: CommandWordApproach, Label: "Approach", Description: "On its next turn the creature moves toward you, then ends its turn."},
+					{ID: CommandWordFlee, Label: "Flee", Description: "On its next turn the creature spends its movement going away from you, then ends its turn."},
+					{ID: CommandWordGrovel, Label: "Grovel", Description: "On its next turn the creature falls prone, then ends its turn."},
 				},
 				Effects: []actions.CastEffect{{
 					Recipient: actions.CastRecipientTarget,

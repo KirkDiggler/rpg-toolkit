@@ -21,6 +21,9 @@ import (
 const (
 	// ResistanceName is the display name for a creature holding a Resistance die.
 	ResistanceName = "Resistance"
+
+	// ResistanceOfferDescription is what the offer tells the player taking it.
+	ResistanceOfferDescription = "Add your Resistance die to this saving throw. The die is spent when you take it."
 	// ResistanceDie is the die Resistance grants — 1d4 at every level (no scaling).
 	ResistanceDie = "1d4"
 )
@@ -213,7 +216,7 @@ func (r *ResistanceCondition) onPostSaveRollOffer(
 		_ context.Context, e *dnd5eEvents.PostSaveRollOfferEvent,
 	) (*dnd5eEvents.PostSaveRollOfferEvent, error) {
 		e.Offers = append(e.Offers, dnd5eEvents.Offer{
-			Ref: refs.Conditions.Resistance(), Name: ResistanceName, Audience: r.MemberID,
+			Ref: refs.Conditions.Resistance(), Name: ResistanceName, Description: ResistanceOfferDescription, Audience: r.MemberID,
 			Die: ResistanceDie, SourceID: r.SourceID,
 		})
 		return e, nil

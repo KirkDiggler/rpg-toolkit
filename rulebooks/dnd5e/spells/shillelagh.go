@@ -44,7 +44,10 @@ func bindShillelagh(profile *actions.CastProfile, input CastDefinitionInput) boo
 	} else {
 		effect.OptionKey = "weapon_slot"
 		for _, weapon := range config.Weapons {
-			profile.Options = append(profile.Options, actions.CastOption{ID: weapon.Slot, Label: weapon.Label})
+			profile.Options = append(profile.Options, actions.CastOption{
+				ID: weapon.Slot, Label: weapon.Label,
+				Description: "Imbue " + weapon.Label + ": it deals 1d8 magical bludgeoning damage and uses the better of Strength or your spellcasting ability.",
+			})
 		}
 	}
 	// This structure contains only strings and slices, so marshaling cannot fail.

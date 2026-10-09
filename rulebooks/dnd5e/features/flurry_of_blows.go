@@ -46,6 +46,11 @@ func (f *FlurryOfBlows) Status(in *StatusInput) (*StatusOutput, error) {
 // Name returns the display name for the Flurry of Blows feature.
 func (f *FlurryOfBlows) Name() string { return f.name }
 
+// Description returns what activating this feature does, in the player's voice.
+func (f *FlurryOfBlows) Description() string {
+	return "Spend 1 ki point to gain two Flurry of Blows strikes you can make as bonus attacks."
+}
+
 // GetID implements core.Entity
 func (f *FlurryOfBlows) GetID() string {
 	return f.id

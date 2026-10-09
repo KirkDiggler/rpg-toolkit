@@ -84,11 +84,11 @@ var displayCatalog = map[string]Display{
 	refs.Conditions.Hidden().String():         {Name: "Hidden", Detail: "A hidden creature's attacks have advantage, and attacks against it have disadvantage. Attacking ends it."},
 	refs.Conditions.Helped().String():         {Name: "Helped", Detail: "Your next attack roll has advantage."},
 	refs.Conditions.Inspired().String():       {Name: InspiredName, Detail: "Holds a Bardic Inspiration die. After seeing your attack roll you may add it; the die is spent only when you take it."},
-	refs.Conditions.BladeWard().String():      {Name: BladeWardName},
+	refs.Conditions.BladeWard().String():      {Name: BladeWardName, Detail: "You have resistance to bludgeoning, piercing, and slashing damage from weapon attacks until the end of your next turn."},
 	refs.Conditions.GuidingBolt().String():    {Name: GuidingBoltName, Detail: "The next attack roll against the lit creature has advantage."},
 	refs.Conditions.TrueStrike().String():     {Name: TrueStrikeName, Detail: "Your next attack against the chosen target has advantage."},
 	refs.Conditions.ViciousMockery().String(): {Name: ViciousMockeryName, Detail: "Your next attack roll has disadvantage."},
-	refs.Conditions.Commanded().String():      {Name: CommandedName},
+	refs.Conditions.Commanded().String():      {Name: CommandedName, Detail: "On your next turn you are compelled to obey the word you were commanded, and that turn ends with it. The compulsion ends at the end of that turn."},
 	refs.Conditions.Concentrating().String():  {Name: ConcentratingName},
 	refs.Conditions.Baned().String():          {Name: BanedName, Detail: "Subtracts 1d4 from attack rolls and saving throws. Multiple Bane effects do not subtract extra dice from the same roll."},
 	refs.Conditions.Blessed().String(): {
@@ -109,9 +109,9 @@ var displayCatalog = map[string]Display{
 	// exact catalog Resistance's own entry touches, for the same reason.
 	refs.Conditions.DivineFavor().String():     {Name: DivineFavorName, Detail: "Your weapon attacks deal an extra 1d4 radiant damage."},
 	refs.Conditions.FaerieFire().String():      {Name: FaerieFireName, Detail: "Attack rolls against an outlined creature have advantage if the attacker can see it."},
-	refs.Conditions.ShieldOfFaith().String():   {Name: ShieldOfFaithName},
-	refs.Conditions.Guided().String():          {Name: GuidedName},
-	refs.Conditions.Resistance().String():      {Name: ResistanceName},
+	refs.Conditions.ShieldOfFaith().String():   {Name: ShieldOfFaithName, Detail: "Adds 2 to your Armor Class while the caster keeps concentrating."},
+	refs.Conditions.Guided().String():          {Name: GuidedName, Detail: "Holds a Guidance die. After seeing your ability check roll you may add it; the die is spent only when you take it."},
+	refs.Conditions.Resistance().String():      {Name: ResistanceName, Detail: "Holds a Resistance die. After seeing your saving throw roll you may add it; the die is spent only when you take it."},
 	refs.Conditions.Sanctuary().String():       {Name: SanctuaryName, Detail: "A creature that targets the warded creature must first succeed on a Wisdom saving throw. The ward ends if the warded creature attacks."},
-	refs.Conditions.SanctuaryImmune().String(): {Name: SanctuaryImmuneName},
+	refs.Conditions.SanctuaryImmune().String(): {Name: SanctuaryImmuneName, Detail: "You cannot receive another Sanctuary until this ends."},
 }
