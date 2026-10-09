@@ -145,10 +145,6 @@ func (s *StructuralRevealSuite) open(field encounter.FieldInput, resolver encoun
 	// observer who earned it, and an obstructed peer must not be handed it.
 	sight := &sightList{fallback: 30, reach: map[encounter.MemberID]int{"peer": 1}}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sheets: zeroSheets{},
-		Sight:  sight, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{},
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{},
-		Announcer: quietAnnouncer{}, CheckResolver: resolver, Witness: nobodyPerceives{},
 		Field: field,
 		Members: []encounter.MemberInput{
 			{ID: "finder", Kind: encounter.KindPlayer, Position: cellAt(1, 1)},
@@ -157,6 +153,21 @@ func (s *StructuralRevealSuite) open(field encounter.FieldInput, resolver encoun
 			{ID: "peer", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 4}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sheets:        zeroSheets{},
+			Sight:         sight,
+			Equipment:     encounter.UnobservedEquipment{},
+			Standing:      everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			CheckResolver: resolver,
+			Witness:       nobodyPerceives{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -166,11 +177,22 @@ func (s *StructuralRevealSuite) open(field encounter.FieldInput, resolver encoun
 func (s *StructuralRevealSuite) reload(enc *encounter.Encounter) *encounter.Encounter {
 	s.T().Helper()
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sheets: zeroSheets{},
-		Data:   enc.ToData(), Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{},
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
-		Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
+		Data: enc.ToData(),
+		Capabilities: encounter.Capabilities{
+			Sheets:        zeroSheets{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Standing:      everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			CheckResolver: findsNothing{},
+			Witness:       nobodyPerceives{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 

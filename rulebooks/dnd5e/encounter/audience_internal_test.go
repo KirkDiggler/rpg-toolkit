@@ -27,8 +27,6 @@ import (
 // audienceFor's own contract, not any one call site's.
 func TestAudienceForPolicy(t *testing.T) {
 	enc, err := NewEncounter(&SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: FieldInput{Canvas: CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()}, Regions: []RegionInput{rectRegion("hall", 0, 0, 6, 6)}},
 		Members: []MemberInput{
 			{ID: "zebra", Kind: KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
@@ -36,6 +34,19 @@ func TestAudienceForPolicy(t *testing.T) {
 			{ID: "mikko", Kind: KindPlayer, Position: spatial.Position{X: 2, Y: 0}},
 		},
 		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
+		Capabilities: Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 
@@ -84,9 +95,6 @@ func TestAudienceForPolicy(t *testing.T) {
 // observable through Record, because v1 erases it.
 func TestAnExperienceBeatNamesEveryGranteeAsASubject(t *testing.T) {
 	enc, err := NewEncounter(&SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: FieldInput{Canvas: CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()},
 			Regions: []RegionInput{rectRegion("hall", 0, 0, 6, 6)}},
 		Members: []MemberInput{
@@ -95,6 +103,19 @@ func TestAnExperienceBeatNamesEveryGranteeAsASubject(t *testing.T) {
 			{ID: "goblin", Kind: KindMonster, Position: spatial.Position{X: 2, Y: 0}},
 		},
 		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
+		Capabilities: Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 
@@ -201,8 +222,6 @@ func TestCallSiteClassification(t *testing.T) {
 	standing := &oneDown{}
 
 	enc, err := NewEncounter(&SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: UnobservedEquipment{}, Sheets: sheetFacts{"zebra": {SpeedFeet: 30}, "alice": {SpeedFeet: 30}, "goblin": {SpeedFeet: 30}}, Standing: standing, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Retention: RetentionUnbounded,
 		Field: FieldInput{
 			Canvas: CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()},
@@ -220,6 +239,19 @@ func TestCallSiteClassification(t *testing.T) {
 			{ID: "goblin", Kind: KindMonster, Position: spatial.Position{X: 2, Y: 0}},
 		},
 		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
+		Capabilities: Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  UnobservedEquipment{},
+			Sheets:     sheetFacts{"zebra": {SpeedFeet: 30}, "alice": {SpeedFeet: 30}, "goblin": {SpeedFeet: 30}},
+			Standing:   standing,
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 	require.Len(t, enc.bubbles, 1, "everyone sees everyone at first light — a bubble forms unprompted")

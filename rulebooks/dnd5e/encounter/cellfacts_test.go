@@ -39,10 +39,6 @@ func (s *CellFactsTestSuite) SetupTest() {
 	s.hero = encounter.MemberID("hero")
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: &scriptedDriver{}, Striker: &scriptedStriker{kind: encounter.OutcomeMissed},
-		Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 10, 6, 5, 3)},
@@ -64,6 +60,19 @@ func (s *CellFactsTestSuite) SetupTest() {
 			{ID: s.secondGoblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 13, Y: 7}},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     &scriptedDriver{},
+			Actors: encounter.Actors{
+				Striker:   &scriptedStriker{kind: encounter.OutcomeMissed},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	s.enc = enc

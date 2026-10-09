@@ -81,8 +81,6 @@ func (s *PursuitSuite) SetupTest() {
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{hunter: {SpeedFeet: 30}, straggler: {SpeedFeet: 5}, alice: {}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: field,
 		Members: []encounter.MemberInput{
 			// Alice stands at the threshold; the goblin is across the room
@@ -91,6 +89,19 @@ func (s *PursuitSuite) SetupTest() {
 			{ID: hunter, Kind: encounter.KindMonster, Position: spatial.Position{X: 21, Y: 13}, Table: hunts()},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheetFacts{hunter: {SpeedFeet: 30}, straggler: {SpeedFeet: 5}, alice: {}},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     tableDriver(),
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	s.enc = enc

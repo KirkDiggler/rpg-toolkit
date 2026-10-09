@@ -98,12 +98,24 @@ func (s *SingleRoomWallDoorSuite) TestOrdinaryDiscoveryDoesNotSeeThroughAFoundSe
 	}}
 	compiled := s.load(spec)
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sheets: zeroSheets{},
-		Sight:  everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Standing: everyoneStanding{},
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		CheckResolver: findDoorCheck{}, Witness: nobodyPerceivesAnything{},
-		Field: compiled.Field, Members: []encounter.MemberInput{{ID: "walker", Kind: encounter.KindPlayer, Position: axial(0, 0)}},
+		Field:   compiled.Field,
+		Members: []encounter.MemberInput{{ID: "walker", Kind: encounter.KindPlayer, Position: axial(0, 0)}},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sheets:        zeroSheets{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Standing:      everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			CheckResolver: findDoorCheck{},
+			Witness:       nobodyPerceivesAnything{},
+			Actors: encounter.Actors{
+				Striker:   noAttacksExpected{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	atlas, err := enc.AtlasFor("walker")

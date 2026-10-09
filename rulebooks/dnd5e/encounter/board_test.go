@@ -25,9 +25,6 @@ func TestBoardSuite(t *testing.T) { suite.Run(t, new(BoardSuite)) }
 // other, and nobody in it yet.
 func (s *BoardSuite) empty() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:   openAir(),
 			Regions:  []encounter.RegionInput{rectRegion("yard", 0, 0, 8, 6)},
@@ -38,6 +35,19 @@ func (s *BoardSuite) empty() *encounter.Encounter {
 		},
 		Endings:   []encounter.EndingInput{withdrawn()},
 		Retention: encounter.RetentionUnbounded,
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	return enc

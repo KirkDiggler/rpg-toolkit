@@ -70,7 +70,7 @@ func TestBoundarySuite(t *testing.T) { suite.Run(t, new(BoundaryTestSuite)) }
 // adjacentFight is monsterturn_test's adjacentSkeletonEncounter with the
 // Announcer opened up, since that is what these tests are about.
 func (s *BoundaryTestSuite) adjacentFight(
-	driver encounter.TurnDriver, striker encounter.Striker, announcer encounter.Announcer,
+	driver encounter.Driver, striker encounter.Striker, announcer encounter.Announcer,
 ) (*encounter.Encounter, error) {
 	return s.fightWithMonsters(driver, striker, announcer, goblin)
 }
@@ -80,7 +80,7 @@ func (s *BoundaryTestSuite) adjacentFight(
 // back to back inside a single EndTurn, which is the case
 // driveOneMonsterTurn's own announce exists for.
 func (s *BoundaryTestSuite) fightWithMonsters(
-	driver encounter.TurnDriver, striker encounter.Striker, announcer encounter.Announcer,
+	driver encounter.Driver, striker encounter.Striker, announcer encounter.Announcer,
 	monsters ...core.EntityID,
 ) (*encounter.Encounter, error) {
 	members := []encounter.MemberInput{
@@ -97,15 +97,25 @@ func (s *BoundaryTestSuite) fightWithMonsters(
 		}, Targeting: "closest"}
 	}
 	return encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheets, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: driver, Striker: striker, Mover: quietMover{}, Announcer: announcer,
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 		},
 		Members: members,
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheets,
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     driver,
+			Actors: encounter.Actors{
+				Striker:   striker,
+				Mover:     quietMover{},
+				Announcer: announcer,
+			},
+		},
 	})
 }
 
@@ -248,8 +258,19 @@ func (s *BoundaryTestSuite) TestAnnouncerIsRequiredAtBothConstructors() {
 	s.Require().NoError(err)
 
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: enc.ToData(), Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{},
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{},
+		Data: enc.ToData(),
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker: passStriker{},
+				Mover:   quietMover{},
+			},
+		},
 	})
 	s.Require().ErrorIs(err, encounter.ErrNoAnnouncer,
 		"a blob that comes back without one is as unusable as a Setup without one")
@@ -266,7 +287,7 @@ func (s *BoundaryTestSuite) TestRefusingAnnouncerNamesTheHostBug() {
 }
 
 // TestAnnouncerFailureAbortsTheVerb — an announcer malfunction is a
-// TurnDriver/Striker-class failure: the caller's whole verb fails, and since
+// Driver/Striker-class failure: the caller's whole verb fails, and since
 // nothing is saved until the caller's own commit, it costs the retry and
 // nothing else.
 func (s *BoundaryTestSuite) TestAnnouncerFailureAbortsTheVerb() {
@@ -279,9 +300,20 @@ func (s *BoundaryTestSuite) TestAnnouncerFailureAbortsTheVerb() {
 	// Reload the same world with an announcer that fails, so construction
 	// itself is not the thing under test.
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: enc.ToData(), Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{},
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{},
-		Announcer: journalAnnouncer{j: j, fail: boom},
+		Data: enc.ToData(),
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: journalAnnouncer{j: j, fail: boom},
+			},
+		},
 	})
 	s.Require().NoError(err)
 

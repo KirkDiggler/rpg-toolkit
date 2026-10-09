@@ -155,15 +155,26 @@ func scaleEncounter(tb testing.TB, raw string) (*encounter.Encounter, encounter.
 
 	watcher := core.EntityID("watcher")
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		CheckResolver: nobodyFindsAnything{}, Witness: nobodyIsWatching{},
 		Field: compiled.Field,
 		Members: []encounter.MemberInput{
 			{ID: watcher, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Standing:      everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			CheckResolver: nobodyFindsAnything{},
+			Witness:       nobodyIsWatching{},
+			Actors: encounter.Actors{
+				Striker:   noAttacksExpected{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(tb, err)
 

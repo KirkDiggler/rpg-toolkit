@@ -51,8 +51,6 @@ func TestVaultChase(t *testing.T) {
 	// engine that owns the walls is what finds the way through the gate, and
 	// the creature only says "toward the enemy" (rpg-project#465).
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheets, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(corridorRoom, 0, 0, 10, 10), rectRegion(vaultRoom, 10, 0, 10, 10)}, Walls: corridorWall,
@@ -65,6 +63,19 @@ func TestVaultChase(t *testing.T) {
 		Endings: []encounter.EndingInput{
 			{Key: sanctuaryEnding, Trigger: encounter.TriggerReachedPosition{
 				Position: spatial.Position{X: 18, Y: 8}}}, // the vault's own [8,8], anchored at [10,0]
+		},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheets,
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     tableDriver(),
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
 		},
 	})
 	require.NoError(t, err, "beat 1: the corridor assembles")
@@ -114,8 +125,21 @@ func TestVaultChase(t *testing.T) {
 	// hunted before (its INTEL travels too — beliefs always were state).
 	data := enc.ToData()
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheets, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data})
+		Data: data,
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheets,
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     tableDriver(),
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
+	})
 	require.NoError(t, err, "beat 3: the suspended chase crosses a process boundary")
 	enc = enc2 // the reload IS the encounter now
 
