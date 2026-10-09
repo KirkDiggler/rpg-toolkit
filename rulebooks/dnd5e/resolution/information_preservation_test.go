@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -76,28 +77,38 @@ func TestPostHitChoicesKeepDescriptionAcrossFreeze(t *testing.T) {
 	}
 
 	// Resuming reads frozen mechanics, not prose: rewriting every description
-	// in the payload resumes to the same outcome.
+	// in the payload (the offer's own and each option's) resumes to the same
+	// outcome. Only the echoed offer, Retaliation.Offer, may differ; it is
+	// neutralised and everything else is compared as it came back.
 	resume := func(payload []byte) string {
 		machine, rerr := NewStrikeResumed(&StrikeResumeInput{Frozen: payload, Answer: OfferSpend, Option: "lightning", Roller: &actionRoller{damage: [][]int{{5, 5}}, singles: []int{20}}})
 		require.NoError(t, rerr)
 		resumed, rerr := wolfStrikesHero(t, wrathHero(t), machine)
 		require.NoError(t, rerr)
-		require.NotNil(t, resumed.Outcome.(StrikeOutcome).Retaliation, "the reaction resolved")
-		encoded, rerr := json.Marshal(resumed.Outcome)
+		outcome := resumed.Outcome.(StrikeOutcome)
+		require.NotNil(t, outcome.Retaliation, "the reaction resolved")
+		retaliation := *outcome.Retaliation
+		retaliation.Offer = dnd5eEvents.PostHitOffer{}
+		outcome.Retaliation = &retaliation
+		encoded, rerr := json.Marshal(outcome)
 		require.NoError(t, rerr)
 		return string(encoded)
 	}
 	original := resume(out.Posed.Frozen)
-	var raw map[string]any
-	require.NoError(t, json.Unmarshal(out.Posed.Frozen, &raw))
-	rewritten, err := json.Marshal(raw)
-	require.NoError(t, err)
-	rewritten = []byte(strings.ReplaceAll(string(rewritten), ask.Choices[0].Description, "different words"))
-	require.NotEqual(t, string(out.Posed.Frozen), string(rewritten), "precondition: the prose was actually rewritten")
-	// The outcome echoes the offer it resumed from, so the rewritten words
-	// come back as they went in. Everything else is identical.
-	after := strings.ReplaceAll(resume(rewritten), "different words", ask.Choices[0].Description)
-	require.Equal(t, original, after)
+	rewritten := string(out.Posed.Frozen)
+	descriptions := []string{ask.Offer.Description}
+	for _, choice := range ask.Choices {
+		descriptions = append(descriptions, choice.Description)
+	}
+	for i, words := range descriptions {
+		quoted, merr := json.Marshal(words)
+		require.NoError(t, merr)
+		replacement, merr := json.Marshal("rewritten prose " + string(rune('a'+i)))
+		require.NoError(t, merr)
+		require.Contains(t, rewritten, string(quoted), "precondition: the prose is in the frozen payload")
+		rewritten = strings.ReplaceAll(rewritten, string(quoted), string(replacement))
+	}
+	require.Equal(t, original, resume([]byte(rewritten)))
 }
 
 func TestBeforeRollOfferKeepsDescription(t *testing.T) {
