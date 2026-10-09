@@ -13,10 +13,6 @@ func TestWalkEntrySuite(t *testing.T) { suite.Run(t, new(WalkEntrySuite)) }
 
 func (s *WalkEntrySuite) scene(reach int) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     &sightList{reach: map[encounter.MemberID]int{alice: reach}, fallback: 1},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{},
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("corridor", 0, 0, 5, 3)}},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: cellAt(0, 0)},
@@ -24,6 +20,19 @@ func (s *WalkEntrySuite) scene(reach int) *encounter.Encounter {
 			{ID: goblin, Kind: encounter.KindMonster, Position: cellAt(2, 0)},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      &sightList{reach: map[encounter.MemberID]int{alice: reach}, fallback: 1},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	return enc

@@ -24,7 +24,7 @@ const (
 	TurnParticipationAutoPass TurnParticipation = "auto_pass"
 
 	// TurnParticipationDriven retains the initiative slot and hands the turn
-	// to the [TurnDriver] whoever the member is. A player in Driven is not
+	// to the [Driver] whoever the member is. A player in Driven is not
 	// waited for; the composition acts for them exactly as it acts for a
 	// monster. The rulebook owns the reason (a compulsion); the encounter
 	// owns only that nobody is asked.

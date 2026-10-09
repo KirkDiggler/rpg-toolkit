@@ -58,14 +58,6 @@ type Driver interface {
 	Act(view MonsterView) (Decision, error)
 }
 
-// TurnDriver is [Driver]'s former name.
-//
-// Deprecated: kept for ONE RELEASE so rulebooks/dnd5e/session compiles
-// against this module's pseudo-version until its own PR renames the field it
-// supplies. It goes in the release after that; a caller writing new code
-// names [Driver].
-type TurnDriver = Driver
-
 // Decision is what a [Driver] answers with: the intent, and the roll that
 // chose it when one was rolled.
 //

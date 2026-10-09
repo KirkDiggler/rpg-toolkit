@@ -21,6 +21,10 @@
 //	    World:        worldData,
 //	    Participants: sheets,
 //	    Machine:      resolution.NewSave(&resolution.SaveInput{...}),
+//	    Capabilities: encounter.Capabilities{
+//	        // Initiative, Standing, Sight, Equipment, Sheets, Driver, Roller...
+//	        Actors: resolution.Actors,
+//	    },
 //	})
 //
 // # The laws this package is bound by

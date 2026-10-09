@@ -87,9 +87,6 @@ func newArrivalMemoryEncounter(
 	sheets := sheetFacts{propagationGoblin: {SpeedFeet: 30}, "active-player": {}, "remembered-player": {}, "joining-player": {}, "world-player": {}}
 
 	base, err := NewEncounter(&SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: UnobservedEquipment{}, Sheets: sheets, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: FieldInput{
 			Canvas:  openAir(),
 			Regions: []RegionInput{rectRegion("propagation-field", 0, 0, 10, 10)},
@@ -114,6 +111,19 @@ func newArrivalMemoryEncounter(
 			{ID: propagationCaller, Kind: KindMonster, Position: spatial.Position{X: 0, Y: 3}},
 		},
 		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
+		Capabilities: Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  UnobservedEquipment{},
+			Sheets:     sheets,
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 
@@ -153,8 +163,20 @@ func newArrivalMemoryEncounter(
 		Pass{},
 	}}
 	enc, err := LoadEncounter(&LoadEncounterInput{
-		Data: data, Sight: propagationSight{}, Equipment: UnobservedEquipment{}, Sheets: sheets, Standing: standing, Initiative: orderAsGiven{},
-		TurnDriver: driver, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Data: data,
+		Capabilities: Capabilities{
+			Sight:      propagationSight{},
+			Equipment:  UnobservedEquipment{},
+			Sheets:     sheets,
+			Standing:   standing,
+			Initiative: orderAsGiven{},
+			Driver:     driver,
+			Actors: Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 

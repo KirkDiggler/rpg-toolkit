@@ -25,9 +25,22 @@ func (s *CastActionTestSuite) TestSanctuaryRecipientCooldownSurvivesWardAndExpir
 		if err != nil {
 			return nil, err
 		}
-		return Resolve(s.ctx, &Input{World: f.world(), Participants: sheets, Machine: machine,
-			Cost:       &Cost{PayerID: actor, Profile: definition.Cost, SpellTurn: turn},
-			Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller()})
+		return Resolve(s.ctx, &Input{
+			World:        f.world(),
+			Participants: sheets,
+			Machine:      machine,
+			Cost:         &Cost{PayerID: actor, Profile: definition.Cost, SpellTurn: turn},
+			Capabilities: encounter.Capabilities{
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Standing:   everyoneStanding{},
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  noHandsAreObserved{},
+				Sheets:     noSheetsAsked{},
+				Roller:     dice.NewRoller(),
+				Actors:     Actors,
+			},
+		})
 	}
 	out, err := cast(bardID, []Participant{{Character: caster}}, "first")
 	s.Require().NoError(err)

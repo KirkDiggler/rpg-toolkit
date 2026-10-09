@@ -23,15 +23,25 @@ func TestSheetOfRefusesAnIDOutsideTheRoster(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			enc, err := NewEncounter(&SetupInput{
-				Sight:     everyoneSeesTheWholeMap{},
-				Equipment: UnobservedEquipment{}, Sheets: sheetFacts{"alice": {SpeedFeet: 30}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-				TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 				Field: FieldInput{
 					Canvas:  CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()},
 					Regions: []RegionInput{rectRegion("hall", 0, 0, 6, 6)},
 				},
 				Members: members,
 				Endings: []EndingInput{{Key: "withdrawn", Trigger: TriggerExternal{}}},
+				Capabilities: Capabilities{
+					Sight:      everyoneSeesTheWholeMap{},
+					Equipment:  UnobservedEquipment{},
+					Sheets:     sheetFacts{"alice": {SpeedFeet: 30}},
+					Standing:   everyoneStanding{},
+					Initiative: orderAsGiven{},
+					Driver:     passDriver{},
+					Actors: Actors{
+						Striker:   passStriker{},
+						Mover:     quietMover{},
+						Announcer: quietAnnouncer{},
+					},
+				},
 			})
 			require.NoError(t, err)
 

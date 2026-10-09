@@ -328,8 +328,6 @@ func (s *ProjectionTestSuite) TestTheProjectionRefusesARecordItCannotName() {
 // so the contrast below can run a real interaction through Resolve.
 func (s *ProjectionTestSuite) world() encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{},
-		Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -338,6 +336,19 @@ func (s *ProjectionTestSuite) world() encounter.EncounterData {
 			{ID: projectedHeroID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 5}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors: encounter.Actors{
+				Striker:   noAttacksExpected{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -368,9 +379,16 @@ func (s *ProjectionTestSuite) TestTheProjectionRefusesWhatResolveRefuses() {
 		World:        s.world(),
 		Participants: []Participant{{Character: s.barbarian(s.unarmoredDefense(), unreadable)}},
 		Machine:      &captureMachine{},
-		Initiative:   orderAsGiven{}, TurnDriver: passDriver{},
-		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
-		Roller: dice.NewRoller(),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 	s.Require().Error(err,
 		"a write entry refuses rather than handing back a sheet with a condition deleted")

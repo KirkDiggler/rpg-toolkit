@@ -48,10 +48,22 @@ func (s *CastActionTestSuite) TestFreeSpellStillRestrictsSameTurnReactionWithout
 
 func (s *CastActionTestSuite) TestRangedHealingProjectionIncludesSelfDyingAndUntypedRecipients() {
 	f := s.fixtures()
-	run, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: f.world(),
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encounter.RefusingAnnouncer{}})
+	run, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data: f.world(),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encounter.RefusingAnnouncer{},
+			},
+		},
+	})
 	s.Require().NoError(err)
 	room, err := run.Canvas()
 	s.Require().NoError(err)
@@ -75,8 +87,22 @@ func (s *CastActionTestSuite) spellAttempt(caster *character.Data, definition *c
 	f := s.fixtures()
 	machine, err := NewAction(&ActionInput{Definition: *definition, AttackerID: bardID, TargetIDs: []string{bardID}, Roller: roll})
 	s.Require().NoError(err)
-	return Resolve(s.ctx, &Input{World: f.world(), Participants: []Participant{{Character: caster}, {Character: f.saver(14)}, {Monster: f.wolfData()}}, Machine: machine,
-		Cost: cost, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller()})
+	return Resolve(s.ctx, &Input{
+		World:        f.world(),
+		Participants: []Participant{{Character: caster}, {Character: f.saver(14)}, {Monster: f.wolfData()}},
+		Machine:      machine,
+		Cost:         cost,
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
+	})
 }
 
 func (s *CastActionTestSuite) TestSpellRestrictionSurvivesReloadInBothOrders() {
@@ -154,9 +180,22 @@ func (s *CastActionTestSuite) TestHealingWordHealsDyingRecipientBeyondTouch() {
 	roll := &countingCastRoller{facedRoller: facedRoller{other: 4}}
 	machine, err := NewAction(&ActionInput{Definition: *definition, AttackerID: bardID, TargetIDs: []string{heroID}, Roller: roll})
 	s.Require().NoError(err)
-	out, err := Resolve(s.ctx, &Input{World: f.world(), Participants: []Participant{{Character: caster}, {Character: target}, {Monster: f.wolfData()}}, Machine: machine,
-		Cost:       &Cost{SpellTurn: "scene/round-1/bard", PayerID: bardID, Profile: definition.Cost},
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller()})
+	out, err := Resolve(s.ctx, &Input{
+		World:        f.world(),
+		Participants: []Participant{{Character: caster}, {Character: target}, {Monster: f.wolfData()}},
+		Machine:      machine,
+		Cost:         &Cost{SpellTurn: "scene/round-1/bard", PayerID: bardID, Profile: definition.Cost},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
+	})
 	s.Require().NoError(err)
 	heal := s.castOutcome(out).Targets[0].Applied[0]
 	s.Equal(ImposedHealing, heal.Kind)
@@ -207,9 +246,22 @@ func (s *CastActionTestSuite) TestHealingWordRejectsUnseenOrOutOfRangeBeforePaym
 			roll := &countingCastRoller{facedRoller: facedRoller{other: 4}}
 			machine, err := NewAction(&ActionInput{Definition: *definition, AttackerID: bardID, TargetIDs: []string{heroID}, Roller: roll})
 			s.Require().NoError(err)
-			out, err := Resolve(s.ctx, &Input{World: world, Participants: []Participant{{Character: caster}, {Character: f.saver(1)}, {Monster: f.wolfData()}}, Machine: machine,
-				Cost:       &Cost{SpellTurn: "scene/round-1/bard", PayerID: bardID, Profile: definition.Cost},
-				Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller()})
+			out, err := Resolve(s.ctx, &Input{
+				World:        world,
+				Participants: []Participant{{Character: caster}, {Character: f.saver(1)}, {Monster: f.wolfData()}},
+				Machine:      machine,
+				Cost:         &Cost{SpellTurn: "scene/round-1/bard", PayerID: bardID, Profile: definition.Cost},
+				Capabilities: encounter.Capabilities{
+					Initiative: orderAsGiven{},
+					Driver:     passDriver{},
+					Standing:   everyoneStanding{},
+					Sight:      everyoneSeesTheWholeMap{},
+					Equipment:  noHandsAreObserved{},
+					Sheets:     noSheetsAsked{},
+					Roller:     dice.NewRoller(),
+					Actors:     Actors,
+				},
+			})
 			s.ErrorIs(err, ErrOutOfRange)
 			s.Nil(out)
 			s.Zero(roll.calls)

@@ -73,10 +73,6 @@ func (s *WorldTimeSuite) hallSheets(
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheets, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: tableDriver(), Roller: rollsLowest{},
-		Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:       openAir(),
 			Regions:      []encounter.RegionInput{rectRegion("hall", 0, 0, 30, 8)},
@@ -85,6 +81,20 @@ func (s *WorldTimeSuite) hallSheets(
 		},
 		Members: members,
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheets,
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     tableDriver(),
+			Roller:     rollsLowest{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -309,10 +319,6 @@ func (s *WorldTimeSuite) TestACreatureWithNothingOpposedHoldsAndTheBeatSaysSo() 
 // driver, which is exactly when a silent pass would cost the most.
 func (s *WorldTimeSuite) TestAnAttackOffTheTurnClockIsAnError() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{alice: {SpeedFeet: 30}, goblin: {SpeedFeet: 30}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: alwaysSwings{}, Roller: rollsLowest{},
-		Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:   openAir(),
 			Regions:  []encounter.RegionInput{rectRegion("hall", 0, 0, 30, 8)},
@@ -332,6 +338,20 @@ func (s *WorldTimeSuite) TestAnAttackOffTheTurnClockIsAnError() {
 				Table:    encounter.Table{encounter.AnswerTime: {{Weight: 1, Hold: true}}}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheetFacts{alice: {SpeedFeet: 30}, goblin: {SpeedFeet: 30}},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     alwaysSwings{},
+			Roller:     rollsLowest{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -528,10 +548,6 @@ func (r *swingRecorder) Strike(
 func (s *WorldTimeSuite) TestTheDefaultTableClosesAndThenSwings() {
 	striker := &swingRecorder{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{alice: {SpeedFeet: 30}, goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, RangeFeet: 5}}}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: tableDriver(), Roller: rollsLowest{},
-		Striker: striker, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  openAir(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 30, 8)},
@@ -545,6 +561,20 @@ func (s *WorldTimeSuite) TestTheDefaultTableClosesAndThenSwings() {
 				Table: theDefaultThugTable()},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheetFacts{alice: {SpeedFeet: 30}, goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, RangeFeet: 5}}}},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     tableDriver(),
+			Roller:     rollsLowest{},
+			Actors: encounter.Actors{
+				Striker:   striker,
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -599,10 +629,6 @@ func theDefaultThugTable() encounter.Table {
 func (s *WorldTimeSuite) TestASpentCreatureIsNotAskedToSwingAgain() {
 	striker := &swingRecorder{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{alice: {SpeedFeet: 30}, goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, RangeFeet: 5}}}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: tableDriver(), Roller: rollsLowest{},
-		Striker: striker, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  openAir(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 30, 8)},
@@ -622,6 +648,20 @@ func (s *WorldTimeSuite) TestASpentCreatureIsNotAskedToSwingAgain() {
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheetFacts{alice: {SpeedFeet: 30}, goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, RangeFeet: 5}}}},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     tableDriver(),
+			Roller:     rollsLowest{},
+			Actors: encounter.Actors{
+				Striker:   striker,
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -680,10 +720,6 @@ func (s *WorldTimeSuite) TestAnOrderedCellSomebodyIsStandingOnIsStillWalkedTowar
 	target := cellAt(3, 3)
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{alice: {SpeedFeet: 30}, "squatter": {SpeedFeet: 30}, "bandit": {SpeedFeet: 30}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: tableDriver(), Roller: rollsLowest{},
-		Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  openAir(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 30, 8)},
@@ -709,6 +745,20 @@ func (s *WorldTimeSuite) TestAnOrderedCellSomebodyIsStandingOnIsStillWalkedTowar
 				Table:    walksTo(target)},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheetFacts{alice: {SpeedFeet: 30}, "squatter": {SpeedFeet: 30}, "bandit": {SpeedFeet: 30}},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     tableDriver(),
+			Roller:     rollsLowest{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 

@@ -176,10 +176,10 @@ type Encounter struct {
 	// turnDriver decides what a member with no player does when the clock
 	// lands on their turn. Required at both constructors, for the same reason
 	// standing and sight are, and never optional; see
-	// [TurnDriver] and ADR-0043.
+	// [Driver] and ADR-0043.
 	driver Driver
 
-	// striker resolves and records an [Attack] intent a TurnDriver returns.
+	// striker resolves and records an [Attack] intent a Driver returns.
 	// Required at both constructors for the same reason turnDriver is; see
 	// [Striker].
 	striker Striker
@@ -575,87 +575,16 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter: %w", ErrNoEnding)
 	}
 
-	// Required, because construction is total (S8): trigger detection runs
-	// from first light onward, so an encounter that can hold players and
-	// monsters can start a fight before its caller does anything, and a fight
-	// it cannot order is a misconfiguration. Refusing here rather than
-	// mid-fight is the difference between a bug report and a bug — the
-	// alternative, discovering it when two members finally see each other,
-	// fails at the least convenient moment and looks like a rules bug.
-	if in.Initiative == nil {
-		return nil, fmt.Errorf("newencounter: %w", ErrNoInitiative)
-	}
-
-	// Required for the same reason, one layer down: the standing consult runs
-	// from first light too — a scene can open with a body already on the floor
-	// — and an encounter that cannot ask would start fights with corpses and
-	// walk them around the map. Refused at the door; never guarded at the use
-	// site, and never defaulted (rpg-toolkit#1033).
-	if in.Standing == nil {
-		return nil, fmt.Errorf("newencounter: %w", ErrNoStanding)
-	}
-
-	// Required for the third time, at the same door and by the same law: the
-	// sight consult runs at every refresh including first light, so an
-	// encounter that cannot ask how far its members can see cannot build a
-	// percept at all. Never defaulted — a number meaning "everyone sees this
-	// far" is a rule 5e does not have, since sight is per-creature and
-	// per-light-source (rpg-toolkit#1033, rpg-toolkit#1111).
-	if in.Sight == nil {
-		return nil, fmt.Errorf("newencounter: %w", ErrNoSight)
-	}
-
-	// Required for the same reason again, one seam over: the equipment consult
-	// runs at every sight refresh including first light, so an encounter that
-	// cannot ask what a member is holding cannot snapshot a complete percept —
-	// and the hands would have to be invented at the moment somebody looks
-	// (rpg-toolkit#1615). Never defaulted: "everyone is empty-handed" is
-	// testimony, not an absence of it.
-	if in.Equipment == nil {
-		return nil, fmt.Errorf("newencounter: %w", ErrNoEquipment)
-	}
-
-	// Required beside them: a fight can form at first light and drive an
-	// unplayed member whose movement budget and reach are its sheet's, and
-	// the first walk on the world clock is paced by the walker's speed
-	// (rpg-project#538). Never defaulted — a speed nobody read off a sheet is
-	// an invented one.
-	if in.Sheets == nil {
-		return nil, fmt.Errorf("newencounter: %w", ErrNoSheets)
-	}
-
-	// Required for the same reason again: a fight can form at first light
-	// with an unplayed member first in the rolled order, so an encounter that
-	// cannot answer "what does this member do" would stall before its caller
-	// does anything (rpg-toolkit#1162). Never defaulted — see ADR-0043 for
-	// why a nil one is refused rather than defaulted.
-	if in.TurnDriver == nil {
-		return nil, fmt.Errorf("newencounter: %w", ErrNoTurnDriver)
-	}
-
-	// Required for the same reason again, one seam over: a TurnDriver can
-	// decide to attack the moment a fight forms, so an encounter that
-	// cannot resolve that swing would stall on it or silently drop it
-	// (rpg-project#254). Never defaulted — see [Striker]'s own doc.
-	if in.Striker == nil {
-		return nil, fmt.Errorf("newencounter: %w", ErrNoStriker)
-	}
-
-	// And again, for the seam beside it: a TurnDriver can decide to WALK the
-	// moment a fight forms, and a step nothing observed is an opportunity
-	// attack that silently never fired (rpg-project#316). Never defaulted —
-	// see [Mover]'s own doc.
-	if in.Mover == nil {
-		return nil, fmt.Errorf("newencounter: %w", ErrNoMover)
-	}
-
-	// And once more, one seam further on: a fight forming starts round 1 and
-	// somebody's first turn, so an encounter that cannot announce a boundary
-	// would let every turn-scoped condition in it live forever — silently,
-	// which is how this went unnoticed for months. Never defaulted — see
-	// [Announcer]'s own doc.
-	if in.Announcer == nil {
-		return nil, fmt.Errorf("newencounter: %w", ErrNoAnnouncer)
+	// Every capability is required, because construction is total (S8):
+	// trigger detection and the standing, sight, equipment and sheet consults
+	// run from first light onward, so an encounter that can hold players and
+	// monsters can start a fight before its caller does anything. Refusing
+	// here rather than mid-fight is the difference between a bug report and a
+	// bug. Never defaulted (rpg-toolkit#1033); see [Capabilities] for each
+	// member's reason and the order they are refused in.
+	//nolint:staticcheck // QF1008: spelled out, because SetupInput has no Validate of its own and a promoted one would read as if it did
+	if err := in.Capabilities.Validate(); err != nil {
+		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 
 	// Check ending keys: empty/reserved, and duplicate (#929 hardening
@@ -724,11 +653,8 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	}
 
 	if fieldHasConcealment(in.Field.Concealments) {
-		if in.CheckResolver == nil {
-			return nil, fmt.Errorf("newencounter: %w", ErrNoCheckResolver)
-		}
-		if in.Witness == nil {
-			return nil, fmt.Errorf("newencounter: %w", ErrNoWitness)
+		if err := in.validateConcealed(); err != nil {
+			return nil, fmt.Errorf("newencounter: %w", err)
 		}
 	}
 
@@ -825,7 +751,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		equipment:     in.Equipment,
 		conditions:    in.Equipment,
 		sheets:        in.Sheets,
-		driver:        in.TurnDriver,
+		driver:        in.Driver,
 		roller:        in.Roller,
 		striker:       in.Striker,
 		mover:         in.Mover,

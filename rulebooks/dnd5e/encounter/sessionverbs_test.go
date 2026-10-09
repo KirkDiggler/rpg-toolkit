@@ -43,9 +43,6 @@ func (s *SessionVerbsSuite) scene(members ...encounter.MemberInput) *encounter.E
 		sheets[m.ID] = encounter.SheetFacts{SpeedFeet: 30}
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheets, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			// The den is cut off from the yard by void, which is opaque: a
@@ -56,6 +53,19 @@ func (s *SessionVerbsSuite) scene(members ...encounter.MemberInput) *encounter.E
 		Members:   members,
 		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheets,
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     tableDriver(),
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	return enc
@@ -441,11 +451,6 @@ func (s *SessionVerbsSuite) TestAMemberWhoJoinsAfterARestWalksOnTheWorldsTime() 
 // hour behind it.
 func (s *SessionVerbsSuite) TestAReserveArrivalAfterARestSeatsAtTheWorldsTime() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{goblin: {SpeedFeet: 30}, "straggler": {SpeedFeet: 30}, alice: {SpeedFeet: 30}},
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		Roller: rollsLowest{},
 		Field: encounter.FieldInput{
 			Canvas:   openAir(),
 			Regions:  []encounter.RegionInput{rectRegion("front", 0, 0, 12, 6)},
@@ -463,6 +468,20 @@ func (s *SessionVerbsSuite) TestAReserveArrivalAfterARestSeatsAtTheWorldsTime() 
 				Arrives: encounter.TriggerFact{Fact: campFact}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheetFacts{goblin: {SpeedFeet: 30}, "straggler": {SpeedFeet: 30}, alice: {SpeedFeet: 30}},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     tableDriver(),
+			Roller:     rollsLowest{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 

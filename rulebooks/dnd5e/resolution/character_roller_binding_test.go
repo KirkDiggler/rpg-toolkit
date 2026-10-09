@@ -20,6 +20,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -117,13 +118,16 @@ func TestResolveBindsOneRollerToTheMachineAndPersistedCharacter(t *testing.T) {
 			Definition: definition,
 			Roller:     roller,
 		}),
-		Initiative: orderAsGiven{},
-		Standing:   everyoneStanding{},
-		Sight:      everyoneSeesTheWholeMap{},
-		Equipment:  noHandsAreObserved{},
-		Sheets:     noSheetsAsked{},
-		TurnDriver: passDriver{},
-		Roller:     roller,
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Driver:     passDriver{},
+			Roller:     roller,
+			Actors:     Actors,
+		},
 	})
 	require.NoError(t, err)
 	require.Equal(t, []string{"Roll(d20)", "RollN(2,d6)", "Roll(d6)"}, roller.calls)

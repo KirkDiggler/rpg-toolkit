@@ -41,10 +41,17 @@ func (s *FrameTestSuite) resolveCampWith(
 			{Character: rogue}, {Character: camp.ally()},
 			{Monster: camp.raider(holdOutScout)}, {Monster: camp.raider(holdOutChief)},
 		},
-		Machine:    NewStrike(strike),
-		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
-		Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
-		TurnDriver: passDriver{}, Roller: strike.Roller,
+		Machine: NewStrike(strike),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Driver:     passDriver{},
+			Roller:     strike.Roller,
+			Actors:     Actors,
+		},
 	}, newSurface(bus))
 }
 

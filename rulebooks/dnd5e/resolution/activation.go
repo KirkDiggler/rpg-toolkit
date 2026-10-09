@@ -44,7 +44,7 @@ type ActivationInput struct {
 	// ObserverPassivePerceptions is the passive Perception of everyone who
 	// could notice this, which Hide's Stealth check is rolled against.
 	//
-	// Carried rather than computed, for [ErrNoSight]'s reason: who can see
+	// Carried rather than computed, for [encounter.ErrNoSight]'s reason: who can see
 	// whom is the composition's question, and a package that answered it here
 	// would be deciding a rule about light it cannot see. Empty for six of the
 	// seven — and empty is a legitimate answer for Hide too (nobody is

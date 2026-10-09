@@ -45,11 +45,10 @@ out, err := resolution.Resolve(ctx, &resolution.Input{
     },
     Machine: machine,
     Cost: cost,
-    Initiative: initiative,
-    Standing: standing,
-    Sight: sight,
-    TurnDriver: turns,
-    Roller: loaderRoller,
+    Capabilities: encounter.Capabilities{
+        // Initiative, Standing, Sight, Equipment, Sheets, Driver, Roller...
+        Actors: resolution.Actors,
+    },
 })
 ```
 

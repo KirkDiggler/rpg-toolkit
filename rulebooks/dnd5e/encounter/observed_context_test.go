@@ -54,9 +54,6 @@ func (s *observedContextSuite) SetupSubTest() { s.SetupTest() }
 
 func (s *observedContextSuite) newEncounter(dispositions []encounter.DispositionInput) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: s.sight, Equipment: s.hands, Sheets: zeroSheets{}, Standing: s.life,
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("yard", 0, 0, 6, 1)},
 			Dispositions: dispositions,
@@ -68,6 +65,19 @@ func (s *observedContextSuite) newEncounter(dispositions []encounter.Disposition
 			{ID: bob, Kind: encounter.KindPlayer, Position: cellAt(1, 0)},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      s.sight,
+			Equipment:  s.hands,
+			Sheets:     zeroSheets{},
+			Standing:   s.life,
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	return enc
@@ -75,9 +85,20 @@ func (s *observedContextSuite) newEncounter(dispositions []encounter.Disposition
 
 func (s *observedContextSuite) load(data encounter.EncounterData) *encounter.Encounter {
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data, Sight: s.sight, Equipment: s.hands, Sheets: zeroSheets{}, Standing: s.life,
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Data: data,
+		Capabilities: encounter.Capabilities{
+			Sight:      s.sight,
+			Equipment:  s.hands,
+			Sheets:     zeroSheets{},
+			Standing:   s.life,
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	return enc
@@ -148,14 +169,25 @@ func (s *observedContextSuite) TestCurrentPropsAndDoorsDoNotEnterTheMemberContex
 		BlocksMovement: boolPtr(false), BlocksLineOfSight: boolPtr(false),
 	}}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Field: field, Sight: s.sight, Equipment: s.hands, Sheets: zeroSheets{}, Standing: s.life,
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Field: field,
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: cellAt(2, 1)},
 			{ID: bob, Kind: encounter.KindPlayer, Position: cellAt(3, 1)},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      s.sight,
+			Equipment:  s.hands,
+			Sheets:     zeroSheets{},
+			Standing:   s.life,
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -194,9 +226,6 @@ func (s *observedContextSuite) TestKnownNeutralIsNotUnknown() {
 
 func (s *observedContextSuite) TestNoSideIsNeverAuthorable() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: s.sight, Equipment: s.hands, Sheets: zeroSheets{}, Standing: s.life,
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("yard", 0, 0, 6, 1)},
 			Dispositions: []encounter.DispositionInput{{
@@ -206,6 +235,19 @@ func (s *observedContextSuite) TestNoSideIsNeverAuthorable() {
 		},
 		Members: []encounter.MemberInput{{ID: alice, Kind: encounter.KindPlayer, Position: cellAt(0, 0)}},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      s.sight,
+			Equipment:  s.hands,
+			Sheets:     zeroSheets{},
+			Standing:   s.life,
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.ErrorIs(err, encounter.ErrNoFaction, "no side describes a member, not a posture two sides can hold")
 }

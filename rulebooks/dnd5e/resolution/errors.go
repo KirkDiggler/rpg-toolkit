@@ -9,73 +9,12 @@ var (
 	// ErrNilInput indicates a caller defect: Resolve was handed no input at all.
 	ErrNilInput = errors.New("resolution: nil input")
 
-	// ErrNoInitiative indicates an interaction given no way to order a fight
-	// that starts while it runs. The composition requires one to load at all.
-	ErrNoInitiative = errors.New("resolution: no initiative roller")
-
 	// ErrNoRoller indicates an interaction given no dice.
 	//
 	// It used to default to real randomness, which made a missing capability
 	// look like a working one and put untestable rolls into results that
 	// seemed fine. Refused at the door instead.
 	ErrNoRoller = errors.New("resolution: no roller")
-
-	// ErrNoStanding indicates an interaction given no standing capability at
-	// all. The source-shaped field is the migration carrier for a dual
-	// encounter.StandingWithParticipation concrete value; a non-nil legacy
-	// Standing-only value is instead refused with encounter.ErrNoParticipation.
-	//
-	// Neither half is consulted here. The world is loaded and read back as
-	// data without an encounter verb between them, so the capability is carried
-	// ACROSS rather than used. It cannot be invented because only the caller
-	// owning the sheets can answer life-state participation.
-	ErrNoStanding = errors.New("resolution: no standing capability")
-
-	// ErrNoSight indicates an interaction given no way to find out how far
-	// anybody can see. The composition requires one to load at all, the same
-	// way it requires an initiative roller and a standing capability.
-	//
-	// Nothing in this package consults it, for ErrNoStanding's reason and by a
-	// nameable mechanism: the composition asks how far somebody can see only
-	// where it rebuilds percepts, and nothing on the load-act-save path this
-	// package walks reaches that. Carried rather than invented — a package
-	// that answered "sixty feet" on the caller's behalf would be deciding a
-	// rule about light it cannot see (rpg-toolkit#1111, rpg-toolkit#1033).
-	ErrNoSight = errors.New("resolution: no sight capability")
-
-	// ErrNoEquipment indicates an interaction given no way to find out what
-	// anybody is holding. Carried rather than computed for [ErrNoSight]'s
-	// reason, and refused for a sharper one: an absent answer here would have to
-	// be replaced with "everybody is empty-handed", which is not a missing fact
-	// but an invented one. The sight seam turns this answer into per-observer
-	// testimony, and testimony nobody gave is the one thing it must never carry
-	// (rpg-toolkit#1615).
-	ErrNoEquipment = errors.New("resolution: no equipment capability")
-
-	// ErrNoSheets indicates an interaction given no way to find out each
-	// member's speed, attacks and targeting. Carried rather than computed for
-	// [ErrNoSight]'s reason: the composition asks it only while pacing,
-	// budgeting a turn, building a driver's view or testing reach, and nothing
-	// on this package's load-act-save path reaches those. Refused rather than
-	// defaulted because the composition no longer holds a copy of any of them
-	// (rpg-project#538): a speed answered here would be invented, and zero is
-	// a real speed, not an absent one.
-	ErrNoSheets = errors.New("resolution: no sheets capability")
-
-	// ErrNoTurnDriver indicates an interaction given no way to decide what an
-	// unplayed member does when a fight's clock lands on their turn. The
-	// composition requires one to load at all, the same way it requires an
-	// initiative roller, a standing capability and a sight capability
-	// (rpg-toolkit#1162).
-	//
-	// Nothing in this package consults it, for ErrNoStanding's reason: the
-	// world is loaded here, one interaction runs, and it is read back out as
-	// data — this package never calls EndTurn, form, Transfer or Exit, so the
-	// question this capability answers is never put. Carried rather than
-	// invented, because a package that answered "it passes" on the caller's
-	// behalf would be deciding a rule it cannot see, the same way ErrNoStanding
-	// and ErrNoSight already refuse to guess.
-	ErrNoTurnDriver = errors.New("resolution: no turn driver capability")
 
 	// ErrNoMachine indicates an interaction with nothing to resolve. Distinct
 	// from a machine that finishes immediately, which is legal.
