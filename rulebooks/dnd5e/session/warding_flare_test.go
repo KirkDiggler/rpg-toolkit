@@ -196,3 +196,27 @@ func (s *CastSuite) TestThePendingMovementResumeSavesEachSheetOnce() {
 	s.Equal(movement-5, s.characters.byID["cleric"].ActionEconomy.MovementRemaining, "and the walk went on")
 	s.Equal(2, s.characters.saves-before, "one write for the interaction, one for the walk's progress")
 }
+
+// TestFlareBeforeAPlayersSwingPosesTheWindowAndCommitsThePrice: a player's
+// Attack on a target who holds Warding Flare stops before the roll. The
+// landing adopts the world the swing produced, writes the attacker's charged
+// sheet, poses the target's window and commits — with no die thrown and no
+// strike told.
+func (s *CastSuite) TestFlareBeforeAPlayersSwingPosesTheWindowAndCommitsThePrice() {
+	s.sceneWithAllies(armedFighter("aaron"), []*character.Data{s.flareSheet()}, 1, 15, 2, 1, 4, 5)
+	ctx := context.Background()
+	rolls := s.dice.next
+	actions := s.characters.byID["aaron"].ActionEconomy.ActionsRemaining
+
+	out, err := s.mgr.Attack(ctx, &session.AttackInput{Session: "sess", Attacker: "aaron", Target: "cleric", DeclarationID: currentAttackID(s.T(), s.mgr, "sess", "aaron")})
+	s.Require().NoError(err)
+
+	s.True(out.Paused, "the swing stopped to ask before the roll")
+	s.Equal(rolls, s.dice.next, "no die was thrown")
+	s.Empty(s.beats(session.EventStruck, session.EventMissed), "no strike is told before the answer")
+	s.Equal(actions-1, s.characters.byID["aaron"].ActionEconomy.ActionsRemaining, "the price is written to the attacker's sheet")
+	s.Contains(out.Saved.Written, "encounter:world", "the adopted world is committed")
+	s.Contains(out.Saved.Written, "session:sess", "and the session record with the window")
+	row := s.flareReaction()
+	s.Equal("Warding Flare", row.Reaction.Name, "the target is asked")
+}

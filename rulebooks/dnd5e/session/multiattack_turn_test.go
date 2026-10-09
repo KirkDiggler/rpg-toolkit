@@ -495,3 +495,23 @@ func (s *MonsterTurnTestSuite) bossBreaksTheFightersAreaWith(wrath bool, roller 
 	s.Require().NoError(err)
 	return mgr
 }
+
+// TestASequenceThatPausesOnItsSecondSwingTellsTheFirst: the goblin boss's
+// first swing misses and its second hits a fighter holding Wrath of the
+// Storm, which stops the sequence to ask. The completed first swing is told
+// when the sequence pauses — the pending sequence is recorded by the strike
+// landing — and the settled second swing waits for the answer.
+func (s *MonsterTurnTestSuite) TestASequenceThatPausesOnItsSecondSwingTellsTheFirst() {
+	ctx := context.Background()
+	// Initiative twice; swing one attacks with a 1 and misses; swing two
+	// rolls at disadvantage, 15 and 15, damage 3, and the fighter's
+	// concentration save is a 20.
+	mgr := s.bossBreaksTheFightersAreaWith(true, &sequenceDice{rolls: []int{10, 10, 1, 15, 15, 3, 20, 20, 20, 20}})
+	persisted, err := s.encounters.GetEncounter(ctx, "world")
+	s.Require().NoError(err)
+	s.Require().NotNil(persisted.PausedTurn, "control: the sequence paused on the fighter's window")
+
+	beats := s.storyBeats(mgr, "fighter")
+	s.Contains(beats, string(encounter.OutcomeMissed), "the completed first swing is told at the pause")
+	s.NotContains(beats, string(encounter.OutcomeStruck), "the settled second swing waits for the answer")
+}

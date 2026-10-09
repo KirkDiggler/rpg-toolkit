@@ -233,9 +233,13 @@ func (d compelledDriver) obey(
 	out, err := resolution.Obey(d.ctx, &resolution.ObeyInput{
 		Interaction: d.m.resolutionInput(d.ctx, d.scope, resolutionAsk{
 			// Machine is deliberately absent: the word is the machine, and
-			// Obey refuses an interaction that already carries one. The
-			// driver the input carries is never consulted: no verb runs
-			// inside an interaction.
+			// Obey refuses an interaction that already carries one.
+			//
+			// The input carries this verb's compelled driver, this wrapper
+			// included, because resolutionInput is the one builder. That is
+			// safe: resolution never drives a turn. It loads the world and
+			// reads it back as data, and calls no encounter verb, so neither
+			// the driver nor the check resolver it carries is ever invoked.
 			World:        world,
 			Participants: cast,
 		}),
