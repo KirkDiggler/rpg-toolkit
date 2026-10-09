@@ -140,6 +140,17 @@
 // TargetCandidate.Effects. Afford alone attaches them, after every gate and
 // selector is settled; they never grant, refuse or select an action.
 //
+// Declaration.Information says what the action IS: its noun owner's prose and
+// its typed base facts (combat/actions.Describe) rendered once, here, as label
+// and value rows the host copies. It is attached in Afford alone, directly
+// after effect rows, so it never changes Available, Why, ID, Candidates or
+// Effects. Session authors prose only for the verbs it owns and the
+// opportunity attack it names; option and reaction prose rides window payloads
+// unchanged through a freeze. The declaration ID hashes an explicit allow-list
+// projection of the definition (selector_projection.go), so prose can never
+// reach identity, and a test classifies every field of the definition's type
+// tree as mechanical or prose (toolkit#1987).
+//
 // The compiled object never crosses S2. For Attack it privately carries the
 // complete priced definition, matching resolution cost/readied payer, shared
 // candidate preflight, and one raw participant-data cast. Compilation strictly

@@ -16,6 +16,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
 )
 
 // goldenAttackDefinition mirrors the validated fixture in the actions package
@@ -85,6 +86,36 @@ func TestAttackDeclarationIDGolden(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, "v2.HXq0p1bPN6Vf3EnZiyXYbd79wKnRT8mosqD90XfzTWY", got)
+}
+
+// goldenCastDefinition is the COMPILED Command definition, built by the spell
+// catalogue the way offer compilation builds it, so the cast golden pins the
+// selector of a real cast with options, a save gate and an applied condition
+// rather than a hand-authored profile.
+func goldenCastDefinition(t *testing.T) *combatActions.Definition {
+	t.Helper()
+	def := spells.CastDefinition(spells.CastDefinitionInput{
+		Spell:               spells.Command,
+		SpellSaveDC:         13,
+		SpellAttackBonus:    5,
+		SpellcastingAbility: abilities.CHA,
+	})
+	require.NotNil(t, def, "this build must carry Command cast content")
+	require.NoError(t, def.Validate())
+	return def
+}
+
+// TestCastDeclarationIDGolden pins the CAST selector for a compiled Command.
+// Its value was captured against the session that hashed the raw definition,
+// before the allow-list projection existed, so it is the proof that moving to
+// the projection left every held cast declaration ID byte-identical.
+func TestCastDeclarationIDGolden(t *testing.T) {
+	got, err := declarationID(declarationIDInput{
+		Session: "session-1", Member: "bard-1",
+		Verb: VerbCast, Slot: SlotAction, Cast: goldenCastDefinition(t),
+	})
+	require.NoError(t, err)
+	require.Equal(t, "v2.20LuucKEVel3O2BUX4VMOOTTBlQXBpRP8MleeahlCWY", got)
 }
 
 func TestDeclarationIDMapInsertionOrderIsCanonical(t *testing.T) {
@@ -512,4 +543,67 @@ func TestCrossVerbMaterialIsRefused(t *testing.T) {
 		Verb: VerbReact, Slot: SlotReaction,
 	})
 	require.Error(t, err, "a react declaration without a window names no question")
+}
+
+// selectorIDOf is the selector a definition's offer would carry for verb.
+func selectorIDOf(t *testing.T, verb Verb, definition *combatActions.Definition) string {
+	t.Helper()
+	input := declarationIDInput{Session: "session-1", Member: "member-1", Verb: verb, Slot: SlotAction}
+	switch verb {
+	case VerbAttack:
+		input.Attack = definition
+	case VerbCast:
+		input.Cast = definition
+	default:
+		t.Fatalf("selectorIDOf takes attack or cast, not %q", verb)
+	}
+	id, err := declarationID(input)
+	require.NoError(t, err)
+	return id
+}
+
+// TestSelectorIgnoresProse is R11 at the ID: changing, clearing or adding to
+// an action's description, or a cast option's, leaves the declaration a
+// client is holding unchanged — for a swing and for a cast.
+func TestSelectorIgnoresProse(t *testing.T) {
+	t.Run("attack", func(t *testing.T) {
+		def := goldenAttackDefinition()
+		before := selectorIDOf(t, VerbAttack, &def)
+		def.Description = "A heavy blade, swung with both hands."
+		require.Equal(t, before, selectorIDOf(t, VerbAttack, &def))
+		def.Description += " It cuts."
+		require.Equal(t, before, selectorIDOf(t, VerbAttack, &def))
+	})
+	t.Run("cast", func(t *testing.T) {
+		def := goldenCastDefinition(t)
+		require.NotEmpty(t, def.Description, "precondition: Command is described")
+		before := selectorIDOf(t, VerbCast, def)
+		def.Description = "Rewritten."
+		require.Equal(t, before, selectorIDOf(t, VerbCast, def), "a definition's description is not identity")
+		def.Description = ""
+		require.Equal(t, before, selectorIDOf(t, VerbCast, def), "nor is its absence")
+		def.Cast.Options[0].Description += " More words."
+		require.Equal(t, before, selectorIDOf(t, VerbCast, def), "an option's description is not identity")
+		def.Cast.Options[1].Description = ""
+		require.Equal(t, before, selectorIDOf(t, VerbCast, def))
+	})
+}
+
+// TestSelectorTracksOptionID is the other half: an option's id IS identity —
+// it is what the cast request echoes — so changing one changes the selector.
+func TestSelectorTracksOptionID(t *testing.T) {
+	def := goldenCastDefinition(t)
+	before := selectorIDOf(t, VerbCast, def)
+	def.Cast.Options[0].ID = "kneel"
+	require.NotEqual(t, before, selectorIDOf(t, VerbCast, def))
+}
+
+// TestSelectorTracksCastProfile: a mechanical change to the profile — here
+// its range — changes the selector, so the projection is not dropping the
+// cast arm.
+func TestSelectorTracksCastProfile(t *testing.T) {
+	def := goldenCastDefinition(t)
+	before := selectorIDOf(t, VerbCast, def)
+	def.Cast.RangeFeet += 5
+	require.NotEqual(t, before, selectorIDOf(t, VerbCast, def))
 }

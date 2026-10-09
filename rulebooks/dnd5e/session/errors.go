@@ -593,6 +593,15 @@ var (
 	// malformed declared action, or a weapon the strike has no semantics for.
 	ErrBadAttack = errors.New("attack cannot be made")
 
+	// ErrBadInformation is returned by Afford when an offer's action
+	// information cannot be stated: the rulebook refused to describe a
+	// compiled definition, or a fact carries a value this seam has no word
+	// for (a new save outcome, area shape or recipient). Afford fails closed
+	// rather than shipping a card with a guessed or missing row. A condition
+	// with no display catalogue entry is [ErrUnknownContent] instead, because
+	// the remedy is the catalogue, not this seam.
+	ErrBadInformation = errors.New("action information cannot be stated")
+
 	// ErrOutOfReach is Attack's final defensive resolution validation when a
 	// target is further away than the selected definition's delivery permits:
 	// one cell for ordinary melee, two for Reach weapons (rpg-toolkit#1010),

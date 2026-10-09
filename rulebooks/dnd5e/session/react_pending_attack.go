@@ -33,12 +33,16 @@ type pendingAttackWindowPayload struct {
 	// HeldAreas are the area changes of a swing that settled and stopped to
 	// ask before its beat was told; they land once that beat is recorded on
 	// the resume. See [pendingAttackWindowPayload.holdAreas].
-	HeldAreas *heldAreas   `json:"held_areas,omitempty"`
-	Kind      string       `json:"kind"`
-	Audience  string       `json:"audience"`
-	Offer     ReactionRef  `json:"offer"`
-	Options   []CastOption `json:"options,omitempty"`
-	Frozen    []byte       `json:"frozen"`
+	HeldAreas *heldAreas  `json:"held_areas,omitempty"`
+	Kind      string      `json:"kind"`
+	Audience  string      `json:"audience"`
+	Offer     ReactionRef `json:"offer"`
+	// OfferDescription is the offering owner's prose for this reaction,
+	// copied from the posed offer. It rides the window, not [ReactionRef],
+	// because ReactionRef also rides stream events and no beat carries prose.
+	OfferDescription string       `json:"offer_description,omitempty"`
+	Options          []CastOption `json:"options,omitempty"`
+	Frozen           []byte       `json:"frozen"`
 }
 
 // heldAreas are area changes waiting on the beat that caused them.
@@ -72,11 +76,12 @@ func posePendingAttackWindow(scope *writeScope, posed *resolution.Pose, p pendin
 	}
 	options := make([]CastOption, 0, len(ask.Choices))
 	for _, o := range ask.Choices {
-		options = append(options, CastOption{ID: o.ID, Label: o.Label})
+		options = append(options, CastOption{ID: o.ID, Label: o.Label, Description: o.Description})
 	}
 	p.Kind = windowKindPendingAttack
 	p.Audience = ask.Audience
 	p.Offer = ReactionRef{Ref: ask.Offer.Ref.String(), Name: ask.Offer.Name}
+	p.OfferDescription = ask.Offer.Description
 	p.Options = options
 	p.Frozen = posed.Frozen
 	payload, err := json.Marshal(p)
@@ -107,7 +112,7 @@ func pendingAttackDeclaration(session, member string, window interrupt.Window) (
 	if len(p.Options) == 0 {
 		slot = SlotNone
 	}
-	return Declaration{Verb: VerbReact, Slot: slot, Available: true, ID: id, Reaction: &p.Offer, TargetKind: TargetNone, Candidates: []TargetCandidate{}, Options: p.Options}, nil
+	return Declaration{Verb: VerbReact, Slot: slot, Available: true, ID: id, Reaction: &p.Offer, TargetKind: TargetNone, Candidates: []TargetCandidate{}, Options: p.Options, Information: proseInformation(p.OfferDescription)}, nil
 }
 
 func (m *Manager) answerPendingAttack(ctx context.Context, scope *writeScope, window interrupt.Window, in *ReactInput) (*ReactOutput, error) {

@@ -3512,6 +3512,12 @@ type CastOption struct {
 	// beside the id, never derived from it by a reader, which is the rule
 	// [SpellRef.Name] and [AbilityRef.Name] already keep.
 	Label string `json:"label"`
+
+	// Description explains the choice before commitment, authored beside the
+	// id by whoever declares the option — the spell, or the producer of a
+	// reaction's choice (provider-design R12). Prose: never selector material
+	// and never read on execution. Empty when the content authored none.
+	Description string `json:"description,omitempty"`
 }
 
 // AttackRef identifies WHAT was swung — weapon identity, which this seam

@@ -424,6 +424,34 @@ type Declaration struct {
 	// blocker, off turn and while a window is frozen. Rows never grant or
 	// refuse the action and are not selector material.
 	Effects []EffectRow `json:"effects,omitempty"`
+
+	// Information is what the action IS, for the card a player reads before
+	// committing: its owner's prose and its base facts rendered as label and
+	// value rows (provider-design R10, R12, R14). Attached in Afford alone,
+	// after every gate and selector is settled, so it never changes
+	// Available, Why, ID, Candidates or Effects and is never selector
+	// material. Nil when the action has neither prose nor facts; nothing is
+	// synthesised from a ref, an id or a name.
+	Information *ActionInformation `json:"information,omitempty"`
+}
+
+// ActionInformation is one declaration's information: the noun owner's
+// authored description and its base facts, each fact rendered once, here, as
+// a label and value row. A host copies both and never re-derives either.
+type ActionInformation struct {
+	// Description is the owner's prose verbatim. Empty when it has none.
+	Description string `json:"description,omitempty"`
+
+	// Details are the rendered base facts, in the renderer's fixed order.
+	// Empty when the action states none.
+	Details []ActionInformationDetail `json:"details,omitempty"`
+}
+
+// ActionInformationDetail is one rendered fact — "Base damage" / "1d8 + STR
+// modifier (+3) · Bludgeoning".
+type ActionInformationDetail struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
 }
 
 // AffordOutput is what one member can still declare this turn.
@@ -613,20 +641,20 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 	if string(clock.Active) != in.Member {
 		notYourTurn := Shortfall{Reason: ShortfallNotYourTurn, Text: "not your turn"}
 		return &AffordOutput{Clock: ClockTurn, Declarations: []Declaration{
-			blockedDeclaration(VerbAttack, TargetMember, notYourTurn),
-			blockedDeclaration(VerbMove, TargetPath, notYourTurn),
+			describedBlocker(VerbAttack, TargetMember, notYourTurn),
+			describedBlocker(VerbMove, TargetPath, notYourTurn),
 			// ONE Activate row, not seven. A member whose turn it is not
 			// cannot activate ANY of them, and the reason is identical for
 			// every one — so seven rows would be seven copies of "not your
 			// turn" and a panel that looks like it has choices.
-			blockedDeclaration(VerbActivate, TargetNone, notYourTurn),
+			describedBlocker(VerbActivate, TargetNone, notYourTurn),
 			// ONE Cast row for the same reason there is one Activate row: a
 			// member whose turn it is not can cast none of what they know,
 			// and the reason is identical for every known spell.
-			blockedDeclaration(VerbCast, TargetNone, notYourTurn),
-			blockedDeclaration(VerbIntimidate, TargetMember, notYourTurn),
-			blockedDeclaration(VerbPersuade, TargetMember, notYourTurn),
-			blockedDeclaration(VerbEndTurn, TargetNone, notYourTurn),
+			describedBlocker(VerbCast, TargetNone, notYourTurn),
+			describedBlocker(VerbIntimidate, TargetMember, notYourTurn),
+			describedBlocker(VerbPersuade, TargetMember, notYourTurn),
+			describedBlocker(VerbEndTurn, TargetNone, notYourTurn),
 		}}, nil
 	}
 
@@ -653,6 +681,12 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 	}); err != nil {
 		return nil, fmt.Errorf("afford: %w", err)
 	}
+	// INFORMATION, HERE AND NOWHERE ELSE, beside the effect rows and for
+	// their reason: it is attached after every gate and selector is settled,
+	// so it describes an action and never changes one (information.go).
+	if err := attachInformation(&attachInformationInput{Offers: offers}); err != nil {
+		return nil, fmt.Errorf("afford: %w", err)
+	}
 
 	declarations := make([]Declaration, 0, len(offers))
 	for _, o := range offers {
@@ -671,6 +705,12 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 // and the fixed target kind for the verb. It never carries a selector id or an
 // AttackRef — those belong to a compiled offer, and a blocker has not
 // compiled one.
+//
+// IT CARRIES NO INFORMATION, because compileOffersFor wraps it for its
+// unreadable, sheetless and downed branches, and every execution verb selects
+// from those offers: information is attached in Afford alone. Afford's own
+// compiled blockers are described by attachInformation like any other offer;
+// its two early lists use [describedBlocker].
 func blockedDeclaration(verb Verb, kind TargetKind, why Shortfall) Declaration {
 	return Declaration{
 		Verb:       verb,
@@ -681,6 +721,18 @@ func blockedDeclaration(verb Verb, kind TargetKind, why Shortfall) Declaration {
 		TargetKind: kind,
 		Candidates: []TargetCandidate{},
 	}
+}
+
+// describedBlocker is [blockedDeclaration] for Afford's two early returns —
+// not your turn, and a window open — which compile nothing and are read by
+// no execution path. A session-owned verb still says what it is, since its
+// prose is session's own and needs nothing compiled. A blocked Attack,
+// Activate or Cast carries none: its prose belongs to a definition the
+// blocker never compiled.
+func describedBlocker(verb Verb, kind TargetKind, why Shortfall) Declaration {
+	declaration := blockedDeclaration(verb, kind, why)
+	declaration.Information = sessionVerbInformation(verb)
+	return declaration
 }
 
 // currencyOfSlot maps a lit shape onto the ledger word a NoBudget shortfall
@@ -813,16 +865,16 @@ func affordWhileFrozen(session, member string, open []interrupt.Window, clock Cl
 	// one thing this function exists to prevent.
 	frozen := Shortfall{Reason: ShortfallWindowOpen, Text: "an interrupt window is open"}
 	declarations = append(declarations,
-		blockedDeclaration(VerbIntimidate, TargetMember, frozen),
-		blockedDeclaration(VerbPersuade, TargetMember, frozen),
+		describedBlocker(VerbIntimidate, TargetMember, frozen),
+		describedBlocker(VerbPersuade, TargetMember, frozen),
 	)
 	if clock == ClockTurn {
 		declarations = append(declarations,
-			blockedDeclaration(VerbAttack, TargetMember, frozen),
-			blockedDeclaration(VerbMove, TargetPath, frozen),
-			blockedDeclaration(VerbActivate, TargetNone, frozen),
-			blockedDeclaration(VerbCast, TargetNone, frozen),
-			blockedDeclaration(VerbEndTurn, TargetNone, frozen),
+			describedBlocker(VerbAttack, TargetMember, frozen),
+			describedBlocker(VerbMove, TargetPath, frozen),
+			describedBlocker(VerbActivate, TargetNone, frozen),
+			describedBlocker(VerbCast, TargetNone, frozen),
+			describedBlocker(VerbEndTurn, TargetNone, frozen),
 		)
 	}
 
@@ -893,6 +945,8 @@ func reactDeclaration(session, member string, window interrupt.Window) (Declarat
 		Reaction:   &ReactionRef{Ref: payload.Reaction, Name: name},
 		TargetKind: TargetMember,
 		Candidates: []TargetCandidate{{Member: payload.Mover, Available: true}},
+		// The reaction session names, explained beside its name (mover.go).
+		Information: proseInformation(reactionDescription[payload.Reaction]),
 	}, nil
 }
 
@@ -944,6 +998,7 @@ func (m *Manager) socialRowsOnTheWorldClock(
 		decl := Declaration{
 			Verb: spec.verb, Slot: SlotNone, ID: id,
 			TargetKind: TargetMember, Candidates: projectCandidates(candidates),
+			Information: sessionVerbInformation(spec.verb),
 		}
 		// NO SHEET AND NO PROFILE: free roam has no economy to fall short of,
 		// so the shared order skips its price arm rather than waiving one.

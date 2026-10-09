@@ -637,19 +637,20 @@ func (m *Manager) poseCastWindow(
 		Window: func(enc *encounter.Encounter) error {
 			options := make([]CastOption, 0, len(ask.Choices))
 			for _, o := range ask.Choices {
-				options = append(options, CastOption{ID: o.ID, Label: o.Label})
+				options = append(options, CastOption{ID: o.ID, Label: o.Label, Description: o.Description})
 			}
 			offer := ReactionRef{Ref: ask.Offer.Ref.String(), Name: ask.Offer.Name}
 			payload, err := marshalCastOfferPayload(castOfferWindowPayload{
-				Options:  options,
-				Audience: ask.Audience,
-				Caster:   member,
-				Spell:    spell,
-				Caught:   caught,
-				Offer:    offer,
-				Roll:     ask.Roll,
-				Total:    ask.Total,
-				Frozen:   posed.Frozen,
+				Options:          options,
+				Audience:         ask.Audience,
+				Caster:           member,
+				Spell:            spell,
+				Caught:           caught,
+				Offer:            offer,
+				OfferDescription: ask.Offer.Description,
+				Roll:             ask.Roll,
+				Total:            ask.Total,
+				Frozen:           posed.Frozen,
 			})
 			if err != nil {
 				return fmt.Errorf("%w: %v", ErrInvalidSession, err)

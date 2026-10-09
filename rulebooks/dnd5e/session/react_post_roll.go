@@ -156,13 +156,14 @@ func postRollDeclaration(session, member string, window interrupt.Window) (Decla
 	}
 	offer := payload.Offer
 	return Declaration{
-		Verb:       VerbReact,
-		Slot:       SlotNone,
-		Available:  true,
-		ID:         id,
-		Reaction:   &offer,
-		TargetKind: TargetNone,
-		Candidates: []TargetCandidate{},
+		Verb:        VerbReact,
+		Slot:        SlotNone,
+		Available:   true,
+		ID:          id,
+		Reaction:    &offer,
+		TargetKind:  TargetNone,
+		Candidates:  []TargetCandidate{},
+		Information: proseInformation(payload.OfferDescription),
 	}, nil
 }
 

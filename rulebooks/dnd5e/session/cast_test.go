@@ -1291,11 +1291,17 @@ func (s *CastSuite) TestCommandIsOneRowCarryingItsThreeWords() {
 	s.Require().Len(rows, 1, "a menu is an input, so three words are still one offer")
 	row := rows[0]
 	s.Equal(refs.Spells.Command().String(), row.Spell.Ref)
+	// Ids and labels only: each word's description is the spell's prose,
+	// asserted by TestAffordCommandOptionsDescribed (information_test.go).
+	words := make([]session.CastOption, 0, len(row.Options))
+	for _, option := range row.Options {
+		words = append(words, session.CastOption{ID: option.ID, Label: option.Label})
+	}
 	s.Equal([]session.CastOption{
 		{ID: spells.CommandWordApproach, Label: "Approach"},
 		{ID: spells.CommandWordFlee, Label: "Flee"},
 		{ID: spells.CommandWordGrovel, Label: "Grovel"},
-	}, row.Options, "the content's order, which is the order a picker draws")
+	}, words, "the content's order, which is the order a picker draws")
 	s.True(row.Available)
 	s.Equal(session.TargetMember, row.TargetKind)
 }

@@ -385,12 +385,13 @@ func (m *Manager) poseSocialWindow(
 		// WHICH verb is paused, so the answer finishes the one that was asked
 		// (window.go): a resumed Persuade that landed an Intimidate would be
 		// a silently wrong deed on a mind.
-		Verb:        spec.verb,
-		Offer:       offer,
-		Roll:        ask.Roll,
-		Total:       ask.Total,
-		Calculation: sessionRollCalculationOf(ask.Calculation),
-		Frozen:      posed.Frozen,
+		Verb:             spec.verb,
+		Offer:            offer,
+		OfferDescription: ask.Offer.Description,
+		Roll:             ask.Roll,
+		Total:            ask.Total,
+		Calculation:      sessionRollCalculationOf(ask.Calculation),
+		Frozen:           posed.Frozen,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w: %v", spec.verb, ErrInvalidSession, err)

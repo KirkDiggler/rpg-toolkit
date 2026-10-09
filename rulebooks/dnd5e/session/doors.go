@@ -399,13 +399,14 @@ func (m *Manager) poseUnlockWindow(
 
 	offer := ReactionRef{Ref: ask.Offer.Ref.String(), Name: ask.Offer.Name}
 	payload, err := marshalCheckOfferPayload(checkOfferWindowPayload{
-		Audience:    ask.Audience,
-		Door:        in.Door,
-		Offer:       offer,
-		Roll:        ask.Roll,
-		Total:       ask.Total,
-		Calculation: sessionRollCalculationOf(ask.Calculation),
-		Frozen:      posed.Frozen,
+		Audience:         ask.Audience,
+		Door:             in.Door,
+		Offer:            offer,
+		OfferDescription: ask.Offer.Description,
+		Roll:             ask.Roll,
+		Total:            ask.Total,
+		Calculation:      sessionRollCalculationOf(ask.Calculation),
+		Frozen:           posed.Frozen,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("unlock: %w: %v", ErrInvalidSession, err)

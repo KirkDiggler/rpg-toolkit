@@ -27,6 +27,48 @@ const savesPath = "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 // conditionsPath is the package that owns the concentrating condition itself.
 const conditionsPath = "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 
+// savesReaders are the only names this module may reach in the saves package:
+// the TYPES a stated save fact is made of and the CONSTANTS it is compared
+// against. Reading them projects a fact somebody else resolved — the save
+// gate a definition declares, whether success negates or halves, whether the
+// save repeats — which is what the selector projection and the information
+// renderer do (provider-design R11, R14).
+//
+// # Why the ban became an allow-list, and what it still forbids
+//
+// The first form refused the import outright, because computing a DC or
+// asking for a saving throw is resolution's work. That reason is about
+// RESOLVING a save, and it is still enforced: no non-test file may CALL
+// anything through the saves import — no function, no method value taken off
+// the package, no conversion — and every other name in the package fails
+// this test. Rendering "success: half damage" by comparing against
+// saves.Half reads the owner's constant; spelling "half" here would be a
+// second copy of it that a rename leaves silently wrong.
+//
+// # What this pin does not see, and why that is harmless
+//
+// It reads syntax, not types, so a METHOD called through a value of an
+// allowed type — (&saves.SaveGate{}).Validate() — is invisible to it. That is
+// the carve-out, and it is harmless by construction: the one method that
+// computes a DC takes a saves.DCInput, which is not on this list, so calling
+// it needs a name this pin refuses. What remains reachable through a gate
+// value are readers (Validate, Kind, MarshalJSON). Catching methods properly
+// needs a type-checked load of the package and its dependencies, which costs
+// more than it buys here.
+//
+// A string literal written back in place of a constant is caught by
+// TestRenderSaveComparesSavesConstants (information_internal_test.go) for the
+// renderer, the one place that compares them.
+var savesReaders = map[string]bool{
+	"SaveGate":            true,
+	"SaveEffect":          true,
+	"Negated":             true,
+	"Half":                true,
+	"Recurrence":          true,
+	"RecurrenceNone":      true,
+	"RecurrenceEndOfTurn": true,
+}
+
 // conditionReaders are the only names this module may reach in the conditions
 // package: pure functions over the opaque blobs a sheet already carries, and
 // the shape one of them returns. Nothing here constructs a condition, attaches
@@ -54,6 +96,10 @@ var conditionReaders = map[string]bool{
 	"HoldsRef":               true,
 	"DecodeCommanded":        true,
 	"CommandedConditionData": true,
+	// DisplayFor reads the condition display catalogue: a condition's name and
+	// its owner's explanation, by ref (provider-design R14). It is a lookup
+	// over data, and holds, builds and runs nothing.
+	"DisplayFor": true,
 }
 
 // checkMachinery are the entries in the rulebook's events package that stand a
@@ -88,7 +134,11 @@ var checkMachinery = map[string]bool{
 // max(10, amount/2), and asks resolution for a save. Every piece of that needs
 // a name from one of three packages — the damage fact and its follow-up from
 // the rulebook's events package, the save from saves, the condition itself
-// from conditions — and this refuses all three.
+// from conditions — and this refuses all three. The saves and conditions
+// pins are allow-lists of READERS (savesReaders, conditionReaders): this seam
+// may name a save gate's types and compare its constants, and may look a
+// condition up, because projecting a stated fact is its job. It may call
+// nothing through saves, and build, attach or run nothing from conditions.
 //
 // Imports are RESOLVED rather than matched as text, so an alias is no escape;
 // TestTheAliasEscapeIsClosed already proves that machinery on its sibling pin
@@ -112,9 +162,7 @@ var checkMachinery = map[string]bool{
 // It proves this module cannot be the place that does, which is the specific
 // claim slice three makes about it.
 func TestSessionConstructsNoCheck(t *testing.T) {
-	fset := token.NewFileSet()
-
-	var machinery, saveImports, conditionImports []string
+	var machinery, saveReaches, conditionImports []string
 	err := filepath.WalkDir(".", func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -134,17 +182,8 @@ func TestSessionConstructsNoCheck(t *testing.T) {
 
 		machinery = append(machinery, checkMachineryReachedBy(t, path)...)
 
-		file, parseErr := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
-		if parseErr != nil {
-			return parseErr
-		}
 		conditionImports = append(conditionImports, conditionRulesReachedBy(t, path)...)
-
-		for _, spec := range file.Imports {
-			if spec.Path.Value == `"`+savesPath+`"` {
-				saveImports = append(saveImports, fset.Position(spec.Pos()).String())
-			}
-		}
+		saveReaches = append(saveReaches, saveResolutionReachedBy(t, path)...)
 		return nil
 	})
 	require.NoError(t, err)
@@ -155,10 +194,11 @@ func TestSessionConstructsNoCheck(t *testing.T) {
 			"and this seam projects the beat the composition already recorded. A damage fact "+
 			"or a follow-up read here is this seam deciding a rule it does not own")
 
-	require.Empty(t, saveImports,
-		"a non-test file in this module imports the saves package. Computing a DC or asking "+
-			"for a saving throw is resolution's work; this seam records the answer somebody "+
-			"else got")
+	require.Empty(t, saveReaches,
+		"a non-test file in this module calls through the saves package, or reaches a name in "+
+			"it that is not one of the types and constants savesReaders lists. Computing a DC or "+
+			"asking for a saving throw is resolution's work; this seam reads the fact somebody "+
+			"else stated")
 
 	require.Empty(t, conditionImports,
 		"a non-test file in this module reaches a name in the conditions package that is not "+
@@ -309,6 +349,107 @@ func checkMachineryReachedBy(t *testing.T, path string) []string {
 			return true
 		}
 		reached = append(reached, fset.Position(selector.Pos()).String()+": "+selector.Sel.Name)
+		return true
+	})
+	return reached
+}
+
+// TestTheSaveEscapeIsCaught runs the saves pin over both shapes that matter,
+// so its allow-list is a passing test rather than a claim: a call through the
+// package is refused even through an alias, a function taken as a value is
+// refused, and reading a type or comparing a constant is let through.
+func TestTheSaveEscapeIsCaught(t *testing.T) {
+	dir := t.TempDir()
+
+	called := filepath.Join(dir, "called.go")
+	require.NoError(t, os.WriteFile(called, []byte(`package session
+
+import sv "`+savesPath+`"
+
+var _ = sv.NewSaveGate(nil)
+`), 0o600))
+	require.NotEmpty(t, saveResolutionReachedBy(t, called),
+		"a call through the saves package must not walk past this pin, whatever it is called locally")
+
+	taken := filepath.Join(dir, "taken.go")
+	require.NoError(t, os.WriteFile(taken, []byte(`package session
+
+import "`+savesPath+`"
+
+var roll = saves.Roll
+`), 0o600))
+	require.NotEmpty(t, saveResolutionReachedBy(t, taken),
+		"a function taken as a value is a call waiting to happen")
+
+	read := filepath.Join(dir, "read.go")
+	require.NoError(t, os.WriteFile(read, []byte(`package session
+
+import "`+savesPath+`"
+
+var _ *saves.SaveGate
+
+func half(effect saves.SaveEffect) bool { return effect == saves.Half }
+`), 0o600))
+	require.Empty(t, saveResolutionReachedBy(t, read),
+		"naming the gate's type and comparing its constant is reading a stated fact")
+}
+
+// saveResolutionReachedBy reports every call through the saves package and
+// every name reached in it that savesReaders does not list, however the
+// package is named locally. A dot-import is refused outright, for the reason
+// its siblings give.
+func saveResolutionReachedBy(t *testing.T, path string) []string {
+	t.Helper()
+
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, nil, 0)
+	require.NoError(t, err)
+
+	local := ""
+	for _, spec := range file.Imports {
+		if spec.Path.Value != `"`+savesPath+`"` {
+			continue
+		}
+		if spec.Name == nil {
+			local = "saves"
+			continue
+		}
+		if spec.Name.Name == "." {
+			require.Failf(t, "dot-import of the saves package",
+				"%s dot-imports %s. This pin cannot tell a bare saves function from any "+
+					"other identifier, so the import shape itself is refused",
+				path, savesPath)
+		}
+		local = spec.Name.Name
+	}
+	if local == "" {
+		return nil
+	}
+
+	onSaves := func(expr ast.Expr) (*ast.SelectorExpr, bool) {
+		selector, ok := expr.(*ast.SelectorExpr)
+		if !ok {
+			return nil, false
+		}
+		pkg, ok := selector.X.(*ast.Ident)
+		return selector, ok && pkg.Name == local
+	}
+
+	var reached []string
+	ast.Inspect(file, func(node ast.Node) bool {
+		if call, ok := node.(*ast.CallExpr); ok {
+			if selector, ok := onSaves(call.Fun); ok {
+				reached = append(reached, fset.Position(call.Pos()).String()+": call "+selector.Sel.Name)
+			}
+			return true
+		}
+		expr, ok := node.(ast.Expr)
+		if !ok {
+			return true
+		}
+		if selector, ok := onSaves(expr); ok && !savesReaders[selector.Sel.Name] {
+			reached = append(reached, fset.Position(selector.Pos()).String()+": "+selector.Sel.Name)
+		}
 		return true
 	})
 	return reached

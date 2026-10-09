@@ -130,6 +130,11 @@ type postRollWindowPayload struct {
 	// with.
 	Offer ReactionRef `json:"offer"`
 
+	// OfferDescription is the offering owner's prose for this reaction,
+	// copied from the posed offer. It rides the window, not [ReactionRef],
+	// because ReactionRef also rides stream events and no beat carries prose.
+	OfferDescription string `json:"offer_description,omitempty"`
+
 	// Roll and Total are the d20 and the number the offer would join, carried
 	// for the beat that asks. THE TARGET'S AC IS NOT HERE, and its absence is
 	// the design: a player who could see it would be deciding whether the die
@@ -183,6 +188,11 @@ type checkOfferWindowPayload struct {
 	// itself.
 	Offer ReactionRef `json:"offer"`
 
+	// OfferDescription is the offering owner's prose for this reaction,
+	// copied from the posed offer. It rides the window, not [ReactionRef],
+	// because ReactionRef also rides stream events and no beat carries prose.
+	OfferDescription string `json:"offer_description,omitempty"`
+
 	// Roll and Total are the d20 and the number the offer would join. THE
 	// LOCK'S DC IS NOT HERE, for [postRollWindowPayload.Roll]'s reason: a
 	// player deciding whether a die is worth spending should not be able to
@@ -232,6 +242,11 @@ type castOfferWindowPayload struct {
 	// Offer is what the audience holds, as the effect that offered it named
 	// itself.
 	Offer ReactionRef `json:"offer"`
+
+	// OfferDescription is the offering owner's prose for this reaction,
+	// copied from the posed offer. It rides the window, not [ReactionRef],
+	// because ReactionRef also rides stream events and no beat carries prose.
+	OfferDescription string `json:"offer_description,omitempty"`
 
 	// Roll and Total are the d20 and the number the offer would join. THE
 	// SAVE'S DC IS NOT HERE, [checkOfferWindowPayload.Roll]'s reason.

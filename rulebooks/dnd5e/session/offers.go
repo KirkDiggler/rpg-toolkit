@@ -49,6 +49,10 @@ type compiledOffer struct {
 	// recompiling one, so the offer's numbers and the machine's are the same
 	// numbers.
 	spell *combatActions.Definition
+	// abilityDescription is the activated ability's own prose, copied from
+	// the sheet's AvailableAbility (its combat ability or feature authored
+	// it). Read only by attachInformation; empty for every other verb.
+	abilityDescription string
 	// targets is the per-candidate reach verdict for VerbAttack, keyed by
 	// candidate member ID. Empty for Move/EndTurn and every blocker. Execution
 	// looks a chosen target up here to re-enforce reach before resolving.

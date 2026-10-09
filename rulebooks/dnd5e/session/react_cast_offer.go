@@ -146,14 +146,15 @@ func castOfferDeclaration(session, member string, window interrupt.Window) (Decl
 	}
 	offer := payload.Offer
 	return Declaration{
-		Verb:       VerbReact,
-		Slot:       castOfferSlot(payload.Options),
-		Options:    payload.Options,
-		Available:  true,
-		ID:         id,
-		Reaction:   &offer,
-		TargetKind: TargetNone,
-		Candidates: []TargetCandidate{},
+		Verb:        VerbReact,
+		Slot:        castOfferSlot(payload.Options),
+		Options:     payload.Options,
+		Available:   true,
+		ID:          id,
+		Reaction:    &offer,
+		TargetKind:  TargetNone,
+		Candidates:  []TargetCandidate{},
+		Information: proseInformation(payload.OfferDescription),
 	}, nil
 }
 
