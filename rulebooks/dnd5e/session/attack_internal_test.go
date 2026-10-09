@@ -150,11 +150,7 @@ func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
 		},
 	}
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
-		Sight:      aggregateRecordEveryoneSees{},
-		Equipment:  encNoHandsObserved{},
-		Standing:   aggregateRecordEveryoneStanding{},
-		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)},
@@ -164,13 +160,26 @@ func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
 			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sheets:     encStandStill{},
+			Sight:      aggregateRecordEveryoneSees{},
+			Equipment:  encNoHandsObserved{},
+			Standing:   aggregateRecordEveryoneStanding{},
+			Initiative: aggregateRecordOrderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 
 	definition := combatActions.Definition{Ref: *refs.Weapons.Longsword(), Name: "Longsword"}
 	recorded, err := enc.Record(recordFor(
 		&AttackInput{Attacker: "alice", Target: "bob"}, struck, definition, "roll-abc",
-		&resolution.Output{},
+		concentration{},
 	))
 	require.NoError(t, err)
 	require.NotZero(t, recorded.Seq)
@@ -239,12 +248,7 @@ func TestRecordProjectsCriticalStrikeTrace(t *testing.T) {
 		},
 	}
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
-		Sight:      aggregateRecordEveryoneSees{},
-		Equipment:  encNoHandsObserved{},
-		Standing:   aggregateRecordEveryoneStanding{},
-		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)},
@@ -254,6 +258,19 @@ func TestRecordProjectsCriticalStrikeTrace(t *testing.T) {
 			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sheets:     encStandStill{},
+			Sight:      aggregateRecordEveryoneSees{},
+			Equipment:  encNoHandsObserved{},
+			Standing:   aggregateRecordEveryoneStanding{},
+			Initiative: aggregateRecordOrderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 
@@ -264,7 +281,7 @@ func TestRecordProjectsCriticalStrikeTrace(t *testing.T) {
 	// byte-identical to what this seam writes now.
 	_, err = enc.Record(recordFor(
 		&AttackInput{Attacker: "alice", Target: "bob"}, struck, definition, "",
-		&resolution.Output{},
+		concentration{},
 	))
 	require.NoError(t, err)
 
@@ -616,15 +633,26 @@ func TestMoveRegenerationSkipsAttackTargetPreflight(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	world, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
+	world, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)}},
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sheets:     encStandStill{},
+			Sight:      aggregateRecordEveryoneSees{},
+			Equipment:  encNoHandsObserved{},
+			Initiative: aggregateRecordOrderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   aggregateRecordEveryoneStanding{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 	data := world.ToData()
@@ -682,15 +710,26 @@ func TestInjectedTargetPreflightRefusalChangesAffordAndAttack(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	world, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
+	world, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)}},
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sheets:     encStandStill{},
+			Sight:      aggregateRecordEveryoneSees{},
+			Equipment:  encNoHandsObserved{},
+			Initiative: aggregateRecordOrderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   aggregateRecordEveryoneStanding{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 	data := world.ToData()
@@ -788,15 +827,26 @@ func TestAttackVariantsShareOneTargetPreflight(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	world, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
+	world, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)}},
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sheets:     encStandStill{},
+			Sight:      aggregateRecordEveryoneSees{},
+			Equipment:  encNoHandsObserved{},
+			Initiative: aggregateRecordOrderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   aggregateRecordEveryoneStanding{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 	data := world.ToData()
@@ -872,12 +922,23 @@ func TestStrikeRefusesAPersistedMonsterPriceBeforeRolling(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	world, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
+	world, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field:     encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("tomb", 0, 0, 12, 6)}},
 		Endings:   []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
+		Capabilities: encounter.Capabilities{
+			Sheets:     encStandStill{},
+			Sight:      aggregateRecordEveryoneSees{},
+			Equipment:  encNoHandsObserved{},
+			Initiative: aggregateRecordOrderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   aggregateRecordEveryoneStanding{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 	worldData := world.ToData()

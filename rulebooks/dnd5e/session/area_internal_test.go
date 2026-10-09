@@ -47,10 +47,7 @@ func (s *AreaDeriveSuite) SetupTest() {
 		return spatial.Position{X: float64(col), Y: float64(row)}
 	}
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{},
-		Announcer: encQuietAnnouncer{}, Sight: encStatedSight{}, Equipment: encNoHandsObserved{},
-		Initiative: walkOrderAsGiven{}, TurnDriver: passDriver{}, Standing: walkEveryoneStanding{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("yard", 0, 0, 14, 14)},
@@ -62,6 +59,19 @@ func (s *AreaDeriveSuite) SetupTest() {
 			{ID: areaVendor, Kind: encounter.MemberKind(KindWorld), Position: offset(6)},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sheets:     encStandStill{},
+			Sight:      encStatedSight{},
+			Equipment:  encNoHandsObserved{},
+			Initiative: walkOrderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   walkEveryoneStanding{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	s.enc = enc
@@ -224,10 +234,7 @@ func (s *AreaCoveredSuite) SetupTest() {
 		return spatial.Position{X: float64(col), Y: float64(row)}
 	}
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{},
-		Announcer: encQuietAnnouncer{}, Sight: encStatedSight{}, Equipment: encNoHandsObserved{},
-		Initiative: walkOrderAsGiven{}, TurnDriver: passDriver{}, Standing: walkEveryoneStanding{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("yard", 0, 0, 14, 14)},
@@ -239,6 +246,19 @@ func (s *AreaCoveredSuite) SetupTest() {
 			{ID: coveredFar, Kind: encounter.KindMonster, Position: offset(9)},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sheets:     encStandStill{},
+			Sight:      encStatedSight{},
+			Equipment:  encNoHandsObserved{},
+			Initiative: walkOrderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   walkEveryoneStanding{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	s.enc = enc

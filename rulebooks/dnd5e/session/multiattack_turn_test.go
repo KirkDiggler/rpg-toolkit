@@ -495,3 +495,51 @@ func (s *MonsterTurnTestSuite) bossBreaksTheFightersAreaWith(wrath bool, roller 
 	s.Require().NoError(err)
 	return mgr
 }
+
+// TestASequenceThatPausesOnItsSecondSwingTellsTheFirst: the goblin boss's
+// first swing misses and its second hits a fighter holding Wrath of the
+// Storm, which stops the sequence to ask. The completed first swing is told
+// when the sequence pauses — the pending sequence is recorded by the strike
+// landing — and the settled second swing waits for the answer.
+func (s *MonsterTurnTestSuite) TestASequenceThatPausesOnItsSecondSwingTellsTheFirst() {
+	ctx := context.Background()
+	// Initiative twice; swing one attacks with a 1 and misses; swing two
+	// rolls at disadvantage, 15 and 15, damage 3, and the fighter's
+	// concentration save is a 20.
+	mgr := s.bossBreaksTheFightersAreaWith(true, &sequenceDice{rolls: []int{10, 10, 1, 15, 15, 3, 20, 20, 20, 20}})
+	persisted, err := s.encounters.GetEncounter(ctx, "world")
+	s.Require().NoError(err)
+	s.Require().NotNil(persisted.PausedTurn, "control: the sequence paused on the fighter's window")
+
+	beats := s.storyBeats(mgr, "fighter")
+	s.Contains(beats, string(encounter.OutcomeMissed), "the completed first swing is told at the pause")
+	s.NotContains(beats, string(encounter.OutcomeStruck), "the settled second swing waits for the answer")
+}
+
+// TestACompletedSequenceLandsTheAreaItsPauseHeld: the goblin boss's first
+// swing hits, breaks the fighter's concentration and stops to ask about Wrath
+// of the Storm, so the area it closed waits on the window. The fighter holds
+// back, the second swing misses and the sequence completes; the resume lands
+// the held area behind the swing that closed it.
+func (s *MonsterTurnTestSuite) TestACompletedSequenceLandsTheAreaItsPauseHeld() {
+	ctx := context.Background()
+	// Initiative twice; swing one attacks 15, damage 3, and the fighter's
+	// concentration save is a 1; on the resume swing two rolls at
+	// disadvantage, 1 and 1, and misses.
+	mgr := s.bossBreaksTheFightersAreaWith(true, &sequenceDice{rolls: []int{10, 10, 15, 3, 1, 1, 1, 20, 20, 20}})
+	areas, err := mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "fighter"})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(areas, "control: the area waits on the window")
+	s.Require().NotEmpty(s.sessions.byID["sess"].Windows.Windows, "control: the sequence paused")
+
+	react := currentDeclaration(s.T(), mgr, "sess", "fighter", session.VerbReact)
+	_, err = mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "fighter", DeclarationID: react.ID, Choice: session.ReactHold})
+	s.Require().NoError(err)
+
+	s.Require().Empty(s.sessions.byID["sess"].Windows.Windows, "control: the sequence completed rather than pausing again")
+	beats := s.storyBeats(mgr, "fighter")
+	s.Contains(beats, string(encounter.OutcomeMissed), "control: the second swing missed")
+	areas, err = mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "fighter"})
+	s.Require().NoError(err)
+	s.Empty(areas, "the completed sequence lands the area its pause held")
+}

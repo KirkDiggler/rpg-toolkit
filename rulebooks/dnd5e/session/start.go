@@ -210,7 +210,7 @@ func (m *Manager) loadAuthored(ctx context.Context, world *encounter.EncounterDa
 		return nil, fmt.Errorf("nil world: %w", ErrInvalidWorld)
 	}
 	standing := m.standingFor(ctx, nil, encounterDataKinds(worldMembers(*world)))
-	input := encounter.CompileOnlyLoad(*world)
+	input := &encounter.LoadEncounterInput{Data: *world, Capabilities: encounter.RefusingCapabilities()}
 	input.Initiative = m.initiative
 	input.Standing = standing
 	input.Equipment = equipmentBeside(standing)

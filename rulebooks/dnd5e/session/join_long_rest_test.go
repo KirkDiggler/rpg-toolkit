@@ -660,10 +660,7 @@ func spentJoinFighter(t *testing.T, id string) *character.Data {
 
 func memberDownJoinWorld(t *testing.T) *encounter.EncounterData {
 	t.Helper()
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
-		Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing: encEveryoneStanding{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)},
@@ -673,6 +670,19 @@ func memberDownJoinWorld(t *testing.T) *encounter.EncounterData {
 			{Key: "withdraw", Trigger: encounter.TriggerExternal{}},
 		},
 		Retention: encounter.RetentionUnbounded,
+		Capabilities: encounter.Capabilities{
+			Sheets:     encStandStill{},
+			Sight:      encEveryoneSees{},
+			Equipment:  encNoHandsObserved{},
+			Initiative: encOrderAsGiven{},
+			Driver:     encPassDriver{},
+			Standing:   encEveryoneStanding{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("build member-down Join world: %v", err)

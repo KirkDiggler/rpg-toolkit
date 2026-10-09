@@ -44,8 +44,7 @@ func TestOneMapSuite(t *testing.T) {
 // seam. Every authored pair in this fixture is ABSOLUTE offset, and every
 // cell a verb takes or reports is the axial one hexCell makes of it.
 func offsetWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing: encEveryoneStanding{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{
 				rectRegion("hall", 40, 20, 6, 6),
@@ -73,6 +72,19 @@ func offsetWorld(t fataler) *encounter.EncounterData {
 				Position: spatial.Position{X: 46, Y: 22}}},
 		},
 		Retention: encounter.RetentionUnbounded,
+		Capabilities: encounter.Capabilities{
+			Sheets:     encStandStill{},
+			Sight:      encEveryoneSees{},
+			Equipment:  encNoHandsObserved{},
+			Initiative: encOrderAsGiven{},
+			Driver:     encPassDriver{},
+			Standing:   encEveryoneStanding{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("building the offset world: %v", err)
@@ -380,9 +392,7 @@ func (s *OneMapSuite) TestASightingAndAPlacementAgree() {
 // shallowAnchoredWorld is one 10x10 region painted at [2,3], off the origin
 // by less than its own span.
 func shallowAnchoredWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing: encEveryoneStanding{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 2, 3, 10, 10)},
 		},
@@ -394,6 +404,19 @@ func shallowAnchoredWorld(t fataler) *encounter.EncounterData {
 				Position: spatial.Position{X: 5, Y: 3}}},
 		},
 		Retention: encounter.RetentionUnbounded,
+		Capabilities: encounter.Capabilities{
+			Sheets:     encStandStill{},
+			Sight:      encEveryoneSees{},
+			Equipment:  encNoHandsObserved{},
+			Initiative: encOrderAsGiven{},
+			Driver:     encPassDriver{},
+			Standing:   encEveryoneStanding{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("building the shallow-anchored world: %v", err)

@@ -38,12 +38,7 @@ const leafDoorID = "leaf"
 // distant member's DoorSightings; it asserts what closing CHANGES (a step, a
 // sighting), which the canvas answers from the live state alone.
 func footprintLeafWorld(t fataler, state encounter.DoorState) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing:      encEveryoneStanding{},
-		CheckResolver: encNeverResolves{},
-		Witness:       encNeverWitnesses{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 6, 6)},
 			Doors: []encounter.DoorInput{{
@@ -58,6 +53,21 @@ func footprintLeafWorld(t fataler, state encounter.DoorState) *encounter.Encount
 			{ID: "carol", Kind: encounter.KindPlayer, Position: cell(0, 4)},
 		},
 		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sheets:        encStandStill{},
+			Sight:         encEveryoneSees{},
+			Equipment:     encNoHandsObserved{},
+			Initiative:    encOrderAsGiven{},
+			Driver:        encPassDriver{},
+			Standing:      encEveryoneStanding{},
+			CheckResolver: encNeverResolves{},
+			Witness:       encNeverWitnesses{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("building footprint leaf world: %v", err)

@@ -694,3 +694,32 @@ func (s *CastSuite) TestAResumedDrivenHitThatBreaksFogEndsTheAreaBeforeItsWindow
 	s.Require().NoError(err)
 	s.Empty(areas, "the area lands before the next window opens")
 }
+
+// TestAWalkThatPausesOnItsSecondReactionTellsTheFirst: a step that provokes
+// two skeletons, where the first swing misses and the second hits and asks
+// the walking cleric about Wrath of the Storm. The walk pauses on the second
+// reaction, and the first — already resolved — is told before the window
+// opens, by the movement landing's record step.
+func (s *CastSuite) TestAWalkThatPausesOnItsSecondReactionTellsTheFirst() {
+	s.scene(s.tempestSheet(), 1, 1, 15, 3, 3, 3, 3, 3, 3, 3, 3)
+	ctx := context.Background()
+	_, err := s.mgr.Spawn(ctx, &session.SpawnInput{Session: "sess", ID: "skeleton2", Ref: refs.Monsters.Skeleton().String(), Position: spatial.Position{X: 2, Y: 0}})
+	s.Require().NoError(err)
+
+	out, err := s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "cleric", DeclarationID: currentMoveID(s.T(), s.mgr, "sess", "cleric"), Path: []spatial.Position{{X: 0, Y: 1}}})
+	s.Require().NoError(err)
+
+	s.Equal(session.MovementPaused, out.Status, "the second reaction asks the walker")
+	told := s.beats(session.EventStruck, session.EventMissed)
+	s.Require().Len(told, 1, "the first reaction is told before the window")
+	s.Equal(session.EventMissed, told[0].Kind)
+	offered, err := s.mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "cleric"})
+	s.Require().NoError(err)
+	asked := false
+	for _, d := range offered.Declarations {
+		if d.Verb == session.VerbReact && d.Reaction != nil && d.Reaction.Ref == refs.Features.WrathOfTheStorm().String() {
+			asked = true
+		}
+	}
+	s.True(asked, "and the cleric is asked about Wrath of the Storm")
+}

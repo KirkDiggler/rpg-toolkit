@@ -181,10 +181,7 @@ func campWorld(t *testing.T, compiled dungeonspec.Compiled, withEnding bool) *en
 	if len(seats) < 2 {
 		t.Fatalf("the camp seats %d, and the party is two", len(seats))
 	}
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
-		CheckResolver: encNeverResolves{}, Witness: encNeverWitnesses{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: compiled.Field,
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Position: seats[0].At},
@@ -192,6 +189,21 @@ func campWorld(t *testing.T, compiled dungeonspec.Compiled, withEnding bool) *en
 		},
 		Endings:   endings,
 		Retention: encounter.RetentionUnbounded,
+		Capabilities: encounter.Capabilities{
+			Sheets:        encStandStill{},
+			Sight:         encEveryoneSees{},
+			Equipment:     encNoHandsObserved{},
+			Initiative:    encOrderAsGiven{},
+			Driver:        encPassDriver{},
+			Standing:      encEveryoneStanding{},
+			CheckResolver: encNeverResolves{},
+			Witness:       encNeverWitnesses{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("building the camp: %v", err)
@@ -350,10 +362,22 @@ func (s *HoldOutSessionSuite) roster() map[string]session.PublicMember {
 	// These scenario assertions inspect membership/reserve truth, not Alice's
 	// discovered identities. Gameplay Roster deliberately excludes unseen NPCs.
 	world, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: *s.encounters.byID[campWorldID], Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{}, Sheets: encStandStill{},
-		Standing: encEveryoneStanding{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
-		CheckResolver: encNeverResolves{}, Witness: encNeverWitnesses{},
+		Data: *s.encounters.byID[campWorldID],
+		Capabilities: encounter.Capabilities{
+			Sight:         encEveryoneSees{},
+			Equipment:     encNoHandsObserved{},
+			Sheets:        encStandStill{},
+			Standing:      encEveryoneStanding{},
+			Initiative:    encOrderAsGiven{},
+			Driver:        encPassDriver{},
+			CheckResolver: encNeverResolves{},
+			Witness:       encNeverWitnesses{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	members, err := world.Members()

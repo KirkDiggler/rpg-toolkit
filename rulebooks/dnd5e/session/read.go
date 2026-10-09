@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -654,21 +653,10 @@ func (m *Manager) loadWorld(ctx context.Context, data *SessionData) (*encounter.
 		return nil, err
 	}
 
-	enc, _, _, err := m.loadWorldWithBaseline(
-		ctx, data, encounter.RefusingStriker{}, encounter.RefusingMover{}, encounter.RefusingAnnouncer{},
-		encounter.RefusingCheckResolver{}, encounter.NobodyPerceives{},
-		// The plain seam, not a compelled driver. A read advances no clock —
-		// the three refusing capabilities above are what says so — and a
-		// compelled driver here would have no scope to save the condition an
-		// obeyed word can leave behind.
-		driver,
-		// AND NO DIE, in the same spirit as the three refusing capabilities
-		// above: a read advances no clock, so no creature is ever given time on
-		// this world and no table is ever rolled. The composition refuses a
-		// roll with no roller by name (encounter.ErrNoRoller), so a read that
-		// somehow reached one fails loudly rather than quietly throwing dice
-		// nobody meant to throw (rpg-project#465).
-		nil)
+	// The plain seam, not a compelled driver, and no scope: a read advances
+	// no clock, so the read capabilities refuse every actor, carry no die and
+	// stand in for the concealment pair ([Manager.readCapabilities]).
+	enc, _, _, err := m.loadWorldWithBaseline(ctx, data, nil, driver)
 	return enc, err
 }
 
@@ -691,16 +679,13 @@ func (m *Manager) loadWorld(ctx context.Context, data *SessionData) (*encounter.
 // same standing capability, so a member [place] classifies mid-verb is one
 // whose sheet both can find (sheets.go).
 func (m *Manager) loadWorldWithBaseline(
-	ctx context.Context, data *SessionData,
-	striker encounter.Striker, mover encounter.Mover, announcer encounter.Announcer,
-	resolver encounter.CheckResolver, witness encounter.Witness, driver encounter.Driver,
-	roller dice.Roller,
+	ctx context.Context, data *SessionData, scope *writeScope, driver encounter.Driver,
 ) (*encounter.Encounter, uint64, standingSeam, error) {
 	world, err := m.fetchWorld(ctx, data.Encounter)
 	if err != nil {
 		return nil, 0, standingSeam{}, err
 	}
-	return m.loadGivenWorld(ctx, data, world, striker, mover, announcer, resolver, witness, driver, roller)
+	return m.loadGivenWorld(ctx, data, world, scope, driver)
 }
 
 // fetchWorld reads one stored world and checks the repository kept its side
@@ -724,62 +709,31 @@ func (m *Manager) fetchWorld(ctx context.Context, encID string) (*encounter.Enco
 // already holds rather than one fetched from the repository: Launch builds
 // its world in memory and loads it through exactly the seams every write
 // verb's world is loaded through.
+//
+// scope says which capabilities the world carries. A write verb passes its
+// scope: the standing is set on it first, then [Manager.writeCapabilities]
+// binds every capability to it. A read passes nil and its own driver, and
+// gets [Manager.readCapabilities]. driver is read only for a read; a write
+// verb's driver is already on its scope.
 func (m *Manager) loadGivenWorld(
 	ctx context.Context, data *SessionData, world *encounter.EncounterData,
-	striker encounter.Striker, mover encounter.Mover, announcer encounter.Announcer,
-	resolver encounter.CheckResolver, witness encounter.Witness, driver encounter.Driver,
-	roller dice.Roller,
+	scope *writeScope, driver encounter.Driver,
 ) (*encounter.Encounter, uint64, standingSeam, error) {
 	encID := data.Encounter
 
 	// Placed AND waiting (reserve.go): an arrival happens mid-verb, and its
 	// own sight refresh asks the seams about the newcomer at once.
 	standing := m.standingFor(ctx, data, encounterDataKinds(worldMembers(*world)))
+	var capabilities encounter.Capabilities
+	if scope != nil {
+		scope.standing = standing
+		capabilities = m.writeCapabilities(ctx, scope)
+	} else {
+		capabilities = m.readCapabilities(standing, driver)
+	}
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:       *world,
-		Initiative: m.initiative,
-		Standing:   standing,
-		Sight:      sheetsBeside(standing),
-		Equipment:  equipmentBeside(standing),
-		Sheets:     sheetsBeside(standing),
-		// And the same, one capability over: a compelledDriver bound to a
-		// write verb's scope, or the plain seam for a read that advances no
-		// clock. A compulsion is read off a SHEET, so the thing that takes a
-		// commanded member's turn has to be built where the sheets are — and
-		// it has to be able to save what the word left behind, which is the
-		// scope this function has not got. See [compelledDriver].
-		TurnDriver: driver,
-		// THE WORLD'S DIE, and the caller says whether there is one: this
-		// session's shared dice for a write verb, absent for a read that can
-		// never give a creature time (rpg-project#465, design §6). Every pick
-		// a creature makes is rolled through it with the creature as the die's
-		// entity, and a faction's temperament mix is dealt through it at the
-		// door with the faction as the entity.
-		Roller: roller,
-		// The caller says which: a real one bound to a write verb's own
-		// scope, or RefusingStriker{} for a read that must never drive a
-		// turn. See [Manager.loadWorld] and [Manager.openForWrite].
-		Striker: striker,
-		// And the same, one capability over again: a real moverSeam bound to
-		// a write verb's scope, or RefusingMover{} for a read that can never
-		// walk anybody. A step is not inert — something may be waiting to
-		// react to it — so this is supplied, never defaulted (encounter.Mover).
-		Mover: mover,
-		// And the same, one capability over. A read verb cannot advance a
-		// clock, so a boundary announced on a read path is a bug rather
-		// than an event — RefusingAnnouncer says so at the point of
-		// failure, where a silently-succeeding no-op would be
-		// indistinguishable from the boundary that never got published.
-		Announcer: announcer,
-		// The concealment pair, caller-chosen the same way: real seams
-		// bound to a write verb's scope, or the composition's own
-		// stand-ins for a read that never rolls a check or refreshes sight
-		// (encounter.RefusingCheckResolver, encounter.NobodyPerceives).
-		// Supplied non-nil either way — the composition requires them
-		// exactly when the field carries concealed structure. The witness
-		// is asked only inside a sight refresh, which no read runs.
-		CheckResolver: resolver,
-		Witness:       witness,
+		Data:         *world,
+		Capabilities: capabilities,
 	})
 	if err != nil {
 		// The reason is kept as TEXT, not as a chain. A blob this seam cannot

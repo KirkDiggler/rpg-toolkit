@@ -17,11 +17,6 @@ func structuralDoorOnlyWorld(t fataler, extra ...encounter.ConcealmentInput) *en
 	wallBox := structuralBox(hexCell(4, 0), 6, 0.25)
 	doorBox := structuralBox(hexCell(4, 0), 2, 0.25)
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sheets:  encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
-		Sight: encEveryoneSees{}, Equipment: encounter.UnobservedEquipment{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
-		CheckResolver: encNeverResolves{}, Witness: encNeverWitnesses{},
 		Field: encounter.FieldInput{
 			Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 6)},
 			Concealments: append([]encounter.ConcealmentInput{{
@@ -47,6 +42,21 @@ func structuralDoorOnlyWorld(t fataler, extra ...encounter.ConcealmentInput) *en
 		},
 		Members: []encounter.MemberInput{{ID: "alice", Kind: encounter.KindPlayer, Position: cell(1, 1)}},
 		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sheets:        encStandStill{},
+			Sight:         encEveryoneSees{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Initiative:    encOrderAsGiven{},
+			Driver:        encPassDriver{},
+			Standing:      encEveryoneStanding{},
+			CheckResolver: encNeverResolves{},
+			Witness:       encNeverWitnesses{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("structural door-only world: %v", err)

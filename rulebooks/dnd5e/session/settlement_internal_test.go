@@ -43,17 +43,26 @@ func (s *SettlementSuite) SetupTest() {
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	world, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{},
-		Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{},
-		Equipment: encNoHandsObserved{}, Initiative: aggregateRecordOrderAsGiven{},
-		TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
+	world, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("tomb", 0, 0, 12, 6)},
 		},
 		Endings:   []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
+		Capabilities: encounter.Capabilities{
+			Sheets:     encStandStill{},
+			Sight:      aggregateRecordEveryoneSees{},
+			Equipment:  encNoHandsObserved{},
+			Initiative: aggregateRecordOrderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   aggregateRecordEveryoneStanding{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	data := world.ToData()
@@ -135,8 +144,8 @@ func (s *SettlementSuite) TestAMonsterThatFellAndThenExitedStillGrants() {
 	s.True(told, "the grant is told")
 }
 
-// TestAnOutputLandsItsAreasOnce: a resumed walk lands its movement output in
-// recordMovementResults, and nothing else may land the same output again. An
+// TestAnOutputLandsItsAreasOnce: an output's areas land once, in the landing,
+// and nothing else may land the same output again. An
 // opened area landed twice would be refused as already open, so landAreas
 // consumes what it applies and a second call for the same output is a no-op.
 func (s *SettlementSuite) TestAnOutputLandsItsAreasOnce() {

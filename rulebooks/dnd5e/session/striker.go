@@ -119,42 +119,25 @@ func (s strikerSeam) Strike(
 	// A pure view for resolution's Input.World — a mid-verb read, never the
 	// storage boundary (encounter v0.43.0, #1385).
 	world := enc.WorldView()
-	out, err := resolution.Resolve(ctx, &resolution.Input{
+	out, err := resolution.Resolve(ctx, s.m.resolutionInput(ctx, s.scope, resolutionAsk{
 		World:        world,
 		Participants: cast,
-		Initiative:   s.m.initiative,
-		Standing:     s.scope.standing,
-		Sight:        sheetsBeside(s.scope.standing),
-		Equipment:    equipmentBeside(s.scope.standing),
-		Sheets:       sheetsBeside(s.scope.standing),
-		TurnDriver:   s.scope.driver,
-		// The concealment pair (rpg-toolkit#1378), bound to the same live
-		// scope openForWrite and adopt bind — the one-seam consistency law:
-		// a concealed world refuses to reconstruct without them, and
-		// resolution carries them without consulting either, since no verb
-		// runs inside an interaction.
-		CheckResolver: checkSeam(s),
-		Witness:       witnessSeam{scope: s.scope},
-		Cost:          cost,
-		Machine:       machine,
-		Roller:        &diceSeam{roller: s.m.dice},
-	})
+		Machine:      machine,
+		Cost:         cost,
+	}))
 	if err != nil {
 		return fmt.Errorf("strike: %w", translateAttack(err))
 	}
 
+	in := &AttackInput{Attacker: string(attacker), Target: string(target)}
 	if out.Posed != nil {
 		if out.Posed.BeforeRoll || out.Posed.Sequence != nil {
-			if err := s.m.saveDirty(ctx, s.scope, out); err != nil {
-				return err
-			}
 			p := pendingAttackWindowPayload{Attacker: string(attacker), Target: string(target), Definition: definition, Components: attackerData.Actions}
-			var told []resolution.SequenceStepOutcome
-			if out.Posed.Sequence != nil {
-				told = out.Posed.Sequence.Steps
-				if err := s.m.recordPendingSequence(s.scope, &p, *out.Posed.Sequence); err != nil {
-					return err
-				}
+			l := &landing{
+				Live: enc,
+				Window: func(*encounter.Encounter) error {
+					return posePendingAttackWindow(s.scope, out.Posed, p)
+				},
 			}
 			// The completed swings are told; a swing that settled and then
 			// stopped to ask is NOT, until the answer resumes the sequence.
@@ -165,10 +148,19 @@ func (s strikerSeam) Strike(
 			// (Today that branch carries none: the only before-roll offer,
 			// Warding Flare, depends on the target and not the swing, so a
 			// sequence would have posed it on its first swing.)
-			if err := s.m.landToldAreas(enc, s.scope, &p, out, told); err != nil {
-				return err
+			var told []resolution.SequenceStepOutcome
+			if out.Posed.Sequence != nil {
+				sequence := *out.Posed.Sequence
+				told = sequence.Steps
+				l.Record = func(*encounter.Encounter, concentration) error {
+					return s.m.recordPendingSequence(s.scope, &p, sequence)
+				}
+			} else {
+				// Nothing is told before the roll (R9).
+				l.Untold = true
 			}
-			if err := posePendingAttackWindow(s.scope, out.Posed, p); err != nil {
+			l.Areas = areaLanding{Payload: &p, Split: true, Told: told}
+			if _, err := s.m.land(ctx, s.scope, out, l); err != nil {
 				return err
 			}
 			return encounter.ErrStrikePaused
@@ -176,48 +168,50 @@ func (s strikerSeam) Strike(
 		if out.Posed.SettledStrike == nil {
 			return fmt.Errorf("strike: %w: unsupported pre-hit monster question", ErrInvalidWorld)
 		}
-		if err := s.m.saveDirty(ctx, s.scope, out); err != nil {
-			return err
-		}
-		in := &AttackInput{Attacker: string(attacker), Target: string(target)}
-		if _, err := enc.Record(recordFor(in, *out.Posed.SettledStrike, definition, "", out)); err != nil {
-			return translate(err)
-		}
-		if err := s.m.landAreas(enc, s.scope, out); err != nil {
-			return err
-		}
-		if err := posePostHitWindow(s.scope, out.Posed); err != nil {
+		if _, err := s.m.land(ctx, s.scope, out, &landing{
+			Live: enc,
+			Record: func(enc *encounter.Encounter, told concentration) error {
+				_, err := enc.Record(recordFor(in, *out.Posed.SettledStrike, definition, "", told))
+				return err
+			},
+			Window: func(*encounter.Encounter) error {
+				return posePostHitWindow(s.scope, out.Posed)
+			},
+		}); err != nil {
 			return err
 		}
 		return encounter.ErrStrikePaused
 	}
+
 	// Sheets are written ONCE for the whole interaction, before any beat is
 	// recorded, whether the action landed one blow or several.
-	if err := s.m.saveDirty(ctx, s.scope, out); err != nil {
-		return fmt.Errorf("strike: %w", err)
-	}
-
-	in := &AttackInput{Attacker: string(attacker), Target: string(target)}
-
+	l := &landing{Live: enc}
 	switch produced := out.Outcome.(type) {
 	case resolution.StrikeOutcome:
 		// NO PRESENTATION TOKEN: nobody declared this roll. A monster's swing
 		// is resolved by the driver, no client simulated its die, and there is
 		// therefore no throw for a witness to correlate against — see recordFor.
-		if _, err := enc.Record(recordFor(in, produced, definition, "", out)); err != nil {
-			return fmt.Errorf("strike: %w", translate(err))
-		}
-		return s.m.landAreas(enc, s.scope, out)
-
-	case resolution.SequenceOutcome:
-		if err := s.recordSequence(enc, in, produced, attackerData.Actions); err != nil {
+		l.Record = func(enc *encounter.Encounter, told concentration) error {
+			_, err := enc.Record(recordFor(in, produced, definition, "", told))
 			return err
 		}
-		return s.m.landAreas(enc, s.scope, out)
+
+	case resolution.SequenceOutcome:
+		l.Record = func(enc *encounter.Encounter, _ concentration) error {
+			return s.recordSequence(enc, in, produced, attackerData.Actions)
+		}
 
 	default:
-		return fmt.Errorf("strike: %w: strike produced %T", ErrInvalidWorld, out.Outcome)
+		// Refused at the record step, where it has always been refused: after
+		// the sheets are written.
+		l.Record = func(*encounter.Encounter, concentration) error {
+			return fmt.Errorf("%w: strike produced %T", ErrInvalidWorld, out.Outcome)
+		}
 	}
+	if _, err := s.m.land(ctx, s.scope, out, l); err != nil {
+		return fmt.Errorf("strike: %w", err)
+	}
+	return nil
 }
 
 // recordSequence writes ONE BEAT PER SWING.

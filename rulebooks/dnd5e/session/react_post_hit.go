@@ -119,51 +119,42 @@ func (m *Manager) answerPostHit(ctx context.Context, scope *writeScope, window i
 		return nil, translate(err)
 	}
 	world := scope.enc.WorldView()
-	out, err := resolution.Resolve(ctx, &resolution.Input{World: world, Participants: m.walkCast(ctx, scope, roster), Initiative: m.initiative, Standing: scope.standing, Sight: sheetsBeside(scope.standing), Equipment: equipmentBeside(scope.standing), Sheets: sheetsBeside(scope.standing), TurnDriver: scope.driver, CheckResolver: checkSeam{m: m, scope: scope}, Witness: witnessSeam{scope: scope}, Machine: machine, Roller: &diceSeam{roller: m.dice}})
+	out, err := resolution.Resolve(ctx, m.resolutionInput(ctx, scope, resolutionAsk{World: world, Participants: m.walkCast(ctx, scope, roster), Machine: machine}))
 	if err != nil {
 		return nil, translateResolution(err)
 	}
-	if err = m.adopt(ctx, scope, out.World); err != nil {
-		return nil, err
-	}
-	if err = m.saveDirty(ctx, scope, out); err != nil {
-		return nil, err
-	}
-	if err = answerWindow(scope, window, in.Choice); err != nil {
-		return nil, err
-	}
+	l := &landing{Answer: &windowAnswer{Window: window, Choice: in.Choice}}
 	if out.Posed != nil {
-		if err = posePostHitWindow(scope, out.Posed); err != nil {
-			return nil, err
-		}
-		if err = m.landAreas(scope.enc, scope, out); err != nil {
-			return nil, reportUnrecorded(scope, err)
+		// Nothing is told until the new window is answered (R9).
+		l.Untold = true
+		l.Window = func(*encounter.Encounter) error {
+			return posePostHitWindow(scope, out.Posed)
 		}
 	} else {
 		struck, ok := out.Outcome.(resolution.StrikeOutcome)
 		if !ok {
-			return nil, fmt.Errorf("%w: resumed hit produced %T", ErrInvalidWorld, out.Outcome)
+			// Refused at the record step, where it has always been refused:
+			// after the world is adopted and the sheets are written.
+			l.Record = func(*encounter.Encounter, concentration) error {
+				return fmt.Errorf("%w: resumed hit produced %T", ErrInvalidWorld, out.Outcome)
+			}
+		} else {
+			l.Record = func(_ *encounter.Encounter, told concentration) error {
+				return m.recordRetaliation(scope, struck.Retaliation, told)
+			}
 		}
-		if err = m.recordRetaliation(scope, struck.Retaliation, out); err != nil {
-			return nil, reportUnrecorded(scope, err)
-		}
-		if err = m.landAreas(scope.enc, scope, out); err != nil {
-			return nil, reportUnrecorded(scope, err)
-		}
-		if err = m.resumeAfterLastAnswer(ctx, scope, "", nil); err != nil {
-			return nil, err
+		l.Continue = func(*encounter.Encounter) error {
+			return m.resumeAfterLastAnswer(ctx, scope, "", nil)
 		}
 	}
-	scope.data.Windows = scope.ledger.ToData()
-	scope.touched = true
-	report, delivery, err := m.commit(ctx, scope)
+	result, err := m.land(ctx, scope, out, l)
 	if err != nil {
 		return nil, err
 	}
-	return &ReactOutput{Saved: report, Delivery: delivery}, nil
+	return &ReactOutput{Saved: result.Saved, Delivery: result.Delivery}, nil
 }
 
-func (m *Manager) recordRetaliation(scope *writeScope, r *resolution.RetaliationOutcome, out *resolution.Output) error {
+func (m *Manager) recordRetaliation(scope *writeScope, r *resolution.RetaliationOutcome, told concentration) error {
 	if r == nil {
 		return nil
 	}
@@ -180,6 +171,6 @@ func (m *Manager) recordRetaliation(scope *writeScope, r *resolution.Retaliation
 		}
 		results = append(results, result)
 	}
-	_, err = scope.enc.RecordActivation(&encounter.RecordActivationInput{Actor: encounter.MemberID(r.Offer.ReactorID), Target: encounter.MemberID(r.TargetID), Ability: encounter.ActivationIdentity{Ref: ref.Ref, Name: ref.Name}, Save: save, Results: results, ConcentrationChecks: out.ConcentrationChecks, ConcentrationBreaks: out.ConcentrationBreaks})
+	_, err = scope.enc.RecordActivation(&encounter.RecordActivationInput{Actor: encounter.MemberID(r.Offer.ReactorID), Target: encounter.MemberID(r.TargetID), Ability: encounter.ActivationIdentity{Ref: ref.Ref, Name: ref.Name}, Save: save, Results: results, ConcentrationChecks: told.Checks, ConcentrationBreaks: told.Breaks})
 	return translate(err)
 }

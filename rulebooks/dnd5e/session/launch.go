@@ -370,9 +370,12 @@ func launchWorld(dungeon *dungeonspec.Compiled) (*encounter.EncounterData, error
 	if err != nil {
 		return nil, err
 	}
-	setup := encounter.CompileOnlySetup(dungeon.Field, endings)
-	setup.Retention = encounter.RetentionUnbounded
-	enc, err := encounter.NewEncounter(setup)
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field:        dungeon.Field,
+		Endings:      endings,
+		Retention:    encounter.RetentionUnbounded,
+		Capabilities: encounter.RefusingCapabilities(),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidWorld, err)
 	}

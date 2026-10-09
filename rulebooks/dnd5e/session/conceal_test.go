@@ -160,12 +160,7 @@ func vaultFind() []encounter.CheckApproach {
 // curtains are extra authored walls for a scene that needs one: the witness
 // scene hangs [carolsCurtain] so carol perceives nothing from her corner.
 func concealedWorld(t fataler, doorState encounter.DoorState, curtains ...encounter.WallInput) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing:      encEveryoneStanding{},
-		CheckResolver: encNeverResolves{},
-		Witness:       encNeverWitnesses{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{
 				rectRegion("hall", 0, 0, 6, 6),
@@ -186,6 +181,21 @@ func concealedWorld(t fataler, doorState encounter.DoorState, curtains ...encoun
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "out", Trigger: encounter.TriggerExternal{}},
+		},
+		Capabilities: encounter.Capabilities{
+			Sheets:        encStandStill{},
+			Sight:         encEveryoneSees{},
+			Equipment:     encNoHandsObserved{},
+			Initiative:    encOrderAsGiven{},
+			Driver:        encPassDriver{},
+			Standing:      encEveryoneStanding{},
+			CheckResolver: encNeverResolves{},
+			Witness:       encNeverWitnesses{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
 		},
 	})
 	if err != nil {
@@ -230,10 +240,7 @@ func hexCells(authored []spatial.Position) []spatial.Position {
 // both rooms authored visible, a solid seam wall where the veil hides — the
 // move law's comparison world.
 func walledTwinWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing: encEveryoneStanding{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{
 				rectRegion("hall", 0, 0, 6, 6),
@@ -249,6 +256,19 @@ func walledTwinWorld(t fataler) *encounter.EncounterData {
 		Endings: []encounter.EndingInput{
 			{Key: "out", Trigger: encounter.TriggerExternal{}},
 		},
+		Capabilities: encounter.Capabilities{
+			Sheets:     encStandStill{},
+			Sight:      encEveryoneSees{},
+			Equipment:  encNoHandsObserved{},
+			Initiative: encOrderAsGiven{},
+			Driver:     encPassDriver{},
+			Standing:   encEveryoneStanding{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("building walled twin: %v", err)
@@ -261,10 +281,7 @@ func walledTwinWorld(t fataler) *encounter.EncounterData {
 // edge is its own solid mass. The fixture for scenes about worlds with
 // nothing concealed in them.
 func plainHallWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing: encEveryoneStanding{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 6, 6)},
 		},
@@ -275,6 +292,19 @@ func plainHallWorld(t fataler) *encounter.EncounterData {
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "out", Trigger: encounter.TriggerExternal{}},
+		},
+		Capabilities: encounter.Capabilities{
+			Sheets:     encStandStill{},
+			Sight:      encEveryoneSees{},
+			Equipment:  encNoHandsObserved{},
+			Initiative: encOrderAsGiven{},
+			Driver:     encPassDriver{},
+			Standing:   encEveryoneStanding{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
 		},
 	})
 	if err != nil {
@@ -811,12 +841,7 @@ func (s *ConcealSuite) TestTheResolverAppliesTheBestListedApproach() {
 	ctx := context.Background()
 
 	world := func() *encounter.EncounterData {
-		enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-			Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-			Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-			Standing:      encEveryoneStanding{},
-			CheckResolver: encNeverResolves{},
-			Witness:       encNeverWitnesses{},
+		enc, err := encounter.NewEncounter(&encounter.SetupInput{
 			Field: encounter.FieldInput{Canvas: pointyCanvas(),
 				Regions: []encounter.RegionInput{
 					rectRegion("hall", 0, 0, 6, 6),
@@ -842,6 +867,21 @@ func (s *ConcealSuite) TestTheResolverAppliesTheBestListedApproach() {
 				{ID: "mira", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			},
 			Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
+			Capabilities: encounter.Capabilities{
+				Sheets:        encStandStill{},
+				Sight:         encEveryoneSees{},
+				Equipment:     encNoHandsObserved{},
+				Initiative:    encOrderAsGiven{},
+				Driver:        encPassDriver{},
+				Standing:      encEveryoneStanding{},
+				CheckResolver: encNeverResolves{},
+				Witness:       encNeverWitnesses{},
+				Actors: encounter.Actors{
+					Striker:   encounter.RefusingStriker{},
+					Mover:     encounter.RefusingMover{},
+					Announcer: encQuietAnnouncer{},
+				},
+			},
 		})
 		if err != nil {
 			s.T().Fatalf("building margin world: %v", err)
@@ -879,10 +919,7 @@ func (s *ConcealSuite) TestUnlockPicksTheRouteAndReportsItsDC() {
 	ctx := context.Background()
 
 	world := func() *encounter.EncounterData {
-		enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-			Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-			Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-			Standing: encEveryoneStanding{},
+		enc, err := encounter.NewEncounter(&encounter.SetupInput{
 			Field: encounter.FieldInput{Canvas: pointyCanvas(),
 				Regions: []encounter.RegionInput{
 					rectRegion("hall", 0, 0, 6, 6),
@@ -902,6 +939,19 @@ func (s *ConcealSuite) TestUnlockPicksTheRouteAndReportsItsDC() {
 				{ID: "brawn", Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 0}},
 			},
 			Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
+			Capabilities: encounter.Capabilities{
+				Sheets:     encStandStill{},
+				Sight:      encEveryoneSees{},
+				Equipment:  encNoHandsObserved{},
+				Initiative: encOrderAsGiven{},
+				Driver:     encPassDriver{},
+				Standing:   encEveryoneStanding{},
+				Actors: encounter.Actors{
+					Striker:   encounter.RefusingStriker{},
+					Mover:     encounter.RefusingMover{},
+					Announcer: encQuietAnnouncer{},
+				},
+			},
 		})
 		if err != nil {
 			s.T().Fatalf("building lock world: %v", err)
@@ -1443,12 +1493,7 @@ func aLeafOn(cell spatial.Position) *spatial.FootprintPlacement {
 // the seam must answer "yes" about and one it must answer "no" about, through
 // the same sight instrument, with no second sight model anywhere.
 func hiddenLeafWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing:      encEveryoneStanding{},
-		CheckResolver: encNeverResolves{},
-		Witness:       encNeverWitnesses{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 6, 6)},
 			Walls:   carolsCurtain(),
@@ -1469,6 +1514,21 @@ func hiddenLeafWorld(t fataler) *encounter.EncounterData {
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "out", Trigger: encounter.TriggerExternal{}},
+		},
+		Capabilities: encounter.Capabilities{
+			Sheets:        encStandStill{},
+			Sight:         encEveryoneSees{},
+			Equipment:     encNoHandsObserved{},
+			Initiative:    encOrderAsGiven{},
+			Driver:        encPassDriver{},
+			Standing:      encEveryoneStanding{},
+			CheckResolver: encNeverResolves{},
+			Witness:       encNeverWitnesses{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
 		},
 	})
 	if err != nil {
@@ -1588,12 +1648,7 @@ func (s *ConcealSuite) TestTheTwoDoorGeometriesArePerceivedByTheSameMembers() {
 // as a rectangle standing on it. Everything else, members included, is
 // identical by construction rather than by inspection.
 func hiddenEdgeWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing:      encEveryoneStanding{},
-		CheckResolver: encNeverResolves{},
-		Witness:       encNeverWitnesses{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 6, 6)},
 			Walls:   carolsCurtain(),
@@ -1614,6 +1669,21 @@ func hiddenEdgeWorld(t fataler) *encounter.EncounterData {
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "out", Trigger: encounter.TriggerExternal{}},
+		},
+		Capabilities: encounter.Capabilities{
+			Sheets:        encStandStill{},
+			Sight:         encEveryoneSees{},
+			Equipment:     encNoHandsObserved{},
+			Initiative:    encOrderAsGiven{},
+			Driver:        encPassDriver{},
+			Standing:      encEveryoneStanding{},
+			CheckResolver: encNeverResolves{},
+			Witness:       encNeverWitnesses{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
 		},
 	})
 	if err != nil {
@@ -1644,12 +1714,7 @@ func nicheCells() []spatial.Position {
 // is why the reveal beat has to carry the room back WHOLE rather than carry
 // the cells and leave the entry a trim of the truth.
 func partlySecretWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{},
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing:      encEveryoneStanding{},
-		CheckResolver: encNeverResolves{},
-		Witness:       encNeverWitnesses{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 6, 6)},
 			Concealments: []encounter.ConcealmentInput{{
@@ -1664,6 +1729,21 @@ func partlySecretWorld(t fataler) *encounter.EncounterData {
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "out", Trigger: encounter.TriggerExternal{}},
+		},
+		Capabilities: encounter.Capabilities{
+			Sheets:        encStandStill{},
+			Sight:         encEveryoneSees{},
+			Equipment:     encNoHandsObserved{},
+			Initiative:    encOrderAsGiven{},
+			Driver:        encPassDriver{},
+			Standing:      encEveryoneStanding{},
+			CheckResolver: encNeverResolves{},
+			Witness:       encNeverWitnesses{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
 		},
 	})
 	if err != nil {

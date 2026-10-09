@@ -65,11 +65,6 @@ func structuralSecretWorld(t fataler) *encounter.EncounterData {
 	at := func(dx float64) spatial.Point { return spatial.Point{X: origin.X + dx, Y: origin.Y} }
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing:      encEveryoneStanding{},
-		CheckResolver: encNeverResolves{},
-		Witness:       encNeverWitnesses{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{
 				rectRegion("hall", 0, 0, 6, 6),
@@ -101,12 +96,26 @@ func structuralSecretWorld(t fataler) *encounter.EncounterData {
 				}},
 			}},
 		},
-		Sheets: encStandStill{},
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Position: cell(1, 1)},
 			{ID: "bob", Kind: encounter.KindPlayer, Position: cell(2, 1)},
 		},
 		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:         encEveryoneSees{},
+			Equipment:     encNoHandsObserved{},
+			Initiative:    encOrderAsGiven{},
+			Driver:        encPassDriver{},
+			Standing:      encEveryoneStanding{},
+			CheckResolver: encNeverResolves{},
+			Witness:       encNeverWitnesses{},
+			Sheets:        encStandStill{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("building structural secret world: %v", err)
@@ -128,11 +137,6 @@ func structuralRoomWorld(t fataler) *encounter.EncounterData {
 	at := func(dx float64) spatial.Point { return spatial.Point{X: origin.X + dx, Y: origin.Y} }
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Standing:      encEveryoneStanding{},
-		CheckResolver: encNeverResolves{},
-		Witness:       encNeverWitnesses{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{
 				rectRegion("corridor", 0, 0, 6, 6),
@@ -160,11 +164,25 @@ func structuralRoomWorld(t fataler) *encounter.EncounterData {
 				}},
 			}},
 		},
-		Sheets: encStandStill{},
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 0}},
 		},
 		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:         encEveryoneSees{},
+			Equipment:     encNoHandsObserved{},
+			Initiative:    encOrderAsGiven{},
+			Driver:        encPassDriver{},
+			Standing:      encEveryoneStanding{},
+			CheckResolver: encNeverResolves{},
+			Witness:       encNeverWitnesses{},
+			Sheets:        encStandStill{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("building structural room world: %v", err)

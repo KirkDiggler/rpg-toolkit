@@ -156,37 +156,32 @@ func (s moverSeam) offerStep(
 	// A pure view for resolution's Input.World — a mid-verb read, never the
 	// storage boundary (encounter v0.43.0, #1385).
 	world := enc.WorldView()
-	out, err := resolution.Resolve(ctx, &resolution.Input{
+	out, err := resolution.Resolve(ctx, s.m.resolutionInput(ctx, s.scope, resolutionAsk{
 		World:        world,
 		Participants: cast,
-		Initiative:   s.m.initiative,
-		Standing:     s.scope.standing,
-		Sight:        sheetsBeside(s.scope.standing),
-		Equipment:    equipmentBeside(s.scope.standing),
-		Sheets:       sheetsBeside(s.scope.standing),
-		TurnDriver:   s.scope.driver,
-		// The concealment pair, bound to the same live scope every other
-		// seam on this call is — the one-seam consistency law strikerSeam
-		// states at the same place.
-		CheckResolver: checkSeam(s),
-		Witness:       witnessSeam{scope: s.scope},
 		// NO COST. A step is not a declared action with a profile, and the
 		// reaction's own price is charged on the reactor's own ledger.
 		Machine: machine,
-		Roller:  &diceSeam{roller: s.m.dice},
-	})
+	}))
 	if err != nil {
 		return fmt.Errorf("move: %w", translateResolution(err))
 	}
 
 	if out.Posed != nil && out.Posed.Movement != nil {
 		moved := *out.Posed.Movement
-		if err := s.recordMovementResults(ctx, enc, out, moved); err != nil {
+		beats, err := movementBeats(moved)
+		if err != nil {
 			return err
 		}
 		p := pendingAttackWindowPayload{Movement: true, RecordedReactions: len(moved.Reactions), WalkPath: append([]spatial.Position(nil), s.scope.walkContinuation...), Target: moved.Mover}
-		if err := posePendingAttackWindow(s.scope, out.Posed, p); err != nil {
-			return err
+		if _, err := s.m.land(ctx, s.scope, out, &landing{
+			Live:   enc,
+			Record: recordBeats(beats),
+			Window: func(*encounter.Encounter) error {
+				return posePendingAttackWindow(s.scope, out.Posed, p)
+			},
+		}); err != nil {
+			return fmt.Errorf("move: %w", err)
 		}
 		ask := out.Posed.Ask
 		return &encounter.StepPausedError{Windows: []encounter.PausedWindow{{Audience: encounter.MemberID(ask.Audience), Reaction: encounter.ReactionIdentity{Ref: ask.Offer.Ref.String(), Name: ask.Offer.Name}}}}
@@ -197,20 +192,32 @@ func (s moverSeam) offerStep(
 		return fmt.Errorf("move: %w: movement produced %T", ErrInvalidWorld, out.Outcome)
 	}
 
-	return s.recordMovementResults(ctx, enc, out, moved)
+	beats, err := movementBeats(moved)
+	if err != nil {
+		return err
+	}
+	if _, err := s.m.land(ctx, s.scope, out, &landing{Live: enc, Record: recordBeats(beats)}); err != nil {
+		return fmt.Errorf("move: %w", err)
+	}
+	return nil
 }
 
-func (s moverSeam) recordMovementResults(ctx context.Context, enc *encounter.Encounter, out *resolution.Output, moved resolution.MovementOutcome) error {
-
-	// EVERY BEAT IS BUILT BEFORE ANY SHEET IS WRITTEN. The only way building
-	// one can fail is a reaction this package cannot name, and failing after
-	// the save would leave persisted damage that no beat in the story accounts
-	// for. Built first, a refusal costs nothing durable.
+// movementBeats builds one strike beat per reaction a movement provoked.
+//
+// EVERY BEAT IS BUILT BEFORE ANY SHEET IS WRITTEN. The only way building
+// one can fail is a reaction this package cannot name, and failing after
+// the save would leave persisted damage that no beat in the story accounts
+// for. Built first, a refusal costs nothing durable.
+//
+// Each beat carries its own reaction's concentration, which is where
+// resolution reports it for a movement; the landing's told concentration is
+// not read here.
+func movementBeats(moved resolution.MovementOutcome) ([]*encounter.RecordInput, error) {
 	recorded := make([]*encounter.RecordInput, 0, len(moved.Reactions))
 	for _, reaction := range moved.Reactions {
 		name, known := reactionName[reaction.ConditionRef]
 		if !known {
-			return fmt.Errorf("move: reactor %q reacted with %q: %w: no display name",
+			return nil, fmt.Errorf("move: reactor %q reacted with %q: %w: no display name",
 				reaction.ReactorID, reaction.ConditionRef, ErrInvalidWorld)
 		}
 		// NO PRESENTATION TOKEN, for the reason a monster's strike carries
@@ -228,25 +235,21 @@ func (s moverSeam) recordMovementResults(ctx context.Context, enc *encounter.Enc
 		beat.Reaction = &encounter.ReactionIdentity{Ref: reaction.ConditionRef, Name: name}
 		recorded = append(recorded, beat)
 	}
+	return recorded, nil
+}
 
-	// Sheets first, then the beats — the ordering [Manager.saveDirty] states:
-	// the composition's Record consults who is standing, standingSeam answers
-	// out of exactly these two stores, and a consult run against sheets this
-	// call has not written back is a consult about a world that no longer
-	// exists.
-	if err := s.m.saveDirty(ctx, s.scope, out); err != nil {
-		return fmt.Errorf("move: %w", err)
-	}
-
-	for _, beat := range recorded {
-		if _, err := enc.Record(beat); err != nil {
-			return fmt.Errorf("move: %w", translate(err))
+// recordBeats is a landing's record step for prebuilt movement beats: each
+// is recorded on the landing's encounter, in order, after the sheets the
+// landing already wrote.
+func recordBeats(beats []*encounter.RecordInput) func(*encounter.Encounter, concentration) error {
+	return func(enc *encounter.Encounter, _ concentration) error {
+		for _, beat := range beats {
+			if _, err := enc.Record(beat); err != nil {
+				return err
+			}
 		}
+		return nil
 	}
-	if err := s.m.landAreas(enc, s.scope, out); err != nil {
-		return fmt.Errorf("move: %w", err)
-	}
-	return nil
 }
 
 // forcedBy names the effect suppressing this step's opportunity attacks, or

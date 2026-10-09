@@ -85,8 +85,7 @@ func (passDriver) Act(encounter.MonsterView) (encounter.Decision, error) {
 func walkWorld(t *testing.T) *encounter.Encounter {
 	t.Helper()
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sheets: encStandStill{}, Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encStatedSight{}, Equipment: encNoHandsObserved{},
-		Initiative: walkOrderAsGiven{}, TurnDriver: passDriver{}, Standing: walkEveryoneStanding{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{
 			rectRegion("hall", 30, 40, 4, 4),
 			rectRegion("annex", 60, 40, 12, 12),
@@ -95,6 +94,19 @@ func walkWorld(t *testing.T) *encounter.Encounter {
 			ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 31, Y: 41},
 		}},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sheets:     encStandStill{},
+			Sight:      encStatedSight{},
+			Equipment:  encNoHandsObserved{},
+			Initiative: walkOrderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   walkEveryoneStanding{},
+			Actors: encounter.Actors{
+				Striker:   encounter.RefusingStriker{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: encQuietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 	return enc
