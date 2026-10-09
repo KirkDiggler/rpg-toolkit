@@ -404,24 +404,32 @@ func TestReactOpportunityAttackDescribed(t *testing.T) {
 }
 
 // TestInformationDoesNotAliasRoot: what one Afford hands out is the caller's
-// to keep. Mutating it changes nothing a second Afford reads.
+// to keep. Mutating every description, detail and option on two successive
+// panels changes nothing a third Afford reads, so no row shares a value with
+// the catalogue, the root, or another call.
 func TestInformationDoesNotAliasRoot(t *testing.T) {
 	s := castScene(t, castingBardWithSpells("bard", spells.Bane, spells.Command), 2)
-	first := affordRows(t, s.mgr, "bard")
-	want := affordRows(t, s.mgr, "bard")
-	for i := range first {
-		info := first[i].Information
-		if info == nil {
-			continue
-		}
-		info.Description = "mutated"
-		for j := range info.Details {
-			info.Details[j].Value = "mutated"
-		}
-		info.Details = append(info.Details, detail("x", "y"))
-		for j := range first[i].Options {
-			first[i].Options[j].Description = "mutated"
+	want, err := json.Marshal(affordRows(t, s.mgr, "bard"))
+	require.NoError(t, err)
+	require.Contains(t, string(want), `"information"`, "precondition: the panel is described")
+
+	mutate := func(rows []session.Declaration) {
+		for i := range rows {
+			if info := rows[i].Information; info != nil {
+				info.Description = "mutated"
+				for j := range info.Details {
+					info.Details[j].Value = "mutated"
+				}
+			}
+			for j := range rows[i].Options {
+				rows[i].Options[j].Description = "mutated"
+			}
 		}
 	}
-	require.Equal(t, want, affordRows(t, s.mgr, "bard"))
+	mutate(affordRows(t, s.mgr, "bard"))
+	mutate(affordRows(t, s.mgr, "bard"))
+
+	got, err := json.Marshal(affordRows(t, s.mgr, "bard"))
+	require.NoError(t, err)
+	require.JSONEq(t, string(want), string(got))
 }

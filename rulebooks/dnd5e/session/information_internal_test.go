@@ -171,6 +171,33 @@ func TestRenderFactsBranchesTheAffordScenesDoNotReach(t *testing.T) {
 	})
 }
 
+// TestDescribedInformationNeverSynthesisesProse: a definition whose owner
+// wrote no description gets none — not its name, not its ref — while its
+// facts still render. Every compiled definition in today's catalogue carries
+// prose, so this is pinned on the renderer's own seam.
+func TestDescribedInformationNeverSynthesisesProse(t *testing.T) {
+	definition := combatActions.Definition{
+		Ref: *refs.Weapons.Club(), Name: "Club",
+		Attack: &combatActions.AttackProfile{
+			Category: combatActions.AttackCategoryWeapon,
+			Delivery: combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
+			Damage:   []damage.Damage{{Dice: "1d4", Type: damage.Bludgeoning}},
+		},
+	}
+	info, err := describedInformation(&definition)
+	require.NoError(t, err)
+	require.NotNil(t, info, "facts alone are information")
+	require.Empty(t, info.Description)
+	require.Equal(t, []ActionInformationDetail{
+		{Label: "Base damage", Value: "1d4 · Bludgeoning"},
+		{Label: "Reach", Value: "5 ft"},
+	}, info.Details)
+
+	none, err := describedInformation(nil)
+	require.NoError(t, err)
+	require.Nil(t, none, "a blocker compiled no definition and carries nothing")
+}
+
 type displayed struct{ name, detail string }
 
 func conditionsDisplayForTest(t *testing.T) (displayed, bool) {
