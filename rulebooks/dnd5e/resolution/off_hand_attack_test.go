@@ -158,3 +158,16 @@ func TestOrdinaryWeaponAttackStillAddsPositiveAbilityDamage(t *testing.T) {
 	require.NotNil(t, outcome.DamageComponents[1].Roll.Modifier)
 	require.Equal(t, 3, *outcome.DamageComponents[1].Roll.Modifier)
 }
+
+func TestOffHandZeroModifierStaysOutOfBase(t *testing.T) {
+	out, err := resolveHeroAttack(t, abilityWeaponDefinition(0, true), actionHero(), &actionRoller{
+		singles: []int{15},
+		damage:  [][]int{{4}},
+	})
+
+	require.NoError(t, err)
+	outcome := out.Outcome.(StrikeOutcome)
+	require.Equal(t, 4, outcome.Damage)
+	require.Len(t, outcome.DamageComponents, 1, "a zero off-hand modifier adds no ability component")
+	require.NotEqual(t, dnd5eEvents.DamageSourceAbility, outcome.DamageComponents[0].Source)
+}

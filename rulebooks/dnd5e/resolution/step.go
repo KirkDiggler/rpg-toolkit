@@ -160,6 +160,9 @@ type Ask struct {
 type Choice struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
+	// Description is the producer's authored prose for this option. It is
+	// copied from the event that declared it and never read when resuming.
+	Description string `json:"description,omitempty"`
 }
 
 type Pose struct {
