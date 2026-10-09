@@ -329,6 +329,7 @@ func (c *Character) buildAvailableAbilities() []AvailableAbility {
 		result = append(result, AvailableAbility{
 			Ref:         ca.Ref(),
 			Name:        ca.Name(),
+			Description: ca.Description(),
 			ActionType:  ca.ActionType(),
 			EconomySlot: economySlotForActionType(ca.ActionType()),
 			TargetKind:  targetKindForRef(ca.Ref()),
@@ -355,6 +356,7 @@ func (c *Character) buildAvailableAbilities() []AvailableAbility {
 		result = append(result, AvailableAbility{
 			Ref:             f.Ref(),
 			Name:            f.Name(),
+			Description:     f.Description(),
 			ActionType:      f.ActionType(),
 			EconomySlot:     economySlotForActionType(f.ActionType()),
 			TargetKind:      targetKindForRef(f.Ref()),

@@ -65,6 +65,11 @@ func (b *BardicInspiration) Ref() *core.Ref { return refs.Features.BardicInspira
 // Name returns the display name.
 func (b *BardicInspiration) Name() string { return b.name }
 
+// Description returns what activating this feature does, in the player's voice.
+func (b *BardicInspiration) Description() string {
+	return "Spend a use to give another creature a Bardic Inspiration die. After seeing an attack roll, they may add the die to it."
+}
+
 // GetID implements core.Entity.
 func (b *BardicInspiration) GetID() string { return b.id }
 

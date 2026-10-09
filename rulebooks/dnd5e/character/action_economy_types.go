@@ -81,6 +81,7 @@ const (
 type AvailableAbility struct {
 	Ref             *core.Ref             // e.g. "dnd5e:combat_abilities:attack"
 	Name            string                // e.g. "Attack"
+	Description     string                // authored prose from the ability or feature; empty when it has none
 	ActionType      coreCombat.ActionType // ActionStandard, ActionBonus, ActionReaction
 	EconomySlot     EconomySlot           // which slot this draws from (menu grouping)
 	TargetKind      TargetKind            // what target the UI must prompt for

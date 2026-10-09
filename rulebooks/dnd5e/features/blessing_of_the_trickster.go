@@ -29,6 +29,11 @@ func (*BlessingOfTheTrickster) Ref() *core.Ref { return refs.Features.BlessingOf
 // Name includes the implementation status on every existing display surface.
 func (*BlessingOfTheTrickster) Name() string { return tricksterBlessingName }
 
+// Description returns what activating this feature does, in the player's voice.
+func (*BlessingOfTheTrickster) Description() string {
+	return "Not yet implemented. This feature cannot be activated yet."
+}
+
 // GetID returns the stable feature identity.
 func (b *BlessingOfTheTrickster) GetID() string { return b.Ref().ID }
 

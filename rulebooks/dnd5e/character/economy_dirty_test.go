@@ -399,6 +399,7 @@ func (f *stubFeature) GetID() string            { return stubFeatureRef.ID }
 func (f *stubFeature) GetType() core.EntityType { return features.EntityTypeFeature }
 func (f *stubFeature) Ref() *core.Ref           { return stubFeatureRef }
 func (f *stubFeature) Name() string             { return "Stub" }
+func (f *stubFeature) Description() string      { return "" }
 
 func (f *stubFeature) ActionType() coreCombat.ActionType { return f.actionType }
 

@@ -76,6 +76,11 @@ func (r *Rage) Status(in *StatusInput) (*StatusOutput, error) {
 // Name returns the display name for the Rage feature.
 func (r *Rage) Name() string { return r.name }
 
+// Description returns what activating this feature does, in the player's voice.
+func (r *Rage) Description() string {
+	return "Spend a rage charge to enter a rage. While raging you add bonus damage to Strength melee weapon attacks, have advantage on Strength checks and saving throws, and resist bludgeoning, piercing and slashing damage."
+}
+
 // GetID implements core.Entity
 func (r *Rage) GetID() string {
 	return r.id
