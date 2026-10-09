@@ -123,12 +123,12 @@ func (in *Input) Validate() error {
 	}
 
 	// CAPABILITIES ARE SUPPLIED, NEVER DEFAULTED. The encounter owns the one
-	// presence check and its sentinels; the sentinel comes back unwrapped so
+	// presence check and its sentinels; the sentinel is wrapped with %w so
 	// errors.Is reaches it. The Roller is the one capability this package asks
 	// for beyond that list, because its machines roll.
 	//nolint:staticcheck // explicit: Validate checks capabilities only
 	if err := in.Capabilities.Validate(); err != nil {
-		return err
+		return fmt.Errorf("resolution input: %w", err)
 	}
 	if in.Roller == nil {
 		return ErrNoRoller

@@ -891,12 +891,13 @@ func TestCapabilitiesAreSuppliedNeverDefaulted(t *testing.T) {
 		require.NotErrorIs(t, err, ErrNoRoller)
 	})
 
-	// The sentinel comes back bare, so nothing here can be mistaken for a
-	// resolution error that wraps it.
-	t.Run("the sentinel is returned unwrapped", func(t *testing.T) {
+	// The encounter's sentinel is wrapped with context and still reachable.
+	t.Run("the sentinel is wrapped and reachable", func(t *testing.T) {
 		in := fullInput(machine)
 		in.Sight = nil
-		require.Equal(t, encounter.ErrNoSight, in.Validate())
+		err := in.Validate()
+		require.ErrorIs(t, err, encounter.ErrNoSight)
+		require.NotEqual(t, encounter.ErrNoSight, err)
 	})
 
 	t.Run("no roller", func(t *testing.T) {
