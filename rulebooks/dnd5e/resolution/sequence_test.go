@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 )
@@ -60,9 +61,17 @@ func resolveSequenceAgainst(
 			{Monster: monsters.NewWolf(wolfID).ToData()},
 			{Character: hero},
 		},
-		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
-		TurnDriver: passDriver{}, Roller: dice.NewRoller(),
+		Machine: machine,
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Driver:     passDriver{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 }
 
@@ -243,9 +252,17 @@ func TestSequencePreflightsEveryStepBeforeAnythingIsRolled(t *testing.T) {
 			{Monster: monsters.NewWolf(wolfID).ToData()},
 			{Character: actionHero()},
 		},
-		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
-		TurnDriver: passDriver{}, Roller: dice.NewRoller(),
+		Machine: machine,
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Driver:     passDriver{},
+			Roller:     dice.NewRoller(),
+			Actors:     Actors,
+		},
 	})
 
 	require.ErrorIs(t, err, ErrOutOfRange)

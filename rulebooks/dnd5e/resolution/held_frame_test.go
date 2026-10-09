@@ -113,8 +113,6 @@ func (h *heldScene) equipment() sheetConditions {
 // sees, conditions included.
 func (s *FrameTestSuite) heldEncounter(h *heldScene) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{},
-		Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: h.sight, Equipment: h.equipment(), Sheets: standStillSheets{},
 		Field: encounter.FieldInput{
 			Canvas:   hexCanvas(),
 			Regions:  []encounter.RegionInput{rectRegion("cave", 0, 0, 10, 5)},
@@ -129,6 +127,19 @@ func (s *FrameTestSuite) heldEncounter(h *heldScene) *encounter.Encounter {
 			{ID: informGoblin2, Kind: encounter.KindMonster, Position: spatial.Position{X: 7, Y: 3}, Faction: informGoblins},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      h.sight,
+			Equipment:  h.equipment(),
+			Sheets:     standStillSheets{},
+			Actors: encounter.Actors{
+				Striker:   noAttacksExpected{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	return enc
@@ -177,8 +188,16 @@ func (s *FrameTestSuite) strikeHeld(
 		Machine: NewStrike(&StrikeInput{
 			AttackerID: informRogue, TargetID: informGoblin1, Definition: attack, Roller: facedRoller{d20: d20, other: 1},
 		}),
-		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: h.sight, Equipment: h.equipment(), Sheets: noSheetsAsked{},
-		TurnDriver: passDriver{}, Roller: facedRoller{d20: d20, other: 1},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Standing:   everyoneStanding{},
+			Sight:      h.sight,
+			Equipment:  h.equipment(),
+			Sheets:     noSheetsAsked{},
+			Driver:     passDriver{},
+			Roller:     facedRoller{d20: d20, other: 1},
+			Actors:     Actors,
+		},
 	}, newSurface(bus))
 }
 
@@ -685,8 +704,16 @@ func resolveHeroStrikeAs(
 		Participants: []Participant{
 			{Monster: monsters.NewWolf(wolfID).ToData()}, {Character: hero}, {Character: clericWarder()},
 		},
-		Machine:    NewStrike(&StrikeInput{AttackerID: attackerID, TargetID: targetID, Definition: definition, Roller: roller}),
-		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
-		TurnDriver: passDriver{}, Roller: roller,
+		Machine: NewStrike(&StrikeInput{AttackerID: attackerID, TargetID: targetID, Definition: definition, Roller: roller}),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  noHandsAreObserved{},
+			Sheets:     noSheetsAsked{},
+			Driver:     passDriver{},
+			Roller:     roller,
+			Actors:     Actors,
+		},
 	}, newSurface(events.NewEventBus()))
 }

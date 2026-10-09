@@ -77,8 +77,6 @@ func (s *InformAttackTestSuite) scene(sight encounter.Sight, withFighter bool) *
 		})
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{},
-		Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: sight, Equipment: noHandsAreObserved{}, Sheets: standStillSheets{},
 		Field: encounter.FieldInput{
 			Canvas:   hexCanvas(),
 			Regions:  []encounter.RegionInput{rectRegion("cave", 0, 0, 10, 5)},
@@ -89,6 +87,19 @@ func (s *InformAttackTestSuite) scene(sight encounter.Sight, withFighter bool) *
 		},
 		Members: members,
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Standing:   everyoneStanding{},
+			Sight:      sight,
+			Equipment:  noHandsAreObserved{},
+			Sheets:     standStillSheets{},
+			Actors: encounter.Actors{
+				Striker:   noAttacksExpected{},
+				Mover:     encounter.RefusingMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	return enc

@@ -124,10 +124,12 @@ outcome or the pose, the hooks, the concentration checks and breaks, and the
 runtime areas the interaction opened and closed. No
 runtime object crosses either way.
 
-It ASKS the caller for everything else, and the `Input` fields say so in their
-own godoc: `Standing`, `Sight`, `Equipment`, `Sheets`, `TurnDriver`,
-`CheckResolver`, `Witness` are **carried, never consulted** — handed to the
-composition so a world can be loaded at all. `Initiative` likewise. `Roller` is REQUIRED and
+It ASKS the caller for everything else, through the embedded
+`encounter.Capabilities`, whose godoc on `Input` says so: `Initiative`,
+`Standing`, `Sight`, `Equipment`, `Sheets`, `Driver`, `CheckResolver`,
+`Witness` and the `Actors` are **carried, never consulted** — handed to the
+composition so a world can be loaded at all. `resolution.Actors` is the value
+for the three actors. `Roller` is REQUIRED and
 never defaulted (rpg-toolkit#1033): a silent default is unreproducible dice in a
 result that looks fine.
 
