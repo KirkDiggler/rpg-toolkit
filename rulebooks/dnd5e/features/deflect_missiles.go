@@ -67,10 +67,11 @@ func (d *DeflectMissiles) Status(*StatusInput) (*StatusOutput, error) {
 // Name returns the display name for the Deflect Missiles feature.
 func (d *DeflectMissiles) Name() string { return d.name }
 
-// Description returns what activating this feature does, in the player's voice.
-func (d *DeflectMissiles) Description() string {
-	return "As a reaction, reduce the damage from a ranged weapon attack by 1d10 plus your Dexterity modifier plus your monk level. You may then catch the missile and throw it back."
-}
+// Description returns "" on purpose. Activation spends the reaction and
+// publishes the reduction and throw events, but nothing consumes them, so no
+// damage is reduced (toolkit#1992). The card shows missing information rather
+// than a benefit the code does not deliver. The prose lands with that repair.
+func (d *DeflectMissiles) Description() string { return "" }
 
 // GetID implements core.Entity
 func (d *DeflectMissiles) GetID() string {

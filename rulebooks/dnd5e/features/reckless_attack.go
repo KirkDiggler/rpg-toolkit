@@ -52,7 +52,7 @@ func (r *RecklessAttack) Name() string { return r.name }
 
 // Description returns what activating this feature does, in the player's voice.
 func (r *RecklessAttack) Description() string {
-	return "Your melee weapon attacks using Strength have advantage until your next turn, and attacks against you have advantage."
+	return "Your melee attacks other than opportunity attacks have advantage until your next turn, and attacks against you have advantage."
 }
 
 // GetID implements core.Entity

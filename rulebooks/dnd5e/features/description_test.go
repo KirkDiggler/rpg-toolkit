@@ -3,6 +3,7 @@ package features
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -15,28 +16,36 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
-// loadableFeatureRefs is every ref LoadJSON routes, so a feature added to the
-// loader without prose is caught by the loop below.
-func loadableFeatureRefs() []*core.Ref {
-	return []*core.Ref{
-		refs.Features.BlessingOfTheTrickster(),
-		refs.Features.BardicInspiration(),
-		refs.Features.Rage(),
-		refs.Features.SecondWind(),
-		refs.Features.WardingFlare(),
-		refs.Features.WrathOfTheStorm(),
-		refs.Features.ActionSurge(),
-		refs.Features.FlurryOfBlows(),
-		refs.Features.PatientDefense(),
-		refs.Features.StepOfTheWind(),
-		refs.Features.RecklessAttack(),
-		refs.Features.DeflectMissiles(),
+// undescribedFeatures are features that spend a resource without delivering
+// their benefit, so their card shows missing information rather than prose the
+// code does not honour. Each entry names the defect that lifts it.
+var undescribedFeatures = map[string]string{
+	refs.Features.PatientDefense().ID:  "toolkit#1986",
+	refs.Features.DeflectMissiles().ID: "toolkit#1992",
+}
+
+// loadableFeatureRefs reflects over the refs namespace and keeps every ref the
+// feature factory can build, so a feature added to refs and the factory without
+// prose is caught by the loop below.
+func loadableFeatureRefs(t *testing.T) []*core.Ref {
+	t.Helper()
+	var loadable []*core.Ref
+	namespace := reflect.ValueOf(refs.Features)
+	for i := 0; i < namespace.NumMethod(); i++ {
+		ref, ok := namespace.Method(i).Call(nil)[0].Interface().(*core.Ref)
+		if !ok || ref == nil {
+			continue
+		}
+		if _, err := CreateFromRef(&CreateFromRefInput{Ref: ref.String(), Config: json.RawMessage(`{}`), CharacterID: "owner"}); err == nil {
+			loadable = append(loadable, ref)
+		}
 	}
+	require.NotEmpty(t, loadable)
+	return loadable
 }
 
 func TestEveryLoadableFeatureDescribesItself(t *testing.T) {
-	require.Len(t, loadableFeatureRefs(), 12)
-	for _, ref := range loadableFeatureRefs() {
+	for _, ref := range loadableFeatureRefs(t) {
 		t.Run(ref.ID, func(t *testing.T) {
 			out, err := CreateFromRef(&CreateFromRefInput{Ref: ref.String(), Config: json.RawMessage(`{}`), CharacterID: "owner"})
 			require.NoError(t, err)
@@ -44,7 +53,8 @@ func TestEveryLoadableFeatureDescribesItself(t *testing.T) {
 			require.NoError(t, err)
 			loaded, err := LoadJSON(encoded)
 			require.NoError(t, err)
-			if ref.ID == refs.Features.PatientDefense().ID {
+			if _, undescribed := undescribedFeatures[ref.ID]; undescribed {
+				require.Empty(t, loaded.Description())
 				return
 			}
 			require.NotEmpty(t, loaded.Description())
@@ -53,13 +63,15 @@ func TestEveryLoadableFeatureDescribesItself(t *testing.T) {
 	}
 }
 
-// Patient Defense spends ki without delivering its Dodge (toolkit#1986), so its
-// card shows missing information. This pins that ruling; delete it with the
-// repair, which lands the prose.
-func TestPatientDefenseDescriptionIsAbsent(t *testing.T) {
-	out, err := CreateFromRef(&CreateFromRefInput{Ref: refs.Features.PatientDefense().String(), Config: json.RawMessage(`{}`), CharacterID: "owner"})
-	require.NoError(t, err)
-	require.Empty(t, out.Feature.Description())
+// Patient Defense (toolkit#1986) and Deflect Missiles (toolkit#1992) spend a
+// resource without delivering their benefit, so their cards show missing
+// information. This pins that ruling; remove an entry with its repair.
+func TestUndescribedFeaturesStayAbsent(t *testing.T) {
+	for id, issue := range undescribedFeatures {
+		out, err := CreateFromRef(&CreateFromRefInput{Ref: "dnd5e:features:" + id, Config: json.RawMessage(`{}`), CharacterID: "owner"})
+		require.NoError(t, err, issue)
+		require.Empty(t, out.Feature.Description(), issue)
+	}
 }
 
 func TestWardingFlareOfferDescribed(t *testing.T) {

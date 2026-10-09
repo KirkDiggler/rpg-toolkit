@@ -61,7 +61,7 @@ var displayCatalog = map[string]Display{
 		Name:   "Raging",
 		Detail: "Adds your rage damage bonus to melee weapon attacks that use Strength. Also grants advantage on Strength-based skill checks and Strength saving throws, and resistance to bludgeoning, piercing, and slashing damage.",
 	},
-	refs.Conditions.RecklessAttack().String(): {Name: "Reckless Attack", Detail: "A reckless creature's melee weapon attacks using Strength have advantage until its next turn, and attacks against it have advantage."},
+	refs.Conditions.RecklessAttack().String(): {Name: "Reckless Attack", Detail: "A reckless creature's melee attacks other than opportunity attacks have advantage until its next turn, and attacks against it have advantage."},
 	refs.Conditions.BrutalCritical().String(): {Name: "Brutal Critical", Detail: "Adds extra weapon damage dice when you score a critical hit."},
 
 	// Fighter (champion).

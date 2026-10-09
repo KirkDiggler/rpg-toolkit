@@ -49,7 +49,7 @@ func (s *StepOfTheWind) Name() string { return s.name }
 
 // Description returns what activating this feature does, in the player's voice.
 func (s *StepOfTheWind) Description() string {
-	return "Spend 1 ki point to Disengage or Dash as a bonus action."
+	return "Spend 1 ki point to Disengage as a bonus action, so your movement does not provoke opportunity attacks."
 }
 
 // GetID implements core.Entity
