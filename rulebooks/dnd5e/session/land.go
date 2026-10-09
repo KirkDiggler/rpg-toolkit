@@ -30,10 +30,12 @@ type landing struct {
 	// Record tells the outcome's beats on enc, given the interaction's
 	// concentration. Nil records nothing.
 	Record func(enc *encounter.Encounter, told concentration) error
-	// Untold declares that this landing tells no concentration: concentration
-	// the output carries is dropped by name here, until the encounter verb that
-	// tells it ships (design ruling R9). A landing with concentration, no Record
-	// and Untold false refuses with ErrInvalidWorld.
+	// Untold declares that this landing records nothing and tells no
+	// concentration: concentration the output carries is dropped by name here,
+	// until the encounter verb that tells it ships (design ruling R9). It is
+	// exclusive with Record — a Record is handed the concentration and owns
+	// what it tells — so a landing with both refuses with ErrInvalidWorld. A
+	// landing with concentration, no Record and Untold false refuses the same.
 	Untold bool
 	Areas  areaLanding
 	// Answer is the window this resolution resumed; answered first in the
@@ -115,6 +117,9 @@ func (m *Manager) land(ctx context.Context, scope *writeScope, out *resolution.O
 
 	// 3. Record, with the interaction's concentration.
 	told := concentration{Checks: out.ConcentrationChecks, Breaks: out.ConcentrationBreaks}
+	if l.Untold && l.Record != nil {
+		return nil, unrecorded(fmt.Errorf("%w: a landing that records cannot also be untold", ErrInvalidWorld))
+	}
 	if l.Record != nil {
 		if err := l.Record(enc, told); err != nil {
 			return nil, unrecorded(err)

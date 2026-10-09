@@ -362,3 +362,20 @@ func (s *LandSuite) TestTheAreasLandBeforeTheAnswer() {
 	s.False(areas["fog"])
 	s.Zero(s.encounters.saves, "a failed landing commits nothing")
 }
+
+// TestARecordingLandingCannotBeUntold: Untold says a landing records nothing,
+// so a landing that also records refuses before it records, and commits
+// nothing.
+func (s *LandSuite) TestARecordingLandingCannotBeUntold() {
+	recorded := false
+	_, err := s.mgr.land(context.Background(), s.scope, s.fullOutput(), &landing{
+		Untold: true,
+		Record: func(*encounter.Encounter, concentration) error {
+			recorded = true
+			return nil
+		},
+	})
+	s.Require().ErrorIs(err, ErrInvalidWorld)
+	s.False(recorded, "the refusal comes before the record")
+	s.Zero(s.encounters.saves, "a refused landing commits nothing")
+}
