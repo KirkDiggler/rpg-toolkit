@@ -180,13 +180,6 @@ func TestOlderTestimonyDidNotObserveHands(t *testing.T) {
 
 func equipmentSetup(hands encounter.EquipmentWithConditions, members ...encounter.MemberInput) *encounter.SetupInput {
 	return &encounter.SetupInput{
-		Initiative: orderAsGiven{},
-		Standing:   everyoneStanding{},
-		Sight:      everyoneSeesTheWholeMap{},
-		Equipment:  hands, Sheets: zeroSheets{},
-		TurnDriver: passDriver{},
-		Striker:    passStriker{}, Mover: quietMover{},
-		Announcer: quietAnnouncer{},
 		Retention: encounter.RetentionUnbounded,
 		Field: encounter.FieldInput{
 			Canvas:  openAir(),
@@ -195,6 +188,19 @@ func equipmentSetup(hands encounter.EquipmentWithConditions, members ...encounte
 		Members: members,
 		Endings: []encounter.EndingInput{
 			{Key: "withdrawn", Trigger: encounter.TriggerExternal{}},
+		},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Standing:   everyoneStanding{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  hands,
+			Sheets:     zeroSheets{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
 		},
 	}
 }

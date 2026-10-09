@@ -84,13 +84,6 @@ func (s *waitingAfterStrike) Strike(
 
 func participationSetup(capability encounter.StandingWithParticipation, members ...encounter.MemberInput) *encounter.SetupInput {
 	return &encounter.SetupInput{
-		Initiative: orderAsGiven{},
-		Standing:   capability,
-		Sight:      everyoneSeesTheWholeMap{},
-		Equipment:  encounter.UnobservedEquipment{}, Sheets: zeroSheets{},
-		TurnDriver: passDriver{},
-		Striker:    passStriker{}, Mover: quietMover{},
-		Announcer: quietAnnouncer{},
 		Retention: encounter.RetentionUnbounded,
 		Field: encounter.FieldInput{
 			Canvas: openAir(),
@@ -101,6 +94,19 @@ func participationSetup(capability encounter.StandingWithParticipation, members 
 		Members: members,
 		Endings: []encounter.EndingInput{
 			{Key: "withdrawn", Trigger: encounter.TriggerExternal{}},
+		},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Standing:   capability,
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
 		},
 	}
 }
@@ -238,7 +244,7 @@ func TestDriveReassessesAfterStrikeBeforeUsingTheNextSlotsTurnAnswer(t *testing.
 	)
 	setup.Sheets = sheetFacts{goblin: {SpeedFeet: 30,
 		Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Test Strike", RangeFeet: 5, Kind: "melee"}}}, alice: {}, zara: {}}
-	setup.TurnDriver = driver
+	setup.Driver = driver
 	setup.Striker = striker
 	enc, err := encounter.NewEncounter(setup)
 	require.NoError(t, err)
@@ -462,9 +468,20 @@ func TestSuppliedPartyDefeatClosesAfterItsCausalBeats(t *testing.T) {
 	require.Equal(t, "ended", beats[len(beats)-1]["beat"])
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: enc.ToData(), Initiative: orderAsGiven{}, Standing: capability,
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Data: enc.ToData(),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Standing:   capability,
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 	reloadedStatus, err := reloaded.Status()
@@ -653,9 +670,20 @@ func TestDeathSaveDetailRoundTripsEveryPrimitiveAndRejectsMismatches(t *testing.
 	require.NoError(t, err)
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: enc.ToData(), Initiative: orderAsGiven{}, Standing: capability,
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Data: enc.ToData(),
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{},
+			Standing:   capability,
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 	beats := storyBeats(t, reloaded, alice)
@@ -715,7 +743,7 @@ func TestNextStorySeqIsAReadAndEqualsTheNextSuccessfulRecord(t *testing.T) {
 // purpose — a monster answering Driven would be indistinguishable from the
 // Wait it already gets.
 func drivenScene(
-	t *testing.T, capability encounter.StandingWithParticipation, driver encounter.TurnDriver,
+	t *testing.T, capability encounter.StandingWithParticipation, driver encounter.Driver,
 ) *encounter.Encounter {
 	t.Helper()
 	setup := participationSetup(capability,
@@ -727,7 +755,7 @@ func drivenScene(
 	)
 	setup.Sheets = sheetFacts{goblin: {SpeedFeet: 30,
 		Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Test Strike", RangeFeet: 5, Kind: "melee"}}}, alice: {}, bob: {}}
-	setup.TurnDriver = driver
+	setup.Driver = driver
 	enc, err := encounter.NewEncounter(setup)
 	require.NoError(t, err)
 	return enc
@@ -758,7 +786,7 @@ func turnEndedFor(t *testing.T, enc *encounter.Encounter, member encounter.Membe
 
 // TestADrivenPlayerIsDrivenLikeAMonster is the whole of Driven in one scene:
 // the clock reaches a PLAYER, nobody is asked for input, the supplied
-// TurnDriver answers for them, and the turn ends like any other driven one.
+// Driver answers for them, and the turn ends like any other driven one.
 //
 // The contrast is the same member one participation answer over
 // (TestAWaitingPlayerStillStopsTheDrive): identical floor, identical driver,

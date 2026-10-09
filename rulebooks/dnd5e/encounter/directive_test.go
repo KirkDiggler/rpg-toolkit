@@ -97,13 +97,6 @@ func (s *DirectiveTestSuite) lineScene(withPillar bool) *encounter.Encounter {
 		s.driver = &scriptedDriver{}
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{
-			goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", RangeFeet: 5, Kind: "melee"}}, Targeting: "closest"},
-			// bob, when a scene adds him, is the goblin's ally standing in the way.
-			bob: {SpeedFeet: 30, Targeting: "closest"}, alice: {}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: s.driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed},
-		Mover: s.mover, Announcer: quietAnnouncer{},
 		Field: field,
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
@@ -112,6 +105,22 @@ func (s *DirectiveTestSuite) lineScene(withPillar bool) *encounter.Encounter {
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:     everyoneSeesTheWholeMap{},
+			Equipment: encounter.UnobservedEquipment{},
+			Sheets: sheetFacts{
+				goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", RangeFeet: 5, Kind: "melee"}}, Targeting: "closest"},
+				// bob, when a scene adds him, is the goblin's ally standing in the way.
+				bob: {SpeedFeet: 30, Targeting: "closest"}, alice: {}},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     s.driver,
+			Actors: encounter.Actors{
+				Striker:   &scriptedStriker{kind: encounter.OutcomeMissed},
+				Mover:     s.mover,
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	s.enc = enc
@@ -463,13 +472,6 @@ func (s *DirectiveTestSuite) sceneOfCells(
 		s.driver = &scriptedDriver{}
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{
-			goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", RangeFeet: 5, Kind: "melee"}}, Targeting: "closest"},
-			// bob, when a scene adds him, is the goblin's ally standing in the way.
-			bob: {SpeedFeet: 30, Targeting: "closest"}, alice: {}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: s.driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed},
-		Mover: s.mover, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{{
@@ -484,6 +486,22 @@ func (s *DirectiveTestSuite) sceneOfCells(
 			},
 		}, extra...),
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:     everyoneSeesTheWholeMap{},
+			Equipment: encounter.UnobservedEquipment{},
+			Sheets: sheetFacts{
+				goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", RangeFeet: 5, Kind: "melee"}}, Targeting: "closest"},
+				// bob, when a scene adds him, is the goblin's ally standing in the way.
+				bob: {SpeedFeet: 30, Targeting: "closest"}, alice: {}},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     s.driver,
+			Actors: encounter.Actors{
+				Striker:   &scriptedStriker{kind: encounter.OutcomeMissed},
+				Mover:     s.mover,
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	s.enc = enc
@@ -912,13 +930,6 @@ func (s *DirectiveTestSuite) towardCorridorWalledScene() *encounter.Encounter {
 		s.driver = &scriptedDriver{}
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheetFacts{
-			goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", RangeFeet: 5, Kind: "melee"}}, Targeting: "closest"},
-			// bob, when a scene adds him, is the goblin's ally standing in the way.
-			bob: {SpeedFeet: 30, Targeting: "closest"}, alice: {}}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: s.driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed},
-		Mover: s.mover, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas: pointyCanvas(),
 			Regions: []encounter.RegionInput{{
@@ -938,6 +949,22 @@ func (s *DirectiveTestSuite) towardCorridorWalledScene() *encounter.Encounter {
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:     everyoneSeesTheWholeMap{},
+			Equipment: encounter.UnobservedEquipment{},
+			Sheets: sheetFacts{
+				goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", RangeFeet: 5, Kind: "melee"}}, Targeting: "closest"},
+				// bob, when a scene adds him, is the goblin's ally standing in the way.
+				bob: {SpeedFeet: 30, Targeting: "closest"}, alice: {}},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     s.driver,
+			Actors: encounter.Actors{
+				Striker:   &scriptedStriker{kind: encounter.OutcomeMissed},
+				Mover:     s.mover,
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	s.enc = enc

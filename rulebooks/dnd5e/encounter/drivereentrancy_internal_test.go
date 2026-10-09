@@ -19,9 +19,6 @@ import (
 func threePlayerMonsterBubble(t *testing.T) *Encounter {
 	t.Helper()
 	enc, err := NewEncounter(&SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: FieldInput{
 			Canvas:  openAir(),
 			Regions: []RegionInput{rectRegion("room-1", 0, 0, 8, 8)},
@@ -32,6 +29,19 @@ func threePlayerMonsterBubble(t *testing.T) *Encounter {
 			{ID: "goblin", Kind: KindMonster, Position: spatial.Position{X: 3, Y: 1}},
 		},
 		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
+		Capabilities: Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	require.NoError(t, err)
 	require.Len(t, enc.bubbles, 1, "first light forms the bubble")

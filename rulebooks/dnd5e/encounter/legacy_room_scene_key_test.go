@@ -51,9 +51,6 @@ const legacyRoomScene = `"room_scene":{"version":1,` +
 // record becomes.
 func TestARecordSavedWithTheOldPresentationKeyStillLoads(t *testing.T) {
 	setup := &encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsTransparent(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion("room-1-region", 0, 0, 5, 5)},
@@ -62,6 +59,19 @@ func TestARecordSavedWithTheOldPresentationKeyStillLoads(t *testing.T) {
 			{ID: "p1", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "leave", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	}
 	fresh, err := encounter.NewEncounter(setup)
 	require.NoError(t, err)
@@ -80,10 +90,20 @@ func TestARecordSavedWithTheOldPresentationKeyStillLoads(t *testing.T) {
 		var data encounter.EncounterData
 		require.NoError(t, json.Unmarshal(blob, &data))
 		enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Data: data,
+			Capabilities: encounter.Capabilities{
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  encounter.UnobservedEquipment{},
+				Sheets:     zeroSheets{},
+				Standing:   everyoneStanding{},
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
+			},
 		})
 		require.NoError(t, err, "a record carrying the old key loads")
 

@@ -74,8 +74,6 @@ type DataTestSuite struct {
 // for g1's pass, and next_seq incremented to match.
 func (s *DataTestSuite) TestGoldenJSONRich() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{
@@ -93,6 +91,19 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 		Endings: []encounter.EndingInput{
 			{Key: "guarded", Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: -7, Y: 10}, Member: core.EntityID("p1")}},
 			{Key: "leave", Trigger: encounter.TriggerExternal{}},
+		},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
 		},
 	})
 	s.Require().NoError(err)
@@ -143,8 +154,6 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 // ending order changes which outcome the campaign receives.
 func (s *DataTestSuite) TestEndingsOrderSurvivesReload() {
 	setup := &encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Regions: []encounter.RegionInput{rectRegion("r1", 0, 0, 5, 5)}},
 		Members: []encounter.MemberInput{
 			{ID: "p1", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
@@ -153,12 +162,38 @@ func (s *DataTestSuite) TestEndingsOrderSurvivesReload() {
 			{Key: "first", Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 3, Y: 3}}},
 			{Key: "second", Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 3, Y: 3}}},
 		},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	}
 	enc1, err := encounter.NewEncounter(setup)
 	s.Require().NoError(err)
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: enc1.ToData()})
+		Data: enc1.ToData(),
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
+	})
 	s.Require().NoError(err)
 
 	out, err := enc2.Step(&encounter.StepInput{Member: "p1", To: cellAt(3, 3)})
@@ -194,8 +229,6 @@ func (s *DataTestSuite) TestWallHeightSurvivesPersistenceAndAtlas() {
 	raised := wall(4, 1, 5, 1)
 	raised.Height = 2.5
 	setup := &encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion("r1", 0, 1, 5, 5), rectRegion("r2", 5, 0, 5, 5)},
@@ -205,6 +238,19 @@ func (s *DataTestSuite) TestWallHeightSurvivesPersistenceAndAtlas() {
 			{ID: "p1", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 2}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	}
 	enc, err := encounter.NewEncounter(setup)
 	s.Require().NoError(err)
@@ -222,9 +268,20 @@ func (s *DataTestSuite) TestWallHeightSurvivesPersistenceAndAtlas() {
 	s.ElementsMatch([]float64{2.5, 0}, heights(enc), "the atlas carries the authored multiplier, and 0 where none was authored")
 
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Data: enc.ToData(),
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	s.ElementsMatch([]float64{2.5, 0}, heights(loaded), "and the same numbers after a ToData/Load round trip")
@@ -232,8 +289,6 @@ func (s *DataTestSuite) TestWallHeightSurvivesPersistenceAndAtlas() {
 
 func (s *DataTestSuite) TestSetupInputNotAliased() {
 	setup := &encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion("r1", 0, 1, 5, 5), rectRegion("r2", 5, 0, 5, 5)},
@@ -244,6 +299,19 @@ func (s *DataTestSuite) TestSetupInputNotAliased() {
 			{ID: "p1", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 2}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	}
 	enc, err := encounter.NewEncounter(setup)
 	s.Require().NoError(err)
@@ -265,8 +333,21 @@ func (s *DataTestSuite) TestSetupInputNotAliased() {
 	// And the corrupted-input snapshot must still LOAD (the M4 symptom
 	// was an encounter that became permanently unsavable).
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data})
+		Data: data,
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
+	})
 	s.Require().NoError(err)
 }
 
@@ -280,8 +361,6 @@ func (s *DataTestSuite) TestRoundTripPostSetup() {
 	s.Run("post-setup open encounter survives round-trip", func() {
 		// Create a simple encounter
 		setup := &encounter.SetupInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)}, Props: wallColumn(5, 3, 7), Walls: []encounter.WallInput{{Boundary: spatial.Boundary{
@@ -309,6 +388,19 @@ func (s *DataTestSuite) TestRoundTripPostSetup() {
 					Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 0, Y: 0}},
 				},
 			},
+			Capabilities: encounter.Capabilities{
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  encounter.UnobservedEquipment{},
+				Sheets:     zeroSheets{},
+				Standing:   everyoneStanding{},
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
+			},
 		}
 
 		enc1, err := encounter.NewEncounter(setup)
@@ -319,8 +411,21 @@ func (s *DataTestSuite) TestRoundTripPostSetup() {
 
 		// Load from data (without decider for goblin)
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data1})
+			Data: data1,
+			Capabilities: encounter.Capabilities{
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  encounter.UnobservedEquipment{},
+				Sheets:     zeroSheets{},
+				Standing:   everyoneStanding{},
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
+			},
+		})
 		s.Require().NoError(err)
 
 		// Convert to data again
@@ -341,8 +446,6 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 	s.Run("mid-fade ghost survives reload still Held", func() {
 		// Create encounter with a wall that will cause a ghost to form
 		setup := &encounter.SetupInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
@@ -370,6 +473,19 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 				{
 					Key:     "stairs",
 					Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 0, Y: 0}},
+				},
+			},
+			Capabilities: encounter.Capabilities{
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  encounter.UnobservedEquipment{},
+				Sheets:     zeroSheets{},
+				Standing:   everyoneStanding{},
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
 				},
 			},
 		}
@@ -402,8 +518,21 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 
 		// Load and verify ghost is still there
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data1})
+			Data: data1,
+			Capabilities: encounter.Capabilities{
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  encounter.UnobservedEquipment{},
+				Sheets:     zeroSheets{},
+				Standing:   everyoneStanding{},
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
+			},
+		})
 		s.Require().NoError(err)
 
 		// Get holdings - ghost should still be Held (not Current)
@@ -428,8 +557,6 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 func (s *DataTestSuite) TestRoundTripPostExit() {
 	s.Run("exited member persists in everMembers and can Story", func() {
 		setup := &encounter.SetupInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
@@ -454,6 +581,19 @@ func (s *DataTestSuite) TestRoundTripPostExit() {
 					Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 0, Y: 0}},
 				},
 			},
+			Capabilities: encounter.Capabilities{
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  encounter.UnobservedEquipment{},
+				Sheets:     zeroSheets{},
+				Standing:   everyoneStanding{},
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
+			},
 		}
 
 		enc1, err := encounter.NewEncounter(setup)
@@ -467,8 +607,21 @@ func (s *DataTestSuite) TestRoundTripPostExit() {
 
 		// Load and verify everMembers includes the exited player
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data1})
+			Data: data1,
+			Capabilities: encounter.Capabilities{
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  encounter.UnobservedEquipment{},
+				Sheets:     zeroSheets{},
+				Standing:   everyoneStanding{},
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
+			},
+		})
 		s.Require().NoError(err)
 
 		// Story should work for the exited member
@@ -483,8 +636,6 @@ func (s *DataTestSuite) TestRoundTripPostExit() {
 func (s *DataTestSuite) TestRoundTripClosed() {
 	s.Run("closed encounter with ending outcome round-trips", func() {
 		setup := &encounter.SetupInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
@@ -513,6 +664,19 @@ func (s *DataTestSuite) TestRoundTripClosed() {
 					Trigger: encounter.TriggerExternal{},
 				},
 			},
+			Capabilities: encounter.Capabilities{
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  encounter.UnobservedEquipment{},
+				Sheets:     zeroSheets{},
+				Standing:   everyoneStanding{},
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
+			},
 		}
 
 		enc1, err := encounter.NewEncounter(setup)
@@ -530,8 +694,21 @@ func (s *DataTestSuite) TestRoundTripClosed() {
 
 		// Load and verify outcome matches
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data1})
+			Data: data1,
+			Capabilities: encounter.Capabilities{
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  encounter.UnobservedEquipment{},
+				Sheets:     zeroSheets{},
+				Standing:   everyoneStanding{},
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
+			},
+		})
 		s.Require().NoError(err)
 
 		status2, _ := enc2.Status()
@@ -547,8 +724,6 @@ func (s *DataTestSuite) TestRoundTripClosed() {
 func (s *DataTestSuite) TestPumpContinuesTick() {
 	s.Run("Pump continues tick sequence post-reload", func() {
 		setup := &encounter.SetupInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
@@ -573,6 +748,19 @@ func (s *DataTestSuite) TestPumpContinuesTick() {
 					Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 0, Y: 0}},
 				},
 			},
+			Capabilities: encounter.Capabilities{
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  encounter.UnobservedEquipment{},
+				Sheets:     zeroSheets{},
+				Standing:   everyoneStanding{},
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
+			},
 		}
 
 		enc1, err := encounter.NewEncounter(setup)
@@ -589,8 +777,21 @@ func (s *DataTestSuite) TestPumpContinuesTick() {
 		s.Require().Equal(2, data1.Clock.HighWater, "precondition: two ticks persisted")
 
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data1})
+			Data: data1,
+			Capabilities: encounter.Capabilities{
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  encounter.UnobservedEquipment{},
+				Sheets:     zeroSheets{},
+				Standing:   everyoneStanding{},
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
+			},
+		})
 		s.Require().NoError(err)
 
 		_, err = aRound(enc2)
@@ -608,8 +809,6 @@ func (s *DataTestSuite) TestPumpContinuesTick() {
 func (s *DataTestSuite) TestATableSurvivesAReload() {
 	sheets := sheetFacts{"rat": {SpeedFeet: 5}, "goblin": {SpeedFeet: 5}, alice: {}, "playerA": {}, billy: {}, carol: {}}
 	setup := &encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheets, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10), rectRegion("antechamber", 10, 0, 10, 10)}, Walls: twoRoomSealedWall(),
@@ -626,6 +825,19 @@ func (s *DataTestSuite) TestATableSurvivesAReload() {
 		},
 		Endings: []encounter.EndingInput{{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
 			Position: spatial.Position{X: 0, Y: 0}}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheets,
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     tableDriver(),
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	}
 	enc1, err := encounter.NewEncounter(setup)
 	s.Require().NoError(err)
@@ -644,8 +856,21 @@ func (s *DataTestSuite) TestATableSurvivesAReload() {
 	// more, which is the whole claim: a policy that had to be handed back in
 	// was a policy that could be handed back in DIFFERENTLY.
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheets, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: tableDriver(), Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data1})
+		Data: data1,
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheets,
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     tableDriver(),
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
+	})
 	s.Require().NoError(err)
 
 	ratStarted := whereIs(s.T(), enc2, "rat")
@@ -669,8 +894,6 @@ func (s *DataTestSuite) TestATableSurvivesAReload() {
 // blob's own `table` — which the same blob either carries or does not.
 func (s *DataTestSuite) TestALegacyMindKeyIsIgnoredOnLoad() {
 	setup := &encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
@@ -681,6 +904,19 @@ func (s *DataTestSuite) TestALegacyMindKeyIsIgnoredOnLoad() {
 		},
 		Endings: []encounter.EndingInput{{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
 			Position: spatial.Position{X: 0, Y: 0}}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	}
 	enc1, err := encounter.NewEncounter(setup)
 	s.Require().NoError(err)
@@ -695,8 +931,21 @@ func (s *DataTestSuite) TestALegacyMindKeyIsIgnoredOnLoad() {
 	s.Require().NoError(json.Unmarshal([]byte(withMind), &data))
 
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data})
+		Data: data,
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
+	})
 	s.Require().NoError(err, "a blob carrying the retired word still loads")
 
 	members, err := enc2.Members()
@@ -833,9 +1082,20 @@ func (s *DataTestSuite) TestLoadNilInputRejected() {
 // call sites, so it is stated once rather than left implied by them.
 func (s *DataTestSuite) TestLoadNilDecidersIsLegal() {
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Data: validEncounterData(),
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 	s.Require().NotNil(enc)
@@ -854,8 +1114,21 @@ func (s *DataTestSuite) TestLoadPropOnBoundaryCellAccepted() {
 		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data})
+		Data: data,
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
+	})
 	s.Require().NoError(err, "a prop on a room's boundary cell, including a corner, must be legal at Load too")
 }
 
@@ -872,8 +1145,21 @@ func (s *DataTestSuite) TestLoadTwoPropsOnOneCellRejected() {
 		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data})
+		Data: data,
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
+	})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
@@ -895,8 +1181,21 @@ func (s *DataTestSuite) TestLoadDuplicateEndingKeyRejected() {
 		},
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data})
+		Data: data,
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
+	})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoEnding)
@@ -979,8 +1278,21 @@ func (s *DataTestSuite) TestLoadRejections() {
 			data := validEncounterData()
 			tc.mutate(&data)
 			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-				Sight:     everyoneSeesTheWholeMap{},
-				Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data})
+				Data: data,
+				Capabilities: encounter.Capabilities{
+					Sight:      everyoneSeesTheWholeMap{},
+					Equipment:  encounter.UnobservedEquipment{},
+					Sheets:     zeroSheets{},
+					Standing:   everyoneStanding{},
+					Initiative: orderAsGiven{},
+					Driver:     passDriver{},
+					Actors: encounter.Actors{
+						Striker:   passStriker{},
+						Mover:     quietMover{},
+						Announcer: quietAnnouncer{},
+					},
+				},
+			})
 			s.Require().Error(err, tc.name)
 			s.Require().ErrorIs(err, encounter.ErrInvalidData, tc.name)
 			s.Require().Contains(err.Error(), tc.fragment,
@@ -994,8 +1306,21 @@ func (s *DataTestSuite) TestLoadRejections() {
 	// The valid base itself must load — the one-defect discipline only
 	// means something if zero defects pass.
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: validEncounterData()})
+		Data: validEncounterData(),
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
+	})
 	s.Require().NoError(err, "the valid base fixture must load")
 }
 
@@ -1013,8 +1338,20 @@ func (s *DataTestSuite) TestLoadRejectsMalformedOrUnknownSightLocation() {
 			data := validEncounterData()
 			setSightHolding(s.T(), &data, tt.payload, tt.current)
 			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-				Sight:     everyoneSeesTheWholeMap{},
-				Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data,
+				Data: data,
+				Capabilities: encounter.Capabilities{
+					Sight:      everyoneSeesTheWholeMap{},
+					Equipment:  encounter.UnobservedEquipment{},
+					Sheets:     zeroSheets{},
+					Standing:   everyoneStanding{},
+					Initiative: orderAsGiven{},
+					Driver:     passDriver{},
+					Actors: encounter.Actors{
+						Striker:   passStriker{},
+						Mover:     quietMover{},
+						Announcer: quietAnnouncer{},
+					},
+				},
 			})
 			s.Require().ErrorIs(err, encounter.ErrInvalidData)
 		})
@@ -1025,8 +1362,20 @@ func (s *DataTestSuite) TestLoadAcceptsHeldUnknownSightLocation() {
 	data := validEncounterData()
 	setSightHolding(s.T(), &data, []byte(`{"state":"unknown"}`), false)
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data,
+		Data: data,
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: orderAsGiven{},
+			Driver:     passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 }
@@ -1041,8 +1390,6 @@ func (s *DataTestSuite) TestLoadAcceptsHeldUnknownSightLocation() {
 func (s *DataTestSuite) TestMutation1ToDataAliases() {
 	s.Run("mutation 1: ToData aliases slices", func() {
 		setup := &encounter.SetupInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("room1", 0, 0, 5, 5)}, Props: []encounter.PropInput{}, Walls: []encounter.WallInput{},
@@ -1052,6 +1399,19 @@ func (s *DataTestSuite) TestMutation1ToDataAliases() {
 			},
 			Endings: []encounter.EndingInput{
 				{Key: "done", Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 0, Y: 0}}},
+			},
+			Capabilities: encounter.Capabilities{
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  encounter.UnobservedEquipment{},
+				Sheets:     zeroSheets{},
+				Standing:   everyoneStanding{},
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
 			},
 		}
 
@@ -1080,8 +1440,6 @@ func (s *DataTestSuite) TestMutation1ToDataAliases() {
 func (s *DataTestSuite) TestMutation2WireTagRenamed() {
 	s.Run("mutation 2: wire tag renamed", func() {
 		setup := &encounter.SetupInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("room1", 0, 0, 5, 5)}, Props: []encounter.PropInput{}, Walls: []encounter.WallInput{},
@@ -1091,6 +1449,19 @@ func (s *DataTestSuite) TestMutation2WireTagRenamed() {
 			},
 			Endings: []encounter.EndingInput{
 				{Key: "done", Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 0, Y: 0}}},
+			},
+			Capabilities: encounter.Capabilities{
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  encounter.UnobservedEquipment{},
+				Sheets:     zeroSheets{},
+				Standing:   everyoneStanding{},
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
 			},
 		}
 
@@ -1110,8 +1481,6 @@ func (s *DataTestSuite) TestMutation2WireTagRenamed() {
 func (s *DataTestSuite) TestMutation3StowawayField() {
 	s.Run("mutation 3: stowaway field in EncounterData", func() {
 		setup := &encounter.SetupInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("room1", 0, 0, 5, 5)}, Props: []encounter.PropInput{}, Walls: []encounter.WallInput{},
@@ -1121,6 +1490,19 @@ func (s *DataTestSuite) TestMutation3StowawayField() {
 			},
 			Endings: []encounter.EndingInput{
 				{Key: "done", Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 0, Y: 0}}},
+			},
+			Capabilities: encounter.Capabilities{
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  encounter.UnobservedEquipment{},
+				Sheets:     zeroSheets{},
+				Standing:   everyoneStanding{},
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
 			},
 		}
 
@@ -1142,8 +1524,6 @@ func (s *DataTestSuite) TestMutation3StowawayField() {
 func (s *DataTestSuite) TestMutation4LeafSubstitution() {
 	s.Run("mutation 4: leaf data substitution (Intel/Log swapped)", func() {
 		setup := &encounter.SetupInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("room1", 0, 0, 5, 5)}, Props: []encounter.PropInput{}, Walls: []encounter.WallInput{},
@@ -1153,6 +1533,19 @@ func (s *DataTestSuite) TestMutation4LeafSubstitution() {
 			},
 			Endings: []encounter.EndingInput{
 				{Key: "done", Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 0, Y: 0}}},
+			},
+			Capabilities: encounter.Capabilities{
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  encounter.UnobservedEquipment{},
+				Sheets:     zeroSheets{},
+				Standing:   everyoneStanding{},
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
 			},
 		}
 
@@ -1174,8 +1567,21 @@ func (s *DataTestSuite) TestMutation4LeafSubstitution() {
 
 		// Control: loading dataA verbatim, p1 holds p2.
 		ctrl, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: dataA})
+			Data: dataA,
+			Capabilities: encounter.Capabilities{
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  encounter.UnobservedEquipment{},
+				Sheets:     zeroSheets{},
+				Standing:   everyoneStanding{},
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
+			},
+		})
 		s.Require().NoError(err)
 		ctrlView, err := ctrl.View(&encounter.ViewInput{Member: "p1"})
 		s.Require().NoError(err)
@@ -1187,8 +1593,21 @@ func (s *DataTestSuite) TestMutation4LeafSubstitution() {
 		// field.
 		dataA.Perception = dataB.Perception
 		swapped, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: dataA})
+			Data: dataA,
+			Capabilities: encounter.Capabilities{
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  encounter.UnobservedEquipment{},
+				Sheets:     zeroSheets{},
+				Standing:   everyoneStanding{},
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
+			},
+		})
 		s.Require().NoError(err)
 		swappedView, err := swapped.View(&encounter.ViewInput{Member: "p1"})
 		s.Require().NoError(err)
@@ -1200,8 +1619,6 @@ func (s *DataTestSuite) TestMutation4LeafSubstitution() {
 func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 	s.Run("mutation 6: no re-surveil on load (ghost stays ghost)", func() {
 		setup := &encounter.SetupInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
@@ -1219,6 +1636,19 @@ func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 			},
 			Endings: []encounter.EndingInput{
 				{Key: "stairs", Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 0, Y: 0}}},
+			},
+			Capabilities: encounter.Capabilities{
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  encounter.UnobservedEquipment{},
+				Sheets:     zeroSheets{},
+				Standing:   everyoneStanding{},
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
 			},
 		}
 
@@ -1247,8 +1677,21 @@ func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 
 		data := enc1.ToData()
 		enc2, _ := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data})
+			Data: data,
+			Capabilities: encounter.Capabilities{
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  encounter.UnobservedEquipment{},
+				Sheets:     zeroSheets{},
+				Standing:   everyoneStanding{},
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
+			},
+		})
 
 		holdings2, _ := enc2.View(&encounter.ViewInput{Member: "playerA"})
 		var goblinCurrentAfter bool
@@ -1269,8 +1712,6 @@ func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 func (s *DataTestSuite) TestMutation7TickResetOnLoad() {
 	s.Run("mutation 7: tick continuation (clock not reset)", func() {
 		setup := &encounter.SetupInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("room1", 0, 0, 10, 10)}, Props: []encounter.PropInput{}, Walls: []encounter.WallInput{},
@@ -1281,6 +1722,19 @@ func (s *DataTestSuite) TestMutation7TickResetOnLoad() {
 			Endings: []encounter.EndingInput{
 				{Key: "done", Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 0, Y: 0}}},
 			},
+			Capabilities: encounter.Capabilities{
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  encounter.UnobservedEquipment{},
+				Sheets:     zeroSheets{},
+				Standing:   everyoneStanding{},
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
+			},
 		}
 
 		enc1, _ := encounter.NewEncounter(setup)
@@ -1288,8 +1742,21 @@ func (s *DataTestSuite) TestMutation7TickResetOnLoad() {
 		tick1 := data1.Clock.HighWater
 
 		enc2, _ := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: data1})
+			Data: data1,
+			Capabilities: encounter.Capabilities{
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  encounter.UnobservedEquipment{},
+				Sheets:     zeroSheets{},
+				Standing:   everyoneStanding{},
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
+			},
+		})
 		data2 := enc2.ToData()
 		tick2 := data2.Clock.HighWater
 
@@ -1323,8 +1790,20 @@ func (s *DataTestSuite) TestRememberedArrivalTestimonyPersists() {
 	data := enc.ToData()
 	nextDriver := &scriptedDriver{}
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data, Sight: &sightList{fallback: 0}, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: arrivalOrder{},
-		TurnDriver: nextDriver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
+		Data: data,
+		Capabilities: encounter.Capabilities{
+			Sight:      &sightList{fallback: 0},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   everyoneStanding{},
+			Initiative: arrivalOrder{},
+			Driver:     nextDriver,
+			Actors: encounter.Actors{
+				Striker:   &scriptedStriker{kind: encounter.OutcomeMissed},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -1368,9 +1847,20 @@ func (s *DataTestSuite) TestSightAreasSurviveLoadAndReload() {
 	}}
 	load := func(d encounter.EncounterData) *encounter.Encounter {
 		loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{},
-			Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-			Mover: quietMover{}, Announcer: quietAnnouncer{}, Data: d,
+			Data: d,
+			Capabilities: encounter.Capabilities{
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  encounter.UnobservedEquipment{},
+				Sheets:     zeroSheets{},
+				Standing:   everyoneStanding{},
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
+			},
 		})
 		s.Require().NoError(err)
 		return loaded
@@ -1389,7 +1879,7 @@ func (s *DataTestSuite) TestSightAreaMembershipStoryAudienceAndRemoval() {
 		encounter.MemberData{ID: "visible", Kind: encounter.KindPlayer, Cell: &encounter.PositionData{X: 3, Y: 0}},
 	)
 	data.EverMembers = append(data.EverMembers, "hidden", "visible")
-	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}})
+	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Capabilities: encounter.Capabilities{Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Driver: passDriver{}, Actors: encounter.Actors{Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}}}})
 	s.Require().NoError(err)
 	// This observer remains obscured before and after the other cloud changes.
 	s.Require().NoError(enc.AddSightArea(&encounter.SightAreaInput{ID: "cover", SourceID: "other", Center: spatial.Position{X: 3, Y: 3}, RadiusFeet: 5}))

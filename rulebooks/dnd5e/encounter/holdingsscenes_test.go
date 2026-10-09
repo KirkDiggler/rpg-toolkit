@@ -423,11 +423,22 @@ func (s *HoldingsSuite) TestHoldingsSurviveASaveAndLoad() {
 
 	data := enc.ToData()
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:      data,
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.standing, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		CheckResolver: findsNothing{}, Witness: s.witness,
+		Data: data,
+		Capabilities: encounter.Capabilities{
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Standing:      s.standing,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			CheckResolver: findsNothing{},
+			Witness:       s.witness,
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -461,11 +472,22 @@ func (s *HoldingsSuite) TestHoldingsSurviveASaveAndLoad() {
 		// links a second time, and a third on the next load, growing the
 		// blob without bound. The fact count is what catches that.
 		fresh, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Data:      data,
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.standing, Initiative: orderAsGiven{},
-			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-			CheckResolver: findsNothing{}, Witness: s.witness,
+			Data: data,
+			Capabilities: encounter.Capabilities{
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Standing:      s.standing,
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
+				CheckResolver: findsNothing{},
+				Witness:       s.witness,
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
+			},
 		})
 		s.Require().NoError(err)
 		s.Require().Equal(len(data.Holdings.Facts), len(fresh.ToData().Holdings.Facts))
@@ -561,10 +583,6 @@ func (s *HoldingsSuite) TestLootingTheSameIntelTwiceRevealsOnce() {
 	// second loot of the SAME body transfers nothing and would say nothing
 	// whatever the guard did.
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.standing, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		CheckResolver: findsNothing{}, Witness: s.witness,
 		Field: heirloomField(),
 		Members: []encounter.MemberInput{
 			{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell},
@@ -575,6 +593,21 @@ func (s *HoldingsSuite) TestLootingTheSameIntelTwiceRevealsOnce() {
 		},
 		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
+		Capabilities: encounter.Capabilities{
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Standing:      s.standing,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			CheckResolver: findsNothing{},
+			Witness:       s.witness,
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -635,10 +668,6 @@ func (s *HoldingsSuite) TestLootingIntelForAFactRevealsNoMap() {
 	})
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.standing, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		CheckResolver: findsNothing{}, Witness: s.witness,
 		Field: field,
 		Members: []encounter.MemberInput{
 			{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell},
@@ -651,6 +680,21 @@ func (s *HoldingsSuite) TestLootingIntelForAFactRevealsNoMap() {
 		},
 		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
+		Capabilities: encounter.Capabilities{
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Standing:      s.standing,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			CheckResolver: findsNothing{},
+			Witness:       s.witness,
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -734,12 +778,22 @@ func (s *HoldingsSuite) TestTheAtlasCarriesTheWaysOut() {
 			Regions: []encounter.RegionInput{rectRegion("room", 0, 0, 6, 6)},
 		}
 		bare, err := encounter.NewEncounter(&encounter.SetupInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.standing, Initiative: orderAsGiven{},
-			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field:   plain,
 			Members: []encounter.MemberInput{{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell}},
 			Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+			Capabilities: encounter.Capabilities{
+				Sight:      everyoneSeesTheWholeMap{},
+				Equipment:  encounter.UnobservedEquipment{},
+				Sheets:     zeroSheets{},
+				Standing:   s.standing,
+				Initiative: orderAsGiven{},
+				Driver:     passDriver{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
+			},
 		})
 		s.Require().NoError(err)
 		atlas, err := bare.Atlas()
@@ -800,10 +854,6 @@ func (s *HoldingsSuite) TestASpawnedMonsterCarriesTheIntelItWasAuthoredWith() {
 	// The world starts with the players and NO captain — the shape the host
 	// actually builds.
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.standing, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		CheckResolver: findsNothing{}, Witness: s.witness,
 		Field: heirloomField(),
 		Members: []encounter.MemberInput{
 			{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell},
@@ -811,6 +861,21 @@ func (s *HoldingsSuite) TestASpawnedMonsterCarriesTheIntelItWasAuthoredWith() {
 		},
 		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
+		Capabilities: encounter.Capabilities{
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Standing:      s.standing,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			CheckResolver: findsNothing{},
+			Witness:       s.witness,
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -868,16 +933,27 @@ func (s *HoldingsSuite) TestASpawnedMonsterCarriesTheIntelItWasAuthoredWith() {
 func (s *HoldingsSuite) TestASpawnedMonsterWithNothingIsIndistinguishable() {
 	spawn := func(holds []encounter.IntelID) (string, string) {
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.standing, Initiative: orderAsGiven{},
-			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-			CheckResolver: findsNothing{}, Witness: s.witness,
 			Field: heirloomField(),
 			Members: []encounter.MemberInput{
 				{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell},
 			},
 			Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 			Retention: encounter.RetentionUnbounded,
+			Capabilities: encounter.Capabilities{
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Standing:      s.standing,
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
+				CheckResolver: findsNothing{},
+				Witness:       s.witness,
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
+			},
 		})
 		s.Require().NoError(err)
 		_, err = enc.Join(&encounter.JoinInput{
@@ -1041,10 +1117,6 @@ func (s *HoldingsSuite) TestACarrierWalksOutWithEVERYTHINGTheyHold() {
 // narrating something that did not happen.
 func (s *HoldingsSuite) TestTwoMonstersHoldingOneRecord() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.standing, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		CheckResolver: findsNothing{}, Witness: s.witness,
 		Field: heirloomField(),
 		Members: []encounter.MemberInput{
 			{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell},
@@ -1056,6 +1128,21 @@ func (s *HoldingsSuite) TestTwoMonstersHoldingOneRecord() {
 		},
 		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
+		Capabilities: encounter.Capabilities{
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Standing:      s.standing,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			CheckResolver: findsNothing{},
+			Witness:       s.witness,
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -1128,10 +1215,6 @@ func (s *HoldingsSuite) TestTheRecordIsResolvedAtTransferNotAtPlacement() {
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.standing, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		CheckResolver: findsNothing{}, Witness: s.witness,
 		Field: field,
 		Members: []encounter.MemberInput{
 			{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell},
@@ -1140,6 +1223,21 @@ func (s *HoldingsSuite) TestTheRecordIsResolvedAtTransferNotAtPlacement() {
 		},
 		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
+		Capabilities: encounter.Capabilities{
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Standing:      s.standing,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			CheckResolver: findsNothing{},
+			Witness:       s.witness,
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 
@@ -1327,11 +1425,22 @@ func (s *HoldingsSuite) TestAScrollStillTeachesAfterASaveAndLoad() {
 	})
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:      data,
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: s.standing, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		CheckResolver: findsNothing{}, Witness: s.witness,
+		Data: data,
+		Capabilities: encounter.Capabilities{
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Standing:      s.standing,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			CheckResolver: findsNothing{},
+			Witness:       s.witness,
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 

@@ -140,10 +140,22 @@ func benchSightRefreshOn(b *testing.B, field FieldInput, rooms, dim, members int
 	}
 
 	enc, err := NewEncounter(&SetupInput{
-		Sight: benchSight{1 << 20}, Equipment: UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: benchStanding{}, Initiative: benchRoller{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field:   field,
 		Members: mi,
 		Endings: []EndingInput{{Key: "done", Trigger: TriggerExternal{}}},
+		Capabilities: Capabilities{
+			Sight:      benchSight{1 << 20},
+			Equipment:  UnobservedEquipment{},
+			Sheets:     zeroSheets{},
+			Standing:   benchStanding{},
+			Initiative: benchRoller{},
+			Driver:     passDriver{},
+			Actors: Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	if err != nil {
 		b.Fatal(err)

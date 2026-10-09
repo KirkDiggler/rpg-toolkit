@@ -77,7 +77,7 @@ func (a failAfterForming) Announce(
 // everyoneStanding can never produce one — nobody is ever down, so no fight is
 // ever decided.
 func (s *CombatEndTestSuite) fightWithStanding(
-	driver encounter.TurnDriver, striker encounter.Striker, announcer encounter.Announcer,
+	driver encounter.Driver, striker encounter.Striker, announcer encounter.Announcer,
 	standing encounter.StandingWithParticipation, monsters ...core.EntityID,
 ) (*encounter.Encounter, error) {
 	members := []encounter.MemberInput{
@@ -94,15 +94,25 @@ func (s *CombatEndTestSuite) fightWithStanding(
 		}, Targeting: "closest"}
 	}
 	return encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: sheets, Standing: standing, Initiative: orderAsGiven{},
-		TurnDriver: driver, Striker: striker, Mover: quietMover{}, Announcer: announcer,
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 		},
 		Members: members,
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Sheets:     sheets,
+			Standing:   standing,
+			Initiative: orderAsGiven{},
+			Driver:     driver,
+			Actors: encounter.Actors{
+				Striker:   striker,
+				Mover:     quietMover{},
+				Announcer: announcer,
+			},
+		},
 	})
 }
 
@@ -225,7 +235,7 @@ func (s *CombatEndTestSuite) TestACombatEndCarriesTheRoundTheFightEndedOn() {
 }
 
 // TestAnAnnouncerMalfunctionAbortsTheDissolve — the same contract Striker and
-// TurnDriver have, and for the same reason. Nothing is persisted until the
+// Driver have, and for the same reason. Nothing is persisted until the
 // caller's own commit, so a failure costs the retry and nothing else; a
 // dissolve that reported success while the boundary it owed nobody published
 // would cost a barbarian's rage, silently, forever.

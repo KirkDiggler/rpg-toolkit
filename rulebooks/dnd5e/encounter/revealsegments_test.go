@@ -133,10 +133,6 @@ func (s *RevealSegmentsSuite) vaultField() encounter.FieldInput {
 func (s *RevealSegmentsSuite) open(resolver encounter.CheckResolver) *encounter.Encounter {
 	s.T().Helper()
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight:     everyoneSeesTheWholeMap{},
-		Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
-		CheckResolver: resolver, Witness: s.witness,
 		Field: s.vaultField(),
 		Members: []encounter.MemberInput{
 			// BESIDE THE PANEL, because a door opens only from within
@@ -146,6 +142,21 @@ func (s *RevealSegmentsSuite) open(resolver encounter.CheckResolver) *encounter.
 			{ID: finder, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Standing:      everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			CheckResolver: resolver,
+			Witness:       s.witness,
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
 	})
 	s.Require().NoError(err)
 

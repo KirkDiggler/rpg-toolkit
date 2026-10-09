@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/play/clock"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
@@ -2213,88 +2212,16 @@ type LoadEncounterInput struct {
 	// Data is the persisted encounter, as produced by Encounter.ToData.
 	Data EncounterData
 
-	// Roller is THE WORLD'S DIE — see [SetupInput.Roller]. Optional at this
-	// door for the same reason it is optional at that one, and refused at the
-	// roll rather than here.
-	Roller dice.Roller
-
-	// Initiative rolls the order a bubble forms in. REQUIRED, exactly as it is
-	// on SetupInput: a loaded encounter runs trigger detection from its first
-	// sight refresh, so it can start a fight before its caller does anything,
-	// and one it cannot order is a misconfiguration. Refused here rather than
-	// guarded where it is used — a nil roller is an error returned at the
-	// door, not a branch taken deep inside a verb.
-	Initiative InitiativeRoller
-
-	// Standing answers who is down and who participates. REQUIRED, typed
-	// [StandingWithParticipation] exactly as on SetupInput, so a Standing-only
-	// value does not compile and nothing falls back to its binary answer.
-	Standing StandingWithParticipation
-
-	// Sight reports how far each member can see, in cells. REQUIRED, exactly as
-	// it is on SetupInput: a loaded encounter consults it on its first sight
-	// refresh, so a blob that comes back without one is as unusable as a Setup
-	// without one. Refused at the door, never guarded at the use site.
-	Sight Sight
-
-	// Equipment reports what each member is holding. REQUIRED, exactly as it is
-	// on SetupInput: a loaded encounter snapshots hands on its first sight
-	// refresh, so a blob that comes back without one is as unusable as a Setup
-	// without one (rpg-toolkit#1615). Refused at the door, never guarded at the
-	// use site, and never defaulted. Typed [EquipmentWithConditions] exactly
-	// as on SetupInput, so it answers Conditions by construction.
-	Equipment EquipmentWithConditions
-
-	// Sheets reports each member's speed, actions and targeting. REQUIRED,
-	// exactly as it is on SetupInput: a loaded encounter's bubble can land on
-	// an unplayed member whose budget and reach its sheet answers, and the
-	// first walk is paced from it (rpg-project#538). Refused at the door,
-	// never defaulted. The blob carries none of these facts; this is the only
-	// way in.
-	Sheets Sheets
-
-	// TurnDriver decides what a member with no player does when it is given
-	// time. REQUIRED, exactly as it is on SetupInput: a loaded encounter's
-	// bubble can land on an unplayed member the moment it is reconstituted,
-	// so a blob that comes back without one is as unusable as a Setup without
-	// one (rpg-toolkit#1162, ADR-0043). Refused at the door, never guarded at
-	// the use site, and never defaulted. The type is [Driver] now; the field
-	// keeps its name for one release — see [SetupInput.TurnDriver].
-	TurnDriver Driver
-
-	// Striker resolves and records a member's attack when a [Driver]
-	// returns an Attack intent. REQUIRED, exactly as it is on SetupInput and
-	// for the same reason (rpg-project#254): a loaded encounter's bubble can
-	// land on an unplayed member ready to swing the moment it is
-	// reconstituted. Refused at the door, never guarded at the use site, and
-	// never defaulted.
-	Striker Striker
-
-	// Mover announces a member's step before the encounter takes it.
-	// REQUIRED, exactly as it is on SetupInput and for the same reason
-	// (rpg-project#316): a loaded encounter's bubble can land on an unplayed
-	// member ready to walk the moment it is reconstituted. Refused at the
-	// door, never guarded at the use site, and never defaulted.
-	Mover Mover
-
-	// Announcer publishes the temporal boundaries a clock advance crossed.
-	// REQUIRED, exactly as it is on SetupInput and for the same reason: a
-	// loaded encounter's clock can advance the moment it is reconstituted,
-	// and a boundary nobody announced is a turn-scoped condition that never
-	// expires. Refused at the door, never guarded at the use site, and never
-	// defaulted.
-	Announcer Announcer
-
-	// CheckResolver resolves a find check when a member searches — required
-	// exactly when the persisted field carries concealed structure, refused
-	// in LoadEncounter's body rather than in Validate because the answer
-	// depends on the Data (SetupInput.CheckResolver's contract). Legally
-	// nil for a blob with none.
-	CheckResolver CheckResolver
-
-	// Witness answers who perceives an open concealed door — required under
-	// exactly CheckResolver's rule, refused beside it.
-	Witness Witness
+	// Capabilities is every capability a loaded encounter asks of its host,
+	// exactly as on [SetupInput] and for the same reasons: a loaded encounter
+	// runs trigger detection from its first sight refresh, its bubble can land
+	// on an unplayed member the moment it is reconstituted, and its clock can
+	// advance at once. A blob that comes back without one is as unusable as a
+	// Setup without one. Refused at the door, never guarded at the use site,
+	// never defaulted. CheckResolver and Witness are required exactly when
+	// the persisted field carries concealed structure, which depends on Data,
+	// so [LoadEncounter] refuses them in its body rather than in Validate.
+	Capabilities
 }
 
 // Validate reports whether the input is usable. It checks only the input's own
@@ -2309,35 +2236,9 @@ func (in *LoadEncounterInput) Validate() error {
 	if in == nil {
 		return fmt.Errorf("load encounter: %w", ErrNilInput)
 	}
-	if in.Initiative == nil {
-		return fmt.Errorf("load encounter: Initiative is required: %w", ErrNoInitiative)
+	if err := in.Capabilities.Validate(); err != nil {
+		return fmt.Errorf("load encounter: %w", err)
 	}
-	if in.Standing == nil {
-		return fmt.Errorf("load encounter: Standing is required: %w", ErrNoStanding)
-	}
-	if in.Sight == nil {
-		return fmt.Errorf("load encounter: Sight is required: %w", ErrNoSight)
-	}
-	if in.Equipment == nil {
-		return fmt.Errorf("load encounter: Equipment is required: %w", ErrNoEquipment)
-	}
-	if in.Sheets == nil {
-		return fmt.Errorf("load encounter: Sheets is required: %w", ErrNoSheets)
-	}
-	if in.TurnDriver == nil {
-		return fmt.Errorf("load encounter: TurnDriver is required: %w", ErrNoTurnDriver)
-	}
-	if in.Striker == nil {
-		return fmt.Errorf("load encounter: Striker is required: %w", ErrNoStriker)
-	}
-	if in.Mover == nil {
-		return fmt.Errorf("load encounter: Mover is required: %w", ErrNoMover)
-	}
-
-	if in.Announcer == nil {
-		return fmt.Errorf("load encounter: Announcer is required: %w", ErrNoAnnouncer)
-	}
-
 	return nil
 }
 
@@ -2526,11 +2427,8 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 
 	fieldConcealed := fieldHasConcealment(fieldInput.Concealments)
 	if fieldConcealed {
-		if input.CheckResolver == nil {
-			return nil, fmt.Errorf("load encounter: %w", ErrNoCheckResolver)
-		}
-		if input.Witness == nil {
-			return nil, fmt.Errorf("load encounter: %w", ErrNoWitness)
+		if err = input.validateConcealed(); err != nil {
+			return nil, fmt.Errorf("load encounter: %w", err)
 		}
 	}
 	// Validate members: no duplicates, cells present, integral and floor
@@ -2899,7 +2797,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		equipment:     input.Equipment,
 		conditions:    input.Equipment,
 		sheets:        input.Sheets,
-		driver:        input.TurnDriver,
+		driver:        input.Driver,
 		roller:        input.Roller,
 		striker:       input.Striker,
 		mover:         input.Mover,
