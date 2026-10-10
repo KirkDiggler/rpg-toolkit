@@ -129,17 +129,13 @@ func instantiate(id string, ref string, actions []string, template *dungeonspec.
 	// normalisation is ever added upstream, which is a cheap hedge rather
 	// than a guarantee.
 	build, constructed := monsters.ByRef(parsed.String())
-	_, isBase := monsters.BaseByRef(parsed.String())
 
 	var built *monster.Monster
 	switch {
-	case template != nil && (constructed || isBase):
-		// A rulebook base is rulebook content too: a template named `human`
-		// would shadow the block every other template derives from.
-		return nil, fmt.Errorf("template %q shadows rulebook monster %q; rename the template: %w",
-			parsed.ID, parsed.String(), ErrShadowedRef)
 	case template != nil:
-		built, err = assembleTemplate(&DeriveTemplateInput{ID: id, Ref: parsed.String(), Spec: *template})
+		// The shared assembly refuses a template that shadows the rulebook,
+		// so launch and the authoring echo refuse it in one place.
+		built, err = assembleTemplate(id, parsed, *template)
 		if err != nil {
 			return nil, err
 		}

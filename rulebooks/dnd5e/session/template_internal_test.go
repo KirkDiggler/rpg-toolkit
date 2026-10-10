@@ -119,7 +119,7 @@ var castleGuard = dungeonspec.TemplateSpec{
 // TestDeriveTemplateEchoesTheCastleGuard is the authoring-time echo read off
 // the same assembly the launch uses: every number is the rulebook's.
 func TestDeriveTemplateEchoesTheCastleGuard(t *testing.T) {
-	out, err := DeriveTemplate(&DeriveTemplateInput{ID: "guard", Ref: "dnd5e:monsters:guard", Spec: castleGuard})
+	out, err := DeriveTemplate(&DeriveTemplateInput{Ref: "dnd5e:monsters:guard", Spec: castleGuard})
 	require.NoError(t, err)
 	block := out.Block
 	require.Equal(t, "dnd5e:monsters:guard", block.Ref, "the template's ref, not the human's")
@@ -138,7 +138,7 @@ func TestDeriveTemplateEchoesTheCastleGuard(t *testing.T) {
 func TestDeriveTemplateRefusesAnUnknownBaseByName(t *testing.T) {
 	spec := castleGuard
 	spec.Base = "dnd5e:monsters:elf"
-	_, err := DeriveTemplate(&DeriveTemplateInput{ID: "guard", Ref: "dnd5e:monsters:guard", Spec: spec})
+	_, err := DeriveTemplate(&DeriveTemplateInput{Ref: "dnd5e:monsters:guard", Spec: spec})
 	require.ErrorIs(t, err, ErrUnknownContent)
 	require.Contains(t, err.Error(), "dnd5e:monsters:elf")
 }
@@ -146,13 +146,13 @@ func TestDeriveTemplateRefusesAnUnknownBaseByName(t *testing.T) {
 // TestATemplateIsNamedAsItselfNeverAsItsBase: name is identity. An unnamed
 // template is called by its id; a named one by what the author wrote.
 func TestATemplateIsNamedAsItselfNeverAsItsBase(t *testing.T) {
-	out, err := DeriveTemplate(&DeriveTemplateInput{ID: "guard", Ref: "dnd5e:monsters:guard", Spec: castleGuard})
+	out, err := DeriveTemplate(&DeriveTemplateInput{Ref: "dnd5e:monsters:guard", Spec: castleGuard})
 	require.NoError(t, err)
 	require.Equal(t, "guard", out.Block.Name, "the template's id, not the human's name")
 
 	named := castleGuard
 	named.Name = "Castle Guard"
-	out, err = DeriveTemplate(&DeriveTemplateInput{ID: "guard", Ref: "dnd5e:monsters:guard", Spec: named})
+	out, err = DeriveTemplate(&DeriveTemplateInput{Ref: "dnd5e:monsters:guard", Spec: named})
 	require.NoError(t, err)
 	require.Equal(t, "Castle Guard", out.Block.Name)
 }
@@ -194,7 +194,7 @@ func TestTemplateOfCarriesEveryStatedField(t *testing.T) {
 // TestDeriveTemplateEchoesTheCaptain is the block for a template that states
 // every score but INT and WIS, its own proficiency and two weapons.
 func TestDeriveTemplateEchoesTheCaptain(t *testing.T) {
-	out, err := DeriveTemplate(&DeriveTemplateInput{ID: "captain", Ref: "dnd5e:monsters:captain", Spec: dungeonspec.TemplateSpec{
+	out, err := DeriveTemplate(&DeriveTemplateInput{Ref: "dnd5e:monsters:captain", Spec: dungeonspec.TemplateSpec{
 		Base:        "dnd5e:monsters:human",
 		Abilities:   map[string]int{"str": 15, "dex": 14, "con": 14, "cha": 14},
 		HitDice:     "10d8",
@@ -232,7 +232,7 @@ func TestATemplateTheRulebookRefusesKeepsItsReason(t *testing.T) {
 // base".
 func TestAMalformedBaseIsABadRef(t *testing.T) {
 	for _, base := range []string{"human", ""} {
-		_, err := DeriveTemplate(&DeriveTemplateInput{ID: "cook", Ref: "dnd5e:monsters:cook",
+		_, err := DeriveTemplate(&DeriveTemplateInput{Ref: "dnd5e:monsters:cook",
 			Spec: dungeonspec.TemplateSpec{Base: base, Actions: []string{"dnd5e:weapons:dagger"}}})
 		require.ErrorIs(t, err, ErrBadRef, "base %q", base)
 		require.NotErrorIs(t, err, ErrUnknownContent, "base %q", base)
@@ -242,10 +242,29 @@ func TestAMalformedBaseIsABadRef(t *testing.T) {
 // TestDeriveTemplateRefusesARefItCannotLoad: DeriveTemplate is a public
 // entry, so it checks the ref the host hands it as instantiate does.
 func TestDeriveTemplateRefusesARefItCannotLoad(t *testing.T) {
-	_, err := DeriveTemplate(&DeriveTemplateInput{ID: "guard", Ref: "homebrew:monsters:guard", Spec: castleGuard})
+	_, err := DeriveTemplate(&DeriveTemplateInput{Ref: "homebrew:monsters:guard", Spec: castleGuard})
 	require.ErrorIs(t, err, ErrNoLoader)
-	_, err = DeriveTemplate(&DeriveTemplateInput{ID: "guard", Ref: "guard", Spec: castleGuard})
+	_, err = DeriveTemplate(&DeriveTemplateInput{Ref: "guard", Spec: castleGuard})
 	require.ErrorIs(t, err, ErrBadRef)
 	_, err = DeriveTemplate(nil)
 	require.ErrorIs(t, err, ErrNilInput)
+}
+
+// TestDeriveTemplateRefusesATemplateThatShadowsTheRulebook: the authoring
+// echo refuses shadowing exactly as launch does, because both come through
+// the one assembly. A constructor (`goblin`) and a base (`human`) both count.
+func TestDeriveTemplateRefusesATemplateThatShadowsTheRulebook(t *testing.T) {
+	for _, ref := range []string{"dnd5e:monsters:goblin", "dnd5e:monsters:human"} {
+		_, err := DeriveTemplate(&DeriveTemplateInput{Ref: ref, Spec: castleGuard})
+		require.ErrorIs(t, err, ErrShadowedRef, ref)
+		require.Contains(t, err.Error(), "rename the template", ref)
+	}
+}
+
+// TestTheDerivedBlockIsIdentifiedByItsTemplate: no member exists at
+// authoring time, so the block's id is the template's.
+func TestTheDerivedBlockIsIdentifiedByItsTemplate(t *testing.T) {
+	out, err := DeriveTemplate(&DeriveTemplateInput{Ref: "dnd5e:monsters:guard", Spec: castleGuard})
+	require.NoError(t, err)
+	require.Equal(t, "guard", out.Block.ID)
 }

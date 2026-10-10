@@ -18,15 +18,12 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
-// DeriveTemplateInput is one authored template to derive: the member id it
-// becomes, the ref it is placed by, and the author's strings.
+// DeriveTemplateInput is one authored template to derive: the ref it is
+// placed by and the author's strings.
 type DeriveTemplateInput struct {
-	// ID is the member the monster becomes ("guard-1"). An authoring-time
-	// caller with no member yet passes any non-empty id, such as the
-	// template's own.
-	ID string
 	// Ref is the template's own ref, `dnd5e:monsters:<id>`. It goes onto the
-	// block, never the base's (rpg-project#555 R2).
+	// block, never the base's (rpg-project#555 R2), and its id is the
+	// block's id.
 	Ref string
 	// Spec is the template as the dialect carried it.
 	Spec dungeonspec.TemplateSpec
@@ -87,34 +84,64 @@ type DerivedAttack struct {
 //
 // ONE ASSEMBLY. Launch builds a template's monster through the same
 // [assembleTemplate] this calls, so the block the studio was shown is the
-// creature the run gets (R6). A host must never mirror this conversion.
+// creature the run gets (R6), and the two cannot disagree about what a
+// template may be. A host must never mirror this conversion.
 //
 // It lives in this package because this is the one package that imports both
 // the dialect that carries a template and the rulebook that assembles it: the
 // compiler may not know what a ref resolves to (C1), and the rulebook does not
 // read the dialect's strings.
 //
-// It does not check shadowing. That needs the rulebook's constructors as well
-// and is the resolver's question, asked at launch by [instantiate] and at
-// authoring by the host.
+// There is no member yet at authoring time, so the block's ID is the
+// template's id, the part of its ref after the second colon. A host never
+// invents a member id to ask.
 //
 // Returns ErrNilInput, ErrBadRef (a malformed ref, base, armour or weapon),
-// ErrNoLoader (a ref off the `dnd5e:monsters` route), ErrUnknownContent (an
+// ErrNoLoader (a ref off the `dnd5e:monsters` route), ErrShadowedRef (a
+// template named for a rulebook monster or base), ErrUnknownContent (an
 // unknown base, named; an unknown armour, weapon, skill or ability), or
 // ErrInvalidWorld (a template the rulebook refuses to assemble, with its
 // reason as text).
 func DeriveTemplate(in *DeriveTemplateInput) (*DeriveTemplateOutput, error) {
-	built, err := assembleTemplate(in)
+	if in == nil {
+		return nil, fmt.Errorf("derive template: %w", ErrNilInput)
+	}
+	ref, err := templateRefOf(in.Ref)
+	if err != nil {
+		return nil, err
+	}
+	built, err := assembleTemplate(ref.ID, ref, in.Spec)
 	if err != nil {
 		return nil, err
 	}
 	return &DeriveTemplateOutput{Block: blockOf(built.ToData())}, nil
 }
 
-// assembleTemplate assembles the monster an authored template describes: the
-// base it names, looked up in the rulebook; the template, read out of the
-// author's strings; and [monster.FromTemplate], which derives every number
-// and checks that the template and the base it is given are a pair (R6).
+// templateRefOf parses the ref a template is placed by. A ref that does not
+// parse is [ErrBadRef]; one off the `dnd5e:monsters` route is [ErrNoLoader],
+// as [instantiate] says of any ref.
+func templateRefOf(raw string) (*core.Ref, error) {
+	ref, err := core.ParseString(raw)
+	if err != nil {
+		return nil, fmt.Errorf("%q: %w: %v", raw, ErrBadRef, err)
+	}
+	if ref.Module != refs.Module || ref.Type != refs.TypeMonsters {
+		return nil, fmt.Errorf("%q: %w", raw, ErrNoLoader)
+	}
+	return ref, nil
+}
+
+// assembleTemplate assembles the monster an authored template describes,
+// as member memberID: the base it names, looked up in the rulebook; the
+// template, read out of the author's strings; and [monster.FromTemplate],
+// which derives every number and checks that the template and the base it is
+// given are a pair (R6).
+//
+// SHADOWING IS REFUSED HERE, ONCE (R2). A template whose ref the rulebook
+// already answers, through a constructor (`goblin`) or a base (`human`), is
+// [ErrShadowedRef]: either answer would silently discard something somebody
+// wrote. Because launch and the authoring echo both come through this
+// function, they cannot disagree about it.
 //
 // An unknown base is refused BY NAME with [ErrUnknownContent]: the author
 // wrote `dnd5e:monsters:elf` and is told `elf`, not handed a creature built
@@ -124,23 +151,19 @@ func DeriveTemplate(in *DeriveTemplateInput) (*DeriveTemplateOutput, error) {
 // A refusal from the assembly itself is [ErrInvalidWorld] with the rulebook's
 // reason carried as text. Its error is the rulebook's, and a host matching on
 // it would be coupled to a module this seam exists to keep replaceable (S2).
-func assembleTemplate(in *DeriveTemplateInput) (*monster.Monster, error) {
-	if in == nil {
-		return nil, fmt.Errorf("derive template: %w", ErrNilInput)
-	}
-	ref, err := core.ParseString(in.Ref)
-	if err != nil {
-		return nil, fmt.Errorf("%q: %w: %v", in.Ref, ErrBadRef, err)
-	}
-	if ref.Module != refs.Module || ref.Type != refs.TypeMonsters {
-		return nil, fmt.Errorf("%q: %w", in.Ref, ErrNoLoader)
+func assembleTemplate(memberID string, ref *core.Ref, spec dungeonspec.TemplateSpec) (*monster.Monster, error) {
+	_, constructed := monsters.ByRef(ref.String())
+	_, isBase := monsters.BaseByRef(ref.String())
+	if constructed || isBase {
+		return nil, fmt.Errorf("template %q shadows rulebook monster %q; rename the template: %w",
+			ref.ID, ref.String(), ErrShadowedRef)
 	}
 
 	// The conversion parses the base first, so a malformed base is ErrBadRef
 	// and only a well-formed one can be unknown. The base is then looked up
 	// through the parsed ref the template carries, so the pair FromTemplate
 	// checks holds by construction.
-	tmpl, err := templateOf(ref.ID, in.Spec)
+	tmpl, err := templateOf(ref.ID, spec)
 	if err != nil {
 		return nil, fmt.Errorf("template %q: %w", ref.ID, err)
 	}
@@ -150,7 +173,7 @@ func assembleTemplate(in *DeriveTemplateInput) (*monster.Monster, error) {
 		return nil, fmt.Errorf("template %q: base %q is not a rulebook base: %w", ref.ID, tmpl.Base.String(), ErrUnknownContent)
 	}
 
-	built, err := monster.FromTemplate(&monster.FromTemplateInput{ID: in.ID, Ref: ref, Template: tmpl, Base: base})
+	built, err := monster.FromTemplate(&monster.FromTemplateInput{ID: memberID, Ref: ref, Template: tmpl, Base: base})
 	if err != nil {
 		return nil, fmt.Errorf("template %q: %w: %v", ref.ID, ErrInvalidWorld, err)
 	}
