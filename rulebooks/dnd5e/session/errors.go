@@ -153,6 +153,18 @@ var (
 	// malformed.
 	ErrUnknownContent = errors.New("no such content")
 
+	// ErrShadowedRef is returned when a dungeon's authored template takes the
+	// id of a rulebook monster, so one ref would name two stat blocks
+	// (rpg-project#555 R2).
+	//
+	// Refused rather than resolved either way. Letting the template win would
+	// silently replace the rulebook's goblin in this dungeon; letting the
+	// rulebook win would silently ignore what the author wrote. Authoring
+	// refuses it first; launch refuses it again because a compiled dungeon
+	// can reach this seam without passing through that check, and the remedy
+	// is the author's: rename the template.
+	ErrShadowedRef = errors.New("template shadows a rulebook monster")
+
 	// ErrNoMemberID is returned when a verb is given an empty member ID.
 	ErrNoMemberID = errors.New("empty member id")
 
