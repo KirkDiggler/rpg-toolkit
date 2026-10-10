@@ -256,12 +256,15 @@ func (s *OpportunityAttackMeterSuite) TestAnotherMembersTurnStartDoesNotRefreshI
 	s.Len(*collected, 1, "so no second swing is offered")
 }
 
-// Kirk's ruling: characters pay. The slot is what makes OA and Protection
-// fighting style mutually exclusive, which they are in the rules — both spend
-// the one reaction and the second to ask finds it gone.
-func (s *OpportunityAttackMeterSuite) TestACharacterPaysTheReactionSlot() {
+// The gate for a character: the offer is free while a reaction remains, and
+// once the slot is gone the next mover is offered nothing. That is what makes
+// OA and Protection fighting style mutually exclusive, which they are in the
+// rules. The stand-in bill is only how the test empties the slot; the door that
+// really bills lives in resolution.
+func (s *OpportunityAttackMeterSuite) TestACharacterWithAReactionLeftIsOfferedOneUntilItIsGone() {
 	s.place("fighter-1", "character", 5, 5)
 	s.place("wolf-1", "monster", 5, 6)
+	s.place("wolf-2", "monster", 4, 5)
 
 	keeper := s.character("fighter-1", 1)
 	oa := NewOpportunityAttackCondition("fighter-1")
@@ -270,13 +273,11 @@ func (s *OpportunityAttackMeterSuite) TestACharacterPaysTheReactionSlot() {
 	collected := s.triggers()
 	ctx := castOf(s.readyCtx("fighter-1"), keeper.sheet)
 	s.walkAway(ctx, "wolf-1", spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
+	s.Require().Len(*collected, 1, "a reaction in hand is offered")
 
-	s.Require().Len(*collected, 1)
-	s.Require().Empty(keeper.spent, "the OFFER is free; only a swing is billed")
 	s.taken(ctx, "fighter-1", "wolf-1")
-
-	s.Equal(0, keeper.sheet.reactions, "the reaction slot is spent, not merely flagged")
-	s.Equal([]coreCombat.ActionType{coreCombat.ActionReaction}, keeper.spent)
+	s.walkAway(ctx, "wolf-2", spatial.Position{X: 4, Y: 5}, spatial.Position{X: 1, Y: 5})
+	s.Len(*collected, 1, "once the reaction is gone nothing more is offered")
 }
 
 // A fighter who already spent their reaction on Protection has none left for
@@ -298,14 +299,14 @@ func (s *OpportunityAttackMeterSuite) TestACharacterWithNoReactionLeftDoesNotSwi
 	s.Empty(keeper.spent, "and nothing was billed for a swing that did not happen")
 }
 
-// A monster is metered by its own keeper, exactly as a character is by theirs.
+// A monster is gated by its own keeper, exactly as a character is by theirs.
 //
 // This used to be the asymmetry: a monster kept no economy, so the condition's
 // own once-per-turn flag was the only thing holding it to one swing. Kirk
 // reversed that on 2026-09-11, and the whole of the condition's part is now
-// the same for both kinds — ask CanReact, publish the bill, let the keeper
-// meter it.
-func (s *OpportunityAttackMeterSuite) TestAMonsterIsMeteredByItsKeeper() {
+// the same for both kinds: ask CanReact before offering; the door bills, the
+// keeper meters.
+func (s *OpportunityAttackMeterSuite) TestAMonsterWithAReactionLeftIsOfferedOneUntilItIsGone() {
 	s.place("wolf-1", "monster", 5, 5)
 	s.place("rogue-1", "character", 5, 6)
 	s.place("rogue-2", "character", 4, 5)
@@ -321,12 +322,8 @@ func (s *OpportunityAttackMeterSuite) TestAMonsterIsMeteredByItsKeeper() {
 	s.Require().Len(*collected, 1, "a monster with no economy still gets its reaction")
 	s.taken(ctx, "wolf-1", "rogue-1")
 
-	s.Require().True(keeper.sheet.reactionSpent, "the bill landed on the sheet that has to pay it")
-
 	s.walkAway(ctx, "rogue-2", spatial.Position{X: 4, Y: 5}, spatial.Position{X: 1, Y: 5})
-	s.Len(*collected, 1, "and a monster that has swung is held to one per turn")
-	s.Equal([]coreCombat.ActionType{coreCombat.ActionReaction}, keeper.spent)
-	s.Positive(keeper.dirtied, "a spent reaction that is not written down is not spent")
+	s.Len(*collected, 1, "and a monster whose reaction is gone is held to one per turn")
 }
 
 // THE WHOLE REASON THE METER MOVED. Dissonant Whispers bills a monster's
@@ -486,4 +483,22 @@ func (s *OpportunityAttackMeterSuite) TestOpportunityTriggerCarriesItsName() {
 
 	s.Require().Len(*collected, 1)
 	s.Equal("Opportunity Attack", (*collected)[0].Name)
+}
+
+// A removed condition no longer hears movement. An orphaned handler would
+// keep offering swings for a member whose condition is gone.
+func (s *OpportunityAttackMeterSuite) TestARemovedConditionOffersNothing() {
+	s.place("fighter-1", "character", 5, 5)
+	s.place("wolf-1", "monster", 5, 6)
+
+	keeper := s.character("fighter-1", 1)
+	oa := NewOpportunityAttackCondition("fighter-1")
+	s.Require().NoError(oa.Apply(s.ctx, s.bus))
+	s.Require().NoError(oa.Remove(s.ctx, s.bus))
+
+	collected := s.triggers()
+	s.walkAway(castOf(s.readyCtx("fighter-1"), keeper.sheet), "wolf-1",
+		spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
+
+	s.Empty(*collected, "a removed condition must no longer be listening")
 }

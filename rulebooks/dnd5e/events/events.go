@@ -885,7 +885,9 @@ type ReactionTriggerEvent struct {
 
 	// Name is the offering condition's own display name, e.g.
 	// "Opportunity Attack". It lets the machine that surfaces the offer say
-	// what is being offered without resolving ConditionRef.
+	// what is being offered without resolving ConditionRef. It is empty when
+	// the offerer has no display catalog entry; Shield has none, because it is
+	// deliberately not promoted into status projection.
 	Name string
 
 	// TriggerKind identifies which reaction window fired.

@@ -284,12 +284,16 @@ func (o *OpportunityAttackCondition) onMovementChain(
 		}
 	}
 
+	// The name is read from the display catalog rather than copied here, so the
+	// offer and the status view can never disagree about what it is called.
+	display, _ := DisplayFor(*o.Ref())
+
 	// Predicate matched — publish the trigger event for the orchestrator.
 	triggerTopic := dnd5eEvents.ReactionTriggerTopic.On(o.bus)
 	if pubErr := triggerTopic.Publish(ctx, dnd5eEvents.ReactionTriggerEvent{
 		ReactorID:    o.MemberID,
 		ConditionRef: refs.Conditions.OpportunityAttack().String(),
-		Name:         "Opportunity Attack",
+		Name:         display.Name,
 		TriggerKind:  dnd5eEvents.TriggerKindMovementOA,
 		SourceEntity: event.EntityID,
 		Payload: dnd5eEvents.MovementChainEvent{
