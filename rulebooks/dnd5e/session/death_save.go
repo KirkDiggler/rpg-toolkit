@@ -187,11 +187,13 @@ func (m *Manager) DeathSave(ctx context.Context, in *DeathSaveInput) (*DeathSave
 	if err != nil {
 		return nil, fmt.Errorf("death save: %w", reportUnrecorded(scope, translate(err)))
 	}
-	recorded, err := scope.enc.Record(deathSaveRecord(in.Member, result))
+	recorded, err := scope.enc.RecordTrain(&encounter.RecordTrainInput{
+		Units: []encounter.TrainUnit{{Outcome: deathSaveRecord(in.Member, result)}},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("death save: %w", reportUnrecorded(scope, translate(err)))
 	}
-	if err := validateDeathSaveRecordSequence(recorded.Seq, pendingGlobalSeq); err != nil {
+	if err := validateDeathSaveRecordSequence(recorded.Units[0].Seq, pendingGlobalSeq); err != nil {
 		return nil, fmt.Errorf("death save: %w", reportUnrecorded(scope, err))
 	}
 	if err := assertDeathSaveContinuation(scope.enc, in.Member, result.Continuation); err != nil {
@@ -203,7 +205,7 @@ func (m *Manager) DeathSave(ctx context.Context, in *DeathSaveInput) (*DeathSave
 		return nil, fmt.Errorf("death save: %w", err)
 	}
 
-	return result.output(scope.deliveredSeq(in.Member, recorded.Seq), report, delivery), nil
+	return result.output(scope.deliveredSeq(in.Member, recorded.Units[0].Seq), report, delivery), nil
 }
 
 // validateDeathSaveRecordSequence keeps the append-order assertion internal.

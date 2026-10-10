@@ -53,7 +53,7 @@ func tellConcentration(actor string) func(*encounter.Encounter, concentration) e
 // attackLanded is what an attack landing recorded, for a verb that reports
 // it: the hit's record, and the roll-window beat a post-roll window told.
 type attackLanded struct {
-	hit    *encounter.RecordOutput
+	hit    *encounter.TrainLanded
 	window *encounter.RollWindowOutput
 }
 
@@ -89,58 +89,108 @@ func (m *Manager) attackLanding(
 	return l
 }
 
-// recordAttack is the attack story's record function.
+// recordAttack is the attack story's record function: it builds every unit
+// the output settled and tells them as ONE train.
 //
-// A lone strike records its hit unless it is the [resolution.StrikeOutcome]
-// Continued half of a post-hit pause, whose hit was told when it paused; then
-// its retaliation. A sequence records each settled step the same way, each
-// with its own concentration. It returns the hit's record for a verb that
-// reports one.
+// A lone strike is its hit, unless it is the [resolution.StrikeOutcome]
+// Continued half of a post-hit pause whose hit was told when it paused, then
+// its retaliation. A sequence is every settled step the same way, each with
+// its own concentration. One call, because a landing writes every sheet before
+// it records: asking who is standing between two swings would answer from the
+// end state of the whole output and tell the fall ahead of the blow that
+// caused it (rpg-toolkit#2002). It returns the lone hit's record for a verb
+// that reports one.
 func (m *Manager) recordAttack(
 	enc *encounter.Encounter, story windowStory, outcome resolution.Outcome, told concentration,
-) (*encounter.RecordOutput, error) {
+) (*encounter.TrainLanded, error) {
+	var units []encounter.TrainUnit
+	lone := false
 	switch o := outcome.(type) {
 	case resolution.StrikeOutcome:
 		if o.Continued {
-			return nil, recordRetaliation(enc, o.Retaliation, told)
+			retaliation, err := retaliationUnit(o.Retaliation, told)
+			if err != nil {
+				return nil, err
+			}
+			if retaliation != nil {
+				units = append(units, *retaliation)
+			}
+			break
 		}
-		hit, err := enc.Record(recordStrike(story.Attacker, story.Target, o,
-			attackRefFor(story.Definition), story.PresentationID, told.Checks, told.Breaks))
+		lone = true
+		units = append(units, encounter.TrainUnit{Outcome: recordStrike(story.Attacker, story.Target, o,
+			attackRefFor(story.Definition), story.PresentationID, told.Checks, told.Breaks)})
+		retaliation, err := retaliationUnit(o.Retaliation, concentration{})
 		if err != nil {
 			return nil, err
 		}
-		return hit, recordRetaliation(enc, o.Retaliation, concentration{})
+		if retaliation != nil {
+			units = append(units, *retaliation)
+		}
 	case resolution.SequenceOutcome:
-		return nil, recordSequence(enc, story, o)
+		var err error
+		if units, err = sequenceUnits(story, o); err != nil {
+			return nil, err
+		}
 	default:
 		return nil, fmt.Errorf("%w: attack produced %T", ErrInvalidWorld, outcome)
 	}
+
+	if len(units) == 0 {
+		if !told.empty() {
+			// Concentration is told behind a unit's beat; with no unit it
+			// could be recorded nowhere, and dropping it would lose a save.
+			return nil, fmt.Errorf("strike: %w: concentration with no beat to follow", ErrInvalidWorld)
+		}
+		return nil, nil
+	}
+	out, err := enc.RecordTrain(&encounter.RecordTrainInput{Units: units})
+	if err != nil {
+		return nil, translate(err)
+	}
+	if lone {
+		return &out.Units[0], nil
+	}
+	return nil, nil
 }
 
-// recordSequence writes ONE BEAT PER SWING, for the steps this output settled.
+// sequenceUnits is a sequence's settled steps as train units, in story order.
 //
 // Because a beat is a roll: every field the story keeps about an attack is
 // singular, so the goblin boss's Multiattack is two Struck/Missed beats, each
 // naming the COMPONENT that swung — looked up by the step's own action ref in
 // the attacker's list, never by position, because a resumed sequence reports
-// from the swing it paused on.
+// from the swing it paused on — and the SEQUENCE it swung inside, by the
+// story's own definition (rpg-toolkit#2002, T4).
 //
 // Each step carries its OWN concentration (Kirk's ruling, 2026-09-20), and the
 // output-level lists are empty for a sequence, so reading both places cannot
 // record one save twice. A Continued step's hit was told at its pause; it
-// records only its retaliation.
-func recordSequence(enc *encounter.Encounter, story windowStory, sequence resolution.SequenceOutcome) error {
+// contributes only its retaliation.
+func sequenceUnits(story windowStory, sequence resolution.SequenceOutcome) ([]encounter.TrainUnit, error) {
 	if len(sequence.Steps) == 0 {
 		// A finished sequence that swung nothing is a machine defect, and a
 		// silent return would look exactly like a turn where nothing was in
 		// reach.
-		return fmt.Errorf("strike: %w: %s swung nothing", ErrInvalidWorld, sequence.Action.String())
+		return nil, fmt.Errorf("strike: %w: %s swung nothing", ErrInvalidWorld, sequence.Action.String())
 	}
-	for index, step := range sequence.Steps {
+	if story.Definition.Ref != sequence.Action {
+		// The marker names the story's definition; a story for another
+		// action would label every swing with the wrong sequence.
+		return nil, fmt.Errorf("strike: %w: story is for %s, the sequence is %s",
+			ErrBadAttack, story.Definition.Ref.String(), sequence.Action.String())
+	}
+	identity := &encounter.SequenceIdentity{Ref: sequence.Action.String(), Name: story.Definition.Name}
+	units := make([]encounter.TrainUnit, 0, 2*len(sequence.Steps))
+	for _, step := range sequence.Steps {
 		told := concentration{Checks: step.ConcentrationChecks, Breaks: step.ConcentrationBreaks}
 		if step.Strike.Continued {
-			if err := recordRetaliation(enc, step.Strike.Retaliation, told); err != nil {
-				return err
+			retaliation, err := retaliationUnit(step.Strike.Retaliation, told)
+			if err != nil {
+				return nil, err
+			}
+			if retaliation != nil {
+				units = append(units, *retaliation)
 			}
 			continue
 		}
@@ -149,19 +199,22 @@ func recordSequence(enc *encounter.Encounter, story windowStory, sequence resolu
 			// Unreachable through resolution, which resolved these refs
 			// against this very list. Named anyway: a beat labelled with the
 			// wrong weapon is worse than a turn that failed.
-			return fmt.Errorf("strike: %w: %s swung %s, which the attacker does not carry",
+			return nil, fmt.Errorf("strike: %w: %s swung %s, which the attacker does not carry",
 				ErrBadAttack, sequence.Action.String(), step.Action.String())
 		}
-		recorded := recordStrike(story.Attacker, story.Target, step.Strike,
+		swing := recordStrike(story.Attacker, story.Target, step.Strike,
 			attackRefFor(component), "", told.Checks, told.Breaks)
-		if _, err := enc.Record(recorded); err != nil {
-			return fmt.Errorf("strike: step %d: %w", sequence.From+index, translate(err))
+		swing.Sequence = identity
+		units = append(units, encounter.TrainUnit{Outcome: swing})
+		retaliation, err := retaliationUnit(step.Strike.Retaliation, concentration{})
+		if err != nil {
+			return nil, err
 		}
-		if err := recordRetaliation(enc, step.Strike.Retaliation, concentration{}); err != nil {
-			return err
+		if retaliation != nil {
+			units = append(units, *retaliation)
 		}
 	}
-	return nil
+	return units, nil
 }
 
 // stepLanding is the one landing of a step story's output, paused or
@@ -222,22 +275,26 @@ func (m *Manager) stepLanding(
 // stepRecord is the step story's record function: one strike beat per
 // reaction the step provoked, named AS the reaction it was, then its
 // retaliation; a Continued reaction's hit was told at its pause, so it
-// records only its retaliation.
+// records only its retaliation. Every reaction of the step is ONE train: the
+// step is one landing, and a mover felled by the second reaction is told
+// after both.
 //
-// EVERY BEAT IS BUILT BEFORE ANYTHING IS WRITTEN. The only way building one
-// can fail is a reaction with no display name, and that refusal costs nothing
-// durable when it comes first.
+// EVERY UNIT IS BUILT BEFORE ANYTHING IS WRITTEN. The only ways building one
+// can fail are a reaction with no display name and a retaliation whose save
+// cannot be told, and those refusals cost nothing durable when they come
+// first.
 func stepRecord(moved resolution.MovementOutcome) (func(*encounter.Encounter, concentration) error, error) {
-	type told struct {
-		beat        *encounter.RecordInput
-		retaliation *resolution.RetaliationOutcome
-		continued   concentration
-	}
-	tells := make([]told, 0, len(moved.Reactions))
+	var units []encounter.TrainUnit
 	for _, reaction := range moved.Reactions {
 		own := concentration{Checks: reaction.ConcentrationChecks, Breaks: reaction.ConcentrationBreaks}
 		if reaction.Struck.Continued {
-			tells = append(tells, told{retaliation: reaction.Struck.Retaliation, continued: own})
+			retaliation, err := retaliationUnit(reaction.Struck.Retaliation, own)
+			if err != nil {
+				return nil, err
+			}
+			if retaliation != nil {
+				units = append(units, *retaliation)
+			}
 			continue
 		}
 		if reaction.ConditionName == "" {
@@ -256,49 +313,54 @@ func stepRecord(moved resolution.MovementOutcome) (func(*encounter.Encounter, co
 		// What the beat was taken AS — the only thing that explains why a
 		// fighter dealt damage on a skeleton's turn.
 		beat.Reaction = &encounter.ReactionIdentity{Ref: reaction.ConditionRef, Name: reaction.ConditionName}
-		tells = append(tells, told{beat: beat, retaliation: reaction.Struck.Retaliation})
+		units = append(units, encounter.TrainUnit{Outcome: beat})
+		retaliation, err := retaliationUnit(reaction.Struck.Retaliation, concentration{})
+		if err != nil {
+			return nil, err
+		}
+		if retaliation != nil {
+			units = append(units, *retaliation)
+		}
 	}
 	return func(enc *encounter.Encounter, _ concentration) error {
-		for _, t := range tells {
-			if t.beat != nil {
-				if _, err := enc.Record(t.beat); err != nil {
-					return err
-				}
-			}
-			if err := recordRetaliation(enc, t.retaliation, t.continued); err != nil {
-				return err
-			}
-		}
-		return nil
+		return recordTrain(enc, units)
 	}, nil
 }
 
-// recordRetaliation records the save and effects a taken post-hit reaction
-// imposed, on enc, with the concentration its damage tested. Nil records
-// nothing.
-func recordRetaliation(enc *encounter.Encounter, r *resolution.RetaliationOutcome, told concentration) error {
-	if r == nil {
+// recordTrain tells units as one train, and nothing when there are none.
+func recordTrain(enc *encounter.Encounter, units []encounter.TrainUnit) error {
+	if len(units) == 0 {
 		return nil
+	}
+	_, err := enc.RecordTrain(&encounter.RecordTrainInput{Units: units})
+	return translate(err)
+}
+
+// retaliationUnit is the save and effects a taken post-hit reaction imposed,
+// as an activation unit carrying the concentration its damage tested. Nil
+// builds nothing.
+func retaliationUnit(r *resolution.RetaliationOutcome, told concentration) (*encounter.TrainUnit, error) {
+	if r == nil {
+		return nil, nil
 	}
 	ref := SpellRef{Ref: r.Offer.Ref.String(), Name: r.Offer.Name}
 	save, err := castSave(resolution.CastTargetOutcome{TargetID: r.TargetID, Save: &r.Result}, r.Offer.Ref)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	results := make([]encounter.ActivationResult, 0, len(r.Result.Imposed))
 	for _, applied := range r.Result.Imposed {
 		result, e := imposedResult(applied, ref)
 		if e != nil {
-			return e
+			return nil, e
 		}
 		results = append(results, result)
 	}
-	_, err = enc.RecordActivation(&encounter.RecordActivationInput{
+	return &encounter.TrainUnit{Activation: &encounter.RecordActivationInput{
 		Actor: encounter.MemberID(r.Offer.ReactorID), Target: encounter.MemberID(r.TargetID),
 		Ability: encounter.ActivationIdentity{Ref: ref.Ref, Name: ref.Name}, Save: save, Results: results,
 		ConcentrationChecks: told.Checks, ConcentrationBreaks: told.Breaks,
-	})
-	return translate(err)
+	}}, nil
 }
 
 // openWindow poses a pause through [poseWindow] and tells the roll-window

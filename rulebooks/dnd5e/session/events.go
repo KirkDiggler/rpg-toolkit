@@ -1973,6 +1973,19 @@ func (r *beatReaction) toRef() (*ReactionRef, bool) {
 	return &ReactionRef{Ref: r.Ref, Name: r.Name}, true
 }
 
+// toSequence converts a decoded sequence identity with toRef's discipline: nil
+// is the lone swing and converts to nil and true, a present but incomplete one
+// reports false.
+func (r *beatReaction) toSequence() (*SequenceRef, bool) {
+	if r == nil {
+		return nil, true
+	}
+	if r.Ref == "" || r.Name == "" {
+		return nil, false
+	}
+	return &SequenceRef{Ref: r.Ref, Name: r.Name}, true
+}
+
 // windowOpenedBody decodes the composition's window_opened beat.
 //
 // The beat carries one entry per member asked, each with its own reaction
@@ -2090,7 +2103,7 @@ func structBody(payload []byte, wantAmount bool) EventBody {
 		// actually happened. The fold's attribution now arrives inside
 		// calculation.
 		case "beat", "actor", "targets", "roll", "total", "against", "amount", "critical",
-			"attack", "reaction", "damage_components", "advantage_sources", "disadvantage_sources",
+			"attack", "reaction", "sequence", "damage_components", "advantage_sources", "disadvantage_sources",
 			"presentation_id", "calculation":
 			if isJSONNull(value) {
 				return nil
@@ -2108,6 +2121,7 @@ func structBody(payload []byte, wantAmount bool) EventBody {
 		Critical bool          `json:"critical"`
 		Attack   beatAttack    `json:"attack"`
 		Reaction *beatReaction `json:"reaction"`
+		Sequence *beatReaction `json:"sequence"`
 		// PresentationID is REQUIRED TO BE NOTHING, unlike the death save's
 		// own token, and the difference is history rather than taste. That
 		// field shipped with the feature that writes it, so every death-save
@@ -2158,19 +2172,27 @@ func structBody(payload []byte, wantAmount bool) EventBody {
 	if !named {
 		return nil
 	}
+	// The sequence the swing was performed inside, present only on a
+	// multiattack's swing (encounter.SequenceIdentity). Absent is a lone swing
+	// and stays nil; a present-but-incomplete one is untyped, as a malformed
+	// reaction is.
+	sequence, named := p.Sequence.toSequence()
+	if !named {
+		return nil
+	}
 	if wantAmount {
 		return StruckBody{
 			Attacker: p.Actor, Target: p.Targets[0],
 			Roll: p.Roll, Total: p.Total, Against: p.Against, Damage: p.Amount,
 			Attack: p.Attack.toRef(), Critical: p.Critical,
 			DamageComponents: components,
-			Reaction:         reaction, PresentationID: p.PresentationID, Calculation: calculation,
+			Reaction:         reaction, Sequence: sequence, PresentationID: p.PresentationID, Calculation: calculation,
 		}
 	}
 	return MissedBody{
 		Attacker: p.Actor, Target: p.Targets[0],
 		Roll: p.Roll, Total: p.Total, Against: p.Against, Attack: p.Attack.toRef(),
-		Reaction: reaction, PresentationID: p.PresentationID, Calculation: calculation,
+		Reaction: reaction, Sequence: sequence, PresentationID: p.PresentationID, Calculation: calculation,
 	}
 }
 
@@ -2189,6 +2211,9 @@ func wardedEventBody(payload []byte) EventBody {
 		if value, present := outer[key]; !present || isJSONNull(value) {
 			return nil
 		}
+	}
+	if value, present := outer["sequence"]; present && isJSONNull(value) {
+		return nil
 	}
 	warded, ok := strictJSONObject(outer["warded"])
 	if !ok {
@@ -2213,7 +2238,9 @@ func wardedEventBody(payload []byte) EventBody {
 		Actor   string     `json:"actor"`
 		Targets []string   `json:"targets"`
 		Attack  beatAttack `json:"attack"`
-		Warded  struct {
+		// Sequence is the multiattack the blocked attempt was inside, if any.
+		Sequence *beatReaction `json:"sequence"`
+		Warded   struct {
 			Source string `json:"source"`
 			Save   struct {
 				Saver     string `json:"saver"`
@@ -2237,6 +2264,11 @@ func wardedEventBody(payload []byte) EventBody {
 		return nil
 	}
 
+	sequence, named := p.Sequence.toSequence()
+	if !named {
+		return nil
+	}
+
 	var calculation *RollCalculation
 	if raw, present := save["calculation"]; present {
 		if isJSONNull(raw) {
@@ -2253,7 +2285,7 @@ func wardedEventBody(payload []byte) EventBody {
 		Attacker: p.Actor, Target: p.Targets[0], Attack: p.Attack.toRef(),
 		Source: p.Warded.Source, Ability: p.Warded.Save.Ability,
 		Roll: p.Warded.Save.Roll, Total: p.Warded.Save.Total, DC: p.Warded.Save.DC,
-		Calculation: calculation,
+		Calculation: calculation, Sequence: sequence,
 	}
 }
 

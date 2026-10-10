@@ -1746,13 +1746,15 @@ func (m *Manager) settleOneFall(ctx context.Context, scope *writeScope, fallen s
 	// actor: the composition accepts a former member on this one kind. No
 	// targets: the composition adds every grantee to the beat's subjects
 	// itself.
-	if _, err := scope.enc.Record(&encounter.RecordInput{
-		Kind:  encounter.OutcomeExperienceGained,
-		Actor: encounter.MemberID(fallen),
-		Experience: &encounter.ExperienceDetail{
-			Member: fallen, Grants: grants,
+	if _, err := scope.enc.RecordTrain(&encounter.RecordTrainInput{Units: []encounter.TrainUnit{{
+		Outcome: &encounter.RecordInput{
+			Kind:  encounter.OutcomeExperienceGained,
+			Actor: encounter.MemberID(fallen),
+			Experience: &encounter.ExperienceDetail{
+				Member: fallen, Grants: grants,
+			},
 		},
-	}); err != nil {
+	}}}); err != nil {
 		return translate(err)
 	}
 
