@@ -120,11 +120,13 @@ type launchMonster struct {
 // formed last, one load-act-save (see the top of this file).
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrInvalidWorld (no dungeon, a dungeon
-// whose world or scenarios cannot be built, a party bigger than the seats),
-// ErrNoMemberID, ErrDuplicateMember (an id claimed twice), ErrSessionExists,
+// whose world or scenarios cannot be built, a party bigger than the seats, an
+// authored template the rulebook cannot assemble), ErrNoMemberID,
+// ErrDuplicateMember (an id claimed twice), ErrSessionExists,
 // ErrSeatedElsewhere, ErrNoCharacter, ErrBadCharacter, ErrNoRef, ErrBadRef,
-// ErrNoLoader, ErrUnknownContent, ErrNoFaction, ErrBadPosition, or
-// ErrSaveFailed with a populated report.
+// ErrNoLoader, ErrUnknownContent, ErrShadowedRef (an authored template named
+// for a rulebook monster), ErrNoFaction, ErrBadPosition, or ErrSaveFailed
+// with a populated report.
 func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("launch: %w", ErrNilInput)
@@ -345,7 +347,8 @@ func (m *Manager) refuseExistingSession(ctx context.Context, id string) error {
 func resolveLaunchMonsters(dungeon *dungeonspec.Compiled) ([]launchMonster, error) {
 	out := make([]launchMonster, 0, len(dungeon.Monsters))
 	for _, placement := range dungeon.Monsters {
-		sheet, err := instantiate(placement.MemberID, placement.Ref, placement.Actions)
+		sheet, err := instantiate(placement.MemberID, placement.Ref, placement.Actions,
+			templateFor(dungeon.Templates, placement.Ref))
 		if err != nil {
 			return nil, fmt.Errorf("monster %q: %w", placement.MemberID, err)
 		}

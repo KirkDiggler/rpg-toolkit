@@ -10,6 +10,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -70,7 +71,27 @@ import (
 // The ID is separate from the ref because a template cannot carry identity:
 // one skeleton entry makes five skeletons, and each needs its own name in the
 // encounter.
-func instantiate(id string, ref string, actions []string) (*monster.Data, error) {
+//
+// # A ref has two places it can resolve, and must resolve in exactly one
+//
+// A dungeon may author its own stat blocks (rpg-project#555): `templates:`
+// declares `guard`, and a placement names it as `dnd5e:monsters:guard`, the
+// same door a skeleton comes through (R2). So the ref is answered by the
+// rulebook's constructors OR by the template the caller found under the ref's
+// id — never by both:
+//
+//   - a constructor and no template is the rulebook monster, as it always was;
+//   - a template and no constructor is assembled by [monster.FromTemplate]
+//     over the rulebook base the template names, which is the only function
+//     that turns a template into a monster (R6);
+//   - both is [ErrShadowedRef], refused rather than picked, because either
+//     answer silently discards something somebody wrote;
+//   - neither is [ErrUnknownContent], as it always was.
+//
+// The placement's own `actions:` replace the result's weapons wholesale on
+// either path (R9). What comes out is an ordinary monster sheet: nothing after
+// this function learns that a template existed (R1).
+func instantiate(id string, ref string, actions []string, template *dungeonspec.TemplateSpec) (*monster.Data, error) {
 	if ref == "" {
 		return nil, ErrNoRef
 	}
@@ -107,13 +128,23 @@ func instantiate(id string, ref string, actions []string) (*monster.Data, error)
 	// It stays written this way so the lookup follows automatically if
 	// normalisation is ever added upstream, which is a cheap hedge rather
 	// than a guarantee.
-	build, ok := monsters.ByRef(parsed.String())
-	if !ok {
-		return nil, fmt.Errorf("%q: %w", ref, ErrUnknownContent)
-	}
+	build, constructed := monsters.ByRef(parsed.String())
 
-	built := build(id)
-	if built == nil {
+	var built *monster.Monster
+	switch {
+	case template != nil:
+		// The shared assembly refuses a template that shadows the rulebook,
+		// so launch and the authoring echo refuse it in one place.
+		built, err = assembleTemplate(id, parsed, *template)
+		if err != nil {
+			return nil, err
+		}
+	case constructed:
+		built = build(id)
+		if built == nil {
+			return nil, fmt.Errorf("%q: %w", ref, ErrUnknownContent)
+		}
+	default:
 		return nil, fmt.Errorf("%q: %w", ref, ErrUnknownContent)
 	}
 
@@ -152,26 +183,62 @@ func instantiate(id string, ref string, actions []string) (*monster.Data, error)
 // here answers to that id" are different things to tell a host, and
 // dungeonspec already refuses the first at author time.
 func arm(built *monster.Monster, actions []string) error {
-	ids := make([]weapons.WeaponID, 0, len(actions))
-	for _, action := range actions {
-		parsed, err := core.ParseString(action)
-		if err != nil {
-			return fmt.Errorf("%q: %w: %v", action, ErrBadRef, err)
-		}
-		if parsed.Module != refs.Module || parsed.Type != refs.TypeWeapons {
-			return fmt.Errorf("%q: %w", action, ErrUnknownContent)
-		}
-		id := weapons.WeaponID(parsed.ID)
-		if _, err := weapons.GetByID(id); err != nil {
-			return fmt.Errorf("%q: %w", action, ErrUnknownContent)
-		}
-		ids = append(ids, id)
+	ids, err := weaponIDsOf(actions)
+	if err != nil {
+		return err
 	}
 
 	if err := built.SetWeapons(ids); err != nil {
 		return fmt.Errorf("arming %q: %w", built.Name(), err)
 	}
 	return nil
+}
+
+// weaponIDsOf turns authored weapon refs into catalogue ids, refusing as
+// [arm] documents: a malformed ref is [ErrBadRef], anything that is not a
+// weapon the catalogue knows is [ErrUnknownContent]. A placement's `actions:`
+// and a template's are the same refs held to the same refusals, so they are
+// read by this one function.
+func weaponIDsOf(actions []string) ([]weapons.WeaponID, error) {
+	ids := make([]weapons.WeaponID, 0, len(actions))
+	for _, action := range actions {
+		parsed, err := core.ParseString(action)
+		if err != nil {
+			return nil, fmt.Errorf("%q: %w: %v", action, ErrBadRef, err)
+		}
+		if parsed.Module != refs.Module || parsed.Type != refs.TypeWeapons {
+			return nil, fmt.Errorf("%q: %w", action, ErrUnknownContent)
+		}
+		id := weapons.WeaponID(parsed.ID)
+		if _, err := weapons.GetByID(id); err != nil {
+			return nil, fmt.Errorf("%q: %w", action, ErrUnknownContent)
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+// templateFor is the dungeon's authored template a placement's ref names, or
+// nil when it names none (rpg-project#555 R2).
+//
+// A template is referenced as `dnd5e:monsters:<id>`, and the id is everything
+// after the second colon, so only a ref on that route can name one: a
+// homebrew ref whose id happens to be `guard` does not reach this dungeon's
+// guard. A ref that does not parse names no template; [instantiate] refuses
+// it as itself.
+func templateFor(templates map[string]dungeonspec.TemplateSpec, ref string) *dungeonspec.TemplateSpec {
+	if len(templates) == 0 {
+		return nil
+	}
+	parsed, err := core.ParseString(ref)
+	if err != nil || parsed.Module != refs.Module || parsed.Type != refs.TypeMonsters {
+		return nil
+	}
+	spec, ok := templates[parsed.ID]
+	if !ok {
+		return nil
+	}
+	return &spec
 }
 
 // projectCharacter asks resolution what this character is, and takes back an
