@@ -873,12 +873,8 @@ func (e *Encounter) appendTrainAndNotice(
 	// The stance change is told in place, behind the blow that caused it, but
 	// no ending closes between two units: the first one asked for is parked
 	// and evaluated once, after the last unit (T5).
-	// A nested train (a driven strike recorded from inside a deed's consult)
-	// runs under its own hold: it saves the outer's and restores it on the way
-	// out, so neither can see or consume the other's.
-	outerHold, outerHeld, outerDrives := e.holdEndings, e.heldEnding, e.deferredDrives
-	e.holdEndings, e.heldEnding, e.deferredDrives = false, nil, nil
-	defer func() { e.holdEndings, e.heldEnding, e.deferredDrives = outerHold, outerHeld, outerDrives }()
+	// Whatever a failure leaves parked is dropped on the way out.
+	defer func() { e.holdEndings, e.heldEnding, e.deferredDrives = false, nil, nil }()
 
 	for i, unit := range units {
 		for j, beat := range unit.beats {
