@@ -360,6 +360,14 @@ func (s *PauseTestSuite) TestAStalePauseVersionIsRefused() {
 		_, lerr := encounter.LoadEncounter(loadInput(data, &pausingMover{}, &downList{}))
 		s.Require().ErrorIs(lerr, encounter.ErrStalePause, "version %d", version)
 	}
+
+	// THE VERSION IS ASKED FIRST. A stale pause that is also malformed is
+	// refused as stale, not as whichever field happened to disagree.
+	data := enc.ToData()
+	data.Pause.Version = encounter.PauseVersion + 1
+	data.Pause.Kind = "cast"
+	_, lerr := encounter.LoadEncounter(loadInput(data, &pausingMover{}, &downList{}))
+	s.Require().ErrorIs(lerr, encounter.ErrStalePause, "the version wins over every other refusal")
 }
 
 // TestAPauseWithTheWrongArmIsRefused — the kind decides the arm. A turn

@@ -601,19 +601,23 @@ type ReactionIdentity struct {
 	Name string
 }
 
-// RecordOutput reports where the outcome landed in the story.
+// RecordOutput reports where the outcome landed in the story. It is also what
+// [Encounter.TellConcentration] returns, which writes no outcome beat.
 type RecordOutput struct {
 	// IntelDeltas maps member IDs to their updated percepts after any driven
 	// monster turns caused by noticing the recorded outcome's consequences.
 	IntelDeltas map[MemberID]*IntelDelta
 
-	// Seq is the story sequence of the recorded beat.
+	// Seq is the story sequence of the recorded beat. ZERO from
+	// [Encounter.TellConcentration], which wrote no outcome beat.
 	Seq uint64
 
 	// FollowUpSeqs are the sequences of the beats appended after the outcome
 	// for [RecordInput.ConcentrationChecks] and then
 	// [RecordInput.ConcentrationBreaks], in append order. Empty when the
-	// outcome asked for no check and broke nobody's concentration.
+	// outcome asked for no check and broke nobody's concentration. From
+	// [Encounter.TellConcentration] it lists EVERY beat that call appended,
+	// checks first, then breaks, in append order.
 	//
 	// They are reported SEPARATELY from Seq rather than folded into it,
 	// because Seq answers a question the caller actually asked — where the
