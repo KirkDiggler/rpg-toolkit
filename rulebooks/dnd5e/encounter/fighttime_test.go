@@ -126,7 +126,7 @@ func (s *FightTimeTestSuite) TestADeedAgesWhileTheFightRuns() {
 	driver := &scriptedDriver{}
 	enc := s.scene(driver)
 
-	_, err := enc.Record(&encounter.RecordInput{
+	_, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeMissed, Actor: alice, Targets: []encounter.MemberID{goblin},
 		Values:      map[encounter.OutcomeValue]int{encounter.ValueRoll: 3, encounter.ValueTotal: 8, encounter.ValueAgainst: 15},
 		Calculation: attackCalculation(3, 5, 0),

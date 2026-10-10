@@ -76,7 +76,7 @@ func (s *RecordCastSuite) TestOneHitReadsStruckSavedEndedRemoved() {
 	enc := s.scene(standing)
 	callsBefore := standing.calls
 
-	out, err := enc.Record(theSkeletonHits(brokenByDamage()))
+	out, err := recordOne(enc, theSkeletonHits(brokenByDamage()))
 	s.Require().NoError(err)
 	s.Require().Len(out.FollowUpSeqs, 4)
 	s.Equal(callsBefore+1, standing.calls, "noticeDown is consulted once for the whole train")
@@ -96,7 +96,7 @@ func (s *RecordCastSuite) TestOneHitReadsStruckSavedEndedRemoved() {
 func (s *RecordCastSuite) TestTheConcentrationEndedPayload() {
 	enc := s.scene(everyoneStanding{})
 
-	out, err := enc.Record(theSkeletonHits(brokenByDamage()))
+	out, err := recordOne(enc, theSkeletonHits(brokenByDamage()))
 	s.Require().NoError(err)
 
 	entries := s.storyEntries(enc, castBard, out.FollowUpSeqs)
@@ -128,7 +128,7 @@ func (s *RecordCastSuite) TestAnUngatedBreakAppendsNoSavedBeat() {
 			broken := brokenByDamage()
 			broken.Reason = reason
 			broken.Save = nil
-			out, err := enc.Record(theSkeletonHits(broken))
+			out, err := recordOne(enc, theSkeletonHits(broken))
 			s.Require().NoError(err)
 
 			names := s.beatNames(s.storyEntries(enc, castBard, out.FollowUpSeqs))
@@ -161,7 +161,7 @@ func (s *RecordCastSuite) TestABreakRemovalStillRefusesRollFacts() {
 			mangle(&removed)
 			broken.Removed = []encounter.ActivationResult{removed}
 
-			_, err = enc.Record(theSkeletonHits(broken))
+			_, err = recordOne(enc, theSkeletonHits(broken))
 			s.Require().ErrorIs(err, encounter.ErrInvalidData)
 
 			after, err := enc.Story(&encounter.StoryInput{Audience: castBard})
@@ -180,7 +180,7 @@ func (s *RecordCastSuite) TestABreakStripsOnlyRemovals() {
 	broken := brokenByDamage()
 	broken.Removed = []encounter.ActivationResult{mockedCondition()}
 
-	_, err := enc.Record(theSkeletonHits(broken))
+	_, err := recordOne(enc, theSkeletonHits(broken))
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 }
 
@@ -213,7 +213,7 @@ func (s *RecordCastSuite) TestABreakSaysWhoAndWhyOrIsRefused() {
 			broken := brokenByDamage()
 			tc.mangle(&broken)
 
-			_, err := enc.Record(theSkeletonHits(broken))
+			_, err := recordOne(enc, theSkeletonHits(broken))
 			s.Require().ErrorIs(err, tc.target)
 
 			_, err = enc.RecordCast(&encounter.RecordCastInput{
@@ -233,7 +233,7 @@ func (s *RecordCastSuite) TestAClosedEncounterRecordsNoBreak() {
 	_, err := enc.End(&encounter.EndInput{Ending: "withdrawn"})
 	s.Require().NoError(err)
 
-	_, err = enc.Record(theSkeletonHits(brokenByDamage()))
+	_, err = recordOne(enc, theSkeletonHits(brokenByDamage()))
 	s.Require().ErrorIs(err, encounter.ErrClosed)
 
 	_, err = enc.RecordCast(&encounter.RecordCastInput{
@@ -289,7 +289,7 @@ func (s *RecordCastSuite) TestTwoBreaksKeepTheirOrder() {
 		}},
 	}
 
-	out, err := enc.Record(theSkeletonHits(brokenByDamage(), second))
+	out, err := recordOne(enc, theSkeletonHits(brokenByDamage(), second))
 	s.Require().NoError(err)
 
 	entries := s.storyEntries(enc, castBard, out.FollowUpSeqs)
@@ -306,7 +306,7 @@ func (s *RecordCastSuite) TestTwoBreaksKeepTheirOrder() {
 func (s *RecordCastSuite) TestAnOutcomeWithNoBreakIsByteIdenticalToBefore() {
 	enc := s.scene(everyoneStanding{})
 
-	out, err := enc.Record(theSkeletonHits())
+	out, err := recordOne(enc, theSkeletonHits())
 	s.Require().NoError(err)
 	s.Empty(out.FollowUpSeqs, "a strike that broke nothing appends nothing after itself")
 
@@ -336,7 +336,7 @@ func (s *RecordCastSuite) TestAMadeCheckIsOneSavedBeatAndNothingElse() {
 
 	hit := theSkeletonHits()
 	hit.ConcentrationChecks = []encounter.ConcentrationCheck{theBardHeldOn()}
-	out, err := enc.Record(hit)
+	out, err := recordOne(enc, hit)
 	s.Require().NoError(err)
 	s.Require().Len(out.FollowUpSeqs, 1)
 
@@ -390,7 +390,7 @@ func (s *RecordCastSuite) TestOneTrainCoversBothAnswers() {
 
 			hit := theSkeletonHits(broken)
 			hit.ConcentrationChecks = []encounter.ConcentrationCheck{held}
-			out, err := enc.Record(hit)
+			out, err := recordOne(enc, hit)
 			s.Require().NoError(err)
 
 			seqs := append([]uint64{out.Seq}, out.FollowUpSeqs...)
@@ -433,7 +433,7 @@ func (s *RecordCastSuite) TestAFailedCheckIsNotACheck() {
 
 	hit := theSkeletonHits()
 	hit.ConcentrationChecks = []encounter.ConcentrationCheck{held}
-	_, err = enc.Record(hit)
+	_, err = recordOne(enc, hit)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 
 	after, err := enc.Story(&encounter.StoryInput{Audience: castBard})
@@ -463,7 +463,7 @@ func (s *RecordCastSuite) TestACheckSaysWhatWasAtStakeOrIsRefused() {
 
 			hit := theSkeletonHits()
 			hit.ConcentrationChecks = []encounter.ConcentrationCheck{held}
-			_, err := enc.Record(hit)
+			_, err := recordOne(enc, hit)
 			s.Require().ErrorIs(err, tc.target)
 
 			_, err = enc.RecordCast(&encounter.RecordCastInput{
@@ -502,7 +502,7 @@ func (s *RecordCastSuite) TestAClosedEncounterRecordsNoCheck() {
 
 	hit := theSkeletonHits()
 	hit.ConcentrationChecks = []encounter.ConcentrationCheck{theBardHeldOn()}
-	_, err = enc.Record(hit)
+	_, err = recordOne(enc, hit)
 	s.Require().ErrorIs(err, encounter.ErrClosed)
 }
 
@@ -534,7 +534,7 @@ func (s *RecordCastSuite) TestTwoFailedChecksNeverPool() {
 		}},
 	}
 
-	out, err := enc.Record(theSkeletonHits(brokenByDamage(), fighterBreak))
+	out, err := recordOne(enc, theSkeletonHits(brokenByDamage(), fighterBreak))
 	s.Require().NoError(err)
 
 	entries := s.storyEntries(enc, castBard, out.FollowUpSeqs)
@@ -550,9 +550,9 @@ func (s *RecordCastSuite) TestTwoFailedChecksNeverPool() {
 }
 
 // TestTellConcentrationAppendsTheTrainRecordWould is ruling E6's whole claim:
-// TellConcentration is Record's train with the outcome taken out. The same
+// TellConcentration is a train of one with the outcome taken out. The same
 // checks and breaks told behind a strike and told on their own land as the
-// same beats, in the same order, to the same audience, and FollowUpSeqs names
+// same beats, in the same order, to the same audience, and Seqs names
 // them the same way — offset by exactly the one struck beat the tell does not
 // write.
 func (s *RecordCastSuite) TestTellConcentrationAppendsTheTrainRecordWould() {
@@ -562,7 +562,7 @@ func (s *RecordCastSuite) TestTellConcentrationAppendsTheTrainRecordWould() {
 	recorded := s.scene(everyoneStanding{})
 	hit := theSkeletonHits(breaks...)
 	hit.ConcentrationChecks = checks
-	viaRecord, err := recorded.Record(hit)
+	viaRecord, err := recordOne(recorded, hit)
 	s.Require().NoError(err)
 
 	told := s.scene(everyoneStanding{})
@@ -571,16 +571,15 @@ func (s *RecordCastSuite) TestTellConcentrationAppendsTheTrainRecordWould() {
 	})
 	s.Require().NoError(err)
 
-	s.Zero(viaTell.Seq, "a tell has no outcome beat to report")
-	s.Require().Len(viaTell.FollowUpSeqs, len(viaRecord.FollowUpSeqs))
-	s.Require().NotEmpty(viaTell.FollowUpSeqs)
-	for i := range viaTell.FollowUpSeqs {
-		s.Equal(viaRecord.FollowUpSeqs[i]-1, viaTell.FollowUpSeqs[i],
-			"follow-up %d sits where Record's does, less the struck beat", i)
+	s.Require().Len(viaTell.Seqs, len(viaRecord.FollowUpSeqs))
+	s.Require().NotEmpty(viaTell.Seqs)
+	for i := range viaTell.Seqs {
+		s.Equal(viaRecord.FollowUpSeqs[i]-1, viaTell.Seqs[i],
+			"follow-up %d sits where the train's does, less the struck beat", i)
 	}
 
 	recordEntries := s.storyEntries(recorded, castBard, viaRecord.FollowUpSeqs)
-	tellEntries := s.storyEntries(told, castBard, viaTell.FollowUpSeqs)
+	tellEntries := s.storyEntries(told, castBard, viaTell.Seqs)
 	s.Equal(
 		[]string{"saved", "saved", "concentration_ended", "condition-removed", "condition-removed"},
 		s.beatNames(tellEntries),

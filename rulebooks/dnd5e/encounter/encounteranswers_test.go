@@ -404,16 +404,16 @@ func (s *EncounterAnswersSuite) TestAnExperienceBeatNamesAFallenMonsterThatExite
 		Member: string(goblin),
 		Grants: []encounter.ExperienceGrant{{Character: string(alice), Amount: 50, Total: 350}},
 	}
-	out, err := enc.Record(&encounter.RecordInput{Kind: encounter.OutcomeExperienceGained, Actor: goblin, Experience: grant})
+	out, err := recordOne(enc, &encounter.RecordInput{Kind: encounter.OutcomeExperienceGained, Actor: goblin, Experience: grant})
 	s.Require().NoError(err, "a former member is the cause of its own grant")
 	s.NotZero(out.Seq)
 
-	_, err = enc.Record(&encounter.RecordInput{Kind: encounter.OutcomeExperienceGained, Actor: "stranger", Experience: grant})
+	_, err = recordOne(enc, &encounter.RecordInput{Kind: encounter.OutcomeExperienceGained, Actor: "stranger", Experience: grant})
 	s.Require().ErrorIs(err, encounter.ErrNotMember, "a never-member is nobody")
 
 	// A bought beat has no attack guard ahead of the actor check, so this is
 	// the actor rule itself answering.
-	_, err = enc.Record(&encounter.RecordInput{
+	_, err = recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeBought, Actor: goblin, Targets: []encounter.MemberID{alice},
 		Trade: &encounter.TradeDetail{ItemType: "weapon", ItemID: "longsword", Quantity: 1},
 	})

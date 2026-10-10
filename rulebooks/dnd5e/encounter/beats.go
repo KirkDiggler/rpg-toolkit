@@ -10,7 +10,7 @@ package encounter
 //
 // Not every beat is here. A beat whose kind belongs beside its verb is
 // declared there ([BeatCast], [BeatSighted], [BeatAnswered], ...), and the
-// outcome beats a rulebook hands [Encounter.Record] carry their [OutcomeKind]
+// outcome beats a rulebook hands [Encounter.RecordTrain] carry their [OutcomeKind]
 // ([OutcomeStruck], [OutcomeDown], ...) as the beat.
 const (
 	// BeatSceneOpened is the first beat of every encounter: the scene its

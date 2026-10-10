@@ -69,6 +69,20 @@ func compileEndings(endings []EndingInput, f *field) []declaredEnding {
 // intel, and record. Construct via NewEncounter or LoadEncounter; the zero
 // value is unusable.
 type Encounter struct {
+	// holdEndings defers every close and every standing consult while a train
+	// lands a unit's deed. The first ending asked for is parked in heldEnding
+	// and the train closes with it after the last unit; a consult only answers
+	// (noticeDown tells nothing). So neither an ending nor a fall is told
+	// between two units' beats, while a fight the deed forms still forms in
+	// place.
+	// Unexported and never persisted: it is set and cleared inside one verb.
+	holdEndings bool
+	heldEnding  *heldEnding
+
+	// deferredDrives are the fights a held deed formed, whose first slot is
+	// driven by the train's post-train pass instead of by the formation.
+	deferredDrives []*clock.Turn
+
 	// canvas is THE MAP: one spatial room spanning the whole dungeon, in
 	// dungeon-absolute cells, with every authored wall registered on it as an
 	// absolute boundary edge (rpg-toolkit#1106).
@@ -391,7 +405,7 @@ func (e *Encounter) appendBeat(in *record.AppendInput) (*record.AppendOutput, er
 // NextStorySeq returns the global sequence the next successful story append
 // will use. It is a read: it does not reserve, increment, or append anything.
 // Encounter ingress is single-command in v1; this method makes no promise for a
-// future host that allows concurrent writers between this read and Record.
+// future host that allows concurrent writers between this read and RecordTrain.
 func (e *Encounter) NextStorySeq() (uint64, error) {
 	next, err := e.story.NextSeq()
 	if err != nil {
@@ -1469,11 +1483,29 @@ func (e *Encounter) closeWith(key string, at uint64, audience ...MemberID) (*Out
 	return e.closeWithEnded(key, at, nil, audience...)
 }
 
+// heldEnding is the ending a train's deed asked for, parked until the train's
+// last unit has been told.
+type heldEnding struct {
+	key      string
+	at       uint64
+	ended    map[MemberID][]interface{}
+	audience []MemberID
+}
+
 // closeWithEnded is [Encounter.closeWith] with what the ending took off each
 // member carried on the ended beat (`ended`, omitted when nil).
 func (e *Encounter) closeWithEnded(
 	key string, at uint64, ended map[MemberID][]interface{}, audience ...MemberID,
 ) (*Outcome, error) {
+	// A train is landing a deed: park the first ending and answer as if it had
+	// fired. The train closes with it after its last unit (see
+	// appendTrainAndNotice); nothing here is stored.
+	if e.holdEndings {
+		if e.heldEnding == nil {
+			e.heldEnding = &heldEnding{key: key, at: at, ended: ended, audience: audience}
+		}
+		return &Outcome{Ending: key, At: at}, nil
+	}
 	// A reaction can finish the encounter while a turn or directed walk is
 	// suspended. No continuation survives an ending, and closed persisted worlds
 	// must never carry resumable work.

@@ -588,7 +588,7 @@ func (s *StandingSuite) TestACorpseIsStillOnTheMapAndInTheRoster() {
 	s.Equal(cellAt(0, 10), s.positionOf(enc, goblin),
 		"still on the map, at the cell it fell on")
 
-	_, err := enc.Record(&encounter.RecordInput{
+	_, err := recordOne(enc, &encounter.RecordInput{
 		Kind:    encounter.OutcomeStruck,
 		Actor:   alice,
 		Targets: []encounter.MemberID{goblin},
@@ -617,7 +617,7 @@ func (s *StandingSuite) TestACorpseIsStillOnTheMapAndInTheRoster() {
 func (s *StandingSuite) TestNobodyCanPushADownBeatIn() {
 	enc := s.pair(&downList{})
 
-	_, err := enc.Record(&encounter.RecordInput{Kind: encounter.OutcomeDown, Actor: alice})
+	_, err := recordOne(enc, &encounter.RecordInput{Kind: encounter.OutcomeDown, Actor: alice})
 
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 }

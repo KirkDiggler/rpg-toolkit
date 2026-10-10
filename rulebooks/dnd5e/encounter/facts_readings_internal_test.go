@@ -94,7 +94,7 @@ func readingsEnc(t *testing.T, watcherAlliedToParty bool) *Encounter {
 // strike lands one hit from `actor` on `target`.
 func strike(t *testing.T, enc *Encounter, actor, target string) {
 	t.Helper()
-	_, err := enc.Record(&RecordInput{
+	_, err := recordOne(enc, &RecordInput{
 		Kind: OutcomeStruck, Actor: MemberID(actor), Targets: []MemberID{MemberID(target)},
 		Values: map[OutcomeValue]int{ValueAmount: 3},
 	})

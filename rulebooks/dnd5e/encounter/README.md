@@ -221,7 +221,7 @@ no round of the world, while staying on the map, in the roster, and recordable
 against. Answer only about the members you are asked about; a name that was not
 in the question is refused as a mis-wiring rather than ignored.
 
-`Record` asks too, after writing its own beat. It is the one verb whose beat can
+`RecordTrain` asks too, after writing its last unit's beats. It is the one verb whose beats can
 CHANGE who is standing, so the killing blow notices its own kill: the strike, the
 body, and the `ByDefeat` ending all land in that one call, in that order. Every
 other caller of the consult is a verb looking at a world something else changed.
