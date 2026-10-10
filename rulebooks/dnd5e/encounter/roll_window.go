@@ -123,7 +123,7 @@ func (e *Encounter) RecordRollWindow(in *RollWindowInput) (*RollWindowOutput, er
 		return nil, fmt.Errorf("record roll window: offer ref: %w", ErrInvalidData)
 	}
 	if in.Offer.Name == "" {
-		// The same refusal Record keeps for a reaction's name: a beat whose
+		// The same refusal RecordTrain keeps for a reaction's name: a beat whose
 		// label is empty is a line in the story with nothing to say, and the
 		// name is authored above rather than derived from the ref.
 		return nil, fmt.Errorf("record roll window: offer name: %w", ErrInvalidData)

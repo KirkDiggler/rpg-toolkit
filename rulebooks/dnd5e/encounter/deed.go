@@ -87,7 +87,7 @@ const DeedFled = "fled"
 // tell. No use case has paid for more than one yet.
 //
 // A SPELL COMES THROUGH HERE TOO (rpg-project#493, R5; [hostileIntent]).
-// [Encounter.Record]'s struck and missed kinds are one door and
+// [Encounter.RecordTrain]'s struck and missed kinds are one door and
 // [Encounter.RecordCast] is the other, and the cast's door is not any one of
 // its arms: a spell attack, a save asked against a harmful effect, and a
 // delivery that lands its harm with no gate at all each land the same

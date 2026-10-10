@@ -42,12 +42,15 @@ func (e *Encounter) downNow() (map[MemberID]bool, error) {
 
 type participationPassInput struct {
 	// newlyActive names clocks whose active slot was created before this pass,
-	// such as EndTurn's successor. Mid-turn Record supplies none.
+	// such as EndTurn's successor. Mid-turn RecordTrain supplies none.
 	newlyActive []*clock.Turn
 	// deferReconcile keeps a one-sided bubble in place for the same call that
 	// records a stabilized or recovered Death Save. Its explicit continuation
 	// keeps control until the next turn-settlement boundary.
 	deferReconcile bool
+	// held is the ending a train's deed asked for. It rides on this one pass,
+	// so a nested train driven by the pass can neither see nor consume it.
+	held *heldEnding
 }
 
 // noticeDown performs one complete participation pass. The historical name is
@@ -72,6 +75,12 @@ func (e *Encounter) noticeDown(
 	participation, err := e.participationNow()
 	if err != nil {
 		return nil, nil, err
+	}
+	// A train is landing a deed: the question is asked, so a fight forming
+	// here still classifies its members by who is standing, but nothing is
+	// told, removed or closed. The train asks again once, after its last unit.
+	if e.holdEndings {
+		return participation, nil, nil
 	}
 	down := participation.down
 
@@ -103,6 +112,16 @@ func (e *Encounter) noticeDown(
 	if e.outcome == nil && participation.assessment.PartyDefeated {
 		if _, cerr := e.closeWith(partyDefeatedEnding, uint64(e.clock.ToData().HighWater)); cerr != nil {
 			return nil, nil, fmt.Errorf("participation party defeat: %w", cerr)
+		}
+		return participation, nil, nil
+	}
+
+	// The ending a train's deed asked for follows the down beats and precedes
+	// every turn transfer and every driven monster turn. Party defeat, above,
+	// has already won when it applies.
+	if in.held != nil && e.outcome == nil {
+		if _, cerr := e.closeWithEnded(in.held.key, in.held.at, in.held.ended, in.held.audience...); cerr != nil {
+			return nil, nil, fmt.Errorf("held ending %q: %w", in.held.key, cerr)
 		}
 		return participation, nil, nil
 	}
@@ -206,7 +225,7 @@ func (e *Encounter) noticeDown(
 	}
 
 	// Drive only slots that became active in this pass. An already-active slot
-	// whose mid-turn Record changes to AutoPass remains active until its ruled
+	// whose mid-turn RecordTrain changes to AutoPass remains active until its ruled
 	// continuation explicitly settles the turn.
 	for _, bubble := range settlementOrder {
 		if !toSettle[bubble] {

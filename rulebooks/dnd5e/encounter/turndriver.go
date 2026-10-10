@@ -615,7 +615,7 @@ func (RefusingAnnouncer) Announce(context.Context, *Encounter, []Boundary) error
 // cannot import the rulebook (C1), so it cannot roll to hit, apply damage,
 // or decide what a "shortsword" is. What it CAN do is hand the capability
 // everything it needs to decide for itself and act — including the live
-// *Encounter, so a successful strike can call [Encounter.Record] itself,
+// *Encounter, so a successful strike can call [Encounter.RecordTrain] itself,
 // the same public verb any other caller uses to put a struck/missed beat in
 // the story (and, through it, the same [Encounter.noticeDown] consult every
 // other route to a beat already runs).
@@ -627,7 +627,7 @@ func (RefusingAnnouncer) Announce(context.Context, *Encounter, []Boundary) error
 type Striker interface {
 	// Strike resolves attacker's attack against target using action — one
 	// of attacker's own [ActionView.Ref] values — and records the outcome
-	// itself via [Encounter.Record]. Errors here are STRIKER MALFUNCTIONS
+	// itself via [Encounter.RecordTrain]. Errors here are STRIKER MALFUNCTIONS
 	// (a resolution failure, a corrupt sheet) and abort the caller's whole
 	// verb exactly as a [Driver.Act] error does; a miss is not an
 	// error — it is an ordinary [OutcomeMissed] recorded the same as a hit.
@@ -662,7 +662,7 @@ type Striker interface {
 // over. Refused at both doors (ErrNoMover).
 type Mover interface {
 	// Move announces one step and resolves whatever reacts to it, recording
-	// any resulting beats itself via [Encounter.Record] — the same way
+	// any resulting beats itself via [Encounter.RecordTrain] — the same way
 	// [Striker.Strike] records its own. What the step IS, including why it is
 	// happening, is [MoveStep].
 	//

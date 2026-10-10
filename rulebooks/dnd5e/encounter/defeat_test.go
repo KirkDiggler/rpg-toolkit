@@ -273,7 +273,7 @@ func (s *DefeatSuite) TestTheFightEndsAndNobodyLeaves() {
 	s.Len(members, 3, "the fight ended; the roster did not")
 	s.Equal(fell, s.positionOf(enc, goblin), "still where it fell")
 
-	_, err = enc.Record(&encounter.RecordInput{
+	_, err = recordOne(enc, &encounter.RecordInput{
 		Kind:    encounter.OutcomeStruck,
 		Actor:   alice,
 		Targets: []encounter.MemberID{goblin},

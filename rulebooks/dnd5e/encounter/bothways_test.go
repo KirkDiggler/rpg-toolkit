@@ -94,22 +94,38 @@ func (s *BothWaysSuite) yard(
 func (s *BothWaysSuite) open(
 	field encounter.FieldInput, members []encounter.MemberInput,
 ) *encounter.Encounter {
+	return s.openWith(field, members, withdrawn())
+}
+
+// openWith is open with the scene's endings named.
+func (s *BothWaysSuite) openWith(
+	field encounter.FieldInput, members []encounter.MemberInput, endings ...encounter.EndingInput,
+) *encounter.Encounter {
+	return s.openDriven(field, members, passDriver{}, passStriker{}, s.standing, endings...)
+}
+
+// openDriven is openWith with the monsters' driver, striker and standing named.
+func (s *BothWaysSuite) openDriven(
+	field encounter.FieldInput, members []encounter.MemberInput,
+	driver encounter.Driver, striker encounter.Striker, standing encounter.StandingWithParticipation,
+	endings ...encounter.EndingInput,
+) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field:     field,
 		Members:   members,
-		Endings:   []encounter.EndingInput{withdrawn()},
+		Endings:   endings,
 		Retention: encounter.RetentionUnbounded,
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      s.standing,
+			Standing:      standing,
 			Initiative:    orderAsGiven{},
-			Driver:        passDriver{},
+			Driver:        driver,
 			CheckResolver: findsNothing{},
 			Witness:       nobodyPerceives{},
 			Actors: encounter.Actors{
-				Striker:   passStriker{},
+				Striker:   striker,
 				Mover:     quietMover{},
 				Announcer: quietAnnouncer{},
 			},
@@ -400,7 +416,7 @@ func (s *BothWaysSuite) TestAttackingANeutralCampTurnsItAndFormsTheFight() {
 	s.Require().Equal(encounter.StanceNeutral, s.stance(enc, bwGoblins, encounter.FactionParty))
 	s.Require().Equal(encounter.ClockWorld, s.clockOf(enc, alice), "precondition: nobody is fighting")
 
-	_, err := enc.Record(&encounter.RecordInput{
+	_, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{bwScout},
 		Values: map[encounter.OutcomeValue]int{encounter.ValueAmount: 7},
 	})
@@ -449,7 +465,7 @@ func (s *BothWaysSuite) TestAnAlliedPairIsNotTurnedByAnAttack() {
 		[]encounter.MemberInput{player(alice, 0, 1), monster(bwScout, bwGoblins, 4, 1)},
 	)
 
-	_, err := enc.Record(&encounter.RecordInput{
+	_, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{bwScout},
 		Values: map[encounter.OutcomeValue]int{encounter.ValueAmount: 7},
 	})
@@ -483,7 +499,7 @@ func (s *BothWaysSuite) TestAWorldNPCIsNotATarget() {
 	s.Require().NoError(err)
 
 	s.Run("a swing at one is refused by name", func() {
-		_, rerr := enc.Record(&encounter.RecordInput{
+		_, rerr := recordOne(enc, &encounter.RecordInput{
 			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{bwVendor},
 			Values: map[encounter.OutcomeValue]int{encounter.ValueAmount: 7},
 		})
@@ -581,7 +597,7 @@ func (s *BothWaysSuite) TestTheBetrayedTruce() {
 	s.Require().Equal(encounter.StanceNeutral, s.stance(enc, bwGoblins, encounter.FactionParty),
 		"the truce the hold-out grants")
 
-	_, err = enc.Record(&encounter.RecordInput{
+	_, err = recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{bwChief},
 		Values: map[encounter.OutcomeValue]int{encounter.ValueAmount: 7},
 	})
@@ -619,7 +635,7 @@ func (s *BothWaysSuite) TestATurnedPairSurvivesASaveAndLoad() {
 	)
 	enc := s.open(field, []encounter.MemberInput{player(alice, 0, 1), monster(bwScout, bwGoblins, 4, 1)})
 
-	_, err := enc.Record(&encounter.RecordInput{
+	_, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{bwScout},
 		Values: map[encounter.OutcomeValue]int{encounter.ValueAmount: 7},
 	})
