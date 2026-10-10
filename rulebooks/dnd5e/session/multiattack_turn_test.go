@@ -554,3 +554,26 @@ func (s *MonsterTurnTestSuite) TestATurnBoundaryTellsConcentrationItEnded() {
 	s.Contains(after, string(encounter.BeatConcentrationEnded), "the boundary tells the concentration it ended")
 	s.NotContains(swingTrain(after), "saved", "and nothing is left to be tested by the blows that follow")
 }
+
+// TestAMultiattackContinuesAfterASwingBreaksConcentration: the goblin boss's
+// first swing hits the fighter holding Fog Cloud, does not drop her, and breaks
+// her concentration; she holds no post-hit reaction, so nothing pauses. The
+// sequence carries on to its second swing: two swing beats, one break.
+func (s *MonsterTurnTestSuite) TestAMultiattackContinuesAfterASwingBreaksConcentration() {
+	// Initiative twice; swing one attacks 15, damage 3, and the fighter's
+	// concentration save is a 1; swing two attacks 15, damage 3.
+	mgr := s.bossBreaksTheFightersAreaWith(false, &sequenceDice{rolls: []int{10, 10, 15, 3, 1, 15, 3, 10, 10, 10}})
+	s.Require().Empty(s.sessions.byID["sess"].Windows.Windows, "control: nothing paused")
+	train := swingTrain(s.storyBeats(mgr, "fighter"))
+	swings, ended := 0, 0
+	for _, beat := range train {
+		switch beat {
+		case "struck", "missed":
+			swings++
+		case "concentration_ended":
+			ended++
+		}
+	}
+	s.Equal(2, swings, "both swings of the Multiattack are told")
+	s.Equal(1, ended, "the concentration ends once")
+}
