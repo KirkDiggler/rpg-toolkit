@@ -106,6 +106,36 @@ func (s *EffectiveACTestSuite) TestHeavyArmor() {
 	s.Assert().Equal(armor.ChainMail, breakdown.Components[0].Source.ID)
 }
 
+// TestHeavyArmorIgnoresANegativeDex pins PHB p.144 on the character fold:
+// heavy armor neither adds DEX nor subtracts a negative one. Chain mail at
+// DEX 8 is 16, with no DEX component in the breakdown.
+func (s *EffectiveACTestSuite) TestHeavyArmorIgnoresANegativeDex() {
+	chainMail := armor.All[armor.ChainMail]
+	char := &Character{
+		id:   "test-char",
+		name: "Clumsy Knight",
+		abilityScores: shared.AbilityScores{
+			abilities.STR: 15,
+			abilities.DEX: 8, // -1 modifier, which heavy armor does not apply
+			abilities.CON: 10,
+			abilities.INT: 10,
+			abilities.WIS: 10,
+			abilities.CHA: 10,
+		},
+		equipmentSlots: make(EquipmentSlots),
+		inventory:      []InventoryItem{{Equipment: &chainMail, Quantity: 1}},
+		bus:            s.eventBus,
+	}
+	char.equipmentSlots.Set(SlotArmor, armor.ChainMail)
+
+	breakdown, acErr := char.EffectiveAC(s.ctx)
+	s.Require().NoError(acErr)
+
+	s.Assert().Equal(16, breakdown.Total, "a negative DEX does not lower heavy armor")
+	s.Require().Len(breakdown.Components, 1, "no DEX component under heavy armor")
+	s.Assert().Equal(combat.ACSourceArmor, breakdown.Components[0].Type)
+}
+
 // TestMediumArmorDexCap tests medium armor with DEX cap
 func (s *EffectiveACTestSuite) TestMediumArmorDexCap() {
 	scaleMail := armor.All[armor.ScaleMail] // AC 14, MaxDexBonus = 2
