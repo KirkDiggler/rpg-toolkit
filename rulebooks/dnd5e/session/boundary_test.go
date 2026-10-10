@@ -135,6 +135,14 @@ var contractTypes = map[string]string{
 	// and never constructed by the host.
 	"dungeonspec.Compiled": "contract type: the compiled dungeon the host registers and hands to Launch",
 
+	// Reachable from DeriveTemplateInput.Spec (template.go, rpg-project#555).
+	// It is the author's own template exactly as the dialect carried it:
+	// strings and ints, no behaviour. The host already holds it, because it is
+	// a field of dungeonspec.Compiled.Templates above, and hands it back to
+	// be derived for the authoring echo. What comes back is this package's
+	// own DerivedBlock, never the rulebook's monster.
+	"dungeonspec.TemplateSpec": "contract type: an authored template's strings, already reachable through dungeonspec.Compiled",
+
 	// Reachable from LaunchInput.Dungeon's MonsterPlacement.Table and .Temper
 	// (launch.go, rpg-project#465, #542) — the creature's authored policy and the temperament
 	// loading its die.

@@ -5,10 +5,12 @@ package session
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
@@ -16,44 +18,113 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
-// deriveTemplateInput is one authored template to assemble: the member id it
+// DeriveTemplateInput is one authored template to derive: the member id it
 // becomes, the ref it is placed by, and the author's strings.
-type deriveTemplateInput struct {
-	// ID is the member the monster becomes ("guard-1").
+type DeriveTemplateInput struct {
+	// ID is the member the monster becomes ("guard-1"). An authoring-time
+	// caller with no member yet passes any non-empty id, such as the
+	// template's own.
 	ID string
 	// Ref is the template's own ref, `dnd5e:monsters:<id>`. It goes onto the
-	// sheet, never the base's (rpg-project#555 R2).
+	// block, never the base's (rpg-project#555 R2).
 	Ref string
 	// Spec is the template as the dialect carried it.
 	Spec dungeonspec.TemplateSpec
 }
 
-// deriveTemplateOutput is the assembled monster.
-type deriveTemplateOutput struct {
-	Monster *monster.Monster
+// DeriveTemplateOutput is what an authored template derives to.
+type DeriveTemplateOutput struct {
+	Block DerivedBlock
 }
 
-// deriveTemplate assembles the monster an authored template describes: the
-// base it names, looked up in the rulebook; the template, read out of the
-// author's strings; and [monster.FromTemplate], which derives every number
-// and checks that the template and the base it is given are a pair (R6).
+// DerivedBlock is a template's derived stat block: the numbers the rulebook
+// works out from what the author wrote, for a host to show and never to
+// compute (rpg-project#555 R7).
+//
+// It is this package's own view, not the rulebook's monster. The runtime
+// monster never crosses this seam (S2), and the stored sheet's promise is that
+// a host stores it without reading it. So the block is read off the assembled
+// monster field by field, and nothing in it is recomputed here.
+type DerivedBlock struct {
+	ID   string
+	Ref  string
+	Name string
+
+	HitPoints         int
+	ArmorClass        int
+	PassivePerception int
+	ProficiencyBonus  int
+
+	// Abilities are all six scores after the template is merged over its
+	// base, keyed by short name ("str" through "cha").
+	Abilities map[string]int
+
+	// Attacks are the creature's weapon attacks, in action order.
+	Attacks []DerivedAttack
+
+	// Experience is what the creature is worth on its fall. It never
+	// inherits from the base; 0 is worth nothing.
+	Experience int
+}
+
+// DerivedAttack is one weapon attack on a derived block.
+type DerivedAttack struct {
+	// WeaponRef is the weapon's ref, `dnd5e:weapons:<id>`.
+	WeaponRef string
+	// AttackBonus is the whole bonus to hit: the ability modifier plus
+	// proficiency.
+	AttackBonus int
+	// Damage is the roll as dice notation with every flat part folded in,
+	// the attack ability's modifier included where the weapon adds it
+	// ("1d6+1"). Several damage pools join with " + ".
+	Damage string
+}
+
+// DeriveTemplate derives the stat block an authored template describes. It
+// is the host's authoring-time echo: rpg-api calls it when a dungeon is
+// compiled, so the studio shows the rulebook's numbers before anything is
+// launched.
+//
+// ONE ASSEMBLY. Launch builds a template's monster through the same
+// [assembleTemplate] this calls, so the block the studio was shown is the
+// creature the run gets (R6). A host must never mirror this conversion.
 //
 // It lives in this package because this is the one package that imports both
 // the dialect that carries a template and the rulebook that assembles it: the
 // compiler may not know what a ref resolves to (C1), and the rulebook does not
 // read the dialect's strings.
 //
-// A ref that does not parse is [ErrBadRef]; one off the `dnd5e:monsters`
-// route is [ErrNoLoader], as [instantiate] says of any ref. An unknown base is
-// refused BY NAME with [ErrUnknownContent]: the author wrote
-// `dnd5e:monsters:elf` and is told `elf`, not handed a creature built from
-// nothing. A rulebook monster that is not a base (a goblin) is refused the
-// same way, because templates derive from bases.
+// It does not check shadowing. That needs the rulebook's constructors as well
+// and is the resolver's question, asked at launch by [instantiate] and at
+// authoring by the host.
+//
+// Returns ErrNilInput, ErrBadRef (a malformed ref, base, armour or weapon),
+// ErrNoLoader (a ref off the `dnd5e:monsters` route), ErrUnknownContent (an
+// unknown base, named; an unknown armour, weapon, skill or ability), or
+// ErrInvalidWorld (a template the rulebook refuses to assemble, with its
+// reason as text).
+func DeriveTemplate(in *DeriveTemplateInput) (*DeriveTemplateOutput, error) {
+	built, err := assembleTemplate(in)
+	if err != nil {
+		return nil, err
+	}
+	return &DeriveTemplateOutput{Block: blockOf(built.ToData())}, nil
+}
+
+// assembleTemplate assembles the monster an authored template describes: the
+// base it names, looked up in the rulebook; the template, read out of the
+// author's strings; and [monster.FromTemplate], which derives every number
+// and checks that the template and the base it is given are a pair (R6).
+//
+// An unknown base is refused BY NAME with [ErrUnknownContent]: the author
+// wrote `dnd5e:monsters:elf` and is told `elf`, not handed a creature built
+// from nothing. A rulebook monster that is not a base (a goblin) is refused
+// the same way, because templates derive from bases.
 //
 // A refusal from the assembly itself is [ErrInvalidWorld] with the rulebook's
 // reason carried as text. Its error is the rulebook's, and a host matching on
 // it would be coupled to a module this seam exists to keep replaceable (S2).
-func deriveTemplate(in *deriveTemplateInput) (*deriveTemplateOutput, error) {
+func assembleTemplate(in *DeriveTemplateInput) (*monster.Monster, error) {
 	if in == nil {
 		return nil, fmt.Errorf("derive template: %w", ErrNilInput)
 	}
@@ -79,7 +150,64 @@ func deriveTemplate(in *deriveTemplateInput) (*deriveTemplateOutput, error) {
 	if err != nil {
 		return nil, fmt.Errorf("template %q: %w: %v", ref.ID, ErrInvalidWorld, err)
 	}
-	return &deriveTemplateOutput{Monster: built}, nil
+	return built, nil
+}
+
+// blockOf reads the derived block off an assembled monster's sheet. Every
+// number is the sheet's; the only arithmetic is folding a damage pool's flat
+// parts into its notation, which is how a roll is written down.
+func blockOf(sheet *monster.Data) DerivedBlock {
+	block := DerivedBlock{
+		ID:                sheet.ID,
+		Name:              sheet.Name,
+		HitPoints:         sheet.MaxHitPoints,
+		ArmorClass:        sheet.ArmorClass,
+		PassivePerception: sheet.Senses.PassivePerception,
+		ProficiencyBonus:  sheet.ProficiencyBonus,
+		Abilities:         make(map[string]int, len(sheet.AbilityScores)),
+		Experience:        sheet.Experience,
+	}
+	if sheet.Ref != nil {
+		block.Ref = sheet.Ref.String()
+	}
+	for ability, score := range sheet.AbilityScores {
+		block.Abilities[string(ability)] = score
+	}
+	for _, action := range sheet.Actions {
+		if action.Attack == nil {
+			continue
+		}
+		modifier := 0
+		if action.Attack.Ability != nil {
+			modifier = action.Attack.Ability.Modifier
+		}
+		pools := make([]string, 0, len(action.Attack.Damage))
+		for _, pool := range action.Attack.Damage {
+			flat := pool.FlatBonus
+			if pool.HasProperty(damage.AddsAttackAbilityModifier) {
+				flat += modifier
+			}
+			pools = append(pools, notationOf(pool.Dice, flat))
+		}
+		block.Attacks = append(block.Attacks, DerivedAttack{
+			WeaponRef:   action.Ref.String(),
+			AttackBonus: action.Attack.AttackBonus,
+			Damage:      strings.Join(pools, " + "),
+		})
+	}
+	return block
+}
+
+// notationOf writes dice and a flat part as one roll: "1d6", "1d6+1", "1d4-1".
+func notationOf(dice string, flat int) string {
+	switch {
+	case flat > 0:
+		return fmt.Sprintf("%s+%d", dice, flat)
+	case flat < 0:
+		return fmt.Sprintf("%s%d", dice, flat)
+	default:
+		return dice
+	}
 }
 
 // templateOf reads an authored template's strings into the rulebook's

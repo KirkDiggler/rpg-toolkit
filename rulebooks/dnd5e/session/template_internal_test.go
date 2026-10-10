@@ -110,23 +110,29 @@ var castleGuard = dungeonspec.TemplateSpec{
 	Actions:   []string{"dnd5e:weapons:spear"},
 }
 
-// TestDeriveTemplateAssemblesTheCastleGuard is the one derivation the launch
-// and an authoring-time echo share: the guard's numbers come out of the
-// rulebook, and the sheet names the template's ref.
-func TestDeriveTemplateAssemblesTheCastleGuard(t *testing.T) {
-	out, err := deriveTemplate(&deriveTemplateInput{ID: "guard-1", Ref: "dnd5e:monsters:guard", Spec: castleGuard})
+// TestDeriveTemplateEchoesTheCastleGuard is the authoring-time echo read off
+// the same assembly the launch uses: every number is the rulebook's.
+func TestDeriveTemplateEchoesTheCastleGuard(t *testing.T) {
+	out, err := DeriveTemplate(&DeriveTemplateInput{ID: "guard", Ref: "dnd5e:monsters:guard", Spec: castleGuard})
 	require.NoError(t, err)
-	sheet := out.Monster.ToData()
-	require.Equal(t, 11, sheet.MaxHitPoints, "2d8 averages 9, plus CON 12's +1 per die")
-	require.Equal(t, 13, sheet.ArmorClass, "a chain shirt is 13 plus DEX 10's +0")
-	require.Equal(t, "dnd5e:monsters:guard", sheet.Ref.String())
+	block := out.Block
+	require.Equal(t, "dnd5e:monsters:guard", block.Ref, "the template's ref, not the human's")
+	require.Equal(t, 11, block.HitPoints, "2d8 averages 9, plus CON 12's +1 per die")
+	require.Equal(t, 13, block.ArmorClass, "a chain shirt is 13 plus DEX 10's +0")
+	require.Equal(t, 12, block.PassivePerception, "10, WIS 11's +0, and trained perception's +2")
+	require.Equal(t, 2, block.ProficiencyBonus, "the human base's")
+	require.Equal(t, map[string]int{"str": 13, "dex": 10, "con": 12, "int": 10, "wis": 11, "cha": 10}, block.Abilities,
+		"the author's three scores over the base's six")
+	require.Equal(t, []DerivedAttack{{WeaponRef: "dnd5e:weapons:spear", AttackBonus: 3, Damage: "1d6+1"}}, block.Attacks,
+		"STR 13's +1 and proficiency +2 to hit; the spear's d6 plus STR to damage")
+	require.Zero(t, block.Experience, "experience never inherits")
 }
 
 // TestDeriveTemplateRefusesAnUnknownBaseByName: the author is told which base.
 func TestDeriveTemplateRefusesAnUnknownBaseByName(t *testing.T) {
 	spec := castleGuard
 	spec.Base = "dnd5e:monsters:elf"
-	_, err := deriveTemplate(&deriveTemplateInput{ID: "guard-1", Ref: "dnd5e:monsters:guard", Spec: spec})
+	_, err := DeriveTemplate(&DeriveTemplateInput{ID: "guard", Ref: "dnd5e:monsters:guard", Spec: spec})
 	require.ErrorIs(t, err, ErrUnknownContent)
 	require.Contains(t, err.Error(), "dnd5e:monsters:elf")
 }

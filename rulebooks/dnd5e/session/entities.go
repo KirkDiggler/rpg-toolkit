@@ -139,11 +139,10 @@ func instantiate(id string, ref string, actions []string, template *dungeonspec.
 		return nil, fmt.Errorf("template %q shadows rulebook monster %q; rename the template: %w",
 			parsed.ID, parsed.String(), ErrShadowedRef)
 	case template != nil:
-		derived, err := deriveTemplate(&deriveTemplateInput{ID: id, Ref: parsed.String(), Spec: *template})
+		built, err = assembleTemplate(&DeriveTemplateInput{ID: id, Ref: parsed.String(), Spec: *template})
 		if err != nil {
 			return nil, err
 		}
-		built = derived.Monster
 	case constructed:
 		built = build(id)
 		if built == nil {
