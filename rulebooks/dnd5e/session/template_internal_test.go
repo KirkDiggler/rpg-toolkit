@@ -84,3 +84,18 @@ func TestOnlyARulebookMonsterRefNamesATemplate(t *testing.T) {
 	require.Nil(t, templateFor(templates, "not a ref"))
 	require.Nil(t, templateFor(templates, "dnd5e:monsters:cook"))
 }
+
+// TestATemplateBaseMustBeARulebookBase: the session resolves the base the
+// template names and passes exactly that to FromTemplate, which no longer
+// checks the match itself. A base nothing ships, and a rulebook monster that
+// is not a base, are both refused by name before assembly.
+func TestATemplateBaseMustBeARulebookBase(t *testing.T) {
+	for _, base := range []string{"dnd5e:monsters:elf", "dnd5e:monsters:goblin"} {
+		t.Run(base, func(t *testing.T) {
+			_, err := instantiate("cook-1", "dnd5e:monsters:cook", nil,
+				&dungeonspec.TemplateSpec{Base: base, Actions: []string{"dnd5e:weapons:dagger"}})
+			require.ErrorIs(t, err, ErrUnknownContent)
+			require.Contains(t, err.Error(), base)
+		})
+	}
+}
