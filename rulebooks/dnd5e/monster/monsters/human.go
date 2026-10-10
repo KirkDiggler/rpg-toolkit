@@ -6,7 +6,6 @@ package monsters
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
@@ -18,10 +17,13 @@ import (
 // person: every score 10, one d8 of hit dice, nothing worn, fists, the
 // floor proficiency bonus, and worth nothing on the fall.
 //
+// It names no Base: a base is what other templates name, and naming none is
+// what lets [monster.FromTemplate] refuse a derived template passed where a
+// base belongs. Its identity is its registry key (BaseByRef).
+//
 // Treat it as read-only content. [monster.Template.Merge] copies what it
 // takes, so deriving from it never mutates it.
 var Human = monster.Template{
-	Base: refs.Monsters.Human(),
 	Name: "Human",
 	Abilities: map[abilities.Ability]int{
 		abilities.STR: 10,

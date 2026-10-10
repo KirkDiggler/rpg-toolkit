@@ -32,9 +32,11 @@ import (
 // worth nothing (R8).
 type Template struct {
 	// Base is the rulebook base this template derives from
-	// (dnd5e:monsters:human). Required: a template with no base is refused.
-	// It is NOT the derived creature's ref; [FromTemplate] takes that
-	// explicitly.
+	// (dnd5e:monsters:human), which the caller resolves and passes to
+	// [FromTemplate] as [FromTemplateInput.Base]. A rulebook base itself names
+	// NO Base: that is what marks it as a base, so a derived template passed
+	// where a base belongs is refused. It is NOT the derived creature's ref;
+	// [FromTemplateInput.Ref] carries that explicitly.
 	Base *core.Ref
 
 	// Name is the display name. Empty = the base's.
@@ -130,6 +132,29 @@ func (t Template) Merge(base Template) Template {
 	return out
 }
 
+// FromTemplateInput is what [FromTemplate] assembles from. Named fields,
+// because Template and Base share a type: as positional arguments a swapped
+// call would compile and derive a silently wrong creature.
+type FromTemplateInput struct {
+	// ID is the monster entity's id ("guard-1"). Required.
+	ID string
+
+	// Ref is the derived creature's own ref — the template's
+	// (dnd5e:monsters:guard), never the base's (rpg-project#555 R2). It is
+	// stated here rather than on [Template] so it can never be inherited by
+	// accident: a guard and a cook that both reported dnd5e:monsters:human
+	// would lose the author's id off the sheet. Required.
+	Ref *core.Ref
+
+	// Template is the authored block: the overrides.
+	Template Template
+
+	// Base is the rulebook base the template names, looked up by the caller
+	// (monsters.BaseByRef). Required, and it must be a base: it names no Base
+	// of its own.
+	Base Template
+}
+
 // FromTemplate assembles the monster a template describes, over the base the
 // caller looked up (R6: the ONLY function that turns a template into a
 // monster, and the one a rulebook base is itself assembled by).
@@ -141,36 +166,42 @@ func (t Template) Merge(base Template) Template {
 //   - Each trained skill = the proficiency bonus; passive Perception =
 //     10 + WIS modifier, + proficiency when Perception is trained.
 //
-// ref is the derived creature's own ref — the template's (dnd5e:monsters:guard),
-// never the base's (rpg-project#555 R2). It is an argument rather than a
-// template field so it can never be inherited by accident: a guard and a cook
-// that both reported dnd5e:monsters:human would lose the author's id off the
-// sheet. A nil ref is refused. The creature type IS inherited: it is the
-// base's catalogue fact (a guard derived from human is humanoid).
+// The sheet carries in.Ref. Its creature type is the base's catalogue fact (a
+// guard derived from human is humanoid): the base the template names, or, for
+// a base assembling itself, its own ref.
 //
 // It refuses by name rather than assembling a creature with a silent zero:
-// a missing base, a base other than the one the template names, a missing or
-// malformed hit dice string, a score outside 1–30 or missing, an unknown
-// armour, skill or weapon, no weapons, and hit points that would come out
-// below 1. A refusal returns no monster.
-func FromTemplate(id string, ref *core.Ref, t Template, base Template) (*Monster, error) {
-	if id == "" {
+// a nil input, a missing id or ref, a missing base, a derived template passed
+// as the base, a missing or malformed hit dice string, a score outside 1–30
+// or missing, an unknown armour, skill or weapon, no weapons, and hit points
+// that would come out below 1. A refusal returns no monster.
+func FromTemplate(in *FromTemplateInput) (*Monster, error) {
+	if in == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "no template input")
+	}
+	if in.ID == "" {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "template monster has no id")
 	}
-	if ref == nil {
-		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "template monster %q has no ref", id)
+	if in.Ref == nil {
+		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "template monster %q has no ref", in.ID)
 	}
-	if t.Base != nil && base.Base != nil && t.Base.String() != base.Base.String() {
+	if in.Base.Base != nil {
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
-			"template names base %q but was given base %q", t.Base.String(), base.Base.String())
+			"template monster %q: a template cannot be a base (the base names base %q)",
+			in.ID, in.Base.Base.String())
+	}
+	if in.Base.isEmpty() {
+		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "template monster %q has no base", in.ID)
 	}
 
-	merged := t.Merge(base)
-	if merged.Base == nil {
-		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "template has no base")
+	merged := in.Template.Merge(in.Base)
+	typeRef := in.Template.Base
+	if typeRef == nil {
+		typeRef = in.Ref
 	}
+
 	if merged.Name == "" {
-		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "template on base %q has no name", merged.Base.String())
+		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "template monster %q has no name", in.ID)
 	}
 	if merged.Proficiency < 0 {
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "template proficiency %d is negative", merged.Proficiency)
@@ -206,10 +237,10 @@ func FromTemplate(id string, ref *core.Ref, t Template, base Template) (*Monster
 	}
 
 	m := New(Config{
-		CreatureType:     creatureTypeFor("", merged.Base),
-		ID:               id,
+		CreatureType:     creatureTypeFor("", typeRef),
+		ID:               in.ID,
 		Name:             merged.Name,
-		Ref:              ref,
+		Ref:              in.Ref,
 		HP:               hp,
 		AC:               ac,
 		AbilityScores:    scores,
@@ -228,6 +259,14 @@ func FromTemplate(id string, ref *core.Ref, t Template, base Template) (*Monster
 	}
 
 	return m, nil
+}
+
+// isEmpty reports whether t states nothing at all — the zero value a caller
+// holds after ignoring a failed base lookup.
+func (t Template) isEmpty() bool {
+	return t.Base == nil && t.Name == "" && len(t.Abilities) == 0 && t.HitDice == "" &&
+		t.Armor == nil && t.Proficiency == 0 && t.Skills == nil && t.Actions == nil &&
+		t.Speed == (SpeedData{}) && t.Experience == 0
 }
 
 // scoresOf requires all six scores, each within 1–30, naming the one that

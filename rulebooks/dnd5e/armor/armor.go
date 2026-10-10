@@ -278,10 +278,18 @@ func ArmorClass(a *Armor, dexModifier int) int {
 
 // DexContribution is how much of a DEX modifier this armour lets through:
 // all of it when MaxDexBonus is nil (light armour, or nothing worn when a is
-// nil), else the modifier capped at MaxDexBonus. A negative modifier is never
-// capped upward — heavy armour does not rescue a clumsy wearer.
+// nil), the modifier capped at MaxDexBonus for medium armour — which carries a
+// negative modifier in full — and NOTHING in either direction when
+// MaxDexBonus is 0. Heavy armour does not add DEX, and it does not penalize a
+// negative DEX either (PHB p.144).
 func (a *Armor) DexContribution(dexModifier int) int {
-	if a != nil && a.MaxDexBonus != nil && dexModifier > *a.MaxDexBonus {
+	if a == nil || a.MaxDexBonus == nil {
+		return dexModifier
+	}
+	if *a.MaxDexBonus == 0 {
+		return 0
+	}
+	if dexModifier > *a.MaxDexBonus {
 		return *a.MaxDexBonus
 	}
 	return dexModifier

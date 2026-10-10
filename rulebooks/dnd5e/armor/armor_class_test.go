@@ -35,9 +35,15 @@ func TestArmorClass_MatchesCharacterMath(t *testing.T) {
 		assert.Equal(t, 13, armor.ArmorClass(nil, 3))
 	})
 
-	t.Run("a negative DEX is never capped up", func(t *testing.T) {
+	t.Run("heavy armor does not penalize a negative DEX", func(t *testing.T) {
 		plate, err := armor.GetByID(armor.Plate)
 		require.NoError(t, err)
-		assert.Equal(t, 17, armor.ArmorClass(&plate, -1))
+		assert.Equal(t, 18, armor.ArmorClass(&plate, -1), "PHB p.144: DEX does not participate")
+	})
+
+	t.Run("medium armor carries a negative DEX in full", func(t *testing.T) {
+		shirt, err := armor.GetByID(armor.ChainShirt)
+		require.NoError(t, err)
+		assert.Equal(t, 12, armor.ArmorClass(&shirt, -1))
 	})
 }

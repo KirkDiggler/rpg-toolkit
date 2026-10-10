@@ -60,7 +60,7 @@ func TestFromTemplate_GuardDerivesTheSRDNumbers(t *testing.T) {
 		Actions:   []weapons.WeaponID{weapons.Spear},
 	}
 
-	m, err := monster.FromTemplate("guard-1", testRef, guard, monsters.Human)
+	m, err := monster.FromTemplate(&monster.FromTemplateInput{ID: "guard-1", Ref: testRef, Template: guard, Base: monsters.Human})
 	require.NoError(t, err)
 
 	assert.Equal(t, 11, m.MaxHP(), "2d8 averages 9, plus CON +1 per die")
@@ -91,7 +91,7 @@ func TestFromTemplate_CaptainWithProficiency3(t *testing.T) {
 		Actions:     []weapons.WeaponID{weapons.Longsword, weapons.Javelin},
 	}
 
-	m, err := monster.FromTemplate("captain-1", testRef, captain, monsters.Human)
+	m, err := monster.FromTemplate(&monster.FromTemplateInput{ID: "captain-1", Ref: testRef, Template: captain, Base: monsters.Human})
 	require.NoError(t, err)
 
 	assert.Equal(t, 65, m.MaxHP(), "10d8 averages 45, plus CON +2 per die")
@@ -114,13 +114,14 @@ func TestFromTemplate_CookInheritsEverythingButTheKnife(t *testing.T) {
 		Actions: []weapons.WeaponID{weapons.Dagger},
 	}
 
-	m, err := monster.FromTemplate("cook-1", testRef, cook, monsters.Human)
+	m, err := monster.FromTemplate(&monster.FromTemplateInput{ID: "cook-1", Ref: testRef, Template: cook, Base: monsters.Human})
 	require.NoError(t, err)
 
 	assert.Equal(t, 4, m.MaxHP(), "the base's 1d8 averages 4, CON +0")
 	assert.Equal(t, 10, m.AC(), "the base wears nothing: 10 + DEX +0")
 	assert.Equal(t, 0, m.Experience(), "unstated experience is worth nothing")
 	assert.Equal(t, "Human", m.Name(), "unstated name is the base's")
+	assert.Equal(t, 30, m.Speed().Walk, "unstated speed is the base's, never a silent 0")
 
 	require.Len(t, m.Actions(), 1)
 	dagger := actionByRef(t, m, "dnd5e:weapons:dagger")
@@ -133,11 +134,11 @@ func TestFromTemplate_CookInheritsEverythingButTheKnife(t *testing.T) {
 func TestFromTemplate_ConOverrideMovesHP(t *testing.T) {
 	at := func(con int) int {
 		t.Helper()
-		m, err := monster.FromTemplate("x", testRef, monster.Template{
+		m, err := monster.FromTemplate(&monster.FromTemplateInput{ID: "x", Ref: testRef, Template: monster.Template{
 			Base:      refs.Monsters.Human(),
 			Abilities: map[abilities.Ability]int{abilities.CON: con},
 			HitDice:   "2d8",
-		}, monsters.Human)
+		}, Base: monsters.Human})
 		require.NoError(t, err)
 		return m.MaxHP()
 	}
@@ -187,13 +188,19 @@ func TestFromTemplate_RefusesByName(t *testing.T) {
 			name:     "missing base",
 			template: monster.Template{HitDice: "2d8"},
 			base:     monster.Template{},
-			names:    "base",
+			names:    "has no base",
+		},
+		{
+			name:     "template names its base but the base is absent",
+			template: monster.Template{Base: refs.Monsters.Human(), HitDice: "2d8"},
+			base:     monster.Template{},
+			names:    "has no base",
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			m, err := monster.FromTemplate("x", testRef, tc.template, tc.base)
+			m, err := monster.FromTemplate(&monster.FromTemplateInput{ID: "x", Ref: testRef, Template: tc.template, Base: tc.base})
 			require.Error(t, err)
 			assert.Nil(t, m, "a refusal carries no half-built monster")
 			assert.Contains(t, err.Error(), tc.names)
@@ -203,6 +210,7 @@ func TestFromTemplate_RefusesByName(t *testing.T) {
 
 func TestTemplate_MergeIsPerField(t *testing.T) {
 	merged := monster.Template{
+		Base:       refs.Monsters.Human(),
 		Abilities:  map[abilities.Ability]int{abilities.CON: 12},
 		Experience: 0,
 	}.Merge(monsters.Human)
@@ -211,7 +219,7 @@ func TestTemplate_MergeIsPerField(t *testing.T) {
 	assert.Equal(t, 10, merged.Abilities[abilities.STR], "an unstated key is the base's")
 	assert.Equal(t, "1d8", merged.HitDice)
 	assert.Equal(t, "Human", merged.Name)
-	assert.Equal(t, refs.Monsters.Human(), merged.Base)
+	assert.Equal(t, refs.Monsters.Human(), merged.Base, "the base the template names")
 	assert.Equal(t, []weapons.WeaponID{weapons.UnarmedStrike}, merged.Actions)
 
 	worth := monster.Template{Experience: 0}.Merge(monster.Template{Experience: 50})
@@ -219,22 +227,67 @@ func TestTemplate_MergeIsPerField(t *testing.T) {
 }
 
 func TestTemplate_MergeDoesNotAliasTheBase(t *testing.T) {
-	merged := monster.Template{}.Merge(monsters.Human)
+	base := monster.Template{
+		Name:      "Armored",
+		Abilities: map[abilities.Ability]int{abilities.STR: 10},
+		Armor:     armorRef(armor.ChainShirt),
+		Skills:    []skills.Skill{skills.Perception},
+		Actions:   []weapons.WeaponID{weapons.UnarmedStrike},
+	}
+	merged := monster.Template{}.Merge(base)
 	merged.Abilities[abilities.STR] = 18
+	*merged.Armor = armor.Plate
+	merged.Skills[0] = skills.Stealth
 	merged.Actions[0] = weapons.Dagger
 
-	assert.Equal(t, 10, monsters.Human.Abilities[abilities.STR], "the rulebook base is not mutated through a merge")
-	assert.Equal(t, weapons.UnarmedStrike, monsters.Human.Actions[0])
+	assert.Equal(t, 10, base.Abilities[abilities.STR], "abilities are copied")
+	assert.Equal(t, armor.ChainShirt, *base.Armor, "the armor pointer is copied")
+	assert.Equal(t, skills.Perception, base.Skills[0], "skills are copied")
+	assert.Equal(t, weapons.UnarmedStrike, base.Actions[0], "actions are copied")
+}
+
+func TestFromTemplate_TrainedSkillsCountOnce(t *testing.T) {
+	m, err := monster.FromTemplate(&monster.FromTemplateInput{ID: "x", Ref: testRef, Template: monster.Template{
+		Skills: []skills.Skill{skills.Perception, skills.Perception},
+	}, Base: monsters.Human})
+	require.NoError(t, err)
+	assert.Equal(t, []monster.ProficiencyData{{Skill: "perception", Bonus: 2}}, m.ToData().Proficiencies)
+	assert.Equal(t, 12, m.PassivePerception(), "a repeated skill adds proficiency once")
+}
+
+func TestFromTemplate_RefusesATemplateAsTheBase(t *testing.T) {
+	guard := monster.Template{
+		Base:      refs.Monsters.Human(),
+		Abilities: map[abilities.Ability]int{abilities.CON: 12},
+		HitDice:   "2d8",
+		Armor:     armorRef(armor.ChainShirt),
+		Actions:   []weapons.WeaponID{weapons.Spear},
+	}
+
+	// Swapped: the rulebook base as the template, the guard as the base.
+	m, err := monster.FromTemplate(&monster.FromTemplateInput{
+		ID: "guard-1", Ref: testRef, Template: monsters.Human, Base: guard,
+	})
+	require.Error(t, err)
+	assert.Nil(t, m)
+	assert.Contains(t, err.Error(), "a template cannot be a base")
+}
+
+func TestFromTemplate_RefusesANilInput(t *testing.T) {
+	m, err := monster.FromTemplate(nil)
+	require.Error(t, err)
+	assert.Nil(t, m)
+	assert.Contains(t, err.Error(), "input")
 }
 
 func TestFromTemplate_SheetCarriesTheTemplateRef(t *testing.T) {
 	guardRef := &core.Ref{Module: "dnd5e", Type: "monsters", ID: "guard"}
-	m, err := monster.FromTemplate("guard-1", guardRef, monster.Template{
+	m, err := monster.FromTemplate(&monster.FromTemplateInput{ID: "guard-1", Ref: guardRef, Template: monster.Template{
 		Base:      refs.Monsters.Human(),
 		Abilities: map[abilities.Ability]int{abilities.CON: 12},
 		HitDice:   "2d8",
 		Actions:   []weapons.WeaponID{weapons.Spear},
-	}, monsters.Human)
+	}, Base: monsters.Human})
 	require.NoError(t, err)
 
 	data := m.ToData()
@@ -245,7 +298,7 @@ func TestFromTemplate_SheetCarriesTheTemplateRef(t *testing.T) {
 }
 
 func TestFromTemplate_RefusesANilRef(t *testing.T) {
-	m, err := monster.FromTemplate("guard-1", nil, monster.Template{}, monsters.Human)
+	m, err := monster.FromTemplate(&monster.FromTemplateInput{ID: "guard-1", Base: monsters.Human})
 	require.Error(t, err)
 	assert.Nil(t, m)
 	assert.Contains(t, err.Error(), "ref")

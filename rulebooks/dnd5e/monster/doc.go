@@ -16,8 +16,11 @@
 // score it came from. A rulebook base such as the human block is itself a
 // template, assembled by the same function.
 //
-// The derived sheet carries the TEMPLATE's ref (dnd5e:monsters:guard), passed
-// to [FromTemplate] explicitly and never inherited from the base (R2), so
-// every authored creature keeps its own id. What it does inherit from the base
-// is its creature type.
+// [FromTemplate] takes a [FromTemplateInput] with named Template and Base
+// fields, because the two share a type and a swapped positional call would
+// compile; a base names no Base of its own, so a derived template passed as
+// the base is refused. The derived sheet carries the input's Ref, the
+// TEMPLATE's ref (dnd5e:monsters:guard), never the base's (R2), so every
+// authored creature keeps its own id. What it does inherit from the base is
+// its creature type.
 package monster
