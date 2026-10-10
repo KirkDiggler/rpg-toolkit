@@ -119,6 +119,23 @@ type Compiled struct {
 	// the composition takes its endings beside its field, and the run
 	// persists them beside it too ([encounter.EncounterData.Endings]).
 	Endings []encounter.EndingInput
+
+	// Templates are the stat blocks this dungeon authored, keyed by the id
+	// the author gave each one, carried through exactly as written
+	// (rpg-project#555). Nil when the file declares none.
+	//
+	// THE HALF THAT STILL NEEDS THE RULEBOOK, for [Compiled.Monsters]'
+	// reason. A placement whose ref is `dnd5e:monsters:guard` comes out in
+	// Monsters unchanged; whoever turns refs into sheets reads this map to
+	// learn that `guard` is a block this file authored. This package never
+	// learns what a base resolves to (design law C1).
+	//
+	// NOT ON THE FIELD, because the composition never sees a stat block: a
+	// member arrives already assembled.
+	//
+	// Deep-copied, so a caller mutating what it gets cannot reach back into
+	// the spec it was compiled from.
+	Templates map[string]TemplateSpec
 }
 
 // Seat is one cell somebody can be placed in, named the way

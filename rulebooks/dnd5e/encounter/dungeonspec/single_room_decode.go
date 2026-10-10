@@ -5,9 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math"
+	"regexp"
 	"slices"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"gopkg.in/yaml.v3"
@@ -89,7 +93,9 @@ const (
 // template declarations and may name IDs that were never instantiated.
 // Declaration flags and footprints are validated identically for both.
 // Monster refs are checked for grammar and the `monsters` type only — no
-// rulebook definition is resolved (design C1). `monsterDeclarations` is required and
+// rulebook definition is resolved (design C1). Root `templates` are checked
+// the same way — their refs, scores and hit dice for shape, never for what
+// they name (rpg-project#555). `monsterDeclarations` is required and
 // may be empty; `partyStart` is optional while editing, so a draft without
 // it is valid source, and no playable result is implied by any successful
 // decode.
@@ -385,6 +391,10 @@ func sourceShapeErrors(root *yaml.Node) []FieldError {
 	// reported as the typo it is rather than as a room problem — the order
 	// the web's own decoder keeps (singleRoomDungeon.ts).
 	siteScopeShape(doc, add)
+	// THE STAT BLOCKS BEFORE THE ROOM, for the same reason: a placement's
+	// ref names one of these, so a typo in a template is reported as the
+	// typo it is rather than as a placement problem (rpg-project#555).
+	templatesShape(doc, add)
 	// THE RECORDS BEFORE THE ROOM, for [siteScopeShape]'s reason one key
 	// over: a `holds:` inside the room names one of these, so a typo in a
 	// record is reported as the typo it is rather than as a holder problem.
@@ -614,6 +624,10 @@ func validateSingleRoom(s *SingleRoomSpec) (roomRead, []FieldError) {
 	read, defects := readRoom(&s.Room)
 	e = append(e, defects...)
 	gameplayValues(&s.Room.Gameplay, read, add)
+	// THE STAT BLOCKS, judged for shape only (rpg-project#555, design law
+	// C1) — beside the monsters whose refs may name them, and asking nothing
+	// of the room: a template is a root declaration that stands nowhere.
+	templateValues(s.Templates, add)
 	// THE WALLS LAST, and judged against the scene item universe the lowering
 	// read: a wall or opening id that is also a scene item id is a collision
 	// the web refuses too, and the root version is asked before the geometry
@@ -777,4 +791,222 @@ func monsterValues(monsters []RoomMonsterSource, add errSink) {
 			add(p+".startingCell.facing", fmt.Sprintf("%q is not a compass direction: a facing is one of n|ne|e|se|s|sw|w|nw", m.StartingCell.Facing))
 		}
 	}
+}
+
+// # Templates (rpg-project#555)
+//
+// A template is a stat block an author wrote at the root, named by a
+// placement as `dnd5e:monsters:<id>`. Everything below is SHAPE: whether a
+// string is a ref of the right type, whether a number is one a block can
+// hold. Nothing here asks what a ref resolves to — not the base, not the
+// armor, not a weapon, and not whether a template id also names a rulebook
+// monster (design law C1). Those refusals are the rulebook's, one layer up.
+
+// templatesShape walks the authored nodes of every template for the things
+// the typed decode would lose without a word: an authored null, a score
+// written `12.5` that yaml.v3 truncates to 12, a hit-dice string written as
+// a bare number, a list written as a scalar.
+func templatesShape(doc *yaml.Node, add errSink) {
+	templates := optionalNode(doc, "templates", "", add)
+	if templates == nil {
+		return
+	}
+	if templates.Kind != yaml.MappingNode {
+		add("templates", errNotAMapping)
+		return
+	}
+	for i := 0; i+1 < len(templates.Content); i += 2 {
+		p := "templates." + templates.Content[i].Value
+		t := resolveNode(templates.Content[i+1])
+		if t == nil || isNull(t) {
+			add(p, errNotNull)
+			continue
+		}
+		if t.Kind != yaml.MappingNode {
+			add(p, errNotAMapping)
+			continue
+		}
+		requireString(t, "base", p, add)
+		for _, key := range [...]string{"name", "hitDice", "armor"} {
+			if n := optionalNode(t, key, p, add); n != nil && n.Tag != "!!str" {
+				add(fieldPath(p, key), errNotAString)
+			}
+		}
+		for _, key := range [...]string{"proficiency", "experience"} {
+			if n := optionalNode(t, key, p, add); n != nil && n.Tag != "!!int" {
+				add(fieldPath(p, key), errNotAnInteger)
+			}
+		}
+		if abilities := optionalNode(t, "abilities", p, add); abilities != nil {
+			abilitiesShape(abilities, p+".abilities", add)
+		}
+		for _, key := range [...]string{"skills", "actions"} {
+			if list := optionalNode(t, key, p, add); list != nil {
+				stringListShape(list, fieldPath(p, key), add)
+			}
+		}
+	}
+}
+
+// abilitiesShape requires a mapping of integer scalars. Which keys are
+// abilities, and which values are scores, is [templateValues]' to judge.
+func abilitiesShape(n *yaml.Node, p string, add errSink) {
+	if n.Kind != yaml.MappingNode {
+		add(p, errNotAMapping)
+		return
+	}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		at := p + "." + n.Content[i].Value
+		v := resolveNode(n.Content[i+1])
+		switch {
+		case v == nil || isNull(v):
+			add(at, errNotNull)
+		case v.Tag != "!!int":
+			add(at, errNotAnInteger)
+		}
+	}
+}
+
+// stringListShape requires a list of text scalars.
+func stringListShape(n *yaml.Node, p string, add errSink) {
+	if n.Kind != yaml.SequenceNode {
+		add(p, errNotAList)
+		return
+	}
+	for j, item := range n.Content {
+		at := fmt.Sprintf("%s[%d]", p, j)
+		item = resolveNode(item)
+		switch {
+		case item == nil || isNull(item):
+			add(at, errNotNull)
+		case item.Tag != "!!str":
+			add(at, errNotAString)
+		}
+	}
+}
+
+// The template vocabulary this package can check without the rulebook.
+const (
+	typeArmor = "armor"
+
+	minAbilityScore = 1
+	maxAbilityScore = 30
+
+	errTemplateFromTemplate = "templates derive from the rulebook, not from each other"
+)
+
+// abilityKeys are the six short names a template's `abilities` is keyed by.
+// Written out rather than imported: the rulebook's abilities package is
+// content, and this package does not import content for a string check.
+var abilityKeys = map[string]bool{"str": true, "dex": true, "con": true, "int": true, "wis": true, "cha": true}
+
+var (
+	// hitDicePattern is NdM. Both counts are checked to be at least 1 after
+	// the match, because `0d8` is the right shape and no dice at all.
+	hitDicePattern = regexp.MustCompile(`^([0-9]+)d([0-9]+)$`)
+	// skillIDPattern is a lowercase id, words joined by dashes — the
+	// spelling the rulebook's skills are written in (`sleight-of-hand`).
+	skillIDPattern = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
+)
+
+// templateValues judges every declared template's shape, in sorted id
+// order so the same file always reports the same list.
+func templateValues(templates map[string]TemplateSpec, add errSink) {
+	ids := make([]string, 0, len(templates))
+	for id := range templates {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		t := templates[id]
+		p := "templates." + id
+		templateIDValue(id, p, add)
+		templateBaseValue(t.Base, templates, p+".base", add)
+		for _, k := range slices.Sorted(maps.Keys(t.Abilities)) {
+			at := p + ".abilities." + k
+			if !abilityKeys[k] {
+				add(at, fmt.Sprintf("%q is not an ability: an ability is one of str|dex|con|int|wis|cha", k))
+				continue
+			}
+			if v := t.Abilities[k]; v < minAbilityScore || v > maxAbilityScore {
+				add(at, fmt.Sprintf("must be between %d and %d", minAbilityScore, maxAbilityScore))
+			}
+		}
+		if t.HitDice != "" && !validHitDice(t.HitDice) {
+			add(p+".hitDice", fmt.Sprintf("%q is not hit dice: hit dice are written NdM with N and M at least 1, like 2d8", t.HitDice))
+		}
+		if t.Armor != "" {
+			templateArmorValue(t.Armor, p+".armor", add)
+		}
+		for j, skill := range t.Skills {
+			if !skillIDPattern.MatchString(skill) {
+				add(fmt.Sprintf("%s.skills[%d]", p, j),
+					fmt.Sprintf("%q is not a skill id: a skill is named in lowercase, like perception or sleight-of-hand", skill))
+			}
+		}
+		// THE WEAPONS ARE A BINDING'S WEAPONS, judged by the one function that
+		// judges those, so an author reads the same sentence at either path.
+		(&grammar{add: add}).placeActions(p, t.Actions)
+	}
+}
+
+// templateIDValue refuses an id a placement could not name: a template is
+// placed as `dnd5e:monsters:<id>`, so its id must be one well-formed ref
+// segment.
+func templateIDValue(id, p string, add errSink) {
+	if id == "" {
+		add("templates", "a template has no id")
+		return
+	}
+	if _, err := core.ParseString(moduleDND5e + ":" + typeMonsters + ":" + id); err != nil || strings.Contains(id, ":") {
+		add(p, fmt.Sprintf("%q is not a template id: a template is placed as %s:%s:<id>, so its id is one ref segment",
+			id, moduleDND5e, typeMonsters))
+	}
+}
+
+// templateBaseValue requires the base to be a monster ref, and refuses one
+// that names a template this file declares: a chain of templates would be a
+// second inheritance system, and the rulebook's block is the only base.
+// Whether the named monster EXISTS is not asked here (design law C1).
+func templateBaseValue(base string, templates map[string]TemplateSpec, p string, add errSink) {
+	if base == "" {
+		// The shape walk already said `is required` at this path.
+		return
+	}
+	parsed, err := core.ParseString(base)
+	if err != nil {
+		add(p, "invalid ref: "+err.Error())
+		return
+	}
+	if parsed.Module != moduleDND5e || parsed.Type != typeMonsters {
+		add(p, fmt.Sprintf("must reference monsters: a template's base is %s:%s:<id>", moduleDND5e, typeMonsters))
+		return
+	}
+	if _, declared := templates[parsed.ID]; declared {
+		add(p, fmt.Sprintf("%q is a template this file declares: %s", base, errTemplateFromTemplate))
+	}
+}
+
+// templateArmorValue requires a well-formed `dnd5e:armor:<id>`.
+func templateArmorValue(armor, p string, add errSink) {
+	parsed, err := core.ParseString(armor)
+	if err != nil {
+		add(p, fmt.Sprintf("%q is not a ref: %v", armor, err))
+		return
+	}
+	if parsed.Module != moduleDND5e || parsed.Type != typeArmor {
+		add(p, fmt.Sprintf("%q is not armor: a template's armor is named as %s:%s:<id>", armor, moduleDND5e, typeArmor))
+	}
+}
+
+// validHitDice reports whether s is NdM with N and M at least 1. A count
+// too large for an int is refused rather than wrapped.
+func validHitDice(s string) bool {
+	m := hitDicePattern.FindStringSubmatch(s)
+	if m == nil {
+		return false
+	}
+	n, errN := strconv.Atoi(m[1])
+	d, errD := strconv.Atoi(m[2])
+	return errN == nil && errD == nil && n >= 1 && d >= 1
 }

@@ -1,0 +1,42 @@
+# DECODE-ONLY: every shape a template can be refused for, in one file, each at
+# its own path (rpg-project#555, T2). It never compiles; the test reads the
+# whole defect list, so one file proves the decoder reports EVERY defect it
+# finds rather than the first. Nothing here resolves a ref (design law C1):
+# each refusal is about what the string IS, never about what it names.
+version: 4
+key: templates-shape-refused
+play: { void: transparent, lighting: bright, standing: centre-covered }
+
+templates:
+  spearman:
+    base: dnd5e:weapons:spear
+  sentry:
+    base: dnd5e:monsters:human
+    hitDice: d8
+  gambler:
+    base: dnd5e:monsters:human
+    abilities: { luck: 12 }
+  husk:
+    base: dnd5e:monsters:human
+    abilities: { str: 0 }
+  squire:
+    base: dnd5e:monsters:human
+    armor: chain-shirt
+
+room:
+  version: 3
+  id: room-1
+  name: Refused
+  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
+    distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz}
+  workspace: { hexRadius: 6, horizontalLimit: 12 }
+  scene: { version: 1, id: scene-1, name: Refused, items: [], groups: [] }
+  room:
+    implicitRegionId: room-1-region
+    walkableHexes: [{q: 0, r: 0}, {q: 1, r: 0}]
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    partyStart: {q: 0, r: 0}
+    monsterDeclarations:
+      - {id: sentry-1, ref: "dnd5e:monsters:sentry", startingCell: { location: { q: 1, r: 0 } }}

@@ -1,0 +1,88 @@
+# The mad king's castle kitchen, in v4 (rpg-project#555, "Stat blocks as
+# content") — the first authored dungeon whose creatures' numbers are written
+# IN THE FILE rather than looked up in the rulebook.
+#
+# THE CLAIM THIS FILE MAKES is that a template is carried, not resolved. The
+# three blocks under `templates:` come out of the compile as the same strings
+# that went in, keyed by the id the author gave them, and a placement names
+# one as `dnd5e:monsters:<id>` exactly as it names a skeleton. Whether
+# `dnd5e:monsters:guard` resolves to this file's guard or to anything at all
+# is not this package's question (design law C1): the session asks it, one
+# layer up, where a package may import the rulebook.
+#
+# STORED IS AUTHORED. Each block says scores, hit dice, armor, proficiency,
+# skills and weapons — never hit points, armor class or an attack bonus,
+# because those are the rulebook's to derive and a stored total silently
+# stops following the score it came from (design R3). An unstated field is
+# the base's.
+#
+# BOTH SIDES START CIVIL. The watch and the kitchen are neutral to the party;
+# attack a cook and the kitchen turns, which is the aggression law every
+# monster already lives under and this file does not write.
+version: 4
+key: castle-kitchen-v4
+play: { void: transparent, lighting: bright, standing: centre-covered }
+
+templates:
+  guard:
+    base: dnd5e:monsters:human
+    abilities: { str: 13, con: 12, wis: 11 }
+    hitDice: 2d8
+    armor: dnd5e:armor:chain-shirt
+    skills: [perception]
+    actions: [dnd5e:weapons:spear]
+  captain:
+    base: dnd5e:monsters:human
+    abilities: { str: 15, dex: 14, con: 14, cha: 14 }
+    hitDice: 10d8
+    armor: dnd5e:armor:breastplate
+    proficiency: 3
+    actions: [dnd5e:weapons:longsword, dnd5e:weapons:javelin]
+  cook:
+    base: dnd5e:monsters:human
+    actions: [dnd5e:weapons:dagger]
+
+factions:
+  - id: watch
+    temper: { soldier: 1 }
+  - id: kitchen
+    temper: { coward: 1 }
+
+dispositions:
+  - { between: [watch, party], stance: neutral }
+  - { between: [kitchen, party], stance: neutral }
+
+room:
+  version: 3
+  id: room-1
+  name: The Castle Kitchen
+  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
+    distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz}
+  workspace: { hexRadius: 6, horizontalLimit: 12 }
+  scene:
+    version: 1
+    id: scene-1
+    name: The Castle Kitchen
+    items: []
+    groups: []
+  room:
+    implicitRegionId: room-1-region
+    walkableHexes: [{q: -2, r: 0}, {q: -2, r: 1}, {q: -2, r: 2},
+      {q: -1, r: -1}, {q: -1, r: 0}, {q: -1, r: 1}, {q: -1, r: 2},
+      {q: 0, r: -2}, {q: 0, r: -1}, {q: 0, r: 0}, {q: 0, r: 1}, {q: 0, r: 2},
+      {q: 1, r: -2}, {q: 1, r: -1}, {q: 1, r: 0}, {q: 1, r: 1},
+      {q: 2, r: -2}, {q: 2, r: -1}, {q: 2, r: 0}]
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    partyStart: {q: -2, r: 1}
+    monsterDeclarations:
+      # A TEMPLATE IS PLACED LIKE ANY MONSTER: the ref names it, and nothing
+      # on the placement says the numbers came from this file.
+      - {id: guard-1, ref: 'dnd5e:monsters:guard', startingCell: { location: { q: 1, r: -2 } }}
+      - {id: guard-2, ref: 'dnd5e:monsters:guard', startingCell: { location: { q: 2, r: -2 } }}
+      - {id: cook-1, ref: 'dnd5e:monsters:cook', startingCell: { location: { q: -1, r: 2 } }}
+    monsterBindings:
+      guard-1: {faction: watch}
+      guard-2: {faction: watch}
+      cook-1: {faction: kitchen}

@@ -66,6 +66,24 @@
 // `monsterBindings` (a creature's orders) — and [encounter.DoorInput] takes
 // one geometry or the other, never both.
 //
+// # Templates: stat blocks the author wrote (rpg-project#555)
+//
+// The single-room dialect may declare root `templates:` — named stat blocks,
+// each a rulebook base (`dnd5e:monsters:human`) plus the scores, hit dice,
+// armor, proficiency, skills, weapons and experience the author overrides
+// ([TemplateSpec]). A placement names one exactly as it names any monster,
+// `ref: dnd5e:monsters:guard`, so a template adds no member kind, no
+// placement verb and no targeting rule.
+//
+// THE COMPILER CHECKS SHAPE AND CARRIES THE REST. Every refusal is about what
+// a string IS — a base that is not a monster ref, armor that is not an armor
+// ref, a weapon that is not a weapon ref, a score outside 1 to 30, hit dice
+// that are not NdM, a base that names another template in the same file
+// ("templates derive from the rulebook, not from each other"). The blocks
+// come out on [Compiled.Templates] as the strings that went in. What a base
+// resolves to, and whether a template id shadows a rulebook monster, are
+// asked one layer up, for the reason the next section gives.
+//
 // # What it may not know
 //
 // This package compiles GEOMETRY and carries everything else. It resolves no
