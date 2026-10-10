@@ -206,7 +206,7 @@ func (s *PassageSuite) TestDrivenStepDoesNotSwallowProviderErrorWithPlacementSen
 
 func (s *PassageSuite) TestRecordedFallUpdatesWitnessPassageWithoutMovement() {
 	s.life.down[goblin] = true
-	_, err := s.enc.Record(&encounter.RecordInput{
+	_, err := recordOne(s.enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
 		Values:      map[encounter.OutcomeValue]int{encounter.ValueRoll: 17, encounter.ValueTotal: 22, encounter.ValueAgainst: 15, encounter.ValueAmount: 9},
 		Calculation: attackCalculation(17, 5, 0),

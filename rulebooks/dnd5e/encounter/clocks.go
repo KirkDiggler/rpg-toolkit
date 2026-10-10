@@ -249,7 +249,7 @@ func (e *Encounter) appendClockBeat(payload map[string]interface{}, subjects ...
 // "turn-ended" beat of its own left to append (there is no bubble left to
 // end a turn IN), but the caller still needs an honest answer to "how far
 // did the story move," and the dissolution's own beat — already appended,
-// several calls down, inside the Record that noticed the kill — is the
+// several calls down, inside the RecordTrain that noticed the kill — is the
 // truthful one.
 func (e *Encounter) lastRecordedSeq() uint64 {
 	next, err := e.story.NextSeq()
@@ -647,7 +647,7 @@ func (e *Encounter) runIntents(
 		// run closes on a stance ending. The check below the loop knew this
 		// for the last intent; a driver with intents left would otherwise be
 		// asked again and swing at a member it is opposed to nobody with, on
-		// a fight that no longer exists — or on a closed run, which Record
+		// a fight that no longer exists — or on a closed run, which RecordTrain
 		// refuses and turns a caller's EndTurn into ErrClosed (Kirk's walk on
 		// the raider camp, 2026-09-05). No more intents once the fight the
 		// turn belongs to is gone.
@@ -704,7 +704,7 @@ func (e *Encounter) endDrivenTurn(bubble *clock.Turn, active core.EntityID) (uin
 
 	// A step just executed (almost always a Strike) can have ended the fight
 	// out from under this very turn: [Encounter.noticeDown], reached through
-	// Record, dissolves a bubble that has run out of a side the instant it
+	// RecordTrain, dissolves a bubble that has run out of a side the instant it
 	// notices (rpg-toolkit#1078, ByDefeat) — and a driven member's own
 	// killing blow notices EXACTLY that. When it does, bubble is the same
 	// *clock.Turn this call has held throughout, now idle: there is nothing

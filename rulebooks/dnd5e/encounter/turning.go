@@ -158,7 +158,7 @@ func (e *Encounter) aggression(actor, target MemberID, at uint64) error {
 // # The three answers this makes, and why each is right
 //
 // AN ATTACK ROLL PROVOKES HIT OR MISS. A miss is still a shot at you, which
-// is [DeedAttack]'s own rule and [Encounter.Record]'s: OutcomeMissed lands the
+// is [DeedAttack]'s own rule and [Encounter.RecordTrain]'s: OutcomeMissed lands the
 // same deed and the same turn as OutcomeStruck, and a spell attack roll that
 // misses arrives on this arm as exactly that strike.
 //
@@ -235,7 +235,7 @@ func whollyAKindness(results []ActivationResult) bool {
 // attacked, and so may every monster.
 //
 // ASKED AT THE VERB, BEFORE ANY APPEND, at both doors an attack comes through
-// — a recorded outcome ([Encounter.Record]) and a cast with an attack roll on
+// — a recorded outcome ([Encounter.RecordTrain]) and a cast with an attack roll on
 // a target ([Encounter.RecordCast]). Refusing inside landAttack would refuse
 // after the beat that announced the swing had already been told.
 func (e *Encounter) attackable(what string, id MemberID) error {

@@ -39,15 +39,15 @@ const (
 	// OutcomeDown is a member the rulebook reports out of the fight — the
 	// minimal death beat ruled on rpg-toolkit#959: this kind, and who.
 	//
-	// NOT ACCEPTABLE TO [Encounter.Record], deliberately, and it is the only
+	// NOT ACCEPTABLE TO [Encounter.RecordTrain], deliberately, and it is the only
 	// kind that is not. Down is something the composition NOTICES, by asking
 	// [Standing] at the choke point where it already asks about sight; a caller
 	// that could push the beat in would be a second system deciding the same
 	// thing, and the first one would always win because it reaches the fact
-	// first. Record's switch is therefore the CALLER-WRITABLE subset of this
+	// first. prepareRecord's switch is therefore the CALLER-WRITABLE subset of this
 	// enum rather than all of it — pushing this kind gets ErrInvalidData.
 	//
-	// [Encounter.Record] performing that ask itself (rpg-toolkit#1083) SHARPENS
+	// [Encounter.RecordTrain] performing that ask itself (rpg-toolkit#1083) SHARPENS
 	// this refusal rather than softening it. The verb a caller uses to report a
 	// blow is now the verb that finds out what the blow did — so a caller gets
 	// the down beat it wanted, in the same call, and still cannot write one. The
@@ -193,6 +193,13 @@ type RecordInput struct {
 	// rather than a declared action. Present for an opportunity attack, nil
 	// for an ordinary swing — see ReactionIdentity's own doc.
 	Reaction *ReactionIdentity
+
+	// Sequence names the sequence this swing was performed inside. Present on
+	// a swing of a multiattack, nil on a lone swing and on every reaction.
+	// Valid on OutcomeStruck, OutcomeMissed and OutcomeWarded; any other kind
+	// is ErrInvalidData, as is an empty Ref or Name. Written as the beat's
+	// "sequence": {"ref", "name"} key, and omitted when nil.
+	Sequence *SequenceIdentity
 
 	// DamageComponents are the ordered primitive facts that produced a struck
 	// outcome. Meaning belongs to the rulebook; this composition preserves the
@@ -489,7 +496,7 @@ func experienceSubjects(subjects []MemberID, detail *ExperienceDetail) []MemberI
 // immunity) has a sourced Roll with neither dice nor a modifier — the same
 // shape the root rulebook's own trait producers emit.
 //
-// [Encounter.Record] validates Roll before appending: the source identity is
+// [Encounter.RecordTrain] validates Roll before appending: the source identity is
 // required, and any dice trace present is replayed for structural and
 // arithmetic consistency. The multiplier's MEANING is never interpreted here.
 type DamageComponent struct {
@@ -539,7 +546,7 @@ type AttackModifierSource struct {
 //
 // PLAIN STRINGS, MEANT TO BE USED LIKE MemberID IS ON THIS INPUT — CHECKED
 // FOR PRESENCE THE WAY MemberID IS, BUT NOT FOR MEANING (Copilot, PR #1172).
-// [Encounter.Record] refuses ErrInvalidData when Ref or Name is empty, the
+// [Encounter.RecordTrain] refuses ErrInvalidData when Ref or Name is empty, the
 // same as it refuses an empty Actor — that is the minimum this composition
 // CAN check without a catalog. It does not, and cannot, validate that Ref or
 // Name names anything real, or that DamageType is one of the rulebook's own
@@ -582,7 +589,7 @@ type AttackIdentity struct {
 // and has nothing to explain it with (rpg-project#316).
 //
 // PLAIN STRINGS, CHECKED FOR PRESENCE AND NOT FOR MEANING, exactly as
-// [AttackIdentity] is and for the identical reason: [Encounter.Record] refuses
+// [AttackIdentity] is and for the identical reason: [Encounter.RecordTrain] refuses
 // ErrInvalidData when Ref or Name is empty — the minimum this composition CAN
 // check — and cannot validate that either names anything real, because this
 // module's go.mod cannot import the rulebook that would answer (C1). The
@@ -601,32 +608,61 @@ type ReactionIdentity struct {
 	Name string
 }
 
-// RecordOutput reports where the outcome landed in the story. It is also what
-// [Encounter.TellConcentration] returns, which writes no outcome beat.
-type RecordOutput struct {
-	// IntelDeltas maps member IDs to their updated percepts after any driven
-	// monster turns caused by noticing the recorded outcome's consequences.
-	IntelDeltas map[MemberID]*IntelDelta
+// SequenceIdentity names the sequence a swing was performed inside — the goblin
+// boss's Multiattack — so the story can tell a Multiattack's swing from a lone
+// pick. Plain strings checked for presence, as [AttackIdentity] and
+// [ReactionIdentity] are: this module cannot resolve a rulebook ref (C1).
+type SequenceIdentity struct {
+	// Ref is the sequence definition's own ref, not the component it swung.
+	Ref string
 
-	// Seq is the story sequence of the recorded beat. ZERO from
-	// [Encounter.TellConcentration], which wrote no outcome beat.
+	// Name is the display name for Ref — "Multiattack".
+	Name string
+}
+
+// TrainUnit is one told unit of a landing: exactly one of Outcome or
+// Activation. Each carries its own concentration checks and breaks
+// ([RecordInput.ConcentrationChecks] and [RecordInput.ConcentrationBreaks],
+// [RecordActivationInput]'s same fields), told behind that unit's own beat.
+type TrainUnit struct {
+	// Outcome is a rulebook outcome: a swing, a death save, a trade, a ward,
+	// an experience grant.
+	Outcome *RecordInput
+
+	// Activation is an activation told inside a landing: a post-hit
+	// reaction's retaliation, today.
+	Activation *RecordActivationInput
+}
+
+// RecordTrainInput is every unit one landing tells, in story order.
+type RecordTrainInput struct {
+	Units []TrainUnit
+}
+
+// TrainLanded is where one unit's beats landed.
+type TrainLanded struct {
+	// Seq is the unit's own beat: the outcome beat, or the activation's
+	// activated beat.
 	Seq uint64
 
-	// FollowUpSeqs are the sequences of the beats appended after the outcome
-	// for [RecordInput.ConcentrationChecks] and then
-	// [RecordInput.ConcentrationBreaks], in append order. Empty when the
-	// outcome asked for no check and broke nobody's concentration. From
-	// [Encounter.TellConcentration] it lists EVERY beat that call appended,
-	// checks first, then breaks, in append order.
-	//
-	// They are reported SEPARATELY from Seq rather than folded into it,
-	// because Seq answers a question the caller actually asked — where the
-	// thing I reported landed — and an outcome beat that moved depending on
-	// how many consequences followed it would answer a different one.
+	// FollowUpSeqs are every other beat the unit appended, in append order: an
+	// activation's save and results, then the unit's concentration checks,
+	// then its breaks' trains.
 	FollowUpSeqs []uint64
 }
 
-// Record puts one rulebook outcome into the encounter's story.
+// RecordTrainOutput reports one [TrainLanded] per input unit, in input order,
+// and the intel changes the one standing consult produced.
+type RecordTrainOutput struct {
+	Units []TrainLanded
+
+	// IntelDeltas maps member IDs to their updated percepts after any driven
+	// monster turns caused by noticing the train's consequences.
+	IntelDeltas map[MemberID]*IntelDelta
+}
+
+// RecordTrain puts one landing's units into the story and then lets the world
+// notice them, once.
 //
 // It exists because a strike resolved outside this module was INVISIBLE:
 // resolution returns an outcome value and writes no beat, appendBeat is
@@ -640,179 +676,247 @@ type RecordOutput struct {
 // localized but visible, and a client that learned about a strike only from
 // the striker's own response could not render the scene the party is in.
 //
+// # One landing, one train, one consult
+//
+// A landing writes every dirty sheet BEFORE it records, so the standing
+// consult answers from the end state of the whole output. Asking between two
+// units would therefore report a fall ahead of the blow that caused it, and a
+// last-standing member's fall would close the encounter between two swings of
+// one multiattack. The train is the unit of telling: every unit's beats first,
+// the question once, after the last.
+//
+// Every unit is prepared before anything is appended. Then, for each unit in
+// order: its own beat, its concentration checks' saved beats, its breaks'
+// trains, and, for a struck or missed outcome, its attack deed. After the last
+// unit: the standing consult (down beats, then a party-defeat ending, removals
+// and member-down endings), the observed-standing refresh, and each activation
+// unit's world-action price in unit order.
+//
 // # It records, and then the world notices what it recorded
 //
-// This verb used to record and do NOTHING ELSE, and that sentence was worth the
-// emphasis it carried. Two thirds of it still hold exactly: no sight refresh, no
-// trigger detection, no clock movement. What it now also does is run the
-// standing consult — [Encounter.noticeDown], the one place noticing happens —
-// after its own beat.
+// The consult is [Encounter.noticeDown], the one place noticing happens. It
+// runs for EVERY kind rather than only for [OutcomeStruck]: which outcomes can
+// drop somebody is a rulebook fact and this module cannot import the rulebook
+// (C1), so a verb that decided for itself which beats were worth looking after
+// would be encoding that rule, and would miss the first route to zero nobody
+// has written yet. The composition ASKS and the rulebook answers, the answer is
+// pulled and never remembered, and the story is the ledger that keeps the news
+// from being told twice. The alternative on offer was a caller pushing the
+// beat in, and that is a different thing entirely: see [OutcomeDown], which is
+// still refused, for why.
 //
-// THE REASON IS THE ONE THING THAT MAKES THIS VERB DIFFERENT from the others
-// that reach that consult. A walk cannot change who is standing; a recorded
-// outcome can, because the blow this beat describes is the blow that took
-// somebody to zero. Every other consult site is a verb LOOKING at a world
-// somebody else changed. This one is the change. Leaving it out meant a killing
-// blow landed, persisted, and left the world not knowing — no down beat, no
-// [ByDefeat] ending, the turn order still holding a body — until whatever verb
-// next happened to refresh sight. A party that cleared the room and stood still
-// was in a fight with a corpse (rpg-toolkit#1083).
-//
-// NOTICING IS NOT "SOMETHING ELSE", and that is an argument rather than an
-// exception carved for convenience. It is the same consult, at the same choke
-// point, under the same discipline: the composition ASKS and the rulebook
-// answers (C1), the answer is pulled and never remembered, and the story is the
-// ledger that keeps the news from being told twice. Record is not growing a
-// second mechanism for death — it is joining the list of verbs that reach the
-// first one, which is exactly what "one place" is for. The alternative on offer
-// was a caller pushing the beat in, and that is a different thing entirely: see
-// [OutcomeDown], which is still refused, for why.
-//
-// # The order in one pass
-//
-// The recorded outcome lands FIRST, then whatever the consult makes of it: the
-// strike, then the body, then the ending the body explains. That is
-// [Encounter.refreshSight]'s law — a verb's own beat precedes any beat its
-// consequences append — held inside one verb, the same way
-// [Encounter.noticeDown] holds it inside one pass. The caller's beat is still
-// the cause. What is new is that its effects can arrive in the same breath
-// instead of at whatever ran next.
-//
-// [RecordOutput.Seq] is therefore the OUTCOME beat and never the last one
-// written. A caller asked for one thing to be recorded and is told where that
-// thing landed.
-//
-// [RecordOutput.IntelDeltas] carries any percept changes produced when that
-// consult transfers a fallen active member and drives the next monster. The
-// mutation belongs to this Record even though it happened in a nested turn, so
-// dropping it would leave the caller unable to publish the correction.
-//
-// The consult runs for EVERY kind rather than only for [OutcomeStruck]. Which
-// outcomes can drop somebody is a rulebook fact and this module cannot import
-// the rulebook (C1) — a Record that decided for itself which of its beats were
-// worth looking after would be encoding that rule, and would miss the first
-// route to zero nobody has written yet.
+// A unit's own beat is the cause. [TrainLanded.Seq] is therefore the unit's
+// beat and never the last one written; a caller asked for one thing to be
+// recorded and is told where that thing landed.
 //
 // # On error
 //
-// Errors: ErrNilInput, ErrClosed (for every kind but
-// [OutcomeExperienceGained], which is recordable after the close — see
-// prepareRecord's refusal site for why), ErrNoMember (empty actor or
-// target), ErrNotMember (unknown actor or target; an experience beat's actor
-// may be any former member), ErrInvalidData (a kind or value name this
-// composition does not know, missing or mismatched DeathSave, Trade or
-// Experience detail, an experience grant naming no character or paying a
-// non-positive amount, an Attack or
-// Reaction whose Ref or Name is empty, a damage component whose roll facts
-// are missing or internally inconsistent, or a non-finite damage multiplier
-// JSON cannot represent), and anything the [Participation] capability answers with —
-// including ErrNotMember for an answer naming a stranger.
+// Errors, every one before anything is appended: [ErrNilInput] for a nil input;
+// [ErrInvalidData] for zero units or a unit with both or neither field set;
+// [ErrClosed] for a closed encounter, except a train whose every unit is an
+// [OutcomeExperienceGained]; and whatever the preparation of any unit refuses,
+// wrapped with the unit's index — [ErrNoMember], [ErrNotMember] (an experience
+// beat's actor may be any former member), [ErrInvalidData] (a kind or value
+// name this composition does not know, missing or mismatched DeathSave, Trade,
+// Warded, Experience or Sequence detail, an Attack, Reaction or Sequence whose
+// Ref or Name is empty, a damage component whose roll facts are missing or
+// internally inconsistent, a non-finite damage multiplier JSON cannot
+// represent), and anything the [Participation] capability answers with.
 //
-// The input refusals all run before anything is appended, so a rejected input
-// costs the rulebook nothing. The consult does not: it runs after the beat, so a
-// Record that fails there leaves the in-memory encounter holding an outcome
-// whose consequences were never worked out. That is R5's documented limit rather
-// than a hole in it, and the caller's obligation is doc.go's whole answer to it
-// — drop the encounter unsaved.
-func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
-	prepared, err := e.prepareRecord(in)
+// A failure in a deed or the consult happens after the append, so a rulebook
+// that cannot answer leaves the in-memory encounter holding a train whose
+// consequences were never worked out. That is R5's documented limit rather
+// than a hole in it, and the caller's obligation is doc.go's whole answer to
+// it — drop the encounter unsaved.
+func (e *Encounter) RecordTrain(in *RecordTrainInput) (*RecordTrainOutput, error) {
+	const verb = "record train"
+	if in == nil {
+		return nil, fmt.Errorf("%s: %w", verb, ErrNilInput)
+	}
+	if len(in.Units) == 0 {
+		return nil, fmt.Errorf("%s: no units: %w", verb, ErrInvalidData)
+	}
+
+	// Prepared in full before the first append: a bad unit anywhere refuses
+	// the whole train and costs the rulebook nothing.
+	prepared := make([]preparedUnit, 0, len(in.Units))
+	for i, unit := range in.Units {
+		p, err := e.prepareUnit(i, unit)
+		if err != nil {
+			return nil, err
+		}
+		prepared = append(prepared, p)
+	}
+
+	landed, intelDeltas, err := e.appendTrainAndNotice(verb, prepared)
 	if err != nil {
 		return nil, err
 	}
-	beatBytes, subjects := prepared[0].payload, prepared[0].subjects
-	breakBeats := prepared[1:]
+	return &RecordTrainOutput{Units: landed, IntelDeltas: intelDeltas}, nil
+}
 
-	appended, err := e.appendBeat(&record.AppendInput{
-		At:       uint64(e.clock.ToData().HighWater),
-		Audience: e.audienceFor(subjectBeat, subjects...),
-		Tags:     map[string]string{"tag": "outcome"},
-		Payload:  beatBytes,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("record: %w", err)
+// preparedUnit is one unit, validated and marshalled, nothing appended.
+type preparedUnit struct {
+	// beats is the unit's own beat first when headed, then its follow-ups.
+	beats []preparedActivationBeat
+
+	// headed says beats[0] is the unit's own beat. False for a
+	// [Encounter.TellConcentration], which has none.
+	headed bool
+
+	// land is a struck or missed outcome's attack deed; nil otherwise.
+	land func() error
+
+	// pass carries a stabilized or recovered death save's deferReconcile.
+	pass participationPassInput
+
+	// worldActor is an activation's actor, who pays the world-action price;
+	// empty otherwise.
+	worldActor MemberID
+}
+
+// prepareUnit validates and marshals one unit without mutating the story. It is
+// the validation/mutation boundary for [Encounter.RecordTrain]: pure, so a bad
+// unit anywhere in a train can be refused before anything is appended.
+func (e *Encounter) prepareUnit(index int, unit TrainUnit) (preparedUnit, error) {
+	switch {
+	case unit.Outcome != nil && unit.Activation != nil:
+		return preparedUnit{}, fmt.Errorf("record train: unit %d: both outcome and activation: %w", index, ErrInvalidData)
+	case unit.Outcome == nil && unit.Activation == nil:
+		return preparedUnit{}, fmt.Errorf("record train: unit %d: neither outcome nor activation: %w", index, ErrInvalidData)
 	}
+
+	if in := unit.Activation; in != nil {
+		beats, err := e.prepareActivation(in)
+		if err != nil {
+			return preparedUnit{}, fmt.Errorf("record train: unit %d: %w", index, err)
+		}
+		return preparedUnit{beats: beats, headed: true, worldActor: in.Actor}, nil
+	}
+
+	in := unit.Outcome
+	beats, err := e.prepareRecord(in)
+	if err != nil {
+		return preparedUnit{}, fmt.Errorf("record train: unit %d: %w", index, err)
+	}
+	prepared := preparedUnit{beats: beats, headed: true}
 
 	// A stabilized or recovered Death Save carries an explicit turn
 	// continuation. Recording it happens inside the already-active turn, so it
 	// neither auto-passes that slot nor reconciles a retained one-sided bubble
 	// in this same call. Stabilized explicitly reaches EndTurn; recovered keeps
 	// control until the eventual turn-settlement boundary.
-	pass := participationPassInput{}
 	if in.Kind == OutcomeDeathSave && (in.DeathSave.Stabilized || in.DeathSave.Recovered) {
-		pass.deferReconcile = true
+		prepared.pass.deferReconcile = true
 	}
-	var land func() error
 	if in.Kind == OutcomeStruck || in.Kind == OutcomeMissed {
 		// subjects[1:] is the validated, sorted target list for these two
 		// kinds: only [OutcomeExperienceGained] puts anything else in there,
 		// and it never lands an attack.
-		land = func() error { return e.landAttack(in.Actor, subjects[1:]) }
+		targets := beats[0].subjects[1:]
+		prepared.land = func() error { return e.landAttack(in.Actor, targets) }
 	}
-
-	followUpSeqs, intelDeltas, err := e.appendTrainAndNotice("record", breakBeats, land, pass)
-	if err != nil {
-		return nil, err
-	}
-	return &RecordOutput{IntelDeltas: intelDeltas, Seq: appended.Seq, FollowUpSeqs: followUpSeqs}, nil
+	return prepared, nil
 }
 
-// appendTrainAndNotice is the half of [Encounter.Record] that
-// [Encounter.TellConcentration] shares: it appends a prepared concentration
-// train and then runs the post-append consult. ONE BODY, so the two verbs
-// cannot drift — a check told without an outcome lands exactly as the same
-// check told behind one, and the world notices it the same way.
+// appendTrainAndNotice is the ONLY body that appends a train and runs the
+// post-append consult, for [Encounter.RecordTrain] and
+// [Encounter.TellConcentration] alike. ONE BODY, so the verbs cannot drift — a
+// check told without an outcome lands exactly as the same check told behind
+// one, and the world notices it the same way.
 //
-// The train rides in at the current clock reading and through the same append
-// as the beat before it, so the story holds the blow (when there is one), every
-// roll it asked for and everything it ended as one train from one call.
+// Each unit rides in at the current clock reading: its own beat (when headed),
+// then its follow-ups, then its deed. No consult runs between units: the sheets
+// were written before the record, so asking early would tell a fall ahead of
+// the blow that caused it.
 //
-// A CLOSED ENCOUNTER STOPS AFTER THE APPEND. Only [OutcomeExperienceGained]
-// reaches this on one — every other caller is refused before anything is
-// appended — and a settled world has nothing left to notice: no sight to
-// refresh, no standing to consult, no ending left to fire.
+// A CLOSED ENCOUNTER STOPS AFTER THE APPEND. Only a train of
+// [OutcomeExperienceGained] reaches this on one — every other unit is refused
+// in preparation — and a settled world has nothing left to notice: no sight to
+// refresh, no standing to consult, no ending left to fire. An encounter that
+// was open at the start and closed mid-train is refused with [ErrClosed]
+// naming the unit rather than appended to. Nothing between the first append
+// and the consult can close it today (a deed only turns pairs hostile); the
+// check is the fail-closed answer for the day something can.
 //
-// Otherwise the world finds out what the train just changed. AFTER the append,
-// never before: the train is the cause, and a down beat ahead of what explains
-// it would be a story told backwards. land, when non-nil, runs first — a
-// recorded attack lands its deed before the standing consult, as Record always
-// ordered it. pass shapes that consult; verb names the caller in every error.
+// Otherwise the world finds out what the train just changed, AFTER the last
+// append, never before: the train is the cause, and a down beat ahead of what
+// explains it would be a story told backwards. Then the observed-standing
+// refresh, then each activation unit's world-action price, in unit order.
+// verb names the caller in every error.
 func (e *Encounter) appendTrainAndNotice(
-	verb string, train []preparedActivationBeat, land func() error, pass participationPassInput,
-) ([]uint64, map[MemberID]*IntelDelta, error) {
-	followUpSeqs := make([]uint64, 0, len(train))
-	for i, beat := range train {
-		appendedFollowUp, followUpErr := e.appendBeat(&record.AppendInput{
-			At:       uint64(e.clock.ToData().HighWater),
-			Audience: e.audienceFor(subjectBeat, beat.subjects...),
-			Tags:     map[string]string{"tag": "outcome"},
-			Payload:  beat.payload,
-		})
-		if followUpErr != nil {
-			return nil, nil, fmt.Errorf("%s: concentration beat %d: %w", verb, i, followUpErr)
+	verb string, units []preparedUnit,
+) ([]TrainLanded, map[MemberID]*IntelDelta, error) {
+	openAtStart := e.outcome == nil
+	landed := make([]TrainLanded, len(units))
+	var pass participationPassInput
+
+	for i, unit := range units {
+		if i > 0 && openAtStart && e.outcome != nil {
+			return nil, nil, fmt.Errorf("%s: unit %d: %w", verb, i, ErrClosed)
 		}
-		followUpSeqs = append(followUpSeqs, appendedFollowUp.Seq)
+		for j, beat := range unit.beats {
+			appended, err := e.appendBeat(&record.AppendInput{
+				At:       uint64(e.clock.ToData().HighWater),
+				Audience: e.audienceFor(subjectBeat, beat.subjects...),
+				Tags:     map[string]string{"tag": "outcome"},
+				Payload:  beat.payload,
+			})
+			if err != nil {
+				return nil, nil, fmt.Errorf("%s: unit %d: beat %d: %w", verb, i, j, err)
+			}
+			if unit.headed && j == 0 {
+				landed[i].Seq = appended.Seq
+			} else {
+				landed[i].FollowUpSeqs = append(landed[i].FollowUpSeqs, appended.Seq)
+			}
+		}
+		if e.outcome == nil && unit.land != nil {
+			if err := unit.land(); err != nil {
+				return nil, nil, fmt.Errorf("%s: unit %d: %w", verb, i, err)
+			}
+		}
+		if unit.pass.deferReconcile {
+			pass.deferReconcile = true
+		}
 	}
 
 	if e.outcome != nil {
-		return followUpSeqs, nil, nil
-	}
-
-	if land != nil {
-		if err := land(); err != nil {
-			return nil, nil, fmt.Errorf("%s: %w", verb, err)
-		}
+		return landed, nil, nil
 	}
 
 	participation, intelDeltas, nerr := e.noticeDown(pass)
 	if nerr != nil {
 		return nil, nil, fmt.Errorf("%s: %w", verb, nerr)
 	}
-
 	observed, err := e.refreshChangedStanding(participation)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%s observed standing: %w", verb, err)
 	}
-	return followUpSeqs, mergeIntelDeltas(intelDeltas, observed), nil
+
+	// THE WORLD'S PRICE FOR AN ACTION, paid after the outcome has landed and
+	// before anything else refreshes (design §5, worldtime.go): one round on
+	// the world clock for the actor, and the world thinks on it. Nothing at
+	// all for a member inside a fight, where the round is what prices time.
+	for _, unit := range units {
+		if unit.worldActor == "" {
+			continue
+		}
+		if err := e.spendWorldAction(unit.worldActor); err != nil {
+			return nil, nil, err
+		}
+	}
+	return landed, mergeIntelDeltas(intelDeltas, observed), nil
+}
+
+// TellConcentrationOutput is what [Encounter.TellConcentration] appended.
+type TellConcentrationOutput struct {
+	// Seqs lists every beat appended, checks first, then breaks, in order.
+	Seqs []uint64
+
+	// IntelDeltas maps member IDs to their updated percepts after any driven
+	// monster turns caused by noticing the concentration's consequences.
+	IntelDeltas map[MemberID]*IntelDelta
 }
 
 // TellConcentrationInput is the concentration a rule changed with no outcome
@@ -832,25 +936,26 @@ type TellConcentrationInput struct {
 	Breaks []ConcentrationBreak
 }
 
-// TellConcentration appends the beats [Encounter.Record] appends behind an
-// outcome, with no outcome: every check's saved beat, then every break's train
-// (the failed check if there was one, the break, the conditions it stripped).
+// TellConcentration appends the beats [Encounter.RecordTrain] appends behind a
+// unit's own beat, with no unit: every check's saved beat, then every break's
+// train (the failed check if there was one, the break, the conditions it
+// stripped).
 //
-// IT IS NOT A KIND OF RECORD, and Record still requires a kind (one pause
-// envelope, ruling E6). Some concentration has no causing unit to ride behind
-// — a cast that ends its caster's own earlier concentration and then pauses,
-// a turn boundary — and before this verb it was dropped by name. It shares
-// Record's preparation (the same validation, under the verb name "tell
-// concentration") and Record's append-and-consult body, so the same checks and
-// breaks land as the same beats in the same order either way.
+// IT IS NOT A KIND OF OUTCOME, and a [TrainUnit] still requires one. Some
+// concentration has no causing unit to ride behind — a cast that ends its
+// caster's own earlier concentration and then pauses, a turn boundary — and
+// before this verb it was dropped by name. It shares the train's preparation
+// (the same validation, under the verb name "tell concentration") and the
+// train's append-and-consult body, so the same checks and breaks land as the
+// same beats in the same order either way.
 //
-// [RecordOutput.Seq] is zero — there is no outcome beat — and
-// [RecordOutput.FollowUpSeqs] lists every beat appended, in order.
+// [TellConcentrationOutput.Seqs] lists every beat appended, in order; there is
+// no unit beat to name.
 //
 // Errors: [ErrNilInput]; [ErrClosed]; [ErrNoMember] or [ErrNotMember] for the
 // actor; [ErrInvalidData] when both lists are empty; whatever the shared
 // preparation refuses. Every refusal runs before anything is appended.
-func (e *Encounter) TellConcentration(in *TellConcentrationInput) (*RecordOutput, error) {
+func (e *Encounter) TellConcentration(in *TellConcentrationInput) (*TellConcentrationOutput, error) {
 	const verb = "tell concentration"
 	if in == nil {
 		return nil, fmt.Errorf("%s: %w", verb, ErrNilInput)
@@ -877,12 +982,12 @@ func (e *Encounter) TellConcentration(in *TellConcentrationInput) (*RecordOutput
 		return nil, err
 	}
 
-	followUpSeqs, intelDeltas, err := e.appendTrainAndNotice(
-		verb, append(checkBeats, breakBeats...), nil, participationPassInput{})
+	landed, intelDeltas, err := e.appendTrainAndNotice(
+		verb, []preparedUnit{{beats: append(checkBeats, breakBeats...)}})
 	if err != nil {
 		return nil, err
 	}
-	return &RecordOutput{IntelDeltas: intelDeltas, FollowUpSeqs: followUpSeqs}, nil
+	return &TellConcentrationOutput{Seqs: landed[0].FollowUpSeqs, IntelDeltas: intelDeltas}, nil
 }
 
 // prepareRecord validates and marshals an outcome without mutating Story.
@@ -898,14 +1003,14 @@ func (e *Encounter) prepareRecord(in *RecordInput) ([]preparedActivationBeat, er
 	//
 	// The sequence is not hypothetical: a boss going down fires its
 	// [TriggerMemberDown] ending inside [Encounter.noticeDown], which runs
-	// INSIDE the Record that reported the killing blow, so the encounter is
+	// INSIDE the train that reported the killing blow, so the encounter is
 	// already settled by the time the session has divided the monster's worth
 	// and written the sheets. Refusing here would mean the one death that
 	// mattered most is the only death nobody was paid for, on the record.
 	//
 	// It is safe because this kind cannot change anything. It is bookkeeping
 	// the session has already applied, it moves no clock, it names no target,
-	// and [Encounter.Record] skips the standing consult entirely once the
+	// and [Encounter.RecordTrain] skips the standing consult entirely once the
 	// encounter is closed — a settled world has nothing left to notice. The
 	// ending-reward slice [ExperienceDetail.Member] already anticipates comes
 	// through this same door. Every other kind stays refused.
@@ -987,6 +1092,9 @@ func (e *Encounter) prepareRecord(in *RecordInput) ([]preparedActivationBeat, er
 	}
 	if in.PresentationID != "" && in.Kind != OutcomeStruck && in.Kind != OutcomeMissed {
 		return nil, fmt.Errorf("record: presentation id does not match outcome kind %q: %w", in.Kind, ErrInvalidData)
+	}
+	if in.Sequence != nil && in.Kind != OutcomeStruck && in.Kind != OutcomeMissed && in.Kind != OutcomeWarded {
+		return nil, fmt.Errorf("record: sequence does not match outcome kind %q: %w", in.Kind, ErrInvalidData)
 	}
 	if in.Calculation != nil && in.Kind != OutcomeStruck && in.Kind != OutcomeMissed {
 		return nil, fmt.Errorf("record: calculation does not match outcome kind %q: %w", in.Kind, ErrInvalidData)
@@ -1152,6 +1260,18 @@ func (e *Encounter) prepareRecord(in *RecordInput) ([]preparedActivationBeat, er
 		payload["reaction"] = map[string]string{
 			"ref":  in.Reaction.Ref,
 			"name": in.Reaction.Name,
+		}
+	}
+	if in.Sequence != nil {
+		if in.Sequence.Ref == "" {
+			return nil, fmt.Errorf("record: sequence ref: %w", ErrInvalidData)
+		}
+		if in.Sequence.Name == "" {
+			return nil, fmt.Errorf("record: sequence name: %w", ErrInvalidData)
+		}
+		payload["sequence"] = map[string]string{
+			"ref":  in.Sequence.Ref,
+			"name": in.Sequence.Name,
 		}
 	}
 

@@ -391,7 +391,7 @@ func (e *Encounter) appendBeat(in *record.AppendInput) (*record.AppendOutput, er
 // NextStorySeq returns the global sequence the next successful story append
 // will use. It is a read: it does not reserve, increment, or append anything.
 // Encounter ingress is single-command in v1; this method makes no promise for a
-// future host that allows concurrent writers between this read and Record.
+// future host that allows concurrent writers between this read and RecordTrain.
 func (e *Encounter) NextStorySeq() (uint64, error) {
 	next, err := e.story.NextSeq()
 	if err != nil {

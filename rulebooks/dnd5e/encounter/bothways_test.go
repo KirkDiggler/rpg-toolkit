@@ -400,7 +400,7 @@ func (s *BothWaysSuite) TestAttackingANeutralCampTurnsItAndFormsTheFight() {
 	s.Require().Equal(encounter.StanceNeutral, s.stance(enc, bwGoblins, encounter.FactionParty))
 	s.Require().Equal(encounter.ClockWorld, s.clockOf(enc, alice), "precondition: nobody is fighting")
 
-	_, err := enc.Record(&encounter.RecordInput{
+	_, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{bwScout},
 		Values: map[encounter.OutcomeValue]int{encounter.ValueAmount: 7},
 	})
@@ -449,7 +449,7 @@ func (s *BothWaysSuite) TestAnAlliedPairIsNotTurnedByAnAttack() {
 		[]encounter.MemberInput{player(alice, 0, 1), monster(bwScout, bwGoblins, 4, 1)},
 	)
 
-	_, err := enc.Record(&encounter.RecordInput{
+	_, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{bwScout},
 		Values: map[encounter.OutcomeValue]int{encounter.ValueAmount: 7},
 	})
@@ -483,7 +483,7 @@ func (s *BothWaysSuite) TestAWorldNPCIsNotATarget() {
 	s.Require().NoError(err)
 
 	s.Run("a swing at one is refused by name", func() {
-		_, rerr := enc.Record(&encounter.RecordInput{
+		_, rerr := recordOne(enc, &encounter.RecordInput{
 			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{bwVendor},
 			Values: map[encounter.OutcomeValue]int{encounter.ValueAmount: 7},
 		})
@@ -581,7 +581,7 @@ func (s *BothWaysSuite) TestTheBetrayedTruce() {
 	s.Require().Equal(encounter.StanceNeutral, s.stance(enc, bwGoblins, encounter.FactionParty),
 		"the truce the hold-out grants")
 
-	_, err = enc.Record(&encounter.RecordInput{
+	_, err = recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{bwChief},
 		Values: map[encounter.OutcomeValue]int{encounter.ValueAmount: 7},
 	})
@@ -619,7 +619,7 @@ func (s *BothWaysSuite) TestATurnedPairSurvivesASaveAndLoad() {
 	)
 	enc := s.open(field, []encounter.MemberInput{player(alice, 0, 1), monster(bwScout, bwGoblins, 4, 1)})
 
-	_, err := enc.Record(&encounter.RecordInput{
+	_, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{bwScout},
 		Values: map[encounter.OutcomeValue]int{encounter.ValueAmount: 7},
 	})

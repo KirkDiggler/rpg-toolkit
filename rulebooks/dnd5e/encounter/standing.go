@@ -42,7 +42,7 @@ func (e *Encounter) downNow() (map[MemberID]bool, error) {
 
 type participationPassInput struct {
 	// newlyActive names clocks whose active slot was created before this pass,
-	// such as EndTurn's successor. Mid-turn Record supplies none.
+	// such as EndTurn's successor. Mid-turn RecordTrain supplies none.
 	newlyActive []*clock.Turn
 	// deferReconcile keeps a one-sided bubble in place for the same call that
 	// records a stabilized or recovered Death Save. Its explicit continuation
@@ -206,7 +206,7 @@ func (e *Encounter) noticeDown(
 	}
 
 	// Drive only slots that became active in this pass. An already-active slot
-	// whose mid-turn Record changes to AutoPass remains active until its ruled
+	// whose mid-turn RecordTrain changes to AutoPass remains active until its ruled
 	// continuation explicitly settles the turn.
 	for _, bubble := range settlementOrder {
 		if !toSettle[bubble] {

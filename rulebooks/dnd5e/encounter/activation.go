@@ -8,7 +8,6 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/play/record"
 )
 
 // ActivationIdentity names the rulebook ability that was activated. Ref and
@@ -300,10 +299,13 @@ type capacityGrantedPayload struct {
 	Description string               `json:"description"`
 }
 
-// RecordActivation appends one activated beat followed by one activation-result
-// beat per result, preserving result order. The entire input and every payload
-// are validated before the first append, so an input rejection cannot leave a
-// partial transaction in the story.
+// RecordActivation tells one activation as a train of one: its activated beat,
+// its optional save beat, one activation-result beat per result in result
+// order, then its concentration checks and breaks, then the one standing
+// consult, the observed-standing refresh and the actor's world-action price.
+// It is [Encounter.RecordTrain] with a single [TrainUnit], and nothing else:
+// the append-and-notice body is [Encounter.appendTrainAndNotice], the only one.
+// A landing that tells more than one unit calls RecordTrain directly.
 //
 // Every beat is a subjectBeat tagged "outcome". The activation honestly names
 // the actor and optional selected target as subjects; each result names the
@@ -311,10 +313,11 @@ type capacityGrantedPayload struct {
 // full roster under the pinned pre-v1 policy. This verb neither reads intel nor
 // adds activation-specific visibility.
 //
-// noticeDown runs exactly once after all transaction beats, never between the
-// activation and its results. A noticeDown error therefore leaves the complete
-// transaction appended in memory and returns no output; doc.go's caller rule
-// applies: discard the encounter unsaved.
+// The entire input and every payload are validated before the first append, so
+// an input rejection cannot leave a partial transaction in the story. A
+// noticeDown error leaves the complete transaction appended in memory and
+// returns no output; doc.go's caller rule applies: discard the encounter
+// unsaved.
 //
 // Errors: ErrNilInput, ErrClosed, ErrNoMember (empty actor or result target),
 // ErrNotMember (unknown actor, selected target or result target), ErrInvalidData (missing
@@ -323,40 +326,16 @@ type capacityGrantedPayload struct {
 // Total does not equal the requested healing), an append error, or anything
 // the Standing capability returns from noticeDown.
 func (e *Encounter) RecordActivation(in *RecordActivationInput) (*RecordActivationOutput, error) {
-	prepared, err := e.prepareActivation(in)
+	if in == nil {
+		return nil, fmt.Errorf("record activation: %w", ErrNilInput)
+	}
+	out, err := e.RecordTrain(&RecordTrainInput{Units: []TrainUnit{{Activation: in}}})
 	if err != nil {
 		return nil, err
 	}
-
-	at := uint64(e.clock.ToData().HighWater)
-	seqs := make([]uint64, 0, len(prepared))
-	for i, beat := range prepared {
-		appended, appendErr := e.appendBeat(&record.AppendInput{
-			At:       at,
-			Audience: e.audienceFor(subjectBeat, beat.subjects...),
-			Tags:     map[string]string{"tag": "outcome"},
-			Payload:  beat.payload,
-		})
-		if appendErr != nil {
-			return nil, fmt.Errorf("record activation: append beat %d: %w", i, appendErr)
-		}
-		seqs = append(seqs, appended.Seq)
-	}
-
-	_, intelDeltas, noticeErr := e.noticeDown()
-	if noticeErr != nil {
-		return nil, fmt.Errorf("record activation: %w", noticeErr)
-	}
-
-	// THE WORLD'S PRICE FOR AN ACTION, paid after the outcome has landed and
-	// before anything refreshes sight (design §5, worldtime.go): one round on
-	// the world clock for the actor, and the world thinks on it. Nothing at
-	// all for a member inside a fight, where the round is what prices time.
-	if err := e.spendWorldAction(in.Actor); err != nil {
-		return nil, err
-	}
-
-	return &RecordActivationOutput{Seqs: seqs, IntelDeltas: intelDeltas}, nil
+	landed := out.Units[0]
+	seqs := append([]uint64{landed.Seq}, landed.FollowUpSeqs...)
+	return &RecordActivationOutput{Seqs: seqs, IntelDeltas: out.IntelDeltas}, nil
 }
 
 // prepareActivation validates and marshals the complete transaction before the

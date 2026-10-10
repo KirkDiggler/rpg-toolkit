@@ -79,7 +79,7 @@ func (s *DeedTestSuite) holdingOf(enc *encounter.Encounter, observer, subject en
 func (s *DeedTestSuite) TestAStrikeLandsADeedOnWhoeverSawIt() {
 	enc := s.scene()
 
-	_, err := enc.Record(&encounter.RecordInput{
+	_, err := recordOne(enc, &encounter.RecordInput{
 		Kind:    encounter.OutcomeStruck,
 		Actor:   alice,
 		Targets: []encounter.MemberID{goblin},
@@ -110,7 +110,7 @@ func (s *DeedTestSuite) TestAStrikeLandsADeedOnWhoeverSawIt() {
 func (s *DeedTestSuite) TestAMissIsStillAShotAtYou() {
 	enc := s.scene()
 
-	_, err := enc.Record(&encounter.RecordInput{
+	_, err := recordOne(enc, &encounter.RecordInput{
 		Kind:    encounter.OutcomeMissed,
 		Actor:   alice,
 		Targets: []encounter.MemberID{goblin},
@@ -214,7 +214,7 @@ func (s *DeedTestSuite) TestTheViewCarriesWhatADriverNeeds() {
 	})
 	s.Require().NoError(err)
 
-	_, err = enc.Record(&encounter.RecordInput{
+	_, err = recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeMissed, Actor: alice, Targets: []encounter.MemberID{goblin},
 		Values:      map[encounter.OutcomeValue]int{encounter.ValueRoll: 3, encounter.ValueTotal: 8, encounter.ValueAgainst: 15},
 		Calculation: attackCalculation(3, 5, 0),

@@ -79,7 +79,7 @@ func TestTheProvokedCampReadsAnEnemyAndADeedInOnePick(t *testing.T) {
 	require.False(t, before.EnemySeen)
 	require.Empty(t, before.Deeds, "precondition: nothing has been done to it")
 
-	_, err = enc.Record(&RecordInput{
+	_, err = recordOne(enc, &RecordInput{
 		Kind: OutcomeStruck, Actor: "alice", Targets: []MemberID{"watcher"},
 		Values: map[OutcomeValue]int{ValueAmount: 7},
 	})
