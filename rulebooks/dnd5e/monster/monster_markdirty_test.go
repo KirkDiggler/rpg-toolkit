@@ -28,3 +28,20 @@ func TestAMonsterCanBeToldItsPersistedStateChanged(t *testing.T) {
 	m.MarkDirty()
 	require.True(t, m.IsDirty(), "MarkDirty is what stops a silent update being dropped")
 }
+
+// SpendReaction is the direct door: it spends once, writes the sheet down, and
+// refuses a second spend rather than flooring it silently.
+func TestSpendReactionSpendsOnceAndMarksDirty(t *testing.T) {
+	m, err := monster.Load(context.Background(), &monster.Data{
+		ID: "wolf-1", Name: "Wolf", HitPoints: 11, MaxHitPoints: 11, ArmorClass: 13,
+	})
+	require.NoError(t, err)
+	require.True(t, m.CanReact())
+	require.False(t, m.IsDirty())
+
+	require.NoError(t, m.SpendReaction())
+	require.False(t, m.CanReact())
+	require.True(t, m.IsDirty(), "a spent reaction that is not written down is not spent")
+
+	require.ErrorIs(t, m.SpendReaction(), monster.ErrReactionSpent)
+}

@@ -65,8 +65,8 @@ func (e *oaMeterEntity) GetType() core.EntityType { return e.kind }
 // character's reaction slot, a monster's single reaction. The condition keeps
 // none of its own.
 //
-// The condition asks CanReact before it offers and publishes a spend once a
-// swing has actually run. That is the whole of its part, and it is the same
+// The condition asks CanReact before it offers; resolution's one door bills the
+// reactor once a swing has actually run. That is the whole of its part, and it is the same
 // part for both kinds of creature — which is also what keeps this and
 // Protection fighting style mutually exclusive, since both spend the one
 // reaction and the second to ask finds it gone.
@@ -132,24 +132,6 @@ func (s *OpportunityAttackMeterSuite) sheetFor(sheet *fakeConditionOwner) *fakeS
 	return keeper
 }
 
-// bills collects every spend request published on the bus, so a test can count
-// what the condition ASKED for rather than what a keeper happened to pay. The
-// two differ now that a debit can be floored, and "spends exactly once" is a
-// claim about the asking.
-func (s *OpportunityAttackMeterSuite) bills() *[]dnd5eEvents.SpendRequestedEvent {
-	mu := &sync.Mutex{}
-	collected := &[]dnd5eEvents.SpendRequestedEvent{}
-	_, err := dnd5eEvents.SpendRequestedTopic.On(s.bus).Subscribe(
-		s.ctx, func(_ context.Context, e dnd5eEvents.SpendRequestedEvent) error {
-			mu.Lock()
-			defer mu.Unlock()
-			*collected = append(*collected, e)
-			return nil
-		})
-	s.Require().NoError(err)
-	return collected
-}
-
 // readyCtx is the context a live movement fold runs under: a room to read
 // geometry from, and the reactor readied for OA.
 func (s *OpportunityAttackMeterSuite) readyCtx(reactor string) context.Context {
@@ -175,17 +157,16 @@ func (s *OpportunityAttackMeterSuite) walkAway(ctx context.Context, mover string
 	s.Require().NoError(err)
 }
 
-// taken publishes what the movement machine publishes once a reaction has
-// actually RUN. The trigger is an offer and costs nothing; this is the bill.
-// Every scene below that expects a spent reaction has to take one, because
-// that is now the only thing that spends it.
-func (s *OpportunityAttackMeterSuite) taken(ctx context.Context, reactor, against string) {
-	s.Require().NoError(dnd5eEvents.ReactionTakenTopic.On(s.bus).Publish(ctx,
-		dnd5eEvents.ReactionTakenEvent{
-			ReactorID:    reactor,
-			ConditionRef: refs.Conditions.OpportunityAttack().String(),
-			TriggerKind:  dnd5eEvents.TriggerKindMovementOA,
-			SourceEntity: against,
+// taken stands in for resolution's one door, which bills the reactor once the
+// reaction has actually RUN. The trigger is an offer and costs nothing; the
+// door's bill is what moves the meter. The condition itself no longer hears
+// anything: it only asks CanReact before it offers.
+func (s *OpportunityAttackMeterSuite) taken(ctx context.Context, reactor, _ string) {
+	s.Require().NoError(dnd5eEvents.SpendRequestedTopic.On(s.bus).Publish(ctx,
+		dnd5eEvents.SpendRequestedEvent{
+			MemberID:   reactor,
+			ActionType: coreCombat.ActionReaction,
+			Amount:     1,
 		}))
 }
 
@@ -440,111 +421,6 @@ func (s *OpportunityAttackMeterSuite) TestATriggerNobodyTakesCostsNothing() {
 	s.Len(*collected, 2, "so the next mover is still offered a swing")
 }
 
-// ONE SWING, ONE BILL. Counted on the bus rather than on the keeper, because
-// the bill is what this condition controls and the debit is not: a keeper
-// floors what it cannot pay, so a second request would be invisible on the
-// sheet and perfectly visible to any other subscriber.
-func (s *OpportunityAttackMeterSuite) TestATakenReactionSpendsExactlyOnce() {
-	s.place("fighter-1", "character", 5, 5)
-	s.place("wolf-1", "monster", 5, 6)
-
-	keeper := s.character("fighter-1", 1)
-	oa := NewOpportunityAttackCondition("fighter-1")
-	s.Require().NoError(oa.Apply(s.ctx, s.bus))
-
-	collected := s.triggers()
-	billed := s.bills()
-	ctx := castOf(s.readyCtx("fighter-1"), keeper.sheet)
-	s.walkAway(ctx, "wolf-1", spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
-	s.Require().Len(*collected, 1)
-
-	s.taken(ctx, "fighter-1", "wolf-1")
-
-	s.Require().Len(*billed, 1, "one swing asks the economy once")
-	s.Equal(coreCombat.ActionReaction, (*billed)[0].ActionType)
-	s.Equal(refs.Conditions.OpportunityAttack().String(), (*billed)[0].SourceRef.String(),
-		"and says what is asking, so a log can name it")
-	s.Equal([]coreCombat.ActionType{coreCombat.ActionReaction}, keeper.spent)
-	s.Equal(0, keeper.sheet.reactions)
-}
-
-// A DUPLICATE EVENT IS NOT A SECOND REACTION, and what makes that true is the
-// meter rather than anything this condition remembers.
-//
-// The flag that used to dedup here is gone. A second taken event for a reactor
-// who has had no turn since bills again — the condition has no memory of the
-// first — and the ledger's floor is what makes that harmless: you cannot spend
-// a reaction you do not have.
-func (s *OpportunityAttackMeterSuite) TestADuplicateTakenEventCannotSpendPastEmpty() {
-	s.place("fighter-1", "character", 5, 5)
-	s.place("wolf-1", "monster", 5, 6)
-
-	keeper := s.character("fighter-1", 1)
-	oa := NewOpportunityAttackCondition("fighter-1")
-	s.Require().NoError(oa.Apply(s.ctx, s.bus))
-
-	ctx := castOf(s.readyCtx("fighter-1"), keeper.sheet)
-	s.walkAway(ctx, "wolf-1", spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
-
-	s.taken(ctx, "fighter-1", "wolf-1")
-	s.taken(ctx, "fighter-1", "wolf-1")
-
-	s.Equal([]coreCombat.ActionType{coreCombat.ActionReaction}, keeper.spent,
-		"the slot is debited once, not once per event")
-	s.Equal(0, keeper.sheet.reactions, "and never below empty")
-	s.False(keeper.sheet.CanReact())
-}
-
-// One bus carries every combatant's conditions, so a taken event names its
-// reactor and its ref for the same reason the trigger does. Somebody else's
-// swing, and this member's OTHER reaction, must both leave this meter alone.
-func (s *OpportunityAttackMeterSuite) TestATakenReactionThatIsNotMineSpendsNothing() {
-	s.place("fighter-1", "character", 5, 5)
-	s.place("wolf-1", "monster", 5, 6)
-
-	keeper := s.character("fighter-1", 1)
-	oa := NewOpportunityAttackCondition("fighter-1")
-	s.Require().NoError(oa.Apply(s.ctx, s.bus))
-
-	ctx := castOf(s.readyCtx("fighter-1"), keeper.sheet)
-	s.walkAway(ctx, "wolf-1", spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
-
-	// Another member's opportunity attack.
-	s.taken(ctx, "fighter-2", "wolf-1")
-	s.Empty(keeper.spent, "another reactor's swing is not this reactor's bill")
-
-	// This member, a different reaction.
-	s.Require().NoError(dnd5eEvents.ReactionTakenTopic.On(s.bus).Publish(ctx,
-		dnd5eEvents.ReactionTakenEvent{
-			ReactorID:    "fighter-1",
-			ConditionRef: refs.Spells.Shield().String(),
-			TriggerKind:  dnd5eEvents.TriggerKindPostHit,
-			SourceEntity: "wolf-1",
-		}))
-	s.Empty(keeper.spent, "another condition's reaction must not move the OA meter")
-	s.Equal(1, keeper.sheet.reactions)
-}
-
-// A removed condition no longer hears the bill, the same way it no longer
-// hears rests. An orphaned handler that kept spending would debit a member
-// whose condition is gone.
-func (s *OpportunityAttackMeterSuite) TestARemovedConditionIsNotBilled() {
-	s.place("fighter-1", "character", 5, 5)
-	s.place("wolf-1", "monster", 5, 6)
-
-	keeper := s.character("fighter-1", 1)
-	oa := NewOpportunityAttackCondition("fighter-1")
-	s.Require().NoError(oa.Apply(s.ctx, s.bus))
-	ctx := castOf(s.readyCtx("fighter-1"), keeper.sheet)
-	s.walkAway(ctx, "wolf-1", spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
-
-	s.Require().NoError(oa.Remove(s.ctx, s.bus))
-	s.taken(ctx, "fighter-1", "wolf-1")
-
-	s.Empty(keeper.spent, "a removed condition must no longer hear the bill")
-	s.Equal(1, keeper.sheet.reactions)
-}
-
 // A reactor nobody can look up does not react at all, and this is a fold with
 // no cast installed — the one state the old owner handle could not produce.
 //
@@ -568,36 +444,46 @@ func (s *OpportunityAttackMeterSuite) TestAReactorNobodyCanLookUpDoesNotReact() 
 	s.Empty(*collected, "no sheet to ask is not a yes")
 }
 
-// A half-applied condition is worse than an unapplied one. Nil-ing the bus with
-// a live subscription still recorded leaves IsApplied reporting false, Remove
-// early-returning and unsubscribing nothing, and the orphaned movement handler
-// still receiving events on a bus the condition no longer admits to holding.
-func (s *OpportunityAttackMeterSuite) TestAFailedSecondSubscribeRollsTheFirstOneBack() {
+// A condition that could not subscribe is not applied. Nil-ing the bus keeps
+// IsApplied honest, and the condition stays reusable on a bus that works.
+func (s *OpportunityAttackMeterSuite) TestAFailedSubscribeLeavesItUnapplied() {
 	s.place("fighter-1", "character", 5, 5)
 	s.place("wolf-1", "monster", 5, 6)
 
-	// Allow the MovementChain subscribe, refuse the ReactionTaken one after
-	// it. Those are the two subscriptions this condition has left: turn start
-	// and rest went with the flag they cleared.
-	bus := &failAfterBus{EventBus: s.bus, allow: 1}
+	// The movement subscription is the only one this condition has: turn start
+	// and rest went with the flag they cleared, and billing went to
+	// resolution's door.
+	bus := &failAfterBus{EventBus: s.bus, allow: 0}
 
 	oa := NewOpportunityAttackCondition("fighter-1")
 	err := oa.Apply(s.ctx, bus)
 	s.Require().Error(err, "a condition that could not finish applying must say so")
-
 	s.False(oa.IsApplied(), "a half-applied condition does not report itself applied")
-	s.Require().Len(bus.unsubscribed, 1, "the movement subscription must be rolled back, not orphaned")
 
-	// The real proof: the orphaned handler is gone from the underlying bus, so
-	// a qualifying walk publishes nothing.
 	collected := s.triggers()
 	s.walkAway(s.readyCtx("fighter-1"), "wolf-1",
 		spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
-	s.Empty(*collected, "a rolled-back condition must not still be listening")
+	s.Empty(*collected, "a condition that never subscribed must not be listening")
 
-	// And the rollback leaves it appliable, which a condition that kept a live
-	// subscription and a nil bus would not be.
 	retryBus := events.NewEventBus()
-	s.Require().NoError(oa.Apply(s.ctx, retryBus), "a rolled-back condition must be reusable")
+	s.Require().NoError(oa.Apply(s.ctx, retryBus), "an unapplied condition must be reusable")
 	s.Require().NoError(oa.Remove(s.ctx, retryBus))
+}
+
+// The trigger names its offerer, so the machine that surfaces the offer can
+// say what is being offered.
+func (s *OpportunityAttackMeterSuite) TestOpportunityTriggerCarriesItsName() {
+	s.place("fighter-1", "character", 5, 5)
+	s.place("wolf-1", "monster", 5, 6)
+
+	keeper := s.character("fighter-1", 1)
+	oa := NewOpportunityAttackCondition("fighter-1")
+	s.Require().NoError(oa.Apply(s.ctx, s.bus))
+
+	collected := s.triggers()
+	s.walkAway(castOf(s.readyCtx("fighter-1"), keeper.sheet), "wolf-1",
+		spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
+
+	s.Require().Len(*collected, 1)
+	s.Equal("Opportunity Attack", (*collected)[0].Name)
 }

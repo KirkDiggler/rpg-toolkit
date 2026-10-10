@@ -883,6 +883,11 @@ type ReactionTriggerEvent struct {
 	// gamectx.ReactionReadinessMap.
 	ConditionRef string
 
+	// Name is the offering condition's own display name, e.g.
+	// "Opportunity Attack". It lets the machine that surfaces the offer say
+	// what is being offered without resolving ConditionRef.
+	Name string
+
 	// TriggerKind identifies which reaction window fired.
 	TriggerKind TriggerKind
 
@@ -898,42 +903,6 @@ type ReactionTriggerEvent struct {
 	//   - TriggerKindMovementOA: MovementChainEvent (read-only copy of the
 	//     move event so the orchestrator knows mover, from/to positions)
 	Payload any
-}
-
-// ReactionTakenEvent is published by the machine that ran a reaction, AFTER
-// the reaction actually happened, so the condition that offered it can spend
-// its holder's reaction.
-//
-// # Why the trigger is not the bill
-//
-// A ReactionTriggerEvent is an OFFER. It says a predicate matched, and it says
-// nothing at all about whether anybody swung: the machine that drains the
-// triggers still asks its ReactionAttacks capability what the reactor swings,
-// and "nothing" is a legal answer — an unarmed caster, an ally the mover is
-// not hostile to, a player who is asked and holds. A condition that spent the
-// reaction at publish time charged for every one of those, so a friend walking
-// past a fighter cost the fighter their reaction and a player who declined a
-// swing paid for it anyway.
-//
-// So the trigger costs nothing and this event is the bill. A reaction nobody
-// takes is free.
-//
-// It carries the trigger's identity rather than the trigger itself, because
-// the only question its subscribers ask is "was this mine": the same ReactorID
-// and the same ConditionRef the offer went out under.
-type ReactionTakenEvent struct {
-	// ReactorID is who reacted — the ReactorID of the trigger being answered.
-	ReactorID string
-
-	// ConditionRef is what let them react — the ConditionRef of the trigger
-	// being answered, e.g. "dnd5e:conditions:opportunity_attack".
-	ConditionRef string
-
-	// TriggerKind and SourceEntity echo the trigger, so a subscriber reading
-	// only this event can say what happened and to whom without holding the
-	// offer it answers.
-	TriggerKind  TriggerKind
-	SourceEntity string
 }
 
 // PostAttackRollEvent is published by Strike resolution AFTER the d20 has been
@@ -1156,13 +1125,6 @@ var (
 	// these after the chain returns and either resolves NPC reactions inline
 	// or surfaces player reactions for prompt-driven response (Wave 2.11d).
 	ReactionTriggerTopic = events.DefineTypedTopic[ReactionTriggerEvent]("dnd5e.combat.reaction.trigger")
-
-	// ReactionTakenTopic provides typed pub/sub for reactions that actually
-	// fired. Published by the machine that ran the reaction, once the swing
-	// has been resolved; the condition that offered it subscribes here and
-	// spends its holder's reaction. A trigger nobody takes is never billed —
-	// see [ReactionTakenEvent].
-	ReactionTakenTopic = events.DefineTypedTopic[ReactionTakenEvent]("dnd5e.combat.reaction.taken")
 )
 
 // PostAttackRollChain is a chained topic published by resolution.Strike
