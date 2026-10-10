@@ -543,7 +543,7 @@ type DirectOutput struct {
 	IntelDeltas map[MemberID]*IntelDelta
 
 	// Paused is true when the walk is HELD on an open window: a reactor is
-	// being asked about the next cell, and [Encounter.ResumeDirective]
+	// being asked about the next cell, and [Encounter.Resume]
 	// finishes the rest once they have answered.
 	//
 	// AN ORDINARY OUTCOME, NOT A FAILURE, and the field exists so a caller
@@ -582,9 +582,9 @@ type DirectOutput struct {
 // survivable: the only customer pushed without provoking, so nothing reached
 // it, and "the day a directive provokes (Dissonant Whispers), this refusal is
 // the thing that has to be answered." The day came. A [Mover] that pauses is
-// asking a player about a step, and the rest of the route is now held beside
-// the held turn (held.go): this returns [DirectOutput.Paused] with the cells
-// taken so far, and [Encounter.ResumeDirective] finishes it once the answer is
+// asking a player about a step, and the rest of the route is now held as the
+// encounter's one pause: this returns [DirectOutput.Paused] with the cells
+// taken so far, and [Encounter.Resume] finishes it once the answer is
 // in. Nothing is dropped and nothing is refused.
 //
 // # A second held walk is refused at the door
@@ -655,7 +655,8 @@ func (e *Encounter) Direct(ctx context.Context, in DirectInput) (DirectOutput, e
 	out.IntelDeltas = deltas
 
 	if res.paused != nil {
-		e.heldDirective = &heldDirective{
+		e.pause = &pause{
+			kind:      PauseDirective,
 			member:    in.Mover,
 			from:      res.from,
 			to:        res.to,

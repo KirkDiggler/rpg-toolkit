@@ -86,10 +86,10 @@ It answers, on the other hand, in geometry, placement, knowledge and clocks: `Me
 `Doors`/`DoorsFor`, `View`, `Story`, `ClockOf`, `Stance`/`StanceBetween`/`IsHostile`/`IsAllied`,
 `BelievedAim`, `Settlement`, `Status`, `Route`,
 and the verbs that change them — `Join`, `Exit`, `Step`, `Direct`, `Transfer`, `EndTurn`,
-`Dissolve`, `Search`, `OpenDoor`/`CloseDoor`/`Unlock`, `Interact`, `Loot`, `Hold`, `Record`, `End`,
-`AddSightArea`/`RemoveSightArea`,
-plus the two continue-verbs a held walk is finished with — `ResumeTurn` for a paused turn and
-`ResumeDirective` for a held directive, told apart by `HeldDirective()`.
+`Dissolve`, `Search`, `OpenDoor`/`CloseDoor`/`Unlock`, `Interact`, `Loot`, `Hold`, `Record`,
+`TellConcentration`, `End`, `AddSightArea`/`RemoveSightArea`,
+plus the one continue-verb a paused walk is finished with — `Resume`, which finishes whichever
+walk the one pause holds (a driven turn or a directed walk; `PauseKind()` says which).
 
 `session` answering "who is standing" back down into this composition is not the charter breaking.
 It is the shape every capability takes: the composition asks, the rulebook answers, and the answer

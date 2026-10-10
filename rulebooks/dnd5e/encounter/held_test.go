@@ -156,7 +156,7 @@ func (s *HeldTestSuite) TestAProvokingDirectiveThatPausesIsHeldNotRefused() {
 	s.Equal(0, out.Moved, "the first cell was announced and not taken")
 
 	s.True(enc.Paused())
-	s.True(enc.HeldDirective(), "and it is a directive, not a turn")
+	s.True(pausedAs(enc, encounter.PauseDirective), "and it is a directive, not a turn")
 	s.Equal(encounter.MemberID(goblin), enc.PausedMember())
 	s.Equal(cellAt(6, 2), s.positionOf(enc, goblin), "the mover has not moved")
 
@@ -167,16 +167,16 @@ func (s *HeldTestSuite) TestAProvokingDirectiveThatPausesIsHeldNotRefused() {
 		"a held directive's window names what is moving them; a held turn's has no cause to name")
 
 	data := enc.ToData()
-	s.Require().NotNil(data.HeldDirective, "the hold is in the blob")
-	s.Equal(encounter.MemberID(goblin), data.HeldDirective.Member)
-	s.Equal(whispersRef.String(), data.HeldDirective.Cause)
+	s.Require().NotNil(data.Pause, "the hold is in the blob")
+	s.Equal(encounter.MemberID(goblin), data.Pause.Member)
+	s.Equal(whispersRef.String(), data.Pause.Cause)
 	s.Equal([]encounter.PositionData{posData(cellAt(7, 2)), posData(cellAt(8, 2)), posData(cellAt(9, 2))},
-		data.HeldDirective.Remaining, "the announced cell comes first")
+		data.Pause.Remaining, "the announced cell comes first")
 
 	loaded, lerr := encounter.LoadEncounter(loadInput(data, &pausingMover{}, &downList{}))
 	s.Require().NoError(lerr)
 	s.True(loaded.Paused(), "a restart between the question and the answer is a non-event")
-	s.True(loaded.HeldDirective())
+	s.True(pausedAs(loaded, encounter.PauseDirective))
 	s.Equal(encounter.MemberID(goblin), loaded.PausedMember())
 
 	wantJSON, err := json.Marshal(data)
@@ -186,28 +186,28 @@ func (s *HeldTestSuite) TestAProvokingDirectiveThatPausesIsHeldNotRefused() {
 	s.JSONEq(string(wantJSON), string(gotJSON), "ToData -> Load -> ToData is the identity")
 }
 
-// TestResumeDirectiveStepsTheAnnouncedCellWithoutASecondAnnounceAndWalksTheRest
+// TestResumeStepsTheHeldAnnouncedCellWithoutASecondAnnounceAndWalksTheRest
 // is the continuation, and it copies the paused turn's exactly: every reactor
 // for the announced cell was already asked, so asking again would pose the
 // same window twice and — for a reaction the host has since spent — refuse it
 // the second time and silently lose the swing.
-func (s *HeldTestSuite) TestResumeDirectiveStepsTheAnnouncedCellWithoutASecondAnnounceAndWalksTheRest() {
+func (s *HeldTestSuite) TestResumeStepsTheHeldAnnouncedCellWithoutASecondAnnounceAndWalksTheRest() {
 	mover := &pausingMover{pauseAt: map[int]bool{0: true}}
 	enc := s.scene(mover, &downList{})
 	_, err := s.flee(enc)
 	s.Require().NoError(err)
 
-	out, rerr := enc.ResumeDirective(context.Background())
+	out, rerr := enc.Resume(context.Background())
 	s.Require().NoError(rerr)
 	s.False(out.Paused)
 	s.Equal(len(fleeRoute()), out.Moved, "the whole route, counted across the hold")
 	s.Empty(out.StoppedBy)
 
 	s.False(enc.Paused(), "the resume cleared the hold")
-	s.False(enc.HeldDirective())
+	s.False(pausedAs(enc, encounter.PauseDirective))
 	s.Equal(encounter.MemberID(""), enc.PausedMember())
 	s.Equal(cellAt(9, 2), s.positionOf(enc, goblin))
-	s.Nil(enc.ToData().HeldDirective, "and the blob no longer carries one")
+	s.Nil(enc.ToData().Pause, "and the blob no longer carries one")
 
 	announced := 0
 	for _, call := range mover.calls {
@@ -229,11 +229,63 @@ func (s *HeldTestSuite) TestResumeDirectiveStepsTheAnnouncedCellWithoutASecondAn
 	}
 }
 
-// TestResumeDirectiveOnADroppedMoverClearsTheHold is ruling R6 through the
+// TestAHeldDirectiveRoundTripsThroughOnePause is the directive half of ruling
+// E2: the held walk is written as the one Pause, kind directive, at
+// PauseVersion with no turn arm, and a reload resumed through the one Resume
+// finishes the route exactly as the in-memory resume above does.
+func (s *HeldTestSuite) TestAHeldDirectiveRoundTripsThroughOnePause() {
+	mover := &pausingMover{pauseAt: map[int]bool{0: true}}
+	enc := s.scene(mover, &downList{})
+	_, err := s.flee(enc)
+	s.Require().NoError(err)
+
+	data := enc.ToData()
+	s.Require().NotNil(data.Pause)
+	s.Equal(encounter.PauseVersion, data.Pause.Version)
+	s.Equal(encounter.PauseDirective, data.Pause.Kind)
+	s.Nil(data.Pause.Turn, "a directive is nobody's turn")
+
+	loaded, lerr := encounter.LoadEncounter(loadInput(data, mover, &downList{}))
+	s.Require().NoError(lerr)
+	s.True(pausedAs(loaded, encounter.PauseDirective))
+
+	out, rerr := loaded.Resume(context.Background())
+	s.Require().NoError(rerr)
+	s.Equal(encounter.PauseDirective, out.Kind)
+	s.False(out.Paused)
+	s.Equal(len(fleeRoute()), out.Moved, "the whole route, counted across the hold")
+	s.Empty(out.StoppedBy)
+
+	s.False(loaded.Paused(), "the resume cleared the hold")
+	s.Equal(encounter.MemberID(""), loaded.PausedMember())
+	s.Equal(cellAt(9, 2), s.positionOf(loaded, goblin))
+	s.Nil(loaded.ToData().Pause, "and the blob no longer carries one")
+
+	announced := 0
+	for _, call := range mover.calls {
+		if call.To == cellAt(7, 2) {
+			announced++
+		}
+	}
+	s.Equal(1, announced, "the announced cell is stepped, not announced a second time")
+	for _, call := range mover.calls {
+		s.Equal(whispersRef, call.Cause, "every announced cell of a flee names the spell")
+		s.False(call.Forced, "and a flee provokes, so it is not forced")
+	}
+
+	moved := s.beatsNamed(loaded, alice, "moved")
+	s.Require().NotEmpty(moved)
+	for _, beat := range moved {
+		s.Equal(whispersRef.String(), beat["cause"],
+			"including the cell stepped by hand after the reload")
+	}
+}
+
+// TestResumeOnADroppedDirectedMoverClearsTheHold is ruling R6 through the
 // front door: the reaction landed hard enough, so the announced step never
 // happens and the body stays in the cell it was leaving. The hold is still
 // cleared — a stale one would freeze a table that is running again.
-func (s *HeldTestSuite) TestResumeDirectiveOnADroppedMoverClearsTheHold() {
+func (s *HeldTestSuite) TestResumeOnADroppedDirectedMoverClearsTheHold() {
 	standing := &downList{}
 	mover := &pausingThenDroppingMover{
 		pausingMover: pausingMover{pauseAt: map[int]bool{0: true}},
@@ -246,16 +298,16 @@ func (s *HeldTestSuite) TestResumeDirectiveOnADroppedMoverClearsTheHold() {
 	s.Require().True(enc.Paused())
 
 	before := len(mover.calls)
-	out, rerr := enc.ResumeDirective(context.Background())
+	out, rerr := enc.Resume(context.Background())
 	s.Require().NoError(rerr)
 	s.Equal(0, out.Moved)
 	s.False(out.Paused)
 	s.False(enc.Paused(), "the hold is cleared even though nothing was walked")
-	s.False(enc.HeldDirective())
+	s.False(pausedAs(enc, encounter.PauseDirective))
 	s.Equal(cellAt(6, 2), s.positionOf(enc, goblin), "the body is in the cell it was leaving")
 	s.Equal(before, len(mover.calls), "a dropped mover announces nothing further")
 
-	_, aerr := enc.ResumeDirective(context.Background())
+	_, aerr := enc.Resume(context.Background())
 	s.Require().ErrorIs(aerr, encounter.ErrNotPaused, "and there is nothing left to resume")
 }
 
@@ -275,19 +327,19 @@ func (s *HeldTestSuite) TestASecondPauseAccumulatesMoved() {
 	s.Equal(cellAt(7, 2), s.positionOf(enc, goblin))
 
 	// The announced cell is stepped by hand, and the last one asks again.
-	again, rerr := enc.ResumeDirective(context.Background())
+	again, rerr := enc.Resume(context.Background())
 	s.Require().NoError(rerr)
 	s.True(again.Paused, "it is waiting on somebody a second time")
 	s.Equal(2, again.Moved, "two cells, counted across the first hold")
-	s.True(enc.HeldDirective())
+	s.True(pausedAs(enc, encounter.PauseDirective))
 	s.Equal(cellAt(8, 2), s.positionOf(enc, goblin))
 
 	data := enc.ToData()
-	s.Require().NotNil(data.HeldDirective)
-	s.Equal(2, data.HeldDirective.Moved, "the second hold carries what the first one walked")
-	s.Equal([]encounter.PositionData{posData(cellAt(9, 2))}, data.HeldDirective.Remaining)
+	s.Require().NotNil(data.Pause)
+	s.Equal(2, data.Pause.Moved, "the second hold carries what the first one walked")
+	s.Equal([]encounter.PositionData{posData(cellAt(9, 2))}, data.Pause.Remaining)
 
-	last, lerr := enc.ResumeDirective(context.Background())
+	last, lerr := enc.Resume(context.Background())
 	s.Require().NoError(lerr)
 	s.False(last.Paused)
 	s.Equal(len(fleeRoute()), last.Moved, "the whole route, counted across both holds")
@@ -309,7 +361,7 @@ func (s *HeldTestSuite) TestEndTurnIsRefusedWhileADirectiveIsHeld() {
 	_, eerr := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
 	s.Require().ErrorIs(eerr, encounter.ErrTurnPaused)
 
-	_, rerr := enc.ResumeDirective(context.Background())
+	_, rerr := enc.Resume(context.Background())
 	s.Require().NoError(rerr)
 	_, eerr = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
 	s.Require().NoError(eerr, "and the table runs again once the hold is finished")
@@ -331,21 +383,21 @@ func (s *HeldTestSuite) TestASecondDirectiveIsRefusedWhileOneIsHeld() {
 	s.Equal(cellAt(2, 2), s.positionOf(enc, alice), "and moves nobody")
 }
 
-// TestResumeDirectiveWithNothingHeldIsNotPaused. Resuming nothing is a caller
+// TestResumeOnADirectiveSceneWithNothingHeldIsNotPaused. Resuming nothing is a caller
 // defect, not a no-op: a host that reaches it has lost track of which half of
 // the pose/answer pair it is in.
-func (s *HeldTestSuite) TestResumeDirectiveWithNothingHeldIsNotPaused() {
+func (s *HeldTestSuite) TestResumeOnADirectiveSceneWithNothingHeldIsNotPaused() {
 	enc := s.scene(&pausingMover{}, &downList{})
 
-	_, err := enc.ResumeDirective(context.Background())
+	_, err := enc.Resume(context.Background())
 	s.Require().ErrorIs(err, encounter.ErrNotPaused)
 }
 
-// TestAHeldDirectiveOnAClosedEncounterIsRefusedAtLoad, and every other shape
-// this build could not have written. The trust boundary is validateHeldDirective,
-// and it mirrors validatePausedTurn's refusals — minus the turn coordinates a
-// directive has none of, plus the cause it is refused without.
-func (s *HeldTestSuite) TestAHeldDirectiveOnAClosedEncounterIsRefusedAtLoad() {
+// TestADirectivePauseOnAClosedEncounterIsRefusedAtLoad, and every other shape
+// this build could not have written. The trust boundary is validatePause, and
+// a directive gets every walk refusal a turn does — minus the turn coordinates
+// it has none of, plus the cause it is refused without.
+func (s *HeldTestSuite) TestADirectivePauseOnAClosedEncounterIsRefusedAtLoad() {
 	mover := &pausingMover{pauseAt: map[int]bool{0: true}}
 	enc := s.scene(mover, &downList{})
 	_, err := s.flee(enc)
@@ -360,28 +412,28 @@ func (s *HeldTestSuite) TestAHeldDirectiveOnAClosedEncounterIsRefusedAtLoad() {
 
 	s.Run("a member who is not one", func() {
 		data := enc.ToData()
-		data.HeldDirective.Member = "nobody"
+		data.Pause.Member = "nobody"
 		_, lerr := encounter.LoadEncounter(loadInput(data, &pausingMover{}, &downList{}))
 		s.Require().ErrorIs(lerr, encounter.ErrInvalidData)
 	})
 
 	s.Run("nothing left to walk", func() {
 		data := enc.ToData()
-		data.HeldDirective.Remaining = nil
+		data.Pause.Remaining = nil
 		_, lerr := encounter.LoadEncounter(loadInput(data, &pausingMover{}, &downList{}))
 		s.Require().ErrorIs(lerr, encounter.ErrInvalidData, "a hold with nothing left to walk is not a hold")
 	})
 
 	s.Run("an announced cell that is not the first one left", func() {
 		data := enc.ToData()
-		data.HeldDirective.To = posData(cellAt(8, 2))
+		data.Pause.To = posData(cellAt(8, 2))
 		_, lerr := encounter.LoadEncounter(loadInput(data, &pausingMover{}, &downList{}))
 		s.Require().ErrorIs(lerr, encounter.ErrInvalidData)
 	})
 
 	s.Run("a cause that is not a ref", func() {
 		data := enc.ToData()
-		data.HeldDirective.Cause = "not-a-ref"
+		data.Pause.Cause = "not-a-ref"
 		_, lerr := encounter.LoadEncounter(loadInput(data, &pausingMover{}, &downList{}))
 		s.Require().ErrorIs(lerr, encounter.ErrInvalidData,
 			"a directed move names its cause, and a resumed one still has to")
@@ -389,22 +441,20 @@ func (s *HeldTestSuite) TestAHeldDirectiveOnAClosedEncounterIsRefusedAtLoad() {
 
 	s.Run("negative progress", func() {
 		data := enc.ToData()
-		data.HeldDirective.Moved = -1
+		data.Pause.Moved = -1
 		_, lerr := encounter.LoadEncounter(loadInput(data, &pausingMover{}, &downList{}))
 		s.Require().ErrorIs(lerr, encounter.ErrInvalidData)
 	})
 
-	s.Run("a hold and a paused turn at once", func() {
+	s.Run("a directive that carries a turn", func() {
+		// Two held walks at once used to be refused here. One slot made that
+		// unrepresentable; what is left of it is the directive that claims a
+		// turn it never had.
 		data := enc.ToData()
-		data.PausedTurn = &encounter.PausedTurnData{
-			Member:    goblin,
-			To:        posData(cellAt(5, 2)),
-			Remaining: []encounter.PositionData{posData(cellAt(5, 2))},
-			Bound:     2,
-		}
+		data.Pause.Turn = &encounter.TurnPauseData{Bound: 2}
 		_, lerr := encounter.LoadEncounter(loadInput(data, &pausingMover{}, &downList{}))
 		s.Require().ErrorIs(lerr, encounter.ErrInvalidData,
-			"there is one held walk, and two would leave the resume verbs guessing")
+			"a directive is nobody's turn, and a resume that read one would drive it")
 	})
 }
 
@@ -431,7 +481,7 @@ func (s *HeldTestSuite) TestAHeldPushKeepsItsStanceAcrossTheHold() {
 	reloaded, lerr := encounter.LoadEncounter(loadInput(enc.ToData(), mover, &downList{}))
 	s.Require().NoError(lerr, "and it survives the restart, which is where a dropped flag would show")
 
-	_, rerr := reloaded.ResumeDirective(context.Background())
+	_, rerr := reloaded.Resume(context.Background())
 	s.Require().NoError(rerr)
 
 	s.Require().Greater(len(mover.calls), 1)
@@ -462,7 +512,7 @@ func (s *HeldTestSuite) TestTheFloorChangingUnderAHeldWalkStopsItAndSaysSo() {
 		})
 		s.Require().NoError(jerr, "somebody arriving while a window is open is ordinary")
 
-		out, rerr := enc.ResumeDirective(context.Background())
+		out, rerr := enc.Resume(context.Background())
 		s.Require().NoError(rerr, "a blocked cell stops the walk, it does not fail the verb")
 		s.False(out.Paused)
 		s.Equal(1, out.Moved, "the announced cell was taken; the one after it was not")
@@ -482,7 +532,7 @@ func (s *HeldTestSuite) TestTheFloorChangingUnderAHeldWalkStopsItAndSaysSo() {
 		s.Require().NoError(jerr)
 
 		before := len(mover.calls)
-		out, rerr := enc.ResumeDirective(context.Background())
+		out, rerr := enc.Resume(context.Background())
 		s.Require().NoError(rerr)
 		s.Equal(0, out.Moved, "the cell the window was measuring against is not there any more")
 		s.False(out.Paused)
@@ -492,4 +542,10 @@ func (s *HeldTestSuite) TestTheFloorChangingUnderAHeldWalkStopsItAndSaysSo() {
 		s.Equal(before, len(mover.calls),
 			"the announced cell is never re-announced, refused or not")
 	})
+}
+
+// pausedAs reports whether enc is paused and its one pause is of kind.
+func pausedAs(enc *encounter.Encounter, kind encounter.PauseKind) bool {
+	got, ok := enc.PauseKind()
+	return ok && got == kind
 }

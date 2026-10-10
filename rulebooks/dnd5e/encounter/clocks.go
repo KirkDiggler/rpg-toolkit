@@ -297,7 +297,7 @@ func (e *Encounter) bubbleHasPlayer(order []core.EntityID) bool {
 func (e *Encounter) driveMonsterTurns(bubble *clock.Turn) (wrapped bool, lastSeq uint64, deltas map[MemberID]*IntelDelta, err error) {
 	// THE PAUSE GUARD, at the outer door as well as the inner one. A fight
 	// waiting on a player's answer has exactly one way forward
-	// ([Encounter.ResumeTurn]), and reassessing participation for a clock
+	// ([Encounter.Resume]), and reassessing participation for a clock
 	// whose active member is mid-step is work whose answer nobody may act
 	// on.
 	if e.Paused() {
@@ -368,11 +368,11 @@ func (e *Encounter) driveTurnsWithParticipation(
 		// as old as the mid-walk pause. Command is only what made it visible,
 		// because a compelled driver must be asked exactly once per turn.
 		//
-		// The guard asks `e.pausedTurn` rather than [Encounter.Paused]
+		// The guard asks turnPaused rather than [Encounter.Paused]
 		// because a held DIRECTIVE is not this loop's to care about: the door
 		// guard above already refused entry on one, and nothing inside a
 		// driven turn can create one.
-		if e.pausedTurn != nil {
+		if e.turnPaused() {
 			return wrapped, lastSeq, deltas, nil
 		}
 		if i > 0 {
@@ -532,7 +532,7 @@ func (e *Encounter) driveOneMonsterTurn(
 // runTurnIntents runs intents [startJ, bound) of one driven member's turn and
 // then ends the turn — the body of [Encounter.driveOneMonsterTurn], split out
 // so a turn PAUSED mid-walk can be finished from where it stopped
-// ([Encounter.ResumeTurn]) rather than restarted.
+// ([Encounter.Resume]) rather than restarted.
 //
 // startJ and bound are the anti-spin coordinates driveOneMonsterTurn's own
 // doc explains. A resume passes the stored pair, so however many windows one
@@ -554,7 +554,7 @@ func (e *Encounter) runTurnIntents(
 	// player, and everything needed to finish it is stored on the encounter.
 	// Returning here without ending the turn is the whole point: the clock
 	// still says it is this member's turn, because it still is.
-	if e.pausedTurn != nil {
+	if e.turnPaused() {
 		return e.lastRecordedSeq(), false, turnDeltas, nil
 	}
 
@@ -629,9 +629,9 @@ func (e *Encounter) runIntents(
 		turnDeltas = mergeIntelDeltas(turnDeltas, intentDeltas)
 
 		// A REACTOR IS BEING ASKED mid-walk. The caller is told by the
-		// encounter's own pausedTurn rather than a return value, because a
+		// encounter's own pause rather than a return value, because a
 		// resume finishes this same loop from where it stopped.
-		if e.pausedTurn != nil {
+		if e.turnPaused() {
 			return turnDeltas, nil
 		}
 
@@ -697,7 +697,7 @@ func (e *Encounter) appendPickBeat(member MemberID, chosen *Pick) error {
 // "turn-ended" beat, and the boundary announcement.
 //
 // SHARED BY THE TWO WAYS A DRIVEN TURN ENDS — the ordinary loop above, and a
-// paused turn finished by [Encounter.ResumeTurn]. One body, so a resumed turn
+// paused turn finished by [Encounter.Resume]. One body, so a resumed turn
 // cannot end differently from an uninterrupted one.
 func (e *Encounter) endDrivenTurn(bubble *clock.Turn, active core.EntityID) (uint64, bool, error) {
 	activeID := MemberID(active)
@@ -888,7 +888,7 @@ func combatEndBoundaries(ms []clock.Milestone, members []MemberID) ([]Boundary, 
 //
 // coords locates this call inside its member's turn, and is carried for one
 // reason: a [Move] that pauses has to store where to pick the TURN up, not
-// just where to pick the WALK up. See [pausedTurn].
+// just where to pick the WALK up. See [pause].
 func (e *Encounter) executeTurnIntent(
 	activeID MemberID, m *memberRecord, view MonsterView, intent TurnIntent, budget *TurnBudget,
 	coords turnCoords,
@@ -925,7 +925,14 @@ func (e *Encounter) executeTurnIntent(
 		if serr := e.striker.Strike(context.Background(), e, activeID, it.Target, it.Action); serr != nil {
 			if errors.Is(serr, ErrStrikePaused) {
 				budget.AttacksLeft = 0
-				e.pausedTurn = &pausedTurn{member: activeID, round: coords.Round, budget: *budget, intent: coords.Intent, bound: coords.Bound, afterStrike: true}
+				e.pause = &pause{
+					kind:   PauseTurn,
+					member: activeID,
+					turn: &turnPause{
+						round: coords.Round, budget: *budget, intent: coords.Intent, bound: coords.Bound,
+						afterStrike: true,
+					},
+				}
 				return false, nil, nil
 			}
 			return false, nil, fmt.Errorf("strike: %w", serr)
@@ -968,18 +975,18 @@ func (e *Encounter) executeTurnIntent(
 		// to finish this turn goes onto the encounter, the story gets a beat
 		// saying so, and the turn is reported NOT over.
 		if res.paused != nil {
-			e.pausedTurn = &pausedTurn{
+			e.pause = &pause{
+				kind:      PauseTurn,
 				member:    activeID,
-				round:     coords.Round,
 				from:      res.from,
 				to:        res.to,
 				remaining: res.pending,
 				moved:     res.moved,
-				budget:    *budget,
-				intent:    coords.Intent,
-				bound:     coords.Bound,
 				at:        at,
 				audience:  audience,
+				turn: &turnPause{
+					round: coords.Round, budget: *budget, intent: coords.Intent, bound: coords.Bound,
+				},
 			}
 			if _, berr := e.appendWindowOpenedBeat(
 				activeID, res.from, res.to, at, res.paused.Windows, core.Ref{},
@@ -1089,20 +1096,20 @@ func (e *Encounter) executeTurnIntent(
 			// the pause because the resume has to finish a walk that ends
 			// the turn and names why it happened, and neither fact is
 			// re-derivable from the cells left to walk.
-			e.pausedTurn = &pausedTurn{
+			e.pause = &pause{
+				kind:      PauseTurn,
 				member:    activeID,
-				round:     coords.Round,
 				from:      res.from,
 				to:        res.to,
 				remaining: res.pending,
 				moved:     res.moved,
-				budget:    *budget,
-				intent:    coords.Intent,
-				bound:     coords.Bound,
 				at:        at,
 				audience:  audience,
 				cause:     it.Cause,
-				terminal:  true,
+				turn: &turnPause{
+					round: coords.Round, budget: *budget, intent: coords.Intent, bound: coords.Bound,
+					terminal: true,
+				},
 			}
 			if _, berr := e.appendWindowOpenedBeat(
 				activeID, res.from, res.to, at, res.paused.Windows, it.Cause,
@@ -1989,7 +1996,7 @@ func beforeInScanOrder(a, b spatial.Position) bool {
 // unplayed member does.
 func (e *Encounter) driveIfStillRunning(bubble *clock.Turn) (map[MemberID]*IntelDelta, error) {
 	// The pause guard, as above: a fight waiting on an answer advances only
-	// through ResumeTurn.
+	// through Resume.
 	if e.Paused() {
 		return nil, nil
 	}
@@ -2047,7 +2054,7 @@ type FormOutput struct {
 	// Paused is true when a driven monster's walk stopped mid-step to ask a
 	// player whether they react (rpg-project#316 rung 3). The fight is
 	// waiting: Next has NOT advanced past the paused member, no further turn
-	// will be driven, and the way forward is [Encounter.ResumeTurn] once the
+	// will be driven, and the way forward is [Encounter.Resume] once the
 	// answer is in. The story's [BeatWindowOpened] beat says who was asked.
 	Paused bool
 }
@@ -2220,7 +2227,7 @@ type TransferOutput struct {
 	// Paused is true when a driven monster's walk stopped mid-step to ask a
 	// player whether they react (rpg-project#316 rung 3). The fight is
 	// waiting: Next has NOT advanced past the paused member, no further turn
-	// will be driven, and the way forward is [Encounter.ResumeTurn] once the
+	// will be driven, and the way forward is [Encounter.Resume] once the
 	// answer is in. The story's [BeatWindowOpened] beat says who was asked.
 	Paused bool
 }
@@ -2421,7 +2428,7 @@ type EndTurnOutput struct {
 	// Paused is true when a driven monster's walk stopped mid-step to ask a
 	// player whether they react (rpg-project#316 rung 3). The fight is
 	// waiting: Next has NOT advanced past the paused member, no further turn
-	// will be driven, and the way forward is [Encounter.ResumeTurn] once the
+	// will be driven, and the way forward is [Encounter.Resume] once the
 	// answer is in. The story's [BeatWindowOpened] beat says who was asked.
 	Paused bool
 }

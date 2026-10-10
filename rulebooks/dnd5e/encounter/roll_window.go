@@ -97,8 +97,8 @@ type reactionIdentityPayload struct {
 // # It narrates and does nothing else
 //
 // No paused turn is stored, no drive is stopped, and Paused() is untouched.
-// The encounter's PausedTurn is a driven-turn remainder — member, cells, the
-// rest of a path — and validatePausedTurn refuses one with no remaining steps.
+// The encounter's turn Pause is a driven-turn remainder — member, cells, the
+// rest of a path — and validatePause refuses one with no remaining steps.
 // A player's own attack is not a driven turn and has no path, so the pause
 // lives entirely in the session's own ledger and this composition is told about
 // it only so the table can read what happened.

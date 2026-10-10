@@ -387,7 +387,7 @@ func (Move) isTurnIntent() {}
 // movement reaches." The encounter routes with the same [Encounter.Route]
 // every directive uses, walks the cells one at a time through the same step
 // every Move uses (so the walk provokes, pauses for a player's window, and
-// resumes by [Encounter.ResumeTurn]), and ends the turn when the walk stops
+// resumes by [Encounter.Resume]), and ends the turn when the walk stops
 // for any reason.
 //
 // TERMINAL because its customers are: a commanded creature's turn IS the
@@ -679,7 +679,7 @@ type Mover interface {
 	// asked about this step; do not take it yet". The composition then stops
 	// the walk with the mover still standing on from, stores the rest of the
 	// turn, narrates a [BeatWindowOpened] beat, and reports the turn as
-	// paused rather than over — see [Encounter.ResumeTurn], which is the only
+	// paused rather than over — see [Encounter.Resume], which is the only
 	// thing that starts it again.
 	//
 	// A Mover returning it must have recorded nothing for that step. It is

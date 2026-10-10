@@ -115,30 +115,18 @@ type EncounterData struct {
 	// DefaultRetention.
 	Retention int `json:"retention,omitempty"`
 
-	// PausedTurn is the one driven turn stopped mid-walk because a reactor
-	// is being asked about a step (rpg-project#316 rung 3; pause.go).
-	// PRESENT EXACTLY WHILE A FIGHT IS WAITING ON AN ANSWER — which is a
-	// rare and short-lived state, so an encounter that is not waiting writes
-	// no key at all, the exact bytes every earlier blob has. Absent means
-	// nothing is paused, which is what every blob written before this field
-	// existed meant.
+	// Pause is the one walk stopped mid-route because a reactor is being
+	// asked about a step — a driven turn or a directed walk, told apart by
+	// its Kind (pause.go). PRESENT EXACTLY WHILE A FIGHT IS WAITING ON AN
+	// ANSWER, which is a rare and short-lived state, so an encounter that is
+	// not waiting writes no key at all. Absent means nothing is paused.
 	//
 	// THIS IS WHAT MAKES A RESTART BETWEEN THE QUESTION AND THE ANSWER A
-	// NON-EVENT. The host's own ledger holds the windows; this holds the
-	// turn they interrupted, and the two are written in the order this
-	// module's consumers already write them.
-	PausedTurn *PausedTurnData `json:"paused_turn,omitempty"`
-
-	// HeldDirective is the one DIRECTED walk stopped mid-route because a
-	// reactor is being asked about a step (held.go). Its relationship to
-	// PausedTurn above is EXCLUSIVE, not parallel: a fight waits on one
-	// answer at a time, and a blob carrying both is refused at load rather
-	// than resumed by whichever continue-verb the host happens to call.
-	//
-	// Absent means nothing is held, which is what every blob written before
-	// this field existed meant — and what every blob written today means,
-	// since a directive that pauses is rare and short-lived.
-	HeldDirective *HeldDirectiveData `json:"held_directive,omitempty"`
+	// NON-EVENT. The host's own ledger holds the windows; this holds the walk
+	// they interrupted. A pause written by another build is refused at load
+	// with [ErrStalePause] — and the keys older builds wrote for the two
+	// pauses this replaces are simply not read.
+	Pause *PauseData `json:"pause,omitempty"`
 }
 
 // OutcomeData is the persistent representation of an Outcome.
@@ -1980,9 +1968,7 @@ func (e *Encounter) snapshot() EncounterData {
 		Endings:            endingsData,
 		EverMembers:        everMembersSlice,
 		Retention:          e.retention,
-		PausedTurn:         pausedTurnDataFrom(e.pausedTurn),
-
-		HeldDirective: heldDirectiveDataFrom(e.heldDirective),
+		Pause:              pauseDataFrom(e.pause),
 	}
 }
 
@@ -2731,35 +2717,17 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 	}
 
-	// The paused turn, validated before anything is constructed (R5) and
-	// against the roster just indexed. Reject, never crash — this is the
-	// trust boundary for bytes no version of this module may have written.
-	// Note what it deliberately does NOT check: see validatePausedTurn.
-	if err = validatePausedTurn(data.PausedTurn, isMember); err != nil {
+	// The pause, validated before anything is constructed (R5) and against
+	// the roster just indexed. Reject, never crash — this is the trust
+	// boundary for bytes no version of this module may have written. Note
+	// what it deliberately does NOT check: see validatePause.
+	if err = validatePause(data.Pause, isMember); err != nil {
 		return nil, err
 	}
-	if data.PausedTurn != nil && data.Outcome != nil {
+	if data.Pause != nil && data.Outcome != nil {
 		return nil, fmt.Errorf(
-			"load encounter paused turn %q: the encounter is already closed: %w",
-			data.PausedTurn.Member, ErrInvalidData)
-	}
-
-	// The held directive, on the same terms and at the same moment — plus
-	// the one refusal a single held walk needs and a pair of them cannot
-	// give: both at once would leave ResumeTurn and ResumeDirective each
-	// holding half an answer.
-	if err = validateHeldDirective(data.HeldDirective, isMember); err != nil {
-		return nil, err
-	}
-	if data.HeldDirective != nil && data.Outcome != nil {
-		return nil, fmt.Errorf(
-			"load encounter held directive %q: the encounter is already closed: %w",
-			data.HeldDirective.Member, ErrInvalidData)
-	}
-	if data.HeldDirective != nil && data.PausedTurn != nil {
-		return nil, fmt.Errorf(
-			"load encounter held directive %q: a turn is paused as well, and only one walk is held: %w",
-			data.HeldDirective.Member, ErrInvalidData)
+			"load encounter pause %q: the encounter is already closed: %w",
+			data.Pause.Member, ErrInvalidData)
 	}
 
 	data.Perception, err = normalizePerceptionSubjects(data.Perception, data.PerceptionSubjects)
@@ -2980,21 +2948,13 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
 
-	// The paused turn, restored exactly as it was stored — validated above,
-	// before construction began (R5). The bubble and the member record it
-	// needs are re-derived on resume from the roster this load has just
-	// rebuilt, which is why neither is in the blob. Its converter parses the
-	// cause a Routed walk carries, which validation above already proved
-	// parses; the arm is kept for the reason the held directive's is.
-	e.pausedTurn, err = pausedTurnFrom(data.PausedTurn)
-	if err != nil {
-		return nil, err
-	}
-
-	// And the held directive, the same way. Its converter parses the cause,
-	// which validation above already proved parses; the arm is kept rather
-	// than discarded so neither half can start lying by silence.
-	e.heldDirective, err = heldDirectiveFrom(data.HeldDirective)
+	// The pause, restored exactly as it was stored — validated above, before
+	// construction began (R5). The bubble and the member record it needs are
+	// re-derived on resume from the roster this load has just rebuilt, which
+	// is why neither is in the blob. Its converter parses the cause, which
+	// validation above already proved parses; the arm is kept rather than
+	// discarded so neither half can start lying by silence.
+	e.pause, err = pauseFrom(data.Pause)
 	if err != nil {
 		return nil, err
 	}

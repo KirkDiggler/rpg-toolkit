@@ -968,8 +968,8 @@ func (s *MonsterTurnTestSuite) TestPausedStrikeSurvivesReloadAndDoesNotStrikeTwi
 	s.Require().NoError(err)
 	s.True(enc.Paused())
 	data := enc.ToData()
-	s.Require().NotNil(data.PausedTurn)
-	s.True(data.PausedTurn.AfterStrike)
+	s.Require().NotNil(data.Pause)
+	s.True(data.Pause.Turn.AfterStrike)
 
 	resumedStriker := &pausingStriker{}
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
@@ -989,7 +989,7 @@ func (s *MonsterTurnTestSuite) TestPausedStrikeSurvivesReloadAndDoesNotStrikeTwi
 		},
 	})
 	s.Require().NoError(err)
-	_, err = loaded.ResumeTurn(context.Background())
+	_, err = loaded.Resume(context.Background())
 	s.Require().NoError(err)
 	s.Equal(1, striker.calls, "the paused attack was called once before the restart")
 	s.Equal(0, resumedStriker.calls, "resuming after a strike pause must not replay the hit")

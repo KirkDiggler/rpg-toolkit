@@ -1760,7 +1760,7 @@ type ExitOutput struct {
 	// Paused is true when a driven monster's walk stopped mid-step to ask a
 	// player whether they react (rpg-project#316 rung 3). The fight is
 	// waiting: Next has NOT advanced past the paused member, no further turn
-	// will be driven, and the way forward is [Encounter.ResumeTurn] once the
+	// will be driven, and the way forward is [Encounter.Resume] once the
 	// answer is in. The story's [BeatWindowOpened] beat says who was asked.
 	Paused bool
 }
