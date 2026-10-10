@@ -151,7 +151,93 @@ type SingleRoomSpec struct {
 	// only another source of the same `On`.
 	Tables map[string]TableSpec `yaml:"tables,omitempty" json:"tables,omitempty"`
 
+	// Templates are the stat blocks this site authored, keyed by id
+	// (rpg-project#555). Optional; absent means none, and every document
+	// authored before this key existed decodes, compiles and marshals
+	// exactly as it did.
+	//
+	// AT THE ROOT, BY RULE 3 of the placement law (rpg-project#488): a
+	// template is declared once and named by every placement that uses it,
+	// and it stands nowhere. A placement names one as `dnd5e:monsters:<id>`
+	// — the monster ref it already writes — so a template adds no member
+	// kind and no placement verb.
+	//
+	// CARRIED, NEVER RESOLVED (design law C1). This package checks a
+	// template's SHAPE — that its base, armor and weapons are well-formed
+	// refs of the right type, its scores and hit dice are numbers a block
+	// can hold — and carries every string through to [Compiled.Templates]
+	// unread. Whether the base exists, what the armor weighs, and whether a
+	// template id shadows a rulebook monster are the rulebook's questions,
+	// asked where a package may import it. See [TemplateSpec].
+	Templates map[string]TemplateSpec `yaml:"templates,omitempty" json:"templates,omitempty"`
+
 	Room RoomSource `yaml:"room" json:"room"`
+}
+
+// TemplateSpec is one authored stat block at the root: a rulebook base plus
+// the fields the author overrides (rpg-project#555).
+//
+// THE ID IS THE MAP KEY, for [TableSpec]'s reason: an `id:` inside the value
+// would be a second place the same name is written.
+//
+//	templates:
+//	  guard:
+//	    base: dnd5e:monsters:human
+//	    abilities: { str: 13, con: 12, wis: 11 }
+//	    hitDice: 2d8
+//	    armor: dnd5e:armor:chain-shirt
+//	    skills: [perception]
+//	    actions: [dnd5e:weapons:spear]
+//
+// STORED IS AUTHORED (design R3). A template stores scores, hit dice, armor,
+// proficiency, skills, weapons and experience — never hit points, armor
+// class or an attack bonus, which the rulebook derives at assembly. There is
+// no key for them, so strict decoding refuses one by name.
+//
+// EVERY FIELD BUT BASE AND EXPERIENCE IS AN OVERRIDE, and an omitted one is
+// the base's (design R8). For Proficiency the Go zero IS "not stated" — the
+// contract carries it `omitempty` — so an authored 0 reads as the base's
+// value. Experience NEVER INHERITS: absent is worth nothing, so an omitted
+// award and an authored 0 are the same fact. A score lives in a map, so a
+// stated `str: 0` is present and refused: no block has one.
+type TemplateSpec struct {
+	// Base is the rulebook monster this block starts from, as a full ref:
+	// `dnd5e:monsters:<id>`. REQUIRED. It must not name another template in
+	// this file — templates derive from the rulebook, not from each other.
+	Base string `yaml:"base" json:"base"`
+
+	// Name is the display name, or empty for the base's.
+	Name string `yaml:"name,omitempty" json:"name,omitempty"`
+
+	// Abilities are the overridden scores, keyed by the six short names
+	// (str dex con int wis cha), each 1 to 30. An unlisted score is the
+	// base's.
+	Abilities map[string]int `yaml:"abilities,omitempty" json:"abilities,omitempty"`
+
+	// HitDice is the block's hit dice, written NdM (`2d8`), or empty for the
+	// base's. The hit points they give are derived, never stored.
+	HitDice string `yaml:"hitDice,omitempty" json:"hitDice,omitempty"`
+
+	// Armor is what the block wears, as `dnd5e:armor:<id>`, or empty for the
+	// base's. The armor class it gives is derived, never stored.
+	Armor string `yaml:"armor,omitempty" json:"armor,omitempty"`
+
+	// Proficiency is the block's proficiency bonus, or 0 for the base's.
+	Proficiency int `yaml:"proficiency,omitempty" json:"proficiency,omitempty"`
+
+	// Skills are the skills the block is proficient in, as lowercase skill
+	// ids (`perception`, `sleight-of-hand`). Carried; what a skill means is
+	// the rulebook's.
+	Skills []string `yaml:"skills,omitempty" json:"skills,omitempty"`
+
+	// Actions are the weapons the block attacks with, as
+	// `dnd5e:weapons:<id>` — the same refs and the same refusals as a
+	// binding's own `actions:`.
+	Actions []string `yaml:"actions,omitempty" json:"actions,omitempty"`
+
+	// Experience is what the block is worth when it falls. It NEVER
+	// inherits from the base (design R8): absent, or 0, is worth nothing.
+	Experience int `yaml:"experience,omitempty" json:"experience,omitempty"`
 }
 
 // TableSpec is one authored answer table at the root: a named block of orders
