@@ -101,17 +101,15 @@ func (s *CastSuite) TestWrathPublicAttackReactPersistsWithoutRepeatingHit() {
 				}
 			}
 			s.Require().Len(react.Options, 2)
-			in := &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: react.ID, Choice: session.ReactStrike, Option: choice}
+			in := &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: react.ID, Answer: session.Take(choice)}
 			if choice == "thunder-save" {
-				in.Option = "thunder"
+				in.Answer = session.Take("thunder")
 			}
 			if choice == "hold" {
-				in.Choice = session.ReactHold
-				in.Option = ""
+				in.Answer = session.Decline()
 			}
 			invalid := *in
-			invalid.Choice = session.ReactStrike
-			invalid.Option = "not-offered"
+			invalid.Answer = session.Take("not-offered")
 			_, err = s.mgr.React(context.Background(), &invalid)
 			s.ErrorIs(err, session.ErrNotOffered)
 			s.Equal(beforeRolls, s.dice.next)
@@ -155,8 +153,9 @@ func (s *CastSuite) TestWrathMonsterTurnReloadResumesWithoutSecondStrike() {
 	s.Require().NoError(err)
 	persisted, err := s.encounters.GetEncounter(ctx, "sess")
 	s.Require().NoError(err)
-	s.Require().NotNil(persisted.PausedTurn)
-	s.True(persisted.PausedTurn.AfterStrike)
+	s.Require().NotNil(persisted.Pause)
+	s.Require().NotNil(persisted.Pause.Turn)
+	s.True(persisted.Pause.Turn.AfterStrike)
 	hp := s.characters.byID["cleric"].HitPoints
 	newManager()
 	offered, err := s.mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "cleric"})
@@ -168,12 +167,12 @@ func (s *CastSuite) TestWrathMonsterTurnReloadResumesWithoutSecondStrike() {
 		}
 	}
 	s.Require().Len(row.Options, 2)
-	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Choice: session.ReactStrike, Option: "thunder"})
+	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Answer: session.Take("thunder")})
 	s.Require().NoError(err)
 	s.Equal(hp, s.characters.byID["cleric"].HitPoints)
 	persisted, err = s.encounters.GetEncounter(ctx, "sess")
 	s.Require().NoError(err)
-	s.Nil(persisted.PausedTurn)
+	s.Nil(persisted.Pause)
 	turn, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "cleric"})
 	s.Require().NoError(err)
 	s.Equal("cleric", turn.Active)
@@ -196,7 +195,7 @@ func (s *CastSuite) TestWrathAfterSpellAttackRecordsOneCastAndReaction() {
 		}
 	}
 	s.Require().Len(react.Options, 2)
-	_, err = s.mgr.React(context.Background(), &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: react.ID, Choice: session.ReactStrike, Option: "lightning"})
+	_, err = s.mgr.React(context.Background(), &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: react.ID, Answer: session.Take("lightning")})
 	s.Require().NoError(err)
 	s.Equal(hp, s.characters.byID["cleric"].HitPoints)
 	s.Equal(1, s.characters.byID["aaron"].Resources[resources.SpellSlotLevel1].Current)
@@ -516,7 +515,7 @@ func (s *CastSuite) TestAResumedStrikeThatBreaksFogEndsTheArea() {
 	s.Require().NotEmpty(areas, "control: nothing has landed while the table waits")
 
 	react := currentDeclaration(s.T(), s.mgr, "sess", "aaron", session.VerbReact)
-	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "aaron", DeclarationID: react.ID, Choice: session.ReactHold})
+	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "aaron", DeclarationID: react.ID, Answer: session.Decline()})
 	s.Require().NoError(err)
 	s.assertTheCloudEndedAfterItsCause()
 }
@@ -545,7 +544,7 @@ func (s *CastSuite) TestAResumedHitThatBreaksFogEndsTheAreaBeforeItsNextWindow()
 	s.Require().NoError(err)
 	s.Require().True(out.Paused, "control: the swing stops to ask about the die")
 	react := currentDeclaration(s.T(), s.mgr, "sess", "aaron", session.VerbReact)
-	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "aaron", DeclarationID: react.ID, Choice: session.ReactHold})
+	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "aaron", DeclarationID: react.ID, Answer: session.Decline()})
 	s.Require().NoError(err)
 	offered, err := s.mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "cleric"})
 	s.Require().NoError(err)
@@ -591,7 +590,7 @@ func (s *CastSuite) TestARetaliationThatBreaksFogEndsTheArea() {
 	s.stream.published = nil
 
 	react := currentDeclaration(s.T(), s.mgr, "sess", "cleric", session.VerbReact)
-	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: react.ID, Choice: session.ReactStrike, Option: "thunder"})
+	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: react.ID, Answer: session.Take("thunder")})
 	s.Require().NoError(err)
 
 	areas, err = s.mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "aaron"})
@@ -630,7 +629,7 @@ func (s *CastSuite) TestADrivenHitThatBreaksFogEndsTheAreaBeforeItsWindow() {
 	s.Require().NoError(err)
 	persisted, err := s.encounters.GetEncounter(ctx, "sess")
 	s.Require().NoError(err)
-	s.Require().NotNil(persisted.PausedTurn, "control: the hit stops to ask the cleric")
+	s.Require().NotNil(persisted.Pause, "control: the hit stops to ask the cleric")
 	areas, err := s.mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "cleric"})
 	s.Require().NoError(err)
 	s.Empty(areas, "the driven hit's broken concentration ends the cloud before the window")
@@ -664,7 +663,7 @@ func (s *CastSuite) flareFogScene(wrath bool) {
 	s.Require().NoError(err)
 	s.Require().NotEmpty(areas, "control: nothing has landed before the roll")
 	row = s.flareReaction()
-	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Choice: session.ReactHold})
+	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Answer: session.Decline()})
 	s.Require().NoError(err)
 }
 
@@ -696,12 +695,13 @@ func (s *CastSuite) TestAResumedDrivenHitThatBreaksFogEndsTheAreaBeforeItsWindow
 	s.Empty(areas, "the area lands before the next window opens")
 }
 
-// TestAWalkThatPausesOnItsSecondReactionTellsTheFirst: a step that provokes
-// two skeletons, where the first swing misses and the second hits and asks
-// the walking cleric about Wrath of the Storm. The walk pauses on the second
-// reaction, and the first — already resolved — is told before the window
-// opens, by the movement landing's record step.
-func (s *CastSuite) TestAWalkThatPausesOnItsSecondReactionTellsTheFirst() {
+// TestAWalkThatPausesOnItsSecondReactionTellsBoth: a step that provokes two
+// skeletons, where the first swing misses and the second hits and asks the
+// walking cleric about Wrath of the Storm. The walk pauses on the second
+// reaction, and both — each settled before the pause — are told before the
+// window opens (one pause envelope: what settled is told where it settled).
+// Declining tells neither again.
+func (s *CastSuite) TestAWalkThatPausesOnItsSecondReactionTellsBoth() {
 	s.sceneWithSecondSkeleton(s.tempestSheet(), 1, 1, 15, 3, 3, 3, 3, 3, 3, 3, 3)
 	ctx := context.Background()
 
@@ -710,17 +710,22 @@ func (s *CastSuite) TestAWalkThatPausesOnItsSecondReactionTellsTheFirst() {
 
 	s.Equal(session.MovementPaused, out.Status, "the second reaction asks the walker")
 	told := s.beats(session.EventStruck, session.EventMissed)
-	s.Require().Len(told, 1, "the first reaction is told before the window")
+	s.Require().Len(told, 2, "both settled reactions are told before the window")
 	s.Equal(session.EventMissed, told[0].Kind)
+	s.Equal(session.EventStruck, told[1].Kind)
 	offered, err := s.mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "cleric"})
 	s.Require().NoError(err)
-	asked := false
+	var row session.Declaration
 	for _, d := range offered.Declarations {
 		if d.Verb == session.VerbReact && d.Reaction != nil && d.Reaction.Ref == refs.Features.WrathOfTheStorm().String() {
-			asked = true
+			row = d
 		}
 	}
-	s.True(asked, "and the cleric is asked about Wrath of the Storm")
+	s.Require().NotEmpty(row.ID, "and the cleric is asked about Wrath of the Storm")
+
+	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Answer: session.Decline()})
+	s.Require().NoError(err)
+	s.Len(s.beats(session.EventStruck, session.EventMissed), 2, "the resume tells neither swing again")
 }
 
 // sceneWithSecondSkeleton is the cast scene with a second skeleton standing at

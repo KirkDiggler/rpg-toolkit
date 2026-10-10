@@ -91,7 +91,7 @@ func (s *CastSuite) TestGuidingBoltAttackOfferResumesWithoutPayingOrRollingAgain
 	s.reloadHealingScene()
 	before := s.dice.next
 	row := currentDeclaration(s.T(), s.mgr, "sess", "cleric", session.VerbReact)
-	_, err = s.mgr.React(context.Background(), &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Choice: session.ReactHold})
+	_, err = s.mgr.React(context.Background(), &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Answer: session.Decline()})
 	s.Require().NoError(err)
 	s.Equal(before+4, s.dice.next, "resume only rolls damage; no second attack roll")
 	s.Equal(1, s.characters.byID["cleric"].Resources[resources.SpellSlotLevel1].Current)

@@ -8,10 +8,11 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/play/interrupt"
-
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -27,452 +28,287 @@ func windowIDString(id interrupt.WindowID) string {
 	return strconv.FormatUint(uint64(id), 10)
 }
 
-// The kinds of thing a stored window payload can have frozen.
-//
-// WRITTEN AND CHECKED, so a payload from a build that poses something else is
-// REFUSED rather than read as the wrong question. There were two readings of
-// the single value this replaced — "the kind" and "the only kind" — and the
-// second stopped being true the moment a roll could pause.
+// windowVersion is written on every stored window and checked on every read.
+// A payload carrying any other version — every payload an earlier build
+// wrote carries none — is [ErrStalePause] (one pause envelope, ruling E5).
+const windowVersion = 1
+
+// The two answers this package poses on the ledger. They are the ledger's
+// bookkeeping and nothing else: what a window accepts is the offer's to say,
+// and [Manager.React] checks an [Answer] against the offer, never against
+// these. The ledger refuses a window with no options, so it is handed the two
+// shapes every answer takes.
 const (
-	// windowKindReaction is a step that stopped to offer a swing at the mover
-	// walking away (rpg-project#316 rung 3).
-	windowKindReaction = "reaction"
-
-	// windowKindPostRoll is a d20 that stopped to ask its roller whether they
-	// spend something they hold on it (rpg-project#398).
-	windowKindPostRoll = "post_roll"
-
-	// windowKindCheckOffer is an ability check that stopped for the same
-	// reason [windowKindPostRoll] does, on [resolution.MakeCheck]'s own
-	// suspend/resume rather than the strike machine's. Unlock is the only
-	// verb that poses one today — Search's checks cross through
-	// [encounter.CheckResolver], which has no way to carry a pose yet (see
-	// docs/ideas/cleric/plan.md), so a die held during a Search check is
-	// silently kept rather than posed.
-	windowKindCheckOffer = "check_offer"
-
-	// windowKindCastOffer is a cast's own saving throw that stopped for the
-	// same reason [windowKindCheckOffer] does, on [resolution.NewCastResumed]
-	// instead of a resumed check. Cast is the only verb that poses one:
-	// every saving throw runs through a cast (docs/ideas/cleric/plan.md).
-	windowKindCastOffer = "cast_offer"
+	ledgerTake    interrupt.Option = "take"
+	ledgerDecline interrupt.Option = "decline"
 )
 
-// windowPayload is the frozen half of one posed reaction window: everything
-// [Manager.React] needs to run the swing that was offered, without asking the
-// world again for an answer it already gave.
+// pendingWindow is the one stored payload of an open window (one pause
+// envelope, ruling E2).
 //
-// THE DEFINITION IS STORED rather than recompiled. The offer a player accepted
-// is the offer that was made — a weapon swapped, a feature spent, or a sheet
-// edited between the question and the answer must not silently change what
-// they swing with. The mover's kind is NOT stored, because it is a fact about
-// the roster this package reloads anyway and a stored copy could only ever
-// agree with it or lie to it.
-type windowPayload struct {
-	// Kind is [windowPayloadKind]. See its doc.
-	Kind string `json:"kind"`
+// THE PAUSE IS RESOLUTION'S, STORED WHOLE. Its question, its price and its
+// frozen machine are handed back to [resolution.Resume] exactly as they came
+// out; this package reads the question to render a row and never reads the
+// frozen bytes at all. The story beside it is what this package needs to TELL
+// the resume, and nothing else: no bookkeeping about what was already told
+// exists, because what settled before the pause was told at the pause.
+type pendingWindow struct {
+	// Version is [windowVersion].
+	Version int `json:"version"`
 
-	// Mover is whose step is being reacted to, and From/To the step itself —
-	// the cells the encounter's own paused turn holds, repeated here because
-	// the strike is resolved from this payload and a reaction checked against
-	// a different pair of cells is a different reaction.
-	Mover string           `json:"mover"`
-	From  spatial.Position `json:"from"`
-	To    spatial.Position `json:"to"`
+	// Kind is the pause's kind, repeated so a mis-paired payload is refused.
+	Kind resolution.PauseKind `json:"kind"`
 
-	// Reactor is who is being asked. Always the window's own audience;
-	// carried inside the payload as well so a mis-paired payload and window
-	// is a refusal rather than a swing by the wrong member.
-	Reactor string `json:"reactor"`
+	// Audience is who is asked — always the window's own audience and the
+	// pause's own.
+	Audience string `json:"audience"`
 
-	// Reaction is the ref of the condition offering the swing —
-	// "dnd5e:conditions:opportunity_attack".
-	Reaction string `json:"reaction"`
+	// Pause is resolution's pause, whole.
+	Pause resolution.Pause `json:"pause"`
 
-	// Definition is the melee attack the reactor was offered.
+	// Story is what the resume needs to be told.
+	Story windowStory `json:"story"`
+}
+
+// storyKind names which verb a window's resume tells, and so which record
+// function lands it.
+type storyKind string
+
+const (
+	// storyAttack is a declared or driven attack, lone or sequence.
+	storyAttack storyKind = "attack"
+	// storyStep is an announced step and the reactions to it.
+	storyStep storyKind = "step"
+	// storyCast is a cast stopped on one of its saves.
+	storyCast storyKind = "cast"
+	// storyCheck is a check stopped on its d20: Unlock, Persuade, Intimidate.
+	storyCheck storyKind = "check"
+)
+
+// windowStory is what the session needs to TELL a resume, and nothing
+// resolution settled or asks.
+type windowStory struct {
+	// Kind picks the record function.
+	Kind storyKind `json:"kind"`
+
+	// Attacker, Target and Definition name an attack story's swing. Target is
+	// a step story's mover.
+	Attacker   string                   `json:"attacker,omitempty"`
+	Target     string                   `json:"target,omitempty"`
 	Definition combatActions.Definition `json:"definition"`
-}
 
-// postRollWindowPayload is the frozen half of one posed post-roll window.
-//
-// # The machine's own bytes ride along untouched
-//
-// [postRollWindowPayload.Frozen] is resolution's, opaque here, and handed back
-// whole. This package stores the numbers BESIDE it — audience, offer, roll,
-// total, and what the resulting beat needs — rather than reaching into the
-// blob, because reading it would put this seam inside a rules machine's state.
-// The duplication is the seam: two modules each keep what they own.
-type postRollWindowPayload struct {
-	// Kind is [windowKindPostRoll]. See its doc.
-	Kind string `json:"kind"`
+	// Components is the attacker's action list a sequence's steps name their
+	// components from.
+	Components []combatActions.Definition `json:"components,omitempty"`
 
-	// Audience is who is being asked. Always the window's own audience, and
-	// always the member whose d20 was rolled — this slice poses to the roller
-	// and to nobody else. Carried inside the payload as well so a mis-paired
-	// payload and window is a refusal rather than an answer by the wrong
-	// member.
-	Audience string `json:"audience"`
+	// PresentationID is the token a declaring client correlates its throw
+	// against; empty for a swing nobody declared.
+	PresentationID string `json:"presentation_id,omitempty"`
 
-	// Target is who was being swung at, and Attack what was swung. Both are
-	// here for the struck/missed beat the ANSWER writes: the first call
-	// recorded no outcome beat at all, and the second has no compiled offer to
-	// read them off.
-	Target string    `json:"target"`
-	Attack AttackRef `json:"attack"`
+	// WalkPath is the rest of a player's walk a reaction stopped, carried so
+	// the last answer walks it.
+	WalkPath []spatial.Position `json:"walk_path,omitempty"`
 
-	// PresentationID is the token the declaring client is already correlating
-	// its own simulated throw against. It was minted before the dice and must
-	// survive the pause, or the throw the player watched belongs to nothing.
-	PresentationID string `json:"presentation_id"`
-
-	// Offer is what the audience holds, as the effect that offered it named
-	// itself — the ref the button is keyed to and the name it is labelled
-	// with.
-	Offer ReactionRef `json:"offer"`
-
-	// OfferDescription is the offering owner's prose for this reaction,
-	// copied from the posed offer. It rides the window, not [ReactionRef],
-	// because ReactionRef also rides stream events and no beat carries prose.
-	OfferDescription string `json:"offer_description,omitempty"`
-
-	// Roll and Total are the d20 and the number the offer would join, carried
-	// for the beat that asks. THE TARGET'S AC IS NOT HERE, and its absence is
-	// the design: a player who could see it would be deciding whether the die
-	// closes the gap rather than whether it is worth spending.
-	Roll  int `json:"roll"`
-	Total int `json:"total"`
-
-	// Frozen is resolution's own machine state, opaque to this package.
-	Frozen []byte `json:"frozen"`
-}
-
-// checkOfferWindowPayload is the frozen half of one posed check-offer window
-// — [postRollWindowPayload]'s check sibling, and Unlock's own for now (see
-// [windowKindCheckOffer]).
-type checkOfferWindowPayload struct {
-	// Kind is [windowKindCheckOffer]. See its doc.
-	Kind string `json:"kind"`
-
-	// Audience is who is being asked — always the checker, the window's own
-	// audience, and carried again here for the mis-pairing refusal
-	// [thawPostRollPayload]'s doc explains.
-	Audience string `json:"audience"`
-
-	// Door is which lock this check was rolled against, so the answer can
-	// finish the same Unlock the question paused. Unlock-specific, and the
-	// next verb to pose a check-offer window brought its own field for
-	// "what to finish" rather than a rename of this one — see Target.
-	//
-	// EXACTLY ONE OF Door AND Target IS SET, which is how the answer knows
-	// which verb it is finishing. A payload with both, or with neither, is
-	// a window this build never wrote.
+	// Door is the lock an Unlock check faced; Verb and Target the social verb
+	// a check was for. Exactly one of Door and Target is set on a check.
 	Door string `json:"door,omitempty"`
+	Verb Verb   `json:"verb,omitempty"`
 
-	// Target is who this check was rolled against, so the answer can finish
-	// the same social verb the question paused (rpg-project#454). Door's
-	// sibling, added the way that field's doc said the second verb would
-	// add one.
-	Target string `json:"target,omitempty"`
-
-	// Verb is WHICH social verb was paused, set exactly when Target is
-	// (rpg-project#458). Target alone told the answer which verb to finish
-	// while there was only one; there are two now, and a resumed Persuade
-	// that landed an Intimidate would be a silently wrong deed on a mind.
-	//
-	// REFUSED WHEN IT IS NOT ONE OF THE TWO, at the trust boundary below:
-	// a stored window naming a verb this build cannot finish is one it never
-	// wrote.
-	Verb Verb `json:"verb,omitempty"`
-
-	// Offer is what the audience holds, as the effect that offered it named
-	// itself.
-	Offer ReactionRef `json:"offer"`
-
-	// OfferDescription is the offering owner's prose for this reaction,
-	// copied from the posed offer. It rides the window, not [ReactionRef],
-	// because ReactionRef also rides stream events and no beat carries prose.
-	OfferDescription string `json:"offer_description,omitempty"`
-
-	// Roll and Total are the d20 and the number the offer would join. THE
-	// LOCK'S DC IS NOT HERE, for [postRollWindowPayload.Roll]'s reason: a
-	// player deciding whether a die is worth spending should not be able to
-	// read off whether it would close the gap.
-	Roll  int `json:"roll"`
-	Total int `json:"total"`
-
-	// Calculation is the settled arithmetic the offered die would join — the
-	// same numbers Roll and Total summarise, with every face and the keep
-	// record behind them. The window is where an untrained roll is FIRST seen
-	// (rpg-project#462 R5); with only the two scalars, this payload could
-	// carry one face and no rule.
-	Calculation *RollCalculation `json:"calculation,omitempty"`
-
-	// Frozen is resolution's own machine state, opaque to this package.
-	Frozen []byte `json:"frozen"`
-}
-
-// castOfferWindowPayload is the frozen half of one posed cast-offer window —
-// [checkOfferWindowPayload]'s cast sibling, holding a saving throw's own
-// pose instead of a check's.
-type castOfferWindowPayload struct {
-	Options []CastOption `json:"options,omitempty"`
-	// Kind is [windowKindCastOffer]. See its doc.
-	Kind string `json:"kind"`
-
-	// Audience is who is being asked — the SAVER, not necessarily the
-	// caster (Bane can ask any of several targets), carried again here for
-	// the mis-pairing refusal [thawCheckOfferPayload]'s doc explains.
-	Audience string `json:"audience"`
-
-	// Caster is who cast the spell — the member [CastOutput]'s beats,
-	// numbering and economy are keyed to, and NOT necessarily Audience: a
-	// bard casting Bane at the party's own cleric asks the cleric, not the
-	// bard.
-	Caster string `json:"caster"`
-
-	// Spell is the spell that was cast, echoed into the finished
-	// [CastOutput] the same way an unposed cast's own reaches it.
-	Spell SpellRef `json:"spell"`
-
-	// Caught rides through the pause unchanged — an area cast's footprint is
-	// fixed before any target's save is even rolled, so it cannot depend on
-	// how this window is answered.
+	// Caster, Spell and Caught are a cast story's: who cast what, and the
+	// footprint fixed before any save was rolled.
+	Caster string         `json:"caster,omitempty"`
+	Spell  SpellRef       `json:"spell"`
 	Caught []CaughtMember `json:"caught,omitempty"`
-
-	// Offer is what the audience holds, as the effect that offered it named
-	// itself.
-	Offer ReactionRef `json:"offer"`
-
-	// OfferDescription is the offering owner's prose for this reaction,
-	// copied from the posed offer. It rides the window, not [ReactionRef],
-	// because ReactionRef also rides stream events and no beat carries prose.
-	OfferDescription string `json:"offer_description,omitempty"`
-
-	// Roll and Total are the d20 and the number the offer would join. THE
-	// SAVE'S DC IS NOT HERE, [checkOfferWindowPayload.Roll]'s reason.
-	Roll  int `json:"roll"`
-	Total int `json:"total"`
-
-	// Frozen is resolution's own machine state, opaque to this package.
-	Frozen []byte `json:"frozen"`
 }
 
-// marshalCastOfferPayload renders one posed cast-offer window's frozen half.
-func marshalCastOfferPayload(p castOfferWindowPayload) ([]byte, error) {
-	p.Kind = windowKindCastOffer
-	raw, err := json.Marshal(p)
+// validate refuses a story missing what its kind needs to tell a resume.
+func (s windowStory) validate() error {
+	switch s.Kind {
+	case storyAttack:
+		if s.Attacker == "" || s.Target == "" || s.Definition.Ref.ID == "" {
+			return fmt.Errorf("%w: an attack window names no attacker, target or attack", ErrInvalidSession)
+		}
+	case storyStep:
+		if s.Target == "" {
+			return fmt.Errorf("%w: a step window names no mover", ErrInvalidSession)
+		}
+	case storyCast:
+		if s.Caster == "" || s.Spell.Ref == "" {
+			return fmt.Errorf("%w: a cast window names no caster or spell", ErrInvalidSession)
+		}
+	case storyCheck:
+		// EXACTLY ONE of the two "what to finish" fields: a check names the
+		// door it faced or the target it addressed, and answering one that
+		// named both or neither would pick a verb by accident.
+		if (s.Door == "") == (s.Target == "") {
+			return fmt.Errorf("%w: a check window names %s to finish", ErrInvalidSession,
+				map[bool]string{true: "neither a door nor a target", false: "both a door and a target"}[s.Door == ""])
+		}
+		if s.Target != "" && s.Verb != VerbIntimidate && s.Verb != VerbPersuade {
+			return fmt.Errorf("%w: a check window names target %q under verb %q, which is not a social verb",
+				ErrInvalidSession, s.Target, s.Verb)
+		}
+		if s.Door != "" && s.Verb != "" {
+			return fmt.Errorf("%w: a check window names a door and the verb %q", ErrInvalidSession, s.Verb)
+		}
+	default:
+		return fmt.Errorf("%w: window story kind %q is not one this build tells", ErrInvalidSession, s.Kind)
+	}
+	return nil
+}
+
+// poseWindow is the only writer of a window payload. It stores the pause
+// whole beside the story, reads its own output back through [thawWindow] so
+// it can never write what it would refuse, and poses it on the ledger.
+func poseWindow(scope *writeScope, pause resolution.Pause, story windowStory) error {
+	raw, err := json.Marshal(pendingWindow{
+		Version:  windowVersion,
+		Kind:     pause.Kind,
+		Audience: pause.Ask.Audience,
+		Pause:    pause,
+		Story:    story,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("marshal cast offer window payload: %w", err)
+		return fmt.Errorf("%w: marshal window: %v", ErrInvalidSession, err)
 	}
-	return raw, nil
+	if pause.Ask.Audience == "" {
+		return fmt.Errorf("%w: the machine asked nobody", ErrInvalidWorld)
+	}
+	if _, err := thawWindow(raw, pause.Ask.Audience); err != nil {
+		return err
+	}
+	if _, err := scope.ledger.Pose(&interrupt.PoseInput{
+		Audience: core.EntityID(pause.Ask.Audience),
+		Options:  []interrupt.Option{ledgerTake, ledgerDecline},
+		Payload:  raw,
+		// The sequence this verb started from, the only story coordinate a
+		// pose holds: the beats this verb appends land after it.
+		At: scope.baseline,
+	}); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidSession, err)
+	}
+	scope.data.Windows = scope.ledger.ToData()
+	scope.touched = true
+	return nil
 }
 
-// thawCastOfferPayload reads a stored CAST-OFFER window payload back, under
-// [thawWindowPayload]'s rule and for the same reason.
-func thawCastOfferPayload(raw []byte, audience string) (castOfferWindowPayload, error) {
-	var p castOfferWindowPayload
-	if err := json.Unmarshal(raw, &p); err != nil {
-		return castOfferWindowPayload{}, fmt.Errorf("%w: cast offer window payload: %v", ErrInvalidSession, err)
-	}
-	if p.Kind != windowKindCastOffer {
-		return castOfferWindowPayload{}, fmt.Errorf(
-			"%w: window payload kind %q is not a cast offer window", ErrInvalidSession, p.Kind)
-	}
-	if p.Audience == "" || p.Caster == "" || p.Spell.Ref == "" || p.Offer.Ref == "" || p.Offer.Name == "" {
-		return castOfferWindowPayload{}, fmt.Errorf(
-			"%w: cast offer window payload names no audience, caster, spell or offer", ErrInvalidSession)
-	}
-	if len(p.Frozen) == 0 {
-		return castOfferWindowPayload{}, fmt.Errorf(
-			"%w: cast offer window payload froze no machine to resume", ErrInvalidSession)
-	}
-	if p.Audience != audience {
-		return castOfferWindowPayload{}, fmt.Errorf(
-			"%w: cast offer window payload names %q but is posed to %q", ErrInvalidSession, p.Audience, audience)
-	}
-	return p, nil
-}
-
-// marshalCheckOfferPayload renders one posed check-offer window's frozen
-// half.
-func marshalCheckOfferPayload(p checkOfferWindowPayload) ([]byte, error) {
-	p.Kind = windowKindCheckOffer
-	raw, err := json.Marshal(p)
-	if err != nil {
-		return nil, fmt.Errorf("marshal check offer window payload: %w", err)
-	}
-	return raw, nil
-}
-
-// thawCheckOfferPayload reads a stored CHECK-OFFER window payload back,
-// under [thawWindowPayload]'s rule and for the same reason.
-func thawCheckOfferPayload(raw []byte, audience string) (checkOfferWindowPayload, error) {
-	var p checkOfferWindowPayload
-	if err := json.Unmarshal(raw, &p); err != nil {
-		return checkOfferWindowPayload{}, fmt.Errorf("%w: check offer window payload: %v", ErrInvalidSession, err)
-	}
-	if p.Kind != windowKindCheckOffer {
-		return checkOfferWindowPayload{}, fmt.Errorf(
-			"%w: window payload kind %q is not a check offer window", ErrInvalidSession, p.Kind)
-	}
-	if p.Audience == "" || p.Offer.Ref == "" || p.Offer.Name == "" {
-		return checkOfferWindowPayload{}, fmt.Errorf(
-			"%w: check offer window payload names no audience or offer", ErrInvalidSession)
-	}
-	// EXACTLY ONE of the two "what to finish" fields, checked here because
-	// this is the trust boundary for a stored window: a payload naming both
-	// a door and a target, or neither, is one this build never wrote, and
-	// answering it would pick a verb by accident.
-	if (p.Door == "") == (p.Target == "") {
-		return checkOfferWindowPayload{}, fmt.Errorf(
-			"%w: check offer window payload names %s to finish", ErrInvalidSession,
-			map[bool]string{true: "neither a door nor a target", false: "both a door and a target"}[p.Door == ""])
-	}
-	// And the verb rides with the target, for the target's reason: two social
-	// verbs finish differently, and a window that does not say which is one
-	// this build never wrote.
-	if p.Target != "" && p.Verb != VerbIntimidate && p.Verb != VerbPersuade {
-		return checkOfferWindowPayload{}, fmt.Errorf(
-			"%w: check offer window payload names target %q under verb %q, which is not a social verb",
-			ErrInvalidSession, p.Target, p.Verb)
-	}
-	if p.Door != "" && p.Verb != "" {
-		return checkOfferWindowPayload{}, fmt.Errorf(
-			"%w: check offer window payload names a door and the verb %q", ErrInvalidSession, p.Verb)
-	}
-	if len(p.Frozen) == 0 {
-		return checkOfferWindowPayload{}, fmt.Errorf(
-			"%w: check offer window payload froze no machine to resume", ErrInvalidSession)
-	}
-	if p.Audience != audience {
-		return checkOfferWindowPayload{}, fmt.Errorf(
-			"%w: check offer window payload names %q but is posed to %q", ErrInvalidSession, p.Audience, audience)
-	}
-	return p, nil
-}
-
-// marshalWindowPayload renders one posed reaction window's frozen half.
-func marshalWindowPayload(p windowPayload) ([]byte, error) {
-	p.Kind = windowKindReaction
-	raw, err := json.Marshal(p)
-	if err != nil {
-		return nil, fmt.Errorf("marshal window payload: %w", err)
-	}
-	return raw, nil
-}
-
-// marshalPostRollPayload renders one posed post-roll window's frozen half.
-func marshalPostRollPayload(p postRollWindowPayload) ([]byte, error) {
-	p.Kind = windowKindPostRoll
-	raw, err := json.Marshal(p)
-	if err != nil {
-		return nil, fmt.Errorf("marshal post-roll window payload: %w", err)
-	}
-	return raw, nil
-}
-
-// windowKindOf reads which question a stored payload froze, without decoding
-// the rest of it.
+// thawWindow reads a stored window back, refusing anything this build could
+// not have written.
 //
-// A PEEK RATHER THAN A UNION. Every reader here already knows which kind it
-// can act on, so each asks for that kind by name and is refused if the payload
-// is the other one. A single struct carrying both halves would have a field
-// lying on every payload of the wrong kind.
-func windowKindOf(raw []byte) (string, error) {
+// REJECT, NEVER GUESS. It refuses, in this order: an undecodable payload
+// ([ErrInvalidSession]); a version that is not [windowVersion]
+// ([ErrStalePause]) — every payload an earlier build wrote, so a table caught
+// mid-reaction across a deploy loses that window rather than answering a
+// question this build cannot read; an audience that is empty or not the
+// window's; a kind that is not the pause's; an offer with no ref or name;
+// empty or duplicate choice ids; no frozen machine; and a story missing what
+// its kind needs. Every refusal but the version is [ErrInvalidSession].
+func thawWindow(raw []byte, audience string) (pendingWindow, error) {
 	var peek struct {
-		Kind string `json:"kind"`
+		Version int `json:"version"`
 	}
 	if err := json.Unmarshal(raw, &peek); err != nil {
-		return "", fmt.Errorf("%w: window payload: %v", ErrInvalidSession, err)
+		return pendingWindow{}, fmt.Errorf("%w: window payload: %v", ErrInvalidSession, err)
 	}
-	switch peek.Kind {
-	case windowKindPendingAttack, windowKindReaction, windowKindPostRoll, windowKindCheckOffer, windowKindCastOffer, windowKindPostHit:
-		return peek.Kind, nil
-	default:
-		return "", fmt.Errorf(
-			"%w: window payload kind %q is not one this build poses", ErrInvalidSession, peek.Kind)
+	if peek.Version != windowVersion {
+		return pendingWindow{}, fmt.Errorf("%w: window version %d, this build writes %d",
+			ErrStalePause, peek.Version, windowVersion)
 	}
+	var w pendingWindow
+	if err := json.Unmarshal(raw, &w); err != nil {
+		return pendingWindow{}, fmt.Errorf("%w: window payload: %v", ErrInvalidSession, err)
+	}
+	if w.Audience == "" || w.Audience != audience || w.Pause.Ask.Audience != w.Audience {
+		return pendingWindow{}, fmt.Errorf("%w: window asks %q but is posed to %q",
+			ErrInvalidSession, w.Audience, audience)
+	}
+	if w.Kind == "" || w.Kind != w.Pause.Kind {
+		return pendingWindow{}, fmt.Errorf("%w: window kind %q, pause kind %q",
+			ErrInvalidSession, w.Kind, w.Pause.Kind)
+	}
+	offer := w.Pause.Ask.Offer
+	if offer.Ref.ID == "" || offer.Name == "" {
+		return pendingWindow{}, fmt.Errorf("%w: window offers nothing it can name", ErrInvalidSession)
+	}
+	seen := map[string]bool{}
+	for _, choice := range offer.Choices {
+		if choice.ID == "" || seen[choice.ID] {
+			return pendingWindow{}, fmt.Errorf("%w: window lists an empty or repeated choice", ErrInvalidSession)
+		}
+		seen[choice.ID] = true
+	}
+	if len(w.Pause.Frozen) == 0 {
+		return pendingWindow{}, fmt.Errorf("%w: window froze no machine to resume", ErrInvalidSession)
+	}
+	if err := w.Story.validate(); err != nil {
+		return pendingWindow{}, err
+	}
+	return w, nil
 }
 
-// thawWindowPayload reads a stored REACTION window payload back, refusing
-// anything this build could not have written.
+// reactDeclaration is the only reader that offers a window: it compiles one
+// open window into the row its audience sees.
 //
-// REJECT, NEVER GUESS — the same trust boundary the ledger load itself keeps.
-// A payload of another kind, or one naming nobody, is a session record this
-// build cannot act on, and answering it by inventing the missing half would
-// resolve a strike that was never offered.
-func thawWindowPayload(raw []byte, audience string) (windowPayload, error) {
-	var p windowPayload
-	if err := json.Unmarshal(raw, &p); err != nil {
-		return windowPayload{}, fmt.Errorf("%w: window payload: %v", ErrInvalidSession, err)
-	}
-	if p.Kind != windowKindReaction {
-		return windowPayload{}, fmt.Errorf(
-			"%w: window payload kind %q is not a reaction window", ErrInvalidSession, p.Kind)
-	}
-	if p.Mover == "" || p.Reactor == "" || p.Reaction == "" {
-		return windowPayload{}, fmt.Errorf("%w: window payload names no mover, reactor or reaction", ErrInvalidSession)
-	}
-	if p.Reactor != audience {
-		return windowPayload{}, fmt.Errorf(
-			"%w: window payload names reactor %q but is posed to %q", ErrInvalidSession, p.Reactor, audience)
-	}
-	return p, nil
-}
-
-// thawPostRollPayload reads a stored POST-ROLL window payload back, under
-// thawWindowPayload's rule and for the same reason.
-func thawPostRollPayload(raw []byte, audience string) (postRollWindowPayload, error) {
-	var p postRollWindowPayload
-	if err := json.Unmarshal(raw, &p); err != nil {
-		return postRollWindowPayload{}, fmt.Errorf("%w: post-roll window payload: %v", ErrInvalidSession, err)
-	}
-	if p.Kind != windowKindPostRoll {
-		return postRollWindowPayload{}, fmt.Errorf(
-			"%w: window payload kind %q is not a post-roll window", ErrInvalidSession, p.Kind)
-	}
-	if p.Audience == "" || p.Target == "" || p.Offer.Ref == "" || p.Offer.Name == "" {
-		return postRollWindowPayload{}, fmt.Errorf(
-			"%w: post-roll window payload names no audience, target or offer", ErrInvalidSession)
-	}
-	if len(p.Frozen) == 0 {
-		return postRollWindowPayload{}, fmt.Errorf(
-			"%w: post-roll window payload froze no machine to resume", ErrInvalidSession)
-	}
-	if p.Audience != audience {
-		return postRollWindowPayload{}, fmt.Errorf(
-			"%w: post-roll window payload names %q but is posed to %q", ErrInvalidSession, p.Audience, audience)
-	}
-	return p, nil
-}
-
-// movementReactionRef names the reaction a posed movement window offers.
+// AVAILABLE IS ALWAYS TRUE. Every gate an offer has was passed before the
+// window was posed, which is why the question was worth asking.
 //
-// A CONSTANT BECAUSE THE MACHINE CANNOT TELL US. resolution.ReactionAttacks is
-// asked AttackFor(reactorID) and nothing else — the trigger's own condition ref
-// is read off the OUTCOME, which a reactor who was asked instead of swung for
-// never reaches. So the pose has to name the reaction itself, and today there
-// is exactly one reaction a movement fold can offer (resolution's free
-// reactions; [reactionName] holds the same single entry).
-//
-// FAIL CLOSED WHEN THAT STOPS BEING TRUE. The guard is [poseableReaction],
-// which refuses rather than guessing the moment this package can name a second
-// reaction — at which point the real fix is upstream: AttackFor has to be told
-// which trigger it is answering.
-func movementReactionRef() string { return refs.Conditions.OpportunityAttack().String() }
+// THE ROW IS THE PAUSE'S QUESTION, read and never recomputed: the offer's
+// ref, name, prose and choices, and the price resolution stated. The slot is
+// [SlotReaction] exactly when that price spends a reaction. An opportunity
+// row also names the mover as its one candidate, because the question is a
+// swing at the member walking away.
+func reactDeclaration(session, member string, window interrupt.Window) (Declaration, error) {
+	w, err := thawWindow(window.Payload, string(window.Audience))
+	if err != nil {
+		return Declaration{}, err
+	}
+	id, err := reactDeclarationID(session, member, window.ID)
+	if err != nil {
+		return Declaration{}, err
+	}
+	offer := w.Pause.Ask.Offer
+	ref := offer.Ref.String()
 
-// poseableReaction is the identity a posed window offers, or an error when
-// this package can no longer say which reaction that is.
-func poseableReaction() (ReactionRef, error) {
-	if len(reactionName) != 1 {
-		return ReactionRef{}, fmt.Errorf(
-			"%w: %d reactions can reach a movement fold and AttackFor names none of them",
-			ErrInvalidWorld, len(reactionName))
+	slot := SlotNone
+	cost := []CostComponent{}
+	if w.Pause.Cost != nil {
+		if w.Pause.Cost.Profile != nil && w.Pause.Cost.Profile.Slots[coreCombat.ActionReaction] > 0 {
+			slot = SlotReaction
+		}
+		cost, err = castCostComponents(w.Pause.Cost.Profile)
+		if err != nil {
+			return Declaration{}, err
+		}
 	}
-	ref := movementReactionRef()
-	name, known := reactionName[ref]
-	if !known {
-		return ReactionRef{}, fmt.Errorf("%w: no display name for %q", ErrInvalidWorld, ref)
+
+	var options []CastOption
+	for _, choice := range offer.Choices {
+		options = append(options, CastOption{ID: choice.ID, Label: choice.Label, Description: choice.Description})
 	}
-	return ReactionRef{Ref: ref, Name: name}, nil
+
+	// The offerer's own prose; the opportunity attack is the one reaction
+	// this package names rather than receives, so its prose is this
+	// package's (information.go).
+	description := offer.Description
+	if description == "" {
+		description = reactionDescription[ref]
+	}
+
+	row := Declaration{
+		Verb:        VerbReact,
+		Slot:        slot,
+		Available:   true,
+		ID:          id,
+		Reaction:    &ReactionRef{Ref: ref, Name: offer.Name},
+		TargetKind:  TargetNone,
+		Candidates:  []TargetCandidate{},
+		Options:     options,
+		Cost:        cost,
+		Information: proseInformation(description),
+	}
+	if w.Kind == resolution.PauseOpportunity {
+		row.TargetKind = TargetMember
+		row.Candidates = []TargetCandidate{{Member: w.Story.Target, Available: true}}
+	}
+	return row, nil
 }

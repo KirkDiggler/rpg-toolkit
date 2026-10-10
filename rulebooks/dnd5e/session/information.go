@@ -54,9 +54,10 @@ var sessionVerbProse = map[Verb]string{
 	VerbPersuade:   "Try to change a creature's mind through conversation. The outcome depends on the creature and the situation.",
 }
 
-// reactionDescription sits beside [reactionName] and explains the reactions
-// this package names. One entry, because the opportunity attack is the one
-// reaction session names rather than receives from an offering owner.
+// reactionDescription explains the reactions this package names. One entry,
+// because the opportunity attack is the one reaction session names rather
+// than receives from an offering owner: its pause's offer carries no prose,
+// so a REACT row reads it here ([reactDeclaration]).
 var reactionDescription = map[string]string{
 	refs.Conditions.OpportunityAttack().String(): "Use your reaction to make one melee attack against a creature that leaves your reach.",
 }

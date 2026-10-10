@@ -90,7 +90,8 @@ type SessionData struct {
 	// THE OTHER HALF OF A PAUSE IS NOT HERE. The interrupted turn itself —
 	// which cells are left to walk, what the budget has left — belongs to
 	// the encounter and travels in its blob (encounter.EncounterData's
-	// PausedTurn, ruling R2). This aggregate holds only the questions.
+	// Pause, one pause envelope ruling E2). This aggregate holds only the
+	// questions, one stored window each.
 	Windows interrupt.LedgerData `json:"windows,omitempty"`
 
 	// NPCs are the sheets of members that were instantiated from code rather

@@ -8,12 +8,10 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/play/interrupt"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -36,36 +34,31 @@ type moverSeam struct {
 // compile-time proof the seam satisfies what it is handed to.
 var _ encounter.Mover = moverSeam{}
 
-// reactionName is the display name for each reaction ref this package can
-// record a beat for.
-//
-// A TABLE RATHER THAN A DERIVATION, and it fails closed loudly when a ref is
-// missing from it. The composition refuses a ReactionIdentity with an empty
-// Name (encounter.Record, ErrInvalidData), so the choice is between naming
-// every reaction here and inventing a name out of the ref's own id. Inventing
-// one would ship "Uncanny Dodge" as whatever the id happened to spell, in the
-// story every player reads, and nobody would find out from a test. One entry
-// today because one free reaction exists (resolution.freeReactions); the day a
-// second reaction reaches a movement fold, this line is where its author is
-// stopped and asked what it is called.
-var reactionName = map[string]string{
-	refs.Conditions.OpportunityAttack().String(): "Opportunity Attack",
-}
-
 // Move announces mover's step from one cell to the next, resolves whatever
 // reacted to it, and records the resulting beats itself — exactly as
 // [strikerSeam.Strike] records its own, and through the same public verb.
 //
-// NEVER ADOPTS A NEW *encounter.Encounter, for [strikerSeam.Strike]'s reason
-// and one sharper still: this is called from INSIDE a walk — the composition's
-// own monster loop, or this package's runWalk — and swapping the encounter out
-// from under the loop that is mid-path would orphan it. The world Resolve
-// returns is read for its dirty sheets alone; hit points and conditions live on
-// SHEETS, so nothing about a reaction requires swapping enc.
+// NEVER ADOPTS A NEW *encounter.Encounter: this is called from INSIDE a walk —
+// the composition's own monster loop, or this package's runWalk — and swapping
+// the encounter out from under the loop that is mid-path would orphan it.
 //
-// Errors are mover malfunctions and abort the caller's whole verb. A step
-// nothing reacted to returns nil having recorded nothing, which is the ordinary
-// case.
+// # The one place a player is asked instead of swung for
+//
+// A monster walking out of a player's reach is the case Kirk named
+// (rpg-project#316 rung 3): the player might want to save the swing for the
+// second skeleton. So a player reactor of a monster's step is ASKED — the
+// machine poses a [resolution.PauseOpportunity] per player, all standing at
+// once, and the step stops (ruling E8): the mover has not moved, and the
+// encounter holds the step until the last asked player answered. Every other
+// combination stays automatic. A WORLD NPC'S WALK IS NOT A MONSTER'S TURN
+// (ruling R4), so a wandering placement never freezes the table.
+//
+// Whatever settled before the step stopped — a skeleton that bit during the
+// same step — is told now, because it happened.
+//
+// Errors are mover malfunctions and abort the caller's whole verb, except
+// [encounter.StepPausedError], which the composition reads as a checkpoint.
+// A step nothing reacted to returns nil having recorded nothing.
 func (s moverSeam) Move(
 	ctx context.Context, enc *encounter.Encounter, step encounter.MoveStep,
 ) error {
@@ -74,182 +67,64 @@ func (s moverSeam) Move(
 		return fmt.Errorf("move: %w", translate(err))
 	}
 
-	// THE ONE PLACE A PLAYER IS ASKED INSTEAD OF SWUNG FOR. A monster walking
-	// out of a player's reach is the case Kirk named (rpg-project#316 rung 3):
-	// the player might want to save the swing for the second skeleton. Every
-	// other combination stays automatic — a player's own walk provokes the
-	// monsters around them, and a monster reactor answers instantly, because
-	// there is nobody to ask.
-	//
-	// A WORLD NPC'S WALK IS NOT A MONSTER'S TURN. Ruling R4 scopes the window
-	// to a driven monster turn, and a wandering placement is neither driven
-	// nor in a fight, so it keeps rung 2's behaviour rather than freezing the
-	// table on a stroll.
-	reactions := &reactionAttacks{askPlayers: moverKind(roster, step.Mover) == string(KindMonster)}
-
-	if err := s.offerStep(ctx, enc, step, roster, reactions); err != nil {
-		return err
-	}
-
-	// EVERY PLAYER REACTOR OF THIS STEP IS ASKED AT ONCE (ruling R3), and the
-	// step is NOT taken. Posed after the monsters' own reactions were recorded
-	// above, because those happened: a skeleton that bit during the same step
-	// bit whether or not the fighter is still deciding, and losing that beat
-	// to the pause would be a swing nobody can account for.
-	if len(reactions.asked) > 0 {
-		return s.pose(step.From, step.To, step.Mover, reactions.asked)
-	}
-	return nil
-}
-
-// offerStep offers one announced step to the rules and records whatever reacted
-// to it. It is the body [moverSeam.Move] and [Manager.React] share.
-//
-// TWO CALLERS, ONE MACHINE, and that is the point of the split rather than a
-// convenience. An answered window resolves THE SAME STEP a second time — same
-// mover, same two cells, same fold — with only the ReactionAttacks capability
-// differing, and a second hand-written copy of this would be a second answer to
-// what a step means.
-//
-// The capability is the caller's to build: Move's asks players, React's answers
-// for exactly one of them. Everything else here — the cast, the machine, the
-// beats, the save order — is identical either way.
-func (s moverSeam) offerStep(
-	ctx context.Context, enc *encounter.Encounter, step encounter.MoveStep,
-	roster []encounter.Member, reactions *reactionAttacks,
-) error {
-	// THE WALKER'S OWN READIED SHEET, when this walk has one. A player's walk
-	// is charged for before the first cell ([Manager.Move]), and a reaction to
-	// one of its steps strikes that same member — so the blow must land on the
-	// sheet that already paid, not on a second copy fetched behind its back
-	// (see [writeScope.walker]). Nil for a monster's driven walk and for free
-	// roam: neither spends anything, so there is no earlier edit to carry.
-	//
-	// The reaction's OWN price is not this seam's business either way. It is
-	// charged on the reactor's ledger by the condition that offered it, when
-	// the movement machine reports the reaction TAKEN (ruling R1).
+	// THE WALKER'S OWN READIED SHEET, when this walk has one: a reaction to
+	// one of its steps strikes the sheet that already paid for the walk, not
+	// a second copy fetched behind its back (see [writeScope.walker]).
 	cast := s.m.walkCast(ctx, s.scope, roster)
-
-	reactions.ctx = ctx
-	reactions.enc = enc
-	reactions.mover = step.Mover
-	reactions.sheets = sheetsByID(cast)
-	reactions.answered = map[string]combatActions.Definition{}
+	kind := moverKind(roster, step.Mover)
 
 	machine, err := resolution.NewMovement(&resolution.MovementInput{
 		Mover:     step.Mover,
-		MoverKind: moverKind(roster, step.Mover),
+		MoverKind: kind,
 		From:      step.From,
 		To:        step.To,
-		Reactions: reactions,
-		Roller:    &diceSeam{roller: s.m.dice},
+		Reactions: &reactionAttacks{
+			ctx:        ctx,
+			enc:        enc,
+			mover:      step.Mover,
+			sheets:     sheetsByID(cast),
+			askPlayers: kind == string(KindMonster),
+		},
+		Roller: &diceSeam{roller: s.m.dice},
 		// THE ONE THING THIS SEAM ADDS TO THE STEP. The composition below
 		// knows the creature did not choose to move and says so; the machine
-		// above knows what an opportunity attack is. Neither can reach the
-		// other, and this line is the whole of the translation.
+		// above knows what an opportunity attack is.
 		ForcedBy: forcedBy(step),
 	})
 	if err != nil {
 		return fmt.Errorf("move: mover %q: %w: %v", step.Mover, ErrInvalidWorld, err)
 	}
 
-	// A pure view for resolution's Input.World — a mid-verb read, never the
-	// storage boundary (encounter v0.43.0, #1385).
-	world := enc.WorldView()
 	out, err := resolution.Resolve(ctx, s.m.resolutionInput(ctx, s.scope, resolutionAsk{
-		World:        world,
+		// A pure view — a mid-verb read, never the storage boundary.
+		World:        enc.WorldView(),
 		Participants: cast,
-		// NO COST. A step is not a declared action with a profile, and the
-		// reaction's own price is charged on the reactor's own ledger.
+		// NO COST. A step is not a declared action; a reaction taken during
+		// it is charged by resolution at the one door as it is taken.
 		Machine: machine,
 	}))
 	if err != nil {
 		return fmt.Errorf("move: %w", translateResolution(err))
 	}
 
-	if out.Posed != nil && out.Posed.Movement != nil {
-		moved := *out.Posed.Movement
-		beats, err := movementBeats(moved)
-		if err != nil {
-			return err
-		}
-		p := pendingAttackWindowPayload{Movement: true, RecordedReactions: len(moved.Reactions), WalkPath: append([]spatial.Position(nil), s.scope.walkContinuation...), Target: moved.Mover}
-		if _, err := s.m.land(ctx, s.scope, out, &landing{
-			Live:   enc,
-			Record: recordBeats(beats),
-			Window: func(*encounter.Encounter) error {
-				return posePendingAttackWindow(s.scope, out.Posed, p)
-			},
-		}); err != nil {
-			return fmt.Errorf("move: %w", err)
-		}
-		ask := out.Posed.Ask
-		return &encounter.StepPausedError{Windows: []encounter.PausedWindow{{Audience: encounter.MemberID(ask.Audience), Reaction: encounter.ReactionIdentity{Ref: ask.Offer.Ref.String(), Name: ask.Offer.Name}}}}
+	// A PLAYER'S OWN WALK carries the rest of its path on the window a
+	// reaction stops it with, so the last answer walks on. A monster's walk
+	// is held by the encounter's own pause instead.
+	story := windowStory{Kind: storyStep, Target: string(step.Mover)}
+	if kind == "character" {
+		story.WalkPath = append([]spatial.Position(nil), s.scope.walkContinuation...)
 	}
-
-	moved, ok := out.Outcome.(resolution.MovementOutcome)
-	if !ok {
-		return fmt.Errorf("move: %w: movement produced %T", ErrInvalidWorld, out.Outcome)
-	}
-
-	beats, err := movementBeats(moved)
+	l, windows, err := s.m.stepLanding(s.scope, enc, story, out)
 	if err != nil {
 		return err
 	}
-	if _, err := s.m.land(ctx, s.scope, out, &landing{Live: enc, Record: recordBeats(beats)}); err != nil {
+	if _, err := s.m.land(ctx, s.scope, out, l); err != nil {
 		return fmt.Errorf("move: %w", err)
 	}
+	if len(windows) > 0 {
+		return &encounter.StepPausedError{Windows: windows}
+	}
 	return nil
-}
-
-// movementBeats builds one strike beat per reaction a movement provoked.
-//
-// EVERY BEAT IS BUILT BEFORE ANY SHEET IS WRITTEN. The only way building
-// one can fail is a reaction this package cannot name, and failing after
-// the save would leave persisted damage that no beat in the story accounts
-// for. Built first, a refusal costs nothing durable.
-//
-// Each beat carries its own reaction's concentration, which is where
-// resolution reports it for a movement; the landing's told concentration is
-// not read here.
-func movementBeats(moved resolution.MovementOutcome) ([]*encounter.RecordInput, error) {
-	recorded := make([]*encounter.RecordInput, 0, len(moved.Reactions))
-	for _, reaction := range moved.Reactions {
-		name, known := reactionName[reaction.ConditionRef]
-		if !known {
-			return nil, fmt.Errorf("move: reactor %q reacted with %q: %w: no display name",
-				reaction.ReactorID, reaction.ConditionRef, ErrInvalidWorld)
-		}
-		// NO PRESENTATION TOKEN, for the reason a monster's strike carries
-		// none: a reaction is a roll the server took on the reactor's behalf
-		// inside somebody else's Move, so no client simulated its die — see
-		// recordFor.
-		beat := recordStrike(
-			reaction.ReactorID, reaction.Against, reaction.Struck,
-			AttackRef{Ref: reaction.AttackRef.String(), Name: reaction.AttackName, DamageType: DamageType(reaction.DamageType)}, "",
-			reaction.ConcentrationChecks, reaction.ConcentrationBreaks,
-		)
-		// What the beat was taken AS. The numbers already crossed as an
-		// ordinary strike; this is the only thing that explains why a fighter
-		// dealt damage on a skeleton's turn (encounter.ReactionIdentity).
-		beat.Reaction = &encounter.ReactionIdentity{Ref: reaction.ConditionRef, Name: name}
-		recorded = append(recorded, beat)
-	}
-	return recorded, nil
-}
-
-// recordBeats is a landing's record step for prebuilt movement beats: each
-// is recorded on the landing's encounter, in order, after the sheets the
-// landing already wrote.
-func recordBeats(beats []*encounter.RecordInput) func(*encounter.Encounter, concentration) error {
-	return func(enc *encounter.Encounter, _ concentration) error {
-		for _, beat := range beats {
-			if _, err := enc.Record(beat); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
 }
 
 // forcedBy names the effect suppressing this step's opportunity attacks, or
@@ -283,64 +158,6 @@ func forcedBy(step encounter.MoveStep) *core.Ref {
 	}
 	cause := step.Cause
 	return &cause
-}
-
-// pose opens one window per player reactor of this step and reports the pause.
-//
-// THE RETURN IS THE POINT. resolution.ReactionAttacks has no channel for
-// "suspend" — its one method answers a definition or false, with no error at
-// all — so the decision to ask is remembered during Resolve and acted on here,
-// where this seam still has an error to return. [encounter.StepPausedError] is
-// what the composition reads as a checkpoint rather than a malfunction: it
-// leaves the mover standing on from, stores the rest of the turn, and narrates
-// the beat.
-//
-// The ledger is written into the session aggregate HERE rather than at commit,
-// so a verb that poses nothing writes nothing — the freeze costs exactly the
-// walks that actually stop.
-func (s moverSeam) pose(
-	from, to spatial.Position, mover encounter.MemberID, asked []askedReactor,
-) error {
-	reaction, err := poseableReaction()
-	if err != nil {
-		return fmt.Errorf("move: %w", err)
-	}
-
-	windows := make([]encounter.PausedWindow, 0, len(asked))
-	for _, ask := range asked {
-		payload, perr := marshalWindowPayload(windowPayload{
-			Mover:      string(mover),
-			From:       from,
-			To:         to,
-			Reactor:    ask.reactor,
-			Reaction:   reaction.Ref,
-			Definition: ask.definition,
-		})
-		if perr != nil {
-			return fmt.Errorf("move: %w: %v", ErrInvalidSession, perr)
-		}
-		if _, oerr := s.scope.ledger.Pose(&interrupt.PoseInput{
-			Audience: core.EntityID(ask.reactor),
-			Options:  []interrupt.Option{interrupt.Option(ReactStrike), interrupt.Option(ReactHold)},
-			Payload:  payload,
-			// The sequence this verb started from, which is the only story
-			// coordinate this seam holds: the window_opened beat the
-			// composition appends for these windows lands after it, so a
-			// reader holding the story can still order the two.
-			At: s.scope.baseline,
-		}); oerr != nil {
-			return fmt.Errorf("move: %w: %v", ErrInvalidSession, oerr)
-		}
-		windows = append(windows, encounter.PausedWindow{
-			Audience: encounter.MemberID(ask.reactor),
-			Reaction: encounter.ReactionIdentity{Ref: reaction.Ref, Name: reaction.Name},
-		})
-	}
-
-	s.scope.data.Windows = s.scope.ledger.ToData()
-	s.scope.touched = true
-
-	return &encounter.StepPausedError{Windows: windows}
 }
 
 // walkCast gathers every member a step can be noticed by.
@@ -452,11 +269,8 @@ func sheetsByID(cast []resolution.Participant) map[string]castSheets {
 // mover is a friend.
 //
 // Readiness is NOT re-asked here. It is the condition's own gate
-// (gamectx.IsReactionReady) and it was already passed — and already SPENT,
-// since the condition marks its meter and bills the reactor's economy before
-// this capability is ever reached. A second readiness question here could only
-// be asked of the outer context, which carries no readiness map at all, so it
-// would refuse every reaction in the game while looking like a safety check.
+// (gamectx.IsReactionReady) and it was already passed; the price is
+// resolution's, charged at its one door when a swing is taken.
 type reactionAttacks struct {
 	// ctx is the caller's, captured because ReactionAttacks.AttackFor takes
 	// none. Safe because resolution asks this capability synchronously, inside
@@ -469,77 +283,32 @@ type reactionAttacks struct {
 	// sheets is the cast, indexed. See [sheetsByID].
 	sheets map[string]castSheets
 
-	// answered remembers the definition handed to each reactor, so the beat
-	// recorded afterwards names the weapon that actually swung. The outcome
-	// carries the numbers and not the definition, and re-compiling one to
-	// record it would be a second answer to a question already settled.
-	answered map[string]combatActions.Definition
-
-	// askPlayers turns a player reactor's swing into a QUESTION. When it is
-	// set, a character who passes every gate below is not handed a weapon —
-	// they are remembered in asked, and [moverSeam.pose] opens them a window
-	// after Resolve returns.
+	// askPlayers turns a player reactor's swing into a QUESTION: a character
+	// who passes every gate below is answered [resolution.ReactionAsk], and
+	// the machine poses them a pause with the definition frozen inside it.
 	//
 	// It is not a readiness or a hostility question and does not replace one:
 	// every gate still runs, and a reactor who would not have swung is not
 	// asked either. The only thing it changes is WHO decides, and the answer
 	// is only ever "the player" when the mover is a monster (ruling R4).
 	askPlayers bool
-
-	// only, when non-empty, is the single reactor this capability will answer
-	// for — [Manager.React]'s second pass, where the swing being resolved is
-	// one specific player's accepted offer and every other reactor of the same
-	// step either already swung or is still deciding.
-	only string
-
-	// definition is the attack `only` was OFFERED, replayed rather than
-	// recompiled. The offer a player accepted is the offer that was made: a
-	// sheet edited between the question and the answer must not silently
-	// change what they swing with.
-	definition combatActions.Definition
-
-	// asked is every player reactor this step must ask, in the order the
-	// machine reached them. Read by [moverSeam.pose] after Resolve returns.
-	asked []askedReactor
-}
-
-// askedReactor is one player who was offered a swing and has not answered.
-type askedReactor struct {
-	// reactor is the member being asked, and definition the melee attack
-	// they were offered — both frozen into the window's payload so the
-	// answer resolves the same swing the question described.
-	reactor    string
-	definition combatActions.Definition
 }
 
 var _ resolution.ReactionAttacks = (*reactionAttacks)(nil)
 
-// AttackFor answers the melee attack reactorID swings at the mover, or false.
+// AttackFor answers the melee attack reactorID swings at the mover, and
+// whether to swing now or ask.
 //
-// FALSE IS AN ANSWER, not a failure, at every gate below: an ally, a stranger
-// to this run, a caster with no melee weapon and a monster whose whole action
-// list is a ranged spit each simply do not get an opportunity attack.
-func (r *reactionAttacks) AttackFor(reactorID string) (combatActions.Definition, bool) {
+// [resolution.ReactionNone] IS AN ANSWER, not a failure, at every gate below:
+// an ally, a stranger to this run, a caster with no melee weapon and a monster
+// whose whole action list is a ranged spit each simply do not get an
+// opportunity attack, and it costs them nothing.
+func (r *reactionAttacks) AttackFor(reactorID string) (combatActions.Definition, resolution.ReactionAnswer) {
 	// A member of the run. A reactor with no sheet in the cast is not someone
-	// this call can compile an attack for, and the cast is every member the
-	// roster held a moment ago.
+	// this call can compile an attack for.
 	sheets, member := r.sheets[reactorID]
 	if !member {
-		return combatActions.Definition{}, false
-	}
-
-	// AN ANSWERED WINDOW SWINGS FOR ITS OWN AUDIENCE AND NOBODY ELSE. On
-	// React's replay the same step is offered to the rules a second time, so
-	// every reactor's condition triggers again — including the monsters that
-	// already bit during the first pass and the players still deciding. Only
-	// the member who said yes gets a weapon, and they get the one they were
-	// offered rather than a freshly compiled twin.
-	if r.only != "" {
-		if reactorID != r.only {
-			return combatActions.Definition{}, false
-		}
-		r.answered[reactorID] = r.definition
-		return r.definition, true
+		return combatActions.Definition{}, resolution.ReactionNone
 	}
 
 	// HOSTILE, AND KNOWN TO BE. A pair the run cannot answer for is not a
@@ -548,30 +317,22 @@ func (r *reactionAttacks) AttackFor(reactorID string) (combatActions.Definition,
 	// from biting a player it has no quarrel with (rpg-toolkit#766).
 	hostile, known := r.enc.IsHostile(encounter.MemberID(reactorID), r.mover)
 	if !known || !hostile {
-		return combatActions.Definition{}, false
+		return combatActions.Definition{}, resolution.ReactionNone
 	}
 
 	definition, ok := r.meleeAttackFor(reactorID, sheets)
 	if !ok {
-		return combatActions.Definition{}, false
+		return combatActions.Definition{}, resolution.ReactionNone
 	}
 
 	// THE PLAYER IS ASKED, LAST, AFTER EVERY OTHER GATE. Asked before them, a
 	// window would open for an ally, for a friend of the run, or for a caster
-	// with nothing to swing — three questions with one answer, put to a person
-	// who has to read them. Every gate above has to say yes before the pause
-	// is worth anybody's turn.
-	//
-	// FALSE HERE COSTS THE REACTOR NOTHING. The condition bills only when the
-	// machine reports a reaction TAKEN (ruling R1), and declining is not
-	// taking — which is exactly what makes `hold` free.
+	// with nothing to swing — three questions with one answer. The definition
+	// rides the pause, so the answer swings what the question described.
 	if r.askPlayers && sheets.character != nil {
-		r.asked = append(r.asked, askedReactor{reactor: reactorID, definition: definition})
-		return combatActions.Definition{}, false
+		return definition, resolution.ReactionAsk
 	}
-
-	r.answered[reactorID] = definition
-	return definition, true
+	return definition, resolution.ReactionSwing
 }
 
 // meleeAttackFor compiles the reactor's melee swing off its stored sheet, the
@@ -580,8 +341,8 @@ func (r *reactionAttacks) AttackFor(reactorID string) (combatActions.Definition,
 // reading its stored action list (striker.go).
 //
 // NO COST ON EITHER. A declared swing is priced by the action economy before
-// assembly; a reaction was already billed by the condition that fired it, and
-// pricing it again here would charge a character twice for one swing.
+// assembly; a reaction's price is resolution's, charged at its door when the
+// swing is taken, and pricing it here would charge a character twice.
 func (r *reactionAttacks) meleeAttackFor(
 	reactorID string, sheets castSheets,
 ) (combatActions.Definition, bool) {

@@ -274,6 +274,7 @@ var sessionSentinels = map[string]error{
 	"ErrNoWindow":             session.ErrNoWindow,
 	"ErrNotAudience":          session.ErrNotAudience,
 	"ErrNotOffered":           session.ErrNotOffered,
+	"ErrStalePause":           session.ErrStalePause,
 	"ErrLevelNotOffered":      session.ErrLevelNotOffered,
 	"ErrBadLevelRequest":      session.ErrBadLevelRequest,
 	"ErrCannotAdvance":        session.ErrCannotAdvance,

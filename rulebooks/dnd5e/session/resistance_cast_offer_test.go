@@ -124,7 +124,7 @@ func (s *CastSuite) TestSpendingFinishesTheCastWithTheDieOnIt() {
 	row := s.reactRow("fighter")
 	s.Require().NotEmpty(row.ID)
 	_, err = s.mgr.React(context.Background(), &session.ReactInput{
-		Session: "sess", Member: "fighter", DeclarationID: row.ID, Choice: session.ReactStrike,
+		Session: "sess", Member: "fighter", DeclarationID: row.ID, Answer: session.Take(""),
 	})
 	s.Require().NoError(err)
 
@@ -168,7 +168,7 @@ func (s *CastSuite) TestAKeptOfferOnOneTargetLeavesTheNextTargetToRun() {
 	rowA := s.reactRow("fighter-a")
 	s.Require().NotEmpty(rowA.ID)
 	_, err = s.mgr.React(context.Background(), &session.ReactInput{
-		Session: "sess", Member: "fighter-a", DeclarationID: rowA.ID, Choice: session.ReactHold,
+		Session: "sess", Member: "fighter-a", DeclarationID: rowA.ID, Answer: session.Decline(),
 	})
 	s.Require().NoError(err)
 
@@ -180,7 +180,7 @@ func (s *CastSuite) TestAKeptOfferOnOneTargetLeavesTheNextTargetToRun() {
 	s.Empty(s.beats(session.EventSaved), "still no verdict — the cast has not finished")
 
 	_, err = s.mgr.React(context.Background(), &session.ReactInput{
-		Session: "sess", Member: "fighter-b", DeclarationID: rowB.ID, Choice: session.ReactStrike,
+		Session: "sess", Member: "fighter-b", DeclarationID: rowB.ID, Answer: session.Take(""),
 	})
 	s.Require().NoError(err)
 
@@ -213,7 +213,7 @@ func (s *CastSuite) TestKeepingFinishesTheCastWithoutIt() {
 
 	row := s.reactRow("fighter")
 	_, err = s.mgr.React(context.Background(), &session.ReactInput{
-		Session: "sess", Member: "fighter", DeclarationID: row.ID, Choice: session.ReactHold,
+		Session: "sess", Member: "fighter", DeclarationID: row.ID, Answer: session.Decline(),
 	})
 	s.Require().NoError(err)
 
@@ -235,12 +235,14 @@ func (s *CastSuite) TestKeepingFinishesTheCastWithoutIt() {
 	s.True(found, "declining costs nothing")
 }
 
-// TestARecastThatStopsToAskHasAlreadyEndedTheOldArea: the bard holds Fog
-// Cloud and casts Bane, a second concentration spell, at a fighter holding a
-// Resistance die. The price is paid before the door yields, and paying for a
-// new concentration ends the old one; so the cloud has ended by the time the
-// cast stops to ask, and the pose lands the area its payment closed.
-func (s *CastSuite) TestARecastThatStopsToAskHasAlreadyEndedTheOldArea() {
+// TestARecastThatStopsToAskTellsTheOldBreakThroughTellConcentration: the bard
+// holds Fog Cloud and casts Bane, a second concentration spell, at a fighter
+// holding a Resistance die. The price is paid before the door yields, and
+// paying for a new concentration ends the old one; so the cloud has ended by
+// the time the cast stops to ask. The break has no told unit to ride behind —
+// the cast is told only when it ends — so it is told at the pause through the
+// encounter's own verb, before any Bane beat, and the cloud closes then.
+func (s *CastSuite) TestARecastThatStopsToAskTellsTheOldBreakThroughTellConcentration() {
 	s.sceneWithAllies(castingBardWithSpells("bard", spells.Bane, spells.FogCloud), []*character.Data{armedFighter("fighter")}, 4, 10)
 	ctx := context.Background()
 	_, err := s.mgr.Cast(ctx, &session.CastInput{Session: "sess", Member: "bard", DeclarationID: s.castRow(spells.FogCloud).ID, Cell: &spatial.Position{X: 20, Y: 1}})
@@ -263,4 +265,57 @@ func (s *CastSuite) TestARecastThatStopsToAskHasAlreadyEndedTheOldArea() {
 	areas, err = s.mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "bard"})
 	s.Require().NoError(err)
 	s.Empty(areas, "the paid recast ended the cloud before the cast stopped to ask")
+
+	told := s.beats(session.EventCast, session.EventConcentrationEnded)
+	s.Require().NotEmpty(told)
+	last := told[len(told)-1]
+	s.Equal(session.EventConcentrationEnded, last.Kind, "the old break is told at the pause")
+	ended, ok := last.Body.(session.ConcentrationEndedBody)
+	s.Require().True(ok)
+	s.Equal(refs.Spells.FogCloud().String(), ended.Spell.Ref, "and it is the cloud's")
+	for _, event := range told {
+		if cast, isCast := event.Body.(session.CastBody); isCast {
+			s.NotEqual(refs.Spells.Bane().String(), cast.Spell.Ref, "no Bane beat is told before the answer")
+		}
+	}
+
+	_, err = s.mgr.React(ctx, &session.ReactInput{
+		Session: "sess", Member: "fighter", DeclarationID: s.reactRow("fighter").ID, Answer: session.Decline(),
+	})
+	s.Require().NoError(err)
+	after := s.beats(session.EventCast, session.EventConcentrationEnded)[len(told):]
+	s.Require().Len(after, 1, "the resume tells the cast and nothing about the cloud again")
+	cast, ok := after[0].Body.(session.CastBody)
+	s.Require().True(ok)
+	s.Equal(refs.Spells.Bane().String(), cast.Spell.Ref)
+}
+
+// TestASaveOfferInsideACastResumesAndTellsTheCastOnce: Bane at two allies, the
+// first holding a Resistance die. The cast stops on the first save and tells
+// nothing; taking the die resumes the SAME cast, the second target rolls, and
+// the one cast beat names both targets — a cast is one told unit.
+func (s *CastSuite) TestASaveOfferInsideACastResumesAndTellsTheCastOnce() {
+	s.sceneWithAllies(castingBardWithSpells("bard", spells.Bane),
+		[]*character.Data{armedFighter("fighter-a"), armedFighter("fighter-b")}, 4, 10, 4, 12)
+	s.holdResistance("fighter-a", "cleric-1")
+
+	out, err := s.mgr.Cast(context.Background(), &session.CastInput{
+		Session: "sess", Member: "bard", DeclarationID: s.castRow(spells.Bane).ID,
+		Targets: []string{"fighter-a", "fighter-b"},
+	})
+	s.Require().NoError(err)
+	s.Require().True(out.Posed, "control: fighter-a is asked about the die")
+	s.Empty(s.beats(session.EventCast), "the cast is not told at its pause")
+
+	_, err = s.mgr.React(context.Background(), &session.ReactInput{
+		Session: "sess", Member: "fighter-a", DeclarationID: s.reactRow("fighter-a").ID, Answer: session.Take(""),
+	})
+	s.Require().NoError(err)
+
+	casts := s.beats(session.EventCast)
+	s.Require().Len(casts, 1, "one cast beat")
+	cast, ok := casts[0].Body.(session.CastBody)
+	s.Require().True(ok)
+	s.Equal([]string{"fighter-a", "fighter-b"}, cast.Targets, "naming every target, the paused one included")
+	s.Len(s.beats(session.EventSaved), 2, "each save told once")
 }

@@ -145,11 +145,11 @@ func (s *PostRollWindowSuite) reactRow(mgr *session.Manager, member string) sess
 }
 
 // answer answers alice's own open window.
-func (s *PostRollWindowSuite) answer(mgr *session.Manager, choice session.ReactChoice) {
+func (s *PostRollWindowSuite) answer(mgr *session.Manager, choice session.Answer) {
 	row := s.reactRow(mgr, "alice")
 	s.Require().NotEmpty(row.ID, "no open window for alice")
 	_, err := mgr.React(context.Background(), &session.ReactInput{
-		Session: "sess", Member: "alice", DeclarationID: row.ID, Choice: choice,
+		Session: "sess", Member: "alice", DeclarationID: row.ID, Answer: choice,
 	})
 	s.Require().NoError(err)
 }
@@ -256,7 +256,7 @@ func (s *PostRollWindowSuite) TestWindowPresentationIDReachesEveryRecipientBefor
 		s.True(found, "both recipients must already have the same rolled fact")
 	}
 	mgr = s.duelOverStores()
-	s.answer(mgr, session.ReactHold)
+	s.answer(mgr, session.Decline())
 	s.Equal(out.PresentationID, s.outcomeBeat(mgr)["presentation_id"])
 }
 
@@ -291,7 +291,7 @@ func (s *PostRollWindowSuite) TestSpendingFinishesTheSwingWithTheDieOnIt() {
 	s.inspire("alice")
 	posed := s.swing(mgr)
 
-	s.answer(mgr, session.ReactStrike)
+	s.answer(mgr, session.Take(""))
 
 	s.Equal(1, s.countBeats(mgr, "alice", "struck")+s.countBeats(mgr, "alice", "missed"),
 		"exactly one outcome beat across the pause and the answer")
@@ -323,7 +323,7 @@ func (s *PostRollWindowSuite) TestKeepingFinishesTheSwingWithoutIt() {
 	s.inspire("alice")
 	posed := s.swing(mgr)
 
-	s.answer(mgr, session.ReactHold)
+	s.answer(mgr, session.Decline())
 
 	s.Equal(1, s.countBeats(mgr, "alice", "struck")+s.countBeats(mgr, "alice", "missed"))
 	beat := s.outcomeBeat(mgr)
@@ -347,7 +347,7 @@ func (s *PostRollWindowSuite) outcomeBeat(mgr *session.Manager) map[string]any {
 }
 
 // TestTheEncounterIsNeverPaused is the boundary between the two pauses. The
-// composition's PausedTurn is a driven-turn remainder; a player's own attack
+// composition's Pause is a driven walk's remainder; a player's own attack
 // has no path, so this pause lives in the ledger alone and React's shipped
 // guard is what makes that correct.
 func (s *PostRollWindowSuite) TestTheEncounterIsNeverPaused() {
@@ -357,13 +357,13 @@ func (s *PostRollWindowSuite) TestTheEncounterIsNeverPaused() {
 
 	data, err := s.encounters.GetEncounter(context.Background(), "sess")
 	s.Require().NoError(err)
-	s.Nil(data.PausedTurn, "the encounter is not the thing that is waiting")
+	s.Nil(data.Pause, "the encounter is not the thing that is waiting")
 
-	s.answer(mgr, session.ReactStrike)
+	s.answer(mgr, session.Take(""))
 
 	data, err = s.encounters.GetEncounter(context.Background(), "sess")
 	s.Require().NoError(err)
-	s.Nil(data.PausedTurn)
+	s.Nil(data.Pause)
 }
 
 // TestTheFightIsFrozenWhileTheQuestionStands — every change verb refuses, which
@@ -400,7 +400,7 @@ func (s *PostRollWindowSuite) TestOnlyTheAudienceMayAnswer() {
 	row := s.reactRow(mgr, "alice")
 
 	_, err := mgr.React(context.Background(), &session.ReactInput{
-		Session: "sess", Member: "bob", DeclarationID: row.ID, Choice: session.ReactStrike,
+		Session: "sess", Member: "bob", DeclarationID: row.ID, Answer: session.Take(""),
 	})
 
 	s.Require().ErrorIs(err, session.ErrNotAudience)
@@ -428,7 +428,7 @@ func (s *PostRollWindowSuite) TestTheWindowSurvivesAReload() {
 	s.Equal(conditions.InspiredName, row.Reaction.Name)
 
 	_, err = restarted.React(context.Background(), &session.ReactInput{
-		Session: "sess", Member: "alice", DeclarationID: row.ID, Choice: session.ReactStrike,
+		Session: "sess", Member: "alice", DeclarationID: row.ID, Answer: session.Take(""),
 	})
 	s.Require().NoError(err)
 
@@ -445,7 +445,7 @@ func (s *PostRollWindowSuite) TestTheActionIsChargedOnceAcrossThePause() {
 	s.swing(mgr)
 
 	afterPose := s.actionsLeft("alice")
-	s.answer(mgr, session.ReactStrike)
+	s.answer(mgr, session.Take(""))
 
 	s.Equal(afterPose, s.actionsLeft("alice"), "answering charges nothing")
 	s.Equal(1, s.reactionsLeftFor("alice"), "and it is not a reaction either")
@@ -488,7 +488,7 @@ func (s *PostRollWindowSuite) TestTheDieIsConsumedOnce() {
 	mgr := s.scene()
 	s.inspire("alice")
 	s.swing(mgr)
-	s.answer(mgr, session.ReactStrike)
+	s.answer(mgr, session.Take(""))
 	s.aFreshTurnFor("alice")
 
 	second := s.swing(mgr)
@@ -502,7 +502,7 @@ func (s *PostRollWindowSuite) TestKeepingLeavesTheDieForTheNextSwing() {
 	mgr := s.scene()
 	s.inspire("alice")
 	s.swing(mgr)
-	s.answer(mgr, session.ReactHold)
+	s.answer(mgr, session.Decline())
 	s.aFreshTurnFor("alice")
 
 	second := s.swing(mgr)

@@ -720,11 +720,20 @@ var (
 	// a permission refusal and the other to a stale one.
 	ErrNotAudience = errors.New("member is not this window's audience")
 
-	// ErrNotOffered is returned when the choice named is not one this
-	// window offers. A reaction window offers exactly [ReactStrike] and
-	// [ReactHold]; anything else is a client sending a value this build
-	// never posed.
+	// ErrNotOffered is returned when an answer is not one this window
+	// accepts: the zero [Answer], a [Take] whose option the offer does not
+	// list (or that names none when the offer lists some, or one when it
+	// lists none), or a [Decline] carrying an option.
 	ErrNotOffered = errors.New("choice is not offered by this window")
+
+	// ErrStalePause is returned when an open window was posed by another
+	// build: its stored version is not this build's, or the frozen machine
+	// inside it was written by another build, or the encounter's stored pause
+	// was (one pause envelope, ruling E5). The window is lost rather than
+	// answered — a table caught mid-reaction across a deploy is reset, which
+	// pre-release is accepted. Nothing was loaded or charged when it is
+	// returned.
+	ErrStalePause = errors.New("window was posed by another build")
 
 	// ErrInvalidSession is returned when stored session state is not a state
 	// this module could have written — a hand-edited or corrupted blob.

@@ -18,8 +18,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/play/interrupt"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
@@ -237,7 +235,7 @@ type UnlockOutput struct {
 	// Roll is the d20 as rolled, present only when Paused — the same
 	// presence law [Declaration.Remaining] keeps for a number a verb does
 	// not normally carry. THE LOCK'S DC IS DELIBERATELY NOT SURFACED
-	// alongside it, for [checkOfferWindowPayload.Roll]'s reason.
+	// alongside it, for [resolution.Ask]'s reason.
 	Roll *int `json:"roll,omitempty"`
 
 	Saved    SaveReport     `json:"saved"`
@@ -369,14 +367,14 @@ func (m *Manager) Unlock(ctx context.Context, in *UnlockInput) (*UnlockOutput, e
 }
 
 // poseUnlockWindow commits the half of the attempt that happened and asks
-// the member the question resolution stopped on — [poseAttackWindow]'s
-// shape, for a lock check instead of a swing.
+// the member the question resolution stopped on, through [poseWindow] with a
+// check story naming the door.
 //
 // The encounter is not paused for the same reason a posed attack does not
 // pause it: Unlock is not a driven turn, so this question lives entirely in
 // the interrupt ledger already persisted here.
 func (m *Manager) poseUnlockWindow(
-	ctx context.Context, scope *writeScope, in *UnlockInput, posed *resolution.Pose,
+	ctx context.Context, scope *writeScope, in *UnlockInput, posed *resolution.Pause,
 ) (*UnlockOutput, error) {
 	ask := posed.Ask
 	if ask.Audience != in.Member {
@@ -385,12 +383,8 @@ func (m *Manager) poseUnlockWindow(
 		return nil, fmt.Errorf("unlock: %w: the machine asked %q on %q's roll",
 			ErrInvalidWorld, ask.Audience, in.Member)
 	}
-	if ask.Offer.Ref == nil || ask.Offer.Name == "" {
+	if ask.Offer.Ref.ID == "" || ask.Offer.Name == "" {
 		return nil, fmt.Errorf("unlock: %w: the machine asked about an unnamed offer", ErrInvalidWorld)
-	}
-	if len(ask.Options) != 2 {
-		return nil, fmt.Errorf("unlock: %w: the machine posed %d answers and this seam poses two",
-			ErrInvalidWorld, len(ask.Options))
 	}
 
 	if err := requirePosedCalculation("unlock", in.Member, ask.Calculation); err != nil {
@@ -398,32 +392,9 @@ func (m *Manager) poseUnlockWindow(
 	}
 
 	offer := ReactionRef{Ref: ask.Offer.Ref.String(), Name: ask.Offer.Name}
-	payload, err := marshalCheckOfferPayload(checkOfferWindowPayload{
-		Audience:         ask.Audience,
-		Door:             in.Door,
-		Offer:            offer,
-		OfferDescription: ask.Offer.Description,
-		Roll:             ask.Roll,
-		Total:            ask.Total,
-		Calculation:      sessionRollCalculationOf(ask.Calculation),
-		Frozen:           posed.Frozen,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("unlock: %w: %v", ErrInvalidSession, err)
+	if err := poseWindow(scope, *posed, windowStory{Kind: storyCheck, Door: in.Door}); err != nil {
+		return nil, fmt.Errorf("unlock: %w", err)
 	}
-
-	// THE TWO ANSWERS ARE THIS SEAM'S, not the machine's: [poseAttackWindow]'s
-	// own reasoning, reused rather than re-derived.
-	if _, err := scope.ledger.Pose(&interrupt.PoseInput{
-		Audience: core.EntityID(ask.Audience),
-		Options:  []interrupt.Option{interrupt.Option(ReactStrike), interrupt.Option(ReactHold)},
-		Payload:  payload,
-		At:       scope.baseline,
-	}); err != nil {
-		return nil, fmt.Errorf("unlock: %w: %v", ErrInvalidSession, err)
-	}
-	scope.data.Windows = scope.ledger.ToData()
-	scope.touched = true
 
 	recorded, err := scope.enc.RecordRollWindow(&encounter.RollWindowInput{
 		Audience: encounter.MemberID(ask.Audience),

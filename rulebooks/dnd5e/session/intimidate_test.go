@@ -539,7 +539,7 @@ func (s *IntimidateSuite) guide() {
 	s.Require().NoError(s.characters.SaveCharacter(ctx, stored))
 }
 
-func (s *IntimidateSuite) answer(mgr *session.Manager, choice session.ReactChoice) {
+func (s *IntimidateSuite) answer(mgr *session.Manager, choice session.Answer) {
 	out, err := mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 	for _, row := range out.Declarations {
@@ -547,7 +547,7 @@ func (s *IntimidateSuite) answer(mgr *session.Manager, choice session.ReactChoic
 			continue
 		}
 		_, err := mgr.React(context.Background(), &session.ReactInput{
-			Session: "sess", Member: "alice", DeclarationID: row.ID, Choice: choice,
+			Session: "sess", Member: "alice", DeclarationID: row.ID, Answer: choice,
 		})
 		s.Require().NoError(err)
 		return
@@ -593,7 +593,7 @@ func (s *IntimidateSuite) TestAGuidedThreatStopsAndAsks() {
 	s.Require().NotNil(stored.ActionEconomy)
 	s.Equal(0, stored.ActionEconomy.ActionsRemaining, "charged before it rolled")
 
-	s.answer(mgr, session.ReactStrike)
+	s.answer(mgr, session.Take(""))
 	s.True(s.held(mgr, encounter.DeedIntimidate),
 		"5 + a d4's own 4 meets DC 9, and the goblin has something to remember")
 }
@@ -606,7 +606,7 @@ func (s *IntimidateSuite) TestAGuidedThreatKeptFallsShort() {
 
 	_, err := s.threaten(mgr)
 	s.Require().NoError(err)
-	s.answer(mgr, session.ReactHold)
+	s.answer(mgr, session.Decline())
 
 	s.False(s.held(mgr, encounter.DeedIntimidate), "a 5 does not reach 9")
 }

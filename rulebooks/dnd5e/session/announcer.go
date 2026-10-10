@@ -98,8 +98,15 @@ func (a announcerSeam) Announce(
 	}
 
 	// Landed on the encounter that crossed the boundary, which is mid-verb: no
-	// adopt and no commit. A boundary's effects tell no concentration (R9).
-	_, err = a.m.land(ctx, a.scope, out, &landing{Live: enc, Untold: true})
+	// adopt and no commit. A boundary has no causing unit, so whatever
+	// concentration its effects tested or ended is told through the
+	// encounter's own verb, with the boundary's subject as the member whose
+	// time it was (ruling E6).
+	var subject string
+	if len(crossed) > 0 {
+		subject = string(crossed[0].Subject)
+	}
+	_, err = a.m.land(ctx, a.scope, out, &landing{Live: enc, Record: tellConcentration(subject)})
 	return err
 }
 

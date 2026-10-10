@@ -137,8 +137,8 @@ const (
 	// that prices it, not borrowed from the rulebook's action vocabulary.
 	VerbEndTurn Verb = "end_turn"
 
-	// VerbReact is [Manager.React]: answering an open interrupt window —
-	// striking, or holding the reaction (rpg-project#316 rung 3).
+	// VerbReact is [Manager.React]: answering an open interrupt window with
+	// [Take] or [Decline] (rpg-project#316 rung 3; one pause envelope).
 	//
 	// THE ONE VERB THAT IS NOT ABOUT THIS MEMBER'S TURN. Every other row
 	// here is compiled for the active member and gated on the clock saying
@@ -151,10 +151,10 @@ const (
 	// several people (ruling R3), and one person can be asked about several
 	// steps in a row. Its selector variant is the window's own id.
 	//
-	// The two answers are NOT on the row. The verb implies strike-or-hold
-	// until a second reaction needs a third option, at which point the option
-	// list becomes wire material; today a client draws two buttons from the
-	// verb itself.
+	// The two answers are NOT on the row: every window is take-or-decline.
+	// What a Take may carry is the row's [Declaration.Options] — the offer's
+	// own choices — and what it costs is the row's [Declaration.Cost], the
+	// price the pause states.
 	VerbReact Verb = "react"
 )
 
@@ -891,63 +891,6 @@ func affordWhileFrozen(session, member string, open []interrupt.Window, clock Cl
 
 	sortDeclarations(declarations)
 	return &AffordOutput{Clock: clock, Declarations: declarations}, nil
-}
-
-// reactDeclaration compiles one open window into the row its audience sees.
-//
-// AVAILABLE IS ALWAYS TRUE. Every gate a reaction has was passed before the
-// window was posed — hostility, reach, a weapon to swing, a reaction still in
-// hand — which is exactly why the question was worth asking. A REACT row that
-// could be unavailable would be a question nobody should have been asked.
-//
-// The candidate is the mover, singular: this is a swing at the member who is
-// walking away, and the ledger's payload is where that name comes from rather
-// than from a fresh look at the world, so the offer and the answer describe the
-// same step.
-func reactDeclaration(session, member string, window interrupt.Window) (Declaration, error) {
-	kind, err := windowKindOf(window.Payload)
-	if err != nil {
-		return Declaration{}, err
-	}
-	if kind == windowKindPendingAttack {
-		return pendingAttackDeclaration(session, member, window)
-	}
-	if kind == windowKindPostHit {
-		return postHitDeclaration(session, member, window)
-	}
-	if kind == windowKindPostRoll {
-		return postRollDeclaration(session, member, window)
-	}
-	if kind == windowKindCheckOffer {
-		return checkOfferDeclaration(session, member, window)
-	}
-	if kind == windowKindCastOffer {
-		return castOfferDeclaration(session, member, window)
-	}
-
-	payload, err := thawWindowPayload(window.Payload, string(window.Audience))
-	if err != nil {
-		return Declaration{}, err
-	}
-	name, known := reactionName[payload.Reaction]
-	if !known {
-		return Declaration{}, fmt.Errorf("%w: no display name for reaction %q", ErrInvalidWorld, payload.Reaction)
-	}
-	id, err := reactDeclarationID(session, member, window.ID)
-	if err != nil {
-		return Declaration{}, err
-	}
-	return Declaration{
-		Verb:       VerbReact,
-		Slot:       SlotReaction,
-		Available:  true,
-		ID:         id,
-		Reaction:   &ReactionRef{Ref: payload.Reaction, Name: name},
-		TargetKind: TargetMember,
-		Candidates: []TargetCandidate{{Member: payload.Mover, Available: true}},
-		// The reaction session names, explained beside its name (mover.go).
-		Information: proseInformation(reactionDescription[payload.Reaction]),
-	}, nil
 }
 
 // socialRowsOnTheWorldClock compiles the two social verbs for a member in free

@@ -114,11 +114,11 @@ func (s *GuidedUnlockSuite) reactRow(mgr *session.Manager, member string) sessio
 	return session.Declaration{}
 }
 
-func (s *GuidedUnlockSuite) answer(mgr *session.Manager, choice session.ReactChoice) {
+func (s *GuidedUnlockSuite) answer(mgr *session.Manager, choice session.Answer) {
 	row := s.reactRow(mgr, "alice")
 	s.Require().NotEmpty(row.ID, "no open window for alice")
 	_, err := mgr.React(context.Background(), &session.ReactInput{
-		Session: "sess", Member: "alice", DeclarationID: row.ID, Choice: choice,
+		Session: "sess", Member: "alice", DeclarationID: row.ID, Answer: choice,
 	})
 	s.Require().NoError(err)
 }
@@ -176,7 +176,7 @@ func (s *GuidedUnlockSuite) TestSpendingFinishesTheUnlockWithTheDieOnIt() {
 	s.guide()
 	s.tryLock(mgr)
 
-	s.answer(mgr, session.ReactStrike)
+	s.answer(mgr, session.Take(""))
 
 	doors, err := mgr.Doors(context.Background(), &session.DoorsInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
@@ -194,7 +194,7 @@ func (s *GuidedUnlockSuite) TestKeepingFinishesTheUnlockWithoutIt() {
 	s.guide()
 	s.tryLock(mgr)
 
-	s.answer(mgr, session.ReactHold)
+	s.answer(mgr, session.Decline())
 
 	doors, err := mgr.Doors(context.Background(), &session.DoorsInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
@@ -213,7 +213,7 @@ func (s *GuidedUnlockSuite) TestOnlyTheAudienceMayAnswer() {
 	row := s.reactRow(mgr, "alice")
 
 	_, err := mgr.React(context.Background(), &session.ReactInput{
-		Session: "sess", Member: "bob", DeclarationID: row.ID, Choice: session.ReactStrike,
+		Session: "sess", Member: "bob", DeclarationID: row.ID, Answer: session.Take(""),
 	})
 
 	s.Require().ErrorIs(err, session.ErrNotAudience)
@@ -240,7 +240,7 @@ func (s *GuidedUnlockSuite) TestTheWindowSurvivesAReload() {
 	s.Equal(conditions.GuidedName, row.Reaction.Name)
 
 	_, err = restarted.React(context.Background(), &session.ReactInput{
-		Session: "sess", Member: "alice", DeclarationID: row.ID, Choice: session.ReactStrike,
+		Session: "sess", Member: "alice", DeclarationID: row.ID, Answer: session.Take(""),
 	})
 	s.Require().NoError(err)
 

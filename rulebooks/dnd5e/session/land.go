@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/KirkDiggler/rpg-toolkit/play/interrupt"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
@@ -19,29 +18,21 @@ import (
 // [Manager.land]. land_only_test.go holds the helpers below to this file.
 
 // landing is what one verb or seam asks of an output's landing: where it
-// lands, what it records, how its areas land, which window it answers and
-// poses, and what runs after. The order is [Manager.land]'s, never the
-// caller's.
+// lands, what it records, which windows it poses, and what runs after. The
+// order is [Manager.land]'s, never the caller's.
 type landing struct {
 	// Live is the encounter a seam was called from; nil for a verb, whose scope
 	// adopts the output's world. A Live landing never commits: the encounter
 	// that called the seam is mid-verb, and the calling verb commits.
 	Live *encounter.Encounter
 	// Record tells the outcome's beats on enc, given the interaction's
-	// concentration. Nil records nothing.
+	// concentration, and owns what it tells. Nil records nothing, and then a
+	// landing handed concentration refuses with ErrInvalidWorld: no landing
+	// drops concentration.
 	Record func(enc *encounter.Encounter, told concentration) error
-	// Untold declares that this landing records nothing and tells no
-	// concentration: concentration the output carries is dropped by name here,
-	// until the encounter verb that tells it ships (design ruling R9). It is
-	// exclusive with Record — a Record is handed the concentration and owns
-	// what it tells — so a landing with both refuses with ErrInvalidWorld. A
-	// landing with concentration, no Record and Untold false refuses the same.
-	Untold bool
-	Areas  areaLanding
-	// Answer is the window this resolution resumed; answered first in the
-	// window step.
-	Answer *windowAnswer
 	// Window poses (and tells) the windows the output leaves. Nil poses none.
+	// The window a resume answered was consumed before the resume
+	// ([Manager.answerWindow]), so there is nothing to answer here.
 	Window func(enc *encounter.Encounter) error
 	// Continue is the verb's follow-on after the windows. Nil does nothing.
 	Continue func(enc *encounter.Encounter) error
@@ -59,25 +50,6 @@ func (c concentration) empty() bool {
 	return len(c.Checks) == 0 && len(c.Breaks) == 0
 }
 
-// areaLanding says how an output's area changes land.
-type areaLanding struct {
-	// Payload is the pending-attack window areas may wait on; nil lands all now.
-	Payload *pendingAttackWindowPayload
-	// LandHeld lands Payload's held areas before this output's own.
-	LandHeld bool
-	// Split lands only areas whose caster broke in Told now and holds the rest
-	// on Payload ([Manager.landToldAreas]).
-	Split bool
-	Told  []resolution.SequenceStepOutcome
-}
-
-// windowAnswer is the open window a resolution resumed, and the answer it
-// was resumed with.
-type windowAnswer struct {
-	Window interrupt.Window
-	Choice ReactChoice
-}
-
 // landed is what a committed landing reports. A Live landing commits nothing
 // and reports the zero value.
 type landed struct {
@@ -86,7 +58,7 @@ type landed struct {
 }
 
 // land lands out on scope in the one order: adopt the world, write the dirty
-// sheets, record the outcome, land the areas, answer and pose windows, run the
+// sheets, record the outcome, land the areas, pose windows, run the
 // continuation, commit. Every field of out it reads lands exactly once.
 //
 // A failure in the record, area, window or continuation step happens after the
@@ -115,49 +87,31 @@ func (m *Manager) land(ctx context.Context, scope *writeScope, out *resolution.O
 		return nil, err
 	}
 
-	// 3. Record, with the interaction's concentration.
+	// 3. Record, with the interaction's concentration. Concentration with
+	// nothing to tell it is refused: no landing drops it.
 	told := concentration{Checks: out.ConcentrationChecks, Breaks: out.ConcentrationBreaks}
-	if l.Untold && l.Record != nil {
-		return nil, unrecorded(fmt.Errorf("%w: a landing that records cannot also be untold", ErrInvalidWorld))
-	}
 	if l.Record != nil {
 		if err := l.Record(enc, told); err != nil {
 			return nil, unrecorded(err)
 		}
-	} else if !l.Untold && !told.empty() {
+	} else if !told.empty() {
 		return nil, unrecorded(fmt.Errorf(
 			"%w: %d concentration checks and %d breaks with nothing to tell them",
 			ErrInvalidWorld, len(told.Checks), len(told.Breaks)))
 	}
 
-	// 4. Areas, after the beats that caused them: held first, then now, or
-	// split by the breaks a sequence told.
-	if l.Areas.LandHeld {
-		if err := m.landHeldAreas(scope, l.Areas.Payload); err != nil {
-			return nil, unrecorded(err)
-		}
-	}
-	if l.Areas.Split {
-		if err := m.landToldAreas(enc, scope, l.Areas.Payload, out, l.Areas.Told); err != nil {
-			return nil, unrecorded(err)
-		}
-	} else if err := m.landAreas(enc, scope, out); err != nil {
+	// 4. Areas, after the beats that caused them. Every area an output
+	// changed was caused by a unit it tells or concentration it tells, so
+	// they always land now.
+	if err := m.landAreas(enc, scope, out); err != nil {
 		return nil, unrecorded(err)
 	}
 
-	// 5. Windows: the one this resolution resumed is answered, then the ones
-	// the output leaves are posed.
-	if l.Answer != nil {
-		if err := answerWindow(scope, l.Answer.Window, l.Answer.Choice); err != nil {
-			return nil, unrecorded(err)
-		}
-	}
+	// 5. Windows the output leaves.
 	if l.Window != nil {
 		if err := l.Window(enc); err != nil {
 			return nil, unrecorded(err)
 		}
-	}
-	if l.Answer != nil || l.Window != nil {
 		scope.data.Windows = scope.ledger.ToData()
 		scope.touched = true
 	}
@@ -272,69 +226,4 @@ func (m *Manager) landAreas(enc *encounter.Encounter, scope *writeScope, out *re
 	}
 	scope.touched = true
 	return nil
-}
-
-// holdAreas moves out's area changes onto the window, to land when the
-// resume has told the swing that caused them. out keeps none, so nothing
-// lands them twice.
-//
-// THE RESUME IS THE ONLY PLACE THEY LAND. A future path that closes this
-// window without resuming the sequence (an expiry, a dissolve) must land
-// HeldAreas itself, or the area stands with no concentration behind it.
-func (p *pendingAttackWindowPayload) holdAreas(out *resolution.Output) {
-	if len(out.ClosedAreas) == 0 && len(out.OpenedAreas) == 0 {
-		return
-	}
-	held := p.HeldAreas
-	if held == nil {
-		held = &heldAreas{}
-	}
-	held.Closed = append(held.Closed, out.ClosedAreas...)
-	held.Opened = append(held.Opened, out.OpenedAreas...)
-	p.HeldAreas = held
-	out.ClosedAreas, out.OpenedAreas = nil, nil
-}
-
-// landToldAreas lands the area changes a paused sequence has already told
-// and holds the rest. told are the swings recorded for this output: a closed
-// area whose caster's break rides one of them is told and lands; any other
-// change belongs to the swing that settled and paused, untold until the next
-// resume, and waits on the window. A pose before the roll has no such swing,
-// so everything lands.
-func (m *Manager) landToldAreas(
-	enc *encounter.Encounter, scope *writeScope, p *pendingAttackWindowPayload,
-	out *resolution.Output, told []resolution.SequenceStepOutcome,
-) error {
-	if out.Posed == nil || out.Posed.BeforeRoll {
-		return m.landAreas(enc, scope, out)
-	}
-	broken := map[string]bool{}
-	for _, step := range told {
-		for _, b := range step.ConcentrationBreaks {
-			broken[string(b.Caster)] = true
-		}
-	}
-	landing := &resolution.Output{}
-	var waiting []string
-	for _, caster := range out.ClosedAreas {
-		if broken[caster] {
-			landing.ClosedAreas = append(landing.ClosedAreas, caster)
-		} else {
-			waiting = append(waiting, caster)
-		}
-	}
-	out.ClosedAreas = waiting
-	p.holdAreas(out)
-	return m.landAreas(enc, scope, landing)
-}
-
-// landHeldAreas lands what an earlier pose held, once the resume has recorded
-// the swing that caused it, and clears it from the window.
-func (m *Manager) landHeldAreas(scope *writeScope, p *pendingAttackWindowPayload) error {
-	if p.HeldAreas == nil {
-		return nil
-	}
-	held := &resolution.Output{ClosedAreas: p.HeldAreas.Closed, OpenedAreas: p.HeldAreas.Opened}
-	p.HeldAreas = nil
-	return m.landAreas(scope.enc, scope, held)
 }

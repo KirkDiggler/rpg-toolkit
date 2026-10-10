@@ -152,7 +152,7 @@ func (s *CastPauseSuite) TestPaidCastHistorySurvivesSavedPauseAndResume() {
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
-	s.react("fighter", session.ReactHold)
+	s.react("fighter", session.Decline())
 	s.Equal(6, s.fledCells())
 	s.Equal(paid.ActionEconomy, s.characters.byID["bard"].ActionEconomy)
 	s.Equal(paid.Resources, s.characters.byID["bard"].Resources, "resuming the walk must not pay for the cast again")

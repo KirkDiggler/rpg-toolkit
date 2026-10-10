@@ -113,7 +113,7 @@ func (c checkSeam) ResolveCheck(in *encounter.ResolveCheckInput) (*encounter.Res
 // same presence law [resolution.Output.Posed] keeps.
 type stagedCheckOutcome struct {
 	Verdict *encounter.ResolveCheckOutput
-	Posed   *resolution.Pose
+	Posed   *resolution.Pause
 }
 
 // resolveStagedCheckPoseable is THE ONE PLACE A CHECK CROSSES TO RESOLUTION
@@ -255,16 +255,16 @@ func (m *Manager) resolveStagedCheck(
 	if outcome.Verdict != nil {
 		return outcome.Verdict, nil
 	}
-	return m.declineStagedOffer(scope, member, outcome.Posed.Frozen)
+	return m.declineStagedOffer(scope, member, *outcome.Posed)
 }
 
-// declineStagedOffer finishes a posed check by keeping whatever was offered,
+// declineStagedOffer finishes a posed check by declining whatever was offered,
 // for a caller that cannot ask the question ([resolveStagedCheck]'s own
 // reason). Nothing is re-rolled and nothing is re-folded — the seam's own
-// small [resolution.ResumeCheck] caller, [Manager.answerCheckOffer]'s
+// small [resolution.ResumeCheck] caller, [Manager.answerCheck]'s
 // sibling for the answer this seam gives instead of asking.
 func (m *Manager) declineStagedOffer(
-	scope *writeScope, member string, frozen []byte,
+	scope *writeScope, member string, pause resolution.Pause,
 ) (*encounter.ResolveCheckOutput, error) {
 	staged, ok := scope.checks[member]
 	if !ok {
@@ -273,8 +273,8 @@ func (m *Manager) declineStagedOffer(
 	}
 
 	out, err := resolution.ResumeCheck(staged.ctx, &resolution.CheckResumeInput{
-		Frozen:    frozen,
-		Answer:    resolution.OfferKeep,
+		Pause:     pause,
+		Answer:    resolution.Decline(),
 		Character: staged.data,
 		Roller:    &diceSeam{roller: m.dice},
 	})

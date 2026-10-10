@@ -646,7 +646,7 @@ func (s *CommandTurnSuite) TestACompelledWalkThatProvokesHoldsTheTurnAndResumesO
 	s.Require().NotEmpty(row.ID, "and the dock has a row to click")
 	_, err = s.mgr.React(context.Background(), &session.ReactInput{
 		Session: "sess", Member: "fighter", DeclarationID: row.ID,
-		Choice: session.ReactHold,
+		Answer: session.Decline(),
 	})
 	s.Require().NoError(err)
 
