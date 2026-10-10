@@ -335,19 +335,15 @@ func armorClassOf(id *armor.ArmorID, dexModifier int) (int, error) {
 
 // proficienciesFor turns trained skills into the sheet's proficiency list,
 // each worth the proficiency bonus, and reports whether Perception is among
-// them.
+// them. A repeated skill needs no dedupe here: the sheet indexes
+// proficiencies by skill, so it counts once.
 func proficienciesFor(trained []skills.Skill, proficiency int) ([]ProficiencyData, bool, error) {
 	out := make([]ProficiencyData, 0, len(trained))
-	seen := make(map[skills.Skill]bool, len(trained))
 	perception := false
 	for _, skill := range trained {
 		if _, err := skills.GetByID(string(skill)); err != nil {
 			return nil, false, rpgerr.Wrapf(err, "template skill %q", skill)
 		}
-		if seen[skill] {
-			continue
-		}
-		seen[skill] = true
 		if skill == skills.Perception {
 			perception = true
 		}
