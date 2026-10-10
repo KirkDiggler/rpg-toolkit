@@ -577,7 +577,7 @@ func TestATypoInsideTheNewKeysIsNamedAtItsV4Path(t *testing.T) {
 // exists.
 func TestTheNewKeysAreOfferedByTheUnknownKeyRefusal(t *testing.T) {
 	requireExactDefect(t, refusals(t, v4With("heigth: 3", "")), "heigth",
-		`"heigth" is not a key this build reads: they are concealments, dispositions, endings, exits, factions, intel, key, play, room, scenarios, tables, version`)
+		`"heigth" is not a key this build reads: they are concealments, dispositions, endings, exits, factions, intel, key, play, room, scenarios, tables, templates, version`)
 
 	requireExactDefect(t, refusals(t, v4With("", "    monsterBindings:\n      goblin-1: { tempre: coward }")),
 		"room.room.monsterBindings.goblin-1.tempre",
