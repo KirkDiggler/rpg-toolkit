@@ -33,6 +33,8 @@ import (
 type Template struct {
 	// Base is the rulebook base this template derives from
 	// (dnd5e:monsters:human). Required: a template with no base is refused.
+	// It is NOT the derived creature's ref; [FromTemplate] takes that
+	// explicitly.
 	Base *core.Ref
 
 	// Name is the display name. Empty = the base's.
@@ -139,17 +141,24 @@ func (t Template) Merge(base Template) Template {
 //   - Each trained skill = the proficiency bonus; passive Perception =
 //     10 + WIS modifier, + proficiency when Perception is trained.
 //
-// The monster's Ref is the template's Base: a template carries no ref of its
-// own, so the block it produces answers as the base it derives from.
+// ref is the derived creature's own ref — the template's (dnd5e:monsters:guard),
+// never the base's (rpg-project#555 R2). It is an argument rather than a
+// template field so it can never be inherited by accident: a guard and a cook
+// that both reported dnd5e:monsters:human would lose the author's id off the
+// sheet. A nil ref is refused. The creature type IS inherited: it is the
+// base's catalogue fact (a guard derived from human is humanoid).
 //
 // It refuses by name rather than assembling a creature with a silent zero:
 // a missing base, a base other than the one the template names, a missing or
 // malformed hit dice string, a score outside 1–30 or missing, an unknown
 // armour, skill or weapon, no weapons, and hit points that would come out
 // below 1. A refusal returns no monster.
-func FromTemplate(id string, t Template, base Template) (*Monster, error) {
+func FromTemplate(id string, ref *core.Ref, t Template, base Template) (*Monster, error) {
 	if id == "" {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "template monster has no id")
+	}
+	if ref == nil {
+		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "template monster %q has no ref", id)
 	}
 	if t.Base != nil && base.Base != nil && t.Base.String() != base.Base.String() {
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
@@ -197,9 +206,10 @@ func FromTemplate(id string, t Template, base Template) (*Monster, error) {
 	}
 
 	m := New(Config{
+		CreatureType:     creatureTypeFor("", merged.Base),
 		ID:               id,
 		Name:             merged.Name,
-		Ref:              merged.Base,
+		Ref:              ref,
 		HP:               hp,
 		AC:               ac,
 		AbilityScores:    scores,

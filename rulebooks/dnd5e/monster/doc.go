@@ -15,4 +15,9 @@
 // the template (R3), because a stored total silently stops following the
 // score it came from. A rulebook base such as the human block is itself a
 // template, assembled by the same function.
+//
+// The derived sheet carries the TEMPLATE's ref (dnd5e:monsters:guard), passed
+// to [FromTemplate] explicitly and never inherited from the base (R2), so
+// every authored creature keeps its own id. What it does inherit from the base
+// is its creature type.
 package monster

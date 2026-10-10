@@ -15,7 +15,7 @@ import (
 )
 
 func TestHuman_IsAssembledByFromTemplate(t *testing.T) {
-	m, err := monster.FromTemplate("h", monster.Template{}, monsters.Human)
+	m, err := monster.FromTemplate("h", refs.Monsters.Human(), monster.Template{}, monsters.Human)
 	require.NoError(t, err)
 
 	assert.Equal(t, 4, m.MaxHP())

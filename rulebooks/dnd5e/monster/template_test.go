@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
@@ -19,6 +20,9 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
+
+// testRef is the derived creature's own ref for tests that do not care which.
+var testRef = &core.Ref{Module: "dnd5e", Type: "monsters", ID: "test-template"}
 
 func armorRef(id armor.ArmorID) *armor.ArmorID { return &id }
 
@@ -56,7 +60,7 @@ func TestFromTemplate_GuardDerivesTheSRDNumbers(t *testing.T) {
 		Actions:   []weapons.WeaponID{weapons.Spear},
 	}
 
-	m, err := monster.FromTemplate("guard-1", guard, monsters.Human)
+	m, err := monster.FromTemplate("guard-1", testRef, guard, monsters.Human)
 	require.NoError(t, err)
 
 	assert.Equal(t, 11, m.MaxHP(), "2d8 averages 9, plus CON +1 per die")
@@ -87,7 +91,7 @@ func TestFromTemplate_CaptainWithProficiency3(t *testing.T) {
 		Actions:     []weapons.WeaponID{weapons.Longsword, weapons.Javelin},
 	}
 
-	m, err := monster.FromTemplate("captain-1", captain, monsters.Human)
+	m, err := monster.FromTemplate("captain-1", testRef, captain, monsters.Human)
 	require.NoError(t, err)
 
 	assert.Equal(t, 65, m.MaxHP(), "10d8 averages 45, plus CON +2 per die")
@@ -110,7 +114,7 @@ func TestFromTemplate_CookInheritsEverythingButTheKnife(t *testing.T) {
 		Actions: []weapons.WeaponID{weapons.Dagger},
 	}
 
-	m, err := monster.FromTemplate("cook-1", cook, monsters.Human)
+	m, err := monster.FromTemplate("cook-1", testRef, cook, monsters.Human)
 	require.NoError(t, err)
 
 	assert.Equal(t, 4, m.MaxHP(), "the base's 1d8 averages 4, CON +0")
@@ -129,7 +133,7 @@ func TestFromTemplate_CookInheritsEverythingButTheKnife(t *testing.T) {
 func TestFromTemplate_ConOverrideMovesHP(t *testing.T) {
 	at := func(con int) int {
 		t.Helper()
-		m, err := monster.FromTemplate("x", monster.Template{
+		m, err := monster.FromTemplate("x", testRef, monster.Template{
 			Base:      refs.Monsters.Human(),
 			Abilities: map[abilities.Ability]int{abilities.CON: con},
 			HitDice:   "2d8",
@@ -189,7 +193,7 @@ func TestFromTemplate_RefusesByName(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			m, err := monster.FromTemplate("x", tc.template, tc.base)
+			m, err := monster.FromTemplate("x", testRef, tc.template, tc.base)
 			require.Error(t, err)
 			assert.Nil(t, m, "a refusal carries no half-built monster")
 			assert.Contains(t, err.Error(), tc.names)
@@ -221,4 +225,28 @@ func TestTemplate_MergeDoesNotAliasTheBase(t *testing.T) {
 
 	assert.Equal(t, 10, monsters.Human.Abilities[abilities.STR], "the rulebook base is not mutated through a merge")
 	assert.Equal(t, weapons.UnarmedStrike, monsters.Human.Actions[0])
+}
+
+func TestFromTemplate_SheetCarriesTheTemplateRef(t *testing.T) {
+	guardRef := &core.Ref{Module: "dnd5e", Type: "monsters", ID: "guard"}
+	m, err := monster.FromTemplate("guard-1", guardRef, monster.Template{
+		Base:      refs.Monsters.Human(),
+		Abilities: map[abilities.Ability]int{abilities.CON: 12},
+		HitDice:   "2d8",
+		Actions:   []weapons.WeaponID{weapons.Spear},
+	}, monsters.Human)
+	require.NoError(t, err)
+
+	data := m.ToData()
+	require.NotNil(t, data.Ref)
+	assert.Equal(t, "dnd5e:monsters:guard", data.Ref.String(), "the sheet names the template, not the base")
+	assert.Equal(t, "humanoid", m.CreatureType(), "the creature type is the base's")
+	assert.Equal(t, "humanoid", data.CreatureType, "and it survives the sheet")
+}
+
+func TestFromTemplate_RefusesANilRef(t *testing.T) {
+	m, err := monster.FromTemplate("guard-1", nil, monster.Template{}, monsters.Human)
+	require.Error(t, err)
+	assert.Nil(t, m)
+	assert.Contains(t, err.Error(), "ref")
 }
