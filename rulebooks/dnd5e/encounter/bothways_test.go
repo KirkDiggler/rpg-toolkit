@@ -94,10 +94,17 @@ func (s *BothWaysSuite) yard(
 func (s *BothWaysSuite) open(
 	field encounter.FieldInput, members []encounter.MemberInput,
 ) *encounter.Encounter {
+	return s.openWith(field, members, withdrawn())
+}
+
+// openWith is open with the scene's endings named.
+func (s *BothWaysSuite) openWith(
+	field encounter.FieldInput, members []encounter.MemberInput, endings ...encounter.EndingInput,
+) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field:     field,
 		Members:   members,
-		Endings:   []encounter.EndingInput{withdrawn()},
+		Endings:   endings,
 		Retention: encounter.RetentionUnbounded,
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},

@@ -689,8 +689,14 @@ type RecordTrainOutput struct {
 // order: its own beat, its concentration checks' saved beats, its breaks'
 // trains, and, for a struck or missed outcome, its attack deed. After the last
 // unit: the standing consult (down beats, then a party-defeat ending, removals
-// and member-down endings), the observed-standing refresh, and each activation
-// unit's world-action price in unit order.
+// and member-down endings), then any ending a deed asked for, the
+// observed-standing refresh, and each activation unit's world-action price in
+// unit order.
+//
+// A deed lands in place, so a stance it turns is told beside the blow that
+// turned it. The ENDING that stance would trigger (an authored stance ending,
+// a fact's, an arrival's) is parked and closes the encounter once, after the
+// last unit and the down beats (T5). No ending is told between two units.
 //
 // # It records, and then the world notices what it recorded
 //
@@ -830,14 +836,18 @@ func (e *Encounter) prepareUnit(index int, unit TrainUnit) (preparedUnit, error)
 // were written before the record, so asking early would tell a fall ahead of
 // the blow that caused it.
 //
+// A DEED CAN ASK FOR AN ENDING, and the ending waits (T5). A deed turns pairs
+// hostile, and an authored stance ending, a fact or an arrival's ending can
+// hang on that. The stance beat is told in place, behind the blow, but the
+// close is parked and runs once after the last unit and the down beats, so
+// "ended" follows every beat the train told.
+//
 // A CLOSED ENCOUNTER STOPS AFTER THE APPEND. Only a train of
 // [OutcomeExperienceGained] reaches this on one — every other unit is refused
 // in preparation — and a settled world has nothing left to notice: no sight to
-// refresh, no standing to consult, no ending left to fire. An encounter that
-// was open at the start and closed mid-train is refused with [ErrClosed]
-// naming the unit rather than appended to. Nothing between the first append
-// and the consult can close it today (a deed only turns pairs hostile); the
-// check is the fail-closed answer for the day something can.
+// refresh, no standing to consult, no ending left to fire. Nothing between the
+// first append and the consult can close the encounter: a deed's ending is
+// parked until after the last unit.
 //
 // Otherwise the world finds out what the train just changed, AFTER the last
 // append, never before: the train is the cause, and a down beat ahead of what
@@ -847,14 +857,16 @@ func (e *Encounter) prepareUnit(index int, unit TrainUnit) (preparedUnit, error)
 func (e *Encounter) appendTrainAndNotice(
 	verb string, units []preparedUnit,
 ) ([]TrainLanded, map[MemberID]*IntelDelta, error) {
-	openAtStart := e.outcome == nil
 	landed := make([]TrainLanded, len(units))
 	var pass participationPassInput
 
+	// A deed can turn a stance, and an authored ending can wait on that stance.
+	// The stance change is told in place, behind the blow that caused it, but
+	// no ending closes between two units: the first one asked for is parked
+	// and evaluated once, after the last unit (T5).
+	defer func() { e.holdEndings, e.heldEnding = false, nil }()
+
 	for i, unit := range units {
-		if i > 0 && openAtStart && e.outcome != nil {
-			return nil, nil, fmt.Errorf("%s: unit %d: %w", verb, i, ErrClosed)
-		}
 		for j, beat := range unit.beats {
 			appended, err := e.appendBeat(&record.AppendInput{
 				At:       uint64(e.clock.ToData().HighWater),
@@ -872,7 +884,10 @@ func (e *Encounter) appendTrainAndNotice(
 			}
 		}
 		if e.outcome == nil && unit.land != nil {
-			if err := unit.land(); err != nil {
+			e.holdEndings = true
+			err := unit.land()
+			e.holdEndings = false
+			if err != nil {
 				return nil, nil, fmt.Errorf("%s: unit %d: %w", verb, i, err)
 			}
 		}
@@ -888,6 +903,15 @@ func (e *Encounter) appendTrainAndNotice(
 	participation, intelDeltas, nerr := e.noticeDown(pass)
 	if nerr != nil {
 		return nil, nil, fmt.Errorf("%s: %w", verb, nerr)
+	}
+	// The ending a deed asked for follows the last beat and the down beats. A
+	// standing ending that already closed the encounter wins, as it would in
+	// any other pass.
+	if held := e.heldEnding; held != nil && e.outcome == nil {
+		e.heldEnding = nil
+		if _, err := e.closeWithEnded(held.key, held.at, held.ended, held.audience...); err != nil {
+			return nil, nil, fmt.Errorf("%s: ending %q: %w", verb, held.key, err)
+		}
 	}
 	observed, err := e.refreshChangedStanding(participation)
 	if err != nil {

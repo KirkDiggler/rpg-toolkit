@@ -210,6 +210,50 @@ func (s *BothWaysSuite) TestEachStruckUnitLandsItsDeedBehindItsOwnBeats() {
 	s.Less(stanceSeq, out.Units[1].Seq, "and before unit two's")
 }
 
+// TestAStanceEndingWaitsForTheLastBeatOfTheTrain is the gate's probe (T5): a
+// camp that is civil until the party strikes it, with an ending on the camp
+// turning hostile. The first swing's deed turns the camp and asks for that
+// ending. Both swings are still told, then the stance, then the ending; the
+// train neither closes between the units nor refuses the second.
+func (s *BothWaysSuite) TestAStanceEndingWaitsForTheLastBeatOfTheTrain() {
+	enc := s.openWith(
+		s.yard(
+			[]encounter.FactionInput{{ID: bwGoblins}},
+			[]encounter.DispositionInput{{
+				Between: [2]encounter.FactionID{bwGoblins, encounter.FactionParty},
+				Stance:  encounter.StanceNeutral,
+			}},
+			false,
+		),
+		[]encounter.MemberInput{
+			player(alice, 0, 1),
+			monster(bwScout, bwGoblins, 4, 1),
+			monster(bwChief, bwGoblins, 5, 5),
+		},
+		withdrawn(),
+		encounter.EndingInput{Key: "war", Trigger: encounter.TriggerStance{
+			Between: [2]encounter.FactionID{bwGoblins, encounter.FactionParty},
+			Stance:  encounter.StanceHostile,
+		}},
+	)
+
+	out, err := enc.RecordTrain(outcomeTrain(swing(alice, bwScout), swing(alice, bwScout)))
+	s.Require().NoError(err, "the second swing is told, not refused")
+
+	status, err := enc.Status()
+	s.Require().NoError(err)
+	s.False(status.Open)
+	s.Equal("war", status.Outcome.Ending)
+
+	stanceSeq := seqOfBeat(s.T(), enc, alice, "stance", 0)
+	endedSeq := seqOfBeat(s.T(), enc, alice, "ended", 0)
+	s.Less(out.Units[0].Seq, stanceSeq, "the stance is told behind the blow that turned it")
+	s.Less(stanceSeq, out.Units[1].Seq, "and before the next blow")
+	s.Less(out.Units[1].Seq, endedSeq, "the ending follows the last beat")
+	kinds := beatsFrom(s.T(), enc, alice, out.Units[0].Seq)
+	s.Equal("ended", kinds[len(kinds)-1], "and nothing is told after it")
+}
+
 // TestAClosedEncounterRefusesATrain: a closed story takes nothing but an
 // experience grant.
 func TestAClosedEncounterRefusesATrain(t *testing.T) {
@@ -238,6 +282,7 @@ func TestAClosedEncounterRefusesATrain(t *testing.T) {
 		swing(goblin, alice),
 	))
 	require.ErrorIs(t, err, encounter.ErrClosed, "one other unit refuses the whole train")
+	require.Equal(t, before+1, storyLen(t, enc, alice), "and the experience unit before it was not appended")
 }
 
 // TestAnEmptyOrMalformedTrainIsRefused pins the train's own shape refusals.
@@ -385,6 +430,23 @@ func TestASwingNamesItsSequence(t *testing.T) {
 		miss.Sequence = sequence
 		_, err := enc.RecordTrain(outcomeTrain(miss))
 		require.NoError(t, err)
+
+		// A ward is the caster's own failed save against somebody's
+		// Sanctuary: the saver is the actor, and the save failed.
+		wardSpell := encounter.SpellIdentity{Ref: "dnd5e:spells:sanctuary", Name: "Sanctuary"}
+		ward := &encounter.RecordInput{
+			Kind: encounter.OutcomeWarded, Actor: goblin, Targets: []encounter.MemberID{alice},
+			Warded: &encounter.WardedDetail{
+				Source: alice,
+				Save: encounter.CastSave{
+					Saver: goblin, Ability: "wisdom", Roll: 4, Total: 6, DC: 12, Succeeded: false,
+					Calculation: saveCalculation(wardSpell, "wisdom", 4, 6),
+				},
+			},
+			Sequence: sequence,
+		}
+		_, err = enc.RecordTrain(outcomeTrain(ward))
+		require.NoError(t, err, "a warded swing may carry the marker")
 	})
 
 	refused := map[string]*encounter.RecordInput{
