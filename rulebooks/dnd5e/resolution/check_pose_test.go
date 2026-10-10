@@ -115,8 +115,8 @@ func (s *CheckPoseTestSuite) TestSpendingAppendsTheDieAndEndsTheCondition() {
 
 	dieRoller := &scriptedRoller{single: 2}
 	out, err := ResumeCheck(s.ctx, &CheckResumeInput{
-		Frozen:    posed.Posed.Frozen,
-		Answer:    OfferSpend,
+		Pause:     *posed.Posed,
+		Answer:    Take(""),
 		Character: s.checker(s.guided()),
 		Roller:    dieRoller,
 	})
@@ -142,8 +142,8 @@ func (s *CheckPoseTestSuite) TestKeepingLeavesTheDieUnspent() {
 	s.Require().NotNil(posed.Posed)
 
 	out, err := ResumeCheck(s.ctx, &CheckResumeInput{
-		Frozen:    posed.Posed.Frozen,
-		Answer:    OfferKeep,
+		Pause:     *posed.Posed,
+		Answer:    Decline(),
 		Character: s.checker(s.guided()),
 	})
 	s.Require().NoError(err)
@@ -154,22 +154,41 @@ func (s *CheckPoseTestSuite) TestKeepingLeavesTheDieUnspent() {
 	s.Nil(out.DirtyCharacter, "declining touches nothing on the sheet")
 }
 
-// TestResumeRefusesAnUnansweredOrForeignAnswer pins the same refusals
-// [NewStrikeResumed] pins, adapted to checks.
+// TestResumeRefusesABadAnswer pins the same refusals [Resume] pins, adapted
+// to checks: no answer at all, and an option a choiceless offer never listed.
 func (s *CheckPoseTestSuite) TestResumeRefusesABadAnswer() {
 	posed, err := s.check(s.checker(s.guided()))
 	s.Require().NoError(err)
 
-	_, err = ResumeCheck(s.ctx, &CheckResumeInput{
-		Frozen: posed.Posed.Frozen, Answer: "maybe", Character: s.checker(s.guided()),
-	})
-	s.Require().ErrorIs(err, ErrNotOffered)
+	for _, answer := range []Answer{{}, Take("maybe")} {
+		_, err = ResumeCheck(s.ctx, &CheckResumeInput{
+			Pause: *posed.Posed, Answer: answer, Character: s.checker(s.guided()),
+		})
+		s.Require().ErrorIs(err, ErrNotOffered)
+	}
 }
 
 func (s *CheckPoseTestSuite) TestResumeRefusesGarbageFrozenBytes() {
 	_, err := ResumeCheck(s.ctx, &CheckResumeInput{
-		Frozen: []byte("not json"), Answer: OfferKeep, Character: s.checker(s.guided()),
+		Pause: Pause{Kind: PauseCheckRoll, Frozen: []byte("not json")}, Answer: Decline(), Character: s.checker(s.guided()),
 	})
+	s.Require().ErrorIs(err, ErrBadFrozen)
+}
+
+// TestResumeCheckRefusesAnyOtherMachine: ResumeCheck answers the one pause
+// MakeCheck poses, and a strike's header — current version and all — is not
+// that pause.
+func (s *CheckPoseTestSuite) TestResumeCheckRefusesAnyOtherMachine() {
+	posed, err := s.check(s.checker(s.guided()))
+	s.Require().NoError(err)
+	h, err := readFrozen(posed.Posed.Frozen)
+	s.Require().NoError(err)
+	foreign, err := writeFrozen(machinePostRoll, PauseCheckRoll, json.RawMessage(h.State))
+	s.Require().NoError(err)
+	pause := *posed.Posed
+	pause.Frozen = foreign
+
+	_, err = ResumeCheck(s.ctx, &CheckResumeInput{Pause: pause, Answer: Decline(), Character: s.checker(s.guided())})
 	s.Require().ErrorIs(err, ErrBadFrozen)
 }
 
@@ -180,7 +199,7 @@ func (s *CheckPoseTestSuite) TestResumeRefusesTheWrongCheckersSheet() {
 	other := s.checker()
 	other.ID = "somebody-else"
 	_, err = ResumeCheck(s.ctx, &CheckResumeInput{
-		Frozen: posed.Posed.Frozen, Answer: OfferKeep, Character: other,
+		Pause: *posed.Posed, Answer: Decline(), Character: other,
 	})
 	s.Require().ErrorIs(err, ErrBadParticipant)
 }

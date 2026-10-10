@@ -13,15 +13,8 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
-// frozenCastKind and frozenCastVersion discriminate what a stored blob is,
-// the same trust boundary [frozenStrikeKind]/[frozenContestKind] keep.
-const (
-	frozenCastKind    = "cast.post_save_roll"
-	frozenCastVersion = 1
-)
-
 // frozenCastTargetState is one target's PREFLIGHT verdict, carried rather
-// than re-derived on resume for [frozenStrike]'s reason: a target that moved
+// than re-derived on resume for [frozenPostRoll]'s reason: a target that moved
 // out of range during the pause must not change what [castMachine.Start]
 // already decided before the door charged the caster.
 type frozenCastTargetState struct {
@@ -31,17 +24,14 @@ type frozenCastTargetState struct {
 
 // frozenCast is a multi-target cast stopped mid-save on ONE of its targets,
 // in enough detail to finish every remaining target and in no more detail
-// than that — the cast sibling of [frozenStrike] and [frozenContest].
+// than that — the cast sibling of [frozenPostRoll] and [frozenContest].
 //
-// Definition is stored WHOLE, [frozenStrike.Definition]'s own reason: a
+// Definition is stored WHOLE, [frozenPostRoll.Definition]'s own reason: a
 // target beyond the one that posed may still need a fresh
 // [newGatedCast]/[newGatelessCast] machine built for it, exactly as the
 // original [newCast] built one, and that construction takes the full
 // definition.
 type frozenCast struct {
-	Kind    string `json:"kind"`
-	Version int    `json:"version"`
-
 	Definition     combatActions.Definition `json:"definition"`
 	CasterID       string                   `json:"caster_id"`
 	Option         string                   `json:"option,omitempty"`
@@ -55,91 +45,69 @@ type frozenCast struct {
 	// Index is which target posed.
 	Index int `json:"index"`
 
-	// Outcome is every target's outcome BEFORE Index — already delivered,
-	// already recorded, and not touched again on resume.
+	// Outcome is every target's outcome BEFORE Index — resolved, its board
+	// changes landed at the pause, and told with the cast when it finishes. A
+	// cast is one told unit, so these wait here rather than leaving on the
+	// pause.
 	Outcome CastOutcome `json:"outcome"`
 
-	// Contest is target Index's own frozen bytes, opaque here exactly as
-	// [frozenContest.Save] is opaque to [castMachine].
-	Contest json.RawMessage `json:"contest"`
+	// Inner is target Index's own whole frozen header — a contest's, or for
+	// an attack cast a strike's — opaque here exactly as [frozenContest.Save]
+	// is opaque to [castMachine].
+	Inner json.RawMessage `json:"inner"`
 }
 
-// poseCast turns a contest's own pose into the cast's, freezing what
-// [castMachine.resolveTarget] needs to finish every remaining target once
-// the posed one is answered.
-func poseCast(m *castMachine, index int, contest Pose) (Step, error) {
+// poseCast turns a target's own pause into the cast's, freezing what
+// [castMachine.resolveTarget] needs to finish every remaining target once the
+// paused one is answered. Kind and price are the target's. No unit settles
+// with the pause — a cast is one told unit, told whole when it finishes — but
+// the concentration checks its targets already forced are told now.
+func poseCast(m *castMachine, index int, inner Pause) (Step, error) {
 	targets := make([]frozenCastTargetState, len(m.targets))
 	for i, t := range m.targets {
 		targets[i] = frozenCastTargetState{TargetID: t.targetID, Missed: t.missed}
 	}
 
+	// The checks rolled so far — earlier targets', and the paused target's own
+	// settled hit — are told at the pause, and stripped from the frozen cast
+	// so the resume does not tell them again. The targets themselves wait
+	// here: a cast is one told unit.
+	followUps := append([]FollowUpOutcome(nil), m.outcome.FollowUps...)
+	followUps = append(followUps, followUpsOf(inner.settled)...)
+	followUps = append(followUps, inner.followUps...)
+	waiting := m.outcome
+	waiting.FollowUps = nil
+
 	profile := m.profile
-	frozen, err := json.Marshal(frozenCast{
-		Kind: frozenCastKind, Version: frozenCastVersion,
+	frozen, err := writeFrozen(machineCast, inner.Kind, frozenCast{
 		Definition:     combatActions.Definition{Ref: m.spell, Name: m.spellName, Cast: &profile},
 		CasterID:       m.casterID,
 		Option:         m.option,
 		DerivedTargets: m.derivedTargets,
 		Targets:        targets,
 		Index:          index,
-		Outcome:        m.outcome,
-		Contest:        json.RawMessage(contest.Frozen),
+		Outcome:        waiting,
+		Inner:          json.RawMessage(inner.Frozen),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("%w: freeze cast: %v", ErrBadFrozen, err)
+		return nil, err
 	}
 
-	return Pose{Ask: contest.Ask, Frozen: frozen}, nil
+	return Pause{Kind: inner.Kind, Ask: inner.Ask, Cost: inner.Cost, Frozen: frozen, followUps: followUps}, nil
 }
 
-// CastResumeInput continues a cast that posed on one of its targets' saves.
-type CastResumeInput struct {
-	// Frozen is the bytes [Pose.Frozen] handed out. REQUIRED.
-	Frozen []byte
-
-	// Answer is [OfferSpend] or [OfferKeep]. REQUIRED.
-	Answer OfferAnswer
-
-	// Option forwards a provider-authored post-hit choice.
-	Option string
-
-	// Roller rolls the offered die, and rolls for every target beyond the
-	// one that posed that has not yet made its own save. REQUIRED: the same
-	// interaction, the same roller, whether or not any one target suspended
-	// it.
-	Roller dice.Roller
-}
-
-// NewCastResumed returns the machine that finishes a cast somebody answered
-// the offer on — the cast sibling of [NewStrikeResumed]. It is handed to
-// [Resolve] exactly like a fresh cast's machine: nothing downstream of
-// [driveStep] needs to know a machine is resuming rather than starting.
+// resumeCast returns the machine that finishes a cast somebody answered the
+// offer on. It is handed to [Resolve] exactly like a fresh cast's machine.
 //
 // # It fails closed on a frozen blob it cannot trust
 //
-// Kind and version are checked before the world is loaded and before
-// anything is charged — repairing either would resolve a cast nobody paid
-// for a second time.
-func NewCastResumed(in *CastResumeInput) (Machine, error) {
-	if in == nil {
-		return nil, ErrNilInput
-	}
-	if len(in.Frozen) == 0 {
-		return nil, fmt.Errorf("%w: no frozen cast to resume", ErrBadFrozen)
-	}
-	switch in.Answer {
-	case OfferSpend, OfferKeep:
-	default:
-		return nil, fmt.Errorf("%w: %q is not an answer this machine posed", ErrNotOffered, in.Answer)
-	}
-
+// A missing profile or an index outside the targets is refused before the
+// world is loaded and before anything is charged — repairing either would
+// resolve a cast nobody paid for a second time.
+func resumeCast(h frozenHeader, in *ResumeInput) (Machine, error) {
 	var frozen frozenCast
-	if err := json.Unmarshal(in.Frozen, &frozen); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrBadFrozen, err)
-	}
-	if frozen.Kind != frozenCastKind || frozen.Version != frozenCastVersion {
-		return nil, fmt.Errorf("%w: kind %q version %d is not one this build froze",
-			ErrBadFrozen, frozen.Kind, frozen.Version)
+	if err := decodeState(h, &frozen); err != nil {
+		return nil, err
 	}
 	if frozen.Definition.Cast == nil {
 		return nil, fmt.Errorf("%w: frozen cast has no cast profile", ErrBadFrozen)
@@ -149,15 +117,16 @@ func NewCastResumed(in *CastResumeInput) (Machine, error) {
 			ErrBadFrozen, frozen.Index, len(frozen.Targets))
 	}
 
-	var resumedInner Machine
-	var err error
+	allowed := []string{machineContest}
 	if frozen.Definition.Cast.Attack != nil {
-		resumedInner, err = NewStrikeResumed(&StrikeResumeInput{Frozen: frozen.Contest, Answer: in.Answer, Option: in.Option, Roller: in.Roller})
-	} else {
-		resumedInner, err = newContestResumed(frozen.Contest, in.Answer, in.Roller)
+		allowed = strikeMachines
 	}
+	resumedInner, err := resumeInner(frozen.Inner, in, allowed...)
 	if err != nil {
 		return nil, err
+	}
+	if strike, ok := resumedInner.(*strikeMachine); ok {
+		strike.whole = true
 	}
 
 	targets := make([]castTargetMachine, len(frozen.Targets))
@@ -209,7 +178,7 @@ func (m *castResumeMachine) Start(ctx context.Context, cast *Participants) (Step
 		target := &m.cast.targets[i]
 		switch {
 		case i < m.index || target.missed:
-			// Already delivered ([CastResumeInput] carries it in Outcome), or
+			// Already delivered ([frozenCast] carries it in Outcome), or
 			// never reaches its inner machine at all — [castMachine.resolveTarget]
 			// short-circuits a missed target before touching target.inner.
 			continue

@@ -14,14 +14,15 @@ which part is [`../CLAUDE.md`](../CLAUDE.md).
   torn down with the call ([ADR-0038](../../../docs/adr/0038-resolution-owns-the-bus.md)).
   Nothing above or below holds one. If your design needs a subscription, it
   needs an interaction, and an interaction starts here.
-- **The step vocabulary and the fold.** `Gather | Request | Pose | Done` in
-  [`step.go`](./step.go) — sealed, and opaque on purpose: a machine cannot
+- **The step vocabulary and the fold.** `Gather | Request | Pause | Done` in
+  [`step.go`](./step.go) and [`pause.go`](./pause.go) — sealed, and opaque on purpose: a machine cannot
   construct a `Gather` or a `Request`, it calls a constructor here that names
   what it wants. That opacity is how R6 is a guarantee rather than a habit.
 - **The machines — the rules of D&D as steps over data.** `NewSave`
   ([`save.go`](./save.go)), `NewContest` ([`contest.go`](./contest.go)),
-  `NewActivation` ([`activation.go`](./activation.go)), `NewStrike` /
-  `NewStrikeResumed` ([`strike.go`](./strike.go)), `NewAction`
+  `NewActivation` ([`activation.go`](./activation.go)), `NewStrike`
+  ([`strike.go`](./strike.go)), `Resume` — the one way back from any
+  `Pause` ([`pause.go`](./pause.go)), `NewAction`
   ([`action.go`](./action.go)), `NewMovement` ([`movement.go`](./movement.go)),
   `NewBoundary` ([`boundary.go`](./boundary.go)).
 - **The words a compelled creature obeys.** `Obey` ([`obey.go`](./obey.go)) —
@@ -120,7 +121,8 @@ which part is [`../CLAUDE.md`](../CLAUDE.md).
 
 It ANSWERS exactly one question: **what happened when this interaction ran** —
 and it answers in data (R2). `Output` carries the world, the dirty sheets, the
-outcome or the pose, the hooks, the concentration checks and breaks, and the
+outcome (everything settled, including what settled before a pause) and the
+pause that waits, the hooks, the concentration checks and breaks, and the
 runtime areas the interaction opened and closed. No
 runtime object crosses either way.
 
@@ -272,6 +274,8 @@ here.
 | I am adding… | Owner | Why |
 |---|---|---|
 | A new rule (what Rage does, what a condition does) | `../conditions`, `../combat`, `../features` — the rules packages | They know the rule; they do not know what a session is. This package drives them, it does not hold them. |
+| A machine that waits for a person — an offer, a reaction, a choice | here: one [`Pause`](./pause.go), frozen through `writeFrozen`, resumed through one `resumers` entry | `Pause` is the only suspension and `Resume` the only way back. What settled before the wait rides `Output.Outcome`; the pause carries only the question, its price and the frozen state. A new frozen type writes the one header, never its own kind or version. |
+| The price of a reaction | here: [`reactionCost`](./cost.go), charged by `payAtTheDoor` | One table, one door. A pause states its price as `Cost` and the resume charges exactly that; a reaction a machine takes without asking is charged through the same door as it is taken. A character pays from its ledger, a monster its one reaction through `Monster.SpendReaction`. Never publish a spend request for a reaction. |
 | A new die roll inside an interaction | here, in a machine | Machines roll with the roller they were handed. `saves.MakeSavingThrow` and `checks.MakeAbilityCheck` REQUIRE a bus (rpg-toolkit#1382) and this package is their only lawful supplier. |
 | A new condition | `../conditions` + its loader | It is data on a sheet plus a behaviour that attaches. This package routes the blob and attaches it; it never learns the condition's name. |
 | A reaction or follow-up a subscriber wants | `events.FollowUp` ([`../events/damage_taken.go:50`](../events/damage_taken.go)) | **SUBSCRIBERS DESCRIBE, MACHINES ROLL.** The subscriber appends data — settled DC, settled consequence — to the fact it heard; `runFollowUps` ([`damagetaken.go:131`](./damagetaken.go)) rolls it nested, in the same interaction. `ConcentratingCondition.onDamageTaken` ([`../conditions/concentrating.go:406`](../conditions/concentrating.go)) is the worked example. |

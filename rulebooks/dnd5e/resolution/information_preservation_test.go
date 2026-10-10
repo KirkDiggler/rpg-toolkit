@@ -49,31 +49,32 @@ func TestPostHitChoicesKeepDescriptionAcrossFreeze(t *testing.T) {
 	out, err := wolfStrikesHero(t, hero, NewStrike(&StrikeInput{AttackerID: wolfID, TargetID: heroID, Definition: validMeleeDefinition(), Roller: hitRoller()}))
 	require.NoError(t, err)
 	require.NotNil(t, out.Posed)
-	require.NotNil(t, out.Posed.SettledStrike, "precondition: the post-hit reaction posed")
+	require.Equal(t, PausePostHit, out.Posed.Kind, "precondition: the post-hit reaction posed")
 
 	ask := out.Posed.Ask
 	require.NotEmpty(t, ask.Offer.Description, "the offer carries the feature's prose")
-	require.Len(t, ask.Choices, 2)
-	for _, choice := range ask.Choices {
+	require.Len(t, ask.Offer.Choices, 2)
+	for _, choice := range ask.Offer.Choices {
 		require.NotEmpty(t, choice.Description, choice.ID)
 	}
 
-	// Before and after the serialized freeze: the pose itself and the frozen payload.
-	var frozen frozenStrike
-	require.NoError(t, json.Unmarshal(out.Posed.Frozen, &frozen))
-	require.NotNil(t, frozen.PostHit)
-	require.Len(t, frozen.PostHit.Options, len(ask.Choices))
-	require.Equal(t, frozen.PostHit.Description, ask.Offer.Description)
-	for i, option := range frozen.PostHit.Options {
-		require.Equal(t, option.ID, ask.Choices[i].ID)
-		require.Equal(t, option.Description, ask.Choices[i].Description)
+	// Before and after the serialized freeze: the pause itself and the frozen payload.
+	h, err := readFrozen(out.Posed.Frozen)
+	require.NoError(t, err)
+	var frozen frozenPostHit
+	require.NoError(t, decodeState(h, &frozen))
+	require.Len(t, frozen.Offer.Options, len(ask.Offer.Choices))
+	require.Equal(t, frozen.Offer.Description, ask.Offer.Description)
+	for i, option := range frozen.Offer.Options {
+		require.Equal(t, option.ID, ask.Offer.Choices[i].ID)
+		require.Equal(t, option.Description, ask.Offer.Choices[i].Description)
 	}
 	wire, err := json.Marshal(ask)
 	require.NoError(t, err)
 	var thawed Ask
 	require.NoError(t, json.Unmarshal(wire, &thawed))
-	for i := range ask.Choices {
-		require.Equal(t, ask.Choices[i].Description, thawed.Choices[i].Description)
+	for i := range ask.Offer.Choices {
+		require.Equal(t, ask.Offer.Choices[i].Description, thawed.Offer.Choices[i].Description)
 	}
 
 	// Resuming reads frozen mechanics, not prose: rewriting every description
@@ -81,7 +82,9 @@ func TestPostHitChoicesKeepDescriptionAcrossFreeze(t *testing.T) {
 	// outcome. Only the echoed offer, Retaliation.Offer, may differ; it is
 	// neutralised and everything else is compared as it came back.
 	resume := func(payload []byte) string {
-		machine, rerr := NewStrikeResumed(&StrikeResumeInput{Frozen: payload, Answer: OfferSpend, Option: "lightning", Roller: &actionRoller{damage: [][]int{{5, 5}}, singles: []int{20}}})
+		pause := *out.Posed
+		pause.Frozen = payload
+		machine, rerr := Resume(&ResumeInput{Pause: pause, Answer: Take("lightning"), Roller: &actionRoller{damage: [][]int{{5, 5}}, singles: []int{20}}})
 		require.NoError(t, rerr)
 		resumed, rerr := wolfStrikesHero(t, wrathHero(t), machine)
 		require.NoError(t, rerr)
@@ -97,7 +100,7 @@ func TestPostHitChoicesKeepDescriptionAcrossFreeze(t *testing.T) {
 	original := resume(out.Posed.Frozen)
 	rewritten := string(out.Posed.Frozen)
 	descriptions := []string{ask.Offer.Description}
-	for _, choice := range ask.Choices {
+	for _, choice := range ask.Offer.Choices {
 		descriptions = append(descriptions, choice.Description)
 	}
 	for i, words := range descriptions {
@@ -116,14 +119,15 @@ func TestBeforeRollOfferKeepsDescription(t *testing.T) {
 	out, err := wolfStrikesHero(t, flareHero(t), NewStrike(&StrikeInput{AttackerID: wolfID, TargetID: heroID, Definition: validMeleeDefinition(), Roller: roller}))
 	require.NoError(t, err)
 	require.NotNil(t, out.Posed)
-	require.True(t, out.Posed.BeforeRoll)
+	require.Equal(t, PauseBeforeRoll, out.Posed.Kind)
 
 	require.NotEmpty(t, out.Posed.Ask.Offer.Description)
-	var frozen frozenStrike
-	require.NoError(t, json.Unmarshal(out.Posed.Frozen, &frozen))
-	require.NotNil(t, frozen.BeforeRoll)
-	require.Equal(t, frozen.BeforeRoll.Description, out.Posed.Ask.Offer.Description)
-	require.Empty(t, out.Posed.Ask.Choices[0].Description, "the single Use choice carries no prose of its own")
+	h, err := readFrozen(out.Posed.Frozen)
+	require.NoError(t, err)
+	var frozen frozenBeforeRoll
+	require.NoError(t, decodeState(h, &frozen))
+	require.Equal(t, frozen.Offer.Description, out.Posed.Ask.Offer.Description)
+	require.Empty(t, out.Posed.Ask.Offer.Choices[0].Description, "the single Use choice carries no prose of its own")
 }
 
 func TestPostRollOfferKeepsDescription(t *testing.T) {

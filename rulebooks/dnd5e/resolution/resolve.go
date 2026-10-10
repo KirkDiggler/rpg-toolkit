@@ -5,7 +5,6 @@ package resolution
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -185,23 +184,21 @@ type Output struct {
 	DirtyCharacters []*character.Data
 	DirtyMonsters   []*monster.Data
 
-	// Outcome is what the machine produced, and it is NIL when [Output.Posed]
-	// is set.
+	// Outcome is every unit this call settled. With [Output.Posed] set it is
+	// what settled before the pause, or nil when nothing did.
 	//
-	// Nil rather than a zero value, because the zero value lies: a caller
-	// switching on a StrikeOutcome would read "missed for 0 damage" off a
-	// strike that has not finished being resolved. A nil is something the
-	// caller must handle.
+	// A unit of the story is told in exactly one output: the one in which it
+	// settled. A paused output tells what happened before the pause; the
+	// resume tells only what happened after it.
 	Outcome Outcome
 
-	// Posed is the question the machine stopped on, or nil when it ran to
-	// completion. The world, the dirty sheets and the hooks above are all
-	// still true — everything up to the pose happened, and the cost was
-	// charged at the door before any of it.
+	// Posed is what waits, or nil. The world, the dirty sheets, the hooks and
+	// the concentration above are all still true — everything up to the pause
+	// happened, and the cost was charged at the door before any of it.
 	//
-	// A caller that stores [Pose.Frozen], asks its audience, and later calls
-	// Resolve again with a resumed machine finishes what this one started.
-	Posed *Pose
+	// A caller stores the pause, asks its audience, and calls [Resume] with
+	// the answer to finish what this one started.
+	Posed *Pause
 
 	// Hooks is every subscription resolution granted, in the order granted.
 	// It is the pre-execution picture of what was attached, the record of which
@@ -356,6 +353,11 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 	}
 
 	outcome, posed, runErr := driveStep(ctx, surf, first, cast)
+	// A paused run reports what settled before the pause as its outcome,
+	// and concentration is attributed to it exactly as to a finished one.
+	if posed != nil {
+		outcome = posed.settled
+	}
 
 	// The areas this interaction opens and closes, reported for the host to
 	// apply through the encounter's own verbs. A concentration that ended
@@ -379,21 +381,18 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		return nil, fmt.Errorf("resolution: teardown: %w", tearErr)
 	}
 
-	consequences := outcome
-	if posed != nil && posed.Movement != nil {
-		consequences = *posed.Movement
+	// Everything that settled before a pause is attributed to this output:
+	// the settled units' follow-ups, and the checks a pause carries that no
+	// told unit does (a cast's, which tells its targets only when it ends).
+	followUps := followUpsOf(outcome)
+	if posed != nil {
+		followUps = append(followUps, posed.followUps...)
 	}
-	if posed != nil && posed.Sequence != nil {
-		consequences = *posed.Sequence
-	}
-	if posed != nil && posed.SettledStrike != nil {
-		consequences = *posed.SettledStrike
-	}
-	ended, err := breaks.breaks(consequences)
+	ended, err := breaksFrom(breaks.facts, followUps)
 	if err != nil {
 		return nil, err
 	}
-	kept, err := breaks.checks(cast, consequences)
+	kept, err := breaks.checksFrom(cast, followUps)
 	if err != nil {
 		return nil, err
 	}
@@ -417,29 +416,6 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		ended, kept = nil, nil
 	}
 
-	if posed != nil && posed.Sequence != nil {
-		attributed, attrErr := breaks.attributeToSteps(cast, *posed.Sequence)
-		if attrErr != nil {
-			return nil, attrErr
-		}
-		for i := range attributed.Steps {
-			attributed.Steps[i].Strike.FollowUps = nil
-		}
-		attributed.FollowUps = nil
-		var frozen frozenSequence
-		if err := json.Unmarshal(posed.Frozen, &frozen); err != nil {
-			return nil, err
-		}
-		frozen.Outcome = attributed
-		raw, err := json.Marshal(frozen)
-		if err != nil {
-			return nil, err
-		}
-		posed.Frozen = raw
-		posed.Sequence = &attributed
-		ended, kept = nil, nil
-	}
-
 	if moved, ok := outcome.(MovementOutcome); ok {
 		attributed, e := breaks.attributeToReactions(cast, moved)
 		if e != nil {
@@ -448,28 +424,6 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		outcome = attributed
 		ended, kept = nil, nil
 	}
-	if posed != nil && posed.Movement != nil {
-		attributed, e := breaks.attributeToReactions(cast, *posed.Movement)
-		if e != nil {
-			return nil, e
-		}
-		for i := range attributed.Reactions {
-			attributed.Reactions[i].Struck.FollowUps = nil
-		}
-		var frozen frozenMovement
-		if e = json.Unmarshal(posed.Frozen, &frozen); e != nil {
-			return nil, e
-		}
-		frozen.Outcome = attributed
-		raw, e := json.Marshal(frozen)
-		if e != nil {
-			return nil, e
-		}
-		posed.Frozen = raw
-		posed.Movement = &attributed
-		ended, kept = nil, nil
-	}
-
 	dirty, err := dirtyCharacters(cast)
 	if err != nil {
 		return nil, err

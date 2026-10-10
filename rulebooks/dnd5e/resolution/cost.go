@@ -7,8 +7,11 @@ import (
 	"context"
 	"fmt"
 
+	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 )
 
 // Cost is what an interaction costs the actor who declared it, compiled.
@@ -34,22 +37,24 @@ type Cost struct {
 	// cost is present — a price nobody pays is a free action wearing a cost's
 	// clothes, and nothing downstream would ever say so.
 	//
-	// It must name a CHARACTER in the cast. A monster is refused by name rather
-	// than charged: monster.Monster keeps no economy, it is handed one for the
-	// duration of a turn and it is thrown away after, so there is nothing on
-	// that sheet to debit. Monsters take no gated action in v1 — the session
-	// refuses them at Attack — and this refusal is what keeps the day they do
-	// from being a silent free swing.
-	PayerID string
+	// It names a CHARACTER in the cast, charged through its ledger, or a
+	// MONSTER, which can be charged exactly one thing: its one reaction, through
+	// monster.Monster.SpendReaction. Any other monster price is refused by name
+	// rather than charged: a monster keeps no other economy on its sheet, so
+	// there is nothing else to debit, and this refusal is what keeps the day a
+	// monster takes a gated action from being a silent free swing.
+	PayerID string `json:"payer_id"`
 
-	// Profile is the price, compiled. Nil charges nothing.
-	Profile *combat.SpendProfile
+	// Profile is the price, compiled. Nil charges a character nothing.
+	Profile *combat.SpendProfile `json:"profile"`
 
 	// SpellTurn identifies the active creature's turn for a costed cast, even
 	// when Profile is nil (a free spell). Required for casts; unused by other
 	// machines. It must distinguish encounters and successive creature turns.
 	// This does not refresh resources: Turn separately controls that operation.
-	SpellTurn string
+	//
+	// Never marshalled: a pause's price never refreshes a turn.
+	SpellTurn string `json:"-"`
 
 	// Turn is the turn the payer is acting in, so a bank left over from an
 	// earlier one can be refilled before it is charged. Nil refreshes nothing
@@ -66,7 +71,28 @@ type Cost struct {
 	//
 	// What this package will not do is guess a turn — see [Turn] for why
 	// neither half of one is derivable here.
-	Turn *Turn
+	//
+	// Never marshalled: a pause's price never refreshes a turn.
+	Turn *Turn `json:"-"`
+}
+
+// reactionCost is the one reaction price table: one reaction, plus one point
+// of the offer's pool when it names one. Every price a pause states, and every
+// reaction a machine takes without asking, comes from here — the price stays
+// resolution's rule.
+func reactionCost(payer string, pool coreResources.ResourceKey) *Cost {
+	profile := &combat.SpendProfile{Slots: map[coreCombat.ActionType]int{coreCombat.ActionReaction: 1}}
+	if pool != "" {
+		profile.Pools = map[coreResources.ResourceKey]int{pool: 1}
+	}
+	return &Cost{PayerID: payer, Profile: profile}
+}
+
+// isOneReaction reports whether a price is exactly one reaction and nothing
+// else — the only price a monster can pay.
+func isOneReaction(p *combat.SpendProfile) bool {
+	return p != nil && len(p.Slots) == 1 && p.Slots[coreCombat.ActionReaction] == 1 &&
+		len(p.Capacity) == 0 && len(p.Pools) == 0 && len(p.Grants) == 0 && len(p.Requires) == 0
 }
 
 // Turn is which turn the payer is acting in, and what a fresh one grants them.
@@ -156,13 +182,17 @@ func payAtTheDoor(ctx context.Context, cost *Cost, cast *Participants) error {
 		return nil
 	}
 
-	payer, err := ledgerFor(cast, cost.PayerID)
+	ch, mon, err := payerFor(cast, cost.PayerID)
 	if err != nil {
 		return err
 	}
 
+	if mon != nil {
+		return chargeMonster(mon, cost)
+	}
+
 	if cost.Turn != nil {
-		if _, refreshErr := payer.RefreshForTurn(ctx, &character.RefreshForTurnInput{
+		if _, refreshErr := ch.RefreshForTurn(ctx, &character.RefreshForTurnInput{
 			TurnNumber: cost.Turn.Number,
 			Speed:      cost.Turn.Speed,
 		}); refreshErr != nil {
@@ -171,10 +201,27 @@ func payAtTheDoor(ctx context.Context, cost *Cost, cast *Participants) error {
 		}
 	}
 
-	if err := combat.Pay(payer, cost.Profile); err != nil {
+	if err := combat.Pay(ch, cost.Profile); err != nil {
 		return fmt.Errorf("%w: %q: %w", ErrCannotPay, cost.PayerID, err)
 	}
 
+	return nil
+}
+
+// chargeMonster charges a monster the one thing its sheet holds: its
+// reaction. A price that is anything but exactly one reaction is [ErrNoPayer];
+// a reaction already spent is [ErrCannotPay] wrapping
+// monster.ErrReactionSpent, and the sheet is left as it was. The turn refresh
+// is a character's verb and never reaches here.
+func chargeMonster(mon *monster.Monster, cost *Cost) error {
+	if !isOneReaction(cost.Profile) {
+		return fmt.Errorf(
+			"%w: %q is a monster, which can be charged one reaction and nothing else",
+			ErrNoPayer, cost.PayerID)
+	}
+	if err := mon.SpendReaction(); err != nil {
+		return fmt.Errorf("%w: %q: %w", ErrCannotPay, cost.PayerID, err)
+	}
 	return nil
 }
 
@@ -198,9 +245,13 @@ func payForMachine(ctx context.Context, cost *Cost, machine Machine, cast *Parti
 	if _, err := (combat.SpellTurnState{}).AfterCast(cost.SpellTurn, *spell.profile.Casting); err != nil {
 		return fmt.Errorf("%w: %w", ErrBadCost, err)
 	}
-	payer, err := ledgerFor(cast, cost.PayerID)
+	payer, mon, err := payerFor(cast, cost.PayerID)
 	if err != nil {
 		return err
+	}
+	if mon != nil {
+		return fmt.Errorf("%w: %q is a monster, and a monster's casts are not priced at this door",
+			ErrNoPayer, cost.PayerID)
 	}
 	if cost.Turn != nil {
 		if _, err := payer.RefreshForTurn(ctx, &character.RefreshForTurnInput{
@@ -217,28 +268,22 @@ func payForMachine(ctx context.Context, cost *Cost, machine Machine, cast *Parti
 	return nil
 }
 
-// ledgerFor finds the sheet a cost is charged to.
+// payerFor finds the sheet a cost is charged to: a character's ledger, or a
+// monster, whose one reaction is all the door can charge it.
 //
 // The concrete character comes back rather than a combat.Ledger, and both
 // reasons matter: the refresh is a character's own verb, and a nil *Character
 // inside a non-nil interface would sail past the gate's nil check as a ledger
-// that exists and answers nothing.
-func ledgerFor(cast *Participants, id string) (*character.Character, error) {
+// that exists and answers nothing. Exactly one of the two sheets is non-nil
+// on success.
+func payerFor(cast *Participants, id string) (*character.Character, *monster.Monster, error) {
 	if ch, ok := cast.Character(id); ok {
-		return ch, nil
+		return ch, nil, nil
 	}
 
-	if _, ok := cast.Monster(id); ok {
-		// Named rather than dereferenced, and named separately from "was not
-		// passed in", because the two want different fixes. A monster keeps no
-		// economy: one is handed to it for the duration of a turn by whoever
-		// runs that turn, and it is thrown away after. Monsters take no gated
-		// action in v1, and this is what keeps the day they do from arriving as
-		// a silently free one.
-		return nil, fmt.Errorf(
-			"%w: %q is a monster, whose economy belongs to whoever runs its turn rather than to its sheet",
-			ErrNoPayer, id)
+	if mon, ok := cast.Monster(id); ok {
+		return nil, mon, nil
 	}
 
-	return nil, fmt.Errorf("%w: %q was not passed in", ErrNoPayer, id)
+	return nil, nil, fmt.Errorf("%w: %q was not passed in", ErrNoPayer, id)
 }

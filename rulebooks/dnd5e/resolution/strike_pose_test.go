@@ -115,7 +115,9 @@ func TestAnOfferPosesAndProducesNoOutcome(t *testing.T) {
 	require.Equal(t, 15, out.Posed.Ask.Total)
 	require.Equal(t, conditions.InspiredName, out.Posed.Ask.Offer.Name)
 	require.Equal(t, refs.Conditions.Inspired().String(), out.Posed.Ask.Offer.Ref.String())
-	require.Equal(t, []string{"spend", "keep"}, out.Posed.Ask.Options)
+	require.Equal(t, PausePostRoll, out.Posed.Kind)
+	require.Empty(t, out.Posed.Ask.Offer.Choices, "a die offer is taken or declined, with no option")
+	require.Nil(t, out.Posed.Cost, "a die offer is free")
 	require.NotEmpty(t, out.Posed.Frozen)
 	require.Equal(t, 1, roller.calls, "the d20 and nothing else")
 }
@@ -136,15 +138,15 @@ func TestTheAskDoesNotLeakTheAC(t *testing.T) {
 // poseThenAnswer runs the pose and resumes it with one answer, returning the
 // finished strike.
 func poseThenAnswer(
-	t *testing.T, d20 int, answer OfferAnswer, resumeRoller *actionRoller,
+	t *testing.T, d20 int, answer Answer, resumeRoller *actionRoller,
 ) StrikeOutcome {
 	t.Helper()
 	posed, err := heroSwings(t, inspiredHero(t), &actionRoller{singles: []int{d20}})
 	require.NoError(t, err)
 	require.NotNil(t, posed.Posed)
 
-	machine, err := NewStrikeResumed(&StrikeResumeInput{
-		Frozen: posed.Posed.Frozen, Answer: answer, Roller: resumeRoller,
+	machine, err := Resume(&ResumeInput{
+		Pause: *posed.Posed, Answer: answer, Roller: resumeRoller,
 	})
 	require.NoError(t, err)
 
@@ -157,12 +159,12 @@ func poseThenAnswer(
 func TestBaneCalculationIsFrozenAcrossInspirationAnswers(t *testing.T) {
 	for _, tc := range []struct {
 		name           string
-		answer         OfferAnswer
+		answer         Answer
 		resume         *actionRoller
 		wantComponents int
 	}{
-		{name: "keep reuses exact Bane", answer: OfferKeep, resume: &actionRoller{}, wantComponents: 3},
-		{name: "spend appends only Inspiration", answer: OfferSpend, resume: &actionRoller{singles: []int{4}, damage: [][]int{{3}}}, wantComponents: 4},
+		{name: "keep reuses exact Bane", answer: Decline(), resume: &actionRoller{}, wantComponents: 3},
+		{name: "spend appends only Inspiration", answer: Take(""), resume: &actionRoller{singles: []int{4}, damage: [][]int{{3}}}, wantComponents: 4},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			posing := &actionRoller{singles: []int{8}, damage: [][]int{{3}}}
@@ -171,8 +173,8 @@ func TestBaneCalculationIsFrozenAcrossInspirationAnswers(t *testing.T) {
 			require.NotNil(t, posed.Posed)
 			require.Equal(t, 2, posing.calls, "one d20 and one Bane d4 before the pose")
 
-			machine, err := NewStrikeResumed(&StrikeResumeInput{
-				Frozen: append([]byte(nil), posed.Posed.Frozen...), Answer: tc.answer, Roller: tc.resume,
+			machine, err := Resume(&ResumeInput{
+				Pause: *posed.Posed, Answer: tc.answer, Roller: tc.resume,
 			})
 			require.NoError(t, err)
 			out, err := resolveHeroStrike(t, banedInspiredHero(t), machine)
@@ -184,7 +186,7 @@ func TestBaneCalculationIsFrozenAcrossInspirationAnswers(t *testing.T) {
 			require.Equal(t, "bane-caster", bane.Source.SourceID)
 			require.Equal(t, []int{3}, bane.Dice.FinalRolls)
 			require.True(t, bane.SubtractDice)
-			if tc.answer == OfferKeep {
+			if !tc.answer.Taken() {
 				require.Zero(t, tc.resume.calls, "keep neither rerolls nor appends")
 			} else {
 				require.Equal(t, refs.Conditions.Inspired().String(), calculation.Components[3].Source.Ref.String())
@@ -199,7 +201,7 @@ func TestBaneCalculationIsFrozenAcrossInspirationAnswers(t *testing.T) {
 func TestSpendingAddsOneFaceAndCanTurnAMissIntoAHit(t *testing.T) {
 	// d20 of 8 plus a bonus of 4 is 12, one short of the wolf's 13. A d6 of 4
 	// makes it 16.
-	outcome := poseThenAnswer(t, 8, OfferSpend, &actionRoller{singles: []int{4}, damage: [][]int{{3}}})
+	outcome := poseThenAnswer(t, 8, Take(""), &actionRoller{singles: []int{4}, damage: [][]int{{3}}})
 
 	require.Equal(t, 8, outcome.Roll, "the d20 is not re-rolled")
 	require.Equal(t, 16, outcome.Total, "roll plus bonus plus the face")
@@ -209,7 +211,7 @@ func TestSpendingAddsOneFaceAndCanTurnAMissIntoAHit(t *testing.T) {
 
 // TestKeepingLeavesTheTotalAlone — declining costs nothing and changes nothing.
 func TestKeepingLeavesTheTotalAlone(t *testing.T) {
-	outcome := poseThenAnswer(t, 8, OfferKeep, &actionRoller{})
+	outcome := poseThenAnswer(t, 8, Decline(), &actionRoller{})
 
 	require.Equal(t, 8, outcome.Roll)
 	require.Equal(t, 12, outcome.Total, "no face joined it")
@@ -220,7 +222,7 @@ func TestKeepingLeavesTheTotalAlone(t *testing.T) {
 // TestANaturalOneStillMissesWithTheDie is the arithmetic branch being the ONLY
 // one a resume touches. Twenty added to a 1 is still a miss.
 func TestANaturalOneStillMissesWithTheDie(t *testing.T) {
-	outcome := poseThenAnswer(t, 1, OfferSpend, &actionRoller{singles: []int{6}})
+	outcome := poseThenAnswer(t, 1, Take(""), &actionRoller{singles: []int{6}})
 
 	require.Equal(t, 1, outcome.Roll)
 	require.Equal(t, 11, outcome.Total, "the face still joins the total")
@@ -230,7 +232,7 @@ func TestANaturalOneStillMissesWithTheDie(t *testing.T) {
 
 // TestANaturalTwentyIsUnmoved — the crit is the face of the d20, not the total.
 func TestANaturalTwentyIsUnmoved(t *testing.T) {
-	outcome := poseThenAnswer(t, 20, OfferSpend, &actionRoller{singles: []int{3}, damage: [][]int{{3}, {5}}})
+	outcome := poseThenAnswer(t, 20, Take(""), &actionRoller{singles: []int{3}, damage: [][]int{{3}, {5}}})
 
 	require.Equal(t, 20, outcome.Roll)
 	require.Equal(t, 27, outcome.Total)
@@ -263,8 +265,8 @@ func TestThePostRollChainIsPublishedExactlyOnceAcrossThePair(t *testing.T) {
 	require.NotNil(t, posed.Posed)
 	require.Empty(t, seen, "the posing half publishes none: it stopped before the chain")
 
-	machine, err := NewStrikeResumed(&StrikeResumeInput{
-		Frozen: posed.Posed.Frozen, Answer: OfferSpend,
+	machine, err := Resume(&ResumeInput{
+		Pause: *posed.Posed, Answer: Take(""),
 		Roller: &actionRoller{singles: []int{4}, damage: [][]int{{3}}},
 	})
 	require.NoError(t, err)
@@ -296,20 +298,20 @@ func strikeFor(t *testing.T, roller dice.Roller) Machine {
 func TestSpendingConsumesTheDieAndKeepingDoesNot(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
-		answer OfferAnswer
+		answer Answer
 		roller *actionRoller
 		want   string
 	}{
-		{"spending takes the die off the sheet", OfferSpend,
+		{"spending takes the die off the sheet", Take(""),
 			&actionRoller{singles: []int{4}, damage: [][]int{{3}}}, "gone"},
-		{"keeping leaves it in hand", OfferKeep, &actionRoller{}, "held"},
+		{"keeping leaves it in hand", Decline(), &actionRoller{}, "held"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			posed, err := heroSwings(t, inspiredHero(t), &actionRoller{singles: []int{8}})
 			require.NoError(t, err)
 
-			machine, err := NewStrikeResumed(&StrikeResumeInput{
-				Frozen: posed.Posed.Frozen, Answer: tc.answer, Roller: tc.roller,
+			machine, err := Resume(&ResumeInput{
+				Pause: *posed.Posed, Answer: tc.answer, Roller: tc.roller,
 			})
 			require.NoError(t, err)
 			out, err := resolveHeroStrike(t, inspiredHero(t), machine)
@@ -349,21 +351,23 @@ func TestATamperedFrozenBlobIsRefused(t *testing.T) {
 	posed, err := heroSwings(t, inspiredHero(t), &actionRoller{singles: []int{11}})
 	require.NoError(t, err)
 
-	var frozen frozenStrike
-	require.NoError(t, json.Unmarshal(posed.Posed.Frozen, &frozen))
+	h, err := readFrozen(posed.Posed.Frozen)
+	require.NoError(t, err)
+	var frozen frozenPostRoll
+	require.NoError(t, decodeState(h, &frozen))
 
 	t.Run("a d20 outside 1-20", func(t *testing.T) {
 		bad := frozen
 		bad.Roll = 21
 		bad.Total = 21 + bad.Folded.AttackBonus
-		_, err := NewStrikeResumed(resumeOf(t, bad, OfferSpend))
+		_, err := Resume(resumeOf(t, *posed.Posed, bad, Take("")))
 		require.ErrorIs(t, err, ErrBadFrozen)
 	})
 
 	t.Run("a total that disagrees with the frozen calculation", func(t *testing.T) {
 		bad := frozen
 		bad.Total = frozen.Total + 7
-		_, err := NewStrikeResumed(resumeOf(t, bad, OfferSpend))
+		_, err := Resume(resumeOf(t, *posed.Posed, bad, Take("")))
 		require.ErrorIs(t, err, ErrBadFrozen)
 	})
 
@@ -373,64 +377,70 @@ func TestATamperedFrozenBlobIsRefused(t *testing.T) {
 		*bad.Calculation.Components[1].Modifier++
 		bad.Calculation.Total++
 		bad.Total++
-		_, err := NewStrikeResumed(resumeOf(t, bad, OfferSpend))
+		_, err := Resume(resumeOf(t, *posed.Posed, bad, Take("")))
 		require.ErrorIs(t, err, ErrBadFrozen)
 	})
 
-	t.Run("a kind this build did not write", func(t *testing.T) {
-		bad := frozen
-		bad.Kind = "walk.paused"
-		_, err := NewStrikeResumed(resumeOf(t, bad, OfferSpend))
-		require.ErrorIs(t, err, ErrBadFrozen)
-	})
-
-	t.Run("version one fails closed", func(t *testing.T) {
-		bad := frozen
-		bad.Version = 1
-		bad.Calculation = nil
-		_, err := NewStrikeResumed(resumeOf(t, bad, OfferSpend))
+	t.Run("a machine this build did not write", func(t *testing.T) {
+		in := resumeOf(t, *posed.Posed, frozen, Take(""))
+		raw, err := json.Marshal(frozenHeader{V: PauseVersion, Machine: "walk.paused", Kind: PausePostRoll, State: h.State})
+		require.NoError(t, err)
+		in.Pause.Frozen = raw
+		_, err = Resume(in)
 		require.ErrorIs(t, err, ErrBadFrozen)
 	})
 
 	t.Run("a version this build did not write", func(t *testing.T) {
-		bad := frozen
-		bad.Version = 99
-		_, err := NewStrikeResumed(resumeOf(t, bad, OfferSpend))
+		in := resumeOf(t, *posed.Posed, frozen, Take(""))
+		raw, err := json.Marshal(frozenHeader{V: 99, Machine: h.Machine, Kind: h.Kind, State: h.State})
+		require.NoError(t, err)
+		in.Pause.Frozen = raw
+		_, err = Resume(in)
+		require.ErrorIs(t, err, ErrStalePause)
+	})
+
+	t.Run("a kind the pause does not state", func(t *testing.T) {
+		in := resumeOf(t, *posed.Posed, frozen, Take(""))
+		in.Pause.Kind = PauseSaveRoll
+		_, err := Resume(in)
 		require.ErrorIs(t, err, ErrBadFrozen)
 	})
 
 	t.Run("an offer posed to somebody other than the roller", func(t *testing.T) {
 		bad := frozen
 		bad.Offer.Audience = "somebody-else"
-		_, err := NewStrikeResumed(resumeOf(t, bad, OfferSpend))
+		_, err := Resume(resumeOf(t, *posed.Posed, bad, Take("")))
 		require.ErrorIs(t, err, ErrNotOffered)
 	})
 
 	t.Run("an answer this machine did not pose", func(t *testing.T) {
-		_, err := NewStrikeResumed(resumeOf(t, frozen, OfferAnswer("counterspell")))
+		_, err := Resume(resumeOf(t, *posed.Posed, frozen, Take("counterspell")))
 		require.ErrorIs(t, err, ErrNotOffered)
 	})
 
 	t.Run("no roller", func(t *testing.T) {
-		in := resumeOf(t, frozen, OfferKeep)
+		in := resumeOf(t, *posed.Posed, frozen, Decline())
 		in.Roller = nil
-		_, err := NewStrikeResumed(in)
+		_, err := Resume(in)
 		require.ErrorIs(t, err, ErrNoRoller)
 	})
 
 	t.Run("nothing at all", func(t *testing.T) {
-		_, err := NewStrikeResumed(nil)
+		_, err := Resume(nil)
 		require.ErrorIs(t, err, ErrNilInput)
-		_, err = NewStrikeResumed(&StrikeResumeInput{Answer: OfferKeep, Roller: dice.NewRoller()})
+		_, err = Resume(&ResumeInput{Answer: Decline(), Roller: dice.NewRoller()})
 		require.ErrorIs(t, err, ErrBadFrozen)
 	})
 }
 
-func resumeOf(t *testing.T, frozen frozenStrike, answer OfferAnswer) *StrikeResumeInput {
+// resumeOf re-freezes an edited post-roll state behind a fresh header on the
+// pause it came from.
+func resumeOf(t *testing.T, pause Pause, frozen frozenPostRoll, answer Answer) *ResumeInput {
 	t.Helper()
-	raw, err := json.Marshal(frozen)
+	raw, err := writeFrozen(machinePostRoll, PausePostRoll, frozen)
 	require.NoError(t, err)
-	return &StrikeResumeInput{Frozen: raw, Answer: answer, Roller: dice.NewRoller()}
+	pause.Frozen = raw
+	return &ResumeInput{Pause: pause, Answer: answer, Roller: dice.NewRoller()}
 }
 
 // TestAnOfferToSomebodyElseIsRefusedRatherThanPosed is R5 failing closed. The
@@ -450,7 +460,7 @@ func TestAnOfferToSomebodyElseIsRefusedRatherThanPosed(t *testing.T) {
 }
 
 // TestTwoOffersOnOneRollAreRefused is the same shelf item from the other side:
-// one Pose per run is what this slice drives.
+// one pause per run is what this slice drives.
 func TestTwoOffersOnOneRollAreRefused(t *testing.T) {
 	machine := newStrikeMachine(&StrikeInput{
 		AttackerID: heroID, TargetID: wolfID, Definition: validMeleeDefinition(),
@@ -465,10 +475,10 @@ func TestTwoOffersOnOneRollAreRefused(t *testing.T) {
 	require.ErrorIs(t, err, ErrNotOffered)
 }
 
-// TestARequestedMachineCannotPose: a sub-machine's requester is a Go closure
+// TestARequestedMachineCannotPause: a sub-machine's requester is a Go closure
 // on the stack, and nothing serializes it. Refused by name rather than
 // silently dropping the question.
-func TestARequestedMachineCannotPose(t *testing.T) {
+func TestARequestedMachineCannotPause(t *testing.T) {
 	_, err := drive(context.Background(), nil, posingMachine{}, &Participants{})
 	require.ErrorIs(t, err, ErrBadStep)
 }
@@ -476,5 +486,5 @@ func TestARequestedMachineCannotPose(t *testing.T) {
 type posingMachine struct{}
 
 func (posingMachine) Start(_ context.Context, _ *Participants) (Step, error) {
-	return Pose{Ask: Ask{Audience: "somebody"}, Frozen: []byte("{}")}, nil
+	return Pause{Ask: Ask{Audience: "somebody"}, Frozen: []byte("{}")}, nil
 }

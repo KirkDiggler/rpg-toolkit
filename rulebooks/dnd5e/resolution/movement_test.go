@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
@@ -26,17 +27,43 @@ import (
 // everyoneSwings answers with one attack for anybody who asks.
 type everyoneSwings struct{ asked []string }
 
-func (e *everyoneSwings) AttackFor(reactorID string) (combatActions.Definition, bool) {
+func (e *everyoneSwings) AttackFor(reactorID string) (combatActions.Definition, ReactionAnswer) {
 	e.asked = append(e.asked, reactorID)
-	return validMeleeDefinition(), true
+	return validMeleeDefinition(), ReactionSwing
 }
 
 // nobodySwings is the empty-handed caster: it answers, and the answer is no.
 type nobodySwings struct{ asked []string }
 
-func (n *nobodySwings) AttackFor(reactorID string) (combatActions.Definition, bool) {
+func (n *nobodySwings) AttackFor(reactorID string) (combatActions.Definition, ReactionAnswer) {
 	n.asked = append(n.asked, reactorID)
-	return combatActions.Definition{}, false
+	return combatActions.Definition{}, ReactionNone
+}
+
+// reactorReactions is how many reactions a reactor in these scenes holds:
+// TWO, so a bill that charged twice reads differently from one that charged
+// once, and every billing assertion says how much was spent.
+const reactorReactions = 2
+
+// reactorSheet is a probe in a fight, with reactions on its meter for the door
+// to bill.
+func reactorSheet(id string) *character.Data {
+	sheet := probeSheet(id)
+	sheet.ActionEconomy = &character.ActionEconomyData{
+		TurnNumber: 1, ActionsRemaining: 1, BonusActionsRemaining: 1, ReactionsRemaining: reactorReactions,
+	}
+	return sheet
+}
+
+// reactionsLeft reads a character's reaction meter off the sheets an output
+// handed back; a sheet that came back clean was never billed.
+func reactionsLeft(out *Output, id string) int {
+	for _, sheet := range out.DirtyCharacters {
+		if sheet.ID == id && sheet.ActionEconomy != nil {
+			return sheet.ActionEconomy.ReactionsRemaining
+		}
+	}
+	return reactorReactions
 }
 
 type MovementTestSuite struct {
@@ -82,12 +109,24 @@ func (s *MovementTestSuite) world() encounter.EncounterData {
 
 // runStep drives one movement interaction on a bus the test holds, so it can
 // subscribe the way a condition would.
+//
+// reactors are the members in a fight: each gets one reaction to spend, which
+// is also what lets the real opportunity attack condition offer them a swing.
+// Everybody else carries no economy and so is never offered one.
 func (s *MovementTestSuite) runStep(
-	in *MovementInput, listen func(context.Context, events.EventBus),
+	in *MovementInput, listen func(context.Context, events.EventBus), reactors ...string,
 ) (*Output, error) {
 	machine, err := NewMovement(in)
 	s.Require().NoError(err)
 
+	return s.runMachine(machine, listen, reactors...)
+}
+
+// runMachine is [MovementTestSuite.runStep] over a machine already built — a
+// resumed one, say — in the same world and cast.
+func (s *MovementTestSuite) runMachine(
+	machine Machine, listen func(context.Context, events.EventBus), reactors ...string,
+) (*Output, error) {
 	bus := events.NewEventBus()
 	if listen != nil {
 		listen(s.ctx, bus)
@@ -95,10 +134,21 @@ func (s *MovementTestSuite) runStep(
 
 	return resolveOn(s.ctx, &Input{
 		World: s.world(),
-		Participants: []Participant{
-			{Character: probeSheet(heroID)}, {Character: probeSheet(wolfID)},
-			{Character: probeSheet("alice")}, {Character: probeSheet("zara")},
-		},
+		Participants: func() []Participant {
+			fighting := map[string]bool{}
+			for _, id := range reactors {
+				fighting[id] = true
+			}
+			var cast []Participant
+			for _, id := range []string{heroID, wolfID, "alice", "zara"} {
+				sheet := probeSheet(id)
+				if fighting[id] {
+					sheet = reactorSheet(id)
+				}
+				cast = append(cast, Participant{Character: sheet})
+			}
+			return cast
+		}(),
 		Machine: machine,
 		Capabilities: encounter.Capabilities{
 			Initiative: orderAsGiven{},
@@ -183,7 +233,7 @@ func (s *MovementTestSuite) TestEveryParticipantIsReadiedForTheFreeReactions() {
 // A reaction resolves inside this interaction, on its own bus and over its own
 // cast, rather than being handed back for the caller to run separately.
 func (s *MovementTestSuite) TestATriggeredReactionSwingsWithinTheSameInteraction() {
-	out, err := s.runStep(s.stepInput(), triggerFrom(heroID, wolfID))
+	out, err := s.runStep(s.stepInput(), nil, heroID)
 	s.Require().NoError(err)
 
 	moved, ok := out.Outcome.(MovementOutcome)
@@ -205,9 +255,7 @@ func (s *MovementTestSuite) TestATriggeredReactionSwingsWithinTheSameInteraction
 // writer.
 func (s *MovementTestSuite) TestAnOpportunityAttackSwingsAsOne() {
 	var frames []contributions.Frame
-	trigger := triggerFrom(heroID, wolfID)
 	out, err := s.runStep(s.stepInput(), func(ctx context.Context, bus events.EventBus) {
-		trigger(ctx, bus)
 		_, _ = dnd5eEvents.AttackChain.On(bus).SubscribeWithChain(ctx,
 			func(_ context.Context, e dnd5eEvents.AttackChainEvent,
 				c chain.Chain[dnd5eEvents.AttackChainEvent],
@@ -215,7 +263,7 @@ func (s *MovementTestSuite) TestAnOpportunityAttackSwingsAsOne() {
 				frames = append(frames, e.Frame.Clone())
 				return c, nil
 			})
-	})
+	}, heroID)
 	s.Require().NoError(err)
 
 	moved, ok := out.Outcome.(MovementOutcome)
@@ -227,9 +275,10 @@ func (s *MovementTestSuite) TestAnOpportunityAttackSwingsAsOne() {
 }
 
 // triggerFrom publishes a reaction trigger during the fold, which is exactly
-// what OpportunityAttackCondition does when its predicate matches — the
-// condition itself is not used here because this module cannot seat one, and
-// standing in for its PUBLISH is what keeps this a test of the machine.
+// what OpportunityAttackCondition does when its predicate matches. It stands
+// in for the condition where a scene needs a trigger from a member who is in
+// no fight (no economy, so the real condition stays silent): the tests that
+// decide whether to swing and never bill.
 func triggerFrom(reactor, mover string) func(context.Context, events.EventBus) {
 	return func(ctx context.Context, bus events.EventBus) {
 		_, _ = dnd5eEvents.MovementChain.On(bus).SubscribeWithChain(ctx,
@@ -249,9 +298,9 @@ func triggerFrom(reactor, mover string) func(context.Context, events.EventBus) {
 	}
 }
 
-// THE BILL. The reaction is spent when it is TAKEN, and this event is what
-// says so — the machine publishes it once a strike has actually resolved, and
-// the reactor's condition spends on it.
+// THE BILL. The reaction is spent when it is TAKEN, through the one door,
+// once a strike has actually resolved — exactly one reaction, off the
+// reactor's own meter.
 //
 // It has to come from here because only here is the answer complete. The
 // condition's trigger is published from a chain SUBSCRIBER, strictly before
@@ -260,21 +309,14 @@ func triggerFrom(reactor, mover string) func(context.Context, events.EventBus) {
 // charged for every reaction those two went on to decline. The next three
 // tests are exactly those declines (rpg-project#392 R1).
 func (s *MovementTestSuite) TestAReactionThatSwingsIsBilledOnce() {
-	var taken []dnd5eEvents.ReactionTakenEvent
-
-	out, err := s.runStep(s.stepInput(), func(ctx context.Context, bus events.EventBus) {
-		watchTaken(&taken)(ctx, bus)
-		triggerFrom(heroID, wolfID)(ctx, bus)
-	})
+	out, err := s.runStep(s.stepInput(), nil, heroID)
 	s.Require().NoError(err)
-	s.Require().Len(out.Outcome.(MovementOutcome).Reactions, 1, "the swing is the thing being billed")
+	moved := out.Outcome.(MovementOutcome)
+	s.Require().Len(moved.Reactions, 1, "the swing is the thing being billed")
 
-	s.Require().Len(taken, 1, "one swing, one bill")
-	s.Equal(heroID, taken[0].ReactorID)
-	s.Equal(refs.Conditions.OpportunityAttack().String(), taken[0].ConditionRef,
-		"named by the same ref the offer went out under, or the condition cannot tell it was theirs")
-	s.Equal(dnd5eEvents.TriggerKindMovementOA, taken[0].TriggerKind)
-	s.Equal(wolfID, taken[0].SourceEntity)
+	s.Equal(reactorReactions-1, reactionsLeft(out, heroID), "one swing, exactly one reaction, off the reactor's meter")
+	s.Equal(refs.Conditions.OpportunityAttack().String(), moved.Reactions[0].ConditionRef,
+		"the reaction names its source, which the bill no longer carries")
 }
 
 // THE ALLY CASE, and the bug this ruling exists to fix. A reactor the caller
@@ -282,67 +324,37 @@ func (s *MovementTestSuite) TestAReactionThatSwingsIsBilledOnce() {
 // caster — is never billed, so a friend walking past a fighter no longer costs
 // the fighter their reaction.
 func (s *MovementTestSuite) TestARefusedReactorIsNeverBilled() {
-	var taken []dnd5eEvents.ReactionTakenEvent
 	empty := &nobodySwings{}
 	in := s.stepInput()
 	in.Reactions = empty
 
-	out, err := s.runStep(in, func(ctx context.Context, bus events.EventBus) {
-		watchTaken(&taken)(ctx, bus)
-		triggerFrom(heroID, wolfID)(ctx, bus)
-	})
+	out, err := s.runStep(in, nil, heroID)
 	s.Require().NoError(err)
 
 	s.Require().Equal([]string{heroID}, empty.asked, "the capability was asked and said no")
 	s.Empty(out.Outcome.(MovementOutcome).Reactions)
-	s.Empty(taken, "a reaction the capability refused costs its reactor nothing")
+	s.Equal(reactorReactions, reactionsLeft(out, heroID), "a reaction the capability refused costs its reactor nothing")
 }
 
 // Disengage is free for the reactors it silences. A prevented opportunity
 // attack is dropped before the capability is even asked, so there is nothing
-// to bill — which it also was not, back when the condition spent its meter
-// inside the fold and this machine could not unwind it.
+// to bill.
 func (s *MovementTestSuite) TestASuppressedStepBillsNobody() {
-	var taken []dnd5eEvents.ReactionTakenEvent
-
-	_, err := s.runStep(s.stepInput(), func(ctx context.Context, bus events.EventBus) {
-		watchTaken(&taken)(ctx, bus)
-		triggerFrom(heroID, wolfID)(ctx, bus)
-		preventOA(wolfID)(ctx, bus)
-	})
+	out, err := s.runStep(s.stepInput(), preventOA(wolfID), heroID)
 	s.Require().NoError(err)
 
-	s.Empty(taken, "a suppressed reaction never happened, so nobody pays for it")
+	s.Equal(reactorReactions, reactionsLeft(out, heroID), "a suppressed reaction never happened, so nobody pays for it")
 }
 
-// Two reactors, two bills, each naming its own reactor. One bus carries every
-// combatant's conditions, so a bill that did not name its reactor would spend
-// the wrong member's reaction.
+// Two reactors, two bills, each off its own reactor's meter. A bill that did
+// not name its payer would spend the wrong member's reaction.
 func (s *MovementTestSuite) TestEachReactorIsBilledForTheirOwnSwing() {
-	var taken []dnd5eEvents.ReactionTakenEvent
-
-	_, err := s.runStep(s.stepInput(), func(ctx context.Context, bus events.EventBus) {
-		watchTaken(&taken)(ctx, bus)
-		triggerFrom("zara", wolfID)(ctx, bus)
-		triggerFrom("alice", wolfID)(ctx, bus)
-	})
+	out, err := s.runStep(s.stepInput(), nil, "zara", "alice")
 	s.Require().NoError(err)
 
-	s.Require().Len(taken, 2)
-	s.Equal([]string{"alice", "zara"}, []string{taken[0].ReactorID, taken[1].ReactorID},
-		"billed in the same fixed order the reactions were answered in")
-}
-
-// watchTaken records the bills the machine published, which is the whole of
-// what a reaction condition subscribes to in order to spend its meter.
-func watchTaken(taken *[]dnd5eEvents.ReactionTakenEvent) func(context.Context, events.EventBus) {
-	return func(ctx context.Context, bus events.EventBus) {
-		_, _ = dnd5eEvents.ReactionTakenTopic.On(bus).Subscribe(ctx,
-			func(_ context.Context, e dnd5eEvents.ReactionTakenEvent) error {
-				*taken = append(*taken, e)
-				return nil
-			})
-	}
+	s.Equal(reactorReactions-1, reactionsLeft(out, "alice"))
+	s.Equal(reactorReactions-1, reactionsLeft(out, "zara"))
+	s.Equal(reactorReactions, reactionsLeft(out, heroID), "nobody else's meter moves")
 }
 
 // A reactor with nothing to swing is an ANSWER, not a failure. The step still
@@ -439,11 +451,8 @@ func (s *MovementTestSuite) TestTwoReactorsAreAnsweredInADeterministicOrder() {
 	in := s.stepInput()
 	in.Reactions = swings
 
-	out, err := s.runStep(in, func(ctx context.Context, bus events.EventBus) {
-		// Published deliberately in reverse-alphabetical order.
-		triggerFrom("zara", wolfID)(ctx, bus)
-		triggerFrom("alice", wolfID)(ctx, bus)
-	})
+	// Named deliberately in reverse-alphabetical order.
+	out, err := s.runStep(in, nil, "zara", "alice")
 	s.Require().NoError(err)
 
 	moved := out.Outcome.(MovementOutcome)

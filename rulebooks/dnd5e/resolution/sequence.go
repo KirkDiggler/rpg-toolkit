@@ -33,8 +33,13 @@ type SequenceOutcome struct {
 	TargetID   string
 
 	// Steps are the component outcomes, in declared order, one per step that
-	// actually ran.
+	// settled in this output — from [SequenceOutcome.From] on.
 	Steps []SequenceStepOutcome
+
+	// From is the declared index of Steps[0]. Zero on an unpaused sequence;
+	// on a resumed one it is the swing the pause stopped on, which the resume
+	// reports first.
+	From int
 
 	// Unswung is how many declared steps never happened because the target
 	// went down, and zero when the whole script ran.
@@ -199,8 +204,9 @@ type sequenceStep struct {
 // through [Request] exactly as a cast composes a contest per target. What it
 // owns is the order, the stop rule, and the collected outcome.
 type sequenceMachine struct {
+	// resumeIndex is the swing a resumed sequence starts on, and zero for a
+	// fresh one. It is the outcome's From.
 	resumeIndex int
-	resumed     bool
 	action      core.Ref
 	name        string
 	attackerID  string
@@ -254,9 +260,9 @@ func (m *sequenceMachine) Start(ctx context.Context, cast *Participants) (Step, 
 		return nil, err
 	}
 	m.target = target
-	if !m.resumed {
-		m.outcome = SequenceOutcome{Action: m.action, AttackerID: m.attackerID, TargetID: m.targetID}
-	}
+	// Only what settles in this call: a resumed sequence reports from the
+	// swing it paused on, because the swings before it were already told.
+	m.outcome = SequenceOutcome{Action: m.action, AttackerID: m.attackerID, TargetID: m.targetID, From: m.resumeIndex}
 
 	for index := m.resumeIndex; index < len(m.steps); index++ {
 		first, startErr := m.steps[index].inner.Start(ctx, cast)
@@ -280,7 +286,7 @@ func (m *sequenceMachine) resolveStep(index int) Step {
 
 	return Request{
 		name:    fmt.Sprintf("sequence %s step %d: %s", m.action.String(), index, step.action.String()),
-		onPose:  func(_ context.Context, pose Pose) (Step, error) { return m.freezeSequence(index, pose) },
+		onPause: func(_ context.Context, pause Pause) (Step, error) { return m.freezeSequence(index, pause) },
 		machine: startedMachine{first: step.first},
 		next: func(_ context.Context, out Outcome) (Step, error) {
 			struck, ok := out.(StrikeOutcome)

@@ -229,18 +229,22 @@ func (s *FrameTestSuite) TestResumedOpportunityStrikeKeepsTheFact() {
 	posed, err := heroSwings(s.T(), inspiredHero(s.T()), &actionRoller{singles: []int{8}})
 	s.Require().NoError(err)
 	s.Require().NotNil(posed.Posed)
+	h, err := readFrozen(posed.Posed.Frozen)
+	s.Require().NoError(err)
 	var blob map[string]any
-	s.Require().NoError(json.Unmarshal(posed.Posed.Frozen, &blob))
+	s.Require().NoError(json.Unmarshal(h.State, &blob))
 	s.Nil(blob["opportunity"], "a swing on its own turn freezes no opportunity flag")
 	folded, ok := blob["folded"].(map[string]any)
 	s.Require().True(ok)
 	s.NotContains(folded, "Frame", "the frame is rebuilt from truth, never frozen")
 	blob["opportunity"] = true
-	frozen, err := json.Marshal(blob)
+	frozen, err := writeFrozen(h.Machine, h.Kind, blob)
 	s.Require().NoError(err)
+	pause := *posed.Posed
+	pause.Frozen = frozen
 
-	machine, err := NewStrikeResumed(&StrikeResumeInput{
-		Frozen: frozen, Answer: OfferSpend,
+	machine, err := Resume(&ResumeInput{
+		Pause: pause, Answer: Take(""),
 		Roller: &actionRoller{singles: []int{4}, damage: [][]int{{3}}},
 	})
 	s.Require().NoError(err)
@@ -275,25 +279,32 @@ func (s *FrameTestSuite) TestHandaxeStrikeDoesNotSneakAttack() {
 	s.Equal(abilities.DEX, handaxe().Attack.Ability.Ability, "precondition: the swing uses Dexterity")
 }
 
-// frozenOpportunity reads a frozen strike blob's opportunity flag.
+// frozenOpportunity reads a frozen strike's opportunity flag off its state.
 func (s *FrameTestSuite) frozenOpportunity(frozen json.RawMessage) any {
+	h, err := readFrozen(frozen)
+	s.Require().NoError(err)
 	var blob map[string]any
-	s.Require().NoError(json.Unmarshal(frozen, &blob))
+	s.Require().NoError(json.Unmarshal(h.State, &blob))
 	return blob["opportunity"]
 }
 
-// refusesAsVersionTwo rewrites a frozen strike to version 2 — the build that
-// froze no Opportunity — and asserts the resume refuses it, rather than
-// reading the missing flag as a swing on its own turn.
-func (s *FrameTestSuite) refusesAsVersionTwo(frozen json.RawMessage) {
-	var blob map[string]any
-	s.Require().NoError(json.Unmarshal(frozen, &blob))
-	blob["version"] = 2
-	delete(blob, "opportunity")
-	old, err := json.Marshal(blob)
+// refusesAsAnEarlierBuild rewrites a frozen strike as the version-3 build
+// wrote it — no header version this build accepts, no opportunity flag — and
+// asserts the resume refuses it as stale, rather than reading the missing flag
+// as a swing on its own turn.
+func (s *FrameTestSuite) refusesAsAnEarlierBuild(pause Pause) {
+	h, err := readFrozen(pause.Frozen)
 	s.Require().NoError(err)
-	_, err = NewStrikeResumed(&StrikeResumeInput{Frozen: old, Answer: OfferKeep, Roller: &actionRoller{}})
-	s.Require().ErrorIs(err, ErrBadFrozen, "a version-2 strike cannot resume as Opportunity Known(false)")
+	var blob map[string]any
+	s.Require().NoError(json.Unmarshal(h.State, &blob))
+	delete(blob, "opportunity")
+	state, err := json.Marshal(blob)
+	s.Require().NoError(err)
+	old, err := json.Marshal(frozenHeader{V: 3, Machine: h.Machine, Kind: h.Kind, State: state})
+	s.Require().NoError(err)
+	pause.Frozen = old
+	_, err = Resume(&ResumeInput{Pause: pause, Answer: Decline(), Roller: &actionRoller{}})
+	s.Require().ErrorIs(err, ErrStalePause, "an earlier build's strike cannot resume as Opportunity Known(false)")
 }
 
 // TestEveryFreezeCarriesOpportunity: an opportunity strike that pauses at any
@@ -320,9 +331,9 @@ func (s *FrameTestSuite) TestEveryFreezeCarriesOpportunity() {
 		}, newSurface(events.NewEventBus()))
 		s.Require().NoError(err)
 		s.Require().NotNil(out.Posed)
-		s.Require().True(out.Posed.BeforeRoll, "precondition: the pre-roll reaction posed")
+		s.Require().Equal(PauseBeforeRoll, out.Posed.Kind, "precondition: the pre-roll reaction posed")
 		s.Equal(true, s.frozenOpportunity(out.Posed.Frozen))
-		s.refusesAsVersionTwo(out.Posed.Frozen)
+		s.refusesAsAnEarlierBuild(*out.Posed)
 	})
 
 	s.Run("after the roll", func() {
@@ -332,9 +343,9 @@ func (s *FrameTestSuite) TestEveryFreezeCarriesOpportunity() {
 		}))
 		s.Require().NoError(err)
 		s.Require().NotNil(out.Posed)
-		s.Require().False(out.Posed.BeforeRoll, "precondition: the post-roll offer posed")
+		s.Require().Equal(PausePostRoll, out.Posed.Kind, "precondition: the post-roll offer posed")
 		s.Equal(true, s.frozenOpportunity(out.Posed.Frozen))
-		s.refusesAsVersionTwo(out.Posed.Frozen)
+		s.refusesAsAnEarlierBuild(*out.Posed)
 	})
 
 	s.Run("after the hit", func() {
@@ -355,11 +366,13 @@ func (s *FrameTestSuite) TestEveryFreezeCarriesOpportunity() {
 		}), newSurface(bus))
 		s.Require().NoError(err)
 		s.Require().NotNil(out.Posed)
-		s.Require().NotNil(out.Posed.SettledStrike, "precondition: the post-hit reaction posed")
+		s.Require().Equal(PausePostHit, out.Posed.Kind, "precondition: the post-hit reaction posed")
 		s.Equal(true, s.frozenOpportunity(out.Posed.Frozen))
-		s.refusesAsVersionTwo(out.Posed.Frozen)
-		s.Equal(contributions.Frame{}, out.Posed.SettledStrike.Folded.Frame,
-			"the settled strike a pose reports carries no execution frame")
+		s.refusesAsAnEarlierBuild(*out.Posed)
+		settled, ok := out.Outcome.(StrikeOutcome)
+		s.Require().True(ok, "the settled hit is the paused output's outcome")
+		s.Equal(contributions.Frame{}, settled.Folded.Frame,
+			"the settled strike a pause reports carries no execution frame")
 	})
 }
 

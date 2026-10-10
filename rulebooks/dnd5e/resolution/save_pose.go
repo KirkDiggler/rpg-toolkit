@@ -15,21 +15,11 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
 
-// frozenSaveKind and frozenSaveVersion discriminate what a stored blob is,
-// the same trust boundary [frozenStrikeKind]/[frozenCheckKind] keep.
-const (
-	frozenSaveKind    = "save.post_roll"
-	frozenSaveVersion = 1
-)
-
 // frozenSave is a saving throw stopped after its d20, in enough detail to
 // finish it and in no more detail than that — the save sibling of
 // [frozenCheck]. THE FOLD IS STORED RATHER THAN RECOMPUTED, for
-// [frozenStrike]'s reason.
+// [frozenPostRoll]'s reason.
 type frozenSave struct {
-	Kind    string `json:"kind"`
-	Version int    `json:"version"`
-
 	SaverID string            `json:"saver_id"`
 	Ability abilities.Ability `json:"ability"`
 	DC      int               `json:"dc"`
@@ -54,41 +44,36 @@ type frozenSave struct {
 // saveResume is a frozen save plus the answer it came back with.
 type saveResume struct {
 	frozen frozenSave
-	answer OfferAnswer
+	answer Answer
 }
 
 // newSaveResumedFromJSON builds the machine that finishes a saving throw
-// somebody answered, from the raw bytes [poseContest] embedded. Unexported:
+// somebody answered, from the whole header [poseContest] embedded. Unexported:
 // a bare save is never resolved on its own ([requestSave] is the only caller
 // of [NewSave]), so resuming one is a concern internal to [contestMachine]'s
 // own resume, not a public entry.
 //
-// It starts where the pose was: apply the answer, then hand back the same
+// It starts where the pause was: apply the answer, then hand back the same
 // [SaveOutcome] a finished [NewSave] would. Nothing is re-rolled and nothing
-// is re-folded — the save sibling of [NewStrikeResumed] and [ResumeCheck].
+// is re-folded.
 //
 // # It fails closed on a frozen blob it cannot trust
 //
-// The same checks [NewStrikeResumed] runs before the world is loaded and
-// before anything is charged: kind and version, a d20 in range, and a
-// calculation that validates and agrees with the stored total.
-func newSaveResumedFromJSON(raw json.RawMessage, answer OfferAnswer, roller dice.Roller) (Machine, error) {
-	if len(raw) == 0 {
-		return nil, fmt.Errorf("%w: no frozen save to resume", ErrBadFrozen)
+// Before the world is loaded and before anything is charged: the header (a
+// stale version is [ErrStalePause]; a machine or kind that is not a save's is
+// [ErrBadFrozen]), a d20 in range, and a calculation that validates and agrees
+// with the stored total.
+func newSaveResumedFromJSON(raw json.RawMessage, answer Answer, roller dice.Roller) (Machine, error) {
+	h, err := readFrozen(raw)
+	if err != nil {
+		return nil, err
 	}
-	switch answer {
-	case OfferSpend, OfferKeep:
-	default:
-		return nil, fmt.Errorf("%w: %q is not an answer this machine posed", ErrNotOffered, answer)
+	if h.Machine != machineSave || h.Kind != PauseSaveRoll {
+		return nil, fmt.Errorf("%w: %q/%q is not a frozen save", ErrBadFrozen, h.Machine, h.Kind)
 	}
-
 	var frozen frozenSave
-	if err := json.Unmarshal(raw, &frozen); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrBadFrozen, err)
-	}
-	if frozen.Kind != frozenSaveKind || frozen.Version != frozenSaveVersion {
-		return nil, fmt.Errorf("%w: kind %q version %d is not one this build froze",
-			ErrBadFrozen, frozen.Kind, frozen.Version)
+	if err := decodeState(h, &frozen); err != nil {
+		return nil, err
 	}
 	if frozen.Roll < 1 || frozen.Roll > 20 {
 		return nil, fmt.Errorf("%w: a d20 does not read %d", ErrBadFrozen, frozen.Roll)
@@ -103,7 +88,7 @@ func newSaveResumedFromJSON(raw json.RawMessage, answer OfferAnswer, roller dice
 		return nil, fmt.Errorf("%w: the offer names %q on %q's roll",
 			ErrNotOffered, frozen.Offer.Audience, frozen.SaverID)
 	}
-	if answer == OfferSpend && roller == nil {
+	if answer.Taken() && roller == nil {
 		return nil, fmt.Errorf("%w: a resumed save rolls with no roller", ErrNoRoller)
 	}
 
@@ -113,7 +98,7 @@ func newSaveResumedFromJSON(raw json.RawMessage, answer OfferAnswer, roller dice
 	}, nil
 }
 
-// pose stops the machine and hands its state out as bytes — the save sibling
+// pose stops the machine on a die offer and hands its state out as bytes — the save sibling
 // of [strikeMachine.pose] and [poseCheck]. Same two refusals, for the same
 // reasons.
 func (m *saveMachine) pose(result *saves.SavingThrowResult, offers []dnd5eEvents.Offer) (Step, error) {
@@ -130,8 +115,7 @@ func (m *saveMachine) pose(result *saves.SavingThrowResult, offers []dnd5eEvents
 		return nil, fmt.Errorf("%w: an offer with no ref or no die is nothing to ask about", ErrNotOffered)
 	}
 
-	frozen, err := json.Marshal(frozenSave{
-		Kind: frozenSaveKind, Version: frozenSaveVersion,
+	frozen, err := writeFrozen(machineSave, PauseSaveRoll, frozenSave{
 		SaverID: m.in.SaverID, Ability: m.in.Ability, DC: m.in.DC,
 		Roll: result.Roll, Total: result.Total,
 		IsNat1: result.IsNat1, IsNat20: result.IsNat20,
@@ -140,14 +124,14 @@ func (m *saveMachine) pose(result *saves.SavingThrowResult, offers []dnd5eEvents
 		Offer:        offer,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("%w: freeze save: %v", ErrBadFrozen, err)
+		return nil, err
 	}
 
-	return Pose{
+	return Pause{
+		Kind: PauseSaveRoll,
 		Ask: Ask{
 			Audience:    offer.Audience,
-			Offer:       offer,
-			Options:     []string{string(OfferSpend), string(OfferKeep)},
+			Offer:       offerFromRoll(offer),
 			Roll:        result.Roll,
 			Total:       result.Total,
 			Calculation: dnd5eEvents.CloneRollCalculation(result.Calculation),
@@ -167,7 +151,7 @@ func (m *saveMachine) resumeStep() Step {
 			total := frozen.Total
 			calculation := dnd5eEvents.CloneRollCalculation(frozen.Calculation)
 
-			if m.resume.answer == OfferSpend {
+			if m.resume.answer.Taken() {
 				if err := m.spendOffer(ctx, bus, frozen.Offer, calculation); err != nil {
 					return nil, err
 				}

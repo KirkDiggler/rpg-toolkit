@@ -108,6 +108,12 @@ var allowedInterfaceFields = map[string]string{
 	// TestEveryOutcomeIsAnswerShaped below, and a new one that forgets to join
 	// that table fails it.
 	"Outcome": "sealed to this package; every implementor is walked separately",
+
+	// A pause carries what its machine settled to the driver, which reports
+	// it as Output.Outcome — the same sealed interface, unexported on the
+	// pause and never marshalled, so no caller can read or write it.
+	"Posed.settled": "the sealed Outcome, unexported and never marshalled; implementors walked separately",
+	"Asked.settled": "the sealed Outcome, unexported and never marshalled; implementors walked separately",
 }
 
 // TestEveryOutcomeIsAnswerShaped walks the concrete types behind Resolve's
