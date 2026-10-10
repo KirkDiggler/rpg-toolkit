@@ -141,7 +141,7 @@ func assembleTemplate(in *DeriveTemplateInput) (*monster.Monster, error) {
 		return nil, fmt.Errorf("template %q: base %q is not a rulebook base: %w", ref.ID, in.Spec.Base, ErrUnknownContent)
 	}
 
-	tmpl, err := templateOf(in.Spec)
+	tmpl, err := templateOf(ref.ID, in.Spec)
 	if err != nil {
 		return nil, fmt.Errorf("template %q: %w", ref.ID, err)
 	}
@@ -220,7 +220,12 @@ func notationOf(dice string, flat int) string {
 // absence (R8): no armour is nil (the base's), no skills or actions are nil
 // (the base's), so [monster.Template.Merge] can tell "unstated" from "none".
 // Experience is carried as written and never inherits; 0 is worth nothing.
-func templateOf(spec dungeonspec.TemplateSpec) (monster.Template, error) {
+//
+// NAME IS IDENTITY, like the ref, so it is the template's and never the
+// base's. An unnamed template is called by its id, the part of its ref after
+// the second colon: an unnamed guard is "guard", not "Human". The base keeps
+// its own name only when it is assembled as itself.
+func templateOf(id string, spec dungeonspec.TemplateSpec) (monster.Template, error) {
 	// The template names its base, and FromTemplate refuses one paired with
 	// a different base: the pairing is checked inside the assembly.
 	base, err := core.ParseString(spec.Base)
@@ -228,9 +233,14 @@ func templateOf(spec dungeonspec.TemplateSpec) (monster.Template, error) {
 		return monster.Template{}, fmt.Errorf("base %q: %w: %v", spec.Base, ErrBadRef, err)
 	}
 
+	name := spec.Name
+	if name == "" {
+		name = id
+	}
+
 	out := monster.Template{
 		Base:        base,
-		Name:        spec.Name,
+		Name:        name,
 		HitDice:     spec.HitDice,
 		Proficiency: spec.Proficiency,
 		Experience:  spec.Experience,

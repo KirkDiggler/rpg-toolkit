@@ -44,7 +44,7 @@ func TestTemplateOfRefusesWhatTheCatalogueDoesNotKnow(t *testing.T) {
 			ErrUnknownContent, "STR"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := templateOf(tc.spec)
+			_, err := templateOf("cook", tc.spec)
 			require.ErrorIs(t, err, tc.want)
 			require.Contains(t, err.Error(), tc.text)
 		})
@@ -55,7 +55,7 @@ func TestTemplateOfRefusesWhatTheCatalogueDoesNotKnow(t *testing.T) {
 // armour, skill list or weapon list stays nil so the merge reads it as the
 // base's, and experience is carried as written, never inherited.
 func TestTemplateOfCarriesAbsenceAsAbsence(t *testing.T) {
-	tmpl, err := templateOf(dungeonspec.TemplateSpec{Base: "dnd5e:monsters:human"})
+	tmpl, err := templateOf("cook", dungeonspec.TemplateSpec{Base: "dnd5e:monsters:human"})
 	require.NoError(t, err)
 	require.Nil(t, tmpl.Armor)
 	require.Nil(t, tmpl.Skills)
@@ -135,4 +135,18 @@ func TestDeriveTemplateRefusesAnUnknownBaseByName(t *testing.T) {
 	_, err := DeriveTemplate(&DeriveTemplateInput{ID: "guard", Ref: "dnd5e:monsters:guard", Spec: spec})
 	require.ErrorIs(t, err, ErrUnknownContent)
 	require.Contains(t, err.Error(), "dnd5e:monsters:elf")
+}
+
+// TestATemplateIsNamedAsItselfNeverAsItsBase: name is identity. An unnamed
+// template is called by its id; a named one by what the author wrote.
+func TestATemplateIsNamedAsItselfNeverAsItsBase(t *testing.T) {
+	out, err := DeriveTemplate(&DeriveTemplateInput{ID: "guard", Ref: "dnd5e:monsters:guard", Spec: castleGuard})
+	require.NoError(t, err)
+	require.Equal(t, "guard", out.Block.Name, "the template's id, not the human's name")
+
+	named := castleGuard
+	named.Name = "Castle Guard"
+	out, err = DeriveTemplate(&DeriveTemplateInput{ID: "guard", Ref: "dnd5e:monsters:guard", Spec: named})
+	require.NoError(t, err)
+	require.Equal(t, "Castle Guard", out.Block.Name)
 }
