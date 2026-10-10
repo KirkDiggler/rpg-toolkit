@@ -9,7 +9,6 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -18,7 +17,6 @@ import (
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
-	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
@@ -274,20 +272,6 @@ func (s *ContestMoveTestSuite) monsterSheet(out *Output, id string) *monster.Dat
 	return nil
 }
 
-// spendLog records every spend request in publication order, which is the only
-// place the bill is visible as an event rather than as its effect on a sheet.
-func (s *ContestMoveTestSuite) spendLog(bus events.EventBus) *[]dnd5eEvents.SpendRequestedEvent {
-	seen := &[]dnd5eEvents.SpendRequestedEvent{}
-	_, err := dnd5eEvents.SpendRequestedTopic.On(bus).Subscribe(s.ctx,
-		func(_ context.Context, event dnd5eEvents.SpendRequestedEvent) error {
-			*seen = append(*seen, event)
-			return nil
-		})
-	s.Require().NoError(err)
-
-	return seen
-}
-
 // resolveOnBus is the damage suite's resolve with the interaction's bus handed
 // in, so a scene can watch what was published on it.
 func (s *ContestMoveTestSuite) resolveOnBus(
@@ -314,12 +298,13 @@ func (s *ContestMoveTestSuite) resolveOnBus(
 }
 
 // THE HEADLINE OF THE PRICE. A move that costs a reaction is billed exactly
-// once, for one reaction, named to what asked — and then described as taken.
+// once, for one reaction, through the one door — and then described as taken,
+// naming what asked.
 //
 // This test is NOT the one that pins paid-before-described, and it was named as
 // though it were. For a creature that CAN pay, the two orders are
-// indistinguishable from out here: the same one event on the same bus, the same
-// effect list, the same sheet. The order is observable only when the price
+// indistinguishable from out here: the same one charge, the same effect list,
+// the same sheet. The order is observable only when the price
 // cannot be paid, where charging second means describing a move and then
 // refusing it — two imposed moves instead of one. That is
 // TestAPricedMoveWithNoReactionIsRecordedAsNotTaken, which says so, and a
@@ -327,15 +312,12 @@ func (s *ContestMoveTestSuite) resolveOnBus(
 func (s *ContestMoveTestSuite) TestAPricedMoveIsBilledOnceAndDescribedAsTaken() {
 	fixtures := s.fixtures()
 	saver := fixtures.saver(14)
-	saver.ActionEconomy = reacting(1)
+	saver.ActionEconomy = reacting(2)
 
 	machine, err := s.shove(fleeing(), straightRoll)
 	s.Require().NoError(err)
 
-	bus := events.NewEventBus()
-	spends := s.spendLog(bus)
-
-	out, err := s.resolveOnBus(fixtures, saver, machine, bus)
+	out, err := s.resolveOnBus(fixtures, saver, machine, events.NewEventBus())
 	s.Require().NoError(err)
 
 	target := s.castOutcome(out).Targets[0]
@@ -351,18 +333,13 @@ func (s *ContestMoveTestSuite) TestAPricedMoveIsBilledOnceAndDescribedAsTaken() 
 	s.Equal(combatActions.PaysReaction, moved.Move.Pays)
 	s.True(moved.Move.Provokes, "and it is a walk out of a reach, not a shove")
 
-	s.Require().Len(*spends, 1, "one move, one bill — a flee is not charged per cell")
-	bill := (*spends)[0]
-	s.Equal(heroID, bill.MemberID, "whoever ran is who pays")
-	s.Equal(coreCombat.ActionReaction, bill.ActionType)
-	s.Equal(1, bill.Amount)
-	s.Require().NotNil(bill.SourceRef)
-	s.Equal(refs.Spells.Thunderwave().String(), bill.SourceRef.String(),
+	s.Require().NotNil(moved.Ref)
+	s.Equal(refs.Spells.Thunderwave().String(), moved.Ref.String(),
 		"attributed to what asked, so a log can say what took the reaction")
 
 	s.Require().NotNil(fixtures.sheet(out, heroID).ActionEconomy)
-	s.Zero(fixtures.sheet(out, heroID).ActionEconomy.ReactionsRemaining,
-		"and the bill reached the keeper on the interaction's own bus")
+	s.Equal(1, fixtures.sheet(out, heroID).ActionEconomy.ReactionsRemaining,
+		"one move, one reaction, off whoever ran — a flee is not charged per cell")
 }
 
 // A price that cannot be paid is a REAL ANSWER, not a missing one. The move is
@@ -397,9 +374,10 @@ func (s *ContestMoveTestSuite) TestAPricedMoveWithNoReactionIsRecordedAsNotTaken
 	s.Equal(heroID, moved.RecipientID)
 }
 
-// The OTHER kind of creature, through the meter PR 1 put on its keeper. One
-// question, one bill, and the same event a condition publishes.
-func (s *ContestMoveTestSuite) TestAMonsterPaysFromItsMeter() {
+// TestAForcedMoveSpendsAMonstersReactionAtTheDoor: the OTHER kind of
+// creature, charged through the same door by Monster.SpendReaction. One
+// question, one bill.
+func (s *ContestMoveTestSuite) TestAForcedMoveSpendsAMonstersReactionAtTheDoor() {
 	fixtures := s.fixtures()
 	machine, err := s.shoveAt(wolfID, fleeing(), straightRoll)
 	s.Require().NoError(err)

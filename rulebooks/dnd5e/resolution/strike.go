@@ -122,6 +122,11 @@ type StrikeOutcome struct {
 	// Empty on a miss and on a hit against nobody holding an ongoing rule.
 	FollowUps []FollowUpOutcome
 
+	// Continued marks the half of a strike reported after a post-hit pause:
+	// AttackerID, TargetID and Retaliation are set and every hit field is
+	// zero, because the hit was told in the output that paused.
+	Continued bool
+
 	// Warded is set when the target's Sanctuary ward stopped this attack
 	// before any roll — the attacker failed a Wisdom save against the
 	// warding caster. Every other field above stays zero: there was no d20,
@@ -194,9 +199,14 @@ type strikeMachine struct {
 	target    combat.Combatant
 	longRange bool
 
-	// resume is the answer to a pose this machine already made, or nil for a
-	// fresh strike. See [NewStrikeResumed].
+	// resume is the frozen half and the answer to a pause this machine
+	// already made, or nil for a fresh strike. See [Resume].
 	resume *strikeResume
+
+	// whole makes a post-hit resume report the whole strike rather than its
+	// continued half. Set by a cast resuming its inner strike: a cast is one
+	// told unit, and told nothing at its pause.
+	whole bool
 
 	// rollFrame is the attack-roll frame, built once before the attack chain
 	// folds. See [strikeMachine.attackRollFrame].
@@ -220,18 +230,18 @@ type strikeMachine struct {
 // records an attempt would record two — and re-rolling would throw away the
 // number the player was asked about.
 func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, error) {
-	if m.resume != nil && m.resume.frozen.PostHitPhase {
+	if m.resume != nil && m.resume.postHit != nil {
 		m.cast = cast
-		m.outcome = *m.resume.frozen.Outcome
+		m.outcome = m.resume.postHit.Outcome
 		m.outcome.FollowUps = nil
-		return m.resumePostHit(ctx)
+		return m.answerPostHit(ctx)
 	}
 	if err := m.preflight(ctx, cast); err != nil {
 		return nil, err
 	}
 	if m.resume != nil {
-		if m.resume.frozen.BeforeRoll != nil {
-			return m.resumeBeforeRoll(), nil
+		if m.resume.beforeRoll != nil {
+			return m.answerBeforeRoll(), nil
 		}
 		return m.resumeStep(), nil
 	}
@@ -275,7 +285,7 @@ func (m *strikeMachine) sanctuaryStep(cast *Participants) Step {
 // wardCheckStep works through pending Sanctuary wards one at a time as
 // nested saving throws, [requestSave]'s own shape. A save can itself be
 // posed (an attacker holding a Resistance die, say); this step sets no
-// onPose, so a colliding offer surfaces as [Request]'s existing "a
+// onPause, so a colliding offer surfaces as [Request]'s existing "a
 // requester cannot be suspended" refusal — a named error, not silent
 // corruption — rather than a freeze/resume shape for this new interruption
 // point. Documented as a known gap, not assumed absent.

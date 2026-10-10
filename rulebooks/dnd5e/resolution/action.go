@@ -478,10 +478,10 @@ func (m *castMachine) castRequest(target castTargetMachine, index int) Step {
 		},
 	}
 	// A gateless target's inner machine never poses (there is no save to
-	// offer a die on), so onPose here is reached only for a gated cast — the
+	// offer a die on), so onPause here is reached only for a gated cast — the
 	// same "opt in where a pose can genuinely arrive" rule [requestSave]
 	// follows.
-	req.onPose = func(_ context.Context, contest Pose) (Step, error) {
+	req.onPause = func(_ context.Context, contest Pause) (Step, error) {
 		return poseCast(m, index, contest)
 	}
 	return req
@@ -557,7 +557,7 @@ func castStanceIsHostile(cast gamectx.Cast, casterID, targetID string) (bool, er
 // up to three creatures) must not let one warded recipient cancel the
 // others, so a failed save here records THIS target as warded and moves on
 // to resolveTarget(index+1) rather than ending the whole cast. Sets no
-// onPose, [strikeMachine.wardCheckStep]'s same documented gap.
+// onPause, [strikeMachine.wardCheckStep]'s same documented gap.
 //
 // Errors: [ErrWardUnreadable] from [wardSaveDC] — the cast fails rather than
 // skipping the ward.

@@ -385,8 +385,8 @@ func (s *FrameTestSuite) TestResumedStrikeRebuildsFrameFromTruth() {
 	s.Require().NoError(err)
 	s.Require().NotNil(posed.Posed)
 
-	machine, err := NewStrikeResumed(&StrikeResumeInput{
-		Frozen: posed.Posed.Frozen, Answer: OfferSpend,
+	machine, err := Resume(&ResumeInput{
+		Pause: *posed.Posed, Answer: Take(""),
 		Roller: &actionRoller{singles: []int{4}, damage: [][]int{{3}}},
 	})
 	s.Require().NoError(err)

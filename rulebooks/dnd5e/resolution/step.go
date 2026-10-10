@@ -8,7 +8,6 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
 // Machine is a rules package's contribution to an interaction: a sequence of
@@ -27,10 +26,10 @@ type Machine interface {
 // this package and nowhere else — because every yield point is also a legal
 // suspension point, and a case nobody drives is a case nobody can resume.
 //
-// The set is [Gather], [Request], [Pose] and [Done]. Pose was named by
-// ADR-0038 and deliberately unbuilt until the caller that forces it arrived;
-// the strike machine is that caller (rpg-project#398 R1), and the
-// hypothetical is over.
+// The set is [Gather], [Request], [Pause] and [Done]. The suspension was
+// named by ADR-0038 and deliberately unbuilt until the caller that forces it
+// arrived; the strike machine was that caller (rpg-project#398 R1), and
+// [Pause] is now the one envelope every suspension travels in.
 type Step interface {
 	isStep()
 }
@@ -67,28 +66,29 @@ func (g Gather) Name() string { return g.name }
 // direct one.
 //
 // By default the requested machine runs to Done inside this one's step loop,
-// which is enough for every consumer that leaves [Request.onPose] unset —
-// exactly today's behaviour, unchanged. [Request.onPose] is the opt-in for a
+// which is enough for every consumer that leaves [Request.onPause] unset —
+// exactly today's behaviour, unchanged. [Request.onPause] is the opt-in for a
 // requester whose sub-machine CAN suspend: a contest requesting a saving
-// throw (Resistance's own die is offered on the save, not the contest) and a
-// cast requesting a contest per target both need it, because [drive]'s
-// default refusal ("a requester cannot be suspended") is correct for every
-// other requester and wrong for exactly these two. The callback turns the
-// sub-machine's [Pose] into this machine's OWN pose — freezing whatever this
-// machine needs to resume the request later — rather than the pose crossing
-// the requester unexamined, which is what would strand it: nothing about a
-// requester survives a suspension except what onPose chooses to freeze.
+// throw (Resistance's own die is offered on the save, not the contest), a
+// cast requesting a contest per target, a sequence or a walk requesting a
+// strike, all need it, because [drive]'s default refusal ("a requester cannot
+// be suspended") is correct for every other requester and wrong for these.
+// The callback turns the sub-machine's [Pause] into this machine's OWN pause
+// — freezing whatever this machine needs to resume the request later — rather
+// than the pause crossing the requester unexamined, which is what would
+// strand it: nothing about a requester survives a suspension except what
+// onPause chooses to freeze.
 type Request struct {
 	name    string
 	machine Machine
 	next    func(ctx context.Context, out Outcome) (Step, error)
 
-	// onPose is nil for every requester that cannot compose with a pose —
+	// onPause is nil for every requester that cannot compose with a pause —
 	// [drive] keeps refusing those exactly as before. Set, it is called
-	// instead of that refusal, with the sub-machine's raw pose, and its
+	// instead of that refusal, with the sub-machine's raw pause, and its
 	// return value becomes the step this request continues with (typically
-	// a new [Pose] of the requester's own).
-	onPose func(ctx context.Context, pose Pose) (Step, error)
+	// a new [Pause] of the requester's own).
+	onPause func(ctx context.Context, pause Pause) (Step, error)
 }
 
 func (Request) isStep() {}
@@ -96,93 +96,6 @@ func (Request) isStep() {}
 // Name identifies the interaction being requested, for logs and for tests that
 // want to assert what a machine asked for without reaching into it.
 func (r Request) Name() string { return r.name }
-
-// Ask is what a posed machine wants answered: who is being asked, what they
-// hold that could join the roll, and the numbers they need to decide with.
-//
-// It is DATA and it is the whole question. A caller renders it, stores it,
-// restarts the process, and answers it later; nothing about the machine that
-// posed it survives except [Pose.Frozen].
-type Ask struct {
-	// Audience is the member being asked.
-	Audience string
-
-	// Offer is what they hold — ref, display name and die notation, exactly as
-	// the effect that offered it named itself.
-	Offer dnd5eEvents.Offer
-
-	// Options are the answers this pose accepts, as opaque strings the caller
-	// echoes back. The machine names them so a caller cannot answer a question
-	// that was not asked.
-	Options []string
-
-	// Choices carries provider-authored option labels for reaction windows.
-	Choices []Choice
-
-	// Roll is the d20 as rolled and Total the number the offer would join.
-	// TARGET AC IS DELIBERATELY ABSENT: a player who could see it would be
-	// deciding "does this close the gap" rather than "is this worth spending",
-	// which is a different question and a different game.
-	Roll  int
-	Total int
-
-	// Calculation is the settled arithmetic the offered die would join — the
-	// same numbers Roll and Total summarise, with the faces and the keep
-	// record behind them. Carried for the beat the seam writes when it poses
-	// the question: the paused window is where an untrained roll is FIRST
-	// seen, and a seam with only two scalars can only show one face
-	// (rpg-project#462 R5).
-	//
-	// It is the pre-offer calculation. Whatever the answer adds lands on the
-	// resumed outcome's own, not here.
-	Calculation *dnd5eEvents.RollCalculation
-}
-
-// Pose is a machine stopping mid-run to be answered from outside the process.
-//
-// It is the suspension every other step's doc has been pointing at. [Request]
-// runs its sub-machine to Done inline because the answer is available in the
-// same call; this one's answer is a person, so the machine's state leaves as
-// bytes and comes back as a new machine.
-//
-// # Frozen is opaque on purpose
-//
-// The bytes are authored by the machine and never read by this package.
-// Resolution drives steps over data and holds no rulebook, so a typed
-// frozen-strike field here would put the dnd5e attack inside the driver. What
-// a caller does with them is store them and hand them back.
-//
-// # One pose per run
-//
-// A machine that poses twice in one call is not designed here and is not
-// refused here: the driver returns the FIRST pose and stops, and the second
-// simply never happens because the run is over.
-type Choice struct {
-	ID    string `json:"id"`
-	Label string `json:"label"`
-	// Description is the producer's authored prose for this option. It is
-	// copied from the event that declared it and never read when resuming.
-	Description string `json:"description,omitempty"`
-}
-
-type Pose struct {
-	// Movement carries completed opportunity attacks at an interrupted step.
-	Movement *MovementOutcome `json:"movement,omitempty"`
-	// Sequence carries already completed swings at a sequence pause.
-	Sequence *SequenceOutcome `json:"sequence,omitempty"`
-	// BeforeRoll reports an attack reaction posed before rolling the attack.
-	BeforeRoll bool `json:"before_roll,omitempty"`
-	// SettledStrike is populated only for the initial post-hit reaction pose.
-	SettledStrike *StrikeOutcome `json:"settled_strike,omitempty"`
-
-	// Ask is the question.
-	Ask Ask
-
-	// Frozen is the machine's own state, serialized by the machine.
-	Frozen []byte
-}
-
-func (Pose) isStep() {}
 
 // Done ends a machine and carries what the interaction produced.
 type Done struct {
@@ -205,10 +118,10 @@ func start(ctx context.Context, machine Machine, cast *Participants) (Step, erro
 // drive runs a machine to completion on the surface's bus.
 //
 // It is the SUB-MACHINE entry — [Request] is its only caller — and it returns
-// no pose, because a requested machine that suspended would strand the machine
+// no pause, because a requested machine that suspended would strand the machine
 // that requested it: the requester's continuation is a Go closure on this
 // stack, and nothing serializes it. driveStep refuses that case by name rather
-// than dropping the pose.
+// than dropping the pause.
 func drive(ctx context.Context, bus events.EventBus, machine Machine, cast *Participants) (Outcome, error) {
 	first, err := start(ctx, machine, cast)
 	if err != nil {
@@ -226,24 +139,26 @@ func drive(ctx context.Context, bus events.EventBus, machine Machine, cast *Part
 
 // driveStep continues from an already preflighted first step.
 //
-// It returns EITHER an outcome or a pose, never both: a posed machine has not
-// finished, and a zero-valued outcome beside a pose would read as an
-// interaction that produced nothing rather than one that is waiting.
+// It returns EITHER an outcome or a pause: a paused machine has not finished,
+// and what it settled before stopping travels on the pause itself, for the
+// entry that reports it.
 func driveStep(
 	ctx context.Context, bus events.EventBus, step Step, cast *Participants,
-) (Outcome, *Pose, error) {
+) (Outcome, *Pause, error) {
 	var err error
 	for {
 		switch s := step.(type) {
 		case Done:
 			return s.Outcome, nil, nil
 
-		case Pose:
+		case Pause:
 			// Returned rather than looped on. The answer is not in this
 			// process, so there is nothing to continue with — the caller
-			// stores Frozen, asks somebody, and starts a resumed machine.
-			posed := s
-			return nil, &posed, nil
+			// stores the pause, asks somebody, and calls [Resume]. What the
+			// machine settled before it stopped rides the pause to the
+			// driver, which reports it as the run's outcome.
+			paused := s
+			return nil, &paused, nil
 
 		case Request:
 			if s.machine == nil || s.next == nil {
@@ -254,10 +169,10 @@ func driveStep(
 				return nil, nil, fmt.Errorf("%w: Request built outside this package", ErrBadStep)
 			}
 
-			if s.onPose == nil {
+			if s.onPause == nil {
 				// The same bus and the same cast: a requested interaction
 				// happens inside this one, not beside it. Byte-identical to
-				// every build before onPose existed — a requester that never
+				// every build before onPause existed — a requester that never
 				// opted in cannot tell the capability was added.
 				out, runErr := drive(ctx, bus, s.machine, cast)
 				if runErr != nil {
@@ -271,10 +186,10 @@ func driveStep(
 				continue
 			}
 
-			// s.onPose is set: this requester can compose with a sub-machine
+			// s.onPause is set: this requester can compose with a sub-machine
 			// that suspends, so the refusal [drive] would apply does not run
 			// here. Preflight and drive the sub-machine inline instead,
-			// exactly as [drive] does, but hand a pose to onPose rather than
+			// exactly as [drive] does, but hand a pause to onPause rather than
 			// erroring on it.
 			sub, startErr := start(ctx, s.machine, cast)
 			if startErr != nil {
@@ -285,7 +200,7 @@ func driveStep(
 				return nil, nil, fmt.Errorf("requested %s: %w", s.name, runErr)
 			}
 			if posed != nil {
-				step, err = s.onPose(ctx, *posed)
+				step, err = s.onPause(ctx, *posed)
 				if err != nil {
 					return nil, nil, err
 				}

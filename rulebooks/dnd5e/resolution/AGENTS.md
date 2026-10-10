@@ -14,14 +14,15 @@ which part is [`../CLAUDE.md`](../CLAUDE.md).
   torn down with the call ([ADR-0038](../../../docs/adr/0038-resolution-owns-the-bus.md)).
   Nothing above or below holds one. If your design needs a subscription, it
   needs an interaction, and an interaction starts here.
-- **The step vocabulary and the fold.** `Gather | Request | Pose | Done` in
-  [`step.go`](./step.go) — sealed, and opaque on purpose: a machine cannot
+- **The step vocabulary and the fold.** `Gather | Request | Pause | Done` in
+  [`step.go`](./step.go) and [`pause.go`](./pause.go) — sealed, and opaque on purpose: a machine cannot
   construct a `Gather` or a `Request`, it calls a constructor here that names
   what it wants. That opacity is how R6 is a guarantee rather than a habit.
 - **The machines — the rules of D&D as steps over data.** `NewSave`
   ([`save.go`](./save.go)), `NewContest` ([`contest.go`](./contest.go)),
-  `NewActivation` ([`activation.go`](./activation.go)), `NewStrike` /
-  `NewStrikeResumed` ([`strike.go`](./strike.go)), `NewAction`
+  `NewActivation` ([`activation.go`](./activation.go)), `NewStrike`
+  ([`strike.go`](./strike.go)), `Resume` — the one way back from any
+  `Pause` ([`pause.go`](./pause.go)), `NewAction`
   ([`action.go`](./action.go)), `NewMovement` ([`movement.go`](./movement.go)),
   `NewBoundary` ([`boundary.go`](./boundary.go)).
 - **The words a compelled creature obeys.** `Obey` ([`obey.go`](./obey.go)) —

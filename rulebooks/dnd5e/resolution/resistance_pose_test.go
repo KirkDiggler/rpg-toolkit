@@ -93,12 +93,13 @@ func (s *ResistancePoseTestSuite) TestASingleTargetSavePosesAndResumes() {
 	s.Equal(heroID, out.Posed.Ask.Audience)
 	s.Equal(conditions.ResistanceName, out.Posed.Ask.Offer.Name)
 	s.Equal(refs.Conditions.Resistance().String(), out.Posed.Ask.Offer.Ref.String())
-	s.Equal([]string{"spend", "keep"}, out.Posed.Ask.Options)
+	s.Equal(PauseSaveRoll, out.Posed.Kind, "the innermost question is the save's")
+	s.Empty(out.Posed.Ask.Offer.Choices)
 	frozenTotal := out.Posed.Ask.Total
 
 	s.Run("spend appends the die and finishes the cast", func() {
-		resumed, err := NewCastResumed(&CastResumeInput{
-			Frozen: append([]byte(nil), out.Posed.Frozen...), Answer: OfferSpend,
+		resumed, err := Resume(&ResumeInput{
+			Pause: *out.Posed, Answer: Take(""),
 			Roller: facedRoller{d20: 1, other: 3},
 		})
 		s.Require().NoError(err)
@@ -112,8 +113,8 @@ func (s *ResistancePoseTestSuite) TestASingleTargetSavePosesAndResumes() {
 	})
 
 	s.Run("keep leaves the total alone", func() {
-		resumed, err := NewCastResumed(&CastResumeInput{
-			Frozen: append([]byte(nil), out.Posed.Frozen...), Answer: OfferKeep,
+		resumed, err := Resume(&ResumeInput{
+			Pause: *out.Posed, Answer: Decline(), Roller: facedRoller{},
 		})
 		s.Require().NoError(err)
 
@@ -142,8 +143,8 @@ func (s *ResistancePoseTestSuite) TestAPosedTargetLeavesLaterTargetsToRun() {
 	s.Require().NoError(err)
 	s.Require().NotNil(out.Posed, "hero (target 0) holds the die")
 
-	resumed, err := NewCastResumed(&CastResumeInput{
-		Frozen: out.Posed.Frozen, Answer: OfferKeep, Roller: roller,
+	resumed, err := Resume(&ResumeInput{
+		Pause: *out.Posed, Answer: Decline(), Roller: roller,
 	})
 	s.Require().NoError(err)
 

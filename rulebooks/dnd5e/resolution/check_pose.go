@@ -5,7 +5,6 @@ package resolution
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -17,23 +16,13 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
-// frozenCheckKind and frozenCheckVersion discriminate what a stored blob is,
-// the same trust boundary [frozenStrikeKind]/[frozenStrikeVersion] keep.
-const (
-	frozenCheckKind    = "check.post_roll"
-	frozenCheckVersion = 1
-)
-
 // frozenCheck is a check stopped after its d20, in enough detail to finish it
-// and in no more detail than that — the check sibling of [frozenStrike].
+// and in no more detail than that — the check sibling of [frozenPostRoll].
 //
-// THE FOLD IS STORED RATHER THAN RECOMPUTED, for [frozenStrike]'s reason: a
+// THE FOLD IS STORED RATHER THAN RECOMPUTED, for [frozenPostRoll]'s reason: a
 // sheet edited during the pause must not change what the checker was asked
 // about after they answered.
 type frozenCheck struct {
-	Kind    string `json:"kind"`
-	Version int    `json:"version"`
-
 	CheckerID string                  `json:"checker_id"`
 	Applied   encounter.CheckApproach `json:"applied"`
 	DC        int                     `json:"dc"`
@@ -69,7 +58,7 @@ type poseCheckInput struct {
 // sibling of [strikeMachine.pose]. Same two refusals, for the same reasons:
 // an offer whose audience is not the checker, or more than one offer on one
 // roll, is a window this slice has not designed a freeze for.
-func poseCheck(in poseCheckInput) (*Pose, error) {
+func poseCheck(in poseCheckInput) (*Pause, error) {
 	if len(in.offers) > 1 {
 		return nil, fmt.Errorf("%w: %d offers on one check, and this build poses one question",
 			ErrNotOffered, len(in.offers))
@@ -83,9 +72,7 @@ func poseCheck(in poseCheckInput) (*Pose, error) {
 		return nil, fmt.Errorf("%w: an offer with no ref or no die is nothing to ask about", ErrNotOffered)
 	}
 
-	frozen, err := json.Marshal(frozenCheck{
-		Kind:         frozenCheckKind,
-		Version:      frozenCheckVersion,
+	frozen, err := writeFrozen(machineCheck, PauseCheckRoll, frozenCheck{
 		CheckerID:    in.checkerID,
 		Applied:      in.applied,
 		DC:           in.result.DC,
@@ -98,14 +85,14 @@ func poseCheck(in poseCheckInput) (*Pose, error) {
 		Offer:        offer,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("%w: freeze check: %v", ErrBadFrozen, err)
+		return nil, err
 	}
 
-	return &Pose{
+	return &Pause{
+		Kind: PauseCheckRoll,
 		Ask: Ask{
 			Audience:    offer.Audience,
-			Offer:       offer,
-			Options:     []string{string(OfferSpend), string(OfferKeep)},
+			Offer:       offerFromRoll(offer),
 			Roll:        in.result.Roll,
 			Total:       in.calculation.Total,
 			Calculation: dnd5eEvents.CloneRollCalculation(in.calculation),
@@ -114,13 +101,13 @@ func poseCheck(in poseCheckInput) (*Pose, error) {
 	}, nil
 }
 
-// CheckResumeInput continues a check that posed.
+// CheckResumeInput answers the one pause [MakeCheck] poses.
 type CheckResumeInput struct {
-	// Frozen is the bytes [Pose.Frozen] handed out. REQUIRED.
-	Frozen []byte
+	// Pause is [CheckOutput.Posed], as the host stored it. REQUIRED.
+	Pause Pause
 
-	// Answer is [OfferSpend] or [OfferKeep]. REQUIRED.
-	Answer OfferAnswer
+	// Answer is [Take] or [Decline]. REQUIRED.
+	Answer Answer
 
 	// Character is the checker's own record, freshly loaded by the caller —
 	// not carried in Frozen, because persistence is the caller's business,
@@ -130,21 +117,26 @@ type CheckResumeInput struct {
 	// declining needs a sheet to attach.
 	Character *character.Data
 
-	// Roller rolls the offered die. REQUIRED on [OfferSpend].
+	// Roller rolls the offered die. REQUIRED when the answer takes.
 	Roller dice.Roller
 }
 
 // ResumeCheck finishes a check somebody answered.
 //
-// It starts where the pose was: apply the answer, then hand back the same
+// It starts where the pause was: apply the answer, then hand back the same
 // [CheckOutput] a finished [MakeCheck] would. Nothing is re-rolled and
-// nothing is re-folded — the check sibling of [NewStrikeResumed].
+// nothing is re-folded.
+//
+// It refuses a frozen header whose version is not [PauseVersion] with
+// [ErrStalePause], a header whose machine is not a check's with
+// [ErrBadFrozen], and an answer the offer does not accept with
+// [ErrNotOffered] — all before anything attaches.
 //
 // The checker is attached and truth installed unconditionally, whichever
-// answer this is. [OfferKeep] then touches the bus no further: declining
-// costs nothing, so nothing is rolled and nothing published. Only
-// [OfferSpend] rolls the die and publishes [dnd5eEvents.OfferTakenTopic], so
-// the reloaded condition can hear its own die was spent and remove itself.
+// answer this is. [Decline] then touches the bus no further: declining costs
+// nothing, so nothing is rolled and nothing published. Only [Take] rolls the
+// die and publishes [dnd5eEvents.OfferTakenTopic], so the reloaded condition
+// can hear its own die was spent and remove itself.
 func ResumeCheck(ctx context.Context, in *CheckResumeInput) (*CheckOutput, error) {
 	return resumeCheckOn(ctx, in, newSurface(events.NewEventBus()))
 }
@@ -155,22 +147,23 @@ func resumeCheckOn(ctx context.Context, in *CheckResumeInput, surf *surface) (*C
 	if in == nil {
 		return nil, ErrNilInput
 	}
-	if len(in.Frozen) == 0 {
-		return nil, fmt.Errorf("%w: no frozen check to resume", ErrBadFrozen)
+	h, err := readFrozen(in.Pause.Frozen)
+	if err != nil {
+		return nil, err
 	}
-	switch in.Answer {
-	case OfferSpend, OfferKeep:
-	default:
-		return nil, fmt.Errorf("%w: %q is not an answer this machine posed", ErrNotOffered, in.Answer)
+	if h.Machine != machineCheck || h.Kind != PauseCheckRoll || in.Pause.Kind != PauseCheckRoll {
+		return nil, fmt.Errorf("%w: %q/%q is not the pause a check poses", ErrBadFrozen, h.Machine, h.Kind)
+	}
+	if err := samePrice(nil, in.Pause.Cost); err != nil {
+		return nil, err
+	}
+	if err := in.Answer.accepts(in.Pause.Ask.Offer); err != nil {
+		return nil, err
 	}
 
 	var frozen frozenCheck
-	if err := json.Unmarshal(in.Frozen, &frozen); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrBadFrozen, err)
-	}
-	if frozen.Kind != frozenCheckKind || frozen.Version != frozenCheckVersion {
-		return nil, fmt.Errorf("%w: kind %q version %d is not one this build froze",
-			ErrBadFrozen, frozen.Kind, frozen.Version)
+	if err := decodeState(h, &frozen); err != nil {
+		return nil, err
 	}
 	if frozen.Roll < 1 || frozen.Roll > 20 {
 		return nil, fmt.Errorf("%w: a d20 does not read %d", ErrBadFrozen, frozen.Roll)
@@ -192,7 +185,7 @@ func resumeCheckOn(ctx context.Context, in *CheckResumeInput, surf *surface) (*C
 
 	// Attached and installed unconditionally, whichever answer this is: a
 	// resumed entry that only sometimes attaches is exactly what
-	// TestOnlyTheDoorInstallsGameContext refuses, because [OfferKeep] would
+	// TestOnlyTheDoorInstallsGameContext refuses, because [Decline] would
 	// otherwise be the one path in this package running without the door.
 	one := Participant{Character: in.Character}
 	if err := one.validate(); err != nil {
@@ -224,11 +217,11 @@ func resumeCheckOn(ctx context.Context, in *CheckResumeInput, surf *surface) (*C
 	calculation := dnd5eEvents.CloneRollCalculation(frozen.Calculation)
 	total := frozen.Total
 
-	// [OfferKeep] touches the bus no further than the attach above: declining
+	// [Decline] touches the bus no further than the attach above: declining
 	// costs nothing, so nothing is rolled and nothing is published — the die
 	// stays in hand for the next check, exactly as an offer nobody takes does
 	// everywhere else in this package.
-	if in.Answer == OfferSpend {
+	if in.Answer.Taken() {
 		if in.Roller == nil {
 			return nil, errors.Join(
 				fmt.Errorf("%w: a resumed check rolls with no roller", ErrNoRoller), surf.teardown(ctx))

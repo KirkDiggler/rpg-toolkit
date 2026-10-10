@@ -295,7 +295,7 @@ func (s *ContestTestSuite) TestRegistrationsDoNotDependOnInputOrder() {
 }
 
 // A gate offering a choice gets the saver's best modifier — provisional until
-// an interaction can ask (Pose). Detectable rather than asserted: DC 8 is
+// an interaction can ask (a Pause). Detectable rather than asserted: DC 8 is
 // beaten by the hero's proficient STR (+5, total 8) and not by his DEX (+2,
 // total 5), so which one was rolled decides the outcome.
 func (s *ContestTestSuite) TestAMultiAbilityGatePicksTheBestModifier() {

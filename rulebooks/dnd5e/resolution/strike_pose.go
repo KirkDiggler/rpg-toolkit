@@ -5,7 +5,6 @@ package resolution
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
@@ -15,62 +14,21 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
-// OfferAnswer is one answer to a posed offer.
-//
-// TWO WORDS, OWNED HERE. The seam above has its own vocabulary for the same
-// two answers (a session says strike and hold, because its window is a
-// reaction); this package's question is "spend the thing you hold, or keep
-// it", and translating at the seam is cheaper than either module speaking the
-// other's language.
-type OfferAnswer string
-
-const (
-	// OfferSpend takes the offer: the die is rolled, its face joins the total,
-	// and the effect that offered it is told so it can consume itself.
-	OfferSpend OfferAnswer = "spend"
-
-	// OfferKeep declines, and COSTS NOTHING. Nothing is rolled, nothing is
-	// published, and the effect is never told — so the die is still in hand
-	// for the next roll.
-	OfferKeep OfferAnswer = "keep"
-)
-
-// frozenStrikeKind and frozenStrikeVersion discriminate what a stored blob is.
-//
-// Written and CHECKED, so a payload from a build that froze something else, or
-// froze this differently, is refused rather than read as a strike. The same
-// trust boundary a stored window payload keeps one layer up.
-//
-// Version 3 added Opportunity. A version-2 blob never wrote it, so its absence
-// there is not "a swing on its own turn" but a fact the writer never knew;
-// resuming it would rebuild the frame with Opportunity Known(false). It is
-// refused like any other version this build did not write.
-const (
-	frozenStrikeKind    = "strike.post_roll"
-	frozenStrikeVersion = 3
-)
-
-// frozenStrike is a strike stopped after its d20, in enough detail to finish
-// it and in no more detail than that.
+// frozenPostRoll is a strike stopped after its d20 on a die offer, in enough
+// detail to finish it and in no more detail than that.
 //
 // THE FOLD IS STORED RATHER THAN RECOMPUTED, and that is the whole reason this
 // type exists instead of a note saying "re-run it". Re-folding the attack
 // chain would be a second fold with side effects: a subscriber that records an
 // attempt would record two, and a sheet edited during the pause would change
 // what the player was asked about after they answered.
-type frozenStrike struct {
-	// BeforeRoll identifies a reaction posed before any attack dice exist.
-	BeforeRoll *dnd5eEvents.AttackRollOffer `json:"before_roll,omitempty"`
-	Kind       string                       `json:"kind"`
-	Version    int                          `json:"version"`
-
+type frozenPostRoll struct {
 	AttackerID string `json:"attacker_id"`
 	TargetID   string `json:"target_id"`
 
 	// Opportunity is the strike input's own: whether the frozen swing is an
-	// opportunity attack. Carried so the resumed machine rebuilds the same
-	// attack-roll frame; a version-3 blob that omits it is a swing on its own
-	// turn, because every version-3 writer knew which it was.
+	// opportunity attack, so the resumed machine rebuilds the same attack-roll
+	// frame.
 	Opportunity bool `json:"opportunity,omitempty"`
 
 	// Definition is the attack that was offered, stored whole for the reason
@@ -82,60 +40,48 @@ type frozenStrike struct {
 	// the advantage/disadvantage sources — everything the second half reads.
 	Folded dnd5eEvents.AttackChainEvent `json:"folded"`
 
-	// Roll is the d20 as rolled. Total is the settled pre-offer calculation:
-	// the roll, fixed bonus, and any selected sourced contributions. Both are
-	// stored so they can be CHECKED against Calculation on the way back in; a
-	// total that disagrees with it is a blob nobody should act on.
+	// Roll is the d20 as rolled. Total is the settled pre-offer calculation.
+	// Both are stored so they can be CHECKED against Calculation on the way
+	// back in; a total that disagrees with it is a blob nobody should act on.
 	Roll  int `json:"roll"`
 	Total int `json:"total"`
 
-	// Calculation is the settled pre-offer arithmetic and is reused verbatim on resume.
+	// Calculation is the settled pre-offer arithmetic, reused verbatim.
 	Calculation *dnd5eEvents.RollCalculation `json:"calculation"`
 
-	// Offer is what was put on the table.
+	// Offer is what was put on the table, in the chain's own shape.
 	Offer dnd5eEvents.Offer `json:"offer"`
-
-	// PostHitPhase preserves the authoritative strike outcome when a host
-	// pauses after damage for a defender reaction. The continuation is
-	// intentionally opaque to the strike roll path; the host answers with
-	// Option and the strike is never rerolled.
-	Retaliation  json.RawMessage           `json:"retaliation,omitempty"`
-	PostHitPhase bool                      `json:"post_hit_phase,omitempty"`
-	Outcome      *StrikeOutcome            `json:"outcome,omitempty"`
-	PostHit      *dnd5eEvents.PostHitOffer `json:"post_hit,omitempty"`
 }
 
-// strikeResume is a frozen strike plus the answer it came back with.
+// strikeResume is the frozen half of a strike plus the answer it came back
+// with. Exactly one of the three frozen kinds is set.
 type strikeResume struct {
-	frozen frozenStrike
-	answer OfferAnswer
-	option string
+	answer     Answer
+	beforeRoll *frozenBeforeRoll
+	postRoll   *frozenPostRoll
+	postHit    *frozenPostHit
+
+	// retaliation is the resumed save of a retaliation that itself paused,
+	// built at [Resume] from [frozenPostHit.Retaliation].
+	retaliation Machine
 }
 
-// StrikeResumeInput continues a strike that posed.
-type StrikeResumeInput struct {
-	// Frozen is the bytes [Pose.Frozen] handed out. REQUIRED.
-	Frozen []byte
-
-	// Answer is [OfferSpend] or [OfferKeep]. REQUIRED — an empty answer is a
-	// caller that has not asked anybody yet.
-	Answer OfferAnswer
-
-	// Option is the provider-authored post-hit reaction option when the frozen
-	// strike is in its post-hit phase. It is empty for ordinary roll offers.
-	Option string
-
-	// Roller rolls the offered die. REQUIRED whichever the answer is: the
-	// machine that rolls carries its own roller, and refusing a nil one at the
-	// door rather than on the spend branch means a mis-wired caller finds out
-	// on the first decline instead of the first spend.
-	Roller dice.Roller
+// resumedStrike builds the strike machine a frozen half finishes on.
+func resumedStrike(attackerID, targetID string, definition combatActions.Definition, opportunity bool, roller dice.Roller, resume *strikeResume) *strikeMachine {
+	machine := newStrikeMachine(&StrikeInput{
+		AttackerID:  attackerID,
+		TargetID:    targetID,
+		Definition:  definition,
+		Opportunity: opportunity,
+		Roller:      roller,
+	})
+	machine.resume = resume
+	return machine
 }
 
-// NewStrikeResumed returns the machine that finishes a strike somebody
-// answered.
+// resumePostRoll finishes a strike paused on a die offer on its d20.
 //
-// It starts where the pose was: apply the answer, decide the hit against the
+// It starts where the pause was: apply the answer, decide the hit against the
 // total that results, publish the post-roll chain ONCE across the pair, and
 // deal damage. Nothing is re-rolled and nothing is re-folded.
 //
@@ -144,55 +90,13 @@ type StrikeResumeInput struct {
 // A d20 outside 1-20, or a total that disagrees with the validated sourced
 // calculation, is refused by name — before the world is loaded and before
 // anything is charged. Repairing either would resolve an attack nobody rolled.
-func NewStrikeResumed(in *StrikeResumeInput) (Machine, error) {
-	if in == nil {
-		return nil, ErrNilInput
+func resumePostRoll(h frozenHeader, in *ResumeInput) (Machine, error) {
+	var frozen frozenPostRoll
+	if err := decodeState(h, &frozen); err != nil {
+		return nil, err
 	}
-	if len(in.Frozen) == 0 {
-		return nil, fmt.Errorf("%w: no frozen strike to resume", ErrBadFrozen)
-	}
-	switch in.Answer {
-	case OfferSpend, OfferKeep:
-	default:
-		return nil, fmt.Errorf("%w: %q is not an answer this machine posed", ErrNotOffered, in.Answer)
-	}
-	if in.Roller == nil {
-		return nil, fmt.Errorf("%w: a resumed strike rolls with no roller", ErrNoRoller)
-	}
-
-	var frozen frozenStrike
-	if err := json.Unmarshal(in.Frozen, &frozen); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrBadFrozen, err)
-	}
-	if frozen.BeforeRoll != nil {
-		if frozen.Kind != frozenStrikeKind || frozen.Version != frozenStrikeVersion || frozen.AttackerID == "" || frozen.TargetID == "" || frozen.BeforeRoll.ReactorID != frozen.TargetID || frozen.PostHitPhase || frozen.Roll != 0 || frozen.Calculation != nil || frozen.Outcome == nil || frozen.Outcome.Roll != 0 || frozen.BeforeRoll.ResourceKey == "" || frozen.BeforeRoll.Ref.ID == "" || frozen.BeforeRoll.Disadvantage.SourceRef == nil || len(frozen.Folded.BeforeRollOffers) == 0 {
-			return nil, fmt.Errorf("%w: invalid pre-roll reaction", ErrBadFrozen)
-		}
-		if (in.Answer == OfferSpend && in.Option != ReactionUse) || (in.Answer == OfferKeep && in.Option != "") {
-			return nil, fmt.Errorf("%w: invalid pre-roll answer", ErrNotOffered)
-		}
-		machine := newStrikeMachine(&StrikeInput{AttackerID: frozen.AttackerID, TargetID: frozen.TargetID, Definition: frozen.Definition, Opportunity: frozen.Opportunity, Roller: in.Roller})
-		machine.resume = &strikeResume{frozen: frozen, answer: in.Answer, option: in.Option}
-		return machine, nil
-	}
-	if frozen.PostHitPhase {
-		if frozen.Kind != frozenStrikeKind || frozen.Version != frozenStrikeVersion || frozen.AttackerID == "" || frozen.TargetID == "" {
-			return nil, fmt.Errorf("%w: invalid post-hit identity", ErrBadFrozen)
-		}
-		if frozen.Outcome == nil || frozen.PostHit == nil || frozen.PostHit.ReactorID != frozen.TargetID || !frozen.Outcome.Hit {
-			return nil, fmt.Errorf("%w: incomplete post-hit phase", ErrBadFrozen)
-		}
-		if len(frozen.Retaliation) == 0 && in.Answer != OfferKeep && in.Option == "" {
-			return nil, fmt.Errorf("%w: post-hit spend requires an option", ErrNotOffered)
-		}
-		machine := newStrikeMachine(&StrikeInput{AttackerID: frozen.AttackerID, TargetID: frozen.TargetID, Definition: frozen.Definition, Opportunity: frozen.Opportunity, Roller: in.Roller})
-		machine.resume = &strikeResume{frozen: frozen, answer: in.Answer, option: in.Option}
-		return machine, nil
-	}
-
-	if frozen.Kind != frozenStrikeKind || frozen.Version != frozenStrikeVersion {
-		return nil, fmt.Errorf("%w: kind %q version %d is not one this build froze",
-			ErrBadFrozen, frozen.Kind, frozen.Version)
+	if err := samePrice(nil, in.Pause.Cost); err != nil {
+		return nil, err
 	}
 	if frozen.Roll < 1 || frozen.Roll > 20 {
 		return nil, fmt.Errorf("%w: a d20 does not read %d", ErrBadFrozen, frozen.Roll)
@@ -215,22 +119,18 @@ func NewStrikeResumed(in *StrikeResumeInput) (Machine, error) {
 		return nil, fmt.Errorf("%w: roll, contributions, and total do not match the frozen calculation", ErrBadFrozen)
 	}
 	if frozen.Offer.Audience != frozen.AttackerID {
-		// The same rule the pose enforced, checked again on the way back in:
-		// this slice poses to the roller and to nobody else, so a blob saying
-		// otherwise is one this build could not have written.
+		// The same rule the pause enforced, checked again on the way back in:
+		// a post-roll offer is posed to the roller and to nobody else, so a
+		// blob saying otherwise is one this build could not have written.
 		return nil, fmt.Errorf("%w: the offer names %q on %q's roll",
 			ErrNotOffered, frozen.Offer.Audience, frozen.AttackerID)
 	}
+	if frozen.Offer.Ref == nil || frozen.Offer.Die == "" {
+		return nil, fmt.Errorf("%w: frozen offer has no ref or no die", ErrBadFrozen)
+	}
 
-	machine := newStrikeMachine(&StrikeInput{
-		AttackerID:  frozen.AttackerID,
-		TargetID:    frozen.TargetID,
-		Definition:  frozen.Definition,
-		Opportunity: frozen.Opportunity,
-		Roller:      in.Roller,
-	})
-	machine.resume = &strikeResume{frozen: frozen, answer: in.Answer, option: in.Option}
-	return machine, nil
+	return resumedStrike(frozen.AttackerID, frozen.TargetID, frozen.Definition, frozen.Opportunity, in.Roller,
+		&strikeResume{answer: in.Answer, postRoll: &frozen}), nil
 }
 
 // gatherPostRollOffers folds the offer chain on the interaction's own bus and
@@ -256,7 +156,7 @@ func gatherPostRollOffers(
 	}
 }
 
-// pose stops the machine and hands its state out as bytes.
+// pose stops the machine on a die offer and hands its state out as bytes.
 //
 // # It refuses what it cannot freeze, loudly
 //
@@ -282,9 +182,7 @@ func (m *strikeMachine) pose(
 		return nil, fmt.Errorf("%w: an offer with no ref or no die is nothing to ask about", ErrNotOffered)
 	}
 
-	frozen, err := json.Marshal(frozenStrike{
-		Kind:        frozenStrikeKind,
-		Version:     frozenStrikeVersion,
+	frozen, err := writeFrozen(machinePostRoll, PausePostRoll, frozenPostRoll{
 		AttackerID:  m.outcome.AttackerID,
 		TargetID:    m.outcome.TargetID,
 		Definition:  m.in.Definition.Clone(),
@@ -296,14 +194,14 @@ func (m *strikeMachine) pose(
 		Offer:       offer,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("%w: freeze strike: %v", ErrBadFrozen, err)
+		return nil, err
 	}
 
-	return Pose{
+	return Pause{
+		Kind: PausePostRoll,
 		Ask: Ask{
 			Audience:    offer.Audience,
-			Offer:       offer,
-			Options:     []string{string(OfferSpend), string(OfferKeep)},
+			Offer:       offerFromRoll(offer),
 			Roll:        roll,
 			Total:       m.outcome.Total,
 			Calculation: dnd5eEvents.CloneRollCalculation(m.outcome.Calculation),
@@ -312,10 +210,10 @@ func (m *strikeMachine) pose(
 	}, nil
 }
 
-// resumeStep is the first step of a resumed strike: apply the answer, then
-// carry on from exactly where the pose was.
+// resumeStep is the first step of a strike resumed from its d20: apply the
+// answer, then carry on from exactly where the pause was.
 func (m *strikeMachine) resumeStep() Step {
-	frozen := m.resume.frozen
+	frozen := m.resume.postRoll
 
 	// The outcome is rebuilt from the frozen half rather than recomputed. This
 	// is the machine's whole state at the moment it stopped.
@@ -332,7 +230,7 @@ func (m *strikeMachine) resumeStep() Step {
 	return Gather{
 		name: fmt.Sprintf("answer %s for %s", frozen.Offer.Ref.String(), frozen.Offer.Audience),
 		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
-			if m.resume.answer == OfferSpend {
+			if m.resume.answer.Taken() {
 				if err := m.spendOffer(ctx, bus); err != nil {
 					return nil, err
 				}
@@ -360,7 +258,7 @@ func (m *strikeMachine) resumeStep() Step {
 // a mechanism rather than a promise — an offer nobody takes publishes nothing
 // and the die stays in hand.
 func (m *strikeMachine) spendOffer(ctx context.Context, bus events.EventBus) error {
-	offer := m.resume.frozen.Offer
+	offer := m.resume.postRoll.Offer
 
 	size, err := parseDieSize(offer.Die)
 	if err != nil {
@@ -395,20 +293,4 @@ func (m *strikeMachine) spendOffer(ctx context.Context, bus events.EventBus) err
 		return fmt.Errorf("publish offer taken: %w", err)
 	}
 	return nil
-}
-
-func (m *strikeMachine) posePostHit(offer dnd5eEvents.PostHitOffer) (Step, error) {
-	options := make([]string, 0, len(offer.Options)+1)
-	choices := make([]Choice, 0, len(offer.Options))
-	for _, option := range offer.Options {
-		options = append(options, option.ID)
-		choices = append(choices, Choice{ID: option.ID, Label: option.Label, Description: option.Description})
-	}
-	options = append(options, string(ReactionDecline))
-	frozen, err := json.Marshal(frozenStrike{Kind: frozenStrikeKind, Version: frozenStrikeVersion, AttackerID: m.in.AttackerID, TargetID: m.in.TargetID, Definition: m.in.Definition, Opportunity: m.in.Opportunity, PostHitPhase: true, Outcome: &m.outcome, PostHit: &offer})
-	if err != nil {
-		return nil, fmt.Errorf("%w: freeze post-hit reaction: %v", ErrBadFrozen, err)
-	}
-	settled := m.reported()
-	return Pose{SettledStrike: &settled, Ask: Ask{Audience: offer.ReactorID, Choices: choices, Offer: dnd5eEvents.Offer{Audience: offer.ReactorID, Ref: &offer.Ref, Name: offer.Name, Description: offer.Description}, Options: options}, Frozen: frozen}, nil
 }

@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -802,21 +801,17 @@ func articleFor(word string) string {
 //     [ImposedEffect.NotTaken], because a price nobody could pay is a real
 //     answer: whoever owns the board records a distance of zero that says why,
 //     rather than a missing result somebody downstream has to interpret.
-//   - The target CAN. The same [dnd5eEvents.SpendRequestedEvent] an
-//     opportunity attack publishes goes out, attributed to whatever raised the
-//     save, and the move is described.
-//
-// The bus is the Gather's own — the driver's, which is where every sheet in
-// this interaction attached its keeper. A bus captured out of an earlier step
-// would publish onto whatever bus that step happened to run on, which is the
-// rule movementMachine.bill states and this obeys.
+//   - The target CAN. Its reaction is charged through the one door, at the
+//     one table's price for a reaction — the same door an opportunity attack
+//     is billed through — and the move is described. The effect that raised
+//     the save rides the described move as its Ref.
 func payForMove(
 	directive MoveDirective, cause dnd5eEvents.SaveCause, cast *Participants, targetID string,
 	paid func() (Step, error), unpaid func(ImposedEffect) (Step, error), stayed func() (Step, error),
 ) Gather {
 	return Gather{
 		name: "pay for " + describeMove(directive),
-		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
+		run: func(ctx context.Context, _ events.EventBus) (Step, error) {
 			target, err := combatantFor(cast, targetID)
 			if err != nil {
 				return nil, err
@@ -836,13 +831,7 @@ func payForMove(
 				})
 			}
 
-			if err := dnd5eEvents.SpendRequestedTopic.On(bus).Publish(ctx,
-				dnd5eEvents.SpendRequestedEvent{
-					MemberID:   targetID,
-					ActionType: coreCombat.ActionReaction,
-					Amount:     1,
-					SourceRef:  cloneCoreRef(cause.EffectRef),
-				}); err != nil {
+			if err := payAtTheDoor(ctx, reactionCost(targetID, ""), cast); err != nil {
 				return nil, fmt.Errorf("charge %q for a move: %w", targetID, err)
 			}
 
@@ -1199,7 +1188,7 @@ func (m *contestMachine) Start(_ context.Context, cast *Participants) (Step, err
 	}, func(_ context.Context, save SaveOutcome) (Step, error) {
 		return m.resolve(ability, dc, save)
 	})
-	req.onPose = func(_ context.Context, save Pose) (Step, error) {
+	req.onPause = func(_ context.Context, save Pause) (Step, error) {
 		return poseContest(m, ability, dc, save)
 	}
 	return req, nil

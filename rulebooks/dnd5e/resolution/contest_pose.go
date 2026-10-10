@@ -16,27 +16,17 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
 
-// frozenContestKind and frozenContestVersion discriminate what a stored blob
-// is, the same trust boundary [frozenStrikeKind]/[frozenCheckKind] keep.
-const (
-	frozenContestKind    = "contest.post_save_roll"
-	frozenContestVersion = 1
-)
-
 // frozenContest is a contest stopped mid-save, in enough detail to finish it
-// and in no more detail than that — the contest sibling of [frozenStrike].
+// and in no more detail than that — the contest sibling of [frozenPostRoll].
 //
-// THE FOLD IS STORED RATHER THAN RECOMPUTED for Ability and DC, [frozenStrike]'s
+// THE FOLD IS STORED RATHER THAN RECOMPUTED for Ability and DC, [frozenPostRoll]'s
 // own reason: a sheet edited during the pause must not change what the saver
 // was asked about after they answered. Everything else here is exactly what
 // [contestMachine.Start] already worked out from content BEFORE the save ever
 // rolled — the gate's own consequence, what a failure costs, what a success
 // buys — so it is carried rather than re-derived, on the same "store what
-// content already decided" footing as [frozenStrike.Definition].
+// content already decided" footing as [frozenPostRoll.Definition].
 type frozenContest struct {
-	Kind    string `json:"kind"`
-	Version int    `json:"version"`
-
 	SaverID string            `json:"saver_id"`
 	Ability abilities.Ability `json:"ability"`
 	DC      int               `json:"dc"`
@@ -51,18 +41,17 @@ type frozenContest struct {
 	Cause        dnd5eEvents.SaveCause              `json:"cause"`
 	DamageTaken  int                                `json:"damage_taken,omitempty"`
 
-	// Save is the save machine's own frozen bytes, opaque here exactly as
-	// [Pose.Frozen] is opaque to everyone outside the machine that wrote it —
-	// this package wrote both halves, so nesting one inside the other costs
-	// nothing more than [json.RawMessage] already buys.
+	// Save is the save machine's own whole frozen header, opaque here
+	// exactly as [Pause.Frozen] is opaque to everyone outside the machine that
+	// wrote it.
 	Save json.RawMessage `json:"save"`
 }
 
-// poseContest turns a save's own pose into the contest's, freezing what
-// [contestMachine.resolve] needs to finish once the save is answered.
-func poseContest(m *contestMachine, ability abilities.Ability, dc int, save Pose) (Step, error) {
-	frozen, err := json.Marshal(frozenContest{
-		Kind: frozenContestKind, Version: frozenContestVersion,
+// poseContest turns a save's own pause into the contest's, freezing what
+// [contestMachine.resolve] needs to finish once the save is answered. Kind and
+// price are the save's.
+func poseContest(m *contestMachine, ability abilities.Ability, dc int, save Pause) (Step, error) {
+	frozen, err := writeFrozen(machineContest, save.Kind, frozenContest{
 		SaverID: m.in.SaverID, Ability: ability, DC: dc,
 		OnSuccess: m.in.Gate.OnSuccess, Application: m.in.Application, HasCondition: m.hasCondition,
 		Damage: m.in.Damage, SourceName: m.in.SourceName, Removal: m.in.Removal, Move: m.in.Move,
@@ -70,24 +59,22 @@ func poseContest(m *contestMachine, ability abilities.Ability, dc int, save Pose
 		Save: json.RawMessage(save.Frozen),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("%w: freeze contest: %v", ErrBadFrozen, err)
+		return nil, err
 	}
 
-	return Pose{Ask: save.Ask, Frozen: frozen}, nil
+	return Pause{Kind: save.Kind, Ask: save.Ask, Cost: save.Cost, Frozen: frozen}, nil
 }
 
-// newContestResumed builds the machine that finishes a contest somebody
-// answered the save on. Unexported for [newSaveResumed]'s reason: a contest
-// is always reached through [castMachine.resolveTarget], so resuming one is
-// internal to that resume, not a public entry on its own.
-func newContestResumed(raw json.RawMessage, answer OfferAnswer, roller dice.Roller) (Machine, error) {
+// resumeContest builds the machine that finishes a contest somebody answered
+// the save on. It is never a top-level resume: a contest is always held by a
+// cast or a retaliation, which resume it through [resumeInner].
+func resumeContest(h frozenHeader, in *ResumeInput) (Machine, error) {
 	var frozen frozenContest
-	if err := json.Unmarshal(raw, &frozen); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrBadFrozen, err)
+	if err := decodeState(h, &frozen); err != nil {
+		return nil, err
 	}
-	if frozen.Kind != frozenContestKind || frozen.Version != frozenContestVersion {
-		return nil, fmt.Errorf("%w: kind %q version %d is not one this build froze",
-			ErrBadFrozen, frozen.Kind, frozen.Version)
+	if err := samePrice(nil, in.Pause.Cost); err != nil {
+		return nil, err
 	}
 
 	source := frozen.Application.Ref.String()
@@ -106,7 +93,7 @@ func newContestResumed(raw json.RawMessage, answer OfferAnswer, roller dice.Roll
 			Move:        frozen.Move,
 			Cause:       frozen.Cause,
 			DamageTaken: frozen.DamageTaken,
-			Roller:      roller,
+			Roller:      in.Roller,
 		},
 		hasCondition: frozen.HasCondition,
 	}
@@ -119,7 +106,7 @@ func newContestResumed(raw json.RawMessage, answer OfferAnswer, roller dice.Roll
 	}
 
 	return &contestResumeMachine{
-		contest: m, ability: frozen.Ability, dc: frozen.DC, save: frozen.Save, answer: answer, roller: roller,
+		contest: m, ability: frozen.Ability, dc: frozen.DC, save: frozen.Save, answer: in.Answer, roller: in.Roller,
 	}, nil
 }
 
@@ -136,7 +123,7 @@ type contestResumeMachine struct {
 	ability abilities.Ability
 	dc      int
 	save    json.RawMessage
-	answer  OfferAnswer
+	answer  Answer
 	roller  dice.Roller
 }
 

@@ -35,6 +35,12 @@ var (
 	// nobody rolled.
 	ErrBadFrozen = errors.New("resolution: frozen machine state is unusable")
 
+	// ErrStalePause refuses frozen state this build did not write: a header
+	// whose version is not [PauseVersion], or a blob written before the header
+	// existed. Refused before anything loads or is charged. There is no
+	// migration — a table mid-pause across a deploy loses that window.
+	ErrStalePause = errors.New("resolution: frozen pause was written by another build")
+
 	// ErrNotOffered indicates an offer this build cannot pose or an answer it
 	// did not pose. Both are the shelf being named: one window, to the member
 	// whose d20 was just rolled, and the two answers it carries.

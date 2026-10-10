@@ -196,12 +196,13 @@
 //
 // # What this package does not do yet
 //
-// The step vocabulary is [Gather], [Request] and [Done]. [ADR-0038] seals it as
-// Gather | Pose | Request | Done, and each case lands with the caller that
-// forces it rather than in advance: Request arrived with the contest machine,
+// The step vocabulary is [Gather], [Request], [Pause] and [Done]. [ADR-0038]
+// sealed it with a suspension case, and each case landed with the caller that
+// forced it rather than in advance: Request arrived with the contest machine,
 // which needs a saving throw's answer before it knows whether to impose
-// anything, and Pose waits for the walk machine. Sealing an enumeration against
-// hypotheticals is the mistake [ADR-0007] exists to remember.
+// anything, and the suspension arrived with the strike's offers. [Pause] is
+// the one envelope every suspension now travels in, and [Resume] the one way
+// back.
 //
 // [Request] runs its machine to Done inside the requester's own step loop —
 // no suspension. That is enough for every consumer today, and the boundary it

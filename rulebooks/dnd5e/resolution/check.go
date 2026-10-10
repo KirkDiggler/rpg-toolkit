@@ -120,7 +120,7 @@ type CheckOutput struct {
 	// this is set, and this is nil when the check ran to a finished result.
 	// Set only when the checker holds an offer (Guidance is the first) —
 	// every check without one finishes exactly as it does today.
-	Posed *Pose
+	Posed *Pause
 }
 
 // MakeCheck is the lawful way to make an ability check for a stored character:
@@ -296,7 +296,7 @@ func makeCheckOn(ctx context.Context, in *CheckInput, surf *surface) (*CheckOutp
 		)
 	}
 
-	var posed *Pose
+	var posed *Pause
 	if len(offers) > 0 {
 		posed, err = poseCheck(poseCheckInput{
 			checkerID: one.ID(), applied: applied, result: result, calculation: calculation, offers: offers,
