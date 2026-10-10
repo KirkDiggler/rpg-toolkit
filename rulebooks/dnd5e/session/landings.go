@@ -440,17 +440,14 @@ func (m *Manager) landResumedSocial(
 	return nil
 }
 
-// recordStrike turns a finished strike into the outcome the composition will
-// stamp, from the identities a caller holds rather than from a compiled
-// definition.
+// recordStrike builds the record one swing produces, from the identities a
+// caller holds rather than from a compiled definition, including everything
+// the swing's concentration consequences ride in on.
 //
-// It exists because the RESUMED half of a paused attack has no compiled offer
-// to read a definition off — the offer was compiled, priced and selected
-// before the pause — and reconstructing one to recover two strings would be a
-// second answer to what was swung. [recordFor] is this with an AttackInput and
-// a definition in front of it.
-// recordStrike builds the record one swing produces, including everything the
-// swing's concentration consequences ride in on.
+// It takes identities because a reaction's swing and a resumed swing have no
+// compiled offer to read a definition off, and reconstructing one to recover
+// two strings would be a second answer to what was swung. [recordFor] is this
+// with an AttackInput and a definition in front of it.
 //
 // # The breaks and checks are PASSED THROUGH, not built here
 //

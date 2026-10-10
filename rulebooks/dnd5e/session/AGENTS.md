@@ -108,21 +108,24 @@ nowhere else: `resolution.NewActivation` in [`activate.go`](./activate.go),
 the cast machine in [`cast.go`](./cast.go), the swing in
 [`attack.go`](./attack.go), the walk in [`move.go`](./move.go), the save in
 [`death_save.go`](./death_save.go). Each one hands `resolution.Resolve` a world
-view, adopts the world back, saves dirty sheets, records, then lands the
-areas the interaction closed and opened through encounter's own verbs
-(`landAreas`), so the story tells the cause before the membership change.
+view and hands the output to the one landing ([`land.go`](./land.go)), which
+adopts the world back, saves dirty sheets, records, lands the areas the
+interaction closed and opened through encounter's own verbs (`landAreas`),
+poses the windows the output leaves, runs the verb's continuation, then
+commits — so the story tells the cause before the membership change, and a
+pause is posed only after everything that settled before it was told.
 
 **The lookups.** Ten capabilities the composition cannot implement for itself,
 each proved at compile time by a `var _` line: `standingSeam`
-([`standing.go`](./standing.go):47), `checkSeam` and `witnessSeam`
-([`conceal.go`](./conceal.go):98, :344), `strikerSeam`
-([`striker.go`](./striker.go):38), `moverSeam` ([`mover.go`](./mover.go):37),
+([`standing.go`](./standing.go):46), `checkSeam` and `witnessSeam`
+([`conceal.go`](./conceal.go):98, :343), `strikerSeam`
+([`striker.go`](./striker.go):38), `moverSeam` ([`mover.go`](./mover.go):35),
 `announcerSeam` ([`announcer.go`](./announcer.go):31), `turnDriverSeam`
-([`turndriver.go`](./turndriver.go):426), `initiativeSeam`
+([`turndriver.go`](./turndriver.go):505), `initiativeSeam`
 ([`initiative.go`](./initiative.go)), `sheetSeam` ([`sheets.go`](./sheets.go),
 answering both `Sheets` and `Sight` ([`sight.go`](./sight.go)) from the sheets
 the verb holds),
-and `reactionAttacks` ([`mover.go`](./mover.go):486, the one `resolution`
+and `reactionAttacks` ([`mover.go`](./mover.go):297, the one `resolution`
 capability).
 
 **The projection and the persistence shape.** [`convert.go`](./convert.go) and

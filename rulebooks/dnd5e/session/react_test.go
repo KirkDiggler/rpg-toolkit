@@ -792,3 +792,41 @@ func (s *ReactWindowSuite) TestAStaleWindowIsRefused() {
 		})
 	}
 }
+
+// TestAWindowSurvivesAnUnpayableTake: the window is consumed before the
+// resume only on the uncommitted scope, so a Take resolution cannot charge —
+// the fighter has no reaction left — is refused as ErrCannotAfford, a player's
+// answer, and leaves the same window standing to be declined.
+func (s *ReactWindowSuite) TestAWindowSurvivesAnUnpayableTake() {
+	ctx := context.Background()
+	mgr := s.twoFightersOneSkeleton()
+	row := s.reactRow(mgr, "fighter")
+	s.Require().NotEmpty(row.ID)
+	s.inCombat("fighter", 0)
+
+	_, err := mgr.React(ctx, &session.ReactInput{
+		Session: "sess", Member: "fighter", DeclarationID: row.ID, Answer: session.Take(""),
+	})
+	s.Require().ErrorIs(err, session.ErrCannotAfford)
+	s.Equal(row.ID, s.reactRow(mgr, "fighter").ID, "the same window still stands")
+	s.Empty(s.reactionBeats(mgr, "fighter"), "nothing swung")
+
+	s.react(mgr, "fighter", session.Decline())
+	s.Empty(s.reactRow(mgr, "fighter").ID, "declining it closes it")
+}
+
+// TestAWindowSurvivesAResumeThatFailsAfterTheClose: an answer the offer does
+// not accept is refused by resolution after the window was consumed on the
+// scope; nothing is committed, so the window stands and nothing is charged.
+func (s *ReactWindowSuite) TestAWindowSurvivesAResumeThatFailsAfterTheClose() {
+	mgr := s.twoFightersOneSkeleton()
+	row := s.reactRow(mgr, "fighter")
+	s.Require().NotEmpty(row.ID)
+
+	_, err := mgr.React(context.Background(), &session.ReactInput{
+		Session: "sess", Member: "fighter", DeclarationID: row.ID, Answer: session.Take("bogus"),
+	})
+	s.Require().ErrorIs(err, session.ErrNotOffered)
+	s.Equal(row.ID, s.reactRow(mgr, "fighter").ID, "the same window still stands")
+	s.Equal(1, s.reactionsLeft("fighter"), "and nothing was charged")
+}
