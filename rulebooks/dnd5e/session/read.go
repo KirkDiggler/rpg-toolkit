@@ -885,7 +885,7 @@ func translate(err error) error {
 		// It arrives as the bare sentinel, without the WindowOpenError detail,
 		// because in this state there are no windows to name. encounter's
 		// ErrNotPaused deliberately has NO ARM: nothing at this seam calls
-		// ResumeTurn without first asking Paused, so an arm for it would be a
+		// Resume without first asking Paused, so an arm for it would be a
 		// claim about a path this file cannot back.
 		return fmt.Errorf("%w", ErrWindowOpen)
 	case errors.Is(err, encounter.ErrNoSheets):
@@ -904,6 +904,10 @@ func translate(err error) error {
 		// the same either way — this encounter's data is unusable, and the
 		// repair is upstream of anything a caller can retry.
 		return fmt.Errorf("%w", ErrInvalidWorld)
+	case errors.Is(err, encounter.ErrStalePause):
+		// The encounter's stored pause was written by another build (ruling
+		// E5): the run is reset rather than resumed into a walk it cannot read.
+		return fmt.Errorf("%w", ErrStalePause)
 	case errors.Is(err, encounter.ErrInBubble):
 		return fmt.Errorf("%w", ErrInBubble)
 	case errors.Is(err, encounter.ErrNoBubble):

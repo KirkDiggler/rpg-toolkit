@@ -9,7 +9,6 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/play/interrupt"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
@@ -176,7 +175,7 @@ type CastOutput struct {
 	Posed bool `json:"posed,omitempty"`
 
 	// Roll is the d20 as rolled, present only when Posed. THE SAVE'S DC IS
-	// DELIBERATELY NOT SURFACED alongside it, [checkOfferWindowPayload.Roll]'s
+	// DELIBERATELY NOT SURFACED alongside it, [resolution.Ask]'s
 	// reason: a player who could see it would be deciding whether the die
 	// closes the gap rather than whether it is worth spending.
 	Roll *int `json:"roll,omitempty"`
@@ -459,27 +458,35 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 	// before the door yields its first step, whether or not that step turns
 	// out to be this one, so nothing here is refunded or deferred.
 	if out.Posed != nil {
-		return m.poseCastWindow(ctx, scope, in.Member, *selected.declaration.Spell, areaUnresolved(caught), out, nil)
+		return m.poseCastWindow(ctx, scope, in.Member, *selected.declaration.Spell, areaUnresolved(caught), out)
 	}
 
-	return m.finishCast(ctx, scope, in.Member, *selected.declaration.Spell, definition.Ref, areaUnresolved(caught), out, nil)
+	return m.finishCast(ctx, scope, in.Member, *selected.declaration.Spell, definition.Ref, areaUnresolved(caught), out)
 }
 
 // finishCast is everything a cast does once resolution has a real
 // [resolution.CastOutcome] in hand — reached directly by a cast that never
-// posed, and by [Manager.answerCastOffer] once a posed one is answered. One
-// function rather than two, so a beat the fresh path writes cannot drift from
-// the one the resumed path writes for the same cast.
+// posed, and by [Manager.answerWindow] once a posed one is answered. A cast is
+// ONE told unit: its one beat names every target, the ones resolved before a
+// pause included, and is told here and only here. One function rather than
+// two, so a beat the fresh path writes cannot drift from the one the resumed
+// path writes for the same cast.
+//
+// A resumed cast does not continue the table on its last answer, unlike every
+// other story: a cast's window is posed on its caster's own turn, through
+// openForChange, so no turn is paused and no walk is held while it stands.
+// The day a cast can pose during somebody else's walk, its resume must call
+// [Manager.resumeAfterLastAnswer] too.
 //
 // caught is already the CALLER-FACING projection ([areaUnresolved]'s own
 // output) rather than the internal [areaCaught] a fresh cast computes it
 // from: a resumed cast has no footprint left to derive it from (the
 // footprint was fixed before any target's save was even rolled) and carries
 // this projection through the window payload instead — see
-// [castOfferWindowPayload.Caught].
+// [windowStory.Caught].
 func (m *Manager) finishCast(
 	ctx context.Context, scope *writeScope, member string, spell SpellRef, spellRef core.Ref,
-	caught []CaughtMember, out *resolution.Output, answer *windowAnswer,
+	caught []CaughtMember, out *resolution.Output,
 ) (*CastOutput, error) {
 	targetResults, pushes, err := castOutcome(out.Outcome, member, spell)
 	if err != nil {
@@ -537,12 +544,11 @@ func (m *Manager) finishCast(
 			})
 			return err
 		},
-		Answer: answer,
 		Continue: func(enc *encounter.Encounter) error {
 			if completed, ok := out.Outcome.(resolution.CastOutcome); ok {
 				for _, target := range completed.Targets {
 					if target.Attack != nil {
-						if err := m.recordRetaliation(scope, target.Attack.Retaliation, concentration{}); err != nil {
+						if err := recordRetaliation(enc, target.Attack.Retaliation, concentration{}); err != nil {
 							return err
 						}
 					}
@@ -602,98 +608,53 @@ func (m *Manager) finishCast(
 	}, nil
 }
 
-// poseCastWindow commits the price already paid and asks the target the
-// question resolution stopped on — [poseUnlockWindow]'s shape, for a cast's
-// saving throw instead of a lock check.
+// poseCastWindow lands a cast that stopped on one target's save and asks the
+// question resolution stopped on — reached by a fresh cast and by a resumed
+// one that stops on a later target's save.
 //
-// The encounter is not paused for the same reason a posed check does not
-// pause it: the window lives entirely in the interrupt ledger already
-// persisted here, and every other member's turn proceeds around it exactly
-// as it does around any other open reaction window.
+// WHAT SETTLED LANDS AT THE PAUSE: the price already paid, the sheets the
+// earlier targets' saves changed, the concentration the cast tested or ended
+// (told through [tellConcentration] with the caster as actor, because a cast
+// tells its one beat only when it ends), and the areas that concentration
+// closed. The cast beat itself waits for the resume (one pause envelope: a
+// cast is one told unit).
+//
+// The encounter is not paused: the window lives entirely in the interrupt
+// ledger, and every other member's turn proceeds around it.
 func (m *Manager) poseCastWindow(
 	ctx context.Context, scope *writeScope, member string, spell SpellRef, caught []CaughtMember,
-	out *resolution.Output, answer *windowAnswer,
+	out *resolution.Output,
 ) (*CastOutput, error) {
-	posed := out.Posed
-	ask := posed.Ask
-	if ask.Offer.Ref == nil || ask.Offer.Name == "" {
-		return nil, fmt.Errorf("cast: %w: the machine asked about an unnamed offer", ErrInvalidWorld)
-	}
-	if len(ask.Options) != 2 && len(ask.Choices) == 0 {
-		return nil, fmt.Errorf("cast: %w: the machine posed %d answers and this seam poses two",
-			ErrInvalidWorld, len(ask.Options))
-	}
-
-	// THE PRICE IS ALREADY PAID, in memory, by the [resolution.Resolve] call
-	// that just posed — [Cost] charges before the door yields its first
-	// step, whichever step that turns out to be. Adopted and saved by the
-	// landing, or a bard whose slot was spent would see it back on the next
-	// read because nothing durable ever recorded the charge. No outcome is
-	// told before the answer (R9).
-	var recorded *encounter.RollWindowOutput
+	pause := *out.Posed
+	story := windowStory{Kind: storyCast, Caster: member, Spell: spell, Caught: caught}
+	var beat *encounter.RollWindowOutput
 	result, err := m.land(ctx, scope, out, &landing{
-		Untold: true,
-		Answer: answer,
+		Record: func(enc *encounter.Encounter, told concentration) error {
+			if out.Outcome != nil {
+				return fmt.Errorf("%w: a paused cast told %T before it ended", ErrInvalidWorld, out.Outcome)
+			}
+			return tellConcentration(member)(enc, told)
+		},
 		Window: func(enc *encounter.Encounter) error {
-			options := make([]CastOption, 0, len(ask.Choices))
-			for _, o := range ask.Choices {
-				options = append(options, CastOption{ID: o.ID, Label: o.Label, Description: o.Description})
-			}
-			offer := ReactionRef{Ref: ask.Offer.Ref.String(), Name: ask.Offer.Name}
-			payload, err := marshalCastOfferPayload(castOfferWindowPayload{
-				Options:          options,
-				Audience:         ask.Audience,
-				Caster:           member,
-				Spell:            spell,
-				Caught:           caught,
-				Offer:            offer,
-				OfferDescription: ask.Offer.Description,
-				Roll:             ask.Roll,
-				Total:            ask.Total,
-				Frozen:           posed.Frozen,
-			})
-			if err != nil {
-				return fmt.Errorf("%w: %v", ErrInvalidSession, err)
-			}
-
-			// THE TWO ANSWERS ARE THIS SEAM'S, not the machine's:
-			// [poseUnlockWindow]'s own reasoning, reused rather than re-derived.
-			if _, err := scope.ledger.Pose(&interrupt.PoseInput{
-				Audience: core.EntityID(ask.Audience),
-				Options:  []interrupt.Option{interrupt.Option(ReactStrike), interrupt.Option(ReactHold)},
-				Payload:  payload,
-				At:       scope.baseline,
-			}); err != nil {
-				return fmt.Errorf("%w: %v", ErrInvalidSession, err)
-			}
-
-			// A window with choices records no roll-window beat.
-			if len(ask.Choices) > 0 {
-				return nil
-			}
-			recorded, err = enc.RecordRollWindow(&encounter.RollWindowInput{
-				Audience: encounter.MemberID(ask.Audience),
-				Offer:    encounter.ReactionIdentity{Ref: offer.Ref, Name: offer.Name},
-				Roll:     ask.Roll,
-				Total:    ask.Total,
-			})
+			var err error
+			beat, err = openWindow(enc, scope, pause, story)
 			return err
 		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("cast: %w", err)
 	}
-	if len(ask.Choices) > 0 {
+	if beat == nil {
 		return &CastOutput{Spell: spell, Posed: true, Persisted: result.Saved, Delivery: result.Delivery}, nil
 	}
 
-	roll, total := ask.Roll, ask.Total
+	roll, total := pause.Ask.Roll, pause.Ask.Total
 	return &CastOutput{
 		Spell:     spell,
 		Posed:     true,
 		Roll:      &roll,
 		Total:     &total,
-		Seqs:      []uint64{scope.deliveredSeq(member, recorded.Seq)},
+		Seqs:      []uint64{scope.deliveredSeq(member, beat.Seq)},
 		Persisted: result.Saved,
 		Delivery:  result.Delivery,
 	}, nil

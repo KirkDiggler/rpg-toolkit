@@ -242,11 +242,11 @@ func (s *ReactWindowSuite) endTurn(mgr *session.Manager, member string) {
 }
 
 // react answers member's own open window.
-func (s *ReactWindowSuite) react(mgr *session.Manager, member string, choice session.ReactChoice) {
+func (s *ReactWindowSuite) react(mgr *session.Manager, member string, choice session.Answer) {
 	row := s.reactRow(mgr, member)
 	s.Require().NotEmpty(row.ID, "no open window for %q", member)
 	_, err := mgr.React(context.Background(), &session.ReactInput{
-		Session: "sess", Member: member, DeclarationID: row.ID, Choice: choice,
+		Session: "sess", Member: member, DeclarationID: row.ID, Answer: choice,
 	})
 	s.Require().NoError(err)
 }
@@ -297,7 +297,7 @@ func (s *ReactWindowSuite) TestTheFighterIsAskedAndHoldsThenIsAskedAndStrikes() 
 
 	// HOLD. The skeleton finishes the walk it announced, and the fighter's
 	// reaction is still in her hand for the next one.
-	s.react(mgr, "fighter", session.ReactHold)
+	s.react(mgr, "fighter", session.Decline())
 	s.Equal(hexCell(6, 0), s.where(mgr, "skel-1"), "the resumed turn walks the rest of the path")
 	s.Empty(s.reactionBeats(mgr, "fighter"), "holding swings at nobody")
 	s.Equal(1, s.reactionsLeft("fighter"), "a reaction nobody took costs nothing")
@@ -311,7 +311,7 @@ func (s *ReactWindowSuite) TestTheFighterIsAskedAndHoldsThenIsAskedAndStrikes() 
 	s.Equal([]session.TargetCandidate{{Member: "skel-2", Available: true}}, second.Candidates)
 
 	// STRIKE.
-	s.react(mgr, "fighter", session.ReactStrike)
+	s.react(mgr, "fighter", session.Take(""))
 
 	beats := s.reactionBeats(mgr, "fighter")
 	s.Require().Len(beats, 1, "one swing, at the skeleton she chose")
@@ -383,7 +383,7 @@ func (s *ReactWindowSuite) TestSomebodyElsesWindowIsRefused() {
 	s.Require().NotEmpty(mine.ID)
 
 	_, err := mgr.React(context.Background(), &session.ReactInput{
-		Session: "sess", Member: "second", DeclarationID: mine.ID, Choice: session.ReactStrike,
+		Session: "sess", Member: "second", DeclarationID: mine.ID, Answer: session.Take(""),
 	})
 	s.Require().ErrorIs(err, session.ErrNotAudience)
 }
@@ -399,7 +399,7 @@ func (s *ReactWindowSuite) TestAnUnknownChoiceIsRefused() {
 	s.Require().NotEmpty(row.ID)
 
 	_, err := mgr.React(context.Background(), &session.ReactInput{
-		Session: "sess", Member: "fighter", DeclarationID: row.ID, Choice: session.ReactChoice("parry"),
+		Session: "sess", Member: "fighter", DeclarationID: row.ID, Answer: session.Take("parry"),
 	})
 	s.Require().ErrorIs(err, session.ErrNotOffered)
 
@@ -414,10 +414,10 @@ func (s *ReactWindowSuite) TestAStaleDeclarationIsRefused() {
 
 	row := s.reactRow(mgr, "fighter")
 	s.Require().NotEmpty(row.ID)
-	s.react(mgr, "fighter", session.ReactHold)
+	s.react(mgr, "fighter", session.Decline())
 
 	_, err := mgr.React(context.Background(), &session.ReactInput{
-		Session: "sess", Member: "fighter", DeclarationID: row.ID, Choice: session.ReactStrike,
+		Session: "sess", Member: "fighter", DeclarationID: row.ID, Answer: session.Take(""),
 	})
 	s.Require().ErrorIs(err, session.ErrNoWindow, "a window id is never reused, so an answered one is gone for good")
 }
@@ -441,7 +441,7 @@ func (s *ReactWindowSuite) TestARestartBetweenTheQuestionAndTheAnswerChangesNoth
 	s.Equal(oaRef(), row.Reaction.Ref)
 
 	_, err := restarted.React(context.Background(), &session.ReactInput{
-		Session: "sess", Member: "fighter", DeclarationID: row.ID, Choice: session.ReactStrike,
+		Session: "sess", Member: "fighter", DeclarationID: row.ID, Answer: session.Take(""),
 	})
 	s.Require().NoError(err)
 
@@ -487,12 +487,12 @@ func (s *ReactWindowSuite) TestOneStepAsksEveryPlayerReactorAtOnce() {
 
 	// THE FIRST ANSWER CHANGES NOTHING BUT THE LEDGER. The skeleton has not
 	// moved, and the second fighter is still being asked.
-	s.react(mgr, "fighter", session.ReactHold)
+	s.react(mgr, "fighter", session.Decline())
 	s.Equal(hexCell(3, 0), s.where(mgr, "skel-1"), "the fight is still waiting on the second answer")
 	s.Empty(s.reactRow(mgr, "fighter").ID)
 	s.Require().NotEmpty(s.reactRow(mgr, "second").ID)
 
-	s.react(mgr, "second", session.ReactStrike)
+	s.react(mgr, "second", session.Take(""))
 	s.Equal(hexCell(5, 0), s.where(mgr, "skel-1"), "the last answer resumes the turn")
 
 	beats := s.reactionBeats(mgr, "second")
@@ -515,7 +515,7 @@ func (s *ReactWindowSuite) TestAStrikeThatDropsTheMoverHoldsTheRestOfTheWindows(
 	mgr := s.twoFightersOneSkeleton("skel-2")
 	s.frail("skel-1")
 
-	s.react(mgr, "fighter", session.ReactStrike)
+	s.react(mgr, "fighter", session.Take(""))
 
 	s.Empty(s.reactRow(mgr, "second").ID, "the other question is closed, not left hanging")
 	s.Equal(hexCell(3, 0), s.where(mgr, "skel-1"), "it falls in the cell it was leaving, not the one it was entering")
@@ -567,7 +567,7 @@ func (s *ReactWindowSuite) TestTheWindowAndTheSwingReachTheEventStreamTyped() {
 	s.Equal([]string{"fighter"}, opened.Audience)
 	s.Equal(session.ReactionRef{Ref: oaRef(), Name: "Opportunity Attack"}, opened.Reaction)
 
-	s.react(mgr, "fighter", session.ReactStrike)
+	s.react(mgr, "fighter", session.Take(""))
 
 	var struck *session.StruckBody
 	var missed *session.MissedBody
@@ -647,7 +647,7 @@ func (s *ReactWindowSuite) TestAStrikeThatEndsTheFightHoldsTheRestAndCarriesOn()
 	mgr := s.twoFightersOneSkeleton()
 	s.frail("skel-1")
 
-	s.react(mgr, "fighter", session.ReactStrike)
+	s.react(mgr, "fighter", session.Take(""))
 
 	// BOTH QUESTIONS ARE CLOSED. The one that was answered, and the one that
 	// was held on its audience's behalf because there was no longer a walk to
@@ -688,4 +688,145 @@ func (s *ReactWindowSuite) TestAStrikeThatEndsTheFightHoldsTheRestAndCarriesOn()
 	})
 	s.Require().NoError(err, "nothing is frozen any more")
 	s.Require().Len(out.Steps, 1)
+}
+
+// TestAnOpportunityAttackPausesAndBillsOnTake is the envelope's opportunity
+// proof. One skeleton step asks two fighters at once, and both windows stand.
+// Taking charges the first fighter's reaction through resolution's one door
+// and tells the swing AS an opportunity attack; the step still waits on the
+// second. Declining charges nothing, and the last answer takes the step and
+// resumes the turn.
+func (s *ReactWindowSuite) TestAnOpportunityAttackPausesAndBillsOnTake() {
+	mgr := s.twoFightersOneSkeleton()
+	s.Require().NotEmpty(s.reactRow(mgr, "fighter").ID, "control: the first fighter is asked")
+	s.Require().NotEmpty(s.reactRow(mgr, "second").ID, "control: and so is the second, at once")
+	s.Require().Equal(1, s.reactionsLeft("fighter"))
+	s.Require().Equal(1, s.reactionsLeft("second"))
+
+	s.react(mgr, "fighter", session.Take(""))
+	s.Equal(0, s.reactionsLeft("fighter"), "taking spends the taker's reaction")
+	beats := s.reactionBeats(mgr, "fighter")
+	s.Require().Len(beats, 1, "the taken swing is told")
+	s.Equal("fighter", beats[0].Actor)
+	s.Equal([]string{"skel-1"}, beats[0].Targets)
+	s.Equal(oaRef(), beats[0].Reaction.Ref, "told as the reaction it was")
+	s.Equal("Opportunity Attack", beats[0].Reaction.Name)
+	s.Equal(hexCell(3, 0), s.where(mgr, "skel-1"), "the step waits on the second answer (E8)")
+	s.Require().NotEmpty(s.reactRow(mgr, "second").ID, "the second window still stands")
+
+	s.react(mgr, "second", session.Decline())
+	s.Equal(1, s.reactionsLeft("second"), "declining spends nothing")
+	s.Len(s.reactionBeats(mgr, "fighter"), 1, "and swings at nobody")
+	s.Equal(hexCell(5, 0), s.where(mgr, "skel-1"), "the last answer takes the step and resumes the turn")
+}
+
+// TestAReactRowStatesItsPrice: an opportunity row carries the price its pause
+// states — one reaction — so the dock can say what taking it costs.
+func (s *ReactWindowSuite) TestAReactRowStatesItsPrice() {
+	mgr := s.twoSkeletons()
+	s.endTurn(mgr, "fighter")
+	row := s.reactRow(mgr, "fighter")
+	s.Require().NotEmpty(row.ID)
+	s.Equal(session.SlotReaction, row.Slot)
+	s.Equal([]session.CostComponent{{Currency: session.CurrencyReaction, Needed: 1}}, row.Cost)
+}
+
+// TestTheZeroAnswerIsRefused: a ReactInput that names a real window and says
+// nothing about what it chose is refused before anything is loaded — the
+// session record is gone and the refusal is still the answer's, not the load's.
+func (s *ReactWindowSuite) TestTheZeroAnswerIsRefused() {
+	mgr := s.twoSkeletons()
+	s.endTurn(mgr, "fighter")
+	row := s.reactRow(mgr, "fighter")
+	s.Require().NotEmpty(row.ID)
+
+	delete(s.sessions.byID, "sess")
+	_, err := mgr.React(context.Background(), &session.ReactInput{
+		Session: "sess", Member: "fighter", DeclarationID: row.ID,
+	})
+	s.Require().ErrorIs(err, session.ErrNotOffered)
+}
+
+// TestAStaleWindowIsRefused is ruling E5 on the session side: a window an
+// earlier build posed — a pre-envelope pending_attack payload, or a payload
+// whose version is not this build's — is refused with ErrStalePause before
+// anything is resumed or charged.
+func (s *ReactWindowSuite) TestAStaleWindowIsRefused() {
+	for name, rewrite := range map[string]func([]byte) []byte{
+		"pre-envelope pending_attack": func([]byte) []byte {
+			return []byte(`{"kind":"pending_attack","audience":"fighter","attacker":"skel-1","target":"fighter",` +
+				`"offer":{"ref":"dnd5e:conditions:opportunity_attack","name":"Opportunity Attack"},"frozen":"e30="}`)
+		},
+		"version 0": func(raw []byte) []byte {
+			var window map[string]any
+			s.Require().NoError(json.Unmarshal(raw, &window))
+			window["version"] = 0
+			out, err := json.Marshal(window)
+			s.Require().NoError(err)
+			return out
+		},
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			mgr := s.twoSkeletons()
+			s.endTurn(mgr, "fighter")
+			row := s.reactRow(mgr, "fighter")
+			s.Require().NotEmpty(row.ID)
+
+			stored := s.sessions.byID["sess"]
+			rewritten := false
+			for i := range stored.Windows.Windows {
+				if string(stored.Windows.Windows[i].Audience) == "fighter" {
+					stored.Windows.Windows[i].Payload = rewrite(stored.Windows.Windows[i].Payload)
+					rewritten = true
+				}
+			}
+			s.Require().True(rewritten, "control: the fighter's window is stored")
+
+			_, err := mgr.React(context.Background(), &session.ReactInput{
+				Session: "sess", Member: "fighter", DeclarationID: row.ID, Answer: session.Take(""),
+			})
+			s.Require().ErrorIs(err, session.ErrStalePause)
+			s.Equal(1, s.reactionsLeft("fighter"), "nothing was charged")
+			s.Empty(s.reactionBeats(mgr, "fighter"), "nothing was swung")
+		})
+	}
+}
+
+// TestAWindowSurvivesAnUnpayableTake: the window is consumed before the
+// resume only on the uncommitted scope, so a Take resolution cannot charge —
+// the fighter has no reaction left — is refused as ErrCannotAfford, a player's
+// answer, and leaves the same window standing to be declined.
+func (s *ReactWindowSuite) TestAWindowSurvivesAnUnpayableTake() {
+	ctx := context.Background()
+	mgr := s.twoFightersOneSkeleton()
+	row := s.reactRow(mgr, "fighter")
+	s.Require().NotEmpty(row.ID)
+	s.inCombat("fighter", 0)
+
+	_, err := mgr.React(ctx, &session.ReactInput{
+		Session: "sess", Member: "fighter", DeclarationID: row.ID, Answer: session.Take(""),
+	})
+	s.Require().ErrorIs(err, session.ErrCannotAfford)
+	s.Equal(row.ID, s.reactRow(mgr, "fighter").ID, "the same window still stands")
+	s.Empty(s.reactionBeats(mgr, "fighter"), "nothing swung")
+
+	s.react(mgr, "fighter", session.Decline())
+	s.Empty(s.reactRow(mgr, "fighter").ID, "declining it closes it")
+}
+
+// TestAWindowSurvivesAResumeThatFailsAfterTheClose: an answer the offer does
+// not accept is refused by resolution after the window was consumed on the
+// scope; nothing is committed, so the window stands and nothing is charged.
+func (s *ReactWindowSuite) TestAWindowSurvivesAResumeThatFailsAfterTheClose() {
+	mgr := s.twoFightersOneSkeleton()
+	row := s.reactRow(mgr, "fighter")
+	s.Require().NotEmpty(row.ID)
+
+	_, err := mgr.React(context.Background(), &session.ReactInput{
+		Session: "sess", Member: "fighter", DeclarationID: row.ID, Answer: session.Take("bogus"),
+	})
+	s.Require().ErrorIs(err, session.ErrNotOffered)
+	s.Equal(row.ID, s.reactRow(mgr, "fighter").ID, "the same window still stands")
+	s.Equal(1, s.reactionsLeft("fighter"), "and nothing was charged")
 }

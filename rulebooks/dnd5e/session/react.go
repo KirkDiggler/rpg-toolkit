@@ -7,32 +7,57 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/play/interrupt"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// ReactChoice is one answer to an open reaction window.
+// Answer is one answer to an open window: [Take] or [Decline].
 //
-// A CLOSED ENUM OWNED HERE, like [Verb], and deliberately not the ledger's own
-// interrupt.Option: the custody module's vocabulary is "whatever this window
-// offered", and this seam's is the two answers a reaction window actually
-// poses. A host that matched on the inner type would be pinned to a module
-// this package intends to be able to replace (law S2).
-type ReactChoice string
+// It mirrors resolution's answer at this boundary (law S2: no inner type
+// crosses), and it is a value rather than an enum because Take carries the
+// option the offer listed. THE ZERO ANSWER IS REFUSED with [ErrNotOffered]: a
+// caller that built a ReactInput and never said what it chose has no answer
+// to give, and reading that as a decline would spend somebody's question on a
+// forgotten field.
+type Answer struct {
+	given  bool // set by Take and Decline; the zero Answer is refused
+	take   bool
+	option string
+}
 
-const (
-	// ReactStrike takes the reaction: the swing that was offered is resolved
-	// against the mover, from the cell they are still standing in, and the
-	// beat records what it was taken AS.
-	ReactStrike ReactChoice = "strike"
+// Take accepts the offer. option is one of the offer's choices — the row's
+// [Declaration.Options] — when it lists any, and empty when it lists none.
+// Anything else is refused with [ErrNotOffered] once the window is read.
+func Take(option string) Answer { return Answer{given: true, take: true, option: option} }
 
-	// ReactHold declines it, and COSTS NOTHING. The reaction is spent only
-	// when the movement machine reports one taken (ruling R1), so a member
-	// who holds still has their reaction for the next skeleton — which is the
-	// whole reason Kirk asked to be asked.
-	ReactHold ReactChoice = "hold"
-)
+// Decline refuses the offer. Declining costs nothing and carries no option.
+func Decline() Answer { return Answer{given: true} }
+
+// Taken reports whether this answer takes the offer.
+func (a Answer) Taken() bool { return a.take }
+
+// Option is the chosen option, or empty.
+func (a Answer) Option() string { return a.option }
+
+// resolution is this answer in resolution's vocabulary, rebuilt through its
+// own constructors because its fields are unexported.
+func (a Answer) resolution() resolution.Answer {
+	if a.take {
+		return resolution.Take(a.option)
+	}
+	return resolution.Decline()
+}
+
+// ledger is the ledger's bookkeeping word for this answer.
+func (a Answer) ledger() interrupt.Option {
+	if a.take {
+		return ledgerTake
+	}
+	return ledgerDecline
+}
 
 // ReactInput answers one open interrupt window.
 type ReactInput struct {
@@ -53,12 +78,8 @@ type ReactInput struct {
 	// regenerating every open window's selector.
 	DeclarationID string
 
-	// Choice is [ReactStrike] or [ReactHold]. Anything else is
-	// [ErrNotOffered].
-	Choice ReactChoice
-
-	// Option echoes an authored option from this reaction declaration.
-	Option string
+	// Answer is [Take] or [Decline]. The zero Answer is [ErrNotOffered].
+	Answer Answer
 }
 
 // ReactOutput is what answering a window did.
@@ -67,9 +88,7 @@ type ReactInput struct {
 // which can drive several more turns, form or dissolve a fight, and pause
 // again — none of which is this member's business to be told in a return
 // value. What happened reaches every member the way everything else does: as
-// beats on their stream, read back through Story and Afford. A second, partial
-// account of a turn nobody at this seam owns would be a shape that has to stay
-// true, and it is one this verb cannot keep.
+// beats on their stream, read back through Story and Afford.
 type ReactOutput struct {
 	// Saved names what was persisted.
 	Saved SaveReport `json:"saved"`
@@ -78,47 +97,37 @@ type ReactOutput struct {
 	Delivery DeliveryReport `json:"delivery"`
 }
 
-// React answers an open interrupt window: a monster's step stopped to ask this
-// member whether they take their reaction, and this is the answer.
+// React answers an open interrupt window.
 //
 // # It is the one verb that reaches a frozen session
 //
 // Every other change verb opens through [Manager.openForChange] and is refused
 // with [ErrWindowOpen] while any window is open. This one uses openForWrite,
-// because a frozen session is exactly the state it exists to operate on. The
-// split is structural rather than a comment: a new verb picks its policy by
-// picking its opener.
+// because a frozen session is exactly the state it exists to operate on.
 //
-// # Striking resolves the SAME step a second time
+// # One window, one dispatch
 //
-// Not a hand-rolled swing. The window froze a mover, two cells and the attack
-// this member was offered; [ReactStrike] hands all four back to the movement
-// machine with a ReactionAttacks capability that answers for this reactor and
-// nobody else. So the fold runs again — Disengage still silences it, the
-// concealment seams still apply, the condition still triggers because holding
-// costs nothing and left it unspent — and the swing that lands is the one the
-// question described. [ReactHold] resolves nothing at all.
+// Every window holds one stored payload and every answer goes through
+// [Manager.answerWindow]: the window is read, consumed, and its pause handed
+// back to resolution with the answer. What settled before the pause was told
+// when it paused; the resume tells only what settled after. A taken offer is
+// charged once, by resolution, at the price the pause stated.
 //
-// # The last answer resumes the turn
+// # The last answer resumes the table
 //
 // While any window is still open the fight stays frozen: two fighters asked
-// about one step are two answers, and the first of them changes nothing but
-// the ledger. When the last one lands, the encounter's own
-// [encounter.Encounter.ResumeTurn] takes the announced step and finishes the
-// turn — and may pause again on a later cell, which is not a failure but the
-// next question.
-//
-// A strike that DROPS the mover ends the step for everybody: the remaining
-// windows are answered [ReactHold] on their audiences' behalf, because there
-// is no longer a walk to react to, and the mover falls in the cell they were
-// leaving (ruling R6).
+// about one step are two answers, and the first changes nothing but the
+// ledger and its own swing. When the last one lands, a player's interrupted
+// walk continues, or the encounter's paused walk is resumed — and may pause
+// again on a later cell, which is not a failure but the next question.
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoDeclarationID,
-// ErrNotOffered for a choice this window does not offer, ErrNoSession,
-// ErrNoEncounter, ErrNoWindow when the declaration names no open window,
-// ErrNotAudience when it names somebody else's, ErrInvalidSession for a stored
-// window this build could not have written, or ErrSaveFailed with a populated
-// report.
+// ErrNotOffered for the zero Answer (before anything is loaded) or an answer
+// the offer does not accept, ErrNoSession, ErrNoEncounter, ErrNoWindow when
+// the declaration names no open window, ErrNotAudience when it names somebody
+// else's, ErrStalePause for a window an earlier build posed, ErrCannotAfford
+// when a taken offer cannot be paid, ErrInvalidSession for a stored window
+// this build could not have written, or ErrSaveFailed with a populated report.
 func (m *Manager) React(ctx context.Context, in *ReactInput) (*ReactOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("react: %w", ErrNilInput)
@@ -134,14 +143,10 @@ func (m *Manager) React(ctx context.Context, in *ReactInput) (*ReactOutput, erro
 	if in.DeclarationID == "" {
 		return nil, fmt.Errorf("react: %w", ErrNoDeclarationID)
 	}
-	// The choice is checked against the enum BEFORE anything is loaded, and
-	// against the WINDOW's own options below. Two checks because they answer
-	// two questions: this build does not know the word at all, versus this
-	// window does not offer it.
-	switch in.Choice {
-	case ReactStrike, ReactHold:
-	default:
-		return nil, fmt.Errorf("react: choice %q: %w", in.Choice, ErrNotOffered)
+	// Refused BEFORE anything is loaded: no answer was given, so there is no
+	// window worth reading.
+	if !in.Answer.given {
+		return nil, fmt.Errorf("react: %w: no answer was given", ErrNotOffered)
 	}
 
 	scope, err := m.openForWrite(ctx, in.Session)
@@ -153,111 +158,164 @@ func (m *Manager) React(ctx context.Context, in *ReactInput) (*ReactOutput, erro
 	if err != nil {
 		return nil, fmt.Errorf("react: %w", err)
 	}
-	kind, err := windowKindOf(window.Payload)
+	out, err := m.answerWindow(ctx, scope, window, in.Answer)
 	if err != nil {
 		return nil, fmt.Errorf("react: %w", err)
 	}
-	if kind == windowKindPendingAttack {
-		return m.answerPendingAttack(ctx, scope, window, in)
-	}
-	if kind == windowKindPostHit {
-		return m.answerPostHit(ctx, scope, window, in)
-	}
-	if in.Option != "" && kind != windowKindCastOffer {
-		return nil, fmt.Errorf("react: %w: this window offers no options", ErrNotOffered)
-	}
-	if kind == windowKindPostRoll {
-		return m.answerPostRoll(ctx, scope, window, in.Choice)
-	}
-	if kind == windowKindCheckOffer {
-		return m.answerCheckOffer(ctx, scope, window, in.Choice)
-	}
-	if kind == windowKindCastOffer {
-		return m.answerCastOffer(ctx, scope, window, in.Choice, in.Option)
-	}
+	return out, nil
+}
 
-	payload, err := thawWindowPayload(window.Payload, string(window.Audience))
+// answerWindow is the one dispatch: the only reader that resumes a window.
+//
+// # The window is consumed BEFORE the resume
+//
+// Resolution is stateless — a pause resumed twice runs, and charges, twice —
+// so answering once is this package's job. The window is closed on the ledger
+// first, then the pause is resumed; a failure anywhere after drops the whole
+// scope, so the window is never answered without its resume landing, and a
+// second answer finds no open window.
+//
+// # Everything else is the story's
+//
+// A check resumes through [resolution.ResumeCheck] and lands as the check's
+// own verb. Every other story resumes through [resolution.Resume], resolves
+// over the whole roster, and lands through [Manager.land] with that story's
+// one record function over [resolution.Output.Outcome], a window for whatever
+// the output poses, and the last-answer continuation when it poses nothing.
+func (m *Manager) answerWindow(
+	ctx context.Context, scope *writeScope, window interrupt.Window, a Answer,
+) (*ReactOutput, error) {
+	w, err := thawWindow(window.Payload, string(window.Audience))
 	if err != nil {
-		return nil, fmt.Errorf("react: %w", err)
+		return nil, err
+	}
+	if err := closeWindow(scope, window, a.ledger()); err != nil {
+		return nil, err
+	}
+	answer := a.resolution()
+
+	if w.Story.Kind == storyCheck {
+		return m.answerCheck(ctx, scope, w, answer)
 	}
 
-	if in.Choice == ReactStrike {
-		if err := m.strikeForWindow(ctx, scope, payload); err != nil {
-			return nil, fmt.Errorf("react: %w", err)
+	machine, err := resolution.Resume(&resolution.ResumeInput{
+		Pause:  w.Pause,
+		Answer: answer,
+		// The HOST'S dice, through the same seam every other roll takes —
+		// required whichever the answer is.
+		Roller: &diceSeam{roller: m.dice},
+	})
+	if err != nil {
+		return nil, translateResolution(err)
+	}
+
+	roster, err := scope.enc.Members()
+	if err != nil {
+		return nil, translate(err)
+	}
+	// EVERYONE IS ATTACHED, as the first half was resolved: a resumed half
+	// among fewer subscribers than its first half is a smaller world.
+	var participants []resolution.Participant
+	if w.Story.Kind == storyCast {
+		// A cast loads every member fresh: nothing is paid on a resume, so
+		// there is no readied ledger to thread through.
+		var failures []resolutionDependencyFailure
+		participants, failures = m.compileResolutionCast(ctx, scope.data, roster, nil)
+		if len(failures) > 0 {
+			return nil, fmt.Errorf("participant %q: %w: %v", failures[0].member, ErrBadCharacter, failures[0].err)
+		}
+	} else {
+		participants = m.walkCast(ctx, scope, roster)
+	}
+
+	// No cost: a taken offer is charged by resolution at the price its pause
+	// froze, and the declared action was paid for before the first pause.
+	out, err := resolution.Resolve(ctx, m.resolutionInput(ctx, scope, resolutionAsk{
+		World:        scope.enc.WorldView(),
+		Participants: participants,
+		Machine:      machine,
+	}))
+	if err != nil {
+		if w.Story.Kind == storyAttack {
+			return nil, translateAttack(err)
+		}
+		return nil, translateResolution(err)
+	}
+
+	var l *landing
+	posed := out.Posed != nil
+	switch w.Story.Kind {
+	case storyCast:
+		var castOut *CastOutput
+		if posed {
+			castOut, err = m.poseCastWindow(ctx, scope, w.Story.Caster, w.Story.Spell, w.Story.Caught, out)
+		} else {
+			spellRef, perr := core.ParseString(w.Story.Spell.Ref)
+			if perr != nil {
+				return nil, fmt.Errorf("%w: %v", ErrInvalidSession, perr)
+			}
+			castOut, err = m.finishCast(ctx, scope, w.Story.Caster, w.Story.Spell, *spellRef, w.Story.Caught, out)
+		}
+		if err != nil {
+			return nil, err
+		}
+		return &ReactOutput{Saved: castOut.Persisted, Delivery: castOut.Delivery}, nil
+	case storyAttack:
+		l = m.attackLanding(scope, nil, w.Story, out, nil)
+	case storyStep:
+		var windows []encounter.PausedWindow
+		l, windows, err = m.stepLanding(scope, nil, w.Story, out)
+		if err != nil {
+			return nil, err
+		}
+		posed = len(windows) > 0
+	}
+
+	if !posed {
+		story := w.Story
+		l.Continue = func(*encounter.Encounter) error {
+			// THE MOVER IS DOWN AND THERE IS NOTHING LEFT TO REACT TO. The
+			// remaining windows on the step are declined on their audiences'
+			// behalf — the ledger allows By == Audience — because a swing at
+			// a body is a question with one honest answer.
+			if story.Kind == storyStep {
+				down, err := discoveryStanding(scope)
+				if err != nil {
+					return err
+				}
+				if down[story.Target] {
+					if err := holdRemainingWindows(scope); err != nil {
+						return err
+					}
+				}
+			}
+			walker := ""
+			if len(story.WalkPath) > 0 {
+				walker = story.Target
+			}
+			return m.resumeAfterLastAnswer(ctx, scope, walker, story.WalkPath)
 		}
 	}
 
-	if err := answerWindow(scope, window, ReactChoice(in.Choice)); err != nil {
-		return nil, fmt.Errorf("react: %w", err)
-	}
-
-	// THE MOVER IS DOWN AND THERE IS NOTHING LEFT TO REACT TO. Asking the
-	// remaining audiences anyway would offer a swing at a body, and refusing
-	// to resume until they answered it would freeze the table on a question
-	// with one honest answer. The custodian may answer for them — the ledger
-	// allows By == Audience — so it does, and says so here rather than in a
-	// silent branch.
-	down, err := discoveryStanding(scope)
+	result, err := m.land(ctx, scope, out, l)
 	if err != nil {
-		return nil, fmt.Errorf("react: %w", err)
+		return nil, err
 	}
-	if down[payload.Mover] {
-		if err := holdRemainingWindows(scope); err != nil {
-			return nil, fmt.Errorf("react: %w", err)
-		}
-	}
-
-	if err := m.resumeAfterLastAnswer(ctx, scope, "", nil); err != nil {
-		return nil, fmt.Errorf("react: %w", err)
-	}
-
-	// Written once, AFTER the resume, so a walk that stopped again on a later
-	// cell persists the windows it just posed rather than the empty ledger it
-	// briefly had.
-	scope.data.Windows = scope.ledger.ToData()
-	scope.touched = true
-
-	report, delivery, err := m.commit(ctx, scope)
-	if err != nil {
-		return nil, fmt.Errorf("react: %w", err)
-	}
-	return &ReactOutput{Saved: report, Delivery: delivery}, nil
+	return &ReactOutput{Saved: result.Saved, Delivery: result.Delivery}, nil
 }
 
 // resumeAfterLastAnswer continues whatever the table was waiting on, once the
-// window just answered was the last one open. Every answer path whose window
-// can stand while the table is paused ends here — the generic reaction window
-// (React itself), the pending-attack window (answerPendingAttack) and the
-// post-hit window (answerPostHit) — so they cannot disagree about what "the
-// last answer" resumes (rpg-toolkit#1965).
-//
-// THREE PATHS ARE EXEMPT, and only because of where their windows come from:
-// answerPostRoll, answerCheckOffer and answerCastOffer answer windows posed by
-// the actor's own Attack, Unlock or Cast, on their own turn, through
-// openForChange. No turn is paused and no directive is held while one stands,
-// so there is nothing for them to resume. The day one of those windows can be
-// posed during a driven turn or a held walk, its answer path must call this
-// step too — porting Shield onto the post-roll offer window (rpg-toolkit#1965
-// tier 1 #8) is exactly that day.
+// window just answered was the last one open. Every answer that poses nothing
+// ends here, so no two answers can disagree about what "the last answer"
+// resumes (rpg-toolkit#1965).
 //
 // NOTHING RESUMES WHILE A QUESTION STANDS. Another audience still deciding is
 // still holding the table, and continuing past them would take the announced
-// step out from under their answer.
-//
-// THEN THE NARROWEST CONTINUATION FIRST, because Paused() answers true for
-// every one of them:
-//
-//   - walkPath is a player's own walk that a swing interrupted, carried on the
-//     pending-attack window that stopped it. Only that window has one; every
-//     other caller passes nil.
-//   - A DIRECTED walk — a creature a spell sent running — is finished by
-//     ResumeDirective, and it is nobody's turn that is waiting: the caster's
-//     turn is still going on.
-//   - A driven turn that stopped mid-walk is finished by ResumeTurn.
+// step out from under their answer — the step the encounter's pause holds is
+// taken once, here, after the last asked reactor answered (ruling E8).
 //
 // Resuming can pause AGAIN on a later cell — a new question, not a failure —
-// and the pose that does it writes its own windows onto this same ledger, which
-// each caller persists after this returns.
+// and the pose that does it writes its own windows onto this same ledger.
 func (m *Manager) resumeAfterLastAnswer(
 	ctx context.Context, scope *writeScope, walker string, walkPath []spatial.Position,
 ) error {
@@ -270,13 +328,19 @@ func (m *Manager) resumeAfterLastAnswer(
 	}
 	// Every continuation runs after the answer saved dirty sheets — and a
 	// walk's earlier cells may have saved more — so whichever one refuses, the
-	// refusal names what landed (S6). One wrap, at the step's return; an
-	// existing SaveError passes through it unchanged.
+	// refusal names what landed (S6).
 	return saveErrorAfterWrites(scope, "", m.continueAfterLastAnswer(ctx, scope, walker, walkPath))
 }
 
-// continueAfterLastAnswer runs the one continuation resumeAfterLastAnswer
-// chose, in its stated order. It does not report writes; its caller does.
+// continueAfterLastAnswer runs the one continuation, narrowest first:
+//
+//   - walkPath is a player's own walk a reaction interrupted, carried on the
+//     window that stopped it.
+//   - Otherwise the encounter's one paused walk — a driven turn or a directed
+//     walk — is finished by [encounter.Encounter.Resume], which takes the
+//     announced step and walks on.
+//
+// It does not report writes; its caller does.
 func (m *Manager) continueAfterLastAnswer(
 	ctx context.Context, scope *writeScope, walker string, walkPath []spatial.Position,
 ) error {
@@ -286,12 +350,8 @@ func (m *Manager) continueAfterLastAnswer(
 			return err
 		}
 		return m.saveWalkProgress(ctx, scope)
-	case scope.enc.HeldDirective():
-		if _, err := scope.enc.ResumeDirective(ctx); err != nil {
-			return translate(err)
-		}
 	case scope.enc.Paused():
-		if _, err := scope.enc.ResumeTurn(ctx); err != nil {
+		if _, err := scope.enc.Resume(ctx); err != nil {
 			return translate(err)
 		}
 	}
@@ -303,10 +363,8 @@ func (m *Manager) continueAfterLastAnswer(
 // BY REGENERATION, NEVER BY PARSING. The id is a hash over the session, the
 // member, the verb, the slot and the window — the same construction every other
 // verb's selector uses — so the only honest way to read one is to mint the
-// candidates and compare. That is also what makes the three refusals distinct:
-// a scan over EVERY open window, not just this member's, can tell "no such
-// window" from "not yours", which a scan over the caller's own windows would
-// collapse into the first.
+// candidates and compare. A scan over EVERY open window, not just this
+// member's, tells "no such window" from "not yours".
 func (m *Manager) selectWindow(scope *writeScope, in *ReactInput) (interrupt.Window, error) {
 	open, err := scope.ledger.Open()
 	if err != nil {
@@ -323,85 +381,40 @@ func (m *Manager) selectWindow(scope *writeScope, in *ReactInput) (interrupt.Win
 		if string(window.Audience) != in.Member {
 			return interrupt.Window{}, ErrNotAudience
 		}
-		if !offers(window.Options, in.Choice) {
-			return interrupt.Window{}, fmt.Errorf("choice %q: %w", in.Choice, ErrNotOffered)
-		}
 		return window, nil
 	}
 	return interrupt.Window{}, ErrNoWindow
 }
 
-// offers reports whether a window posed this choice.
-func offers(options []interrupt.Option, choice ReactChoice) bool {
-	for _, option := range options {
-		if string(option) == string(choice) {
-			return true
-		}
-	}
-	return false
-}
-
-// answerWindow closes one window in the ledger.
-func answerWindow(scope *writeScope, window interrupt.Window, choice ReactChoice) error {
+// closeWindow closes one window in the ledger and writes the ledger onto the
+// session record.
+func closeWindow(scope *writeScope, window interrupt.Window, choice interrupt.Option) error {
 	if _, err := scope.ledger.Answer(&interrupt.AnswerInput{
 		Window: window.ID,
 		By:     window.Audience,
-		Choice: interrupt.Option(choice),
+		Choice: choice,
 	}); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidSession, err)
 	}
+	scope.data.Windows = scope.ledger.ToData()
 	scope.touched = true
 	return nil
 }
 
-// holdRemainingWindows answers every still-open window [ReactHold] on its own
-// audience's behalf. See [Manager.React] on when that is honest.
+// holdRemainingWindows declines every still-open window on its own audience's
+// behalf, resuming none: a declined window charges nothing and tells nothing.
+// See [Manager.answerWindow] on when that is honest.
 func holdRemainingWindows(scope *writeScope) error {
 	open, err := scope.ledger.Open()
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidSession, err)
 	}
 	for _, window := range open {
-		if err := answerWindow(scope, window, ReactHold); err != nil {
+		if err := closeWindow(scope, window, ledgerDecline); err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-// strikeForWindow resolves the swing one accepted window offered.
-//
-// It re-offers the frozen step to the rules with a capability that answers for
-// this reactor alone — see [Manager.React] on why the machine runs twice rather
-// than the swing being compiled here.
-func (m *Manager) strikeForWindow(ctx context.Context, scope *writeScope, payload windowPayload) error {
-	roster, err := scope.enc.Members()
-	if err != nil {
-		return translate(err)
-	}
-	// THE FROZEN STEP AS IT WAS ANNOUNCED, and the two fields it does not
-	// carry are deliberately absent rather than lost.
-	//
-	// A window is only ever posed for a step whose triggers are LIVE, and
-	// [forcedBy] reads no cause at all unless the step was forced. So the
-	// replay is complete for both kinds of walk that can reach here: a chosen
-	// step, and a creature a spell sent running. Dissonant Whispers is the
-	// second — encounter inverts the directive's Provokes into Forced before
-	// it builds the step, so the flee arrives unforced and suppresses nothing,
-	// which is the whole point of it. Storing its cause here would give the
-	// fold a prevention source for a step that has none.
-	//
-	// TestTheCasterIsAskedOnHerOwnTurn and its siblings are the proof: the
-	// replayed swing lands on the fleeing skeleton, from a window this walk
-	// opened.
-	return moverSeam{m: m, scope: scope}.offerStep(
-		ctx, scope.enc,
-		encounter.MoveStep{
-			Mover: encounter.MemberID(payload.Mover), From: payload.From, To: payload.To,
-		},
-		roster,
-		&reactionAttacks{only: payload.Reactor, definition: payload.Definition},
-	)
 }
 
 // reactDeclarationID is the selector for one open window's REACT row. Minted

@@ -98,9 +98,69 @@ func (a announcerSeam) Announce(
 	}
 
 	// Landed on the encounter that crossed the boundary, which is mid-verb: no
-	// adopt and no commit. A boundary's effects tell no concentration (R9).
-	_, err = a.m.land(ctx, a.scope, out, &landing{Live: enc, Untold: true})
+	// adopt and no commit. A boundary has no causing unit, so whatever
+	// concentration its effects tested or ended is told through the
+	// encounter's own verb (ruling E6), each with the subject of the crossing
+	// it belongs to ([boundaryConcentration]).
+	_, err = a.m.land(ctx, a.scope, out, &landing{
+		Live: enc,
+		Record: func(enc *encounter.Encounter, told concentration) error {
+			for _, tell := range boundaryConcentration(crossed, told) {
+				if err := tellConcentration(tell.actor)(enc, tell.told); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	})
 	return err
+}
+
+// concentrationTell is one actor's share of a boundary's concentration.
+type concentrationTell struct {
+	actor string
+	told  concentration
+}
+
+// boundaryConcentration splits what a clock advance's boundaries tested and
+// ended by whose it is. One advance can cross several boundaries — the end of
+// A's turn and the start of B's — and a concentration lapsing at B's start is
+// B's, not A's. Each crossing's subject is told the checks it saved and the
+// breaks of its own concentration, in crossing order; anything held by a
+// member no crossing names is told with that concentrator as actor. Within a
+// share, resolution's order is kept.
+func boundaryConcentration(crossed []encounter.Boundary, told concentration) []concentrationTell {
+	if told.empty() {
+		return nil
+	}
+	var order []string
+	shares := map[string]*concentration{}
+	share := func(actor string) *concentration {
+		if c, ok := shares[actor]; ok {
+			return c
+		}
+		order = append(order, actor)
+		shares[actor] = &concentration{}
+		return shares[actor]
+	}
+	for _, boundary := range crossed {
+		share(string(boundary.Subject))
+	}
+	for _, check := range told.Checks {
+		c := share(string(check.Save.Saver))
+		c.Checks = append(c.Checks, check)
+	}
+	for _, broken := range told.Breaks {
+		c := share(string(broken.Caster))
+		c.Breaks = append(c.Breaks, broken)
+	}
+	var tells []concentrationTell
+	for _, actor := range order {
+		if c := shares[actor]; !c.empty() {
+			tells = append(tells, concentrationTell{actor: actor, told: *c})
+		}
+	}
+	return tells
 }
 
 // boundaryCast gathers everyone in the fight, and TOLERATES a member the

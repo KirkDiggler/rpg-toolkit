@@ -58,10 +58,9 @@ func (s *CastSuite) TestFlareMonsterTurnReloadResumesWithoutRepeatingAttack() {
 			row := s.flareReaction()
 			s.Require().Len(row.Options, 1)
 			s.Equal("Warding Flare", row.Reaction.Name)
-			in := &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Choice: session.ReactHold}
+			in := &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Answer: session.Decline()}
 			if spend {
-				in.Choice = session.ReactStrike
-				in.Option = "use"
+				in.Answer = session.Take("use")
 			}
 			_, err = s.mgr.React(ctx, in)
 			s.Require().NoError(err)
@@ -101,7 +100,7 @@ func (s *CastSuite) TestFlareBeforeSpellAttackUsesSharedCastContinuation() {
 	s.Equal(rolls, s.dice.next)
 	s.reloadHealingScene()
 	react := s.flareReaction()
-	_, err = s.mgr.React(context.Background(), &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: react.ID, Choice: session.ReactStrike, Option: "use"})
+	_, err = s.mgr.React(context.Background(), &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: react.ID, Answer: session.Take("use")})
 	s.Require().NoError(err)
 	s.Equal(1, s.characters.byID["aaron"].Resources[resources.SpellSlotLevel1].Current)
 	s.Equal(2, s.characters.byID["cleric"].Resources[resources.WardingFlare].Current)
@@ -121,7 +120,7 @@ func (s *CastSuite) TestFlareDuringOpportunityAttackResumesWithoutRepeatingStep(
 	s.Equal(movement, s.characters.byID["cleric"].ActionEconomy.MovementRemaining, "paused before stepping: unused movement is not charged")
 	s.reloadHealingScene()
 	row := s.flareReaction()
-	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Choice: session.ReactStrike, Option: "use"})
+	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Answer: session.Take("use")})
 	s.Require().NoError(err)
 	s.Len(s.beats(session.EventStruck, session.EventMissed), 1)
 	s.Equal(2, s.characters.byID["cleric"].Resources[resources.WardingFlare].Current)
@@ -146,16 +145,15 @@ func (s *CastSuite) TestFlareLethalResumeCommitsDefeatAndClosesWindow() {
 			_, err = s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "cleric", DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "cleric")})
 			s.Require().NoError(err)
 			row := s.flareReaction()
-			in := &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Choice: session.ReactHold}
+			in := &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Answer: session.Decline()}
 			if spend {
-				in.Choice = session.ReactStrike
-				in.Option = "use"
+				in.Answer = session.Take("use")
 			}
 			_, err = s.mgr.React(ctx, in)
 			s.Require().NoError(err, "a finishing attack must commit rather than resume a closed encounter")
 			s.Zero(s.characters.byID["cleric"].HitPoints)
 			s.Require().NotNil(s.encounters.byID["sess"].Outcome)
-			s.Nil(s.encounters.byID["sess"].PausedTurn)
+			s.Nil(s.encounters.byID["sess"].Pause)
 			s.Len(s.beats(session.EventStruck), 1)
 			expected := 3
 			if spend {
@@ -190,7 +188,7 @@ func (s *CastSuite) TestThePendingMovementResumeSavesEachSheetOnce() {
 	hp := s.characters.byID["cleric"].HitPoints
 	before := s.characters.saves
 
-	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Choice: session.ReactHold})
+	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Answer: session.Decline()})
 	s.Require().NoError(err)
 
 	s.Less(s.characters.byID["cleric"].HitPoints, hp, "the reaction damaged the walker")
@@ -220,4 +218,32 @@ func (s *CastSuite) TestFlareBeforeAPlayersSwingPosesTheWindowAndCommitsThePrice
 	s.Contains(out.Saved.Written, "session:sess", "and the session record with the window")
 	row := s.flareReaction()
 	s.Equal("Warding Flare", row.Reaction.Name, "the target is asked")
+}
+
+// TestASecondReactionInTheSameStepAsksAgainAfterTheFirstAnswer: the warding
+// cleric walks out of two skeletons' reach in one step. The first swing stops
+// before its roll to ask about Warding Flare; declining resumes the step, the
+// first swing misses, and the second skeleton's swing stops to ask again — a
+// resumed step poses its own next window. Declining that one finishes the
+// step, telling each swing once.
+func (s *CastSuite) TestASecondReactionInTheSameStepAsksAgainAfterTheFirstAnswer() {
+	s.sceneWithSecondSkeleton(s.flareSheet(), 1, 1, 1, 1, 1, 1, 1, 1, 1)
+	ctx := context.Background()
+
+	out, err := s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "cleric", DeclarationID: currentMoveID(s.T(), s.mgr, "sess", "cleric"), Path: []spatial.Position{{X: 0, Y: 1}}})
+	s.Require().NoError(err)
+	s.Require().Equal(session.MovementPaused, out.Status, "control: the first swing asks before its roll")
+	s.Empty(s.beats(session.EventStruck, session.EventMissed), "control: nothing has swung")
+
+	first := s.flareReaction()
+	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: first.ID, Answer: session.Decline()})
+	s.Require().NoError(err)
+	s.Len(s.beats(session.EventStruck, session.EventMissed), 1, "the first swing is told")
+	second := s.flareReaction()
+	s.NotEqual(first.ID, second.ID, "the resumed step asked again, on a window of its own")
+
+	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: second.ID, Answer: session.Decline()})
+	s.Require().NoError(err)
+	s.Len(s.beats(session.EventStruck, session.EventMissed), 2, "the second swing is told, the first not again")
+	s.Equal(spatial.Position{X: 0, Y: 1}, s.cellOf("cleric"), "and the walk finishes its step")
 }

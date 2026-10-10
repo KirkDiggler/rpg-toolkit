@@ -334,37 +334,67 @@ func (s *MonsterTurnTestSuite) TestASwingThatBreaksConcentrationEndsItsAreaInThe
 	s.Empty(areas, "the sequence lands the area its swing closed")
 }
 
-// TestASwingThatBreaksConcentrationEndsItsAreaWhenItsSwingIsTold: the same
-// first swing, against a fighter holding Wrath of the Storm. The hit stops the
-// sequence to ask whether the fighter strikes back, and that swing is told
-// only when the answer resumes it; the area it closed is held on the window
-// and lands then, behind its cause.
-func (s *MonsterTurnTestSuite) TestASwingThatBreaksConcentrationEndsItsAreaWhenItsSwingIsTold() {
+// TestAPostHitInsideAMultiattackTellsTheSettledSwingAtThePause is the one
+// pause envelope's headline proof. The goblin boss's first swing hits the
+// fighter holding Fog Cloud, who fails her concentration save, and the hit
+// stops the sequence to ask whether she strikes back with Wrath of the Storm.
+// Everything that settled before the pause is told AT the pause — the struck
+// beat, the failed save and the concentration ending, in that order — and the
+// cloud closes then, behind its cause; the stored window holds the pause and
+// nothing about what was told. Declining tells the second swing and nothing
+// from the first again.
+func (s *MonsterTurnTestSuite) TestAPostHitInsideAMultiattackTellsTheSettledSwingAtThePause() {
 	ctx := context.Background()
-	mgr := s.bossBreaksTheFightersArea(true)
+	// Initiative twice; swing one attacks 15, damage 3, and the fighter's
+	// concentration save is a 1; on the resume swing two rolls at
+	// disadvantage, 15 and 15, damage 3.
+	mgr := s.bossBreaksTheFightersAreaWith(true, &sequenceDice{rolls: []int{10, 10, 15, 3, 1, 15, 15, 3, 20, 20}})
 	persisted, err := s.encounters.GetEncounter(ctx, "sess")
 	s.Require().NoError(err)
-	s.Require().NotNil(persisted.PausedTurn, "control: the sequence paused on the fighter's window")
-	s.NotContains(s.storyBeats(mgr, "fighter"), string(encounter.OutcomeStruck),
-		"control: the paused swing is not told until it resumes")
+	s.Require().NotNil(persisted.Pause, "control: the sequence paused on the fighter's window")
+
+	atPause := swingTrain(s.storyBeats(mgr, "fighter"))
+	s.Equal([]string{"struck", "saved", "concentration_ended"}, atPause,
+		"the settled swing, its failed save and the break are told at the pause")
 	areas, err := mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "fighter"})
 	s.Require().NoError(err)
-	s.NotEmpty(areas, "the area waits for the swing that closed it to be told")
+	s.Empty(areas, "the cloud closes at the pause, behind the swing that closed it")
+	windows := s.sessions.byID["sess"].Windows.Windows
+	s.Require().Len(windows, 1, "control: one window stands")
+	var stored map[string]json.RawMessage
+	s.Require().NoError(json.Unmarshal(windows[0].Payload, &stored))
+	keys := make([]string, 0, len(stored))
+	for key := range stored {
+		keys = append(keys, key)
+	}
+	s.ElementsMatch([]string{"version", "kind", "audience", "pause", "story"}, keys,
+		"the window holds the pause and its story, never what was told")
 
 	react := currentDeclaration(s.T(), mgr, "sess", "fighter", session.VerbReact)
-	_, err = mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "fighter", DeclarationID: react.ID, Choice: session.ReactHold})
+	_, err = mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "fighter", DeclarationID: react.ID, Answer: session.Decline()})
 	s.Require().NoError(err)
-	s.Contains(s.storyBeats(mgr, "fighter"), string(encounter.OutcomeStruck), "the resumed swing is told")
-	areas, err = mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "fighter"})
-	s.Require().NoError(err)
-	s.Empty(areas, "and the area it closed lands behind it")
+	s.Equal(append(atPause, "struck"), swingTrain(s.storyBeats(mgr, "fighter")),
+		"the resume tells the second swing and nothing from the first again")
+}
+
+// swingTrain is the swings, saves and concentration endings of a story, in
+// order — the beats the envelope's telling is about.
+func swingTrain(beats []string) []string {
+	var train []string
+	for _, beat := range beats {
+		switch beat {
+		case "struck", "missed", "saved", "concentration_ended":
+			train = append(train, beat)
+		}
+	}
+	return train
 }
 
 // TestARepausedSequenceLandsWhatItHasTold: the fighter holds back her Wrath,
-// so the sequence resumes, tells a concentration break and pauses again on a
-// later settled swing. What the resume told lands at that second pause: the
-// area and the story agree, whichever swing the break rode in on. Only a
-// change no recorded swing has told waits on the window.
+// so the sequence resumes, its second swing hits, breaks her concentration and
+// pauses again. Everything that settled before the second pause — that swing
+// and its break — is told at it, and the area closes then: the area and the
+// story agree at every pause.
 func (s *MonsterTurnTestSuite) TestARepausedSequenceLandsWhatItHasTold() {
 	ctx := context.Background()
 	// Initiative twice; swing one attack 15, damage 3, a d20 of 20 before the
@@ -375,7 +405,7 @@ func (s *MonsterTurnTestSuite) TestARepausedSequenceLandsWhatItHasTold() {
 	s.Require().NotEmpty(areas, "control: nothing broke before the first pause")
 
 	react := currentDeclaration(s.T(), mgr, "sess", "fighter", session.VerbReact)
-	_, err = mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "fighter", DeclarationID: react.ID, Choice: session.ReactHold})
+	_, err = mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "fighter", DeclarationID: react.ID, Answer: session.Decline()})
 	s.Require().NoError(err)
 	s.Require().NotEmpty(s.sessions.byID["sess"].Windows.Windows, "control: the sequence paused again")
 	s.Require().Contains(s.storyBeats(mgr, "fighter"), string(encounter.BeatConcentrationEnded),
@@ -439,12 +469,12 @@ func (s *MonsterTurnTestSuite) bossBreaksTheFightersAreaWith(wrath bool, roller 
 	return mgr
 }
 
-// TestASequenceThatPausesOnItsSecondSwingTellsTheFirst: the goblin boss's
-// first swing misses and its second hits a fighter holding Wrath of the
-// Storm, which stops the sequence to ask. The completed first swing is told
-// when the sequence pauses — the pending sequence is recorded by the strike
-// landing — and the settled second swing waits for the answer.
-func (s *MonsterTurnTestSuite) TestASequenceThatPausesOnItsSecondSwingTellsTheFirst() {
+// TestASequenceThatPausesOnItsSecondSwingTellsBoth: the goblin boss's first
+// swing misses and its second hits a fighter holding Wrath of the Storm, which
+// stops the sequence to ask. Both swings settled before the pause, so both are
+// told at it; declining resumes a sequence with nothing left to swing and
+// tells neither again.
+func (s *MonsterTurnTestSuite) TestASequenceThatPausesOnItsSecondSwingTellsBoth() {
 	ctx := context.Background()
 	// Initiative twice; swing one attacks with a 1 and misses; swing two
 	// rolls at disadvantage, 15 and 15, damage 3, and the fighter's
@@ -452,19 +482,23 @@ func (s *MonsterTurnTestSuite) TestASequenceThatPausesOnItsSecondSwingTellsTheFi
 	mgr := s.bossBreaksTheFightersAreaWith(true, &sequenceDice{rolls: []int{10, 10, 1, 15, 15, 3, 20, 20, 20, 20}})
 	persisted, err := s.encounters.GetEncounter(ctx, "sess")
 	s.Require().NoError(err)
-	s.Require().NotNil(persisted.PausedTurn, "control: the sequence paused on the fighter's window")
+	s.Require().NotNil(persisted.Pause, "control: the sequence paused on the fighter's window")
 
-	beats := s.storyBeats(mgr, "fighter")
-	s.Contains(beats, string(encounter.OutcomeMissed), "the completed first swing is told at the pause")
-	s.NotContains(beats, string(encounter.OutcomeStruck), "the settled second swing waits for the answer")
+	atPause := swingTrain(s.storyBeats(mgr, "fighter"))
+	s.Equal([]string{"missed", "struck", "saved"}, atPause, "both settled swings are told at the pause")
+
+	react := currentDeclaration(s.T(), mgr, "sess", "fighter", session.VerbReact)
+	_, err = mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "fighter", DeclarationID: react.ID, Answer: session.Decline()})
+	s.Require().NoError(err)
+	s.Equal(atPause, swingTrain(s.storyBeats(mgr, "fighter")), "the resume tells neither swing again")
 }
 
-// TestACompletedSequenceLandsTheAreaItsPauseHeld: the goblin boss's first
-// swing hits, breaks the fighter's concentration and stops to ask about Wrath
-// of the Storm, so the area it closed waits on the window. The fighter holds
-// back, the second swing misses and the sequence completes; the resume lands
-// the held area behind the swing that closed it.
-func (s *MonsterTurnTestSuite) TestACompletedSequenceLandsTheAreaItsPauseHeld() {
+// TestACompletedSequenceTellsOnlyWhatSettledAfterItsPause: the goblin boss's
+// first swing hits, breaks the fighter's concentration and stops to ask about
+// Wrath of the Storm, so the swing, the break and the closed area all land at
+// the pause. The fighter holds back, the second swing misses and the sequence
+// completes; the resume tells only that miss.
+func (s *MonsterTurnTestSuite) TestACompletedSequenceTellsOnlyWhatSettledAfterItsPause() {
 	ctx := context.Background()
 	// Initiative twice; swing one attacks 15, damage 3, and the fighter's
 	// concentration save is a 1; on the resume swing two rolls at
@@ -472,17 +506,74 @@ func (s *MonsterTurnTestSuite) TestACompletedSequenceLandsTheAreaItsPauseHeld() 
 	mgr := s.bossBreaksTheFightersAreaWith(true, &sequenceDice{rolls: []int{10, 10, 15, 3, 1, 1, 1, 20, 20, 20}})
 	areas, err := mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "fighter"})
 	s.Require().NoError(err)
-	s.Require().NotEmpty(areas, "control: the area waits on the window")
+	s.Require().Empty(areas, "control: the area closed at the pause")
 	s.Require().NotEmpty(s.sessions.byID["sess"].Windows.Windows, "control: the sequence paused")
+	atPause := swingTrain(s.storyBeats(mgr, "fighter"))
 
 	react := currentDeclaration(s.T(), mgr, "sess", "fighter", session.VerbReact)
-	_, err = mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "fighter", DeclarationID: react.ID, Choice: session.ReactHold})
+	_, err = mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "fighter", DeclarationID: react.ID, Answer: session.Decline()})
 	s.Require().NoError(err)
 
 	s.Require().Empty(s.sessions.byID["sess"].Windows.Windows, "control: the sequence completed rather than pausing again")
-	beats := s.storyBeats(mgr, "fighter")
-	s.Contains(beats, string(encounter.OutcomeMissed), "control: the second swing missed")
-	areas, err = mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "fighter"})
+	s.Equal(append(atPause, "missed"), swingTrain(s.storyBeats(mgr, "fighter")),
+		"the resume tells the second swing alone")
+}
+
+// TestATurnBoundaryTellsConcentrationItEnded: the fighter holds a
+// concentration that lapses at the end of her own turn. Ending the turn
+// crosses that boundary, and the boundary has no causing unit to ride behind,
+// so the concentration ending is told through the encounter's own verb rather
+// than dropped (ruling E6).
+func (s *MonsterTurnTestSuite) TestATurnBoundaryTellsConcentrationItEnded() {
+	ctx := context.Background()
+	chars := newFakeCharacters(armedFighter("fighter"))
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
+		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: firstInReach{},
+		Sessions: s.sessions, Encounters: s.encounters,
+		Characters: chars, Events: session.DiscardEvents{},
+	})
 	s.Require().NoError(err)
-	s.Empty(areas, "the completed sequence lands the area its pause held")
+	launchScene(s.T(), mgr, bossBesideFighter())
+
+	seated, err := chars.GetCharacter(ctx, "fighter")
+	s.Require().NoError(err)
+	hold := conditions.NewConcentratingCondition("fighter", refs.Spells.TrueStrike().String(), "True Strike", 1)
+	blob, err := hold.ToJSON()
+	s.Require().NoError(err)
+	seated.Conditions = append(seated.Conditions, json.RawMessage(blob))
+	s.Require().NoError(chars.SaveCharacter(ctx, seated))
+
+	before := len(s.storyBeats(mgr, "fighter"))
+	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{
+		Session: "sess", Member: "fighter",
+		DeclarationID: currentEndTurnID(s.T(), mgr, "sess", "fighter"),
+	})
+	s.Require().NoError(err, "a boundary that ends concentration lands")
+
+	after := s.storyBeats(mgr, "fighter")[before:]
+	s.Contains(after, string(encounter.BeatConcentrationEnded), "the boundary tells the concentration it ended")
+	s.NotContains(swingTrain(after), "saved", "and nothing is left to be tested by the blows that follow")
+}
+
+// TestAMultiattackContinuesAfterASwingBreaksConcentration: the goblin boss's
+// first swing hits the fighter holding Fog Cloud, does not drop her, and breaks
+// her concentration; she holds no post-hit reaction, so nothing pauses. The
+// sequence carries on to its second swing: two swing beats, one break.
+func (s *MonsterTurnTestSuite) TestAMultiattackContinuesAfterASwingBreaksConcentration() {
+	// Initiative twice; swing one attacks 15, damage 3, and the fighter's
+	// concentration save is a 1; swing two attacks 15, damage 3.
+	mgr := s.bossBreaksTheFightersAreaWith(false, &sequenceDice{rolls: []int{10, 10, 15, 3, 1, 15, 3, 10, 10, 10}})
+	s.Require().Empty(s.sessions.byID["sess"].Windows.Windows, "control: nothing paused")
+	train := swingTrain(s.storyBeats(mgr, "fighter"))
+	swings, ended := 0, 0
+	for _, beat := range train {
+		switch beat {
+		case "struck", "missed":
+			swings++
+		case "concentration_ended":
+			ended++
+		}
+	}
+	s.Equal(2, swings, "both swings of the Multiattack are told")
+	s.Equal(1, ended, "the concentration ends once")
 }

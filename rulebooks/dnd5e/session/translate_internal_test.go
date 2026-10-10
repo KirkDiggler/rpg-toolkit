@@ -67,6 +67,8 @@ func TestTranslateLetsNoCompositionSentinelThrough(t *testing.T) {
 		// the arm exists for the half-failed save that is the only way to
 		// reach it — see translate's own note.
 		{"turn paused", encounter.ErrTurnPaused, ErrWindowOpen},
+		// The encounter's stored pause written by another build (ruling E5).
+		{"stale pause", encounter.ErrStalePause, ErrStalePause},
 		{"bad placement", encounter.ErrBadPlacement, ErrBadPosition},
 		{"already in a fight", encounter.ErrInBubble, ErrInBubble},
 		{"not in a fight", encounter.ErrNoBubble, ErrNotInFight},
@@ -195,6 +197,12 @@ func TestTranslateResolutionLetsNoResolutionSentinelThrough(t *testing.T) {
 		// reason.
 		{"no input at all", resolution.ErrNilInput, ErrNilInput},
 		{"nothing to resolve", resolution.ErrNoMachine, ErrNilInput},
+		// The one pause envelope's three: a frozen machine another build
+		// wrote, an answer the offer does not accept, and frozen state this
+		// build could not have written.
+		{"a frozen machine another build wrote", resolution.ErrStalePause, ErrStalePause},
+		{"an answer the offer does not accept", resolution.ErrNotOffered, ErrNotOffered},
+		{"frozen state nobody wrote", resolution.ErrBadFrozen, ErrInvalidSession},
 	}
 
 	for _, tc := range cases {

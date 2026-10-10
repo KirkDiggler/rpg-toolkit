@@ -170,12 +170,12 @@ func (s *CastPauseSuite) reactRow(member string) session.Declaration {
 }
 
 // react answers member's own open window.
-func (s *CastPauseSuite) react(member string, choice session.ReactChoice) {
+func (s *CastPauseSuite) react(member string, choice session.Answer) {
 	s.T().Helper()
 	row := s.reactRow(member)
 	s.Require().NotEmpty(row.ID, "no open window for %q", member)
 	_, err := s.mgr.React(context.Background(), &session.ReactInput{
-		Session: "sess", Member: member, DeclarationID: row.ID, Choice: choice,
+		Session: "sess", Member: member, DeclarationID: row.ID, Answer: choice,
 	})
 	s.Require().NoError(err)
 }
@@ -319,7 +319,7 @@ func (s *CastPauseSuite) TestAFleeThatProvokesAPlayerPausesTheCastAndResumesOnTh
 	// the question.
 	s.Require().Error(s.endBardsTurn(), "the table does not advance while a player is deciding")
 
-	s.react("fighter", session.ReactStrike)
+	s.react("fighter", session.Take(""))
 
 	swings := s.swings("bard")
 	s.Require().Len(swings, 1, "one swing, at the creature running past her")
@@ -343,7 +343,7 @@ func (s *CastPauseSuite) TestAHeldSwingStillLetsTheWalkFinish() {
 	s.Require().NoError(err)
 	s.True(out.Paused)
 
-	s.react("fighter", session.ReactHold)
+	s.react("fighter", session.Decline())
 
 	s.Empty(s.swings("bard"), "holding swings at nobody")
 	s.Equal(6, s.fledCells(), "and the creature runs the same thirty feet either way")
@@ -379,7 +379,7 @@ func (s *CastPauseSuite) TestAPostHitAnswerDuringAHeldDirectiveResumesTheDirecti
 	s.Equal(refs.Features.WrathOfTheStorm().String(), row.Reaction.Ref, "and it is the post-hit offer now")
 
 	_, err = s.mgr.React(context.Background(), &session.ReactInput{
-		Session: "sess", Member: "fighter", DeclarationID: row.ID, Choice: session.ReactHold,
+		Session: "sess", Member: "fighter", DeclarationID: row.ID, Answer: session.Decline(),
 	})
 	s.Require().NoError(err, "the last answer resumes the held directive, not a turn nobody paused")
 
@@ -391,17 +391,20 @@ func (s *CastPauseSuite) TestAPostHitAnswerDuringAHeldDirectiveResumesTheDirecti
 // swapInPostHitWindow rewrites member's one open window in the stored session
 // record into a post-hit window, keeping its id so the row's selector holds.
 //
-// The frozen strike inside it is RESOLUTION'S OWN, minted by a real Wrath of the
-// Storm pose (realPostHitFrozen) rather than written here: the envelope is a
-// private resolution type, and this test owns only the swap. The window wrapper
-// around it is this package's own shape.
+// The window is RESOLUTION'S OWN pause, minted by a real Wrath of the Storm
+// pose (realPostHitWindow) rather than written here, re-addressed to member:
+// the frozen machine is a private resolution type, and this test owns only the
+// swap.
 func (s *CastPauseSuite) swapInPostHitWindow(member string) {
 	s.T().Helper()
-	payload, err := json.Marshal(map[string]any{
-		"kind": "post_hit", "audience": member,
-		"offer":  map[string]string{"ref": refs.Features.WrathOfTheStorm().String(), "name": "Wrath of the Storm"},
-		"frozen": realPostHitFrozen(s.T()),
-	})
+	window := realPostHitWindow(s.T())
+	window["audience"] = member
+	pause, ok := window["pause"].(map[string]any)
+	s.Require().True(ok, "a stored window carries its pause")
+	ask, ok := pause["ask"].(map[string]any)
+	s.Require().True(ok, "a stored pause carries its ask")
+	ask["audience"] = member
+	payload, err := json.Marshal(window)
 	s.Require().NoError(err)
 
 	stored := s.sessions.byID["sess"]
@@ -418,12 +421,13 @@ func (s *CastPauseSuite) swapInPostHitWindow(member string) {
 	s.Require().True(swapped, "member %q has no open window to swap", member)
 }
 
-// realPostHitFrozen is the frozen strike resolution writes when a goblin's
-// driven swing hits a Tempest cleric holding Wrath of the Storm — the scene
+// realPostHitWindow is the stored window a goblin's driven swing poses when it
+// hits a Tempest cleric holding Wrath of the Storm — the scene
 // TestWrathMonsterTurnReloadResumesWithoutSecondStrike plays, stopped at the
-// pose. Declining it resumes nothing inside the strike, so the ids it names
-// need not be members of the scene it is swapped into.
-func realPostHitFrozen(t *testing.T) []byte {
+// pause. Declining it resumes nothing inside the strike but its empty
+// retaliation, so the ids it names need not be members of the scene it is
+// swapped into.
+func realPostHitWindow(t *testing.T) map[string]any {
 	t.Helper()
 	wrath := &CastSuite{}
 	wrath.SetT(t)
@@ -439,14 +443,10 @@ func realPostHitFrozen(t *testing.T) []byte {
 		if string(window.Audience) != "cleric" {
 			continue
 		}
-		var posed struct {
-			Kind   string `json:"kind"`
-			Frozen []byte `json:"frozen"`
-		}
+		var posed map[string]any
 		require.NoError(t, json.Unmarshal(window.Payload, &posed))
-		require.Equal(t, "post_hit", posed.Kind, "the goblin's hit poses the cleric's Wrath")
-		require.NotEmpty(t, posed.Frozen)
-		return posed.Frozen
+		require.Equal(t, "post_hit", posed["kind"], "the goblin's hit poses the cleric's Wrath")
+		return posed
 	}
 	require.FailNow(t, "the Wrath scene posed no window to the cleric")
 	return nil
@@ -471,7 +471,7 @@ func (s *CastPauseSuite) TestTheCasterIsAskedOnHerOwnTurn() {
 	s.True(out.Paused, "the caster is the reactor, and she is asked rather than swung for")
 	s.Equal([]string{"bard"}, s.windowAudiences("bard"))
 
-	s.react("bard", session.ReactStrike)
+	s.react("bard", session.Take(""))
 
 	swings := s.swings("bard")
 	s.Require().Len(swings, 1)
@@ -503,12 +503,12 @@ func (s *CastPauseSuite) TestTwoPlayersAreBothAskedBeforeTheWalkResumes() {
 	s.ElementsMatch([]string{"fighter", "second"}, s.windowAudiences("bard"),
 		"both players whose reach it is leaving were asked, on the one step")
 
-	s.react("fighter", session.ReactStrike)
+	s.react("fighter", session.Take(""))
 	s.Equal(announced, s.where("skeleton"),
 		"one answer is not the answer; the walk waits for the second")
 	s.Zero(s.fledCells())
 
-	s.react("second", session.ReactHold)
+	s.react("second", session.Decline())
 	s.Equal(6, s.fledCells(), "answered by both, the held walk finishes")
 	s.Require().NoError(s.endBardsTurn())
 }

@@ -36,8 +36,6 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/play/interrupt"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -359,19 +357,15 @@ func (m *Manager) spendOnSocial(
 // member the question resolution stopped on — [Manager.poseUnlockWindow]'s
 // shape, for a social verb instead of a lock.
 func (m *Manager) poseSocialWindow(
-	ctx context.Context, scope *writeScope, spec socialVerb, member, target string, posed *resolution.Pose,
+	ctx context.Context, scope *writeScope, spec socialVerb, member, target string, posed *resolution.Pause,
 ) (*socialOutcome, error) {
 	ask := posed.Ask
 	if ask.Audience != member {
 		return nil, fmt.Errorf("%s: %w: the machine asked %q on %q's roll",
 			spec.verb, ErrInvalidWorld, ask.Audience, member)
 	}
-	if ask.Offer.Ref == nil || ask.Offer.Name == "" {
+	if ask.Offer.Ref.ID == "" || ask.Offer.Name == "" {
 		return nil, fmt.Errorf("%s: %w: the machine asked about an unnamed offer", spec.verb, ErrInvalidWorld)
-	}
-	if len(ask.Options) != 2 {
-		return nil, fmt.Errorf("%s: %w: the machine posed %d answers and this seam poses two",
-			spec.verb, ErrInvalidWorld, len(ask.Options))
 	}
 
 	if err := requirePosedCalculation(string(spec.verb), member, ask.Calculation); err != nil {
@@ -379,34 +373,9 @@ func (m *Manager) poseSocialWindow(
 	}
 
 	offer := ReactionRef{Ref: ask.Offer.Ref.String(), Name: ask.Offer.Name}
-	payload, err := marshalCheckOfferPayload(checkOfferWindowPayload{
-		Audience: ask.Audience,
-		Target:   target,
-		// WHICH verb is paused, so the answer finishes the one that was asked
-		// (window.go): a resumed Persuade that landed an Intimidate would be
-		// a silently wrong deed on a mind.
-		Verb:             spec.verb,
-		Offer:            offer,
-		OfferDescription: ask.Offer.Description,
-		Roll:             ask.Roll,
-		Total:            ask.Total,
-		Calculation:      sessionRollCalculationOf(ask.Calculation),
-		Frozen:           posed.Frozen,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w: %v", spec.verb, ErrInvalidSession, err)
+	if err := poseWindow(scope, *posed, windowStory{Kind: storyCheck, Target: target, Verb: spec.verb}); err != nil {
+		return nil, fmt.Errorf("%s: %w", spec.verb, err)
 	}
-
-	if _, err := scope.ledger.Pose(&interrupt.PoseInput{
-		Audience: core.EntityID(ask.Audience),
-		Options:  []interrupt.Option{interrupt.Option(ReactStrike), interrupt.Option(ReactHold)},
-		Payload:  payload,
-		At:       scope.baseline,
-	}); err != nil {
-		return nil, fmt.Errorf("%s: %w: %v", spec.verb, ErrInvalidSession, err)
-	}
-	scope.data.Windows = scope.ledger.ToData()
-	scope.touched = true
 
 	recorded, err := scope.enc.RecordRollWindow(&encounter.RollWindowInput{
 		Audience: encounter.MemberID(ask.Audience),

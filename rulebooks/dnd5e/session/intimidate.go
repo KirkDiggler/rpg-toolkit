@@ -83,7 +83,7 @@ type IntimidateOutput struct {
 	// THIS IS UNLOCK'S RULE, SHARED RATHER THAN RESTATED. Both verbs pause
 	// the same machine on the same kind of check, and a client that learned
 	// one shape must not have to learn a second. The reasoning is
-	// [checkOfferWindowPayload.Roll]'s: the total alone is safe to show
+	// [resolution.Ask]'s: the total alone is safe to show
 	// BECAUSE the DC is withheld, so a player weighing whether the die is
 	// worth spending cannot read off whether it would close the gap.
 	// Withholding the total as well would cost them the one number the
@@ -96,7 +96,7 @@ type IntimidateOutput struct {
 
 	// Roll is the d20 as rolled, present only when Paused. THE MONSTER'S DC
 	// IS DELIBERATELY NOT SURFACED alongside it, for
-	// [checkOfferWindowPayload.Roll]'s reason: a player deciding whether a
+	// [resolution.Ask]'s reason: a player deciding whether a
 	// die is worth spending should not be able to read off whether it would
 	// close the gap.
 	Roll *int `json:"roll,omitempty"`

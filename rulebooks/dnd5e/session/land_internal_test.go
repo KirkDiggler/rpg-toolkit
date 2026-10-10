@@ -5,6 +5,7 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -157,7 +158,7 @@ func (s *LandSuite) fullOutput() *resolution.Output {
 func (s *LandSuite) poseOpen() interrupt.Window {
 	posed, err := s.scope.ledger.Pose(&interrupt.PoseInput{
 		Audience: core.EntityID("fighter"),
-		Options:  []interrupt.Option{interrupt.Option(ReactStrike), interrupt.Option(ReactHold)},
+		Options:  []interrupt.Option{ledgerTake, ledgerDecline},
 		Payload:  []byte(`{}`),
 		At:       s.scope.baseline,
 	})
@@ -199,14 +200,12 @@ func (s *LandSuite) goblinName(enc *encounter.Encounter) string {
 // The order is read off what each step leaves behind, probed at every point
 // the landing calls out of itself: each repository read and write, and the
 // Record, Window and Continue closures. adopt shows as the scope's encounter
-// changing, the areas as the area set changing, the answer as the window
-// closing; each is logged the first time a probe sees it. No probe sits
-// between the area step and the answer, so their order is pinned by
-// TestTheAreasLandBeforeTheAnswer instead.
+// changing and the areas as the area set changing; each is logged the first
+// time a probe sees it. The window a resume answered was consumed before the
+// resume, so a landing answers nothing.
 func (s *LandSuite) TestEveryOutputFieldLandsOnce() {
 	ctx := context.Background()
 	before := s.scope.enc
-	answering := s.poseOpen()
 	out := s.fullOutput()
 	wantChecks, wantBreaks := out.ConcentrationChecks, out.ConcentrationBreaks
 
@@ -222,7 +221,6 @@ func (s *LandSuite) TestEveryOutputFieldLandsOnce() {
 		note("adopt", s.scope.enc != before)
 		areas := areaIDs(s.scope.enc)
 		note("areas", areas["cloud"] && !areas["fog"])
-		note("answer", !s.isOpen(answering.ID))
 	}
 	s.probe.hear = func(event string) {
 		observe()
@@ -244,7 +242,6 @@ func (s *LandSuite) TestEveryOutputFieldLandsOnce() {
 			told, recordedOn = c, enc
 			return nil
 		},
-		Answer: &windowAnswer{Window: answering, Choice: ReactHold},
 		Window: func(*encounter.Encounter) error {
 			observe()
 			order = append(order, "window")
@@ -281,14 +278,13 @@ func (s *LandSuite) TestEveryOutputFieldLandsOnce() {
 	areas := areaIDs(s.scope.enc)
 	s.True(areas["cloud"], "the opened area landed")
 	s.False(areas["fog"], "the closed area ended")
-	s.False(s.isOpen(answering.ID), "the resumed window was answered")
 	s.Equal(1, windows)
 	s.True(s.isOpen(posedID), "the posed window is open")
 	s.Equal(s.scope.ledger.ToData(), s.scope.data.Windows, "the session record carries the ledger")
 	s.Equal(1, continues)
 	s.Equal(1, s.encounters.saves, "the encounter is saved once")
 	s.Equal(1, s.sessions.saves, "the session is saved once")
-	s.Equal([]string{"adopt", "sheets", "record", "areas", "answer", "window", "continue", "commit"}, order)
+	s.Equal([]string{"adopt", "sheets", "record", "areas", "window", "continue", "commit"}, order)
 }
 
 // TestASeamLandingAdoptsAndCommitsNothing: a Live landing records on the
@@ -315,18 +311,8 @@ func (s *LandSuite) TestASeamLandingAdoptsAndCommitsNothing() {
 	s.Zero(s.sessions.saves, "nothing commits the session")
 }
 
-// TestAnUntoldLandingDropsConcentrationByName: a landing that declares it
-// tells no concentration lands an output that carries some, and commits.
-func (s *LandSuite) TestAnUntoldLandingDropsConcentrationByName() {
-	out := s.fullOutput()
-	s.Require().NotEmpty(out.ConcentrationBreaks)
-	_, err := s.mgr.land(context.Background(), s.scope, out, &landing{Untold: true})
-	s.Require().NoError(err)
-	s.Equal(1, s.encounters.saves, "the untold landing commits")
-}
-
 // TestAnUndeclaredLandingRefusesConcentration: concentration with nothing to
-// tell it and no declaration that it is untold refuses, and commits nothing.
+// tell it refuses, and commits nothing — no landing drops concentration.
 func (s *LandSuite) TestAnUndeclaredLandingRefusesConcentration() {
 	out := s.fullOutput()
 	_, err := s.mgr.land(context.Background(), s.scope, out, &landing{})
@@ -335,39 +321,24 @@ func (s *LandSuite) TestAnUndeclaredLandingRefusesConcentration() {
 	s.Zero(s.sessions.saves)
 }
 
-// TestTheAreasLandBeforeTheAnswer pins the one pair of steps the order test
-// cannot probe between: an answer that fails finds the areas already landed,
-// and the failure reports the sheets that landed before it (R10).
-func (s *LandSuite) TestTheAreasLandBeforeTheAnswer() {
+// TestTheAreasLandBeforeTheWindow pins the area step before the window step:
+// a window that fails finds the areas already landed, and the failure reports
+// the sheets that landed before it (R10).
+func (s *LandSuite) TestTheAreasLandBeforeTheWindow() {
 	out := s.fullOutput()
-	gone := interrupt.Window{ID: 999, Audience: core.EntityID("fighter")}
+	var areasAtWindow map[string]bool
 	_, err := s.mgr.land(context.Background(), s.scope, out, &landing{
 		Record: func(*encounter.Encounter, concentration) error { return nil },
-		Answer: &windowAnswer{Window: gone, Choice: ReactHold},
+		Window: func(enc *encounter.Encounter) error {
+			areasAtWindow = areaIDs(enc)
+			return fmt.Errorf("%w: refused", ErrInvalidSession)
+		},
 	})
 	s.Require().ErrorIs(err, ErrInvalidSession)
 	var saveErr *SaveError
 	s.Require().ErrorAs(err, &saveErr, "a failure after the sheets landed reports them")
 	s.Contains(saveErr.Report.Written, "character:fighter")
-	areas := areaIDs(s.scope.enc)
-	s.True(areas["cloud"], "the areas landed before the answer was attempted")
-	s.False(areas["fog"])
+	s.True(areasAtWindow["cloud"], "the areas landed before the window was posed")
+	s.False(areasAtWindow["fog"])
 	s.Zero(s.encounters.saves, "a failed landing commits nothing")
-}
-
-// TestARecordingLandingCannotBeUntold: Untold says a landing records nothing,
-// so a landing that also records refuses before it records, and commits
-// nothing.
-func (s *LandSuite) TestARecordingLandingCannotBeUntold() {
-	recorded := false
-	_, err := s.mgr.land(context.Background(), s.scope, s.fullOutput(), &landing{
-		Untold: true,
-		Record: func(*encounter.Encounter, concentration) error {
-			recorded = true
-			return nil
-		},
-	})
-	s.Require().ErrorIs(err, ErrInvalidWorld)
-	s.False(recorded, "the refusal comes before the record")
-	s.Zero(s.encounters.saves, "a refused landing commits nothing")
 }

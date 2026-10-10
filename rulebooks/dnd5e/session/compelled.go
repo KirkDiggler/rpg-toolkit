@@ -261,8 +261,9 @@ func (d compelledDriver) obey(
 	// through the mover seam (which lands its own reaction strikes' areas),
 	// and Grovel applies Prone, which ends no concentration. The first word
 	// that can close or open an area brings the test that pins this order.
-	// Nothing is told here (R9).
-	if _, err := d.m.land(d.ctx, d.scope, out.Resolved, &landing{Live: d.scope.enc, Untold: true}); err != nil {
+	// Nothing is told here, and no word can carry concentration: a landing
+	// handed some refuses it rather than dropping it.
+	if _, err := d.m.land(d.ctx, d.scope, out.Resolved, &landing{Live: d.scope.enc}); err != nil {
 		return nil, fmt.Errorf("compelled turn %q: %w", member, err)
 	}
 	return out, nil

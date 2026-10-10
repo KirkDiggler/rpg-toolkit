@@ -483,7 +483,7 @@ func (s *PersuadeSuite) TestAResumedAppealFinishesAsAnAppealAndRollsItsReaction(
 	}
 	s.Require().NotEmpty(react.ID, "the question is on the panel")
 	_, err = mgr.React(context.Background(), &session.ReactInput{
-		Session: "sess", Member: "alice", DeclarationID: react.ID, Choice: session.ReactStrike,
+		Session: "sess", Member: "alice", DeclarationID: react.ID, Answer: session.Take(""),
 	})
 	s.Require().NoError(err)
 

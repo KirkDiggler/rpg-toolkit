@@ -23,14 +23,11 @@ const landFile = "land.go"
 const capabilitiesFile = "capabilities.go"
 
 // landingHelpers are the steps only the landing calls: adopting an output's
-// world, writing its sheets, and landing or holding its areas.
+// world, writing its sheets, and landing its areas.
 var landingHelpers = map[string]bool{
-	"adopt":         true,
-	"saveDirty":     true,
-	"landAreas":     true,
-	"landToldAreas": true,
-	"landHeldAreas": true,
-	"holdAreas":     true,
+	"adopt":     true,
+	"saveDirty": true,
+	"landAreas": true,
 }
 
 // TestOnlyTheLandingLandsAndOnlyTheBuildersCompose holds both laws. Every

@@ -129,154 +129,21 @@ func (s strikerSeam) Strike(
 		return fmt.Errorf("strike: %w", translateAttack(err))
 	}
 
-	in := &AttackInput{Attacker: string(attacker), Target: string(target)}
-	if out.Posed != nil {
-		if out.Posed.BeforeRoll || out.Posed.Sequence != nil {
-			p := pendingAttackWindowPayload{Attacker: string(attacker), Target: string(target), Definition: definition, Components: attackerData.Actions}
-			l := &landing{
-				Live: enc,
-				Window: func(*encounter.Encounter) error {
-					return posePendingAttackWindow(s.scope, out.Posed, p)
-				},
-			}
-			// The completed swings are told; a swing that settled and then
-			// stopped to ask is NOT, until the answer resumes the sequence.
-			// An area that swing closed waits with it, carried on the window,
-			// so the story never tells "area ended" before its cause. A pose
-			// before the roll has no unrecorded swing: everything that could
-			// have closed an area is already told, and the areas land now.
-			// (Today that branch carries none: the only before-roll offer,
-			// Warding Flare, depends on the target and not the swing, so a
-			// sequence would have posed it on its first swing.)
-			var told []resolution.SequenceStepOutcome
-			if out.Posed.Sequence != nil {
-				sequence := *out.Posed.Sequence
-				told = sequence.Steps
-				l.Record = func(*encounter.Encounter, concentration) error {
-					return s.m.recordPendingSequence(s.scope, &p, sequence)
-				}
-			} else {
-				// Nothing is told before the roll (R9).
-				l.Untold = true
-			}
-			l.Areas = areaLanding{Payload: &p, Split: true, Told: told}
-			if _, err := s.m.land(ctx, s.scope, out, l); err != nil {
-				return err
-			}
-			return encounter.ErrStrikePaused
-		}
-		if out.Posed.SettledStrike == nil {
-			return fmt.Errorf("strike: %w: unsupported pre-hit monster question", ErrInvalidWorld)
-		}
-		if _, err := s.m.land(ctx, s.scope, out, &landing{
-			Live: enc,
-			Record: func(enc *encounter.Encounter, told concentration) error {
-				_, err := enc.Record(recordFor(in, *out.Posed.SettledStrike, definition, "", told))
-				return err
-			},
-			Window: func(*encounter.Encounter) error {
-				return posePostHitWindow(s.scope, out.Posed)
-			},
-		}); err != nil {
-			return err
-		}
-		return encounter.ErrStrikePaused
+	// ONE LANDING, PAUSED OR FINISHED. Whatever settled — a lone hit, or a
+	// sequence's swings up to and including one that hit and then stopped to
+	// ask — is told now with its own concentration, and the areas it changed
+	// land after it; the pause, when there is one, is posed. NO PRESENTATION
+	// TOKEN: nobody declared this roll, so no client simulated its die.
+	story := windowStory{
+		Kind: storyAttack, Attacker: string(attacker), Target: string(target),
+		Definition: definition, Components: attackerData.Actions,
 	}
-
-	// Sheets are written ONCE for the whole interaction, before any beat is
-	// recorded, whether the action landed one blow or several.
-	l := &landing{Live: enc}
-	switch produced := out.Outcome.(type) {
-	case resolution.StrikeOutcome:
-		// NO PRESENTATION TOKEN: nobody declared this roll. A monster's swing
-		// is resolved by the driver, no client simulated its die, and there is
-		// therefore no throw for a witness to correlate against — see recordFor.
-		l.Record = func(enc *encounter.Encounter, told concentration) error {
-			_, err := enc.Record(recordFor(in, produced, definition, "", told))
-			return err
-		}
-
-	case resolution.SequenceOutcome:
-		l.Record = func(enc *encounter.Encounter, _ concentration) error {
-			return s.recordSequence(enc, in, produced, attackerData.Actions)
-		}
-
-	default:
-		// Refused at the record step, where it has always been refused: after
-		// the sheets are written.
-		l.Record = func(*encounter.Encounter, concentration) error {
-			return fmt.Errorf("%w: strike produced %T", ErrInvalidWorld, out.Outcome)
-		}
-	}
-	if _, err := s.m.land(ctx, s.scope, out, l); err != nil {
+	if _, err := s.m.land(ctx, s.scope, out, s.m.attackLanding(s.scope, enc, story, out, nil)); err != nil {
 		return fmt.Errorf("strike: %w", err)
 	}
-	return nil
-}
-
-// recordSequence writes ONE BEAT PER SWING.
-//
-// # Why not one beat for the whole multiattack
-//
-// Because a beat is a roll. Every field the story keeps about an attack — the
-// d20 and its keep record, the total, the AC it was compared against, the
-// damage components, whether it crit — is singular, and a beat carrying two
-// swings could only answer each of those once. The client that draws a die
-// tray draws one throw per beat for the same reason.
-//
-// So the goblin boss's Multiattack is two Struck/Missed beats in order, each
-// naming the COMPONENT that swung — "Scimitar", not "Multiattack" — because
-// that is the identity a client maps to a model, an icon and a damage type,
-// and it is what actually hit.
-//
-// # The deed is landed twice and keyed once
-//
-// Encounter.Record lands an attack deed keyed actor#verb, so the second swing
-// overwrites the first's. That is the right answer rather than a gap: a `when`
-// condition reading "this creature was attacked" wants the fact, not a count,
-// and two swings in one action are one attack as far as a witness is
-// concerned.
-//
-// # Concentration rides the swing that forced it
-//
-// Each step carries its OWN checks and breaks (Kirk's ruling, 2026-09-20), so
-// this seam copies two slice headers per beat and still knows nothing about
-// what is in them. That is the same arrangement recordStrike already documents
-// for a lone swing, and it is why the split lives in resolution rather than
-// here: which blow caused which break is a rule, and a seam that worked it out
-// would be a seam having an opinion.
-//
-// out.ConcentrationChecks and out.ConcentrationBreaks are EMPTY for a
-// sequence, deliberately, so reading both places cannot record one save twice.
-func (s strikerSeam) recordSequence(
-	enc *encounter.Encounter, in *AttackInput, sequence resolution.SequenceOutcome,
-	repertoire []combatActions.Definition,
-) error {
-	if len(sequence.Steps) == 0 {
-		// Refused rather than returned as a quiet success: a sequence that
-		// produced no swing is a machine defect, and a silent return would
-		// look exactly like a turn where nothing was in reach.
-		return fmt.Errorf("strike: %w: %s swung nothing", ErrInvalidWorld, sequence.Action.String())
+	if out.Posed != nil {
+		return encounter.ErrStrikePaused
 	}
-
-	for index, step := range sequence.Steps {
-		component, found := definitionFor(repertoire, step.Action)
-		if !found {
-			// Unreachable through resolution, which resolved these very refs
-			// against this very list before the first swing. Named anyway,
-			// because a beat labelled with the wrong weapon is worse than a
-			// turn that failed.
-			return fmt.Errorf("strike: %w: %s swung %s, which the attacker does not carry",
-				ErrBadAttack, sequence.Action.String(), step.Action.String())
-		}
-
-		recorded := recordStrike(in.Attacker, in.Target, step.Strike,
-			attackRefFor(component), "", step.ConcentrationChecks, step.ConcentrationBreaks)
-		if _, err := enc.Record(recorded); err != nil {
-			return fmt.Errorf("strike: step %d: %w", index, translate(err))
-		}
-	}
-
 	return nil
 }
 
