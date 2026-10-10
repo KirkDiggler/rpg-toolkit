@@ -99,3 +99,34 @@ func TestATemplateBaseMustBeARulebookBase(t *testing.T) {
 		})
 	}
 }
+
+// castleGuard is the castle kitchen's guard block, as the dialect carries it.
+var castleGuard = dungeonspec.TemplateSpec{
+	Base:      "dnd5e:monsters:human",
+	Abilities: map[string]int{"str": 13, "con": 12, "wis": 11},
+	HitDice:   "2d8",
+	Armor:     "dnd5e:armor:chain-shirt",
+	Skills:    []string{"perception"},
+	Actions:   []string{"dnd5e:weapons:spear"},
+}
+
+// TestDeriveTemplateAssemblesTheCastleGuard is the one derivation the launch
+// and an authoring-time echo share: the guard's numbers come out of the
+// rulebook, and the sheet names the template's ref.
+func TestDeriveTemplateAssemblesTheCastleGuard(t *testing.T) {
+	out, err := deriveTemplate(&deriveTemplateInput{ID: "guard-1", Ref: "dnd5e:monsters:guard", Spec: castleGuard})
+	require.NoError(t, err)
+	sheet := out.Monster.ToData()
+	require.Equal(t, 11, sheet.MaxHitPoints, "2d8 averages 9, plus CON 12's +1 per die")
+	require.Equal(t, 13, sheet.ArmorClass, "a chain shirt is 13 plus DEX 10's +0")
+	require.Equal(t, "dnd5e:monsters:guard", sheet.Ref.String())
+}
+
+// TestDeriveTemplateRefusesAnUnknownBaseByName: the author is told which base.
+func TestDeriveTemplateRefusesAnUnknownBaseByName(t *testing.T) {
+	spec := castleGuard
+	spec.Base = "dnd5e:monsters:elf"
+	_, err := deriveTemplate(&deriveTemplateInput{ID: "guard-1", Ref: "dnd5e:monsters:guard", Spec: spec})
+	require.ErrorIs(t, err, ErrUnknownContent)
+	require.Contains(t, err.Error(), "dnd5e:monsters:elf")
+}

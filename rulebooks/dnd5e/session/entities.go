@@ -9,15 +9,12 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
@@ -142,10 +139,11 @@ func instantiate(id string, ref string, actions []string, template *dungeonspec.
 		return nil, fmt.Errorf("template %q shadows rulebook monster %q; rename the template: %w",
 			parsed.ID, parsed.String(), ErrShadowedRef)
 	case template != nil:
-		built, err = fromTemplate(id, parsed, template)
+		derived, err := deriveTemplate(&deriveTemplateInput{ID: id, Ref: parsed.String(), Spec: *template})
 		if err != nil {
 			return nil, err
 		}
+		built = derived.Monster
 	case constructed:
 		built = build(id)
 		if built == nil {
@@ -246,121 +244,6 @@ func templateFor(templates map[string]dungeonspec.TemplateSpec, ref string) *dun
 		return nil
 	}
 	return &spec
-}
-
-// fromTemplate assembles the monster an authored template describes: the base
-// it names, looked up in the rulebook; the template, read out of the author's
-// strings; and [monster.FromTemplate], which derives every number (R6). The
-// sheet's ref is the placement's — the template's own `dnd5e:monsters:guard`,
-// never the base's — so the author's id survives onto the sheet.
-//
-// An unknown base is refused BY NAME with [ErrUnknownContent]: the author
-// wrote `dnd5e:monsters:elf` and is told `elf`, not handed a creature built
-// from nothing. A base that is a rulebook monster rather than a base (a
-// goblin) is refused the same way — templates derive from bases.
-//
-// A refusal from the assembly itself is [ErrInvalidWorld] with the rulebook's
-// reason carried as text. Its error is the rulebook's, and a host matching on
-// it would be coupled to a module this seam exists to keep replaceable (S2).
-func fromTemplate(id string, ref *core.Ref, spec *dungeonspec.TemplateSpec) (*monster.Monster, error) {
-	base, ok := monsters.BaseByRef(spec.Base)
-	if !ok {
-		return nil, fmt.Errorf("template %q: base %q is not a rulebook base: %w", ref.ID, spec.Base, ErrUnknownContent)
-	}
-
-	tmpl, err := templateOf(*spec)
-	if err != nil {
-		return nil, fmt.Errorf("template %q: %w", ref.ID, err)
-	}
-
-	built, err := monster.FromTemplate(&monster.FromTemplateInput{ID: id, Ref: ref, Template: tmpl, Base: base})
-	if err != nil {
-		return nil, fmt.Errorf("template %q: %w: %v", ref.ID, ErrInvalidWorld, err)
-	}
-	return built, nil
-}
-
-// templateOf reads an authored template's strings into the rulebook's
-// [monster.Template] — the one conversion between the dialect's carried
-// strings and the rulebook's types.
-//
-// Every id is checked against the catalogue it names, refused as [arm]
-// refuses a weapon: a malformed ref is [ErrBadRef], an armour, weapon, skill
-// or ability nothing here knows is [ErrUnknownContent]. Absence is carried as
-// absence (R8): no armour is nil (the base's), no skills or actions are nil
-// (the base's), so [monster.Template.Merge] can tell "unstated" from "none".
-// Experience is carried as written and never inherits; 0 is worth nothing.
-func templateOf(spec dungeonspec.TemplateSpec) (monster.Template, error) {
-	base, err := core.ParseString(spec.Base)
-	if err != nil {
-		return monster.Template{}, fmt.Errorf("base %q: %w: %v", spec.Base, ErrBadRef, err)
-	}
-
-	out := monster.Template{
-		Base:        base,
-		Name:        spec.Name,
-		HitDice:     spec.HitDice,
-		Proficiency: spec.Proficiency,
-		Experience:  spec.Experience,
-	}
-
-	if len(spec.Abilities) > 0 {
-		out.Abilities = make(map[abilities.Ability]int, len(spec.Abilities))
-		for key, score := range spec.Abilities {
-			ability, ok := abilityOf(key)
-			if !ok {
-				return monster.Template{}, fmt.Errorf("ability %q: %w", key, ErrUnknownContent)
-			}
-			out.Abilities[ability] = score
-		}
-	}
-
-	if spec.Armor != "" {
-		parsed, err := core.ParseString(spec.Armor)
-		if err != nil {
-			return monster.Template{}, fmt.Errorf("%q: %w: %v", spec.Armor, ErrBadRef, err)
-		}
-		if parsed.Module != refs.Module || parsed.Type != refs.TypeArmor {
-			return monster.Template{}, fmt.Errorf("%q: %w", spec.Armor, ErrUnknownContent)
-		}
-		worn := armor.ArmorID(parsed.ID)
-		if _, err := armor.GetByID(worn); err != nil {
-			return monster.Template{}, fmt.Errorf("%q: %w", spec.Armor, ErrUnknownContent)
-		}
-		out.Armor = &worn
-	}
-
-	if spec.Skills != nil {
-		out.Skills = make([]skills.Skill, 0, len(spec.Skills))
-		for _, key := range spec.Skills {
-			skill, err := skills.GetByID(key)
-			if err != nil {
-				return monster.Template{}, fmt.Errorf("skill %q: %w", key, ErrUnknownContent)
-			}
-			out.Skills = append(out.Skills, skill)
-		}
-	}
-
-	if spec.Actions != nil {
-		out.Actions, err = weaponIDsOf(spec.Actions)
-		if err != nil {
-			return monster.Template{}, err
-		}
-	}
-
-	return out, nil
-}
-
-// abilityOf is the ability an authored short name (str dex con int wis cha)
-// names, matched exactly: the dialect writes lowercase, and a key that only
-// matches after folding is not one the author wrote.
-func abilityOf(key string) (abilities.Ability, bool) {
-	for _, ability := range abilities.List() {
-		if string(ability) == key {
-			return ability, true
-		}
-	}
-	return "", false
 }
 
 // projectCharacter asks resolution what this character is, and takes back an
