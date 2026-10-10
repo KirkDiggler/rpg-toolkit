@@ -1961,14 +1961,9 @@ func calculateArmorAC(armorItem *armor.Armor) combat.ACComponent {
 
 // calculateDexModifier calculates the DEX modifier to add to AC, respecting armor's MaxDexBonus cap
 func (c *Character) calculateDexModifier(armorItem *armor.Armor) int {
-	dexMod := c.abilityScores.Modifier(abilities.DEX)
-	if armorItem != nil && armorItem.MaxDexBonus != nil {
-		// Cap DEX modifier
-		if dexMod > *armorItem.MaxDexBonus {
-			dexMod = *armorItem.MaxDexBonus
-		}
-	}
-	return dexMod
+	// The cap is the armour catalogue's rule ([armor.ArmorClass]); the
+	// character only keeps the base and the DEX part as separate components.
+	return armorItem.DexContribution(c.abilityScores.Modifier(abilities.DEX))
 }
 
 // calculateShieldAC creates an AC component for an equipped shield

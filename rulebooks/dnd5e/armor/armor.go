@@ -260,6 +260,41 @@ var All = map[ArmorID]Armor{
 	},
 }
 
+// ArmorClass is the armour class a creature wearing a has with the given
+// DEX modifier: the armour's base plus its DEX contribution, and 10 plus the
+// whole DEX modifier when a is nil (nothing worn).
+//
+// One statement of the rule, for every creature that wears armour. A
+// character's AC fold and a monster template's derived block both ask it, so
+// a chain shirt cannot mean 13 + DEX (max 2) on a sheet and something else on
+// a stat block. It answers for body armour; a shield is a bonus on top, not a
+// base, and is the caller's to add.
+func ArmorClass(a *Armor, dexModifier int) int {
+	if a == nil {
+		return 10 + dexModifier
+	}
+	return a.AC + a.DexContribution(dexModifier)
+}
+
+// DexContribution is how much of a DEX modifier this armour lets through:
+// all of it when MaxDexBonus is nil (light armour, or nothing worn when a is
+// nil), the modifier capped at MaxDexBonus for medium armour — which carries a
+// negative modifier in full — and NOTHING in either direction when
+// MaxDexBonus is 0. Heavy armour does not add DEX, and it does not penalize a
+// negative DEX either (PHB p.144).
+func (a *Armor) DexContribution(dexModifier int) int {
+	if a == nil || a.MaxDexBonus == nil {
+		return dexModifier
+	}
+	if *a.MaxDexBonus == 0 {
+		return 0
+	}
+	if dexModifier > *a.MaxDexBonus {
+		return *a.MaxDexBonus
+	}
+	return dexModifier
+}
+
 // armorOrder is the authoritative presentation order for the armor registry.
 // All remains the ID lookup index.
 var armorOrder = []ArmorID{

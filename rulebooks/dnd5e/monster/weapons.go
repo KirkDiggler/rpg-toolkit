@@ -111,5 +111,11 @@ func (m *Monster) assembleWeapon(id weapons.WeaponID) (combatActions.Definition,
 	if err != nil {
 		return combatActions.Definition{}, rpgerr.Wrapf(err, "cannot arm %q with %q", m.name, id)
 	}
-	return weaponattack.Assemble(&weaponattack.Input{Wielder: m, Weapon: &weapon})
+	// Everyone is proficient with an unarmed strike — the rule, not a training
+	// the block records — so it never asks IsProficientWith.
+	return weaponattack.Assemble(&weaponattack.Input{
+		Wielder:          m,
+		Weapon:           &weapon,
+		AlwaysProficient: weapon.ID == weapons.UnarmedStrike,
+	})
 }
