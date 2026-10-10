@@ -728,12 +728,55 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 		return nil, fmt.Errorf("record: %w", err)
 	}
 
-	// The checks and the break ride in behind the beat that caused them, at
-	// the same clock reading and through the same append, so the story holds
-	// the blow, every roll it asked for and everything it ended as one train
-	// from one call.
-	followUpSeqs := make([]uint64, 0, len(breakBeats))
-	for i, beat := range breakBeats {
+	// A stabilized or recovered Death Save carries an explicit turn
+	// continuation. Recording it happens inside the already-active turn, so it
+	// neither auto-passes that slot nor reconciles a retained one-sided bubble
+	// in this same call. Stabilized explicitly reaches EndTurn; recovered keeps
+	// control until the eventual turn-settlement boundary.
+	pass := participationPassInput{}
+	if in.Kind == OutcomeDeathSave && (in.DeathSave.Stabilized || in.DeathSave.Recovered) {
+		pass.deferReconcile = true
+	}
+	var land func() error
+	if in.Kind == OutcomeStruck || in.Kind == OutcomeMissed {
+		// subjects[1:] is the validated, sorted target list for these two
+		// kinds: only [OutcomeExperienceGained] puts anything else in there,
+		// and it never lands an attack.
+		land = func() error { return e.landAttack(in.Actor, subjects[1:]) }
+	}
+
+	followUpSeqs, intelDeltas, err := e.appendTrainAndNotice("record", breakBeats, land, pass)
+	if err != nil {
+		return nil, err
+	}
+	return &RecordOutput{IntelDeltas: intelDeltas, Seq: appended.Seq, FollowUpSeqs: followUpSeqs}, nil
+}
+
+// appendTrainAndNotice is the half of [Encounter.Record] that
+// [Encounter.TellConcentration] shares: it appends a prepared concentration
+// train and then runs the post-append consult. ONE BODY, so the two verbs
+// cannot drift — a check told without an outcome lands exactly as the same
+// check told behind one, and the world notices it the same way.
+//
+// The train rides in at the current clock reading and through the same append
+// as the beat before it, so the story holds the blow (when there is one), every
+// roll it asked for and everything it ended as one train from one call.
+//
+// A CLOSED ENCOUNTER STOPS AFTER THE APPEND. Only [OutcomeExperienceGained]
+// reaches this on one — every other caller is refused before anything is
+// appended — and a settled world has nothing left to notice: no sight to
+// refresh, no standing to consult, no ending left to fire.
+//
+// Otherwise the world finds out what the train just changed. AFTER the append,
+// never before: the train is the cause, and a down beat ahead of what explains
+// it would be a story told backwards. land, when non-nil, runs first — a
+// recorded attack lands its deed before the standing consult, as Record always
+// ordered it. pass shapes that consult; verb names the caller in every error.
+func (e *Encounter) appendTrainAndNotice(
+	verb string, train []preparedActivationBeat, land func() error, pass participationPassInput,
+) ([]uint64, map[MemberID]*IntelDelta, error) {
+	followUpSeqs := make([]uint64, 0, len(train))
+	for i, beat := range train {
 		appendedFollowUp, followUpErr := e.appendBeat(&record.AppendInput{
 			At:       uint64(e.clock.ToData().HighWater),
 			Audience: e.audienceFor(subjectBeat, beat.subjects...),
@@ -741,55 +784,101 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 			Payload:  beat.payload,
 		})
 		if followUpErr != nil {
-			return nil, fmt.Errorf("record: concentration beat %d: %w", i, followUpErr)
+			return nil, nil, fmt.Errorf("%s: concentration beat %d: %w", verb, i, followUpErr)
 		}
 		followUpSeqs = append(followUpSeqs, appendedFollowUp.Seq)
 	}
 
-	// A CLOSED ENCOUNTER STOPS HERE. Only [OutcomeExperienceGained] reaches
-	// this line on one — see prepareRecord's refusal site — and a settled
-	// world has nothing left to notice: no sight to refresh, no standing to
-	// consult, no ending left to fire. Running the consult anyway would be a
-	// second ending looking for somewhere to happen, against a roster the run
-	// already finished with.
 	if e.outcome != nil {
-		return &RecordOutput{Seq: appended.Seq, FollowUpSeqs: followUpSeqs}, nil
+		return followUpSeqs, nil, nil
 	}
 
-	// And now the world finds out what that beat just changed. AFTER the append,
-	// never before: the outcome is the cause, and a down beat ahead of the strike
-	// that explains it would be a story told backwards. See the godoc.
-	//
-	// A stabilized or recovered Death Save carries an explicit turn
-	// continuation. Recording it happens inside the already-active turn, so it
-	// neither auto-passes that slot nor reconciles a retained one-sided bubble
-	// in this same call. Stabilized explicitly reaches EndTurn; recovered keeps
-	// control until the eventual turn-settlement boundary.
-	if in.Kind == OutcomeStruck || in.Kind == OutcomeMissed {
-		// subjects[1:] is the validated, sorted target list for these two
-		// kinds: only [OutcomeExperienceGained] puts anything else in there,
-		// and it never lands an attack.
-		if err := e.landAttack(in.Actor, subjects[1:]); err != nil {
-			return nil, fmt.Errorf("record: %w", err)
+	if land != nil {
+		if err := land(); err != nil {
+			return nil, nil, fmt.Errorf("%s: %w", verb, err)
 		}
 	}
 
-	pass := participationPassInput{}
-	if in.Kind == OutcomeDeathSave && (in.DeathSave.Stabilized || in.DeathSave.Recovered) {
-		pass.deferReconcile = true
-	}
 	participation, intelDeltas, nerr := e.noticeDown(pass)
 	if nerr != nil {
-		return nil, fmt.Errorf("record: %w", nerr)
+		return nil, nil, fmt.Errorf("%s: %w", verb, nerr)
 	}
 
 	observed, err := e.refreshChangedStanding(participation)
 	if err != nil {
-		return nil, fmt.Errorf("record observed standing: %w", err)
+		return nil, nil, fmt.Errorf("%s observed standing: %w", verb, err)
 	}
-	intelDeltas = mergeIntelDeltas(intelDeltas, observed)
+	return followUpSeqs, mergeIntelDeltas(intelDeltas, observed), nil
+}
 
-	return &RecordOutput{IntelDeltas: intelDeltas, Seq: appended.Seq, FollowUpSeqs: followUpSeqs}, nil
+// TellConcentrationInput is the concentration a rule changed with no outcome
+// to carry it: the checks it rolled and the concentrations it ended.
+type TellConcentrationInput struct {
+	// Actor is the member whose rule caused them — the caster whose new spell
+	// ended their own earlier concentration, say. Must be a current member. It
+	// is a subject of every beat, as [RecordInput.Actor] is of a train.
+	Actor MemberID
+
+	// Checks are the concentrations tested and NOT broken, in the order they
+	// were rolled, with [RecordInput.ConcentrationChecks]' meaning.
+	Checks []ConcentrationCheck
+
+	// Breaks are the concentrations ended, in the order the rule ended them,
+	// with [RecordInput.ConcentrationBreaks]' meaning.
+	Breaks []ConcentrationBreak
+}
+
+// TellConcentration appends the beats [Encounter.Record] appends behind an
+// outcome, with no outcome: every check's saved beat, then every break's train
+// (the failed check if there was one, the break, the conditions it stripped).
+//
+// IT IS NOT A KIND OF RECORD, and Record still requires a kind (one pause
+// envelope, ruling E6). Some concentration has no causing unit to ride behind
+// — a cast that ends its caster's own earlier concentration and then pauses,
+// a turn boundary — and before this verb it was dropped by name. It shares
+// Record's preparation (the same validation, under the verb name "tell
+// concentration") and Record's append-and-consult body, so the same checks and
+// breaks land as the same beats in the same order either way.
+//
+// [RecordOutput.Seq] is zero — there is no outcome beat — and
+// [RecordOutput.FollowUpSeqs] lists every beat appended, in order.
+//
+// Errors: [ErrNilInput]; [ErrClosed]; [ErrNoMember] or [ErrNotMember] for the
+// actor; [ErrInvalidData] when both lists are empty; whatever the shared
+// preparation refuses. Every refusal runs before anything is appended.
+func (e *Encounter) TellConcentration(in *TellConcentrationInput) (*RecordOutput, error) {
+	const verb = "tell concentration"
+	if in == nil {
+		return nil, fmt.Errorf("%s: %w", verb, ErrNilInput)
+	}
+	if e.outcome != nil {
+		return nil, fmt.Errorf("%s: %w", verb, ErrClosed)
+	}
+	if in.Actor == "" {
+		return nil, fmt.Errorf("%s: actor: %w", verb, ErrNoMember)
+	}
+	if _, ok := e.members[in.Actor]; !ok {
+		return nil, fmt.Errorf("%s: actor %q: %w", verb, in.Actor, ErrNotMember)
+	}
+	if len(in.Checks) == 0 && len(in.Breaks) == 0 {
+		return nil, fmt.Errorf("%s: nothing to tell: %w", verb, ErrInvalidData)
+	}
+
+	checkBeats, err := e.prepareConcentrationChecks(verb, in.Actor, in.Checks)
+	if err != nil {
+		return nil, err
+	}
+	breakBeats, err := e.prepareConcentrationBreaks(verb, in.Actor, in.Breaks)
+	if err != nil {
+		return nil, err
+	}
+
+	followUpSeqs, intelDeltas, err := e.appendTrainAndNotice(
+		verb, append(checkBeats, breakBeats...), nil, participationPassInput{})
+	if err != nil {
+		return nil, err
+	}
+	return &RecordOutput{IntelDeltas: intelDeltas, FollowUpSeqs: followUpSeqs}, nil
 }
 
 // prepareRecord validates and marshals an outcome without mutating Story.

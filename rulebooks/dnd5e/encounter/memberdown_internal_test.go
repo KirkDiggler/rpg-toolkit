@@ -117,17 +117,16 @@ func TestClosingEncounterDiscardsSuspendedContinuations(t *testing.T) {
 			})
 			require.NoError(t, err)
 			if held {
-				enc.heldDirective = &heldDirective{member: "alice"}
+				enc.pause = &pause{kind: PauseDirective, member: "alice"}
 			} else {
-				enc.pausedTurn = &pausedTurn{member: "alice"}
+				enc.pause = &pause{kind: PauseTurn, member: "alice", turn: &turnPause{}}
 			}
 			require.True(t, enc.Paused())
 			_, err = enc.closeWith("done", 0)
 			require.NoError(t, err)
 			require.False(t, enc.Paused())
 			data := enc.ToData()
-			require.Nil(t, data.PausedTurn)
-			require.Nil(t, data.HeldDirective)
+			require.Nil(t, data.Pause)
 			_, err = LoadEncounter(&LoadEncounterInput{Data: data, Capabilities: Capabilities{Sight: everyoneSeesTheWholeMap{}, Equipment: UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: &somebodyDown{}, Initiative: orderAsGiven{}, Driver: passDriver{}, Actors: Actors{Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}}}})
 			require.NoError(t, err, "an ending reached during a reaction must reload")
 		})

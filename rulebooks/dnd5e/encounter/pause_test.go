@@ -247,21 +247,21 @@ func (s *PauseTestSuite) TestAPausedStepLeavesTheMoverOnTheCellBefore() {
 	s.Equal(testOpportunityAttack.Ref, window["reaction"].(map[string]any)["ref"])
 }
 
-// TestAPausedTurnSurvivesASaveAndLoad is the restart-changes-nothing half of
+// TestATurnPauseSurvivesASaveAndLoad is the restart-changes-nothing half of
 // the design's done-when: rpg-api going down between the question and the
 // answer must not lose the turn it interrupted.
-func (s *PauseTestSuite) TestAPausedTurnSurvivesASaveAndLoad() {
+func (s *PauseTestSuite) TestATurnPauseSurvivesASaveAndLoad() {
 	mover := &pausingMover{pauseAt: map[int]bool{1: true}}
 	enc := s.walkingScene(mover, &downList{})
 	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
 	s.Require().NoError(err)
 
 	before := enc.ToData()
-	s.Require().NotNil(before.PausedTurn, "the pause is in the blob")
-	s.Equal(encounter.MemberID(goblin), before.PausedTurn.Member)
-	s.Equal([]encounter.PositionData{posData(cellAt(4, 2)), posData(cellAt(3, 2))}, before.PausedTurn.Remaining,
+	s.Require().NotNil(before.Pause, "the pause is in the blob")
+	s.Equal(encounter.MemberID(goblin), before.Pause.Member)
+	s.Equal([]encounter.PositionData{posData(cellAt(4, 2)), posData(cellAt(3, 2))}, before.Pause.Remaining,
 		"the announced cell comes first, then the cells nobody has walked")
-	s.Equal(25, before.PausedTurn.Budget.MovementFeet,
+	s.Equal(25, before.Pause.Turn.Budget.MovementFeet,
 		"the one cell already walked is charged before the blob is written")
 
 	loaded := s.reload(enc, &pausingMover{}, &downList{})
@@ -283,7 +283,7 @@ func (s *PauseTestSuite) TestResumingFinishesTheWalkAndTheTurn() {
 	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
 	s.Require().NoError(err)
 
-	out, err := enc.ResumeTurn(context.Background())
+	out, err := enc.Resume(context.Background())
 	s.Require().NoError(err)
 	s.False(out.Paused, "the walk finished")
 	s.False(enc.Paused())
@@ -301,6 +301,100 @@ func (s *PauseTestSuite) TestResumingFinishesTheWalkAndTheTurn() {
 		// — and a fight round wrapping is the world getting one (design §5).
 		"tick",
 	}, s.beats(enc, alice))
+}
+
+// TestAPausedTurnRoundTripsThroughOnePause is the turn half of ruling E2: the
+// paused turn is written as the one Pause, kind turn, at PauseVersion, and a
+// reload resumed through the one Resume finishes the walk exactly as the
+// in-memory resume above does.
+func (s *PauseTestSuite) TestAPausedTurnRoundTripsThroughOnePause() {
+	mover := &pausingMover{pauseAt: map[int]bool{1: true}}
+	enc := s.walkingScene(mover, &downList{})
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+
+	data := enc.ToData()
+	s.Require().NotNil(data.Pause)
+	s.Equal(encounter.PauseVersion, data.Pause.Version)
+	s.Equal(encounter.PauseTurn, data.Pause.Kind)
+	s.Require().NotNil(data.Pause.Turn, "a turn pause carries its turn")
+	s.False(data.Pause.Forced)
+
+	loaded := s.reload(enc, mover, &downList{})
+	kind, ok := loaded.PauseKind()
+	s.Require().True(ok)
+	s.Equal(encounter.PauseTurn, kind)
+
+	out, err := loaded.Resume(context.Background())
+	s.Require().NoError(err)
+	s.Equal(encounter.PauseTurn, out.Kind)
+	s.False(out.Paused, "the walk finished")
+	s.False(loaded.Paused())
+	_, ok = loaded.PauseKind()
+	s.False(ok)
+	s.Equal(encounter.MemberID(alice), out.Next, "the turn came back to the player")
+
+	s.Equal(cellAt(3, 2), s.positionOf(loaded, goblin), "the whole path was walked")
+	s.Require().Len(mover.calls, 3,
+		"the paused cell is NOT announced a second time: two before, one after")
+	s.Equal(cellAt(3, 2), mover.calls[2].To)
+
+	s.Equal([]string{
+		"scene-opened", "bubble-formed", "turn-ended",
+		"moved", encounter.BeatWindowOpened, "moved", "moved", "turn-ended",
+		"tick",
+	}, s.beats(loaded, alice))
+}
+
+// TestAStalePauseVersionIsRefused is ruling E5 at the encounter's door: a
+// pause another build wrote is refused by name, before anything is built.
+func (s *PauseTestSuite) TestAStalePauseVersionIsRefused() {
+	mover := &pausingMover{pauseAt: map[int]bool{1: true}}
+	enc := s.walkingScene(mover, &downList{})
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+
+	for _, version := range []int{0, encounter.PauseVersion + 1} {
+		data := enc.ToData()
+		data.Pause.Version = version
+		_, lerr := encounter.LoadEncounter(loadInput(data, &pausingMover{}, &downList{}))
+		s.Require().ErrorIs(lerr, encounter.ErrStalePause, "version %d", version)
+	}
+}
+
+// TestAPauseWithTheWrongArmIsRefused — the kind decides the arm. A turn
+// carries its turn and is never forced; a directive carries no turn and
+// always names its cause; and a kind this build does not know is no pause.
+func (s *PauseTestSuite) TestAPauseWithTheWrongArmIsRefused() {
+	mover := &pausingMover{pauseAt: map[int]bool{1: true}}
+	enc := s.walkingScene(mover, &downList{})
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+
+	cases := []struct {
+		name   string
+		mutate func(*encounter.PauseData)
+	}{
+		{"a turn without its turn", func(p *encounter.PauseData) { p.Turn = nil }},
+		{"a directive with a turn", func(p *encounter.PauseData) {
+			p.Kind = encounter.PauseDirective
+			p.Cause = "dnd5e:spells:dissonant-whispers"
+		}},
+		{"a turn that is forced", func(p *encounter.PauseData) { p.Forced = true }},
+		{"a kind nobody wrote", func(p *encounter.PauseData) { p.Kind = "sideways" }},
+		{"a directive with no cause", func(p *encounter.PauseData) {
+			p.Kind = encounter.PauseDirective
+			p.Turn = nil
+		}},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			data := enc.ToData()
+			tc.mutate(data.Pause)
+			_, lerr := encounter.LoadEncounter(loadInput(data, &pausingMover{}, &downList{}))
+			s.Require().ErrorIs(lerr, encounter.ErrInvalidData)
+		})
+	}
 }
 
 // TestAMoverDroppedBeforeTheResumeEndsInTheLeavingCell is ruling R6 across a
@@ -353,7 +447,7 @@ func (s *PauseTestSuite) TestAMoverDroppedBeforeTheResumeEndsInTheLeavingCell() 
 	s.Require().NoError(err)
 	s.Require().True(enc.Paused())
 
-	out, err := enc.ResumeTurn(context.Background())
+	out, err := enc.Resume(context.Background())
 	s.Require().NoError(err)
 	s.False(out.Paused)
 	s.False(enc.Paused())
@@ -372,17 +466,17 @@ func (s *PauseTestSuite) TestASecondPauseOnALaterCellWorks() {
 	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
 	s.Require().NoError(err)
 
-	first, err := enc.ResumeTurn(context.Background())
+	first, err := enc.Resume(context.Background())
 	s.Require().NoError(err)
 	s.True(first.Paused, "the third cell asked too")
 	s.Equal(cellAt(4, 2), s.positionOf(enc, goblin), "the second cell WAS taken")
 
 	data := enc.ToData()
-	s.Require().NotNil(data.PausedTurn)
-	s.Equal([]encounter.PositionData{posData(cellAt(3, 2))}, data.PausedTurn.Remaining)
-	s.Equal(20, data.PausedTurn.Budget.MovementFeet, "two cells charged, not one, not three")
+	s.Require().NotNil(data.Pause)
+	s.Equal([]encounter.PositionData{posData(cellAt(3, 2))}, data.Pause.Remaining)
+	s.Equal(20, data.Pause.Turn.Budget.MovementFeet, "two cells charged, not one, not three")
 
-	second, err := enc.ResumeTurn(context.Background())
+	second, err := enc.Resume(context.Background())
 	s.Require().NoError(err)
 	s.False(second.Paused)
 	s.Equal(cellAt(3, 2), s.positionOf(enc, goblin))
@@ -407,7 +501,7 @@ func (s *PauseTestSuite) TestTheIntentBoundHoldsAcrossAPause() {
 	asked := len(driver.calls)
 
 	for enc.Paused() {
-		_, rerr := enc.ResumeTurn(context.Background())
+		_, rerr := enc.Resume(context.Background())
 		s.Require().NoError(rerr)
 	}
 
@@ -457,25 +551,25 @@ func (s *PauseTestSuite) TestEveryDriveEntryIsANoOpWhilePaused() {
 	s.True(enc.Paused(), "and the pause still stands")
 }
 
-// TestResumeTurnRefusesWhenNothingIsPaused. Resuming nothing is a caller
-// that has lost track of which half of the pose/answer pair it is in.
-func (s *PauseTestSuite) TestResumeTurnRefusesWhenNothingIsPaused() {
+// TestResumeWithNothingPausedIsRefused. Resuming nothing is a caller that has
+// lost track of which half of the pose/answer pair it is in.
+func (s *PauseTestSuite) TestResumeWithNothingPausedIsRefused() {
 	enc := s.walkingScene(&pausingMover{}, &downList{})
 
-	_, err := enc.ResumeTurn(context.Background())
+	_, err := enc.Resume(context.Background())
 	s.Require().ErrorIs(err, encounter.ErrNotPaused)
 }
 
-// TestAPausedTurnLoadedWithoutItsMemberIsRefused is the trust boundary:
+// TestATurnPauseLoadedWithoutItsMemberIsRefused is the trust boundary:
 // reject, never crash, on bytes no version of this module wrote.
-func (s *PauseTestSuite) TestAPausedTurnLoadedWithoutItsMemberIsRefused() {
+func (s *PauseTestSuite) TestATurnPauseLoadedWithoutItsMemberIsRefused() {
 	mover := &pausingMover{pauseAt: map[int]bool{1: true}}
 	enc := s.walkingScene(mover, &downList{})
 	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
 	s.Require().NoError(err)
 
 	data := enc.ToData()
-	data.PausedTurn.Member = "nobody"
+	data.Pause.Member = "nobody"
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
 		Capabilities: encounter.Capabilities{
@@ -495,7 +589,7 @@ func (s *PauseTestSuite) TestAPausedTurnLoadedWithoutItsMemberIsRefused() {
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 
 	data = enc.ToData()
-	data.PausedTurn.Remaining = nil
+	data.Pause.Remaining = nil
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
 		Capabilities: encounter.Capabilities{
@@ -515,7 +609,7 @@ func (s *PauseTestSuite) TestAPausedTurnLoadedWithoutItsMemberIsRefused() {
 	s.Require().ErrorIs(err, encounter.ErrInvalidData, "a pause with nothing left to walk is not a pause")
 
 	data = enc.ToData()
-	data.PausedTurn.Intent = data.PausedTurn.Bound
+	data.Pause.Turn.Intent = data.Pause.Turn.Bound
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
 		Capabilities: encounter.Capabilities{
@@ -539,7 +633,7 @@ func (s *PauseTestSuite) TestAPausedTurnLoadedWithoutItsMemberIsRefused() {
 	// pause that names a cause the grammar cannot read is bytes no version of
 	// this module wrote, and it is refused before anything is constructed.
 	data = enc.ToData()
-	data.PausedTurn.Cause = "not-a-ref"
+	data.Pause.Cause = "not-a-ref"
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
 		Capabilities: encounter.Capabilities{
@@ -580,7 +674,7 @@ func (s *PauseTestSuite) TestTheLastMonsterDroppedInTheWindowReloadsAndResumesCl
 	s.Require().True(enc.Paused())
 
 	data := enc.ToData()
-	s.Require().NotNil(data.PausedTurn)
+	s.Require().NotNil(data.Pause)
 	s.Require().Empty(data.Bubbles,
 		"the last monster falling ended the fight while the window was open")
 
@@ -604,14 +698,14 @@ func (s *PauseTestSuite) TestTheLastMonsterDroppedInTheWindowReloadsAndResumesCl
 	s.Require().NoError(lerr, "a paused member in no fight is legal, not corruption")
 	s.Require().True(loaded.Paused())
 
-	out, rerr := loaded.ResumeTurn(context.Background())
+	out, rerr := loaded.Resume(context.Background())
 	s.Require().NoError(rerr)
 	s.False(out.Paused)
 	s.False(loaded.Paused(), "the resume cleared the pause")
 	s.Equal(cellAt(5, 2), s.positionOf(loaded, goblin),
 		"the body is still in the cell it was leaving: the announced step never happened")
 
-	after, aerr := loaded.ResumeTurn(context.Background())
+	after, aerr := loaded.Resume(context.Background())
 	s.Require().ErrorIs(aerr, encounter.ErrNotPaused, "and there is nothing left to resume")
 	s.Nil(after)
 }
@@ -627,7 +721,7 @@ func (s *PauseTestSuite) TestAResumedWalkContinuesFromTheReloadedTurn() {
 	resumeMover := &pausingMover{}
 	loaded := s.reload(enc, resumeMover, &downList{})
 
-	out, err := loaded.ResumeTurn(context.Background())
+	out, err := loaded.Resume(context.Background())
 	s.Require().NoError(err)
 	s.False(out.Paused)
 	s.Equal(cellAt(3, 2), s.positionOf(loaded, goblin),
@@ -691,10 +785,10 @@ func (s *PauseTestSuite) TestARoutedPauseCarriesTerminalAndItsCauseThroughASaveA
 	s.Require().True(enc.Paused())
 
 	before := enc.ToData()
-	s.Require().NotNil(before.PausedTurn)
-	s.True(before.PausedTurn.Terminal, "a routed turn ends when its walk does")
-	s.Equal(commandedRef.String(), before.PausedTurn.Cause, "and the beats after the window still say why")
-	s.Equal(25, before.PausedTurn.Budget.MovementFeet,
+	s.Require().NotNil(before.Pause)
+	s.True(before.Pause.Turn.Terminal, "a routed turn ends when its walk does")
+	s.Equal(commandedRef.String(), before.Pause.Cause, "and the beats after the window still say why")
+	s.Equal(25, before.Pause.Turn.Budget.MovementFeet,
 		"the one cell already walked is charged before the blob is written")
 
 	loaded := s.reload(enc, &pausingMover{}, &downList{})
@@ -724,7 +818,7 @@ func (s *PauseTestSuite) TestAResumedRoutedTurnEndsWithoutAnotherAct() {
 	s.Require().True(enc.Paused())
 	s.Require().Len(driver.calls, 1)
 
-	out, err := enc.ResumeTurn(context.Background())
+	out, err := enc.Resume(context.Background())
 	s.Require().NoError(err)
 	s.False(out.Paused, "the walk finished")
 	s.False(enc.Paused())
@@ -754,7 +848,7 @@ func (s *PauseTestSuite) TestEveryCellOfAResumedRoutedWalkNamesItsCause() {
 	s.Equal(commandedRef.String(), s.windowBeat(enc, alice)["cause"],
 		"the window says what the interrupted walk was")
 
-	_, err = enc.ResumeTurn(context.Background())
+	_, err = enc.Resume(context.Background())
 	s.Require().NoError(err)
 
 	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
@@ -772,11 +866,11 @@ func (s *PauseTestSuite) TestEveryCellOfAResumedRoutedWalkNamesItsCause() {
 	s.Equal(3, cells)
 }
 
-// TestAMovePausedTurnStillResumesIntoAnotherAct is the flag's other side,
+// TestAMoveTurnPauseStillResumesIntoAnotherAct is the flag's other side,
 // pinned so terminal cannot quietly become "every paused turn". A Move's walk
 // is one intent of a turn that has more, so finishing it asks the driver
 // again — and the blob says the turn was never terminal.
-func (s *PauseTestSuite) TestAMovePausedTurnStillResumesIntoAnotherAct() {
+func (s *PauseTestSuite) TestAMoveTurnPauseStillResumesIntoAnotherAct() {
 	mover := &pausingMover{pauseAt: map[int]bool{1: true}}
 	driver := &scriptedDriver{intents: []encounter.TurnIntent{
 		encounter.Move{Path: []spatial.Position{cellAt(5, 2), cellAt(4, 2), cellAt(3, 2)}},
@@ -790,16 +884,16 @@ func (s *PauseTestSuite) TestAMovePausedTurnStillResumesIntoAnotherAct() {
 	s.Require().Len(driver.calls, 1)
 
 	data := enc.ToData()
-	s.Require().NotNil(data.PausedTurn)
-	s.False(data.PausedTurn.Terminal, "a Move's pause is not terminal")
-	s.Empty(data.PausedTurn.Cause, "and a walk the creature chose has no cause to name")
+	s.Require().NotNil(data.Pause)
+	s.False(data.Pause.Turn.Terminal, "a Move's pause is not terminal")
+	s.Empty(data.Pause.Cause, "and a walk the creature chose has no cause to name")
 
-	_, err = enc.ResumeTurn(context.Background())
+	_, err = enc.Resume(context.Background())
 	s.Require().NoError(err)
 	s.Greater(len(driver.calls), 1, "the turn had intents left and the driver was asked for them")
 }
 
-// TestAPausedTurnTakesNoSecondStepWhileItsWindowIsOpen is the regression for
+// TestATurnPauseTakesNoSecondStepWhileItsWindowIsOpen is the regression for
 // a bug older than the Routed intent that exposed it: the drive loop carried
 // on past one of its own paused turns.
 //
@@ -816,7 +910,7 @@ func (s *PauseTestSuite) TestAMovePausedTurnStillResumesIntoAnotherAct() {
 // announcement, the mover still on the cell before the announced one, and a
 // stored pause whose `from` is where the mover actually stands. A driver that
 // keeps asking for cells is what makes the second step available to be taken.
-func (s *PauseTestSuite) TestAPausedTurnTakesNoSecondStepWhileItsWindowIsOpen() {
+func (s *PauseTestSuite) TestATurnPauseTakesNoSecondStepWhileItsWindowIsOpen() {
 	driver := &spinningWalker{}
 	mover := &pausingMover{pauseAt: map[int]bool{0: true}}
 	enc := s.sceneWithDriver(mover, &downList{}, driver)
@@ -830,11 +924,11 @@ func (s *PauseTestSuite) TestAPausedTurnTakesNoSecondStepWhileItsWindowIsOpen() 
 		"the mover has not moved: the announced step is what the window is about")
 
 	data := enc.ToData()
-	s.Require().NotNil(data.PausedTurn)
-	s.Equal(posData(cellAt(6, 2)), data.PausedTurn.From,
+	s.Require().NotNil(data.Pause)
+	s.Equal(posData(cellAt(6, 2)), data.Pause.From,
 		"the stored pause says the mover stands where it actually stands")
-	s.Equal(posData(cellAt(5, 2)), data.PausedTurn.To)
-	s.Equal(30, data.PausedTurn.Budget.MovementFeet, "and owes its whole turn's movement")
+	s.Equal(posData(cellAt(5, 2)), data.Pause.To)
+	s.Equal(30, data.Pause.Turn.Budget.MovementFeet, "and owes its whole turn's movement")
 
 	s.Equal([]string{"scene-opened", "bubble-formed", "turn-ended", encounter.BeatWindowOpened},
 		s.beats(enc, alice), "no cell is narrated as walked, because none was")
@@ -859,17 +953,17 @@ func (s *PauseTestSuite) TestARoutedWalkPausedTwiceIsStillOneCompelledTurn() {
 	s.Require().NoError(err)
 	s.Require().True(enc.Paused(), "the first window")
 
-	first, err := enc.ResumeTurn(context.Background())
+	first, err := enc.Resume(context.Background())
 	s.Require().NoError(err)
 	s.Require().True(first.Paused, "a later cell of the same walk asked somebody else")
 	s.Require().True(enc.Paused(), "the second window")
 
 	second := enc.ToData()
-	s.Require().NotNil(second.PausedTurn)
-	s.True(second.PausedTurn.Terminal, "the re-pause still knows the turn ends with the walk")
-	s.Equal(commandedRef.String(), second.PausedTurn.Cause, "and still knows what routed it")
+	s.Require().NotNil(second.Pause)
+	s.True(second.Pause.Turn.Terminal, "the re-pause still knows the turn ends with the walk")
+	s.Equal(commandedRef.String(), second.Pause.Cause, "and still knows what routed it")
 
-	out, err := enc.ResumeTurn(context.Background())
+	out, err := enc.Resume(context.Background())
 	s.Require().NoError(err)
 	s.False(out.Paused, "the walk finished")
 	s.False(enc.Paused())

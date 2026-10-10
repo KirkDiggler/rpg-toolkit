@@ -718,7 +718,7 @@ var (
 	// ErrStepPaused is what a [Mover] returns from Move to say a PLAYER is
 	// being asked about this step and it must not be taken yet. See
 	// [StepPausedError] for the detail type that carries who was asked, and
-	// [Encounter.ResumeTurn] for how the paused turn continues.
+	// [Encounter.Resume] for how the paused turn continues.
 	//
 	// NOT A MALFUNCTION. Every other error out of Move aborts the caller's
 	// whole verb (see [Mover.Move]); this one is news — the composition
@@ -739,11 +739,20 @@ var (
 	// rather than merely race it.
 	ErrTurnPaused = errors.New("encounter: a turn is paused mid-walk")
 
-	// ErrNotPaused is what [Encounter.ResumeTurn] returns when no turn is
+	// ErrNotPaused is what [Encounter.Resume] returns when nothing is
 	// paused. Resuming nothing is a caller defect, not a no-op: a host that
 	// reaches it has lost track of which half of the pose/answer pair it is
 	// in, and a silent success would hide that.
-	ErrNotPaused = errors.New("encounter: no turn is paused")
+	ErrNotPaused = errors.New("encounter: nothing is paused")
+
+	// ErrStalePause is what [LoadEncounter] returns for a stored [PauseData]
+	// whose Version is not [PauseVersion]: another build wrote it, and this
+	// one will not resume onto a shape it cannot vouch for. It is asked
+	// before any other check on the pause, so a stale pause is refused as
+	// stale rather than as whichever field happened to disagree. Pre-release,
+	// a table paused across a deploy loses that pause (one pause envelope,
+	// ruling E5).
+	ErrStalePause = errors.New("encounter: stored pause was written by another build")
 
 	// ErrUnsupportedPolicy is what [Encounter.Route] returns for any
 	// [MovePolicy] that is neither [MoveLine] nor [MoveAway] — including the

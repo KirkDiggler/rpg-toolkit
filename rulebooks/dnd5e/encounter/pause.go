@@ -57,7 +57,7 @@ type PausedWindow struct {
 // treats as a checkpoint. The interface is unchanged; the vocabulary grew.
 //
 // A Mover that returns this must have recorded nothing for the step and
-// changed nothing about it. The composition will call [Encounter.ResumeTurn]
+// changed nothing about it. The composition will call [Encounter.Resume]
 // once the answers are in, and the announced step is taken THEN, without
 // being announced a second time — every reactor for it was already asked.
 type StepPausedError struct {
@@ -77,81 +77,153 @@ func (e *StepPausedError) Error() string {
 // same sentinel-plus-detail shape this module's other rich errors use.
 func (e *StepPausedError) Unwrap() error { return ErrStepPaused }
 
-// pausedTurn is everything needed to finish one driven turn that stopped
-// mid-walk because a reactor is being asked about a step.
+// PauseVersion is the version written on every [PauseData] and the only one
+// [LoadEncounter] reads back. A stored pause carrying any other version was
+// written by another build, and is refused with [ErrStalePause] before
+// anything is constructed rather than resumed onto a shape this build cannot
+// vouch for (one pause envelope, ruling E5).
+const PauseVersion = 1
+
+// PauseKind names which walk an encounter's one pause is holding.
+type PauseKind string
+
+const (
+	// PauseTurn is a driven turn stopped mid-walk (or just after a paused
+	// strike) because a reactor is being asked. Finishing it finishes the
+	// turn and drives on, as the EndTurn that started the drive would have.
+	PauseTurn PauseKind = "turn"
+
+	// PauseDirective is a DIRECTED walk held mid-route — nobody's turn, so
+	// finishing it finishes the walk and reports what the walk did.
+	PauseDirective PauseKind = "directive"
+)
+
+// pause is everything needed to finish the one walk this encounter is waiting
+// on: a driven turn that stopped mid-walk, or a directed walk held mid-route.
 //
-// THE ENCOUNTER OWNS THE PAUSE (rpg-project#316 rung 3, ruling R2). The
-// alternative was threading a remainder out of a drive that is three loops
-// deep through five entry points, and back in through a sixth. The turn is
-// this composition's; so is its pause, and a host persists it the way it
+// ONE PAUSE, TWO KINDS (one pause envelope, ruling E2). The two used to be two
+// types in two fields, kept mutually exclusive by a load refusal and a door
+// refusal that existed only because there were two slots. A fight waits on one
+// answer at a time, so there is one slot, and the kind says which walk it is.
+//
+// THE ENCOUNTER OWNS THE PAUSE (rpg-project#316 rung 3, ruling R2). The walk
+// is this composition's; so is its pause, and a host persists it the way it
 // persists every other thing here — as bytes in the blob, through ToData.
 //
-// The two values a reader will not expect are Intent and Bound, the driven
-// turn's own anti-spin coordinates (see [Encounter.driveOneMonsterTurn]): a
-// resume that restarted the inner loop at zero would hand a misbehaving driver
-// a fresh budget of intents for every window it opened.
-//
-// The last two arrived with [Routed] and belong to the INTENT the pause
-// interrupted rather than to the walk. `cause` is the effect that routed this
-// creature, which every beat of its walk names — a turn's own [Move] has none,
-// and the zero Ref is how that is said. `terminal` is whether finishing the
-// walk finishes the TURN: a Routed turn is over when its walk is, so a resume
-// that dropped the flag would hand the driver a second intent nobody's turn
-// had left. Neither is re-derivable from the cells that remain.
+// The walk's own fields are shared. `cause` is the effect moving the
+// creature, which every beat of its walk names: required on a directive, and
+// the zero Ref on a turn's own [Move] (a [Routed] turn names one). `forced` is
+// the stance a directive's [Mover] was told about, and is a directive's only.
+// `turn` is present exactly on a turn and carries what the turn interrupted.
 //
 // The bubble and the *memberRecord are deliberately NOT here. Both are
 // re-derived on resume from the loaded encounter, and a stored copy of either
 // could only ever agree with the roster or lie to it.
-type pausedTurn struct {
-	member      MemberID
+type pause struct {
+	kind      PauseKind
+	member    MemberID
+	from      spatial.Position
+	to        spatial.Position
+	remaining []spatial.Position
+	moved     int
+	at        uint64
+	audience  []MemberID
+	cause     core.Ref
+	turn      *turnPause
+	forced    bool
+}
+
+// turnPause is what a [PauseTurn] carries beyond the walk: the turn the walk
+// interrupted.
+//
+// The two values a reader will not expect are intent and bound, the driven
+// turn's own anti-spin coordinates (see [Encounter.driveOneMonsterTurn]): a
+// resume that restarted the inner loop at zero would hand a misbehaving driver
+// a fresh budget of intents for every window it opened.
+//
+// `terminal` is whether finishing the walk finishes the TURN: a [Routed] turn
+// is over when its walk is, so a resume that dropped the flag would hand the
+// driver a second intent nobody's turn had left. `afterStrike` is a turn whose
+// strike paused rather than its walk: there is nothing left to walk, only the
+// rest of the turn. Neither is re-derivable from the cells that remain.
+type turnPause struct {
 	round       int
-	from        spatial.Position
-	to          spatial.Position
-	remaining   []spatial.Position
-	moved       int
 	budget      TurnBudget
 	intent      int
 	bound       int
-	at          uint64
-	audience    []MemberID
-	cause       core.Ref
 	terminal    bool
 	afterStrike bool
 }
 
-// PausedTurnData is the persistent representation of a paused turn — see
-// [pausedTurn] for what each value is for.
+// PauseData is the persistent representation of the encounter's one pause —
+// see [pause] for what each value is for.
 //
 // PLAIN VALUES ONLY. Everything here marshals by inspection and reloads to
 // the same thing; the two live objects a resume needs (the bubble, the
 // member record) are re-derived rather than stored.
-type PausedTurnData struct {
-	// Member is whose turn is paused.
-	Member MemberID `json:"member"`
+type PauseData struct {
+	// Version is [PauseVersion] when this build wrote it. Anything else is
+	// refused at load with [ErrStalePause].
+	Version int `json:"version"`
 
-	// Round is the bubble's round when the turn began, rebuilt into the
-	// monster view on resume.
-	Round int `json:"round"`
+	// Kind is which walk is paused: [PauseTurn] or [PauseDirective].
+	Kind PauseKind `json:"kind"`
+
+	// Member is whose walk is paused.
+	Member MemberID `json:"member"`
 
 	// From is where the mover still stands: the cell the paused step was
 	// announced FROM, and — if the reaction drops them — the cell they fall
 	// in (ruling R6).
 	From PositionData `json:"from"`
 
-	// To is the cell the paused step was announced TO. Always Remaining[0];
-	// carried by name because the beat and the host's window payload speak
-	// of a step from-and-to, not of an index into a path.
+	// To is the cell the paused step was announced TO. Always Remaining[0]
+	// when anything remains; carried by name because the beat and the host's
+	// window payload speak of a step from-and-to, not of an index into a
+	// path.
 	To PositionData `json:"to"`
 
 	// Remaining is the rest of the walk, THE ANNOUNCED CELL FIRST. Never
-	// empty: a pause with nothing left to walk is not a pause.
+	// empty, except on a turn whose STRIKE paused ([TurnPauseData.AfterStrike]):
+	// a walk pause with nothing left to walk is not a pause.
 	Remaining []PositionData `json:"remaining"`
 
-	// Moved is how many cells of this intent were already walked before the
-	// pause. It is not budget arithmetic — Budget below is already charged
-	// for them — it is what makes "the driver asked for a path that could
-	// not even start from here" still answerable after a resume.
+	// Moved is how many cells of this walk were already taken before the
+	// pause, across every earlier pause of the same walk. On a directive it
+	// is what [ResumeOutput.Moved] reports when the walk finally finishes; on
+	// a turn it is what makes "the driver asked for a path that could not
+	// even start from here" still answerable after a resume.
 	Moved int `json:"moved,omitempty"`
+
+	// At is the clock high-water the walk's beats are stamped at, so the
+	// cells after the pause are stamped like the cells before it.
+	At uint64 `json:"at,omitempty"`
+
+	// Audience is the movement beats' audience, captured once for the whole
+	// walk as the live loop captured it.
+	Audience []MemberID `json:"audience,omitempty"`
+
+	// Cause is the effect moving them, as its Ref string. REQUIRED on a
+	// directive — [DirectInput.Cause] is required for the walk, and a resumed
+	// half of it is not entitled to be vaguer than the first half was — and
+	// empty on a turn the creature chose ([Move]).
+	Cause string `json:"cause,omitempty"`
+
+	// Turn is present EXACTLY on a [PauseTurn]: the turn the walk interrupted.
+	Turn *TurnPauseData `json:"turn,omitempty"`
+
+	// Forced is what a directive's [Mover] was told about this step's stance —
+	// [DirectInput.Provokes], inverted, exactly as the live walk carried it.
+	// A directive's only; refused on a turn.
+	Forced bool `json:"forced,omitempty"`
+}
+
+// TurnPauseData is the persistent representation of what a paused TURN
+// carries beyond its walk — see [turnPause].
+type TurnPauseData struct {
+	// Round is the bubble's round when the turn began, rebuilt into the
+	// monster view on resume.
+	Round int `json:"round"`
 
 	// Budget is the turn's remaining economy, ALREADY CHARGED for the cells
 	// walked before the pause. The live loop decrements movement once after
@@ -160,27 +232,16 @@ type PausedTurnData struct {
 	Budget TurnBudgetData `json:"budget"`
 
 	// Intent is the inner loop's counter at the pause, and Bound its limit.
-	// See [pausedTurn].
+	// See [turnPause].
 	Intent int `json:"intent"`
 	Bound  int `json:"bound"`
 
-	// At is the clock high-water the walk's beats are stamped at, so the
-	// cells after the pause are stamped like the cells before it.
-	At uint64 `json:"at,omitempty"`
-
-	// Audience is the movement beats' audience, captured once for the whole
-	// intent as the live loop captures it.
-	Audience []MemberID `json:"audience,omitempty"`
-
-	// Cause is the effect that routed this creature, as its Ref string, and
-	// empty for a walk the creature chose ([Move]). Omitted when empty, which
-	// is what keeps a Move pause byte-identical to the blob it always wrote.
-	Cause string `json:"cause,omitempty"`
-
 	// Terminal is whether finishing the walk finishes the turn — true for a
-	// [Routed] intent and false for a [Move]. Omitted when false, for Cause's
-	// reason.
-	Terminal    bool `json:"terminal,omitempty"`
+	// [Routed] intent and false for a [Move].
+	Terminal bool `json:"terminal,omitempty"`
+
+	// AfterStrike is true when the turn's STRIKE paused rather than its walk:
+	// nothing remains to walk, and the resume finishes the turn.
 	AfterStrike bool `json:"after_strike,omitempty"`
 }
 
@@ -190,8 +251,8 @@ type TurnBudgetData struct {
 	MovementFeet int `json:"movement_feet,omitempty"`
 }
 
-// pausedTurnDataFrom renders a paused turn for the blob.
-func pausedTurnDataFrom(p *pausedTurn) *PausedTurnData {
+// pauseDataFrom renders the pause for the blob, stamped with [PauseVersion].
+func pauseDataFrom(p *pause) *PauseData {
 	if p == nil {
 		return nil
 	}
@@ -199,25 +260,33 @@ func pausedTurnDataFrom(p *pausedTurn) *PausedTurnData {
 	for i, c := range p.remaining {
 		remaining[i] = PositionData{X: c.X, Y: c.Y}
 	}
-	return &PausedTurnData{
-		Member:      p.member,
-		Round:       p.round,
-		From:        PositionData{X: p.from.X, Y: p.from.Y},
-		To:          PositionData{X: p.to.X, Y: p.to.Y},
-		Remaining:   remaining,
-		AfterStrike: p.afterStrike,
-		Moved:       p.moved,
-		Budget: TurnBudgetData{
-			AttacksLeft:  p.budget.AttacksLeft,
-			MovementFeet: p.budget.MovementFeet,
-		},
-		Intent:   p.intent,
-		Bound:    p.bound,
-		At:       p.at,
-		Audience: append([]MemberID(nil), p.audience...),
-		Cause:    causeString(p.cause),
-		Terminal: p.terminal,
+	d := &PauseData{
+		Version:   PauseVersion,
+		Kind:      p.kind,
+		Member:    p.member,
+		From:      PositionData{X: p.from.X, Y: p.from.Y},
+		To:        PositionData{X: p.to.X, Y: p.to.Y},
+		Remaining: remaining,
+		Moved:     p.moved,
+		At:        p.at,
+		Audience:  append([]MemberID(nil), p.audience...),
+		Cause:     causeString(p.cause),
+		Forced:    p.forced,
 	}
+	if p.turn != nil {
+		d.Turn = &TurnPauseData{
+			Round: p.turn.round,
+			Budget: TurnBudgetData{
+				AttacksLeft:  p.turn.budget.AttacksLeft,
+				MovementFeet: p.turn.budget.MovementFeet,
+			},
+			Intent:      p.turn.intent,
+			Bound:       p.turn.bound,
+			Terminal:    p.turn.terminal,
+			AfterStrike: p.turn.afterStrike,
+		}
+	}
+	return d
 }
 
 // causeString renders a walk's cause for the blob — the empty string for the
@@ -231,9 +300,10 @@ func pausedTurnDataFrom(p *pausedTurn) *PausedTurnData {
 // silently turn a compelled walk into a chosen one in the story of every cell
 // after a reload, which is the one lie the cause exists to prevent. Written
 // out as whatever it is, it comes back through [parseCause] as ErrInvalidData
-// and the load says so by name. Unreachable today — [Routed] validates its
-// cause before the walk starts and [Move]'s is the zero Ref — and kept that
-// way deliberately rather than left to be discovered.
+// and the load says so by name. Unreachable today — [Routed] and
+// [Encounter.Direct] validate their cause before the walk starts and [Move]'s
+// is the zero Ref — and kept that way deliberately rather than left to be
+// discovered.
 func causeString(cause core.Ref) string {
 	if cause == (core.Ref{}) {
 		return ""
@@ -241,44 +311,53 @@ func causeString(cause core.Ref) string {
 	return cause.String()
 }
 
-// pausedTurnFrom rebuilds the live paused turn from validated bytes.
+// pauseFrom rebuilds the live pause from validated bytes.
 //
 // It parses the cause a second time rather than carrying it out of
-// [validatePausedTurn], for the reason [heldDirectiveFrom] gives: the two run
-// at different moments, and keeping the error arm here rather than discarding
-// it means neither half can start lying by silence.
-func pausedTurnFrom(d *PausedTurnData) (*pausedTurn, error) {
+// [validatePause], because the two run at different moments: the validation is
+// the trust boundary and runs before anything is constructed (R5), and this
+// runs after the world is built. A parse that succeeded there succeeds here,
+// and the error arm is kept rather than discarded so a future change to either
+// cannot make this one lie by silence.
+func pauseFrom(d *PauseData) (*pause, error) {
 	if d == nil {
 		return nil, nil
 	}
 	cause, cerr := parseCause(d.Cause)
 	if cerr != nil {
 		return nil, fmt.Errorf(
-			"load encounter paused turn %q: cause %q: %w: %w", d.Member, d.Cause, ErrInvalidData, cerr)
+			"load encounter pause %q: cause %q: %w: %w", d.Member, d.Cause, ErrInvalidData, cerr)
 	}
 	remaining := make([]spatial.Position, len(d.Remaining))
 	for i, c := range d.Remaining {
 		remaining[i] = spatial.Position{X: c.X, Y: c.Y}
 	}
-	return &pausedTurn{
+	p := &pause{
+		kind:      d.Kind,
 		member:    d.Member,
-		round:     d.Round,
 		from:      spatial.Position{X: d.From.X, Y: d.From.Y},
 		to:        spatial.Position{X: d.To.X, Y: d.To.Y},
 		remaining: remaining,
 		moved:     d.Moved,
-		budget: TurnBudget{
-			AttacksLeft:  d.Budget.AttacksLeft,
-			MovementFeet: d.Budget.MovementFeet,
-		},
-		intent:      d.Intent,
-		bound:       d.Bound,
-		at:          d.At,
-		audience:    append([]MemberID(nil), d.Audience...),
-		cause:       cause,
-		terminal:    d.Terminal,
-		afterStrike: d.AfterStrike,
-	}, nil
+		at:        d.At,
+		audience:  append([]MemberID(nil), d.Audience...),
+		cause:     cause,
+		forced:    d.Forced,
+	}
+	if d.Turn != nil {
+		p.turn = &turnPause{
+			round: d.Turn.Round,
+			budget: TurnBudget{
+				AttacksLeft:  d.Turn.Budget.AttacksLeft,
+				MovementFeet: d.Turn.Budget.MovementFeet,
+			},
+			intent:      d.Turn.Intent,
+			bound:       d.Turn.Bound,
+			terminal:    d.Turn.Terminal,
+			afterStrike: d.Turn.AfterStrike,
+		}
+	}
+	return p, nil
 }
 
 // parseCause is [causeString]'s inverse: the empty string is the zero Ref, a
@@ -294,9 +373,14 @@ func parseCause(s string) (core.Ref, error) {
 	return *ref, nil
 }
 
-// validatePausedTurn is the trust boundary for a persisted pause: reject,
-// never crash, and never resume onto a shape this build could not have
-// written.
+// validatePause is the trust boundary for a persisted pause: reject, never
+// crash, and never resume onto a shape this build could not have written.
+//
+// THE ORDER IS PART OF THE CONTRACT. The version is asked first, so a pause
+// another build wrote is refused as stale by name ([ErrStalePause]) rather
+// than as whatever field happened to disagree. Then the envelope — a known
+// kind, the turn arm present exactly on a turn, Forced only on a directive, a
+// directive's cause a ref — and only then the walk itself.
 //
 // members is the load's own already-built index: the paused member must be a
 // member, because there is nobody else the remainder could belong to.
@@ -307,52 +391,83 @@ func parseCause(s string) (core.Ref, error) {
 // It was here, and it was wrong. The window's whole purpose is to let a
 // player strike, and a strike that drops the LAST monster ends the fight:
 // noticeDown dissolves the bubble and splices the body out, all of it
-// recorded before anybody calls [Encounter.ResumeTurn]. The host then reloads
-// mid-verb and finds a paused turn whose member is on no clock — the ordinary
+// recorded before anybody calls [Encounter.Resume]. The host then reloads
+// mid-verb and finds a paused walk whose member is on no clock — the ordinary
 // consequence of the answer it just wrote down, refused at the door as
-// corruption.
-//
-// So the two halves of this file have to agree, and ResumeTurn's is the
-// correct half: the turn is already over, ruling R6 already holds because the
-// announced step never happened, and resuming has nothing left to do but
-// clear the pause and let the rest of the run continue. A member who is down,
-// spliced out, or gone entirely reloads fine and resumes to a no-op.
-func validatePausedTurn(d *PausedTurnData, members map[core.EntityID]struct{}) error {
+// corruption. The resume is the correct half: the announced step never
+// happened, ruling R6 already holds, and resuming has nothing left to do but
+// clear the pause. A directed walk never needed a clock in the first place.
+func validatePause(d *PauseData, members map[core.EntityID]struct{}) error {
 	if d == nil {
 		return nil
 	}
+	if d.Version != PauseVersion {
+		return fmt.Errorf("load encounter pause: version %d, this build reads %d: %w",
+			d.Version, PauseVersion, ErrStalePause)
+	}
+	switch d.Kind {
+	case PauseTurn, PauseDirective:
+	default:
+		return fmt.Errorf("load encounter pause: kind %q: %w", d.Kind, ErrInvalidData)
+	}
+	if d.Kind == PauseTurn && d.Turn == nil {
+		return fmt.Errorf("load encounter pause %q: a turn pause carries no turn: %w", d.Member, ErrInvalidData)
+	}
+	if d.Kind == PauseDirective && d.Turn != nil {
+		return fmt.Errorf("load encounter pause %q: a directive carries a turn: %w", d.Member, ErrInvalidData)
+	}
+	if d.Kind == PauseTurn && d.Forced {
+		return fmt.Errorf("load encounter pause %q: a turn is never forced: %w", d.Member, ErrInvalidData)
+	}
+	if d.Kind == PauseDirective {
+		if _, err := core.ParseString(d.Cause); err != nil {
+			return fmt.Errorf(
+				"load encounter pause %q: a directive's cause %q: %w: %w", d.Member, d.Cause, ErrInvalidData, err)
+		}
+	}
+
 	if d.Member == "" {
-		return fmt.Errorf("load encounter paused turn: names no member: %w", ErrInvalidData)
+		return fmt.Errorf("load encounter pause: names no member: %w", ErrInvalidData)
 	}
 	if _, ok := members[core.EntityID(d.Member)]; !ok {
-		return fmt.Errorf("load encounter paused turn: %q is not a member: %w", d.Member, ErrInvalidData)
+		return fmt.Errorf("load encounter pause: %q is not a member: %w", d.Member, ErrInvalidData)
 	}
-	if d.AfterStrike {
-		if len(d.Remaining) != 0 || d.Budget.AttacksLeft != 0 || d.Moved != 0 {
-			return fmt.Errorf("load encounter paused strike %q: invalid continuation: %w", d.Member, ErrInvalidData)
-		}
-	} else if len(d.Remaining) == 0 {
-		return fmt.Errorf("load encounter paused turn %q: nothing left to walk: %w", d.Member, ErrInvalidData)
-	}
-	if !d.AfterStrike && d.To != d.Remaining[0] {
-		return fmt.Errorf(
-			"load encounter paused turn %q: the announced cell is not the first cell left to walk: %w",
-			d.Member, ErrInvalidData)
-	}
-	if d.Bound <= 0 || d.Intent < 0 || d.Intent >= d.Bound {
-		return fmt.Errorf(
-			"load encounter paused turn %q: intent %d is outside the turn's bound %d: %w",
-			d.Member, d.Intent, d.Bound, ErrInvalidData)
-	}
-	if d.Moved < 0 || d.Budget.AttacksLeft < 0 || d.Budget.MovementFeet < 0 {
-		return fmt.Errorf("load encounter paused turn %q: negative budget or progress: %w", d.Member, ErrInvalidData)
-	}
-	if d.Round < 0 {
-		return fmt.Errorf("load encounter paused turn %q: negative round: %w", d.Member, ErrInvalidData)
+	if d.Moved < 0 {
+		return fmt.Errorf("load encounter pause %q: negative progress: %w", d.Member, ErrInvalidData)
 	}
 	if _, err := parseCause(d.Cause); err != nil {
 		return fmt.Errorf(
-			"load encounter paused turn %q: cause %q: %w: %w", d.Member, d.Cause, ErrInvalidData, err)
+			"load encounter pause %q: cause %q: %w: %w", d.Member, d.Cause, ErrInvalidData, err)
+	}
+
+	afterStrike := d.Turn != nil && d.Turn.AfterStrike
+	if afterStrike {
+		if len(d.Remaining) != 0 || d.Turn.Budget.AttacksLeft != 0 || d.Moved != 0 {
+			return fmt.Errorf("load encounter paused strike %q: invalid continuation: %w", d.Member, ErrInvalidData)
+		}
+	} else {
+		if len(d.Remaining) == 0 {
+			return fmt.Errorf("load encounter pause %q: nothing left to walk: %w", d.Member, ErrInvalidData)
+		}
+		if d.To != d.Remaining[0] {
+			return fmt.Errorf(
+				"load encounter pause %q: the announced cell is not the first cell left to walk: %w",
+				d.Member, ErrInvalidData)
+		}
+	}
+
+	if t := d.Turn; t != nil {
+		if t.Bound <= 0 || t.Intent < 0 || t.Intent >= t.Bound {
+			return fmt.Errorf(
+				"load encounter paused turn %q: intent %d is outside the turn's bound %d: %w",
+				d.Member, t.Intent, t.Bound, ErrInvalidData)
+		}
+		if t.Budget.AttacksLeft < 0 || t.Budget.MovementFeet < 0 {
+			return fmt.Errorf("load encounter paused turn %q: negative budget: %w", d.Member, ErrInvalidData)
+		}
+		if t.Round < 0 {
+			return fmt.Errorf("load encounter paused turn %q: negative round: %w", d.Member, ErrInvalidData)
+		}
 	}
 	return nil
 }
@@ -361,27 +476,35 @@ func validatePausedTurn(d *PausedTurnData, members map[core.EntityID]struct{}) e
 //
 // THE ONE QUESTION every drive entry asks before it drives and every
 // pause-carrying output answers. A host reads it to know whether the fight is
-// waiting on somebody.
-//
-// TWO SOURCES, ONE ANSWER. A driven turn can be paused mid-walk and a DIRECTED
-// walk can be held mid-route (held.go), and both freeze the table while a
-// player decides — which is the right freeze for a directive too, even though
-// the walk being held is nobody's turn. They are mutually exclusive by
-// construction. [Encounter.HeldDirective] says which of the two it is, and the
-// matching continue-verb is the only thing that makes this false again.
-func (e *Encounter) Paused() bool { return e.pausedTurn != nil || e.heldDirective != nil }
+// waiting on somebody — a driven turn paused mid-walk, or a directed walk
+// held mid-route; [Encounter.PauseKind] says which, and [Encounter.Resume] is
+// the only thing that makes this false again.
+func (e *Encounter) Paused() bool { return e.pause != nil }
 
-// PausedMember names whose walk is held — the paused turn's member, or the
-// held directive's — or "" when nothing is.
+// PausedMember names whose walk is paused, or "" when nothing is.
 func (e *Encounter) PausedMember() MemberID {
-	if e.pausedTurn != nil {
-		return e.pausedTurn.member
+	if e.pause == nil {
+		return ""
 	}
-	if e.heldDirective != nil {
-		return e.heldDirective.member
-	}
-	return ""
+	return e.pause.member
 }
+
+// PauseKind reports which walk the encounter is waiting on, and false when
+// nothing is paused. A host does not need it to continue — [Encounter.Resume]
+// dispatches on it — but it is the honest answer to "what is the table
+// waiting for".
+func (e *Encounter) PauseKind() (PauseKind, bool) {
+	if e.pause == nil {
+		return "", false
+	}
+	return e.pause.kind, true
+}
+
+// turnPaused reports whether the one pause is a driven TURN's. The drive loops
+// ask this rather than [Encounter.Paused] because a held directive is not
+// theirs to care about: the door guard already refused entry on one, and
+// nothing inside a driven turn can create one.
+func (e *Encounter) turnPaused() bool { return e.pause != nil && e.pause.kind == PauseTurn }
 
 // appendWindowOpenedBeat narrates a step stopping to ask.
 //
@@ -443,21 +566,33 @@ func (e *Encounter) appendWindowOpenedBeat(
 	return out.Seq, nil
 }
 
-// ResumeTurnOutput reports what continuing a paused turn did. It mirrors
-// [EndTurnOutput] field for field, because it answers the same question the
-// EndTurn that started the drive was going to answer before it stopped.
-type ResumeTurnOutput struct {
-	// Next is whose turn it now is — always a member with a player, on the
-	// same terms EndTurnOutput.Next states, EXCEPT when Paused below is
-	// true: the walk stopped again on a later cell, and Next is the paused
-	// member, whose turn has not ended.
+// ResumeOutput reports what continuing the paused walk did. Kind says which
+// arm ran; the fields marked for the other arm are zero.
+type ResumeOutput struct {
+	// Kind is which walk was resumed: [PauseTurn] or [PauseDirective].
+	Kind PauseKind
+
+	// Next is whose turn it now is — a turn's. Always a member with a
+	// player, on the same terms [EndTurnOutput.Next] states, EXCEPT when
+	// Paused below is true: the walk stopped again on a later cell, and Next
+	// is the paused member, whose turn has not ended.
 	Next MemberID
 
 	// RoundWrapped is true when finishing this turn, or any unplayed
-	// member's turn driven after it, closed the round.
+	// member's turn driven after it, closed the round — a turn's.
 	RoundWrapped bool
 
-	// Seq is the story sequence of the LAST beat this call recorded.
+	// Moved is how many cells the directed walk took IN ALL, across every
+	// pause of it, so the final resume reports the whole walk rather than
+	// its last leg — a directive's, with [DirectOutput.Moved]'s meaning.
+	Moved int
+
+	// StoppedBy is why the directed walk fell short of its route, with
+	// [DirectOutput.StoppedBy]'s meaning — a directive's.
+	StoppedBy string
+
+	// Seq is the story sequence of the LAST beat a resumed TURN recorded. A
+	// directive reports none, as [DirectOutput] never has.
 	Seq uint64
 
 	// IntelDeltas maps member IDs to their updated percepts.
@@ -465,20 +600,52 @@ type ResumeTurnOutput struct {
 
 	// Paused is true when a later cell of the same walk asked somebody
 	// else — an ordinary outcome, not a failure. The fight is waiting again
-	// and this verb is called again once that answer is in.
+	// and Resume is called again once that answer is in.
 	Paused bool
 }
 
-// ResumeTurn continues the turn a [Mover] paused, taking the announced step
-// and finishing whatever the turn had left.
+// Resume finishes whichever walk is paused: a driven turn, then the rest of
+// the drive, or a directed walk, then nothing.
 //
-// # The announced step is NOT announced again
+// ONE WAY BACK (one pause envelope, ruling E2). The encounter holds one pause
+// and its kind says which walk it is, so the host no longer chooses a verb —
+// a host that guessed used to get [ErrNotPaused] from the wrong one. Both arms
+// share the three things that make a resume safe:
 //
-// Every reactor for it was already asked; asking again would pose the same
-// window twice and, for a reaction the host has since spent, would refuse it
-// the second time and silently lose the swing. So the first cell is stepped
-// directly. Every LATER cell is announced normally, and may pause again —
-// the pack passing the line is several windows, one per step.
+//   - STANDING IS ASKED FIRST (ruling R6). A reaction that dropped the mover
+//     while the window was open means the body is in the cell it was LEAVING,
+//     and the announced step never happens.
+//   - THE ANNOUNCED STEP IS NOT ANNOUNCED AGAIN. Every reactor for it was
+//     already asked; asking twice would pose the same window again and, for a
+//     reaction the host has since spent, refuse it the second time and
+//     silently lose the swing. Every LATER cell is announced normally and may
+//     pause again — a route is several windows, one per step.
+//   - THE PAUSE IS CLEARED BEFORE THE FIRST STEP. A stale one left standing
+//     would freeze a table that is running again.
+//
+// Errors: [ErrClosed] on a closed encounter, [ErrNotPaused] when nothing is
+// paused, [ErrNotMember] when the mover is gone from the roster entirely, and
+// whatever the walk or the drive itself can return.
+func (e *Encounter) Resume(ctx context.Context) (*ResumeOutput, error) {
+	if e.outcome != nil {
+		return nil, fmt.Errorf("resume: %w", ErrClosed)
+	}
+	if e.pause == nil {
+		return nil, fmt.Errorf("resume: %w", ErrNotPaused)
+	}
+	switch e.pause.kind {
+	case PauseTurn:
+		return e.resumeTurn(ctx)
+	case PauseDirective:
+		return e.resumeDirective(ctx)
+	default:
+		return nil, fmt.Errorf("resume: pause kind %q: %w", e.pause.kind, ErrInvalidData)
+	}
+}
+
+// resumeTurn continues the turn a [Mover] paused, taking the announced step
+// and finishing whatever the turn had left. [Encounter.Resume] has already
+// proved the encounter open and the pause a turn's.
 //
 // # Standing is asked FIRST
 //
@@ -494,18 +661,8 @@ type ResumeTurnOutput struct {
 // drives consecutive unplayed members exactly as [Encounter.EndTurn] does, so
 // the caller receives a Next somebody can actually act for. It IS the rest of
 // the EndTurn that stopped.
-//
-// Errors: ErrNotPaused when nothing is paused, ErrClosed on a closed
-// encounter, and whatever the drive itself can return.
-func (e *Encounter) ResumeTurn(ctx context.Context) (*ResumeTurnOutput, error) {
-	if e.outcome != nil {
-		return nil, fmt.Errorf("resume turn: %w", ErrClosed)
-	}
-	if e.pausedTurn == nil {
-		return nil, fmt.Errorf("resume turn: %w", ErrNotPaused)
-	}
-
-	p := e.pausedTurn
+func (e *Encounter) resumeTurn(ctx context.Context) (*ResumeOutput, error) {
+	p := e.pause
 	m, ok := e.members[p.member]
 	if !ok {
 		return nil, fmt.Errorf("resume turn %q: %w", p.member, ErrNotMember)
@@ -531,7 +688,7 @@ func (e *Encounter) ResumeTurn(ctx context.Context) (*ResumeTurnOutput, error) {
 	// turn or stores a fresh pause of its own, and a stale one left standing
 	// would make every drive entry — including this call's own tail — a
 	// no-op on a fight that is running again.
-	e.pausedTurn = nil
+	e.pause = nil
 
 	var (
 		seq     uint64
@@ -556,7 +713,8 @@ func (e *Encounter) ResumeTurn(ctx context.Context) (*ResumeTurnOutput, error) {
 		if paused {
 			// A later cell of the same walk asked somebody. Nothing else
 			// about the turn moves; the fight waits again.
-			return &ResumeTurnOutput{
+			return &ResumeOutput{
+				Kind:        PauseTurn,
 				Next:        p.member,
 				Seq:         seq,
 				IntelDeltas: deltas,
@@ -572,7 +730,9 @@ func (e *Encounter) ResumeTurn(ctx context.Context) (*ResumeTurnOutput, error) {
 	// members follow, and report the first slot that genuinely waits for a
 	// player.
 	if e.outcome != nil || bubble == nil {
-		return &ResumeTurnOutput{Next: p.member, RoundWrapped: wrapped, Seq: seq, IntelDeltas: deltas}, nil
+		return &ResumeOutput{
+			Kind: PauseTurn, Next: p.member, RoundWrapped: wrapped, Seq: seq, IntelDeltas: deltas,
+		}, nil
 	}
 
 	participation, moreDeltas, nerr := e.noticeDown(participationPassInput{
@@ -600,7 +760,8 @@ func (e *Encounter) ResumeTurn(ctx context.Context) (*ResumeTurnOutput, error) {
 		next = MemberID(active)
 	}
 
-	return &ResumeTurnOutput{
+	return &ResumeOutput{
+		Kind:         PauseTurn,
 		Next:         next,
 		RoundWrapped: wrapped,
 		Seq:          seq,
@@ -617,7 +778,7 @@ func (e *Encounter) ResumeTurn(ctx context.Context) (*ResumeTurnOutput, error) {
 // one verb split for readability, not a seam: every one of them is the
 // caller's own return value being filled in.
 func (e *Encounter) finishTurnFromPause(
-	ctx context.Context, bubble *clock.Turn, p *pausedTurn, m *memberRecord,
+	ctx context.Context, bubble *clock.Turn, p *pause, m *memberRecord,
 	seq *uint64, wrapped *bool, deltas *map[MemberID]*IntelDelta,
 ) (bool, error) {
 	walkSeq, walkDeltas, done, rerr := e.finishPausedIntent(ctx, p, m)
@@ -625,7 +786,7 @@ func (e *Encounter) finishTurnFromPause(
 	if rerr != nil {
 		return false, fmt.Errorf("resume turn %q: %w", p.member, rerr)
 	}
-	if e.pausedTurn != nil {
+	if e.turnPaused() {
 		*seq = walkSeq
 		return true, nil
 	}
@@ -635,15 +796,15 @@ func (e *Encounter) finishTurnFromPause(
 	// left to run — and a resume that fell into runTurnIntents here would ask
 	// the driver for an intent the turn never had, which is exactly the
 	// second Act a commanded creature must never get.
-	if !done && !p.terminal {
+	if !done && !p.turn.terminal {
 		intentSeq, intentWrapped, moreDeltas, ierr := e.runTurnIntents(
-			bubble, core.EntityID(p.member), m, p.round, &p.budget, p.intent+1, p.bound)
+			bubble, core.EntityID(p.member), m, p.turn.round, &p.turn.budget, p.turn.intent+1, p.turn.bound)
 		*deltas = mergeIntelDeltas(*deltas, moreDeltas)
 		if ierr != nil {
 			return false, fmt.Errorf("resume turn %q: %w", p.member, ierr)
 		}
 		*seq, *wrapped = intentSeq, intentWrapped
-		if e.pausedTurn != nil {
+		if e.turnPaused() {
 			return true, nil
 		}
 		return false, nil
@@ -664,7 +825,7 @@ func (e *Encounter) finishTurnFromPause(
 // went down, or the whole walk (before and after the pause) moved nobody —
 // the same two answers executeTurnIntent's own Move case gives.
 func (e *Encounter) finishPausedIntent(
-	ctx context.Context, p *pausedTurn, m *memberRecord,
+	ctx context.Context, p *pause, m *memberRecord,
 ) (seq uint64, deltas map[MemberID]*IntelDelta, done bool, err error) {
 	// STANDING FIRST (ruling R6). A reaction that dropped the mover during
 	// the window ends the turn where they stood, and the announced step
@@ -676,7 +837,7 @@ func (e *Encounter) finishPausedIntent(
 	if downNow[p.member] {
 		return 0, nil, true, nil
 	}
-	if p.afterStrike {
+	if p.turn.afterStrike {
 		return 0, nil, false, nil
 	}
 
@@ -716,27 +877,30 @@ func (e *Encounter) finishPausedIntent(
 		res.from, res.to, res.pending = rest.from, rest.to, rest.pending
 	}
 
-	p.budget.MovementFeet -= res.moved * FeetPerCell
+	p.turn.budget.MovementFeet -= res.moved * FeetPerCell
 	deltas, serr := e.settleWalk(p.audience, res.moved)
 	if serr != nil {
 		return 0, deltas, false, serr
 	}
 
 	if res.paused != nil {
-		e.pausedTurn = &pausedTurn{
+		e.pause = &pause{
+			kind:      PauseTurn,
 			member:    p.member,
-			round:     p.round,
 			from:      res.from,
 			to:        res.to,
 			remaining: res.pending,
 			moved:     p.moved + res.moved,
-			budget:    p.budget,
-			intent:    p.intent,
-			bound:     p.bound,
 			at:        p.at,
 			audience:  p.audience,
 			cause:     p.cause,
-			terminal:  p.terminal,
+			turn: &turnPause{
+				round:    p.turn.round,
+				budget:   p.turn.budget,
+				intent:   p.turn.intent,
+				bound:    p.turn.bound,
+				terminal: p.turn.terminal,
+			},
 		}
 		wseq, berr := e.appendWindowOpenedBeat(
 			p.member, res.from, res.to, p.at, res.paused.Windows, p.cause)

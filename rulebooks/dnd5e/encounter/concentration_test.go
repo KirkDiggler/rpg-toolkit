@@ -548,3 +548,99 @@ func (s *RecordCastSuite) TestTwoFailedChecksNeverPool() {
 	s.Contains(string(entries[4].Payload), `"saver":"cast-fighter"`)
 	s.Contains(string(entries[5].Payload), `"caster":"cast-fighter"`)
 }
+
+// TestTellConcentrationAppendsTheTrainRecordWould is ruling E6's whole claim:
+// TellConcentration is Record's train with the outcome taken out. The same
+// checks and breaks told behind a strike and told on their own land as the
+// same beats, in the same order, to the same audience, and FollowUpSeqs names
+// them the same way — offset by exactly the one struck beat the tell does not
+// write.
+func (s *RecordCastSuite) TestTellConcentrationAppendsTheTrainRecordWould() {
+	checks := []encounter.ConcentrationCheck{theBardHeldOn()}
+	breaks := []encounter.ConcentrationBreak{brokenByDamage()}
+
+	recorded := s.scene(everyoneStanding{})
+	hit := theSkeletonHits(breaks...)
+	hit.ConcentrationChecks = checks
+	viaRecord, err := recorded.Record(hit)
+	s.Require().NoError(err)
+
+	told := s.scene(everyoneStanding{})
+	viaTell, err := told.TellConcentration(&encounter.TellConcentrationInput{
+		Actor: castSkeleton, Checks: checks, Breaks: breaks,
+	})
+	s.Require().NoError(err)
+
+	s.Zero(viaTell.Seq, "a tell has no outcome beat to report")
+	s.Require().Len(viaTell.FollowUpSeqs, len(viaRecord.FollowUpSeqs))
+	s.Require().NotEmpty(viaTell.FollowUpSeqs)
+	for i := range viaTell.FollowUpSeqs {
+		s.Equal(viaRecord.FollowUpSeqs[i]-1, viaTell.FollowUpSeqs[i],
+			"follow-up %d sits where Record's does, less the struck beat", i)
+	}
+
+	recordEntries := s.storyEntries(recorded, castBard, viaRecord.FollowUpSeqs)
+	tellEntries := s.storyEntries(told, castBard, viaTell.FollowUpSeqs)
+	s.Equal(
+		[]string{"saved", "saved", "concentration_ended", "condition-removed", "condition-removed"},
+		s.beatNames(tellEntries),
+	)
+	for i := range tellEntries {
+		s.JSONEq(string(recordEntries[i].Payload), string(tellEntries[i].Payload), "beat %d payload", i)
+		s.Equal(recordEntries[i].Audience, tellEntries[i].Audience, "beat %d audience", i)
+		s.Equal(recordEntries[i].Tags, tellEntries[i].Tags, "beat %d tags", i)
+	}
+}
+
+// TestTellConcentrationRefusesAnEmptyTell — a tell with nothing in it is a
+// caller defect rather than a no-op, a closed encounter tells nothing, and the
+// actor must be somebody here. Every refusal costs the story nothing.
+func (s *RecordCastSuite) TestTellConcentrationRefusesAnEmptyTell() {
+	s.Run("no checks and no breaks", func() {
+		enc := s.scene(everyoneStanding{})
+		_, err := enc.TellConcentration(&encounter.TellConcentrationInput{Actor: castBard})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("a closed encounter", func() {
+		enc := s.scene(everyoneStanding{})
+		_, err := enc.End(&encounter.EndInput{Ending: "withdrawn"})
+		s.Require().NoError(err)
+		_, err = enc.TellConcentration(&encounter.TellConcentrationInput{
+			Actor: castBard, Breaks: []encounter.ConcentrationBreak{brokenByDamage()},
+		})
+		s.Require().ErrorIs(err, encounter.ErrClosed)
+	})
+
+	s.Run("an unknown actor", func() {
+		enc := s.scene(everyoneStanding{})
+		_, err := enc.TellConcentration(&encounter.TellConcentrationInput{
+			Actor: "nobody", Breaks: []encounter.ConcentrationBreak{brokenByDamage()},
+		})
+		s.Require().ErrorIs(err, encounter.ErrNotMember)
+	})
+
+	s.Run("no actor", func() {
+		enc := s.scene(everyoneStanding{})
+		_, err := enc.TellConcentration(&encounter.TellConcentrationInput{
+			Breaks: []encounter.ConcentrationBreak{brokenByDamage()},
+		})
+		s.Require().ErrorIs(err, encounter.ErrNoMember)
+	})
+
+	s.Run("nil input", func() {
+		enc := s.scene(everyoneStanding{})
+		_, err := enc.TellConcentration(nil)
+		s.Require().ErrorIs(err, encounter.ErrNilInput)
+	})
+
+	s.Run("what the shared preparation refuses", func() {
+		enc := s.scene(everyoneStanding{})
+		broken := brokenByDamage()
+		broken.Reason = ""
+		_, err := enc.TellConcentration(&encounter.TellConcentrationInput{
+			Actor: castBard, Breaks: []encounter.ConcentrationBreak{broken},
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+}

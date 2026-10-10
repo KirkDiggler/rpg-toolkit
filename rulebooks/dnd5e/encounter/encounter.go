@@ -243,32 +243,23 @@ type Encounter struct {
 	// driveMonsterTurns's own doc for the check itself.
 	driving bool
 
-	// pausedTurn is the one driven turn stopped mid-walk because a reactor
-	// is being asked about a step (rpg-project#316 rung 3, ruling R2). Nil
-	// whenever the fight is not waiting on anybody, which is almost always.
+	// pause is the one walk stopped mid-route because a reactor is being
+	// asked about a step — a driven turn ([PauseTurn]) or a directed walk
+	// ([PauseDirective]); see [pause]. Nil whenever the fight is not waiting on
+	// anybody, which is almost always.
 	//
 	// PERSISTED, unlike driving above, and that is the difference between
 	// them: driving is a fact about a Go call stack, which a reload does not
 	// have; a pause is a fact about the FIGHT, which survives rpg-api being
 	// restarted between the question and the answer. It travels in the blob
-	// as EncounterData.PausedTurn.
+	// as EncounterData.Pause.
 	//
-	// While it is set, every drive entry is a no-op — there is exactly one
-	// way forward and it is [Encounter.ResumeTurn].
-	pausedTurn *pausedTurn
-
-	// heldDirective is the one DIRECTED walk stopped mid-route because a
-	// reactor is being asked about a step (held.go). Nil whenever the fight
-	// is not waiting on anybody, which is almost always.
-	//
-	// PERSISTED for pausedTurn's reason, and MUTUALLY EXCLUSIVE with it:
-	// there is one held walk, and a blob carrying two is refused at load
-	// because the two continue-verbs would be left guessing which of them
-	// owns the answer. [Encounter.Direct] refuses at the door for the same
-	// reason, so the live verb cannot write what the load would reject.
-	//
-	// It travels in the blob as EncounterData.HeldDirective.
-	heldDirective *heldDirective
+	// ONE SLOT. A fight waits on one answer at a time, so there is nowhere to
+	// put a second pause and nothing to keep two of them exclusive.
+	// [Encounter.Direct] refuses at the door while one is held, and while one
+	// is set every drive entry is a no-op — there is exactly one way forward
+	// and it is [Encounter.Resume].
+	pause *pause
 
 	// endings holds declared endings in Setup order. Evaluation is
 	// deterministic (law C8), but NOT globally "first-declared-wins":
@@ -1486,8 +1477,7 @@ func (e *Encounter) closeWithEnded(
 	// A reaction can finish the encounter while a turn or directed walk is
 	// suspended. No continuation survives an ending, and closed persisted worlds
 	// must never carry resumable work.
-	e.pausedTurn = nil
-	e.heldDirective = nil
+	e.pause = nil
 	e.outcome = &Outcome{
 		Ending:  key,
 		At:      at,
