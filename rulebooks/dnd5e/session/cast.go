@@ -546,12 +546,23 @@ func (m *Manager) finishCast(
 		},
 		Continue: func(enc *encounter.Encounter) error {
 			if completed, ok := out.Outcome.(resolution.CastOutcome); ok {
+				// Every target's retaliation is one train: the cast is one
+				// landing.
+				var units []encounter.TrainUnit
 				for _, target := range completed.Targets {
-					if target.Attack != nil {
-						if err := recordRetaliation(enc, target.Attack.Retaliation, concentration{}); err != nil {
-							return err
-						}
+					if target.Attack == nil {
+						continue
 					}
+					retaliation, err := retaliationUnit(target.Attack.Retaliation, concentration{})
+					if err != nil {
+						return err
+					}
+					if retaliation != nil {
+						units = append(units, *retaliation)
+					}
+				}
+				if err := recordTrain(enc, units); err != nil {
+					return err
 				}
 			}
 

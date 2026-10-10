@@ -150,3 +150,19 @@ func (s *SanctuaryProjectionSuite) TestCastWardedSurvivesOutcomeConversion() {
 	s.Equal(15, target.Warded.Save.DC)
 	s.False(target.Warded.Save.Succeeded)
 }
+
+func (s *SanctuaryProjectionSuite) TestWardedDecodesItsSequenceAndRefusesAnIncompleteOne() {
+	withSequence := func(sequence string) []byte {
+		return []byte(wardedWireBeat[:len(wardedWireBeat)-1] + `,"sequence":` + sequence + `}`)
+	}
+
+	_, body := decodeBeat(withSequence(`{"ref":"multiattack","name":"Multiattack"}`))
+	warded, ok := body.(WardedBody)
+	s.Require().True(ok, "got %T", body)
+	s.Equal(&SequenceRef{Ref: "multiattack", Name: "Multiattack"}, warded.Sequence)
+
+	for _, incomplete := range []string{`{"ref":"multiattack"}`, `{"name":"Multiattack"}`, `null`} {
+		_, body = decodeBeat(withSequence(incomplete))
+		s.Nil(body, "an incomplete sequence %s leaves the beat untyped", incomplete)
+	}
+}

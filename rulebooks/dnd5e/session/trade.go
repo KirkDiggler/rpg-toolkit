@@ -363,7 +363,7 @@ func (m *Manager) openVendorTrade(ctx context.Context, in *TradeInput) (*writeSc
 func (m *Manager) finishTrade(
 	ctx context.Context, scope *writeScope, targetID string, record *encounter.RecordInput,
 ) (*TradeOutput, error) {
-	recorded, err := scope.enc.Record(record)
+	recorded, err := scope.enc.RecordTrain(&encounter.RecordTrainInput{Units: []encounter.TrainUnit{{Outcome: record}}})
 	if err != nil {
 		return nil, fmt.Errorf("trade: %w", reportUnrecorded(scope, translate(err)))
 	}
@@ -380,7 +380,7 @@ func (m *Manager) finishTrade(
 
 	return &TradeOutput{
 		Descriptor: descriptor,
-		Seq:        recorded.Seq,
+		Seq:        recorded.Units[0].Seq,
 		Saved:      report,
 		Delivery:   delivery,
 	}, nil

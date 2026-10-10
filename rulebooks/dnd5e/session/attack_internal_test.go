@@ -178,7 +178,7 @@ func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
 	require.NoError(t, err)
 
 	definition := combatActions.Definition{Ref: *refs.Weapons.Longsword(), Name: "Longsword"}
-	recorded, err := enc.Record(recordFor(
+	recorded, err := recordOne(enc, recordFor(
 		&AttackInput{Attacker: "alice", Target: "bob"}, struck, definition, "roll-abc",
 		concentration{},
 	))
@@ -280,7 +280,7 @@ func TestRecordProjectsCriticalStrikeTrace(t *testing.T) {
 	// (recordFor's own doc). The payload below carries no presentation_id key
 	// at all, which is what makes every beat written before shared dice still
 	// byte-identical to what this seam writes now.
-	_, err = enc.Record(recordFor(
+	_, err = recordOne(enc, recordFor(
 		&AttackInput{Attacker: "alice", Target: "bob"}, struck, definition, "",
 		concentration{},
 	))
@@ -897,4 +897,14 @@ func TestStrikeRefusesAPersistedMonsterPriceBeforeRolling(t *testing.T) {
 	afterStory, err := scope.enc.Story(&encounter.StoryInput{Audience: "fighter"})
 	require.NoError(t, err)
 	require.Len(t, afterStory, len(beforeStory), "an unrecorded refusal must not append a strike beat")
+}
+
+// recordOne tells one outcome as a train of one, the shape every lone record
+// in the seam takes.
+func recordOne(enc *encounter.Encounter, in *encounter.RecordInput) (*encounter.TrainLanded, error) {
+	out, err := enc.RecordTrain(&encounter.RecordTrainInput{Units: []encounter.TrainUnit{{Outcome: in}}})
+	if err != nil {
+		return nil, err
+	}
+	return &out.Units[0], nil
 }

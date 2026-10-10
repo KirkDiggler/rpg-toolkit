@@ -1960,6 +1960,14 @@ type StruckBody struct {
 	// since rung 2 and nothing decoded it; this is where it lands.
 	Reaction *ReactionRef `json:"reaction,omitempty"`
 
+	// Sequence names the multiattack this swing was performed inside — the
+	// goblin boss's Multiattack — and is nil for a lone swing, which says so
+	// by being nil. The swing's Attack names the COMPONENT that swung; this
+	// names the sequence around it, so a log can tell a Multiattack's blows
+	// from a lone pick (rpg-toolkit#2002, T4). The marker is the beat's: no
+	// output copies it.
+	Sequence *SequenceRef `json:"sequence,omitempty"`
+
 	// PresentationID is the opaque token this beat's witness shares with the
 	// attacker for the ONE roll it describes — the same string
 	// [AttackOutput.PresentationID] handed whoever swung.
@@ -2000,6 +2008,14 @@ type MissedBody struct {
 	// to know why the roll happened at all.
 	Reaction *ReactionRef `json:"reaction,omitempty"`
 
+	// Sequence names the multiattack this swing was performed inside — the
+	// goblin boss's Multiattack — and is nil for a lone swing, which says so
+	// by being nil. The swing's Attack names the COMPONENT that swung; this
+	// names the sequence around it, so a log can tell a Multiattack's blows
+	// from a lone pick (rpg-toolkit#2002, T4). The marker is the beat's: no
+	// output copies it.
+	Sequence *SequenceRef `json:"sequence,omitempty"`
+
 	// PresentationID is the shared token for this roll — see
 	// [StruckBody.PresentationID]. A whiff is the throw a table most wants to
 	// watch together: the die that clatters and comes up short is the drama.
@@ -2035,6 +2051,14 @@ type WardedBody struct {
 
 	// Calculation is the authoritative sourced arithmetic for that save.
 	Calculation *RollCalculation `json:"calculation,omitempty"`
+
+	// Sequence names the multiattack this swing was performed inside — the
+	// goblin boss's Multiattack — and is nil for a lone swing, which says so
+	// by being nil. The swing's Attack names the COMPONENT that swung; this
+	// names the sequence around it, so a log can tell a Multiattack's blows
+	// from a lone pick (rpg-toolkit#2002, T4). The marker is the beat's: no
+	// output copies it.
+	Sequence *SequenceRef `json:"sequence,omitempty"`
 }
 
 func (WardedBody) isEventBody() {}
@@ -3556,6 +3580,20 @@ type ReactionRef struct {
 
 	// Name is the display name for Ref — "Opportunity Attack". Authored
 	// beside the ref, never derived from it by a reader.
+	Name string `json:"name"`
+}
+
+// SequenceRef names the multiattack a swing was performed inside, as
+// [ReactionRef] names what a swing was taken as. Carried on [StruckBody],
+// [MissedBody] and [WardedBody]; nil on a lone swing.
+type SequenceRef struct {
+	// Ref is the full ref of the sequence action — the Multiattack's own,
+	// not the component it swung. An OPEN set, so a string, for
+	// [AttackRef.Ref]'s reason.
+	Ref string `json:"ref"`
+
+	// Name is the display name for Ref — "Multiattack". Authored beside the
+	// ref, never derived from it by a reader.
 	Name string `json:"name"`
 }
 
