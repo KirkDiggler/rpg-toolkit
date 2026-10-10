@@ -101,6 +101,15 @@ func (s *BothWaysSuite) open(
 func (s *BothWaysSuite) openWith(
 	field encounter.FieldInput, members []encounter.MemberInput, endings ...encounter.EndingInput,
 ) *encounter.Encounter {
+	return s.openDriven(field, members, passDriver{}, passStriker{}, s.standing, endings...)
+}
+
+// openDriven is openWith with the monsters' driver, striker and standing named.
+func (s *BothWaysSuite) openDriven(
+	field encounter.FieldInput, members []encounter.MemberInput,
+	driver encounter.Driver, striker encounter.Striker, standing encounter.StandingWithParticipation,
+	endings ...encounter.EndingInput,
+) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field:     field,
 		Members:   members,
@@ -110,13 +119,13 @@ func (s *BothWaysSuite) openWith(
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      s.standing,
+			Standing:      standing,
 			Initiative:    orderAsGiven{},
-			Driver:        passDriver{},
+			Driver:        driver,
 			CheckResolver: findsNothing{},
 			Witness:       nobodyPerceives{},
 			Actors: encounter.Actors{
-				Striker:   passStriker{},
+				Striker:   striker,
 				Mover:     quietMover{},
 				Announcer: quietAnnouncer{},
 			},

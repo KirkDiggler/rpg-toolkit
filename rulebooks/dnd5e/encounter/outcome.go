@@ -839,8 +839,8 @@ func (e *Encounter) prepareUnit(index int, unit TrainUnit) (preparedUnit, error)
 // A DEED CAN ASK FOR AN ENDING, and the ending waits (T5). A deed turns pairs
 // hostile, and an authored stance ending, a fact or an arrival's ending can
 // hang on that. The stance beat is told in place, behind the blow, but the
-// close is parked and runs once after the last unit and the down beats, so
-// "ended" follows every beat the train told.
+// close is parked, carried by this call alone, and runs once after the last
+// unit and the down beats, before any turn transfer or driven monster turn.
 //
 // A CLOSED ENCOUNTER STOPS AFTER THE APPEND. Only a train of
 // [OutcomeExperienceGained] reaches this on one — every other unit is refused
@@ -859,12 +859,18 @@ func (e *Encounter) appendTrainAndNotice(
 ) ([]TrainLanded, map[MemberID]*IntelDelta, error) {
 	landed := make([]TrainLanded, len(units))
 	var pass participationPassInput
+	var held *heldEnding
 
 	// A deed can turn a stance, and an authored ending can wait on that stance.
 	// The stance change is told in place, behind the blow that caused it, but
 	// no ending closes between two units: the first one asked for is parked
 	// and evaluated once, after the last unit (T5).
-	defer func() { e.holdEndings, e.heldEnding = false, nil }()
+	// A nested train (a driven strike recorded from inside a deed's consult)
+	// runs under its own hold: it saves the outer's and restores it on the way
+	// out, so neither can see or consume the other's.
+	outerHold, outerHeld := e.holdEndings, e.heldEnding
+	e.holdEndings, e.heldEnding = false, nil
+	defer func() { e.holdEndings, e.heldEnding = outerHold, outerHeld }()
 
 	for i, unit := range units {
 		for j, beat := range unit.beats {
@@ -890,6 +896,12 @@ func (e *Encounter) appendTrainAndNotice(
 			if err != nil {
 				return nil, nil, fmt.Errorf("%s: unit %d: %w", verb, i, err)
 			}
+			// Taken off the encounter at once: from here the parked ending
+			// belongs to this train alone.
+			if held == nil {
+				held = e.heldEnding
+			}
+			e.heldEnding = nil
 		}
 		if unit.pass.deferReconcile {
 			pass.deferReconcile = true
@@ -900,18 +912,12 @@ func (e *Encounter) appendTrainAndNotice(
 		return landed, nil, nil
 	}
 
+	// The deed's parked ending rides this pass and fires right after the down
+	// beats, before any transfer or driven turn (see noticeDown).
+	pass.held = held
 	participation, intelDeltas, nerr := e.noticeDown(pass)
 	if nerr != nil {
 		return nil, nil, fmt.Errorf("%s: %w", verb, nerr)
-	}
-	// The ending a deed asked for follows the last beat and the down beats. A
-	// standing ending that already closed the encounter wins, as it would in
-	// any other pass.
-	if held := e.heldEnding; held != nil && e.outcome == nil {
-		e.heldEnding = nil
-		if _, err := e.closeWithEnded(held.key, held.at, held.ended, held.audience...); err != nil {
-			return nil, nil, fmt.Errorf("%s: ending %q: %w", verb, held.key, err)
-		}
 	}
 	observed, err := e.refreshChangedStanding(participation)
 	if err != nil {

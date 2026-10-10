@@ -48,6 +48,9 @@ type participationPassInput struct {
 	// records a stabilized or recovered Death Save. Its explicit continuation
 	// keeps control until the next turn-settlement boundary.
 	deferReconcile bool
+	// held is the ending a train's deed asked for. It rides on this one pass,
+	// so a nested train driven by the pass can neither see nor consume it.
+	held *heldEnding
 }
 
 // noticeDown performs one complete participation pass. The historical name is
@@ -103,6 +106,16 @@ func (e *Encounter) noticeDown(
 	if e.outcome == nil && participation.assessment.PartyDefeated {
 		if _, cerr := e.closeWith(partyDefeatedEnding, uint64(e.clock.ToData().HighWater)); cerr != nil {
 			return nil, nil, fmt.Errorf("participation party defeat: %w", cerr)
+		}
+		return participation, nil, nil
+	}
+
+	// The ending a train's deed asked for follows the down beats and precedes
+	// every turn transfer and every driven monster turn. Party defeat, above,
+	// has already won when it applies.
+	if in.held != nil && e.outcome == nil {
+		if _, cerr := e.closeWithEnded(in.held.key, in.held.at, in.held.ended, in.held.audience...); cerr != nil {
+			return nil, nil, fmt.Errorf("held ending %q: %w", in.held.key, cerr)
 		}
 		return participation, nil, nil
 	}

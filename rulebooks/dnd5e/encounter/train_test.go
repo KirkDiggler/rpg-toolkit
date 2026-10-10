@@ -14,6 +14,7 @@ package encounter_test
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -210,13 +211,20 @@ func (s *BothWaysSuite) TestEachStruckUnitLandsItsDeedBehindItsOwnBeats() {
 	s.Less(stanceSeq, out.Units[1].Seq, "and before unit two's")
 }
 
-// TestAStanceEndingWaitsForTheLastBeatOfTheTrain is the gate's probe (T5): a
-// camp that is civil until the party strikes it, with an ending on the camp
-// turning hostile. The first swing's deed turns the camp and asks for that
-// ending. Both swings are still told, then the stance, then the ending; the
-// train neither closes between the units nor refuses the second.
-func (s *BothWaysSuite) TestAStanceEndingWaitsForTheLastBeatOfTheTrain() {
-	enc := s.openWith(
+// warCamp is a neutral goblin camp with an ending on the camp turning hostile.
+// The first blow at the camp turns it, so the deed asks for that ending.
+func (s *BothWaysSuite) warCamp(
+	driver encounter.Driver, striker encounter.Striker, standing encounter.StandingWithParticipation,
+	members ...encounter.MemberInput,
+) *encounter.Encounter {
+	if len(members) == 0 {
+		members = []encounter.MemberInput{
+			player(alice, 0, 1),
+			monster(bwScout, bwGoblins, 4, 1),
+			monster(bwChief, bwGoblins, 5, 5),
+		}
+	}
+	return s.openDriven(
 		s.yard(
 			[]encounter.FactionInput{{ID: bwGoblins}},
 			[]encounter.DispositionInput{{
@@ -225,17 +233,23 @@ func (s *BothWaysSuite) TestAStanceEndingWaitsForTheLastBeatOfTheTrain() {
 			}},
 			false,
 		),
-		[]encounter.MemberInput{
-			player(alice, 0, 1),
-			monster(bwScout, bwGoblins, 4, 1),
-			monster(bwChief, bwGoblins, 5, 5),
-		},
+		members,
+		driver, striker, standing,
 		withdrawn(),
 		encounter.EndingInput{Key: "war", Trigger: encounter.TriggerStance{
 			Between: [2]encounter.FactionID{bwGoblins, encounter.FactionParty},
 			Stance:  encounter.StanceHostile,
 		}},
 	)
+}
+
+// TestAStanceEndingWaitsForTheLastBeatOfTheTrain is the gate's probe (T5): a
+// camp that is civil until the party strikes it, with an ending on the camp
+// turning hostile. The first swing's deed turns the camp and asks for that
+// ending. Both swings are still told, then the stance, then the ending; the
+// train neither closes between the units nor refuses the second.
+func (s *BothWaysSuite) TestAStanceEndingWaitsForTheLastBeatOfTheTrain() {
+	enc := s.warCamp(passDriver{}, passStriker{}, s.standing)
 
 	out, err := enc.RecordTrain(outcomeTrain(swing(alice, bwScout), swing(alice, bwScout)))
 	s.Require().NoError(err, "the second swing is told, not refused")
@@ -487,4 +501,65 @@ func TestASwingNamesItsSequence(t *testing.T) {
 			require.ErrorIs(t, err, encounter.ErrInvalidData)
 		}
 	})
+}
+
+// TestPartyDefeatBeatsAParkedEnding: the last blow fells the last of the party
+// and also turned the camp. One ending is told, and it is the defeat.
+func (s *BothWaysSuite) TestPartyDefeatBeatsAParkedEnding() {
+	enc := s.warCamp(passDriver{}, passStriker{}, s.standing)
+	s.standing.down = []encounter.MemberID{alice}
+	s.standing.partyDefeated = true
+
+	_, err := enc.RecordTrain(outcomeTrain(swing(bwScout, alice), swing(bwScout, alice)))
+	s.Require().NoError(err)
+
+	status, err := enc.Status()
+	s.Require().NoError(err)
+	s.False(status.Open)
+	s.Equal("party_defeated", status.Outcome.Ending)
+	count := 0
+	for _, kind := range beatsFrom(s.T(), enc, alice, 0) {
+		if kind == "ended" {
+			count++
+		}
+	}
+	s.Equal(1, count, "one ending, and the stance ending was dropped")
+}
+
+// TestAFailedTrainLeavesNoParkedEnding: a train that dies at any point after
+// its deed parked an ending leaves nothing behind for the next train to close
+// with. The rulebook is made unreachable at each of its questions in turn.
+func (s *BothWaysSuite) TestAFailedTrainLeavesNoParkedEnding() {
+	broken := errors.New("rulebook unreachable")
+	dry := &downList{}
+	dryEnc := s.warCamp(passDriver{}, passStriker{}, dry)
+	dry.calls = 0
+	_, err := dryEnc.RecordTrain(outcomeTrain(swing(alice, bwScout)))
+	s.Require().NoError(err)
+	total := dry.calls
+	s.Require().Positive(total)
+
+	survived := 0
+	for failAt := 1; failAt <= total; failAt++ {
+		standing := &downList{}
+		enc := s.warCamp(passDriver{}, passStriker{}, standing)
+		standing.calls, standing.failAt, standing.fail = 0, failAt, broken
+		_, err := enc.RecordTrain(outcomeTrain(swing(alice, bwScout)))
+		if err == nil {
+			continue
+		}
+		status, serr := enc.Status()
+		s.Require().NoError(serr)
+		if !status.Open {
+			continue
+		}
+		survived++
+		standing.fail = nil
+		_, err = enc.RecordTrain(outcomeTrain(swing(alice, bwScout)))
+		s.Require().NoError(err)
+		status, serr = enc.Status()
+		s.Require().NoError(serr)
+		s.True(status.Open, "failing at question %d left an ending parked for the next train", failAt)
+	}
+	s.Positive(survived, "some failure must land after the deed parked and before anything closed")
 }
