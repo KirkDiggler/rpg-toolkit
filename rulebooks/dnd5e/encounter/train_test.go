@@ -287,11 +287,51 @@ func (s *BothWaysSuite) TestAFightFormedMidTrainDoesNotAskWhoIsStandingUntilTheE
 	s.Require().NoError(err)
 
 	kinds := beatsFrom(s.T(), enc, zed, out.Units[0].Seq)
-	// The fallen ant held the first slot of the fight the swing formed, so the
-	// formation itself hands the slot on (turn-ended). That is the fight
-	// forming in place; what must not happen is the fall being told before the
-	// second swing.
-	s.Equal([]string{"struck", "stance", "bubble-formed", "turn-ended", "struck", "down", "ended"}, kinds)
+	s.Equal([]string{"struck", "stance", "bubble-formed", "struck", "down", "ended"}, kinds,
+		"the fight forms in place and drives nothing; the fall waits for the last swing")
+}
+
+// TestFormationMidTrainDrivesNothingUntilTheEnd: the ant, who falls to the
+// second swing, holds the first slot of the fight the first swing forms. The
+// boss behind it would be driven the moment the fight formed, and its strike
+// would tell the ant's fall before the second swing.
+// Nothing is driven mid-train: the post-train pass removes the ant, then
+// drives the boss, and the boss's turn follows the whole story.
+func (s *BothWaysSuite) TestFormationMidTrainDrivesNothingUntilTheEnd() {
+	const (
+		ant  = core.EntityID("ant")
+		zed  = core.EntityID("zed")
+		boss = core.EntityID("boss")
+	)
+	driver := &scriptedDriver{intents: []encounter.TurnIntent{
+		encounter.Attack{Target: zed, Action: testMeleeAction},
+	}}
+	enc := s.openDriven(
+		s.yard(
+			[]encounter.FactionInput{{ID: bwGoblins}},
+			[]encounter.DispositionInput{{
+				Between: [2]encounter.FactionID{bwGoblins, encounter.FactionParty},
+				Stance:  encounter.StanceNeutral,
+			}},
+			false,
+		),
+		[]encounter.MemberInput{
+			monster(ant, bwGoblins, 4, 1), monster(boss, bwGoblins, 5, 5), player(zed, 0, 1),
+		},
+		driver, passStriker{}, s.standing, withdrawn(),
+	)
+	s.standing.down = []encounter.MemberID{ant}
+
+	out, err := enc.RecordTrain(outcomeTrain(swing(zed, ant), swing(zed, ant)))
+	s.Require().NoError(err)
+
+	kinds := beatsFrom(s.T(), enc, zed, out.Units[0].Seq)
+	second := 3 // struck, stance, bubble-formed, then the second swing
+	s.Require().Greater(len(kinds), second)
+	s.Equal([]string{"struck", "stance", "bubble-formed", "struck", "down"}, kinds[:5],
+		"nothing is told between the two swings but the fight forming: %v", kinds)
+	s.Equal(1, len(driver.calls), "and the boss is driven after the story, once")
+	s.Equal("turn-ended", kinds[len(kinds)-1], "its turn follows the whole story: %v", kinds)
 }
 
 // TestAClosedEncounterRefusesATrain: a closed story takes nothing but an
@@ -550,6 +590,38 @@ func (s *BothWaysSuite) TestPartyDefeatBeatsAParkedEnding() {
 		}
 	}
 	s.Equal(1, count, "one ending, and the stance ending was dropped")
+}
+
+// TestAParkedEndingBeatsADeclaredMemberDownEnding pins the order the godoc
+// states: the fall of the scout would end the run as "scout-fell", but the
+// stance ending the same blow parked is evaluated first.
+func (s *BothWaysSuite) TestAParkedEndingBeatsADeclaredMemberDownEnding() {
+	enc := s.openDriven(
+		s.yard(
+			[]encounter.FactionInput{{ID: bwGoblins}},
+			[]encounter.DispositionInput{{
+				Between: [2]encounter.FactionID{bwGoblins, encounter.FactionParty},
+				Stance:  encounter.StanceNeutral,
+			}},
+			false,
+		),
+		[]encounter.MemberInput{player(alice, 0, 1), monster(bwScout, bwGoblins, 4, 1), monster(bwChief, bwGoblins, 5, 5)},
+		passDriver{}, passStriker{}, s.standing,
+		withdrawn(),
+		encounter.EndingInput{Key: "war", Trigger: encounter.TriggerStance{
+			Between: [2]encounter.FactionID{bwGoblins, encounter.FactionParty},
+			Stance:  encounter.StanceHostile,
+		}},
+		encounter.EndingInput{Key: "scout-fell", Trigger: encounter.TriggerMemberDown{Member: bwScout}},
+	)
+	s.standing.down = []encounter.MemberID{bwScout}
+
+	_, err := enc.RecordTrain(outcomeTrain(swing(alice, bwScout)))
+	s.Require().NoError(err)
+
+	status, err := enc.Status()
+	s.Require().NoError(err)
+	s.Equal("war", status.Outcome.Ending)
 }
 
 // TestAFailedTrainLeavesNoParkedEnding: a train that dies at any point after

@@ -79,6 +79,10 @@ type Encounter struct {
 	holdEndings bool
 	heldEnding  *heldEnding
 
+	// deferredDrives are the fights a held deed formed, whose first slot is
+	// driven by the train's post-train pass instead of by the formation.
+	deferredDrives []*clock.Turn
+
 	// canvas is THE MAP: one spatial room spanning the whole dungeon, in
 	// dungeon-absolute cells, with every authored wall registered on it as an
 	// absolute boundary edge (rpg-toolkit#1106).

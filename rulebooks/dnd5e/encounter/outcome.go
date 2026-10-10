@@ -9,6 +9,7 @@ import (
 	"math"
 	"sort"
 
+	"github.com/KirkDiggler/rpg-toolkit/play/clock"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 )
 
@@ -688,15 +689,21 @@ type RecordTrainOutput struct {
 // Every unit is prepared before anything is appended. Then, for each unit in
 // order: its own beat, its concentration checks' saved beats, its breaks'
 // trains, and, for a struck or missed outcome, its attack deed. After the last
-// unit: the standing consult (down beats, then a party-defeat ending, removals
-// and member-down endings), then any ending a deed asked for, the
-// observed-standing refresh, and each activation unit's world-action price in
-// unit order.
+// unit, one pass: the down beats, then the party-defeat ending if the rulebook
+// answers one, then the ending a deed asked for, then removals, the fight
+// forming a deed started (its first slot driven now), and the declared
+// member-down endings; then the observed-standing refresh and each activation
+// unit's world-action price in unit order.
 //
 // A deed lands in place, so a stance it turns is told beside the blow that
-// turned it. The ENDING that stance would trigger (an authored stance ending,
-// a fact's, an arrival's) is parked and closes the encounter once, after the
-// last unit and the down beats (T5). No ending is told between two units.
+// turned it, and a fight it forms is told forming (bubble-formed). The ENDING
+// that stance would trigger (an authored stance ending, a fact's, an arrival's)
+// is parked and closes the encounter once, after the last unit and the down
+// beats (T5), and a fight formed mid-train is driven then too: nothing is
+// consulted, closed or driven between two units. Which ending wins when
+// several apply is the order above: party defeat, then the parked ending, then
+// declared member-down endings, because an ending already closed is not
+// evaluated again.
 //
 // # It records, and then the world notices what it recorded
 //
@@ -860,6 +867,7 @@ func (e *Encounter) appendTrainAndNotice(
 	landed := make([]TrainLanded, len(units))
 	var pass participationPassInput
 	var held *heldEnding
+	var drives []*clock.Turn
 
 	// A deed can turn a stance, and an authored ending can wait on that stance.
 	// The stance change is told in place, behind the blow that caused it, but
@@ -868,9 +876,9 @@ func (e *Encounter) appendTrainAndNotice(
 	// A nested train (a driven strike recorded from inside a deed's consult)
 	// runs under its own hold: it saves the outer's and restores it on the way
 	// out, so neither can see or consume the other's.
-	outerHold, outerHeld := e.holdEndings, e.heldEnding
-	e.holdEndings, e.heldEnding = false, nil
-	defer func() { e.holdEndings, e.heldEnding = outerHold, outerHeld }()
+	outerHold, outerHeld, outerDrives := e.holdEndings, e.heldEnding, e.deferredDrives
+	e.holdEndings, e.heldEnding, e.deferredDrives = false, nil, nil
+	defer func() { e.holdEndings, e.heldEnding, e.deferredDrives = outerHold, outerHeld, outerDrives }()
 
 	for i, unit := range units {
 		for j, beat := range unit.beats {
@@ -902,6 +910,8 @@ func (e *Encounter) appendTrainAndNotice(
 				held = e.heldEnding
 			}
 			e.heldEnding = nil
+			drives = append(drives, e.deferredDrives...)
+			e.deferredDrives = nil
 		}
 		if unit.pass.deferReconcile {
 			pass.deferReconcile = true
@@ -915,6 +925,7 @@ func (e *Encounter) appendTrainAndNotice(
 	// The deed's parked ending rides this pass and fires right after the down
 	// beats, before any transfer or driven turn (see noticeDown).
 	pass.held = held
+	pass.newlyActive = drives
 	participation, intelDeltas, nerr := e.noticeDown(pass)
 	if nerr != nil {
 		return nil, nil, fmt.Errorf("%s: %w", verb, nerr)

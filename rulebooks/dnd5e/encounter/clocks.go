@@ -2189,6 +2189,14 @@ func (e *Encounter) formWithParticipation(
 			return nil, fmt.Errorf("form: %w", err)
 		}
 	}
+	// A train landing a deed forms the fight in place but drives nothing: the
+	// first slot is parked and driven by the train's single post-train pass,
+	// after the fallen have been removed, so no driven strike runs a nested
+	// train between two units.
+	if e.holdEndings {
+		e.deferredDrives = append(e.deferredDrives, bubble)
+		return &FormOutput{Seq: seq, Paused: e.Paused()}, nil
+	}
 	_, _, intelDeltas, derr := e.driveTurnsWithParticipation(bubble, participation)
 	if derr != nil {
 		return nil, fmt.Errorf("form: %w", derr)
