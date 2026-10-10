@@ -273,7 +273,7 @@ func fromTemplate(id string, ref *core.Ref, spec *dungeonspec.TemplateSpec) (*mo
 		return nil, fmt.Errorf("template %q: %w", ref.ID, err)
 	}
 
-	built, err := monster.FromTemplate(id, ref, tmpl, base)
+	built, err := monster.FromTemplate(&monster.FromTemplateInput{ID: id, Ref: ref, Template: tmpl, Base: base})
 	if err != nil {
 		return nil, fmt.Errorf("template %q: %w: %v", ref.ID, ErrInvalidWorld, err)
 	}
