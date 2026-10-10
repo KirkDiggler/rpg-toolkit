@@ -136,14 +136,18 @@ func assembleTemplate(in *DeriveTemplateInput) (*monster.Monster, error) {
 		return nil, fmt.Errorf("%q: %w", in.Ref, ErrNoLoader)
 	}
 
-	base, ok := monsters.BaseByRef(in.Spec.Base)
-	if !ok {
-		return nil, fmt.Errorf("template %q: base %q is not a rulebook base: %w", ref.ID, in.Spec.Base, ErrUnknownContent)
-	}
-
+	// The conversion parses the base first, so a malformed base is ErrBadRef
+	// and only a well-formed one can be unknown. The base is then looked up
+	// through the parsed ref the template carries, so the pair FromTemplate
+	// checks holds by construction.
 	tmpl, err := templateOf(ref.ID, in.Spec)
 	if err != nil {
 		return nil, fmt.Errorf("template %q: %w", ref.ID, err)
+	}
+
+	base, ok := monsters.BaseByRef(tmpl.Base.String())
+	if !ok {
+		return nil, fmt.Errorf("template %q: base %q is not a rulebook base: %w", ref.ID, tmpl.Base.String(), ErrUnknownContent)
 	}
 
 	built, err := monster.FromTemplate(&monster.FromTemplateInput{ID: in.ID, Ref: ref, Template: tmpl, Base: base})

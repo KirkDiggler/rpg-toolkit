@@ -90,7 +90,7 @@ func (s *LaunchTemplateSuite) launch(dungeon *dungeonspec.Compiled) error {
 	return err
 }
 
-// sheet is a monster's STORED sheet — what a rehydrated run reads.
+// sheet is the sheet the launch recorded for a monster.
 func (s *LaunchTemplateSuite) sheet(id string) *monster.Data {
 	s.T().Helper()
 	stored, ok := s.sessions.byID[testSession]
@@ -138,11 +138,60 @@ func (s *LaunchTemplateSuite) TestLaunch_TemplateGuardSpawnsWithDerivedNumbers()
 	s.Equal([]string{"dnd5e:weapons:spear"}, s.actionRefs("guard-1"),
 		"the template's spear, and nothing of the base's fists")
 
+	s.Require().Len(guard.Actions, 1)
+	s.Require().NotNil(guard.Actions[0].Attack)
+	s.Equal(3, guard.Actions[0].Attack.AttackBonus, "STR 13's +1 and the base's proficiency +2")
+	s.Equal(12, guard.Senses.PassivePerception, "10, WIS 11's +0, and trained perception's +2")
+	s.Equal([]monster.ProficiencyData{{Skill: "perception", Bonus: 2}}, guard.Proficiencies,
+		"the author's one trained skill, at the proficiency bonus")
+	s.Equal("guard", guard.Name, "an unnamed template is called by its id, never by its base")
+
 	cook := s.sheet("cook-1")
 	s.Equal(4, cook.MaxHitPoints, "the human base's 1d8 at CON 10: an unstated field is the base's")
 	s.Equal(10, cook.ArmorClass, "nothing worn")
 	s.Equal([]string{"dnd5e:weapons:dagger"}, s.actionRefs("cook-1"))
 	s.Equal("dnd5e:monsters:cook", cook.Ref.String())
+}
+
+// TestLaunch_TemplateCaptainSpawnsWithDerivedNumbers places the fixture's
+// captain, whose block states four scores, its own proficiency and two
+// weapons, so every one of those fields is observed on a launched sheet.
+func (s *LaunchTemplateSuite) TestLaunch_TemplateCaptainSpawnsWithDerivedNumbers() {
+	s.Require().NoError(s.launch(s.castle(
+		[2]string{
+			"      - {id: cook-1,",
+			"      - {id: captain-1, ref: 'dnd5e:monsters:captain', startingCell: { location: { q: 0, r: 0 } }}\n      - {id: cook-1,",
+		},
+		[2]string{"      cook-1: {faction: kitchen}", "      cook-1: {faction: kitchen}\n      captain-1: {faction: watch}"},
+	)))
+
+	captain := s.sheet("captain-1")
+	s.Equal(65, captain.MaxHitPoints, "10d8 averages 45, plus CON 14's +2 on each of ten dice")
+	s.Equal(16, captain.ArmorClass, "a breastplate is 14 plus DEX 14's +2, at the medium-armor cap")
+	s.Equal(3, captain.ProficiencyBonus, "the author's proficiency, not the base's 2")
+	s.Equal([]string{"dnd5e:weapons:longsword", "dnd5e:weapons:javelin"}, s.actionRefs("captain-1"))
+	for _, action := range captain.Actions {
+		s.Require().NotNil(action.Attack)
+		s.Equal(5, action.Attack.AttackBonus, "%s: STR 15's +2 and proficiency 3", action.Ref.String())
+		s.Require().NotNil(action.Attack.Ability)
+		s.Equal(2, action.Attack.Ability.Modifier, "%s: STR 15 adds +2 to damage", action.Ref.String())
+	}
+	s.Equal("1d8", captain.Actions[0].Attack.Damage[0].Dice, "the longsword's die, with STR added at the roll")
+}
+
+// TestLaunch_TemplateCarriesNameAndExperience: what the author wrote about
+// identity and worth reaches the sheet. Experience never inherits, so an
+// authored 150 is 150, and a stated name replaces the template's id.
+func (s *LaunchTemplateSuite) TestLaunch_TemplateCarriesNameAndExperience() {
+	s.Require().NoError(s.launch(s.castle([2]string{
+		"  cook:\n    base: dnd5e:monsters:human",
+		"  cook:\n    base: dnd5e:monsters:human\n    name: Head Cook\n    experience: 150",
+	})))
+
+	cook := s.sheet("cook-1")
+	s.Equal("Head Cook", cook.Name)
+	s.Equal(150, cook.Experience, "the author's experience, never the base's 0")
+	s.Zero(s.sheet("guard-1").Experience, "an unstated experience is worth nothing")
 }
 
 // TestLaunch_PlacementActionsReplaceTemplateWeapons is R9: a binding's

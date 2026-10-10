@@ -8,7 +8,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
 // TestTemplateOfRefusesWhatTheCatalogueDoesNotKnow is the conversion's half
@@ -85,10 +91,10 @@ func TestOnlyARulebookMonsterRefNamesATemplate(t *testing.T) {
 	require.Nil(t, templateFor(templates, "dnd5e:monsters:cook"))
 }
 
-// TestATemplateBaseMustBeARulebookBase: the session resolves the base the
-// template names and passes exactly that to FromTemplate, which no longer
-// checks the match itself. A base nothing ships, and a rulebook monster that
-// is not a base, are both refused by name before assembly.
+// TestATemplateBaseMustBeARulebookBase: the session looks up the base the
+// template names in the rulebook's bases. A base nothing ships, and a
+// rulebook monster that is not a base, are both refused by name before
+// assembly.
 func TestATemplateBaseMustBeARulebookBase(t *testing.T) {
 	for _, base := range []string{"dnd5e:monsters:elf", "dnd5e:monsters:goblin"} {
 		t.Run(base, func(t *testing.T) {
@@ -149,4 +155,97 @@ func TestATemplateIsNamedAsItselfNeverAsItsBase(t *testing.T) {
 	out, err = DeriveTemplate(&DeriveTemplateInput{ID: "guard", Ref: "dnd5e:monsters:guard", Spec: named})
 	require.NoError(t, err)
 	require.Equal(t, "Castle Guard", out.Block.Name)
+}
+
+// TestTemplateOfCarriesEveryStatedField pins the one conversion field by
+// field: a spec that states everything converts to exactly this template.
+// Dropping any field the author wrote fails here, not as a plausible wrong
+// number downstream.
+func TestTemplateOfCarriesEveryStatedField(t *testing.T) {
+	tmpl, err := templateOf("captain", dungeonspec.TemplateSpec{
+		Base:        "dnd5e:monsters:human",
+		Name:        "Captain of the Watch",
+		Abilities:   map[string]int{"str": 15, "dex": 14, "con": 14, "int": 11, "wis": 12, "cha": 14},
+		HitDice:     "10d8",
+		Armor:       "dnd5e:armor:breastplate",
+		Proficiency: 3,
+		Skills:      []string{"perception", "intimidation"},
+		Actions:     []string{"dnd5e:weapons:longsword", "dnd5e:weapons:javelin"},
+		Experience:  450,
+	})
+	require.NoError(t, err)
+	worn := armor.ArmorID("breastplate")
+	require.Equal(t, monster.Template{
+		Base: refs.Monsters.Human(),
+		Name: "Captain of the Watch",
+		Abilities: map[abilities.Ability]int{
+			abilities.STR: 15, abilities.DEX: 14, abilities.CON: 14,
+			abilities.INT: 11, abilities.WIS: 12, abilities.CHA: 14,
+		},
+		HitDice:     "10d8",
+		Armor:       &worn,
+		Proficiency: 3,
+		Skills:      []skills.Skill{skills.Perception, skills.Intimidation},
+		Actions:     []weapons.WeaponID{weapons.Longsword, weapons.Javelin},
+		Experience:  450,
+	}, tmpl)
+}
+
+// TestDeriveTemplateEchoesTheCaptain is the block for a template that states
+// every score but INT and WIS, its own proficiency and two weapons.
+func TestDeriveTemplateEchoesTheCaptain(t *testing.T) {
+	out, err := DeriveTemplate(&DeriveTemplateInput{ID: "captain", Ref: "dnd5e:monsters:captain", Spec: dungeonspec.TemplateSpec{
+		Base:        "dnd5e:monsters:human",
+		Abilities:   map[string]int{"str": 15, "dex": 14, "con": 14, "cha": 14},
+		HitDice:     "10d8",
+		Armor:       "dnd5e:armor:breastplate",
+		Proficiency: 3,
+		Actions:     []string{"dnd5e:weapons:longsword", "dnd5e:weapons:javelin"},
+		Experience:  150,
+	}})
+	require.NoError(t, err)
+	block := out.Block
+	require.Equal(t, 65, block.HitPoints, "10d8 averages 45, plus CON 14's +2 on each of ten dice")
+	require.Equal(t, 16, block.ArmorClass, "a breastplate is 14 plus DEX 14's +2, at the medium-armor cap")
+	require.Equal(t, 3, block.ProficiencyBonus)
+	require.Equal(t, 10, block.PassivePerception, "10 and WIS 10's +0 from the base; perception is untrained")
+	require.Equal(t, 150, block.Experience, "the author's experience reaches the block")
+	require.Equal(t, []DerivedAttack{
+		{WeaponRef: "dnd5e:weapons:longsword", AttackBonus: 5, Damage: "1d8+2"},
+		{WeaponRef: "dnd5e:weapons:javelin", AttackBonus: 5, Damage: "1d6+2"},
+	}, block.Attacks, "STR 15's +2 and proficiency 3 to hit; STR to damage")
+}
+
+// TestATemplateTheRulebookRefusesKeepsItsReason: an assembly refusal is
+// ErrInvalidWorld with the rulebook's reason as text, so the author can read
+// what to fix. The dialect refuses this score at shape, so only a hand-built
+// compile reaches it.
+func TestATemplateTheRulebookRefusesKeepsItsReason(t *testing.T) {
+	_, err := instantiate("thing-1", "dnd5e:monsters:thing", nil,
+		&dungeonspec.TemplateSpec{Base: "dnd5e:monsters:human", Abilities: map[string]int{"str": 31}})
+	require.ErrorIs(t, err, ErrInvalidWorld)
+	require.Contains(t, err.Error(), "str score 31")
+}
+
+// TestAMalformedBaseIsABadRef keeps this seam's split between malformed and
+// unknown: `human` is not a ref at all, so it is ErrBadRef, not "no such
+// base".
+func TestAMalformedBaseIsABadRef(t *testing.T) {
+	for _, base := range []string{"human", ""} {
+		_, err := DeriveTemplate(&DeriveTemplateInput{ID: "cook", Ref: "dnd5e:monsters:cook",
+			Spec: dungeonspec.TemplateSpec{Base: base, Actions: []string{"dnd5e:weapons:dagger"}}})
+		require.ErrorIs(t, err, ErrBadRef, "base %q", base)
+		require.NotErrorIs(t, err, ErrUnknownContent, "base %q", base)
+	}
+}
+
+// TestDeriveTemplateRefusesARefItCannotLoad: DeriveTemplate is a public
+// entry, so it checks the ref the host hands it as instantiate does.
+func TestDeriveTemplateRefusesARefItCannotLoad(t *testing.T) {
+	_, err := DeriveTemplate(&DeriveTemplateInput{ID: "guard", Ref: "homebrew:monsters:guard", Spec: castleGuard})
+	require.ErrorIs(t, err, ErrNoLoader)
+	_, err = DeriveTemplate(&DeriveTemplateInput{ID: "guard", Ref: "guard", Spec: castleGuard})
+	require.ErrorIs(t, err, ErrBadRef)
+	_, err = DeriveTemplate(nil)
+	require.ErrorIs(t, err, ErrNilInput)
 }
