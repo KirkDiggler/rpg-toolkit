@@ -26,5 +26,5 @@ var catalogueCreatureTypes = map[string]string{
 	"animated-armor": "construct",
 	"brown-bear":     "beast", "giant-rat": "beast", "wolf": "beast", "giant-spider": "beast", "giant-wolf-spider": "beast",
 	"bandit": "humanoid", "bandit-archer": "humanoid", "bandit-captain": "humanoid", "thug": "humanoid",
-	"goblin": "humanoid", "goblin-boss": "humanoid",
+	"goblin": "humanoid", "goblin-boss": "humanoid", "human": "humanoid",
 }

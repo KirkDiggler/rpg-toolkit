@@ -48,6 +48,23 @@ func ByRef(ref string) (Constructor, bool) {
 	return c, ok
 }
 
+// bases maps each rulebook base ref to its template. A base is not a
+// constructor: it is what an authored template derives from
+// ([monster.FromTemplate]), and a placement cannot spawn one bare — so
+// nothing here appears in byRef, and ByRef answers false for a base.
+var bases = map[string]monster.Template{
+	refs.Monsters.Human().String(): Human,
+}
+
+// BaseByRef resolves a rulebook base ref (dnd5e:monsters:human) to its
+// template, for a caller about to derive an authored template from it. The
+// bool reports whether the ref names a base; a rulebook monster with a
+// constructor is not one.
+func BaseByRef(ref string) (monster.Template, bool) {
+	base, ok := bases[ref]
+	return base, ok
+}
+
 // Refs returns every ref known to the registry, sorted. Callers (e.g.
 // dungeonspec's validation) can use this to name the known set in an
 // "unknown monster ref" error message.

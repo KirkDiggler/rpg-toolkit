@@ -1,4 +1,3 @@
-// Package monster provides monster/enemy entity types for D&D 5e combat
 package monster
 
 import (
@@ -84,6 +83,15 @@ type Config struct {
 	AbilityScores    shared.AbilityScores
 	ProficiencyBonus int // CR-based proficiency bonus (default 2 if not set)
 	Experience       int // Authored experience worth; 0 means worth nothing
+
+	// Proficiencies are the skills the block is trained in, each with the
+	// bonus it adds. Absent means none.
+	Proficiencies []ProficiencyData
+
+	// Senses are the block's senses and its passive Perception. Absent means
+	// no special senses and a passive Perception of 0 — a hand-built
+	// constructor states it; [FromTemplate] derives it.
+	Senses SensesData
 }
 
 // New creates a new monster with the specified configuration
@@ -100,7 +108,19 @@ func New(config Config) *Monster {
 		abilityScores:    config.AbilityScores,
 		proficiencyBonus: profBonus,
 		experience:       config.Experience,
+		senses:           config.Senses,
+		proficiencies:    proficienciesOf(config.Proficiencies),
 	}
+}
+
+// proficienciesOf indexes authored proficiencies by skill, the shape the sheet
+// holds them in. Both constructors use it so a Config and a Data agree.
+func proficienciesOf(authored []ProficiencyData) map[string]int {
+	out := make(map[string]int, len(authored))
+	for _, prof := range authored {
+		out[prof.Skill] = prof.Bonus
+	}
+	return out
 }
 
 // proficiencyBonusOf is the "absent means 2" rule both constructors apply —

@@ -27,6 +27,9 @@ var (
 	monsterGoblin        = &core.Ref{Module: Module, Type: TypeMonsters, ID: "goblin"}
 	monsterGoblinBoss    = &core.Ref{Module: Module, Type: TypeMonsters, ID: "goblin-boss"}
 
+	// Bases (authored templates derive from these; not placeable on their own)
+	monsterHuman = &core.Ref{Module: Module, Type: TypeMonsters, ID: "human"}
+
 	// Constructs
 	monsterAnimatedArmor = &core.Ref{Module: Module, Type: TypeMonsters, ID: "animated-armor"}
 )
@@ -70,3 +73,10 @@ func (n monstersNS) GoblinBoss() *core.Ref { return monsterGoblinBoss }
 // field on monster.Config today, so "construct" is a fact about the rulebook
 // rather than one any rule keys off yet.
 func (n monstersNS) AnimatedArmor() *core.Ref { return monsterAnimatedArmor }
+
+// Bases
+
+// Human returns the human base block's ref. A BASE, not a monster a placement
+// names: authored templates derive from it (monsters.BaseByRef), and
+// monsters.ByRef deliberately does not answer for it.
+func (n monstersNS) Human() *core.Ref { return monsterHuman }
