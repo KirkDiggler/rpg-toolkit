@@ -76,7 +76,7 @@ func (s *waitingAfterStrike) Strike(
 	s.participation.members[s.member] = encounter.MemberParticipation{
 		Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait,
 	}
-	_, err := enc.Record(&encounter.RecordInput{
+	_, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeMissed, Actor: attacker, Targets: []encounter.MemberID{target},
 	})
 	return err
@@ -302,7 +302,7 @@ func TestMidTurnStabilizedDeathSaveDoesNotAutoPassAlreadyActiveSlot(t *testing.T
 	}
 	callsBefore := len(capability.questions)
 
-	_, err := enc.Record(&encounter.RecordInput{
+	_, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeDeathSave, Actor: alice,
 		DeathSave: &encounter.DeathSaveDetail{
 			Roll: 10, Outcome: "stabilized", SuccessesAdded: 1, Successes: 3,
@@ -370,7 +370,7 @@ func TestRemoveWithContactTrueIsRefusedBeforeDefeatConsequences(t *testing.T) {
 	capability.members = map[encounter.MemberID]encounter.MemberParticipation{
 		goblin: {Down: true, Contact: true, Turn: encounter.TurnParticipationRemove},
 	}
-	_, err := enc.Record(&encounter.RecordInput{
+	_, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeMissed, Actor: alice, Targets: []encounter.MemberID{goblin},
 	})
 	require.ErrorIs(t, err, encounter.ErrInvalidData)
@@ -445,7 +445,7 @@ func TestSuppliedPartyDefeatClosesAfterItsCausalBeats(t *testing.T) {
 	capability.partyDefeated = true
 	capability.keepTurnOrder = true
 
-	_, err := enc.Record(&encounter.RecordInput{
+	_, err := recordOne(enc, &encounter.RecordInput{
 		Kind:  encounter.OutcomeDeathSave,
 		Actor: alice,
 		DeathSave: &encounter.DeathSaveDetail{
@@ -505,7 +505,7 @@ func prepareDyingVictory(
 	capability.members[goblin] = encounter.MemberParticipation{
 		Down: true, Turn: encounter.TurnParticipationRemove,
 	}
-	_, err = enc.Record(&encounter.RecordInput{
+	_, err = recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeMissed, Actor: bob, Targets: []encounter.MemberID{goblin},
 	})
 	require.NoError(t, err)
@@ -520,7 +520,7 @@ func TestKeepTurnOrderCarriesTheDyingVictoryJourney(t *testing.T) {
 	t.Run("ordinary and third success", func(t *testing.T) {
 		enc, capability := prepareDyingVictory(t)
 
-		_, err := enc.Record(&encounter.RecordInput{
+		_, err := recordOne(enc, &encounter.RecordInput{
 			Kind: encounter.OutcomeDeathSave, Actor: bob,
 			DeathSave: &encounter.DeathSaveDetail{
 				Roll: 10, Outcome: "success", SuccessesAdded: 1, Successes: 1,
@@ -537,7 +537,7 @@ func TestKeepTurnOrderCarriesTheDyingVictoryJourney(t *testing.T) {
 			Down: true, Turn: encounter.TurnParticipationAutoPass,
 		}
 		turnEndsBefore := countTurnEndedBy(t, enc, bob)
-		_, err = enc.Record(&encounter.RecordInput{
+		_, err = recordOne(enc, &encounter.RecordInput{
 			Kind: encounter.OutcomeDeathSave, Actor: bob,
 			DeathSave: &encounter.DeathSaveDetail{
 				Roll: 10, Outcome: "stabilized", SuccessesAdded: 1, Successes: 3,
@@ -567,7 +567,7 @@ func TestKeepTurnOrderCarriesTheDyingVictoryJourney(t *testing.T) {
 			Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait,
 		}
 		turnEndsBefore := countTurnEndedBy(t, enc, bob)
-		_, err := enc.Record(&encounter.RecordInput{
+		_, err := recordOne(enc, &encounter.RecordInput{
 			Kind: encounter.OutcomeDeathSave, Actor: bob,
 			DeathSave: &encounter.DeathSaveDetail{
 				Roll: 20, Outcome: "recovered", Recovered: true, HPRestored: 1,
@@ -618,7 +618,7 @@ func TestRecoveredDeathSaveClearsStoryDownLedgerForASecondFall(t *testing.T) {
 		alice: {Down: true, Turn: encounter.TurnParticipationWait},
 	}
 
-	_, err := enc.Record(&encounter.RecordInput{
+	_, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeMissed, Actor: goblin, Targets: []encounter.MemberID{alice},
 	})
 	require.NoError(t, err)
@@ -626,7 +626,7 @@ func TestRecoveredDeathSaveClearsStoryDownLedgerForASecondFall(t *testing.T) {
 	capability.members[alice] = encounter.MemberParticipation{
 		Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait,
 	}
-	_, err = enc.Record(&encounter.RecordInput{
+	_, err = recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeDeathSave, Actor: alice,
 		DeathSave: &encounter.DeathSaveDetail{
 			Roll: 20, Outcome: "recovered", Recovered: true, HPRestored: 1,
@@ -639,7 +639,7 @@ func TestRecoveredDeathSaveClearsStoryDownLedgerForASecondFall(t *testing.T) {
 	capability.members[alice] = encounter.MemberParticipation{
 		Down: true, Turn: encounter.TurnParticipationWait,
 	}
-	_, err = enc.Record(&encounter.RecordInput{
+	_, err = recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeMissed, Actor: goblin, Targets: []encounter.MemberID{alice},
 	})
 	require.NoError(t, err)
@@ -666,7 +666,7 @@ func TestDeathSaveDetailRoundTripsEveryPrimitiveAndRejectsMismatches(t *testing.
 		Stabilized: true, Dead: true, Recovered: true, HPRestored: 1,
 		Continuation: "keep_turn", PresentationID: "natural-20",
 	}
-	_, err := enc.Record(&encounter.RecordInput{Kind: encounter.OutcomeDeathSave, Actor: alice, DeathSave: detail})
+	_, err := recordOne(enc, &encounter.RecordInput{Kind: encounter.OutcomeDeathSave, Actor: alice, DeathSave: detail})
 	require.NoError(t, err)
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
@@ -698,12 +698,12 @@ func TestDeathSaveDetailRoundTripsEveryPrimitiveAndRejectsMismatches(t *testing.
 		"HPRestored", "Continuation", "PresentationID", "Calculation",
 	}, structFieldNames(encounter.DeathSaveDetail{}), "closed detail has no caller prose field")
 
-	_, err = participationTrio(t, &scriptedParticipation{}).Record(&encounter.RecordInput{
+	_, err = recordOne(participationTrio(t, &scriptedParticipation{}), &encounter.RecordInput{
 		Kind: encounter.OutcomeDeathSave, Actor: alice,
 	})
 	require.ErrorIs(t, err, encounter.ErrInvalidData)
 
-	_, err = participationTrio(t, &scriptedParticipation{}).Record(&encounter.RecordInput{
+	_, err = recordOne(participationTrio(t, &scriptedParticipation{}), &encounter.RecordInput{
 		Kind: encounter.OutcomeMissed, Actor: alice, DeathSave: detail,
 	})
 	require.ErrorIs(t, err, encounter.ErrInvalidData)
@@ -716,13 +716,13 @@ func TestNextStorySeqIsAReadAndEqualsTheNextSuccessfulRecord(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, before, storyBeats(t, enc, alice), "reading the sequence does not append")
 
-	_, err = enc.Record(&encounter.RecordInput{Kind: encounter.OutcomeDeathSave, Actor: alice})
+	_, err = recordOne(enc, &encounter.RecordInput{Kind: encounter.OutcomeDeathSave, Actor: alice})
 	require.ErrorIs(t, err, encounter.ErrInvalidData)
 	afterRejected, err := enc.NextStorySeq()
 	require.NoError(t, err)
 	require.Equal(t, next, afterRejected, "a rejected append does not reserve a sequence")
 
-	out, err := enc.Record(&encounter.RecordInput{
+	out, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeDeathSave, Actor: alice,
 		DeathSave: &encounter.DeathSaveDetail{Roll: 10, Outcome: "success", SuccessesAdded: 1,
 			Successes: 1, SuccessesNeeded: 2, FailuresRemaining: 3,
@@ -863,7 +863,7 @@ func TestObservedRecoveryKeepsTurnWithAnotherStabilizedAlly(t *testing.T) {
 	require.Equal(t, bob, clockState(t, enc, bob).Active)
 	capability.keepTurnOrder = false
 	capability.members[bob] = encounter.MemberParticipation{Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait}
-	_, err = enc.Record(&encounter.RecordInput{
+	_, err = recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeDeathSave, Actor: bob,
 		DeathSave: &encounter.DeathSaveDetail{Roll: 20, Outcome: "recovered", Recovered: true, HPRestored: 1, SuccessesNeeded: 3, FailuresRemaining: 3, Continuation: "keep_turn", PresentationID: "natural-20"},
 	})

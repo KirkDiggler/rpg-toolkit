@@ -284,7 +284,7 @@ func TestCallSiteClassification(t *testing.T) {
 
 	// missed: a clean outcome beat, nobody down yet.
 	attackModifier := 0
-	_, err = enc.Record(&RecordInput{
+	_, err = recordOne(enc, &RecordInput{
 		Kind: OutcomeMissed, Actor: "zebra", Targets: []MemberID{"goblin"},
 		Values: map[OutcomeValue]int{ValueRoll: 4, ValueTotal: 4, ValueAgainst: 15},
 		Calculation: &RollCalculation{Components: []RollComponent{
@@ -315,7 +315,7 @@ func TestCallSiteClassification(t *testing.T) {
 	// struck + downed (+ bubble-dissolved, if the goblin was the fight's
 	// only monster — noticeDown decides that, not this test).
 	standing.who = "goblin"
-	_, err = enc.Record(&RecordInput{
+	_, err = recordOne(enc, &RecordInput{
 		Kind: OutcomeStruck, Actor: "alice", Targets: []MemberID{"goblin"},
 		Values: map[OutcomeValue]int{ValueAmount: 7}, Critical: false,
 	})
@@ -387,4 +387,19 @@ func TestCallSiteClassification(t *testing.T) {
 	require.True(t, seen["sighted"],
 		"the scripted scene never produced a sighted beat — first light puts "+
 			"three members in view of each other, so one is owed")
+}
+
+// recordOne tells one outcome as a train of one, the way every single-outcome
+// caller does, and reports where it landed. A nil outcome is a nil train: the
+// refusal tests ask the verb about nil, not the helper.
+func recordOne(e *Encounter, in *RecordInput) (*TrainLanded, error) {
+	var train *RecordTrainInput
+	if in != nil {
+		train = &RecordTrainInput{Units: []TrainUnit{{Outcome: in}}}
+	}
+	out, err := e.RecordTrain(train)
+	if err != nil {
+		return nil, err
+	}
+	return &out.Units[0], nil
 }

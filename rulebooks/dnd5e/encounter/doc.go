@@ -378,11 +378,11 @@
 // leave a member between clocks — a state ClockOf reports as a defect rather
 // than guessing (see its on-no-clock check).
 //
-// Record is the same shape for a reason worth naming, since the verb looks
-// atomic: it consults Standing AFTER appending its outcome beat, because that
-// beat is the cause the consult reads (see [Encounter.Record]). A rulebook that
-// cannot answer therefore leaves an outcome recorded and its consequences
-// unworked.
+// RecordTrain is the same shape for a reason worth naming, since the verb looks
+// atomic: it consults Standing AFTER appending its last unit's beats, because
+// those beats are the cause the consult reads (see [Encounter.RecordTrain]). A
+// rulebook that cannot answer therefore leaves an outcome recorded and its
+// consequences unworked.
 //
 // That is safe because of how this module is used, not by accident: every
 // caller loads, acts, and saves, so a verb returning an error means the

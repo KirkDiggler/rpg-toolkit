@@ -111,6 +111,12 @@ type contentGolden struct {
 	// factions existed picture byte-identically.
 	Factions     []encounter.FactionInput     `json:"factions,omitempty"`
 	Dispositions []encounter.DispositionInput `json:"dispositions,omitempty"`
+
+	// Templates are the stat blocks a document authored, carried as the
+	// strings they were written as (rpg-project#555). OMITTED WHEN EMPTY,
+	// so every file authored before templates existed pictures
+	// byte-identically.
+	Templates map[string]dungeonspec.TemplateSpec `json:"templates,omitempty"`
 }
 
 // goldenDoor is one compiled door in the committed picture: what it is
@@ -172,6 +178,7 @@ func contentGoldenOf(t *testing.T, path string) contentGolden {
 		Doors:           goldenDoorsOf(compiled.Field.Doors),
 		StructuralWalls: atlas.StructuralWalls,
 		StructuralDoors: atlas.StructuralDoors,
+		Templates:       compiled.Templates,
 	}
 }
 
@@ -213,6 +220,7 @@ func TestEveryContentFileCompilesToItsCommittedPicture(t *testing.T) {
 		"tomb-second-skeleton.yaml",
 		"world-builder-v3.yaml",
 		"world-builder-v4-site.yaml",
+		"world-builder-v4-castle-kitchen.yaml",
 		"world-builder-v4-front-room.yaml",
 		"world-builder-v4-raider-camp.yaml",
 		"world-builder-v4-raider-letter.yaml",

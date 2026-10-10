@@ -58,6 +58,16 @@ func assessmentFromDown(members, reported []encounter.MemberID) *encounter.Parti
 // question and is not in the answer.
 type downList struct {
 	down []encounter.MemberID
+
+	// partyDefeated is the rulebook's policy answer, for the scenes about
+	// which ending wins.
+	partyDefeated bool
+
+	// fail makes the capability unreachable, for the scenes about a verb that
+	// dies after it appended. With failAt set, only at that question (1-based).
+	fail   error
+	failAt int
+	calls  int
 }
 
 func (d *downList) Standing(members []encounter.MemberID) ([]encounter.MemberID, error) {
@@ -65,7 +75,13 @@ func (d *downList) Standing(members []encounter.MemberID) ([]encounter.MemberID,
 }
 
 func (d *downList) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
-	return assessmentFromDown(members, d.reported(members)), nil
+	d.calls++
+	if d.fail != nil && (d.failAt == 0 || d.calls == d.failAt) {
+		return nil, d.fail
+	}
+	assessment := assessmentFromDown(members, d.reported(members))
+	assessment.PartyDefeated = d.partyDefeated
+	return assessment, nil
 }
 
 func (d *downList) reported(members []encounter.MemberID) []encounter.MemberID {

@@ -3,6 +3,8 @@ package dungeonspec
 import (
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -322,7 +324,29 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		// compilers, both nil when the document declares none.
 		Scenarios: scenariosOf(spec.Scenarios),
 		Endings:   endingsOf(spec.Endings),
+		// AND THE STAT BLOCKS, carried as the strings they were authored as
+		// (rpg-project#555, design law C1): nil when the document declares
+		// none, so every room authored before them compiles as it did.
+		Templates: templatesOf(spec.Templates),
 	}, nil
+}
+
+// templatesOf deep-copies the authored stat blocks, [scenariosOf]'s reason
+// one root key over: the maps and lists inside a [TemplateSpec] are the
+// spec's own, and a caller holding the compile must not be able to reach
+// back through them. Nil for none.
+func templatesOf(templates map[string]TemplateSpec) map[string]TemplateSpec {
+	if len(templates) == 0 {
+		return nil
+	}
+	out := make(map[string]TemplateSpec, len(templates))
+	for id, t := range templates {
+		t.Abilities = maps.Clone(t.Abilities)
+		t.Skills = slices.Clone(t.Skills)
+		t.Actions = slices.Clone(t.Actions)
+		out[id] = t
+	}
+	return out
 }
 
 // CompileSingleRoomInput supplies a decoded single-room specification.

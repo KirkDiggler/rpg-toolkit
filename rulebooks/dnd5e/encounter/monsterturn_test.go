@@ -252,11 +252,11 @@ func (s *MonsterTurnTestSuite) TestRecordDrivingAMonsterLeavesItsMemoryAlone() {
 	s.Require().NoError(err)
 	down.down = []encounter.MemberID{alice}
 
-	out, err := enc.Record(&encounter.RecordInput{
+	out, err := enc.RecordTrain(&encounter.RecordTrainInput{Units: []encounter.TrainUnit{{Outcome: &encounter.RecordInput{
 		Kind: encounter.OutcomeStruck, Actor: billy, Targets: []encounter.MemberID{alice},
-	})
+	}}}})
 	s.Require().NoError(err)
-	s.Require().NotNil(out.IntelDeltas[goblin], "Record must surface the nested drive")
+	s.Require().NotNil(out.IntelDeltas[goblin], "RecordTrain must surface the nested drive")
 
 	after := requireHolding(s.T(), enc, goblin, billy)
 	s.Require().False(after.CurrentOn(perception.Sight))
@@ -392,7 +392,7 @@ func (s *stagedSight) Sight(members []encounter.MemberID) (map[encounter.MemberI
 }
 
 // scriptedStriker records every Strike call and, unless told to fail,
-// records a fixed outcome via [encounter.Encounter.Record] itself — the same
+// records a fixed outcome via [encounter.Encounter.RecordTrain] itself — the same
 // obligation a real Striker implementation carries.
 type scriptedStriker struct {
 	kind encounter.OutcomeKind
@@ -415,7 +415,7 @@ func (s *pausingStriker) Strike(_ context.Context, enc *encounter.Encounter, att
 		s.pause = false
 		return encounter.ErrStrikePaused
 	}
-	_, err := enc.Record(&encounter.RecordInput{Kind: encounter.OutcomeMissed, Actor: attacker, Targets: []encounter.MemberID{target}, Attack: &encounter.AttackIdentity{Ref: action.String(), Name: "Test Strike", DamageType: "bludgeoning"}})
+	_, err := recordOne(enc, &encounter.RecordInput{Kind: encounter.OutcomeMissed, Actor: attacker, Targets: []encounter.MemberID{target}, Attack: &encounter.AttackIdentity{Ref: action.String(), Name: "Test Strike", DamageType: "bludgeoning"}})
 	return err
 }
 
@@ -431,7 +431,7 @@ func (s *scriptedStriker) Strike(
 		return s.fail
 	}
 
-	_, err := enc.Record(&encounter.RecordInput{
+	_, err := recordOne(enc, &encounter.RecordInput{
 		Kind:    s.kind,
 		Actor:   attacker,
 		Targets: []encounter.MemberID{target},

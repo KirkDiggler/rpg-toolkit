@@ -66,7 +66,7 @@ func (s *OutcomeTestSuite) scene() *encounter.Encounter {
 func (s *OutcomeTestSuite) TestARuleResolvedElsewhereReachesTheStory() {
 	enc := s.scene()
 
-	out, err := enc.Record(&encounter.RecordInput{
+	out, err := recordOne(enc, &encounter.RecordInput{
 		Kind:    encounter.OutcomeStruck,
 		Actor:   alice,
 		Targets: []encounter.MemberID{goblin},
@@ -85,7 +85,7 @@ func (s *OutcomeTestSuite) TestARuleResolvedElsewhereReachesTheStory() {
 	s.Require().NoError(err)
 	s.Require().NotEmpty(story)
 	last := story[len(story)-1]
-	s.Equal(out.Seq, last.Seq, "RecordOutput.Seq references the beat it wrote")
+	s.Equal(out.Seq, last.Seq, "TrainLanded.Seq references the beat it wrote")
 	s.Equal("outcome", last.Tags["tag"])
 
 	var beat map[string]any
@@ -152,7 +152,7 @@ func (s *OutcomeTestSuite) TestAWardedAttackReachesTheStoryAndRejectsMismatches(
 	enc := s.wardScene()
 	detail := wardedSaveDetail()
 
-	out, err := enc.Record(&encounter.RecordInput{
+	out, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeWarded, Actor: alice, Targets: []encounter.MemberID{goblin}, Warded: detail,
 	})
 	s.Require().NoError(err)
@@ -177,12 +177,12 @@ func (s *OutcomeTestSuite) TestAWardedAttackReachesTheStoryAndRejectsMismatches(
 	s.Equal(false, save["succeeded"])
 
 	s.Run("missing detail", func() {
-		_, err := enc.Record(&encounter.RecordInput{Kind: encounter.OutcomeWarded, Actor: alice})
+		_, err := recordOne(enc, &encounter.RecordInput{Kind: encounter.OutcomeWarded, Actor: alice})
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	})
 
 	s.Run("detail on the wrong kind", func() {
-		_, err := enc.Record(&encounter.RecordInput{Kind: encounter.OutcomeMissed, Actor: alice, Warded: detail})
+		_, err := recordOne(enc, &encounter.RecordInput{Kind: encounter.OutcomeMissed, Actor: alice, Warded: detail})
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	})
 
@@ -190,7 +190,7 @@ func (s *OutcomeTestSuite) TestAWardedAttackReachesTheStoryAndRejectsMismatches(
 		inverted := &encounter.WardedDetail{Source: bob, Save: encounter.CastSave{
 			Saver: goblin, Ability: "wisdom", Roll: 6, Total: 8, DC: 15,
 		}}
-		_, err := enc.Record(&encounter.RecordInput{
+		_, err := recordOne(enc, &encounter.RecordInput{
 			Kind: encounter.OutcomeWarded, Actor: alice, Targets: []encounter.MemberID{goblin}, Warded: inverted,
 		})
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
@@ -199,7 +199,7 @@ func (s *OutcomeTestSuite) TestAWardedAttackReachesTheStoryAndRejectsMismatches(
 	s.Run("a succeeded save is not a ward", func() {
 		succeeded := wardedSaveDetail()
 		succeeded.Save.Succeeded = true
-		_, err := enc.Record(&encounter.RecordInput{
+		_, err := recordOne(enc, &encounter.RecordInput{
 			Kind: encounter.OutcomeWarded, Actor: alice, Targets: []encounter.MemberID{goblin}, Warded: succeeded,
 		})
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
@@ -207,7 +207,7 @@ func (s *OutcomeTestSuite) TestAWardedAttackReachesTheStoryAndRejectsMismatches(
 
 	s.Run("unknown source", func() {
 		unknown := &encounter.WardedDetail{Source: "nobody", Save: wardedSaveDetail().Save}
-		_, err := enc.Record(&encounter.RecordInput{
+		_, err := recordOne(enc, &encounter.RecordInput{
 			Kind: encounter.OutcomeWarded, Actor: alice, Targets: []encounter.MemberID{goblin}, Warded: unknown,
 		})
 		s.Require().ErrorIs(err, encounter.ErrNotMember)
@@ -227,7 +227,7 @@ func (s *OutcomeTestSuite) TestAWardOutlivesTheCasterWhoLeft() {
 	_, err := enc.Exit(&encounter.ExitInput{Member: bob})
 	s.Require().NoError(err)
 
-	out, err := enc.Record(&encounter.RecordInput{
+	out, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeWarded, Actor: alice, Targets: []encounter.MemberID{goblin}, Warded: wardedSaveDetail(),
 	})
 	s.Require().NoError(err, "the ward's caster left; the ward did not")
@@ -250,7 +250,7 @@ func (s *OutcomeTestSuite) TestAWardOutlivesTheCasterWhoLeft() {
 
 	s.Run("a source this encounter never held is still nobody", func() {
 		unknown := &encounter.WardedDetail{Source: "nobody", Save: wardedSaveDetail().Save}
-		_, err := enc.Record(&encounter.RecordInput{
+		_, err := recordOne(enc, &encounter.RecordInput{
 			Kind: encounter.OutcomeWarded, Actor: alice, Targets: []encounter.MemberID{goblin}, Warded: unknown,
 		})
 		s.Require().ErrorIs(err, encounter.ErrNotMember)
@@ -267,7 +267,7 @@ func (s *OutcomeTestSuite) TestABoughtItemReachesTheStoryAndRejectsMismatches() 
 	enc := s.scene()
 	detail := &encounter.TradeDetail{ItemType: "weapon", ItemID: "longsword", Quantity: 1}
 
-	out, err := enc.Record(&encounter.RecordInput{
+	out, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeBought, Actor: alice, Targets: []encounter.MemberID{goblin}, Trade: detail,
 	})
 	s.Require().NoError(err)
@@ -291,12 +291,12 @@ func (s *OutcomeTestSuite) TestABoughtItemReachesTheStoryAndRejectsMismatches() 
 		"closed detail has no caller prose field")
 
 	s.Run("missing detail", func() {
-		_, err := s.scene().Record(&encounter.RecordInput{Kind: encounter.OutcomeBought, Actor: alice})
+		_, err := recordOne(s.scene(), &encounter.RecordInput{Kind: encounter.OutcomeBought, Actor: alice})
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	})
 
 	s.Run("empty item id", func() {
-		_, err := s.scene().Record(&encounter.RecordInput{
+		_, err := recordOne(s.scene(), &encounter.RecordInput{
 			Kind: encounter.OutcomeBought, Actor: alice,
 			Trade: &encounter.TradeDetail{ItemType: "weapon", Quantity: 1},
 		})
@@ -304,7 +304,7 @@ func (s *OutcomeTestSuite) TestABoughtItemReachesTheStoryAndRejectsMismatches() 
 	})
 
 	s.Run("nonpositive quantity", func() {
-		_, err := s.scene().Record(&encounter.RecordInput{
+		_, err := recordOne(s.scene(), &encounter.RecordInput{
 			Kind: encounter.OutcomeBought, Actor: alice,
 			Trade: &encounter.TradeDetail{ItemType: "weapon", ItemID: "longsword"},
 		})
@@ -312,7 +312,7 @@ func (s *OutcomeTestSuite) TestABoughtItemReachesTheStoryAndRejectsMismatches() 
 	})
 
 	s.Run("detail on a mismatched kind", func() {
-		_, err := s.scene().Record(&encounter.RecordInput{
+		_, err := recordOne(s.scene(), &encounter.RecordInput{
 			Kind: encounter.OutcomeMissed, Actor: alice, Trade: detail,
 		})
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
@@ -328,7 +328,7 @@ func (s *OutcomeTestSuite) TestASoldItemReachesTheStoryAsItsOwnBeat() {
 	enc := s.scene()
 	detail := &encounter.TradeDetail{ItemType: "weapon", ItemID: "longsword", Quantity: 1}
 
-	out, err := enc.Record(&encounter.RecordInput{
+	out, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeSold, Actor: alice, Targets: []encounter.MemberID{goblin}, Trade: detail,
 	})
 	s.Require().NoError(err)
@@ -350,12 +350,12 @@ func (s *OutcomeTestSuite) TestASoldItemReachesTheStoryAsItsOwnBeat() {
 	s.Equal(*detail, got)
 
 	s.Run("missing detail", func() {
-		_, err := s.scene().Record(&encounter.RecordInput{Kind: encounter.OutcomeSold, Actor: alice})
+		_, err := recordOne(s.scene(), &encounter.RecordInput{Kind: encounter.OutcomeSold, Actor: alice})
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	})
 
 	s.Run("detail on a mismatched kind", func() {
-		_, err := s.scene().Record(&encounter.RecordInput{
+		_, err := recordOne(s.scene(), &encounter.RecordInput{
 			Kind: encounter.OutcomeMissed, Actor: alice, Trade: detail,
 		})
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
@@ -370,7 +370,7 @@ func (s *OutcomeTestSuite) TestASoldItemReachesTheStoryAsItsOwnBeat() {
 func (s *OutcomeTestSuite) TestARecordedStrikeCarriesWhatWasSwung() {
 	enc := s.scene()
 
-	_, err := enc.Record(&encounter.RecordInput{
+	_, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
 		Values: map[encounter.OutcomeValue]int{
 			encounter.ValueRoll: 20, encounter.ValueTotal: 25, encounter.ValueAgainst: 15, encounter.ValueAmount: 12,
@@ -428,7 +428,7 @@ func (s *OutcomeTestSuite) TestARecordedStrikeCarriesOrderedDetail() {
 
 	record := func() []byte {
 		enc := s.scene()
-		_, err := enc.Record(in)
+		_, err := recordOne(enc, in)
 		s.Require().NoError(err)
 		story, serr := enc.Story(&encounter.StoryInput{Audience: goblin})
 		s.Require().NoError(serr)
@@ -479,7 +479,7 @@ func (s *OutcomeTestSuite) TestARecordedStrikeCarriesOrderedDetail() {
 func (s *OutcomeTestSuite) TestARecordedStruckDamageComponentCarriesOrderedRollFacts() {
 	enc := s.scene()
 
-	_, err := enc.Record(&encounter.RecordInput{
+	_, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeStruck, Actor: alice,
 		Targets: []encounter.MemberID{goblin},
 		Values: map[encounter.OutcomeValue]int{
@@ -634,7 +634,7 @@ func (s *OutcomeTestSuite) TestRecordDamageComponentRollRefusals() {
 			components := gwfDamageComponents()
 			tc.change(components)
 
-			_, err := enc.Record(&encounter.RecordInput{
+			_, err := recordOne(enc, &encounter.RecordInput{
 				Kind: encounter.OutcomeStruck, Actor: alice,
 				Targets:          []encounter.MemberID{goblin},
 				DamageComponents: components,
@@ -653,7 +653,7 @@ func (s *OutcomeTestSuite) TestRecordDamageComponentRollRefusals() {
 		components := gwfDamageComponents()
 		components[1].Roll.Modifier = nil // second component loses its facts
 
-		_, err := enc.Record(&encounter.RecordInput{
+		_, err := recordOne(enc, &encounter.RecordInput{
 			Kind: encounter.OutcomeStruck, Actor: alice,
 			Targets:          []encounter.MemberID{goblin},
 			DamageComponents: components,
@@ -729,7 +729,7 @@ func (s *OutcomeTestSuite) TestARecordedStrikeCarriesSourcedSubtractiveDamageRol
 	components[0].Roll.Source.SourceID = "caster-a"
 	components[0].Roll.SubtractDice = true
 
-	out, err := enc.Record(&encounter.RecordInput{
+	out, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeStruck, Actor: alice,
 		Targets: []encounter.MemberID{goblin}, DamageComponents: components,
 	})
@@ -754,7 +754,7 @@ func (s *OutcomeTestSuite) TestARecordedStrikeCarriesSourcedSubtractiveDamageRol
 func (s *OutcomeTestSuite) TestARecordedMissCarriesNoCriticalKey() {
 	enc := s.scene()
 
-	_, err := enc.Record(&encounter.RecordInput{
+	_, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeMissed, Actor: alice, Targets: []encounter.MemberID{goblin},
 		Attack: &encounter.AttackIdentity{Ref: "longsword", Name: "Longsword", DamageType: "slashing"},
 	})
@@ -778,7 +778,7 @@ func (s *OutcomeTestSuite) TestARecordedMissCarriesNoCriticalKey() {
 // could not render the scene the rest of the party is standing in.
 func (s *OutcomeTestSuite) TestTheTargetHearsItToo() {
 	enc := s.scene()
-	_, err := enc.Record(&encounter.RecordInput{
+	_, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeMissed, Actor: alice, Targets: []encounter.MemberID{goblin},
 	})
 	s.Require().NoError(err)
@@ -859,6 +859,11 @@ func (s *OutcomeTestSuite) TestTheTargetHearsItToo() {
 // caller writing a sentence into it would be writing it into a field no
 // renderer displays.
 //
+// A SEQUENCE IS THE SAME ARGUMENT AS A REACTION: a ref and a display name,
+// held to the presence-not-meaning floor, naming the rulebook's multiattack
+// that a swing was performed inside. Neither field is a sentence a caller
+// composes; both are read off the sequence definition.
+//
 // CONCENTRATION BREAKS MAKE THE ARGUMENT TWICE, once for themselves and once
 // for what they carry. The break's own three fields are a member ID this
 // composition validates against its own roster, a spell identity held to the
@@ -872,7 +877,7 @@ func (s *OutcomeTestSuite) TestTheTargetHearsItToo() {
 func (s *OutcomeTestSuite) TestAnOutcomeCarriesNoProse() {
 	s.Equal([]string{
 		"Kind", "Actor", "Targets", "Values", "Critical", "Attack", "Reaction",
-		"DamageComponents", "AdvantageSources", "DisadvantageSources", "Calculation", "DeathSave", "Trade",
+		"Sequence", "DamageComponents", "AdvantageSources", "DisadvantageSources", "Calculation", "DeathSave", "Trade",
 		"Warded", "Experience", "PresentationID", "ConcentrationBreaks", "ConcentrationChecks",
 	}, structFieldNames(encounter.RecordInput{}),
 		"a new field on RecordInput needs an argument: free text here is prose "+
@@ -883,19 +888,19 @@ func (s *OutcomeTestSuite) TestAnOutcomeCarriesNoProse() {
 // what it stamps, which is the other half of owning the record.
 func (s *OutcomeTestSuite) TestRefusalsAreCheckedAgainstTheRoster() {
 	s.Run("nil input", func() {
-		_, err := s.scene().Record(nil)
+		_, err := recordOne(s.scene(), nil)
 		s.ErrorIs(err, encounter.ErrNilInput)
 	})
 
 	s.Run("a kind this composition does not know", func() {
-		_, err := s.scene().Record(&encounter.RecordInput{
+		_, err := recordOne(s.scene(), &encounter.RecordInput{
 			Kind: encounter.OutcomeKind("disintegrated"), Actor: alice,
 		})
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
 
 	s.Run("a value name this composition does not know", func() {
-		_, err := s.scene().Record(&encounter.RecordInput{
+		_, err := recordOne(s.scene(), &encounter.RecordInput{
 			Kind: encounter.OutcomeStruck, Actor: alice,
 			Values: map[encounter.OutcomeValue]int{encounter.OutcomeValue("temp_hp"): 3},
 		})
@@ -919,7 +924,7 @@ func (s *OutcomeTestSuite) TestRefusalsAreCheckedAgainstTheRoster() {
 			enc := s.scene()
 			beforeLog := enc.WorldView().Log
 
-			_, err := enc.Record(&encounter.RecordInput{
+			_, err := recordOne(enc, &encounter.RecordInput{
 				Kind: encounter.OutcomeStruck, Actor: alice,
 				DamageComponents: []encounter.DamageComponent{{
 					Source: "monster_trait",
@@ -940,19 +945,19 @@ func (s *OutcomeTestSuite) TestRefusalsAreCheckedAgainstTheRoster() {
 	}
 
 	s.Run("an actor who is not a member", func() {
-		_, err := s.scene().Record(&encounter.RecordInput{
+		_, err := recordOne(s.scene(), &encounter.RecordInput{
 			Kind: encounter.OutcomeStruck, Actor: "nobody",
 		})
 		s.ErrorIs(err, encounter.ErrNotMember)
 	})
 
 	s.Run("an empty actor", func() {
-		_, err := s.scene().Record(&encounter.RecordInput{Kind: encounter.OutcomeStruck})
+		_, err := recordOne(s.scene(), &encounter.RecordInput{Kind: encounter.OutcomeStruck})
 		s.ErrorIs(err, encounter.ErrNoMember)
 	})
 
 	s.Run("a target who is not a member", func() {
-		_, err := s.scene().Record(&encounter.RecordInput{
+		_, err := recordOne(s.scene(), &encounter.RecordInput{
 			Kind: encounter.OutcomeStruck, Actor: alice,
 			Targets: []encounter.MemberID{"ghost"},
 		})
@@ -963,7 +968,7 @@ func (s *OutcomeTestSuite) TestRefusalsAreCheckedAgainstTheRoster() {
 		enc := s.scene()
 		_, err := enc.End(&encounter.EndInput{Ending: "withdrawn"})
 		s.Require().NoError(err)
-		_, err = enc.Record(&encounter.RecordInput{
+		_, err = recordOne(enc, &encounter.RecordInput{
 			Kind: encounter.OutcomeStruck, Actor: alice,
 		})
 		s.ErrorIs(err, encounter.ErrClosed)
@@ -977,7 +982,7 @@ func (s *OutcomeTestSuite) TestRefusalsAreCheckedAgainstTheRoster() {
 // this is presence, not meaning.
 func (s *OutcomeTestSuite) TestAnAttackWithNoRefOrNameIsRefused() {
 	s.Run("empty ref", func() {
-		_, err := s.scene().Record(&encounter.RecordInput{
+		_, err := recordOne(s.scene(), &encounter.RecordInput{
 			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
 			Attack: &encounter.AttackIdentity{Name: "Longsword", DamageType: "slashing"},
 		})
@@ -985,7 +990,7 @@ func (s *OutcomeTestSuite) TestAnAttackWithNoRefOrNameIsRefused() {
 	})
 
 	s.Run("empty name", func() {
-		_, err := s.scene().Record(&encounter.RecordInput{
+		_, err := recordOne(s.scene(), &encounter.RecordInput{
 			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
 			Attack: &encounter.AttackIdentity{Ref: "longsword", DamageType: "slashing"},
 		})
@@ -993,7 +998,7 @@ func (s *OutcomeTestSuite) TestAnAttackWithNoRefOrNameIsRefused() {
 	})
 
 	s.Run("both empty", func() {
-		_, err := s.scene().Record(&encounter.RecordInput{
+		_, err := recordOne(s.scene(), &encounter.RecordInput{
 			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
 			Attack: &encounter.AttackIdentity{},
 		})
@@ -1005,7 +1010,7 @@ func (s *OutcomeTestSuite) TestAnAttackWithNoRefOrNameIsRefused() {
 // — see TestAnAttackWithNoRefOrNameIsRefused. Presence, not meaning.
 func (s *OutcomeTestSuite) TestAReactionWithNoRefOrNameIsRefused() {
 	s.Run("empty ref", func() {
-		_, err := s.scene().Record(&encounter.RecordInput{
+		_, err := recordOne(s.scene(), &encounter.RecordInput{
 			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
 			Reaction: &encounter.ReactionIdentity{Name: "Opportunity Attack"},
 		})
@@ -1013,7 +1018,7 @@ func (s *OutcomeTestSuite) TestAReactionWithNoRefOrNameIsRefused() {
 	})
 
 	s.Run("empty name", func() {
-		_, err := s.scene().Record(&encounter.RecordInput{
+		_, err := recordOne(s.scene(), &encounter.RecordInput{
 			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
 			Reaction: &encounter.ReactionIdentity{Ref: "dnd5e:conditions:opportunity_attack"},
 		})
@@ -1021,7 +1026,7 @@ func (s *OutcomeTestSuite) TestAReactionWithNoRefOrNameIsRefused() {
 	})
 
 	s.Run("both empty", func() {
-		_, err := s.scene().Record(&encounter.RecordInput{
+		_, err := recordOne(s.scene(), &encounter.RecordInput{
 			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
 			Reaction: &encounter.ReactionIdentity{},
 		})
@@ -1040,7 +1045,7 @@ func (s *OutcomeTestSuite) TestAReactionWithNoRefOrNameIsRefused() {
 func (s *OutcomeTestSuite) TestTheBeatSaysWhichReactionItWas() {
 	s.Run("a reaction names itself", func() {
 		enc := s.scene()
-		_, err := enc.Record(&encounter.RecordInput{
+		_, err := recordOne(enc, &encounter.RecordInput{
 			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
 			Values: map[encounter.OutcomeValue]int{encounter.ValueAmount: 7},
 			Reaction: &encounter.ReactionIdentity{
@@ -1062,7 +1067,7 @@ func (s *OutcomeTestSuite) TestTheBeatSaysWhichReactionItWas() {
 
 	s.Run("an ordinary swing carries no reaction key", func() {
 		enc := s.scene()
-		_, err := enc.Record(&encounter.RecordInput{
+		_, err := recordOne(enc, &encounter.RecordInput{
 			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
 			Values: map[encounter.OutcomeValue]int{encounter.ValueAmount: 7},
 		})
@@ -1100,7 +1105,7 @@ func (s *OutcomeTestSuite) TestTheOutcomeLandsAfterTheVerbThatCausedIt() {
 	s.Require().NoError(err)
 	s.Require().Nil(moved.Formed, "the wall keeps this walk quiet")
 
-	recorded, err := enc.Record(&encounter.RecordInput{
+	recorded, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeMissed, Actor: alice, Targets: []encounter.MemberID{goblin},
 	})
 	s.Require().NoError(err)
@@ -1134,7 +1139,7 @@ func (s *OutcomeTestSuite) TestTheOutcomeLandsAfterTheVerbThatCausedIt() {
 func (s *OutcomeTestSuite) TestAStrikeCarriesTheRollsPresentationToken() {
 	s.Run("a hit carries it", func() {
 		enc := s.scene()
-		_, err := enc.Record(&encounter.RecordInput{
+		_, err := recordOne(enc, &encounter.RecordInput{
 			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
 			Attack:         &encounter.AttackIdentity{Ref: "longsword", Name: "Longsword", DamageType: "slashing"},
 			PresentationID: "roll-abc",
@@ -1145,7 +1150,7 @@ func (s *OutcomeTestSuite) TestAStrikeCarriesTheRollsPresentationToken() {
 
 	s.Run("a miss carries it too", func() {
 		enc := s.scene()
-		_, err := enc.Record(&encounter.RecordInput{
+		_, err := recordOne(enc, &encounter.RecordInput{
 			Kind: encounter.OutcomeMissed, Actor: alice, Targets: []encounter.MemberID{goblin},
 			Attack:         &encounter.AttackIdentity{Ref: "longsword", Name: "Longsword", DamageType: "slashing"},
 			PresentationID: "roll-def",
@@ -1156,7 +1161,7 @@ func (s *OutcomeTestSuite) TestAStrikeCarriesTheRollsPresentationToken() {
 
 	s.Run("a swing nobody declared writes no key", func() {
 		enc := s.scene()
-		_, err := enc.Record(&encounter.RecordInput{
+		_, err := recordOne(enc, &encounter.RecordInput{
 			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
 			Attack: &encounter.AttackIdentity{Ref: "longsword", Name: "Longsword", DamageType: "slashing"},
 		})
@@ -1176,7 +1181,7 @@ func (s *OutcomeTestSuite) TestAStrikeCarriesTheRollsPresentationToken() {
 // match its kind: fail closed, at the door, before anything is appended.
 func (s *OutcomeTestSuite) TestAPresentationTokenOnAKindThatCarriesItsOwnIsRefused() {
 	s.Run("death save", func() {
-		_, err := s.scene().Record(&encounter.RecordInput{
+		_, err := recordOne(s.scene(), &encounter.RecordInput{
 			Kind: encounter.OutcomeDeathSave, Actor: alice,
 			DeathSave: &encounter.DeathSaveDetail{
 				Outcome: "success", Continuation: "end_turn", PresentationID: "roll-abc",
@@ -1187,7 +1192,7 @@ func (s *OutcomeTestSuite) TestAPresentationTokenOnAKindThatCarriesItsOwnIsRefus
 	})
 
 	s.Run("a trade rolls nothing", func() {
-		_, err := s.scene().Record(&encounter.RecordInput{
+		_, err := recordOne(s.scene(), &encounter.RecordInput{
 			Kind: encounter.OutcomeBought, Actor: alice,
 			Trade:          &encounter.TradeDetail{ItemType: "weapon", ItemID: "longsword", Quantity: 1},
 			PresentationID: "roll-abc",
@@ -1239,7 +1244,7 @@ func attackCalculation(roll, modifier, penalty int) *encounter.RollCalculation {
 func (s *OutcomeTestSuite) TestAttackCalculationRoundTripsAndScalarOnlyIsRefused() {
 	enc := s.scene()
 	calculation := attackCalculation(17, 5, 3)
-	out, err := enc.Record(&encounter.RecordInput{
+	out, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
 		Values: map[encounter.OutcomeValue]int{
 			encounter.ValueRoll: 17, encounter.ValueTotal: 19, encounter.ValueAgainst: 15,
@@ -1255,7 +1260,7 @@ func (s *OutcomeTestSuite) TestAttackCalculationRoundTripsAndScalarOnlyIsRefused
 	s.Require().NoError(json.Unmarshal(entries.Payload, &payload))
 	s.Equal(*calculation, payload.Calculation)
 
-	_, err = s.scene().Record(&encounter.RecordInput{
+	_, err = recordOne(s.scene(), &encounter.RecordInput{
 		Kind: encounter.OutcomeMissed, Actor: alice, Targets: []encounter.MemberID{goblin},
 		Values: map[encounter.OutcomeValue]int{encounter.ValueRoll: 3, encounter.ValueTotal: 8},
 	})
@@ -1272,7 +1277,7 @@ func (s *OutcomeTestSuite) TestDeathSaveCalculationRoundTripsAndMalformedDataIsR
 	calculation.Total = 8
 
 	enc := s.scene()
-	out, err := enc.Record(&encounter.RecordInput{
+	out, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeDeathSave, Actor: alice,
 		DeathSave: &encounter.DeathSaveDetail{
 			Roll: 12, Outcome: "failure", FailuresAdded: 1, Failures: 1,
@@ -1291,7 +1296,7 @@ func (s *OutcomeTestSuite) TestDeathSaveCalculationRoundTripsAndMalformedDataIsR
 
 	bad := *calculation
 	bad.Total++
-	_, err = s.scene().Record(&encounter.RecordInput{
+	_, err = recordOne(s.scene(), &encounter.RecordInput{
 		Kind: encounter.OutcomeDeathSave, Actor: alice,
 		DeathSave: &encounter.DeathSaveDetail{
 			Roll: 12, Outcome: "failure", Continuation: "end_turn",
@@ -1385,7 +1390,7 @@ func (s *OutcomeTestSuite) TestAGrantOfExperienceReachesTheStoryAndRejectsMismat
 	enc := s.trio()
 	detail := aGrant()
 
-	out, err := enc.Record(&encounter.RecordInput{
+	out, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeExperienceGained, Actor: goblin, Experience: detail,
 	})
 	s.Require().NoError(err)
@@ -1413,14 +1418,14 @@ func (s *OutcomeTestSuite) TestAGrantOfExperienceReachesTheStoryAndRejectsMismat
 		"and neither does one grant")
 
 	s.Run("missing detail", func() {
-		_, err := s.trio().Record(&encounter.RecordInput{
+		_, err := recordOne(s.trio(), &encounter.RecordInput{
 			Kind: encounter.OutcomeExperienceGained, Actor: goblin,
 		})
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	})
 
 	s.Run("no cause", func() {
-		_, err := s.trio().Record(&encounter.RecordInput{
+		_, err := recordOne(s.trio(), &encounter.RecordInput{
 			Kind: encounter.OutcomeExperienceGained, Actor: goblin,
 			Experience: &encounter.ExperienceDetail{
 				Grants: []encounter.ExperienceGrant{{Character: string(alice), Amount: 50, Total: 350}},
@@ -1430,7 +1435,7 @@ func (s *OutcomeTestSuite) TestAGrantOfExperienceReachesTheStoryAndRejectsMismat
 	})
 
 	s.Run("nobody was paid", func() {
-		_, err := s.trio().Record(&encounter.RecordInput{
+		_, err := recordOne(s.trio(), &encounter.RecordInput{
 			Kind: encounter.OutcomeExperienceGained, Actor: goblin,
 			Experience: &encounter.ExperienceDetail{Member: string(goblin)},
 		})
@@ -1438,7 +1443,7 @@ func (s *OutcomeTestSuite) TestAGrantOfExperienceReachesTheStoryAndRejectsMismat
 	})
 
 	s.Run("a grant naming nobody", func() {
-		_, err := s.trio().Record(&encounter.RecordInput{
+		_, err := recordOne(s.trio(), &encounter.RecordInput{
 			Kind: encounter.OutcomeExperienceGained, Actor: goblin,
 			Experience: &encounter.ExperienceDetail{
 				Member: string(goblin),
@@ -1451,7 +1456,7 @@ func (s *OutcomeTestSuite) TestAGrantOfExperienceReachesTheStoryAndRejectsMismat
 	// A zero is not a grant: the session does not record one, so a beat
 	// claiming it is a story about nothing happening.
 	s.Run("a grant of zero", func() {
-		_, err := s.trio().Record(&encounter.RecordInput{
+		_, err := recordOne(s.trio(), &encounter.RecordInput{
 			Kind: encounter.OutcomeExperienceGained, Actor: goblin,
 			Experience: &encounter.ExperienceDetail{
 				Member: string(goblin),
@@ -1462,7 +1467,7 @@ func (s *OutcomeTestSuite) TestAGrantOfExperienceReachesTheStoryAndRejectsMismat
 	})
 
 	s.Run("a grant that takes experience away", func() {
-		_, err := s.trio().Record(&encounter.RecordInput{
+		_, err := recordOne(s.trio(), &encounter.RecordInput{
 			Kind: encounter.OutcomeExperienceGained, Actor: goblin,
 			Experience: &encounter.ExperienceDetail{
 				Member: string(goblin),
@@ -1473,14 +1478,14 @@ func (s *OutcomeTestSuite) TestAGrantOfExperienceReachesTheStoryAndRejectsMismat
 	})
 
 	s.Run("detail on a mismatched kind", func() {
-		_, err := s.trio().Record(&encounter.RecordInput{
+		_, err := recordOne(s.trio(), &encounter.RecordInput{
 			Kind: encounter.OutcomeMissed, Actor: alice, Experience: aGrant(),
 		})
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	})
 
 	s.Run("an unknown grantee is not this composition's question", func() {
-		_, err := s.trio().Record(&encounter.RecordInput{
+		_, err := recordOne(s.trio(), &encounter.RecordInput{
 			Kind: encounter.OutcomeExperienceGained, Actor: goblin,
 			Experience: &encounter.ExperienceDetail{
 				Member: string(goblin),
@@ -1505,7 +1510,7 @@ func (s *OutcomeTestSuite) TestAGrantOfExperienceReachesTheStoryAndRejectsMismat
 func (s *OutcomeTestSuite) TestEveryGranteeCanReadTheirOwnGrant() {
 	enc := s.trio()
 
-	out, err := enc.Record(&encounter.RecordInput{
+	out, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeExperienceGained, Actor: goblin, Experience: aGrant(),
 	})
 	s.Require().NoError(err)
@@ -1526,7 +1531,7 @@ func (s *OutcomeTestSuite) TestEveryGranteeCanReadTheirOwnGrant() {
 func (s *OutcomeTestSuite) TestGrantsAreRecordedInAStableOrder() {
 	enc := s.trio()
 
-	_, err := enc.Record(&encounter.RecordInput{
+	_, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeExperienceGained, Actor: goblin,
 		Experience: &encounter.ExperienceDetail{
 			Member: string(goblin),
@@ -1559,7 +1564,7 @@ func (s *OutcomeTestSuite) TestExperienceIsRecordableAfterTheRunEnds() {
 	enc := s.bossScene(down)
 
 	down.down = []encounter.MemberID{goblin}
-	_, err := enc.Record(&encounter.RecordInput{
+	_, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
 		Values: map[encounter.OutcomeValue]int{encounter.ValueAmount: 9},
 	})
@@ -1571,7 +1576,7 @@ func (s *OutcomeTestSuite) TestExperienceIsRecordableAfterTheRunEnds() {
 	s.Require().NotNil(status.Outcome)
 	s.Equal("boss-down", status.Outcome.Ending)
 
-	out, err := enc.Record(&encounter.RecordInput{
+	out, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeExperienceGained, Actor: goblin, Experience: aGrant(),
 	})
 	s.Require().NoError(err, "the fall that ended the run still pays for itself")
@@ -1579,7 +1584,7 @@ func (s *OutcomeTestSuite) TestExperienceIsRecordableAfterTheRunEnds() {
 	s.Equal("experience_gained", s.lastBeat(enc)["beat"])
 
 	s.Run("and nothing else gets in behind it", func() {
-		_, err := enc.Record(&encounter.RecordInput{
+		_, err := recordOne(enc, &encounter.RecordInput{
 			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
 			Values: map[encounter.OutcomeValue]int{encounter.ValueAmount: 9},
 		})
@@ -1593,7 +1598,7 @@ func (s *OutcomeTestSuite) TestExperienceIsRecordableAfterTheRunEnds() {
 	// happen against a roster the run already settled.
 	s.Run("and the settled world is not consulted again", func() {
 		down.down = []encounter.MemberID{goblin, bob}
-		_, err := enc.Record(&encounter.RecordInput{
+		_, err := recordOne(enc, &encounter.RecordInput{
 			Kind: encounter.OutcomeExperienceGained, Actor: goblin,
 			Experience: &encounter.ExperienceDetail{
 				Member: string(goblin),
@@ -1620,7 +1625,7 @@ func (s *OutcomeTestSuite) TestExperienceIsRecordableAfterTheRunEnds() {
 func (s *OutcomeTestSuite) TestAGrantSurvivesTheRoundTrip() {
 	enc := s.trio()
 
-	out, err := enc.Record(&encounter.RecordInput{
+	out, err := recordOne(enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeExperienceGained, Actor: goblin, Experience: aGrant(),
 	})
 	s.Require().NoError(err)
@@ -1659,4 +1664,19 @@ func (s *OutcomeTestSuite) TestAGrantSurvivesTheRoundTrip() {
 	var got encounter.ExperienceDetail
 	s.Require().NoError(json.Unmarshal(raw, &got))
 	s.Equal(*aGrant(), got, "every primitive comes back off the blob")
+}
+
+// recordOne tells one outcome as a train of one, the way every single-outcome
+// caller does, and reports where it landed. A nil outcome is a nil train: the
+// refusal tests ask the verb about nil, not the helper.
+func recordOne(e *encounter.Encounter, in *encounter.RecordInput) (*encounter.TrainLanded, error) {
+	var train *encounter.RecordTrainInput
+	if in != nil {
+		train = &encounter.RecordTrainInput{Units: []encounter.TrainUnit{{Outcome: in}}}
+	}
+	out, err := e.RecordTrain(train)
+	if err != nil {
+		return nil, err
+	}
+	return &out.Units[0], nil
 }

@@ -102,7 +102,7 @@ func loadMonster(d *Data, policy conditionPolicy) (*Monster, error) {
 		reactionSpent:    d.ReactionSpent,
 		subscriptionIDs:  make([]string, 0),
 		actions:          make([]combatActions.Definition, 0, len(d.Actions)),
-		proficiencies:    make(map[string]int),
+		proficiencies:    proficienciesOf(d.Proficiencies),
 		conditions:       make([]dnd5eEvents.ConditionBehavior, 0, len(d.Conditions)),
 	}
 
@@ -110,11 +110,6 @@ func loadMonster(d *Data, policy conditionPolicy) (*Monster, error) {
 		if err := m.AddAction(definition); err != nil {
 			return nil, rpgerr.Wrapf(err, "failed to load monster action %d", index)
 		}
-	}
-
-	// Load proficiencies
-	for _, prof := range d.Proficiencies {
-		m.proficiencies[prof.Skill] = prof.Bonus
 	}
 
 	if policy == dropConditions {

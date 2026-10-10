@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -289,4 +290,257 @@ func mustEncode(t *testing.T, spec *SingleRoomSpec) []byte {
 	require.NoError(t, err)
 
 	return b
+}
+
+// castleKitchen is the templates fixture (rpg-project#555, T2).
+const castleKitchen = "testdata/world-builder-v4-castle-kitchen.yaml"
+
+// TestCastleKitchenCompilesTemplates is the dialect's carry claim: three
+// authored stat blocks come out of the compile as the strings that went in,
+// keyed by the author's ids, and a placement naming one keeps its ref
+// unchanged (design law C1 — nothing here knows what `guard` is).
+func TestCastleKitchenCompilesTemplates(t *testing.T) {
+	raw, err := os.ReadFile(castleKitchen)
+	require.NoError(t, err)
+	compiled, err := Load(raw)
+	require.NoError(t, err)
+
+	require.Equal(t, map[string]TemplateSpec{
+		"guard": {
+			Base:      "dnd5e:monsters:human",
+			Abilities: map[string]int{"str": 13, "con": 12, "wis": 11},
+			HitDice:   "2d8",
+			Armor:     "dnd5e:armor:chain-shirt",
+			Skills:    []string{"perception"},
+			Actions:   []string{"dnd5e:weapons:spear"},
+		},
+		"captain": {
+			Base:        "dnd5e:monsters:human",
+			Abilities:   map[string]int{"str": 15, "dex": 14, "con": 14, "cha": 14},
+			HitDice:     "10d8",
+			Armor:       "dnd5e:armor:breastplate",
+			Proficiency: 3,
+			Actions:     []string{"dnd5e:weapons:longsword", "dnd5e:weapons:javelin"},
+		},
+		"cook": {
+			Base:    "dnd5e:monsters:human",
+			Actions: []string{"dnd5e:weapons:dagger"},
+		},
+	}, compiled.Templates)
+
+	refs := make([]string, 0, len(compiled.Monsters))
+	for _, m := range compiled.Monsters {
+		refs = append(refs, m.Ref)
+	}
+	require.Equal(t, []string{"dnd5e:monsters:guard", "dnd5e:monsters:guard", "dnd5e:monsters:cook"}, refs,
+		"a placement naming a template carries its ref verbatim")
+
+	t.Run("the compile owns its copy", func(t *testing.T) {
+		decoded, err := DecodeSingleRoom(SingleRoomDecodeInput{Source: raw})
+		require.NoError(t, err)
+		out, err := CompileSingleRoom(CompileSingleRoomInput{Spec: decoded.Spec})
+		require.NoError(t, err)
+		out.Templates["guard"].Abilities["str"] = 30
+		out.Templates["guard"].Actions[0] = "dnd5e:weapons:club"
+		out.Templates["guard"].Skills[0] = "stealth"
+		require.Equal(t, 13, decoded.Spec.Templates["guard"].Abilities["str"])
+		require.Equal(t, "dnd5e:weapons:spear", decoded.Spec.Templates["guard"].Actions[0])
+		require.Equal(t, "perception", decoded.Spec.Templates["guard"].Skills[0])
+	})
+
+	t.Run("no templates key compiles to nil", func(t *testing.T) {
+		v3, err := os.ReadFile("testdata/world-builder-v3.yaml")
+		require.NoError(t, err)
+		out, err := Load(v3)
+		require.NoError(t, err)
+		require.Nil(t, out.Templates)
+	})
+}
+
+// TestTemplateShapeRefusals is every shape a template can be refused for,
+// one edit of the castle fixture each, at the path the World Builder draws
+// it at. Nothing below resolves a ref (design law C1).
+func TestTemplateShapeRefusals(t *testing.T) {
+	raw, err := os.ReadFile(castleKitchen)
+	require.NoError(t, err)
+	guardBase := "  guard:\n    base: dnd5e:monsters:human\n"
+	cases := []struct {
+		name, old, repl, path, message string
+	}{
+		{
+			name: "base names a weapon", old: guardBase,
+			repl: "  guard:\n    base: dnd5e:weapons:spear\n",
+			path: "templates.guard.base", message: "must reference monsters: a template's base is dnd5e:monsters:<id>",
+		},
+		{
+			name: "base is not a ref", old: guardBase,
+			repl: "  guard:\n    base: human\n",
+			path: "templates.guard.base", message: "invalid ref: ",
+		},
+		{
+			name: "base is an empty string", old: guardBase,
+			repl: "  guard:\n    base: \"\"\n",
+			path: "templates.guard.base", message: "is required",
+		},
+		{
+			name: "base is missing", old: "  cook:\n    base: dnd5e:monsters:human\n",
+			repl: "  cook:\n",
+			path: "templates.cook.base", message: "is required",
+		},
+		{
+			name: "hit dice without a count", old: "hitDice: 2d8", repl: "hitDice: d8",
+			path:    "templates.guard.hitDice",
+			message: `"d8" is not hit dice: hit dice are written NdM with N and M at least 1, like 2d8`,
+		},
+		{
+			name: "hit dice of zero dice", old: "hitDice: 2d8", repl: "hitDice: 0d8",
+			path:    "templates.guard.hitDice",
+			message: `"0d8" is not hit dice: hit dice are written NdM with N and M at least 1, like 2d8`,
+		},
+		{
+			name: "hit dice as a number", old: "hitDice: 2d8", repl: "hitDice: 2",
+			path: "templates.guard.hitDice", message: "must be a string",
+		},
+		{
+			name: "an ability that is not one", old: "{ str: 13, con: 12, wis: 11 }", repl: "{ luck: 12 }",
+			path:    "templates.guard.abilities.luck",
+			message: `"luck" is not an ability: an ability is one of str|dex|con|int|wis|cha`,
+		},
+		{
+			name: "a score of zero", old: "{ str: 13, con: 12, wis: 11 }", repl: "{ str: 0 }",
+			path: "templates.guard.abilities.str", message: "must be between 1 and 30",
+		},
+		{
+			name: "a score past thirty", old: "{ str: 13, con: 12, wis: 11 }", repl: "{ str: 31 }",
+			path: "templates.guard.abilities.str", message: "must be between 1 and 30",
+		},
+		{
+			name: "a fractional score", old: "{ str: 13, con: 12, wis: 11 }", repl: "{ str: 12.5 }",
+			path: "templates.guard.abilities.str", message: "must be an integer",
+		},
+		{
+			// 13.0 is the case only the node walk sees: yaml.v3 decodes an
+			// integral float into an int without a word.
+			name: "an integral float score", old: "{ str: 13, con: 12, wis: 11 }", repl: "{ str: 13.0 }",
+			path: "templates.guard.abilities.str", message: "must be an integer",
+		},
+		{
+			name: "a negative proficiency", old: "proficiency: 3", repl: "proficiency: -1",
+			path: "templates.captain.proficiency", message: "must not be negative",
+		},
+		{
+			name: "a negative experience", old: "hitDice: 2d8", repl: "hitDice: 2d8\n    experience: -50",
+			path: "templates.guard.experience", message: "must not be negative",
+		},
+		{
+			name: "a proficiency written as a float", old: "proficiency: 3", repl: "proficiency: 3.0",
+			path: "templates.captain.proficiency", message: "must be an integer",
+		},
+		{
+			name: "an experience written as a float", old: "hitDice: 2d8", repl: "hitDice: 2d8\n    experience: 10.0",
+			path: "templates.guard.experience", message: "must be an integer",
+		},
+		{
+			name: "bare armor, no ref", old: "armor: dnd5e:armor:chain-shirt", repl: "armor: chain-shirt",
+			path: "templates.guard.armor", message: `"chain-shirt" is not a ref: `,
+		},
+		{
+			name: "armor that names a weapon", old: "armor: dnd5e:armor:chain-shirt", repl: "armor: dnd5e:weapons:spear",
+			path:    "templates.guard.armor",
+			message: `"dnd5e:weapons:spear" is not armor: a template's armor is named as dnd5e:armor:<id>`,
+		},
+		{
+			name: "an action that is not a weapon", old: "actions: [dnd5e:weapons:spear]", repl: "actions: [dnd5e:armor:shield]",
+			path:    "templates.guard.actions[0]",
+			message: `"dnd5e:armor:shield" is not a weapon: an action names a weapon as dnd5e:weapons:<id>`,
+		},
+		{
+			name: "a skill that is not a lowercase id", old: "skills: [perception]", repl: "skills: [Perception]",
+			path:    "templates.guard.skills[0]",
+			message: `"Perception" is not a skill id: a skill is named in lowercase, like perception or sleight-of-hand`,
+		},
+		{
+			name: "a template id a ref cannot carry", old: "  cook:\n", repl: "  \"head cook\":\n",
+			path:    "templates.head cook",
+			message: `"head cook" is not a template id: a template is placed as dnd5e:monsters:<id>, so its id is one ref segment`,
+		},
+		{
+			// core accepts a multi-part id (`dnd5e:monsters:a:b`), so only the
+			// one-segment rule refuses this key.
+			name: "a template id with a colon", old: "  cook:\n", repl: "  \"a:b\":\n",
+			path:    "templates.a:b",
+			message: `"a:b" is not a template id: a template is placed as dnd5e:monsters:<id>, so its id is one ref segment`,
+		},
+		{
+			name: "a stored derived number", old: "hitDice: 2d8", repl: "hitDice: 2d8\n    hitPoints: 11",
+			path: "templates.guard.hitPoints", message: "is not a key this build reads",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, 1, strings.Count(string(raw), tc.old), "the edit names one place in the fixture")
+			edited := strings.Replace(string(raw), tc.old, tc.repl, 1)
+			_, err := DecodeSingleRoom(SingleRoomDecodeInput{Source: []byte(edited)})
+			require.Error(t, err)
+			require.True(t, errors.Is(err, ErrBadSpec))
+			var validation *ValidationError
+			require.ErrorAs(t, err, &validation)
+			// ONE DEFECT, ONE PATH. A defect may be refused in two true
+			// sentences — `hitDice: 2` is not text AND not NdM, as `facing: 5`
+			// is not text and not a compass word — but never at a second place.
+			said := false
+			for _, e := range validation.Errors {
+				require.Equal(t, tc.path, e.Path, "every refusal is at the edited path: %v", validation.Errors)
+				said = said || strings.Contains(e.Message, tc.message)
+			}
+			require.True(t, said, "%q is among %v", tc.message, validation.Errors)
+		})
+	}
+
+	// EVERY DEFECT AT ONCE: the decode-only fixture carries five refusals in
+	// five templates, and the decoder names all of them rather than the
+	// first.
+	t.Run("every defect in one file is reported", func(t *testing.T) {
+		src, err := os.ReadFile("testdata/decode-only/templates-shape-refused.yaml")
+		require.NoError(t, err)
+		_, err = DecodeSingleRoom(SingleRoomDecodeInput{Source: src})
+		var validation *ValidationError
+		require.ErrorAs(t, err, &validation)
+		paths := make([]string, 0, len(validation.Errors))
+		for _, e := range validation.Errors {
+			paths = append(paths, e.Path)
+		}
+		require.Equal(t, []string{
+			"templates.gambler.abilities.luck",
+			"templates.husk.abilities.str",
+			"templates.sentry.hitDice",
+			"templates.spearman.base",
+			"templates.squire.armor",
+		}, paths)
+	})
+}
+
+// TestTemplateCannotDeriveFromATemplate pins the one relation between
+// templates the dialect refuses: a base that names another template this
+// file declares. Templates derive from the rulebook, not from each other.
+func TestTemplateCannotDeriveFromATemplate(t *testing.T) {
+	src, err := os.ReadFile("testdata/decode-only/templates-derive-from-a-template.yaml")
+	require.NoError(t, err)
+	_, err = DecodeSingleRoom(SingleRoomDecodeInput{Source: src})
+	require.True(t, errors.Is(err, ErrBadSpec))
+	var validation *ValidationError
+	require.ErrorAs(t, err, &validation)
+	require.Equal(t, []FieldError{{
+		Path:    "templates.captain.base",
+		Message: `"dnd5e:monsters:guard" is a template this file declares: templates derive from the rulebook, not from each other`,
+	}}, validation.Errors)
+
+	// A PLACEMENT NAMING A TEMPLATE IS LEGAL, and whether that id ALSO names
+	// a rulebook monster is not asked here (design law C1; the session
+	// refuses a shadow). Only the base relation is the dialect's.
+	t.Run("the guard alone decodes", func(t *testing.T) {
+		fixed := strings.Replace(string(src), "base: dnd5e:monsters:guard", "base: dnd5e:monsters:human", 1)
+		_, err := DecodeSingleRoom(SingleRoomDecodeInput{Source: []byte(fixed)})
+		require.NoError(t, err)
+	})
 }

@@ -42,7 +42,7 @@ func TestKillingBlowSuite(t *testing.T) {
 func (s *KillingBlowSuite) blow(enc *encounter.Encounter, target encounter.MemberID) (uint64, error) {
 	s.T().Helper()
 
-	out, err := enc.Record(&encounter.RecordInput{
+	out, err := recordOne(enc, &encounter.RecordInput{
 		Kind:    encounter.OutcomeStruck,
 		Actor:   alice,
 		Targets: []encounter.MemberID{target},
@@ -150,7 +150,7 @@ func (s *KillingBlowSuite) TestTheBeatOrderIsCauseThenEffect() {
 // TestTheRecordedSeqIsTheOutcomeBeatNotTheLastOne pins which beat the caller is
 // told about, and the distinction now has teeth.
 //
-// Record appends up to three beats in a pass, and RecordOutput.Seq names ONE of
+// RecordTrain appends up to three beats in a pass, and TrainLanded.Seq names ONE of
 // them: the outcome the caller handed over. A seam that echoed the last sequence
 // written would hand a client the ending's number and call it the strike's.
 func (s *KillingBlowSuite) TestTheRecordedSeqIsTheOutcomeBeatNotTheLastOne() {
@@ -427,7 +427,7 @@ func (s *KillingBlowSuite) TestRecordStillMovesNoClock() {
 func (s *KillingBlowSuite) TestACallerStillCannotPushADownBeat() {
 	enc := s.pair(&downList{down: []encounter.MemberID{goblin}})
 
-	_, err := enc.Record(&encounter.RecordInput{Kind: encounter.OutcomeDown, Actor: alice})
+	_, err := recordOne(enc, &encounter.RecordInput{Kind: encounter.OutcomeDown, Actor: alice})
 
 	s.Require().ErrorIs(err, encounter.ErrInvalidData,
 		"noticing a death is the composition asking; pushing one is still refused")
@@ -441,7 +441,7 @@ func (s *KillingBlowSuite) TestTheRefusalsRunBeforeTheConsult() {
 	enc := s.pair(counted)
 	asked := counted.calls
 
-	_, err := enc.Record(&encounter.RecordInput{Kind: encounter.OutcomeStruck, Actor: "nobody"})
+	_, err := recordOne(enc, &encounter.RecordInput{Kind: encounter.OutcomeStruck, Actor: "nobody"})
 	s.Require().ErrorIs(err, encounter.ErrNotMember)
 
 	s.Equal(asked, counted.calls, "a rejected verb asked nothing")

@@ -86,7 +86,7 @@ It answers, on the other hand, in geometry, placement, knowledge and clocks: `Me
 `Doors`/`DoorsFor`, `View`, `Story`, `ClockOf`, `Stance`/`StanceBetween`/`IsHostile`/`IsAllied`,
 `BelievedAim`, `Settlement`, `Status`, `Route`,
 and the verbs that change them — `Join`, `Exit`, `Step`, `Direct`, `Transfer`, `EndTurn`,
-`Dissolve`, `Search`, `OpenDoor`/`CloseDoor`/`Unlock`, `Interact`, `Loot`, `Hold`, `Record`,
+`Dissolve`, `Search`, `OpenDoor`/`CloseDoor`/`Unlock`, `Interact`, `Loot`, `Hold`, `RecordTrain`,
 `TellConcentration`, `End`, `AddSightArea`/`RemoveSightArea`,
 plus the one continue-verb a paused walk is finished with — `Resume`, which finishes whichever
 walk the one pause holds (a driven turn or a directed walk; `PauseKind()` says which).
@@ -212,6 +212,7 @@ this.**
 
 | You are building | Owner | Because |
 |---|---|---|
+| a landing's outcomes — a multiattack's swings, a swing and the retaliation it provoked — told into the story | **`encounter`** — [`RecordTrain`](./outcome.go) | One landing, one call: every unit is prepared first, every beat is told in order, and the standing consult runs ONCE after the last. A caller that records unit by unit asks who is standing between two blows and tells a fall ahead of the swing that caused it. A deed's ending (a camp turning hostile) waits for the last beat too. |
 | a new geometric shape — cone, line, blast | `tools/spatial` | This module holds no geometry of its own. `Distance` is `canvas.GetGrid().Distance`; the grid is where a shape belongs. |
 | a new MEANING for a cell — difficult, burning, blocked by a new kind of thing | [`CellAt`](./cellfacts.go) | One fold, and every reader of "may I be here" reads it. It was two — `Step` asked the field, the monster route asked region ownership and wall edges — and neither knew a pillar stands ON a cell, so the route handed back a path the step refused and the monster stood still ([rpg-toolkit#1652](https://github.com/KirkDiggler/rpg-toolkit/issues/1652)). A second reader is how that comes back. |
 | a SEARCH over the grid — a path, reach, a spreading blast, a flight | `tools/spatial` | Nothing here searches the grid itself. `routeTo` ([clocks.go](./clocks.go)) floods `spatial.Field` and reads `CellAt` for every cell; the search is geometry's and the meaning of a cell is this module's. Adding a second search here is the shape of the bug above. |

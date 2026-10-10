@@ -40,7 +40,7 @@ func (s *SheetSeamSuite) SetupTest() {
 	human := dwarfCharacterRecord("alice", 10)
 	human.RaceID = races.Human
 
-	skeleton, err := instantiate("skel-1", "dnd5e:monsters:skeleton", nil)
+	skeleton, err := instantiate("skel-1", "dnd5e:monsters:skeleton", nil, nil)
 	s.Require().NoError(err)
 	skeleton.Targeting = monster.TargetLowestHP
 
