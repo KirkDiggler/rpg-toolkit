@@ -284,6 +284,26 @@ func (m *Monster) CanReact() bool {
 	return !m.reactionSpent
 }
 
+// ErrReactionSpent is returned by [Monster.SpendReaction] when the monster's
+// one reaction is already spent.
+var ErrReactionSpent = errors.New("monster: reaction already spent")
+
+// SpendReaction spends this monster's one reaction. It refuses an already
+// spent one with [ErrReactionSpent] and marks the sheet dirty on success.
+//
+// Its caller is resolution's one door (payAtTheDoor), which bills a reaction
+// once the machine has actually run it.
+func (m *Monster) SpendReaction() error {
+	if m.reactionSpent {
+		return ErrReactionSpent
+	}
+
+	m.reactionSpent = true
+	m.dirty = true
+
+	return nil
+}
+
 // onSpendRequested pays the one thing this sheet can be billed for.
 //
 // A monster has no action and no bonus action to run out of, so every other

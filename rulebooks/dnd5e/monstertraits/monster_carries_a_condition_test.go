@@ -130,16 +130,9 @@ func TestACarriedConditionIsHandedItsOwnSheet(t *testing.T) {
 	require.False(t, m.IsDirty(),
 		"the OFFER costs nothing, so nothing has changed to save yet")
 
-	// The bill. The movement machine publishes this once the reaction has
-	// actually run, and only then does the meter move — the offer/bill split
-	// the condition's own onReactionTaken describes.
-	require.NoError(t, dnd5eEvents.ReactionTakenTopic.On(bus).Publish(runCtx,
-		dnd5eEvents.ReactionTakenEvent{
-			ReactorID:    "wolf-1",
-			ConditionRef: refs.Conditions.OpportunityAttack().String(),
-			TriggerKind:  dnd5eEvents.TriggerKindMovementOA,
-			SourceEntity: "rogue-1",
-		}))
+	// The bill. Resolution's door spends the monster's reaction once the
+	// reaction has actually run, and only then does the meter move.
+	require.NoError(t, m.SpendReaction())
 
 	require.True(t, m.IsDirty(),
 		"the sheet spent its reaction and said so — a silent update is a dropped save")

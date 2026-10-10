@@ -18,7 +18,7 @@ import (
 // a roll nobody has seen yet; a subscriber to [PostRollOfferChain] says "I hold
 // a d6 and it is yours to spend on THAT" — and nothing is spent until somebody
 // answers. The die is spent when it is TAKEN, which is the same ruling
-// [ReactionTakenEvent] carries one layer down.
+// a reaction obeys one layer down: it is billed when it is taken.
 type Offer struct {
 	// Ref names what is offering — the condition or feature holding the die,
 	// e.g. "dnd5e:conditions:inspired". It is what an [OfferTakenEvent] names
@@ -98,8 +98,8 @@ type PostRollOfferEvent struct {
 // OfferTakenEvent says one offer was spent and what it rolled.
 //
 // Published by the machine that applied the face, because the machine is what
-// rolls — the offerer is told afterwards, exactly as [ReactionTakenEvent]
-// tells a reaction's condition that its reaction fired. The offerer consumes
+// rolls — the offerer is told afterwards, the way a reaction's
+// holder is billed once its reaction has run. The offerer consumes
 // itself on this event; an offer nobody takes costs nothing.
 type OfferTakenEvent struct {
 	// Audience is the member who took it — the same member the [Offer] named.

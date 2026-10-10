@@ -9,8 +9,6 @@ import (
 	"errors"
 	"fmt"
 
-	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
-
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -173,23 +171,10 @@ func (o *OpportunityAttackCondition) Apply(ctx context.Context, bus events.Event
 	}
 	o.subscriptionIDs = append(o.subscriptionIDs, subID)
 
-	// Roll the movement subscription back rather than dropping the bus on the
-	// floor, which is what DisengagingCondition does at the same seam and for
-	// the same reason. Nil-ing o.bus with a live subscription still recorded
-	// leaves the WORST of both: IsApplied reports false, Remove early-returns
-	// on the nil bus and unsubscribes nothing, and the orphaned handler keeps
-	// receiving movement on a bus this condition no longer admits to holding.
-	//
-	// TWO SUBSCRIPTIONS, and there used to be four. Turn start and long rest
-	// were here to clear a flag this condition no longer keeps; the keeper
-	// that owns the meter now owns the clearing too.
-	taken := dnd5eEvents.ReactionTakenTopic.On(bus)
-	takenID, err := taken.Subscribe(ctx, o.onReactionTaken)
-	if err != nil {
-		_ = o.Remove(ctx, bus)
-		return rpgerr.Wrap(err, "failed to subscribe to reaction taken")
-	}
-	o.subscriptionIDs = append(o.subscriptionIDs, takenID)
+	// ONE SUBSCRIPTION, and there used to be four. Turn start and long rest
+	// were here to clear a flag this condition no longer keeps, and the taken
+	// event was here to bill; the keeper that owns the meter owns the clearing
+	// and resolution's door owns the billing.
 
 	return nil
 }
@@ -299,11 +284,16 @@ func (o *OpportunityAttackCondition) onMovementChain(
 		}
 	}
 
+	// The name is read from the display catalog rather than copied here, so the
+	// offer and the status view can never disagree about what it is called.
+	display, _ := DisplayFor(*o.Ref())
+
 	// Predicate matched — publish the trigger event for the orchestrator.
 	triggerTopic := dnd5eEvents.ReactionTriggerTopic.On(o.bus)
 	if pubErr := triggerTopic.Publish(ctx, dnd5eEvents.ReactionTriggerEvent{
 		ReactorID:    o.MemberID,
 		ConditionRef: refs.Conditions.OpportunityAttack().String(),
+		Name:         display.Name,
 		TriggerKind:  dnd5eEvents.TriggerKindMovementOA,
 		SourceEntity: event.EntityID,
 		Payload: dnd5eEvents.MovementChainEvent{
@@ -327,44 +317,10 @@ func (o *OpportunityAttackCondition) onMovementChain(
 	// Every one of those was billed. A friend walking past a fighter cost the
 	// fighter their reaction for a swing nobody made.
 	//
-	// So the bill moved to where the swing is: the machine publishes
-	// [dnd5eEvents.ReactionTakenEvent] once the reaction has actually run, and
-	// onReactionTaken spends on that. A trigger nobody takes costs nothing.
+	// So the bill moved to where the swing is: the machine bills through
+	// resolution's one door once the reaction has actually run. A trigger
+	// nobody takes costs nothing.
 	return c, nil
-}
-
-// onReactionTaken spends the reaction the machine just ran.
-//
-// This is the other half of the offer/bill split onMovementChain's tail
-// describes: the trigger says a predicate matched, this event says a swing
-// happened, and only the second one costs anything.
-//
-// It answers only for THIS holder and THIS condition. One bus carries every
-// combatant's conditions, so a taken event names its reactor and its ref for
-// the same reason the trigger does, and a reactor's OA meter must not move
-// because somebody else swung or because the same member's Shield fired.
-//
-// Spending is idempotent by the meter, which is the KEEPER's rather than this
-// condition's. A second taken event for a reactor who has not had a turn since
-// bills again, and the ledger's floor makes that harmless: you cannot spend a
-// reaction you do not have. Nothing here has to remember that you already did.
-func (o *OpportunityAttackCondition) onReactionTaken(
-	ctx context.Context, event dnd5eEvents.ReactionTakenEvent,
-) error {
-	if event.ReactorID != o.MemberID || event.ConditionRef != o.Ref().String() {
-		return nil
-	}
-
-	// The bill goes out and nothing here decides who pays. Both keepers hold a
-	// row for it now: a character's debits the slot, a monster's flips the one
-	// reaction it has. Neither goes below empty.
-	if err := publishSpendRequested(
-		ctx, o.bus, o.MemberID, coreCombat.ActionReaction, 1, o.Ref(),
-	); err != nil {
-		return rpgerr.Wrap(err, "failed to publish opportunity attack reaction spend")
-	}
-
-	return nil
 }
 
 // isLeavingMyThreatRange returns true if the moving entity (event.EntityID)
