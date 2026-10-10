@@ -194,11 +194,12 @@ type SingleRoomSpec struct {
 // class or an attack bonus, which the rulebook derives at assembly. There is
 // no key for them, so strict decoding refuses one by name.
 //
-// EVERY FIELD BUT BASE IS AN OVERRIDE, and an omitted one is the base's.
-// For Proficiency and Experience the Go zero IS "not stated" — the contract
-// carries them `omitempty` — so an authored 0 reads as the base's value. A
-// score lives in a map, so a stated `str: 0` is present and refused: no
-// block has one.
+// EVERY FIELD BUT BASE AND EXPERIENCE IS AN OVERRIDE, and an omitted one is
+// the base's (design R8). For Proficiency the Go zero IS "not stated" — the
+// contract carries it `omitempty` — so an authored 0 reads as the base's
+// value. Experience NEVER INHERITS: absent is worth nothing, so an omitted
+// award and an authored 0 are the same fact. A score lives in a map, so a
+// stated `str: 0` is present and refused: no block has one.
 type TemplateSpec struct {
 	// Base is the rulebook monster this block starts from, as a full ref:
 	// `dnd5e:monsters:<id>`. REQUIRED. It must not name another template in
@@ -234,8 +235,8 @@ type TemplateSpec struct {
 	// binding's own `actions:`.
 	Actions []string `yaml:"actions,omitempty" json:"actions,omitempty"`
 
-	// Experience is what the block is worth when it falls, or 0 for the
-	// base's.
+	// Experience is what the block is worth when it falls. It NEVER
+	// inherits from the base (design R8): absent, or 0, is worth nothing.
 	Experience int `yaml:"experience,omitempty" json:"experience,omitempty"`
 }
 

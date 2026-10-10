@@ -70,8 +70,8 @@
 //
 // The single-room dialect may declare root `templates:` — named stat blocks,
 // each a rulebook base (`dnd5e:monsters:human`) plus the scores, hit dice,
-// armor, proficiency, skills, weapons and experience the author overrides
-// ([TemplateSpec]). A placement names one exactly as it names any monster,
+// armor, proficiency, skills and weapons the author overrides, and the
+// experience it is worth, which never inherits ([TemplateSpec]). A placement names one exactly as it names any monster,
 // `ref: dnd5e:monsters:guard`, so a template adds no member kind, no
 // placement verb and no targeting rule.
 //
