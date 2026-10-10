@@ -54,7 +54,7 @@ func collectConcentrationEnds(ctx context.Context, bus events.EventBus) (*concen
 	return collector, nil
 }
 
-// checks reads the checks that were MADE back in the shape the record takes.
+// checksFrom reads the checks that were MADE back in the shape the record takes.
 //
 // A made check and a break are the two halves of one question and they are
 // recorded apart, because encounter refuses a check that changed nothing to be
@@ -69,19 +69,11 @@ func collectConcentrationEnds(ctx context.Context, bus events.EventBus) (*concen
 // same interaction, to the fight ending or its own clock, whose identity is on
 // the ended fact that break published. If neither has it, that is a rule that
 // did not run and it is refused rather than recorded half-named.
-func (c *concentrationCollector) checks(
-	cast *Participants, outcome Outcome,
-) ([]encounter.ConcentrationCheck, error) {
-	return c.checksFrom(cast, followUpsOf(outcome))
-}
-
-// checksFrom is [concentrationCollector.checks] over a follow-up list the
-// caller chose, rather than over a whole outcome's.
 //
-// SPLIT OUT FOR THE SEQUENCE, which records per swing: every other machine
-// asks about its one interaction and gets exactly what it got before, while a
-// multiattack asks once per step and gets that step's own rolls. The body is
-// unchanged — the only thing that moved is where the list comes from.
+// It reads a follow-up list the caller chose rather than a whole outcome's.
+// The driver hands it everything an output tells: a settled outcome's
+// follow-ups and the checks a pause carries. A sequence, which records per
+// swing, hands it one step's own rolls at a time.
 func (c *concentrationCollector) checksFrom(
 	cast *Participants, followUps []FollowUpOutcome,
 ) ([]encounter.ConcentrationCheck, error) {
@@ -222,7 +214,7 @@ func encounterRollSources(sources []dnd5eEvents.RollSource) []encounter.RollSour
 	return mapped
 }
 
-// breaks reads the collected facts back in the shape the record takes.
+// breaksFrom reads the collected facts back in the shape the record takes.
 //
 // The SAVE is matched rather than carried, because the two halves are produced
 // by different things: the check is a machine's roll and the break is the
@@ -231,12 +223,9 @@ func encounterRollSources(sources []dnd5eEvents.RollSource) []encounter.RollSour
 // that pairing is the whole of the match. Every other reason is ungated and
 // gets a nil save, which is the honest zero — a caster at zero hit points, or
 // one whose spell ran out, rolled nothing.
-func (c *concentrationCollector) breaks(outcome Outcome) ([]encounter.ConcentrationBreak, error) {
-	return breaksFrom(c.facts, followUpsOf(outcome))
-}
-
-// breaksFrom is [concentrationCollector.breaks] over the facts and follow-ups
-// the caller chose, for [concentrationCollector.checksFrom]'s reason.
+//
+// It reads the facts and follow-ups the caller chose, for
+// [concentrationCollector.checksFrom]'s reason.
 func breaksFrom(
 	facts []dnd5eEvents.ConcentrationEndedEvent, checks []FollowUpOutcome,
 ) ([]encounter.ConcentrationBreak, error) {

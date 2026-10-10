@@ -49,7 +49,7 @@ func (m *sequenceMachine) freezeSequence(index int, inner Pause) (Step, error) {
 		return nil, err
 	}
 	return Pause{Kind: inner.Kind, Ask: inner.Ask, Cost: inner.Cost, Frozen: frozen,
-		settled: m.settledWith(index, inner.settled)}, nil
+		settled: m.settledWith(index, inner.settled), followUps: inner.followUps}, nil
 }
 
 // settledWith is the sequence as it settled in this call, with the paused

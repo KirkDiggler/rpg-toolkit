@@ -23,13 +23,21 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // heroStepsPastWolf announces the hero stepping out of the wolf's reach, in
 // the action world, with the wolf's own opportunity attack attached for real.
-func heroStepsPastWolf(t *testing.T, hero *character.Data, wolf *monster.Data, machine Machine) (*Output, error) {
+func heroStepsPastWolf(
+	t *testing.T, hero *character.Data, wolf *monster.Data, machine Machine,
+	listen ...func(context.Context, events.EventBus),
+) (*Output, error) {
 	t.Helper()
+	bus := events.NewEventBus()
+	for _, l := range listen {
+		l(context.Background(), bus)
+	}
 	return resolveOn(context.Background(), &Input{
 		World:        actionWorld(t, 2),
 		Participants: []Participant{{Monster: wolf}, {Character: hero}},
@@ -39,7 +47,7 @@ func heroStepsPastWolf(t *testing.T, hero *character.Data, wolf *monster.Data, m
 			Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Driver: passDriver{},
 			Roller: dice.NewRoller(), Actors: Actors,
 		},
-	}, newSurface(events.NewEventBus()))
+	}, newSurface(bus))
 }
 
 // heroStep is the hero's step out of the wolf's reach, swung at by anybody
@@ -95,8 +103,10 @@ func wrathMover(t *testing.T) *character.Data {
 
 // TestAPostHitInsideAMovementReportsTheSettledReactionWithThePause: the
 // wolf's opportunity attack hits, and the hero's post-hit reaction pauses the
-// step. The hit is told with the pause, on the movement outcome; resuming
-// tells only the continued half — and bills the wolf, once.
+// step. The hit is told with the pause, on the movement outcome, and its
+// payer is charged with it: the wolf comes back spent on the paused output.
+// Resuming with that spent sheet tells only the continued half and charges
+// nobody again.
 func TestAPostHitInsideAMovementReportsTheSettledReactionWithThePause(t *testing.T) {
 	out, err := heroStepsPastWolf(t, wrathMover(t), monsters.NewWolf(wolfID).ToData(),
 		heroStep(t, &everyoneSwings{}, &actionRoller{singles: []int{15}, damage: [][]int{{3}}}))
@@ -113,6 +123,8 @@ func TestAPostHitInsideAMovementReportsTheSettledReactionWithThePause(t *testing
 	require.Equal(t, wolfID, settled.Reactions[0].ReactorID)
 	require.True(t, settled.Reactions[0].Struck.Hit, "the hit settled before the pause")
 	require.Positive(t, settled.Reactions[0].Struck.Damage, "and dealt its damage")
+	spent := dirtyMonster(t, out, wolfID)
+	require.True(t, spent.ReactionSpent, "the reaction told at the pause is paid at the pause")
 
 	machine, err := Resume(&ResumeInput{Pause: *out.Posed, Answer: Decline(), Roller: dice.NewRoller()})
 	require.NoError(t, err)
@@ -123,14 +135,31 @@ func TestAPostHitInsideAMovementReportsTheSettledReactionWithThePause(t *testing
 		}
 	}
 	require.NotNil(t, hero)
-	resumed, err := heroStepsPastWolf(t, hero, monsters.NewWolf(wolfID).ToData(), machine)
-	require.NoError(t, err)
+	resumed, err := heroStepsPastWolf(t, hero, spent, machine)
+	require.NoError(t, err, "the paused reaction is not charged a second time")
 	require.Nil(t, resumed.Posed)
 	moved := resumed.Outcome.(MovementOutcome)
 	require.Len(t, moved.Reactions, 1, "only the paused reaction's continuation")
 	require.True(t, moved.Reactions[0].Struck.Continued)
 	require.Zero(t, moved.Reactions[0].Struck.Damage, "the hit is not told twice")
-	require.True(t, dirtyMonster(t, resumed, wolfID).ReactionSpent, "the wolf pays when its reaction finishes")
+}
+
+// TestADrivenReactorWhoCannotPayDoesNotReact: a monster whose reaction was
+// spent between its trigger and its swing is passed over rather than vetoing
+// the step. Nothing rolls, nothing is told, and the step settles. The trigger
+// is stood in for, because the real condition does not offer a spent reactor
+// a swing at all.
+func TestADrivenReactorWhoCannotPayDoesNotReact(t *testing.T) {
+	cast, wolf := monsterCast(t)
+	require.NoError(t, payAtTheDoor(context.Background(), reactionCost(wolfID, ""), cast))
+	roller := &actionRoller{}
+	out, err := heroStepsPastWolf(t, actionHero(), wolf.ToData(), heroStep(t, &everyoneSwings{}, roller),
+		triggerFrom(wolfID, heroID))
+	require.NoError(t, err, "an unpayable driven reactor is a reaction that did not happen")
+	moved := out.Outcome.(MovementOutcome)
+	require.Empty(t, moved.Reactions)
+	require.Zero(t, roller.calls, "the charge comes before any dice")
+	require.Equal(t, spatial.Position{X: 5, Y: 1}, moved.To, "the step settles")
 }
 
 // postHitOnce subscribes a post-hit reaction for the target of the FIRST hit
@@ -283,14 +312,17 @@ func (s *MovementTestSuite) askedStep() *Output {
 	return out
 }
 
-// TestAnOpportunityAskIsAPauseWithItsPrice: the step finishes as if both
-// declined, with one PauseOpportunity per asked player, all standing at once,
-// each priced at one reaction and naming what offers it.
+// TestAnOpportunityAskIsAPauseWithItsPrice: the step asks both players at
+// once, one PauseOpportunity each, priced at one reaction and naming what
+// offers it — and the ask stops the step (E8): the output does not report the
+// mover as moved.
 func (s *MovementTestSuite) TestAnOpportunityAskIsAPauseWithItsPrice() {
 	out := s.askedStep()
-	s.Nil(out.Posed, "an ask does not stop the step")
+	s.Nil(out.Posed, "the asks ride the outcome, all standing at once")
 	moved := out.Outcome.(MovementOutcome)
 	s.Empty(moved.Reactions, "nobody swung yet")
+	s.Equal(spatial.Position{}, moved.From, "an asked step has not settled")
+	s.Equal(spatial.Position{}, moved.To, "so the mover is not reported as moved")
 	s.Require().Len(moved.Asked, 2)
 	for i, reactor := range []string{"alice", "zara"} {
 		asked := moved.Asked[i]
@@ -308,30 +340,44 @@ func (s *MovementTestSuite) TestAnOpportunityAskIsAPauseWithItsPrice() {
 	s.Equal(reactorReactions, reactionsLeft(out, "zara"))
 }
 
-// TestTakingAnOpportunitySpendsTheReactorsReaction: alice takes hers. She
-// swings, exactly one of her reactions is spent through the door, the
-// reaction names its source, and zara — asked too, answering nothing — keeps
-// hers.
+// TestTakingAnOpportunitySpendsTheReactorsReaction: alice takes hers, resumed
+// in the world before the step. She swings, then the step lands; exactly one
+// of her reactions is spent through the door; the reaction names its source;
+// and zara — asked too, answering nothing — keeps hers.
 func (s *MovementTestSuite) TestTakingAnOpportunitySpendsTheReactorsReaction() {
 	asked := s.askedStep().Outcome.(MovementOutcome).Asked[0]
 
 	machine, err := Resume(&ResumeInput{Pause: asked, Answer: Take(""), Roller: dice.NewRoller()})
 	s.Require().NoError(err)
 	out, err := s.runMachine(machine, nil, "alice", "zara")
-	s.Require().NoError(err)
+	s.Require().NoError(err, "reach is measured in the pre-step world, where the wolf still stands")
 
 	moved := out.Outcome.(MovementOutcome)
-	s.Require().Len(moved.Reactions, 1)
+	s.Require().Len(moved.Reactions, 1, "the swing")
 	s.Equal("alice", moved.Reactions[0].ReactorID)
 	s.Equal(wolfID, moved.Reactions[0].Against)
 	s.Equal(refs.Conditions.OpportunityAttack().String(), moved.Reactions[0].ConditionRef)
 	s.Equal("Opportunity Attack", moved.Reactions[0].ConditionName)
+	s.Equal(spatial.Position{X: 2, Y: 1}, moved.From, "then the step")
+	s.Equal(spatial.Position{X: 5, Y: 1}, moved.To)
 	s.Empty(moved.Asked, "a taken question asks nobody again")
 	s.Equal(reactorReactions-1, reactionsLeft(out, "alice"), "exactly one reaction")
 	s.Equal(reactorReactions, reactionsLeft(out, "zara"), "only the payer is billed")
 }
 
-// TestDecliningAnOpportunitySpendsNothing: the step is told with nothing to
+// TestATakenOpportunityThatCannotPayIsRefused: a player's Take is the whole
+// of its call, so a reaction spent in the meantime refuses the answer with
+// ErrCannotPay rather than passing it over.
+func (s *MovementTestSuite) TestATakenOpportunityThatCannotPayIsRefused() {
+	asked := s.askedStep().Outcome.(MovementOutcome).Asked[0]
+	machine, err := Resume(&ResumeInput{Pause: asked, Answer: Take(""), Roller: dice.NewRoller()})
+	s.Require().NoError(err)
+
+	_, err = s.runMachine(machine, nil, "zara") // alice comes back with no economy
+	s.Require().ErrorIs(err, ErrCannotPay)
+}
+
+// TestDecliningAnOpportunitySpendsNothing: the step lands with nothing to
 // report, and nobody's meter moves.
 func (s *MovementTestSuite) TestDecliningAnOpportunitySpendsNothing() {
 	asked := s.askedStep().Outcome.(MovementOutcome).Asked[0]
@@ -343,6 +389,7 @@ func (s *MovementTestSuite) TestDecliningAnOpportunitySpendsNothing() {
 
 	moved := out.Outcome.(MovementOutcome)
 	s.Equal(wolfID, moved.Mover)
+	s.Equal(spatial.Position{X: 5, Y: 1}, moved.To, "the step lands")
 	s.Empty(moved.Reactions)
 	s.Equal(reactorReactions, reactionsLeft(out, "alice"))
 	s.Equal(reactorReactions, reactionsLeft(out, "zara"))
@@ -585,4 +632,267 @@ func TestARetaliationsSaveOfferResumesTheRetaliation(t *testing.T) {
 	require.NotNil(t, struck.Retaliation, "the retaliation finished")
 	require.Equal(t, wolfID, struck.Retaliation.TargetID)
 	require.NotNil(t, struck.Retaliation.Result.Save)
+}
+
+// allyID is a second target standing beside the hero, holding a Resistance
+// die so its save pauses the cast after the hero's has resolved.
+const allyID = "ally-1"
+
+// resolveCastScene runs one machine in the concentration suite's world with
+// the ally added, on a bus the scene may listen to.
+func (s *ConcentrationTestSuite) resolveCastScene(
+	participants []Participant, machine Machine, cost *Cost, bus events.EventBus,
+) *Output {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{Canvas: hexCanvas(), Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)}},
+		Members: []encounter.MemberInput{
+			{ID: heroID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: allyID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 2}},
+			{ID: bardID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 1}},
+			{ID: wolfID, Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{}, Driver: passDriver{}, Standing: everyoneStanding{},
+			Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
+			Actors: encounter.Actors{Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}},
+		},
+	})
+	s.Require().NoError(err)
+	out, err := resolveOn(s.ctx, &Input{
+		World: enc.ToData(), Participants: participants, Machine: machine, Cost: cost,
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{}, Driver: passDriver{}, Standing: everyoneStanding{},
+			Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
+			Roller: dice.NewRoller(), Actors: Actors,
+		},
+	}, newSurface(bus))
+	s.Require().NoError(err)
+	return out
+}
+
+// resumedCast hands the paused output's dirty sheets back in place of the
+// originals, the way a host would.
+func resumedCast(paused *Output, originals []Participant) []Participant {
+	dirty := map[string]*character.Data{}
+	for _, sheet := range paused.DirtyCharacters {
+		dirty[sheet.ID] = sheet
+	}
+	out := make([]Participant, len(originals))
+	for i, p := range originals {
+		out[i] = p
+		if p.Character != nil && dirty[p.Character.ID] != nil {
+			out[i] = Participant{Character: dirty[p.Character.ID]}
+		}
+	}
+	return out
+}
+
+// TestACastPauseTellsItsConcentrationAtThePause: Thunderclap catches the
+// concentrating hero first and the Resistance-holding ally second. The hero's
+// check — made, or failed with the break it caused — is told on the PAUSED
+// output with its roll, once; the resume tells none of it again.
+func (s *ConcentrationTestSuite) TestACastPauseTellsItsConcentrationAtThePause() {
+	resistance, err := conditions.NewResistanceCondition(conditions.NewResistanceConditionInput{
+		MemberID: allyID, SourceID: "cleric-1", SourceRef: refs.Spells.Resistance(),
+	})
+	s.Require().NoError(err)
+	resistanceJSON, err := resistance.ToJSON()
+	s.Require().NoError(err)
+
+	for name, tc := range map[string]struct {
+		d20  int
+		made bool
+	}{
+		"a made check":   {d20: 10, made: true}, // save 10+2 fails DC 13; check 10+2 makes DC 10
+		"a failed check": {d20: 5},              // both fail
+	} {
+		s.Run(name, func() {
+			ally := s.fixtures().saver(40, resistanceJSON)
+			ally.ID = allyID
+			cast := []Participant{
+				{Character: s.fixtures().saver(40, s.holding(heroID, wolfID)...)},
+				{Character: ally}, {Character: s.castingBard(1)}, {Monster: s.fixtures().wolfData()},
+			}
+			roller := facedRoller{d20: tc.d20, other: 4}
+			machine, err := NewAction(&ActionInput{
+				Definition: *thunderclapDefinition(), AttackerID: bardID,
+				AreaMembers: []string{heroID, allyID}, Roller: roller,
+			})
+			s.Require().NoError(err)
+
+			paused := s.resolveCastScene(cast, machine, castCost(), events.NewEventBus())
+			s.Require().NotNil(paused.Posed, "the ally's save is offered its die")
+			s.Nil(paused.Outcome, "a cast is one told unit")
+			if tc.made {
+				s.Require().Len(paused.ConcentrationChecks, 1, "the made check is told at the pause")
+				s.Equal(encounter.MemberID(heroID), paused.ConcentrationChecks[0].Save.Saver)
+				s.Equal(tc.d20, paused.ConcentrationChecks[0].Save.Roll, "with its roll")
+				s.Empty(paused.ConcentrationBreaks)
+			} else {
+				s.Empty(paused.ConcentrationChecks, "a failed check is told as the break it caused")
+				s.Require().Len(paused.ConcentrationBreaks, 1, "the break is told at the pause")
+				s.Require().NotNil(paused.ConcentrationBreaks[0].Save, "with the roll that failed")
+				s.False(paused.ConcentrationBreaks[0].Save.Succeeded)
+			}
+
+			resume, err := Resume(&ResumeInput{Pause: *paused.Posed, Answer: Decline(), Roller: roller})
+			s.Require().NoError(err)
+			resumed := s.resolveCastScene(resumedCast(paused, cast), resume, nil, events.NewEventBus())
+			s.Require().Nil(resumed.Posed)
+			s.Len(resumed.Outcome.(CastOutcome).Targets, 2, "the cast is told once, with every target")
+			s.Empty(resumed.ConcentrationChecks, "nothing told at the pause is told again")
+			s.Empty(resumed.ConcentrationBreaks)
+		})
+	}
+}
+
+// TestAPostHitInsideACastTellsTheHitsBreakAtThePause: Guiding Bolt hits the
+// concentrating hero, who fails the check, and then the hero's post-hit
+// reaction pauses the cast. The break and its roll are told at the pause; the
+// resume tells the cast whole, with the hit, and the break not again.
+func (s *ConcentrationTestSuite) TestAPostHitInsideACastTellsTheHitsBreakAtThePause() {
+	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.GuidingBolt, SpellAttackBonus: 5})
+	s.Require().NotNil(definition)
+	cost := baneCost()
+	cost.Profile = definition.Cost
+	cast := []Participant{
+		{Character: s.fixtures().saver(40, s.holding(heroID, wolfID)...)},
+		{Character: baneCaster(1, 2)}, {Monster: s.fixtures().wolfData()},
+	}
+	machine, err := NewAction(&ActionInput{
+		Definition: *definition, AttackerID: bardID, TargetIDs: []string{heroID},
+		// The bolt's d20, its 4d6, then the concentration check's d20, which
+		// fails DC 10.
+		Roller: &sequenceRoller{singles: []int{18, 3}, pair: []int{4, 4, 4, 4}},
+	})
+	s.Require().NoError(err)
+	bus := events.NewEventBus()
+	postHitOnce(s.T(), bus)
+
+	paused := s.resolveCastScene(cast, machine, cost, bus)
+	s.Require().NotNil(paused.Posed)
+	s.Equal(PausePostHit, paused.Posed.Kind)
+	s.Nil(paused.Outcome, "a cast is one told unit")
+	s.Require().Len(paused.ConcentrationBreaks, 1, "the hit's break is told at the pause")
+	s.Require().NotNil(paused.ConcentrationBreaks[0].Save, "with the roll that failed")
+	s.False(paused.ConcentrationBreaks[0].Save.Succeeded)
+
+	resume, err := Resume(&ResumeInput{Pause: *paused.Posed, Answer: Decline(), Roller: dice.NewRoller()})
+	s.Require().NoError(err)
+	resumed := s.resolveCastScene(resumedCast(paused, cast), resume, nil, events.NewEventBus())
+	s.Require().Nil(resumed.Posed)
+	target := resumed.Outcome.(CastOutcome).Targets[0]
+	s.Require().NotNil(target.Attack)
+	s.True(target.Attack.Hit, "the cast tells the strike whole")
+	s.False(target.Attack.Continued)
+	s.Empty(resumed.ConcentrationChecks)
+	s.Empty(resumed.ConcentrationBreaks, "the break was told at the pause")
+}
+
+// runAtHero resolves a machine against the concentration suite's hero and
+// wolf, on a bus the scene may listen to.
+func (s *ConcentrationTestSuite) runAtHero(hero *character.Data, machine Machine, bus events.EventBus) *Output {
+	out, err := resolveOn(s.ctx, &Input{
+		World:        s.fixtures().world(),
+		Participants: []Participant{{Character: hero}, {Monster: s.fixtures().wolfData()}},
+		Machine:      machine,
+		Capabilities: encounter.Capabilities{
+			Initiative: orderAsGiven{}, Driver: passDriver{}, Standing: everyoneStanding{},
+			Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
+			Roller: dice.NewRoller(), Actors: Actors,
+		},
+	}, newSurface(bus))
+	s.Require().NoError(err)
+	return out
+}
+
+// heroAfter is the hero's sheet as an output handed it back.
+func (s *ConcentrationTestSuite) heroAfter(out *Output) *character.Data {
+	for _, sheet := range out.DirtyCharacters {
+		if sheet.ID == heroID {
+			return sheet
+		}
+	}
+	s.FailNow("the hero did not come back to be saved")
+	return nil
+}
+
+// asJSON is a value as the story would store it, for comparing tellings.
+func (s *ConcentrationTestSuite) asJSON(v any) string {
+	raw, err := json.Marshal(v)
+	s.Require().NoError(err)
+	return string(raw)
+}
+
+// TestAPausedStrikeTellsWhatAnUnpausedOneTells is C8 across a pause: the same
+// strike, on the same dice, told paused-then-declined and told without a
+// pause, produces the same hit and the same concentration check — the hit and
+// its check at the pause, and a continued half with nothing else in it.
+func (s *ConcentrationTestSuite) TestAPausedStrikeTellsWhatAnUnpausedOneTells() {
+	// The claw's d20, its damage, and a check the hero makes.
+	dice := func() *sequenceRoller { return &sequenceRoller{singles: []int{15, 15}, pair: []int{6}} }
+	strike := func() Machine {
+		return NewStrike(&StrikeInput{AttackerID: wolfID, TargetID: heroID, Definition: claw("1d6"), Roller: dice()})
+	}
+	hero := func() *character.Data { return s.fixtures().saver(40, s.holding(heroID, wolfID)...) }
+
+	unpaused := s.runAtHero(hero(), strike(), events.NewEventBus())
+	s.Require().Nil(unpaused.Posed)
+
+	bus := events.NewEventBus()
+	postHitOnce(s.T(), bus)
+	paused := s.runAtHero(hero(), strike(), bus)
+	s.Require().NotNil(paused.Posed)
+
+	s.Equal(s.asJSON(unpaused.Outcome), s.asJSON(paused.Outcome), "the hit is told the same, at the pause")
+	s.Equal(s.asJSON(unpaused.ConcentrationChecks), s.asJSON(paused.ConcentrationChecks))
+	s.Require().Len(paused.ConcentrationChecks, 1, "precondition: the hero made a check")
+
+	machine, err := Resume(&ResumeInput{Pause: *paused.Posed, Answer: Decline(), Roller: dice()})
+	s.Require().NoError(err)
+	resumed := s.runAtHero(s.heroAfter(paused), machine, events.NewEventBus())
+	s.Equal(StrikeOutcome{Continued: true, AttackerID: wolfID, TargetID: heroID}, resumed.Outcome,
+		"the resume adds nothing the unpaused telling does not have")
+	s.Empty(resumed.ConcentrationChecks)
+	s.Empty(resumed.ConcentrationBreaks)
+}
+
+// TestAPausedSequenceTellsWhatAnUnpausedOneTells is C8 for a multiattack: the
+// paused output's first swing and the resume's second swing are the unpaused
+// telling's two swings, checks and all.
+func (s *ConcentrationTestSuite) TestAPausedSequenceTellsWhatAnUnpausedOneTells() {
+	multiattack := func(roller dice.Roller) Machine {
+		machine, err := NewAction(&ActionInput{
+			Definition: twoClawSequence, AttackerID: wolfID, TargetID: heroID,
+			Components: []combatActions.Definition{twoClawSequence, claw("1d6")}, Roller: roller,
+		})
+		s.Require().NoError(err)
+		return machine
+	}
+	hero := func() *character.Data { return s.fixtures().saver(40, s.holding(heroID, wolfID)...) }
+
+	// Two claws, two made checks.
+	unpaused := s.runAtHero(hero(), multiattack(&sequenceRoller{singles: []int{15, 15, 15, 15}, pair: []int{6, 6}}), events.NewEventBus())
+	whole := unpaused.Outcome.(SequenceOutcome)
+	s.Require().Len(whole.Steps, 2)
+
+	bus := events.NewEventBus()
+	postHitOnce(s.T(), bus)
+	paused := s.runAtHero(hero(), multiattack(&sequenceRoller{singles: []int{15, 15}, pair: []int{6}}), bus)
+	s.Require().NotNil(paused.Posed)
+	first := paused.Outcome.(SequenceOutcome)
+	s.Require().Len(first.Steps, 1)
+
+	machine, err := Resume(&ResumeInput{Pause: *paused.Posed, Answer: Decline(),
+		Roller: &sequenceRoller{singles: []int{15, 15}, pair: []int{6}}})
+	s.Require().NoError(err)
+	rest := s.runAtHero(s.heroAfter(paused), machine, events.NewEventBus()).Outcome.(SequenceOutcome)
+	s.Require().Len(rest.Steps, 2)
+	s.True(rest.Steps[0].Strike.Continued)
+
+	s.Equal(s.asJSON(whole.Steps[0]), s.asJSON(first.Steps[0]), "the first swing, told at the pause")
+	s.Equal(s.asJSON(whole.Steps[1]), s.asJSON(rest.Steps[1]), "the second swing, told on the resume")
+	s.Equal(SequenceStepOutcome{Action: whole.Steps[0].Action, Strike: StrikeOutcome{Continued: true, AttackerID: wolfID, TargetID: heroID}},
+		rest.Steps[0], "and between them nothing the unpaused telling lacks")
 }

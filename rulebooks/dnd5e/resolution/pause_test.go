@@ -236,3 +236,20 @@ func TestTakingAPostHitReactionChargesTheFrozenPrice(t *testing.T) {
 	require.Zero(t, struck.Damage)
 	require.Zero(t, struck.Roll)
 }
+
+// TestABeforeRollAnswerIsCheckedAgainstTheFrozenOffer: a host that empties
+// the stored choices cannot Take("") a before-roll reaction — the frozen
+// offer still lists its one choice.
+func TestABeforeRollAnswerIsCheckedAgainstTheFrozenOffer(t *testing.T) {
+	out, err := wolfStrikesHero(t, flareHero(t), NewStrike(&StrikeInput{
+		AttackerID: wolfID, TargetID: heroID, Definition: validMeleeDefinition(),
+		Roller: &actionRoller{singles: []int{15}, pairs: [][]int{{15, 2}}, damage: [][]int{{3}}},
+	}))
+	require.NoError(t, err)
+	require.NotNil(t, out.Posed)
+	edited := *out.Posed
+	edited.Ask.Offer.Choices = nil
+
+	_, err = Resume(&ResumeInput{Pause: edited, Answer: Take(""), Roller: dice.NewRoller()})
+	require.ErrorIs(t, err, ErrNotOffered)
+}

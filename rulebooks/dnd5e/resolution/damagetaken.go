@@ -77,11 +77,12 @@ type reportDamageInput struct {
 // # Why the machine publishes and the sheet does not
 //
 // Applying damage is bus-free by design — "the sheet's own business" — and the
-// bus parked on a sheet is a CAPTURED bus, which [movementMachine.bill] refuses
-// by name. Only the machine holds the driver's bus, and only the machine can
-// run what comes back. A sheet publish would additionally force the follow-ups
-// back through combat.ApplyDamageResult, putting a field shaped like a
-// resolution step on an interface both Character and Monster implement.
+// bus parked on a sheet is a CAPTURED bus, which every machine here refuses:
+// a step publishes only on the bus its Gather is handed. Only the machine
+// holds the driver's bus, and only the machine can run what comes back. A
+// sheet publish would additionally force the follow-ups back through
+// combat.ApplyDamageResult, putting a field shaped like a resolution step on
+// an interface both Character and Monster implement.
 //
 // The invariant that makes this complete rather than partial: DAMAGE REACHES A
 // SHEET ONLY INSIDE AN INTERACTION. ApplyDamage has exactly two callers, both

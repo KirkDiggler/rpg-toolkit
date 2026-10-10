@@ -72,7 +72,7 @@ func (m *movementMachine) freezeMovement(index int, definition combatActions.Def
 		return nil, err
 	}
 	return Pause{Kind: inner.Kind, Ask: inner.Ask, Cost: inner.Cost, Frozen: raw,
-		settled: m.settledWith(index, definition, inner.settled)}, nil
+		settled: m.settledWith(index, definition, inner.settled), followUps: inner.followUps}, nil
 }
 
 // settledWith is the step as it settled in this call, with the paused
@@ -138,10 +138,10 @@ func (m *movementMachine) askOpportunity(
 		return Pause{}, fmt.Errorf("%w: reactor %q offered by %q: %w",
 			ErrBadMovement, trigger.ReactorID, trigger.ConditionRef, err)
 	}
-	step := m.outcome()
+	from, to := m.ends()
 	cost := reactionCost(trigger.ReactorID, "")
 	frozen, err := writeFrozen(machineOpportunity, PauseOpportunity, frozenOpportunity{
-		Mover: step.Mover, MoverKind: m.in.MoverKind, From: step.From, To: step.To,
+		Mover: string(m.in.Mover), MoverKind: m.in.MoverKind, From: from, To: to,
 		ForcedBy: cloneCoreRef(m.in.ForcedBy), Reactor: trigger.ReactorID, Trigger: trigger,
 		Definition: definition, Cost: cost,
 	})
@@ -156,11 +156,12 @@ func (m *movementMachine) askOpportunity(
 	}, nil
 }
 
-// resumeOpportunity answers an asked opportunity attack. Taken, the reactor
-// swings at the frozen step — announced once already, when the question was
-// asked, so not announced again — and pays the frozen price at the one door
-// once the swing resolves; nobody else reacts. Declined, the step finishes
-// with nothing to report and nothing is charged.
+// resumeOpportunity answers an asked opportunity attack, in the world as it
+// stood before the step: the ask stopped the step (E8). Taken, the reactor
+// pays the frozen price at the one door and swings at the frozen step —
+// announced once already, when the question was asked, so not announced
+// again — and nobody else reacts; the output tells the swing, then the step.
+// Declined, the output tells the step alone and nothing is charged.
 func resumeOpportunity(h frozenHeader, in *ResumeInput) (Machine, error) {
 	var f frozenOpportunity
 	if err := decodeState(h, &f); err != nil {

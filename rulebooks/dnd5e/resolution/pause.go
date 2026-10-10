@@ -34,7 +34,9 @@ const (
 	PauseCheckRoll PauseKind = "check_roll"
 	// PauseSaveRoll is an offer on a saving throw's d20.
 	PauseSaveRoll PauseKind = "save_roll"
-	// PauseOpportunity asks a player whether to swing at a mover.
+	// PauseOpportunity asks a player whether to swing at a mover. It stops
+	// the step (E8): the step settles on the resume, after the swing, and
+	// reach is measured in the world before the step.
 	PauseOpportunity PauseKind = "opportunity"
 )
 
@@ -74,6 +76,14 @@ type Pause struct {
 	// settled is what the machine settled before it paused, carried from the
 	// machine to the driver. Never marshalled.
 	settled Outcome
+
+	// followUps are the concentration checks rolled before the pause that no
+	// settled unit carries — a cast's earlier targets, or a hit inside a cast,
+	// which is one told unit and tells nothing at its pause. The driver
+	// attributes them to the paused output with everything else that settled,
+	// so a check's roll and the break it caused are told once, at the pause.
+	// Never marshalled.
+	followUps []FollowUpOutcome
 }
 
 func (Pause) isStep() {}

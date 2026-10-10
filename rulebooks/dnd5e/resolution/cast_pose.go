@@ -59,13 +59,24 @@ type frozenCast struct {
 
 // poseCast turns a target's own pause into the cast's, freezing what
 // [castMachine.resolveTarget] needs to finish every remaining target once the
-// paused one is answered. Kind and price are the target's. Nothing settles
-// with the pause: a cast is one told unit, told whole when it finishes.
+// paused one is answered. Kind and price are the target's. No unit settles
+// with the pause — a cast is one told unit, told whole when it finishes — but
+// the concentration checks its targets already forced are told now.
 func poseCast(m *castMachine, index int, inner Pause) (Step, error) {
 	targets := make([]frozenCastTargetState, len(m.targets))
 	for i, t := range m.targets {
 		targets[i] = frozenCastTargetState{TargetID: t.targetID, Missed: t.missed}
 	}
+
+	// The checks rolled so far — earlier targets', and the paused target's own
+	// settled hit — are told at the pause, and stripped from the frozen cast
+	// so the resume does not tell them again. The targets themselves wait
+	// here: a cast is one told unit.
+	followUps := append([]FollowUpOutcome(nil), m.outcome.FollowUps...)
+	followUps = append(followUps, followUpsOf(inner.settled)...)
+	followUps = append(followUps, inner.followUps...)
+	waiting := m.outcome
+	waiting.FollowUps = nil
 
 	profile := m.profile
 	frozen, err := writeFrozen(machineCast, inner.Kind, frozenCast{
@@ -75,14 +86,14 @@ func poseCast(m *castMachine, index int, inner Pause) (Step, error) {
 		DerivedTargets: m.derivedTargets,
 		Targets:        targets,
 		Index:          index,
-		Outcome:        m.outcome,
+		Outcome:        waiting,
 		Inner:          json.RawMessage(inner.Frozen),
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	return Pause{Kind: inner.Kind, Ask: inner.Ask, Cost: inner.Cost, Frozen: frozen}, nil
+	return Pause{Kind: inner.Kind, Ask: inner.Ask, Cost: inner.Cost, Frozen: frozen, followUps: followUps}, nil
 }
 
 // resumeCast returns the machine that finishes a cast somebody answered the

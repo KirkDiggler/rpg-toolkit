@@ -171,7 +171,7 @@ func (m *strikeMachine) retaliationRequest(nested Machine) Request {
 			if err != nil {
 				return nil, err
 			}
-			return Pause{Kind: pause.Kind, Ask: pause.Ask, Cost: pause.Cost, Frozen: raw}, nil
+			return Pause{Kind: pause.Kind, Ask: pause.Ask, Cost: pause.Cost, Frozen: raw, followUps: pause.followUps}, nil
 		},
 	}
 }

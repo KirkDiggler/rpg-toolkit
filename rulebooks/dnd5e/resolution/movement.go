@@ -5,6 +5,7 @@ package resolution
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -28,13 +29,14 @@ const (
 	// It costs the reactor nothing.
 	ReactionNone ReactionAnswer = iota
 
-	// ReactionSwing swings now with the definition, and bills the reactor's
-	// reaction at the one door once the swing has resolved.
+	// ReactionSwing swings now with the definition, charging the reactor's
+	// reaction at the one door as it is taken, before the swing. A reactor
+	// who cannot pay does not react.
 	ReactionSwing
 
-	// ReactionAsk poses a [PauseOpportunity] with the definition and carries
-	// on as if declined. The pause rides [MovementOutcome.Asked]; the reactor
-	// is billed only if they take it.
+	// ReactionAsk poses a [PauseOpportunity] with the definition. The pause
+	// rides [MovementOutcome.Asked] and stops the step; the reactor is billed
+	// only if they take it.
 	ReactionAsk
 )
 
@@ -125,8 +127,13 @@ type MovementOutcome struct {
 	Reactions []ReactionOutcome
 
 	// Asked are the players this step asks whether to swing, one
-	// [PauseOpportunity] each, all standing at once. The step carried on as if
-	// each declined; a host poses them and resumes each with [Resume].
+	// [PauseOpportunity] each, all standing at once. AN ASK STOPS THE STEP
+	// (E8): with Asked set the step has not settled, so From and To are zero
+	// and the mover has not moved. Reach is measured in the world as it stands
+	// before the step. Each answer is resumed with [Resume] in that pre-step
+	// world, and its output tells the swing, if taken, and then the step; the
+	// host lands the step once, after the last asked player has answered.
+	// Reactions here are the driven swings that settled before the step.
 	Asked []Pause
 }
 
@@ -410,8 +417,8 @@ func (m *movementMachine) react(i int) (Step, error) {
 		switch answer {
 		case ReactionNone:
 			// No swing is an ANSWER, and it costs the reactor NOTHING: the
-			// trigger is an offer, and the bill goes out from [bill] only
-			// once a swing has actually resolved.
+			// trigger is an offer, and the charge goes out from [pay] only
+			// when a reaction is actually taken.
 			continue
 		case ReactionAsk:
 			pause, err := m.askOpportunity(trigger, definition)
@@ -426,29 +433,64 @@ func (m *movementMachine) react(i int) (Step, error) {
 				ErrBadMovement, trigger.ReactorID, answer)
 		}
 
-		inner := NewStrike(&StrikeInput{AttackerID: trigger.ReactorID, TargetID: trigger.SourceEntity, Definition: definition, Opportunity: true, Roller: m.in.Roller})
 		if m.resumed != nil && i == m.resumeIndex {
-			inner = m.resumed
+			// The paused reaction was charged when it was taken, in the call
+			// that paused; it finishes here and is not charged again.
+			resumed := m.resumed
 			m.resumed = nil
+			return m.swing(i, trigger, definition, resumed), nil
 		}
-		return Request{
-			name:    fmt.Sprintf("%s reacts to %s", trigger.ReactorID, trigger.SourceEntity),
-			machine: inner,
-			onPause: func(_ context.Context, pause Pause) (Step, error) { return m.freezeMovement(i, definition, pause) },
-			next: func(_ context.Context, out Outcome) (Step, error) {
-				struck, ok := out.(StrikeOutcome)
-				if !ok {
-					return nil, fmt.Errorf("%w: reaction by %q produced %T, not a strike",
-						ErrBadMovement, trigger.ReactorID, out)
-				}
-				m.reactions = append(m.reactions, m.reactionOf(trigger, definition, struck))
-
-				return m.bill(trigger, i), nil
-			},
-		}, nil
+		return m.pay(i, trigger, definition), nil
 	}
 
 	return Done{Outcome: m.outcome()}, nil
+}
+
+// pay charges the reactor at the one door at the moment the reaction is
+// taken — before the swing, so a reaction told at a pause is already on its
+// payer's sheet. A driven reactor who cannot pay did not react: the trigger is
+// passed over, and the step goes on. A player who took an asked opportunity
+// and cannot pay is refused with [ErrCannotPay], because that answer is the
+// whole of the call.
+func (m *movementMachine) pay(i int, trigger dnd5eEvents.ReactionTriggerEvent, definition combatActions.Definition) Gather {
+	return Gather{
+		name: fmt.Sprintf("%s takes %s", trigger.ReactorID, trigger.ConditionRef),
+		run: func(ctx context.Context, _ events.EventBus) (Step, error) {
+			price := m.price
+			if price == nil {
+				price = reactionCost(trigger.ReactorID, "")
+			}
+			if err := payAtTheDoor(ctx, price, m.cast); err != nil {
+				if errors.Is(err, ErrCannotPay) && !m.answered {
+					return m.react(i + 1)
+				}
+				return nil, fmt.Errorf("charge reaction taken by %q: %w", trigger.ReactorID, err)
+			}
+			strike := NewStrike(&StrikeInput{AttackerID: trigger.ReactorID, TargetID: trigger.SourceEntity, Definition: definition, Opportunity: true, Roller: m.in.Roller})
+			return m.swing(i, trigger, definition, strike), nil
+		},
+	}
+}
+
+// swing runs one paid reaction's strike inside this interaction and carries on
+// with the next trigger once it settles.
+func (m *movementMachine) swing(
+	i int, trigger dnd5eEvents.ReactionTriggerEvent, definition combatActions.Definition, inner Machine,
+) Request {
+	return Request{
+		name:    fmt.Sprintf("%s reacts to %s", trigger.ReactorID, trigger.SourceEntity),
+		machine: inner,
+		onPause: func(_ context.Context, pause Pause) (Step, error) { return m.freezeMovement(i, definition, pause) },
+		next: func(_ context.Context, out Outcome) (Step, error) {
+			struck, ok := out.(StrikeOutcome)
+			if !ok {
+				return nil, fmt.Errorf("%w: reaction by %q produced %T, not a strike",
+					ErrBadMovement, trigger.ReactorID, out)
+			}
+			m.reactions = append(m.reactions, m.reactionOf(trigger, definition, struck))
+			return m.react(i + 1)
+		},
+	}
 }
 
 // reactionOf is one reaction as the outcome reports it.
@@ -462,34 +504,6 @@ func (m *movementMachine) reactionOf(
 		ConditionName: trigger.Name,
 		Against:       trigger.SourceEntity,
 		Struck:        struck,
-	}
-}
-
-// bill charges the reactor for the reaction that just ran, through the one
-// door, and then continues with the next trigger.
-//
-// # Why the machine bills and the condition does not
-//
-// Because only the machine knows whether the reaction HAPPENED. The condition
-// publishes a trigger when its predicate matches, which is strictly earlier
-// than the two answers that decide the swing: the fold's prevention flag and
-// the ReactionAttacks capability. So the offer is free and this is the bill,
-// at the price the one table states — or, for a taken opportunity, the price
-// its pause stated.
-func (m *movementMachine) bill(trigger dnd5eEvents.ReactionTriggerEvent, i int) Gather {
-	return Gather{
-		name: fmt.Sprintf("%s took %s", trigger.ReactorID, trigger.ConditionRef),
-		run: func(ctx context.Context, _ events.EventBus) (Step, error) {
-			price := m.price
-			if price == nil {
-				price = reactionCost(trigger.ReactorID, "")
-			}
-			if err := payAtTheDoor(ctx, price, m.cast); err != nil {
-				return nil, fmt.Errorf("bill reaction taken by %q: %w", trigger.ReactorID, err)
-			}
-
-			return m.react(i + 1)
-		},
 	}
 }
 
@@ -517,15 +531,30 @@ func (m *movementMachine) outcome() MovementOutcome {
 		Reactions: m.reactions,
 		Asked:     m.asked,
 	}
+	out.From, out.To = m.ends()
 	if m.folded != nil {
-		out.From = spatial.Position{X: m.folded.FromPosition.X, Y: m.folded.FromPosition.Y}
-		out.To = spatial.Position{X: m.folded.ToPosition.X, Y: m.folded.ToPosition.Y}
 		out.Prevented = m.folded.MovementPrevented
 		out.PreventionReason = m.folded.PreventionReason
 		out.OAPrevented = m.folded.IsOAPrevented()
 	}
+	if len(m.asked) > 0 {
+		// An ask stops the step (E8): it has not settled, so it is not
+		// reported as moved. It lands on the resume, once the asked players
+		// have answered and their swings settled.
+		out.From, out.To = spatial.Position{}, spatial.Position{}
+	}
 
 	return out
+}
+
+// ends are the step's endpoints, read off the folded event when the fold ran
+// in this call and off the input otherwise.
+func (m *movementMachine) ends() (spatial.Position, spatial.Position) {
+	if m.folded == nil {
+		return m.in.From, m.in.To
+	}
+	return spatial.Position{X: m.folded.FromPosition.X, Y: m.folded.FromPosition.Y},
+		spatial.Position{X: m.folded.ToPosition.X, Y: m.folded.ToPosition.Y}
 }
 
 func movementDamageType(d combatActions.Definition) string {

@@ -50,7 +50,8 @@ func (m *strikeMachine) poseBeforeRoll(folded dndEvents.AttackChainEvent) (Step,
 // resumeBeforeRoll finishes a strike paused before its d20, keeping exactly
 // the validation a before-roll blob always had: both sides named, the reactor
 // is the target, no die was rolled, and the offer names its pool, its ref and
-// the disadvantage it imposes.
+// the disadvantage it imposes. The answer must also be one the frozen offer
+// accepts ([ErrNotOffered]).
 func resumeBeforeRoll(h frozenHeader, in *ResumeInput) (Machine, error) {
 	var frozen frozenBeforeRoll
 	if err := decodeState(h, &frozen); err != nil {
@@ -63,6 +64,12 @@ func resumeBeforeRoll(h frozenHeader, in *ResumeInput) (Machine, error) {
 		frozen.Outcome.Roll != 0 || frozen.Offer.ResourceKey == "" || frozen.Offer.Ref.ID == "" ||
 		frozen.Offer.Disadvantage.SourceRef == nil || len(frozen.Folded.BeforeRollOffers) == 0 || frozen.Cost == nil {
 		return nil, fmt.Errorf("%w: invalid pre-roll reaction", ErrBadFrozen)
+	}
+	// The answer is checked against the offer as it was frozen, not only as
+	// the host stored it: a host that emptied the stored choices cannot take
+	// a reaction without choosing it.
+	if err := in.Answer.accepts(offerFromAttackRoll(frozen.Offer)); err != nil {
+		return nil, err
 	}
 	return resumedStrike(frozen.AttackerID, frozen.TargetID, frozen.Definition, frozen.Opportunity, in.Roller,
 		&strikeResume{answer: in.Answer, beforeRoll: &frozen}), nil

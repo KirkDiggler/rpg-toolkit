@@ -381,12 +381,18 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		return nil, fmt.Errorf("resolution: teardown: %w", tearErr)
 	}
 
-	consequences := outcome
-	ended, err := breaks.breaks(consequences)
+	// Everything that settled before a pause is attributed to this output:
+	// the settled units' follow-ups, and the checks a pause carries that no
+	// told unit does (a cast's, which tells its targets only when it ends).
+	followUps := followUpsOf(outcome)
+	if posed != nil {
+		followUps = append(followUps, posed.followUps...)
+	}
+	ended, err := breaksFrom(breaks.facts, followUps)
 	if err != nil {
 		return nil, err
 	}
-	kept, err := breaks.checks(cast, consequences)
+	kept, err := breaks.checksFrom(cast, followUps)
 	if err != nil {
 		return nil, err
 	}

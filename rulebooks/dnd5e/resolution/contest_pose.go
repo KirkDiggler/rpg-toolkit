@@ -62,7 +62,7 @@ func poseContest(m *contestMachine, ability abilities.Ability, dc int, save Paus
 		return nil, err
 	}
 
-	return Pause{Kind: save.Kind, Ask: save.Ask, Cost: save.Cost, Frozen: frozen}, nil
+	return Pause{Kind: save.Kind, Ask: save.Ask, Cost: save.Cost, Frozen: frozen, followUps: save.followUps}, nil
 }
 
 // resumeContest builds the machine that finishes a contest somebody answered
