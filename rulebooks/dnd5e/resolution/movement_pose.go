@@ -35,6 +35,11 @@ type frozenMovement struct {
 	Reactions map[string]frozenReaction        `json:"reactions"`
 	Index     int                              `json:"index"`
 	Inner     json.RawMessage                  `json:"inner"`
+
+	// Asked records that the step asked a player before it paused here. An
+	// ask stops the step (E8), so the resumed walk still reports no step: it
+	// lands only once the last asked player has answered.
+	Asked bool `json:"asked,omitempty"`
 }
 
 // storedReactionAttacks answers a resumed step from what was frozen: every
@@ -67,6 +72,7 @@ func (m *movementMachine) freezeMovement(index int, definition combatActions.Def
 		Mover: string(m.in.Mover), MoverKind: m.in.MoverKind, From: m.in.From, To: m.in.To,
 		ForcedBy: cloneCoreRef(m.in.ForcedBy), Folded: m.folded, Triggers: m.triggers,
 		Reactions: reactions, Index: index, Inner: inner.Frozen,
+		Asked: m.stepAsked || len(m.asked) > 0,
 	})
 	if err != nil {
 		return nil, err
@@ -110,6 +116,7 @@ func resumeMovement(h frozenHeader, in *ResumeInput) (Machine, error) {
 			ForcedBy: f.ForcedBy, Reactions: storedReactionAttacks(f.Reactions), Roller: in.Roller,
 		},
 		folded: f.Folded, triggers: f.Triggers, resumed: resumed, resumeIndex: f.Index,
+		stepAsked: f.Asked,
 	}, nil
 }
 

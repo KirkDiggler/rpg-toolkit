@@ -261,6 +261,10 @@ type movementMachine struct {
 	// fresh one from the table. Nil bills from the table.
 	price *Cost
 
+	// stepAsked is set on a walk resumed from a pause taken after the step
+	// had already asked a player: the step is still waiting on that ask.
+	stepAsked bool
+
 	in    *MovementInput
 	cast  *Participants
 	asked []Pause
@@ -537,7 +541,7 @@ func (m *movementMachine) outcome() MovementOutcome {
 		out.PreventionReason = m.folded.PreventionReason
 		out.OAPrevented = m.folded.IsOAPrevented()
 	}
-	if len(m.asked) > 0 {
+	if len(m.asked) > 0 || m.stepAsked {
 		// An ask stops the step (E8): it has not settled, so it is not
 		// reported as moved. It lands on the resume, once the asked players
 		// have answered and their swings settled.

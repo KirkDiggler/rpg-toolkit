@@ -896,3 +896,38 @@ func (s *ConcentrationTestSuite) TestAPausedSequenceTellsWhatAnUnpausedOneTells(
 	s.Equal(SequenceStepOutcome{Action: whole.Steps[0].Action, Strike: StrikeOutcome{Continued: true, AttackerID: wolfID, TargetID: heroID}},
 		rest.Steps[0], "and between them nothing the unpaused telling lacks")
 }
+
+// askAliceSwingZara asks alice and lets zara swing.
+type askAliceSwingZara struct{}
+
+func (askAliceSwingZara) AttackFor(reactor string) (combatActions.Definition, ReactionAnswer) {
+	if reactor == "alice" {
+		return validMeleeDefinition(), ReactionAsk
+	}
+	return validMeleeDefinition(), ReactionSwing
+}
+
+// TestAStepThatAskedStaysUnsettledAcrossADrivenPause: the step asks alice,
+// then zara's driven swing hits and pauses on the wolf's post-hit reaction.
+// Neither the paused output nor the resumed walk reports the step: it is
+// still waiting on alice's answer.
+func (s *MovementTestSuite) TestAStepThatAskedStaysUnsettledAcrossADrivenPause() {
+	in := s.stepInput()
+	in.Reactions = askAliceSwingZara{}
+	in.Roller = &actionRoller{singles: []int{19}, damage: [][]int{{3}}}
+	paused, err := s.runStep(in, func(_ context.Context, bus events.EventBus) { postHitOnce(s.T(), bus) }, "alice", "zara")
+	s.Require().NoError(err)
+	s.Require().NotNil(paused.Posed, "zara's swing paused on the post-hit reaction")
+	moved := paused.Outcome.(MovementOutcome)
+	s.Require().Len(moved.Asked, 1, "alice was asked first")
+	s.Equal(spatial.Position{}, moved.To, "the asked step has not settled")
+
+	machine, err := Resume(&ResumeInput{Pause: *paused.Posed, Answer: Decline(), Roller: dice.NewRoller()})
+	s.Require().NoError(err)
+	resumed, err := s.runMachine(machine, nil, "alice", "zara")
+	s.Require().NoError(err)
+	after := resumed.Outcome.(MovementOutcome)
+	s.Require().Len(after.Reactions, 1, "zara's continued swing")
+	s.Equal(spatial.Position{}, after.From, "the step is still waiting on alice")
+	s.Equal(spatial.Position{}, after.To)
+}
