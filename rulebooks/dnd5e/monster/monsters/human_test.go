@@ -16,7 +16,7 @@ import (
 
 func TestHuman_IsAssembledByFromTemplate(t *testing.T) {
 	m, err := monster.FromTemplate(&monster.FromTemplateInput{
-		ID: "h", Ref: refs.Monsters.Human(), Base: monsters.Human,
+		ID: "h", Ref: monsters.Human.Ref, Template: monster.Template{Base: monsters.Human.Ref}, Base: monsters.Human,
 	})
 	require.NoError(t, err)
 
@@ -36,7 +36,8 @@ func TestHuman_IsAssembledByFromTemplate(t *testing.T) {
 func TestHuman_IsABaseNotAConstructor(t *testing.T) {
 	base, ok := monsters.BaseByRef("dnd5e:monsters:human")
 	require.True(t, ok)
-	assert.Nil(t, base.Base, "a base names no base of its own")
+	assert.Equal(t, refs.Monsters.Human(), base.Ref, "a base carries its identity")
+	assert.Nil(t, base.Template.Base, "a base's block names no base of its own")
 
 	_, ok = monsters.ByRef("dnd5e:monsters:human")
 	assert.False(t, ok, "a placement cannot spawn a bare base without a template")

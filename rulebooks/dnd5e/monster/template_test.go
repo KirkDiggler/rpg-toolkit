@@ -151,7 +151,7 @@ func TestFromTemplate_RefusesByName(t *testing.T) {
 	cases := []struct {
 		name     string
 		template monster.Template
-		base     monster.Template
+		base     monster.Base
 		names    string
 	}{
 		{
@@ -185,16 +185,22 @@ func TestFromTemplate_RefusesByName(t *testing.T) {
 			names: "str",
 		},
 		{
-			name:     "missing base",
+			name:     "template names no base",
 			template: monster.Template{HitDice: "2d8"},
-			base:     monster.Template{},
+			base:     monsters.Human,
 			names:    "has no base",
 		},
 		{
-			name:     "template names its base but the base is absent",
+			name:     "template names its base but no base is given",
 			template: monster.Template{Base: refs.Monsters.Human(), HitDice: "2d8"},
-			base:     monster.Template{},
-			names:    "has no base",
+			base:     monster.Base{},
+			names:    "was given no base",
+		},
+		{
+			name:     "template names another base than the one given",
+			template: monster.Template{Base: refs.Monsters.Skeleton(), HitDice: "2d8"},
+			base:     monsters.Human,
+			names:    `template names base "dnd5e:monsters:skeleton" but was given "dnd5e:monsters:human"`,
 		},
 	}
 
@@ -213,7 +219,7 @@ func TestTemplate_MergeIsPerField(t *testing.T) {
 		Base:       refs.Monsters.Human(),
 		Abilities:  map[abilities.Ability]int{abilities.CON: 12},
 		Experience: 0,
-	}.Merge(monsters.Human)
+	}.Merge(monsters.Human.Template)
 
 	assert.Equal(t, 12, merged.Abilities[abilities.CON], "a stated key wins")
 	assert.Equal(t, 10, merged.Abilities[abilities.STR], "an unstated key is the base's")
@@ -248,6 +254,7 @@ func TestTemplate_MergeDoesNotAliasTheBase(t *testing.T) {
 
 func TestFromTemplate_TrainedSkillsCountOnce(t *testing.T) {
 	m, err := monster.FromTemplate(&monster.FromTemplateInput{ID: "x", Ref: testRef, Template: monster.Template{
+		Base:   refs.Monsters.Human(),
 		Skills: []skills.Skill{skills.Perception, skills.Perception},
 	}, Base: monsters.Human})
 	require.NoError(t, err)
@@ -255,7 +262,7 @@ func TestFromTemplate_TrainedSkillsCountOnce(t *testing.T) {
 	assert.Equal(t, 12, m.PassivePerception(), "a repeated skill adds proficiency once")
 }
 
-func TestFromTemplate_RefusesATemplateAsTheBase(t *testing.T) {
+func TestFromTemplate_RefusesABaseThatNamesABase(t *testing.T) {
 	guard := monster.Template{
 		Base:      refs.Monsters.Human(),
 		Abilities: map[abilities.Ability]int{abilities.CON: 12},
@@ -264,13 +271,30 @@ func TestFromTemplate_RefusesATemplateAsTheBase(t *testing.T) {
 		Actions:   []weapons.WeaponID{weapons.Spear},
 	}
 
-	// Swapped: the rulebook base as the template, the guard as the base.
+	// A derived template dressed up as the human base: its block names a
+	// base of its own, so it is not a base.
 	m, err := monster.FromTemplate(&monster.FromTemplateInput{
-		ID: "guard-1", Ref: testRef, Template: monsters.Human, Base: guard,
+		ID:       "guard-1",
+		Ref:      testRef,
+		Template: monster.Template{Base: refs.Monsters.Human()},
+		Base:     monster.Base{Ref: refs.Monsters.Human(), Template: guard},
 	})
 	require.Error(t, err)
 	assert.Nil(t, m)
-	assert.Contains(t, err.Error(), "a template cannot be a base")
+	assert.Contains(t, err.Error(), "a base names no base")
+}
+
+func TestFromTemplate_CreatureTypeIsTheBasesOnly(t *testing.T) {
+	// The derived ref names a catalogue monster of another type; the sheet
+	// still takes the base's type, never the derived ref's.
+	m, err := monster.FromTemplate(&monster.FromTemplateInput{
+		ID:       "x",
+		Ref:      refs.Monsters.Skeleton(),
+		Template: monster.Template{Base: refs.Monsters.Human()},
+		Base:     monsters.Human,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "humanoid", m.CreatureType())
 }
 
 func TestFromTemplate_RefusesANilInput(t *testing.T) {

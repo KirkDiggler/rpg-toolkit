@@ -32,11 +32,10 @@ import (
 // worth nothing (R8).
 type Template struct {
 	// Base is the rulebook base this template derives from
-	// (dnd5e:monsters:human), which the caller resolves and passes to
-	// [FromTemplate] as [FromTemplateInput.Base]. A rulebook base itself names
-	// NO Base: that is what marks it as a base, so a derived template passed
-	// where a base belongs is refused. It is NOT the derived creature's ref;
-	// [FromTemplateInput.Ref] carries that explicitly.
+	// (dnd5e:monsters:human). Required on every template [FromTemplate]
+	// assembles, and it must equal the [Base] it is assembled over. Inside a
+	// [Base] it is nil: a base names no base of its own. It is NOT the derived
+	// creature's ref; [FromTemplateInput.Ref] carries that explicitly.
 	Base *core.Ref
 
 	// Name is the display name. Empty = the base's.
@@ -132,9 +131,18 @@ func (t Template) Merge(base Template) Template {
 	return out
 }
 
-// FromTemplateInput is what [FromTemplate] assembles from. Named fields,
-// because Template and Base share a type: as positional arguments a swapped
-// call would compile and derive a silently wrong creature.
+// Base is a rulebook base block with its identity: the ref templates name it
+// by (dnd5e:monsters:human) and the authored block itself. The ref is what
+// lets [FromTemplate] check, inside the assembly, that a template is laid over
+// the base it names, and it is where a derived creature's type comes from.
+// The inner Template names no Base.
+type Base struct {
+	Ref      *core.Ref
+	Template Template
+}
+
+// FromTemplateInput is what [FromTemplate] assembles from. Named fields, so an
+// authored template and its base are never told apart by position.
 type FromTemplateInput struct {
 	// ID is the monster entity's id ("guard-1"). Required.
 	ID string
@@ -149,10 +157,9 @@ type FromTemplateInput struct {
 	// Template is the authored block: the overrides.
 	Template Template
 
-	// Base is the rulebook base the template names, looked up by the caller
-	// (monsters.BaseByRef). Required, and it must be a base: it names no Base
-	// of its own.
-	Base Template
+	// Base is the rulebook base the template names (monsters.BaseByRef).
+	// Required; its Ref must equal Template.Base.
+	Base Base
 }
 
 // FromTemplate assembles the monster a template describes, over the base the
@@ -166,13 +173,14 @@ type FromTemplateInput struct {
 //   - Each trained skill = the proficiency bonus; passive Perception =
 //     10 + WIS modifier, + proficiency when Perception is trained.
 //
-// The sheet carries in.Ref. Its creature type is the base's catalogue fact (a
-// guard derived from human is humanoid): the base the template names, or, for
-// a base assembling itself, its own ref.
+// The sheet carries in.Ref. Its creature type is the catalogue fact of
+// in.Base.Ref and nothing else (a guard derived from human is humanoid). A base
+// assembles itself as a template naming itself over itself.
 //
 // It refuses by name rather than assembling a creature with a silent zero:
-// a nil input, a missing id or ref, a missing base, a derived template passed
-// as the base, a missing or malformed hit dice string, a score outside 1–30
+// a nil input, a missing id or ref, a template that names no base, a base
+// with no ref, a template laid over a base other than the one it names, a
+// base whose block names a base of its own, a missing or malformed hit dice string, a score outside 1–30
 // or missing, an unknown armour, skill or weapon, no weapons, and hit points
 // that would come out below 1. A refusal returns no monster.
 func FromTemplate(in *FromTemplateInput) (*Monster, error) {
@@ -185,20 +193,24 @@ func FromTemplate(in *FromTemplateInput) (*Monster, error) {
 	if in.Ref == nil {
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "template monster %q has no ref", in.ID)
 	}
-	if in.Base.Base != nil {
-		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
-			"template monster %q: a template cannot be a base (the base names base %q)",
-			in.ID, in.Base.Base.String())
-	}
-	if in.Base.isEmpty() {
+	if in.Template.Base == nil {
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "template monster %q has no base", in.ID)
 	}
-
-	merged := in.Template.Merge(in.Base)
-	typeRef := in.Template.Base
-	if typeRef == nil {
-		typeRef = in.Ref
+	if in.Base.Ref == nil {
+		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"template monster %q names base %q but was given no base", in.ID, in.Template.Base.String())
 	}
+	if in.Template.Base.String() != in.Base.Ref.String() {
+		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"template names base %q but was given %q", in.Template.Base.String(), in.Base.Ref.String())
+	}
+	if in.Base.Template.Base != nil {
+		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"base %q: a base names no base (its block names %q)",
+			in.Base.Ref.String(), in.Base.Template.Base.String())
+	}
+
+	merged := in.Template.Merge(in.Base.Template)
 
 	if merged.Name == "" {
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "template monster %q has no name", in.ID)
@@ -237,7 +249,7 @@ func FromTemplate(in *FromTemplateInput) (*Monster, error) {
 	}
 
 	m := New(Config{
-		CreatureType:     creatureTypeFor("", typeRef),
+		CreatureType:     creatureTypeFor("", in.Base.Ref),
 		ID:               in.ID,
 		Name:             merged.Name,
 		Ref:              in.Ref,
@@ -259,14 +271,6 @@ func FromTemplate(in *FromTemplateInput) (*Monster, error) {
 	}
 
 	return m, nil
-}
-
-// isEmpty reports whether t states nothing at all — the zero value a caller
-// holds after ignoring a failed base lookup.
-func (t Template) isEmpty() bool {
-	return t.Base == nil && t.Name == "" && len(t.Abilities) == 0 && t.HitDice == "" &&
-		t.Armor == nil && t.Proficiency == 0 && t.Skills == nil && t.Actions == nil &&
-		t.Speed == (SpeedData{}) && t.Experience == 0
 }
 
 // scoresOf requires all six scores, each within 1–30, naming the one that
