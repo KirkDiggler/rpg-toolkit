@@ -18,6 +18,7 @@ package session_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -25,6 +26,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
@@ -1657,4 +1659,41 @@ func (s *ConcealSuite) TestAPartlySecretRoomComesBackWhole() {
 	s.Require().NoError(err)
 	s.Require().Len(still.Regions, 1)
 	s.Len(still.Regions[0].Cells, 33, "a secret found is found by its finder alone")
+}
+
+// TestAGuidanceDieHeldDuringASearchIsKept: a Search's find check runs through
+// the composition's check resolver, which has no way to carry a question, so a
+// searcher holding a Guidance die is not asked — the seam declines on her
+// behalf, the answer that costs nothing — and the search finishes, die still
+// in hand and no window open.
+func (s *ConcealSuite) TestAGuidanceDieHeldDuringASearchIsKept() {
+	ctx := context.Background()
+	s.startWith(concealedWorld(encounter.DoorIsClosed()), sharpEyed("alice"))
+	stored, err := s.characters.GetCharacter(ctx, "alice")
+	s.Require().NoError(err)
+	guided, err := conditions.NewGuidedCondition(conditions.NewGuidedConditionInput{
+		MemberID: "alice", SourceID: "cleric-1", SourceRef: refs.Spells.Guidance(),
+	})
+	s.Require().NoError(err)
+	raw, err := guided.ToJSON()
+	s.Require().NoError(err)
+	stored.Conditions = append(stored.Conditions, raw)
+	s.Require().NoError(s.characters.SaveCharacter(ctx, stored))
+
+	_, err = s.mgr.Search(ctx, &session.SearchInput{Session: "sess", Member: "alice", Region: "hall"})
+	s.Require().NoError(err, "the held die does not stop the search")
+	s.Len(eventsOfKind(s.stream.published, "alice", session.EventConcealmentRevealed), 1, "the search finished and found the vault")
+
+	after, err := s.characters.GetCharacter(ctx, "alice")
+	s.Require().NoError(err)
+	kept := false
+	for _, condition := range after.Conditions {
+		kept = kept || strings.Contains(string(condition), refs.Conditions.Guided().ID)
+	}
+	s.True(kept, "declining costs nothing: the die is still held")
+	offered, err := s.mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	for _, row := range offered.Declarations {
+		s.NotEqual(session.VerbReact, row.Verb, "nobody is being asked")
+	}
 }

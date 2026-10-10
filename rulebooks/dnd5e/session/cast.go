@@ -461,16 +461,22 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 		return m.poseCastWindow(ctx, scope, in.Member, *selected.declaration.Spell, areaUnresolved(caught), out)
 	}
 
-	return m.finishCast(ctx, scope, in.Member, *selected.declaration.Spell, definition.Ref, areaUnresolved(caught), out, false)
+	return m.finishCast(ctx, scope, in.Member, *selected.declaration.Spell, definition.Ref, areaUnresolved(caught), out)
 }
 
 // finishCast is everything a cast does once resolution has a real
 // [resolution.CastOutcome] in hand — reached directly by a cast that never
-// posed, and by [Manager.answerWindow] once a posed one is answered
-// (resumed). A cast is ONE told unit: its one beat names every target, the
-// ones resolved before a pause included, and is told here and only here. One
-// function rather than two, so a beat the fresh path writes cannot drift from
-// the one the resumed path writes for the same cast.
+// posed, and by [Manager.answerWindow] once a posed one is answered. A cast is
+// ONE told unit: its one beat names every target, the ones resolved before a
+// pause included, and is told here and only here. One function rather than
+// two, so a beat the fresh path writes cannot drift from the one the resumed
+// path writes for the same cast.
+//
+// A resumed cast does not continue the table on its last answer, unlike every
+// other story: a cast's window is posed on its caster's own turn, through
+// openForChange, so no turn is paused and no walk is held while it stands.
+// The day a cast can pose during somebody else's walk, its resume must call
+// [Manager.resumeAfterLastAnswer] too.
 //
 // caught is already the CALLER-FACING projection ([areaUnresolved]'s own
 // output) rather than the internal [areaCaught] a fresh cast computes it
@@ -480,7 +486,7 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 // [windowStory.Caught].
 func (m *Manager) finishCast(
 	ctx context.Context, scope *writeScope, member string, spell SpellRef, spellRef core.Ref,
-	caught []CaughtMember, out *resolution.Output, resumed bool,
+	caught []CaughtMember, out *resolution.Output,
 ) (*CastOutput, error) {
 	targetResults, pushes, err := castOutcome(out.Outcome, member, spell)
 	if err != nil {
@@ -565,11 +571,7 @@ func (m *Manager) finishCast(
 			// unfinished.
 			var err error
 			paused, err = walkCastPushes(ctx, enc, pushes, spellRef)
-			if err != nil || paused || !resumed {
-				return err
-			}
-			// The last answer continues the table, as every answer does.
-			return m.resumeAfterLastAnswer(ctx, scope, "", nil)
+			return err
 		},
 	})
 	if err != nil {

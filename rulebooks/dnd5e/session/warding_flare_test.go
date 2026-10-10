@@ -219,3 +219,31 @@ func (s *CastSuite) TestFlareBeforeAPlayersSwingPosesTheWindowAndCommitsThePrice
 	row := s.flareReaction()
 	s.Equal("Warding Flare", row.Reaction.Name, "the target is asked")
 }
+
+// TestASecondReactionInTheSameStepAsksAgainAfterTheFirstAnswer: the warding
+// cleric walks out of two skeletons' reach in one step. The first swing stops
+// before its roll to ask about Warding Flare; declining resumes the step, the
+// first swing misses, and the second skeleton's swing stops to ask again — a
+// resumed step poses its own next window. Declining that one finishes the
+// step, telling each swing once.
+func (s *CastSuite) TestASecondReactionInTheSameStepAsksAgainAfterTheFirstAnswer() {
+	s.sceneWithSecondSkeleton(s.flareSheet(), 1, 1, 1, 1, 1, 1, 1, 1, 1)
+	ctx := context.Background()
+
+	out, err := s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "cleric", DeclarationID: currentMoveID(s.T(), s.mgr, "sess", "cleric"), Path: []spatial.Position{{X: 0, Y: 1}}})
+	s.Require().NoError(err)
+	s.Require().Equal(session.MovementPaused, out.Status, "control: the first swing asks before its roll")
+	s.Empty(s.beats(session.EventStruck, session.EventMissed), "control: nothing has swung")
+
+	first := s.flareReaction()
+	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: first.ID, Answer: session.Decline()})
+	s.Require().NoError(err)
+	s.Len(s.beats(session.EventStruck, session.EventMissed), 1, "the first swing is told")
+	second := s.flareReaction()
+	s.NotEqual(first.ID, second.ID, "the resumed step asked again, on a window of its own")
+
+	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: second.ID, Answer: session.Decline()})
+	s.Require().NoError(err)
+	s.Len(s.beats(session.EventStruck, session.EventMissed), 2, "the second swing is told, the first not again")
+	s.Equal(spatial.Position{X: 0, Y: 1}, s.cellOf("cleric"), "and the walk finishes its step")
+}

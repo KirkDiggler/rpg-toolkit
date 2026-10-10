@@ -254,7 +254,7 @@ func (m *Manager) answerWindow(
 			if perr != nil {
 				return nil, fmt.Errorf("%w: %v", ErrInvalidSession, perr)
 			}
-			castOut, err = m.finishCast(ctx, scope, w.Story.Caster, w.Story.Spell, *spellRef, w.Story.Caught, out, true)
+			castOut, err = m.finishCast(ctx, scope, w.Story.Caster, w.Story.Spell, *spellRef, w.Story.Caught, out)
 		}
 		if err != nil {
 			return nil, err
