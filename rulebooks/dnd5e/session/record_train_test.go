@@ -16,7 +16,7 @@ import (
 )
 
 // trainTarget is the fighter the goblin boss's Multiattack is aimed at in the
-// record-train scenes: holding Fog Cloud, a frail constitution so a flat roll
+// record-train scenes: holding True Strike (with a Fog Cloud sight area standing), a frail constitution so a flat roll
 // fails the check, and the given hit points as current AND maximum (a sheet
 // loads at its maximum, so a lowered current value alone would be restored).
 type trainTarget struct {
@@ -101,7 +101,7 @@ func (s *MonsterTurnTestSuite) struckAmounts(events []session.Event) []int {
 }
 
 // TestAMultiattackAgainstAHealthyTargetTellsBothSwings is the first of the
-// three scenes of rpg-toolkit#2002: the target holds Fog Cloud at 40 hit
+// three scenes of rpg-toolkit#2002: the target holds True Strike at 40 hit
 // points, the first swing breaks the hold, and nothing falls.
 func (s *MonsterTurnTestSuite) TestAMultiattackAgainstAHealthyTargetTellsBothSwings() {
 	// Initiative twice; swing one attacks 15, damage 6 and the fighter's save
@@ -125,6 +125,19 @@ func (s *MonsterTurnTestSuite) TestAMultiattackWhoseSecondSwingFellsTheLastStand
 	status, err := mgr.Status(context.Background(), &session.StatusInput{Session: "sess"})
 	s.Require().NoError(err)
 	s.False(status.Open, "the party-defeated ending closed the encounter")
+	endings := 0
+	for _, event := range s.eventsFrom(mgr, before) {
+		var beat struct {
+			Beat   string `json:"beat"`
+			Ending string `json:"ending"`
+		}
+		s.Require().NoError(json.Unmarshal(event.Payload, &beat))
+		if beat.Beat == "ended" {
+			endings++
+			s.Equal("party_defeated", beat.Ending, "the consult's ending, not a parked stance or authored one")
+		}
+	}
+	s.Equal(1, endings)
 
 	sheet, err := chars.GetCharacter(context.Background(), "fighter")
 	s.Require().NoError(err)

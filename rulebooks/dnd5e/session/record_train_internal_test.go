@@ -55,3 +55,29 @@ func TestAContinuedStrikeWithNothingToCarryItsConcentrationIsRefused(t *testing.
 	require.NoError(t, err, "and with nothing to tell, nothing is recorded")
 	require.Nil(t, got)
 }
+
+// TestAContinuedStepOrReactionWithNothingToCarryItsConcentrationIsRefused: the
+// sequence and movement paths refuse a continued half with no retaliation and
+// a save to tell, as the lone path does, rather than dropping the save.
+func TestAContinuedStepOrReactionWithNothingToCarryItsConcentrationIsRefused(t *testing.T) {
+	told := concentration{Checks: []encounter.ConcentrationCheck{{}}}
+
+	story := windowStory{
+		Kind: storyAttack, Attacker: "boss", Target: "bob",
+		Definition: combatActions.Definition{Ref: *refs.MonsterActions.GoblinBossMultiattack(), Name: "Multiattack"},
+	}
+	_, err := sequenceUnits(story, resolution.SequenceOutcome{
+		Action: *refs.MonsterActions.GoblinBossMultiattack(),
+		Steps: []resolution.SequenceStepOutcome{{
+			Strike:              resolution.StrikeOutcome{Continued: true},
+			ConcentrationChecks: told.Checks,
+		}},
+	})
+	require.ErrorIs(t, err, ErrInvalidWorld)
+
+	_, err = stepRecord(resolution.MovementOutcome{Reactions: []resolution.ReactionOutcome{{
+		Struck:              resolution.StrikeOutcome{Continued: true},
+		ConcentrationChecks: told.Checks,
+	}}})
+	require.ErrorIs(t, err, ErrInvalidWorld)
+}

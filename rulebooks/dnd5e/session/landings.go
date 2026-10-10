@@ -185,7 +185,7 @@ func sequenceUnits(story windowStory, sequence resolution.SequenceOutcome) ([]en
 	for _, step := range sequence.Steps {
 		told := concentration{Checks: step.ConcentrationChecks, Breaks: step.ConcentrationBreaks}
 		if step.Strike.Continued {
-			retaliation, err := retaliationUnit(step.Strike.Retaliation, told)
+			retaliation, err := continuedUnit(step.Strike.Retaliation, told)
 			if err != nil {
 				return nil, err
 			}
@@ -288,7 +288,7 @@ func stepRecord(moved resolution.MovementOutcome) (func(*encounter.Encounter, co
 	for _, reaction := range moved.Reactions {
 		own := concentration{Checks: reaction.ConcentrationChecks, Breaks: reaction.ConcentrationBreaks}
 		if reaction.Struck.Continued {
-			retaliation, err := retaliationUnit(reaction.Struck.Retaliation, own)
+			retaliation, err := continuedUnit(reaction.Struck.Retaliation, own)
 			if err != nil {
 				return nil, err
 			}
@@ -334,6 +334,21 @@ func recordTrain(enc *encounter.Encounter, units []encounter.TrainUnit) error {
 	}
 	_, err := enc.RecordTrain(&encounter.RecordTrainInput{Units: units})
 	return translate(err)
+}
+
+// continuedUnit is a continued strike's half of the train: its retaliation, as
+// a unit carrying the concentration its damage tested. The hit was told at the
+// pause, so the retaliation is the only beat concentration can ride behind;
+// without one the checks and breaks would be dropped, so it refuses.
+func continuedUnit(r *resolution.RetaliationOutcome, told concentration) (*encounter.TrainUnit, error) {
+	unit, err := retaliationUnit(r, told)
+	if err != nil {
+		return nil, err
+	}
+	if unit == nil && !told.empty() {
+		return nil, fmt.Errorf("strike: %w: concentration with no beat to follow", ErrInvalidWorld)
+	}
+	return unit, nil
 }
 
 // retaliationUnit is the save and effects a taken post-hit reaction imposed,

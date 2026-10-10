@@ -38,8 +38,8 @@ type strikerSeam struct {
 var _ encounter.Striker = strikerSeam{}
 
 // Strike resolves attacker's declared action against target and records the
-// outcome itself via enc.Record — the same public verb Manager.Attack's own
-// swing already uses, so a monster's blow and a player's land on the story
+// outcome itself via enc.RecordTrain — the same public verb Manager.Attack's
+// own swing already uses, so a monster's blow and a player's land on the story
 // through one path.
 //
 // NEVER ADOPTS A NEW *encounter.Encounter. enc is the SAME live object
