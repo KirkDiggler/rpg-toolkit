@@ -69,9 +69,12 @@ func compileEndings(endings []EndingInput, f *field) []declaredEnding {
 // intel, and record. Construct via NewEncounter or LoadEncounter; the zero
 // value is unusable.
 type Encounter struct {
-	// holdEndings defers every close while a train lands a unit's deed. The
-	// first ending asked for is parked in heldEnding and the train closes with
-	// it after the last unit, so no ending is told between two units' beats.
+	// holdEndings defers every close and every standing consult while a train
+	// lands a unit's deed. The first ending asked for is parked in heldEnding
+	// and the train closes with it after the last unit; a consult only answers
+	// (noticeDown tells nothing). So neither an ending nor a fall is told
+	// between two units' beats, while a fight the deed forms still forms in
+	// place.
 	// Unexported and never persisted: it is set and cleared inside one verb.
 	holdEndings bool
 	heldEnding  *heldEnding

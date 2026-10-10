@@ -19,6 +19,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
+
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -266,6 +268,30 @@ func (s *BothWaysSuite) TestAStanceEndingWaitsForTheLastBeatOfTheTrain() {
 	s.Less(out.Units[1].Seq, endedSeq, "the ending follows the last beat")
 	kinds := beatsFrom(s.T(), enc, alice, out.Units[0].Seq)
 	s.Equal("ended", kinds[len(kinds)-1], "and nothing is told after it")
+}
+
+// TestAFightFormedMidTrainDoesNotAskWhoIsStandingUntilTheEnd: swing one forms
+// the fight (the stance and the bubble are told in place), swing two fells
+// the target. The fall is told once, after the second swing.
+func (s *BothWaysSuite) TestAFightFormedMidTrainDoesNotAskWhoIsStandingUntilTheEnd() {
+	const (
+		ant  = core.EntityID("ant")
+		zed  = core.EntityID("zed")
+		boss = core.EntityID("boss")
+	)
+	enc := s.warCamp(passDriver{}, passStriker{}, s.standing,
+		monster(ant, bwGoblins, 4, 1), monster(boss, bwGoblins, 5, 5), player(zed, 0, 1))
+	s.standing.down = []encounter.MemberID{ant}
+
+	out, err := enc.RecordTrain(outcomeTrain(swing(zed, ant), swing(zed, ant)))
+	s.Require().NoError(err)
+
+	kinds := beatsFrom(s.T(), enc, zed, out.Units[0].Seq)
+	// The fallen ant held the first slot of the fight the swing formed, so the
+	// formation itself hands the slot on (turn-ended). That is the fight
+	// forming in place; what must not happen is the fall being told before the
+	// second swing.
+	s.Equal([]string{"struck", "stance", "bubble-formed", "turn-ended", "struck", "down", "ended"}, kinds)
 }
 
 // TestAClosedEncounterRefusesATrain: a closed story takes nothing but an

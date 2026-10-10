@@ -76,6 +76,12 @@ func (e *Encounter) noticeDown(
 	if err != nil {
 		return nil, nil, err
 	}
+	// A train is landing a deed: the question is asked, so a fight forming
+	// here still classifies its members by who is standing, but nothing is
+	// told, removed or closed. The train asks again once, after its last unit.
+	if e.holdEndings {
+		return participation, nil, nil
+	}
 	down := participation.down
 
 	// First narrate every newly down member. Down is a story fact only; it no
