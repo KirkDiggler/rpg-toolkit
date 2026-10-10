@@ -342,8 +342,10 @@ func TestCastleKitchenCompilesTemplates(t *testing.T) {
 		require.NoError(t, err)
 		out.Templates["guard"].Abilities["str"] = 30
 		out.Templates["guard"].Actions[0] = "dnd5e:weapons:club"
+		out.Templates["guard"].Skills[0] = "stealth"
 		require.Equal(t, 13, decoded.Spec.Templates["guard"].Abilities["str"])
 		require.Equal(t, "dnd5e:weapons:spear", decoded.Spec.Templates["guard"].Actions[0])
+		require.Equal(t, "perception", decoded.Spec.Templates["guard"].Skills[0])
 	})
 
 	t.Run("no templates key compiles to nil", func(t *testing.T) {
@@ -374,6 +376,11 @@ func TestTemplateShapeRefusals(t *testing.T) {
 			name: "base is not a ref", old: guardBase,
 			repl: "  guard:\n    base: human\n",
 			path: "templates.guard.base", message: "invalid ref: ",
+		},
+		{
+			name: "base is an empty string", old: guardBase,
+			repl: "  guard:\n    base: \"\"\n",
+			path: "templates.guard.base", message: "is required",
 		},
 		{
 			name: "base is missing", old: "  cook:\n    base: dnd5e:monsters:human\n",
@@ -412,6 +419,28 @@ func TestTemplateShapeRefusals(t *testing.T) {
 			path: "templates.guard.abilities.str", message: "must be an integer",
 		},
 		{
+			// 13.0 is the case only the node walk sees: yaml.v3 decodes an
+			// integral float into an int without a word.
+			name: "an integral float score", old: "{ str: 13, con: 12, wis: 11 }", repl: "{ str: 13.0 }",
+			path: "templates.guard.abilities.str", message: "must be an integer",
+		},
+		{
+			name: "a negative proficiency", old: "proficiency: 3", repl: "proficiency: -1",
+			path: "templates.captain.proficiency", message: "must not be negative",
+		},
+		{
+			name: "a negative experience", old: "hitDice: 2d8", repl: "hitDice: 2d8\n    experience: -50",
+			path: "templates.guard.experience", message: "must not be negative",
+		},
+		{
+			name: "a proficiency written as a float", old: "proficiency: 3", repl: "proficiency: 3.0",
+			path: "templates.captain.proficiency", message: "must be an integer",
+		},
+		{
+			name: "an experience written as a float", old: "hitDice: 2d8", repl: "hitDice: 2d8\n    experience: 10.0",
+			path: "templates.guard.experience", message: "must be an integer",
+		},
+		{
 			name: "bare armor, no ref", old: "armor: dnd5e:armor:chain-shirt", repl: "armor: chain-shirt",
 			path: "templates.guard.armor", message: `"chain-shirt" is not a ref: `,
 		},
@@ -434,6 +463,13 @@ func TestTemplateShapeRefusals(t *testing.T) {
 			name: "a template id a ref cannot carry", old: "  cook:\n", repl: "  \"head cook\":\n",
 			path:    "templates.head cook",
 			message: `"head cook" is not a template id: a template is placed as dnd5e:monsters:<id>, so its id is one ref segment`,
+		},
+		{
+			// core accepts a multi-part id (`dnd5e:monsters:a:b`), so only the
+			// one-segment rule refuses this key.
+			name: "a template id with a colon", old: "  cook:\n", repl: "  \"a:b\":\n",
+			path:    "templates.a:b",
+			message: `"a:b" is not a template id: a template is placed as dnd5e:monsters:<id>, so its id is one ref segment`,
 		},
 		{
 			name: "a stored derived number", old: "hitDice: 2d8", repl: "hitDice: 2d8\n    hitPoints: 11",

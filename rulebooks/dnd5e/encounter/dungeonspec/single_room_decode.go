@@ -826,7 +826,12 @@ func templatesShape(doc *yaml.Node, add errSink) {
 			add(p, errNotAMapping)
 			continue
 		}
-		requireString(t, "base", p, add)
+		// AN EMPTY BASE IS NO BASE. [requiredNode] refuses an absent or null
+		// key; `base: ""` is a text scalar that names nothing, and it is the
+		// same defect, so it gets the same sentence at the same path.
+		if base := requireString(t, "base", p, add); base != nil && base.Value == "" {
+			add(fieldPath(p, "base"), errRequired)
+		}
 		for _, key := range [...]string{"name", "hitDice", "armor"} {
 			if n := optionalNode(t, key, p, add); n != nil && n.Tag != "!!str" {
 				add(fieldPath(p, key), errNotAString)
@@ -893,6 +898,7 @@ const (
 	maxAbilityScore = 30
 
 	errTemplateFromTemplate = "templates derive from the rulebook, not from each other"
+	errNegative             = "must not be negative"
 )
 
 // abilityKeys are the six short names a template's `abilities` is keyed by.
@@ -938,6 +944,15 @@ func templateValues(templates map[string]TemplateSpec, add errSink) {
 		if t.Armor != "" {
 			templateArmorValue(t.Armor, p+".armor", add)
 		}
+		// A BONUS AND AN AWARD ARE NEVER NEGATIVE, for the reason a score of
+		// 0 is refused: no block has one. Refused here, at the author's path,
+		// rather than at assembly where the path is gone.
+		if t.Proficiency < 0 {
+			add(p+".proficiency", errNegative)
+		}
+		if t.Experience < 0 {
+			add(p+".experience", errNegative)
+		}
 		for j, skill := range t.Skills {
 			if !skillIDPattern.MatchString(skill) {
 				add(fmt.Sprintf("%s.skills[%d]", p, j),
@@ -970,7 +985,8 @@ func templateIDValue(id, p string, add errSink) {
 // Whether the named monster EXISTS is not asked here (design law C1).
 func templateBaseValue(base string, templates map[string]TemplateSpec, p string, add errSink) {
 	if base == "" {
-		// The shape walk already said `is required` at this path.
+		// The shape walk already said `is required` at this path, for an
+		// absent, null or empty base alike ([templatesShape]).
 		return
 	}
 	parsed, err := core.ParseString(base)
