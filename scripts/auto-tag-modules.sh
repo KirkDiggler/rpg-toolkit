@@ -186,7 +186,7 @@ for modfile in $(find . -name "go.mod" -type f -not -path "./vendor/*" -not -pat
   if [[ -z "$last_tag" ]]; then
     has_changes=true  # New module
   else
-    changes=$(git diff --name-only "$last_tag" HEAD -- "$module_path" "${excludes[@]}" "${DOC_EXCLUDES[@]}" | head -1)
+    changes=$(git diff --name-only "$last_tag" HEAD -- "$module_path" "${excludes[@]}" "${DOC_EXCLUDES[@]}" | sed -n '1p')
     has_changes=$([[ -n "$changes" ]] && echo true || echo false)
   fi
 
