@@ -71,12 +71,13 @@ func (s *RecordActivationSuite) TestStabilizationCastSurvivesReloadWithoutInvent
 			reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 				Data: data,
 				Capabilities: encounter.Capabilities{
-					Sight:      everyoneSeesTheWholeMap{},
-					Equipment:  encounter.UnobservedEquipment{},
-					Sheets:     zeroSheets{},
-					Standing:   everyoneStanding{},
-					Initiative: orderAsGiven{},
-					Driver:     passDriver{},
+					Sight:         everyoneSeesTheWholeMap{},
+					Equipment:     encounter.UnobservedEquipment{},
+					Conditions:    encounter.UnobservedEquipment{},
+					Sheets:        zeroSheets{},
+					Participation: everyoneStanding{},
+					Initiative:    orderAsGiven{},
+					Driver:        passDriver{},
 					Actors: encounter.Actors{
 						Striker:   passStriker{},
 						Mover:     quietMover{},

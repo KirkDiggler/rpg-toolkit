@@ -20,7 +20,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -111,14 +110,15 @@ func (s *ContestFoldTestSuite) resolveErr(machine Machine, participants ...Parti
 		Participants: participants,
 		Machine:      machine,
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Roller:     dice.NewRoller(),
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Roller:        dice.NewRoller(),
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Actors:        Actors,
 		},
 	})
 }
@@ -140,7 +140,7 @@ func (s *ContestFoldTestSuite) dealt(outcome ContestOutcome) ImposedEffect {
 func (s *ContestFoldTestSuite) TestAPoisonImmuneSaverTakesNothingFromASpell() {
 	outcome := s.resolve(
 		contest(wolfID, saves.Negated, []damage.Damage{{Dice: "2d4", Type: damage.Poison}}, straightRoll),
-		Participant{Monster: s.creature(monstertraits.MustImmunityJSON(wolfID, damage.Poison))},
+		Participant{Monster: s.creature(conditions.MustImmunityJSON(wolfID, damage.Poison))},
 		Participant{Character: s.fixtures().saver(14)},
 	)
 	s.Require().False(outcome.Succeeded, "+0 on a 3 is 3 against DC 13")
@@ -189,7 +189,7 @@ func (s *ContestFoldTestSuite) TestARagingSaverTakesHalfASpellsBludgeoning() {
 func (s *ContestFoldTestSuite) TestAHalfGateHalvesBeforeTheMultipliersApply() {
 	outcome := s.resolve(
 		contest(wolfID, saves.Half, []damage.Damage{{Dice: "3d4", Type: damage.Bludgeoning}}, 20),
-		Participant{Monster: s.creature(monstertraits.MustVulnerabilityJSON(wolfID, damage.Bludgeoning))},
+		Participant{Monster: s.creature(conditions.MustVulnerabilityJSON(wolfID, damage.Bludgeoning))},
 		Participant{Character: s.fixtures().saver(14)},
 	)
 	s.Require().True(outcome.Succeeded, "+0 on a 20 is 20 against DC 13")
@@ -236,8 +236,6 @@ func (s *ContestFoldTestSuite) TestTheCastersSneakAttackDoesNotRideASave() {
 		if component.Roll.Source.Ref != nil {
 			s.NotEqual(refs.Conditions.SneakAttack().String(), component.Roll.Source.Ref.String(),
 				"Sneak Attack adds to weapon attacks, not to a save's damage")
-			s.NotEqual(refs.Features.SneakAttack().String(), component.Roll.Source.Ref.String(),
-				"under either of its refs")
 		}
 	}
 }
@@ -285,13 +283,13 @@ func (s *ContestFoldTestSuite) TestAMultiplierLineNamesTheFactorThatWasApplied()
 		Multipliers: []dnd5eEvents.DamageMultiplier{
 			{
 				Category:   dnd5eEvents.DamageSourceCondition,
-				Source:     dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging"},
+				Source:     dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging", SourceID: heroID},
 				DamageType: damage.Bludgeoning,
 				Factor:     dnd5eEvents.DamageFactorResistance,
 			},
 			{
 				Category:   dnd5eEvents.DamageSourceMonsterTrait,
-				Source:     dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity"},
+				Source:     dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity", SourceID: wolfID},
 				DamageType: damage.Bludgeoning,
 				Factor:     dnd5eEvents.DamageFactorImmunity,
 			},

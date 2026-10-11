@@ -128,6 +128,7 @@ type StabilizationDetail struct {
 // discarded.
 // Stabilized requires Target, Ref, Name and Stabilization; it refuses roll,
 // healing, condition and movement fields. Every other kind refuses Stabilization.
+// Detail is optional on condition-applied and refused on every other kind.
 //
 // Numeric values are rulebook facts. Encounter validates the calculation's
 // internal arithmetic and its pairing with Requested, and never checks or
@@ -168,6 +169,11 @@ type ActivationResult struct {
 	// goes both ways, and the wrong guess is as expensive as no guess. A
 	// spell that deals two types deals them as two results.
 	DamageType string
+
+	// Detail is the condition instance's own detail. Optional on
+	// ResultConditionApplied, forbidden on every other kind. It is free text
+	// the rulebook wrote, carried unread; empty writes no key.
+	Detail string
 
 	Description string
 	Reason      string
@@ -269,6 +275,7 @@ type conditionAppliedPayload struct {
 	Ref      string               `json:"ref"`
 	Name     string               `json:"name"`
 	SourceID string               `json:"source_id,omitempty"`
+	Detail   string               `json:"detail,omitempty"`
 }
 
 type conditionRemovedPayload struct {
@@ -458,6 +465,9 @@ func (e *Encounter) prepareActivationResult(
 	if result.Kind != ResultStabilized && result.Stabilization != nil {
 		return nil, forbiddenActivationResultField(verb, index, result.Kind, "stabilization")
 	}
+	if result.Kind != ResultConditionApplied && result.Detail != "" {
+		return nil, forbiddenActivationResultField(verb, index, result.Kind, "detail")
+	}
 	if result.Kind != ResultConditionApplied && result.Kind != ResultConditionRemoved && result.Address != nil {
 		return nil, forbiddenActivationResultField(verb, index, result.Kind, "condition address")
 	}
@@ -563,6 +573,7 @@ func (e *Encounter) prepareActivationResult(
 		return conditionAppliedPayload{
 			Kind: result.Kind, Target: result.Address.MemberID,
 			Ref: result.Address.ConditionRef, Name: result.Name, SourceID: result.Address.SourceID,
+			Detail: result.Detail,
 		}, nil
 
 	case ResultConditionRemoved:

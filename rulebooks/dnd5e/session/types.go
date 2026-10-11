@@ -2293,6 +2293,10 @@ type ConditionAppliedBody struct {
 	Ref      string `json:"ref"`
 	Name     string `json:"name"`
 	SourceID string `json:"source_id,omitempty"`
+
+	// Detail is the condition instance's own word (a Commanded creature's
+	// "grovel"), carried unchanged from the provider. Empty writes no key.
+	Detail string `json:"detail,omitempty"`
 }
 
 // ConditionRemovedBody identifies a condition removed from a target and the

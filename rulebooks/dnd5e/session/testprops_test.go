@@ -177,7 +177,10 @@ func (encNoHandsObserved) Conditions(
 	return out, nil
 }
 
-var _ encounter.EquipmentWithConditions = encNoHandsObserved{}
+var (
+	_ encounter.Equipment  = encNoHandsObserved{}
+	_ encounter.Conditions = encNoHandsObserved{}
+)
 
 // blockingProps is occludingProps' opposite number: cells a creature cannot be
 // put into.

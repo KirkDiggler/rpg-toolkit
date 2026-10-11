@@ -51,9 +51,6 @@ func (s *IsDownSuite) SetupTest() {
 }
 
 func (s *IsDownSuite) TearDownTest() {
-	if s.fighter != nil {
-		_ = s.fighter.Cleanup(s.ctx)
-	}
 	s.ctrl.Finish()
 }
 

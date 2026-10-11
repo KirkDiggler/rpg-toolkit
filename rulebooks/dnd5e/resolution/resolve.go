@@ -480,12 +480,13 @@ func attachAll(ctx context.Context, surf *surface, in *attachAllInput) (*Partici
 			cast.characters[id] = ch
 
 		case p.Monster != nil:
-			// No policy here, and none is available: monstertraits has one
-			// loader and it refuses what it cannot read.
+			// No policy here, and none is available: the monster branch loads
+			// every blob through conditions.LoadJSON, which refuses a ref
+			// nothing registers and what it cannot read.
 			//
 			// This used to add that a lenient monster was unreachable BECAUSE
 			// the only lenient entry built character participants and never
-			// monster ones. That premise is gone — Standing sets
+			// monster ones. That premise is gone — Participation sets
 			// DropUnreadable and takes monsters — while the conclusion holds
 			// for a different and more durable reason: the flag is read on the
 			// character branch above and never reaches this one. A caller that

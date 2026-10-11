@@ -49,12 +49,13 @@ func TestAClosedEncounterIsNotClosedAgainByAnArrival(t *testing.T) {
 			{Key: "boss-down", Trigger: TriggerMemberDown{Member: "g1"}},
 		},
 		Capabilities: Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   standing,
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     UnobservedEquipment{},
+			Conditions:    UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: standing,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -102,12 +103,13 @@ func TestClosingEncounterDiscardsSuspendedContinuations(t *testing.T) {
 				Members: []MemberInput{{ID: "alice", Kind: KindPlayer, Position: spatial.Position{X: 2, Y: 2}}},
 				Endings: []EndingInput{{Key: "done", Trigger: TriggerExternal{}}},
 				Capabilities: Capabilities{
-					Sight:      everyoneSeesTheWholeMap{},
-					Equipment:  UnobservedEquipment{},
-					Sheets:     zeroSheets{},
-					Standing:   &somebodyDown{},
-					Initiative: orderAsGiven{},
-					Driver:     passDriver{},
+					Sight:         everyoneSeesTheWholeMap{},
+					Equipment:     UnobservedEquipment{},
+					Conditions:    UnobservedEquipment{},
+					Sheets:        zeroSheets{},
+					Participation: &somebodyDown{},
+					Initiative:    orderAsGiven{},
+					Driver:        passDriver{},
 					Actors: Actors{
 						Striker:   passStriker{},
 						Mover:     quietMover{},
@@ -127,7 +129,7 @@ func TestClosingEncounterDiscardsSuspendedContinuations(t *testing.T) {
 			require.False(t, enc.Paused())
 			data := enc.ToData()
 			require.Nil(t, data.Pause)
-			_, err = LoadEncounter(&LoadEncounterInput{Data: data, Capabilities: Capabilities{Sight: everyoneSeesTheWholeMap{}, Equipment: UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: &somebodyDown{}, Initiative: orderAsGiven{}, Driver: passDriver{}, Actors: Actors{Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}}}})
+			_, err = LoadEncounter(&LoadEncounterInput{Data: data, Capabilities: Capabilities{Sight: everyoneSeesTheWholeMap{}, Equipment: UnobservedEquipment{}, Conditions: UnobservedEquipment{}, Sheets: zeroSheets{}, Participation: &somebodyDown{}, Initiative: orderAsGiven{}, Driver: passDriver{}, Actors: Actors{Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}}}})
 			require.NoError(t, err, "an ending reached during a reaction must reload")
 		})
 	}

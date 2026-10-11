@@ -157,7 +157,7 @@ func (m *movementMachine) askOpportunity(
 	}
 	return Pause{
 		Kind:   PauseOpportunity,
-		Ask:    Ask{Audience: trigger.ReactorID, Offer: Offer{Ref: *ref, Name: trigger.Name}},
+		Ask:    Ask{Audience: trigger.ReactorID, Offer: Offer{Ref: *ref, Name: trigger.Name, Description: trigger.Description}},
 		Cost:   cost,
 		Frozen: frozen,
 	}, nil

@@ -195,7 +195,7 @@ type field struct {
 	// argument, one noun over.
 	exitCells map[ExitID]spatial.Position
 
-	// holdable is every prop id the author declared holdable — LEGACY PROPS
+	// holdable is every prop id the author declared holdable — CELL PROPS
 	// AND PLACED FOOTPRINTS IN ONE SET (rpg-toolkit#1854). Built here
 	// because "is this a thing that can be picked up" is a question about
 	// the FIELD, asked by [Encounter.Hold] and by the ending validation, and
@@ -298,7 +298,7 @@ func compileField(in FieldInput) (*field, error) {
 		return nil, err
 	}
 	// PLACED FOOTPRINTS AFTER THE PROPS, so a placed id is checked against
-	// the legacy prop ids the props pass just built. Nothing here asks for
+	// the cell prop ids the props pass just built. Nothing here asks for
 	// floor: a footprint may overhang the void (placed_props.go).
 	if err := f.compilePlaced(in.Placed); err != nil {
 		return nil, err
@@ -987,7 +987,7 @@ func cellBefore(a, b spatial.Position) bool {
 }
 
 // propHolds is the intel records the prop with this id carries, WHICHEVER
-// LIST IT IS IN — [PropInput.Holds] for a legacy prop,
+// LIST IT IS IN — [PropInput.Holds] for a cell prop,
 // [PlacedPropInput.Holds] for a footprint (rpg-toolkit#1854).
 //
 // One question with one answer, because "what does holding this teach me" is

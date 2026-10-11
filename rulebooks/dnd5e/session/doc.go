@@ -174,12 +174,11 @@
 // The living-world slice (rpg-toolkit#1375) added a verb and a law, both in
 // the shape this package already had.
 //
-// Legacy hosts use Search: member and region in, the composition's Search does
-// the rest. Automatic-discovery hosts instead supply exploration storage as
-// described below, and Search returns ErrSearchRetired through the ordinary
-// composition-to-session translation. Every rule that keeps a secret secret
-// stays in encounter; this seam adds only its usual wiring. The two capabilities a concealed
-// world refuses to build without are supplied from here the way Standing is
+// Discovery is automatic: a member who comes near hidden content makes the
+// check, and there is no verb that searches. Every rule that keeps a secret
+// secret stays in encounter; this seam adds only its usual wiring. The two
+// capabilities a concealed world refuses to build without are supplied from
+// here the way Participation is
 // (conceal.go): a check resolver that stages the member's stored record and
 // hands it to resolution — which loads the character, attaches their
 // conditions, selects the best listed approach, and rolls with the check
@@ -200,10 +199,10 @@
 //
 // # Automatic discovery and encounter-owned memory
 //
-// Config.Explorations is an optional ExplorationRepository, keyed by character
-// ID. Nil preserves the legacy explicit-search host contract. Supplying it
-// enables automaticCheckSeam and persists only the sharing preference in
-// ExplorationData. The host coordinates that preference across sessions.
+// Config.Explorations is a required ExplorationRepository, keyed by character
+// ID; NewManager refuses a Config without one (ErrIncompleteConfig). It
+// persists only the sharing preference in ExplorationData. The host
+// coordinates that preference across sessions.
 //
 // Discoveries and attempt/re-arm state belong to the encounter's own saved
 // World and Discovery data. Reloading/rejoining that encounter preserves them;

@@ -161,3 +161,17 @@ func (f *FightingStyleTwoWeaponFightingCondition) onDamageChain(
 
 	return c, nil
 }
+
+// fightingStyleTwoWeaponFightingDescriptor is the one entry for [FightingStyleTwoWeaponFightingCondition]; see [descriptors].
+var fightingStyleTwoWeaponFightingDescriptor = descriptor{
+	ref:     refs.Conditions.FightingStyleTwoWeaponFighting(),
+	display: Display{Name: "Two-Weapon Fighting", Detail: "Adds your ability modifier to the damage of your off-hand attack."},
+	load:    loaderOf[FightingStyleTwoWeaponFightingCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return NewFightingStyleTwoWeaponFightingCondition(in.MemberID), nil
+	},
+	ownAction:     answersNow,
+	againstHolder: notBearing,
+}
+
+var _ contributions.ActionAssessor = (*FightingStyleTwoWeaponFightingCondition)(nil)

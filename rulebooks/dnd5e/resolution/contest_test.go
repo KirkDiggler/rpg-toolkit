@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
@@ -67,12 +68,13 @@ func (s *ContestTestSuite) world() encounter.EncounterData {
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
 			Actors: encounter.Actors{
 				Striker:   noAttacksExpected{},
 				Mover:     encounter.RefusingMover{},
@@ -151,14 +153,15 @@ func (s *ContestTestSuite) resolve(hero *character.Data, machine Machine) *Outpu
 		Participants: []Participant{{Character: hero}, {Monster: s.wolfData()}},
 		Machine:      machine,
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Roller:     dice.NewRoller(),
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Roller:        dice.NewRoller(),
+			Actors:        Actors,
 		},
 	})
 	s.Require().NoError(err)
@@ -195,7 +198,7 @@ func (s *ContestTestSuite) TestAFailedSaveKnocksTheHeroProne() {
 
 	s.Require().Len(out.DirtyCharacters, 1, "the sheet changed, so it comes back to be saved")
 	s.Require().Equal(heroID, out.DirtyCharacters[0].ID)
-	s.Require().ElementsMatch([]string{refs.Conditions.Prone().String(), opportunityAttack}, s.conditionRefs(out.DirtyCharacters[0]))
+	s.Require().ElementsMatch([]string{refs.Conditions.Prone().String()}, s.conditionRefs(out.DirtyCharacters[0]))
 }
 
 // The control that makes the headline mean something: same wolf, same gate,
@@ -261,14 +264,15 @@ func (s *ContestTestSuite) TestRegistrationsDoNotDependOnInputOrder() {
 		Participants: []Participant{{Character: s.hero(s.raging())}, {Monster: s.wolfData()}},
 		Machine:      s.contest(s.wolfsKnockdown(), roller()),
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Roller:     dice.NewRoller(),
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Roller:        dice.NewRoller(),
+			Actors:        Actors,
 		},
 	})
 	s.Require().NoError(err)
@@ -278,14 +282,15 @@ func (s *ContestTestSuite) TestRegistrationsDoNotDependOnInputOrder() {
 		Participants: []Participant{{Monster: s.wolfData()}, {Character: s.hero(s.raging())}},
 		Machine:      s.contest(s.wolfsKnockdown(), roller()),
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Roller:     dice.NewRoller(),
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Roller:        dice.NewRoller(),
+			Actors:        Actors,
 		},
 	})
 	s.Require().NoError(err)
@@ -346,14 +351,15 @@ func (s *ContestTestSuite) TestTheDCComesFromTheGate() {
 			Roller:      &scriptedRoller{single: advantageRoll},
 		}),
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Roller:     dice.NewRoller(),
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Roller:        dice.NewRoller(),
+			Actors:        Actors,
 		},
 	})
 	s.Require().NoError(err)
@@ -373,14 +379,15 @@ func (s *ContestTestSuite) TestARecurringGateIsRefused() {
 		Participants: []Participant{{Character: s.hero()}, {Monster: s.wolfData()}},
 		Machine:      s.contest(gate, &scriptedRoller{single: straightRoll}),
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Roller:     dice.NewRoller(),
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Roller:        dice.NewRoller(),
+			Actors:        Actors,
 		},
 	})
 
@@ -399,14 +406,15 @@ func (s *ContestTestSuite) TestRefusesAContestItCannotRun() {
 				Application: combatActions.ConditionApplication{Ref: *refs.Conditions.Prone()},
 			}),
 			Capabilities: encounter.Capabilities{
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
-				Standing:   everyoneStanding{},
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  noHandsAreObserved{},
-				Sheets:     noSheetsAsked{},
-				Roller:     dice.NewRoller(),
-				Actors:     Actors,
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
+				Participation: everyoneParticipates{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     noHandsAreObserved{},
+				Conditions:    noHandsAreObserved{},
+				Sheets:        noSheetsAsked{},
+				Roller:        dice.NewRoller(),
+				Actors:        Actors,
 			},
 		})
 		s.Require().ErrorIs(err, ErrNilInput)
@@ -422,14 +430,15 @@ func (s *ContestTestSuite) TestRefusesAContestItCannotRun() {
 				Application: combatActions.ConditionApplication{Ref: *refs.Conditions.Prone()},
 			}),
 			Capabilities: encounter.Capabilities{
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
-				Standing:   everyoneStanding{},
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  noHandsAreObserved{},
-				Sheets:     noSheetsAsked{},
-				Roller:     dice.NewRoller(),
-				Actors:     Actors,
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
+				Participation: everyoneParticipates{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     noHandsAreObserved{},
+				Conditions:    noHandsAreObserved{},
+				Sheets:        noSheetsAsked{},
+				Roller:        dice.NewRoller(),
+				Actors:        Actors,
 			},
 		})
 		s.Require().ErrorIs(err, ErrBadGate)
@@ -446,14 +455,15 @@ func (s *ContestTestSuite) TestRefusesAContestItCannotRun() {
 				Application: combatActions.ConditionApplication{Ref: *refs.Conditions.Prone()},
 			}),
 			Capabilities: encounter.Capabilities{
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
-				Standing:   everyoneStanding{},
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  noHandsAreObserved{},
-				Sheets:     noSheetsAsked{},
-				Roller:     dice.NewRoller(),
-				Actors:     Actors,
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
+				Participation: everyoneParticipates{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     noHandsAreObserved{},
+				Conditions:    noHandsAreObserved{},
+				Sheets:        noSheetsAsked{},
+				Roller:        dice.NewRoller(),
+				Actors:        Actors,
 			},
 		})
 		s.Require().ErrorIs(err, ErrBadGate)
@@ -465,14 +475,15 @@ func (s *ContestTestSuite) TestRefusesAContestItCannotRun() {
 			Participants: []Participant{{Character: s.hero()}},
 			Machine:      NewContest(&ContestInput{Gate: s.wolfsKnockdown(), SaverID: heroID}),
 			Capabilities: encounter.Capabilities{
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
-				Standing:   everyoneStanding{},
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  noHandsAreObserved{},
-				Sheets:     noSheetsAsked{},
-				Roller:     dice.NewRoller(),
-				Actors:     Actors,
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
+				Participation: everyoneParticipates{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     noHandsAreObserved{},
+				Conditions:    noHandsAreObserved{},
+				Sheets:        noSheetsAsked{},
+				Roller:        dice.NewRoller(),
+				Actors:        Actors,
 			},
 		})
 		s.Require().ErrorIs(err, ErrBadAction)
@@ -488,14 +499,15 @@ func (s *ContestTestSuite) TestRefusesAContestItCannotRun() {
 				Application: combatActions.ConditionApplication{Ref: *refs.Conditions.Prone()},
 			}),
 			Capabilities: encounter.Capabilities{
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
-				Standing:   everyoneStanding{},
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  noHandsAreObserved{},
-				Sheets:     noSheetsAsked{},
-				Roller:     dice.NewRoller(),
-				Actors:     Actors,
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
+				Participation: everyoneParticipates{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     noHandsAreObserved{},
+				Conditions:    noHandsAreObserved{},
+				Sheets:        noSheetsAsked{},
+				Roller:        dice.NewRoller(),
+				Actors:        Actors,
 			},
 		})
 		s.Require().ErrorIs(err, ErrNoSaver)
@@ -518,3 +530,21 @@ func (s *ContestTestSuite) TestASaverTheCastDoesNotHaveIsRefusedBeforeAnyRoll() 
 
 // The imposition step says what it does, so a reader of the step log sees
 // "impose the prone condition" rather than a fold that folds nothing.
+
+// A removal names the condition by what the player reads, and refuses a ref the
+// registry does not know rather than printing it.
+func TestARemovalNamesTheConditionAndRefusesAnUnknownOne(t *testing.T) {
+	known := dnd5eEvents.ConditionAddress{
+		MemberID: heroID, ConditionRef: refs.Conditions.Blessed().String(), SourceID: bardID,
+	}
+	effect, err := removalEffect(known, "expired")
+	require.NoError(t, err)
+	require.Equal(t, "Blessed ended (expired)", effect.Description)
+
+	unknown := dnd5eEvents.ConditionAddress{MemberID: heroID, ConditionRef: "dnd5e:conditions:nonsense", SourceID: bardID}
+	_, err = removalEffect(unknown, "expired")
+	require.ErrorIs(t, err, conditions.ErrUnknownCondition)
+
+	_, err = removalEffect(dnd5eEvents.ConditionAddress{MemberID: heroID, ConditionRef: "not a ref"}, "expired")
+	require.Error(t, err)
+}

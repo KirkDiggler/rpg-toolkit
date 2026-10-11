@@ -15,116 +15,20 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
-// LoadJSON loads one persisted entry of a monster's sheet — a monster TRAIT or
-// an ordinary CONDITION — from its JSON representation.
+// bindRoller hands the attach roller to a condition that rolls with one. A
+// condition that does not implement [conditions.RollerBinder] is untouched, and
+// a nil roller changes nothing: a trait that needs a roller refuses to roll
+// without one rather than falling back to a default.
 //
-// Both, because monster.Data.Conditions holds both: the four traits this
-// package owns (immunity, vulnerability, pack tactics, undead fortitude), which
-// are authored on the stat block, and the runtime conditions its own field
-// comment has always named — poisoned, hidden, and now the universal
-// opportunity attack. A condition is recognised by its ref TYPE and handed to
-// conditions.LoadJSON; anything else routes through this package's own dispatch
-// and an unknown ref is refused.
-//
-// Note: this loader requires a dice.Roller for traits like Undead Fortitude
-// that need to make saving throws.
-func LoadJSON(data json.RawMessage, roller dice.Roller) (dnd5eEvents.ConditionBehavior, error) {
-	// Peek at the ref to determine trait type
-	var peek struct {
-		Ref core.Ref `json:"ref"`
-	}
-
-	if err := json.Unmarshal(data, &peek); err != nil {
-		return nil, rpgerr.Wrap(err, "failed to peek at monster trait ref")
-	}
-
-	// A CONDITION IS NOT A TRAIT, and this loader used to answer for neither.
-	//
-	// monster.Data.Conditions has always been documented as "runtime state:
-	// poisoned, hidden, etc." while this switch knew four traits and errored on
-	// everything else — so a monster that ever persisted an ordinary condition
-	// could not be loaded again. Nothing had put one there, which is why the
-	// gap was invisible; seating the universal opportunity attack is what puts
-	// one there (rpg-project#316), and without this the FIRST interaction
-	// writes an OA blob onto a wolf and the SECOND fails to load it.
-	//
-	// Routed by ref TYPE rather than by adding one more ID case, because the
-	// question "is this a condition" is answered by the ref itself, and the
-	// alternative is this switch growing a copy of the conditions package's own
-	// dispatch — the drift risk AllTraitRefs already documents, doubled.
-	if peek.Ref.Type == refs.TypeConditions {
-		condition, err := conditions.LoadJSON(data)
-		if err != nil {
-			return nil, rpgerr.Wrapf(err, "failed to load monster condition %s", peek.Ref.ID)
-		}
-
-		return condition, nil
-	}
-
-	// Route based on ref ID
-	switch peek.Ref.ID {
-	case refs.MonsterTraits.Immunity().ID:
-		trait := &immunityCondition{}
-		if err := trait.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load immunity trait")
-		}
-		return trait, nil
-
-	case refs.MonsterTraits.Vulnerability().ID:
-		trait := &vulnerabilityCondition{}
-		if err := trait.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load vulnerability trait")
-		}
-		return trait, nil
-
-	case refs.MonsterTraits.PackTactics().ID:
-		trait := &packTacticsCondition{}
-		if err := trait.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load pack tactics trait")
-		}
-		return trait, nil
-
-	case refs.MonsterTraits.UndeadFortitude().ID:
-		if roller == nil {
-			return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "roller is required for undead fortitude trait")
-		}
-		trait := &undeadFortitudeCondition{roller: roller}
-		if err := trait.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load undead fortitude trait")
-		}
-		return trait, nil
-
-	default:
-		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown monster trait ref: %s", peek.Ref.ID)
-	}
-}
-
-// AllTraitRefs returns the canonical ref strings for every monster trait
-// type this package knows how to load (rpg-toolkit#778) — mirrors LoadJSON's
-// dispatch switch exactly; a trait ref added as a new LoadJSON case must be
-// added here too, or it won't be recognized as structurally permanent
-// (never live-announced) by encounter's ActiveConditions snapshot
-// projection. Monster traits (Immunity/Vulnerability/PackTactics/
-// UndeadFortitude) are attached at monster construction — the monster-side
-// equivalent of a character's Grant.Conditions — and never go through
-// Encounter.ActivateFeature's live broker bridge, so they belong in the
-// same excluded set as character.StructurallyPermanentConditionRefs.
-//
-// This hand-mirror is a real, documented drift risk: TestAllTraitRefs_NoPhantomEntries
-// (loader_test.go) catches a phantom entry (a ref listed here LoadJSON
-// doesn't actually recognize), but cannot catch a missing entry (a new
-// LoadJSON case forgotten here) — that direction needs LoadJSON
-// restructured around an enumerable registry this function could derive
-// from instead of mirroring. Tracked as rpg-toolkit#780.
-func AllTraitRefs() []string {
-	return []string{
-		refs.MonsterTraits.Immunity().String(),
-		refs.MonsterTraits.Vulnerability().String(),
-		refs.MonsterTraits.PackTactics().String(),
-		refs.MonsterTraits.UndeadFortitude().String(),
+// Every entry of a monster's sheet loads through [conditions.LoadJSON], because
+// a stat-block trait (immunity, vulnerability, pack tactics, undead fortitude)
+// is a condition: it is authored on the stat block, lives in the one registry,
+// and a ref nothing registers is refused, never skipped.
+func bindRoller(condition dnd5eEvents.ConditionBehavior, roller dice.Roller) {
+	if binder, ok := condition.(conditions.RollerBinder); ok {
+		binder.BindRoller(roller)
 	}
 }
 
@@ -151,15 +55,11 @@ func LoadMonsterConditions(
 	roller dice.Roller,
 ) error {
 	for _, data := range conditionData {
-		// A retired condition type is dropped: it carried no rule.
-		if conditions.IsRetired(data) {
-			continue
-		}
-
-		condition, err := LoadJSON(data, roller)
+		condition, err := conditions.LoadJSON(data)
 		if err != nil {
 			return rpgerr.Wrap(err, "failed to load monster condition")
 		}
+		bindRoller(condition, roller)
 
 		// Apply through the bus this particular trait should be attributed to.
 		// A plain bus returns itself, so this is a no-op for every caller that
@@ -250,30 +150,19 @@ func AttachMonster(
 		return rpgerr.Wrap(err, "failed to attach monster sheet keeper")
 	}
 
-	// CARRIED separately from what the sheet actually had, because a rollback
-	// must put back what this attach was handed and nothing else. Every
-	// unattachMonster below is given `carried`, never `blobs`.
+	// Every unattachMonster below is handed exactly what this attach took off
+	// the monster, so a rollback puts back what it found and nothing else.
 	carried := m.TakeUnappliedConditions()
-	blobs, err := carryingFreeReactions(carried, m.GetID())
-	if err != nil {
-		// The blobs are already DRAINED and the keeper is already APPLIED, so
-		// returning here without undoing both would leave the monster mutated
-		// by an attach that failed: its traits gone from the sheet and its
-		// keeper still listening. Every other failure in this function rolls
-		// back; this one has to as well.
-		unattachMonster(ctx, m, bus, nil, carried)
+	attached := make([]attachedTrait, 0, len(carried))
 
-		return err
-	}
-	attached := make([]attachedTrait, 0, len(blobs))
-
-	for i, blob := range blobs {
-		condition, err := LoadJSON(blob, roller)
+	for i, blob := range carried {
+		condition, err := conditions.LoadJSON(blob)
 		if err != nil {
 			unattachMonster(ctx, m, bus, attached, carried)
 
 			return rpgerr.Wrapf(err, "failed to load monster condition %d: %s", i, blob)
 		}
+		bindRoller(condition, roller)
 
 		// REFUSED BEFORE ANYTHING HAPPENS TO IT, so that the recording loop
 		// below cannot fail. Monster.AddLoadedCondition rejects a condition that
@@ -404,75 +293,4 @@ func refOf(condition dnd5eEvents.ConditionBehavior) core.Ref {
 	}
 
 	return core.Ref{}
-}
-
-// freeReactionsFor is [conditions.FreeReactions], the one list characters and
-// [conditions.HeldAddresses] read too. A variable only so the failure path
-// below is reachable from a test: writing a blob can only fail if a
-// condition's ToJSON does, which the opportunity attack's never will, and a
-// rollback guard no test can enter is the built-and-unwired shape this whole
-// slice exists to undo.
-var freeReactionsFor = conditions.FreeReactions
-
-// carryingFreeReactions gives a monster the reactions every combatant has, the
-// way a class grant gives a character a class feature.
-//
-// Kirk ruled the shape 2026-08-28 (rpg-project#316): "when we initialize
-// monsters they should have the condition on them like a character grant... and
-// only dirty if they fire the OA."
-//
-// # Here rather than in monster.Load
-//
-// Because Load must stay a pure read. Carrying the blob there made
-// Load(d).ToData() stop being byte-identical to d, and
-// TestRoundTripsByteIdenticalWithNoBus said so immediately — for the monster
-// sheet exactly as it did for the character one. Attach is where a sheet becomes
-// a participant, which is when having a reaction starts to mean anything.
-//
-// # A blob, and it DOES join the sheet
-//
-// A blob rather than a live condition because that is how a monster carries
-// every other one, and this loop is the single path that turns trait data into
-// behaviour. It joins the sheet through AddLoadedCondition below, which does not
-// mark it dirty — gaining a reaction is not something that happened in the
-// world — and from then on ToData serializes it.
-//
-// THE BLOB CARRIES NO METER. It used to: the condition kept a once-per-turn
-// flag, and this paragraph used to argue that a monster had no action economy
-// at all so that flag was the only meter there was. Kirk reversed that on
-// 2026-09-11. A monster's one reaction is now monster.Data.ReactionSpent, kept
-// by the monster's own keeper, and what this function seats is the reactor
-// alone.
-func carryingFreeReactions(blobs []json.RawMessage, id string) ([]json.RawMessage, error) {
-	for _, reaction := range freeReactionsFor(id) {
-		if carriesRef(blobs, reaction.Ref()) {
-			continue
-		}
-
-		blob, err := reaction.ToJSON()
-		if err != nil {
-			return nil, rpgerr.Wrapf(err, "failed to write the %s a combatant carries", reaction.Ref())
-		}
-		blobs = append(blobs, blob)
-	}
-
-	return blobs, nil
-}
-
-// carriesRef reports whether one of these blobs names this ref, so a reattach
-// does not stack a second copy on the persisted one.
-func carriesRef(blobs []json.RawMessage, ref *core.Ref) bool {
-	for _, raw := range blobs {
-		var peek struct {
-			Ref core.Ref `json:"ref"`
-		}
-		if err := json.Unmarshal(raw, &peek); err != nil {
-			continue
-		}
-		if peek.Ref.String() == ref.String() {
-			return true
-		}
-	}
-
-	return false
 }

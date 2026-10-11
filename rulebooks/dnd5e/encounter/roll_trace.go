@@ -120,7 +120,31 @@ type RollCalculation struct {
 // ValidateRollCalculation verifies source presence and the structural and
 // arithmetic consistency of a calculation. It replays recorded rerolls but
 // does not decide whether any D&D rule was eligible to cause them.
+//
+// Every refusal answers [ErrInvalidData] by errors.Is, with the same message
+// it always had.
 func ValidateRollCalculation(calculation *RollCalculation) error {
+	return asInvalidData(checkRollCalculation(calculation))
+}
+
+// invalidDataError is a refusal that keeps its own message and also
+// answers [ErrInvalidData]: a recorded roll that does not add up, or testimony that contradicts its
+// own state, is data that cannot be trusted.
+type invalidDataError struct{ err error }
+
+func (e invalidDataError) Error() string { return e.err.Error() }
+
+func (e invalidDataError) Unwrap() []error { return []error{e.err, ErrInvalidData} }
+
+// asInvalidData marks err as [ErrInvalidData]; nil stays nil.
+func asInvalidData(err error) error {
+	if err == nil {
+		return nil
+	}
+	return invalidDataError{err: err}
+}
+
+func checkRollCalculation(calculation *RollCalculation) error {
 	if calculation == nil {
 		return fmt.Errorf("roll calculation is required")
 	}
@@ -156,7 +180,11 @@ func ValidateRollCalculation(calculation *RollCalculation) error {
 // pool by the shared calculation contract; this validates shape and agreement,
 // not success, failure, or any D&D natural-face policy.
 func validateRecordedD20(calculation *RollCalculation, roll, total int) error {
-	if err := validateRecordedTotal(calculation, total); err != nil {
+	return asInvalidData(checkRecordedD20(calculation, roll, total))
+}
+
+func checkRecordedD20(calculation *RollCalculation, roll, total int) error {
+	if err := checkRecordedTotal(calculation, total); err != nil {
 		return err
 	}
 	if first := calculation.Components[0]; first.Dice.Subtotal != roll {
@@ -171,7 +199,11 @@ func validateRecordedD20(calculation *RollCalculation, roll, total int) error {
 // the shared calculation contract, which is what makes its keep record the
 // place a reader looks for advantage and disadvantage.
 func validateRecordedTotal(calculation *RollCalculation, total int) error {
-	if err := ValidateRollCalculation(calculation); err != nil {
+	return asInvalidData(checkRecordedTotal(calculation, total))
+}
+
+func checkRecordedTotal(calculation *RollCalculation, total int) error {
+	if err := checkRollCalculation(calculation); err != nil {
 		return err
 	}
 	first := calculation.Components[0]

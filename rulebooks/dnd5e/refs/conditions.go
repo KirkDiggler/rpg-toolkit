@@ -101,7 +101,6 @@ var (
 	conditionProne         = &core.Ref{Module: Module, Type: TypeConditions, ID: "prone"}
 	conditionRestrained    = &core.Ref{Module: Module, Type: TypeConditions, ID: "restrained"}
 	conditionStunned       = &core.Ref{Module: Module, Type: TypeConditions, ID: "stunned"}
-	conditionUnconscious   = &core.Ref{Module: Module, Type: TypeConditions, ID: "unconscious"}
 	conditionExhaustion    = &core.Ref{Module: Module, Type: TypeConditions, ID: "exhaustion"}
 )
 
@@ -166,7 +165,6 @@ func (n conditionsNS) Poisoned() *core.Ref      { return conditionPoisoned }
 func (n conditionsNS) Prone() *core.Ref         { return conditionProne }
 func (n conditionsNS) Restrained() *core.Ref    { return conditionRestrained }
 func (n conditionsNS) Stunned() *core.Ref       { return conditionStunned }
-func (n conditionsNS) Unconscious() *core.Ref   { return conditionUnconscious }
 func (n conditionsNS) Exhaustion() *core.Ref    { return conditionExhaustion }
 
 // Inspired returns the ref for the InspiredCondition, applied to the ally a

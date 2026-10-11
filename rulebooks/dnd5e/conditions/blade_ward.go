@@ -197,8 +197,9 @@ func (b *BladeWardCondition) onIncomingDamage(
 
 	ward := func(_ context.Context, e *dnd5eEvents.IncomingDamageEvent) (*dnd5eEvents.IncomingDamageEvent, error) {
 		e.Multipliers = append(e.Multipliers, physicalResistances(e.DealtTypes(), dnd5eEvents.RollSource{
-			Ref:  refs.Conditions.BladeWard(),
-			Name: BladeWardName,
+			Ref:      refs.Conditions.BladeWard(),
+			Name:     BladeWardName,
+			SourceID: b.MemberID,
 		})...)
 		return e, nil
 	}
@@ -287,4 +288,16 @@ func (b *BladeWardCondition) loadJSON(data json.RawMessage) error {
 	b.SourceRef = stored.SourceRef
 	b.TurnEndsLeft = stored.TurnEndsLeft
 	return nil
+}
+
+// bladeWardDescriptor is the one entry for [BladeWardCondition]; see [descriptors].
+var bladeWardDescriptor = descriptor{
+	ref:     refs.Conditions.BladeWard(),
+	display: Display{Name: BladeWardName, Detail: "You have resistance to bludgeoning, piercing, and slashing damage from weapon attacks until the end of your next turn."},
+	load:    loaderOf[BladeWardCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return createdAs(createBladeWard(in.Config, in.MemberID, in.SourceRef))
+	},
+	ownAction:     notBearing,
+	againstHolder: notBearing,
 }

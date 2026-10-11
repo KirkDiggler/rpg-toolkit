@@ -82,7 +82,7 @@ func (s *InspireSuite) scene(uses, apart int) *session.Manager {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(levelOneBard("bard", uses), armedFighter("fighter"))
 
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
@@ -211,10 +211,10 @@ func (s *InspireSuite) TestTheGrantSpendsOneUseAndLandsTheDie() {
 	s.Equal(1, s.countBeat(mgr, "activation-result"))
 }
 
-// TestASecondDieIsRefusedRatherThanReplacing is R7. Replacing would spend a
+// TestAnInspiredAllyIsAlreadyInspired is R7. Replacing would spend a
 // use to overwrite a use — a charge with no change — so the candidate carries
 // the reason before it is chosen.
-func (s *InspireSuite) TestASecondDieIsRefusedRatherThanReplacing() {
+func (s *InspireSuite) TestAnInspiredAllyIsAlreadyInspired() {
 	mgr := s.scene(2, 1)
 	_, err := s.grant(mgr, "fighter")
 	s.Require().NoError(err)

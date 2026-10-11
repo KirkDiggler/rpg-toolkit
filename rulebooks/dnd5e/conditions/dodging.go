@@ -232,3 +232,16 @@ func (d *DodgingCondition) onTurnStart(ctx context.Context, event dnd5eEvents.Tu
 	// Actually remove the condition (unsubscribe from events)
 	return d.Remove(ctx, d.bus)
 }
+
+// dodgingDescriptor is the one entry for [DodgingCondition]; see [descriptors].
+var dodgingDescriptor = descriptor{
+	ref:     refs.Conditions.Dodging(),
+	display: Display{Name: "Dodging", Detail: "Attack rolls against a dodging creature have disadvantage, and it has advantage on Dexterity saving throws."},
+	load:    loaderOf[DodgingCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return NewDodgingCondition(in.MemberID), nil
+	},
+	ownAction:     notBearing,
+	againstHolder: answersNow,
+	heldRule:      newDodgingHeldRule,
+}

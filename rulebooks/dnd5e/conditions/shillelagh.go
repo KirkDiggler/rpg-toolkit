@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/weaponattack"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -205,3 +206,28 @@ func (s *ShillelaghCondition) loadJSON(data json.RawMessage) error {
 	}
 	return nil
 }
+
+// shillelaghDescriptor is the one entry for [ShillelaghCondition]; see [descriptors].
+var shillelaghDescriptor = descriptor{
+	ref:     refs.Conditions.Shillelagh(),
+	display: Display{Name: "Shillelagh", Detail: "Selected held weapon: 1d8 magical bludgeoning; uses the better of Strength or spellcasting ability."},
+	load:    loaderOf[ShillelaghCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		var config ShillelaghConfig
+		if err := json.Unmarshal(in.Config, &config); err != nil {
+			return nil, err
+		}
+		return createdAs(NewShillelaghCondition(in.MemberID, config))
+	},
+	ownAction:     answersNow,
+	againstHolder: notBearing,
+	attackOverride: func(condition dnd5eEvents.ConditionBehavior, swing *weaponattack.OverrideInput) (*weaponattack.OverrideOutput, error) {
+		own, ok := condition.(*ShillelaghCondition)
+		if !ok {
+			return nil, rpgerr.Newf(rpgerr.CodeInternal, "%s is not a ShillelaghCondition: %T", refs.Conditions.Shillelagh(), condition)
+		}
+		return own.WeaponAttackOverride(swing)
+	},
+}
+
+var _ contributions.ActionAssessor = (*ShillelaghCondition)(nil)

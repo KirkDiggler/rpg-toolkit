@@ -240,3 +240,15 @@ func (s *SanctuaryImmuneCondition) end(ctx context.Context, reason string) error
 	}
 	return s.Remove(ctx, bus)
 }
+
+// sanctuaryImmuneDescriptor is the one entry for [SanctuaryImmuneCondition]; see [descriptors].
+var sanctuaryImmuneDescriptor = descriptor{
+	ref:     refs.Conditions.SanctuaryImmune(),
+	display: Display{Name: SanctuaryImmuneName, Detail: "You cannot receive another Sanctuary until this ends."},
+	load:    loaderOf[SanctuaryImmuneCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return createdAs(createSanctuaryImmune(in.Config, in.MemberID, in.SourceRef))
+	},
+	ownAction:     notBearing,
+	againstHolder: notBearing,
+}

@@ -43,14 +43,15 @@ func (s *FrameTestSuite) resolveCampWith(
 		},
 		Machine: NewStrike(strike),
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Driver:     passDriver{},
-			Roller:     strike.Roller,
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Driver:        passDriver{},
+			Roller:        strike.Roller,
+			Actors:        Actors,
 		},
 	}, newSurface(bus))
 }
@@ -72,7 +73,7 @@ func (s *FrameTestSuite) TestInformAndExecutionAgreeOnSneakAttackAtRogueThree() 
 	s.Require().NoError(err)
 	var row *contributions.Effect
 	for i, effect := range informed.ByTarget[holdOutScout] {
-		if effect.ID == refs.Features.SneakAttack().String() {
+		if effect.ID == refs.Conditions.SneakAttack().String() {
 			row = &informed.ByTarget[holdOutScout][i]
 		}
 	}

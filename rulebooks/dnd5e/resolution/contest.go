@@ -5,7 +5,6 @@ package resolution
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -20,7 +19,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
 
@@ -199,6 +197,10 @@ type ImposedEffect struct {
 	// Address is the exact source-qualified identity for condition consequences.
 	Address dnd5eEvents.ConditionAddress
 
+	// Detail is the instance's own detail for an ImposedCondition, read
+	// through conditions.InstanceDetailOf. Empty for every other kind.
+	Detail string
+
 	// Move is the directive for an [ImposedMove], and nil for every other
 	// kind. It is the whole of what this package says about the move: the
 	// cells are worked out by whoever owns the board.
@@ -274,6 +276,9 @@ func (ContestOutcome) isOutcome() {}
 type preparedCondition struct {
 	declaration combatActions.ConditionApplication
 	behavior    dnd5eEvents.ConditionBehavior
+	// name is how the condition reads in a step log and in a record, read once
+	// from the registry when the condition is prepared.
+	name string
 }
 
 // validateGate checks the subset of save gates resolution can execute.
@@ -363,44 +368,6 @@ func prepareCondition(
 	if err := application.Validate(); err != nil {
 		return preparedCondition{}, fmt.Errorf("%w: %w", ErrBadAction, err)
 	}
-	if application.Ref.Equals(refs.Conditions.Blessed()) {
-		var config struct {
-			SourceID string `json:"source_id"`
-		}
-		if err := json.Unmarshal(application.Parameters, &config); err != nil {
-			return preparedCondition{}, fmt.Errorf("build condition blessed for %q: %w", targetID, err)
-		}
-		source, err := core.ParseString(sourceRef)
-		if err != nil {
-			return preparedCondition{}, fmt.Errorf("build condition blessed for %q: source: %w", targetID, err)
-		}
-		condition, err := conditions.NewBlessedCondition(conditions.NewBlessedConditionInput{
-			MemberID: targetID, SourceID: config.SourceID, SourceRef: source,
-		})
-		if err != nil {
-			return preparedCondition{}, fmt.Errorf("build condition blessed for %q: %w", targetID, err)
-		}
-		return preparedCondition{declaration: application.Clone(), behavior: condition}, nil
-	}
-	if application.Ref.Equals(refs.Conditions.Baned()) {
-		var config struct {
-			SourceID string `json:"source_id"`
-		}
-		if err := json.Unmarshal(application.Parameters, &config); err != nil {
-			return preparedCondition{}, fmt.Errorf("build condition baned for %q: %w", targetID, err)
-		}
-		source, err := core.ParseString(sourceRef)
-		if err != nil {
-			return preparedCondition{}, fmt.Errorf("build condition baned for %q: source: %w", targetID, err)
-		}
-		condition, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
-			MemberID: targetID, SourceID: config.SourceID, SourceRef: source,
-		})
-		if err != nil {
-			return preparedCondition{}, fmt.Errorf("build condition baned for %q: %w", targetID, err)
-		}
-		return preparedCondition{declaration: application.Clone(), behavior: condition}, nil
-	}
 	built, err := conditions.CreateFromRef(&conditions.CreateFromRefInput{
 		Ref:       application.Ref.String(),
 		Config:    application.Parameters,
@@ -410,7 +377,11 @@ func prepareCondition(
 	if err != nil {
 		return preparedCondition{}, fmt.Errorf("build condition %s for %q: %w", application.Ref.ID, targetID, err)
 	}
-	return preparedCondition{declaration: application.Clone(), behavior: built.Condition}, nil
+	name, err := conditionDescription(application.Ref)
+	if err != nil {
+		return preparedCondition{}, fmt.Errorf("build condition %s for %q: %w", application.Ref.ID, targetID, err)
+	}
+	return preparedCondition{declaration: application.Clone(), behavior: built.Condition, name: name}, nil
 }
 
 func (p preparedCondition) atStake(recipientID string) ImposedEffect {
@@ -418,17 +389,25 @@ func (p preparedCondition) atStake(recipientID string) ImposedEffect {
 	return ImposedEffect{
 		Kind:        ImposedCondition,
 		Ref:         &ref,
-		Description: conditionDescription(ref),
+		Description: p.name,
 		RecipientID: recipientID,
 		Address:     conditions.ConditionAddressOf(recipientID, p.behavior),
+		Detail:      conditions.InstanceDetailOf(p.behavior),
 	}
 }
 
 // conditionDescription is how a delivered condition reads in a step log and in
-// a record. One spelling, so the contest's imposition and a cast's delivery
-// describe the same condition the same way.
-func conditionDescription(ref core.Ref) string {
-	return fmt.Sprintf("the %s condition", ref.ID)
+// a record: the registry's display name. One spelling, so the contest's
+// imposition and a cast's delivery describe the same condition the same way,
+// and the registry is the only place that spelling is authored.
+//
+// Errors: a ref the registry does not hold. There is no fallback spelling.
+func conditionDescription(ref core.Ref) (string, error) {
+	display, ok := conditions.DisplayFor(ref)
+	if !ok {
+		return "", fmt.Errorf("condition %s is not registered, so it has no name to read", ref.String())
+	}
+	return display.Name, nil
 }
 
 func publishPreparedCondition(
@@ -436,7 +415,7 @@ func publishPreparedCondition(
 	source dnd5eEvents.ConditionSource, next func(replaced []ImposedEffect) (Step, error),
 ) Gather {
 	return Gather{
-		name: "impose " + conditionDescription(prepared.declaration.Ref),
+		name: "impose " + prepared.name,
 		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
 			target, err := cast.entity(targetID)
 			if err != nil {
@@ -520,6 +499,12 @@ func replaceSameAddress(
 		if address != landing {
 			continue
 		}
+		// Named before the fact goes out: an unregistered ref refuses here,
+		// with nothing published.
+		name, err := conditionName(address)
+		if err != nil {
+			return nil, err
+		}
 		if err := dnd5eEvents.ConditionRemovedTopic.On(bus).Publish(
 			ctx, dnd5eEvents.ConditionRemovedEvent{
 				MemberID:     address.MemberID,
@@ -529,9 +514,7 @@ func replaceSameAddress(
 			}); err != nil {
 			return nil, fmt.Errorf("replace %s on %q: %w", address.ConditionRef, targetID, err)
 		}
-		effect := removalEffect(address, ConditionReplacedReason)
-		effect.Description = fmt.Sprintf("%s replaced by a newer instance", address.ConditionRef)
-		replaced = append(replaced, effect)
+		replaced = append(replaced, removedEffect(address, fmt.Sprintf("%s replaced by a newer instance", name)))
 	}
 
 	return replaced, nil
@@ -584,7 +567,6 @@ func publishCondition(
 	// here would compound the subscribers' partially updated state.
 	err = dnd5eEvents.ConditionAppliedTopic.On(bus).Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
 		Target:    target,
-		Type:      dnd5eEvents.ConditionType(prepared.declaration.Ref.ID),
 		Source:    source,
 		Condition: prepared.behavior,
 	})
@@ -1256,9 +1238,9 @@ func (m *contestMachine) shape() contestShape {
 
 // atStake names what this save is against, which is the condition whenever one
 // was declared and the damage otherwise.
-func (m *contestMachine) atStake() ImposedEffect {
+func (m *contestMachine) atStake() (ImposedEffect, error) {
 	if m.hasCondition {
-		return m.prepared.atStake(m.in.SaverID)
+		return m.prepared.atStake(m.in.SaverID), nil
 	}
 	if len(m.in.Damage) == 0 && m.in.Removal != nil {
 		// A removal-only contest is a check to KEEP something, so what is at
@@ -1271,7 +1253,7 @@ func (m *contestMachine) atStake() ImposedEffect {
 		Ref:         cloneCoreRef(m.in.Cause.EffectRef),
 		Description: describeDamage(m.in.Damage),
 		RecipientID: m.in.SaverID,
-	}
+	}, nil
 }
 
 // resolve turns the save into the outcome, and on a failure chains whatever was
@@ -1296,12 +1278,16 @@ func (m *contestMachine) atStake() ImposedEffect {
 // nothing. There is no condition and no move on that branch: the save was made,
 // and half is the only thing a made save costs.
 func (m *contestMachine) resolve(ability abilities.Ability, dc int, save SaveOutcome) (Step, error) {
+	atStake, err := m.atStake()
+	if err != nil {
+		return nil, err
+	}
 	outcome := ContestOutcome{
 		Save:      save,
 		DC:        dc,
 		Ability:   ability,
 		Succeeded: save.Result != nil && save.Result.Success,
-		AtStake:   m.atStake(),
+		AtStake:   atStake,
 	}
 
 	done := func() (Step, error) { return Done{Outcome: outcome}, nil }
@@ -1409,10 +1395,25 @@ func validateRemoval(removal *ConditionRemoval) error {
 }
 
 // removalEffect is one stripped address, as the record reads it.
-func removalEffect(address dnd5eEvents.ChildRef, reason string) ImposedEffect {
+//
+// It names the condition by its display name. An address whose ref the registry
+// does not know is refused, wrapping [conditions.ErrUnknownCondition], because
+// a record that cannot name what ended has nothing honest to print.
+func removalEffect(address dnd5eEvents.ConditionAddress, reason string) (ImposedEffect, error) {
+	name, err := conditionName(address)
+	if err != nil {
+		return ImposedEffect{}, err
+	}
+
+	return removedEffect(address, fmt.Sprintf("%s ended (%s)", name, reason)), nil
+}
+
+// removedEffect is the removal record for an address, with its description
+// already written by a caller that has resolved the condition's name.
+func removedEffect(address dnd5eEvents.ConditionAddress, description string) ImposedEffect {
 	effect := ImposedEffect{
 		Kind:        ImposedConditionRemoved,
-		Description: fmt.Sprintf("%s ended (%s)", address.ConditionRef, reason),
+		Description: description,
 		RecipientID: address.MemberID,
 		Address:     address,
 	}
@@ -1421,6 +1422,21 @@ func removalEffect(address dnd5eEvents.ChildRef, reason string) ImposedEffect {
 	}
 
 	return effect
+}
+
+// conditionName is the display name of the condition an address points at.
+func conditionName(address dnd5eEvents.ConditionAddress) (string, error) {
+	ref, err := core.ParseString(address.ConditionRef)
+	if err != nil {
+		return "", fmt.Errorf("condition address %q: %w", address.ConditionRef, err)
+	}
+	display, ok := conditions.DisplayFor(*ref)
+	if !ok {
+		return "", fmt.Errorf("name %s on %q: %w", address.ConditionRef, address.MemberID,
+			conditions.ErrUnknownCondition)
+	}
+
+	return display.Name, nil
 }
 
 func savingThrowModifier(cast *Participants, saverID string, ability abilities.Ability) (int, error) {

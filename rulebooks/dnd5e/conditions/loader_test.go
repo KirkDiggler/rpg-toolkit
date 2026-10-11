@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -187,9 +187,9 @@ func (s *LoaderTestSuite) TestLoadUnknownCondition() {
 
 func (s *LoaderTestSuite) TestLoadRejectsKnownIDUnderWrongCanonicalRef() {
 	cases := map[string]json.RawMessage{
-		"wrong module":           json.RawMessage(`{"ref":{"module":"other","type":"conditions","id":"raging"}}`),
-		"wrong type":             json.RawMessage(`{"ref":{"module":"dnd5e","type":"features","id":"raging"}}`),
-		"condition-shaped sneak": json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"sneak_attack"}}`),
+		"wrong module":         json.RawMessage(`{"ref":{"module":"other","type":"conditions","id":"raging"}}`),
+		"wrong type":           json.RawMessage(`{"ref":{"module":"dnd5e","type":"features","id":"raging"}}`),
+		"feature-shaped sneak": json.RawMessage(`{"ref":{"module":"dnd5e","type":"features","id":"sneak_attack"}}`),
 	}
 
 	for name, data := range cases {
@@ -253,7 +253,9 @@ func (s *LoaderTestSuite) TestRagingConditionRoundTripWithSubscriptions() {
 	s.Require().NoError(err)
 
 	// Should have 3 components: weapon, ability, and rage bonus
-	s.Require().Len(finalEvent.Components, 3, "Should have weapon, ability, and rage components")
+	s.Require().Equal([]dnd5eEvents.DamageSourceType{
+		dnd5eEvents.DamageSourceWeapon, dnd5eEvents.DamageSourceAbility, dnd5eEvents.DamageSourceCondition,
+	}, componentSources(finalEvent.Components), "Should have weapon, ability, and rage components")
 	s.Equal(dnd5eEvents.DamageSourceCondition, finalEvent.Components[2].Source)
 	s.Equal(2, finalEvent.Components[2].Total(), "Rage should add +2 damage from deserialized condition")
 }
@@ -298,7 +300,9 @@ func (s *LoaderTestSuite) TestRagingConditionRoundTripCleanup() {
 	s.Require().NoError(err)
 
 	// Should only have 2 components: weapon and ability (no rage)
-	s.Require().Len(finalEvent.Components, 2, "Should only have weapon and ability after Remove()")
+	s.Require().Equal([]dnd5eEvents.DamageSourceType{
+		dnd5eEvents.DamageSourceWeapon, dnd5eEvents.DamageSourceAbility,
+	}, componentSources(finalEvent.Components), "Should only have weapon and ability after Remove()")
 }
 
 // TestEveryLoadedConditionNamesItsCanonicalRef pins the rpg-toolkit#971
@@ -351,10 +355,7 @@ func TestEveryLoadedConditionNamesItsCanonicalRef(t *testing.T) {
 		{"martial_arts", refs.Conditions.MartialArts(), func() dnd5eEvents.ConditionBehavior {
 			return NewMartialArtsCondition(MartialArtsInput{MemberID: "monk-1"})
 		}},
-		{"unarmored_movement", refs.Conditions.UnarmoredMovement(), func() dnd5eEvents.ConditionBehavior {
-			return NewUnarmoredMovementCondition(UnarmoredMovementInput{MemberID: "monk-1"})
-		}},
-		{"sneak_attack", refs.Features.SneakAttack(), func() dnd5eEvents.ConditionBehavior {
+		{"sneak_attack", refs.Conditions.SneakAttack(), func() dnd5eEvents.ConditionBehavior {
 			return NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue-1"})
 		}},
 		{"disengaging", refs.Conditions.Disengaging(), func() dnd5eEvents.ConditionBehavior {
@@ -372,14 +373,20 @@ func TestEveryLoadedConditionNamesItsCanonicalRef(t *testing.T) {
 		{"helped", refs.Conditions.Helped(), func() dnd5eEvents.ConditionBehavior {
 			return NewHelpedCondition("rogue-1", "cleric-1")
 		}},
-		{"unconscious", refs.Conditions.Unconscious(), func() dnd5eEvents.ConditionBehavior {
-			return NewUnconsciousCondition("fighter-1", nil)
-		}},
 		{"opportunity_attack", refs.Conditions.OpportunityAttack(), func() dnd5eEvents.ConditionBehavior {
 			return NewOpportunityAttackCondition("fighter-1")
 		}},
-		{"shield_spell", refs.Spells.Shield(), func() dnd5eEvents.ConditionBehavior {
-			return NewShieldSpellCondition("wizard-1")
+		{"immunity", refs.MonsterTraits.Immunity(), func() dnd5eEvents.ConditionBehavior {
+			return Immunity("skeleton-1", damage.Poison)
+		}},
+		{"vulnerability", refs.MonsterTraits.Vulnerability(), func() dnd5eEvents.ConditionBehavior {
+			return Vulnerability("skeleton-1", damage.Bludgeoning)
+		}},
+		{"pack_tactics", refs.MonsterTraits.PackTactics(), func() dnd5eEvents.ConditionBehavior {
+			return PackTactics("wolf-1")
+		}},
+		{"undead_fortitude", refs.MonsterTraits.UndeadFortitude(), func() dnd5eEvents.ConditionBehavior {
+			return UndeadFortitude("zombie-1", 3, dice.NewRoller())
 		}},
 	}
 
@@ -402,21 +409,4 @@ func TestEveryLoadedConditionNamesItsCanonicalRef(t *testing.T) {
 				"loaded condition must name the same ref its ToJSON embeds")
 		})
 	}
-}
-
-// A saved In Fog condition is a retired type: LoadJSON names it as retired
-// rather than unknown, and IsRetired tells a sheet loader to drop it.
-func TestARetiredInFogConditionIsNamedRetired(t *testing.T) {
-	saved := json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"in_fog"},` +
-		`"member_id":"m1","source_id":"area-1","source_ref":{"module":"dnd5e","type":"spells","id":"fog-cloud"}}`)
-
-	require.True(t, IsRetired(saved))
-	_, err := LoadJSON(saved)
-	require.ErrorIs(t, err, ErrRetiredCondition)
-	require.Equal(t, rpgerr.CodeInvalidArgument, rpgerr.GetCode(err), "the same code shape as an unknown ref")
-
-	raging, err := (&RagingCondition{CharacterID: "m1", Source: "rage"}).ToJSON()
-	require.NoError(t, err)
-	require.False(t, IsRetired(raging), "a live condition type is not retired")
-	require.False(t, IsRetired(json.RawMessage(`not json`)), "unparsable data is reported by the loader, not dropped")
 }

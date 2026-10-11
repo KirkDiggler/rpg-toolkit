@@ -53,20 +53,54 @@ func carries(conds []dnd5eEvents.ConditionBehavior, ref string) bool {
 	return false
 }
 
+// withFreeReactions writes the free reactions into a hand-built sheet's stored
+// conditions, the way a finalized sheet and a minted monster carry them.
+func withFreeReactions(t *testing.T, data *Data) *Data {
+	t.Helper()
+	for _, reaction := range conditions.FreeReactions(data.ID) {
+		blob, err := reaction.ToJSON()
+		require.NoError(t, err)
+		data.Conditions = append(data.Conditions, blob)
+	}
+	return data
+}
+
 // An opportunity attack is not a class feature — every melee combatant has one,
 // monsters included, which is why it is correctly absent from all twelve grant
-// lists. A character who was authored with no conditions at all still has one.
-func TestACharacterWithNoConditionsStillCarriesItsFreeReactions(t *testing.T) {
+// lists. Finalize writes it into the new sheet's stored conditions, so the
+// stored record names it from creation and it is live on the bus.
+func TestAFinalizedCharacterStoresItsFreeReactionAndItFires(t *testing.T) {
 	ctx := context.Background()
-	sheet, err := Load(ctx, inFight(plainFighter("fighter-1")))
-	require.NoError(t, err)
-	require.Empty(t, sheet.GetConditions(), "load is a pure read and grants nothing")
-
 	bus := events.NewEventBus()
-	require.NoError(t, Attach(ctx, sheet, bus))
+	sheet, err := newFighterDraft(t).ToCharacter(ctx, "fighter-1", bus)
+	require.NoError(t, err)
 
-	require.Equal(t, 1, triggersOnAStepAway(t, bus, sheet),
-		"the carried reaction is LIVE — one that was merely constructed could never fire")
+	stored := mustToData(t, sheet)
+	require.Contains(t, conditionRefs(stored), refs.Conditions.OpportunityAttack().String())
+
+	held, err := conditions.HeldAddresses(sheet.GetID(), stored.Conditions)
+	require.NoError(t, err)
+	opportunity := 0
+	for _, address := range held {
+		if address.ConditionRef == refs.Conditions.OpportunityAttack().String() {
+			opportunity++
+		}
+	}
+	require.Equal(t, 1, opportunity, "HeldAddresses on the stored list returns the reaction once")
+
+	for _, condition := range sheet.GetConditions() {
+		if condition.Ref().String() == refs.Conditions.OpportunityAttack().String() {
+			require.True(t, condition.IsApplied(), "Finalize applied the reaction it stored")
+		}
+	}
+
+	// The stored record alone is what makes a reloaded sheet react.
+	reloaded, err := Load(ctx, inFight(stored))
+	require.NoError(t, err)
+	reloadedBus := events.NewEventBus()
+	require.NoError(t, Attach(ctx, reloaded, reloadedBus))
+	require.Equal(t, 1, triggersOnAStepAway(t, reloadedBus, reloaded),
+		"the stored reaction is LIVE — one that was merely constructed could never fire")
 }
 
 // triggersOnAStepAway runs a real movement fold with an enemy leaving the
@@ -124,29 +158,34 @@ type placedEntity struct {
 func (p *placedEntity) GetID() string            { return p.id }
 func (p *placedEntity) GetType() core.EntityType { return p.kind }
 
-// Attach records the opportunity attack every combatant carries on the sheet,
-// the way a monster's attach does, so GetConditions and ToData name what the
-// participant holds. Recording it is not a change worth saving: a character's
-// meter is ActionEconomy.ReactionsRemaining, and the condition carries none.
-func TestAttachRecordsTheCarriedReactionOnTheSheet(t *testing.T) {
+// Attach applies what the sheet stores and adds nothing: a sheet whose stored
+// conditions name the opportunity attack holds it and fires it, and a sheet
+// whose stored conditions do not name it holds none and fires none.
+func TestAttachAppliesTheStoredReactionAndAddsNone(t *testing.T) {
 	ctx := context.Background()
-	sheet, err := Load(ctx, plainFighter("fighter-1"))
+
+	stored, err := Load(ctx, inFight(withFreeReactions(t, plainFighter("fighter-1"))))
 	require.NoError(t, err)
-	require.Empty(t, mustToData(t, sheet).Conditions, "Load stays a pure read")
+	storedBus := events.NewEventBus()
+	require.NoError(t, Attach(ctx, stored, storedBus))
+	require.Equal(t, []string{refs.Conditions.OpportunityAttack().String()}, heldRefs(stored.GetConditions()))
+	require.False(t, stored.IsDirty(), "attaching a stored reaction is not a change worth saving")
+	require.Equal(t, 1, triggersOnAStepAway(t, storedBus, stored))
 
-	require.NoError(t, Attach(ctx, sheet, events.NewEventBus()))
-
-	require.Equal(t, []string{refs.Conditions.OpportunityAttack().String()}, heldRefs(sheet.GetConditions()))
-	require.Equal(t, []string{refs.Conditions.OpportunityAttack().String()}, conditionRefs(mustToData(t, sheet)))
-	require.False(t, sheet.IsDirty(), "gaining a reaction is not a change worth saving")
+	bare, err := Load(ctx, inFight(plainFighter("fighter-2")))
+	require.NoError(t, err)
+	bareBus := events.NewEventBus()
+	require.NoError(t, Attach(ctx, bare, bareBus))
+	require.Empty(t, heldRefs(bare.GetConditions()), "Attach adds no reaction the record does not name")
+	require.Empty(t, conditionRefs(mustToData(t, bare)))
+	require.Equal(t, 0, triggersOnAStepAway(t, bareBus, bare))
 }
 
-// A record that already lists the opportunity attack — one an earlier attach
-// recorded and a save wrote — is not given a second, on the sheet or on the
-// bus.
-func TestAttachDoesNotRecordTheCarriedReactionTwice(t *testing.T) {
+// A record that lists the opportunity attack once still lists it once after a
+// reload and a second attach, on the sheet and on the bus.
+func TestAReloadedSheetHoldsTheStoredReactionOnce(t *testing.T) {
 	ctx := context.Background()
-	first, err := Load(ctx, inFight(plainFighter("fighter-1")))
+	first, err := Load(ctx, inFight(withFreeReactions(t, plainFighter("fighter-1"))))
 	require.NoError(t, err)
 	require.NoError(t, Attach(ctx, first, events.NewEventBus()))
 

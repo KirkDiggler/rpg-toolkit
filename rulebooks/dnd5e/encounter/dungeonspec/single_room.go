@@ -371,6 +371,10 @@ type RoomMonsterSource struct {
 	ID  string `yaml:"id" json:"id"`
 	Ref string `yaml:"ref" json:"ref"`
 
+	// AppearanceRef is optional opaque visual content, independent of Ref's
+	// rules/template identity and the binding's faction. No catalog is read.
+	AppearanceRef string `yaml:"appearanceRef,omitempty" json:"appearanceRef,omitempty"`
+
 	// StartingCell is where the monster stands and which way it faces when
 	// it arrives. See [RoomStartingCell].
 	StartingCell RoomStartingCell `yaml:"startingCell" json:"startingCell"`
@@ -616,9 +620,8 @@ type RoomDoorBinding struct {
 // fields use encounter's defaults; pointer fields preserve explicit invalid zero
 // and empty values so validation cannot mistake them for absence.
 type DiscoveryAttemptsSpec struct {
-	MaxAttempts *int    `yaml:"max,omitempty" json:"max,omitempty"`
-	ResetHexes  *int    `yaml:"reset_hexes,omitempty" json:"reset_hexes,omitempty"`
-	Lifetime    *string `yaml:"lifetime,omitempty" json:"lifetime,omitempty"`
+	MaxAttempts *int `yaml:"max,omitempty" json:"max,omitempty"`
+	ResetHexes  *int `yaml:"reset_hexes,omitempty" json:"reset_hexes,omitempty"`
 }
 
 // ConcealmentSpec is one secret this room hides: what finds it, and what it
@@ -656,7 +659,7 @@ type ConcealmentSpec struct {
 	// write it today and so the slice that reads it changes no file.
 	Notice CheckSpec `yaml:"notice,omitempty" json:"notice,omitempty"`
 
-	// Checks are the ways a Search can find this, priced per route —
+	// Checks are the ways a discovery check can find this, priced per route —
 	// [DoorSpec.Locked]'s shape, beaten by any listed one. REQUIRED
 	// non-empty: a secret nobody can ever find is one the author started and
 	// did not finish.

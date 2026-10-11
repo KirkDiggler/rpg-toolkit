@@ -45,8 +45,8 @@ func (s *AppearanceRosterSuite) TestMemoryUsesCapturedAppearanceWhileAnotherObse
 		}
 	}
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: *data, Capabilities: encounter.Capabilities{
-		Sheets: encStandStill{}, Sight: aliceCannotSee{}, Equipment: encNoHandsObserved{},
-		Initiative: encOrderAsGiven{}, Driver: encPassDriver{}, Standing: encEveryoneStanding{},
+		Sheets: encStandStill{}, Sight: aliceCannotSee{}, Equipment: encNoHandsObserved{}, Conditions: encNoHandsObserved{},
+		Initiative: encOrderAsGiven{}, Driver: encPassDriver{}, Participation: encEveryoneStanding{},
 		Actors: encounter.Actors{Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}},
 	}})
 	s.Require().NoError(err)

@@ -106,15 +106,16 @@ func (s *DirectiveTestSuite) lineScene(withPillar bool) *encounter.Encounter {
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Conditions: encounter.UnobservedEquipment{},
 			Sheets: sheetFacts{
 				goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", RangeFeet: 5, Kind: "melee"}}, Targeting: "closest"},
 				// bob, when a scene adds him, is the goblin's ally standing in the way.
 				bob: {SpeedFeet: 30, Targeting: "closest"}, alice: {}},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     s.driver,
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        s.driver,
 			Actors: encounter.Actors{
 				Striker:   &scriptedStriker{kind: encounter.OutcomeMissed},
 				Mover:     s.mover,
@@ -487,15 +488,16 @@ func (s *DirectiveTestSuite) sceneOfCells(
 		}, extra...),
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Conditions: encounter.UnobservedEquipment{},
 			Sheets: sheetFacts{
 				goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", RangeFeet: 5, Kind: "melee"}}, Targeting: "closest"},
 				// bob, when a scene adds him, is the goblin's ally standing in the way.
 				bob: {SpeedFeet: 30, Targeting: "closest"}, alice: {}},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     s.driver,
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        s.driver,
 			Actors: encounter.Actors{
 				Striker:   &scriptedStriker{kind: encounter.OutcomeMissed},
 				Mover:     s.mover,
@@ -950,15 +952,16 @@ func (s *DirectiveTestSuite) towardCorridorWalledScene() *encounter.Encounter {
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: encounter.UnobservedEquipment{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Conditions: encounter.UnobservedEquipment{},
 			Sheets: sheetFacts{
 				goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", RangeFeet: 5, Kind: "melee"}}, Targeting: "closest"},
 				// bob, when a scene adds him, is the goblin's ally standing in the way.
 				bob: {SpeedFeet: 30, Targeting: "closest"}, alice: {}},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     s.driver,
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        s.driver,
 			Actors: encounter.Actors{
 				Striker:   &scriptedStriker{kind: encounter.OutcomeMissed},
 				Mover:     s.mover,

@@ -41,12 +41,6 @@ func TestRefusingCapabilitiesLeaveNoInterfaceSlotNil(t *testing.T) {
 func TestRefusingCapabilitiesStandInAnswers(t *testing.T) {
 	asked := []MemberID{"b", "a"}
 
-	t.Run("standing: nobody down, as a list", func(t *testing.T) {
-		down, err := nobodyDown{}.Standing(asked)
-		require.NoError(t, err)
-		require.NotNil(t, down)
-		require.Empty(t, down)
-	})
 	t.Run("participation: an empty ask is answered empty", func(t *testing.T) {
 		got, err := nobodyDown{}.Assess(nil)
 		require.NoError(t, err)
@@ -75,14 +69,24 @@ func TestRefusingCapabilitiesStandInAnswers(t *testing.T) {
 		require.ErrorIs(t, err, ErrRefusingCheckResolver)
 		require.Nil(t, got)
 	})
+	t.Run("check resolver refuses the discovery check too", func(t *testing.T) {
+		got, err := RefusingCheckResolver{}.ResolveDiscoveryCheck(&ResolveCheckInput{})
+		require.ErrorIs(t, err, ErrRefusingCheckResolver)
+		require.Nil(t, got)
+	})
 	t.Run("driver refuses", func(t *testing.T) {
 		_, err := RefusingDriver{}.Act(MonsterView{})
 		require.ErrorIs(t, err, ErrRefusingDriver)
 	})
 	t.Run("witness: nobody, as a list", func(t *testing.T) {
-		got, err := NobodyPerceives{}.Perceivers(&PerceiversInput{})
+		got, err := nobodyPerceives{}.Perceivers(&PerceiversInput{})
 		require.NoError(t, err)
 		require.NotNil(t, got)
 		require.Empty(t, got)
+	})
+	t.Run("refusing witness refuses every ask", func(t *testing.T) {
+		got, err := RefusingWitness{}.Perceivers(&PerceiversInput{})
+		require.ErrorIs(t, err, ErrRefusingWitness)
+		require.Nil(t, got)
 	})
 }

@@ -145,3 +145,15 @@ func (f *FightingStyleDefenseCondition) onACChain(
 
 	return c, nil
 }
+
+// fightingStyleDefenseDescriptor is the one entry for [FightingStyleDefenseCondition]; see [descriptors].
+var fightingStyleDefenseDescriptor = descriptor{
+	ref:     refs.Conditions.FightingStyleDefense(),
+	display: Display{Name: "Defense"},
+	load:    loaderOf[FightingStyleDefenseCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return NewFightingStyleDefenseCondition(in.MemberID), nil
+	},
+	ownAction:     notBearing,
+	againstHolder: notBearing,
+}

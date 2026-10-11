@@ -43,6 +43,19 @@ func (s *CastSuite) TestBlessKnownDyingAndStabilizedRecipientsPersistWithConcent
 			out, err := s.mgr.Cast(context.Background(), &session.CastInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Targets: []string{"patient", "cleric", "skeleton"}})
 			s.Require().NoError(err)
 			s.Empty(out.MissedTargets)
+			applied := 0
+			for _, event := range s.beats(session.EventActivationResult) {
+				body, isResult := event.Body.(session.ActivationResultBody)
+				if !isResult || body.ConditionApplied == nil {
+					continue
+				}
+				applied++
+				s.Empty(body.ConditionApplied.Detail, "Bless has no per-instance word to carry")
+				marshalled, marshalErr := json.Marshal(body.ConditionApplied)
+				s.Require().NoError(marshalErr)
+				s.NotContains(string(marshalled), `"detail"`, "an empty detail writes no key")
+			}
+			s.Positive(applied, "the cast must have applied Blessed at least once for this to prove anything")
 			for _, member := range []string{"patient", "cleric"} {
 				raw, err := json.Marshal(s.characters.byID[member].Conditions)
 				s.Require().NoError(err)
@@ -59,7 +72,7 @@ func (s *CastSuite) TestBlessKnownDyingAndStabilizedRecipientsPersistWithConcent
 
 func (s *CastSuite) configureBless(policy session.StaleTargetPolicy) {
 	var err error
-	s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(), StaleTargetPolicy: policy,
+	s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), StaleTargetPolicy: policy,
 		PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
 	s.Require().NoError(err)
@@ -83,7 +96,7 @@ func (s *CastSuite) TestBlessMissingPolicyExplainsBothOfferAndCast() {
 
 func (s *CastSuite) TestBlessInvalidPolicyFailsConfiguration() {
 	s.scene(blessCleric(), 3)
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), StaleTargetPolicy: "typo",
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), StaleTargetPolicy: "typo",
 		PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
 	s.Nil(mgr)

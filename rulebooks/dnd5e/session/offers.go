@@ -80,11 +80,13 @@ type compiledOffer struct {
 	// definition for Attack. Equality compares these bytes so two offers
 	// with the same selector material are recurrence, not a collision.
 	variant json.RawMessage
-	// unreadable is why this offer is blocked when the cause is a sheet a
-	// resolution participant needs and nobody can read: the first dependency
-	// failure, in this package's own vocabulary. Nil otherwise. Selecting a
-	// blocked offer reports it rather than calling the selector stale — the
-	// selector is current; the sheet is what refuses (rpg-project#538).
+	// unreadable is why this offer is blocked when the cause is a named
+	// refusal rather than a stale selector, in this package's own vocabulary:
+	// the first sheet a resolution participant needs and nobody can read, or
+	// the attacker's competing attack offers (ErrConflictingOffers). Nil
+	// otherwise. Selecting a blocked offer reports it rather than calling the
+	// selector stale — the selector is current; the sheet or the unpicked
+	// offer is what refuses (rpg-project#538).
 	unreadable error
 }
 
@@ -377,18 +379,24 @@ func (m *Manager) compileOffersFor(
 		Cost: pricedProfile,
 	})
 	if err != nil {
-		why := Shortfall{
+		attackBlocker := blockedCompiledOffer(VerbAttack, TargetMember, Shortfall{
 			Reason: ShortfallUnreadable,
 			Text:   fmt.Errorf("member %q: %w: %v", member, ErrBadAttack, err).Error(),
+		})
+		if errors.Is(err, character.ErrConflictingOffers) {
+			// Two conditions each offer this swing a replacement: the pick is
+			// the player's and none was taken. That is a state to resolve, not
+			// an unreadable sheet, and the text names the competing offers.
+			conflict := fmt.Errorf("member %q: %w: %v", member, ErrConflictingOffers, err)
+			attackBlocker = blockedCompiledOffer(VerbAttack, TargetMember, Shortfall{
+				Reason: ShortfallUnavailable,
+				Text:   conflict.Error(),
+			})
+			attackBlocker.unreadable = conflict
 		}
 		return finishRequestedOffers(requested, append(
-			[]compiledOffer{
-				blockedCompiledOffer(VerbAttack, TargetMember, why),
-				move,
-				endTurn,
-				intimidate,
-				persuade,
-			}, activations...)...)
+			[]compiledOffer{attackBlocker, move, endTurn, intimidate, persuade},
+			activations...)...)
 	}
 	price.cost.Profile = combatActions.CloneSpendProfile(definition.Cost)
 
@@ -1062,6 +1070,15 @@ func selectCompiledOffer(offers []compiledOffer, verb Verb, id string) (compiled
 			return compiledOffer{}, ErrStaleDeclaration
 		}
 		selected = &offers[i]
+	}
+	if selected == nil {
+		// A blocker has no selector to echo, so a conflict is found by its
+		// verb: the attacker's competing offers refuse the verb by name.
+		for i := range offers {
+			if offers[i].declaration.Verb == verb && errors.Is(offers[i].unreadable, ErrConflictingOffers) {
+				return compiledOffer{}, offers[i].unreadable
+			}
+		}
 	}
 	if selected != nil && !selected.declaration.Available && selected.unreadable != nil {
 		return compiledOffer{}, selected.unreadable

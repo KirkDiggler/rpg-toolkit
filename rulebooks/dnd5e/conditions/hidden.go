@@ -215,3 +215,18 @@ func (h *HiddenCondition) onAttackChain(
 
 	return c, nil
 }
+
+// hiddenDescriptor is the one entry for [HiddenCondition]; see [descriptors].
+var hiddenDescriptor = descriptor{
+	ref:     refs.Conditions.Hidden(),
+	display: Display{Name: "Hidden", Detail: "A hidden creature's attacks have advantage, and attacks against it have disadvantage. Attacking ends it."},
+	load:    loaderOf[HiddenCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return NewHiddenCondition(in.MemberID), nil
+	},
+	ownAction:     answersNow,
+	againstHolder: answersNow,
+	heldRule:      newHiddenHeldRule,
+}
+
+var _ contributions.ActionAssessor = (*HiddenCondition)(nil)

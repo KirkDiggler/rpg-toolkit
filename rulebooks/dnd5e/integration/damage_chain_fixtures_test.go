@@ -114,8 +114,10 @@ func framed(ctx context.Context, event *dnd5eEvents.DamageChainEvent) *dnd5eEven
 				// No stance between two MEMBERS of the cast is no side, never
 				// neutral; a placed entity the cast does not hold stays unknown.
 				members := cast.Members()
-				if stance, ok := cast.StanceBetween(event.TargetID, id); ok {
-					pair.Stance = contributions.Known(stance)
+				if hostile, known := cast.IsHostile(event.TargetID, id); known && hostile {
+					pair.Stance = contributions.Known(contributions.StanceHostile)
+				} else if allied, known := cast.IsAllied(event.TargetID, id); known && allied {
+					pair.Stance = contributions.Known(contributions.StanceAllied)
 				} else if slices.Contains(members, event.TargetID) && slices.Contains(members, id) {
 					pair.Stance = contributions.Known(contributions.StanceNone)
 				}

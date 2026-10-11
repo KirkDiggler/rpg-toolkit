@@ -240,7 +240,7 @@ func (c *Character) projectFeatures() ([]FeatureView, []resourceReport, error) {
 }
 
 // projectConditions builds the sorted ConditionView slice from each active
-// condition's ref, looked up in the rulebook-owned display catalog. An unknown
+// condition's ref, looked up in the conditions registry. An unknown
 // ref fails the whole projection with no partial output.
 func (c *Character) projectConditions() ([]ConditionView, error) {
 	views := make([]ConditionView, 0, len(c.conditions))
@@ -252,7 +252,7 @@ func (c *Character) projectConditions() ([]ConditionView, error) {
 		display, ok := conditions.DisplayFor(*ref)
 		if !ok {
 			return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
-				"condition ref %s is not in the status-view display catalog", ref.String())
+				"condition ref %s is not registered", ref.String())
 		}
 		views = append(views, ConditionView{
 			Ref:          *ref,

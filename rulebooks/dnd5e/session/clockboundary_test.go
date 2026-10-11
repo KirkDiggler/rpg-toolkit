@@ -70,7 +70,7 @@ func (s *ClockBoundaryTestSuite) fightAs(class classes.Class, aliceConditions ..
 	s.characters = newFakeCharacters(alice, armedFighter("bob"))
 
 	dice := &sequenceDice{}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: dice, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
@@ -179,7 +179,7 @@ func (s *ClockBoundaryTestSuite) TestSneakAttackForgetsItsDiceWhenTheTurnEnds() 
 
 	s.endTurn(mgr, "alice")
 
-	stored := s.held("alice", refs.Features.SneakAttack().String())
+	stored := s.held("alice", refs.Conditions.SneakAttack().String())
 	s.Require().NotNil(stored, "the condition survives; only its memory of this turn is cleared")
 
 	var blob struct {
@@ -396,7 +396,7 @@ func (s *ClockBoundaryTestSuite) TestASheetReturnedUnderTheWrongIDIsRefused() {
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
 	liar := &impersonatingCharacters{fakeCharacters: s.characters, always: armedFighter("bob")}
 
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{15, 5}}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: liar,
 		Events: session.DiscardEvents{},

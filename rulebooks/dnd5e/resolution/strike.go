@@ -591,14 +591,6 @@ func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents
 	// not a hit range: an effect that widens CriticalThreshold to 19–20
 	// widens which HITS crit, never which rolls hit — a 19 that cannot
 	// reach the AC is still a miss.
-	switch roll {
-	case 20:
-		m.outcome.Hit = true
-	case 1:
-		m.outcome.Hit = false
-	default:
-		m.outcome.Hit = m.outcome.Total >= folded.TargetAC
-	}
 	m.settleHit(roll, folded)
 
 	// THE OFFER BOUNDARY, and it is here rather than after the post-roll chain
@@ -714,7 +706,7 @@ func attackModifierRefs(sources []dnd5eEvents.AttackModifierSource) []*core.Ref 
 // effects modify it (ADR-0026's Resolve).
 func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Step, error) {
 	if len(m.attack.Damage) == 0 {
-		return m.afterDamage(ctx)
+		return m.nextCondition(0)
 	}
 	// The same frame the offers read — or, on a resumed strike, one built from
 	// current truth and the frozen fold — settled before any damage die is
@@ -805,7 +797,7 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 		FollowUp: func(followUp FollowUpOutcome) {
 			m.outcome.FollowUps = append(m.outcome.FollowUps, followUp)
 		},
-		Then: m.afterDamage,
+		Then: func(context.Context) (Step, error) { return m.nextCondition(0) },
 	}), nil
 }
 
@@ -951,42 +943,6 @@ func (m *strikeMachine) damageCause() dnd5eEvents.SaveCause {
 	}
 
 	return cause
-}
-
-// afterDamage would be where ADR-0026's Notify goes, and deliberately is not.
-//
-// Publishing DamageReceivedEvent here applies the damage a SECOND time to a
-// monster target: monster.SheetKeeper subscribes to that topic and its handler
-// calls TakeDamage, so the event is an instruction to that listener rather than
-// a notification. Measured, not assumed — a 4-damage bite took a wolf from 11
-// to 3 with the publish in place. A character has no such handler, so the same
-// event is inert for half the roster: the topic means two different things
-// depending on who is listening.
-//
-// Slice 2's census classified it, and the answer was sharper than the question:
-// DamageReceivedTopic historically had FIVE subscribers across THREE meanings.
-// One applies damage (monster.onDamageReceived calls TakeDamage — the
-// instruction), Undead Fortitude and Rage genuinely observe, the legacy
-// Unconscious shell is now inert, and the encounter layer captures and drains
-// events precisely to stop damage landing twice.
-//
-// The topic MEANS "damage has landed" — a notification. The subscriber that
-// treats it as an instruction is the defect, not the topic, and it retires with
-// #977 when Undead Fortitude converts to a gate. Publishing here before then
-// would double-apply to every monster; publishing after costs nothing and buys
-// the three rules back. So this waits on that conversion, not on a question.
-//
-// What it costs meanwhile is named rather than hidden: notification-dependent
-// observers still do not fire for resolution-driven damage. Death-save failures
-// are not among them anymore: Character.ApplyDamage owns the positive-damage-
-// at-zero transition directly, including critical failures and stabilization.
-func (m *strikeMachine) afterDamage(ctx context.Context) (Step, error) {
-	return m.afterNotify(ctx)
-}
-
-// afterNotify processes declared on-hit conditions in authoring order.
-func (m *strikeMachine) afterNotify(_ context.Context) (Step, error) {
-	return m.nextCondition(0)
 }
 
 func (m *strikeMachine) nextCondition(index int) (Step, error) {

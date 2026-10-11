@@ -185,3 +185,17 @@ func (f *FightingStyleArcheryCondition) onAttackChain(
 
 	return c, nil
 }
+
+// fightingStyleArcheryDescriptor is the one entry for [FightingStyleArcheryCondition]; see [descriptors].
+var fightingStyleArcheryDescriptor = descriptor{
+	ref:     refs.Conditions.FightingStyleArchery(),
+	display: Display{Name: "Archery", Detail: "Adds 2 to attack rolls you make with ranged weapons."},
+	load:    loaderOf[FightingStyleArcheryCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return NewFightingStyleArcheryCondition(in.MemberID), nil
+	},
+	ownAction:     answersNow,
+	againstHolder: notBearing,
+}
+
+var _ contributions.ActionAssessor = (*FightingStyleArcheryCondition)(nil)

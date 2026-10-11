@@ -12,6 +12,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -97,7 +98,7 @@ func (s *TraitScopingTestSuite) skeleton() *monster.Monster {
 }
 
 func (s *TraitScopingTestSuite) immunityBlob() json.RawMessage {
-	raw, err := json.Marshal(ImmunityData{
+	raw, err := json.Marshal(conditions.ImmunityData{
 		Ref:        refs.MonsterTraits.Immunity(),
 		OwnerID:    "skeleton-scope",
 		DamageType: damage.Piercing,
@@ -152,7 +153,7 @@ func (s *TraitScopingTestSuite) TestPlainBusLoadsIdentically() {
 	}, plain)
 	s.Require().NoError(err)
 
-	raw, err := json.Marshal(ImmunityData{
+	raw, err := json.Marshal(conditions.ImmunityData{
 		Ref:        refs.MonsterTraits.Immunity(),
 		OwnerID:    "skeleton-plain",
 		DamageType: damage.Piercing,

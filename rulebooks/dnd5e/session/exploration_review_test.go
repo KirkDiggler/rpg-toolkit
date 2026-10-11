@@ -18,7 +18,7 @@ func (s *AutomaticDiscoverySDKSuite) TestSharingRefusalsKeepTheVerbAndSentinel()
 	encounters := &failingEncounters{fakeEncounters: newFakeEncounters()}
 	cfg := &session.Config{Seats: newFakeSeats(),
 		Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
-		Explorations: &explorationStore{data: map[string]*session.ExplorationData{}},
+		Explorations: newFakeExplorations(),
 		Events:       session.DiscardEvents{}, Dice: testDice{},
 		PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{},
 	}
@@ -45,13 +45,6 @@ func (s *AutomaticDiscoverySDKSuite) TestSharingRefusalsKeepTheVerbAndSentinel()
 	var partial *session.SaveError
 	s.Require().ErrorAs(err, &partial)
 	s.Contains(partial.Report.Written, "exploration:alice", "context wrapping must preserve the partial-save report")
-
-	cfg.Explorations = nil
-	legacy, err := session.NewManager(cfg)
-	s.Require().NoError(err)
-	_, err = legacy.SetDiscoverySharing(ctx, &session.SetDiscoverySharingInput{Session: "run", Member: "alice"})
-	s.ErrorIs(err, session.ErrIncompleteConfig)
-	s.ErrorContains(err, "set discovery sharing:")
 
 	cfg.Locker = &observingLocker{err: context.Canceled}
 	blocked, err := session.NewManager(cfg)
@@ -80,7 +73,7 @@ func (s *AutomaticDiscoverySDKSuite) TestJoinDiscoveryUsesTheRestedRecordRatherT
 			dice := &discoveryReviewDice{}
 			mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 				Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: characters,
-				Explorations: &explorationStore{data: map[string]*session.ExplorationData{}},
+				Explorations: newFakeExplorations(),
 				Events:       session.DiscardEvents{}, Dice: dice,
 				PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{},
 			})

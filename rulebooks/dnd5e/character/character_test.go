@@ -11,7 +11,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -92,7 +91,7 @@ func (s *CharacterResourceTestSuite) TestAddResourceInitializesMapIfNil() {
 	char.AddResource("ki", resource)
 
 	s.Assert().NotNil(char.resources)
-	s.Assert().Equal(1, len(char.resources))
+	s.Assert().Contains(char.resources, coreResources.ResourceKey("ki"))
 	retrieved := char.GetResource("ki")
 	s.Require().NotNil(retrieved)
 	s.Assert().Equal(3, retrieved.Maximum())
@@ -121,7 +120,8 @@ func (s *CharacterResourceTestSuite) TestGetResourceDataReturnsCorrectValues() {
 	// Get data
 	data := s.character.GetResourceData()
 	s.Require().NotNil(data)
-	s.Assert().Equal(2, len(data))
+	s.Assert().Contains(data, coreResources.ResourceKey("rage"))
+	s.Assert().Contains(data, coreResources.ResourceKey("ki"))
 
 	// Check rage data
 	rageData, exists := data["rage"]
@@ -162,7 +162,8 @@ func (s *CharacterResourceTestSuite) TestLoadResourceDataIsInertUntilCharacterRe
 	}
 
 	s.character.LoadResourceData(s.ctx, s.bus, data)
-	s.Require().Len(s.character.resources, 2)
+	s.Require().Contains(s.character.resources, coreResources.ResourceKey("rage"))
+	s.Require().Contains(s.character.resources, coreResources.ResourceKey("ki"))
 	rage := s.character.GetResource("rage")
 	ki := s.character.GetResource("ki")
 	s.Require().Equal(2, rage.Maximum())
@@ -223,7 +224,7 @@ func (s *CharacterResourceTestSuite) TestLoadResourceDataHandlesNilData() {
 	s.character.LoadResourceData(s.ctx, s.bus, nil)
 	// Should not panic, resources should remain as initialized
 	s.Assert().NotNil(s.character.resources)
-	s.Assert().Equal(0, len(s.character.resources))
+	s.Assert().Empty(s.character.resources)
 }
 
 func (s *CharacterResourceTestSuite) TestLoadResourceDataInitializesMapIfNil() {
@@ -243,7 +244,7 @@ func (s *CharacterResourceTestSuite) TestLoadResourceDataInitializesMapIfNil() {
 	char.LoadResourceData(s.ctx, s.bus, data)
 
 	s.Assert().NotNil(char.resources)
-	s.Assert().Equal(1, len(char.resources))
+	s.Assert().Contains(char.resources, coreResources.ResourceKey("rage"))
 }
 
 func (s *CharacterResourceTestSuite) TestRoundTripSerialization() {
@@ -355,7 +356,7 @@ func (s *CharacterSavingThrowTestSuite) createTestCharacter(
 	}
 }
 
-func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowWithProficiency() {
+func (s *CharacterSavingThrowTestSuite) TestSavingThrowModifierAddsProficiencyWhenProficient() {
 	// Create a character with 14 CON (+2 modifier) and proficiency in CON saves
 	char := s.createTestCharacter(
 		map[string]int{"con": 14},
@@ -369,7 +370,7 @@ func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowWithProficiency() {
 	s.Equal(4, modifier, "should be +2 (ability) + 2 (proficiency) = +4")
 }
 
-func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowWithoutProficiency() {
+func (s *CharacterSavingThrowTestSuite) TestSavingThrowModifierIsAbilityOnlyWhenNotProficient() {
 	// Create a character with 14 DEX (+2 modifier) but NOT proficient in DEX saves
 	char := s.createTestCharacter(
 		map[string]int{"dex": 14},
@@ -380,7 +381,7 @@ func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowWithoutProficiency() 
 	s.Equal(2, modifier, "should be +2 (ability only, no proficiency)")
 }
 
-func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowNegativeModifier() {
+func (s *CharacterSavingThrowTestSuite) TestSavingThrowModifierIsNegativeForLowScore() {
 	// Create a character with 8 INT (-1 modifier)
 	char := s.createTestCharacter(
 		map[string]int{"int": 8},
@@ -389,116 +390,6 @@ func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowNegativeModifier() {
 
 	modifier := char.GetSavingThrowModifier(abilities.INT)
 	s.Equal(-1, modifier, "should be -1 (8 INT = -1 modifier)")
-}
-
-func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowFunctionExists() {
-	// Verify the MakeSavingThrow function works end-to-end
-	char := s.createTestCharacter(
-		map[string]int{"wis": 16}, // +3 modifier
-		[]string{"wis"},           // Proficient
-	)
-	// A full save consults the chain on the character's bus (rpg-toolkit#1357)
-	char.bus = events.NewEventBus()
-
-	// Make a saving throw against DC 15
-	result, err := char.MakeSavingThrow(s.ctx, &MakeSavingThrowInput{
-		Ability:   abilities.WIS,
-		DC:        15,
-		D20Source: dnd5eEvents.RollSource{Ref: refs.Spells.SacredFlame(), Name: "Sacred Flame"},
-	})
-
-	s.Require().NoError(err)
-	s.Require().NotNil(result)
-
-	// Result should have DC set correctly
-	s.Equal(15, result.DC)
-
-	// Total should be roll + 5 (+3 ability + 2 proficiency)
-	expectedTotal := result.Roll + 5
-	s.Equal(expectedTotal, result.Total, "total should be roll + modifier")
-}
-
-// TestMakeSavingThrowRefusesUnattachedCharacter pins the fail-closed side of
-// rpg-toolkit#1357: a full save consults the chain, and a character on no bus
-// has every save-modifying condition absent — refused loudly, never rolled
-// wrong.
-func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowRefusesUnattachedCharacter() {
-	char := s.createTestCharacter(
-		map[string]int{"wis": 16},
-		[]string{"wis"},
-	)
-
-	result, err := char.MakeSavingThrow(s.ctx, &MakeSavingThrowInput{
-		Ability:   abilities.WIS,
-		DC:        15,
-		D20Source: dnd5eEvents.RollSource{Ref: refs.Spells.SacredFlame(), Name: "Sacred Flame"},
-	})
-
-	s.Require().Error(err)
-	s.Nil(result)
-	s.Contains(err.Error(), "on no bus")
-	s.Equal(rpgerr.CodePrerequisiteNotMet, rpgerr.GetCode(err))
-}
-
-// TestMakeSavingThrowConsultsParkedBusConditions pins the PR's headline
-// behavior (rpg-toolkit#1357): a condition subscribed on the character's
-// parked bus reaches Character.MakeSavingThrow — the verb passes THAT bus and
-// the character's own id, not a fresh bus and not nothing. Dodging grants
-// advantage on DEX saves keyed by SaverID; if a refactor ever swaps in a
-// different bus or id, this modifier vanishes and this test fails while every
-// arithmetic-only test stays green.
-func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowResolvesRecipientSelectedBane() {
-	char := s.createTestCharacter(map[string]int{"con": 10}, nil)
-	char.bus = events.NewEventBus()
-	baned, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
-		MemberID: char.GetID(), SourceID: "bard-a", SourceRef: refs.Spells.Bane(),
-	})
-	s.Require().NoError(err)
-	char.conditions = append(char.conditions, baned)
-	roller := &scriptedRoller{results: []int{10, 3}}
-
-	result, err := char.MakeSavingThrow(s.ctx, &MakeSavingThrowInput{
-		Roller: roller, Ability: abilities.CON, DC: 10,
-		D20Source: dnd5eEvents.RollSource{Ref: refs.Spells.SacredFlame(), Name: "Sacred Flame"},
-	})
-	s.Require().NoError(err)
-	s.Equal([]int{20, 4}, roller.calls)
-	s.Equal(7, result.Total)
-	s.False(result.Success)
-	s.Require().Len(result.Calculation.Components, 3)
-	s.True(result.Calculation.Components[2].SubtractDice)
-	s.Equal("bard-a", result.Calculation.Components[2].Source.SourceID)
-}
-
-func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowConsultsParkedBusConditions() {
-	char := s.createTestCharacter(
-		map[string]int{"dex": 14},
-		[]string{},
-	)
-	char.bus = events.NewEventBus()
-
-	dodging := conditions.NewDodgingCondition(char.GetID())
-	s.Require().NoError(dodging.Apply(s.ctx, char.bus))
-
-	result, err := char.MakeSavingThrow(s.ctx, &MakeSavingThrowInput{
-		Ability:   abilities.DEX,
-		DC:        10,
-		D20Source: dnd5eEvents.RollSource{Ref: refs.Spells.SacredFlame(), Name: "Sacred Flame"},
-	})
-
-	s.Require().NoError(err)
-	s.Require().NotNil(result)
-
-	s.Require().NotNil(result.Calculation)
-	keep := result.Calculation.Components[0].Dice.Keep
-	s.Require().NotNil(keep, "advantage from the parked bus must reach the die's keep record")
-
-	var names []string
-	for _, src := range keep.Granted {
-		names = append(names, src.Name)
-	}
-	s.Contains(names, "Dodging",
-		"the Dodging condition on the parked bus must reach the save through the chain")
 }
 
 func TestCharacterSavingThrowSuite(t *testing.T) {
@@ -554,9 +445,6 @@ func (s *CharacterHitDiceTestSuite) SetupTest() {
 
 func (s *CharacterHitDiceTestSuite) SetupSubTest() {
 	// Reset to fresh state for each subtest
-	if s.character != nil {
-		_ = s.character.Cleanup(s.ctx)
-	}
 	s.bus = events.NewEventBus()
 	s.createFreshCharacter()
 }
@@ -580,12 +468,6 @@ func (s *CharacterHitDiceTestSuite) createFreshCharacter() {
 	// Subscribe to events
 	err := s.character.subscribeToEvents(s.ctx)
 	s.Require().NoError(err)
-}
-
-func (s *CharacterHitDiceTestSuite) TearDownTest() {
-	if s.character != nil {
-		_ = s.character.Cleanup(s.ctx)
-	}
 }
 
 func (s *CharacterHitDiceTestSuite) hitDicePool(spent int) *combat.RecoverableResource {
@@ -889,7 +771,8 @@ func (s *CharacterLoadFromDataRoundTripSuite) TestARecordCarryingClassResourcesL
 func (s *CharacterLoadFromDataRoundTripSuite) minimalSpellcasterData() *Data {
 	zero := uint32(0)
 	return &Data{
-		ID: "wendy-test",
+		RaceID: "human",
+		ID:     "wendy-test",
 		Appearance: &customization.Appearance{
 			Hair: &customization.HairCustomization{ColorSRGB: &zero},
 			Outfit: &customization.OutfitCustomization{

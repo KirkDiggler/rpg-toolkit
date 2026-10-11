@@ -185,3 +185,17 @@ func NewImprovedCriticalCondition(input ImprovedCriticalInput) *ImprovedCritical
 		Threshold: threshold,
 	}
 }
+
+// improvedCriticalDescriptor is the one entry for [ImprovedCriticalCondition]; see [descriptors].
+var improvedCriticalDescriptor = descriptor{
+	ref:     refs.Conditions.ImprovedCritical(),
+	display: Display{Name: "Improved Critical", Detail: "Your weapon attacks score a critical hit on a roll below 20 as well as on a 20."},
+	load:    loaderOf[ImprovedCriticalCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return createdAs(createImprovedCritical(in.Config, in.MemberID))
+	},
+	ownAction:     answersNow,
+	againstHolder: notBearing,
+}
+
+var _ contributions.ActionAssessor = (*ImprovedCriticalCondition)(nil)

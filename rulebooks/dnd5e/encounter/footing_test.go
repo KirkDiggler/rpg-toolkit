@@ -143,8 +143,9 @@ func (s *FootingSuite) open(
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      everyoneStanding{},
+			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: resolver,
@@ -239,7 +240,7 @@ func (s *FootingSuite) TestA11_AWithheldWallDoesNotFoot() {
 // whole point: nothing about its shape says a door was subtracted.
 func (s *FootingSuite) TestA10_AConcealedDoorPresentsTheWholeWall() {
 	const rows = 6
-	enc := s.open(s.hugField(rows, true), findsEverything{},
+	enc := s.open(s.hugField(rows, true), findsNothing{},
 		encounter.MemberInput{ID: watcher, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 		encounter.MemberInput{ID: knower, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 3}})
 
@@ -259,7 +260,7 @@ func (s *FootingSuite) TestA10_AConcealedDoorPresentsTheWholeWall() {
 	s.Equal(2.0, mask.Height, "the height of the wall it stands in, read off the segment")
 
 	// The knower gets the same wall and the doorway that cuts it.
-	_, err = enc.Search(&encounter.SearchInput{Member: knower, Region: "hall"})
+	err = encounter.ExportedFind(enc, knower, "vault")
 	s.Require().NoError(err)
 	seen, err := enc.AtlasFor(knower)
 	s.Require().NoError(err)
@@ -383,8 +384,9 @@ func (s *FootingSuite) TestASealedCellKeepsItsRoomAndLosesItsFeet() {
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      everyoneStanding{},
+			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -411,8 +413,9 @@ func (s *FootingSuite) TestASealedCellKeepsItsRoomAndLosesItsFeet() {
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      everyoneStanding{},
+			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -456,8 +459,9 @@ func (s *FootingSuite) TestSegmentsAndSealedRideThePersistence() {
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      everyoneStanding{},
+			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},

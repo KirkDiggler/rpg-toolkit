@@ -46,7 +46,7 @@ var heldSheets = sheetFacts{goblin: {SpeedFeet: 30, Actions: []encounter.ActionV
 	{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
 }, Targeting: "closest"}, alice: {}}
 
-func (s *HeldTestSuite) scene(mover encounter.Mover, standing encounter.StandingWithParticipation) *encounter.Encounter {
+func (s *HeldTestSuite) scene(mover encounter.Mover, standing encounter.Participation) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -60,12 +60,13 @@ func (s *HeldTestSuite) scene(mover encounter.Mover, standing encounter.Standing
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     heldSheets,
-			Standing:   standing,
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        heldSheets,
+			Participation: standing,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     mover,
@@ -120,17 +121,18 @@ func (s *HeldTestSuite) beatsNamed(enc *encounter.Encounter, audience encounter.
 }
 
 // loadInput is the reload every test here uses, with the data swapped in.
-func loadInput(data encounter.EncounterData, mover encounter.Mover, standing encounter.StandingWithParticipation,
+func loadInput(data encounter.EncounterData, mover encounter.Mover, standing encounter.Participation,
 ) *encounter.LoadEncounterInput {
 	return &encounter.LoadEncounterInput{
 		Data: data,
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     heldSheets,
-			Standing:   standing,
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        heldSheets,
+			Participation: standing,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     mover,

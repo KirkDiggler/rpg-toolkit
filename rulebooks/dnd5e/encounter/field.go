@@ -575,7 +575,7 @@ type FieldInput struct {
 	// boundary (dungeonspec); no second authored pose exists here.
 	//
 	// Refused when an id is empty, duplicated (among placed or against a
-	// legacy [PropInput.ID]), or the placement is missing, non-finite,
+	// cell [PropInput.ID]), or the placement is missing, non-finite,
 	// non-positive or unrepresentable (ErrNoField). A footprint needs NO
 	// floor: it may overhang the void, and sight keeps the parts of it the
 	// painted mask does not cover.
@@ -864,10 +864,6 @@ type FieldStart struct {
 type MemberInput struct {
 	// PrivateDiscoveries is the player's audience preference.
 	PrivateDiscoveries bool
-	// RetainedDiscoveries is a legacy explicit-import input, not game persistence.
-	// Compatibility only: game hosts must not seed new playthroughs from character memory;
-	// restore an existing encounter through EncounterData instead.
-	RetainedDiscoveries map[ConcealmentID]DiscoveryMemoryData
 	// ID is the member's unique identifier.
 	ID MemberID
 
@@ -881,6 +877,10 @@ type MemberInput struct {
 	// [Member.Name]. Supplying one is the author's business, not this
 	// composition's to invent.
 	Name string
+
+	// AppearanceRef is optional opaque visual content, captured into sight
+	// testimony rather than delivered from live member state. It decides no rule.
+	AppearanceRef string
 
 	// Position is the member's starting cell: an ABSOLUTE authored offset
 	// [col,row] pair, which must be floor — a cell some region owns
@@ -1012,8 +1012,8 @@ type MemberInput struct {
 	//
 	// MONSTERS ONLY. A player has no reserve to wait in and a world NPC is
 	// placed by its own lane; either with a predicate is refused
-	// (ErrNoMember). Refused too when the predicate can never hold
-	// (ErrNoMember) — a round counted from 0, a fact with no name, a stance
+	// (ErrBadMember). Refused too when the predicate can never hold
+	// (ErrBadMember) — a round counted from 0, a fact with no name, a stance
 	// the pair can never reach, or this member waiting for its own fall.
 	Arrives Trigger
 }
@@ -1053,10 +1053,11 @@ type ActionView struct {
 // arrived: two adjacent []CheckApproach parameters are two call sites away
 // from being silently swapped, and the swap would compile.
 type memberFacts struct {
-	ID         MemberID
-	Intimidate []CheckApproach
-	Persuade   []CheckApproach
-	Table      Table
+	ID            MemberID
+	AppearanceRef string
+	Intimidate    []CheckApproach
+	Persuade      []CheckApproach
+	Table         Table
 }
 
 // validateMemberFacts refuses a defective authored check or table. Callers ask
@@ -1065,6 +1066,9 @@ type memberFacts struct {
 // refused here (Copilot, PR #1187) are the sheet's now and refused where they
 // are asked ([Encounter.sheetsNow]).
 func validateMemberFacts(in memberFacts) error {
+	if err := validateAppearanceRef(in.AppearanceRef); err != nil {
+		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
+	}
 	// An authored route with nothing to beat is the same defect a lock's is
 	// (validateCheck), asked of a member. AN EMPTY LIST IS NOT A DEFECT
 	// HERE, and that is the difference: a lock that lists no way through
@@ -1074,13 +1078,13 @@ func validateMemberFacts(in memberFacts) error {
 	for _, a := range in.Intimidate {
 		if a.DC < 1 {
 			return fmt.Errorf("member %s: intimidate approach at DC %d has nothing to beat: %w",
-				in.ID, a.DC, ErrNoMember)
+				in.ID, a.DC, ErrBadMember)
 		}
 	}
 	for _, a := range in.Persuade {
 		if a.DC < 1 {
 			return fmt.Errorf("member %s: persuade approach at DC %d has nothing to beat: %w",
-				in.ID, a.DC, ErrNoMember)
+				in.ID, a.DC, ErrBadMember)
 		}
 	}
 	// A table this composition could not roll is refused at whichever door
@@ -1409,6 +1413,7 @@ type memberRecord struct {
 	ID             MemberID
 	Kind           MemberKind
 	Name           string
+	AppearanceRef  string
 	Intimidate     []CheckApproach
 	Persuade       []CheckApproach
 	Table          Table
@@ -1600,9 +1605,6 @@ type JoinInput struct {
 	// PrivateDiscoveries is applied before first sight; run knowledge stays in
 	// this encounter rather than coming from the character profile.
 	PrivateDiscoveries bool
-	// RetainedDiscoveries remains for legacy explicit-import callers.
-	// Compatibility only: game hosts do not populate this; EncounterData owns run state.
-	RetainedDiscoveries map[ConcealmentID]DiscoveryMemoryData
 	// Member is the joining member's unique identifier.
 	Member MemberID
 
@@ -1615,6 +1617,9 @@ type JoinInput struct {
 	// CharacterState.Name, a spawned monster's MonsterState.Name), and this
 	// composition only carries it forward for a cold read to project later.
 	Name string
+
+	// AppearanceRef carries the same optional visual content as MemberInput.
+	AppearanceRef string
 
 	// Cell is where they arrive, DUNGEON-ABSOLUTE — the same frame the Atlas
 	// draws, [Encounter.Step] takes, and a [Member]'s Position reports.
@@ -1687,7 +1692,7 @@ type JoinInput struct {
 	// validated standable now; nothing is placed, no clock is joined, no
 	// beat is written — a `joined` beat would tell everyone a thing the
 	// yardstick says nobody can know — and [JoinOutput.Reserved] says so.
-	// Monsters only, refused otherwise (ErrNoMember), as at construction.
+	// Monsters only, refused otherwise (ErrBadMember), as at construction.
 	Arrives Trigger
 }
 

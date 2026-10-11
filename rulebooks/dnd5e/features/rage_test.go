@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 )
 
@@ -128,7 +129,7 @@ func (s *RageTestSuite) TestActivatePublishesCondition() {
 	// Check that event was published
 	s.NotNil(receivedEvent)
 	s.Equal(owner, receivedEvent.Target)
-	s.Equal(dnd5eEvents.ConditionRaging, receivedEvent.Type)
+	s.Equal(refs.Conditions.Raging(), receivedEvent.Condition.Ref())
 	s.Equal(dnd5eEvents.ConditionSourceFeature, receivedEvent.Source)
 
 	// Check condition was created properly

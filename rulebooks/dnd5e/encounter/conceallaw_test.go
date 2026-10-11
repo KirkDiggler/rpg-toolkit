@@ -43,8 +43,9 @@ func (s *ConcealLawSuite) open(resolver encounter.CheckResolver, inVault bool) *
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      everyoneStanding{},
+			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: resolver,
@@ -68,12 +69,13 @@ func (s *ConcealLawSuite) openTwin() *encounter.Encounter {
 		Members: partyMembers(false),
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -255,8 +257,9 @@ func (s *ConcealLawSuite) TestABoundaryWithAStillHiddenNeighbourPresentsAsAnOrdi
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      everyoneStanding{},
+			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -386,8 +389,9 @@ func (s *ConcealLawSuite) TestABareVisibleHiddenAdjacencyPresentsAsAnOrdinaryWal
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      everyoneStanding{},
+			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -426,7 +430,7 @@ func (s *ConcealLawSuite) TestABareVisibleHiddenAdjacencyPresentsAsAnOrdinaryWal
 // would confirm existence to a guessed id. A knower gets the door's real
 // answers back.
 func (s *ConcealLawSuite) TestAProbedConcealedDoorAnswersNotFound() {
-	enc := s.open(findsEverything{}, false)
+	enc := s.open(findsNothing{}, false)
 
 	swap := func(err error) string {
 		return strings.ReplaceAll(err.Error(), "no-such-door", veilDoor)
@@ -452,7 +456,7 @@ func (s *ConcealLawSuite) TestAProbedConcealedDoorAnswersNotFound() {
 	})
 
 	s.Run("a knower gets the real door", func() {
-		_, err := enc.Search(&encounter.SearchInput{Member: seeker, Region: hallRegion})
+		err := encounter.ExportedFind(enc, seeker, veilConceal)
 		s.Require().NoError(err)
 		// Up to the door first: a door opens only from within reach of it
 		// (rpg-toolkit#1856), and what this scene is about is the answer a
@@ -469,7 +473,7 @@ func (s *ConcealLawSuite) TestAProbedConcealedDoorAnswersNotFound() {
 // same crossing, computed by making that exact step in the twin. Found,
 // the same step refuses by the door's own name instead.
 func (s *ConcealLawSuite) TestAMoveRefusedAtAConcealedCrossingRefusesLikeAWall() {
-	enc := s.open(findsEverything{}, false)
+	enc := s.open(findsNothing{}, false)
 	twin := s.openTwin()
 
 	// Walk to the door's near cell in both worlds, then push on the secret.
@@ -489,7 +493,7 @@ func (s *ConcealLawSuite) TestAMoveRefusedAtAConcealedCrossingRefusesLikeAWall()
 	s.Equal(walled.Error(), refused.Error(), "byte-identical to the twin's authored wall")
 
 	// Found, the door answers as itself.
-	_, err := enc.Search(&encounter.SearchInput{Member: seeker, Region: hallRegion})
+	err := encounter.ExportedFind(enc, seeker, veilConceal)
 	s.Require().NoError(err)
 	_, named := enc.Step(&encounter.StepInput{Member: seeker, To: cellAt(5, concealRow)})
 	s.Require().ErrorIs(named, encounter.ErrDoorShut)
@@ -513,12 +517,13 @@ func (s *ConcealLawSuite) TestUnlockCarriesTheAppliedRoute() {
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -573,7 +578,7 @@ func (s *ConcealLawSuite) movedBeatsAt(enc *encounter.Encounter, member core.Ent
 // shows no steps; a member who gains the reveal later starts receiving
 // ordinary updates from then on, with the hidden trail never backfilled.
 func (s *ConcealLawSuite) TestAStepInsideAHiddenRoomStopsAtTheFrontier() {
-	enc := s.open(findsEverything{}, true)
+	enc := s.open(findsNothing{}, true)
 
 	first := cellAt(9, concealRow)
 	_, err := enc.Step(&encounter.StepInput{Member: lurker, To: first})
@@ -585,7 +590,7 @@ func (s *ConcealLawSuite) TestAStepInsideAHiddenRoomStopsAtTheFrontier() {
 
 	// Buddy gains the reveal — finds the door by search, perceives it open
 	// — and ordinary updates resume for them alone, without backfill.
-	_, err = enc.Search(&encounter.SearchInput{Member: buddy, Region: annexRegion})
+	err = encounter.ExportedFind(enc, buddy, veilConceal, vaultConceal)
 	s.Require().NoError(err)
 	// Up to the door first (rpg-toolkit#1856): reach is not what this scene
 	// is about, and the annex side of the seam is where a hand has to be.
@@ -610,9 +615,9 @@ func (s *ConcealLawSuite) TestAStepInsideAHiddenRoomStopsAtTheFrontier() {
 // the existing sweep has already handed them the door and the region — and
 // the mover's steps inside keep arriving on the watcher's story.
 func (s *ConcealLawSuite) TestAWitnessedCrossingKeepsTheWatcherReceiving() {
-	enc := s.open(findsEverything{}, false)
+	enc := s.open(findsNothing{}, false)
 
-	_, err := enc.Search(&encounter.SearchInput{Member: buddy, Region: annexRegion})
+	err := encounter.ExportedFind(enc, buddy, veilConceal, vaultConceal)
 	s.Require().NoError(err)
 	// Up to the door first (rpg-toolkit#1856), stopping one short of the
 	// seam so the crossing below is still a crossing.
@@ -643,11 +648,11 @@ func (s *ConcealLawSuite) TestAWitnessedCrossingKeepsTheWatcherReceiving() {
 // and move law all intact — while every perceiver keeps what they learned
 // forever: the door as a visible shut door, the room as mapped floor.
 func (s *ConcealLawSuite) TestClosingReConcealsForStrangersAndNeverForKnowers() {
-	enc := s.open(findsEverything{}, false)
+	enc := s.open(findsNothing{}, false)
 	twin := s.openTwin()
 
 	// The veil-door: seeker finds it, opens it, shuts it. Nobody perceives.
-	_, err := enc.Search(&encounter.SearchInput{Member: seeker, Region: hallRegion})
+	err := encounter.ExportedFind(enc, seeker, veilConceal)
 	s.Require().NoError(err)
 	// Both hands walk up to their door first (rpg-toolkit#1856); the cycle
 	// this scene drives is open-and-close, not reach.
@@ -660,7 +665,7 @@ func (s *ConcealLawSuite) TestClosingReConcealsForStrangersAndNeverForKnowers() 
 
 	// The vault-door: buddy finds it, opens it (perceiving it open — the
 	// region arrives), shuts it again.
-	_, err = enc.Search(&encounter.SearchInput{Member: buddy, Region: annexRegion})
+	err = encounter.ExportedFind(enc, buddy, veilConceal, vaultConceal)
 	s.Require().NoError(err)
 	_, err = enc.Step(&encounter.StepInput{Member: buddy, To: cellAt(7, concealRow)})
 	s.Require().NoError(err)

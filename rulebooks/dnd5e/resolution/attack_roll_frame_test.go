@@ -319,14 +319,15 @@ func (s *FrameTestSuite) TestEveryFreezeCarriesOpportunity() {
 			Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Character: flareHero(s.T())}},
 			Machine:      NewStrike(&StrikeInput{AttackerID: wolfID, TargetID: heroID, Definition: validMeleeDefinition(), Opportunity: true, Roller: roller}),
 			Capabilities: encounter.Capabilities{
-				Initiative: orderAsGiven{},
-				Standing:   everyoneStanding{},
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  noHandsAreObserved{},
-				Sheets:     noSheetsAsked{},
-				Driver:     passDriver{},
-				Roller:     roller,
-				Actors:     Actors,
+				Initiative:    orderAsGiven{},
+				Participation: everyoneParticipates{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     noHandsAreObserved{},
+				Conditions:    noHandsAreObserved{},
+				Sheets:        noSheetsAsked{},
+				Driver:        passDriver{},
+				Roller:        roller,
+				Actors:        Actors,
 			},
 		}, newSurface(events.NewEventBus()))
 		s.Require().NoError(err)

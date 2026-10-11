@@ -40,9 +40,6 @@ func (s *ShortRestTestSuite) SetupTest() {
 
 func (s *ShortRestTestSuite) SetupSubTest() {
 	// Reset to fresh state for each subtest
-	if s.character != nil {
-		_ = s.character.Cleanup(s.ctx)
-	}
 	s.bus = events.NewEventBus()
 	s.createFreshCharacter()
 }
@@ -66,12 +63,6 @@ func (s *ShortRestTestSuite) createFreshCharacter() {
 	// Subscribe to events
 	err := s.character.subscribeToEvents(s.ctx)
 	s.Require().NoError(err)
-}
-
-func (s *ShortRestTestSuite) TearDownTest() {
-	if s.character != nil {
-		_ = s.character.Cleanup(s.ctx)
-	}
 }
 
 func (s *ShortRestTestSuite) TestShortRest() {
@@ -264,7 +255,6 @@ func attachRestFighter(t *testing.T, data *Data) *Character {
 	char, err := Load(ctx, data)
 	require.NoError(t, err)
 	require.NoError(t, Attach(ctx, char, events.NewEventBus()))
-	t.Cleanup(func() { require.NoError(t, char.Cleanup(ctx)) })
 	return char
 }
 
@@ -355,15 +345,13 @@ func TestLongRestReturnsAtLeastOneHitDie(t *testing.T) {
 }
 
 // A short rest is an hour, and an hour ends a fight's conditions: a prone,
-// blessed fighter stands up unblessed. The legacy unconscious shell is the one
-// effect left on the long-rest path, and it stays.
+// blessed fighter stands up unblessed.
 func TestShortRestEndsAFightsConditions(t *testing.T) {
 	ctx := context.Background()
 	data := restFighterData(t)
 	data.Conditions = []json.RawMessage{
 		json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"prone"},"member_id":"short-rest-fighter"}`),
 		json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"blessed"},"member_id":"short-rest-fighter","source_id":"cleric-1","source_ref":{"module":"dnd5e","type":"spells","id":"bless"}}`),
-		json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"unconscious"},"member_id":"short-rest-fighter","successes":0,"failures":0,"stabilized":false,"dead":false}`),
 	}
 	char := attachRestFighter(t, data)
 	heldNow := func() []string {
@@ -374,8 +362,8 @@ func TestShortRestEndsAFightsConditions(t *testing.T) {
 		return out
 	}
 	require.Subset(t, heldNow(), []string{
-		refs.Conditions.Prone().String(), refs.Conditions.Blessed().String(), refs.Conditions.Unconscious().String(),
-	}, "all three are on the sheet before the rest")
+		refs.Conditions.Prone().String(), refs.Conditions.Blessed().String(),
+	}, "both are on the sheet before the rest")
 
 	_, err := char.ShortRest(ctx, &ShortRestInput{})
 	require.NoError(t, err)
@@ -383,7 +371,6 @@ func TestShortRestEndsAFightsConditions(t *testing.T) {
 	held := heldNow()
 	require.NotContains(t, held, refs.Conditions.Prone().String())
 	require.NotContains(t, held, refs.Conditions.Blessed().String())
-	require.Contains(t, held, refs.Conditions.Unconscious().String(), "long-rest-only stays through a short rest")
 }
 
 // A rest reports which resources it refilled, each named by the feature that

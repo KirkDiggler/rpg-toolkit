@@ -4,6 +4,7 @@
 package session_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"slices"
@@ -16,6 +17,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -129,9 +131,35 @@ type fakeCharacters struct {
 func newFakeCharacters(chars ...*character.Data) *fakeCharacters {
 	f := &fakeCharacters{byID: map[string]*character.Data{}, asked: map[string]int{}}
 	for _, c := range chars {
-		f.byID[c.ID] = c
+		f.byID[c.ID] = withFreeReactions(c)
 	}
 	return f
+}
+
+// withFreeReactions gives a hand-built fixture what the character draft's
+// Finalize gives a real sheet: the reactions every combatant carries are
+// written into its stored conditions, because a member holds only what its
+// stored record says. A fixture that skips this holds no opportunity attack.
+//
+// Idempotent, because a suite may hand the same record to a fresh store more
+// than once and a sheet naming one reaction twice is not a sheet.
+func withFreeReactions(c *character.Data) *character.Data {
+	for _, reaction := range conditions.FreeReactions(c.ID) {
+		blob, err := reaction.ToJSON()
+		if err != nil {
+			panic(err)
+		}
+		held := false
+		for _, stored := range c.Conditions {
+			if bytes.Equal(stored, blob) {
+				held = true
+			}
+		}
+		if !held {
+			c.Conditions = append(c.Conditions, blob)
+		}
+	}
+	return c
 }
 
 func (f *fakeCharacters) GetCharacter(_ context.Context, id string) (*character.Data, error) {
@@ -288,28 +316,38 @@ func (s *ManagerTestSuite) TestEachRequirementIsCheckedByName() {
 	}{
 		{
 			name: "sessions absent",
-			config: &session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Encounters: newFakeEncounters(),
+			config: &session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Encounters: newFakeEncounters(),
 				Characters: testCharacters(), Events: session.DiscardEvents{},
 			},
 			expect: "Sessions",
 		},
 		{
 			name: "encounters absent",
-			config: &session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(),
+			config: &session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(),
 				Characters: testCharacters(), Events: session.DiscardEvents{},
 			},
 			expect: "Encounters",
 		},
 		{
 			name: "characters absent",
-			config: &session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+			config: &session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 				Events: session.DiscardEvents{},
 			},
 			expect: "Characters",
 		},
 		{
-			name: "events absent",
+			// Discovery is the only way hidden content is found, so a
+			// manager without an exploration store would quietly never reveal
+			// a door: refused at construction, never turned off.
+			name: "explorations absent",
 			config: &session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+				Characters: testCharacters(), Events: session.DiscardEvents{},
+			},
+			expect: "Explorations",
+		},
+		{
+			name: "events absent",
+			config: &session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 				Characters: testCharacters(),
 			},
 			expect: "Events",
@@ -321,14 +359,14 @@ func (s *ManagerTestSuite) TestEachRequirementIsCheckedByName() {
 			// other — which is exactly the mid-turn panic S8 exists to convert
 			// into a startup failure.
 			name: "dice absent",
-			config: &session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+			config: &session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 				Characters: testCharacters(), Events: session.DiscardEvents{},
 			},
 			expect: "Dice",
 		},
 		{
 			name: "presentation IDs absent",
-			config: &session.Config{Seats: newFakeSeats(), Dice: testDice{}, TurnDriver: session.Pass{},
+			config: &session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), Dice: testDice{}, TurnDriver: session.Pass{},
 				Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 				Characters: testCharacters(), Events: session.DiscardEvents{},
 			},
@@ -341,7 +379,7 @@ func (s *ManagerTestSuite) TestEachRequirementIsCheckedByName() {
 			// stalled the first time initiative rolled a monster first, or a
 			// player ended their turn ahead of one (rpg-toolkit#1162).
 			name: "turndriver absent",
-			config: &session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+			config: &session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 				Characters: testCharacters(), Events: session.DiscardEvents{},
 			},
 			expect: "TurnDriver",
@@ -365,7 +403,7 @@ func (s *ManagerTestSuite) TestEachRequirementIsCheckedByName() {
 // between "fix these in order" and "guess again."
 func (s *ManagerTestSuite) TestMissingReportIsDeterministic() {
 	for i := 0; i < 20; i++ {
-		_, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}})
+		_, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}})
 		s.Require().Error(err)
 		s.Contains(err.Error(), "Sessions", "the first missing name must be stable across runs")
 	}
@@ -382,7 +420,7 @@ func (s *ManagerTestSuite) TestMissingReportIsDeterministic() {
 // being a stated decision. A nil reads as an oversight; this reads as a choice,
 // and it greps.
 func (s *ManagerTestSuite) TestDiscardEventsIsAcceptedAsAStream() {
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions:   newFakeSessions(),
 		Encounters: newFakeEncounters(),
 		Characters: testCharacters(),
@@ -395,7 +433,7 @@ func (s *ManagerTestSuite) TestDiscardEventsIsAcceptedAsAStream() {
 // TestFullyWiredConstructs is the other positive control: a real stream,
 // which is what any actual game supplies.
 func (s *ManagerTestSuite) TestFullyWiredConstructs() {
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions:   newFakeSessions(),
 		Encounters: newFakeEncounters(),
 		Characters: testCharacters(),

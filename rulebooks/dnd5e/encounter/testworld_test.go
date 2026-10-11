@@ -5,6 +5,7 @@ package encounter_test
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/stretchr/testify/require"
 
@@ -101,20 +102,20 @@ func hunts() encounter.Table {
 // THERE IS NO TICK VERB ANY MORE, and deliberately not: the world advances
 // only because somebody acts. So this picks somebody and has them act.
 //
-//   - Somebody on the WORLD clock searches the region they stand in. Search is
-//     universally attemptable, needs no target and no die, and is priced as an
-//     action — so it pays one round, the world thinks, and every standing
-//     creature out there spends its budget.
+//   - Somebody on the WORLD clock takes an action. It needs no target and no
+//     die, and is priced as an action ([encounter.ExportedSpendWorldAction]) —
+//     so it pays one round, the world thinks, and every standing creature out
+//     there spends its budget.
 //   - Nobody on the world clock means everybody is in the fight, and the unit
 //     of time there is the turn: the active member ends theirs, which wraps
 //     the round on its way round the order and pays the world for it.
 //
 // Returns whatever the verb returned, so a fixture that only wants "and then
 // time passed" keeps the two-value call shape it already had.
-func aRound(enc *encounter.Encounter) (*encounter.SearchOutput, error) {
+func aRound(enc *encounter.Encounter) (struct{}, error) {
 	members, err := enc.Members()
 	if err != nil {
-		return nil, err
+		return struct{}{}, err
 	}
 
 	var actor encounter.Member
@@ -122,7 +123,7 @@ func aRound(enc *encounter.Encounter) (*encounter.SearchOutput, error) {
 	for _, m := range members {
 		on, cerr := enc.ClockOf(&encounter.ClockOfInput{Member: m.ID})
 		if cerr != nil {
-			return nil, cerr
+			return struct{}{}, cerr
 		}
 		if on.Kind == encounter.ClockTurn {
 			if bubbled.ID == "" && on.Active == m.ID {
@@ -136,14 +137,14 @@ func aRound(enc *encounter.Encounter) (*encounter.SearchOutput, error) {
 	}
 
 	if actor.ID != "" {
-		return enc.Search(&encounter.SearchInput{Member: actor.ID, Region: actor.Region})
+		return struct{}{}, encounter.ExportedSpendWorldAction(enc, actor.ID)
 	}
 	if bubbled.ID == "" {
-		return nil, errNobodyToActFor
+		return struct{}{}, errNobodyToActFor
 	}
 	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: bubbled.ID})
 
-	return &encounter.SearchOutput{}, err
+	return struct{}{}, err
 }
 
 // errNobodyToActFor is what aRound answers for a scene with nobody in it.
@@ -162,4 +163,32 @@ func whereIs(t require.TestingT, enc *encounter.Encounter, who encounter.MemberI
 	require.Fail(t, "no such member", "%q is not on the roster", who)
 
 	return spatial.Position{}
+}
+
+// sightPayload is the position half of a known sight testimony, for scenes
+// that only want to read where somebody was seen. Testimony is decoded with
+// [encounter.DecodeSightTestimony]; this reads the same bytes without
+// asserting on the rest of the shape.
+type sightPayload struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
+// holdingsFacts is the holdings half of a saved journal: the facts recording
+// what is held, taken, dropped and arrived, in stored order. The journal is one
+// list; the knowledge facts (`known:`, `settled:`) are the other half.
+func holdingsFacts(data encounter.EncounterData) []encounter.FactData {
+	var out []encounter.FactData
+	if data.Journal == nil {
+		return out
+	}
+	for _, f := range data.Journal.Facts {
+		for _, prefix := range []string{"holds:", "held:", "dropped:", "arrived:"} {
+			if strings.HasPrefix(f.Kind, prefix) {
+				out = append(out, f)
+				break
+			}
+		}
+	}
+	return out
 }

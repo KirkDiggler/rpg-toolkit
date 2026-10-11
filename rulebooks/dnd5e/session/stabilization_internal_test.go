@@ -59,7 +59,7 @@ func (s *StabilizationSessionSuite) TestCompiledProfilePersistsAndDeliversReplay
 			encounters := &strikeEncounters{byID: map[string]*encounter.EncounterData{}}
 			stream := &stabilizationStream{}
 			dice := &scriptedDice{}
-			mgr, err := NewManager(&Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: dice, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters, Characters: characters, Events: stream})
+			mgr, err := NewManager(&Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: dice, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters, Characters: characters, Events: stream})
 			s.Require().NoError(err)
 			sc := scene{
 				Field:   encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 5, 5)}},
@@ -100,14 +100,15 @@ func (s *StabilizationSessionSuite) TestCompiledProfilePersistsAndDeliversReplay
 				Machine:      machine,
 				Cost:         &resolution.Cost{PayerID: "alice", Profile: definition.Cost, SpellTurn: "turn1", Turn: &resolution.Turn{Number: 1}},
 				Capabilities: encounter.Capabilities{
-					Roller:     &diceSeam{roller: dice},
-					Initiative: mgr.initiative,
-					Driver:     scope.driver,
-					Standing:   scope.standing,
-					Sight:      aggregateRecordEveryoneSees{},
-					Equipment:  encNoHandsObserved{},
-					Sheets:     sheetsBeside(scope.standing),
-					Actors:     resolution.Actors,
+					Roller:        &diceSeam{roller: dice},
+					Initiative:    mgr.initiative,
+					Driver:        scope.driver,
+					Participation: scope.standing,
+					Sight:         aggregateRecordEveryoneSees{},
+					Equipment:     encNoHandsObserved{},
+					Conditions:    encNoHandsObserved{},
+					Sheets:        sheetsBeside(scope.standing),
+					Actors:        resolution.Actors,
 				},
 			})
 			s.Require().NoError(err)

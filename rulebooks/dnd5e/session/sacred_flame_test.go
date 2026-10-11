@@ -115,7 +115,7 @@ func (s *CastSuite) TestSacredFlameSaveDamageAndReload() {
 				s.characters.byID[id], err = copyOf(data)
 				s.Require().NoError(err)
 			}
-			s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(),
+			s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 				PresentationIDs: testPresentationIDs{}, Dice: brokenDice{}, TurnDriver: session.Pass{},
 				Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream,
 			})

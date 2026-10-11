@@ -40,7 +40,7 @@ func (s *TurnConcentrationSuite) SetupTest() {
 	s.characters = testCharacters()
 
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},

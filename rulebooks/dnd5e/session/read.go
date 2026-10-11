@@ -779,16 +779,20 @@ func translate(err error) error {
 	switch {
 	case errors.Is(err, encounter.ErrTrimmed):
 		return fmt.Errorf("%w", ErrStoryTrimmed)
-	case errors.Is(err, encounter.ErrNotMember), errors.Is(err, encounter.ErrNoMember):
-		// ErrNotMember is a non-empty id the encounter does not hold, refused
-		// at every composition door (rpg-project#539) — this package's
-		// ErrNoMember, which has always meant exactly that. The composition's
-		// ErrNoMember is NOT only the empty id: its construction and load
-		// checks still raise it for a duplicate arrival and a roster that does
-		// not cohere. Mapping it to ErrNoMemberID would report a duplicate as
-		// an empty id, so it keeps the word it had until the composition
-		// splits those refusals; a verb's own door names an empty id first.
+	case errors.Is(err, encounter.ErrNoMember):
+		// The composition's ErrNoMember is only "no member given": an empty
+		// id or an empty list. One meaning per refusal (toolkit#1965).
+		return fmt.Errorf("%w", ErrNoMemberID)
+	case errors.Is(err, encounter.ErrNotMember):
+		// A non-empty id the encounter does not hold, refused at every
+		// composition door (rpg-project#539) — this package's ErrNoMember.
 		return fmt.Errorf("%w", ErrNoMember)
+	case errors.Is(err, encounter.ErrDuplicateMember):
+		return fmt.Errorf("%w", ErrDuplicateMember)
+	case errors.Is(err, encounter.ErrBadMember):
+		// A member that cannot be seated as authored. The stored or authored
+		// world is the defect, and the repair is upstream of a retry.
+		return fmt.Errorf("%w", ErrInvalidWorld)
 	case errors.Is(err, encounter.ErrBadReach):
 		return fmt.Errorf("%w", ErrBadReach)
 	case errors.Is(err, encounter.ErrClosed):
@@ -821,13 +825,6 @@ func translate(err error) error {
 		// split: shut is a state a caller can change (OpenDoor), not a bad
 		// coordinate.
 		return fmt.Errorf("%w", ErrDoorShut)
-	case errors.Is(err, encounter.ErrSearchRetired):
-		return fmt.Errorf("%w", ErrSearchRetired)
-	case errors.Is(err, encounter.ErrElsewhere):
-		// Search named a region the searcher does not stand in — including
-		// one that does not exist, deliberately indistinguishably (the
-		// composition's own probe reasoning; nothing to add here).
-		return fmt.Errorf("%w", ErrElsewhere)
 	case errors.Is(err, encounter.ErrBadPlacement):
 		return fmt.Errorf("%w", ErrBadPosition)
 	case errors.Is(err, encounter.ErrOutOfRange):

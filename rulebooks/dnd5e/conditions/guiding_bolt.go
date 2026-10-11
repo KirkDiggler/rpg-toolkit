@@ -273,3 +273,16 @@ func (s *GuidingBoltCondition) onRolled(ctx context.Context, event *dnd5eEvents.
 	}
 	return c, s.end(ctx, "consumed")
 }
+
+// guidingBoltDescriptor is the one entry for [GuidingBoltCondition]; see [descriptors].
+var guidingBoltDescriptor = descriptor{
+	ref:     refs.Conditions.GuidingBolt(),
+	display: Display{Name: GuidingBoltName, Detail: "The next attack roll against the lit creature has advantage."},
+	load:    loaderOf[GuidingBoltCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return createdAs(createGuidingBolt(in.Config, in.MemberID, in.SourceRef))
+	},
+	ownAction:     notBearing,
+	againstHolder: answersNow,
+	heldRule:      newGuidingBoltHeldRule,
+}

@@ -31,7 +31,7 @@ func (s *SkillProficiencyTestSuite) SetupTest() {
 }
 
 func (s *SkillProficiencyTestSuite) sheet(skillMap map[skills.Skill]shared.ProficiencyLevel) *Character {
-	char, err := Load(s.ctx, &Data{ID: "talker", Level: 1, Skills: skillMap})
+	char, err := Load(s.ctx, &Data{RaceID: "human", ID: "talker", Level: 1, Skills: skillMap})
 	s.Require().NoError(err)
 
 	return char
@@ -75,7 +75,8 @@ func (s *SkillProficiencyTestSuite) TestTrainingAndExpertiseAreDistinguishable()
 // the sheet says so and says nothing about what that costs.
 func (s *SkillProficiencyTestSuite) TestAGoodModifierDoesNotMakeSomebodyTrained() {
 	char, err := Load(s.ctx, &Data{
-		ID: "natural", Level: 1,
+		RaceID: "human",
+		ID:     "natural", Level: 1,
 		AbilityScores: shared.AbilityScores{abilities.CHA: 18},
 	})
 	s.Require().NoError(err)

@@ -64,12 +64,13 @@ func (s *EncounterTestSuite) TestSetupFirstLight() {
 				},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -92,7 +93,7 @@ func (s *EncounterTestSuite) TestSetupFirstLight() {
 		s.True(holding.CurrentOn(perception.Sight), "holding should be current")
 
 		// Decode position payload into SightPayload
-		var payload encounter.SightPayload
+		var payload sightPayload
 		err = json.Unmarshal(holding.Payload, &payload)
 		s.Require().NoError(err)
 		s.Equal(cellAt(7, 7), spatial.Position{X: payload.X, Y: payload.Y})
@@ -144,12 +145,13 @@ func (s *EncounterTestSuite) TestSetupWallBlocksSight() {
 				},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -191,12 +193,13 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 				{Key: "end", Trigger: encounter.TriggerExternal{}},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -217,12 +220,13 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 			Members: []encounter.MemberInput{},
 			Endings: []encounter.EndingInput{},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -245,12 +249,13 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 				{Key: "abandoned", Trigger: encounter.TriggerExternal{}},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -273,12 +278,13 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 				{Key: "", Trigger: encounter.TriggerExternal{}},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -303,12 +309,13 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 				{Key: "stairs", Trigger: encounter.TriggerExternal{}},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -335,12 +342,13 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 				{Key: "stairs", Trigger: encounter.TriggerExternal{}},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -349,7 +357,8 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 			},
 		}
 		_, err := encounter.NewEncounter(setup)
-		s.Require().ErrorIs(err, encounter.ErrNoMember)
+		s.Require().ErrorIs(err, encounter.ErrDuplicateMember)
+		s.Require().NotErrorIs(err, encounter.ErrNoMember, "a duplicate id is not an empty one")
 		s.Require().Contains(err.Error(), "duplicate member alice",
 			"the duplicate-ID rejection must name the duplicated ID, not echo the empty-ID message")
 	})
@@ -363,12 +372,13 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 				{Key: "stairs", Trigger: encounter.TriggerExternal{}},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -392,12 +402,13 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 				{Key: "stairs", Trigger: encounter.TriggerExternal{}},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -427,12 +438,13 @@ func (s *EncounterTestSuite) TestSetupPropOnBoundaryCellAccepted() {
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -460,12 +472,13 @@ func (s *EncounterTestSuite) TestSetupTwoPropsOnOneCellRejected() {
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -496,12 +509,13 @@ func (s *EncounterTestSuite) TestSetupDuplicateEndingKeyRejected() {
 			{Key: "dup", Trigger: encounter.TriggerExternal{}},
 		},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -529,12 +543,13 @@ func (s *EncounterTestSuite) TestMoveHexIntegralAxial() {
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -577,12 +592,13 @@ func (s *EncounterTestSuite) TestJoinHexIntegralAxial() {
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -645,12 +661,13 @@ func (s *EncounterTestSuite) TestSetupOpeningBeat() {
 				{Key: "stairs", Trigger: encounter.TriggerExternal{}},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -708,12 +725,13 @@ func (s *EncounterTestSuite) TestSetupBadPlacementSentinel() {
 				{Key: "stairs", Trigger: encounter.TriggerExternal{}},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -748,12 +766,13 @@ func (s *EncounterTestSuite) TestSetupCompletePercept() {
 				{Key: "stairs", Trigger: encounter.TriggerExternal{}},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -814,12 +833,13 @@ func (s *EncounterTestSuite) TestMembers() {
 				{Key: "stairs", Trigger: encounter.TriggerExternal{}},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -866,12 +886,13 @@ func (s *EncounterTestSuite) TestMovePerceptRefreshes() {
 				},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -902,7 +923,7 @@ func (s *EncounterTestSuite) TestMovePerceptRefreshes() {
 		s.Equal(bob, aliceView[0].Subject)
 
 		// Decode alice's holding of bob—should be at bob's current position
-		var bobPayload encounter.SightPayload
+		var bobPayload sightPayload
 		err = json.Unmarshal(aliceView[0].Payload, &bobPayload)
 		s.Require().NoError(err)
 		s.Equal(cellAt(10, 10), spatial.Position{X: bobPayload.X, Y: bobPayload.Y})
@@ -914,7 +935,7 @@ func (s *EncounterTestSuite) TestMovePerceptRefreshes() {
 		s.Equal(alice, bobView[0].Subject)
 
 		// Decode bob's holding of alice—should be at alice's NEW position
-		var alicePayload encounter.SightPayload
+		var alicePayload sightPayload
 		err = json.Unmarshal(bobView[0].Payload, &alicePayload)
 		s.Require().NoError(err)
 		s.Equal(cellAt(12, 12), spatial.Position{X: alicePayload.X, Y: alicePayload.Y})
@@ -944,12 +965,13 @@ func (s *EncounterTestSuite) TestMoveGhostForms() {
 					Position: spatial.Position{X: 19, Y: 19}}},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -973,7 +995,7 @@ func (s *EncounterTestSuite) TestMoveGhostForms() {
 		s.Require().NoError(err)
 		s.Require().Len(aliceView, 1, "the ghost is HELD, not gone")
 		s.False(aliceView[0].CurrentOn(perception.Sight), "alice's sight of bob must fade behind the wall")
-		var bobSeen encounter.SightPayload
+		var bobSeen sightPayload
 		s.Require().NoError(json.Unmarshal(aliceView[0].Payload, &bobSeen))
 		s.Equal(18.0, bobSeen.Y, "ghost holds bob at his last-seen position")
 
@@ -983,7 +1005,7 @@ func (s *EncounterTestSuite) TestMoveGhostForms() {
 		s.Require().NoError(err)
 		s.Require().Len(bobView, 1)
 		s.False(bobView[0].CurrentOn(perception.Sight), "bob's sight of alice must fade too (symmetric)")
-		var aliceSeen encounter.SightPayload
+		var aliceSeen sightPayload
 		s.Require().NoError(json.Unmarshal(bobView[0].Payload, &aliceSeen))
 		s.Equal(cellAt(2, 2), spatial.Position{X: aliceSeen.X, Y: aliceSeen.Y}, "bob's ghost of alice is at her PRE-move position")
 	})
@@ -1020,12 +1042,13 @@ func (s *EncounterTestSuite) TestMoveSequentialConsistency() {
 				},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -1089,12 +1112,13 @@ func (s *EncounterTestSuite) TestMoveEndingFires() {
 				},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -1165,12 +1189,13 @@ func (s *EncounterTestSuite) TestMoveValidationAndAtomicity() {
 					{Key: "stairs", Trigger: encounter.TriggerExternal{}},
 				},
 				Capabilities: encounter.Capabilities{
-					Sight:      everyoneSeesTheWholeMap{},
-					Equipment:  encounter.UnobservedEquipment{},
-					Sheets:     zeroSheets{},
-					Standing:   everyoneStanding{},
-					Initiative: orderAsGiven{},
-					Driver:     passDriver{},
+					Sight:         everyoneSeesTheWholeMap{},
+					Equipment:     encounter.UnobservedEquipment{},
+					Conditions:    encounter.UnobservedEquipment{},
+					Sheets:        zeroSheets{},
+					Participation: everyoneStanding{},
+					Initiative:    orderAsGiven{},
+					Driver:        passDriver{},
 					Actors: encounter.Actors{
 						Striker:   passStriker{},
 						Mover:     quietMover{},
@@ -1198,12 +1223,13 @@ func (s *EncounterTestSuite) TestMoveValidationAndAtomicity() {
 					{Key: "stairs", Trigger: encounter.TriggerExternal{}},
 				},
 				Capabilities: encounter.Capabilities{
-					Sight:      everyoneSeesTheWholeMap{},
-					Equipment:  encounter.UnobservedEquipment{},
-					Sheets:     zeroSheets{},
-					Standing:   everyoneStanding{},
-					Initiative: orderAsGiven{},
-					Driver:     passDriver{},
+					Sight:         everyoneSeesTheWholeMap{},
+					Equipment:     encounter.UnobservedEquipment{},
+					Conditions:    encounter.UnobservedEquipment{},
+					Sheets:        zeroSheets{},
+					Participation: everyoneStanding{},
+					Initiative:    orderAsGiven{},
+					Driver:        passDriver{},
 					Actors: encounter.Actors{
 						Striker:   passStriker{},
 						Mover:     quietMover{},
@@ -1236,12 +1262,13 @@ func (s *EncounterTestSuite) TestMoveValidationAndAtomicity() {
 					}},
 				},
 				Capabilities: encounter.Capabilities{
-					Sight:      everyoneSeesTheWholeMap{},
-					Equipment:  encounter.UnobservedEquipment{},
-					Sheets:     zeroSheets{},
-					Standing:   everyoneStanding{},
-					Initiative: orderAsGiven{},
-					Driver:     passDriver{},
+					Sight:         everyoneSeesTheWholeMap{},
+					Equipment:     encounter.UnobservedEquipment{},
+					Conditions:    encounter.UnobservedEquipment{},
+					Sheets:        zeroSheets{},
+					Participation: everyoneStanding{},
+					Initiative:    orderAsGiven{},
+					Driver:        passDriver{},
 					Actors: encounter.Actors{
 						Striker:   passStriker{},
 						Mover:     quietMover{},
@@ -1280,12 +1307,13 @@ func (s *EncounterTestSuite) TestMoveValidationAndAtomicity() {
 					{Key: "stairs", Trigger: encounter.TriggerExternal{}},
 				},
 				Capabilities: encounter.Capabilities{
-					Sight:      everyoneSeesTheWholeMap{},
-					Equipment:  encounter.UnobservedEquipment{},
-					Sheets:     zeroSheets{},
-					Standing:   everyoneStanding{},
-					Initiative: orderAsGiven{},
-					Driver:     passDriver{},
+					Sight:         everyoneSeesTheWholeMap{},
+					Equipment:     encounter.UnobservedEquipment{},
+					Conditions:    encounter.UnobservedEquipment{},
+					Sheets:        zeroSheets{},
+					Participation: everyoneStanding{},
+					Initiative:    orderAsGiven{},
+					Driver:        passDriver{},
 					Actors: encounter.Actors{
 						Striker:   passStriker{},
 						Mover:     quietMover{},
@@ -1317,12 +1345,13 @@ func (s *EncounterTestSuite) TestMoveValidationAndAtomicity() {
 					{Key: "stairs", Trigger: encounter.TriggerExternal{}},
 				},
 				Capabilities: encounter.Capabilities{
-					Sight:      everyoneSeesTheWholeMap{},
-					Equipment:  encounter.UnobservedEquipment{},
-					Sheets:     zeroSheets{},
-					Standing:   everyoneStanding{},
-					Initiative: orderAsGiven{},
-					Driver:     passDriver{},
+					Sight:         everyoneSeesTheWholeMap{},
+					Equipment:     encounter.UnobservedEquipment{},
+					Conditions:    encounter.UnobservedEquipment{},
+					Sheets:        zeroSheets{},
+					Participation: everyoneStanding{},
+					Initiative:    orderAsGiven{},
+					Driver:        passDriver{},
 					Actors: encounter.Actors{
 						Striker:   passStriker{},
 						Mover:     quietMover{},
@@ -1373,12 +1402,13 @@ func (s *EncounterTestSuite) TestMoveOutcomeCopyOut() {
 				}},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -1434,12 +1464,13 @@ func (s *EncounterTestSuite) newBasicEncounter() *encounter.Encounter {
 				Position: spatial.Position{X: 19, Y: 19}}},
 		},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -1464,12 +1495,13 @@ func (s *EncounterTestSuite) newBasicEncounterWithExternalEnding() *encounter.En
 			{Key: "withdrawn", Trigger: encounter.TriggerExternal{}},
 		},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -1559,12 +1591,13 @@ func (s *EncounterTestSuite) newTwoRoomEncounterWithConnection() *encounter.Enco
 			{Key: "withdrawn", Trigger: encounter.TriggerExternal{}},
 		},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -1671,7 +1704,7 @@ func (s *EncounterTestSuite) TestTheWallDecidesWhatSightCanCross() {
 	bobSees = s.holdingOf(enc, bob, alice)
 	s.Require().Len(bobSees, 1)
 	s.True(bobSees[0].CurrentOn(perception.Sight), "a doorway is a window: crossing it does not hide her")
-	var seen encounter.SightPayload
+	var seen sightPayload
 	s.Require().NoError(json.Unmarshal(bobSees[0].Payload, &seen))
 	s.Equal(cellAt(10, 5), spatial.Position{X: seen.X, Y: seen.Y}, "and he sees her where she actually is, on the far side")
 
@@ -1722,12 +1755,13 @@ func (s *EncounterTestSuite) TestACrossingFiresAnEndingOnArrival() {
 				Position: spatial.Position{X: 10, Y: 5}}},
 		},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -1770,12 +1804,13 @@ func (s *EncounterTestSuite) TestAMonsterCrossingOntoAnUnfilteredEndingDoesNotCl
 				Position: spatial.Position{X: 0, Y: 5}, Member: ""}},
 		},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -1897,12 +1932,13 @@ func (s *EncounterTestSuite) TestJoinLateJoinerSeenByIncumbents() {
 				}},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -1994,7 +2030,7 @@ func (s *EncounterTestSuite) TestJoinValidation() {
 			Kind:   encounter.KindPlayer,
 			Cell:   cellAt(5, 5),
 		})
-		s.Require().ErrorIs(err, encounter.ErrNoMember, "duplicate join should fail")
+		s.Require().ErrorIs(err, encounter.ErrDuplicateMember, "duplicate join should fail")
 	})
 
 	s.Run("join closed encounter", func() {
@@ -2041,12 +2077,13 @@ func (s *EncounterTestSuite) TestJoinOnStairsFiresEnding() {
 				}},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -2101,12 +2138,13 @@ func (s *EncounterTestSuite) TestExitCarryForward() {
 				{Key: "withdrawn", Trigger: encounter.TriggerExternal{}},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -2197,12 +2235,13 @@ func (s *EncounterTestSuite) TestExitLastMemberClosesWithAbandoned() {
 				}},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -2257,12 +2296,13 @@ func (s *EncounterTestSuite) TestExitDepartedGhostFades() {
 				{Key: "withdrawn", Trigger: encounter.TriggerExternal{}},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -2329,12 +2369,13 @@ func (s *EncounterTestSuite) TestEndExternalOnly() {
 				{Key: "withdrawn", Trigger: encounter.TriggerExternal{}},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -2476,12 +2517,13 @@ func (s *EncounterTestSuite) TestStoryForExitedMembers() {
 				{Key: "withdrawn", Trigger: encounter.TriggerExternal{}},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},

@@ -26,10 +26,11 @@ func TestCapabilitiesValidateRefusesEachMemberInOrder(t *testing.T) {
 		next   error
 	}{
 		{func() {}, encounter.ErrNoInitiative},
-		{func() { built.Initiative = full.Initiative }, encounter.ErrNoStanding},
-		{func() { built.Standing = full.Standing }, encounter.ErrNoSight},
+		{func() { built.Initiative = full.Initiative }, encounter.ErrNoParticipation},
+		{func() { built.Participation = full.Participation }, encounter.ErrNoSight},
 		{func() { built.Sight = full.Sight }, encounter.ErrNoEquipment},
-		{func() { built.Equipment = full.Equipment }, encounter.ErrNoSheets},
+		{func() { built.Equipment = full.Equipment }, encounter.ErrNoConditions},
+		{func() { built.Conditions = full.Conditions }, encounter.ErrNoSheets},
 		{func() { built.Sheets = full.Sheets }, encounter.ErrNoTurnDriver},
 		{func() { built.Driver = full.Driver }, encounter.ErrNoStriker},
 		{func() { built.Striker = full.Striker }, encounter.ErrNoMover},
@@ -53,9 +54,10 @@ func TestCapabilitiesValidateNamesTheMissingMember(t *testing.T) {
 		want   error
 	}{
 		{"initiative", func(c *encounter.Capabilities) { c.Initiative = nil }, encounter.ErrNoInitiative},
-		{"standing", func(c *encounter.Capabilities) { c.Standing = nil }, encounter.ErrNoStanding},
+		{"participation", func(c *encounter.Capabilities) { c.Participation = nil }, encounter.ErrNoParticipation},
 		{"sight", func(c *encounter.Capabilities) { c.Sight = nil }, encounter.ErrNoSight},
 		{"equipment", func(c *encounter.Capabilities) { c.Equipment = nil }, encounter.ErrNoEquipment},
+		{"conditions", func(c *encounter.Capabilities) { c.Conditions = nil }, encounter.ErrNoConditions},
 		{"sheets", func(c *encounter.Capabilities) { c.Sheets = nil }, encounter.ErrNoSheets},
 		{"driver", func(c *encounter.Capabilities) { c.Driver = nil }, encounter.ErrNoTurnDriver},
 		{"striker", func(c *encounter.Capabilities) { c.Striker = nil }, encounter.ErrNoStriker},
@@ -143,5 +145,7 @@ func TestRefusingCapabilitiesRoundTripAndRefuseByName(t *testing.T) {
 	require.ErrorIs(t, caps.Mover.Move(ctx, built, encounter.MoveStep{}), encounter.ErrRefusingMover)
 	require.ErrorIs(t, caps.Announcer.Announce(ctx, built, nil), encounter.ErrRefusingAnnouncer)
 	_, err = caps.CheckResolver.ResolveCheck(&encounter.ResolveCheckInput{})
+	require.ErrorIs(t, err, encounter.ErrRefusingCheckResolver)
+	_, err = caps.CheckResolver.ResolveDiscoveryCheck(&encounter.ResolveCheckInput{})
 	require.ErrorIs(t, err, encounter.ErrRefusingCheckResolver)
 }

@@ -362,7 +362,7 @@ func TestReactWindowKeepsOfferAndOptionProseAcrossReload(t *testing.T) {
 	ctx := context.Background()
 	monsterTurn := func() {
 		var err error
-		s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+		s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
 		require.NoError(t, err)
 	}
 	monsterTurn()
@@ -388,9 +388,10 @@ func TestReactWindowKeepsOfferAndOptionProseAcrossReload(t *testing.T) {
 	require.Equal(t, before.Options, after.Options)
 }
 
-// TestReactOpportunityAttackDescribed: the one reaction session names is the
-// one it explains.
-func TestReactOpportunityAttackDescribed(t *testing.T) {
+// TestTheOpportunityRowReadsTheOffersProse: the opportunity attack's react
+// row carries the prose its offer carries, which the condition wrote from its
+// own display detail. Session holds no copy of it.
+func TestTheOpportunityRowReadsTheOffersProse(t *testing.T) {
 	s := &ReactWindowSuite{}
 	s.SetT(t)
 	s.SetupTest()
@@ -399,8 +400,13 @@ func TestReactOpportunityAttackDescribed(t *testing.T) {
 	row := s.reactRow(mgr, "fighter")
 	require.NotNil(t, row.Reaction)
 	require.Equal(t, refs.Conditions.OpportunityAttack().String(), row.Reaction.Ref)
+	require.Equal(t, session.TargetMember, row.TargetKind, "precondition: this is the opportunity pause")
+
+	display, found := conditions.DisplayFor(*refs.Conditions.OpportunityAttack())
+	require.True(t, found)
+	require.NotEmpty(t, display.Detail, "precondition: the condition authored its detail")
 	require.NotNil(t, row.Information)
-	require.NotEmpty(t, row.Information.Description)
+	require.Equal(t, display.Detail, row.Information.Description)
 }
 
 // TestInformationDoesNotAliasRoot: what one Afford hands out is the caller's

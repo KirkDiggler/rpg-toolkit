@@ -25,8 +25,8 @@ import (
 //
 // One knowledge model, three consequences, each in its own file:
 //
-//   - [Encounter.Search] rolls the checks of every concealment touching a
-//     region (search.go);
+//   - the discovery sweep rolls the check of every concealment a placed player
+//     comes within a hex of (discovery.go);
 //   - [Encounter.AtlasFor] and [Encounter.DoorsFor] answer as one member,
 //     under the never-authored yardstick and the masquerade wall
 //     (projection.go);
@@ -35,7 +35,7 @@ import (
 //
 // # Knowledge arrives as facts, never as flags
 //
-// Every way a member comes to know a concealment — their own search, a door
+// Every way a member comes to know a concealment — a beaten discovery check, a door
 // of it opened in their presence, walking up to one standing open, crossing
 // into it, standing inside it from frame one, looting a record that names
 // it — writes the SAME fact kind, audienced to the learner alone, and a
@@ -90,6 +90,12 @@ type CheckResolver interface {
 	// member, an approach the rulebook does not have — which is a wiring
 	// fault, not a failed check.
 	ResolveCheck(in *ResolveCheckInput) (*ResolveCheckOutput, error)
+
+	// ResolveDiscoveryCheck decides one automatic attempt, made when a member
+	// comes near hidden content. It carries the same approach list and the
+	// same wiring-fault meaning for an error as ResolveCheck. Implementations
+	// prepare character data before the composition acts.
+	ResolveDiscoveryCheck(in *ResolveCheckInput) (*ResolveCheckOutput, error)
 }
 
 // ResolveCheckInput is one member against one authored check.

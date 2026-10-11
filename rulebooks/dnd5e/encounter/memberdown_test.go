@@ -40,7 +40,7 @@ const doomKey = "boss-down"
 // sight — with the wolf's death declared as an ending. Not the shared scene()
 // fixture, because that one hard-codes its endings and endings are what this
 // suite is about.
-func (s *MemberDownSuite) doomed(standing encounter.StandingWithParticipation) *encounter.Encounter {
+func (s *MemberDownSuite) doomed(standing encounter.Participation) *encounter.Encounter {
 	s.T().Helper()
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
@@ -56,12 +56,13 @@ func (s *MemberDownSuite) doomed(standing encounter.StandingWithParticipation) *
 			{Key: doomKey, Trigger: encounter.TriggerMemberDown{Member: wolf}},
 		},
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   standing,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: standing,
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -130,12 +131,13 @@ func (s *MemberDownSuite) TestSetupRefusesADoomNamingNobody() {
 			{Key: doomKey, Trigger: encounter.TriggerMemberDown{}},
 		},
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   &downList{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: &downList{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -162,12 +164,13 @@ func (s *MemberDownSuite) TestTheDoomSurvivesTheRoundTrip() {
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: saved,
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   down,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: down,
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -197,12 +200,13 @@ func (s *MemberDownSuite) TestLoadRefusesADoomNamingNobody() {
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: saved,
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   &downList{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: &downList{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},

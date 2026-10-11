@@ -24,9 +24,6 @@ var (
 	featureStepOfTheWind   = &core.Ref{Module: Module, Type: TypeFeatures, ID: "step_of_the_wind"}
 	featureDeflectMissiles = &core.Ref{Module: Module, Type: TypeFeatures, ID: "deflect_missiles"}
 
-	// Rogue
-	featureSneakAttack = &core.Ref{Module: Module, Type: TypeFeatures, ID: "sneak_attack"}
-
 	// Paladin
 	featureDivineSmite = &core.Ref{Module: Module, Type: TypeFeatures, ID: "divine_smite"}
 
@@ -61,9 +58,6 @@ func (n featuresNS) FlurryOfBlows() *core.Ref   { return featureFlurryOfBlows }
 func (n featuresNS) PatientDefense() *core.Ref  { return featurePatientDefense }
 func (n featuresNS) StepOfTheWind() *core.Ref   { return featureStepOfTheWind }
 func (n featuresNS) DeflectMissiles() *core.Ref { return featureDeflectMissiles }
-
-// Rogue
-func (n featuresNS) SneakAttack() *core.Ref { return featureSneakAttack }
 
 // Paladin
 func (n featuresNS) DivineSmite() *core.Ref { return featureDivineSmite }

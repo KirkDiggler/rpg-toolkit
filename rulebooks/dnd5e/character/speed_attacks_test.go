@@ -44,11 +44,6 @@ func (s *SpeedAttacksTestSuite) TestGetSpeed_Gnome() {
 	s.Assert().Equal(25, char.GetSpeed())
 }
 
-func (s *SpeedAttacksTestSuite) TestGetSpeed_UnknownRace_DefaultsTo30() {
-	char := &Character{raceID: "nonexistent"}
-	s.Assert().Equal(30, char.GetSpeed())
-}
-
 // GetExtraAttacksCount tests - Fighter
 
 func (s *SpeedAttacksTestSuite) TestExtraAttacks_Fighter_Level1() {

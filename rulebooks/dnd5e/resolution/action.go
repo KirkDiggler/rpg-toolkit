@@ -647,7 +647,6 @@ func (m *castMachine) hold(outcome CastOutcome) Gather {
 			if err := dnd5eEvents.ConditionAppliedTopic.On(bus).Publish(
 				ctx, dnd5eEvents.ConditionAppliedEvent{
 					Target:    caster,
-					Type:      dnd5eEvents.ConditionType(holding.Ref().ID),
 					Source:    dnd5eEvents.ConditionSourceSpell,
 					Condition: holding,
 				}); err != nil {
@@ -759,7 +758,11 @@ func deliveredEffects(spell core.Ref, effects []ActivationEffect) ([]ImposedEffe
 			continue
 		}
 		if effect.Kind == EffectConditionRemoved {
-			applied = append(applied, removalEffect(effect.Address, effect.Reason))
+			removed, err := removalEffect(effect.Address, effect.Reason)
+			if err != nil {
+				return nil, err
+			}
+			applied = append(applied, removed)
 			continue
 		}
 		if effect.Kind == EffectHealingApplied {
@@ -779,12 +782,17 @@ func deliveredEffects(spell core.Ref, effects []ActivationEffect) ([]ImposedEffe
 			return nil, fmt.Errorf("%w: %s delivered an unusable condition ref %q: %w",
 				ErrBadStep, spell.String(), effect.Ref, err)
 		}
+		name, err := conditionDescription(*ref)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %s delivered %w", ErrBadStep, spell.String(), err)
+		}
 		applied = append(applied, ImposedEffect{
 			Kind:        ImposedCondition,
 			Ref:         ref,
-			Description: conditionDescription(*ref),
+			Description: name,
 			RecipientID: effect.TargetID,
 			Address:     effect.Address,
+			Detail:      effect.Detail,
 		})
 	}
 

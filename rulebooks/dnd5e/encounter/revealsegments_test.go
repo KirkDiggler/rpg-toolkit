@@ -51,7 +51,7 @@ func (s *RevealSegmentsSuite) SetupTest() {
 // somebody who can see it watches it swing.
 func (s *RevealSegmentsSuite) findThenOpen(enc *encounter.Encounter) {
 	s.T().Helper()
-	_, err := enc.Search(&encounter.SearchInput{Member: finder, Region: "hall"})
+	err := encounter.ExportedFind(enc, finder, "vault")
 	s.Require().NoError(err)
 	_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: "panel", Actor: finder})
 	s.Require().NoError(err)
@@ -145,8 +145,9 @@ func (s *RevealSegmentsSuite) open(resolver encounter.CheckResolver) *encounter.
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      everyoneStanding{},
+			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: resolver,
@@ -241,7 +242,7 @@ func (s *RevealSegmentsSuite) TestBeforeTheRevealTheWallIsWholeAndTheRoomIsNotTh
 
 // TestTheRevealCarriesTheRoomsWallsAndItsSealedCells is the issue's own test.
 func (s *RevealSegmentsSuite) TestTheRevealCarriesTheRoomsWallsAndItsSealedCells() {
-	enc := s.open(findsEverything{})
+	enc := s.open(findsNothing{})
 
 	s.findThenOpen(enc)
 
@@ -287,7 +288,7 @@ func (s *RevealSegmentsSuite) TestTheRevealCarriesTheRoomsWallsAndItsSealedCells
 // TestTheRevealAndTheAtlasAgree is the pin the whole beat exists to keep: what
 // the recipient had, plus what the beat says, IS what AtlasFor now answers.
 func (s *RevealSegmentsSuite) TestTheRevealAndTheAtlasAgree() {
-	enc := s.open(findsEverything{})
+	enc := s.open(findsNothing{})
 
 	before, err := enc.AtlasFor(finder)
 	s.Require().NoError(err)
@@ -343,7 +344,7 @@ func (s *RevealSegmentsSuite) TestTheRevealAndTheAtlasAgree() {
 // footing marked unstandable forever — a room you can see and cannot walk into
 // at its edges.
 func (s *RevealSegmentsSuite) TestSealedIsAReplacementWithinTheRoomAndNotAnAddition() {
-	enc := s.open(findsEverything{})
+	enc := s.open(findsNothing{})
 
 	before, err := enc.AtlasFor(finder)
 	s.Require().NoError(err)

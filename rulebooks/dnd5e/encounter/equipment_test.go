@@ -178,7 +178,7 @@ func TestOlderTestimonyDidNotObserveHands(t *testing.T) {
 	require.Nil(t, got.Down)
 }
 
-func equipmentSetup(hands encounter.EquipmentWithConditions, members ...encounter.MemberInput) *encounter.SetupInput {
+func equipmentSetup(hands heldAndConditioned, members ...encounter.MemberInput) *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Retention: encounter.RetentionUnbounded,
 		Field: encounter.FieldInput{
@@ -190,12 +190,13 @@ func equipmentSetup(hands encounter.EquipmentWithConditions, members ...encounte
 			{Key: "withdrawn", Trigger: encounter.TriggerExternal{}},
 		},
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  hands,
-			Sheets:     zeroSheets{},
-			Driver:     passDriver{},
+			Initiative:    orderAsGiven{},
+			Participation: everyoneStanding{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     hands,
+			Conditions:    hands,
+			Sheets:        zeroSheets{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},

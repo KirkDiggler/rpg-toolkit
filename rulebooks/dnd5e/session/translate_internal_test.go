@@ -35,11 +35,14 @@ func TestTranslateLetsNoCompositionSentinelThrough(t *testing.T) {
 		want  error
 	}{
 		{"trimmed story", encounter.ErrTrimmed, ErrStoryTrimmed},
-		{"empty member id", encounter.ErrNoMember, ErrNoMember},
+		// One meaning per refusal (toolkit#1965): each composition member
+		// sentinel arrives as its own, so a host can switch on them.
+		{"empty member id", encounter.ErrNoMember, ErrNoMemberID},
 		{"not a member", encounter.ErrNotMember, ErrNoMember},
+		{"member already present", encounter.ErrDuplicateMember, ErrDuplicateMember},
+		{"member cannot be seated", encounter.ErrBadMember, ErrInvalidWorld},
 		{"malformed reach", encounter.ErrBadReach, ErrBadReach},
 		{"closed encounter", encounter.ErrClosed, ErrClosed},
-		{"automatic discovery retires search", encounter.ErrSearchRetired, ErrSearchRetired},
 		{"undeclared ending", encounter.ErrNoEnding, ErrNoEnding},
 		// A faction the dungeon does not declare, or a mind arriving outside
 		// its faction (rpg-project#375): a naming mistake in the host's

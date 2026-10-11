@@ -120,6 +120,22 @@ func (s *SneakAttackTestSuite) executeDamageChain(input damageChainInput) (*dnd5
 	return modifiedChain.Execute(s.ctx, damageEvent)
 }
 
+// TestTheDamageLineNamesTheConditionRef: the extra damage's source is the one
+// condition ref, so the damage line and the effect row name the same thing.
+func (s *SneakAttackTestSuite) TestTheDamageLineNamesTheConditionRef() {
+	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue-1", Roller: s.roller})
+	s.Require().NoError(sneak.Apply(s.ctx, s.bus))
+	s.roller.EXPECT().RollN(gomock.Any(), 1, 6).Return([]int{4}, nil)
+
+	finalEvent, err := s.executeDamageChain(damageChainInput{
+		attackerID: "rogue-1", abilityUsed: abilities.DEX, hasAdvantage: true,
+		componentType: damage.Slashing, weaponDamageType: damage.Slashing,
+	})
+	s.Require().NoError(err)
+	s.Require().Len(finalEvent.Components, 2)
+	s.Equal(refs.Conditions.SneakAttack().String(), finalEvent.Components[1].Roll.Source.Ref.String())
+}
+
 func (s *SneakAttackTestSuite) TestSneakAttackUsesMarkedWeaponType() {
 	sneak := NewSneakAttackCondition(SneakAttackInput{
 		MemberID: "rogue-1",
@@ -345,7 +361,7 @@ func TestSneakAttackMeterResetsOnLongRest(t *testing.T) {
 	ctx := context.Background()
 	bus := events.NewEventBus()
 	raw := json.RawMessage(`{
-		"ref":{"module":"dnd5e","type":"features","id":"sneak_attack"},
+		"ref":{"module":"dnd5e","type":"conditions","id":"sneak_attack"},
 		"member_id":"rogue-1","level":3,"damage_dice":2,"used_this_turn":true
 	}`)
 
@@ -385,7 +401,7 @@ func TestSneakAttackMeterResetsOnLongRest(t *testing.T) {
 	require.False(t, sneak.UsedThisTurn)
 	require.Len(t, changed, 1)
 	require.Equal(t, "rogue-1", changed[0].MemberID)
-	require.Equal(t, refs.Features.SneakAttack().String(), changed[0].ConditionRef.String())
+	require.Equal(t, refs.Conditions.SneakAttack().String(), changed[0].ConditionRef.String())
 
 	serialized, err := sneak.ToJSON()
 	require.NoError(t, err)
@@ -655,7 +671,7 @@ var _ dice.Roller = (*mock_dice.MockRoller)(nil)
 // rogue rolls 2d6 — the frame's rogue levels, not the saved one die.
 func (s *SneakAttackTestSuite) TestAnOldOneDieBlobRollsFromTheRoguesLevel() {
 	loaded, err := LoadJSON(json.RawMessage(
-		`{"ref":"dnd5e:features:sneak_attack","member_id":"rogue-1","level":1,"damage_dice":1,"used_this_turn":false}`))
+		`{"ref":"dnd5e:conditions:sneak_attack","member_id":"rogue-1","level":1,"damage_dice":1,"used_this_turn":false}`))
 	s.Require().NoError(err)
 	sneak, ok := loaded.(*SneakAttackCondition)
 	s.Require().True(ok)

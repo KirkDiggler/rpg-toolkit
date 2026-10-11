@@ -637,7 +637,8 @@ func (s *CharacterAttackTestSuite) TestShillelaghBindingSurvivesReloadButNotRele
 	s.Require().NoError(err)
 	s.Equal("1d8", attack.Attack.Damage[0].Dice)
 	cast(SlotOffHand)
-	s.Require().Len(c.conditions, 1)
+	s.Require().Equal(1, heldCount(c.conditions, refs.Conditions.Shillelagh().String()),
+		"a recast replaces the binding rather than stacking a second")
 	attack, err = AssembleAttack(c, &AssembleAttackInput{Slot: SlotMainHand})
 	s.Require().NoError(err)
 	s.Equal("1d4", attack.Attack.Damage[0].Dice)
@@ -696,11 +697,12 @@ func (s *CharacterAttackTestSuite) TestAssembleAttack_CompetingOffersFailClosed(
 		_, err := AssembleAttack(monk, s.mainHand())
 		s.Require().Error(err)
 		s.Equal(rpgerr.CodeConflictingState, rpgerr.GetCode(err))
+		s.ErrorIs(err, ErrConflictingOffers)
 		s.Contains(err.Error(), refs.Conditions.MartialArts().String())
 		s.Contains(err.Error(), refs.Conditions.Shillelagh().String())
 
 		monk.conditions[0], monk.conditions[1] = monk.conditions[1], monk.conditions[0]
 		_, err = AssembleAttack(monk, s.mainHand())
-		s.Require().Error(err)
+		s.Require().ErrorIs(err, ErrConflictingOffers)
 	})
 }

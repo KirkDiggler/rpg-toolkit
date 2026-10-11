@@ -18,9 +18,9 @@
 //
 // LOCATION KNOWLEDGE IS ENCOUNTER-OWNED. mind/perception holds channel-
 // sourced testimony opaquely; this composition gives creature sight payloads
-// their strict Known(position) or Unknown meaning. New payloads are tagged, legacy
-// untagged coordinates remain readable as known, and malformed or current-
-// unknown sight testimony is refused on load. Other channels' payloads
+// their strict Known(position) or Unknown meaning. Every payload is tagged:
+// untagged coordinates are refused rather than read as known, and so are
+// malformed or current-unknown sight testimony on load. Other channels' payloads
 // remain uninterpreted.
 //
 // A fight-time [MonsterView] keeps current sight in Seen and held known
@@ -42,9 +42,11 @@
 // The composition holds no rules of its own that it could hold instead.
 // InitiativeRoller, Participation, and Sight are SUPPLIED at construction and
 // consulted during play, never defaulted (rpg-toolkit#1033). The constructor
-// fields are typed StandingWithParticipation, so a binary Standing-only value
-// does not compile; binary Standing is never a fallback. Randomness, life-state participation and light
-// remain facts this module asks for rather than facts it knows (C1).
+// fields are Capabilities.Participation and Capabilities.Conditions, each
+// refused when nil (ErrNoParticipation, ErrNoConditions); nothing defaults to
+// everyone active or to nobody holding anything. Randomness, life-state
+// participation and light remain facts this module asks for rather than facts
+// it knows (C1).
 //
 // Every member is on exactly one clock (R6). The world tick is the default —
 // free roam is not a mode, it is where you are when no fight has pulled you
@@ -96,7 +98,7 @@
 // sheet answers through Sheets at that step, the remainder carried on
 // the member and persisted. Every verb the turn clock would price as an action
 // pays one round for its actor, after its outcome has landed: Intimidate,
-// Persuade, Search, Unlock, Interact, Loot, RecordCast, RecordActivation. A
+// Persuade, Unlock, Interact, Loot, RecordCast, RecordActivation. A
 // fight round wrapping pays one round PER BUBBLE MEMBER, each naming itself.
 // Standing still is free, said plainly: a party that talks to a goblin and
 // waits sees nothing move.
@@ -138,6 +140,17 @@
 // only when all of its former spatial support is observed empty; omission alone
 // never supplies a carrier or destination. Pickups and door changes notify
 // actual witnesses, not everybody who remembers the subject.
+//
+// # Authored member appearance
+//
+// MemberInput and JoinInput may supply an opaque AppearanceRef, independent of
+// rules, faction and position. It persists with the member or reserve record;
+// the unscoped Member read does not expose it as a fresh observed fact. Sight
+// refresh captures it in SightTestimony, so a held memory and a reload preserve
+// the observed choice rather than joining against newer live content. Empty
+// means no explicit appearance captured, including legacy testimony. Unknown
+// location testimony still carries no facts. This module validates reference
+// structure only, never asset-catalog membership or a model path.
 //
 // # Permitted ordinary prop appearance
 //
@@ -200,22 +213,26 @@
 // ([ConcealmentInput]) — and the composition acts on them. Who knows what is
 // a journal of audience-scoped facts folded per member (world v0.3.0's
 // journal + graph, seeded from the field at construction, persisted on
-// EncounterData.World); two more capabilities arrive SUPPLIED, exactly when a
-// concealment exists and never defaulted: [CheckResolver] rolls a find check,
-// [Witness] answers who currently perceives a hidden door standing open. The
+// EncounterData.Journal beside the holdings facts, in the order they were
+// appended); two more capabilities arrive SUPPLIED, exactly when a
+// concealment exists and never defaulted: [CheckResolver] rolls a find check
+// when a placed player comes near, [Witness] answers who currently perceives a
+// hidden door standing open. The
 // laws, each pinned in concealment_test.go, conceal_test.go and
 // conceallaw_test.go:
 //
-//   - [Encounter.Search] sweeps the concealments a region TOUCHES, one roll
-//     per secret rather than per hidden thing; success is audienced to the
-//     searcher alone, and NO output — not the answer, not the story, not the
-//     blob — ever says whether there was something to find.
+//   - DISCOVERY IS AUTOMATIC. Coming within a hex of a secret's hidden content
+//     rolls one check per secret rather than per hidden thing, through
+//     [CheckResolver.ResolveDiscoveryCheck]; the `discovery_checked` beat
+//     carries the roll without naming what it was a roll for, so neither the
+//     story nor the blob says whether there was something to find until a
+//     check is beaten.
 //   - ONE KNOWLEDGE MOMENT. A door carried its own find check and a region
 //     its own flag until rpg-project#490, so finding a door revealed the
 //     DOOR and the room behind it arrived only on perceiving that door open.
 //     A concealment is one noun: finding it gives you its cells, its doors
 //     and its props together. The causes are exemplary and not a closed set
-//     — a search, an intel record, crossing a member door, stepping onto its
+//     — a beaten discovery check, an intel record, crossing a member door, stepping onto its
 //     floor, perceiving a member door open, perceiving a creature standing
 //     on it. PRESENCE PIERCES: an occupant of hidden floor knows it from
 //     frame one.
@@ -265,18 +282,18 @@
 //
 // ConcealmentInput.Attempts authors one policy for the whole discovery check,
 // not an allowance per alternative skill approach. ResolveDiscoveryPolicy
-// defaults omitted values to one character-retained attempt and a three-hex
-// repeat reset distance. Explicit nonpositive counts, reset distances within
-// the one-hex trigger range, and unknown lifetimes are refused. ToData stores
-// the effective policy with all defaults resolved, and Load validates it.
-// A host supplying DiscoveryCheckResolver enables the distance-driven sweep:
-// one hex triggers an available attempt, departure to ResetHexes re-arms an
-// explicitly repeatable check, and return uses its next allowance. Counts and
-// armed state persist; loading does not roll. The same captured placed-player
-// audience receives the result beat and successful discovery when sharing is
-// on. Private checks address the actor alone. These hosts refuse Search.
-// Hosts supplying only the older CheckResolver retain their explicit-search
-// contract for source migration; the game host uses automatic discovery.
+// defaults omitted values to one attempt and a three-hex repeat reset
+// distance. Explicit nonpositive counts and reset distances within the
+// one-hex trigger range are refused. ToData stores the effective policy with
+// all defaults resolved, and Load validates it.
+// The distance-driven sweep runs in every encounter that declares a
+// concealment, through the one [CheckResolver]: one hex triggers an available
+// attempt, departure to ResetHexes re-arms an explicitly repeatable check, and
+// return uses its next allowance. Counts and armed state persist; loading does
+// not roll. The same captured placed-player audience receives the result beat
+// and successful discovery when sharing is on. Private checks address the
+// actor alone. What a run has found and spent lives in that run's
+// EncounterData; nothing is imported from another encounter.
 //
 // # Sides: the run composes ONE world (rpg-project#375)
 //
@@ -379,7 +396,7 @@
 // than guessing (see its on-no-clock check).
 //
 // RecordTrain is the same shape for a reason worth naming, since the verb looks
-// atomic: it consults Standing AFTER appending its last unit's beats, because
+// atomic: it consults Participation AFTER appending its last unit's beats, because
 // those beats are the cause the consult reads (see [Encounter.RecordTrain]). A
 // rulebook that cannot answer therefore leaves an outcome recorded and its
 // consequences unworked.

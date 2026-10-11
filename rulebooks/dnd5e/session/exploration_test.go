@@ -19,6 +19,13 @@ type explorationStore struct {
 	data map[string]*session.ExplorationData
 }
 
+// newFakeExplorations is the one in-memory exploration repository every test
+// Config wires: Config.Explorations is required, so no manager is built
+// without one.
+func newFakeExplorations() *explorationStore {
+	return &explorationStore{data: map[string]*session.ExplorationData{}}
+}
+
 func (r *explorationStore) GetExploration(_ context.Context, id string) (*session.ExplorationData, error) {
 	if value := r.data[id]; value != nil {
 		return copyOf(value)
@@ -106,7 +113,7 @@ func (s *AutomaticDiscoverySDKSuite) TestDiscoveryBelongsToTheEncounterNotTheCha
 	} {
 		s.Run(tc.name, func() {
 			ctx := context.Background()
-			profiles := &explorationStore{data: map[string]*session.ExplorationData{}}
+			profiles := newFakeExplorations()
 			sessions, encounters := newFakeSessions(), newFakeEncounters()
 			cfg := &session.Config{Seats: newFakeSeats(), Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
 				Explorations: profiles, Events: session.DiscardEvents{}, Dice: testDice{},
@@ -176,8 +183,6 @@ func (s *AutomaticDiscoverySDKSuite) TestDiscoveryBelongsToTheEncounterNotTheCha
 			raw, err := json.Marshal(profiles.data["alice"])
 			s.Require().NoError(err)
 			s.NotContains(string(raw), "checks", "character profile must not export encounter discoveries")
-			_, err = mgr.Search(ctx, &session.SearchInput{Session: "second", Member: "alice", Region: "hall"})
-			s.ErrorIs(err, session.ErrSearchRetired)
 		})
 	}
 }

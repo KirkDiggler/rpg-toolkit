@@ -18,35 +18,30 @@ func TestDiscoveryPolicySuite(t *testing.T) { suite.Run(t, new(DiscoveryPolicySu
 
 func discoveryInt(n int) *int { return &n }
 
-func discoveryLifetime(v encounter.DiscoveryLifetime) *encounter.DiscoveryLifetime { return &v }
-
-func (s *DiscoveryPolicySuite) TestDefaultsAreOneTryThreeHexesAndRetained() {
+func (s *DiscoveryPolicySuite) TestDefaultsAreOneTryAndThreeHexes() {
 	policy, err := encounter.ResolveDiscoveryPolicy(&encounter.DiscoveryPolicyInput{})
 	s.Require().NoError(err)
 	s.Equal(1, policy.MaxAttempts)
 	s.Equal(3, policy.ResetHexes)
-	s.Equal(encounter.DiscoveryLifetimeCharacter, policy.Lifetime)
 	_, err = encounter.ResolveDiscoveryPolicy(nil)
 	s.ErrorIs(err, encounter.ErrNilInput)
 }
 
 func (s *DiscoveryPolicySuite) TestAuthoredOverridesDoNotAliasTheInput() {
 	in := &encounter.DiscoveryPolicyInput{
-		MaxAttempts: discoveryInt(2), ResetHexes: discoveryInt(4), Lifetime: discoveryLifetime(encounter.DiscoveryLifetimeRun),
+		MaxAttempts: discoveryInt(2), ResetHexes: discoveryInt(4),
 	}
 	policy, err := encounter.ResolveDiscoveryPolicy(in)
 	s.Require().NoError(err)
 	*in.MaxAttempts, *in.ResetHexes = 99, 99
 	s.Equal(2, policy.MaxAttempts)
 	s.Equal(4, policy.ResetHexes)
-	s.Equal(encounter.DiscoveryLifetimeRun, policy.Lifetime)
 }
 
 func (s *DiscoveryPolicySuite) TestInvalidValuesAreNotDefaulted() {
 	for _, in := range []encounter.DiscoveryPolicyInput{
 		{MaxAttempts: discoveryInt(0)}, {MaxAttempts: discoveryInt(-1)},
 		{ResetHexes: discoveryInt(0)}, {ResetHexes: discoveryInt(1)}, {ResetHexes: discoveryInt(-1)},
-		{Lifetime: discoveryLifetime("typo")}, {Lifetime: discoveryLifetime("")},
 	} {
 		_, err := encounter.ResolveDiscoveryPolicy(&in)
 		s.ErrorIs(err, encounter.ErrBadConcealment)
@@ -67,8 +62,9 @@ func (s *DiscoveryPolicySuite) world(policy *encounter.DiscoveryPolicyInput) *en
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      everyoneStanding{},
+			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -90,8 +86,9 @@ func (s *DiscoveryPolicySuite) load(data encounter.EncounterData) (*encounter.En
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      everyoneStanding{},
+			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -115,7 +112,6 @@ func (s *DiscoveryPolicySuite) TestEffectivePolicyIsFrozenAndRoundTrips() {
 	s.Require().NotNil(policy)
 	s.Equal(2, policy.MaxAttempts)
 	s.Equal(3, policy.ResetHexes)
-	s.Equal(encounter.DiscoveryLifetimeCharacter, policy.Lifetime)
 
 	raw, err := json.Marshal(data)
 	s.Require().NoError(err)
@@ -136,10 +132,8 @@ func (s *DiscoveryPolicySuite) TestOmittedPolicyDefaultsButMalformedSavedPolicyR
 	s.Require().NoError(err)
 	s.Equal(1, loaded.ToData().Field.Concealments[0].Attempts.MaxAttempts)
 	for _, invalid := range []encounter.DiscoveryPolicy{
-		{MaxAttempts: 0, ResetHexes: 3, Lifetime: encounter.DiscoveryLifetimeCharacter},
-		{MaxAttempts: 1, ResetHexes: 1, Lifetime: encounter.DiscoveryLifetimeCharacter},
-		{MaxAttempts: 1, ResetHexes: 3, Lifetime: ""},
-		{MaxAttempts: 1, ResetHexes: 3, Lifetime: "typo"},
+		{MaxAttempts: 0, ResetHexes: 3},
+		{MaxAttempts: 1, ResetHexes: 1},
 	} {
 		data.Field.Concealments[0].Attempts = &invalid
 		_, err = s.load(data)

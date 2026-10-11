@@ -5,6 +5,7 @@ package encounter_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -93,12 +94,13 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 			{Key: "leave", Trigger: encounter.TriggerExternal{}},
 		},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -144,7 +146,7 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 	// The round this fixture wraps advances once per bubble member under that
 	// member's own name — which is what keeps a fight and the world on the
 	// same scale — and the tick frame it raises is the world thinking.
-	expected := `{"clock":{"driver_progress":{"g1":1,"p1":1},"high_water":1},"bubbles":[{"order":["g1","p1"],"active_idx":1,"round":2}],"perception":{"intel":{"holdings":{"member|g1":{"door|door1":{"payload":"eyJpZCI6ImRvb3IxIiwiZWRnZXMiOlt7ImZyb20iOnsieCI6LTgsInkiOjEwfSwidG8iOnsieCI6LTcsInkiOjEwfX1dLCJzdGF0ZSI6Im9wZW4ifQ==","channel":"sight","confirmed":1,"current_via":["sight"]},"member|p1":{"payload":"eyJzdGF0ZSI6Imtub3duIiwieCI6LTEzLCJ5Ijo3LCJkb3duIjpmYWxzZSwiYmxvY2tzX21vdmVtZW50IjpmYWxzZX0=","channel":"sight","confirmed":1,"current_via":["sight"]}},"member|p1":{"door|door1":{"payload":"eyJpZCI6ImRvb3IxIiwiZWRnZXMiOlt7ImZyb20iOnsieCI6LTgsInkiOjEwfSwidG8iOnsieCI6LTcsInkiOjEwfX1dLCJzdGF0ZSI6Im9wZW4ifQ==","channel":"sight","confirmed":1,"current_via":["sight"]},"member|g1":{"payload":"eyJzdGF0ZSI6Imtub3duIiwieCI6LTUsInkiOjcsImRvd24iOmZhbHNlLCJibG9ja3NfbW92ZW1lbnQiOmZhbHNlfQ==","channel":"sight","confirmed":1,"current_via":["sight"]}}}}},"perception_subjects":1,"log":{"next_seq":9,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"audience":["g1"],"tags":{"tag":"sight"},"payload":"eyJiZWF0Ijoic2lnaHRlZCIsImdhaW5lZCI6WyJwMSJdLCJrbm93bGVkZ2VfY2hhbmdlZCI6dHJ1ZX0="},{"seq":3,"audience":["p1"],"tags":{"tag":"sight"},"payload":"eyJiZWF0Ijoic2lnaHRlZCIsImdhaW5lZCI6WyJnMSJdLCJrbm93bGVkZ2VfY2hhbmdlZCI6dHJ1ZX0="},{"seq":4,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoiYnViYmxlLWZvcm1lZCIsIm9yZGVyIjpbImcxIiwicDEiXX0="},{"seq":5,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidHVybi1lbmRlZCIsIm1lbWJlciI6ImcxIiwibmV4dCI6InAxIn0="},{"seq":6,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidHVybi1lbmRlZCIsIm1lbWJlciI6InAxIiwibmV4dCI6ImcxIn0="},{"seq":7,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"},{"seq":8,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidHVybi1lbmRlZCIsIm1lbWJlciI6ImcxIiwibmV4dCI6InAxIn0="}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"regions":[{"id":"crypt","name":"crypt","cells":[{"x":-10,"y":7},{"x":-9,"y":7},{"x":-8,"y":7},{"x":-7,"y":7},{"x":-6,"y":7},{"x":-5,"y":7},{"x":-4,"y":7},{"x":-3,"y":7},{"x":-10,"y":8},{"x":-9,"y":8},{"x":-8,"y":8},{"x":-7,"y":8},{"x":-6,"y":8},{"x":-5,"y":8},{"x":-4,"y":8},{"x":-3,"y":8},{"x":-10,"y":9},{"x":-9,"y":9},{"x":-8,"y":9},{"x":-7,"y":9},{"x":-6,"y":9},{"x":-5,"y":9},{"x":-4,"y":9},{"x":-3,"y":9},{"x":-10,"y":10},{"x":-9,"y":10},{"x":-8,"y":10},{"x":-7,"y":10},{"x":-6,"y":10},{"x":-5,"y":10},{"x":-4,"y":10},{"x":-3,"y":10},{"x":-10,"y":11},{"x":-9,"y":11},{"x":-8,"y":11},{"x":-7,"y":11},{"x":-6,"y":11},{"x":-5,"y":11},{"x":-4,"y":11},{"x":-3,"y":11},{"x":-10,"y":12},{"x":-9,"y":12},{"x":-8,"y":12},{"x":-7,"y":12},{"x":-6,"y":12},{"x":-5,"y":12},{"x":-4,"y":12},{"x":-3,"y":12},{"x":-10,"y":13},{"x":-9,"y":13},{"x":-8,"y":13},{"x":-7,"y":13},{"x":-6,"y":13},{"x":-5,"y":13},{"x":-4,"y":13},{"x":-3,"y":13},{"x":-10,"y":14},{"x":-9,"y":14},{"x":-8,"y":14},{"x":-7,"y":14},{"x":-6,"y":14},{"x":-5,"y":14},{"x":-4,"y":14},{"x":-3,"y":14}],"archetype":"crypt","lighting":{"intensity":1}},{"id":"hall","name":"hall","cells":[{"x":-2,"y":7},{"x":-1,"y":7},{"x":0,"y":7},{"x":1,"y":7},{"x":2,"y":7},{"x":3,"y":7},{"x":-2,"y":8},{"x":-1,"y":8},{"x":0,"y":8},{"x":1,"y":8},{"x":2,"y":8},{"x":3,"y":8},{"x":-2,"y":9},{"x":-1,"y":9},{"x":0,"y":9},{"x":1,"y":9},{"x":2,"y":9},{"x":3,"y":9},{"x":-2,"y":10},{"x":-1,"y":10},{"x":0,"y":10},{"x":1,"y":10},{"x":2,"y":10},{"x":3,"y":10},{"x":-2,"y":11},{"x":-1,"y":11},{"x":0,"y":11},{"x":1,"y":11},{"x":2,"y":11},{"x":3,"y":11},{"x":-2,"y":12},{"x":-1,"y":12},{"x":0,"y":12},{"x":1,"y":12},{"x":2,"y":12},{"x":3,"y":12}],"archetype":"crypt","lighting":{"intensity":1}}],"props":[{"ref":"test:props:rubble","at":{"x":-9,"y":9},"blocks_movement":true,"blocks_line_of_sight":true,"offset":[0,0,0]}],"walls":[{"from":{"x":-8,"y":9},"to":{"x":-8,"y":10},"blocks_movement":true,"blocks_line_of_sight":true}]},"members":[{"id":"g1","kind":"monster","cell":{"x":-5,"y":7}},{"id":"p1","kind":"player","cell":{"x":-13,"y":7}}],"doors":[{"id":"door1","edges":[{"from":{"x":-8,"y":10},"to":{"x":-7,"y":10}}],"state":"open"}],"world":{"facts":[{"kind":"known:room:crypt","actor":"p1","subject":"p1","audience":["p1"]},{"kind":"known:room:hall","actor":"p1","subject":"p1","audience":["p1"]},{"kind":"known:room:crypt","actor":"g1","subject":"g1","audience":["g1"]},{"kind":"known:room:hall","actor":"g1","subject":"g1","audience":["g1"]}]},"endings":[{"key":"guarded","kind":"reached_position","at":{"x":-7,"y":10},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"],"retention":32}`
+	expected := `{"clock":{"driver_progress":{"g1":1,"p1":1},"high_water":1},"bubbles":[{"order":["g1","p1"],"active_idx":1,"round":2}],"perception":{"intel":{"holdings":{"member|g1":{"door|door1":{"payload":"eyJpZCI6ImRvb3IxIiwiZWRnZXMiOlt7ImZyb20iOnsieCI6LTgsInkiOjEwfSwidG8iOnsieCI6LTcsInkiOjEwfX1dLCJzdGF0ZSI6Im9wZW4ifQ==","channel":"sight","confirmed":1,"current_via":["sight"]},"member|p1":{"payload":"eyJzdGF0ZSI6Imtub3duIiwieCI6LTEzLCJ5Ijo3LCJkb3duIjpmYWxzZSwiYmxvY2tzX21vdmVtZW50IjpmYWxzZX0=","channel":"sight","confirmed":1,"current_via":["sight"]}},"member|p1":{"door|door1":{"payload":"eyJpZCI6ImRvb3IxIiwiZWRnZXMiOlt7ImZyb20iOnsieCI6LTgsInkiOjEwfSwidG8iOnsieCI6LTcsInkiOjEwfX1dLCJzdGF0ZSI6Im9wZW4ifQ==","channel":"sight","confirmed":1,"current_via":["sight"]},"member|g1":{"payload":"eyJzdGF0ZSI6Imtub3duIiwieCI6LTUsInkiOjcsImRvd24iOmZhbHNlLCJibG9ja3NfbW92ZW1lbnQiOmZhbHNlfQ==","channel":"sight","confirmed":1,"current_via":["sight"]}}}}},"perception_subjects":1,"log":{"next_seq":9,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"audience":["g1"],"tags":{"tag":"sight"},"payload":"eyJiZWF0Ijoic2lnaHRlZCIsImdhaW5lZCI6WyJwMSJdLCJrbm93bGVkZ2VfY2hhbmdlZCI6dHJ1ZX0="},{"seq":3,"audience":["p1"],"tags":{"tag":"sight"},"payload":"eyJiZWF0Ijoic2lnaHRlZCIsImdhaW5lZCI6WyJnMSJdLCJrbm93bGVkZ2VfY2hhbmdlZCI6dHJ1ZX0="},{"seq":4,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoiYnViYmxlLWZvcm1lZCIsIm9yZGVyIjpbImcxIiwicDEiXX0="},{"seq":5,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidHVybi1lbmRlZCIsIm1lbWJlciI6ImcxIiwibmV4dCI6InAxIn0="},{"seq":6,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidHVybi1lbmRlZCIsIm1lbWJlciI6InAxIiwibmV4dCI6ImcxIn0="},{"seq":7,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"},{"seq":8,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidHVybi1lbmRlZCIsIm1lbWJlciI6ImcxIiwibmV4dCI6InAxIn0="}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"regions":[{"id":"crypt","name":"crypt","cells":[{"x":-10,"y":7},{"x":-9,"y":7},{"x":-8,"y":7},{"x":-7,"y":7},{"x":-6,"y":7},{"x":-5,"y":7},{"x":-4,"y":7},{"x":-3,"y":7},{"x":-10,"y":8},{"x":-9,"y":8},{"x":-8,"y":8},{"x":-7,"y":8},{"x":-6,"y":8},{"x":-5,"y":8},{"x":-4,"y":8},{"x":-3,"y":8},{"x":-10,"y":9},{"x":-9,"y":9},{"x":-8,"y":9},{"x":-7,"y":9},{"x":-6,"y":9},{"x":-5,"y":9},{"x":-4,"y":9},{"x":-3,"y":9},{"x":-10,"y":10},{"x":-9,"y":10},{"x":-8,"y":10},{"x":-7,"y":10},{"x":-6,"y":10},{"x":-5,"y":10},{"x":-4,"y":10},{"x":-3,"y":10},{"x":-10,"y":11},{"x":-9,"y":11},{"x":-8,"y":11},{"x":-7,"y":11},{"x":-6,"y":11},{"x":-5,"y":11},{"x":-4,"y":11},{"x":-3,"y":11},{"x":-10,"y":12},{"x":-9,"y":12},{"x":-8,"y":12},{"x":-7,"y":12},{"x":-6,"y":12},{"x":-5,"y":12},{"x":-4,"y":12},{"x":-3,"y":12},{"x":-10,"y":13},{"x":-9,"y":13},{"x":-8,"y":13},{"x":-7,"y":13},{"x":-6,"y":13},{"x":-5,"y":13},{"x":-4,"y":13},{"x":-3,"y":13},{"x":-10,"y":14},{"x":-9,"y":14},{"x":-8,"y":14},{"x":-7,"y":14},{"x":-6,"y":14},{"x":-5,"y":14},{"x":-4,"y":14},{"x":-3,"y":14}],"archetype":"crypt","lighting":{"intensity":1}},{"id":"hall","name":"hall","cells":[{"x":-2,"y":7},{"x":-1,"y":7},{"x":0,"y":7},{"x":1,"y":7},{"x":2,"y":7},{"x":3,"y":7},{"x":-2,"y":8},{"x":-1,"y":8},{"x":0,"y":8},{"x":1,"y":8},{"x":2,"y":8},{"x":3,"y":8},{"x":-2,"y":9},{"x":-1,"y":9},{"x":0,"y":9},{"x":1,"y":9},{"x":2,"y":9},{"x":3,"y":9},{"x":-2,"y":10},{"x":-1,"y":10},{"x":0,"y":10},{"x":1,"y":10},{"x":2,"y":10},{"x":3,"y":10},{"x":-2,"y":11},{"x":-1,"y":11},{"x":0,"y":11},{"x":1,"y":11},{"x":2,"y":11},{"x":3,"y":11},{"x":-2,"y":12},{"x":-1,"y":12},{"x":0,"y":12},{"x":1,"y":12},{"x":2,"y":12},{"x":3,"y":12}],"archetype":"crypt","lighting":{"intensity":1}}],"props":[{"ref":"test:props:rubble","at":{"x":-9,"y":9},"blocks_movement":true,"blocks_line_of_sight":true,"offset":[0,0,0]}],"walls":[{"from":{"x":-8,"y":9},"to":{"x":-8,"y":10},"blocks_movement":true,"blocks_line_of_sight":true}]},"members":[{"id":"g1","kind":"monster","cell":{"x":-5,"y":7}},{"id":"p1","kind":"player","cell":{"x":-13,"y":7}}],"doors":[{"id":"door1","edges":[{"from":{"x":-8,"y":10},"to":{"x":-7,"y":10}}],"state":"open"}],"journal":{"facts":[{"kind":"known:room:crypt","actor":"p1","subject":"p1","audience":["p1"]},{"kind":"known:room:hall","actor":"p1","subject":"p1","audience":["p1"]},{"kind":"known:room:crypt","actor":"g1","subject":"g1","audience":["g1"]},{"kind":"known:room:hall","actor":"g1","subject":"g1","audience":["g1"]}]},"endings":[{"key":"guarded","kind":"reached_position","at":{"x":-7,"y":10},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"],"retention":32}`
 	s.Equal(expected, string(bs))
 }
 
@@ -163,12 +165,13 @@ func (s *DataTestSuite) TestEndingsOrderSurvivesReload() {
 			{Key: "second", Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 3, Y: 3}}},
 		},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -181,12 +184,13 @@ func (s *DataTestSuite) TestEndingsOrderSurvivesReload() {
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: enc1.ToData(),
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -239,12 +243,13 @@ func (s *DataTestSuite) TestWallHeightSurvivesPersistenceAndAtlas() {
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -270,12 +275,13 @@ func (s *DataTestSuite) TestWallHeightSurvivesPersistenceAndAtlas() {
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: enc.ToData(),
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -300,12 +306,13 @@ func (s *DataTestSuite) TestSetupInputNotAliased() {
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -335,12 +342,13 @@ func (s *DataTestSuite) TestSetupInputNotAliased() {
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -389,12 +397,13 @@ func (s *DataTestSuite) TestRoundTripPostSetup() {
 				},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -413,12 +422,13 @@ func (s *DataTestSuite) TestRoundTripPostSetup() {
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data: data1,
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -476,12 +486,13 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 				},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -520,12 +531,13 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data: data1,
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -582,12 +594,13 @@ func (s *DataTestSuite) TestRoundTripPostExit() {
 				},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -609,12 +622,13 @@ func (s *DataTestSuite) TestRoundTripPostExit() {
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data: data1,
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -665,12 +679,13 @@ func (s *DataTestSuite) TestRoundTripClosed() {
 				},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -696,12 +711,13 @@ func (s *DataTestSuite) TestRoundTripClosed() {
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data: data1,
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -749,12 +765,13 @@ func (s *DataTestSuite) TestPumpContinuesTick() {
 				},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -779,12 +796,13 @@ func (s *DataTestSuite) TestPumpContinuesTick() {
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data: data1,
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -826,12 +844,13 @@ func (s *DataTestSuite) TestATableSurvivesAReload() {
 		Endings: []encounter.EndingInput{{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
 			Position: spatial.Position{X: 0, Y: 0}}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     sheets,
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     tableDriver(),
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        sheets,
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        tableDriver(),
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -858,12 +877,13 @@ func (s *DataTestSuite) TestATableSurvivesAReload() {
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data1,
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     sheets,
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     tableDriver(),
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        sheets,
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        tableDriver(),
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -905,12 +925,13 @@ func (s *DataTestSuite) TestALegacyMindKeyIsIgnoredOnLoad() {
 		Endings: []encounter.EndingInput{{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
 			Position: spatial.Position{X: 0, Y: 0}}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -933,12 +954,13 @@ func (s *DataTestSuite) TestALegacyMindKeyIsIgnoredOnLoad() {
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -991,6 +1013,8 @@ func pointyCanvasData() encounter.CanvasData {
 
 func validEncounterData() encounter.EncounterData {
 	return encounter.EncounterData{
+		// The subject namespace this build writes; load refuses any other.
+		PerceptionSubjects: 1,
 		Field: encounter.FieldData{Canvas: pointyCanvasData(), Regions: []encounter.RegionData{
 			rectRegionData("r1", 0, 0, 5, 5),
 		}},
@@ -1084,12 +1108,13 @@ func (s *DataTestSuite) TestLoadNilDecidersIsLegal() {
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: validEncounterData(),
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -1106,6 +1131,7 @@ func (s *DataTestSuite) TestLoadNilDecidersIsLegal() {
 // trailing round N2).
 func (s *DataTestSuite) TestLoadPropOnBoundaryCellAccepted() {
 	data := encounter.EncounterData{
+		PerceptionSubjects: 1,
 		Field: encounter.FieldData{
 			Canvas:  pointyCanvasData(),
 			Regions: []encounter.RegionData{rectRegionData("hall", 0, 0, 5, 5)},
@@ -1116,12 +1142,13 @@ func (s *DataTestSuite) TestLoadPropOnBoundaryCellAccepted() {
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -1147,12 +1174,13 @@ func (s *DataTestSuite) TestLoadTwoPropsOnOneCellRejected() {
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -1183,12 +1211,13 @@ func (s *DataTestSuite) TestLoadDuplicateEndingKeyRejected() {
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -1241,7 +1270,7 @@ func (s *DataTestSuite) TestLoadRejections() {
 		{"empty member id", func(d *encounter.EncounterData) { d.Members[0].ID = "" }, "empty member id", encounter.ErrNoMember},
 		{"duplicate member ids", func(d *encounter.EncounterData) {
 			d.Members = append(d.Members, d.Members[0])
-		}, "duplicate member", encounter.ErrNoMember},
+		}, "duplicate member", encounter.ErrDuplicateMember},
 		{"member cell absent — the pre-#1106 room-local dialect", func(d *encounter.EncounterData) {
 			d.Members[0].Cell = nil
 		}, "before rpg-toolkit#1106", encounter.ErrBadPlacement},
@@ -1253,7 +1282,7 @@ func (s *DataTestSuite) TestLoadRejections() {
 		}, "outcome", encounter.ErrNoEnding},
 		{"abandoned outcome with members present", func(d *encounter.EncounterData) {
 			d.Outcome = &encounter.OutcomeData{Ending: "abandoned"}
-		}, "abandoned outcome with members", encounter.ErrNoMember},
+		}, "abandoned outcome with members", encounter.ErrInvalidData},
 		// The "outcome member names a room the field does not have" case went
 		// with the field that carried it (rpg-toolkit#1108): the region is
 		// derived from the cell now, so the only way an outcome member can be
@@ -1271,7 +1300,7 @@ func (s *DataTestSuite) TestLoadRejections() {
 		}, "has no cell", encounter.ErrBadPlacement},
 		{"ever_members missing current member", func(d *encounter.EncounterData) {
 			d.EverMembers = nil
-		}, "ever_members", encounter.ErrNoMember},
+		}, "ever_members", encounter.ErrBadMember},
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
@@ -1280,12 +1309,13 @@ func (s *DataTestSuite) TestLoadRejections() {
 			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 				Data: data,
 				Capabilities: encounter.Capabilities{
-					Sight:      everyoneSeesTheWholeMap{},
-					Equipment:  encounter.UnobservedEquipment{},
-					Sheets:     zeroSheets{},
-					Standing:   everyoneStanding{},
-					Initiative: orderAsGiven{},
-					Driver:     passDriver{},
+					Sight:         everyoneSeesTheWholeMap{},
+					Equipment:     encounter.UnobservedEquipment{},
+					Conditions:    encounter.UnobservedEquipment{},
+					Sheets:        zeroSheets{},
+					Participation: everyoneStanding{},
+					Initiative:    orderAsGiven{},
+					Driver:        passDriver{},
 					Actors: encounter.Actors{
 						Striker:   passStriker{},
 						Mover:     quietMover{},
@@ -1308,12 +1338,13 @@ func (s *DataTestSuite) TestLoadRejections() {
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: validEncounterData(),
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -1332,6 +1363,8 @@ func (s *DataTestSuite) TestLoadRejectsMalformedOrUnknownSightLocation() {
 	}{
 		{name: "unknown carries coordinate", payload: []byte(`{"state":"unknown","x":1}`)},
 		{name: "current unknown", payload: []byte(`{"state":"unknown"}`), current: true},
+		{name: "untagged coordinates", payload: []byte(`{"x":1,"y":2}`), current: true},
+		{name: "untagged and ghosted", payload: []byte(`{"x":1,"y":2}`)},
 	}
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
@@ -1340,12 +1373,13 @@ func (s *DataTestSuite) TestLoadRejectsMalformedOrUnknownSightLocation() {
 			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 				Data: data,
 				Capabilities: encounter.Capabilities{
-					Sight:      everyoneSeesTheWholeMap{},
-					Equipment:  encounter.UnobservedEquipment{},
-					Sheets:     zeroSheets{},
-					Standing:   everyoneStanding{},
-					Initiative: orderAsGiven{},
-					Driver:     passDriver{},
+					Sight:         everyoneSeesTheWholeMap{},
+					Equipment:     encounter.UnobservedEquipment{},
+					Conditions:    encounter.UnobservedEquipment{},
+					Sheets:        zeroSheets{},
+					Participation: everyoneStanding{},
+					Initiative:    orderAsGiven{},
+					Driver:        passDriver{},
 					Actors: encounter.Actors{
 						Striker:   passStriker{},
 						Mover:     quietMover{},
@@ -1358,18 +1392,38 @@ func (s *DataTestSuite) TestLoadRejectsMalformedOrUnknownSightLocation() {
 	}
 }
 
+// TestLoadRefusesAPerceptionBlobFromAnOlderSubjectNamespace: a blob that
+// carries no subject version, or one this build does not write, is refused by
+// name rather than upgraded in place. The old member-only sight namespace had
+// to guess which names were already qualified, and a guess is not testimony.
+func (s *DataTestSuite) TestLoadRefusesAPerceptionBlobFromAnOlderSubjectNamespace() {
+	for _, version := range []uint32{0, 2, 99} {
+		s.Run(fmt.Sprintf("version %d", version), func() {
+			data := validEncounterData()
+			data.PerceptionSubjects = version
+			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+				Data:         data,
+				Capabilities: encounter.RefusingCapabilities(),
+			})
+			s.Require().ErrorIs(err, encounter.ErrInvalidData)
+			s.Contains(err.Error(), "perception subject version")
+		})
+	}
+}
+
 func (s *DataTestSuite) TestLoadAcceptsHeldUnknownSightLocation() {
 	data := validEncounterData()
 	setSightHolding(s.T(), &data, []byte(`{"state":"unknown"}`), false)
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -1401,12 +1455,13 @@ func (s *DataTestSuite) TestMutation1ToDataAliases() {
 				{Key: "done", Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 0, Y: 0}}},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -1451,12 +1506,13 @@ func (s *DataTestSuite) TestMutation2WireTagRenamed() {
 				{Key: "done", Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 0, Y: 0}}},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -1492,12 +1548,13 @@ func (s *DataTestSuite) TestMutation3StowawayField() {
 				{Key: "done", Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 0, Y: 0}}},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -1535,12 +1592,13 @@ func (s *DataTestSuite) TestMutation4LeafSubstitution() {
 				{Key: "done", Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 0, Y: 0}}},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -1569,12 +1627,13 @@ func (s *DataTestSuite) TestMutation4LeafSubstitution() {
 		ctrl, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data: dataA,
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -1595,12 +1654,13 @@ func (s *DataTestSuite) TestMutation4LeafSubstitution() {
 		swapped, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data: dataA,
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -1638,12 +1698,13 @@ func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 				{Key: "stairs", Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 0, Y: 0}}},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -1679,12 +1740,13 @@ func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 		enc2, _ := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data: data,
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -1723,12 +1785,13 @@ func (s *DataTestSuite) TestMutation7TickResetOnLoad() {
 				{Key: "done", Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 0, Y: 0}}},
 			},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -1744,12 +1807,13 @@ func (s *DataTestSuite) TestMutation7TickResetOnLoad() {
 		enc2, _ := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data: data1,
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -1792,12 +1856,13 @@ func (s *DataTestSuite) TestRememberedArrivalTestimonyPersists() {
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
 		Capabilities: encounter.Capabilities{
-			Sight:      &sightList{fallback: 0},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: arrivalOrder{},
-			Driver:     nextDriver,
+			Sight:         &sightList{fallback: 0},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    arrivalOrder{},
+			Driver:        nextDriver,
 			Actors: encounter.Actors{
 				Striker:   &scriptedStriker{kind: encounter.OutcomeMissed},
 				Mover:     quietMover{},
@@ -1849,12 +1914,13 @@ func (s *DataTestSuite) TestSightAreasSurviveLoadAndReload() {
 		loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data: d,
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -1879,7 +1945,7 @@ func (s *DataTestSuite) TestSightAreaMembershipStoryAudienceAndRemoval() {
 		encounter.MemberData{ID: "visible", Kind: encounter.KindPlayer, Cell: &encounter.PositionData{X: 3, Y: 0}},
 	)
 	data.EverMembers = append(data.EverMembers, "hidden", "visible")
-	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Capabilities: encounter.Capabilities{Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Driver: passDriver{}, Actors: encounter.Actors{Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}}}})
+	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Capabilities: encounter.Capabilities{Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Conditions: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Participation: everyoneStanding{}, Initiative: orderAsGiven{}, Driver: passDriver{}, Actors: encounter.Actors{Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}}}})
 	s.Require().NoError(err)
 	// This observer remains obscured before and after the other cloud changes.
 	s.Require().NoError(enc.AddSightArea(&encounter.SightAreaInput{ID: "cover", SourceID: "other", Center: spatial.Position{X: 3, Y: 3}, RadiusFeet: 5}))

@@ -61,7 +61,7 @@ func (s *KillingBlowSuite) blow(enc *encounter.Encounter, target encounter.Membe
 // Free roam is the state the open scenes cannot be in: any co-located pair forms
 // a bubble at first light, so a wall is the only way to record an outcome
 // between two members who are not fighting.
-func (s *KillingBlowSuite) apart(standing encounter.StandingWithParticipation) *encounter.Encounter {
+func (s *KillingBlowSuite) apart(standing encounter.Participation) *encounter.Encounter {
 	s.T().Helper()
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
@@ -73,12 +73,13 @@ func (s *KillingBlowSuite) apart(standing encounter.StandingWithParticipation) *
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   standing,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: standing,
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},

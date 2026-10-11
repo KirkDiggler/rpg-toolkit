@@ -10,10 +10,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
@@ -72,40 +70,6 @@ func TestParticipationReturnsProviderPolicyAndProgressInInputOrder(t *testing.T)
 	out.Members[1].DeathSaves.Failures = 99
 	require.Equal(t, 1, input.Participants[1].Character.DeathSaveState.Failures,
 		"the provider projection is detached from persisted progress")
-}
-
-func TestShieldRecordDoesNotMakeParticipationOrStandingADisplayProjection(t *testing.T) {
-	ctx := context.Background()
-	const characterID = "shielded-character"
-
-	shield, err := conditions.NewShieldSpellCondition(characterID).ToJSON()
-	require.NoError(t, err)
-	data := participationCharacter(characterID, 4, nil)
-	data.Conditions = append(data.Conditions, shield)
-
-	// Shield is valid, loadable rules data but deliberately has no no-magic
-	// status display entry. That strict display refusal stays with the root
-	// StatusView; participation must not broaden itself into that projection.
-	live, err := character.LoadFromData(ctx, data, events.NewEventBus())
-	require.NoError(t, err)
-	_, err = live.StatusView(&character.StatusViewInput{})
-	require.ErrorContains(t, err, "not in the status-view display catalog")
-	require.NoError(t, live.Cleanup(ctx))
-
-	participation, err := Participation(ctx, &ParticipationInput{
-		Participants: []Participant{{Character: data}},
-	})
-	require.NoError(t, err)
-	require.Equal(t, []ParticipantParticipation{{
-		Member:        characterID,
-		Participation: combat.ParticipationFor(combat.LifeStateConscious),
-	}}, participation.Members)
-
-	standing, err := Standing(ctx, &StandingInput{
-		Participants: []Participant{{Character: data}},
-	})
-	require.NoError(t, err)
-	require.Empty(t, standing.Down)
 }
 
 func TestParticipationRefusesMalformedParticipantsBeforeReading(t *testing.T) {

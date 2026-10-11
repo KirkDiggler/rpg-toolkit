@@ -68,12 +68,13 @@ func TestAbsentCandidateKeepsItsRowAndThePanel(t *testing.T) {
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      shortSight{"alice": 1},
-			Equipment:  encNoHandsObserved{},
-			Standing:   aggregateRecordEveryoneStanding{},
-			Initiative: aggregateRecordOrderAsGiven{},
-			Driver:     passDriver{},
+			Sheets:        encStandStill{},
+			Sight:         shortSight{"alice": 1},
+			Equipment:     encNoHandsObserved{},
+			Conditions:    encNoHandsObserved{},
+			Participation: aggregateRecordEveryoneStanding{},
+			Initiative:    aggregateRecordOrderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   encounter.RefusingStriker{},
 				Mover:     encounter.RefusingMover{},
@@ -121,7 +122,7 @@ func TestAbsentCandidateKeepsItsRowAndThePanel(t *testing.T) {
 	}), "an unobserved candidate is not an error")
 
 	declaration := offers[0].declaration
-	sneakID := refs.Features.SneakAttack().String()
+	sneakID := refs.Conditions.SneakAttack().String()
 	require.Len(t, declaration.Effects, 1)
 	require.Equal(t, sneakID, declaration.Effects[0].ID)
 	require.Equal(t, EffectDepends, declaration.Effects[0].State)

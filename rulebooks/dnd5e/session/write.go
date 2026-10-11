@@ -598,41 +598,12 @@ func joinInputFor(
 	}, nil
 }
 
-// memberActionsFrom maps a player's main-hand attack onto the composition's
-// action view, for the sheet seam's answer (sheets.go, rpg-project#538).
-//
-// The compiling happens in resolution, off the same sheet the armour class is
-// folded on. What is left here is the mapping, which is the shape this seam is
-// supposed to have: facts in, an answer out.
-//
-// ANSWERED FOR A PLAYER TOO, even though nothing reads it back today — a
-// TurnDriver is only ever asked about an UNPLAYED member's turn. Speed,
-// attacks and targeting are sheet facts for every kind, not a monster-only
-// extra, and the day a disconnected player's turn needs driving, the answer
-// already has what it needs.
-//
-// NO ATTACK IS AN ERROR HERE, and it stays one. A character the rules can build
-// at all has a main hand — an empty one is an unarmed strike, which is why the
-// entry never answers nil for a sheet it could load. So nil means something
-// upstream stopped answering, and reporting it as "this member has no actions"
-// would answer a player who cannot swing and say nothing.
-func memberActionsFrom(attack *resolution.AttackFacts) ([]encounter.ActionView, error) {
-	if attack == nil {
-		return nil, fmt.Errorf("%w: no main-hand attack was compiled", ErrBadAttack)
-	}
-
-	return []encounter.ActionView{{
-		Ref: attack.Ref, Name: attack.Name,
-		RangeFeet: attack.RangeFeet,
-		Kind:      attack.Kind,
-	}}, nil
-}
-
-// memberActionsFromMonster projects every executable definition directly into
-// the composition's opaque action view, in AUTHOR ORDER — which is what a
+// memberActionsOf projects every executable definition directly into the
+// composition's opaque action view, for a monster's stat block and for a
+// character's compiled attacks alike, in AUTHOR ORDER — which is what a
 // driver reads, so a stat block listing Multiattack first is a monster that
 // reaches for its Multiattack first.
-func memberActionsFromMonster(definitions []combatActions.Definition) []encounter.ActionView {
+func memberActionsOf(definitions []combatActions.Definition) []encounter.ActionView {
 	views := make([]encounter.ActionView, 0, len(definitions))
 	for _, definition := range definitions {
 		switch {

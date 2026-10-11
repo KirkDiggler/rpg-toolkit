@@ -29,7 +29,7 @@ func TestLaunchCatalogSuite(t *testing.T) { suite.Run(t, new(LaunchCatalogSuite)
 
 func (s *LaunchCatalogSuite) SetupTest() {
 	s.sessions = newFakeSessions()
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: newFakeEncounters(),
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})

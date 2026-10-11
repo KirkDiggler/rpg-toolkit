@@ -36,12 +36,13 @@ func (s *BoardSuite) empty() *encounter.Encounter {
 		Endings:   []encounter.EndingInput{withdrawn()},
 		Retention: encounter.RetentionUnbounded,
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -133,10 +134,6 @@ func (s *BoardSuite) TestAnUnplaceableMemberPlacesNobody() {
 			m[2].Holds = []encounter.IntelID{"never-written"}
 			return m
 		},
-		"a negative retained discovery count": func(m []encounter.JoinInput) []encounter.JoinInput {
-			m[2].RetainedDiscoveries = map[encounter.ConcealmentID]encounter.DiscoveryMemoryData{"secret": {Used: -1}}
-			return m
-		},
 		"a temperament mix nothing says the meaning of": func(m []encounter.JoinInput) []encounter.JoinInput {
 			m[2].Temper = encounter.Temper{Mix: map[string]int{"coward": 1}}
 			return m
@@ -211,10 +208,6 @@ func (s *BoardSuite) TestValidateBoardRefusesWhatBoardRefuses() {
 		},
 		"a record the field never declared": func(m []encounter.JoinInput) []encounter.JoinInput {
 			m[2].Holds = []encounter.IntelID{"never-written"}
-			return m
-		},
-		"a negative retained discovery count": func(m []encounter.JoinInput) []encounter.JoinInput {
-			m[2].RetainedDiscoveries = map[encounter.ConcealmentID]encounter.DiscoveryMemoryData{"secret": {Used: -1}}
 			return m
 		},
 		"a temperament mix nothing says the meaning of": func(m []encounter.JoinInput) []encounter.JoinInput {

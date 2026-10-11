@@ -17,16 +17,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// SightPayload is the legacy untagged known-location shape retained for source
-// compatibility. New encounter testimony is encoded with SightTestimony.
-//
-// It describes dungeon-absolute coordinates and is readable by
-// DecodeSightTestimony as the legacy known form.
-type SightPayload struct {
-	X float64 `json:"x"`
-	Y float64 `json:"y"`
-}
-
 // declaredEnding pairs an ending key with its trigger, in Setup order, plus
 // the canvas cell a positional trigger was compiled to.
 //
@@ -135,11 +125,6 @@ type Encounter struct {
 	// one; trigger detection refuses to start a fight without it rather than
 	// dropping the fight silently.
 	initiative InitiativeRoller
-	// standing retains the source-compatible constructor capability shape.
-	// The same concrete value is asserted once at construction and stored as
-	// participation below; no play path falls back to the binary answer.
-	standing Standing
-
 	// roller is THE WORLD'S DIE: the shared dice every pick this composition
 	// makes is rolled through, and the one a faction's temperament mix is
 	// dealt from (table.go, rpg-project#465).
@@ -163,8 +148,8 @@ type Encounter struct {
 	// clock over.
 	worldThinking bool
 
-	// participation is the richer half of standing. Required at both
-	// constructors and never defaulted; see [StandingWithParticipation].
+	// participation answers who is down and who counts as present. Required at
+	// both constructors and never defaulted; see [Participation].
 	participation Participation
 
 	// sight reports how far each member can see. Required at both constructors
@@ -177,9 +162,8 @@ type Encounter struct {
 	// testimony, and why a nil answer is a fact rather than a gap.
 	equipment Equipment
 
-	// conditions reports which conditions each member holds. It is the same
-	// value as equipment, asserted at both constructors — see
-	// [EquipmentWithConditions] for why it rides that field.
+	// conditions reports which conditions each member holds. Required at both
+	// constructors — see [Conditions] for why a nil answer is a fact.
 	conditions Conditions
 
 	// sheets reports each member's speed, actions and targeting. Required at
@@ -213,7 +197,7 @@ type Encounter struct {
 	// every fact of the run lands in — knowledge, holdings — and the one
 	// graph folded over it, rebuilt from the field and the roster at every
 	// construction and roster change, its facts persisted on
-	// EncounterData.World and EncounterData.Holdings. ALWAYS PRESENT: a
+	// EncounterData.Journal. ALWAYS PRESENT: a
 	// plain dungeon has sides and knowledge too, and what it skips is the
 	// concealment capabilities and the sweep's work, which keeps its blob
 	// byte-identical to what it was before.
@@ -617,13 +601,14 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			return nil, fmt.Errorf("newencounter: %w", ErrNoMember)
 		}
 		if seenIDs[m.ID] {
-			return nil, fmt.Errorf("newencounter: duplicate member %s: %w", m.ID, ErrNoMember)
+			return nil, fmt.Errorf("newencounter: duplicate member %s: %w", m.ID, ErrDuplicateMember)
 		}
 		seenIDs[m.ID] = true
 
 		if err := validateMemberFacts(memberFacts{
-			ID:         m.ID,
-			Intimidate: m.Intimidate, Persuade: m.Persuade, Table: m.Table,
+			ID:            m.ID,
+			AppearanceRef: m.AppearanceRef,
+			Intimidate:    m.Intimidate, Persuade: m.Persuade, Table: m.Table,
 		}); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
 		}
@@ -750,11 +735,10 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		everMembers:   make(map[MemberID]bool),
 		field:         f,
 		initiative:    in.Initiative,
-		standing:      in.Standing,
-		participation: in.Standing,
+		participation: in.Participation,
 		sight:         in.Sight,
 		equipment:     in.Equipment,
-		conditions:    in.Equipment,
+		conditions:    in.Conditions,
 		sheets:        in.Sheets,
 		driver:        in.Driver,
 		roller:        in.Roller,
@@ -820,6 +804,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			ID:             mi.ID,
 			Kind:           mi.Kind,
 			Name:           mi.Name,
+			AppearanceRef:  mi.AppearanceRef,
 			Intimidate:     copyApproaches(mi.Intimidate),
 			Persuade:       copyApproaches(mi.Persuade),
 			Table:          cloneTable(mi.Table),
@@ -883,7 +868,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 
 	for _, mi := range in.Members {
 		if mi.Kind == KindPlayer {
-			if err = e.initializeDiscovery(mi.ID, mi.PrivateDiscoveries, mi.RetainedDiscoveries); err != nil {
+			if err = e.initializeDiscovery(mi.ID, mi.PrivateDiscoveries); err != nil {
 				return nil, err
 			}
 		}
@@ -1760,6 +1745,7 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 			Conditions:     held[subjectID],
 			Down:           &isDown,
 			BlocksMovement: &blocksMovement,
+			AppearanceRef:  e.members[subjectID].AppearanceRef,
 		})
 		if perr != nil {
 			return nil, fmt.Errorf("encode sight testimony: %w", perr)
@@ -1977,7 +1963,7 @@ func (e *Encounter) validateJoin(in *JoinInput) error {
 	// it is in the encounter, and a second joiner under its id would arrive
 	// twice.
 	if _, exists := e.members[in.Member]; exists || e.inReserve(in.Member) {
-		return fmt.Errorf("join: member %s is already in the encounter: %w", in.Member, ErrNoMember)
+		return fmt.Errorf("join: member %s is already in the encounter: %w", in.Member, ErrDuplicateMember)
 	}
 
 	// Nor can a world NPC (rpg-toolkit#1404, design.md N4) — see NewEncounter's
@@ -1990,8 +1976,9 @@ func (e *Encounter) validateJoin(in *JoinInput) error {
 	// fact caught after PlaceEntity would need to roll a placement back
 	// rather than simply never having made one (Copilot, PR #1187).
 	if err := validateMemberFacts(memberFacts{
-		ID:         in.Member,
-		Intimidate: in.Intimidate, Persuade: in.Persuade, Table: in.Table,
+		ID:            in.Member,
+		AppearanceRef: in.AppearanceRef,
+		Intimidate:    in.Intimidate, Persuade: in.Persuade, Table: in.Table,
 	}); err != nil {
 		return fmt.Errorf("join: %w", err)
 	}
@@ -2048,15 +2035,9 @@ func (e *Encounter) validateJoin(in *JoinInput) error {
 		return fmt.Errorf("join: cell %v is covered by placed prop %q: %w", in.Cell, prop, ErrBadPlacement)
 	}
 
-	// THE TWO REFUSALS THE ADMISSION WOULD OTHERWISE MAKE LATE, after the
-	// member is placed and its join beat written: a retained discovery count
-	// below zero, and a temperament mix that cannot be dealt. Asked here so
-	// Join and Board both refuse them before the first write.
-	for id, remembered := range in.RetainedDiscoveries {
-		if remembered.Used < 0 {
-			return fmt.Errorf("join: member %q: retained discovery %q: negative discovery count: %w", in.Member, id, ErrInvalidData)
-		}
-	}
+	// THE REFUSAL THE ADMISSION WOULD OTHERWISE MAKE LATE, after the member is
+	// placed and its join beat written: a temperament mix that cannot be
+	// dealt. Asked here so Join and Board both refuse it before the first write.
 	if err := e.validateTemper(in.Member, in.Temper); err != nil {
 		return fmt.Errorf("join: %w", err)
 	}
@@ -2078,6 +2059,7 @@ func (e *Encounter) admitMember(in *JoinInput) (*memberRecord, *JoinOutput, erro
 		ID:             in.Member,
 		Kind:           in.Kind,
 		Name:           in.Name,
+		AppearanceRef:  in.AppearanceRef,
 		Intimidate:     copyApproaches(in.Intimidate),
 		Persuade:       copyApproaches(in.Persuade),
 		Table:          cloneTable(in.Table),
@@ -2176,7 +2158,7 @@ func (e *Encounter) admitMember(in *JoinInput) (*memberRecord, *JoinOutput, erro
 
 	seqNum := appendOut.Seq
 	if member.Kind == KindPlayer {
-		if err := e.initializeDiscovery(in.Member, in.PrivateDiscoveries, in.RetainedDiscoveries); err != nil {
+		if err := e.initializeDiscovery(in.Member, in.PrivateDiscoveries); err != nil {
 			return nil, nil, err
 		}
 	}

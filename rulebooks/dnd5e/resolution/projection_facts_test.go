@@ -6,9 +6,16 @@ package resolution
 import (
 	"encoding/json"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
 // The static half of the projection's answer: the numbers a caller needs about
@@ -46,34 +53,104 @@ func (s *ProjectionTestSuite) TestTheFactsComeOffTheLoadedSheet() {
 // rules say a creature with empty hands can punch, so character.AssembleAttack
 // falls back to the unarmed strike rather than refusing. The projection reports
 // what the rules say rather than what the inventory looks like.
-//
-// Worth pinning because the shape of the output was nearly wrong here. Planning
-// this entry assumed there would be a "no main-hand attack" case for nil to
-// mean; there is not, for any character the loader will produce. The pointer
-// survives only for the reason the next test states.
 func (s *ProjectionTestSuite) TestAnEmptyHandProjectsAnUnarmedStrike() {
 	out, err := ProjectCharacter(s.ctx, &ProjectCharacterInput{Character: s.barbarian()})
 	s.Require().NoError(err)
 
-	s.Require().NotNil(out.MainHand, "empty hands still punch")
-	s.Equal(refs.Weapons.UnarmedStrike().ID, out.MainHand.Ref.ID)
-	s.Equal(AttackKindMelee, out.MainHand.Kind, "a punch is made in reach")
-	s.Equal(5, out.MainHand.RangeFeet, "and reach is 5 feet")
+	s.Require().Equal([]string{refs.Weapons.UnarmedStrike().String()}, definitionRefs(out.Actions),
+		"empty hands still punch, and a hand with no weapon adds no second attack")
+	s.Require().NotNil(out.Actions[0].Attack)
+	s.True(out.Actions[0].Attack.Delivery.IsMelee(), "a punch is made in reach")
+	s.Equal(5, out.Actions[0].Attack.Delivery.MaxRangeFeet(), "and reach is 5 feet")
 }
 
-// Kind is never left empty on an attack that compiled, which is what makes the
-// empty string safe to read as "nothing here".
-//
-// The zero value is load-bearing in the other direction: a bool would have to
-// call one of melee/ranged false, so an unset field would read as a real
-// answer. Nothing asserts this by staring at the type, so it is asserted here.
-func (s *ProjectionTestSuite) TestACompiledAttackAlwaysNamesItsKind() {
-	out, err := ProjectCharacter(s.ctx, &ProjectCharacterInput{Character: s.barbarian()})
-	s.Require().NoError(err)
-	s.Require().NotNil(out.MainHand)
+// A DUAL-WIELDER PROJECTS BOTH HANDS, the way a monster projects every
+// definition it carries. The off hand is not an afterthought of the main hand:
+// a sheet that dropped it would answer a host that the player has one attack.
+func (s *ProjectionTestSuite) TestADualWielderProjectsBothHands() {
+	record := s.barbarian()
+	record.WeaponProficiencies = []proficiencies.Weapon{proficiencies.WeaponSimple, proficiencies.WeaponMartial}
+	record.Inventory = []character.InventoryItemData{
+		{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Shortsword), Quantity: 1},
+		{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Dagger), Quantity: 1},
+	}
+	record.EquipmentSlots = character.EquipmentSlots{
+		character.SlotMainHand: string(weapons.Shortsword),
+		character.SlotOffHand:  string(weapons.Dagger),
+	}
 
-	s.Contains([]string{AttackKindMelee, AttackKindRanged}, out.MainHand.Kind,
-		"an attack that compiled has a kind; empty is reserved for no attack at all")
+	out, err := ProjectCharacter(s.ctx, &ProjectCharacterInput{Character: record})
+	s.Require().NoError(err)
+
+	got := definitionRefs(out.Actions)
+	s.Contains(got, refs.Weapons.ByID(string(weapons.Shortsword)).String(), "the main hand")
+	s.Contains(got, refs.Weapons.ByID(string(weapons.Dagger)).String(), "and the off hand")
+	s.NotContains(got, refs.Weapons.UnarmedStrike().String(), "a held weapon is not also a punch")
+}
+
+// A SHIELD IS NOT AN ATTACK. An off hand that holds no weapon adds no
+// definition, so the character answers exactly the main hand.
+func (s *ProjectionTestSuite) TestAShieldInTheOffHandAddsNoAttack() {
+	record := s.barbarian()
+	record.WeaponProficiencies = []proficiencies.Weapon{proficiencies.WeaponSimple, proficiencies.WeaponMartial}
+	record.Inventory = []character.InventoryItemData{
+		{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Shortsword), Quantity: 1},
+		{Type: shared.EquipmentTypeArmor, ID: string(armor.Shield), Quantity: 1},
+	}
+	record.EquipmentSlots = character.EquipmentSlots{
+		character.SlotMainHand: string(weapons.Shortsword),
+		character.SlotOffHand:  string(armor.Shield),
+	}
+
+	out, err := ProjectCharacter(s.ctx, &ProjectCharacterInput{Character: record})
+	s.Require().NoError(err)
+
+	s.Equal([]string{refs.Weapons.ByID(string(weapons.Shortsword)).String()}, definitionRefs(out.Actions))
+}
+
+// TWO OFFERS FOR ONE SWING are ErrConflictingOffers and never ErrBadAttack: a
+// monk holding a Shillelagh club has Martial Arts and Shillelagh both offering
+// to be the swing, the pick is the player's, and the host must be able to say
+// so rather than call the loadout unreadable.
+func (s *ProjectionTestSuite) TestCompetingOffersAreNotABadAttack() {
+	record := s.barbarian()
+	record.ClassID = classes.Monk
+	record.WeaponProficiencies = []proficiencies.Weapon{proficiencies.WeaponSimple}
+	record.Inventory = []character.InventoryItemData{
+		{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Club), Quantity: 1},
+	}
+	record.EquipmentSlots = character.EquipmentSlots{character.SlotMainHand: string(weapons.Club)}
+	martialArts, err := conditions.NewMartialArtsCondition(
+		conditions.MartialArtsInput{MemberID: projectedHeroID}).ToJSON()
+	s.Require().NoError(err)
+	shillelagh, err := conditions.NewShillelaghCondition(projectedHeroID, conditions.ShillelaghConfig{
+		Weapons:    []conditions.HeldWeapon{{Slot: string(character.SlotMainHand), ItemID: string(weapons.Club)}},
+		WeaponSlot: string(character.SlotMainHand),
+		Ability:    abilities.WIS,
+	})
+	s.Require().NoError(err)
+	shillelaghJSON, err := shillelagh.ToJSON()
+	s.Require().NoError(err)
+	record.Conditions = []json.RawMessage{martialArts, shillelaghJSON}
+
+	out, err := ProjectCharacter(s.ctx, &ProjectCharacterInput{Character: record})
+
+	s.Require().Error(err)
+	s.Require().Nil(out)
+	s.Assert().ErrorIs(err, ErrConflictingOffers)
+	s.Assert().ErrorIs(err, character.ErrConflictingOffers, "the root's word still reaches the caller")
+	s.Assert().NotErrorIs(err, ErrBadAttack, "the player owes a pick; the loadout is not broken")
+}
+
+// definitionRefs is the ref string of each definition, for membership
+// assertions that do not pin how many there are.
+func definitionRefs(definitions []combatActions.Definition) []string {
+	out := make([]string, 0, len(definitions))
+	for i := range definitions {
+		out = append(out, definitions[i].Ref.String())
+	}
+
+	return out
 }
 
 // A MAIN HAND THAT WILL NOT COMPILE is ErrBadAttack, not the general

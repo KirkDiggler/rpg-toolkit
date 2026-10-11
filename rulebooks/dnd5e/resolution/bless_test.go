@@ -31,14 +31,15 @@ func (s *CastActionTestSuite) blessAttempt(world encounter.EncounterData, caster
 		Machine:      machine,
 		Cost:         &Cost{PayerID: bardID, Profile: d.Cost, SpellTurn: "scene/round-1/bard"},
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Roller:     dice.NewRoller(),
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Roller:        dice.NewRoller(),
+			Actors:        Actors,
 		},
 	})
 }
@@ -50,14 +51,15 @@ func (s *CastActionTestSuite) blessRun(world encounter.EncounterData, participan
 		Machine:      machine,
 		Cost:         cost,
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Roller:     dice.NewRoller(),
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Roller:        dice.NewRoller(),
+			Actors:        Actors,
 		},
 	})
 	s.Require().NoError(err)
@@ -207,9 +209,10 @@ func (s *CastActionTestSuite) TestBlessLifeStatesAndSameAddressReplacement() {
 			s.Require().NoError(err)
 			if state == "same address" {
 				effects := s.castOutcome(out).Targets[0].Applied
-				s.Require().Len(effects, 2)
-				s.Equal(removalEffect(dnd5eEvents.ConditionAddress{MemberID: heroID, ConditionRef: refs.Conditions.Blessed().String(), SourceID: bardID}, ConditionReplacedReason), effects[0])
-				s.Equal(ImposedCondition, effects[1].Kind)
+				removed, err := removalEffect(dnd5eEvents.ConditionAddress{MemberID: heroID, ConditionRef: refs.Conditions.Blessed().String(), SourceID: bardID}, ConditionReplacedReason)
+				s.Require().NoError(err)
+				s.Require().Contains(effects, removed, "the old instance's removal is delivered")
+				s.Require().Contains(kinds(effects), ImposedCondition, "and the new instance lands")
 			}
 			s.Equal(1, s.countingRef(f.sheet(out, heroID).Conditions, refs.Conditions.Blessed()))
 		})
@@ -331,12 +334,13 @@ func (s *CastActionTestSuite) TestBlessTargetProjectionHonorsPolicyWithoutReveal
 	run, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: world,
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
 			Actors: encounter.Actors{
 				Striker:   encounter.RefusingStriker{},
 				Mover:     encounter.RefusingMover{},
@@ -353,4 +357,67 @@ func (s *CastActionTestSuite) TestBlessTargetProjectionHonorsPolicyWithoutReveal
 		s.Require().NoError(err)
 		s.Equal(map[string]bool{bardID: true, heroID: policy == StaleTargetAttempt, wolfID: true}, answers)
 	}
+}
+
+// TestABlessedConditionReadsItsRegistryName: Bless delivers on the gateless
+// path, and each delivered Blessed reads as the registry names it.
+func (s *CastActionTestSuite) TestABlessedConditionReadsItsRegistryName() {
+	display, ok := conditions.DisplayFor(*refs.Conditions.Blessed())
+	s.Require().True(ok, "precondition: Blessed is registered")
+	s.Require().NotEmpty(display.Name)
+
+	f := s.fixtures()
+	out, err := s.blessAttempt(f.world(), baneCaster(1, 2), f.saver(14), []string{heroID}, StaleTargetRefuse, &countingCastRoller{})
+	s.Require().NoError(err)
+
+	var described []string
+	for _, target := range s.castOutcome(out).Targets {
+		for _, effect := range target.Applied {
+			if effect.Kind == ImposedCondition && effect.Ref.Equals(refs.Conditions.Blessed()) {
+				described = append(described, effect.Description)
+			}
+		}
+	}
+	s.Equal([]string{display.Name}, described)
+}
+
+// TestAGatelessConditionWithNothingToSayCarriesNoDetail: Blessed implements no
+// instance detail, so no delivered condition of a Bless cast carries one.
+func (s *CastActionTestSuite) TestAGatelessConditionWithNothingToSayCarriesNoDetail() {
+	f := s.fixtures()
+	out, err := s.blessAttempt(f.world(), baneCaster(1, 2), f.saver(14), []string{heroID}, StaleTargetRefuse, &countingCastRoller{})
+	s.Require().NoError(err)
+
+	var blessed int
+	for _, target := range s.castOutcome(out).Targets {
+		for _, effect := range target.Applied {
+			if effect.Kind != ImposedCondition {
+				continue
+			}
+			blessed++
+			s.Empty(effect.Detail, "%s has nothing per-instance to say", effect.Ref.String())
+		}
+	}
+	s.Positive(blessed, "precondition: the cast delivered at least one condition")
+}
+
+// kinds is the kind of each delivered effect, for membership assertions.
+func kinds(effects []ImposedEffect) []ImposedEffectKind {
+	out := make([]ImposedEffectKind, 0, len(effects))
+	for _, effect := range effects {
+		out = append(out, effect.Kind)
+	}
+
+	return out
+}
+
+// effectOfKind is the first delivered effect of a kind, or the zero effect.
+func effectOfKind(effects []ImposedEffect, kind ImposedEffectKind) ImposedEffect {
+	for _, effect := range effects {
+		if effect.Kind == kind {
+			return effect
+		}
+	}
+
+	return ImposedEffect{}
 }

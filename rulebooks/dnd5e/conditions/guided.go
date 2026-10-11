@@ -255,3 +255,15 @@ func (g *GuidedCondition) end(ctx context.Context, reason string) error {
 	}
 	return g.Remove(ctx, bus)
 }
+
+// guidedDescriptor is the one entry for [GuidedCondition]; see [descriptors].
+var guidedDescriptor = descriptor{
+	ref:     refs.Conditions.Guided(),
+	display: Display{Name: GuidedName, Detail: "Holds a Guidance die. After seeing your ability check roll you may add it; the die is spent only when you take it."},
+	load:    loaderOf[GuidedCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return createdAs(createGuided(in.Config, in.MemberID, in.SourceRef))
+	},
+	ownAction:     notBearing,
+	againstHolder: notBearing,
+}

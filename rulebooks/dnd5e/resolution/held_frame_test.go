@@ -35,11 +35,10 @@ const heldCaster = "cleric"
 // Hands are never observed. The sheets are read when asked, so a change to
 // one is seen at the next sight refresh and not before.
 type sheetConditions struct {
-	noHandsAreObserved
 	sheets map[encounter.MemberID]*[]json.RawMessage
 }
 
-var _ encounter.EquipmentWithConditions = sheetConditions{}
+var _ encounter.Conditions = sheetConditions{}
 
 func (c sheetConditions) Conditions(
 	members []encounter.MemberID,
@@ -128,12 +127,13 @@ func (s *FrameTestSuite) heldEncounter(h *heldScene) *encounter.Encounter {
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      h.sight,
-			Equipment:  h.equipment(),
-			Sheets:     standStillSheets{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         h.sight,
+			Equipment:     noHandsAreObserved{},
+			Conditions:    h.equipment(),
+			Sheets:        standStillSheets{},
 			Actors: encounter.Actors{
 				Striker:   noAttacksExpected{},
 				Mover:     encounter.RefusingMover{},
@@ -189,14 +189,15 @@ func (s *FrameTestSuite) strikeHeld(
 			AttackerID: informRogue, TargetID: informGoblin1, Definition: attack, Roller: facedRoller{d20: d20, other: 1},
 		}),
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Standing:   everyoneStanding{},
-			Sight:      h.sight,
-			Equipment:  h.equipment(),
-			Sheets:     noSheetsAsked{},
-			Driver:     passDriver{},
-			Roller:     facedRoller{d20: d20, other: 1},
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Participation: everyoneParticipates{},
+			Sight:         h.sight,
+			Equipment:     noHandsAreObserved{},
+			Conditions:    h.equipment(),
+			Sheets:        noSheetsAsked{},
+			Driver:        passDriver{},
+			Roller:        facedRoller{d20: d20, other: 1},
+			Actors:        Actors,
 		},
 	}, newSurface(bus))
 }
@@ -706,14 +707,15 @@ func resolveHeroStrikeAs(
 		},
 		Machine: NewStrike(&StrikeInput{AttackerID: attackerID, TargetID: targetID, Definition: definition, Roller: roller}),
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Driver:     passDriver{},
-			Roller:     roller,
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Driver:        passDriver{},
+			Roller:        roller,
+			Actors:        Actors,
 		},
 	}, newSurface(events.NewEventBus()))
 }

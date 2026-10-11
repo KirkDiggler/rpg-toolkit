@@ -39,11 +39,9 @@ import (
 // standingSeam answers the composition's standing question out of the sheets
 // this one verb holds.
 //
-// COMPILE-TIME PROOF that the seam carries the migration bridge: the
-// composition's constructors demand a Standing value that also assesses
-// participation (encounter.StandingWithParticipation), and this package's one
-// seam satisfies both from the same sheet lookup.
-var _ encounter.StandingWithParticipation = standingSeam{}
+// COMPILE-TIME PROOF that the seam is the composition's participation
+// capability. It is the one answer to who is down: Down on the assessment.
+var _ encounter.Participation = standingSeam{}
 
 // # It is per call, and it has to be
 //
@@ -83,10 +81,8 @@ type standingSeam struct {
 	data *SessionData
 }
 
-// standingFor builds the dual Standing/Participation capability for one verb.
-// Returning the concrete value keeps the richer answer available to session
-// projections while assignments to encounter.Standing retain the same dynamic
-// value for compatibility-shaped constructor fields.
+// standingFor builds the participation capability for one verb. Returning the
+// concrete value keeps the richer answer available to session projections.
 func (m *Manager) standingFor(
 	ctx context.Context, data *SessionData, kinds map[string]encounter.MemberKind,
 ) standingSeam {
@@ -97,40 +93,16 @@ func (m *Manager) standingFor(
 	return standingSeam{ctx: ctx, sheets: m.sheetsFor(nil), data: data, kinds: copiedKinds}
 }
 
-// Standing reports which of the given members are down — downed, in the
-// vocabulary this seam publishes — by selecting Down from the same rich
-// provider assessment Assess returns. See the note at the top of this file.
+// Assess returns the provider-derived scheduling/contact answer, Down
+// included. It is the only answer to who is down, so nothing here can drift
+// into a second hit-point or life-state rule.
 //
-// ONLY ABOUT WHO WAS ASKED, and that is structural rather than a filter applied
-// afterwards: the loop is over the question. It matters because the composition
-// refuses an answer naming somebody who is not a member (ErrNotMember) rather
-// than ignoring it, so a capability that replied out of its whole sheet store
-// would abort every verb in the session — and the store really does hold
-// strangers. A spawned monster's sheet stays in the session record after its
-// member leaves, and [SessionData] is a blob a host can seed.
-//
-// An error aborts whatever verb was running, atomically (R5). A world that
-// cannot find out who is standing does not half-act on a guess, and neither
-// available guess is safe: reading an unreachable store as UP runs the fight on
-// against sheets nobody can read, and reading it as DOWNED kills a character
-// because a database blinked.
-func (s standingSeam) Standing(members []encounter.MemberID) ([]encounter.MemberID, error) {
-	snapshot, err := s.participation(members)
-	if err != nil {
-		return nil, err
-	}
-	var down []encounter.MemberID
-	for _, member := range snapshot.assessment.Members {
-		if member.Down {
-			down = append(down, member.Member)
-		}
-	}
-	return down, nil
-}
-
-// Assess returns the provider-derived scheduling/contact answer. Standing and
-// Assess both delegate to participation, so neither can drift into a second
-// hit-point or life-state rule.
+// ONLY ABOUT WHO WAS ASKED, and that is structural rather than a filter
+// applied afterwards: the loop is over the question. The composition refuses
+// an answer naming somebody who is not a member rather than ignoring it, and
+// the store really does hold strangers. An error aborts whatever verb was
+// running, atomically (R5): a world that cannot find out who is down does not
+// half-act on a guess.
 func (s standingSeam) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
 	snapshot, err := s.participation(members)
 	if err != nil {
@@ -248,11 +220,11 @@ func npcSheet(data *SessionData, id string) (*monster.Data, bool) {
 // roster-scoped by construction, so a single-ID question gets a single-ID
 // answer and nothing else is loaded.
 func refuseIfDown(scope *writeScope, role, id string) error {
-	down, err := scope.standing.Standing([]encounter.MemberID{encounter.MemberID(id)})
+	down, err := standingSet(scope.standing, []encounter.MemberID{encounter.MemberID(id)})
 	if err != nil {
 		return err
 	}
-	if len(down) == 0 {
+	if !down[id] {
 		return nil
 	}
 

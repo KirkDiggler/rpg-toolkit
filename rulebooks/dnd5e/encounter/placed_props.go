@@ -12,7 +12,7 @@ import (
 
 // placed_props.go is THE PLACED FOOTPRINT FACTS (issue #1753).
 //
-// A legacy [PropInput] stands on one cell, and the canvas's entity walk
+// A cell prop — the v2 map format's [PropInput] — stands on one cell, and the canvas's entity walk
 // answers every question about it. An authored table with a real footprint
 // is a rectangle in the plane: its centre may sit on one cell while its
 // corners reach three, a thin one sits BETWEEN two cells and blocks the
@@ -75,13 +75,13 @@ import (
 // obstruction, opaque alternate origin). Neither implies the other, and
 // neither is defaulted.
 //
-// NOT A LEGACY PROP, and the line moved once (rpg-toolkit#1854). A placed
+// NOT A CELL PROP, and the line moved once (rpg-toolkit#1854). A placed
 // footprint CAN be held and CAN arrive from reserve — the three fields
 // below are [PropInput]'s own, with [PropInput]'s own meanings, because
 // "what a placed thing does" is one protocol and two of them would be two
 // answers. What stays true is the rest of the sentence: a placed footprint
 // carries no content ref and no [PropInput.Facing] word, and a changed or
-// removed placement is a RECOMPILATION, not a runtime verb. Legacy props
+// removed placement is a RECOMPILATION, not a runtime verb. Cell props
 // keep their own path untouched; the two lists never share an ID.
 //
 // # Where a footprint STANDS, since it has no anchor cell
@@ -93,7 +93,7 @@ import (
 // why nearest-centre is exact rather than approximate.
 type PlacedPropInput struct {
 	// ID names the placement. REQUIRED non-empty and unique — among placed
-	// contributors and against every legacy [PropInput.ID], because a cell
+	// contributors and against every cell [PropInput.ID], because a cell
 	// fold and an atlas would otherwise have two answers for one name.
 	ID PropID
 
@@ -118,7 +118,7 @@ type PlacedPropInput struct {
 	// declared holdable stays scenery, which is what every placed footprint
 	// was before this field existed.
 	//
-	// TAKING IT IS THE LEGACY REACH RULE, DERIVED (rpg-project#488 R1).
+	// TAKING IT IS THE CELL PROP'S REACH RULE, DERIVED (rpg-project#488 R1).
 	// [Encounter.Hold] measures [refuseOutOfReachCell] — grid distance from
 	// the member's cell, Range 0 meaning adjacent — against every cell this
 	// placement stands on ([field.placedCells]). Standing on one of them is
@@ -128,7 +128,7 @@ type PlacedPropInput struct {
 	//
 	// A HELD PLACEMENT IS OFF THE FLOOR FOR EVERYONE: its rectangle blocks
 	// no step, closes no crossing, obstructs no lane and is absent from
-	// [Atlas.Placed], folded from the same `held:` fact a legacy prop's
+	// [Atlas.Placed], folded from the same `held:` fact a cell prop's
 	// disappearance folds from (holdings.go). Dropping it puts the
 	// rectangle back with its origin on the cell it was dropped on.
 	Holdable bool
@@ -150,7 +150,7 @@ type PlacedPropInput struct {
 	// from the first frame.
 	//
 	// A PLACEMENT WITH A PREDICATE IS IN RESERVE, and the never-authored
-	// yardstick governs it exactly as it governs a reserved legacy prop: its
+	// yardstick governs it exactly as it governs a reserved cell prop: its
 	// rectangle blocks nothing, closes nothing, obstructs nothing, is absent
 	// from [Atlas.Placed], and [Encounter.Hold] refuses it as an id that
 	// names nothing (the probe law). When the predicate holds it is placed
@@ -223,12 +223,12 @@ func (f *field) compilePlaced(in []PlacedPropInput) error {
 		if seenID[p.ID] {
 			return fmt.Errorf("duplicate placed prop %q: %w", p.ID, ErrNoField)
 		}
-		// ONE NAME, ONE THING. A legacy prop's id names a thing the verbs and
+		// ONE NAME, ONE THING. A cell prop's id names a thing the verbs and
 		// the atlas address; a placed contributor reusing it would give a Hold
 		// and a cell fold two answers.
-		for _, legacy := range f.props {
-			if legacy.ID == p.ID {
-				return fmt.Errorf("placed prop %q shares its id with a legacy prop: %w", p.ID, ErrNoField)
+		for _, cell := range f.props {
+			if cell.ID == p.ID {
+				return fmt.Errorf("placed prop %q shares its id with a cell prop: %w", p.ID, ErrNoField)
 			}
 		}
 		if err := validatePlacement(p.Placement); err != nil {
@@ -575,7 +575,7 @@ func (f *field) standingBlocks(cell spatial.Position) (PropID, bool) {
 		}
 		// A PLACEMENT THAT IS NOT ON THE FLOOR CLOSES NOTHING
 		// (rpg-toolkit#1854): one waiting in reserve and one somebody is
-		// carrying are both absent, exactly as a reserved legacy prop is off
+		// carrying are both absent, exactly as a reserved cell prop is off
 		// the canvas and a held one is out of every atlas.
 		placement, standing := now.stands(p)
 		if !standing {

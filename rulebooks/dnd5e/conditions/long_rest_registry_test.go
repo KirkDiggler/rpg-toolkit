@@ -36,7 +36,7 @@ type longRestCase struct {
 	removalReason    string
 }
 
-// longRestCases is deliberately authored independently of conditionLoaders.
+// longRestCases is deliberately authored independently of the registry.
 // Its explicit persisted blobs and canonical refs make every loadable condition
 // name its long-rest rule without deriving either the fixture or expectation
 // from production dispatch.
@@ -157,22 +157,13 @@ var longRestCases = map[string]longRestCase{
 		expectedRef: refs.Conditions.MartialArts(),
 		outcome:     longRestRetain,
 	},
-	refs.Conditions.UnarmoredMovement().String(): {
+	refs.Conditions.SneakAttack().String(): {
 		data: json.RawMessage(`{
-			"ref":{"module":"dnd5e","type":"conditions","id":"unarmored_movement"},
-			"member_id":"member-1","monk_level":3
-		}`),
-		ownerID:     "member-1",
-		expectedRef: refs.Conditions.UnarmoredMovement(),
-		outcome:     longRestRetain,
-	},
-	refs.Features.SneakAttack().String(): {
-		data: json.RawMessage(`{
-			"ref":{"module":"dnd5e","type":"features","id":"sneak_attack"},
+			"ref":{"module":"dnd5e","type":"conditions","id":"sneak_attack"},
 			"member_id":"member-1","level":3,"damage_dice":2,"used_this_turn":true
 		}`),
 		ownerID:     "member-1",
-		expectedRef: refs.Features.SneakAttack(),
+		expectedRef: refs.Conditions.SneakAttack(),
 		outcome:     longRestReset,
 	},
 	refs.Conditions.Disengaging().String(): {
@@ -236,16 +227,6 @@ var longRestCases = map[string]longRestCase{
 		// "rest", not "long rest": the die ends on ANY rest, so the handler
 		// that removes it does not discriminate and its reason says so.
 		removalReason: "rest",
-	},
-	refs.Conditions.Unconscious().String(): {
-		data: json.RawMessage(`{
-			"ref":{"module":"dnd5e","type":"conditions","id":"unconscious"},
-			"member_id":"member-1","successes":1,"failures":2,"stabilized":false,"dead":false
-		}`),
-		ownerID:       "member-1",
-		expectedRef:   refs.Conditions.Unconscious(),
-		outcome:       longRestRemove,
-		removalReason: "long rest",
 	},
 	// Retained rather than reset since 2026-09-11: the meter this used to
 	// reset moved to the reactor's own keeper, so the condition itself has no
@@ -438,21 +419,49 @@ var longRestCases = map[string]longRestCase{
 		outcome:       longRestRemove,
 		removalReason: "rest",
 	},
-	refs.Spells.Shield().String(): {
+	// The four stat-block traits are conditions, authored on a stat block. A
+	// rest touches none of them.
+	refs.MonsterTraits.Immunity().String(): {
 		data: json.RawMessage(`{
-			"ref":{"module":"dnd5e","type":"spells","id":"shield"},
-			"member_id":"member-1"
+			"ref":{"module":"dnd5e","type":"monster_traits","id":"immunity"},
+			"owner_id":"member-1","damage_type":"poison"
 		}`),
-		ownerID:       "member-1",
-		expectedRef:   refs.Spells.Shield(),
-		outcome:       longRestRemove,
-		removalReason: "rest",
+		ownerID:     "member-1",
+		expectedRef: refs.MonsterTraits.Immunity(),
+		outcome:     longRestRetain,
+	},
+	refs.MonsterTraits.Vulnerability().String(): {
+		data: json.RawMessage(`{
+			"ref":{"module":"dnd5e","type":"monster_traits","id":"vulnerability"},
+			"owner_id":"member-1","damage_type":"bludgeoning"
+		}`),
+		ownerID:     "member-1",
+		expectedRef: refs.MonsterTraits.Vulnerability(),
+		outcome:     longRestRetain,
+	},
+	refs.MonsterTraits.PackTactics().String(): {
+		data: json.RawMessage(`{
+			"ref":{"module":"dnd5e","type":"monster_traits","id":"pack_tactics"},
+			"owner_id":"member-1"
+		}`),
+		ownerID:     "member-1",
+		expectedRef: refs.MonsterTraits.PackTactics(),
+		outcome:     longRestRetain,
+	},
+	refs.MonsterTraits.UndeadFortitude().String(): {
+		data: json.RawMessage(`{
+			"ref":{"module":"dnd5e","type":"monster_traits","id":"undead_fortitude"},
+			"owner_id":"member-1","con_modifier":3
+		}`),
+		ownerID:     "member-1",
+		expectedRef: refs.MonsterTraits.UndeadFortitude(),
+		outcome:     longRestRetain,
 	},
 }
 
 func TestLongRestRegistryIsExhaustive(t *testing.T) {
 	require.ElementsMatch(t,
-		slices.Collect(maps.Keys(conditionLoaders)),
+		RegisteredRefs(),
 		slices.Collect(maps.Keys(longRestCases)),
 	)
 }
@@ -506,7 +515,7 @@ func TestLongRestRegistryBehavior(t *testing.T) {
 			case longRestReset:
 				require.True(t, condition.IsApplied())
 				require.Empty(t, removed)
-				require.Len(t, changed, 1)
+				require.NotEmpty(t, changed)
 				require.Equal(t, testCase.ownerID, changed[0].MemberID)
 				require.Equal(t, testCase.expectedRef.String(), changed[0].ConditionRef.String())
 

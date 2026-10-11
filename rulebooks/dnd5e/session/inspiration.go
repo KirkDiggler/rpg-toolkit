@@ -5,11 +5,12 @@ package session
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -42,7 +43,7 @@ func (m *Manager) allyCandidatesFor(
 	ctx context.Context,
 	ability *core.Ref,
 	enc *encounter.Encounter,
-	standing encounter.Standing,
+	standing encounter.Participation,
 	roster []encounter.Member,
 	positions map[string]spatial.Position,
 	holdings []perception.Holding,
@@ -77,13 +78,13 @@ func (m *Manager) allyCandidatesFor(
 // Whether somebody holds a die is written on their sheet and nowhere else, so
 // this asks. It asks ONLY about candidates that already passed sight, kind,
 // standing and reach — the same cost argument the standing consult makes one
-// layer up — and a sheet it cannot read leaves the candidate available rather
-// than silently unavailable, because "we could not check" and "they already
-// have one" are different answers and only one of them is about the game.
+// layer up. A sheet it cannot read is an error, not an available candidate:
+// "we could not check" and "they already have one" are different answers, and
+// offering the die over the first would let a second one overwrite the first.
 func (m *Manager) inspirationCandidates(
 	ctx context.Context,
 	enc *encounter.Encounter,
-	standing encounter.Standing,
+	standing encounter.Participation,
 	roster []encounter.Member,
 	positions map[string]spatial.Position,
 	holdings []perception.Holding,
@@ -116,30 +117,23 @@ func (m *Manager) inspirationCandidates(
 // holdsInspiration reports whether a member's stored sheet already carries a
 // Bardic Inspiration die.
 //
-// It PEEKS at the ref rather than loading the condition, because the question
-// is "is one of these an inspiration die" and loading every condition to answer
-// it would make a candidate list pay for the whole sheet's behaviour. A member
-// with no stored sheet — a monster ally, a member the repository cannot
-// produce — holds nothing this seam can see, which is the honest answer to a
-// question about a character sheet that does not exist.
+// The question is a full-ref lookup through the conditions reader
+// ([conditions.HoldsRef]): it compares the whole stored ref and loads nothing,
+// so a candidate list does not pay for the whole sheet's behaviour, and a blob
+// that merely shares the die's id under another module or type is not a die.
+//
+// A sheet that is not a character's — a monster ally, a member the repository
+// cannot produce — holds no die this seam can see, which is the honest answer
+// to a question about a character sheet that does not exist. A sheet that
+// exists but cannot be read, or whose stored conditions cannot be read, is an
+// error: "we could not check" is not "they hold none".
 func (m *Manager) holdsInspiration(ctx context.Context, member string) (bool, error) {
 	data, err := m.sheetsFor(nil).load(ctx, "ally", member)
 	if err != nil {
-		return false, nil
+		if errors.Is(err, ErrNoCharacter) {
+			return false, nil
+		}
+		return false, err
 	}
-	for _, raw := range data.Conditions {
-		var peek struct {
-			Ref *core.Ref `json:"ref"`
-		}
-		if json.Unmarshal(raw, &peek) != nil || peek.Ref == nil {
-			// A condition this build cannot read is not a die it can name.
-			// The sheet's own loader is what refuses an unreadable blob; a
-			// candidate list is not the place to fail a whole Afford over one.
-			continue
-		}
-		if peek.Ref.ID == refs.Conditions.Inspired().ID {
-			return true, nil
-		}
-	}
-	return false, nil
+	return conditions.HoldsRef(data.Conditions, refs.Conditions.Inspired())
 }

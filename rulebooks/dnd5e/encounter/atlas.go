@@ -363,7 +363,7 @@ type AtlasPlacedProp struct {
 	// this list is the answer.
 	//
 	// THE SAME SET [Encounter.Hold]'S REACH JUDGES — holdPlaced in hold.go
-	// applies the legacy reach rule (grid distance, Range 0 meaning
+	// applies the cell-prop reach rule (grid distance, Range 0 meaning
 	// adjacent) to every cell [field.placedCells] returns, which is exactly
 	// this list. So a client offering Hold where this says the member is
 	// adjacent, and the engine refusing it, cannot disagree: one derivation,
@@ -470,7 +470,7 @@ func (e *Encounter) Atlas() (Atlas, error) {
 	// mutating the result never reaches internal state.
 	//
 	// AND WHERE EACH ONE IS RIGHT NOW (rpg-toolkit#1854), on the truth grain
-	// the legacy props below are folded on: one waiting in reserve is on no
+	// the cell props below are folded on: one waiting in reserve is on no
 	// map, one somebody picked up is on no map, and one that was dropped
 	// stands with its origin on the cell it was dropped on. The same fold
 	// standing, crossing and sight read, so no two answers exist.

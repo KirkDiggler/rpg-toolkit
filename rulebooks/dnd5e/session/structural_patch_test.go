@@ -59,7 +59,7 @@ func (s *StructuralSessionSuite) TestIndependentDoorIntroductionDoesNotRequireIt
 	s.Empty(before.Atlas.StructuralWalls)
 	s.Empty(before.Atlas.StructuralDoors)
 	s.stream.published = nil
-	_, err = s.mgr.Search(ctx, &session.SearchInput{Session: "sess", Member: "alice", Region: "hall"})
+	_, err = s.find(ctx, "alice")
 	s.Require().NoError(err)
 	reveals := eventsOfKind(s.stream.published, "alice", session.EventConcealmentRevealed)
 	s.Require().Len(reveals, 1)
@@ -89,7 +89,7 @@ func (s *StructuralSessionSuite) TestKnownWallOpeningReplacementMatchesSnapshotA
 	s.Empty(before.Atlas.StructuralDoors)
 
 	s.stream.published = nil
-	_, err = s.mgr.Search(ctx, &session.SearchInput{Session: "sess", Member: "alice", Region: "hall"})
+	_, err = s.find(ctx, "alice")
 	s.Require().NoError(err)
 	reveals := eventsOfKind(s.stream.published, "alice", session.EventConcealmentRevealed)
 	s.Require().Len(reveals, 1)

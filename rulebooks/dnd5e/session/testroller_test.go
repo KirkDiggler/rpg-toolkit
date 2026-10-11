@@ -114,11 +114,7 @@ func (encOrderAsGiven) RollInitiative(members []encounter.MemberID) ([]encounter
 // enough that no test can accidentally lean on it for an answer.
 type encEveryoneStanding struct{}
 
-func (encEveryoneStanding) Standing(_ []encounter.MemberID) ([]encounter.MemberID, error) {
-	return nil, nil
-}
-
-// Assess mirrors Standing: nobody is ever down, so every asked member waits
+// Assess answers that nobody is ever down, so every asked member waits
 // in contact and conscious.
 func (encEveryoneStanding) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
 	return assessmentFromDown(members, nil), nil

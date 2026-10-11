@@ -47,7 +47,7 @@ func (s *standInsSuite) TestNewEncounterConstructsFromRefusingCapabilities() {
 			encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: cellAt(0, 0)},
 			encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: cellAt(2, 0)},
 		)
-		setup.Standing = everyoneStanding{}
+		setup.Participation = everyoneStanding{}
 		enc, err := encounter.NewEncounter(setup)
 		s.Require().NoError(err)
 		out, err := enc.ObservedContext(&encounter.ViewInput{Member: alice})
@@ -62,7 +62,7 @@ func (s *standInsSuite) TestNewEncounterConstructsFromRefusingCapabilities() {
 			encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: cellAt(2, 0)},
 		)
 		setup.Sight = everyoneSeesTheWholeMap{}
-		setup.Standing = everyoneStanding{}
+		setup.Participation = everyoneStanding{}
 		_, err := encounter.NewEncounter(setup)
 		s.Require().ErrorIs(err, encounter.ErrRefusingInitiative)
 	})
@@ -106,7 +106,7 @@ func (s *standInsSuite) TestLoadEncounterLoadsFromRefusingCapabilities() {
 			encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: cellAt(0, 0)},
 			encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: cellAt(2, 0)},
 		)
-		setup.Standing = everyoneStanding{}
+		setup.Participation = everyoneStanding{}
 		built, err := encounter.NewEncounter(setup)
 		s.Require().NoError(err)
 
@@ -164,12 +164,13 @@ func (s *standInsSuite) TestAStandInWorldLoadsWithRealCapabilities() {
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: built.ToData(),
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  table,
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     table,
+			Conditions:    table,
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},

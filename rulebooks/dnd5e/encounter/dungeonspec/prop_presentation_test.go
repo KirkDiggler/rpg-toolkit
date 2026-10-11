@@ -18,6 +18,10 @@ func (presentationSearchCheck) ResolveCheck(in *encounter.ResolveCheckInput) (*e
 	return &encounter.ResolveCheckOutput{Beaten: true, Applied: in.Approaches[0], Total: 30}, nil
 }
 
+func (c presentationSearchCheck) ResolveDiscoveryCheck(in *encounter.ResolveCheckInput) (*encounter.ResolveCheckOutput, error) {
+	return c.ResolveCheck(in)
+}
+
 func (s *SingleRoomWallDoorSuite) TestConcealmentRevealCapturesDecorativePresentation() {
 	spec := s.baseSpec()
 	spec.Room.Scene = sceneNode(s.T(), `
@@ -29,18 +33,23 @@ groups: []
 `)
 	spec.Concealments = map[string]dungeonspec.ConcealmentSpec{"secret": {Checks: dungeonspec.CheckSpec{{Ability: "perception", DC: 20}}, Props: []string{"art"}}}
 	compiled := s.load(spec)
-	initial := s.play(compiled)
+	initial := s.play(compiled, encounter.MemberInput{ID: "walker", Kind: encounter.KindPlayer, Position: axial(4, 0)})
 	before, err := initial.AtlasFor("walker")
 	s.Require().NoError(err)
 	s.Empty(before.PropPresentations)
 	load := &encounter.LoadEncounterInput{Data: initial.ToData(), Capabilities: encounter.RefusingCapabilities()}
-	load.Standing = everyoneStanding{}
+	load.Participation = everyoneStanding{}
+	load.Sheets = zeroSheets{}
 	load.Sight = everyoneSeesTheWholeMap{}
 	load.CheckResolver = presentationSearchCheck{}
 	enc, err := encounter.LoadEncounter(load)
 	s.Require().NoError(err)
-	_, err = enc.Search(&encounter.SearchInput{Member: "walker", Region: compiled.PartyStart[0].Region})
-	s.Require().NoError(err)
+	// Beaten automatic discovery reveals it: the walker, who started far
+	// enough away that nothing was rolled, walks to within a hex of the art.
+	for _, x := range []int{3, 2, 1, 0} {
+		_, err = enc.Step(&encounter.StepInput{Member: "walker", To: axial(x, 0)})
+		s.Require().NoError(err)
+	}
 	after, err := enc.AtlasFor("walker")
 	s.Require().NoError(err)
 	s.Require().Len(after.PropPresentations, 1)

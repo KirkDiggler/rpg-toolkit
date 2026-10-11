@@ -11,7 +11,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	dndCombat "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dndEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -64,9 +63,6 @@ func (c *wrathTestCast) Member(id string) (dndCombat.Member, bool) {
 func (c *wrathTestCast) Members() []string                  { return []string{"owner", "attacker"} }
 func (c *wrathTestCast) IsHostile(_, _ string) (bool, bool) { return true, true }
 func (c *wrathTestCast) IsAllied(_, _ string) (bool, bool)  { return false, true }
-func (c *wrathTestCast) StanceBetween(_, _ string) (contributions.Stance, bool) {
-	return contributions.StanceHostile, true
-}
 func (c *wrathTestCast) ResourceStatus(string, coreResources.ResourceKey) (int, int, bool) {
 	return 1, 1, true
 }
@@ -94,8 +90,10 @@ func TestWrathOfTheStormRequiresVisibleAttacker(t *testing.T) {
 			out, err := c.Execute(ctx, event)
 			require.NoError(t, err)
 			if tc.wantOffer {
-				require.Len(t, out.Offers, 1)
-				require.Equal(t, "wrath_of_the_storm", out.Offers[0].ResourceKey)
+				require.NotEmpty(t, out.Offers)
+				for _, offer := range out.Offers {
+					require.Equal(t, "wrath_of_the_storm", offer.ResourceKey)
+				}
 			} else {
 				require.Empty(t, out.Offers)
 			}

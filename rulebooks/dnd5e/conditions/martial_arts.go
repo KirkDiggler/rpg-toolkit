@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/weaponattack"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
@@ -236,3 +237,24 @@ func NewMartialArtsCondition(input MartialArtsInput) *MartialArtsCondition {
 		MemberID: input.MemberID,
 	}
 }
+
+// martialArtsDescriptor is the one entry for [MartialArtsCondition]; see [descriptors].
+var martialArtsDescriptor = descriptor{
+	ref:     refs.Conditions.MartialArts(),
+	display: Display{Name: "Martial Arts", Detail: "Unarmed strikes and monk weapons can use Dexterity, and unarmed strikes deal your Martial Arts die."},
+	load:    loaderOf[MartialArtsCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return createMartialArts(in.MemberID), nil
+	},
+	ownAction:     answersNow,
+	againstHolder: notBearing,
+	attackOverride: func(condition dnd5eEvents.ConditionBehavior, swing *weaponattack.OverrideInput) (*weaponattack.OverrideOutput, error) {
+		own, ok := condition.(*MartialArtsCondition)
+		if !ok {
+			return nil, rpgerr.Newf(rpgerr.CodeInternal, "%s is not a MartialArtsCondition: %T", refs.Conditions.MartialArts(), condition)
+		}
+		return own.WeaponAttackOverride(swing)
+	},
+}
+
+var _ contributions.ActionAssessor = (*MartialArtsCondition)(nil)

@@ -154,7 +154,7 @@ func (s *DodgeAbilityTestSuite) TestActivate_PublishesDodgingCondition() {
 	s.Require().NoError(err)
 	s.Require().NotNil(receivedEvent, "ConditionAppliedEvent should be published")
 	s.Assert().Equal(s.owner, receivedEvent.Target)
-	s.Assert().Equal(dnd5eEvents.ConditionDodging, receivedEvent.Type)
+	s.Assert().Equal(refs.Conditions.Dodging(), receivedEvent.Condition.Ref())
 	s.Assert().Equal(dnd5eEvents.ConditionSourceCombatAbility, receivedEvent.Source)
 
 	dodgingCond, ok := receivedEvent.Condition.(*conditions.DodgingCondition)

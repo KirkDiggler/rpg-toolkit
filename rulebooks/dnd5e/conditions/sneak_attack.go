@@ -67,10 +67,9 @@ var _ dnd5eEvents.ConditionBehavior = (*SneakAttackCondition)(nil)
 var _ RollerBinder = (*SneakAttackCondition)(nil)
 
 // Ref returns the canonical ref this condition names itself by — the same ref
-// its ToJSON embeds and its loader routes on. Sneak Attack's canonical ref
-// lives under refs.Features (it is a rogue feature turned active condition),
-// so that is what Ref reports.
-func (s *SneakAttackCondition) Ref() *core.Ref { return refs.Features.SneakAttack() }
+// its ToJSON embeds, its damage line names and its registry entry keys on:
+// refs.Conditions.SneakAttack, the ref the rogue grant names. It has no other.
+func (s *SneakAttackCondition) Ref() *core.Ref { return refs.Conditions.SneakAttack() }
 
 // BindRoller binds the roller this condition rolls its extra damage dice
 // with, so a condition restored from persisted JSON — whose loader has no
@@ -251,7 +250,7 @@ func (s *SneakAttackCondition) onDamageChain(
 			Source: dnd5eEvents.DamageSourceFeature,
 			Roll: dnd5eEvents.RollComponent{
 				Source: dnd5eEvents.RollSource{
-					Ref:      refs.Features.SneakAttack(),
+					Ref:      refs.Conditions.SneakAttack(),
 					Name:     "Sneak Attack",
 					SourceID: s.CharacterID,
 				},
@@ -323,8 +322,7 @@ func (r sneakAttackRule) AssessAction(in *contributions.AssessActionInput) (*con
 	damageDice := 0
 	answer := func(state contributions.Applicability, reason string) *contributions.AssessActionOutput {
 		out := &contributions.AssessActionOutput{Answer: contributions.Answer{
-			Decision:      contributions.Decision{Applicability: state, Reason: reason},
-			Participation: contributions.ContributesNow,
+			Decision: contributions.Decision{Applicability: state, Reason: reason},
 		}}
 		if state == contributions.Applies {
 			out.Answer.Benefit = fmt.Sprintf("+%dd6 damage", damageDice)
@@ -393,7 +391,7 @@ func (r sneakAttackRule) AssessAction(in *contributions.AssessActionInput) (*con
 // ToJSON converts the condition to JSON for persistence
 func (s *SneakAttackCondition) ToJSON() (json.RawMessage, error) {
 	data := SneakAttackData{
-		Ref:          refs.Features.SneakAttack(),
+		Ref:          refs.Conditions.SneakAttack(),
 		CharacterID:  s.CharacterID,
 		UsedThisTurn: s.UsedThisTurn,
 	}
@@ -418,3 +416,17 @@ func (s *SneakAttackCondition) loadJSON(data json.RawMessage) error {
 
 	return nil
 }
+
+// sneakAttackDescriptor is the one entry for [SneakAttackCondition]; see [descriptors].
+var sneakAttackDescriptor = descriptor{
+	ref:     refs.Conditions.SneakAttack(),
+	display: Display{Name: "Sneak Attack", Detail: "Once per turn, adds extra damage to a qualifying attack when you have advantage or another enemy of the target is within 5 feet."},
+	load:    loaderOf[SneakAttackCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return createSneakAttack(in.MemberID), nil
+	},
+	ownAction:     answersNow,
+	againstHolder: notBearing,
+}
+
+var _ contributions.ActionAssessor = (*SneakAttackCondition)(nil)

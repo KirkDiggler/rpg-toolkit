@@ -86,6 +86,12 @@ var (
 	// that does not return a requested pair.
 	ErrBadAttack = errors.New("resolution: unreadable attack")
 
+	// ErrConflictingOffers indicates two attack offers for one swing, such as a
+	// monk's Martial Arts and Shillelagh on the club in that hand. The player
+	// owes a pick, so the host reads it as a precondition the player can
+	// satisfy, never as an unreadable attack.
+	ErrConflictingOffers = errors.New("resolution: competing attack offers for one swing")
+
 	// ErrNoCombatant indicates a strike naming somebody who was not passed in.
 	ErrNoCombatant = errors.New("resolution: combatant is not a participant")
 

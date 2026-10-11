@@ -156,20 +156,20 @@ type reservedMember struct {
 }
 
 // validateArrival refuses a member predicate that cannot be kept
-// (ErrNoMember): a kind that has no reserve to wait in, a predicate that can
+// (ErrBadMember): a kind that has no reserve to wait in, a predicate that can
 // never hold, or a member waiting for its own fall. Asked before any mutation
 // at both ways in (Setup, Join) and at Load.
 func (f *field) validateArrival(id MemberID, kind MemberKind, t Trigger) error {
 	if kind != KindMonster {
 		return fmt.Errorf("member %q is a %s and arrives on a predicate, and only a monster waits in reserve: %w",
-			id, kind, ErrNoMember)
+			id, kind, ErrBadMember)
 	}
 	what := fmt.Sprintf("member %q's arrival", id)
-	if err := f.validatePredicate(what, t, ErrNoMember); err != nil {
+	if err := f.validatePredicate(what, t, ErrBadMember); err != nil {
 		return err
 	}
 	if md, ok := t.(TriggerMemberDown); ok && md.Member == id {
-		return fmt.Errorf("%s waits for its own fall, and it is not here to fall until it arrives: %w", what, ErrNoMember)
+		return fmt.Errorf("%s waits for its own fall, and it is not here to fall until it arrives: %w", what, ErrBadMember)
 	}
 	return nil
 }
@@ -273,7 +273,7 @@ func (e *Encounter) arrivals(holds func(Trigger) (string, bool), at uint64) erro
 		}
 		arrived = true
 	}
-	// AND THE FOOTPRINTS, in authored order after the legacy props
+	// AND THE FOOTPRINTS, in authored order after the cell props
 	// (rpg-toolkit#1854). Same reserve, same predicate, same fact and same
 	// beat; the difference is only what "placed" means for a rectangle —
 	// see [Encounter.arrivePlacedProp].
@@ -475,9 +475,9 @@ func propEntityOf(index int, p PropInput) *propEntity {
 
 // arrivePlacedProp brings one reserved footprint onto the floor
 // (rpg-toolkit#1854) — then the fact, then the beat, exactly as
-// [Encounter.arriveProp] does for a legacy prop.
+// [Encounter.arriveProp] does for a cell prop.
 //
-// NOTHING IS PLACED AND NOTHING IS SEARCHED FOR. A legacy prop is a canvas
+// NOTHING IS PLACED AND NOTHING IS SEARCHED FOR. A cell prop is a canvas
 // entity on one cell, so its arrival takes a cell and looks for a free one
 // when something stands there. A placed contributor is not an entity and is
 // not on the canvas at all: it is a rectangle the four queries measure, it

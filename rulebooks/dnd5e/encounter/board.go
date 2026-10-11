@@ -151,7 +151,7 @@ func (e *Encounter) ValidateBoard(in *BoardInput) error {
 			return fmt.Errorf("board: members[%d]: %w", i, err)
 		}
 		if prev, twice := seen[m.Member]; twice {
-			return fmt.Errorf("board: members[%d]: %q is members[%d] too: %w", i, m.Member, prev, ErrNoMember)
+			return fmt.Errorf("board: members[%d]: %q is members[%d] too: %w", i, m.Member, prev, ErrDuplicateMember)
 		}
 		seen[m.Member] = i
 		if m.Arrives != nil {

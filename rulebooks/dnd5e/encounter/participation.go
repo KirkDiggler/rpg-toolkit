@@ -67,14 +67,6 @@ type Participation interface {
 	Assess(members []MemberID) (*ParticipationAssessment, error)
 }
 
-// StandingWithParticipation is the migration bridge for stored-data and
-// resolution constructors. Their Standing field remains source-compatible,
-// while its concrete value must also provide the richer participation answer.
-type StandingWithParticipation interface {
-	Standing
-	Participation
-}
-
 // participationState is one validated assessment indexed for all of the
 // consequences a pass applies. It is deliberately ephemeral: every pass asks
 // again, and nothing about participation is persisted or cached.

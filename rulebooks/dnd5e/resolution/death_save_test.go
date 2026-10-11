@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
@@ -45,6 +46,7 @@ func deathSaveCharacter(hp int, state *saves.DeathSaveState) *character.Data {
 		Name:           "Mara",
 		Level:          1,
 		ClassID:        classes.Fighter,
+		RaceID:         races.Human,
 		HitPoints:      hp,
 		MaxHitPoints:   12,
 		DeathSaveState: state,

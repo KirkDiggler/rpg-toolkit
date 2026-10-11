@@ -162,7 +162,6 @@ func (r *Rage) Activate(ctx context.Context, owner core.Entity, input FeatureInp
 		topic := dnd5eEvents.ConditionAppliedTopic.On(input.Bus)
 		err := topic.Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
 			Target:    owner,
-			Type:      dnd5eEvents.ConditionRaging,
 			Source:    dnd5eEvents.ConditionSourceFeature,
 			Condition: ragingCondition,
 		})

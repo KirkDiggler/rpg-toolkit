@@ -115,7 +115,7 @@ func (s *SessionLockSuite) SetupTest() {
 	}
 	probe := func() { s.probe() }
 	s.stream = &guardedStream{probe: probe}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		Sessions:   guardedSessions{SessionRepository: s.store, probe: probe},
 		Encounters: guardedEncounters{EncounterRepository: newFakeEncounters(), probe: probe},
 		Characters: testCharacters(), Events: s.stream, Dice: testDice{},

@@ -257,12 +257,13 @@ func baneWorld(t *testing.T, targetX float64) encounter.EncounterData {
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
 			Actors: encounter.Actors{
 				Striker:   noAttacksExpected{},
 				Mover:     encounter.RefusingMover{},
@@ -311,14 +312,15 @@ func (s *CastActionTestSuite) TestBaneRefusesStaleAndOutOfRangeTargetsBeforeDrop
 				Machine:      machine,
 				Cost:         baneCost(),
 				Capabilities: encounter.Capabilities{
-					Initiative: orderAsGiven{},
-					Standing:   everyoneStanding{},
-					Sight:      everyoneSeesTheWholeMap{},
-					Equipment:  noHandsAreObserved{},
-					Sheets:     noSheetsAsked{},
-					Driver:     passDriver{},
-					Roller:     dice.NewRoller(),
-					Actors:     Actors,
+					Initiative:    orderAsGiven{},
+					Participation: everyoneParticipates{},
+					Sight:         everyoneSeesTheWholeMap{},
+					Equipment:     noHandsAreObserved{},
+					Conditions:    noHandsAreObserved{},
+					Sheets:        noSheetsAsked{},
+					Driver:        passDriver{},
+					Roller:        dice.NewRoller(),
+					Actors:        Actors,
 				},
 			}, newSurface(bus))
 			s.ErrorIs(err, tc.want)
@@ -680,11 +682,11 @@ func (s *CastActionTestSuite) TestACastIsPreflightedBeforeTheDoorCharges() {
 // against the published fact rather than against the argument that produced it.
 func (s *CastActionTestSuite) sourcesSeen(
 	bus events.EventBus,
-) map[dnd5eEvents.ConditionType]dnd5eEvents.ConditionSource {
-	seen := map[dnd5eEvents.ConditionType]dnd5eEvents.ConditionSource{}
+) map[string]dnd5eEvents.ConditionSource {
+	seen := map[string]dnd5eEvents.ConditionSource{}
 	_, err := dnd5eEvents.ConditionAppliedTopic.On(bus).Subscribe(s.ctx,
 		func(_ context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
-			seen[event.Type] = event.Source
+			seen[event.Condition.Ref().String()] = event.Source
 			return nil
 		})
 	s.Require().NoError(err)
@@ -704,14 +706,15 @@ func (s *CastActionTestSuite) resolveOnBus(
 		Machine: machine,
 		Cost:    castCost(),
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Roller:     dice.NewRoller(),
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Roller:        dice.NewRoller(),
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Actors:        Actors,
 		},
 	}, newSurface(bus))
 	s.Require().NoError(err)
@@ -729,8 +732,8 @@ func (s *CastActionTestSuite) TestACastsConditionsCarryTheSpellAsTheirSource() {
 
 		out := s.resolveOnBus(s.fixtures(), s.cast(spells.TrueStrike, bardID, heroID, straightRoll), bus)
 
-		s.Require().Len(s.castOutcome(out).Targets[0].Applied, 1)
-		s.Require().Equal(dnd5eEvents.ConditionSourceSpell, seen[dnd5eEvents.ConditionTrueStrike])
+		s.Require().Contains(kinds(s.castOutcome(out).Targets[0].Applied), ImposedCondition)
+		s.Require().Equal(dnd5eEvents.ConditionSourceSpell, seen[refs.Conditions.TrueStrike().String()])
 	})
 
 	s.Run("gated", func() {
@@ -739,8 +742,8 @@ func (s *CastActionTestSuite) TestACastsConditionsCarryTheSpellAsTheirSource() {
 
 		out := s.resolveOnBus(s.fixtures(), s.cast(spells.ViciousMockery, bardID, heroID, straightRoll), bus)
 
-		s.Require().Len(s.castOutcome(out).Targets[0].Applied, 2)
-		s.Require().Equal(dnd5eEvents.ConditionSourceSpell, seen[dnd5eEvents.ConditionViciousMockery],
+		s.Require().Contains(kinds(s.castOutcome(out).Targets[0].Applied), ImposedCondition)
+		s.Require().Equal(dnd5eEvents.ConditionSourceSpell, seen[refs.Conditions.ViciousMockery().String()],
 			"the contest reads the cause it was given, which says a spell raised the save")
 	})
 }
@@ -762,20 +765,21 @@ func (s *CastActionTestSuite) TestAContestWithNoSpellCauseStillSaysDamage() {
 			Roller:      facedRoller{d20: straightRoll, other: psychicFace},
 		}),
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Roller:     dice.NewRoller(),
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Roller:        dice.NewRoller(),
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Actors:        Actors,
 		},
 	}, newSurface(bus))
 	s.Require().NoError(err)
 	s.Require().Len(out.Outcome.(ContestOutcome).Imposed, 1)
 
-	s.Require().Equal(dnd5eEvents.ConditionSourceDamage, seen[dnd5eEvents.ConditionProne])
+	s.Require().Equal(dnd5eEvents.ConditionSourceDamage, seen[refs.Conditions.Prone().String()])
 }
 
 // commandDefinition is Command as content compiles it: a WIS gate, a menu of
@@ -821,8 +825,46 @@ func (s *CastActionTestSuite) TestTheChosenWordIsWrittenOnAGatedCast() {
 			stored := s.castParams(fixtures.sheet(out, heroID), refs.Conditions.Commanded().String())
 			s.Equal(word, stored[spells.CommandWordParameter], "the word the player chose")
 			s.Equal(bardID, stored[spells.CommandCasterParameter], "the caster the words are measured from")
+
+			display, ok := conditions.DisplayFor(*refs.Conditions.Commanded())
+			s.Require().True(ok, "precondition: Commanded is registered")
+			var commanded []ImposedEffect
+			for _, effect := range outcome.Targets[0].Applied {
+				if effect.Kind == ImposedCondition && effect.Ref.Equals(refs.Conditions.Commanded()) {
+					commanded = append(commanded, effect)
+				}
+			}
+			s.Require().Len(commanded, 1, "one Commanded imposed on the target")
+			s.Equal(word, commanded[0].Detail, "the effect carries the word the instance was given")
+			s.Equal(display.Name, commanded[0].Description, "the name stays the registry's, the word is its own field")
 		})
 	}
+}
+
+// TestAnImposedConditionReadsItsRegistryName: a delivered Command reads as the
+// registry names it, not as a spelling built from its id.
+func (s *CastActionTestSuite) TestAnImposedConditionReadsItsRegistryName() {
+	display, ok := conditions.DisplayFor(*refs.Conditions.Commanded())
+	s.Require().True(ok, "precondition: Commanded is registered")
+	s.Require().NotEmpty(display.Name)
+
+	fixtures := s.fixtures()
+	machine, err := NewAction(&ActionInput{
+		Definition: *commandDefinition(), AttackerID: bardID,
+		TargetIDs: []string{heroID}, Option: spells.CommandWordGrovel,
+		Roller: facedRoller{d20: 1, other: psychicFace},
+	})
+	s.Require().NoError(err)
+	out, err := fixtures.resolve(fixtures.saver(14), machine, commandCost(), baneCaster(1, 2))
+	s.Require().NoError(err)
+
+	var described []string
+	for _, effect := range s.castOutcome(out).Targets[0].Applied {
+		if effect.Kind == ImposedCondition && effect.Ref.Equals(refs.Conditions.Commanded()) {
+			described = append(described, effect.Description)
+		}
+	}
+	s.Equal([]string{display.Name}, described)
 }
 
 // A made save leaves nothing behind, so there is no word on any sheet: the
@@ -930,7 +972,7 @@ func (s *CastActionTestSuite) conditionTraffic(bus events.EventBus, ref *core.Re
 	s.Require().NoError(err)
 	_, err = dnd5eEvents.ConditionAppliedTopic.On(bus).Subscribe(s.ctx,
 		func(_ context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
-			if event.Type == dnd5eEvents.ConditionType(ref.ID) {
+			if event.Condition.Ref().String() == ref.String() {
 				*log = append(*log, "applied:"+event.Target.GetID())
 			}
 			return nil
@@ -988,14 +1030,15 @@ func (s *CastActionTestSuite) TestASecondCommandReplacesTheFirst() {
 		Machine:      machine,
 		Cost:         commandCost(),
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Roller:     dice.NewRoller(),
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Roller:        dice.NewRoller(),
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Actors:        Actors,
 		},
 	}, newSurface(bus))
 	s.Require().NoError(err)
@@ -1011,10 +1054,12 @@ func (s *CastActionTestSuite) TestASecondCommandReplacesTheFirst() {
 		"and the word that stands is the newer one")
 
 	imposed := s.castOutcome(out).Targets[0].Applied
-	s.Require().Len(imposed, 2, "the trace says the replacement happened as well as the application")
-	s.Equal(ImposedConditionRemoved, imposed[0].Kind)
-	s.Contains(imposed[0].Description, "replaced by a newer instance")
-	s.Equal(ImposedCondition, imposed[1].Kind)
+	display, ok := conditions.DisplayFor(*refs.Conditions.Commanded())
+	s.Require().True(ok)
+	s.Contains(kinds(imposed), ImposedConditionRemoved, "the trace says the replacement happened")
+	s.Contains(kinds(imposed), ImposedCondition, "as well as the application")
+	s.Equal(display.Name+" replaced by a newer instance", effectOfKind(imposed, ImposedConditionRemoved).Description,
+		"and it names the condition, not its ref")
 }
 
 // A monster's sheet is the same sheet for this rule. The check reads whatever
@@ -1039,14 +1084,15 @@ func (s *CastActionTestSuite) TestAMonsterRecipientIsReplacedTheSameWay() {
 		Machine:      machine,
 		Cost:         commandCost(),
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Roller:     dice.NewRoller(),
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Roller:        dice.NewRoller(),
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Actors:        Actors,
 		},
 	}, newSurface(bus))
 	s.Require().NoError(err)
@@ -1109,14 +1155,15 @@ func (s *CastActionTestSuite) TestTwoCastersBanesBothStandAndBothConcentrationsH
 		Machine:      machine,
 		Cost:         baneCost(),
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Roller:     dice.NewRoller(),
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Roller:        dice.NewRoller(),
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Actors:        Actors,
 		},
 	}, newSurface(bus))
 	s.Require().NoError(err)
@@ -1159,14 +1206,15 @@ func (s *CastActionTestSuite) TestADifferentRefIsLeftWhereItIs() {
 		Machine:      machine,
 		Cost:         baneCost(),
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Roller:     dice.NewRoller(),
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Roller:        dice.NewRoller(),
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Actors:        Actors,
 		},
 	}, newSurface(bus))
 	s.Require().NoError(err)
@@ -1223,14 +1271,15 @@ func (s *CastActionTestSuite) TestTwoCastersEachKeepTheirOwnCommandAndTheFirstAp
 		Machine:      machine,
 		Cost:         commandCost(),
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Roller:     dice.NewRoller(),
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Roller:        dice.NewRoller(),
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Actors:        Actors,
 		},
 	}, newSurface(bus))
 	s.Require().NoError(err)

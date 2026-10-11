@@ -286,13 +286,7 @@ func reactDeclaration(session, member string, window interrupt.Window) (Declarat
 		options = append(options, CastOption{ID: choice.ID, Label: choice.Label, Description: choice.Description})
 	}
 
-	// The offerer's own prose; the opportunity attack is the one reaction
-	// this package names rather than receives, so its prose is this
-	// package's (information.go).
 	description := offer.Description
-	if description == "" {
-		description = reactionDescription[ref]
-	}
 
 	row := Declaration{
 		Verb:        VerbReact,

@@ -14,11 +14,11 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
@@ -71,14 +71,15 @@ func (s *TargetStepTestSuite) strike(
 			Roller: &sequenceRoller{singles: []int{straightRoll}, pair: faces},
 		}),
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Roller:     dice.NewRoller(),
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Roller:        dice.NewRoller(),
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Actors:        Actors,
 		},
 	}, newSurface(bus))
 }
@@ -128,7 +129,7 @@ func (s *TargetStepTestSuite) shapeOf(trace []dnd5eEvents.DamageComponent) (line
 func (s *TargetStepTestSuite) TestAStrikeAndAContestCarryTheSameTrace() {
 	fold := s.fold()
 	immune := func() Participant {
-		return Participant{Monster: fold.creature(monstertraits.MustImmunityJSON(wolfID, damage.Fire))}
+		return Participant{Monster: fold.creature(conditions.MustImmunityJSON(wolfID, damage.Fire))}
 	}
 
 	// Fire, 2d4 showing 3 and 3: six dealt, immunity takes all six.
@@ -282,7 +283,7 @@ func (s *TargetStepTestSuite) incomingHandler(
 func resistance() dnd5eEvents.DamageMultiplier {
 	return dnd5eEvents.DamageMultiplier{
 		Category:   dnd5eEvents.DamageSourceCondition,
-		Source:     dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging"},
+		Source:     dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging", SourceID: heroID},
 		DamageType: damage.Slashing,
 		Factor:     dnd5eEvents.DamageFactorResistance,
 	}
@@ -292,7 +293,7 @@ func resistance() dnd5eEvents.DamageMultiplier {
 func reduction(amount int) dnd5eEvents.DamageReduction {
 	return dnd5eEvents.DamageReduction{
 		Category:   dnd5eEvents.DamageSourceCondition,
-		Source:     dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging"},
+		Source:     dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging", SourceID: heroID},
 		DamageType: damage.Slashing,
 		Modifier:   amount,
 	}

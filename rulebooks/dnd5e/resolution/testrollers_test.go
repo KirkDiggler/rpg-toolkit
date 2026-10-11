@@ -60,7 +60,7 @@ func (orderAsGiven) RollInitiative(members []encounter.MemberID) ([]encounter.Me
 	return members, nil
 }
 
-// everyoneStanding is the deterministic Standing every fixture wires.
+// everyoneParticipates is the deterministic Participation every fixture wires.
 //
 // The composition requires one to load at all (rpg-toolkit#1077), and this
 // package never consults it — it carries the caller's capability across a
@@ -68,19 +68,15 @@ func (orderAsGiven) RollInitiative(members []encounter.MemberID) ([]encounter.Me
 // changes nothing, and any test that came to depend on a different one would
 // be testing a question this package does not ask.
 //
-// The same value carries the participation answer the encounter's load door
-// asks for since members became scheduled by participation (rpg-toolkit#1453):
-// nobody down, nobody removed, everybody waiting for a driver — the answer
-// these fixtures always assumed about hit points, stated out loud.
-type everyoneStanding struct{}
-
-func (everyoneStanding) Standing(_ []encounter.MemberID) ([]encounter.MemberID, error) {
-	return nil, nil
-}
+// It answers what the encounter's load door asks, since members became
+// scheduled by participation (rpg-toolkit#1453): nobody down, nobody removed,
+// everybody waiting for a driver — the answer these fixtures always assumed
+// about hit points, stated out loud.
+type everyoneParticipates struct{}
 
 // Assess answers one complete participation question: every member present,
 // conscious, in contact, waiting.
-func (everyoneStanding) Assess(
+func (everyoneParticipates) Assess(
 	members []encounter.MemberID,
 ) (*encounter.ParticipationAssessment, error) {
 	assessment := &encounter.ParticipationAssessment{}
@@ -92,13 +88,13 @@ func (everyoneStanding) Assess(
 	return assessment, nil
 }
 
-var _ encounter.StandingWithParticipation = everyoneStanding{}
+var _ encounter.Participation = everyoneParticipates{}
 
 // passDriver is the deterministic TurnDriver every fixture wires.
 //
 // The composition requires one to load at all (rpg-toolkit#1162), and this
 // package never consults it — it carries the caller's capability across a
-// round trip through the world, exactly like Standing and Sight above. So the
+// round trip through the world, exactly like Participation and Sight above. So the
 // fixtures hand over the one answer that changes nothing.
 type passDriver struct{}
 
@@ -145,7 +141,7 @@ const unlimitedSight = 1_000_000
 //
 // The composition requires one to load at all (rpg-toolkit#1111), and this
 // package never consults it — it carries the caller's capability across a
-// round trip through the world, exactly as it carries everyoneStanding above.
+// round trip through the world, exactly as it carries everyoneParticipates above.
 // So the fixtures hand over the one answer that changes nothing, and a test
 // that came to depend on a different one would be testing a question this
 // package does not ask.

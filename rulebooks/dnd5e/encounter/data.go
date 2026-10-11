@@ -45,8 +45,8 @@ type EncounterData struct {
 	// "intel" key inside this value is perception's own shape, which its
 	// charter admits is intel's Data verbatim.
 	Perception perception.Data `json:"perception"`
-	// PerceptionSubjects versions encounter-owned subject qualification. Zero
-	// is the legacy member-only sight namespace; load preserves its testimony.
+	// PerceptionSubjects versions encounter-owned subject qualification. Load
+	// refuses any value other than the one this build writes.
 	PerceptionSubjects uint32         `json:"perception_subjects,omitempty"`
 	Log                record.LogData `json:"log"`
 	Field              FieldData      `json:"field"`
@@ -60,41 +60,31 @@ type EncounterData struct {
 	// exactly what those encounters meant.
 	Doors      []DoorData      `json:"doors,omitempty"`
 	SightAreas []SightAreaData `json:"sight_areas,omitempty"`
-	// World is the run's KNOWLEDGE: the journal facts recording who has
-	// found which concealment (rpg-toolkit#1371, rpg-project#490), and come
-	// to know which fact (rpg-project#375).
-	// PRESENT WHEN THE FIELD DECLARES A CONCEALMENT, OR WHEN ANYBODY
-	// HAS LEARNED A FACT — a plain dungeon nobody learned anything in writes
-	// no key at all, the exact bytes every pre-concealment blob already has,
-	// and a blob carrying an empty world for a field that hides nothing
-	// is refused at load (a shape this build never writes). Absent on a
-	// concealing field is legal and means nobody has learned anything yet
-	// (an occupant of hidden floor in such a blob is pierced at load, so
-	// presence holds from frame one for reloads too).
+	// Journal is the run's ONE record of what happened: every knowledge fact
+	// (who has found which concealment, rpg-toolkit#1371, rpg-project#490;
+	// who has come to know which fact, rpg-project#375; which pair publicly
+	// settled), and every holdings fact (holdings, takings and drops,
+	// rpg-project#368, holdings.go), in the order they were appended. The
+	// order IS the journal's clock, so one list is what lets load replay a
+	// knowledge fact and a holdings fact in the interleaving they happened in
+	// and reassign the same sequence numbers.
+	//
+	// PRESENT WHEN THE FIELD DECLARES A CONCEALMENT, OR WHEN ANYTHING HAS
+	// HAPPENED THAT THE JOURNAL RECORDS — a plain dungeon where nobody learned
+	// or took anything writes no key at all, and a blob carrying an empty
+	// journal for a field that hides nothing is refused at load (a shape this
+	// build never writes). Absent on a concealing field is legal and means
+	// nothing has happened yet (an occupant of hidden floor in such a blob is
+	// pierced at load, so presence holds from frame one for reloads too).
+	//
 	// The graph the facts fold against is NOT stored: it is construction
 	// truth, reseeded from the field and the roster at every load, so it
 	// cannot drift from the dungeon — and neither is any stance: a pair's
-	// posture is derived from these facts on every question.
-	//
-	// One half of ONE journal: the holdings facts beside it in Holdings are
-	// the other half, split by kind at the storage boundary and rejoined at
-	// load (world.go).
-	World *WorldData `json:"world,omitempty"`
-
-	// Holdings is the run's answer to who has what: the journal facts
-	// recording holdings, takings and drops (rpg-project#368, holdings.go).
-	// PRESENT EXACTLY WHEN SOMETHING HAS HAPPENED — an encounter where
-	// nobody was authored knowing anything and nobody has picked anything up
-	// writes no key at all, the exact bytes every pre-holdings blob already
-	// has. Unlike World above, this is NOT conditioned on the field: a
-	// dungeon with no secret anywhere can still have a holdable idol on a
-	// plinth.
-	//
-	// The journal is the ONE answer (design P5). [MemberInput.Holds] seeds
-	// it at Setup and is deliberately absent from [MemberData]: re-seeding
-	// at load would hand a looted captain back the intel somebody already
-	// took off them.
-	Holdings *HoldingsData `json:"holdings,omitempty"`
+	// posture is derived from these facts on every question. [MemberInput.Holds]
+	// seeds the journal at Setup and is deliberately absent from [MemberData]:
+	// re-seeding at load would hand a looted captain back the intel somebody
+	// already took off them.
+	Journal *JournalData `json:"journal,omitempty"`
 
 	// Reserve is every member held back by an arrival predicate
 	// (rpg-project#375, design §3.7; reserve.go): its facts, the cell it
@@ -478,10 +468,12 @@ type FootprintData struct {
 // about the member and not yet a fact about the run. Arrives is the predicate,
 // REQUIRED — a reserve entry with none would be a member waiting for nothing.
 type ReserveData struct {
-	ID   MemberID     `json:"id"`
-	Kind MemberKind   `json:"kind"`
-	Name string       `json:"name,omitempty"`
-	Cell PositionData `json:"cell"`
+	ID   MemberID   `json:"id"`
+	Kind MemberKind `json:"kind"`
+	Name string     `json:"name,omitempty"`
+	// AppearanceRef retains the authored visual choice before arrival.
+	AppearanceRef string       `json:"appearance_ref,omitempty"`
+	Cell          PositionData `json:"cell"`
 
 	// Intimidate, Persuade, Table and Temper are [MemberData]'s own keys,
 	// kept for a member still waiting to arrive — its facts are the same
@@ -821,38 +813,54 @@ type CheckApproachData struct {
 	DC      int    `json:"dc"`
 }
 
-// WorldData is the persistent representation of the run's concealment
-// knowledge: the journal, and nothing else — see [EncounterData.World] for
-// why the graph is reseeded rather than stored.
-type WorldData struct {
-	// Facts are the knowledge facts in append order. Order IS the journal's
-	// clock (facts fold in sequence), so load replays them in this order
-	// and the reassigned sequence numbers come out identical.
+// JournalData is the persistent representation of the run's journal: the
+// facts, and nothing else — see [EncounterData.Journal] for why the graph is
+// reseeded rather than stored and why one list.
+type JournalData struct {
+	// Facts are every persisted fact in append order. Order IS the journal's
+	// clock (facts fold in sequence, and a later fact about the same subject
+	// supersedes an earlier one), so load replays them in this order and the
+	// reassigned sequence numbers come out identical.
 	Facts []FactData `json:"facts"`
 }
 
-// HoldingsData is the persistent representation of the run's holdings
-// journal — the facts, and nothing else. Present state is FOLDED from them
-// on every question (holdings.go), so there is no second copy of "who has
-// what" here to disagree with the record.
-type HoldingsData struct {
-	// Facts are the holdings facts in append order. Order IS the journal's
-	// clock — a later fact about the same subject supersedes an earlier one
-	// — so load replays them in this order and the reassigned sequence
-	// numbers come out identical.
-	Facts []FactData `json:"facts"`
+// journalEntry is one stored fact with its place in [JournalData.Facts], so a
+// validator that sees only one kind's facts still names the fact by its place
+// in the whole list.
+type journalEntry struct {
+	at   int
+	fact FactData
 }
 
-// holdingsDataFrom renders the holdings journal for the blob, or nil when
-// nothing has happened.
-func holdingsDataFrom(h *holdings) *HoldingsData {
-	var out *HoldingsData
-	for _, f := range h.log.All() {
-		if !isHoldingsKind(string(f.Kind)) {
+// splitJournal separates a stored journal's facts by the validator that owns
+// them, each in stored order: the holdings kinds ([isHoldingsKind]) and every
+// other kind, which the world's validator judges. It only sorts for
+// validation; replay walks the one list.
+func splitJournal(data *JournalData) (world, held []journalEntry) {
+	for i, fd := range data.Facts {
+		if isHoldingsKind(fd.Kind) {
+			held = append(held, journalEntry{at: i, fact: fd})
+		} else {
+			world = append(world, journalEntry{at: i, fact: fd})
+		}
+	}
+	return world, held
+}
+
+// journalDataFrom renders the journal for the blob, every persisted fact in
+// append order — the knowledge kinds and the holdings kinds interleaved as they
+// happened. It is nil when the field hides nothing and nothing has happened.
+func journalDataFrom(w *encounterWorld) *JournalData {
+	var out *JournalData
+	if w.conceals() {
+		out = &JournalData{Facts: []FactData{}}
+	}
+	for _, f := range w.log.All() {
+		if !isWorldKind(string(f.Kind)) && !isHoldingsKind(string(f.Kind)) {
 			continue
 		}
 		if out == nil {
-			out = &HoldingsData{Facts: []FactData{}}
+			out = &JournalData{Facts: []FactData{}}
 		}
 		out.Facts = append(out.Facts, factDataFrom(f))
 	}
@@ -890,10 +898,10 @@ func factDataFrom(f journal.Fact) FactData {
 // had, and a drop cell that is floor. What a fold MEANS is not re-derived here — that
 // is holdings.go's, and a second copy of it would be a second thing to be
 // wrong.
-func validateHoldingsFacts(data *HoldingsData, f *field, everMembers []MemberID) error {
+func validateHoldingsFacts(facts []journalEntry, f *field, everMembers []MemberID) error {
 	// BOTH KINDS OF PROP (rpg-toolkit#1854). A placed footprint is held,
 	// dropped and arrives through these same facts, so a boundary that knew
-	// only the legacy list would refuse every save of a run in which somebody
+	// only the cell prop list would refuse every save of a run in which somebody
 	// picked one up — which is what it did, caught on the #1854 walk when a
 	// held placed letter turned the camp and the dissolve reloaded the world.
 	// The id namespace is shared by construction (compilePlaced refuses a
@@ -920,7 +928,8 @@ func validateHoldingsFacts(data *HoldingsData, f *field, everMembers []MemberID)
 		members[string(id)] = true
 	}
 
-	for i, fd := range data.Facts {
+	for _, entry := range facts {
+		i, fd := entry.at, entry.fact
 		// AN ARRIVAL IS ITS OWN SHAPE (rpg-project#375, reserve.go): the
 		// actor is the thing that arrived — a prop, which is no member, or a
 		// member the run has since had — the subject says which, and the
@@ -1027,22 +1036,24 @@ func validateHoldingsFacts(data *HoldingsData, f *field, everMembers []MemberID)
 	return nil
 }
 
-// replayHoldingsFacts restores the holdings journal from the blob, in the
-// stored order.
-func replayHoldingsFacts(h *holdings, data *HoldingsData) error {
-	for _, fd := range data.Facts {
+// replayJournal restores the one journal from the blob, every fact in the
+// stored order — knowledge and holdings interleaved exactly as they were
+// appended, so the journal reassigns the same sequence numbers and a fold over
+// the reloaded world answers exactly what the saved one did.
+func replayJournal(w *encounterWorld, data *JournalData) error {
+	for i, fd := range data.Facts {
 		audience := make(journal.Audience, 0, len(fd.Audience))
 		for _, id := range fd.Audience {
 			audience = append(audience, journal.EntityID(id))
 		}
-		if _, err := h.log.Append(journal.Fact{
+		if _, err := w.log.Append(journal.Fact{
 			Kind:     journal.Kind(fd.Kind),
 			Actor:    journal.EntityID(fd.Actor),
 			Subject:  journal.EntityID(fd.Subject),
 			Audience: audience,
 			Outcome:  journal.Outcome{Detail: fd.Detail},
 		}); err != nil {
-			return fmt.Errorf("replay holdings fact %q: %w: %w", fd.Kind, ErrInvalidData, err)
+			return fmt.Errorf("journal fact %d (%q): %w: %w", i, fd.Kind, ErrInvalidData, err)
 		}
 	}
 	return nil
@@ -1060,17 +1071,6 @@ type FactData struct {
 	Subject  string   `json:"subject,omitempty"`
 	Audience []string `json:"audience"`
 	Detail   string   `json:"detail,omitempty"`
-}
-
-// worldDataFrom renders the knowledge half of the one journal for the blob
-// — every `known:*` fact, in append order.
-func worldDataFrom(w *encounterWorld) *WorldData {
-	facts := w.knowledgeFacts()
-	out := &WorldData{Facts: make([]FactData, 0, len(facts))}
-	for _, f := range facts {
-		out.Facts = append(out.Facts, factDataFrom(f))
-	}
-	return out
 }
 
 // validateWorldFacts rejects persisted world facts this field cannot have
@@ -1095,7 +1095,7 @@ func worldDataFrom(w *encounterWorld) *WorldData {
 // the same way: a blob claiming an allied pair turned hostile is claiming
 // something this field has no machinery for.
 func validateWorldFacts(
-	data *WorldData, concealments []ConcealmentInput, regions []RegionInput, facts []FactID,
+	entries []journalEntry, concealments []ConcealmentInput, regions []RegionInput, facts []FactID,
 	turnable []factionPair, everMembers []MemberID,
 ) error {
 	// kind -> the subject that kind's writer always records; "" for a fact
@@ -1121,7 +1121,8 @@ func validateWorldFacts(
 		members[string(id)] = true
 	}
 
-	for i, f := range data.Facts {
+	for _, entry := range entries {
+		i, f := entry.at, entry.fact
 		if pair, turns := settled[f.Kind]; turns {
 			if err := validateSettledFact(i, f, pair); err != nil {
 				return err
@@ -1167,29 +1168,6 @@ func validateSettledFact(i int, f FactData, pair factionPair) error {
 	if len(f.Audience) != len(want) || f.Audience[0] != want[0] || f.Audience[1] != want[1] {
 		return fmt.Errorf(
 			"world fact %d settles %s and is not audienced to exactly those two factions: %w", i, pair, ErrInvalidData)
-	}
-	return nil
-}
-
-// replayWorldFacts appends persisted facts back into a freshly seeded
-// world's journal, in stored order — the journal reassigns the same
-// sequence numbers, so a fold over the reloaded world answers exactly what
-// the saved one did.
-func replayWorldFacts(w *encounterWorld, data *WorldData) error {
-	for i, fd := range data.Facts {
-		audience := make(journal.Audience, 0, len(fd.Audience))
-		for _, id := range fd.Audience {
-			audience = append(audience, journal.EntityID(id))
-		}
-		if _, err := w.log.Append(journal.Fact{
-			Kind:     journal.Kind(fd.Kind),
-			Actor:    journal.EntityID(fd.Actor),
-			Subject:  journal.EntityID(fd.Subject),
-			Audience: audience,
-			Outcome:  journal.Outcome{Detail: fd.Detail},
-		}); err != nil {
-			return fmt.Errorf("world fact %d: %w: %w", i, ErrInvalidData, err)
-		}
 	}
 	return nil
 }
@@ -1669,10 +1647,12 @@ func convertDoorDataToDoorInput(doors []DoorData) ([]DoorInput, error) {
 // no installed base — only a hand-kept fixture, which is exactly what should be
 // recreated rather than reinterpreted.
 type MemberData struct {
-	ID   MemberID      `json:"id"`
-	Kind MemberKind    `json:"kind"`
-	Name string        `json:"name,omitempty"`
-	Cell *PositionData `json:"cell"`
+	ID   MemberID   `json:"id"`
+	Kind MemberKind `json:"kind"`
+	Name string     `json:"name,omitempty"`
+	// AppearanceRef is authored content, not the observer's captured answer.
+	AppearanceRef string        `json:"appearance_ref,omitempty"`
+	Cell          *PositionData `json:"cell"`
 
 	// speed_feet, sight_feet, actions and targeting are GONE (rpg-project#538).
 	// They were copies of the member's sheet taken at Join; the sheet owns
@@ -1844,6 +1824,7 @@ func (e *Encounter) snapshot() EncounterData {
 			ID:             m.ID,
 			Kind:           m.Kind,
 			Name:           m.Name,
+			AppearanceRef:  m.AppearanceRef,
 			Cell:           &PositionData{X: cell.X, Y: cell.Y},
 			Intimidate:     approachesDataFrom(m.Intimidate),
 			Persuade:       approachesDataFrom(m.Persuade),
@@ -1918,16 +1899,9 @@ func (e *Encounter) snapshot() EncounterData {
 		}
 	}
 
-	// The knowledge half of the journal, present when the field conceals
-	// anything or anybody has learned anything — see EncounterData.World.
-	var worldData *WorldData
-	if e.world.conceals() || len(e.world.knowledgeFacts()) > 0 {
-		worldData = worldDataFrom(e.world)
-	}
-
-	// The holdings journal, present exactly when it holds anything — see
-	// EncounterData.Holdings.
-	holdingsData := holdingsDataFrom(e.holdings)
+	// The one journal, present when the field conceals anything or anything
+	// the journal records has happened — see EncounterData.Journal.
+	journalData := journalDataFrom(e.world)
 
 	// The reserve, in ID order, present exactly when something is waiting —
 	// see EncounterData.Reserve.
@@ -1938,6 +1912,7 @@ func (e *Encounter) snapshot() EncounterData {
 			ID:             rm.record.ID,
 			Kind:           rm.record.Kind,
 			Name:           rm.record.Name,
+			AppearanceRef:  rm.record.AppearanceRef,
 			Cell:           PositionData{X: rm.at.X, Y: rm.at.Y},
 			Intimidate:     approachesDataFrom(rm.record.Intimidate),
 			Persuade:       approachesDataFrom(rm.record.Persuade),
@@ -1962,8 +1937,7 @@ func (e *Encounter) snapshot() EncounterData {
 		Members:            membersData,
 		Doors:              doorData,
 		SightAreas:         sightAreasData,
-		World:              worldData,
-		Holdings:           holdingsData,
+		Journal:            journalData,
 		Reserve:            reserveData,
 		Endings:            endingsData,
 		EverMembers:        everMembersSlice,
@@ -2425,7 +2399,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			return nil, fmt.Errorf("load encounter: empty member id: %w: %w", ErrInvalidData, ErrNoMember)
 		}
 		if seenIDs[m.ID] {
-			return nil, fmt.Errorf("load encounter: duplicate member %q: %w: %w", m.ID, ErrInvalidData, ErrNoMember)
+			return nil, fmt.Errorf("load encounter: duplicate member %q: %w: %w", m.ID, ErrInvalidData, ErrDuplicateMember)
 		}
 		seenIDs[m.ID] = true
 
@@ -2470,6 +2444,10 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 				m.ID, cell.X, cell.Y, prop, ErrInvalidData, ErrBadPlacement)
 		}
 
+		if err := validateAppearanceRef(m.AppearanceRef); err != nil {
+			return nil, fmt.Errorf("load encounter: member %q: %w: %w", m.ID, ErrInvalidData, err)
+		}
+
 		// A faction this field does not have, or a mind in the wrong
 		// faction, is the SAME refusal Setup and Join make — a blob that
 		// names a side the dungeon never declared was edited.
@@ -2498,7 +2476,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 		if seenIDs[r.ID] {
 			return nil, fmt.Errorf("load encounter: reserve %q is also a member, or reserved twice: %w: %w",
-				r.ID, ErrInvalidData, ErrNoMember)
+				r.ID, ErrInvalidData, ErrDuplicateMember)
 		}
 		seenIDs[r.ID] = true
 		cell := spatial.Position{X: r.Cell.X, Y: r.Cell.Y}
@@ -2519,8 +2497,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 				r.ID, cell.X, cell.Y, prop, ErrInvalidData, ErrBadPlacement)
 		}
 		if err := validateMemberFacts(memberFacts{
-			ID:         r.ID,
-			Intimidate: approachesFromData(r.Intimidate), Persuade: approachesFromData(r.Persuade),
+			ID:            r.ID,
+			AppearanceRef: r.AppearanceRef,
+			Intimidate:    approachesFromData(r.Intimidate), Persuade: approachesFromData(r.Persuade),
 			Table: tableFromData(r.Table),
 		}); err != nil {
 			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, err)
@@ -2561,10 +2540,12 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// concealment it declares, or a fact it mentions. A world key on a field
 	// that hides nothing and has learned nothing is a shape this build never
 	// writes — an edited blob, refused by name.
-	if data.World != nil {
-		if !fieldConcealed && len(data.World.Facts) == 0 {
+	var worldFacts, heldFacts []journalEntry
+	if data.Journal != nil {
+		worldFacts, heldFacts = splitJournal(data.Journal)
+		if !fieldConcealed && len(data.Journal.Facts) == 0 {
 			return nil, fmt.Errorf(
-				"load encounter: blob carries a world but the field declares no concealment: %w", ErrInvalidData)
+				"load encounter: blob carries an empty journal but the field declares no concealment: %w", ErrInvalidData)
 		}
 		// The roster's and the reserve's own authored facts count as
 		// mintable too — see mintedFactIDs. Both lists, because a member
@@ -2579,7 +2560,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 		mintable := mintedFactIDs(f, triggersOf(endingInputsForValidation), taught)
 		if err = validateWorldFacts(
-			data.World, fieldInput.Concealments, fieldInput.Regions, mintable, turnablePairsOf(f), data.EverMembers,
+			worldFacts, fieldInput.Concealments, fieldInput.Regions, mintable, turnablePairsOf(f), data.EverMembers,
 		); err != nil {
 			return nil, fmt.Errorf("load encounter: %w", err)
 		}
@@ -2591,7 +2572,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// present is unreachable (abandonment means the membership emptied).
 	if data.Outcome != nil {
 		if data.Outcome.Ending == "abandoned" && len(data.Members) > 0 {
-			return nil, fmt.Errorf("load encounter: abandoned outcome with members present: %w: %w", ErrInvalidData, ErrNoMember)
+			return nil, fmt.Errorf("load encounter: abandoned outcome with members present: %w", ErrInvalidData)
 		}
 		for _, om := range data.Outcome.Members {
 			// A missing cell is how the pre-#1068 dialect announces itself:
@@ -2632,7 +2613,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			}
 		}
 		if !found {
-			return nil, fmt.Errorf("load encounter: member %q missing from ever_members: %w: %w", m.ID, ErrInvalidData, ErrNoMember)
+			return nil, fmt.Errorf("load encounter: member %q missing from ever_members: %w: %w", m.ID, ErrInvalidData, ErrBadMember)
 		}
 	}
 
@@ -2730,8 +2711,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			data.Pause.Member, ErrInvalidData)
 	}
 
-	data.Perception, err = normalizePerceptionSubjects(data.Perception, data.PerceptionSubjects)
-	if err != nil {
+	if err = requirePerceptionSubjects(data.PerceptionSubjects); err != nil {
 		return nil, err
 	}
 	if err = refuseRoomLocalSightings(data.Perception); err != nil {
@@ -2759,11 +2739,10 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		members:       make(map[MemberID]*memberRecord),
 		everMembers:   make(map[MemberID]bool),
 		initiative:    input.Initiative,
-		standing:      input.Standing,
-		participation: input.Standing,
+		participation: input.Participation,
 		sight:         input.Sight,
 		equipment:     input.Equipment,
-		conditions:    input.Equipment,
+		conditions:    input.Conditions,
 		sheets:        input.Sheets,
 		driver:        input.Driver,
 		roller:        input.Roller,
@@ -2792,18 +2771,11 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		e.witness = input.Witness
 	}
 
-	// Replay the persisted facts into the one journal — knowledge first,
-	// then holdings, each in its stored order — and reseed the graph from
-	// the field (construction truth) once the roster and endings are known
-	// below. Load-act-save, no migration: an absent world key on a concealed
-	// field is a run where nobody has learned anything yet, which is what
-	// every pre-#1371 blob meant. No fold reads across the two lists' order,
-	// so splitting them at save and rejoining them here is byte-stable.
-	if data.World != nil {
-		if err = replayWorldFacts(e.world, data.World); err != nil {
-			return nil, fmt.Errorf("load encounter: %w", err)
-		}
-	}
+	// The graph is reseeded from the field (construction truth) once the
+	// roster and endings are known below, and the persisted facts are replayed
+	// into the one journal further down. Load-act-save, no migration: an
+	// absent journal on a concealed field is a run where nothing has happened
+	// yet.
 
 	// A record's target must name a concealment this field declares — the
 	// SAME check NewEncounter makes, against the same compiled field, so a
@@ -2813,15 +2785,16 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
 
-	// The holdings journal replayed — see EncounterData.Holdings. This is the
-	// ONE restore of "who has what": nothing re-seeds [MemberInput.Holds]
-	// here, because the journal already holds whatever is left of it after
-	// however much looting happened.
-	if data.Holdings != nil {
-		if err = validateHoldingsFacts(data.Holdings, f, data.EverMembers); err != nil {
+	// The journal replayed — see EncounterData.Journal. Every fact goes back
+	// in the ONE stored order, knowledge and holdings interleaved as they
+	// happened. This is also the ONE restore of "who has what": nothing
+	// re-seeds [MemberInput.Holds] here, because the journal already holds
+	// whatever is left of it after however much looting happened.
+	if data.Journal != nil {
+		if err = validateHoldingsFacts(heldFacts, f, data.EverMembers); err != nil {
 			return nil, fmt.Errorf("load encounter: %w", err)
 		}
-		if err = replayHoldingsFacts(e.holdings, data.Holdings); err != nil {
+		if err = replayJournal(e.world, data.Journal); err != nil {
 			return nil, fmt.Errorf("load encounter: %w", err)
 		}
 	}
@@ -2830,8 +2803,8 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// still holds in reserve cannot also have arrived — the journal would say
 	// it came and the reserve would say it is waiting, and a fold cannot
 	// serve both.
-	if data.Holdings != nil {
-		for _, fd := range data.Holdings.Facts {
+	if data.Journal != nil {
+		for _, fd := range data.Journal.Facts {
 			id, _, ok := parseArrived(fd.Kind)
 			if !ok || journal.EntityID(fd.Subject) != memberSubject(MemberID(id)) {
 				continue
@@ -2877,6 +2850,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			ID:             m.ID,
 			Kind:           m.Kind,
 			Name:           m.Name,
+			AppearanceRef:  m.AppearanceRef,
 			Intimidate:     approachesFromData(m.Intimidate),
 			Persuade:       approachesFromData(m.Persuade),
 			Table:          tableFromData(m.Table),
@@ -2922,6 +2896,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 				ID:             r.ID,
 				Kind:           r.Kind,
 				Name:           r.Name,
+				AppearanceRef:  r.AppearanceRef,
 				Intimidate:     approachesFromData(r.Intimidate),
 				Persuade:       approachesFromData(r.Persuade),
 				Table:          tableFromData(r.Table),
@@ -3210,13 +3185,9 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 			Props:  append([]PropID(nil), cd.Props...),
 		}
 		if cd.Attempts != nil {
-			if cd.Attempts.Lifetime == "" {
-				return FieldInput{}, fmt.Errorf("concealment %q stored attempts has no lifetime: %w", cd.ID, ErrInvalidData)
-			}
 			c.Attempts = &DiscoveryPolicyInput{
 				MaxAttempts: &cd.Attempts.MaxAttempts,
 				ResetHexes:  &cd.Attempts.ResetHexes,
-				Lifetime:    &cd.Attempts.Lifetime,
 			}
 		}
 		for _, at := range cd.Cells {

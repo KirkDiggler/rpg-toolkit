@@ -15,7 +15,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // target_held.go holds the rules for effects the TARGET of an attack holds
@@ -27,18 +26,6 @@ import (
 
 // heldRuleFor builds the rule for one held condition on its holder.
 type heldRuleFor func(holder string, held contributions.HeldCondition) contributions.ActionAssessor
-
-// targetHeldRules is every answering target-census ref's rule, keyed by
-// condition ref. Each handler builds its rule through the same constructor.
-var targetHeldRules = map[string]heldRuleFor{
-	refs.Conditions.FaerieFire().String():     newFaerieFireHeldRule,
-	refs.Conditions.GuidingBolt().String():    newGuidingBoltHeldRule,
-	refs.Conditions.Dodging().String():        newDodgingHeldRule,
-	refs.Conditions.Prone().String():          newProneHeldRule,
-	refs.Conditions.Sanctuary().String():      newSanctuaryHeldRule,
-	refs.Conditions.Hidden().String():         newHiddenHeldRule,
-	refs.Conditions.RecklessAttack().String(): newRecklessHeldRule,
-}
 
 // heldRule answers for one condition its holder holds, on an attack against
 // that holder. The shared gate runs first; decide answers only once the frame
@@ -206,7 +193,7 @@ type AssessTargetHeldEffectsOutput struct {
 // it has one, so it never equals a row for the actor's own effect.
 //
 // Reading spends, rolls and publishes nothing. Errors: nil input, an invalid
-// frame, an unknown target, a held ref the target census does not classify, a
+// frame, an unknown target, a held ref the registry does not hold, a
 // bearing effect with no description, an invalid answer, and a duplicate row
 // ID.
 func AssessTargetHeldEffects(in *AssessTargetHeldEffectsInput) (*AssessTargetHeldEffectsOutput, error) {
@@ -228,38 +215,39 @@ func AssessTargetHeldEffects(in *AssessTargetHeldEffectsInput) (*AssessTargetHel
 	effects := make([]contributions.Effect, 0, len(held))
 	ids := make(map[string]struct{}, len(held))
 	for _, condition := range held {
-		entry, classified := targetCensus[condition.Ref]
-		if !classified {
-			return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "held condition %s has no target census entry", condition.Ref)
+		entry, err := lookup(condition.Ref)
+		if err != nil {
+			return nil, rpgerr.Wrapf(err, "held condition %s", condition.Ref)
 		}
-		if entry.class == censusNotBearing {
+		against := entry.againstHolder
+		if against.kind == bearingNone {
 			continue
 		}
 		ref, err := core.ParseString(condition.Ref)
 		if err != nil {
 			return nil, rpgerr.Wrapf(err, "held condition %s", condition.Ref)
 		}
-		display, found := DisplayFor(*ref)
-		if !found || display.Detail == "" {
+		display := entry.display
+		if display.Detail == "" {
 			return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "held condition %s bears on attacks but has no description", condition.Ref)
 		}
 		effect := contributions.Effect{
 			ID:            heldEffectID(condition),
 			Source:        contributions.Source{Ref: ref, Name: display.Name, SourceID: condition.SourceID},
 			Description:   display.Detail,
-			Participation: entry.participation,
+			Participation: against.participation,
 		}
 		if _, duplicate := ids[effect.ID]; duplicate {
 			return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "duplicate effect row id %q", effect.ID)
 		}
 		ids[effect.ID] = struct{}{}
 
-		switch entry.class {
-		case censusNotYetAnswering:
+		switch against.kind {
+		case bearingNotYetAnswering:
 			effect.State = contributions.StateUnavailable
 			effect.Reason = unavailableReason
-		case censusAnswers:
-			answer, err := assessHeld(target, condition, in.Frame, entry)
+		case bearingAnswers:
+			answer, err := assessHeld(target, condition, in.Frame, entry.heldRule)
 			if err != nil {
 				return nil, err
 			}
@@ -267,7 +255,7 @@ func AssessTargetHeldEffects(in *AssessTargetHeldEffectsInput) (*AssessTargetHel
 			effect.Reason = answer.Decision.Reason
 			effect.Benefit = answer.Benefit
 		default:
-			return nil, rpgerr.Newf(rpgerr.CodeInternal, "held condition %s has unknown census class %q", condition.Ref, entry.class)
+			return nil, rpgerr.Newf(rpgerr.CodeInternal, "held condition %s has unknown bearing kind %d", condition.Ref, against.kind)
 		}
 		effects = append(effects, effect)
 	}
@@ -285,20 +273,19 @@ func heldEffectID(held contributions.HeldCondition) string {
 
 // assessHeld asks one answering held condition's rule and validates its answer.
 func assessHeld(
-	holder string, held contributions.HeldCondition, frame contributions.Frame, entry censusEntry,
+	holder string, held contributions.HeldCondition, frame contributions.Frame, build heldRuleFor,
 ) (contributions.Answer, error) {
-	rule, ok := targetHeldRules[held.Ref]
-	if !ok {
-		return contributions.Answer{}, rpgerr.Newf(rpgerr.CodeInternal, "held condition %s is classified as answering but has no rule", held.Ref)
+	if build == nil {
+		return contributions.Answer{}, rpgerr.Newf(rpgerr.CodeInternal, "held condition %s is registered as answering but has no rule", held.Ref)
 	}
-	out, err := rule(holder, held).AssessAction(&contributions.AssessActionInput{Frame: frame.Clone()})
+	out, err := build(holder, held).AssessAction(&contributions.AssessActionInput{Frame: frame.Clone()})
 	if err != nil {
 		return contributions.Answer{}, fmt.Errorf("assess held %s: %w", held.Ref, err)
 	}
 	if out == nil {
 		return contributions.Answer{}, rpgerr.Newf(rpgerr.CodeInternal, "held condition %s returned no answer", held.Ref)
 	}
-	if err := validateAnswer(out.Answer, entry.participation); err != nil {
+	if err := validateAnswer(out.Answer); err != nil {
 		return contributions.Answer{}, fmt.Errorf("assess held %s: %w", held.Ref, err)
 	}
 	return out.Answer, nil
@@ -319,15 +306,19 @@ type ExecuteHeldEffectOutput struct {
 
 // ExecuteHeldEffect asks a held condition's by-reference rule with execution
 // semantics, for a caller that applies the effect itself — resolution, where a
-// check like Sanctuary's ward lives. Errors: nil input; a ref with no held
-// rule; an invalid frame or a Depends answer, wrapping
+// check like Sanctuary's ward lives. Errors: nil input; an unregistered ref
+// (wrapping ErrUnknownCondition); a registered ref with no held rule; an invalid frame or a Depends answer, wrapping
 // contributions.ErrRuleCannotAnswer.
 func ExecuteHeldEffect(in *ExecuteHeldEffectInput) (*ExecuteHeldEffectOutput, error) {
 	if in == nil {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "execute held effect requires input")
 	}
-	rule, ok := targetHeldRules[in.Held.Ref]
-	if !ok {
+	entry, err := lookup(in.Held.Ref)
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "held condition %s", in.Held.Ref)
+	}
+	rule := entry.heldRule
+	if rule == nil {
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "held condition %s has no held rule", in.Held.Ref)
 	}
 	executed, err := executeHeld(&executeHeldInput{

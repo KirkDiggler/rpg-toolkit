@@ -24,16 +24,16 @@ type DamageChange struct {
 	Dice   string
 }
 
-// Answer is a rule's whole reply to one frame: its decision, how it takes
-// part, and what it contributes as data. Benefit, Damage, Roll and AttackMode
-// are non-empty only when the decision is Applies. It holds no total.
+// Answer is a rule's whole reply to one frame: its decision and what it
+// contributes as data. How the effect takes part is its condition
+// descriptor's, never the rule's. Benefit, Damage, Roll and AttackMode are
+// non-empty only when the decision is Applies. It holds no total.
 type Answer struct {
-	Decision      Decision
-	Participation Participation
-	Benefit       string
-	Damage        []DamageChange
-	Roll          []DiceContribution
-	AttackMode    AttackMode
+	Decision   Decision
+	Benefit    string
+	Damage     []DamageChange
+	Roll       []DiceContribution
+	AttackMode AttackMode
 }
 
 // AttackMode is what a rule contributes to the attack roll's advantage: one

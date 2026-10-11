@@ -284,3 +284,23 @@ func (g *DivineFavorCondition) onDamageChain(
 	}
 	return c, nil
 }
+
+// divineFavorDescriptor is the one entry for [DivineFavorCondition]; see [descriptors].
+var divineFavorDescriptor = descriptor{
+	ref:     refs.Conditions.DivineFavor(),
+	display: Display{Name: DivineFavorName, Detail: "Your weapon attacks deal an extra 1d4 radiant damage."},
+	load:    loaderOf[DivineFavorCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		source, err := core.ParseString(in.SourceRef)
+		if err != nil {
+			return nil, err
+		}
+		return createdAs(NewDivineFavorCondition(NewDivineFavorConditionInput{
+			MemberID: in.MemberID, SourceID: in.MemberID, SourceRef: source,
+		}))
+	},
+	ownAction:     answersNow,
+	againstHolder: notBearing,
+}
+
+var _ contributions.ActionAssessor = (*DivineFavorCondition)(nil)

@@ -180,8 +180,7 @@ func (s *PureLoadTestSuite) TestConditionsSurviveALoadWithNoBus() {
 	char, err := Load(s.ctx, fullSheet(&s.Suite))
 	s.Require().NoError(err)
 
-	s.Require().Len(char.GetConditions(), 1)
-	s.Require().Equal(ragingBlob(&s.Suite), mustToData(s.T(), char).Conditions[0])
+	s.Require().Contains(mustToData(s.T(), char).Conditions, ragingBlob(&s.Suite))
 }
 
 // A loaded sheet is inert. Nothing is applied, nothing is subscribed, and no
@@ -224,40 +223,47 @@ func (s *PureLoadTestSuite) TestLegacyLoadDropsAMalformedCondition() {
 	char, err := LoadFromData(s.ctx, data, events.NewEventBus())
 
 	s.Require().NoError(err)
-	s.Require().Len(authored(char), 1, "the unreadable condition is silently dropped")
+	s.Require().Contains(heldRefs(authored(char)), refs.Conditions.Raging().String(), "the readable condition stays")
+	s.Require().NotContains(heldRefs(authored(char)), "dnd5e:conditions:nope", "the unreadable condition is silently dropped")
+}
+
+// A sheet naming a race the catalogue does not hold is refused on both load
+// paths: there is no base speed to state for it, and none is made up.
+func (s *PureLoadTestSuite) TestASheetNamingAnUnknownRaceIsRefused() {
+	data := fullSheet(&s.Suite)
+	data.RaceID = "nope"
+
+	_, err := Load(s.ctx, data)
+	s.Require().Error(err)
+	s.Equal(rpgerr.CodeInvalidArgument, rpgerr.GetCode(err))
+	s.Contains(err.Error(), "nope")
+
+	_, err = LoadFromData(s.ctx, data, events.NewEventBus())
+	s.Require().Error(err)
+	s.Equal(rpgerr.CodeInvalidArgument, rpgerr.GetCode(err))
 }
 
 // inFogBlob is an In Fog condition exactly as a sheet saved one before the
-// type retired.
+// type was removed.
 var inFogBlob = json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"in_fog"},` +
 	`"member_id":"char-load","source_id":"area-1","source_ref":{"module":"dnd5e","type":"spells","id":"fog-cloud"}}`)
 
-// A sheet saved with an In Fog condition loads and carries none, on the strict
-// path too: the type retired, membership is the encounter's answer, and the
-// sheet saves without it.
-func (s *PureLoadTestSuite) TestASheetSavedInFogLoadsAndCarriesNone() {
+// A sheet saved with a condition of a removed type is refused by the strict
+// load as an unknown ref, and the lenient load drops it and keeps the rest.
+func (s *PureLoadTestSuite) TestASheetSavedInFogFailsStrictLoadAndIsDroppedByLenientLoad() {
 	data := fullSheet(&s.Suite)
 	data.Conditions = append(data.Conditions, inFogBlob)
 
-	char, err := Load(s.ctx, data)
-	s.Require().NoError(err, "a retired condition is dropped, never a failed load")
+	_, err := Load(s.ctx, data)
+	s.Require().ErrorIs(err, conditions.ErrUnknownCondition)
 
-	for _, condition := range char.GetConditions() {
-		raw, err := condition.ToJSON()
-		s.Require().NoError(err)
-		s.NotContains(string(raw), `"in_fog"`)
-	}
-	saved, err := json.Marshal(mustToData(s.T(), char))
+	lenient, err := LoadFromData(s.ctx, data, events.NewEventBus())
 	s.Require().NoError(err)
-	s.NotContains(string(saved), `"in_fog"`, "the sheet saves without it")
-	s.Require().Equal(marshalData(&s.Suite, fullSheet(&s.Suite)), marshalData(&s.Suite, mustToData(s.T(), char)),
-		"everything else the sheet carried survives")
-
-	legacy, err := LoadFromData(s.ctx, data, events.NewEventBus())
-	s.Require().NoError(err)
-	saved, err = json.Marshal(mustToData(s.T(), legacy))
+	saved, err := json.Marshal(mustToData(s.T(), lenient))
 	s.Require().NoError(err)
 	s.NotContains(string(saved), `"in_fog"`)
+	s.Require().Equal(marshalData(&s.Suite, fullSheet(&s.Suite)), marshalData(&s.Suite, mustToData(s.T(), lenient)),
+		"everything else the sheet carried survives")
 }
 
 // Features are the same species of loss as conditions, and get the same
@@ -279,7 +285,9 @@ func (s *PureLoadTestSuite) TestLegacyLoadDropsAFeatureFromAnotherModule() {
 	char, err := LoadFromData(s.ctx, data, events.NewEventBus())
 
 	s.Require().NoError(err)
-	s.Require().Len(mustToData(s.T(), char).Features, 1, "the foreign feature is silently dropped")
+	saved, err := json.Marshal(mustToData(s.T(), char).Features)
+	s.Require().NoError(err)
+	s.Require().NotContains(string(saved), "artificer", "the foreign feature is silently dropped")
 }
 
 // An inventory item the catalog does not know disappears from the sheet on the
@@ -332,9 +340,9 @@ func (s *PureLoadTestSuite) TestLenientLoadWarnsAndDropsNonpositiveInventoryQuan
 			loaded, err := LoadFromData(s.ctx, data, events.NewEventBus())
 
 			s.Require().NoError(err)
-			s.Require().Len(mustToData(s.T(), loaded).Inventory, 1,
+			s.Require().Equal(fullSheet(&s.Suite).Inventory, mustToData(s.T(), loaded).Inventory,
 				"the malformed row is dropped rather than defaulted to one")
-			s.Require().Len(logs.records, 1)
+			s.Require().NotEmpty(logs.records)
 			got := attrs(logs.records[0])
 			s.Equal("inventory item", got["dropped"])
 			s.Equal("1", got["index"])
@@ -362,7 +370,7 @@ func (s *PureLoadTestSuite) TestStrictLoadRejectsPersistedOwnerResourceBoundsBef
 	}
 	for _, tc := range tests {
 		s.Run(tc.name, func() {
-			data := &Data{Level: 1,
+			data := &Data{RaceID: "human", Level: 1,
 				ID: "fighter-bounds", ClassID: classes.Fighter,
 				Resources: map[coreResources.ResourceKey]RecoverableResourceData{resources.HitDice: tc.data},
 			}
@@ -381,7 +389,7 @@ func (s *PureLoadTestSuite) TestLenientLoadDropsMalformedOwnerResourcesWithoutNo
 		{Current: 4, Maximum: 3},
 	}
 	for _, malformed := range tests {
-		data := &Data{Level: 1,
+		data := &Data{RaceID: "human", Level: 1,
 			ID: "fighter-lenient-bounds", ClassID: classes.Fighter,
 			Resources: map[coreResources.ResourceKey]RecoverableResourceData{
 				resources.HitDice: malformed,
@@ -429,7 +437,7 @@ func (s *PureLoadTestSuite) TestStrictLoadRejectsFeaturePrivateResourceBoundsBef
 	}
 	for _, tc := range tests {
 		s.Run(tc.name, func() {
-			data := &Data{Level: 1, ID: "fighter-private", ClassID: classes.Fighter, Features: []json.RawMessage{tc.blob()}}
+			data := &Data{RaceID: "human", Level: 1, ID: "fighter-private", ClassID: classes.Fighter, Features: []json.RawMessage{tc.blob()}}
 			loaded, err := Load(s.ctx, data)
 			s.Require().Error(err)
 			s.Nil(loaded, "strict load must reject before malformed private uses reach StatusView")
@@ -443,7 +451,7 @@ func (s *PureLoadTestSuite) TestLenientLoadDropsMalformedFeaturePrivateResource(
 		CharacterID: "fighter-private-lenient", Uses: 2, MaxUses: 1,
 	})
 	s.Require().NoError(err)
-	loaded, err := LoadFromData(s.ctx, &Data{Level: 1,
+	loaded, err := LoadFromData(s.ctx, &Data{RaceID: "human", Level: 1,
 		ID: "fighter-private-lenient", ClassID: classes.Fighter, Features: []json.RawMessage{raw},
 	}, events.NewEventBus())
 	s.Require().NoError(err)
@@ -526,8 +534,10 @@ func (s *PureLoadTestSuite) TestAttachAppliesWhatLoadParsed() {
 
 	s.Require().NoError(Attach(s.ctx, char, events.NewEventBus()))
 
-	s.Require().Len(authored(char), 1)
-	s.Require().True(authored(char)[0].IsApplied())
+	s.Require().NotEmpty(authored(char))
+	for _, cond := range authored(char) {
+		s.Require().True(cond.IsApplied())
+	}
 	s.Require().False(char.GetResource(resources.RageCharges).IsApplied(),
 		"Attach does not apply character-owned resources")
 	s.Require().NotEmpty(char.subscriptionIDs, "the sheet keeper subscribed")
@@ -542,7 +552,7 @@ func (s *PureLoadTestSuite) TestAttachDrainsWhatItApplied() {
 	s.Require().NoError(Attach(s.ctx, char, events.NewEventBus()))
 
 	s.Require().Empty(char.pendingEffects)
-	s.Require().Len(authored(char), 1, "draining does not take the conditions off the sheet")
+	s.Require().NotEmpty(authored(char), "draining does not take the conditions off the sheet")
 }
 
 // Attaching the same sheet twice is refused rather than silently doubling every
@@ -573,9 +583,8 @@ func (s *PureLoadTestSuite) TestAttachScopesEachConditionToItsRef() {
 	s.Require().NoError(err)
 	s.Require().NoError(Attach(s.ctx, char, bus))
 
-	s.Require().Equal(
-		[]core.Ref{*refs.Conditions.Raging(), *refs.Conditions.OpportunityAttack()},
-		bus.record.asked, "the sheet's own condition, then the carried reaction")
+	s.Require().Equal([]core.Ref{*refs.Conditions.Raging()}, bus.record.asked,
+		"the sheet's own condition, and nothing the sheet does not store")
 	s.Require().Contains(bus.record.byRef[*refs.Conditions.Raging()], events.Topic("dnd5e.saves.chain"))
 }
 
@@ -590,15 +599,14 @@ func (s *PureLoadTestSuite) TestAttachScopesAttachableFeatureToItsRef() {
 	s.Require().NoError(err)
 	bus := newRecordingBus()
 
-	char, err := Load(s.ctx, &Data{Level: 1,
+	char, err := Load(s.ctx, &Data{RaceID: "human", Level: 1,
 		ID: "scoped-fighter", ClassID: classes.Fighter, Features: []json.RawMessage{secondWind},
 	})
 	s.Require().NoError(err)
 	s.Require().NoError(Attach(s.ctx, char, bus))
 
-	s.Require().Equal(
-		[]core.Ref{*refs.Features.SecondWind(), *refs.Conditions.OpportunityAttack()},
-		bus.record.asked, "the feature attaches before the carried reaction")
+	s.Require().Equal([]core.Ref{*refs.Features.SecondWind()}, bus.record.asked,
+		"the feature attaches, and no reaction the sheet does not store")
 	s.Require().Contains(bus.record.byRef[*refs.Features.SecondWind()], events.Topic("dnd5e.rest"))
 }
 

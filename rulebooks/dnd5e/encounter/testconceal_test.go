@@ -3,11 +3,7 @@
 
 package encounter_test
 
-import (
-	"sync"
-
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
-)
+import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 
 // testconceal_test.go is the scripted stand-ins for the two concealment
 // capabilities (rpg-toolkit#1371), in the same spirit as everyoneStanding
@@ -25,31 +21,9 @@ func (findsNothing) ResolveCheck(in *encounter.ResolveCheckInput) (*encounter.Re
 	return &encounter.ResolveCheckOutput{Beaten: false, Applied: in.Approaches[0]}, nil
 }
 
-// findsEverything is a CheckResolver whose every check succeeds by the first
-// listed route.
-type findsEverything struct{}
-
-// ResolveCheck beats the check by the first listed approach.
-func (findsEverything) ResolveCheck(in *encounter.ResolveCheckInput) (*encounter.ResolveCheckOutput, error) {
-	return &encounter.ResolveCheckOutput{Beaten: true, Applied: in.Approaches[0], Total: in.Approaches[0].DC}, nil
-}
-
-// recordingResolver wraps another resolver and records every check it was
-// asked to judge — for scenes about WHAT the sweep rolled rather than how
-// the roll went.
-type recordingResolver struct {
-	inner encounter.CheckResolver
-
-	mu    sync.Mutex
-	asked []encounter.ResolveCheckInput
-}
-
-// ResolveCheck records the question and delegates the answer.
-func (r *recordingResolver) ResolveCheck(in *encounter.ResolveCheckInput) (*encounter.ResolveCheckOutput, error) {
-	r.mu.Lock()
-	r.asked = append(r.asked, *in)
-	r.mu.Unlock()
-	return r.inner.ResolveCheck(in)
+// ResolveDiscoveryCheck fails the automatic check the same way.
+func (f findsNothing) ResolveDiscoveryCheck(in *encounter.ResolveCheckInput) (*encounter.ResolveCheckOutput, error) {
+	return f.ResolveCheck(in)
 }
 
 // nobodyPerceives is a Witness whose answer is always nobody — the fixture

@@ -254,3 +254,15 @@ func carriedPair(frame contributions.Frame, from, to string) (contributions.Pair
 	}
 	return contributions.PairFacts{}, false
 }
+
+// fightingStyleProtectionDescriptor is the one entry for [FightingStyleProtectionCondition]; see [descriptors].
+var fightingStyleProtectionDescriptor = descriptor{
+	ref:     refs.Conditions.FightingStyleProtection(),
+	display: Display{Name: "Protection"},
+	load:    loaderOf[FightingStyleProtectionCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return NewFightingStyleProtectionCondition(in.MemberID), nil
+	},
+	ownAction:     notBearing,
+	againstHolder: notBearing,
+}

@@ -79,7 +79,7 @@ func (s *EffectRowsSuite) cave(actor *character.Data) {
 	s.characters = newFakeCharacters(actor, armedFighter(erAlly))
 	s.stream = &fakeStream{}
 
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream,
 	})
@@ -304,7 +304,7 @@ func (s *EffectRowsSuite) TestAttackDeclarationCarriesRageRow() {
 
 func (s *EffectRowsSuite) TestSneakAttackAnswersPerTarget() {
 	s.cave(s.rogue())
-	sneakID := refs.Features.SneakAttack().String()
+	sneakID := refs.Conditions.SneakAttack().String()
 
 	attack := s.mainAttack(s.afford("alice"))
 	sneak := s.row(attack, sneakID)
@@ -467,7 +467,7 @@ func (s *EffectRowsSuite) TestReadingRowsChangesNothing() {
 	s.Require().True(ok)
 	sneak := false
 	for _, component := range body.DamageComponents {
-		if component.Roll.Source.Ref == refs.Features.SneakAttack().String() {
+		if component.Roll.Source.Ref == refs.Conditions.SneakAttack().String() {
 			sneak = true
 		}
 	}
@@ -562,7 +562,7 @@ func (s *EffectRowsSuite) TestAttachRunsOnlyInAfford() {
 // because the world clock compiles no attack.
 func (s *EffectRowsSuite) TestNoRowsOnTheWorldClock() {
 	s.characters = newFakeCharacters(s.fighter(s.blessedBy("alice", "bob")), armedFighter("bob"))
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: s.characters,
 		Events: session.DiscardEvents{},

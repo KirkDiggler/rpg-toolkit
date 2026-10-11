@@ -55,7 +55,7 @@ const heldSpellName = "True Strike"
 // the weapon's damage die, then the defender's Constitution check. Authored
 // rather than random because every number this suite asserts — the DC most of
 // all — is arithmetic on those faces.
-func (s *ConcentrationBreakSuite) scene(children []dnd5eEvents.ChildRef, rolls ...int) {
+func (s *ConcentrationBreakSuite) scene(children []dnd5eEvents.ConditionAddress, rolls ...int) {
 	s.T().Helper()
 
 	bob := armedFighter("bob")
@@ -65,7 +65,7 @@ func (s *ConcentrationBreakSuite) scene(children []dnd5eEvents.ChildRef, rolls .
 	s.characters = newFakeCharacters(armedFighter("alice"), bob)
 	s.stream = &fakeStream{}
 
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{},
 		Dice:            &sequenceDice{rolls: rolls},
 		TurnDriver:      session.Pass{},
@@ -90,7 +90,7 @@ func (s *ConcentrationBreakSuite) scene(children []dnd5eEvents.ChildRef, rolls .
 // holdingBlob is one concentrating condition as the host stores it: an opaque
 // blob the sheet loads back and attaches.
 func (s *ConcentrationBreakSuite) holdingBlob(
-	member string, children []dnd5eEvents.ChildRef,
+	member string, children []dnd5eEvents.ConditionAddress,
 ) json.RawMessage {
 	s.T().Helper()
 
@@ -142,7 +142,7 @@ func (s *ConcentrationBreakSuite) bodies(recipient string, kind session.EventKin
 // which asks for the floor DC of 10; a 3 on the check plus 2 for CON 14
 // reaches 5 and loses the spell.
 func (s *ConcentrationBreakSuite) TestOneBlowIsOneTrain() {
-	held := []dnd5eEvents.ChildRef{{
+	held := []dnd5eEvents.ConditionAddress{{
 		MemberID: "alice", ConditionRef: refs.Conditions.Concentrating().String(),
 	}}
 	s.scene(held, 18, 5, 3)
@@ -246,7 +246,7 @@ func (s *ConcentrationBreakSuite) TestTheCheckIsTheRulebooksArithmeticAndNotThis
 // and the spell that held it is already on the break beat one line above.
 func (s *ConcentrationBreakSuite) TestTheStrippedEffectIsNamedByTheRulebook() {
 	childRef := refs.Conditions.Concentrating().String()
-	s.scene([]dnd5eEvents.ChildRef{{MemberID: "alice", ConditionRef: childRef}}, 18, 5, 3)
+	s.scene([]dnd5eEvents.ConditionAddress{{MemberID: "alice", ConditionRef: childRef}}, 18, 5, 3)
 
 	_, err := s.swing()
 	s.Require().NoError(err)

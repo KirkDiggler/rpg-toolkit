@@ -49,12 +49,13 @@ func (s *RoomKnowledgeSuite) SetupTest() {
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      s.sight,
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         s.sight,
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -123,10 +124,10 @@ func (s *RoomKnowledgeSuite) TestAnObserverCanDiscoverWithoutBeingTheOpener() {
 }
 
 func (s *RoomKnowledgeSuite) TestLayoutDiscoveryDoesNotRepeatOrAlias() {
-	before := s.enc.ToData().World
+	before := s.enc.ToData().Journal
 	_, err := s.enc.Recheck(&encounter.RecheckInput{Members: []encounter.MemberID{"a"}})
 	s.Require().NoError(err)
-	s.Equal(before, s.enc.ToData().World, "unchanged sight does not append discovery history")
+	s.Equal(before, s.enc.ToData().Journal, "unchanged sight does not append discovery history")
 	atlas := s.atlas("a")
 	atlas.Cells[0].X = 999
 	atlas.Regions[0].Cells[0].X = 999
@@ -138,8 +139,8 @@ func (s *RoomKnowledgeSuite) TestInvalidRoomKnowledgeIsRejectedOnLoad() {
 	for _, change := range []string{"room", "audience", "subject", "actor"} {
 		s.Run(change, func() {
 			data := s.enc.ToData()
-			s.Require().NotEmpty(data.World.Facts)
-			fact := &data.World.Facts[0]
+			s.Require().NotEmpty(data.Journal.Facts)
+			fact := &data.Journal.Facts[0]
 			switch change {
 			case "room":
 				fact.Kind = "known:room:does-not-exist"
@@ -153,12 +154,13 @@ func (s *RoomKnowledgeSuite) TestInvalidRoomKnowledgeIsRejectedOnLoad() {
 			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 				Data: data,
 				Capabilities: encounter.Capabilities{
-					Sight:      s.sight,
-					Equipment:  encounter.UnobservedEquipment{},
-					Sheets:     zeroSheets{},
-					Standing:   everyoneStanding{},
-					Initiative: orderAsGiven{},
-					Driver:     passDriver{},
+					Sight:         s.sight,
+					Equipment:     encounter.UnobservedEquipment{},
+					Conditions:    encounter.UnobservedEquipment{},
+					Sheets:        zeroSheets{},
+					Participation: everyoneStanding{},
+					Initiative:    orderAsGiven{},
+					Driver:        passDriver{},
 					Actors: encounter.Actors{
 						Striker:   passStriker{},
 						Mover:     quietMover{},
@@ -221,12 +223,13 @@ func (s *RoomKnowledgeSuite) TestKnowledgeSurvivesLossOfSightAndJSONReload() {
 	s.enc, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
 		Capabilities: encounter.Capabilities{
-			Sight:      s.sight,
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         s.sight,
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},

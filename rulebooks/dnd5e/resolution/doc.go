@@ -22,7 +22,7 @@
 //	    Participants: sheets,
 //	    Machine:      resolution.NewSave(&resolution.SaveInput{...}),
 //	    Capabilities: encounter.Capabilities{
-//	        // Initiative, Standing, Sight, Equipment, Sheets, Driver, Roller...
+//	        // Initiative, Participation, Sight, Equipment, Conditions, Sheets, Driver, Roller...
 //	        Actors: resolution.Actors,
 //	    },
 //	})
@@ -136,7 +136,8 @@
 // resolution's bus, and each is named for what it does.
 //
 // ADR-0026's Notify would have been a second of the latter kind, and is
-// deliberately absent — see strikeMachine.afterDamage. Publishing
+// deliberately absent: a strike goes from its damage straight to its
+// declared conditions. Publishing
 // DamageReceivedEvent applies the damage a second time to a monster target,
 // because that sheet's keeper treats the topic as an instruction. Character
 // death-save failures no longer depend on that ambiguous topic: the root
@@ -221,7 +222,7 @@
 // direction nobody was looking.
 //
 // FOUR predicates arrived without their installer. UnarmoredDefense,
-// MartialArts twice, and UnarmoredMovement all read
+// MartialArts twice, and a fourth since retired all read
 // gamectx.RequireCharacters — a registry with zero non-test call sites in the
 // whole toolkit — and returned its "no game context" error into a chain fold.
 // [character.Character.EffectiveAC] swallows fold errors, so a barbarian with
@@ -268,8 +269,7 @@
 // number for a caller with no interaction to run — a character joining a
 // session, who is not standing anywhere yet and so gets a context whose room
 // is honestly ABSENT rather than invented. [Participation] asks for root
-// life-state policy and progress; [Standing] is its binary projection rather
-// than a second attached path. [MakeCheck] makes one character's ability check
+// life-state policy and progress. [MakeCheck] makes one character's ability check
 // with their conditions attached — the living-world rung (rpg-toolkit#1380),
 // and the check chain's first live production audience. [LongRest] publishes
 // the root rest rule to one attached character, and [ShortRest] its sibling,

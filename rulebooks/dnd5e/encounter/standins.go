@@ -8,17 +8,19 @@ import "fmt"
 // Every capability a stand-in must answer, asserted here so that a capability
 // added to this module fails this module's build until its stand-in answers it.
 var (
-	_ InitiativeRoller          = refusingInitiative{}
-	_ StandingWithParticipation = nobodyDown{}
-	_ Sight                     = zeroSight{}
-	_ EquipmentWithConditions   = UnobservedEquipment{}
-	_ Sheets                    = noSheets{}
-	_ Driver                    = PassDriver{}
-	_ Striker                   = RefusingStriker{}
-	_ Mover                     = RefusingMover{}
-	_ Announcer                 = RefusingAnnouncer{}
-	_ CheckResolver             = RefusingCheckResolver{}
-	_ Witness                   = NobodyPerceives{}
+	_ InitiativeRoller = refusingInitiative{}
+	_ Participation    = nobodyDown{}
+	_ Sight            = zeroSight{}
+	_ Equipment        = UnobservedEquipment{}
+	_ Conditions       = UnobservedEquipment{}
+	_ Sheets           = noSheets{}
+	_ Driver           = PassDriver{}
+	_ Striker          = RefusingStriker{}
+	_ Mover            = RefusingMover{}
+	_ Announcer        = RefusingAnnouncer{}
+	_ CheckResolver    = RefusingCheckResolver{}
+	_ Witness          = nobodyPerceives{}
+	_ Witness          = RefusingWitness{}
 )
 
 // UnobservedEquipment is an Equipment and Conditions for a world being
@@ -50,13 +52,9 @@ func (UnobservedEquipment) Conditions(members []MemberID) (map[MemberID]*Conditi
 	return out, nil
 }
 
-// nobodyDown answers standing and participation for a world being compiled
+// nobodyDown answers participation for a world being compiled
 // with nobody in it; see [RefusingCapabilities] for why Assess refuses members.
 type nobodyDown struct{}
-
-func (nobodyDown) Standing([]MemberID) ([]MemberID, error) {
-	return []MemberID{}, nil
-}
 
 func (nobodyDown) Assess(members []MemberID) (*ParticipationAssessment, error) {
 	if len(members) > 0 {
@@ -97,7 +95,7 @@ func (refusingInitiative) RollInitiative([]MemberID) ([]MemberID, error) {
 
 // RefusingCheckResolver is a CheckResolver for a world compiled or loaded
 // only to be inspected — [RefusingStriker]'s pattern one capability over. A
-// find check is rolled only through an explicit Search, which nothing that
+// find check is rolled only when a player plays the world, which nothing that
 // compiles, previews or re-serializes a world does, so reaching it is a HOST
 // BUG reported by name rather than answered with an invented roll.
 // [RefusingCapabilities] installs it.
@@ -108,8 +106,14 @@ func (RefusingCheckResolver) ResolveCheck(*ResolveCheckInput) (*ResolveCheckOutp
 	return nil, fmt.Errorf("resolve check: %w", ErrRefusingCheckResolver)
 }
 
-// NobodyPerceives is a Witness that answers nobody perceives the door, as an
-// empty list. [RefusingCapabilities] installs it.
+// ResolveDiscoveryCheck always fails with ErrRefusingCheckResolver.
+func (RefusingCheckResolver) ResolveDiscoveryCheck(*ResolveCheckInput) (*ResolveCheckOutput, error) {
+	return nil, fmt.Errorf("resolve discovery check: %w", ErrRefusingCheckResolver)
+}
+
+// nobodyPerceives is a Witness that answers nobody perceives the door, as an
+// empty list. [RefusingCapabilities] installs it, and nothing else may: a host
+// that reads a played world must supply the real witness or [RefusingWitness].
 //
 // IT ANSWERS RATHER THAN REFUSES, unlike the other stand-ins, because the
 // witness is asked by every sight refresh, not by a verb a compile-only host
@@ -120,11 +124,23 @@ func (RefusingCheckResolver) ResolveCheck(*ResolveCheckInput) (*ResolveCheckOutp
 // presence (sweepOccupancy) but runs no sight refresh — so a refusing witness
 // would only move the failure to the first verb that refreshes sight, on a
 // world whose only fault is a door standing open.
-type NobodyPerceives struct{}
+type nobodyPerceives struct{}
 
 // Perceivers answers an empty list: nobody perceives the door.
-func (NobodyPerceives) Perceivers(*PerceiversInput) ([]MemberID, error) {
+func (nobodyPerceives) Perceivers(*PerceiversInput) ([]MemberID, error) {
 	return []MemberID{}, nil
+}
+
+// RefusingWitness is a [Witness] for a host that reads a world it does not
+// play and has no honest answer to who perceives a door. Unlike the witness
+// [RefusingCapabilities] installs, it answers nothing: every ask fails with
+// [ErrRefusingWitness], so a sight refresh that reaches it is a host bug
+// reported by name rather than a confident "nobody" that was never observed.
+type RefusingWitness struct{}
+
+// Perceivers always fails with ErrRefusingWitness.
+func (RefusingWitness) Perceivers(*PerceiversInput) ([]MemberID, error) {
+	return nil, fmt.Errorf("perceivers: %w", ErrRefusingWitness)
 }
 
 // RefusingDriver is a [Driver] for a world compiled or previewed and never

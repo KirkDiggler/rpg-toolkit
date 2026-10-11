@@ -57,14 +57,14 @@ const wolf = encounter.MemberID("wolf")
 // Retention is unbounded because most of these tests read the story, and a
 // window would make "what the story says" a question about trimming.
 // TestAForgottenDeathIsToldAgain sets its own, on purpose.
-func (s *deathScene) scene(standing encounter.StandingWithParticipation, members ...encounter.MemberInput) *encounter.Encounter {
+func (s *deathScene) scene(standing encounter.Participation, members ...encounter.MemberInput) *encounter.Encounter {
 	return s.sceneDriven(standing, passDriver{}, zeroSheets{}, members...)
 }
 
 // sceneDriven is scene with the driver and the sheets named — for the one
 // fixture whose monster is supposed to actually walk.
 func (s *deathScene) sceneDriven(
-	standing encounter.StandingWithParticipation, driver encounter.Driver, sheets encounter.Sheets,
+	standing encounter.Participation, driver encounter.Driver, sheets encounter.Sheets,
 	members ...encounter.MemberInput,
 ) *encounter.Encounter {
 	s.T().Helper()
@@ -75,12 +75,13 @@ func (s *deathScene) sceneDriven(
 		Members:   members,
 		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     driver,
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     sheets,
-			Standing:   standing,
+			Initiative:    orderAsGiven{},
+			Driver:        driver,
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        sheets,
+			Participation: standing,
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -94,7 +95,7 @@ func (s *deathScene) sceneDriven(
 }
 
 // pair is alice and a goblin in plain sight of each other.
-func (s *deathScene) pair(standing encounter.StandingWithParticipation) *encounter.Encounter {
+func (s *deathScene) pair(standing encounter.Participation) *encounter.Encounter {
 	s.T().Helper()
 
 	return s.scene(standing,
@@ -105,7 +106,7 @@ func (s *deathScene) pair(standing encounter.StandingWithParticipation) *encount
 
 // pacingPair is pair with the goblin given somewhere to walk, so a round of
 // the world has something to show.
-func (s *deathScene) pacingPair(standing encounter.StandingWithParticipation) *encounter.Encounter {
+func (s *deathScene) pacingPair(standing encounter.Participation) *encounter.Encounter {
 	s.T().Helper()
 
 	return s.sceneDriven(standing, tableDriver(), sheetFacts{goblin: {SpeedFeet: 5}, alice: {}},
@@ -116,7 +117,7 @@ func (s *deathScene) pacingPair(standing encounter.StandingWithParticipation) *e
 
 // trio adds the wolf, so a fight has an order long enough for a gap in the
 // middle of it to be visible.
-func (s *deathScene) trio(standing encounter.StandingWithParticipation) *encounter.Encounter {
+func (s *deathScene) trio(standing encounter.Participation) *encounter.Encounter {
 	s.T().Helper()
 
 	return s.scene(standing,
@@ -240,7 +241,7 @@ func (s *StandingSuite) TestSetupRefusesAnEncounterThatCannotAskWhoIsDown() {
 		},
 	})
 
-	s.Require().ErrorIs(err, encounter.ErrNoStanding)
+	s.Require().ErrorIs(err, encounter.ErrNoParticipation)
 }
 
 // TestLoadRefusesAnEncounterThatCannotAskWhoIsDown is the other door. A loaded
@@ -262,7 +263,7 @@ func (s *StandingSuite) TestLoadRefusesAnEncounterThatCannotAskWhoIsDown() {
 		},
 	})
 
-	s.Require().ErrorIs(err, encounter.ErrNoStanding)
+	s.Require().ErrorIs(err, encounter.ErrNoParticipation)
 }
 
 // TestALoadedEncounterAsksToo proves the capability is actually wired through
@@ -275,12 +276,13 @@ func (s *StandingSuite) TestALoadedEncounterAsksToo() {
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: saved,
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   down,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: down,
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -499,12 +501,13 @@ func (s *StandingSuite) TestAForgottenDeathIsToldAgain() {
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   &downList{down: []encounter.MemberID{goblin}},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: &downList{down: []encounter.MemberID{goblin}},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},

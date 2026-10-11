@@ -2285,11 +2285,11 @@ func (e *Encounter) transfer(in *TransferInput, driveAfterRemove bool) (*Transfe
 	// a public verb with no other kind check, so this guards the law
 	// directly rather than leaving it an emergent property of one caller.
 	//
-	// ErrNoMember stays on this refusal on purpose: it is the roster-coherence
-	// refusal the construction checks carry (who may hold a seat in a fight),
-	// not an unknown id — the member exists and is refused as no fighter.
+	// ErrBadMember is the refusal the construction checks carry for who may
+	// hold a seat in a fight, not an unknown id — the member exists and is
+	// refused as no fighter.
 	if in.To == ClockTurn && member.Kind == KindWorld {
-		return nil, fmt.Errorf("transfer %q: world npc cannot enter a fight: %w", in.Member, ErrNoMember)
+		return nil, fmt.Errorf("transfer %q: world npc cannot enter a fight: %w", in.Member, ErrBadMember)
 	}
 	bubble, err := e.bubbleFor(in.Member)
 	if err != nil {
