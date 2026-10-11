@@ -88,9 +88,11 @@ func (s *ReachAdjacencySuite) fieldFor(o encounter.Orientation) *encounter.Encou
 	return enc
 }
 
-// walkGrid is the grid session's Move asks IsAdjacent of on a hex field.
+// walkGrid is the grid session's Move asks IsAdjacent of on a hex field,
+// built the same way: session's gridOf passes adjacencySpan, which is 1.
+// IsAdjacent reads Distance alone and never the span.
 func walkGrid() spatial.Grid {
-	return spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{SpanWidth: 1e6, SpanHeight: 1e6})
+	return spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{SpanWidth: 1, SpanHeight: 1})
 }
 
 // assertAgreeOnNeighbours checks every side-sharing neighbour of one authored
@@ -161,7 +163,7 @@ func (s *ReachAdjacencySuite) TestTheWalksPairIsTwoCellsApartForBoth() {
 	s.Equal(1.0, enc.Distance(rogue, upLeft))
 
 	// The same two cells, written in the authored odd-r frame the walk's
-	// tool assumed, are (9,4) and (7,3): two columns apart.
+	// tool assumed, are (9,4) and (7,3): two cells apart.
 	s.Equal(rogue, encounter.HexCellAt(encounter.HexesArePointyTop(), 9, 4))
 	s.Equal(zombie, encounter.HexCellAt(encounter.HexesArePointyTop(), 7, 3))
 }
