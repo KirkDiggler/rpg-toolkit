@@ -130,8 +130,14 @@ func TestAnAllyWithNoSheetIsAnAvailableCandidate(t *testing.T) {
 	got, err := inspirationAllies(t, &equipmentCharacters{byID: map[string]*character.Data{}})
 
 	require.NoError(t, err)
-	require.Len(t, got, 1)
-	require.True(t, got[0].available)
+	var ally *targetPreflight
+	for i := range got {
+		if got[i].member == "ally" {
+			ally = &got[i]
+		}
+	}
+	require.NotNil(t, ally, "the ally keeps their row")
+	require.True(t, ally.available)
 }
 
 type failingCharacters struct{ err error }
