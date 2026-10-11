@@ -781,7 +781,7 @@ func translate(err error) error {
 		// composition door (rpg-project#539) — this package's ErrNoMember.
 		return fmt.Errorf("%w", ErrNoMember)
 	case errors.Is(err, encounter.ErrDuplicateMember):
-		return fmt.Errorf("%w", ErrAlreadyMember)
+		return fmt.Errorf("%w", ErrDuplicateMember)
 	case errors.Is(err, encounter.ErrBadMember):
 		// A member that cannot be seated as authored. The stored or authored
 		// world is the defect, and the repair is upstream of a retry.

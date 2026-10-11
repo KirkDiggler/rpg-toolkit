@@ -31,15 +31,15 @@ import (
 //
 // STAGED BY THE VERB, BEFORE THE COMPOSITION ACTS, and that ordering is a
 // secrecy law rather than a convenience. The composition consults
-// [encounter.CheckResolver] only when the swept region actually holds an
-// unfound concealment — so a resolver that fetched the record lazily, at
-// consult time, would fail a monster searcher (no loadable character) in
-// exactly and only the rooms with something to find, and the refusal itself
-// would answer the question the search asked. Staging up front makes "who
-// can roll checks" decided identically for every region, empty or not — and
-// the record is VALIDATED at staging for the same reason: a sheet that will
-// not load must refuse here, uniformly, not at a consult whose very
-// occurrence depends on what the room holds.
+// [encounter.CheckResolver] from the sweep that runs when a member comes near
+// hidden content, and only then — so a resolver that fetched the record
+// lazily, at consult time, would fail a member with no loadable character in
+// exactly and only the places with something to find, and the refusal itself
+// would tell that member something was there. Staging up front makes "who
+// can roll checks" decided identically wherever a member stands, near a
+// secret or not — and the record is VALIDATED at staging for the same reason:
+// a sheet that will not load must refuse here, uniformly, not at a consult
+// whose very occurrence depends on what is nearby.
 //
 // WHAT IS STAGED IS A RECORD, NOT A SHEET. Check resolution moved behind
 // resolution's door (resolution v0.27.0's MakeCheck, toolkit#1380; re-ruled
@@ -61,9 +61,9 @@ type stagedCheck struct {
 // stageCheck fetches one member's character record, proves it loads, and
 // stages it on the scope for [checkSeam] to find.
 //
-// Characters are the only searchers in v1 (rpg-project#351): a member with no
-// loadable character — a monster — is refused here, uniformly, before the
-// composition ever looks at the region. See [stagedCheck] for why the refusal
+// Characters are the only finders in v1 (rpg-project#351): a seated player
+// with no loadable character is refused here, uniformly, before the
+// composition ever sweeps. See [stagedCheck] for why the refusal
 // must not wait for the consult. The loaded sheet is deliberately discarded:
 // it exists to make ErrBadCharacter fire at the same uniform point
 // ErrNoCharacter does, and the sheet resolution rolls is the one RESOLUTION

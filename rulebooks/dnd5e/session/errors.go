@@ -185,12 +185,6 @@ var (
 	// not hold.
 	ErrNoMember = errors.New("no such member")
 
-	// ErrAlreadyMember is returned when a verb places a member the encounter
-	// already holds: a Join naming a member who is in it, or a world listing
-	// one id twice. Distinct from ErrNoMember, which is a member that is not
-	// there at all.
-	ErrAlreadyMember = errors.New("member is already in the encounter")
-
 	// ErrNotSeated is returned when an authenticated principal owns no current
 	// player seat in the requested session.
 	ErrNotSeated = errors.New("player is not seated in this session")
@@ -434,10 +428,12 @@ var (
 	// The rulebook's own reason rides along as text.
 	ErrBadRest = errors.New("invalid rest request")
 
-	// ErrDuplicateMember is returned by Launch when one member id is claimed
-	// twice — two party characters, two compiled monsters, or one of each.
-	// Every member of a run needs an id of its own; refused before anything
-	// is written, naming both claimants.
+	// ErrDuplicateMember is returned when one member id is claimed twice: by
+	// Launch for two party characters, two compiled monsters, or one of each,
+	// refused before anything is written and naming both claimants; and by
+	// Join for a member the encounter already holds. Every member of a run
+	// needs an id of its own. Distinct from ErrNoMember, a member that is not
+	// there at all.
 	ErrDuplicateMember = errors.New("member id claimed twice")
 
 	// ErrInvalidWorld is returned when the dungeon handed to Launch or

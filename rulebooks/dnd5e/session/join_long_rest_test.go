@@ -199,7 +199,7 @@ func (s *JoinLongRestTestSuite) TestDuplicateCurrentJoinDoesNotRestOrSave() {
 	out, err := s.mgr.Join(s.ctx, &session.JoinInput{
 		Session: "sess", Member: "bob", Position: hexCell(3, 2),
 	})
-	s.Require().ErrorIs(err, session.ErrAlreadyMember)
+	s.Require().ErrorIs(err, session.ErrDuplicateMember)
 	s.NotErrorIs(err, session.ErrNoMember, "a member who is here is not a member who is missing")
 	s.Nil(out)
 	s.Equal(beforeSaves, s.characters.saves)

@@ -39,7 +39,7 @@ func TestTranslateLetsNoCompositionSentinelThrough(t *testing.T) {
 		// sentinel arrives as its own, so a host can switch on them.
 		{"empty member id", encounter.ErrNoMember, ErrNoMemberID},
 		{"not a member", encounter.ErrNotMember, ErrNoMember},
-		{"member already present", encounter.ErrDuplicateMember, ErrAlreadyMember},
+		{"member already present", encounter.ErrDuplicateMember, ErrDuplicateMember},
 		{"member cannot be seated", encounter.ErrBadMember, ErrInvalidWorld},
 		{"malformed reach", encounter.ErrBadReach, ErrBadReach},
 		{"closed encounter", encounter.ErrClosed, ErrClosed},

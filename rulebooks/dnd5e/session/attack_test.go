@@ -931,6 +931,28 @@ func (s *AttackTestSuite) TestCompetingAttackOffersBlockAttackAsUnavailable() {
 	s.NotErrorIs(err, session.ErrBadAttack, "it is not an unreadable sheet")
 }
 
+// TestCompetingOffersAreNamedWhenAnotherMemberReadsThem: the world asks every
+// seated sheet how it moves, so one member's unpicked offers reach other
+// players' verbs. They must be told what it is, ErrConflictingOffers, never
+// that a character failed to load.
+func (s *AttackTestSuite) TestCompetingOffersAreNamedWhenAnotherMemberReadsThem() {
+	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
+	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: session.DiscardEvents{},
+	})
+	s.Require().NoError(err)
+	launchScene(s.T(), mgr, freeRoamDuelWorld())
+	rewound(s.characters, competingOffersMonk(s, "alice"), armedFighter("bob"))
+
+	_, err = mgr.Move(context.Background(), &session.MoveInput{
+		Session: "sess", Member: "bob", Path: []spatial.Position{{X: 2, Y: 2}},
+	})
+	s.Require().ErrorIs(err, session.ErrConflictingOffers)
+	s.NotErrorIs(err, session.ErrBadCharacter, "alice owes a pick; nobody's sheet failed to load")
+}
+
 // The three tests below pin one contract: ABSENT and CORRUPT are different
 // answers, and Attack must give the same ones every other verb gives.
 //

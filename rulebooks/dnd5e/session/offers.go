@@ -80,11 +80,13 @@ type compiledOffer struct {
 	// definition for Attack. Equality compares these bytes so two offers
 	// with the same selector material are recurrence, not a collision.
 	variant json.RawMessage
-	// unreadable is why this offer is blocked when the cause is a sheet a
-	// resolution participant needs and nobody can read: the first dependency
-	// failure, in this package's own vocabulary. Nil otherwise. Selecting a
-	// blocked offer reports it rather than calling the selector stale — the
-	// selector is current; the sheet is what refuses (rpg-project#538).
+	// unreadable is why this offer is blocked when the cause is a named
+	// refusal rather than a stale selector, in this package's own vocabulary:
+	// the first sheet a resolution participant needs and nobody can read, or
+	// the attacker's competing attack offers (ErrConflictingOffers). Nil
+	// otherwise. Selecting a blocked offer reports it rather than calling the
+	// selector stale — the selector is current; the sheet or the unpicked
+	// offer is what refuses (rpg-project#538).
 	unreadable error
 }
 

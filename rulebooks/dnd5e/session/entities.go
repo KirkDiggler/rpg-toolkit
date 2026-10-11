@@ -331,6 +331,11 @@ func projectionSentinel(err error) error {
 	if errors.Is(err, resolution.ErrBadAttack) {
 		return ErrBadAttack
 	}
+	// Competing offers are a pick the player owes, not a sheet that will not
+	// load, and the host repairs them differently.
+	if errors.Is(err, resolution.ErrConflictingOffers) {
+		return ErrConflictingOffers
+	}
 
 	return ErrBadCharacter
 }
