@@ -10,6 +10,10 @@ import (
 // InstanceDetailProvider is the optional capability of a condition instance
 // that has something to say about itself which its type cannot: Command's
 // word. A type with nothing per-instance to say does not implement it.
+//
+// The method is InstanceDetail, not Detail, because Display.Detail is the
+// type's rule text and one name for both would let rule text pass for an
+// instance's word.
 type InstanceDetailProvider interface {
 	// InstanceDetail is free text the instance writes about itself. Empty
 	// means the instance has nothing to say.
