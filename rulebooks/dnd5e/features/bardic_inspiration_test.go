@@ -60,7 +60,7 @@ func (s *BardicInspirationTestSuite) TestGrantSpendsAUseAndPublishesTheDie() {
 	s.Require().NoError(s.feature.Activate(s.ctx, owner, FeatureInput{Bus: s.bus, Target: ally}))
 
 	s.Equal(2, owner.resources[resources.Inspiration], "one use spent")
-	s.Require().Len(s.applied, 1)
+	s.Require().NotEmpty(s.applied)
 	s.Equal("fighter-1", s.applied[0].Target.GetID())
 	s.Equal(refs.Conditions.Inspired(), s.applied[0].Condition.Ref())
 

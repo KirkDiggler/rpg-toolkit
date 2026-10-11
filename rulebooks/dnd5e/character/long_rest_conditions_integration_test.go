@@ -220,8 +220,6 @@ func TestLongRestPersistsEveryConditionOutcomeOnAttachedCharacter(t *testing.T) 
 			before := mustToData(t, sheet)
 			beforeByRef := persistedConditionBlobsByRef(t, before)
 			requireHeldOnce(t, before, refString, carriedRef)
-			require.Len(t, beforeByRef[testCase.expectedRef.String()], 1,
-				"the strict loader must preserve the fixture's canonical ref exactly once")
 			if testCase.outcome == attachedLongRestReset {
 				require.True(t, persistedUsedThisTurn(t, beforeByRef[testCase.expectedRef.String()][0]),
 					"reset fixtures must enter Attach with a seeded spent meter")

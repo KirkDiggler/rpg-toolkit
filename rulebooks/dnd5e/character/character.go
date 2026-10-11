@@ -267,11 +267,9 @@ func proficiencyBonusForLevel(level int) int {
 // This is the base speed before condition modifiers (e.g., Unarmored Movement).
 // Condition-based speed modifiers are applied through the MovementChain.
 func (c *Character) GetSpeed() int {
-	raceData := races.GetData(c.raceID)
-	if raceData == nil {
-		return 30 // Default speed if race data not found
-	}
-	return raceData.Speed
+	// No default: a sheet is made by Load or Finalize, and both refuse a race
+	// the catalogue does not hold, so this lookup always resolves.
+	return races.GetData(c.raceID).Speed
 }
 
 // GetExtraAttacksCount returns the number of extra attacks granted by class features.
@@ -1589,8 +1587,8 @@ func (c *Character) onConditionRemoved(
 	filtered := make([]dnd5eEvents.ConditionBehavior, 0, len(c.conditions))
 	var detachErrs []error
 	for _, cond := range c.conditions {
-		// All three identity fields match exactly. Empty source identifies only
-		// legacy-unqualified state and is never a wildcard.
+		// All three identity fields match exactly. An empty source names only a
+		// condition that has no source qualifier and is never a wildcard.
 		if conditions.ConditionAddressOf(c.id, cond) != event.Address() {
 			filtered = append(filtered, cond)
 			continue

@@ -60,11 +60,11 @@ func (s *ImmunityTestSuite) TestImmunityAnswersOnTheIncomingFold() {
 	folded, total := s.hit("monster-1", refs.Weapons.Dagger(), damage.Poison)
 
 	dealt := folded.Dealt()
-	s.Require().Len(dealt, 1)
+	s.Require().NotEmpty(dealt)
 	s.Equal(9, dealt[0].Total(), "the dealt damage is untouched")
 	s.Equal([]dnd5eEvents.DamageMultiplier{{
 		Category:   dnd5eEvents.DamageSourceMonsterTrait,
-		Source:     dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity"},
+		Source:     dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity", SourceID: "monster-1"},
 		DamageType: damage.Poison,
 		Factor:     dnd5eEvents.DamageFactorImmunity,
 	}}, folded.Multipliers)

@@ -70,8 +70,9 @@ type ConditionBehavior interface {
 }
 
 // ConditionAddressProvider is the optional capability for a condition whose
-// identity is source-qualified. Unqualified legacy conditions omit it and are
-// addressed with an exact empty SourceID by their sheet owner.
+// identity is source-qualified. A condition with no source qualifier (Prone,
+// Dodging, Hidden, Raging) omits it and is addressed with an exact empty
+// SourceID by its sheet owner.
 type ConditionAddressProvider interface {
 	ConditionAddress() ConditionAddress
 }
@@ -597,7 +598,7 @@ type ConditionAppliedEvent struct {
 type ConditionRemovedEvent struct {
 	MemberID     string // whose sheet carried the condition that ended
 	ConditionRef string // which condition ended, as the ref its Ref() returns
-	SourceID     string // exact source qualifier; empty names only unqualified legacy state
+	SourceID     string // exact source qualifier; empty names only a condition with none
 	Reason       string // why, for a log that wants to say so
 }
 

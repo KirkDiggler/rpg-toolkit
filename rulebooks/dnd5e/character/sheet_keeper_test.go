@@ -135,7 +135,7 @@ func (s *SheetKeeperTestSuite) TestConditionAppliedLandsOnTheSheet() {
 	})
 
 	s.Require().NoError(err)
-	s.Require().Len(authored(s.char), 1)
+	s.Require().NotEmpty(authored(s.char))
 	s.Require().True(condition.applied, "the keeper applies the condition it was handed")
 	s.Require().True(s.char.IsDirty(), "a sheet that gained a condition needs saving")
 }

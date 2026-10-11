@@ -5,11 +5,13 @@ package conditions
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -37,14 +39,84 @@ func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseSecondaryAbility() {
 		Type:     UnarmoredDefenseBarbarian,
 		Source:   "dnd5e:classes:barbarian",
 	})
-	s.Equal(abilities.CON, barbarianUD.SecondaryAbility(), "Barbarian should use CON")
+	barbarianAbility, err := barbarianUD.SecondaryAbility()
+	s.Require().NoError(err)
+	s.Equal(abilities.CON, barbarianAbility, "Barbarian should use CON")
 
 	monkUD := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
 		MemberID: "monk-1",
 		Type:     UnarmoredDefenseMonk,
 		Source:   "dnd5e:classes:monk",
 	})
-	s.Equal(abilities.WIS, monkUD.SecondaryAbility(), "Monk should use WIS")
+	monkAbility, err := monkUD.SecondaryAbility()
+	s.Require().NoError(err)
+	s.Equal(abilities.WIS, monkAbility, "Monk should use WIS")
+
+	unnamed := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{MemberID: "nobody-1"})
+	_, err = unnamed.SecondaryAbility()
+	s.Require().Error(err, "a variant the condition does not name has no ability to guess")
+}
+
+// foldAC folds the AC chain for an unarmored character of the given variant,
+// holding a shield or not, and returns the final event.
+func (s *UnarmoredDefenseTestSuite) foldAC(variant UnarmoredDefenseType, hasShield bool) *combat.ACChainEvent {
+	s.T().Helper()
+	const characterID = "defender-1"
+	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{MemberID: characterID, Type: variant})
+	s.Require().NoError(ud.Apply(s.ctx, s.bus))
+	defer func() { _ = ud.Remove(s.ctx, s.bus) }()
+
+	ctx := castOf(s.ctx, &fakeConditionOwner{
+		id: characterID,
+		scores: shared.AbilityScores{
+			abilities.DEX: 14, abilities.CON: 16, abilities.WIS: 12,
+		},
+	})
+	event := &combat.ACChainEvent{
+		CharacterID: characterID,
+		Breakdown:   &combat.ACBreakdown{Total: 12, Components: []combat.ACComponent{}},
+		HasArmor:    false,
+		HasShield:   hasShield,
+	}
+	chained, err := combat.ACChain.On(s.bus).PublishWithChain(ctx, event,
+		events.NewStagedChain[*combat.ACChainEvent](combat.ModifierStages))
+	s.Require().NoError(err)
+	final, err := chained.Execute(ctx, event)
+	s.Require().NoError(err)
+	return final
+}
+
+// A monk holding a shield loses Unarmored Defense; a barbarian keeps it.
+func (s *UnarmoredDefenseTestSuite) TestAMonkWithAShieldLosesUnarmoredDefenseAndABarbarianKeepsIt() {
+	monkShielded := s.foldAC(UnarmoredDefenseMonk, true)
+	s.Equal(12, monkShielded.Breakdown.Total, "a shielded monk folds no Unarmored Defense")
+	s.Empty(monkShielded.Breakdown.Components)
+
+	monkBare := s.foldAC(UnarmoredDefenseMonk, false)
+	s.Equal(13, monkBare.Breakdown.Total, "a shieldless monk folds its WIS modifier")
+
+	barbarianShielded := s.foldAC(UnarmoredDefenseBarbarian, true)
+	s.Equal(15, barbarianShielded.Breakdown.Total, "a shielded barbarian still folds its CON modifier")
+}
+
+// A stored blob that names no variant, or one this build does not know, is
+// refused at load rather than read as a barbarian's.
+func (s *UnarmoredDefenseTestSuite) TestAStoredUnarmoredDefenseWithoutAKnownVariantFailsLoadJSON() {
+	for name, blob := range map[string]string{
+		"empty type":   `{"ref":{"module":"dnd5e","type":"conditions","id":"unarmored_defense"},"type":"","member_id":"m1"}`,
+		"missing type": `{"ref":{"module":"dnd5e","type":"conditions","id":"unarmored_defense"},"member_id":"m1"}`,
+		"unknown type": `{"ref":{"module":"dnd5e","type":"conditions","id":"unarmored_defense"},"type":"sorcerer","member_id":"m1"}`,
+	} {
+		_, err := LoadJSON(json.RawMessage(blob))
+		s.Require().Error(err, name)
+		s.Equal(rpgerr.CodeInvalidArgument, rpgerr.GetCode(err), name)
+	}
+
+	for _, variant := range []string{"barbarian", "monk"} {
+		_, err := LoadJSON(json.RawMessage(
+			`{"ref":{"module":"dnd5e","type":"conditions","id":"unarmored_defense"},"type":"` + variant + `","member_id":"m1"}`))
+		s.Require().NoError(err, variant)
+	}
 }
 
 func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseApplyRemove() {
@@ -125,7 +197,7 @@ func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseACChainIntegration() {
 	s.Equal(15, finalEvent.Breakdown.Total, "AC should be 13 + 2 (WIS from Unarmored Defense) = 15")
 
 	// Verify the component was added
-	s.Len(finalEvent.Breakdown.Components, 1)
+	s.Require().NotEmpty(finalEvent.Breakdown.Components)
 	s.Equal(combat.ACSourceFeature, finalEvent.Breakdown.Components[0].Type)
 	s.Equal(2, finalEvent.Breakdown.Components[0].Value)
 

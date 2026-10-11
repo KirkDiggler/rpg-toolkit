@@ -23,6 +23,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
@@ -251,6 +252,13 @@ func (c *Character) unattach(
 func loadSheet(d *Data, policy effectPolicy) (*Character, error) {
 	if err := customization.ValidateAppearance(d.Appearance); err != nil {
 		return nil, err
+	}
+
+	// Refused rather than defaulted: a sheet naming a race this build does not
+	// hold has no base speed to state, and a made-up one would be a fact nobody
+	// authored.
+	if races.GetData(d.RaceID) == nil {
+		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown race %q: the catalogue does not hold it", d.RaceID)
 	}
 
 	levels, err := loadLevelRecord(d)

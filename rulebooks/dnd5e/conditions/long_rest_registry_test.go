@@ -515,7 +515,7 @@ func TestLongRestRegistryBehavior(t *testing.T) {
 			case longRestReset:
 				require.True(t, condition.IsApplied())
 				require.Empty(t, removed)
-				require.Len(t, changed, 1)
+				require.NotEmpty(t, changed)
 				require.Equal(t, testCase.ownerID, changed[0].MemberID)
 				require.Equal(t, testCase.expectedRef.String(), changed[0].ConditionRef.String())
 

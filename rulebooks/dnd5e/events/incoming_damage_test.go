@@ -61,7 +61,7 @@ func (s *IncomingDamageSuite) input() dnd5eEvents.IncomingDamageInput {
 func resistance() dnd5eEvents.DamageMultiplier {
 	return dnd5eEvents.DamageMultiplier{
 		Category:   dnd5eEvents.DamageSourceCondition,
-		Source:     dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging"},
+		Source:     dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging", SourceID: "defender-1"},
 		DamageType: damage.Slashing,
 		Factor:     dnd5eEvents.DamageFactorResistance,
 	}
@@ -222,7 +222,7 @@ func (s *IncomingDamageSuite) TestConstructionRefusals() {
 		"a dealt component with no type":          func(in *dnd5eEvents.IncomingDamageInput) { in.Dealt[0].DamageType = "" },
 		"a malformed early answer": func(in *dnd5eEvents.IncomingDamageInput) {
 			in.Reductions = []dnd5eEvents.DamageReduction{{
-				Source: dnd5eEvents.RollSource{Ref: refs.Features.DeflectMissiles()}, DamageType: damage.Slashing, Modifier: 2,
+				Source: dnd5eEvents.RollSource{Ref: refs.Features.DeflectMissiles(), SourceID: "defender-1"}, DamageType: damage.Slashing, Modifier: 2,
 			}}
 		},
 	}
@@ -241,7 +241,7 @@ func (s *IncomingDamageSuite) TestConstructionRefusals() {
 func (s *IncomingDamageSuite) TestMalformedAnswersWrapTheSentinel() {
 	in := s.input()
 	in.Reductions = []dnd5eEvents.DamageReduction{{
-		Source: dnd5eEvents.RollSource{Ref: refs.Features.DeflectMissiles()}, DamageType: damage.Slashing, Modifier: 2,
+		Source: dnd5eEvents.RollSource{Ref: refs.Features.DeflectMissiles(), SourceID: "defender-1"}, DamageType: damage.Slashing, Modifier: 2,
 	}}
 	_, err := dnd5eEvents.NewIncomingDamageEvent(in)
 	s.Require().ErrorIs(err, dnd5eEvents.ErrMalformedTargetAnswer)
@@ -252,4 +252,20 @@ func (s *IncomingDamageSuite) TestMalformedAnswersWrapTheSentinel() {
 	untyped := resistance()
 	untyped.DamageType = ""
 	s.Require().ErrorIs(untyped.Validate(), dnd5eEvents.ErrMalformedTargetAnswer)
+}
+
+// A target answer names the member that holds the rule, not only the rule: a
+// trace line with no owner cannot say whose defence decided the damage.
+func (s *IncomingDamageSuite) TestAnAnswerWithNoOwnerIsMalformed() {
+	ownerless := resistance()
+	ownerless.Source.SourceID = ""
+	s.Require().ErrorIs(ownerless.Validate(), dnd5eEvents.ErrMalformedTargetAnswer)
+
+	reduction := dnd5eEvents.DamageReduction{
+		Source: dnd5eEvents.RollSource{Ref: refs.Features.DeflectMissiles()}, DamageType: damage.Slashing, Modifier: -2,
+	}
+	s.Require().ErrorIs(reduction.Validate(), dnd5eEvents.ErrMalformedTargetAnswer)
+
+	reduction.Source.SourceID = "defender-1"
+	s.Require().NoError(reduction.Validate())
 }

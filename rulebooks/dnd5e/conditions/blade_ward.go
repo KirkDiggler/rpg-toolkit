@@ -197,8 +197,9 @@ func (b *BladeWardCondition) onIncomingDamage(
 
 	ward := func(_ context.Context, e *dnd5eEvents.IncomingDamageEvent) (*dnd5eEvents.IncomingDamageEvent, error) {
 		e.Multipliers = append(e.Multipliers, physicalResistances(e.DealtTypes(), dnd5eEvents.RollSource{
-			Ref:  refs.Conditions.BladeWard(),
-			Name: BladeWardName,
+			Ref:      refs.Conditions.BladeWard(),
+			Name:     BladeWardName,
+			SourceID: b.MemberID,
 		})...)
 		return e, nil
 	}

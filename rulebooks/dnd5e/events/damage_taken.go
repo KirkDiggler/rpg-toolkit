@@ -10,7 +10,8 @@ import (
 
 // ConditionAddress is the exact persisted identity of one condition on one
 // member's sheet. SourceID is exact identity: an empty value names only a
-// legacy unqualified condition and is never a wildcard.
+// condition that has no source qualifier (Prone, Dodging, Hidden, Raging) and
+// is never a wildcard.
 //
 // An address rather than a pointer survives opaque condition persistence and
 // lets a concentration owner remove one source's child without disturbing an
@@ -20,10 +21,6 @@ type ConditionAddress struct {
 	ConditionRef string `json:"condition_ref"`
 	SourceID     string `json:"source_id"`
 }
-
-// ChildRef is retained as a source-compatible alias while nested consumers
-// adopt ConditionAddress in their own scoped tasks.
-type ChildRef = ConditionAddress
 
 // Consequence is what happens when a [FollowUp]'s check fails: these
 // conditions come off those sheets, and the owner that asked for the check

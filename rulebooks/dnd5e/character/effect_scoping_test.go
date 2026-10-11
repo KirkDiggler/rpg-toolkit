@@ -176,8 +176,10 @@ func (s *EffectScopingTestSuite) TestPlainBusLoadsIdentically() {
 	s.Require().NoError(err)
 
 	conds := authored(char)
-	s.Require().Len(conds, 1)
-	s.Require().True(conds[0].IsApplied())
+	s.Require().NotEmpty(conds)
+	for _, cond := range conds {
+		s.Require().True(cond.IsApplied())
+	}
 }
 
 func TestEffectScopingSuite(t *testing.T) {

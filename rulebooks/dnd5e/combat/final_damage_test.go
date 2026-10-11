@@ -42,7 +42,7 @@ func flat(amount int, t damage.Type) dnd5eEvents.DamageComponent {
 func resist(t damage.Type) dnd5eEvents.DamageMultiplier {
 	return dnd5eEvents.DamageMultiplier{
 		Category:   dnd5eEvents.DamageSourceCondition,
-		Source:     dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging"},
+		Source:     dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging", SourceID: "defender-1"},
 		DamageType: t,
 		Factor:     dnd5eEvents.DamageFactorResistance,
 	}
@@ -51,7 +51,7 @@ func resist(t damage.Type) dnd5eEvents.DamageMultiplier {
 func vulnerable(t damage.Type) dnd5eEvents.DamageMultiplier {
 	return dnd5eEvents.DamageMultiplier{
 		Category:   dnd5eEvents.DamageSourceMonsterTrait,
-		Source:     dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Vulnerability(), Name: "Vulnerability"},
+		Source:     dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Vulnerability(), Name: "Vulnerability", SourceID: "defender-1"},
 		DamageType: t,
 		Factor:     dnd5eEvents.DamageFactorVulnerability,
 	}
@@ -60,7 +60,7 @@ func vulnerable(t damage.Type) dnd5eEvents.DamageMultiplier {
 func immune(t damage.Type) dnd5eEvents.DamageMultiplier {
 	return dnd5eEvents.DamageMultiplier{
 		Category:   dnd5eEvents.DamageSourceMonsterTrait,
-		Source:     dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity"},
+		Source:     dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity", SourceID: "defender-1"},
 		DamageType: t,
 		Factor:     dnd5eEvents.DamageFactorImmunity,
 	}
@@ -69,7 +69,7 @@ func immune(t damage.Type) dnd5eEvents.DamageMultiplier {
 func reduce(amount int, t damage.Type) dnd5eEvents.DamageReduction {
 	return dnd5eEvents.DamageReduction{
 		Category:   dnd5eEvents.DamageSourceFeature,
-		Source:     dnd5eEvents.RollSource{Ref: refs.Features.DeflectMissiles(), Name: "Deflect Missiles"},
+		Source:     dnd5eEvents.RollSource{Ref: refs.Features.DeflectMissiles(), Name: "Deflect Missiles", SourceID: "defender-1"},
 		DamageType: t,
 		Modifier:   -amount,
 	}
@@ -131,7 +131,7 @@ func (s *SettleDamageTestSuite) TestResistanceAndVulnerabilityTogetherSettleAtOn
 // Two resistances are still one: 0.5, not a quarter.
 func (s *SettleDamageTestSuite) TestTwoResistancesSettleAtOneHalf() {
 	second := resist(damage.Slashing)
-	second.Source = dnd5eEvents.RollSource{Ref: refs.Conditions.BladeWard(), Name: "Blade Ward"}
+	second.Source = dnd5eEvents.RollSource{Ref: refs.Conditions.BladeWard(), Name: "Blade Ward", SourceID: "defender-1"}
 	out := s.settle(&combat.SettleDamageInput{
 		Dealt:       []dnd5eEvents.DamageComponent{flat(9, damage.Slashing)},
 		Multipliers: []dnd5eEvents.DamageMultiplier{resist(damage.Slashing), second},
@@ -272,6 +272,8 @@ func (s *SettleDamageTestSuite) TestRefusals() {
 	quarter.Factor = 0.25
 	unnamed := resist(damage.Fire)
 	unnamed.Source = dnd5eEvents.RollSource{}
+	ownerless := resist(damage.Fire)
+	ownerless.Source.SourceID = ""
 	adding := reduce(3, damage.Fire)
 	adding.Modifier = 3
 
@@ -283,6 +285,9 @@ func (s *SettleDamageTestSuite) TestRefusals() {
 		},
 		"a multiplier naming no source": {
 			Dealt: []dnd5eEvents.DamageComponent{flat(5, damage.Fire)}, Multipliers: []dnd5eEvents.DamageMultiplier{unnamed},
+		},
+		"a multiplier naming no owner": {
+			Dealt: []dnd5eEvents.DamageComponent{flat(5, damage.Fire)}, Multipliers: []dnd5eEvents.DamageMultiplier{ownerless},
 		},
 		"a multiplier on a type nothing dealt": {
 			Dealt: []dnd5eEvents.DamageComponent{flat(5, damage.Fire)}, Multipliers: []dnd5eEvents.DamageMultiplier{resist(damage.Cold)},

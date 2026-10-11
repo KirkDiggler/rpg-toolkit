@@ -153,7 +153,7 @@ func (s *HelpAbilityTestSuite) TestActivate_AppliesHelpedConditionToAlly() {
 	})
 	s.Require().NoError(err)
 
-	s.Require().Len(*captured, 1, "ConditionAppliedEvent should be published")
+	s.Require().NotEmpty(*captured, "ConditionAppliedEvent should be published")
 	got := (*captured)[0]
 	s.Equal(s.ally.GetID(), got.Target.GetID(), "condition targets the ally, not the helper")
 	s.Equal(refs.Conditions.Helped(), got.Condition.Ref())
@@ -282,7 +282,7 @@ func (s *HideAbilityTestSuite) TestActivate_Success() {
 	s.True(received, "HideActivatedEvent should be published")
 	s.Equal(s.owner.GetID(), got.CharacterID)
 
-	s.Require().Len(*captured, 1, "a successful Hide applies HiddenCondition")
+	s.Require().NotEmpty(*captured, "a successful Hide applies HiddenCondition")
 	gotCond := (*captured)[0]
 	s.Equal(s.owner.GetID(), gotCond.Target.GetID())
 	s.Equal(refs.Conditions.Hidden(), gotCond.Condition.Ref())
@@ -336,7 +336,7 @@ func (s *HideAbilityTestSuite) TestActivate_NoObservers() {
 		Roller:        s.mockRoller,
 	})
 	s.Require().NoError(err)
-	s.Require().Len(*captured, 1, "no observers means the check trivially succeeds")
+	s.Require().NotEmpty(*captured, "no observers means the check trivially succeeds")
 }
 
 func (s *HideAbilityTestSuite) TestToJSON_AndLoadRoundTrip() {

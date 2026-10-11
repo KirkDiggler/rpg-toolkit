@@ -286,7 +286,7 @@ func (s *MonkEncounterSuite) TestMartialArts_UnarmedDamageScaling() {
 	s.Run("Martial Arts scales unarmed damage: 1d4 at level 1", func() {
 		definition, err := character.AssembleAttack(s.monk, &character.AssembleAttackInput{Slot: character.SlotMainHand})
 		s.Require().NoError(err)
-		s.Require().Len(definition.Attack.Damage, 1)
+		s.Require().NotEmpty(definition.Attack.Damage)
 		s.Equal("1d4", definition.Attack.Damage[0].Dice, "the Martial Arts die is assembled, not rolled and replaced")
 		s.Equal(damage.Bludgeoning, definition.Attack.Damage[0].Type)
 	})

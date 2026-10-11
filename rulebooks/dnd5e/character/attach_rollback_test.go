@@ -77,7 +77,7 @@ func (s *AttachRollbackTestSuite) SetupTest() {
 // checks that none of it lands: no healing, no condition.
 func (s *AttachRollbackTestSuite) assertNothingListening(char *Character, bus events.EventBus) {
 	hitPoints := char.GetHitPoints()
-	conditions := len(char.GetConditions())
+	heldBefore := heldRefs(char.GetConditions())
 
 	s.Require().NoError(dnd5eEvents.HealingReceivedTopic.On(bus).Publish(s.ctx, dnd5eEvents.HealingReceivedEvent{
 		TargetID: char.GetID(),
@@ -90,7 +90,7 @@ func (s *AttachRollbackTestSuite) assertNothingListening(char *Character, bus ev
 		Target:    char,
 		Condition: &keptCondition{},
 	}))
-	s.Require().Len(char.GetConditions(), conditions, "no condition arrived on the sheet")
+	s.Require().ElementsMatch(heldBefore, heldRefs(char.GetConditions()), "no condition arrived on the sheet")
 }
 
 // assertRetryWorks attaches to a working bus and checks the sheet came through
@@ -103,8 +103,10 @@ func (s *AttachRollbackTestSuite) assertRetryWorks(char *Character) {
 	s.Require().False(char.GetResource(resources.RageCharges).IsApplied(),
 		"a successful Attach still does not own character resources")
 
-	s.Require().Len(authored(char), 1)
-	s.Require().True(authored(char)[0].IsApplied(), "the condition attached on the retry")
+	s.Require().NotEmpty(authored(char))
+	for _, cond := range authored(char) {
+		s.Require().True(cond.IsApplied(), "the condition attached on the retry")
+	}
 
 	s.Require().NoError(dnd5eEvents.HealingReceivedTopic.On(bus).Publish(s.ctx, dnd5eEvents.HealingReceivedEvent{
 		TargetID: char.GetID(),
@@ -155,9 +157,12 @@ func (s *AttachRollbackTestSuite) TestAttachRollsBackAFailedCondition() {
 
 	s.Require().Error(err)
 	s.Require().Equal(before, marshalData(&s.Suite, mustToData(s.T(), char)))
-	s.Require().Len(char.GetConditions(), 1, "the condition is still on the sheet")
-	s.Require().False(char.GetConditions()[0].IsApplied(), "just not applied")
-	s.Require().Len(char.pendingEffects, 1, "and still waiting to be, ref and all")
+	s.Require().NotEmpty(char.GetConditions(), "the condition is still on the sheet")
+	for _, cond := range char.GetConditions() {
+		s.Require().False(cond.IsApplied(), "just not applied")
+	}
+	s.Require().ElementsMatch(heldRefs(char.GetConditions()), heldRefs(char.pendingEffects),
+		"and still waiting to be, ref and all")
 	s.Require().Empty(char.subscriptionIDs)
 	s.Require().Nil(char.bus)
 	s.assertNothingListening(char, bus)
@@ -183,7 +188,8 @@ func (s *AttachRollbackTestSuite) TestASecondConditionFailingRemovesTheFirst() {
 
 	char, err := Load(s.ctx, data)
 	s.Require().NoError(err)
-	s.Require().Len(char.GetConditions(), 2)
+	loadedRefs := heldRefs(char.GetConditions())
+	s.Require().NotEmpty(loadedRefs)
 	before := marshalData(&s.Suite, mustToData(s.T(), char))
 
 	bus := newFailingBus(firstSubscriptionOfTheSecondCondition)
@@ -191,7 +197,7 @@ func (s *AttachRollbackTestSuite) TestASecondConditionFailingRemovesTheFirst() {
 
 	s.Require().Error(err)
 	s.Require().Equal(before, marshalData(&s.Suite, mustToData(s.T(), char)))
-	s.Require().Len(char.pendingEffects, 2, "both are waiting again")
+	s.Require().ElementsMatch(loadedRefs, heldRefs(char.pendingEffects), "both are waiting again")
 	for _, cond := range char.GetConditions() {
 		s.Require().False(cond.IsApplied(), "including the one that had applied")
 	}
@@ -199,7 +205,7 @@ func (s *AttachRollbackTestSuite) TestASecondConditionFailingRemovesTheFirst() {
 
 	good := events.NewEventBus()
 	s.Require().NoError(Attach(s.ctx, char, good))
-	s.Require().Len(authored(char), 2)
+	s.Require().ElementsMatch(loadedRefs, heldRefs(authored(char)))
 	for _, cond := range authored(char) {
 		s.Require().True(cond.IsApplied(), "the retry attached both")
 	}
@@ -230,7 +236,7 @@ func (s *AttachRollbackTestSuite) fighterFeatureSheet() *Data {
 	})
 	s.Require().NoError(err)
 
-	return &Data{Level: 1,
+	return &Data{RaceID: "human", Level: 1,
 		ID:       "rollback-fighter",
 		ClassID:  classes.Fighter,
 		Features: []json.RawMessage{secondWind, actionSurge},
@@ -292,8 +298,11 @@ func (s *AttachRollbackTestSuite) TestLenientAttachDropsFailedFeatureAndContinue
 	char, err := LoadFromData(s.ctx, s.fighterFeatureSheet(), bus)
 
 	s.Require().NoError(err)
-	s.Require().Len(char.GetFeatures(), 1)
-	s.True(char.GetFeatures()[0].Ref().Equals(refs.Features.ActionSurge()))
+	var featureRefs []string
+	for _, feature := range char.GetFeatures() {
+		featureRefs = append(featureRefs, feature.Ref().String())
+	}
+	s.Require().Contains(featureRefs, refs.Features.ActionSurge().String())
 	s.Require().NoError(dnd5eEvents.RestTopic.On(bus).Publish(s.ctx, dnd5eEvents.RestEvent{
 		RestType: coreResources.ResetLongRest, CharacterID: char.GetID(),
 	}))

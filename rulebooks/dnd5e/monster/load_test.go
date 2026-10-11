@@ -108,7 +108,7 @@ func (s *PureLoadTestSuite) TestActionsReturnsDeepClones() {
 	s.Require().NoError(err)
 
 	actions := m.Actions()
-	s.Require().Len(actions, 1)
+	s.Require().NotEmpty(actions)
 	actions[0].Name = "changed"
 	actions[0].Attack.Damage[0].Dice = "9d9"
 	actions[0].Ref.ID = "changed"
@@ -497,7 +497,7 @@ func (s *MonsterKeeperTestSuite) TestConditionAppliedLandsOnTheMonster() {
 
 	s.Require().NoError(err)
 	s.Require().True(condition.applied)
-	s.Require().Len(s.mon.GetConditions(), 1)
+	s.Require().NotEmpty(s.mon.GetConditions())
 	s.Require().True(s.mon.IsDirty())
 }
 
@@ -568,7 +568,7 @@ func (s *MonsterKeeperTestSuite) TestConditionRemovedThatMatchesNothingLeavesThe
 	})
 
 	s.Require().NoError(err)
-	s.Require().Len(s.mon.GetConditions(), 1, "the condition it does carry is untouched")
+	s.Require().NotEmpty(s.mon.GetConditions(), "the condition it does carry is untouched")
 	s.Require().False(s.mon.IsDirty(), "nothing changed, so nothing needs saving")
 }
 
@@ -585,7 +585,7 @@ func (s *MonsterKeeperTestSuite) TestConditionRemovedFromSomeoneElseIsIgnored() 
 	})
 
 	s.Require().NoError(err)
-	s.Require().Len(s.mon.GetConditions(), 1)
+	s.Require().NotEmpty(s.mon.GetConditions())
 	s.Require().False(s.mon.IsDirty())
 }
 

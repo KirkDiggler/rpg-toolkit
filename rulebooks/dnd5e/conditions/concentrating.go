@@ -134,8 +134,8 @@ type ConcentratingCondition struct {
 	// MemberID is the caster holding the spell together.
 	MemberID string
 
-	// SourceID source-qualifies this owner and every child it owns. Existing
-	// unqualified concentration conditions retain the exact empty identity.
+	// SourceID source-qualifies this owner and every child it owns. An empty
+	// value names a condition that has no source qualifier, and is exact.
 	SourceID string
 
 	// SpellRef is what is being concentrated on, as a ref string.
@@ -194,7 +194,7 @@ type NewConcentratingConditionInput struct {
 	SkipFirstTurnEnd bool
 }
 
-// NewConcentratingCondition creates a legacy-unqualified owner. New casts that
+// NewConcentratingCondition creates an owner with no source qualifier. Casts that
 // need source qualification or grace use [NewConcentratingConditionWithInput].
 func NewConcentratingCondition(
 	memberID, spellRef, spellName string, turnEnds int,

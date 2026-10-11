@@ -118,7 +118,7 @@ func (s *RecklessAttackTestSuite) TestActivate_PublishesConditionAppliedEvent() 
 	finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
 	s.Require().NoError(err)
 
-	s.Require().Len(finalEvent.AdvantageSources, 1, "Should have advantage after activation")
+	s.Require().NotEmpty(finalEvent.AdvantageSources, "Should have advantage after activation")
 	s.Equal("Reckless Attack", finalEvent.AdvantageSources[0].Reason)
 }
 

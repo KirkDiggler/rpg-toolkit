@@ -253,7 +253,9 @@ func (s *LoaderTestSuite) TestRagingConditionRoundTripWithSubscriptions() {
 	s.Require().NoError(err)
 
 	// Should have 3 components: weapon, ability, and rage bonus
-	s.Require().Len(finalEvent.Components, 3, "Should have weapon, ability, and rage components")
+	s.Require().Equal([]dnd5eEvents.DamageSourceType{
+		dnd5eEvents.DamageSourceWeapon, dnd5eEvents.DamageSourceAbility, dnd5eEvents.DamageSourceCondition,
+	}, componentSources(finalEvent.Components), "Should have weapon, ability, and rage components")
 	s.Equal(dnd5eEvents.DamageSourceCondition, finalEvent.Components[2].Source)
 	s.Equal(2, finalEvent.Components[2].Total(), "Rage should add +2 damage from deserialized condition")
 }
@@ -298,7 +300,9 @@ func (s *LoaderTestSuite) TestRagingConditionRoundTripCleanup() {
 	s.Require().NoError(err)
 
 	// Should only have 2 components: weapon and ability (no rage)
-	s.Require().Len(finalEvent.Components, 2, "Should only have weapon and ability after Remove()")
+	s.Require().Equal([]dnd5eEvents.DamageSourceType{
+		dnd5eEvents.DamageSourceWeapon, dnd5eEvents.DamageSourceAbility,
+	}, componentSources(finalEvent.Components), "Should only have weapon and ability after Remove()")
 }
 
 // TestEveryLoadedConditionNamesItsCanonicalRef pins the rpg-toolkit#971

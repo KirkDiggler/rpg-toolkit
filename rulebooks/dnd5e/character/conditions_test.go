@@ -521,3 +521,15 @@ func (s *CharacterConditionsTestSuite) requireUnarmoredDefenseAndRaging(char *Ch
 	_, raging := conditionOfType[*conditions.RagingCondition](char.GetConditions())
 	s.True(unarmoredDefense && raging, msg)
 }
+
+// heldCount counts how many of the given conditions carry the ref: the claim
+// "held once" is about one identity, not about how much else the sheet holds.
+func heldCount(held []dnd5eEvents.ConditionBehavior, ref string) int {
+	count := 0
+	for _, condition := range held {
+		if condition.Ref().String() == ref {
+			count++
+		}
+	}
+	return count
+}

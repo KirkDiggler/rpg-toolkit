@@ -141,7 +141,7 @@ func (s *AttachMonsterRollbackTestSuite) TestAnUnroutableTraitLosesNothing() {
 	s.assertNothingListening(m, bus)
 
 	// The blobs are where they were, in order, ready for another attempt.
-	s.Require().Len(m.TakeUnappliedConditions(), 3)
+	s.Require().Equal(data.Conditions, m.TakeUnappliedConditions())
 }
 
 // The keeper attaches, then the first trait's Apply is refused — the third
@@ -195,7 +195,8 @@ func (s *AttachMonsterRollbackTestSuite) TestARefusedTraitRollsTheAttachBack() {
 // A trait that fails after another has already applied takes that one off with
 // it: half a monster's traits attached is a monster with rules nobody wrote.
 func (s *AttachMonsterRollbackTestSuite) TestASecondTraitFailingRemovesTheFirst() {
-	m, err := LoadMonster(s.ctx, s.goblin())
+	data := s.goblin()
+	m, err := LoadMonster(s.ctx, data)
 	s.Require().NoError(err)
 	before := s.marshal(m.ToData())
 
@@ -208,7 +209,7 @@ func (s *AttachMonsterRollbackTestSuite) TestASecondTraitFailingRemovesTheFirst(
 	s.Require().Equal(before, s.marshal(m.ToData()))
 	s.Require().Empty(m.GetConditions())
 	s.assertNothingListening(m, bus)
-	s.Require().Len(m.TakeUnappliedConditions(), 2, "both blobs are back")
+	s.Require().Equal(data.Conditions, m.TakeUnappliedConditions(), "both blobs are back")
 }
 
 func TestAttachMonsterRollbackSuite(t *testing.T) {

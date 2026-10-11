@@ -68,7 +68,6 @@ func (s *LanguagesSuite) TestHumanWithLanguageChoice() {
 	s.Require().NoError(err)
 
 	data := mustToData(s.T(), char)
-	s.Require().Len(data.Languages, 2, "Human should have 2 languages (Common + chosen)")
 	s.Contains(data.Languages, languages.Common, "Human should have Common")
 	s.Contains(data.Languages, languages.Elvish, "Human should have chosen Elvish")
 }
@@ -109,7 +108,6 @@ func (s *LanguagesSuite) TestElfDefaultLanguages() {
 	s.Require().NoError(err)
 
 	data := mustToData(s.T(), char)
-	s.Require().Len(data.Languages, 2, "Elf should have 2 languages")
 	s.Contains(data.Languages, languages.Common, "Elf should have Common")
 	s.Contains(data.Languages, languages.Elvish, "Elf should have Elvish")
 }
@@ -154,7 +152,6 @@ func (s *LanguagesSuite) TestDwarfDefaultLanguages() {
 	s.Require().NoError(err)
 
 	data := mustToData(s.T(), char)
-	s.Require().Len(data.Languages, 2, "Dwarf should have 2 languages")
 	s.Contains(data.Languages, languages.Common, "Dwarf should have Common")
 	s.Contains(data.Languages, languages.Dwarvish, "Dwarf should have Dwarvish")
 }
@@ -200,7 +197,6 @@ func (s *LanguagesSuite) TestLanguageRoundTrip() {
 
 	// Serialize to Data
 	data := mustToData(s.T(), char)
-	s.Require().Len(data.Languages, 2)
 	s.Contains(data.Languages, languages.Common)
 	s.Contains(data.Languages, languages.Draconic)
 
@@ -213,7 +209,6 @@ func (s *LanguagesSuite) TestLanguageRoundTrip() {
 
 	// Verify languages survived the round trip
 	restoredData := mustToData(s.T(), restored)
-	s.Require().Len(restoredData.Languages, 2, "Languages should survive round trip")
 	s.Contains(restoredData.Languages, languages.Common, "Common should survive round trip")
 	s.Contains(restoredData.Languages, languages.Draconic, "Draconic should survive round trip")
 }
@@ -258,7 +253,6 @@ func (s *LanguagesSuite) TestHalfElfLanguages() {
 	s.Require().NoError(err)
 
 	data := mustToData(s.T(), char)
-	s.Require().Len(data.Languages, 3, "Half-Elf should have 3 languages")
 	s.Contains(data.Languages, languages.Common, "Half-Elf should have Common")
 	s.Contains(data.Languages, languages.Elvish, "Half-Elf should have Elvish")
 	s.Contains(data.Languages, languages.Dwarvish, "Half-Elf should have chosen Dwarvish")

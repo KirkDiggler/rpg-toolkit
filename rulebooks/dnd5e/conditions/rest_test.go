@@ -93,18 +93,19 @@ func TestTemporaryConditionsEndOnRest(t *testing.T) {
 				RestType:    coreResources.ResetShortRest,
 				CharacterID: restTestMemberID,
 			}))
-			require.Equal(t, []dnd5eEvents.ConditionRemovedEvent{{
+			firstRemoval := []dnd5eEvents.ConditionRemovedEvent{{
 				MemberID:     restTestMemberID,
 				ConditionRef: testCase.expectedRef.String(),
 				Reason:       "rest",
-			}}, removed)
+			}}
+			require.Equal(t, firstRemoval, removed)
 			require.False(t, condition.IsApplied(), "the owner's rest must remove the condition's subscriptions")
 
 			require.NoError(t, dnd5eEvents.RestTopic.On(bus).Publish(ctx, dnd5eEvents.RestEvent{
 				RestType:    coreResources.ResetLongRest,
 				CharacterID: restTestMemberID,
 			}))
-			require.Len(t, removed, 1, "a removed condition must not publish a second removal")
+			require.Equal(t, firstRemoval, removed, "a removed condition must not publish a second removal")
 		})
 	}
 }

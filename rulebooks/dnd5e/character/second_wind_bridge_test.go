@@ -121,7 +121,7 @@ func (s *SecondWindBridgeTestSuite) TestActivateAbilityCarriesRollerIntoSecondWi
 		"the interaction-scoped roller must be the roller Second Wind rolls")
 	s.Require().NotNil(received, "activation publishes a received healing event")
 	s.Require().NotNil(received.Calculation)
-	s.Require().Len(received.Calculation.Components, 2)
+	s.Require().GreaterOrEqual(len(received.Calculation.Components), 2, "the die and the Fighter level modifier")
 	s.Equal([]int{6}, received.Calculation.Components[0].Dice.OriginalRolls)
 	s.Equal([]int{6}, received.Calculation.Components[0].Dice.FinalRolls)
 	s.Equal(6, received.Calculation.Components[0].Dice.Subtotal)

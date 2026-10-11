@@ -262,7 +262,7 @@ func TestDeathSaveStateCannotBeMutatedThroughLegacyCharacterDoors(t *testing.T) 
 
 func TestDeathSaveStateDoesNotAliasPersistenceBoundaries(t *testing.T) {
 	t.Run("Load clones caller state", func(t *testing.T) {
-		input := &Data{Level: 1,
+		input := &Data{RaceID: "human", Level: 1,
 			ID: "load-alias", HitPoints: 0, MaxHitPoints: 10,
 			DeathSaveState: &saves.DeathSaveState{Failures: 3, Dead: true},
 		}
@@ -295,7 +295,7 @@ func TestDeathSaveStateDoesNotAliasPersistenceBoundaries(t *testing.T) {
 	})
 
 	t.Run("nil state remains safe and detached", func(t *testing.T) {
-		input := &Data{Level: 1, ID: "nil-alias", HitPoints: 0, MaxHitPoints: 10}
+		input := &Data{RaceID: "human", Level: 1, ID: "nil-alias", HitPoints: 0, MaxHitPoints: 10}
 		char, err := Load(context.Background(), input)
 		require.NoError(t, err)
 		markSaved(char)
@@ -471,7 +471,7 @@ func TestZeroAppliedDamageDoesNotChangeDeathSaveProgress(t *testing.T) {
 			Modifier: &twelve,
 		}}},
 		Multipliers: []dnd5eEvents.DamageMultiplier{{
-			Source:     dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity"},
+			Source:     dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity", SourceID: "defender-1"},
 			DamageType: damage.Fire,
 			Factor:     dnd5eEvents.DamageFactorImmunity,
 		}},
@@ -564,7 +564,7 @@ func bareCharacterAtZero(state *saves.DeathSaveState) *Character {
 	}
 	copyState := *state
 	return &Character{
-		id: "death-save-char", hitPoints: 0, maxHitPoints: 10,
+		id: "death-save-char", raceID: "human", hitPoints: 0, maxHitPoints: 10,
 		classID:        classes.Fighter,
 		levels:         syntheticLevels(classes.Fighter, 1),
 		deathSaveState: &copyState,

@@ -91,7 +91,7 @@ func (s *CharacterResourceTestSuite) TestAddResourceInitializesMapIfNil() {
 	char.AddResource("ki", resource)
 
 	s.Assert().NotNil(char.resources)
-	s.Assert().Equal(1, len(char.resources))
+	s.Assert().Contains(char.resources, coreResources.ResourceKey("ki"))
 	retrieved := char.GetResource("ki")
 	s.Require().NotNil(retrieved)
 	s.Assert().Equal(3, retrieved.Maximum())
@@ -120,7 +120,8 @@ func (s *CharacterResourceTestSuite) TestGetResourceDataReturnsCorrectValues() {
 	// Get data
 	data := s.character.GetResourceData()
 	s.Require().NotNil(data)
-	s.Assert().Equal(2, len(data))
+	s.Assert().Contains(data, coreResources.ResourceKey("rage"))
+	s.Assert().Contains(data, coreResources.ResourceKey("ki"))
 
 	// Check rage data
 	rageData, exists := data["rage"]
@@ -161,7 +162,8 @@ func (s *CharacterResourceTestSuite) TestLoadResourceDataIsInertUntilCharacterRe
 	}
 
 	s.character.LoadResourceData(s.ctx, s.bus, data)
-	s.Require().Len(s.character.resources, 2)
+	s.Require().Contains(s.character.resources, coreResources.ResourceKey("rage"))
+	s.Require().Contains(s.character.resources, coreResources.ResourceKey("ki"))
 	rage := s.character.GetResource("rage")
 	ki := s.character.GetResource("ki")
 	s.Require().Equal(2, rage.Maximum())
@@ -222,7 +224,7 @@ func (s *CharacterResourceTestSuite) TestLoadResourceDataHandlesNilData() {
 	s.character.LoadResourceData(s.ctx, s.bus, nil)
 	// Should not panic, resources should remain as initialized
 	s.Assert().NotNil(s.character.resources)
-	s.Assert().Equal(0, len(s.character.resources))
+	s.Assert().Empty(s.character.resources)
 }
 
 func (s *CharacterResourceTestSuite) TestLoadResourceDataInitializesMapIfNil() {
@@ -242,7 +244,7 @@ func (s *CharacterResourceTestSuite) TestLoadResourceDataInitializesMapIfNil() {
 	char.LoadResourceData(s.ctx, s.bus, data)
 
 	s.Assert().NotNil(char.resources)
-	s.Assert().Equal(1, len(char.resources))
+	s.Assert().Contains(char.resources, coreResources.ResourceKey("rage"))
 }
 
 func (s *CharacterResourceTestSuite) TestRoundTripSerialization() {
@@ -769,7 +771,8 @@ func (s *CharacterLoadFromDataRoundTripSuite) TestARecordCarryingClassResourcesL
 func (s *CharacterLoadFromDataRoundTripSuite) minimalSpellcasterData() *Data {
 	zero := uint32(0)
 	return &Data{
-		ID: "wendy-test",
+		RaceID: "human",
+		ID:     "wendy-test",
 		Appearance: &customization.Appearance{
 			Hair: &customization.HairCustomization{ColorSRGB: &zero},
 			Outfit: &customization.OutfitCustomization{

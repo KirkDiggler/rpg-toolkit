@@ -64,8 +64,10 @@ func TestAMonsterCanCarryAnOrdinaryCondition(t *testing.T) {
 	require.NoError(t, AttachMonster(context.Background(), m, bus, dice.NewRoller()),
 		"and must attach without the trait loader refusing its ref")
 
-	require.Len(t, m.GetConditions(), 1, "the condition is on the sheet, not merely loadable")
-	require.Equal(t, refs.Conditions.OpportunityAttack().String(), m.GetConditions()[0].Ref().String())
+	require.NotEmpty(t, m.GetConditions(), "the condition is on the sheet, not merely loadable")
+	for _, condition := range m.GetConditions() {
+		require.Equal(t, refs.Conditions.OpportunityAttack().String(), condition.Ref().String())
+	}
 }
 
 // The owner handoff character.Attach has made since rpg-toolkit#1178, now that

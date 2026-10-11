@@ -183,7 +183,7 @@ func (s *ComposableDamageTestSuite) installTypeSpecificDefenses(featurePresentAt
 			err := c.Add(combat.StageFinal, "test_lifedrinker_type_defenses",
 				func(_ context.Context, event *dnd5eEvents.IncomingDamageEvent) (*dnd5eEvents.IncomingDamageEvent, error) {
 					*featurePresentAtConditions = componentBySourceAndType(event.Dealt(), dnd5eEvents.DamageSourceFeature, damage.Necrotic) != nil
-					source := dnd5eEvents.RollSource{Ref: syntheticDefensesRef, Name: "Synthetic Type Defenses"}
+					source := dnd5eEvents.RollSource{Ref: syntheticDefensesRef, Name: "Synthetic Type Defenses", SourceID: "defender-1"}
 					event.Multipliers = append(event.Multipliers,
 						dnd5eEvents.DamageMultiplier{
 							Category: dnd5eEvents.DamageSourceCondition, Source: source,

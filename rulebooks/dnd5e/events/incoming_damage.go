@@ -46,15 +46,15 @@ type DamageReduction struct {
 	// Category is what kind of rule answered: a condition, a feature, a
 	// monster trait.
 	Category DamageSourceType
-	// Source names the rule that answered. Ref is required: the trace line
-	// for the reduction names it.
+	// Source names the rule that answered. Ref and SourceID are required: the
+	// trace line for the reduction names the rule and the member that holds it.
 	Source     RollSource
 	DamageType damage.Type
 	Modifier   int
 }
 
 // Validate refuses a reduction the settlement cannot fold: no damage type, no
-// named source, or a modifier that does not reduce. Errors wrap
+// named source or owner, or a modifier that does not reduce. Errors wrap
 // [ErrMalformedTargetAnswer].
 func (r DamageReduction) Validate() error {
 	if r.DamageType == "" {
@@ -62,6 +62,9 @@ func (r DamageReduction) Validate() error {
 	}
 	if r.Source.Ref == nil {
 		return fmt.Errorf("%w: %s damage reduction names no source", ErrMalformedTargetAnswer, r.DamageType)
+	}
+	if r.Source.SourceID == "" {
+		return fmt.Errorf("%w: %s damage reduction from %s names no owner", ErrMalformedTargetAnswer, r.DamageType, r.Source.Ref)
 	}
 	if r.Modifier >= 0 {
 		return fmt.Errorf("%w: %s damage reduction from %s is %d, not negative",
@@ -78,8 +81,9 @@ type DamageMultiplier struct {
 	// Category is what kind of rule answered: a condition, a feature, a
 	// monster trait.
 	Category DamageSourceType
-	// Source names the rule that answered. Ref is required: the trace line
-	// for a multiplied type names the multiplier that decided it.
+	// Source names the rule that answered. Ref and SourceID are required: the
+	// trace line for a multiplied type names the multiplier that decided it and
+	// the member that holds it.
 	Source     RollSource
 	DamageType damage.Type
 	Factor     float64
@@ -94,6 +98,9 @@ func (m DamageMultiplier) Validate() error {
 	}
 	if m.Source.Ref == nil {
 		return fmt.Errorf("%w: %s damage multiplier names no source", ErrMalformedTargetAnswer, m.DamageType)
+	}
+	if m.Source.SourceID == "" {
+		return fmt.Errorf("%w: %s damage multiplier from %s names no owner", ErrMalformedTargetAnswer, m.DamageType, m.Source.Ref)
 	}
 	switch m.Factor {
 	case DamageFactorImmunity, DamageFactorResistance, DamageFactorVulnerability:
