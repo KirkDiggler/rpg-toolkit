@@ -197,6 +197,10 @@ type ImposedEffect struct {
 	// Address is the exact source-qualified identity for condition consequences.
 	Address dnd5eEvents.ConditionAddress
 
+	// Detail is the instance's own detail for an ImposedCondition, read
+	// through conditions.InstanceDetailOf. Empty for every other kind.
+	Detail string
+
 	// Move is the directive for an [ImposedMove], and nil for every other
 	// kind. It is the whole of what this package says about the move: the
 	// cells are worked out by whoever owns the board.
@@ -388,6 +392,7 @@ func (p preparedCondition) atStake(recipientID string) ImposedEffect {
 		Description: p.name,
 		RecipientID: recipientID,
 		Address:     conditions.ConditionAddressOf(recipientID, p.behavior),
+		Detail:      conditions.InstanceDetailOf(p.behavior),
 	}
 }
 

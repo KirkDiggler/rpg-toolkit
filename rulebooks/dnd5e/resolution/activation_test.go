@@ -754,6 +754,27 @@ func (s *ActivationTestSuite) TestActivationCollectorCapturesConditionRemovedWit
 	}}, collector.Effects())
 }
 
+func (s *ActivationTestSuite) TestTheCollectorReadsTheInstanceDetail() {
+	bus := events.NewEventBus()
+	collector, err := newActivationEffectCollector(s.ctx, bus)
+	s.Require().NoError(err)
+	defer func() { s.Require().NoError(collector.Close(s.ctx)) }()
+
+	commanded, err := conditions.NewCommandedCondition(heroID, refs.Spells.Command().String(), bardID, "grovel", 1)
+	s.Require().NoError(err)
+	s.Require().NoError(dnd5eEvents.ConditionAppliedTopic.On(bus).Publish(s.ctx,
+		dnd5eEvents.ConditionAppliedEvent{Target: activationTestEntity{id: heroID}, Condition: commanded}))
+	s.Require().NoError(dnd5eEvents.ConditionAppliedTopic.On(bus).Publish(s.ctx,
+		dnd5eEvents.ConditionAppliedEvent{
+			Target: activationTestEntity{id: activationAllyID}, Condition: conditions.NewDodgingCondition(activationAllyID),
+		}))
+
+	got := collector.Effects()
+	s.Require().Len(got, 2)
+	s.Equal("grovel", got[0].Detail, "the commanded instance's word")
+	s.Empty(got[1].Detail, "a condition with nothing to say captures none")
+}
+
 func (s *ActivationTestSuite) TestActivationCollectorPreservesBusOrderAndReturnsClones() {
 	bus := events.NewEventBus()
 	collector, err := newActivationEffectCollector(s.ctx, bus)
