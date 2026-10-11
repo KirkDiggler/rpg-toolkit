@@ -39,9 +39,6 @@ func (s *LongRestTestSuite) SetupTest() {
 
 func (s *LongRestTestSuite) SetupSubTest() {
 	// Reset to fresh state for each subtest
-	if s.character != nil {
-		_ = s.character.Cleanup(s.ctx)
-	}
 	s.bus = events.NewEventBus()
 	s.createFreshCharacter()
 }
@@ -65,12 +62,6 @@ func (s *LongRestTestSuite) createFreshCharacter() {
 	// Subscribe to events
 	err := s.character.subscribeToEvents(s.ctx)
 	s.Require().NoError(err)
-}
-
-func (s *LongRestTestSuite) TearDownTest() {
-	if s.character != nil {
-		_ = s.character.Cleanup(s.ctx)
-	}
 }
 
 func (s *LongRestTestSuite) TestLongRest() {
@@ -208,7 +199,6 @@ func TestLongRestRestoresTheLevelOneSpellSlotResource(t *testing.T) {
 	require.NoError(t, err)
 	bus := events.NewEventBus()
 	require.NoError(t, Attach(ctx, char, bus))
-	t.Cleanup(func() { require.NoError(t, char.Cleanup(ctx)) })
 
 	require.NoError(t, restErr(char.LongRest(ctx)))
 	require.Equal(t, 2, char.GetResource(resources.SpellSlotLevel1).Current())
@@ -233,7 +223,6 @@ func TestLongRestClearsPersistedActionEconomy(t *testing.T) {
 	require.NoError(t, err)
 	bus := events.NewEventBus()
 	require.NoError(t, Attach(ctx, char, bus))
-	t.Cleanup(func() { require.NoError(t, char.Cleanup(ctx)) })
 
 	require.NoError(t, restErr(char.LongRest(ctx)))
 	got := mustToData(t, char)
@@ -281,7 +270,6 @@ func TestLongRestRetainsCombatEconomyWhenRestEventPublicationFails(t *testing.T)
 	// Install the failing observer before Attach so the real bus returns its
 	// error before any character-owned rest observer can react.
 	require.NoError(t, Attach(ctx, char, bus))
-	t.Cleanup(func() { require.NoError(t, char.Cleanup(ctx)) })
 	before := mustToData(t, char).ActionEconomy
 	require.NotNil(t, before)
 
@@ -301,7 +289,6 @@ func TestLongRestKeepsAbsentActionEconomyAbsent(t *testing.T) {
 	require.NoError(t, err)
 	bus := events.NewEventBus()
 	require.NoError(t, Attach(ctx, char, bus))
-	t.Cleanup(func() { require.NoError(t, char.Cleanup(ctx)) })
 
 	require.NoError(t, restErr(char.LongRest(ctx)))
 	require.NoError(t, restErr(char.LongRest(ctx)))
@@ -325,7 +312,6 @@ func TestShortRestRetainsPersistedActionEconomy(t *testing.T) {
 	require.NoError(t, err)
 	bus := events.NewEventBus()
 	require.NoError(t, Attach(ctx, char, bus))
-	t.Cleanup(func() { require.NoError(t, char.Cleanup(ctx)) })
 
 	_, err = char.ShortRest(ctx, &ShortRestInput{})
 	require.NoError(t, err)
@@ -409,7 +395,6 @@ func TestLongRestPersistsCompleteRecoveryOnAttachedSheet(t *testing.T) {
 	require.NoError(t, err)
 	bus := events.NewEventBus()
 	require.NoError(t, Attach(ctx, char, bus))
-	t.Cleanup(func() { require.NoError(t, char.Cleanup(ctx)) })
 
 	require.NoError(t, restErr(char.LongRest(ctx)))
 	got := mustToData(t, char)

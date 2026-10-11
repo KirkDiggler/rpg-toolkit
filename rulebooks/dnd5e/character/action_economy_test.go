@@ -342,7 +342,7 @@ func (s *ActionEconomyTestSuite) TestToolkitEconomyBridgePreservesDeathSaveCapac
 }
 
 func (s *ActionEconomyTestSuite) TestToolkitEconomyBridgePersistsSpentDeathSaveCapacityAtZero() {
-	input := &Data{Level: 1,
+	input := &Data{RaceID: "human", Level: 1,
 		ID: "spent-death-save",
 		ActionEconomy: &ActionEconomyData{
 			Granted: map[GrantedActionKey]int{

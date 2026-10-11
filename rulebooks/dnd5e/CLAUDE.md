@@ -60,7 +60,7 @@ refs.Actions.Strike()          // *core.Ref for Strike action
 
 ## Conditions vs Effects
 
-Conditions are really "effects" but we're saving that rename for 1.0. Use `character.HasCondition(refs.Conditions.Dodging())` to check for active effects like Dodging or Disengaging.
+Conditions are really "effects" but we're saving that rename for 1.0. Use `conditions.HoldsRef(stored, refs.Conditions.Dodging())` over a sheet's stored conditions to check for active effects like Dodging or Disengaging.
 
 ## Two-Level Action Economy
 

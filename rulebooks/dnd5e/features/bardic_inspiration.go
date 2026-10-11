@@ -167,7 +167,6 @@ func (b *BardicInspiration) Activate(ctx context.Context, owner core.Entity, inp
 	)
 	if err := dnd5eEvents.ConditionAppliedTopic.On(input.Bus).Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
 		Target:    input.Target,
-		Type:      dnd5eEvents.ConditionInspired,
 		Source:    dnd5eEvents.ConditionSourceFeature,
 		Condition: inspired,
 	}); err != nil {

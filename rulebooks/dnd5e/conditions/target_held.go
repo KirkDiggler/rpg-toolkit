@@ -215,11 +215,6 @@ func AssessTargetHeldEffects(in *AssessTargetHeldEffectsInput) (*AssessTargetHel
 	effects := make([]contributions.Effect, 0, len(held))
 	ids := make(map[string]struct{}, len(held))
 	for _, condition := range held {
-		// A sighting recorded before a type retired may still name it. It is
-		// no condition anyone can answer for, and it is not a failure.
-		if isRetiredRef(condition.Ref) {
-			continue
-		}
 		entry, err := lookup(condition.Ref)
 		if err != nil {
 			return nil, rpgerr.Wrapf(err, "held condition %s", condition.Ref)

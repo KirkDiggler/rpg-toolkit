@@ -18,96 +18,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
-// ConditionType represents D&D 5e conditions
-type ConditionType string
-
-const (
-	// ConditionBlinded is a condition that blinds a character
-	ConditionBlinded ConditionType = "blinded"
-	// ConditionCharmed is a condition that charms a character
-	ConditionCharmed ConditionType = "charmed"
-	// ConditionDeafened is a condition that deafens a character
-	ConditionDeafened ConditionType = "deafened"
-	// ConditionFrightened is a condition that frightens a character
-	ConditionFrightened ConditionType = "frightened"
-	// ConditionGrappled is a condition that grapples a character
-	ConditionGrappled ConditionType = "grappled"
-	// ConditionIncapacitated is a condition that incapacitates a character
-	ConditionIncapacitated ConditionType = "incapacitated"
-	// ConditionInvisible is a condition that makes a character invisible
-	ConditionInvisible ConditionType = "invisible"
-	// ConditionParalyzed is a condition that paralyzes a character
-	ConditionParalyzed ConditionType = "paralyzed"
-	// ConditionPetrified is a condition that petrifies a character
-	ConditionPetrified ConditionType = "petrified"
-	// ConditionPoisoned is a condition that poisons a character
-	ConditionPoisoned ConditionType = "poisoned"
-	// ConditionProne is a condition that makes a character prone
-	ConditionProne ConditionType = "prone"
-	// ConditionRestrained is a condition that restrains a character
-	ConditionRestrained ConditionType = "restrained"
-	// ConditionStunned is a condition that stuns a character
-	ConditionStunned ConditionType = "stunned"
-	// ConditionUnconscious is a condition that makes a character unconscious
-	ConditionUnconscious ConditionType = "unconscious"
-
-	// ConditionExhaustion1 is a condition that exhausts a character
-	ConditionExhaustion1 ConditionType = "exhaustion_1"
-	// ConditionExhaustion2 is a condition that exhausts a character
-	ConditionExhaustion2 ConditionType = "exhaustion_2"
-	// ConditionExhaustion3 is a condition that exhausts a character
-	ConditionExhaustion3 ConditionType = "exhaustion_3"
-	// ConditionExhaustion4 is a condition that exhausts a character
-	ConditionExhaustion4 ConditionType = "exhaustion_4"
-	// ConditionExhaustion5 is a condition that exhausts a character
-	ConditionExhaustion5 ConditionType = "exhaustion_5"
-	// ConditionExhaustion6 is a condition that exhausts a character
-	ConditionExhaustion6 ConditionType = "exhaustion_6"
-
-	// ConditionRaging is a class-specific condition for barbarians
-	ConditionRaging ConditionType = "raging"
-	// ConditionRecklessAttack is a class-specific condition for barbarians using Reckless Attack
-	ConditionRecklessAttack ConditionType = "reckless_attack"
-
-	// ConditionFightingStyle represents an active fighting style
-	ConditionFightingStyle ConditionType = "fighting_style"
-
-	// ConditionDodging is applied when a character uses the Dodge combat ability.
-	// Attackers have disadvantage against the character and the character has
-	// advantage on DEX saves, until the start of the character's next turn.
-	ConditionDodging ConditionType = "dodging"
-
-	// ConditionDisengaging is applied when a character takes the Disengage
-	// action, or a monk spends Step of the Wind on it. It arrives late
-	// (rpg-toolkit#1272) because Disengage applied its condition directly to
-	// the bus instead of publishing one, so there was never an event to
-	// name — which is exactly why the condition never reached a sheet.
-	ConditionDisengaging ConditionType = "disengaging"
-	// ConditionHidden is applied when a character successfully hides
-	// (a Stealth check beating observers' passive Perception). Grants
-	// advantage on the hidden character's attacks and disadvantage on
-	// attacks against them; removed when the hider makes their own attack.
-	ConditionHidden ConditionType = "hidden"
-	// ConditionHelped is applied to the ally targeted by the Help combat
-	// ability. Grants advantage on the ally's next attack roll; removed
-	// when consumed or at the helper's next turn if unused.
-	ConditionHelped ConditionType = "helped"
-	// ConditionInspired is applied to the ally a bard grants a Bardic
-	// Inspiration die to. It OFFERS the die on a roll already made
-	// ([PostRollOfferChain]) rather than adding to one being made, and
-	// consumes itself when the offer is taken.
-	ConditionInspired ConditionType = "inspired"
-
-	// ConditionTrueStrike is applied to the CASTER of True Strike, keyed to
-	// the creature they named: advantage on the caster's next attack against
-	// that creature, and nothing against anybody else.
-	ConditionTrueStrike ConditionType = "true_strike"
-	// ConditionViciousMockery is applied to a creature that failed its save
-	// against Vicious Mockery. Disadvantage on its next attack roll, then
-	// consumed.
-	ConditionViciousMockery ConditionType = "vicious_mockery"
-)
-
 // ConditionSource identifies where a condition originated
 type ConditionSource string
 
@@ -160,8 +70,9 @@ type ConditionBehavior interface {
 }
 
 // ConditionAddressProvider is the optional capability for a condition whose
-// identity is source-qualified. Unqualified legacy conditions omit it and are
-// addressed with an exact empty SourceID by their sheet owner.
+// identity is source-qualified. A condition with no source qualifier (Prone,
+// Dodging, Hidden, Raging) omits it and is addressed with an exact empty
+// SourceID by its sheet owner.
 type ConditionAddressProvider interface {
 	ConditionAddress() ConditionAddress
 }
@@ -667,7 +578,6 @@ type HealingAppliedEvent struct {
 // ConditionAppliedEvent is published when a condition is applied to an entity
 type ConditionAppliedEvent struct {
 	Target    core.Entity       // Entity receiving the condition
-	Type      ConditionType     // Type of condition being applied
 	Source    ConditionSource   // What caused this condition
 	Condition ConditionBehavior // The condition behavior to apply
 }
@@ -688,7 +598,7 @@ type ConditionAppliedEvent struct {
 type ConditionRemovedEvent struct {
 	MemberID     string // whose sheet carried the condition that ended
 	ConditionRef string // which condition ended, as the ref its Ref() returns
-	SourceID     string // exact source qualifier; empty names only unqualified legacy state
+	SourceID     string // exact source qualifier; empty names only a condition with none
 	Reason       string // why, for a log that wants to say so
 }
 

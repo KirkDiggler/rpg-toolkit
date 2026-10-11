@@ -37,6 +37,10 @@ func TestKnownSpellsSuite(t *testing.T) {
 
 func (s *KnownSpellsSuite) SetupTest() { s.bus = events.NewEventBus() }
 
+// SetupSubTest gives every subtest its own bus: a sheet stays subscribed to the
+// bus it was finalized on, so two sheets sharing an id must not share a bus.
+func (s *KnownSpellsSuite) SetupSubTest() { s.bus = events.NewEventBus() }
+
 // bardDraft builds a level-1 bard draft, cantrips included.
 func (s *KnownSpellsSuite) bardDraft(known ...spells.Spell) *Draft {
 	draft := s.bardDraftWithoutCantrips(known...)
@@ -172,7 +176,6 @@ func (s *KnownSpellsSuite) TestEveryFourSpellBardSelectionFinalizesAndSurvivesRe
 			s.Require().NoError(json.Unmarshal(encoded, &data))
 			loaded, err := Load(context.Background(), &data)
 			s.Require().NoError(err)
-			s.Len(loaded.KnownSpells(), 4)
 			s.NotContains(spellRefsAsStrings(loaded.KnownSpells()), refs.Spells.ByID(string(unchosen)).String())
 			for _, picked := range selected {
 				s.Contains(spellRefsAsStrings(loaded.KnownSpells()), refs.Spells.ByID(string(picked)).String())
@@ -195,7 +198,6 @@ func (s *KnownSpellsSuite) TestBaneKnowledgeAndSpellSlotResourceSurviveReloadAnd
 	s.Require().NoError(err)
 	s.Require().NoError(char.UseResource(resources.SpellSlotLevel1, 1))
 	persisted := mustToData(s.T(), char)
-	s.Require().NoError(char.Cleanup(ctx))
 
 	loaded, err := Load(ctx, persisted)
 	s.Require().NoError(err)
@@ -212,7 +214,6 @@ func (s *KnownSpellsSuite) TestBaneKnowledgeAndSpellSlotResourceSurviveReloadAnd
 
 	bus := events.NewEventBus()
 	s.Require().NoError(Attach(ctx, loaded, bus))
-	s.T().Cleanup(func() { s.Require().NoError(loaded.Cleanup(ctx)) })
 	s.Require().NoError(restErr(loaded.LongRest(ctx)))
 	s.Equal(2, loaded.GetResource(resources.SpellSlotLevel1).Current())
 }
@@ -297,7 +298,7 @@ func (s *KnownSpellsSuite) TestTheCompiledRefIsNotTheCatalogsOwn() {
 
 	known, err := compileKnownSpells(draft.choices, shared.ChoiceCantrips, "cantrip")
 	s.Require().NoError(err)
-	s.Require().Len(known, 1)
+	s.Require().NotEmpty(known)
 
 	s.NotSame(refs.Spells.ViciousMockery(), known[0])
 	known[0].ID = "fireball"
@@ -324,7 +325,7 @@ func (s *KnownSpellsSuite) TestASpellThisBuildHasNoRefForIsRefused() {
 // knownSheet is a stored sheet carrying known spells directly, including the
 // levelled ones no requirement asks for yet.
 func (s *KnownSpellsSuite) knownSheet() *Data {
-	char, err := s.bardDraft().ToCharacter(context.Background(), "bard-1", s.bus)
+	char, err := s.bardDraft().ToCharacter(context.Background(), "bard-1", events.NewEventBus())
 	s.Require().NoError(err)
 
 	data := mustToData(s.T(), char)

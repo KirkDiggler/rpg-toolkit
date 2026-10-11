@@ -756,7 +756,6 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 	for _, cond := range initialConditions {
 		if err := conditionTopic.Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
 			Target:    char,
-			Type:      dnd5eEvents.ConditionFightingStyle,
 			Source:    dnd5eEvents.ConditionSourceClass,
 			Condition: cond,
 		}); err != nil {
@@ -1436,7 +1435,8 @@ func (d *Draft) compileFeatures(characterID string) ([]features.Feature, error) 
 	return featureList, nil
 }
 
-// compileConditions creates conditions from grants and draft choices (e.g., fighting styles).
+// compileConditions creates conditions from grants, draft choices (e.g.,
+// fighting styles) and the free reactions every combatant carries.
 // Conditions can come from two sources:
 // 1. Class grants (e.g., Barbarian's Unarmored Defense)
 // 2. Player choices (e.g., Fighter's chosen Fighting Style)
@@ -1477,6 +1477,11 @@ func (d *Draft) compileConditions(characterID string) ([]dnd5eEvents.ConditionBe
 		}
 		conditionList = append(conditionList, output.Condition)
 	}
+
+	// The reactions every combatant has are written with the rest, so the new
+	// sheet's stored conditions name them from creation and nothing downstream
+	// adds them later (rpg-project tier-3-closeout R2).
+	conditionList = append(conditionList, conditions.FreeReactions(characterID)...)
 
 	return conditionList, nil
 }

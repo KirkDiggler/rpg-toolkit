@@ -152,8 +152,9 @@ func (i *immunityCondition) onIncomingDamage(
 		e.Multipliers = append(e.Multipliers, dnd5eEvents.DamageMultiplier{
 			Category: dnd5eEvents.DamageSourceMonsterTrait,
 			Source: dnd5eEvents.RollSource{
-				Ref:  refs.MonsterTraits.Immunity(),
-				Name: "Immunity",
+				Ref:      refs.MonsterTraits.Immunity(),
+				Name:     "Immunity",
+				SourceID: i.ownerID,
 			},
 			DamageType: i.damageType,
 			Factor:     dnd5eEvents.DamageFactorImmunity,

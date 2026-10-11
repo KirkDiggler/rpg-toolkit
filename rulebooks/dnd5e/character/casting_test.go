@@ -20,24 +20,24 @@ import (
 func TestHealingSpellsUseLoadedClassAbilityAndLifeDomain(t *testing.T) {
 	for _, spell := range []spells.Spell{spells.CureWounds, spells.HealingWord} {
 		for _, tc := range []struct {
-			class                classes.Class
-			subclass             classes.Subclass
-			modifier, components int
+			class    classes.Class
+			subclass classes.Subclass
+			amounts  []int
 		}{
-			{classes.Cleric, "", 3, 1}, {classes.Cleric, classes.LifeDomain, 3, 2}, {classes.Bard, "", -1, 1},
+			{classes.Cleric, "", []int{3}}, {classes.Cleric, classes.LifeDomain, []int{3, 3}}, {classes.Bard, "", []int{-1}},
 		} {
-			data := &Data{ID: "caster", Name: "Caster", Level: 1, ClassID: tc.class, SubclassID: tc.subclass,
+			data := &Data{RaceID: "human", ID: "caster", Name: "Caster", Level: 1, ClassID: tc.class, SubclassID: tc.subclass,
 				AbilityScores: shared.AbilityScores{abilities.WIS: 16, abilities.CHA: 8}, HitPoints: 10, MaxHitPoints: 10}
 			ch, err := Load(context.Background(), data)
 			require.NoError(t, err)
 			definition := ch.CastDefinition(spell)
 			require.NotNil(t, definition)
 			require.NoError(t, definition.Validate())
-			require.Len(t, definition.Cast.Healing.Modifiers, tc.components)
-			require.Equal(t, tc.modifier, definition.Cast.Healing.Modifiers[0].Amount)
-			if tc.components == 2 {
-				require.Equal(t, 3, definition.Cast.Healing.Modifiers[1].Amount)
+			var amounts []int
+			for _, modifier := range definition.Cast.Healing.Modifiers {
+				amounts = append(amounts, modifier.Amount)
 			}
+			require.Equal(t, tc.amounts, amounts)
 			require.Nil(t, definition.Cast.Save)
 			require.Nil(t, definition.Cast.Concentration)
 			clone := definition.Clone()

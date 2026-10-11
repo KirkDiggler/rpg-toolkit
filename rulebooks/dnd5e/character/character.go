@@ -117,7 +117,7 @@ type Character struct {
 	// Conditions the load parsed but no bus has seen yet, each still paired
 	// with the ref its loader routed on. Attach drains this; a character that
 	// was never loaded from data has none.
-	pendingEffects []loadedEffect
+	pendingEffects []dnd5eEvents.ConditionBehavior
 
 	// What this sheet does with a persisted blob it cannot read - decided by
 	// how it was loaded, and honored again when it is attached.
@@ -267,11 +267,9 @@ func proficiencyBonusForLevel(level int) int {
 // This is the base speed before condition modifiers (e.g., Unarmored Movement).
 // Condition-based speed modifiers are applied through the MovementChain.
 func (c *Character) GetSpeed() int {
-	raceData := races.GetData(c.raceID)
-	if raceData == nil {
-		return 30 // Default speed if race data not found
-	}
-	return raceData.Speed
+	// No default: a sheet is made by Load or Finalize, and both refuse a race
+	// the catalogue does not hold, so this lookup always resolves.
+	return races.GetData(c.raceID).Speed
 }
 
 // GetExtraAttacksCount returns the number of extra attacks granted by class features.
@@ -376,88 +374,6 @@ func (c *Character) GetSavingThrowModifier(ability abilities.Ability) int {
 	}
 
 	return modifier
-}
-
-// MakeSavingThrowInput contains parameters for a character saving throw
-type MakeSavingThrowInput struct {
-	// Roller is the dice roller to use. If nil, defaults to dice.NewRoller().
-	// Pass a mock roller here for testing.
-	Roller dice.Roller
-
-	// Ability is the ability score being tested (STR, DEX, CON, INT, WIS, CHA)
-	Ability abilities.Ability
-
-	// DC is the Difficulty Class that must be met or exceeded
-	DC int
-
-	// D20Source is the canonical effect/action source that caused this save.
-	//
-	// Advantage and disadvantage are NOT inputs here. They arrive on the
-	// SavingThrowChain from the conditions and features attached to this
-	// character, which is where every real source already comes from — and
-	// only a chain source can name the entity a keep record requires
-	// (rpg-project#462 R7).
-	D20Source dnd5eEvents.RollSource
-}
-
-// MakeSavingThrow makes a full saving throw for this character.
-// The character's ability modifier and proficiency bonus (if proficient) are
-// automatically applied, and the SavingThrowChain fires on the character's
-// bus so attached conditions and features can modify the roll.
-// Returns the result including whether the save succeeded.
-//
-// The character must be attached to a bus ([Attach] / Draft.Finalize): a full
-// save consults the chain, and a sheet on no bus has every save-modifying
-// condition absent — refused loudly rather than rolled wrong (rpg-toolkit#1357).
-func (c *Character) MakeSavingThrow(
-	ctx context.Context, input *MakeSavingThrowInput,
-) (*saves.SavingThrowResult, error) {
-	if c.bus == nil {
-		return nil, rpgerr.New(rpgerr.CodePrerequisiteNotMet,
-			"a full saving throw consults the chain: this character is on no bus, "+
-				"so every condition and feature that modifies saves is absent")
-	}
-
-	modifier := c.GetSavingThrowModifier(input.Ability)
-	contributions, err := c.DescribeRollContributions(&dnd5eEvents.DescribeRollContributionsInput{
-		Kind: dnd5eEvents.RollKindSavingThrow,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return saves.MakeSavingThrow(ctx, &saves.SavingThrowInput{
-		Roller:    input.Roller,
-		EventBus:  c.bus,
-		SaverID:   c.GetID(),
-		Ability:   input.Ability,
-		DC:        input.DC,
-		Modifier:  modifier,
-		D20Source: input.D20Source,
-		ModifierSource: dnd5eEvents.RollSource{
-			Ref: savingThrowAbilityRef(input.Ability), Name: input.Ability.Display(),
-		},
-		Contributions: contributions.Contributions,
-	})
-}
-
-func savingThrowAbilityRef(ability abilities.Ability) *core.Ref {
-	switch ability {
-	case abilities.STR:
-		return refs.Abilities.Strength()
-	case abilities.DEX:
-		return refs.Abilities.Dexterity()
-	case abilities.CON:
-		return refs.Abilities.Constitution()
-	case abilities.INT:
-		return refs.Abilities.Intelligence()
-	case abilities.WIS:
-		return refs.Abilities.Wisdom()
-	case abilities.CHA:
-		return refs.Abilities.Charisma()
-	default:
-		return nil
-	}
 }
 
 // ShortRestInput asks for one short rest: how many hit dice to spend and the
@@ -1671,8 +1587,8 @@ func (c *Character) onConditionRemoved(
 	filtered := make([]dnd5eEvents.ConditionBehavior, 0, len(c.conditions))
 	var detachErrs []error
 	for _, cond := range c.conditions {
-		// All three identity fields match exactly. Empty source identifies only
-		// legacy-unqualified state and is never a wildcard.
+		// All three identity fields match exactly. An empty source names only a
+		// condition that has no source qualifier and is never a wildcard.
 		if conditions.ConditionAddressOf(c.id, cond) != event.Address() {
 			filtered = append(filtered, cond)
 			continue
@@ -1870,46 +1786,6 @@ func (c *Character) onHealingReceived(
 	})
 }
 
-// Cleanup removes active conditions, attachable features, and the sheet's own
-// event subscriptions.
-func (c *Character) Cleanup(ctx context.Context) error {
-	if c.bus == nil {
-		return nil
-	}
-
-	var errors []error
-
-	// Remove all active conditions - collect errors but try to remove all
-	for _, cond := range c.conditions {
-		if err := cond.Remove(ctx, c.bus); err != nil {
-			errors = append(errors, rpgerr.Wrapf(err, "failed to remove condition"))
-		}
-	}
-	c.conditions = nil
-
-	if c.keeper != nil {
-		if err := c.keeper.Remove(ctx, c.bus); err != nil {
-			errors = append(errors, err)
-		}
-	} else {
-		// A defensive compatibility path for a manually assembled character
-		// carrying subscriptions without its keeper.
-		for _, subID := range c.subscriptionIDs {
-			if err := c.bus.Unsubscribe(ctx, subID); err != nil {
-				errors = append(errors, rpgerr.Wrapf(err, "failed to unsubscribe"))
-			}
-		}
-		c.subscriptionIDs = nil
-	}
-
-	// Return first error if any occurred
-	if len(errors) > 0 {
-		return errors[0]
-	}
-
-	return nil
-}
-
 // dropCondition takes a condition back off the sheet by identity.
 //
 // By identity rather than by ref because this runs when a condition failed to
@@ -1925,8 +1801,8 @@ func (c *Character) dropCondition(behavior dnd5eEvents.ConditionBehavior) {
 }
 
 // forgetSubscriptions drops the given subscription IDs from the character's
-// list, so that a Cleanup after a [SheetKeeper.Remove] does not try to revoke
-// hooks that are already gone.
+// list, so that the sheet stops claiming hooks a [SheetKeeper.Remove] already
+// revoked.
 func (c *Character) forgetSubscriptions(revoked []string) {
 	if len(revoked) == 0 || len(c.subscriptionIDs) == 0 {
 		return

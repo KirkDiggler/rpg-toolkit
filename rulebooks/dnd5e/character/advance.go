@@ -44,8 +44,8 @@ type AdvanceInput struct {
 	Choices []choices.ChoiceData
 
 	// Roller supplies the randomness for [HitPointMethodRolled]. Nil defaults
-	// to dice.NewRoller(), the same contract [MakeSavingThrowInput] and
-	// [SpendHitDiceInput] carry. It is a source of faces, not a hit point
+	// to dice.NewRoller(), the same contract [saves.SavingThrowInput] and
+	// [saves.DeathSaveInput] carry. It is a source of faces, not a hit point
 	// total, so it does not put the rule in the caller.
 	Roller dice.Roller
 }
@@ -641,9 +641,9 @@ func checkNothingUnasked(input *AdvanceInput, required []choices.ChoiceID, class
 // feature is a value nobody has seen.
 func (c *Character) buildGranted(
 	grants []classes.Grant, classID classes.Class,
-) ([]features.Feature, []loadedEffect, error) {
+) ([]features.Feature, []dnd5eEvents.ConditionBehavior, error) {
 	newFeatures := make([]features.Feature, 0)
-	newConditions := make([]loadedEffect, 0)
+	newConditions := make([]dnd5eEvents.ConditionBehavior, 0)
 	classSourceRef := "dnd5e:classes:" + string(classID)
 
 	for _, grant := range grants {
@@ -672,10 +672,7 @@ func (c *Character) buildGranted(
 			if err := requireNameable(output.Condition, c.id); err != nil {
 				return nil, nil, err
 			}
-			newConditions = append(newConditions, loadedEffect{
-				ref:      *output.Condition.Ref(),
-				behavior: output.Condition,
-			})
+			newConditions = append(newConditions, output.Condition)
 		}
 	}
 
@@ -694,7 +691,7 @@ func (c *Character) buildGranted(
 // caller sees a character that never advanced rather than one carrying half a
 // level's subscriptions.
 func (c *Character) attachGranted(
-	ctx context.Context, newFeatures []features.Feature, newConditions []loadedEffect,
+	ctx context.Context, newFeatures []features.Feature, newConditions []dnd5eEvents.ConditionBehavior,
 ) ([]attachedFeature, error) {
 	if c.bus == nil {
 		return nil, nil
@@ -705,7 +702,7 @@ func (c *Character) attachGranted(
 
 	rollback := func() {
 		for i := len(applied) - 1; i >= 0; i-- {
-			_ = applied[i].effect.behavior.Remove(ctx, applied[i].bus)
+			_ = applied[i].behavior.Remove(ctx, applied[i].bus)
 		}
 		for i := len(attached) - 1; i >= 0; i-- {
 			_ = attached[i].lifecycle.Remove(ctx, attached[i].bus)
@@ -727,14 +724,15 @@ func (c *Character) attachGranted(
 		attached = append(attached, attachedFeature{lifecycle: lifecycle, bus: featureBus})
 	}
 
-	for _, effect := range newConditions {
-		effectBus := dnd5eEvents.BusForEffect(c.bus, effect.ref)
-		if err := effect.behavior.Apply(ctx, effectBus); err != nil {
-			_ = effect.behavior.Remove(ctx, effectBus)
+	for _, behavior := range newConditions {
+		ref := *behavior.Ref()
+		effectBus := dnd5eEvents.BusForEffect(c.bus, ref)
+		if err := behavior.Apply(ctx, effectBus); err != nil {
+			_ = behavior.Remove(ctx, effectBus)
 			rollback()
-			return nil, rpgerr.Wrapf(err, "failed to apply condition %s", effect.ref.String())
+			return nil, rpgerr.Wrapf(err, "failed to apply condition %s", ref.String())
 		}
-		applied = append(applied, attachedEffect{effect: effect, bus: effectBus})
+		applied = append(applied, attachedEffect{behavior: behavior, bus: effectBus})
 	}
 
 	return attached, nil
@@ -746,7 +744,7 @@ func (c *Character) attachGranted(
 type commitLevelInput struct {
 	entry         LevelEntry
 	newFeatures   []features.Feature
-	newConditions []loadedEffect
+	newConditions []dnd5eEvents.ConditionBehavior
 	attached      []attachedFeature
 
 	// knownCantrips and knownSpells are what this level's choices compiled to.
@@ -774,7 +772,7 @@ func (c *Character) commitLevel(input commitLevelInput) []ResourceChange {
 	}
 
 	for _, effect := range input.newConditions {
-		c.conditions = append(c.conditions, effect.behavior)
+		c.conditions = append(c.conditions, effect)
 		if c.bus == nil {
 			// Waiting for a bus, in the one place Attach looks.
 			c.pendingEffects = append(c.pendingEffects, effect)
@@ -919,10 +917,10 @@ func grantedFeatureRefs(list []features.Feature) []core.Ref {
 }
 
 // grantedConditionRefs names each condition for the derived display output.
-func grantedConditionRefs(list []loadedEffect) []core.Ref {
+func grantedConditionRefs(list []dnd5eEvents.ConditionBehavior) []core.Ref {
 	refs := make([]core.Ref, 0, len(list))
-	for _, effect := range list {
-		refs = append(refs, effect.ref)
+	for _, behavior := range list {
+		refs = append(refs, *behavior.Ref())
 	}
 	return refs
 }

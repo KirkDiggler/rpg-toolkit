@@ -4,6 +4,9 @@
 package character
 
 import (
+	"errors"
+	"fmt"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -68,6 +71,11 @@ func assembleWeaponAttack(
 	})
 }
 
+// ErrConflictingOffers reports two attack offers for one swing: the pick is the
+// player's and none was taken. Match it with errors.Is; the refusal also
+// carries rpgerr.CodeConflictingState.
+var ErrConflictingOffers = errors.New("competing attack offers for one swing")
+
 // weaponAttackOverride returns the one ability-or-die offer a loaded condition
 // makes for the swing from slot, or nil when none does.
 //
@@ -96,9 +104,9 @@ func weaponAttackOverride(c *Character, slot InventorySlot) (*weaponattack.Overr
 		offeredBy = append(offeredBy, condition.Ref().String())
 	}
 	if len(offeredBy) > 1 {
-		return nil, rpgerr.Newf(rpgerr.CodeConflictingState,
-			"%q has competing attack offers %v; the pick is the player's and none was taken (R22)",
-			slot, offeredBy)
+		return nil, rpgerr.WrapWithCode(ErrConflictingOffers, rpgerr.CodeConflictingState,
+			fmt.Sprintf("%q has competing attack offers %v; the pick is the player's and none was taken (R22)",
+				slot, offeredBy))
 	}
 	return override, nil
 }

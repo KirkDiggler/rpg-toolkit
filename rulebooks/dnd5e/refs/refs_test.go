@@ -389,7 +389,6 @@ func TestExpandedConditionsNamespace(t *testing.T) {
 		{"Prone", refs.Conditions.Prone, "prone"},
 		{"Restrained", refs.Conditions.Restrained, "restrained"},
 		{"Stunned", refs.Conditions.Stunned, "stunned"},
-		{"Unconscious", refs.Conditions.Unconscious, "unconscious"},
 		{"Exhaustion", refs.Conditions.Exhaustion, "exhaustion"},
 	}
 

@@ -8,6 +8,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 	"github.com/stretchr/testify/suite"
 )
@@ -257,6 +258,7 @@ func (s *EquipmentSlotsTestSuite) TestEquipmentSlots_Persistence() {
 	char := &Character{
 		id:      "test-char",
 		name:    "Test Character",
+		raceID:  races.Human,
 		classID: classes.Fighter,
 		levels:  syntheticLevels(classes.Fighter, 1),
 		bus:     s.bus,

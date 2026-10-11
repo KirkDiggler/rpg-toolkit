@@ -42,7 +42,9 @@ type UnarmoredDefenseData struct {
 // UnarmoredDefenseCondition represents the Unarmored Defense feature.
 // Barbarian: AC = 10 + DEX modifier + CON modifier
 // Monk: AC = 10 + DEX modifier + WIS modifier
-// Only applies when not wearing armor. Shields can still be used.
+// Only applies when not wearing armor. A barbarian can still carry a shield; a
+// monk holding one loses Unarmored Defense (RAW 2014: the monk's version
+// requires no armor and no shield).
 type UnarmoredDefenseCondition struct {
 	MemberID        string
 	Type            UnarmoredDefenseType
@@ -138,6 +140,15 @@ func (u *UnarmoredDefenseCondition) loadJSON(data json.RawMessage) error {
 		return rpgerr.Wrap(err, "failed to unmarshal unarmored defense data")
 	}
 
+	// A missing or unknown variant is refused, never read as barbarian: the
+	// law the create path states holds for the stored blob too.
+	switch UnarmoredDefenseType(udData.Type) {
+	case UnarmoredDefenseBarbarian, UnarmoredDefenseMonk:
+	default:
+		return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"stored unarmored defense names no variant of \"barbarian\" or \"monk\": got %q", udData.Type)
+	}
+
 	u.MemberID = udData.MemberID
 	u.Type = UnarmoredDefenseType(udData.Type)
 	u.Source = udData.Source
@@ -145,16 +156,18 @@ func (u *UnarmoredDefenseCondition) loadJSON(data json.RawMessage) error {
 	return nil
 }
 
-// SecondaryAbility returns the secondary ability used for this type of unarmored defense
-func (u *UnarmoredDefenseCondition) SecondaryAbility() abilities.Ability {
+// SecondaryAbility returns the secondary ability used for this type of
+// unarmored defense. A condition built or loaded with a variant other than the
+// two it names has no ability to answer, and says so rather than guessing one.
+func (u *UnarmoredDefenseCondition) SecondaryAbility() (abilities.Ability, error) {
 	switch u.Type {
 	case UnarmoredDefenseBarbarian:
-		return abilities.CON
+		return abilities.CON, nil
 	case UnarmoredDefenseMonk:
-		return abilities.WIS
-	default:
-		return abilities.CON
+		return abilities.WIS, nil
 	}
+	return "", rpgerr.Newf(rpgerr.CodeInvalidArgument,
+		"unarmored defense variant %q has no secondary ability", u.Type)
 }
 
 // onACChain adds the secondary ability modifier to AC when unarmored.
@@ -168,8 +181,13 @@ func (u *UnarmoredDefenseCondition) onACChain(
 		return c, nil
 	}
 
-	// Only apply when NOT wearing armor (shields are fine)
+	// Only apply when NOT wearing armor.
 	if event.HasArmor {
+		return c, nil
+	}
+
+	// A monk holding a shield loses the feature; a barbarian keeps it.
+	if u.Type == UnarmoredDefenseMonk && event.HasShield {
 		return c, nil
 	}
 
@@ -187,7 +205,11 @@ func (u *UnarmoredDefenseCondition) onACChain(
 	}
 
 	// The secondary ability modifier (WIS for Monk, CON for Barbarian)
-	secondaryMod := me.AbilityScores().Modifier(u.SecondaryAbility())
+	secondary, err := u.SecondaryAbility()
+	if err != nil {
+		return c, err
+	}
+	secondaryMod := me.AbilityScores().Modifier(secondary)
 
 	// Add secondary ability modifier at StageFeatures
 	modifyAC := func(_ context.Context, e *combat.ACChainEvent) (*combat.ACChainEvent, error) {

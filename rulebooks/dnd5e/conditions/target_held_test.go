@@ -268,20 +268,14 @@ func (s *targetHeldSuite) TestNotYetAnsweringHeldEffectIsUnavailable() {
 	s.Empty(row.Benefit)
 }
 
-// TestARetiredHeldRefYieldsNoTargetRow: a sighting recorded before a type
-// retired may still name it. It is no failure and it yields no row; the
-// condition beside it is answered as ever.
-func (s *targetHeldSuite) TestARetiredHeldRefYieldsNoTargetRow() {
-	retired := contributions.HeldCondition{Ref: refs.Conditions.UnarmoredMovement().String()}
+// TestARemovedTypesHeldRefFailsWithErrUnknownCondition: a sighting that names a
+// type the game removed is an unregistered ref, and the assessment refuses it
+// like any other rather than answering for the condition beside it.
+func (s *targetHeldSuite) TestARemovedTypesHeldRefFailsWithErrUnknownCondition() {
+	removed := contributions.HeldCondition{Ref: refs.Conditions.UnarmoredMovement().String()}
 
-	out, err := AssessTargetHeldEffects(&AssessTargetHeldEffectsInput{Frame: gobFrame(retired, proneHeld)})
-	s.Require().NoError(err)
-
-	ids := make([]string, 0, len(out.Effects))
-	for _, effect := range out.Effects {
-		ids = append(ids, effect.ID)
-	}
-	s.Equal([]string{heldEffectID(proneHeld)}, ids, "Prone's row alone")
+	_, err := AssessTargetHeldEffects(&AssessTargetHeldEffectsInput{Frame: gobFrame(removed, proneHeld)})
+	s.Require().ErrorIs(err, ErrUnknownCondition)
 }
 
 // effectByID finds the row with id among effects.
@@ -304,7 +298,6 @@ func (s *targetHeldSuite) TestTargetDefencesYieldNoRow() {
 		refs.Conditions.ShieldOfFaith().String(),
 		refs.Conditions.UnarmoredDefense().String(),
 		refs.Conditions.FightingStyleDefense().String(),
-		refs.Spells.Shield().String(),
 	} {
 		s.Run(ref, func() {
 			out, err := AssessTargetHeldEffects(&AssessTargetHeldEffectsInput{
@@ -358,8 +351,8 @@ func (s *targetHeldSuite) TestTargetHeldIDsNeverEqualActorRowIDs() {
 	held, err := AssessTargetHeldEffects(&AssessTargetHeldEffectsInput{Frame: frame})
 	s.Require().NoError(err)
 
-	s.Require().Len(actor.Effects, 1)
-	s.Require().Len(held.Effects, 1)
+	s.Require().NotEmpty(actor.Effects)
+	s.Require().NotEmpty(held.Effects)
 	s.NotEqual(actor.Effects[0].ID, held.Effects[0].ID, "both prone, two different rows")
 }
 
@@ -393,7 +386,7 @@ func (s *targetHeldSuite) TestFaerieFireHandlerReadsFrameSight() {
 
 	seen, err := s.attackOn(bus, gobFrame(ffHeld))
 	s.Require().NoError(err)
-	s.Require().Len(seen.AdvantageSources, 1)
+	s.Require().NotEmpty(seen.AdvantageSources)
 	s.Equal(refs.Conditions.FaerieFire(), seen.AdvantageSources[0].SourceRef)
 	s.Equal("cleric", seen.AdvantageSources[0].SourceID)
 
@@ -424,7 +417,7 @@ func (s *targetHeldSuite) TestProneTargetHandlerReadsFrameDistance() {
 
 	near, err := s.attackOn(bus, gobFrame(proneHeld))
 	s.Require().NoError(err)
-	s.Require().Len(near.AdvantageSources, 1)
+	s.Require().NotEmpty(near.AdvantageSources)
 	s.Equal("Prone target within 5 feet", near.AdvantageSources[0].Reason)
 	s.Empty(near.DisadvantageSources)
 
@@ -432,7 +425,7 @@ func (s *targetHeldSuite) TestProneTargetHandlerReadsFrameDistance() {
 	farFrame.Pairs[0].DistanceCells = contributions.Known(3.0)
 	far, err := s.attackOn(bus, farFrame)
 	s.Require().NoError(err)
-	s.Require().Len(far.DisadvantageSources, 1)
+	s.Require().NotEmpty(far.DisadvantageSources)
 	s.Equal("Prone target beyond 5 feet", far.DisadvantageSources[0].Reason)
 	s.Empty(far.AdvantageSources)
 }

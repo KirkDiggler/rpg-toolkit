@@ -35,7 +35,6 @@ func (s *heldAddressesSuite) TestReportsEachAddressInStoredOrder() {
 	s.Equal([]dnd5eEvents.ConditionAddress{
 		{MemberID: "gob", ConditionRef: refs.Conditions.Prone().String()},
 		{MemberID: "gob", ConditionRef: refs.Conditions.FaerieFire().String(), SourceID: "cleric"},
-		oaOf("gob"),
 	}, held)
 }
 
@@ -53,28 +52,15 @@ func (s *heldAddressesSuite) TestACorruptConditionIsAnErrorNotAGap() {
 	}
 }
 
-// TestAnEmptySheetHoldsOnlyWhatACombatantCarries: a sheet with nothing stored
-// still holds the free reactions every combatant carries by existing — the
-// attach gives it them before it acts, whether or not they were written back.
-func (s *heldAddressesSuite) TestAnEmptySheetHoldsOnlyWhatACombatantCarries() {
+// TestAnEmptySheetHoldsNothing: a sheet with nothing stored holds nothing. The
+// reader answers the record; a combatant's free reactions are in the record
+// from creation, not added here. The answer is non-nil: the sheet was read.
+func (s *heldAddressesSuite) TestAnEmptySheetHoldsNothing() {
 	held, err := HeldAddresses("gob", nil)
 	s.Require().NoError(err)
 
-	s.Equal([]dnd5eEvents.ConditionAddress{oaOf("gob")}, held)
-}
-
-// TestACarriedReactionIsNotListedTwice: once the sheet has been saved with its
-// opportunity attack, the stored one is the one listed — the same holdings as
-// before it was written back, so a save is never read as a change.
-func (s *heldAddressesSuite) TestACarriedReactionIsNotListedTwice() {
-	before, err := HeldAddresses("gob", []json.RawMessage{s.blob(NewProneCondition("gob"))})
-	s.Require().NoError(err)
-	after, err := HeldAddresses("gob", []json.RawMessage{
-		s.blob(NewProneCondition("gob")), s.blob(NewOpportunityAttackCondition("gob")),
-	})
-	s.Require().NoError(err)
-
-	s.Equal(before, after)
+	s.NotNil(held)
+	s.Empty(held)
 }
 
 // oaOf is the opportunity attack a combatant carries, as its address.

@@ -19,9 +19,9 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
-// The legacy load path drops a saved In Fog condition rather than failing the
-// monster: the type retired, and the monster's traits still apply.
-func TestLoadMonsterConditionsDropsARetiredInFog(t *testing.T) {
+// A saved In Fog condition names a removed type: the monster's conditions load
+// refuses it as an unknown ref instead of skipping it.
+func TestLoadMonsterConditionsRefusesARemovedInFog(t *testing.T) {
 	ctx := context.Background()
 	bus := events.NewEventBus()
 	m, err := monster.LoadFromData(ctx, &monster.Data{
@@ -35,9 +35,6 @@ func TestLoadMonsterConditionsDropsARetiredInFog(t *testing.T) {
 	inFog := json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"in_fog"},` +
 		`"member_id":"skeleton-fog","source_id":"area-1","source_ref":{"module":"dnd5e","type":"spells","id":"fog-cloud"}}`)
 
-	require.NoError(t, LoadMonsterConditions(ctx, m, []json.RawMessage{inFog, immunity}, bus, dice.NewRoller()))
-	saved, err := json.Marshal(m.ToData())
-	require.NoError(t, err)
-	require.NotContains(t, string(saved), `"in_fog"`)
-	require.Contains(t, string(saved), refs.MonsterTraits.Immunity().ID, "the trait beside it still loads")
+	err = LoadMonsterConditions(ctx, m, []json.RawMessage{inFog, immunity}, bus, dice.NewRoller())
+	require.ErrorIs(t, err, conditions.ErrUnknownCondition)
 }

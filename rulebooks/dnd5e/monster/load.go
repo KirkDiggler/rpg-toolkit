@@ -11,7 +11,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
@@ -117,11 +116,6 @@ func loadMonster(d *Data, policy conditionPolicy) (*Monster, error) {
 	}
 
 	for i, raw := range d.Conditions {
-		// A retired condition type is dropped: it carried no rule, and the
-		// monster saves without it.
-		if conditions.IsRetired(raw) {
-			continue
-		}
 		var peek struct {
 			Ref core.Ref `json:"ref"`
 		}
@@ -133,11 +127,7 @@ func loadMonster(d *Data, policy conditionPolicy) (*Monster, error) {
 				"condition %d names no ref for a loader to route on: %s", i, raw)
 		}
 	}
-	for _, raw := range d.Conditions {
-		if !conditions.IsRetired(raw) {
-			m.traitData = append(m.traitData, raw)
-		}
-	}
+	m.traitData = append(m.traitData, d.Conditions...)
 
 	return m, nil
 }

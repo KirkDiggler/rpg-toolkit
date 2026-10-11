@@ -190,7 +190,7 @@ func (s *AppliedTwiceSuite) TestEveryBearingConditionAppliedTwiceLeavesOne() {
 
 func (s *AppliedTwiceSuite) apply(condition dnd5eEvents.ConditionBehavior) {
 	s.Require().NoError(dnd5eEvents.ConditionAppliedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionAppliedEvent{
-		Target: s.char, Type: dnd5eEvents.ConditionType(condition.Ref().ID),
+		Target: s.char,
 		Source: dnd5eEvents.ConditionSourceCombatAbility, Condition: condition,
 	}))
 }

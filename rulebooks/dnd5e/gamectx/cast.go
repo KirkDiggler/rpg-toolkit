@@ -8,7 +8,6 @@ import (
 	"errors"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 )
 
 // Cast is what an effect may ask about the OTHER participants in the
@@ -95,26 +94,12 @@ type Cast interface {
 	// NOT the negation of IsHostile, and the difference is the whole reason
 	// both exist: a faction can be neutral toward you, and then "not my enemy"
 	// and "my ally" are different sets — a rule that assumed they were would
-	// silently count bystanders. Both are folded from the disposition graph,
-	// like StanceBetween, which they agree with: allied here is an allied
-	// stance, and a member in no faction is allied with no one.
+	// silently count bystanders. Both are folded from the disposition graph:
+	// allied here is an allied stance, and a member in no faction is allied
+	// with no one.
 	//
 	// known is false when the question cannot be answered at all.
 	IsAllied(a, b string) (allied, known bool)
-
-	// StanceBetween is the authoritative stance between a and b on the
-	// disposition graph, right now: hostile, neutral or allied, agreeing with
-	// IsHostile and IsAllied. It never returns StanceNone itself.
-	//
-	// ok is false when no stance exists, which covers two cases this method
-	// does not tell apart: either is not a member of this cast, or either
-	// belongs to no faction. A caller may read false as contributions.StanceNone
-	// (no side, known) ONLY after establishing that both a and b are members —
-	// from this cast's own Members list, never from room placement alone,
-	// because a placed entity the cast does not hold is a roster gap, an
-	// unknown, not a member with no side. Without that membership proof, false
-	// is an unknown stance.
-	StanceBetween(a, b string) (stance contributions.Stance, ok bool)
 }
 
 // ErrNotInCast is returned by an effect that had to read a participant out of

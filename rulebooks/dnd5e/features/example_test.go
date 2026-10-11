@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 )
 
@@ -43,7 +44,7 @@ func Example() {
 	// Listen for condition applications
 	topic := dnd5eEvents.ConditionAppliedTopic.On(bus)
 	_, err := topic.Subscribe(ctx, func(_ context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
-		if event.Type == dnd5eEvents.ConditionRaging {
+		if event.Condition.Ref().String() == refs.Conditions.Raging().String() {
 			// The damage bonus is not on the condition: each attack reads it
 			// from the barbarian's level in its frame.
 			if _, ok := event.Condition.(*conditions.RagingCondition); ok {

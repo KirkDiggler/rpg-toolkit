@@ -481,8 +481,9 @@ func (r *RagingCondition) onIncomingDamage(
 
 	resist := func(_ context.Context, e *dnd5eEvents.IncomingDamageEvent) (*dnd5eEvents.IncomingDamageEvent, error) {
 		e.Multipliers = append(e.Multipliers, physicalResistances(e.DealtTypes(), dnd5eEvents.RollSource{
-			Ref:  refs.Conditions.Raging(),
-			Name: "Raging",
+			Ref:      refs.Conditions.Raging(),
+			Name:     "Raging",
+			SourceID: r.CharacterID,
 		})...)
 		return e, nil
 	}
