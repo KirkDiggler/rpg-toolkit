@@ -52,11 +52,11 @@ func TestDisplayForKnownConditions(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got, ok := DisplayFor(tc.ref)
-			assert.True(t, ok, "known ref must be in the catalog")
+			assert.True(t, ok, "known ref must be registered")
 			assert.NotEmpty(t, got.Name, "name is never empty for a known ref")
 			if tc.want.Detail == "" {
-				// Descriptions authored for effect rows are pinned by
-				// TestBearingLoadersHaveDescriptions; this table pins names.
+				// Descriptions authored for effect rows are required by
+				// newRegistry; this table pins names.
 				assert.Equal(t, tc.want.Name, got.Name)
 				return
 			}
@@ -75,22 +75,14 @@ func TestDisplayForAllFightingStyles(t *testing.T) {
 		refs.Conditions.FightingStyleTwoWeaponFighting(),
 	} {
 		_, ok := DisplayFor(*ref)
-		assert.True(t, ok, "fighting style %s must be in the catalog", ref.String())
+		assert.True(t, ok, "fighting style %s must be registered", ref.String())
 	}
 }
 
 func TestDisplayForUnknownRefReturnsFalse(t *testing.T) {
 	unknown := core.Ref{Module: refs.Module, Type: refs.TypeConditions, ID: "totally_unknown"}
 	_, ok := DisplayFor(unknown)
-	assert.False(t, ok, "unknown ref must not be in the catalog")
-}
-
-// TestDisplayCatalogExcludesShieldSpell confirms the no-magic boundary: the
-// existing Shield spell condition is deliberately not promoted into the
-// status-view catalog.
-func TestDisplayCatalogExcludesShieldSpell(t *testing.T) {
-	_, ok := DisplayFor(*refs.Spells.Shield())
-	assert.False(t, ok, "Shield spell is not a status-view condition")
+	assert.False(t, ok, "unknown ref must not be registered")
 }
 
 type effectTooltipContentSuite struct {

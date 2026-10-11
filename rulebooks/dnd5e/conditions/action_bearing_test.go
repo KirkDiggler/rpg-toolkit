@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -76,16 +75,6 @@ func (s *actionBearingSuite) TestAnsweringLoadersImplementActionAssessor() {
 		s.Equal(ref, loaded.Ref().String())
 		_, answers := loaded.(contributions.ActionAssessor)
 		s.True(answers, "%s is registered as answering but the loaded condition is not an ActionAssessor", ref)
-	}
-}
-
-func (s *actionBearingSuite) TestBearingLoadersHaveDescriptions() {
-	for _, ref := range ActionBearingRefs() {
-		parsed, err := core.ParseString(ref)
-		s.Require().NoError(err, ref)
-		display, found := DisplayFor(*parsed)
-		s.True(found, "%s bears on actions but is not registered", ref)
-		s.NotEmpty(display.Detail, "%s bears on actions but has no description", ref)
 	}
 }
 

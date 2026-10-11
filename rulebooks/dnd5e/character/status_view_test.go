@@ -156,8 +156,8 @@ func TestStatusViewBarbarianProjectsRageChargesAndRecklessAttack(t *testing.T) {
 }
 
 // TestStatusViewRogueProjectsSneakAttackCondition confirms the rogue's Sneak
-// Attack condition (carried under a feature ref) is projected via the
-// rulebook-owned display catalog, and the rogue has no feature-private
+// Attack condition (carried under its condition ref) is projected via the
+// conditions registry, and the rogue has no feature-private
 // resources.
 func TestStatusViewRogueProjectsSneakAttackCondition(t *testing.T) {
 	rogue := newLevel3Rogue(t)
@@ -369,7 +369,7 @@ func TestStatusViewRejectsSameKeyAndCountsWithConflictingName(t *testing.T) {
 func TestStatusViewRejectsUnknownConditionRef(t *testing.T) {
 	fighter := newLevel3Fighter(t)
 
-	// Append a condition with a ref the display catalog does not know.
+	// Append a condition with a ref the registry does not hold.
 	fighter.conditions = append(fighter.conditions, &stubCondition{
 		ref: &core.Ref{Module: refs.Module, Type: refs.TypeConditions, ID: "totally_unknown"},
 	})

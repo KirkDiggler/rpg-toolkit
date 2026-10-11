@@ -120,6 +120,22 @@ func (s *SneakAttackTestSuite) executeDamageChain(input damageChainInput) (*dnd5
 	return modifiedChain.Execute(s.ctx, damageEvent)
 }
 
+// TestTheDamageLineNamesTheConditionRef: the extra damage's source is the one
+// condition ref, so the damage line and the effect row name the same thing.
+func (s *SneakAttackTestSuite) TestTheDamageLineNamesTheConditionRef() {
+	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue-1", Roller: s.roller})
+	s.Require().NoError(sneak.Apply(s.ctx, s.bus))
+	s.roller.EXPECT().RollN(gomock.Any(), 1, 6).Return([]int{4}, nil)
+
+	finalEvent, err := s.executeDamageChain(damageChainInput{
+		attackerID: "rogue-1", abilityUsed: abilities.DEX, hasAdvantage: true,
+		componentType: damage.Slashing, weaponDamageType: damage.Slashing,
+	})
+	s.Require().NoError(err)
+	s.Require().Len(finalEvent.Components, 2)
+	s.Equal(refs.Conditions.SneakAttack().String(), finalEvent.Components[1].Roll.Source.Ref.String())
+}
+
 func (s *SneakAttackTestSuite) TestSneakAttackUsesMarkedWeaponType() {
 	sneak := NewSneakAttackCondition(SneakAttackInput{
 		MemberID: "rogue-1",

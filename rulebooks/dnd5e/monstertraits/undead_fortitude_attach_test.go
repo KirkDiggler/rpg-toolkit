@@ -100,3 +100,19 @@ func TestUndeadFortitudeWithNoRollerRefusesItsSave(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, "no roller")
 }
+
+// TestLoadMonsterConditionsBindsTheRollerToo: the older load path binds the
+// roller it was handed exactly as attach does.
+func TestLoadMonsterConditionsBindsTheRollerToo(t *testing.T) {
+	ctx := context.Background()
+	data := zombieWithUndeadFortitude(t)
+	m, err := monster.Load(ctx, data)
+	require.NoError(t, err)
+
+	roller := &scriptedRoller{face: 12}
+	bus := events.NewEventBus()
+	require.NoError(t, LoadMonsterConditions(ctx, m, data.Conditions, bus, roller))
+
+	require.NoError(t, dropsToZero(ctx, bus))
+	require.Equal(t, 1, roller.calls, "the save is rolled with the roller the load was handed")
+}

@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/weaponattack"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -327,9 +328,19 @@ func TestUnarmoredDefenseRefusesAMissingOrUnknownVariant(t *testing.T) {
 }
 
 // TestSneakAttackHasOneRef: the rogue grant, the condition's own name, its
-// persisted form and its damage line all name the one condition ref.
+// persisted form and the factory all name the one condition ref. The damage
+// line's source is asserted beside the fold, in
+// SneakAttackTestSuite.TestTheDamageLineNamesTheConditionRef.
 func TestSneakAttackHasOneRef(t *testing.T) {
 	want := refs.Conditions.SneakAttack().String()
+
+	var granted []string
+	for _, grant := range classes.GetGrantsForLevel(classes.Rogue, 1) {
+		for _, condition := range grant.Conditions {
+			granted = append(granted, condition.Ref)
+		}
+	}
+	require.Contains(t, granted, want, "the rogue's level-1 grant names the condition ref")
 
 	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue-1"})
 	require.Equal(t, want, sneak.Ref().String())
