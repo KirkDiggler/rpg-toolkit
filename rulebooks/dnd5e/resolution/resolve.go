@@ -480,8 +480,9 @@ func attachAll(ctx context.Context, surf *surface, in *attachAllInput) (*Partici
 			cast.characters[id] = ch
 
 		case p.Monster != nil:
-			// No policy here, and none is available: monstertraits has one
-			// loader and it refuses what it cannot read.
+			// No policy here, and none is available: the monster branch loads
+			// every blob through conditions.LoadJSON, which refuses a ref
+			// nothing registers and what it cannot read.
 			//
 			// This used to add that a lenient monster was unreachable BECAUSE
 			// the only lenient entry built character participants and never

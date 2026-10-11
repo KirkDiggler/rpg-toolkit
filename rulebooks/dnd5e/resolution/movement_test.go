@@ -16,6 +16,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -272,6 +273,22 @@ func (s *MovementTestSuite) TestAnOpportunityAttackSwingsAsOne() {
 	s.Require().Len(frames, 1)
 	s.Equal(heroID, frames[0].Actor)
 	s.Equal(contributions.Known(true), frames[0].Action.Opportunity)
+}
+
+// TestAnOpportunityOfferCarriesItsProse: the asked opportunity attack's offer
+// carries the offering condition's own authored detail, read through the
+// registry, so a host shows what taking it does without a second table.
+func (s *MovementTestSuite) TestAnOpportunityOfferCarriesItsProse() {
+	display, ok := conditions.DisplayFor(*refs.Conditions.OpportunityAttack())
+	s.Require().True(ok, "precondition: the opportunity attack is registered")
+	s.Require().NotEmpty(display.Detail, "precondition: it authors prose to carry")
+
+	moved := s.askedStep().Outcome.(MovementOutcome)
+	s.Require().Len(moved.Asked, 2, "precondition: both players were asked")
+	for _, asked := range moved.Asked {
+		s.Require().Equal(PauseOpportunity, asked.Kind)
+		s.Equal(display.Detail, asked.Ask.Offer.Description)
+	}
 }
 
 // triggerFrom publishes a reaction trigger during the fold, which is exactly

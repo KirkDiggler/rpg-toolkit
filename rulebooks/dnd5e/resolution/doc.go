@@ -221,7 +221,7 @@
 // direction nobody was looking.
 //
 // FOUR predicates arrived without their installer. UnarmoredDefense,
-// MartialArts twice, and UnarmoredMovement all read
+// MartialArts twice, and a fourth since retired all read
 // gamectx.RequireCharacters — a registry with zero non-test call sites in the
 // whole toolkit — and returned its "no game context" error into a chain fold.
 // [character.Character.EffectiveAC] swallows fold errors, so a barbarian with

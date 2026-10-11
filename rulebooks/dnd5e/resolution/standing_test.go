@@ -124,7 +124,7 @@ func (s *StandingTestSuite) TestAnUnreadableConditionDoesNotHideACharacter() {
 // DropUnreadable reaches the character branch and stops there, so this entry's
 // leniency is a character policy. Pinned so the asymmetry is a fact on the
 // record instead of a surprise: the path this replaces refuses the same record
-// for the same reason, so nothing regressed, and the day monstertraits grows a
+// for the same reason, so nothing regressed, and the day the monster branch grows a
 // lenient loader this test is what changes.
 func (s *StandingTestSuite) TestAnUnreadableTraitStillRefusesAMonster() {
 	broken := s.wolf("wolf-1", 11)
@@ -132,7 +132,7 @@ func (s *StandingTestSuite) TestAnUnreadableTraitStillRefusesAMonster() {
 
 	_, err := Standing(s.ctx, &StandingInput{Participants: []Participant{{Monster: broken}}})
 
-	s.Require().Error(err, "monstertraits has no lenient half; a caller asking to read leniently still gets a refusal")
+	s.Require().Error(err, "the monster branch has no lenient half; a caller asking to read leniently still gets a refusal")
 }
 
 // Nothing survives the call.

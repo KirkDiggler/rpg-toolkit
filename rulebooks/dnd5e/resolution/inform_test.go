@@ -16,6 +16,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -137,7 +138,7 @@ func (s *InformAttackTestSuite) inform(enc *encounter.Encounter, targets ...stri
 // sneakRow finds the Sneak Attack row in a list of effects.
 func (s *InformAttackTestSuite) sneakRow(effects []contributions.Effect) contributions.Effect {
 	for _, effect := range effects {
-		if effect.ID == refs.Features.SneakAttack().String() {
+		if effect.ID == refs.Conditions.SneakAttack().String() {
 			return effect
 		}
 	}
@@ -242,4 +243,44 @@ func (s *InformAttackTestSuite) TestInformAttackRefusesWhatItCannotAnswerFrom() 
 		Observed: mine, Actor: s.rogue(), Attack: dagger().Attack, Targets: []string{informGoblin1, informGoblin1},
 	})
 	s.Error(err)
+}
+
+// TestAMonsterTargetsTraitsYieldNoRow: a monster's damage immunity and
+// vulnerability are conditions the registry knows and that bear on nothing
+// about an attack against their holder, so a skeleton seen holding both lists
+// no target-held row for either. A condition that does bear, held alongside,
+// still lists its row, so the empty answer is not an empty sighting.
+func (s *FrameTestSuite) TestAMonsterTargetsTraitsYieldNoRow() {
+	scene := s.newHeldScene(2,
+		conditions.MustImmunityJSON(informGoblin1, damage.Poison),
+		conditions.MustVulnerabilityJSON(informGoblin1, damage.Bludgeoning),
+		s.faerieFireJSON(informGoblin1),
+	)
+	scene.goblin.Ref = refs.Monsters.Skeleton()
+	enc := s.heldEncounter(scene)
+
+	observed, err := enc.ObservedContext(&encounter.ViewInput{Member: informRogue})
+	s.Require().NoError(err)
+	seen := map[string]bool{}
+	for _, member := range observed.Members {
+		if member.ID != informGoblin1 || member.Conditions == nil {
+			continue
+		}
+		for _, key := range member.Conditions.Conditions {
+			seen[key.ConditionRef] = true
+		}
+	}
+	s.Require().True(seen[refs.MonsterTraits.Immunity().String()], "precondition: the immunity was sighted")
+	s.Require().True(seen[refs.MonsterTraits.Vulnerability().String()], "precondition: the vulnerability was sighted")
+
+	out := s.informHeld(enc, dagger(), informGoblin1)
+
+	rows := out.HeldByTarget[informGoblin1]
+	_, fire := rowNamed(rows, faerieFireRowID)
+	s.True(fire, "a held condition that bears still lists its row: %+v", rows)
+	for _, row := range rows {
+		s.NotContains(row.ID, refs.MonsterTraits.Immunity().String())
+		s.NotContains(row.ID, refs.MonsterTraits.Vulnerability().String())
+	}
+	s.Len(rows, 1, "the bearing condition is the only row: %+v", rows)
 }

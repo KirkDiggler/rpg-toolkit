@@ -5,7 +5,6 @@ package resolution
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -20,7 +19,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
 
@@ -362,44 +360,6 @@ func prepareCondition(
 ) (preparedCondition, error) {
 	if err := application.Validate(); err != nil {
 		return preparedCondition{}, fmt.Errorf("%w: %w", ErrBadAction, err)
-	}
-	if application.Ref.Equals(refs.Conditions.Blessed()) {
-		var config struct {
-			SourceID string `json:"source_id"`
-		}
-		if err := json.Unmarshal(application.Parameters, &config); err != nil {
-			return preparedCondition{}, fmt.Errorf("build condition blessed for %q: %w", targetID, err)
-		}
-		source, err := core.ParseString(sourceRef)
-		if err != nil {
-			return preparedCondition{}, fmt.Errorf("build condition blessed for %q: source: %w", targetID, err)
-		}
-		condition, err := conditions.NewBlessedCondition(conditions.NewBlessedConditionInput{
-			MemberID: targetID, SourceID: config.SourceID, SourceRef: source,
-		})
-		if err != nil {
-			return preparedCondition{}, fmt.Errorf("build condition blessed for %q: %w", targetID, err)
-		}
-		return preparedCondition{declaration: application.Clone(), behavior: condition}, nil
-	}
-	if application.Ref.Equals(refs.Conditions.Baned()) {
-		var config struct {
-			SourceID string `json:"source_id"`
-		}
-		if err := json.Unmarshal(application.Parameters, &config); err != nil {
-			return preparedCondition{}, fmt.Errorf("build condition baned for %q: %w", targetID, err)
-		}
-		source, err := core.ParseString(sourceRef)
-		if err != nil {
-			return preparedCondition{}, fmt.Errorf("build condition baned for %q: source: %w", targetID, err)
-		}
-		condition, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
-			MemberID: targetID, SourceID: config.SourceID, SourceRef: source,
-		})
-		if err != nil {
-			return preparedCondition{}, fmt.Errorf("build condition baned for %q: %w", targetID, err)
-		}
-		return preparedCondition{declaration: application.Clone(), behavior: condition}, nil
 	}
 	built, err := conditions.CreateFromRef(&conditions.CreateFromRefInput{
 		Ref:       application.Ref.String(),

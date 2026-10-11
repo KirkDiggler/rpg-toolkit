@@ -14,6 +14,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 )
 
 // gamectxPath is the package the door is the only caller of. Matched by import
@@ -342,4 +344,22 @@ func requireUnconditional(t *testing.T, fset *token.FileSet, fn *ast.FuncDecl, p
 
 		return true
 	})
+}
+
+// TestEveryFreeReactionIsReadied: the readiness the door installs is derived
+// from the registry's one list of free reactions, so each of them is ready for
+// every participant. A free reaction added to that list is readied here
+// without this package being told.
+func TestEveryFreeReactionIsReadied(t *testing.T) {
+	free := conditions.FreeReactionRefs()
+	require.NotEmpty(t, free, "precondition: the registry lists at least one free reaction")
+
+	cast := &Participants{order: []string{"hero", "wolf", "alice"}}
+	ready := defaultReadiness(cast)
+
+	for _, id := range cast.order {
+		for _, ref := range free {
+			require.True(t, ready[id][ref], "%s is ready for the free reaction %s", id, ref)
+		}
+	}
 }

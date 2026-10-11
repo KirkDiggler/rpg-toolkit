@@ -72,7 +72,7 @@ func (s *FrameTestSuite) TestInformAndExecutionAgreeOnSneakAttackAtRogueThree() 
 	s.Require().NoError(err)
 	var row *contributions.Effect
 	for i, effect := range informed.ByTarget[holdOutScout] {
-		if effect.ID == refs.Features.SneakAttack().String() {
+		if effect.ID == refs.Conditions.SneakAttack().String() {
 			row = &informed.ByTarget[holdOutScout][i]
 		}
 	}

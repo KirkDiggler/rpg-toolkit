@@ -28,7 +28,6 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -151,7 +150,7 @@ func (s *HoldOutSuite) ally() *character.Data {
 // raider is a wolf carrying Pack Tactics, as the sheet persists it.
 func (s *HoldOutSuite) raider(id string) *monster.Data {
 	data := monsters.NewWolf(id).ToData()
-	pack, err := monstertraits.PackTactics(id).ToJSON()
+	pack, err := conditions.PackTactics(id).ToJSON()
 	s.Require().NoError(err)
 	data.Conditions = append(data.Conditions, pack)
 
@@ -227,7 +226,7 @@ func (s *HoldOutSuite) resolve(world encounter.EncounterData, strike *StrikeInpu
 // sneakAttackFired reports whether the outcome carries Sneak Attack's damage.
 func sneakAttackFired(outcome StrikeOutcome) bool {
 	for _, component := range outcome.DamageComponents {
-		if component.Roll.Source.Ref != nil && component.Roll.Source.Ref.String() == refs.Features.SneakAttack().String() {
+		if component.Roll.Source.Ref != nil && component.Roll.Source.Ref.String() == refs.Conditions.SneakAttack().String() {
 			return true
 		}
 	}
