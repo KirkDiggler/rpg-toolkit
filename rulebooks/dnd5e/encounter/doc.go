@@ -139,6 +139,17 @@
 // never supplies a carrier or destination. Pickups and door changes notify
 // actual witnesses, not everybody who remembers the subject.
 //
+// # Authored member appearance
+//
+// MemberInput and JoinInput may supply an opaque AppearanceRef, independent of
+// rules, faction and position. It persists with the member or reserve record;
+// the unscoped Member read does not expose it as a fresh observed fact. Sight
+// refresh captures it in SightTestimony, so a held memory and a reload preserve
+// the observed choice rather than joining against newer live content. Empty
+// means no explicit appearance captured, including legacy testimony. Unknown
+// location testimony still carries no facts. This module validates reference
+// structure only, never asset-catalog membership or a model path.
+//
 // # Permitted ordinary prop appearance
 //
 // FieldInput.PropPresentations captures only typed appearance facts, not the

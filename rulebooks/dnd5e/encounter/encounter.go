@@ -622,8 +622,9 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		seenIDs[m.ID] = true
 
 		if err := validateMemberFacts(memberFacts{
-			ID:         m.ID,
-			Intimidate: m.Intimidate, Persuade: m.Persuade, Table: m.Table,
+			ID:            m.ID,
+			AppearanceRef: m.AppearanceRef,
+			Intimidate:    m.Intimidate, Persuade: m.Persuade, Table: m.Table,
 		}); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
 		}
@@ -820,6 +821,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			ID:             mi.ID,
 			Kind:           mi.Kind,
 			Name:           mi.Name,
+			AppearanceRef:  mi.AppearanceRef,
 			Intimidate:     copyApproaches(mi.Intimidate),
 			Persuade:       copyApproaches(mi.Persuade),
 			Table:          cloneTable(mi.Table),
@@ -1760,6 +1762,7 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 			Conditions:     held[subjectID],
 			Down:           &isDown,
 			BlocksMovement: &blocksMovement,
+			AppearanceRef:  e.members[subjectID].AppearanceRef,
 		})
 		if perr != nil {
 			return nil, fmt.Errorf("encode sight testimony: %w", perr)
@@ -1990,8 +1993,9 @@ func (e *Encounter) validateJoin(in *JoinInput) error {
 	// fact caught after PlaceEntity would need to roll a placement back
 	// rather than simply never having made one (Copilot, PR #1187).
 	if err := validateMemberFacts(memberFacts{
-		ID:         in.Member,
-		Intimidate: in.Intimidate, Persuade: in.Persuade, Table: in.Table,
+		ID:            in.Member,
+		AppearanceRef: in.AppearanceRef,
+		Intimidate:    in.Intimidate, Persuade: in.Persuade, Table: in.Table,
 	}); err != nil {
 		return fmt.Errorf("join: %w", err)
 	}
@@ -2078,6 +2082,7 @@ func (e *Encounter) admitMember(in *JoinInput) (*memberRecord, *JoinOutput, erro
 		ID:             in.Member,
 		Kind:           in.Kind,
 		Name:           in.Name,
+		AppearanceRef:  in.AppearanceRef,
 		Intimidate:     copyApproaches(in.Intimidate),
 		Persuade:       copyApproaches(in.Persuade),
 		Table:          cloneTable(in.Table),

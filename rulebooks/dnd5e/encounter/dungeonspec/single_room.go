@@ -371,6 +371,10 @@ type RoomMonsterSource struct {
 	ID  string `yaml:"id" json:"id"`
 	Ref string `yaml:"ref" json:"ref"`
 
+	// AppearanceRef is optional opaque visual content, independent of Ref's
+	// rules/template identity and the binding's faction. No catalog is read.
+	AppearanceRef string `yaml:"appearanceRef,omitempty" json:"appearanceRef,omitempty"`
+
 	// StartingCell is where the monster stands and which way it faces when
 	// it arrives. See [RoomStartingCell].
 	StartingCell RoomStartingCell `yaml:"startingCell" json:"startingCell"`

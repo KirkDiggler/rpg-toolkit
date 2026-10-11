@@ -478,10 +478,12 @@ type FootprintData struct {
 // about the member and not yet a fact about the run. Arrives is the predicate,
 // REQUIRED — a reserve entry with none would be a member waiting for nothing.
 type ReserveData struct {
-	ID   MemberID     `json:"id"`
-	Kind MemberKind   `json:"kind"`
-	Name string       `json:"name,omitempty"`
-	Cell PositionData `json:"cell"`
+	ID   MemberID   `json:"id"`
+	Kind MemberKind `json:"kind"`
+	Name string     `json:"name,omitempty"`
+	// AppearanceRef retains the authored visual choice before arrival.
+	AppearanceRef string       `json:"appearance_ref,omitempty"`
+	Cell          PositionData `json:"cell"`
 
 	// Intimidate, Persuade, Table and Temper are [MemberData]'s own keys,
 	// kept for a member still waiting to arrive — its facts are the same
@@ -1669,10 +1671,12 @@ func convertDoorDataToDoorInput(doors []DoorData) ([]DoorInput, error) {
 // no installed base — only a hand-kept fixture, which is exactly what should be
 // recreated rather than reinterpreted.
 type MemberData struct {
-	ID   MemberID      `json:"id"`
-	Kind MemberKind    `json:"kind"`
-	Name string        `json:"name,omitempty"`
-	Cell *PositionData `json:"cell"`
+	ID   MemberID   `json:"id"`
+	Kind MemberKind `json:"kind"`
+	Name string     `json:"name,omitempty"`
+	// AppearanceRef is authored content, not the observer's captured answer.
+	AppearanceRef string        `json:"appearance_ref,omitempty"`
+	Cell          *PositionData `json:"cell"`
 
 	// speed_feet, sight_feet, actions and targeting are GONE (rpg-project#538).
 	// They were copies of the member's sheet taken at Join; the sheet owns
@@ -1844,6 +1848,7 @@ func (e *Encounter) snapshot() EncounterData {
 			ID:             m.ID,
 			Kind:           m.Kind,
 			Name:           m.Name,
+			AppearanceRef:  m.AppearanceRef,
 			Cell:           &PositionData{X: cell.X, Y: cell.Y},
 			Intimidate:     approachesDataFrom(m.Intimidate),
 			Persuade:       approachesDataFrom(m.Persuade),
@@ -1938,6 +1943,7 @@ func (e *Encounter) snapshot() EncounterData {
 			ID:             rm.record.ID,
 			Kind:           rm.record.Kind,
 			Name:           rm.record.Name,
+			AppearanceRef:  rm.record.AppearanceRef,
 			Cell:           PositionData{X: rm.at.X, Y: rm.at.Y},
 			Intimidate:     approachesDataFrom(rm.record.Intimidate),
 			Persuade:       approachesDataFrom(rm.record.Persuade),
@@ -2470,6 +2476,10 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 				m.ID, cell.X, cell.Y, prop, ErrInvalidData, ErrBadPlacement)
 		}
 
+		if err := validateAppearanceRef(m.AppearanceRef); err != nil {
+			return nil, fmt.Errorf("load encounter: member %q: %w: %w", m.ID, ErrInvalidData, err)
+		}
+
 		// A faction this field does not have, or a mind in the wrong
 		// faction, is the SAME refusal Setup and Join make — a blob that
 		// names a side the dungeon never declared was edited.
@@ -2519,8 +2529,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 				r.ID, cell.X, cell.Y, prop, ErrInvalidData, ErrBadPlacement)
 		}
 		if err := validateMemberFacts(memberFacts{
-			ID:         r.ID,
-			Intimidate: approachesFromData(r.Intimidate), Persuade: approachesFromData(r.Persuade),
+			ID:            r.ID,
+			AppearanceRef: r.AppearanceRef,
+			Intimidate:    approachesFromData(r.Intimidate), Persuade: approachesFromData(r.Persuade),
 			Table: tableFromData(r.Table),
 		}); err != nil {
 			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, err)
@@ -2877,6 +2888,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			ID:             m.ID,
 			Kind:           m.Kind,
 			Name:           m.Name,
+			AppearanceRef:  m.AppearanceRef,
 			Intimidate:     approachesFromData(m.Intimidate),
 			Persuade:       approachesFromData(m.Persuade),
 			Table:          tableFromData(m.Table),
@@ -2922,6 +2934,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 				ID:             r.ID,
 				Kind:           r.Kind,
 				Name:           r.Name,
+				AppearanceRef:  r.AppearanceRef,
 				Intimidate:     approachesFromData(r.Intimidate),
 				Persuade:       approachesFromData(r.Persuade),
 				Table:          tableFromData(r.Table),

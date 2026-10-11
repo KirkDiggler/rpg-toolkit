@@ -157,6 +157,11 @@ type MonsterPlacement struct {
 	// Ref is content's identifier, exactly as authored.
 	Ref string
 
+	// AppearanceRef is optional visual content carried unread to observation.
+	// It never changes Ref, sheet assembly, faction or placement. Legacy
+	// dialects without this authoring field leave it empty.
+	AppearanceRef string `json:"AppearanceRef,omitempty"`
+
 	// Region is the ID of the region whose floor it stands on — derived.
 	Region string
 
