@@ -1631,12 +1631,12 @@ func (s *ConcealSuite) TestAPartlySecretRoomComesBackWhole() {
 	s.Equal(before.Regions[0].Cells, still.Regions[0].Cells, "a secret found is found by its finder alone")
 }
 
-// TestAGuidanceDieHeldDuringASearchIsKept: a Search's find check runs through
-// the composition's check resolver, which has no way to carry a question, so a
-// searcher holding a Guidance die is not asked — the seam declines on her
-// behalf, the answer that costs nothing — and the search finishes, die still
-// in hand and no window open.
-func (s *ConcealSuite) TestAGuidanceDieHeldDuringASearchIsKept() {
+// TestAGuidanceDieHeldDuringADiscoveryIsKept: a discovery's find check runs
+// through the composition's check resolver, which has no way to carry a
+// question, so a finder holding a Guidance die is not asked — the seam declines
+// on her behalf, the answer that costs nothing — and the walk finishes, die
+// still in hand and no window open.
+func (s *ConcealSuite) TestAGuidanceDieHeldDuringADiscoveryIsKept() {
 	ctx := context.Background()
 	s.startWith(concealedWorld(encounter.DoorIsClosed()), sharpEyed("alice"))
 	stored, err := s.characters.GetCharacter(ctx, "alice")

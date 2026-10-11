@@ -678,6 +678,31 @@ func (s *DeathTestSuite) TestADownedActorCannotSwing() {
 	s.NotErrorIs(err, session.ErrNoMember, "she is still a member; she is down")
 }
 
+// TestADownedMemberOnTheWorldClockIsRefusedThroughTheAssessment: with no fight
+// there is no turn order and no compiled offer, so the world-clock gate is the
+// only thing between a body and a verb. It reads Down from the participation
+// assessment, the one answer to who is down, and refuses both verbs by name.
+func (s *DeathTestSuite) TestADownedMemberOnTheWorldClockIsRefusedThroughTheAssessment() {
+	launchScene(s.T(), s.mgr, freeRoamDuelWorld())
+	s.characters.byID["alice"].HitPoints = 0
+
+	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
+		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 1, Y: 2}},
+	})
+	s.Require().ErrorIs(err, session.ErrDowned, "a body does not walk")
+
+	_, err = s.mgr.Attack(context.Background(), &session.AttackInput{
+		Session: "sess", Attacker: "alice", Target: "bob", DeclarationID: "no-offer-on-a-world-clock",
+	})
+	s.Require().ErrorIs(err, session.ErrDowned, "and does not swing")
+	s.NotErrorIs(err, session.ErrNoMember, "she is still a member; she is down")
+
+	_, err = s.mgr.Move(context.Background(), &session.MoveInput{
+		Session: "sess", Member: "bob", Path: []spatial.Position{{X: 2, Y: 2}},
+	})
+	s.NotErrorIs(err, session.ErrDowned, "the member beside her is up, and the gate asks about the actor")
+}
+
 // TestADownedActorCannotWalk is the same ruling on the other verb a body could
 // still drive.
 func (s *DeathTestSuite) TestADownedActorCannotWalk() {
