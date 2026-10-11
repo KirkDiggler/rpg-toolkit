@@ -45,7 +45,7 @@ type AdvanceInput struct {
 
 	// Roller supplies the randomness for [HitPointMethodRolled]. Nil defaults
 	// to dice.NewRoller(), the same contract [saves.SavingThrowInput] and
-	// [SpendHitDiceInput] carry. It is a source of faces, not a hit point
+	// [ShortRestInput] carry. It is a source of faces, not a hit point
 	// total, so it does not put the rule in the caller.
 	Roller dice.Roller
 }

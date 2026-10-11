@@ -544,10 +544,11 @@ func loadFeatures(raw []json.RawMessage, characterID string, policy effectPolicy
 	return loaded, nil
 }
 
-// loadEffects reconstitutes persisted conditions, keeping each behaviour with
-// the ref its loader routed on. Nothing is applied here — that is [Attach]'s
-// job, and the ref is what lets it attribute the subscriptions each condition
-// then makes.
+// loadEffects reconstitutes persisted conditions as behaviours. Nothing is
+// applied here — that is [Attach]'s job, and each behaviour names itself
+// through Ref(), which is what lets Attach attribute the subscriptions it
+// then makes. A blob that does not load fails a strict load and is dropped
+// with a warning by a lenient one.
 func loadEffects(
 	raw []json.RawMessage, characterID string, policy effectPolicy,
 ) ([]dnd5eEvents.ConditionBehavior, error) {
