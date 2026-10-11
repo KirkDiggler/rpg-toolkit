@@ -346,6 +346,12 @@ func publishRemoval(removal *ConditionRemoval, next func(ImposedEffect) (Step, e
 		name: fmt.Sprintf("end %s on %s (%s)",
 			removal.Owner.ConditionRef, removal.Owner.MemberID, removal.Reason),
 		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
+			// Named before the fact goes out: an unregistered ref refuses
+			// here, with nothing published.
+			effect, err := removalEffect(removal.Owner, removal.Reason)
+			if err != nil {
+				return nil, err
+			}
 			if err := dnd5eEvents.ConditionRemovedTopic.On(bus).Publish(
 				ctx, dnd5eEvents.ConditionRemovedEvent{
 					MemberID:     removal.Owner.MemberID,
@@ -355,11 +361,6 @@ func publishRemoval(removal *ConditionRemoval, next func(ImposedEffect) (Step, e
 				}); err != nil {
 				return nil, fmt.Errorf("end %s on %q: %w",
 					removal.Owner.ConditionRef, removal.Owner.MemberID, err)
-			}
-
-			effect, err := removalEffect(removal.Owner, removal.Reason)
-			if err != nil {
-				return nil, err
 			}
 
 			return next(effect)

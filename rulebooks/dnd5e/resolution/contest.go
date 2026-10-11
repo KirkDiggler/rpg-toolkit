@@ -499,6 +499,12 @@ func replaceSameAddress(
 		if address != landing {
 			continue
 		}
+		// Named before the fact goes out: an unregistered ref refuses here,
+		// with nothing published.
+		name, err := conditionName(address)
+		if err != nil {
+			return nil, err
+		}
 		if err := dnd5eEvents.ConditionRemovedTopic.On(bus).Publish(
 			ctx, dnd5eEvents.ConditionRemovedEvent{
 				MemberID:     address.MemberID,
@@ -508,16 +514,7 @@ func replaceSameAddress(
 			}); err != nil {
 			return nil, fmt.Errorf("replace %s on %q: %w", address.ConditionRef, targetID, err)
 		}
-		effect, err := removalEffect(address, ConditionReplacedReason)
-		if err != nil {
-			return nil, err
-		}
-		name, err := conditionName(address)
-		if err != nil {
-			return nil, err
-		}
-		effect.Description = fmt.Sprintf("%s replaced by a newer instance", name)
-		replaced = append(replaced, effect)
+		replaced = append(replaced, removedEffect(address, fmt.Sprintf("%s replaced by a newer instance", name)))
 	}
 
 	return replaced, nil
@@ -1407,9 +1404,16 @@ func removalEffect(address dnd5eEvents.ConditionAddress, reason string) (Imposed
 	if err != nil {
 		return ImposedEffect{}, err
 	}
+
+	return removedEffect(address, fmt.Sprintf("%s ended (%s)", name, reason)), nil
+}
+
+// removedEffect is the removal record for an address, with its description
+// already written by a caller that has resolved the condition's name.
+func removedEffect(address dnd5eEvents.ConditionAddress, description string) ImposedEffect {
 	effect := ImposedEffect{
 		Kind:        ImposedConditionRemoved,
-		Description: fmt.Sprintf("%s ended (%s)", name, reason),
+		Description: description,
 		RecipientID: address.MemberID,
 		Address:     address,
 	}
@@ -1417,7 +1421,7 @@ func removalEffect(address dnd5eEvents.ConditionAddress, reason string) (Imposed
 		effect.Ref = ref
 	}
 
-	return effect, nil
+	return effect
 }
 
 // conditionName is the display name of the condition an address points at.

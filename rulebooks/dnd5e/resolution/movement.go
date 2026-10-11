@@ -14,7 +14,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -458,7 +457,9 @@ func (m *movementMachine) react(i int) (Step, error) {
 // and cannot pay is refused with [ErrCannotPay], because that answer is the
 // whole of the call.
 func (m *movementMachine) pay(i int, trigger dnd5eEvents.ReactionTriggerEvent, definition combatActions.Definition) (Gather, error) {
-	name, err := reactionName(trigger)
+	name, err := conditionName(dnd5eEvents.ConditionAddress{
+		MemberID: trigger.ReactorID, ConditionRef: trigger.ConditionRef,
+	})
 	if err != nil {
 		return Gather{}, err
 	}
@@ -480,21 +481,6 @@ func (m *movementMachine) pay(i int, trigger dnd5eEvents.ReactionTriggerEvent, d
 			return m.swing(i, trigger, definition, strike), nil
 		},
 	}, nil
-}
-
-// reactionName is the display name of the condition that let a reactor react.
-func reactionName(trigger dnd5eEvents.ReactionTriggerEvent) (string, error) {
-	ref, err := core.ParseString(trigger.ConditionRef)
-	if err != nil {
-		return "", fmt.Errorf("reaction by %q: %w", trigger.ReactorID, err)
-	}
-	display, ok := conditions.DisplayFor(*ref)
-	if !ok {
-		return "", fmt.Errorf("name the reaction by %q from %s: %w", trigger.ReactorID,
-			trigger.ConditionRef, conditions.ErrUnknownCondition)
-	}
-
-	return display.Name, nil
 }
 
 // swing runs one paid reaction's strike inside this interaction and carries on
