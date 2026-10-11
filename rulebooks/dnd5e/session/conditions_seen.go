@@ -44,11 +44,12 @@ var _ encounter.EquipmentWithConditions = equipmentSeam{}
 //     empty when the sheet holds no conditions, because that is a real
 //     observation.
 //
-// # A trait is not a condition, and an unreadable condition is unknown
+// # A trait is a condition, and an unreadable condition is unknown
 //
-// A monster's stored list also carries its stat-block traits, which are not
-// conditions, so they are left out ([conditions.HeldAddresses]). A stored
-// condition that cannot be read makes the member's holdings unknown (nil).
+// A monster's stored list also carries its stat-block traits. A trait is a
+// condition and is listed beside the rest ([conditions.HeldAddresses]). A
+// stored condition that cannot be read still makes the member's holdings
+// unknown (nil).
 // Refusing that sheet is not this seam's job: every path that loads it to
 // play — Join's projection, Resolve — is strict and refuses it there
 // (TestARejoinPastACorruptConditionIsRefused). This seam is a read beside

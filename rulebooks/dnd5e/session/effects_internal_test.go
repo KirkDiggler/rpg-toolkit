@@ -121,7 +121,7 @@ func TestAbsentCandidateKeepsItsRowAndThePanel(t *testing.T) {
 	}), "an unobserved candidate is not an error")
 
 	declaration := offers[0].declaration
-	sneakID := refs.Features.SneakAttack().String()
+	sneakID := refs.Conditions.SneakAttack().String()
 	require.Len(t, declaration.Effects, 1)
 	require.Equal(t, sneakID, declaration.Effects[0].ID)
 	require.Equal(t, EffectDepends, declaration.Effects[0].State)

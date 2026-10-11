@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -66,24 +65,14 @@ func (s *PostRollWindowSuite) holdsTheDie(member string) bool {
 	return carriesInspiration(s.T(), stored)
 }
 
-// carriesInspiration reads a stored sheet for a Bardic Inspiration die.
-//
-// Decoded LENIENTLY, because a sheet carries several conditions and they do
-// not all spell their ref the same way. Only one of them is being looked for.
+// carriesInspiration reads a stored sheet for a Bardic Inspiration die, by the
+// whole ref through the conditions reader.
 func carriesInspiration(t fataler, stored *character.Data) bool {
-	for _, raw := range stored.Conditions {
-		var peek struct {
-			Ref *core.Ref `json:"ref"`
-		}
-		if json.Unmarshal(raw, &peek) != nil || peek.Ref == nil {
-			continue
-		}
-		if peek.Ref.ID == refs.Conditions.Inspired().ID {
-			return true
-		}
+	held, err := conditions.HoldsRef(stored.Conditions, refs.Conditions.Inspired())
+	if err != nil {
+		t.Fatalf("the sheet's conditions could not be read: %v", err)
 	}
-	_ = t
-	return false
+	return held
 }
 
 // duel is attack_test.go's authored scene: alice and bob adjacent on a turn
