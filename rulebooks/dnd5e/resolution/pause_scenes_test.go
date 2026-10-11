@@ -34,6 +34,7 @@ func heroStepsPastWolf(
 	listen ...func(context.Context, events.EventBus),
 ) (*Output, error) {
 	t.Helper()
+	wolf.Conditions = append(wolf.Conditions, freeReactions(t, wolf.ID)...)
 	bus := events.NewEventBus()
 	for _, l := range listen {
 		l(context.Background(), bus)
@@ -43,8 +44,8 @@ func heroStepsPastWolf(
 		Participants: []Participant{{Monster: wolf}, {Character: hero}},
 		Machine:      machine,
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
-			Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Driver: passDriver{},
+			Initiative: orderAsGiven{}, Participation: everyoneParticipates{}, Sight: everyoneSeesTheWholeMap{},
+			Equipment: noHandsAreObserved{}, Conditions: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Driver: passDriver{},
 			Roller: dice.NewRoller(), Actors: Actors,
 		},
 	}, newSurface(bus))
@@ -211,8 +212,8 @@ func (s *ConcentrationTestSuite) pausedMultiattack() (*Output, encounter.Encount
 		Participants: []Participant{{Character: s.fixtures().saver(40, holdJSON)}, {Monster: s.fixtures().wolfData()}},
 		Machine:      machine,
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{}, Driver: passDriver{}, Standing: everyoneStanding{},
-			Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
+			Initiative: orderAsGiven{}, Driver: passDriver{}, Participation: everyoneParticipates{},
+			Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Conditions: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 			Roller: dice.NewRoller(), Actors: Actors,
 		},
 	}, newSurface(bus))
@@ -269,8 +270,8 @@ func (s *ConcentrationTestSuite) TestTheResumeReportsOnlyWhatSettledAfterThePaus
 		Participants: []Participant{{Character: hero}, {Monster: s.fixtures().wolfData()}},
 		Machine:      machine,
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{}, Driver: passDriver{}, Standing: everyoneStanding{},
-			Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
+			Initiative: orderAsGiven{}, Driver: passDriver{}, Participation: everyoneParticipates{},
+			Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Conditions: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 			Roller: &sequenceRoller{singles: []int{straightRoll}, pair: []int{4}},
 			Actors: Actors,
 		},
@@ -560,8 +561,8 @@ func TestEveryPauseWritesOneHeader(t *testing.T) {
 				Participants: []Participant{{Character: resistingAttacker(t)}, {Character: wrathHero(t)}},
 				Machine:      machine,
 				Capabilities: encounter.Capabilities{
-					Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
-					Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Driver: passDriver{},
+					Initiative: orderAsGiven{}, Participation: everyoneParticipates{}, Sight: everyoneSeesTheWholeMap{},
+					Equipment: noHandsAreObserved{}, Conditions: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Driver: passDriver{},
 					Roller: dice.NewRoller(), Actors: Actors,
 				},
 			}, newSurface(events.NewEventBus()))
@@ -604,8 +605,8 @@ func TestARetaliationsSaveOfferResumesTheRetaliation(t *testing.T) {
 			Participants: []Participant{{Character: resistingAttacker(t)}, {Character: wrathHero(t)}},
 			Machine:      machine,
 			Capabilities: encounter.Capabilities{
-				Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
-				Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Driver: passDriver{},
+				Initiative: orderAsGiven{}, Participation: everyoneParticipates{}, Sight: everyoneSeesTheWholeMap{},
+				Equipment: noHandsAreObserved{}, Conditions: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Driver: passDriver{},
 				Roller: dice.NewRoller(), Actors: Actors,
 			},
 		}, newSurface(events.NewEventBus()))
@@ -653,8 +654,8 @@ func (s *ConcentrationTestSuite) resolveCastScene(
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{}, Driver: passDriver{}, Standing: everyoneStanding{},
-			Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
+			Initiative: orderAsGiven{}, Driver: passDriver{}, Participation: everyoneParticipates{},
+			Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Conditions: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 			Actors: encounter.Actors{Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}},
 		},
 	})
@@ -662,8 +663,8 @@ func (s *ConcentrationTestSuite) resolveCastScene(
 	out, err := resolveOn(s.ctx, &Input{
 		World: enc.ToData(), Participants: participants, Machine: machine, Cost: cost,
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{}, Driver: passDriver{}, Standing: everyoneStanding{},
-			Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
+			Initiative: orderAsGiven{}, Driver: passDriver{}, Participation: everyoneParticipates{},
+			Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Conditions: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 			Roller: dice.NewRoller(), Actors: Actors,
 		},
 	}, newSurface(bus))
@@ -798,8 +799,8 @@ func (s *ConcentrationTestSuite) runAtHero(hero *character.Data, machine Machine
 		Participants: []Participant{{Character: hero}, {Monster: s.fixtures().wolfData()}},
 		Machine:      machine,
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{}, Driver: passDriver{}, Standing: everyoneStanding{},
-			Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{},
+			Initiative: orderAsGiven{}, Driver: passDriver{}, Participation: everyoneParticipates{},
+			Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Conditions: noHandsAreObserved{}, Sheets: noSheetsAsked{},
 			Roller: dice.NewRoller(), Actors: Actors,
 		},
 	}, newSurface(bus))

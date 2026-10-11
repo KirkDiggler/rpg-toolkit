@@ -55,7 +55,7 @@ type FollowUpOutcome struct {
 // One publisher per fact, and the owner is the publisher of its own strip.
 type ConditionRemoval struct {
 	// Owner is the condition that asked for the check and ends with a failure.
-	Owner dnd5eEvents.ChildRef
+	Owner dnd5eEvents.ConditionAddress
 
 	// Reason is why, carried onto the removal fact and through it onto
 	// everything the owner strips.

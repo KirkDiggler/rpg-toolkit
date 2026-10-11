@@ -37,6 +37,10 @@ func (neverResolves) ResolveCheck(*encounter.ResolveCheckInput) (*encounter.Reso
 	return nil, errors.New("resolution fixtures: no fixture build resolves a check")
 }
 
+func (neverResolves) ResolveDiscoveryCheck(*encounter.ResolveCheckInput) (*encounter.ResolveCheckOutput, error) {
+	return nil, errors.New("resolution fixtures: no fixture build resolves a discovery check")
+}
+
 type neverWitnesses struct{}
 
 func (neverWitnesses) Perceivers(*encounter.PerceiversInput) ([]encounter.MemberID, error) {
@@ -70,9 +74,10 @@ func concealedWorld(t *testing.T) encounter.EncounterData {
 		Capabilities: encounter.Capabilities{
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
-			Standing:      everyoneStanding{},
+			Participation: everyoneParticipates{},
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
 			Sheets:        noSheetsAsked{},
 			CheckResolver: neverResolves{},
 			Witness:       neverWitnesses{},
@@ -97,6 +102,12 @@ func (c *countingCheckResolver) ResolveCheck(*encounter.ResolveCheckInput) (*enc
 	return nil, errors.New("resolution fixtures: no scene here searches")
 }
 
+func (c *countingCheckResolver) ResolveDiscoveryCheck(*encounter.ResolveCheckInput) (*encounter.ResolveCheckOutput, error) {
+	c.asks++
+
+	return nil, errors.New("resolution fixtures: no scene here discovers")
+}
+
 // countingWitness refuses like neverWitnesses and remembers being asked.
 type countingWitness struct{ asks int }
 
@@ -107,7 +118,7 @@ func (c *countingWitness) Perceivers(*encounter.PerceiversInput) ([]encounter.Me
 }
 
 // TestTheConcealmentCapabilitiesAreCarriedAndNeverAsked is
-// TestTheStandingCapability's twin for the pair that arrived with
+// the Sight capability's twin for the pair that arrived with
 // rpg-toolkit#1371, and it pins the same two halves.
 //
 // CARRIED: a concealed field refuses to load without both capabilities, so a
@@ -136,9 +147,10 @@ func TestTheConcealmentCapabilitiesAreCarriedAndNeverAsked(t *testing.T) {
 		Capabilities: encounter.Capabilities{
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
-			Standing:      everyoneStanding{},
+			Participation: everyoneParticipates{},
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
 			Sheets:        noSheetsAsked{},
 			Roller:        dice.NewRoller(),
 			CheckResolver: resolver,
@@ -172,14 +184,15 @@ func TestAConcealedWorldIsRefusedAtEncountersOwnDoor(t *testing.T) {
 			Participants: []Participant{{Character: probeSheet(heroID)}},
 			Machine:      &worldProbe{},
 			Capabilities: encounter.Capabilities{
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
-				Standing:   everyoneStanding{},
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  noHandsAreObserved{},
-				Sheets:     noSheetsAsked{},
-				Roller:     dice.NewRoller(),
-				Actors:     Actors,
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
+				Participation: everyoneParticipates{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     noHandsAreObserved{},
+				Conditions:    noHandsAreObserved{},
+				Sheets:        noSheetsAsked{},
+				Roller:        dice.NewRoller(),
+				Actors:        Actors,
 			},
 		}
 	}

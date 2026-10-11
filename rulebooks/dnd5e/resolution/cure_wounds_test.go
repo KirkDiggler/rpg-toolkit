@@ -31,7 +31,6 @@ func TestHealingPublicationFailureDoesNotPromiseRollback(t *testing.T) {
 	sheet, err := character.Load(ctx, stored)
 	require.NoError(t, err)
 	require.NoError(t, character.Attach(ctx, sheet, bus))
-	t.Cleanup(func() { require.NoError(t, sheet.Cleanup(ctx)) })
 	fault := errors.New("applied subscriber failed")
 	_, err = dnd5eEvents.HealingAppliedTopic.On(bus).Subscribe(ctx, func(context.Context, dnd5eEvents.HealingAppliedEvent) error { return fault })
 	require.NoError(t, err)
@@ -80,14 +79,15 @@ func (s *CastActionTestSuite) TestCureWoundsMonsterTypesAndConcentration() {
 				Machine:      machine,
 				Cost:         &Cost{SpellTurn: "scene/round-1/bard", PayerID: bardID, Profile: definition.Cost, Turn: &Turn{Number: mockeryTurn, Speed: mockerySpeed}},
 				Capabilities: encounter.Capabilities{
-					Initiative: orderAsGiven{},
-					Driver:     passDriver{},
-					Standing:   everyoneStanding{},
-					Sight:      everyoneSeesTheWholeMap{},
-					Equipment:  noHandsAreObserved{},
-					Sheets:     noSheetsAsked{},
-					Roller:     dice.NewRoller(),
-					Actors:     Actors,
+					Initiative:    orderAsGiven{},
+					Driver:        passDriver{},
+					Participation: everyoneParticipates{},
+					Sight:         everyoneSeesTheWholeMap{},
+					Equipment:     noHandsAreObserved{},
+					Conditions:    noHandsAreObserved{},
+					Sheets:        noSheetsAsked{},
+					Roller:        dice.NewRoller(),
+					Actors:        Actors,
 				},
 			})
 			s.Require().NoError(err)
@@ -110,7 +110,7 @@ func (s *CastActionTestSuite) TestCureWoundsMonsterTypesAndConcentration() {
 			}
 			paid := f.sheet(out, bardID)
 			s.Equal(1, paid.Resources[resources.SpellSlotLevel1].Current)
-			s.Require().ElementsMatch([]string{concentrating, opportunityAttack}, storedRefs(s.T(), paid.Conditions))
+			s.Require().ElementsMatch([]string{concentrating}, storedRefs(s.T(), paid.Conditions))
 			s.JSONEq(string(caster.Conditions[0]), string(conditionWithRefOrNil(paid.Conditions, refs.Conditions.Concentrating())), "healing preserves concentration")
 		})
 	}
@@ -133,14 +133,15 @@ func (s *CastActionTestSuite) TestCureWoundsPhysicalBarrierRefusesBeforePayment(
 		Machine:      machine,
 		Cost:         &Cost{SpellTurn: "scene/round-1/bard", PayerID: bardID, Profile: definition.Cost, Turn: &Turn{Number: mockeryTurn, Speed: mockerySpeed}},
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Roller:     dice.NewRoller(),
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Roller:        dice.NewRoller(),
+			Actors:        Actors,
 		},
 	})
 	s.ErrorIs(err, ErrOutOfRange)

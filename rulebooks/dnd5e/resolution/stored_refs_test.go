@@ -10,13 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 )
-
-// opportunityAttack is the ref of the free reaction every attached character
-// sheet stores exactly once (rpg-toolkit#1959): a test that lists a sheet's
-// conditions names it, so a write path that drops or doubles it fails.
-var opportunityAttack = refs.Conditions.OpportunityAttack().String()
 
 // storedRefs lists the refs of a sheet's stored conditions, in stored order,
 // nothing filtered out.
@@ -32,4 +27,20 @@ func storedRefs(t testing.TB, stored []json.RawMessage) []string {
 	}
 
 	return found
+}
+
+// freeReactions is the free reactions a sheet carries as the rulebook writes
+// them when it makes the sheet: stored with the member, because attach grants
+// none (rpg-toolkit#1965). A fixture that wants a reactor stores them; a
+// fixture that does not is a member nobody can provoke.
+func freeReactions(t testing.TB, member string) []json.RawMessage {
+	t.Helper()
+	stored := make([]json.RawMessage, 0, 1)
+	for _, reaction := range conditions.FreeReactions(member) {
+		raw, err := reaction.ToJSON()
+		require.NoError(t, err)
+		stored = append(stored, raw)
+	}
+
+	return stored
 }

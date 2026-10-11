@@ -215,7 +215,7 @@ func (s *LongRestTestSuite) TestBarbarianRecoveryIsComplete() {
 	s.Require().Equal(3, got.Resources[resources.RageCharges].Maximum)
 	s.Require().Equal(2, got.Resources[barbarianRestPool].Current)
 
-	s.Require().ElementsMatch([]string{refs.Conditions.UnarmoredDefense().String(), opportunityAttack},
+	s.Require().ElementsMatch([]string{refs.Conditions.UnarmoredDefense().String()},
 		storedRefs(s.T(), got.Conditions))
 	s.Require().NotNil(conditionWithRefOrNil(got.Conditions, refs.Conditions.UnarmoredDefense()),
 		"the passive condition is retained")

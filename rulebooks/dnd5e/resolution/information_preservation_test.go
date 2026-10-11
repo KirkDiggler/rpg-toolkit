@@ -39,7 +39,7 @@ func wolfStrikesHero(t *testing.T, hero *character.Data, machine Machine) (*Outp
 		World:        actionWorld(t, 2),
 		Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Character: hero}},
 		Machine:      machine,
-		Capabilities: encounter.Capabilities{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Driver: passDriver{}, Roller: dice.NewRoller(), Actors: Actors},
+		Capabilities: encounter.Capabilities{Initiative: orderAsGiven{}, Participation: everyoneParticipates{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Conditions: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Driver: passDriver{}, Roller: dice.NewRoller(), Actors: Actors},
 	}, newSurface(events.NewEventBus()))
 }
 

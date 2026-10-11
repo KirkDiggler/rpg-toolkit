@@ -200,12 +200,13 @@ func (s *ContestDamageTestSuite) world() encounter.EncounterData {
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
 			Actors: encounter.Actors{
 				Striker:   noAttacksExpected{},
 				Mover:     encounter.RefusingMover{},
@@ -262,14 +263,15 @@ func (s *ContestDamageTestSuite) resolve(
 		Machine:      machine,
 		Cost:         cost,
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Roller:     dice.NewRoller(),
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Roller:        dice.NewRoller(),
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Actors:        Actors,
 		},
 	})
 }
@@ -322,7 +324,7 @@ func (s *ContestDamageTestSuite) TestAFailedSaveDeliversDamageAndThenTheConditio
 
 	sheet := s.sheet(out, heroID)
 	s.Require().Equal(11, sheet.HitPoints, "14 - 3, applied exactly once")
-	s.Require().ElementsMatch([]string{refs.Conditions.Prone().String(), opportunityAttack}, s.conditionRefs(sheet))
+	s.Require().ElementsMatch([]string{refs.Conditions.Prone().String()}, s.conditionRefs(sheet))
 }
 
 // The control. Same declaration, a better die, and a made save negates both
@@ -418,7 +420,7 @@ func (s *ContestDamageTestSuite) TestADamageOnlyContestLandsDamageAndNothingElse
 
 	sheet := s.sheet(out, heroID)
 	s.Require().Equal(11, sheet.HitPoints)
-	s.Require().Equal([]string{opportunityAttack}, s.conditionRefs(sheet), "nothing was declared, so nothing went on")
+	s.Require().Empty(s.conditionRefs(sheet), "nothing was declared, so nothing went on")
 }
 
 // THE REGRESSION THAT MATTERS. A contest that declares no damage is what it was
@@ -437,7 +439,7 @@ func (s *ContestDamageTestSuite) TestAConditionOnlyContestIsUnchanged() {
 
 	sheet := s.sheet(out, heroID)
 	s.Require().Equal(14, sheet.HitPoints, "no damage was declared, so none was dealt")
-	s.Require().ElementsMatch([]string{refs.Conditions.Prone().String(), opportunityAttack}, s.conditionRefs(sheet))
+	s.Require().ElementsMatch([]string{refs.Conditions.Prone().String()}, s.conditionRefs(sheet))
 }
 
 // The damage goes through the sheet's own ApplyDamage, so a cantrip can drop

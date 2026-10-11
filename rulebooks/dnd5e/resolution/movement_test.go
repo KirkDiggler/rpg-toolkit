@@ -5,8 +5,10 @@ package resolution
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -21,6 +23,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -48,8 +52,9 @@ const reactorReactions = 2
 
 // reactorSheet is a probe in a fight, with reactions on its meter for the door
 // to bill.
-func reactorSheet(id string) *character.Data {
+func reactorSheet(t testing.TB, id string) *character.Data {
 	sheet := probeSheet(id)
+	sheet.Conditions = append(sheet.Conditions, freeReactions(t, id)...)
 	sheet.ActionEconomy = &character.ActionEconomyData{
 		TurnNumber: 1, ActionsRemaining: 1, BonusActionsRemaining: 1, ReactionsRemaining: reactorReactions,
 	}
@@ -90,12 +95,13 @@ func (s *MovementTestSuite) world() encounter.EncounterData {
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
 			Actors: encounter.Actors{
 				Striker:   noAttacksExpected{},
 				Mover:     encounter.RefusingMover{},
@@ -144,7 +150,7 @@ func (s *MovementTestSuite) runMachine(
 			for _, id := range []string{heroID, wolfID, "alice", "zara"} {
 				sheet := probeSheet(id)
 				if fighting[id] {
-					sheet = reactorSheet(id)
+					sheet = reactorSheet(s.T(), id)
 				}
 				cast = append(cast, Participant{Character: sheet})
 			}
@@ -152,14 +158,15 @@ func (s *MovementTestSuite) runMachine(
 		}(),
 		Machine: machine,
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Roller:     dice.NewRoller(),
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Roller:        dice.NewRoller(),
+			Actors:        Actors,
 		},
 	}, newSurface(bus))
 }
@@ -604,4 +611,85 @@ func preventionSourceFor(
 	}
 
 	return nil
+}
+
+// unregisteredRef is a condition ref the registry has never heard of.
+const unregisteredRef = "dnd5e:conditions:nonsense"
+
+// strangerCondition is a held condition whose ref the registry does not know.
+type strangerCondition struct{}
+
+func (strangerCondition) Ref() *core.Ref {
+	ref, _ := core.ParseString(unregisteredRef)
+	return ref
+}
+func (strangerCondition) IsApplied() bool                               { return true }
+func (strangerCondition) Apply(context.Context, events.EventBus) error  { return nil }
+func (strangerCondition) Remove(context.Context, events.EventBus) error { return nil }
+func (strangerCondition) ToJSON() (json.RawMessage, error)              { return json.RawMessage(`{}`), nil }
+
+// removalsOn counts the removal facts published on a bus.
+func removalsOn(t *testing.T, bus events.EventBus) *int {
+	t.Helper()
+	count := 0
+	_, err := dnd5eEvents.ConditionRemovedTopic.On(bus).Subscribe(context.Background(),
+		func(context.Context, dnd5eEvents.ConditionRemovedEvent) error {
+			count++
+			return nil
+		})
+	require.NoError(t, err)
+
+	return &count
+}
+
+// A reaction's step is named for the condition that allowed it; a ref the
+// registry does not know refuses before any charge, rather than printing the ref.
+func TestAReactionByAnUnknownConditionIsRefusedBeforeItIsPaid(t *testing.T) {
+	m := &movementMachine{}
+	_, err := m.pay(0, dnd5eEvents.ReactionTriggerEvent{ReactorID: wolfID, ConditionRef: unregisteredRef},
+		combatActions.Definition{})
+	require.ErrorIs(t, err, conditions.ErrUnknownCondition)
+
+	step, err := m.pay(0, dnd5eEvents.ReactionTriggerEvent{
+		ReactorID: wolfID, ConditionRef: refs.Conditions.OpportunityAttack().String(),
+	}, combatActions.Definition{})
+	require.NoError(t, err)
+	display, ok := conditions.DisplayFor(*refs.Conditions.OpportunityAttack())
+	require.True(t, ok)
+	require.Equal(t, wolfID+" takes "+display.Name, step.name)
+}
+
+// A concentration owner that cannot be named ends nothing: the error comes
+// before the fact, and the continuation never runs.
+func TestAnOwnerRemovalByAnUnknownConditionPublishesNothing(t *testing.T) {
+	bus := events.NewEventBus()
+	removals := removalsOn(t, bus)
+	called := false
+	step := publishRemoval(&ConditionRemoval{
+		Owner:  dnd5eEvents.ConditionAddress{MemberID: heroID, ConditionRef: unregisteredRef},
+		Reason: "ended",
+	}, func(ImposedEffect) (Step, error) { called = true; return Done{}, nil })
+
+	_, err := step.run(context.Background(), bus)
+
+	require.ErrorIs(t, err, conditions.ErrUnknownCondition)
+	require.Zero(t, *removals, "no fact went out")
+	require.False(t, called)
+}
+
+// A replacement of a held condition nobody can name refuses before it
+// publishes the removal.
+func TestReplacingAnUnknownConditionPublishesNothing(t *testing.T) {
+	bus := events.NewEventBus()
+	wolf, err := monster.LoadFromData(context.Background(), monsters.NewWolf(wolfID).ToData(), bus)
+	require.NoError(t, err)
+	require.NoError(t, wolf.AddCondition(strangerCondition{}))
+	cast := &Participants{monsters: map[string]*monster.Monster{wolfID: wolf}, order: []string{wolfID}}
+	removals := removalsOn(t, bus)
+
+	_, err = replaceSameAddress(context.Background(), bus, cast, wolfID,
+		dnd5eEvents.ConditionAddress{MemberID: wolfID, ConditionRef: unregisteredRef})
+
+	require.ErrorIs(t, err, conditions.ErrUnknownCondition)
+	require.Zero(t, *removals, "no fact went out")
 }

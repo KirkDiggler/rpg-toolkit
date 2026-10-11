@@ -647,7 +647,6 @@ func (m *castMachine) hold(outcome CastOutcome) Gather {
 			if err := dnd5eEvents.ConditionAppliedTopic.On(bus).Publish(
 				ctx, dnd5eEvents.ConditionAppliedEvent{
 					Target:    caster,
-					Type:      dnd5eEvents.ConditionType(holding.Ref().ID),
 					Source:    dnd5eEvents.ConditionSourceSpell,
 					Condition: holding,
 				}); err != nil {
@@ -759,7 +758,11 @@ func deliveredEffects(spell core.Ref, effects []ActivationEffect) ([]ImposedEffe
 			continue
 		}
 		if effect.Kind == EffectConditionRemoved {
-			applied = append(applied, removalEffect(effect.Address, effect.Reason))
+			removed, err := removalEffect(effect.Address, effect.Reason)
+			if err != nil {
+				return nil, err
+			}
+			applied = append(applied, removed)
 			continue
 		}
 		if effect.Kind == EffectHealingApplied {

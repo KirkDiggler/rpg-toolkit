@@ -104,12 +104,13 @@ func (s *DirtyTestSuite) world() encounter.EncounterData {
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
 			Actors: encounter.Actors{
 				Striker:   noAttacksExpected{},
 				Mover:     encounter.RefusingMover{},
@@ -143,14 +144,15 @@ func (s *DirtyTestSuite) TestAConditionThatChangesItselfComesBackToBeStored() {
 			Roller:     &sequenceRoller{singles: []int{18, 18}, pair: []int{3, 4}},
 		}),
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Roller:     dice.NewRoller(),
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Roller:        dice.NewRoller(),
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Actors:        Actors,
 		},
 	})
 	s.Require().NoError(err)
@@ -161,7 +163,7 @@ func (s *DirtyTestSuite) TestAConditionThatChangesItselfComesBackToBeStored() {
 	s.Require().Equal(heroID, out.DirtyCharacters[0].ID)
 
 	sheet := out.DirtyCharacters[0].Conditions
-	s.Require().ElementsMatch([]string{refs.Conditions.Raging().String(), opportunityAttack}, storedRefs(s.T(), sheet))
+	s.Require().ElementsMatch([]string{refs.Conditions.Raging().String()}, storedRefs(s.T(), sheet))
 	var stored map[string]any
 	s.Require().NoError(json.Unmarshal(conditionWithRefOrNil(sheet, refs.Conditions.Raging()), &stored))
 	s.Require().Equal(true, stored["did_attack_this_turn"],
@@ -192,12 +194,13 @@ func (s *DirtyTestSuite) TestAnUntouchedParticipantIsNotReturned() {
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
 			Actors: encounter.Actors{
 				Striker:   noAttacksExpected{},
 				Mover:     encounter.RefusingMover{},
@@ -221,14 +224,15 @@ func (s *DirtyTestSuite) TestAnUntouchedParticipantIsNotReturned() {
 			Roller:     &sequenceRoller{singles: []int{18, 18}, pair: []int{3, 4}},
 		}),
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Roller:     dice.NewRoller(),
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Roller:        dice.NewRoller(),
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Actors:        Actors,
 		},
 	})
 	s.Require().NoError(err)
