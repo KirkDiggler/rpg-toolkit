@@ -47,7 +47,6 @@ var descriptors = []descriptor{
 	hiddenDescriptor,
 	inspiredDescriptor,
 	helpedDescriptor,
-	unconsciousDescriptor,
 	opportunityAttackDescriptor,
 	trueStrikeDescriptor,
 	bladeWardDescriptor,

@@ -62,7 +62,7 @@ func (s *BardicInspirationTestSuite) TestGrantSpendsAUseAndPublishesTheDie() {
 	s.Equal(2, owner.resources[resources.Inspiration], "one use spent")
 	s.Require().Len(s.applied, 1)
 	s.Equal("fighter-1", s.applied[0].Target.GetID())
-	s.Equal(dnd5eEvents.ConditionInspired, s.applied[0].Type)
+	s.Equal(refs.Conditions.Inspired(), s.applied[0].Condition.Ref())
 
 	inspired, ok := s.applied[0].Condition.(*conditions.InspiredCondition)
 	s.Require().True(ok, "the published condition is the held die")

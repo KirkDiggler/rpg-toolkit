@@ -228,36 +228,26 @@ func (s *PureLoadTestSuite) TestLegacyLoadDropsAMalformedCondition() {
 }
 
 // inFogBlob is an In Fog condition exactly as a sheet saved one before the
-// type retired.
+// type was removed.
 var inFogBlob = json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"in_fog"},` +
 	`"member_id":"char-load","source_id":"area-1","source_ref":{"module":"dnd5e","type":"spells","id":"fog-cloud"}}`)
 
-// A sheet saved with an In Fog condition loads and carries none, on the strict
-// path too: the type retired, membership is the encounter's answer, and the
-// sheet saves without it.
-func (s *PureLoadTestSuite) TestASheetSavedInFogLoadsAndCarriesNone() {
+// A sheet saved with a condition of a removed type is refused by the strict
+// load as an unknown ref, and the lenient load drops it and keeps the rest.
+func (s *PureLoadTestSuite) TestASheetSavedInFogFailsStrictLoadAndIsDroppedByLenientLoad() {
 	data := fullSheet(&s.Suite)
 	data.Conditions = append(data.Conditions, inFogBlob)
 
-	char, err := Load(s.ctx, data)
-	s.Require().NoError(err, "a retired condition is dropped, never a failed load")
+	_, err := Load(s.ctx, data)
+	s.Require().ErrorIs(err, conditions.ErrUnknownCondition)
 
-	for _, condition := range char.GetConditions() {
-		raw, err := condition.ToJSON()
-		s.Require().NoError(err)
-		s.NotContains(string(raw), `"in_fog"`)
-	}
-	saved, err := json.Marshal(mustToData(s.T(), char))
+	lenient, err := LoadFromData(s.ctx, data, events.NewEventBus())
 	s.Require().NoError(err)
-	s.NotContains(string(saved), `"in_fog"`, "the sheet saves without it")
-	s.Require().Equal(marshalData(&s.Suite, fullSheet(&s.Suite)), marshalData(&s.Suite, mustToData(s.T(), char)),
-		"everything else the sheet carried survives")
-
-	legacy, err := LoadFromData(s.ctx, data, events.NewEventBus())
-	s.Require().NoError(err)
-	saved, err = json.Marshal(mustToData(s.T(), legacy))
+	saved, err := json.Marshal(mustToData(s.T(), lenient))
 	s.Require().NoError(err)
 	s.NotContains(string(saved), `"in_fog"`)
+	s.Require().Equal(marshalData(&s.Suite, fullSheet(&s.Suite)), marshalData(&s.Suite, mustToData(s.T(), lenient)),
+		"everything else the sheet carried survives")
 }
 
 // Features are the same species of loss as conditions, and get the same
@@ -573,9 +563,8 @@ func (s *PureLoadTestSuite) TestAttachScopesEachConditionToItsRef() {
 	s.Require().NoError(err)
 	s.Require().NoError(Attach(s.ctx, char, bus))
 
-	s.Require().Equal(
-		[]core.Ref{*refs.Conditions.Raging(), *refs.Conditions.OpportunityAttack()},
-		bus.record.asked, "the sheet's own condition, then the carried reaction")
+	s.Require().Equal([]core.Ref{*refs.Conditions.Raging()}, bus.record.asked,
+		"the sheet's own condition, and nothing the sheet does not store")
 	s.Require().Contains(bus.record.byRef[*refs.Conditions.Raging()], events.Topic("dnd5e.saves.chain"))
 }
 
@@ -596,9 +585,8 @@ func (s *PureLoadTestSuite) TestAttachScopesAttachableFeatureToItsRef() {
 	s.Require().NoError(err)
 	s.Require().NoError(Attach(s.ctx, char, bus))
 
-	s.Require().Equal(
-		[]core.Ref{*refs.Features.SecondWind(), *refs.Conditions.OpportunityAttack()},
-		bus.record.asked, "the feature attaches before the carried reaction")
+	s.Require().Equal([]core.Ref{*refs.Features.SecondWind()}, bus.record.asked,
+		"the feature attaches, and no reaction the sheet does not store")
 	s.Require().Contains(bus.record.byRef[*refs.Features.SecondWind()], events.Topic("dnd5e.rest"))
 }
 

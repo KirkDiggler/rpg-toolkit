@@ -93,7 +93,6 @@ func (h *Help) Activate(ctx context.Context, owner core.Entity, input CombatAbil
 	helpedCondition := conditions.NewHelpedCondition(allyID, owner.GetID())
 	if err := dnd5eEvents.ConditionAppliedTopic.On(input.Bus).Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
 		Target:    input.Target,
-		Type:      dnd5eEvents.ConditionHelped,
 		Source:    dnd5eEvents.ConditionSourceCombatAbility,
 		Condition: helpedCondition,
 	}); err != nil {

@@ -43,6 +43,10 @@ func (s *LevelUpSuite) SetupTest() {
 	s.bus = events.NewEventBus()
 }
 
+// SetupSubTest gives every subtest its own bus: a sheet stays subscribed to the
+// bus it was finalized on, so two sheets sharing an id must not share a bus.
+func (s *LevelUpSuite) SetupSubTest() { s.bus = events.NewEventBus() }
+
 func TestLevelUpSuite(t *testing.T) {
 	suite.Run(t, new(LevelUpSuite))
 }

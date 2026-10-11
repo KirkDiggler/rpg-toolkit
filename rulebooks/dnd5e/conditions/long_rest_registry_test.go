@@ -228,16 +228,6 @@ var longRestCases = map[string]longRestCase{
 		// that removes it does not discriminate and its reason says so.
 		removalReason: "rest",
 	},
-	refs.Conditions.Unconscious().String(): {
-		data: json.RawMessage(`{
-			"ref":{"module":"dnd5e","type":"conditions","id":"unconscious"},
-			"member_id":"member-1","successes":1,"failures":2,"stabilized":false,"dead":false
-		}`),
-		ownerID:       "member-1",
-		expectedRef:   refs.Conditions.Unconscious(),
-		outcome:       longRestRemove,
-		removalReason: "long rest",
-	},
 	// Retained rather than reset since 2026-09-11: the meter this used to
 	// reset moved to the reactor's own keeper, so the condition itself has no
 	// rest behaviour left to declare.

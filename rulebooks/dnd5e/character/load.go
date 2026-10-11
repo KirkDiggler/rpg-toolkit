@@ -9,7 +9,6 @@ import (
 	"errors"
 	"log/slog"
 	"maps"
-	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
@@ -43,17 +42,6 @@ const (
 	// [LoadFromData] has always done.
 	lenientEffects
 )
-
-// loadedEffect pairs a condition's behaviour with the ref its loader routed on.
-//
-// The pairing is only knowable here. A [dnd5eEvents.ConditionBehavior] cannot
-// name itself (rpg-toolkit#971), so the moment the load routes a blob's ref to
-// a loader is the one moment the (ref, behaviour) pair exists — and per-effect
-// attribution downstream is built entirely out of that pair.
-type loadedEffect struct {
-	ref      core.Ref
-	behavior dnd5eEvents.ConditionBehavior
-}
 
 // Load turns persisted data into a character sheet, and does nothing else.
 //
@@ -106,7 +94,7 @@ func Load(_ context.Context, d *Data) (*Character, error) {
 // name.
 //
 // Attaching also parks the bus on the sheet, for the verb methods that still
-// read it (MakeSavingThrow, EffectiveAC, the rests).
+// read it (EffectiveAC, the rests).
 // That is the keeper's doing, not this function's, because a character built
 // by Draft.Finalize gets there without ever passing through here; see
 // SheetKeeper.subscribeSelf.
@@ -177,52 +165,32 @@ func AttachWithRoller(ctx context.Context, c *Character, bus events.EventBus, ro
 	pending := c.pendingEffects
 	c.pendingEffects = nil
 
-	// Applied ALONGSIDE the pending effects and never mixed into them. A
-	// rollback must return the sheet to what Attach found, and what it found
-	// did not include these — so unattach below is handed `pending`, not
-	// `applying`.
-	carried := c.freeReactionsToCarry()
-	applying := make([]loadedEffect, 0, len(pending)+len(carried))
-	applying = append(applying, pending...)
-	applying = append(applying, carried...)
+	attached := make([]attachedEffect, 0, len(pending))
 
-	attached := make([]attachedEffect, 0, len(applying))
+	for _, behavior := range pending {
+		// The behaviour names itself, so the attribution is read off it
+		// rather than carried beside it (rpg-toolkit#971).
+		ref := *behavior.Ref()
+		effectBus := dnd5eEvents.BusForEffect(bus, ref)
 
-	for _, effect := range applying {
-		effectBus := dnd5eEvents.BusForEffect(bus, effect.ref)
-
-		if err := effect.behavior.Apply(ctx, effectBus); err != nil {
+		if err := behavior.Apply(ctx, effectBus); err != nil {
 			// Undo whatever the failed Apply managed to subscribe.
-			_ = effect.behavior.Remove(ctx, effectBus)
+			_ = behavior.Remove(ctx, effectBus)
 
 			if c.policy == strictEffects {
 				c.unattach(ctx, bus, attached, pending, previousBus)
 
-				return rpgerr.Wrapf(err, "failed to apply condition %s", effect.ref.String())
+				return rpgerr.Wrapf(err, "failed to apply condition %s", ref.String())
 			}
 
 			// Lenient: the legacy path drops a condition it could not apply.
-			warnDropped(c.id, "condition", effect.ref, err, slog.String("phase", "apply"))
-			c.dropCondition(effect.behavior)
+			warnDropped(c.id, "condition", ref, err, slog.String("phase", "apply"))
+			c.dropCondition(behavior)
 
 			continue
 		}
 
-		attached = append(attached, attachedEffect{effect: effect, bus: effectBus})
-	}
-
-	// The free reactions that attached join the sheet, so GetConditions and
-	// ToData tell the truth about what this participant holds — the way a
-	// monster's attach records its own. Only here, once the attach has
-	// succeeded: a strict rollback above has nothing of theirs to take back.
-	// Joining is not dirtying; gaining a reaction is not something that
-	// happened in the world.
-	for i := range attached {
-		if slices.ContainsFunc(carried, func(effect loadedEffect) bool {
-			return effect.behavior == attached[i].effect.behavior
-		}) {
-			c.conditions = append(c.conditions, attached[i].effect.behavior)
-		}
+		attached = append(attached, attachedEffect{behavior: behavior, bus: effectBus})
 	}
 
 	// The roller is bound only HERE, after every effect has applied and the
@@ -235,7 +203,7 @@ func AttachWithRoller(ctx context.Context, c *Character, bus events.EventBus, ro
 	// nothing.
 	if roller != nil {
 		for i := range attached {
-			if binder, ok := attached[i].effect.behavior.(conditions.RollerBinder); ok {
+			if binder, ok := attached[i].behavior.(conditions.RollerBinder); ok {
 				binder.BindRoller(roller)
 			}
 		}
@@ -249,8 +217,8 @@ func AttachWithRoller(ctx context.Context, c *Character, bus events.EventBus, ro
 // how it learns an effect exists, and a rollback that asked again would leave a
 // registration ledger describing an attach that did not happen.
 type attachedEffect struct {
-	effect loadedEffect
-	bus    events.EventBus
+	behavior dnd5eEvents.ConditionBehavior
+	bus      events.EventBus
 }
 
 // unattach returns the sheet to the state [Attach] found it in: every effect
@@ -260,12 +228,12 @@ func (c *Character) unattach(
 	ctx context.Context,
 	bus events.EventBus,
 	attached []attachedEffect,
-	pending []loadedEffect,
+	pending []dnd5eEvents.ConditionBehavior,
 	previousBus events.EventBus,
 ) {
 	// Newest first, the order resolution tears down in (ADR-0038 R5).
 	for i := len(attached) - 1; i >= 0; i-- {
-		_ = attached[i].effect.behavior.Remove(ctx, attached[i].bus)
+		_ = attached[i].behavior.Remove(ctx, attached[i].bus)
 	}
 
 	_ = c.SheetKeeper().Remove(ctx, bus)
@@ -375,9 +343,7 @@ func loadSheet(d *Data, policy effectPolicy) (*Character, error) {
 	}
 	char.pendingEffects = effects
 	char.conditions = make([]dnd5eEvents.ConditionBehavior, 0, len(effects))
-	for _, effect := range effects {
-		char.conditions = append(char.conditions, effect.behavior)
-	}
+	char.conditions = append(char.conditions, effects...)
 
 	loadedResources, err := loadResources(d.Resources, char.id, policy)
 	if err != nil {
@@ -574,16 +540,12 @@ func loadFeatures(raw []json.RawMessage, characterID string, policy effectPolicy
 // the ref its loader routed on. Nothing is applied here — that is [Attach]'s
 // job, and the ref is what lets it attribute the subscriptions each condition
 // then makes.
-func loadEffects(raw []json.RawMessage, characterID string, policy effectPolicy) ([]loadedEffect, error) {
-	effects := make([]loadedEffect, 0, len(raw))
+func loadEffects(
+	raw []json.RawMessage, characterID string, policy effectPolicy,
+) ([]dnd5eEvents.ConditionBehavior, error) {
+	effects := make([]dnd5eEvents.ConditionBehavior, 0, len(raw))
 
 	for i, rawCondition := range raw {
-		// A retired condition type is dropped under every policy: it carried
-		// no rule, and the sheet saves without it.
-		if conditions.IsRetired(rawCondition) {
-			continue
-		}
-
 		condition, err := conditions.LoadJSON(rawCondition)
 		if err != nil {
 			if policy == strictEffects {
@@ -598,12 +560,7 @@ func loadEffects(raw []json.RawMessage, characterID string, policy effectPolicy)
 			continue
 		}
 
-		effects = append(effects, loadedEffect{
-			// Peeked rather than asked for: the ref conditions.LoadJSON just
-			// routed on is the only name this behaviour will ever have.
-			ref:      peekEffectRef(rawCondition),
-			behavior: condition,
-		})
+		effects = append(effects, condition)
 	}
 
 	return effects, nil
@@ -673,10 +630,10 @@ func validatePersistedResource(
 	return nil
 }
 
-// peekEffectRef reads the ref a persisted effect routes on, which is the same
-// field its loader routes on. It returns the zero Ref for a blob that has none
-// rather than an error: an effect that loaded is applied either way, and the
-// only thing a missing ref costs is attribution.
+// peekEffectRef reads the ref a blob that did not load names, for the warning
+// that says what was dropped. It returns the zero Ref for a blob that has none
+// rather than an error: the only thing a missing ref costs is the warning's
+// attribution. A blob that loaded names itself through its behaviour.
 func peekEffectRef(raw json.RawMessage) core.Ref {
 	var peek struct {
 		Ref core.Ref `json:"ref"`
@@ -686,71 +643,6 @@ func peekEffectRef(raw json.RawMessage) core.Ref {
 	}
 
 	return peek.Ref
-}
-
-// freeReactionsToCarry names the reactions every combatant has, the
-// way a class grant gives it a class feature — as part of what this creature
-// IS, rather than seated by whatever happens to be running.
-//
-// Kirk ruled the shape 2026-08-28 (rpg-project#316): "when we initialize
-// monsters they should have the condition on them like a character grant... and
-// only dirty if they fire the OA."
-//
-// # Why not a real Grant.Conditions entry
-//
-// Because an opportunity attack is not a class feature. Every melee combatant
-// has one, monsters included, which is why it is correctly absent from all
-// twelve grant lists — and a grant is applied by Draft.Finalize at CREATION, so
-// every character made before today would have been permanently unable to take
-// one. Added here instead, it reaches every sheet on its next load with no
-// backfill and no migration.
-//
-// # Why it must not mark the sheet dirty
-//
-// Because gaining it changed nothing a player did. resolution states the
-// invariant in its own test — "a participant nothing happened to must not be
-// written back (R3 says pass everyone in; it does not say charge for
-// everyone)" — and an earlier draft of this slice seated the condition through
-// ConditionAppliedEvent, which marks dirty unconditionally, and failed 21 tests
-// across six suites for exactly that reason. Appending to the pending effects
-// is the load path, and the load path is silent by construction.
-//
-// The condition still marks the sheet dirty when it SPENDS its meter, which is
-// the only moment anything worth persisting has happened.
-//
-// # One list, and it joins the sheet
-//
-// The reactions are [conditions.FreeReactions], the one list monsters and
-// [conditions.HeldAddresses] read too. Attach records the ones it applied in
-// the sheet's conditions — not at Load, which stays a pure read — so
-// GetConditions and ToData name the opportunity attack like any stored
-// condition. A sheet that already holds one, stored or recorded by an earlier
-// attach, is not given a second.
-func (c *Character) freeReactionsToCarry() []loadedEffect {
-	var carried []loadedEffect
-	for _, reaction := range conditions.FreeReactions(c.id) {
-		ref := reaction.Ref()
-		if carriesRef(c.conditions, ref) {
-			continue
-		}
-		carried = append(carried, loadedEffect{ref: *ref, behavior: reaction})
-	}
-
-	return carried
-}
-
-// carriesRef reports whether the sheet already holds this ref — asked of
-// c.conditions rather than of the pending list, because pendingEffects is
-// DRAINED by Attach and a second Attach would otherwise stack a second copy on
-// top of the one the first put there.
-func carriesRef(carried []dnd5eEvents.ConditionBehavior, ref *core.Ref) bool {
-	for _, condition := range carried {
-		if got := condition.Ref(); got != nil && got.String() == ref.String() {
-			return true
-		}
-	}
-
-	return false
 }
 
 // errNoModuleLoader names the one lenient drop that is not a failure to read

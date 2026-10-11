@@ -180,15 +180,6 @@ var attachedLongRestCases = []attachedLongRestCase{
 			"member_id":"condition-rest-member","helper_id":"helper-1"
 		}`),
 	},
-	{
-		expectedRef: refs.Conditions.Unconscious(),
-		outcome:     attachedLongRestRemove,
-		persisted: json.RawMessage(`{
-			"ref":{"module":"dnd5e","type":"conditions","id":"unconscious"},
-			"member_id":"condition-rest-member","successes":1,"failures":2,
-			"stabilized":false,"dead":false
-		}`),
-	},
 	// Retained rather than reset since 2026-09-11. A character's reaction was
 	// always the slot on its action economy, never this condition's flag, and
 	// the flag is gone: there is nothing on the blob left for a rest to clear.
@@ -216,6 +207,11 @@ func TestLongRestPersistsEveryConditionOutcomeOnAttachedCharacter(t *testing.T) 
 			ctx := context.Background()
 			data := plainFighter(ownerID)
 			data.Conditions = []json.RawMessage{testCase.persisted}
+			if refString != carriedRef {
+				// A stored sheet names its free reaction beside whatever else
+				// it holds; the case that IS the reaction already stores it.
+				withFreeReactions(t, data)
+			}
 
 			sheet, err := Load(ctx, data)
 			require.NoError(t, err)
@@ -223,8 +219,7 @@ func TestLongRestPersistsEveryConditionOutcomeOnAttachedCharacter(t *testing.T) 
 
 			before := mustToData(t, sheet)
 			beforeByRef := persistedConditionBlobsByRef(t, before)
-			require.Len(t, before.Conditions, 1, "the fixture must load as exactly one persisted condition")
-			require.Len(t, beforeByRef, 1)
+			requireHeldOnce(t, before, refString, carriedRef)
 			require.Len(t, beforeByRef[testCase.expectedRef.String()], 1,
 				"the strict loader must preserve the fixture's canonical ref exactly once")
 			if testCase.outcome == attachedLongRestReset {
@@ -247,14 +242,7 @@ func TestLongRestPersistsEveryConditionOutcomeOnAttachedCharacter(t *testing.T) 
 			require.NoError(t, err)
 
 			require.NoError(t, Attach(ctx, sheet, bus))
-			cleaned := false
-			t.Cleanup(func() {
-				if !cleaned {
-					require.NoError(t, sheet.Cleanup(ctx))
-				}
-			})
-
-			require.False(t, sheet.IsDirty(), "Attach and its free reaction must not dirty a loaded sheet")
+			require.False(t, sheet.IsDirty(), "Attach must not dirty a loaded sheet")
 			requireHeldOnce(t, mustToData(t, sheet), refString, carriedRef)
 
 			require.NoError(t, restErr(sheet.LongRest(ctx)))
@@ -289,8 +277,6 @@ func TestLongRestPersistsEveryConditionOutcomeOnAttachedCharacter(t *testing.T) 
 				t.Fatalf("unknown attached long-rest outcome %q", testCase.outcome)
 			}
 
-			require.NoError(t, sheet.Cleanup(ctx))
-			cleaned = true
 		})
 	}
 

@@ -92,9 +92,6 @@ func (s *BarbarianEncounterSuite) SetupSubTest() {
 func (s *BarbarianEncounterSuite) TearDownSubTest() {
 	_ = s.room.RemoveEntity(s.barbarian.GetID())
 	_ = s.room.RemoveEntity(s.goblin.GetID())
-	if s.barbarian != nil {
-		_ = s.barbarian.Cleanup(s.ctx)
-	}
 }
 
 func (s *BarbarianEncounterSuite) TearDownTest() {
@@ -322,7 +319,7 @@ func (s *BarbarianEncounterSuite) TestEncounter_MultiTurnCombat() {
 
 		appliedTopic := dnd5eEvents.ConditionAppliedTopic.On(s.bus)
 		_, err := appliedTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
-			if event.Type == dnd5eEvents.ConditionRaging {
+			if event.Condition.Ref().String() == refs.Conditions.Raging().String() {
 				rageActive = true
 			}
 			return nil

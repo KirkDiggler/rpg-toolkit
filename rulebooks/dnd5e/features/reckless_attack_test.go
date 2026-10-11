@@ -90,7 +90,7 @@ func (s *RecklessAttackTestSuite) TestActivate_PublishesConditionAppliedEvent() 
 
 	// Verify ConditionAppliedEvent was published with correct fields
 	s.Require().NotNil(receivedEvent, "Should publish ConditionAppliedEvent")
-	s.Equal(dnd5eEvents.ConditionRecklessAttack, receivedEvent.Type)
+	s.Equal(refs.Conditions.RecklessAttack(), receivedEvent.Condition.Ref())
 	s.Equal(dnd5eEvents.ConditionSourceFeature, receivedEvent.Source)
 	s.Equal(s.character.GetID(), receivedEvent.Target.GetID())
 	s.Require().NotNil(receivedEvent.Condition, "Should include condition behavior")

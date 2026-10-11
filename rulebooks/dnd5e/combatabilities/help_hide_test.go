@@ -156,7 +156,7 @@ func (s *HelpAbilityTestSuite) TestActivate_AppliesHelpedConditionToAlly() {
 	s.Require().Len(*captured, 1, "ConditionAppliedEvent should be published")
 	got := (*captured)[0]
 	s.Equal(s.ally.GetID(), got.Target.GetID(), "condition targets the ally, not the helper")
-	s.Equal(dnd5eEvents.ConditionHelped, got.Type)
+	s.Equal(refs.Conditions.Helped(), got.Condition.Ref())
 	s.Equal(dnd5eEvents.ConditionSourceCombatAbility, got.Source)
 
 	helped, ok := got.Condition.(*conditions.HelpedCondition)
@@ -285,7 +285,7 @@ func (s *HideAbilityTestSuite) TestActivate_Success() {
 	s.Require().Len(*captured, 1, "a successful Hide applies HiddenCondition")
 	gotCond := (*captured)[0]
 	s.Equal(s.owner.GetID(), gotCond.Target.GetID())
-	s.Equal(dnd5eEvents.ConditionHidden, gotCond.Type)
+	s.Equal(refs.Conditions.Hidden(), gotCond.Condition.Ref())
 	s.Equal(dnd5eEvents.ConditionSourceCombatAbility, gotCond.Source)
 
 	hidden, ok := gotCond.Condition.(*conditions.HiddenCondition)

@@ -116,7 +116,6 @@ func (d *Disengage) Activate(ctx context.Context, owner core.Entity, input Comba
 	topic := dnd5eEvents.ConditionAppliedTopic.On(input.Bus)
 	if err := topic.Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
 		Target:    owner,
-		Type:      dnd5eEvents.ConditionDisengaging,
 		Source:    dnd5eEvents.ConditionSourceCombatAbility,
 		Condition: condition,
 	}); err != nil {

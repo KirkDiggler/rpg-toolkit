@@ -62,12 +62,6 @@ func (s *SecondWindBridgeTestSuite) SetupTest() {
 	s.char = char
 }
 
-func (s *SecondWindBridgeTestSuite) TearDownTest() {
-	if s.char != nil {
-		s.Require().NoError(s.char.Cleanup(s.ctx))
-	}
-}
-
 // TestActivateAbilityCarriesRollerIntoSecondWindCalculation is the bridge
 // regression: the roller handed to ActivateAbilityInput must reach the feature
 // (`Roller: input.Roller` in activateFeature) so the published received and

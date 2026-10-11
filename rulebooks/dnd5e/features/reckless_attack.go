@@ -96,7 +96,6 @@ func (r *RecklessAttack) Activate(ctx context.Context, owner core.Entity, input 
 	topic := dnd5eEvents.ConditionAppliedTopic.On(input.Bus)
 	if err := topic.Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
 		Target:    owner,
-		Type:      dnd5eEvents.ConditionRecklessAttack,
 		Source:    dnd5eEvents.ConditionSourceFeature,
 		Condition: condition,
 	}); err != nil {

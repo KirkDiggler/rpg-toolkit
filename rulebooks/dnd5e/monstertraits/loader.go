@@ -55,11 +55,6 @@ func LoadMonsterConditions(
 	roller dice.Roller,
 ) error {
 	for _, data := range conditionData {
-		// A retired condition type is dropped: it carried no rule.
-		if conditions.IsRetired(data) {
-			continue
-		}
-
 		condition, err := conditions.LoadJSON(data)
 		if err != nil {
 			return rpgerr.Wrap(err, "failed to load monster condition")
@@ -155,24 +150,12 @@ func AttachMonster(
 		return rpgerr.Wrap(err, "failed to attach monster sheet keeper")
 	}
 
-	// CARRIED separately from what the sheet actually had, because a rollback
-	// must put back what this attach was handed and nothing else. Every
-	// unattachMonster below is given `carried`, never `blobs`.
+	// Every unattachMonster below is handed exactly what this attach took off
+	// the monster, so a rollback puts back what it found and nothing else.
 	carried := m.TakeUnappliedConditions()
-	blobs, err := carryingFreeReactions(carried, m.GetID())
-	if err != nil {
-		// The blobs are already DRAINED and the keeper is already APPLIED, so
-		// returning here without undoing both would leave the monster mutated
-		// by an attach that failed: its traits gone from the sheet and its
-		// keeper still listening. Every other failure in this function rolls
-		// back; this one has to as well.
-		unattachMonster(ctx, m, bus, nil, carried)
+	attached := make([]attachedTrait, 0, len(carried))
 
-		return err
-	}
-	attached := make([]attachedTrait, 0, len(blobs))
-
-	for i, blob := range blobs {
+	for i, blob := range carried {
 		condition, err := conditions.LoadJSON(blob)
 		if err != nil {
 			unattachMonster(ctx, m, bus, attached, carried)
@@ -310,75 +293,4 @@ func refOf(condition dnd5eEvents.ConditionBehavior) core.Ref {
 	}
 
 	return core.Ref{}
-}
-
-// freeReactionsFor is [conditions.FreeReactions], the one list characters and
-// [conditions.HeldAddresses] read too. A variable only so the failure path
-// below is reachable from a test: writing a blob can only fail if a
-// condition's ToJSON does, which the opportunity attack's never will, and a
-// rollback guard no test can enter is the built-and-unwired shape this whole
-// slice exists to undo.
-var freeReactionsFor = conditions.FreeReactions
-
-// carryingFreeReactions gives a monster the reactions every combatant has, the
-// way a class grant gives a character a class feature.
-//
-// Kirk ruled the shape 2026-08-28 (rpg-project#316): "when we initialize
-// monsters they should have the condition on them like a character grant... and
-// only dirty if they fire the OA."
-//
-// # Here rather than in monster.Load
-//
-// Because Load must stay a pure read. Carrying the blob there made
-// Load(d).ToData() stop being byte-identical to d, and
-// TestRoundTripsByteIdenticalWithNoBus said so immediately — for the monster
-// sheet exactly as it did for the character one. Attach is where a sheet becomes
-// a participant, which is when having a reaction starts to mean anything.
-//
-// # A blob, and it DOES join the sheet
-//
-// A blob rather than a live condition because that is how a monster carries
-// every other one, and this loop is the single path that turns trait data into
-// behaviour. It joins the sheet through AddLoadedCondition below, which does not
-// mark it dirty — gaining a reaction is not something that happened in the
-// world — and from then on ToData serializes it.
-//
-// THE BLOB CARRIES NO METER. It used to: the condition kept a once-per-turn
-// flag, and this paragraph used to argue that a monster had no action economy
-// at all so that flag was the only meter there was. Kirk reversed that on
-// 2026-09-11. A monster's one reaction is now monster.Data.ReactionSpent, kept
-// by the monster's own keeper, and what this function seats is the reactor
-// alone.
-func carryingFreeReactions(blobs []json.RawMessage, id string) ([]json.RawMessage, error) {
-	for _, reaction := range freeReactionsFor(id) {
-		if carriesRef(blobs, reaction.Ref()) {
-			continue
-		}
-
-		blob, err := reaction.ToJSON()
-		if err != nil {
-			return nil, rpgerr.Wrapf(err, "failed to write the %s a combatant carries", reaction.Ref())
-		}
-		blobs = append(blobs, blob)
-	}
-
-	return blobs, nil
-}
-
-// carriesRef reports whether one of these blobs names this ref, so a reattach
-// does not stack a second copy on the persisted one.
-func carriesRef(blobs []json.RawMessage, ref *core.Ref) bool {
-	for _, raw := range blobs {
-		var peek struct {
-			Ref core.Ref `json:"ref"`
-		}
-		if err := json.Unmarshal(raw, &peek); err != nil {
-			continue
-		}
-		if peek.Ref.String() == ref.String() {
-			return true
-		}
-	}
-
-	return false
 }

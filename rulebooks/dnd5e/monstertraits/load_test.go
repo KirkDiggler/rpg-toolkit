@@ -109,17 +109,17 @@ func (s *MonsterCompositionTestSuite) TestAttachAppliesTheTraitsItCarried() {
 	s.Require().NoError(err)
 	s.Require().NoError(AttachMonster(s.ctx, m, events.NewEventBus(), nil))
 
-	// The authored trait, plus the reaction every combatant carries. The sheet
-	// genuinely gains that one at attach — which is what lets a SPENT
-	// once-per-turn meter survive to the next call, since a monster has no
-	// action economy to spend from.
-	s.Require().Len(m.GetConditions(), 2)
-	s.Require().Equal(*refs.MonsterTraits.Immunity(), *m.GetConditions()[0].Ref())
-	s.Require().Equal(*refs.Conditions.OpportunityAttack(), *m.GetConditions()[1].Ref())
+	// The authored trait is applied, and the sheet gained nothing it did not
+	// store.
+	var held []core.Ref
+	for _, condition := range m.GetConditions() {
+		held = append(held, *condition.Ref())
+	}
+	s.Require().Contains(held, *refs.MonsterTraits.Immunity())
+	s.Require().NotContains(held, *refs.Conditions.OpportunityAttack())
 
 	// LOAD is still a pure read, which is the half that must not drift: the
-	// data this monster was built from is untouched, and only the attached
-	// sheet knows about the carried reaction.
+	// data this monster was built from is untouched.
 	s.Require().Equal(s.marshal(data), s.marshal(reloaded(s, data)))
 }
 
@@ -132,9 +132,8 @@ func (s *MonsterCompositionTestSuite) TestAttachScopesEachTraitToItsRef() {
 	s.Require().NoError(err)
 	s.Require().NoError(AttachMonster(s.ctx, m, bus, nil))
 
-	s.Require().Equal(
-		[]core.Ref{*refs.MonsterTraits.Immunity(), *refs.Conditions.OpportunityAttack()},
-		bus.record.asked, "the authored trait, then the carried reaction")
+	s.Require().Equal([]core.Ref{*refs.MonsterTraits.Immunity()}, bus.record.asked,
+		"the authored trait, and nothing the sheet does not store")
 	s.Require().NotEmpty(bus.record.byRef[*refs.MonsterTraits.Immunity()])
 	s.Require().NotEmpty(bus.record.byRef[unattributed], "the monster's own hooks are its own")
 }

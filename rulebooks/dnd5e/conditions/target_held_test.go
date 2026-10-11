@@ -268,20 +268,14 @@ func (s *targetHeldSuite) TestNotYetAnsweringHeldEffectIsUnavailable() {
 	s.Empty(row.Benefit)
 }
 
-// TestARetiredHeldRefYieldsNoTargetRow: a sighting recorded before a type
-// retired may still name it. It is no failure and it yields no row; the
-// condition beside it is answered as ever.
-func (s *targetHeldSuite) TestARetiredHeldRefYieldsNoTargetRow() {
-	retired := contributions.HeldCondition{Ref: refs.Conditions.UnarmoredMovement().String()}
+// TestARemovedTypesHeldRefFailsWithErrUnknownCondition: a sighting that names a
+// type the game removed is an unregistered ref, and the assessment refuses it
+// like any other rather than answering for the condition beside it.
+func (s *targetHeldSuite) TestARemovedTypesHeldRefFailsWithErrUnknownCondition() {
+	removed := contributions.HeldCondition{Ref: refs.Conditions.UnarmoredMovement().String()}
 
-	out, err := AssessTargetHeldEffects(&AssessTargetHeldEffectsInput{Frame: gobFrame(retired, proneHeld)})
-	s.Require().NoError(err)
-
-	ids := make([]string, 0, len(out.Effects))
-	for _, effect := range out.Effects {
-		ids = append(ids, effect.ID)
-	}
-	s.Equal([]string{heldEffectID(proneHeld)}, ids, "Prone's row alone")
+	_, err := AssessTargetHeldEffects(&AssessTargetHeldEffectsInput{Frame: gobFrame(removed, proneHeld)})
+	s.Require().ErrorIs(err, ErrUnknownCondition)
 }
 
 // effectByID finds the row with id among effects.
@@ -304,7 +298,6 @@ func (s *targetHeldSuite) TestTargetDefencesYieldNoRow() {
 		refs.Conditions.ShieldOfFaith().String(),
 		refs.Conditions.UnarmoredDefense().String(),
 		refs.Conditions.FightingStyleDefense().String(),
-		refs.Spells.Shield().String(),
 	} {
 		s.Run(ref, func() {
 			out, err := AssessTargetHeldEffects(&AssessTargetHeldEffectsInput{

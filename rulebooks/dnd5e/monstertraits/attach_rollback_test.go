@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
@@ -165,18 +166,19 @@ func (s *AttachMonsterRollbackTestSuite) TestARefusedTraitRollsTheAttachBack() {
 
 	good := events.NewEventBus()
 	s.Require().NoError(AttachMonster(s.ctx, m, good, nil))
-	s.Require().Len(m.GetConditions(), 3, "the retry attached both traits, plus the carried reaction")
+	var attachedRefs []core.Ref
+	for _, condition := range m.GetConditions() {
+		attachedRefs = append(attachedRefs, *condition.Ref())
+	}
+	s.Require().Contains(attachedRefs, *refs.MonsterTraits.Immunity(), "the retry attached the immunity trait")
+	s.Require().Contains(attachedRefs, *refs.MonsterTraits.Vulnerability(), "and the vulnerability trait")
+	s.Require().NotContains(attachedRefs, *refs.Conditions.OpportunityAttack(),
+		"and no reaction the sheet did not store")
 
-	// The sheet gained EXACTLY the carried reaction and changed in no other
-	// way. Asserted in two halves rather than as one substring check, because
-	// "the OA id appears somewhere in the JSON" would pass just as happily for
-	// a sheet that had lost its authored traits.
+	// The sheet changed in no way: what it stored is what it writes back.
 	afterData := *m.ToData()
-	s.Require().Len(afterData.Conditions, 3)
-	s.Require().Equal(beforeData.Conditions, afterData.Conditions[:2],
+	s.Require().Equal(beforeData.Conditions, afterData.Conditions,
 		"the authored traits come back byte-identical, in order")
-	s.Require().Contains(string(afterData.Conditions[2]), refs.Conditions.OpportunityAttack().ID,
-		"and the third is the reaction, which is how a spent meter survives")
 
 	strippedBefore, strippedAfter := beforeData, afterData
 	strippedBefore.Conditions, strippedAfter.Conditions = nil, nil

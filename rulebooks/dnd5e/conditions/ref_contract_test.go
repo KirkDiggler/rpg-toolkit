@@ -120,7 +120,6 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 		"sanctuary":         sanctuary,
 		"sanctuary_immune":  sanctuaryImmune,
 		"vicious_mockery":   NewViciousMockeryCondition("m1", "bard-1", ""),
-		"unconscious":       NewUnconsciousCondition("m1", roller),
 		"opportunity":       NewOpportunityAttackCondition("m1"),
 		"immunity":          Immunity("m1", damage.Poison),
 		"vulnerability":     Vulnerability("m1", damage.Bludgeoning),

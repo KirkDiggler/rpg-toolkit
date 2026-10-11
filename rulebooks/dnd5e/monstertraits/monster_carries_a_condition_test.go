@@ -181,36 +181,14 @@ func TestEveryLoadedEntryNamesItselfWithItsPersistedRef(t *testing.T) {
 	}
 }
 
-// A monster carries the REACTOR on its sheet, and nothing else.
+// A monster carries the REACTOR on its sheet when its record stores one, and
+// nothing else.
 //
 // The blob used to carry the meter too, back when the condition's own
 // UsedThisTurn was the only thing metering a monster. Since 2026-09-11 the
 // meter is monster.Data.ReactionSpent, kept by the monster's keeper, and what
-// is written here is the condition that does the swinging.
-func TestAnAttachedMonsterCarriesItsFreeReactionOnTheSheet(t *testing.T) {
-	ctx := context.Background()
-	data := &monster.Data{ID: "wolf-1", Name: "Wolf", HitPoints: 11, MaxHitPoints: 11, ArmorClass: 13}
-
-	m, err := monster.Load(ctx, data)
-	require.NoError(t, err)
-	require.Empty(t, m.ToData().Conditions, "load is a pure read and grants nothing")
-
-	require.NoError(t, AttachMonster(ctx, m, events.NewEventBus(), dice.NewRoller()))
-
-	require.Len(t, m.GetConditions(), 1)
-	require.Equal(t, refs.Conditions.OpportunityAttack().String(), m.GetConditions()[0].Ref().String())
-	require.Len(t, m.ToData().Conditions, 1,
-		"written down, because the reactor is part of what this sheet is")
-	require.NotContains(t, string(m.ToData().Conditions[0]), "used_this_turn",
-		"and it carries no meter of its own any more")
-	require.False(t, m.ToData().ReactionSpent, "the meter it does have starts full")
-	require.False(t, m.IsDirty(),
-		"gaining a reactor is not a change worth saving — only spending the reaction is")
-}
-
-// A monster that already persisted one — every monster, from its second attach
-// onward — is not given a duplicate on top of it.
-func TestAMonsterIsNotGivenASecondCopyOfWhatItAlreadyCarries(t *testing.T) {
+// is stored is the condition that does the swinging.
+func TestAnAttachedMonsterHoldsTheFreeReactionItsRecordStores(t *testing.T) {
 	ctx := context.Background()
 	data := &monster.Data{
 		ID: "wolf-1", Name: "Wolf", HitPoints: 11, MaxHitPoints: 11, ArmorClass: 13,
@@ -221,6 +199,33 @@ func TestAMonsterIsNotGivenASecondCopyOfWhatItAlreadyCarries(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, AttachMonster(ctx, m, events.NewEventBus(), dice.NewRoller()))
 
-	require.Len(t, m.GetConditions(), 1, "the persisted one is kept and no second is carried on top")
-	require.Len(t, m.ToData().Conditions, 1)
+	opportunity := 0
+	for _, condition := range m.GetConditions() {
+		if condition.Ref().String() == refs.Conditions.OpportunityAttack().String() {
+			opportunity++
+		}
+	}
+	require.Equal(t, 1, opportunity, "the stored reaction is held once, with no second copy carried on top")
+	require.Equal(t, data.Conditions, m.ToData().Conditions, "and written back exactly as stored")
+	require.NotContains(t, string(m.ToData().Conditions[0]), "used_this_turn",
+		"it carries no meter of its own any more")
+	require.False(t, m.ToData().ReactionSpent, "the meter it does have starts full")
+	require.False(t, m.IsDirty(), "attaching a stored reactor is not a change worth saving")
+}
+
+// A monster whose record does not store the reaction gains none at attach: the
+// mint writes it, the attach applies what is stored.
+func TestAnAttachedMonsterGainsNoReactionItsRecordLacks(t *testing.T) {
+	ctx := context.Background()
+	data := &monster.Data{ID: "wolf-1", Name: "Wolf", HitPoints: 11, MaxHitPoints: 11, ArmorClass: 13}
+
+	m, err := monster.Load(ctx, data)
+	require.NoError(t, err)
+	require.NoError(t, AttachMonster(ctx, m, events.NewEventBus(), dice.NewRoller()))
+
+	for _, condition := range m.GetConditions() {
+		require.NotEqual(t, refs.Conditions.OpportunityAttack().String(), condition.Ref().String())
+	}
+	require.Empty(t, m.ToData().Conditions)
+	require.False(t, m.IsDirty())
 }

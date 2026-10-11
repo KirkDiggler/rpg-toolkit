@@ -5,7 +5,6 @@ package character
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -534,52 +533,6 @@ func TestHealingOwnsLifeStateTransitions(t *testing.T) {
 		require.Equal(t, combat.LifeStateConscious, view.View.LifeState)
 		require.Nil(t, view.View.DeathSaves)
 	}
-}
-
-func TestLegacyUnconsciousBlobCannotRunASecondDeathSaveLedger(t *testing.T) {
-	legacy := json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"unconscious"},"member_id":"legacy-char","successes":2,"failures":0,"stabilized":false,"dead":false}`)
-	data := &Data{Level: 1,
-		ID: "legacy-char", HitPoints: 0, MaxHitPoints: 10,
-		DeathSaveState: &saves.DeathSaveState{Successes: 1, Failures: 1},
-		Conditions:     []json.RawMessage{legacy},
-		ActionEconomy: &ActionEconomyData{
-			TurnNumber: 0, Granted: map[GrantedActionKey]int{},
-		},
-	}
-	char, err := Load(context.Background(), data)
-	require.NoError(t, err)
-	require.Len(t, char.conditions, 1)
-	legacyCondition, ok := char.conditions[0].(*conditions.UnconsciousCondition)
-	require.True(t, ok)
-	roller := &countingDeathSaveRoller{value: 1}
-	legacyCondition.Roller = roller
-
-	bus := events.NewEventBus()
-	require.NoError(t, Attach(context.Background(), char, bus))
-	markSaved(char)
-
-	require.NoError(t, dnd5eEvents.TurnStartTopic.On(bus).Publish(context.Background(), dnd5eEvents.TurnStartEvent{
-		SubjectID: char.GetID(), Round: 1,
-	}))
-	require.Zero(t, roller.calls, "legacy condition must never auto-roll")
-	require.Equal(t, &saves.DeathSaveState{Successes: 1, Failures: 1}, char.GetDeathSaveState())
-
-	require.NoError(t, dnd5eEvents.DamageReceivedTopic.On(bus).Publish(context.Background(), dnd5eEvents.DamageReceivedEvent{
-		TargetID: char.GetID(), Amount: 5, IsCritical: true,
-	}))
-	require.Equal(t, &saves.DeathSaveState{Successes: 1, Failures: 1}, char.GetDeathSaveState(),
-		"only Character.ApplyDamage may author damage-at-zero failures")
-
-	persisted := mustToData(t, char)
-	require.Equal(t, []string{refs.Conditions.Unconscious().String(), refs.Conditions.OpportunityAttack().String()},
-		conditionRefs(persisted), "the legacy blob, then the reaction attach recorded")
-	var gotLegacy conditions.UnconsciousData
-	require.NoError(t, json.Unmarshal(persisted.Conditions[0], &gotLegacy))
-	require.Equal(t, 2, gotLegacy.Successes)
-	require.Zero(t, gotLegacy.Failures)
-	require.False(t, gotLegacy.Stabilized)
-	require.False(t, gotLegacy.Dead)
-	require.False(t, char.IsDirty())
 }
 
 func dyingCharacterForTurn(t *testing.T, state *saves.DeathSaveState) *Character {

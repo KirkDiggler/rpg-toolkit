@@ -133,7 +133,7 @@ func (k *SheetKeeper) subscribeSelf(ctx context.Context, bus events.EventBus) er
 	previousBus := c.bus
 
 	// Park the bus on the sheet for the verb methods that still read it —
-	// MakeSavingThrow, EffectiveAC, the rests, Cleanup.
+	// EffectiveAC, the rests.
 	// They go away with rpg-toolkit#965 and #966, and this line goes with them.
 	// Nothing here reads that field: every handler below closes over the bus it
 	// was handed.
@@ -285,9 +285,8 @@ func (k *SheetKeeper) applyFeatures(ctx context.Context, bus events.EventBus) er
 // track records a subscription on the keeper and on the character.
 //
 // Both, because the two have different questions to answer: the keeper needs
-// to know what to revoke in Remove, and Cleanup — which predates the keeper
-// and is still what most callers use to tear a character down — unsubscribes
-// whatever the character is carrying.
+// to know what to revoke in Remove, and the character records what it is
+// carrying so a reader can tell an attached sheet from one on no bus.
 func (k *SheetKeeper) track(subID string) {
 	k.subscriptionIDs = append(k.subscriptionIDs, subID)
 	k.character.subscriptionIDs = append(k.character.subscriptionIDs, subID)

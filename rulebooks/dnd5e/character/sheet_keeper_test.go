@@ -131,7 +131,6 @@ func (s *SheetKeeperTestSuite) TestConditionAppliedLandsOnTheSheet() {
 
 	err := dnd5eEvents.ConditionAppliedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionAppliedEvent{
 		Target:    s.char,
-		Type:      dnd5eEvents.ConditionDodging,
 		Condition: condition,
 	})
 

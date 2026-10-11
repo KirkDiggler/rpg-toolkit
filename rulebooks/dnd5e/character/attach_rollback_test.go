@@ -301,32 +301,6 @@ func (s *AttachRollbackTestSuite) TestLenientAttachDropsFailedFeatureAndContinue
 		"the later feature still attached")
 }
 
-// Cleanup removes feature subscriptions as well as conditions and keeper
-// hooks. Spending a recovered use after attachment makes a post-cleanup rest a
-// direct leak detector rather than a no-op that would pass accidentally.
-func (s *AttachRollbackTestSuite) TestCleanupRemovesAttachedFeatures() {
-	data := s.fighterFeatureSheet()
-	data.Features = data.Features[:1]
-	char, err := Load(s.ctx, data)
-	s.Require().NoError(err)
-	bus := events.NewEventBus()
-	s.Require().NoError(Attach(s.ctx, char, bus))
-
-	s.Require().NoError(dnd5eEvents.RestTopic.On(bus).Publish(s.ctx, dnd5eEvents.RestEvent{
-		RestType: coreResources.ResetLongRest, CharacterID: char.GetID(),
-	}))
-	s.Require().Equal(1, s.featureUses(char, refs.Features.SecondWind().String()))
-	s.Require().NoError(char.GetFeatures()[0].Activate(s.ctx, char, features.FeatureInput{Bus: bus}))
-	s.Require().Equal(0, s.featureUses(char, refs.Features.SecondWind().String()))
-
-	s.Require().NoError(char.Cleanup(s.ctx))
-	s.Require().NoError(dnd5eEvents.RestTopic.On(bus).Publish(s.ctx, dnd5eEvents.RestEvent{
-		RestType: coreResources.ResetLongRest, CharacterID: char.GetID(),
-	}))
-	s.Zero(s.featureUses(char, refs.Features.SecondWind().String()),
-		"a cleaned feature no longer hears rest events")
-}
-
 func TestAttachRollbackSuite(t *testing.T) {
 	suite.Run(t, new(AttachRollbackTestSuite))
 }

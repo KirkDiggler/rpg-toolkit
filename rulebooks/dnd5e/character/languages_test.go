@@ -205,13 +205,11 @@ func (s *LanguagesSuite) TestLanguageRoundTrip() {
 	s.Contains(data.Languages, languages.Draconic)
 
 	// Clean up original character
-	s.Require().NoError(char.Cleanup(context.Background()))
 
 	// Deserialize from Data
 	newBus := events.NewEventBus()
 	restored, err := LoadFromData(context.Background(), data, newBus)
 	s.Require().NoError(err)
-	defer func() { _ = restored.Cleanup(context.Background()) }()
 
 	// Verify languages survived the round trip
 	restoredData := mustToData(s.T(), restored)

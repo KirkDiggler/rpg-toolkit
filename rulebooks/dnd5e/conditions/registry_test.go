@@ -212,20 +212,6 @@ func TestBlessAndBaneAreCreatedFromARef(t *testing.T) {
 	})
 }
 
-func TestRetiredKindsAreDropped(t *testing.T) {
-	for name, blob := range map[string]json.RawMessage{
-		"unarmored movement": json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"unarmored_movement"},"member_id":"m1","monk_level":3}`),
-		"shield spell":       json.RawMessage(`{"ref":{"module":"dnd5e","type":"spells","id":"shield"},"member_id":"m1"}`),
-	} {
-		t.Run(name, func(t *testing.T) {
-			require.True(t, IsRetired(blob))
-			_, err := LoadJSON(blob)
-			require.ErrorIs(t, err, ErrRetiredCondition)
-			require.NotErrorIs(t, err, ErrUnknownCondition, "retired is not unregistered")
-		})
-	}
-}
-
 func TestWeaponAttackOverrideAsksTheEntry(t *testing.T) {
 	t.Run("martial arts offers its die on an empty hand", func(t *testing.T) {
 		out, err := WeaponAttackOverride(&WeaponAttackOverrideInput{

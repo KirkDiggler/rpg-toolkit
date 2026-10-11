@@ -91,7 +91,6 @@ func (s *SheetFactsTestSuite) levelThreeRogue(rewrite func(raw json.RawMessage) 
 	char := s.finalize(newRogueDraft(s.T()), "advancing-rogue")
 	s.advance(char, classes.Rogue, 1)
 	data := mustToData(s.T(), char)
-	s.Require().NoError(char.Cleanup(s.ctx))
 	data.Levels = append(data.Levels, LevelEntry{Level: 3, ClassID: classes.Rogue, HitPointMethod: HitPointMethodAverage})
 	data.Level = 3
 	for i, raw := range data.Conditions {

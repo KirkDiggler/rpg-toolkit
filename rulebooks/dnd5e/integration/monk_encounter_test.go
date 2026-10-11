@@ -90,9 +90,6 @@ func (s *MonkEncounterSuite) SetupSubTest() {
 func (s *MonkEncounterSuite) TearDownSubTest() {
 	_ = s.room.RemoveEntity(s.monk.GetID())
 	_ = s.room.RemoveEntity(s.goblin.GetID())
-	if s.monk != nil {
-		_ = s.monk.Cleanup(s.ctx)
-	}
 }
 
 // =============================================================================
@@ -419,7 +416,6 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainIncludesWIS() {
 		bus := events.NewEventBus()
 		monk, err := character.LoadFromData(s.ctx, monkWithUD, bus)
 		s.Require().NoError(err)
-		defer func() { _ = monk.Cleanup(s.ctx) }()
 
 		// The cast, installed the way resolution's door installs it — see
 		// castOf for why standing in for a real installer is not the
@@ -544,7 +540,6 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainReadsTheCast() {
 		bus := events.NewEventBus()
 		monk, err := character.LoadFromData(s.ctx, monkWithUD, bus)
 		s.Require().NoError(err)
-		defer func() { _ = monk.Cleanup(s.ctx) }()
 
 		// WITH the cast: the monk can find itself, and folds the full number.
 		withCast, acErr := monk.EffectiveAC(castOf(context.Background(), monk))
@@ -581,9 +576,9 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainReadsTheCast() {
 
 func (s *MonkEncounterSuite) TestFlurryOfBlows_BanksTwoStrikes() {
 	s.Run("Flurry of Blows consumes 1 Ki and banks 2 flurry strikes", func() {
-		if s.monk != nil {
-			_ = s.monk.Cleanup(s.ctx)
-		}
+		// A level 2 monk of the same id needs a bus of its own: the level 1
+		// monk set up above is still subscribed to this one.
+		s.bus = events.NewEventBus()
 		s.monk = s.createLevel2Monk()
 
 		_, err := s.monk.StartTurn(s.ctx, &character.StartTurnInput{TurnNumber: 1, Speed: 30})
@@ -613,9 +608,9 @@ func (s *MonkEncounterSuite) TestPatientDefense_PublishesDodgeEvent() {
 		s.T().Log("")
 
 		// Override with level 2 monk
-		if s.monk != nil {
-			_ = s.monk.Cleanup(s.ctx)
-		}
+		// A level 2 monk of the same id needs a bus of its own: the level 1
+		// monk set up above is still subscribed to this one.
+		s.bus = events.NewEventBus()
 		s.monk = s.createLevel2Monk()
 
 		ki := s.monk.GetResource(resources.Ki)
@@ -675,9 +670,9 @@ func (s *MonkEncounterSuite) TestStepOfTheWind_PublishesDashEvent() {
 		s.T().Log("")
 
 		// Override with level 2 monk
-		if s.monk != nil {
-			_ = s.monk.Cleanup(s.ctx)
-		}
+		// A level 2 monk of the same id needs a bus of its own: the level 1
+		// monk set up above is still subscribed to this one.
+		s.bus = events.NewEventBus()
 		s.monk = s.createLevel2Monk()
 
 		ki := s.monk.GetResource(resources.Ki)
@@ -737,9 +732,9 @@ func (s *MonkEncounterSuite) TestStepOfTheWind_PublishesDisengageEvent() {
 		s.T().Log("")
 
 		// Override with level 2 monk
-		if s.monk != nil {
-			_ = s.monk.Cleanup(s.ctx)
-		}
+		// A level 2 monk of the same id needs a bus of its own: the level 1
+		// monk set up above is still subscribed to this one.
+		s.bus = events.NewEventBus()
 		s.monk = s.createLevel2Monk()
 
 		ki := s.monk.GetResource(resources.Ki)
@@ -799,9 +794,9 @@ func (s *MonkEncounterSuite) TestKi_ExhaustionPreventsActivation() {
 		s.T().Log("")
 
 		// Override with level 2 monk
-		if s.monk != nil {
-			_ = s.monk.Cleanup(s.ctx)
-		}
+		// A level 2 monk of the same id needs a bus of its own: the level 1
+		// monk set up above is still subscribed to this one.
+		s.bus = events.NewEventBus()
 		s.monk = s.createLevel2Monk()
 
 		ki := s.monk.GetResource(resources.Ki)

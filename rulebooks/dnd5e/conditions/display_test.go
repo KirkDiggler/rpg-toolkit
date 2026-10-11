@@ -45,7 +45,6 @@ func TestDisplayForKnownConditions(t *testing.T) {
 		{"damage vulnerability", *refs.MonsterTraits.Vulnerability(), Display{Name: "Damage Vulnerability"}},
 		{"pack tactics", *refs.MonsterTraits.PackTactics(), Display{Name: "Pack Tactics", Detail: wantPackTacticsDetail}},
 		{"undead fortitude", *refs.MonsterTraits.UndeadFortitude(), Display{Name: "Undead Fortitude"}},
-		{"unconscious", *refs.Conditions.Unconscious(), Display{Name: "Unconscious"}},
 		{"guided", *refs.Conditions.Guided(), Display{Name: GuidedName}},
 		{"resistance", *refs.Conditions.Resistance(), Display{Name: ResistanceName}},
 	}

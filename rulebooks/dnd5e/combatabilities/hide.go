@@ -125,7 +125,6 @@ func (h *Hide) Activate(ctx context.Context, owner core.Entity, input CombatAbil
 	hiddenCondition := conditions.NewHiddenCondition(owner.GetID())
 	if err := dnd5eEvents.ConditionAppliedTopic.On(input.Bus).Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
 		Target:    owner,
-		Type:      dnd5eEvents.ConditionHidden,
 		Source:    dnd5eEvents.ConditionSourceCombatAbility,
 		Condition: hiddenCondition,
 	}); err != nil {
