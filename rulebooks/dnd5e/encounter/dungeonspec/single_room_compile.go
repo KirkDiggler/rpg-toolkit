@@ -229,6 +229,7 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		mp.Region = layout.owner[at]
 		mp.At = at
 		mp.Facing = m.StartingCell.Facing
+		mp.AppearanceRef = m.AppearanceRef
 		// AND THE FOUR GAMEPLAY KEYS THE BINDING CARRIES (rpg-project#488
 		// R1/R5), each through the SAME compiler the v2 dialect's placement
 		// goes through: the records it holds minted by [intelHoldingsOf], the

@@ -268,7 +268,7 @@ func TestUnknownKeysInsideTheSiteKeysAreNamed(t *testing.T) {
 			repl: "startingCell: { location: { q: 0, r: -1 } }, temper: coward}",
 			want: FieldError{
 				Path:    "room.room.monsterDeclarations[2].temper",
-				Message: `"temper" is not a key this build reads: they are id, ref, startingCell`,
+				Message: `"temper" is not a key this build reads: they are appearanceRef, id, ref, startingCell`,
 			},
 		},
 		{

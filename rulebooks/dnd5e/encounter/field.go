@@ -882,6 +882,10 @@ type MemberInput struct {
 	// composition's to invent.
 	Name string
 
+	// AppearanceRef is optional opaque visual content, captured into sight
+	// testimony rather than delivered from live member state. It decides no rule.
+	AppearanceRef string
+
 	// Position is the member's starting cell: an ABSOLUTE authored offset
 	// [col,row] pair, which must be floor — a cell some region owns
 	// (ErrBadPlacement otherwise).
@@ -1053,10 +1057,11 @@ type ActionView struct {
 // arrived: two adjacent []CheckApproach parameters are two call sites away
 // from being silently swapped, and the swap would compile.
 type memberFacts struct {
-	ID         MemberID
-	Intimidate []CheckApproach
-	Persuade   []CheckApproach
-	Table      Table
+	ID            MemberID
+	AppearanceRef string
+	Intimidate    []CheckApproach
+	Persuade      []CheckApproach
+	Table         Table
 }
 
 // validateMemberFacts refuses a defective authored check or table. Callers ask
@@ -1065,6 +1070,9 @@ type memberFacts struct {
 // refused here (Copilot, PR #1187) are the sheet's now and refused where they
 // are asked ([Encounter.sheetsNow]).
 func validateMemberFacts(in memberFacts) error {
+	if err := validateAppearanceRef(in.AppearanceRef); err != nil {
+		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrNoMember)
+	}
 	// An authored route with nothing to beat is the same defect a lock's is
 	// (validateCheck), asked of a member. AN EMPTY LIST IS NOT A DEFECT
 	// HERE, and that is the difference: a lock that lists no way through
@@ -1409,6 +1417,7 @@ type memberRecord struct {
 	ID             MemberID
 	Kind           MemberKind
 	Name           string
+	AppearanceRef  string
 	Intimidate     []CheckApproach
 	Persuade       []CheckApproach
 	Table          Table
@@ -1615,6 +1624,9 @@ type JoinInput struct {
 	// CharacterState.Name, a spawned monster's MonsterState.Name), and this
 	// composition only carries it forward for a cold read to project later.
 	Name string
+
+	// AppearanceRef carries the same optional visual content as MemberInput.
+	AppearanceRef string
 
 	// Cell is where they arrive, DUNGEON-ABSOLUTE — the same frame the Atlas
 	// draws, [Encounter.Step] takes, and a [Member]'s Position reports.

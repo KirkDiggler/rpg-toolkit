@@ -508,6 +508,13 @@ func monsterShape(m *yaml.Node, p string, add errSink) {
 	}
 	requireString(m, "id", p, add)
 	requireString(m, "ref", p, add)
+	if appearance := optionalNode(m, "appearanceRef", p, add); appearance != nil {
+		if appearance.Tag != "!!str" {
+			add(p+".appearanceRef", errNotAString)
+		} else if appearance.Value == "" {
+			add(p+".appearanceRef", errRequired)
+		}
+	}
 	if sc := requireMapping(m, "startingCell", p, add); sc != nil {
 		startingCellShape(sc, p+".startingCell", add)
 	}
@@ -783,6 +790,11 @@ func monsterValues(monsters []RoomMonsterSource, add errSink) {
 			add(p+".ref", "invalid ref: "+err.Error())
 		} else if parsed.Type != monstersRefType {
 			add(p+".ref", "must reference monsters")
+		}
+		if m.AppearanceRef != "" {
+			if _, err := core.ParseString(m.AppearanceRef); err != nil {
+				add(p+".appearanceRef", "invalid ref: "+err.Error())
+			}
 		}
 		// The facing word, when authored, is one of the eight true-compass
 		// names — the same [facings] set the prop path speaks. The value is

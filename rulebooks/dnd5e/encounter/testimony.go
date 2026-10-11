@@ -68,6 +68,10 @@ type SightTestimony struct {
 	// only when State is LocationKnown.
 	Position spatial.Position
 
+	// AppearanceRef is the optional opaque visual identity captured at sight.
+	// Empty means no explicit appearance was captured, including legacy payloads.
+	AppearanceRef string
+
 	// Down is whether the subject was seen off their feet. Nil means standing
 	// was not observed — which is not the same as "seen standing".
 	Down *bool
@@ -107,6 +111,7 @@ type handsWire struct {
 
 type sightWire struct {
 	State          string     `json:"state,omitempty"`
+	AppearanceRef  string     `json:"appearance_ref,omitempty"`
 	X              *float64   `json:"x,omitempty"`
 	Y              *float64   `json:"y,omitempty"`
 	Down           *bool      `json:"down,omitempty"`
@@ -122,7 +127,7 @@ type sightWire struct {
 // not understand is refused at the door instead of being silently dropped into
 // a testimony that then reads as confident.
 var sightPayloadFields = map[string]struct{}{
-	"state": {}, "x": {}, "y": {}, "down": {}, "equipment": {}, "blocks_movement": {}, "conditions": {},
+	"state": {}, "x": {}, "y": {}, "down": {}, "equipment": {}, "blocks_movement": {}, "conditions": {}, "appearance_ref": {},
 }
 
 // EncodeSightTestimony encodes sight testimony in the canonical tagged wire
@@ -130,10 +135,13 @@ var sightPayloadFields = map[string]struct{}{
 // carries only its state tag, and carrying anything else is a defect rather
 // than a value to trim.
 func EncodeSightTestimony(testimony SightTestimony) ([]byte, error) {
+	if err := validateAppearanceRef(testimony.AppearanceRef); err != nil {
+		return nil, err
+	}
 	switch testimony.State {
 	case LocationKnown:
 		x, y := testimony.Position.X, testimony.Position.Y
-		wire := sightWire{State: string(LocationKnown), X: &x, Y: &y, Down: testimony.Down, BlocksMovement: testimony.BlocksMovement}
+		wire := sightWire{State: string(LocationKnown), X: &x, Y: &y, Down: testimony.Down, BlocksMovement: testimony.BlocksMovement, AppearanceRef: testimony.AppearanceRef}
 		if testimony.Equipment != nil {
 			wire.Equipment = &handsWire{
 				MainHand: testimony.Equipment.MainHand,
@@ -149,6 +157,9 @@ func EncodeSightTestimony(testimony SightTestimony) ([]byte, error) {
 		}
 		return json.Marshal(wire)
 	case LocationUnknown:
+		if testimony.AppearanceRef != "" {
+			return nil, fmt.Errorf("unknown location cannot carry appearance")
+		}
 		if testimony.Position != (spatial.Position{}) {
 			return nil, fmt.Errorf("unknown location cannot carry a position")
 		}
@@ -269,6 +280,10 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 	_, equipmentPresent := fields["equipment"]
 	_, blocksPresent := fields["blocks_movement"]
 	_, conditionsPresent := fields["conditions"]
+	_, appearancePresent := fields["appearance_ref"]
+	if appearancePresent && (wire.AppearanceRef == "" || validateAppearanceRef(wire.AppearanceRef) != nil) {
+		return SightTestimony{}, false
+	}
 
 	var hands *HeldEquipment
 	if wire.Equipment != nil {
@@ -294,7 +309,7 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 		}
 		// The legacy untagged form predates every fact but position, so it
 		// cannot carry one.
-		if downPresent || equipmentPresent || blocksPresent || conditionsPresent {
+		if downPresent || equipmentPresent || blocksPresent || conditionsPresent || appearancePresent {
 			return SightTestimony{}, false
 		}
 		return SightTestimony{
@@ -315,11 +330,12 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 			BlocksMovement: wire.BlocksMovement,
 			Equipment:      hands,
 			Conditions:     held,
+			AppearanceRef:  wire.AppearanceRef,
 		}, true
 	case LocationUnknown:
 		// Nobody in view has a position, a standing, hands or conditions to
 		// observe.
-		if xPresent || yPresent || downPresent || equipmentPresent || blocksPresent || conditionsPresent {
+		if xPresent || yPresent || downPresent || equipmentPresent || blocksPresent || conditionsPresent || appearancePresent {
 			return SightTestimony{}, false
 		}
 		return SightTestimony{State: LocationUnknown}, true

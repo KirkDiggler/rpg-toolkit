@@ -86,6 +86,6 @@ func TestTheCellRenameRefusesTheOldSpelling(t *testing.T) {
 		msgs = append(msgs, e.Message)
 	}
 	require.Contains(t, msgs,
-		`"cell" is not a key this build reads: they are id, ref, startingCell`,
+		`"cell" is not a key this build reads: they are appearanceRef, id, ref, startingCell`,
 		"the old spelling is refused and the replacement is offered")
 }
