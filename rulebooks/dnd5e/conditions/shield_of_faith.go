@@ -196,3 +196,15 @@ func (g *ShieldOfFaithCondition) onACChain(
 	}
 	return c, nil
 }
+
+// shieldOfFaithDescriptor is the one entry for [ShieldOfFaithCondition]; see [descriptors].
+var shieldOfFaithDescriptor = descriptor{
+	ref:     refs.Conditions.ShieldOfFaith(),
+	display: Display{Name: ShieldOfFaithName, Detail: "Adds 2 to your Armor Class while the caster keeps concentrating."},
+	load:    loaderOf[ShieldOfFaithCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return createdAs(createShieldOfFaith(in.Config, in.MemberID, in.SourceRef))
+	},
+	ownAction:     notBearing,
+	againstHolder: notBearing,
+}

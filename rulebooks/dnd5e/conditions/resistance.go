@@ -258,3 +258,15 @@ func (r *ResistanceCondition) end(ctx context.Context, reason string) error {
 	}
 	return r.Remove(ctx, bus)
 }
+
+// resistanceDescriptor is the one entry for [ResistanceCondition]; see [descriptors].
+var resistanceDescriptor = descriptor{
+	ref:     refs.Conditions.Resistance(),
+	display: Display{Name: ResistanceName, Detail: "Holds a Resistance die. After seeing your saving throw roll you may add it; the die is spent only when you take it."},
+	load:    loaderOf[ResistanceCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return createdAs(createResistance(in.Config, in.MemberID, in.SourceRef))
+	},
+	ownAction:     notBearing,
+	againstHolder: notBearing,
+}

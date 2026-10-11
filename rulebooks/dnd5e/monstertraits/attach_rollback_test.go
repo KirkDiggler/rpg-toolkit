@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
@@ -67,7 +68,7 @@ func (s *AttachMonsterRollbackTestSuite) SetupTest() {
 }
 
 func (s *AttachMonsterRollbackTestSuite) immunityBlob() json.RawMessage {
-	raw, err := json.Marshal(ImmunityData{
+	raw, err := json.Marshal(conditions.ImmunityData{
 		Ref:        refs.MonsterTraits.Immunity(),
 		OwnerID:    "gob-rollback",
 		DamageType: damage.Poison,
@@ -87,7 +88,7 @@ func (s *AttachMonsterRollbackTestSuite) goblin() *monster.Data {
 }
 
 func (s *AttachMonsterRollbackTestSuite) vulnerabilityBlob() json.RawMessage {
-	raw, err := json.Marshal(VulnerabilityData{
+	raw, err := json.Marshal(conditions.VulnerabilityData{
 		Ref:        refs.MonsterTraits.Vulnerability(),
 		OwnerID:    "gob-rollback",
 		DamageType: damage.Bludgeoning,

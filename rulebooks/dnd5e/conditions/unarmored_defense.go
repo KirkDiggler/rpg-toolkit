@@ -205,3 +205,15 @@ func (u *UnarmoredDefenseCondition) onACChain(
 
 	return c, nil
 }
+
+// unarmoredDefenseDescriptor is the one entry for [UnarmoredDefenseCondition]; see [descriptors].
+var unarmoredDefenseDescriptor = descriptor{
+	ref:     refs.Conditions.UnarmoredDefense(),
+	display: Display{Name: "Unarmored Defense"},
+	load:    loaderOf[UnarmoredDefenseCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return createdAs(createUnarmoredDefense(in.Config, in.MemberID, in.SourceRef))
+	},
+	ownAction:     notBearing,
+	againstHolder: notBearing,
+}

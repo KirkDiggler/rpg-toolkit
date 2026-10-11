@@ -269,3 +269,17 @@ func (t *TrueStrikeCondition) end(ctx context.Context, reason string) error {
 	}
 	return t.Remove(ctx, bus)
 }
+
+// trueStrikeDescriptor is the one entry for [TrueStrikeCondition]; see [descriptors].
+var trueStrikeDescriptor = descriptor{
+	ref:     refs.Conditions.TrueStrike(),
+	display: Display{Name: TrueStrikeName, Detail: "Your next attack against the chosen target has advantage."},
+	load:    loaderOf[TrueStrikeCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return createdAs(createTrueStrike(in.Config, in.MemberID, in.SourceRef))
+	},
+	ownAction:     answersNow,
+	againstHolder: notBearing,
+}
+
+var _ contributions.ActionAssessor = (*TrueStrikeCondition)(nil)

@@ -268,3 +268,17 @@ func (v *ViciousMockeryCondition) end(ctx context.Context, reason string) error 
 	}
 	return v.Remove(ctx, bus)
 }
+
+// viciousMockeryDescriptor is the one entry for [ViciousMockeryCondition]; see [descriptors].
+var viciousMockeryDescriptor = descriptor{
+	ref:     refs.Conditions.ViciousMockery(),
+	display: Display{Name: ViciousMockeryName, Detail: "Your next attack roll has disadvantage."},
+	load:    loaderOf[ViciousMockeryCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return createdAs(createViciousMockery(in.Config, in.MemberID, in.SourceRef))
+	},
+	ownAction:     answersNow,
+	againstHolder: notBearing,
+}
+
+var _ contributions.ActionAssessor = (*ViciousMockeryCondition)(nil)

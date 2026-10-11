@@ -194,3 +194,16 @@ func (g *FaerieFireCondition) onAttackChain(
 func (g *FaerieFireCondition) heldRule() contributions.ActionAssessor {
 	return newFaerieFireHeldRule(g.MemberID, heldAddress(g.MemberID, g))
 }
+
+// faerieFireDescriptor is the one entry for [FaerieFireCondition]; see [descriptors].
+var faerieFireDescriptor = descriptor{
+	ref:     refs.Conditions.FaerieFire(),
+	display: Display{Name: FaerieFireName, Detail: "Attack rolls against an outlined creature have advantage if the attacker can see it."},
+	load:    loaderOf[FaerieFireCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return createdAs(createFaerieFire(in.Config, in.MemberID, in.SourceRef))
+	},
+	ownAction:     notBearing,
+	againstHolder: answersNow,
+	heldRule:      newFaerieFireHeldRule,
+}

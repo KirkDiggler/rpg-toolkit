@@ -249,3 +249,17 @@ func primaryWeaponComponentIndex(event *dnd5eEvents.DamageChainEvent) int {
 	}
 	return -1
 }
+
+// fightingStyleGreatWeaponFightingDescriptor is the one entry for [FightingStyleGreatWeaponFightingCondition]; see [descriptors].
+var fightingStyleGreatWeaponFightingDescriptor = descriptor{
+	ref:     refs.Conditions.FightingStyleGreatWeaponFighting(),
+	display: Display{Name: "Great Weapon Fighting", Detail: "Rerolls weapon damage dice that roll a 1 or 2 when you attack with a melee weapon held in both hands."},
+	load:    loaderOf[FightingStyleGreatWeaponFightingCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return NewFightingStyleGreatWeaponFightingCondition(in.MemberID, nil), nil
+	},
+	ownAction:     answersNow,
+	againstHolder: notBearing,
+}
+
+var _ contributions.ActionAssessor = (*FightingStyleGreatWeaponFightingCondition)(nil)

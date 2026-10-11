@@ -6,9 +6,9 @@ package monsters
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -48,7 +48,7 @@ func NewZombie(id string) *monster.Monster {
 	m.SetSpeed(monster.SpeedData{Walk: 20})
 
 	// Add immunity to poison damage (D&D 5e SRD)
-	m.AddTraitData(monstertraits.MustImmunityJSON(id, damage.Poison))
+	m.AddTraitData(conditions.MustImmunityJSON(id, damage.Poison))
 
 	// Note: Undead Fortitude trait (CON save to stay at 1 HP when dropped to 0)
 	// requires a dice roller and is applied when the monster is loaded into combat

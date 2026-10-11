@@ -75,7 +75,6 @@ func (s *sneakAttackRuleSuite) assess(rule sneakAttackRule, frame contributions.
 	s.Require().NoError(err)
 	s.Require().NotNil(out)
 	s.Require().NoError(out.Answer.Decision.Validate())
-	s.Equal(contributions.ContributesNow, out.Answer.Participation)
 	if out.Answer.Decision.Applicability != contributions.Applies {
 		s.Empty(out.Answer.Benefit)
 	}

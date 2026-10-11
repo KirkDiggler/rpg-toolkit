@@ -676,8 +676,8 @@ type ConditionAppliedEvent struct {
 //
 // MemberID rather than CharacterID, because both keepers subscribe: every
 // condition in this package can hang on a monster as readily as on a
-// character, and monstertraits.LoadJSON routes any conditions-typed ref
-// straight into conditions.LoadJSON to prove it. Naming the field for one of
+// character, and a monster's attach loads every blob of its sheet through
+// conditions.LoadJSON to prove it. Naming the field for one of
 // the two kinds is the mistake [CombatEndEvent] documents at length, and the
 // reason [ConditionStateChangedEvent] below spells its own choice out. This
 // event was the last holdout in this file.
@@ -878,7 +878,7 @@ type ReactionTriggerEvent struct {
 	// ReactorID is the character ID of the entity that can react.
 	ReactorID string
 
-	// ConditionRef identifies the reaction (e.g. "dnd5e:conditions:shield",
+	// ConditionRef identifies the reaction (e.g.
 	// "dnd5e:conditions:opportunity_attack"). Matches the ref used to seed
 	// gamectx.ReactionReadinessMap.
 	ConditionRef string
@@ -886,9 +886,12 @@ type ReactionTriggerEvent struct {
 	// Name is the offering condition's own display name, e.g.
 	// "Opportunity Attack". It lets the machine that surfaces the offer say
 	// what is being offered without resolving ConditionRef. It is empty when
-	// the offerer has no display catalog entry; Shield has none, because it is
-	// deliberately not promoted into status projection.
+	// the offerer is not registered.
 	Name string
+
+	// Description is what taking the reaction does, read from the offering
+	// condition's display detail. Empty when the offerer authored none.
+	Description string
 
 	// TriggerKind identifies which reaction window fired.
 	TriggerKind TriggerKind

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //nolint:dupl // Trait tests follow same event-driven pattern with different conditions
-package monstertraits
+package conditions
 
 import (
 	"context"
@@ -37,7 +37,7 @@ func (s *ImmunityTestSuite) SetupTest() {
 func (s *ImmunityTestSuite) hit(
 	targetID string, weaponRef *core.Ref, damageType damage.Type,
 ) (*dnd5eEvents.IncomingDamageEvent, int) {
-	folded, settled, err := foldIncoming(s.ctx, s.bus, "pc-1", targetID, []dnd5eEvents.DamageComponent{{
+	folded, settled, err := foldTraitIncoming(s.ctx, s.bus, "pc-1", targetID, []dnd5eEvents.DamageComponent{{
 		Source: dnd5eEvents.DamageSourceWeapon,
 		Roll: dnd5eEvents.RollComponent{
 			Source:   dnd5eEvents.RollSource{Ref: weaponRef, Name: weaponRef.ID},
@@ -123,7 +123,7 @@ func (s *ImmunityTestSuite) TestTwoImmunitiesAnswerOneHitOfBothTypes() {
 			DamageType: t,
 		}
 	}
-	folded, settled, err := foldIncoming(s.ctx, s.bus, "pc-1", "monster-1",
+	folded, settled, err := foldTraitIncoming(s.ctx, s.bus, "pc-1", "monster-1",
 		[]dnd5eEvents.DamageComponent{component(damage.Poison), component(damage.Psychic)})
 	s.Require().NoError(err)
 

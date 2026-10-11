@@ -176,3 +176,12 @@ func (c *UnconsciousCondition) loadJSON(data json.RawMessage) error {
 	}
 	return nil
 }
+
+// unconsciousDescriptor is the one entry for [UnconsciousCondition]; see [descriptors].
+var unconsciousDescriptor = descriptor{
+	ref:           refs.Conditions.Unconscious(),
+	display:       Display{Name: "Unconscious"},
+	load:          loaderOf[UnconsciousCondition](),
+	ownAction:     notBearing,
+	againstHolder: notBearing,
+}

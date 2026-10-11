@@ -239,3 +239,17 @@ func (h *HelpedCondition) onTurnStart(ctx context.Context, event dnd5eEvents.Tur
 
 	return h.Remove(ctx, h.bus)
 }
+
+// helpedDescriptor is the one entry for [HelpedCondition]; see [descriptors].
+var helpedDescriptor = descriptor{
+	ref:     refs.Conditions.Helped(),
+	display: Display{Name: "Helped", Detail: "Your next attack roll has advantage."},
+	load:    loaderOf[HelpedCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return createdAs(createHelped(in.Config, in.MemberID))
+	},
+	ownAction:     answersNow,
+	againstHolder: notBearing,
+}
+
+var _ contributions.ActionAssessor = (*HelpedCondition)(nil)

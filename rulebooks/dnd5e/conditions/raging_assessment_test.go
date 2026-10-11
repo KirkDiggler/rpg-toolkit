@@ -52,7 +52,6 @@ func (s *ragingRuleSuite) assess(frame contributions.Frame) contributions.Answer
 	s.Require().NoError(err)
 	s.Require().NotNil(out)
 	s.Require().NoError(out.Answer.Decision.Validate())
-	s.Equal(contributions.ContributesNow, out.Answer.Participation)
 	return out.Answer
 }
 

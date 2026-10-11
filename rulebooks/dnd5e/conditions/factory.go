@@ -33,9 +33,13 @@ type CreateFromRefOutput struct {
 	Condition dnd5eEvents.ConditionBehavior
 }
 
-// CreateFromRef creates a condition from a ref string and configuration.
-// The ref is parsed to determine which condition type to create, and
-// the config is parsed by each condition's specific factory logic.
+// CreateFromRef creates a condition from a ref string and configuration. The
+// whole parsed ref is looked up in the registry, so a known id under another
+// module or type is unknown, and the type's own create reads the config.
+//
+// Errors: nil input, an empty ref or member, an unparsable ref, an unregistered
+// ref (wrapping [ErrUnknownCondition]), a registered type nothing builds from a
+// ref (wrapping [ErrNotCreatable]), and the type's own refusal.
 func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 	if input == nil {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "input is nil")
@@ -49,108 +53,37 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "member_id is required")
 	}
 
-	// Parse the ref to get the condition type
 	ref, err := core.ParseString(input.Ref)
 	if err != nil {
 		return nil, rpgerr.Wrapf(err, "failed to parse ref: %s", input.Ref)
 	}
 
-	// Validate module and type
-	if ref.Module != refs.Module {
-		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unsupported module: %s", ref.Module)
-	}
-	if ref.Type != refs.TypeConditions {
-		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
-			"unsupported type: %s (expected '%s')", ref.Type, refs.TypeConditions)
-	}
-
-	// Create the condition based on the ID
-	var condition dnd5eEvents.ConditionBehavior
-
-	switch ref.ID {
-	case refs.Conditions.Shillelagh().ID:
-		var config ShillelaghConfig
-		if err = json.Unmarshal(input.Config, &config); err == nil {
-			condition, err = NewShillelaghCondition(input.MemberID, config)
-		}
-
-	case refs.Conditions.UnarmoredDefense().ID:
-		condition, err = createUnarmoredDefense(input.Config, input.MemberID, input.SourceRef)
-	case refs.Conditions.Raging().ID:
-		condition = createRaging(input.MemberID, input.SourceRef)
-	case refs.Conditions.BrutalCritical().ID:
-		condition = createBrutalCritical(input.MemberID)
-	case refs.Conditions.FightingStyleArchery().ID:
-		condition = NewFightingStyleArcheryCondition(input.MemberID)
-	case refs.Conditions.FightingStyleDefense().ID:
-		condition = NewFightingStyleDefenseCondition(input.MemberID)
-	case refs.Conditions.FightingStyleDueling().ID:
-		condition = NewFightingStyleDuelingCondition(input.MemberID)
-	case refs.Conditions.FightingStyleGreatWeaponFighting().ID:
-		condition = NewFightingStyleGreatWeaponFightingCondition(input.MemberID, nil)
-	case refs.Conditions.FightingStyleProtection().ID:
-		condition = NewFightingStyleProtectionCondition(input.MemberID)
-	case refs.Conditions.FightingStyleTwoWeaponFighting().ID:
-		condition = NewFightingStyleTwoWeaponFightingCondition(input.MemberID)
-	case refs.Conditions.ImprovedCritical().ID:
-		condition, err = createImprovedCritical(input.Config, input.MemberID)
-	case refs.Conditions.MartialArts().ID:
-		condition = createMartialArts(input.MemberID)
-	case refs.Conditions.UnarmoredMovement().ID:
-		condition = createUnarmoredMovement(input.MemberID)
-	case refs.Conditions.SneakAttack().ID:
-		condition = createSneakAttack(input.MemberID)
-	case refs.Conditions.Disengaging().ID:
-		condition = NewDisengagingCondition(input.MemberID)
-	case refs.Conditions.Dodging().ID:
-		condition = NewDodgingCondition(input.MemberID)
-	case refs.Conditions.Prone().ID:
-		condition = NewProneCondition(input.MemberID)
-	case refs.Conditions.Hidden().ID:
-		condition = NewHiddenCondition(input.MemberID)
-	case refs.Conditions.Helped().ID:
-		condition, err = createHelped(input.Config, input.MemberID)
-	case refs.Conditions.Inspired().ID:
-		condition, err = createInspired(input.Config, input.MemberID)
-	case refs.Conditions.TrueStrike().ID:
-		condition, err = createTrueStrike(input.Config, input.MemberID, input.SourceRef)
-	case refs.Conditions.BladeWard().ID:
-		condition, err = createBladeWard(input.Config, input.MemberID, input.SourceRef)
-	case refs.Conditions.ViciousMockery().ID:
-		condition, err = createViciousMockery(input.Config, input.MemberID, input.SourceRef)
-	case refs.Conditions.Commanded().ID:
-		condition, err = createCommanded(input.Config, input.MemberID, input.SourceRef)
-	case refs.Conditions.Concentrating().ID:
-		condition, err = createConcentrating(input.Config, input.MemberID, input.SourceRef)
-	case refs.Conditions.DivineFavor().ID:
-		var ref *core.Ref
-		ref, err = core.ParseString(input.SourceRef)
-		if err == nil {
-			condition, err = NewDivineFavorCondition(NewDivineFavorConditionInput{MemberID: input.MemberID, SourceID: input.MemberID, SourceRef: ref})
-		}
-	case refs.Conditions.FaerieFire().ID:
-		condition, err = createFaerieFire(input.Config, input.MemberID, input.SourceRef)
-	case refs.Conditions.ShieldOfFaith().ID:
-		condition, err = createShieldOfFaith(input.Config, input.MemberID, input.SourceRef)
-	case refs.Conditions.Guided().ID:
-		condition, err = createGuided(input.Config, input.MemberID, input.SourceRef)
-	case refs.Conditions.Resistance().ID:
-		condition, err = createResistance(input.Config, input.MemberID, input.SourceRef)
-	case refs.Conditions.Sanctuary().ID:
-		condition, err = createSanctuary(input.Config, input.MemberID, input.SourceRef)
-	case refs.Conditions.GuidingBolt().ID:
-		condition, err = createGuidingBolt(input.Config, input.MemberID, input.SourceRef)
-	case refs.Conditions.SanctuaryImmune().ID:
-		condition, err = createSanctuaryImmune(input.Config, input.MemberID, input.SourceRef)
-	default:
-		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition: %s", ref.ID)
-	}
-
+	entry, err := lookup(ref.String())
 	if err != nil {
-		return nil, rpgerr.Wrapf(err, "failed to create condition: %s", ref.ID)
+		return nil, err
+	}
+	if entry.create == nil {
+		return nil, rpgerr.WrapWithCode(ErrNotCreatable, rpgerr.CodeInvalidArgument,
+			"condition is not created from a ref: "+ref.String())
+	}
+
+	condition, err := entry.create(input)
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "failed to create condition: %s", ref.String())
 	}
 
 	return &CreateFromRefOutput{Condition: condition}, nil
+}
+
+// createdAs adapts a constructor that returns its own pointer type and an
+// error to a create closure's interface result. It exists so a failed
+// construction returns a nil interface, never an interface holding a nil
+// pointer.
+func createdAs[T dnd5eEvents.ConditionBehavior](condition T, err error) (dnd5eEvents.ConditionBehavior, error) {
+	if err != nil {
+		return nil, err
+	}
+	return condition, nil
 }
 
 // unarmoredDefenseConfig is the config structure for unarmored defense
@@ -158,7 +91,9 @@ type unarmoredDefenseConfig struct {
 	Variant string `json:"variant"` // "barbarian" or "monk"
 }
 
-// createUnarmoredDefense creates an unarmored defense condition from config
+// createUnarmoredDefense creates an unarmored defense condition from config.
+// Both grants name their variant: a missing or unknown one is refused, never
+// defaulted to either.
 func createUnarmoredDefense(config json.RawMessage, characterID, sourceRef string) (*UnarmoredDefenseCondition, error) {
 	var cfg unarmoredDefenseConfig
 	if len(config) > 0 {
@@ -167,10 +102,15 @@ func createUnarmoredDefense(config json.RawMessage, characterID, sourceRef strin
 		}
 	}
 
-	// Default to barbarian variant if not specified
-	variant := UnarmoredDefenseBarbarian
-	if cfg.Variant == "monk" {
+	var variant UnarmoredDefenseType
+	switch cfg.Variant {
+	case "barbarian":
+		variant = UnarmoredDefenseBarbarian
+	case "monk":
 		variant = UnarmoredDefenseMonk
+	default:
+		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"unarmored defense config requires a 'variant' of \"barbarian\" or \"monk\", got %q", cfg.Variant)
 	}
 
 	return NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
@@ -233,12 +173,6 @@ func createImprovedCritical(config json.RawMessage, memberID string) (*ImprovedC
 // the Martial Arts die is read from the sheet's level record at each swing.
 func createMartialArts(memberID string) *MartialArtsCondition {
 	return NewMartialArtsCondition(MartialArtsInput{MemberID: memberID})
-}
-
-// createUnarmoredMovement creates an unarmored movement condition. It takes
-// no config and stores no level.
-func createUnarmoredMovement(memberID string) *UnarmoredMovementCondition {
-	return NewUnarmoredMovementCondition(UnarmoredMovementInput{MemberID: memberID})
 }
 
 // createSneakAttack creates a sneak attack condition. It takes no config: its
@@ -642,4 +576,50 @@ func createFaerieFire(config json.RawMessage, memberID, sourceRef string) (*Faer
 
 type faerieFireConfig struct {
 	SourceID string `json:"source_id"`
+}
+
+// blessingConfig is the config the Bless and Bane conditions are built from.
+// SourceID is the caster.
+type blessingConfig struct {
+	SourceID string `json:"source_id"`
+}
+
+// createBlessed builds Blessed on the member from the cast's config and the
+// ref of the spell that granted it.
+func createBlessed(in *CreateFromRefInput) (*BlessedCondition, error) {
+	var config blessingConfig
+	if err := json.Unmarshal(in.Config, &config); err != nil {
+		return nil, rpgerr.Wrapf(err, "build condition blessed for %q", in.MemberID)
+	}
+	source, err := core.ParseString(in.SourceRef)
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "build condition blessed for %q: source", in.MemberID)
+	}
+	condition, err := NewBlessedCondition(NewBlessedConditionInput{
+		MemberID: in.MemberID, SourceID: config.SourceID, SourceRef: source,
+	})
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "build condition blessed for %q", in.MemberID)
+	}
+	return condition, nil
+}
+
+// createBaned builds Baned on the member from the cast's config and the ref of
+// the spell that granted it.
+func createBaned(in *CreateFromRefInput) (*BanedCondition, error) {
+	var config blessingConfig
+	if err := json.Unmarshal(in.Config, &config); err != nil {
+		return nil, rpgerr.Wrapf(err, "build condition baned for %q", in.MemberID)
+	}
+	source, err := core.ParseString(in.SourceRef)
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "build condition baned for %q: source", in.MemberID)
+	}
+	condition, err := NewBanedCondition(NewBanedConditionInput{
+		MemberID: in.MemberID, SourceID: config.SourceID, SourceRef: source,
+	})
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "build condition baned for %q", in.MemberID)
+	}
+	return condition, nil
 }

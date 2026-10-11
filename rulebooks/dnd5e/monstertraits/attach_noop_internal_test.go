@@ -10,6 +10,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/stretchr/testify/require"
@@ -33,7 +34,7 @@ import (
 func TestAPartlyLoadedAttachRecordsNothing(t *testing.T) {
 	ctx := context.Background()
 
-	good, err := Immunity("gob-1", "poison").ToJSON()
+	good, err := conditions.Immunity("gob-1", "poison").ToJSON()
 	require.NoError(t, err)
 
 	m, err := monster.Load(ctx, &monster.Data{
@@ -62,7 +63,7 @@ func TestAPartlyLoadedAttachRecordsNothing(t *testing.T) {
 // ref. The check is the guarantee those tests describe, enforced rather than
 // argued — the same reason Monster.AddLoadedCondition asks again at the door.
 func TestRequireNameableTraitRefusesAnAnonymousCondition(t *testing.T) {
-	require.NoError(t, requireNameableTrait(Immunity("gob-1", "poison")))
+	require.NoError(t, requireNameableTrait(conditions.Immunity("gob-1", "poison")))
 
 	err := requireNameableTrait(anonymousTrait{})
 	require.Error(t, err)

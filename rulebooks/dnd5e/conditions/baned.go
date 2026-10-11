@@ -303,3 +303,17 @@ func (b *BanedCondition) AssessAction(in *contributions.AssessActionInput) (*con
 		DoesNotApply: "Bane subtracts only from attack rolls and saving throws",
 	})
 }
+
+// banedDescriptor is the one entry for [BanedCondition]; see [descriptors].
+var banedDescriptor = descriptor{
+	ref:     refs.Conditions.Baned(),
+	display: Display{Name: BanedName, Detail: "Subtracts 1d4 from attack rolls and saving throws. Multiple Bane effects do not subtract extra dice from the same roll."},
+	load:    loaderOf[BanedCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return createdAs(createBaned(in))
+	},
+	ownAction:     answersNow,
+	againstHolder: notBearing,
+}
+
+var _ contributions.ActionAssessor = (*BanedCondition)(nil)

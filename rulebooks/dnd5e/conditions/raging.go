@@ -598,3 +598,17 @@ func (r *RagingCondition) onPostAttackRoll(
 	}
 	return c, nil
 }
+
+// ragingDescriptor is the one entry for [RagingCondition]; see [descriptors].
+var ragingDescriptor = descriptor{
+	ref:     refs.Conditions.Raging(),
+	display: Display{Name: "Raging", Detail: "Adds your rage damage bonus to melee weapon attacks that use Strength. Also grants advantage on Strength-based skill checks and Strength saving throws, and resistance to bludgeoning, piercing, and slashing damage."},
+	load:    loaderOf[RagingCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return createRaging(in.MemberID, in.SourceRef), nil
+	},
+	ownAction:     answersNow,
+	againstHolder: notBearing,
+}
+
+var _ contributions.ActionAssessor = (*RagingCondition)(nil)

@@ -11,6 +11,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/stretchr/testify/require"
@@ -101,7 +102,6 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 		"improved_critical": NewImprovedCriticalCondition(ImprovedCriticalInput{MemberID: "m1"}),
 		"reckless_attack":   NewRecklessAttackCondition("m1"),
 		"martial_arts":      NewMartialArtsCondition(MartialArtsInput{MemberID: "m1"}),
-		"unarmored_move":    NewUnarmoredMovementCondition(UnarmoredMovementInput{MemberID: "m1"}),
 		"sneak_attack":      NewSneakAttackCondition(SneakAttackInput{MemberID: "m1", Roller: roller}),
 		"disengaging":       NewDisengagingCondition("m1"),
 		"dodging":           NewDodgingCondition("m1"),
@@ -122,7 +122,10 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 		"vicious_mockery":   NewViciousMockeryCondition("m1", "bard-1", ""),
 		"unconscious":       NewUnconsciousCondition("m1", roller),
 		"opportunity":       NewOpportunityAttackCondition("m1"),
-		"shield_spell":      NewShieldSpellCondition("m1"),
+		"immunity":          Immunity("m1", damage.Poison),
+		"vulnerability":     Vulnerability("m1", damage.Bludgeoning),
+		"pack_tactics":      PackTactics("m1"),
+		"undead_fortitude":  UndeadFortitude("m1", 3, roller),
 	}
 }
 
@@ -140,9 +143,8 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 //
 // So the disagreement is checked here instead, where it is loud, and for EVERY
 // condition rather than the seven that publish removals: any of them can sit in
-// a keeper's list and be removed by ref, and monstertraits.LoadJSON routes any
-// conditions-typed ref straight into LoadJSON, so a monster can carry any of
-// them too.
+// a keeper's list and be removed by ref, and a monster's attach loads every blob
+// through LoadJSON, so a monster can carry any of them too.
 func TestEveryConditionRefMatchesItsToJSON(t *testing.T) {
 	for name, condition := range refContractTable() {
 		t.Run(name, func(t *testing.T) {
@@ -165,7 +167,7 @@ func TestEveryConditionRefMatchesItsToJSON(t *testing.T) {
 
 // TestRefContractCoversEveryLoadedCondition keeps that table honest.
 //
-// A condition added to the loader registry but not to the table would leave
+// A condition added to the registry but not to the table would leave
 // the contract unchecked for exactly the conditions most likely to be new.
 func TestRefContractCoversEveryLoadedCondition(t *testing.T) {
 	table := refContractTable()
@@ -180,8 +182,25 @@ func TestRefContractCoversEveryLoadedCondition(t *testing.T) {
 	}
 
 	require.ElementsMatch(t,
-		slices.Collect(maps.Keys(conditionLoaders)),
+		RegisteredRefs(),
 		slices.Collect(maps.Keys(seen)),
-		"the loader registry and ref contract table must name the same conditions",
+		"the registry and ref contract table must name the same conditions",
 	)
+}
+
+// TestEveryRegisteredConditionLoadsItsOwnBlob: the registry key is the ref the
+// type names itself by, so a blob the type wrote routes back to the same type
+// through the registry.
+func TestEveryRegisteredConditionLoadsItsOwnBlob(t *testing.T) {
+	for name, condition := range refContractTable() {
+		t.Run(name, func(t *testing.T) {
+			blob, err := condition.ToJSON()
+			require.NoError(t, err)
+
+			loaded, err := LoadJSON(blob)
+			require.NoError(t, err)
+			require.Equal(t, condition.Ref().String(), loaded.Ref().String())
+			require.IsType(t, condition, loaded)
+		})
+	}
 }

@@ -284,8 +284,9 @@ func (o *OpportunityAttackCondition) onMovementChain(
 		}
 	}
 
-	// The name is read from the display catalog rather than copied here, so the
-	// offer and the status view can never disagree about what it is called.
+	// The name and the detail are read from the registry's display rather than
+	// copied here, so the offer and the status view can never disagree about
+	// what it is called or what taking it does.
 	display, _ := DisplayFor(*o.Ref())
 
 	// Predicate matched — publish the trigger event for the orchestrator.
@@ -294,6 +295,7 @@ func (o *OpportunityAttackCondition) onMovementChain(
 		ReactorID:    o.MemberID,
 		ConditionRef: refs.Conditions.OpportunityAttack().String(),
 		Name:         display.Name,
+		Description:  display.Detail,
 		TriggerKind:  dnd5eEvents.TriggerKindMovementOA,
 		SourceEntity: event.EntityID,
 		Payload: dnd5eEvents.MovementChainEvent{
@@ -360,4 +362,13 @@ func (o *OpportunityAttackCondition) reach() float64 {
 	// package and combat. The two should match.
 	_ = combat.DefaultMeleeReach // compile-time witness that the constants align
 	return defaultMeleeReach
+}
+
+// opportunityAttackDescriptor is the one entry for [OpportunityAttackCondition]; see [descriptors].
+var opportunityAttackDescriptor = descriptor{
+	ref:           refs.Conditions.OpportunityAttack(),
+	display:       Display{Name: "Opportunity Attack", Detail: "Use your reaction to make one melee attack against a creature that leaves your reach."},
+	load:          loaderOf[OpportunityAttackCondition](),
+	ownAction:     notBearing,
+	againstHolder: notBearing,
 }

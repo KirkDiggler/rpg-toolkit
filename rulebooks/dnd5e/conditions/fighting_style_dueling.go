@@ -160,3 +160,17 @@ func (f *FightingStyleDuelingCondition) onDamageChain(
 
 	return c, nil
 }
+
+// fightingStyleDuelingDescriptor is the one entry for [FightingStyleDuelingCondition]; see [descriptors].
+var fightingStyleDuelingDescriptor = descriptor{
+	ref:     refs.Conditions.FightingStyleDueling(),
+	display: Display{Name: "Dueling", Detail: "Adds 2 damage when you wield a melee weapon in one hand and no other weapon."},
+	load:    loaderOf[FightingStyleDuelingCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return NewFightingStyleDuelingCondition(in.MemberID), nil
+	},
+	ownAction:     answersNow,
+	againstHolder: notBearing,
+}
+
+var _ contributions.ActionAssessor = (*FightingStyleDuelingCondition)(nil)

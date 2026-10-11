@@ -151,14 +151,16 @@ func TestACarriedConditionIsHandedItsOwnSheet(t *testing.T) {
 // still work.
 func TestEveryLoadedEntryNamesItselfWithItsPersistedRef(t *testing.T) {
 	built := []dnd5eEvents.ConditionBehavior{
-		Immunity("wolf-1", damage.Fire),
-		Vulnerability("wolf-1", damage.Cold),
-		PackTactics("wolf-1"),
-		UndeadFortitude("wolf-1", 3, dice.NewRoller()),
+		conditions.Immunity("wolf-1", damage.Fire),
+		conditions.Vulnerability("wolf-1", damage.Cold),
+		conditions.PackTactics("wolf-1"),
+		conditions.UndeadFortitude("wolf-1", 3, dice.NewRoller()),
 		conditions.NewOpportunityAttackCondition("wolf-1"),
 	}
-	require.Len(t, built, len(AllTraitRefs())+1,
-		"every routed trait is covered here, plus the condition route this PR adds")
+	for _, entry := range built {
+		require.Contains(t, conditions.RegisteredRefs(), entry.Ref().String(),
+			"every trait is a registered condition, so the one loader routes it")
+	}
 
 	for _, entry := range built {
 		blob, err := entry.ToJSON()
@@ -169,7 +171,7 @@ func TestEveryLoadedEntryNamesItselfWithItsPersistedRef(t *testing.T) {
 		}
 		require.NoError(t, json.Unmarshal(blob, &peek))
 
-		loaded, err := LoadJSON(blob, dice.NewRoller())
+		loaded, err := conditions.LoadJSON(blob)
 		require.NoError(t, err, "%s must round-trip through the loader", peek.Ref)
 
 		require.NotNil(t, loaded.Ref(), "%s: Ref must never return nil", peek.Ref)

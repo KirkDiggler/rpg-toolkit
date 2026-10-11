@@ -288,3 +288,15 @@ func (b *BladeWardCondition) loadJSON(data json.RawMessage) error {
 	b.TurnEndsLeft = stored.TurnEndsLeft
 	return nil
 }
+
+// bladeWardDescriptor is the one entry for [BladeWardCondition]; see [descriptors].
+var bladeWardDescriptor = descriptor{
+	ref:     refs.Conditions.BladeWard(),
+	display: Display{Name: BladeWardName, Detail: "You have resistance to bludgeoning, piercing, and slashing damage from weapon attacks until the end of your next turn."},
+	load:    loaderOf[BladeWardCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return createdAs(createBladeWard(in.Config, in.MemberID, in.SourceRef))
+	},
+	ownAction:     notBearing,
+	againstHolder: notBearing,
+}

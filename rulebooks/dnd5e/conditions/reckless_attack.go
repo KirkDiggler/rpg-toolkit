@@ -224,3 +224,15 @@ func (r *RecklessAttackCondition) onTurnStart(ctx context.Context, event dnd5eEv
 
 	return r.Remove(ctx, r.bus)
 }
+
+// recklessAttackDescriptor is the one entry for [RecklessAttackCondition]; see [descriptors].
+var recklessAttackDescriptor = descriptor{
+	ref:           refs.Conditions.RecklessAttack(),
+	display:       Display{Name: "Reckless Attack", Detail: "A reckless creature's melee attacks other than opportunity attacks have advantage until its next turn, and attacks against it have advantage."},
+	load:          loaderOf[RecklessAttackCondition](),
+	ownAction:     answersNow,
+	againstHolder: answersNow,
+	heldRule:      newRecklessHeldRule,
+}
+
+var _ contributions.ActionAssessor = (*RecklessAttackCondition)(nil)

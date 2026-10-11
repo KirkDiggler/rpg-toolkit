@@ -10,40 +10,21 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
-type actionCensusSuite struct{ suite.Suite }
+type actionBearingSuite struct{ suite.Suite }
 
-func TestActionCensusSuite(t *testing.T) { suite.Run(t, new(actionCensusSuite)) }
+func TestActionBearingSuite(t *testing.T) { suite.Run(t, new(actionBearingSuite)) }
 
-func (s *actionCensusSuite) TestEveryConditionLoaderIsClassified() {
-	loaders := slices.Sorted(maps.Keys(conditionLoaders))
-	census := slices.Sorted(maps.Keys(actionCensus))
-	s.Equal(loaders, census, "the census and the loaders name exactly the same refs")
-
-	for ref, entry := range actionCensus {
-		switch entry.class {
-		case censusAnswers, censusNotYetAnswering:
-			s.Contains([]contributions.Participation{contributions.ContributesNow, contributions.LaterChoice},
-				entry.participation, ref)
-		case censusNotBearing:
-			s.Empty(entry.participation, ref)
-		default:
-			s.Failf("unknown census class", "%s: %q", ref, entry.class)
-		}
-	}
-}
-
-func (s *actionCensusSuite) TestAnsweringLoadersImplementActionAssessor() {
+func (s *actionBearingSuite) TestAnsweringLoadersImplementActionAssessor() {
 	fixtures := map[string]dnd5eEvents.ConditionBehavior{
-		refs.Conditions.Raging().String():    &RagingCondition{CharacterID: "barb"},
-		refs.Features.SneakAttack().String(): NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue"}),
-		refs.Conditions.Inspired().String():  NewInspiredCondition("rogue", "bard", ""),
+		refs.Conditions.Raging().String():      &RagingCondition{CharacterID: "barb"},
+		refs.Conditions.SneakAttack().String(): NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue"}),
+		refs.Conditions.Inspired().String():    NewInspiredCondition("rogue", "bard", ""),
 
 		refs.Conditions.Prone().String():                            NewProneCondition("rogue"),
 		refs.Conditions.Hidden().String():                           NewHiddenCondition("rogue"),
@@ -79,8 +60,8 @@ func (s *actionCensusSuite) TestAnsweringLoadersImplementActionAssessor() {
 	fixtures[refs.Conditions.Shillelagh().String()] = enchanted
 
 	var answering []string
-	for ref, entry := range actionCensus {
-		if entry.class == censusAnswers {
+	for ref, entry := range registry {
+		if entry.ownAction.kind == bearingAnswers {
 			answering = append(answering, ref)
 		}
 	}
@@ -93,24 +74,11 @@ func (s *actionCensusSuite) TestAnsweringLoadersImplementActionAssessor() {
 		s.Require().NoError(err, ref)
 		s.Equal(ref, loaded.Ref().String())
 		_, answers := loaded.(contributions.ActionAssessor)
-		s.True(answers, "%s is classified as answering but the loaded condition is not an ActionAssessor", ref)
+		s.True(answers, "%s is registered as answering but the loaded condition is not an ActionAssessor", ref)
 	}
 }
 
-func (s *actionCensusSuite) TestBearingLoadersHaveDescriptions() {
-	for ref, entry := range actionCensus {
-		if entry.class == censusNotBearing {
-			continue
-		}
-		parsed, err := core.ParseString(ref)
-		s.Require().NoError(err, ref)
-		display, found := DisplayFor(*parsed)
-		s.True(found, "%s bears on actions but has no catalog entry", ref)
-		s.NotEmpty(display.Detail, "%s bears on actions but has no description", ref)
-	}
-}
-
-func (s *actionCensusSuite) TestNotYetAnsweringYieldsUnavailableRow() {
+func (s *actionBearingSuite) TestNotYetAnsweringYieldsUnavailableRow() {
 	out, err := AssessActionEffects(&AssessActionEffectsInput{
 		Conditions: []dnd5eEvents.ConditionBehavior{s.sanctuary()},
 		Frame:      rogueFrame(false),
@@ -121,14 +89,14 @@ func (s *actionCensusSuite) TestNotYetAnsweringYieldsUnavailableRow() {
 	s.Equal(refs.Conditions.Sanctuary().String()+"@cleric", effect.ID)
 	s.Equal(contributions.StateUnavailable, effect.State)
 	s.Equal("This effect cannot yet say whether it applies to this action", effect.Reason)
-	s.Equal(displayCatalog[refs.Conditions.Sanctuary().String()].Detail, effect.Description)
+	s.Equal(registry[refs.Conditions.Sanctuary().String()].display.Detail, effect.Description)
 	s.Equal(SanctuaryName, effect.Source.Name)
 	s.Equal(contributions.ContributesNow, effect.Participation)
 	s.Empty(effect.Benefit)
 }
 
 // sanctuary is a ward on the rogue, an effect whose rule cannot yet answer.
-func (s *actionCensusSuite) sanctuary() *SanctuaryCondition {
+func (s *actionBearingSuite) sanctuary() *SanctuaryCondition {
 	ward, err := NewSanctuaryCondition(NewSanctuaryConditionInput{
 		MemberID: "rogue", SourceID: "cleric", SourceRef: refs.Spells.Sanctuary(), SaveDC: 13,
 	})
@@ -145,7 +113,7 @@ func testShillelaghConfig() ShillelaghConfig {
 	}
 }
 
-func (s *actionCensusSuite) TestNotBearingYieldsNoRow() {
+func (s *actionBearingSuite) TestNotBearingYieldsNoRow() {
 	out, err := AssessActionEffects(&AssessActionEffectsInput{
 		Conditions: []dnd5eEvents.ConditionBehavior{&UnarmoredDefenseCondition{MemberID: "rogue"}},
 		Frame:      rogueFrame(false),
@@ -162,7 +130,7 @@ func (s *actionCensusSuite) TestNotBearingYieldsNoRow() {
 	s.Empty(held.Effects, "a target's AC is not the attacker's to know, so no row (R21)")
 }
 
-func (s *actionCensusSuite) TestEffectIDsUniqueAndDeterministic() {
+func (s *actionBearingSuite) TestEffectIDsUniqueAndDeterministic() {
 	held := func() []dnd5eEvents.ConditionBehavior {
 		a, err := NewBlessedCondition(NewBlessedConditionInput{MemberID: "rogue", SourceID: "a", SourceRef: refs.Spells.Bless()})
 		s.Require().NoError(err)
@@ -188,7 +156,7 @@ func (s *actionCensusSuite) TestEffectIDsUniqueAndDeterministic() {
 	s.Equal([]string{
 		"dnd5e:conditions:blessed@a",
 		"dnd5e:conditions:blessed@b",
-		refs.Features.SneakAttack().String(),
+		refs.Conditions.SneakAttack().String(),
 		refs.Conditions.FightingStyleArchery().String(),
 	}, first)
 	s.Equal(first, ids(), "the same conditions give the same ids in the same order")

@@ -9,6 +9,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/weaponattack"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
@@ -76,19 +77,15 @@ func assembleWeaponAttack(
 // than letting the order conditions sit on the sheet choose one, because an
 // order-chosen offer is a die the player never picked.
 //
-// Each provider is handed this sheet as its level record, so a die that
-// scales with a class (Martial Arts) reads the level at this swing. A provider
-// that cannot answer fails the assembly.
+// Each condition's descriptor is handed this sheet as its level record, so a
+// die that scales with a class (Martial Arts) reads the level at this swing. A
+// condition that should offer but cannot answer fails the assembly.
 func weaponAttackOverride(c *Character, slot InventorySlot) (*weaponattack.Override, error) {
 	var override *weaponattack.Override
 	var offeredBy []string
 	in := &weaponattack.OverrideInput{Slot: string(slot), ItemID: c.equipmentSlots.Get(slot), Levels: c}
 	for _, condition := range c.conditions {
-		provider, ok := condition.(weaponattack.OverrideProvider)
-		if !ok {
-			continue
-		}
-		offer, err := provider.WeaponAttackOverride(in)
+		offer, err := conditions.WeaponAttackOverride(&conditions.WeaponAttackOverrideInput{Condition: condition, Swing: in})
 		if err != nil {
 			return nil, rpgerr.Wrapf(err, "%s cannot offer for %q", condition.Ref(), slot)
 		}

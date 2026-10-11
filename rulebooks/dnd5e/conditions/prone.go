@@ -263,3 +263,18 @@ func (p *ProneCondition) attackedWhileProne(
 func (p *ProneCondition) heldRule() contributions.ActionAssessor {
 	return newProneHeldRule(p.CharacterID, heldAddress(p.CharacterID, p))
 }
+
+// proneDescriptor is the one entry for [ProneCondition]; see [descriptors].
+var proneDescriptor = descriptor{
+	ref:     refs.Conditions.Prone(),
+	display: Display{Name: "Prone", Detail: "A prone creature's attacks have disadvantage; attacks against it from within 5 feet have advantage, otherwise disadvantage."},
+	load:    loaderOf[ProneCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return NewProneCondition(in.MemberID), nil
+	},
+	ownAction:     answersNow,
+	againstHolder: answersNow,
+	heldRule:      newProneHeldRule,
+}
+
+var _ contributions.ActionAssessor = (*ProneCondition)(nil)

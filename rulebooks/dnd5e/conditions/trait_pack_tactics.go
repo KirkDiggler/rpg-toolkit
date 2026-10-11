@@ -1,7 +1,7 @@
 // Copyright (C) 2024 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package monstertraits
+package conditions
 
 import (
 	"context"
@@ -194,4 +194,13 @@ func (p *packTacticsCondition) allyAdjacentToTarget(frame contributions.Frame, t
 		}
 	}
 	return false, nil
+}
+
+// packTacticsDescriptor is the one entry for [packTacticsCondition]; see [descriptors].
+var packTacticsDescriptor = descriptor{
+	ref:           refs.MonsterTraits.PackTactics(),
+	display:       Display{Name: "Pack Tactics", Detail: "Has advantage on an attack roll against a creature when at least one of its allies is within 5 feet of that creature."},
+	load:          loaderOf[packTacticsCondition](),
+	ownAction:     notYetAnswering,
+	againstHolder: notBearing,
 }

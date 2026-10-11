@@ -95,7 +95,7 @@ func (s *SheetFactsTestSuite) levelThreeRogue(rewrite func(raw json.RawMessage) 
 	data.Levels = append(data.Levels, LevelEntry{Level: 3, ClassID: classes.Rogue, HitPointMethod: HitPointMethodAverage})
 	data.Level = 3
 	for i, raw := range data.Conditions {
-		if strings.Contains(string(raw), refs.Features.SneakAttack().String()) && rewrite != nil {
+		if strings.Contains(string(raw), refs.Conditions.SneakAttack().String()) && rewrite != nil {
 			data.Conditions[i] = rewrite(raw)
 		}
 	}
@@ -131,7 +131,7 @@ func (s *SheetFactsTestSuite) sneakDice(char *Character, frame contributions.Fra
 
 	var faces []int
 	for _, component := range folded.Components {
-		if component.Roll.Source.Ref != nil && component.Roll.Source.Ref.Equals(refs.Features.SneakAttack()) {
+		if component.Roll.Source.Ref != nil && component.Roll.Source.Ref.Equals(refs.Conditions.SneakAttack()) {
 			faces = component.Roll.Dice.FinalRolls
 		}
 	}
@@ -152,7 +152,7 @@ func (s *SheetFactsTestSuite) TestARogueAtLevelThreeRollsTwoDice() {
 	s.Require().NoError(err)
 	var row *contributions.Effect
 	for i := range listed.Effects {
-		if listed.Effects[i].ID == refs.Features.SneakAttack().String() {
+		if listed.Effects[i].ID == refs.Conditions.SneakAttack().String() {
 			row = &listed.Effects[i]
 		}
 	}

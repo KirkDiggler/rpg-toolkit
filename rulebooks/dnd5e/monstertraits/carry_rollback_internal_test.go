@@ -13,6 +13,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -49,7 +50,7 @@ func TestAFailedCarryRollsTheWholeAttachBack(t *testing.T) {
 	}
 	defer func() { freeReactionsFor = restore }()
 
-	authored, err := Immunity("gob-1", "poison").ToJSON()
+	authored, err := conditions.Immunity("gob-1", "poison").ToJSON()
 	require.NoError(t, err)
 
 	m, err := monster.Load(ctx, &monster.Data{

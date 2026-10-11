@@ -610,3 +610,15 @@ func (c *ConcentratingCondition) strip(ctx context.Context, bus events.EventBus,
 
 	return nil
 }
+
+// concentratingDescriptor is the one entry for [ConcentratingCondition]; see [descriptors].
+var concentratingDescriptor = descriptor{
+	ref:     refs.Conditions.Concentrating(),
+	display: Display{Name: ConcentratingName},
+	load:    loaderOf[ConcentratingCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return createdAs(createConcentrating(in.Config, in.MemberID, in.SourceRef))
+	},
+	ownAction:     notBearing,
+	againstHolder: notBearing,
+}

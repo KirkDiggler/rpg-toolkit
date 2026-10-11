@@ -108,8 +108,10 @@ func (s *OpportunityAttackConditionSuite) TestApplyAndRemove() {
 	s.False(oa.IsApplied())
 }
 
-func (s *OpportunityAttackConditionSuite) TestPublishesTriggerWhenReadyAndLeavingReach() {
-	// Fighter at (5,5), goblin moves from adjacent (5,6) to non-adjacent (5,8).
+// goblinLeavesTheFightersReach runs the scene the offer is made in: a fighter
+// at (5,5) with a goblin adjacent at (5,6) that moves to (5,8), and returns
+// every trigger the movement published.
+func (s *OpportunityAttackConditionSuite) goblinLeavesTheFightersReach() []dnd5eEvents.ReactionTriggerEvent {
 	s.placeEntity("fighter-1", "character", 5, 5)
 	s.placeEntity("goblin-1", "monster", 5, 6)
 
@@ -141,12 +143,32 @@ func (s *OpportunityAttackConditionSuite) TestPublishesTriggerWhenReadyAndLeavin
 	_, err = mc.Execute(ctx, event)
 	s.Require().NoError(err)
 
-	s.Require().Len(*collected, 1, "expected exactly one OA trigger event")
-	got := (*collected)[0]
+	return *collected
+}
+
+func (s *OpportunityAttackConditionSuite) TestPublishesTriggerWhenReadyAndLeavingReach() {
+	collected := s.goblinLeavesTheFightersReach()
+
+	s.Require().Len(collected, 1, "expected exactly one OA trigger event")
+	got := collected[0]
 	s.Equal("fighter-1", got.ReactorID)
 	s.Equal(refs.Conditions.OpportunityAttack().String(), got.ConditionRef)
 	s.Equal(dnd5eEvents.TriggerKindMovementOA, got.TriggerKind)
 	s.Equal("goblin-1", got.SourceEntity)
+}
+
+// TestTheOpportunityTriggerCarriesItsDetail: the trigger names what taking the
+// reaction does beside its name, read from the descriptor's display, so the
+// machine that surfaces the offer never writes the prose itself.
+func (s *OpportunityAttackConditionSuite) TestTheOpportunityTriggerCarriesItsDetail() {
+	collected := s.goblinLeavesTheFightersReach()
+
+	s.Require().Len(collected, 1)
+	display, found := DisplayFor(*refs.Conditions.OpportunityAttack())
+	s.Require().True(found)
+	s.NotEmpty(display.Detail, "the opportunity attack authors a detail")
+	s.Equal(display.Detail, collected[0].Description)
+	s.Equal(display.Name, collected[0].Name)
 }
 
 // A reactor at zero hit points takes no opportunity attack.

@@ -4,42 +4,13 @@
 package character
 
 import (
-	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
-
-func TestParticipationViewLoadsShieldWithoutConsultingDisplayCatalog(t *testing.T) {
-	shield, err := conditions.NewShieldSpellCondition("shield-char").ToJSON()
-	require.NoError(t, err)
-
-	char, err := Load(context.Background(), &Data{Level: 1,
-		ID:             "shield-char",
-		HitPoints:      0,
-		MaxHitPoints:   10,
-		DeathSaveState: &saves.DeathSaveState{Successes: 1, Failures: 2},
-		Conditions:     []json.RawMessage{shield},
-	})
-	require.NoError(t, err, "Shield is a real loadable condition")
-	require.Len(t, char.conditions, 1)
-
-	require.Equal(t, ParticipationView{
-		LifeState: combat.LifeStateDying,
-		DeathSaves: &DeathSaveProgress{
-			Successes: 1, Failures: 2, SuccessesNeeded: 2, FailuresRemaining: 1,
-		},
-	}, char.ParticipationView())
-
-	out, err := char.StatusView(&StatusViewInput{})
-	require.ErrorContains(t, err, "is not in the status-view display catalog")
-	require.Nil(t, out, "full status remains intentionally strict about undisplayable spell status")
-}
 
 func TestParticipationViewProjectsLiteralStateTable(t *testing.T) {
 	tests := []struct {
