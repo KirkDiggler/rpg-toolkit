@@ -89,10 +89,10 @@ determine_bump() {
   bump="patch"
 
   # Check for breaking changes (major)
-  if echo "$commits" | grep -q "BREAKING CHANGE\|!:"; then
+  if grep -q "BREAKING CHANGE\|!:" <<<"$commits"; then
     bump="major"
   # Check for features (minor)
-  elif echo "$commits" | grep -q "^feat"; then
+  elif grep -q "^feat" <<<"$commits"; then
     bump="minor"
   fi
 
