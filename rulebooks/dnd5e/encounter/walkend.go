@@ -3,6 +3,8 @@ package encounter
 import (
 	"errors"
 	"fmt"
+
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // ValidateWalkEnd refuses a known occupied destination before a voluntary walk
@@ -44,3 +46,40 @@ func (e *StepObstructedError) PublicReason() string {
 }
 func (e *StepObstructedError) Error() string { return e.cause.Error() }
 func (e *StepObstructedError) Unwrap() error { return e.cause }
+
+// standableEnd is the walk's own end-of-walk law, the twin of the EndWalk
+// refusal a player's last [Encounter.Step] meets: a walk may cross a cell it
+// cannot stop on, but it ends on one it can.
+//
+// WHY THE WALK AND NOT THE ROUTE. Every route here already ends on a
+// standable cell ([cellQuery.nearestStop]: "may cross an ally, may not stop
+// on one"), and then three callers cut the path to what the turn's movement
+// pays for — the table driver's toward, the authored-cell Routed, and any
+// driver's own [Move]. A cut can land on an ally mid-path, and [Encounter.stepTo]
+// has never asked whether a cell may be STOPPED on, only whether it may be
+// entered. So a monster finished its turn standing on its friend. The route
+// cannot know the budget it will be cut to, and the drivers cannot read
+// passage, so the one place that knows both the path and the fold is the
+// walk that takes it.
+//
+// The path comes back cut to its LAST standable cell, which keeps the walk
+// through an ally to open floor beyond and drops only the tail nobody may
+// finish on. Empty when no cell of it is standable: the creature stays where
+// it is, exactly as a wall across the first step would leave it. Read live,
+// against the fold, because that is the truth the step itself will meet.
+func (e *Encounter) standableEnd(mover MemberID, path []spatial.Position) ([]spatial.Position, error) {
+	query, err := e.cellQuery()
+	if err != nil {
+		return nil, fmt.Errorf("walk end: %w", err)
+	}
+	for i := len(path) - 1; i >= 0; i-- {
+		fact, err := query.cellAt(CellAtInput{Cell: path[i], Mover: mover})
+		if err != nil {
+			return nil, fmt.Errorf("walk end at %v: %w", path[i], err)
+		}
+		if fact.Passage == PassageStandable {
+			return path[:i+1], nil
+		}
+	}
+	return nil, nil
+}
