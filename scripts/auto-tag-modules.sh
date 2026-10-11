@@ -216,7 +216,7 @@ for modfile in $(find . -name "go.mod" -type f -not -path "./vendor/*" -not -pat
     fi
 
     # Check if tag exists on remote
-    if git ls-remote --tags origin | grep -q "refs/tags/${tag_name}$"; then
+    if [[ -n "$(git ls-remote --tags origin "refs/tags/${tag_name}")" ]]; then
       echo "Tag ${tag_name} already exists on remote, skipping"
       SKIPPED_MODULES+=("${module_path}:${new_version}:remote_exists")
       continue
