@@ -71,7 +71,7 @@ func (s *SettlementSuite) TestAMonsterThatFellAndThenExitedStillGrants() {
 	scope.replaceMonsterSheet(&dropped)
 	// The composition notices the body on its next consult and tells the fall:
 	// any outcome recorded after the sheet says zero is that consult.
-	_, err = scope.enc.Record(&encounter.RecordInput{
+	_, err = recordOne(scope.enc, &encounter.RecordInput{
 		Kind: encounter.OutcomeMissed, Actor: "fighter", Targets: []encounter.MemberID{"goblin"},
 	})
 	s.Require().NoError(err)

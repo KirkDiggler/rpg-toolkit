@@ -109,7 +109,9 @@ the cast machine in [`cast.go`](./cast.go), the swing in
 [`attack.go`](./attack.go), the walk in [`move.go`](./move.go), the save in
 [`death_save.go`](./death_save.go). Each one hands `resolution.Resolve` a world
 view and hands the output to the one landing ([`land.go`](./land.go)), which
-adopts the world back, saves dirty sheets, records, lands the areas the
+adopts the world back, saves dirty sheets, records (ONE `RecordTrain` call per
+landing, so who is standing is asked once, after the last beat the landing
+told), lands the areas the
 interaction closed and opened through encounter's own verbs (`landAreas`),
 poses the windows the output leaves, runs the verb's continuation, then
 commits — so the story tells the cause before the membership change, and a

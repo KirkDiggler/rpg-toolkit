@@ -1775,3 +1775,45 @@ func TestAStayedBeatWithNoMemberOrCauseIsRefused(t *testing.T) {
 func TestTheStayedKindIsTheCompositionsOwnWord(t *testing.T) {
 	require.Equal(t, encounter.BeatStayed, string(EventStayed))
 }
+
+// TestStruckBodyDecodesItsSequence: a swing taken inside a multiattack names
+// it on the beat, and the typed body carries it beside the component.
+func TestStruckBodyDecodesItsSequence(t *testing.T) {
+	kind, body := decodeBeat([]byte(
+		`{"beat":"struck","actor":"boss","targets":["bob"],"roll":15,"total":20,"against":12,"amount":8,` +
+			`"critical":false,"attack":{"ref":"scimitar","name":"Scimitar","damage_type":"slashing"},` +
+			`"sequence":{"ref":"dnd5e:monster_actions:goblin-boss-multiattack","name":"Multiattack"}}`))
+	require.Equal(t, EventStruck, kind)
+	struck, ok := body.(StruckBody)
+	require.True(t, ok, "got %T", body)
+	require.Equal(t, &SequenceRef{Ref: "dnd5e:monster_actions:goblin-boss-multiattack", Name: "Multiattack"}, struck.Sequence)
+
+	kind, body = decodeBeat([]byte(
+		`{"beat":"missed","actor":"boss","targets":["bob"],"roll":2,"total":6,"against":12,` +
+			`"attack":{"ref":"scimitar","name":"Scimitar","damage_type":"slashing"},` +
+			`"sequence":{"ref":"multiattack","name":"Multiattack"}}`))
+	require.Equal(t, EventMissed, kind)
+	missed, ok := body.(MissedBody)
+	require.True(t, ok, "got %T", body)
+	require.Equal(t, &SequenceRef{Ref: "multiattack", Name: "Multiattack"}, missed.Sequence)
+}
+
+// TestStruckBodyWithAnIncompleteSequenceDoesNotType: a sequence marker with no
+// name, no ref or a null value is a beat this build does not recognise, as a
+// malformed reaction is, rather than a body that drops the marker.
+func TestStruckBodyWithAnIncompleteSequenceDoesNotType(t *testing.T) {
+	const head = `{"beat":"struck","actor":"boss","targets":["bob"],"roll":15,"total":20,"against":12,"amount":8,` +
+		`"critical":false,"attack":{"ref":"scimitar","name":"Scimitar","damage_type":"slashing"},"sequence":`
+	for name, sequence := range map[string]string{
+		"no name": `{"ref":"multiattack"}`,
+		"no ref":  `{"name":"Multiattack"}`,
+		"empty":   `{}`,
+		"null":    `null`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			kind, body := decodeBeat([]byte(head + sequence + `}`))
+			require.Equal(t, EventStruck, kind)
+			require.Nil(t, body)
+		})
+	}
+}
