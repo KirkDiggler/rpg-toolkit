@@ -789,6 +789,7 @@ func deliveredEffects(spell core.Ref, effects []ActivationEffect) ([]ImposedEffe
 			Description: name,
 			RecipientID: effect.TargetID,
 			Address:     effect.Address,
+			Detail:      effect.Detail,
 		})
 	}
 

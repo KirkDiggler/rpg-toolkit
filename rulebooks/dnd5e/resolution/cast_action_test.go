@@ -821,6 +821,18 @@ func (s *CastActionTestSuite) TestTheChosenWordIsWrittenOnAGatedCast() {
 			stored := s.castParams(fixtures.sheet(out, heroID), refs.Conditions.Commanded().String())
 			s.Equal(word, stored[spells.CommandWordParameter], "the word the player chose")
 			s.Equal(bardID, stored[spells.CommandCasterParameter], "the caster the words are measured from")
+
+			display, ok := conditions.DisplayFor(*refs.Conditions.Commanded())
+			s.Require().True(ok, "precondition: Commanded is registered")
+			var commanded []ImposedEffect
+			for _, effect := range outcome.Targets[0].Applied {
+				if effect.Kind == ImposedCondition && effect.Ref.Equals(refs.Conditions.Commanded()) {
+					commanded = append(commanded, effect)
+				}
+			}
+			s.Require().Len(commanded, 1, "one Commanded imposed on the target")
+			s.Equal(word, commanded[0].Detail, "the effect carries the word the instance was given")
+			s.Equal(display.Name, commanded[0].Description, "the name stays the registry's, the word is its own field")
 		})
 	}
 }

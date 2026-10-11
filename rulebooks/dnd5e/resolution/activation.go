@@ -166,6 +166,9 @@ type ActivationEffect struct {
 	Name     string
 	Address  dnd5eEvents.ConditionAddress
 
+	// Detail is the instance's own detail for EffectConditionApplied.
+	Detail string
+
 	// Stabilization is the authoritative result for EffectStabilized.
 	Stabilization character.StabilizeOutput
 
@@ -330,6 +333,7 @@ func (c *activationEffectCollector) captureConditionApplied(
 	c.append(ActivationEffect{
 		Kind: EffectConditionApplied, TargetID: event.Target.GetID(), Ref: ref, Name: name,
 		Address: conditions.ConditionAddressOf(event.Target.GetID(), event.Condition),
+		Detail:  conditions.InstanceDetailOf(event.Condition),
 	})
 	return nil
 }

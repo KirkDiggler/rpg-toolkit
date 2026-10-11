@@ -376,3 +376,23 @@ func (s *CastActionTestSuite) TestABlessedConditionReadsItsRegistryName() {
 	}
 	s.Equal([]string{display.Name}, described)
 }
+
+// TestAGatelessConditionWithNothingToSayCarriesNoDetail: Blessed implements no
+// instance detail, so no delivered condition of a Bless cast carries one.
+func (s *CastActionTestSuite) TestAGatelessConditionWithNothingToSayCarriesNoDetail() {
+	f := s.fixtures()
+	out, err := s.blessAttempt(f.world(), baneCaster(1, 2), f.saver(14), []string{heroID}, StaleTargetRefuse, &countingCastRoller{})
+	s.Require().NoError(err)
+
+	var blessed int
+	for _, target := range s.castOutcome(out).Targets {
+		for _, effect := range target.Applied {
+			if effect.Kind != ImposedCondition {
+				continue
+			}
+			blessed++
+			s.Empty(effect.Detail, "%s has nothing per-instance to say", effect.Ref.String())
+		}
+	}
+	s.Positive(blessed, "precondition: the cast delivered at least one condition")
+}

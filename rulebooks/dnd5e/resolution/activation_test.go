@@ -754,6 +754,31 @@ func (s *ActivationTestSuite) TestActivationCollectorCapturesConditionRemovedWit
 	}}, collector.Effects())
 }
 
+func (s *ActivationTestSuite) TestTheCollectorReadsTheInstanceDetail() {
+	bus := events.NewEventBus()
+	collector, err := newActivationEffectCollector(s.ctx, bus)
+	s.Require().NoError(err)
+	defer func() { s.Require().NoError(collector.Close(s.ctx)) }()
+
+	commanded, err := conditions.NewCommandedCondition(heroID, refs.Spells.Command().String(), bardID, "grovel", 1)
+	s.Require().NoError(err)
+	s.Require().NoError(dnd5eEvents.ConditionAppliedTopic.On(bus).Publish(s.ctx,
+		dnd5eEvents.ConditionAppliedEvent{Target: activationTestEntity{id: heroID}, Condition: commanded}))
+	s.Require().NoError(dnd5eEvents.ConditionAppliedTopic.On(bus).Publish(s.ctx,
+		dnd5eEvents.ConditionAppliedEvent{
+			Target: activationTestEntity{id: activationAllyID}, Condition: conditions.NewDodgingCondition(activationAllyID),
+		}))
+
+	detailByTarget := map[string]string{}
+	for _, effect := range collector.Effects() {
+		detailByTarget[effect.TargetID] = effect.Detail
+	}
+	s.Contains(detailByTarget, heroID, "the commanded target was captured")
+	s.Contains(detailByTarget, activationAllyID, "the dodging target was captured")
+	s.Equal("grovel", detailByTarget[heroID], "the commanded instance's word")
+	s.Empty(detailByTarget[activationAllyID], "a condition with nothing to say captures none")
+}
+
 func (s *ActivationTestSuite) TestActivationCollectorPreservesBusOrderAndReturnsClones() {
 	bus := events.NewEventBus()
 	collector, err := newActivationEffectCollector(s.ctx, bus)
