@@ -9,8 +9,10 @@ package session_test
 // answer table arriving as a typed beat.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -73,7 +75,7 @@ func (s *PersuadeSuite) front(rolls []int) *session.Manager {
 	if driver == nil {
 		driver = session.Pass{}
 	}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: driver,
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
@@ -114,7 +116,13 @@ func (s *PersuadeSuite) front(rolls []int) *session.Manager {
 	if len(conditionsBefore) > 0 {
 		stored, err := s.characters.GetCharacter(context.Background(), s.sheet.ID)
 		s.Require().NoError(err)
-		stored.Conditions = append(stored.Conditions, conditionsBefore...)
+		for _, scene := range conditionsBefore {
+			// What the sheet already names (its free reactions) the launch
+			// stored; only the scene's own conditions are written here.
+			if !slices.ContainsFunc(stored.Conditions, func(held json.RawMessage) bool { return bytes.Equal(held, scene) }) {
+				stored.Conditions = append(stored.Conditions, scene)
+			}
+		}
 		s.Require().NoError(s.characters.SaveCharacter(context.Background(), stored))
 	}
 
@@ -586,7 +594,7 @@ func (s *PersuadeSuite) TestASubjectInNoFactionHasNoStance() {
 // is the smallest world in which two viewers disagree about one subject.
 func (s *PersuadeSuite) frontWithBandit() *session.Manager {
 	s.characters = newFakeCharacters(s.sheet)
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: &sequenceDice{rolls: []int{10, 10, 10, 10}},
 		TurnDriver: session.Pass{},
 		Sessions:   s.sessions, Encounters: s.encounters,

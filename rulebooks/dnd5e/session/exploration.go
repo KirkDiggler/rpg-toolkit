@@ -30,9 +30,6 @@ type ExplorationRepository interface {
 }
 
 func (m *Manager) prepareExploration(ctx context.Context, scope *writeScope, extra ...string) error {
-	if m.explorations == nil {
-		return nil
-	} // older hosts retain explicit search
 	roster, err := scope.enc.Members()
 	if err != nil {
 		return translate(err)
@@ -91,9 +88,6 @@ func cloneExploration(in *ExplorationData) *ExplorationData {
 }
 
 func (m *Manager) saveExploration(ctx context.Context, scope *writeScope) error {
-	if m.explorations == nil {
-		return nil
-	}
 	members, err := scope.enc.Members()
 	if err != nil {
 		return translate(err)
@@ -104,7 +98,7 @@ func (m *Manager) saveExploration(ctx context.Context, scope *writeScope) error 
 		if profile == nil {
 			continue
 		}
-		sharing, err := scope.enc.DiscoverySharing(&encounter.DiscoveryMemoryInput{Member: member.ID})
+		sharing, err := scope.enc.DiscoverySharing(&encounter.DiscoverySharingInput{Member: member.ID})
 		if err != nil {
 			return translate(err)
 		}
@@ -146,9 +140,6 @@ func (m *Manager) SetDiscoverySharing(ctx context.Context, in *SetDiscoveryShari
 		return nil, fmt.Errorf("%s: %w", verb, lockErr)
 	}
 	defer release()
-	if m.explorations == nil {
-		return nil, fmt.Errorf("%s: unavailable: %w", verb, ErrIncompleteConfig)
-	}
 	scope, err := m.openForChange(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", verb, err)
@@ -162,42 +153,4 @@ func (m *Manager) SetDiscoverySharing(ctx context.Context, in *SetDiscoveryShari
 		return nil, fmt.Errorf("%s: %w", verb, err)
 	}
 	return &SetDiscoverySharingOutput{Sharing: out.Sharing, Saved: saved, Delivery: delivery}, nil
-}
-
-// automaticCheckSeam explicitly supplies proximity checks for adopting hosts.
-// Authoring/read loaders and older hosts do not acquire this capability.
-type automaticCheckSeam struct{ checkSeam }
-
-func (c automaticCheckSeam) ResolveDiscoveryCheck(in *encounter.ResolveCheckInput) (*encounter.ResolveCheckOutput, error) {
-	if in == nil {
-		return nil, ErrNilInput
-	}
-	staged := c.scope.checks[string(in.Member)]
-	if staged == nil {
-		return nil, ErrNoSheet
-	}
-	if c.scope.walker != nil && c.scope.walker.ID == string(in.Member) {
-		staged.data = c.scope.walker
-	} else {
-		// Staging precedes the verb's own writes, not only other requests.
-		// Join, for example, stages the incoming member and then persists a
-		// LongRest before placement triggers this check. Reusing that staged
-		// record would reattach pre-rest effects (such as Rage). The session
-		// guard does not make the old record current after an in-verb save.
-		// The walker above is the exception: its unpaid/in-flight movement
-		// state lives on the scope and must not be replaced from storage.
-		fresh, err := c.m.sheetsFor(nil).load(staged.ctx, "discovery observer", string(in.Member))
-		if err != nil {
-			return nil, err
-		}
-		staged.data = fresh
-	}
-	return c.ResolveCheck(in)
-}
-func (m *Manager) checkResolverFor(scope *writeScope) encounter.CheckResolver {
-	base := checkSeam{m: m, scope: scope}
-	if m.explorations != nil {
-		return automaticCheckSeam{base}
-	}
-	return base
 }

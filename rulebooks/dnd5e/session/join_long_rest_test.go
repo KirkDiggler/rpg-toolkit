@@ -97,17 +97,25 @@ func (r *copyingCharacters) SaveCharacter(_ context.Context, data *character.Dat
 }
 
 // failingReadCharacters makes a placement/discovery consult fail after Join's
-// own record fetch has succeeded. It pins that the rested record is not saved
+// own record fetch has succeeded: the first `allow` reads of failID answer, and
+// every read after that fails. Opening a write verb stages every seated
+// player's record once, so allow=1 lets the open pass and fails the consult
+// placement makes later. It pins that the rested record is not saved
 // merely because rest and projection succeeded; every local check must pass.
 type failingReadCharacters struct {
 	inner  *copyingCharacters
 	failID string
 	err    error
+	allow  int
+	reads  *int
 }
 
 func (r failingReadCharacters) GetCharacter(ctx context.Context, id string) (*character.Data, error) {
 	if id == r.failID {
-		return nil, r.err
+		*r.reads++
+		if *r.reads > r.allow {
+			return nil, r.err
+		}
 	}
 	return r.inner.GetCharacter(ctx, id)
 }
@@ -147,7 +155,7 @@ func (s *JoinLongRestTestSuite) SetupTest() {
 func (s *JoinLongRestTestSuite) manager(
 	encounters session.EncounterRepository, characters session.CharacterRepository,
 ) *session.Manager {
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Events: session.DiscardEvents{},
 		Sessions: s.sessions, Encounters: encounters, Characters: characters,
 	})
@@ -191,7 +199,8 @@ func (s *JoinLongRestTestSuite) TestDuplicateCurrentJoinDoesNotRestOrSave() {
 	out, err := s.mgr.Join(s.ctx, &session.JoinInput{
 		Session: "sess", Member: "bob", Position: hexCell(3, 2),
 	})
-	s.Require().ErrorIs(err, session.ErrNoMember)
+	s.Require().ErrorIs(err, session.ErrAlreadyMember)
+	s.NotErrorIs(err, session.ErrNoMember, "a member who is here is not a member who is missing")
 	s.Nil(out)
 	s.Equal(beforeSaves, s.characters.saves)
 	s.Equal(beforeAttempts, s.characters.saveAttempts, "a duplicate never attempts a character save")
@@ -358,7 +367,8 @@ func (s *JoinLongRestTestSuite) TestBadPlacementLeavesEarlyRestDurableAndReporte
 }
 
 func (s *JoinLongRestTestSuite) TestDiscoveryFailureLeavesEarlyRestDurableAndReported() {
-	brokenReads := failingReadCharacters{inner: s.characters, failID: "alice", err: errBroken}
+	reads := 0
+	brokenReads := failingReadCharacters{inner: s.characters, failID: "alice", err: errBroken, allow: 1, reads: &reads}
 	mgr := s.manager(s.encounters, brokenReads)
 	beforeWorld := s.storedWorldJSON()
 	beforeEncounterSaves := s.encounters.saves
@@ -474,7 +484,7 @@ func (s *JoinLongRestTestSuite) TestEncounterSaveFailureLeavesRestedCharacterDur
 
 func (s *JoinLongRestTestSuite) TestSessionSaveFailureReportsEarlyRestAndPersistedEncounter() {
 	failing := &failingSessions{fakeSessions: s.sessions, saveErr: errBroken}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Events: session.DiscardEvents{},
 		Sessions: failing, Encounters: s.encounters, Characters: s.characters,
 	})
@@ -508,7 +518,7 @@ func (s *JoinLongRestTestSuite) TestZeroHPFirstAdmissionIsStandingAndCannotFireM
 	zero := spentJoinFighter(s.T(), "bob")
 	zero.HitPoints = 0
 	characters := newCopyingCharacters(s.T(), zero, armedFighter("alice"))
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Events: session.DiscardEvents{},
 		Sessions: sessions, Encounters: encounters, Characters: characters,
 	})
@@ -541,7 +551,7 @@ func (s *JoinLongRestTestSuite) TestPlacementDrivenStrikeReadsRestedTruthAndIsNo
 	// creature with an enemy in sight (rpg-project#465) — hits on 15, and the
 	// remaining fixed rolls drive its damage and its later picks.
 	dice := &sequenceDice{rolls: []int{1, 20, 15, 15, 4, 4, 4, 4, 4, 4}}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: dice, TurnDriver: session.Driver(), Events: session.DiscardEvents{},
 		Sessions: sessions, Encounters: encounters, Characters: characters,
 	})

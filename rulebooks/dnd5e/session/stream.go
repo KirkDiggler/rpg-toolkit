@@ -21,7 +21,7 @@ import (
 // for the whole table. While every beat went to everybody (full data until
 // v1.0), a member's delivered stream WAS the global stream and the numbers
 // doubled as gap detection: a client that saw 7 after 5 knew it missed 6.
-// Concealment ends that: a search's reveal beat is audienced to the searcher
+// Concealment ends that: a discovery's reveal beat is audienced to the searcher
 // alone, a moved beat inside a hidden room stops at the frontier — so under
 // global numbering every OTHER member would see a hole exactly where a secret
 // beat happened. The hole itself is an oracle ("something hidden just

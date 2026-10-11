@@ -36,7 +36,10 @@ func (encNoHandsObserved) Conditions(
 	return out, nil
 }
 
-var _ encounter.EquipmentWithConditions = encNoHandsObserved{}
+var (
+	_ encounter.Equipment  = encNoHandsObserved{}
+	_ encounter.Conditions = encNoHandsObserved{}
+)
 
 // encStandStill answers the sheet question for a scene being ASSEMBLED, never
 // played: every member asked stands still with nothing to swing and no

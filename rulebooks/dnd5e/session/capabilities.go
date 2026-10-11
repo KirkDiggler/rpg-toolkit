@@ -44,13 +44,14 @@ import (
 func (m *Manager) writeCapabilities(ctx context.Context, scope *writeScope) encounter.Capabilities {
 	return encounter.Capabilities{
 		Initiative:    m.initiative,
-		Standing:      scope.standing,
+		Participation: scope.standing,
 		Sight:         sheetsBeside(scope.standing),
 		Equipment:     equipmentBeside(scope.standing),
+		Conditions:    equipmentBeside(scope.standing),
 		Sheets:        sheetsBeside(scope.standing),
 		Driver:        m.compelledDriverFor(ctx, scope),
 		Roller:        m.encounterDice(),
-		CheckResolver: m.checkResolverFor(scope),
+		CheckResolver: checkSeam{m: m, scope: scope},
 		Witness:       witnessSeam{scope: scope},
 		Actors: encounter.Actors{
 			Striker:   strikerSeam{m: m, scope: scope},
@@ -67,7 +68,7 @@ func (m *Manager) writeCapabilities(ctx context.Context, scope *writeScope) enco
 // so it is never consulted, and a compelled driver here would have no scope to
 // save what an obeyed word leaves behind.
 //
-// NO DIE, the check resolver and witness refuse or perceive nobody, and every
+// NO DIE, the check resolver and witness refuse, and every
 // actor refuses by name. A read never gives a creature time, rolls a check,
 // refreshes sight, drives a turn, walks anybody or crosses a boundary, so any
 // of those reached on a read path fails loudly at the point of failure rather
@@ -76,13 +77,14 @@ func (m *Manager) writeCapabilities(ctx context.Context, scope *writeScope) enco
 func (m *Manager) readCapabilities(standing standingSeam, driver encounter.Driver) encounter.Capabilities {
 	return encounter.Capabilities{
 		Initiative:    m.initiative,
-		Standing:      standing,
+		Participation: standing,
 		Sight:         sheetsBeside(standing),
 		Equipment:     equipmentBeside(standing),
+		Conditions:    equipmentBeside(standing),
 		Sheets:        sheetsBeside(standing),
 		Driver:        driver,
 		CheckResolver: encounter.RefusingCheckResolver{},
-		Witness:       encounter.NobodyPerceives{},
+		Witness:       encounter.RefusingWitness{},
 		Actors:        encounter.RefusingActors(),
 	}
 }

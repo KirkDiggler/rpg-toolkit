@@ -36,9 +36,10 @@ type Config struct {
 	// the same coordination domain. No lock implementation lives in the SDK.
 	Locker SessionLocker
 
-	// Explorations enables automatic discovery and stores character-retained
-	// knowledge/preferences. Hosts coordinate shared profiles across sessions.
-	// Nil preserves older hosts' explicit-search contract.
+	// Explorations runs automatic discovery and stores character-retained
+	// preferences. Required: there is no verb that finds hidden content
+	// without it, so a session without one fails NewManager. Hosts coordinate
+	// shared profiles across sessions.
 	Explorations ExplorationRepository
 
 	// Encounters persists the world. Required.
@@ -215,6 +216,7 @@ func NewManager(cfg *Config) (*Manager, error) {
 		{"Encounters", cfg.Encounters != nil},
 		{"Characters", cfg.Characters != nil},
 		{"Seats", cfg.Seats != nil},
+		{"Explorations", cfg.Explorations != nil},
 		{"Events", cfg.Events != nil},
 		{"Dice", cfg.Dice != nil},
 		{"PresentationIDs", cfg.PresentationIDs != nil},

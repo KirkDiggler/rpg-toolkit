@@ -64,7 +64,7 @@ func (s *SessionLockSuite) TestOverlappingMovesBothSurviveWithoutLostUpdates() {
 	var resumeOnce sync.Once
 	resume := func() { resumeOnce.Do(func() { close(worlds.resume) }) }
 	defer resume()
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		Sessions: newFakeSessions(), Encounters: worlds, Characters: testCharacters(),
 		Events: session.DiscardEvents{}, Dice: testDice{}, PresentationIDs: testPresentationIDs{},
 		TurnDriver: session.Pass{}, Locker: locker,

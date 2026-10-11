@@ -13,6 +13,6 @@ func stockAuthoredPlayers(sc scene, characters *fakeCharacters) {
 		if _, held := characters.byID[seat.ID]; held {
 			continue
 		}
-		characters.byID[seat.ID] = dullEyed(seat.ID)
+		characters.byID[seat.ID] = withFreeReactions(dullEyed(seat.ID))
 	}
 }

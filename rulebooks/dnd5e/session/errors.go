@@ -185,6 +185,12 @@ var (
 	// not hold.
 	ErrNoMember = errors.New("no such member")
 
+	// ErrAlreadyMember is returned when a verb places a member the encounter
+	// already holds: a Join naming a member who is in it, or a world listing
+	// one id twice. Distinct from ErrNoMember, which is a member that is not
+	// there at all.
+	ErrAlreadyMember = errors.New("member is already in the encounter")
+
 	// ErrNotSeated is returned when an authenticated principal owns no current
 	// player seat in the requested session.
 	ErrNotSeated = errors.New("player is not seated in this session")
@@ -521,17 +527,6 @@ var (
 	// case arrives with the behavior work that calls for it.
 	ErrNotACharacter = errors.New("member is not a character")
 
-	// ErrElsewhere is returned by Search when the named region is not the
-	// one the searcher stands in — INCLUDING a region that does not exist,
-	// deliberately indistinguishably: a distinct no-such-region answer
-	// would let a guessed ID probe for hidden rooms (the composition's own
-	// contract, carried across unweakened).
-	ErrElsewhere = errors.New("not standing in that region")
-
-	// ErrSearchRetired is returned when an automatic-discovery host receives
-	// the legacy Search verb. Move/placement supplies discovery instead.
-	ErrSearchRetired = errors.New("search is retired; discovery checks are automatic")
-
 	// ErrNoSheet is returned when a member has no stored sheet to resolve
 	// against — an authored monster standing in a world nobody spawned.
 	//
@@ -611,6 +606,12 @@ var (
 	// attacker's own sheet or shared persisted definition — an empty hand,
 	// malformed declared action, or a weapon the strike has no semantics for.
 	ErrBadAttack = errors.New("attack cannot be made")
+
+	// ErrConflictingOffers is returned when two of the attacker's conditions
+	// each offer a replacement for the same swing and none was picked. The
+	// offer blocks Attack as unavailable, and naming it as the verb's refusal
+	// lets a caller tell this state from an unreadable sheet.
+	ErrConflictingOffers = errors.New("competing attack offers for one swing")
 
 	// ErrBadInformation is returned by Afford when an offer's action
 	// information cannot be stated: the rulebook refused to describe a

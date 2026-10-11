@@ -216,7 +216,7 @@ func (s *HoldOutSessionSuite) prepare(opts campOptions) *session.LaunchInput {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(opts.cast...)
 
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: opts.driver,
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
@@ -299,8 +299,9 @@ func (s *HoldOutSessionSuite) roster() map[string]session.PublicMember {
 		Capabilities: encounter.Capabilities{
 			Sight:         encEveryoneSees{},
 			Equipment:     encNoHandsObserved{},
+			Conditions:    encNoHandsObserved{},
 			Sheets:        encStandStill{},
-			Standing:      encEveryoneStanding{},
+			Participation: encEveryoneStanding{},
 			Initiative:    encOrderAsGiven{},
 			Driver:        encPassDriver{},
 			CheckResolver: encNeverResolves{},
@@ -706,11 +707,10 @@ func (s *HoldOutSessionSuite) TestTheStanceSurvivesSaveAndLoadAsAFoldNotAField()
 		s.Require().Len(stored.Field.Dispositions, 1)
 		s.Equal(string(encounter.StanceHostile), stored.Field.Dispositions[0].Stance)
 		structure, err := json.Marshal(struct {
-			Field    encounter.FieldData
-			Members  []encounter.MemberData
-			World    *encounter.WorldData
-			Holdings *encounter.HoldingsData
-		}{stored.Field, stored.Members, stored.World, stored.Holdings})
+			Field   encounter.FieldData
+			Members []encounter.MemberData
+			Journal *encounter.JournalData
+		}{stored.Field, stored.Members, stored.Journal})
 		s.Require().NoError(err)
 		// SCOPED TO A FLIP A MIND CAUSED, since rpg-project#493. The stance
 		// is still derived and still never a field — that has not moved, and

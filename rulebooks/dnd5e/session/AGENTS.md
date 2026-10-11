@@ -14,7 +14,7 @@ for why the split exists at all.
 **The verb surface.** The exported `Manager` methods are load, act, save,
 return — no setup call, no teardown, no ordering for the caller to get
 wrong. They include `Move`, `Attack`, `Cast`, `Activate`, `DeathSave`, `EndTurn`, `React`,
-`Search`, `Loot`, `Hold`, `Trade`, `Interact`, `OpenDoor`, `CloseDoor`, `Unlock`, `Join`,
+`Loot`, `Hold`, `Trade`, `Interact`, `OpenDoor`, `CloseDoor`, `Unlock`, `Join`,
 `Exit`, `End`, `Launch`, `Rest`, `Equip`, `Unequip`, `PlaceNPC`, `Dissolve`, `Unpack`,
 `LevelUp`, and the reads `Afford`, `Roster`, `Atlas`, `AtlasOf`, `Status`,
 `View`, `Story`, `Where`, `Turn`, `Doors`, `NextLevel`. A verb is a file; the
@@ -207,7 +207,7 @@ That asymmetry is the structural reason this section exists. A fact the
 composition needs about a sheet has exactly one place it can come from, and this
 is it. So the composition takes a **capability** — member IDs in, member IDs out
 — and this package implements it. `doc.go`'s "one question this package answers
-for the world" argues that case for `Standing` (rpg-toolkit#1079); it is worth
+for the world" argues that case for `Participation` (rpg-toolkit#1079); it is worth
 reading before you add the eleventh capability, because it is the template.
 
 **WHAT THIS PACKAGE CONTRIBUTES IS THE LOOKUP, NOT THE RULE.**
@@ -356,8 +356,8 @@ before the implementation is.
 **There are two down-gates, with different sources.** On the turn clock every
 verb uses `actor.downed` from one strictly-single `loadActorSheet` read
 (`attack.go`:268, `cast.go`:223, `activate.go`:191, `move.go`:219). Only the
-*world* clock reaches `refuseIfDown` ([`standing.go`](./standing.go):263), which
-goes through the `Standing` capability instead (`move.go`:247,
+*world* clock reaches `refuseIfDown` ([`standing.go`](./standing.go)), which
+goes through the participation assessment's `Down` instead (`move.go`:247,
 `attack.go`:254). They agree today. They are not the same code path, and a
 change to one is not a change to the other.
 

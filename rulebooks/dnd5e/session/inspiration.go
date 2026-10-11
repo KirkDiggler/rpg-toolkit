@@ -43,7 +43,7 @@ func (m *Manager) allyCandidatesFor(
 	ctx context.Context,
 	ability *core.Ref,
 	enc *encounter.Encounter,
-	standing encounter.Standing,
+	standing encounter.Participation,
 	roster []encounter.Member,
 	positions map[string]spatial.Position,
 	holdings []perception.Holding,
@@ -84,7 +84,7 @@ func (m *Manager) allyCandidatesFor(
 func (m *Manager) inspirationCandidates(
 	ctx context.Context,
 	enc *encounter.Encounter,
-	standing encounter.Standing,
+	standing encounter.Participation,
 	roster []encounter.Member,
 	positions map[string]spatial.Position,
 	holdings []perception.Holding,

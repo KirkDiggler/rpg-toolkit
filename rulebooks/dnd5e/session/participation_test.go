@@ -102,9 +102,11 @@ func TestParticipationMapsProviderFactsWithoutThresholds(t *testing.T) {
 	require.Equal(t, LifeStateConscious, snapshot.views["conscious"].LifeState)
 	require.Nil(t, snapshot.views["conscious"].DeathSaves)
 
-	down, err := seam.Standing(ids)
+	down, err := standingSet(seam, ids)
 	require.NoError(t, err)
-	require.Equal(t, ids[:4], down, "binary Standing delegates to the same rich answer")
+	require.Equal(t, map[string]bool{
+		string(ids[0]): true, string(ids[1]): true, string(ids[2]): true, string(ids[3]): true,
+	}, down, "the down lookup is read from the same rich answer")
 }
 
 func TestParticipationRoutesAuthoredSheetlessMonsterByRosterKind(t *testing.T) {

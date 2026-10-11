@@ -49,7 +49,7 @@ import (
 func (m *Manager) buildActivationOffers(
 	ctx context.Context,
 	enc *encounter.Encounter,
-	standing encounter.Standing,
+	standing encounter.Participation,
 	session, member string,
 	sheet *character.Character,
 	roster []encounter.Member,
@@ -304,7 +304,7 @@ const helpReachFeet = 5
 // helped, rather than a list that changes length as people move.
 func helpCandidates(
 	enc *encounter.Encounter,
-	standing encounter.Standing,
+	standing encounter.Participation,
 	roster []encounter.Member,
 	positions map[string]spatial.Position,
 	holdings []perception.Holding,
@@ -322,7 +322,7 @@ func helpCandidates(
 // gets to say for itself; the label is what its refusals are attributed to.
 func allyCandidates(
 	enc *encounter.Encounter,
-	standing encounter.Standing,
+	standing encounter.Participation,
 	roster []encounter.Member,
 	positions map[string]spatial.Position,
 	holdings []perception.Holding,

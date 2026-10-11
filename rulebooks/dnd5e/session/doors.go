@@ -243,8 +243,8 @@ type UnlockOutput struct {
 }
 
 // Unlock tries a locked door as Member: a real ability check against the
-// lock's authored approaches, resolved through the same path Search's find
-// checks take ([Manager.resolveStagedCheck] → resolution.MakeCheck — the
+// lock's authored approaches, resolved through the same path a discovery
+// check takes ([Manager.resolveStagedCheck] → resolution.MakeCheck — the
 // rules live once, behind resolution's door). Resolution picks the member's
 // best listed route; this seam fills the composition's Applied with it and
 // reports that route's DC outward.

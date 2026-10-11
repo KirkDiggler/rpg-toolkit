@@ -31,12 +31,8 @@ func (walkOrderAsGiven) RollInitiative(members []encounter.MemberID) ([]encounte
 
 type walkEveryoneStanding struct{}
 
-func (walkEveryoneStanding) Standing(_ []encounter.MemberID) ([]encounter.MemberID, error) {
-	return nil, nil
-}
-
-// Assess mirrors Standing: nobody is ever down, so every asked member waits
-// in contact and conscious (the StandingWithParticipation bridge).
+// Assess answers that nobody is ever down, so every asked member waits
+// in contact and conscious.
 func (walkEveryoneStanding) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
 	return assessmentFromDown(members, nil), nil
 }
@@ -95,12 +91,13 @@ func walkWorld(t *testing.T) *encounter.Encounter {
 		}},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encStatedSight{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: walkOrderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   walkEveryoneStanding{},
+			Sheets:        encStandStill{},
+			Sight:         encStatedSight{},
+			Equipment:     encNoHandsObserved{},
+			Conditions:    encNoHandsObserved{},
+			Initiative:    walkOrderAsGiven{},
+			Driver:        passDriver{},
+			Participation: walkEveryoneStanding{},
 			Actors: encounter.Actors{
 				Striker:   encounter.RefusingStriker{},
 				Mover:     encounter.RefusingMover{},

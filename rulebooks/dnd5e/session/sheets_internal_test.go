@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
@@ -99,6 +100,31 @@ func (s *SheetSeamSuite) TestAPlayerIsAnsweredFromTheSheet() {
 	s.Empty(facts.Targeting, "a player has no targeting strategy")
 }
 
+// TestAPlayerAnswersEveryAttackItCanMake: the sheet seam answers the same
+// projection a monster's stat block gets, so a character holding a weapon in
+// each hand answers both, main hand first. The off hand used to be invisible
+// to a driver reading this answer.
+func (s *SheetSeamSuite) TestAPlayerAnswersEveryAttackItCanMake() {
+	sheet := s.chars.byID["alice"]
+	sheet.WeaponProficiencies = []proficiencies.Weapon{proficiencies.WeaponSimple, proficiencies.WeaponMartial}
+	sheet.Inventory = []character.InventoryItemData{
+		{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Shortsword), Quantity: 1},
+		{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Dagger), Quantity: 1},
+	}
+	sheet.EquipmentSlots = character.EquipmentSlots{
+		character.SlotMainHand: string(weapons.Shortsword),
+		character.SlotOffHand:  string(weapons.Dagger),
+	}
+
+	facts := s.sheetOf("alice")
+
+	names := make([]string, 0, len(facts.Actions))
+	for _, action := range facts.Actions {
+		names = append(names, action.Name)
+	}
+	s.Equal([]string{"Shortsword", "Dagger"}, names, "the main hand, then the off hand")
+}
+
 // TestAPlayersAnswerIsTheSheetOfThatMoment: nothing is remembered between
 // consults. A race changed and a bow equipped between two asks are both read
 // by the second — the copy taken at Join that this replaces would answer the
@@ -125,7 +151,7 @@ func (s *SheetSeamSuite) TestAMonsterIsAnsweredFromItsStatBlock() {
 	facts := s.sheetOf("skel-1")
 
 	s.Equal(block.Speed.Walk, facts.SpeedFeet)
-	s.Equal(memberActionsFromMonster(block.Actions), facts.Actions)
+	s.Equal(memberActionsOf(block.Actions), facts.Actions)
 	s.Equal("lowest-health", facts.Targeting, "the word the placement wrote onto the stat block")
 
 	block.Speed.Walk = 10

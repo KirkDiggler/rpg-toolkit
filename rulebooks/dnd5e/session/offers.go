@@ -377,18 +377,24 @@ func (m *Manager) compileOffersFor(
 		Cost: pricedProfile,
 	})
 	if err != nil {
-		why := Shortfall{
+		attackBlocker := blockedCompiledOffer(VerbAttack, TargetMember, Shortfall{
 			Reason: ShortfallUnreadable,
 			Text:   fmt.Errorf("member %q: %w: %v", member, ErrBadAttack, err).Error(),
+		})
+		if errors.Is(err, character.ErrConflictingOffers) {
+			// Two conditions each offer this swing a replacement: the pick is
+			// the player's and none was taken. That is a state to resolve, not
+			// an unreadable sheet, and the text names the competing offers.
+			conflict := fmt.Errorf("member %q: %w: %v", member, ErrConflictingOffers, err)
+			attackBlocker = blockedCompiledOffer(VerbAttack, TargetMember, Shortfall{
+				Reason: ShortfallUnavailable,
+				Text:   conflict.Error(),
+			})
+			attackBlocker.unreadable = conflict
 		}
 		return finishRequestedOffers(requested, append(
-			[]compiledOffer{
-				blockedCompiledOffer(VerbAttack, TargetMember, why),
-				move,
-				endTurn,
-				intimidate,
-				persuade,
-			}, activations...)...)
+			[]compiledOffer{attackBlocker, move, endTurn, intimidate, persuade},
+			activations...)...)
 	}
 	price.cost.Profile = combatActions.CloneSpendProfile(definition.Cost)
 
@@ -1062,6 +1068,15 @@ func selectCompiledOffer(offers []compiledOffer, verb Verb, id string) (compiled
 			return compiledOffer{}, ErrStaleDeclaration
 		}
 		selected = &offers[i]
+	}
+	if selected == nil {
+		// A blocker has no selector to echo, so a conflict is found by its
+		// verb: the attacker's competing offers refuse the verb by name.
+		for i := range offers {
+			if offers[i].declaration.Verb == verb && errors.Is(offers[i].unreadable, ErrConflictingOffers) {
+				return compiledOffer{}, offers[i].unreadable
+			}
+		}
 	}
 	if selected != nil && !selected.declaration.Available && selected.unreadable != nil {
 		return compiledOffer{}, selected.unreadable

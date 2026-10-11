@@ -49,8 +49,8 @@ func (aggregateRecordEveryoneStanding) Standing(
 	return nil, nil
 }
 
-// Assess mirrors Standing: nobody is ever down, so every asked member waits
-// in contact and conscious (the StandingWithParticipation bridge).
+// Assess answers that nobody is ever down, so every asked member waits
+// in contact and conscious.
 func (aggregateRecordEveryoneStanding) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
 	return assessmentFromDown(members, nil), nil
 }
@@ -162,12 +162,13 @@ func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      aggregateRecordEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Standing:   aggregateRecordEveryoneStanding{},
-			Initiative: aggregateRecordOrderAsGiven{},
-			Driver:     passDriver{},
+			Sheets:        encStandStill{},
+			Sight:         aggregateRecordEveryoneSees{},
+			Equipment:     encNoHandsObserved{},
+			Conditions:    encNoHandsObserved{},
+			Participation: aggregateRecordEveryoneStanding{},
+			Initiative:    aggregateRecordOrderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   encounter.RefusingStriker{},
 				Mover:     encounter.RefusingMover{},
@@ -260,12 +261,13 @@ func TestRecordProjectsCriticalStrikeTrace(t *testing.T) {
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      aggregateRecordEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Standing:   aggregateRecordEveryoneStanding{},
-			Initiative: aggregateRecordOrderAsGiven{},
-			Driver:     passDriver{},
+			Sheets:        encStandStill{},
+			Sight:         aggregateRecordEveryoneSees{},
+			Equipment:     encNoHandsObserved{},
+			Conditions:    encNoHandsObserved{},
+			Participation: aggregateRecordEveryoneStanding{},
+			Initiative:    aggregateRecordOrderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   encounter.RefusingStriker{},
 				Mover:     encounter.RefusingMover{},
@@ -628,7 +630,7 @@ func TestMoveRegenerationSkipsAttackTargetPreflight(t *testing.T) {
 		"alice": strikeFixtureFighter("alice"),
 		"bob":   strikeFixtureFighter("bob"),
 	}}
-	mgr, err := NewManager(&Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := NewManager(&Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: &scriptedDice{}, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters,
 		Characters: characters, Events: DiscardEvents{},
 	})
@@ -683,7 +685,7 @@ func TestInjectedTargetPreflightRefusalChangesAffordAndAttack(t *testing.T) {
 		"bob":   strikeFixtureFighter("bob"),
 	}}
 	roller := &scriptedDice{rolls: []int{17, 4}}
-	mgr, err := NewManager(&Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := NewManager(&Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: roller, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters,
 		Characters: characters, Events: DiscardEvents{},
 	})
@@ -774,7 +776,7 @@ func TestAttackVariantsShareOneTargetPreflight(t *testing.T) {
 		"alice": alice,
 		"bob":   strikeFixtureFighter("bob"),
 	}}
-	mgr, err := NewManager(&Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := NewManager(&Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: &scriptedDice{}, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters,
 		Characters: characters, Events: DiscardEvents{},
 	})
@@ -850,7 +852,7 @@ func TestStrikeRefusesAPersistedMonsterPriceBeforeRolling(t *testing.T) {
 	characters := &strikeCharacters{byID: map[string]*character.Data{"fighter": strikeFixtureFighter("fighter")}}
 	roller := &scriptedDice{rolls: []int{17, 4}}
 
-	mgr, err := NewManager(&Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := NewManager(&Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: roller, TurnDriver: Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: characters, Events: DiscardEvents{},
 	})

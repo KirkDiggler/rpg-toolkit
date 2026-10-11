@@ -10,6 +10,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
@@ -154,7 +155,21 @@ func instantiate(id string, ref string, actions []string, template *dungeonspec.
 		}
 	}
 
-	return built.ToData(), nil
+	data := built.ToData()
+
+	// The reactions every combatant has are written into the new sheet's
+	// stored conditions, so a monster holds them from creation and "what a
+	// member holds" is only ever the stored record. The list is the rulebook's
+	// ([conditions.FreeReactions]); the character draft writes the same one.
+	for _, reaction := range conditions.FreeReactions(id) {
+		blob, marshalErr := reaction.ToJSON()
+		if marshalErr != nil {
+			return nil, fmt.Errorf("%q: free reaction: %w: %v", ref, ErrBadNPC, marshalErr)
+		}
+		data.Conditions = append(data.Conditions, blob)
+	}
+
+	return data, nil
 }
 
 // arm replaces a freshly built monster's actions with the ones the author

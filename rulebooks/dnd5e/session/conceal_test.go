@@ -5,7 +5,7 @@ package session_test
 
 // conceal_test.go drives the seam's half of living-world slice 1
 // (rpg-toolkit#1375; ruled on rpg-project#350 and #351): the two supplied
-// capabilities, the per-member reads, the Search verb, the applied unlock
+// capabilities, the per-member reads, automatic discovery, the applied unlock
 // route, the reveal beats on the event surface, and per-recipient dense
 // numbering. The composition's own laws (never-authored yardstick, probe law,
 // move law, failed-equals-empty) are pinned in the encounter suite; what is
@@ -115,6 +115,10 @@ func (encNeverResolves) ResolveCheck(*encounter.ResolveCheckInput) (*encounter.R
 	panic("a fixture build resolved a check")
 }
 
+func (encNeverResolves) ResolveDiscoveryCheck(*encounter.ResolveCheckInput) (*encounter.ResolveCheckOutput, error) {
+	panic("a fixture build resolved a discovery check")
+}
+
 type encNeverWitnesses struct{}
 
 func (encNeverWitnesses) Perceivers(*encounter.PerceiversInput) ([]encounter.MemberID, error) {
@@ -198,6 +202,12 @@ func vaultConcealment() encounter.ConcealmentInput {
 		Doors:  []encounter.DoorID{"veil"},
 	}
 }
+
+// hallFloor and vaultFloor are the two rooms' cells, dungeon-absolute: what an
+// atlas holds when it holds the room, named so a map is asserted by what is on
+// it rather than by how many cells that comes to.
+func hallFloor() []spatial.Position  { return hexCells(rectCells(0, 0, 6, 6)) }
+func vaultFloor() []spatial.Position { return hexCells(rectCells(6, 0, 6, 6)) }
 
 // hexCells converts AUTHORED offset cells into the dungeon-absolute axial
 // frame every wire answer speaks — rectCells' output through the same
@@ -318,7 +328,7 @@ func (s *ConcealSuite) wire(driver session.TurnDriver, world scene, cast ...*cha
 	// the ones this scene's cast leaves out are given plain ones.
 	stockAuthoredPlayers(world, characters)
 	s.sessions, s.encounters, s.characters = sessions, encounters, characters
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: driver,
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
@@ -351,9 +361,10 @@ func (s *ConcealSuite) startBounded(world scene, cast ...*character.Data) {
 			Sheets:        encStandStill{},
 			Sight:         encEveryoneSees{},
 			Equipment:     encNoHandsObserved{},
+			Conditions:    encNoHandsObserved{},
 			Initiative:    encOrderAsGiven{},
 			Driver:        encPassDriver{},
-			Standing:      encEveryoneStanding{},
+			Participation: encEveryoneStanding{},
 			CheckResolver: encNeverResolves{},
 			Witness:       encNeverWitnesses{},
 			Actors: encounter.Actors{
@@ -408,7 +419,56 @@ func (s *ConcealSuite) assertDense(events []session.Event, who string) {
 	}
 }
 
-// TestSearchRevealsToTheSearcherAlone is the slice's headline scene: alice
+// veilPath is the walk from where concealedWorld seats alice to the cell
+// beside the veil, where the production discovery sweep rolls the vault's find
+// check. nichePath is the walk from the same cell to the one beside the
+// partly secret room's niche.
+var (
+	veilPath  = []spatial.Position{cell(2, 0), cell(3, 0), cell(4, 0), cell(5, 0)}
+	nichePath = []spatial.Position{cell(1, 2), cell(2, 2), cell(3, 2), cell(3, 3)}
+)
+
+// walkToFind walks a member along path to the cell beside a secret, where the
+// production discovery sweep rolls its find check. It is the one way a scene
+// earns a find: there is no verb that searches, so every reveal in these
+// suites is the one a member walking up to the secret gets. The member must
+// stand at (1,1), where the scenes seat alice.
+//
+// The finder keeps the find to herself first. Discovery is shared with the
+// party by default, so a find would reach bob and carol too; these scenes are
+// about what the finder alone is told, which is the private preference.
+//
+// On a turn clock the walk is the current Move offer, named by its selector.
+func walkToFind(
+	ctx context.Context, t fataler, mgr *session.Manager, member string, path []spatial.Position,
+) (*session.MoveOutput, error) {
+	if _, err := mgr.SetDiscoverySharing(ctx, &session.SetDiscoverySharingInput{
+		Session: "sess", Member: member, Sharing: false,
+	}); err != nil {
+		return nil, err
+	}
+	turn, err := mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: member})
+	if err != nil {
+		return nil, err
+	}
+	in := &session.MoveInput{Session: "sess", Member: member, Path: path}
+	if turn.Clock == session.ClockTurn {
+		in.DeclarationID = currentMoveID(t, mgr, "sess", member)
+	}
+	return mgr.Move(ctx, in)
+}
+
+func walkToTheVeil(
+	ctx context.Context, t fataler, mgr *session.Manager, member string,
+) (*session.MoveOutput, error) {
+	return walkToFind(ctx, t, mgr, member, veilPath)
+}
+
+func (s *ConcealSuite) find(ctx context.Context, member string) (*session.MoveOutput, error) {
+	return walkToFind(ctx, s.T(), s.mgr, member, veilPath)
+}
+
+// TestDiscoveryRevealsToTheFinderAlone is the slice's headline scene: alice
 // searches the hall, the vault appears for her alone, and nothing about the
 // verb — response, delivery, or any other member's stream — tells the table
 // a question was even asked.
@@ -422,12 +482,11 @@ func (s *ConcealSuite) assertDense(events []session.Event, who string) {
 // for alice yet" is not weakened here, it is RETIRED by the ruling. What has
 // to stay true is the half this test is named for, and it does: bob and carol
 // learn nothing at all.
-func (s *ConcealSuite) TestSearchRevealsToTheSearcherAlone() {
+func (s *ConcealSuite) TestDiscoveryRevealsToTheFinderAlone() {
 	ctx := context.Background()
 	s.startWith(concealedWorld(encounter.DoorIsClosed()), sharpEyed("alice"))
 
-	out, err := s.mgr.Search(ctx, &session.SearchInput{
-		Session: "sess", Member: "alice", Region: "hall"})
+	out, err := s.find(ctx, "alice")
 	s.Require().NoError(err)
 	s.Equal([]string{"encounter:sess", "session:sess"}, out.Saved.Written,
 		"the found fact rides the world; the advanced stream cursors ride the session")
@@ -485,12 +544,13 @@ func (s *ConcealSuite) TestSearchRevealsToTheSearcherAlone() {
 	// the secret.
 	found, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
-	s.Len(found.Cells, 72, "one noun, one moment: the finder has the vault's floor too")
+	s.ElementsMatch(append(hallFloor(), vaultFloor()...), found.Cells,
+		"one noun, one moment: the finder has the vault's floor too")
 	s.Require().Len(found.Doorways, 1, "and the doorway is on her map")
 
 	blind, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "bob"})
 	s.Require().NoError(err)
-	s.Len(blind.Cells, 36, "bob's map is the hall and nothing else")
+	s.ElementsMatch(hallFloor(), blind.Cells, "bob's map is the hall and nothing else")
 	s.Empty(blind.Doorways, "bob's map shows no doorway")
 	s.Len(blind.Boundaries, len(found.Boundaries)+1,
 		"encounter v0.45.1's boundary rule masks the unfound veil even where it borders "+
@@ -501,88 +561,6 @@ func (s *ConcealSuite) TestSearchRevealsToTheSearcherAlone() {
 	// own cells to what bob can see is what she can see.
 	s.Equal(len(blind.Cells)+len(body.Cells), len(found.Cells),
 		"the reveal beat carries precisely what the masquerade was withholding")
-}
-
-// TestAFailedSearchAndNothingToFindAreIdentical carries failed-equals-empty
-// across the seam: same response, same save report, same silent stream.
-func (s *ConcealSuite) TestAFailedSearchAndNothingToFindAreIdentical() {
-	ctx := context.Background()
-
-	// Each stream is the search's own: the launch's beats describe two
-	// different floors, and are not what this compares.
-	s.startWith(concealedWorld(encounter.DoorIsClosed()), dullEyed("bob"))
-	s.stream.published = nil
-	failed, err := s.mgr.Search(ctx, &session.SearchInput{
-		Session: "sess", Member: "bob", Region: "hall"})
-	s.Require().NoError(err)
-	failedStream := append([]session.Event(nil), s.stream.published...)
-
-	s.startWith(plainHallWorld(), dullEyed("bob"))
-	s.stream.published = nil
-	empty, err := s.mgr.Search(ctx, &session.SearchInput{
-		Session: "sess", Member: "bob", Region: "hall"})
-	s.Require().NoError(err)
-
-	s.Equal(empty, failed, "the whole output, compared as a value: a failed roll and a "+
-		"hall with nothing in it answer with the same bytes")
-
-	// AND NEITHER SAYS ANYTHING THE OTHER DOES NOT. This used to assert both
-	// streams were EMPTY, which stopped being the statement the moment a
-	// Search began to spend a round of the world: both now publish that round's
-	// tick, to everybody (rpg-project#465 §5). Emptiness was never the property
-	// under test — indistinguishability was — so the two streams are compared
-	// to each other, which is strictly the stronger claim and the one the
-	// test's name makes.
-	s.Equal(failedStream, s.stream.published,
-		"a failed roll and a hall with nothing in it publish the same beats to the same people")
-	for _, who := range []string{"alice", "bob", "carol"} {
-		s.Empty(eventsOfKind(s.stream.published, who, session.EventConcealmentRevealed),
-			"%s learned about no secret, because there was none to learn about", who)
-	}
-}
-
-// TestSearchIsPresenceEnforced: the region searched is the one the searcher
-// stands in, and a region that does not exist refuses IDENTICALLY — a
-// distinct answer would let a guessed ID probe for hidden rooms.
-func (s *ConcealSuite) TestSearchIsPresenceEnforced() {
-	ctx := context.Background()
-	s.startWith(concealedWorld(encounter.DoorIsClosed()), sharpEyed("alice"))
-
-	_, elsewhere := s.mgr.Search(ctx, &session.SearchInput{
-		Session: "sess", Member: "alice", Region: "vault"})
-	s.Require().ErrorIs(elsewhere, session.ErrElsewhere)
-
-	_, phantom := s.mgr.Search(ctx, &session.SearchInput{
-		Session: "sess", Member: "alice", Region: "no-such-place"})
-	s.Require().ErrorIs(phantom, session.ErrElsewhere)
-}
-
-// TestASearcherWithNoSheetIsRefusedBeforeTheRoomIsLookedAt: characters are
-// the only searchers in v1, and the refusal must not vary with what the
-// region holds — a monster refused only in rooms with something to find
-// would be an oracle. Same member, a room with a secret and a room without:
-// byte-identical refusals.
-func (s *ConcealSuite) TestASearcherWithNoSheetIsRefusedBeforeTheRoomIsLookedAt() {
-	ctx := context.Background()
-
-	withSkeleton := func(sc scene, col, row int) scene {
-		sc.Monsters = append(sc.Monsters, monsterAt("skel-1", refs.Monsters.Skeleton().String(), col, row))
-		return sc
-	}
-
-	// Placed INSIDE the vault: out of everyone's sight, so no fight forms.
-	s.startWith(withSkeleton(concealedWorld(encounter.DoorIsClosed()), 9, 4))
-	_, secret := s.mgr.Search(ctx, &session.SearchInput{
-		Session: "sess", Member: "skel-1", Region: "hall"})
-	s.Require().ErrorIs(secret, session.ErrNoCharacter)
-
-	s.startWith(withSkeleton(plainHallWorld(), 4, 4))
-	_, plain := s.mgr.Search(ctx, &session.SearchInput{
-		Session: "sess", Member: "skel-1", Region: "hall"})
-	s.Require().ErrorIs(plain, session.ErrNoCharacter)
-
-	s.Equal(plain.Error(), secret.Error(),
-		"the refusal is decided by the sheet, never by the room's contents")
 }
 
 // TestAFightFormsOnAConcealedDungeon is the tripwire's promised replacement
@@ -611,8 +589,7 @@ func (s *ConcealSuite) TestAFightFormsOnAConcealedDungeon() {
 	// The never-authored answer bob is given on this world with no fight in
 	// it: the same world, the same find, nobody hostile on the board.
 	s.startWith(concealedWorld(encounter.DoorIsClosed()), sharpEyed("alice"), dullEyed("bob"))
-	_, err := s.mgr.Search(ctx, &session.SearchInput{
-		Session: "sess", Member: "alice", Region: "hall"})
+	_, err := s.find(ctx, "alice")
 	s.Require().NoError(err)
 	before, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "bob"})
 	s.Require().NoError(err)
@@ -625,8 +602,7 @@ func (s *ConcealSuite) TestAFightFormsOnAConcealedDungeon() {
 
 	// alice finds the veil inside the formed fight: the world under it holds
 	// a detection fact only she may be shown.
-	_, err = s.mgr.Search(ctx, &session.SearchInput{
-		Session: "sess", Member: "alice", Region: "hall"})
+	_, err = s.find(ctx, "alice")
 	s.Require().NoError(err)
 
 	var started []session.Event
@@ -652,7 +628,7 @@ func (s *ConcealSuite) TestAFightFormsOnAConcealedDungeon() {
 	// him before the fight existed.
 	during, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "bob"})
 	s.Require().NoError(err)
-	s.Len(during.Cells, 36, "the vault still does not exist for bob")
+	s.ElementsMatch(hallFloor(), during.Cells, "the vault still does not exist for bob")
 	s.Empty(during.Doorways, "and no doorway leads to it")
 	s.Equal(before, during, "combat taught a non-knower nothing: projection unchanged, byte for byte")
 }
@@ -713,7 +689,7 @@ func (s *ConcealSuite) TestTheFightOnAConcealedDungeonIsFoughtIn() {
 	// drives the striker swings at the member standing next to it rather than
 	// choosing a bow target across the hall.
 	sc := concealedWorld(encounter.DoorIsClosed())
-	sc.Monsters = []dungeonspec.MonsterPlacement{monsterAt("zed-1", refs.Monsters.Zombie().String(), 1, 2)}
+	sc.Monsters = []dungeonspec.MonsterPlacement{monsterAt("zed-1", refs.Monsters.Zombie().String(), 5, 1)}
 	launched := s.startDriven(session.Driver(), sc,
 		armedSearcher("alice"), armedFighter("bob"), dullEyed("carol"))
 	s.Require().Len(launched.Formed, 1, "a monster in plain view and in reach forms the fight at launch")
@@ -721,8 +697,7 @@ func (s *ConcealSuite) TestTheFightOnAConcealedDungeonIsFoughtIn() {
 
 	// alice finds the veil inside the fight, so every reload below replays a
 	// world carrying a real detection fact rather than a virgin blob.
-	_, err := s.mgr.Search(ctx, &session.SearchInput{
-		Session: "sess", Member: "alice", Region: "hall"})
+	_, err := s.find(ctx, "alice")
 	s.Require().NoError(err)
 
 	before, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "bob"})
@@ -792,7 +767,7 @@ func (s *ConcealSuite) TestTheFightOnAConcealedDungeonIsFoughtIn() {
 	// given before any of this happened.
 	after, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "bob"})
 	s.Require().NoError(err)
-	s.Len(after.Cells, 36, "the vault still does not exist for bob")
+	s.ElementsMatch(hallFloor(), after.Cells, "the vault still does not exist for bob")
 	s.Empty(after.Doorways, "and no doorway leads to it")
 	s.Equal(before, after,
 		"a fought round taught a non-knower nothing: projection unchanged, byte for byte")
@@ -802,11 +777,11 @@ func (s *ConcealSuite) TestTheFightOnAConcealedDungeonIsFoughtIn() {
 // holding THROUGH THE SEAM, end to end: best = the best chance of success —
 // modifier against the route's own DC — never the biggest modifier. mira's
 // +5 perception loses to DC 16 while her bare +0 investigation beats DC 10;
-// a resolver that grabbed the big number would fail this search. The rule
+// a resolver that grabbed the big number would fail this check. The rule
 // itself lives behind resolution's door now (resolution v0.27.0's MakeCheck,
 // toolkit#1380 — its own suite pins the selection); what this scene owns is
 // that the seam hands the whole authored list down and the verdict comes
-// back through Search unchanged.
+// back through the discovery check unchanged.
 func (s *ConcealSuite) TestTheResolverAppliesTheBestListedApproach() {
 	ctx := context.Background()
 
@@ -846,8 +821,7 @@ func (s *ConcealSuite) TestTheResolverAppliesTheBestListedApproach() {
 	}
 	s.startWith(world, mira)
 
-	_, err := s.mgr.Search(ctx, &session.SearchInput{
-		Session: "sess", Member: "mira", Region: "hall"})
+	_, err := s.find(ctx, "mira")
 	s.Require().NoError(err)
 
 	events := eventsOfKind(s.stream.published, "mira", session.EventConcealmentRevealed)
@@ -916,7 +890,7 @@ func (s *ConcealSuite) TestTheProbeLawHoldsAtTheSeam() {
 	characters := newFakeCharacters(sharpEyed("alice"), dullEyed("bob"))
 	stockAuthoredPlayers(world, characters)
 	s.characters = characters
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{calls: &rolled}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
@@ -942,16 +916,12 @@ func (s *ConcealSuite) TestTheProbeLawHoldsAtTheSeam() {
 
 	// The knower's answer is the real door: alice finds it, and the same
 	// verb that refused bob now names the lock's own refusal path for her.
-	_, err = s.mgr.Search(ctx, &session.SearchInput{Session: "sess", Member: "alice", Region: "hall"})
+	_, err = s.find(ctx, "alice")
 	s.Require().NoError(err)
-	// Up to the lock first: hands pick locks, and one across the hall is not
-	// a lock this attempt ever touched (rpg-toolkit#1856, arriving with
-	// encounter v0.97.1). The seat moves; the claim does not — what this
-	// scene pins is WHOSE knowledge the lock is read through.
-	_, err = s.mgr.Move(ctx, &session.MoveInput{
-		Session: "sess", Member: "alice",
-		Path: []spatial.Position{hexCell(2, 0), hexCell(3, 0), hexCell(4, 0), hexCell(5, 0)}})
-	s.Require().NoError(err)
+	// The find walked her up to the lock: hands pick locks, and one across
+	// the hall is not a lock this attempt ever touched (rpg-toolkit#1856,
+	// arriving with encounter v0.97.1). What this scene pins is WHOSE
+	// knowledge the lock is read through.
 	out, err := s.mgr.Unlock(ctx, &session.UnlockInput{Session: "sess", Member: "alice", Door: "veil"})
 	s.Require().NoError(err)
 	s.True(out.Beaten, "flat 10 + 2 DEX meets DC 12 — the finder rolls the real lock")
@@ -997,18 +967,10 @@ func (s *ConcealSuite) TestOpeningRevealsToThePerceiversThroughTheOneSeam() {
 	s.startWith(concealedWorld(encounter.DoorIsClosed(), carolsCurtain()...),
 		sharpEyed("alice"), dullEyed("bob"), dullEyed("carol"))
 
-	_, err := s.mgr.Search(ctx, &session.SearchInput{Session: "sess", Member: "alice", Region: "hall"})
+	_, err := s.find(ctx, "alice")
 	s.Require().NoError(err)
-	// Up to the door first: a door opens only from beside it
-	// (rpg-toolkit#1856, arriving with encounter v0.97.1). The walk is
-	// published before the reset below, so this scene still starts at the
-	// swing — who learns from it is what is pinned, not where the hand that
-	// swung it stood.
-	_, err = s.mgr.Move(ctx, &session.MoveInput{
-		Session: "sess", Member: "alice",
-		Path: []spatial.Position{hexCell(2, 0), hexCell(3, 0), hexCell(4, 0), hexCell(5, 0)}})
-	s.Require().NoError(err)
-
+	// The find walked her up to the door, and a door opens only from beside
+	// it (rpg-toolkit#1856, arriving with encounter v0.97.1).
 	s.stream.published = nil
 	out, err := s.mgr.OpenDoor(ctx, &session.OpenDoorInput{Session: "sess", Member: "alice", Door: "veil"})
 	s.Require().NoError(err)
@@ -1039,7 +1001,7 @@ func (s *ConcealSuite) TestOpeningRevealsToThePerceiversThroughTheOneSeam() {
 	revealed, ok := bob[1].Body.(session.ConcealmentRevealedBody)
 	s.Require().True(ok)
 	s.Equal(vaultSecret, revealed.Concealment)
-	s.Len(revealed.Cells, 36, "the patch carries the secret's whole floor — 6x6")
+	s.ElementsMatch(vaultFloor(), revealed.Cells, "the patch carries the secret's whole floor")
 	s.NotEmpty(revealed.Boundaries, "with every boundary touching its cells, border walls included")
 	s.Require().Len(revealed.Doors, 1)
 	s.Equal("open", revealed.Doors[0].State,
@@ -1058,7 +1020,7 @@ func (s *ConcealSuite) TestOpeningRevealsToThePerceiversThroughTheOneSeam() {
 
 	blind, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "carol"})
 	s.Require().NoError(err)
-	s.Len(blind.Cells, 36, "carol's map still holds the hall alone")
+	s.ElementsMatch(hallFloor(), blind.Cells, "carol's map still holds the hall alone")
 
 	// She walks up; her own verb's sight refresh is where present state
 	// reaches her — the late perceiver needs no special case.
@@ -1077,7 +1039,7 @@ func (s *ConcealSuite) TestOpeningRevealsToThePerceiversThroughTheOneSeam() {
 
 	after, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "carol"})
 	s.Require().NoError(err)
-	s.Len(after.Cells, 72, "and her map holds both rooms now")
+	s.ElementsMatch(append(hallFloor(), vaultFloor()...), after.Cells, "and her map holds both rooms now")
 }
 
 // TestAJoinIntoHiddenSpaceStaysHidden covers the first-crosser branch the
@@ -1106,22 +1068,29 @@ func (s *ConcealSuite) TestAJoinIntoHiddenSpaceStaysHidden() {
 	// numbered densely from 1, because nothing was ever delivered to him
 	// before.
 	david := eventsFor(s.stream.published, "david")
-	s.Require().Len(david, 4)
-	s.Equal([]session.EventKind{session.EventJoined, session.EventRoomRevealed, session.EventConcealmentRevealed, session.EventSighted}, recipientKinds(david, "david"))
+	// The sweep that finds the vault for him also rolls his own find check on
+	// arrival, and that roll is his to be told: a discovery_checked beat, his
+	// alone, between the join and the reveal.
+	s.Equal([]session.EventKind{
+		session.EventJoined, session.EventDiscoveryChecked, session.EventRoomRevealed,
+		session.EventConcealmentRevealed, session.EventSighted,
+	}, recipientKinds(david, "david"))
 	s.Equal(session.EventJoined, david[0].Kind)
 	s.Equal(uint64(1), david[0].Seq, "the joiner's stream starts at 1 — their own numbering, not the record's")
-	s.Equal(session.EventConcealmentRevealed, david[2].Kind)
-	s.Equal(uint64(3), david[2].Seq)
+	s.Equal(session.EventConcealmentRevealed, david[3].Kind)
+	s.Equal(uint64(4), david[3].Seq)
 	s.Equal(uint64(1), out.Seq, "the verb's own Seq speaks the actor's numbering too")
 
 	// The hall members hear that DAVID JOINED — membership is a table-level
 	// fact and every non-detection beat stays full-data until v1.0 (the
 	// standing ruling) — but the beat carries no position, and nothing
-	// tells them WHERE he appeared: no reveal, no discovery, no hole.
+	// tells them WHERE he appeared: no reveal, no hole. Discovery is shared
+	// with the party by default, so they also hear that he rolled a find
+	// check, a beat that names neither a cell nor what he stands in.
 	for _, name := range []string{"alice", "bob"} {
 		heard := eventsFor(s.stream.published, name)
-		s.Require().Len(heard, 1, "%s hears the membership beat and nothing else", name)
-		s.Equal(session.EventJoined, heard[0].Kind)
+		s.Equal([]session.EventKind{session.EventJoined, session.EventDiscoveryChecked},
+			recipientKinds(heard, name), "%s hears the membership beat and his find check, nothing else", name)
 		body, ok := heard[0].Body.(session.JoinedBody)
 		s.Require().True(ok)
 		s.Equal(session.JoinedBody{Member: "david"}, body,
@@ -1137,12 +1106,12 @@ func (s *ConcealSuite) TestAJoinIntoHiddenSpaceStaysHidden() {
 	// needs its own discovery rather than arriving merely because it is not secret.
 	occupant, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "david"})
 	s.Require().NoError(err)
-	s.Len(occupant.Cells, 36, "the occupant has not discovered the ordinary hall")
+	s.ElementsMatch(vaultFloor(), occupant.Cells, "the occupant has not discovered the ordinary hall")
 	s.Len(occupant.Doorways, 1, "one noun: standing in the vault is knowing the vault")
 
 	stranger, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "bob"})
 	s.Require().NoError(err)
-	s.Len(stranger.Cells, 36, "the hall members' maps are unchanged")
+	s.ElementsMatch(hallFloor(), stranger.Cells, "the hall members' maps are unchanged")
 }
 
 // TestPerRecipientNumberingSurvivesLoadAndTrim is the numbering design's
@@ -1158,7 +1127,7 @@ func (s *ConcealSuite) TestPerRecipientNumberingSurvivesLoadAndTrim() {
 
 	// The desynchroniser: alice's search delivers to alice alone, putting
 	// her counter one ahead of bob's for the rest of the session.
-	_, err := s.mgr.Search(ctx, &session.SearchInput{Session: "sess", Member: "alice", Region: "hall"})
+	_, err := s.find(ctx, "alice")
 	s.Require().NoError(err)
 
 	shuttle := func(mgr *session.Manager, times int) {
@@ -1177,7 +1146,7 @@ func (s *ConcealSuite) TestPerRecipientNumberingSurvivesLoadAndTrim() {
 	// A different process picks the session up: same repositories, fresh
 	// Manager, fresh stream. Numbering must continue, not restart.
 	live := &fakeStream{}
-	mgr2, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr2, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: live,
@@ -1321,7 +1290,7 @@ func (s *ConcealSuite) TestOneVerbBiggerThanTheRetentionWindowCommitsWhole() {
 	// And the count survives a load that happened entirely after the
 	// single-verb trim: a fresh Manager continues bob's stream exactly.
 	live := &fakeStream{}
-	mgr2, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr2, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: live,
@@ -1622,12 +1591,11 @@ func (s *ConcealSuite) TestAPartlySecretRoomComesBackWhole() {
 	s.Require().NoError(err)
 	s.Require().Len(before.Regions, 1, "one room, whether or not part of it is a secret")
 	s.Equal("hall", before.Regions[0].ID)
-	s.Len(before.Regions[0].Cells, 33,
+	s.NotEmpty(before.Regions[0].Cells,
 		"the entry is REBUILT without the hidden cells rather than withheld — a niche is "+
 			"not a reason to stop telling somebody which room they are standing in")
 
-	_, err = s.mgr.Search(ctx, &session.SearchInput{
-		Session: "sess", Member: "alice", Region: "hall"})
+	_, err = walkToFind(ctx, s.T(), s.mgr, "alice", nichePath)
 	s.Require().NoError(err)
 
 	found := eventsOfKind(s.stream.published, "alice", session.EventConcealmentRevealed)
@@ -1635,13 +1603,15 @@ func (s *ConcealSuite) TestAPartlySecretRoomComesBackWhole() {
 	body, ok := found[0].Body.(session.ConcealmentRevealedBody)
 	s.Require().True(ok)
 
-	s.Len(body.Cells, 3, "the beat's cells are what was withheld: the niche and nothing else")
+	for _, withheld := range body.Cells {
+		s.NotContains(before.Regions[0].Cells, withheld, "the beat's cells are what was withheld")
+	}
 
 	s.Require().Len(body.Regions, 1, "and the one room it was cut out of")
 	s.Equal("hall", body.Regions[0].ID)
-	s.Len(body.Regions[0].Cells, 36,
+	s.ElementsMatch(append(append([]spatial.Position{}, before.Regions[0].Cells...), body.Cells...), body.Regions[0].Cells,
 		"carried WHOLE — a replacement for the trim, not a second copy of the cells: "+
-			"33 the finder already had plus the 3 she just learned")
+			"the cells the finder already had plus the ones she just learned")
 	s.Equal(before.Regions[0].Archetype, body.Regions[0].Archetype,
 		"with the per-area facts a client dresses the room with")
 	s.Equal(before.Regions[0].Lighting, body.Regions[0].Lighting)
@@ -1658,7 +1628,7 @@ func (s *ConcealSuite) TestAPartlySecretRoomComesBackWhole() {
 	still, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "bob"})
 	s.Require().NoError(err)
 	s.Require().Len(still.Regions, 1)
-	s.Len(still.Regions[0].Cells, 33, "a secret found is found by its finder alone")
+	s.Equal(before.Regions[0].Cells, still.Regions[0].Cells, "a secret found is found by its finder alone")
 }
 
 // TestAGuidanceDieHeldDuringASearchIsKept: a Search's find check runs through
@@ -1680,7 +1650,7 @@ func (s *ConcealSuite) TestAGuidanceDieHeldDuringASearchIsKept() {
 	stored.Conditions = append(stored.Conditions, raw)
 	s.Require().NoError(s.characters.SaveCharacter(ctx, stored))
 
-	_, err = s.mgr.Search(ctx, &session.SearchInput{Session: "sess", Member: "alice", Region: "hall"})
+	_, err = s.find(ctx, "alice")
 	s.Require().NoError(err, "the held die does not stop the search")
 	s.Len(eventsOfKind(s.stream.published, "alice", session.EventConcealmentRevealed), 1, "the search finished and found the vault")
 

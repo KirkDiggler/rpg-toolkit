@@ -12,9 +12,8 @@ import (
 
 // loot.go is the Loot verb at the seam (rpg-toolkit#1496; ruled on
 // rpg-project#368, design §4.2): looter and body in, the composition's Loot
-// does the rest. It is search.go's shape, and for search.go's reason —
-// everything that keeps a secret secret lives at the rule half, and this file
-// adds only what the seam adds to every verb.
+// does the rest. Everything that keeps a secret secret lives at the rule
+// half, and this file adds only what the seam adds to every verb.
 //
 // # The answer never leaks the question (design P3)
 //
@@ -22,12 +21,12 @@ import (
 // transfers nothing, and this verb's response is IDENTICAL either way: no
 // found list, no transferred count, no flag. What the looter gained reaches
 // them the way all world change reaches anybody — as their own
-// recipient-scoped EventConcealmentRevealed, the same beat a successful search
-// produces (design P4) — and everyone present hears EventLooted, which names
+// recipient-scoped EventConcealmentRevealed, the same beat a successful
+// discovery produces (design P4) — and everyone present hears EventLooted, which names
 // looter and body and nothing of what moved.
 //
 // That is why there is no Seq here and no Found. LootOutput is
-// [SearchOutput]'s two host-facing reports and nothing else.
+// the two host-facing reports and nothing else.
 
 // LootInput declares looting one downed member.
 type LootInput struct {
@@ -58,9 +57,8 @@ type LootInput struct {
 // LootOutput acknowledges that the loot happened, and deliberately nothing
 // about what moved.
 //
-// Two host-facing reports, exactly [SearchOutput]'s: the composition's own
-// LootOutput is ack-only for symmetry with Search (design Q1, closed at wave
-// 0), so there is nothing else here to carry and nothing this seam could add
+// Two host-facing reports: the composition's own LootOutput is ack-only
+// (design Q1, closed at wave 0), so there is nothing else here to carry and nothing this seam could add
 // without inventing a fact. A half-failed save is still an error with a
 // report — Saved says what landed — but a body that carried the run's only
 // secret and one that carried nothing answer with the same bytes.
@@ -76,8 +74,8 @@ type LootOutput struct {
 //
 // Load-act-save like every verb, and the act is one call: the composition
 // appends the `looted` beat to everyone present, then moves each holding by
-// what its kind means — intel is COPIED, through the reveal path search
-// already owns, with a DOOR_REVEALED to the looter alone; a prop is MOVED, so
+// what its kind means — intel is COPIED, through the reveal path
+// discovery already owns, with a DOOR_REVEALED to the looter alone; a prop is MOVED, so
 // the looter now has it and the body does not.
 //
 // There is deliberately no downed gate on the LOOTER and no check on the

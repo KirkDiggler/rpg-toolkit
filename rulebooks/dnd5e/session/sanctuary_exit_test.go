@@ -64,7 +64,7 @@ func (s *CastSuite) TestAWardEndsWithTheClericWhoLeft() {
 	}
 
 	// From here the skeleton swings at the fighter, who is no longer warded.
-	s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(),
+	s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: swingsAt{target: "warded"},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream,
 	})

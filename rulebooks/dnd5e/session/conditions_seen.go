@@ -24,10 +24,9 @@ import (
 // refresh and never reads it live. Every condition a member holds is reported;
 // nothing is filtered as imperceptible (R16).
 
-// COMPILE-TIME PROOF that the seam satisfies the composition's whole
-// equipment contract, conditions included: an encounter refuses an Equipment
-// that cannot answer them.
-var _ encounter.EquipmentWithConditions = equipmentSeam{}
+// COMPILE-TIME PROOF that the seam answers the composition's Conditions
+// capability, which an encounter requires beside Equipment.
+var _ encounter.Conditions = equipmentSeam{}
 
 // Conditions reports which conditions each of the given members holds, as the
 // (ref, source) address each one names itself by, in persisted sheet order.

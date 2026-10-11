@@ -87,7 +87,7 @@ func (m *Manager) stageCheck(ctx context.Context, scope *writeScope, role, membe
 // checkSeam is this package's [encounter.CheckResolver], bound to the live
 // write scope the way [strikerSeam] is and for the same chicken-and-egg
 // reason: LoadEncounter needs the capability to construct the very
-// *encounter.Encounter whose Search later consults it, so the seam reads
+// *encounter.Encounter whose concealment sweep later consults it, so the seam reads
 // scope AT CALL TIME, well after openForWrite has settled the fields.
 type checkSeam struct {
 	m     *Manager
@@ -105,6 +105,37 @@ func (c checkSeam) ResolveCheck(in *encounter.ResolveCheckInput) (*encounter.Res
 		return nil, fmt.Errorf("resolve check: %w", ErrNilInput)
 	}
 	return c.m.resolveStagedCheck(c.scope, string(in.Member), in.Approaches)
+}
+
+// ResolveDiscoveryCheck resolves one automatic attempt, made when a member
+// comes near hidden content, through the same [Manager.resolveStagedCheck]
+// as ResolveCheck. The only difference is the sheet it reads: the staged
+// record precedes the verb's own writes, so it is refreshed first.
+func (c checkSeam) ResolveDiscoveryCheck(in *encounter.ResolveCheckInput) (*encounter.ResolveCheckOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("resolve discovery check: %w", ErrNilInput)
+	}
+	staged := c.scope.checks[string(in.Member)]
+	if staged == nil {
+		return nil, ErrNoSheet
+	}
+	if c.scope.walker != nil && c.scope.walker.ID == string(in.Member) {
+		staged.data = c.scope.walker
+	} else {
+		// Staging precedes the verb's own writes, not only other requests.
+		// Join, for example, stages the incoming member and then persists a
+		// LongRest before placement triggers this check. Reusing that staged
+		// record would reattach pre-rest effects (such as Rage). The session
+		// guard does not make the old record current after an in-verb save.
+		// The walker above is the exception: its unpaid/in-flight movement
+		// state lives on the scope and must not be replaced from storage.
+		fresh, err := c.m.sheetsFor(nil).load(staged.ctx, "discovery observer", string(in.Member))
+		if err != nil {
+			return nil, err
+		}
+		staged.data = fresh
+	}
+	return c.ResolveCheck(in)
 }
 
 // stagedCheckOutcome is one check's result on the way out of resolution,
@@ -141,8 +172,8 @@ type stagedCheckOutcome struct {
 // ([resolution.CheckInput.Untrained], rpg-project#457 R2). It is a PARAMETER
 // rather than a property of this function because it is a property of the
 // VERB: the rule is scoped to skill verbs, and the two callers that pass true
-// (Intimidate, Persuade) are the two the ruling names. Unlock and Search pass
-// false and roll the 2014 letter.
+// (Intimidate, Persuade) are the two the ruling names. Unlock and the
+// discovery sweep pass false and roll the 2014 letter.
 func (m *Manager) resolveStagedCheckPoseable(
 	scope *writeScope, member string, approaches []encounter.CheckApproach, untrained bool,
 ) (*stagedCheckOutcome, error) {
@@ -234,7 +265,7 @@ func requirePosedCalculation(verb, subject string, calculation *dnd5eEvents.Roll
 }
 
 // resolveStagedCheck is [checkSeam]'s [encounter.CheckResolver] entry —
-// Search's find checks land here. [encounter.CheckResolver]'s own signature
+// discovery's find checks land here. [encounter.CheckResolver]'s own signature
 // has no way to carry a pose (that seam is a different module and this
 // slice does not touch it; see docs/ideas/cleric/plan.md), so a checker
 // holding an offer here has it silently KEPT: this seam asks
@@ -245,7 +276,7 @@ func requirePosedCalculation(verb, subject string, calculation *dnd5eEvents.Roll
 func (m *Manager) resolveStagedCheck(
 	scope *writeScope, member string, approaches []encounter.CheckApproach,
 ) (*encounter.ResolveCheckOutput, error) {
-	// FALSE: a find check is not a skill verb. Search's seam resolves
+	// FALSE: a find check is not a skill verb. The discovery seam resolves
 	// Perception and Investigation routes that every character may attempt
 	// as the book wrote them (rpg-project#457 R2's scope).
 	outcome, err := m.resolveStagedCheckPoseable(scope, member, approaches, false)

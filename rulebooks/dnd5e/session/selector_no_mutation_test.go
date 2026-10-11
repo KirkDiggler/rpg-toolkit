@@ -43,7 +43,7 @@ func newSelectorFixture(t *testing.T, world scene, order ...string) *selectorFix
 		stream:     &fakeStream{},
 		roller:     &sequenceDice{rolls: []int{15, 5}},
 	}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: f.roller, TurnDriver: session.Pass{}, Sessions: f.sessions, Encounters: f.encounters,
 		Characters: f.characters, Events: f.stream,
 	})
@@ -244,18 +244,20 @@ func (d *actorLoadCheckingDice) Roll(_ context.Context, _ int) (int, error) {
 }
 
 // compileLoadCounting counts the store reads the verb's own compile and cast
-// make, apart from the sheet seam's (sheets.go). The seam re-reads a sheet at
-// every consult on purpose — how far a member sees, how fast it walks, asked
-// when the world uses either and never cached (rpg-project#538) — so its
-// reads are not the strict load this test pins. Told apart by the caller, the
-// one honest way a repository can tell who asked.
+// make, apart from the sheet seam's (sheets.go) and the discovery staging's.
+// The seam re-reads a sheet at every consult on purpose — how far a member
+// sees, how fast it walks, asked when the world uses either and never cached
+// (rpg-project#538) — and opening a write verb stages each seated player's
+// record once so discovery can roll for them, so neither is the strict load
+// this test pins. Told apart by the caller, the one honest way a repository
+// can tell who asked.
 type compileLoadCounting struct {
 	*fakeCharacters
 	compiled map[string]int
 }
 
 func (c *compileLoadCounting) GetCharacter(ctx context.Context, id string) (*character.Data, error) {
-	if !calledFromSheetSeam() {
+	if !calledFromSheetSeam() && !calledFromStaging() {
 		c.compiled[id]++
 	}
 	return c.fakeCharacters.GetCharacter(ctx, id)
@@ -264,12 +266,19 @@ func (c *compileLoadCounting) GetCharacter(ctx context.Context, id string) (*cha
 // calledFromSheetSeam reports whether the sheet seam (sheets.go) is on the
 // caller's stack: the one honest way a test repository can tell the seam's
 // per-consult reads apart from every other reader.
-func calledFromSheetSeam() bool {
+func calledFromSheetSeam() bool { return onStack("session.sheetSeam.") }
+
+// calledFromStaging reports whether the discovery staging that opens a write
+// verb (stageCheck) is on the caller's stack. Kept apart from the seam on
+// purpose: a read may reach the seam and must never stage.
+func calledFromStaging() bool { return onStack("session.(*Manager).stageCheck") }
+
+func onStack(function string) bool {
 	pcs := make([]uintptr, 64)
-	frames := runtime.CallersFrames(pcs[:runtime.Callers(2, pcs)])
+	frames := runtime.CallersFrames(pcs[:runtime.Callers(3, pcs)])
 	for {
 		frame, more := frames.Next()
-		if strings.Contains(frame.Function, "session.sheetSeam.") {
+		if strings.Contains(frame.Function, function) {
 			return true
 		}
 		if !more {
@@ -285,7 +294,7 @@ func TestSuccessfulTurnAttackLoadsActorOnceBeforeExecution(t *testing.T) {
 		compiled:       map[string]int{},
 	}
 	dice := &actorLoadCheckingDice{t: t, characters: characters, rolls: []int{15, 5}}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: dice, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
 		Characters: characters, Events: session.DiscardEvents{},
 	})
