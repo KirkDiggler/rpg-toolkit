@@ -131,6 +131,12 @@ func (c *CommandedCondition) CasterID() string { return c.casterID }
 // id. The layer that drives the compelled turn is what reads it.
 func (c *CommandedCondition) Word() string { return c.word }
 
+// InstanceDetail returns the word this instance was commanded, the same string
+// Word returns, so a loaded instance and a built one say the same thing.
+func (c *CommandedCondition) InstanceDetail() string { return c.word }
+
+var _ InstanceDetailProvider = (*CommandedCondition)(nil)
+
 // MemberID returns the commanded creature.
 func (c *CommandedCondition) MemberID() string { return c.memberID }
 
