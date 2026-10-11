@@ -104,6 +104,11 @@ func newRosterFixture(t *testing.T) *rosterFixture {
 
 func rosterWorld(t *testing.T) *encounter.EncounterData {
 	t.Helper()
+	return rosterWorldWithAppearance(t, "", encEveryoneSees{})
+}
+
+func rosterWorldWithAppearance(t *testing.T, appearanceRef string, sight encounter.Sight) *encounter.EncounterData {
+	t.Helper()
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  pointyCanvas(),
@@ -112,14 +117,14 @@ func rosterWorld(t *testing.T) *encounter.EncounterData {
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Name: "Authored Alice", Position: spatial.Position{X: 0, Y: 0}},
 			{ID: "bob", Kind: encounter.KindPlayer, Name: "Authored Bob", Position: spatial.Position{X: 1, Y: 0}},
-			{ID: "skel-1", Kind: encounter.KindMonster, Name: "Authored Skeleton", Position: spatial.Position{X: 2, Y: 0}},
+			{ID: "skel-1", Kind: encounter.KindMonster, Name: "Authored Skeleton", Position: spatial.Position{X: 2, Y: 0}, AppearanceRef: appearanceRef},
 			{ID: "vendor-1", Kind: encounter.KindWorld, Name: "Vendor", Position: spatial.Position{X: 3, Y: 0}},
 		},
 		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
 		Capabilities: encounter.Capabilities{
 			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
+			Sight:      sight,
 			Equipment:  encNoHandsObserved{},
 			Initiative: encOrderAsGiven{},
 			Driver:     encPassDriver{},
@@ -499,7 +504,7 @@ func TestRosterOutputHasNoPrivateSheetOrPlacementFields(t *testing.T) {
 		// it on the TURN lane beside Participant.Active, where the proto that
 		// carries it lives; this row is identity and side, and a per-turn
 		// state on it would be the second place a client could read one thing.
-		[]string{"ID", "Kind", "Name", "ClassRef", "RaceRef", "MonsterRef", "Customization", "Faction"},
+		[]string{"ID", "Kind", "Name", "ClassRef", "RaceRef", "MonsterRef", "AppearanceRef", "Customization", "Faction"},
 		rosterFieldNames(session.PublicMember{}),
 	)
 }

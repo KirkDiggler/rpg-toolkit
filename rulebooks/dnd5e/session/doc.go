@@ -228,6 +228,16 @@
 // Reads do not roll, and delivery waits for the persistence reports. Partial
 // saves still obey S6 rather than claiming multi-store rollback.
 //
+// # Observed NPC appearance
+//
+// Launch carries a compiled placement's optional AppearanceRef into the
+// encounter member/reserve record without changing its rules ref or faction.
+// PublicMember.AppearanceRef is projected only from the requesting member's
+// sight testimony. Never-seen NPCs remain absent; remembered or legacy holdings
+// are never enriched from newer live member content or a reloaded dungeon.
+// Empty preserves legacy model resolution. This seam does not resolve an asset
+// catalog or derive a model path. Knowledge uses the same roster projection.
+//
 // # Permitted prop presentation
 //
 // Atlas.PropPresentations and both reveal bodies carry the provider's fixed
