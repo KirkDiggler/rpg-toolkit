@@ -211,10 +211,10 @@ func (s *InspireSuite) TestTheGrantSpendsOneUseAndLandsTheDie() {
 	s.Equal(1, s.countBeat(mgr, "activation-result"))
 }
 
-// TestASecondDieIsRefusedRatherThanReplacing is R7. Replacing would spend a
+// TestAnInspiredAllyIsAlreadyInspired is R7. Replacing would spend a
 // use to overwrite a use — a charge with no change — so the candidate carries
 // the reason before it is chosen.
-func (s *InspireSuite) TestASecondDieIsRefusedRatherThanReplacing() {
+func (s *InspireSuite) TestAnInspiredAllyIsAlreadyInspired() {
 	mgr := s.scene(2, 1)
 	_, err := s.grant(mgr, "fighter")
 	s.Require().NoError(err)
