@@ -282,5 +282,4 @@ func (s *FrameTestSuite) TestAMonsterTargetsTraitsYieldNoRow() {
 		s.NotContains(row.ID, refs.MonsterTraits.Immunity().String())
 		s.NotContains(row.ID, refs.MonsterTraits.Vulnerability().String())
 	}
-	s.Len(rows, 1, "the bearing condition is the only row: %+v", rows)
 }

@@ -346,10 +346,8 @@ func requireUnconditional(t *testing.T, fset *token.FileSet, fn *ast.FuncDecl, p
 	})
 }
 
-// TestEveryFreeReactionIsReadied: the readiness the door installs is derived
-// from the registry's one list of free reactions, so each of them is ready for
-// every participant. A free reaction added to that list is readied here
-// without this package being told.
+// TestEveryFreeReactionIsReadied: every ref in conditions.FreeReactionRefs is
+// ready for every participant.
 func TestEveryFreeReactionIsReadied(t *testing.T) {
 	free := conditions.FreeReactionRefs()
 	require.NotEmpty(t, free, "precondition: the registry lists at least one free reaction")
