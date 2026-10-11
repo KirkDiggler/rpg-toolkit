@@ -89,10 +89,10 @@ determine_bump() {
   bump="patch"
 
   # Check for breaking changes (major)
-  if echo "$commits" | grep -q "BREAKING CHANGE\|!:"; then
+  if grep -q "BREAKING CHANGE\|!:" <<<"$commits"; then
     bump="major"
   # Check for features (minor)
-  elif echo "$commits" | grep -q "^feat"; then
+  elif grep -q "^feat" <<<"$commits"; then
     bump="minor"
   fi
 
@@ -186,7 +186,7 @@ for modfile in $(find . -name "go.mod" -type f -not -path "./vendor/*" -not -pat
   if [[ -z "$last_tag" ]]; then
     has_changes=true  # New module
   else
-    changes=$(git diff --name-only "$last_tag" HEAD -- "$module_path" "${excludes[@]}" "${DOC_EXCLUDES[@]}" | head -1)
+    changes=$(git diff --name-only "$last_tag" HEAD -- "$module_path" "${excludes[@]}" "${DOC_EXCLUDES[@]}" | sed -n '1p')
     has_changes=$([[ -n "$changes" ]] && echo true || echo false)
   fi
 
@@ -216,7 +216,7 @@ for modfile in $(find . -name "go.mod" -type f -not -path "./vendor/*" -not -pat
     fi
 
     # Check if tag exists on remote
-    if git ls-remote --tags origin | grep -q "refs/tags/${tag_name}$"; then
+    if [[ -n "$(git ls-remote --tags origin "refs/tags/${tag_name}")" ]]; then
       echo "Tag ${tag_name} already exists on remote, skipping"
       SKIPPED_MODULES+=("${module_path}:${new_version}:remote_exists")
       continue
