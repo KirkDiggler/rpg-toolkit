@@ -158,26 +158,26 @@ func EncodeSightTestimony(testimony SightTestimony) ([]byte, error) {
 		return json.Marshal(wire)
 	case LocationUnknown:
 		if testimony.AppearanceRef != "" {
-			return nil, fmt.Errorf("unknown location cannot carry appearance")
+			return nil, asInvalidData(fmt.Errorf("unknown location cannot carry appearance"))
 		}
 		if testimony.Position != (spatial.Position{}) {
-			return nil, fmt.Errorf("unknown location cannot carry a position")
+			return nil, asInvalidData(fmt.Errorf("unknown location cannot carry a position"))
 		}
 		if testimony.BlocksMovement != nil {
-			return nil, fmt.Errorf("unknown location cannot carry obstruction")
+			return nil, asInvalidData(fmt.Errorf("unknown location cannot carry obstruction"))
 		}
 		if testimony.Down != nil {
-			return nil, fmt.Errorf("unknown location cannot carry standing")
+			return nil, asInvalidData(fmt.Errorf("unknown location cannot carry standing"))
 		}
 		if testimony.Equipment != nil {
-			return nil, fmt.Errorf("unknown location cannot carry equipment")
+			return nil, asInvalidData(fmt.Errorf("unknown location cannot carry equipment"))
 		}
 		if testimony.Conditions != nil {
-			return nil, fmt.Errorf("unknown location cannot carry conditions")
+			return nil, asInvalidData(fmt.Errorf("unknown location cannot carry conditions"))
 		}
 		return json.Marshal(sightWire{State: string(LocationUnknown)})
 	default:
-		return nil, fmt.Errorf("unsupported location state %q", testimony.State)
+		return nil, asInvalidData(fmt.Errorf("unsupported location state %q", testimony.State))
 	}
 }
 

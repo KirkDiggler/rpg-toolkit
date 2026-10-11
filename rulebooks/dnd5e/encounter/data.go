@@ -901,7 +901,7 @@ func factDataFrom(f journal.Fact) FactData {
 func validateHoldingsFacts(facts []journalEntry, f *field, everMembers []MemberID) error {
 	// BOTH KINDS OF PROP (rpg-toolkit#1854). A placed footprint is held,
 	// dropped and arrives through these same facts, so a boundary that knew
-	// only the legacy list would refuse every save of a run in which somebody
+	// only the cell prop list would refuse every save of a run in which somebody
 	// picked one up — which is what it did, caught on the #1854 walk when a
 	// held placed letter turned the camp and the dissolve reloaded the world.
 	// The id namespace is shared by construction (compilePlaced refuses a

@@ -11,12 +11,13 @@ var (
 	// Indicates a caller defect.
 	ErrNilInput = errors.New("encounter: nil input")
 
-	// ErrNoMember is returned when an input names an EMPTY member id, and for
-	// nothing else. A non-empty id naming nobody here is [ErrNotMember], at
-	// every door; a member id the roster already holds is
-	// [ErrDuplicateMember]; a member that cannot be seated as authored is
-	// [ErrBadMember]. One meaning per refusal, so a caller can switch on it.
-	ErrNoMember = errors.New("encounter: empty member id")
+	// ErrNoMember is returned when no member was given: an EMPTY member id, or
+	// an EMPTY member list where the verb needs at least one. A non-empty id
+	// naming nobody here is [ErrNotMember], at every door; a member id the
+	// roster already holds is [ErrDuplicateMember]; a member that cannot be
+	// seated as authored is [ErrBadMember]. One meaning per refusal, so a
+	// caller can switch on it.
+	ErrNoMember = errors.New("encounter: no member given")
 
 	// ErrDuplicateMember is returned when a member id is already present: a
 	// Setup or Board naming one id twice, a Join naming a member who is in the
@@ -90,7 +91,7 @@ var (
 	// (rpg-toolkit#1128 — [PropInput]), on a non-integral cell, or sharing a
 	// cell with another prop; a wall listed twice; a placed footprint
 	// contributor (issue #1753) with no or duplicated id — against placed or
-	// legacy prop ids alike — or a placement that is missing, non-finite,
+	// cell prop ids alike — or a placement that is missing, non-finite,
 	// non-positive or beyond any representable field coordinate; or — Load-
 	// only — a blob carrying the retired `rooms` / `connections` keys
 	// (FieldData.Rooms), or a region whose lighting block omits its

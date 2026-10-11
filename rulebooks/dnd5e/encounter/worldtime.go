@@ -290,7 +290,7 @@ func (e *Encounter) spendRound(members []MemberID) (bool, error) {
 // own shape, and a correction to this slice's brief, which said the calling
 // verb's refresh would do. It cannot: the verbs that pay a round are
 // Loot, Interact, Cast and Activation as well as Step and Unlock, and the
-// first five deliberately refresh no sight because "nothing moved and no
+// first four deliberately refresh no sight because "nothing moved and no
 // geometry changed" (see [Encounter.Loot]). That stopped being true the
 // moment a round of the world could move somebody inside them. A creature
 // that walks into an opposed member's sight during an action therefore forms

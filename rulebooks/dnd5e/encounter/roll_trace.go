@@ -127,21 +127,21 @@ func ValidateRollCalculation(calculation *RollCalculation) error {
 	return asInvalidData(checkRollCalculation(calculation))
 }
 
-// invalidRollError is a roll-trace refusal that keeps its own message and also
-// answers [ErrInvalidData]: a recorded roll that does not add up is data the
-// caller supplied that cannot be trusted.
-type invalidRollError struct{ err error }
+// invalidDataError is a refusal that keeps its own message and also
+// answers [ErrInvalidData]: a recorded roll that does not add up, or testimony that contradicts its
+// own state, is data that cannot be trusted.
+type invalidDataError struct{ err error }
 
-func (e invalidRollError) Error() string { return e.err.Error() }
+func (e invalidDataError) Error() string { return e.err.Error() }
 
-func (e invalidRollError) Unwrap() []error { return []error{e.err, ErrInvalidData} }
+func (e invalidDataError) Unwrap() []error { return []error{e.err, ErrInvalidData} }
 
 // asInvalidData marks err as [ErrInvalidData]; nil stays nil.
 func asInvalidData(err error) error {
 	if err == nil {
 		return nil
 	}
-	return invalidRollError{err: err}
+	return invalidDataError{err: err}
 }
 
 func checkRollCalculation(calculation *RollCalculation) error {

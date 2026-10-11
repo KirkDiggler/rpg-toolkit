@@ -207,14 +207,14 @@ func (e *Encounter) Hold(in *HoldInput) (*HoldOutput, error) {
 //     lists. Not a second copy of the concealment rules — the same
 //     projection [Encounter.showsCellTo] asks, read for a shape rather than
 //     a point.
-//   - REACH is [refuseOutOfReachCell] — THE LEGACY RULE, unchanged: grid
+//   - REACH is [refuseOutOfReachCell] — THE CELL PROP RULE, unchanged: grid
 //     distance from the member, Range 0 meaning adjacent — applied to every
 //     cell the placement stands on. Standing on one is distance zero;
 //     beside one is distance one. There is no footprint distance and no new
 //     flag (rpg-project#488 R1).
 //
 // Everything after the reach test is [Encounter.takeProp], shared with the
-// legacy path: one thing happens when a thing is picked up.
+// cell prop path: one thing happens when a thing is picked up.
 func (e *Encounter) holdPlaced(in *HoldInput, p *placedContributor) (*HoldOutput, error) {
 	now := e.field.placedNow()
 	placement, standing := now.stands(p)
@@ -222,7 +222,7 @@ func (e *Encounter) holdPlaced(in *HoldInput, p *placedContributor) (*HoldOutput
 		// NOT ON THE FLOOR IS NOT HERE. Reserved and already-taken are told
 		// apart below only for a placement the member can actually see: a
 		// reserved one is refused as an id that names nothing, exactly as a
-		// reserved legacy prop is, because "not yet" would confirm a thing
+		// reserved cell prop is, because "not yet" would confirm a thing
 		// no map shows.
 		if p.arrives != nil && !e.holdings.propPlacements()[p.id].arrived {
 			return nil, fmt.Errorf("hold: %q: %w", in.Target, ErrNoProp)
@@ -306,7 +306,7 @@ func (e *Encounter) showsAnyCellTo(member MemberID, cells []spatial.Position) (b
 // thing it is: the two holdings facts, the `held` beat to actual witnesses,
 // what the thing teaches whoever holds it, and who was standing with them.
 //
-// Shared by [Encounter.Hold] and [Encounter.holdPlaced] so a legacy prop and
+// Shared by [Encounter.Hold] and [Encounter.holdPlaced] so a cell prop and
 // a footprint cannot come to differ in what a take RECORDS — the rules that
 // differ are the ones about where the thing is, and they are all above this
 // line.

@@ -63,7 +63,7 @@ func ExportedFind(e *Encounter, member MemberID, ids ...ConcealmentID) error {
 		if !wanted[id] || e.world.knowsConcealment(member, id) {
 			continue
 		}
-		if err := e.revealConcealmentTo(member, e.field.concealmentOf(id), "found it by search", at); err != nil {
+		if err := e.revealConcealmentTo(member, e.field.concealmentOf(id), "automatic discovery", at); err != nil {
 			return err
 		}
 	}

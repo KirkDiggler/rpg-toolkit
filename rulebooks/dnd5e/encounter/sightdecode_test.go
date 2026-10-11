@@ -99,7 +99,7 @@ func TestEncodeSightTestimonyRejectsInvalidKnowledge(t *testing.T) {
 		{State: encounter.LocationUnknown, Position: spatial.Position{Y: 1}},
 	} {
 		_, err := encounter.EncodeSightTestimony(knowledge)
-		require.Error(t, err)
+		require.ErrorIs(t, err, encounter.ErrInvalidData)
 	}
 }
 

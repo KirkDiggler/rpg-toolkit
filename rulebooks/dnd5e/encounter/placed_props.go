@@ -228,7 +228,7 @@ func (f *field) compilePlaced(in []PlacedPropInput) error {
 		// and a cell fold two answers.
 		for _, cell := range f.props {
 			if cell.ID == p.ID {
-				return fmt.Errorf("placed prop %q shares its id with a legacy prop: %w", p.ID, ErrNoField)
+				return fmt.Errorf("placed prop %q shares its id with a cell prop: %w", p.ID, ErrNoField)
 			}
 		}
 		if err := validatePlacement(p.Placement); err != nil {
