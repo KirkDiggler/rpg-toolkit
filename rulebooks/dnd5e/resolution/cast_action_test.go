@@ -825,6 +825,32 @@ func (s *CastActionTestSuite) TestTheChosenWordIsWrittenOnAGatedCast() {
 	}
 }
 
+// TestAnImposedConditionReadsItsRegistryName: a delivered Command reads as the
+// registry names it, not as a spelling built from its id.
+func (s *CastActionTestSuite) TestAnImposedConditionReadsItsRegistryName() {
+	display, ok := conditions.DisplayFor(*refs.Conditions.Commanded())
+	s.Require().True(ok, "precondition: Commanded is registered")
+	s.Require().NotEmpty(display.Name)
+
+	fixtures := s.fixtures()
+	machine, err := NewAction(&ActionInput{
+		Definition: *commandDefinition(), AttackerID: bardID,
+		TargetIDs: []string{heroID}, Option: spells.CommandWordGrovel,
+		Roller: facedRoller{d20: 1, other: psychicFace},
+	})
+	s.Require().NoError(err)
+	out, err := fixtures.resolve(fixtures.saver(14), machine, commandCost(), baneCaster(1, 2))
+	s.Require().NoError(err)
+
+	var described []string
+	for _, effect := range s.castOutcome(out).Targets[0].Applied {
+		if effect.Kind == ImposedCondition && effect.Ref.Equals(refs.Conditions.Commanded()) {
+			described = append(described, effect.Description)
+		}
+	}
+	s.Equal([]string{display.Name}, described)
+}
+
 // A made save leaves nothing behind, so there is no word on any sheet: the
 // option is bound at construction and the gate still decides whether it lands.
 func (s *CastActionTestSuite) TestAMadeSaveLeavesNoWordBehind() {

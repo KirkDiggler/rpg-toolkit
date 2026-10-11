@@ -33,13 +33,13 @@ type StandingOutput struct {
 // root rulebook in Participation, then this function projects one field.
 //
 // It asks only the root character's narrow ParticipationView, never its full
-// display projection. A condition such as Shield that loads successfully but
-// intentionally has no status-display catalog entry therefore still answers.
-// That is distinct from the established lenient record policy: a truly
-// unreadable character condition is audibly dropped because "down" reads no
-// condition — it comes from hit points and death-save state — while an
-// unreadable monster trait still refuses because monstertraits has no lenient
-// loader.
+// display projection, so what a condition displays has no bearing on whether
+// its holder is down. That is distinct from the established lenient record
+// policy: a truly unreadable character condition is audibly dropped because
+// "down" reads no condition — it comes from hit points and death-save state —
+// while an unreadable monster trait still refuses, because the monster branch
+// loads every blob through conditions.LoadJSON, which refuses an unregistered
+// ref and has no lenient half.
 func Standing(ctx context.Context, in *StandingInput) (*StandingOutput, error) {
 	return standingOn(ctx, in, newSurface(events.NewEventBus()))
 }

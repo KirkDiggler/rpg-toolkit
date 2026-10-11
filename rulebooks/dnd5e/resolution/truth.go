@@ -6,10 +6,9 @@ package resolution
 import (
 	"context"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -122,18 +121,15 @@ func installTruth(ctx context.Context, room spatial.Room, cast *Participants, ru
 	return ctx
 }
 
-// freeReactions are the reactions a member has readied simply by being in the
-// interaction, because they cost nothing to hold ready.
-//
-// ONE ENTRY, and the list is the rule rather than an optimisation of it. A
-// costed reaction — Shield burns a spell slot, Uncanny Dodge burns the class
-// feature — is not readied by existing, so adding one here would silently opt
-// every caster into spending a slot they never agreed to spend.
-var freeReactions = []*core.Ref{
-	refs.Conditions.OpportunityAttack(),
-}
-
 // defaultReadiness readies every participant for every free reaction.
+//
+// The free reactions are the reactions a member has readied simply by being in
+// the interaction, because they cost nothing to hold ready.
+// [conditions.FreeReactions] is the one list, and the list is the rule rather
+// than an optimisation of it. A costed reaction — Shield burns a spell slot,
+// Uncanny Dodge burns the class feature — is not readied by existing, so adding
+// one there would silently opt every caster into spending a slot they never
+// agreed to spend.
 //
 // EVERY participant, not "every melee combatant". Whether a particular member
 // can actually take an opportunity attack is the condition's own predicate —
@@ -141,11 +137,12 @@ var freeReactions = []*core.Ref{
 // meter and its own purse — and deciding it out here would put a rule in the
 // wiring, which is the same objection boundaryCast makes one file over.
 func defaultReadiness(cast *Participants) gamectx.ReactionReadinessMap {
+	free := conditions.FreeReactionRefs()
 	ready := make(gamectx.ReactionReadinessMap, len(cast.order))
 	for _, id := range cast.order {
-		per := make(map[string]bool, len(freeReactions))
-		for _, ref := range freeReactions {
-			per[ref.String()] = true
+		per := make(map[string]bool, len(free))
+		for _, ref := range free {
+			per[ref] = true
 		}
 		ready[id] = per
 	}

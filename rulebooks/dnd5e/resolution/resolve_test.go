@@ -30,7 +30,6 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -166,7 +165,7 @@ func (s *ResolveTestSuite) shortsword() combatActions.Definition {
 // contributes nothing. It also carries an action, because monster.ToData
 // serializes actions — see TestAMonstersActionsSurviveResolution.
 func (s *ResolveTestSuite) skeleton() *monster.Data {
-	raw, err := json.Marshal(monstertraits.ImmunityData{
+	raw, err := json.Marshal(conditions.ImmunityData{
 		Ref:        refs.MonsterTraits.Immunity(),
 		OwnerID:    skeletonID,
 		DamageType: "piercing",

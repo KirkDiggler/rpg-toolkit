@@ -354,3 +354,25 @@ func (s *CastActionTestSuite) TestBlessTargetProjectionHonorsPolicyWithoutReveal
 		s.Equal(map[string]bool{bardID: true, heroID: policy == StaleTargetAttempt, wolfID: true}, answers)
 	}
 }
+
+// TestABlessedConditionReadsItsRegistryName: Bless delivers on the gateless
+// path, and each delivered Blessed reads as the registry names it.
+func (s *CastActionTestSuite) TestABlessedConditionReadsItsRegistryName() {
+	display, ok := conditions.DisplayFor(*refs.Conditions.Blessed())
+	s.Require().True(ok, "precondition: Blessed is registered")
+	s.Require().NotEmpty(display.Name)
+
+	f := s.fixtures()
+	out, err := s.blessAttempt(f.world(), baneCaster(1, 2), f.saver(14), []string{heroID}, StaleTargetRefuse, &countingCastRoller{})
+	s.Require().NoError(err)
+
+	var described []string
+	for _, target := range s.castOutcome(out).Targets {
+		for _, effect := range target.Applied {
+			if effect.Kind == ImposedCondition && effect.Ref.Equals(refs.Conditions.Blessed()) {
+				described = append(described, effect.Description)
+			}
+		}
+	}
+	s.Equal([]string{display.Name}, described)
+}
