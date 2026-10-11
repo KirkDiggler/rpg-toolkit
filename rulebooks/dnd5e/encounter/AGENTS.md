@@ -40,10 +40,11 @@ Every noun below is one this module is the truth for. Nothing else may hold a se
 - **Randomness.** C8. `dice` is a PARSE-ONLY dependency — the single use is
   `dice.ParseNotation` validating a persisted roll trace ([roll_trace.go:194](./roll_trace.go#L194)).
   There is no roller here and no place to add one.
-- **Who is alive, and what "down" means.** Supplied as `Standing`/`Participation`
-  ([standing.go:24](./standing.go#L24), [participation.go:58](./participation.go#L58)); the field is
-  typed `StandingWithParticipation`, so a Standing-only value does not compile. Never
-  defaulted to "everyone active" ([rpg-toolkit#1033](https://github.com/KirkDiggler/rpg-toolkit/issues/1033)).
+- **Who is alive, and what "down" means.** Supplied as `Participation`
+  ([participation.go:65](./participation.go#L65)), whose assessment carries each member's `Down`,
+  contact and turn standing; `Capabilities.Participation` is refused when nil
+  (`ErrNoParticipation`). Never defaulted to "everyone active"
+  ([rpg-toolkit#1033](https://github.com/KirkDiggler/rpg-toolkit/issues/1033)).
 - **How far anybody sees.** Supplied as `Sight` ([sight.go:114](./sight.go#L114)), refused at
   construction with `ErrNoSight`. A number meaning "everyone sees this far" would be this module
   inventing a rule 5e does not have.
@@ -71,14 +72,16 @@ supplied capability, never as a new import.** Every one of these is required at
 | It asks | Interface | Refused without it |
 |---|---|---|
 | what order a forming fight goes in | `InitiativeRoller` ([trigger.go:25](./trigger.go#L25)) | `ErrNoInitiative` |
-| who is down, who counts as present | `StandingWithParticipation` ([participation.go:73](./participation.go#L73)) | `ErrNoStanding` (nil) |
+| who is down, who counts as present | `Participation` ([participation.go:65](./participation.go#L65)) | `ErrNoParticipation` (nil) |
 | how far each member sees | `Sight` ([sight.go:114](./sight.go#L114)) | `ErrNoSight` |
+| what each member is holding | `Equipment` ([equipment.go](./equipment.go)) | `ErrNoEquipment` |
+| which conditions each member carries | `Conditions` ([conditions.go](./conditions.go)) — its own field, beside `Equipment` | `ErrNoConditions` |
 | how fast each member moves, what it can attack with and at what reach, and how it picks a target | `Sheets` ([sheets.go](./sheets.go)) — asked at pace, turn budget, reach and driver view; nothing is stored ([rpg-project#538](https://github.com/KirkDiggler/rpg-project/issues/538)) | `ErrNoSheets` |
-| what an unplayed member does on its turn | `TurnDriver` ([turndriver.go:49](./turndriver.go#L49)) | `ErrNoTurnDriver` ([ADR-0043](../../../docs/adr/0043-a-monsters-turn-has-a-driver.md)) |
+| what an unplayed member does on its turn | `Driver` ([turndriver.go:46](./turndriver.go#L46)) | `ErrNoTurnDriver` ([ADR-0043](../../../docs/adr/0043-a-monsters-turn-has-a-driver.md)) |
 | how that member's swing resolves | `Striker` ([turndriver.go:473](./turndriver.go#L473)) | `ErrNoStriker` |
 | who should hear about a step before it happens, and what a FORCED one means | `Mover` ([turndriver.go](./turndriver.go)), asked with a [`MoveStep`](./turndriver.go) | `ErrNoMover` |
 | who should hear a turn or fight boundary | `Announcer` ([turndriver.go:427](./turndriver.go#L427)) | `ErrNoAnnouncer` |
-| did the search find the hidden thing | `CheckResolver` ([conceal.go](./conceal.go)) | `ErrNoCheckResolver`, when the field declares a concealment |
+| did the discovery check beat the hidden thing's DC — rolled automatically when a placed player comes within a hex | `CheckResolver` ([conceal.go](./conceal.go)), asked through `ResolveDiscoveryCheck` | `ErrNoCheckResolver`, when the field declares a concealment |
 | who perceives this open hidden door | `Witness` ([conceal.go](./conceal.go)) | `ErrNoWitness`, same condition |
 
 It answers, on the other hand, in geometry, placement, knowledge and clocks: `Members`,
@@ -86,7 +89,7 @@ It answers, on the other hand, in geometry, placement, knowledge and clocks: `Me
 `Doors`/`DoorsFor`, `View`, `Story`, `ClockOf`, `Stance`/`StanceBetween`/`IsHostile`/`IsAllied`,
 `BelievedAim`, `Settlement`, `Status`, `Route`,
 and the verbs that change them — `Join`, `Exit`, `Step`, `Direct`, `Transfer`, `EndTurn`,
-`Dissolve`, `Search`, `OpenDoor`/`CloseDoor`/`Unlock`, `Interact`, `Loot`, `Hold`, `RecordTrain`,
+`Dissolve`, `OpenDoor`/`CloseDoor`/`Unlock`, `Interact`, `Loot`, `Hold`, `RecordTrain`,
 `TellConcentration`, `End`, `AddSightArea`/`RemoveSightArea`,
 plus the one continue-verb a paused walk is finished with — `Resume`, which finishes whichever
 walk the one pause holds (a driven turn or a directed walk; `PauseKind()` says which).
@@ -247,9 +250,10 @@ Things that look like they work.
    props — and no doc on that path says so. Prefer `Members()` + `Distance()` when you want members.
 5. **`StoryInput.AfterSeq` is INCLUSIVE.** [field.go:1291](./field.go#L1291) — the name predates the
    behaviour. To resume after entry N, pass N+1; passing N replays it.
-6. **(Retired, rpg-toolkit#1958.)** `SetupInput.Standing`/`Equipment` and their `LoadEncounterInput`
-   twins used to be typed narrower than they had to be; they are now `StandingWithParticipation` and
-   `EquipmentWithConditions`, so a compiling constructor has every required capability.
+6. **(Retired, rpg-toolkit#1958 and tier 3.)** `Capabilities` once typed `Standing` and `Equipment` as
+   bridge interfaces (`StandingWithParticipation`, `EquipmentWithConditions`) so one value carried two
+   answers. Each capability is its own field now — `Participation`, `Equipment`, `Conditions` — and
+   `Capabilities.Validate` refuses a nil one by its own sentinel.
 7. **A verb's MUTATE phase is not atomic.** R5 promises validate-before-mutate and first-failure-wins;
    it does not promise rollback. `Join`, `Exit` and the clock verbs (`form`, `Dissolve`) can each
    fail partway, leaving a member between clocks. The

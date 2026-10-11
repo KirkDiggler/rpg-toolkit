@@ -143,12 +143,13 @@ func dungeonSetup() *encounter.SetupInput {
 			{Key: "withdrew", Trigger: encounter.TriggerExternal{}},
 		},
 		Capabilities: encounter.Capabilities{
-			Sight:      torchAndDarkvision{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     goblinWalksThirty{},
-			Standing:   rollAllStanding{},
-			Initiative: rollOrderAsGiven{},
-			Driver:     encounter.PassDriver{},
+			Sight:         torchAndDarkvision{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        goblinWalksThirty{},
+			Participation: rollAllStanding{},
+			Initiative:    rollOrderAsGiven{},
+			Driver:        encounter.PassDriver{},
 			Actors: encounter.Actors{
 				Striker:   noAttacksExpected{},
 				Mover:     nothingReactsHere{},
@@ -314,13 +315,13 @@ func beliefGrid(
 	grid := p.blank()
 	p.props(grid, data)
 	for _, h := range view {
-		var sp encounter.SightPayload
-		if err := json.Unmarshal(h.Payload, &sp); err != nil {
+		testimony, ok := encounter.DecodeSightTestimony(h.Payload)
+		if !ok || testimony.State != encounter.LocationKnown {
 			continue
 		}
-		// Sight payloads are dungeon-absolute; mark drops anything off
+		// Sight positions are dungeon-absolute; mark drops anything off
 		// this pane.
-		p.mark(grid, spatial.Position{X: sp.X, Y: sp.Y}, initialOf(string(h.Subject), h.CurrentOn(perception.Sight)))
+		p.mark(grid, testimony.Position, initialOf(string(h.Subject), h.CurrentOn(perception.Sight)))
 	}
 	for _, m := range members {
 		if m.ID == who {
@@ -578,12 +579,13 @@ func main() {
 			loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 				Data: data,
 				Capabilities: encounter.Capabilities{
-					Sight:      torchAndDarkvision{},
-					Equipment:  encounter.UnobservedEquipment{},
-					Sheets:     goblinWalksThirty{},
-					Standing:   rollAllStanding{},
-					Initiative: rollOrderAsGiven{},
-					Driver:     encounter.PassDriver{},
+					Sight:         torchAndDarkvision{},
+					Equipment:     encounter.UnobservedEquipment{},
+					Conditions:    encounter.UnobservedEquipment{},
+					Sheets:        goblinWalksThirty{},
+					Participation: rollAllStanding{},
+					Initiative:    rollOrderAsGiven{},
+					Driver:        encounter.PassDriver{},
 					Actors: encounter.Actors{
 						Striker:   noAttacksExpected{},
 						Mover:     nothingReactsHere{},
@@ -647,15 +649,11 @@ func (rollOrderAsGiven) RollInitiative(members []encounter.MemberID) ([]encounte
 	return members, nil
 }
 
-// rollAllStanding is the workbench's Standing capability: nobody is ever down.
+// rollAllStanding is the workbench's Participation capability: nobody is ever down.
 // The workbench drives free roam and sight, not damage — nothing in it can take
 // a member to zero — so the honest answer is that everyone is on their feet,
 // said out loud because the capability is required.
 type rollAllStanding struct{}
-
-func (rollAllStanding) Standing([]encounter.MemberID) ([]encounter.MemberID, error) {
-	return nil, nil
-}
 
 func (rollAllStanding) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
 	assessment := &encounter.ParticipationAssessment{}

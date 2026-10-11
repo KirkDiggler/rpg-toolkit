@@ -5,12 +5,10 @@ package encounter
 
 import (
 	"fmt"
-	"maps"
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 )
 
 // These qualify identity, not sensory channels. A creature, prop and door may
@@ -110,31 +108,14 @@ func memberPerceptionDelta(in *perception.Delta) (*IntelDelta, error) {
 	return out, nil
 }
 
-// normalizePerceptionSubjects upgrades the old member-only sight namespace
-// without observing the live world. Payloads, stamps and currency are unchanged.
-// An explicit version avoids guessing whether an old member name was qualified.
-// intel types here are its admitted persistence shape, not a second store.
-func normalizePerceptionSubjects(data perception.Data, version uint32) (perception.Data, error) {
-	if version == perceptionSubjectVersion {
-		return data, nil
+// requirePerceptionSubjects refuses a blob whose subject namespace is not the
+// one this build writes. Version zero was the old member-only sight namespace;
+// nothing upgrades it in place, because an upgrade guessed which names were
+// already qualified and a guess is not testimony. A blob that carries it is
+// refused with [ErrInvalidData].
+func requirePerceptionSubjects(version uint32) error {
+	if version != perceptionSubjectVersion {
+		return fmt.Errorf("perception subject version %d, want %d: %w", version, perceptionSubjectVersion, ErrInvalidData)
 	}
-	if version != 0 {
-		return perception.Data{}, fmt.Errorf("perception subject version %d: %w", version, ErrInvalidData)
-	}
-	out := data
-	out.Intel.Holdings = maps.Clone(data.Intel.Holdings)
-	clear(out.Intel.Holdings)
-	for observer, holdings := range data.Intel.Holdings {
-		qualified := maps.Clone(holdings)
-		clear(qualified)
-		for subject, holding := range holdings {
-			id := subject
-			if perception.Channel(holding.Channel) == perception.Sight {
-				id = intel.Subject(sightMember(core.EntityID(subject)))
-			}
-			qualified[id] = holding
-		}
-		out.Intel.Holdings[sightMember(observer)] = qualified
-	}
-	return out, nil
+	return nil
 }

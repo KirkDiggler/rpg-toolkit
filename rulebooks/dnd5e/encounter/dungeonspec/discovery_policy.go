@@ -25,9 +25,6 @@ func discoveryAttemptsShape(c *yaml.Node, path string, add errSink) {
 			requireInteger(node, key, path, add)
 		}
 	}
-	if childNode(node, "lifetime") != nil {
-		requireString(node, "lifetime", path, add)
-	}
 }
 
 // discoveryPolicyInput copies authored settings into the constructor's source
@@ -44,10 +41,6 @@ func discoveryPolicyInput(in *DiscoveryAttemptsSpec) *encounter.DiscoveryPolicyI
 	if in.ResetHexes != nil {
 		value := *in.ResetHexes
 		out.ResetHexes = &value
-	}
-	if in.Lifetime != nil {
-		value := encounter.DiscoveryLifetime(*in.Lifetime)
-		out.Lifetime = &value
 	}
 	return out
 }

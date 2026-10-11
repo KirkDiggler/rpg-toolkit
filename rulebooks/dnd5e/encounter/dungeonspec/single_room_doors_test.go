@@ -120,8 +120,9 @@ func (s *SingleRoomDoorSuite) TestTheClosedLeafSealsTheGoblinOff() {
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      everyoneStanding{},
+			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: nothingIsEverFound{},

@@ -52,13 +52,14 @@ func drivenFight(t *testing.T) (*Encounter, *oneDown, *recordingStriker) {
 		},
 		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
 		Capabilities: Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  UnobservedEquipment{},
-			Sheets:     sheetFacts{"alice": {}, "zed": {}, "goblin": {SpeedFeet: 30, Actions: []ActionView{{Ref: swordRef, Name: "Sword", RangeFeet: 5, Kind: "melee"}}}},
-			Standing:   rulebook,
-			Initiative: orderAsGiven{},
-			Driver:     strikeTheLast{},
-			Actors:     Actors{Striker: striker, Mover: quietMover{}, Announcer: quietAnnouncer{}},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     UnobservedEquipment{},
+			Conditions:    UnobservedEquipment{},
+			Sheets:        sheetFacts{"alice": {}, "zed": {}, "goblin": {SpeedFeet: 30, Actions: []ActionView{{Ref: swordRef, Name: "Sword", RangeFeet: 5, Kind: "melee"}}}},
+			Participation: rulebook,
+			Initiative:    orderAsGiven{},
+			Driver:        strikeTheLast{},
+			Actors:        Actors{Striker: striker, Mover: quietMover{}, Announcer: quietAnnouncer{}},
 		},
 	})
 	require.NoError(t, err)
@@ -113,7 +114,7 @@ func TestAParkedEndingFiresBeforeTheConsultDrivesAMonster(t *testing.T) {
 type failingStanding struct{ oneDown }
 
 func (failingStanding) Assess([]MemberID) (*ParticipationAssessment, error) {
-	return nil, ErrNoStanding
+	return nil, ErrNoParticipation
 }
 
 // TestAFailedTrainLeavesNoParkedEnding: a train whose deed parked an ending and
@@ -129,7 +130,7 @@ func TestAFailedTrainLeavesNoParkedEnding(t *testing.T) {
 			return closeErr
 		},
 	}})
-	require.ErrorIs(t, err, ErrNoStanding)
+	require.ErrorIs(t, err, ErrNoParticipation)
 
 	require.Nil(t, enc.heldEnding, "nothing is left parked")
 	require.False(t, enc.holdEndings, "and the hold is lifted")

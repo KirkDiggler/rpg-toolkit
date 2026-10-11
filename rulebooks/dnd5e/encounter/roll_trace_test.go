@@ -326,12 +326,12 @@ func TestRollCalculationValidation(t *testing.T) {
 			calc := validRollCalculation()
 			tt.change(calc)
 
-			require.Error(t, encounter.ValidateRollCalculation(calc))
+			require.ErrorIs(t, encounter.ValidateRollCalculation(calc), encounter.ErrInvalidData)
 		})
 	}
 
 	t.Run("nil pointer", func(t *testing.T) {
-		require.Error(t, encounter.ValidateRollCalculation(nil))
+		require.ErrorIs(t, encounter.ValidateRollCalculation(nil), encounter.ErrInvalidData)
 	})
 }
 
@@ -453,7 +453,7 @@ func TestRollCalculationRejectsMalformedOperatorsAndSources(t *testing.T) {
 		calculation.Components[0].SubtractDice = true
 		calculation.Components[0].Source.SourceID = ""
 		calculation.Total = -6
-		require.Error(t, encounter.ValidateRollCalculation(calculation))
+		require.ErrorIs(t, encounter.ValidateRollCalculation(calculation), encounter.ErrInvalidData)
 	})
 
 	// R7: EVERY dice pool names the entity whose rule threw it, not only a
@@ -479,7 +479,7 @@ func TestRollCalculationRejectsMalformedOperatorsAndSources(t *testing.T) {
 	t.Run("subtract cannot appear without dice", func(t *testing.T) {
 		calculation := validRollCalculation()
 		calculation.Components[1].SubtractDice = true
-		require.Error(t, encounter.ValidateRollCalculation(calculation))
+		require.ErrorIs(t, encounter.ValidateRollCalculation(calculation), encounter.ErrInvalidData)
 	})
 
 	t.Run("subtractive total is validated rather than repaired", func(t *testing.T) {
@@ -487,7 +487,7 @@ func TestRollCalculationRejectsMalformedOperatorsAndSources(t *testing.T) {
 		calculation.Components[0].Source.SourceID = "source-a"
 		calculation.Components[0].SubtractDice = true
 		calculation.Total = 12
-		require.Error(t, encounter.ValidateRollCalculation(calculation))
+		require.ErrorIs(t, encounter.ValidateRollCalculation(calculation), encounter.ErrInvalidData)
 	})
 }
 
@@ -577,7 +577,7 @@ func TestRollCalculationRefusesAKeepRecordThatDoesNotDescribeItsDice(t *testing.
 			calculation := disadvantagedCalculation()
 			test.change(calculation.Components[0].Dice)
 			calculation.Total = calculation.Components[0].Dice.Subtotal
-			require.Error(t, encounter.ValidateRollCalculation(calculation))
+			require.ErrorIs(t, encounter.ValidateRollCalculation(calculation), encounter.ErrInvalidData)
 		})
 	}
 }

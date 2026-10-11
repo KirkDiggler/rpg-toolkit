@@ -24,12 +24,12 @@ func discoveryDocument(policy string) string {
 }
 
 func (s *DiscoveryPolicyAuthoringSuite) TestAuthoredPolicyLowersAndRoundTrips() {
-	source := discoveryDocument("{max: 2, reset_hexes: 4, lifetime: run}")
+	source := discoveryDocument("{max: 2, reset_hexes: 4}")
 	compiled := loadSource(s.T(), source)
 	s.Require().Len(compiled.Concealments, 1)
 	policy, err := encounter.ResolveDiscoveryPolicy(compiled.Concealments[0].Attempts)
 	s.Require().NoError(err)
-	s.Equal(encounter.DiscoveryPolicy{MaxAttempts: 2, ResetHexes: 4, Lifetime: encounter.DiscoveryLifetimeRun}, *policy)
+	s.Equal(encounter.DiscoveryPolicy{MaxAttempts: 2, ResetHexes: 4}, *policy)
 	s.Equal("religion", compiled.Concealments[0].Checks[0].Ability)
 
 	decoded, err := dungeonspec.DecodeSingleRoom(dungeonspec.SingleRoomDecodeInput{Source: []byte(source)})
@@ -46,14 +46,13 @@ func (s *DiscoveryPolicyAuthoringSuite) TestOmittedFieldsUseTheCanonicalDefaults
 	s.Require().NoError(err)
 	s.Equal(1, policy.MaxAttempts)
 	s.Equal(4, policy.ResetHexes)
-	s.Equal(encounter.DiscoveryLifetimeCharacter, policy.Lifetime)
 }
 
 func (s *DiscoveryPolicyAuthoringSuite) TestMalformedPolicyRefusesAtItsAuthorPath() {
 	for _, policy := range []string{
 		"null", "[]", "true", "{max: null}", "{max: 0}", "{max: -1}", "{max: 1.5}",
 		"{reset_hexes: null}", "{reset_hexes: 1}", "{reset_hexes: 3.0}",
-		"{lifetime: null}", "{lifetime: typo}", "{lifetime: 12}", "{lifetime: ''}", "{maximum: 2}",
+		"{lifetime: run}", "{lifetime: character}", "{lifetime: null}", "{maximum: 2}",
 	} {
 		s.Run(policy, func() {
 			_, err := dungeonspec.Load([]byte(discoveryDocument(policy)))

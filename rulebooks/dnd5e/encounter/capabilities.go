@@ -19,17 +19,15 @@ type Capabilities struct {
 	// door without it (ErrNoInitiative), never guarded where it is used.
 	Initiative InitiativeRoller
 
-	// Standing answers who is down and who participates. REQUIRED (nil is
-	// ErrNoStanding), and typed [StandingWithParticipation] so the compiler,
-	// not a runtime assertion, refuses a Standing-only value (rpg-toolkit#1958).
-	// Play consults the richer assessment only; nothing defaults to everyone
-	// active. The standing consult runs from first light too: a scene can open
-	// with a body already on the floor, and an encounter that cannot ask would
-	// start fights with corpses (rpg-toolkit#1033).
-	Standing StandingWithParticipation
+	// Participation answers who is down and who counts as present. REQUIRED
+	// (nil is ErrNoParticipation); nothing defaults to everyone active. The
+	// consult runs from first light too: a scene can open with a body already
+	// on the floor, and an encounter that cannot ask would start fights with
+	// corpses (rpg-toolkit#1033).
+	Participation Participation
 
 	// Sight reports how far each member can see, in cells (rpg-toolkit#1111).
-	// REQUIRED, for the same reason Standing is: the consult runs at every
+	// REQUIRED, for the same reason Participation is: the consult runs at every
 	// sight refresh including first light, so an encounter that cannot ask
 	// cannot build a percept. Refused at the door (ErrNoSight). There is no
 	// default — a number meaning "everyone sees this far" would be this module
@@ -43,10 +41,15 @@ type Capabilities struct {
 	// complete percept. Refused at the door (ErrNoEquipment). There is no
 	// default — empty hands for everybody would be this module inventing
 	// testimony, and the difference between "no hands to observe" and "observed
-	// empty" is a distinction only the rulebook can draw. Typed
-	// [EquipmentWithConditions] so the compiler, not a runtime assertion,
-	// requires it to answer Conditions too (rpg-toolkit#1958).
-	Equipment EquipmentWithConditions
+	// empty" is a distinction only the rulebook can draw.
+	Equipment Equipment
+
+	// Conditions reports which conditions each member holds. REQUIRED, for the
+	// same reason Equipment is: the consult runs at every sight refresh
+	// including first light. Refused at the door (ErrNoConditions), never
+	// defaulted — "holds nothing" is testimony, and a nil answer for a member
+	// is how a rulebook says it observed nothing.
+	Conditions Conditions
 
 	// Sheets reports each member's speed, actions and targeting
 	// (rpg-project#538). REQUIRED: a fight can form at first light and drive
@@ -126,7 +129,8 @@ type Actors struct {
 }
 
 // Validate refuses a missing capability every encounter asks, in this order:
-// ErrNoInitiative, ErrNoStanding, ErrNoSight, ErrNoEquipment, ErrNoSheets,
+// ErrNoInitiative, ErrNoParticipation, ErrNoSight, ErrNoEquipment,
+// ErrNoConditions, ErrNoSheets,
 // ErrNoTurnDriver, ErrNoStriker, ErrNoMover, ErrNoAnnouncer. The sentinel is
 // returned bare; the door that called wraps it with its own name.
 //
@@ -137,12 +141,14 @@ func (c *Capabilities) Validate() error {
 	switch {
 	case c.Initiative == nil:
 		return ErrNoInitiative
-	case c.Standing == nil:
-		return ErrNoStanding
+	case c.Participation == nil:
+		return ErrNoParticipation
 	case c.Sight == nil:
 		return ErrNoSight
 	case c.Equipment == nil:
 		return ErrNoEquipment
+	case c.Conditions == nil:
+		return ErrNoConditions
 	case c.Sheets == nil:
 		return ErrNoSheets
 	case c.Driver == nil:
@@ -197,8 +203,6 @@ func RefusingActors() Actors {
 // overwrites on the returned value. Each member answers only what is true of
 // a world nobody is in, and refuses every other ask by name:
 //
-//   - Standing: nobody is down, as an empty list — literally true of a world
-//     with nobody in it.
 //   - Participation: an empty ask gets an empty assessment. A non-empty ask
 //     REFUSES with ErrRefusingParticipation: participation has no "not
 //     observed" answer, and saying a member is conscious and in contact would
@@ -225,23 +229,25 @@ func RefusingActors() Actors {
 //     monsters where a refusal names the bug.
 //   - Striker, Mover, Announcer: [RefusingStriker], [RefusingMover],
 //     [RefusingAnnouncer] (see [RefusingActors]).
-//   - CheckResolver: [RefusingCheckResolver]; a check is only rolled through
-//     an explicit Search, which nothing compiling a world does.
-//   - Witness: [NobodyPerceives]. It answers rather than refuses, because
-//     first light asks it for an authored concealed door that stands open even
+//   - CheckResolver: [RefusingCheckResolver]; a check is only rolled when a
+//     player plays the world, which nothing compiling a world does.
+//   - Witness: nobody perceives, as an empty list (unexported; a host that
+//     wants a witness that refuses uses [RefusingWitness]). It answers rather
+//     than refuses, because first light asks it for an authored concealed door that stands open even
 //     with no members (legal content, rpg-api#887). Both it and CheckResolver
 //     are installed whether or not the data declares a concealment; the
 //     encounter holds them only when it does.
 func RefusingCapabilities() Capabilities {
 	return Capabilities{
 		Initiative:    refusingInitiative{},
-		Standing:      nobodyDown{},
+		Participation: nobodyDown{},
 		Sight:         zeroSight{},
 		Equipment:     UnobservedEquipment{},
+		Conditions:    UnobservedEquipment{},
 		Sheets:        noSheets{},
 		Driver:        RefusingDriver{},
 		CheckResolver: RefusingCheckResolver{},
-		Witness:       NobodyPerceives{},
+		Witness:       nobodyPerceives{},
 		Actors:        RefusingActors(),
 	}
 }

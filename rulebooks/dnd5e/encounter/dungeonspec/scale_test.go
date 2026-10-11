@@ -139,6 +139,10 @@ func (nobodyFindsAnything) ResolveCheck(*encounter.ResolveCheckInput) (*encounte
 	return &encounter.ResolveCheckOutput{}, nil
 }
 
+func (nobodyFindsAnything) ResolveDiscoveryCheck(*encounter.ResolveCheckInput) (*encounter.ResolveCheckOutput, error) {
+	return &encounter.ResolveCheckOutput{}, nil
+}
+
 // nobodyIsWatching reports no perceiver for any door — the concealed room
 // stays concealed, which is the state these benchmarks want it in.
 type nobodyIsWatching struct{}
@@ -163,8 +167,9 @@ func scaleEncounter(tb testing.TB, raw string) (*encounter.Encounter, encounter.
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      everyoneStanding{},
+			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: nobodyFindsAnything{},

@@ -8,6 +8,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 	"github.com/stretchr/testify/suite"
+	"strings"
 	"testing"
 )
 
@@ -87,9 +88,6 @@ func (s *AutomaticDiscoverySuite) TestDefaultOneTryAndFailureAudience() {
 	for _, key := range []string{"subject", "concealment", "dc", "position"} {
 		s.NotContains(result, key)
 	}
-	_, err := enc.Search(&encounter.SearchInput{Member: "alice", Region: "hall"})
-	s.ErrorIs(err, encounter.ErrSearchRetired)
-	s.Equal(1, r.calls)
 }
 func (s *AutomaticDiscoverySuite) TestThreeHexRearmAndReload() {
 	r := &discoveryRoller{}
@@ -101,7 +99,7 @@ func (s *AutomaticDiscoverySuite) TestThreeHexRearmAndReload() {
 	s.step(enc, 1)
 	data := enc.ToData()
 	s.True(data.Discovery["alice"].Attempts["secret"].Armed)
-	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Capabilities: encounter.Capabilities{Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Driver: passDriver{}, CheckResolver: r, Witness: nobodyPerceives{}, Actors: encounter.Actors{Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}}}})
+	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Capabilities: encounter.Capabilities{Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Conditions: encounter.UnobservedEquipment{}, Sheets: zeroSheets{}, Participation: everyoneStanding{}, Initiative: orderAsGiven{}, Driver: passDriver{}, CheckResolver: r, Witness: nobodyPerceives{}, Actors: encounter.Actors{Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}}}})
 	s.Require().NoError(err)
 	s.Equal(1, r.calls, "load does not roll")
 	s.step(loaded, 3)
@@ -111,30 +109,38 @@ func (s *AutomaticDiscoverySuite) TestThreeHexRearmAndReload() {
 	s.Equal(2, r.calls)
 	s.Empty(s.results(loaded, "bob"))
 }
+
+// learned reports whether the saved journal records member as knowing a
+// concealment: the only place what a member found is written down.
+func (s *AutomaticDiscoverySuite) learned(enc *encounter.Encounter, member encounter.MemberID) bool {
+	journal := enc.ToData().Journal
+	if journal == nil {
+		return false
+	}
+	for _, fact := range journal.Facts {
+		if fact.Actor == string(member) && strings.HasPrefix(fact.Kind, "known:concealment:") {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *AutomaticDiscoverySuite) TestSharingToggleDoesNotEraseOrBackfill() {
 	r := &discoveryRoller{success: true}
 	enc := s.world(true, 1, r)
 	s.step(enc, 3)
 	s.Len(s.results(enc, "alice"), 1)
 	s.Empty(s.results(enc, "bob"))
-	memory, err := enc.DiscoveryMemory(&encounter.DiscoveryMemoryInput{Member: "alice"})
-	s.Require().NoError(err)
-	s.True(memory.Checks["secret"].Learned)
-	_, err = enc.SetDiscoverySharing(&encounter.SetDiscoverySharingInput{Member: "alice", Sharing: true})
+	s.True(s.learned(enc, "alice"))
+	_, err := enc.SetDiscoverySharing(&encounter.SetDiscoverySharingInput{Member: "alice", Sharing: true})
 	s.Require().NoError(err)
 	s.Empty(s.results(enc, "bob"))
-	memory, err = enc.DiscoveryMemory(&encounter.DiscoveryMemoryInput{Member: "bob"})
-	s.Require().NoError(err)
-	s.Empty(memory.Checks)
+	s.False(s.learned(enc, "bob"), "turning sharing on does not backfill what was found privately")
 	r2 := &discoveryRoller{success: true}
 	shared := s.world(false, 1, r2)
 	s.step(shared, 3)
-	memory, err = shared.DiscoveryMemory(&encounter.DiscoveryMemoryInput{Member: "bob"})
-	s.Require().NoError(err)
-	s.True(memory.Checks["secret"].Learned)
+	s.True(s.learned(shared, "bob"))
 	_, err = shared.SetDiscoverySharing(&encounter.SetDiscoverySharingInput{Member: "alice", Sharing: false})
 	s.Require().NoError(err)
-	memory, err = shared.DiscoveryMemory(&encounter.DiscoveryMemoryInput{Member: "bob"})
-	s.Require().NoError(err)
-	s.True(memory.Checks["secret"].Learned)
+	s.True(s.learned(shared, "bob"), "turning sharing off does not erase what was found")
 }

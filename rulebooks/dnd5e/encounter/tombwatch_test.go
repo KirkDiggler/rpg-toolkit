@@ -28,19 +28,19 @@ const (
 // reports whether it is CURRENT — false is the ghost.
 func seen(
 	t *testing.T, enc *encounter.Encounter, observer core.EntityID, subject core.EntityID,
-) (bool, encounter.SightPayload) {
+) (bool, sightPayload) {
 	t.Helper()
 	view, err := enc.View(&encounter.ViewInput{Member: observer})
 	require.NoError(t, err)
 	for _, h := range view {
 		if h.Subject == subject {
-			var p encounter.SightPayload
+			var p sightPayload
 			require.NoError(t, json.Unmarshal(h.Payload, &p))
 			return h.CurrentOn(perception.Sight), p
 		}
 	}
 	t.Fatalf("%s holds nothing on %s", observer, subject)
-	return false, encounter.SightPayload{}
+	return false, sightPayload{}
 }
 
 // TestTombWatch is AC1: ONE continuous scene from first light to the
@@ -74,12 +74,13 @@ func TestTombWatch(t *testing.T) {
 			{Key: withdrawEnding, Trigger: encounter.TriggerExternal{}},
 		},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     sheets,
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     tableDriver(),
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        sheets,
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        tableDriver(),
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -146,12 +147,13 @@ func TestTombWatch(t *testing.T) {
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     sheets,
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     tableDriver(),
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        sheets,
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        tableDriver(),
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -224,10 +226,6 @@ func TestTombWatch(t *testing.T) {
 	for name, verb := range map[string]func() error{
 		"Move": func() error {
 			_, e := enc.Step(&encounter.StepInput{Member: alice, To: cellAt(1, 1)})
-			return e
-		},
-		"Search": func() error {
-			_, e := enc.Search(&encounter.SearchInput{Member: alice, Region: cryptRoom})
 			return e
 		},
 		"Join": func() error {
@@ -316,12 +314,13 @@ func TestTombWatch(t *testing.T) {
 		Members: sequelMembers,
 		Endings: []encounter.EndingInput{{Key: withdrawEnding, Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     sheets,
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        sheets,
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},

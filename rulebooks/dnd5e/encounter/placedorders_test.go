@@ -195,12 +195,13 @@ func (s *PlacedOrdersSuite) open(
 		Members: members,
 		Endings: append([]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, endings...),
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -221,12 +222,13 @@ func (s *PlacedOrdersSuite) build(field encounter.FieldInput) (*encounter.Encoun
 		Members: []encounter.MemberInput{{ID: alice, Kind: encounter.KindPlayer, Position: authoredAt(2, 2)}},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -491,11 +493,11 @@ func (s *PlacedOrdersSuite) TestAReservedPlacementIsRefusedAsAnIdThatNamesNothin
 
 	_, err := enc.Hold(&encounter.HoldInput{Member: alice, Target: theBarricade})
 	s.Require().ErrorIs(err, encounter.ErrNoProp)
-	s.Equal(`hold: "barricade": no such prop`, err.Error())
+	s.Equal(`hold: "barricade": encounter: no such prop`, err.Error())
 
 	_, unknown := enc.Hold(&encounter.HoldInput{Member: alice, Target: "no-such-thing"})
 	s.Require().ErrorIs(unknown, encounter.ErrNoProp)
-	s.Equal(`hold: "no-such-thing": no such prop`, unknown.Error(),
+	s.Equal(`hold: "no-such-thing": encounter: no such prop`, unknown.Error(),
 		"byte for byte the answer for an id that names nothing, but for the id")
 }
 
@@ -596,12 +598,13 @@ func (s *PlacedOrdersSuite) TestAnEndingOnAPlacementNobodyCanTakeIsRefused() {
 			Exit: theWayOut, Item: theBarricade,
 		}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -659,12 +662,13 @@ func (s *PlacedOrdersSuite) reloadOf(enc *encounter.Encounter) *encounter.Encoun
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: enc.ToData(),
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},

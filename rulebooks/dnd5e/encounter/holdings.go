@@ -74,11 +74,11 @@ import (
 // `known:*` facts concealment and factions write — the run has one record of
 // what happened, and readers fold the kinds they are about. Every `holds:`
 // fact is audienced to its holder, so "who knows what" and "who has what"
-// fold the same way. At the storage boundary the one journal is split by
-// kind into the two keys the blob always had: this file's kinds on
-// [EncounterData.Holdings], the knowledge kinds on [EncounterData.World], and
-// an encounter where nobody holds anything still writes no holdings key at
-// all — a plain dungeon's blob is byte-identical to what it was before.
+// fold the same way. At the storage boundary the one journal stays one list:
+// this file's kinds and the knowledge kinds are written together on
+// [EncounterData.Journal], in the order they were appended, so a reload
+// assigns every fact the sequence number it had. Load sorts the facts by kind
+// only to hand each to the validator that owns it.
 //
 // # Nothing here is ever projected
 //
@@ -352,7 +352,7 @@ type propPlacement struct {
 	// somebody putting it down. Narrower than moved, which an arrival also
 	// sets, and the difference is only visible for a PLACED footprint
 	// (rpg-toolkit#1854): an arrival leaves a rectangle exactly where its
-	// author drew it, and a drop is the one event that moves one. A legacy
+	// author drew it, and a drop is the one event that moves one. A cell
 	// prop reads At for both, so nothing here changes for it.
 	dropped bool
 }

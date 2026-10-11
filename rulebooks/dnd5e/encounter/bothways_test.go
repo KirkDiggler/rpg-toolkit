@@ -107,7 +107,7 @@ func (s *BothWaysSuite) openWith(
 // openDriven is openWith with the monsters' driver, striker and standing named.
 func (s *BothWaysSuite) openDriven(
 	field encounter.FieldInput, members []encounter.MemberInput,
-	driver encounter.Driver, striker encounter.Striker, standing encounter.StandingWithParticipation,
+	driver encounter.Driver, striker encounter.Striker, standing encounter.Participation,
 	endings ...encounter.EndingInput,
 ) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
@@ -118,8 +118,9 @@ func (s *BothWaysSuite) openDriven(
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      standing,
+			Participation: standing,
 			Initiative:    orderAsGiven{},
 			Driver:        driver,
 			CheckResolver: findsNothing{},
@@ -647,8 +648,9 @@ func (s *BothWaysSuite) TestATurnedPairSurvivesASaveAndLoad() {
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      s.standing,
+			Participation: s.standing,
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},

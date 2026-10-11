@@ -158,26 +158,26 @@ func EncodeSightTestimony(testimony SightTestimony) ([]byte, error) {
 		return json.Marshal(wire)
 	case LocationUnknown:
 		if testimony.AppearanceRef != "" {
-			return nil, fmt.Errorf("unknown location cannot carry appearance")
+			return nil, asInvalidData(fmt.Errorf("unknown location cannot carry appearance"))
 		}
 		if testimony.Position != (spatial.Position{}) {
-			return nil, fmt.Errorf("unknown location cannot carry a position")
+			return nil, asInvalidData(fmt.Errorf("unknown location cannot carry a position"))
 		}
 		if testimony.BlocksMovement != nil {
-			return nil, fmt.Errorf("unknown location cannot carry obstruction")
+			return nil, asInvalidData(fmt.Errorf("unknown location cannot carry obstruction"))
 		}
 		if testimony.Down != nil {
-			return nil, fmt.Errorf("unknown location cannot carry standing")
+			return nil, asInvalidData(fmt.Errorf("unknown location cannot carry standing"))
 		}
 		if testimony.Equipment != nil {
-			return nil, fmt.Errorf("unknown location cannot carry equipment")
+			return nil, asInvalidData(fmt.Errorf("unknown location cannot carry equipment"))
 		}
 		if testimony.Conditions != nil {
-			return nil, fmt.Errorf("unknown location cannot carry conditions")
+			return nil, asInvalidData(fmt.Errorf("unknown location cannot carry conditions"))
 		}
 		return json.Marshal(sightWire{State: string(LocationUnknown)})
 	default:
-		return nil, fmt.Errorf("unsupported location state %q", testimony.State)
+		return nil, asInvalidData(fmt.Errorf("unsupported location state %q", testimony.State))
 	}
 }
 
@@ -241,9 +241,10 @@ func deliveredHoldings(holdings []perception.Holding) ([]perception.Holding, err
 	return holdings, nil
 }
 
-// DecodeSightTestimony decodes canonical tagged sight testimony and the legacy
-// untagged known-coordinate form. It rejects malformed, contradictory,
-// unknown-field, and trailing JSON rather than inventing testimony.
+// DecodeSightTestimony decodes canonical tagged sight testimony. It rejects
+// malformed, contradictory, unknown-field, untagged, and trailing JSON rather
+// than inventing testimony: a payload with no state is not read as a known
+// location.
 //
 // Testimony written before a fact existed decodes with that fact nil, which is
 // the honest reading: an older build did not observe it. The next sight refresh
@@ -267,13 +268,12 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 		return SightTestimony{}, false
 	}
 
-	// The wire struct cannot distinguish an omitted state from an explicit
-	// empty state, so inspect the original object for that one distinction.
+	// The wire struct cannot distinguish an omitted key from a zero value, so
+	// inspect the original object for which keys are present.
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(payload, &fields); err != nil {
 		return SightTestimony{}, false
 	}
-	_, statePresent := fields["state"]
 	_, xPresent := fields["x"]
 	_, yPresent := fields["y"]
 	_, downPresent := fields["down"]
@@ -301,21 +301,6 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 		if validateConditionSet(held) != nil {
 			return SightTestimony{}, false
 		}
-	}
-
-	if wire.State == "" {
-		if statePresent || !xPresent || !yPresent || wire.X == nil || wire.Y == nil {
-			return SightTestimony{}, false
-		}
-		// The legacy untagged form predates every fact but position, so it
-		// cannot carry one.
-		if downPresent || equipmentPresent || blocksPresent || conditionsPresent || appearancePresent {
-			return SightTestimony{}, false
-		}
-		return SightTestimony{
-			State:    LocationKnown,
-			Position: spatial.Position{X: *wire.X, Y: *wire.Y},
-		}, true
 	}
 
 	switch LocationState(wire.State) {
@@ -389,14 +374,4 @@ func hasStrictSightFields(payload []byte) bool {
 
 	var trailing json.RawMessage
 	return dec.Decode(&trailing) == io.EOF
-}
-
-// DecodeSightPayload is the compatibility seam for callers that only need a
-// known sight position. Unknown testimony is intentionally not a position.
-func DecodeSightPayload(payload []byte) (spatial.Position, bool) {
-	testimony, ok := DecodeSightTestimony(payload)
-	if !ok || testimony.State != LocationKnown {
-		return spatial.Position{}, false
-	}
-	return testimony.Position, true
 }

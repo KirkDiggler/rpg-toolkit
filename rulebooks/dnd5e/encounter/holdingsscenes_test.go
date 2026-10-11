@@ -427,8 +427,9 @@ func (s *HoldingsSuite) TestHoldingsSurviveASaveAndLoad() {
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      s.standing,
+			Participation: s.standing,
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -476,8 +477,9 @@ func (s *HoldingsSuite) TestHoldingsSurviveASaveAndLoad() {
 			Capabilities: encounter.Capabilities{
 				Sight:         everyoneSeesTheWholeMap{},
 				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
 				Sheets:        zeroSheets{},
-				Standing:      s.standing,
+				Participation: s.standing,
 				Initiative:    orderAsGiven{},
 				Driver:        passDriver{},
 				CheckResolver: findsNothing{},
@@ -490,7 +492,7 @@ func (s *HoldingsSuite) TestHoldingsSurviveASaveAndLoad() {
 			},
 		})
 		s.Require().NoError(err)
-		s.Require().Equal(len(data.Holdings.Facts), len(fresh.ToData().Holdings.Facts))
+		s.Require().Equal(len(holdingsFacts(data)), len(holdingsFacts(fresh.ToData())))
 	})
 
 	s.Run("the carrier still walks out and wins", func() {
@@ -507,10 +509,10 @@ func (s *HoldingsSuite) TestHoldingsSurviveASaveAndLoad() {
 // carries no holdings key at all.
 func (s *HoldingsSuite) TestAPlainDungeonWritesNoHoldings() {
 	enc := s.open(false)
-	s.Require().Nil(enc.ToData().Holdings)
+	s.Require().Empty(holdingsFacts(enc.ToData()))
 
 	withIntel := s.open(true)
-	s.Require().NotNil(withIntel.ToData().Holdings,
+	s.Require().NotEmpty(holdingsFacts(withIntel.ToData()),
 		"a seeded knowledge link is a holding, and it persists")
 }
 
@@ -596,8 +598,9 @@ func (s *HoldingsSuite) TestLootingTheSameIntelTwiceRevealsOnce() {
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      s.standing,
+			Participation: s.standing,
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -683,8 +686,9 @@ func (s *HoldingsSuite) TestLootingIntelForAFactRevealsNoMap() {
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      s.standing,
+			Participation: s.standing,
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -782,12 +786,13 @@ func (s *HoldingsSuite) TestTheAtlasCarriesTheWaysOut() {
 			Members: []encounter.MemberInput{{ID: raider, Kind: encounter.KindPlayer, Position: raiderCell}},
 			Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   s.standing,
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: s.standing,
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -864,8 +869,9 @@ func (s *HoldingsSuite) TestASpawnedMonsterCarriesTheIntelItWasAuthoredWith() {
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      s.standing,
+			Participation: s.standing,
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -942,8 +948,9 @@ func (s *HoldingsSuite) TestASpawnedMonsterWithNothingIsIndistinguishable() {
 			Capabilities: encounter.Capabilities{
 				Sight:         everyoneSeesTheWholeMap{},
 				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
 				Sheets:        zeroSheets{},
-				Standing:      s.standing,
+				Participation: s.standing,
 				Initiative:    orderAsGiven{},
 				Driver:        passDriver{},
 				CheckResolver: findsNothing{},
@@ -1131,8 +1138,9 @@ func (s *HoldingsSuite) TestTwoMonstersHoldingOneRecord() {
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      s.standing,
+			Participation: s.standing,
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -1226,8 +1234,9 @@ func (s *HoldingsSuite) TestTheRecordIsResolvedAtTransferNotAtPlacement() {
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      s.standing,
+			Participation: s.standing,
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -1429,8 +1438,9 @@ func (s *HoldingsSuite) TestAScrollStillTeachesAfterASaveAndLoad() {
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      s.standing,
+			Participation: s.standing,
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -1518,9 +1528,9 @@ func (s *HoldingsSuite) TestTwoRecordsRevealingOneSecretRevealItOnce() {
 		// change what anybody KNOWS — it would grow the blob on every
 		// redundant loot and put a second, untrue account of how they
 		// learned it into the record.
-		s.Require().NotNil(twiceData.World)
+		s.Require().NotNil(twiceData.Journal)
 		var learned int
-		for _, f := range twiceData.World.Facts {
+		for _, f := range twiceData.Journal.Facts {
 			if f.Kind == "known:concealment:"+vaultSecret && f.Actor == string(raider) {
 				learned++
 			}

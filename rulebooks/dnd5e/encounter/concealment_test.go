@@ -70,8 +70,9 @@ func (s *ConcealmentSuite) setup(field encounter.FieldInput, members ...encounte
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      everyoneStanding{},
+			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -178,8 +179,9 @@ func (s *ConcealmentSuite) TestTheNoticeIsCarriedAndUnread() {
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      everyoneStanding{},
+			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -202,8 +204,9 @@ func (s *ConcealmentSuite) TestTheNoticeIsCarriedAndUnread() {
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      everyoneStanding{},
+			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -297,8 +300,8 @@ func (s *ConcealmentSuite) TestTheMasqueradeIsGeometryForWhoeverCannotSeePastIt(
 	})
 
 	s.Run("a mover who knows it walks through", func() {
-		enc := s.play(alcoveField(), findsEverything{}, seat)
-		_, err := enc.Search(&encounter.SearchInput{Member: walker, Region: "hall"})
+		enc := s.play(alcoveField(), findsNothing{}, seat)
+		err := encounter.ExportedFind(enc, walker, "alcove")
 		s.Require().NoError(err)
 		s.Require().Len(s.revealsFor(enc, walker), 1)
 
@@ -356,8 +359,9 @@ func (s *ConcealmentSuite) TestAnOccupantOfAnAlcoveKnowsItFromFrameOne() {
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      everyoneStanding{},
+			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -409,14 +413,14 @@ func (s *ConcealmentSuite) TestTheRevealCarriesTheRoomsTheSecretWasCutOutOf() {
 			ID: "vault", Checks: vaultCheck(), Cells: rectCells(3, 0, 3, 4),
 			Doors: []encounter.DoorID{"panel"},
 		}}
-		enc := s.play(field, findsEverything{},
+		enc := s.play(field, findsNothing{},
 			encounter.MemberInput{ID: walker, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}})
 
 		blind, err := enc.AtlasFor(walker)
 		s.Require().NoError(err)
 		s.Require().Len(blind.Regions, 1, "the vault has no entry at all for a non-knower")
 
-		_, err = enc.Search(&encounter.SearchInput{Member: walker, Region: "hall"})
+		err = encounter.ExportedFind(enc, walker, "vault")
 		s.Require().NoError(err)
 
 		reveals := s.revealsFor(enc, walker)
@@ -441,7 +445,7 @@ func (s *ConcealmentSuite) TestTheRevealCarriesTheRoomsTheSecretWasCutOutOf() {
 				ID: "alcove", Checks: vaultCheck(), Cells: rectCells(3, 0, 1, 4),
 			}},
 		}
-		enc := s.play(field, findsEverything{},
+		enc := s.play(field, findsNothing{},
 			encounter.MemberInput{ID: walker, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}})
 
 		blind, err := enc.AtlasFor(walker)
@@ -449,7 +453,7 @@ func (s *ConcealmentSuite) TestTheRevealCarriesTheRoomsTheSecretWasCutOutOf() {
 		s.Require().Len(blind.Regions, 1, "the hall is still their room")
 		s.Require().Len(blind.Regions[0].Cells, 12, "with the alcove's column trimmed out of it")
 
-		_, err = enc.Search(&encounter.SearchInput{Member: walker, Region: "hall"})
+		err = encounter.ExportedFind(enc, walker, "alcove")
 		s.Require().NoError(err)
 
 		reveals := s.revealsFor(enc, walker)
@@ -469,10 +473,10 @@ func (s *ConcealmentSuite) TestTheRevealCarriesTheRoomsTheSecretWasCutOutOf() {
 		field.Concealments = []encounter.ConcealmentInput{{
 			ID: "panel-secret", Checks: vaultCheck(), Props: []encounter.PropID{"idol"},
 		}}
-		enc := s.play(field, findsEverything{},
+		enc := s.play(field, findsNothing{},
 			encounter.MemberInput{ID: walker, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}})
 
-		_, err := enc.Search(&encounter.SearchInput{Member: walker, Region: "hall"})
+		err := encounter.ExportedFind(enc, walker, "panel-secret")
 		s.Require().NoError(err)
 
 		reveals := s.revealsFor(enc, walker)
@@ -494,8 +498,9 @@ func (s *ConcealmentSuite) play(
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      everyoneStanding{},
+			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: resolver,
@@ -530,8 +535,9 @@ func (s *ConcealmentSuite) TestABlobWithARetiredRegionFlagIsRefusedByName() {
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      everyoneStanding{},
+			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -554,8 +560,9 @@ func (s *ConcealmentSuite) TestABlobWithARetiredRegionFlagIsRefusedByName() {
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      everyoneStanding{},
+			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},

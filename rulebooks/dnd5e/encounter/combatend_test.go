@@ -78,7 +78,7 @@ func (a failAfterForming) Announce(
 // ever decided.
 func (s *CombatEndTestSuite) fightWithStanding(
 	driver encounter.Driver, striker encounter.Striker, announcer encounter.Announcer,
-	standing encounter.StandingWithParticipation, monsters ...core.EntityID,
+	standing encounter.Participation, monsters ...core.EntityID,
 ) (*encounter.Encounter, error) {
 	members := []encounter.MemberInput{
 		{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
@@ -101,12 +101,13 @@ func (s *CombatEndTestSuite) fightWithStanding(
 		Members: members,
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     sheets,
-			Standing:   standing,
-			Initiative: orderAsGiven{},
-			Driver:     driver,
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        sheets,
+			Participation: standing,
+			Initiative:    orderAsGiven{},
+			Driver:        driver,
 			Actors: encounter.Actors{
 				Striker:   striker,
 				Mover:     quietMover{},

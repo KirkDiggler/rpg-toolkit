@@ -51,8 +51,9 @@ func (s *StartFacingSuite) atlasOf(compiled dungeonspec.Compiled) encounter.Atla
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      everyoneStanding{},
+			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: nothingIsEverFound{},

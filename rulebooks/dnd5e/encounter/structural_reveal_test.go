@@ -157,7 +157,8 @@ func (s *StructuralRevealSuite) open(field encounter.FieldInput, resolver encoun
 			Sheets:        zeroSheets{},
 			Sight:         sight,
 			Equipment:     encounter.UnobservedEquipment{},
-			Standing:      everyoneStanding{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: resolver,
@@ -182,7 +183,8 @@ func (s *StructuralRevealSuite) reload(enc *encounter.Encounter) *encounter.Enco
 			Sheets:        zeroSheets{},
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
-			Standing:      everyoneStanding{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -303,7 +305,7 @@ func (s *StructuralRevealSuite) TestAThirdRegionStaysAbsentFromTheOpener() {
 }
 
 func (s *StructuralRevealSuite) TestSearchUpdatesAnExistingWallAndAddsItsNewDoor() {
-	enc := s.open(hiddenDoorRevealField(), findsEverything{})
+	enc := s.open(hiddenDoorRevealField(), findsNothing{})
 
 	before, err := enc.AtlasFor("finder")
 	s.Require().NoError(err)
@@ -311,7 +313,7 @@ func (s *StructuralRevealSuite) TestSearchUpdatesAnExistingWallAndAddsItsNewDoor
 	s.Empty(before.StructuralWalls[0].Openings, "the door identity is withheld before the find")
 	s.Empty(before.StructuralDoors)
 
-	_, err = enc.Search(&encounter.SearchInput{Member: "finder", Region: "hall"})
+	err = encounter.ExportedFind(enc, "finder", "secret")
 	s.Require().NoError(err)
 
 	beats := s.structuralBeats(enc, "finder", encounter.BeatConcealmentRevealed)
@@ -334,13 +336,13 @@ func (s *StructuralRevealSuite) TestSearchUpdatesAnExistingWallAndAddsItsNewDoor
 func (s *StructuralRevealSuite) TestDoorOnlyRevealDoesNotIntroduceFloor() {
 	field := hiddenDoorRevealField()
 	field.Concealments[0].Cells = nil
-	enc := s.open(field, findsEverything{})
+	enc := s.open(field, findsNothing{})
 	before, err := enc.AtlasFor("finder")
 	s.Require().NoError(err)
 	full, err := enc.Atlas()
 	s.Require().NoError(err)
 	s.Equal(full.Cells, before.Cells, "door selection does not remove its footing")
-	_, err = enc.Search(&encounter.SearchInput{Member: "finder", Region: "hall"})
+	err = encounter.ExportedFind(enc, "finder", "secret")
 	s.Require().NoError(err)
 	beats := s.structuralBeats(enc, "finder", encounter.BeatConcealmentRevealed)
 	s.Require().Len(beats, 1)
@@ -353,14 +355,14 @@ func (s *StructuralRevealSuite) TestDoorOnlyRevealDoesNotIntroduceFloor() {
 }
 
 func (s *StructuralRevealSuite) TestRevealingAHiddenWallDoesNotDuplicateAnAlreadyKnownDoor() {
-	enc := s.open(hiddenWallRevealField(), findsEverything{})
+	enc := s.open(hiddenWallRevealField(), findsNothing{})
 
 	before, err := enc.AtlasFor("finder")
 	s.Require().NoError(err)
 	s.Empty(before.StructuralWalls, "the wall is withheld with the secret")
 	s.Require().Len(before.StructuralDoors, 1, "the unlisted door is already the recipient's")
 
-	_, err = enc.Search(&encounter.SearchInput{Member: "finder", Region: "hall"})
+	err = encounter.ExportedFind(enc, "finder", "secret")
 	s.Require().NoError(err)
 
 	beats := s.structuralBeats(enc, "finder", encounter.BeatConcealmentRevealed)
@@ -508,8 +510,8 @@ func pointFromRow(t *testing.T, raw any) spatial.Point {
 // --- Fixed rows carry only fixed layout ---
 
 func (s *StructuralRevealSuite) TestStructuralRowsCarryNoStateOrPrivateAssociation() {
-	enc := s.open(hiddenDoorRevealField(), findsEverything{})
-	_, err := enc.Search(&encounter.SearchInput{Member: "finder", Region: "hall"})
+	enc := s.open(hiddenDoorRevealField(), findsNothing{})
+	err := encounter.ExportedFind(enc, "finder", "secret")
 	s.Require().NoError(err)
 
 	beats := s.structuralBeats(enc, "finder", encounter.BeatConcealmentRevealed)

@@ -29,7 +29,7 @@ func (s *AutomaticDiscoverySuite) TestFootprintDoorSupportStillTriggersDiscovery
 	s.Zero(r.calls)
 	s.step(enc, 3)
 	s.Equal(1, r.calls, "selected door geometry still supplies discovery distance")
-	s.True(s.memory(enc, "alice")["secret"].Learned)
+	s.True(s.learned(enc, "alice"))
 	after, err := enc.AtlasFor("alice")
 	s.Require().NoError(err)
 	s.Equal(before.Cells, after.Cells, "discovering an object reveals no additional floor")
@@ -93,8 +93,9 @@ func (s *AutomaticDiscoverySuite) TestKnownSecretDoesNotRerollWithAllowanceRemai
 	enc := s.world(false, 3, r)
 	s.walk(enc, 1, 2, 3, 2, 1, 0, 1, 2, 3)
 	s.Equal(1, r.calls)
-	s.Equal(encounter.DiscoveryMemoryData{Used: 1, Learned: true}, s.memory(enc, "alice")["secret"])
-	s.True(s.memory(enc, "bob")["secret"].Learned)
+	s.Equal(1, enc.ToData().Discovery["alice"].Attempts["secret"].Used)
+	s.True(s.learned(enc, "alice"))
+	s.True(s.learned(enc, "bob"))
 	loaded := s.reloadDiscovery(enc, r)
 	s.walk(loaded, 2, 1, 2, 3)
 	s.Equal(1, r.calls)
@@ -159,7 +160,7 @@ func (s *AutomaticDiscoverySuite) TestAudienceExcludesExitedReservedAndNonPlayer
 	s.Empty(s.results(enc, "bob"))
 	s.Empty(s.results(enc, "monster"))
 	s.Empty(s.results(enc, "vendor"))
-	s.True(s.memory(enc, "present")["secret"].Learned)
+	s.True(s.learned(enc, "present"))
 	for _, entry := range enc.ToData().Log.Entries {
 		var body map[string]any
 		s.Require().NoError(json.Unmarshal(entry.Payload, &body))
@@ -172,11 +173,11 @@ func (s *AutomaticDiscoverySuite) TestAudienceExcludesExitedReservedAndNonPlayer
 		Member: "unplaced-player", Kind: encounter.KindPlayer, Cell: cellAt(2, 2),
 		Arrives: encounter.TriggerRound{Round: 99},
 	})
-	s.ErrorIs(err, encounter.ErrNoMember)
+	s.ErrorIs(err, encounter.ErrBadMember)
 	_, err = enc.Join(&encounter.JoinInput{Member: "late", Kind: encounter.KindPlayer, Cell: cellAt(0, 1)})
 	s.Require().NoError(err)
 	s.Empty(s.results(enc, "late"), "a later arrival is not added to the old audience")
-	s.Empty(s.memory(enc, "late"), "no historical discovery backfill")
+	s.False(s.learned(enc, "late"), "no historical discovery backfill")
 }
 
 func (s *AutomaticDiscoverySuite) TestMultipleMembersAndApproachesDoNotMultiplyAttempts() {

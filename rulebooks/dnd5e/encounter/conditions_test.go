@@ -97,9 +97,16 @@ func (s *sightingConditionsSuite) SetupTest() {
 	s.enc = enc
 }
 
+// heldAndConditioned is a test double that answers both what members hold and
+// which conditions they carry, so one value can fill both capabilities.
+type heldAndConditioned interface {
+	encounter.Equipment
+	encounter.Conditions
+}
+
 func (s *sightingConditionsSuite) SetupSubTest() { s.SetupTest() }
 
-func (s *sightingConditionsSuite) setup(equipment encounter.EquipmentWithConditions) *encounter.SetupInput {
+func (s *sightingConditionsSuite) setup(equipment heldAndConditioned) *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("yard", 0, 0, 6, 1)},
@@ -112,12 +119,13 @@ func (s *sightingConditionsSuite) setup(equipment encounter.EquipmentWithConditi
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      s.sight,
-			Equipment:  equipment,
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         s.sight,
+			Equipment:     equipment,
+			Conditions:    equipment,
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -127,16 +135,17 @@ func (s *sightingConditionsSuite) setup(equipment encounter.EquipmentWithConditi
 	}
 }
 
-func (s *sightingConditionsSuite) loadInput(data encounter.EncounterData, equipment encounter.EquipmentWithConditions) *encounter.LoadEncounterInput {
+func (s *sightingConditionsSuite) loadInput(data encounter.EncounterData, equipment heldAndConditioned) *encounter.LoadEncounterInput {
 	return &encounter.LoadEncounterInput{
 		Data: data,
 		Capabilities: encounter.Capabilities{
-			Sight:      s.sight,
-			Equipment:  equipment,
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         s.sight,
+			Equipment:     equipment,
+			Conditions:    equipment,
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},

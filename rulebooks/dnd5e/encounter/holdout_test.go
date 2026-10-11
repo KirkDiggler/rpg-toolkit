@@ -163,8 +163,9 @@ func (s *HoldOutSuite) open(field encounter.FieldInput, members []encounter.Memb
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      s.standing,
+			Participation: s.standing,
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -191,8 +192,9 @@ func (s *HoldOutSuite) reload(enc *encounter.Encounter) *encounter.Encounter {
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        holdOutSheets,
-			Standing:      s.standing,
+			Participation: s.standing,
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -365,14 +367,14 @@ func (s *HoldOutSuite) TestTheLetterCarriedToTheChiefMidFightTurnsTheCamp() {
 
 	s.Run("the chief knows, as a fact audienced to the chief alone", func() {
 		data := enc.ToData()
-		s.Require().NotNil(data.World)
+		s.Require().NotNil(data.Journal)
 		var learned []encounter.FactData
-		for _, f := range data.World.Facts {
+		for _, f := range data.Journal.Facts {
 			if f.Kind == "known:fact:"+campFact {
 				learned = append(learned, f)
 			}
 		}
-		s.Require().Len(learned, 2, "the raider from the letter, the chief from the raider's presence: %v", data.World.Facts)
+		s.Require().Len(learned, 2, "the raider from the letter, the chief from the raider's presence: %v", data.Journal.Facts)
 		for _, f := range learned {
 			s.Equal(f.Actor, f.Subject, "the learner is the subject")
 			s.Equal([]string{f.Actor}, f.Audience, "and the only witness")
@@ -496,11 +498,10 @@ func (s *HoldOutSuite) TestTheStanceIsDerivedNotStored() {
 		s.Require().Len(data.Field.Dispositions, 1)
 		s.Equal(string(encounter.StanceHostile), data.Field.Dispositions[0].Stance)
 		structure, err := json.Marshal(struct {
-			Field    encounter.FieldData
-			Members  []encounter.MemberData
-			World    *encounter.WorldData
-			Holdings *encounter.HoldingsData
-		}{data.Field, data.Members, data.World, data.Holdings})
+			Field   encounter.FieldData
+			Members []encounter.MemberData
+			Journal *encounter.JournalData
+		}{data.Field, data.Members, data.Journal})
 		s.Require().NoError(err)
 		s.NotContains(string(structure), `"neutral"`, "the only place neutral appears is the story's own beat")
 	})
@@ -656,7 +657,7 @@ func (s *HoldOutSuite) TestLoadRefusesKnowledgeThisFieldCannotMint() {
 	enc := s.camp()
 	s.hold(enc, raider, campLetter)
 	base := enc.ToData()
-	s.Require().NotNil(base.World)
+	s.Require().NotNil(base.Journal)
 
 	load := func(data encounter.EncounterData) error {
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
@@ -664,8 +665,9 @@ func (s *HoldOutSuite) TestLoadRefusesKnowledgeThisFieldCannotMint() {
 			Capabilities: encounter.Capabilities{
 				Sight:         everyoneSeesTheWholeMap{},
 				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
 				Sheets:        zeroSheets{},
-				Standing:      s.standing,
+				Participation: s.standing,
 				Initiative:    orderAsGiven{},
 				Driver:        passDriver{},
 				CheckResolver: findsNothing{},
@@ -681,7 +683,7 @@ func (s *HoldOutSuite) TestLoadRefusesKnowledgeThisFieldCannotMint() {
 	}
 	withFact := func(f encounter.FactData) encounter.EncounterData {
 		data := enc.ToData()
-		data.World.Facts = append(append([]encounter.FactData(nil), data.World.Facts...), f)
+		data.Journal.Facts = append(append([]encounter.FactData(nil), data.Journal.Facts...), f)
 		return data
 	}
 	honest := encounter.FactData{
@@ -734,8 +736,9 @@ func (s *HoldOutSuite) TestAPlainDungeonWritesNoSides() {
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      everyoneStanding{},
+			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -774,8 +777,9 @@ func (s *HoldOutSuite) TestTheRunRefusesWhatItCannotKeep() {
 			Capabilities: encounter.Capabilities{
 				Sight:         everyoneSeesTheWholeMap{},
 				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
 				Sheets:        zeroSheets{},
-				Standing:      everyoneStanding{},
+				Participation: everyoneStanding{},
 				Initiative:    orderAsGiven{},
 				Driver:        passDriver{},
 				CheckResolver: findsNothing{},
@@ -941,8 +945,9 @@ func (s *HoldOutSuite) openWith(
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        holdOutSheets,
-			Standing:      s.standing,
+			Participation: s.standing,
 			Initiative:    orderAsGiven{},
 			Driver:        driver,
 			CheckResolver: findsNothing{},

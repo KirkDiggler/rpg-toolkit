@@ -57,7 +57,7 @@ type LootInput struct {
 // LootOutput acknowledges that the loot happened, and deliberately nothing
 // more.
 //
-// ACK-ONLY, and the beat is the answer — [SearchOutput]'s shape, chosen for
+// ACK-ONLY, and the beat is the answer — the shape of the other ack-only verbs, chosen for
 // symmetry (design Q1's lean). A `Transferred` count was weighed: it says
 // nothing about WHAT moved, and it would let a client tell "this body carried
 // nothing" from "the beat has not arrived yet". Neither is a secret worth
