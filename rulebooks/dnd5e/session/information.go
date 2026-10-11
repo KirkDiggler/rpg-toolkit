@@ -10,7 +10,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
 
@@ -35,8 +34,7 @@ import (
 // ability's from its combat ability or feature, an option's from whoever
 // declared it, a reaction's from the condition or feature that offers it, a
 // condition's from the display catalogue. Session authors prose only for the
-// verbs it owns and the opportunity attack it names ([sessionVerbProse],
-// [reactionDescription]).
+// verbs it owns ([sessionVerbProse]).
 //
 // # Absent stays absent
 //
@@ -52,14 +50,6 @@ var sessionVerbProse = map[Verb]string{
 	VerbDeathSave:  "Roll a death saving throw while dying. Successes help you stabilize; failures bring you closer to death.",
 	VerbIntimidate: "Threaten a creature to influence its response. The outcome depends on the creature and the situation.",
 	VerbPersuade:   "Try to change a creature's mind through conversation. The outcome depends on the creature and the situation.",
-}
-
-// reactionDescription explains the reactions this package names. One entry,
-// because the opportunity attack is the one reaction session names rather
-// than receives from an offering owner: its pause's offer carries no prose,
-// so a REACT row reads it here ([reactDeclaration]).
-var reactionDescription = map[string]string{
-	refs.Conditions.OpportunityAttack().String(): "Use your reaction to make one melee attack against a creature that leaves your reach.",
 }
 
 // sessionVerbInformation is a session-owned verb's information, or nil for
