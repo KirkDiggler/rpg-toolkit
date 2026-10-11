@@ -53,7 +53,7 @@ type KnowledgeInput struct {
 // loaded encounter. Seq is its recipient-local state cutoff, not acknowledgement
 // of historical narration.
 type KnowledgeOutput struct {
-	// DiscoverySharing is absent for hosts without the exploration capability.
+	// DiscoverySharing is the viewer's current preference.
 	DiscoverySharing *bool        `json:"discovery_sharing,omitempty"`
 	Atlas            Atlas        `json:"atlas"`
 	View             ViewOutput   `json:"view"`
@@ -112,14 +112,11 @@ func (m *Manager) Knowledge(ctx context.Context, in *KnowledgeInput) (*Knowledge
 	for _, id := range held {
 		holding = append(holding, string(id))
 	}
-	var sharing *bool
-	if m.explorations != nil {
-		preference, err := enc.DiscoverySharing(&encounter.DiscoveryMemoryInput{Member: encounter.MemberID(in.Member)})
-		if err != nil {
-			return nil, translate(err)
-		}
-		sharing = &preference.Sharing
+	preference, err := enc.DiscoverySharing(&encounter.DiscoverySharingInput{Member: encounter.MemberID(in.Member)})
+	if err != nil {
+		return nil, translate(err)
 	}
+	sharing := &preference.Sharing
 	return &KnowledgeOutput{DiscoverySharing: sharing, Atlas: projected, View: *view, Where: WhereOutput{Position: at}, Roster: *roster, Holding: holding, Seq: cursors[in.Member].Count}, nil
 }
 

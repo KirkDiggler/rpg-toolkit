@@ -11,17 +11,6 @@ import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 // member — and is placed on the first verb after its predicate holds, with an
 // `arrived` beat to everyone.
 //
-// # The predicate crosses in this package's own words
-//
-// The composition's predicate is its sealed [encounter.Trigger]; S2 says no
-// encounter type crosses this boundary, so the host hands in an [Arrival] —
-// the designer's grammar (design §2: `round | down | fact | stance`), one type
-// per form, sealed the way [DissolveCause] is — and triggerOf converts it at
-// the door. A host compiling a dungeon file already holds each placement's
-// predicate in the composition's form; the switch it writes to get here is the
-// same four arms triggerOf writes to get back, and that round trip is the cost
-// of a boundary the rest of this package pays everywhere (convert.go).
-//
 // # What this seam contributes beyond forwarding
 //
 // A reserved member ARRIVES INSIDE SOME LATER VERB — the participation pass
@@ -34,48 +23,6 @@ import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 // from what WAITS as well as from what stands ([worldMembers]); a seam that
 // knew only the placed roster refused the zombie the moment it stepped onto
 // the map, and the verb that brought it failed.
-
-// Arrival is the predicate a spawned monster waits in reserve on: exactly one
-// of the forms below, nil when the monster is placed at once. See the file's
-// doc for why it is this package's own type.
-type Arrival interface {
-	// isArrival seals the set: a form is declared here or it is not one.
-	isArrival()
-}
-
-// ArrivesAtRound is `{ round: N }`: the monster arrives when any fight in the
-// run starts round N (N counted from 1). Outside a fight nothing counts (R9).
-type ArrivesAtRound struct {
-	Round int
-}
-
-func (ArrivesAtRound) isArrival() {}
-
-// ArrivesOnFall is `{ down: <member id> }`: the monster arrives when that
-// member is Down — the chief falls and the reinforcements come.
-type ArrivesOnFall struct {
-	Member string
-}
-
-func (ArrivesOnFall) isArrival() {}
-
-// ArrivesOnFact is `{ fact: <id> }`: the monster arrives when the fact exists
-// in the run's journal, learned by anyone — the truth grain (R5).
-type ArrivesOnFact struct {
-	Fact string
-}
-
-func (ArrivesOnFact) isArrival() {}
-
-// ArrivesOnStance is `{ stance: { between: [a, b], is: <stance> } }`: the
-// monster arrives when the pair's stance folds to that word — hostile,
-// neutral or allied, the dungeon file's own vocabulary.
-type ArrivesOnStance struct {
-	Between [2]string
-	Stance  string
-}
-
-func (ArrivesOnStance) isArrival() {}
 
 // PlacementKind names what arrived: a member or a thing. A closed set, because
 // a client branches on it — a monster gets a roster row and a prop does not —

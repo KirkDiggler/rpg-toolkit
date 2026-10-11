@@ -362,7 +362,7 @@ func TestReactWindowKeepsOfferAndOptionProseAcrossReload(t *testing.T) {
 	ctx := context.Background()
 	monsterTurn := func() {
 		var err error
-		s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+		s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
 		require.NoError(t, err)
 	}
 	monsterTurn()

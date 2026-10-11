@@ -64,13 +64,15 @@ import (
 // here — and if that addition turns this test red, a leak has been found rather
 // than a chore created.
 var compositionSentinels = map[string]error{
-	"encounter.ErrNilInput":     encounter.ErrNilInput,
-	"encounter.ErrNoMember":     encounter.ErrNoMember,
-	"encounter.ErrNotMember":    encounter.ErrNotMember,
-	"encounter.ErrNoEnding":     encounter.ErrNoEnding,
-	"encounter.ErrClosed":       encounter.ErrClosed,
-	"encounter.ErrNoField":      encounter.ErrNoField,
-	"encounter.ErrBadPlacement": encounter.ErrBadPlacement,
+	"encounter.ErrNilInput":        encounter.ErrNilInput,
+	"encounter.ErrNoMember":        encounter.ErrNoMember,
+	"encounter.ErrNotMember":       encounter.ErrNotMember,
+	"encounter.ErrDuplicateMember": encounter.ErrDuplicateMember,
+	"encounter.ErrBadMember":       encounter.ErrBadMember,
+	"encounter.ErrNoEnding":        encounter.ErrNoEnding,
+	"encounter.ErrClosed":          encounter.ErrClosed,
+	"encounter.ErrNoField":         encounter.ErrNoField,
+	"encounter.ErrBadPlacement":    encounter.ErrBadPlacement,
 	// The field's construction refusals (rpg-project#256): a world that
 	// trips one fails to LOAD, and a load failure reaches a host as
 	// ErrInvalidWorld with the reason as text, never as one of these.
@@ -86,15 +88,13 @@ var compositionSentinels = map[string]error{
 	"encounter.ErrLocked":                 encounter.ErrLocked,
 	"encounter.ErrDoorShut":               encounter.ErrDoorShut,
 	"encounter.ErrNoRegion":               encounter.ErrNoRegion,
-	"encounter.ErrElsewhere":              encounter.ErrElsewhere,
-	"encounter.ErrSearchRetired":          encounter.ErrSearchRetired,
 	"encounter.ErrInBubble":               encounter.ErrInBubble,
 	"encounter.ErrNoBubble":               encounter.ErrNoBubble,
 	"encounter.ErrBadClock":               encounter.ErrBadClock,
 	"encounter.ErrInvalidData":            encounter.ErrInvalidData,
 	"encounter.ErrTrimmed":                encounter.ErrTrimmed,
 	"encounter.ErrNoInitiative":           encounter.ErrNoInitiative,
-	"encounter.ErrNoStanding":             encounter.ErrNoStanding,
+	"encounter.ErrNoParticipation":        encounter.ErrNoParticipation,
 	// The sheet capability's two refusals (rpg-project#538), translated to
 	// ErrNoSheet and ErrInvalidWorld.
 	"encounter.ErrNoSheets":       encounter.ErrNoSheets,
@@ -216,8 +216,6 @@ var sessionSentinels = map[string]error{
 	"ErrBrokenPath":           session.ErrBrokenPath,
 	"ErrLocked":               session.ErrLocked,
 	"ErrDoorShut":             session.ErrDoorShut,
-	"ErrElsewhere":            session.ErrElsewhere,
-	"ErrSearchRetired":        session.ErrSearchRetired,
 	"ErrNoConnection":         session.ErrNoConnection,
 	"ErrNoIntel":              session.ErrNoIntel,
 	"ErrNoFaction":            session.ErrNoFaction,
@@ -231,6 +229,7 @@ var sessionSentinels = map[string]error{
 	"ErrArmorInFight":         session.ErrArmorInFight,
 	"ErrBadRest":              session.ErrBadRest,
 	"ErrDuplicateMember":      session.ErrDuplicateMember,
+	"ErrConflictingOffers":    session.ErrConflictingOffers,
 	"ErrInvalidWorld":         session.ErrInvalidWorld,
 	"ErrNoCalculation":        session.ErrNoCalculation,
 	"ErrInBubble":             session.ErrInBubble,
@@ -314,12 +313,14 @@ func TestExportedSentinelAllowListIsComplete(t *testing.T) {
 			}
 		}
 	}
-	if len(found) != len(sessionSentinels) {
-		t.Fatalf("exported sentinel count changed: declarations=%d allow-list=%d", len(found), len(sessionSentinels))
-	}
 	for name := range found {
 		if _, ok := sessionSentinels[name]; !ok {
 			t.Errorf("exported sentinel %s is not reviewed in sessionSentinels", name)
+		}
+	}
+	for name := range sessionSentinels {
+		if !found[name] {
+			t.Errorf("sessionSentinels lists %s, which is no longer declared", name)
 		}
 	}
 }
@@ -355,7 +356,7 @@ func TestDeclarationSentinelVocabulary(t *testing.T) {
 
 func (s *SentinelSuite) SetupTest() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
@@ -405,7 +406,7 @@ func (s *SentinelSuite) refusedInOurVocabulary(err error, want error) {
 // the only part of a duel these refusals differ in.
 func (s *SentinelSuite) armedDuel(chars *fakeCharacters) *session.Manager {
 	encounters := newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: encounters,
 		Characters: chars, Events: session.DiscardEvents{},
 	})
@@ -653,15 +654,14 @@ func (s *SentinelSuite) TestOneSheetStoredUnderTwoNames() {
 // path, kept here as the case that guards the OTHER wrap in the compiler.
 //
 // The rulebook answers this one through rpgerr rather than a sentinel value, so
-// there is nothing for a host to match on today and this case was green from
-// the start. It is here because that is a property of the character module this
+// there is nothing for a host to match on beyond our own ErrBadCharacter. It is here because that is a property of the character module this
 // package does not control: the day a sentinel appears underneath the strict
 // load, this scenario is what notices.
 func (s *SentinelSuite) TestASwingWithAnUnreadableSheet() {
 	mgr := s.armedDuel(newFakeCharacters(unreadableFighter("alice"), armedFighter("bob")))
 
 	err := s.swing(mgr)
-	s.refusedInOurVocabulary(err, session.ErrNoDeclarationID)
+	s.refusedInOurVocabulary(err, session.ErrBadCharacter)
 }
 
 // TestADownedActorIsRefusedInOurWords is the death lane's own refusal, and the

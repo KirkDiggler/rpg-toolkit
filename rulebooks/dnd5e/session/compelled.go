@@ -166,13 +166,8 @@ func (d compelledDriver) compulsionOn(
 // Driven: the driver would find nothing, delegate, and a commanded PLAYER's turn
 // would be taken by the host's monster brain.
 //
-// That scenario is NOT reachable through the verbs today, and this doc said
-// otherwise before a reviewer checked. Resolution's attach refuses a record
-// carrying an unreadable condition one seam earlier — outright for a monster,
-// and after the lenient loader drops it for a character — so a sheet in this
-// state never reaches a compelled turn at all.
-//
-// So the leniency is defence in depth, and it is also a DIVERGENCE from the
+// Resolution's attach refuses a record carrying an unreadable condition one
+// seam earlier, so the leniency is defence in depth, and it is also a DIVERGENCE from the
 // provider's stated judgement, taken on purpose: this module already answers an
 // unreadable sheet by refusing that member's offers rather than the whole read,
 // and [holdsCompulsion] one file over must stay lenient for two tested rulings

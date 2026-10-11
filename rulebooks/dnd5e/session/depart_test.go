@@ -52,7 +52,7 @@ func (s *DepartSuite) SetupTest() {
 	bob := withHitDice(armedFighter("bob"), 1)
 	holding := conditions.NewConcentratingCondition("bob", refs.Spells.Bless().String(), "Bless", 10)
 	for _, target := range []string{"alice", "carol"} {
-		holding.Children = append(holding.Children, dnd5eEvents.ChildRef{
+		holding.Children = append(holding.Children, dnd5eEvents.ConditionAddress{
 			MemberID: target, ConditionRef: refs.Conditions.Blessed().String(), SourceID: "bob",
 		})
 	}
@@ -71,7 +71,7 @@ func (s *DepartSuite) SetupTest() {
 
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"), armedFighter("carol"))
 	s.stream = &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 		Characters: s.characters, Events: s.stream,
 	})
@@ -106,8 +106,8 @@ func (s *DepartSuite) holdTargets() []string {
 	s.Require().NoError(err)
 	for _, raw := range data.Conditions {
 		var hold struct {
-			Ref      *core.Ref              `json:"ref"`
-			Children []dnd5eEvents.ChildRef `json:"children"`
+			Ref      *core.Ref                      `json:"ref"`
+			Children []dnd5eEvents.ConditionAddress `json:"children"`
 		}
 		if json.Unmarshal(raw, &hold) != nil || hold.Ref == nil || hold.Ref.String() != refs.Conditions.Concentrating().String() {
 			continue

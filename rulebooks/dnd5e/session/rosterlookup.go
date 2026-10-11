@@ -51,16 +51,18 @@ func encounterDataKinds(roster []encounter.MemberData) map[string]encounter.Memb
 }
 
 // standingSet batches a down-check over a set of member ids into a lookup —
-// one Standing() call per verb rather than one per sighted subject or
-// participant, and the same batching turn.go's own participantsFor uses.
-func standingSet(standing encounter.Standing, ids []encounter.MemberID) (map[string]bool, error) {
-	down, err := standing.Standing(ids)
+// one assessment per verb rather than one per sighted subject or participant,
+// reading Down from the participation answer, the one answer to who is down.
+func standingSet(participation encounter.Participation, ids []encounter.MemberID) (map[string]bool, error) {
+	assessment, err := participation.Assess(ids)
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string]bool, len(down))
-	for _, id := range down {
-		out[string(id)] = true
+	out := make(map[string]bool, len(assessment.Members))
+	for _, member := range assessment.Members {
+		if member.Down {
+			out[string(member.Member)] = true
+		}
 	}
 	return out, nil
 }

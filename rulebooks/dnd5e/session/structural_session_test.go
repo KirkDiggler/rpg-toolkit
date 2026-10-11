@@ -17,7 +17,7 @@ package session_test
 //
 // The fixture is one dungeon with a concealed vault behind it. Hidden in that
 // vault are a structural wall and a footprint door bound to one of its cuts,
-// so a real Search teaches the searcher both the wall (with its once-withheld
+// so a real discovery teaches the finder both the wall (with its once-withheld
 // cut) and the independent door — the exact P2E payload shape, produced by the
 // provider and read back here.
 
@@ -105,7 +105,7 @@ func structuralSecretWorld() scene {
 // wall and an independent footprint door standing in the sealed vault. Nothing
 // is concealed: the vault is ordinary unexplored floor, so OPENING the gate is
 // what teaches the layout — the room_revealed half of P2E, as opposed to the
-// concealment half the suite above drives with Search.
+// concealment half the suite above drives by walking up to the wall.
 func structuralRoomWorld() scene {
 	wallBox := structuralBox(hexCell(7, 2), 6, 0.5)
 	doorBox := structuralBox(hexCell(7, 3), 1, 1)
@@ -158,7 +158,7 @@ func (s *StructuralSessionSuite) startWith(world scene, cast ...*character.Data)
 	s.stream = &fakeStream{}
 	characters := newFakeCharacters(cast...)
 	stockAuthoredPlayers(world, characters)
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 		Characters: characters, Events: s.stream,
@@ -169,13 +169,17 @@ func (s *StructuralSessionSuite) startWith(world scene, cast ...*character.Data)
 	launchScene(s.T(), s.mgr, world)
 }
 
+func (s *StructuralSessionSuite) find(ctx context.Context, member string) (*session.MoveOutput, error) {
+	return walkToTheVeil(ctx, s.T(), s.mgr, member)
+}
+
 // TestKnowledgeCarriesThePermittedStructuralLayout is the headline: a real
-// Search teaches the searcher the provider-scoped wall (with its cut) and the
+// discovery teaches the finder the provider-scoped wall (with its cut) and the
 // independent door, and Manager.Knowledge answers all of it on the ONE atlas.
 //
 // BEFORE THE FIND the vault's structural layout is withheld whole, and AFTER
 // it the snapshot agrees with the concealment_revealed beat byte for byte — the
-// snapshot-or-event parity the promotion is for. bob, who did not search,
+// snapshot-or-event parity the promotion is for. bob, who found nothing,
 // learns nothing.
 func (s *StructuralSessionSuite) TestKnowledgeCarriesThePermittedStructuralLayout() {
 	ctx := context.Background()
@@ -188,7 +192,7 @@ func (s *StructuralSessionSuite) TestKnowledgeCarriesThePermittedStructuralLayou
 	s.Empty(before.Atlas.StructuralDoors, "and so is the door it was withholding")
 
 	s.stream.published = nil
-	_, err = s.mgr.Search(ctx, &session.SearchInput{Session: "sess", Member: "alice", Region: "hall"})
+	_, err = s.find(ctx, "alice")
 	s.Require().NoError(err)
 
 	after, err := s.mgr.Knowledge(ctx, input)
@@ -292,7 +296,7 @@ func (s *StructuralSessionSuite) TestKnowledgeStructuralLayoutSurvivesARepositor
 	ctx := context.Background()
 	s.startWith(structuralSecretWorld(), sharpEyed("alice"), dullEyed("bob"))
 
-	_, err := s.mgr.Search(ctx, &session.SearchInput{Session: "sess", Member: "alice", Region: "hall"})
+	_, err := s.find(ctx, "alice")
 	s.Require().NoError(err)
 
 	first, err := s.mgr.Knowledge(ctx, &session.KnowledgeInput{Session: "sess", Member: "alice", Player: "player-alice"})

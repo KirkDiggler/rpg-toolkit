@@ -47,7 +47,7 @@ func (s *MoveTurnClockSuite) SetupTest() {
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
 	s.stream = &fakeStream{}
 
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
 	})
@@ -254,8 +254,9 @@ func (s *MoveTurnClockSuite) TestNotActiveWinsOverAffordability() {
 	s.ErrorIs(err, session.ErrNotYourTurn)
 	s.NotErrorIs(err, session.ErrCannotAfford, "the wrong reason must not also be true of this refusal")
 
-	s.Equal(before, s.characters.asked["alice"],
-		"the clock is asked before the sheet is — a refusal this early must never have loaded it")
+	s.Equal(before+1, s.characters.asked["alice"],
+		"the clock is asked before the sheet is — a refusal this early loads nothing but the "+
+			"one record opening the verb stages for discovery, never the pricing's")
 }
 
 // TestTurnClockMoveRequiresCurrentSelector pins both halves of the Move
@@ -293,7 +294,7 @@ func (s *MoveTurnClockSuite) TestTurnClockMoveRequiresCurrentSelector() {
 func (s *MoveTurnClockSuite) TestWorldClockMoveNeverTouchesTheEconomy() {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	characters := testCharacters()
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
 		Characters: characters, Events: session.DiscardEvents{},
 	})

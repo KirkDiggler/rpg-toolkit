@@ -89,7 +89,7 @@ func newRosterFixture(t *testing.T) *rosterFixture {
 		}},
 	}
 
-	manager, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
+	manager, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{},
 		Sessions:        sessions, Encounters: encounters, Characters: characters,
 		Events: session.DiscardEvents{}, Dice: testDice{}, TurnDriver: session.Pass{},
@@ -118,12 +118,13 @@ func rosterWorld(t *testing.T) *encounter.EncounterData {
 		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
 		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Standing:   encEveryoneStanding{},
+			Sheets:        encStandStill{},
+			Sight:         encEveryoneSees{},
+			Equipment:     encNoHandsObserved{},
+			Conditions:    encNoHandsObserved{},
+			Initiative:    encOrderAsGiven{},
+			Driver:        encPassDriver{},
+			Participation: encEveryoneStanding{},
 			Actors: encounter.Actors{
 				Striker:   encounter.RefusingStriker{},
 				Mover:     encounter.RefusingMover{},
@@ -386,7 +387,7 @@ func TestRosterRefusesACharacterReturnedUnderTheWrongID(t *testing.T) {
 
 func TestRosterRefusesANilCharacterRepositoryResult(t *testing.T) {
 	fixture := newRosterFixture(t)
-	manager, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
+	manager, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{},
 		Sessions:        fixture.sessions, Encounters: fixture.encounters,
 		Characters: nilRosterRepository{}, Events: session.DiscardEvents{},
@@ -563,7 +564,7 @@ func TestRosterSurvivesManagerRestartFromCopiedPersistence(t *testing.T) {
 	restartedEncounters := newFakeEncounters()
 	restartedEncounters.byID["world"] = storedEncounter
 	restartedCharacters := newFakeCharacters(alice, bob)
-	restarted, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
+	restarted, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{},
 		Sessions:        restartedSessions, Encounters: restartedEncounters,
 		Characters: restartedCharacters, Events: session.DiscardEvents{},
@@ -593,7 +594,7 @@ func TestRosterRejectsMalformedNPCRefWithoutLeakingCoreErrors(t *testing.T) {
 			ID: "skel-1", Name: "Skeleton", Ref: &core.Ref{Module: "", Type: "monsters", ID: "skeleton"},
 		}},
 	})
-	manager, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
+	manager, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{},
 		Sessions:        sessions, Encounters: fixture.encounters, Characters: fixture.characters,
 		Events: session.DiscardEvents{}, Dice: testDice{}, TurnDriver: session.Pass{},

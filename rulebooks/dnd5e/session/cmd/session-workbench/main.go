@@ -172,6 +172,25 @@ func (m *memSeats) SaveSeat(_ context.Context, data *session.SeatData) error {
 	return nil
 }
 
+// memExplorations is an ExplorationRepository over a map: the preference each
+// character keeps for how their discoveries are shared.
+type memExplorations struct {
+	byID map[string]*session.ExplorationData
+}
+
+func (m *memExplorations) GetExploration(_ context.Context, id string) (*session.ExplorationData, error) {
+	data, ok := m.byID[id]
+	if !ok {
+		return nil, session.ErrNotFound
+	}
+	return data, nil
+}
+
+func (m *memExplorations) SaveExploration(_ context.Context, data *session.ExplorationData) error {
+	m.byID[data.Character] = data
+	return nil
+}
+
 // bobTheDwarf is the stored sheet the workbench loads.
 //
 // Note what is NOT here: speed. It is derived from race when the character is
@@ -253,8 +272,9 @@ func drive(out *bytes.Buffer) error {
 		Characters: &memCharacters{
 			byID: map[string]*character.Data{"alice": aliceTheFighter(), "bob": bobTheDwarf()},
 		},
-		Seats:  &memSeats{byID: map[string]*session.SeatData{}},
-		Events: &printStream{out: out},
+		Seats:        &memSeats{byID: map[string]*session.SeatData{}},
+		Explorations: &memExplorations{byID: map[string]*session.ExplorationData{}},
+		Events:       &printStream{out: out},
 		// The workbench demonstrates verbs a human drives; nothing in it
 		// gives a monster a real behavior yet, so an unplayed member simply
 		// passes (rpg-toolkit#1162).

@@ -84,7 +84,7 @@ func (s *DeathTestSuite) SetupTest() {
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
 	s.stream = &fakeStream{}
 
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
 	})
@@ -567,7 +567,7 @@ func (s *DeathTestSuite) TestAKillingAttackReportsTheNestedBoundarySaveFailure()
 		failAt:         2,
 		err:            errBoundaryCharacterSave,
 	}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: failing, Events: s.stream,
 	})
@@ -634,7 +634,7 @@ func (s *DeathTestSuite) TestASwingThatCannotRecordStillNamesTheSheetItWrote() {
 	chars := &brokenAfterWriting{
 		fakeCharacters: newFakeCharacters(armedFighter("alice"), armedFighter("bob")),
 	}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: chars, Events: s.stream,
 	})
@@ -676,6 +676,31 @@ func (s *DeathTestSuite) TestADownedActorCannotSwing() {
 	s.Require().ErrorIs(err, session.ErrDowned)
 	s.Contains(err.Error(), "alice", "and the refusal names who could not swing")
 	s.NotErrorIs(err, session.ErrNoMember, "she is still a member; she is down")
+}
+
+// TestADownedMemberOnTheWorldClockIsRefusedThroughTheAssessment: with no fight
+// there is no turn order and no compiled offer, so the world-clock gate is the
+// only thing between a body and a verb. It reads Down from the participation
+// assessment, the one answer to who is down, and refuses both verbs by name.
+func (s *DeathTestSuite) TestADownedMemberOnTheWorldClockIsRefusedThroughTheAssessment() {
+	launchScene(s.T(), s.mgr, freeRoamDuelWorld())
+	s.characters.byID["alice"].HitPoints = 0
+
+	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
+		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 1, Y: 2}},
+	})
+	s.Require().ErrorIs(err, session.ErrDowned, "a body does not walk")
+
+	_, err = s.mgr.Attack(context.Background(), &session.AttackInput{
+		Session: "sess", Attacker: "alice", Target: "bob", DeclarationID: "no-offer-on-a-world-clock",
+	})
+	s.Require().ErrorIs(err, session.ErrDowned, "and does not swing")
+	s.NotErrorIs(err, session.ErrNoMember, "she is still a member; she is down")
+
+	_, err = s.mgr.Move(context.Background(), &session.MoveInput{
+		Session: "sess", Member: "bob", Path: []spatial.Position{{X: 2, Y: 2}},
+	})
+	s.NotErrorIs(err, session.ErrDowned, "the member beside her is up, and the gate asks about the actor")
 }
 
 // TestADownedActorCannotWalk is the same ruling on the other verb a body could
@@ -847,12 +872,13 @@ func (s *DeathTestSuite) TestAMemberWithNoSheetIsRefusedNotWalkedPast() {
 		// Stand-ins, not RefusingCapabilities: a world with members runs a
 		// participation pass at first light, which the refusing set refuses.
 		Capabilities: encounter.Capabilities{
-			Sheets:     encStandStill{},
-			Sight:      encEveryoneSees{},
-			Equipment:  encNoHandsObserved{},
-			Initiative: encOrderAsGiven{},
-			Driver:     encPassDriver{},
-			Standing:   encEveryoneStanding{},
+			Sheets:        encStandStill{},
+			Sight:         encEveryoneSees{},
+			Equipment:     encNoHandsObserved{},
+			Conditions:    encNoHandsObserved{},
+			Initiative:    encOrderAsGiven{},
+			Driver:        encPassDriver{},
+			Participation: encEveryoneStanding{},
 			Actors: encounter.Actors{
 				Striker:   encounter.RefusingStriker{},
 				Mover:     encounter.RefusingMover{},
@@ -972,7 +998,7 @@ func (m *markedCharacters) GetCharacter(ctx context.Context, id string) (*charac
 // is a request the host can no longer stop.
 func (s *DeathTestSuite) TestTheSeamReadsOnTheCallersContext() {
 	chars := &markedCharacters{fakeCharacters: newFakeCharacters(armedFighter("alice"), armedFighter("bob"))}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: chars, Events: s.stream,
 	})
@@ -1027,7 +1053,7 @@ func (s *DeathTestSuite) TestAStoreThatCannotAnswerFailsTheVerb() {
 	chars := &failingCharacters{
 		fakeCharacters: newFakeCharacters(armedFighter("alice"), armedFighter("bob")),
 	}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: chars, Events: s.stream,
 	})

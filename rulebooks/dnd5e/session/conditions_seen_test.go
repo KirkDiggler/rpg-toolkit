@@ -56,10 +56,12 @@ func (s *ConditionSeamSuite) TestConditionSeamReportsSheets() {
 	s.Require().NoError(err)
 	s.chars.byID["player"] = &character.Data{ID: "player", Conditions: []json.RawMessage{
 		s.blob(conditions.NewProneCondition("player")), s.blob(ff),
+		s.blob(conditions.NewOpportunityAttackCondition("player")),
 	}}
 	trait := json.RawMessage(`{"ref":{"module":"dnd5e","type":"monster_traits","id":"vulnerability"}}`)
 	s.data.NPCs = []monster.Data{{ID: "goblin", Conditions: []json.RawMessage{
 		trait, s.blob(conditions.NewDodgingCondition("goblin")),
+		s.blob(conditions.NewOpportunityAttackCondition("goblin")),
 	}}}
 
 	got, err := s.seam.Conditions([]encounter.MemberID{"player", "goblin", "door", "ghost", "unsheeted"})
@@ -79,20 +81,21 @@ func (s *ConditionSeamSuite) TestConditionSeamReportsSheets() {
 		"door":      nil,
 		"ghost":     nil,
 		"unsheeted": nil,
-	}, got, "in sheet order, then what a combatant carries by existing; a trait is a condition and is listed; no sheet is nothing to observe")
+	}, got, "exactly the stored list, in sheet order, free reaction included because the sheet names it; a trait is a condition and is listed; no sheet is nothing to observe")
 }
 
-// TestASheetHoldingNothingIsSeenHoldingOnlyItsOpportunityAttack: a sheet with
-// nothing stored is an observation, and what it observes is what the member
-// holds as a participant — the opportunity attack every combatant carries.
-func (s *ConditionSeamSuite) TestASheetHoldingNothingIsSeenHoldingOnlyItsOpportunityAttack() {
+// TestASheetHoldingNothingIsSeenHoldingNothing: a sheet with nothing stored is
+// an observation, and what it observes is the stored record and nothing more.
+// A combatant's free reactions are written into its sheet when it is made, so
+// the reader adds none of its own.
+func (s *ConditionSeamSuite) TestASheetHoldingNothingIsSeenHoldingNothing() {
 	s.chars.byID["player"] = &character.Data{ID: "player"}
 
 	got, err := s.seam.Conditions([]encounter.MemberID{"player"})
 	s.Require().NoError(err)
 
 	s.Require().NotNil(got["player"], "a sheet was read: an observation, not an absence")
-	s.Equal([]encounter.ConditionKey{{ConditionRef: refs.Conditions.OpportunityAttack().String()}}, got["player"].Conditions)
+	s.Empty(got["player"].Conditions, "the reader does not add what the sheet does not say")
 }
 
 func (s *ConditionSeamSuite) TestAnswersOnlyForWhoWasAsked() {
@@ -102,8 +105,9 @@ func (s *ConditionSeamSuite) TestAnswersOnlyForWhoWasAsked() {
 	got, err := s.seam.Conditions([]encounter.MemberID{"player"})
 	s.Require().NoError(err)
 
-	s.Len(got, 1, "the store holds strangers; the answer names only the asked")
 	s.Contains(got, encounter.MemberID("player"))
+	s.NotContains(got, encounter.MemberID("stranger"),
+		"the store holds strangers; the answer names only the asked")
 }
 
 func (s *ConditionSeamSuite) TestAMemberWithNoRosterKindIsRefused() {

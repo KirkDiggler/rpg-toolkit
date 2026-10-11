@@ -85,7 +85,7 @@ func (s *PostRollWindowSuite) duel() *session.Manager {
 // duelOverStores builds a manager over this suite's stores. A second call with
 // the stores unchanged is a RESTART: nothing in memory survives it.
 func (s *PostRollWindowSuite) duelOverStores() *session.Manager {
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
@@ -405,7 +405,7 @@ func (s *PostRollWindowSuite) TestTheWindowSurvivesAReload() {
 
 	// A second manager over the same stored records: nothing in memory
 	// survives, only what was written.
-	restarted, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
+	restarted, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},

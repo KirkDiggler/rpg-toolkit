@@ -27,7 +27,7 @@ func (s *WriteTestSuite) SetupTest() {
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
 	s.characters = testCharacters()
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
 	})
@@ -203,7 +203,7 @@ func (s *WriteTestSuite) TestWriteVerbsRejectMissingIdentifiers() {
 func (s *WriteTestSuite) TestFailedSaveIsReportedNotSwallowed() {
 	encounters := &failingEncounters{fakeEncounters: newFakeEncounters()}
 	sessions := newFakeSessions()
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
@@ -234,7 +234,7 @@ func (s *WriteTestSuite) TestFailedSaveIsReportedNotSwallowed() {
 func (s *WriteTestSuite) TestStaleWorldIsNotResurrected() {
 	ctx := context.Background()
 
-	other, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	other, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
 	})

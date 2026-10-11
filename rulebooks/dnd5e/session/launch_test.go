@@ -48,7 +48,7 @@ func (s *LaunchSuite) SetupTest() {
 	s.characters = newFakeCharacters(tired("alice"), tired("bob"), tired("carol"))
 	s.seats = newFakeSeats()
 	s.stream = &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Seats: s.seats, PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: s.seats, Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
 	})
@@ -393,7 +393,7 @@ func (s *LaunchSuite) TestALaunchCannotPlaceAMonsterHoldingARecordThatIsNotThere
 func launchHoldingLatecomer(t *testing.T, holds []string) (*session.Manager, *fakeStream) {
 	t.Helper()
 	sessions, stream := newFakeSessions(), &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: newFakeEncounters(),
 		Characters: newFakeCharacters(sharpEyed("alice"), dullEyed("bob")), Events: stream,
@@ -503,7 +503,7 @@ func TestLaunchActionsSuite(t *testing.T) { suite.Run(t, new(LaunchActionsSuite)
 
 func (s *LaunchActionsSuite) SetupTest() {
 	s.sessions = newFakeSessions()
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: newFakeEncounters(), Characters: testCharacters(),
 		Events: session.DiscardEvents{},

@@ -32,7 +32,7 @@ func TestMissingSheetSuite(t *testing.T) { suite.Run(t, new(MissingSheetSuite)) 
 func (s *MissingSheetSuite) manager() *session.Manager {
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
 	s.encounters = newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})
@@ -89,7 +89,15 @@ func (s *MissingSheetSuite) TestTheStandingPathRefuses() {
 	s.Require().ErrorIs(err, session.ErrNoCharacter, "a walk's sight refresh asks who is standing, bob included")
 }
 
-func (s *MissingSheetSuite) TestTheRunCanStillBeLeftAndClosed() {
+// TestReadsStillWorkWhenAMemberHasNoSheet: a read never stages discovery, so a
+// run with a member whose sheet is gone can still be looked at.
+//
+// Leaving and closing such a run no longer works. Discovery is always on
+// (Config.Explorations is required), so every write verb stages each seated
+// player's record when it opens, and an absent one is refused by name before
+// the verb's own work. Exit and End are write verbs. The refusal is the
+// store's one answer, and a host repairs the sheet before it ends the run.
+func (s *MissingSheetSuite) TestReadsStillWorkWhenAMemberHasNoSheet() {
 	s.start(freeRoamDuelWorld())
 	s.lose("bob")
 
@@ -99,7 +107,7 @@ func (s *MissingSheetSuite) TestTheRunCanStillBeLeftAndClosed() {
 	s.Require().NoError(err, "reads still work")
 
 	_, err = s.mgr.Exit(context.Background(), &session.ExitInput{Session: "sess", Member: "bob"})
-	s.Require().NoError(err, "the member with no sheet can leave")
+	s.Require().ErrorIs(err, session.ErrNoCharacter, "a write verb stages every seated player, and bob has no sheet")
 	_, err = s.mgr.End(context.Background(), &session.EndInput{Session: "sess", Ending: "withdrawn"})
-	s.Require().NoError(err, "the run can be closed")
+	s.Require().ErrorIs(err, session.ErrNoCharacter, "closing is a write verb too")
 }

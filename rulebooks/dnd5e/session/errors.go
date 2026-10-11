@@ -428,10 +428,12 @@ var (
 	// The rulebook's own reason rides along as text.
 	ErrBadRest = errors.New("invalid rest request")
 
-	// ErrDuplicateMember is returned by Launch when one member id is claimed
-	// twice — two party characters, two compiled monsters, or one of each.
-	// Every member of a run needs an id of its own; refused before anything
-	// is written, naming both claimants.
+	// ErrDuplicateMember is returned when one member id is claimed twice: by
+	// Launch for two party characters, two compiled monsters, or one of each,
+	// refused before anything is written and naming both claimants; and by
+	// Join for a member the encounter already holds. Every member of a run
+	// needs an id of its own. Distinct from ErrNoMember, a member that is not
+	// there at all.
 	ErrDuplicateMember = errors.New("member id claimed twice")
 
 	// ErrInvalidWorld is returned when the dungeon handed to Launch or
@@ -521,17 +523,6 @@ var (
 	// case arrives with the behavior work that calls for it.
 	ErrNotACharacter = errors.New("member is not a character")
 
-	// ErrElsewhere is returned by Search when the named region is not the
-	// one the searcher stands in — INCLUDING a region that does not exist,
-	// deliberately indistinguishably: a distinct no-such-region answer
-	// would let a guessed ID probe for hidden rooms (the composition's own
-	// contract, carried across unweakened).
-	ErrElsewhere = errors.New("not standing in that region")
-
-	// ErrSearchRetired is returned when an automatic-discovery host receives
-	// the legacy Search verb. Move/placement supplies discovery instead.
-	ErrSearchRetired = errors.New("search is retired; discovery checks are automatic")
-
 	// ErrNoSheet is returned when a member has no stored sheet to resolve
 	// against — an authored monster standing in a world nobody spawned.
 	//
@@ -611,6 +602,12 @@ var (
 	// attacker's own sheet or shared persisted definition — an empty hand,
 	// malformed declared action, or a weapon the strike has no semantics for.
 	ErrBadAttack = errors.New("attack cannot be made")
+
+	// ErrConflictingOffers is returned when two of the attacker's conditions
+	// each offer a replacement for the same swing and none was picked. The
+	// offer blocks Attack as unavailable, and naming it as the verb's refusal
+	// lets a caller tell this state from an unreadable sheet.
+	ErrConflictingOffers = errors.New("competing attack offers for one swing")
 
 	// ErrBadInformation is returned by Afford when an offer's action
 	// information cannot be stated: the rulebook refused to describe a

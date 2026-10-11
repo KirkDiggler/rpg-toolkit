@@ -13,7 +13,7 @@ import (
 )
 
 func TestMonsterActionViewsCarryMaximumRange(t *testing.T) {
-	views := memberActionsFromMonster(monsters.NewSkeleton("skeleton").ToData().Actions)
+	views := memberActionsOf(monsters.NewSkeleton("skeleton").ToData().Actions)
 	require.Len(t, views, 2)
 
 	require.Equal(t, refs.Weapons.Shortsword(), &views[0].Ref)

@@ -100,6 +100,11 @@ var conditionReaders = map[string]bool{
 	// its owner's explanation, by ref (provider-design R14). It is a lookup
 	// over data, and holds, builds and runs nothing.
 	"DisplayFor": true,
+	// FreeReactions is the rulebook's one list of the reactions every
+	// combatant carries by existing. The monster mint serializes it into a new
+	// sheet's stored conditions (tier 3 close-out R2) and attaches nothing: the
+	// seam writes a list somebody else stated, which is projecting a fact.
+	"FreeReactions": true,
 }
 
 // checkMachinery are the entries in the rulebook's events package that stand a

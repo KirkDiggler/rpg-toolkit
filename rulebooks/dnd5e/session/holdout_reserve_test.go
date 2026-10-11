@@ -88,7 +88,7 @@ func (s *HoldOutSessionSuite) launchShippedCamp(
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(cast...)
 
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
@@ -331,7 +331,8 @@ func (s *HoldOutSessionSuite) TestASpawnCannotWaitOnAPredicateNothingCouldFire()
 	}
 
 	_, err := s.launchShippedCamp(nil, nil, stray)
-	s.Require().ErrorIs(err, session.ErrNoMember)
+	s.Require().ErrorIs(err, session.ErrInvalidWorld)
+	s.NotErrorIs(err, session.ErrNoMember, "the member exists; its arrival predicate is what cannot be kept")
 
 	s.NotContains(s.sessions.byID, campSession, "the refusal left no session behind")
 	s.NotContains(s.encounters.byID, campSession, "and no world, so nothing was reserved")

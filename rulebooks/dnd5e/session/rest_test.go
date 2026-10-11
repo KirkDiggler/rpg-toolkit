@@ -59,7 +59,7 @@ func (s *RestSuite) launch(sc scene, clock []string, alice, bob *character.Data,
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter(alice.ID), armedFighter(bob.ID))
 	s.stream = &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
 	})
@@ -281,7 +281,7 @@ func (s *RestSuite) TestARefusedSecondResterLeavesTheFirstUnwritten() {
 // blessing stands bob concentrating on Bless with its effect on alice.
 func (s *RestSuite) blessing(bob, alice *character.Data) {
 	holding := conditions.NewConcentratingCondition("bob", refs.Spells.Bless().String(), "Bless", 10)
-	holding.Children = []dnd5eEvents.ChildRef{{MemberID: "alice", ConditionRef: refs.Conditions.Blessed().String(), SourceID: "bob"}}
+	holding.Children = []dnd5eEvents.ConditionAddress{{MemberID: "alice", ConditionRef: refs.Conditions.Blessed().String(), SourceID: "bob"}}
 	held, err := holding.ToJSON()
 	s.Require().NoError(err)
 	bob.Conditions = []json.RawMessage{held}

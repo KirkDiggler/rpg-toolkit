@@ -4,7 +4,6 @@
 package session
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -20,14 +19,12 @@ import (
 // footing as Position: a fact decoded out of the stored testimony, never a
 // live consult — see standingTestimonyBytes and the cases built on it below.
 
-// sightPayloadBytes encodes the legacy untagged {x,y} form: a known position
-// and nothing else. It predates Down and Equipment entirely, which is exactly
-// what makes it useful for the tests that are not about either.
+// sightPayloadBytes encodes canonical sight testimony carrying a known position
+// and nothing else: no Down claim, no hands, no conditions. That is what makes
+// it useful for the tests that are not about any of them.
 func sightPayloadBytes(t *testing.T, x, y float64) []byte {
 	t.Helper()
-	b, err := json.Marshal(encounter.SightPayload{X: x, Y: y})
-	require.NoError(t, err)
-	return b
+	return standingTestimonyBytes(t, x, y, nil)
 }
 
 // standingTestimonyBytes encodes canonical tagged sight testimony carrying a

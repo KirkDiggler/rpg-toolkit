@@ -20,7 +20,7 @@ import (
 // here, so a sequence was invisible to the composition and no driver could
 // ever pick one.
 func TestAMultiattackIsProjectedFirstAndCarriesItsOwnReach(t *testing.T) {
-	views := memberActionsFromMonster(monsters.NewGoblinBoss("boss").ToData().Actions)
+	views := memberActionsOf(monsters.NewGoblinBoss("boss").ToData().Actions)
 	require.Len(t, views, 3, "the script and both components a driver can also take on their own")
 
 	require.Equal(t, refs.MonsterActions.GoblinBossMultiattack(), &views[0].Ref,
@@ -63,7 +63,7 @@ func TestASequenceIsProjectedAtItsShortestStepsReach(t *testing.T) {
 		},
 	}
 
-	views := memberActionsFromMonster([]combatActions.Definition{script, bow, claw})
+	views := memberActionsOf([]combatActions.Definition{script, bow, claw})
 	require.Len(t, views, 3)
 	require.Equal(t, 5, views[0].RangeFeet,
 		"the binding distance is the step that reaches least far, not the one that reaches furthest")
@@ -86,5 +86,5 @@ func TestASequenceNamingSomethingTheMonsterDoesNotCarryIsNotProjected(t *testing
 		},
 	}
 
-	require.Empty(t, memberActionsFromMonster([]combatActions.Definition{script}))
+	require.Empty(t, memberActionsOf([]combatActions.Definition{script}))
 }

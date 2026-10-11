@@ -112,15 +112,14 @@ func (s sheetSeam) factsOf(id encounter.MemberID) (encounter.SheetFacts, error) 
 		if projectErr != nil {
 			return encounter.SheetFacts{}, projectErr
 		}
-		actions, actionsErr := memberActionsFrom(projected.MainHand)
-		if actionsErr != nil {
-			return encounter.SheetFacts{}, fmt.Errorf("character %q: %w", id, actionsErr)
-		}
-		return encounter.SheetFacts{SpeedFeet: projected.Sheet.SpeedFeet, Actions: actions}, nil
+		return encounter.SheetFacts{
+			SpeedFeet: projected.Sheet.SpeedFeet,
+			Actions:   memberActionsOf(projected.Actions),
+		}, nil
 	case held.monster != nil:
 		return encounter.SheetFacts{
 			SpeedFeet: held.monster.Speed.Walk,
-			Actions:   memberActionsFromMonster(held.monster.Actions),
+			Actions:   memberActionsOf(held.monster.Actions),
 			Targeting: held.monster.Targeting.String(),
 		}, nil
 	default:
