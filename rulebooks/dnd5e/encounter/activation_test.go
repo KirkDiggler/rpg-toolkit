@@ -680,7 +680,7 @@ func (s *RecordActivationSuite) TestRecordActivationClosedShapes() {
 	s.Equal([]string{
 		"Kind", "Target", "Address", "Ref", "Name", "Stabilization",
 		"Amount", "Requested", "Before", "After", "Calculation",
-		"DamageType", "Description", "Reason",
+		"DamageType", "Detail", "Description", "Reason",
 		"Moved", "StoppedBy",
 	}, structFieldNames(encounter.ActivationResult{}))
 	s.Equal([]string{
@@ -725,4 +725,102 @@ func (s *RecordActivationSuite) TestQualifiedConditionAddressRoundTripsAndReject
 	})
 	s.Require().ErrorIs(err, encounter.ErrNoMember)
 	s.Equal(before, enc.WorldView().Log)
+}
+
+// detailedCondition is a condition-applied result for the fighter that
+// carries the given instance detail.
+func detailedCondition(detail string) encounter.ActivationResult {
+	return encounter.ActivationResult{
+		Kind: encounter.ResultConditionApplied,
+		Address: &encounter.ConditionAddress{
+			MemberID:     activationFighter,
+			ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:commanded"},
+		},
+		Name:   "Commanded",
+		Detail: detail,
+	}
+}
+
+// resultFields records one condition-applied result and returns the keys of
+// the persisted beat's result object, undecoded.
+func (s *RecordActivationSuite) resultFields(result encounter.ActivationResult) map[string]json.RawMessage {
+	enc := s.scene(everyoneStanding{})
+	out, err := enc.RecordActivation(&encounter.RecordActivationInput{
+		Actor:   activationFighter,
+		Ability: encounter.ActivationIdentity{Ref: "dnd5e:spells:command", Name: "Command"},
+		Results: []encounter.ActivationResult{result},
+	})
+	s.Require().NoError(err)
+	entries := s.storyEntries(enc, activationFighter, out.Seqs)
+	s.Require().Len(entries, 2)
+	var beat struct {
+		Result map[string]json.RawMessage `json:"result"`
+	}
+	s.Require().NoError(json.Unmarshal(entries[1].Payload, &beat))
+	return beat.Result
+}
+
+func (s *RecordActivationSuite) TestConditionAppliedWritesItsDetail() {
+	fields := s.resultFields(detailedCondition("grovel"))
+
+	var detail string
+	s.Require().Contains(fields, "detail")
+	s.Require().NoError(json.Unmarshal(fields["detail"], &detail))
+	s.Equal("grovel", detail)
+}
+
+func (s *RecordActivationSuite) TestConditionAppliedWithoutDetailOmitsTheKey() {
+	fields := s.resultFields(detailedCondition(""))
+
+	s.NotContains(fields, "detail")
+	s.Contains(fields, "ref", "the rest of the beat is still written")
+}
+
+func (s *RecordActivationSuite) TestDetailIsRefusedOnEveryOtherKind() {
+	removed := encounter.ActivationResult{
+		Kind: encounter.ResultConditionRemoved,
+		Address: &encounter.ConditionAddress{
+			MemberID:     activationFighter,
+			ConditionKey: encounter.ConditionKey{ConditionRef: "dnd5e:conditions:commanded"},
+		},
+		Name: "Commanded", Reason: "expired",
+	}
+	damage := psychicDamage()
+	damage.Target = activationFighter
+	moved := slidTwoCells()
+	moved.Target = activationFighter
+	capacity := encounter.ActivationResult{
+		Kind: encounter.ResultCapacityGranted, Target: activationFighter, Description: "30ft movement",
+	}
+
+	for name, result := range map[string]encounter.ActivationResult{
+		"condition-removed": removed,
+		"healing-applied":   validHealingResult(),
+		"damage-applied":    damage,
+		"stabilized":        stabilizedResult(),
+		"moved":             moved,
+		"capacity-granted":  capacity,
+	} {
+		s.Run(name, func() {
+			enc := s.scene(everyoneStanding{})
+			in := func(r encounter.ActivationResult) *encounter.RecordActivationInput {
+				return &encounter.RecordActivationInput{
+					Actor:   activationFighter,
+					Ability: encounter.ActivationIdentity{Ref: "dnd5e:features:any", Name: "Any"},
+					Results: []encounter.ActivationResult{r},
+				}
+			}
+
+			_, err := enc.RecordActivation(in(result))
+			s.Require().NoError(err, "the result is valid before it carries a detail")
+
+			result.Detail = "x"
+			before := enc.WorldView().Log
+			_, err = enc.RecordActivation(in(result))
+
+			s.Require().ErrorIs(err, encounter.ErrInvalidData)
+			s.ErrorContains(err, "detail")
+			s.Equal(before, enc.WorldView().Log, "a refused result leaves the log untouched")
+		})
+	}
 }
