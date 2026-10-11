@@ -1099,6 +1099,7 @@ func activationResultBody(payload []byte) EventBody {
 
 		DamageType *string `json:"damage_type"`
 		SourceID   string  `json:"source_id"`
+		Detail     *string `json:"detail"`
 
 		Moved     *int   `json:"moved"`
 		StoppedBy string `json:"stopped_by"`
@@ -1119,6 +1120,7 @@ func activationResultBody(payload []byte) EventBody {
 	_, reasonPresent := fields["reason"]
 	_, damageTypePresent := fields["damage_type"]
 	_, sourceIDPresent := fields["source_id"]
+	_, detailPresent := fields["detail"]
 	_, movedPresent := fields["moved"]
 	_, stoppedByPresent := fields["stopped_by"]
 	calculationRaw, calculationPresent := fields["calculation"]
@@ -1147,6 +1149,16 @@ func activationResultBody(payload []byte) EventBody {
 	}
 	if result.Kind != encounter.ResultConditionApplied &&
 		result.Kind != encounter.ResultConditionRemoved && sourceIDPresent {
+		return nil
+	}
+	// A detail belongs to a condition-applied instance and to nothing else;
+	// the composition refuses it on every other kind before it writes the beat.
+	if result.Kind != encounter.ResultConditionApplied && detailPresent {
+		return nil
+	}
+	// No build writes a null or empty detail (an empty one omits the key), so
+	// a present one that says nothing is not a payload this package produced.
+	if detailPresent && (result.Detail == nil || *result.Detail == "") {
 		return nil
 	}
 	// THE SAME GUARD POINTED THE OTHER WAY, and the same one encounter makes
@@ -1247,6 +1259,9 @@ func activationResultBody(payload []byte) EventBody {
 		}
 		body.ConditionApplied = &ConditionAppliedBody{
 			Target: result.Target, Ref: *result.Ref, Name: *result.Name, SourceID: result.SourceID,
+		}
+		if result.Detail != nil {
+			body.ConditionApplied.Detail = *result.Detail
 		}
 	case encounter.ResultConditionRemoved:
 		if !identityPresent || calculationPresent || numericPresent || descriptionPresent || !reasonPresent ||

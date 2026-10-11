@@ -46,6 +46,7 @@ type CommandTurnSuite struct {
 	encounters *fakeEncounters
 	characters *fakeCharacters
 	driver     *recordingBehavior
+	stream     *fakeStream
 
 	// behind is the brain the recorder wraps, for the one test that needs a
 	// driver of its own. Nil means the real behavior, which is what every
@@ -88,11 +89,12 @@ func (s *CommandTurnSuite) scene(
 		s.behind = session.Pass{}
 	}
 	s.driver = &recordingBehavior{next: s.behind}
+	s.stream = &fakeStream{}
 
 	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(),
 		PresentationIDs: testPresentationIDs{}, Dice: whisperDice{}, TurnDriver: s.driver,
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
-		Events: session.DiscardEvents{},
+		Events: s.stream,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -394,6 +396,44 @@ func (s *CommandTurnSuite) TestFleeWalksTheCreatureAwayAndEndsTheTurn() {
 	s.NotEqual(before, after)
 	s.Greater(after.X, before.X, "the bard is at the low end of the hall; running means away from her")
 	s.Positive(s.walkedCells("skeleton"))
+}
+
+// commandedBeat is the bard's copy of the condition-applied beat that names
+// the Commanded ref, selected by what it says and never by position.
+func (s *CommandTurnSuite) commandedBeat() session.ConditionAppliedBody {
+	s.T().Helper()
+	want := refs.Conditions.Commanded().String()
+	for _, event := range eventsFor(s.stream.published, "bard") {
+		if event.Kind != session.EventActivationResult {
+			continue
+		}
+		body, ok := event.Body.(session.ActivationResultBody)
+		if ok && body.ConditionApplied != nil && body.ConditionApplied.Ref == want {
+			return *body.ConditionApplied
+		}
+	}
+	s.Require().FailNow("no Commanded condition-applied beat reached the bard")
+	return session.ConditionAppliedBody{}
+}
+
+// TestACommandBeatCarriesTheWord proves the word the caster chose reaches the
+// condition-applied beat as its detail, and the marshalled body names it.
+func (s *CommandTurnSuite) TestACommandBeatCarriesTheWord() {
+	for _, word := range []string{spells.CommandWordGrovel, spells.CommandWordApproach} {
+		s.Run(word, func() {
+			s.duel()
+			_, err := s.command("skeleton", word)
+			s.Require().NoError(err)
+
+			beat := s.commandedBeat()
+			s.Equal("skeleton", beat.Target)
+			s.Equal(word, beat.Detail)
+
+			raw, err := json.Marshal(beat)
+			s.Require().NoError(err)
+			s.Contains(string(raw), `"detail":"`+word+`"`)
+		})
+	}
 }
 
 // TestGrovelLeavesTheCreatureProneAndTheTurnEnds is acceptance 7, and it is

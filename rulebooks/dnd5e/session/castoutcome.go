@@ -219,7 +219,8 @@ func imposedResult(
 					SourceID:     imposed.Address.SourceID,
 				},
 			},
-			Name: imposed.Description,
+			Name:   imposed.Description,
+			Detail: imposed.Detail,
 		}, nil
 	case resolution.ImposedHealing:
 		return encounter.ActivationResult{Kind: encounter.ResultHealingApplied, Target: encounter.MemberID(imposed.RecipientID), Ref: imposed.Ref.String(), Name: imposed.Description, Amount: imposed.Amount, Requested: imposed.Requested, Before: imposed.Before, After: imposed.After, Calculation: rollCalculationFor(imposed.Calculation)}, nil

@@ -326,6 +326,7 @@ func activationResults(effects []resolution.ActivationEffect) []encounter.Activa
 			Before: effect.Before, After: effect.After,
 			Calculation: rollCalculationFor(effect.Calculation),
 			Description: effect.Description, Reason: effect.Reason,
+			Detail: effect.Detail,
 		}
 		if effect.Kind == resolution.EffectStabilized {
 			result.Stabilization = stabilizationDetail(effect.Stabilization)

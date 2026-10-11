@@ -1817,3 +1817,76 @@ func TestStruckBodyWithAnIncompleteSequenceDoesNotType(t *testing.T) {
 		})
 	}
 }
+
+// TestAConditionAppliedPayloadReadsItsDetailBack pins the decoder's side of the
+// instance's word: a present detail rides onto the body, an absent key reads as
+// no detail, and the two shapes no build writes (a null or empty detail, or a
+// detail on any kind but condition-applied) are refused outright.
+func TestAConditionAppliedPayloadReadsItsDetailBack(t *testing.T) {
+	applied := func(detail string) []byte {
+		return []byte(`{"beat":"activation-result","actor":"bard","result":{"kind":"condition-applied",` +
+			`"target":"skeleton","ref":"dnd5e:conditions:commanded","name":"Commanded","source_id":"bard"` + detail + `}}`)
+	}
+
+	t.Run("a present detail rides onto the body", func(t *testing.T) {
+		body, ok := activationResultBody(applied(`,"detail":"grovel"`)).(ActivationResultBody)
+		require.True(t, ok)
+		require.NotNil(t, body.ConditionApplied)
+		require.Equal(t, "grovel", body.ConditionApplied.Detail)
+	})
+
+	t.Run("an absent detail key reads as no detail", func(t *testing.T) {
+		body, ok := activationResultBody(applied(``)).(ActivationResultBody)
+		require.True(t, ok)
+		require.NotNil(t, body.ConditionApplied)
+		require.Empty(t, body.ConditionApplied.Detail)
+	})
+
+	t.Run("an empty detail is refused", func(t *testing.T) {
+		require.Nil(t, activationResultBody(applied(`,"detail":""`)))
+	})
+
+	t.Run("a null detail is refused", func(t *testing.T) {
+		require.Nil(t, activationResultBody(applied(`,"detail":null`)))
+	})
+
+	t.Run("a detail on a condition-removed result is refused", func(t *testing.T) {
+		removed := []byte(`{"beat":"activation-result","actor":"alice","result":{"kind":"condition-removed",` +
+			`"target":"bob","ref":"dnd5e:conditions:hidden","name":"Hidden","reason":"revealed","source_id":"alice","detail":"x"}}`)
+		require.Nil(t, activationResultBody(removed))
+	})
+}
+
+// TestAnImposedConditionCarriesItsDetailIntoTheResult covers the cast and
+// retaliation path: resolution's imposed condition hands its detail to the
+// encounter result unchanged, and an imposed condition with none leaves it empty.
+func TestAnImposedConditionCarriesItsDetailIntoTheResult(t *testing.T) {
+	ref := refs.Conditions.Commanded()
+	imposed := func(detail string) resolution.ImposedEffect {
+		return resolution.ImposedEffect{
+			Kind: resolution.ImposedCondition, RecipientID: "skeleton", Ref: ref,
+			Address: dnd5eEvents.ConditionAddress{MemberID: "skeleton", ConditionRef: ref.String(), SourceID: "bard"},
+			Detail:  detail,
+		}
+	}
+
+	result, err := imposedResult(imposed("approach"), SpellRef{})
+	require.NoError(t, err)
+	require.Equal(t, "approach", result.Detail)
+
+	result, err = imposedResult(imposed(""), SpellRef{})
+	require.NoError(t, err)
+	require.Empty(t, result.Detail)
+}
+
+// TestAnActivationEffectCarriesItsDetailIntoTheResult is the activation half:
+// the effect's detail is copied onto the result unchanged.
+func TestAnActivationEffectCarriesItsDetailIntoTheResult(t *testing.T) {
+	results := activationResults([]resolution.ActivationEffect{{
+		Kind: resolution.EffectConditionApplied, Name: "Commanded",
+		Address: dnd5eEvents.ConditionAddress{MemberID: "skeleton", ConditionRef: "dnd5e:conditions:commanded"},
+		Detail:  "grovel",
+	}})
+	require.Len(t, results, 1)
+	require.Equal(t, "grovel", results[0].Detail)
+}
