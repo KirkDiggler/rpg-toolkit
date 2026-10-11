@@ -272,6 +272,9 @@ func (ContestOutcome) isOutcome() {}
 type preparedCondition struct {
 	declaration combatActions.ConditionApplication
 	behavior    dnd5eEvents.ConditionBehavior
+	// name is how the condition reads in a step log and in a record, read once
+	// from the registry when the condition is prepared.
+	name string
 }
 
 // validateGate checks the subset of save gates resolution can execute.
@@ -370,7 +373,11 @@ func prepareCondition(
 	if err != nil {
 		return preparedCondition{}, fmt.Errorf("build condition %s for %q: %w", application.Ref.ID, targetID, err)
 	}
-	return preparedCondition{declaration: application.Clone(), behavior: built.Condition}, nil
+	name, err := conditionDescription(application.Ref)
+	if err != nil {
+		return preparedCondition{}, fmt.Errorf("build condition %s for %q: %w", application.Ref.ID, targetID, err)
+	}
+	return preparedCondition{declaration: application.Clone(), behavior: built.Condition, name: name}, nil
 }
 
 func (p preparedCondition) atStake(recipientID string) ImposedEffect {
@@ -378,17 +385,24 @@ func (p preparedCondition) atStake(recipientID string) ImposedEffect {
 	return ImposedEffect{
 		Kind:        ImposedCondition,
 		Ref:         &ref,
-		Description: conditionDescription(ref),
+		Description: p.name,
 		RecipientID: recipientID,
 		Address:     conditions.ConditionAddressOf(recipientID, p.behavior),
 	}
 }
 
 // conditionDescription is how a delivered condition reads in a step log and in
-// a record. One spelling, so the contest's imposition and a cast's delivery
-// describe the same condition the same way.
-func conditionDescription(ref core.Ref) string {
-	return fmt.Sprintf("the %s condition", ref.ID)
+// a record: the registry's display name. One spelling, so the contest's
+// imposition and a cast's delivery describe the same condition the same way,
+// and the registry is the only place that spelling is authored.
+//
+// Errors: a ref the registry does not hold. There is no fallback spelling.
+func conditionDescription(ref core.Ref) (string, error) {
+	display, ok := conditions.DisplayFor(ref)
+	if !ok {
+		return "", fmt.Errorf("condition %s is not registered, so it has no name to read", ref.String())
+	}
+	return display.Name, nil
 }
 
 func publishPreparedCondition(
@@ -396,7 +410,7 @@ func publishPreparedCondition(
 	source dnd5eEvents.ConditionSource, next func(replaced []ImposedEffect) (Step, error),
 ) Gather {
 	return Gather{
-		name: "impose " + conditionDescription(prepared.declaration.Ref),
+		name: "impose " + prepared.name,
 		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
 			target, err := cast.entity(targetID)
 			if err != nil {

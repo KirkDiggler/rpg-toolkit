@@ -779,10 +779,14 @@ func deliveredEffects(spell core.Ref, effects []ActivationEffect) ([]ImposedEffe
 			return nil, fmt.Errorf("%w: %s delivered an unusable condition ref %q: %w",
 				ErrBadStep, spell.String(), effect.Ref, err)
 		}
+		name, err := conditionDescription(*ref)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %s delivered %w", ErrBadStep, spell.String(), err)
+		}
 		applied = append(applied, ImposedEffect{
 			Kind:        ImposedCondition,
 			Ref:         ref,
-			Description: conditionDescription(*ref),
+			Description: name,
 			RecipientID: effect.TargetID,
 			Address:     effect.Address,
 		})
