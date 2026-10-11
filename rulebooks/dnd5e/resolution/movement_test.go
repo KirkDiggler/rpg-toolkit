@@ -7,6 +7,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -48,8 +49,9 @@ const reactorReactions = 2
 
 // reactorSheet is a probe in a fight, with reactions on its meter for the door
 // to bill.
-func reactorSheet(id string) *character.Data {
+func reactorSheet(t testing.TB, id string) *character.Data {
 	sheet := probeSheet(id)
+	sheet.Conditions = append(sheet.Conditions, freeReactions(t, id)...)
 	sheet.ActionEconomy = &character.ActionEconomyData{
 		TurnNumber: 1, ActionsRemaining: 1, BonusActionsRemaining: 1, ReactionsRemaining: reactorReactions,
 	}
@@ -90,12 +92,13 @@ func (s *MovementTestSuite) world() encounter.EncounterData {
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
 			Actors: encounter.Actors{
 				Striker:   noAttacksExpected{},
 				Mover:     encounter.RefusingMover{},
@@ -144,7 +147,7 @@ func (s *MovementTestSuite) runMachine(
 			for _, id := range []string{heroID, wolfID, "alice", "zara"} {
 				sheet := probeSheet(id)
 				if fighting[id] {
-					sheet = reactorSheet(id)
+					sheet = reactorSheet(s.T(), id)
 				}
 				cast = append(cast, Participant{Character: sheet})
 			}
@@ -152,14 +155,15 @@ func (s *MovementTestSuite) runMachine(
 		}(),
 		Machine: machine,
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Roller:     dice.NewRoller(),
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Roller:        dice.NewRoller(),
+			Actors:        Actors,
 		},
 	}, newSurface(bus))
 }
@@ -604,4 +608,21 @@ func preventionSourceFor(
 	}
 
 	return nil
+}
+
+// A reaction's step is named for the condition that allowed it, as the player
+// reads that condition, and a ref the registry does not know is refused.
+func TestAReactionStepIsNamedForItsConditionOrRefused(t *testing.T) {
+	name, err := reactionName(dnd5eEvents.ReactionTriggerEvent{
+		ReactorID: wolfID, ConditionRef: refs.Conditions.OpportunityAttack().String(),
+	})
+	require.NoError(t, err)
+	display, ok := conditions.DisplayFor(*refs.Conditions.OpportunityAttack())
+	require.True(t, ok)
+	require.Equal(t, display.Name, name)
+
+	_, err = reactionName(dnd5eEvents.ReactionTriggerEvent{
+		ReactorID: wolfID, ConditionRef: "dnd5e:conditions:nonsense",
+	})
+	require.ErrorIs(t, err, conditions.ErrUnknownCondition)
 }

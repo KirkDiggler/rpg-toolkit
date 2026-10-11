@@ -357,7 +357,12 @@ func publishRemoval(removal *ConditionRemoval, next func(ImposedEffect) (Step, e
 					removal.Owner.ConditionRef, removal.Owner.MemberID, err)
 			}
 
-			return next(removalEffect(removal.Owner, removal.Reason))
+			effect, err := removalEffect(removal.Owner, removal.Reason)
+			if err != nil {
+				return nil, err
+			}
+
+			return next(effect)
 		},
 	}
 }

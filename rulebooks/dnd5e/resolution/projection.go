@@ -8,11 +8,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 )
 
 // ProjectCharacterInput is the one character a projection folds, on the way in.
@@ -39,13 +39,15 @@ type ProjectCharacterOutput struct {
 	// Sheet is what the record reconstituted into, as numbers and strings.
 	Sheet CharacterFacts
 
-	// MainHand is the one attack a joining member's static Actions fact
-	// carries, or nil when this character has no main-hand attack to compile.
+	// Actions is every attack definition this character can make, in the
+	// order [character.AssembleAttack] compiled them: the main hand, then the
+	// off hand when it holds a weapon. A monster answers every definition it
+	// carries; a character answers every definition it can make, by the same
+	// rule, so a host projects both with one function.
 	//
-	// Nil rather than a zero-valued struct, because "no attack" and "an attack
-	// with no name and no range" are different facts and only one of them is
-	// true of an empty hand.
-	MainHand *AttackFacts
+	// Never nil for a sheet that projects: an empty main hand is an unarmed
+	// strike, so there is always at least one.
+	Actions []combatActions.Definition
 
 	// Equipment is the sheet's equipment display — items, slots, the folded AC
 	// total and its note, the main-hand damage — computed on the same context
@@ -80,36 +82,6 @@ type CharacterFacts struct {
 	// SpeedFeet is the walking speed the sheet derives from race.
 	SpeedFeet int
 }
-
-// AttackFacts is a compiled attack as numbers: what it is called, how far it
-// reaches, and whether it is swung or thrown.
-type AttackFacts struct {
-	// Ref names the weapon this attack was compiled from.
-	Ref core.Ref
-
-	// Name is the weapon's display name.
-	Name string
-
-	// RangeFeet is the attack's maximum reach.
-	RangeFeet int
-
-	// Kind is "melee" or "ranged".
-	//
-	// A STRING WITH AN EMPTY ZERO VALUE, deliberately, and not a bool. False
-	// would have to mean one of the two, so a value nobody filled in would read
-	// as a real answer — a ranged attack invented out of an unset field. Empty
-	// reads as what it is: nothing was compiled.
-	Kind string
-}
-
-// Attack kinds, as [AttackFacts.Kind] reports them.
-const (
-	// AttackKindMelee is an attack made in reach.
-	AttackKindMelee = "melee"
-
-	// AttackKindRanged is an attack made at distance.
-	AttackKindRanged = "ranged"
-)
 
 // ProjectCharacter folds one character's armour class outside any interaction:
 // attach the one character, install the truth, fold, tear down.
@@ -249,18 +221,18 @@ func projectCharacterOn(
 	// Read off the SAME sheet the fold ran against, before it goes out of
 	// scope. A second load would be a second answer to the same question, and
 	// the two can disagree the moment anything about loading stops being pure.
-	facts, mainHand, err := factsOf(ch)
+	facts, actions, err := factsOf(ch)
 	if err != nil {
 		return nil, fmt.Errorf("resolution: project character %q: %w", one.ID(), err)
 	}
 
 	return &ProjectCharacterOutput{
-		ArmorClass: breakdown, Sheet: facts, MainHand: mainHand, Equipment: equipment,
+		ArmorClass: breakdown, Sheet: facts, Actions: actions, Equipment: equipment,
 	}, nil
 }
 
-// factsOf reads a loaded sheet's static answers and compiles its main-hand
-// attack.
+// factsOf reads a loaded sheet's static answers and compiles every attack it
+// can make.
 //
 // Read through the character's own accessors, never through ToData(). ToData is
 // a SERIALIZATION rather than a getter: it clones several maps, marshals every
@@ -268,21 +240,19 @@ func projectCharacterOn(
 // Calling it to read six integers would put a write's cost on a read and make
 // the read non-deterministic for no reason.
 //
-// A character with no compilable main hand is not an error. An empty hand is an
-// ordinary state — a caller that refused it could not project anybody who had
-// not picked up a weapon yet — so the attack comes back nil and the rest of the
-// facts stand. What IS an error is a main hand that exists and will not
-// compile, because that is a sheet nobody can act with, and it is returned
-// rather than flattened into "no attack".
+// The main hand is always compiled: an empty one is an unarmed strike, so an
+// empty hand is an ordinary state and not a missing attack. The off hand is
+// compiled when it holds a weapon, because a shield or an empty hand makes no
+// attack of its own. A hand that holds a weapon and will not compile is a sheet
+// nobody can act with, and it is returned rather than flattened into "no
+// attack".
 //
-// IT IS ErrBadAttack, and the sentinel is the point rather than a detail. This
-// used to answer ErrBadParticipant — the general "this participant is unusable"
-// — and a seam translating that could only report the whole character as
-// corrupt. The two are different repairs: a weapon that will not compile is a
-// broken loadout, and a participant that will not attach is a broken sheet. The
-// finer word already existed and is documented for exactly this case; using the
-// coarser one narrowed a caller's vocabulary for no gain.
-func factsOf(ch *character.Character) (CharacterFacts, *AttackFacts, error) {
+// Two offers for one swing are [ErrConflictingOffers]: the player owes a pick,
+// which is a different repair from a broken loadout. Anything else the
+// assembly refuses is [ErrBadAttack], the finer word for a weapon that will not
+// compile, where the coarser ErrBadParticipant would report the whole
+// character as corrupt.
+func factsOf(ch *character.Character) (CharacterFacts, []combatActions.Definition, error) {
 	facts := CharacterFacts{
 		ID:               ch.GetID(),
 		Name:             ch.GetName(),
@@ -293,27 +263,25 @@ func factsOf(ch *character.Character) (CharacterFacts, *AttackFacts, error) {
 		SpeedFeet:        ch.GetSpeed(),
 	}
 
-	definition, err := character.AssembleAttack(ch, &character.AssembleAttackInput{
-		Slot: character.SlotMainHand,
-	})
-	if err != nil {
-		return facts, nil, fmt.Errorf("%w: main hand: %v", ErrBadAttack, err)
-	}
-	if definition.Attack == nil {
-		return facts, nil, nil
+	slots := []character.InventorySlot{character.SlotMainHand}
+	if held := ch.GetEquippedSlot(character.SlotOffHand); held != nil && held.AsWeapon() != nil {
+		slots = append(slots, character.SlotOffHand)
 	}
 
-	kind := AttackKindRanged
-	if definition.Attack.Delivery.IsMelee() {
-		kind = AttackKindMelee
+	actions := make([]combatActions.Definition, 0, len(slots))
+	for _, slot := range slots {
+		definition, err := character.AssembleAttack(ch, &character.AssembleAttackInput{Slot: slot})
+		if err != nil {
+			if errors.Is(err, character.ErrConflictingOffers) {
+				return facts, nil, fmt.Errorf("%w: %s: %w", ErrConflictingOffers, slot, err)
+			}
+
+			return facts, nil, fmt.Errorf("%w: %s: %v", ErrBadAttack, slot, err)
+		}
+		actions = append(actions, definition)
 	}
 
-	return facts, &AttackFacts{
-		Ref:       definition.Ref,
-		Name:      definition.Name,
-		RangeFeet: definition.Attack.Delivery.MaxRangeFeet(),
-		Kind:      kind,
-	}, nil
+	return facts, actions, nil
 }
 
 // refusingRoller is the roller handed to attachAll on a path where nothing may

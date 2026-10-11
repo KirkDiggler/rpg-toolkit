@@ -55,14 +55,15 @@ func (s *ObeyTestSuite) interaction(fixtures *ContestDamageTestSuite, participan
 		World:        fixtures.world(),
 		Participants: participants,
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Roller:     dice.NewRoller(),
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Roller:        dice.NewRoller(),
+			Actors:        Actors,
 		},
 	}
 }
@@ -117,7 +118,7 @@ func (s *ObeyTestSuite) TestGrovelPutsTheCreatureProneOnTheBus() {
 	var applied []string
 	_, err := dnd5eEvents.ConditionAppliedTopic.On(bus).Subscribe(s.ctx,
 		func(_ context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
-			applied = append(applied, string(event.Type)+":"+event.Target.GetID()+":"+string(event.Source))
+			applied = append(applied, event.Condition.Ref().ID+":"+event.Target.GetID()+":"+string(event.Source))
 			return nil
 		})
 	s.Require().NoError(err)

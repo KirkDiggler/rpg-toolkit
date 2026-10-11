@@ -43,14 +43,15 @@ func (s *FrameTestSuite) resolveCampWith(
 		},
 		Machine: NewStrike(strike),
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Driver:     passDriver{},
-			Roller:     strike.Roller,
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Driver:        passDriver{},
+			Roller:        strike.Roller,
+			Actors:        Actors,
 		},
 	}, newSurface(bus))
 }

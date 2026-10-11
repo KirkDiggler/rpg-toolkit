@@ -508,8 +508,15 @@ func replaceSameAddress(
 			}); err != nil {
 			return nil, fmt.Errorf("replace %s on %q: %w", address.ConditionRef, targetID, err)
 		}
-		effect := removalEffect(address, ConditionReplacedReason)
-		effect.Description = fmt.Sprintf("%s replaced by a newer instance", address.ConditionRef)
+		effect, err := removalEffect(address, ConditionReplacedReason)
+		if err != nil {
+			return nil, err
+		}
+		name, err := conditionName(address)
+		if err != nil {
+			return nil, err
+		}
+		effect.Description = fmt.Sprintf("%s replaced by a newer instance", name)
 		replaced = append(replaced, effect)
 	}
 
@@ -563,7 +570,6 @@ func publishCondition(
 	// here would compound the subscribers' partially updated state.
 	err = dnd5eEvents.ConditionAppliedTopic.On(bus).Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
 		Target:    target,
-		Type:      dnd5eEvents.ConditionType(prepared.declaration.Ref.ID),
 		Source:    source,
 		Condition: prepared.behavior,
 	})
@@ -1235,9 +1241,9 @@ func (m *contestMachine) shape() contestShape {
 
 // atStake names what this save is against, which is the condition whenever one
 // was declared and the damage otherwise.
-func (m *contestMachine) atStake() ImposedEffect {
+func (m *contestMachine) atStake() (ImposedEffect, error) {
 	if m.hasCondition {
-		return m.prepared.atStake(m.in.SaverID)
+		return m.prepared.atStake(m.in.SaverID), nil
 	}
 	if len(m.in.Damage) == 0 && m.in.Removal != nil {
 		// A removal-only contest is a check to KEEP something, so what is at
@@ -1250,7 +1256,7 @@ func (m *contestMachine) atStake() ImposedEffect {
 		Ref:         cloneCoreRef(m.in.Cause.EffectRef),
 		Description: describeDamage(m.in.Damage),
 		RecipientID: m.in.SaverID,
-	}
+	}, nil
 }
 
 // resolve turns the save into the outcome, and on a failure chains whatever was
@@ -1275,12 +1281,16 @@ func (m *contestMachine) atStake() ImposedEffect {
 // nothing. There is no condition and no move on that branch: the save was made,
 // and half is the only thing a made save costs.
 func (m *contestMachine) resolve(ability abilities.Ability, dc int, save SaveOutcome) (Step, error) {
+	atStake, err := m.atStake()
+	if err != nil {
+		return nil, err
+	}
 	outcome := ContestOutcome{
 		Save:      save,
 		DC:        dc,
 		Ability:   ability,
 		Succeeded: save.Result != nil && save.Result.Success,
-		AtStake:   m.atStake(),
+		AtStake:   atStake,
 	}
 
 	done := func() (Step, error) { return Done{Outcome: outcome}, nil }
@@ -1388,10 +1398,18 @@ func validateRemoval(removal *ConditionRemoval) error {
 }
 
 // removalEffect is one stripped address, as the record reads it.
-func removalEffect(address dnd5eEvents.ChildRef, reason string) ImposedEffect {
+//
+// It names the condition by its display name. An address whose ref the registry
+// does not know is refused, wrapping [conditions.ErrUnknownCondition], because
+// a record that cannot name what ended has nothing honest to print.
+func removalEffect(address dnd5eEvents.ConditionAddress, reason string) (ImposedEffect, error) {
+	name, err := conditionName(address)
+	if err != nil {
+		return ImposedEffect{}, err
+	}
 	effect := ImposedEffect{
 		Kind:        ImposedConditionRemoved,
-		Description: fmt.Sprintf("%s ended (%s)", address.ConditionRef, reason),
+		Description: fmt.Sprintf("%s ended (%s)", name, reason),
 		RecipientID: address.MemberID,
 		Address:     address,
 	}
@@ -1399,7 +1417,22 @@ func removalEffect(address dnd5eEvents.ChildRef, reason string) ImposedEffect {
 		effect.Ref = ref
 	}
 
-	return effect
+	return effect, nil
+}
+
+// conditionName is the display name of the condition an address points at.
+func conditionName(address dnd5eEvents.ConditionAddress) (string, error) {
+	ref, err := core.ParseString(address.ConditionRef)
+	if err != nil {
+		return "", fmt.Errorf("condition address %q: %w", address.ConditionRef, err)
+	}
+	display, ok := conditions.DisplayFor(*ref)
+	if !ok {
+		return "", fmt.Errorf("name %s on %q: %w", address.ConditionRef, address.MemberID,
+			conditions.ErrUnknownCondition)
+	}
+
+	return display.Name, nil
 }
 
 func savingThrowModifier(cast *Participants, saverID string, ability abilities.Ability) (int, error) {

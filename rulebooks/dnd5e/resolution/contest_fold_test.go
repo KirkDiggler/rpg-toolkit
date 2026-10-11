@@ -110,14 +110,15 @@ func (s *ContestFoldTestSuite) resolveErr(machine Machine, participants ...Parti
 		Participants: participants,
 		Machine:      machine,
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Roller:     dice.NewRoller(),
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Roller:        dice.NewRoller(),
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Actors:        Actors,
 		},
 	})
 }
@@ -282,13 +283,13 @@ func (s *ContestFoldTestSuite) TestAMultiplierLineNamesTheFactorThatWasApplied()
 		Multipliers: []dnd5eEvents.DamageMultiplier{
 			{
 				Category:   dnd5eEvents.DamageSourceCondition,
-				Source:     dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging"},
+				Source:     dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging", SourceID: heroID},
 				DamageType: damage.Bludgeoning,
 				Factor:     dnd5eEvents.DamageFactorResistance,
 			},
 			{
 				Category:   dnd5eEvents.DamageSourceMonsterTrait,
-				Source:     dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity"},
+				Source:     dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity", SourceID: wolfID},
 				DamageType: damage.Bludgeoning,
 				Factor:     dnd5eEvents.DamageFactorImmunity,
 			},

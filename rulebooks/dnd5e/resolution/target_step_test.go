@@ -71,14 +71,15 @@ func (s *TargetStepTestSuite) strike(
 			Roller: &sequenceRoller{singles: []int{straightRoll}, pair: faces},
 		}),
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Roller:     dice.NewRoller(),
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Roller:        dice.NewRoller(),
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Actors:        Actors,
 		},
 	}, newSurface(bus))
 }
@@ -282,7 +283,7 @@ func (s *TargetStepTestSuite) incomingHandler(
 func resistance() dnd5eEvents.DamageMultiplier {
 	return dnd5eEvents.DamageMultiplier{
 		Category:   dnd5eEvents.DamageSourceCondition,
-		Source:     dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging"},
+		Source:     dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging", SourceID: heroID},
 		DamageType: damage.Slashing,
 		Factor:     dnd5eEvents.DamageFactorResistance,
 	}
@@ -292,7 +293,7 @@ func resistance() dnd5eEvents.DamageMultiplier {
 func reduction(amount int) dnd5eEvents.DamageReduction {
 	return dnd5eEvents.DamageReduction{
 		Category:   dnd5eEvents.DamageSourceCondition,
-		Source:     dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging"},
+		Source:     dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging", SourceID: heroID},
 		DamageType: damage.Slashing,
 		Modifier:   amount,
 	}

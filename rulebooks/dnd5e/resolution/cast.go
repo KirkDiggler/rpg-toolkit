@@ -142,22 +142,6 @@ func (v *castView) IsAllied(a, b string) (allied, known bool) {
 	return v.run.IsAllied(encounter.MemberID(a), encounter.MemberID(b))
 }
 
-// StanceBetween answers [gamectx.Cast.StanceBetween] from the encounter's own
-// answer ([encounter.Encounter.StanceBetween]), the fold [castView.IsHostile]
-// and [castView.IsAllied] read, so the three cannot disagree.
-//
-// ok is false when the encounter gives no side — [encounter.StanceNone], a
-// member in no faction — or refuses the pair, or there is no run to ask: the
-// interface's contract, which never answers no side itself. A reader that
-// means no side asks [castView.stanceAnswer] instead.
-func (v *castView) StanceBetween(a, b string) (contributions.Stance, bool) {
-	stance, err := v.stanceAnswer(a, b)
-	if err != nil || stance == contributions.StanceNone {
-		return "", false
-	}
-	return stance, true
-}
-
 // stanceAnswer is the encounter's whole stance answer for the pair: hostile,
 // neutral, allied, or [contributions.StanceNone] when either is in no faction.
 //

@@ -119,14 +119,15 @@ func TestResolveBindsOneRollerToTheMachineAndPersistedCharacter(t *testing.T) {
 			Roller:     roller,
 		}),
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Driver:     passDriver{},
-			Roller:     roller,
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Driver:        passDriver{},
+			Roller:        roller,
+			Actors:        Actors,
 		},
 	})
 	require.NoError(t, err)

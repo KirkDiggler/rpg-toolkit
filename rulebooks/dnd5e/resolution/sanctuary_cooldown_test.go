@@ -31,14 +31,15 @@ func (s *CastActionTestSuite) TestSanctuaryRecipientCooldownSurvivesWardAndExpir
 			Machine:      machine,
 			Cost:         &Cost{PayerID: actor, Profile: definition.Cost, SpellTurn: turn},
 			Capabilities: encounter.Capabilities{
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
-				Standing:   everyoneStanding{},
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  noHandsAreObserved{},
-				Sheets:     noSheetsAsked{},
-				Roller:     dice.NewRoller(),
-				Actors:     Actors,
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
+				Participation: everyoneParticipates{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     noHandsAreObserved{},
+				Conditions:    noHandsAreObserved{},
+				Sheets:        noSheetsAsked{},
+				Roller:        dice.NewRoller(),
+				Actors:        Actors,
 			},
 		})
 	}

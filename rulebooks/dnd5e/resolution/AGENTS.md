@@ -63,8 +63,8 @@ which part is [`../CLAUDE.md`](../CLAUDE.md).
   sorted order, and every subscription this package granted is revoked, success
   or failure. `Output.Hooks` is the record of what attached.
 - **The entries with no interaction to run**: `ProjectCharacter`
-  ([`projection.go`](./projection.go)), `Participation` / `Standing`
-  ([`participation.go`](./participation.go), [`standing.go`](./standing.go)),
+  ([`projection.go`](./projection.go)), `Participation`
+  ([`participation.go`](./participation.go)),
   `MakeCheck` ([`check.go`](./check.go)), `LongRest` ([`long_rest.go`](./long_rest.go)),
   `ShortRest` ([`short_rest.go`](./short_rest.go)), `Equip` ([`equip.go`](./equip.go)),
   `Depart` ([`depart.go`](./depart.go)),
@@ -128,7 +128,7 @@ runtime object crosses either way.
 
 It ASKS the caller for everything else, through the embedded
 `encounter.Capabilities`, whose godoc on `Input` says so: `Initiative`,
-`Standing`, `Sight`, `Equipment`, `Sheets`, `Driver`, `CheckResolver`,
+`Participation`, `Sight`, `Equipment`, `Conditions`, `Sheets`, `Driver`, `CheckResolver`,
 `Witness` and the `Actors` are **carried, never consulted** — handed to the
 composition so a world can be loaded at all. `resolution.Actors` is the value
 for the three actors. `Roller` is REQUIRED and

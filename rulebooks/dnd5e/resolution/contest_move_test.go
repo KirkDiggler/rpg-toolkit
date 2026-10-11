@@ -285,14 +285,15 @@ func (s *ContestMoveTestSuite) resolveOnBus(
 		Machine: machine,
 		Cost:    castCost(),
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Roller:     dice.NewRoller(),
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Roller:        dice.NewRoller(),
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Actors:        Actors,
 		},
 	}, newSurface(bus))
 }

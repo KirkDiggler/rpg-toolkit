@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -444,7 +445,7 @@ func (m *movementMachine) react(i int) (Step, error) {
 			m.resumed = nil
 			return m.swing(i, trigger, definition, resumed), nil
 		}
-		return m.pay(i, trigger, definition), nil
+		return m.pay(i, trigger, definition)
 	}
 
 	return Done{Outcome: m.outcome()}, nil
@@ -456,9 +457,14 @@ func (m *movementMachine) react(i int) (Step, error) {
 // passed over, and the step goes on. A player who took an asked opportunity
 // and cannot pay is refused with [ErrCannotPay], because that answer is the
 // whole of the call.
-func (m *movementMachine) pay(i int, trigger dnd5eEvents.ReactionTriggerEvent, definition combatActions.Definition) Gather {
+func (m *movementMachine) pay(i int, trigger dnd5eEvents.ReactionTriggerEvent, definition combatActions.Definition) (Gather, error) {
+	name, err := reactionName(trigger)
+	if err != nil {
+		return Gather{}, err
+	}
+
 	return Gather{
-		name: fmt.Sprintf("%s takes %s", trigger.ReactorID, trigger.ConditionRef),
+		name: fmt.Sprintf("%s takes %s", trigger.ReactorID, name),
 		run: func(ctx context.Context, _ events.EventBus) (Step, error) {
 			price := m.price
 			if price == nil {
@@ -473,7 +479,22 @@ func (m *movementMachine) pay(i int, trigger dnd5eEvents.ReactionTriggerEvent, d
 			strike := NewStrike(&StrikeInput{AttackerID: trigger.ReactorID, TargetID: trigger.SourceEntity, Definition: definition, Opportunity: true, Roller: m.in.Roller})
 			return m.swing(i, trigger, definition, strike), nil
 		},
+	}, nil
+}
+
+// reactionName is the display name of the condition that let a reactor react.
+func reactionName(trigger dnd5eEvents.ReactionTriggerEvent) (string, error) {
+	ref, err := core.ParseString(trigger.ConditionRef)
+	if err != nil {
+		return "", fmt.Errorf("reaction by %q: %w", trigger.ReactorID, err)
 	}
+	display, ok := conditions.DisplayFor(*ref)
+	if !ok {
+		return "", fmt.Errorf("name the reaction by %q from %s: %w", trigger.ReactorID,
+			trigger.ConditionRef, conditions.ErrUnknownCondition)
+	}
+
+	return display.Name, nil
 }
 
 // swing runs one paid reaction's strike inside this interaction and carries on

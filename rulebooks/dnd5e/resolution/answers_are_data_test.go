@@ -53,7 +53,6 @@ func TestEntriesReturnAnswersNotSheets(t *testing.T) {
 		typ   reflect.Type
 	}{
 		{"ProjectCharacter", reflect.TypeOf(ProjectCharacterOutput{})},
-		{"Standing", reflect.TypeOf(StandingOutput{})},
 		{"Preflight", reflect.TypeOf(PreflightOutput{})},
 		{"Resolve", reflect.TypeOf(Output{})},
 	}
@@ -101,6 +100,13 @@ var allowedInterfaceFields = map[string]string{
 	// on a dirty sheet now reaches it through Cast as well as through Attack.
 	"DirtyMonsters.Actions.Cast.Save.DC":   "sealed in saves; reached through a record, not an answer",
 	"DirtyCharacters.Actions.Cast.Save.DC": "sealed in saves; reached through a record, not an answer",
+
+	// ProjectCharacter answers every attack definition the character can make,
+	// the way a monster's Actions do. The same sealed saves DC sits behind the
+	// same Definition, and a definition is declarative data that holds no sheet.
+	"Actions.Attack.OnHit.Save.DC":      "sealed in saves; a projected definition is the same declarative data a monster carries",
+	"Actions.Cast.Attack.OnHit.Save.DC": "sealed in saves; a projected definition is the same declarative data a monster carries",
+	"Actions.Cast.Save.DC":              "sealed in saves; a projected definition is the same declarative data a monster carries",
 
 	// Resolve's outcome is a SEALED interface: isOutcome() is unexported, so
 	// only this package can implement it. That does not make it invisible, it

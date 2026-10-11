@@ -57,7 +57,7 @@ func Participation(ctx context.Context, in *ParticipationInput) (*ParticipationO
 }
 
 // participationOn is Participation with its transient surface supplied for
-// lifecycle and Standing compatibility tests.
+// lifecycle tests.
 func participationOn(
 	ctx context.Context, in *ParticipationInput, surf *surface,
 ) (out *ParticipationOutput, err error) {

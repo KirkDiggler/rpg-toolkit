@@ -70,14 +70,15 @@ func (s *BoundaryTestSuite) runBoundary(crossed []encounter.Boundary) (*Output, 
 		Participants: []Participant{{Character: probeSheet(heroID)}},
 		Machine:      machine,
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Roller:     dice.NewRoller(),
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Roller:        dice.NewRoller(),
+			Actors:        Actors,
 		},
 	}, newSurface(bus))
 	return out, h, err
@@ -94,12 +95,13 @@ func (s *BoundaryTestSuite) world() encounter.EncounterData {
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
 			Actors: encounter.Actors{
 				Striker:   noAttacksExpected{},
 				Mover:     encounter.RefusingMover{},
@@ -214,14 +216,15 @@ func (s *BoundaryTestSuite) TestTheInputIsCopied() {
 		Participants: []Participant{{Character: probeSheet(heroID)}},
 		Machine:      machine,
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Standing:   everyoneStanding{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  noHandsAreObserved{},
-			Sheets:     noSheetsAsked{},
-			Roller:     dice.NewRoller(),
-			Actors:     Actors,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Participation: everyoneParticipates{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     noHandsAreObserved{},
+			Conditions:    noHandsAreObserved{},
+			Sheets:        noSheetsAsked{},
+			Roller:        dice.NewRoller(),
+			Actors:        Actors,
 		},
 	}, newSurface(bus))
 	s.Require().NoError(err)
@@ -316,7 +319,7 @@ func (s *BoundaryTestSuite) TestColdCombatantCanReactBeforeFirstTurnAndOnlyOwner
 	run := func(subject string, round int, combatTurns map[string]int) {
 		machine, err := NewBoundary(&BoundaryInput{Crossed: []encounter.Boundary{{Kind: encounter.TurnStarted, Subject: encounter.MemberID(subject), Round: round}}, CombatTurns: combatTurns})
 		s.Require().NoError(err)
-		out, err := Resolve(s.ctx, &Input{World: s.world(), Participants: []Participant{{Character: sheet}}, Machine: machine, Capabilities: encounter.Capabilities{Initiative: orderAsGiven{}, Driver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(), Actors: Actors}})
+		out, err := Resolve(s.ctx, &Input{World: s.world(), Participants: []Participant{{Character: sheet}}, Machine: machine, Capabilities: encounter.Capabilities{Initiative: orderAsGiven{}, Driver: passDriver{}, Participation: everyoneParticipates{}, Sight: everyoneSeesTheWholeMap{}, Equipment: noHandsAreObserved{}, Conditions: noHandsAreObserved{}, Sheets: noSheetsAsked{}, Roller: dice.NewRoller(), Actors: Actors}})
 		s.Require().NoError(err)
 		for _, dirty := range out.DirtyCharacters {
 			if dirty.ID == string(heroID) {
