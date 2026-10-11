@@ -112,7 +112,7 @@ func fall(capability *scriptedParticipation, who encounter.MemberID) {
 }
 
 // aloneAgainstTheGoblin is a one-member party, so its fall is the party's.
-func aloneAgainstTheGoblin(t *testing.T, capability encounter.StandingWithParticipation) *encounter.Encounter {
+func aloneAgainstTheGoblin(t *testing.T, capability encounter.Participation) *encounter.Encounter {
 	t.Helper()
 	enc, err := encounter.NewEncounter(participationSetup(capability,
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 2}},
@@ -216,7 +216,7 @@ func (s *BothWaysSuite) TestEachStruckUnitLandsItsDeedBehindItsOwnBeats() {
 // warCamp is a neutral goblin camp with an ending on the camp turning hostile.
 // The first blow at the camp turns it, so the deed asks for that ending.
 func (s *BothWaysSuite) warCamp(
-	driver encounter.Driver, striker encounter.Striker, standing encounter.StandingWithParticipation,
+	driver encounter.Driver, striker encounter.Striker, standing encounter.Participation,
 	members ...encounter.MemberInput,
 ) *encounter.Encounter {
 	if len(members) == 0 {

@@ -267,8 +267,9 @@ func (s *HoldingsSuite) open(holds bool, endings ...encounter.EndingInput) *enco
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      s.standing,
+			Participation: s.standing,
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -296,8 +297,9 @@ func (s *HoldingsSuite) openWithField(field encounter.FieldInput) *encounter.Enc
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      s.standing,
+			Participation: s.standing,
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -322,8 +324,9 @@ func (s *HoldingsSuite) reload(enc *encounter.Encounter) *encounter.Encounter {
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      s.standing,
+			Participation: s.standing,
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},

@@ -46,7 +46,7 @@ func TestDefeatSuite(t *testing.T) {
 // First light puts all four in ONE bubble; the multi-bubble scene below splits
 // that blob by hand, because form's policy is one fight per encounter and the
 // only door to a second is a loaded shape.
-func (s *DefeatSuite) quartet(standing encounter.StandingWithParticipation) *encounter.Encounter {
+func (s *DefeatSuite) quartet(standing encounter.Participation) *encounter.Encounter {
 	s.T().Helper()
 
 	return s.scene(standing,
@@ -378,12 +378,13 @@ func (s *DefeatSuite) TestOnlyTheDecidedFightEnds() {
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   &downList{down: []encounter.MemberID{goblin}},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: &downList{down: []encounter.MemberID{goblin}},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},

@@ -6,34 +6,32 @@ package encounter
 import "errors"
 
 var (
-	ErrStrikePaused = errors.New("strike paused")
+	ErrStrikePaused = errors.New("encounter: strike paused")
 	// ErrNilInput is returned when a nil *XxxInput is passed to an operation.
 	// Indicates a caller defect.
-	ErrNilInput = errors.New("nil input")
+	ErrNilInput = errors.New("encounter: nil input")
 
-	// ErrNoMember is returned when an input contains an empty member ID. A
-	// non-empty id naming nobody here is [ErrNotMember], at every door.
-	//
-	// The construction and load checks also carry it for a roster that does
-	// not cohere: a duplicate member ID (Setup, Join, and Load — Load's
-	// identical checks used to carry only ErrInvalidData, #929 hardening
-	// round F), a member declared a player while carrying a Decider — design
-	// law C2 — at any of the three seams that accept one (NewEncounter,
-	// LoadEncounter, Join), Join naming a member ID already in the
-	// encounter, or — Load-only, since these are persisted-state coherence
-	// checks with no Setup analogue — a persisted abandoned outcome with
-	// non-empty membership (abandonment means the membership emptied) or a
-	// current member missing from EverMembers (#929 hardening round F).
-	//
-	// Two runtime refusals keep it on a non-empty id, for the same
-	// roster-coherence reason: Transfer of a world NPC into a fight (the
-	// member exists and holds no seat there), and a reserve arrival whose
-	// kind has no reserve or whose predicate cannot hold (validateArrival,
-	// asked at Setup, Join and Load). An unknown id is never one of them.
-	ErrNoMember = errors.New("empty member id")
+	// ErrNoMember is returned when an input names an EMPTY member id, and for
+	// nothing else. A non-empty id naming nobody here is [ErrNotMember], at
+	// every door; a member id the roster already holds is
+	// [ErrDuplicateMember]; a member that cannot be seated as authored is
+	// [ErrBadMember]. One meaning per refusal, so a caller can switch on it.
+	ErrNoMember = errors.New("encounter: empty member id")
+
+	// ErrDuplicateMember is returned when a member id is already present: a
+	// Setup or Board naming one id twice, a Join naming a member who is in the
+	// encounter, or a stored blob listing one twice.
+	ErrDuplicateMember = errors.New("encounter: member already present")
+
+	// ErrBadMember is returned when a member cannot be seated as authored: a
+	// check or appearance that is defective, an arrival predicate that cannot
+	// be kept, a world NPC asked to hold a seat in a fight, or a stored member
+	// missing from the roster's history. The id is non-empty and not a
+	// duplicate; the member's facts are what is wrong.
+	ErrBadMember = errors.New("encounter: member cannot be seated")
 
 	// ErrNotMember is returned when an entity is not a member of this encounter.
-	ErrNotMember = errors.New("not a member")
+	ErrNotMember = errors.New("encounter: not a member")
 
 	// ErrNotATarget is returned when a verb points an ATTACK at a member
 	// that cannot be one (rpg-project#493, R4): a world NPC, which is what a
@@ -46,13 +44,13 @@ var (
 	// creature the whole composition is built to leave out. A camp that can
 	// be provoked is authored as a MONSTER with a neutral disposition, and
 	// the refusal says so.
-	ErrNotATarget = errors.New("not a target")
+	ErrNotATarget = errors.New("encounter: not a target")
 
 	// ErrNoRegion is returned when [Encounter.MembersIn] is asked about a
 	// region the field does not have. An EMPTY region is an ordinary answer —
 	// "nobody has reached the tomb yet" is a fact worth reporting — so a
 	// mistyped region name must not be able to say it (rpg-toolkit#1108).
-	ErrNoRegion = errors.New("no such region")
+	ErrNoRegion = errors.New("encounter: no such region")
 
 	// ErrNoEnding is returned when Setup or Load is called with zero
 	// endings, a declared ending's key is empty or one of the reserved
@@ -73,7 +71,7 @@ var (
 	// carry only ErrInvalidData, #929 hardening round F). An encounter
 	// that cannot end — whether it declares zero endings or one that can
 	// never fire — is a liveness hole.
-	ErrNoEnding = errors.New("no such ending")
+	ErrNoEnding = errors.New("encounter: no such ending")
 
 	// ErrClosed is returned when a mutating verb (action, event, exit, etc.)
 	// is called on a closed encounter. A closed encounter has an Outcome.
@@ -82,7 +80,7 @@ var (
 	// [OutcomeExperienceGained] on a closed encounter, because the fall that
 	// pays the party can be the fall that ends the run. The reasoning, and
 	// why it does not open the door any wider, is at that refusal site.
-	ErrClosed = errors.New("encounter closed")
+	ErrClosed = errors.New("encounter: encounter closed")
 
 	// ErrNoField is returned when the field as a whole cannot be built
 	// (rpg-project#256): no regions at all; a region with an empty or
@@ -113,12 +111,12 @@ var (
 	// [CanvasInput.Void] or [CanvasInput.Orientation]; at Load, a blob whose
 	// canvas says nothing or carries a word this build does not know. Field
 	// construction DATA, which is what this sentinel is for; the capability
-	// sentinels (ErrNoSight, ErrNoStanding) are for injected behaviour, not
+	// sentinels (ErrNoSight, ErrNoParticipation) are for injected behaviour, not
 	// world facts. Both messages name the declaration and the two are worded
 	// apart, because "never declared" and "declared something I do not know"
 	// send whoever reads them to different places — see [Void] and
 	// voidFromData.
-	ErrNoField = errors.New("no field")
+	ErrNoField = errors.New("encounter: no field")
 
 	// ErrBadPlacement is returned when a placement or position is bad in
 	// a way runtime spatial state can catch (not declaration-time
@@ -152,7 +150,7 @@ var (
 	// and a pointer on the wire, so only Load can tell a blob that omitted it
 	// (the room-local dialects from before #1068 and #1106) from one that
 	// declared (0,0).
-	ErrBadPlacement = errors.New("bad placement")
+	ErrBadPlacement = errors.New("encounter: bad placement")
 
 	// ErrBadReach is returned for a negative reach or range at every door
 	// that takes one: [Encounter.MembersWithin], [Encounter.Route] (a
@@ -172,13 +170,13 @@ var (
 	//
 	// Zero is NOT refused: a zero reach is the origin cell alone, which is a
 	// footprint somebody could mean.
-	ErrBadReach = errors.New("negative reach")
+	ErrBadReach = errors.New("encounter: negative reach")
 
 	// ErrRegionEmpty is returned when a region declares no cells
 	// (rpg-project#256). A region IS its cells — the floor is nothing but
 	// their union — so one with none is not a small room, it is a name with
 	// nothing under it, and an author who wrote it meant to paint something.
-	ErrRegionEmpty = errors.New("region has no cells")
+	ErrRegionEmpty = errors.New("encounter: region has no cells")
 
 	// ErrRegionOverlap is returned when a cell is claimed twice: by two
 	// regions, twice by one (W2 — regions never overlap), by both a region
@@ -190,7 +188,7 @@ var (
 	// Scenery is the same defect at one remove (rpg-project#360): "nobody
 	// owns this cell" is an ANSWER, so a cell that is both a region's and
 	// nobody's is a cell with two of them.
-	ErrRegionOverlap = errors.New("regions overlap")
+	ErrRegionOverlap = errors.New("encounter: regions overlap")
 
 	// ErrRegionArchetypeMissing is returned when a region carries no
 	// archetype. An archetype is a presentation ref the assets resolve —
@@ -198,7 +196,7 @@ var (
 	// mechanic (rpg-project#256 ruling: v1's archetype chose the party's
 	// start, which is the #1033 trap). It is still REQUIRED: a region with no
 	// archetype is a region the assets cannot dress, and there is no default.
-	ErrRegionArchetypeMissing = errors.New("region has no archetype")
+	ErrRegionArchetypeMissing = errors.New("encounter: region has no archetype")
 
 	// ErrRegionLightingMissing is returned when a region carries no lighting
 	// block. Lighting is a per-region world fact carried through the
@@ -206,7 +204,7 @@ var (
 	// lives in the rulebook), and it is REQUIRED for rpg-toolkit#1033's
 	// reason: a nil meaning "full light" or "no light" would be this module
 	// deciding a fact about a world it is not allowed to know.
-	ErrRegionLightingMissing = errors.New("region has no lighting")
+	ErrRegionLightingMissing = errors.New("encounter: region has no lighting")
 
 	// ErrEdgeNotAdjacent is returned when an authored edge — a wall in
 	// [FieldInput.Walls] or a door's [DoorEdge] — joins two cells that are
@@ -215,7 +213,7 @@ var (
 	// spatial's answer under the declared layout, never a pair of offsets to
 	// hardcode, and the same [col,row] pair is adjacent under one
 	// orientation and not the other.
-	ErrEdgeNotAdjacent = errors.New("edge joins cells that are not adjacent")
+	ErrEdgeNotAdjacent = errors.New("encounter: edge joins cells that are not adjacent")
 
 	// ErrEdgeOffFloor is returned when a wall's endpoint is a cell that is not
 	// floor — neither a region's nor [FieldInput.Scenery]'s. The envelope is
@@ -226,13 +224,13 @@ var (
 	//
 	// SCENERY IS SOMETHING TO STAND ON (rpg-project#360). A wall may run
 	// along a strip nobody walks; what it may not do is stand in the void.
-	ErrEdgeOffFloor = errors.New("edge endpoint is not floor")
+	ErrEdgeOffFloor = errors.New("encounter: edge endpoint is not floor")
 
 	// ErrDoorEdgeOffFloor is returned when a door's endpoint is a cell that is
 	// not floor — ErrEdgeOffFloor's rule for a door (#880: a door hanging in
 	// the void is a wall drawn across nothing), scenery included as floor.
 	// Wrapped together with ErrBadDoor, so a caller may match either.
-	ErrDoorEdgeOffFloor = errors.New("door edge endpoint is not floor")
+	ErrDoorEdgeOffFloor = errors.New("encounter: door edge endpoint is not floor")
 
 	// ErrInBubble is returned when a verb requires its member NOT be in a
 	// running bubble and they are: Form names a member already in a fight
@@ -256,13 +254,13 @@ var (
 	// AND A REST (rpg-project#542): [Encounter.RecordRest] refuses a member
 	// in a fight with this, before anything is written. A fight prices its
 	// own time by the round; an hour inside one is not a thing it can mean.
-	ErrInBubble = errors.New("already in a bubble")
+	ErrInBubble = errors.New("encounter: already in a bubble")
 
 	// ErrNoBubble is returned when a verb requires a running bubble and
 	// finds none: Transfer names ClockTurn while no fight is running, or
 	// Transfer-to-world, EndTurn, or Dissolve names a member who is on the
 	// world clock — there is no bubble to leave, act in, or dissolve.
-	ErrNoBubble = errors.New("no bubble")
+	ErrNoBubble = errors.New("encounter: no bubble")
 
 	// ErrNotActive is returned when a verb requires its member to be the
 	// CURRENT active member of their bubble and they are not: EndTurn
@@ -277,17 +275,17 @@ var (
 	// gap, closed here rather than left for a second caller to rediscover).
 	// The leaf sentinel does not cross this boundary any more than any
 	// other leaf's does: this is the one a host matches on.
-	ErrNotActive = errors.New("not the active member")
+	ErrNotActive = errors.New("encounter: not the active member")
 
 	// ErrBadClock is returned when TransferInput.To names neither
 	// ClockWorld nor ClockTurn. Direction is load-bearing on a transfer —
 	// inferring it from the member's current clock would make the verb a
 	// toggle, and a toggle applied to stale state silently moves somebody
 	// the WRONG way instead of failing.
-	ErrBadClock = errors.New("unknown clock kind")
+	ErrBadClock = errors.New("encounter: unknown clock kind")
 
 	// ErrInvalidData is returned when LoadEncounter rejects the input data.
-	ErrInvalidData = errors.New("invalid encounter data")
+	ErrInvalidData = errors.New("encounter: invalid encounter data")
 
 	// ErrTrimmed is returned by Story when the requested resume point has
 	// already been trimmed out of the retention window — the caller asked to
@@ -302,26 +300,17 @@ var (
 	// AfterSeq == 0 never produces this error: zero means "I have nothing,
 	// send what you have," which is always answerable. The distinction is
 	// between a first load and a reconnect (#937).
-	ErrTrimmed = errors.New("story range trimmed")
+	ErrTrimmed = errors.New("encounter: story range trimmed")
 
 	// ErrNoInitiative indicates Setup was given no InitiativeRoller. Trigger
 	// detection runs from first light, so every encounter needs one — refused
 	// at construction rather than at the moment a fight would have started.
 	ErrNoInitiative = errors.New("encounter: no initiative roller")
 
-	// ErrNoStanding indicates Setup or Load was given no Standing capability.
-	// The consult runs from first light, so every encounter needs one —
-	// refused at construction rather than at the moment a body would have
-	// started a fight.
-	ErrNoStanding = errors.New("encounter: no standing capability")
-
-	// ErrNoParticipation indicates a Standing value without Participation.
-	// This module no longer returns it: SetupInput.Standing and
-	// LoadEncounterInput.Standing are typed [StandingWithParticipation], so
-	// the compiler refuses that value (rpg-toolkit#1958). It is kept for
-	// callers that still carry a narrow Standing field of their own and refuse
-	// it by this name. There is no legacy binary fallback and no default
-	// assessment.
+	// ErrNoParticipation indicates Setup or Load was given no Participation
+	// capability. The consult runs from first light, so every encounter needs
+	// one — refused at construction rather than at the moment a body would
+	// have started a fight.
 	ErrNoParticipation = errors.New("encounter: no participation capability")
 
 	// ErrNoSight indicates this module was not told, usably, how far somebody
@@ -376,18 +365,6 @@ var (
 	// light-and-sight truth — a rule this module may not invent
 	// (rpg-toolkit#1033). Same door, same law as ErrNoCheckResolver.
 	ErrNoWitness = errors.New("encounter: no witness capability")
-
-	// ErrElsewhere indicates Search named a region the searcher does not
-	// stand in — v1's rule is that presence is the host's truth and a member
-	// sweeps the floor under their own feet. DELIBERATELY the same answer
-	// for a region that does not exist at all: a distinct no-such-region
-	// refusal would let a guessed ID probe for hidden rooms, which is the
-	// probe law's concern arriving at the region vocabulary.
-	ErrElsewhere = errors.New("encounter: not standing in that region")
-
-	// ErrSearchRetired refuses explicit Search when the host supplies
-	// DiscoveryCheckResolver; only proximity can consume that allowance.
-	ErrSearchRetired = errors.New("search is retired; discovery checks are automatic")
 
 	// ErrNoTurnDriver indicates Setup or Load was given no Driver
 	// capability. A member with no player can land on a fight's clock — a
@@ -502,8 +479,13 @@ var (
 	// ErrRefusingCheckResolver is what the CheckResolver [RefusingCapabilities]
 	// installs always returns: an authored check was rolled against a world
 	// still being compiled, not played. A host bug — a check is rolled only
-	// through an explicit Search — not an outcome to recover from.
+	// by a played world — not an outcome to recover from.
 	ErrRefusingCheckResolver = errors.New("encounter: compile-only CheckResolver: a check was rolled against a world being compiled, not played")
+
+	// ErrRefusingWitness is what [RefusingWitness.Perceivers] always returns:
+	// somebody asked who perceives a door of a world whose host has no honest
+	// answer. A host bug, not an outcome to recover from.
+	ErrRefusingWitness = errors.New("encounter: RefusingWitness: asked who perceives a door in a world nobody plays")
 
 	// ErrNoDissolveMilestone is a leaf that reported dissolving a bubble and
 	// then did not say so in its milestones. An INVARIANT of play/clock, not a
@@ -542,7 +524,7 @@ var (
 	// Separate from ErrBadDoor the way ErrNoRegion is separate from
 	// ErrNoField: this is a caller asking about something that is not there,
 	// where ErrBadDoor is a field that could not be built.
-	ErrNoDoor = errors.New("no such door")
+	ErrNoDoor = errors.New("encounter: no such door")
 
 	// ErrNoConcealment is a concealment this field does not declare, named
 	// by something that needs one — an intel record's `reveals`
@@ -552,7 +534,7 @@ var (
 	// ErrBadDoor: this is a declaration pointing at something that is not
 	// there, where ErrBadConcealment is a concealment that could not be
 	// built.
-	ErrNoConcealment = errors.New("no such concealment")
+	ErrNoConcealment = errors.New("encounter: no such concealment")
 
 	// ErrBadConcealment is a concealment that cannot be part of a field
 	// (rpg-project#490): an empty or duplicated id, no checks at all, an
@@ -566,21 +548,21 @@ var (
 	// A door it names that the field does not declare is ErrNoDoor, for
 	// ErrNoConcealment's reason one noun over: the concealment is fine and
 	// the thing it points at is missing.
-	ErrBadConcealment = errors.New("bad concealment")
+	ErrBadConcealment = errors.New("encounter: bad concealment")
 
 	// ErrNoExit is a way out that is not one: an authored exit with no id,
 	// two exits sharing one, an exit standing where nobody's feet can go,
 	// or a verb naming an exit this field does not declare
 	// (rpg-project#368). An exit nobody can stand on is a run nobody can
 	// leave, which is ErrNoEnding's liveness hole reached from the outside.
-	ErrNoExit = errors.New("no such exit")
+	ErrNoExit = errors.New("encounter: no such exit")
 
 	// ErrNoIntel is an intel record this field does not declare, or one it
 	// declares badly: no id, an id twice, or a record that says nothing it
 	// reveals (rpg-project#372). Also the refusal for a member seeded
 	// holding a record that does not exist — knowledge the author thinks
 	// they placed and did not.
-	ErrNoIntel = errors.New("no such intel record")
+	ErrNoIntel = errors.New("encounter: no such intel record")
 
 	// ErrNoFaction is a faction this field does not declare, or one it
 	// declares badly (rpg-project#375): no id, an id twice, the reserved
@@ -589,7 +571,7 @@ var (
 	// that is not hostile, an until that can never hold, or a member — at
 	// construction or on arrival — naming a faction that does not exist, or
 	// joining under a faction's mind id into some other faction.
-	ErrNoFaction = errors.New("no such faction")
+	ErrNoFaction = errors.New("encounter: no such faction")
 
 	// ErrNoProp is a prop this field does not have, named by a verb that
 	// needs one — [Encounter.Hold]'s target, or an ending's item.
@@ -598,24 +580,24 @@ var (
 	// the asker cannot see, "no such prop" and "not holdable" are the SAME
 	// refusal, so a guessed id cannot map the room somebody has not found.
 	// A visible pillar refuses by name, because there is no secret in it.
-	ErrNoProp = errors.New("no such prop")
+	ErrNoProp = errors.New("encounter: no such prop")
 
 	// ErrNotHoldable is a prop nobody declared holdable, reached by
 	// [Encounter.Hold]. A thing nobody said could be picked up stays
 	// scenery — the same "no default" law [PropInput]'s two blocking flags
 	// follow, applied to a fact with only one honest zero value.
-	ErrNotHoldable = errors.New("prop is not holdable")
+	ErrNotHoldable = errors.New("encounter: prop is not holdable")
 
 	// ErrAlreadyHeld is a prop that has already left the floor. Somebody is
 	// carrying it, or carried it out; either way it is not there to pick up.
-	ErrAlreadyHeld = errors.New("prop is already held")
+	ErrAlreadyHeld = errors.New("encounter: prop is already held")
 
 	// ErrNotDown is a member who is still standing, reached by
 	// [Encounter.Loot]. An ORDINARY refusal, deliberately: the body is
 	// visible and whether it is down is not a secret, so this says what it
 	// means rather than hiding behind a probe-proof answer the way the
 	// prop refusals above do.
-	ErrNotDown = errors.New("member is not down")
+	ErrNotDown = errors.New("encounter: member is not down")
 
 	// ErrBadDoor is returned when a door cannot be part of a field
 	// (rpg-toolkit#1123): an empty or duplicated ID, no edges at all, a
@@ -632,7 +614,7 @@ var (
 	// one that is not locked. The honest answer to asking for something that
 	// has happened is not silent success — [Encounter.Dissolve]'s ErrNoBubble
 	// makes the same call.
-	ErrBadDoor = errors.New("bad door")
+	ErrBadDoor = errors.New("encounter: bad door")
 
 	// ErrLocked is returned when [Encounter.OpenDoor] is asked to open a
 	// locked door. The message names the door and the DC that has to be
@@ -643,7 +625,7 @@ var (
 	// orchestrator (encounter/data.go's DoorData doc) — which is the
 	// looks-like-it-worked shape this composition has spent several slices
 	// deleting.
-	ErrLocked = errors.New("door is locked")
+	ErrLocked = errors.New("encounter: door is locked")
 
 	// ErrDoorShut is returned when a step's travel crosses a door that is
 	// merely closed — shut but not locked (a locked one refuses with
@@ -652,7 +634,7 @@ var (
 	// (rpg-toolkit#1135): the cell is real and the way is shut, and a
 	// caller told "bad placement" for a shut door goes looking for
 	// arithmetic that is fine.
-	ErrDoorShut = errors.New("door is shut")
+	ErrDoorShut = errors.New("encounter: door is shut")
 
 	// ErrOutOfRange is returned when Interact's target stands farther than
 	// the configured range (default: adjacent, one cell) from the actor.

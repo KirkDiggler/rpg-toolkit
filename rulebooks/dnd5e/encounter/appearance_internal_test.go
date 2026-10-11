@@ -20,8 +20,8 @@ func TestAppearanceSuite(t *testing.T) { suite.Run(t, new(AppearanceSuite)) }
 
 func appearanceTestCapabilities() Capabilities {
 	return Capabilities{
-		Sight: everyoneSeesTheWholeMap{}, Equipment: UnobservedEquipment{},
-		Sheets: zeroSheets{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Equipment: UnobservedEquipment{}, Conditions: UnobservedEquipment{},
+		Sheets: zeroSheets{}, Participation: everyoneStanding{}, Initiative: orderAsGiven{},
 		Driver: passDriver{}, Actors: Actors{Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}},
 	}
 }
@@ -92,7 +92,7 @@ func (s *AppearanceSuite) TestReserveAndJoinKeepAppearanceAndRefuseBadRefBeforeM
 	s.Error(err)
 }
 
-func (s *AppearanceSuite) TestStrictPayloadAndLegacyAbsence() {
+func (s *AppearanceSuite) TestStrictPayloadAndUntaggedRefusal() {
 	payload, err := EncodeSightTestimony(SightTestimony{State: LocationKnown, Position: spatial.Position{X: 1, Y: 2}, AppearanceRef: appearanceMerchant})
 	s.Require().NoError(err)
 	decoded, ok := DecodeSightTestimony(payload)
@@ -107,11 +107,13 @@ func (s *AppearanceSuite) TestStrictPayloadAndLegacyAbsence() {
 	s.True(ok)
 	s.Nil(delivered.Conditions)
 	s.Equal(appearanceMerchant, delivered.AppearanceRef)
-	for _, payload := range []string{`{"x":1,"y":2}`, `{"state":"known","x":1,"y":2}`, `{"state":"unknown"}`} {
+	for _, payload := range []string{`{"state":"known","x":1,"y":2}`, `{"state":"unknown"}`} {
 		decoded, ok := DecodeSightTestimony([]byte(payload))
 		s.True(ok)
 		s.Empty(decoded.AppearanceRef)
 	}
+	_, ok = DecodeSightTestimony([]byte(`{"x":1,"y":2}`))
+	s.False(ok, "a payload with no state is not a known location")
 	for _, value := range []string{`null`, `""`, `"bad"`, `42`} {
 		_, ok := DecodeSightTestimony([]byte(`{"state":"known","x":1,"y":2,"appearance_ref":` + value + `}`))
 		s.False(ok, value)

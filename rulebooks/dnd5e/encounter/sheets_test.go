@@ -41,12 +41,13 @@ func hallSetup(sheets encounter.Sheets, extra ...encounter.MemberInput) *encount
 		}, extra...),
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     sheets,
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        sheets,
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -112,12 +113,13 @@ func (s *SheetsTestSuite) drivenPair(sheets encounter.Sheets) (*encounter.Encoun
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     sheets,
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     driver,
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        sheets,
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        driver,
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -232,12 +234,13 @@ func (s *SheetsTestSuite) TestABlobCarryingTheOldCopiesLoadsAndTheSheetWins() {
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     sheets,
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        sheets,
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -343,11 +346,12 @@ func (s *SheetsTestSuite) TestSetupAndLoadRefuseWithoutSheets() {
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: built.ToData(),
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -364,13 +368,13 @@ func (s *SheetsTestSuite) TestSetupAndLoadRefuseWithoutSheets() {
 // builds and loads, because neither asks.
 func (s *SheetsTestSuite) TestARefusingWorldRefusesToPaceAMember() {
 	setup := &encounter.SetupInput{Field: hallSetup(nil).Field, Endings: hallSetup(nil).Endings, Capabilities: encounter.RefusingCapabilities()}
-	setup.Standing = everyoneStanding{}
+	setup.Participation = everyoneStanding{}
 	setup.Members = hallSetup(nil).Members
 	built, err := encounter.NewEncounter(setup)
 	s.Require().NoError(err, "building a world with a member asks no sheet")
 
 	load := &encounter.LoadEncounterInput{Data: built.ToData(), Capabilities: encounter.RefusingCapabilities()}
-	load.Standing = everyoneStanding{} // the one capability this test answers itself, so the walk reaches the pace
+	load.Participation = everyoneStanding{} // the one capability this test answers itself, so the walk reaches the pace
 	loaded, err := encounter.LoadEncounter(load)
 	s.Require().NoError(err, "nor does loading it")
 

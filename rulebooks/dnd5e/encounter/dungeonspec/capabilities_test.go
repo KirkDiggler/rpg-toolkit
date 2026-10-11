@@ -123,6 +123,10 @@ func (nothingIsEverFound) ResolveCheck(*encounter.ResolveCheckInput) (*encounter
 	return &encounter.ResolveCheckOutput{Beaten: false}, nil
 }
 
+func (nothingIsEverFound) ResolveDiscoveryCheck(*encounter.ResolveCheckInput) (*encounter.ResolveCheckOutput, error) {
+	return &encounter.ResolveCheckOutput{Beaten: false}, nil
+}
+
 // nobodyPerceivesAnything answers that no member perceives any open concealed
 // door — the counterpart to nothingIsEverFound, and required for the same
 // reason. A concealed dungeon in this package is a compile to be inspected,

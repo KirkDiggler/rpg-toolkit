@@ -304,9 +304,9 @@ func (s *HoldOutSuite) TestTheChiefsFallBringsTheReinforcementsToTheGate() {
 	s.Run("the journal records each arrival once, on the truth grain", func() {
 		data := enc.ToData()
 		s.Nil(data.Reserve, "nothing is waiting any more")
-		s.Require().NotNil(data.Holdings)
+		s.Require().NotNil(data.Journal)
 		var arrived []encounter.FactData
-		for _, f := range data.Holdings.Facts {
+		for _, f := range data.Journal.Facts {
 			if strings.HasPrefix(f.Kind, "arrived:") {
 				arrived = append(arrived, f)
 			}
@@ -342,7 +342,7 @@ func (s *HoldOutSuite) TestAReservedMonsterTakesNoTurnAndIsInNoPair() {
 		_, err = enc.AtlasFor(id)
 		s.ErrorIs(err, encounter.ErrNotMember)
 		_, err = enc.Join(&encounter.JoinInput{Member: id, Kind: encounter.KindMonster, Cell: cellAt(1, 1), Faction: campFaction})
-		s.ErrorIs(err, encounter.ErrNoMember, "but it is in the encounter: nobody else may join under its id")
+		s.ErrorIs(err, encounter.ErrDuplicateMember, "but it is in the encounter: nobody else may join under its id")
 	}
 
 	out := s.intoTheYard(enc, raider)
@@ -381,7 +381,7 @@ func (s *HoldOutSuite) TestReloadMidReserveKeepsTheReserve() {
 			s.Equal(campFaction, r.Faction)
 			s.Equal(encounter.TriggerData{Kind: "member_down", Member: campChief}, r.Arrives)
 		}
-		s.Nil(data.Holdings, "nothing has been held, dropped or arrived")
+		s.Empty(holdingsFacts(data), "nothing has been held, dropped or arrived")
 		for _, m := range data.Members {
 			s.NotContains(campReinforcements, m.ID)
 		}
@@ -408,8 +408,8 @@ func (s *HoldOutSuite) TestReloadMidReserveKeepsTheReserve() {
 		}
 		after := back.ToData()
 		s.Nil(after.Reserve)
-		s.Require().NotNil(after.Holdings)
-		s.Len(after.Holdings.Facts, 3, "three arrived facts and nothing else: %v", after.Holdings.Facts)
+		s.Require().NotNil(after.Journal)
+		s.Len(holdingsFacts(after), 3, "three arrived facts and nothing else: %v", holdingsFacts(after))
 
 		again := s.reload(back)
 		for _, id := range campReinforcements {
@@ -440,8 +440,9 @@ func (s *HoldOutSuite) TestReloadMidReserveKeepsTheReserve() {
 			Capabilities: encounter.Capabilities{
 				Sight:         everyoneSeesTheWholeMap{},
 				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
 				Sheets:        zeroSheets{},
-				Standing:      s.standing,
+				Participation: s.standing,
 				Initiative:    orderAsGiven{},
 				Driver:        passDriver{},
 				CheckResolver: findsNothing{},
@@ -669,8 +670,9 @@ func (s *HoldOutSuite) TestTheRunRefusesAReserveItCannotKeep() {
 			Capabilities: encounter.Capabilities{
 				Sight:         everyoneSeesTheWholeMap{},
 				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
 				Sheets:        zeroSheets{},
-				Standing:      everyoneStanding{},
+				Participation: everyoneStanding{},
 				Initiative:    orderAsGiven{},
 				Driver:        passDriver{},
 				CheckResolver: findsNothing{},
@@ -696,24 +698,24 @@ func (s *HoldOutSuite) TestTheRunRefusesAReserveItCannotKeep() {
 
 	s.Run("a player cannot wait in reserve", func() {
 		err := open(s.compiled.Field, withArrival(partner, encounter.TriggerRound{Round: 3}))
-		s.Require().ErrorIs(err, encounter.ErrNoMember)
+		s.Require().ErrorIs(err, encounter.ErrBadMember)
 		s.Contains(err.Error(), "only a monster waits in reserve")
 	})
 	s.Run("a member cannot wait for its own fall", func() {
 		err := open(s.compiled.Field, withArrival(campScout, encounter.TriggerMemberDown{Member: campScout}))
-		s.Require().ErrorIs(err, encounter.ErrNoMember)
+		s.Require().ErrorIs(err, encounter.ErrBadMember)
 		s.Contains(err.Error(), "its own fall")
 	})
 	s.Run("a round counted from zero", func() {
 		err := open(s.compiled.Field, withArrival(campScout, encounter.TriggerRound{}))
-		s.Require().ErrorIs(err, encounter.ErrNoMember)
+		s.Require().ErrorIs(err, encounter.ErrBadMember)
 		s.Contains(err.Error(), "counted from 1")
 	})
 	s.Run("a stance the pair holds from the start", func() {
 		err := open(s.compiled.Field, withArrival(campScout, encounter.TriggerStance{
 			Between: [2]encounter.FactionID{campFaction, encounter.FactionParty}, Stance: encounter.StanceHostile,
 		}))
-		s.Require().ErrorIs(err, encounter.ErrNoMember)
+		s.Require().ErrorIs(err, encounter.ErrBadMember)
 		s.Contains(err.Error(), "from the start")
 	})
 	s.Run("a prop that arrives must be nameable", func() {
@@ -740,12 +742,12 @@ func (s *HoldOutSuite) TestTheRunRefusesAReserveItCannotKeep() {
 		_, err := enc.Join(&encounter.JoinInput{
 			Member: "late", Kind: encounter.KindPlayer, Cell: cellAt(1, 1), Arrives: encounter.TriggerRound{Round: 2},
 		})
-		s.Require().ErrorIs(err, encounter.ErrNoMember)
+		s.Require().ErrorIs(err, encounter.ErrBadMember)
 		_, err = enc.Join(&encounter.JoinInput{
 			Member: "late", Kind: encounter.KindMonster, Cell: cellAt(1, 1), Faction: campFaction,
 			Arrives: encounter.TriggerMemberDown{Member: "late"},
 		})
-		s.Require().ErrorIs(err, encounter.ErrNoMember)
+		s.Require().ErrorIs(err, encounter.ErrBadMember)
 		s.NotContains(s.memberIDs(enc), core.EntityID("late"))
 		data := enc.ToData()
 		s.Nil(data.Reserve, "nothing was reserved by a refused join")

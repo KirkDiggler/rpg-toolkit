@@ -156,12 +156,13 @@ func vaultChaseHexSetup() *encounter.SetupInput {
 				Position: spatial.Position{X: 12, Y: 6}}}, // the vault's own [2,6]
 		},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     sheetFacts{goblin: {SpeedFeet: 60}, alice: {}},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     tableDriver(),
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        sheetFacts{goblin: {SpeedFeet: 60}, alice: {}},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        tableDriver(),
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -358,12 +359,13 @@ func TestVaultChaseAbsoluteContinuity(t *testing.T) {
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     sheetFacts{goblin: {SpeedFeet: 60}, alice: {}},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     tableDriver(),
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        sheetFacts{goblin: {SpeedFeet: 60}, alice: {}},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        tableDriver(),
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},

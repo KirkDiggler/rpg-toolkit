@@ -53,12 +53,13 @@ func (s *IntimidateTestSuite) scene(members ...encounter.MemberInput) *encounter
 		Members: members,
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -243,12 +244,13 @@ func (s *IntimidateTestSuite) TestTheCampLearnsOnlyWhatTheAuthorPlanted() {
 			},
 			Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 			Capabilities: encounter.Capabilities{
-				Sight:      everyoneSeesTheWholeMap{},
-				Equipment:  encounter.UnobservedEquipment{},
-				Sheets:     zeroSheets{},
-				Standing:   everyoneStanding{},
-				Initiative: orderAsGiven{},
-				Driver:     passDriver{},
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
 				Actors: encounter.Actors{
 					Striker:   passStriker{},
 					Mover:     quietMover{},
@@ -338,12 +340,13 @@ func (s *IntimidateTestSuite) TestTheAuthoredCheckCrossesLikeTargeting() {
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: enc.ToData(),
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -372,12 +375,13 @@ func (s *IntimidateTestSuite) TestAnApproachWithNothingToBeatIsRefused() {
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -385,7 +389,7 @@ func (s *IntimidateTestSuite) TestAnApproachWithNothingToBeatIsRefused() {
 			},
 		},
 	})
-	s.Require().ErrorIs(err, encounter.ErrNoMember)
+	s.Require().ErrorIs(err, encounter.ErrBadMember)
 }
 
 // untrainedCheck is the arithmetic an untrained character's Persuasion or

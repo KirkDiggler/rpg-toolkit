@@ -45,9 +45,5 @@ func discoveryPolicyInput(in *DiscoveryAttemptsSpec) *encounter.DiscoveryPolicyI
 		value := *in.ResetHexes
 		out.ResetHexes = &value
 	}
-	if in.Lifetime != nil {
-		value := encounter.DiscoveryLifetime(*in.Lifetime)
-		out.Lifetime = &value
-	}
 	return out
 }

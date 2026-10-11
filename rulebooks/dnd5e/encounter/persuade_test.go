@@ -54,12 +54,13 @@ func (s *PersuadeTestSuite) scene(members ...encounter.MemberInput) *encounter.E
 		Members: members,
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -227,12 +228,13 @@ func (s *PersuadeTestSuite) TestTheAuthoredAppealCrossesAndSurvivesAReload() {
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: enc.ToData(),
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -260,12 +262,13 @@ func (s *PersuadeTestSuite) TestAnApproachWithNothingToBeatIsRefused() {
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -273,5 +276,5 @@ func (s *PersuadeTestSuite) TestAnApproachWithNothingToBeatIsRefused() {
 			},
 		},
 	})
-	s.Require().ErrorIs(err, encounter.ErrNoMember)
+	s.Require().ErrorIs(err, encounter.ErrBadMember)
 }

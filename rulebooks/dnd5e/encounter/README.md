@@ -181,8 +181,8 @@ type InitiativeRoller interface {  // what order a fight goes in
     RollInitiative(members []MemberID) ([]MemberID, error)
 }
 
-type Standing interface {          // who is down
-    Standing(members []MemberID) (down []MemberID, err error)
+type Participation interface {     // who is down, and who counts as present
+    Assess(members []MemberID) (*ParticipationAssessment, error)
 }
 
 type Sight interface {             // how far each member can see, in cells
@@ -213,7 +213,7 @@ forms, and the player is in it unaware. This is not stealth
 contests whether an observer's percept holds a subject in plain view; it rides
 the same seam and neither has to know the other exists.
 
-`Standing` is a **pull**. Nothing pushes a death in, and nothing here remembers
+`Participation` is a **pull**. Nothing pushes a death in, and nothing here remembers
 one — the composition asks at the choke point where it already asks about sight,
 so every route to zero is noticed without that route knowing this interface
 exists. A member reported down is on no side of a contact, has no turn, and gets
@@ -235,7 +235,7 @@ other caller of the consult is a verb looking at a world something else changed.
 | `tabledriver.go` | the one `Driver`: a table rolled, a word turned into an intent |
 | `worldtime.go` | what a verb costs the world clock, and the world thinking on it |
 | `trigger.go` | `InitiativeRoller` and the classification that starts a fight |
-| `standing.go` | `Standing`, and the world noticing who is down |
+| `standing.go` | the world noticing who is down, from the `Participation` answer |
 | `sight.go` | `Sight`, and how far each member can see this refresh |
 | `step.go` | one step on the map, and the one place that decides what one is |
 | `atlas.go` | the map reads — `Atlas` (every floor cell, region, prop, wall, doorway and wall SEGMENT, in absolute space; a cell in `Cells` and in no region is scenery, and `Sealed` is every cell nobody stands on) and `Grid` |

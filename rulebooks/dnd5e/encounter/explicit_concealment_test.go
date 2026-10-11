@@ -30,7 +30,8 @@ func (s *ExplicitConcealmentSuite) setup(field encounter.FieldInput, at spatial.
 			Sheets:        zeroSheets{},
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
-			Standing:      everyoneStanding{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -53,7 +54,8 @@ func (s *ExplicitConcealmentSuite) reload(enc *encounter.Encounter) *encounter.E
 			Sheets:        zeroSheets{},
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
-			Standing:      everyoneStanding{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -84,7 +86,7 @@ func (s *ExplicitConcealmentSuite) TestDoorSupportIsNotConcealedFloorOrAnOccupan
 		_, err = current.OpenDoor(&encounter.OpenDoorInput{Door: theLeaf, Actor: "walker"})
 		s.Require().ErrorIs(err, encounter.ErrNoDoor, "standing on support alone must not discover the secret")
 	}
-	_, err := enc.Search(&encounter.SearchInput{Member: "walker", Region: "hall"})
+	err := encounter.ExportedFind(enc, "walker", "door-secret")
 	s.Require().NoError(err, "a floor-less secret remains reachable by its door geometry")
 	_, err = enc.CloseDoor(&encounter.CloseDoorInput{Door: theLeaf, Actor: "walker"})
 	s.Require().NoError(err, "discovery still finds the selected door")
@@ -175,10 +177,11 @@ func (s *ExplicitConcealmentSuite) searchSetup(field encounter.FieldInput, at sp
 			Sheets:        zeroSheets{},
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
-			Standing:      everyoneStanding{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
-			CheckResolver: findsEverything{},
+			CheckResolver: findsNothing{},
 			Witness:       nobodyPerceives{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
@@ -289,7 +292,7 @@ func (s *ExplicitConcealmentSuite) TestDiscoveryRevealsTheSelectedWallIdentities
 	s.Require().NoError(err)
 	s.Empty(before.Placed, "an unaware observer sees no wall identity")
 
-	_, err = enc.Search(&encounter.SearchInput{Member: "walker", Region: "hall"})
+	err = encounter.ExportedFind(enc, "walker", "vault")
 	s.Require().NoError(err)
 
 	after, err := enc.AtlasFor("walker")

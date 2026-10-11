@@ -58,9 +58,9 @@ import (
 //
 // The declaration is rebuilt from the field and the roster at every Setup,
 // Load, Join and Exit — a member is an entity, so the roster changing is the
-// declaration changing — and it is never stored. The journal persists, on
-// [EncounterData.World] and [EncounterData.Holdings] exactly as before, split
-// by kind at the storage boundary and replayed into the one log at load. A
+// declaration changing — and it is never stored. The journal persists as one
+// list on [EncounterData.Journal], every fact in append order, and is replayed
+// into the one log at load in that order. A
 // pair's stance is therefore derived on every question from the declaration
 // plus the facts: nothing anywhere stores "the raiders turned".
 //
@@ -170,25 +170,14 @@ func newEncounterWorld() *encounterWorld { return &encounterWorld{log: journal.N
 
 // conceals reports whether the field hid anything — the question the
 // projection asks before withholding, and the storage boundary asks before
-// writing a world key for a field nobody has learned anything in.
+// writing a journal key for a field nobody has learned anything in.
 func (w *encounterWorld) conceals() bool { return len(w.concealments) > 0 }
 
-// knowledgeFacts is every fact the WORLD folds over, in append order — the
-// half of the one journal [EncounterData.World] carries: what somebody came
-// to know (`known:`) and what a pair publicly settled to (`settled:`).
-//
-// THE SETTLED FACTS PERSIST FOR THE SAME REASON THE KNOWN ONES DO. A pair's
-// stance is derived, never stored, so the fact that turned it is the whole
-// record; drop it from the blob and a camp the party provoked would reload
-// civil, which is the fail-silent this slice exists to remove.
-func (w *encounterWorld) knowledgeFacts() []journal.Fact {
-	var out []journal.Fact
-	for _, f := range w.log.All() {
-		if strings.HasPrefix(string(f.Kind), "known:") || strings.HasPrefix(string(f.Kind), settledPrefix) {
-			out = append(out, f)
-		}
-	}
-	return out
+// isWorldKind reports whether a fact kind is one the world folds over —
+// `known:` and `settled:` — as opposed to the holdings kinds
+// ([isHoldingsKind]). Together they are every kind the journal persists.
+func isWorldKind(kind string) bool {
+	return strings.HasPrefix(kind, "known:") || strings.HasPrefix(kind, settledPrefix)
 }
 
 // buildWorld (re)declares the graph from the field and the roster, keeping

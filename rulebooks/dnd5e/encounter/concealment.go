@@ -60,8 +60,8 @@ type ConcealmentID = string
 //
 // RAW has one DC, and a character whose passive Perception beats it notices
 // the secret door outright. This shape splits the two: [ConcealmentInput.Notice]
-// is a passive TELL and [ConcealmentInput.Checks] is what a Search rolls, so
-// the rogue gets a "hm" and still has to search. An author who wants RAW sets
+// is a passive TELL and [ConcealmentInput.Checks] is what a discovery check
+// rolls, so the rogue gets a "hm" and still has to find it. An author who wants RAW sets
 // `notice` equal to `checks` (rpg-project#490, "Divergence from RAW, stated").
 type ConcealmentInput struct {
 	// ID names the concealment. REQUIRED non-empty and unique within the
@@ -69,18 +69,18 @@ type ConcealmentInput struct {
 	// names it, and an ambiguous one has no answer.
 	ID ConcealmentID
 
-	// Checks are the ways a Search can find this, each with its own DC —
+	// Checks are the ways a discovery check can find this, each with its own DC —
 	// [CheckApproach]'s contract. REQUIRED non-empty: a concealment nobody
 	// can ever find is a secret the author started and did not finish, and
 	// the zero value would be a check with nothing to beat.
 	//
-	// ONE ROLL PER CONCEALMENT, never per hidden thing ([Encounter.Search]).
+	// ONE ROLL PER CONCEALMENT, never per hidden thing (the discovery sweep).
 	Checks []CheckApproach
 
 	// Attempts configures this discovery check, not its individual approaches.
 	// Omitted means one retained attempt and a three-hex repeat reset distance.
 	// Compiled and persisted here; automatic enforcement is supplied by the
-	// discovery sweep. The legacy Search path does not yet consume this policy.
+	// discovery sweep. Only the discovery sweep consumes it.
 	Attempts *DiscoveryPolicyInput
 
 	// Notice is the PASSIVE tell — the same approach list, resolved without
@@ -138,7 +138,7 @@ type concealment struct {
 	authoredCells []spatial.Position
 
 	// cells is the same list, absolute axial, converted once — what the
-	// projection, the sweep and Search all read.
+	// projection and the sweep both read.
 	cells []spatial.Position
 
 	doors []DoorID
@@ -252,7 +252,7 @@ func (f *field) compileConcealments(in []ConcealmentInput) error {
 					owner, c.ID, id, ErrBadConcealment)
 			}
 			// BOTH KINDS OF PROP, one shared namespace (rpg-toolkit#1854):
-			// a legacy cell prop and a placed footprint are the same
+			// a cell prop and a placed footprint are the same
 			// question to a concealment, and compilePlaced refuses a
 			// collision between the two lists, which is what makes one
 			// lookup safe.
@@ -332,7 +332,7 @@ func (e *Encounter) hiddenCellsOf(c *concealment) []spatial.Position {
 	return append([]spatial.Position(nil), c.cells...)
 }
 
-// memberPropCells is WHERE THE THINGS A CONCEALMENT HIDES STAND — a legacy
+// memberPropCells is WHERE THE THINGS A CONCEALMENT HIDES STAND — a cell
 // prop's own cell, a placed footprint's [field.placedCells] — for the one
 // question that has to reach a secret hiding no floor: whether a sweep of a
 // region touches it (R5, [Encounter.concealmentTouchesRegion]).

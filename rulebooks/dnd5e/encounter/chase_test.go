@@ -65,12 +65,13 @@ func TestVaultChase(t *testing.T) {
 				Position: spatial.Position{X: 18, Y: 8}}}, // the vault's own [8,8], anchored at [10,0]
 		},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     sheets,
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     tableDriver(),
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        sheets,
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        tableDriver(),
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -127,12 +128,13 @@ func TestVaultChase(t *testing.T) {
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     sheets,
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     tableDriver(),
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        sheets,
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        tableDriver(),
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -204,10 +206,6 @@ func TestVaultChase(t *testing.T) {
 	for name, verb := range map[string]func() error{
 		"Step": func() error {
 			_, e := enc.Step(&encounter.StepInput{Member: alice, To: cellAt(1, 1)})
-			return e
-		},
-		"Search": func() error {
-			_, e := enc.Search(&encounter.SearchInput{Member: alice, Region: vaultRoom})
 			return e
 		},
 		"Join": func() error {

@@ -6,7 +6,6 @@ package encounter_test
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -24,10 +23,6 @@ type scriptedParticipation struct {
 	returnNil     bool
 	err           error
 	questions     [][]encounter.MemberID
-}
-
-func (s *scriptedParticipation) Standing([]encounter.MemberID) ([]encounter.MemberID, error) {
-	return nil, errors.New("legacy Standing must not be consulted")
 }
 
 func (s *scriptedParticipation) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
@@ -82,7 +77,7 @@ func (s *waitingAfterStrike) Strike(
 	return err
 }
 
-func participationSetup(capability encounter.StandingWithParticipation, members ...encounter.MemberInput) *encounter.SetupInput {
+func participationSetup(capability encounter.Participation, members ...encounter.MemberInput) *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Retention: encounter.RetentionUnbounded,
 		Field: encounter.FieldInput{
@@ -96,12 +91,13 @@ func participationSetup(capability encounter.StandingWithParticipation, members 
 			{Key: "withdrawn", Trigger: encounter.TriggerExternal{}},
 		},
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Standing:   capability,
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Driver:     passDriver{},
+			Initiative:    orderAsGiven{},
+			Participation: capability,
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -111,7 +107,7 @@ func participationSetup(capability encounter.StandingWithParticipation, members 
 	}
 }
 
-func participationTrio(t *testing.T, capability encounter.StandingWithParticipation) *encounter.Encounter {
+func participationTrio(t *testing.T, capability encounter.Participation) *encounter.Encounter {
 	t.Helper()
 	enc, err := encounter.NewEncounter(participationSetup(capability,
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 2}},
@@ -470,12 +466,13 @@ func TestSuppliedPartyDefeatClosesAfterItsCausalBeats(t *testing.T) {
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: enc.ToData(),
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Standing:   capability,
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Driver:     passDriver{},
+			Initiative:    orderAsGiven{},
+			Participation: capability,
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -672,12 +669,13 @@ func TestDeathSaveDetailRoundTripsEveryPrimitiveAndRejectsMismatches(t *testing.
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: enc.ToData(),
 		Capabilities: encounter.Capabilities{
-			Initiative: orderAsGiven{},
-			Standing:   capability,
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Driver:     passDriver{},
+			Initiative:    orderAsGiven{},
+			Participation: capability,
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -743,7 +741,7 @@ func TestNextStorySeqIsAReadAndEqualsTheNextSuccessfulRecord(t *testing.T) {
 // purpose — a monster answering Driven would be indistinguishable from the
 // Wait it already gets.
 func drivenScene(
-	t *testing.T, capability encounter.StandingWithParticipation, driver encounter.Driver,
+	t *testing.T, capability encounter.Participation, driver encounter.Driver,
 ) *encounter.Encounter {
 	t.Helper()
 	setup := participationSetup(capability,

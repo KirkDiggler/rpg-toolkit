@@ -19,17 +19,6 @@ import (
 // decodes its own encoding rather than handing session (or any other caller)
 // bytes to unmarshal itself (rpg-toolkit#1157).
 
-// TestDecodeSightPayloadRoundTripsASightPayload pins the ordinary case: bytes
-// this package itself produced decode back to the position they encoded.
-func TestDecodeSightPayloadRoundTripsASightPayload(t *testing.T) {
-	encoded, err := json.Marshal(encounter.SightPayload{X: 10, Y: 3})
-	require.NoError(t, err)
-
-	pos, ok := encounter.DecodeSightPayload(encoded)
-	require.True(t, ok, "a payload this package encoded must decode")
-	require.Equal(t, spatial.Position{X: 10, Y: 3}, pos)
-}
-
 func TestLocationPayloadRoundTrip(t *testing.T) {
 	known := encounter.SightTestimony{State: encounter.LocationKnown, Position: spatial.Position{X: 0, Y: -2}}
 	payload, err := encounter.EncodeSightTestimony(known)
@@ -39,24 +28,36 @@ func TestLocationPayloadRoundTrip(t *testing.T) {
 	got, ok := encounter.DecodeSightTestimony(payload)
 	require.True(t, ok)
 	require.Equal(t, known, got)
-	pos, ok := encounter.DecodeSightPayload(payload)
-	require.True(t, ok)
-	require.Equal(t, known.Position, pos)
 
 	unknown, err := encounter.EncodeSightTestimony(encounter.SightTestimony{State: encounter.LocationUnknown})
 	require.NoError(t, err)
 	require.JSONEq(t, `{"state":"unknown"}`, string(unknown))
-	_, ok = encounter.DecodeSightPayload(unknown)
-	require.False(t, ok)
+	gotUnknown, ok := encounter.DecodeSightTestimony(unknown)
+	require.True(t, ok)
+	require.Equal(t, encounter.SightTestimony{State: encounter.LocationUnknown}, gotUnknown)
 }
 
-func TestDecodeSightTestimonyReadsLegacyKnownPosition(t *testing.T) {
-	got, ok := encounter.DecodeSightTestimony([]byte(`{"x":0,"y":4}`))
-	require.True(t, ok)
-	require.Equal(t, encounter.SightTestimony{
-		State:    encounter.LocationKnown,
-		Position: spatial.Position{X: 0, Y: 4},
-	}, got)
+// TestDecodeSightTestimonyRefusesAnUntaggedPayload: a payload with no state is
+// not read as a known location. The untagged form predates every fact but
+// position, and a position with no state is "sight at the origin" waiting to
+// happen to a payload that merely failed to say what it is.
+func TestDecodeSightTestimonyRefusesAnUntaggedPayload(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		payload string
+	}{
+		{name: "coordinates only", payload: `{"x":0,"y":4}`},
+		{name: "empty object", payload: `{}`},
+		{name: "only x", payload: `{"x":1}`},
+		{name: "only y", payload: `{"y":1}`},
+		{name: "empty state", payload: `{"state":"","x":1,"y":2}`},
+		{name: "the room-bearing dialect", payload: `{"room":"hall","x":2,"y":5}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, ok := encounter.DecodeSightTestimony([]byte(tc.payload))
+			require.False(t, ok)
+		})
+	}
 }
 
 func TestDecodeSightTestimonyRejectsMalformedOrContradictoryShapes(t *testing.T) {
@@ -102,57 +103,12 @@ func TestEncodeSightTestimonyRejectsInvalidKnowledge(t *testing.T) {
 	}
 }
 
-// TestDecodeSightPayloadRefusesWhatItDidNotEncode pins the failure case:
-// bytes that are not a SightPayload come back refused rather than
-// zero-valued and silently accepted, which would let a caller mistake "not
-// sight" for "sight at the origin".
-func TestDecodeSightPayloadRefusesWhatItDidNotEncode(t *testing.T) {
-	_, ok := encounter.DecodeSightPayload([]byte("not a sight payload"))
-	require.False(t, ok)
-
-	_, ok = encounter.DecodeSightPayload(nil)
-	require.False(t, ok)
-}
-
-// TestDecodeSightPayloadRefusesValidJSONThatIsNotASightPayload is the case
-// Copilot's review of this PR named directly: a plain json.Unmarshal into
-// SightPayload treats "null" and "{}" as a no-op, leaving the zero-value
-// position and no error — which reads as "sight at the origin", the exact
-// failure mode DecodeSightPayload exists to prevent. Both must refuse.
-func TestDecodeSightPayloadRefusesValidJSONThatIsNotASightPayload(t *testing.T) {
-	_, ok := encounter.DecodeSightPayload([]byte("null"))
-	require.False(t, ok, `"null" must not decode as (0,0)`)
-
-	_, ok = encounter.DecodeSightPayload([]byte("{}"))
-	require.False(t, ok, `"{}" must not decode as (0,0)`)
-
-	_, ok = encounter.DecodeSightPayload([]byte(`{"x":1}`))
-	require.False(t, ok, "a payload naming only x must not decode with y defaulted to 0")
-
-	_, ok = encounter.DecodeSightPayload([]byte(`{"y":1}`))
-	require.False(t, ok, "a payload naming only y must not decode with x defaulted to 0")
-}
-
-// TestDecodeSightPayloadRefusesTheRoomBearingDialect is the other case
-// Copilot's review named: a sight payload written in the dialect
-// rpg-toolkit#1044 replaced — room-local coordinates alongside a "room" key
-// — must not be reinterpreted as dungeon-absolute just because x and y
-// happen to parse. data.go's refuseRoomLocalSightings refuses this same
-// dialect at load; this function must refuse it too, on the same grounds
-// (Kirk's ruling, 2026-08-17: fail loudly, no migration).
-func TestDecodeSightPayloadRefusesTheRoomBearingDialect(t *testing.T) {
-	legacy := []byte(`{"room":"hall","x":2,"y":5}`)
-
-	_, ok := encounter.DecodeSightPayload(legacy)
-	require.False(t, ok, "an unknown field beside x/y must refuse the whole payload, not decode around it")
-}
-
-// TestDecodeSightPayloadAgreesWithAViewsOwnPayload is item 5 of #1157's
+// TestDecodeSightTestimonyAgreesWithAViewsOwnPayload is item 5 of #1157's
 // testable cases: the typed decode and the raw payload a caller could
 // unmarshal itself must name the same cell, on a real percept the
 // composition produced from geometry rather than a literal this test
 // invented.
-func TestDecodeSightPayloadAgreesWithAViewsOwnPayload(t *testing.T) {
+func TestDecodeSightTestimonyAgreesWithAViewsOwnPayload(t *testing.T) {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -164,12 +120,13 @@ func TestDecodeSightPayloadAgreesWithAViewsOwnPayload(t *testing.T) {
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -190,12 +147,13 @@ func TestDecodeSightPayloadAgreesWithAViewsOwnPayload(t *testing.T) {
 	}
 	require.NotNil(t, holding, "alice must hold a sighting of the skeleton to test against")
 
-	var raw encounter.SightPayload
+	var raw sightPayload
 	require.NoError(t, json.Unmarshal(holding.Payload, &raw))
 
-	pos, ok := encounter.DecodeSightPayload(holding.Payload)
+	testimony, ok := encounter.DecodeSightTestimony(holding.Payload)
 	require.True(t, ok)
-	require.Equal(t, spatial.Position{X: raw.X, Y: raw.Y}, pos,
+	require.Equal(t, encounter.LocationKnown, testimony.State)
+	require.Equal(t, spatial.Position{X: raw.X, Y: raw.Y}, testimony.Position,
 		"the typed decode must name the same cell as the raw payload")
-	require.Equal(t, cellAt(5, 6), pos, "and that cell is really where the skeleton stands")
+	require.Equal(t, cellAt(5, 6), testimony.Position, "and that cell is really where the skeleton stands")
 }

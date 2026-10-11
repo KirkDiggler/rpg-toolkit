@@ -32,15 +32,16 @@ func TestASocialVerdictAndADrivenTurnAgreeOnEnemyInReach(t *testing.T) {
 		},
 		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
 		Capabilities: Capabilities{
-			Sight:     everyoneSeesTheWholeMap{},
-			Equipment: UnobservedEquipment{},
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  UnobservedEquipment{},
+			Conditions: UnobservedEquipment{},
 			Sheets: sheetFacts{
 				"alice":  {SpeedFeet: 30},
 				"goblin": {SpeedFeet: 30, Actions: []ActionView{club}},
 			},
-			Standing:   rulebook,
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Participation: rulebook,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},

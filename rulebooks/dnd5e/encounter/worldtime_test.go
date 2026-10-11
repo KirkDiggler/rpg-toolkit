@@ -82,13 +82,14 @@ func (s *WorldTimeSuite) hallSheets(
 		Members: members,
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     sheets,
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     tableDriver(),
-			Roller:     rollsLowest{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        sheets,
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        tableDriver(),
+			Roller:        rollsLowest{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -198,11 +199,11 @@ func (s *WorldTimeSuite) TestAnActionCostsOneRoundForItsActor() {
 		ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1},
 	})
 
-	_, err := enc.Search(&encounter.SearchInput{Member: alice, Region: "hall"})
+	err := encounter.ExportedSpendWorldAction(enc, alice)
 	s.Require().NoError(err)
 	s.Equal(1, s.reading(enc), "an action is a round, whole, however little walking went with it")
 
-	_, err = enc.Search(&encounter.SearchInput{Member: alice, Region: "hall"})
+	err = encounter.ExportedSpendWorldAction(enc, alice)
 	s.Require().NoError(err)
 	s.Equal(2, s.reading(enc), "and the next one is the next round")
 }
@@ -295,7 +296,7 @@ func (s *WorldTimeSuite) TestACreatureWithNothingOpposedHoldsAndTheBeatSaysSo() 
 
 	started := whereIs(s.T(), enc, goblin)
 
-	_, err := enc.Search(&encounter.SearchInput{Member: alice, Region: "hall"})
+	err := encounter.ExportedSpendWorldAction(enc, alice)
 	s.Require().NoError(err)
 
 	s.Equal(started, whereIs(s.T(), enc, goblin), "it is opposed to nobody it can see, so it stands there")
@@ -339,13 +340,14 @@ func (s *WorldTimeSuite) TestAnAttackOffTheTurnClockIsAnError() {
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     sheetFacts{alice: {SpeedFeet: 30}, goblin: {SpeedFeet: 30}},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     alwaysSwings{},
-			Roller:     rollsLowest{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        sheetFacts{alice: {SpeedFeet: 30}, goblin: {SpeedFeet: 30}},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        alwaysSwings{},
+			Roller:        rollsLowest{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -355,7 +357,7 @@ func (s *WorldTimeSuite) TestAnAttackOffTheTurnClockIsAnError() {
 	})
 	s.Require().NoError(err)
 
-	_, err = enc.Search(&encounter.SearchInput{Member: alice, Region: "hall"})
+	err = encounter.ExportedSpendWorldAction(enc, alice)
 	s.Require().Error(err, "the world asked, the driver said `attack`, and the world clock has no attacks in it")
 	s.ErrorIs(err, encounter.ErrAttackOffTurn)
 }
@@ -562,13 +564,14 @@ func (s *WorldTimeSuite) TestTheDefaultTableClosesAndThenSwings() {
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     sheetFacts{alice: {SpeedFeet: 30}, goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, RangeFeet: 5}}}},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     tableDriver(),
-			Roller:     rollsLowest{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        sheetFacts{alice: {SpeedFeet: 30}, goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, RangeFeet: 5}}}},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        tableDriver(),
+			Roller:        rollsLowest{},
 			Actors: encounter.Actors{
 				Striker:   striker,
 				Mover:     quietMover{},
@@ -649,13 +652,14 @@ func (s *WorldTimeSuite) TestASpentCreatureIsNotAskedToSwingAgain() {
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     sheetFacts{alice: {SpeedFeet: 30}, goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, RangeFeet: 5}}}},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     tableDriver(),
-			Roller:     rollsLowest{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        sheetFacts{alice: {SpeedFeet: 30}, goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, RangeFeet: 5}}}},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        tableDriver(),
+			Roller:        rollsLowest{},
 			Actors: encounter.Actors{
 				Striker:   striker,
 				Mover:     quietMover{},
@@ -746,13 +750,14 @@ func (s *WorldTimeSuite) TestAnOrderedCellSomebodyIsStandingOnIsStillWalkedTowar
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     sheetFacts{alice: {SpeedFeet: 30}, "squatter": {SpeedFeet: 30}, "bandit": {SpeedFeet: 30}},
-			Standing:   everyoneStanding{},
-			Initiative: orderAsGiven{},
-			Driver:     tableDriver(),
-			Roller:     rollsLowest{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        sheetFacts{alice: {SpeedFeet: 30}, "squatter": {SpeedFeet: 30}, "bandit": {SpeedFeet: 30}},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        tableDriver(),
+			Roller:        rollsLowest{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -765,7 +770,7 @@ func (s *WorldTimeSuite) TestAnOrderedCellSomebodyIsStandingOnIsStillWalkedTowar
 	s.Require().Equal(target, whereIs(s.T(), enc, "squatter"), "precondition: somebody is on the ordered cell")
 	started := whereIs(s.T(), enc, "bandit")
 
-	_, err = enc.Search(&encounter.SearchInput{Member: alice, Region: "hall"})
+	err = encounter.ExportedSpendWorldAction(enc, alice)
 	s.Require().NoError(err)
 
 	moved := whereIs(s.T(), enc, "bandit")
@@ -804,7 +809,7 @@ func (s *WorldTimeSuite) TestAWalkThatMovesNobodySaysSo() {
 
 	s.Require().Equal(standing, whereIs(s.T(), enc, goblin), "precondition: it is already there")
 
-	_, err := enc.Search(&encounter.SearchInput{Member: alice, Region: "hall"})
+	err := encounter.ExportedSpendWorldAction(enc, alice)
 	s.Require().NoError(err)
 
 	s.Equal(standing, whereIs(s.T(), enc, goblin), "it is already where it was sent, so it goes nowhere")

@@ -18,7 +18,7 @@ import (
 //
 // # The clock moves because the party acts
 //
-// The world clock existed and NOTHING A PLAYER DID ADVANCED IT: Move, Search,
+// The world clock existed and NOTHING A PLAYER DID ADVANCED IT: Move,
 // Unlock, Intimidate and Persuade only stamped its reading, and it moved on a
 // fight round wrapping and inside the unwired `Pump`. So a deed landed in
 // round 1 was exactly as fresh ten verbs later, and a creature waiting out a
@@ -163,7 +163,7 @@ func (e *Encounter) seatOnWorldClock(id MemberID) error {
 // would stamp its own effects a round after their cause.
 //
 // A MEMBER IN A BUBBLE PAYS NOTHING HERE. A fight prices its own time by the
-// round ([Encounter.noticeRounds]), and charging a turn-clock Search a second
+// round ([Encounter.noticeRounds]), and charging a turn-clock action a second
 // round would make an action inside a fight cost twice what the same action
 // costs outside one.
 func (e *Encounter) spendWorldAction(actor MemberID) error {
@@ -288,12 +288,12 @@ func (e *Encounter) spendRound(members []MemberID) (bool, error) {
 //
 // AND ONE SIGHT REFRESH AT THE END, over the whole roster — the retired Pump's
 // own shape, and a correction to this slice's brief, which said the calling
-// verb's refresh would do. It cannot: the verbs that pay a round are Search,
+// verb's refresh would do. It cannot: the verbs that pay a round are
 // Loot, Interact, Cast and Activation as well as Step and Unlock, and the
 // first five deliberately refresh no sight because "nothing moved and no
-// geometry changed" (see [Encounter.Search]). That stopped being true the
+// geometry changed" (see [Encounter.Loot]). That stopped being true the
 // moment a round of the world could move somebody inside them. A creature
-// that walks into an opposed member's sight during a Search therefore forms
+// that walks into an opposed member's sight during an action therefore forms
 // or joins a fight here, by the shipped path, and leaves the world clock with
 // its budget — rather than standing invisibly in the doorway until somebody
 // takes a step.

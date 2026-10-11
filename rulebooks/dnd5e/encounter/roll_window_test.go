@@ -290,7 +290,7 @@ func (s *RollWindowTestSuite) TestArithmeticThatDisagreesWithTheQuestionIsRefuse
 				Roll: 8, Total: 12, Calculation: calculation,
 			})
 
-			s.Require().Error(err)
+			s.Require().ErrorIs(err, encounter.ErrInvalidData, "recorded arithmetic that disagrees is invalid data")
 			s.Contains(err.Error(), "calculation")
 		})
 	}

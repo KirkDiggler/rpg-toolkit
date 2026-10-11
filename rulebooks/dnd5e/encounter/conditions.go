@@ -52,21 +52,6 @@ type Conditions interface {
 	Conditions(members []MemberID) (map[MemberID]*ConditionSet, error)
 }
 
-// EquipmentWithConditions is the shape the Equipment field of [SetupInput] and
-// [LoadEncounterInput] must have: the existing Equipment capability that also
-// answers [Conditions].
-//
-// It rides the Equipment value rather than adding a field for the reason
-// [StandingWithParticipation] rides Standing: both answer a sighting fact from
-// the same sheets. The Equipment fields of SetupInput and LoadEncounterInput
-// are typed EquipmentWithConditions, so an Equipment without it does not
-// compile (rpg-toolkit#1958) — never defaulted, because "nobody holds
-// anything" is testimony and not an absence of it.
-type EquipmentWithConditions interface {
-	Equipment
-	Conditions
-}
-
 // conditionsNow asks the capability what every member holds, right now, and
 // returns the answer keyed by member.
 //

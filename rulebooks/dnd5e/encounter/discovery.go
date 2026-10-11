@@ -13,14 +13,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// DiscoveryCheckResolver is the supplied automatic-check capability. Older
-// hosts implementing only CheckResolver retain their explicit-search contract;
-// the game host supplies this capability and retires its Search action.
-// Implementations prepare character data before the composition acts.
-type DiscoveryCheckResolver interface {
-	ResolveDiscoveryCheck(*ResolveCheckInput) (*ResolveCheckOutput, error)
-}
-
 // BeatDiscoveryChecked is an automatic roll without the hidden subject's identity.
 const BeatDiscoveryChecked = "discovery_checked"
 
@@ -35,48 +27,6 @@ type DiscoveryAttemptData struct {
 type DiscoveryStateData struct {
 	Private  bool                                   `json:"private,omitempty"`
 	Attempts map[ConcealmentID]DiscoveryAttemptData `json:"attempts,omitempty"`
-}
-
-// DiscoveryMemoryData is the legacy explicit-memory projection of one check.
-// Game persistence uses EncounterData.Discovery and the World journal, not a
-// character-owned copy of this projection.
-type DiscoveryMemoryData struct {
-	Used    int  `json:"used"`
-	Learned bool `json:"learned,omitempty"`
-}
-
-// DiscoveryMemoryInput selects one placed player's retained check memory.
-type DiscoveryMemoryInput struct{ Member MemberID }
-
-// DiscoveryMemoryOutput contains only character-lifetime entries in this field.
-type DiscoveryMemoryOutput struct {
-	Checks map[ConcealmentID]DiscoveryMemoryData
-}
-
-// DiscoveryMemory returns a detached player projection, never an additional
-// authority. Nil input is ErrNilInput; absent or non-player members are ErrNotMember.
-func (e *Encounter) DiscoveryMemory(in *DiscoveryMemoryInput) (*DiscoveryMemoryOutput, error) {
-	if in == nil {
-		return nil, ErrNilInput
-	}
-	member, ok := e.members[in.Member]
-	if !ok || member.Kind != KindPlayer {
-		return nil, ErrNotMember
-	}
-	out := &DiscoveryMemoryOutput{Checks: map[ConcealmentID]DiscoveryMemoryData{}}
-	for _, id := range e.world.concealments {
-		c := e.field.concealmentOf(id)
-		if c.attempts.Lifetime != DiscoveryLifetimeCharacter {
-			continue
-		}
-		state := e.discovery[in.Member]
-		used := state.Attempts[id].Used
-		learned := e.world.knowsConcealment(in.Member, id)
-		if used > 0 || learned {
-			out.Checks[id] = DiscoveryMemoryData{Used: used, Learned: learned}
-		}
-	}
-	return out, nil
 }
 
 // SetDiscoverySharingInput changes future result audiences for a placed player.
@@ -112,8 +62,11 @@ func (e *Encounter) SetDiscoverySharing(in *SetDiscoverySharingInput) (*SetDisco
 	return &SetDiscoverySharingOutput{Sharing: in.Sharing}, nil
 }
 
+// DiscoverySharingInput selects the player whose preference is read.
+type DiscoverySharingInput struct{ Member MemberID }
+
 // DiscoverySharing returns a member's effective preference without mutating it.
-func (e *Encounter) DiscoverySharing(in *DiscoveryMemoryInput) (*SetDiscoverySharingOutput, error) {
+func (e *Encounter) DiscoverySharing(in *DiscoverySharingInput) (*SetDiscoverySharingOutput, error) {
 	if in == nil {
 		return nil, ErrNilInput
 	}
@@ -123,20 +76,20 @@ func (e *Encounter) DiscoverySharing(in *DiscoveryMemoryInput) (*SetDiscoverySha
 	return &SetDiscoverySharingOutput{Sharing: !e.discovery[in.Member].Private}, nil
 }
 
-// RestoreDiscoveryInput supports the legacy explicit-memory import and audience
-// preference. It is not party catch-up and never rolls. The game SDK supplies
-// only Private; Checks from character profiles have no authority in a new run.
-// Use EncounterData loading to restore the same encounter, not this projection.
+// RestoreDiscoveryInput sets a placed player's audience preference. It is not
+// party catch-up and never rolls. Use EncounterData loading to restore the
+// same encounter.
 type RestoreDiscoveryInput struct {
 	Member  MemberID
 	Private bool
-	// Checks is retained for older callers of the explicit-import seam.
-	// Compatibility only: never seed a new playthrough from another encounter's memory.
-	Checks map[ConcealmentID]DiscoveryMemoryData
 }
 
-// RestoreDiscovery restores own knowledge/counts without replaying them to peers.
-func (e *Encounter) RestoreDiscovery(in *RestoreDiscoveryInput) (*DiscoveryMemoryOutput, error) {
+// RestoreDiscoveryOutput reports the preference now in effect.
+type RestoreDiscoveryOutput struct{ Private bool }
+
+// RestoreDiscovery sets a player's audience preference without replaying
+// anything to peers.
+func (e *Encounter) RestoreDiscovery(in *RestoreDiscoveryInput) (*RestoreDiscoveryOutput, error) {
 	if in == nil {
 		return nil, ErrNilInput
 	}
@@ -144,16 +97,16 @@ func (e *Encounter) RestoreDiscovery(in *RestoreDiscoveryInput) (*DiscoveryMemor
 	if !ok || member.Kind != KindPlayer {
 		return nil, ErrNotMember
 	}
-	if err := e.initializeDiscovery(in.Member, in.Private, in.Checks); err != nil {
+	if err := e.initializeDiscovery(in.Member, in.Private); err != nil {
 		return nil, err
 	}
 	state := e.discovery[in.Member]
 	state.Private = in.Private
 	e.discovery[in.Member] = state
-	return e.DiscoveryMemory(&DiscoveryMemoryInput{Member: in.Member})
+	return &RestoreDiscoveryOutput{Private: in.Private}, nil
 }
 
-func (e *Encounter) initializeDiscovery(member MemberID, private bool, memory map[ConcealmentID]DiscoveryMemoryData) error {
+func (e *Encounter) initializeDiscovery(member MemberID, private bool) error {
 	if e.discovery == nil {
 		e.discovery = map[MemberID]DiscoveryStateData{}
 	}
@@ -163,36 +116,6 @@ func (e *Encounter) initializeDiscovery(member MemberID, private bool, memory ma
 	}
 	if state.Attempts == nil {
 		state.Attempts = map[ConcealmentID]DiscoveryAttemptData{}
-	}
-	for _, id := range e.world.concealments {
-		remembered, ok := memory[id]
-		if !ok {
-			continue
-		}
-		if remembered.Used < 0 {
-			return fmt.Errorf("negative discovery count: %w", ErrInvalidData)
-		}
-		c := e.field.concealmentOf(id)
-		if c.attempts.Lifetime != DiscoveryLifetimeCharacter {
-			continue
-		}
-		current := state.Attempts[id]
-		if remembered.Used > current.Used {
-			current.Used = remembered.Used
-		}
-		// Explicit legacy imports retain their supplied allowance. This does not
-		// authorize the game host to import a previous playthrough's state.
-		if !exists {
-			current.Armed = true
-		}
-		if current.Used > 0 {
-			state.Attempts[id] = current
-		}
-		if remembered.Learned && !e.world.knowsConcealment(member, id) {
-			if err := e.world.learnConcealment(member, id, "retained discovery"); err != nil {
-				return err
-			}
-		}
 	}
 	if state.Private || len(state.Attempts) > 0 {
 		e.discovery[member] = state
@@ -241,10 +164,6 @@ func (e *Encounter) discoveryDistance(c *concealment, at spatial.Position) float
 }
 
 func (e *Encounter) sweepDiscoveryChecks() error {
-	resolver, enabled := e.checkResolver.(DiscoveryCheckResolver)
-	if !enabled {
-		return nil
-	}
 	if e.outcome != nil || len(e.world.concealments) == 0 {
 		return nil
 	}
@@ -257,7 +176,7 @@ func (e *Encounter) sweepDiscoveryChecks() error {
 		if !placed {
 			continue
 		}
-		if err := e.initializeDiscovery(member, false, nil); err != nil {
+		if err := e.initializeDiscovery(member, false); err != nil {
 			return err
 		}
 		state := e.discovery[member]
@@ -282,7 +201,7 @@ func (e *Encounter) sweepDiscoveryChecks() error {
 				continue
 			}
 			audience := e.discoveryAudience(member)
-			verdict, err := resolver.ResolveDiscoveryCheck(&ResolveCheckInput{Member: member, Approaches: append([]CheckApproach(nil), c.checks...)})
+			verdict, err := e.checkResolver.ResolveDiscoveryCheck(&ResolveCheckInput{Member: member, Approaches: append([]CheckApproach(nil), c.checks...)})
 			if err != nil {
 				return fmt.Errorf("automatic discovery for %q: %w", member, err)
 			}

@@ -221,8 +221,9 @@ func (s *HoldingsSuite) TestTheTurnClockGatesBothVerbs() {
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
-			Standing:      fight,
+			Participation: fight,
 			Initiative:    orderAsGiven{},
 			Driver:        passDriver{},
 			CheckResolver: findsNothing{},
@@ -307,8 +308,9 @@ func (s *HoldingsSuite) TestConstructionRefusesAnUnauthoredKnowledgeLink() {
 			Capabilities: encounter.Capabilities{
 				Sight:         everyoneSeesTheWholeMap{},
 				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
 				Sheets:        zeroSheets{},
-				Standing:      s.standing,
+				Participation: s.standing,
 				Initiative:    orderAsGiven{},
 				Driver:        passDriver{},
 				CheckResolver: findsNothing{},
@@ -340,8 +342,9 @@ func (s *HoldingsSuite) TestConstructionRefusesADeadEndingAndABadExit() {
 			Capabilities: encounter.Capabilities{
 				Sight:         everyoneSeesTheWholeMap{},
 				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
 				Sheets:        zeroSheets{},
-				Standing:      s.standing,
+				Participation: s.standing,
 				Initiative:    orderAsGiven{},
 				Driver:        passDriver{},
 				CheckResolver: findsNothing{},
@@ -479,8 +482,9 @@ func (s *HoldingsSuite) TestLoadRefusesABrokenExitedHoldingEnding() {
 			Capabilities: encounter.Capabilities{
 				Sight:         everyoneSeesTheWholeMap{},
 				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
 				Sheets:        zeroSheets{},
-				Standing:      s.standing,
+				Participation: s.standing,
 				Initiative:    orderAsGiven{},
 				Driver:        passDriver{},
 				CheckResolver: findsNothing{},
@@ -538,12 +542,13 @@ func (s *HoldingsSuite) TestAnInertKnowledgeLinkTransfersNothingVisible() {
 		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   s.standing,
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: s.standing,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -586,12 +591,13 @@ func (s *HoldingsSuite) TestAHeldPropIsGoneForABlindMemberToo() {
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
-			Sight:      everyoneSeesTheWholeMap{},
-			Equipment:  encounter.UnobservedEquipment{},
-			Sheets:     zeroSheets{},
-			Standing:   s.standing,
-			Initiative: orderAsGiven{},
-			Driver:     passDriver{},
+			Sight:         everyoneSeesTheWholeMap{},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: s.standing,
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -624,8 +630,8 @@ func (s *HoldingsSuite) TestLoadRefusesCorruptedHoldings() {
 	s.Require().NoError(err)
 
 	base := enc.ToData()
-	s.Require().NotNil(base.Holdings)
-	s.Require().NotEmpty(base.Holdings.Facts)
+	s.Require().NotNil(base.Journal)
+	s.Require().NotEmpty(holdingsFacts(base))
 
 	load := func(mutate func(*encounter.EncounterData)) error {
 		blob := enc.ToData()
@@ -635,8 +641,9 @@ func (s *HoldingsSuite) TestLoadRefusesCorruptedHoldings() {
 			Capabilities: encounter.Capabilities{
 				Sight:         everyoneSeesTheWholeMap{},
 				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
 				Sheets:        zeroSheets{},
-				Standing:      s.standing,
+				Participation: s.standing,
 				Initiative:    orderAsGiven{},
 				Driver:        passDriver{},
 				CheckResolver: findsNothing{},
@@ -657,7 +664,7 @@ func (s *HoldingsSuite) TestLoadRefusesCorruptedHoldings() {
 
 	appendFact := func(kind, actor string) func(*encounter.EncounterData) {
 		return func(d *encounter.EncounterData) {
-			d.Holdings.Facts = append(append([]encounter.FactData(nil), d.Holdings.Facts...),
+			d.Journal.Facts = append(append([]encounter.FactData(nil), d.Journal.Facts...),
 				encounter.FactData{Kind: kind, Actor: actor, Audience: []string{}})
 		}
 	}
@@ -778,8 +785,9 @@ func (s *HoldingsSuite) TestConstructionRefusesABadIntelTable() {
 			Capabilities: encounter.Capabilities{
 				Sight:         everyoneSeesTheWholeMap{},
 				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
 				Sheets:        zeroSheets{},
-				Standing:      s.standing,
+				Participation: s.standing,
 				Initiative:    orderAsGiven{},
 				Driver:        passDriver{},
 				CheckResolver: findsNothing{},
@@ -900,8 +908,9 @@ func (s *HoldingsSuite) TestLoadRefusesABadIntelTable() {
 			Capabilities: encounter.Capabilities{
 				Sight:         everyoneSeesTheWholeMap{},
 				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
 				Sheets:        zeroSheets{},
-				Standing:      s.standing,
+				Participation: s.standing,
 				Initiative:    orderAsGiven{},
 				Driver:        passDriver{},
 				CheckResolver: findsNothing{},
