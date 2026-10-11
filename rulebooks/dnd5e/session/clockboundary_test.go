@@ -179,7 +179,7 @@ func (s *ClockBoundaryTestSuite) TestSneakAttackForgetsItsDiceWhenTheTurnEnds() 
 
 	s.endTurn(mgr, "alice")
 
-	stored := s.held("alice", refs.Features.SneakAttack().String())
+	stored := s.held("alice", refs.Conditions.SneakAttack().String())
 	s.Require().NotNil(stored, "the condition survives; only its memory of this turn is cleared")
 
 	var blob struct {

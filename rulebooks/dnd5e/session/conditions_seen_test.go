@@ -72,13 +72,14 @@ func (s *ConditionSeamSuite) TestConditionSeamReportsSheets() {
 			{ConditionRef: refs.Conditions.OpportunityAttack().String()},
 		}},
 		"goblin": {Conditions: []encounter.ConditionKey{
+			{ConditionRef: "dnd5e:monster_traits:vulnerability"},
 			{ConditionRef: refs.Conditions.Dodging().String()},
 			{ConditionRef: refs.Conditions.OpportunityAttack().String()},
 		}},
 		"door":      nil,
 		"ghost":     nil,
 		"unsheeted": nil,
-	}, got, "in sheet order, then what a combatant carries by existing; a trait is not a condition; no sheet is nothing to observe")
+	}, got, "in sheet order, then what a combatant carries by existing; a trait is a condition and is listed; no sheet is nothing to observe")
 }
 
 // TestASheetHoldingNothingIsSeenHoldingOnlyItsOpportunityAttack: a sheet with
