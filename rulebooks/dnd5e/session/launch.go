@@ -221,6 +221,7 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 		if err != nil {
 			return nil, fmt.Errorf("launch: %w", err)
 		}
+		join.AppearanceRef = monster.placement.AppearanceRef
 		board = append(board, join)
 	}
 	if err := scope.enc.ValidateBoard(&encounter.BoardInput{Members: board}); err != nil {

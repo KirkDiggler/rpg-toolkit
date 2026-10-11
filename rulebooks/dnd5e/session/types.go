@@ -3254,6 +3254,10 @@ type PublicMember struct {
 	// MonsterRef is the stored catalog reference. It is empty for players.
 	MonsterRef string `json:"monster_ref,omitempty"`
 
+	// AppearanceRef is the observer's captured opaque body appearance, not a
+	// live-member lookup. Empty retains legacy model resolution.
+	AppearanceRef string `json:"appearance_ref,omitempty"`
+
 	// Customization is the player's exact cosmetic selection, or an empty
 	// customization for monsters.
 	Customization Customization `json:"customization"`

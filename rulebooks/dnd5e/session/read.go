@@ -165,13 +165,19 @@ func (m *Manager) rosterFrom(ctx context.Context, enc *encounter.Encounter, data
 	}
 
 	known := map[string]bool{in.Member: true}
+	observedAppearance := make(map[string]string)
 	holdings, err := enc.View(&encounter.ViewInput{Member: encounter.MemberID(in.Member)})
 	if err != nil {
 		return nil, translate(err)
 	}
 	for _, holding := range holdings {
 		if holding.Channel == perception.Sight {
+			testimony, valid := encounter.DecodeSightTestimony(holding.Payload)
+			if !valid {
+				return nil, fmt.Errorf("roster: invalid sight testimony for %q: %w", holding.Subject, ErrInvalidWorld)
+			}
 			known[string(holding.Subject)] = true
+			observedAppearance[string(holding.Subject)] = testimony.AppearanceRef
 		}
 	}
 
@@ -206,6 +212,7 @@ func (m *Manager) rosterFrom(ctx context.Context, enc *encounter.Encounter, data
 			if err != nil {
 				return nil, fmt.Errorf("roster: %w", err)
 			}
+			projected.AppearanceRef = observedAppearance[id]
 			members = append(members, projected)
 
 		case encounter.KindWorld:
