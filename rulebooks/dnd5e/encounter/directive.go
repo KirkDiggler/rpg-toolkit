@@ -268,20 +268,13 @@ func (e *cellQuery) routeStraight(mover MemberID, from, end spatial.Position, bu
 			out.StoppedBy = fmt.Sprintf("cell %v is off the edge of the field", cell)
 			return out, nil
 		}
-		// THE CROSSING FOLD (issue #1753), fail closed on an unjudgeable
-		// crossing, exactly as the route flood is: a directed walk does not
-		// step through a footprint it could not measure.
-		_, blocked, err := e.crossingBlocked(prev, cell)
+		fact, crossed, err := e.stepInto(mover, prev, cell)
 		if err != nil {
 			return RouteOutput{}, err
 		}
-		if blocked {
+		if !crossed {
 			out.StoppedBy = fmt.Sprintf("the crossing from %v into %v is blocked", prev, cell)
 			return out, nil
-		}
-		fact, err := e.cellAt(CellAtInput{Cell: cell, Mover: mover})
-		if err != nil {
-			return RouteOutput{}, err
 		}
 		if fact.Passage != PassageStandable {
 			out.StoppedBy = e.stoppedBy(fact, cell)
@@ -292,6 +285,29 @@ func (e *cellQuery) routeStraight(mover MemberID, from, end spatial.Position, bu
 	}
 
 	return out, nil
+}
+
+// stepInto is the crossing fold and the cell fact for ONE step, read in the
+// order [Encounter.stepMember] refuses them: the crossing first (issue #1753;
+// a closed one comes back crossed=false and the fact is not read, because a
+// walker stopped at a wall never learns what stands behind it), then the
+// destination's passage for this mover. Fails closed on an unjudgeable
+// crossing, exactly as the route flood does. Shared by the straight routes,
+// which admit only standable cells, and [Encounter.standableEnd], which admits
+// everything the step would enter and then asks where the walk may end.
+func (e *cellQuery) stepInto(mover MemberID, prev, cell spatial.Position) (CellFact, bool, error) {
+	_, blocked, err := e.crossingBlocked(prev, cell)
+	if err != nil {
+		return CellFact{}, false, err
+	}
+	if blocked {
+		return CellFact{}, false, nil
+	}
+	fact, err := e.cellAt(CellAtInput{Cell: cell, Mover: mover})
+	if err != nil {
+		return CellFact{}, false, err
+	}
+	return fact, true, nil
 }
 
 // routeAway is the [MoveAway] policy: flood as far as the budget pays for,

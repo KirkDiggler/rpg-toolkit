@@ -1199,6 +1199,13 @@ func (e *Encounter) walkPath(
 ) (walkResult, error) {
 	var res walkResult
 
+	// THE WALK ENDS WHERE ITS WALKER CAN STAND ([Encounter.standableEnd]):
+	// the tail a budget cut onto an ally is dropped before the first step.
+	path, err := e.standableEnd(mover, path)
+	if err != nil {
+		return res, err
+	}
+
 	for i, cell := range path {
 		// Where this member STILL stands, announced before the step is
 		// taken. The order is [Mover]'s contract: a reactor's swing is
@@ -1465,6 +1472,13 @@ func (e *Encounter) walkWorld(
 	path []spatial.Position, audience []MemberID, at uint64, cause core.Ref,
 ) (walkResult, error) {
 	var res walkResult
+
+	// THE WALK ENDS WHERE ITS WALKER CAN STAND ([Encounter.standableEnd]):
+	// the tail a budget cut onto an ally is dropped before the first step.
+	path, err := e.standableEnd(mover, path)
+	if err != nil {
+		return res, err
+	}
 
 	for _, cell := range path {
 		if _, placed := e.canvas.GetEntityPosition(string(mover)); !placed {

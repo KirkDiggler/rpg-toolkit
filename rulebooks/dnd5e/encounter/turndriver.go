@@ -367,7 +367,11 @@ func (Attack) isTurnIntent() {}
 // same refusals, the same walls, the same doors — via [Encounter.stepTo],
 // and a step the canvas refuses simply stops the walk there, precisely as it
 // would for a player mid-corridor: the turn does not end because of it, and
-// whatever cells DID succeed are kept. What DOES end the turn with
+// whatever cells DID succeed are kept. One thing happens BEFORE the first
+// step: the walk drops any tail its walker could not stop on — an ally's
+// cell, or cells past one the step would refuse — so a path cut to a budget
+// never leaves a creature standing on its friend ([Encounter.standableEnd],
+// rpg-toolkit#2030). What DOES end the turn with
 // [ErrBadIntent] is a Move this member cannot even afford: an empty Path, or
 // one whose length in cells exceeds [TurnBudget.MovementFeet] converted via
 // [CellsFromFeet] — a driver asking for more than its own budget allows is a
