@@ -769,10 +769,14 @@ func (s *ActivationTestSuite) TestTheCollectorReadsTheInstanceDetail() {
 			Target: activationTestEntity{id: activationAllyID}, Condition: conditions.NewDodgingCondition(activationAllyID),
 		}))
 
-	got := collector.Effects()
-	s.Require().Len(got, 2)
-	s.Equal("grovel", got[0].Detail, "the commanded instance's word")
-	s.Empty(got[1].Detail, "a condition with nothing to say captures none")
+	detailByTarget := map[string]string{}
+	for _, effect := range collector.Effects() {
+		detailByTarget[effect.TargetID] = effect.Detail
+	}
+	s.Contains(detailByTarget, heroID, "the commanded target was captured")
+	s.Contains(detailByTarget, activationAllyID, "the dodging target was captured")
+	s.Equal("grovel", detailByTarget[heroID], "the commanded instance's word")
+	s.Empty(detailByTarget[activationAllyID], "a condition with nothing to say captures none")
 }
 
 func (s *ActivationTestSuite) TestActivationCollectorPreservesBusOrderAndReturnsClones() {
