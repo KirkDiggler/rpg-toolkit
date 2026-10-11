@@ -324,3 +324,17 @@ func parseDieSize(notation string) (int, error) {
 
 	return dieSize, nil
 }
+
+// brutalCriticalDescriptor is the one entry for [BrutalCriticalCondition]; see [descriptors].
+var brutalCriticalDescriptor = descriptor{
+	ref:     refs.Conditions.BrutalCritical(),
+	display: Display{Name: "Brutal Critical", Detail: "Adds extra weapon damage dice when you score a critical hit."},
+	load:    loaderOf[BrutalCriticalCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return createBrutalCritical(in.MemberID), nil
+	},
+	ownAction:     answersNow,
+	againstHolder: notBearing,
+}
+
+var _ contributions.ActionAssessor = (*BrutalCriticalCondition)(nil)

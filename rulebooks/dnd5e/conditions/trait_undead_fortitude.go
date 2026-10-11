@@ -1,7 +1,7 @@
 // Copyright (C) 2024 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package monstertraits
+package conditions
 
 import (
 	"context"
@@ -36,11 +36,27 @@ type undeadFortitudeCondition struct {
 // Ensure undeadFortitudeCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*undeadFortitudeCondition)(nil)
 
+// Ensure undeadFortitudeCondition can receive a runtime roller at attach, as
+// Sneak Attack does.
+var _ RollerBinder = (*undeadFortitudeCondition)(nil)
+
+// BindRoller binds the roller this trait makes its Constitution save with, so a
+// trait restored from persisted JSON — whose loader has no roller to give it —
+// rolls the interaction's dice. A nil roller leaves the current one alone.
+func (u *undeadFortitudeCondition) BindRoller(roller dice.Roller) {
+	if roller == nil {
+		return
+	}
+	u.roller = roller
+}
+
 // Ref returns the canonical ref this trait names itself by — the same ref its
 // ToJSON embeds and its loader routes on.
 func (u *undeadFortitudeCondition) Ref() *core.Ref { return refs.MonsterTraits.UndeadFortitude() }
 
-// UndeadFortitude creates a new undead fortitude trait.
+// UndeadFortitude creates a new undead fortitude trait. A trait built in
+// process is built with its roller; a loaded one is bound at attach through
+// [RollerBinder].
 // When damage would reduce the creature to 0 HP, it makes a CON save (DC = 5 + damage taken).
 // On success, the creature drops to 1 HP instead.
 // Does not work against radiant damage or critical hits.
@@ -136,6 +152,12 @@ func (u *undeadFortitudeCondition) onDamageReceived(ctx context.Context, event d
 	// Calculate DC = 5 + damage taken
 	dc := 5 + event.Amount
 
+	// A trait nobody bound a roller to cannot save. Rolling anyway would mean a
+	// process-global default the interaction's roll trace never sees.
+	if u.roller == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "undead fortitude has no roller bound")
+	}
+
 	// Roll d20 + CON modifier
 	roll, err := u.roller.Roll(ctx, 20)
 	if err != nil {
@@ -151,4 +173,13 @@ func (u *undeadFortitudeCondition) onDamageReceived(ctx context.Context, event d
 	_ = total >= dc // Success if total >= DC
 
 	return nil
+}
+
+// undeadFortitudeDescriptor is the one entry for [undeadFortitudeCondition]; see [descriptors].
+var undeadFortitudeDescriptor = descriptor{
+	ref:           refs.MonsterTraits.UndeadFortitude(),
+	display:       Display{Name: "Undead Fortitude"},
+	load:          loaderOf[undeadFortitudeCondition](),
+	ownAction:     notBearing,
+	againstHolder: notBearing,
 }

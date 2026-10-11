@@ -59,15 +59,15 @@ func (s *AppliedTwiceSuite) must(condition dnd5eEvents.ConditionBehavior, err er
 }
 
 // fixtures builds one instance of each bearing condition, keyed by its loader
-// ref. TestEveryBearingCensusEntryHasAFixture holds this set equal to the
-// census, so a new bearing loader without a fixture fails.
+// ref. TestEveryBearingEntryHasAFixture holds this set equal to the
+// registry, so a new bearing type without a fixture fails.
 func (s *AppliedTwiceSuite) fixtures() map[string]func() dnd5eEvents.ConditionBehavior {
 	id := sheetID
 	return map[string]func() dnd5eEvents.ConditionBehavior{
 		refs.Conditions.Raging().String(): func() dnd5eEvents.ConditionBehavior {
 			return &conditions.RagingCondition{CharacterID: id}
 		},
-		refs.Features.SneakAttack().String(): func() dnd5eEvents.ConditionBehavior {
+		refs.Conditions.SneakAttack().String(): func() dnd5eEvents.ConditionBehavior {
 			return conditions.NewSneakAttackCondition(conditions.SneakAttackInput{MemberID: id})
 		},
 		refs.Conditions.Blessed().String(): func() dnd5eEvents.ConditionBehavior {
@@ -125,6 +125,9 @@ func (s *AppliedTwiceSuite) fixtures() map[string]func() dnd5eEvents.ConditionBe
 			return s.must(conditions.NewDivineFavorCondition(conditions.NewDivineFavorConditionInput{
 				MemberID: id, SourceID: id, SourceRef: refs.Spells.DivineFavor()}))
 		},
+		refs.MonsterTraits.PackTactics().String(): func() dnd5eEvents.ConditionBehavior {
+			return conditions.PackTactics(id)
+		},
 		refs.Conditions.Sanctuary().String(): func() dnd5eEvents.ConditionBehavior {
 			return s.must(conditions.NewSanctuaryCondition(conditions.NewSanctuaryConditionInput{
 				MemberID: id, SourceID: "cleric", SourceRef: refs.Spells.Sanctuary(), SaveDC: 13}))
@@ -132,9 +135,9 @@ func (s *AppliedTwiceSuite) fixtures() map[string]func() dnd5eEvents.ConditionBe
 	}
 }
 
-func (s *AppliedTwiceSuite) TestEveryBearingCensusEntryHasAFixture() {
+func (s *AppliedTwiceSuite) TestEveryBearingEntryHasAFixture() {
 	s.ElementsMatch(conditions.ActionBearingRefs(), slices.Collect(maps.Keys(s.fixtures())),
-		"every condition the action census classes as answering or not yet answering needs a fixture here, and no other")
+		"every condition the registry bears as answering or not yet answering needs a fixture here, and no other")
 }
 
 // TestEveryBearingConditionAppliedTwiceLeavesOne: applying each bearing

@@ -218,9 +218,7 @@ func assessRollContribution(in *assessRollContributionInput) (*contributions.Ass
 	}
 	roll, _ := frame.Action.Roll.Get()
 	request := &dnd5eEvents.DescribeRollContributionsInput{Kind: roll}
-	out := &contributions.AssessActionOutput{Answer: contributions.Answer{
-		Participation: contributions.ContributesNow,
-	}}
+	out := &contributions.AssessActionOutput{}
 	if frame.Actor != in.Recipient {
 		out.Answer.Decision = contributions.Decision{Applicability: contributions.DoesNotApply, Reason: in.NotRecipient}
 		return out, nil
@@ -245,3 +243,17 @@ func assessRollContribution(in *assessRollContributionInput) (*contributions.Ass
 	out.Answer.Roll = described.Contributions
 	return out, nil
 }
+
+// blessedDescriptor is the one entry for [BlessedCondition]; see [descriptors].
+var blessedDescriptor = descriptor{
+	ref:     refs.Conditions.Blessed(),
+	display: Display{Name: BlessedName, Detail: "Adds 1d4 to attack rolls and saving throws. Multiple Bless effects do not add extra dice to the same roll."},
+	load:    loaderOf[BlessedCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return createdAs(createBlessed(in))
+	},
+	ownAction:     answersNow,
+	againstHolder: notBearing,
+}
+
+var _ contributions.ActionAssessor = (*BlessedCondition)(nil)

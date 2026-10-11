@@ -5,9 +5,9 @@ package monsters
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
@@ -43,10 +43,10 @@ func NewSkeleton(id string) *monster.Monster {
 	m.SetSpeed(monster.SpeedData{Walk: 30})
 
 	// Add vulnerability to bludgeoning damage (D&D 5e SRD)
-	m.AddTraitData(monstertraits.MustVulnerabilityJSON(id, damage.Bludgeoning))
+	m.AddTraitData(conditions.MustVulnerabilityJSON(id, damage.Bludgeoning))
 
 	// Add immunity to poison damage (D&D 5e SRD)
-	m.AddTraitData(monstertraits.MustImmunityJSON(id, damage.Poison))
+	m.AddTraitData(conditions.MustImmunityJSON(id, damage.Poison))
 
 	return m
 }

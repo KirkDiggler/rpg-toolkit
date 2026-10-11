@@ -187,3 +187,16 @@ func (s *SanctuaryCondition) loadJSON(data json.RawMessage) error {
 	s.SaveDC = stored.SaveDC
 	return nil
 }
+
+// sanctuaryDescriptor is the one entry for [SanctuaryCondition]; see [descriptors].
+var sanctuaryDescriptor = descriptor{
+	ref:     refs.Conditions.Sanctuary(),
+	display: Display{Name: SanctuaryName, Detail: "A creature that targets the warded creature must first succeed on a Wisdom saving throw. The ward ends if the warded creature attacks."},
+	load:    loaderOf[SanctuaryCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return createdAs(createSanctuary(in.Config, in.MemberID, in.SourceRef))
+	},
+	ownAction:     notYetAnswering,
+	againstHolder: answersNow,
+	heldRule:      newSanctuaryHeldRule,
+}

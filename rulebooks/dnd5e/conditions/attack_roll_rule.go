@@ -64,10 +64,9 @@ func (r attackRollRule) AssessAction(in *contributions.AssessActionInput) (*cont
 	return out, nil
 }
 
-// assessed is a contributes-now answer with no benefit or contribution.
+// assessed is an answer with no benefit or contribution.
 func assessed(state contributions.Applicability, reason string) *contributions.AssessActionOutput {
 	return &contributions.AssessActionOutput{Answer: contributions.Answer{
-		Decision:      contributions.Decision{Applicability: state, Reason: reason},
-		Participation: contributions.ContributesNow,
+		Decision: contributions.Decision{Applicability: state, Reason: reason},
 	}}
 }

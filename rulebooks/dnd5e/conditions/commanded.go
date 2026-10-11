@@ -337,3 +337,15 @@ func (c *CommandedCondition) loadJSON(data json.RawMessage) error {
 	c.turnEndsLeft = stored.TurnEndsLeft
 	return nil
 }
+
+// commandedDescriptor is the one entry for [CommandedCondition]; see [descriptors].
+var commandedDescriptor = descriptor{
+	ref:     refs.Conditions.Commanded(),
+	display: Display{Name: CommandedName, Detail: "On your next turn you are compelled to obey the word you were commanded, and that turn ends with it. The compulsion ends at the end of that turn."},
+	load:    loaderOf[CommandedCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return createdAs(createCommanded(in.Config, in.MemberID, in.SourceRef))
+	},
+	ownAction:     notBearing,
+	againstHolder: notBearing,
+}

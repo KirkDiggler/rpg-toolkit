@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
@@ -31,7 +32,7 @@ func (s *MonsterCompositionTestSuite) SetupTest() {
 }
 
 func (s *MonsterCompositionTestSuite) immunityBlob() json.RawMessage {
-	raw, err := json.Marshal(ImmunityData{
+	raw, err := json.Marshal(conditions.ImmunityData{
 		Ref:        refs.MonsterTraits.Immunity(),
 		OwnerID:    "gob-compose",
 		DamageType: damage.Poison,

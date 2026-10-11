@@ -266,8 +266,7 @@ func (i *InspiredCondition) AssessAction(in *contributions.AssessActionInput) (*
 	}
 	answer := func(state contributions.Applicability, reason string) *contributions.AssessActionOutput {
 		return &contributions.AssessActionOutput{Answer: contributions.Answer{
-			Decision:      contributions.Decision{Applicability: state, Reason: reason},
-			Participation: contributions.LaterChoice,
+			Decision: contributions.Decision{Applicability: state, Reason: reason},
 		}}
 	}
 	if frame.Actor != i.MemberID {
@@ -335,3 +334,17 @@ func (i *InspiredCondition) end(ctx context.Context, reason string) error {
 	}
 	return i.Remove(ctx, bus)
 }
+
+// inspiredDescriptor is the one entry for [InspiredCondition]; see [descriptors].
+var inspiredDescriptor = descriptor{
+	ref:     refs.Conditions.Inspired(),
+	display: Display{Name: InspiredName, Detail: "Holds a Bardic Inspiration die. After seeing your attack roll you may add it; the die is spent only when you take it."},
+	load:    loaderOf[InspiredCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return createdAs(createInspired(in.Config, in.MemberID))
+	},
+	ownAction:     answersLater,
+	againstHolder: notBearing,
+}
+
+var _ contributions.ActionAssessor = (*InspiredCondition)(nil)

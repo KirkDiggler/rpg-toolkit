@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //nolint:dupl // Trait tests follow same event-driven pattern with different conditions
-package monstertraits
+package conditions
 
 import (
 	"context"

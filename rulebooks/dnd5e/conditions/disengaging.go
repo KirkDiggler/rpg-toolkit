@@ -194,3 +194,15 @@ func (d *DisengagingCondition) onTurnEnd(ctx context.Context, event dnd5eEvents.
 	// Actually remove the condition (unsubscribe from events)
 	return d.Remove(ctx, d.bus)
 }
+
+// disengagingDescriptor is the one entry for [DisengagingCondition]; see [descriptors].
+var disengagingDescriptor = descriptor{
+	ref:     refs.Conditions.Disengaging(),
+	display: Display{Name: "Disengaging"},
+	load:    loaderOf[DisengagingCondition](),
+	create: func(in *CreateFromRefInput) (dnd5eEvents.ConditionBehavior, error) {
+		return NewDisengagingCondition(in.MemberID), nil
+	},
+	ownAction:     notBearing,
+	againstHolder: notBearing,
+}

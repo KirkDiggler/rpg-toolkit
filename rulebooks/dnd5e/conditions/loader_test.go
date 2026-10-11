@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -187,9 +188,9 @@ func (s *LoaderTestSuite) TestLoadUnknownCondition() {
 
 func (s *LoaderTestSuite) TestLoadRejectsKnownIDUnderWrongCanonicalRef() {
 	cases := map[string]json.RawMessage{
-		"wrong module":           json.RawMessage(`{"ref":{"module":"other","type":"conditions","id":"raging"}}`),
-		"wrong type":             json.RawMessage(`{"ref":{"module":"dnd5e","type":"features","id":"raging"}}`),
-		"condition-shaped sneak": json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"sneak_attack"}}`),
+		"wrong module":         json.RawMessage(`{"ref":{"module":"other","type":"conditions","id":"raging"}}`),
+		"wrong type":           json.RawMessage(`{"ref":{"module":"dnd5e","type":"features","id":"raging"}}`),
+		"feature-shaped sneak": json.RawMessage(`{"ref":{"module":"dnd5e","type":"features","id":"sneak_attack"}}`),
 	}
 
 	for name, data := range cases {
@@ -351,10 +352,7 @@ func TestEveryLoadedConditionNamesItsCanonicalRef(t *testing.T) {
 		{"martial_arts", refs.Conditions.MartialArts(), func() dnd5eEvents.ConditionBehavior {
 			return NewMartialArtsCondition(MartialArtsInput{MemberID: "monk-1"})
 		}},
-		{"unarmored_movement", refs.Conditions.UnarmoredMovement(), func() dnd5eEvents.ConditionBehavior {
-			return NewUnarmoredMovementCondition(UnarmoredMovementInput{MemberID: "monk-1"})
-		}},
-		{"sneak_attack", refs.Features.SneakAttack(), func() dnd5eEvents.ConditionBehavior {
+		{"sneak_attack", refs.Conditions.SneakAttack(), func() dnd5eEvents.ConditionBehavior {
 			return NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue-1"})
 		}},
 		{"disengaging", refs.Conditions.Disengaging(), func() dnd5eEvents.ConditionBehavior {
@@ -378,8 +376,17 @@ func TestEveryLoadedConditionNamesItsCanonicalRef(t *testing.T) {
 		{"opportunity_attack", refs.Conditions.OpportunityAttack(), func() dnd5eEvents.ConditionBehavior {
 			return NewOpportunityAttackCondition("fighter-1")
 		}},
-		{"shield_spell", refs.Spells.Shield(), func() dnd5eEvents.ConditionBehavior {
-			return NewShieldSpellCondition("wizard-1")
+		{"immunity", refs.MonsterTraits.Immunity(), func() dnd5eEvents.ConditionBehavior {
+			return Immunity("skeleton-1", damage.Poison)
+		}},
+		{"vulnerability", refs.MonsterTraits.Vulnerability(), func() dnd5eEvents.ConditionBehavior {
+			return Vulnerability("skeleton-1", damage.Bludgeoning)
+		}},
+		{"pack_tactics", refs.MonsterTraits.PackTactics(), func() dnd5eEvents.ConditionBehavior {
+			return PackTactics("wolf-1")
+		}},
+		{"undead_fortitude", refs.MonsterTraits.UndeadFortitude(), func() dnd5eEvents.ConditionBehavior {
+			return UndeadFortitude("zombie-1", 3, dice.NewRoller())
 		}},
 	}
 

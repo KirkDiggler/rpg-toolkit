@@ -49,10 +49,10 @@ func gobFrame(held ...contributions.HeldCondition) contributions.Frame {
 }
 
 func (s *targetHeldSuite) heldAnswer(ref string, held contributions.HeldCondition, frame contributions.Frame) contributions.Answer {
-	out, err := targetHeldRules[ref]("gob", held).AssessAction(&contributions.AssessActionInput{Frame: frame})
+	out, err := registry[ref].heldRule("gob", held).AssessAction(&contributions.AssessActionInput{Frame: frame})
 	s.Require().NoError(err)
 	s.Require().NotNil(out)
-	s.Require().NoError(validateAnswer(out.Answer, contributions.ContributesNow))
+	s.Require().NoError(validateAnswer(out.Answer))
 	return out.Answer
 }
 
@@ -200,15 +200,14 @@ func (s *targetHeldSuite) TestSanctuaryHeldRuleDoesNotStopHoldersOwnAttack() {
 
 func (s *targetHeldSuite) TestValidateAnswerRefusesModeWhenNotApplying() {
 	answer := contributions.Answer{
-		Decision:      contributions.Decision{Applicability: contributions.DoesNotApply, Reason: "no"},
-		Participation: contributions.ContributesNow,
-		AttackMode:    contributions.AttackAdvantage,
+		Decision:   contributions.Decision{Applicability: contributions.DoesNotApply, Reason: "no"},
+		AttackMode: contributions.AttackAdvantage,
 	}
-	s.Error(validateAnswer(answer, contributions.ContributesNow))
+	s.Error(validateAnswer(answer))
 
 	answer.Decision.Applicability = contributions.Applies
 	answer.AttackMode = "sideways"
-	s.Error(validateAnswer(answer, contributions.ContributesNow), "an unknown mode is a producer defect")
+	s.Error(validateAnswer(answer), "an unknown mode is a producer defect")
 }
 
 func (s *targetHeldSuite) TestAssessTargetHeldEffectsListsBearingHeldEffects() {
@@ -232,28 +231,31 @@ func (s *targetHeldSuite) TestAssessTargetHeldEffectsListsBearingHeldEffects() {
 	s.Equal(contributions.StateApplies, row.State)
 	s.Equal("c1", row.Source.SourceID)
 	s.Equal(FaerieFireName, row.Source.Name)
-	s.Equal(displayCatalog[ffHeld.Ref].Detail, row.Description)
+	s.Equal(registry[ffHeld.Ref].display.Detail, row.Description)
 	s.Equal("Advantage on the attack roll", row.Benefit)
 
 	row, _ = effectByID(out.Effects, "target:"+recklessHeld.Ref)
 	s.Equal(contributions.StateApplies, row.State)
 	s.Equal("The target is attacking recklessly", row.Reason)
 	s.Equal("Advantage on the attack roll", row.Benefit)
-	s.Equal(displayCatalog[recklessHeld.Ref].Detail, row.Description)
+	s.Equal(registry[recklessHeld.Ref].display.Detail, row.Description)
 
 	row, _ = effectByID(out.Effects, "target:"+proneHeld.Ref)
 	s.Equal(contributions.StateApplies, row.State)
 	s.Equal("The prone target is within 5 feet", row.Reason)
 }
 
-// TestNotYetAnsweringHeldEffectIsUnavailable: a held effect the census marks
+// TestNotYetAnsweringHeldEffectIsUnavailable: a held effect the registry marks
 // as bearing but not yet answering shows an unavailable row with its
 // description, never dropped and never not-applying. No shipped target-held
-// ref is in that class today, so the census entry is swapped for the test.
+// ref is in that class today, so the registry entry is swapped for the test.
 func (s *targetHeldSuite) TestNotYetAnsweringHeldEffectIsUnavailable() {
-	original := targetCensus[recklessHeld.Ref]
-	targetCensus[recklessHeld.Ref] = notYetAnswering
-	s.T().Cleanup(func() { targetCensus[recklessHeld.Ref] = original })
+	original := registry[recklessHeld.Ref]
+	swapped := original
+	swapped.againstHolder = notYetAnswering
+	swapped.heldRule = nil
+	registry[recklessHeld.Ref] = swapped
+	s.T().Cleanup(func() { registry[recklessHeld.Ref] = original })
 
 	out, err := AssessTargetHeldEffects(&AssessTargetHeldEffectsInput{Frame: gobFrame(recklessHeld)})
 	s.Require().NoError(err)
@@ -262,8 +264,24 @@ func (s *targetHeldSuite) TestNotYetAnsweringHeldEffectIsUnavailable() {
 	s.Require().True(found)
 	s.Equal(contributions.StateUnavailable, row.State)
 	s.Equal(unavailableReason, row.Reason)
-	s.Equal(displayCatalog[recklessHeld.Ref].Detail, row.Description)
+	s.Equal(registry[recklessHeld.Ref].display.Detail, row.Description)
 	s.Empty(row.Benefit)
+}
+
+// TestARetiredHeldRefYieldsNoTargetRow: a sighting recorded before a type
+// retired may still name it. It is no failure and it yields no row; the
+// condition beside it is answered as ever.
+func (s *targetHeldSuite) TestARetiredHeldRefYieldsNoTargetRow() {
+	retired := contributions.HeldCondition{Ref: refs.Conditions.UnarmoredMovement().String()}
+
+	out, err := AssessTargetHeldEffects(&AssessTargetHeldEffectsInput{Frame: gobFrame(retired, proneHeld)})
+	s.Require().NoError(err)
+
+	ids := make([]string, 0, len(out.Effects))
+	for _, effect := range out.Effects {
+		ids = append(ids, effect.ID)
+	}
+	s.Equal([]string{heldEffectID(proneHeld)}, ids, "Prone's row alone")
 }
 
 // effectByID finds the row with id among effects.
@@ -508,13 +526,13 @@ func (s *targetHeldSuite) TestHandlerAndRegistryAskTheSameHeldRule() {
 		ruler, ok := condition.(heldRuler)
 		s.Require().True(ok, name)
 		held := heldOf("gob", condition)
-		registry, ok := targetHeldRules[held.Ref]
-		s.Require().True(ok, name)
+		byRefRule := registry[held.Ref].heldRule
+		s.Require().NotNil(byRefRule, name)
 		for frameName, frameOf := range frames {
 			frame := frameOf(held)
 			handler, err := ruler.heldRule().AssessAction(&contributions.AssessActionInput{Frame: frame})
 			s.Require().NoError(err)
-			byRef, err := registry("gob", held).AssessAction(&contributions.AssessActionInput{Frame: frame})
+			byRef, err := byRefRule("gob", held).AssessAction(&contributions.AssessActionInput{Frame: frame})
 			s.Require().NoError(err)
 			s.Equal(byRef.Answer, handler.Answer, "%s / %s", name, frameName)
 		}

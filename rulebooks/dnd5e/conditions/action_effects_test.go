@@ -64,13 +64,13 @@ func (s *actionEffectsSuite) TestRowsMapAnswersOneToOne() {
 	s.Equal(contributions.Effect{
 		ID:            refs.Conditions.Raging().String(),
 		Source:        contributions.Source{Ref: refs.Conditions.Raging(), Name: "Raging"},
-		Description:   displayCatalog[refs.Conditions.Raging().String()].Detail,
+		Description:   registry[refs.Conditions.Raging().String()].display.Detail,
 		State:         contributions.StateApplies,
 		Reason:        "The melee weapon attack uses Strength",
 		Participation: contributions.ContributesNow,
 		Benefit:       "+2 damage",
 	}, effects[0])
-	s.Equal(refs.Features.SneakAttack().String(), effects[1].ID)
+	s.Equal(refs.Conditions.SneakAttack().String(), effects[1].ID)
 	s.Equal(contributions.StateDoesNotApply, effects[1].State)
 	s.Equal("Sneak Attack requires a finesse or ranged weapon", effects[1].Reason)
 	s.Empty(effects[1].Benefit)
@@ -152,6 +152,22 @@ func (s *actionEffectsSuite) TestInspiredAnswersLaterChoiceOnHoldersAttack() {
 	s.Equal(refs.Conditions.Inspired().String(), effects[0].ID)
 }
 
+// TestParticipationIsTheDescriptors: how an effect takes part is declared once,
+// on its condition's descriptor. A rule's answer carries none, so no two
+// declarations can disagree at runtime.
+func (s *actionEffectsSuite) TestParticipationIsTheDescriptors() {
+	inspired := NewInspiredCondition("rogue", "bard", "")
+	blessed := s.blessed("rogue", "cleric")
+
+	effects := s.assess(rogueFrame(false), inspired, blessed)
+
+	s.Require().Len(effects, 2)
+	s.Equal(refs.Conditions.Inspired().String(), effects[0].ID)
+	s.Equal(contributions.LaterChoice, effects[0].Participation, "Inspired is offered later")
+	s.Equal(refs.Conditions.Blessed().String()+"@cleric", effects[1].ID)
+	s.Equal(contributions.ContributesNow, effects[1].Participation, "Blessed joins the roll now")
+}
+
 func (s *actionEffectsSuite) TestInspiredDoesNotApplyToAnothersAttack() {
 	inspired := NewInspiredCondition("fighter", "bard", "")
 
@@ -159,7 +175,6 @@ func (s *actionEffectsSuite) TestInspiredDoesNotApplyToAnothersAttack() {
 
 	s.Require().NoError(err)
 	s.Equal(contributions.DoesNotApply, out.Answer.Decision.Applicability)
-	s.Equal(contributions.LaterChoice, out.Answer.Participation)
 	s.Empty(out.Answer.Benefit)
 }
 
@@ -272,7 +287,7 @@ func (s *actionEffectsSuite) TestRefusesInvalidInput() {
 	}
 }
 
-// unclassifiedCondition names a ref no loader or census entry knows.
+// unclassifiedCondition names a ref the registry does not hold.
 type unclassifiedCondition struct{}
 
 func (unclassifiedCondition) Ref() *core.Ref {

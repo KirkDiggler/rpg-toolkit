@@ -39,17 +39,6 @@ func (s *heldAddressesSuite) TestReportsEachAddressInStoredOrder() {
 	}, held)
 }
 
-func (s *heldAddressesSuite) TestLeavesOutATraitWhichIsNotACondition() {
-	trait := json.RawMessage(`{"ref":{"module":"dnd5e","type":"monster_traits","id":"vulnerability"}}`)
-
-	held, err := HeldAddresses("gob", []json.RawMessage{trait, s.blob(NewProneCondition("gob"))})
-	s.Require().NoError(err)
-
-	s.Equal([]dnd5eEvents.ConditionAddress{
-		{MemberID: "gob", ConditionRef: refs.Conditions.Prone().String()}, oaOf("gob"),
-	}, held)
-}
-
 // TestACorruptConditionIsAnErrorNotAGap: a blob that cannot be read, or that
 // names a condition and will not load, is refused — a list that left it out
 // would claim, known, that the member does not hold it.

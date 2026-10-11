@@ -1465,37 +1465,20 @@ func (d *Draft) compileConditions(characterID string) ([]dnd5eEvents.ConditionBe
 	// Fighting styles are CHOICES, not grants, so they're handled separately
 	// Each fighting style maps to its corresponding condition
 	if style := d.GetFightingStyleSelection(); style != nil {
-		fsCondition, err := createFightingStyleCondition(*style, characterID)
+		ref, ok := fightingstyles.ConditionRef(*style)
+		if !ok {
+			return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown fighting style: %s", *style)
+		}
+		output, err := conditions.CreateFromRef(&conditions.CreateFromRefInput{
+			Ref: ref.String(), MemberID: characterID,
+		})
 		if err != nil {
 			return nil, rpgerr.Wrap(err, "failed to create fighting style condition")
 		}
-		conditionList = append(conditionList, fsCondition)
+		conditionList = append(conditionList, output.Condition)
 	}
 
 	return conditionList, nil
-}
-
-// createFightingStyleCondition creates the appropriate condition for a fighting style.
-// Each fighting style maps to its own dedicated condition type.
-func createFightingStyleCondition(
-	style fightingstyles.FightingStyle, characterID string,
-) (dnd5eEvents.ConditionBehavior, error) {
-	switch style {
-	case fightingstyles.Archery:
-		return conditions.NewFightingStyleArcheryCondition(characterID), nil
-	case fightingstyles.Defense:
-		return conditions.NewFightingStyleDefenseCondition(characterID), nil
-	case fightingstyles.Dueling:
-		return conditions.NewFightingStyleDuelingCondition(characterID), nil
-	case fightingstyles.GreatWeaponFighting:
-		return conditions.NewFightingStyleGreatWeaponFightingCondition(characterID, nil), nil
-	case fightingstyles.Protection:
-		return conditions.NewFightingStyleProtectionCondition(characterID), nil
-	case fightingstyles.TwoWeaponFighting:
-		return conditions.NewFightingStyleTwoWeaponFightingCondition(characterID), nil
-	default:
-		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown fighting style: %s", style)
-	}
 }
 
 // Progress validation methods

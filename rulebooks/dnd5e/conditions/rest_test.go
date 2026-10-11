@@ -68,12 +68,6 @@ func temporaryConditionTestCases() map[string]temporaryConditionTestCase {
 			},
 			expectedRef: refs.Conditions.Unconscious(),
 		},
-		"Shield": {
-			newCondition: func() dnd5eEvents.ConditionBehavior {
-				return NewShieldSpellCondition(restTestMemberID)
-			},
-			expectedRef: refs.Spells.Shield(),
-		},
 	}
 }
 

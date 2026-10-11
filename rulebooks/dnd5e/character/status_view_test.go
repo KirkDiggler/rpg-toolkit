@@ -167,10 +167,10 @@ func TestStatusViewRogueProjectsSneakAttackCondition(t *testing.T) {
 	require.NotNil(t, out)
 	require.NotNil(t, out.View)
 
-	// Sneak Attack is a condition named by a feature ref.
+	// Sneak Attack is a condition named by its one condition ref.
 	foundSneakAttack := false
 	for _, c := range out.View.Conditions {
-		if c.Ref.String() == refs.Features.SneakAttack().String() {
+		if c.Ref.String() == refs.Conditions.SneakAttack().String() {
 			require.Equal(t, "Sneak Attack", c.Name)
 			display, known := conditions.DisplayFor(c.Ref)
 			require.True(t, known)

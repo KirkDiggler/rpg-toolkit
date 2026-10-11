@@ -49,8 +49,7 @@ func (r ragingDamageRule) AssessAction(in *contributions.AssessActionInput) (*co
 	}
 	answer := func(state contributions.Applicability, reason string) *contributions.AssessActionOutput {
 		return &contributions.AssessActionOutput{Answer: contributions.Answer{
-			Decision:      contributions.Decision{Applicability: state, Reason: reason},
-			Participation: contributions.ContributesNow,
+			Decision: contributions.Decision{Applicability: state, Reason: reason},
 		}}
 	}
 	if frame.Actor != r.owner {

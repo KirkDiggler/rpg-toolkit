@@ -121,30 +121,39 @@ func (s *FightingStyleCreationSuite) TestAStoredChoiceWithNoIDFallsBackToTheClas
 // style, with Archery chosen.
 func (s *FightingStyleCreationSuite) draftFor(classID classes.Class) *Draft {
 	if classID == classes.Fighter {
-		draft := newFighterDraft(s.T())
-		// The shared fixture takes Defense; this suite is about Archery
-		// reaching the sheet for both classes through one assertion.
-		s.Require().NoError(draft.SetClass(&SetClassInput{
-			ClassID: classes.Fighter,
-			Choices: ClassChoices{
-				Skills: []skills.Skill{skills.Athletics, skills.History},
-				Equipment: []EquipmentChoiceSelection{
-					{ChoiceID: choices.FighterArmor, OptionID: choices.FighterArmorChainMail},
-					{
-						ChoiceID:           choices.FighterWeaponsPrimary,
-						OptionID:           choices.FighterWeaponMartialShield,
-						CategorySelections: []shared.EquipmentID{weapons.Longsword},
-					},
-					{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedCrossbow},
-					{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackDungeoneer},
-				},
-				FightingStyle: fightingstyles.Archery,
-			},
-		}))
-		return draft
+		return s.fighterDraftWith(fightingstyles.Archery)
 	}
+	return s.rangerDraft()
+}
 
-	draft, err := NewDraft(&DraftConfig{ID: string(classID) + "-draft", PlayerID: "player-1"})
+// fighterDraftWith is a complete level-1 fighter draft that chose style.
+func (s *FightingStyleCreationSuite) fighterDraftWith(style fightingstyles.FightingStyle) *Draft {
+	draft := newFighterDraft(s.T())
+	// The shared fixture takes Defense; this suite is about the chosen
+	// style reaching the sheet.
+	s.Require().NoError(draft.SetClass(&SetClassInput{
+		ClassID: classes.Fighter,
+		Choices: ClassChoices{
+			Skills: []skills.Skill{skills.Athletics, skills.History},
+			Equipment: []EquipmentChoiceSelection{
+				{ChoiceID: choices.FighterArmor, OptionID: choices.FighterArmorChainMail},
+				{
+					ChoiceID:           choices.FighterWeaponsPrimary,
+					OptionID:           choices.FighterWeaponMartialShield,
+					CategorySelections: []shared.EquipmentID{weapons.Longsword},
+				},
+				{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedCrossbow},
+				{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackDungeoneer},
+			},
+			FightingStyle: style,
+		},
+	}))
+	return draft
+}
+
+// rangerDraft is a complete level-1 ranger draft with Archery chosen.
+func (s *FightingStyleCreationSuite) rangerDraft() *Draft {
+	draft, err := NewDraft(&DraftConfig{ID: "ranger-draft", PlayerID: "player-1"})
 	s.Require().NoError(err)
 	s.Require().NoError(draft.SetName(&SetNameInput{Name: "Vex"}))
 	s.Require().NoError(draft.SetRace(&SetRaceInput{
@@ -182,4 +191,38 @@ func hasCondition(char *Character, id string) bool {
 		}
 	}
 	return false
+}
+
+// TestEveryFightingStyleIsCreatedThroughTheFactory: a chosen style reaches the
+// sheet as the condition fightingstyles.ConditionRef names, built by the
+// conditions factory from that ref and by nothing in this package.
+func (s *FightingStyleCreationSuite) TestEveryFightingStyleIsCreatedThroughTheFactory() {
+	for _, style := range fightingstyles.All() {
+		s.Run(string(style), func() {
+			want, ok := fightingstyles.ConditionRef(style)
+			s.Require().True(ok)
+
+			draft := s.fighterDraftWith(style)
+			char, err := draft.ToCharacter(s.ctx, "fighter-"+string(style), events.NewEventBus())
+			s.Require().NoError(err)
+
+			var got []string
+			for _, condition := range char.conditions {
+				got = append(got, condition.Ref().String())
+			}
+			s.Contains(got, want.String(), "%s grants its condition", style)
+			s.Equal(1, countOf(got, want.String()), "and grants it once")
+		})
+	}
+}
+
+// countOf is how many of refs are ref.
+func countOf(refs []string, ref string) int {
+	n := 0
+	for _, other := range refs {
+		if other == ref {
+			n++
+		}
+	}
+	return n
 }

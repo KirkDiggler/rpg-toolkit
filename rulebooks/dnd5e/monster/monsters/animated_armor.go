@@ -6,9 +6,9 @@ package monsters
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -27,9 +27,9 @@ import (
 // not because the SRD was skimmed:
 //
 //   - Condition immunities (blinded, charmed, deafened, exhaustion,
-//     frightened, paralyzed, petrified, poisoned). monstertraits offers
-//     Immunity/Vulnerability/PackTactics/UndeadFortitude — damage immunity
-//     only. There is no condition-immunity trait to attach, and inventing one
+//     frightened, paralyzed, petrified, poisoned). the conditions registry
+//     holds Immunity/Vulnerability/PackTactics/UndeadFortitude — damage
+//     immunity only. There is no condition-immunity trait to attach, and inventing one
 //     for a monster nothing currently charms would be a mechanism without a
 //     use case.
 //   - Blindsight 60 ft. monster.Data has a Blindsight field, but nothing
@@ -86,8 +86,8 @@ func NewAnimatedArmor(id string) *monster.Monster {
 
 	// Add immunity to poison and psychic damage (D&D 5e SRD) — an empty suit
 	// has nothing to poison and no mind to assail.
-	m.AddTraitData(monstertraits.MustImmunityJSON(id, damage.Poison))
-	m.AddTraitData(monstertraits.MustImmunityJSON(id, damage.Psychic))
+	m.AddTraitData(conditions.MustImmunityJSON(id, damage.Poison))
+	m.AddTraitData(conditions.MustImmunityJSON(id, damage.Psychic))
 
 	return m
 }

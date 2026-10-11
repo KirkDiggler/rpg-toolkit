@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //nolint:dupl // Immunity and Vulnerability implement same interface with similar structure but different behavior
-package monstertraits
+package conditions
 
 import (
 	"context"
@@ -67,7 +67,7 @@ func ImmunityJSON(ownerID string, damageType damage.Type) (json.RawMessage, erro
 func MustImmunityJSON(ownerID string, damageType damage.Type) json.RawMessage {
 	data, err := ImmunityJSON(ownerID, damageType)
 	if err != nil {
-		panic("monstertraits: failed to marshal immunity JSON: " + err.Error())
+		panic("conditions: failed to marshal immunity JSON: " + err.Error())
 	}
 	return data
 }
@@ -168,4 +168,13 @@ func (i *immunityCondition) onIncomingDamage(
 	}
 
 	return c, nil
+}
+
+// immunityDescriptor is the one entry for [immunityCondition]; see [descriptors].
+var immunityDescriptor = descriptor{
+	ref:           refs.MonsterTraits.Immunity(),
+	display:       Display{Name: "Damage Immunity"},
+	load:          loaderOf[immunityCondition](),
+	ownAction:     notBearing,
+	againstHolder: notBearing,
 }

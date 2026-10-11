@@ -6,9 +6,9 @@ package monsters
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -18,8 +18,8 @@ import (
 //
 // This is a skeleton-shaped boss, not a wight: a wight's signature Life Drain
 // ability needs a max-HP-reducing attack effect that does not exist in the
-// toolkit today (monstertraits/loader.go only knows immunity, vulnerability,
-// pack_tactics, and undead_fortitude - and undead_fortitude itself is not
+// toolkit today (the conditions registry holds only the immunity, vulnerability,
+// pack_tactics, and undead_fortitude traits - and undead_fortitude itself is not
 // wired into any HP-clamp path yet). Shipping a wight without Life Drain
 // would just be this captain wearing a different name, so the boss stays a
 // stat-line upgrade of the existing Skeleton archetype instead.
@@ -76,10 +76,10 @@ func NewSkeletonCaptain(id string) *monster.Monster {
 	m.SetSpeed(monster.SpeedData{Walk: 30})
 
 	// Add vulnerability to bludgeoning damage (skeleton archetype, D&D 5e SRD)
-	m.AddTraitData(monstertraits.MustVulnerabilityJSON(id, damage.Bludgeoning))
+	m.AddTraitData(conditions.MustVulnerabilityJSON(id, damage.Bludgeoning))
 
 	// Add immunity to poison damage (skeleton archetype, D&D 5e SRD)
-	m.AddTraitData(monstertraits.MustImmunityJSON(id, damage.Poison))
+	m.AddTraitData(conditions.MustImmunityJSON(id, damage.Poison))
 
 	return m
 }

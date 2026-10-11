@@ -14,9 +14,11 @@ import (
 )
 
 const (
-	wantRagingDetail      = "Adds your rage damage bonus to melee weapon attacks that use Strength. Also grants advantage on Strength-based skill checks and Strength saving throws, and resistance to bludgeoning, piercing, and slashing damage."
-	wantSneakAttackDetail = "Once per turn, adds extra damage to a qualifying attack when you have advantage or another enemy of the target is within 5 feet."
-	wantBlessedDetail     = "Adds 1d4 to attack rolls and saving throws. Multiple Bless effects do not add extra dice to the same roll."
+	wantRagingDetail            = "Adds your rage damage bonus to melee weapon attacks that use Strength. Also grants advantage on Strength-based skill checks and Strength saving throws, and resistance to bludgeoning, piercing, and slashing damage."
+	wantSneakAttackDetail       = "Once per turn, adds extra damage to a qualifying attack when you have advantage or another enemy of the target is within 5 feet."
+	wantOpportunityAttackDetail = "Use your reaction to make one melee attack against a creature that leaves your reach."
+	wantPackTacticsDetail       = "Has advantage on an attack roll against a creature when at least one of its allies is within 5 feet of that creature."
+	wantBlessedDetail           = "Adds 1d4 to attack rolls and saving throws. Multiple Bless effects do not add extra dice to the same roll."
 )
 
 func TestDisplayForKnownConditions(t *testing.T) {
@@ -29,8 +31,7 @@ func TestDisplayForKnownConditions(t *testing.T) {
 		{"raging", *refs.Conditions.Raging(), Display{Name: "Raging", Detail: wantRagingDetail}},
 		{"martial arts", *refs.Conditions.MartialArts(), Display{Name: "Martial Arts"}},
 		{"unarmored defense", *refs.Conditions.UnarmoredDefense(), Display{Name: "Unarmored Defense"}},
-		{"unarmored movement", *refs.Conditions.UnarmoredMovement(), Display{Name: "Unarmored Movement"}},
-		{"sneak attack (feature ref)", *refs.Features.SneakAttack(), Display{Name: "Sneak Attack", Detail: wantSneakAttackDetail}},
+		{"sneak attack", *refs.Conditions.SneakAttack(), Display{Name: "Sneak Attack", Detail: wantSneakAttackDetail}},
 		{"brutal critical", *refs.Conditions.BrutalCritical(), Display{Name: "Brutal Critical"}},
 		{"improved critical", *refs.Conditions.ImprovedCritical(), Display{Name: "Improved Critical"}},
 		{"reckless attack", *refs.Conditions.RecklessAttack(), Display{Name: "Reckless Attack"}},
@@ -39,7 +40,11 @@ func TestDisplayForKnownConditions(t *testing.T) {
 		{"hidden", *refs.Conditions.Hidden(), Display{Name: "Hidden"}},
 		{"helped", *refs.Conditions.Helped(), Display{Name: "Helped"}},
 		{"prone", *refs.Conditions.Prone(), Display{Name: "Prone"}},
-		{"opportunity attack", *refs.Conditions.OpportunityAttack(), Display{Name: "Opportunity Attack"}},
+		{"opportunity attack", *refs.Conditions.OpportunityAttack(), Display{Name: "Opportunity Attack", Detail: wantOpportunityAttackDetail}},
+		{"damage immunity", *refs.MonsterTraits.Immunity(), Display{Name: "Damage Immunity"}},
+		{"damage vulnerability", *refs.MonsterTraits.Vulnerability(), Display{Name: "Damage Vulnerability"}},
+		{"pack tactics", *refs.MonsterTraits.PackTactics(), Display{Name: "Pack Tactics", Detail: wantPackTacticsDetail}},
+		{"undead fortitude", *refs.MonsterTraits.UndeadFortitude(), Display{Name: "Undead Fortitude"}},
 		{"unconscious", *refs.Conditions.Unconscious(), Display{Name: "Unconscious"}},
 		{"guided", *refs.Conditions.Guided(), Display{Name: GuidedName}},
 		{"resistance", *refs.Conditions.Resistance(), Display{Name: ResistanceName}},
@@ -102,7 +107,7 @@ func (s *effectTooltipContentSuite) TestCanonicalDescriptions() {
 		name   string
 		detail string
 	}{
-		{refs.Features.SneakAttack(), "Sneak Attack", wantSneakAttackDetail},
+		{refs.Conditions.SneakAttack(), "Sneak Attack", wantSneakAttackDetail},
 		{refs.Conditions.Raging(), "Raging", wantRagingDetail},
 		{refs.Conditions.Blessed(), "Blessed", wantBlessedDetail},
 	} {

@@ -13,284 +13,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
-type conditionLoader func(json.RawMessage) (dnd5eEvents.ConditionBehavior, error)
-
-var conditionLoaders = map[string]conditionLoader{
-	refs.Conditions.Shillelagh().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		condition := &ShillelaghCondition{}
-		if err := condition.loadJSON(data); err != nil {
-			return nil, err
-		}
-		return condition, nil
-	},
-	refs.Conditions.Raging().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		raging := &RagingCondition{}
-		if err := raging.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load raging condition")
-		}
-		return raging, nil
-	},
-	refs.Conditions.BrutalCritical().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		brutal := &BrutalCriticalCondition{}
-		if err := brutal.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load brutal critical condition")
-		}
-		return brutal, nil
-	},
-	refs.Conditions.UnarmoredDefense().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		unarmored := &UnarmoredDefenseCondition{}
-		if err := unarmored.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load unarmored defense condition")
-		}
-		return unarmored, nil
-	},
-	refs.Conditions.FightingStyleArchery().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		archery := NewFightingStyleArcheryCondition("")
-		if err := archery.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load archery fighting style condition")
-		}
-		return archery, nil
-	},
-	refs.Conditions.FightingStyleDefense().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		defense := NewFightingStyleDefenseCondition("")
-		if err := defense.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load defense fighting style condition")
-		}
-		return defense, nil
-	},
-	refs.Conditions.FightingStyleDueling().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		dueling := NewFightingStyleDuelingCondition("")
-		if err := dueling.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load dueling fighting style condition")
-		}
-		return dueling, nil
-	},
-	refs.Conditions.FightingStyleGreatWeaponFighting().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		gwf := NewFightingStyleGreatWeaponFightingCondition("", nil)
-		if err := gwf.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load great weapon fighting style condition")
-		}
-		return gwf, nil
-	},
-	refs.Conditions.FightingStyleProtection().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		protection := NewFightingStyleProtectionCondition("")
-		if err := protection.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load protection fighting style condition")
-		}
-		return protection, nil
-	},
-	refs.Conditions.FightingStyleTwoWeaponFighting().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		twf := NewFightingStyleTwoWeaponFightingCondition("")
-		if err := twf.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load two-weapon fighting style condition")
-		}
-		return twf, nil
-	},
-	refs.Conditions.ImprovedCritical().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		ic := &ImprovedCriticalCondition{}
-		if err := ic.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load improved critical condition")
-		}
-		return ic, nil
-	},
-	refs.Conditions.RecklessAttack().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		ra := &RecklessAttackCondition{}
-		if err := ra.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load reckless attack condition")
-		}
-		return ra, nil
-	},
-	refs.Conditions.MartialArts().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		ma := &MartialArtsCondition{}
-		if err := ma.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load martial arts condition")
-		}
-		return ma, nil
-	},
-	refs.Conditions.UnarmoredMovement().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		um := &UnarmoredMovementCondition{}
-		if err := um.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load unarmored movement condition")
-		}
-		return um, nil
-	},
-	refs.Features.SneakAttack().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		sneak := &SneakAttackCondition{}
-		if err := sneak.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load sneak attack condition")
-		}
-		return sneak, nil
-	},
-	refs.Conditions.Disengaging().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		disengaging := &DisengagingCondition{}
-		if err := disengaging.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load disengaging condition")
-		}
-		return disengaging, nil
-	},
-	refs.Conditions.Dodging().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		dodging := &DodgingCondition{}
-		if err := dodging.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load dodging condition")
-		}
-		return dodging, nil
-	},
-	refs.Conditions.Prone().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		prone := &ProneCondition{}
-		if err := prone.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load prone condition")
-		}
-		return prone, nil
-	},
-	refs.Conditions.Hidden().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		hidden := &HiddenCondition{}
-		if err := hidden.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load hidden condition")
-		}
-		return hidden, nil
-	},
-	refs.Conditions.Inspired().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		inspired := &InspiredCondition{}
-		if err := inspired.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load inspired condition")
-		}
-		return inspired, nil
-	},
-	refs.Conditions.Helped().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		helped := &HelpedCondition{}
-		if err := helped.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load helped condition")
-		}
-		return helped, nil
-	},
-	refs.Conditions.Unconscious().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		uc := &UnconsciousCondition{}
-		if err := uc.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load unconscious condition")
-		}
-		return uc, nil
-	},
-	refs.Conditions.OpportunityAttack().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		oa := &OpportunityAttackCondition{}
-		if err := oa.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load opportunity attack condition")
-		}
-		return oa, nil
-	},
-	refs.Conditions.TrueStrike().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		ts := &TrueStrikeCondition{}
-		if err := ts.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load true strike condition")
-		}
-		return ts, nil
-	},
-	refs.Conditions.BladeWard().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		bw := &BladeWardCondition{}
-		if err := bw.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load blade ward condition")
-		}
-		return bw, nil
-	},
-	refs.Conditions.ViciousMockery().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		vm := &ViciousMockeryCondition{}
-		if err := vm.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load vicious mockery condition")
-		}
-		return vm, nil
-	},
-	refs.Conditions.Commanded().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		cmd := &CommandedCondition{}
-		if err := cmd.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load commanded condition")
-		}
-		return cmd, nil
-	},
-	refs.Conditions.Concentrating().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		cc := &ConcentratingCondition{}
-		if err := cc.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load concentrating condition")
-		}
-		return cc, nil
-	},
-	refs.Conditions.Blessed().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		blessed := &BlessedCondition{}
-		if err := blessed.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load blessed condition")
-		}
-		return blessed, nil
-	},
-	refs.Conditions.Baned().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		baned := &BanedCondition{}
-		if err := baned.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load baned condition")
-		}
-		return baned, nil
-	},
-	refs.Conditions.DivineFavor().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		divineFavor := &DivineFavorCondition{}
-		if err := divineFavor.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load divineFavor condition")
-		}
-		return divineFavor, nil
-	},
-	refs.Conditions.FaerieFire().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		faerieFire := &FaerieFireCondition{}
-		if err := faerieFire.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load faerie fire condition")
-		}
-		return faerieFire, nil
-	},
-	refs.Conditions.ShieldOfFaith().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		shieldOfFaith := &ShieldOfFaithCondition{}
-		if err := shieldOfFaith.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load shieldOfFaith condition")
-		}
-		return shieldOfFaith, nil
-	},
-	refs.Conditions.Guided().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		guided := &GuidedCondition{}
-		if err := guided.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load guided condition")
-		}
-		return guided, nil
-	},
-	refs.Conditions.Resistance().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		resistance := &ResistanceCondition{}
-		if err := resistance.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load resistance condition")
-		}
-		return resistance, nil
-	},
-	refs.Conditions.Sanctuary().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		sanctuary := &SanctuaryCondition{}
-		if err := sanctuary.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load sanctuary condition")
-		}
-		return sanctuary, nil
-	},
-	refs.Conditions.SanctuaryImmune().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		immune := &SanctuaryImmuneCondition{}
-		if err := immune.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load sanctuary immune condition")
-		}
-		return immune, nil
-	},
-	refs.Conditions.GuidingBolt().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		immune := &GuidingBoltCondition{}
-		if err := immune.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load sanctuary immune condition")
-		}
-		return immune, nil
-	},
-	refs.Spells.Shield().String(): func(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
-		sh := &ShieldSpellCondition{}
-		if err := sh.loadJSON(data); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to load shield spell condition")
-		}
-		return sh, nil
-	},
-}
-
 // ErrRetiredCondition reports a saved condition whose type no longer exists.
 // A sheet loader drops such an entry, under every load policy, rather than
 // failing the sheet: the condition carried no rule, and what it recorded is
@@ -298,13 +20,30 @@ var conditionLoaders = map[string]conditionLoader{
 var ErrRetiredCondition = errors.New("condition type is retired")
 
 // retiredConditions are the refs a saved sheet may still carry for a condition
-// type that no longer exists.
+// type that no longer exists. A retired ref is not unregistered: it names a
+// type that was deleted, and a reader drops it where it would refuse a ref
+// nothing ever registered. [isRetiredRef] is the one read of this list.
 //
 // In Fog recorded membership in a Fog Cloud area. Membership is the
 // encounter's answer, asked when needed and never stored on a sheet; its ref
 // lives on only as the area's membership label.
+//
+// Unarmored Movement was a condition that listened to nothing: Speed reads the
+// monk's levels itself, so the blob carried no rule.
+//
+// The Shield spell condition was a reaction nothing playable can hold yet; it
+// returns on the post-roll window when a sheet can hold it, so no dead entry
+// stands in for it meanwhile.
 var retiredConditions = map[string]bool{
-	refs.Conditions.InFog().String(): true,
+	refs.Conditions.InFog().String():             true,
+	refs.Conditions.UnarmoredMovement().String(): true,
+	refs.Spells.Shield().String():                true,
+}
+
+// isRetiredRef reports whether ref names a retired condition type. It is the
+// membership read of the retired list, so every reader uses one list.
+func isRetiredRef(ref string) bool {
+	return retiredConditions[ref]
 }
 
 // IsRetired reports whether data is a saved condition of a retired type,
@@ -317,14 +56,14 @@ func IsRetired(data json.RawMessage) bool {
 	if err := json.Unmarshal(data, &peek); err != nil {
 		return false
 	}
-	return retiredConditions[peek.Ref.String()]
+	return isRetiredRef(peek.Ref.String())
 }
 
 // LoadJSON loads a condition from its JSON representation.
 // The game server stores conditions as opaque JSON blobs;
 // this function deserializes them into strongly-typed structs.
 //
-// Errors: unparsable data, an unknown ref, a retired type (wrapping
+// Errors: unparsable data, an unregistered ref (wrapping [ErrUnknownCondition]), a retired type (wrapping
 // [ErrRetiredCondition], which a sheet loader drops), or the condition's own
 // load error.
 func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
@@ -338,15 +77,15 @@ func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		return nil, rpgerr.Wrap(err, "failed to peek at condition ref")
 	}
 
-	if retiredConditions[peek.Ref.String()] {
+	if isRetiredRef(peek.Ref.String()) {
 		return nil, rpgerr.WrapWithCode(ErrRetiredCondition, rpgerr.CodeInvalidArgument,
 			"retired condition ref: "+peek.Ref.String())
 	}
 
-	load, ok := conditionLoaders[peek.Ref.String()]
-	if !ok {
-		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition ref: %s", peek.Ref.ID)
+	entry, err := lookup(peek.Ref.String())
+	if err != nil {
+		return nil, err
 	}
 
-	return load(data)
+	return entry.load(data)
 }

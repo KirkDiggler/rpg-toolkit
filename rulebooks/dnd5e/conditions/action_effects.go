@@ -36,7 +36,7 @@ type AssessActionEffectsOutput struct {
 // later one does not apply, with that reason.
 //
 // Reading spends, rolls and publishes nothing. Errors: nil input, an invalid
-// frame, a condition whose ref the census does not classify, a bearing effect
+// frame, a condition whose ref the registry does not hold, a bearing effect
 // with no description, an answering effect that is not an ActionAssessor or
 // answers invalidly, and a duplicate row ID.
 func AssessActionEffects(in *AssessActionEffectsInput) (*AssessActionEffectsOutput, error) {
@@ -56,15 +56,16 @@ func AssessActionEffects(in *AssessActionEffectsInput) (*AssessActionEffectsOutp
 			return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "assess action effects received a condition with no ref")
 		}
 		ref := *condition.Ref()
-		entry, classified := actionCensus[ref.String()]
-		if !classified {
-			return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "condition %s has no action census entry", ref.String())
+		entry, err := lookup(ref.String())
+		if err != nil {
+			return nil, rpgerr.Wrapf(err, "condition %s", ref.String())
 		}
-		if entry.class == censusNotBearing {
+		own := entry.ownAction
+		if own.kind == bearingNone {
 			continue
 		}
-		display, found := DisplayFor(ref)
-		if !found || display.Detail == "" {
+		display := entry.display
+		if display.Detail == "" {
 			return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "condition %s bears on actions but has no description", ref.String())
 		}
 
@@ -72,7 +73,7 @@ func AssessActionEffects(in *AssessActionEffectsInput) (*AssessActionEffectsOutp
 			ID:            ref.String(),
 			Source:        contributions.Source{Ref: &ref, Name: display.Name},
 			Description:   display.Detail,
-			Participation: entry.participation,
+			Participation: own.participation,
 		}
 		if addressed, ok := condition.(dnd5eEvents.ConditionAddressProvider); ok {
 			if sourceID := addressed.ConditionAddress().SourceID; sourceID != "" {
@@ -85,18 +86,18 @@ func AssessActionEffects(in *AssessActionEffectsInput) (*AssessActionEffectsOutp
 		}
 		ids[effect.ID] = struct{}{}
 
-		switch entry.class {
-		case censusNotYetAnswering:
+		switch own.kind {
+		case bearingNotYetAnswering:
 			effect.State = contributions.StateUnavailable
 			effect.Reason = unavailableReason
-		case censusAnswers:
+		case bearingAnswers:
 			if err := answerEffect(&answerEffectInput{
-				Condition: condition, Entry: entry, Frame: in.Frame, Groups: groups, Effect: &effect,
+				Condition: condition, Frame: in.Frame, Groups: groups, Effect: &effect,
 			}); err != nil {
 				return nil, err
 			}
 		default:
-			return nil, rpgerr.Newf(rpgerr.CodeInternal, "condition %s has unknown census class %q", ref.String(), entry.class)
+			return nil, rpgerr.Newf(rpgerr.CodeInternal, "condition %s has unknown bearing kind %d", ref.String(), own.kind)
 		}
 		effects = append(effects, effect)
 	}
@@ -106,7 +107,6 @@ func AssessActionEffects(in *AssessActionEffectsInput) (*AssessActionEffectsOutp
 // answerEffectInput carries one answering condition and the row being filled.
 type answerEffectInput struct {
 	Condition dnd5eEvents.ConditionBehavior
-	Entry     censusEntry
 	Frame     contributions.Frame
 	Groups    *rollGroupSelection
 	Effect    *contributions.Effect
@@ -118,7 +118,7 @@ func answerEffect(in *answerEffectInput) error {
 	ref := in.Condition.Ref().String()
 	assessor, ok := in.Condition.(contributions.ActionAssessor)
 	if !ok {
-		return rpgerr.Newf(rpgerr.CodeInternal, "condition %s is classified as answering but does not answer", ref)
+		return rpgerr.Newf(rpgerr.CodeInternal, "condition %s is registered as answering but does not answer", ref)
 	}
 	out, err := assessor.AssessAction(&contributions.AssessActionInput{Frame: in.Frame.Clone()})
 	if err != nil {
@@ -128,7 +128,7 @@ func answerEffect(in *answerEffectInput) error {
 		return rpgerr.Newf(rpgerr.CodeInternal, "condition %s returned no answer", ref)
 	}
 	answer := out.Answer
-	if err := validateAnswer(answer, in.Entry.participation); err != nil {
+	if err := validateAnswer(answer); err != nil {
 		return fmt.Errorf("assess %s: %w", ref, err)
 	}
 
@@ -161,10 +161,10 @@ func answerEffect(in *answerEffectInput) error {
 	return nil
 }
 
-// validateAnswer refuses a producer defect: an invalid decision, a
-// participation other than the census declares, an unknown attack mode, or a
-// contribution carried by an answer that does not apply.
-func validateAnswer(answer contributions.Answer, participation contributions.Participation) error {
+// validateAnswer refuses a producer defect: an invalid decision, an unknown
+// attack mode, or a contribution carried by an answer that does not apply. How
+// the effect takes part is the descriptor's bearing, not the answer's.
+func validateAnswer(answer contributions.Answer) error {
 	if err := answer.Decision.Validate(); err != nil {
 		return err
 	}
@@ -172,9 +172,6 @@ func validateAnswer(answer contributions.Answer, participation contributions.Par
 	case "", contributions.AttackAdvantage, contributions.AttackDisadvantage:
 	default:
 		return fmt.Errorf("unknown attack mode %q", answer.AttackMode)
-	}
-	if answer.Participation != participation {
-		return fmt.Errorf("answer participation %q differs from its census entry %q", answer.Participation, participation)
 	}
 	if answer.Decision.Applicability != contributions.Applies &&
 		(answer.Benefit != "" || len(answer.Damage) != 0 || len(answer.Roll) != 0 || answer.AttackMode != "") {
