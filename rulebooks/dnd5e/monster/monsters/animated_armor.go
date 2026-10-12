@@ -27,9 +27,9 @@ import (
 // not because the SRD was skimmed:
 //
 //   - Condition immunities (blinded, charmed, deafened, exhaustion,
-//     frightened, paralyzed, petrified, poisoned). the conditions registry
-//     holds Immunity/Vulnerability/PackTactics/UndeadFortitude — damage
-//     immunity only. There is no condition-immunity trait to attach, and inventing one
+//     frightened, paralyzed, petrified, poisoned). the conditions registry's
+//     monster traits are Immunity/Vulnerability/PackTactics/UndeadFortitude/
+//     NimbleEscape — damage immunity only. There is no condition-immunity trait to attach, and inventing one
 //     for a monster nothing currently charms would be a mechanism without a
 //     use case.
 //   - Blindsight 60 ft. monster.Data has a Blindsight field, but nothing

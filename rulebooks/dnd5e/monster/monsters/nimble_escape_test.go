@@ -41,20 +41,24 @@ func (s *NimbleEscapeContentSuite) TestGoblinBossCarriesNimbleEscape() {
 	s.True(s.carries(monsters.NewGoblinBoss("goblin-boss-1")))
 }
 
-// TestWolfDoesNotCarryNimbleEscape: the trait is the goblins', not every
-// monster's.
-func (s *NimbleEscapeContentSuite) TestWolfDoesNotCarryNimbleEscape() {
-	s.False(s.carries(monsters.NewWolf("wolf-1")))
+// TestSkeletonDoesNotCarryNimbleEscape: the trait is the goblins', not every
+// stat block's. The skeleton stores trait blobs of its own (its vulnerability
+// and immunity), so this fails if Nimble Escape leaks onto stat blocks that
+// carry traits.
+func (s *NimbleEscapeContentSuite) TestSkeletonDoesNotCarryNimbleEscape() {
+	skeleton := monsters.NewSkeleton("skeleton-1")
+	s.Require().NotEmpty(skeleton.ToData().Conditions, "the negative case needs a sheet that stores traits")
+	s.False(s.carries(skeleton))
 }
 
 // TestTheCarriedTraitNamesItsGoblin: the stored blob is owned by the goblin
 // that carries it, and loads through the one loader.
 func (s *NimbleEscapeContentSuite) TestTheCarriedTraitNamesItsGoblin() {
-	want := refs.MonsterTraits.NimbleEscape()
+	want := refs.MonsterTraits.NimbleEscape().String()
 	for _, blob := range monsters.NewGoblin("goblin-7").ToData().Conditions {
 		loaded, err := conditions.LoadJSON(blob)
 		s.Require().NoError(err)
-		if loaded.Ref() != want {
+		if loaded.Ref().String() != want {
 			continue
 		}
 		s.JSONEq(string(conditions.MustNimbleEscapeJSON("goblin-7")), string(blob))
