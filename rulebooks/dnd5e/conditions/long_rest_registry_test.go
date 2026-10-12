@@ -448,6 +448,15 @@ var longRestCases = map[string]longRestCase{
 		expectedRef: refs.MonsterTraits.PackTactics(),
 		outcome:     longRestRetain,
 	},
+	refs.MonsterTraits.NimbleEscape().String(): {
+		data: json.RawMessage(`{
+			"ref":{"module":"dnd5e","type":"monster_traits","id":"nimble_escape"},
+			"owner_id":"member-1"
+		}`),
+		ownerID:     "member-1",
+		expectedRef: refs.MonsterTraits.NimbleEscape(),
+		outcome:     longRestRetain,
+	},
 	refs.MonsterTraits.UndeadFortitude().String(): {
 		data: json.RawMessage(`{
 			"ref":{"module":"dnd5e","type":"monster_traits","id":"undead_fortitude"},

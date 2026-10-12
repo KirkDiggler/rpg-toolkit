@@ -7,7 +7,7 @@
 // holds.
 //
 // It holds no trait type. A monster's stat-block traits (damage immunity,
-// damage vulnerability, pack tactics, undead fortitude) are conditions like
+// damage vulnerability, pack tactics, undead fortitude, nimble escape) are conditions like
 // any other: they live in the conditions package beside every condition's
 // descriptor, and every blob of a monster's sheet loads through
 // [conditions.LoadJSON]. A ref nothing registers is refused, never skipped.

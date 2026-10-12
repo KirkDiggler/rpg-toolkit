@@ -9,6 +9,7 @@ var (
 	monsterTraitVulnerability   = &core.Ref{Module: Module, Type: TypeMonsterTraits, ID: "vulnerability"}
 	monsterTraitPackTactics     = &core.Ref{Module: Module, Type: TypeMonsterTraits, ID: "pack_tactics"}
 	monsterTraitUndeadFortitude = &core.Ref{Module: Module, Type: TypeMonsterTraits, ID: "undead_fortitude"}
+	monsterTraitNimbleEscape    = &core.Ref{Module: Module, Type: TypeMonsterTraits, ID: "nimble_escape"}
 )
 
 // MonsterTraits provides type-safe, discoverable references to monster trait behaviors.
@@ -29,3 +30,7 @@ func (n monsterTraitsNS) PackTactics() *core.Ref { return monsterTraitPackTactic
 
 // UndeadFortitude returns the ref for undead fortitude trait
 func (n monsterTraitsNS) UndeadFortitude() *core.Ref { return monsterTraitUndeadFortitude }
+
+// NimbleEscape returns the ref for the nimble escape trait: the creature may
+// take the Disengage action as a bonus action on each of its turns.
+func (n monsterTraitsNS) NimbleEscape() *core.Ref { return monsterTraitNimbleEscape }

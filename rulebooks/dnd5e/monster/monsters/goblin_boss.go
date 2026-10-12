@@ -6,6 +6,7 @@ package monsters
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -50,15 +51,21 @@ const secondScimitarSwing = "second attack of a multiattack"
 // entry and every thrown weapon gains it at once, rather than this stat block
 // growing a hand-typed second definition.
 //
+// # Nimble Escape is its Disengage half
+//
+// The boss carries Nimble Escape as a stat-block trait, as every goblin does:
+// it may take the Disengage action as a bonus action (rpg-toolkit#2032). The
+// trait only states that; the encounter decides when the bonus action is
+// spent. The Hide half is not represented — there is no monster Hide verb —
+// and the trait's description names only the half the engine honours.
+//
 // # Deliberately NOT represented
 //
-//   - Nimble Escape (Disengage or Hide as a bonus action). There is no
-//     monster bonus-action economy and no Hide verb to spend one on.
 //   - Redirect Attack (swap places with an adjacent goblin as a reaction to
 //     being hit). A reaction that retargets a landed blow has no seam: the
 //     strike machine's reaction windows are ADR-0027's, unbuilt.
 //
-// Both are stubs waiting to be written, and neither is stubbed here — a
+// It is a stub waiting to be written, and it is not stubbed here — a
 // declared ability the engine ignores reads exactly like one it honours.
 func NewGoblinBoss(id string) *monster.Monster {
 	m := monster.New(monster.Config{
@@ -100,6 +107,8 @@ func NewGoblinBoss(id string) *monster.Monster {
 	mustAddWeapon(m, weapons.Scimitar, weapons.Javelin)
 
 	m.SetSpeed(monster.SpeedData{Walk: 30})
+
+	m.AddTraitData(conditions.MustNimbleEscapeJSON(id))
 
 	return m
 }

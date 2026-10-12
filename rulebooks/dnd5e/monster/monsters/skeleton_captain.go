@@ -18,9 +18,9 @@ import (
 //
 // This is a skeleton-shaped boss, not a wight: a wight's signature Life Drain
 // ability needs a max-HP-reducing attack effect that does not exist in the
-// toolkit today (the conditions registry holds only the immunity, vulnerability,
-// pack_tactics, and undead_fortitude traits - and undead_fortitude itself is not
-// wired into any HP-clamp path yet). Shipping a wight without Life Drain
+// toolkit today (the conditions registry's monster traits are only immunity,
+// vulnerability, pack_tactics, undead_fortitude, and nimble_escape - and
+// undead_fortitude itself is not wired into any HP-clamp path yet). Shipping a wight without Life Drain
 // would just be this captain wearing a different name, so the boss stays a
 // stat-line upgrade of the existing Skeleton archetype instead.
 func NewSkeletonCaptain(id string) *monster.Monster {
