@@ -151,6 +151,10 @@ one-instance-per-address rule the monster keeper lacks (rpg-toolkit#1946). The
 outcome is the player arm's `ActivationOutcome` shape. Disengage is the only
 driven ability today (rpg-toolkit#2032). Any other is refused by name, and a
 character sent through the driven door is refused because characters declare.
+A driven activation sent with an `Input.Cost` is refused at `Input.Validate`,
+before anything is charged. Open question: which condition a driven ability
+lands (Disengage to Disengaging) is rules knowledge held here, and when Hide
+arrives the rulebook should answer it instead.
 
 ## Extension rule
 

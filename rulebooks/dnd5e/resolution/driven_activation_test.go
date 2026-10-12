@@ -4,10 +4,13 @@
 package resolution
 
 import (
+	"context"
 	"encoding/json"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
+	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -77,9 +80,26 @@ func (s *ActivationTestSuite) dirtyMonster(out *Output, id string) *monster.Data
 // Disengages through resolution, and the condition is on the sheet as it is
 // WRITTEN — the monster side of the cast, the same place a Strike's monster
 // state lands.
+//
+// The source is heard on the bus and pinned: the player's Disengage publishes
+// with ConditionSourceCombatAbility, and parity is the claim.
 func (s *ActivationTestSuite) TestADrivenMonsterDisengageLandsDisengagingOnItsSheet() {
-	out, err := s.run(drivenDisengage(), s.drivenWorld(), s.drivenCast(monsters.NewGoblin(goblinID).ToData()))
+	bus := events.NewEventBus()
+	var heard []dnd5eEvents.ConditionSource
+	_, err := dnd5eEvents.ConditionAppliedTopic.On(bus).Subscribe(s.ctx,
+		func(_ context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
+			heard = append(heard, event.Source)
+			return nil
+		})
 	s.Require().NoError(err)
+
+	machine, err := NewActivation(drivenDisengage())
+	s.Require().NoError(err)
+	out, err := s.resolveOnBus(bus, machine, s.drivenWorld(),
+		s.drivenCast(monsters.NewGoblin(goblinID).ToData()), nil)
+	s.Require().NoError(err)
+	s.Equal([]dnd5eEvents.ConditionSource{dnd5eEvents.ConditionSourceCombatAbility}, heard,
+		"the player's Disengage source, and one application")
 
 	goblin := s.dirtyMonster(out, goblinID)
 	s.Equal([]string{refs.Conditions.Disengaging().String()}, monsterConditionRefs(goblin))
@@ -118,6 +138,22 @@ func (s *ActivationTestSuite) TestADrivenMonsterAbilityWithNoArmIsRefusedByName(
 	s.Require().ErrorIs(err, ErrBadActivation)
 	s.Contains(err.Error(), refs.CombatAbilities.Hide().String())
 	s.Contains(err.Error(), "not yet driven")
+	s.Nil(out)
+}
+
+// "Charges nothing" is a law at the door, not a habit of the caller: a driven
+// activation sent with a cost is refused before the world is loaded, and
+// nobody is charged — the driver already spent it.
+func (s *ActivationTestSuite) TestADrivenActivationWithACostIsRefused() {
+	machine, err := NewActivation(drivenDisengage())
+	s.Require().NoError(err)
+
+	goblin := monsters.NewGoblin(goblinID).ToData()
+	out, err := s.resolveOnBus(events.NewEventBus(), machine, s.drivenWorld(), s.drivenCast(goblin),
+		&Cost{PayerID: goblinID})
+
+	s.Require().ErrorIs(err, ErrBadActivation)
+	s.Contains(err.Error(), "a driven activation carries no cost; its driver spent it")
 	s.Nil(out)
 }
 

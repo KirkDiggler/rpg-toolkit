@@ -206,7 +206,16 @@ func (s *ActivationTestSuite) run(
 func (s *ActivationTestSuite) resolveMachine(
 	machine Machine, world encounter.EncounterData, participants []Participant,
 ) (*Output, error) {
-	return Resolve(s.ctx, &Input{
+	return s.resolveOnBus(events.NewEventBus(), machine, world, participants, nil)
+}
+
+// resolveOnBus is resolveMachine on a bus the test holds, so a scene can hear
+// what the machine published, and with the cost a caller sent.
+func (s *ActivationTestSuite) resolveOnBus(
+	bus events.EventBus, machine Machine, world encounter.EncounterData, participants []Participant, cost *Cost,
+) (*Output, error) {
+	return resolveOn(s.ctx, &Input{
+		Cost:         cost,
 		World:        world,
 		Participants: participants,
 		Machine:      machine,
@@ -221,7 +230,7 @@ func (s *ActivationTestSuite) resolveMachine(
 			Roller:        dice.NewRoller(),
 			Actors:        Actors,
 		},
-	})
+	}, newSurface(bus))
 }
 
 // conditionRefs reads the condition refs off a sheet as it would be WRITTEN,
