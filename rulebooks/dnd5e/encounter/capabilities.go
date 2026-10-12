@@ -112,6 +112,12 @@ type Actors struct {
 	// [Striker]'s own doc.
 	Striker Striker
 
+	// Disengager makes a member whose sheet allows it Disengage as a bonus
+	// action before a driven walk out of a hostile's reach (rpg-toolkit#2032).
+	// OPTIONAL: nil skips the ask and the walk provokes as any walk does. See
+	// [Disengager].
+	Disengager Disengager
+
 	// Mover announces a member's step before the encounter takes it, so
 	// whatever reacts to movement can (rpg-project#316). REQUIRED, for the
 	// same reason Striker is and at the same door: a fight can form with an

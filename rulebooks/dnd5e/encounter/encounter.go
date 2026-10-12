@@ -182,6 +182,10 @@ type Encounter struct {
 	// [Striker].
 	striker Striker
 
+	// disengager makes a nimble member Disengage before a walk out of reach.
+	// OPTIONAL — nil skips the ask; see [Disengager].
+	disengager Disengager
+
 	// mover announces a [Move] intent's steps before this composition takes
 	// them. Required at both constructors for the same reason striker is;
 	// see [Mover], whose doc explains why announce-before-step is a contract.
@@ -743,6 +747,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		driver:        in.Driver,
 		roller:        in.Roller,
 		striker:       in.Striker,
+		disengager:    in.Disengager,
 		mover:         in.Mover,
 		announcer:     in.Announcer,
 		endings:       nil,

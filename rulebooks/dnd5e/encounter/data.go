@@ -2747,6 +2747,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		driver:        input.Driver,
 		roller:        input.Roller,
 		striker:       input.Striker,
+		disengager:    input.Disengager,
 		mover:         input.Mover,
 		announcer:     input.Announcer,
 		endings:       nil,

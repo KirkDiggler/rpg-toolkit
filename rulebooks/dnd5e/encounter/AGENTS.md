@@ -84,6 +84,11 @@ supplied capability, never as a new import.** Every one of these is required at
 | did the discovery check beat the hidden thing's DC — rolled automatically when a placed player comes within a hex | `CheckResolver` ([conceal.go](./conceal.go)), asked through `ResolveDiscoveryCheck` | `ErrNoCheckResolver`, when the field declares a concealment |
 | who perceives this open hidden door | `Witness` ([conceal.go](./conceal.go)) | `ErrNoWitness`, same condition |
 
+One actor is asked but NOT required: `Disengager` ([turndriver.go](./turndriver.go)) makes a
+member whose sheet names a `SheetFacts.BonusDisengage` trait Disengage as a bonus action before a
+driven walk any step of which leaves a standing hostile's melee reach (rpg-toolkit#2032). Nil skips
+the ask, and the walk provokes as any walk does.
+
 It answers, on the other hand, in geometry, placement, knowledge and clocks: `Members`,
 `MembersIn`, `RegionAt`, `Region`, `Distance`, `Canvas`, `Grid`, `Atlas`/`AtlasFor`,
 `Doors`/`DoorsFor`, `View`, `Story`, `ClockOf`, `Stance`/`StanceBetween`/`IsHostile`/`IsAllied`,
