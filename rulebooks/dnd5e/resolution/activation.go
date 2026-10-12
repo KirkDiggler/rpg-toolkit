@@ -19,15 +19,34 @@ import (
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // ActivationInput names one member using something they already carry.
 type ActivationInput struct {
-	// MemberID is who is activating. Required, and must be a CHARACTER in the
-	// cast: a monster's abilities are driven by its behaviour, not declared by
-	// a player, and its economy belongs to whoever runs its turn rather than
-	// to its sheet — the same line [ErrNoPayer] draws.
+	// MemberID is who is activating. Required. Without [ActivationInput.Driven]
+	// it must be a CHARACTER in the cast: a monster's abilities are driven by
+	// its behaviour, not declared by a player, and its economy belongs to
+	// whoever runs its turn rather than to its sheet — the same line
+	// [ErrNoPayer] draws. With Driven it must be a MONSTER.
 	MemberID string
+
+	// Driven says the activation was DECIDED AND PAID FOR by whoever drives a
+	// monster's turn — encounter's TurnBudget spent the bonus action before
+	// asking — so resolution charges nothing and refuses nothing on
+	// affordability. It only lands the ability's outcome on the monster,
+	// through the monster side of the cast, exactly as the player arm lands
+	// the same ability on a character.
+	//
+	// A driven activation is a monster's door and nobody else's: a character
+	// sent through it is refused ([ErrBadActivation], "characters declare"),
+	// because a character's economy is on its sheet and the player arm charges
+	// it there. An ability with no driven arm yet is refused by name rather
+	// than run some other way. Driven today: Disengage
+	// (refs.CombatAbilities.Disengage), the half of Nimble Escape that has a
+	// use case (rpg-toolkit#2032). The next driven ability adds its arm in
+	// [activationMachine.startDriven].
+	Driven bool
 
 	// Ability is which of the things they carry. Required. A ref rather than
 	// an index or a name, because the sheet's own lookup is by ref and a
@@ -460,8 +479,16 @@ func (c *activationEffectCollector) Close(ctx context.Context) error {
 // machine is never told, which is the ignorance [Input.Cost] asks for — see
 // [ActivationInput.cast].
 //
+// # A monster comes through the driven arm
+//
+// With [ActivationInput.Driven] set the activator is a monster whose driver
+// already spent the economy; see [activationMachine.startDriven]. Without it
+// a monster is refused at Start, as it always was.
+//
 // Refuses a nil input, a member with no ID, a missing or invalid ability ref,
-// and a nil roller, all before the world is loaded.
+// and a nil roller, all before the world is loaded. The driven arm holds the
+// same door: a driven ability that rolls nothing today still carries a roller,
+// because the next driven ability (Hide) rolls.
 func NewActivation(in *ActivationInput) (Machine, error) {
 	if in == nil {
 		return nil, ErrNilInput
@@ -506,6 +533,7 @@ func NewActivation(in *ActivationInput) (Machine, error) {
 		targetID:  in.TargetID,
 		observers: observers,
 		roller:    in.Roller,
+		driven:    in.Driven,
 	}, nil
 }
 
@@ -515,6 +543,10 @@ type activationMachine struct {
 	targetID  string
 	observers []int
 	roller    dice.Roller
+
+	// driven is [ActivationInput.Driven]: the monster's driver spent the
+	// economy, and Start takes the driven arm instead of the player's.
+	driven bool
 
 	// cast is set for a gateless cast and nil for every activation. It is the
 	// one branch this machine takes, and it is taken in Start.
@@ -534,12 +566,16 @@ func (m *activationMachine) Start(_ context.Context, cast *Participants) (Step, 
 	if m.cast != nil {
 		return m.startCast(cast)
 	}
+	if m.driven {
+		return m.startDriven(cast)
+	}
 
 	actor, ok := cast.Character(m.member)
 	if !ok {
 		// Named separately from "not in the cast at all" because a monster IS
 		// in the cast and still cannot be here: its abilities are driven, not
-		// declared, and its economy is not on its sheet.
+		// declared, and its economy is not on its sheet. Its driver reaches it
+		// through [ActivationInput.Driven] and [activationMachine.startDriven].
 		if _, isMonster := cast.Monster(m.member); isMonster {
 			return nil, fmt.Errorf("%w: %q is a monster; its abilities are driven, not declared",
 				ErrBadActivation, m.member)
@@ -679,6 +715,105 @@ func (m *activationMachine) step(actor *character.Character, target core.Entity)
 				Ability:         m.ability.String(),
 				GrantedCapacity: out.GrantedCapacity,
 				Effects:         effects,
+			}}, nil
+		},
+	}
+}
+
+// startDriven is the driven arm's preflight: the activator must be a monster in
+// the cast, and the ability must be one this arm knows how to land.
+//
+// # It mirrors the player arm, it does not replace it
+//
+// The player arm asks the character's sheet to ActivateAbility, and the
+// ability spends the character's economy and publishes its condition. A
+// monster has neither the sheet method nor the economy — its driver
+// (encounter's TurnBudget) already spent the bonus action before asking — so
+// this arm does the one remaining thing: it publishes the SAME condition the
+// player's ability publishes, on this interaction's bus, through the monster
+// side of the cast. Nothing is charged, and nothing is refused for
+// affordability.
+//
+// # The abilities it knows are a closed list
+//
+// Disengage is the only one, because Nimble Escape's Disengage is the only use
+// case (rpg-toolkit#2032). Anything else is refused by name — fail closed: a
+// driven Hide routed through some other arm, or silently landing nothing,
+// would report success for an interaction that did not happen. The next
+// driven ability (Hide, Aggressive, Rampage…) adds its case here.
+func (m *activationMachine) startDriven(cast *Participants) (Step, error) {
+	if _, isCharacter := cast.Character(m.member); isCharacter {
+		return nil, fmt.Errorf("%w: %q is a character; characters declare, and a driven activation is a monster's",
+			ErrBadActivation, m.member)
+	}
+	mon, ok := cast.Monster(m.member)
+	if !ok {
+		return nil, fmt.Errorf("%w: %q is not a participant", ErrBadActivation, m.member)
+	}
+
+	switch m.ability.String() {
+	case refs.CombatAbilities.Disengage().String():
+		if m.targetID != "" {
+			return nil, fmt.Errorf("%w: %s takes no target, but %q was named",
+				ErrBadActivation, m.ability.String(), m.targetID)
+		}
+		return m.drivenStep(cast, mon, conditions.NewDisengagingCondition(mon.GetID())), nil
+	default:
+		return nil, fmt.Errorf("%w: %s is not yet driven for a monster; Disengage is the only driven ability",
+			ErrBadActivation, m.ability.String())
+	}
+}
+
+// drivenStep lands one built condition on a monster, inside the collector
+// every activation result travels through, so the outcome is the player arm's
+// shape: the ability's ref echoed back and the condition facts in publication
+// order.
+//
+// It goes through [publishCondition], the cast arm's landing, rather than a
+// bare publish, for rpg-toolkit#1946: the character keeper replaces a
+// condition already at the same address before applying a new one, and the
+// monster keeper does not. publishCondition's replaceSameAddress supplies that
+// rule here, so a second driven Disengage in a turn replaces the first exactly
+// as a player's second Disengage does — a "replaced" removal, then the
+// application — instead of stacking two instances on the sheet.
+//
+// The source is [dnd5eEvents.ConditionSourceCombatAbility], the one the
+// player's Disengage publishes with. Its DisengageActivated telemetry is NOT
+// published: that event names a CharacterID, and the composition already
+// tells the beat (encounter's activated beat, rpg-toolkit#2036).
+func (m *activationMachine) drivenStep(
+	cast *Participants, mon core.Entity, condition dnd5eEvents.ConditionBehavior,
+) Step {
+	return Gather{
+		name: fmt.Sprintf("driven %s for %s", m.ability.String(), m.member),
+		run: func(ctx context.Context, bus events.EventBus) (next Step, err error) {
+			collector, err := newActivationEffectCollector(ctx, bus)
+			if err != nil {
+				return nil, fmt.Errorf("driven %s for %q: collect effects: %w",
+					m.ability.String(), m.member, err)
+			}
+			defer func() {
+				if closeErr := collector.Close(ctx); closeErr != nil {
+					next = nil
+					err = errors.Join(err,
+						fmt.Errorf("driven %s for %q: close effect collector: %w",
+							m.ability.String(), m.member, closeErr))
+				}
+			}()
+
+			landing := preparedCondition{
+				declaration: combatActions.ConditionApplication{Ref: *condition.Ref()},
+				behavior:    condition,
+			}
+			if _, err := publishCondition(
+				ctx, bus, cast, landing, mon, dnd5eEvents.ConditionSourceCombatAbility,
+			); err != nil {
+				return nil, fmt.Errorf("driven %s for %q: %w", m.ability.String(), m.member, err)
+			}
+
+			return Done{Outcome: ActivationOutcome{
+				Ability: m.ability.String(),
+				Effects: collector.Effects(),
 			}}, nil
 		},
 	}

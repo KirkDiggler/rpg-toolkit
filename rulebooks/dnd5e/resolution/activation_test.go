@@ -198,6 +198,14 @@ func (s *ActivationTestSuite) run(
 	machine, err := NewActivation(in)
 	s.Require().NoError(err)
 
+	return s.resolveMachine(machine, world, participants)
+}
+
+// resolveMachine resolves any machine in the activation suite's capabilities,
+// so a scene can follow an activation with the interaction it changes.
+func (s *ActivationTestSuite) resolveMachine(
+	machine Machine, world encounter.EncounterData, participants []Participant,
+) (*Output, error) {
 	return Resolve(s.ctx, &Input{
 		World:        world,
 		Participants: participants,

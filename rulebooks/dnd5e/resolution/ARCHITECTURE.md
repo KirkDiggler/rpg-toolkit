@@ -138,6 +138,20 @@ payment. On hit it processes applications in slice order:
 
 Multiple applications remain ordered data rather than an effects language.
 
+## Driven activations
+
+A monster's abilities are driven, not declared, and its economy is not on its
+sheet. So `NewActivation` refuses a monster unless `ActivationInput.Driven` is
+set, which says the driver already decided and paid. Encounter's `TurnBudget`
+spends the bonus action and encounter writes the activated beat. Resolution
+charges nothing and refuses nothing on affordability. It lands the ability's
+outcome on the monster the way the player arm lands it on a character: the same
+condition, through `publishCondition`, so `replaceSameAddress` supplies the
+one-instance-per-address rule the monster keeper lacks (rpg-toolkit#1946). The
+outcome is the player arm's `ActivationOutcome` shape. Disengage is the only
+driven ability today (rpg-toolkit#2032). Any other is refused by name, and a
+character sent through the driven door is refused because characters declare.
+
 ## Extension rule
 
 > Add a profile arm only when a distinct machine exists. Dispatch by profile
