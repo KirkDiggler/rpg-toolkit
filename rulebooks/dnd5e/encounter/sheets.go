@@ -54,6 +54,24 @@ type SheetFacts struct {
 	// [MonsterView.Targeting]. Empty for a member with no strategy, which is
 	// every player today. Opaque here (C1).
 	Targeting string
+
+	// BonusDisengage names the trait that lets this member take the Disengage
+	// action as a BONUS action, and is the zero value when nothing does
+	// (rpg-toolkit#2032). A session fills it for a monster whose stat block
+	// carries Nimble Escape, from that trait's own ref and display name; the
+	// next trait that grants a bonus-action Disengage answers the same field,
+	// with no change here.
+	//
+	// AN IDENTITY RATHER THAN A FLAG, for law C1: the encounter decides WHEN
+	// the bonus action is spent (before a driven walk whose first step leaves
+	// a standing hostile's melee reach — see [Disengager]), and the story it
+	// tells about that spend has to name the trait. This module cannot know
+	// a rulebook ref or its name, so the sheet that knows them hands both
+	// over, and they travel verbatim onto the [BeatActivated] beat.
+	//
+	// BOTH OR NEITHER: a Ref without a Name, or a Name without a Ref, is
+	// refused (ErrInvalidData) — a half-named trait cannot be told.
+	BonusDisengage ActivationIdentity
 }
 
 // Sheets reports each given member's [SheetFacts]. The composition asks; the
@@ -153,7 +171,8 @@ func (e *Encounter) sheetOf(id MemberID) (SheetFacts, error) {
 	return facts, nil
 }
 
-// validateSheetFacts refuses a negative speed and a negative action range.
+// validateSheetFacts refuses a negative speed, a negative action range and a
+// half-named [SheetFacts.BonusDisengage].
 func validateSheetFacts(facts SheetFacts) error {
 	if facts.SpeedFeet < 0 {
 		return fmt.Errorf("speed %d feet is negative", facts.SpeedFeet)
@@ -162,6 +181,10 @@ func validateSheetFacts(facts SheetFacts) error {
 		if a.RangeFeet < 0 {
 			return fmt.Errorf("action %q range %d feet is negative", a.Ref, a.RangeFeet)
 		}
+	}
+	if (facts.BonusDisengage.Ref == "") != (facts.BonusDisengage.Name == "") {
+		return fmt.Errorf("bonus disengage %q/%q names only half a trait",
+			facts.BonusDisengage.Ref, facts.BonusDisengage.Name)
 	}
 
 	return nil

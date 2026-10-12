@@ -518,7 +518,7 @@ func (e *Encounter) driveOneMonsterTurn(
 	if err != nil {
 		return 0, false, nil, fmt.Errorf("turn budget: %w", err)
 	}
-	budget := TurnBudget{AttacksLeft: 1, MovementFeet: sheet.SpeedFeet}
+	budget := TurnBudget{AttacksLeft: 1, MovementFeet: sheet.SpeedFeet, BonusActions: 1}
 
 	// See the function doc: bounded so a misbehaving driver cannot spin the
 	// caller. +2 covers one attack and the terminating Pass a well-behaved
@@ -979,6 +979,15 @@ func (e *Encounter) executeTurnIntent(
 			return true, nil, nil
 		}
 
+		// NIMBLE BEFORE IT WALKS (rpg-toolkit#2032): a member whose sheet
+		// lets it Disengage as a bonus action spends it here, before a first
+		// step that would leave a hostile's reach, and the walk below is then
+		// the same walk it always was.
+		disengageDeltas, derr := e.disengageBeforeWalk(activeID, m, it.Path, budget)
+		if derr != nil {
+			return false, nil, derr
+		}
+
 		at := uint64(e.clock.ToData().HighWater)
 		audience := e.audienceFor(subjectBeat, activeID)
 
@@ -998,6 +1007,7 @@ func (e *Encounter) executeTurnIntent(
 		if serr != nil {
 			return false, nil, serr
 		}
+		intelDeltas = mergeIntelDeltas(disengageDeltas, intelDeltas)
 
 		// A REACTOR IS BEING ASKED. The step is announced and not taken; the
 		// mover still stands where the announcement said. Everything needed
@@ -1100,6 +1110,14 @@ func (e *Encounter) executeTurnIntent(
 			return true, nil, nil
 		}
 
+		// The Move arm's rule, for the Move arm's reason: a nimble creature
+		// sent running still spends its bonus action to get out cleanly. The
+		// route is known now, so its first step is too.
+		disengageDeltas, derr := e.disengageBeforeWalk(activeID, m, route.Path, budget)
+		if derr != nil {
+			return false, nil, derr
+		}
+
 		audience := e.audienceFor(subjectBeat, activeID)
 
 		// forced=false: this creature IS walking, under somebody else's
@@ -1119,6 +1137,7 @@ func (e *Encounter) executeTurnIntent(
 		if serr != nil {
 			return false, nil, serr
 		}
+		intelDeltas = mergeIntelDeltas(disengageDeltas, intelDeltas)
 
 		if res.paused != nil {
 			// TERMINAL SURVIVES THE WINDOW. The flag and the cause go into
@@ -1156,6 +1175,110 @@ func (e *Encounter) executeTurnIntent(
 	default:
 		return false, nil, fmt.Errorf("driver returned %T: %w", intent, ErrBadTurnOutcome)
 	}
+}
+
+// meleeReachCells is the v1 reading of "a hostile's melee reach" for the
+// bonus-action Disengage decision: one cell, 5 feet — the reach of every
+// melee weapon a creature carries without the reach property.
+//
+// A NUMBER, NOT A SHEET READ, because the sheet cannot tell this module which
+// of a creature's actions is melee: [ActionView.Kind] is opaque (C1) and
+// [ActionView.RangeFeet] is a ranged action's long range as readily as a
+// sword's reach, so "the longest action" would put every archer's 80 feet
+// around them. The day a reach weapon or a long-limbed stat block needs the
+// 10-foot answer, the sheet gains a melee-reach fact and this constant goes.
+const meleeReachCells = 1
+
+// disengageBeforeWalk is the composition's half of a bonus-action Disengage
+// (rpg-toolkit#2032): when the walker's sheet names a
+// [SheetFacts.BonusDisengage] trait, the turn still holds a bonus action, a
+// [Disengager] is wired, and the FIRST step of path leaves the melee reach of
+// a standing hostile the walker is in reach of now, it asks the Disengager,
+// spends the bonus action, and tells the story one [BeatActivated] beat
+// naming the trait. Otherwise it does nothing at all.
+//
+// THE FIRST STEP, because that is the step that provokes: a walk that slides
+// round a hostile and leaves on its third cell is a different decision than
+// this slice was asked for, and the step-by-step machinery that would make it
+// lives with the opportunity attack, not here.
+//
+// THE WORLD CLOCK NEVER REACHES THE ASK. A round of the world hands a budget
+// with no bonus action ([TurnBudget.BonusActions] is 0 there), and nobody on
+// the world clock can stand in a hostile's reach: that is a fight, and it
+// would have formed.
+//
+// ASK, THEN SPEND, THEN TELL. A Disengager that fails aborts the verb with
+// nothing spent and nothing told, so the story never claims a disengage the
+// sheet did not take.
+func (e *Encounter) disengageBeforeWalk(
+	member MemberID, m *memberRecord, path []spatial.Position, budget *TurnBudget,
+) (map[MemberID]*IntelDelta, error) {
+	if e.disengager == nil || budget.BonusActions <= 0 || len(path) == 0 {
+		return nil, nil
+	}
+	sheet, err := e.sheetOf(member)
+	if err != nil {
+		return nil, fmt.Errorf("disengage %q: %w", member, err)
+	}
+	if sheet.BonusDisengage.Ref == "" {
+		return nil, nil
+	}
+	leaves, err := e.firstStepLeavesHostileReach(member, m, path[0])
+	if err != nil {
+		return nil, fmt.Errorf("disengage %q: %w", member, err)
+	}
+	if !leaves {
+		return nil, nil
+	}
+
+	// context.Background() for the Striker call's reason: no verb on this
+	// composition takes a caller context today.
+	if err := e.disengager.Disengage(context.Background(), e, member); err != nil {
+		return nil, fmt.Errorf("disengage %q: %w", member, err)
+	}
+	budget.BonusActions--
+
+	out, err := e.RecordActivation(&RecordActivationInput{Actor: member, Ability: sheet.BonusDisengage})
+	if err != nil {
+		return nil, fmt.Errorf("disengage %q: %w", member, err)
+	}
+
+	return out.IntelDeltas, nil
+}
+
+// firstStepLeavesHostileReach reports whether stepping from the walker's
+// cell to first leaves the melee reach ([meleeReachCells]) of at least one
+// member who is opposed to the walker, standing, and in reach of it now.
+//
+// READ FROM THE ENCOUNTER'S OWN TRUTH, not the walker's testimony: whether a
+// step provokes is a fact about where bodies are, and a creature that has
+// lost sight of the fighter beside it is still beside it.
+func (e *Encounter) firstStepLeavesHostileReach(
+	member MemberID, m *memberRecord, first spatial.Position,
+) (bool, error) {
+	from, err := e.cellOf(m)
+	if err != nil {
+		return false, fmt.Errorf("position: %w", err)
+	}
+	down, err := e.downNow()
+	if err != nil {
+		return false, err
+	}
+	for id := range e.members {
+		if id == member || down[id] || !e.opposed(member, id) {
+			continue
+		}
+		at, placed := e.canvas.GetEntityPosition(string(id))
+		if !placed {
+			continue
+		}
+		reach := float64(meleeReachCells)
+		if e.Distance(from, at) <= reach && e.Distance(first, at) > reach {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // turnCoords locates one Act call inside its member's turn: which round, and

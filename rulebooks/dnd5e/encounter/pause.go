@@ -249,6 +249,11 @@ type TurnPauseData struct {
 type TurnBudgetData struct {
 	AttacksLeft  int `json:"attacks_left,omitempty"`
 	MovementFeet int `json:"movement_feet,omitempty"`
+
+	// BonusActions is [TurnBudget.BonusActions]. Absent in a blob written
+	// before it existed, which reads as none left — the conservative answer:
+	// a resumed turn cannot spend a bonus action nobody recorded it holding.
+	BonusActions int `json:"bonus_actions,omitempty"`
 }
 
 // pauseDataFrom renders the pause for the blob, stamped with [PauseVersion].
@@ -279,6 +284,7 @@ func pauseDataFrom(p *pause) *PauseData {
 			Budget: TurnBudgetData{
 				AttacksLeft:  p.turn.budget.AttacksLeft,
 				MovementFeet: p.turn.budget.MovementFeet,
+				BonusActions: p.turn.budget.BonusActions,
 			},
 			Intent:      p.turn.intent,
 			Bound:       p.turn.bound,
@@ -350,6 +356,7 @@ func pauseFrom(d *PauseData) (*pause, error) {
 			budget: TurnBudget{
 				AttacksLeft:  d.Turn.Budget.AttacksLeft,
 				MovementFeet: d.Turn.Budget.MovementFeet,
+				BonusActions: d.Turn.Budget.BonusActions,
 			},
 			intent:      d.Turn.Intent,
 			bound:       d.Turn.Bound,
@@ -462,7 +469,7 @@ func validatePause(d *PauseData, members map[core.EntityID]struct{}) error {
 				"load encounter paused turn %q: intent %d is outside the turn's bound %d: %w",
 				d.Member, t.Intent, t.Bound, ErrInvalidData)
 		}
-		if t.Budget.AttacksLeft < 0 || t.Budget.MovementFeet < 0 {
+		if t.Budget.AttacksLeft < 0 || t.Budget.MovementFeet < 0 || t.Budget.BonusActions < 0 {
 			return fmt.Errorf("load encounter paused turn %q: negative budget: %w", d.Member, ErrInvalidData)
 		}
 		if t.Round < 0 {

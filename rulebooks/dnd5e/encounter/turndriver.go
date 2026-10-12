@@ -308,6 +308,18 @@ type TurnBudget struct {
 	// the start of the turn, decremented by 5 feet per cell as [Move]
 	// intents execute. Once handed to the turn it is the turn's own value.
 	MovementFeet int
+
+	// BonusActions is how many bonus actions this member may still spend this
+	// turn — 1 at the start of a turn in a fight, 0 on the world clock, where
+	// a round of the world carries no action economy at all.
+	//
+	// THE FIRST FIELD OF A MONSTER BONUS-ACTION ECONOMY (rpg-toolkit#2032),
+	// and today it has exactly one spender: the composition's own Disengage
+	// before a walk out of a hostile's reach, for a member whose sheet says
+	// [SheetFacts.BonusDisengage]. A driver does not spend it and there is no
+	// intent that does; it is on the view so a driver can see what is left.
+	// Players' bonus actions are their sheet's own economy and are not this.
+	BonusActions int
 }
 
 // TurnIntent is a sealed vocabulary (unexported marker method) — a
@@ -663,6 +675,37 @@ type Striker interface {
 	// verb exactly as a [Driver.Act] error does; a miss is not an
 	// error — it is an ordinary [OutcomeMissed] recorded the same as a hit.
 	Strike(ctx context.Context, enc *Encounter, attacker, target MemberID, action core.Ref) error
+}
+
+// Disengager makes one member Disengage as a bonus action — the ask the
+// composition makes before a driven walk whose first step leaves the melee
+// reach of a standing hostile, for a member whose sheet names a
+// [SheetFacts.BonusDisengage] trait and whose turn still holds a bonus action
+// (rpg-toolkit#2032).
+//
+// THE DECISION IS THE COMPOSITION'S, THE RULE IS THE SHEET'S. This module
+// knows where everybody stands and what is left of the turn, so it decides
+// when the bonus action is spent; it cannot import the rulebook (C1), so what
+// "Disengaging" means — that a walk provokes no opportunity attack — is the
+// implementation's to apply. A dnd5e host applies the existing Disengaging
+// condition to the member, the same one a player's Disengage applies; the
+// walk that follows is then announced to the [Mover] exactly as before and the
+// rules that react to it see the condition. Nothing here changes provocation.
+//
+// THE IMPLEMENTATION RECORDS NOTHING. The composition tells the story itself,
+// after a successful ask and before the walk: ONE [BeatActivated] beat whose
+// actor is the member and whose ability is the sheet's BonusDisengage
+// identity. An implementation that also recorded would tell it twice.
+//
+// OPTIONAL, unlike [Striker] and [Mover]. A nil Disengager skips the ask: no
+// bonus action is spent, no beat is told, and the walk provokes exactly as any
+// walk does. That is a true account of a host that never wired the trait — the
+// creature walks without disengaging — not an invented answer.
+type Disengager interface {
+	// Disengage makes member Disengage. An error is a MALFUNCTION (a corrupt
+	// or missing sheet) and aborts the caller's whole verb, as a [Striker]'s
+	// does; the walk it was asked for does not happen.
+	Disengage(ctx context.Context, enc *Encounter, member MemberID) error
 }
 
 // Mover announces one member's step before this composition takes it.
