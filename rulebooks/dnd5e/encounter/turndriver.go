@@ -678,7 +678,7 @@ type Striker interface {
 }
 
 // Disengager makes one member Disengage as a bonus action — the ask the
-// composition makes before a driven walk whose first step leaves the melee
+// composition makes before a driven walk any step of which leaves the melee
 // reach of a standing hostile, for a member whose sheet names a
 // [SheetFacts.BonusDisengage] trait and whose turn still holds a bonus action
 // (rpg-toolkit#2032).

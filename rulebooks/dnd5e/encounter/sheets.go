@@ -63,7 +63,7 @@ type SheetFacts struct {
 	// with no change here.
 	//
 	// AN IDENTITY RATHER THAN A FLAG, for law C1: the encounter decides WHEN
-	// the bonus action is spent (before a driven walk whose first step leaves
+	// the bonus action is spent (before a driven walk any step of which leaves
 	// a standing hostile's melee reach — see [Disengager]), and the story it
 	// tells about that spend has to name the trait. This module cannot know
 	// a rulebook ref or its name, so the sheet that knows them hands both

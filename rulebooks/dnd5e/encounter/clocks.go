@@ -1112,7 +1112,7 @@ func (e *Encounter) executeTurnIntent(
 
 		// The Move arm's rule, for the Move arm's reason: a nimble creature
 		// sent running still spends its bonus action to get out cleanly. The
-		// route is known now, so its first step is too.
+		// route is known now, so its steps are too.
 		disengageDeltas, derr := e.disengageBeforeWalk(activeID, m, route.Path, budget)
 		if derr != nil {
 			return false, nil, derr
@@ -1192,15 +1192,24 @@ const meleeReachCells = 1
 // disengageBeforeWalk is the composition's half of a bonus-action Disengage
 // (rpg-toolkit#2032): when the walker's sheet names a
 // [SheetFacts.BonusDisengage] trait, the turn still holds a bonus action, a
-// [Disengager] is wired, and the FIRST step of path leaves the melee reach of
-// a standing hostile the walker is in reach of now, it asks the Disengager,
-// spends the bonus action, and tells the story one [BeatActivated] beat
-// naming the trait. Otherwise it does nothing at all.
+// [Disengager] is wired, and ANY step of the walk leaves the melee reach of a
+// standing hostile the walker is in reach of at that step, it asks the
+// Disengager, spends the bonus action, and tells the story one [BeatActivated]
+// beat naming the trait. Otherwise it does nothing at all.
 //
-// THE FIRST STEP, because that is the step that provokes: a walk that slides
-// round a hostile and leaves on its third cell is a different decision than
-// this slice was asked for, and the step-by-step machinery that would make it
-// lives with the opportunity attack, not here.
+// THE WALK THAT WILL HAPPEN, NOT THE PATH THAT WAS ASKED. The walk ends where
+// its walker can stand ([Encounter.standableEnd], rpg-toolkit#2031), so the
+// path is trimmed here the same way [Encounter.walkPath] trims it. A path cut
+// to nothing — its only cell an ally's — walks nobody anywhere, and a bonus
+// action spent on it would be a disengage the story told for a goblin that
+// never moved. The ask moves nobody, so the walk below trims to the same cells.
+//
+// EVERY STEP, NOT THE FIRST. Any step that leaves a threatening hostile's
+// reach provokes: a goblin that slides round a fighter and leaves on its
+// second cell is leaving that fighter's reach as surely as one that backs
+// straight off. A creature Disengages once, before it moves, and the condition
+// lasts the turn — so one ask covers the whole walk. Every other body is held
+// where it stands for the decision: nobody else moves inside this walk.
 //
 // THE WORLD CLOCK NEVER REACHES THE ASK. A round of the world hands a budget
 // with no bonus action ([TurnBudget.BonusActions] is 0 there), and nobody on
@@ -1223,7 +1232,14 @@ func (e *Encounter) disengageBeforeWalk(
 	if sheet.BonusDisengage.Ref == "" {
 		return nil, nil
 	}
-	leaves, err := e.firstStepLeavesHostileReach(member, m, path[0])
+	walked, err := e.standableEnd(member, path)
+	if err != nil {
+		return nil, fmt.Errorf("disengage %q: %w", member, err)
+	}
+	if len(walked) == 0 {
+		return nil, nil
+	}
+	leaves, err := e.walkLeavesHostileReach(member, m, walked)
 	if err != nil {
 		return nil, fmt.Errorf("disengage %q: %w", member, err)
 	}
@@ -1246,15 +1262,16 @@ func (e *Encounter) disengageBeforeWalk(
 	return out.IntelDeltas, nil
 }
 
-// firstStepLeavesHostileReach reports whether stepping from the walker's
-// cell to first leaves the melee reach ([meleeReachCells]) of at least one
-// member who is opposed to the walker, standing, and in reach of it now.
+// walkLeavesHostileReach reports whether any consecutive step of walked —
+// from the walker's own cell onward — leaves the melee reach
+// ([meleeReachCells]) of a member who is opposed to the walker, standing, and
+// in reach of it at the start of that step.
 //
 // READ FROM THE ENCOUNTER'S OWN TRUTH, not the walker's testimony: whether a
 // step provokes is a fact about where bodies are, and a creature that has
 // lost sight of the fighter beside it is still beside it.
-func (e *Encounter) firstStepLeavesHostileReach(
-	member MemberID, m *memberRecord, first spatial.Position,
+func (e *Encounter) walkLeavesHostileReach(
+	member MemberID, m *memberRecord, walked []spatial.Position,
 ) (bool, error) {
 	from, err := e.cellOf(m)
 	if err != nil {
@@ -1264,18 +1281,25 @@ func (e *Encounter) firstStepLeavesHostileReach(
 	if err != nil {
 		return false, err
 	}
+	var threats []spatial.Position
 	for id := range e.members {
 		if id == member || down[id] || !e.opposed(member, id) {
 			continue
 		}
-		at, placed := e.canvas.GetEntityPosition(string(id))
-		if !placed {
-			continue
+		if at, placed := e.canvas.GetEntityPosition(string(id)); placed {
+			threats = append(threats, at)
 		}
-		reach := float64(meleeReachCells)
-		if e.Distance(from, at) <= reach && e.Distance(first, at) > reach {
-			return true, nil
+	}
+
+	reach := float64(meleeReachCells)
+	prev := from
+	for _, cell := range walked {
+		for _, at := range threats {
+			if e.Distance(prev, at) <= reach && e.Distance(cell, at) > reach {
+				return true, nil
+			}
 		}
+		prev = cell
 	}
 
 	return false, nil

@@ -86,7 +86,7 @@ supplied capability, never as a new import.** Every one of these is required at
 
 One actor is asked but NOT required: `Disengager` ([turndriver.go](./turndriver.go)) makes a
 member whose sheet names a `SheetFacts.BonusDisengage` trait Disengage as a bonus action before a
-driven walk whose first step leaves a standing hostile's melee reach (rpg-toolkit#2032). Nil skips
+driven walk any step of which leaves a standing hostile's melee reach (rpg-toolkit#2032). Nil skips
 the ask, and the walk provokes as any walk does.
 
 It answers, on the other hand, in geometry, placement, knowledge and clocks: `Members`,

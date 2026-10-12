@@ -17,7 +17,7 @@ import (
 
 // bonusdisengage_test.go pins rpg-toolkit#2032 step 2: a monster whose sheet
 // says it may Disengage as a bonus action spends that bonus action BEFORE a
-// walk whose first step leaves a standing hostile's melee reach — asks its
+// walk any step of which leaves a standing hostile's melee reach — asks its
 // [encounter.Disengager], tells the story once, and then walks unchanged.
 //
 // Every case puts alice (player, hostile) at (1,1) and the goblin beside her
@@ -233,7 +233,7 @@ func TestWalkThatDoesNotLeaveReachDisengagesNobody(t *testing.T) {
 		require.Equal(t, cellAt(5, 5), positionsOf(t, enc)[goblin])
 	})
 
-	t.Run("first step stays in reach", func(t *testing.T) {
+	t.Run("the only step stays in reach", func(t *testing.T) {
 		// Found rather than hand-picked: a neighbour of the goblin's cell
 		// that is also a neighbour of alice's, by the encounter's own
 		// distance — the step slides round her without leaving her reach.
@@ -373,4 +373,115 @@ func TestSheetRefusesAHalfNamedBonusDisengage(t *testing.T) {
 			require.ErrorIs(t, err, encounter.ErrInvalidData)
 		})
 	}
+}
+
+// goblin2 is the goblin's ally: two monsters share a side.
+const goblin2 = encounter.MemberID("goblin2")
+
+func TestWalkCutToNothingByAnAllyDisengagesNobody(t *testing.T) {
+	// The gate's probe on #2036: the goblin's only cell is its ally's, so
+	// the walk ends where it can stand — where it already is. Nothing is
+	// spent, nothing is told, and the story is the story the same turn
+	// tells with no Disengager wired at all.
+	for name, intent := range map[string]encounter.TurnIntent{
+		"move": encounter.Move{Path: []spatial.Position{cellAt(3, 1)}},
+		// An authored cell past the ally, with one cell of movement: the
+		// route runs through the ally and the budget cuts it there.
+		"routed onto the ally": encounter.Routed{
+			AnchorAt: func() *spatial.Position { c := cellAt(4, 1); return &c }(),
+			Cause:    core.Ref{Module: "dnd5e", Type: "conditions", ID: "frightened"},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			scene := func(d encounter.Disengager) disengageScene {
+				sc := goblinBesideAlice(intent, encounter.Pass{})
+				sc.members = append(sc.members,
+					encounter.MemberInput{ID: goblin2, Kind: encounter.KindMonster, Position: cellAt(3, 1)})
+				sc.sheets[goblin] = encounter.SheetFacts{SpeedFeet: 5, BonusDisengage: nimbleEscape}
+				sc.sheets[goblin2] = encounter.SheetFacts{}
+				sc.disengager = d
+				return sc
+			}
+
+			d := &recordingDisengager{}
+			enc, driver := scene(d).build(t)
+			_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+			require.NoError(t, err)
+
+			plain, _ := scene(nil).build(t)
+			_, err = plain.EndTurn(&encounter.EndTurnInput{Member: alice})
+			require.NoError(t, err)
+
+			require.Empty(t, d.calls, "a walk that goes nowhere is not paid for")
+			beats, _, all := activatedBeats(t, enc)
+			require.Empty(t, beats)
+			require.Equal(t, cellAt(2, 1), positionsOf(t, enc)[goblin], "the goblin stayed")
+			require.Equal(t, storyBeats(t, plain, alice), all, "the turn's story is unchanged")
+			require.Equal(t, 1, driver.calls[0].Budget.BonusActions)
+		})
+	}
+}
+
+func TestAdjacentAllyIsNotDisengagedFrom(t *testing.T) {
+	// goblin2 stands beside the goblin, alice far off: leaving a friend's
+	// reach provokes nothing.
+	d := &recordingDisengager{}
+	sc := disengageScene{
+		members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: cellAt(8, 8)},
+			{ID: goblin, Kind: encounter.KindMonster, Position: cellAt(2, 1)},
+			{ID: goblin2, Kind: encounter.KindMonster, Position: cellAt(1, 1)},
+		},
+		sheets:     sheetFacts{goblin: {SpeedFeet: 30, BonusDisengage: nimbleEscape}, goblin2: {}, alice: {}},
+		intents:    []encounter.TurnIntent{encounter.Move{Path: []spatial.Position{cellAt(3, 1)}}, encounter.Pass{}},
+		disengager: d,
+	}
+	enc, _ := sc.build(t)
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	require.NoError(t, err)
+
+	require.Empty(t, d.calls)
+	require.Equal(t, cellAt(3, 1), positionsOf(t, enc)[goblin])
+}
+
+func TestLeavingReachOnALaterStepIsPaidFor(t *testing.T) {
+	// The first step slides round alice and stays beside her; the second
+	// leaves. Both cells are found by the encounter's own distance rather
+	// than hand-picked, so the geometry is the claim.
+	probe, _ := goblinBesideAlice().build(t)
+	aliceAt, goblinAt := cellAt(1, 1), cellAt(2, 1)
+	var slide, away spatial.Position
+	found := false
+	for x := 0; x <= 5 && !found; x++ {
+		for y := 0; y <= 5 && !found; y++ {
+			c := cellAt(x, y)
+			if c == aliceAt || c == goblinAt || probe.Distance(c, aliceAt) != 1 || probe.Distance(c, goblinAt) != 1 {
+				continue
+			}
+			for ax := 0; ax <= 5 && !found; ax++ {
+				for ay := 0; ay <= 5 && !found; ay++ {
+					a := cellAt(ax, ay)
+					if probe.Distance(a, c) == 1 && probe.Distance(a, aliceAt) > 1 {
+						slide, away, found = c, a, true
+					}
+				}
+			}
+		}
+	}
+	require.True(t, found)
+
+	d := &recordingDisengager{}
+	sc := goblinBesideAlice(encounter.Move{Path: []spatial.Position{slide, away}}, encounter.Pass{})
+	sc.disengager = d
+	enc, _ := sc.build(t)
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	require.NoError(t, err)
+
+	require.Equal(t, []encounter.MemberID{goblin}, d.calls, "the second step leaves her reach, so the walk is paid for")
+	beats, at, all := activatedBeats(t, enc)
+	require.Len(t, beats, 1)
+	require.Less(t, at[0], firstMovedBeatOf(all, goblin), "paid for before the first step, not the leaving one")
+	require.Equal(t, away, positionsOf(t, enc)[goblin])
 }
