@@ -67,6 +67,7 @@ var descriptors = []descriptor{
 	vulnerabilityDescriptor,
 	packTacticsDescriptor,
 	undeadFortitudeDescriptor,
+	nimbleEscapeDescriptor,
 }
 
 // registry is descriptors keyed by ref.String(). [newRegistry] refuses a

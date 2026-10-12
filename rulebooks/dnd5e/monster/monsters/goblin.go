@@ -5,6 +5,7 @@ package monsters
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -12,7 +13,9 @@ import (
 )
 
 // NewGoblin creates a standard goblin (CR 1/4, D&D 5e SRD stats) carrying a
-// scimitar and a shortbow.
+// scimitar and a shortbow, with Nimble Escape's Disengage half: it may
+// Disengage as a bonus action (rpg-toolkit#2032). The Hide half is not
+// represented; there is no monster Hide verb.
 func NewGoblin(id string) *monster.Monster {
 	m := monster.New(monster.Config{
 		ID:         id,
@@ -43,6 +46,11 @@ func NewGoblin(id string) *monster.Monster {
 	mustAddWeapon(m, weapons.Scimitar, weapons.Shortbow)
 
 	m.SetSpeed(monster.SpeedData{Walk: 30})
+
+	// Nimble Escape is carried, not spent: the stored ref is the fact a seam
+	// reads off the sheet. Deciding when the bonus action goes on a Disengage
+	// is the encounter's.
+	m.AddTraitData(conditions.MustNimbleEscapeJSON(id))
 
 	return m
 }

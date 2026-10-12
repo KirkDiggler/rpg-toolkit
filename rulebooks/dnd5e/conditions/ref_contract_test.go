@@ -125,6 +125,7 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 		"vulnerability":     Vulnerability("m1", damage.Bludgeoning),
 		"pack_tactics":      PackTactics("m1"),
 		"undead_fortitude":  UndeadFortitude("m1", 3, roller),
+		"nimble_escape":     NimbleEscape("m1"),
 	}
 }
 

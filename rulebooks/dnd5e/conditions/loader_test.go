@@ -388,6 +388,9 @@ func TestEveryLoadedConditionNamesItsCanonicalRef(t *testing.T) {
 		{"undead_fortitude", refs.MonsterTraits.UndeadFortitude(), func() dnd5eEvents.ConditionBehavior {
 			return UndeadFortitude("zombie-1", 3, dice.NewRoller())
 		}},
+		{"nimble_escape", refs.MonsterTraits.NimbleEscape(), func() dnd5eEvents.ConditionBehavior {
+			return NimbleEscape("goblin-1")
+		}},
 	}
 
 	for _, tc := range cases {
