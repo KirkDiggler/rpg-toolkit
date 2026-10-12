@@ -78,10 +78,12 @@ type TableDriver struct {
 //
 // AN ENTRY THAT SELECTED NOBODY STILL ROLLED. `attack: attacker` on a creature
 // nobody has attacked, `toward: enemy` with nothing opposed in sight or
-// memory: the entry was on the table, the die chose it, and the answer is
-// [Pass] with the pick attached — so the beat shows what the creature tried to
-// do and a reader can see why nothing happened. Silently re-rolling would hide
-// an authoring mistake behind plausible behaviour.
+// memory: the entry was on the table, the die chose it, and the answer carries
+// the pick — so the beat shows what the creature tried to do. Silently
+// re-rolling would hide an authoring mistake behind plausible behaviour. An
+// `attack` that cannot land goes out as the [Attack] anyway, and the encounter
+// says why it did nothing ([Attack]'s doc); a `toward` whose target is
+// already in reach goes out as a [Pass] that names itself.
 func (d TableDriver) Act(view MonsterView) (Decision, error) {
 	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
 		Key: AnswerTime, Table: view.Table, Temper: view.Temper, Facts: factsFromView(view), Die: d.Roller,
@@ -138,19 +140,28 @@ func (d TableDriver) intentFor(view MonsterView, entry Answer) (TurnIntent, erro
 // first action whose target is in reach is the one taken, so sorting the list
 // would quietly rewrite what the author said the monster does.
 //
-// NOBODY IN REACH IS A PASS, not a walk. The table has `toward` for closing
-// and this entry said `attack`; turning one word into the other would be this
-// driver making a decision the author did not write.
+// NOBODY IN REACH IS NOT A WALK. The table has `toward` for closing and this
+// entry said `attack`; turning one word into the other would be this driver
+// making a decision the author did not write.
+//
+// AND IT IS NOT A SILENT PASS EITHER (rpg-toolkit#2000). The Attack goes out
+// whatever this view says — with the author's first action when none reaches,
+// and with no Target when the selector named nobody — and the encounter, which
+// is where every attack is judged, refuses it and tells why. Judging reach
+// here as well used to mean two judges, both silent: this one returned a Pass
+// and the encounter's own returned "turn over", and the story could not say
+// which, or that either had happened.
 func (d TableDriver) attackIntent(view MonsterView, entry Answer) TurnIntent {
-	if view.Budget.AttacksLeft <= 0 {
-		return Pass{}
+	var first core.Ref
+	if len(view.Actions) > 0 {
+		first = view.Actions[0].Ref
 	}
 	target, ok := d.selectMember(view, entry, *entry.Attack)
 	if !ok {
-		return Pass{}
+		return Attack{Action: first}
 	}
 	for _, s := range view.Seen {
-		if s.ID != target || !s.Standing {
+		if s.ID != target {
 			continue
 		}
 		for _, a := range view.Actions {
@@ -160,7 +171,7 @@ func (d TableDriver) attackIntent(view MonsterView, entry Answer) TurnIntent {
 		}
 	}
 
-	return Pass{}
+	return Attack{Target: target, Action: first}
 }
 
 // towardIntent walks toward the selected member's BELIEVED position, or the
@@ -190,6 +201,9 @@ func (d TableDriver) towardIntent(view MonsterView, entry Answer) TurnIntent {
 	if !ok {
 		return Pass{}
 	}
+	if alreadyInReach(view, target) {
+		return Pass{Cause: tableCauseToward, Why: towardAlreadyInReach}
+	}
 	path := d.pathTo(view, target)
 	if len(path) == 0 {
 		return Pass{}
@@ -199,6 +213,39 @@ func (d TableDriver) towardIntent(view MonsterView, entry Answer) TurnIntent {
 	}
 
 	return Move{Path: append([]spatial.Position(nil), path...)}
+}
+
+// towardAlreadyInReach is the sentence a `toward` whose target is already
+// within range of one of the creature's actions tells on its stayed beat.
+const towardAlreadyInReach = "already in reach"
+
+// alreadyInReach reports whether target is in sight and within RANGE of any
+// of this member's own actions — the place `toward` was walking it to.
+//
+// RANGE, NOT MELEE REACH. [SeenMember.InReach] is each action's own range, so
+// a creature carrying a shortbow is "already in reach" of a target 80 feet
+// away and does not close. That matches the seen route's goal (the longest
+// range, [Encounter.buildMonsterView]), which is why the two agree; whether a
+// bow-carrier should close to melee is a separate question.
+//
+// THERE IS NO FORWARD STEP FROM HERE (rpg-toolkit#2001). The seen route is
+// already empty when the target is in reach ([Encounter.buildMonsterView]'s
+// goal holds where the creature stands), so this returns nothing the route
+// would not; what it adds is the reason, so the story says the creature
+// stayed because it was already there instead of passing in silence.
+func alreadyInReach(view MonsterView, target MemberID) bool {
+	for _, s := range view.Seen {
+		if s.ID != target {
+			continue
+		}
+		for _, a := range view.Actions {
+			if s.InReach[a.Ref] {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // awayIntent routes away from the selected member for this turn's movement —

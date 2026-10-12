@@ -226,6 +226,61 @@ func (s *TableSuite) TestEachDirectionNamesItselfInTheCause() {
 	s.NotEqual(tableCauseToward, tableCauseAway, "two directions, two causes")
 }
 
+// TestAnAttackThatCannotLandStillGoesOutAsTheAttack pins the driver half of
+// rpg-toolkit#2000: the table's `attack` is handed to the encounter whatever
+// the view says, because the encounter is where every attack is judged and
+// told. A driver that judged reach too, and passed in silence, was the second
+// silent judge the walk could not see past.
+func (s *TableSuite) TestAnAttackThatCannotLandStillGoesOutAsTheAttack() {
+	d := TableDriver{}
+	scimitar := core.Ref{Type: "weapons", ID: "scimitar"}
+	bow := core.Ref{Type: "weapons", ID: "shortbow"}
+	view := MonsterView{
+		Actions: []ActionView{{Ref: scimitar, RangeFeet: 5}, {Ref: bow, RangeFeet: 80}},
+		Seen: []SeenMember{{
+			ID: "bard", Opposed: true, Standing: true, DistanceCells: 20,
+			InReach: map[core.Ref]bool{scimitar: false, bow: false},
+		}},
+		Budget: TurnBudget{AttacksLeft: 1, MovementFeet: 30},
+	}
+
+	got := d.attackIntent(view, Answer{Attack: &Selector{Word: SelectorEnemy}})
+	s.Equal(Attack{Target: "bard", Action: scimitar}, got,
+		"out of reach: the author's first action, for the encounter to refuse and tell")
+
+	view.Seen[0].InReach[bow] = true
+	got = d.attackIntent(view, Answer{Attack: &Selector{Word: SelectorEnemy}})
+	s.Equal(Attack{Target: "bard", Action: bow}, got, "the first action that reaches, in the author's order")
+
+	got = d.attackIntent(view, Answer{Attack: &Selector{Word: SelectorAttacker}})
+	s.Equal(Attack{Action: scimitar}, got, "a selector that named nobody is an Attack with no target")
+}
+
+// TestTowardATargetInReachIsAPassThatNamesItself pins the driver half of
+// rpg-toolkit#2001's expected behaviour: `toward` a creature already in reach
+// has no step to take, and says so with its own cause rather than a silent
+// Pass.
+func (s *TableSuite) TestTowardATargetInReachIsAPassThatNamesItself() {
+	d := TableDriver{}
+	scimitar := core.Ref{Type: "weapons", ID: "scimitar"}
+	view := MonsterView{
+		Actions: []ActionView{{Ref: scimitar, RangeFeet: 5}},
+		Seen: []SeenMember{{
+			ID: "bard", Opposed: true, Standing: true, DistanceCells: 1,
+			InReach: map[core.Ref]bool{scimitar: true},
+		}},
+		Budget: TurnBudget{MovementFeet: 30},
+	}
+
+	got := d.towardIntent(view, Answer{Toward: &Selector{Word: SelectorEnemy}})
+	s.Equal(Pass{Cause: tableCauseToward, Why: "already in reach"}, got)
+
+	view.Seen[0].InReach[scimitar] = false
+	view.Seen[0].Path = []spatial.Position{{X: 1, Y: 0}}
+	got = d.towardIntent(view, Answer{Toward: &Selector{Word: SelectorEnemy}})
+	s.IsType(Move{}, got, "out of reach, it still walks")
+}
+
 // ---------------------------------------------------------------------------
 // The pause, through the real driver (rpg-toolkit#1883, rpg-project#498)
 // ---------------------------------------------------------------------------

@@ -870,7 +870,8 @@ func combatEndBoundaries(ms []clock.Milestone, members []MemberID) ([]Boundary, 
 // member's turn is over — [Pass], an [ErrBadIntent]-refused [Attack] or
 // [Move], or a [Move] that made no progress at all all end the turn the same
 // way; a successful [Attack] or [Move] leaves it running so the driver is
-// asked again against the updated budget and view.
+// asked again against the updated budget and view. A refused Attack and a
+// Pass that names its cause say so on the story first ([BeatStayed]).
 //
 // [Routed] is the one arm that is ALWAYS the end of the turn, however its walk
 // went: arrived, stopped by a wall, dropped, or never started. That is the
@@ -895,6 +896,23 @@ func (e *Encounter) executeTurnIntent(
 ) (done bool, deltas map[MemberID]*IntelDelta, err error) {
 	switch it := intent.(type) {
 	case Pass:
+		// A PASS THAT NAMES ITS CAUSE IS TOLD (rpg-toolkit#2001): the word
+		// the driver carried out needed no doing, and the story says so
+		// rather than going silent. A zero Pass is a creature with nothing
+		// to do, and the turn-ended beat already says all of that.
+		//
+		// A NON-ZERO CAUSE THAT IS NOT A REF IS MALFORMED, not silent — the
+		// Routed arm's rule and reason: a cause nobody can read makes the
+		// beat unnarratable, and dropping it would be the silence this arm
+		// exists to end. It aborts the verb with ErrNoCause.
+		if it.Cause != (core.Ref{}) {
+			if cerr := it.Cause.IsValid(); cerr != nil {
+				return false, nil, fmt.Errorf("pass %q: %w: %w", activeID, ErrNoCause, cerr)
+			}
+			if berr := e.appendStayedBeat(activeID, it.Cause, it.Why, uint64(e.clock.ToData().HighWater)); berr != nil {
+				return false, nil, berr
+			}
+		}
 		return true, nil, nil
 
 	case Attack:
@@ -907,9 +925,20 @@ func (e *Encounter) executeTurnIntent(
 		if coords.Clock == ClockWorld {
 			return false, nil, fmt.Errorf("%q swung on the world clock: %w", activeID, ErrAttackOffTurn)
 		}
-		if !attackIsInReach(view, it) || budget.AttacksLeft <= 0 {
+		if why := attackRefusal(view, it, *budget); why != "" {
 			// ErrBadIntent: not a driver malfunction (see the type's own
 			// doc) — this member's turn simply ends, exactly like Pass.
+			//
+			// AND IT SAYS WHY (rpg-toolkit#2000). This is the one place an
+			// attack is judged, so it is the one place that can say why
+			// one did nothing — for the table driver's `attack:` and for
+			// any other driver's Attack alike. It used to end the turn in
+			// silence, and the story went from `answered … attack` to
+			// `turn-ended` with nothing between: the author could not tell
+			// a goblin that chose to stand from one that could not reach.
+			if berr := e.appendStayedBeat(activeID, intentCauseAttack, why, uint64(e.clock.ToData().HighWater)); berr != nil {
+				return false, nil, berr
+			}
 			return true, nil, nil
 		}
 
@@ -1356,17 +1385,20 @@ func (e *Encounter) routedAnchor(it Routed) (spatial.Position, bool) {
 	return cell, true
 }
 
-// appendStayedBeat says that a routed walk moved nobody, and why as far as the
-// route could tell.
+// appendStayedBeat says that a driven creature's word did nothing — a routed
+// walk that moved nobody, an attack the encounter refused, a `toward` already
+// in reach — and why, as far as the one who judged it could tell.
 //
 // A FACT ABOUT THE WORLD, NOT A MALFUNCTION, which is why it is a beat rather
 // than an error: a creature with a wall at its back has obeyed its orders and
 // the turn is over. What was wrong before was that the story could not tell
 // that apart from a creature nobody asked.
 //
-// `why` is [RouteOutput.StoppedBy] — the fold's own refusal phrase ("is
-// blocked by dnd5e:props:pillar") — and empty when the route simply had
-// nowhere strictly nearer to offer, which is its own answer.
+// For a routed walk `why` is [RouteOutput.StoppedBy] — the fold's own refusal
+// phrase ("is blocked by dnd5e:props:pillar") — and empty when the route
+// simply had nowhere strictly nearer to offer, which is its own answer. For a
+// refused attack it is [attackRefusal]'s reason, and for a [Pass] that names
+// its cause it is the Pass's own Why.
 func (e *Encounter) appendStayedBeat(member MemberID, cause core.Ref, why string, at uint64) error {
 	payload, err := json.Marshal(map[string]interface{}{
 		"beat":   BeatStayed,
@@ -1569,24 +1601,57 @@ func (e *Encounter) settleWalk(audience []MemberID, moved int) (map[MemberID]*In
 	return intelDeltas, nil
 }
 
-// attackIsInReach reports whether intent's target is a currently Seen,
-// Standing member within intent's own Action's reach.
+// intentCauseAttack is the cause a refused [Attack]'s [BeatStayed] carries:
+// the attack word itself, whoever's driver said it. It names the INTENT
+// rather than the table because this is told where every driver's attack is
+// judged, and a hand-written driver's swing is not the table's.
+var intentCauseAttack = core.Ref{Module: "encounter", Type: "intent", ID: "attack"}
+
+// The sentences a refused attack's stayed beat carries, one per reason the
+// attack is refused, in the order they are asked.
+const (
+	attackRefusedNobody   = "names nobody"
+	attackRefusedSpent    = "no attack left"
+	attackRefusedUnseen   = "target not in sight"
+	attackRefusedDown     = "target is down"
+	attackRefusedOutReach = "target out of reach"
+)
+
+// attackRefusal is why intent cannot be carried out against this view and
+// budget, or "" when it can: Target is a currently Seen, Standing member
+// within intent's own Action's reach, and the turn has an attack left.
 //
-// A SINGLE MAP LOOKUP DOES BOTH CHECKS AT ONCE, deliberately: SeenMember's
+// THE FIRST REASON THAT HOLDS IS THE ONE TOLD. Nobody named comes before an
+// empty budget because a selector that named nobody is the author's news
+// whatever the budget says; sight before standing before reach because each
+// is the question the next one presumes.
+//
+// ONE MAP LOOKUP ANSWERS BOTH REACH AND OWNERSHIP, deliberately: SeenMember's
 // InReach is only ever populated for THIS member's own [MonsterView.Actions]
 // (see [Encounter.buildMonsterView]), so a Ref that does not name one of
 // this member's own actions is simply absent from the map — Go's zero value
 // for a missing key is false, which is exactly "not in reach" for an action
-// this member does not have. No separate "is this even my action" check is
-// needed because there is no way to reach true without it also being true.
-func attackIsInReach(view MonsterView, intent Attack) bool {
+// this member does not have.
+func attackRefusal(view MonsterView, intent Attack, budget TurnBudget) string {
+	if intent.Target == "" {
+		return attackRefusedNobody
+	}
+	if budget.AttacksLeft <= 0 {
+		return attackRefusedSpent
+	}
 	for _, sm := range view.Seen {
 		if sm.ID != intent.Target {
 			continue
 		}
-		return sm.Standing && sm.InReach[intent.Action]
+		if !sm.Standing {
+			return attackRefusedDown
+		}
+		if !sm.InReach[intent.Action] {
+			return attackRefusedOutReach
+		}
+		return ""
 	}
-	return false
+	return attackRefusedUnseen
 }
 
 // buildMonsterView projects member's own static facts, its currently active

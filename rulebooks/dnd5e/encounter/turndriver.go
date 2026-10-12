@@ -336,7 +336,27 @@ type TurnIntent interface {
 // to do — an empty [MonsterView.Seen], an exhausted [MonsterView.Budget], or
 // simply a decision to do nothing — and the only intent [PassDriver] ever
 // returns.
-type Pass struct{}
+//
+// A PASS THAT NAMES A CAUSE TRIED AND COULD NOT (rpg-toolkit#2001). The zero
+// Pass is a creature with nothing to do, and the story says nothing more
+// than that its turn ended. A Pass carrying a Cause is a word the driver
+// carried out that turned out to need no doing — `toward` a creature already
+// in reach — and the encounter tells it as a [BeatStayed] naming Cause and
+// Why, so a reader can tell "it was already there" from "nobody asked it".
+// Still the fourth case's sibling, not a fifth: the turn ends exactly as a
+// zero Pass ends it.
+type Pass struct {
+	// Cause is the word that did nothing, as a [core.Ref] — the table's
+	// `toward`, for the one driver that writes one today. Zero means a
+	// silent pass; a non-zero Cause that is not a valid Ref is a malformed
+	// intent and aborts the caller's verb with [ErrNoCause], as [Routed]'s
+	// does.
+	Cause core.Ref
+
+	// Why is the sentence the stayed beat carries ("already in reach").
+	// Read only when Cause is set.
+	Why string
+}
 
 // isTurnIntent marks Pass as a TurnIntent.
 func (Pass) isTurnIntent() {}
@@ -349,6 +369,13 @@ func (Pass) isTurnIntent() {}
 // [MonsterView.Seen] AND [SeenMember.Standing]; Action names one of this
 // member's own [MonsterView.Actions]; [SeenMember.InReach] says Target is in
 // reach for Action; and [TurnBudget.AttacksLeft] is greater than zero.
+//
+// A REFUSED ATTACK IS TOLD, whoever drove it (rpg-toolkit#2000): the turn
+// ends with a [BeatStayed] naming the reason — nobody named, no attack left,
+// target not in sight, target down, target out of reach — because a turn
+// that went from `answered … attack` straight to `turn-ended` could not be
+// told apart from a creature that chose to stand. An empty Target is how a
+// driver says its attack selected nobody.
 type Attack struct {
 	// Target is who this member is attacking.
 	Target MemberID
