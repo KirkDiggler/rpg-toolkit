@@ -121,6 +121,15 @@ func (in *Input) Validate() error {
 		return ErrNoMachine
 	}
 
+	// A DRIVEN ACTIVATION CHARGES NOTHING, and this is where that is a law
+	// rather than a caller's habit: its driver already spent the economy, so a
+	// cost here would charge the same turn twice. Refused before the world is
+	// loaded, so nobody is charged. Checked here rather than in the machine's
+	// Start because Start never sees the cost. See [ActivationInput.Driven].
+	if activation, ok := in.Machine.(*activationMachine); ok && activation.driven && in.Cost != nil {
+		return fmt.Errorf("%w: a driven activation carries no cost; its driver spent it", ErrBadActivation)
+	}
+
 	// CAPABILITIES ARE SUPPLIED, NEVER DEFAULTED. The encounter owns the one
 	// presence check and its sentinels; the sentinel is wrapped with %w so
 	// errors.Is reaches it. The Roller is the one capability this package asks
