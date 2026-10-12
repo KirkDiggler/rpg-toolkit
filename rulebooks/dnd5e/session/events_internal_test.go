@@ -1890,3 +1890,18 @@ func TestAnActivationEffectCarriesItsDetailIntoTheResult(t *testing.T) {
 	require.Len(t, results, 1)
 	require.Equal(t, "grovel", results[0].Detail)
 }
+
+// TestAMonstersActivatedBeatProjects: a monster's bonus-action Disengage
+// (rpg-toolkit#2032) is told with encounter's BeatActivated — an actor that is
+// a monster, the trait's ref and name, and no results. The projection needs no
+// case of its own: it is the same ActivatedBody a player's activation gets.
+func TestAMonstersActivatedBeatProjects(t *testing.T) {
+	kind, body := decodeBeat([]byte(`{"beat":"activated","actor":"gob-1",` +
+		`"ability":{"ref":"dnd5e:monster_traits:nimble_escape","name":"Nimble Escape"}}`))
+
+	require.Equal(t, EventActivated, kind)
+	require.Equal(t, ActivatedBody{
+		Actor:   "gob-1",
+		Ability: AbilityRef{Ref: "dnd5e:monster_traits:nimble_escape", Name: "Nimble Escape"},
+	}, body)
+}

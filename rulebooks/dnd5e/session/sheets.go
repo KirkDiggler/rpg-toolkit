@@ -6,9 +6,12 @@ package session
 import (
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // How fast everyone is, what they swing and how far they see, answered where
@@ -117,14 +120,62 @@ func (s sheetSeam) factsOf(id encounter.MemberID) (encounter.SheetFacts, error) 
 			Actions:   memberActionsOf(projected.Actions),
 		}, nil
 	case held.monster != nil:
+		bonusDisengage, err := bonusDisengageOf(held.monster, registryName)
+		if err != nil {
+			return encounter.SheetFacts{}, err
+		}
 		return encounter.SheetFacts{
-			SpeedFeet: held.monster.Speed.Walk,
-			Actions:   memberActionsOf(held.monster.Actions),
-			Targeting: held.monster.Targeting.String(),
+			SpeedFeet:      held.monster.Speed.Walk,
+			Actions:        memberActionsOf(held.monster.Actions),
+			Targeting:      held.monster.Targeting.String(),
+			BonusDisengage: bonusDisengage,
 		}, nil
 	default:
 		return encounter.SheetFacts{}, nil
 	}
+}
+
+// bonusDisengageOf names the trait that lets a monster Disengage as a bonus
+// action, or the zero identity when its stat block carries none
+// (rpg-toolkit#2032). The stored ref is the fact — read with
+// [conditions.HoldsRef] off the sheet, loading nothing — and the name is the
+// conditions registry's own rendering of it, so the story says what the
+// descriptor says.
+//
+// A PLAYER IS NEVER ASKED: its bonus actions are its sheet's own economy,
+// spent through Activate, so [sheetSeam.factsOf] leaves its identity zero.
+//
+// nameOf is the registry's name lookup — [registryName] in production —
+// taken as a parameter so the refusal below is testable against a registry
+// that lacks the trait.
+//
+// Refuses a stat block whose stored conditions cannot be read
+// ([ErrBadNPC]), and a trait with no registry descriptor
+// ([ErrUnknownContent]) rather than telling a nameless beat.
+func bonusDisengageOf(
+	block *monster.Data, nameOf func(core.Ref) (string, bool),
+) (encounter.ActivationIdentity, error) {
+	trait := refs.MonsterTraits.NimbleEscape()
+	held, err := conditions.HoldsRef(block.Conditions, trait)
+	if err != nil {
+		return encounter.ActivationIdentity{}, fmt.Errorf("monster %q: %w: %v", block.ID, ErrBadNPC, err)
+	}
+	if !held {
+		return encounter.ActivationIdentity{}, nil
+	}
+	name, known := nameOf(*trait)
+	if !known {
+		return encounter.ActivationIdentity{}, fmt.Errorf("monster %q: trait %s has no display descriptor: %w",
+			block.ID, trait.String(), ErrUnknownContent)
+	}
+	return encounter.ActivationIdentity{Ref: trait.String(), Name: name}, nil
+}
+
+// registryName is the conditions registry's display name for ref, and
+// whether the registry knows it ([conditions.DisplayFor]).
+func registryName(ref core.Ref) (string, bool) {
+	display, known := conditions.DisplayFor(ref)
+	return display.Name, known
 }
 
 // heldSheet is the one record a member's sheet facts are read from: exactly

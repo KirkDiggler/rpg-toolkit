@@ -78,7 +78,7 @@ func TestMonsterViewCarriesEveryFieldAHostsDriverReads(t *testing.T) {
 			Position: spatial.Position{X: 1, Y: 1}, DistanceCells: 6,
 			Path: []spatial.Position{{X: 5, Y: 4}},
 		}},
-		Budget: encounter.TurnBudget{AttacksLeft: 1, MovementFeet: 30},
+		Budget: encounter.TurnBudget{AttacksLeft: 1, MovementFeet: 30, BonusActions: 1},
 		Round:  3,
 	}
 
@@ -113,7 +113,7 @@ func TestMonsterViewCarriesEveryFieldAHostsDriverReads(t *testing.T) {
 			Position: spatial.Position{X: 1, Y: 1}, DistanceCells: 6,
 			Path: []spatial.Position{{X: 5, Y: 4}},
 		}},
-		Budget: TurnBudget{AttacksLeft: 1, MovementFeet: 30},
+		Budget: TurnBudget{AttacksLeft: 1, MovementFeet: 30, BonusActions: 1},
 		Round:  3,
 	}, projectMonsterView(original))
 }

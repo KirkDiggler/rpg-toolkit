@@ -6,6 +6,7 @@ package session_test
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -200,6 +201,111 @@ func (s *MoverSeamSuite) TestAMonsterLeavingTheFightersReachAsksTheFighter() {
 	where, err := mgr.Where(ctx, &session.WhereInput{Session: "sess", Member: "skel-1"})
 	s.Require().NoError(err)
 	s.Equal(hexCell(2, 0), where.Position, "the announced step is not taken until she answers")
+}
+
+// TestANimbleGoblinLeavingTheFightersReachAsksNobody is rpg-toolkit#2032 end
+// to end: the same step the skeleton above takes, by a goblin. Its stat block
+// carries Nimble Escape, so the composition asks this seam to Disengage
+// before the walk, the seam seats the same Disengaging condition a player's
+// Disengage leaves, and the step that asked the fighter for the skeleton asks
+// her nothing for the goblin. The story names the trait once, before the walk.
+func (s *MoverSeamSuite) TestANimbleGoblinLeavingTheFightersReachAsksNobody() {
+	ctx := context.Background()
+	mgr := s.nimbleRetreat()
+
+	afford, err := mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "fighter"})
+	s.Require().NoError(err)
+	for _, declaration := range afford.Declarations {
+		s.NotEqual(session.VerbReact, declaration.Verb, "a disengaging goblin poses no opportunity window")
+	}
+	s.Empty(s.reactionBeats(mgr, "fighter"), "and nothing swung on her behalf")
+
+	where, err := mgr.Where(ctx, &session.WhereInput{Session: "sess", Member: "gob-1"})
+	s.Require().NoError(err)
+	s.Equal(hexCell(4, 0), where.Position, "the whole walk was taken without stopping to ask")
+
+	story, err := mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "fighter"})
+	s.Require().NoError(err)
+	activated, moved := -1, -1
+	for i, event := range story {
+		switch event.Kind {
+		case session.EventActivated:
+			s.Equal(-1, activated, "the trait is told once")
+			activated = i
+			s.Equal(session.ActivatedBody{
+				Actor:   "gob-1",
+				Ability: session.AbilityRef{Ref: refs.MonsterTraits.NimbleEscape().String(), Name: "Nimble Escape"},
+			}, event.Body)
+		case session.EventMoved:
+			if moved == -1 {
+				if body, ok := event.Body.(session.MovedBody); ok && body.Member == "gob-1" {
+					moved = i
+				}
+			}
+		}
+	}
+	s.Require().NotEqual(-1, activated, "the fighter's story names the goblin's Nimble Escape")
+	s.Require().NotEqual(-1, moved, "and the goblin's walk")
+	s.Less(activated, moved, "the disengage is told before the walk")
+}
+
+// nimbleRetreat plays the goblin's scene up to the fighter's next turn: the
+// fighter beside a goblin in a fight, she ends her turn, and the goblin walks
+// two cells away from her and then passes.
+func (s *MoverSeamSuite) nimbleRetreat() *session.Manager {
+	mgr := s.managerWith(&retreatWalker{path: []spatial.Position{hexCell(3, 0), hexCell(4, 0)}})
+	sc := tombRoom(12, 6)
+	sc.Party = []sceneSeat{{ID: "fighter", At: authoredOf(hexCell(1, 0))}}
+	at := authoredOf(hexCell(2, 0))
+	sc.Monsters = []dungeonspec.MonsterPlacement{
+		monsterAt("gob-1", refs.Monsters.Goblin().String(), int(at.X), int(at.Y)),
+	}
+	launched := launchScene(s.T(), mgr, sc)
+	s.Require().NotEmpty(launched.Formed, "adjacent and in sight starts the fight")
+	s.inCombat("fighter", 1)
+
+	_, err := mgr.EndTurn(context.Background(), &session.EndTurnInput{
+		Session: "sess", Member: "fighter",
+		DeclarationID: currentEndTurnID(s.T(), mgr, "sess", "fighter"),
+	})
+	s.Require().NoError(err)
+	return mgr
+}
+
+// TestANimbleGoblinStopsDisengagingAtItsTurnEnd: Disengaging lasts the turn
+// it was spent in. Once the goblin's turn has ended and the fighter is active
+// again, its stored sheet still carries the trait and its free reactions, and
+// no longer carries Disengaging, so its next walk out of reach provokes unless
+// it spends that turn's bonus action again.
+func (s *MoverSeamSuite) TestANimbleGoblinStopsDisengagingAtItsTurnEnd() {
+	ctx := context.Background()
+	mgr := s.nimbleRetreat()
+
+	turn, err := mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "fighter"})
+	s.Require().NoError(err)
+	s.Equal("fighter", turn.Active, "the goblin's turn is over")
+
+	story, err := mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "fighter"})
+	s.Require().NoError(err)
+	disengaged := slices.ContainsFunc(story, func(event session.Event) bool { return event.Kind == session.EventActivated })
+	s.Require().True(disengaged, "precondition: the goblin disengaged this turn, so there was something to clear")
+
+	stored, err := s.sessions.GetSession(ctx, "sess")
+	s.Require().NoError(err)
+	var held []string
+	for i := range stored.NPCs {
+		if stored.NPCs[i].ID != "gob-1" {
+			continue
+		}
+		addresses, err := conditions.HeldAddresses("gob-1", stored.NPCs[i].Conditions)
+		s.Require().NoError(err)
+		for _, address := range addresses {
+			held = append(held, address.ConditionRef)
+		}
+	}
+	s.Contains(held, refs.MonsterTraits.NimbleEscape().String(), "the trait stays on the stat block")
+	s.Contains(held, oaRef(), "and so do its free reactions")
+	s.NotContains(held, refs.Conditions.Disengaging().String(), "Disengaging ended with its turn")
 }
 
 // TestTheFighterLeavingAMonstersReachTakesTheBite is the same rule read from

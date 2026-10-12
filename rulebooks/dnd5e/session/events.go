@@ -350,7 +350,9 @@ func kindFor(beat string) EventKind {
 	// only account of that roll a client ever gets.
 	case encounter.BeatTempered:
 		return EventTempered
-	// A routed walk that moved nobody (rpg-project#465). Named by the
+	// A driven word that did nothing — a routed walk that moved nobody
+	// (rpg-project#465), an attack refused, or a `toward` already in reach
+	// (rpg-toolkit#2000). Named by the
 	// composition's own exported constant for BeatAnswered's reason, and with
 	// the same weight behind it: it is the ONLY account a client gets of a
 	// round that was spent and changed nothing.
@@ -593,12 +595,13 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			Cause  string `json:"cause"`
 			Why    string `json:"why"`
 		}
-		// THE MEMBER AND THE CAUSE GATE, AND `why` CANNOT. A routed walk always
-		// names what routed it — the composition refuses a Routed with no cause
-		// — so an empty one is a beat this build never wrote. An empty `why` is
-		// the ORDINARY case, which is a creature that had nowhere strictly
-		// better to go, and gating on it would drop exactly the beat this kind
-		// was added to stop losing.
+		// THE MEMBER AND THE CAUSE GATE, AND `why` CANNOT. Every stayed beat
+		// names its cause — the spell or table that routed the walk, the
+		// refused attack's intent, the `toward`'s table — and the composition
+		// writes none without one, so an empty cause is a beat this build never
+		// wrote. An empty `why` is the ORDINARY case for a routed walk, a
+		// creature that had nowhere strictly better to go, and gating on it
+		// would drop exactly the beat this kind was added to stop losing.
 		if json.Unmarshal(payload, &p) != nil || p.Member == "" || p.Cause == "" {
 			return nil
 		}

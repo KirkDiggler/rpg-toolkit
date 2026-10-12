@@ -302,6 +302,13 @@ type TurnBudget struct {
 	// MovementFeet is how much further this member may move this turn, in
 	// feet.
 	MovementFeet int
+
+	// BonusActions is how many bonus actions this member may still spend this
+	// turn: 1 at the start of a turn in a fight, 0 on the world clock. No
+	// intent spends it; the composition's own Disengage before a walk out of
+	// a hostile's reach is its one spender (rpg-toolkit#2032). It is here so a
+	// driver can see what is left, as the composition's own view states.
+	BonusActions int
 }
 
 // TurnIntent is this package's own twin of encounter.TurnIntent — a sealed
@@ -560,8 +567,11 @@ func projectMonsterView(view encounter.MonsterView) MonsterView {
 		At:         view.At,
 		Seen:       seen,
 		Remembered: remembered,
-		Budget:     TurnBudget{AttacksLeft: view.Budget.AttacksLeft, MovementFeet: view.Budget.MovementFeet},
-		Round:      view.Round,
+		Budget: TurnBudget{
+			AttacksLeft: view.Budget.AttacksLeft, MovementFeet: view.Budget.MovementFeet,
+			BonusActions: view.Budget.BonusActions,
+		},
+		Round: view.Round,
 	}
 }
 
