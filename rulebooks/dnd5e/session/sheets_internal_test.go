@@ -5,10 +5,12 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/npc"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -282,6 +284,29 @@ func (s *SheetSeamSuite) TestAGoblinMayDisengageAsABonusAction() {
 	s.Zero(s.sheetOf("wolf-1").BonusDisengage, "a wolf has no Nimble Escape")
 	s.Zero(s.sheetOf("skel-1").BonusDisengage, "nor does a skeleton")
 	s.Zero(s.sheetOf("alice").BonusDisengage, "a player's bonus actions are its own sheet's economy")
+}
+
+// TestAnUnreadableStatBlockIsRefusedNotAnsweredZero: a monster whose stored
+// conditions cannot be read is refused as corrupt. Answering zero would be a
+// goblin that silently forgot its trait.
+func (s *SheetSeamSuite) TestAnUnreadableStatBlockIsRefusedNotAnsweredZero() {
+	s.placeMonster("gob-1", refs.Monsters.Goblin().String())
+	block := &s.data.NPCs[len(s.data.NPCs)-1]
+	block.Conditions = append([]json.RawMessage{json.RawMessage(`not json`)}, block.Conditions...)
+
+	_, err := s.seam.Sheets([]encounter.MemberID{"gob-1"})
+	s.ErrorIs(err, ErrBadNPC)
+}
+
+// TestATraitWithNoDescriptorIsRefusedNotTold: a trait the registry cannot
+// name is refused, rather than handed to the composition as a beat with no
+// name (which the composition would refuse as half-named anyway).
+func (s *SheetSeamSuite) TestATraitWithNoDescriptorIsRefusedNotTold() {
+	s.placeMonster("gob-1", refs.Monsters.Goblin().String())
+	block := &s.data.NPCs[len(s.data.NPCs)-1]
+
+	_, err := bonusDisengageOf(block, func(core.Ref) (string, bool) { return "", false })
+	s.ErrorIs(err, ErrUnknownContent)
 }
 
 // storeOf wraps a test repository in the read-only sheet store a seam reads

@@ -444,6 +444,22 @@ func (s *MonsterTurnTestSuite) TestBadIntentEndsOnlyTheMonstersTurn() {
 	// declared was never in reach to execute), and no `answered` (this driver
 	// rolls no table, so it writes no pick).
 	s.Equal([]string{"turn-ended", "stayed", "turn-ended", "tick"}, beats)
+
+	// And the stayed beat says WHY: the refused attack names itself and the
+	// reason it could not land.
+	entries, err := mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "fighter"})
+	s.Require().NoError(err)
+	var stayed []session.StayedBody
+	for _, entry := range entries[before:] {
+		if entry.Kind == session.EventStayed {
+			body, ok := entry.Body.(session.StayedBody)
+			s.Require().True(ok, "a stayed event carries StayedBody, got %T", entry.Body)
+			stayed = append(stayed, body)
+		}
+	}
+	s.Equal([]session.StayedBody{{
+		Member: "skel-1", Cause: "encounter:intent:attack", Why: "target out of reach",
+	}}, stayed)
 }
 
 // (d) Sight is read from data: a monster with no stated senses shares the

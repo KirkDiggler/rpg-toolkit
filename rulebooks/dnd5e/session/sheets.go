@@ -6,6 +6,7 @@ package session
 import (
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -119,7 +120,7 @@ func (s sheetSeam) factsOf(id encounter.MemberID) (encounter.SheetFacts, error) 
 			Actions:   memberActionsOf(projected.Actions),
 		}, nil
 	case held.monster != nil:
-		bonusDisengage, err := bonusDisengageOf(held.monster)
+		bonusDisengage, err := bonusDisengageOf(held.monster, registryName)
 		if err != nil {
 			return encounter.SheetFacts{}, err
 		}
@@ -144,10 +145,16 @@ func (s sheetSeam) factsOf(id encounter.MemberID) (encounter.SheetFacts, error) 
 // A PLAYER IS NEVER ASKED: its bonus actions are its sheet's own economy,
 // spent through Activate, so [sheetSeam.factsOf] leaves its identity zero.
 //
+// nameOf is the registry's name lookup — [registryName] in production —
+// taken as a parameter so the refusal below is testable against a registry
+// that lacks the trait.
+//
 // Refuses a stat block whose stored conditions cannot be read
 // ([ErrBadNPC]), and a trait with no registry descriptor
 // ([ErrUnknownContent]) rather than telling a nameless beat.
-func bonusDisengageOf(block *monster.Data) (encounter.ActivationIdentity, error) {
+func bonusDisengageOf(
+	block *monster.Data, nameOf func(core.Ref) (string, bool),
+) (encounter.ActivationIdentity, error) {
 	trait := refs.MonsterTraits.NimbleEscape()
 	held, err := conditions.HoldsRef(block.Conditions, trait)
 	if err != nil {
@@ -156,12 +163,19 @@ func bonusDisengageOf(block *monster.Data) (encounter.ActivationIdentity, error)
 	if !held {
 		return encounter.ActivationIdentity{}, nil
 	}
-	display, known := conditions.DisplayFor(*trait)
+	name, known := nameOf(*trait)
 	if !known {
 		return encounter.ActivationIdentity{}, fmt.Errorf("monster %q: trait %s has no display descriptor: %w",
 			block.ID, trait.String(), ErrUnknownContent)
 	}
-	return encounter.ActivationIdentity{Ref: trait.String(), Name: display.Name}, nil
+	return encounter.ActivationIdentity{Ref: trait.String(), Name: name}, nil
+}
+
+// registryName is the conditions registry's display name for ref, and
+// whether the registry knows it ([conditions.DisplayFor]).
+func registryName(ref core.Ref) (string, bool) {
+	display, known := conditions.DisplayFor(ref)
+	return display.Name, known
 }
 
 // heldSheet is the one record a member's sheet facts are read from: exactly
