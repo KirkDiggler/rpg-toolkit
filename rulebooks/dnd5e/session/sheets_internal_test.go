@@ -12,10 +12,12 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/npc"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
@@ -245,6 +247,41 @@ func (s *SheetSeamSuite) TestThePushBudgetAsksTheSameAnswer() {
 
 	_, err = sheetSpeeds(s.seam, []encounter.MemberID{"nobody"})
 	s.ErrorIs(err, ErrInvalidSession, "a member the verb cannot classify is refused, not answered zero")
+}
+
+// placeMonster spawns one more stat block into this suite's session record
+// and classifies it, so a test can ask about a creature the setup does not
+// carry.
+func (s *SheetSeamSuite) placeMonster(id, ref string) {
+	s.T().Helper()
+	block, err := instantiate(id, ref, nil, nil)
+	s.Require().NoError(err)
+	s.data.NPCs = append(s.data.NPCs, *block)
+	s.seam.kinds[id] = encounter.KindMonster
+}
+
+// TestAGoblinMayDisengageAsABonusAction is the sheet half of rpg-toolkit#2032:
+// a goblin's stat block carries Nimble Escape, so its facts name the trait —
+// its ref, and the name the conditions registry renders for it — and the
+// composition can tell the story with both. A wolf carries no such trait, and
+// a player's bonus actions are its own sheet's economy, so both answer zero.
+func (s *SheetSeamSuite) TestAGoblinMayDisengageAsABonusAction() {
+	s.placeMonster("gob-1", refs.Monsters.Goblin().String())
+	s.placeMonster("wolf-1", refs.Monsters.Wolf().String())
+
+	display, known := conditions.DisplayFor(*refs.MonsterTraits.NimbleEscape())
+	s.Require().True(known, "the trait has a registry descriptor")
+
+	s.Equal(encounter.ActivationIdentity{
+		Ref:  refs.MonsterTraits.NimbleEscape().String(),
+		Name: display.Name,
+	}, s.sheetOf("gob-1").BonusDisengage)
+	s.Equal("Nimble Escape", s.sheetOf("gob-1").BonusDisengage.Name,
+		"the descriptor's name, which is what the story says")
+
+	s.Zero(s.sheetOf("wolf-1").BonusDisengage, "a wolf has no Nimble Escape")
+	s.Zero(s.sheetOf("skel-1").BonusDisengage, "nor does a skeleton")
+	s.Zero(s.sheetOf("alice").BonusDisengage, "a player's bonus actions are its own sheet's economy")
 }
 
 // storeOf wraps a test repository in the read-only sheet store a seam reads

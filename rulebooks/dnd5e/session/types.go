@@ -1427,9 +1427,10 @@ const (
 	// `time`, because nothing spoke.
 	EventAnswered EventKind = "answered"
 
-	// EventStayed is A ROUTED WALK THAT MOVED NOBODY: a creature sent
-	// somewhere it could not get to, or already standing where it was sent
-	// (rpg-project#465).
+	// EventStayed is A DRIVEN WORD THAT DID NOTHING: a routed walk that moved
+	// nobody — a creature sent somewhere it could not get to, or already
+	// standing where it was sent (rpg-project#465) — an attack that could not
+	// land, or a `toward` whose target was already in reach (rpg-toolkit#2000).
 	//
 	// A FACT ABOUT THE WORLD, NOT A MALFUNCTION. A creature with a wall at its
 	// back has obeyed its orders and its turn is over; what this beat adds is
@@ -2063,9 +2064,13 @@ type WardedBody struct {
 
 func (WardedBody) isEventBody() {}
 
-// ActivatedBody is EventActivated's typed body. Ability is copied from the
-// selected server-authored declaration; Session does not derive its name from
-// its ref. Target is empty for abilities that select nobody.
+// ActivatedBody is EventActivated's typed body. Ability is copied from
+// whatever named it: the selected server-authored declaration for a player's
+// activation, or a monster's stat-block trait for one the composition spent on
+// its behalf (Nimble Escape's bonus-action Disengage, rpg-toolkit#2032), whose
+// ref and name the sheet seam read off the trait and the conditions registry.
+// Session never derives the name from the ref. Target is empty for abilities
+// that select nobody.
 type ActivatedBody struct {
 	Actor   string     `json:"actor"`
 	Ability AbilityRef `json:"ability"`
@@ -2904,15 +2909,18 @@ type StayedBody struct {
 	// Member is the creature that stayed put.
 	Member string `json:"member"`
 
-	// Cause is what routed it, as a "module:type:id" string — the spell that
-	// compelled it, or the creature's own table. The same cause the walk's own
-	// beats would have carried had it walked, which is what lets a reader put
-	// the two side by side.
+	// Cause is why the creature was acting, as a "module:type:id" string: the
+	// spell that compelled it or the creature's own table for a walk or a
+	// `toward`, and "encounter:intent:attack" for an attack that could not
+	// land. For a walk it is the same cause the walk's own beats would have
+	// carried had it walked, which is what lets a reader put the two side by
+	// side.
 	Cause string `json:"cause"`
 
-	// Why is the route's own refusal phrase — "is blocked by
-	// dnd5e:props:pillar" — or EMPTY when the route simply had nowhere
-	// strictly better to offer.
+	// Why is the reason nothing happened: the route's own refusal phrase for
+	// a walk ("is blocked by dnd5e:props:pillar"), the refusal for an attack
+	// ("target out of reach"), "already in reach" for a `toward` — or EMPTY
+	// when a route simply had nowhere strictly better to offer.
 	//
 	// EMPTY IS AN ANSWER, not a missing reason: "there was nowhere nearer" is
 	// what a creature already standing where it was sent gets, and it is the

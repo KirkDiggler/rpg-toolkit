@@ -437,11 +437,13 @@ func (s *MonsterTurnTestSuite) TestBadIntentEndsOnlyTheMonstersTurn() {
 	s.True(out.RoundWrapped)
 
 	beats := s.storyBeats(mgr, "fighter")[before:]
-	// Two turn-ended beats and the round the wrap cost the world, and nothing
-	// else: no moved (this driver never moves), no struck or missed (the
-	// attack it declared was never in reach to execute), and no `answered`
-	// (this driver rolls no table, so it writes no pick).
-	s.Equal([]string{"turn-ended", "turn-ended", "tick"}, beats)
+	// Two turn-ended beats, the round the wrap cost the world, and ONE
+	// `stayed` between them saying why the skeleton did nothing (the refused
+	// attack names itself and its reason, rpg-toolkit#2000). Nothing else: no
+	// moved (this driver never moves), no struck or missed (the attack it
+	// declared was never in reach to execute), and no `answered` (this driver
+	// rolls no table, so it writes no pick).
+	s.Equal([]string{"turn-ended", "stayed", "turn-ended", "tick"}, beats)
 }
 
 // (d) Sight is read from data: a monster with no stated senses shares the

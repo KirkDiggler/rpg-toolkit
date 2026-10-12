@@ -54,9 +54,10 @@ func (m *Manager) writeCapabilities(ctx context.Context, scope *writeScope) enco
 		CheckResolver: checkSeam{m: m, scope: scope},
 		Witness:       witnessSeam{scope: scope},
 		Actors: encounter.Actors{
-			Striker:   strikerSeam{m: m, scope: scope},
-			Mover:     moverSeam{m: m, scope: scope},
-			Announcer: announcerSeam{m: m, scope: scope},
+			Striker:    strikerSeam{m: m, scope: scope},
+			Disengager: strikerSeam{m: m, scope: scope},
+			Mover:      moverSeam{m: m, scope: scope},
+			Announcer:  announcerSeam{m: m, scope: scope},
 		},
 	}
 }

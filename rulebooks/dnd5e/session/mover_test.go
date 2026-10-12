@@ -202,6 +202,67 @@ func (s *MoverSeamSuite) TestAMonsterLeavingTheFightersReachAsksTheFighter() {
 	s.Equal(hexCell(2, 0), where.Position, "the announced step is not taken until she answers")
 }
 
+// TestANimbleGoblinLeavingTheFightersReachAsksNobody is rpg-toolkit#2032 end
+// to end: the same step the skeleton above takes, by a goblin. Its stat block
+// carries Nimble Escape, so the composition asks this seam to Disengage
+// before the walk, the seam seats the same Disengaging condition a player's
+// Disengage leaves, and the step that asked the fighter for the skeleton asks
+// her nothing for the goblin. The story names the trait once, before the walk.
+func (s *MoverSeamSuite) TestANimbleGoblinLeavingTheFightersReachAsksNobody() {
+	ctx := context.Background()
+	mgr := s.managerWith(&retreatWalker{path: []spatial.Position{hexCell(3, 0), hexCell(4, 0)}})
+	sc := tombRoom(12, 6)
+	sc.Party = []sceneSeat{{ID: "fighter", At: authoredOf(hexCell(1, 0))}}
+	at := authoredOf(hexCell(2, 0))
+	sc.Monsters = []dungeonspec.MonsterPlacement{
+		monsterAt("gob-1", refs.Monsters.Goblin().String(), int(at.X), int(at.Y)),
+	}
+	launched := launchScene(s.T(), mgr, sc)
+	s.Require().NotEmpty(launched.Formed, "adjacent and in sight starts the fight")
+	s.inCombat("fighter", 1)
+
+	_, err := mgr.EndTurn(ctx, &session.EndTurnInput{
+		Session: "sess", Member: "fighter",
+		DeclarationID: currentEndTurnID(s.T(), mgr, "sess", "fighter"),
+	})
+	s.Require().NoError(err)
+
+	afford, err := mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "fighter"})
+	s.Require().NoError(err)
+	for _, declaration := range afford.Declarations {
+		s.NotEqual(session.VerbReact, declaration.Verb, "a disengaging goblin poses no opportunity window")
+	}
+	s.Empty(s.reactionBeats(mgr, "fighter"), "and nothing swung on her behalf")
+
+	where, err := mgr.Where(ctx, &session.WhereInput{Session: "sess", Member: "gob-1"})
+	s.Require().NoError(err)
+	s.Equal(hexCell(4, 0), where.Position, "the whole walk was taken without stopping to ask")
+
+	story, err := mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "fighter"})
+	s.Require().NoError(err)
+	activated, moved := -1, -1
+	for i, event := range story {
+		switch event.Kind {
+		case session.EventActivated:
+			s.Equal(-1, activated, "the trait is told once")
+			activated = i
+			s.Equal(session.ActivatedBody{
+				Actor:   "gob-1",
+				Ability: session.AbilityRef{Ref: refs.MonsterTraits.NimbleEscape().String(), Name: "Nimble Escape"},
+			}, event.Body)
+		case session.EventMoved:
+			if moved == -1 {
+				if body, ok := event.Body.(session.MovedBody); ok && body.Member == "gob-1" {
+					moved = i
+				}
+			}
+		}
+	}
+	s.Require().NotEqual(-1, activated, "the fighter's story names the goblin's Nimble Escape")
+	s.Require().NotEqual(-1, moved, "and the goblin's walk")
+	s.Less(activated, moved, "the disengage is told before the walk")
+}
+
 // TestTheFighterLeavingAMonstersReachTakesTheBite is the same rule read from
 // the other side — the half no stack has ever run, because the player's walk
 // announced nothing at all.
