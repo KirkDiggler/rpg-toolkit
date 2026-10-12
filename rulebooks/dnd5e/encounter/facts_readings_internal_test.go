@@ -255,10 +255,12 @@ func vengeanceView(now uint64) MonsterView {
 	return MonsterView{
 		Self:    "goblin",
 		Actions: []ActionView{{Ref: core.Ref{Type: "weapons", ID: "scimitar"}, RangeFeet: 5}},
-		// THE VENGEANCE TARGET IS THE ONE IN SIGHT AND IN REACH: `attackIntent`
-		// requires the member it swings at to be seen and reachable, so a test
-		// that names a deed actor nobody can see would pass for the wrong
-		// reason (found while writing these — the first cut did exactly that).
+		// THE VENGEANCE TARGET IS THE ONE IN SIGHT AND IN REACH, so the Attack
+		// these rows return is one the encounter would carry out. The driver
+		// hands out an Attack for an unseen target too (the encounter refuses
+		// it and says why, rpg-toolkit#2000), so these tests assert on WHICH
+		// member is named — the deed reading under test — not merely that an
+		// Attack came back.
 		Seen: []SeenMember{{
 			ID: "goblin-slayer", Opposed: true, Standing: true,
 			InReach: map[core.Ref]bool{{Type: "weapons", ID: "scimitar"}: true},

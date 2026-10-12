@@ -72,14 +72,21 @@ import (
 // through it and nowhere else.
 const BeatAnswered = "answered"
 
-// BeatStayed is the "beat" value appended when a routed walk moves nobody: a
-// creature was sent somewhere and went nowhere.
+// BeatStayed is the "beat" value appended when a driven creature's word did
+// nothing: a routed walk that moved nobody, an attack that could not land, or
+// a `toward` whose target was already in reach.
 //
 // A SPENT ROUND THAT MOVED NOBODY MUST BE VISIBLE (Kirk's walk,
 // rpg-project#465). The world had been spending the bandits' rounds and
 // narrating nothing, so the log could not tell a creature that refused from
 // one nobody asked from one sent somewhere it could not reach. It carries the
 // cause that routed it and the route's own sentence about why it stopped.
+//
+// AND SO MUST A SWING OR A STEP THAT NEVER HAPPENED (rpg-toolkit#2000,
+// #2001): `answered … attack` followed by `turn-ended` told the author
+// nothing. A refused attack carries `encounter:intent:attack` and the reason
+// ("target out of reach"); a `toward` already in reach carries the table's
+// own cause and "already in reach".
 const BeatStayed = "stayed"
 
 // BeatTempered is the "beat" value appended when a faction's authored mix
