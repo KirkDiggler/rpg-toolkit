@@ -215,12 +215,18 @@ func (d TableDriver) towardIntent(view MonsterView, entry Answer) TurnIntent {
 	return Move{Path: append([]spatial.Position(nil), path...)}
 }
 
-// towardAlreadyInReach is the sentence a `toward` whose target is already in
-// reach tells on its stayed beat.
+// towardAlreadyInReach is the sentence a `toward` whose target is already
+// within range of one of the creature's actions tells on its stayed beat.
 const towardAlreadyInReach = "already in reach"
 
-// alreadyInReach reports whether target is in sight and within reach of any
+// alreadyInReach reports whether target is in sight and within RANGE of any
 // of this member's own actions — the place `toward` was walking it to.
+//
+// RANGE, NOT MELEE REACH. [SeenMember.InReach] is each action's own range, so
+// a creature carrying a shortbow is "already in reach" of a target 80 feet
+// away and does not close. That matches the seen route's goal (the longest
+// range, [Encounter.buildMonsterView]), which is why the two agree; whether a
+// bow-carrier should close to melee is a separate question.
 //
 // THERE IS NO FORWARD STEP FROM HERE (rpg-toolkit#2001). The seen route is
 // already empty when the target is in reach ([Encounter.buildMonsterView]'s

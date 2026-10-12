@@ -348,7 +348,9 @@ type TurnIntent interface {
 type Pass struct {
 	// Cause is the word that did nothing, as a [core.Ref] — the table's
 	// `toward`, for the one driver that writes one today. Zero means a
-	// silent pass.
+	// silent pass; a non-zero Cause that is not a valid Ref is a malformed
+	// intent and aborts the caller's verb with [ErrNoCause], as [Routed]'s
+	// does.
 	Cause core.Ref
 
 	// Why is the sentence the stayed beat carries ("already in reach").

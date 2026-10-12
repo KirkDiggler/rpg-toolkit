@@ -100,7 +100,8 @@ fires when the creature has time: its turn in a fight, or a round of the world.
    `toward` under `seen` is what lets a creature close and then swing —
    an attack on somebody out of reach does not walk: the turn ends with a
    `stayed` beat saying why ("target out of reach"), and a `toward` whose
-   target is already in reach stays with "already in reach".
+   target is already within range of any of the creature's actions (a
+   shortbow's 80 feet counts) stays with "already in reach".
 
 ### You are given only what you know
 

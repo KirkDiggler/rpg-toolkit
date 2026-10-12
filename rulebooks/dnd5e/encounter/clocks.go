@@ -900,7 +900,15 @@ func (e *Encounter) executeTurnIntent(
 		// the driver carried out needed no doing, and the story says so
 		// rather than going silent. A zero Pass is a creature with nothing
 		// to do, and the turn-ended beat already says all of that.
-		if it.Cause.IsValid() == nil {
+		//
+		// A NON-ZERO CAUSE THAT IS NOT A REF IS MALFORMED, not silent — the
+		// Routed arm's rule and reason: a cause nobody can read makes the
+		// beat unnarratable, and dropping it would be the silence this arm
+		// exists to end. It aborts the verb with ErrNoCause.
+		if it.Cause != (core.Ref{}) {
+			if cerr := it.Cause.IsValid(); cerr != nil {
+				return false, nil, fmt.Errorf("pass %q: %w: %w", activeID, ErrNoCause, cerr)
+			}
 			if berr := e.appendStayedBeat(activeID, it.Cause, it.Why, uint64(e.clock.ToData().HighWater)); berr != nil {
 				return false, nil, berr
 			}

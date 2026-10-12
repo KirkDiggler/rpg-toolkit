@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -249,6 +250,11 @@ func TestARefusedAttackSaysWhyWhoeverDrove(t *testing.T) {
 				active = out.Next
 			}
 
+			if name == "swing already spent" {
+				require.Len(t, striker.calls, 1, "the first swing landed; the second never reached the striker")
+			} else {
+				require.Empty(t, striker.calls, "a refused attack never reaches the striker")
+			}
 			stayed := stayedBeats(goblinBeats(t, enc))
 			require.Len(t, stayed, 1, "one refused attack, one account of why")
 			require.Equal(t, "encounter:intent:attack", stayed[0]["cause"])
@@ -351,6 +357,13 @@ func (goblinFirst) RollInitiative(members []encounter.MemberID) ([]encounter.Mem
 // stepped back (beat 58). Every step was toward the attacker of that moment;
 // the router never routed away from its target.
 //
+// THIS PINS CURRENT BEHAVIOUR, PENDING THE #2001 RULING. It passes on main
+// and asserts the oscillation as what happens today, so the cause stays
+// demonstrable. Under either candidate ruling — `attacker` fixed for the
+// turn, or reactions excluded from the attacker deed — the goblin would stay
+// beside the bard and this test goes red: that red is the fix working, not a
+// regression, and the assertions should be rewritten to the ruled behaviour.
+//
 // The run's order and clock are kept, because they decide who is freshest:
 // the goblin goes first, the bard's mockery lands on the first round, and the
 // fighter's swing on the second. Geometry is the walk's own, shifted ten
@@ -416,4 +429,20 @@ func TestAnOpportunityAttackMidWalkRepointsAttacker(t *testing.T) {
 
 	require.Equal(t, arrived, whereIs(t, enc, goblin),
 		"and the bard's swing made her the attacker again, so it stepped back")
+}
+
+// TestAPassWithAMalformedCauseIsRefusedNotSilent is the gate's probe on
+// #2035: a Pass naming a cause that is not a Ref must not be dropped. Only a
+// zero cause is silent; a malformed one aborts the verb with ErrNoCause, as
+// a Routed intent's does.
+func TestAPassWithAMalformedCauseIsRefusedNotSilent(t *testing.T) {
+	enc := silenceScene(t, []encounter.MemberInput{
+		{ID: alice, Kind: encounter.KindPlayer, Position: seat(3, 3)},
+		{ID: goblin, Kind: encounter.KindMonster, Position: seat(2, 3)},
+	}, &scriptedDriver{intents: []encounter.TurnIntent{
+		encounter.Pass{Cause: core.Ref{ID: "toward"}, Why: "already in reach"},
+	}}, quietMover{}, &scriptedStriker{kind: encounter.OutcomeMissed}, everyoneStanding{})
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	require.ErrorIs(t, err, encounter.ErrNoCause, "never silence")
 }
