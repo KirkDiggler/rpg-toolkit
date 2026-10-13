@@ -322,6 +322,16 @@ func (s *MonsterTurnTestSuite) TestSkeletonAttacksFromRange() {
 		switch beat {
 		case "struck", "missed":
 			swings++
+		case "heard":
+			// The swing is a clang, and the fighter beside it hears it
+			// (rpg-project#569): a sound the attack made, not something the
+			// turn decided.
+		case "stayed":
+			// R11 (rpg-project#569): reach means the creature can attack THIS
+			// pick. With its one shot spent, the skeleton's next pick sees
+			// the fighter rather than reaching her, takes its `toward`, and
+			// is already within the shortbow's range — a spent word that
+			// moved nobody, which the stayed beat exists to say.
 		default:
 			s.Equal("answered", beat,
 				"the only other thing a driven turn writes is the roll that chose each intent")

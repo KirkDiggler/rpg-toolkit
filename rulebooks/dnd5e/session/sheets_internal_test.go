@@ -12,15 +12,18 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/npc"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
@@ -307,6 +310,63 @@ func (s *SheetSeamSuite) TestATraitWithNoDescriptorIsRefusedNotTold() {
 
 	_, err := bonusDisengageOf(block, func(core.Ref) (string, bool) { return "", false })
 	s.ErrorIs(err, ErrUnknownContent)
+}
+
+// TestAPlayerHearsWithItsSheetsPassivePerception is the character half of
+// rpg-project#569 R5: the number the composition compares a sound's DC
+// against is the sheet's own passive Perception — 10, Wisdom, and proficiency
+// when trained — read at every consult. Wisdom 14 trained is 14; Wisdom 8
+// untrained is 9; a Wisdom raised between two asks is heard with at the
+// second, because nothing is stored.
+func (s *SheetSeamSuite) TestAPlayerHearsWithItsSheetsPassivePerception() {
+	sheet := s.chars.byID["alice"]
+	sheet.AbilityScores[abilities.WIS] = 14
+	sheet.Skills = map[skills.Skill]shared.ProficiencyLevel{skills.Perception: shared.Proficient}
+	s.Equal(14, s.sheetOf("alice").PassivePerception, "10 + WIS 14's +2 + trained Perception's +2")
+
+	sheet.AbilityScores[abilities.WIS] = 8
+	sheet.Skills = nil
+	s.Equal(9, s.sheetOf("alice").PassivePerception, "10 + WIS 8's -1, untrained: the sheet of this moment")
+}
+
+// TestAMonsterHearsWithItsStatBlocksPassivePerception is the monster half:
+// the stat block's own passive Perception, never this seam's arithmetic. A
+// template trained in Perception carries 10 + WIS + proficiency; one with no
+// Perception skill still carries 10 + WIS — the assembly's answer, read here.
+// A stat block changed between two asks is read by the second.
+func (s *SheetSeamSuite) TestAMonsterHearsWithItsStatBlocksPassivePerception() {
+	s.placeTemplate("keen", dungeonspec.TemplateSpec{
+		Base: "dnd5e:monsters:human", Abilities: map[string]int{"wis": 16},
+		Skills: []string{"perception"}, Actions: []string{"dnd5e:weapons:spear"},
+	})
+	s.placeTemplate("plain", dungeonspec.TemplateSpec{
+		Base: "dnd5e:monsters:human", Abilities: map[string]int{"wis": 14},
+		Actions: []string{"dnd5e:weapons:spear"},
+	})
+
+	s.Equal(15, s.sheetOf("keen").PassivePerception, "10 + WIS 16's +3 + trained Perception's +2")
+	s.Equal(12, s.sheetOf("plain").PassivePerception, "no Perception skill: 10 + WIS 14's +2")
+
+	block := &s.data.NPCs[len(s.data.NPCs)-1]
+	block.Senses.PassivePerception = 7
+	s.Equal(7, s.sheetOf("plain").PassivePerception, "the stat block of this moment, not of the spawn")
+}
+
+// TestAWorldNPCHearsNothing: its recorded content states no senses, so the
+// true answer from that content is zero — deaf above DC 0, the composition's
+// fail-closed reading of an unfilled field.
+func (s *SheetSeamSuite) TestAWorldNPCHearsNothing() {
+	s.Zero(s.sheetOf("merchant").PassivePerception)
+}
+
+// placeTemplate spawns one authored stat block into this suite's session
+// record under the template's own ref, and classifies it.
+func (s *SheetSeamSuite) placeTemplate(id string, spec dungeonspec.TemplateSpec) {
+	s.T().Helper()
+	block, err := instantiate(id, "dnd5e:monsters:"+id, nil, &spec)
+	s.Require().NoError(err)
+	s.data.NPCs = append(s.data.NPCs, *block)
+	s.seam.kinds[id] = encounter.KindMonster
 }
 
 // storeOf wraps a test repository in the read-only sheet store a seam reads

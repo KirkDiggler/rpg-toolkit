@@ -1445,6 +1445,24 @@ const (
 	// author already answered the question the mix exists to ask.
 	EventTempered EventKind = "tempered"
 
+	// EventHeard is A SOUND REACHING THIS RECIPIENT: what kind it was, where
+	// it was made and how many region hops away (rpg-project#569 R4–R5).
+	// Always recipient-scoped to exactly one member, the listener — the
+	// composition appends it with that one player as its audience, so it
+	// rides the per-recipient Story every other recipient-scoped beat rides,
+	// and a party member who did not hear it never receives it.
+	//
+	// NEVER THE MAKER. The listener's ears told them a kind and a place, not
+	// a name, and the body carries exactly that. A client turns position and
+	// hops into "metal clanging, two rooms north"; this seam does not compose
+	// the line.
+	//
+	// NOBODY ROLLED. A sound lands on whoever's passive Perception reaches
+	// its DC plus 5 per hop, read off each sheet at the moment of the sound
+	// ([encounter.SheetFacts.PassivePerception], filled by this package's
+	// sheet seam), so there is no roll to show.
+	EventHeard EventKind = "heard"
+
 	// EventConcealmentRevealed is a concealment entering THIS RECIPIENT's
 	// knowledge — their own search, a looted record naming it, crossing
 	// into it, perceiving one of its doors standing open, or seeing a
@@ -2931,6 +2949,30 @@ type TemperedBody struct {
 }
 
 func (TemperedBody) isEventBody() {}
+
+// HeardBody is [EventHeard]'s typed body: one sound, as the one listener it
+// reached perceived it.
+//
+// EVERY FIELD IS WRITTEN, [AnsweredBody]'s rule for [AnsweredBody]'s reason —
+// Hops included, whose zero is the listener's own region rather than a gap.
+type HeardBody struct {
+	// Listener is the member who heard it — always this event's recipient.
+	Listener string `json:"listener"`
+
+	// Kind is what it sounded like: "clang", "crash", "boom" or "voice", the
+	// composition's own sound kinds.
+	Kind string `json:"kind"`
+
+	// Position is the cell the sound was made on, dungeon-absolute.
+	Position spatial.Position `json:"position"`
+
+	// Hops is how many region crossings lie between the listener and the
+	// sound, a closed door on a crossing counting as one more. Zero is the
+	// listener's own region.
+	Hops int `json:"hops"`
+}
+
+func (HeardBody) isEventBody() {}
 
 // RevealedDoor is one door a concealment hid, as the recipient's own door
 // list and atlas now carry it — the patch for both cached reads.

@@ -4,6 +4,7 @@
 package session_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strings"
@@ -29,13 +30,6 @@ type AttackEventsTestSuite struct {
 	encounters *fakeEncounters
 	characters *fakeCharacters
 	stream     *fakeStream
-
-	// opened is each recipient's last delivered sequence when the launch's
-	// opening beats were cleared. Sequences are recipient-local, and a launch
-	// does not hand alice and bob the same number of opening beats, so a
-	// sequence alice's AttackOutput reports names the same beat in bob's
-	// stream only after shifting by the difference ([seqFor]).
-	opened map[string]uint64
 }
 
 func TestAttackEventsSuite(t *testing.T) {
@@ -73,10 +67,6 @@ func (s *AttackEventsTestSuite) duelWithStreamAndIDs(
 	s.Require().NoError(err)
 
 	launchDuel(s.T(), mgr, s.encounters)
-	s.opened = map[string]uint64{}
-	for _, event := range s.stream.published {
-		s.opened[event.Recipient] = max(s.opened[event.Recipient], event.Seq)
-	}
 	s.stream.published = nil // the opening beats predate any client
 	return mgr
 }
@@ -96,11 +86,36 @@ func (s *AttackEventsTestSuite) swingBy(mgr *session.Manager, attacker, target s
 	return out
 }
 
-// seqFor is the sequence in recipient's own stream of the beat alice's stream
-// numbers aliceSeq. After the launch both duellists receive every beat, so the
-// two numberings differ only by the opening beats each was handed.
-func (s *AttackEventsTestSuite) seqFor(recipient string, aliceSeq uint64) uint64 {
-	return aliceSeq - s.opened["alice"] + s.opened[recipient]
+// sameBeat is every recipient's copy of the beat alice's stream numbers
+// aliceSeq, keyed by recipient.
+//
+// FOUND BY WHAT THE BEAT IS, NOT BY ARITHMETIC ON SEQUENCES. Sequences are
+// recipient-local, and two streams do not move in step: a launch hands alice
+// and bob different opening beats, and since hearing (rpg-project#569) bob
+// also hears the clang of every swing alice makes, a beat in his stream and
+// not in hers. Shifting alice's number by a fixed offset would land on the
+// wrong beat after the first sound. Every recipient's copy of one log entry
+// carries the same payload bytes and the same clock reading, so that is the
+// match — and a swing's payload names its own presentation token, so two
+// swings never match each other.
+func (s *AttackEventsTestSuite) sameBeat(aliceSeq uint64) map[string]session.Event {
+	var beat *session.Event
+	for i, event := range s.stream.published {
+		if event.Recipient == "alice" && event.Seq == aliceSeq {
+			beat = &s.stream.published[i]
+		}
+	}
+	s.Require().NotNil(beat, "alice was delivered seq %d", aliceSeq)
+
+	out := map[string]session.Event{}
+	for _, event := range s.stream.published {
+		if event.At != beat.At || !bytes.Equal(event.Payload, beat.Payload) {
+			continue
+		}
+		s.Require().NotContains(out, event.Recipient, "one event per recipient per beat")
+		out[event.Recipient] = event
+	}
+	return out
 }
 
 // kindsAtSeq collects the event kinds delivered for one story sequence (in
@@ -109,12 +124,8 @@ func (s *AttackEventsTestSuite) seqFor(recipient string, aliceSeq uint64) uint64
 // counting events and hoping the count means what it looks like.
 func (s *AttackEventsTestSuite) kindsAtSeq(seq uint64) map[string]session.EventKind {
 	out := map[string]session.EventKind{}
-	for _, event := range s.stream.published {
-		if event.Seq != s.seqFor(event.Recipient, seq) {
-			continue
-		}
-		s.Require().NotContains(out, event.Recipient, "one event per recipient per beat")
-		out[event.Recipient] = event.Kind
+	for recipient, event := range s.sameBeat(seq) {
+		out[recipient] = event.Kind
 	}
 	return out
 }
@@ -189,11 +200,8 @@ func (s *AttackEventsTestSuite) TestTheSwingLeavesNothingUnknown() {
 // recipient's event carries for one story sequence.
 func (s *AttackEventsTestSuite) bodiesAtSeq(seq uint64) map[string]session.EventBody {
 	out := map[string]session.EventBody{}
-	for _, event := range s.stream.published {
-		if event.Seq != s.seqFor(event.Recipient, seq) {
-			continue
-		}
-		out[event.Recipient] = event.Body
+	for recipient, event := range s.sameBeat(seq) {
+		out[recipient] = event.Body
 	}
 	return out
 }
@@ -317,6 +325,9 @@ func (s *AttackEventsTestSuite) TestTwoSwingsAreTwoDifferentRolls() {
 	s.Require().NotEmpty(second.PresentationID)
 	s.NotEqual(first.PresentationID, second.PresentationID, "one token, one roll")
 
+	// Read as bob, the witness: his stream is not in step with alice's (he
+	// hears the first swing's clang, rpg-project#569), and [sameBeat] finds
+	// his copy of each swing by what it is rather than by where it falls.
 	s.NotEqual(first.Seq, second.Seq, "and they really are two beats")
 	firstBody, ok := s.bodiesAtSeq(first.Seq)["bob"].(session.MissedBody)
 	s.Require().True(ok)

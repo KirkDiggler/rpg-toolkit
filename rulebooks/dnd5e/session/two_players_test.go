@@ -5,6 +5,7 @@ package session_test
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -396,10 +397,39 @@ func TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers(t *testing.T) {
 	require.Equal(t, session.ClockTurn, clockOf.Clock, "fighter is alive and the fight is still running")
 
 	// Both players receive the combat beats. Fighter additionally observes
-	// barbarian's fall; barbarian does not receive sight testimony about self.
-	// Every recipient still has its own contiguous sequence.
+	// barbarian's fall, and HEARS the strike that caused it — a clang at
+	// DC 10 in her own room, and her sheet's passive 11 reaches it
+	// (rpg-project#569). Barbarian receives neither: no sight testimony about
+	// self, and the blow that made the sound downed her before it landed, so
+	// she was not standing to hear it. Every recipient still has its own
+	// contiguous sequence.
+	heardBy := map[string]int{}
+	for _, event := range round1Drive {
+		if event.Kind == session.EventHeard {
+			heardBy[event.Recipient]++
+		}
+	}
+	require.Equal(t, map[string]int{"fighter": 1}, heardBy, "the clang reaches the one standing listener")
 	round1Barbarian := recipientSeqs(round1Drive, "barbarian")
-	require.Len(t, round1Barbarian, len(round1Fighter)-1)
+	// The claim as a set relation, not a count: barbarian receives every
+	// beat fighter does, kind for kind, except those two.
+	kindsOf := func(recipient string) []session.EventKind {
+		var kinds []session.EventKind
+		for _, e := range round1Drive {
+			if e.Recipient == recipient {
+				kinds = append(kinds, e.Kind)
+			}
+		}
+		return kinds
+	}
+	fighterKinds := kindsOf("fighter")
+	for _, extra := range []session.EventKind{session.EventSighted, session.EventHeard} {
+		at := slices.Index(fighterKinds, extra)
+		require.GreaterOrEqual(t, at, 0, "fighter received a %s beat", extra)
+		fighterKinds = slices.Delete(fighterKinds, at, at+1)
+	}
+	require.ElementsMatch(t, fighterKinds, kindsOf("barbarian"),
+		"barbarian receives every beat fighter does but the sighting of her fall and the clang")
 	var witnessUpdates int
 	for _, event := range round1Drive {
 		if event.Recipient == "fighter" && event.Kind == session.EventSighted {

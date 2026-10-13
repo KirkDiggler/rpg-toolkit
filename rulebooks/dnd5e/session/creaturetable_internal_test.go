@@ -39,7 +39,7 @@ func TestTheRulebooksDefaultIsFoldedUnderTheAuthorsOrders(t *testing.T) {
 			authored: encounter.Table{
 				encounter.AnswerTime: {{
 					Weight: 1,
-					When:   &encounter.When{Enemy: encounter.EnemyNone},
+					When:   []encounter.When{{Enemy: encounter.EnemyNone}},
 					Toward: &encounter.Selector{Word: encounter.SelectorEnemy},
 				}},
 			},

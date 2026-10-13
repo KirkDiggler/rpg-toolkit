@@ -4,6 +4,7 @@
 package session
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -14,8 +15,9 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
-// How fast everyone is, what they swing and how far they see, answered where
-// the sheets are (rpg-project#538, "Sheet facts asked at use time").
+// How fast everyone is, what they swing, how far they see and how hard they
+// listen, answered where the sheets are (rpg-project#538, "Sheet facts asked
+// at use time"; passive Perception rpg-project#569 R5).
 //
 // The composition holds no speed, sight, attack or targeting and cannot hold
 // any (law C1, R6), so it asks through two capabilities — [encounter.Sheets]
@@ -73,14 +75,15 @@ func sheetsBeside(s standingSeam) sheetSeam {
 //   - A player answers from the resolution door's projection of its record:
 //     walking speed from its race, and its attack from the main-hand fold
 //     (an empty hand is an unarmed strike) — the same projection Join reads.
-//     A player has no targeting strategy; empty is what its sheet says.
+//     A player has no targeting strategy; empty is what its sheet says. Its
+//     passive Perception is the loaded sheet's own answer.
 //   - A monster answers from its stat block: SpeedData.Walk, every executable
-//     action definition in author order, and the targeting word the author's
-//     placement wrote onto it at spawn.
+//     action definition in author order, the targeting word the author's
+//     placement wrote onto it at spawn, and the block's passive Perception.
 //   - A world NPC is stationary and non-acting by construction (design N4):
-//     its recorded content states no speed and no actions, so the true
-//     answer from that content is zero speed and nothing to swing. Answered
-//     only when its content is recorded.
+//     its recorded content states no speed, no actions and no senses, so the
+//     true answer from that content is zero speed, nothing to swing and a
+//     passive Perception of zero. Answered only when its content is recorded.
 //
 // ONLY ABOUT WHO WAS ASKED: the loop is over the question, because the
 // composition refuses a stranger in the answer (ErrNotMember).
@@ -115,9 +118,14 @@ func (s sheetSeam) factsOf(id encounter.MemberID) (encounter.SheetFacts, error) 
 		if projectErr != nil {
 			return encounter.SheetFacts{}, projectErr
 		}
+		passive, passiveErr := characterPassivePerception(s.ctx, string(id), held.character)
+		if passiveErr != nil {
+			return encounter.SheetFacts{}, passiveErr
+		}
 		return encounter.SheetFacts{
-			SpeedFeet: projected.Sheet.SpeedFeet,
-			Actions:   memberActionsOf(projected.Actions),
+			SpeedFeet:         projected.Sheet.SpeedFeet,
+			Actions:           memberActionsOf(projected.Actions),
+			PassivePerception: passive,
 		}, nil
 	case held.monster != nil:
 		bonusDisengage, err := bonusDisengageOf(held.monster, registryName)
@@ -129,10 +137,40 @@ func (s sheetSeam) factsOf(id encounter.MemberID) (encounter.SheetFacts, error) 
 			Actions:        memberActionsOf(held.monster.Actions),
 			Targeting:      held.monster.Targeting.String(),
 			BonusDisengage: bonusDisengage,
+			// The stat block's own number, stored on it when the block was
+			// assembled (monster.FromTemplate derives 10 + WIS, plus
+			// proficiency when trained) and the same field
+			// monster.Monster.PassivePerception answers once loaded. Read
+			// off the record rather than a loaded monster for Speed's
+			// reason: it is a stored fact, and loading a sheet to read one
+			// field back would be the same number by a longer road.
+			PassivePerception: held.monster.Senses.PassivePerception,
 		}, nil
 	default:
 		return encounter.SheetFacts{}, nil
 	}
+}
+
+// characterPassivePerception is how hard a player listens without trying —
+// the sheet's own answer ([character.Character.PassivePerception]: 10 plus
+// its Perception modifier, proficiency and expertise included), asked of the
+// stored record at this consult (rpg-project#569 R5).
+//
+// THE SHEET ANSWERS; THIS SEAM DOES NO ARITHMETIC. character.Load is
+// bus-free — the same reconstitution [Manager.loadAttackSheet] makes — so it
+// attaches nothing and subscribes nothing; it only turns the record into the
+// sheet that knows its own skills.
+//
+// A record that will not load is refused as [ErrBadCharacter], never
+// answered zero: zero is a real answer (deaf above DC 0), and a sheet that
+// cannot be read has given none.
+func characterPassivePerception(ctx context.Context, id string, record *character.Data) (int, error) {
+	sheet, err := character.Load(ctx, record)
+	if err != nil {
+		return 0, fmt.Errorf("character %q: %w: %v", id, ErrBadCharacter, err)
+	}
+
+	return sheet.PassivePerception(), nil
 }
 
 // bonusDisengageOf names the trait that lets a monster Disengage as a bonus
