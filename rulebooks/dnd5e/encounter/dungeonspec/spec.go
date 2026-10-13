@@ -126,6 +126,7 @@ package dungeonspec
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -916,7 +917,7 @@ func (pl *PlaceSpec) UnmarshalYAML(value *yaml.Node) error {
 			return fmt.Errorf("line %d: %s", value.Content[i].Line, knowsRefusal)
 		case "id", "ref", "at", "blocks_movement", "blocks_los", "facing",
 			"offset", "targeting", "actions", "boss", "holds", "holdable", "faction",
-			"arrives", "intimidate", "persuade", "on", "temper":
+			"arrives", "options", "on", "temper":
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.PlaceSpec",
 				value.Content[i].Line, key)
@@ -969,35 +970,138 @@ type ApproachSpec struct {
 	DC int `yaml:"dc"`
 }
 
-// The four keys [PlaceSpec.On] accepts: one per social verb per verdict,
-// spelled as the composition spells them ([encounter.AnswerKeys]) so the
-// file, the validator and the run cannot disagree about what an outcome is
-// called.
+// The one key [PlaceSpec.On] accepts, spelled as the composition spells it
+// ([encounter.TableKeys]) so the file, the validator and the run cannot
+// disagree about what a trigger is called.
 //
-// FAILURE HAS A TABLE TOO, and that is deliberate: "a failed Intimidate that
-// raises the alarm makes attempting worse than not attempting… it is what
-// gives the untrained rule teeth" (ideas/shenanigans/front-room-goblin.md).
+// THE FOUR SOCIAL KEYS RETIRED TO OPTIONS (rpg-project#569 R2): what a
+// creature answers when spoken to lives on the [OptionSpec] that was spoken,
+// under its own `success` and `failure`, and an `on:` naming one of the old
+// four is refused by name with where it went.
 const (
-	// OnIntimidated is what the creature does when a threat lands.
-	OnIntimidated = string(encounter.AnswerIntimidated)
-
-	// OnIntimidateFailed is what it does when a threat misses.
-	OnIntimidateFailed = string(encounter.AnswerIntimidateFailed)
-
-	// OnPersuaded is what it does when an appeal lands.
-	OnPersuaded = string(encounter.AnswerPersuaded)
-
-	// OnPersuadeFailed is what it does when an appeal misses.
-	OnPersuadeFailed = string(encounter.AnswerPersuadeFailed)
-
 	// OnTime is what the creature does when it has time: its turn in a
 	// fight, or a round of the world (rpg-project#465).
 	//
-	// PLAIN STRINGS, not [encounter.AnswerKey]. The keys of an `on:` block
+	// A PLAIN STRING, not [encounter.AnswerKey]. The keys of an `on:` block
 	// are YAML map keys and this package decodes them as written; the
 	// composition's typed key is what they compile TO.
 	OnTime = string(encounter.AnswerTime)
 )
+
+// OptionSpec is one line a character can say to a creature or a prop
+// (rpg-project#569, the mad king use case §2): its id, the line, the check it
+// rolls, what it waits on, and what is answered on either verdict.
+//
+//	options:
+//	  - id: troupe
+//	    say: "We're the troupe for tonight's feast."
+//	    requires: { fact: feast-tonight }
+//	    check: [{ ability: performance, dc: 13 }, { ability: deception, dc: 15 }]
+//	    success: [{ say: "Through the side gate, then." }]
+//	    failure: [{ say: "Troupe? There's no— GUARDS!", fact: party-recognized }]
+//
+// # Flat, and gated by facts (R1)
+//
+// An option is not a node in a tree: every option on a binding is offered
+// whenever its `requires` holds for the character speaking (R9 — their own
+// knowledge and their own pockets), and what the world learns from one line
+// is what opens the next.
+//
+// # The answer lives on the option (R2)
+//
+// `success` and `failure` are the same weighted rows a table carries
+// ([AnswerSpec]), rolled by the world's die on the verdict the check landed.
+// Only the words a verdict can answer with are legal — `fact`, `flee` and a
+// line — and a `when` is refused, because the verdict IS the condition.
+//
+// # The deed is the skill (R3)
+//
+// A beaten check lands the deed of the SKILL it rolled on every witness:
+// Intimidation lands `intimidated`, Persuasion lands `persuaded`, every other
+// skill lands nothing. The line's words decide nothing.
+type OptionSpec struct {
+	// ID names the line on its binding. REQUIRED non-empty and unique among
+	// one binding's options.
+	ID string `yaml:"id" json:"id"`
+
+	// Say is the character's line, carried VERBATIM. REQUIRED non-empty.
+	Say string `yaml:"say" json:"say"`
+
+	// Check is the approaches through the line's check — [CheckSpec], the
+	// list a lock carries. REQUIRED, at least one.
+	Check CheckSpec `yaml:"check" json:"check"`
+
+	// Requires is what must hold for the speaker before the line is offered:
+	// a [PredicateSpec] of exactly one of two forms, `{ fact: <id> }` (the
+	// speaker knows it) or `{ holds: <prop id> }` (the speaker carries a
+	// placed prop somebody can pick up). Optional; absent is always offered.
+	Requires *PredicateSpec `yaml:"requires,omitempty" json:"requires,omitempty"`
+
+	// Success is the rows answered when the check was beaten. Optional;
+	// absent answers nothing. Written but empty is refused.
+	Success []AnswerSpec `yaml:"success,omitempty" json:"success,omitempty"`
+
+	// Failure is the rows answered when the check was missed — the half that
+	// makes trying worse than not trying. Optional, with Success's rules.
+	Failure []AnswerSpec `yaml:"failure,omitempty" json:"failure,omitempty"`
+}
+
+// optionKeys is every key an [OptionSpec] reads, for its hand-written
+// unknown-key refusal.
+var optionKeys = map[string]bool{
+	"id": true, "say": true, "check": true, "requires": true, "success": true, "failure": true,
+}
+
+// UnmarshalYAML reads one option, refusing an unknown key by name — for
+// [PredicateSpec.UnmarshalYAML]'s reason: an option is read inside
+// [PlaceSpec]'s own unmarshaler, which the decoder's KnownFields does not
+// reach, and a typo silently dropped is exactly what Decode's strictness
+// exists to prevent. A `requirs:` dropped would be a line offered to
+// everybody that the author meant to gate.
+//
+// THE CHECK'S APPROACHES ARE READ BY HAND HERE TOO, because reading the option
+// by hand is what puts them out of KnownFields' reach in EITHER dialect. They
+// are refused in yaml.v3's own words under [ApproachSpec]'s name, so the
+// refusal is rewritten at its path with the keys an approach takes, exactly as
+// a lock's approach typo is.
+func (o *OptionSpec) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: an option is { id, say, check } plus what it requires and answers", value.Line)
+	}
+	for i := 0; i < len(value.Content); i += 2 {
+		key := value.Content[i].Value
+		if !optionKeys[key] {
+			return fmt.Errorf("line %d: field %s not found in type dungeonspec.OptionSpec",
+				value.Content[i].Line, key)
+		}
+		if key != "check" || i+1 >= len(value.Content) || value.Content[i+1].Kind != yaml.SequenceNode {
+			continue
+		}
+		for _, approach := range value.Content[i+1].Content {
+			if approach.Kind != yaml.MappingNode {
+				continue
+			}
+			// THE KEYS ARE [ApproachSpec]'S OWN, read off its yaml tags by the
+			// package's one reflection ([authoredKeysOfType]) — never a second
+			// spelling of the struct that could drift from it.
+			known := authoredKeysOfType("dungeonspec.ApproachSpec")
+			for j := 0; j < len(approach.Content); j += 2 {
+				if !slices.Contains(known, approach.Content[j].Value) {
+					return fmt.Errorf("line %d: field %s not found in type dungeonspec.ApproachSpec",
+						approach.Content[j].Line, approach.Content[j].Value)
+				}
+			}
+		}
+	}
+	type optionBody OptionSpec
+	var obj optionBody
+	if err := value.Decode(&obj); err != nil {
+		return err
+	}
+	*o = OptionSpec(obj)
+
+	return nil
+}
 
 // laterWords are the outcome words this design NAMES and this build does not
 // land, refused BY NAME with where they went (rpg-project#458).
@@ -1766,71 +1870,46 @@ type PlaceSpec struct {
 	// it to [encounter.MemberInput.Faction] when it spawns the sheet.
 	Faction string `yaml:"faction,omitempty"`
 
-	// Intimidate is the check a character must beat to frighten this
-	// monster (rpg-project#454, ideas/shenanigans/intimidate.md) — the
-	// SAME approach list a lock carries, priced per route:
-	// `intimidate: [{ ability: intimidation, dc: 12 }]`, and the author may
-	// list other ways through (`{ ability: str, dc: 15 }` flexes a muscle).
-	// MONSTERS ONLY, refused on anything else exactly as Targeting is.
+	// Options is the lines a character can say to this placement — a
+	// creature or a prop — each with its check, what it waits on and what
+	// is answered on either verdict ([OptionSpec], rpg-project#569).
 	//
-	// OMITTED MEANS NOT OFFERED (rpg-project#494 R1). Absent, this monster
-	// cannot be intimidated at all: the panel does not list it as a target
-	// and the verb refuses it by name. The derived approach that used to
-	// stand behind an empty key — Intimidation against the stat block's
-	// passive Insight — is RETIRED, because it made absence mean "use the
-	// default" when what an author means by saying nothing is "this creature
-	// does not do that". THE WORLD BUILDER IS THE ONLY PLACE a creature gains
-	// a social verb, and that is the point.
+	//	options:
+	//	  - id: lean-on-it
+	//	    say: "Where's the cellar? Tell me or you're next."
+	//	    check: [{ ability: intimidation, dc: 12 }]
+	//	    success:
+	//	      - { weight: 70, say: "Fine! The cellar door is behind the barrels.", fact: goblin-cowed }
+	//	      - { weight: 30, say: "Boss! BOSS!", flee: {} }
+	//	    failure:
+	//	      - { say: "Big talk for someone standing in my doorway." }
 	//
-	// Among the monsters an author DID write it on, nothing is gated and
-	// everything is a check (living-world §13): every character may attempt
-	// it, and the DC is the monster's, never a lock on the attempt.
+	// OMITTED MEANS NOTHING TO SAY (R2): a creature nobody wrote a line for
+	// cannot be spoken to, and no default stands behind the silence. THE
+	// WORLD BUILDER IS THE ONLY PLACE a thing gains a line, and that is the
+	// point.
 	//
-	// Unlike a lock's, an EMPTY list is not refused as unauthored, because
-	// this key is optional in the first place — `intimidate: []` is refused
-	// as what it is, a check with no way through, by the same sentence a
-	// lock's empty list gets.
-	Intimidate CheckSpec `yaml:"intimidate,omitempty"`
+	// IT REPLACED `intimidate:` AND `persuade:` — two priced verbs whose
+	// answers lived on four verb-keyed `on:` keys. Both keys are refused by
+	// name with where they went. A prop's options may not `flee`, and a prop
+	// carrying options needs an id: a line is said to it by id.
+	Options []OptionSpec `yaml:"options,omitempty"`
 
-	// Persuade is the check a character must beat to talk this monster round
-	// (rpg-project#458) — [PlaceSpec.Intimidate]'s twin, the same approach
-	// list priced per route: `persuade: [{ ability: persuasion, dc: 10 }]`.
-	// MONSTERS ONLY, refused on anything else.
-	//
-	// OMITTED MEANS NOT OFFERED, exactly as Intimidate's is: absent, this
-	// monster cannot be persuaded. The two keys are read independently, so a
-	// creature written to be reasoned with and not threatened is an ordinary
-	// thing to author. An empty list is still refused as what it is, a check
-	// with no way through.
-	Persuade CheckSpec `yaml:"persuade,omitempty"`
-
-	// On is the ANSWER TABLE: what this monster does about a social verb's
-	// verdict, keyed by outcome, a weighted list of entries under each
-	// (rpg-project#458, ideas/shenanigans/front-room-goblin.md). MONSTERS
-	// ONLY.
+	// On is the ANSWER TABLE: what this monster does with its time, as a
+	// weighted list of entries under `time` (rpg-project#465). MONSTERS ONLY.
 	//
 	//	on:
-	//	  intimidated:
-	//	    - { weight: 70, say: "Fine! The cellar door is behind the barrels.", fact: goblin-cowed }
-	//	    - { weight: 30, say: "Boss! BOSS!", flee: {} }
-	//	  intimidate_failed:
-	//	    - { say: "Big talk for someone standing in my doorway." }
+	//	  time:
+	//	    - { when: { enemy: reach }, attack: enemy }
+	//	    - { when: { enemy: seen },  toward: enemy }
 	//
-	// A LIST, NOT A SINGLE OUTCOME, and that is the change from the shape
-	// this replaced. `on: { intimidated: { fact: x } }` said one thing about
-	// one outcome and had nowhere to put a line of speech, a failed attempt
-	// or a creature that runs. It is GONE rather than kept beside this —
-	// a dual representation of one authored fact is the thing this repo bans
-	// — and a file that still uses it fails on the entry's own shape.
+	// KEYED BY TRIGGER SO THE NEXT TRIGGER ADDS A KEY, NOT A FIELD. `time` is
+	// the one this build rolls; anything else is a field error naming the
+	// key, a word the design named but has not built is refused by name with
+	// where it went ([laterWords]), and the four retired social keys are
+	// refused naming options, where they went (rpg-project#569 R2).
 	//
-	// KEYED BY OUTCOME SO THE NEXT VERB ADDS A KEY, NOT A FIELD. The four
-	// keys this build lands are listed above; anything else is a field error
-	// naming the key, and a word the design named but has not built is
-	// refused by name with where it went ([laterWords]).
-	//
-	// Absent means the creature answers nothing, which is the common case: a
-	// scared goblin does not turn the camp unless the author planted the
-	// fact that says so.
+	// Absent means the creature answers nothing, which is the common case.
 	On map[string][]AnswerSpec `yaml:"on,omitempty"`
 
 	// Temper is this placement's temperament, one of the sealed words

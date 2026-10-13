@@ -616,10 +616,28 @@ func placedMembers(spec *Spec) members {
 	return newMembers(all)
 }
 
+// placedProps is the props a line in this document may require holding:
+// every placement that is not a monster and has an id, and whether somebody
+// can pick it up (rpg-project#569).
+func placedProps(spec *Spec) map[string]bool {
+	out := map[string]bool{}
+	for _, pl := range spec.Place {
+		if kind, _ := refKind(pl.Ref); kind == typeMonsters || pl.ID == "" {
+			continue
+		}
+		if _, first := out[pl.ID]; !first {
+			out[pl.ID] = pl.Holdable != nil && *pl.Holdable
+		}
+	}
+
+	return out
+}
+
 func (v *validation) place() {
 	s := v.spec
 	occupied := map[[2]int]int{}
 	bosses := map[int]int{} // region index -> place index of its boss
+	props := placedProps(s)
 	for i, pl := range s.Place {
 		p := fmt.Sprintf("place[%d]", i)
 		kind, err := refKind(pl.Ref)
@@ -709,20 +727,10 @@ func (v *validation) place() {
 				v.fail(p+".targeting", "%q declares targeting %q, which is not a word this build knows", pl.Ref, *pl.Targeting)
 			}
 			v.g.placeActions(p, pl.Actions)
-			// A monster's authored check is a check like any other: at
-			// least one way through when the key is there at all, each
-			// naming an ability and a DC. Absent is legal and means the
-			// rulebook derives it ([PlaceSpec.Intimidate]).
-			if pl.Intimidate != nil {
-				v.g.approaches(p+".intimidate",
-					"this monster declares an intimidate check with no way through it — an ability and a DC",
-					pl.Intimidate)
-			}
-			if pl.Persuade != nil {
-				v.g.approaches(p+".persuade",
-					"this monster declares a persuade check with no way through it — an ability and a DC",
-					pl.Persuade)
-			}
+			// A monster's lines, by the one option grammar both dialects
+			// share (rpg-project#569). Absent is legal and means it cannot
+			// be spoken to ([PlaceSpec.Options]).
+			v.g.options(p, pl.Options, props, false)
 			v.g.placeOn(p, pl.On)
 			v.g.placeTemper(p, pl.Temper)
 			if pl.Boss && owned {
@@ -751,12 +759,12 @@ func (v *validation) place() {
 			if pl.Actions != nil {
 				v.fail(p+".actions", "%q is not a monster and cannot have actions", pl.Ref)
 			}
-			if pl.Intimidate != nil {
-				v.fail(p+".intimidate", "%q is not a monster and cannot be intimidated", pl.Ref)
+			// A prop's lines (rpg-project#569): it must be nameable, since a
+			// line is said to it by id, and none of its rows may `flee`.
+			if len(pl.Options) > 0 && pl.ID == "" {
+				v.fail(p+".id", "%q carries options and has no id, and a thing somebody speaks to has to be nameable", pl.Ref)
 			}
-			if pl.Persuade != nil {
-				v.fail(p+".persuade", "%q is not a monster and cannot be persuaded", pl.Ref)
-			}
+			v.g.options(p, pl.Options, props, true)
 			if pl.On != nil {
 				v.fail(p+".on", "%q is not a monster and nothing can be done to it that the world learns", pl.Ref)
 			}

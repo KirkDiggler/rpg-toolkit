@@ -310,8 +310,17 @@ func (g *grammar) predicate(path string, p *PredicateSpec, self *[2]string) {
 		// refused.
 	case predicateStance:
 		g.stancePredicate(path+".stance", p.Stance, self)
+	case predicateHolds:
+		g.fail(path+".holds", "%s", holdsOnlyRequires)
 	}
 }
+
+// holdsOnlyRequires is the sentence `holds` is refused with anywhere but an
+// option's `requires` (rpg-project#569): it is read when somebody speaks, and
+// an until, an arrival or an ending is waited for — nothing notices a holding
+// change in order to fire one.
+const holdsOnlyRequires = "`holds` is only something an option requires: it reads what the speaker carries, " +
+	"and nothing here speaks"
 
 // stancePredicate checks the stance form: two factions that exist and
 // differ, a stance word, and a pair that can reach it — not one it holds

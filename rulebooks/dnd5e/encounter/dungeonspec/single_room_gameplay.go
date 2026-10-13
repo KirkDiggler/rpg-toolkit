@@ -33,8 +33,7 @@ import (
 //	endings[<i>]                             Spec.Endings
 //	scenarios.<id>.<field>                   Spec.Scenarios
 //	monsterBindings.<id>.holds[<j>]          PlaceSpec.Holds
-//	monsterBindings.<id>.intimidate          PlaceSpec.Intimidate
-//	monsterBindings.<id>.persuade            PlaceSpec.Persuade
+//	monsterBindings.<id>.options             PlaceSpec.Options
 //	monsterBindings.<id>.arrives             PlaceSpec.Arrives
 //	propBindings.<id>.holdable               PlaceSpec.Holdable
 //	propBindings.<id>.holds[<j>]             PlaceSpec.Holds
@@ -241,6 +240,7 @@ func propBindingsShape(gp *yaml.Node, add errSink) {
 		optionalNode(b, "holdable", p, add)
 		optionalNode(b, "holds", p, add)
 		optionalNode(b, "arrives", p, add)
+		optionalNode(b, "options", p, add)
 	}
 }
 
@@ -386,28 +386,6 @@ func bindingTable(g *grammar, path, id, table string, declared map[string]TableS
 		"%q names the table %q, and no table in this dungeon has that id", id, table)
 }
 
-// bindingChecks refuses an authored `intimidate:` or `persuade:` with no way
-// through it — [validation.place]'s two sentences, judged by the one shared
-// [grammar.approaches] so every per-approach refusal is v2's as well.
-//
-// NIL IS NOT EMPTY, and that is the whole shape of this pair: a nil check is
-// an author who said nothing, which leaves the creature without the verb
-// entirely (rpg-project#494 R1); `intimidate: []` is an author who said there
-// IS a price and did not say what it is. [RoomDoorBinding.Locked]'s law, one
-// binding kind over.
-func bindingChecks(g *grammar, path string, b RoomMonsterBinding) {
-	if b.Intimidate != nil {
-		g.approaches(path+".intimidate",
-			"this monster declares an intimidate check with no way through it — an ability and a DC",
-			b.Intimidate)
-	}
-	if b.Persuade != nil {
-		g.approaches(path+".persuade",
-			"this monster declares a persuade check with no way through it — an ability and a DC",
-			b.Persuade)
-	}
-}
-
 // singleRoomArrivals validates every `arrives:` this document authored —
 // [validation.arrivals] in this dialect, and in the same three parts: the
 // predicate is one, a thing cannot wait on its own fall, and a RING of
@@ -524,7 +502,19 @@ func propBindingValues(gp *RoomGameplaySource, g *grammar, declared map[string]b
 		}
 
 		bindingHolds(g, p, id, binding.Holds, declared)
+		g.options(p, binding.Options, roomProps(gp), true)
 	}
+}
+
+// roomProps is the props a line in this room may require holding: every
+// declared prop, by id, and whether its binding lets somebody pick it up.
+func roomProps(gp *RoomGameplaySource) map[string]bool {
+	out := make(map[string]bool, len(gp.PropDeclarations))
+	for id := range gp.PropDeclarations {
+		out[id] = gp.PropBindings[id].Holdable
+	}
+
+	return out
 }
 
 // sortedPropBindingIDs orders the prop orders' ids, for [sortedBindingIDs]'
@@ -574,5 +564,6 @@ func applyPropBindings(key string, props []encounter.PlacedPropInput, bindings m
 		props[i].Holdable = b.Holdable
 		props[i].Holds = intelHoldingsOf(key, b.Holds)
 		props[i].Arrives = predicateOf(b.Arrives)
+		props[i].Options = optionsOf(b.Options)
 	}
 }

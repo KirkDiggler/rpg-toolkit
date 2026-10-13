@@ -359,9 +359,9 @@ func (f *field) factionIDs() []FactionID {
 // `known:fact` kinds the trust boundary accepts at load.
 //
 // members is the roster and the reserve AS PERSISTED, because that is where a
-// shenanigan's fact is authored (rpg-project#454): `on: { intimidated: { fact:
-// … } }` on the sergeant's placement means this run can mint
-// `known:fact:sergeant-cowed` even though no record reveals it and no
+// shenanigan's fact is authored (rpg-project#454, rpg-project#569): an option
+// on the sergeant whose success row teaches `sergeant-cowed` means this run
+// can mint `known:fact:sergeant-cowed` even though no record reveals it and no
 // disposition has to wait for it. Left out, a saved run in which the sergeant
 // was cowed would refuse to load — its own fact would look like another
 // dungeon's.
@@ -385,6 +385,19 @@ func mintedFactIDs(f *field, endings []Trigger, members []FactID) []FactID {
 	for _, t := range endings {
 		if t, ok := t.(TriggerFact); ok {
 			seen[t.Fact] = true
+		}
+	}
+	// AND WHAT A PROP'S LINES TEACH (rpg-project#569): the altar's fact is
+	// field structure the way a record's reveal is, so it is minted here
+	// rather than handed in beside the roster's.
+	for _, p := range f.props {
+		for _, id := range optionFacts(p.Options) {
+			seen[id] = true
+		}
+	}
+	for i := range f.placed {
+		for _, id := range optionFacts(f.placed[i].options) {
+			seen[id] = true
 		}
 	}
 	out := make([]FactID, 0, len(seen))

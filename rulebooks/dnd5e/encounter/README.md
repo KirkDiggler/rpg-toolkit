@@ -53,8 +53,8 @@ assembly in one place is what lets the pieces stay small.
 ## Writing a creature's table
 
 **A creature's whole policy is an authored table.** There is no behaviour code
-to write: `on:` in the dungeon file, keyed by what happened, with a weighted
-list of entries under each key. The engine rolls it.
+to write: `on:` in the dungeon file, keyed by trigger, with a weighted list of
+entries under each key. The engine rolls it.
 
 ```yaml
 on:
@@ -66,14 +66,33 @@ on:
     - { when: { enemy: none },             toward: { at: [3, 4] } }
     - { when: { fled: { within: 3 } },     away: actor, weight: 5 }
     - { hold: {} }
-  intimidated:
-    - { weight: 70, say: "Fine, fine!", fact: camp-cowed }
-    - { weight: 30, say: "BOSS!", flee: {} }
 ```
 
-Five triggers. The four social ones — `intimidated`, `intimidate_failed`,
-`persuaded`, `persuade_failed` — fire inside the verb that settled. `time`
-fires when the creature has time: its turn in a fight, or a round of the world.
+One trigger: `time`, which fires when the creature has time — its turn in a
+fight, or a round of the world.
+
+**What a creature answers when spoken to lives on the line that was spoken**
+(rpg-project#569). `options:` on a creature or a prop lists what a character
+can SAY to it: an id, the line, the check it rolls, an optional `requires`
+(`{ fact }` the speaker knows, or `{ holds }` a prop the speaker carries), and
+the same weighted rows under `success` and `failure`. `Speak` rolls the rows of
+the verdict the check landed; a beaten Intimidation check lands `intimidated`
+on every witness and a beaten Persuasion check lands `persuaded`, whatever the
+line said, and every other skill lands nothing.
+
+```yaml
+options:
+  - id: stand-aside
+    say: "Stand aside or bleed."
+    check: [{ ability: intimidation, dc: 14 }]
+    success:
+      - { weight: 3, say: "…go on, then.", fact: gate-cowed }
+      - { weight: 1, say: "BOSS!", flee: {} }
+    failure: [{ say: "You'll bleed first." }]
+```
+
+The four verb-keyed social keys (`intimidated`, `intimidate_failed`,
+`persuaded`, `persuade_failed`) retired to options and are refused by name.
 
 ### Four things load the die
 
@@ -154,7 +173,8 @@ When an advance raises the high-water, the world thinks, inside the same call:
 ### What decides, and how you change it
 
 A creature's whole policy is its **table**: `on:`, in the dungeon file, keyed
-by what happened — the four social verdicts, and `time` for having time. The
+by trigger — `time`, for having time — and what it answers when spoken to is
+the `options:` beside it. The
 engine supplies one `Driver` seam and one implementation of it, `TableDriver`,
 which decides nothing: it rolls the table, loaded by the creature's
 temperament, filtered by what the creature has seen and suffered, and turns the

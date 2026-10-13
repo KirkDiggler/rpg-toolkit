@@ -239,18 +239,14 @@ type MonsterPlacement struct {
 	// authored before factions existed pictures byte-identically.
 	Faction string `json:"Faction,omitempty"`
 
-	// Intimidate is the check a character must beat to frighten this
-	// monster ([PlaceSpec.Intimidate], rpg-project#454) — for a host to
-	// hand to [encounter.MemberInput.Intimidate] when it spawns the sheet.
-	// Nil when the author authored none, which means the monster cannot be
-	// intimidated (rpg-project#494 R1).
-	Intimidate []encounter.CheckApproach `json:"Intimidate,omitempty"`
-
-	// Persuade is the check a character must beat to talk this monster round
-	// ([PlaceSpec.Persuade], rpg-project#458) — for a host to hand to
-	// [encounter.MemberInput.Persuade] when it spawns the sheet. Nil when the
-	// author authored none, which means the monster cannot be persuaded.
-	Persuade []encounter.CheckApproach `json:"Persuade,omitempty"`
+	// Options is the lines a character can say to this monster
+	// ([PlaceSpec.Options], [RoomMonsterBinding.Options], rpg-project#569) —
+	// for a host to hand to [encounter.MemberInput.Options] when it spawns
+	// the sheet. Nil when the author wrote none, which means the monster
+	// cannot be spoken to (R2). Compiled by [optionsOf]: every omitted
+	// weight resolved, and `requires` compiled to the composition's own
+	// trigger.
+	Options []encounter.Option `json:"Options,omitempty"`
 
 	// Table is this monster's authored policy — what it does, keyed by what
 	// happened ([PlaceSpec.On] laid over [FactionSpec.On]) — for a host to
@@ -588,6 +584,10 @@ func predicateOf(p *PredicateSpec) encounter.Trigger {
 		return encounter.TriggerFact{Fact: p.Fact}
 	case predicateStance:
 		return encounter.TriggerStance{Between: p.Stance.Between, Stance: encounter.Stance(p.Stance.Is)}
+	case predicateHolds:
+		// An option's `requires` only — [grammar.predicate] refuses it
+		// everywhere else, so this arm is reached from [optionsOf] alone.
+		return encounter.TriggerHolds{Prop: encounter.PropID(p.Holds)}
 	default:
 		return nil
 	}
@@ -717,6 +717,8 @@ func propsOf(spec *Spec) []encounter.PropInput {
 			// (rpg-project#375, R6); nil for a prop on the floor from the
 			// first frame.
 			Arrives: predicateOf(p.Arrives),
+			// The lines a character can say to it (rpg-project#569).
+			Options: optionsOf(p.Options),
 		}
 		// Validate has already confirmed len(p.Offset) is 0, 2 or 3 by the
 		// time Compile runs; anything else is unreachable here. A missing
@@ -1042,6 +1044,42 @@ func answerOf(entry AnswerSpec) encounter.Answer {
 	}
 }
 
+// optionsOf compiles a binding's lines (rpg-project#569): each option's check
+// through [approachesOf], its `requires` through [predicateOf], and both
+// verdicts' rows through [answerOf], every omitted weight resolved to 1.
+//
+// NIL FOR NONE, an empty list included, so a creature nobody wrote a line for
+// compiles exactly as it did before options existed and the committed
+// pictures omit the key.
+func optionsOf(specs []OptionSpec) []encounter.Option {
+	if len(specs) == 0 {
+		return nil
+	}
+	out := make([]encounter.Option, 0, len(specs))
+	for _, o := range specs {
+		out = append(out, encounter.Option{
+			ID: o.ID, Say: o.Say, Check: approachesOf(o.Check),
+			Requires: predicateOf(o.Requires),
+			Success:  rowsOf(o.Success), Failure: rowsOf(o.Failure),
+		})
+	}
+
+	return out
+}
+
+// rowsOf compiles one verdict's rows, nil staying nil.
+func rowsOf(entries []AnswerSpec) []encounter.Answer {
+	if len(entries) == 0 {
+		return nil
+	}
+	out := make([]encounter.Answer, 0, len(entries))
+	for _, entry := range entries {
+		out = append(out, answerOf(entry))
+	}
+
+	return out
+}
+
 // whenOf compiles a condition, nil staying nil: an entry with no `when` is a
 // standing order and always on the table.
 func whenOf(when *WhenSpec) *encounter.When {
@@ -1273,8 +1311,7 @@ func monstersOf(spec *Spec, o encounter.Orientation) []MonsterPlacement {
 		mp.Targeting = targeting
 		mp.Boss = p.Boss
 		mp.Holds = intelHoldingsOf(spec.Key, p.Holds)
-		mp.Intimidate = approachesOf(p.Intimidate)
-		mp.Persuade = approachesOf(p.Persuade)
+		mp.Options = optionsOf(p.Options)
 		mp.Arrives = predicateOf(p.Arrives)
 		out = append(out, mp)
 	}

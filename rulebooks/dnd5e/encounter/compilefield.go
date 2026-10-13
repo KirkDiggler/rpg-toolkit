@@ -559,10 +559,13 @@ func (f *field) compileProps(props []PropInput) error {
 		// Facing and Offset need no such copy — a string and a value array
 		// are already immune to the aliasing the two flags guard against.
 		blocksMovement, blocksSight := *p.BlocksMovement, *p.BlocksLineOfSight
+		if err := validatePropOptions(p.ID, p.Ref, p.Options); err != nil {
+			return err
+		}
 		f.props[i] = PropInput{
 			ID: p.ID, Holdable: p.Holdable, Holds: append([]IntelID(nil), p.Holds...),
 			Ref: p.Ref, At: p.At, BlocksMovement: &blocksMovement, BlocksLineOfSight: &blocksSight,
-			Facing: p.Facing, Offset: p.Offset, Arrives: p.Arrives,
+			Facing: p.Facing, Offset: p.Offset, Arrives: p.Arrives, Options: cloneOptions(p.Options),
 		}
 	}
 

@@ -20,10 +20,11 @@ import (
 // off (rpg-project#493, R5; [hostileIntent]).
 const DeedAttack = "attack"
 
-// DeedIntimidate is the verb a beaten Intimidate check lands under: what a
+// DeedIntimidate is the verb a beaten Intimidation check lands under: what a
 // witness would say they saw somebody DO when a character threatened a
 // monster and the threat landed (rpg-project#454,
-// ideas/shenanigans/intimidate.md).
+// ideas/shenanigans/intimidate.md; since rpg-project#569 any option whose
+// check was made with Intimidation, [deedForSkill]).
 //
 // A MISSED THREAT LANDS NOTHING, which is the difference between this verb
 // and [DeedAttack]. A miss is still a shot at you; a threat nobody was
@@ -38,7 +39,7 @@ const DeedAttack = "attack"
 // why (the design's first broken cut).
 const DeedIntimidate = "intimidate"
 
-// DeedPersuade is the verb a beaten Persuade check lands under: what a witness
+// DeedPersuade is the verb a beaten Persuasion check lands under ([deedForSkill]): what a witness
 // would say they saw somebody DO when a character talked a creature round and
 // the appeal landed (rpg-project#458,
 // ideas/shenanigans/front-room-goblin.md).
@@ -54,6 +55,32 @@ const DeedIntimidate = "intimidate"
 // A MISSED APPEAL LANDS NOTHING, [DeedIntimidate]'s rule for
 // [DeedIntimidate]'s reason.
 const DeedPersuade = "persuade"
+
+// deedForSkill is the deed a BEATEN check of one skill lands on its witnesses
+// (rpg-project#569, R3 — "the deed is the skill"): Intimidation lands
+// [DeedIntimidate], Persuasion lands [DeedPersuade], and every other skill
+// lands nothing at all. The second return says whether there is one.
+//
+// THE SKILL, NOT THE LINE. A line that reads as a threat and rolls
+// Performance frightens nobody, and a polite line that rolls Intimidation
+// still lands `intimidate` — what the witnesses saw is the check that was
+// made, whatever the words were.
+//
+// THE WORDS ARE THE AUTHORED APPROACH'S, carried as [CheckApproach.Ability]
+// writes them (`intimidation`, `persuasion`). This is the one place this
+// composition reads that word, and only to choose between the two deed verbs
+// it already declares; what the skill MEANS — its modifier, its proficiency,
+// the untrained rule — stays in resolution.
+func deedForSkill(skill string) (string, bool) {
+	switch skill {
+	case "intimidation":
+		return DeedIntimidate, true
+	case "persuasion":
+		return DeedPersuade, true
+	default:
+		return "", false
+	}
+}
 
 // DeedFled is the verb a creature's own memory of having been made to run
 // lands under: what the creature would say happened TO IT when a `flee` entry
@@ -120,8 +147,8 @@ func (e *Encounter) landAttack(actor MemberID, targets []MemberID) error {
 }
 
 // audienceOf answers where a member is standing and who can see that cell —
-// the two facts every deed needs before it can be landed, asked once so the
-// Intimidate verb can refuse on the audience it is about to land on rather
+// the two facts every deed needs before it can be landed, asked once so
+// [Encounter.Speak] can refuse on the audience it is about to land on rather
 // than computing it a second time.
 func (e *Encounter) audienceOf(actor MemberID) (spatial.Position, []core.EntityID, error) {
 	record, ok := e.members[actor]

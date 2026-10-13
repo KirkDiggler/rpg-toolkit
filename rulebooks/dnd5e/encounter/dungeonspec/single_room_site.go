@@ -177,8 +177,7 @@ func monsterBindingsShape(gp *yaml.Node, add errSink) {
 		// Go zero value — a `holds:` the author emptied, a check they
 		// deleted, a predicate that is now no predicate at all.
 		optionalNode(b, "holds", p, add)
-		optionalNode(b, "intimidate", p, add)
-		optionalNode(b, "persuade", p, add)
+		optionalNode(b, "options", p, add)
 		optionalNode(b, "arrives", p, add)
 	}
 }
@@ -271,7 +270,7 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 		// over (rpg-toolkit#1897): a name that names nothing is refused at
 		// the author's own path, naming this creature and the id it wrote.
 		bindingTable(g, at, m.id, b.Table, s.Tables)
-		bindingChecks(g, at, b)
+		g.options(at, b.Options, roomProps(gp), false)
 	}
 	g.minds()
 	// THE WAYS OUT, in [Validate]'s own position for them — after the cast is

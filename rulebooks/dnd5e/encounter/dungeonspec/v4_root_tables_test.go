@@ -78,15 +78,11 @@ func TestABindingsOwnOnWinsOverTheTableItNames(t *testing.T) {
 				"          time:\n"+
 				"            - { when: { enemy: seen }, toward: enemy }\n"+
 				"            - { when: { enemy: remembered }, toward: enemy }\n"+
-				"            - { when: { enemy: reach }, attack: enemy }\n"+
-				"          intimidated:\n"+
-				"            - { say: \"Fine!\" }\n")))
+				"            - { when: { enemy: reach }, attack: enemy }\n")))
 
 	table := monsterNamed(t, compiled, "goblin-1").Table
 	require.Len(t, table[encounter.AnswerKey("time")], 3,
 		"the binding's own `time:` REPLACES the table's — nearer layer wins wholesale")
-	require.Contains(t, table, encounter.AnswerKey("intimidated"),
-		"and a trigger the binding added is there beside it")
 }
 
 // TestARootTableWithNoNameIsRefused, and refused BY NAME — the id an author
@@ -123,8 +119,7 @@ func TestADefectiveTableIsRefusedEvenWhenNobodyNamesIt(t *testing.T) {
 		"tables:\n  goblin-mind:\n    taunted:\n      - { hold: {} }\n", ""))
 
 	requireExactDefect(t, errs, "tables.goblin-mind.on.taunted",
-		`"taunted" is not a trigger this build rolls: they are intimidated, intimidate_failed, `+
-			"persuaded, persuade_failed, time")
+		`"taunted" is not a trigger this build rolls: they are time`)
 }
 
 // TestTheGrammarInsideATableIsTheOneGrammar: a table is judged by the SAME
@@ -136,8 +131,7 @@ func TestTheGrammarInsideATableIsRefusedAtTheTablesPath(t *testing.T) {
 		bindingOnGoblin1("        table: goblin-mind\n")))
 
 	requireExactDefect(t, errs, "tables.goblin-mind.on.taunted",
-		`"taunted" is not a trigger this build rolls: they are intimidated, intimidate_failed, `+
-			"persuaded, persuade_failed, time")
+		`"taunted" is not a trigger this build rolls: they are time`)
 }
 
 // TestANullTableIsRefusedRatherThanReadAsTheZeroValue: `goblin-mind:` with
@@ -249,24 +243,27 @@ room:
 // THE ROW COUNTS ARE THE ASSERTION, and the first draft of this test had them
 // backwards: it expected the TABLE to win `time`, which would have been the
 // layering inverted. The faction's `on:` is NEARER than the table it names, so
-// `time` is the faction's 1 row and the table's `intimidated` key survives.
+// `time` is the faction's 1 row; and a faction that writes no `on:` answers
+// with the table's 2 rows, which is the table arriving at all. `time` is the
+// one table key since the social keys retired to options (rpg-project#569
+// R2), so the two halves are two documents rather than two keys of one.
 func TestAFactionNamesItsTable(t *testing.T) {
-	const doc = `version: 4
+	const withOwnOn = `    on:
+      time:
+        - { when: { enemy: reach }, attack: enemy }
+`
+	doc := func(on string) string {
+		return `version: 4
 key: faction-table
 play: { void: transparent, lighting: bright, standing: centre-covered }
 factions:
   - id: watch
     table: watch-drill
-    on:
-      time:
-        - { when: { enemy: reach }, attack: enemy }
-tables:
+` + on + `tables:
   watch-drill:
     time:
       - { when: { enemy: seen }, toward: enemy }
       - { when: { enemy: none }, hold: {} }
-    intimidated:
-      - { say: "Fine!" }
 room:
   version: 3
   id: room-1
@@ -290,14 +287,19 @@ room:
     monsterBindings:
       goblin-1: { faction: watch }
 `
+	}
 
-	compiled, err := dungeonspec.Load([]byte(doc))
+	compiled, err := dungeonspec.Load([]byte(doc(withOwnOn)))
 	require.NoError(t, err)
 	table := monsterNamed(t, compiled, "goblin-1").Table
 	require.Len(t, table[encounter.AnswerKey("time")], 1,
 		"the faction's own `on:` is NEARER than the table it names and wins `time` wholesale")
-	require.Contains(t, table, encounter.AnswerKey("intimidated"),
-		"and a key only the NAMED TABLE carries reaches the member — which is the table arriving at all")
+
+	compiled, err = dungeonspec.Load([]byte(doc("")))
+	require.NoError(t, err)
+	table = monsterNamed(t, compiled, "goblin-1").Table
+	require.Len(t, table[encounter.AnswerKey("time")], 2,
+		"a faction with no `on:` of its own answers with the NAMED TABLE — which is the table arriving at all")
 }
 
 // TestAFactionTableThatNamesNothingIsRefused: the name must resolve, and the

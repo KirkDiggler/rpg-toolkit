@@ -502,7 +502,7 @@ func validateEndingTriggers(f *field, endings []EndingInput) error {
 		// fact, a stance — through the one validator dispositions use, so an
 		// ending and an until refuse the same shapes in the same words.
 		switch ei.Trigger.(type) {
-		case TriggerRound, TriggerFact, TriggerStance:
+		case TriggerRound, TriggerFact, TriggerStance, TriggerHolds:
 			if err := f.validatePredicate(fmt.Sprintf("ending %q", ei.Key), ei.Trigger, ErrNoEnding); err != nil {
 				return err
 			}
@@ -612,7 +612,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		if err := validateMemberFacts(memberFacts{
 			ID:            m.ID,
 			AppearanceRef: m.AppearanceRef,
-			Intimidate:    m.Intimidate, Persuade: m.Persuade, Table: m.Table,
+			Options:       m.Options, Table: m.Table,
 		}); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
 		}
@@ -624,6 +624,14 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	f, err := compileField(in.Field)
 	if err != nil {
 		return nil, fmt.Errorf("newencounter: %w", err)
+	}
+
+	// A line requiring a holding must name a prop this field lets somebody
+	// pick up (option.go) — asked against the compiled field, so after it.
+	for _, m := range in.Members {
+		if err := f.validateOptionHolds(m.Options); err != nil {
+			return nil, fmt.Errorf("newencounter: member %s: %w: %w", m.ID, err, ErrBadMember)
+		}
 	}
 
 	// Check doors: names, states, and edges that are real crossings on real
@@ -810,8 +818,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			Kind:           mi.Kind,
 			Name:           mi.Name,
 			AppearanceRef:  mi.AppearanceRef,
-			Intimidate:     copyApproaches(mi.Intimidate),
-			Persuade:       copyApproaches(mi.Persuade),
+			Options:        cloneOptions(mi.Options),
 			Table:          cloneTable(mi.Table),
 			Temper:         mi.Temper,
 			BlocksMovement: mi.BlocksMovement,
@@ -1072,8 +1079,6 @@ func (e *Encounter) placementOf(record *memberRecord) (Member, error) {
 		Name:           record.Name,
 		Region:         region,
 		Position:       cell,
-		Intimidate:     copyApproaches(record.Intimidate),
-		Persuade:       copyApproaches(record.Persuade),
 		Table:          cloneTable(record.Table),
 		Temper:         record.Temper,
 		BlocksMovement: record.BlocksMovement,
@@ -1983,9 +1988,12 @@ func (e *Encounter) validateJoin(in *JoinInput) error {
 	if err := validateMemberFacts(memberFacts{
 		ID:            in.Member,
 		AppearanceRef: in.AppearanceRef,
-		Intimidate:    in.Intimidate, Persuade: in.Persuade, Table: in.Table,
+		Options:       in.Options, Table: in.Table,
 	}); err != nil {
 		return fmt.Errorf("join: %w", err)
+	}
+	if err := e.field.validateOptionHolds(in.Options); err != nil {
+		return fmt.Errorf("join: member %s: %w: %w", in.Member, err, ErrBadMember)
 	}
 
 	// A holder must name a record this field declares — the SAME refusal
@@ -2065,8 +2073,7 @@ func (e *Encounter) admitMember(in *JoinInput) (*memberRecord, *JoinOutput, erro
 		Kind:           in.Kind,
 		Name:           in.Name,
 		AppearanceRef:  in.AppearanceRef,
-		Intimidate:     copyApproaches(in.Intimidate),
-		Persuade:       copyApproaches(in.Persuade),
+		Options:        cloneOptions(in.Options),
 		Table:          cloneTable(in.Table),
 		Temper:         in.Temper,
 		BlocksMovement: in.BlocksMovement,
@@ -2087,7 +2094,6 @@ func (e *Encounter) admitMember(in *JoinInput) (*memberRecord, *JoinOutput, erro
 			Reserved: true,
 			Member: Member{
 				ID: in.Member, Kind: in.Kind, Name: in.Name, Region: region, Position: in.Cell,
-				Intimidate: copyApproaches(in.Intimidate), Persuade: copyApproaches(in.Persuade),
 				Table:          cloneTable(in.Table),
 				Temper:         in.Temper,
 				BlocksMovement: in.BlocksMovement, Faction: factionOf(member),

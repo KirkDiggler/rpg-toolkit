@@ -27,8 +27,8 @@ import (
 //     memory and the deeds done to a member (facts.go);
 //   - executing the words: a swing through the [Striker], a walk through
 //     [Encounter.Route] and the step that provokes (tabledriver.go, clocks.go);
-//   - naming the triggers a D&D verb settles, and refusing a word under a key
-//     it is not legal on (below);
+//   - naming the two verdicts an option is answered under, and refusing a
+//     word under a key it is not legal on (below);
 //   - the authoring dialect (dungeonspec), the persistence (data.go) and the
 //     beats (answer.go).
 //
@@ -163,61 +163,76 @@ const (
 // files it under, for the word the author wrote.
 var DeedVerbFor = behavior.DeedVerbFor
 
-// The five triggers an author may write a table for: one per social verb per
-// verdict, and one for the creature having time.
+// The one trigger an author may write a TABLE for, and the two verdicts an
+// OPTION is answered under (rpg-project#569, the mad king use case R2).
 //
-// THE FOUR SOCIAL KEYS ARE THIS RULEBOOK'S, which is why they are declared
-// here and [behavior.KeyTime] is not. `intimidated` is a D&D verb settling;
-// having time is not a D&D idea at all, and mind/behavior names it because a
-// creature given time and eligible for nothing HELD its turn — a different
-// answer from the silence an unmatched event produces.
+// A TABLE IS WHAT A CREATURE DOES WITH TIME. Having time is not a D&D idea at
+// all, and mind/behavior names it because a creature given time and eligible
+// for nothing HELD its turn — a different answer from the silence an
+// unmatched event produces.
 //
-// THE KEY IS THE VERB AND THE VERDICT TOGETHER, which is why failure has a
-// table of its own. "A failed Intimidate that raises the alarm makes
-// attempting worse than not attempting. That is deliberate, and it is what
-// gives the untrained rule teeth" (the shenanigans design). A verb with no
-// table for the outcome that happened does nothing at all and writes no beat
-// — absent means absent, not "the creature shrugged".
+// WHAT A CREATURE ANSWERS WHEN SPOKEN TO LIVES ON THE OPTION THAT WAS SPOKEN.
+// The four verb-keyed table keys this replaced (`intimidated`,
+// `intimidate_failed`, `persuaded`, `persuade_failed`) keyed the answer by the
+// VERB, which meant a creature could answer a threat only one way however it
+// was phrased, and a line that rolled any other skill had nowhere to put its
+// answer at all. An option carries its own success and failure rows, and the
+// verdict is the key the die is rolled under.
+//
+// FAILURE STILL HAS ROWS OF ITS OWN, and that is still deliberate: "a failed
+// Intimidate that raises the alarm makes attempting worse than not
+// attempting" (the shenanigans design). An option with no rows for the
+// verdict that happened does nothing at all and writes no answer beat —
+// absent means absent, not "the creature shrugged".
 const (
-	// AnswerIntimidated is what the creature does when a threat lands.
-	AnswerIntimidated AnswerKey = "intimidated"
-
-	// AnswerIntimidateFailed is what it does when a threat misses.
-	AnswerIntimidateFailed AnswerKey = "intimidate_failed"
-
-	// AnswerPersuaded is what it does when an appeal lands.
-	AnswerPersuaded AnswerKey = "persuaded"
-
-	// AnswerPersuadeFailed is what it does when an appeal misses.
-	AnswerPersuadeFailed AnswerKey = "persuade_failed"
-
 	// AnswerTime is what the creature does when it has time: its turn in a
 	// fight, or a round of the world (worldtime.go).
 	//
-	// THE ONE TIME KEY, and the reason there is no `attacked` event key
-	// beside the social four: what a creature does about being attacked is
-	// decided when it next has time, reading `attacked: {within: N}` — which
-	// is what the retired retaliator preset's grudge did in Go, moved into
-	// the author's sight.
+	// THE ONE TABLE KEY, and the reason there is no `attacked` event key:
+	// what a creature does about being attacked is decided when it next has
+	// time, reading `attacked: {within: N}` — which is what the retired
+	// retaliator preset's grudge did in Go, moved into the author's sight.
 	AnswerTime = behavior.KeyTime
+
+	// AnswerSuccess is the verdict an option's [Option.Success] rows are
+	// rolled under: the check was beaten. It is the `key` an answered beat
+	// reports for that pick.
+	AnswerSuccess AnswerKey = "success"
+
+	// AnswerFailure is the verdict an option's [Option.Failure] rows are
+	// rolled under: the check was missed.
+	AnswerFailure AnswerKey = "failure"
 )
 
-// AnswerKeys is every SOCIAL outcome key this build accepts, in authored
-// order: each verb's success then its failure. EXPORTED because the authoring
-// dialect refuses every other key by name and must list the ones it takes, and
-// a second copy of the list there is the drift this variable exists to
-// prevent.
-var AnswerKeys = []AnswerKey{
-	AnswerIntimidated,
-	AnswerIntimidateFailed,
-	AnswerPersuaded,
-	AnswerPersuadeFailed,
-}
+// TableKeys is every key a table may name — [AnswerTime] alone. EXPORTED
+// because the authoring dialect refuses every other key by name and must list
+// the ones it takes, and a second copy of the list there is the drift this
+// variable exists to prevent.
+var TableKeys = []AnswerKey{AnswerTime}
 
-// TableKeys is every key a table may name — the social four plus
-// [AnswerTime]. [AnswerKeys]'s reason for being exported, one level up: the
-// dialect refuses a key outside this list by name.
-var TableKeys = append(append([]AnswerKey(nil), AnswerKeys...), AnswerTime)
+// OptionKeys is the two verdicts an option is answered under, in authored
+// order: the beaten one, then the missed one. Exported for [TableKeys]'
+// reason.
+var OptionKeys = []AnswerKey{AnswerSuccess, AnswerFailure}
+
+// RetiredTableKeys is the four verb-keyed social keys that retired to options
+// (rpg-project#569 R2). A key this build once understood is refused BY NAME
+// with where it went, never as a bare unknown trigger — the author who wrote
+// it had a meaning, and an old blob carrying one is a save from before the
+// move. Exported so the authoring dialect refuses the same four by the same
+// list.
+var RetiredTableKeys = []AnswerKey{"intimidated", "intimidate_failed", "persuaded", "persuade_failed"}
+
+// IsRetiredTableKey reports whether a key is one of [RetiredTableKeys].
+func IsRetiredTableKey(key AnswerKey) bool {
+	for _, retired := range RetiredTableKeys {
+		if key == retired {
+			return true
+		}
+	}
+
+	return false
+}
 
 // TemperWords is the three temperaments this build multiplies by, sealed
 // HERE as well as in the rulebook that ships their numbers.

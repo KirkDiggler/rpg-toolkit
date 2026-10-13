@@ -180,22 +180,28 @@ func TestEveryMisplacedWordIsRefusedByName(t *testing.T) {
 			says: []string{"answers a social verdict"},
 		},
 		{
-			name: "a hold under a social verdict",
-			on:   `on: { intimidated: [ { hold: {} } ] }`,
-			path: "place[18].on.intimidated[0].hold",
+			name: "a hold under an option's verdict",
+			on:   `options: [ { id: hi, say: "Hi.", check: [{ ability: persuasion, dc: 10 }], success: [ { hold: {} } ] } ]`,
+			path: "place[18].options[0].success[0].hold",
 			says: []string{"what a creature does with time"},
 		},
 		{
-			name: "an attack under a social verdict",
-			on:   `on: { intimidated: [ { attack: enemy } ] }`,
-			path: "place[18].on.intimidated[0].attack",
+			name: "an attack under an option's verdict",
+			on:   `options: [ { id: hi, say: "Hi.", check: [{ ability: persuasion, dc: 10 }], failure: [ { attack: enemy } ] } ]`,
+			path: "place[18].options[0].failure[0].attack",
 			says: []string{"what a creature does with time"},
 		},
 		{
-			name: "a condition under a social verdict",
-			on:   `on: { intimidated: [ { say: "hah", when: { enemy: seen } } ] }`,
-			path: "place[18].on.intimidated[0].when",
+			name: "a condition under an option's verdict",
+			on:   `options: [ { id: hi, say: "Hi.", check: [{ ability: persuasion, dc: 10 }], success: [ { say: "hah", when: { enemy: seen } } ] } ]`,
+			path: "place[18].options[0].success[0].when",
 			says: []string{"already the condition"},
+		},
+		{
+			name: "a retired social key",
+			on:   `on: { intimidated: [ { say: "Fine." } ] }`,
+			path: "place[18].on.intimidated",
+			says: []string{"`intimidated` is no longer a table key: author an option"},
 		},
 		{
 			name: "a cell on a word that acts on a creature",
@@ -355,8 +361,6 @@ factions:
       time:
         - { when: { enemy: none }, toward: { at: [3, 3] } }
         - { hold: {} }
-      intimidated:
-        - { weight: 1, say: "the faction's line" }
 
 place:
 `, 1)
@@ -380,7 +384,6 @@ place:
 
 	follower := byID["follower"]
 	require.Len(t, follower.Table[encounter.AnswerTime], 2, "it wrote nothing, so the faction's orders are its orders")
-	require.Len(t, follower.Table[encounter.AnswerIntimidated], 1)
 	require.Equal(t, map[string]int{"coward": 1, "soldier": 2}, follower.Temper.Mix,
 		"and the faction's mix comes with them, for the composition to deal at the door")
 
@@ -388,9 +391,6 @@ place:
 	require.Len(t, captain.Table[encounter.AnswerTime], 1,
 		"its own `time` key replaced the faction's wholesale — the entries under it are gone, visibly")
 	require.True(t, captain.Table[encounter.AnswerTime][0].Hold)
-	require.Len(t, captain.Table[encounter.AnswerIntimidated], 1,
-		"and the key it was silent about is still the faction's")
-	require.Equal(t, "the faction's line", captain.Table[encounter.AnswerIntimidated][0].Say)
 }
 
 // TestAPlacementsOwnTemperWinsAndTheMixIsNotDealtForIt: an author who named

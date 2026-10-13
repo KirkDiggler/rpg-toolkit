@@ -452,23 +452,16 @@ type RoomMonsterBinding struct {
 	// way in and looting either teaches it. Not refused as a duplicate.
 	Holds []string `yaml:"holds,omitempty" json:"holds,omitempty"`
 
-	// Intimidate is the check a character must beat to frighten this creature
-	// — [PlaceSpec.Intimidate]'s shape and its sentences (rpg-project#454;
-	// rpg-project#488 R5), the same approach list a lock carries, priced per
-	// route.
+	// Options is the lines a character can say to this creature —
+	// [PlaceSpec.Options]' shape and its sentences (rpg-project#569). Each
+	// is an id, a line, a check, an optional `requires` and the rows answered
+	// on either verdict ([OptionSpec]).
 	//
-	// OMITTED MEANS NOT OFFERED (rpg-project#494 R1): absent, this creature
-	// cannot be intimidated and no default stands behind the silence. The
-	// NIL-VS-EMPTY LAW IS [RoomDoorBinding.Locked]'s — nil is "the author
-	// said nothing", and `intimidate: []` is an authored check that forgot to
-	// say how it is beaten, refused by name.
-	Intimidate CheckSpec `yaml:"intimidate,omitempty" json:"intimidate,omitempty"`
-
-	// Persuade is [RoomMonsterBinding.Intimidate]'s twin — the check to talk
-	// this creature round ([PlaceSpec.Persuade], rpg-project#458;
-	// rpg-project#488 R5). The same shape, the same silence when absent, and
-	// the same nil-vs-empty law.
-	Persuade CheckSpec `yaml:"persuade,omitempty" json:"persuade,omitempty"`
+	// OMITTED MEANS NOTHING TO SAY (R2): absent, this creature cannot be
+	// spoken to and no default stands behind the silence. It replaced the
+	// priced `intimidate:` and `persuade:` checks, both refused by name with
+	// where they went.
+	Options []OptionSpec `yaml:"options,omitempty" json:"options,omitempty"`
 
 	// Arrives is the predicate that brings this creature into the run —
 	// [PlaceSpec.Arrives]'s field and [PredicateSpec]'s one grammar
@@ -565,6 +558,13 @@ type RoomPropBinding struct {
 	// is content — and what is on the floor is the engine's `placed` answer,
 	// never the scene (R1).
 	Arrives *PredicateSpec `yaml:"arrives,omitempty" json:"arrives,omitempty"`
+
+	// Options is the lines a character can say to this prop — "Examine the
+	// altar." — [RoomMonsterBinding.Options]' field on a prop
+	// (rpg-project#569), compiled onto the placement's
+	// [encounter.PlacedPropInput.Options]. A prop answers with no
+	// temperament and lands no deed, and none of its rows may `flee`.
+	Options []OptionSpec `yaml:"options,omitempty" json:"options,omitempty"`
 }
 
 // RoomDoorBinding is one placed item's DOOR STATE: that the item is a door at

@@ -67,10 +67,13 @@ func TestEachMemberRefusalAnswersItsOwnSentinel(t *testing.T) {
 				return err
 			}, encounter.ErrNotMember,
 		},
-		"setup with a threat that has nothing to beat": {
+		"setup with a line whose check has nothing to beat": {
 			func(t *testing.T) error {
 				bad := player(bob)
-				bad.Intimidate = []encounter.CheckApproach{{Ability: "intimidation", DC: 0}}
+				bad.Options = []encounter.Option{{
+					ID: "threat", Say: "Stand aside.",
+					Check: []encounter.CheckApproach{{Ability: "intimidation", DC: 0}},
+				}}
 				_, err := encounter.NewEncounter(emptyWorld(bad))
 				return err
 			}, encounter.ErrBadMember,

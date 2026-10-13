@@ -677,7 +677,7 @@ func (e *Encounter) runIntents(
 // everyone ([Encounter.audienceFor]). A social answer's audience is the
 // witnesses of the verb that caused it; nothing caused this but time.
 func (e *Encounter) appendPickBeat(member MemberID, chosen *Pick) error {
-	payload, err := json.Marshal(answeredBeatBody(member, "", false, chosen))
+	payload, err := json.Marshal(answeredBeatBody(answeredBy{creature: member}, chosen))
 	if err != nil {
 		return fmt.Errorf("pick beat: %w", err)
 	}

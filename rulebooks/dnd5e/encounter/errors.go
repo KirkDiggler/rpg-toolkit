@@ -641,7 +641,7 @@ var (
 	// the configured range (default: adjacent, one cell) from the actor.
 	ErrOutOfRange = errors.New("encounter: target out of range")
 
-	// ErrUnwitnessed is returned when [Encounter.Intimidate]'s target did
+	// ErrUnwitnessed is returned when [Encounter.Speak]'s target did
 	// not witness the actor: the target is not in [Encounter.witnessesOf]
 	// of the actor's cell, so nothing it could be told happened in front of
 	// it. THE OTHER DIRECTION FROM ErrNotVisible, deliberately its own
@@ -650,6 +650,17 @@ var (
 	// are two different answers and a caller narrating the refusal needs
 	// the right one.
 	ErrUnwitnessed = errors.New("encounter: target did not witness the actor")
+
+	// ErrNoOption is returned when [Encounter.Speak] names an option the
+	// target does not carry, or one whose `requires` does not hold for the
+	// speaker (rpg-project#569, R1/R2/R9). ONE SENTINEL FOR BOTH, on the
+	// probe law's reason: a line the speaker was never offered and a line
+	// that does not exist are the same thing from where they stand, and
+	// telling them apart would confirm to a stale client a line the author
+	// hid behind a fact it has not learned. It is also what a creature with
+	// no options at all answers — a creature nobody wrote a line for cannot
+	// be spoken to.
+	ErrNoOption = errors.New("encounter: no such option for this speaker")
 
 	// ErrNoRoller is returned when a verb that has to roll was handed no
 	// die. Supplied, never defaulted — resolution.CheckInput.Roller's

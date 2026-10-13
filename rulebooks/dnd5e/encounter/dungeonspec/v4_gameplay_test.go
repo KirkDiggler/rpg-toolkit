@@ -73,11 +73,12 @@ func monsterNamed(t *testing.T, compiled dungeonspec.Compiled, id string) dungeo
 	return dungeonspec.MonsterPlacement{}
 }
 
-// # The front room — the priced threat, the priced appeal, and an arrival
+// # The front room — the goblin's two lines, and an arrival
 
 // frontRoomV2Gameplay is the gameplay half of
-// `rpg-api/content/reference-front-room.yaml`, transcribed: the goblin's two
-// priced verbs, and the bandits waiting on the lie.
+// `rpg-api/content/reference-front-room.yaml`, transcribed and migrated to
+// options (rpg-project#569): the goblin's two lines, and the bandits waiting
+// on the lie.
 //
 // TRANSCRIBED RATHER THAN READ FROM THAT REPOSITORY, because the file is
 // rpg-api's content and this package may not reach across a repository
@@ -112,8 +113,22 @@ place:
     faction: goblins
     at: [4, 3]
     actions: ["dnd5e:weapons:scimitar"]
-    intimidate: [{ ability: intimidation, dc: 12 }]
-    persuade: [{ ability: persuasion, dc: 10 }]
+    options:
+      - id: lean-on-it
+        say: "Where's the cellar? Tell me or you're next."
+        check: [{ ability: intimidation, dc: 12 }]
+        success:
+          - { weight: 70, say: "Fine! FINE. The cellar door is behind the barrels. Just don't.", fact: goblin-cowed }
+          - { weight: 30, say: 'Boss! BOSS!', flee: {} }
+        failure:
+          - { say: 'Big talk, for someone standing in my doorway.' }
+      - id: talk-it-round
+        say: "We're not here for you. Where did the bandits go?"
+        check: [{ ability: persuasion, dc: 10 }]
+        success:
+          - { say: 'Bandits took the cellar. Go left at the rope, and mind the third step.' }
+        failure:
+          - { weight: 100, say: "Cellar's empty, friend. Nothing down there but rats. Straight on through.", fact: cellar-is-clear }
   - { id: front-goblin-2, ref: "dnd5e:monsters:goblin", faction: goblins, at: [4, 1] }
   - id: bandit-1
     ref: "dnd5e:monsters:bandit"
@@ -123,32 +138,30 @@ place:
     arrives: { fact: cellar-is-clear }
 `
 
-// The front room's priced verbs and its arrival compile identically in both
+// The front room's two lines and its arrival compile identically in both
 // dialects. The DCs are the whole point of the pair: DC 12 to lean on and DC
-// 10 to talk round, where the goblin's own stat block would derive 9 for
-// both.
-func TestTheFrontRoomPricesTheSameCheckInBothDialects(t *testing.T) {
+// 10 to talk round.
+func TestTheFrontRoomOffersTheSameLinesInBothDialects(t *testing.T) {
 	v2 := loadSource(t, frontRoomV2Gameplay)
 	v4 := loadContent(t, "testdata/world-builder-v4-front-room.yaml")
 
-	t.Run("the priced creature", func(t *testing.T) {
+	t.Run("the creature somebody can speak to", func(t *testing.T) {
 		was, is := monsterNamed(t, v2, "front-goblin"), monsterNamed(t, v4, "front-goblin")
-		require.Equal(t, []encounter.CheckApproach{{Ability: "intimidation", DC: 12}}, was.Intimidate,
-			"the v2 reference prices the threat")
-		require.Equal(t, was.Intimidate, is.Intimidate, "and v4 compiles the same approaches")
-		require.Equal(t, []encounter.CheckApproach{{Ability: "persuasion", DC: 10}}, was.Persuade)
-		require.Equal(t, was.Persuade, is.Persuade)
+		require.Equal(t, []encounter.CheckApproach{{Ability: "intimidation", DC: 12}},
+			optionNamed(t, was.Options, "lean-on-it").Check, "the v2 reference prices the threat")
+		require.Equal(t, []encounter.CheckApproach{{Ability: "persuasion", DC: 10}},
+			optionNamed(t, was.Options, "talk-it-round").Check, "and the appeal")
+		require.Equal(t, was.Options, is.Options, "and v4 compiles the same options")
 	})
 
 	// OMITTED IS NIL, NOT EMPTY, and that distinction is what tells the
-	// rulebook this creature carries no social verb (rpg-project#494 R1). A
-	// creature nobody priced must compile to nothing in either dialect.
-	t.Run("a creature nobody priced", func(t *testing.T) {
+	// session this creature cannot be spoken to (rpg-project#569 R2). A
+	// creature nobody wrote a line for must compile to nothing in either
+	// dialect.
+	t.Run("a creature nobody wrote a line for", func(t *testing.T) {
 		was, is := monsterNamed(t, v2, "front-goblin-2"), monsterNamed(t, v4, "front-goblin-2")
-		require.Nil(t, was.Intimidate)
-		require.Nil(t, is.Intimidate, "v4 carries the same silence, and nil is how it says so")
-		require.Nil(t, was.Persuade)
-		require.Nil(t, is.Persuade)
+		require.Nil(t, was.Options)
+		require.Nil(t, is.Options, "v4 carries the same silence, and nil is how it says so")
 	})
 
 	t.Run("the bandits wait on the lie", func(t *testing.T) {
@@ -369,33 +382,16 @@ func TestAHolderNamingNoRecordIsRefused(t *testing.T) {
 	})
 }
 
-// An authored check with no way through it is refused by name — nil is the
-// author saying nothing, `[]` is the author saying there is a price and not
-// saying what it is. [RoomDoorBinding.Locked]'s law, one binding kind over.
-func TestAnEmptySocialCheckIsRefused(t *testing.T) {
-	t.Run("intimidate", func(t *testing.T) {
-		errs := refusals(t, v4With("", "    monsterBindings:\n      goblin-1:\n        intimidate: []"))
-		requireExactDefect(t, errs, "room.room.monsterBindings.goblin-1.intimidate",
-			"this monster declares an intimidate check with no way through it — an ability and a DC")
-	})
-
-	t.Run("persuade", func(t *testing.T) {
-		errs := refusals(t, v4With("", "    monsterBindings:\n      goblin-1:\n        persuade: []"))
-		requireExactDefect(t, errs, "room.room.monsterBindings.goblin-1.persuade",
-			"this monster declares a persuade check with no way through it — an ability and a DC")
-	})
-
-	// AND EVERY PER-APPROACH REFUSAL IS THE ONE SHARED GRAMMAR'S, so a row
-	// with no ability and a DC nothing can beat says what it says in either
-	// dialect.
-	t.Run("an approach that rolls nothing", func(t *testing.T) {
-		errs := refusals(t, v4With("",
-			"    monsterBindings:\n      goblin-1:\n        intimidate: [{ dc: 0 }]"))
-		requireExactDefect(t, errs, "room.room.monsterBindings.goblin-1.intimidate[0].ability",
-			"the approach does not say which ability it rolls")
-		requireExactDefect(t, errs, "room.room.monsterBindings.goblin-1.intimidate[0].dc",
-			"an approach with dc 0 has nothing to beat")
-	})
+// An option's check is judged by the one shared check grammar, so a row with
+// no ability and a DC nothing can beat says what it says in either dialect
+// and on a lock alike.
+func TestAnOptionsApproachIsJudgedByTheSharedCheckGrammar(t *testing.T) {
+	errs := refusals(t, v4With("",
+		"    monsterBindings:\n      goblin-1:\n        options: [{ id: hi, say: \"Hi.\", check: [{ dc: 0 }] }]"))
+	requireExactDefect(t, errs, "room.room.monsterBindings.goblin-1.options[0].check[0].ability",
+		"the approach does not say which ability it rolls")
+	requireExactDefect(t, errs, "room.room.monsterBindings.goblin-1.options[0].check[0].dc",
+		"an approach with dc 0 has nothing to beat")
 }
 
 // An `arrives:` predicate is judged by the one predicate grammar, and the two
@@ -467,10 +463,10 @@ func TestAnAuthoredNullUnderANewKeyIsRefused(t *testing.T) {
 			root: "scenarios:\n  recover-the-artifact:"},
 		{key: "holds", path: "room.room.monsterBindings.goblin-1.holds",
 			room: "    monsterBindings:\n      goblin-1:\n        holds:"},
-		{key: "intimidate", path: "room.room.monsterBindings.goblin-1.intimidate",
-			room: "    monsterBindings:\n      goblin-1:\n        intimidate:"},
-		{key: "persuade", path: "room.room.monsterBindings.goblin-1.persuade",
-			room: "    monsterBindings:\n      goblin-1:\n        persuade:"},
+		{key: "options", path: "room.room.monsterBindings.goblin-1.options",
+			room: "    monsterBindings:\n      goblin-1:\n        options:"},
+		{key: "a prop's options", path: "room.room.propBindings.table.options",
+			room: "    propBindings:\n      table:\n        options:"},
 		{key: "arrives", path: "room.room.monsterBindings.goblin-1.arrives",
 			room: "    monsterBindings:\n      goblin-1:\n        arrives:"},
 		{key: "a prop binding", path: "room.room.propBindings.table",
@@ -537,16 +533,17 @@ func TestATypoInsideTheNewKeysIsNamedAtItsV4Path(t *testing.T) {
 			message: `"rounds" is not a key this build reads`,
 		},
 		{
-			name:    "inside a priced check's approach",
-			room:    "    monsterBindings:\n      goblin-1:\n        intimidate: [{ abilty: str, dc: 5 }]",
-			path:    "room.room.monsterBindings.goblin-1.intimidate[0].abilty",
+			name: "inside an option's approach",
+			room: "    monsterBindings:\n      goblin-1:\n        options: [{ id: hi, say: \"Hi.\", " +
+				"check: [{ abilty: str, dc: 5 }] }]",
+			path:    "room.room.monsterBindings.goblin-1.options[0].check[0].abilty",
 			message: `"abilty" is not a key this build reads: they are ability, dc, tool`,
 		},
 		{
 			name:    "inside a prop's orders",
 			room:    "    propBindings:\n      table: { holdabel: true }",
 			path:    "room.room.propBindings.table.holdabel",
-			message: `"holdabel" is not a key this build reads: they are arrives, holdable, holds`,
+			message: `"holdabel" is not a key this build reads: they are arrives, holdable, holds, options`,
 		},
 		{
 			// A PREDICATE READS ITSELF BY HAND, so the list is omitted rather
@@ -581,7 +578,7 @@ func TestTheNewKeysAreOfferedByTheUnknownKeyRefusal(t *testing.T) {
 
 	requireExactDefect(t, refusals(t, v4With("", "    monsterBindings:\n      goblin-1: { tempre: coward }")),
 		"room.room.monsterBindings.goblin-1.tempre",
-		`"tempre" is not a key this build reads: they are actions, arrives, faction, holds, intimidate, on, persuade, table, temper`)
+		`"tempre" is not a key this build reads: they are actions, arrives, faction, holds, on, options, table, temper`)
 }
 
 // A binding whose creature is gone is named ONCE. Its contents are not asked
@@ -589,7 +586,7 @@ func TestTheNewKeysAreOfferedByTheUnknownKeyRefusal(t *testing.T) {
 // two defects for one mistake sends an author looking for a second problem.
 func TestABindingWithNoLiveCreatureIsNamedOnce(t *testing.T) {
 	errs := refusals(t, v4With("", "    monsterBindings:\n      ghost:\n"+
-		"        holds: [vault-map]\n        intimidate: []\n        arrives: { round: 0 }"))
+		"        holds: [vault-map]\n        options: [{ id: hi }]\n        arrives: { round: 0 }"))
 
 	requireExactDefect(t, errs, "room.room.monsterBindings.ghost", "must name a live room monster")
 	for _, e := range errs {
