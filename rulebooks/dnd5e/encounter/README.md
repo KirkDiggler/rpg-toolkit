@@ -161,7 +161,9 @@ knocked off the route walks back to the nearest waypoint. All of it is read
 off where the creature stands, so the table holds no cursor. A route whose
 legs share a cell is refused ("this route retraces itself at [c,r]…"), which
 refuses the two-waypoint corridor pace (A to B and back) today — that pace is
-the named next use case, for a direction derived the same way.
+the named next use case, for a direction derived the same way. A patrol is the line the author drew; place waypoints so the lines run
+through floor. A creature or prop standing on the line stops the walk there,
+as any wall does, until it moves.
 
 ### You are given only what you know
 
