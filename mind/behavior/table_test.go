@@ -1054,3 +1054,24 @@ func (s *TableSuite) TestTheNewFieldsAreOmittedWhenEmpty() {
 	s.Require().NoError(err)
 	s.NotContains(string(sel), "Path")
 }
+
+// TestSoundIsAPlaceToWalkToOrFrom is the `sound` selector word: where the
+// freshest held sound was made. It is sealed beside the other words, walks
+// with `toward` and `away`, and is refused on `attack` — a sound cannot be
+// struck.
+func (s *TableSuite) TestSoundIsAPlaceToWalkToOrFrom() {
+	s.Contains(behavior.SelectorWords, behavior.SelectorSound)
+	s.Equal(behavior.SelectorWord("sound"), behavior.SelectorSound)
+
+	heard := []behavior.When{{Heard: &behavior.HeardWhen{Kind: "clang", Within: 2}}}
+	s.NoError((&behavior.Answer{Weight: 1, When: heard,
+		Toward: &behavior.Selector{Word: behavior.SelectorSound}}).Validate())
+	s.NoError((&behavior.Answer{Weight: 1, When: heard,
+		Away: &behavior.Selector{Word: behavior.SelectorSound}}).Validate())
+
+	err := (&behavior.Answer{Weight: 1, When: heard,
+		Attack: &behavior.Selector{Word: behavior.SelectorSound}}).Validate()
+	s.Require().ErrorIs(err, behavior.ErrBadSelector)
+	s.EqualError(err, "`attack` cannot take `sound`: a sound cannot be struck, only walked toward "+
+		"or away from: behavior: selector cannot be read")
+}

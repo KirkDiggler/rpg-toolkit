@@ -103,8 +103,8 @@ type Answer struct {
 
 // Validate refuses what this module's own types cannot carry: a [When] in the
 // list that does not name exactly one condition ([When.Validate],
-// ErrBadWhen), and a [Selector] naming more than one target or a `path` on a
-// word other than `toward` (ErrBadSelector). Each refusal is a sentence for
+// ErrBadWhen), and a [Selector] naming more than one target, a `path` on a
+// word other than `toward`, or `sound` on `attack` (ErrBadSelector). Each refusal is a sentence for
 // the form, wrapping its sentinel.
 //
 // THE REST IS THE CALLER'S DOOR, as it always was: the weight, the

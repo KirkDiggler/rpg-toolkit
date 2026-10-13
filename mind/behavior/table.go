@@ -476,11 +476,19 @@ const (
 	// names a deed: there is no actor otherwise, and an entry that named one
 	// would be asking for somebody nobody identified.
 	SelectorActor SelectorWord = "actor"
+
+	// SelectorSound is WHERE the freshest sound this creature holds was made
+	// — any kind, because the row's own `when: { heard: { kind } }` already
+	// narrowed what fired it ([Facts.Sounds]). A place, never a figure: a
+	// sound names no maker (R4 of rpg-project#569), so the creature walks to
+	// it, or from it, and finds out who by looking. Legal on `toward` and
+	// `away` only; [Answer.Validate] refuses it on `attack`.
+	SelectorSound SelectorWord = "sound"
 )
 
 // SelectorWords is every selector word, in the design's own order. Exported
 // for the dialect's refusal, [AnswerKeys]'s reason.
-var SelectorWords = []SelectorWord{SelectorEnemy, SelectorAttacker, SelectorActor}
+var SelectorWords = []SelectorWord{SelectorEnemy, SelectorAttacker, SelectorActor, SelectorSound}
 
 // Selector names what a `attack`/`toward`/`away` entry acts on: a member
 // found by a word, or an authored cell.
@@ -534,12 +542,16 @@ func (s *Selector) targets() []string {
 	return out
 }
 
-// validate refuses a selector naming more than one target, or a route on a
-// word that does not walk one. word is the table word the selector is on.
+// validate refuses a selector naming more than one target, a route on a
+// word that does not walk one, or `sound` on `attack`. word is the table word the selector is on.
 func (s *Selector) validate(word string) error {
 	if named := s.targets(); len(named) > 1 {
 		return fmt.Errorf("`%s` names %s; a target is exactly one of somebody, a cell or a route: %w",
 			word, andList(named), ErrBadSelector)
+	}
+	if s.Word == SelectorSound && word == "attack" {
+		return fmt.Errorf("`attack` cannot take `sound`: a sound cannot be struck, only walked toward "+
+			"or away from: %w", ErrBadSelector)
 	}
 	if len(s.Path) > 0 && word != "toward" {
 		return fmt.Errorf("`%s` cannot take a `path`: a route is walked, and only `toward` walks one: %w",

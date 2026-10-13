@@ -69,7 +69,7 @@ key, and which enemy and deed words a build reads, stay the dialect's door.
 ### Selectors
 
 `attack`, `toward` and `away` take a `Selector`: exactly one of a word
-(`enemy`, `attacker`, `actor`), a cell (`at`), or a route (`path`, `toward`
+(`enemy`, `attacker`, `actor`, or `sound`: where the freshest held sound was made, `toward`/`away` only), a cell (`at`), or a route (`path`, `toward`
 only). A route is a patrol and holds no state: which waypoint is next is the
 caller's to derive from where the creature stands each time the row fires.
 
