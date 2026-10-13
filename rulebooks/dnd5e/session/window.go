@@ -81,7 +81,7 @@ const (
 	storyStep storyKind = "step"
 	// storyCast is a cast stopped on one of its saves.
 	storyCast storyKind = "cast"
-	// storyCheck is a check stopped on its d20: Unlock, Persuade, Intimidate.
+	// storyCheck is a check stopped on its d20: Unlock, Speak.
 	storyCheck storyKind = "check"
 )
 
@@ -109,10 +109,14 @@ type windowStory struct {
 	// the last answer walks it.
 	WalkPath []spatial.Position `json:"walk_path,omitempty"`
 
-	// Door is the lock an Unlock check faced; Verb and Target the social verb
-	// a check was for. Exactly one of Door and Target is set on a check.
-	Door string `json:"door,omitempty"`
-	Verb Verb   `json:"verb,omitempty"`
+	// Door is the lock an Unlock check faced. Verb, Target or Prop, and
+	// Option are the line a Speak check was for: the verb, what it was said
+	// to, and which option. Exactly one of Door, Target and Prop is set on a
+	// check.
+	Door   string `json:"door,omitempty"`
+	Verb   Verb   `json:"verb,omitempty"`
+	Prop   string `json:"prop,omitempty"`
+	Option string `json:"option,omitempty"`
 
 	// Caster, Spell and Caught are a cast story's: who cast what, and the
 	// footprint fixed before any save was rolled.
@@ -137,18 +141,24 @@ func (s windowStory) validate() error {
 			return fmt.Errorf("%w: a cast window names no caster or spell", ErrInvalidSession)
 		}
 	case storyCheck:
-		// EXACTLY ONE of the two "what to finish" fields: a check names the
-		// door it faced or the target it addressed, and answering one that
-		// named both or neither would pick a verb by accident.
-		if (s.Door == "") == (s.Target == "") {
-			return fmt.Errorf("%w: a check window names %s to finish", ErrInvalidSession,
-				map[bool]string{true: "neither a door nor a target", false: "both a door and a target"}[s.Door == ""])
+		// EXACTLY ONE of the three "what to finish" fields: a check names the
+		// door it faced, or the creature or prop it addressed, and answering
+		// one that named several or none would pick a verb by accident.
+		named := 0
+		for _, field := range []string{s.Door, s.Target, s.Prop} {
+			if field != "" {
+				named++
+			}
 		}
-		if s.Target != "" && s.Verb != VerbIntimidate && s.Verb != VerbPersuade {
-			return fmt.Errorf("%w: a check window names target %q under verb %q, which is not a social verb",
-				ErrInvalidSession, s.Target, s.Verb)
+		if named != 1 {
+			return fmt.Errorf("%w: a check window names %d of a door, a target and a prop to finish; exactly one",
+				ErrInvalidSession, named)
 		}
-		if s.Door != "" && s.Verb != "" {
+		if s.Door == "" && (s.Verb != VerbSpeak || s.Option == "") {
+			return fmt.Errorf("%w: a check window names target %q prop %q under verb %q with line %q, which is not a line spoken",
+				ErrInvalidSession, s.Target, s.Prop, s.Verb, s.Option)
+		}
+		if s.Door != "" && (s.Verb != "" || s.Option != "") {
 			return fmt.Errorf("%w: a check window names a door and the verb %q", ErrInvalidSession, s.Verb)
 		}
 	default:

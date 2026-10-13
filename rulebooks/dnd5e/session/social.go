@@ -3,33 +3,30 @@
 
 package session
 
-// social.go is THE MACHINE BOTH SOCIAL VERBS RUN (rpg-project#454,
-// rpg-project#458). Intimidate came first and Persuade proved it was a
-// machine: the clock gate, the audience refusal, the price, the staged check,
-// the pose window and the landing are identical, and what differs is data —
-// which skill the derived approach rolls, which placement list the author
-// priced, which cost compiler prices it, and which composition op lands it.
+// social.go is THE MACHINE THE ONE SOCIAL VERB RUNS ([Manager.Speak],
+// rpg-project#569). It began as the machine Intimidate and Persuade shared
+// (rpg-project#454, rpg-project#458): the clock gate, the audience refusal,
+// the price, the staged check, the pose window and the landing. What differed
+// between those two verbs — the skill, the authored list, the composition op
+// — is now data on the OPTION, so the machine has one caller and no table of
+// verbs.
 //
 // # The rule this file exists to hold in one place
 //
-// A social verb is offered on BOTH clocks (R3, rpg-project#457). On the turn
-// clock it is the actor's turn and it costs the standard action, exactly as a
-// swing does. On the WORLD clock it costs nothing at all — not because a
-// threat is free, but because the world clock has no economy to charge
-// against: that is Move's own rule in move.go, and inventing a second answer
-// here would be this seam holding two opinions about what free roam means.
+// Speaking is offered on BOTH clocks (R3, rpg-project#457). On the turn clock
+// it is the actor's turn and it costs the standard action, exactly as a swing
+// does. On the WORLD clock it costs nothing at all — not because talk is free,
+// but because the world clock has no economy to charge against: that is
+// Move's own rule in move.go, and inventing a second answer here would be
+// this seam holding two opinions about what free roam means.
 //
-// # The offer comes from the NPC
+// # The offer comes from the target
 //
-// A creature is offered a social verb ONLY when its binding authored entries
-// for that verb (rpg-project#494 R1). There is no derived difficulty and no
-// default: absence is "this creature does not do that", not "use the
-// rulebook's number". [socialEntriesOf] is the one read that says so, and
-// both the offer (Afford) and the door (the verb) go through it, so the panel
-// and the refusal cannot disagree.
-//
-// Everything else — down, witnesses, approaches, the pose window — was already
-// clock-independent and did not have to change.
+// A creature or prop is spoken to ONLY through the options its binding
+// authored, filtered by what THIS speaker holds (R1, R9). There is no derived
+// difficulty and no default line. [linesOffered] is the one read that says
+// which lines are offered, and both the offer (Afford) and the door (the
+// verb) go through it, so the panel and the refusal cannot disagree.
 
 import (
 	"context"
@@ -42,43 +39,28 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
 
-// socialVerb is everything that differs between a threat and an appeal, in
-// one value.
+// speakCost compiles what a line costs on the TURN clock: the standard
+// action, read off the sheet by the rulebook's own compiler.
 //
-// A TABLE RATHER THAN A SWITCH, so adding Deceive is adding a value here and
-// a two-line exported wrapper — and so that a reader can see at a glance that
-// the two verbs differ in four facts and nothing else.
-type socialVerb struct {
-	// verb is the seam's own name for it, priced by Afford and carried on a
-	// paused window so the answer knows which verb to finish.
-	verb Verb
+// THE RULEBOOK'S APPEAL PRICE, BORROWED BY NAME. The character package prices
+// a social action in [character.CostOfPersuade] (and its twin
+// [character.CostOfIntimidate], the same standard action). A line is that
+// same action, and this module may not edit the rulebook's to rename it; the
+// price stays the rulebook's either way, which is the point of not writing a
+// SpendProfile here.
+var speakCost = character.CostOfPersuade
 
-	// cost compiles what this verb costs on the TURN clock. Nil is not a
-	// free verb; there is no nil.
-	cost func(*character.Character) (*combat.SpendProfile, error)
+// speakLanding is one settled verdict on its way into the composition.
+type speakLanding struct {
+	Actor    encounter.MemberID
+	Target   encounter.MemberID
+	Prop     encounter.PropID
+	OptionID string
 
-	// authored reads the placement's own approach list off the roster row —
-	// the ONLY source of this verb's difficulty (rpg-project#494 R1). Empty
-	// is a creature the author did not give this verb to, not a creature to
-	// derive a number for.
-	authored func(encounter.Member) []encounter.CheckApproach
+	// Skill is the applied route's ability — what the composition decides
+	// the deed by (R3) and what the `spoke` beat reports.
+	Skill string
 
-	// nobody is what Afford says when the actor has an audience and nobody in
-	// it carries this verb's entries — the [ShortfallNoSocialEntry] text, in
-	// the verb's own words rather than assembled from its name.
-	nobody string
-
-	// land is the composition op that records the verdict and rolls the
-	// creature's answer to it.
-	land func(
-		context.Context, *encounter.Encounter, *socialLanding,
-	) (beaten bool, seq uint64, err error)
-}
-
-// socialLanding is one settled verdict on its way into the composition.
-type socialLanding struct {
-	Actor  encounter.MemberID
-	Target encounter.MemberID
 	Beaten bool
 	DC     int
 	Total  int
@@ -89,248 +71,196 @@ type socialLanding struct {
 	Calculation *encounter.RollCalculation
 }
 
-// intimidateVerb is the threat: Intimidation against the target's own
-// authored difficulty, priced at the standard action, landing a fear the
-// coward's mind reads (rulebooks/dnd5e/behavior).
-func (m *Manager) intimidateVerb() socialVerb {
-	return socialVerb{
-		verb:     VerbIntimidate,
-		cost:     character.CostOfIntimidate,
-		authored: func(placed encounter.Member) []encounter.CheckApproach { return placed.Intimidate },
-		nobody:   "nobody here can be intimidated",
-		land: func(
-			ctx context.Context, enc *encounter.Encounter, in *socialLanding,
-		) (bool, uint64, error) {
-			out, err := enc.Intimidate(ctx, &encounter.IntimidateInput{
-				Actor: in.Actor, Target: in.Target, Beaten: in.Beaten,
-				DC: in.DC, Total: in.Total, Calculation: in.Calculation,
-				Roller: &diceSeam{roller: m.dice},
-			})
-			if err != nil {
-				return false, 0, err
-			}
-
-			return out.Beaten, out.Seq, nil
-		},
-	}
+// landSpoken hands one settled verdict to the composition's one social op,
+// which appends the `spoke` beat, lands the skill's deed, and rolls the
+// option's answer rows with this session's dice.
+func (m *Manager) landSpoken(ctx context.Context, enc *encounter.Encounter, in *speakLanding) (*encounter.SpeakOutput, error) {
+	return enc.Speak(ctx, &encounter.SpeakInput{
+		Actor: in.Actor, Target: in.Target, Prop: in.Prop,
+		OptionID: in.OptionID, Skill: in.Skill,
+		Beaten: in.Beaten, DC: in.DC, Total: in.Total, Calculation: in.Calculation,
+		Roller: &diceSeam{roller: m.dice},
+	})
 }
 
-// persuadeVerb is the appeal: Intimidate's twin, with Persuasion where
-// Intimidation is and the same price. Every shipped mind holds its deed and
-// does nothing with it, which is the zero value telling the truth rather than
-// a gap (rpg-project#458).
-func (m *Manager) persuadeVerb() socialVerb {
-	return socialVerb{
-		verb:     VerbPersuade,
-		cost:     character.CostOfPersuade,
-		authored: func(placed encounter.Member) []encounter.CheckApproach { return placed.Persuade },
-		nobody:   "nobody here can be persuaded",
-		land: func(
-			ctx context.Context, enc *encounter.Encounter, in *socialLanding,
-		) (bool, uint64, error) {
-			out, err := enc.Persuade(ctx, &encounter.PersuadeInput{
-				Actor: in.Actor, Target: in.Target, Beaten: in.Beaten,
-				DC: in.DC, Total: in.Total, Calculation: in.Calculation,
-				Roller: &diceSeam{roller: m.dice},
-			})
-			if err != nil {
-				return false, 0, err
-			}
-
-			return out.Beaten, out.Seq, nil
-		},
-	}
-}
-
-// socialOutcome is what a finished or paused social verb reached, in the one
-// shape both exported outputs are built from.
-type socialOutcome struct {
-	Beaten   bool
-	Total    int
-	DC       int
-	Applied  DoorApproach
-	Seq      uint64
-	Paused   bool
-	Roll     *int
-	Saved    SaveReport
-	Delivery DeliveryReport
-}
-
-// speak runs one social verb end to end.
+// speak runs the one social verb end to end.
 //
-// Validation order, and nothing is charged on the way to a refusal: the
-// session opens, the clock is read, an off-turn actor ON THE TURN CLOCK is
-// refused, a downed actor is refused, the target's authored entries are read,
-// the target is checked to be able to SEE the actor, and only then is the
-// action spent — because a threat the target could never have heard must not
-// cost the actor their turn on the way to being told so.
+// Validation order, and nothing is charged on the way to a refusal: the input
+// names a speaker, exactly one target and a line; the session opens; the
+// clock is read; an off-turn actor ON THE TURN CLOCK is refused; a downed
+// actor is refused; the line is looked up among those offered to this
+// speaker; a creature target is checked to be able to SEE the actor; and only
+// then is the action spent — because a line the target could never have
+// heard must not cost the actor their turn on the way to being told so.
 //
-// Errors: ErrNilInput, ErrNoMemberID, ErrNoSession, ErrNoEncounter,
-// ErrNotYourTurn, ErrDowned, ErrNoMember, ErrNoSocialEntry, ErrCannotAfford,
+// Errors: ErrNoMemberID, ErrNoOption, ErrNoSession, ErrNoEncounter,
+// ErrNotYourTurn, ErrDowned, ErrNoMember, ErrNoProp, ErrCannotAfford,
 // ErrUnwitnessed.
-func (m *Manager) speak(
-	ctx context.Context, spec socialVerb, session, member, target string,
-) (*socialOutcome, error) {
-	if member == "" || target == "" {
-		return nil, fmt.Errorf("%s: %w", spec.verb, ErrNoMemberID)
+func (m *Manager) speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, error) {
+	member := in.Member
+	if member == "" {
+		return nil, fmt.Errorf("%s: %w", VerbSpeak, ErrNoMemberID)
+	}
+	if (in.Target == "") == (in.Prop == "") {
+		return nil, fmt.Errorf("%s: a line is said to exactly one creature or prop: %w", VerbSpeak, ErrNoMemberID)
+	}
+	if in.OptionID == "" {
+		return nil, fmt.Errorf("%s: no line named: %w", VerbSpeak, ErrNoOption)
 	}
 
-	scope, err := m.openForChange(ctx, session)
+	scope, err := m.openForChange(ctx, in.Session)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", spec.verb, err)
+		return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
 	}
 
 	clock, err := scope.enc.ClockOf(&encounter.ClockOfInput{Member: encounter.MemberID(member)})
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", spec.verb, translate(err))
+		return nil, fmt.Errorf("%s: %w", VerbSpeak, translate(err))
 	}
-	// REFUSED OUTSIDE THE ACTOR'S TURN *ON THE TURN CLOCK ONLY*. This used to
-	// refuse a world-clock actor outright, on the reasoning that the verb
-	// costs an action and an action belongs to a turn. R3 (Kirk,
-	// 2026-09-17) ruled the other way: "this will be the first getting verbs
-	// outside combat", and a front room has no turn to be out of. So the gate
-	// is now what it always meant — not somebody ELSE's turn — and the world
-	// clock, which has no turns at all, is simply not gated.
+	// REFUSED OUTSIDE THE ACTOR'S TURN *ON THE TURN CLOCK ONLY* (R3, Kirk,
+	// 2026-09-17: "this will be the first getting verbs outside combat"). A
+	// front room has no turn to be out of, so the world clock is not gated.
 	if ClockKind(clock.Kind) == ClockTurn && string(clock.Active) != member {
-		return nil, fmt.Errorf("%s: %w", spec.verb, ErrNotYourTurn)
+		return nil, fmt.Errorf("%s: %w", VerbSpeak, ErrNotYourTurn)
 	}
 	if err := refuseIfDown(scope, "member", member); err != nil {
-		return nil, fmt.Errorf("%s: %w", spec.verb, err)
+		return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
 	}
 
-	// ASKED BEFORE ANYTHING IS CHARGED, AND BEFORE ANYTHING IS ROLLED. A
-	// creature the author never gave this verb to is refused by name here
-	// (R3, rpg-project#494), so a stale client echoing a row that has since
-	// stopped being offered gets the same answer the panel gives rather than
-	// a check against a number nobody wrote.
-	roster, err := scope.enc.Members()
+	// ASKED BEFORE ANYTHING IS CHARGED, AND BEFORE ANYTHING IS ROLLED, through
+	// the read the offer lists by. A line the target does not carry, or one
+	// whose `requires` this speaker does not meet, is refused here — so a
+	// stale client echoing a line that has since stopped being offered gets
+	// the panel's own answer rather than a check against a number nobody
+	// offered them.
+	lines, err := linesOffered(scope.enc, member, in.Target, in.Prop)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", spec.verb, translate(err))
+		return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
 	}
-	approaches, err := socialEntriesOf(roster, target, spec)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", spec.verb, err)
+	idx := slices.IndexFunc(lines, func(o encounter.Option) bool { return o.ID == in.OptionID })
+	if idx < 0 {
+		return nil, fmt.Errorf("%s: %q is not a line this speaker is offered: %w", VerbSpeak, in.OptionID, ErrNoOption)
 	}
+	line := lines[idx]
 
-	witnesses, err := scope.enc.Witnesses(encounter.MemberID(member))
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", spec.verb, translate(err))
-	}
-	if !slices.Contains(witnesses, encounter.MemberID(target)) {
-		// THIS SEAM'S OWN SENTINEL, not the composition's. A raw encounter
-		// error crossing here is the S2 leak, and a host that cannot match it
-		// answers Internal for what is an ordinary refusal.
-		return nil, fmt.Errorf("%s: target %q cannot see the actor: %w", spec.verb, target, ErrUnwitnessed)
+	if in.Target != "" {
+		witnesses, err := scope.enc.Witnesses(encounter.MemberID(member))
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", VerbSpeak, translate(err))
+		}
+		if !slices.Contains(witnesses, encounter.MemberID(in.Target)) {
+			// THIS SEAM'S OWN SENTINEL, not the composition's. A raw
+			// encounter error crossing here is the S2 leak.
+			return nil, fmt.Errorf("%s: target %q cannot see the actor: %w", VerbSpeak, in.Target, ErrUnwitnessed)
+		}
 	}
 
 	// FREE ON THE WORLD CLOCK, priced on the turn clock — move.go's rule,
-	// shared rather than restated. There is no economy to charge against in
-	// free roam, so there is nothing to spend and nothing to refuse.
+	// shared rather than restated.
 	if ClockKind(clock.Kind) == ClockTurn {
-		if err := m.spendOnSocial(ctx, scope, spec, member, clock.Round); err != nil {
-			return nil, fmt.Errorf("%s: %w", spec.verb, err)
+		if err := m.spendOnSocial(ctx, scope, member, clock.Round); err != nil {
+			return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
 		}
 	}
 
 	if err := m.stageCheck(ctx, scope, "member", member); err != nil {
-		return nil, fmt.Errorf("%s: %w", spec.verb, err)
+		return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
 	}
-	// TRUE: a social verb is a SKILL verb and takes the untrained rule
-	// (rpg-project#457 R2). A character with no proficiency in the skill the
-	// applied route rolls takes disadvantage, named in the result's sources.
-	outcome, verr := m.resolveStagedCheckPoseable(scope, member, approaches, true)
+	// TRUE: a line is a SKILL check and takes the untrained rule
+	// (rpg-project#457 R2), whichever skill the option lists. A character
+	// with no proficiency in the skill the applied route rolls takes
+	// disadvantage, named in the result's sources — resolution's rule.
+	outcome, verr := m.resolveStagedCheckPoseable(scope, member, line.Check, true)
 	if verr != nil {
-		return nil, fmt.Errorf("%s %q: %w", spec.verb, target, verr)
+		return nil, fmt.Errorf("%s %q: %w", VerbSpeak, in.OptionID, verr)
 	}
 
 	// THE ATTEMPT STOPPED TO ASK. The checker holds something that could join
 	// the roll and resolution posed rather than settling. Nothing has reached
-	// the creature yet, so there is no deed and no beat beyond the pause
-	// itself — but the action, if one was spent, is spent and stays spent.
+	// the target yet, so there is no deed and no beat beyond the pause itself
+	// — but the action, if one was spent, is spent and stays spent.
 	if outcome.Posed != nil {
-		return m.poseSocialWindow(ctx, scope, spec, member, target, outcome.Posed)
+		return m.poseSocialWindow(ctx, scope, in, outcome.Posed)
 	}
 
 	verdict := outcome.Verdict
-	if err := requireCalculation(string(spec.verb), member, verdict.Calculation); err != nil {
+	if err := requireCalculation(string(VerbSpeak), member, verdict.Calculation); err != nil {
 		return nil, err
 	}
 
-	beaten, seq, err := spec.land(ctx, scope.enc, &socialLanding{
+	spoken, err := m.landSpoken(ctx, scope.enc, &speakLanding{
 		Actor:       encounter.MemberID(member),
-		Target:      encounter.MemberID(target),
+		Target:      encounter.MemberID(in.Target),
+		Prop:        encounter.PropID(in.Prop),
+		OptionID:    in.OptionID,
+		Skill:       verdict.Applied.Ability,
 		Beaten:      verdict.Beaten,
 		DC:          verdict.Applied.DC,
 		Total:       verdict.Total,
 		Calculation: verdict.Calculation,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", spec.verb, translate(err))
+		return nil, fmt.Errorf("%s: %w", VerbSpeak, translate(err))
 	}
 
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", spec.verb, err)
+		return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
 	}
 
-	return &socialOutcome{
-		Beaten:   beaten,
+	return &SpeakOutput{
+		Beaten:   spoken.Beaten,
 		Total:    verdict.Total,
 		DC:       verdict.Applied.DC,
 		Applied:  projectApproach(verdict.Applied),
-		Seq:      scope.deliveredSeq(member, seq),
+		Target:   in.Target,
+		Prop:     in.Prop,
+		OptionID: in.OptionID,
+		Seq:      scope.deliveredSeq(member, spoken.Seq),
 		Saved:    report,
 		Delivery: delivery,
 	}, nil
 }
 
-// socialEntriesOf is THE ONE READ of what an author priced on a creature for
-// one social verb — the law both the offer and the door go through
-// (rpg-project#494 R1/R2/R3).
+// linesOffered is THE ONE READ of which lines a target offers one speaker —
+// the law both the offer and the door go through (rpg-project#569 R1, R9).
 //
-// THE AUTHORED LIST IS THE WHOLE ANSWER. A creature is offered a social verb
-// when, and only when, its binding wrote entries for it; no entries is
-// [ErrNoSocialEntry], not a difficulty derived from the stat block. That
-// derived approach — the verb's own skill against passive Insight — is
-// RETIRED: it let a creature nobody configured be threatened anyway, which
-// made absence mean "use the default" instead of "this creature does not do
-// that". The World Builder is now the only place a creature gains a social
-// verb, which is the point.
+// THE COMPOSITION ANSWERS IT. Which options a binding carries, and whether
+// each one's `requires` holds for this speaker's own holdings, are the
+// composition's to judge ([encounter.Encounter.OptionsFor],
+// [encounter.Encounter.PropOptionsFor]); this seam forwards the question and
+// translates the refusal. An empty list is a target with nothing to say to
+// THIS speaker — no options, or none they qualify for — and the two are
+// deliberately indistinguishable, on the probe law's reason: telling them
+// apart would confirm a line the author hid behind a fact.
 //
-// IT TAKES THE ROSTER, NOT THE ENCOUNTER, and that is not an accident. Afford
-// asks this question once per witness to build one row's candidates; reading
-// the roster inside would read it once per witness on a panel that refreshes
-// every frame. The caller reads the roster once and every witness is judged
-// by this one body.
-func socialEntriesOf(
-	roster []encounter.Member, target string, spec socialVerb,
-) ([]encounter.CheckApproach, error) {
-	for i := range roster {
-		if string(roster[i].ID) != target {
-			continue
+// A prop is asked under the probe law: one this speaker cannot be shown is
+// ErrNoProp, exactly as an id that names nothing.
+func linesOffered(enc *encounter.Encounter, member, target, prop string) ([]encounter.Option, error) {
+	if prop != "" {
+		lines, err := enc.PropOptionsFor(encounter.MemberID(member), encounter.PropID(prop))
+		if err != nil {
+			return nil, translate(err)
 		}
-		entries := spec.authored(roster[i])
-		if len(entries) == 0 {
-			return nil, fmt.Errorf(
-				"target %q has no authored %s entries: %w", target, spec.verb, ErrNoSocialEntry)
-		}
-
-		return entries, nil
+		return lines, nil
 	}
-
-	return nil, fmt.Errorf("target %q: %w", target, ErrNoMember)
+	lines, err := enc.OptionsFor(encounter.MemberID(member), encounter.MemberID(target))
+	if err != nil {
+		return nil, translate(err)
+	}
+	return lines, nil
 }
 
-// spendOnSocial charges the verb's price on the actor's own sheet and writes
-// it back, through the same readying and the same [combat.Pay] gate a walk
-// goes through (economy.go).
+// spendOnSocial charges a line's price on the actor's own sheet and writes it
+// back, through the same readying and the same [combat.Pay] gate a walk goes
+// through (economy.go).
 //
 // TURN CLOCK ONLY — its one caller is gated. SAVED BEFORE THE CHECK IS
 // STAGED, not after the verb finishes: stageCheck fetches the checker's record
 // from the repository, so a spend still sitting in memory here would be staged
 // away, and a paused attempt would resume against a sheet that never paid.
 func (m *Manager) spendOnSocial(
-	ctx context.Context, scope *writeScope, spec socialVerb, member string, round int,
+	ctx context.Context, scope *writeScope, member string, round int,
 ) error {
 	sheet, err := m.loadAttackSheet(ctx, member)
 	if err != nil {
@@ -340,7 +270,7 @@ func (m *Manager) spendOnSocial(
 		return fmt.Errorf("member %q: %w: %v", member, ErrBadCost, err)
 	}
 
-	profile, err := spec.cost(sheet)
+	profile, err := speakCost(sheet)
 	if err != nil {
 		return fmt.Errorf("member %q: %w: %v", member, ErrBadCost, err)
 	}
@@ -355,26 +285,33 @@ func (m *Manager) spendOnSocial(
 
 // poseSocialWindow commits the half of the attempt that happened and asks the
 // member the question resolution stopped on — [Manager.poseUnlockWindow]'s
-// shape, for a social verb instead of a lock.
+// shape, for a line instead of a lock.
+//
+// THE STORY CARRIES THE LINE. A resume must land the option the member
+// picked, on the target they picked, so the window names both; nothing about
+// the check is re-read on the way back except the composition's own door,
+// which asks again whether the line is still offered.
 func (m *Manager) poseSocialWindow(
-	ctx context.Context, scope *writeScope, spec socialVerb, member, target string, posed *resolution.Pause,
-) (*socialOutcome, error) {
+	ctx context.Context, scope *writeScope, in *SpeakInput, posed *resolution.Pause,
+) (*SpeakOutput, error) {
+	member := in.Member
 	ask := posed.Ask
 	if ask.Audience != member {
 		return nil, fmt.Errorf("%s: %w: the machine asked %q on %q's roll",
-			spec.verb, ErrInvalidWorld, ask.Audience, member)
+			VerbSpeak, ErrInvalidWorld, ask.Audience, member)
 	}
 	if ask.Offer.Ref.ID == "" || ask.Offer.Name == "" {
-		return nil, fmt.Errorf("%s: %w: the machine asked about an unnamed offer", spec.verb, ErrInvalidWorld)
+		return nil, fmt.Errorf("%s: %w: the machine asked about an unnamed offer", VerbSpeak, ErrInvalidWorld)
 	}
 
-	if err := requirePosedCalculation(string(spec.verb), member, ask.Calculation); err != nil {
+	if err := requirePosedCalculation(string(VerbSpeak), member, ask.Calculation); err != nil {
 		return nil, err
 	}
 
 	offer := ReactionRef{Ref: ask.Offer.Ref.String(), Name: ask.Offer.Name}
-	if err := poseWindow(scope, *posed, windowStory{Kind: storyCheck, Target: target, Verb: spec.verb}); err != nil {
-		return nil, fmt.Errorf("%s: %w", spec.verb, err)
+	story := windowStory{Kind: storyCheck, Target: in.Target, Prop: in.Prop, Verb: VerbSpeak, Option: in.OptionID}
+	if err := poseWindow(scope, *posed, story); err != nil {
+		return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
 	}
 
 	recorded, err := scope.enc.RecordRollWindow(&encounter.RollWindowInput{
@@ -387,44 +324,42 @@ func (m *Manager) poseSocialWindow(
 		Calculation: rollCalculationFor(ask.Calculation),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", spec.verb, reportUnrecorded(scope, translate(err)))
+		return nil, fmt.Errorf("%s: %w", VerbSpeak, reportUnrecorded(scope, translate(err)))
 	}
 
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", spec.verb, err)
+		return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
 	}
 
 	// The PRE-OFFER total rides out beside the roll, and the DC does not —
-	// [poseUnlockWindow]'s shape and [IntimidateOutput.Paused]'s reasoning.
+	// [poseUnlockWindow]'s shape and [SpeakOutput.Paused]'s reasoning.
 	roll := ask.Roll
 
-	return &socialOutcome{
+	return &SpeakOutput{
 		Paused:   true,
 		Total:    ask.Total,
 		Roll:     &roll,
+		Target:   in.Target,
+		Prop:     in.Prop,
+		OptionID: in.OptionID,
 		Seq:      scope.deliveredSeq(member, recorded.Seq),
 		Saved:    report,
 		Delivery: delivery,
 	}, nil
 }
 
-// socialPlacement is the half of a placement that says what the creature COSTS
-// and what it DOES — what an author priced, and the table it answers from.
+// socialPlacement is the half of a placement that says what the creature
+// OFFERS and what it DOES — the lines an author wrote on it, and the table it
+// answers from.
 //
-// A STRUCT RATHER THAN FOUR MORE POSITIONAL ARGUMENTS on [place], which already
-// takes thirteen: two adjacent approach lists are one careless call
-// away from being silently swapped, and the swap would compile.
-//
-// `Answers` USED TO SIT HERE, with a [session.Answer] twin beside it and a
-// converter under it. It is gone rather than kept beside Table: the four social
-// outcomes are KEYS of the same table now (rpg-project#465), and carrying both
-// would be the dual representation this repo bans — with the added defect that
-// a host filling one and not the other would get a creature whose social
-// answers and whose turns came from different files.
+// A STRUCT RATHER THAN MORE POSITIONAL ARGUMENTS on [place], which already
+// takes thirteen.
 type socialPlacement struct {
-	Intimidate []encounter.CheckApproach
-	Persuade   []encounter.CheckApproach
+	// Options is the lines a character can say to this creature
+	// (rpg-project#569), carried off the compiled placement. Nil is a
+	// creature nobody wrote a line for, which cannot be spoken to.
+	Options []encounter.Option
 
 	// Table is the creature's whole policy, ALREADY FOLDED: the rulebook's
 	// default for its kind under the author's two layers. Whichever verb built

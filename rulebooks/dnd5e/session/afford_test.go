@@ -137,7 +137,7 @@ func (s *AffordSuite) TestAvailableMeansAttackWillNotRefuse() {
 
 	out := s.afford()
 	s.Equal(session.ClockTurn, out.Clock)
-	// Attack, Move, Intimidate, EndTurn, and the five activations a plain fighter
+	// Attack, Move, Speak, EndTurn, and the five activations a plain fighter
 	// carries — Dash, Disengage, Dodge, Help, Hide. Attack the combat
 	// ability is excluded: swinging is VerbAttack's job here.
 	refilled := make([]session.Verb, 0, len(out.Declarations))
@@ -148,7 +148,7 @@ func (s *AffordSuite) TestAvailableMeansAttackWillNotRefuse() {
 		session.VerbAttack, session.VerbMove,
 		session.VerbActivate, session.VerbActivate, session.VerbActivate,
 		session.VerbActivate, session.VerbActivate,
-		session.VerbIntimidate, session.VerbPersuade, session.VerbEndTurn,
+		session.VerbSpeak, session.VerbEndTurn,
 	}, refilled)
 
 	decl := s.attackDecl(out)
@@ -175,7 +175,7 @@ func (s *AffordSuite) TestUnavailableMeansAttackRefusesWithTheSameShortfall() {
 	s.Require().True(first.Hit)
 
 	out := s.afford()
-	// Attack, Move, Intimidate, EndTurn, and the five activations a plain fighter
+	// Attack, Move, Speak, EndTurn, and the five activations a plain fighter
 	// carries — Dash, Disengage, Dodge, Help, Hide. Attack the combat
 	// ability is excluded: swinging is VerbAttack's job here.
 	refilled := make([]session.Verb, 0, len(out.Declarations))
@@ -186,7 +186,7 @@ func (s *AffordSuite) TestUnavailableMeansAttackRefusesWithTheSameShortfall() {
 		session.VerbAttack, session.VerbMove,
 		session.VerbActivate, session.VerbActivate, session.VerbActivate,
 		session.VerbActivate, session.VerbActivate,
-		session.VerbIntimidate, session.VerbPersuade, session.VerbEndTurn,
+		session.VerbSpeak, session.VerbEndTurn,
 	}, refilled)
 	decl := s.attackDecl(out)
 	s.False(decl.Available, "nothing left to buy a second swing")
@@ -260,7 +260,7 @@ func (s *AffordSuite) TestANewTurnRefillsWhatAffordSees() {
 	s.nextTurn()
 
 	out := s.afford()
-	// Attack, Move, Intimidate, EndTurn, and the five activations a plain fighter
+	// Attack, Move, Speak, EndTurn, and the five activations a plain fighter
 	// carries — Dash, Disengage, Dodge, Help, Hide. Attack the combat
 	// ability is excluded: swinging is VerbAttack's job here.
 	refilled := make([]session.Verb, 0, len(out.Declarations))
@@ -271,7 +271,7 @@ func (s *AffordSuite) TestANewTurnRefillsWhatAffordSees() {
 		session.VerbAttack, session.VerbMove,
 		session.VerbActivate, session.VerbActivate, session.VerbActivate,
 		session.VerbActivate, session.VerbActivate,
-		session.VerbIntimidate, session.VerbPersuade, session.VerbEndTurn,
+		session.VerbSpeak, session.VerbEndTurn,
 	}, refilled)
 	s.True(s.attackDecl(out).Available, "a new turn buys a new swing")
 	s.Equal(session.SlotAction, s.attackDecl(out).Slot)
@@ -306,8 +306,8 @@ func (s *AffordSuite) TestFreeRoamAffordsTheSocialVerbsAndNothingElse() {
 	for _, decl := range out.Declarations {
 		verbs = append(verbs, decl.Verb)
 		s.Equal(session.SlotNone, decl.Slot, "%s: free roam has no slot to draw from", decl.Verb)
-		s.Equal(session.TargetMember, decl.TargetKind, "%s: both verbs aim at somebody", decl.Verb)
-		// Alice is alone in this world, so the rows are unavailable for want
+		s.Equal(session.TargetMember, decl.TargetKind, "%s: a line is aimed at somebody", decl.Verb)
+		// Alice is alone in this world, so the row is unavailable for want
 		// of somebody to speak to — and that is the ONLY reason they can be.
 		// A budget shortfall here would mean the world clock had grown an
 		// economy nobody gave it.
@@ -316,8 +316,8 @@ func (s *AffordSuite) TestFreeRoamAffordsTheSocialVerbsAndNothingElse() {
 			"%s: the only thing missing in free roam is an audience", decl.Verb)
 		s.Empty(decl.Why.Currency, "%s: nothing is spent, so nothing is short", decl.Verb)
 	}
-	s.Equal([]session.Verb{session.VerbIntimidate, session.VerbPersuade}, verbs,
-		"the social verbs, and no verb that spends a turn's economy")
+	s.Equal([]session.Verb{session.VerbSpeak}, verbs,
+		"the social verb, and no verb that spends a turn's economy")
 }
 
 // TestAffordSavesNothing is TestARefusedSwingWritesNothing's own claim, asked
@@ -462,7 +462,7 @@ func (s *AffordSuite) TestNotYourTurnIsAnnouncedByAfford() {
 	}
 	s.Require().Equal([]session.Verb{
 		session.VerbAttack, session.VerbMove, session.VerbActivate,
-		session.VerbCast, session.VerbIntimidate, session.VerbPersuade, session.VerbEndTurn,
+		session.VerbCast, session.VerbSpeak, session.VerbEndTurn,
 	}, verbs)
 	for _, d := range out.Declarations {
 		s.False(d.Available)

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
@@ -174,8 +175,7 @@ func (m *Manager) compileOffersFor(
 			blockedCompiledOffer(VerbMove, TargetPath, why),
 			blockedCompiledOffer(VerbActivate, TargetNone, why),
 			blockedCompiledOffer(VerbCast, TargetNone, why),
-			blockedCompiledOffer(VerbIntimidate, TargetMember, why),
-			blockedCompiledOffer(VerbPersuade, TargetMember, why),
+			blockedCompiledOffer(VerbSpeak, TargetMember, why),
 			endTurn,
 		)
 	}
@@ -191,8 +191,7 @@ func (m *Manager) compileOffersFor(
 			blockedCompiledOffer(VerbMove, TargetPath, why),
 			blockedCompiledOffer(VerbActivate, TargetNone, why),
 			blockedCompiledOffer(VerbCast, TargetNone, why),
-			blockedCompiledOffer(VerbIntimidate, TargetMember, why),
-			blockedCompiledOffer(VerbPersuade, TargetMember, why),
+			blockedCompiledOffer(VerbSpeak, TargetMember, why),
 			endTurn,
 		)
 	}
@@ -227,8 +226,7 @@ func (m *Manager) compileOffersFor(
 			blockedCompiledOffer(VerbMove, TargetPath, why),
 			blockedCompiledOffer(VerbActivate, TargetNone, why),
 			blockedCompiledOffer(VerbCast, TargetNone, why),
-			blockedCompiledOffer(VerbIntimidate, TargetMember, why),
-			blockedCompiledOffer(VerbPersuade, TargetMember, why),
+			blockedCompiledOffer(VerbSpeak, TargetMember, why),
 			deathSave,
 			endTurn,
 		)
@@ -282,33 +280,19 @@ func (m *Manager) compileOffersFor(
 		}
 	}
 
-	// BUILT BEFORE THE ATTACK ASSEMBLY, because a threat needs no weapon.
+	// BUILT BEFORE THE ATTACK ASSEMBLY, because a line needs no weapon.
 	// The ErrBadAttack path below returns early with Attack blocked and
-	// everything else still standing, and a threat belongs on the standing
-	// side: a fighter whose weapon will not compile can still tell a goblin
-	// what is going to happen to it.
-	var intimidate, persuade compiledOffer
-	if requested[VerbIntimidate] || requested[VerbPersuade] {
-		// ONE AUDIENCE READ FOR BOTH ROWS. Who can see this member and what
-		// the roster says about them is the same question for a threat and an
-		// appeal, and asking it twice is two reads free to disagree.
-		audience, err := readSocialAudience(enc, member)
+	// everything else still standing, and talk belongs on the standing side:
+	// a fighter whose weapon will not compile can still tell a goblin what is
+	// going to happen to it.
+	var speak compiledOffer
+	if requested[VerbSpeak] {
+		menu, err := readSpeakMenu(enc, member)
 		if err != nil {
 			return nil, err
 		}
-		if requested[VerbIntimidate] {
-			if intimidate, err = buildSocialOffer(
-				audience, m.intimidateVerb(), sessionID, member, sheet,
-			); err != nil {
-				return nil, err
-			}
-		}
-		if requested[VerbPersuade] {
-			if persuade, err = buildSocialOffer(
-				audience, m.persuadeVerb(), sessionID, member, sheet,
-			); err != nil {
-				return nil, err
-			}
+		if speak, err = buildSpeakOffer(menu, sessionID, member, sheet); err != nil {
+			return nil, err
 		}
 	}
 
@@ -395,7 +379,7 @@ func (m *Manager) compileOffersFor(
 			attackBlocker.unreadable = conflict
 		}
 		return finishRequestedOffers(requested, append(
-			[]compiledOffer{attackBlocker, move, endTurn, intimidate, persuade},
+			[]compiledOffer{attackBlocker, move, endTurn, speak},
 			activations...)...)
 	}
 	price.cost.Profile = combatActions.CloneSpendProfile(definition.Cost)
@@ -502,7 +486,7 @@ func (m *Manager) compileOffersFor(
 		attacks = append(attacks, offHandAttack)
 	}
 
-	offers := append(attacks, move, deathSave, endTurn, intimidate, persuade)
+	offers := append(attacks, move, deathSave, endTurn, speak)
 	offers = append(offers, activations...)
 	return finishRequestedOffers(requested, append(offers, casts...)...)
 }
@@ -744,163 +728,223 @@ func buildMoveOffer(session, member string, sheet *character.Character) (compile
 	return compiledOffer{declaration: decl, sheet: sheet, verb: VerbMove, slot: SlotNone, variant: variant}, nil
 }
 
-// buildSocialOffer compiles ONE social row — a threat or an appeal — priced at
-// the standard action and aimed at the witnesses an author gave this verb to
-// (rpg-project#454, rpg-project#458, rpg-project#494).
+// buildSpeakOffer compiles THE ONE SOCIAL ROW on the turn clock — Speak,
+// priced at the standard action and carrying the menu of every line this
+// speaker is offered right now (rpg-project#569).
 //
-// ITS CANDIDATES ARE THE WITNESSES, and the direction is the point. Every
-// other member-targeting row here asks who the ACTOR can see; a threat only
-// reaches somebody who can see who is making it, so this asks the composition
-// the question the verb itself will ask ([encounter.Encounter.Witnesses]). The
-// panel and the door therefore agree, instead of the panel offering a goblin
-// in a dark corridor that the verb then refuses.
+// ITS CANDIDATES ARE THE WITNESSES WHO OFFER A LINE, and the direction is the
+// point. Every other member-targeting row here asks who the ACTOR can see; a
+// line only reaches somebody who can see who is saying it, so this asks the
+// composition the question the verb itself will ask
+// ([encounter.Encounter.Witnesses]). Of those, only the ones with a line for
+// THIS speaker are candidates ([linesOffered]) — the same read the verb
+// refuses by, so the row cannot offer a creature the door would turn away.
 //
-// AND THE OFFER COMES FROM THE NPC. Of those witnesses, only the ones whose
-// binding authored this verb's entries are candidates ([socialEntriesOf], R2)
-// — the same read the verb refuses by, so the row cannot offer a creature the
-// door would turn away. A row with an audience and no authored creature in it
-// is unavailable with ShortfallNoSocialEntry, which is a different
-// instruction from having nobody to talk to at all.
+// THE MENU IS [Declaration.SpeakOptions]: one row per (target, line) pair,
+// props included. A target with no line is not listed at all.
 //
-// NO REACH GATE, which is the other thing that makes it unlike a swing. Speech
-// carries as far as sight does — "no distance cap beyond sight" is the
-// design's own decision — so every candidate is available and none carries a
-// ShortfallTargetOutOfReach.
-//
-// ONE BUILDER, TWO VERBS, because the row is the same row: the verb, its
-// selector and its price compiler are the three things that differ, and they
-// arrive as arguments rather than as a second copy of this function.
-func buildSocialOffer(
-	audience socialAudience, spec socialVerb, session, member string, sheet *character.Character,
+// NO REACH GATE. Speech carries as far as sight does — "no distance cap
+// beyond sight" is the design's own decision — so every candidate is
+// available and none carries a ShortfallTargetOutOfReach.
+func buildSpeakOffer(
+	menu speakMenu, session, member string, sheet *character.Character,
 ) (compiledOffer, error) {
-	id, variant, err := selectorIDFor(session, member, spec.verb, SlotAction, nil, nil, "", "")
+	id, variant, err := selectorIDFor(session, member, VerbSpeak, SlotAction, nil, nil, "", "")
 	if err != nil {
 		return compiledOffer{}, err
 	}
 
-	candidates, err := audience.candidatesFor(spec)
-	if err != nil {
-		return compiledOffer{}, err
-	}
-
-	profile, err := spec.cost(sheet)
+	profile, err := speakCost(sheet)
 	if err != nil {
 		return compiledOffer{}, fmt.Errorf("%w: %v", ErrBadCost, err)
 	}
 
 	decl := Declaration{
-		Verb: spec.verb, Slot: SlotAction, ID: id,
-		TargetKind: TargetMember, Candidates: projectCandidates(candidates),
+		Verb: VerbSpeak, Slot: SlotAction, ID: id,
+		TargetKind: TargetMember, Candidates: projectCandidates(menu.targets),
+		SpeakOptions: menu.projectRows(),
 	}
-	if why := socialShortfall(audience, candidates, spec, sheet, profile); why != nil {
+	if why := speakShortfall(menu, sheet, profile); why != nil {
 		decl.Why = why
 	} else {
 		decl.Available = true
 	}
 
-	targets := make(map[string]targetPreflight, len(candidates))
-	for _, candidate := range candidates {
+	targets := make(map[string]targetPreflight, len(menu.targets))
+	for _, candidate := range menu.targets {
 		targets[candidate.member] = candidate
 	}
 
 	return compiledOffer{
 		declaration: decl, sheet: sheet, targets: targets,
-		verb: spec.verb, slot: SlotAction, variant: variant,
+		verb: VerbSpeak, slot: SlotAction, variant: variant,
 	}, nil
 }
 
-// socialShortfall is why a social row is not available, or nil when it is —
+// speakShortfall is why the Speak row is not available, or nil when it is —
 // the one place the two clocks agree about the ORDER of the three reasons.
 //
-// THE AUDIENCE COMES BEFORE THE AUTHORING. An actor nobody can see is told
-// nobody can see them, even though no candidate carries entries either: the
-// audience is the first thing missing and naming the second would answer a
-// question the player has not reached yet. A price, when there is one, comes
-// before both — a member who cannot pay could not use the row against anybody.
+// A PRICE, when there is one, comes first — a member who cannot pay could
+// not say anything to anybody. THE AUDIENCE COMES BEFORE THE OPTIONS: an
+// actor nobody can see and who has no prop to read is told nobody can see
+// them, because the audience is the first thing missing and naming the
+// second would answer a question the player has not reached yet. Otherwise a
+// menu with nothing on it is [ShortfallNoOption].
 //
 // The sheet and profile are nil on the WORLD clock, which has no economy to
 // fall short of (move.go's rule), and the price arm is simply not reached.
-func socialShortfall(
-	audience socialAudience, candidates []targetPreflight, spec socialVerb,
-	sheet *character.Character, profile *combat.SpendProfile,
-) *Shortfall {
+func speakShortfall(menu speakMenu, sheet *character.Character, profile *combat.SpendProfile) *Shortfall {
 	switch {
 	case sheet != nil && profile != nil && !combat.CanPay(sheet, profile):
 		why := shortfallForPay(sheet, profile, SlotAction)
 		return &why
-	case len(audience.witnesses) == 0:
+	case len(menu.lines) > 0:
+		return nil
+	case len(menu.witnesses) == 0:
 		why := Shortfall{Reason: ShortfallNoTargetInReach, Text: "nobody can see you to be spoken to"}
 		return &why
-	case len(candidates) == 0:
-		why := Shortfall{Reason: ShortfallNoSocialEntry, Text: spec.nobody}
+	default:
+		why := Shortfall{Reason: ShortfallNoOption, Text: "nothing here has a line for you"}
 		return &why
 	}
-
-	return nil
 }
 
-// socialAudience is everybody who can see one member, and the roster they are
-// rows of — read ONCE and shared by both social verbs.
-//
-// IT HOLDS THE ROSTER BECAUSE THE FILTER NEEDS IT. Narrowing an audience to
-// the creatures an author gave a verb to is one roster lookup per witness, and
-// a panel that refreshes every frame must not pay a full roster read for each
-// of them ([socialEntriesOf]).
-type socialAudience struct {
-	roster    []encounter.Member
+// speakMenu is every line one speaker is offered right now, and who it can
+// be said to — read ONCE per Afford.
+type speakMenu struct {
+	// witnesses is everybody who can see the speaker, minus the speaker.
 	witnesses []string
+
+	// targets is the witnesses who offer at least one line, as the row's
+	// member candidates.
+	targets []targetPreflight
+
+	// lines is the menu, in target order and then authored order.
+	lines []speakLine
 }
 
-// readSocialAudience asks the composition who can see this member — the
-// audience both social verbs aim at, minus the member themselves.
-func readSocialAudience(enc *encounter.Encounter, member string) (socialAudience, error) {
+// speakLine is one (target, option) pair on the menu.
+type speakLine struct {
+	target string
+	prop   string
+	option encounter.Option
+}
+
+// projectRows is the menu as the seam's exported rows. Non-nil, so a row
+// with nothing on it says so with an empty list.
+//
+// EVERY LISTED LINE IS AVAILABLE. A line whose `requires` the speaker does
+// not meet is not listed at all — listing it unavailable would confirm a line
+// the author hid behind a fact (R9) — and a creature that cannot see the
+// speaker is not a target. Whether the speaker can pay is the declaration's
+// gate, not the line's.
+func (m speakMenu) projectRows() []SpeakOptionRow {
+	out := make([]SpeakOptionRow, 0, len(m.lines))
+	for _, l := range m.lines {
+		out = append(out, SpeakOptionRow{
+			Target: l.target, Prop: l.prop,
+			OptionID: l.option.ID, Line: l.option.Say,
+			Available: true,
+		})
+	}
+	return out
+}
+
+// readSpeakMenu asks the composition who can see this member, and which
+// lines each of them — and each prop the member could address — offers THIS
+// member, through [linesOffered], the read the door refuses by.
+//
+// PROPS ARE JUDGED ONE BY ONE BY THE COMPOSITION: every prop the field
+// holds ([speakableProps]) is asked under the probe law
+// ([encounter.Encounter.PropOptionsFor]), so a prop hidden from the speaker,
+// out of their sight, or in somebody else's hands answers ErrNoProp and is
+// simply not on the menu — the offer never names a thing the door would
+// refuse.
+//
+// A WITNESS THE COMPOSITION CANNOT ANSWER FOR FAILS THE READ rather than
+// being skipped: that would mean its sight and its roster disagree about who
+// is in the room, which is a defect to surface, not to paper over.
+func readSpeakMenu(enc *encounter.Encounter, member string) (speakMenu, error) {
 	witnesses, err := enc.Witnesses(encounter.MemberID(member))
 	if err != nil {
-		return socialAudience{}, badCostUnlessSheet(translate(err))
-	}
-	roster, err := enc.Members()
-	if err != nil {
-		return socialAudience{}, badCostUnlessSheet(translate(err))
+		return speakMenu{}, badCostUnlessSheet(translate(err))
 	}
 
-	seen := make([]string, 0, len(witnesses))
+	menu := speakMenu{
+		witnesses: make([]string, 0, len(witnesses)),
+		targets:   make([]targetPreflight, 0, len(witnesses)),
+	}
 	for _, id := range witnesses {
 		// A member always witnesses their own cell, and talking yourself
 		// round is not a shenanigan.
 		if string(id) == member {
 			continue
 		}
-		seen = append(seen, string(id))
+		menu.witnesses = append(menu.witnesses, string(id))
+		lines, err := linesOffered(enc, member, string(id), "")
+		if err != nil {
+			return speakMenu{}, badCostUnlessSheet(err)
+		}
+		if len(lines) == 0 {
+			continue
+		}
+		menu.targets = append(menu.targets, targetPreflight{member: string(id), available: true})
+		for _, o := range lines {
+			menu.lines = append(menu.lines, speakLine{target: string(id), option: o})
+		}
 	}
 
-	return socialAudience{roster: roster, witnesses: seen}, nil
-}
-
-// candidatesFor is the audience narrowed to the members this verb was
-// AUTHORED on (rpg-project#494 R2) — the row's candidate list.
-//
-// A witness with no entries is dropped rather than listed unavailable, because
-// the row is not offering them at all: a candidate with a Why is somebody the
-// player could reach by moving, and no amount of moving writes an
-// `intimidate:` block.
-//
-// A WITNESS MISSING FROM THE ROSTER FAILS THE READ rather than being skipped.
-// That would mean the composition's sight and its roster disagree about who is
-// in the room, which is a defect to surface, not to paper over with a shorter
-// candidate list nobody can explain.
-func (a socialAudience) candidatesFor(spec socialVerb) ([]targetPreflight, error) {
-	candidates := make([]targetPreflight, 0, len(a.witnesses))
-	for _, id := range a.witnesses {
-		switch _, err := socialEntriesOf(a.roster, id, spec); {
-		case errors.Is(err, ErrNoSocialEntry):
+	props, err := speakableProps(enc)
+	if err != nil {
+		return speakMenu{}, err
+	}
+	for _, prop := range props {
+		lines, err := linesOffered(enc, member, "", prop)
+		switch {
+		case errors.Is(err, ErrNoProp):
 			continue
 		case err != nil:
-			return nil, fmt.Errorf("%w: %v", ErrBadCost, err)
+			return speakMenu{}, badCostUnlessSheet(err)
 		}
-		candidates = append(candidates, targetPreflight{member: id, available: true})
+		for _, o := range lines {
+			menu.lines = append(menu.lines, speakLine{prop: prop, option: o})
+		}
 	}
 
-	return candidates, nil
+	return menu, nil
+}
+
+// speakableProps is every prop id the field was built with — the universe a
+// speaker's menu is drawn from — sorted and without repeats. A prop the author
+// gave no id names nothing a verb can address and is skipped.
+//
+// THE CONSTRUCTION ATLAS, NOT THE SPEAKER'S SIGHTINGS. Only a prop that can
+// change hands is sighted as testimony; an altar bolted to the floor never
+// is, and it is exactly the thing somebody reads aloud. So the ids come from
+// the field ([encounter.Encounter.Atlas]) and the composition judges each one
+// for this speaker under the probe law ([encounter.Encounter.PropOptionsFor]):
+// a prop they cannot be shown answers ErrNoProp and is not on the menu, and
+// the atlas itself never reaches the client from here.
+func speakableProps(enc *encounter.Encounter) ([]string, error) {
+	atlas, err := enc.Atlas()
+	if err != nil {
+		return nil, badCostUnlessSheet(translate(err))
+	}
+
+	ids := make([]string, 0, len(atlas.Props)+len(atlas.Placed))
+	for _, p := range atlas.Props {
+		if p.ID != "" {
+			ids = append(ids, string(p.ID))
+		}
+	}
+	for _, p := range atlas.Placed {
+		if p.ID != "" {
+			ids = append(ids, string(p.ID))
+		}
+	}
+	slices.Sort(ids)
+
+	return slices.Compact(ids), nil
 }
 
 // blockedCompiledOffer is the compiledOffer shape every early per-verb
@@ -1165,7 +1209,7 @@ func offerSelectorEqual(a, b compiledOffer) bool {
 }
 
 // verbRank orders declarations in the deterministic output order the seam
-// promises: Attack, Move, Activate, Cast, Intimidate, Persuade, Death Save,
+// promises: Attack, Move, Activate, Cast, Speak, Death Save,
 // then EndTurn — the order a turn panel renders its controls. Assertions may rely on
 // this order; it never depends on candidate state.
 func verbRank(v Verb) int {
@@ -1181,17 +1225,14 @@ func verbRank(v Verb) int {
 	// named rows a player scans, and the swing and the walk come first.
 	case VerbCast:
 		return 3
-	// INTIMIDATE SITS WITH THE SWING, after the lists: it is a turn's own
-	// control like Attack and Move, aimed at somebody in the room, and a
-	// panel draws the things you DO to a creature near each other.
-	case VerbIntimidate:
+	// SPEAK SITS WITH THE SWING, after the lists, in the slot Intimidate
+	// held: it is a turn's own control like Attack and Move, aimed at
+	// somebody in the room, and a panel draws the things you DO to a creature
+	// near each other. It replaced Intimidate and Persuade (rpg-project#569),
+	// so the rank it holds is the first of theirs and the panel does not
+	// reorder around it.
+	case VerbSpeak:
 		return 4
-	// PERSUADE SITS BESIDE INTIMIDATE, after it, for the reason Cast sits
-	// beside Activate: they are one pair of controls aimed at one creature,
-	// and the threat is listed first because it shipped first and a panel
-	// that reorders itself between releases is one players re-learn.
-	case VerbPersuade:
-		return 5
 	case VerbDeathSave:
 		return 6
 	case VerbEndTurn:

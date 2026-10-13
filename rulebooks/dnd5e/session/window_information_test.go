@@ -188,17 +188,17 @@ func TestCastOfferWindowCarriesProseAcrossReload(t *testing.T) {
 	require.Equal(t, before.Options, after.Options)
 }
 
-// TestSocialCheckOfferWindowCarriesProseAcrossReload: a guided threat pauses
+// TestSocialCheckOfferWindowCarriesProseAcrossReload: a guided line pauses
 // on the check and offers the Guidance die.
 func TestSocialCheckOfferWindowCarriesProseAcrossReload(t *testing.T) {
-	s := &IntimidateSuite{}
+	s := &SpeakSuite{}
 	s.SetT(t)
 	s.SetupTest()
 	mgr := s.aYard([]int{6, 4})
 	s.guide()
 	out, err := s.threaten(mgr)
 	require.NoError(t, err)
-	require.True(t, out.Paused, "precondition: the threat stopped to ask")
+	require.True(t, out.Paused, "precondition: the line stopped to ask")
 
 	ref := refs.Conditions.Guided().String()
 	before := windowRow(t, mgr, "alice", ref)

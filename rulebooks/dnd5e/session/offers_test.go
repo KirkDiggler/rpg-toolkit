@@ -276,7 +276,7 @@ func TestAffordProjectsEveryCompiledDeclarationOnTheTurnClock(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, session.ClockTurn, out.Clock)
-	// Attack, Move, Intimidate, EndTurn, and the FIVE activations a plain fighter carries:
+	// Attack, Move, Speak, EndTurn, and the FIVE activations a plain fighter carries:
 	// Dash, Disengage, Dodge, Help, Hide. The sixth combat ability every
 	// character has is Attack, and it is deliberately not among them —
 	// swinging is VerbAttack's job, and offering the Attack action separately
@@ -285,7 +285,7 @@ func TestAffordProjectsEveryCompiledDeclarationOnTheTurnClock(t *testing.T) {
 		session.VerbAttack, session.VerbMove,
 		session.VerbActivate, session.VerbActivate, session.VerbActivate,
 		session.VerbActivate, session.VerbActivate,
-		session.VerbIntimidate, session.VerbPersuade, session.VerbEndTurn,
+		session.VerbSpeak, session.VerbEndTurn,
 	}, verbsOf(out.Declarations))
 
 	// Documented verb order: Attack, Move, Activate, EndTurn — and EndTurn is
@@ -347,7 +347,7 @@ func TestNotYourTurnBlocksEveryVerb(t *testing.T) {
 	// act can do none of them, and the reason is identical for every one.
 	require.Equal(t, []session.Verb{
 		session.VerbAttack, session.VerbMove, session.VerbActivate,
-		session.VerbCast, session.VerbIntimidate, session.VerbPersuade, session.VerbEndTurn,
+		session.VerbCast, session.VerbSpeak, session.VerbEndTurn,
 	}, verbsOf(out.Declarations), "every verb a turn has, and nothing else")
 
 	for _, d := range out.Declarations {
@@ -389,7 +389,7 @@ func TestDownedBlocksEveryVerbButEndTurn(t *testing.T) {
 	// character one explicit Death Save and keeps End Turn independent.
 	require.Equal(t, []session.Verb{
 		session.VerbAttack, session.VerbMove, session.VerbActivate,
-		session.VerbCast, session.VerbIntimidate, session.VerbPersuade, session.VerbDeathSave, session.VerbEndTurn,
+		session.VerbCast, session.VerbSpeak, session.VerbDeathSave, session.VerbEndTurn,
 	}, verbsOf(out.Declarations))
 
 	attack := requireSingleDeclaration(t, out.Declarations, session.VerbAttack)
@@ -481,7 +481,7 @@ func TestBadAttackCompilationBlocksAttackOnly(t *testing.T) {
 		session.VerbAttack, session.VerbMove,
 		session.VerbActivate, session.VerbActivate, session.VerbActivate,
 		session.VerbActivate, session.VerbActivate,
-		session.VerbIntimidate, session.VerbPersuade, session.VerbEndTurn,
+		session.VerbSpeak, session.VerbEndTurn,
 	}, verbsOf(out.Declarations))
 
 	attack := requireSingleDeclaration(t, out.Declarations, session.VerbAttack)
@@ -550,7 +550,7 @@ func TestUnreadableCharacterBlocksEveryVerbButEndTurn(t *testing.T) {
 	// act can do none of them, and the reason is identical for every one.
 	require.Equal(t, []session.Verb{
 		session.VerbAttack, session.VerbMove, session.VerbActivate,
-		session.VerbCast, session.VerbIntimidate, session.VerbPersuade, session.VerbEndTurn,
+		session.VerbCast, session.VerbSpeak, session.VerbEndTurn,
 	}, verbsOf(out.Declarations), "every verb a turn has, and nothing else")
 
 	attack := requireSingleDeclaration(t, out.Declarations, session.VerbAttack)

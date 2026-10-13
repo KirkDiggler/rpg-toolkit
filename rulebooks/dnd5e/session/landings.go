@@ -468,15 +468,14 @@ func (m *Manager) answerCheck(
 	return &ReactOutput{Saved: report, Delivery: delivery}, nil
 }
 
-// landResumedSocial finishes the social verb a check-offer window paused,
-// through the same composition op the unpaused path uses.
+// landResumedSocial finishes the line a check-offer window paused, through
+// the same composition op the unpaused path uses.
 //
-// THE STORY SAYS WHICH VERB, and this switch is why it has to
-// ([windowStory.Verb]). While Intimidate was the only social verb,
-// "a target and no door" named it unambiguously; with two, a resumed Persuade
-// that landed an Intimidate would put the wrong deed on a mind — the coward
-// would take fear from a conversation it was talked round by. The window is
-// refused at the trust boundary when it names neither.
+// THE STORY SAYS WHICH LINE, AND TO WHAT ([windowStory.Option],
+// [windowStory.Target], [windowStory.Prop]). The skill is the RESUMED
+// machine's applied route, so the deed the composition lands is decided by
+// what was actually rolled (R3). The composition's door asks again whether the
+// line is still offered to this speaker, and refuses it as ErrNoOption if not.
 //
 // NOTHING IS RE-ROLLED. The verdict handed in is the resumed machine's, offer
 // included; this only carries it across the seam. The action, if one was
@@ -484,33 +483,28 @@ func (m *Manager) answerCheck(
 func (m *Manager) landResumedSocial(
 	ctx context.Context, scope *writeScope, story windowStory, audience string, out *resolution.CheckOutput,
 ) error {
-	landing := &socialLanding{
-		Actor:  encounter.MemberID(audience),
-		Target: encounter.MemberID(story.Target),
-		Beaten: out.Result.Success,
-		DC:     out.Applied.DC,
-		Total:  out.Result.Total,
+	if story.Verb != VerbSpeak || story.Option == "" {
+		// Unreachable: thawWindow refuses a target or prop under any other
+		// verb, or with no line. Refusing rather than defaulting keeps the day
+		// that stops being true from silently landing the wrong line.
+		return fmt.Errorf("%w: a paused check names target %q prop %q under verb %q with line %q",
+			ErrInvalidSession, story.Target, story.Prop, story.Verb, story.Option)
+	}
+
+	if _, err := m.landSpoken(ctx, scope.enc, &speakLanding{
+		Actor:    encounter.MemberID(audience),
+		Target:   encounter.MemberID(story.Target),
+		Prop:     encounter.PropID(story.Prop),
+		OptionID: story.Option,
+		Skill:    out.Applied.Ability,
+		Beaten:   out.Result.Success,
+		DC:       out.Applied.DC,
+		Total:    out.Result.Total,
 		// The RESUMED calculation, which is the pre-offer one plus whatever
 		// the answer added — never the frozen one the window asked with. The
 		// caller refused a nil one before reaching either branch.
 		Calculation: rollCalculationFor(out.Calculation),
-	}
-
-	var spec socialVerb
-	switch story.Verb {
-	case VerbIntimidate:
-		spec = m.intimidateVerb()
-	case VerbPersuade:
-		spec = m.persuadeVerb()
-	default:
-		// Unreachable: thawWindow refuses a target under any other
-		// verb. Refusing rather than defaulting keeps the day that stops being
-		// true from silently landing a threat.
-		return fmt.Errorf("%w: a paused check names target %q under verb %q",
-			ErrInvalidSession, story.Target, story.Verb)
-	}
-
-	if _, _, err := spec.land(ctx, scope.enc, landing); err != nil {
+	}); err != nil {
 		return translate(err)
 	}
 

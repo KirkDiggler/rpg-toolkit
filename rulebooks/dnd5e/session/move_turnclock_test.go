@@ -323,13 +323,13 @@ func (s *MoveTurnClockSuite) TestWorldClockMoveNeverTouchesTheEconomy() {
 	s.Require().NoError(err)
 	s.Equal(session.ClockWorld, direct.Clock)
 	// NO MOVE ROW IN FREE ROAM, which is what this scene is about: the world
-	// clock offers the two social verbs (R3, rpg-project#457) and nothing
+	// clock offers the social verb (R3, rpg-project#457) and nothing
 	// that spends an economy, Move included — a free-roam walk takes no
 	// declaration id, and move.go refuses one.
 	s.NotContains(declarationVerbs(direct.Declarations), session.VerbMove,
 		"a free-roam walk is not a priced row and must not be offered as one")
-	s.Equal([]session.Verb{session.VerbIntimidate, session.VerbPersuade},
-		declarationVerbs(direct.Declarations), "the social verbs, and no verb with a price")
+	s.Equal([]session.Verb{session.VerbSpeak},
+		declarationVerbs(direct.Declarations), "the social verb, and no verb with a price")
 }
 
 // TestMovedTurnEndedAndFightStartedCarryTypedBodies pins rpg-toolkit#941 for

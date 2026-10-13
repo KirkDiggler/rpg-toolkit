@@ -19,15 +19,15 @@ import (
 // the omission invisible: a missing optional field on a new beat looks
 // identical to an old beat, and no test downstream can tell them apart.
 func TestRequireCalculationRefusesASilentlyLostRoll(t *testing.T) {
-	err := requireCalculation("intimidate", "alice", nil)
+	err := requireCalculation("speak", "alice", nil)
 
 	require.ErrorIs(t, err, ErrNoCalculation)
-	require.Contains(t, err.Error(), "intimidate", "the message names the verb that lost it")
+	require.Contains(t, err.Error(), "speak", "the message names the verb that lost it")
 	require.Contains(t, err.Error(), `"alice"`, "and who it was rolled for")
 }
 
 func TestRequireCalculationAcceptsARollThatIsThere(t *testing.T) {
-	require.NoError(t, requireCalculation("intimidate", "alice", &encounter.RollCalculation{}))
+	require.NoError(t, requireCalculation("speak", "alice", &encounter.RollCalculation{}))
 }
 
 // The posed sibling guards the window that ASKS, which is where a roll is

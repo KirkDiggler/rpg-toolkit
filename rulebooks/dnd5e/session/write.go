@@ -303,9 +303,8 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 	// this Join is read at the next ask rather than frozen here.
 	placed, err := place(scope, in.Member, KindPlayer, projected.Sheet.Name, in.Position,
 		false, nil, "", nil,
-		// A PLAYER IS NOT A SOCIAL TARGET in this build: the social verbs
-		// refuse a target with no monster stat block to derive a DC from, so
-		// there is nothing for a joining character to carry.
+		// A PLAYER IS NOT SPOKEN TO in this build: a line is an authored
+		// option on a binding, and a joining character has no binding.
 		socialPlacement{})
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", saveErrorAfterWrites(scope, "", err))
@@ -475,7 +474,7 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 	// composition puts a member of this kind in no faction at all.
 	placed, err := place(scope, in.Member, KindWorld, in.NPC.DisplayName, in.Position,
 		blocksMovement, nil, "", nil,
-		// A world NPC is not a monster and carries no authored check.
+		// A world NPC carries no authored option.
 		socialPlacement{})
 	if err != nil {
 		return nil, fmt.Errorf("place npc: %w", err)
@@ -579,10 +578,10 @@ func joinInputFor(
 		// The author's predicate in the composition's own Trigger, converted
 		// carried straight off the compiled placement (Launch); nil stays nil.
 		Arrives: arrives,
-		// The author's shenanigan facts (rpg-project#454), already in the
-		// composition's CheckApproach: carried off the compiled placement by Launch. Nil stays nil.
-		Intimidate: social.Intimidate,
-		Persuade:   social.Persuade,
+		// The lines a character can say to this creature (rpg-project#569),
+		// already in the composition's Option: carried off the compiled
+		// placement by Launch. Nil stays nil.
+		Options: social.Options,
 		// The creature's whole policy, already three layers deep
 		// (rpg-project#465): the rulebook's default for its kind under the
 		// author's faction orders under the author's placement orders. Laid

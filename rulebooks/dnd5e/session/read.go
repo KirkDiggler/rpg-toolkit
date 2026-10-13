@@ -874,6 +874,12 @@ func translate(err error) error {
 		return fmt.Errorf("%w", ErrNotVisible)
 	case errors.Is(err, encounter.ErrUnwitnessed):
 		return fmt.Errorf("%w", ErrUnwitnessed)
+	case errors.Is(err, encounter.ErrNoOption):
+		// The composition's door refusing a line this speaker is not offered.
+		// Reachable when the world changed between this seam's own read and
+		// the composition's — a resumed line whose fact was unlearned — and
+		// answered with the same word the seam's own read gives.
+		return fmt.Errorf("%w", ErrNoOption)
 	case errors.Is(err, encounter.ErrTurnPaused):
 		// The composition refusing a verb because a driven turn is stopped
 		// mid-walk waiting on an answer. This seam's own word for that is

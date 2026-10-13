@@ -340,7 +340,7 @@ func (s *DoorsSuite) TestTheEndedBeatCarriesItsKey() {
 }
 
 // THE UNTRAINED RULE'S SCOPE, at the seam that decides it (rpg-project#457
-// R2). It is SKILL VERBS only — Intimidate, Persuade, later Deceive — and a
+// R2). It is SKILL VERBS only — Speak, whatever skill its line rolls — and a
 // lock is not one however it is authored, so a checker with no training in the
 // skill the lock names still rolls one die and the 2014 letter.
 //

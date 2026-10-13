@@ -68,10 +68,22 @@ func TestThawWindowRefusesWhatThisBuildDidNotWrite(t *testing.T) {
 		{"a cast story with no spell", func(w *pendingWindow) { w.Story = windowStory{Kind: storyCast, Caster: "bard"} }, "fighter", ErrInvalidSession},
 		{"a check story finishing nothing", func(w *pendingWindow) { w.Story = windowStory{Kind: storyCheck} }, "fighter", ErrInvalidSession},
 		{"a check story on a target with no social verb", func(w *pendingWindow) {
-			w.Story = windowStory{Kind: storyCheck, Target: "goblin"}
+			w.Story = windowStory{Kind: storyCheck, Target: "goblin", Option: "greet"}
+		}, "fighter", ErrInvalidSession},
+		{"a check story on a target with no line", func(w *pendingWindow) {
+			w.Story = windowStory{Kind: storyCheck, Target: "goblin", Verb: VerbSpeak}
+		}, "fighter", ErrInvalidSession},
+		{"a check story on a prop with no line", func(w *pendingWindow) {
+			w.Story = windowStory{Kind: storyCheck, Prop: "altar", Verb: VerbSpeak}
+		}, "fighter", ErrInvalidSession},
+		{"a check story naming a target and a prop", func(w *pendingWindow) {
+			w.Story = windowStory{Kind: storyCheck, Target: "goblin", Prop: "altar", Verb: VerbSpeak, Option: "greet"}
 		}, "fighter", ErrInvalidSession},
 		{"a check story naming a door and a verb", func(w *pendingWindow) {
-			w.Story = windowStory{Kind: storyCheck, Door: "gate", Verb: VerbPersuade}
+			w.Story = windowStory{Kind: storyCheck, Door: "gate", Verb: VerbSpeak}
+		}, "fighter", ErrInvalidSession},
+		{"a check story naming a door and a line", func(w *pendingWindow) {
+			w.Story = windowStory{Kind: storyCheck, Door: "gate", Option: "greet"}
 		}, "fighter", ErrInvalidSession},
 		{"a story kind nobody tells", func(w *pendingWindow) { w.Story.Kind = "dance" }, "fighter", ErrInvalidSession},
 	} {

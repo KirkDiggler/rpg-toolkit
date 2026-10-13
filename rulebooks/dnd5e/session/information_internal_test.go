@@ -80,7 +80,7 @@ func TestExecutionPathsNeverAttachInformation(t *testing.T) {
 			clock, err := enc.ClockOf(&encounter.ClockOfInput{Member: "alice"})
 			require.NoError(t, err)
 			offers, err := mgr.compileOffersFor(ctx, enc, data, "sess", "alice", clock, mgr.loadActorSheet(ctx, "alice"),
-				VerbAttack, VerbMove, VerbActivate, VerbCast, VerbIntimidate, VerbPersuade, VerbDeathSave, VerbEndTurn,
+				VerbAttack, VerbMove, VerbActivate, VerbCast, VerbSpeak, VerbDeathSave, VerbEndTurn,
 			)
 			require.NoError(t, err)
 			require.NotEmpty(t, offers)
