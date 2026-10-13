@@ -308,17 +308,11 @@ func TestCheckSuite(t *testing.T) {
 	suite.Run(t, new(CheckTestSuite))
 }
 
-// TestRageAndUntrainedCancelOverOneCheck is R2 at the seam that raises both
-// rules. A raging barbarian who never trained Athletics has one rule granting
-// advantage on a Strength check and another imposing disadvantage for the
-// missing training. RAW rolls one die, and so do we — the difference from a
-// plain check is that the record says which two rules met over it. Before the
-// keep record, this roll and a straight one were byte-identical.
-//
-// Two SHIPPED rules, not two fakes: Raging's own STR-check predicate and the
-// untrained rule resolution installs. Nothing was added to make this test
-// possible.
-func (s *CheckTestSuite) TestRageAndUntrainedCancelOverOneCheck() {
+// TestRageOverAnUntrainedSkillIsPlainAdvantage pins rpg-project#569 at the
+// seam that used to raise two rules. A raging barbarian who never trained
+// Athletics rolls with Raging's advantage and nothing against it: missing
+// training is no plus, not a disadvantage, so nothing cancels the pair.
+func (s *CheckTestSuite) TestRageOverAnUntrainedSkillIsPlainAdvantage() {
 	untrainedSeeker := s.seeker(s.raging())
 	delete(untrainedSeeker.Skills, skills.Athletics)
 
@@ -326,26 +320,22 @@ func (s *CheckTestSuite) TestRageAndUntrainedCancelOverOneCheck() {
 		Character:  untrainedSeeker,
 		Approaches: []encounter.CheckApproach{route(string(skills.Athletics), 12)},
 		Roller:     s.roller,
-		Untrained:  true,
 	})
 	s.Require().NoError(err)
 
-	s.Require().Equal(straightRoll, out.Result.Roll, "one die, as the book says")
+	s.Require().Equal(advantageRoll, out.Result.Roll, "two dice, the higher kept")
 
 	die := dieOf(s.T(), out.Calculation)
-	s.Equal("1d20", die.Notation)
-	s.Empty(die.KeptIndices)
-	s.Require().NotNil(die.Keep, "and unlike a straight roll, it says why")
-	s.Equal(dnd5eEvents.KeepCancelled, die.Keep.Rule)
+	s.Equal("2d20", die.Notation)
+	s.Require().NotNil(die.Keep)
+	s.Equal(dnd5eEvents.KeepAdvantage, die.Keep.Rule)
 	s.Require().Len(die.Keep.Granted, 1)
 	s.Equal("Raging", die.Keep.Granted[0].Name)
-	s.Require().Len(die.Keep.Imposed, 1)
-	s.Equal("Untrained", die.Keep.Imposed[0].Name)
-	s.Equal(seekerID, die.Keep.Imposed[0].SourceID)
+	s.Empty(die.Keep.Imposed, "no rule imposes anything for the missing training")
 }
 
 // TestAPosedCheckAsksWithTheWholeRoll pins R5's half of the slice. The window
-// that asks a player whether to spend a die is where an untrained roll is
+// that asks a player whether to spend a die is where a kept-from-two roll is
 // FIRST seen — before the verdict, before any beat about the outcome. Ask
 // carried two scalars, so the seam that writes that beat could only show one
 // face. It now carries the settled arithmetic the offered die would join.
@@ -357,7 +347,6 @@ func (s *CheckTestSuite) TestAPosedCheckAsksWithTheWholeRoll() {
 		Character:  untrainedSeeker,
 		Approaches: []encounter.CheckApproach{route(string(skills.Athletics), 12)},
 		Roller:     s.roller,
-		Untrained:  true,
 	})
 	s.Require().NoError(err)
 	s.Require().NotNil(out.Posed, "Guidance holds a die, so the check stops to ask")
@@ -368,6 +357,6 @@ func (s *CheckTestSuite) TestAPosedCheckAsksWithTheWholeRoll() {
 	s.Equal(ask.Roll, ask.Calculation.Components[0].Dice.Subtotal)
 
 	keep := keepOf(s.T(), ask.Calculation)
-	s.Require().NotNil(keep, "the two rules that met over the die are already visible here")
-	s.Equal(dnd5eEvents.KeepCancelled, keep.Rule)
+	s.Require().NotNil(keep, "the rule that kept a face is already visible here")
+	s.Equal(dnd5eEvents.KeepAdvantage, keep.Rule)
 }

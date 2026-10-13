@@ -1047,8 +1047,8 @@ func TestTheMirrorCarriesTheKeepRecord(t *testing.T) {
 	source := dnd5eEvents.RollSource{
 		Ref: refs.Spells.SacredFlame(), Name: "Sacred Flame", SourceID: "bard-1",
 	}
-	untrained := dnd5eEvents.RollSource{
-		Ref: refs.Rules.Untrained(), Name: "Untrained", Label: "rule", SourceID: "bard-1",
+	poisoned := dnd5eEvents.RollSource{
+		Ref: refs.Conditions.Poisoned(), Name: "Poisoned", Label: "condition", SourceID: "bard-1",
 	}
 	modifier := 2
 	calculation := dnd5eEvents.NewRollCalculation([]dnd5eEvents.RollComponent{
@@ -1060,7 +1060,7 @@ func TestTheMirrorCarriesTheKeepRecord(t *testing.T) {
 				KeptIndices: []int{0}, Subtotal: 7,
 				Keep: &dnd5eEvents.DiceKeep{
 					Rule:    dnd5eEvents.KeepDisadvantage,
-					Imposed: []dnd5eEvents.RollSource{untrained},
+					Imposed: []dnd5eEvents.RollSource{poisoned},
 				},
 			},
 		},
@@ -1076,10 +1076,10 @@ func TestTheMirrorCarriesTheKeepRecord(t *testing.T) {
 	require.NotNil(t, keep)
 	require.Equal(t, encounter.KeepDisadvantage, keep.Rule)
 	require.Len(t, keep.Imposed, 1)
-	require.Equal(t, "Untrained", keep.Imposed[0].Name)
-	require.Equal(t, refs.Rules.Untrained().String(), keep.Imposed[0].Ref,
+	require.Equal(t, "Poisoned", keep.Imposed[0].Name)
+	require.Equal(t, refs.Conditions.Poisoned().String(), keep.Imposed[0].Ref,
 		"the ref crosses as its canonical string, like every other ref here")
-	require.Equal(t, "rule", keep.Imposed[0].Label)
+	require.Equal(t, "condition", keep.Imposed[0].Label)
 	require.Equal(t, "bard-1", keep.Imposed[0].SourceID)
 	require.Empty(t, keep.Granted)
 }
