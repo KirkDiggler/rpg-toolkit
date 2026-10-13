@@ -83,6 +83,8 @@ func NewGoblinBoss(id string) *monster.Monster {
 			abilities.WIS: 8,  // -1
 			abilities.CHA: 10, // +0
 		},
+		// SRD 5.1: passive Perception 9 (WIS 8).
+		Senses: monster.SensesData{PassivePerception: 9},
 	})
 
 	// FIRST, so the boss's own line is the one a driver reaches for. The

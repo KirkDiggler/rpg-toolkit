@@ -30,6 +30,8 @@ func NewGhoul(id string) *monster.Monster {
 			abilities.WIS: 10, // +0
 			abilities.CHA: 6,  // -2
 		},
+		// SRD 5.1: passive Perception 10 (WIS 10).
+		Senses: monster.SensesData{PassivePerception: 10},
 	})
 
 	// The SRD's "one with its bite and one with its claws", in that order,

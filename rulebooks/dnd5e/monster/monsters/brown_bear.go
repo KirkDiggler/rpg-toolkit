@@ -30,6 +30,8 @@ func NewBrownBear(id string) *monster.Monster {
 			abilities.WIS: 13, // +1
 			abilities.CHA: 7,  // -2
 		},
+		// SRD 5.1: passive Perception 13 (WIS 13, Perception +3).
+		Senses: monster.SensesData{PassivePerception: 13},
 	})
 
 	// The SRD's "one with its bite and one with its claws", in that order,

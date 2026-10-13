@@ -30,6 +30,8 @@ func NewWolf(id string) *monster.Monster {
 			abilities.WIS: 12, // +1
 			abilities.CHA: 6,  // -2
 		},
+		// SRD 5.1: passive Perception 13 (WIS 12, Perception +3).
+		Senses: monster.SensesData{PassivePerception: 13},
 	})
 
 	// Bite attack: "if the target is a creature, it must succeed on a DC 11

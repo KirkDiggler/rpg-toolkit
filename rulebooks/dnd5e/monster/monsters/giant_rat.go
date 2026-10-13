@@ -29,6 +29,8 @@ func NewGiantRat(id string) *monster.Monster {
 			abilities.WIS: 10, // +0
 			abilities.CHA: 4,  // -3
 		},
+		// SRD 5.1: passive Perception 10 (WIS 10).
+		Senses: monster.SensesData{PassivePerception: 10},
 	})
 
 	// Bite attack

@@ -30,6 +30,8 @@ func NewZombie(id string) *monster.Monster {
 			abilities.WIS: 6,  // -2
 			abilities.CHA: 5,  // -3
 		},
+		// SRD 5.1: passive Perception 8 (WIS 6).
+		Senses: monster.SensesData{PassivePerception: 8},
 	})
 
 	// Slam melee attack
