@@ -262,11 +262,12 @@ func (g *grammar) fail(path, format string, args ...any) {
 // ([PlaceSpec.On], [RoomMonsterBinding.On]) or the one its faction hands it
 // ([FactionSpec.On], rpg-project#458).
 //
-// THE KEY IS THE TRIGGER, and only the five this build rolls are accepted:
-// the four social outcomes, and `time`. A word the design NAMES and has not
-// built is refused by name in the entry's own decoder ([laterWords]); a key
-// nobody designed is refused here, listing what there is. Either way the
-// author finds out on the form instead of at the table.
+// THE KEY IS THE TRIGGER, and only `time` is accepted. The four social keys
+// that retired to options (rpg-project#569 R2) are refused naming where they
+// went; a word the design NAMES and has not built is refused by name in the
+// entry's own decoder ([laterWords]); a key nobody designed is refused here,
+// listing what there is. Either way the author finds out on the form instead
+// of at the table.
 //
 // Refusals per entry, each its own sentence:
 //
@@ -294,6 +295,10 @@ func (g *grammar) fail(path, format string, args ...any) {
 func (g *grammar) placeOn(path string, on map[string][]AnswerSpec) {
 	for _, key := range sortedKeys(on) {
 		at := fmt.Sprintf("%s.on.%s", path, key)
+		if encounter.IsRetiredTableKey(encounter.AnswerKey(key)) {
+			g.fail(at, "%s", retiredTableKey(key))
+			continue
+		}
 		if !knownTableKey(key) {
 			g.fail(at, "%q is not a trigger this build rolls: they are %s",
 				key, strings.Join(tableKeyWords(), ", "))
@@ -307,6 +312,97 @@ func (g *grammar) placeOn(path string, on map[string][]AnswerSpec) {
 		for j, entry := range entries {
 			g.answerEntry(fmt.Sprintf("%s[%d]", at, j), key, entry)
 		}
+	}
+}
+
+// retiredTableKey is the sentence one of the four retired social keys is
+// refused with, naming where it went (rpg-project#569 R2) — [knowsRefusal]'s
+// courtesy, for a key this build once understood.
+func retiredTableKey(key string) string {
+	return fmt.Sprintf("`%s` is no longer a table key: author an option", key)
+}
+
+// The sentences an option is refused with (rpg-project#569). Constant, because
+// the World Builder draws each on a form row and a second spelling of any is
+// the drift one grammar exists to prevent.
+const (
+	errOptionNoID      = "the option has no id"
+	errOptionNoSay     = "the option does not say what the character says"
+	errOptionNoCheck   = "this option needs at least one way to make its check — an ability and a DC"
+	errOptionPropFlees = "a prop cannot run: `flee` is a creature's answer"
+)
+
+// options validates the lines an author wrote on a creature or a prop
+// ([OptionSpec], rpg-project#569), at `<path>.options[i]`.
+//
+// Refusals per option, each its own sentence: no id; an id already used on
+// this binding; no line; a check with no way through, or an approach that
+// rolls nothing or has nothing to beat ([grammar.approaches], the lock's own
+// grammar); a `requires` that is neither `{ fact }` nor `{ holds }`; a `holds`
+// naming a prop this dungeon does not place, or one nobody can pick up; a
+// verdict written and left empty; and every row by the table's own grammar
+// ([grammar.answerEntry]) under the verdict's key — so `fact`, `flee` and a
+// line are legal, a time word and a `when` are not.
+//
+// props is the dialect's placed props, id to whether somebody can pick it up
+// — the universe a `holds` may name. isProp says the options are a prop's,
+// whose rows may not `flee`.
+func (g *grammar) options(path string, options []OptionSpec, props map[string]bool, isProp bool) {
+	seen := map[string]int{}
+	for i, o := range options {
+		p := fmt.Sprintf("%s.options[%d]", path, i)
+		switch prev, dup := seen[o.ID]; {
+		case o.ID == "":
+			g.fail(p+".id", "%s", errOptionNoID)
+		case dup:
+			g.fail(p+".id", "option %q is already declared at options[%d]", o.ID, prev)
+		default:
+			seen[o.ID] = i
+		}
+		if o.Say == "" {
+			g.fail(p+".say", "%s", errOptionNoSay)
+		}
+		g.approaches(p+".check", errOptionNoCheck, o.Check)
+		g.optionRequires(p+".requires", o.Requires, props)
+		for _, verdict := range []struct {
+			key  string
+			rows []AnswerSpec
+		}{{string(encounter.AnswerSuccess), o.Success}, {string(encounter.AnswerFailure), o.Failure}} {
+			if verdict.rows == nil {
+				continue
+			}
+			at := p + "." + verdict.key
+			if len(verdict.rows) == 0 {
+				g.fail(at, "`%s` lists nothing — omit it, or write what is answered", verdict.key)
+				continue
+			}
+			for j, row := range verdict.rows {
+				rowAt := fmt.Sprintf("%s[%d]", at, j)
+				g.answerEntry(rowAt, verdict.key, row)
+				if isProp && row.Flee != nil {
+					g.fail(rowAt+".flee", "%s", errOptionPropFlees)
+				}
+			}
+		}
+	}
+}
+
+// optionRequires judges one option's `requires`: absent, a fact, or a holding
+// of a placed prop somebody can pick up — and nothing else, because an option
+// is offered or not by what the SPEAKER knows and carries (R9).
+func (g *grammar) optionRequires(path string, p *PredicateSpec, props map[string]bool) {
+	switch form := p.Form(); form {
+	case "", predicateFact:
+	case predicateHolds:
+		holdable, placed := props[p.Holds]
+		switch {
+		case !placed:
+			g.fail(path+".holds", "%q is not a prop in this dungeon, so nobody can hold it", p.Holds)
+		case !holdable:
+			g.fail(path+".holds", "%q is a prop nobody can pick up, so nobody can hold it", p.Holds)
+		}
+	default:
+		g.fail(path, "an option requires { fact: <id> } or { holds: <prop id> }, and `%s` is neither", form)
 	}
 }
 
@@ -345,6 +441,9 @@ func (g *grammar) answerEntry(at string, key string, entry AnswerSpec) {
 }
 
 // wordLegality refuses a word, or a `when`, under a key it is not legal on.
+// The key is `time` for a table's row and `success` or `failure` for an
+// option's — a verdict, where `fact` and `flee` are legal and the four time
+// words and a `when` are not.
 func (g *grammar) wordLegality(at, key string, words []string, entry AnswerSpec) {
 	time := key == string(encounter.AnswerTime)
 	for _, word := range words {

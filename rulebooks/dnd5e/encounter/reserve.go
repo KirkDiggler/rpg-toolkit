@@ -201,6 +201,20 @@ func (f *field) validatePropArrivals() error {
 		}
 	}
 
+	// AND A PROP'S LINES (rpg-project#569): a `holds` requirement must name
+	// a prop somebody can pick up, asked here because this is the first
+	// moment the holdable index is whole.
+	for _, p := range f.props {
+		if err := f.validateOptionHolds(p.Options); err != nil {
+			return fmt.Errorf("prop %q: %w: %w", p.ID, err, ErrNoField)
+		}
+	}
+	for i := range f.placed {
+		if err := f.validateOptionHolds(f.placed[i].options); err != nil {
+			return fmt.Errorf("prop %q: %w: %w", f.placed[i].id, err, ErrNoField)
+		}
+	}
+
 	return nil
 }
 

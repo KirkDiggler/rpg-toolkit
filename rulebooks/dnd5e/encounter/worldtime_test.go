@@ -216,11 +216,14 @@ func (s *WorldTimeSuite) TestAThreatCostsItsActorARound() {
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer,
 			Position: spatial.Position{X: 1, Y: 1}},
 		encounter.MemberInput{ID: goblin, Kind: encounter.KindWorld,
-			Position: spatial.Position{X: 3, Y: 1}},
+			Position: spatial.Position{X: 3, Y: 1}, Options: []encounter.Option{{
+				ID: "threat", Say: "Stand aside.", Check: []encounter.CheckApproach{{Ability: "intimidation", DC: 9}},
+			}}},
 	)
 
-	_, err := enc.Intimidate(s.ctx, &encounter.IntimidateInput{
-		Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
+	_, err := enc.Speak(s.ctx, &encounter.SpeakInput{
+		Actor: alice, Target: goblin, OptionID: "threat", Skill: "intimidation",
+		Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
 	})
 	s.Require().NoError(err)
 	s.Equal(1, s.reading(enc), "the threat landed, and then the world moved on")

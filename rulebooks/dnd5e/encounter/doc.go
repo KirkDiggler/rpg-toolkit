@@ -97,8 +97,8 @@
 // per PACE — every CellsFromFeet(SpeedFeet) cells of the speed the walker's
 // sheet answers through Sheets at that step, the remainder carried on
 // the member and persisted. Every verb the turn clock would price as an action
-// pays one round for its actor, after its outcome has landed: Intimidate,
-// Persuade, Unlock, Interact, Loot, RecordCast, RecordActivation. A
+// pays one round for its actor, after its outcome has landed: Speak, Unlock,
+// Interact, Loot, RecordCast, RecordActivation. A
 // fight round wrapping pays one round PER BUBBLE MEMBER, each naming itself.
 // Standing still is free, said plainly: a party that talks to a goblin and
 // waits sees nothing move.

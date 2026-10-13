@@ -380,6 +380,13 @@ type PropData struct {
 	// from the first frame, so every blob from before arrivals existed reads
 	// exactly as it did.
 	Arrives *TriggerData `json:"arrives,omitempty"`
+
+	// Options mirrors [PropInput.Options] (rpg-project#569). Field
+	// STRUCTURE, persisted for [PropData.Holds]' reason: a host that saves
+	// between verbs rebuilds the field from these bytes, and an altar whose
+	// lines did not survive the round trip would fall silent after the first
+	// save. Omitted when the prop has none.
+	Options []OptionData `json:"options,omitempty"`
 }
 
 // PlacedPropData is the persistent representation of one [PlacedPropInput]
@@ -425,6 +432,10 @@ type PlacedPropData struct {
 	Holdable bool         `json:"holdable,omitempty"`
 	Holds    []IntelID    `json:"holds,omitempty"`
 	Arrives  *TriggerData `json:"arrives,omitempty"`
+
+	// Options mirrors [PlacedPropInput.Options], persisted for
+	// [PropData.Options]' reason.
+	Options []OptionData `json:"options,omitempty"`
 }
 
 // PlacementData is the persistent representation of a
@@ -475,18 +486,17 @@ type ReserveData struct {
 	AppearanceRef string       `json:"appearance_ref,omitempty"`
 	Cell          PositionData `json:"cell"`
 
-	// Intimidate, Persuade, Table and Temper are [MemberData]'s own keys,
-	// kept for a member still waiting to arrive — its facts are the same
-	// facts, and losing them across a save would make an arrival
-	// unintimidable, or policyless, for reasons nobody authored.
+	// Options, Table and Temper are [MemberData]'s own keys, kept for a
+	// member still waiting to arrive — its facts are the same facts, and
+	// losing them across a save would make an arrival speechless, or
+	// policyless, for reasons nobody authored.
 	//
 	// TEMPER IS THE UNDEALT SHAPE HERE, which is the difference between a
 	// member on the board and one still waiting: this one's deal has not
 	// happened yet. See [UndealtTemperData].
-	Intimidate []CheckApproachData     `json:"intimidate,omitempty"`
-	Persuade   []CheckApproachData     `json:"persuade,omitempty"`
-	Table      map[string][]AnswerData `json:"table,omitempty"`
-	Temper     UndealtTemperData       `json:"temper,omitzero"`
+	Options []OptionData            `json:"options,omitempty"`
+	Table   map[string][]AnswerData `json:"table,omitempty"`
+	Temper  UndealtTemperData       `json:"temper,omitzero"`
 
 	BlocksMovement bool        `json:"blocks_movement,omitempty"`
 	Faction        FactionID   `json:"faction,omitempty"`
@@ -539,10 +549,11 @@ type DispositionData struct {
 
 // TriggerData is the persistent representation of one [Trigger] — the
 // predicate grammar on the wire (rpg-project#375). Kind is one of
-// reached_position, external, member_down, exited_holding, round, fact and
-// stance, and the other fields are populated per kind exactly as
+// reached_position, external, member_down, exited_holding, round, fact,
+// stance and holds, and the other fields are populated per kind exactly as
 // [EndingData]'s own are; a disposition's until persists as one of these,
-// and an ending is one of these plus its key.
+// an ending is one of these plus its key, and an option's requirement is a
+// fact or a holds (rpg-project#569) — `holds` naming its prop in Item.
 type TriggerData struct {
 	Kind    string        `json:"kind"`
 	At      *PositionData `json:"at,omitempty"`
@@ -575,6 +586,8 @@ func triggerDataFrom(t Trigger) TriggerData {
 		return TriggerData{Kind: "fact", Fact: t.Fact}
 	case TriggerStance:
 		return TriggerData{Kind: "stance", Between: []FactionID{t.Between[0], t.Between[1]}, Stance: string(t.Stance)}
+	case TriggerHolds:
+		return TriggerData{Kind: "holds", Item: t.Prop}
 	}
 	return TriggerData{}
 }
@@ -607,6 +620,8 @@ func triggerFromData(td TriggerData) (Trigger, error) {
 			return nil, fmt.Errorf("stance names %d factions, and a stance is between two: %w", len(td.Between), ErrNoEnding)
 		}
 		return TriggerStance{Between: [2]FactionID{td.Between[0], td.Between[1]}, Stance: Stance(td.Stance)}, nil
+	case "holds":
+		return TriggerHolds{Prop: td.Item}, nil
 	default:
 		return nil, fmt.Errorf("unknown trigger kind %q: %w", td.Kind, ErrNoEnding)
 	}
@@ -1235,6 +1250,129 @@ func approachesDataFrom(approaches []CheckApproach) []CheckApproachData {
 	return out
 }
 
+// OptionData is the persistent representation of one [Option]: the line,
+// its check, its requirement as a persisted trigger, and both verdicts' rows
+// (rpg-project#569). Requires and the rows omit when unset; id, say and the
+// check are always written, because an option without them is refused.
+type OptionData struct {
+	ID       string              `json:"id"`
+	Say      string              `json:"say"`
+	Check    []CheckApproachData `json:"check"`
+	Requires *TriggerData        `json:"requires,omitempty"`
+	Success  []AnswerData        `json:"success,omitempty"`
+	Failure  []AnswerData        `json:"failure,omitempty"`
+}
+
+// optionsDataFrom renders a list of options for the blob, nil staying nil so
+// a creature nobody wrote a line for writes no key at all.
+func optionsDataFrom(options []Option) []OptionData {
+	if options == nil {
+		return nil
+	}
+	out := make([]OptionData, 0, len(options))
+	for _, o := range options {
+		od := OptionData{
+			ID: o.ID, Say: o.Say, Check: approachesDataFrom(o.Check),
+			Success: rowsDataFrom(o.Success), Failure: rowsDataFrom(o.Failure),
+		}
+		if o.Requires != nil {
+			td := triggerDataFrom(o.Requires)
+			od.Requires = &td
+		}
+		out = append(out, od)
+	}
+
+	return out
+}
+
+// rowsDataFrom renders one verdict's rows, nil staying nil.
+func rowsDataFrom(rows []Answer) []AnswerData {
+	if rows == nil {
+		return nil
+	}
+	out := make([]AnswerData, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, answerDataFrom(row))
+	}
+
+	return out
+}
+
+// optionsFromData resolves persisted options back to the lines they name,
+// refusing a requirement whose kind this build does not write — the trust
+// boundary for the options half of the blob. What the options SAY is judged
+// at the door they re-enter through, as a table's rows are.
+func optionsFromData(data []OptionData) ([]Option, error) {
+	if data == nil {
+		return nil, nil
+	}
+	out := make([]Option, 0, len(data))
+	for _, od := range data {
+		o := Option{
+			ID: od.ID, Say: od.Say, Check: approachesFromData(od.Check),
+			Success: rowsFromData(od.Success), Failure: rowsFromData(od.Failure),
+		}
+		if od.Requires != nil {
+			t, err := triggerFromData(*od.Requires)
+			if err != nil {
+				return nil, fmt.Errorf("option %q requires: %w", od.ID, err)
+			}
+			o.Requires = t
+		}
+		out = append(out, o)
+	}
+
+	return out, nil
+}
+
+// loadOptions resolves one member's persisted lines and refuses them by the
+// two refusals Setup and Join make: lines this composition could not run
+// ([validateOptions]), and a holding nobody can pick up
+// ([field.validateOptionHolds]). Each refusal is [ErrBadMember]; the caller
+// adds [ErrInvalidData].
+func (f *field) loadOptions(id MemberID, data []OptionData) ([]Option, error) {
+	options, err := optionsFromData(data)
+	if err != nil {
+		return nil, fmt.Errorf("member %q: %w: %w", id, err, ErrBadMember)
+	}
+	if err := validateOptions(options); err != nil {
+		return nil, fmt.Errorf("member %q: %w: %w", id, err, ErrBadMember)
+	}
+	if err := f.validateOptionHolds(options); err != nil {
+		return nil, fmt.Errorf("member %q: %w: %w", id, err, ErrBadMember)
+	}
+
+	return options, nil
+}
+
+// rowsFromData resolves one verdict's persisted rows, nil staying nil.
+func rowsFromData(data []AnswerData) []Answer {
+	if data == nil {
+		return nil
+	}
+	out := make([]Answer, 0, len(data))
+	for _, row := range data {
+		out = append(out, answerFromData(row))
+	}
+
+	return out
+}
+
+// taughtOptionFactsOf is every fact id a member's persisted options can teach
+// — [taughtFactsOf] for the lines rather than the table.
+func taughtOptionFactsOf(data []OptionData) []FactID {
+	var out []FactID
+	for _, o := range data {
+		for _, row := range append(append([]AnswerData(nil), o.Success...), o.Failure...) {
+			if row.Fact != "" {
+				out = append(out, row.Fact)
+			}
+		}
+	}
+
+	return out
+}
+
 // AnswerData is one authored answer entry on the blob — [Answer], with
 // the same fields and the same presence rules (rpg-project#458,
 // rpg-project#465).
@@ -1661,12 +1799,17 @@ type MemberData struct {
 	// claims — and loses nothing, because the truth they copied is always
 	// on the sheet. Nothing is migrated.
 
-	// Intimidate, Persuade, Table and Temper carry forward the member's
-	// shenanigan facts and its whole policy (rpg-project#454,
-	// rpg-project#458, rpg-project#465) — see [MemberInput.Intimidate],
-	// [MemberInput.Persuade], [MemberInput.Table] and [MemberInput.Temper].
+	// Options, Table and Temper carry forward the member's lines and its
+	// whole policy (rpg-project#569, rpg-project#465) — see
+	// [MemberInput.Options], [MemberInput.Table] and [MemberInput.Temper].
 	// All omit when unset, so a blob written for a roster with none of them
 	// is byte-identical to one written before these keys existed.
+	//
+	// `intimidate` AND `persuade` ARE GONE, the way `mind` went: a blob that
+	// still carries either LOADS with the key ignored, and the creature it
+	// described can no longer be spoken to — there is nothing to migrate a
+	// priced verb to that would not invent the line and the answer the
+	// author never wrote.
 	//
 	// `mind` IS GONE, not kept beside `table`. It named a preset that
 	// decided everything the table now decides, and two surfaces for one
@@ -1680,10 +1823,9 @@ type MemberData struct {
 	// one — rulebook under faction under placement — so reopening a run does
 	// not re-read the dungeon file, and a dungeon edited mid-campaign does
 	// not silently rewrite a creature that is already in play.
-	Intimidate []CheckApproachData     `json:"intimidate,omitempty"`
-	Persuade   []CheckApproachData     `json:"persuade,omitempty"`
-	Table      map[string][]AnswerData `json:"table,omitempty"`
-	Temper     TemperData              `json:"temper,omitzero"`
+	Options []OptionData            `json:"options,omitempty"`
+	Table   map[string][]AnswerData `json:"table,omitempty"`
+	Temper  TemperData              `json:"temper,omitzero"`
 
 	// Pace is how far this member has walked on the world clock since it
 	// last paid a round for it — memberRecord.PaceCells (design §5). Omits
@@ -1826,8 +1968,7 @@ func (e *Encounter) snapshot() EncounterData {
 			Name:           m.Name,
 			AppearanceRef:  m.AppearanceRef,
 			Cell:           &PositionData{X: cell.X, Y: cell.Y},
-			Intimidate:     approachesDataFrom(m.Intimidate),
-			Persuade:       approachesDataFrom(m.Persuade),
+			Options:        optionsDataFrom(m.Options),
 			Table:          tableDataFrom(m.Table),
 			Temper:         temperDataFrom(m.Temper),
 			Pace:           m.PaceCells,
@@ -1914,8 +2055,7 @@ func (e *Encounter) snapshot() EncounterData {
 			Name:           rm.record.Name,
 			AppearanceRef:  rm.record.AppearanceRef,
 			Cell:           PositionData{X: rm.at.X, Y: rm.at.Y},
-			Intimidate:     approachesDataFrom(rm.record.Intimidate),
-			Persuade:       approachesDataFrom(rm.record.Persuade),
+			Options:        optionsDataFrom(rm.record.Options),
 			Table:          tableDataFrom(rm.record.Table),
 			Temper:         undealtTemperDataFrom(rm.record.Temper),
 			BlocksMovement: rm.record.BlocksMovement,
@@ -2011,6 +2151,7 @@ func fieldDataFrom(f *field) FieldData {
 				BlocksLineOfSight: &blocksSight,
 				Facing:            p.Facing,
 				Offset:            p.Offset,
+				Options:           optionsDataFrom(p.Options),
 			}
 			if p.Arrives != nil {
 				td := triggerDataFrom(p.Arrives)
@@ -2033,6 +2174,7 @@ func fieldDataFrom(f *field) FieldData {
 				BlocksLineOfSight: p.blocksLineOfSight,
 				Holdable:          p.holdable,
 				Holds:             append([]IntelID(nil), p.holds...),
+				Options:           optionsDataFrom(p.options),
 			}
 			if p.arrives != nil {
 				td := triggerDataFrom(p.arrives)
@@ -2393,6 +2535,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	}
 	// Validate members: no duplicates, cells present, integral and floor
 	seenIDs := make(map[MemberID]bool)
+	memberOptions := make(map[MemberID][]Option, len(data.Members))
 	for _, m := range data.Members {
 		// Empty member IDs are unreachable (Setup and Join both reject).
 		if m.ID == "" {
@@ -2462,6 +2605,14 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		if err := validateTable(tableFromData(m.Table)); err != nil {
 			return nil, fmt.Errorf("load encounter: member %q: %w: %w", m.ID, ErrInvalidData, err)
 		}
+
+		// And its lines, for the table's reason, by the same two refusals
+		// Setup and Join make (option.go).
+		options, err := f.loadOptions(m.ID, m.Options)
+		if err != nil {
+			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+		}
+		memberOptions[m.ID] = options
 	}
 
 	// The reserve (rpg-project#375, reserve.go): every entry is a member the
@@ -2470,6 +2621,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// has, records it declares, and a predicate that can hold — the SAME
 	// refusals Setup and Join make for a member with an Arrives.
 	reserveTriggers := make([]Trigger, len(data.Reserve))
+	reserveOptions := make([][]Option, len(data.Reserve))
 	for i, r := range data.Reserve {
 		if r.ID == "" {
 			return nil, fmt.Errorf("load encounter: reserve %d has no id: %w: %w", i, ErrInvalidData, ErrNoMember)
@@ -2499,11 +2651,15 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		if err := validateMemberFacts(memberFacts{
 			ID:            r.ID,
 			AppearanceRef: r.AppearanceRef,
-			Intimidate:    approachesFromData(r.Intimidate), Persuade: approachesFromData(r.Persuade),
-			Table: tableFromData(r.Table),
+			Table:         tableFromData(r.Table),
 		}); err != nil {
 			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, err)
 		}
+		options, err := f.loadOptions(r.ID, r.Options)
+		if err != nil {
+			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, err)
+		}
+		reserveOptions[i] = options
 		if err := f.validateMemberFaction(r.ID, r.Kind, r.Faction); err != nil {
 			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, err)
 		}
@@ -2554,9 +2710,11 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		taught := make([]FactID, 0, len(data.Members)+len(data.Reserve))
 		for _, m := range data.Members {
 			taught = append(taught, taughtFactsOf(m.Table)...)
+			taught = append(taught, taughtOptionFactsOf(m.Options)...)
 		}
 		for _, r := range data.Reserve {
 			taught = append(taught, taughtFactsOf(r.Table)...)
+			taught = append(taught, taughtOptionFactsOf(r.Options)...)
 		}
 		mintable := mintedFactIDs(f, triggersOf(endingInputsForValidation), taught)
 		if err = validateWorldFacts(
@@ -2852,8 +3010,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			Kind:           m.Kind,
 			Name:           m.Name,
 			AppearanceRef:  m.AppearanceRef,
-			Intimidate:     approachesFromData(m.Intimidate),
-			Persuade:       approachesFromData(m.Persuade),
+			Options:        memberOptions[m.ID],
 			Table:          tableFromData(m.Table),
 			Temper:         temperFromData(m.Temper),
 			PaceCells:      m.Pace,
@@ -2898,8 +3055,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 				Kind:           r.Kind,
 				Name:           r.Name,
 				AppearanceRef:  r.AppearanceRef,
-				Intimidate:     approachesFromData(r.Intimidate),
-				Persuade:       approachesFromData(r.Persuade),
+				Options:        reserveOptions[i],
 				Table:          tableFromData(r.Table),
 				Temper:         undealtTemperFromData(r.Temper),
 				BlocksMovement: r.BlocksMovement,
@@ -3278,6 +3434,11 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 			}
 			prop.Arrives = t
 		}
+		options, err := optionsFromData(pd.Options)
+		if err != nil {
+			return FieldInput{}, fmt.Errorf("prop %q: %w: %w", pd.Ref, err, ErrNoField)
+		}
+		prop.Options = options
 		in.Props = append(in.Props, prop)
 	}
 
@@ -3297,6 +3458,11 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 			}
 			placed.Arrives = t
 		}
+		options, err := optionsFromData(ppd.Options)
+		if err != nil {
+			return FieldInput{}, fmt.Errorf("prop %q: %w: %w", ppd.ID, err, ErrNoField)
+		}
+		placed.Options = options
 		in.Placed = append(in.Placed, placed)
 	}
 

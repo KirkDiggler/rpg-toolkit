@@ -42,9 +42,6 @@ factions:
   - id: goblins
     temper: { coward: 2, soldier: 1, aggressive: 1 }
     on:
-      intimidated:
-        - { weight: 70, say: 'Fine! The cellar door is behind the barrels.', fact: goblin-cowed }
-        - { weight: 30, say: 'Boss! BOSS!', flee: {} }
       time:
         - { when: { enemy: reach }, attack: enemy }
         - { when: { enemy: seen }, toward: enemy }
@@ -60,6 +57,13 @@ place:
     on:
       time:
         - { when: { enemy: reach }, hold: {} }
+    options:
+      - id: lean-on-it
+        say: 'Where is the cellar?'
+        check: [{ ability: intimidation, dc: 12 }]
+        success:
+          - { weight: 70, say: 'Fine! The cellar door is behind the barrels.', fact: goblin-cowed }
+          - { weight: 30, say: 'Boss! BOSS!', flee: {} }
   - { id: skeleton-a, ref: "dnd5e:monsters:skeleton", at: [1,1], actions: ["dnd5e:weapons:shortsword"] }
   - { id: skeleton-b, ref: "dnd5e:monsters:skeleton", at: [0,1] }
 `
@@ -74,10 +78,11 @@ place:
 // FIELD, and deliberately not the whole struct: the region and the cell are
 // geometry, and the two documents describe different rooms on purpose.
 //
-// The layering is the interesting half. The faction writes `intimidated` and
-// `time`; goblin-1 writes only `time`; so the compiled table must carry the
-// faction's `intimidated` untouched and the creature's `time` INSTEAD of the
-// faction's, which is what "nearest key wins wholesale" means.
+// The layering is the interesting half. The faction writes two `time` rows
+// and goblin-1 writes one; so the compiled table must carry the creature's
+// `time` INSTEAD of the faction's, which is what "nearest key wins wholesale"
+// means. The goblin's one line is an option, which is the binding's own and
+// layers over nothing (rpg-project#569 R2).
 func TestTheTwoDialectsCompileTheSameOrders(t *testing.T) {
 	raw, err := os.ReadFile(v4SitePath)
 	require.NoError(t, err)
@@ -95,6 +100,7 @@ func TestTheTwoDialectsCompileTheSameOrders(t *testing.T) {
 			require.Equal(t, want.Ref, got.Ref)
 			require.Equal(t, want.Faction, got.Faction, "the membership, as authored")
 			require.Equal(t, want.Table, got.Table, "the faction's table with the creature's laid over")
+			require.Equal(t, want.Options, got.Options, "the lines it can be spoken to with")
 			require.Equal(t, want.Temper, got.Temper, "the creature's word, else the faction's mix")
 			require.Equal(t, want.Actions, got.Actions, "verbatim, in the author's order")
 		})
@@ -107,7 +113,7 @@ func TestTheTwoDialectsCompileTheSameOrders(t *testing.T) {
 	goblin := site.Monsters[0]
 	require.Equal(t, "coward", goblin.Temper.Word, "the creature's word beat the faction's mix")
 	require.Empty(t, goblin.Temper.Mix, "and the mix was not dealt for it")
-	require.Len(t, goblin.Table["intimidated"], 2, "inherited from the faction")
+	require.Len(t, goblin.Options, 1, "the one line somebody can say to it")
 	require.Len(t, goblin.Table["time"], 1, "replaced wholesale, not merged with the faction's two")
 	require.Equal(t, []string{"dnd5e:weapons:scimitar", "dnd5e:weapons:shortbow"}, goblin.Actions)
 
@@ -185,9 +191,8 @@ func TestSingleRoomSiteRefusals(t *testing.T) {
 			old:  "        on:\n          time:\n",
 			repl: "        on:\n          sunrise:\n",
 			want: FieldError{
-				Path: "room.room.monsterBindings.goblin-1.on.sunrise",
-				Message: "\"sunrise\" is not a trigger this build rolls: they are " +
-					"intimidated, intimidate_failed, persuaded, persuade_failed, time",
+				Path:    "room.room.monsterBindings.goblin-1.on.sunrise",
+				Message: "\"sunrise\" is not a trigger this build rolls: they are time",
 			},
 		},
 		{
@@ -250,7 +255,7 @@ func TestUnknownKeysInsideTheSiteKeysAreNamed(t *testing.T) {
 			repl: "        temper: coward\n        mind: goblin-1",
 			want: FieldError{
 				Path:    "room.room.monsterBindings.goblin-1.mind",
-				Message: `"mind" is not a key this build reads: they are actions, arrives, faction, holds, intimidate, on, persuade, table, temper`,
+				Message: `"mind" is not a key this build reads: they are actions, arrives, faction, holds, on, options, table, temper`,
 			},
 		},
 		{
@@ -323,7 +328,7 @@ func TestTheSiteDocumentReportsEveryUnknownKey(t *testing.T) {
 		{Path: "height", Message: `"height" is not a key this build reads: ` +
 			"they are concealments, dispositions, endings, exits, factions, intel, key, play, room, scenarios, tables, templates, version"},
 		{Path: "room.room.monsterBindings.goblin-1.tempre",
-			Message: `"tempre" is not a key this build reads: they are actions, arrives, faction, holds, intimidate, on, persuade, table, temper`},
+			Message: `"tempre" is not a key this build reads: they are actions, arrives, faction, holds, on, options, table, temper`},
 	}, validation.Errors, "both of them, in the order they were written")
 }
 

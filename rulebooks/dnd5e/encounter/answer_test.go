@@ -4,10 +4,11 @@
 package encounter_test
 
 // answer_test.go is THE AUTHOR'S TABLE ON A REAL BOARD (rpg-project#458,
-// ideas/shenanigans/front-room-goblin.md): the world's die picks one entry,
-// a `fact` reaches every witness and turns a disposition, a `flee` walks the
+// ideas/shenanigans/front-room-goblin.md, and since rpg-project#569 the rows
+// live on the option that was spoken): the world's die picks one entry, a
+// `fact` reaches every witness and turns a disposition, a `flee` walks the
 // creature away without a fight existing, and a failed check reads its own
-// half of the table.
+// half of the option.
 
 import (
 	"context"
@@ -35,10 +36,20 @@ func (s *AnswerTestSuite) SetupTest() {
 	s.ctx = context.Background()
 }
 
+// threat is the one line these scenes speak: an Intimidation check whose
+// success and failure rows are the scene's own.
+func threat(success, failure []encounter.Answer) encounter.Option {
+	return encounter.Option{
+		ID: "threat", Say: "Stand aside.",
+		Check:   []encounter.CheckApproach{{Ability: "intimidation", DC: 9}},
+		Success: success, Failure: failure,
+	}
+}
+
 // front is the goblin's own room: alice at one end, the goblin at the other,
 // no wall between them and — deliberately — NO FIGHT. Nothing here is
 // hostile, nobody rolled initiative, and the goblin still gets to act.
-func (s *AnswerTestSuite) front(table encounter.Table) *encounter.Encounter {
+func (s *AnswerTestSuite) front(table encounter.Table, options ...encounter.Option) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:   openAir(),
@@ -52,7 +63,7 @@ func (s *AnswerTestSuite) front(table encounter.Table) *encounter.Encounter {
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1},
-				Faction: campFaction, Table: table},
+				Faction: campFaction, Table: table, Options: options},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
@@ -157,12 +168,10 @@ func (s *AnswerTestSuite) cellOf(enc *encounter.Encounter, who encounter.MemberI
 // are expressible without fractions and the whole arithmetic on the beat stays
 // in integers a reader can add up.
 func (s *AnswerTestSuite) TestTheDieIsTheSumOfTheWeightsAndPicksByFace() {
-	table := encounter.Table{
-		encounter.AnswerIntimidated: {
-			{Weight: 70, Say: "Fine, fine!", Fact: campFact},
-			{Weight: 30, Say: "BOSS!"},
-		},
-	}
+	line := threat([]encounter.Answer{
+		{Weight: 70, Say: "Fine, fine!", Fact: campFact},
+		{Weight: 30, Say: "BOSS!"},
+	}, nil)
 
 	for _, tc := range []struct {
 		face  int
@@ -175,10 +184,10 @@ func (s *AnswerTestSuite) TestTheDieIsTheSumOfTheWeightsAndPicksByFace() {
 		{face: 10000, entry: 1, say: "BOSS!"},
 	} {
 		s.Run(tc.say, func() {
-			enc := s.front(table)
+			enc := s.front(nil, line)
 			var of int
-			_, err := enc.Intimidate(s.ctx, &encounter.IntimidateInput{
-				Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14,
+			_, err := enc.Speak(s.ctx, &encounter.SpeakInput{
+				OptionID: "threat", Skill: "intimidation", Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14,
 				Roller: rollsFace{face: tc.face, of: &of},
 			})
 			s.Require().NoError(err)
@@ -198,16 +207,14 @@ func (s *AnswerTestSuite) TestTheDieIsTheSumOfTheWeightsAndPicksByFace() {
 // fires: the camp turns, which is the proof the fact arrived rather than the
 // beat merely claiming it did.
 func (s *AnswerTestSuite) TestAFactEntryTeachesEveryWitnessAndTurnsTheCamp() {
-	enc := s.front(encounter.Table{
-		encounter.AnswerIntimidated: {{Weight: 1, Say: "Fine.", Fact: campFact}},
-	})
+	enc := s.front(nil, threat([]encounter.Answer{{Weight: 1, Say: "Fine.", Fact: campFact}}, nil))
 
 	before, err := enc.Stance(campFaction, encounter.FactionParty)
 	s.Require().NoError(err)
 	s.Require().Equal(encounter.StanceHostile, before, "precondition: nobody knows yet")
 
-	_, err = enc.Intimidate(s.ctx, &encounter.IntimidateInput{
-		Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
+	_, err = enc.Speak(s.ctx, &encounter.SpeakInput{
+		OptionID: "threat", Skill: "intimidation", Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
 	})
 	s.Require().NoError(err)
 
@@ -220,7 +227,8 @@ func (s *AnswerTestSuite) TestAFactEntryTeachesEveryWitnessAndTurnsTheCamp() {
 	s.Equal("fact", beats[0]["word"])
 	s.Equal(string(campFact), beats[0]["fact"])
 	s.Equal(string(goblin), beats[0]["creature"])
-	s.Equal(encounter.DeedIntimidate, beats[0]["verb"])
+	s.Equal("speak", beats[0]["verb"])
+	s.Equal("threat", beats[0]["option"], "the line it answered")
 	s.Equal(true, beats[0]["beaten"])
 }
 
@@ -228,7 +236,7 @@ func (s *AnswerTestSuite) TestAFactEntryTeachesEveryWitnessAndTurnsTheCamp() {
 // faction the party is NOT hostile to, so no bubble forms, nobody rolls
 // initiative, and the goblin is on the world clock — the room the whole slice
 // exists for.
-func (s *AnswerTestSuite) neutralFront(table encounter.Table) *encounter.Encounter {
+func (s *AnswerTestSuite) neutralFront(table encounter.Table, options ...encounter.Option) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:   openAir(),
@@ -242,7 +250,7 @@ func (s *AnswerTestSuite) neutralFront(table encounter.Table) *encounter.Encount
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1},
-				Faction: "goblins", Table: table},
+				Faction: "goblins", Table: table, Options: options},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
@@ -279,13 +287,12 @@ func (s *AnswerTestSuite) neutralFront(table encounter.Table) *encounter.Encount
 // that round and the two after it — then holds, because the deed has aged out.
 func (s *AnswerTestSuite) TestAFleeEntryLandsTheDeedAndTheTableDoesTheRunning() {
 	enc := s.neutralFront(encounter.Table{
-		encounter.AnswerIntimidated: {{Weight: 1, Say: "BOSS!", Flee: true}},
 		encounter.AnswerTime: {
 			{Weight: 1, When: &encounter.When{Deed: "fled", Within: 3},
 				Away: &encounter.Selector{Word: encounter.SelectorActor}},
 			{Weight: 1, Hold: true},
 		},
-	})
+	}, threat([]encounter.Answer{{Weight: 1, Say: "BOSS!", Flee: true}}, nil))
 
 	clock, err := enc.ClockOf(&encounter.ClockOfInput{Member: goblin})
 	s.Require().NoError(err)
@@ -296,8 +303,8 @@ func (s *AnswerTestSuite) TestAFleeEntryLandsTheDeedAndTheTableDoesTheRunning() 
 
 	// The threat, which pays the world a round on its way out — so the goblin
 	// gets that round and spends it running.
-	_, err = enc.Intimidate(s.ctx, &encounter.IntimidateInput{
-		Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
+	_, err = enc.Speak(s.ctx, &encounter.SpeakInput{
+		OptionID: "threat", Skill: "intimidation", Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
 	})
 	s.Require().NoError(err)
 
@@ -359,9 +366,7 @@ func (s *AnswerTestSuite) TestAPinnedCreatureStaysAndTheBeatStillFires() {
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
 			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 1, Y: 0},
-				Table: encounter.Table{
-					encounter.AnswerIntimidated: {{Weight: 1, Flee: true}},
-				}},
+				Options: []encounter.Option{threat([]encounter.Answer{{Weight: 1, Flee: true}}, nil)}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
@@ -381,8 +386,8 @@ func (s *AnswerTestSuite) TestAPinnedCreatureStaysAndTheBeatStillFires() {
 	})
 	s.Require().NoError(err)
 
-	_, err = enc.Intimidate(s.ctx, &encounter.IntimidateInput{
-		Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
+	_, err = enc.Speak(s.ctx, &encounter.SpeakInput{
+		OptionID: "threat", Skill: "intimidation", Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
 	})
 	s.Require().NoError(err)
 
@@ -393,13 +398,13 @@ func (s *AnswerTestSuite) TestAPinnedCreatureStaysAndTheBeatStillFires() {
 // A failed check reads the FAILED half of the table, which is what makes
 // attempting worse than not attempting.
 func (s *AnswerTestSuite) TestAFailedCheckReadsItsOwnTable() {
-	enc := s.front(encounter.Table{
-		encounter.AnswerIntimidated:      {{Weight: 1, Say: "Fine."}},
-		encounter.AnswerIntimidateFailed: {{Weight: 1, Say: "Big talk."}},
-	})
+	enc := s.front(nil, threat(
+		[]encounter.Answer{{Weight: 1, Say: "Fine."}},
+		[]encounter.Answer{{Weight: 1, Say: "Big talk."}},
+	))
 
-	_, err := enc.Intimidate(s.ctx, &encounter.IntimidateInput{
-		Actor: alice, Target: goblin, Beaten: false, DC: 9, Total: 4, Roller: rollsLowest{},
+	_, err := enc.Speak(s.ctx, &encounter.SpeakInput{
+		OptionID: "threat", Skill: "intimidation", Actor: alice, Target: goblin, Beaten: false, DC: 9, Total: 4, Roller: rollsLowest{},
 	})
 	s.Require().NoError(err)
 
@@ -410,25 +415,23 @@ func (s *AnswerTestSuite) TestAFailedCheckReadsItsOwnTable() {
 	s.Empty(beats[0]["word"], "an entry that only speaks carries no word")
 }
 
-// No table for the outcome that happened is SILENCE: no die, no beat. Absent
+// No rows for the outcome that happened is SILENCE: no die, no beat. Absent
 // means absent, and it is distinguishable from an entry that fired and did
 // nothing.
 func (s *AnswerTestSuite) TestNoTableMeansNoRollAndNoBeat() {
-	s.Run("nothing authored at all", func() {
-		enc := s.front(nil)
-		_, err := enc.Intimidate(s.ctx, &encounter.IntimidateInput{
-			Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: refusesToRoll{fail: func(why string) { s.Fail(why) }},
+	s.Run("a line with no answer at all", func() {
+		enc := s.front(nil, threat(nil, nil))
+		_, err := enc.Speak(s.ctx, &encounter.SpeakInput{
+			OptionID: "threat", Skill: "intimidation", Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: refusesToRoll{fail: func(why string) { s.Fail(why) }},
 		})
 		s.Require().NoError(err)
 		s.Empty(s.answeredBeats(enc, alice))
 	})
 
-	s.Run("a table for the other verdict only", func() {
-		enc := s.front(encounter.Table{
-			encounter.AnswerIntimidated: {{Weight: 1, Say: "Fine."}},
-		})
-		_, err := enc.Intimidate(s.ctx, &encounter.IntimidateInput{
-			Actor: alice, Target: goblin, Beaten: false, DC: 9, Total: 2, Roller: refusesToRoll{fail: func(why string) { s.Fail(why) }},
+	s.Run("rows for the other verdict only", func() {
+		enc := s.front(nil, threat([]encounter.Answer{{Weight: 1, Say: "Fine."}}, nil))
+		_, err := enc.Speak(s.ctx, &encounter.SpeakInput{
+			OptionID: "threat", Skill: "intimidation", Actor: alice, Target: goblin, Beaten: false, DC: 9, Total: 2, Roller: refusesToRoll{fail: func(why string) { s.Fail(why) }},
 		})
 		s.Require().NoError(err)
 		s.Empty(s.answeredBeats(enc, alice), "the failed half was never authored")
@@ -438,13 +441,11 @@ func (s *AnswerTestSuite) TestNoTableMeansNoRollAndNoBeat() {
 // The die is supplied, never defaulted: a verb handed no roller is refused
 // before anything is written.
 func (s *AnswerTestSuite) TestAVerbWithNoDieIsRefused() {
-	enc := s.front(nil)
+	enc := s.front(nil, threat(nil, nil))
 
-	_, err := enc.Intimidate(s.ctx, &encounter.IntimidateInput{Actor: alice, Target: goblin})
+	_, err := enc.Speak(s.ctx, &encounter.SpeakInput{Actor: alice, Target: goblin, OptionID: "threat"})
 	s.ErrorIs(err, encounter.ErrNoRoller)
 
-	_, err = enc.Persuade(s.ctx, &encounter.PersuadeInput{Actor: alice, Target: goblin})
-	s.ErrorIs(err, encounter.ErrNoRoller)
 }
 
 // A table this composition could not roll is refused at the door the member
@@ -459,7 +460,17 @@ func (s *AnswerTestSuite) TestAnUnrollableTableIsRefusedAtTheDoor() {
 
 	s.Run("an entry that can never fire", func() {
 		_, err := encounter.NewEncounter(s.setupWith(encounter.Table{
-			encounter.AnswerPersuaded: {{Weight: 0, Say: "never"}},
+			encounter.AnswerTime: {{Weight: 0, Say: "never"}},
+		}))
+		s.Require().ErrorIs(err, encounter.ErrBadAnswer)
+	})
+
+	// A RETIRED KEY IS NOT A TABLE KEY (rpg-project#569 R2): what a creature
+	// answers when spoken to lives on the option that was spoken, and a
+	// persisted blob still carrying the old key is refused by name.
+	s.Run("a retired social key", func() {
+		_, err := encounter.NewEncounter(s.setupWith(encounter.Table{
+			"intimidated": {{Weight: 1, Say: "Fine."}},
 		}))
 		s.Require().ErrorIs(err, encounter.ErrBadAnswer)
 	})
@@ -527,9 +538,7 @@ func (s *AnswerTestSuite) straggler() *encounter.Encounter {
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1},
 				Faction: campFaction,
-				Table: encounter.Table{
-					encounter.AnswerIntimidated: {{Weight: 1, Say: "Fine.", Fact: campFact}},
-				}},
+				Options: []encounter.Option{threat([]encounter.Answer{{Weight: 1, Say: "Fine.", Fact: campFact}}, nil)}},
 			{ID: "straggler", Kind: encounter.KindMonster, Position: spatial.Position{X: 9, Y: 3},
 				Faction: campFaction,
 				Arrives: encounter.TriggerFact{Fact: campFact},
@@ -606,8 +615,8 @@ func (s *AnswerTestSuite) TestAReservedMemberIsDealtFromTheMixItWasSavedWith() {
 
 	// The save, then the threat that plants the fact the straggler waits on.
 	back := s.reload(enc)
-	_, err := back.Intimidate(s.ctx, &encounter.IntimidateInput{
-		Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
+	_, err := back.Speak(s.ctx, &encounter.SpeakInput{
+		OptionID: "threat", Skill: "intimidation", Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
 	})
 	s.Require().NoError(err)
 
@@ -656,7 +665,7 @@ func (s *AnswerTestSuite) TestAReservedMemberIsDealtFromTheMixItWasSavedWith() {
 // alice to shout at: the same room, the same camp, nothing hostile, and a
 // creature standing out of the first one's way whose only job is to be
 // somebody else.
-func (s *AnswerTestSuite) neutralFrontPair(table encounter.Table) *encounter.Encounter {
+func (s *AnswerTestSuite) neutralFrontPair(table encounter.Table, options ...encounter.Option) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:   openAir(),
@@ -670,9 +679,9 @@ func (s *AnswerTestSuite) neutralFrontPair(table encounter.Table) *encounter.Enc
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1},
-				Faction: "goblins", Table: table},
+				Faction: "goblins", Table: table, Options: options},
 			{ID: "cousin", Kind: encounter.KindMonster, Position: spatial.Position{X: 1, Y: 5},
-				Faction: "goblins"},
+				Faction: "goblins", Options: []encounter.Option{threat(nil, nil)}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
@@ -707,17 +716,16 @@ func (s *AnswerTestSuite) neutralFrontPair(table encounter.Table) *encounter.Enc
 // schedule the author wrote and on nothing else.
 func (s *AnswerTestSuite) TestAFlightSurvivesWhatTheSameActorDoesToSomebodyElse() {
 	enc := s.neutralFrontPair(encounter.Table{
-		encounter.AnswerIntimidated: {{Weight: 1, Say: "BOSS!", Flee: true}},
 		encounter.AnswerTime: {
 			{Weight: 1, When: &encounter.When{Deed: "fled", Within: 3},
 				Away: &encounter.Selector{Word: encounter.SelectorActor}},
 			{Weight: 1, Hold: true},
 		},
-	})
+	}, threat([]encounter.Answer{{Weight: 1, Say: "BOSS!", Flee: true}}, nil))
 
 	start := s.cellOf(enc, goblin)
-	_, err := enc.Intimidate(s.ctx, &encounter.IntimidateInput{
-		Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
+	_, err := enc.Speak(s.ctx, &encounter.SpeakInput{
+		OptionID: "threat", Skill: "intimidation", Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
 	})
 	s.Require().NoError(err)
 
@@ -729,8 +737,8 @@ func (s *AnswerTestSuite) TestAFlightSurvivesWhatTheSameActorDoesToSomebodyElse(
 	// round, so the fleeing goblin gets its consult — and what it holds about
 	// alice now includes something that happened to somebody else.
 	for round := 2; round <= 3; round++ {
-		_, ierr := enc.Intimidate(s.ctx, &encounter.IntimidateInput{
-			Actor: alice, Target: "cousin", Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
+		_, ierr := enc.Speak(s.ctx, &encounter.SpeakInput{
+			OptionID: "threat", Skill: "intimidation", Actor: alice, Target: "cousin", Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
 		})
 		s.Require().NoError(ierr)
 
@@ -743,8 +751,8 @@ func (s *AnswerTestSuite) TestAFlightSurvivesWhatTheSameActorDoesToSomebodyElse(
 	// AND IT STILL STOPS WHEN THE AUTHOR SAID IT WOULD. Surviving the eviction
 	// is not outliving the span: the deed is four rounds old and `within: 3`
 	// no longer holds.
-	_, err = enc.Intimidate(s.ctx, &encounter.IntimidateInput{
-		Actor: alice, Target: "cousin", Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
+	_, err = enc.Speak(s.ctx, &encounter.SpeakInput{
+		OptionID: "threat", Skill: "intimidation", Actor: alice, Target: "cousin", Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
 	})
 	s.Require().NoError(err)
 	s.Equal(previous, s.cellOf(enc, goblin), "three rounds is what was written, and three is what it ran")

@@ -164,6 +164,11 @@ type PlacedPropInput struct {
 	// Refused at construction when it can never hold (ErrNoField), by the
 	// liveness rule [field.validatePropArrivals] applies to every prop.
 	Arrives Trigger
+
+	// Options is the lines a character can say to this placement —
+	// [PropInput.Options]' field with [PropInput.Options]' rules
+	// (rpg-project#569).
+	Options []Option
 }
 
 // placedContributor is one compiled placed prop: the input's facts, deep
@@ -181,6 +186,10 @@ type placedContributor struct {
 	holdable bool
 	holds    []IntelID
 	arrives  Trigger
+
+	// options is the lines a character can say to it, deep-copied
+	// ([PlacedPropInput.Options]).
+	options []Option
 }
 
 // mutable reports whether this contributor can leave the floor or arrive
@@ -252,6 +261,10 @@ func (f *field) compilePlaced(in []PlacedPropInput) error {
 			holdable:          p.Holdable,
 			holds:             append([]IntelID(nil), p.Holds...),
 			arrives:           p.Arrives,
+			options:           cloneOptions(p.Options),
+		}
+		if err := validatePropOptions(p.ID, string(p.ID), p.Options); err != nil {
+			return err
 		}
 		seenID[p.ID] = true
 		// ONE HOLDABLE INDEX, BOTH KINDS (rpg-toolkit#1854, R-D). "Is this

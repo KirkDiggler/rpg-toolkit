@@ -19,7 +19,7 @@ import (
 // # The clock moves because the party acts
 //
 // The world clock existed and NOTHING A PLAYER DID ADVANCED IT: Move,
-// Unlock, Intimidate and Persuade only stamped its reading, and it moved on a
+// Unlock and the two social verbs (now Speak) only stamped its reading, and it moved on a
 // fight round wrapping and inside the unwired `Pump`. So a deed landed in
 // round 1 was exactly as fresh ten verbs later, and a creature waiting out a
 // span never got to.

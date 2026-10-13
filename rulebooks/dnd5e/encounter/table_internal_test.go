@@ -37,22 +37,41 @@ func TestTableSuite(t *testing.T) { suite.Run(t, new(TableSuite)) }
 
 // --- the triggers this rulebook names ----------------------------------------
 
-// TestTheSocialKeysAreThisRulebooksAndTimeIsNot is the line the move drew.
-// `intimidated` is a D&D verb settling and lives here with the validation that
-// refuses everything else; a creature HAVING TIME is not a D&D idea, so
-// mind/behavior names it and this build simply uses the name.
-func (s *TableSuite) TestTheSocialKeysAreThisRulebooksAndTimeIsNot() {
-	s.Equal([]AnswerKey{
-		AnswerIntimidated, AnswerIntimidateFailed, AnswerPersuaded, AnswerPersuadeFailed,
-	}, AnswerKeys, "each verb's success then its failure, in authored order")
-
+// TestTimeIsTheOneTableKeyAndAVerdictIsAnOptions is the line rpg-project#569
+// drew. A creature HAVING TIME is not a D&D idea, so mind/behavior names it
+// and this build uses the name; what a creature answers when spoken to lives
+// on the OPTION that was spoken, under its two verdicts, and the four
+// verb-keyed table keys are gone (R2).
+func (s *TableSuite) TestTimeIsTheOneTableKeyAndAVerdictIsAnOptions() {
 	s.Equal(behavior.KeyTime, AnswerTime, "the one key that came from the module")
-	s.Equal(append(append([]AnswerKey(nil), AnswerKeys...), AnswerTime), TableKeys)
+	s.Equal([]AnswerKey{AnswerTime}, TableKeys)
+	s.Equal([]AnswerKey{AnswerSuccess, AnswerFailure}, OptionKeys, "the beaten verdict, then the missed one")
 
-	for _, key := range TableKeys {
-		s.True(validTableKey(key), "%q is a key this build rolls", key)
+	s.True(validTableKey(AnswerTime))
+	for _, retired := range []AnswerKey{"intimidated", "intimidate_failed", "persuaded", "persuade_failed"} {
+		s.False(validTableKey(retired), "%q retired to options", retired)
 	}
+	s.False(validTableKey(AnswerSuccess), "a verdict is an option's, not a table's")
 	s.False(validTableKey("bribed"), "and a key nobody designed is not")
+}
+
+// TestAnOptionsRowsTakeTheVerdictWordsOnly: `fact` and `flee` answer a
+// verdict, the four time words do not, and a verdict is already the
+// condition — the legality the four social keys had, now on an option's two.
+func (s *TableSuite) TestAnOptionsRowsTakeTheVerdictWordsOnly() {
+	for _, key := range OptionKeys {
+		s.NoError(validateEntry(key, 0, Answer{Weight: 1, Fact: "camp-cowed"}))
+		s.NoError(validateEntry(key, 0, Answer{Weight: 1, Flee: true}))
+		s.NoError(validateEntry(key, 0, Answer{Weight: 1, Say: "Fine."}))
+
+		err := validateEntry(key, 0, Answer{Weight: 1, Hold: true})
+		s.ErrorIs(err, ErrBadAnswer)
+		s.Contains(err.Error(), "what a creature does with time")
+
+		err = validateEntry(key, 0, Answer{Weight: 1, Say: "hi", When: &When{Enemy: EnemySeen}})
+		s.ErrorIs(err, ErrBadAnswer)
+		s.Contains(err.Error(), "already the condition")
+	}
 }
 
 // --- the bands, as this composition projects them -----------------------------
@@ -97,19 +116,9 @@ func (s *TableSuite) TestATableThisBuildCannotRollIsRefusedAtTheDoor() {
 			says:  "weighs 0",
 		},
 		{
-			name:  "a time word under a social key",
-			table: Table{AnswerIntimidated: {{Weight: 1, Hold: true}}},
-			says:  "what a creature does with time",
-		},
-		{
 			name:  "a social word under time",
 			table: Table{AnswerTime: {{Weight: 1, Flee: true}}},
 			says:  "answers a social verdict",
-		},
-		{
-			name:  "a condition under a social key",
-			table: Table{AnswerIntimidated: {{Weight: 1, Say: "hi", When: &When{Enemy: EnemySeen}}}},
-			says:  "already the condition",
 		},
 		{
 			name:  "a `when` that names two things",
@@ -173,10 +182,6 @@ func (s *TableSuite) TestATableThisBuildCannotRollIsRefusedAtTheDoor() {
 func (s *TableSuite) TestAWholeLegalTableIsAccepted() {
 	cell := spatialOrigin
 	require.NoError(s.T(), validateTable(Table{
-		AnswerIntimidated:      {{Weight: 70, Say: "Fine, fine!", Fact: "camp-cowed"}, {Weight: 30, Flee: true}},
-		AnswerIntimidateFailed: {{Weight: 1, Say: "Big talk."}},
-		AnswerPersuaded:        {{Weight: 1, Fact: "camp-cowed"}},
-		AnswerPersuadeFailed:   {{Weight: 1, Say: "Nothing down there."}},
 		AnswerTime: {
 			{Weight: 3, When: &When{Deed: "attacked", Within: 3}, Attack: &Selector{Word: SelectorAttacker}},
 			{Weight: 1, When: &When{Enemy: EnemySeen}, Attack: &Selector{Word: SelectorEnemy}},

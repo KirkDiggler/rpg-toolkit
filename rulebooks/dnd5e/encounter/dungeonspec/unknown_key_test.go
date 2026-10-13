@@ -80,9 +80,8 @@ func TestTheThreeGradesTheWorldBuilderShows(t *testing.T) {
 			replacement: `  - { id: raiders, mind: chief, ` +
 				`on: { intimdate_failed: [ { say: "Big talk." } ] } }`,
 			want: dungeonspec.FieldError{
-				Path: "factions[0].on.intimdate_failed",
-				Message: `"intimdate_failed" is not a trigger this build rolls: they are ` +
-					"intimidated, intimidate_failed, persuaded, persuade_failed, time",
+				Path:    "factions[0].on.intimdate_failed",
+				Message: `"intimdate_failed" is not a trigger this build rolls: they are time`,
 			},
 		},
 		{
@@ -149,9 +148,9 @@ func TestAnUnknownKeyIsNamedWhereverItIsWritten(t *testing.T) {
 			name: "in one entry of one trigger of one table",
 			old:  chiefLine,
 			replacement: `  - { id: chief, ref: "dnd5e:monsters:skeleton-captain", at: [12,4], faction: raiders, ` +
-				`on: { intimidated: [ { say: "Fine." }, { sez: "Fine." } ] } }`,
+				`on: { time: [ { say: "Fine." }, { sez: "Fine." } ] } }`,
 			want: dungeonspec.FieldError{
-				Path:    "place[0].on.intimidated[1].sez",
+				Path:    "place[0].on.time[1].sez",
 				Message: `"sez" is not a key this build reads`,
 			},
 		},
@@ -188,7 +187,7 @@ func TestEveryUnknownKeyInTheFileIsReported(t *testing.T) {
 // than by an author following it into a second refusal.
 func TestTheKeysOfferedAreTheKeysTheDecoderReads(t *testing.T) {
 	_, err := dungeonspec.Decode([]byte(edited(t, factionLine,
-		`  - { id: raiders, mind: chief, temper: coward, on: { intimidated: [ { say: "Fine." } ] } }`)))
+		`  - { id: raiders, mind: chief, temper: coward, on: { time: [ { say: "Fine." } ] } }`)))
 	require.NoError(t, err, "id, mind, temper and on are exactly what the refusal offers")
 }
 

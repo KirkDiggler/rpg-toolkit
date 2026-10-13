@@ -233,12 +233,11 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		// AND THE FOUR GAMEPLAY KEYS THE BINDING CARRIES (rpg-project#488
 		// R1/R5), each through the SAME compiler the v2 dialect's placement
 		// goes through: the records it holds minted by [intelHoldingsOf], the
-		// two social checks by [approachesOf], and the predicate that brings
-		// it in by [predicateOf]. Absent is nil in every one of them, which is
+		// lines it can be spoken to with by [optionsOf], and the predicate
+		// that brings it in by [predicateOf]. Absent is nil in every one of them, which is
 		// why a document with no orders pictures exactly as it did before.
 		mp.Holds = intelHoldingsOf(spec.Key, b.Holds)
-		mp.Intimidate = approachesOf(b.Intimidate)
-		mp.Persuade = approachesOf(b.Persuade)
+		mp.Options = optionsOf(b.Options)
 		mp.Arrives = predicateOf(b.Arrives)
 		monsters = append(monsters, mp)
 	}

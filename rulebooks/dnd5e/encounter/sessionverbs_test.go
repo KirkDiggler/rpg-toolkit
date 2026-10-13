@@ -464,7 +464,10 @@ func (s *SessionVerbsSuite) TestAReserveArrivalAfterARestSeatsAtTheWorldsTime() 
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1}, Faction: campFaction,
-				Table: encounter.Table{encounter.AnswerIntimidated: {{Weight: 1, Say: "Fine.", Fact: campFact}}}},
+				Options: []encounter.Option{{
+					ID: "threat", Say: "Stand aside.", Check: []encounter.CheckApproach{{Ability: "intimidation", DC: 9}},
+					Success: []encounter.Answer{{Weight: 1, Say: "Fine.", Fact: campFact}},
+				}}},
 			{ID: "straggler", Kind: encounter.KindMonster, Position: spatial.Position{X: 9, Y: 3}, Faction: campFaction,
 				Arrives: encounter.TriggerFact{Fact: campFact}},
 		},
@@ -493,8 +496,9 @@ func (s *SessionVerbsSuite) TestAReserveArrivalAfterARestSeatsAtTheWorldsTime() 
 	s.Require().Equal(encounter.RoundsPerHour, rested)
 
 	// The threat plants the fact the straggler waits on, and it arrives.
-	_, err = enc.Intimidate(context.Background(), &encounter.IntimidateInput{
-		Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
+	_, err = enc.Speak(context.Background(), &encounter.SpeakInput{
+		Actor: alice, Target: goblin, OptionID: "threat", Skill: "intimidation",
+		Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
 	})
 	s.Require().NoError(err)
 	clock, err := enc.ClockOf(&encounter.ClockOfInput{Member: "straggler"})

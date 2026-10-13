@@ -429,6 +429,16 @@ type PropInput struct {
 	// Refused at construction when it can never hold (ErrNoField), by the
 	// same liveness rule an ending meets.
 	Arrives Trigger
+
+	// Options is the lines a character can say to this prop — "Examine the
+	// altar." — each with its check and what is answered on either verdict
+	// ([Option], rpg-project#569). Optional; nil means nobody can address
+	// it. A prop answers with no temperament and lands no deed, and none of
+	// its rows may `flee` ([Encounter.Speak]).
+	//
+	// REQUIRES AN ID, refused at construction otherwise (ErrNoField): a line
+	// is spoken to a prop by its id.
+	Options []Option
 }
 
 // WallInput is one authored wall: the crossing it blocks, plus the
@@ -892,22 +902,22 @@ type MemberInput struct {
 	// speed, actions and targeting through [Sheets], sight through [Sight] —
 	// and this composition holds no copy to go stale.
 
-	// Intimidate is the authored check a character must beat to frighten
-	// this member ([dungeonspec.PlaceSpec.Intimidate], rpg-project#454) —
-	// the same list of approaches a lock carries, priced per route. Nil
-	// when the author wrote none, and nil MEANS SOMETHING: the creature
-	// cannot be intimidated at all (rpg-project#494 R1). There is no
-	// derived default behind it, and there never was one here — this
-	// composition carries the list and never reads a DC (C1).
-	Intimidate []CheckApproach
-
-	// Persuade is the authored check a character must beat to talk this
-	// member round ([dungeonspec.PlaceSpec.Persuade], rpg-project#458) —
-	// Intimidate's twin on the same machine and carried the same way. Nil
-	// when the author wrote none, and nil MEANS SOMETHING for the same
-	// reason: this creature is not one a player can talk round, and the
-	// rulebook has nothing to fall back on.
-	Persuade []CheckApproach
+	// Options is the lines a character can say to this member
+	// ([dungeonspec.PlaceSpec.Options], rpg-project#569): each one's line,
+	// its check, what it waits on, and what is answered on either verdict
+	// ([Option]). Nil when the author wrote none, and nil MEANS SOMETHING:
+	// the creature cannot be spoken to at all (R2). There is no derived
+	// default behind it — this composition carries the checks and never
+	// reads a DC (C1).
+	//
+	// IT REPLACED TWO FIELDS. `Intimidate` and `Persuade` priced two verbs
+	// and the answer lived on the table under four verb-keyed keys; an
+	// option is the line and its answer together, and the deed a beaten one
+	// lands is its skill's ([Encounter.Speak]).
+	//
+	// VALIDATED AT THIS DOOR ([validateOptions]), and a `holds` requirement
+	// against the compiled field (ErrBadMember either way).
+	Options []Option
 
 	// Table is this member's whole policy — what it does, keyed by what
 	// happened ([Table], rpg-project#465). ALREADY LAYERED by the caller:
@@ -1049,14 +1059,12 @@ type ActionView struct {
 // validates it through: Setup's roster, Join's arrival and a persisted
 // reserve entry all carry the same facts and must refuse the same defects.
 //
-// A STRUCT RATHER THAN SIX POSITIONAL ARGUMENTS, since the second social verb
-// arrived: two adjacent []CheckApproach parameters are two call sites away
-// from being silently swapped, and the swap would compile.
+// A STRUCT RATHER THAN POSITIONAL ARGUMENTS, so a fact added to every door
+// is one field here rather than a parameter at every call site.
 type memberFacts struct {
 	ID            MemberID
 	AppearanceRef string
-	Intimidate    []CheckApproach
-	Persuade      []CheckApproach
+	Options       []Option
 	Table         Table
 }
 
@@ -1069,23 +1077,11 @@ func validateMemberFacts(in memberFacts) error {
 	if err := validateAppearanceRef(in.AppearanceRef); err != nil {
 		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
 	}
-	// An authored route with nothing to beat is the same defect a lock's is
-	// (validateCheck), asked of a member. AN EMPTY LIST IS NOT A DEFECT
-	// HERE, and that is the difference: a lock that lists no way through
-	// can never be opened, while a monster that lists no way to frighten it
-	// is every monster — the rulebook derives the DC from its own stat
-	// block (MemberInput.Intimidate).
-	for _, a := range in.Intimidate {
-		if a.DC < 1 {
-			return fmt.Errorf("member %s: intimidate approach at DC %d has nothing to beat: %w",
-				in.ID, a.DC, ErrBadMember)
-		}
-	}
-	for _, a := range in.Persuade {
-		if a.DC < 1 {
-			return fmt.Errorf("member %s: persuade approach at DC %d has nothing to beat: %w",
-				in.ID, a.DC, ErrBadMember)
-		}
+	// A line nobody could speak is refused at the door, never when a player
+	// finally picks it (option.go). NO OPTIONS IS NOT A DEFECT: that is
+	// every creature nobody wrote a line for.
+	if err := validateOptions(in.Options); err != nil {
+		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
 	}
 	// A table this composition could not roll is refused at whichever door
 	// the member came in through, never at the roll (answer.go).
@@ -1372,17 +1368,18 @@ type Member struct {
 	// whose cells hold this one.
 	Position spatial.Position
 
-	// Intimidate, Persuade, Table and Temper carry forward
-	// [MemberInput.Intimidate]/[MemberInput.Persuade]/[MemberInput.Table]/
-	// [MemberInput.Temper] verbatim — see those fields' own docs. This is
-	// where the session reads the authored checks before it rolls one. Table and Temper are read by nobody
-	// outside this composition; they are on the roster row so a host can show
-	// an author what a placement carries, and so a client can say which
-	// goblin came out the coward.
-	Intimidate []CheckApproach
-	Persuade   []CheckApproach
-	Table      Table
-	Temper     Temper
+	// Table and Temper carry forward [MemberInput.Table] and
+	// [MemberInput.Temper] verbatim — see those fields' own docs. They are
+	// read by nobody outside this composition; they are on the roster row so
+	// a host can show an author what a placement carries, and so a client
+	// can say which goblin came out the coward.
+	//
+	// A MEMBER'S OPTIONS ARE NOT ON THE ROSTER ROW. Which lines a creature
+	// offers depends on who is asking (R9), so the one read is
+	// [Encounter.OptionsFor], asked per speaker — a second, unfiltered copy
+	// here would be the read a caller reaches for by mistake.
+	Table  Table
+	Temper Temper
 
 	// BlocksMovement carries forward [MemberInput.BlocksMovement]/
 	// [JoinInput.BlocksMovement] verbatim — see that field's own doc.
@@ -1414,8 +1411,7 @@ type memberRecord struct {
 	Kind           MemberKind
 	Name           string
 	AppearanceRef  string
-	Intimidate     []CheckApproach
-	Persuade       []CheckApproach
+	Options        []Option
 	Table          Table
 	Temper         Temper
 	BlocksMovement bool
@@ -1632,16 +1628,15 @@ type JoinInput struct {
 	// Speed, sight, actions and targeting are not carried in: they are the
 	// joiner's sheet's, asked at use (rpg-project#538, [Sheets]).
 
-	// Intimidate, Persuade, Table and Temper are this joiner's own facts,
-	// [MemberInput.Intimidate], [MemberInput.Persuade], [MemberInput.Table]
-	// and [MemberInput.Temper] under the names Join takes them by — a monster
-	// that arrives mid-run is as talkable-to as one that started there, its
-	// table is validated at this door the same way, and a faction mix is
-	// dealt here exactly as it is at Setup.
-	Intimidate []CheckApproach
-	Persuade   []CheckApproach
-	Table      Table
-	Temper     Temper
+	// Options, Table and Temper are this joiner's own facts,
+	// [MemberInput.Options], [MemberInput.Table] and [MemberInput.Temper]
+	// under the names Join takes them by — a monster that arrives mid-run is
+	// as talkable-to as one that started there, its lines and table are
+	// validated at this door the same way, and a faction mix is dealt here
+	// exactly as it is at Setup.
+	Options []Option
+	Table   Table
+	Temper  Temper
 
 	// BlocksMovement — see [MemberInput.BlocksMovement]'s own doc. A joiner
 	// arriving mid-scene carries it exactly as an authored one does.

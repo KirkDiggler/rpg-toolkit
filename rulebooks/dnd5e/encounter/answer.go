@@ -24,17 +24,17 @@ import (
 // clock, and naming both "reaction" would have made every doc in this package
 // ambiguous about which one it meant.
 //
-// A social verb lands a verdict. What the creature DOES about that verdict is
-// not this composition's opinion and not the verb's: the author wrote a
-// weighted list of entries per outcome on the placement, and the world rolls
-// one die to pick which entry fires. "The setup for the author is what I am
-// most interested in" (Kirk).
+// [Encounter.Speak] lands a verdict. What the creature DOES about that verdict
+// is not this composition's opinion and not the verb's: the author wrote a
+// weighted list of entries for each verdict on the OPTION that was spoken
+// (rpg-project#569 R2), and the world rolls one die to pick which entry fires.
+// "The setup for the author is what I am most interested in" (Kirk).
 //
-// # This file is the social HALF of one table
+// # This file is the spoken HALF of one evaluator
 //
-// The entries, the words, the weights and the roll all live in table.go now,
-// because a creature's turn rolls the SAME table under [AnswerTime]
-// (rpg-project#465). What is left here is what a SOCIAL verdict does with a
+// The entries, the words, the weights and the roll all live in table.go,
+// because a creature's turn rolls the SAME evaluator under [AnswerTime]
+// (rpg-project#465). What is left here is what a SPOKEN verdict does with a
 // pick: teach the fact, land the `fled` deed, and write the beat.
 //
 // # The die is the world's, and it is seen
@@ -48,8 +48,8 @@ import (
 //
 // # Nothing here decides what an outcome MEANS
 //
-// [Encounter.Intimidate]'s law, one layer on: the verb is told whether the
-// check was beaten and this file is told which entry the die chose. What a
+// [Encounter.Speak]'s law, one layer on: the verb is told whether the check
+// was beaten and this file is told which entry the die chose. What a
 // `fact` turns stays where it already lives — the disposition graph — and
 // what a creature does about having fled is its own `time` table's business.
 
@@ -63,7 +63,7 @@ import (
 // client switching on beat names must not have to disambiguate an interrupt
 // window from a goblin replying to a threat.
 //
-// EXPORTED BECAUSE A DECODER READS IT, [BeatIntimidated]'s reason exactly: the
+// EXPORTED BECAUSE A DECODER READS IT, [BeatSpoke]'s reason exactly: the
 // session-side decoder is written against this constant in the same wave, so a
 // rename fails to compile there instead of quietly producing a beat nobody
 // renders.
@@ -98,21 +98,33 @@ const BeatStayed = "stayed"
 // would be this composition inventing a die.
 const BeatTempered = "tempered"
 
-// answerInput is one settled verdict looking for the creature's answer to it.
+// answerInput is one settled verdict looking for the answer to it.
 type answerInput struct {
-	// creature is whose placement carries the table — the member the verb
-	// was aimed at.
+	// creature is the member the option was spoken to — whose temperament
+	// loads the die and who a `flee` entry makes run. Empty when the option
+	// is a prop's.
 	creature MemberID
+
+	// prop is the prop the option was spoken to, or empty when it is a
+	// creature's. Exactly one of creature and prop is set.
+	prop PropID
 
 	// actor is who spoke. The one a `flee` entry's deed names.
 	actor MemberID
 
-	// key is the outcome, one of [AnswerKeys].
+	// option is the id of the option that was spoken, carried onto the beat
+	// so a reader knows which line this answers.
+	option string
+
+	// key is the verdict, one of [OptionKeys] — the key the die is rolled
+	// under and the beat reports.
 	key AnswerKey
 
-	// verb is the bare verb name carried onto the beat ("intimidate",
-	// "persuade"), so a reader need not split the key apart to know which
-	// verb produced it.
+	// rows is the option's rows for that verdict: what the die picks from.
+	rows []Answer
+
+	// verb is the bare verb name carried onto the beat ("speak"), so a
+	// reader switching on it need not infer it from the key.
 	verb string
 
 	// beaten is the verdict, carried onto the beat for the same reason.
@@ -129,56 +141,74 @@ type answerInput struct {
 	roller dice.Roller
 }
 
-// answer rolls the creature's answer to a settled verdict and carries it out.
+// answer rolls the answer to a settled verdict and carries it out, returning
+// the pick — nil when nothing fired.
 //
-// NO ELIGIBLE ENTRY, NO ROLL, NO BEAT. A placement that authored nothing for
-// this outcome — or whose every entry's `when` is false — produces silence,
-// which is distinguishable from an entry that fired and did nothing: one
-// writes no beat at all.
+// NO ELIGIBLE ENTRY, NO ROLL, NO BEAT. An option that authored nothing for
+// this verdict produces silence, which is distinguishable from an entry that
+// fired and did nothing: one writes no beat at all.
+//
+// ONE EVALUATOR FOR A CREATURE AND A PROP. The rows are the option's, so the
+// pick is [behavior.Pick] over a one-key table of them. A creature's
+// temperament loads the die and its board is the [Facts] the evaluator reads;
+// a prop has neither, so its die is the soldier's flat one and it reads
+// nothing — which is all an option's rows can ask of it, since a `when` is
+// refused under a verdict.
 //
 // Order is fact, then deed, then beat — the opposite of the verb's own order
-// and deliberately so. [Encounter.Intimidate] appends its beat first because
-// the threat is the CAUSE of everything after it; this beat is the RESULT,
-// and it reports the entry, the roll and the line that only exist once the
-// pick has been made.
-func (e *Encounter) answer(ctx context.Context, in answerInput) error {
-	creature, ok := e.members[in.creature]
-	if !ok {
-		return fmt.Errorf("answer: creature %q: %w", in.creature, ErrNotMember)
+// and deliberately so. [Encounter.Speak] appends its beat first because the
+// line is the CAUSE of everything after it; this beat is the RESULT, and it
+// reports the entry, the roll and the line that only exist once the pick has
+// been made.
+func (e *Encounter) answer(ctx context.Context, in answerInput) (*Pick, error) {
+	var temper Temper
+	var facts Facts
+	if in.creature != "" {
+		creature, ok := e.members[in.creature]
+		if !ok {
+			return nil, fmt.Errorf("answer: creature %q: %w", in.creature, ErrNotMember)
+		}
+		temper = creature.Temper
+		read, err := e.factsFor(in.creature)
+		if err != nil {
+			return nil, fmt.Errorf("answer: %w", err)
+		}
+		facts = read
 	}
 
-	facts, err := e.factsFor(in.creature)
-	if err != nil {
-		return fmt.Errorf("answer: %w", err)
-	}
-
-	// THE VERB'S OWN DIE, and the creature is whose roll it is — said on the
+	// THE VERB'S OWN DIE, and the target is whose roll it is — said on the
 	// beat below, which is the only channel a shared roller leaves for it.
 	chosen, err := behavior.Pick(ctx, &behavior.PickInput{
-		Key: in.key, Table: creature.Table, Temper: creature.Temper, Facts: facts, Die: in.roller,
+		Key: in.key, Table: Table{in.key: in.rows}, Temper: temper, Facts: facts, Die: in.roller,
 	})
 	if err != nil {
-		return fmt.Errorf("answer: %w", err)
+		return nil, fmt.Errorf("answer: %w", err)
 	}
 	if chosen == nil {
-		return nil
+		return nil, nil
 	}
 
 	if chosen.Answer.Fact != "" {
 		for _, id := range in.witnesses {
 			if err := e.learnFact(id, chosen.Answer.Fact, BeatAnswered, in.at); err != nil {
-				return fmt.Errorf("answer: %w", err)
+				return nil, fmt.Errorf("answer: %w", err)
 			}
 		}
 	}
 
-	if chosen.Answer.Flee {
+	// A prop's option cannot carry `flee` — refused at its door
+	// ([validatePropOptions]) — so this is a creature's row whenever it runs.
+	if chosen.Answer.Flee && in.creature != "" {
 		if err := e.landFled(in.creature, in.actor, in.at); err != nil {
-			return fmt.Errorf("answer: %w", err)
+			return nil, fmt.Errorf("answer: %w", err)
 		}
 	}
 
-	return e.appendAnsweredBeat(in, chosen)
+	if err := e.appendAnsweredBeat(in, chosen); err != nil {
+		return nil, err
+	}
+
+	return chosen, nil
 }
 
 // landFled puts [DeedFled] on the creature and nobody else: the memory of
@@ -211,13 +241,15 @@ func (e *Encounter) landFled(creature, actor MemberID, at uint64) error {
 // which trigger, the die and every candidate's arithmetic, the entry that
 // fired, the word it carried and the line the author wrote.
 //
-// EVERY FIELD IS WRITTEN UNCONDITIONALLY, the `intimidated` beat's rule: a
-// reader downstream must not get a third state out of an absent key. `word`
-// is empty for an entry that only speaks, `verb` and `beaten` are empty and
-// false for a `time` pick — nothing spoke — and both of those are answers
-// rather than gaps.
+// EVERY FIELD IS WRITTEN UNCONDITIONALLY, the `spoke` beat's rule: a reader
+// downstream must not get a third state out of an absent key. `word` is empty
+// for an entry that only speaks; `verb`, `option` and `beaten` are empty and
+// false for a `time` pick — nothing spoke — and `creature` is empty when a
+// prop answered; all of those are answers rather than gaps.
 func (e *Encounter) appendAnsweredBeat(in answerInput, chosen *Pick) error {
-	payload, err := json.Marshal(answeredBeatBody(in.creature, in.verb, in.beaten, chosen))
+	payload, err := json.Marshal(answeredBeatBody(answeredBy{
+		creature: in.creature, prop: in.prop, verb: in.verb, option: in.option, beaten: in.beaten,
+	}, chosen))
 	if err != nil {
 		return fmt.Errorf("answer: marshal beat: %w", err)
 	}
@@ -234,10 +266,21 @@ func (e *Encounter) appendAnsweredBeat(in answerInput, chosen *Pick) error {
 	return nil
 }
 
-// answeredBeatBody is the beat's payload for one pick — ONE BODY for a social
+// answeredBy is who answered and to what: the creature (or the prop) whose
+// pick it was, and — for a spoken answer — the verb, the option and the
+// verdict. The zero value of every field but the creature is a `time` pick.
+type answeredBy struct {
+	creature MemberID
+	prop     PropID
+	verb     string
+	option   string
+	beaten   bool
+}
+
+// answeredBeatBody is the beat's payload for one pick — ONE BODY for a spoken
 // answer and a `time` pick, so the two can never come to describe their
 // shared arithmetic differently.
-func answeredBeatBody(creature MemberID, verb string, beaten bool, chosen *Pick) map[string]interface{} {
+func answeredBeatBody(by answeredBy, chosen *Pick) map[string]interface{} {
 	candidates := make([]map[string]interface{}, 0, len(chosen.Candidates))
 	for _, c := range chosen.Candidates {
 		candidates = append(candidates, map[string]interface{}{
@@ -247,10 +290,12 @@ func answeredBeatBody(creature MemberID, verb string, beaten bool, chosen *Pick)
 
 	return map[string]interface{}{
 		"beat":       BeatAnswered,
-		"creature":   string(creature),
+		"creature":   string(by.creature),
+		"prop":       string(by.prop),
 		"key":        string(chosen.Key),
-		"verb":       verb,
-		"beaten":     beaten,
+		"verb":       by.verb,
+		"option":     by.option,
+		"beaten":     by.beaten,
 		"roll":       chosen.Roll,
 		"of":         chosen.Of,
 		"entry":      chosen.Entry,
@@ -349,22 +394,6 @@ func selectorWord(entry Answer) string {
 	return string(sel.Word)
 }
 
-// answerKeyFor is the outcome key a verb's verdict lands under. One
-// function, so the verbs and the authoring dialect cannot spell the pairing
-// differently.
-func answerKeyFor(verb string, beaten bool) AnswerKey {
-	switch {
-	case verb == DeedIntimidate && beaten:
-		return AnswerIntimidated
-	case verb == DeedIntimidate:
-		return AnswerIntimidateFailed
-	case verb == DeedPersuade && beaten:
-		return AnswerPersuaded
-	default:
-		return AnswerPersuadeFailed
-	}
-}
-
 // validateTable refuses a table this composition could not roll: a trigger
 // key it does not know, an entry that weighs less than 1, a word under a key
 // it is not legal on, and a `when` that names nothing or two things.
@@ -377,6 +406,9 @@ func answerKeyFor(verb string, beaten bool) AnswerKey {
 // including a persisted blob somebody edited.
 func validateTable(table Table) error {
 	for key, entries := range table {
+		if IsRetiredTableKey(key) {
+			return fmt.Errorf("`%s` is no longer a table key: author an option: %w", key, ErrBadAnswer)
+		}
 		if !validTableKey(key) {
 			return fmt.Errorf("answer %q is not a trigger this build rolls: %w", key, ErrBadAnswer)
 		}
@@ -391,7 +423,9 @@ func validateTable(table Table) error {
 }
 
 // validateEntry refuses one row: its weight, its word's legality under this
-// key, and its condition's shape.
+// key, and its condition's shape. The key is [AnswerTime] for a table's row
+// and one of [OptionKeys] for an option's — a verdict, where `fact` and
+// `flee` are legal and the four time words and a `when` are not.
 func validateEntry(key AnswerKey, i int, entry Answer) error {
 	if entry.Weight < 1 {
 		return fmt.Errorf("answer %q entry %d weighs %d: %w", key, i, entry.Weight, ErrBadAnswer)

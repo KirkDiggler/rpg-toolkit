@@ -5,9 +5,6 @@ factions:
   - id: goblins
     temper: {coward: 2, soldier: 1, aggressive: 1}
     on:
-      intimidated:
-        - {weight: 70, say: 'Fine! The cellar door is behind the barrels.', fact: goblin-cowed}
-        - {weight: 30, say: 'Boss! BOSS!', flee: {}}
       time:
         - {when: {enemy: reach}, attack: enemy}
         - {when: {enemy: seen}, toward: enemy}
@@ -75,5 +72,12 @@ room:
             - {when: {enemy: reach}, hold: {}}
         temper: coward
         actions: ['dnd5e:weapons:scimitar', 'dnd5e:weapons:shortbow']
+        options:
+          - id: lean-on-it
+            say: 'Where is the cellar?'
+            check: [{ability: intimidation, dc: 12}]
+            success:
+              - {weight: 70, say: 'Fine! The cellar door is behind the barrels.', fact: goblin-cowed}
+              - {weight: 30, say: 'Boss! BOSS!', flee: {}}
       skeleton-a:
         actions: ['dnd5e:weapons:shortsword']

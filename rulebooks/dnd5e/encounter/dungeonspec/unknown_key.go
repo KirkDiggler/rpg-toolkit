@@ -101,6 +101,13 @@ func unknownKeySentence(key, typeName string) string {
 	if typeName == "dungeonspec.RoomMonsterSource" && key == "faction" {
 		return "faction belongs in monsterBindings, keyed by this monster's id; move it there"
 	}
+	// THE TWO PRICED SOCIAL VERBS RETIRED TO OPTIONS (rpg-project#569 R2),
+	// in both dialects, and an author with an old file is told where they
+	// went rather than that the word never existed.
+	if (typeName == "dungeonspec.PlaceSpec" || typeName == "dungeonspec.RoomMonsterBinding") &&
+		(key == "intimidate" || key == "persuade") {
+		return fmt.Sprintf("`%s` is no longer a key: author an option whose check rolls it", key)
+	}
 	allowed := authoredKeysOfType(typeName)
 	if len(allowed) == 0 {
 		return fmt.Sprintf("%q is not a key this build reads", key)
