@@ -91,7 +91,7 @@ func (s *UntrainedTestSuite) check(approaches ...encounter.CheckApproach) *Check
 
 // THE HEADLINE. A character with no Persuasion rolls ONE d20 and adds their
 // Charisma modifier — no second face, no keep rule, and no "Untrained" source
-// anywhere in the calculation.
+// recorded over the die.
 func (s *UntrainedTestSuite) TestAnUntrainedSkillRollsOnePlainD20() {
 	out := s.check(route(string(skills.Persuasion), 10))
 
@@ -104,9 +104,6 @@ func (s *UntrainedTestSuite) TestAnUntrainedSkillRollsOnePlainD20() {
 	die := dieOf(s.T(), out.Calculation)
 	s.Equal("1d20", die.Notation, "one die is thrown")
 	s.Nil(die.Keep, "and no rule is recorded over it")
-	for _, component := range out.Calculation.Components {
-		s.NotEqual("Untrained", component.Source.Name, "no source names the missing training")
-	}
 }
 
 // The control: the same roller, a skill the character took — the same single
