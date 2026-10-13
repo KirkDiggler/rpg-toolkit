@@ -461,7 +461,7 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 	if in.Beaten {
 		key, rows = AnswerSuccess, option.Success
 	}
-	chosen, err := e.answer(ctx, answerInput{
+	answered, err := e.answer(ctx, answerInput{
 		creature: in.Target, prop: in.Prop, actor: in.Actor,
 		option: option.ID, key: key, rows: rows,
 		verb: verbSpeak, beaten: in.Beaten,
@@ -483,7 +483,7 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 	}
 
 	return &SpeakOutput{
-		Beaten: in.Beaten, Witnesses: witnesses, Deed: landed, Seq: seq, Answered: chosen,
+		Beaten: in.Beaten, Witnesses: witnesses, Deed: landed, Seq: seq, Answered: answered.pick,
 	}, nil
 }
 

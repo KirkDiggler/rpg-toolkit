@@ -781,3 +781,54 @@ func (s *OptionTestSuite) TestArithmeticThatCannotHaveHappenedIsRefused() {
 		})
 	}
 }
+
+// The two other places options persist — a member still in the reserve and a
+// placed footprint — survive the save, and come back working: the placed line
+// is offered after the reload, and the reserved creature arrives speaking the
+// lines it was saved with.
+func (s *OptionTestSuite) TestReserveAndPlacedOptionsSurviveAReload() {
+	shrine := placed("shrine", coveredBox(1, centreOf(spatial.Position{X: 9, Y: 2})), false, false)
+	shrine.Options = altarOptions()
+	shrine.Options[0].ID = "pray"
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(outcomeRoom, 0, 0, 12, 12)},
+			Props:   []encounter.PropInput{holdableProp(thePurse, "test:props:purse", spatial.Position{X: 5, Y: 2})},
+			Placed:  []encounter.PlacedPropInput{shrine},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 2}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 4}, Options: goblinOptions()},
+			{ID: "guard", Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 3},
+				Options: goblinOptions(), Arrives: encounter.TriggerFact{Fact: feastTonight}},
+		},
+		Endings:      []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: s.capabilities(),
+	})
+	s.Require().NoError(err)
+
+	data := enc.ToData()
+	s.Require().Len(data.Reserve, 1, "precondition: the guard is waiting, not standing")
+	s.Require().NotEmpty(data.Reserve[0].Options, "and its lines are in the save")
+
+	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Capabilities: s.capabilities()})
+	s.Require().NoError(err)
+	s.Equal(data.Reserve[0].Options, reloaded.ToData().Reserve[0].Options, "the reserve's lines round-trip")
+
+	shrineLines, err := reloaded.PropOptionsFor(alice, "shrine")
+	s.Require().NoError(err)
+	s.Equal([]string{"pray"}, ids(shrineLines), "the placed footprint's line came back")
+
+	// The gossip teaches the fact the guard waits on, and it arrives.
+	_, err = reloaded.Speak(s.ctx, &encounter.SpeakInput{
+		Actor: alice, Target: goblin, OptionID: "gossip", Skill: "persuasion",
+		Beaten: true, DC: 10, Total: 15, Roller: rollsLowest{},
+	})
+	s.Require().NoError(err)
+
+	offered, err := reloaded.OptionsFor(alice, "guard")
+	s.Require().NoError(err, "the guard is on the roster now")
+	s.Contains(ids(offered), "gossip", "and it arrived speaking the lines it was saved with")
+}

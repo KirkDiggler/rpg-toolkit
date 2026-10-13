@@ -126,6 +126,7 @@ package dungeonspec
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -1051,10 +1052,6 @@ var optionKeys = map[string]bool{
 	"id": true, "say": true, "check": true, "requires": true, "success": true, "failure": true,
 }
 
-// approachKeys is every key an [ApproachSpec] reads, for the hand-written
-// refusal an option makes inside its own `check`.
-var approachKeys = map[string]bool{"ability": true, "tool": true, "dc": true}
-
 // UnmarshalYAML reads one option, refusing an unknown key by name — for
 // [PredicateSpec.UnmarshalYAML]'s reason: an option is read inside
 // [PlaceSpec]'s own unmarshaler, which the decoder's KnownFields does not
@@ -1084,8 +1081,12 @@ func (o *OptionSpec) UnmarshalYAML(value *yaml.Node) error {
 			if approach.Kind != yaml.MappingNode {
 				continue
 			}
+			// THE KEYS ARE [ApproachSpec]'S OWN, read off its yaml tags by the
+			// package's one reflection ([authoredKeysOfType]) — never a second
+			// spelling of the struct that could drift from it.
+			known := authoredKeysOfType("dungeonspec.ApproachSpec")
 			for j := 0; j < len(approach.Content); j += 2 {
-				if !approachKeys[approach.Content[j].Value] {
+				if !slices.Contains(known, approach.Content[j].Value) {
 					return fmt.Errorf("line %d: field %s not found in type dungeonspec.ApproachSpec",
 						approach.Content[j].Line, approach.Content[j].Value)
 				}

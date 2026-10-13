@@ -141,8 +141,17 @@ type answerInput struct {
 	roller dice.Roller
 }
 
+// answerOutput is what one settled verdict's answer came to. A VALUE, ALWAYS:
+// when no row fired, pick is nil and that is the answer rather than a missing
+// one — this module never hands back (nil, nil).
+type answerOutput struct {
+	// pick is the row the world's die picked, with its arithmetic, or nil
+	// when the option has no row for this verdict.
+	pick *Pick
+}
+
 // answer rolls the answer to a settled verdict and carries it out, returning
-// the pick — nil when nothing fired.
+// what it came to — [answerOutput.pick] nil when nothing fired.
 //
 // NO ELIGIBLE ENTRY, NO ROLL, NO BEAT. An option that authored nothing for
 // this verdict produces silence, which is distinguishable from an entry that
@@ -160,18 +169,18 @@ type answerInput struct {
 // line is the CAUSE of everything after it; this beat is the RESULT, and it
 // reports the entry, the roll and the line that only exist once the pick has
 // been made.
-func (e *Encounter) answer(ctx context.Context, in answerInput) (*Pick, error) {
+func (e *Encounter) answer(ctx context.Context, in answerInput) (answerOutput, error) {
 	var temper Temper
 	var facts Facts
 	if in.creature != "" {
 		creature, ok := e.members[in.creature]
 		if !ok {
-			return nil, fmt.Errorf("answer: creature %q: %w", in.creature, ErrNotMember)
+			return answerOutput{}, fmt.Errorf("answer: creature %q: %w", in.creature, ErrNotMember)
 		}
 		temper = creature.Temper
 		read, err := e.factsFor(in.creature)
 		if err != nil {
-			return nil, fmt.Errorf("answer: %w", err)
+			return answerOutput{}, fmt.Errorf("answer: %w", err)
 		}
 		facts = read
 	}
@@ -182,16 +191,16 @@ func (e *Encounter) answer(ctx context.Context, in answerInput) (*Pick, error) {
 		Key: in.key, Table: Table{in.key: in.rows}, Temper: temper, Facts: facts, Die: in.roller,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("answer: %w", err)
+		return answerOutput{}, fmt.Errorf("answer: %w", err)
 	}
 	if chosen == nil {
-		return nil, nil
+		return answerOutput{}, nil
 	}
 
 	if chosen.Answer.Fact != "" {
 		for _, id := range in.witnesses {
 			if err := e.learnFact(id, chosen.Answer.Fact, BeatAnswered, in.at); err != nil {
-				return nil, fmt.Errorf("answer: %w", err)
+				return answerOutput{}, fmt.Errorf("answer: %w", err)
 			}
 		}
 	}
@@ -200,15 +209,15 @@ func (e *Encounter) answer(ctx context.Context, in answerInput) (*Pick, error) {
 	// ([validatePropOptions]) — so this is a creature's row whenever it runs.
 	if chosen.Answer.Flee && in.creature != "" {
 		if err := e.landFled(in.creature, in.actor, in.at); err != nil {
-			return nil, fmt.Errorf("answer: %w", err)
+			return answerOutput{}, fmt.Errorf("answer: %w", err)
 		}
 	}
 
 	if err := e.appendAnsweredBeat(in, chosen); err != nil {
-		return nil, err
+		return answerOutput{}, err
 	}
 
-	return chosen, nil
+	return answerOutput{pick: chosen}, nil
 }
 
 // landFled puts [DeedFled] on the creature and nobody else: the memory of

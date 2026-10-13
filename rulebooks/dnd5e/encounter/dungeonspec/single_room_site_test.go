@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
 const v4SitePath = "testdata/world-builder-v4-site.yaml"
@@ -113,7 +115,10 @@ func TestTheTwoDialectsCompileTheSameOrders(t *testing.T) {
 	goblin := site.Monsters[0]
 	require.Equal(t, "coward", goblin.Temper.Word, "the creature's word beat the faction's mix")
 	require.Empty(t, goblin.Temper.Mix, "and the mix was not dealt for it")
-	require.Len(t, goblin.Options, 1, "the one line somebody can say to it")
+	require.NotEmpty(t, goblin.Options, "somebody can say something to it")
+	require.Equal(t, "lean-on-it", goblin.Options[0].ID, "the line the site file writes")
+	require.Equal(t, []encounter.CheckApproach{{Ability: "intimidation", DC: 12}}, goblin.Options[0].Check,
+		"and the check that line rolls")
 	require.Len(t, goblin.Table["time"], 1, "replaced wholesale, not merged with the faction's two")
 	require.Equal(t, []string{"dnd5e:weapons:scimitar", "dnd5e:weapons:shortbow"}, goblin.Actions)
 

@@ -79,10 +79,24 @@ func TestRequiresCompilesToTheTriggerTheEngineReads(t *testing.T) {
             success: [{ say: "Saw who?" }]
 `))
 	goblin := monsterNamed(t, compiled, "goblin-1")
-	require.Len(t, goblin.Options, 2)
-	require.Equal(t, encounter.TriggerFact{Fact: "feast-tonight"}, goblin.Options[0].Requires)
-	require.Equal(t, encounter.TriggerHolds{Prop: "table"}, goblin.Options[1].Requires)
-	require.Nil(t, goblin.Options[1].Failure, "no failure rows written means none")
+	require.Equal(t, encounter.TriggerFact{Fact: "feast-tonight"}, optionNamed(t, goblin.Options, "gossip").Requires)
+	bribe := optionNamed(t, goblin.Options, "bribe")
+	require.Equal(t, encounter.TriggerHolds{Prop: "table"}, bribe.Requires)
+	require.Nil(t, bribe.Failure, "no failure rows written means none")
+}
+
+// optionNamed is the compiled option one id names, required to exist so a
+// renamed line fails as a missing line rather than as an index out of range.
+func optionNamed(t *testing.T, options []encounter.Option, id string) encounter.Option {
+	t.Helper()
+	for _, o := range options {
+		if o.ID == id {
+			return o
+		}
+	}
+	require.FailNowf(t, "no such option", "%q is not among the compiled options", id)
+
+	return encounter.Option{}
 }
 
 // A prop binding's options compile onto the placed footprint the host builds

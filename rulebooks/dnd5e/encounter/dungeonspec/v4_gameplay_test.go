@@ -147,9 +147,10 @@ func TestTheFrontRoomOffersTheSameLinesInBothDialects(t *testing.T) {
 
 	t.Run("the creature somebody can speak to", func(t *testing.T) {
 		was, is := monsterNamed(t, v2, "front-goblin"), monsterNamed(t, v4, "front-goblin")
-		require.Len(t, was.Options, 2, "the v2 reference writes two lines")
-		require.Equal(t, []encounter.CheckApproach{{Ability: "intimidation", DC: 12}}, was.Options[0].Check)
-		require.Equal(t, []encounter.CheckApproach{{Ability: "persuasion", DC: 10}}, was.Options[1].Check)
+		require.Equal(t, []encounter.CheckApproach{{Ability: "intimidation", DC: 12}},
+			optionNamed(t, was.Options, "lean-on-it").Check, "the v2 reference prices the threat")
+		require.Equal(t, []encounter.CheckApproach{{Ability: "persuasion", DC: 10}},
+			optionNamed(t, was.Options, "talk-it-round").Check, "and the appeal")
 		require.Equal(t, was.Options, is.Options, "and v4 compiles the same options")
 	})
 
