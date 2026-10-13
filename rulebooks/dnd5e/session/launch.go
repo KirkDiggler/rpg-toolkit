@@ -215,8 +215,8 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 			encounter.HexCellAt(orientation, int(at.X), int(at.Y)),
 			false, monster.placement.Holds, monster.placement.Faction, monster.placement.Arrives,
 			socialPlacement{
-				Intimidate: monster.placement.Intimidate, Persuade: monster.placement.Persuade,
-				Table: monster.table, Temper: monster.temper,
+				Options: monster.placement.Options,
+				Table:   monster.table, Temper: monster.temper,
 			})
 		if err != nil {
 			return nil, fmt.Errorf("launch: %w", err)

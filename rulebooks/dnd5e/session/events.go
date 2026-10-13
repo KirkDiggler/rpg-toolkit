@@ -331,17 +331,13 @@ func kindFor(beat string) EventKind {
 	// nobody renders.
 	case encounter.BeatSighted:
 		return EventSighted
-	// The threat. Named by the composition's own exported constant for
-	// BeatSighted's reason, and with more riding on it: a threat writes no
-	// outcome beat and a missed one writes nothing else at all, so this is
-	// the only account of the roll a client ever gets (rpg-project#454).
-	case encounter.BeatIntimidated:
-		return EventIntimidated
-	// The appeal, and what the creature did about either of them. Named by
-	// the composition's own exported constants for BeatIntimidated's reason
-	// (rpg-project#458).
-	case encounter.BeatPersuaded:
-		return EventPersuaded
+	// The line. Named by the composition's own exported constant for
+	// BeatSighted's reason, and with more riding on it: a missed line with no
+	// failure rows writes nothing else at all, so this is the only account of
+	// the roll a client ever gets (rpg-project#569). What the target did about
+	// it is the answered beat below.
+	case encounter.BeatSpoke:
+		return EventSpoke
 	case encounter.BeatAnswered:
 		return EventAnswered
 	// Which temperament a faction's mix dealt one creature at the door
@@ -492,20 +488,26 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			Door: p.Door, State: p.State, Actor: p.Actor,
 			DC: p.DC, Total: p.Total, Beaten: p.Beaten, Calculation: calculation,
 		}
-	case EventIntimidated:
+	case EventSpoke:
 		var p struct {
 			Actor       string          `json:"actor"`
 			Target      string          `json:"target"`
+			Prop        string          `json:"prop"`
+			Option      string          `json:"option"`
+			Line        string          `json:"line"`
+			Skill       string          `json:"skill"`
 			DC          int             `json:"dc"`
 			Total       int             `json:"total"`
 			Beaten      bool            `json:"beaten"`
 			Calculation json.RawMessage `json:"calculation"`
 		}
-		// Actor and target gate the body; the numbers do not. A threat
-		// nobody can name is malformed, but `beaten: false` with a total of
-		// 0 is a legal beat — the DC is never 0, so nothing here can be
-		// read as absent-versus-zero.
-		if json.Unmarshal(payload, &p) != nil || p.Actor == "" || p.Target == "" {
+		// The actor, the line's id and exactly one target gate the body; the
+		// numbers do not. A line nobody can attribute is malformed, but
+		// `beaten: false` with a total of 0 is a legal beat — the DC is never
+		// 0, so nothing here can be read as absent-versus-zero. `line` cannot
+		// gate either: the author may have written none.
+		if json.Unmarshal(payload, &p) != nil || p.Actor == "" || p.Option == "" ||
+			(p.Target == "") == (p.Prop == "") {
 			return nil
 		}
 		// THE ARITHMETIC GATES, unlike the scalars. It is optional, but a
@@ -516,36 +518,17 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		if !ok {
 			return nil
 		}
-		return IntimidatedBody{
-			Actor: p.Actor, Target: p.Target, DC: p.DC, Total: p.Total,
-			Beaten: p.Beaten, Calculation: calculation,
-		}
-	case EventPersuaded:
-		var p struct {
-			Actor       string          `json:"actor"`
-			Target      string          `json:"target"`
-			DC          int             `json:"dc"`
-			Total       int             `json:"total"`
-			Beaten      bool            `json:"beaten"`
-			Calculation json.RawMessage `json:"calculation"`
-		}
-		// [EventIntimidated]'s gate, for its reason: actor and target gate the
-		// body and the numbers do not, while the arithmetic does.
-		if json.Unmarshal(payload, &p) != nil || p.Actor == "" || p.Target == "" {
-			return nil
-		}
-		calculation, ok := attemptCalculation(p.Calculation, p.Total)
-		if !ok {
-			return nil
-		}
-		return PersuadedBody{
-			Actor: p.Actor, Target: p.Target, DC: p.DC, Total: p.Total,
-			Beaten: p.Beaten, Calculation: calculation,
+		return SpokeBody{
+			Actor: p.Actor, Target: p.Target, Prop: p.Prop,
+			OptionID: p.Option, Line: p.Line, Skill: p.Skill,
+			DC: p.DC, Total: p.Total, Beaten: p.Beaten, Calculation: calculation,
 		}
 	case EventAnswered:
 		var p struct {
 			Creature   string `json:"creature"`
+			Prop       string `json:"prop"`
 			Verb       string `json:"verb"`
+			Option     string `json:"option"`
 			Beaten     bool   `json:"beaten"`
 			Roll       int    `json:"roll"`
 			Of         int    `json:"of"`
@@ -562,7 +545,7 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 				Loaded  int `json:"loaded"`
 			} `json:"candidates"`
 		}
-		// THE CREATURE IS THE WHOLE GATE, and the two that used to sit beside
+		// THE ANSWERER IS THE WHOLE GATE, and the two that used to sit beside
 		// it were both retired by the creature's table (rpg-project#465).
 		//
 		// `verb` cannot gate: a `time` pick has none, because nothing spoke.
@@ -574,7 +557,12 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		// `key`, `temper`, `word` and `say` are all legitimately empty, which
 		// is why none of them gates either. A beat from the build before the
 		// table decodes with `key` absent and everything else intact.
-		if json.Unmarshal(payload, &p) != nil || p.Creature == "" {
+		//
+		// A PROP ANSWERS TOO (rpg-project#569): an altar's option rolls its own
+		// rows, and that beat names the prop and no creature. So the gate is
+		// exactly one of the two — neither is a beat nobody answered, and both
+		// is a beat this build never wrote.
+		if json.Unmarshal(payload, &p) != nil || (p.Creature == "") == (p.Prop == "") {
 			return nil
 		}
 		candidates := make([]AnswerCandidate, 0, len(p.Candidates))
@@ -584,7 +572,7 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			})
 		}
 		return AnsweredBody{
-			Creature: p.Creature, Verb: p.Verb, Beaten: p.Beaten,
+			Creature: p.Creature, Prop: p.Prop, Verb: p.Verb, OptionID: p.Option, Beaten: p.Beaten,
 			Roll: p.Roll, Of: p.Of, Entry: p.Entry,
 			Word: p.Word, Say: p.Say, Fact: p.Fact,
 			Key: p.Key, Candidates: candidates, Temper: p.Temper,

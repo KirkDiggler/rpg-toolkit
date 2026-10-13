@@ -35,18 +35,6 @@ func TestTheRulebooksDefaultIsFoldedUnderTheAuthorsOrders(t *testing.T) {
 			},
 		},
 		{
-			name: "a placement that authored only a social key keeps the default's time",
-			authored: encounter.Table{
-				encounter.AnswerIntimidated: {{Weight: 1, Flee: true}},
-			},
-			wantKeys: []encounter.AnswerKey{encounter.AnswerIntimidated, encounter.AnswerTime},
-			assert: func(t *testing.T, folded encounter.Table) {
-				require.Equal(t, shippedDefault(t)[encounter.AnswerTime], folded[encounter.AnswerTime],
-					"the author said nothing about this creature's turns, so the rulebook still does")
-				require.True(t, folded[encounter.AnswerIntimidated][0].Flee)
-			},
-		},
-		{
 			name: "a placement's own time key replaces the default's WHOLESALE",
 			authored: encounter.Table{
 				encounter.AnswerTime: {{

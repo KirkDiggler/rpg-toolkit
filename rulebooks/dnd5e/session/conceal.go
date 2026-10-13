@@ -171,8 +171,8 @@ type stagedCheckOutcome struct {
 // untrained says whether this verb takes the untrained rule
 // ([resolution.CheckInput.Untrained], rpg-project#457 R2). It is a PARAMETER
 // rather than a property of this function because it is a property of the
-// VERB: the rule is scoped to skill verbs, and the two callers that pass true
-// (Intimidate, Persuade) are the two the ruling names. Unlock and the
+// VERB: the rule is scoped to skill verbs, and the one caller that passes
+// true (Speak, whose options roll a skill) is the one the ruling names. Unlock and the
 // discovery sweep pass false and roll the 2014 letter.
 func (m *Manager) resolveStagedCheckPoseable(
 	scope *writeScope, member string, approaches []encounter.CheckApproach, untrained bool,

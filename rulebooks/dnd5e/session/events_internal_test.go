@@ -165,8 +165,11 @@ func TestBodyForRefusesAMissingRequiredField(t *testing.T) {
 			`{"beat":"arrived","id":"trap-1","kind":"hazard","cell":{"x":1,"y":4}}`},
 		{"door with no door", EventDoor, `{"beat":"door","state":"open"}`},
 		{"door with no state", EventDoor, `{"beat":"door","door":"gate"}`},
-		{"intimidated with no actor", EventIntimidated, `{"beat":"intimidated","target":"goblin","dc":9,"total":14,"beaten":true}`},
-		{"intimidated with no target", EventIntimidated, `{"beat":"intimidated","actor":"alice","dc":9,"total":14,"beaten":true}`},
+		{"spoke with no actor", EventSpoke, `{"beat":"spoke","target":"goblin","option":"threaten","dc":9,"total":14,"beaten":true}`},
+		{"spoke with no line id", EventSpoke, `{"beat":"spoke","actor":"alice","target":"goblin","dc":9,"total":14,"beaten":true}`},
+		{"spoke to nothing", EventSpoke, `{"beat":"spoke","actor":"alice","target":"","prop":"","option":"threaten","dc":9,"total":14}`},
+		{"spoke to a creature and a prop", EventSpoke,
+			`{"beat":"spoke","actor":"alice","target":"goblin","prop":"altar","option":"threaten","dc":9,"total":14}`},
 	}
 
 	for _, tc := range cases {
@@ -192,41 +195,56 @@ func TestBodyForAcceptsACompleteBeat(t *testing.T) {
 	}, body)
 }
 
-// TestTheIntimidatedBeatDecodes is the threat's own decode pin
-// (rpg-project#454), and it is worth more than most: a threat writes no
-// outcome beat and a missed one writes nothing else at all, so this beat is
-// the ONLY account of the roll. Untyped, the outcome reaches nobody — which
-// is what shipped before this case existed.
-func TestTheIntimidatedBeatDecodes(t *testing.T) {
-	t.Run("a beaten threat", func(t *testing.T) {
+// TestTheSpokeBeatDecodes is the line's own decode pin (rpg-project#569), and
+// it is worth more than most: a missed line with no failure rows writes
+// nothing else at all, so this beat is the ONLY account of the roll.
+func TestTheSpokeBeatDecodes(t *testing.T) {
+	t.Run("a beaten line to a creature", func(t *testing.T) {
 		kind, body := decodeBeat([]byte(
-			`{"beat":"intimidated","actor":"alice","target":"goblin","dc":9,"total":14,"beaten":true}`))
-		require.Equal(t, EventIntimidated, kind)
-		require.Equal(t, IntimidatedBody{
-			Actor: "alice", Target: "goblin", DC: 9, Total: 14, Beaten: true,
+			`{"beat":"spoke","actor":"alice","target":"goblin","prop":"","option":"threaten",` +
+				`"line":"Run, or I gut you.","skill":"intimidation","dc":9,"total":14,"beaten":true}`))
+		require.Equal(t, EventSpoke, kind)
+		require.Equal(t, SpokeBody{
+			Actor: "alice", Target: "goblin", OptionID: "threaten", Line: "Run, or I gut you.",
+			Skill: "intimidation", DC: 9, Total: 14, Beaten: true,
 		}, body)
 	})
 
-	// THE MISSED ONE IS THE CASE THAT MATTERS. Nothing else in the run
-	// records it, so `beaten: false` decoding as a real body rather than a
-	// nil one is the whole difference between a table that saw the roll and
-	// a table that saw nothing.
-	t.Run("a missed threat", func(t *testing.T) {
+	// THE MISSED ONE IS THE CASE THAT MATTERS. Nothing else in the run may
+	// record it, so `beaten: false` decoding as a real body rather than a nil
+	// one is the whole difference between a table that saw the roll and a
+	// table that saw nothing.
+	t.Run("a missed line", func(t *testing.T) {
 		kind, body := decodeBeat([]byte(
-			`{"beat":"intimidated","actor":"alice","target":"goblin","dc":9,"total":4,"beaten":false}`))
-		require.Equal(t, EventIntimidated, kind)
-		require.Equal(t, IntimidatedBody{
-			Actor: "alice", Target: "goblin", DC: 9, Total: 4, Beaten: false,
+			`{"beat":"spoke","actor":"alice","target":"goblin","option":"threaten",` +
+				`"line":"Run.","skill":"intimidation","dc":9,"total":4,"beaten":false}`))
+		require.Equal(t, EventSpoke, kind)
+		require.Equal(t, SpokeBody{
+			Actor: "alice", Target: "goblin", OptionID: "threaten", Line: "Run.",
+			Skill: "intimidation", DC: 9, Total: 4, Beaten: false,
 		}, body)
 	})
 
-	// And it goes back out with every key present: `beaten:false` dropped
+	t.Run("a line read to a prop names the prop and no creature", func(t *testing.T) {
+		kind, body := decodeBeat([]byte(
+			`{"beat":"spoke","actor":"alice","target":"","prop":"altar","option":"read",` +
+				`"line":"I read the inscription.","skill":"religion","dc":12,"total":15,"beaten":true}`))
+		require.Equal(t, EventSpoke, kind)
+		require.Equal(t, SpokeBody{
+			Actor: "alice", Prop: "altar", OptionID: "read", Line: "I read the inscription.",
+			Skill: "religion", DC: 12, Total: 15, Beaten: true,
+		}, body)
+	})
+
+	// And it goes back out with every number present: `beaten:false` dropped
 	// for being false is indistinguishable to a non-Go client from a beat
 	// that never said (TestFalseIsAnAnswerOnTheWire's law).
 	t.Run("false is an answer on the way out too", func(t *testing.T) {
-		raw, err := json.Marshal(IntimidatedBody{Actor: "alice", Target: "goblin", DC: 9})
+		raw, err := json.Marshal(SpokeBody{Actor: "alice", Target: "goblin", OptionID: "threaten", DC: 9})
 		require.NoError(t, err)
-		require.JSONEq(t, `{"actor":"alice","target":"goblin","dc":9,"total":0,"beaten":false}`, string(raw))
+		require.JSONEq(t,
+			`{"actor":"alice","target":"goblin","option_id":"threaten","line":"","skill":"","dc":9,"total":0,"beaten":false}`,
+			string(raw))
 	})
 }
 
@@ -1513,11 +1531,10 @@ func TestASightingThatNamesNobodyIsRefused(t *testing.T) {
 //
 // Every verb in this build refuses to write an attempt beat without the roll
 // behind it (requireCalculation). That strictness is only affordable because
-// the DECODER stays lenient: real sessions are already persisted with
-// Intimidated, Persuaded and DoorChanged beats written before the field
-// existed, and a decoder that refused them would turn lived history into
-// EventUnknown — the whole outcome of a threat or an unlock lost, which is the
-// failure kindFor's own missing case caused once already.
+// the DECODER stays lenient: a stored beat may carry no calculation, and a
+// decoder that refused it would turn lived history into EventUnknown — the
+// whole outcome of a line or an unlock lost, which is the failure kindFor's
+// own missing case caused once already.
 //
 // Absent is a real answer here and decodes to nil, which is why the producer
 // has to be the one that refuses: a missing optional field on a NEW beat looks
@@ -1530,19 +1547,11 @@ func TestAttemptBeatsWrittenBeforeCalculationsStillType(t *testing.T) {
 		want    EventBody
 	}{
 		{
-			name:    "a threat from before the field existed",
-			kind:    EventIntimidated,
-			payload: `{"beat":"intimidated","actor":"alice","target":"goblin","dc":9,"total":14,"beaten":true}`,
-			want: IntimidatedBody{
-				Actor: "alice", Target: "goblin", DC: 9, Total: 14, Beaten: true,
-			},
-		},
-		{
-			name:    "an appeal from before the field existed",
-			kind:    EventPersuaded,
-			payload: `{"beat":"persuaded","actor":"alice","target":"goblin","dc":9,"total":6,"beaten":false}`,
-			want: PersuadedBody{
-				Actor: "alice", Target: "goblin", DC: 9, Total: 6, Beaten: false,
+			name:    "a line with no calculation",
+			kind:    EventSpoke,
+			payload: `{"beat":"spoke","actor":"alice","target":"goblin","option":"greet","dc":9,"total":14,"beaten":true}`,
+			want: SpokeBody{
+				Actor: "alice", Target: "goblin", OptionID: "greet", DC: 9, Total: 14, Beaten: true,
 			},
 		},
 		{
@@ -1569,12 +1578,12 @@ func TestAttemptBeatsWrittenBeforeCalculationsStillType(t *testing.T) {
 // is not. A present calculation that could not have produced the total it is
 // filed under refuses the whole body rather than typing without it.
 func TestAnAttemptBeatWithImpossibleArithmeticDoesNotType(t *testing.T) {
-	payload := `{"beat":"intimidated","actor":"alice","target":"goblin","dc":9,"total":14,"beaten":true,` +
+	payload := `{"beat":"spoke","actor":"alice","target":"goblin","option":"threaten","dc":9,"total":14,"beaten":true,` +
 		`"calculation":{"components":[{"source":{"ref":"dnd5e:skills:intimidation","name":"Intimidation",` +
 		`"source_id":"alice"},"dice":{"notation":"1d20","die_size":20,"original_rolls":[7],` +
 		`"final_rolls":[7],"subtotal":7}}],"total":7}}`
 
-	require.Nil(t, bodyFor(EventIntimidated, []byte(payload)),
+	require.Nil(t, bodyFor(EventSpoke, []byte(payload)),
 		"a total of 7 cannot be the roll behind a beat reporting 14")
 }
 
@@ -1588,20 +1597,35 @@ func TestTheAnsweredBeatCarriesTheWholeRoll(t *testing.T) {
 		want AnsweredBody
 	}{
 		{
-			name: "a social answer names its verb and its verdict",
-			json: `{"beat":"answered","creature":"goblin","key":"intimidated","verb":"intimidate",
+			name: "an option's answer names its verb, its option and its verdict",
+			json: `{"beat":"answered","creature":"goblin","prop":"","key":"success","verb":"speak","option":"threaten",
 				"beaten":true,"roll":56,"of":160,"entry":1,"temper":"coward",
 				"candidates":[{"entry":0,"weight":70,"percent":50,"loaded":3500},
 				              {"entry":1,"weight":30,"percent":300,"loaded":9000}],
 				"word":"flee","selector":"","say":"You win! I'm going!","fact":""}`,
 			want: AnsweredBody{
-				Creature: "goblin", Key: "intimidated", Verb: "intimidate", Beaten: true,
+				Creature: "goblin", Key: "success", Verb: "speak", OptionID: "threaten", Beaten: true,
 				Roll: 56, Of: 160, Entry: 1, Temper: "coward",
 				Candidates: []AnswerCandidate{
 					{Entry: 0, Weight: 70, Percent: 50, Loaded: 3500},
 					{Entry: 1, Weight: 30, Percent: 300, Loaded: 9000},
 				},
 				Word: "flee", Say: "You win! I'm going!",
+			},
+		},
+		{
+			// A PROP ANSWERS TOO (rpg-project#569): an altar's option rolls its
+			// own rows, and the beat names the prop and no creature.
+			name: "a prop's answer names the prop",
+			json: `{"beat":"answered","creature":"","prop":"altar","key":"success","verb":"speak","option":"read",
+				"beaten":true,"roll":1,"of":1,"entry":0,"temper":"",
+				"candidates":[{"entry":0,"weight":1,"percent":100,"loaded":1}],
+				"word":"fact","selector":"","say":"","fact":"vault-word"}`,
+			want: AnsweredBody{
+				Prop: "altar", Key: "success", Verb: "speak", OptionID: "read", Beaten: true,
+				Roll: 1, Of: 1, Entry: 0,
+				Candidates: []AnswerCandidate{{Entry: 0, Weight: 1, Percent: 100, Loaded: 1}},
+				Word:       "fact", Fact: "vault-word",
 			},
 		},
 		{
@@ -1665,15 +1689,19 @@ func TestTheAnsweredBeatCarriesTheWholeRoll(t *testing.T) {
 	}
 }
 
-// A payload with no creature on it is not an answer this build wrote, and the
-// creature is the ONE field that gates — `verb` and `of` both stopped being
-// able to (see the decoder's own comment).
+// A payload with nobody answering on it is not an answer this build wrote, and
+// the answerer — exactly one creature or prop — is the ONE field that gates;
+// `verb` and `of` both stopped being able to (see the decoder's own comment).
 func TestAnAnswerWithNobodyAnsweringIsRefused(t *testing.T) {
-	kind, body := decodeBeat([]byte(
-		`{"beat":"answered","creature":"","key":"time","roll":1,"of":100,"entry":0}`))
+	for _, payload := range []string{
+		`{"beat":"answered","creature":"","key":"time","roll":1,"of":100,"entry":0}`,
+		`{"beat":"answered","creature":"goblin","prop":"altar","key":"success","roll":1,"of":1,"entry":0}`,
+	} {
+		kind, body := decodeBeat([]byte(payload))
 
-	require.Equal(t, EventAnswered, kind, "the kind still maps — it is the body that is unreadable")
-	require.Nil(t, body)
+		require.Equal(t, EventAnswered, kind, "the kind still maps — it is the body that is unreadable")
+		require.Nil(t, body)
+	}
 }
 
 // Which temperament a faction's mix dealt one creature, with the roll that

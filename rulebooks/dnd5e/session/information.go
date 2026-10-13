@@ -45,11 +45,10 @@ import (
 // sessionVerbProse is the prose for the verbs this package owns — they compile
 // no rulebook definition, so no other owner exists to write it (R12).
 var sessionVerbProse = map[Verb]string{
-	VerbMove:       "Move along your chosen path, using the movement available to you.",
-	VerbEndTurn:    "Finish your turn and let the next combatant act.",
-	VerbDeathSave:  "Roll a death saving throw while dying. Successes help you stabilize; failures bring you closer to death.",
-	VerbIntimidate: "Threaten a creature to influence its response. The outcome depends on the creature and the situation.",
-	VerbPersuade:   "Try to change a creature's mind through conversation. The outcome depends on the creature and the situation.",
+	VerbMove:      "Move along your chosen path, using the movement available to you.",
+	VerbEndTurn:   "Finish your turn and let the next combatant act.",
+	VerbDeathSave: "Roll a death saving throw while dying. Successes help you stabilize; failures bring you closer to death.",
+	VerbSpeak:     "Say something to a creature or a thing. What you can say depends on who is listening and what you know.",
 }
 
 // sessionVerbInformation is a session-owned verb's information, or nil for

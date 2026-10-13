@@ -1373,30 +1373,20 @@ const (
 	// (rpg-toolkit#1020) narrows it.
 	EventDoor EventKind = "door"
 
-	// EventIntimidated reports somebody threatening a member — landed or
-	// not (rpg-project#454, the first shenanigan). Every witness to the
-	// threat hears it, which is the audience the composition computed for
-	// the deed itself.
+	// EventSpoke reports somebody saying an authored line to a creature or a
+	// prop — landed or not (rpg-project#569). Every witness hears it, which is
+	// the audience the composition computed for the deed itself.
 	//
-	// THE BEAT IS THE ONLY ACCOUNT OF THE ROLL. Unlike a swing, a threat
-	// writes no outcome beat, and a missed one writes nothing else at all
-	// — no deed, no fact, no change to the monster. So a client that
-	// cannot decode this cannot tell the table what happened, which is
-	// exactly what shipped before this kind existed. The composition
-	// exports the beat's name ([encounter.BeatIntimidated]) so a rename
-	// fails to compile here rather than silently going untyped again.
+	// THE BEAT IS THE ONLY ACCOUNT OF THE ROLL. A missed line with no
+	// `failure` rows writes nothing else at all — no deed, no fact, no change
+	// to the creature. So a client that cannot decode this cannot tell the
+	// table what happened. The composition exports the beat's name
+	// ([encounter.BeatSpoke]) so a rename fails to compile here rather than
+	// silently going untyped.
 	//
-	// The composition's word crosses unchanged, like "held" and "arrived":
-	// "intimidated" is the statement of what happened, and the wire's
-	// EVENT_KIND_INTIMIDATED says the same (rpg-api-protos#339).
-	EventIntimidated EventKind = "intimidated"
-
-	// EventPersuaded reports somebody talking a member round — landed or not
-	// (rpg-project#458, the second shenanigan). [EventIntimidated]'s twin,
-	// with its audience and its contract: the beat is the ONLY account of the
-	// roll, and the composition exports the name
-	// ([encounter.BeatPersuaded]) so a rename fails to compile here.
-	EventPersuaded EventKind = "persuaded"
+	// It replaced EventIntimidated and EventPersuaded, the two verbs it
+	// absorbed; the wire's EVENT_KIND_SPOKE says the same.
+	EventSpoke EventKind = "spoke"
 
 	// EventAnswered is WHAT THE CREATURE DID ABOUT IT: the world's own roll on
 	// the author's answer table after a social verb settled (rpg-project#458,
@@ -2720,26 +2710,38 @@ type DoorBody struct {
 
 func (DoorBody) isEventBody() {}
 
-// IntimidatedBody is EventIntimidated's typed body: who threatened whom,
-// what they had to beat, what they rolled, and whether it landed.
+// SpokeBody is EventSpoke's typed body: who said which line to what, the skill
+// the check rolled, what it had to beat, what it rolled, and whether it landed.
 //
-// NO OMITEMPTY ON Beaten, DC OR Total, and that is the point rather than an
-// oversight ([TestFalseIsAnAnswerOnTheWire]'s law). `beaten: false` is the
-// whole content of a missed threat — the one case where nothing else is
-// written — and a key dropped for being false is indistinguishable to a
-// non-Go client from a beat that never said. The same reasoning
-// [IntimidateOutput.Total] gives for carrying a zero.
-type IntimidatedBody struct {
-	// Actor is who made the threat.
+// NO OMITEMPTY ON Beaten, DC OR Total ([TestFalseIsAnAnswerOnTheWire]'s law).
+// `beaten: false` is the whole content of a missed line — often the one case
+// where nothing else is written — and a key dropped for being false is
+// indistinguishable to a non-Go client from a beat that never said.
+type SpokeBody struct {
+	// Actor is who spoke.
 	Actor string `json:"actor"`
 
-	// Target is who was threatened. The witnesses are the beat's audience
-	// and are not listed: a recipient knows it saw this because it was
-	// delivered the beat at all.
-	Target string `json:"target"`
+	// Target is the creature spoken to, or empty for a prop. The witnesses
+	// are the beat's audience and are not listed: a recipient knows it saw
+	// this because it was delivered the beat at all.
+	Target string `json:"target,omitempty"`
 
-	// DC is what the check had to reach — the monster's own, authored on
-	// the placement or derived from its stat block.
+	// Prop is the prop spoken to, or empty for a creature. Exactly one of
+	// Target and Prop is set.
+	Prop string `json:"prop,omitempty"`
+
+	// OptionID is the line that was said, as the menu offered it.
+	OptionID string `json:"option_id"`
+
+	// Line is what the character said, verbatim as authored.
+	Line string `json:"line"`
+
+	// Skill is the approach the check rolled — "intimidation", "religion" —
+	// carried, never interpreted. It is what decided the deed (R3).
+	Skill string `json:"skill"`
+
+	// DC is what the check had to reach — the applied route's own, authored
+	// on the option.
 	DC int `json:"dc"`
 
 	// Total is what the check totalled.
@@ -2750,51 +2752,14 @@ type IntimidatedBody struct {
 
 	// Calculation is the roll behind Total — the d20 pool with every face it
 	// threw and the Keep record naming the rule that decided which one
-	// counted. This beat used to be {dc, total, beaten} wide, so an untrained
-	// character's second face and the word "Untrained" never reached the log
-	// (rpg-project#462).
+	// counted (rpg-project#462).
 	//
 	// Optional, and absent means absent: a beat written without arithmetic
 	// carries no key rather than an empty calculation.
 	Calculation *RollCalculation `json:"calculation,omitempty"`
 }
 
-func (IntimidatedBody) isEventBody() {}
-
-// PersuadedBody is EventPersuaded's typed body — [IntimidatedBody]'s fields
-// with [IntimidatedBody]'s contracts, because a client that learned one shape
-// must not have to learn a second.
-type PersuadedBody struct {
-	// Actor is who made the appeal.
-	Actor string `json:"actor"`
-
-	// Target is who was appealed to. The witnesses are the beat's audience
-	// and are not listed: a recipient knows it saw this because it was
-	// delivered the beat at all.
-	Target string `json:"target"`
-
-	// DC is what the check had to reach — the creature's own, authored on the
-	// placement or derived from its stat block.
-	DC int `json:"dc"`
-
-	// Total is what the check totalled.
-	Total int `json:"total"`
-
-	// Beaten is whether it landed.
-	Beaten bool `json:"beaten"`
-
-	// Calculation is the roll behind Total — the d20 pool with every face it
-	// threw and the Keep record naming the rule that decided which one
-	// counted. This beat used to be {dc, total, beaten} wide, so an untrained
-	// character's second face and the word "Untrained" never reached the log
-	// (rpg-project#462).
-	//
-	// Optional, and absent means absent: a beat written without arithmetic
-	// carries no key rather than an empty calculation.
-	Calculation *RollCalculation `json:"calculation,omitempty"`
-}
-
-func (PersuadedBody) isEventBody() {}
+func (SpokeBody) isEventBody() {}
 
 // AnsweredBody is EventAnswered's typed body: the world's roll on the author's
 // answer table, and what the creature did and said. Not a reaction — see
@@ -2805,13 +2770,21 @@ func (PersuadedBody) isEventBody() {}
 // an empty `word` are all answers, and the beat exists at all only when an
 // entry actually fired.
 type AnsweredBody struct {
-	// Creature is whose table was rolled — the member the verb was aimed at.
+	// Creature is whose table was rolled — the member the line was said to, or
+	// the creature whose own `time` table this is. Empty when a PROP answered.
 	Creature string `json:"creature"`
 
-	// Verb is which social verb produced this, "intimidate" or "persuade" —
-	// the composition's own deed verb, so a reader need not split the outcome
-	// key apart to know.
+	// Prop is the prop whose option answered, or empty when a creature did.
+	// Exactly one of Creature and Prop is set (rpg-project#569).
+	Prop string `json:"prop"`
+
+	// Verb is the verb that produced this — "speak" for an option's answer,
+	// empty for a `time` pick, because nothing spoke.
 	Verb string `json:"verb"`
+
+	// OptionID names which option's rows were rolled, empty for a `time`
+	// pick (rpg-project#569).
+	OptionID string `json:"option_id"`
 
 	// Beaten is the verdict the table was read for, so a client can render
 	// "you failed, and then…" without holding the earlier beat.
@@ -2840,9 +2813,9 @@ type AnsweredBody struct {
 	// "fact".
 	Fact string `json:"fact"`
 
-	// Key is the trigger this table was rolled under — one of the four social
-	// outcomes ("intimidated", "intimidate_failed", "persuaded",
-	// "persuade_failed") or "time", the creature's own turn.
+	// Key is the trigger this table was rolled under — "success" or
+	// "failure" for an option's rows (named by OptionID), or "time", the
+	// creature's own turn.
 	//
 	// IT IS WHAT TELLS THE TWO KINDS APART, and it is the field to switch on
 	// rather than Verb: a `time` pick has no verb because nothing spoke, and
@@ -3530,6 +3503,42 @@ type SpellRef struct {
 	Name string `json:"name"`
 }
 
+// SpeakOptionRow is one line on the Speak row's menu: who offers it, the id
+// the request echoes, and the words the character says (rpg-project#569).
+//
+// EXACTLY ONE of Target and Prop is set. A request brings both the option id
+// and that same target back in [SpeakInput]; an option id alone names
+// nothing, because two creatures may each author a line called "greet".
+type SpeakOptionRow struct {
+	// Target is the creature that offers this line, as it appears in the
+	// roster. Empty when the line is a prop's.
+	Target string `json:"target,omitempty"`
+
+	// Prop is the prop that offers this line — the dungeon file's
+	// `place[].id`, the id [AtlasProp.ID] carries. Empty when the line is a
+	// creature's.
+	Prop string `json:"prop,omitempty"`
+
+	// OptionID is the author's id for the line, unique on its target. The
+	// client echoes it in [SpeakInput.OptionID] and never parses it.
+	OptionID string `json:"option_id"`
+
+	// Line is what the character says, VERBATIM as authored. The engine
+	// never composes one.
+	Line string `json:"line"`
+
+	// Available is whether this speaker may pick this line right now,
+	// independent of the declaration's turn and economy gate. PLAIN bool:
+	// false is an answer. Every row listed today is available — a line whose
+	// `requires` the speaker does not meet is not listed at all (R9, the
+	// probe law), and a creature that cannot see the speaker is not a target.
+	Available bool `json:"available"`
+
+	// Why is present if and only if Available is false — the line's own
+	// reason, never the declaration's.
+	Why *Shortfall `json:"why,omitempty"`
+}
+
 // CastOption is one word on a cast's menu — Command's "Approach", "Flee",
 // "Grovel" — the seam's own word for the content's authored choice.
 //
@@ -3681,21 +3690,22 @@ const (
 	// provider's refusal; its resolution depends on that precondition.
 	ShortfallUnavailable ShortfallReason = "unavailable"
 
-	// ShortfallNoSocialEntry is an audience nobody in which the author gave
-	// this social verb to (rpg-project#494 R2). The verbs refuse it as
-	// ErrNoSocialEntry.
+	// ShortfallNoOption is a Speak row with nothing on its menu: somebody can
+	// see the speaker, and nothing here — no creature that sees them, no prop
+	// they can address — has a line for them (rpg-project#569). The verb
+	// refuses it as ErrNoOption.
 	//
 	// NOT ShortfallNoTargetInReach, and the difference is the instruction a
 	// client gives. "Nobody can see you to be spoken to" means move or make
-	// yourself seen; this one means there is nobody here this verb works on,
-	// however you stand. Collapsing them would tell a player to walk toward a
-	// goblin that was never written to be talked to.
+	// yourself seen; this one means there is nothing here to say, however you
+	// stand — or nothing YOU know to say yet, since a line can wait on a fact
+	// the speaker has not learned (R9). The two are deliberately one reason:
+	// telling them apart would confirm a line the author hid.
 	//
-	// THE NO-WITNESS CASE STILL WINS. An actor nobody can see gets
-	// ShortfallNoTargetInReach even though no candidate carries entries
-	// either: the audience is the first thing missing, and naming the second
-	// would answer a question the player has not reached.
-	ShortfallNoSocialEntry ShortfallReason = "no_social_entry"
+	// THE NO-WITNESS CASE STILL WINS when no prop offers a line either: the
+	// audience is the first thing missing, and naming the second would answer
+	// a question the player has not reached.
+	ShortfallNoOption ShortfallReason = "no_option"
 )
 
 // Currency names which of a turn's budgets a NO_BUDGET shortfall ran out

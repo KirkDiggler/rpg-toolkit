@@ -295,7 +295,7 @@ func TestAffordSessionVerbsDescribedIncludingBlocked(t *testing.T) {
 	t.Run("off the turn", func(t *testing.T) {
 		rows := affordRows(t, s.mgr, waiting)
 		for _, verb := range []session.Verb{
-			session.VerbMove, session.VerbEndTurn, session.VerbIntimidate, session.VerbPersuade,
+			session.VerbMove, session.VerbEndTurn, session.VerbSpeak,
 		} {
 			row := rowOfVerb(t, rows, verb)
 			require.False(t, row.Available, "precondition: it is not %s's turn", waiting)
@@ -309,18 +309,16 @@ func TestAffordSessionVerbsDescribedIncludingBlocked(t *testing.T) {
 	})
 
 	t.Run("world clock", func(t *testing.T) {
-		p := &PersuadeSuite{}
+		p := &SpeakWorldSuite{}
 		p.SetT(t)
 		p.SetupTest()
 		mgr := p.front([]int{10})
 		turn, err := mgr.Turn(context.Background(), &session.TurnInput{Session: "sess", Member: "alice"})
 		require.NoError(t, err)
 		require.Equal(t, session.ClockWorld, turn.Clock, "precondition: nothing here is fighting")
-		for _, verb := range []session.Verb{session.VerbIntimidate, session.VerbPersuade} {
-			row := rowOfVerb(t, p.rows(mgr), verb)
-			require.NotNil(t, row.Information, "%s", verb)
-			require.NotEmpty(t, row.Information.Description, "%s", verb)
-		}
+		row := rowOfVerb(t, p.rows(mgr), session.VerbSpeak)
+		require.NotNil(t, row.Information)
+		require.NotEmpty(t, row.Information.Description)
 	})
 }
 

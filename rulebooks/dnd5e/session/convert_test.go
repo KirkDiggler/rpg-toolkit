@@ -152,24 +152,14 @@ var omitted = map[string]string{
 	"encounter.Member.Faction":       "carried on the roster row, PublicMember.Faction; a placement answers a cell",
 	"encounter.MemberOutcome.Region": "a region id; the composition's own bookkeeping — Position already names the cell on the map",
 
-	// Intimidate, Persuade, Table and Temper (rpg-project#454, #458, #465)
-	// are the placement's authored facts, read by ONE consumer: the social
-	// verbs, which ask the composition for a DC at the moment they need one
-	// and hand it straight back on the response. A roster listing answers
-	// "who is here, and where"; a creature's difficulty class is not part of
-	// that question, and the number reaches a client on the response and on
-	// the verb's own beat either way.
+	// Table and Temper (rpg-project#465) are the placement's authored facts.
+	// A roster listing answers "who is here, and where"; what a creature will
+	// do is not part of that question.
 	//
 	// THE TABLE IS THE AUTHOR'S, NOT THE CLIENT'S. What the creature will do
 	// and say is the setup, and projecting it onto a roster row would hand
 	// every player the goblin's script before anybody spoke to it. What they
-	// get is the `answered` beat after an entry fires — the line, the die,
-	// every eligible entry's arithmetic, and the entry that won. Project these
-	// when a real reader needs them ahead of the roll, the way SpeedFeet and
-	// friends will be.
-	"encounter.Member.Intimidate": "the authored check the social verbs read at roll time; " +
-		"the DC reaches a client on the response and the beat, not on a roster row",
-	"encounter.Member.Persuade": "Intimidate's twin, omitted for Intimidate's reason",
+	// get is the `answered` beat after an entry fires.
 	"encounter.Member.Table": "the author's script for what the creature does and says; a client " +
 		"reads it as the `answered` beat AFTER an entry fires, never as a roster row it could read ahead",
 	"encounter.Member.Temper": "the loading on that script's die, omitted for Table's reason; which " +

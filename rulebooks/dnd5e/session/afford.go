@@ -97,34 +97,21 @@ const (
 	// does not (design R10).
 	VerbCast Verb = "cast"
 
-	// VerbIntimidate is [Manager.Intimidate]: threatening another member so
-	// the mind reading the outcome changes what it does
-	// (rpg-project#454, the first shenanigan).
+	// VerbSpeak is [Manager.Speak]: saying one authored line to a creature or
+	// a prop (rpg-project#569). The one social verb — it replaced Intimidate
+	// and Persuade, which became options whose check lists their skill.
 	//
-	// One row, targeting a member, priced at the standard action
-	// ([character.CostOfIntimidate]). Its selector variant is a sealed
-	// string like Move's and unlike Attack's: a threat compiles no action
-	// definition, and there is nothing about it that can go stale between
-	// the read and the click except the budget the row already reports.
+	// One row, targeting a member, priced at the standard action on the turn
+	// clock and at nothing on the world clock. Its selector variant is a
+	// sealed string like Move's: a line compiles no action definition.
 	//
-	// ITS CANDIDATES ARE EVERYONE THIS MEMBER CAN SEE, with no reach gate at
-	// all: "no distance cap beyond sight" is the design's own decision, and
-	// shouting across a lit hall is a shenanigan. The verb's real refusal is
-	// the other direction — the TARGET must be able to see the actor — and
-	// this seam cannot compute that from the actor's own holdings, so an
-	// offered row can still be refused at the door. That is the same
-	// asymmetry a stale Attack row has, and the verb is where it is caught.
-	VerbIntimidate Verb = "intimidate"
-
-	// VerbPersuade is [Manager.Persuade]: talking another member round so the
-	// author's table decides what they do about it (rpg-project#458, the
-	// second shenanigan).
-	//
-	// [VerbIntimidate]'S TWIN, with that verb's candidates, that verb's
-	// selector shape and that verb's price — and it is spelled out here
-	// rather than derived from it, because the day one of them is priced
-	// differently the change must reach one row and not both.
-	VerbPersuade Verb = "persuade"
+	// THE ROW CARRIES ITS MENU ([Declaration.SpeakOptions]): every line every
+	// target offers this speaker, props included, and the request echoes one
+	// option id with the target that offered it. Its candidates are the
+	// witnesses who offer at least one line — the TARGET must be able to see
+	// the actor, the other direction from every other row — with no reach
+	// gate beyond sight.
+	VerbSpeak Verb = "speak"
 
 	// VerbDeathSave is [Manager.DeathSave]: the explicit saving throw offered
 	// only to the active Dying character with this turn's capacity remaining.
@@ -398,6 +385,22 @@ type Declaration struct {
 	// bring — rather than a second selector the client assembles.
 	Options []CastOption `json:"options,omitempty"`
 
+	// SpeakOptions is the Speak row's menu: one row per (target, line) pair
+	// across every creature that can see the speaker and every prop they can
+	// address, in target order and then the author's order (rpg-project#569).
+	// Present only on a [VerbSpeak] declaration; nil on every other row and
+	// on a Speak blocker that compiled nothing.
+	//
+	// A ROW LISTING LINES REQUIRES ONE BACK: [SpeakInput.OptionID] with the
+	// row's own target. A compiled Speak row with an empty menu is
+	// unavailable, and Why says why — nobody can see you, or nothing here has
+	// a line for you ([ShortfallNoOption]).
+	//
+	// NOT [Declaration.Options], which is the cast menu and a different
+	// shape: a cast option is a word for one spell, a speak option is a line
+	// a TARGET offers, and the target travels with it.
+	SpeakOptions []SpeakOptionRow `json:"speak_options,omitempty"`
+
 	// Cost is generic provider-authored display data copied from the executable
 	// spend profile. Private resource keys never cross this seam.
 	Cost []CostComponent `json:"cost"`
@@ -607,7 +610,7 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 		return affordWhileFrozen(in.Session, in.Member, open, ClockKind(clock.Kind))
 	}
 
-	// THE WORLD CLOCK OFFERS THE SOCIAL VERBS, AND NOTHING ELSE (R3,
+	// THE WORLD CLOCK OFFERS THE SOCIAL VERB, AND NOTHING ELSE (R3,
 	// rpg-project#457). This used to return an empty list on the reasoning
 	// that free roam has no economy and therefore nothing to price; the
 	// second half of that was never true — Move spends nothing there and
@@ -621,7 +624,7 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 	// Activate all spend a turn's economy, and Move is deliberately not a row
 	// here (move.go refuses a world-clock declaration id for that reason).
 	if ClockKind(clock.Kind) != ClockTurn {
-		rows, err := m.socialRowsOnTheWorldClock(enc, in.Session, in.Member)
+		rows, err := m.speakRowOnTheWorldClock(enc, in.Session, in.Member)
 		if err != nil {
 			return nil, fmt.Errorf("afford: %w", err)
 		}
@@ -652,8 +655,7 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 			// member whose turn it is not can cast none of what they know,
 			// and the reason is identical for every known spell.
 			describedBlocker(VerbCast, TargetNone, notYourTurn),
-			describedBlocker(VerbIntimidate, TargetMember, notYourTurn),
-			describedBlocker(VerbPersuade, TargetMember, notYourTurn),
+			describedBlocker(VerbSpeak, TargetMember, notYourTurn),
 			describedBlocker(VerbEndTurn, TargetNone, notYourTurn),
 		}}, nil
 	}
@@ -667,7 +669,7 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 	actor := m.loadActorSheet(ctx, in.Member)
 	offers, err := m.compileOffersFor(
 		ctx, enc, data, in.Session, in.Member, clock, actor,
-		VerbAttack, VerbMove, VerbActivate, VerbCast, VerbIntimidate, VerbPersuade, VerbDeathSave, VerbEndTurn,
+		VerbAttack, VerbMove, VerbActivate, VerbCast, VerbSpeak, VerbDeathSave, VerbEndTurn,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("afford: %w", err)
@@ -858,15 +860,14 @@ func affordWhileFrozen(session, member string, open []interrupt.Window, clock Cl
 	// refusal for them there would be reporting a refusal for rows that were
 	// never rows.
 	//
-	// THE SOCIAL VERBS ARE ROWS ON BOTH CLOCKS as of R3 (rpg-project#457), so
-	// they are blocked on both. Before that ruling a frozen world-clock panel
-	// was the window alone and that was the whole truth; now, leaving them out
-	// would make two rows simply VANISH while a window is open, which is the
-	// one thing this function exists to prevent.
+	// THE SOCIAL VERB IS A ROW ON BOTH CLOCKS as of R3 (rpg-project#457), so
+	// it is blocked on both. Before that ruling a frozen world-clock panel was
+	// the window alone and that was the whole truth; now, leaving it out would
+	// make the row simply VANISH while a window is open, which is the one
+	// thing this function exists to prevent.
 	frozen := Shortfall{Reason: ShortfallWindowOpen, Text: "an interrupt window is open"}
 	declarations = append(declarations,
-		describedBlocker(VerbIntimidate, TargetMember, frozen),
-		describedBlocker(VerbPersuade, TargetMember, frozen),
+		describedBlocker(VerbSpeak, TargetMember, frozen),
 	)
 	if clock == ClockTurn {
 		declarations = append(declarations,
@@ -893,66 +894,53 @@ func affordWhileFrozen(session, member string, open []interrupt.Window, clock Cl
 	return &AffordOutput{Clock: clock, Declarations: declarations}, nil
 }
 
-// socialRowsOnTheWorldClock compiles the two social verbs for a member in free
-// roam (R3, rpg-project#457 — "this will be the first getting verbs outside
+// speakRowOnTheWorldClock compiles the Speak row for a member in free roam
+// (R3, rpg-project#457 — "this will be the first getting verbs outside
 // combat").
 //
 // # Free, and not as a discount
 //
 // The world clock has no economy: there is no action to spend, no budget to
-// fall short of, and therefore no shortfall to report. So every row comes back
-// [SlotNone] with no Why, which is Move's own answer in free roam rather than
-// a price this function decided to waive. It does NOT load the actor's sheet
-// at all — a price is a question about a sheet, and there is no price here to
-// ask about.
+// fall short of, and therefore no price shortfall to report. So the row comes
+// back [SlotNone], which is Move's own answer in free roam rather than a price
+// this function decided to waive. It does NOT load the actor's sheet at all —
+// a price is a question about a sheet, and there is no price here to ask
+// about.
 //
-// # Two rows, and no others
+// # One row, and no others
 //
 // Attack, Cast and Activate all spend a turn's economy and are not offered
 // here; Move is deliberately not a row either, because free-roam movement
-// takes no declaration id (move.go refuses one). That leaves exactly the verbs
-// a player can use on a creature standing in a doorway with no fight running,
-// which is the whole of what this slice adds to this panel.
+// takes no declaration id (move.go refuses one). That leaves exactly the verb
+// a player can use on a creature standing in a doorway with no fight running.
 //
-// The candidates are the witnesses an author gave the verb to, the same set
-// the verb itself will ask for — see [buildSocialOffer], whose direction and
-// whose candidate law this shares and whose price it does not. A row nobody
-// in the room was authored for is unavailable with ShortfallNoSocialEntry
-// (rpg-project#494 R2); the clock changes what a row COSTS and never who it
-// is offered on.
-func (m *Manager) socialRowsOnTheWorldClock(
+// The menu and candidates are [buildSpeakOffer]'s, read by the same
+// [readSpeakMenu]; the clock changes what the row COSTS and never what it
+// offers.
+func (m *Manager) speakRowOnTheWorldClock(
 	enc *encounter.Encounter, session, member string,
 ) ([]Declaration, error) {
-	audience, err := readSocialAudience(enc, member)
+	menu, err := readSpeakMenu(enc, member)
 	if err != nil {
 		return nil, err
 	}
-
-	rows := make([]Declaration, 0, 2)
-	for _, spec := range []socialVerb{m.intimidateVerb(), m.persuadeVerb()} {
-		candidates, err := audience.candidatesFor(spec)
-		if err != nil {
-			return nil, err
-		}
-		id, _, err := selectorIDFor(session, member, spec.verb, SlotNone, nil, nil, "", "")
-		if err != nil {
-			return nil, err
-		}
-		decl := Declaration{
-			Verb: spec.verb, Slot: SlotNone, ID: id,
-			TargetKind: TargetMember, Candidates: projectCandidates(candidates),
-			Information: sessionVerbInformation(spec.verb),
-		}
-		// NO SHEET AND NO PROFILE: free roam has no economy to fall short of,
-		// so the shared order skips its price arm rather than waiving one.
-		if why := socialShortfall(audience, candidates, spec, nil, nil); why != nil {
-			decl.Why = why
-		} else {
-			decl.Available = true
-		}
-		rows = append(rows, decl)
+	id, _, err := selectorIDFor(session, member, VerbSpeak, SlotNone, nil, nil, "", "")
+	if err != nil {
+		return nil, err
 	}
-	sortDeclarations(rows)
+	decl := Declaration{
+		Verb: VerbSpeak, Slot: SlotNone, ID: id,
+		TargetKind: TargetMember, Candidates: projectCandidates(menu.targets),
+		SpeakOptions: menu.projectRows(),
+		Information:  sessionVerbInformation(VerbSpeak),
+	}
+	// NO SHEET AND NO PROFILE: free roam has no economy to fall short of, so
+	// the shared order skips its price arm rather than waiving one.
+	if why := speakShortfall(menu, nil, nil); why != nil {
+		decl.Why = why
+	} else {
+		decl.Available = true
+	}
 
-	return rows, nil
+	return []Declaration{decl}, nil
 }
