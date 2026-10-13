@@ -3,6 +3,8 @@
 
 package behavior
 
+import "fmt"
+
 // answer.go is ONE ROW of a creature's table: how likely it is, when it is
 // even on the table, what the creature says, and the one thing it does.
 //
@@ -46,10 +48,17 @@ type Answer struct {
 	// disposition.
 	Say string
 
-	// When is the condition this entry is on the table under, or nil for a
-	// standing order. See [When] — an entry whose condition does not hold is
-	// not a candidate for this roll at all.
-	When *When
+	// When is the list of conditions this entry is on the table under, and
+	// EVERY ONE MUST HOLD (R8 of rpg-project#569); empty is a standing order.
+	// See [When] — an entry whose conditions do not all hold is not a
+	// candidate for this roll at all.
+	//
+	// A LIST BECAUSE ROWS ARE ROLLED, NOT ORDERED. "Storm the keep once the
+	// guards have turned, but not while a loyalist is in sight" cannot be
+	// said by putting one row above another; it is two conditions on one
+	// row — `[{ fact: guards-turned }, { not: { enemy: seen } }]` — and each
+	// When in the list still names exactly one thing.
+	When []When
 
 	// Fact is the world fact every witness learns when this entry fires —
 	// what `on: { intimidated: { fact: … } }` used to be, now one entry of
@@ -92,4 +101,53 @@ type Answer struct {
 	// their own engine-driven its own router path and do not pass through the
 	// table.
 	Away *Selector
+}
+
+// Validate refuses what this module's own types cannot carry: a [When] in the
+// list that does not name exactly one condition ([When.Validate],
+// ErrBadWhen), and a [Selector] naming no target or more than one, a `path`
+// on a word other than `toward`, `sound` on `attack`, or `sound` on a row
+// whose list names no `heard` condition (ErrBadSelector, R10). Each refusal is a sentence for
+// the form, wrapping its sentinel.
+//
+// THE REST IS THE CALLER'S DOOR, as it always was: the weight, the
+// one-outcome-word rule, which word is legal under which key, and which enemy,
+// deed and selector words this build reads are refused by the dialect that
+// decoded the file, which calls this first.
+func (a *Answer) Validate() error {
+	for i := range a.When {
+		if err := a.When[i].Validate(); err != nil {
+			return err
+		}
+	}
+	for _, slot := range []struct {
+		word string
+		sel  *Selector
+	}{{"attack", a.Attack}, {"toward", a.Toward}, {"away", a.Away}} {
+		if slot.sel == nil {
+			continue
+		}
+		if err := slot.sel.validate(slot.word); err != nil {
+			return err
+		}
+		if slot.sel.Word == SelectorSound && !a.listens() {
+			return fmt.Errorf("`sound` needs a `heard` condition on the row: "+
+				"the sound it walks to is the one the row listened for: %w", ErrBadSelector)
+		}
+	}
+
+	return nil
+}
+
+// listens reports whether this row's `when` list names a `heard` condition
+// at its top level. A `heard` inside a `not` does not count: that row holds
+// when the creature heard NOTHING, so there is no sound for it to walk to.
+func (a *Answer) listens() bool {
+	for i := range a.When {
+		if a.When[i].Heard != nil {
+			return true
+		}
+	}
+
+	return false
 }

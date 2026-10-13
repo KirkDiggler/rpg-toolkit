@@ -38,10 +38,53 @@ nobody can replay is a table nobody can trust.
    it adds no entries, holds no memory, carries no trigger. `Deal` picks one
    out of a faction's spread; the vocabulary is the caller's, and any word that
    arrives with a profile is multiplied by it.
-4. **What the creature has seen and suffered.** An entry's `When` reads the
-   caller's own `Facts` — how close the nearest opposed thing has got, or a
-   deed done to this creature within N units. An entry whose condition is false
-   is ABSENT from the roll, not weighted zero.
+4. **What the creature has seen, heard and suffered.** An entry's `When` is a
+   LIST of conditions read against the caller's own `Facts`, and every one must
+   hold (an empty list is a standing order). An entry whose conditions do not
+   all hold is ABSENT from the roll, not weighted zero.
+
+### The conditions
+
+Each `When` in the list names exactly one of these; two in one `When` is
+refused, because the list is already the `and`.
+
+| condition | holds when | reads |
+|---|---|---|
+| `enemy: reach \| seen \| remembered \| none` | the nearest opposed thing is in that band (the bands are exclusive) | `Facts.EnemyInReach/Seen/Remembered` |
+| `<deed>: { within: N, on/as }` — `attacked`, `intimidated`, `persuaded`, `fled` | that deed was done to me (or my side, or by me) within N units | `Facts.Deeds/AllyDeeds/OwnDeeds` |
+| `heard: { kind, within: N }` | a sound of that kind was heard within N units | `Facts.Sounds` |
+| `fact: <id>` | the creature holds that world fact | `Facts.Known` |
+| `not: { <one condition> }` | the condition inside does not hold | whatever it wraps |
+
+```yaml
+- { when: [{ fact: guards-turned }, { not: { enemy: seen } }], toward: { at: [20,12] } }
+```
+
+`Answer.Validate` and `When.Validate` refuse the shape faults this module's
+types cannot carry, each as a sentence for the form:
+
+- a `When` that does not name exactly one condition;
+- a `heard` with no kind or a span below 1;
+- a deed's `within` or scope on a condition that is not a deed;
+- a selector naming no target or more than one;
+- a `path` off `toward`;
+- `sound` on `attack` (a sound cannot be struck);
+- `sound` on a row whose list names no `heard` condition (R10).
+
+Which words are legal under which key, which enemy and deed words a build
+reads, and a deed span below 1 stay the dialect's door.
+
+### Selectors
+
+`attack`, `toward` and `away` take a `Selector`: exactly one of a word, a
+cell (`at`), or a route (`path`, `toward` only). The words are `enemy`,
+`attacker`, `actor` and `sound`.
+
+- **`sound`** is where the freshest held sound was made. It is legal on
+  `toward` and `away` only, and only on a row that names a `heard` condition
+  (R10), the way `actor` needs a deed. Resolving it is the caller's.
+- **A route** is a patrol and holds no state: which waypoint is next is the
+  caller's to derive from where the creature stands each time the row fires.
 
 **Affordability is eligibility.** `Facts.CanAttack` and `Facts.CanMove` say
 what the creature can still pay for, and an entry it cannot pay for is absent
@@ -105,13 +148,25 @@ truth would be two truths to keep in step.
 `rulebooks/dnd5e/behavior`, the sibling that configured these minds, is
 deleted outright in the same wave.
 
+## The sounds channel
+
+`sound.Land` is the deeds channel's sibling for noise. A `Sound` is a kind, a
+place and a time — and **never a maker** (rpg-project#569, R4): a sound has no
+figures in it, so every hearer holds the same report and nothing is blanked.
+A guard who hears a clang knows something metal happened over there, not who
+swung; finding out who is what walking over and looking is for. Who is close
+enough to hear, and how loud each kind is, are the caller's physics.
+`sound.Held` reads a creature's holdings back into `Facts.Sounds`; a hearer
+holds the latest landed sound of each kind, which is the freshest when the
+caller lands sounds in clock order.
+
 ## The arrow points one way
 
 This module depends on `mind/perception`; perception never learns anything
-about it (R1). `Land` writes through the store's own `Report` door and runs no
-perception pass of its own.
+about it (R1). `stage.Land` and `sound.Land` write through the store's own
+`Report` door and run no perception pass of their own.
 
 Design contract: `docs/ideas/mind/behavior/design.md`. R7 (the ladder) and R11
 (the Space) are retired with the code they bound. R2 (a payload is the
-caller's to read, except the deeds channel this module wrote) and R9 (a deed
-lands in each witness's own terms) are what remains.
+caller's to read, except the deeds and sounds channels this module wrote) and
+R9 (a deed lands in each witness's own terms) are what remains.
