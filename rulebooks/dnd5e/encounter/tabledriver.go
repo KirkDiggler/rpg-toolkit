@@ -354,18 +354,36 @@ func soundFor(sounds []Sound, when []When) (spatial.Position, bool) {
 }
 
 // nextWaypoint is the waypoint a patrol walks to from where the creature
-// stands (rpg-project#569 R7): the one AFTER the waypoint it is standing on —
-// the last one's next is the first, so the route is a loop — and, when it
-// stands on none, the NEAREST, ties to the earlier in the author's order.
+// stands (rpg-project#569 R7, as ruled on the review), asked in this order:
+//
+//   - ON A WAYPOINT: the next one. The last one's next is the first, so the
+//     route is a loop.
+//   - ON A LEG between waypoints i and i+1 — a cell on some shortest walk
+//     between them, which is where a walk toward i+1 that ran out of movement
+//     leaves it: i+1. Without this a leg longer than one round's movement is
+//     paced back and forth, because partway along it the waypoint just left is
+//     the nearer. The first leg in the author's order wins when a cell lies on
+//     two.
+//   - OFF THE ROUTE: the nearest waypoint, ties to the earlier in the author's
+//     order — a creature shoved off by a spell, or walked round a wall, goes
+//     back to the route where it is closest.
 //
 // DERIVED, NEVER REMEMBERED. Nothing holds a cursor: the creature's own cell
-// is the whole state, which is what lets a creature shoved off its route by
-// a spell, or reloaded from a save, pick its patrol back up without a field
-// anywhere recording how far along it was.
+// is the whole state, which is what lets a creature shoved off its route, or
+// reloaded from a save, pick its patrol back up without a field anywhere
+// recording how far along it was.
 func nextWaypoint(from spatial.Position, path []spatial.Position) spatial.Position {
 	for i, waypoint := range path {
 		if waypoint == from {
 			return path[(i+1)%len(path)]
+		}
+	}
+	if len(path) > 1 {
+		for i := range path {
+			a, b := path[i], path[(i+1)%len(path)]
+			if adjacencyGrid.Distance(a, from)+adjacencyGrid.Distance(from, b) == adjacencyGrid.Distance(a, b) {
+				return b
+			}
 		}
 	}
 	best := 0

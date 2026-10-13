@@ -979,8 +979,9 @@ func TestAPathWalksWaypointToWaypointAndResumesAtTheNearest(t *testing.T) {
 	}
 
 	// SHOVED OFF THE ROUTE — a commanded step the table did not choose. One
-	// cell east of the last waypoint, which is now the nearest by one.
-	off := cellAt(13, 6)
+	// cell south of the last waypoint, on no leg of the route, so the
+	// waypoint it is nearest by one is where it goes back to.
+	off := cellAt(12, 7)
 	_, err := enc.Direct(context.Background(), encounter.DirectInput{
 		Mover: hWalker, Route: []spatial.Position{off},
 		Cause: core.Ref{Module: "test", Type: "spell", ID: "command"},
@@ -1144,4 +1145,27 @@ func TestSoundOnAttackIsRefusedAtTheDoor(t *testing.T) {
 	))
 	require.ErrorIs(t, err, encounter.ErrBadAnswer)
 	require.Contains(t, err.Error(), "a sound cannot be struck")
+}
+
+// TestALongLegIsWalkedToItsEndNotBackToItsStart is the patrol rule as ruled
+// on the review (rpg-project#569 R7): a creature standing ON the leg between
+// two waypoints walks on to the second, however near the first still is. A
+// nine-cell leg walked three cells a round puts the walker nearer the
+// waypoint it left after the first round — "nearest" alone would turn it
+// round, and it would pace the first three cells forever.
+func TestALongLegIsWalkedToItsEndNotBackToItsStart(t *testing.T) {
+	route := []spatial.Position{cellAt(10, 2), cellAt(19, 2), cellAt(19, 7)}
+	enc := tableHall(t,
+		sheetFacts{noiseAlice: {SpeedFeet: 30}, hWalker: {SpeedFeet: 15}},
+		at(noiseAlice, encounter.KindPlayer, 2, 8),
+		tabled(hWalker, 10, 2, encounter.Table{encounter.AnswerTime: {
+			{Weight: 1, Toward: &encounter.Selector{Path: route}},
+		}}),
+	)
+
+	for i, want := range []spatial.Position{cellAt(13, 2), cellAt(16, 2), cellAt(19, 2)} {
+		_, err := aRound(enc)
+		require.NoError(t, err)
+		require.Equal(t, want, whereIs(t, enc, hWalker), "round %d is three more cells along the leg", i+1)
+	}
 }

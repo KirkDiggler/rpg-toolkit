@@ -155,7 +155,8 @@ gets a `heard` beat — kind, position, hops — addressed to them alone.
 creature say it AND everyone who hears its voice, and the row's `say` (or the
 fact itself) lands a voice. `toward: { path: [cells] }` is a patrol: the next
 waypoint is derived from where the creature stands — the one after the
-waypoint it is on, else the nearest — so the table holds no cursor.
+waypoint it is on; the far end of the leg it is partway along; else, off the
+route, the nearest — so the table holds no cursor.
 
 ### You are given only what you know
 
