@@ -1169,3 +1169,37 @@ func (s *TableSuite) TestSoundNeedsARowThatListened() {
 		Toward: &behavior.Selector{Word: behavior.SelectorSound}}).Validate(),
 		"a `heard` anywhere in the list is the row listening")
 }
+
+// TestAWalkToASoundIsAbsentWhenNoSoundIsHeld: a `sound` selector names where
+// a held sound was made, so with no sound held there is nowhere to walk and
+// the row is absent from the roll, like an unmet `when`. The second table
+// has no `when` at all — a struct built in Go that never met Validate — so it
+// is the affordability gate, and not the `heard` condition, being tested.
+func (s *TableSuite) TestAWalkToASoundIsAbsentWhenNoSoundIsHeld() {
+	listened := behavior.Table{behavior.KeyTime: {
+		{Weight: 1, When: []behavior.When{{Heard: &behavior.HeardWhen{Kind: "clang", Within: 3}}},
+			Toward: &behavior.Selector{Word: behavior.SelectorSound}},
+		{Weight: 1, Hold: true},
+	}}
+	unvalidated := behavior.Table{behavior.KeyTime: {
+		{Weight: 1, Toward: &behavior.Selector{Word: behavior.SelectorSound}},
+		{Weight: 1, Away: &behavior.Selector{Word: behavior.SelectorSound}},
+		{Weight: 1, Hold: true},
+	}}
+	clang := []sound.Sound{{Kind: "clang", Where: someCell, At: 5}}
+
+	s.Equal(1, s.pickTime(listened, behavior.Facts{Now: 5, CanMove: true}), "nothing held, nowhere to walk")
+	s.Equal(0, s.pickTime(listened, behavior.Facts{Now: 5, CanMove: true, Sounds: clang}), "a clang is held")
+
+	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
+		Key: behavior.KeyTime, Table: unvalidated, Facts: behavior.Facts{Now: 5, CanMove: true}, Die: &facedDie{face: 1}})
+	s.Require().NoError(err)
+	s.Require().Len(chosen.Candidates, 1, "toward and away on a sound are both absent; only hold is left")
+	s.Equal(2, chosen.Entry)
+
+	chosen, err = behavior.Pick(context.Background(), &behavior.PickInput{
+		Key: behavior.KeyTime, Table: unvalidated, Facts: behavior.Facts{Now: 5, CanMove: true, Sounds: clang},
+		Die: &facedDie{face: 1}})
+	s.Require().NoError(err)
+	s.Equal(0, chosen.Entry, "with a sound held the walk is back on the table")
+}

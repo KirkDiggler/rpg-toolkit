@@ -776,15 +776,30 @@ type Facts struct {
 // a `hold` cost nothing a turn can run out of — and `hold` in particular must
 // stay eligible whatever the budget says, because it is the word that lets a
 // creature with nothing left to spend still have had its turn.
+//
+// A WALK TO A SOUND NEEDS A SOUND. `toward: sound` and `away: sound` walk
+// relative to a sound the creature holds; with none held there is nowhere to
+// go, so the row is absent from the roll exactly as an unmet `when` is. The
+// row's own `heard` (R10) usually says the same, but [Pick] never validates,
+// and eligibility is Pick's to get right either way.
 func (f Facts) affords(a Answer) bool {
 	switch {
 	case a.Attack != nil:
 		return f.CanAttack
-	case a.Toward != nil, a.Away != nil:
-		return f.CanMove
+	case a.Toward != nil:
+		return f.CanMove && f.locates(a.Toward)
+	case a.Away != nil:
+		return f.CanMove && f.locates(a.Away)
 	default:
 		return true
 	}
+}
+
+// locates reports whether the facts hold something for this selector to
+// name. Only `sound` can name nothing from the facts alone: the other words
+// are resolved by the caller against a board this module does not have.
+func (f Facts) locates(s *Selector) bool {
+	return s.Word != SelectorSound || len(f.Sounds) > 0
 }
 
 // deedsOf is the reading this condition's scope asks for: the deeds against
