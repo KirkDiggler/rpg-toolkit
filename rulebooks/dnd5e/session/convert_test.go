@@ -178,6 +178,13 @@ var omitted = map[string]string{
 	"encounter.MonsterView.Temper":    "Table's companion, omitted for Table's reason",
 	"encounter.MonsterView.Deeds": "the deeds a `when` condition reads, decoded from Holdings — which " +
 		"IS carried, so a host driver that wants them reads the same testimony the table does",
+	// Hearing's two reads (rpg-project#569 R4–R6), omitted for Table's reason:
+	// `heard`, `fact` and the `sound` selector are table words, and the one
+	// driver that speaks them reads the composition's own view.
+	"encounter.MonsterView.Sounds": "the sounds a `heard` condition and the `sound` selector read; " +
+		"encounter.TableDriver reads them on the composition view, never through this twin",
+	"encounter.MonsterView.Known": "the fact ids a `when: { fact }` condition reads; encounter.TableDriver " +
+		"reads them on the composition view, never through this twin",
 
 	// BlocksMovement (rpg-toolkit#1434) is consulted by the canvas's own
 	// occupancy check at Join/Step time — it decides whether an arrival is
