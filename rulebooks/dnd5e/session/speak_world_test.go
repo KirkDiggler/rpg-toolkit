@@ -5,8 +5,8 @@ package session_test
 
 // speak_world_test.go is Speak in the FRONT ROOM (rpg-project#458's scenes,
 // carried onto options by rpg-project#569): the verb on the WORLD clock where
-// no fight exists, the deed each skill lands, the untrained rule reaching a
-// real check, and the option's own answer rows arriving as a typed beat.
+// no fight exists, the deed each skill lands, an untrained checker rolling
+// plain, and the option's own answer rows arriving as a typed beat.
 
 import (
 	"bytes"
@@ -33,8 +33,8 @@ type SpeakWorldSuite struct {
 	encounters *fakeEncounters
 	characters *fakeCharacters
 
-	// sheet is the checker every scene loads; a scene that is about the
-	// untrained rule swaps it before opening the room.
+	// sheet is the checker every scene loads; a scene that is about an
+	// untrained checker swaps it before opening the room.
 	sheet *character.Data
 
 	// authored is the dungeon author's hand on the spawn, when a scene has
@@ -261,12 +261,13 @@ func (s *SpeakWorldSuite) TestABeatenAppealLandsItsOwnDeed() {
 	s.False(s.heldBy(mgr, encounter.DeedIntimidate), "and was never threatened")
 }
 
-// THE UNTRAINED RULE, at the seam that sets it (rpg-project#457 R2). A
-// character who never took Persuasion rolls the line at disadvantage.
+// NO SKILL JUST MEANS NO PLUS (rpg-project#569). A character who never took
+// Persuasion rolls the line on one d20 like anyone else and simply adds no
+// proficiency bonus — there is no untrained disadvantage.
 //
-// TWO SCENES, ONE DIE SCRIPT. The trained checker rolls once and takes 10; the
-// untrained one rolls twice and takes the lower of 10 and 3.
-func (s *SpeakWorldSuite) TestAnUntrainedCheckerRollsTheLineAtDisadvantage() {
+// TWO SCENES, ONE DIE SCRIPT. Both checkers roll once and take 10; only the
+// proficiency bonus differs.
+func (s *SpeakWorldSuite) TestAnUntrainedCheckerRollsTheLinePlain() {
 	s.Run("trained: one die", func() {
 		s.SetupTest()
 		out, err := s.appeal(s.front([]int{10, 3}))
@@ -275,13 +276,13 @@ func (s *SpeakWorldSuite) TestAnUntrainedCheckerRollsTheLineAtDisadvantage() {
 		s.True(out.Beaten)
 	})
 
-	s.Run("untrained: two dice, lower kept", func() {
+	s.Run("untrained: one die, no plus", func() {
 		s.SetupTest()
 		s.sheet = armedFighter("alice") // no Persuasion at all
 		out, err := s.appeal(s.front([]int{10, 3}))
 		s.Require().NoError(err)
-		s.Equal(2, out.Total, "two d20s, the lower kept: 3 with CHA 8's -1 and no proficiency")
-		s.False(out.Beaten, "the same script that beat the DC trained misses it untrained")
+		s.Equal(9, out.Total, "one d20 of 10, CHA -1, no proficiency — the 3 is never thrown")
+		s.True(out.Beaten, "9 meets DC 9: no skill costs the +2, not the better face")
 	})
 }
 
@@ -597,30 +598,23 @@ func (s *SpeakWorldSuite) spokeBody(mgr *session.Manager) session.SpokeBody {
 	return body
 }
 
-// TestTheUntrainedRuleReachesTheWireByName is the done-when of
-// rpg-project#462: both faces, the kept one, and the word "Untrained" cross
-// typed on the line's own beat.
-func (s *SpeakWorldSuite) TestTheUntrainedRuleReachesTheWireByName() {
+// TestAnUntrainedCheckerCarriesNoRule: the line's own beat for a checker who
+// never took the skill shows one d20 and no keep record — nothing named
+// "Untrained" reaches the wire, because no such rule exists (rpg-project#569).
+func (s *SpeakWorldSuite) TestAnUntrainedCheckerCarriesNoRule() {
 	s.SetupTest()
 	s.sheet = armedFighter("alice") // no Persuasion at all
 
 	mgr := s.front([]int{10, 3})
-	out, err := s.appeal(mgr)
+	_, err := s.appeal(mgr)
 	s.Require().NoError(err)
-	s.Require().False(out.Beaten)
 
 	body := s.spokeBody(mgr)
 	die := d20Of(s.T(), body.Calculation)
-	s.Equal("2d20", die.Notation, "the pair the rule actually threw")
-	s.Equal([]int{10, 3}, die.FinalRolls, "and the discarded 10 survives to the log")
-	s.Equal([]int{1}, die.KeptIndices)
-	s.Require().NotNil(die.Keep)
-	s.Equal(session.KeepDisadvantage, die.Keep.Rule)
-	s.Require().Len(die.Keep.Imposed, 1)
-	s.Equal("Untrained", die.Keep.Imposed[0].Name,
-		"the word the log prints comes down from the server, never invented by a client")
-	s.Equal("alice", die.Keep.Imposed[0].SourceID)
-	s.Empty(die.Keep.Granted)
+	s.Equal("1d20", die.Notation, "one die, however untrained the checker is")
+	s.Equal([]int{10}, die.FinalRolls)
+	s.Empty(die.KeptIndices)
+	s.Nil(die.Keep, "nothing touched the pool")
 	s.Equal(body.Total, body.Calculation.Total)
 }
 

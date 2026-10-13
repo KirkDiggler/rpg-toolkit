@@ -72,8 +72,7 @@ func TestSpeakSuite(t *testing.T) {
 func (s *SpeakSuite) SetupTest() {
 	s.sessions, s.encounters, s.authored = newFakeSessions(), newFakeEncounters(), nil
 	// ALICE IS PROFICIENT IN INTIMIDATION, and every scene in this suite
-	// depends on it: an untrained checker rolls at disadvantage
-	// (rpg-project#457 R2), which costs two faces instead of one.
+	// depends on its +2.
 	//
 	// CHA 8 is a -1 modifier and proficiency is +2, so a d20 of 10 totals 11
 	// — over the goblin's DC of 9. A d20 of 5 totals 6 and does not.
@@ -891,8 +890,8 @@ func (s *SpeakSuite) TestAGuidedLineToAPropResumesAsTheSameLine() {
 }
 
 // talkingFighter is [armedFighter] who took Intimidation and Persuasion at
-// creation — the fixture every scene above needs, so that the untrained rule
-// is exercised by the scenes that are about it and by no others.
+// creation — the fixture every scene above needs, so that an untrained
+// checker appears only in the scenes that are about one.
 func talkingFighter(id string) *character.Data {
 	sheet := armedFighter(id)
 	sheet.Skills = map[skills.Skill]shared.ProficiencyLevel{
