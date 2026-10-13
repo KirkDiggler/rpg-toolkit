@@ -86,9 +86,9 @@ func walksTo(cell spatial.Position) encounter.Table {
 func hunts() encounter.Table {
 	return encounter.Table{
 		encounter.AnswerTime: {
-			{Weight: 1, When: &encounter.When{Enemy: encounter.EnemySeen},
+			{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemySeen}},
 				Toward: &encounter.Selector{Word: encounter.SelectorEnemy}},
-			{Weight: 1, When: &encounter.When{Enemy: encounter.EnemyRemembered},
+			{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyRemembered}},
 				Toward: &encounter.Selector{Word: encounter.SelectorEnemy}},
 			{Weight: 1, Hold: true},
 		},

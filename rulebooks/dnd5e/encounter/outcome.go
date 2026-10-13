@@ -827,7 +827,16 @@ func (e *Encounter) prepareUnit(index int, unit TrainUnit) (preparedUnit, error)
 		// kinds: only [OutcomeExperienceGained] puts anything else in there,
 		// and it never lands an attack.
 		targets := beats[0].subjects[1:]
-		prepared.land = func() error { return e.landAttack(in.Actor, targets) }
+		// THE DEED, THEN THE NOISE OF IT (rpg-project#569 R5): the witnesses
+		// hold what they saw, and whoever is listening beyond them holds a
+		// clang — a kind and a place, never who swung.
+		prepared.land = func() error {
+			if err := e.landAttack(in.Actor, targets); err != nil {
+				return err
+			}
+
+			return e.makeSound(noiseAttack, in.Actor, uint64(e.clock.ToData().HighWater))
+		}
 	}
 	return prepared, nil
 }

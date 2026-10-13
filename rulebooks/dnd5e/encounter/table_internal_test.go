@@ -68,7 +68,7 @@ func (s *TableSuite) TestAnOptionsRowsTakeTheVerdictWordsOnly() {
 		s.ErrorIs(err, ErrBadAnswer)
 		s.Contains(err.Error(), "what a creature does with time")
 
-		err = validateEntry(key, 0, Answer{Weight: 1, Say: "hi", When: &When{Enemy: EnemySeen}})
+		err = validateEntry(key, 0, Answer{Weight: 1, Say: "hi", When: []When{{Enemy: EnemySeen}}})
 		s.ErrorIs(err, ErrBadAnswer)
 		s.Contains(err.Error(), "already the condition")
 	}
@@ -122,27 +122,69 @@ func (s *TableSuite) TestATableThisBuildCannotRollIsRefusedAtTheDoor() {
 		},
 		{
 			name:  "a `when` that names two things",
-			table: Table{AnswerTime: {{Weight: 1, Hold: true, When: &When{Enemy: EnemySeen, Deed: "fled", Within: 1}}}},
-			says:  "one condition, and this is two",
+			table: Table{AnswerTime: {{Weight: 1, Hold: true, When: []When{{Enemy: EnemySeen, Deed: "fled", Within: 1}}}}},
+			says:  "give each its own entry in the list, and every entry must hold",
 		},
 		{
 			name:  "a `when` that names nothing",
-			table: Table{AnswerTime: {{Weight: 1, Hold: true, When: &When{}}}},
-			says:  "omit it",
+			table: Table{AnswerTime: {{Weight: 1, Hold: true, When: []When{{}}}}},
+			says:  "names no condition",
+		},
+		{
+			// THE VOCABULARY IS SEALED HERE: behavior compares a kind and
+			// never interprets it, and no deed in this build makes a growl.
+			name: "a sound kind nothing here makes",
+			table: Table{AnswerTime: {{Weight: 1, Hold: true,
+				When: []When{{Heard: &HeardWhen{Kind: "growl", Within: 2}}}}}},
+			says: "`heard: { kind: growl }` is not a sound this build makes: they are boom, crash, clang, voice",
+		},
+		{
+			name: "an unknown enemy word inside a `not`",
+			table: Table{AnswerTime: {{Weight: 1, Hold: true,
+				When: []When{{Not: &When{Enemy: "nearby"}}}}}},
+			says: "not a condition this build reads",
+		},
+		{
+			name: "a route on `attack`",
+			table: Table{AnswerTime: {{Weight: 1,
+				Attack: &Selector{Path: []spatial.Position{{X: 1, Y: 1}}}}}},
+			says: "`attack` cannot take a `path`",
+		},
+		{
+			// R7, as ruled on rpg-toolkit#2044's review: two legs that share a
+			// cell leave a creature standing there on both. A to B and back is
+			// the plainest case — the same cells twice.
+			name: "a route that retraces itself",
+			table: Table{AnswerTime: {{Weight: 1,
+				Toward: &Selector{Path: []spatial.Position{{X: 0, Y: 0}, {X: 10, Y: 0}}}}}},
+			says: "this route retraces itself at [9,0]: a patrol walks a loop — add a waypoint so no leg crosses another",
+		},
+		{
+			name:  "`sound` on `attack`",
+			table: Table{AnswerTime: {{Weight: 1, Attack: &Selector{Word: SelectorSound}}}},
+			says:  "a sound cannot be struck",
+		},
+		{
+			// `actor` NEEDS A DEED IN THE LIST ITSELF: a deed inside a
+			// `not` is one that did not happen, and nobody was its actor.
+			name: "`actor` whose only deed is negated",
+			table: Table{AnswerTime: {{Weight: 1, Away: &Selector{Word: SelectorActor},
+				When: []When{{Not: &When{Deed: "fled", Within: 1}}}}}},
+			says: "this entry names none",
 		},
 		{
 			name:  "an enemy word this build does not read",
-			table: Table{AnswerTime: {{Weight: 1, Hold: true, When: &When{Enemy: "nearby"}}}},
+			table: Table{AnswerTime: {{Weight: 1, Hold: true, When: []When{{Enemy: "nearby"}}}}},
 			says:  "not a condition this build reads",
 		},
 		{
 			name:  "a deed this build does not hold",
-			table: Table{AnswerTime: {{Weight: 1, Hold: true, When: &When{Deed: "insulted", Within: 1}}}},
+			table: Table{AnswerTime: {{Weight: 1, Hold: true, When: []When{{Deed: "insulted", Within: 1}}}}},
 			says:  "not a deed this build holds",
 		},
 		{
 			name:  "a span counted from zero",
-			table: Table{AnswerTime: {{Weight: 1, Hold: true, When: &When{Deed: "fled", Within: 0}}}},
+			table: Table{AnswerTime: {{Weight: 1, Hold: true, When: []When{{Deed: "fled", Within: 0}}}}},
 			says:  "counted from 1",
 		},
 		{
@@ -152,13 +194,13 @@ func (s *TableSuite) TestATableThisBuildCannotRollIsRefusedAtTheDoor() {
 			// be named rather than reaching the evaluator, where it matches
 			// nothing and would silently revert an `on: ally` row.
 			name:  "a scope this build does not read",
-			table: Table{AnswerTime: {{Weight: 1, Hold: true, When: &When{Deed: "attacked", Within: 1, Scope: DeedScope("banana")}}}},
+			table: Table{AnswerTime: {{Weight: 1, Hold: true, When: []When{{Deed: "attacked", Within: 1, Scope: DeedScope("banana")}}}}},
 			says:  "not a scope this build reads",
 		},
 		{
 			name: "`actor` with no deed to have been the actor of",
 			table: Table{AnswerTime: {{Weight: 1, Away: &Selector{Word: SelectorActor},
-				When: &When{Enemy: EnemySeen}}}},
+				When: []When{{Enemy: EnemySeen}}}}},
 			says: "this entry names none",
 		},
 		{
@@ -183,11 +225,16 @@ func (s *TableSuite) TestAWholeLegalTableIsAccepted() {
 	cell := spatialOrigin
 	require.NoError(s.T(), validateTable(Table{
 		AnswerTime: {
-			{Weight: 3, When: &When{Deed: "attacked", Within: 3}, Attack: &Selector{Word: SelectorAttacker}},
-			{Weight: 1, When: &When{Enemy: EnemySeen}, Attack: &Selector{Word: SelectorEnemy}},
-			{Weight: 1, When: &When{Enemy: EnemyRemembered}, Toward: &Selector{Word: SelectorEnemy}},
-			{Weight: 1, When: &When{Enemy: EnemyNone}, Toward: &Selector{At: &cell}},
-			{Weight: 5, When: &When{Deed: "fled", Within: 3}, Away: &Selector{Word: SelectorActor}},
+			{Weight: 3, When: []When{{Deed: "attacked", Within: 3}}, Attack: &Selector{Word: SelectorAttacker}},
+			{Weight: 1, When: []When{{Enemy: EnemySeen}}, Attack: &Selector{Word: SelectorEnemy}},
+			{Weight: 1, When: []When{{Enemy: EnemyRemembered}}, Toward: &Selector{Word: SelectorEnemy}},
+			{Weight: 1, When: []When{{Enemy: EnemyNone}}, Toward: &Selector{At: &cell}},
+			{Weight: 5, When: []When{{Deed: "fled", Within: 3}}, Away: &Selector{Word: SelectorActor}},
+			{Weight: 1, When: []When{{Enemy: EnemyNone}}, Toward: &Selector{Path: []spatial.Position{{X: 11, Y: 2}, {X: 15, Y: 2}, {X: 13, Y: 6}, {X: 9, Y: 6}}}},
+			{Weight: 1, When: []When{{Heard: &HeardWhen{Kind: SoundClang, Within: 2}}}, Toward: &Selector{Word: SelectorSound}},
+			{Weight: 1, When: []When{{Heard: &HeardWhen{Kind: SoundBoom, Within: 3}}}, Away: &Selector{Word: SelectorSound}},
+			{Weight: 1, When: []When{{Enemy: EnemySeen}}, Say: "To arms!", Fact: "alarm-raised"},
+			{Weight: 1, When: []When{{Fact: "guards-turned"}, {Not: &When{Enemy: EnemySeen}}}, Toward: &Selector{At: &cell}},
 			{Weight: 1, Hold: true},
 		},
 	}))
@@ -325,10 +372,10 @@ func (lowestDie) RollN(_ context.Context, count, _ int) ([]int, error) {
 func pauseTable() Table {
 	return Table{AnswerTime: {
 		{Weight: 100, Hold: true,
-			When: &When{Deed: "attacked", Within: 2, Scope: ScopeActor}},
+			When: []When{{Deed: "attacked", Within: 2, Scope: ScopeActor}}},
 		{Weight: 1, Attack: &Selector{Word: SelectorEnemy},
-			When: &When{Enemy: EnemyReach}},
-		{Weight: 1, Hold: true, When: &When{Enemy: EnemyNone}},
+			When: []When{{Enemy: EnemyReach}}},
+		{Weight: 1, Hold: true, When: []When{{Enemy: EnemyNone}}},
 	}}
 }
 
@@ -390,7 +437,7 @@ func (s *TableSuite) TestTheAllyReadingFeedsARowThatFires() {
 	table := Table{AnswerTime: {
 		// "A friend has been struck in the last three rounds: avenge it."
 		{Weight: 100, Attack: &Selector{Word: SelectorEnemy},
-			When: &When{Deed: "attacked", Within: 3, Scope: ScopeAlly}},
+			When: []When{{Deed: "attacked", Within: 3, Scope: ScopeAlly}}},
 		{Weight: 1, Hold: true},
 	}}
 

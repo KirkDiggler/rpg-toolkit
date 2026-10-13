@@ -340,6 +340,20 @@ func (e *Encounter) worldThinks() error {
 			if !ok || down[member] {
 				continue
 			}
+			// THE LIST IS WHO WAS HERE WHEN THE PASS BEGAN, NOT WHO IS HERE
+			// NOW. A creature thinking earlier in this pass can move the
+			// clocks under the rest: an alarm turns a pair hostile and the
+			// fight that forms takes its members onto a turn clock; a walk
+			// into sight does the same. One who has left the world clock has
+			// no world budget to think with, and is skipped (rpg-project#569,
+			// the castle walk's last seam).
+			on, cerr := e.onWorldClock(member)
+			if cerr != nil {
+				return cerr
+			}
+			if !on {
+				continue
+			}
 			if terr := e.thinkFor(member, m); terr != nil {
 				return terr
 			}
@@ -414,6 +428,15 @@ func (e *Encounter) thinkFor(member MemberID, m *memberRecord) error {
 	}
 
 	for spent := 0; spent < budget; spent++ {
+		// RE-READ EVERY UNIT: a unit already spent may have taken this
+		// creature off the world clock.
+		on, err := e.onWorldClock(member)
+		if err != nil {
+			return err
+		}
+		if !on {
+			return nil
+		}
 		// Each turn's worth reads the sheet's speed of that moment.
 		sheet, err := e.sheetOf(member)
 		if err != nil {
@@ -427,6 +450,17 @@ func (e *Encounter) thinkFor(member MemberID, m *memberRecord) error {
 
 		if _, err := e.runIntents(nil, core.EntityID(member), m, 0, &turnBudget, 0, bound, ClockWorld); err != nil {
 			return fmt.Errorf("world thinks %q: %w", member, err)
+		}
+
+		// ITS OWN PICK CAN TAKE IT OFF THE WORLD CLOCK — the alarm it just
+		// raised formed a fight with it in — and a creature on a turn clock
+		// is not charged the world's round: the fight prices its time now.
+		on, err = e.onWorldClock(member)
+		if err != nil {
+			return err
+		}
+		if !on {
+			return nil
 		}
 
 		if _, err := e.clock.Spend(&clock.SpendInput{ID: core.EntityID(member), Amount: 1}); err != nil {
@@ -535,4 +569,16 @@ func (e *Encounter) dealTemperFor(member MemberID, temper Temper, at uint64) (Te
 	}
 
 	return dealt.Temper, nil
+}
+
+// onWorldClock reports whether a member is on the world clock right now —
+// asked of the clock itself, never of a list taken earlier, because a world
+// think pass moves members between clocks as it runs.
+func (e *Encounter) onWorldClock(member MemberID) (bool, error) {
+	on, err := e.clock.Contains(&clock.ContainsInput{ID: core.EntityID(member)})
+	if err != nil {
+		return false, fmt.Errorf("world thinks %q: %w", member, err)
+	}
+
+	return on, nil
 }

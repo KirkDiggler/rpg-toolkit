@@ -168,7 +168,7 @@ func TestSingleRoomSiteRefusals(t *testing.T) {
 				Path: "room.room.monsterBindings.goblin-1.on.time[0].toward.at",
 				Message: "at is not a place a single room can name yet: its cells are axial and the selector's " +
 					"cell is an offset in a document orientation this dialect does not have; " +
-					"name enemy, attacker or actor, or wait for the sites layer",
+					"name enemy, attacker, actor or sound, or wait for the sites layer",
 			},
 		},
 		{
@@ -179,7 +179,7 @@ func TestSingleRoomSiteRefusals(t *testing.T) {
 				Path: "room.room.monsterBindings.goblin-1.on.time[0].attack.at",
 				Message: "at is not a place a single room can name yet: its cells are axial and the selector's " +
 					"cell is an offset in a document orientation this dialect does not have; " +
-					"name enemy, attacker or actor, or wait for the sites layer",
+					"name enemy, attacker, actor or sound, or wait for the sites layer",
 			},
 		},
 		{
@@ -541,7 +541,7 @@ func TestTheFactionLevelCellSelectorIsRefusedToo(t *testing.T) {
 		Path: "factions[0].on.time[0].toward.at",
 		Message: "at is not a place a single room can name yet: its cells are axial and the selector's " +
 			"cell is an offset in a document orientation this dialect does not have; " +
-			"name enemy, attacker or actor, or wait for the sites layer",
+			"name enemy, attacker, actor or sound, or wait for the sites layer",
 	})
 }
 
@@ -567,5 +567,29 @@ func TestTheV2DialectStillResolvesCellSelectors(t *testing.T) {
 	require.ErrorAs(t, err, &validation)
 	require.Contains(t, validation.Errors, FieldError{
 		Path: "place[0].on.time[0].toward.at", Message: "this walks to [9,9], which is not floor",
+	})
+}
+
+// TestTheSingleRoomRefusesARouteForTheCellsReason: a `path` is a list of the
+// same offset cells an `at` is, so the dialect with no frame for one has none
+// for the other — refused once for the route, in its own sentence, rather
+// than once per waypoint (rpg-project#569 R7). The same layer that gives `at`
+// a frame gives this one.
+func TestTheSingleRoomRefusesARouteForTheCellsReason(t *testing.T) {
+	raw, err := os.ReadFile(v4SitePath)
+	require.NoError(t, err)
+	source := swapOneIn(t, raw,
+		"        - {when: {enemy: reach}, attack: enemy}",
+		"        - {when: {enemy: none}, toward: {path: [[3, 4], [5, 4]]}}")
+
+	_, err = Load(source)
+	require.Error(t, err)
+	var validation *ValidationError
+	require.ErrorAs(t, err, &validation)
+	require.Contains(t, validation.Errors, FieldError{
+		Path: "factions[0].on.time[0].toward.path",
+		Message: "path is not a route a single room can name yet: its cells are axial and a " +
+			"waypoint is an offset in a document orientation this dialect does not have; " +
+			"name enemy, attacker, actor or sound, or wait for the sites layer",
 	})
 }

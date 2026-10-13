@@ -48,7 +48,7 @@ import (
 // singleRoomCellSelector is that refusal, verbatim. One sentence, saying what
 // is wrong, what to write instead, and what would make it legal.
 const singleRoomCellSelector = "at is not a place a single room can name yet: its cells are axial and the selector's " +
-	"cell is an offset in a document orientation this dialect does not have; name enemy, attacker or actor, " +
+	"cell is an offset in a document orientation this dialect does not have; name enemy, attacker, actor or sound, " +
 	"or wait for the sites layer"
 
 // singleRoomCells is this dialect's answer to [cells]: it names no cell at
@@ -57,8 +57,15 @@ const singleRoomCellSelector = "at is not a place a single room can name yet: it
 type singleRoomCells struct{}
 
 func (singleRoomCells) cellAt([2]int) cellAnswer {
-	return cellAnswer{refusal: singleRoomCellSelector}
+	return cellAnswer{refusal: singleRoomCellSelector, routeRefusal: singleRoomPathSelector}
 }
+
+// singleRoomPathSelector is [singleRoomCellSelector]'s twin for a route: a
+// `path` is a list of the same offset cells, so this dialect names none of
+// them either, for the same reason and until the same layer arrives.
+const singleRoomPathSelector = "path is not a route a single room can name yet: its cells are axial and a " +
+	"waypoint is an offset in a document orientation this dialect does not have; " +
+	"name enemy, attacker, actor or sound, or wait for the sites layer"
 
 // # Source shape
 //

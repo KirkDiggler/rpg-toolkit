@@ -7,10 +7,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // answer.go is THE AUTHOR'S TABLE, AND THE WORLD'S DIE (rpg-project#458,
@@ -217,7 +220,75 @@ func (e *Encounter) answer(ctx context.Context, in answerInput) (answerOutput, e
 		return answerOutput{}, err
 	}
 
+	// THE LINE IS A VOICE (rpg-project#569 R5): every `say` on any answer row
+	// is heard beyond the room by whoever's ears beat it — after the beat
+	// that carries the line, which is its cause. A prop has no voice: its
+	// line is the author narrating what the speaker found, not a sound.
+	if chosen.Answer.Say != "" && in.creature != "" {
+		if err := e.makeSound(noiseSay, in.creature, in.at); err != nil {
+			return answerOutput{}, fmt.Errorf("answer: %w", err)
+		}
+	}
+
 	return answerOutput{pick: chosen}, nil
+}
+
+// answerTime carries out what a creature's `time` pick SAID: its line is a
+// voice, and its fact is an alarm (rpg-project#569 R6).
+//
+// THE ALARM'S AUDIENCE IS WHOEVER SEES THE CRIER AND WHOEVER HEARS IT. A fact
+// on a verdict teaches the witnesses of the line it answers; a creature
+// raising the alarm on its own time is heard through the doors, so the
+// hearers of a voice at its cell ([Encounter.hearersOf] at [SoundVoice]'s DC)
+// learn it beside everyone who can see it ([Encounter.witnessesOf]). No task
+// widens who learns beyond that (the plan's audience law).
+//
+// A FACT IS SAID ALOUD, so a row that teaches one makes a voice even when the
+// author wrote no line for it: the hearers who learn it heard something, and
+// a `heard: { kind: voice }` that did not hold for them would be the two
+// readings of one shout disagreeing.
+//
+// Stamped with the clock's reading now, the one the pick's own beat carries.
+func (e *Encounter) answerTime(member MemberID, chosen Answer) error {
+	if chosen.Say == "" && chosen.Fact == "" {
+		return nil
+	}
+	at := uint64(e.clock.ToData().HighWater)
+	if err := e.makeSound(noiseSay, member, at); err != nil {
+		return fmt.Errorf("time answer: %w", err)
+	}
+	if chosen.Fact == "" {
+		return nil
+	}
+
+	where, witnesses, err := e.audienceOf(member)
+	if err != nil {
+		return fmt.Errorf("time answer: %w", err)
+	}
+	_, voiceDC, _ := soundOf(noiseSay)
+	heard, err := e.hearersOf(where, voiceDC, member)
+	if err != nil {
+		return fmt.Errorf("time answer: %w", err)
+	}
+	audience := map[MemberID]bool{}
+	for _, id := range witnesses {
+		audience[id] = true
+	}
+	for _, h := range heard {
+		audience[h.member] = true
+	}
+	learners := make([]MemberID, 0, len(audience))
+	for id := range audience {
+		learners = append(learners, id)
+	}
+	sort.Slice(learners, func(i, j int) bool { return learners[i] < learners[j] })
+	for _, id := range learners {
+		if err := e.learnFact(id, chosen.Fact, BeatAnswered, at); err != nil {
+			return fmt.Errorf("time answer: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // landFled puts [DeedFled] on the creature and nobody else: the memory of
@@ -384,7 +455,8 @@ func answerWord(entry Answer) string {
 }
 
 // selectorWord is the entry's selector as the author wrote it — the word, or
-// "at" for an authored cell, or empty for a word that selects nothing.
+// "at" for an authored cell, "path" for an authored route, or empty for a
+// word that selects nothing.
 func selectorWord(entry Answer) string {
 	sel := entry.Attack
 	if sel == nil {
@@ -398,6 +470,9 @@ func selectorWord(entry Answer) string {
 	}
 	if sel.At != nil {
 		return "at"
+	}
+	if len(sel.Path) > 0 {
+		return "path"
 	}
 
 	return string(sel.Word)
@@ -432,9 +507,23 @@ func validateTable(table Table) error {
 }
 
 // validateEntry refuses one row: its weight, its word's legality under this
-// key, and its condition's shape. The key is [AnswerTime] for a table's row
-// and one of [OptionKeys] for an option's — a verdict, where `fact` and
-// `flee` are legal and the four time words and a `when` are not.
+// key, and its conditions' and selector's shape. The key is [AnswerTime] for a
+// table's row and one of [OptionKeys] for an option's — a verdict, where
+// `fact` and `flee` are legal and the four time words and a `when` are not.
+//
+// `fact` IS LEGAL ON BOTH (rpg-project#569 R6): on a verdict it teaches the
+// witnesses of the spoken line, and on `time` it is a creature raising an
+// alarm — its audience is whoever HEARS the speaker as well as whoever sees
+// them ([Encounter.answerTime]). `flee` stays a verdict's word: a creature
+// runs because somebody made it, and that somebody is the actor of a verb.
+//
+// THE SHAPE RULE IS mind/behavior's. One condition per `when` entry, one
+// target per selector, a `path` only on `toward`, `sound` never on `attack`:
+// [behavior.Answer.Validate] is the one statement of those, and this door
+// calls it rather than keeping a second copy that could come to disagree.
+// What is left here is what only this composition knows — which enemy, deed
+// and sound words this build reads, which key a word is legal under, and
+// whether `actor` has a deed to name.
 func validateEntry(key AnswerKey, i int, entry Answer) error {
 	if entry.Weight < 1 {
 		return fmt.Errorf("answer %q entry %d weighs %d: %w", key, i, entry.Weight, ErrBadAnswer)
@@ -443,7 +532,7 @@ func validateEntry(key AnswerKey, i int, entry Answer) error {
 	social := key != AnswerTime
 	word := answerWord(entry)
 	switch word {
-	case "fact", "flee":
+	case "flee":
 		if !social {
 			return fmt.Errorf("answer %q entry %d: `%s` answers a social verdict, not time: %w",
 				key, i, word, ErrBadAnswer)
@@ -454,17 +543,20 @@ func validateEntry(key AnswerKey, i int, entry Answer) error {
 				key, i, word, ErrBadAnswer)
 		}
 	}
-	if entry.When != nil {
-		if social {
-			return fmt.Errorf("answer %q entry %d: a social verdict is already the condition: %w",
-				key, i, ErrBadAnswer)
-		}
-		if err := validateWhen(entry.When); err != nil {
+	if len(entry.When) > 0 && social {
+		return fmt.Errorf("answer %q entry %d: a social verdict is already the condition: %w",
+			key, i, ErrBadAnswer)
+	}
+	if err := entry.Validate(); err != nil {
+		return fmt.Errorf("answer %q entry %d: %w: %w", key, i, err, ErrBadAnswer)
+	}
+	for j := range entry.When {
+		if err := validateWhenWords(&entry.When[j]); err != nil {
 			return fmt.Errorf("answer %q entry %d: %w", key, i, err)
 		}
 	}
 	if sel := selectorOf(entry); sel != nil {
-		if sel.Word == SelectorActor && (entry.When == nil || entry.When.Deed == "") {
+		if sel.Word == SelectorActor && deedWhen(entry.When) == nil {
 			return fmt.Errorf("answer %q entry %d: `actor` names the actor of a deed and this entry names none: %w",
 				key, i, ErrBadAnswer)
 		}
@@ -472,22 +564,36 @@ func validateEntry(key AnswerKey, i int, entry Answer) error {
 			return fmt.Errorf("answer %q entry %d: a cell is somewhere to walk toward, not %s: %w",
 				key, i, word, ErrBadAnswer)
 		}
+		if cell, retraced := RetracedCell(sel.Path); retraced {
+			return fmt.Errorf("answer %q entry %d: %s: %w", key, i, retraceRefusal(cell), ErrBadAnswer)
+		}
 	}
 
 	return nil
 }
 
-// validateWhen refuses a condition that names neither an enemy nor a deed, or
-// both, or a span counted from zero.
-func validateWhen(when *When) error {
-	hasEnemy := when.Enemy != ""
-	hasDeed := when.Deed != ""
+// validateWhenWords refuses the words inside one condition that this build
+// does not read: an enemy band, a deed, a scope or a deed span it has no
+// meaning for, or a sound kind nothing here makes ([SoundKinds]). A `not`
+// is judged by what it wraps.
+//
+// THE SHAPE IS ALREADY JUDGED ([behavior.When.Validate], asked first by
+// [validateEntry]): exactly one condition, a `heard` with a kind and a span.
+// This is the vocabulary, which only the rulebook's composition can seal.
+func validateWhenWords(when *When) error {
 	switch {
-	case hasEnemy && hasDeed:
-		return fmt.Errorf("a `when` is one condition, and this is two: %w", ErrBadAnswer)
-	case !hasEnemy && !hasDeed:
-		return fmt.Errorf("a `when` with no condition is on the table always — omit it: %w", ErrBadAnswer)
-	case hasEnemy:
+	case when.Not != nil:
+		return validateWhenWords(when.Not)
+	case when.Heard != nil:
+		if !knownSoundKind(when.Heard.Kind) {
+			return fmt.Errorf("`heard: { kind: %s }` is not a sound this build makes: they are %s: %w",
+				when.Heard.Kind, strings.Join(SoundKinds, ", "), ErrBadAnswer)
+		}
+
+		return nil
+	case when.Fact != "":
+		return nil
+	case when.Enemy != "":
 		for _, known := range EnemyWords {
 			if when.Enemy == known {
 				return nil
@@ -500,6 +606,11 @@ func validateWhen(when *When) error {
 	if DeedVerbFor(when.Deed) == "" {
 		return fmt.Errorf("`%s` is not a deed this build holds: %w", when.Deed, ErrBadAnswer)
 	}
+	// THE DEED SPAN IS THIS DOOR'S, NOT mind/behavior's (its review,
+	// rpg-project#569): behavior refuses a `heard` span below 1 because it
+	// owns that condition, and leaves the deed form's span to the rulebook
+	// that seals the deed words — so "counted from 1" for a deed is refused
+	// here and nowhere else.
 	if when.Within < 1 {
 		return fmt.Errorf("a span of %d rounds is counted from 1: %w", when.Within, ErrBadAnswer)
 	}
@@ -511,6 +622,32 @@ func validateWhen(when *When) error {
 	// nothing and would silently revert an `on: ally` row to the self reading.
 	if refusal := scopeRefusal(when.Scope); refusal != "" {
 		return fmt.Errorf("%s: %w", refusal, ErrBadAnswer)
+	}
+
+	return nil
+}
+
+// retraceRefusal is the sentence a patrol route whose legs cross is refused
+// with ([RetracedCell]), naming the cell — dungeon-absolute here; the dialect
+// says the same thing in the author's own offset coordinates.
+func retraceRefusal(cell spatial.Position) string {
+	return fmt.Sprintf("this route retraces itself at [%g,%g]: a patrol walks a loop — "+
+		"add a waypoint so no leg crosses another", cell.X, cell.Y)
+}
+
+// deedWhen is the condition in an entry's list that names a deed, or nil when
+// none does — the deed `actor` names the actor of, and the scope `attacker`
+// reads.
+//
+// THE LIST'S OWN ENTRIES ONLY, never one inside a `not`: `not: { attacked }`
+// says nobody attacked, and there is no actor of a deed that did not happen.
+// The first in authored order when several name one, which is the order an
+// author reads them in.
+func deedWhen(when []When) *When {
+	for i := range when {
+		if when[i].Deed != "" {
+			return &when[i]
+		}
 	}
 
 	return nil
@@ -579,12 +716,14 @@ func cloneTable(table Table) Table {
 	return out
 }
 
-// cloneAnswer deep-copies one entry's pointers.
+// cloneAnswer deep-copies one entry's pointers and slices.
 func cloneAnswer(entry Answer) Answer {
 	out := entry
 	if entry.When != nil {
-		when := *entry.When
-		out.When = &when
+		out.When = make([]When, 0, len(entry.When))
+		for _, w := range entry.When {
+			out.When = append(out.When, cloneWhen(w))
+		}
 	}
 	out.Attack = cloneSelector(entry.Attack)
 	out.Toward = cloneSelector(entry.Toward)
@@ -593,7 +732,24 @@ func cloneAnswer(entry Answer) Answer {
 	return out
 }
 
-// cloneSelector deep-copies a selector and the cell it may name.
+// cloneWhen deep-copies one condition, the `heard` body and a `not`'s inner
+// condition included.
+func cloneWhen(w When) When {
+	out := w
+	if w.Heard != nil {
+		heard := *w.Heard
+		out.Heard = &heard
+	}
+	if w.Not != nil {
+		inner := cloneWhen(*w.Not)
+		out.Not = &inner
+	}
+
+	return out
+}
+
+// cloneSelector deep-copies a selector, the cell it may name and the route
+// it may walk.
 func cloneSelector(sel *Selector) *Selector {
 	if sel == nil {
 		return nil
@@ -602,6 +758,9 @@ func cloneSelector(sel *Selector) *Selector {
 	if sel.At != nil {
 		at := *sel.At
 		out.At = &at
+	}
+	if sel.Path != nil {
+		out.Path = append([]spatial.Position(nil), sel.Path...)
 	}
 
 	return &out

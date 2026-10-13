@@ -11,6 +11,7 @@ import (
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/sound"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/play/clock"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
@@ -617,6 +618,11 @@ func (e *Encounter) runIntents(
 		if decision.Pick != nil && (j == startJ || len(decision.Pick.Candidates) > 0) {
 			if berr := e.appendPickBeat(activeID, decision.Pick); berr != nil {
 				return turnDeltas, berr
+			}
+			// WHAT THE PICK SAID, AFTER THE PICK (rpg-project#569 R6): the
+			// beat is the cause, the voice and the alarm are its effects.
+			if aerr := e.answerTime(activeID, decision.Pick.Answer); aerr != nil {
+				return turnDeltas, aerr
 			}
 		}
 
@@ -1577,7 +1583,12 @@ func (e *Encounter) appendStayedBeat(member MemberID, cause core.Ref, why string
 func (e *Encounter) routedRoute(
 	mover MemberID, it Routed, anchor spatial.Position, budget int,
 ) (RouteOutput, error) {
-	if it.AnchorAt == nil {
+	// AWAY FROM A CELL IS THE POLICY'S OWN ANSWER, exactly as away from a
+	// member is: a creature fleeing a sound (`away: sound`) runs from where
+	// it rang, and an exact-cell search would walk it ONTO the place it is
+	// fleeing. Every other authored cell takes the exact-cell route, as it
+	// always has.
+	if it.AnchorAt == nil || it.Policy == MoveAway {
 		return e.Route(RouteInput{Mover: mover, Policy: it.Policy, Anchor: anchor, Budget: budget})
 	}
 	if budget <= 0 {
@@ -1822,6 +1833,10 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 	if err != nil {
 		return MonsterView{}, fmt.Errorf("held by: %w", err)
 	}
+	sounds, err := sound.Held(holdings)
+	if err != nil {
+		return MonsterView{}, fmt.Errorf("heard by: %w", err)
+	}
 
 	// The member's actions and targeting are its sheet's, asked as this view
 	// is built (rpg-project#538): a view built after a weapon swap reaches
@@ -1968,6 +1983,8 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		Deeds:      heldDeedsAgainst(holdings, m.ID),
 		AllyDeeds:  heldDeedsAgainstSide(e, holdings, m.ID),
 		OwnDeeds:   heldDeedsBy(holdings, m.ID),
+		Sounds:     sounds,
+		Known:      e.world.knownFacts(m.ID),
 		Holdings:   holdings,
 		At:         uint64(e.clock.ToData().HighWater),
 		Seen:       seen,

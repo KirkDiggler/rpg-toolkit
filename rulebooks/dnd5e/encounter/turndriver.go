@@ -130,6 +130,17 @@ type MonsterView struct {
 	AllyDeeds []HeldDeed
 	OwnDeeds  []HeldDeed
 
+	// Sounds is every sound this member holds — a kind, a place and when,
+	// never a maker (rpg-project#569 R4) — decoded from Holdings below, for
+	// Deeds' reason: the sounds channel's payload stays this module's
+	// business, and `heard` and the `sound` selector read the same list.
+	Sounds []Sound
+
+	// Known is every fact id this member knows, sorted — what a
+	// `when: { fact }` condition reads (R6). Not on Holdings: knowledge of a
+	// fact is the run's journal, folded per member, and this is that fold.
+	Known []string
+
 	// Holdings is everything this member holds, on every channel, as values
 	// — the raw testimony Seen and Remembered are decoded from, plus what
 	// they drop (a deeds-channel holding, for one). A mind that reads
@@ -460,9 +471,13 @@ type Routed struct {
 	// a malformed intent ([ErrBadIntent]).
 	Anchor MemberID
 
-	// AnchorAt is an authored CELL the policy is measured from instead of a
-	// member — what `toward: { at: [col, row] }` compiles to
-	// (rpg-project#465). Dungeon-absolute.
+	// AnchorAt is a CELL the policy is measured from instead of a member —
+	// what `toward: { at: [col, row] }` compiles to (rpg-project#465), the
+	// waypoint a patrol knocked off its route goes back to, or where a heard
+	// sound rang for
+	// `toward: sound` and `away: sound` (rpg-project#569). Dungeon-absolute.
+	// Toward it is an exact-cell walk; away from it is [MoveAway]'s own
+	// answer, measured from the cell.
 	//
 	// A SECOND FIELD RATHER THAN A SECOND CASE, because nothing else about
 	// the walk differs: the route, the budget, the step, the pause and the

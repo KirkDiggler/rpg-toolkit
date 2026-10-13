@@ -308,6 +308,7 @@ func (s *SheetsTestSuite) TestAnAnswerThatIsWrongAbortsTheVerb() {
 		{"a member missing from the answer", skippingSheets{skip: alice}, encounter.ErrNoSheets},
 		{"a stranger in the answer", strangerSheets{}, encounter.ErrNotMember},
 		{"a negative speed", sheetFacts{alice: {SpeedFeet: -5}}, encounter.ErrInvalidData},
+		{"a negative passive Perception", sheetFacts{alice: {SpeedFeet: 30, PassivePerception: -1}}, encounter.ErrInvalidData},
 		{"a negative reach", sheetFacts{alice: {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: testMeleeAction, RangeFeet: -5}}}}, encounter.ErrInvalidData},
 		{"the capability's own failure", failingSheets{err: broken}, broken},
 	}

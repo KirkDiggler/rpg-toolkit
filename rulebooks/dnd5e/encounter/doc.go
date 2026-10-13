@@ -114,6 +114,19 @@
 // unit, rolls its `time` table, and spends one. A creature that walks into an
 // opposed member's sight forms or joins a fight by the ordinary path.
 //
+// # Hearing
+//
+// A deed makes a sound (noise.go, rpg-project#569 R4/R5): an attack recorded
+// struck or missed clangs, a door forced by Strength crashes, a cast that
+// delivered damage booms, and every line said on an answer row is a voice.
+// The sound lands AFTER the deed, on every standing member other than its
+// maker whose [SheetFacts.PassivePerception] beats the kind's DC plus five
+// per region hop (a closed door on the way is one hop more). Nobody rolls.
+// What lands is a kind and a place on the hearer's sounds channel and NEVER
+// the maker; a player hearer also gets a [BeatHeard] addressed to them alone.
+// A `fact` on a `time` row is taught to the speaker's witnesses AND to the
+// hearers of its voice — the one place a fact's audience reaches past sight.
+//
 // # Individual room discovery
 //
 // Ordinary regions are not automatically known. The existing sight pass

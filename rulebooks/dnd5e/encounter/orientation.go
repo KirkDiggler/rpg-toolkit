@@ -148,3 +148,15 @@ func HexCellAt(o Orientation, col, row int) spatial.Position {
 
 	return cube.ToAxial()
 }
+
+// OffsetOf is [HexCellAt] read backwards: the authored offset [col,row] pair a
+// dungeon-absolute cell is, under the given orientation. For a refusal that
+// names a cell the engine computed — a cell on a patrol's leg, say — in the
+// coordinates the author wrote, through the same spatial conversion
+// [HexCellAt] asks for.
+func OffsetOf(o Orientation, cell spatial.Position) (col, row int) {
+	cube := spatial.CubeCoordinate{X: int(cell.X), Y: -int(cell.X) - int(cell.Y), Z: int(cell.Y)}
+	off := cube.ToOffsetCoordinateWithOrientation(o.spatial())
+
+	return int(off.X), int(off.Y)
+}

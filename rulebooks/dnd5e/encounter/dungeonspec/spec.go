@@ -1116,8 +1116,12 @@ var laterWords = map[string]string{
 	"lure":    "designed and not built yet",
 	"pretend": "designed as the Insight slice and not built yet",
 	"tell":    "not a word: a fact taught to whoever was there is `fact`",
-	"patrol":  "designed and not built yet",
 }
+
+// patrolRefusal is the sentence `patrol` is refused with (rpg-project#569 R7).
+// The word was named before it was built, and what was built is a route on
+// `toward`, so the refusal says what to write rather than that it is missing.
+const patrolRefusal = "`patrol` is not a word: a patrol is a route, write toward: { path: [[col, row], …] }"
 
 // AnswerSpec is ONE ENTRY in an outcome's table: how likely it is, what the
 // creature says, and the one thing it does.
@@ -1157,6 +1161,10 @@ type AnswerSpec struct {
 	// fires — what the old `on: { intimidated: { fact: … } }` said, now one
 	// entry of one outcome's table. A disposition's `until: { fact: … }`
 	// does the rest.
+	//
+	// ON A `time` ROW IT IS AN ALARM (rpg-project#569 R6): the creature says
+	// it aloud with its own time, and everyone who sees it AND everyone who
+	// hears its voice through the doors learns it.
 	//
 	// CARRIED VERBATIM, not key-prefixed — a fact is a word a disposition
 	// waits for by name, like a faction rather than a door. The dungeon
@@ -1204,7 +1212,13 @@ type AnswerSpec struct {
 	// An entry whose condition does not hold is NOT ON THE TABLE for that
 	// roll — absent rather than weighted zero, so the beat's candidate list
 	// is the honest account of what the creature could have done.
-	When *WhenSpec `yaml:"when,omitempty"`
+	//
+	// A LIST, AND EVERY ENTRY MUST HOLD (rpg-project#569 R8). One condition
+	// may still be written as a single mapping, which reads as a list of one:
+	//
+	//	- { when: { enemy: seen }, toward: enemy }
+	//	- { when: [{ fact: guards-turned }, { not: { enemy: seen } }], toward: { at: [20, 12] } }
+	When WhenListSpec `yaml:"when,omitempty"`
 
 	// Hold is `hold: {}` — the creature does nothing with its time. `time`
 	// only. An EMPTY MAPPING for [FleeSpec]'s reason: a word with no body has
@@ -1261,19 +1275,70 @@ type FleeSpec struct{}
 // `time`, and written the same way for the same reason.
 type HoldSpec struct{}
 
-// WhenSpec is a condition on what the creature holds: EXACTLY ONE of an
-// enemy state or a deed within a span (rpg-project#465, design §2).
+// WhenListSpec is a row's `when`: every condition in it must hold
+// (rpg-project#569 R8). Written as a list, or as one mapping that reads as a
+// list of one, so every file authored before the list existed still reads.
+type WhenListSpec []WhenSpec
+
+// UnmarshalYAML reads a `when` as one condition or a list of them, refusing an
+// empty list: a row with no conditions is a standing order, and the way to
+// write one is to leave `when` out.
+func (l *WhenListSpec) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind != yaml.SequenceNode {
+		var one WhenSpec
+		if err := value.Decode(&one); err != nil {
+			return err
+		}
+		*l = WhenListSpec{one}
+
+		return nil
+	}
+	if len(value.Content) == 0 {
+		return fmt.Errorf("line %d: a `when` with no condition in it is on the table always — omit it", value.Line)
+	}
+	out := make(WhenListSpec, 0, len(value.Content))
+	for _, item := range value.Content {
+		var one WhenSpec
+		if err := item.Decode(&one); err != nil {
+			return err
+		}
+		out = append(out, one)
+	}
+	*l = out
+
+	return nil
+}
+
+// deed is the first condition in the list that names a deed, or nil — the
+// deed `actor` names the actor of. A deed inside a `not` is not one: it
+// names something that did not happen, and nobody was its actor.
+func (l WhenListSpec) deed() *WhenSpec {
+	for i := range l {
+		if l[i].Deed != "" {
+			return &l[i]
+		}
+	}
+
+	return nil
+}
+
+// WhenSpec is ONE condition on what the creature holds: EXACTLY ONE of an
+// enemy state, a deed within a span, a sound heard within a span, a fact
+// held, or the negative of another condition (rpg-project#465 design §2;
+// rpg-project#569 R4, R6, R8).
 //
 //	when: { enemy: reach }
 //	when: { enemy: seen }
 //	when: { enemy: remembered }
 //	when: { enemy: none }
 //	when: { attacked: { within: 3 } }
+//	when: { heard: { kind: clang, within: 2 } }
+//	when: { fact: alarm-raised }
+//	when: { not: { enemy: seen } }
 //
-// TWO KEYS IS REFUSED, not read as `and`. An author who wrote two meant
-// something — probably "both" — and guessing which of the two readings they
-// meant is exactly what a sealed vocabulary exists to avoid. The day a use
-// case pays for `and`, it arrives as its own spelling.
+// TWO KEYS IN ONE MAPPING IS REFUSED, not read as `and`. The `and` is the
+// list ([WhenListSpec]): an author who wants both writes two entries, and the
+// refusal says so.
 type WhenSpec struct {
 	// Enemy is one of the four BANDS — `reach`, `seen`, `remembered`, `none`
 	// — or empty when this condition names a deed instead.
@@ -1308,10 +1373,49 @@ type WhenSpec struct {
 	// needs.
 	Scope encounter.DeedScope
 
+	// Heard is `heard: { kind, within }`: a sound of one of the sealed kinds
+	// ([encounter.SoundKinds]) the creature holds, no older than the span.
+	// Nil when this condition names something else.
+	Heard *HeardSpec
+
+	// Fact is `fact: <id>`: the creature holds that fact. Empty when this
+	// condition names something else. CARRIED VERBATIM, [AnswerSpec.Fact]'s
+	// rule: a fact nothing teaches is a cost, not a defect.
+	Fact string
+
+	// Not is `not: { … }`: holds when the one condition inside it does not.
+	Not *WhenSpec
+
 	// Line is the file line, captured at decode for [AnswerSpec.Line]'s
 	// reason.
 	Line int
 }
+
+// HeardSpec is the body of a `heard` condition: which kind, and how recently.
+type HeardSpec struct {
+	// Kind is the sound's kind, one of [encounter.SoundKinds].
+	Kind string
+
+	// Within is how many rounds ago the sound may have been made and still
+	// count. AT LEAST 1, the deed condition's rule.
+	Within int
+}
+
+// heardBody is what a `heard` condition's mapping decodes into, pointers so
+// an omitted key can be told from a zero.
+type heardBody struct {
+	Kind   *string `yaml:"kind"`
+	Within *int    `yaml:"within"`
+}
+
+// The keys a `when` entry may name besides a deed word, sealed so the
+// refusals and the decode below cannot drift apart.
+const (
+	whenEnemy = "enemy"
+	whenHeard = "heard"
+	whenFact  = "fact"
+	whenNot   = "not"
+)
 
 // The three keys a deed condition's body may carry, sealed so the hand-read
 // refusal above and the decode below cannot drift apart.
@@ -1334,15 +1438,18 @@ type withinSpec struct {
 	As     *string `yaml:"as"`
 }
 
-// UnmarshalYAML reads one condition, refusing two conditions in one `when`,
-// an unknown key by name, and a span counted from zero.
+// UnmarshalYAML reads one condition, refusing two conditions in one entry,
+// an unknown key by name, a span counted from zero, a `heard` with no kind or
+// a kind no deed here makes, and an empty `fact`.
 func (w *WhenSpec) UnmarshalYAML(value *yaml.Node) error {
 	if value.Kind != yaml.MappingNode || len(value.Content) == 0 {
-		return fmt.Errorf("line %d: a `when` is one of { enemy: %s } or { <deed>: { within: N } }",
+		return fmt.Errorf("line %d: a `when` is one of { enemy: %s }, { <deed>: { within: N } }, "+
+			"{ heard: { kind, within } }, { fact: <id> } or { not: { … } }",
 			value.Line, strings.Join(enemyWords(), " | "))
 	}
 	if len(value.Content) > 2 {
-		return fmt.Errorf("line %d: a `when` is one condition, and this names %d",
+		return fmt.Errorf("line %d: a `when` entry is one condition, and this names %d: "+
+			"give each its own entry in a list, `when: [{ … }, { … }]`, and every entry must hold",
 			value.Line, len(value.Content)/2)
 	}
 
@@ -1350,7 +1457,34 @@ func (w *WhenSpec) UnmarshalYAML(value *yaml.Node) error {
 	body := value.Content[1]
 	w.Line = value.Line
 
-	if key == "enemy" {
+	switch key {
+	case whenHeard:
+		heard, err := decodeHeard(body)
+		if err != nil {
+			return err
+		}
+		w.Heard = heard
+
+		return nil
+	case whenFact:
+		if body.Kind != yaml.ScalarNode || body.Value == "" {
+			return fmt.Errorf("line %d: `fact` in a `when` names the fact the creature must hold, and this names none",
+				body.Line)
+		}
+		w.Fact = body.Value
+
+		return nil
+	case whenNot:
+		var inner WhenSpec
+		if err := body.Decode(&inner); err != nil {
+			return err
+		}
+		w.Not = &inner
+
+		return nil
+	}
+
+	if key == whenEnemy {
 		word := body.Value
 		if !knownEnemyWord(word) {
 			return fmt.Errorf("line %d: `enemy: %s` is not a condition this build reads: they are %s",
@@ -1362,7 +1496,7 @@ func (w *WhenSpec) UnmarshalYAML(value *yaml.Node) error {
 	}
 
 	if !knownWhenDeed(key) {
-		return fmt.Errorf("line %d: `%s` is not a deed this build holds: they are %s (and `enemy`)",
+		return fmt.Errorf("line %d: `%s` is not a deed this build holds: they are %s (and `enemy`, `heard`, `fact`, `not`)",
 			value.Content[0].Line, key, strings.Join(encounter.WhenDeeds, ", "))
 	}
 	// UNKNOWN KEYS ARE REFUSED BY HAND, because Decode's strictness does not
@@ -1401,6 +1535,52 @@ func (w *WhenSpec) UnmarshalYAML(value *yaml.Node) error {
 	w.Scope = scope
 
 	return nil
+}
+
+// decodeHeard reads a `heard` body, refusing an unknown key and a kind no
+// deed here makes — the sealed vocabulary, which is the rulebook's. A missing
+// kind or a span below 1 is mind/behavior's shape rule and is refused on the
+// form in its words ([grammar.entryShape]), not restated here.
+func decodeHeard(body *yaml.Node) (*HeardSpec, error) {
+	if body.Kind != yaml.MappingNode {
+		return nil, fmt.Errorf("line %d: `heard` takes { kind, within: N }", body.Line)
+	}
+	for i := 0; i < len(body.Content); i += 2 {
+		switch k := body.Content[i].Value; k {
+		case "kind", "within":
+		default:
+			return nil, fmt.Errorf("line %d: field %s not found in type dungeonspec.heardBody",
+				body.Content[i].Line, k)
+		}
+	}
+	var heard heardBody
+	if err := body.Decode(&heard); err != nil {
+		return nil, fmt.Errorf("line %d: `heard` takes { kind, within: N }: %w", body.Line, err)
+	}
+	out := &HeardSpec{}
+	if heard.Kind != nil {
+		out.Kind = *heard.Kind
+	}
+	if heard.Within != nil {
+		out.Within = *heard.Within
+	}
+	if out.Kind != "" && !knownSoundKind(out.Kind) {
+		return nil, fmt.Errorf("line %d: `heard: { kind: %s }` is not a sound this build makes: they are %s",
+			body.Line, out.Kind, strings.Join(encounter.SoundKinds, ", "))
+	}
+
+	return out, nil
+}
+
+// knownSoundKind reports whether a kind is one of [encounter.SoundKinds].
+func knownSoundKind(kind string) bool {
+	for _, k := range encounter.SoundKinds {
+		if k == kind {
+			return true
+		}
+	}
+
+	return false
 }
 
 // scopeOf reads WHOSE deed a condition is about off its body — `on: ally`,
@@ -1460,40 +1640,55 @@ func scopeWords() string {
 }
 
 // SelectorSpec names what a `attack`/`toward`/`away` entry acts on: a word,
-// or an authored cell.
+// an authored cell, or an authored route.
 //
 //	attack: enemy
+//	toward: sound
 //	toward: { at: [3, 4] }
+//	toward: { path: [[2, 3], [6, 3], [6, 8], [2, 8]] }
 //
 // A SCALAR OR A MAPPING, and the author writes whichever says what they mean.
-// The words are the sealed three; `at:` is legal on `toward` alone, refused
-// elsewhere by the validator with the reason.
+// The words are sealed in mind/behavior ([encounter.SelectorWords]); `at:` and
+// `path:` are legal on `toward` alone, and `sound` is refused on `attack`, by
+// the validator with the reason.
 type SelectorSpec struct {
-	// Word is `enemy`, `attacker` or `actor`, or empty when At is written.
+	// Word is `enemy`, `attacker`, `actor` or `sound`, or empty when At or
+	// Path is written.
 	Word string
 
 	// At is the authored cell, offset [col,row], or nil when Word is
 	// written. It must be floor, the same rule a placement's own `at` keeps.
 	At *[2]int
 
+	// Path is an authored route of cells, offset [col,row], walked in order
+	// and round again — a patrol (rpg-project#569 R7). Each must be floor.
+	// THE ROUTE HOLDS NO STATE: which waypoint is next is derived from where
+	// the creature stands each time the row fires.
+	Path [][2]int
+
 	// Line is the file line, captured at decode for [AnswerSpec.Line]'s
 	// reason.
 	Line int
 }
 
-// atSpec is the body a cell selector takes: `{ at: [col, row] }`.
+// atSpec is the body a cell or route selector takes: `{ at: [col, row] }` or
+// `{ path: [[col, row], …] }`.
 type atSpec struct {
-	At *[2]int `yaml:"at"`
+	At   *[2]int   `yaml:"at"`
+	Path *[][2]int `yaml:"path"`
 }
 
-// UnmarshalYAML reads one selector, refusing a word outside the sealed three
-// and a mapping that names anything but `at`.
+// UnmarshalYAML reads one selector, refusing a word outside the sealed list
+// and a mapping that names anything but `at` or `path`. How many targets a
+// selector names — both, or a route with no waypoints — is mind/behavior's
+// shape rule, refused on the form in its words ([grammar.entryShape]).
 func (sel *SelectorSpec) UnmarshalYAML(value *yaml.Node) error {
 	sel.Line = value.Line
 
 	if value.Kind == yaml.ScalarNode {
 		if !knownSelectorWord(value.Value) {
-			return fmt.Errorf("line %d: %q is not a selector this build resolves: they are %s, or { at: [col, row] }",
+			return fmt.Errorf("line %d: %q is not a selector this build resolves: they are %s, "+
+				"or { at: [col, row] }, or { path: [[col, row], …] }",
 				value.Line, value.Value, strings.Join(selectorWords(), ", "))
 		}
 		sel.Word = value.Value
@@ -1502,11 +1697,13 @@ func (sel *SelectorSpec) UnmarshalYAML(value *yaml.Node) error {
 	}
 
 	if value.Kind != yaml.MappingNode {
-		return fmt.Errorf("line %d: a selector is one of %s, or { at: [col, row] }",
+		return fmt.Errorf("line %d: a selector is one of %s, or { at: [col, row] }, or { path: [[col, row], …] }",
 			value.Line, strings.Join(selectorWords(), ", "))
 	}
 	for i := 0; i < len(value.Content); i += 2 {
-		if value.Content[i].Value != "at" {
+		switch value.Content[i].Value {
+		case "at", "path":
+		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.SelectorSpec",
 				value.Content[i].Line, value.Content[i].Value)
 		}
@@ -1515,10 +1712,10 @@ func (sel *SelectorSpec) UnmarshalYAML(value *yaml.Node) error {
 	if err := value.Decode(&body); err != nil {
 		return err
 	}
-	if body.At == nil {
-		return fmt.Errorf("line %d: a cell selector is { at: [col, row] }", value.Line)
-	}
 	sel.At = body.At
+	if body.Path != nil {
+		sel.Path = *body.Path
+	}
 
 	return nil
 }
@@ -1662,6 +1859,9 @@ func (r *AnswerSpec) UnmarshalYAML(value *yaml.Node) error {
 		key := value.Content[i].Value
 		if why, later := laterWords[key]; later {
 			return fmt.Errorf("line %d: `%s` is %s (rpg-project#458)", value.Content[i].Line, key, why)
+		}
+		if key == "patrol" {
+			return fmt.Errorf("line %d: %s", value.Content[i].Line, patrolRefusal)
 		}
 		switch key {
 		case "weight", "say", "when", "fact", "flee", "hold", "attack", "toward", "away":

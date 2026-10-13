@@ -5,6 +5,7 @@ package encounter
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/sound"
 )
 
 // table.go is THE CREATURE'S TABLE, and this file is the RULEBOOK'S HALF of
@@ -58,6 +59,14 @@ type (
 	// When is a condition on what this creature holds.
 	When = behavior.When
 
+	// HeardWhen is a `heard: { kind, within }` condition (rpg-project#569 R4).
+	HeardWhen = behavior.HeardWhen
+
+	// Sound is one heard report: a kind, where it was made, and when — never
+	// who made it (R4). What a creature holds on the sounds channel, projected
+	// onto [MonsterView.Sounds] and [Facts.Sounds].
+	Sound = sound.Sound
+
 	// EnemyWord is a `when: { enemy: … }` band.
 	EnemyWord = behavior.EnemyWord
 
@@ -101,7 +110,12 @@ var Layer = behavior.Layer
 // The bands and selector words, re-exported so the authoring dialect refuses
 // by the same names the evaluator reads.
 const (
-	// EnemyReach holds when an opposed member is within this creature's reach.
+	// EnemyReach holds when an opposed member is within this creature's reach
+	// AND it can attack this pick (R11, rpg-project#569): reach is a statement
+	// about striking. With no attack affordable — always, on the world clock —
+	// nothing is in reach, and `seen` (or `remembered`) holds instead, so the
+	// four bands stay exclusive and a creature that cannot swing still has
+	// its alarm and patrol rows.
 	EnemyReach = behavior.EnemyReach
 
 	// EnemySeen holds when one is in sight and NONE is in reach.
@@ -121,6 +135,11 @@ const (
 
 	// SelectorActor is the actor of the deed this entry's `when` named.
 	SelectorActor = behavior.SelectorActor
+
+	// SelectorSound is where the freshest sound this creature holds was made
+	// (rpg-project#569 R10): legal on `toward` and `away`, refused on
+	// `attack`. Resolved here ([TableDriver]); sealed in mind/behavior.
+	SelectorSound = behavior.SelectorSound
 )
 
 // EnemyWords and SelectorWords are the sealed vocabularies, for the dialect's

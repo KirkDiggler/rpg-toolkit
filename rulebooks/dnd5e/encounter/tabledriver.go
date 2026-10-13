@@ -122,12 +122,21 @@ func (d TableDriver) intentFor(view MonsterView, entry Answer) (TurnIntent, erro
 	case entry.Away != nil:
 		return d.awayIntent(view, entry), nil
 
+	case entry.Fact != "", !entry.Flee && entry.Say != "":
+		// THE CREATURE SPENDS ITS TIME SAYING SOMETHING (rpg-project#569 R6):
+		// an alarm raised, or a line with nothing else in it. Saying is not a
+		// walk or a swing, so the intent is a Pass — and the line and the
+		// fact land where the pick's beat is written
+		// ([Encounter.answerTime]), because what was said and who heard it
+		// is the encounter's to land and not this driver's.
+		return Pass{}, nil
+
 	default:
-		// `fact`, `flee` and a bare line are social words, refused under
-		// `time` by [validateTable] at every door a table comes in through.
-		// Reaching here means a blob got past that, and the honest answer is
-		// a named error rather than a creature standing there for reasons
-		// nobody could find.
+		// `flee` is a social word, refused under `time` by [validateTable]
+		// at every door a table comes in through, and a row with no word and
+		// no line is refused by the dialect. Reaching here means a blob got
+		// past that, and the honest answer is a named error rather than a
+		// creature standing there for reasons nobody could find.
 		return nil, fmt.Errorf("table driver %q: %q under `time`: %w",
 			view.Self, answerWord(entry), ErrBadAnswer)
 	}
@@ -197,6 +206,31 @@ func (d TableDriver) towardIntent(view MonsterView, entry Answer) TurnIntent {
 		return Routed{Policy: MoveToward, AnchorAt: &cell, Cause: tableCauseToward}
 	}
 
+	if path := entry.Toward.Path; len(path) > 0 {
+		// ON THE ROUTE, THE LEG'S OWN CELLS; OFF IT, BACK TO THE NEAREST
+		// WAYPOINT ([patrolStep]). A Move rather than a Routed walk, because
+		// the leg IS the route: the creature walks the same cells the next
+		// round will find it on.
+		ahead, back := patrolStep(view.Position, path)
+		if len(ahead) == 0 {
+			return Routed{Policy: MoveToward, AnchorAt: &back, Cause: tableCauseToward}
+		}
+		if len(ahead) > cells {
+			ahead = ahead[:cells]
+		}
+
+		return Move{Path: append([]spatial.Position(nil), ahead...)}
+	}
+
+	if entry.Toward.Word == SelectorSound {
+		cell, heard := soundFor(view.Sounds, entry.When)
+		if !heard {
+			return Pass{}
+		}
+
+		return Routed{Policy: MoveToward, AnchorAt: &cell, Cause: tableCauseToward}
+	}
+
 	target, ok := d.selectMember(view, entry, *entry.Toward)
 	if !ok {
 		return Pass{}
@@ -258,6 +292,14 @@ func (d TableDriver) awayIntent(view MonsterView, entry Answer) TurnIntent {
 	if CellsFromFeet(view.Budget.MovementFeet) <= 0 {
 		return Pass{}
 	}
+	if entry.Away.Word == SelectorSound {
+		cell, heard := soundFor(view.Sounds, entry.When)
+		if !heard {
+			return Pass{}
+		}
+
+		return Routed{Policy: MoveAway, AnchorAt: &cell, Cause: tableCauseAway}
+	}
 	target, ok := d.selectMember(view, entry, *entry.Away)
 	if !ok {
 		return Pass{}
@@ -287,15 +329,50 @@ func (d TableDriver) pathTo(view MonsterView, target MemberID) []spatial.Positio
 	return nil
 }
 
-// scopeOf is the reading an entry's condition asks for, or the self reading
-// when the entry names no condition — a `time` row with no `when` is a
-// standing order, and its selectors read the creature's own deeds.
+// soundFor is WHERE the freshest sound of the kinds this row LISTENS FOR was
+// made (rpg-project#569 R10, refined on the behavior review): the kinds its
+// own `heard` conditions name, the list's entries only — a `heard` inside a
+// `not` is a sound the row is waiting NOT to have heard. A guard that heard a
+// voice after the clang it is answering still walks to the clang. Ties on
+// the stamp break on the kind's name so the same holdings always pick the
+// same place (C8).
+//
+// ok IS ALWAYS TRUE FOR A ROW THAT FIRED. mind/behavior refuses a `sound`
+// row with no `heard` condition, its eligibility gates a `sound` selector on
+// a held sound, and the row's own `heard` holding means a sound of that kind
+// is held — so the false answer is a struct built in Go past every door, and
+// it goes out as a plain Pass, the rule for any selector that names nothing.
+func soundFor(sounds []Sound, when []When) (spatial.Position, bool) {
+	kinds := map[string]bool{}
+	for _, w := range when {
+		if w.Heard != nil {
+			kinds[w.Heard.Kind] = true
+		}
+	}
+	var best Sound
+	found := false
+	for _, s := range sounds {
+		if !kinds[s.Kind] {
+			continue
+		}
+		if !found || s.At > best.At || (s.At == best.At && s.Kind < best.Kind) {
+			best, found = s, true
+		}
+	}
+
+	return best.Where, found
+}
+
+// scopeOf is the reading the entry's deed condition asks for, or the self
+// reading when no condition in its list names a deed — a `time` row with no
+// deed condition reads the creature's own deeds.
 func scopeOf(entry Answer) DeedScope {
-	if entry.When == nil {
+	when := deedWhen(entry.When)
+	if when == nil {
 		return ScopeSelf
 	}
 
-	return entry.When.Scope
+	return when.Scope
 }
 
 // deedsForScope is the deeds list ONE SCOPE reads, off the view: the mirror of
@@ -337,6 +414,9 @@ func deedsForScope(view MonsterView, scope DeedScope) []HeldDeed {
 //   - `actor`: the actor of the deed this entry's `when` named, so `fled`
 //     pairs with `away: actor`.
 //
+// `sound` is not here: it names a PLACE, never a member (R4), and is resolved
+// by [soundFor] where `toward` and `away` read their cells.
+//
 // ok=false is a selector that named nobody, which the caller turns into a
 // [Pass] with the pick still attached.
 func (d TableDriver) selectMember(view MonsterView, entry Answer, sel Selector) (MemberID, bool) {
@@ -352,10 +432,11 @@ func (d TableDriver) selectMember(view MonsterView, entry Answer, sel Selector) 
 		return "", false
 
 	case SelectorActor:
-		if entry.When == nil || entry.When.Deed == "" {
+		when := deedWhen(entry.When)
+		if when == nil {
 			return "", false
 		}
-		if held, ok := freshestDeed(deedsForScope(view, scopeOf(entry)), DeedVerbFor(entry.When.Deed)); ok && held.Actor != "" {
+		if held, ok := freshestDeed(deedsForScope(view, when.Scope), DeedVerbFor(when.Deed)); ok && held.Actor != "" {
 			return held.Actor, true
 		}
 

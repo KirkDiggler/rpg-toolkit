@@ -1086,7 +1086,7 @@ func validateMemberFacts(in memberFacts) error {
 	// A table this composition could not roll is refused at whichever door
 	// the member came in through, never at the roll (answer.go).
 	if err := validateTable(in.Table); err != nil {
-		return fmt.Errorf("member %s: %w", in.ID, err)
+		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
 	}
 
 	return nil
