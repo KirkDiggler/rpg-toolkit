@@ -564,6 +564,6 @@ func applyPropBindings(key string, props []encounter.PlacedPropInput, bindings m
 		props[i].Holdable = b.Holdable
 		props[i].Holds = intelHoldingsOf(key, b.Holds)
 		props[i].Arrives = predicateOf(b.Arrives)
-		props[i].Options = optionsOf(b.Options)
+		props[i].Options = optionsOf(b.Options, encounter.HexesArePointyTop())
 	}
 }

@@ -473,7 +473,8 @@ type Routed struct {
 
 	// AnchorAt is a CELL the policy is measured from instead of a member —
 	// what `toward: { at: [col, row] }` compiles to (rpg-project#465), the
-	// next waypoint of a `toward: { path }`, or where a heard sound rang for
+	// waypoint a patrol knocked off its route goes back to, or where a heard
+	// sound rang for
 	// `toward: sound` and `away: sound` (rpg-project#569). Dungeon-absolute.
 	// Toward it is an exact-cell walk; away from it is [MoveAway]'s own
 	// answer, measured from the cell.

@@ -465,7 +465,7 @@ func (g *grammar) answerEntry(at string, key string, entry AnswerSpec) {
 // cell is drawn in, and the sealed word lists. The sentinel's wording is
 // trimmed off: it names a Go package, and the form shows an author a sentence.
 func (g *grammar) entryShape(at string, entry AnswerSpec) {
-	compiled := answerOf(entry)
+	compiled := answerOf(entry, encounter.HexesArePointyTop())
 	err := compiled.Validate()
 	if err == nil {
 		return
@@ -568,10 +568,46 @@ func (g *grammar) entryRoute(at, word string, sel *SelectorSpec) {
 	if word != "toward" {
 		return
 	}
+	floorDefect := false
 	for i, waypoint := range sel.Path {
 		if answer := g.cells.cellAt(waypoint); answer.refusal != "" {
 			g.fail(fmt.Sprintf("%s.%s.path[%d]", at, word, i), "%s", answer.refusal)
+			floorDefect = true
 		}
+	}
+	frame, ok := g.cells.(floorCells)
+	if !ok || floorDefect {
+		return
+	}
+	g.routeLegs(at+"."+word+".path", frame, sel.Path)
+}
+
+// routeLegs asks the two questions a route's LEGS raise, once its waypoints
+// are floor (rpg-project#569 R7): does a leg cross off the floor, and does the
+// route retrace itself. A leg is the hex line the creature walks between two
+// waypoints ([encounter.RetracedCell]'s legs), so a wall of void across that
+// line is a patrol that would stop dead there, and two legs sharing a cell is
+// a creature on both. Both are named in the author's own offset pairs.
+func (g *grammar) routeLegs(path string, frame floorCells, authoredPath [][2]int) {
+	cells := make([]spatial.Position, 0, len(authoredPath))
+	for _, w := range authoredPath {
+		cells = append(cells, encounter.HexCellAt(frame.orientation, w[0], w[1]))
+	}
+	for i := range cells {
+		for _, cell := range encounter.LegLine(cells[i], cells[(i+1)%len(cells)]) {
+			col, row := encounter.OffsetOf(frame.orientation, cell)
+			if answer := frame.cellAt([2]int{col, row}); answer.refusal != "" {
+				g.fail(path, "leg %d of this route walks through [%d,%d], which is not floor: "+
+					"move a waypoint so the line between them stays on the floor", i+1, col, row)
+
+				return
+			}
+		}
+	}
+	if cell, retraced := encounter.RetracedCell(cells); retraced {
+		col, row := encounter.OffsetOf(frame.orientation, cell)
+		g.fail(path, "this route retraces itself at [%d,%d]: a patrol walks a loop — "+
+			"add a waypoint so no leg crosses another", col, row)
 	}
 }
 

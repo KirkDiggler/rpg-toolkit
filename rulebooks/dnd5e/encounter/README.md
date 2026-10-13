@@ -154,9 +154,14 @@ gets a `heard` beat — kind, position, hops — addressed to them alone.
 `fact` on a `time` row is an alarm: its audience is everyone who sees the
 creature say it AND everyone who hears its voice, and the row's `say` (or the
 fact itself) lands a voice. `toward: { path: [cells] }` is a patrol: the next
-waypoint is derived from where the creature stands — the one after the
-waypoint it is on; the far end of the leg it is partway along; else, off the
-route, the nearest — so the table holds no cursor.
+route is a loop of legs, and each leg is the hex line between two waypoints:
+a creature on a waypoint or partway along a leg walks the rest of that line
+toward the next waypoint, at its full movement and on round the loop; one
+knocked off the route walks back to the nearest waypoint. All of it is read
+off where the creature stands, so the table holds no cursor. A route whose
+legs share a cell is refused ("this route retraces itself at [c,r]…"), which
+refuses the two-waypoint corridor pace (A to B and back) today — that pace is
+the named next use case, for a direction derived the same way.
 
 ### You are given only what you know
 

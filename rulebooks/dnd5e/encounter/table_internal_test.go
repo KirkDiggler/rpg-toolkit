@@ -151,6 +151,15 @@ func (s *TableSuite) TestATableThisBuildCannotRollIsRefusedAtTheDoor() {
 			says: "`attack` cannot take a `path`",
 		},
 		{
+			// R7, as ruled on rpg-toolkit#2044's review: two legs that share a
+			// cell leave a creature standing there on both. A to B and back is
+			// the plainest case — the same cells twice.
+			name: "a route that retraces itself",
+			table: Table{AnswerTime: {{Weight: 1,
+				Toward: &Selector{Path: []spatial.Position{{X: 0, Y: 0}, {X: 10, Y: 0}}}}}},
+			says: "this route retraces itself at [9,0]: a patrol walks a loop — add a waypoint so no leg crosses another",
+		},
+		{
 			name:  "`sound` on `attack`",
 			table: Table{AnswerTime: {{Weight: 1, Attack: &Selector{Word: SelectorSound}}}},
 			says:  "a sound cannot be struck",
@@ -221,7 +230,7 @@ func (s *TableSuite) TestAWholeLegalTableIsAccepted() {
 			{Weight: 1, When: []When{{Enemy: EnemyRemembered}}, Toward: &Selector{Word: SelectorEnemy}},
 			{Weight: 1, When: []When{{Enemy: EnemyNone}}, Toward: &Selector{At: &cell}},
 			{Weight: 5, When: []When{{Deed: "fled", Within: 3}}, Away: &Selector{Word: SelectorActor}},
-			{Weight: 1, When: []When{{Enemy: EnemyNone}}, Toward: &Selector{Path: []spatial.Position{cell, {X: 2, Y: 0}}}},
+			{Weight: 1, When: []When{{Enemy: EnemyNone}}, Toward: &Selector{Path: []spatial.Position{{X: 11, Y: 2}, {X: 15, Y: 2}, {X: 13, Y: 6}, {X: 9, Y: 6}}}},
 			{Weight: 1, When: []When{{Heard: &HeardWhen{Kind: SoundClang, Within: 2}}}, Toward: &Selector{Word: SelectorSound}},
 			{Weight: 1, When: []When{{Heard: &HeardWhen{Kind: SoundBoom, Within: 3}}}, Away: &Selector{Word: SelectorSound}},
 			{Weight: 1, When: []When{{Enemy: EnemySeen}}, Say: "To arms!", Fact: "alarm-raised"},

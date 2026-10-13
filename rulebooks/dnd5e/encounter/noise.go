@@ -125,18 +125,16 @@ func knownSoundKind(kind string) bool {
 }
 
 // forcedBy reports whether a beaten lock's applied route FORCED the door
-// rather than picking it: a Strength route, however the content spells it.
+// rather than picking it: the Strength route, spelled the one way every lock
+// this repository's content authors spells it — `str`, the lowercase ability
+// ref ([CheckApproach.Ability]). No dialect produces `strength`, and no lock
+// is authored with `athletics`, so neither is read.
 //
 // [deedForSkill]'s rule for [deedForSkill]'s reason: the approach's ability
 // word is carried, never interpreted, except here, to choose whether the
-// door made a sound.
+// door made a sound — the third of the three places that compare it.
 func forcedBy(ability string) bool {
-	switch ability {
-	case "str", "strength", "athletics":
-		return true
-	default:
-		return false
-	}
+	return ability == "str"
 }
 
 // regionLink is one way out of a region: the region on the far side and the

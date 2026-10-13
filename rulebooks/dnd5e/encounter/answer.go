@@ -514,7 +514,7 @@ func validateTable(table Table) error {
 // `fact` IS LEGAL ON BOTH (rpg-project#569 R6): on a verdict it teaches the
 // witnesses of the spoken line, and on `time` it is a creature raising an
 // alarm — its audience is whoever HEARS the speaker as well as whoever sees
-// them ([Encounter.teachFromTime]). `flee` stays a verdict's word: a creature
+// them ([Encounter.answerTime]). `flee` stays a verdict's word: a creature
 // runs because somebody made it, and that somebody is the actor of a verb.
 //
 // THE SHAPE RULE IS mind/behavior's. One condition per `when` entry, one
@@ -563,6 +563,9 @@ func validateEntry(key AnswerKey, i int, entry Answer) error {
 		if sel.At != nil && entry.Toward == nil {
 			return fmt.Errorf("answer %q entry %d: a cell is somewhere to walk toward, not %s: %w",
 				key, i, word, ErrBadAnswer)
+		}
+		if cell, retraced := RetracedCell(sel.Path); retraced {
+			return fmt.Errorf("answer %q entry %d: %s: %w", key, i, retraceRefusal(cell), ErrBadAnswer)
 		}
 	}
 
@@ -622,6 +625,14 @@ func validateWhenWords(when *When) error {
 	}
 
 	return nil
+}
+
+// retraceRefusal is the sentence a patrol route whose legs cross is refused
+// with ([RetracedCell]), naming the cell — dungeon-absolute here; the dialect
+// says the same thing in the author's own offset coordinates.
+func retraceRefusal(cell spatial.Position) string {
+	return fmt.Sprintf("this route retraces itself at [%g,%g]: a patrol walks a loop — "+
+		"add a waypoint so no leg crosses another", cell.X, cell.Y)
 }
 
 // deedWhen is the condition in an entry's list that names a deed, or nil when

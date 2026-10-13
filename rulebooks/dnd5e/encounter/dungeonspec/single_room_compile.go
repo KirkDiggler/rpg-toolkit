@@ -225,7 +225,7 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		mp := ordersOf(creatureOrders{
 			ID: m.ID, Ref: m.Ref, Faction: b.Faction,
 			On: on, Temper: b.Temper, Actions: b.Actions,
-		}, from)
+		}, from, encounter.HexesArePointyTop())
 		mp.Region = layout.owner[at]
 		mp.At = at
 		mp.Facing = m.StartingCell.Facing
@@ -237,7 +237,7 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		// that brings it in by [predicateOf]. Absent is nil in every one of them, which is
 		// why a document with no orders pictures exactly as it did before.
 		mp.Holds = intelHoldingsOf(spec.Key, b.Holds)
-		mp.Options = optionsOf(b.Options)
+		mp.Options = optionsOf(b.Options, encounter.HexesArePointyTop())
 		mp.Arrives = predicateOf(b.Arrives)
 		monsters = append(monsters, mp)
 	}

@@ -1417,9 +1417,6 @@ const (
 	whenNot   = "not"
 )
 
-// errHeardNoKind is the sentence a `heard` with no kind is refused with.
-const errHeardNoKind = "`heard` needs a `kind`, the sound it listens for"
-
 // The three keys a deed condition's body may carry, sealed so the hand-read
 // refusal above and the decode below cannot drift apart.
 const (
@@ -1540,8 +1537,10 @@ func (w *WhenSpec) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
-// decodeHeard reads a `heard` body, refusing an unknown key, a missing or
-// unknown kind, and a missing span or one counted from zero.
+// decodeHeard reads a `heard` body, refusing an unknown key and a kind no
+// deed here makes — the sealed vocabulary, which is the rulebook's. A missing
+// kind or a span below 1 is mind/behavior's shape rule and is refused on the
+// form in its words ([grammar.entryShape]), not restated here.
 func decodeHeard(body *yaml.Node) (*HeardSpec, error) {
 	if body.Kind != yaml.MappingNode {
 		return nil, fmt.Errorf("line %d: `heard` takes { kind, within: N }", body.Line)
@@ -1558,22 +1557,19 @@ func decodeHeard(body *yaml.Node) (*HeardSpec, error) {
 	if err := body.Decode(&heard); err != nil {
 		return nil, fmt.Errorf("line %d: `heard` takes { kind, within: N }: %w", body.Line, err)
 	}
-	if heard.Kind == nil || *heard.Kind == "" {
-		return nil, fmt.Errorf("line %d: %s: they are %s",
-			body.Line, errHeardNoKind, strings.Join(encounter.SoundKinds, ", "))
+	out := &HeardSpec{}
+	if heard.Kind != nil {
+		out.Kind = *heard.Kind
 	}
-	if !knownSoundKind(*heard.Kind) {
+	if heard.Within != nil {
+		out.Within = *heard.Within
+	}
+	if out.Kind != "" && !knownSoundKind(out.Kind) {
 		return nil, fmt.Errorf("line %d: `heard: { kind: %s }` is not a sound this build makes: they are %s",
-			body.Line, *heard.Kind, strings.Join(encounter.SoundKinds, ", "))
-	}
-	if heard.Within == nil {
-		return nil, fmt.Errorf("line %d: `heard` names no span — write { kind: %s, within: N }", body.Line, *heard.Kind)
-	}
-	if *heard.Within < 1 {
-		return nil, fmt.Errorf("line %d: a span of %d rounds is counted from 1", body.Line, *heard.Within)
+			body.Line, out.Kind, strings.Join(encounter.SoundKinds, ", "))
 	}
 
-	return &HeardSpec{Kind: *heard.Kind, Within: *heard.Within}, nil
+	return out, nil
 }
 
 // knownSoundKind reports whether a kind is one of [encounter.SoundKinds].
@@ -1682,9 +1678,10 @@ type atSpec struct {
 	Path *[][2]int `yaml:"path"`
 }
 
-// UnmarshalYAML reads one selector, refusing a word outside the sealed list,
-// a mapping that names anything but `at` or `path`, both of them at once, and
-// a route with no waypoints.
+// UnmarshalYAML reads one selector, refusing a word outside the sealed list
+// and a mapping that names anything but `at` or `path`. How many targets a
+// selector names — both, or a route with no waypoints — is mind/behavior's
+// shape rule, refused on the form in its words ([grammar.entryShape]).
 func (sel *SelectorSpec) UnmarshalYAML(value *yaml.Node) error {
 	sel.Line = value.Line
 
@@ -1715,19 +1712,9 @@ func (sel *SelectorSpec) UnmarshalYAML(value *yaml.Node) error {
 	if err := value.Decode(&body); err != nil {
 		return err
 	}
-	switch {
-	case body.At != nil && body.Path != nil:
-		return fmt.Errorf("line %d: a selector names a cell (`at`) or a route (`path`), and this names both", value.Line)
-	case body.Path != nil:
-		if len(*body.Path) == 0 {
-			return fmt.Errorf("line %d: a route with no waypoints walks nowhere — list the cells, { path: [[col, row], …] }",
-				value.Line)
-		}
+	sel.At = body.At
+	if body.Path != nil {
 		sel.Path = *body.Path
-	case body.At != nil:
-		sel.At = body.At
-	default:
-		return fmt.Errorf("line %d: a cell selector is { at: [col, row] }, a route { path: [[col, row], …] }", value.Line)
 	}
 
 	return nil

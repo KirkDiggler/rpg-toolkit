@@ -718,7 +718,7 @@ func propsOf(spec *Spec) []encounter.PropInput {
 			// first frame.
 			Arrives: predicateOf(p.Arrives),
 			// The lines a character can say to it (rpg-project#569).
-			Options: optionsOf(p.Options),
+			Options: optionsOf(p.Options, orientations[spec.Orientation]),
 		}
 		// Validate has already confirmed len(p.Offset) is 0, 2 or 3 by the
 		// time Compile runs; anything else is unreachable here. A missing
@@ -953,7 +953,7 @@ func doorStateOf(locked CheckSpec, closed bool) encounter.DoorState {
 // number — so the default is resolved once, here, and nothing downstream has
 // to know what "omitted" meant. That is the same move every other compiled
 // default in this file makes.
-func tableOf(on map[string][]AnswerSpec) encounter.Table {
+func tableOf(on map[string][]AnswerSpec, o encounter.Orientation) encounter.Table {
 	if on == nil {
 		return nil
 	}
@@ -961,7 +961,7 @@ func tableOf(on map[string][]AnswerSpec) encounter.Table {
 	for key, entries := range on {
 		rows := make([]encounter.Answer, 0, len(entries))
 		for _, entry := range entries {
-			rows = append(rows, answerOf(entry))
+			rows = append(rows, answerOf(entry, o))
 		}
 		out[encounter.AnswerKey(key)] = rows
 	}
@@ -1020,8 +1020,9 @@ func layerSpecs(base, over map[string][]AnswerSpec) map[string][]AnswerSpec {
 }
 
 // answerOf compiles one authored entry: the weight resolved, the condition
-// and the selectors turned into the composition's own shapes.
-func answerOf(entry AnswerSpec) encounter.Answer {
+// and the selectors turned into the composition's own shapes, any cell they
+// name resolved through the document's orientation o.
+func answerOf(entry AnswerSpec, o encounter.Orientation) encounter.Answer {
 	weight := 1
 	if entry.Weight != nil {
 		weight = *entry.Weight
@@ -1038,9 +1039,9 @@ func answerOf(entry AnswerSpec) encounter.Answer {
 		Fact:   encounter.FactID(fact),
 		Flee:   entry.Flee != nil,
 		Hold:   entry.Hold != nil,
-		Attack: selectorOf(entry.Attack),
-		Toward: selectorOf(entry.Toward),
-		Away:   selectorOf(entry.Away),
+		Attack: selectorOf(entry.Attack, o),
+		Toward: selectorOf(entry.Toward, o),
+		Away:   selectorOf(entry.Away, o),
 	}
 }
 
@@ -1051,16 +1052,16 @@ func answerOf(entry AnswerSpec) encounter.Answer {
 // NIL FOR NONE, an empty list included, so a creature nobody wrote a line for
 // compiles exactly as it did before options existed and the committed
 // pictures omit the key.
-func optionsOf(specs []OptionSpec) []encounter.Option {
+func optionsOf(specs []OptionSpec, o encounter.Orientation) []encounter.Option {
 	if len(specs) == 0 {
 		return nil
 	}
 	out := make([]encounter.Option, 0, len(specs))
-	for _, o := range specs {
+	for _, opt := range specs {
 		out = append(out, encounter.Option{
-			ID: o.ID, Say: o.Say, Check: approachesOf(o.Check),
-			Requires: predicateOf(o.Requires),
-			Success:  rowsOf(o.Success), Failure: rowsOf(o.Failure),
+			ID: opt.ID, Say: opt.Say, Check: approachesOf(opt.Check),
+			Requires: predicateOf(opt.Requires),
+			Success:  rowsOf(opt.Success, o), Failure: rowsOf(opt.Failure, o),
 		})
 	}
 
@@ -1068,13 +1069,13 @@ func optionsOf(specs []OptionSpec) []encounter.Option {
 }
 
 // rowsOf compiles one verdict's rows, nil staying nil.
-func rowsOf(entries []AnswerSpec) []encounter.Answer {
+func rowsOf(entries []AnswerSpec, o encounter.Orientation) []encounter.Answer {
 	if len(entries) == 0 {
 		return nil
 	}
 	out := make([]encounter.Answer, 0, len(entries))
 	for _, entry := range entries {
-		out = append(out, answerOf(entry))
+		out = append(out, answerOf(entry, o))
 	}
 
 	return out
@@ -1116,21 +1117,24 @@ func oneWhenOf(when *WhenSpec) encounter.When {
 }
 
 // selectorOf compiles a selector, nil staying nil. THE CELL IS CONVERTED HERE,
-// once, through the same authored-offset conversion every other cell in this
-// file goes through: what reaches the composition is a dungeon-absolute
-// position, never an authored pair, so nothing downstream has to know which
-// orientation the file declared.
-func selectorOf(sel *SelectorSpec) *encounter.Selector {
+// once, through [encounter.HexCellAt] under the document's orientation o:
+// what reaches the composition is a dungeon-absolute axial cell, never an
+// authored pair, because a selector's cell is the one cell the composition
+// does NOT convert at construction ([encounter.Selector.At] is documented
+// dungeon-absolute). Passing the raw pair here was wrong on every odd row of
+// a pointy-top map — the walk went to a different cell than the one drawn —
+// for `at` before `path` existed, and for both until rpg-toolkit#2044's review.
+func selectorOf(sel *SelectorSpec, o encounter.Orientation) *encounter.Selector {
 	if sel == nil {
 		return nil
 	}
 	out := &encounter.Selector{Word: encounter.SelectorWord(sel.Word)}
 	if sel.At != nil {
-		at := authored(*sel.At)
+		at := encounter.HexCellAt(o, sel.At[0], sel.At[1])
 		out.At = &at
 	}
 	for _, waypoint := range sel.Path {
-		out.Path = append(out.Path, authored(waypoint))
+		out.Path = append(out.Path, encounter.HexCellAt(o, waypoint[0], waypoint[1]))
 	}
 
 	return out
@@ -1218,7 +1222,7 @@ func CompileTable(source string) (encounter.Table, error) {
 		return nil, fmt.Errorf("compile table: %w: %s", ErrBadSpec, errs[0])
 	}
 
-	return tableOf(on), nil
+	return tableOf(on, orientations["pointy"]), nil
 }
 
 // approachesOf carries an authored check's approaches to the composition's
@@ -1292,13 +1296,13 @@ type creatureOrders struct {
 // The returned placement carries NOTHING GEOMETRIC — no region and no cell.
 // Each dialect fills those in its own frame, which is the whole reason this
 // function can be shared.
-func ordersOf(c creatureOrders, from inherited) MonsterPlacement {
+func ordersOf(c creatureOrders, from inherited, o encounter.Orientation) MonsterPlacement {
 	side := sideOf(c.Faction)
 
 	return MonsterPlacement{
 		ID: c.ID, Ref: c.Ref, Faction: c.Faction,
 		Actions: append([]string(nil), c.Actions...),
-		Table:   encounter.Layer(tableOf(from.on[side]), tableOf(c.On)),
+		Table:   encounter.Layer(tableOf(from.on[side], o), tableOf(c.On, o)),
 		Temper:  temperOf(c.Temper, from.temper[side]),
 	}
 }
@@ -1329,13 +1333,13 @@ func monstersOf(spec *Spec, o encounter.Orientation) []MonsterPlacement {
 		mp := ordersOf(creatureOrders{
 			ID: p.ID, Ref: p.Ref, Faction: p.Faction,
 			On: p.On, Temper: p.Temper, Actions: p.Actions,
-		}, from)
+		}, from, o)
 		mp.Region = owner[encounter.HexCellAt(o, p.At[0], p.At[1])]
 		mp.At = authored(p.At)
 		mp.Targeting = targeting
 		mp.Boss = p.Boss
 		mp.Holds = intelHoldingsOf(spec.Key, p.Holds)
-		mp.Options = optionsOf(p.Options)
+		mp.Options = optionsOf(p.Options, o)
 		mp.Arrives = predicateOf(p.Arrives)
 		out = append(out, mp)
 	}

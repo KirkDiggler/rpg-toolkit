@@ -956,13 +956,24 @@ func TestAListedWhenNeedsEveryEntryThroughTheRealPick(t *testing.T) {
 	require.Equal(t, otherStart, whereIs(t, enc, hOther), "one of two is not enough")
 }
 
-// TestAPathWalksWaypointToWaypointAndResumesAtTheNearest is R7: a patrol is a
-// route with no cursor. Standing on a waypoint, the creature walks to the
-// next; anywhere else, to the nearest; the last waypoint's next is the first.
-// Each leg here is four cells and the walker's round is six, so each round
-// ends exactly on a waypoint.
-func TestAPathWalksWaypointToWaypointAndResumesAtTheNearest(t *testing.T) {
+// TestAPathWalksItsLoopAndResumesAtTheNearest is R7 as ruled on the review
+// of rpg-toolkit#2044: a patrol walks the hex line of each leg, waypoint to
+// waypoint and round again, at its full movement — six cells a round here,
+// past a waypoint when it has movement left. Knocked off the route, it walks
+// back to the nearest waypoint and carries on from there. No cursor: every
+// step is read off where it stands.
+//
+// THE LOOP'S CELLS ARE WRITTEN OUT, not computed, so this pins the walk the
+// author's four waypoints produce rather than agreeing with itself: the
+// square's sixteen cells, from the first waypoint, in walking order.
+func TestAPathWalksItsLoopAndResumesAtTheNearest(t *testing.T) {
 	route := []spatial.Position{cellAt(12, 2), cellAt(16, 2), cellAt(16, 6), cellAt(12, 6)}
+	loop := []spatial.Position{
+		{X: 12, Y: 2}, {X: 13, Y: 2}, {X: 14, Y: 2}, {X: 15, Y: 2}, // leg 1, along row 2
+		{X: 15, Y: 3}, {X: 14, Y: 4}, {X: 14, Y: 5}, {X: 13, Y: 6}, // leg 2
+		{X: 12, Y: 6}, {X: 11, Y: 6}, {X: 10, Y: 6}, {X: 9, Y: 6}, // leg 3, along row 6
+		{X: 10, Y: 5}, {X: 10, Y: 4}, {X: 11, Y: 3}, {X: 11, Y: 2}, // leg 4, home
+	}
 	enc := tableHall(t,
 		sheetFacts{noiseAlice: {SpeedFeet: 30}, hWalker: {SpeedFeet: 30}},
 		at(noiseAlice, encounter.KindPlayer, 2, 8),
@@ -971,31 +982,33 @@ func TestAPathWalksWaypointToWaypointAndResumesAtTheNearest(t *testing.T) {
 		}}),
 	)
 	require.Equal(t, route[0], whereIs(t, enc, hWalker), "precondition: it starts on the first waypoint")
+	require.Equal(t, route[0], loop[len(loop)-1], "precondition: the loop ends where it starts")
 
-	for i, want := range []spatial.Position{route[1], route[2], route[3]} {
+	for round, steps := range []int{6, 12, 18} {
 		_, err := aRound(enc)
 		require.NoError(t, err)
-		require.Equal(t, want, whereIs(t, enc, hWalker), "round %d ends on the next waypoint", i+1)
+		require.Equal(t, loop[(steps-1)%len(loop)], whereIs(t, enc, hWalker),
+			"round %d is six more cells round the loop", round+1)
 	}
 
-	// SHOVED OFF THE ROUTE — a commanded step the table did not choose. One
-	// cell south of the last waypoint, on no leg of the route, so the
-	// waypoint it is nearest by one is where it goes back to.
-	off := cellAt(12, 7)
+	// SHOVED OFF THE ROUTE — a commanded step the table did not choose, onto a
+	// cell on no leg. The first waypoint is two cells away and the second
+	// three, so the first is where it goes back to.
+	off := spatial.Position{X: 13, Y: 1}
 	_, err := enc.Direct(context.Background(), encounter.DirectInput{
 		Mover: hWalker, Route: []spatial.Position{off},
 		Cause: core.Ref{Module: "test", Type: "spell", ID: "command"},
 	})
 	require.NoError(t, err)
-	require.Equal(t, off, whereIs(t, enc, hWalker), "precondition: it stands on no waypoint")
+	require.Equal(t, off, whereIs(t, enc, hWalker), "precondition: it stands on no leg")
 
 	_, err = aRound(enc)
 	require.NoError(t, err)
-	require.Equal(t, route[3], whereIs(t, enc, hWalker), "off the route, it goes back to the nearest waypoint")
+	require.Equal(t, route[0], whereIs(t, enc, hWalker), "off the route, it goes back to the nearest waypoint")
 
 	_, err = aRound(enc)
 	require.NoError(t, err)
-	require.Equal(t, route[0], whereIs(t, enc, hWalker), "and round again: the last waypoint's next is the first")
+	require.Equal(t, loop[5], whereIs(t, enc, hWalker), "and walks the loop on from there")
 }
 
 // TestTowardSoundWalksToTheClang is R10: a guard who heard steel walks to
@@ -1148,24 +1161,91 @@ func TestSoundOnAttackIsRefusedAtTheDoor(t *testing.T) {
 }
 
 // TestALongLegIsWalkedToItsEndNotBackToItsStart is the patrol rule as ruled
-// on the review (rpg-project#569 R7): a creature standing ON the leg between
-// two waypoints walks on to the second, however near the first still is. A
-// nine-cell leg walked three cells a round puts the walker nearer the
-// waypoint it left after the first round — "nearest" alone would turn it
-// round, and it would pace the first three cells forever.
+// on the review (rpg-project#569 R7): a creature partway along a leg walks on
+// to the leg's far end, however near the waypoint it left still is. A walker
+// that moves one cell a round on a triangle whose first leg is seven cells
+// long is nearer the waypoint behind it for three rounds — "nearest" alone
+// would turn it round on the first.
+//
+// AND IT WALKS ALL THREE LEGS FORWARD: one lap visits the second waypoint,
+// then the third, then comes home, and never stands on a cell twice before
+// it does.
 func TestALongLegIsWalkedToItsEndNotBackToItsStart(t *testing.T) {
-	route := []spatial.Position{cellAt(10, 2), cellAt(19, 2), cellAt(19, 7)}
+	route := []spatial.Position{cellAt(11, 1), cellAt(18, 1), cellAt(18, 8)}
 	enc := tableHall(t,
-		sheetFacts{noiseAlice: {SpeedFeet: 30}, hWalker: {SpeedFeet: 15}},
+		sheetFacts{noiseAlice: {SpeedFeet: 30}, hWalker: {SpeedFeet: 5}},
 		at(noiseAlice, encounter.KindPlayer, 2, 8),
-		tabled(hWalker, 10, 2, encounter.Table{encounter.AnswerTime: {
+		tabled(hWalker, 11, 1, encounter.Table{encounter.AnswerTime: {
 			{Weight: 1, Toward: &encounter.Selector{Path: route}},
 		}}),
 	)
 
-	for i, want := range []spatial.Position{cellAt(13, 2), cellAt(16, 2), cellAt(19, 2)} {
+	for i := 1; i <= 3; i++ {
 		_, err := aRound(enc)
 		require.NoError(t, err)
-		require.Equal(t, want, whereIs(t, enc, hWalker), "round %d is three more cells along the leg", i+1)
+		require.Equal(t, cellAt(11+i, 1), whereIs(t, enc, hWalker), "round %d is one more cell along the long leg", i)
 	}
+
+	seen := map[spatial.Position]bool{cellAt(12, 1): true, cellAt(13, 1): true, cellAt(14, 1): true}
+	var arrivals []spatial.Position
+	previous := cellAt(14, 1)
+	for lap := 0; lap < 40; lap++ {
+		_, err := aRound(enc)
+		require.NoError(t, err)
+		now := whereIs(t, enc, hWalker)
+		require.Equal(t, 1.0, enc.Distance(previous, now), "one cell a round, every round")
+		previous = now
+		for _, w := range route {
+			if now == w {
+				arrivals = append(arrivals, w)
+			}
+		}
+		if now == route[0] {
+			break
+		}
+		require.False(t, seen[now], "never back on a cell it already walked this lap: %v", now)
+		seen[now] = true
+	}
+	require.Equal(t, []spatial.Position{route[1], route[2], route[0]}, arrivals,
+		"the second waypoint, then the third, then home")
+}
+
+// TestARouteThatRetracesItselfIsRefusedAtTheDoor: A to B and back is the same
+// cells twice, so a creature standing on one would be on both legs — refused
+// at the member door, the reviewer's probe (a walker four cells along A→B on
+// [(0,0),(10,0)]) unreachable by construction. The corridor pace is the named
+// next use case for a direction derivation, not a thing read by guessing.
+func TestARouteThatRetracesItselfIsRefusedAtTheDoor(t *testing.T) {
+	_, err := encounter.NewEncounter(noiseHallSetup(encounter.DoorIsOpen(), encounter.DoorIsOpen(),
+		sheetFacts{noiseAlice: {SpeedFeet: 30}, hWalker: {SpeedFeet: 30}},
+		tableDriver(),
+		at(noiseAlice, encounter.KindPlayer, 2, 8),
+		tabled(hWalker, 12, 2, encounter.Table{encounter.AnswerTime: {
+			{Weight: 1, Toward: &encounter.Selector{Path: []spatial.Position{cellAt(12, 2), cellAt(18, 2)}}},
+		}}),
+	))
+	require.ErrorIs(t, err, encounter.ErrBadMember)
+	require.ErrorIs(t, err, encounter.ErrBadAnswer)
+	require.Contains(t, err.Error(), "this route retraces itself at")
+	require.Contains(t, err.Error(), "add a waypoint so no leg crosses another")
+}
+
+// TestAFactOnlyTimeRowIsAVoice: an alarm with no line written for it is still
+// said aloud — the hearers who learn it heard something, so they hold a voice.
+func TestAFactOnlyTimeRowIsAVoice(t *testing.T) {
+	enc := tableHall(t,
+		sheetFacts{
+			noiseAlice: {SpeedFeet: 30}, hCrier: {SpeedFeet: 30},
+			noiseKeen: {SpeedFeet: 30, PassivePerception: 15},
+		},
+		at(noiseAlice, encounter.KindPlayer, 2, 8),
+		tabled(hCrier, 1, 1, encounter.Table{encounter.AnswerTime: {{Weight: 1, Fact: hAlarm}}}),
+		at(noiseKeen, encounter.KindMonster, 18, 1),
+	)
+
+	_, err := aRound(enc)
+	require.NoError(t, err)
+
+	require.True(t, knows(t, enc, noiseKeen, hAlarm), "the guard next door learned it by hearing it")
+	require.Contains(t, soundsHeldBy(t, enc, noiseKeen), encounter.SoundVoice, "and what it heard was a voice")
 }

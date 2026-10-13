@@ -107,12 +107,13 @@ type CheckApproach struct {
 	// (the old stack's canonical values are lowercase refs like "dex"), or
 	// empty at this seam — what it means is host/rulebook business.
 	//
-	// MATCHED BY EQUALITY, NEVER READ AS A RULE. Exactly two places compare
-	// it, both as plain string equality: [Encounter.Speak] requires
-	// [SpeakInput.Skill] to equal one of the spoken option's approaches, and
+	// MATCHED BY EQUALITY, NEVER READ AS A RULE. Exactly three places
+	// compare it, all as plain string equality: [Encounter.Speak] requires
+	// [SpeakInput.Skill] to equal one of the spoken option's approaches,
 	// [deedForSkill] maps the word to the deed constant it shares a name with
-	// (rpg-project#569 R3). Nothing here derives a modifier, a proficiency or
-	// a difficulty from it.
+	// (rpg-project#569 R3), and [forcedBy] reads a beaten lock's `str` route
+	// as a door forced, which crashes (R5). Nothing here derives a modifier,
+	// a proficiency or a difficulty from it.
 	Ability string
 
 	// Tool is the opaque tool proficiency ref that applies (a toolkit item

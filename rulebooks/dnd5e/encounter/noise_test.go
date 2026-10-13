@@ -423,3 +423,24 @@ func (s *NoiseSuite) TestABodyHearsNothing() {
 	s.Contains(soundsHeldBy(s.T(), enc, noiseKeen), encounter.SoundClang, "the control: the same ears, standing")
 	s.Empty(soundsHeldBy(s.T(), enc, noiseSharp), "down, it heard nothing")
 }
+
+// TestAMonsterHearsButIsToldNothing: the `heard` beat is a player's (H5). A
+// monster that hears holds the sound — its table reads it — and its own story
+// carries no beat about it.
+func (s *NoiseSuite) TestAMonsterHearsButIsToldNothing() {
+	enc := noiseHall(s.T(), encounter.DoorIsOpen(), encounter.DoorIsOpen(),
+		sheetFacts{
+			noiseAlice: {SpeedFeet: 30}, noiseThug: {SpeedFeet: 30},
+			noiseKeen: {SpeedFeet: 30, PassivePerception: 15},
+		},
+		at(noiseAlice, encounter.KindPlayer, 2, 5), at(noiseThug, encounter.KindMonster, 3, 5),
+		at(noiseKeen, encounter.KindMonster, 15, 1),
+	)
+
+	aliceStrikesTheThug(s.T(), enc)
+
+	s.Require().Contains(soundsHeldBy(s.T(), enc, noiseKeen), encounter.SoundClang, "precondition: it heard")
+	for _, beat := range storyBeats(s.T(), enc, noiseKeen) {
+		s.NotEqual(encounter.BeatHeard, beat["beat"], "a monster is never handed a heard beat")
+	}
+}

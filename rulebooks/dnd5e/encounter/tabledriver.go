@@ -207,9 +207,19 @@ func (d TableDriver) towardIntent(view MonsterView, entry Answer) TurnIntent {
 	}
 
 	if path := entry.Toward.Path; len(path) > 0 {
-		cell := nextWaypoint(view.Position, path)
+		// ON THE ROUTE, THE LEG'S OWN CELLS; OFF IT, BACK TO THE NEAREST
+		// WAYPOINT ([patrolStep]). A Move rather than a Routed walk, because
+		// the leg IS the route: the creature walks the same cells the next
+		// round will find it on.
+		ahead, back := patrolStep(view.Position, path)
+		if len(ahead) == 0 {
+			return Routed{Policy: MoveToward, AnchorAt: &back, Cause: tableCauseToward}
+		}
+		if len(ahead) > cells {
+			ahead = ahead[:cells]
+		}
 
-		return Routed{Policy: MoveToward, AnchorAt: &cell, Cause: tableCauseToward}
+		return Move{Path: append([]spatial.Position(nil), ahead...)}
 	}
 
 	if entry.Toward.Word == SelectorSound {
@@ -351,49 +361,6 @@ func soundFor(sounds []Sound, when []When) (spatial.Position, bool) {
 	}
 
 	return best.Where, found
-}
-
-// nextWaypoint is the waypoint a patrol walks to from where the creature
-// stands (rpg-project#569 R7, as ruled on the review), asked in this order:
-//
-//   - ON A WAYPOINT: the next one. The last one's next is the first, so the
-//     route is a loop.
-//   - ON A LEG between waypoints i and i+1 — a cell on some shortest walk
-//     between them, which is where a walk toward i+1 that ran out of movement
-//     leaves it: i+1. Without this a leg longer than one round's movement is
-//     paced back and forth, because partway along it the waypoint just left is
-//     the nearer. The first leg in the author's order wins when a cell lies on
-//     two.
-//   - OFF THE ROUTE: the nearest waypoint, ties to the earlier in the author's
-//     order — a creature shoved off by a spell, or walked round a wall, goes
-//     back to the route where it is closest.
-//
-// DERIVED, NEVER REMEMBERED. Nothing holds a cursor: the creature's own cell
-// is the whole state, which is what lets a creature shoved off its route, or
-// reloaded from a save, pick its patrol back up without a field anywhere
-// recording how far along it was.
-func nextWaypoint(from spatial.Position, path []spatial.Position) spatial.Position {
-	for i, waypoint := range path {
-		if waypoint == from {
-			return path[(i+1)%len(path)]
-		}
-	}
-	if len(path) > 1 {
-		for i := range path {
-			a, b := path[i], path[(i+1)%len(path)]
-			if adjacencyGrid.Distance(a, from)+adjacencyGrid.Distance(from, b) == adjacencyGrid.Distance(a, b) {
-				return b
-			}
-		}
-	}
-	best := 0
-	for i := range path {
-		if adjacencyGrid.Distance(from, path[i]) < adjacencyGrid.Distance(from, path[best]) {
-			best = i
-		}
-	}
-
-	return path[best]
 }
 
 // scopeOf is the reading the entry's deed condition asks for, or the self
