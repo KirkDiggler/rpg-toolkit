@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -289,7 +290,9 @@ func (g *grammar) fail(path, format string, args ...any) {
 //   - `at:` or `path:` on anything but `toward`, because walking away from a
 //     fixed cell is a direction rather than a flight and nothing has paid for
 //     one, and a route is walked;
-//   - `sound` on `attack`, because a sound cannot be struck;
+//   - `sound` on `attack`, because a sound cannot be struck, and `sound` on a
+//     row with no `heard` condition — mind/behavior's own refusals, asked of
+//     the compiled row ([grammar.entryShape]);
 //   - `actor` in an entry whose `when` names no deed, because there is no
 //     actor otherwise;
 //   - an `at:` cell the dialect cannot send anybody to: not floor in a dialect
@@ -447,6 +450,31 @@ func (g *grammar) answerEntry(at string, key string, entry AnswerSpec) {
 
 	g.wordLegality(at, key, words, entry)
 	g.entrySelector(at, key, entry)
+	g.entryShape(at, entry)
+}
+
+// entryShape asks mind/behavior the questions it owns about this row — a
+// `path` only on `toward`, `sound` never on `attack` and only on a row that
+// listens with `heard`, one target per selector, one condition per `when`
+// entry — and reports its sentence at the entry's path.
+//
+// ONE STATEMENT OF EACH RULE. The composition's own door asks the same
+// [behavior.Answer.Validate] ([encounter] validateEntry), so the form and the
+// table cannot come to disagree about what a row may say; this file adds only
+// what a dialect knows that the evaluator cannot — key legality, the frame a
+// cell is drawn in, and the sealed word lists. The sentinel's wording is
+// trimmed off: it names a Go package, and the form shows an author a sentence.
+func (g *grammar) entryShape(at string, entry AnswerSpec) {
+	compiled := answerOf(entry)
+	err := compiled.Validate()
+	if err == nil {
+		return
+	}
+	sentence := err.Error()
+	for _, sentinel := range []error{behavior.ErrBadSelector, behavior.ErrBadWhen} {
+		sentence = strings.TrimSuffix(sentence, ": "+sentinel.Error())
+	}
+	g.fail(at, "%s (line %d)", sentence, entry.Line)
 }
 
 // wordLegality refuses a word, or a `when`, under a key it is not legal on.
@@ -498,11 +526,6 @@ func (g *grammar) entrySelector(at, _ string, entry AnswerSpec) {
 
 		return
 	}
-	if sel.Word == string(encounter.SelectorSound) && word == "attack" {
-		g.fail(at+"."+word, "%s (line %d)", errSoundStruck, sel.Line)
-
-		return
-	}
 	if sel.At != nil {
 		answer := g.cells.cellAt(*sel.At)
 		if !answer.framed {
@@ -529,14 +552,12 @@ func (g *grammar) entrySelector(at, _ string, entry AnswerSpec) {
 	}
 }
 
-// errSoundStruck is the sentence `sound` on `attack` is refused with
-// (rpg-project#569 R10), mind/behavior's own refusal in the author's words.
-const errSoundStruck = "`attack` cannot take `sound`: a sound cannot be struck, only walked toward or away from"
-
-// entryRoute refuses a `path` the dialect cannot walk: on any word but
-// `toward`, in a dialect with no frame for its cells, or through a waypoint
-// that is not floor — the same three questions [grammar.entrySelector] asks
-// of an `at`, in the same order, asked of every waypoint.
+// entryRoute refuses a `path` the dialect cannot walk: in a dialect with no
+// frame for its cells, or through a waypoint that is not floor — the frame
+// and floor questions [grammar.entrySelector] asks of an `at`, asked of every
+// waypoint. A route on a word that does not walk one is mind/behavior's
+// refusal ([grammar.entryShape]), so its waypoints are not judged as well:
+// one mistake, one defect.
 func (g *grammar) entryRoute(at, word string, sel *SelectorSpec) {
 	first := g.cells.cellAt(sel.Path[0])
 	if !first.framed {
@@ -545,9 +566,6 @@ func (g *grammar) entryRoute(at, word string, sel *SelectorSpec) {
 		return
 	}
 	if word != "toward" {
-		g.fail(at+"."+word,
-			"`%s` cannot take a `path`: a route is walked, and only `toward` walks one (line %d)", word, sel.Line)
-
 		return
 	}
 	for i, waypoint := range sel.Path {

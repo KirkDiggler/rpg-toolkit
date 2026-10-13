@@ -603,6 +603,11 @@ func validateWhenWords(when *When) error {
 	if DeedVerbFor(when.Deed) == "" {
 		return fmt.Errorf("`%s` is not a deed this build holds: %w", when.Deed, ErrBadAnswer)
 	}
+	// THE DEED SPAN IS THIS DOOR'S, NOT mind/behavior's (its review,
+	// rpg-project#569): behavior refuses a `heard` span below 1 because it
+	// owns that condition, and leaves the deed form's span to the rulebook
+	// that seals the deed words — so "counted from 1" for a deed is refused
+	// here and nowhere else.
 	if when.Within < 1 {
 		return fmt.Errorf("a span of %d rounds is counted from 1: %w", when.Within, ErrBadAnswer)
 	}

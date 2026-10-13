@@ -1051,31 +1051,58 @@ func TestAwaySoundWalksFromIt(t *testing.T) {
 	require.Greater(t, enc.Distance(whereIs(t, enc, hWalker), clangAt), enc.Distance(start, clangAt))
 }
 
-// TestASoundRowWithNothingHeardStaysAndSaysWhy: `toward: sound` with no sound
-// held selected nothing. The row still rolled — the driver's rule for every
-// selector that names nobody — and the stayed beat says why.
-func TestASoundRowWithNothingHeardStaysAndSaysWhy(t *testing.T) {
+// TestSoundWalksToTheKindItsRowListensFor is R10 as the behavior review
+// refined it: `sound` is where the freshest sound OF THE KIND THE ROW HEARD
+// rang, not the freshest sound of all. The guard heard a clang, then went on
+// hearing a talker's voice every round after it; its row listens for the
+// clang, so it walks to the clang.
+func TestSoundWalksToTheKindItsRowListensFor(t *testing.T) {
 	enc := tableHall(t,
+		sheetFacts{
+			noiseAlice: {SpeedFeet: 30}, noiseThug: {SpeedFeet: 30}, hCrier: {SpeedFeet: 30},
+			noiseKeen: {SpeedFeet: 30, PassivePerception: 15},
+		},
+		at(noiseAlice, encounter.KindPlayer, 2, 5), at(noiseThug, encounter.KindMonster, 3, 5),
+		tabled(hCrier, 7, 0, encounter.Table{encounter.AnswerTime: {{Weight: 1, Say: "Who's there?"}}}),
+		tabled(noiseKeen, 18, 1, encounter.Table{encounter.AnswerTime: {
+			{Weight: 1, When: []encounter.When{{Heard: &encounter.HeardWhen{Kind: encounter.SoundClang, Within: 6}}},
+				Toward: &encounter.Selector{Word: encounter.SelectorSound}},
+			{Weight: 1, Hold: true},
+		}}),
+	)
+	clangAt, voiceAt := cellAt(2, 5), cellAt(7, 0)
+
+	aliceStrikesTheThug(t, enc)
+	for range 4 {
+		_, err := aRound(enc)
+		require.NoError(t, err)
+	}
+
+	heard := soundsHeldBy(t, enc, noiseKeen)
+	require.Contains(t, heard, encounter.SoundClang)
+	require.Contains(t, heard, encounter.SoundVoice)
+	require.Greater(t, heard[encounter.SoundVoice].at, heard[encounter.SoundClang].at,
+		"precondition: the voice is the fresher sound")
+
+	end := whereIs(t, enc, noiseKeen)
+	require.LessOrEqual(t, enc.Distance(end, clangAt), 1.0, "it walked to the clang it was listening for")
+	require.Greater(t, enc.Distance(end, voiceAt), 1.0, "not to the fresher voice")
+}
+
+// TestASoundRowWithNoHeardConditionIsRefusedAtTheDoor: `sound` resolves
+// against what the row heard, so a row that listens for nothing cannot name
+// it — mind/behavior's refusal, met at this composition's door.
+func TestASoundRowWithNoHeardConditionIsRefusedAtTheDoor(t *testing.T) {
+	_, err := encounter.NewEncounter(noiseHallSetup(encounter.DoorIsOpen(), encounter.DoorIsOpen(),
 		sheetFacts{noiseAlice: {SpeedFeet: 30}, hWalker: {SpeedFeet: 30}},
+		tableDriver(),
 		at(noiseAlice, encounter.KindPlayer, 2, 8),
 		tabled(hWalker, 18, 1, encounter.Table{encounter.AnswerTime: {
 			{Weight: 1, Toward: &encounter.Selector{Word: encounter.SelectorSound}},
 		}}),
-	)
-	start := whereIs(t, enc, hWalker)
-
-	_, err := aRound(enc)
-	require.NoError(t, err)
-
-	require.Equal(t, start, whereIs(t, enc, hWalker))
-	var why []any
-	for _, beat := range storyBeats(t, enc, noiseAlice) {
-		if beat["beat"] == encounter.BeatStayed && beat["member"] == string(hWalker) {
-			why = append(why, beat["why"])
-			require.Equal(t, "encounter:table:toward", beat["cause"])
-		}
-	}
-	require.Equal(t, []any{"heard nothing"}, why)
+	))
+	require.ErrorIs(t, err, encounter.ErrBadAnswer)
+	require.Contains(t, err.Error(), "`sound` needs a `heard` condition")
 }
 
 // TestAnAnswersLineIsAVoice: every `say` on any answer row is a voice — here

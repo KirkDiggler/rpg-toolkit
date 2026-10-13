@@ -145,8 +145,10 @@ gets deaf creatures, not omniscient ones.
 
 What is heard is a KIND and a PLACE and never a maker: a hearer holds the
 freshest sound of each kind on its sounds channel, `heard` reads it, and the
-`sound` selector (`toward: sound`, `away: sound`; refused on `attack`) walks
-to or from where it rang. The maker does not hear itself. A player who hears
+`sound` selector (`toward: sound`, `away: sound`) walks to or from where the
+freshest sound of the kind the row's own `heard` names rang. A `sound` row
+must carry a `heard` condition, and `sound` is refused on `attack`. The maker
+does not hear itself. A player who hears
 gets a `heard` beat — kind, position, hops — addressed to them alone.
 
 `fact` on a `time` row is an alarm: its audience is everyone who sees the

@@ -71,7 +71,9 @@ func TestTheCastleWordsCompile(t *testing.T) {
 }
 
 // TestTheHearingWordsAreRefusedOnTheForm is every refusal this slice adds to
-// the grammar, each at its own path, in its own sentence.
+// the grammar, each at its own path, in its own sentence. The selector shape
+// refusals are mind/behavior's own sentences, asked of the compiled row and
+// reported at the entry.
 func TestTheHearingWordsAreRefusedOnTheForm(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -82,13 +84,13 @@ func TestTheHearingWordsAreRefusedOnTheForm(t *testing.T) {
 		{
 			name: "a route on `attack`",
 			on:   `on: { time: [ { attack: { path: [[23, 3], [23, 5]] } } ] }`,
-			path: "place[18].on.time[0].attack",
+			path: "place[18].on.time[0]: ",
 			says: []string{"`attack` cannot take a `path`: a route is walked, and only `toward` walks one"},
 		},
 		{
 			name: "a route on `away`",
 			on:   `on: { time: [ { away: { path: [[23, 3], [23, 5]] } } ] }`,
-			path: "place[18].on.time[0].away",
+			path: "place[18].on.time[0]: ",
 			says: []string{"`away` cannot take a `path`"},
 		},
 		{
@@ -100,8 +102,17 @@ func TestTheHearingWordsAreRefusedOnTheForm(t *testing.T) {
 		{
 			name: "`sound` on `attack`",
 			on:   `on: { time: [ { attack: sound } ] }`,
-			path: "place[18].on.time[0].attack",
+			path: "place[18].on.time[0]: ",
 			says: []string{"`attack` cannot take `sound`: a sound cannot be struck, only walked toward or away from"},
+		},
+		{
+			// R10 as the behavior review refined it: the sound a row walks to
+			// is the one it listened for, and a `heard` inside a `not` is not
+			// listening.
+			name: "`sound` on a row that listens for nothing",
+			on:   `on: { time: [ { when: { not: { heard: { kind: clang, within: 2 } } }, toward: sound } ] }`,
+			path: "place[18].on.time[0]: ",
+			says: []string{"`sound` needs a `heard` condition on the row: the sound it walks to is the one the row listened for"},
 		},
 		{
 			name: "`fact` on an `attack` row",

@@ -213,9 +213,9 @@ func (d TableDriver) towardIntent(view MonsterView, entry Answer) TurnIntent {
 	}
 
 	if entry.Toward.Word == SelectorSound {
-		cell, heard := freshestSound(view.Sounds)
+		cell, heard := soundFor(view.Sounds, entry.When)
 		if !heard {
-			return Pass{Cause: tableCauseToward, Why: heardNothing}
+			return Pass{}
 		}
 
 		return Routed{Policy: MoveToward, AnchorAt: &cell, Cause: tableCauseToward}
@@ -283,9 +283,9 @@ func (d TableDriver) awayIntent(view MonsterView, entry Answer) TurnIntent {
 		return Pass{}
 	}
 	if entry.Away.Word == SelectorSound {
-		cell, heard := freshestSound(view.Sounds)
+		cell, heard := soundFor(view.Sounds, entry.When)
 		if !heard {
-			return Pass{Cause: tableCauseAway, Why: heardNothing}
+			return Pass{}
 		}
 
 		return Routed{Policy: MoveAway, AnchorAt: &cell, Cause: tableCauseAway}
@@ -319,24 +319,32 @@ func (d TableDriver) pathTo(view MonsterView, target MemberID) []spatial.Positio
 	return nil
 }
 
-// heardNothing is the sentence a `sound` selector tells on its stayed beat
-// when the creature holds no sound to walk toward or away from.
+// soundFor is WHERE the freshest sound of the kinds this row LISTENS FOR was
+// made (rpg-project#569 R10, refined on the behavior review): the kinds its
+// own `heard` conditions name, the list's entries only — a `heard` inside a
+// `not` is a sound the row is waiting NOT to have heard. A guard that heard a
+// voice after the clang it is answering still walks to the clang. Ties on
+// the stamp break on the kind's name so the same holdings always pick the
+// same place (C8).
 //
-// THE ROW STILL ROLLED, the rule every selector that names nobody keeps
-// ([TableDriver.Act]). Making it ineligible instead is a question for the
-// evaluator's own eligibility (mind/behavior), which this driver cannot
-// answer without changing which entry index the beat reports.
-const heardNothing = "heard nothing"
-
-// freshestSound is WHERE the most recent sound this creature holds was made,
-// any kind (rpg-project#569 R10) — the row's own `heard` condition already
-// narrowed which kind fired it. Ties on the stamp break on the kind's name so
-// the same holdings always pick the same place (C8). ok is false when the
-// creature holds no sound at all.
-func freshestSound(sounds []Sound) (spatial.Position, bool) {
+// ok IS ALWAYS TRUE FOR A ROW THAT FIRED. mind/behavior refuses a `sound`
+// row with no `heard` condition, its eligibility gates a `sound` selector on
+// a held sound, and the row's own `heard` holding means a sound of that kind
+// is held — so the false answer is a struct built in Go past every door, and
+// it goes out as a plain Pass, the rule for any selector that names nothing.
+func soundFor(sounds []Sound, when []When) (spatial.Position, bool) {
+	kinds := map[string]bool{}
+	for _, w := range when {
+		if w.Heard != nil {
+			kinds[w.Heard.Kind] = true
+		}
+	}
 	var best Sound
 	found := false
 	for _, s := range sounds {
+		if !kinds[s.Kind] {
+			continue
+		}
 		if !found || s.At > best.At || (s.At == best.At && s.Kind < best.Kind) {
 			best, found = s, true
 		}
@@ -422,7 +430,7 @@ func deedsForScope(view MonsterView, scope DeedScope) []HeldDeed {
 //     pairs with `away: actor`.
 //
 // `sound` is not here: it names a PLACE, never a member (R4), and is resolved
-// by [freshestSound] where `toward` and `away` read their cells.
+// by [soundFor] where `toward` and `away` read their cells.
 //
 // ok=false is a selector that named nobody, which the caller turns into a
 // [Pass] with the pick still attached.
