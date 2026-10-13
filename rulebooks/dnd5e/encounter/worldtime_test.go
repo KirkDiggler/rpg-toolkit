@@ -870,3 +870,73 @@ func TestAHeardBeatReachesThePlayerWhosePassiveBeatsTheDCOnly(t *testing.T) {
 	require.Empty(t, heardBy(carol), "9 does not beat 10, and a miss is told to nobody")
 	require.Empty(t, heardBy(noiseAlice), "the maker hears nothing of her own swing")
 }
+
+// TestAnAlarmThatFormsAFightMidTickCompletesTheTick is the castle walk's last
+// seam (rpg-project#569). On a world tick the bandit's `enemy: seen` row
+// raises the alarm; the fact turns watch↔party hostile; the fight forms and
+// pulls BOTH watchmen off the world clock in the middle of the world's own
+// think pass. The pass must notice: the bandit, already picked, is not
+// charged on a clock it has left, and the second watchman, transferred before
+// its turn to think, is skipped — not asked for a world budget it no longer
+// has. Before the fix the tick failed with "not a member of this clock" and
+// rolled back, so the alarm never landed.
+func TestAnAlarmThatFormsAFightMidTickCompletesTheTick(t *testing.T) {
+	const (
+		bandit encounter.MemberID = "bandit"
+		guard2 encounter.MemberID = "guard-2"
+		ganger encounter.MemberID = "ganger"
+		alarm                     = "alarm-raised"
+	)
+	alarmTable := encounter.Table{encounter.AnswerTime: {
+		{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemySeen}}, Say: "To arms!", Fact: alarm},
+		{Weight: 1, Hold: true},
+	}}
+	setup := noiseHallSetup(encounter.DoorIsOpen(), encounter.DoorIsOpen(),
+		sheetFacts{
+			noiseAlice: {SpeedFeet: 30}, bandit: {SpeedFeet: 30}, guard2: {SpeedFeet: 30}, ganger: {SpeedFeet: 30},
+		},
+		tableDriver(),
+		at(noiseAlice, encounter.KindPlayer, 2, 8),
+		encounter.MemberInput{ID: bandit, Kind: encounter.KindMonster, Faction: "watch",
+			Position: spatial.Position{X: 3, Y: 6}, Table: alarmTable},
+		encounter.MemberInput{ID: guard2, Kind: encounter.KindMonster, Faction: "watch",
+			Position: spatial.Position{X: 4, Y: 6}, Table: encounter.Table{encounter.AnswerTime: {{Weight: 1, Hold: true}}}},
+		encounter.MemberInput{ID: ganger, Kind: encounter.KindMonster, Faction: "gang",
+			Position: spatial.Position{X: 6, Y: 2}},
+	)
+	setup.Field.Factions = []encounter.FactionInput{{ID: "watch", Mind: core.EntityID(bandit)}, {ID: "gang"}}
+	setup.Field.Dispositions = []encounter.DispositionInput{
+		{Between: [2]encounter.FactionID{"watch", encounter.FactionParty}, Stance: encounter.StanceNeutral,
+			Until: encounter.TriggerFact{Fact: alarm}},
+		{Between: [2]encounter.FactionID{"gang", encounter.FactionParty}, Stance: encounter.StanceNeutral},
+		{Between: [2]encounter.FactionID{"watch", "gang"}, Stance: encounter.StanceHostile},
+	}
+	enc, err := encounter.NewEncounter(setup)
+	require.NoError(t, err)
+	for _, m := range []encounter.MemberID{noiseAlice, bandit, guard2} {
+		on, cerr := enc.ClockOf(&encounter.ClockOfInput{Member: m})
+		require.NoError(t, cerr)
+		require.Equal(t, encounter.ClockWorld, on.Kind, "precondition: %s is on the world clock", m)
+	}
+
+	_, err = aRound(enc)
+	require.NoError(t, err, "the tick completes")
+
+	stance, err := enc.Stance("watch", encounter.FactionParty)
+	require.NoError(t, err)
+	require.Equal(t, encounter.StanceHostile, stance, "the alarm landed and turned the watch")
+	for _, m := range []encounter.MemberID{noiseAlice, bandit, guard2} {
+		on, cerr := enc.ClockOf(&encounter.ClockOfInput{Member: m})
+		require.NoError(t, cerr)
+		require.Equal(t, encounter.ClockTurn, on.Kind, "%s is in the fight the alarm formed", m)
+	}
+
+	picks := map[string]int{}
+	for _, beat := range storyBeats(t, enc, noiseAlice) {
+		if beat["beat"] == encounter.BeatAnswered && beat["key"] == string(encounter.AnswerTime) {
+			picks[beat["creature"].(string)]++
+		}
+	}
+	require.Equal(t, 1, picks[string(bandit)], "the bandit picked once — the alarm — and was not re-picked on a clock it left")
+	require.Zero(t, picks[string(guard2)], "the second watchman left the world clock before its turn to think")
+}

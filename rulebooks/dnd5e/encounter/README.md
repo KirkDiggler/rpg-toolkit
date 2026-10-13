@@ -215,6 +215,10 @@ When an advance raises the high-water, the world thinks, inside the same call:
   else proceeds.
 - **Sight refreshes once**, after every creature has moved — then the fight
   that anybody walked into forms by the ordinary path.
+- **Membership is read as the pass runs, not from its start.** A creature
+  whose own pick — or an earlier creature's — formed a fight with it in is on
+  a turn clock now: it is not picked again, not charged the world's round, and
+  a creature taken off the world clock before its turn to think is skipped.
 - **A monster in a fight is not consulted.** The world thinks on the tick and
   a fight thinks in turns; `Form` takes a fighter off the world clock, so the
   world has nothing to give it. Your driver never needs to detect "am I in
