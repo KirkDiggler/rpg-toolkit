@@ -396,10 +396,21 @@ func TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers(t *testing.T) {
 	require.Equal(t, session.ClockTurn, clockOf.Clock, "fighter is alive and the fight is still running")
 
 	// Both players receive the combat beats. Fighter additionally observes
-	// barbarian's fall; barbarian does not receive sight testimony about self.
-	// Every recipient still has its own contiguous sequence.
+	// barbarian's fall, and HEARS the strike that caused it — a clang at
+	// DC 10 in her own room, and her sheet's passive 11 reaches it
+	// (rpg-project#569). Barbarian receives neither: no sight testimony about
+	// self, and the blow that made the sound downed her before it landed, so
+	// she was not standing to hear it. Every recipient still has its own
+	// contiguous sequence.
+	heardBy := map[string]int{}
+	for _, event := range round1Drive {
+		if event.Kind == session.EventHeard {
+			heardBy[event.Recipient]++
+		}
+	}
+	require.Equal(t, map[string]int{"fighter": 1}, heardBy, "the clang reaches the one standing listener")
 	round1Barbarian := recipientSeqs(round1Drive, "barbarian")
-	require.Len(t, round1Barbarian, len(round1Fighter)-1)
+	require.Len(t, round1Barbarian, len(round1Fighter)-2)
 	var witnessUpdates int
 	for _, event := range round1Drive {
 		if event.Recipient == "fighter" && event.Kind == session.EventSighted {

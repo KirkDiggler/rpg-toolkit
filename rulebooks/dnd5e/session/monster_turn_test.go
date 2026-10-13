@@ -322,6 +322,10 @@ func (s *MonsterTurnTestSuite) TestSkeletonAttacksFromRange() {
 		switch beat {
 		case "struck", "missed":
 			swings++
+		case "heard":
+			// The swing is a clang, and the fighter beside it hears it
+			// (rpg-project#569): a sound the attack made, not something the
+			// turn decided.
 		default:
 			s.Equal("answered", beat,
 				"the only other thing a driven turn writes is the roll that chose each intent")

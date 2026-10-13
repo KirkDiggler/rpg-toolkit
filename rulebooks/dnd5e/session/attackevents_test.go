@@ -317,10 +317,13 @@ func (s *AttackEventsTestSuite) TestTwoSwingsAreTwoDifferentRolls() {
 	s.Require().NotEmpty(second.PresentationID)
 	s.NotEqual(first.PresentationID, second.PresentationID, "one token, one roll")
 
+	// Read as alice, whose stream the output's Seq numbers. bob's is his
+	// own, and it is no longer in step with hers: he hears the first swing's
+	// clang (rpg-project#569), a beat in his stream and not in the maker's.
 	s.NotEqual(first.Seq, second.Seq, "and they really are two beats")
-	firstBody, ok := s.bodiesAtSeq(first.Seq)["bob"].(session.MissedBody)
+	firstBody, ok := s.bodiesAtSeq(first.Seq)["alice"].(session.MissedBody)
 	s.Require().True(ok)
-	secondBody, ok := s.bodiesAtSeq(second.Seq)["bob"].(session.MissedBody)
+	secondBody, ok := s.bodiesAtSeq(second.Seq)["alice"].(session.MissedBody)
 	s.Require().True(ok)
 	s.Equal(first.PresentationID, firstBody.PresentationID)
 	s.Equal(second.PresentationID, secondBody.PresentationID)

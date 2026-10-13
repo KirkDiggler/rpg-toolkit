@@ -40,12 +40,6 @@ type ActivateInput struct {
 	// somebody: Help. Empty for the rest, and a populated ID on an ability
 	// that takes none is refused rather than ignored.
 	Target string
-
-	// ObserverPassivePerceptions is the passive Perception of everyone who
-	// could notice, which Hide's Stealth check is rolled against. Empty for
-	// every other ability — and empty is a legitimate answer for Hide too
-	// (nobody is watching), so it cannot be validated by presence.
-	ObserverPassivePerceptions []int
 }
 
 // ActivateOutput is what an activation produced.
@@ -231,10 +225,9 @@ func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOut
 	}
 
 	machine, err := resolution.NewActivation(&resolution.ActivationInput{
-		MemberID:                   in.Member,
-		Ability:                    ability,
-		TargetID:                   in.Target,
-		ObserverPassivePerceptions: in.ObserverPassivePerceptions,
+		MemberID: in.Member,
+		Ability:  ability,
+		TargetID: in.Target,
 		// A machine that rolls carries its own roller (resolution's rule):
 		// Second Wind is the one activation that rolls, and it rolls with the
 		// HOST'S dice through the same seam every other roll takes. A nil here

@@ -1933,3 +1933,49 @@ func TestAMonstersActivatedBeatProjects(t *testing.T) {
 		Ability: AbilityRef{Ref: "dnd5e:monster_traits:nimble_escape", Name: "Nimble Escape"},
 	}, body)
 }
+
+// A sound reaching one player is a heard beat (rpg-project#569 R4): what kind
+// of sound, where it was made and how many region hops away — never who made
+// it. The body round-trips: the typed body, written as the composition writes
+// it, decodes back to itself.
+func TestTheHeardBeatRoundTrips(t *testing.T) {
+	want := HeardBody{Listener: "bob", Kind: "clang", Position: spatial.Position{X: 3, Y: -1}, Hops: 1}
+	fields, err := json.Marshal(want)
+	require.NoError(t, err)
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(fields, &payload))
+	payload["beat"] = encounter.BeatHeard
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	kind, body := decodeBeat(raw)
+
+	require.Equal(t, EventHeard, kind)
+	require.Equal(t, want, body)
+	require.Equal(t, encounter.BeatHeard, string(EventHeard), "the composition's word crosses unchanged")
+}
+
+// Zero hops is a sound in the listener's own region, and it is written, not
+// omitted: the body says "here", which is an answer.
+func TestAHeardBeatInTheListenersOwnRoomSaysZeroHops(t *testing.T) {
+	kind, body := decodeBeat([]byte(
+		`{"beat":"heard","listener":"bob","kind":"voice","position":{"x":2,"y":5},"hops":0}`))
+
+	require.Equal(t, EventHeard, kind)
+	require.Equal(t, HeardBody{Listener: "bob", Kind: "voice", Position: spatial.Position{X: 2, Y: 5}}, body)
+}
+
+// A heard beat always names its listener and the kind of sound — the
+// composition writes both at its one append site — so a payload missing
+// either is a beat this build never wrote.
+func TestAHeardBeatWithNoListenerOrKindIsRefused(t *testing.T) {
+	for _, payload := range []string{
+		`{"beat":"heard","listener":"","kind":"clang","position":{"x":2,"y":5},"hops":1}`,
+		`{"beat":"heard","listener":"bob","kind":"","position":{"x":2,"y":5},"hops":1}`,
+	} {
+		kind, body := decodeBeat([]byte(payload))
+
+		require.Equal(t, EventHeard, kind, "the kind still maps — it is the body that is unreadable")
+		require.Nil(t, body)
+	}
+}

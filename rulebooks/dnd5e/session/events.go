@@ -346,6 +346,12 @@ func kindFor(beat string) EventKind {
 	// only account of that roll a client ever gets.
 	case encounter.BeatTempered:
 		return EventTempered
+	// A sound reaching one player (rpg-project#569). Named by the
+	// composition's own exported constant for BeatAnswered's reason; the
+	// audience is the listener alone, set where the composition appends it,
+	// so routing it is the per-recipient Story's job and not this switch's.
+	case encounter.BeatHeard:
+		return EventHeard
 	// A driven word that did nothing — a routed walk that moved nobody
 	// (rpg-project#465), an attack refused, or a `toward` already in reach
 	// (rpg-toolkit#2000). Named by the
@@ -611,6 +617,20 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		return TemperedBody{
 			Member: p.Member, Temper: p.Temper, Roll: p.Roll, Of: p.Of, Faction: p.Faction,
 		}
+	case EventHeard:
+		var p struct {
+			Listener string           `json:"listener"`
+			Kind     string           `json:"kind"`
+			Position spatial.Position `json:"position"`
+			Hops     int              `json:"hops"`
+		}
+		// The listener and the kind gate the body: the composition writes
+		// both at its one append site, so a payload missing either is a beat
+		// this build never wrote. Hops and position are legitimately zero.
+		if json.Unmarshal(payload, &p) != nil || p.Listener == "" || p.Kind == "" {
+			return nil
+		}
+		return HeardBody{Listener: p.Listener, Kind: p.Kind, Position: p.Position, Hops: p.Hops}
 	case EventTurnEnded:
 		var p struct {
 			Member string `json:"member"`
