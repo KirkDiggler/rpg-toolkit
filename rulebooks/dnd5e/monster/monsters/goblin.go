@@ -32,6 +32,8 @@ func NewGoblin(id string) *monster.Monster {
 			abilities.WIS: 8,
 			abilities.CHA: 8,
 		},
+		// SRD 5.1: passive Perception 9 (WIS 8).
+		Senses: monster.SensesData{PassivePerception: 9},
 	})
 
 	// Scimitar and shortbow, off the catalog and this goblin's own numbers:

@@ -32,10 +32,9 @@ import (
 //     NimbleEscape — damage immunity only. There is no condition-immunity trait to attach, and inventing one
 //     for a monster nothing currently charms would be a mechanism without a
 //     use case.
-//   - Blindsight 60 ft. monster.Data has a Blindsight field, but nothing
-//     reads it (only Darkvision has a reader) and monster.Config exposes no
-//     way to set senses at all. Writing an inert number would claim a sense
-//     the engine does not honor.
+//   - Blindsight 60 ft. monster.SensesData has a Blindsight field, but
+//     nothing reads it (only Darkvision and PassivePerception have readers).
+//     Writing an inert number would claim a sense the engine does not honor.
 //   - Antimagic Susceptibility and False Appearance. No antimagic field and
 //     no "indistinguishable while motionless" concept exist to hang them on.
 func NewAnimatedArmor(id string) *monster.Monster {
@@ -54,6 +53,8 @@ func NewAnimatedArmor(id string) *monster.Monster {
 			abilities.WIS: 3,  // -4
 			abilities.CHA: 1,  // -5
 		},
+		// SRD 5.1: passive Perception 6 (WIS 3).
+		Senses: monster.SensesData{PassivePerception: 6},
 	})
 
 	// The SRD's "makes two melee attacks" over the one melee attack this

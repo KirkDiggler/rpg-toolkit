@@ -38,6 +38,8 @@ func NewThug(id string) *monster.Monster {
 			abilities.WIS: 10, // +0
 			abilities.CHA: 11, // +0
 		},
+		// SRD 5.1: passive Perception 10 (WIS 10).
+		Senses: monster.SensesData{PassivePerception: 10},
 	})
 
 	// Mace and heavy crossbow, off the catalog and this thug's own numbers:

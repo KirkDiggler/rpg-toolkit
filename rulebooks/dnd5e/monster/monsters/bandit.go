@@ -30,6 +30,8 @@ func NewBanditMelee(id string) *monster.Monster {
 			abilities.WIS: 10, // +0
 			abilities.CHA: 10, // +0
 		},
+		// SRD 5.1: passive Perception 10 (WIS 10).
+		Senses: monster.SensesData{PassivePerception: 10},
 	})
 
 	// Scimitar and light crossbow, off the catalog and this bandit's own
@@ -61,6 +63,8 @@ func NewBanditRanged(id string) *monster.Monster {
 			abilities.WIS: 10, // +0
 			abilities.CHA: 10, // +0
 		},
+		// SRD 5.1: passive Perception 10 (WIS 10).
+		Senses: monster.SensesData{PassivePerception: 10},
 	})
 
 	// The bow and nothing else. This is the SAME stat block as NewBanditMelee

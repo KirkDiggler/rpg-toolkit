@@ -43,6 +43,8 @@ func NewSkeletonCaptain(id string) *monster.Monster {
 			abilities.WIS: 8,  // -1
 			abilities.CHA: 5,  // -3
 		},
+		// not an SRD block: 10 + WIS mod (-1), no Perception proficiency.
+		Senses: monster.SensesData{PassivePerception: 9},
 	})
 
 	// Multiattack first, then the component it scripts. This captain is
