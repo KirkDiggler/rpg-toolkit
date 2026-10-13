@@ -156,6 +156,11 @@ type cellAnswer struct {
 
 	// refusal is why the pair is not somewhere to walk to, or "" when it is.
 	refusal string
+
+	// routeRefusal is the dialect's sentence for a `path` when it has no
+	// frame — said once for the route rather than once per waypoint. Empty
+	// for a framed dialect, which judges each waypoint by refusal above.
+	routeRefusal string
 }
 
 // cells is the dialect's frame: what an authored `{ at: [col, row] }` inside
@@ -276,11 +281,15 @@ func (g *grammar) fail(path, format string, args ...any) {
 //   - an entry with no word and nothing to say, which is a row written for no
 //     reason;
 //   - an empty `fact:`, which says the world learns something and not what;
-//   - a word under a key it is not legal on: `fact` and `flee` answer a social
-//     verdict, `hold`/`attack`/`toward`/`away` are what a creature does with
-//     time, and a `when` is a time word because a social key IS the condition;
-//   - `at:` on anything but `toward`, because walking away from a fixed cell
-//     is a direction rather than a flight and nothing has paid for one;
+//   - a word under a key it is not legal on: `flee` answers a social verdict,
+//     `hold`/`attack`/`toward`/`away` are what a creature does with time, and
+//     a `when` is a time word because a social key IS the condition; `fact`
+//     is legal under both (rpg-project#569 R6: on `time` it is an alarm,
+//     taught to whoever hears the speaker);
+//   - `at:` or `path:` on anything but `toward`, because walking away from a
+//     fixed cell is a direction rather than a flight and nothing has paid for
+//     one, and a route is walked;
+//   - `sound` on `attack`, because a sound cannot be struck;
 //   - `actor` in an entry whose `when` names no deed, because there is no
 //     actor otherwise;
 //   - an `at:` cell the dialect cannot send anybody to: not floor in a dialect
@@ -443,12 +452,14 @@ func (g *grammar) answerEntry(at string, key string, entry AnswerSpec) {
 // wordLegality refuses a word, or a `when`, under a key it is not legal on.
 // The key is `time` for a table's row and `success` or `failure` for an
 // option's — a verdict, where `fact` and `flee` are legal and the four time
-// words and a `when` are not.
+// words and a `when` are not. `fact` is legal under `time` too
+// (rpg-project#569 R6).
 func (g *grammar) wordLegality(at, key string, words []string, entry AnswerSpec) {
 	time := key == string(encounter.AnswerTime)
 	for _, word := range words {
 		switch word {
-		case "fact", "flee":
+		case "fact":
+		case "flee":
 			if time {
 				g.fail(at+"."+word,
 					"`%s` answers a social verdict, and `time` is not one (line %d)", word, entry.Line)
@@ -461,10 +472,10 @@ func (g *grammar) wordLegality(at, key string, words []string, entry AnswerSpec)
 			}
 		}
 	}
-	if entry.When != nil && !time {
+	if len(entry.When) > 0 && !time {
 		g.fail(at+".when",
 			"`%s` is already the condition — a `when` under it asks when a thing that just happened happened (line %d)",
-			key, entry.When.Line)
+			key, entry.When[0].Line)
 	}
 }
 
@@ -480,6 +491,16 @@ func (g *grammar) wordLegality(at, key string, words []string, entry AnswerSpec)
 func (g *grammar) entrySelector(at, _ string, entry AnswerSpec) {
 	word, sel := entrySelectorOf(entry)
 	if sel == nil {
+		return
+	}
+	if len(sel.Path) > 0 {
+		g.entryRoute(at, word, sel)
+
+		return
+	}
+	if sel.Word == string(encounter.SelectorSound) && word == "attack" {
+		g.fail(at+"."+word, "%s (line %d)", errSoundStruck, sel.Line)
+
 		return
 	}
 	if sel.At != nil {
@@ -501,10 +522,38 @@ func (g *grammar) entrySelector(at, _ string, entry AnswerSpec) {
 
 		return
 	}
-	if sel.Word == string(encounter.SelectorActor) && (entry.When == nil || entry.When.Deed == "") {
+	if sel.Word == string(encounter.SelectorActor) && entry.When.deed() == nil {
 		g.fail(at+"."+word,
 			"`actor` is the actor of the deed this entry's `when` names, and this entry names no deed (line %d)",
 			sel.Line)
+	}
+}
+
+// errSoundStruck is the sentence `sound` on `attack` is refused with
+// (rpg-project#569 R10), mind/behavior's own refusal in the author's words.
+const errSoundStruck = "`attack` cannot take `sound`: a sound cannot be struck, only walked toward or away from"
+
+// entryRoute refuses a `path` the dialect cannot walk: on any word but
+// `toward`, in a dialect with no frame for its cells, or through a waypoint
+// that is not floor — the same three questions [grammar.entrySelector] asks
+// of an `at`, in the same order, asked of every waypoint.
+func (g *grammar) entryRoute(at, word string, sel *SelectorSpec) {
+	first := g.cells.cellAt(sel.Path[0])
+	if !first.framed {
+		g.fail(at+"."+word+".path", "%s", first.routeRefusal)
+
+		return
+	}
+	if word != "toward" {
+		g.fail(at+"."+word,
+			"`%s` cannot take a `path`: a route is walked, and only `toward` walks one (line %d)", word, sel.Line)
+
+		return
+	}
+	for i, waypoint := range sel.Path {
+		if answer := g.cells.cellAt(waypoint); answer.refusal != "" {
+			g.fail(fmt.Sprintf("%s.%s.path[%d]", at, word, i), "%s", answer.refusal)
+		}
 	}
 }
 

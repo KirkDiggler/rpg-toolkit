@@ -194,22 +194,22 @@ func TestTheScopeSurvivesPersistence(t *testing.T) {
 	for _, scope := range []DeedScope{ScopeSelf, ScopeAlly, ScopeActor} {
 		entry := Answer{
 			Weight: 1,
-			When:   &When{Deed: "attacked", Within: 3, Scope: scope},
+			When:   []When{{Deed: "attacked", Within: 3, Scope: scope}},
 			Hold:   true,
 		}
 
 		// OUT: the entry becomes the persistent shape.
 		data := answerDataFrom(entry)
 		require.NotNil(t, data.When, "the condition was written")
-		require.Equal(t, string(scope), data.When.Scope)
+		require.Equal(t, string(scope), data.When[0].Scope)
 
 		// BACK: and the persistent shape becomes the entry again.
 		back := answerFromData(data)
 		require.NotNil(t, back.When, "the condition came back")
-		require.Equal(t, scope, back.When.Scope,
+		require.Equal(t, scope, back.When[0].Scope,
 			"a scope that did not survive the round trip would read the WRONG deeds")
-		require.Equal(t, "attacked", back.When.Deed)
-		require.Equal(t, 3, back.When.Within)
+		require.Equal(t, "attacked", back.When[0].Deed)
+		require.Equal(t, 3, back.When[0].Within)
 	}
 }
 
@@ -218,13 +218,13 @@ func TestTheScopeSurvivesPersistence(t *testing.T) {
 // record persisted before scopes existed loads to exactly what it meant.
 func TestAnUnauthoredScopeWritesNothing(t *testing.T) {
 	data := answerDataFrom(Answer{
-		Weight: 1, When: &When{Enemy: EnemySeen}, Hold: true,
+		Weight: 1, When: []When{{Enemy: EnemySeen}}, Hold: true,
 	})
 	require.NotNil(t, data.When)
-	require.Empty(t, data.When.Scope, "the self reading writes no key")
+	require.Empty(t, data.When[0].Scope, "the self reading writes no key")
 
 	back := answerFromData(data)
-	require.Equal(t, ScopeSelf, back.When.Scope, "and loads back as the self reading")
+	require.Equal(t, ScopeSelf, back.When[0].Scope, "and loads back as the self reading")
 }
 
 // ---------------------------------------------------------------------------
@@ -245,7 +245,7 @@ func TestAnUnauthoredScopeWritesNothing(t *testing.T) {
 func vengeanceTable() Table {
 	return Table{AnswerTime: {
 		{Weight: 100, Attack: &Selector{Word: SelectorAttacker},
-			When: &When{Deed: "attacked", Within: 3, Scope: ScopeAlly}},
+			When: []When{{Deed: "attacked", Within: 3, Scope: ScopeAlly}}},
 		{Weight: 1, Hold: true},
 	}}
 }
@@ -309,7 +309,7 @@ func (s *TableSuite) TestASelfScopedRowStillReadsItsOwnDeeds() {
 	// `attacked` row reads the self deeds and strikes the self attacker.
 	table := Table{AnswerTime: {
 		{Weight: 100, Attack: &Selector{Word: SelectorAttacker},
-			When: &When{Deed: "attacked", Within: 3}},
+			When: []When{{Deed: "attacked", Within: 3}}},
 		{Weight: 1, Hold: true},
 	}}
 	view := vengeanceView(10)
@@ -329,4 +329,23 @@ func (s *TableSuite) TestASelfScopedRowStillReadsItsOwnDeeds() {
 	attack, ok := decision.Intent.(Attack)
 	s.Require().True(ok)
 	s.Equal(MemberID("someone-else"), attack.Target, "an unscoped row still means against me")
+}
+
+// TestTheCastleWordsSurviveASave: every condition and selector the castle
+// needs is written to the blob and read back as itself — a `heard`, a `fact`,
+// a `not` around a band, the list holding two, and a route — because a word
+// that did not survive the save would be the quiet degrade this module
+// refuses everywhere else.
+func TestTheCastleWordsSurviveASave(t *testing.T) {
+	route := []spatial.Position{{X: 2, Y: 3}, {X: 6, Y: 3}, {X: 6, Y: 8}}
+	for _, entry := range []Answer{
+		{Weight: 1, When: []When{{Heard: &HeardWhen{Kind: SoundClang, Within: 2}}}, Toward: &Selector{Word: SelectorSound}},
+		{Weight: 1, When: []When{{Fact: "alarm-raised"}}, Away: &Selector{Word: SelectorSound}},
+		{Weight: 1, When: []When{{Fact: "guards-turned"}, {Not: &When{Enemy: EnemySeen}}}, Hold: true},
+		{Weight: 1, When: []When{{Enemy: EnemyNone}}, Toward: &Selector{Path: route}},
+		{Weight: 1, When: []When{{Enemy: EnemySeen}}, Say: "To arms!", Fact: "alarm-raised"},
+	} {
+		back := answerFromData(answerDataFrom(entry))
+		require.Equal(t, entry, back)
+	}
 }

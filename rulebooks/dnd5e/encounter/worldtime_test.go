@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -606,13 +607,13 @@ func (s *WorldTimeSuite) TestTheDefaultTableClosesAndThenSwings() {
 func theDefaultThugTable() encounter.Table {
 	return encounter.Table{
 		encounter.AnswerTime: {
-			{Weight: 3, When: &encounter.When{Deed: "attacked", Within: 3},
+			{Weight: 3, When: []encounter.When{{Deed: "attacked", Within: 3}},
 				Attack: &encounter.Selector{Word: encounter.SelectorAttacker}},
-			{Weight: 1, When: &encounter.When{Enemy: encounter.EnemyReach},
+			{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyReach}},
 				Attack: &encounter.Selector{Word: encounter.SelectorEnemy}},
-			{Weight: 1, When: &encounter.When{Enemy: encounter.EnemySeen},
+			{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemySeen}},
 				Toward: &encounter.Selector{Word: encounter.SelectorEnemy}},
-			{Weight: 1, When: &encounter.When{Enemy: encounter.EnemyRemembered},
+			{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyRemembered}},
 				Toward: &encounter.Selector{Word: encounter.SelectorEnemy}},
 			{Weight: 1, Hold: true},
 		},
@@ -648,7 +649,7 @@ func (s *WorldTimeSuite) TestASpentCreatureIsNotAskedToSwingAgain() {
 				// the second consult has nothing at all on the table, which
 				// is the empty pick this rule is really about.
 				Table: encounter.Table{encounter.AnswerTime: {
-					{Weight: 1, When: &encounter.When{Enemy: encounter.EnemyReach},
+					{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyReach}},
 						Attack: &encounter.Selector{Word: encounter.SelectorEnemy}},
 				}},
 			},
@@ -822,4 +823,50 @@ func (s *WorldTimeSuite) TestAWalkThatMovesNobodySaysSo() {
 	s.Equal("encounter:table:toward", beat["cause"],
 		"naming what routed it, and WHICH WAY: a creature sent somewhere it cannot reach "+
 			"is not a creature running")
+}
+
+// TestAHeardBeatReachesThePlayerWhosePassiveBeatsTheDCOnly is H5: a clang in
+// room a, two players listening in room b. Bob's 15 beats DC 10 + 5 for the
+// hop and he is told — kind, place, hops, and never who; Carol's 10 does not,
+// and she is told nothing at all, not even that she missed it.
+func TestAHeardBeatReachesThePlayerWhosePassiveBeatsTheDCOnly(t *testing.T) {
+	const (
+		bob   encounter.MemberID = "bob"
+		carol encounter.MemberID = "carol"
+	)
+	enc := noiseHall(t, encounter.DoorIsOpen(), encounter.DoorIsOpen(),
+		sheetFacts{
+			noiseAlice: {SpeedFeet: 30, PassivePerception: 30}, noiseThug: {SpeedFeet: 30},
+			bob: {SpeedFeet: 30, PassivePerception: 15}, carol: {SpeedFeet: 30, PassivePerception: 10},
+		},
+		at(noiseAlice, encounter.KindPlayer, 2, 5), at(noiseThug, encounter.KindMonster, 3, 5),
+		at(bob, encounter.KindPlayer, 15, 1), at(carol, encounter.KindPlayer, 15, 8),
+	)
+
+	aliceStrikesTheThug(t, enc)
+
+	heardBy := func(member encounter.MemberID) []map[string]any {
+		var out []map[string]any
+		for _, beat := range storyBeats(t, enc, member) {
+			if beat["beat"] == encounter.BeatHeard {
+				out = append(out, beat)
+			}
+		}
+		return out
+	}
+
+	bobs := heardBy(bob)
+	require.Len(t, bobs, 1, "one sound, one beat")
+	require.Equal(t, string(bob), bobs[0]["listener"])
+	require.Equal(t, encounter.SoundClang, bobs[0]["kind"])
+	require.EqualValues(t, 1, bobs[0]["hops"])
+	where := bobs[0]["position"].(map[string]any)
+	require.Equal(t, cellAt(2, 5).X, where["x"])
+	require.Equal(t, cellAt(2, 5).Y, where["y"])
+	raw, err := json.Marshal(bobs[0])
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), string(noiseAlice), "a heard thing never names its maker (R4)")
+
+	require.Empty(t, heardBy(carol), "10 does not beat 15, and a miss is told to nobody")
+	require.Empty(t, heardBy(noiseAlice), "the maker hears nothing of her own swing")
 }

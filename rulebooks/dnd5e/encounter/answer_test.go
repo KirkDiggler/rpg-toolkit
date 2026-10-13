@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -288,7 +289,7 @@ func (s *AnswerTestSuite) neutralFront(table encounter.Table, options ...encount
 func (s *AnswerTestSuite) TestAFleeEntryLandsTheDeedAndTheTableDoesTheRunning() {
 	enc := s.neutralFront(encounter.Table{
 		encounter.AnswerTime: {
-			{Weight: 1, When: &encounter.When{Deed: "fled", Within: 3},
+			{Weight: 1, When: []encounter.When{{Deed: "fled", Within: 3}},
 				Away: &encounter.Selector{Word: encounter.SelectorActor}},
 			{Weight: 1, Hold: true},
 		},
@@ -717,7 +718,7 @@ func (s *AnswerTestSuite) neutralFrontPair(table encounter.Table, options ...enc
 func (s *AnswerTestSuite) TestAFlightSurvivesWhatTheSameActorDoesToSomebodyElse() {
 	enc := s.neutralFrontPair(encounter.Table{
 		encounter.AnswerTime: {
-			{Weight: 1, When: &encounter.When{Deed: "fled", Within: 3},
+			{Weight: 1, When: []encounter.When{{Deed: "fled", Within: 3}},
 				Away: &encounter.Selector{Word: encounter.SelectorActor}},
 			{Weight: 1, Hold: true},
 		},
@@ -789,4 +790,331 @@ func (s *AnswerTestSuite) TestAJoinerIsAnnouncedBeforeItsNerveIsDealt() {
 	word, _ := beats[temperedAt]["temper"].(string)
 	s.Contains(banditMix, word, "a word out of the mix the joiner carried in")
 	s.Equal("goblins", beats[temperedAt]["faction"], "dealt as the side it joined")
+}
+
+// --- hearing on a creature's own time (rpg-project#569) ----------------------
+//
+// These scenes stand in the three-room hall noise_test.go builds: a | b | c,
+// an open door in each seam on row 5. A line said is a voice, DC 10 where it
+// is said and 15 a room over; a guard with passive 15 hears one room away
+// and not two.
+
+const (
+	hCrier  encounter.MemberID = "crier"
+	hWalker encounter.MemberID = "walker"
+	hOther  encounter.MemberID = "other"
+	hDeaf   encounter.MemberID = "deaf"
+	hAlarm                     = "alarm-raised"
+)
+
+// tabled is a monster at an authored [col,row] with its own table.
+func tabled(id encounter.MemberID, col, row int, table encounter.Table) encounter.MemberInput {
+	m := at(id, encounter.KindMonster, col, row)
+	m.Table = table
+
+	return m
+}
+
+// cries is the crier's standing order: shout the alarm with every round it has.
+func cries() encounter.Table {
+	return encounter.Table{encounter.AnswerTime: {{Weight: 1, Say: "To arms!", Fact: hAlarm}}}
+}
+
+// knows reports whether a member's own journal fold holds a fact — read off
+// the saved journal, which is what a reload would hand back.
+func knows(t *testing.T, enc *encounter.Encounter, member encounter.MemberID, id string) bool {
+	t.Helper()
+	data := enc.ToData()
+	if data.Journal == nil {
+		return false
+	}
+	for _, f := range data.Journal.Facts {
+		if f.Kind == "known:fact:"+id && f.Subject == string(member) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// TestATimeRowsFactTeachesItsHearersAndNotTheFarRoom is R6: `fact` on a
+// `time` row is an alarm. Its audience is whoever SEES the crier (alice,
+// across room a) and whoever HEARS it (the guard one room over), and nobody
+// two rooms away with the same ears.
+func TestATimeRowsFactTeachesItsHearersAndNotTheFarRoom(t *testing.T) {
+	enc := tableHall(t,
+		sheetFacts{
+			noiseAlice: {SpeedFeet: 30}, hCrier: {SpeedFeet: 30},
+			noiseKeen: {SpeedFeet: 30, PassivePerception: 15}, noiseFar: {SpeedFeet: 30, PassivePerception: 15},
+		},
+		at(noiseAlice, encounter.KindPlayer, 2, 8),
+		tabled(hCrier, 1, 1, cries()),
+		at(noiseKeen, encounter.KindMonster, 18, 1),
+		at(noiseFar, encounter.KindMonster, 28, 1),
+	)
+	require.False(t, knows(t, enc, noiseKeen, hAlarm), "precondition: nobody has said anything")
+
+	_, err := aRound(enc)
+	require.NoError(t, err)
+
+	require.True(t, knows(t, enc, noiseAlice, hAlarm), "alice saw it shouted — a witness, as every fact has")
+	require.True(t, knows(t, enc, noiseKeen, hAlarm), "the guard next door heard it: 15 beats 10 + 5")
+	require.False(t, knows(t, enc, noiseFar, hAlarm), "two rooms is 20, and 15 does not carry that far")
+	require.Contains(t, soundsHeldBy(t, enc, noiseKeen), encounter.SoundVoice, "and what it heard was a voice")
+	require.Empty(t, soundsHeldBy(t, enc, noiseFar))
+}
+
+// TestAWhenFactRowIsEligibleOnlyForAHolder is R6's other half: the same row
+// on two guards side by side, and only the one who heard the alarm acts on it.
+func TestAWhenFactRowIsEligibleOnlyForAHolder(t *testing.T) {
+	post := cellAt(12, 4)
+	onAlarm := encounter.Table{encounter.AnswerTime: {
+		{Weight: 1, When: []encounter.When{{Fact: hAlarm}}, Toward: &encounter.Selector{At: &post}},
+		{Weight: 1, Hold: true},
+	}}
+	enc := tableHall(t,
+		sheetFacts{
+			noiseAlice: {SpeedFeet: 30}, hCrier: {SpeedFeet: 30},
+			noiseKeen: {SpeedFeet: 30, PassivePerception: 15}, hDeaf: {SpeedFeet: 30},
+		},
+		at(noiseAlice, encounter.KindPlayer, 2, 8),
+		tabled(hCrier, 1, 1, cries()),
+		tabled(noiseKeen, 18, 1, onAlarm),
+		tabled(hDeaf, 18, 0, onAlarm),
+	)
+	keenStart, deafStart := whereIs(t, enc, noiseKeen), whereIs(t, enc, hDeaf)
+
+	for range 2 {
+		_, err := aRound(enc)
+		require.NoError(t, err)
+	}
+
+	require.False(t, knows(t, enc, hDeaf, hAlarm), "precondition: the deaf guard neither heard nor saw it")
+	require.NotEqual(t, keenStart, whereIs(t, enc, noiseKeen), "the guard who holds the fact went to its post")
+	require.Equal(t, deafStart, whereIs(t, enc, hDeaf), "the one who does not hold it had only `hold`")
+}
+
+// TestNotEnemySeenHoldsWithNoEnemyInSight: `not` inverts what it wraps, read
+// through the real pick — with nobody opposed anywhere, `not: { enemy: seen }`
+// holds and `enemy: seen` does not.
+func TestNotEnemySeenHoldsWithNoEnemyInSight(t *testing.T) {
+	post := cellAt(12, 4)
+	walkWhen := func(when encounter.When) encounter.Table {
+		return encounter.Table{encounter.AnswerTime: {
+			{Weight: 1, When: []encounter.When{when}, Toward: &encounter.Selector{At: &post}},
+			{Weight: 1, Hold: true},
+		}}
+	}
+	enc := tableHall(t,
+		sheetFacts{noiseAlice: {SpeedFeet: 30}, hWalker: {SpeedFeet: 30}, hOther: {SpeedFeet: 30}},
+		at(noiseAlice, encounter.KindPlayer, 2, 8),
+		tabled(hWalker, 18, 1, walkWhen(encounter.When{Not: &encounter.When{Enemy: encounter.EnemySeen}})),
+		tabled(hOther, 18, 8, walkWhen(encounter.When{Enemy: encounter.EnemySeen})),
+	)
+	walkerStart, otherStart := whereIs(t, enc, hWalker), whereIs(t, enc, hOther)
+
+	_, err := aRound(enc)
+	require.NoError(t, err)
+
+	require.NotEqual(t, walkerStart, whereIs(t, enc, hWalker), "no enemy seen, so `not: { enemy: seen }` held")
+	require.Equal(t, otherStart, whereIs(t, enc, hOther), "and `enemy: seen` did not")
+}
+
+// TestAListedWhenNeedsEveryEntryThroughTheRealPick is R8: a row's `when` is a
+// list and every entry must hold. Two guards both heard the alarm; one row
+// also needs nobody in sight (true), the other also needs a fact nobody
+// taught (false), and only the first walks.
+func TestAListedWhenNeedsEveryEntryThroughTheRealPick(t *testing.T) {
+	post := cellAt(12, 4)
+	walkWhenAll := func(when ...encounter.When) encounter.Table {
+		return encounter.Table{encounter.AnswerTime: {
+			{Weight: 1, When: when, Toward: &encounter.Selector{At: &post}},
+			{Weight: 1, Hold: true},
+		}}
+	}
+	enc := tableHall(t,
+		sheetFacts{
+			noiseAlice: {SpeedFeet: 30}, hCrier: {SpeedFeet: 30},
+			hWalker: {SpeedFeet: 30, PassivePerception: 15}, hOther: {SpeedFeet: 30, PassivePerception: 15},
+		},
+		at(noiseAlice, encounter.KindPlayer, 2, 8),
+		tabled(hCrier, 1, 1, cries()),
+		tabled(hWalker, 18, 1, walkWhenAll(
+			encounter.When{Fact: hAlarm}, encounter.When{Not: &encounter.When{Enemy: encounter.EnemySeen}})),
+		tabled(hOther, 18, 0, walkWhenAll(
+			encounter.When{Fact: hAlarm}, encounter.When{Fact: "guards-turned"})),
+	)
+	walkerStart, otherStart := whereIs(t, enc, hWalker), whereIs(t, enc, hOther)
+
+	for range 2 {
+		_, err := aRound(enc)
+		require.NoError(t, err)
+	}
+
+	require.True(t, knows(t, enc, hOther, hAlarm), "precondition: both heard the alarm")
+	require.NotEqual(t, walkerStart, whereIs(t, enc, hWalker), "both entries held")
+	require.Equal(t, otherStart, whereIs(t, enc, hOther), "one of two is not enough")
+}
+
+// TestAPathWalksWaypointToWaypointAndResumesAtTheNearest is R7: a patrol is a
+// route with no cursor. Standing on a waypoint, the creature walks to the
+// next; anywhere else, to the nearest; the last waypoint's next is the first.
+// Each leg here is four cells and the walker's round is six, so each round
+// ends exactly on a waypoint.
+func TestAPathWalksWaypointToWaypointAndResumesAtTheNearest(t *testing.T) {
+	route := []spatial.Position{cellAt(12, 2), cellAt(16, 2), cellAt(16, 6), cellAt(12, 6)}
+	enc := tableHall(t,
+		sheetFacts{noiseAlice: {SpeedFeet: 30}, hWalker: {SpeedFeet: 30}},
+		at(noiseAlice, encounter.KindPlayer, 2, 8),
+		tabled(hWalker, 12, 2, encounter.Table{encounter.AnswerTime: {
+			{Weight: 1, Toward: &encounter.Selector{Path: route}},
+		}}),
+	)
+	require.Equal(t, route[0], whereIs(t, enc, hWalker), "precondition: it starts on the first waypoint")
+
+	for i, want := range []spatial.Position{route[1], route[2], route[3]} {
+		_, err := aRound(enc)
+		require.NoError(t, err)
+		require.Equal(t, want, whereIs(t, enc, hWalker), "round %d ends on the next waypoint", i+1)
+	}
+
+	// SHOVED OFF THE ROUTE — a commanded step the table did not choose. One
+	// cell east of the last waypoint, which is now the nearest by one.
+	off := cellAt(13, 6)
+	_, err := enc.Direct(context.Background(), encounter.DirectInput{
+		Mover: hWalker, Route: []spatial.Position{off},
+		Cause: core.Ref{Module: "test", Type: "spell", ID: "command"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, off, whereIs(t, enc, hWalker), "precondition: it stands on no waypoint")
+
+	_, err = aRound(enc)
+	require.NoError(t, err)
+	require.Equal(t, route[3], whereIs(t, enc, hWalker), "off the route, it goes back to the nearest waypoint")
+
+	_, err = aRound(enc)
+	require.NoError(t, err)
+	require.Equal(t, route[0], whereIs(t, enc, hWalker), "and round again: the last waypoint's next is the first")
+}
+
+// TestTowardSoundWalksToTheClang is R10: a guard who heard steel walks to
+// where it rang, through the door, and finds out who by looking. The clang's
+// cell is alice's, so the guard ends beside her.
+func TestTowardSoundWalksToTheClang(t *testing.T) {
+	enc := tableHall(t,
+		sheetFacts{
+			noiseAlice: {SpeedFeet: 30}, noiseThug: {SpeedFeet: 30},
+			noiseKeen: {SpeedFeet: 30, PassivePerception: 15},
+		},
+		at(noiseAlice, encounter.KindPlayer, 2, 5), at(noiseThug, encounter.KindMonster, 3, 5),
+		tabled(noiseKeen, 18, 1, encounter.Table{encounter.AnswerTime: {
+			{Weight: 1, When: []encounter.When{{Heard: &encounter.HeardWhen{Kind: encounter.SoundClang, Within: 6}}},
+				Toward: &encounter.Selector{Word: encounter.SelectorSound}},
+			{Weight: 1, Hold: true},
+		}}),
+	)
+	clangAt := cellAt(2, 5)
+	start := whereIs(t, enc, noiseKeen)
+
+	aliceStrikesTheThug(t, enc)
+	for range 4 {
+		_, err := aRound(enc)
+		require.NoError(t, err)
+	}
+
+	end := whereIs(t, enc, noiseKeen)
+	require.Less(t, enc.Distance(end, clangAt), enc.Distance(start, clangAt))
+	require.LessOrEqual(t, enc.Distance(end, clangAt), 1.0, "it walked all the way to where the clang rang")
+}
+
+// TestAwaySoundWalksFromIt: the coward's half of R10.
+func TestAwaySoundWalksFromIt(t *testing.T) {
+	enc := tableHall(t,
+		sheetFacts{
+			noiseAlice: {SpeedFeet: 30}, noiseThug: {SpeedFeet: 30},
+			hWalker: {SpeedFeet: 30, PassivePerception: 15},
+		},
+		at(noiseAlice, encounter.KindPlayer, 2, 5), at(noiseThug, encounter.KindMonster, 3, 5),
+		tabled(hWalker, 6, 5, encounter.Table{encounter.AnswerTime: {
+			{Weight: 1, When: []encounter.When{{Heard: &encounter.HeardWhen{Kind: encounter.SoundClang, Within: 2}}},
+				Away: &encounter.Selector{Word: encounter.SelectorSound}},
+			{Weight: 1, Hold: true},
+		}}),
+	)
+	clangAt := cellAt(2, 5)
+	start := whereIs(t, enc, hWalker)
+
+	aliceStrikesTheThug(t, enc)
+	_, err := aRound(enc)
+	require.NoError(t, err)
+
+	require.Greater(t, enc.Distance(whereIs(t, enc, hWalker), clangAt), enc.Distance(start, clangAt))
+}
+
+// TestASoundRowWithNothingHeardStaysAndSaysWhy: `toward: sound` with no sound
+// held selected nothing. The row still rolled — the driver's rule for every
+// selector that names nobody — and the stayed beat says why.
+func TestASoundRowWithNothingHeardStaysAndSaysWhy(t *testing.T) {
+	enc := tableHall(t,
+		sheetFacts{noiseAlice: {SpeedFeet: 30}, hWalker: {SpeedFeet: 30}},
+		at(noiseAlice, encounter.KindPlayer, 2, 8),
+		tabled(hWalker, 18, 1, encounter.Table{encounter.AnswerTime: {
+			{Weight: 1, Toward: &encounter.Selector{Word: encounter.SelectorSound}},
+		}}),
+	)
+	start := whereIs(t, enc, hWalker)
+
+	_, err := aRound(enc)
+	require.NoError(t, err)
+
+	require.Equal(t, start, whereIs(t, enc, hWalker))
+	var why []any
+	for _, beat := range storyBeats(t, enc, noiseAlice) {
+		if beat["beat"] == encounter.BeatStayed && beat["member"] == string(hWalker) {
+			why = append(why, beat["why"])
+			require.Equal(t, "encounter:table:toward", beat["cause"])
+		}
+	}
+	require.Equal(t, []any{"heard nothing"}, why)
+}
+
+// TestAnAnswersLineIsAVoice: every `say` on any answer row is a voice — here
+// a creature answering a spoken option, heard by the guard next door.
+func TestAnAnswersLineIsAVoice(t *testing.T) {
+	thug := at(noiseThug, encounter.KindMonster, 3, 5)
+	thug.Options = []encounter.Option{threat([]encounter.Answer{{Weight: 1, Say: "Fine! FINE."}}, nil)}
+	enc := noiseHall(t, encounter.DoorIsOpen(), encounter.DoorIsOpen(),
+		sheetFacts{
+			noiseAlice: {SpeedFeet: 30}, noiseThug: {SpeedFeet: 30},
+			noiseKeen: {SpeedFeet: 30, PassivePerception: 15},
+		},
+		at(noiseAlice, encounter.KindPlayer, 2, 5), thug,
+		at(noiseKeen, encounter.KindMonster, 15, 1),
+	)
+
+	_, err := enc.Speak(context.Background(), &encounter.SpeakInput{
+		OptionID: "threat", Skill: "intimidation", Actor: noiseAlice, Target: noiseThug,
+		Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
+	})
+	require.NoError(t, err)
+
+	voice, ok := soundsHeldBy(t, enc, noiseKeen)[encounter.SoundVoice]
+	require.True(t, ok, "the guard next door heard the thug answer")
+	where := voice.payload["where"].(map[string]any)
+	require.Equal(t, cellAt(3, 5).X, where["x"], "at the one who answered, not the one who asked")
+}
+
+// TestSoundOnAttackIsRefusedAtTheDoor: a table that swings at a sound never
+// reaches the board (R10).
+func TestSoundOnAttackIsRefusedAtTheDoor(t *testing.T) {
+	_, err := encounter.NewEncounter(noiseHallSetup(encounter.DoorIsOpen(), encounter.DoorIsOpen(),
+		sheetFacts{noiseAlice: {SpeedFeet: 30}, hWalker: {SpeedFeet: 30}},
+		tableDriver(),
+		at(noiseAlice, encounter.KindPlayer, 2, 8),
+		tabled(hWalker, 18, 1, encounter.Table{encounter.AnswerTime: {
+			{Weight: 1, Attack: &encounter.Selector{Word: encounter.SelectorSound}},
+		}}),
+	))
+	require.ErrorIs(t, err, encounter.ErrBadAnswer)
+	require.Contains(t, err.Error(), "a sound cannot be struck")
 }

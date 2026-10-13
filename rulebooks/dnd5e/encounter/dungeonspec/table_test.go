@@ -52,36 +52,36 @@ func TestTheRulebooksDefaultTableCompiles(t *testing.T) {
 	require.Len(t, entries, 6, "six rows, in the order the rulebook wrote them")
 
 	require.Equal(t, 3, entries[0].Weight, "the run is weighted as heavily as the retaliation")
-	require.Equal(t, "fled", entries[0].When.Deed,
+	require.Equal(t, "fled", entries[0].When[0].Deed,
 		"the author's own past tense: a condition is written from the creature's side")
-	require.Equal(t, encounter.DeedFled, encounter.DeedVerbFor(entries[0].When.Deed),
+	require.Equal(t, encounter.DeedFled, encounter.DeedVerbFor(entries[0].When[0].Deed),
 		"and it names the deed the store files under")
-	require.Equal(t, 3, entries[0].When.Within, "three rounds of running, in the author's sight")
+	require.Equal(t, 3, entries[0].When[0].Within, "three rounds of running, in the author's sight")
 	require.Equal(t, encounter.SelectorActor, entries[0].Away.Word,
 		"away from whoever made it run: `flee: {}` lands the deed and THIS row does the walking")
 
 	require.Equal(t, 3, entries[1].Weight, "the retaliation is the other heavy one")
-	require.Equal(t, "attacked", entries[1].When.Deed,
+	require.Equal(t, "attacked", entries[1].When[0].Deed,
 		"the author's own past tense, again")
-	require.Equal(t, encounter.DeedAttack, encounter.DeedVerbFor(entries[1].When.Deed),
+	require.Equal(t, encounter.DeedAttack, encounter.DeedVerbFor(entries[1].When[0].Deed),
 		"and it names the deed the store files under")
-	require.Equal(t, 3, entries[1].When.Within, "the preset's patience, moved into the author's sight")
+	require.Equal(t, 3, entries[1].When[0].Within, "the preset's patience, moved into the author's sight")
 	require.Equal(t, encounter.SelectorAttacker, entries[1].Attack.Word)
 
 	require.Equal(t, 1, entries[2].Weight, "an omitted weight compiles to 1 here, once")
-	require.Equal(t, encounter.EnemyReach, entries[2].When.Enemy)
+	require.Equal(t, encounter.EnemyReach, entries[2].When[0].Enemy)
 	require.Equal(t, encounter.SelectorEnemy, entries[2].Attack.Word,
 		"the swing is under `reach`, which is the band that can land it")
 
-	require.Equal(t, encounter.EnemySeen, entries[3].When.Enemy)
+	require.Equal(t, encounter.EnemySeen, entries[3].When[0].Enemy)
 	require.Equal(t, encounter.SelectorEnemy, entries[3].Toward.Word,
 		"and `seen` — in sight, out of reach — is where it CLOSES, which the default could not do before")
 
-	require.Equal(t, encounter.EnemyRemembered, entries[4].When.Enemy)
+	require.Equal(t, encounter.EnemyRemembered, entries[4].When[0].Enemy)
 	require.Equal(t, encounter.SelectorEnemy, entries[4].Toward.Word)
 
 	require.True(t, entries[5].Hold, "and a way out, so a thug with nothing to do stands there")
-	require.Equal(t, encounter.EnemyNone, entries[5].When.Enemy,
+	require.Equal(t, encounter.EnemyNone, entries[5].When[0].Enemy,
 		"CONDITIONAL, not standing: an unconditional hold is eligible on every roll, so it competes with the swing and a thug in reach stands there half its turns")
 }
 
@@ -98,12 +98,24 @@ time:
 	require.Contains(t, err.Error(), "belongs to a kind and not to a map")
 }
 
+// TestADefaultTableCannotNameARoute: a patrol route is cells, and a kind's
+// table has no map for them to be on — the cell refusal's own reason.
+func TestADefaultTableCannotNameARoute(t *testing.T) {
+	_, err := dungeonspec.CompileTable(`
+time:
+  - { toward: { path: [[3, 4], [5, 4]] } }
+`)
+	require.Error(t, err)
+	require.ErrorIs(t, err, dungeonspec.ErrBadSpec)
+	require.Contains(t, err.Error(), "cannot name a cell or a route")
+}
+
 // TestADefaultTableIsJudgedByTheSameValidator: the point of exporting the
 // compiler is that a rulebook's mistake reads exactly like an author's.
 func TestADefaultTableIsJudgedByTheSameValidator(t *testing.T) {
 	_, err := dungeonspec.CompileTable(`
 time:
-  - { fact: camp-cowed }
+  - { flee: {} }
 `)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "answers a social verdict")
@@ -167,12 +179,6 @@ func TestEveryMisplacedWordIsRefusedByName(t *testing.T) {
 		path string
 		says []string
 	}{
-		{
-			name: "a fact under time",
-			on:   `on: { time: [ { fact: camp-cowed } ] }`,
-			path: "place[18].on.time[0].fact",
-			says: []string{"answers a social verdict"},
-		},
 		{
 			name: "a flee under time",
 			on:   `on: { time: [ { flee: {} } ] }`,
@@ -317,22 +323,25 @@ func TestAScopeCompilesOntoTheCondition(t *testing.T) {
 			entries := captain.On[string(encounter.AnswerTime)]
 			require.Len(t, entries, 1, "the placement authored one time entry")
 			require.NotNil(t, entries[0].When, "the condition compiled")
-			require.Equal(t, tc.scope, entries[0].When.Scope)
+			require.Equal(t, tc.scope, entries[0].When[0].Scope)
 		})
 	}
 }
 
-// TestPatrolIsRefusedByNameWithWhereItWent: `patrol` joins `alarm`, `lure` and
-// `pretend` — words the design NAMES and this build does not land. Refusing it
-// as an unknown field would tell an author it does not exist, which is false
-// and sends them looking for a typo.
+// TestPatrolIsRefusedByNameWithWhereItWent: `patrol` was a word the design
+// NAMED before it was built, and what was built is a route on `toward`
+// (rpg-project#569 R7). Refusing it as an unknown field would tell an author
+// it never existed; refusing it as "not built yet" would now be false. The
+// sentence says what to write.
 func TestPatrolIsRefusedByNameWithWhereItWent(t *testing.T) {
 	source := withPlacement(t, `  - { id: captain, ref: "dnd5e:monsters:skeleton-captain", at: [23,5], targeting: closest,
       holds: [vault-map], on: { time: [ { patrol: {} } ] } }`)
 
 	_, err := dungeonspec.Decode([]byte(source))
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "`patrol` is designed and not built yet")
+	require.Contains(t, err.Error(),
+		"`patrol` is not a word: a patrol is a route, write toward: { path: [[col, row], …] }",
+		"the word that was named is refused with what was built instead (rpg-project#569 R7)")
 }
 
 // TestASelectorOutsideTheSealedThreeIsRefused: the vocabulary grows one word

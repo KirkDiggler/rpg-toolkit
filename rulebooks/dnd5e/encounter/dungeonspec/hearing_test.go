@@ -1,0 +1,191 @@
+// Copyright (C) 2026 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package dungeonspec_test
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
+)
+
+// hearing_test.go is the castle's table words on the author's form
+// (rpg-project#569): `heard`, `fact` and `not` as conditions, `when` as a
+// list, `fact` on a `time` row, `toward: { path }`, and the `sound` word —
+// each one parsed into what the engine rolls, and each mistake refused in a
+// sentence the form can show.
+
+// captainWith is the heirloom tomb with the captain's line carrying one more
+// thing the scene is about.
+func captainWith(t *testing.T, rest string) string {
+	t.Helper()
+
+	return withPlacement(t, `  - { id: captain, ref: "dnd5e:monsters:skeleton-captain", at: [23,5], targeting: closest,
+      holds: [vault-map], `+rest+` }`)
+}
+
+// TestTheCastleWordsCompile is the gate patrol and the keep patrol from the
+// use case's own file, on one placement: every new word, compiled.
+func TestTheCastleWordsCompile(t *testing.T) {
+	source := captainWith(t, `on: { time: [
+        { when: { enemy: none }, toward: { path: [[23, 3], [23, 5]] } },
+        { when: { heard: { kind: clang, within: 2 } }, toward: sound },
+        { when: { heard: { kind: boom, within: 3 } }, away: sound },
+        { when: { fact: alarm-raised }, toward: { at: [23, 3] } },
+        { when: { enemy: seen }, say: "To arms! Intruders in the yard!", fact: alarm-raised },
+        { when: [{ fact: guards-turned }, { not: { enemy: seen } }], toward: { at: [23, 3] } },
+        { hold: {} },
+      ] }`)
+
+	require.Empty(t, defectsIn(t, source), "every word the castle needs, on one placement")
+
+	compiled, err := dungeonspec.Load([]byte(source))
+	require.NoError(t, err)
+	var rows []encounter.Answer
+	for _, m := range compiled.Monsters {
+		if m.ID == "captain" {
+			rows = m.Table[encounter.AnswerTime]
+		}
+	}
+	require.Len(t, rows, 7)
+
+	require.Len(t, rows[0].When, 1, "a single mapping reads as a list of one")
+	require.Len(t, rows[0].Toward.Path, 2, "the route reached the host as cells")
+
+	require.Equal(t, &encounter.HeardWhen{Kind: encounter.SoundClang, Within: 2}, rows[1].When[0].Heard)
+	require.Equal(t, encounter.SelectorSound, rows[1].Toward.Word)
+	require.Equal(t, encounter.SelectorSound, rows[2].Away.Word)
+
+	require.Equal(t, "alarm-raised", rows[3].When[0].Fact)
+
+	require.Equal(t, encounter.FactID("alarm-raised"), rows[4].Fact, "`fact` is a time word now")
+	require.Equal(t, "To arms! Intruders in the yard!", rows[4].Say)
+
+	require.Len(t, rows[5].When, 2, "the list form: both must hold")
+	require.Equal(t, "guards-turned", rows[5].When[0].Fact)
+	require.NotNil(t, rows[5].When[1].Not)
+	require.Equal(t, encounter.EnemySeen, rows[5].When[1].Not.Enemy)
+}
+
+// TestTheHearingWordsAreRefusedOnTheForm is every refusal this slice adds to
+// the grammar, each at its own path, in its own sentence.
+func TestTheHearingWordsAreRefusedOnTheForm(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		on   string
+		path string
+		says []string
+	}{
+		{
+			name: "a route on `attack`",
+			on:   `on: { time: [ { attack: { path: [[23, 3], [23, 5]] } } ] }`,
+			path: "place[18].on.time[0].attack",
+			says: []string{"`attack` cannot take a `path`: a route is walked, and only `toward` walks one"},
+		},
+		{
+			name: "a route on `away`",
+			on:   `on: { time: [ { away: { path: [[23, 3], [23, 5]] } } ] }`,
+			path: "place[18].on.time[0].away",
+			says: []string{"`away` cannot take a `path`"},
+		},
+		{
+			name: "a waypoint that is not floor",
+			on:   `on: { time: [ { toward: { path: [[23, 3], [99, 99]] } } ] }`,
+			path: "place[18].on.time[0].toward.path[1]",
+			says: []string{"this walks to [99,99], which is not floor"},
+		},
+		{
+			name: "`sound` on `attack`",
+			on:   `on: { time: [ { attack: sound } ] }`,
+			path: "place[18].on.time[0].attack",
+			says: []string{"`attack` cannot take `sound`: a sound cannot be struck, only walked toward or away from"},
+		},
+		{
+			name: "`fact` on an `attack` row",
+			on:   `on: { time: [ { attack: enemy, fact: alarm-raised } ] }`,
+			path: "place[18].on.time[0]",
+			says: []string{"an entry does one thing: `fact` and `attack` in the same entry is 2"},
+		},
+		{
+			name: "`actor` whose only deed is negated",
+			on:   `on: { time: [ { when: { not: { fled: { within: 2 } } }, away: actor } ] }`,
+			path: "place[18].on.time[0].away",
+			says: []string{"this entry names no deed"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			requireDefect(t, defectsIn(t, captainWith(t, tc.on)), append([]string{tc.path}, tc.says...)...)
+		})
+	}
+}
+
+// TestTheHearingWordsAreRefusedAtDecode is every mistake the decoder catches
+// before validation runs: a shape the grammar cannot read at all.
+func TestTheHearingWordsAreRefusedAtDecode(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		on   string
+		says string
+	}{
+		{
+			name: "`heard` without a kind",
+			on:   `on: { time: [ { when: { heard: { within: 2 } }, hold: {} } ] }`,
+			says: "`heard` needs a `kind`, the sound it listens for: they are boom, crash, clang, voice",
+		},
+		{
+			name: "`heard` for a sound nothing makes",
+			on:   `on: { time: [ { when: { heard: { kind: growl, within: 2 } }, hold: {} } ] }`,
+			says: "`heard: { kind: growl }` is not a sound this build makes: they are boom, crash, clang, voice",
+		},
+		{
+			name: "`heard` with no span",
+			on:   `on: { time: [ { when: { heard: { kind: clang } }, hold: {} } ] }`,
+			says: "`heard` names no span — write { kind: clang, within: N }",
+		},
+		{
+			name: "`heard` within zero",
+			on:   `on: { time: [ { when: { heard: { kind: clang, within: 0 } }, hold: {} } ] }`,
+			says: "a span of 0 rounds is counted from 1",
+		},
+		{
+			name: "`fact` in a `when` naming nothing",
+			on:   `on: { time: [ { when: { fact: "" }, hold: {} } ] }`,
+			says: "`fact` in a `when` names the fact the creature must hold, and this names none",
+		},
+		{
+			name: "two conditions in one entry",
+			on:   `on: { time: [ { when: { enemy: seen, fact: alarm-raised }, hold: {} } ] }`,
+			says: "a `when` entry is one condition, and this names 2: give each its own entry in a list, " +
+				"`when: [{ … }, { … }]`, and every entry must hold",
+		},
+		{
+			name: "an empty list",
+			on:   `on: { time: [ { when: [], hold: {} } ] }`,
+			says: "a `when` with no condition in it is on the table always — omit it",
+		},
+		{
+			name: "an empty route",
+			on:   `on: { time: [ { toward: { path: [] } } ] }`,
+			says: "a route with no waypoints walks nowhere",
+		},
+		{
+			name: "a cell and a route at once",
+			on:   `on: { time: [ { toward: { at: [23, 3], path: [[23, 5]] } } ] }`,
+			says: "a selector names a cell (`at`) or a route (`path`), and this names both",
+		},
+		{
+			name: "`patrol`",
+			on:   `on: { time: [ { patrol: {} } ] }`,
+			says: "`patrol` is not a word: a patrol is a route, write toward: { path: [[col, row], …] }",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := dungeonspec.Decode([]byte(captainWith(t, tc.on)))
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.says)
+		})
+	}
+}

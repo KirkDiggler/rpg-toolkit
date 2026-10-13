@@ -447,6 +447,17 @@ func (e *Encounter) Unlock(in *UnlockInput) (*UnlockOutput, error) {
 		return nil, fmt.Errorf("unlock %q: %w", door.id, err)
 	}
 
+	// A DOOR FORCED IS A CRASH (rpg-project#569 R5): a lock beaten by
+	// Strength is a door broken in, and whoever is listening beyond it hears
+	// that — after the door has landed open, so the crash carries through the
+	// opening it made. A lock picked, or a shoulder that did not break it,
+	// makes no sound this build hears.
+	if in.Beaten && in.Actor != "" && forcedBy(in.Applied.Ability) {
+		if err := e.makeSound(noiseForcedDoor, in.Actor, uint64(e.clock.ToData().HighWater)); err != nil {
+			return nil, fmt.Errorf("unlock %q: %w", door.id, err)
+		}
+	}
+
 	// THE WORLD'S PRICE FOR AN ACTION (design §5, worldtime.go): one round on
 	// the world clock for whoever tried the lock, paid after the door has
 	// landed in the state it is in. Nothing at all for a member inside a

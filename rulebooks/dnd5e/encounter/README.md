@@ -65,6 +65,11 @@ on:
     - { when: { enemy: remembered },       toward: enemy }
     - { when: { enemy: none },             toward: { at: [3, 4] } }
     - { when: { fled: { within: 3 } },     away: actor, weight: 5 }
+    - { when: { heard: { kind: clang, within: 2 } }, toward: sound }
+    - { when: { fact: alarm-raised },      toward: { at: [20, 12] } }
+    - { when: { enemy: seen }, say: "To arms!", fact: alarm-raised }
+    - { when: [{ fact: guards-turned }, { not: { enemy: seen } }], toward: { at: [20, 12] } }
+    - { when: { enemy: none },             toward: { path: [[2, 3], [6, 3], [6, 8]] } }
     - { hold: {} }
 ```
 
@@ -107,10 +112,14 @@ The four verb-keyed social keys (`intimidated`, `intimidate_failed`,
    spawn through the shared dice, with a beat so the streamer sees which goblin
    came out the coward. A temperament is a weight profile and nothing else: it
    adds no entries, holds no memory and carries no trigger.
-4. **What the creature has seen and suffered.** `when` reads the creature's own
-   holdings — how close the nearest thing it is opposed to has got, or a deed
-   done to it within N rounds. An entry whose condition is false is not on the
-   table for that roll; it is ABSENT, not weighted zero.
+4. **What the creature has seen, suffered, heard and knows.** `when` reads the
+   creature's own holdings — how close the nearest thing it is opposed to has
+   got, a deed done to it within N rounds, a sound of one kind it heard within
+   N rounds (`heard: { kind, within }`), or a fact it holds (`fact: <id>`);
+   `not: { … }` wraps one of those. `when` is a LIST and every entry in it must
+   hold; a single mapping is a list of one. An entry whose conditions do not
+   all hold is not on the table for that roll; it is ABSENT, not weighted
+   zero.
 
    The four `enemy:` bands are EXCLUSIVE, and exactly one holds at any moment:
    `reach` (within this creature's own reach, the same reach an attack is
@@ -121,6 +130,30 @@ The four verb-keyed social keys (`intimidated`, `intimidate_failed`,
    `stayed` beat saying why ("target out of reach"), and a `toward` whose
    target is already within range of any of the creature's actions (a
    shortbow's 80 feet counts) stays with "already in reach".
+
+### Hearing (rpg-project#569)
+
+A deed makes a sound: an attack (struck or missed) is a `clang`, a door
+forced by Strength a `crash`, a cast that delivered damage a `boom`, and every
+`say` on any answer row a `voice`. Each kind is a DC where it is made — 5 for
+a boom, 8 for a crash, 10 for a clang or a voice — plus 5 for every region the
+sound crosses to reach a listener, and 5 more for a closed door on the way.
+A listener hears when its passive Perception (`SheetFacts.PassivePerception`,
+asked of `Sheets` like every other sheet fact) beats that; nobody rolls. A
+passive of zero hears nothing above DC 0, so a host that has not filled it
+gets deaf creatures, not omniscient ones.
+
+What is heard is a KIND and a PLACE and never a maker: a hearer holds the
+freshest sound of each kind on its sounds channel, `heard` reads it, and the
+`sound` selector (`toward: sound`, `away: sound`; refused on `attack`) walks
+to or from where it rang. The maker does not hear itself. A player who hears
+gets a `heard` beat — kind, position, hops — addressed to them alone.
+
+`fact` on a `time` row is an alarm: its audience is everyone who sees the
+creature say it AND everyone who hears its voice, and the row's `say` (or the
+fact itself) lands a voice. `toward: { path: [cells] }` is a patrol: the next
+waypoint is derived from where the creature stands — the one after the
+waypoint it is on, else the nearest — so the table holds no cursor.
 
 ### You are given only what you know
 
@@ -183,12 +216,13 @@ content, not writing Go.
 
 ### What you cannot express yet
 
-**A creature cannot be told to go and look somewhere.** The words are
-`hold`, `attack`, `toward`, `away`, `fact` and `flee`, and a selector names a
-creature or an authored cell. A creature that walks to where it last saw
-somebody and finds nobody there holds: "walk through that door and look" is a
-word nobody has written yet. `alarm`, `lure`, `pretend` and `patrol` are
-designed and refused by name.
+**A creature cannot be told to go and look somewhere it has no reason to.**
+The words are `hold`, `attack`, `toward`, `away`, `fact` and `flee`, and a
+selector names a creature, an authored cell, an authored route, or where a
+sound was heard. A creature that walks to where it last saw somebody, or to
+where a clang rang, and finds nobody there holds. `alarm`, `lure` and
+`pretend` are designed and refused by name; `patrol` is refused with what to
+write instead (`toward: { path }`).
 
 **A temperament may not add entries, hold memory or carry a trigger.** It is a
 weight profile and nothing else. The moment it grows one of those it is the

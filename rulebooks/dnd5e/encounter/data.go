@@ -1386,7 +1386,7 @@ func taughtOptionFactsOf(data []OptionData) []FactID {
 type AnswerData struct {
 	Weight int           `json:"weight"`
 	Say    string        `json:"say,omitempty"`
-	When   *WhenData     `json:"when,omitempty"`
+	When   []WhenData    `json:"when,omitempty"`
 	Fact   FactID        `json:"fact,omitempty"`
 	Flee   bool          `json:"flee,omitempty"`
 	Hold   bool          `json:"hold,omitempty"`
@@ -1395,8 +1395,14 @@ type AnswerData struct {
 	Away   *SelectorData `json:"away,omitempty"`
 }
 
-// WhenData is the persistent representation of a [When]: the condition an
-// entry is on the table under.
+// WhenData is the persistent representation of a [When]: ONE condition of the
+// list an entry is on the table under. [AnswerData.When] is the list, and
+// every condition in it must hold (rpg-project#569 R8).
+//
+// A LIST, NOT A SINGLE CONDITION. A blob written before the list existed
+// carries `when` as an object and no longer loads: the field changed shape,
+// and a second spelling kept to read it would be the dual representation this
+// module refuses everywhere else.
 type WhenData struct {
 	Enemy  string `json:"enemy,omitempty"`
 	Deed   string `json:"deed,omitempty"`
@@ -1416,13 +1422,28 @@ type WhenData struct {
 	// string, so a record written before scopes existed loads to exactly the
 	// condition it always meant.
 	Scope string `json:"scope,omitempty"`
+
+	// Heard is a `heard: { kind, within }` condition, Fact a `fact: <id>`
+	// one, and Not the one condition a `not` wraps. Each omitted when it is
+	// not the condition this entry names.
+	Heard *HeardData `json:"heard,omitempty"`
+	Fact  string     `json:"fact,omitempty"`
+	Not   *WhenData  `json:"not,omitempty"`
 }
 
-// SelectorData is the persistent representation of a [Selector]: the word, or
-// the authored cell.
+// HeardData is the persistent representation of a [HeardWhen]: the sound's
+// kind and how many rounds it may be old and still count.
+type HeardData struct {
+	Kind   string `json:"kind"`
+	Within int    `json:"within"`
+}
+
+// SelectorData is the persistent representation of a [Selector]: the word,
+// the authored cell, or the authored route.
 type SelectorData struct {
-	Word string        `json:"word,omitempty"`
-	At   *PositionData `json:"at,omitempty"`
+	Word string         `json:"word,omitempty"`
+	At   *PositionData  `json:"at,omitempty"`
+	Path []PositionData `json:"path,omitempty"`
 }
 
 // TemperData is the persistent representation of a resolved [Temper]: the
@@ -1509,11 +1530,25 @@ func answerDataFrom(entry Answer) AnswerData {
 		Toward: selectorDataFrom(entry.Toward),
 		Away:   selectorDataFrom(entry.Away),
 	}
-	if entry.When != nil {
-		out.When = &WhenData{
-			Enemy: string(entry.When.Enemy), Deed: entry.When.Deed, Within: entry.When.Within,
-			Scope: string(entry.When.Scope),
-		}
+	for _, w := range entry.When {
+		out.When = append(out.When, whenDataFrom(w))
+	}
+
+	return out
+}
+
+// whenDataFrom renders one condition, a `not`'s inner condition included.
+func whenDataFrom(w When) WhenData {
+	out := WhenData{
+		Enemy: string(w.Enemy), Deed: w.Deed, Within: w.Within,
+		Scope: string(w.Scope), Fact: w.Fact,
+	}
+	if w.Heard != nil {
+		out.Heard = &HeardData{Kind: w.Heard.Kind, Within: w.Heard.Within}
+	}
+	if w.Not != nil {
+		inner := whenDataFrom(*w.Not)
+		out.Not = &inner
 	}
 
 	return out
@@ -1527,6 +1562,9 @@ func selectorDataFrom(sel *Selector) *SelectorData {
 	out := &SelectorData{Word: string(sel.Word)}
 	if sel.At != nil {
 		out.At = &PositionData{X: sel.At.X, Y: sel.At.Y}
+	}
+	for _, p := range sel.Path {
+		out.Path = append(out.Path, PositionData{X: p.X, Y: p.Y})
 	}
 
 	return out
@@ -1565,11 +1603,26 @@ func answerFromData(row AnswerData) Answer {
 		Toward: selectorFromData(row.Toward),
 		Away:   selectorFromData(row.Away),
 	}
-	if row.When != nil {
-		out.When = &When{
-			Enemy: EnemyWord(row.When.Enemy), Deed: row.When.Deed, Within: row.When.Within,
-			Scope: DeedScope(row.When.Scope),
-		}
+	for _, w := range row.When {
+		out.When = append(out.When, whenFromData(w))
+	}
+
+	return out
+}
+
+// whenFromData resolves one persisted condition, a `not`'s inner condition
+// included.
+func whenFromData(w WhenData) When {
+	out := When{
+		Enemy: EnemyWord(w.Enemy), Deed: w.Deed, Within: w.Within,
+		Scope: DeedScope(w.Scope), Fact: w.Fact,
+	}
+	if w.Heard != nil {
+		out.Heard = &HeardWhen{Kind: w.Heard.Kind, Within: w.Heard.Within}
+	}
+	if w.Not != nil {
+		inner := whenFromData(*w.Not)
+		out.Not = &inner
 	}
 
 	return out
@@ -1583,6 +1636,9 @@ func selectorFromData(data *SelectorData) *Selector {
 	out := &Selector{Word: SelectorWord(data.Word)}
 	if data.At != nil {
 		out.At = &spatial.Position{X: data.At.X, Y: data.At.Y}
+	}
+	for _, p := range data.Path {
+		out.Path = append(out.Path, spatial.Position{X: p.X, Y: p.Y})
 	}
 
 	return out

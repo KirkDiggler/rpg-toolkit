@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/deed"
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/sound"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -35,6 +36,13 @@ type factsInput struct {
 	now                        uint64
 	canAttack, canMove         bool
 	sightings                  []factSighting
+
+	// sounds and known are what a `heard` and a `fact` condition read
+	// (rpg-project#569 R4, R6): the creature's own sounds-channel holdings
+	// and the facts its own journal fold knows. Carried through unchanged —
+	// nothing about them needs narrowing.
+	sounds []Sound
+	known  []string
 }
 
 // factSighting is one opposed-or-not subject a member holds sight testimony
@@ -59,6 +67,8 @@ func projectFacts(in factsInput) Facts {
 		Now:       in.now,
 		CanAttack: in.canAttack,
 		CanMove:   in.canMove,
+		Sounds:    in.sounds,
+		Known:     in.known,
 	}
 	for _, s := range in.sightings {
 		if !s.opposed {
@@ -105,9 +115,15 @@ func (e *Encounter) factsFor(id MemberID) (Facts, error) {
 	if err != nil {
 		return Facts{}, fmt.Errorf("facts: %q: %w", id, err)
 	}
+	sounds, err := sound.Held(holdings)
+	if err != nil {
+		return Facts{}, fmt.Errorf("facts: heard by %q: %w", id, err)
+	}
 
 	in := factsInput{
-		deeds: heldDeedsAgainst(holdings, id),
+		sounds: sounds,
+		known:  e.world.knownFacts(id),
+		deeds:  heldDeedsAgainst(holdings, id),
 		// THE TWO READINGS BESIDE THE FIRST (rpg-toolkit#1883, rpg-project#498).
 		// Every deed a witness holds is ALREADY here — deeds land on every
 		// witness, and the payload carries `Target` — so these are the same
@@ -204,6 +220,8 @@ func narrowToOneBand(facts *Facts) {
 // holds for position.
 func factsFromView(view MonsterView) Facts {
 	in := factsInput{
+		sounds:    view.Sounds,
+		known:     view.Known,
 		deeds:     view.Deeds,
 		allyDeeds: view.AllyDeeds,
 		ownDeeds:  view.OwnDeeds,

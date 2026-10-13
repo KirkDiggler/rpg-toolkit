@@ -1080,19 +1080,39 @@ func rowsOf(entries []AnswerSpec) []encounter.Answer {
 	return out
 }
 
-// whenOf compiles a condition, nil staying nil: an entry with no `when` is a
-// standing order and always on the table.
-func whenOf(when *WhenSpec) *encounter.When {
-	if when == nil {
+// whenOf compiles a row's conditions, nil staying nil: an entry with no
+// `when` is a standing order and always on the table, and compiles exactly
+// as it did before the list existed.
+func whenOf(list WhenListSpec) []encounter.When {
+	if len(list) == 0 {
 		return nil
 	}
+	out := make([]encounter.When, 0, len(list))
+	for i := range list {
+		out = append(out, oneWhenOf(&list[i]))
+	}
 
-	return &encounter.When{
+	return out
+}
+
+// oneWhenOf compiles one condition, a `not`'s inner condition included.
+func oneWhenOf(when *WhenSpec) encounter.When {
+	out := encounter.When{
 		Enemy: encounter.EnemyWord(when.Enemy), Deed: when.Deed, Within: when.Within,
 		// The scope rides with the deed (rpg-toolkit#1883): the condition's
 		// own reading of WHOSE deed it is about.
 		Scope: when.Scope,
+		Fact:  when.Fact,
 	}
+	if when.Heard != nil {
+		out.Heard = &encounter.HeardWhen{Kind: when.Heard.Kind, Within: when.Heard.Within}
+	}
+	if when.Not != nil {
+		inner := oneWhenOf(when.Not)
+		out.Not = &inner
+	}
+
+	return out
 }
 
 // selectorOf compiles a selector, nil staying nil. THE CELL IS CONVERTED HERE,
@@ -1108,6 +1128,9 @@ func selectorOf(sel *SelectorSpec) *encounter.Selector {
 	if sel.At != nil {
 		at := authored(*sel.At)
 		out.At = &at
+	}
+	for _, waypoint := range sel.Path {
+		out.Path = append(out.Path, authored(waypoint))
 	}
 
 	return out
@@ -1154,10 +1177,10 @@ func temperOf(word string, faction TemperSpec) encounter.Temper {
 //	  - { when: { enemy: seen },             attack: enemy }
 //	  - { hold: {} }
 //
-// A cell selector is refused here rather than checked against a floor: a
-// rulebook's default table belongs to a KIND and not to a map, so there is no
-// floor to check it against and `toward: { at: … }` is an authored dungeon's
-// word.
+// A cell or route selector is refused here rather than checked against a
+// floor: a rulebook's default table belongs to a KIND and not to a map, so
+// there is no floor to check it against, and `toward: { at: … }` and
+// `toward: { path: … }` are an authored dungeon's words.
 func CompileTable(source string) (encounter.Table, error) {
 	var on map[string][]AnswerSpec
 	if err := yaml.Unmarshal([]byte(source), &on); err != nil {
@@ -1171,9 +1194,10 @@ func CompileTable(source string) (encounter.Table, error) {
 	// from being asked a question it cannot have.
 	for key, entries := range on {
 		for _, entry := range entries {
-			if _, sel := entrySelectorOf(entry); sel != nil && sel.At != nil {
+			if _, sel := entrySelectorOf(entry); sel != nil && (sel.At != nil || len(sel.Path) > 0) {
 				return nil, fmt.Errorf(
-					"compile table: %w: %s: a default table belongs to a kind and not to a map, so it cannot name a cell (line %d)",
+					"compile table: %w: %s: a default table belongs to a kind and not to a map, "+
+						"so it cannot name a cell or a route (line %d)",
 					ErrBadSpec, key, sel.Line)
 			}
 		}

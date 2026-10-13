@@ -388,11 +388,22 @@ func (e *Encounter) RecordCast(in *RecordCastInput) (*RecordCastOutput, error) {
 	// against it, asked it for a save, or simply hit. In caller order, per
 	// recipient, because each names a pair of its own and a cast that catches
 	// two factions provokes both.
+	harmed := false
 	for _, target := range in.Targets {
+		harmed = harmed || deliveredDamage(target)
 		if !hostileIntent(target) {
 			continue
 		}
 		if err := e.landAttack(in.Actor, []MemberID{target.Target}); err != nil {
+			return nil, fmt.Errorf("record cast: %w", err)
+		}
+	}
+	// A DAMAGING CAST IS A BOOM (rpg-project#569 R5), ONE PER CAST however
+	// many it caught: the noise is the spell going off, at the caster's cell,
+	// after every recipient's deed has landed. A cast that hurt nobody makes
+	// none — a save shrugged off is a deed the witnesses hold and not a sound.
+	if harmed {
+		if err := e.makeSound(noiseDamagingCast, in.Actor, at); err != nil {
 			return nil, fmt.Errorf("record cast: %w", err)
 		}
 	}
@@ -865,4 +876,16 @@ func (e *Encounter) prepareConcentrationBreaks(
 	}
 
 	return prepared, nil
+}
+
+// deliveredDamage reports whether a cast delivered damage to one recipient —
+// what makes the cast a boom ([noiseDamagingCast]).
+func deliveredDamage(target CastTargetResult) bool {
+	for _, result := range target.Results {
+		if result.Kind == ResultDamageApplied {
+			return true
+		}
+	}
+
+	return false
 }

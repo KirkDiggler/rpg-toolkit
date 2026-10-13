@@ -27,13 +27,13 @@ import (
 func silenceTable() encounter.Table {
 	return encounter.Table{
 		encounter.AnswerTime: {
-			{Weight: 1, When: &encounter.When{Enemy: encounter.EnemyReach},
+			{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyReach}},
 				Attack: &encounter.Selector{Word: encounter.SelectorEnemy}},
-			{Weight: 2, When: &encounter.When{Deed: "attacked", Within: 3},
+			{Weight: 2, When: []encounter.When{{Deed: "attacked", Within: 3}},
 				Toward: &encounter.Selector{Word: encounter.SelectorAttacker}},
-			{Weight: 1, When: &encounter.When{Enemy: encounter.EnemySeen},
+			{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemySeen}},
 				Toward: &encounter.Selector{Word: encounter.SelectorEnemy}},
-			{Weight: 1, When: &encounter.When{Enemy: encounter.EnemyNone}, Hold: true},
+			{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyNone}}, Hold: true},
 		},
 	}
 }
@@ -42,7 +42,7 @@ func silenceTable() encounter.Table {
 func vengeanceTable() encounter.Table {
 	return encounter.Table{
 		encounter.AnswerTime: {
-			{Weight: 1, When: &encounter.When{Deed: "attacked", Within: 3},
+			{Weight: 1, When: []encounter.When{{Deed: "attacked", Within: 3}},
 				Attack: &encounter.Selector{Word: encounter.SelectorAttacker}},
 		},
 	}

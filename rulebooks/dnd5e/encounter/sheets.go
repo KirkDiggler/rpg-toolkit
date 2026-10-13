@@ -72,6 +72,22 @@ type SheetFacts struct {
 	// BOTH OR NEITHER: a Ref without a Name, or a Name without a Ref, is
 	// refused (ErrInvalidData) — a half-named trait cannot be told.
 	BonusDisengage ActivationIdentity
+
+	// PassivePerception is how hard this member listens without trying —
+	// 10 plus its Wisdom (Perception) modifier, the rulebook's arithmetic,
+	// handed over as the number (rpg-project#569 R5). A sound reaches this
+	// member when PassivePerception >= the sound's DC plus 5 per region hop
+	// ([Encounter.hearersOf]); nobody rolls.
+	//
+	// FAIL CLOSED: ZERO HEARS NOTHING ABOVE DC 0. A session that has not
+	// filled this field answers a member who is deaf to every sound this
+	// build makes — visible on the first walk as a guard that never turns —
+	// rather than one who hears everything. The session must supply it, from
+	// the monster's stat block and the character's sheet alike.
+	//
+	// ASKED, NEVER STORED, like every other answer here: a listener whose
+	// Wisdom changed hears with the new number at the next sound.
+	PassivePerception int
 }
 
 // Sheets reports each given member's [SheetFacts]. The composition asks; the
@@ -118,7 +134,8 @@ type Sheets interface {
 // the answer skipped (ErrNoSheets). It also refuses a negative speed or
 // action range (ErrInvalidData): [CellsFromFeet] divides those, and a
 // negative one is not a shorter distance but a defect that would produce a
-// nonsense budget or reach.
+// nonsense budget or reach — and a negative passive Perception, which no
+// arithmetic of 10 plus a modifier produces.
 func (e *Encounter) sheetsNow() (map[MemberID]SheetFacts, error) {
 	if len(e.members) == 0 {
 		return nil, nil
@@ -171,11 +188,14 @@ func (e *Encounter) sheetOf(id MemberID) (SheetFacts, error) {
 	return facts, nil
 }
 
-// validateSheetFacts refuses a negative speed, a negative action range and a
-// half-named [SheetFacts.BonusDisengage].
+// validateSheetFacts refuses a negative speed, a negative passive Perception, a
+// negative action range and a half-named [SheetFacts.BonusDisengage].
 func validateSheetFacts(facts SheetFacts) error {
 	if facts.SpeedFeet < 0 {
 		return fmt.Errorf("speed %d feet is negative", facts.SpeedFeet)
+	}
+	if facts.PassivePerception < 0 {
+		return fmt.Errorf("passive Perception %d is negative", facts.PassivePerception)
 	}
 	for _, a := range facts.Actions {
 		if a.RangeFeet < 0 {

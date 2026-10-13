@@ -439,6 +439,26 @@ func (w *encounterWorld) knowsFact(member MemberID, id FactID) bool {
 	return false
 }
 
+// knownFacts is every fact id a member knows, sorted — [encounterWorld.knowsFact]'s
+// fold asked for the whole list at once, which is what a creature's table
+// reads as [Facts.Known] (rpg-project#569 R6). The same journal and the same
+// subject rule, so the list and the single question cannot disagree.
+func (w *encounterWorld) knownFacts(member MemberID) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, f := range w.log.All() {
+		id, ok := strings.CutPrefix(string(f.Kind), factKnownPrefix)
+		if !ok || f.Subject != journal.EntityID(member) || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	sort.Strings(out)
+
+	return out
+}
+
 // learnConcealment writes the fact that pierces one concealment for one
 // member alone. cause is a human-readable trace
 // ([journal.Outcome.Detail]) — the causes are exemplary, and the journal

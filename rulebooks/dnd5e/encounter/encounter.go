@@ -97,6 +97,11 @@ type Encounter struct {
 	// a door's state has one home however it is reached.
 	doorsByID map[DoorID]*doorRecord
 
+	// regionLinks is the region graph a sound travels through, derived from
+	// the doors on first use and never persisted ([Encounter.links]): its
+	// parts are construction truth, so a reload derives the same graph.
+	regionLinks map[RegionID][]regionLink
+
 	clock *clock.Tick
 	// bubbles are the localized initiative bubbles currently running. Zero or
 	// more: a bubble exists only while a fight does, and an encounter with no

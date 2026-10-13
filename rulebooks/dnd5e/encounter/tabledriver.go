@@ -122,12 +122,21 @@ func (d TableDriver) intentFor(view MonsterView, entry Answer) (TurnIntent, erro
 	case entry.Away != nil:
 		return d.awayIntent(view, entry), nil
 
+	case entry.Fact != "", !entry.Flee && entry.Say != "":
+		// THE CREATURE SPENDS ITS TIME SAYING SOMETHING (rpg-project#569 R6):
+		// an alarm raised, or a line with nothing else in it. Saying is not a
+		// walk or a swing, so the intent is a Pass — and the line and the
+		// fact land where the pick's beat is written
+		// ([Encounter.answerTime]), because what was said and who heard it
+		// is the encounter's to land and not this driver's.
+		return Pass{}, nil
+
 	default:
-		// `fact`, `flee` and a bare line are social words, refused under
-		// `time` by [validateTable] at every door a table comes in through.
-		// Reaching here means a blob got past that, and the honest answer is
-		// a named error rather than a creature standing there for reasons
-		// nobody could find.
+		// `flee` is a social word, refused under `time` by [validateTable]
+		// at every door a table comes in through, and a row with no word and
+		// no line is refused by the dialect. Reaching here means a blob got
+		// past that, and the honest answer is a named error rather than a
+		// creature standing there for reasons nobody could find.
 		return nil, fmt.Errorf("table driver %q: %q under `time`: %w",
 			view.Self, answerWord(entry), ErrBadAnswer)
 	}
@@ -197,6 +206,21 @@ func (d TableDriver) towardIntent(view MonsterView, entry Answer) TurnIntent {
 		return Routed{Policy: MoveToward, AnchorAt: &cell, Cause: tableCauseToward}
 	}
 
+	if path := entry.Toward.Path; len(path) > 0 {
+		cell := nextWaypoint(view.Position, path)
+
+		return Routed{Policy: MoveToward, AnchorAt: &cell, Cause: tableCauseToward}
+	}
+
+	if entry.Toward.Word == SelectorSound {
+		cell, heard := freshestSound(view.Sounds)
+		if !heard {
+			return Pass{Cause: tableCauseToward, Why: heardNothing}
+		}
+
+		return Routed{Policy: MoveToward, AnchorAt: &cell, Cause: tableCauseToward}
+	}
+
 	target, ok := d.selectMember(view, entry, *entry.Toward)
 	if !ok {
 		return Pass{}
@@ -258,6 +282,14 @@ func (d TableDriver) awayIntent(view MonsterView, entry Answer) TurnIntent {
 	if CellsFromFeet(view.Budget.MovementFeet) <= 0 {
 		return Pass{}
 	}
+	if entry.Away.Word == SelectorSound {
+		cell, heard := freshestSound(view.Sounds)
+		if !heard {
+			return Pass{Cause: tableCauseAway, Why: heardNothing}
+		}
+
+		return Routed{Policy: MoveAway, AnchorAt: &cell, Cause: tableCauseAway}
+	}
 	target, ok := d.selectMember(view, entry, *entry.Away)
 	if !ok {
 		return Pass{}
@@ -287,15 +319,67 @@ func (d TableDriver) pathTo(view MonsterView, target MemberID) []spatial.Positio
 	return nil
 }
 
-// scopeOf is the reading an entry's condition asks for, or the self reading
-// when the entry names no condition — a `time` row with no `when` is a
-// standing order, and its selectors read the creature's own deeds.
+// heardNothing is the sentence a `sound` selector tells on its stayed beat
+// when the creature holds no sound to walk toward or away from.
+//
+// THE ROW STILL ROLLED, the rule every selector that names nobody keeps
+// ([TableDriver.Act]). Making it ineligible instead is a question for the
+// evaluator's own eligibility (mind/behavior), which this driver cannot
+// answer without changing which entry index the beat reports.
+const heardNothing = "heard nothing"
+
+// freshestSound is WHERE the most recent sound this creature holds was made,
+// any kind (rpg-project#569 R10) — the row's own `heard` condition already
+// narrowed which kind fired it. Ties on the stamp break on the kind's name so
+// the same holdings always pick the same place (C8). ok is false when the
+// creature holds no sound at all.
+func freshestSound(sounds []Sound) (spatial.Position, bool) {
+	var best Sound
+	found := false
+	for _, s := range sounds {
+		if !found || s.At > best.At || (s.At == best.At && s.Kind < best.Kind) {
+			best, found = s, true
+		}
+	}
+
+	return best.Where, found
+}
+
+// nextWaypoint is the waypoint a patrol walks to from where the creature
+// stands (rpg-project#569 R7): the one AFTER the waypoint it is standing on —
+// the last one's next is the first, so the route is a loop — and, when it
+// stands on none, the NEAREST, ties to the earlier in the author's order.
+//
+// DERIVED, NEVER REMEMBERED. Nothing holds a cursor: the creature's own cell
+// is the whole state, which is what lets a creature shoved off its route by
+// a spell, or reloaded from a save, pick its patrol back up without a field
+// anywhere recording how far along it was.
+func nextWaypoint(from spatial.Position, path []spatial.Position) spatial.Position {
+	for i, waypoint := range path {
+		if waypoint == from {
+			return path[(i+1)%len(path)]
+		}
+	}
+	best := 0
+	for i := range path {
+		if adjacencyGrid.Distance(from, path[i]) < adjacencyGrid.Distance(from, path[best]) {
+			best = i
+		}
+	}
+
+	return path[best]
+}
+
+// scopeOf is the reading the entry's deed condition asks for, or the self
+// reading when no condition in its list names a deed — a `time` row with no
+// deed condition reads the creature's own deeds.
 func scopeOf(entry Answer) DeedScope {
-	if entry.When == nil {
+	when := deedWhen(entry.When)
+	if when == nil {
 		return ScopeSelf
 	}
 
-	return entry.When.Scope
+	return when.Scope
 }
 
 // deedsForScope is the deeds list ONE SCOPE reads, off the view: the mirror of
@@ -337,6 +421,9 @@ func deedsForScope(view MonsterView, scope DeedScope) []HeldDeed {
 //   - `actor`: the actor of the deed this entry's `when` named, so `fled`
 //     pairs with `away: actor`.
 //
+// `sound` is not here: it names a PLACE, never a member (R4), and is resolved
+// by [freshestSound] where `toward` and `away` read their cells.
+//
 // ok=false is a selector that named nobody, which the caller turns into a
 // [Pass] with the pick still attached.
 func (d TableDriver) selectMember(view MonsterView, entry Answer, sel Selector) (MemberID, bool) {
@@ -352,10 +439,11 @@ func (d TableDriver) selectMember(view MonsterView, entry Answer, sel Selector) 
 		return "", false
 
 	case SelectorActor:
-		if entry.When == nil || entry.When.Deed == "" {
+		when := deedWhen(entry.When)
+		if when == nil {
 			return "", false
 		}
-		if held, ok := freshestDeed(deedsForScope(view, scopeOf(entry)), DeedVerbFor(entry.When.Deed)); ok && held.Actor != "" {
+		if held, ok := freshestDeed(deedsForScope(view, when.Scope), DeedVerbFor(when.Deed)); ok && held.Actor != "" {
 			return held.Actor, true
 		}
 

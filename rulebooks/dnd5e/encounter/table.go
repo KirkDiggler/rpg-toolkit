@@ -5,6 +5,7 @@ package encounter
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/sound"
 )
 
 // table.go is THE CREATURE'S TABLE, and this file is the RULEBOOK'S HALF of
@@ -57,6 +58,14 @@ type (
 
 	// When is a condition on what this creature holds.
 	When = behavior.When
+
+	// HeardWhen is a `heard: { kind, within }` condition (rpg-project#569 R4).
+	HeardWhen = behavior.HeardWhen
+
+	// Sound is one heard report: a kind, where it was made, and when — never
+	// who made it (R4). What a creature holds on the sounds channel, projected
+	// onto [MonsterView.Sounds] and [Facts.Sounds].
+	Sound = sound.Sound
 
 	// EnemyWord is a `when: { enemy: … }` band.
 	EnemyWord = behavior.EnemyWord
@@ -121,6 +130,11 @@ const (
 
 	// SelectorActor is the actor of the deed this entry's `when` named.
 	SelectorActor = behavior.SelectorActor
+
+	// SelectorSound is where the freshest sound this creature holds was made
+	// (rpg-project#569 R10): legal on `toward` and `away`, refused on
+	// `attack`. Resolved here ([TableDriver]); sealed in mind/behavior.
+	SelectorSound = behavior.SelectorSound
 )
 
 // EnemyWords and SelectorWords are the sealed vocabularies, for the dialect's
