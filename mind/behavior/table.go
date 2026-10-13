@@ -7,9 +7,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/sound"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -105,6 +108,17 @@ var (
 	// 1, which can never come up, or a word in the mix that no profile says
 	// the meaning of.
 	ErrBadMix = errors.New("behavior: temperament mix cannot be dealt")
+
+	// ErrBadWhen reports a `when` entry this table cannot read: one naming
+	// more than one condition or none, or a `heard` with no kind or a span
+	// below 1. Returned by [When.Validate] and [Answer.Validate], wrapped in
+	// a sentence written for whoever filled the form.
+	ErrBadWhen = errors.New("behavior: when cannot be read")
+
+	// ErrBadSelector reports a selector this table cannot read: one naming
+	// more than one target, or a route on a word that does not walk.
+	// Returned by [Answer.Validate], wrapped in a sentence for the form.
+	ErrBadSelector = errors.New("behavior: selector cannot be read")
 )
 
 // KeyTime is the one trigger this module names: the creature has time.
@@ -273,19 +287,20 @@ var DeedScopes = []DeedScope{ScopeSelf, ScopeAlly, ScopeActor}
 // entry is simply not a candidate, and the beat's candidate list is therefore
 // the honest account of what the creature could have done.
 //
-// EXACTLY ONE CONDITION. Either Enemy is set or Deed is. A When with both or
-// neither is refused at the door the table came in through — the dialect that
-// built it, whose decoder owns every refusal in this grammar.
+// EXACTLY ONE CONDITION PER WHEN: one of Enemy, Deed, Heard, Fact or Not.
+// An entry that needs two writes two Whens in its list ([Answer.When], R8 of
+// rpg-project#569): the list is the `and`, every entry in it must hold, and
+// `not` wraps a negative. Two conditions in one When would be a second way to
+// spell the same `and`, so it is refused rather than read.
 //
-// THERE IS NO VALIDATION IN THIS MODULE, which an earlier revision of this
-// comment claimed there was ("[Table]'s own validation", corrected
-// 2026-09-23 in review). This package defines the shape and rolls it; it
-// refuses nothing, by its own design. A struct built in Go that names both or
-// neither therefore reaches [When.holds] unrefused — which is why `holds`
-// reads one thing and the decoder is the only place the rule is enforced.
-//
-// Two conditions in one entry would be an `and` this design has not paid for,
-// and reading it as one would be guessing which.
+// THE SHAPE RULE IS REFUSED HERE, AND NOWHERE ELSE OWNS IT. [When.Validate]
+// and [Answer.Validate] are the one statement of "one condition per When"
+// and "one target per Selector"; the dialect that decodes an author's file
+// calls them at its door and adds what only it knows (which words are legal
+// under which key, which deed and enemy words this build reads). [Pick]
+// never validates: a struct built in Go that names two conditions reaches
+// [When.holds] unrefused, and `holds` reads the first in the order it checks
+// rather than guessing at an `and`.
 type When struct {
 	// Enemy reads the two booleans on [Facts], or is empty when this
 	// condition names a deed instead.
@@ -334,6 +349,114 @@ type When struct {
 	// This is the retired preset's "patience", moved out of Go and into the
 	// author's sight.
 	Within int
+
+	// Heard is `heard: { kind, within }`: a sound of that kind this creature
+	// holds, no older than the span. Nil when this condition names something
+	// else. See [HeardWhen].
+	//
+	// OMITTED WHEN EMPTY, as Scope is and for Scope's reason: a document
+	// that names none of the conditions added beside the first two must
+	// marshal exactly as it did before they existed.
+	Heard *HeardWhen `json:",omitempty"`
+
+	// Fact is `fact: <id>`: this creature holds the world fact with that id
+	// ([Facts.Known]). Empty when this condition names something else.
+	Fact string `json:",omitempty"`
+
+	// Not is `not: { … }`: it holds when the one condition inside it does
+	// not. It wraps exactly one When — any of them, another `not` included —
+	// and never a list: a negative of an `and` is an `or` this grammar has
+	// not paid for.
+	Not *When `json:",omitempty"`
+}
+
+// HeardWhen is a `heard` condition: which kind of sound, and how recently.
+//
+// A KIND AND A SPAN, NEVER A MAKER (R4 of rpg-project#569). A sound carries
+// no identity ([sound.Sound]), so the condition cannot ask who made it.
+type HeardWhen struct {
+	// Kind is the sound's kind, in the caller's sealed vocabulary. This
+	// module compares it and never interprets it.
+	Kind string
+
+	// Within is how many units ago the sound may have been made and still
+	// count, in the caller's own unit — the deed condition's span, with the
+	// deed condition's rule: AT LEAST 1, so `within: 2` heard at 10 holds at
+	// 10, 11 and 12.
+	Within int
+}
+
+// conditions names every condition this When sets, in the order a refusal
+// lists them, each as the word an author wrote for it.
+func (w *When) conditions() []string {
+	var out []string
+	if w.Enemy != "" {
+		out = append(out, "`enemy`")
+	}
+	if w.Deed != "" {
+		out = append(out, "`"+w.Deed+"`")
+	}
+	if w.Heard != nil {
+		out = append(out, "`heard`")
+	}
+	if w.Fact != "" {
+		out = append(out, "`fact`")
+	}
+	if w.Not != nil {
+		out = append(out, "`not`")
+	}
+
+	return out
+}
+
+// Validate refuses a When that does not name exactly one condition, a
+// `heard` with no kind or a span below 1, and the same faults inside a
+// `not`. ErrBadWhen, wrapped in a sentence for the form.
+//
+// It does NOT refuse an enemy or deed word this build does not read, an
+// unknown scope, or a deed span: those are the dialect's, where the sealed
+// lists are refused by name, and this module's evaluator already treats every
+// one of them as a dead row rather than a guess.
+func (w *When) Validate() error {
+	named := w.conditions()
+	switch len(named) {
+	case 0:
+		words := make([]string, 0, len(WhenDeeds)+4)
+		words = append(words, "`enemy`")
+		for _, d := range WhenDeeds {
+			words = append(words, "`"+d+"`")
+		}
+		words = append(words, "`heard`", "`fact`")
+
+		return fmt.Errorf("a `when` entry names no condition; give it one of %s or `not`: %w",
+			strings.Join(words, ", "), ErrBadWhen)
+	case 1:
+	default:
+		return fmt.Errorf("a `when` entry names %s; give each its own entry in the list, "+
+			"and every entry must hold: %w", andList(named), ErrBadWhen)
+	}
+
+	switch {
+	case w.Heard != nil && w.Heard.Kind == "":
+		return fmt.Errorf("`heard` needs a `kind`, the sound it listens for: %w", ErrBadWhen)
+	case w.Heard != nil && w.Heard.Within < 1:
+		return fmt.Errorf("`heard` within %d: a span is counted from 1: %w", w.Heard.Within, ErrBadWhen)
+	case w.Not != nil:
+		if err := w.Not.Validate(); err != nil {
+			return fmt.Errorf("inside `not`: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// andList joins words the way a sentence does: "a and b", "a, b and c".
+func andList(words []string) string {
+	if len(words) < 2 {
+		return strings.Join(words, "")
+	}
+
+	return strings.Join(words[:len(words)-1], ", ") + " and " + words[len(words)-1]
 }
 
 // SelectorWord is a `<word>: <selector>` entry's target, in the author's own
@@ -362,23 +485,68 @@ var SelectorWords = []SelectorWord{SelectorEnemy, SelectorAttacker, SelectorActo
 // Selector names what a `attack`/`toward`/`away` entry acts on: a member
 // found by a word, or an authored cell.
 //
-// EXACTLY ONE OF THE TWO. A Selector with a Word names somebody the CALLER
+// EXACTLY ONE OF THE THREE. A Selector with a Word names somebody the CALLER
 // resolves against what this creature sees and remembers; one with At names a
-// cell the author wrote. Which words a caller resolves, and which of them it
-// will accept beside which table word, is the caller's rule — this module
-// carries the selector and resolves nothing.
+// cell the author wrote; one with Path names a route the author wrote, and
+// only `toward` walks one ([Answer.Validate] refuses the rest). Which words a
+// caller resolves, and which of them it will accept beside which table word,
+// is the caller's rule — this module carries the selector and resolves
+// nothing.
 //
 // A CELL, AND ONLY BECAUSE IT IS CARRIED. tools/spatial is as
 // rulebook-neutral as this module is, and a position is the one shape every
 // board in this repo already speaks; nothing here reads it.
 type Selector struct {
-	// Word is the selector word, or empty when At is set.
+	// Word is the selector word, or empty when At or Path is set.
 	Word SelectorWord
 
-	// At is the authored DUNGEON-ABSOLUTE cell, or nil when Word is set.
-	// A pointer rather than a value because the origin is a legal cell and
-	// a zero Position could not be told from "no cell named".
+	// At is the authored DUNGEON-ABSOLUTE cell, or nil when Word or Path is
+	// set. A pointer rather than a value because the origin is a legal cell
+	// and a zero Position could not be told from "no cell named".
 	At *spatial.Position
+
+	// Path is an authored route of DUNGEON-ABSOLUTE cells, walked in order —
+	// `toward: { path: [...] }`, a patrol (R7 of rpg-project#569). Empty when
+	// Word or At is set. Legal only on `toward`.
+	//
+	// THE ROUTE HOLDS NO STATE. Which waypoint is next is derived by the
+	// caller from where the creature stands each time the row fires; nothing
+	// here, and nothing on the creature, remembers how far along it got.
+	//
+	// Omitted when empty, so a selector that names no route marshals as it
+	// did before routes existed.
+	Path []spatial.Position `json:",omitempty"`
+}
+
+// targets names every target this selector sets, each as an author wrote it.
+func (s *Selector) targets() []string {
+	var out []string
+	if s.Word != "" {
+		out = append(out, "`"+string(s.Word)+"`")
+	}
+	if s.At != nil {
+		out = append(out, "a cell (`at`)")
+	}
+	if len(s.Path) > 0 {
+		out = append(out, "a route (`path`)")
+	}
+
+	return out
+}
+
+// validate refuses a selector naming more than one target, or a route on a
+// word that does not walk one. word is the table word the selector is on.
+func (s *Selector) validate(word string) error {
+	if named := s.targets(); len(named) > 1 {
+		return fmt.Errorf("`%s` names %s; a target is exactly one of somebody, a cell or a route: %w",
+			word, andList(named), ErrBadSelector)
+	}
+	if len(s.Path) > 0 && word != "toward" {
+		return fmt.Errorf("`%s` cannot take a `path`: a route is walked, and only `toward` walks one: %w",
+			word, ErrBadSelector)
+	}
+
+	return nil
 }
 
 // TemperProfile is a temperament: a multiplier per table word, IN PERCENT,
@@ -559,8 +727,19 @@ type Facts struct {
 	OwnDeeds []HeldDeed
 
 	// Now is the clock's high-water when this pick was made — what a deed's
-	// At is subtracted from to age it.
+	// or a sound's At is subtracted from to age it.
 	Now uint64
+
+	// Sounds is every sound this creature holds — what a `heard` condition
+	// reads. The caller projects it from the creature's holdings on the
+	// sounds channel ([sound.Held]); empty is "I heard nothing".
+	Sounds []sound.Sound
+
+	// Known is the id of every world fact this creature holds — what a
+	// `fact` condition reads. Whose facts these are (a witness's, a
+	// hearer's, a faction's) is the caller's audience rule; this module
+	// only asks whether an id is among them.
+	Known []string
 }
 
 // affords reports whether this creature can still pay for what an entry does.
@@ -612,13 +791,34 @@ func (w *When) deedsOf(f Facts) []HeldDeed {
 	}
 }
 
-// holds reports whether a condition is true of these facts. A nil When is a
-// standing order and always holds (design §2: "an entry with no `when` is
-// always eligible").
-func (w *When) holds(f Facts) bool {
-	if w == nil {
-		return true
+// allHold reports whether every condition in an entry's list holds (R8). An
+// empty list holds: no conditions is a standing order (design §2: "an entry
+// with no `when` is always eligible").
+func allHold(when []When, f Facts) bool {
+	for i := range when {
+		if !when[i].holds(f) {
+			return false
+		}
 	}
+
+	return true
+}
+
+// holds reports whether one condition is true of these facts.
+//
+// The conditions added beside the first two are read first and each answers
+// alone; a When that sets more than one is refused by [When.Validate] and
+// read here by the first one this order meets, never as an `and`.
+func (w *When) holds(f Facts) bool {
+	switch {
+	case w.Not != nil:
+		return !w.Not.holds(f)
+	case w.Heard != nil:
+		return w.Heard.holds(f)
+	case w.Fact != "":
+		return slices.Contains(f.Known, w.Fact)
+	}
+
 	switch w.Enemy {
 	case EnemyReach:
 		return f.EnemyInReach
@@ -657,6 +857,27 @@ func (w *When) holds(f Facts) bool {
 			continue
 		}
 		if f.Now-d.At <= uint64(w.Within) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// holds reports whether a sound of this kind is held and fresh: made no more
+// than Within units before now.
+func (h *HeardWhen) holds(f Facts) bool {
+	// A SPAN IS COUNTED FROM 1, the deed condition's rule and for its reason.
+	if h.Within < 1 {
+		return false
+	}
+	for _, s := range f.Sounds {
+		// A sound stamped ahead of now is wrong, not fresh: the deed
+		// condition's rule, and for the same reason.
+		if s.Kind != h.Kind || s.At > f.Now {
+			continue
+		}
+		if f.Now-s.At <= uint64(h.Within) {
 			return true
 		}
 	}
@@ -781,7 +1002,7 @@ func Pick(ctx context.Context, in *PickInput) (*PickOutput, error) {
 		// when its condition holds AND the creature can pay for it; either
 		// way it is ABSENT rather than weighted zero, so the candidate list
 		// stays the honest account of what could have happened.
-		if !entry.When.holds(facts) || !facts.affords(entry) {
+		if !allHold(entry.When, facts) || !facts.affords(entry) {
 			continue
 		}
 		percent := temper.factor(entry)

@@ -19,13 +19,24 @@ terms) are the rules it keeps. The table reads that testimony rather than
 reimplementing it: `when: { attacked: { within: 3 } }` is a question about what
 `Land` wrote.
 
+**The table's conditions (rpg-project#569):** an entry's `when` is a list
+and every entry must hold (R8 there); each entry names exactly one of `enemy`,
+a deed word (`attacked`, `intimidated`, `persuaded`, `fled`), `heard: { kind,
+within }`, `fact: <id>`, or `not: { … }` wrapping one condition. `heard` reads
+the **sounds channel** — `behavior/sound`, `Land` and `Held` — the deeds
+channel's sibling, whose law is that a sound carries a kind, a place and a
+time and never names its maker (R4 there). A `toward` selector may carry a
+`path`, a route that holds no state (R7 there). The module's README carries the
+table of conditions; `When.Validate` and `Answer.Validate` refuse the shape
+faults.
+
 **Read below as the record of a design that shipped and was superseded**, not
 as a description of the module. The rules are still worth reading — the
 argument that testimony is never a flag, and that who a creature believes is
 where is per-observer, is what the table inherited.
 
 **Status:** IMPLEMENTED
-**Module:** `github.com/KirkDiggler/rpg-toolkit/mind/behavior` (packages `behavior`, `behavior/deed`, `behavior/stage`)
+**Module:** `github.com/KirkDiggler/rpg-toolkit/mind/behavior` (packages `behavior`, `behavior/deed`, `behavior/stage`, `behavior/sound`)
 **Why:** [rpg-toolkit#1718](https://github.com/KirkDiggler/rpg-toolkit/issues/1718).
 **How:** implemented directly against the issue's API and rules, the way
 [mind/perception](../perception/design.md) was — no separate `plan.md`.

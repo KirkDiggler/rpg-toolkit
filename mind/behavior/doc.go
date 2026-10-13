@@ -22,8 +22,9 @@
 //
 // The deeds channel is the other half, and it is what a table's `when` reads:
 // [deed] for what a deed is and how it is encoded, and [stage] for landing one
-// on the people who witnessed it. Both are about what a creature COMES TO
-// HOLD. Neither decides anything.
+// on the people who witnessed it. [sound] is its sibling for noise: a kind, a
+// place and a time landed on whoever heard it, and never who made it. All
+// three are about what a creature COMES TO HOLD. None decides anything.
 //
 // # It knows no game, which is the point
 //
