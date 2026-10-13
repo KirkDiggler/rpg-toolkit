@@ -21,7 +21,7 @@ import (
 // channel, as a kind and a place, never a name.
 //
 // THE CASTLE IN MINIATURE: three rooms in a row, a | b | c, a door in each
-// seam on row 5. A clang is DC 10 where it is made, 15 one room over, 20 two
+// seam on row 5. A clang is DC 5 where it is made, 10 one room over, 15 two
 // rooms over, and a closed door on the way counts as one more room.
 
 const (
@@ -180,14 +180,15 @@ type NoiseSuite struct{ suite.Suite }
 
 func TestNoiseSuite(t *testing.T) { suite.Run(t, new(NoiseSuite)) }
 
-// TestAClangCarriesOneOpenDoorToTheKeenEarOnly is the plan's first case: an
-// attack in room a, heard in room b through one open door by a guard with
-// passive 15 (DC 10 + 5 for the hop) and not by one with passive 10.
+// TestAClangCarriesOneOpenDoorToTheKeenEarOnly is the plan's first case, at
+// the walk's tuning: an attack in room a, heard in room b through one open
+// door by a guard with passive 10 (DC 5 + 5 for the hop) and not by one with
+// passive 9.
 func (s *NoiseSuite) TestAClangCarriesOneOpenDoorToTheKeenEarOnly() {
 	enc := noiseHall(s.T(), encounter.DoorIsOpen(), encounter.DoorIsOpen(),
 		sheetFacts{
 			noiseAlice: {SpeedFeet: 30}, noiseThug: {SpeedFeet: 30},
-			noiseKeen: {SpeedFeet: 30, PassivePerception: 15}, noiseDull: {SpeedFeet: 30, PassivePerception: 10},
+			noiseKeen: {SpeedFeet: 30, PassivePerception: 10}, noiseDull: {SpeedFeet: 30, PassivePerception: 9},
 		},
 		at(noiseAlice, encounter.KindPlayer, 2, 5), at(noiseThug, encounter.KindMonster, 3, 5),
 		at(noiseKeen, encounter.KindMonster, 15, 1), at(noiseDull, encounter.KindMonster, 15, 8),
@@ -196,18 +197,18 @@ func (s *NoiseSuite) TestAClangCarriesOneOpenDoorToTheKeenEarOnly() {
 	aliceStrikesTheThug(s.T(), enc)
 
 	keen := soundsHeldBy(s.T(), enc, noiseKeen)
-	s.Require().Contains(keen, encounter.SoundClang, "passive 15 beats DC 10 + 5 for one hop")
-	s.Empty(soundsHeldBy(s.T(), enc, noiseDull), "passive 10 does not beat 15")
+	s.Require().Contains(keen, encounter.SoundClang, "passive 10 beats DC 5 + 5 for one hop")
+	s.Empty(soundsHeldBy(s.T(), enc, noiseDull), "passive 9 does not beat 10")
 	s.Empty(soundsHeldBy(s.T(), enc, noiseThug),
-		"a passive of zero hears nothing above DC 0 — the sheet that answered nothing is deaf, fail closed")
+		"a passive of zero hears nothing, even beside the swing — the sheet that answered nothing is deaf, fail closed")
 }
 
-// TestAClosedDoorIsOneMoreHop: the same clang behind a closed door needs 20.
+// TestAClosedDoorIsOneMoreHop: the same clang behind a closed door needs 15.
 func (s *NoiseSuite) TestAClosedDoorIsOneMoreHop() {
 	enc := noiseHall(s.T(), encounter.DoorIsClosed(), encounter.DoorIsOpen(),
 		sheetFacts{
 			noiseAlice: {SpeedFeet: 30}, noiseThug: {SpeedFeet: 30},
-			noiseKeen: {SpeedFeet: 30, PassivePerception: 15}, noiseSharp: {SpeedFeet: 30, PassivePerception: 20},
+			noiseKeen: {SpeedFeet: 30, PassivePerception: 10}, noiseSharp: {SpeedFeet: 30, PassivePerception: 15},
 		},
 		at(noiseAlice, encounter.KindPlayer, 2, 5), at(noiseThug, encounter.KindMonster, 3, 5),
 		at(noiseKeen, encounter.KindMonster, 15, 1), at(noiseSharp, encounter.KindMonster, 15, 8),
@@ -215,16 +216,16 @@ func (s *NoiseSuite) TestAClosedDoorIsOneMoreHop() {
 
 	aliceStrikesTheThug(s.T(), enc)
 
-	s.Empty(soundsHeldBy(s.T(), enc, noiseKeen), "15 heard it through an open door and does not through a shut one")
-	s.Contains(soundsHeldBy(s.T(), enc, noiseSharp), encounter.SoundClang, "20 = 10 + 5 for the room + 5 for the door")
+	s.Empty(soundsHeldBy(s.T(), enc, noiseKeen), "10 hears it through an open door and does not through a shut one")
+	s.Contains(soundsHeldBy(s.T(), enc, noiseSharp), encounter.SoundClang, "15 = 5 + 5 for the room + 5 for the door")
 }
 
-// TestTwoRoomsAwayIsTwoHops: the far room hears at 20, not at 15.
+// TestTwoRoomsAwayIsTwoHops: the far room hears at 15, not at 10.
 func (s *NoiseSuite) TestTwoRoomsAwayIsTwoHops() {
 	enc := noiseHall(s.T(), encounter.DoorIsOpen(), encounter.DoorIsOpen(),
 		sheetFacts{
 			noiseAlice: {SpeedFeet: 30}, noiseThug: {SpeedFeet: 30},
-			noiseKeen: {SpeedFeet: 30, PassivePerception: 15}, noiseFar: {SpeedFeet: 30, PassivePerception: 20},
+			noiseKeen: {SpeedFeet: 30, PassivePerception: 10}, noiseFar: {SpeedFeet: 30, PassivePerception: 15},
 		},
 		at(noiseAlice, encounter.KindPlayer, 2, 5), at(noiseThug, encounter.KindMonster, 3, 5),
 		at(noiseKeen, encounter.KindMonster, 25, 1), at(noiseFar, encounter.KindMonster, 25, 8),
@@ -232,7 +233,7 @@ func (s *NoiseSuite) TestTwoRoomsAwayIsTwoHops() {
 
 	aliceStrikesTheThug(s.T(), enc)
 
-	s.Empty(soundsHeldBy(s.T(), enc, noiseKeen), "15 is one room's worth, and this is two")
+	s.Empty(soundsHeldBy(s.T(), enc, noiseKeen), "10 is one room's worth, and this is two")
 	s.Contains(soundsHeldBy(s.T(), enc, noiseFar), encounter.SoundClang)
 }
 
@@ -278,7 +279,7 @@ func (s *NoiseSuite) TestTheMakerDoesNotHearItself() {
 	aliceStrikesTheThug(s.T(), enc)
 
 	s.Empty(soundsHeldBy(s.T(), enc, noiseAlice), "the maker knows what it did; it did not hear it")
-	s.Contains(soundsHeldBy(s.T(), enc, noiseThug), encounter.SoundClang, "the one beside her did, at DC 10")
+	s.Contains(soundsHeldBy(s.T(), enc, noiseThug), encounter.SoundClang, "the one beside her did, at DC 5")
 }
 
 // TestAMissClangsToo: a swing that misses is still steel in the air.
@@ -323,7 +324,7 @@ func (s *NoiseSuite) lockedHall() *encounter.Encounter {
 }
 
 // TestAForcedDoorCrashes: a lock beaten by Strength is a door broken in, and
-// the room beyond hears it — DC 8, plus 5 for the hop through the door that
+// the room beyond hears it — DC 5, plus 5 for the hop through the door that
 // is now open.
 func (s *NoiseSuite) TestAForcedDoorCrashes() {
 	enc := s.lockedHall()
@@ -367,8 +368,8 @@ func (s *NoiseSuite) castHall() *encounter.Encounter {
 	)
 }
 
-// TestADamagingCastBooms: a spell that delivered harm is a boom — DC 5, so
-// the next room hears it at 10 — and it is not also a clang: the cast lands
+// TestADamagingCastBooms: a spell that delivered harm is a boom — DC 0, so
+// the next room hears it at 5 — and it is not also a clang: the cast lands
 // the same `attacked` deed a swing does, but it does not sound like one.
 func (s *NoiseSuite) TestADamagingCastBooms() {
 	enc := s.castHall()
@@ -443,4 +444,32 @@ func (s *NoiseSuite) TestAMonsterHearsButIsToldNothing() {
 	for _, beat := range storyBeats(s.T(), enc, noiseKeen) {
 		s.NotEqual(encounter.BeatHeard, beat["beat"], "a monster is never handed a heard beat")
 	}
+}
+
+// TestABoomCarriesTwoRoomsAndZeroIsStillDeaf: a boom is DC 0 where it goes
+// off, so a passive-10 guard two rooms away hears it (0 + 5 + 5) — and a
+// sheet that answered no passive at all, standing right beside the caster,
+// hears nothing, because zero is deaf and not merely hard of hearing.
+func (s *NoiseSuite) TestABoomCarriesTwoRoomsAndZeroIsStillDeaf() {
+	enc := noiseHall(s.T(), encounter.DoorIsOpen(), encounter.DoorIsOpen(),
+		sheetFacts{
+			noiseAlice: {SpeedFeet: 30}, bwScout: {SpeedFeet: 30},
+			noiseFar: {SpeedFeet: 30, PassivePerception: 10}, noiseDull: {SpeedFeet: 30},
+		},
+		at(noiseAlice, encounter.KindPlayer, 2, 5), at(bwScout, encounter.KindMonster, 3, 5),
+		at(noiseFar, encounter.KindMonster, 25, 1), at(noiseDull, encounter.KindMonster, 2, 6),
+	)
+
+	_, err := enc.RecordCast(&encounter.RecordCastInput{
+		Actor: noiseAlice, Spell: bwMockery,
+		Targets: []encounter.CastTargetResult{{
+			Target: bwScout, Save: bwSave(false),
+			Results: []encounter.ActivationResult{bwPsychic()},
+		}},
+	})
+	s.Require().NoError(err)
+
+	s.Contains(soundsHeldBy(s.T(), enc, noiseFar), encounter.SoundBoom, "two rooms: 0 + 5 + 5 = 10")
+	s.Empty(soundsHeldBy(s.T(), enc, noiseDull), "zero hears nothing, even a boom beside it")
+	s.Empty(soundsHeldBy(s.T(), enc, bwScout), "nor does the target, whose sheet answered no passive either")
 }

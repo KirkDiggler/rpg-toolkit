@@ -826,8 +826,8 @@ func (s *WorldTimeSuite) TestAWalkThatMovesNobodySaysSo() {
 }
 
 // TestAHeardBeatReachesThePlayerWhosePassiveBeatsTheDCOnly is H5: a clang in
-// room a, two players listening in room b. Bob's 15 beats DC 10 + 5 for the
-// hop and he is told — kind, place, hops, and never who; Carol's 10 does not,
+// room a, two players listening in room b. Bob's 10 beats DC 5 + 5 for the
+// hop and he is told — kind, place, hops, and never who; Carol's 9 does not,
 // and she is told nothing at all, not even that she missed it.
 func TestAHeardBeatReachesThePlayerWhosePassiveBeatsTheDCOnly(t *testing.T) {
 	const (
@@ -837,7 +837,7 @@ func TestAHeardBeatReachesThePlayerWhosePassiveBeatsTheDCOnly(t *testing.T) {
 	enc := noiseHall(t, encounter.DoorIsOpen(), encounter.DoorIsOpen(),
 		sheetFacts{
 			noiseAlice: {SpeedFeet: 30, PassivePerception: 30}, noiseThug: {SpeedFeet: 30},
-			bob: {SpeedFeet: 30, PassivePerception: 15}, carol: {SpeedFeet: 30, PassivePerception: 10},
+			bob: {SpeedFeet: 30, PassivePerception: 10}, carol: {SpeedFeet: 30, PassivePerception: 9},
 		},
 		at(noiseAlice, encounter.KindPlayer, 2, 5), at(noiseThug, encounter.KindMonster, 3, 5),
 		at(bob, encounter.KindPlayer, 15, 1), at(carol, encounter.KindPlayer, 15, 8),
@@ -867,6 +867,6 @@ func TestAHeardBeatReachesThePlayerWhosePassiveBeatsTheDCOnly(t *testing.T) {
 	require.NoError(t, err)
 	require.NotContains(t, string(raw), string(noiseAlice), "a heard thing never names its maker (R4)")
 
-	require.Empty(t, heardBy(carol), "10 does not beat 15, and a miss is told to nobody")
+	require.Empty(t, heardBy(carol), "9 does not beat 10, and a miss is told to nobody")
 	require.Empty(t, heardBy(noiseAlice), "the maker hears nothing of her own swing")
 }

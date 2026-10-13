@@ -79,11 +79,13 @@ type SheetFacts struct {
 	// member when PassivePerception >= the sound's DC plus 5 per region hop
 	// ([Encounter.hearersOf]); nobody rolls.
 	//
-	// FAIL CLOSED: ZERO HEARS NOTHING ABOVE DC 0. A session that has not
-	// filled this field answers a member who is deaf to every sound this
-	// build makes — visible on the first walk as a guard that never turns —
-	// rather than one who hears everything. The session must supply it, from
-	// the monster's stat block and the character's sheet alike.
+	// FAIL CLOSED: ZERO HEARS NOTHING, not even a boom at DC 0 in its own
+	// room. A session that has not filled this field answers a member who is
+	// deaf to every sound this build makes — visible on the first walk as a
+	// guard that never turns — rather than one who hears everything. No
+	// passive Perception the rules produce is zero, so zero only ever means
+	// "not supplied". The session must supply it, from the monster's stat
+	// block and the character's sheet alike.
 	//
 	// ASKED, NEVER STORED, like every other answer here: a listener whose
 	// Wisdom changed hears with the new number at the next sound.

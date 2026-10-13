@@ -796,7 +796,7 @@ func (s *AnswerTestSuite) TestAJoinerIsAnnouncedBeforeItsNerveIsDealt() {
 //
 // These scenes stand in the three-room hall noise_test.go builds: a | b | c,
 // an open door in each seam on row 5. A line said is a voice, DC 10 where it
-// is said and 15 a room over; a guard with passive 15 hears one room away
+// is said and 10 a room over; a guard with passive 10 hears one room away
 // and not two.
 
 const (
@@ -845,7 +845,7 @@ func TestATimeRowsFactTeachesItsHearersAndNotTheFarRoom(t *testing.T) {
 	enc := tableHall(t,
 		sheetFacts{
 			noiseAlice: {SpeedFeet: 30}, hCrier: {SpeedFeet: 30},
-			noiseKeen: {SpeedFeet: 30, PassivePerception: 15}, noiseFar: {SpeedFeet: 30, PassivePerception: 15},
+			noiseKeen: {SpeedFeet: 30, PassivePerception: 10}, noiseFar: {SpeedFeet: 30, PassivePerception: 10},
 		},
 		at(noiseAlice, encounter.KindPlayer, 2, 8),
 		tabled(hCrier, 1, 1, cries()),
@@ -858,8 +858,8 @@ func TestATimeRowsFactTeachesItsHearersAndNotTheFarRoom(t *testing.T) {
 	require.NoError(t, err)
 
 	require.True(t, knows(t, enc, noiseAlice, hAlarm), "alice saw it shouted — a witness, as every fact has")
-	require.True(t, knows(t, enc, noiseKeen, hAlarm), "the guard next door heard it: 15 beats 10 + 5")
-	require.False(t, knows(t, enc, noiseFar, hAlarm), "two rooms is 20, and 15 does not carry that far")
+	require.True(t, knows(t, enc, noiseKeen, hAlarm), "the guard next door heard it: 10 beats 5 + 5")
+	require.False(t, knows(t, enc, noiseFar, hAlarm), "two rooms is 15, and 10 does not carry that far")
 	require.Contains(t, soundsHeldBy(t, enc, noiseKeen), encounter.SoundVoice, "and what it heard was a voice")
 	require.Empty(t, soundsHeldBy(t, enc, noiseFar))
 }

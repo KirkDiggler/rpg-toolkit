@@ -135,13 +135,15 @@ The four verb-keyed social keys (`intimidated`, `intimidate_failed`,
 
 A deed makes a sound: an attack (struck or missed) is a `clang`, a door
 forced by Strength a `crash`, a cast that delivered damage a `boom`, and every
-`say` on any answer row a `voice`. Each kind is a DC where it is made — 5 for
-a boom, 8 for a crash, 10 for a clang or a voice — plus 5 for every region the
-sound crosses to reach a listener, and 5 more for a closed door on the way.
-A listener hears when its passive Perception (`SheetFacts.PassivePerception`,
-asked of `Sheets` like every other sheet fact) beats that; nobody rolls. A
-passive of zero hears nothing above DC 0, so a host that has not filled it
-gets deaf creatures, not omniscient ones.
+`say` on any answer row a `voice`. Each kind is a DC where it is made — 0 for
+a boom, 5 for a crash, a clang or a voice — plus 5 for every region the sound
+crosses to reach a listener, and 5 more for a closed door on the way. So a
+fight through an open door (DC 10) reaches a passive-10 guard, a closed door
+or a second room (DC 15) does not, and a boom carries two rooms. A listener
+hears when its passive Perception (`SheetFacts.PassivePerception`, asked of
+`Sheets` like every other sheet fact) beats that; nobody rolls. A passive of
+zero hears nothing at all, so a host that has not filled it gets deaf
+creatures, not omniscient ones.
 
 What is heard is a KIND and a PLACE and never a maker: a hearer holds the
 freshest sound of each kind on its sounds channel, `heard` reads it, and the

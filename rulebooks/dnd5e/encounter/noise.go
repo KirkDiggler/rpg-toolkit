@@ -62,13 +62,17 @@ const (
 var SoundKinds = []string{SoundBoom, SoundCrash, SoundClang, SoundVoice}
 
 // soundDCs is each kind's loudness as a DC in the room it was made in.
-// CONTENT, tuned on the walk (the plan's open items, confirmed by the
-// operator 2026-10-13): lower is louder.
+// CONTENT, tuned on the walk (rpg-project#569, ruled 2026-10-13): lower is
+// louder. The first numbers (boom 5, crash 8, clang 10, voice 10) left a
+// passive-10 guard deaf beyond its own room, which made hearing decorative.
+// At these, a fight through an open door (DC 10) reaches a passive-10 guard,
+// a closed door or a second room (DC 15) stops it, and a boom carries two
+// rooms.
 var soundDCs = map[string]int{
-	SoundBoom:  5,
-	SoundCrash: 8,
-	SoundClang: 10,
-	SoundVoice: 10,
+	SoundBoom:  0,
+	SoundCrash: 5,
+	SoundClang: 5,
+	SoundVoice: 5,
 }
 
 // dcPerHop is what each region crossed adds to a sound's DC. A closed door on
@@ -220,7 +224,8 @@ type hearing struct {
 
 // hearersOf is every standing member, other than the maker, whose passive
 // Perception beats a sound of this DC made at this cell, sorted by member
-// (C8): a member hears when PassivePerception >= dc + dcPerHop × hops.
+// (C8): a member hears when PassivePerception >= dc + dcPerHop × hops, and a
+// passive of zero hears nothing at all.
 //
 // THE MAKER IS NOT A HEARER of its own sound. It knows what it did — that is
 // its deed, held on the deeds channel — and a guard who swung would otherwise
@@ -269,7 +274,11 @@ func (e *Encounter) hearersOf(cell spatial.Position, dc int, maker MemberID) ([]
 		if !reached {
 			continue
 		}
-		if sheets[id].PassivePerception >= dc+dcPerHop*h {
+		// ZERO IS DEAF, whatever the DC ([SheetFacts.PassivePerception]): a
+		// boom is DC 0 where it goes off, and a sheet that answered nothing
+		// must not hear it — no passive Perception the rules produce is 0.
+		passive := sheets[id].PassivePerception
+		if passive > 0 && passive >= dc+dcPerHop*h {
 			near = append(near, hearing{member: id, hops: h})
 		}
 	}
