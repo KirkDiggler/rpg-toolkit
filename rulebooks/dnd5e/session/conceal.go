@@ -168,14 +168,8 @@ type stagedCheckOutcome struct {
 // save-and-report path a swing's dirty sheets use ([Manager.saveDirty]'s
 // shape). A posed outcome writes nothing back yet — nothing on the sheet
 // changed merely by asking the question.
-// untrained says whether this verb takes the untrained rule
-// ([resolution.CheckInput.Untrained], rpg-project#457 R2). It is a PARAMETER
-// rather than a property of this function because it is a property of the
-// VERB: the rule is scoped to skill verbs, and the one caller that passes
-// true (Speak, whose options roll a skill) is the one the ruling names. Unlock and the
-// discovery sweep pass false and roll the 2014 letter.
 func (m *Manager) resolveStagedCheckPoseable(
-	scope *writeScope, member string, approaches []encounter.CheckApproach, untrained bool,
+	scope *writeScope, member string, approaches []encounter.CheckApproach,
 ) (*stagedCheckOutcome, error) {
 	staged, ok := scope.checks[member]
 	if !ok {
@@ -187,7 +181,6 @@ func (m *Manager) resolveStagedCheckPoseable(
 		Character:  staged.data,
 		Approaches: approaches,
 		Roller:     &diceSeam{roller: m.dice},
-		Untrained:  untrained,
 	})
 	switch {
 	case errors.Is(err, resolution.ErrBadCheck):
@@ -276,10 +269,7 @@ func requirePosedCalculation(verb, subject string, calculation *dnd5eEvents.Roll
 func (m *Manager) resolveStagedCheck(
 	scope *writeScope, member string, approaches []encounter.CheckApproach,
 ) (*encounter.ResolveCheckOutput, error) {
-	// FALSE: a find check is not a skill verb. The discovery seam resolves
-	// Perception and Investigation routes that every character may attempt
-	// as the book wrote them (rpg-project#457 R2's scope).
-	outcome, err := m.resolveStagedCheckPoseable(scope, member, approaches, false)
+	outcome, err := m.resolveStagedCheckPoseable(scope, member, approaches)
 	if err != nil {
 		return nil, err
 	}

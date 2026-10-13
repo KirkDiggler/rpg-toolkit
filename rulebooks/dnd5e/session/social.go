@@ -66,7 +66,7 @@ type speakLanding struct {
 	Total  int
 
 	// Calculation is the roll behind Total, keep record and all. It rides the
-	// beat so the table reads "2d20 [7, 18] kept 7 · disadvantage: Untrained"
+	// beat so the table reads "2d20 [7, 18] kept 7 · disadvantage: Poisoned"
 	// rather than one number (rpg-project#462).
 	Calculation *encounter.RollCalculation
 }
@@ -166,11 +166,10 @@ func (m *Manager) speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, erro
 	if err := m.stageCheck(ctx, scope, "member", member); err != nil {
 		return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
 	}
-	// TRUE: a line is a SKILL check and takes the untrained rule
-	// (rpg-project#457 R2), whichever skill the option lists. A character
-	// with no proficiency in the skill the applied route rolls takes
-	// disadvantage, named in the result's sources — resolution's rule.
-	outcome, verr := m.resolveStagedCheckPoseable(scope, member, line.Check, true)
+	// A character with no proficiency in the skill the applied route rolls
+	// simply adds no proficiency bonus: one d20, no rule imposed
+	// (rpg-project#569).
+	outcome, verr := m.resolveStagedCheckPoseable(scope, member, line.Check)
 	if verr != nil {
 		return nil, fmt.Errorf("%s %q: %w", VerbSpeak, in.OptionID, verr)
 	}

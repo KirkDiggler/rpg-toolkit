@@ -23,7 +23,7 @@ func TestRollWindowBodyPreservesPresentationIDAndLegacyAbsence(t *testing.T) {
 }
 
 // TestRollWindowBodyCarriesTheRollBehindTheQuestion is R5 at the decoder. The
-// window is where an untrained roll is FIRST seen — the player is being asked
+// window is where a kept roll is FIRST seen — the player is being asked
 // whether to spend a die on it — and the body had nowhere to put the pair of
 // faces until this field existed, so the proto's own calculation field was
 // never filled.
@@ -33,7 +33,7 @@ func TestRollWindowBodyCarriesTheRollBehindTheQuestion(t *testing.T) {
 		`{"source":{"ref":"dnd5e:skills:persuasion","name":"Persuasion","source_id":"fighter"},` +
 		`"dice":{"notation":"2d20","die_size":20,"original_rolls":[7,18],"final_rolls":[7,18],` +
 		`"kept_indices":[0],"subtotal":7,"keep":{"rule":"disadvantage","imposed":[` +
-		`{"ref":"dnd5e:rules:untrained","name":"Untrained","label":"rule","source_id":"fighter"}]}}},` +
+		`{"ref":"dnd5e:conditions:poisoned","name":"Poisoned","label":"rule","source_id":"fighter"}]}}},` +
 		`{"source":{"ref":"dnd5e:abilities:charisma","name":"Charisma"},"modifier":2}],"total":9}}`)
 
 	body, ok := rollWindowOpenedBody(payload).(RollWindowOpenedBody)
@@ -45,7 +45,7 @@ func TestRollWindowBodyCarriesTheRollBehindTheQuestion(t *testing.T) {
 	require.NotNil(t, keep)
 	require.Equal(t, KeepDisadvantage, keep.Rule)
 	require.Len(t, keep.Imposed, 1)
-	require.Equal(t, "Untrained", keep.Imposed[0].Name)
+	require.Equal(t, "Poisoned", keep.Imposed[0].Name)
 	require.Equal(t, "fighter", keep.Imposed[0].SourceID)
 }
 
@@ -65,14 +65,14 @@ func TestRollWindowRefusesArithmeticThatDisagreesWithIt(t *testing.T) {
 			calculation: `{"components":[{"source":{"ref":"dnd5e:skills:persuasion","name":"Persuasion","source_id":"fighter"},` +
 				`"dice":{"notation":"2d20","die_size":20,"original_rolls":[7,18],"final_rolls":[7,18],` +
 				`"kept_indices":[1],"subtotal":18,"keep":{"rule":"disadvantage","imposed":[` +
-				`{"ref":"dnd5e:rules:untrained","name":"Untrained","source_id":"fighter"}]}}}],"total":18}`,
+				`{"ref":"dnd5e:conditions:poisoned","name":"Poisoned","source_id":"fighter"}]}}}],"total":18}`,
 		},
 		{
 			name: "a rule brought by nobody",
 			calculation: `{"components":[{"source":{"ref":"dnd5e:skills:persuasion","name":"Persuasion","source_id":"fighter"},` +
 				`"dice":{"notation":"2d20","die_size":20,"original_rolls":[7,18],"final_rolls":[7,18],` +
 				`"kept_indices":[0],"subtotal":7,"keep":{"rule":"disadvantage","imposed":[` +
-				`{"ref":"dnd5e:rules:untrained","name":"Untrained"}]}}},` +
+				`{"ref":"dnd5e:conditions:poisoned","name":"Poisoned"}]}}},` +
 				`{"source":{"ref":"dnd5e:abilities:charisma","name":"Charisma"},"modifier":2}],"total":9}`,
 		},
 		{
@@ -80,7 +80,7 @@ func TestRollWindowRefusesArithmeticThatDisagreesWithIt(t *testing.T) {
 			calculation: `{"components":[{"source":{"ref":"dnd5e:skills:persuasion","name":"Persuasion","source_id":"fighter"},` +
 				`"dice":{"notation":"2d20","die_size":20,"original_rolls":[7,18],"final_rolls":[7,18],` +
 				`"kept_indices":[0],"subtotal":7,"keep":{"rule":"lucky","imposed":[` +
-				`{"ref":"dnd5e:rules:untrained","name":"Untrained","source_id":"fighter"}]}}},` +
+				`{"ref":"dnd5e:conditions:poisoned","name":"Poisoned","source_id":"fighter"}]}}},` +
 				`{"source":{"ref":"dnd5e:abilities:charisma","name":"Charisma"},"modifier":2}],"total":9}`,
 		},
 	} {

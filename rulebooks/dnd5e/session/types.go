@@ -2456,10 +2456,10 @@ type RollWindowOpenedBody struct {
 	// pool with every face it threw and the Keep record naming any rule that
 	// decided which one counted.
 	//
-	// THE WINDOW IS WHERE AN UNTRAINED ROLL IS FIRST SEEN (rpg-project#462
-	// R5). Until this field existed the body had nowhere to put it, so the
-	// wire's own calculation field was never filled and the player chose
-	// looking at one face.
+	// THE WINDOW IS WHERE A KEPT ROLL IS FIRST SEEN (rpg-project#462 R5).
+	// Until this field existed the body had nowhere to put it, so the wire's
+	// own calculation field was never filled and the player chose looking
+	// at one face.
 	Calculation *RollCalculation `json:"calculation,omitempty"`
 }
 

@@ -308,9 +308,7 @@ func (m *Manager) Unlock(ctx context.Context, in *UnlockInput) (*UnlockOutput, e
 		if err := m.stageCheck(ctx, scope, "member", in.Member); err != nil {
 			return nil, fmt.Errorf("unlock: %w", err)
 		}
-		// FALSE: a lock is not a skill verb. Forcing a door with Strength or
-		// picking it with tools rolls the 2014 letter (rpg-project#457 R2).
-		outcome, verr := m.resolveStagedCheckPoseable(scope, in.Member, lock.Approaches, false)
+		outcome, verr := m.resolveStagedCheckPoseable(scope, in.Member, lock.Approaches)
 		if verr != nil {
 			return nil, fmt.Errorf("unlock %q: %w", in.Door, verr)
 		}
