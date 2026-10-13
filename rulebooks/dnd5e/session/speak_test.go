@@ -833,6 +833,63 @@ func (s *SpeakSuite) TestALineSaidToAProp() {
 	s.Require().ErrorIs(err, session.ErrNoOption)
 }
 
+// A PAUSED LINE SAID TO A PROP RESUMES AS THAT SAME LINE. The check window
+// persists the prop and the option, and the resumed check lands through the
+// same composition op with the resumed approach's skill: the beat names the
+// prop and no creature, and the prop's own answer rows are rolled.
+//
+// 6 on the d20 with CHA 8's -1 and proficiency's +2 is a 7, which misses DC 9;
+// the Guidance d4's 4 makes it 11. Then the world's die for the one answer row.
+func (s *SpeakSuite) TestAGuidedLineToAPropResumesAsTheSameLine() {
+	open := false
+	altar := encounter.PropInput{
+		ID: "altar", Ref: "altar", At: spatial.Position{X: 2, Y: 3},
+		BlocksMovement: &open, BlocksLineOfSight: &open,
+		Options: []encounter.Option{{
+			ID: "read", Say: "I read the inscription aloud.",
+			Check:   []encounter.CheckApproach{{Ability: "intimidation", DC: 9}},
+			Success: []encounter.Answer{{Weight: 1, Say: "The letters glow."}},
+		}},
+	}
+	mgr := s.aYard([]int{6, 4, 1}, altar)
+	s.guide()
+
+	out, err := mgr.Speak(context.Background(), &session.SpeakInput{
+		Session: "sess", Member: "alice", Prop: "altar", OptionID: "read",
+	})
+	s.Require().NoError(err)
+	s.Require().True(out.Paused, "the checker holds a die and the machine stopped")
+	s.Equal("altar", out.Prop)
+	s.Equal("read", out.OptionID)
+
+	s.answer(mgr, session.Take(""))
+
+	var spoke *session.SpokeBody
+	var answered *session.AnsweredBody
+	for _, event := range s.events(mgr, "alice") {
+		switch body := event.Body.(type) {
+		case session.SpokeBody:
+			spoke = &body
+		case session.AnsweredBody:
+			answered = &body
+		}
+	}
+	s.Require().NotNil(spoke, "the resumed verdict reached the log")
+	s.Equal("altar", spoke.Prop, "the window carried the prop it stopped on")
+	s.Empty(spoke.Target)
+	s.Equal("read", spoke.OptionID)
+	s.Equal("intimidation", spoke.Skill, "the resumed approach's skill")
+	s.Equal(11, spoke.Total, "the offered die joined the total, and nothing was re-rolled")
+	s.True(spoke.Beaten)
+
+	s.Require().NotNil(answered, "the prop's own success row was rolled")
+	s.Equal("altar", answered.Prop)
+	s.Empty(answered.Creature)
+	s.Equal("read", answered.OptionID)
+	s.Equal("The letters glow.", answered.Say)
+	s.False(s.held(mgr, encounter.DeedIntimidate), "a prop is cowed by nothing")
+}
+
 // talkingFighter is [armedFighter] who took Intimidation and Persuasion at
 // creation — the fixture every scene above needs, so that the untrained rule
 // is exercised by the scenes that are about it and by no others.

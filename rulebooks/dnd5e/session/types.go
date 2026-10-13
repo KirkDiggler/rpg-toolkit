@@ -2713,7 +2713,10 @@ func (DoorBody) isEventBody() {}
 // SpokeBody is EventSpoke's typed body: who said which line to what, the skill
 // the check rolled, what it had to beat, what it rolled, and whether it landed.
 //
-// NO OMITEMPTY ON Beaten, DC OR Total ([TestFalseIsAnAnswerOnTheWire]'s law).
+// NO OMITEMPTY ANYWHERE ([TestFalseIsAnAnswerOnTheWire]'s law), and that
+// includes the empty side of Target and Prop: the composition writes both
+// keys, and [AnsweredBody] writes both, so an absent key never becomes a third
+// state downstream.
 // `beaten: false` is the whole content of a missed line — often the one case
 // where nothing else is written — and a key dropped for being false is
 // indistinguishable to a non-Go client from a beat that never said.
@@ -2724,11 +2727,11 @@ type SpokeBody struct {
 	// Target is the creature spoken to, or empty for a prop. The witnesses
 	// are the beat's audience and are not listed: a recipient knows it saw
 	// this because it was delivered the beat at all.
-	Target string `json:"target,omitempty"`
+	Target string `json:"target"`
 
 	// Prop is the prop spoken to, or empty for a creature. Exactly one of
-	// Target and Prop is set.
-	Prop string `json:"prop,omitempty"`
+	// Target and Prop is set; the other is written empty.
+	Prop string `json:"prop"`
 
 	// OptionID is the line that was said, as the menu offered it.
 	OptionID string `json:"option_id"`

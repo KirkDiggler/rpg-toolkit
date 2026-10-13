@@ -243,7 +243,7 @@ func TestTheSpokeBeatDecodes(t *testing.T) {
 		raw, err := json.Marshal(SpokeBody{Actor: "alice", Target: "goblin", OptionID: "threaten", DC: 9})
 		require.NoError(t, err)
 		require.JSONEq(t,
-			`{"actor":"alice","target":"goblin","option_id":"threaten","line":"","skill":"","dc":9,"total":0,"beaten":false}`,
+			`{"actor":"alice","target":"goblin","prop":"","option_id":"threaten","line":"","skill":"","dc":9,"total":0,"beaten":false}`,
 			string(raw))
 	})
 }
