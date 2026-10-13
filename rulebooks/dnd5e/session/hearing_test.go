@@ -9,12 +9,12 @@ package session_test
 // the per-recipient Story carries the `heard` beat to its one listener.
 //
 // THE SCENE. Two rooms joined by one open door. In the hall, alice swings at
-// a thug — a clang, DC 10 where it is made — with bob (passive 14) and carol
-// (passive 9) beside her. Through the door, one hop and so DC 15, stand two
-// castle guards authored as templates: a keen one trained in Perception
-// (passive 15) and a dull one with no Perception skill (passive 10 + WIS 10's
-// +0). Both guards carry the same standing order: when a clang was heard,
-// walk toward it.
+// a thug — a clang, DC 5 where it is made. Through the door, one hop and so
+// DC 10, stand bob (passive 14) and carol (passive 9), and two castle guards
+// authored as templates: a keen one trained in Perception (passive 10,
+// exactly the DC) and a dull one with no Perception skill (passive 9, 10 +
+// WIS 8's -1). Both guards carry the same standing order: when a clang was
+// heard, walk toward it.
 
 import (
 	"context"
@@ -93,7 +93,7 @@ func (s *HearingSuite) SetupTest() {
 	s.mgr = mgr
 
 	keen := monsterAt("keen", "dnd5e:monsters:keen-guard", 9, 3)
-	dull := monsterAt("dull", "dnd5e:monsters:dull-guard", 10, 4)
+	dull := monsterAt("dull", "dnd5e:monsters:dull-guard", 11, 1)
 	thug := monsterAt("thug", refs.Monsters.Goblin().String(), 2, 1)
 	keen.Faction, dull.Faction, thug.Faction = string(hearingCastle), string(hearingCastle), string(hearingThugs)
 	keen.Table, dull.Table = guardOrders(), guardOrders()
@@ -112,21 +112,21 @@ func (s *HearingSuite) SetupTest() {
 				{Between: [2]encounter.FactionID{hearingThugs, encounter.FactionParty}, Stance: encounter.StanceNeutral},
 			},
 		},
-		Party:    []sceneSeat{seatAt("alice", 1, 1), seatAt("bob", 1, 3), seatAt("carol", 0, 4)},
+		Party:    []sceneSeat{seatAt("alice", 1, 1), seatAt("bob", 8, 0), seatAt("carol", 6, 4)},
 		Monsters: []dungeonspec.MonsterPlacement{keen, dull, thug},
 		Endings:  []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
 	}
 	in := sceneInput(sc)
 	in.Dungeon.Templates = map[string]dungeonspec.TemplateSpec{
-		// Passive 15: 10, WIS 16's +3, trained Perception's +2.
+		// Passive 10: 10, WIS 6's -2, trained Perception's +2.
 		"keen-guard": {
-			Base: "dnd5e:monsters:human", Abilities: map[string]int{"wis": 16},
+			Base: "dnd5e:monsters:human", Abilities: map[string]int{"wis": 6},
 			Skills: []string{"perception"}, Actions: []string{"dnd5e:weapons:spear"},
 		},
-		// Passive 10: no Perception skill, so 10 + WIS 10's +0 — the
+		// Passive 9: no Perception skill, so 10 + WIS 8's -1 — the
 		// stat block's own answer, read by the session and never computed.
 		"dull-guard": {
-			Base: "dnd5e:monsters:human", Abilities: map[string]int{"wis": 10},
+			Base: "dnd5e:monsters:human", Abilities: map[string]int{"wis": 8},
 			Actions: []string{"dnd5e:weapons:spear"},
 		},
 	}
@@ -171,7 +171,7 @@ func (s *HearingSuite) heardBy(member string) []session.HeardBody {
 	return out
 }
 
-// aRound makes one round of the world pass: carol paces the hall's bottom
+// aRound makes one round of the world pass: carol paces the barracks' bottom
 // row, end to end, until the world clock has had a round — six cells at a
 // Human's thirty feet — which is the world's only way to move (somebody
 // acts). She makes no sound.
@@ -180,7 +180,7 @@ func (s *HearingSuite) aRound() {
 	before := s.encounters.byID[testSession].Clock.HighWater
 	for s.encounters.byID[testSession].Clock.HighWater == before {
 		at := s.positionOf("carol")
-		west, east := hexCell(0, 4), hexCell(5, 4)
+		west, east := hexCell(6, 4), hexCell(10, 4)
 		step, end := 1.0, east.X
 		if at.X == east.X {
 			step, end = -1, west.X
@@ -214,9 +214,9 @@ func (s *HearingSuite) timePick(creature string) session.AnsweredBody {
 }
 
 // THE HEADLINE (castle plan B3; the composition's own first case, now through
-// the session): the keen guard's passive 15 reaches DC 10 + 5 for the hop,
+// the session): the keen guard's passive 10 reaches DC 5 + 5 for the hop,
 // so its next `time` pick is the `heard` row and it walks toward the clang
-// through the open door. The dull guard's 10 does not, so it has no row to
+// through the open door. The dull guard's 9 does not, so it has no row to
 // pick and stands where it stood. Both numbers came off the stat blocks the
 // session holds — the composition was told nothing else.
 func (s *HearingSuite) TestAClangCarriesOneOpenDoorToTheKeenEarOnly() {
@@ -247,8 +247,8 @@ func (s *HearingSuite) TestTheKeenGuardWalksAllTheWayToTheClang() {
 	s.LessOrEqual(hexSteps(s.positionOf("keen"), clang), 1, "it walked to where the clang rang")
 }
 
-// THE BEAT REACHES ITS LISTENER ONLY. bob (passive 14) stands in the hall:
-// zero hops, DC 10, heard — and his Story carries the beat naming the kind,
+// THE BEAT REACHES ITS LISTENER ONLY. bob (passive 14) stands through the
+// door: one hop, DC 10, heard — and his Story carries the beat naming the kind,
 // the cell it rang on and no maker. carol (passive 9) did not hear it and
 // never sees it; alice made it and never sees bob's beat either. Live
 // delivery says the same: the stream handed one heard event, to bob.
@@ -257,9 +257,9 @@ func (s *HearingSuite) TestOnlyTheListenerWhoHeardIsTold() {
 
 	s.swing()
 
-	s.Equal([]session.HeardBody{{Listener: "bob", Kind: encounter.SoundClang, Position: clang, Hops: 0}},
+	s.Equal([]session.HeardBody{{Listener: "bob", Kind: encounter.SoundClang, Position: clang, Hops: 1}},
 		s.heardBy("bob"))
-	s.Empty(s.heardBy("carol"), "passive 9 does not reach DC 10")
+	s.Empty(s.heardBy("carol"), "passive 9 does not reach DC 10 through the door")
 	s.Empty(s.heardBy("alice"), "the maker hears nothing, and another listener's beat is not hers")
 
 	var recipients []string
