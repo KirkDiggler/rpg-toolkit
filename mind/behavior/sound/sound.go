@@ -72,8 +72,10 @@ type Sound struct {
 // channel so it can never collide with a sight holding.
 //
 // ONE SUBJECT PER KIND, the deeds channel's own narrowing: a hearer holds the
-// freshest sound of each kind and nothing before it. A `heard` condition asks
-// how recently a kind was heard, and the latest one answers that.
+// LATEST LANDED sound of each kind and nothing before it — the store replaces
+// a known subject whatever its stamp, so that is the freshest only when the
+// caller lands sounds in clock order, which it should. A `heard` condition
+// asks how recently a kind was heard, and the latest one answers that.
 func Subject(kind string) core.EntityID {
 	return perception.Qualify(Channel, core.EntityID(kind))
 }

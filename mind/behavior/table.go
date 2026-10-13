@@ -110,14 +110,17 @@ var (
 	ErrBadMix = errors.New("behavior: temperament mix cannot be dealt")
 
 	// ErrBadWhen reports a `when` entry this table cannot read: one naming
-	// more than one condition or none, or a `heard` with no kind or a span
-	// below 1. Returned by [When.Validate] and [Answer.Validate], wrapped in
+	// more than one condition or none, a `heard` with no kind or a span
+	// below 1, or a deed's `within` or scope on a condition that is not a
+	// deed. Returned by [When.Validate] and [Answer.Validate], wrapped in
 	// a sentence written for whoever filled the form.
 	ErrBadWhen = errors.New("behavior: when cannot be read")
 
 	// ErrBadSelector reports a selector this table cannot read: one naming
-	// more than one target, or a route on a word that does not walk.
-	// Returned by [Answer.Validate], wrapped in a sentence for the form.
+	// no target or more than one, a route on a word that does not walk,
+	// `sound` on `attack`, or `sound` on a row that names no `heard`
+	// condition. Returned by [Answer.Validate], wrapped in a sentence for
+	// the form.
 	ErrBadSelector = errors.New("behavior: selector cannot be read")
 )
 
@@ -410,13 +413,14 @@ func (w *When) conditions() []string {
 }
 
 // Validate refuses a When that does not name exactly one condition, a
-// `heard` with no kind or a span below 1, and the same faults inside a
-// `not`. ErrBadWhen, wrapped in a sentence for the form.
+// `heard` with no kind or a span below 1, a deed's `within` or scope set on
+// a condition that is not a deed, and the same faults inside a `not`.
+// ErrBadWhen, wrapped in a sentence for the form.
 //
 // It does NOT refuse an enemy or deed word this build does not read, an
-// unknown scope, or a deed span: those are the dialect's, where the sealed
-// lists are refused by name, and this module's evaluator already treats every
-// one of them as a dead row rather than a guess.
+// unknown scope, or a deed span below 1: those are the dialect's, where the
+// sealed lists are refused by name, and this module's evaluator already
+// treats every one of them as a dead row rather than a guess.
 func (w *When) Validate() error {
 	named := w.conditions()
 	switch len(named) {
@@ -437,6 +441,9 @@ func (w *When) Validate() error {
 	}
 
 	switch {
+	case w.Deed == "" && (w.Within != 0 || w.Scope != ScopeSelf):
+		return fmt.Errorf("a `when` entry names %s with a deed's `within` or scope; "+
+			"those belong only beside a deed: %w", named[0], ErrBadWhen)
 	case w.Heard != nil && w.Heard.Kind == "":
 		return fmt.Errorf("`heard` needs a `kind`, the sound it listens for: %w", ErrBadWhen)
 	case w.Heard != nil && w.Heard.Within < 1:
@@ -482,7 +489,10 @@ const (
 	// narrowed what fired it ([Facts.Sounds]). A place, never a figure: a
 	// sound names no maker (R4 of rpg-project#569), so the creature walks to
 	// it, or from it, and finds out who by looking. Legal on `toward` and
-	// `away` only; [Answer.Validate] refuses it on `attack`.
+	// `away` only, and only on a row whose `when` list names a `heard`
+	// condition (R10), the way `actor` needs a deed; [Answer.Validate]
+	// refuses it on `attack` and on a row that listened for nothing.
+	// Resolving it to the heard kind is the caller's.
 	SelectorSound SelectorWord = "sound"
 )
 
@@ -542,10 +552,16 @@ func (s *Selector) targets() []string {
 	return out
 }
 
-// validate refuses a selector naming more than one target, a route on a
-// word that does not walk one, or `sound` on `attack`. word is the table word the selector is on.
+// validate refuses a selector naming no target or more than one, a route on
+// a word that does not walk one, or `sound` on `attack`. word is the table
+// word the selector is on.
 func (s *Selector) validate(word string) error {
-	if named := s.targets(); len(named) > 1 {
+	named := s.targets()
+	if len(named) == 0 {
+		return fmt.Errorf("`%s` names no target; give it one of somebody, a cell (`at`) or a route (`path`): %w",
+			word, ErrBadSelector)
+	}
+	if len(named) > 1 {
 		return fmt.Errorf("`%s` names %s; a target is exactly one of somebody, a cell or a route: %w",
 			word, andList(named), ErrBadSelector)
 	}
@@ -880,6 +896,8 @@ func (w *When) holds(f Facts) bool {
 // than Within units before now.
 func (h *HeardWhen) holds(f Facts) bool {
 	// A SPAN IS COUNTED FROM 1, the deed condition's rule and for its reason.
+	// Not only tidiness: [Pick] never validates, and a negative span would
+	// wrap through uint64 to a window that never closes.
 	if h.Within < 1 {
 		return false
 	}

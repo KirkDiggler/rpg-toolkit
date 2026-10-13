@@ -3,6 +3,8 @@
 
 package behavior
 
+import "fmt"
+
 // answer.go is ONE ROW of a creature's table: how likely it is, when it is
 // even on the table, what the creature says, and the one thing it does.
 //
@@ -103,8 +105,9 @@ type Answer struct {
 
 // Validate refuses what this module's own types cannot carry: a [When] in the
 // list that does not name exactly one condition ([When.Validate],
-// ErrBadWhen), and a [Selector] naming more than one target, a `path` on a
-// word other than `toward`, or `sound` on `attack` (ErrBadSelector). Each refusal is a sentence for
+// ErrBadWhen), and a [Selector] naming no target or more than one, a `path`
+// on a word other than `toward`, `sound` on `attack`, or `sound` on a row
+// whose list names no `heard` condition (ErrBadSelector, R10). Each refusal is a sentence for
 // the form, wrapping its sentinel.
 //
 // THE REST IS THE CALLER'S DOOR, as it always was: the weight, the
@@ -127,7 +130,24 @@ func (a *Answer) Validate() error {
 		if err := slot.sel.validate(slot.word); err != nil {
 			return err
 		}
+		if slot.sel.Word == SelectorSound && !a.listens() {
+			return fmt.Errorf("`sound` needs a `heard` condition on the row: "+
+				"the sound it walks to is the one the row listened for: %w", ErrBadSelector)
+		}
 	}
 
 	return nil
+}
+
+// listens reports whether this row's `when` list names a `heard` condition
+// at its top level. A `heard` inside a `not` does not count: that row holds
+// when the creature heard NOTHING, so there is no sound for it to walk to.
+func (a *Answer) listens() bool {
+	for i := range a.When {
+		if a.When[i].Heard != nil {
+			return true
+		}
+	}
+
+	return false
 }

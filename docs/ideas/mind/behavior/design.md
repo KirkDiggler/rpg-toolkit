@@ -26,7 +26,10 @@ within }`, `fact: <id>`, or `not: { … }` wrapping one condition. `heard` reads
 the **sounds channel** — `behavior/sound`, `Land` and `Held` — the deeds
 channel's sibling, whose law is that a sound carries a kind, a place and a
 time and never names its maker (R4 there). A `toward` selector may carry a
-`path`, a route that holds no state (R7 there). The module's README carries the
+`path`, a route that holds no state (R7 there). The selector word `sound` is
+where the freshest held sound was made: legal on `toward` and `away`, refused
+on `attack` (a sound cannot be struck), and only on a row whose `when` list
+names a `heard` condition (R10 there). The module's README carries the
 table of conditions; `When.Validate` and `Answer.Validate` refuse the shape
 faults.
 

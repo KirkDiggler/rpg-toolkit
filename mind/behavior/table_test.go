@@ -6,6 +6,7 @@ package behavior_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math/rand"
 	"testing"
 
@@ -1074,4 +1075,97 @@ func (s *TableSuite) TestSoundIsAPlaceToWalkToOrFrom() {
 	s.Require().ErrorIs(err, behavior.ErrBadSelector)
 	s.EqualError(err, "`attack` cannot take `sound`: a sound cannot be struck, only walked toward "+
 		"or away from: behavior: selector cannot be read")
+}
+
+// TestAHeardSpanBelowOneHoldsNothing: Pick never validates, so a struct built
+// in Go reaches the evaluator with whatever span it carries. Zero and below
+// hold nothing — a negative span must not wrap to a window that never closes.
+func (s *TableSuite) TestAHeardSpanBelowOneHoldsNothing() {
+	for _, within := range []int{0, -1} {
+		s.Run(fmt.Sprintf("within %d", within), func() {
+			table := behavior.Table{behavior.KeyTime: {
+				{Weight: 1, When: []behavior.When{{Heard: &behavior.HeardWhen{Kind: "clang", Within: within}}},
+					Toward: &behavior.Selector{At: &someCell}},
+				{Weight: 1, Hold: true},
+			}}
+			for _, heardAt := range []uint64{10, 1} {
+				facts := behavior.Facts{Now: 10, CanMove: true, Sounds: []sound.Sound{{Kind: "clang", At: heardAt}}}
+				s.Equal(1, s.pickTime(table, facts), "heard at %d, now 10", heardAt)
+			}
+		})
+	}
+}
+
+// TestADeedsSpanAndScopeBelongOnlyBesideADeed: `within`, `on` and `as` modify
+// a deed condition, and dangling one off another condition is a shape fault.
+// The deed span rule itself (below 1) stays the dialect's.
+func (s *TableSuite) TestADeedsSpanAndScopeBelongOnlyBesideADeed() {
+	for _, tc := range []struct {
+		name string
+		when behavior.When
+		says string
+	}{
+		{name: "a span beside a fact", when: behavior.When{Fact: "alarm-raised", Within: 3},
+			says: "a `when` entry names `fact` with a deed's `within` or scope; " +
+				"those belong only beside a deed: behavior: when cannot be read"},
+		{name: "a scope beside an enemy band", when: behavior.When{Enemy: behavior.EnemySeen, Scope: behavior.ScopeAlly},
+			says: "a `when` entry names `enemy` with a deed's `within` or scope; " +
+				"those belong only beside a deed: behavior: when cannot be read"},
+	} {
+		s.Run(tc.name, func() {
+			err := (&behavior.Answer{Weight: 1, Hold: true, When: []behavior.When{tc.when}}).Validate()
+			s.Require().ErrorIs(err, behavior.ErrBadWhen)
+			s.EqualError(err, tc.says)
+		})
+	}
+
+	s.NoError((&behavior.Answer{Weight: 1, Hold: true, When: []behavior.When{
+		{Deed: "attacked", Within: 3, Scope: behavior.ScopeAlly},
+	}}).Validate(), "beside a deed they are what the deed means")
+}
+
+// TestASelectorNamingNoTargetIsRefused: exactly one of the three means not
+// zero either, and an empty route is no route.
+func (s *TableSuite) TestASelectorNamingNoTargetIsRefused() {
+	for _, sel := range []*behavior.Selector{{}, {Path: []spatial.Position{}}} {
+		err := (&behavior.Answer{Weight: 1, Toward: sel}).Validate()
+		s.Require().ErrorIs(err, behavior.ErrBadSelector)
+		s.EqualError(err, "`toward` names no target; give it one of somebody, a cell (`at`) or a route (`path`): "+
+			"behavior: selector cannot be read")
+	}
+}
+
+// TestSoundNeedsARowThatListened is R10: `sound` walks to the sound the row
+// listened for, so a row with no `heard` condition has none to walk to — the
+// way `actor` needs a deed. A `heard` inside a `not` is a row that heard
+// nothing, and does not count.
+func (s *TableSuite) TestSoundNeedsARowThatListened() {
+	const says = "`sound` needs a `heard` condition on the row: " +
+		"the sound it walks to is the one the row listened for: behavior: selector cannot be read"
+	clang := &behavior.HeardWhen{Kind: "clang", Within: 2}
+
+	for _, tc := range []struct {
+		name string
+		when []behavior.When
+	}{
+		{name: "no when at all"},
+		{name: "a fact and no heard", when: []behavior.When{{Fact: "alarm-raised"}}},
+		{name: "a heard only inside a not", when: []behavior.When{{Not: &behavior.When{Heard: clang}}}},
+	} {
+		s.Run(tc.name, func() {
+			for _, entry := range []behavior.Answer{
+				{Weight: 1, When: tc.when, Toward: &behavior.Selector{Word: behavior.SelectorSound}},
+				{Weight: 1, When: tc.when, Away: &behavior.Selector{Word: behavior.SelectorSound}},
+			} {
+				err := entry.Validate()
+				s.Require().ErrorIs(err, behavior.ErrBadSelector)
+				s.EqualError(err, says)
+			}
+		})
+	}
+
+	s.NoError((&behavior.Answer{Weight: 1,
+		When:   []behavior.When{{Fact: "alarm-raised"}, {Heard: clang}},
+		Toward: &behavior.Selector{Word: behavior.SelectorSound}}).Validate(),
+		"a `heard` anywhere in the list is the row listening")
 }

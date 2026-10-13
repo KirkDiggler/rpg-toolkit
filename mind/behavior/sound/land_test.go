@@ -52,12 +52,18 @@ func TestASoundLandsTheSameOnEveryHearerAndNamesNobody(t *testing.T) {
 
 			held, err := store.Held(hearer)
 			require.NoError(t, err)
-			require.Len(t, held, 1)
-			require.Equal(t, sound.Channel, held[0].Channel)
-			require.Empty(t, held[0].CurrentVia, "a sound is over the moment it is heard")
+			var got *perception.Holding
+			for i := range held {
+				if held[i].Subject == sound.Subject("clang") {
+					got = &held[i]
+				}
+			}
+			require.NotNil(t, got, "the clang is held under its kind's subject")
+			require.Equal(t, sound.Channel, got.Channel)
+			require.Empty(t, got.CurrentVia, "a sound is over the moment it is heard")
 
 			var payload map[string]any
-			require.NoError(t, json.Unmarshal(held[0].Payload, &payload))
+			require.NoError(t, json.Unmarshal(got.Payload, &payload))
 			require.NotContains(t, payload, "actor", "a sound never names its maker")
 			require.NotContains(t, payload, "target", "and has nobody it was done to")
 		})
@@ -77,7 +83,7 @@ func TestASoundWithNoKindIsRefused(t *testing.T) {
 	require.Empty(t, heardBy(t, store, "guard"), "a refused landing writes nothing")
 }
 
-// THE FRESHEST OF A KIND IS WHAT IS HELD, the deeds channel's own narrowing:
+// THE LATEST LANDED OF A KIND IS WHAT IS HELD, the deeds channel's own narrowing:
 // a `heard` condition asks how long ago that kind was last heard, and a second
 // clang answers it better than the first.
 func TestASecondSoundOfOneKindReplacesTheFirst(t *testing.T) {
@@ -96,4 +102,25 @@ func TestASecondSoundOfOneKindReplacesTheFirst(t *testing.T) {
 		{Kind: "voice", Where: spatial.Position{X: 3, Y: 3}, At: 3},
 		{Kind: "clang", Where: spatial.Position{X: 5, Y: 5}, At: 4},
 	}, heardBy(t, store, "guard"))
+}
+
+// A FIGHT THAT KEEPS CLANGING IN ONE SPOT KEEPS BEING HEARD. A second clang at
+// the same cell has the same payload, so the store moves only the holding's
+// Confirmed stamp and leaves Observed at the first blow. [sound.Held] reads
+// Confirmed; reading Observed would let a guard stop hearing an ongoing fight
+// `within` units after it started.
+func TestARepeatedSoundAtOneCellIsStampedAtTheLatest(t *testing.T) {
+	store, err := perception.New()
+	require.NoError(t, err)
+
+	for _, at := range []uint64{2, 6} {
+		require.NoError(t, sound.Land(&sound.LandInput{
+			Store:   store,
+			Sound:   sound.Sound{Kind: "clang", Where: spatial.Position{X: 4, Y: 7}, At: at},
+			Hearers: []core.EntityID{"guard"},
+		}))
+	}
+
+	require.Equal(t, []sound.Sound{{Kind: "clang", Where: spatial.Position{X: 4, Y: 7}, At: 6}},
+		heardBy(t, store, "guard"), "stamped at the latest clang, not the first")
 }

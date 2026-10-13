@@ -61,17 +61,30 @@ refused, because the list is already the `and`.
 ```
 
 `Answer.Validate` and `When.Validate` refuse the shape faults this module's
-types cannot carry — not exactly one condition per `When`, a `heard` with no
-kind or a span below 1, a selector naming more than one target, a `path` off
-`toward` — each as a sentence for the form. Which words are legal under which
-key, and which enemy and deed words a build reads, stay the dialect's door.
+types cannot carry, each as a sentence for the form:
+
+- a `When` that does not name exactly one condition;
+- a `heard` with no kind or a span below 1;
+- a deed's `within` or scope on a condition that is not a deed;
+- a selector naming no target or more than one;
+- a `path` off `toward`;
+- `sound` on `attack` (a sound cannot be struck);
+- `sound` on a row whose list names no `heard` condition (R10).
+
+Which words are legal under which key, which enemy and deed words a build
+reads, and a deed span below 1 stay the dialect's door.
 
 ### Selectors
 
-`attack`, `toward` and `away` take a `Selector`: exactly one of a word
-(`enemy`, `attacker`, `actor`, or `sound`: where the freshest held sound was made, `toward`/`away` only), a cell (`at`), or a route (`path`, `toward`
-only). A route is a patrol and holds no state: which waypoint is next is the
-caller's to derive from where the creature stands each time the row fires.
+`attack`, `toward` and `away` take a `Selector`: exactly one of a word, a
+cell (`at`), or a route (`path`, `toward` only). The words are `enemy`,
+`attacker`, `actor` and `sound`.
+
+- **`sound`** is where the freshest held sound was made. It is legal on
+  `toward` and `away` only, and only on a row that names a `heard` condition
+  (R10), the way `actor` needs a deed. Resolving it is the caller's.
+- **A route** is a patrol and holds no state: which waypoint is next is the
+  caller's to derive from where the creature stands each time the row fires.
 
 **Affordability is eligibility.** `Facts.CanAttack` and `Facts.CanMove` say
 what the creature can still pay for, and an entry it cannot pay for is absent
@@ -144,7 +157,8 @@ A guard who hears a clang knows something metal happened over there, not who
 swung; finding out who is what walking over and looking is for. Who is close
 enough to hear, and how loud each kind is, are the caller's physics.
 `sound.Held` reads a creature's holdings back into `Facts.Sounds`; a hearer
-holds the freshest sound of each kind.
+holds the latest landed sound of each kind, which is the freshest when the
+caller lands sounds in clock order.
 
 ## The arrow points one way
 
