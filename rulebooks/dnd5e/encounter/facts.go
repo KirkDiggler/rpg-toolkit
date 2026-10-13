@@ -55,10 +55,19 @@ type factSighting struct {
 // projectFacts is THE projection both doors end at.
 //
 // An enemy is seen when a current sighting is opposed, and in reach only when
-// it is also standing and inside one of the member's actions' reach: a body is
-// not an enemy in reach, and [attackIntent] will not swing at one either. A
-// remembered opposed subject is remembered. The bands are then narrowed to one
-// ([narrowToOneBand]).
+// it is also standing, inside one of the member's actions' reach, AND the
+// member can attack this pick: a body is not an enemy in reach, and
+// [attackIntent] will not swing at one either. A remembered opposed subject is
+// remembered. The bands are then narrowed to one ([narrowToOneBand]).
+//
+// REACH IS A STATEMENT ABOUT STRIKING (R11, rpg-project#569, ruled on the
+// castle walk). With no attack affordable — always, on the world clock — no
+// enemy is in reach, so the nearer of `seen` and `remembered` holds instead.
+// Before this, a crossbow bandit on the world clock with a thug inside its 80
+// feet read `reach`, which cleared `seen`, and the only `reach` row it had
+// was an attack it could not pay for: no eligible row at all, no alarm, no
+// patrol. Gated HERE, before the bands are narrowed, so they stay exclusive
+// by the one rule [narrowToOneBand] already keeps.
 func projectFacts(in factsInput) Facts {
 	facts := Facts{
 		Deeds:     in.deeds,
@@ -79,7 +88,7 @@ func projectFacts(in factsInput) Facts {
 			continue
 		}
 		facts.EnemySeen = true
-		if s.standing && s.inReach {
+		if s.standing && s.inReach && in.canAttack {
 			facts.EnemyInReach = true
 		}
 	}

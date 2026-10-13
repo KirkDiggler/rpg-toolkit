@@ -51,7 +51,10 @@ const (
 	// SoundCrash is a door forced open by strength.
 	SoundCrash = "crash"
 
-	// SoundClang is an attack made, struck or missed: steel on steel.
+	// SoundClang is an attack made, struck OR MISSED: steel on steel, or
+	// steel on a shield. A missed roll is still a swing somebody heard, which
+	// is the deed's own rule (a miss is still an attack, [DeedAttack]) and was
+	// observed and accepted on the castle walk.
 	SoundClang = "clang"
 
 	// SoundVoice is a creature speaking a line on any answer row.

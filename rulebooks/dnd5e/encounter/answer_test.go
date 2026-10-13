@@ -1249,3 +1249,62 @@ func TestAFactOnlyTimeRowIsAVoice(t *testing.T) {
 	require.True(t, knows(t, enc, noiseKeen, hAlarm), "the guard next door learned it by hearing it")
 	require.Contains(t, soundsHeldBy(t, enc, noiseKeen), encounter.SoundVoice, "and what it heard was a voice")
 }
+
+// TestACrossbowOnTheWorldClockRaisesTheAlarmRatherThanFreezing is the castle
+// walk's pass-1 freeze, through the real pick (R11, rpg-project#569). A
+// crossbow bandit of the watch, with a thug of a hostile gang ten cells off in
+// plain sight: on the world clock it cannot attack, so the thug is SEEN, not
+// in reach — its alarm row fires, and its `enemy: none` patrol row is not a
+// candidate. Before R11 the thug read as in reach, `seen` was cleared, the
+// attack row was unaffordable, and the bandit had no row it could pick.
+func TestACrossbowOnTheWorldClockRaisesTheAlarmRatherThanFreezing(t *testing.T) {
+	crossbow := core.Ref{Module: "dnd5e", Type: "weapons", ID: "light-crossbow"}
+	route := []spatial.Position{cellAt(1, 1), cellAt(1, 4), cellAt(4, 4), cellAt(4, 1)}
+	setup := noiseHallSetup(encounter.DoorIsOpen(), encounter.DoorIsOpen(),
+		sheetFacts{
+			noiseAlice: {SpeedFeet: 30},
+			"bandit":   {SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: crossbow, RangeFeet: 80}}},
+			"ganger":   {SpeedFeet: 30},
+		},
+		tableDriver(),
+		at(noiseAlice, encounter.KindPlayer, 2, 8),
+		encounter.MemberInput{ID: "bandit", Kind: encounter.KindMonster, Faction: "watch",
+			Position: spatial.Position{X: 1, Y: 1}, Table: encounter.Table{encounter.AnswerTime: {
+				{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyReach}},
+					Attack: &encounter.Selector{Word: encounter.SelectorEnemy}},
+				{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemySeen}}, Say: "To arms!", Fact: hAlarm},
+				{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyNone}},
+					Toward: &encounter.Selector{Path: route}},
+			}}},
+		encounter.MemberInput{ID: "ganger", Kind: encounter.KindMonster, Faction: "gang",
+			Position: spatial.Position{X: 8, Y: 9}},
+	)
+	setup.Field.Factions = []encounter.FactionInput{{ID: "watch"}, {ID: "gang"}}
+	setup.Field.Dispositions = []encounter.DispositionInput{
+		{Between: [2]encounter.FactionID{"watch", encounter.FactionParty}, Stance: encounter.StanceNeutral},
+		{Between: [2]encounter.FactionID{"gang", encounter.FactionParty}, Stance: encounter.StanceNeutral},
+		{Between: [2]encounter.FactionID{"watch", "gang"}, Stance: encounter.StanceHostile},
+	}
+	enc, err := encounter.NewEncounter(setup)
+	require.NoError(t, err)
+	require.LessOrEqual(t, enc.Distance(whereIs(t, enc, "bandit"), whereIs(t, enc, "ganger")), 16.0,
+		"precondition: the ganger is inside the crossbow's 80 feet")
+
+	_, err = aRound(enc)
+	require.NoError(t, err)
+
+	var picks []map[string]any
+	for _, beat := range storyBeats(t, enc, noiseAlice) {
+		if beat["beat"] == encounter.BeatAnswered && beat["creature"] == "bandit" {
+			picks = append(picks, beat)
+		}
+	}
+	require.NotEmpty(t, picks, "the bandit had a row it could pick")
+	entries := map[float64]bool{}
+	for _, c := range picks[0]["candidates"].([]any) {
+		entries[c.(map[string]any)["entry"].(float64)] = true
+	}
+	require.Equal(t, map[float64]bool{1: true}, entries,
+		"`enemy: seen` is the one eligible row: not reach (no attack on the world clock), not none (the ganger is seen)")
+	require.Equal(t, "To arms!", picks[0]["say"])
+}

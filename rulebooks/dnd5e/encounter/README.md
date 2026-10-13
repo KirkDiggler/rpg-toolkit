@@ -124,7 +124,11 @@ The four verb-keyed social keys (`intimidated`, `intimidate_failed`,
    The four `enemy:` bands are EXCLUSIVE, and exactly one holds at any moment:
    `reach` (within this creature's own reach, the same reach an attack is
    tested against), `seen` (in sight and NOT in reach), `remembered` (none in
-   sight, one held from before), `none`. Writing `attack` under `reach` and
+   sight, one held from before), `none`. `reach` also needs an attack the
+   creature can make THIS pick: on the world clock, where none is ever
+   affordable, an enemy inside a crossbow's 80 feet is `seen`, so a creature
+   that cannot swing still raises its alarm or walks its patrol. Writing
+   `attack` under `reach` and
    `toward` under `seen` is what lets a creature close and then swing —
    an attack on somebody out of reach does not walk: the turn ends with a
    `stayed` beat saying why ("target out of reach"), and a `toward` whose
@@ -133,7 +137,8 @@ The four verb-keyed social keys (`intimidated`, `intimidate_failed`,
 
 ### Hearing (rpg-project#569)
 
-A deed makes a sound: an attack (struck or missed) is a `clang`, a door
+A deed makes a sound: an attack is a `clang` whether it hit or missed — a
+missed roll is steel on a shield, and still heard — a door
 forced by Strength a `crash`, a cast that delivered damage a `boom`, and every
 `say` on any answer row a `voice`. Each kind is a DC where it is made — 0 for
 a boom, 5 for a crash, a clang or a voice — plus 5 for every region the sound

@@ -110,7 +110,12 @@ var Layer = behavior.Layer
 // The bands and selector words, re-exported so the authoring dialect refuses
 // by the same names the evaluator reads.
 const (
-	// EnemyReach holds when an opposed member is within this creature's reach.
+	// EnemyReach holds when an opposed member is within this creature's reach
+	// AND it can attack this pick (R11, rpg-project#569): reach is a statement
+	// about striking. With no attack affordable — always, on the world clock —
+	// nothing is in reach, and `seen` (or `remembered`) holds instead, so the
+	// four bands stay exclusive and a creature that cannot swing still has
+	// its alarm and patrol rows.
 	EnemyReach = behavior.EnemyReach
 
 	// EnemySeen holds when one is in sight and NONE is in reach.
