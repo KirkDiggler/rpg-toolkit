@@ -202,15 +202,13 @@ func sealedSeam(atX, height int) []WallInput {
 	return out
 }
 
-// TestFormRefusesAPlayerFreeBubble pins driveMonsterTurns's defensive check
-// via form: a fight with no player in it at all has nobody to ever hand the
-// clock back to, and rpg-toolkit#1162 refuses loudly (ErrNoPlayerInBubble)
-// rather than looping forever or silently ending every member's turn.
-//
-// UNREACHABLE THROUGH TRIGGER DETECTION in the running game — a bubble only
-// forms on contact between a player and something else — so this drives
-// form directly, the same white-box reason TestFormRejections does.
-func TestFormRefusesAPlayerFreeBubble(t *testing.T) {
+// TestFormDrivesNothingInAPlayerFreeBubble pins formation's half of a fight
+// nobody plays (rpg-project#569, D0): it forms, its first member is still
+// active, and no turn has been taken — its rounds are the world clock's to
+// run, and forming a fight is not a round passing. This replaced a test that
+// pinned a refusal (the old ErrNoPlayerInBubble), back when a bubble formed
+// only on contact between a player and something else.
+func TestFormDrivesNothingInAPlayerFreeBubble(t *testing.T) {
 	enc, err := NewEncounter(&SetupInput{
 		Field: FieldInput{Canvas: CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()}, Regions: []RegionInput{rectRegion("r1", 0, 0, 8, 8)}},
 		Members: []MemberInput{
@@ -236,7 +234,15 @@ func TestFormRefusesAPlayerFreeBubble(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = enc.form(&FormInput{Order: []MemberID{"goblin", "wolf"}})
-	require.ErrorIs(t, err, ErrNoPlayerInBubble)
+	require.NoError(t, err)
+
+	require.Len(t, enc.bubbles, 1, "the fight formed")
+	active, err := enc.bubbles[0].Active()
+	require.NoError(t, err)
+	require.Equal(t, MemberID("goblin"), active, "nobody's turn was taken at formation")
+	round, err := enc.bubbles[0].Round()
+	require.NoError(t, err)
+	require.Equal(t, 1, round)
 }
 
 // rogueTurnIntent is a TurnIntent this package's own switch cannot possibly

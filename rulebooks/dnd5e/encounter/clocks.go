@@ -344,9 +344,12 @@ func (e *Encounter) driveTurnsWithParticipation(
 	if err != nil {
 		return false, 0, nil, fmt.Errorf("drive monster turns: %w", err)
 	}
-	if !e.bubbleHasPlayer(order) {
-		return false, 0, nil, fmt.Errorf("drive monster turns: %w", ErrNoPlayerInBubble)
-	}
+	// A FIGHT NOBODY PLAYS STOPS AT THE END OF ITS ROUND (rpg-project#569,
+	// D0). A played fight stops at the first player who waits; a fight of
+	// creatures alone has no such member, and is driven one round at a
+	// time by the world clock ([Encounter.driveUnplayedFights]) — so it
+	// stops where the round wraps, and the next round is the world's next.
+	unplayed := !e.bubbleHasPlayer(order)
 
 	for i := 0; i < len(order); i++ {
 		// THE PAUSE GUARD AGAIN, PER ITERATION, AND IT IS A BUG FIX. The
@@ -427,6 +430,9 @@ func (e *Encounter) driveTurnsWithParticipation(
 			}
 			wrapped = wrapped || roundWrapped
 			lastSeq = seq
+			if unplayed && roundWrapped {
+				return wrapped, lastSeq, deltas, nil
+			}
 			continue
 		case TurnParticipationWait:
 			if m.Kind == KindPlayer {
@@ -456,6 +462,9 @@ func (e *Encounter) driveTurnsWithParticipation(
 		wrapped = wrapped || roundWrapped
 		lastSeq = seq
 		deltas = mergeIntelDeltas(deltas, turnDeltas)
+		if unplayed && roundWrapped {
+			return wrapped, lastSeq, deltas, nil
+		}
 	}
 
 	return wrapped, lastSeq, deltas, nil
@@ -2251,13 +2260,12 @@ func (e *Encounter) driveIfStillRunning(bubble *clock.Turn) (map[MemberID]*Intel
 		return nil, nil
 	}
 
-	// UNLIKE EndTurn and form, a player-free bubble IS reachable here: Exit
-	// (and Transfer to the world clock) can drain a fight's last player one
-	// member at a time, leaving a fight of monsters alone as a legitimate,
-	// tolerated intermediate state — TestADrainedBubbleIsPruned pins exactly
-	// this ("a fight of one is still a fight"). Nobody is left to hand a
-	// driven-through turn back to, so this is a no-op rather than the defect
-	// ErrNoPlayerInBubble names for EndTurn/form's unreachable case.
+	// A FIGHT NOBODY PLAYS IS NOT DRIVEN HERE. Exit (and Transfer to the
+	// world clock) can drain a fight's last player one member at a time, and
+	// two opposed creatures can start one with no player at all
+	// (rpg-project#569, D0). Either way its rounds are the world's to run
+	// ([Encounter.driveUnplayedFights]), one per world round, so a verb that
+	// happens to touch it does not hand it a round nobody lived.
 	if !e.bubbleHasPlayer(order) {
 		return nil, nil
 	}
@@ -2438,6 +2446,15 @@ func (e *Encounter) formWithParticipation(
 	// train between two units.
 	if e.holdEndings {
 		e.deferredDrives = append(e.deferredDrives, bubble)
+		return &FormOutput{Seq: seq, Paused: e.Paused()}, nil
+	}
+	// A FIGHT WITH NO PLAYER IN IT IS NOT DRIVEN AT FORMATION
+	// (rpg-project#569, D0). A played fight drives its unplayed members up
+	// to the first player because that player is waiting on them. Nobody
+	// waits on a fight of creatures alone: it lives at the world's pace, one
+	// round per world round ([Encounter.driveUnplayedFights]), and forming
+	// it is not a round passing.
+	if !e.bubbleHasPlayer(in.Order) {
 		return &FormOutput{Seq: seq, Paused: e.Paused()}, nil
 	}
 	_, _, intelDeltas, derr := e.driveTurnsWithParticipation(bubble, participation)
@@ -2695,7 +2712,7 @@ type EndTurnOutput struct {
 // (the member is not in a fight), ErrNotActive when it is not this member's
 // turn (with no state change — translated from play/clock's own sentinel,
 // rpg-toolkit#1169, the same refusal Step now shares), and whatever
-// driveMonsterTurns can return (ErrNoPlayerInBubble, ErrBadTurnOutcome, or a
+// driveMonsterTurns can return (ErrBadTurnOutcome, or a
 // Driver's own error) if an unplayed member follows. A driver error here
 // means NOTHING this call did is persisted — not even the acting member's
 // own end — since nothing is saved until the caller's commit; see

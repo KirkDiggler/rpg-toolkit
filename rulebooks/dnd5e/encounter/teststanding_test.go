@@ -164,3 +164,29 @@ func (c *countingStanding) Assess(members []encounter.MemberID) (*encounter.Part
 	c.calls++
 	return assessmentFromDown(members, nil), nil
 }
+
+// outOfContact is everyone standing, with the named members off every side:
+// standing, conscious, in plain sight, and not in contact, so no pair holds
+// them and no fight forms around them (rpg-project#569, D0). It is the one
+// way an opposed creature can stand watched on the world clock now that any
+// two opposed contact members who see each other go to initiative — the
+// scenes about how a creature on the world clock READS an enemy it sees.
+type outOfContact struct {
+	everyoneStanding
+	ids []encounter.MemberID
+}
+
+func (o outOfContact) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
+	out, err := o.everyoneStanding.Assess(members)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out.Members {
+		for _, id := range o.ids {
+			if out.Members[i].Member == id {
+				out.Members[i].Contact = false
+			}
+		}
+	}
+	return out, nil
+}

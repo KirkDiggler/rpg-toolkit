@@ -304,7 +304,7 @@ func (s *StandingSuite) TestALoadedEncounterAsksToo() {
 // --- a corpse cannot start or join a fight --------------------------------
 
 // TestACorpseStartsNoFight is the first of the three census defects:
-// sidesInContactOrder partitioned by Kind alone, so a dead monster in view was
+// classify's sides were partitioned by Kind alone, so a dead monster in view was
 // still a monster in view, and sight started a fight with it.
 func (s *StandingSuite) TestACorpseStartsNoFight() {
 	fighting := s.pair(&downList{})

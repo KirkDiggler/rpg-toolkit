@@ -1257,6 +1257,12 @@ func TestAFactOnlyTimeRowIsAVoice(t *testing.T) {
 // in reach — its alarm row fires, and its `enemy: none` patrol row is not a
 // candidate. Before R11 the thug read as in reach, `seen` was cleared, the
 // attack row was unaffordable, and the bandit had no row it could pick.
+//
+// THE THUG IS OUT OF CONTACT since D0 (rpg-project#569): two opposed
+// creatures in contact who see each other go to initiative, so a hostile
+// thug in plain sight of the bandit is a fight, not a world-clock read. The
+// rulebook's Contact answer taking the thug off every side is the case that
+// still reaches this pick — seen, opposed, and nobody's opponent.
 func TestACrossbowOnTheWorldClockRaisesTheAlarmRatherThanFreezing(t *testing.T) {
 	crossbow := core.Ref{Module: "dnd5e", Type: "weapons", ID: "light-crossbow"}
 	route := []spatial.Position{cellAt(1, 1), cellAt(1, 4), cellAt(4, 4), cellAt(4, 1)}
@@ -1285,10 +1291,14 @@ func TestACrossbowOnTheWorldClockRaisesTheAlarmRatherThanFreezing(t *testing.T) 
 		{Between: [2]encounter.FactionID{"gang", encounter.FactionParty}, Stance: encounter.StanceNeutral},
 		{Between: [2]encounter.FactionID{"watch", "gang"}, Stance: encounter.StanceHostile},
 	}
+	setup.Participation = outOfContact{ids: []encounter.MemberID{"ganger"}}
 	enc, err := encounter.NewEncounter(setup)
 	require.NoError(t, err)
 	require.LessOrEqual(t, enc.Distance(whereIs(t, enc, "bandit"), whereIs(t, enc, "ganger")), 16.0,
 		"precondition: the ganger is inside the crossbow's 80 feet")
+	on, err := enc.ClockOf(&encounter.ClockOfInput{Member: "bandit"})
+	require.NoError(t, err)
+	require.Equal(t, encounter.ClockWorld, on.Kind, "precondition: the bandit is on the world clock, in no fight")
 
 	_, err = aRound(enc)
 	require.NoError(t, err)

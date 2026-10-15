@@ -28,8 +28,8 @@ type InitiativeRoller interface {
 	RollInitiative(members []MemberID) ([]MemberID, error)
 }
 
-// contactKind is what one player-monster pair's awareness amounts to after a
-// sight refresh.
+// contactKind is what one opposed pair's awareness amounts to after a sight
+// refresh.
 //
 // The four cases are the whole rule. 5e's surprise is an asymmetry — you are
 // surprised if you did not notice your enemy — so a trigger built on who saw
@@ -40,8 +40,8 @@ const (
 	// contactNone: neither noticed the other this step.
 	contactNone contactKind = iota
 
-	// contactDrop: the player saw the monster and the monster did not see
-	// back. The designed behavior is that the walk ends early and the player
+	// contactDrop: a player saw an opposed member that did not see back —
+	// player-only, because only a player is offered a choice (rpg-toolkit#1020). The designed behavior is that the walk ends early and the player
 	// decides in free roam — back away, sneak, or approach — with attacking
 	// from here counting as initiation.
 	//
@@ -78,8 +78,10 @@ const (
 	// would be the built-and-wrong this comment has always preferred to avoid.
 	contactDrop
 
-	// contactSpotted: the monster saw the player and the player did not see
-	// back. The bubble forms; nobody had a choice to make.
+	// contactSpotted: one side saw the other, which did not see back, and
+	// the one who saw is not a player — a monster spotting a player, or one
+	// monster spotting another across a hostile edge (rpg-project#569, D0).
+	// The bubble forms; nobody had a choice to make.
 	contactSpotted
 
 	// contactMutual: both saw each other. The bubble forms.
@@ -217,7 +219,7 @@ func (e *Encounter) classify(deltas map[MemberID]*IntelDelta, contact map[Member
 		return false
 	}
 
-	players, monsters := e.sidesInContactOrder(contact)
+	members := e.contactInOrder(contact)
 
 	var (
 		engaged = map[MemberID]bool{}
@@ -225,18 +227,26 @@ func (e *Encounter) classify(deltas map[MemberID]*IntelDelta, contact map[Member
 		dropBy  MemberID
 	)
 
-	for _, player := range players {
-		for _, monster := range monsters {
+	// EVERY UNORDERED PAIR OF CONTACT MEMBERS, OF ANY KIND (rpg-project#569,
+	// the mad king D0). The loop ran players × monsters for as long as a
+	// fight needed a player in it to have anybody to end a turn; that was the
+	// whole table before factions existed, and once two monster factions
+	// could be declared hostile it was a table with a hole in it — the
+	// garrison and the loyalists at war in the graph, `enemy:` answering so,
+	// and no fight between them. The graph is the only filter now: a pair is
+	// a pair while a hostile-to edge stands between their factions, which
+	// under the default dispositions is still exactly every player and every
+	// monster, and never two players (the party is allied with itself).
+	for i, a := range members {
+		for _, b := range members[i+1:] {
 			// THE GRAPH SAYS WHO IS OPPOSED (rpg-project#375, design §3.2):
-			// a pair is a pair only while a hostile-to edge stands between
-			// their factions. Under the default dispositions that is every
-			// player and every monster, which is the whole table this loop
-			// ran on before factions existed; a camp that has turned is a
-			// monster in sight of a player and no fight.
-			if !e.opposed(player, monster) {
+			// a camp that has turned is a monster in sight of a player and no
+			// fight, and two neutral camps watching each other are two camps.
+			if !e.opposed(a, b) {
 				continue
 			}
-			switch contactBetween(sawFirst(player, monster), sawFirst(monster, player)) {
+			aSaw, bSaw := sawFirst(a, b), sawFirst(b, a)
+			switch e.contactBetween(a, b, aSaw, bSaw) {
 			case contactMutual, contactSpotted:
 				// mutual or spotted — the bubble forms either way, and which
 				// of the two it was only matters to surprise, which is read
@@ -248,12 +258,18 @@ func (e *Encounter) classify(deltas map[MemberID]*IntelDelta, contact map[Member
 				// point of a bubble being a bubble rather than a mode. Pulling
 				// the entire roster in would delete the split party the
 				// composition exists to support.
-				engaged[player] = true
-				engaged[monster] = true
+				engaged[a] = true
+				engaged[b] = true
 			case contactDrop:
-				drops = append(drops, monster)
+				// The player is whichever of the two saw; the one not seen
+				// is the creature the drop was got on.
+				seer, unseen := a, b
+				if bSaw {
+					seer, unseen = b, a
+				}
+				drops = append(drops, unseen)
 				if dropBy == "" {
-					dropBy = player
+					dropBy = seer
 				}
 			case contactNone:
 			}
@@ -369,27 +385,24 @@ func (e *Encounter) unawareOfOpposition(id MemberID, contact map[MemberID]bool) 
 	return true, nil
 }
 
-// sidesInContactOrder returns the players and monsters whose supplied Contact
-// answer puts them on a side, each sorted. It deliberately does not infer
-// Contact as !Down: life state and contact participation are separate rulebook
-// answers. A member absent from a side appears in no pair and cannot form or
-// join a bubble.
-func (e *Encounter) sidesInContactOrder(contact map[MemberID]bool) (players, monsters []MemberID) {
-	for id, member := range e.members {
-		if !contact[id] {
-			continue
-		}
-		switch member.Kind {
-		case KindPlayer:
-			players = append(players, id)
-		case KindMonster:
-			monsters = append(monsters, id)
+// contactInOrder returns the members whose supplied Contact answer puts them
+// on a side, sorted. It deliberately does not infer Contact as !Down: life
+// state and contact participation are separate rulebook answers. A member
+// absent from it appears in no pair and cannot form or join a bubble.
+//
+// EVERY KIND, because the graph rather than the kind decides who is opposed
+// (rpg-project#569, D0). A world NPC is here too and pairs with nobody: it is
+// in no faction, so [Encounter.opposed] answers no for every pair it is in.
+func (e *Encounter) contactInOrder(contact map[MemberID]bool) []MemberID {
+	out := make([]MemberID, 0, len(contact))
+	for id := range e.members {
+		if contact[id] {
+			out = append(out, id)
 		}
 	}
-	sort.Slice(players, func(i, j int) bool { return players[i] < players[j] })
-	sort.Slice(monsters, func(i, j int) bool { return monsters[i] < monsters[j] })
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
 
-	return players, monsters
+	return out
 }
 
 // applyTrigger turns a classification into what actually happened: a fight
@@ -506,19 +519,32 @@ func (e *Encounter) bubbleSize() int {
 	return len(e.bubbles[0].ToData().Order)
 }
 
-// contactBetween names what one pair's two first-contact answers amount to.
+// contactBetween names what one opposed pair's two first-contact answers
+// amount to.
 //
 // Written as its own function so the four cases are stated once, in the order
 // the rule reads, rather than inferred from the shape of an if.
-func contactBetween(playerSaw, monsterSaw bool) contactKind {
+//
+// A ONE-SIDED CONTACT IS A DROP ONLY WHEN A PLAYER SAW. The drop's whole
+// meaning is a choice offered to whoever saw unseen — back away, sneak, or
+// approach — and only a player is offered anything (rpg-toolkit#1020 owns
+// the shape of that offer). A creature that saw an enemy that did not see it
+// has nobody to ask: the bubble forms, as it does when a monster spots a
+// player. So a guard who spots a prisoner, and a prisoner who spots a guard,
+// both start the fight.
+func (e *Encounter) contactBetween(a, b MemberID, aSaw, bSaw bool) contactKind {
 	switch {
-	case playerSaw && monsterSaw:
+	case aSaw && bSaw:
 		return contactMutual
-	case monsterSaw:
-		return contactSpotted
-	case playerSaw:
-		return contactDrop
-	default:
+	case !aSaw && !bSaw:
 		return contactNone
 	}
+	seer := a
+	if bSaw {
+		seer = b
+	}
+	if m, ok := e.members[seer]; ok && m.Kind == KindPlayer {
+		return contactDrop
+	}
+	return contactSpotted
 }

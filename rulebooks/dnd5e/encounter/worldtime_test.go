@@ -880,6 +880,10 @@ func TestAHeardBeatReachesThePlayerWhosePassiveBeatsTheDCOnly(t *testing.T) {
 // its turn to think, is skipped — not asked for a world budget it no longer
 // has. Before the fix the tick failed with "not a member of this clock" and
 // rolled back, so the alarm never landed.
+//
+// The ganger the bandit sees is OUT OF CONTACT since D0 (rpg-project#569): a
+// hostile creature in contact and in plain sight is a fight at first light,
+// and the scene is about the fight the alarm forms, mid-pass.
 func TestAnAlarmThatFormsAFightMidTickCompletesTheTick(t *testing.T) {
 	const (
 		bandit encounter.MemberID = "bandit"
@@ -911,6 +915,7 @@ func TestAnAlarmThatFormsAFightMidTickCompletesTheTick(t *testing.T) {
 		{Between: [2]encounter.FactionID{"gang", encounter.FactionParty}, Stance: encounter.StanceNeutral},
 		{Between: [2]encounter.FactionID{"watch", "gang"}, Stance: encounter.StanceHostile},
 	}
+	setup.Participation = outOfContact{ids: []encounter.MemberID{ganger}}
 	enc, err := encounter.NewEncounter(setup)
 	require.NoError(t, err)
 	for _, m := range []encounter.MemberID{noiseAlice, bandit, guard2} {

@@ -376,17 +376,6 @@ var (
 	// why this differs from Decider, which IS optional.
 	ErrNoTurnDriver = errors.New("encounter: no turn driver capability")
 
-	// ErrNoPlayerInBubble indicates a bubble was asked to drive its unplayed
-	// members forward and found no KindPlayer member in it at all.
-	//
-	// Defensive rather than reachable through any documented path: a bubble
-	// only forms on contact between a player and something else (rpg-
-	// toolkit#964), so a player-free fight should not exist. Refused loudly
-	// here rather than looping driveMonsterTurns forever or silently ending
-	// every member's turn with nobody left to hand the clock to, in case that
-	// invariant is ever broken elsewhere.
-	ErrNoPlayerInBubble = errors.New("encounter: bubble has no player to end on")
-
 	// ErrBadTurnOutcome indicates a Driver returned a TurnIntent this
 	// version of the module does not recognise — a value outside the sealed
 	// Pass/Attack/Move/Routed vocabulary.
