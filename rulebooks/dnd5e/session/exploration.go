@@ -17,8 +17,29 @@ import (
 // Legacy JSON may contain a checks member; ordinary decoding ignores that
 // obsolete duplicate rather than importing it into a new playthrough.
 type ExplorationData struct {
-	Character          string `json:"character"`
-	PrivateDiscoveries bool   `json:"private,omitempty"`
+	Character string `json:"character"`
+	// PrivateDiscoveries is the legacy preference, read only when
+	// DiscoverySharing is nil: a record written before the choice existed
+	// keeps its meaning (absent meant shared). SetDiscoverySharing keeps it
+	// the complement of DiscoverySharing so the two never disagree.
+	PrivateDiscoveries bool `json:"private,omitempty"`
+	// DiscoverySharing is the character's explicit choice. Nil means the
+	// character has not chosen; only SetDiscoverySharing sets it.
+	DiscoverySharing *bool `json:"discovery_sharing,omitempty"`
+}
+
+// resolveDiscoverySharing is the one place a stored preference becomes the
+// audience a member discovers for (rpg-project#595, R8): an explicit choice
+// wins; a record without one keeps its legacy meaning; no record at all is
+// private. It reads only, so a default is never written down as a choice.
+func resolveDiscoverySharing(profile *ExplorationData, found bool) bool {
+	if profile != nil && profile.DiscoverySharing != nil {
+		return *profile.DiscoverySharing
+	}
+	if profile == nil || !found {
+		return false
+	}
+	return !profile.PrivateDiscoveries
 }
 
 // ExplorationRepository is the host's opaque key-value preference store.
@@ -52,10 +73,12 @@ func (m *Manager) prepareExploration(ctx context.Context, scope *writeScope, ext
 	sort.Strings(ordered)
 	scope.exploration = map[string]*ExplorationData{}
 	scope.explorationBefore = map[string]ExplorationData{}
+	scope.explorationSharing = map[string]bool{}
 	for _, id := range ordered {
 		profile, loadErr := m.explorations.GetExploration(ctx, id)
+		found := true
 		if errors.Is(loadErr, ErrNotFound) {
-			profile = &ExplorationData{Character: id}
+			profile, found = &ExplorationData{Character: id}, false
 		} else if loadErr != nil {
 			return loadErr
 		}
@@ -65,6 +88,11 @@ func (m *Manager) prepareExploration(ctx context.Context, scope *writeScope, ext
 		copied := cloneExploration(profile)
 		scope.exploration[id] = copied
 		scope.explorationBefore[id] = *cloneExploration(profile)
+		// Resolve once, here, where ErrNotFound is still visible: the staged
+		// copy of a missing record is a bare {Character: id}, which reads
+		// exactly like a legacy shared record.
+		sharing := resolveDiscoverySharing(profile, found)
+		scope.explorationSharing[id] = sharing
 		if err = m.stageCheck(ctx, scope, "discovery observer", id); err != nil {
 			return err
 		}
@@ -72,7 +100,8 @@ func (m *Manager) prepareExploration(ctx context.Context, scope *writeScope, ext
 		// from the loaded encounter; no character-owned checks enter this call.
 		for _, member := range roster {
 			if string(member.ID) == id {
-				if _, err = scope.enc.RestoreDiscovery(&encounter.RestoreDiscoveryInput{Member: member.ID, Private: profile.PrivateDiscoveries}); err != nil {
+				restore := &encounter.RestoreDiscoveryInput{Member: member.ID, Private: !sharing}
+				if _, err = scope.enc.RestoreDiscovery(restore); err != nil {
 					return translate(err)
 				}
 				break
@@ -84,7 +113,21 @@ func (m *Manager) prepareExploration(ctx context.Context, scope *writeScope, ext
 
 func cloneExploration(in *ExplorationData) *ExplorationData {
 	out := *in
+	if in.DiscoverySharing != nil {
+		sharing := *in.DiscoverySharing
+		out.DiscoverySharing = &sharing
+	}
 	return &out
+}
+
+func sameExploration(a, b *ExplorationData) bool {
+	if a.Character != b.Character || a.PrivateDiscoveries != b.PrivateDiscoveries {
+		return false
+	}
+	if a.DiscoverySharing == nil || b.DiscoverySharing == nil {
+		return a.DiscoverySharing == nil && b.DiscoverySharing == nil
+	}
+	return *a.DiscoverySharing == *b.DiscoverySharing
 }
 
 func (m *Manager) saveExploration(ctx context.Context, scope *writeScope) error {
@@ -98,12 +141,11 @@ func (m *Manager) saveExploration(ctx context.Context, scope *writeScope) error 
 		if profile == nil {
 			continue
 		}
-		sharing, err := scope.enc.DiscoverySharing(&encounter.DiscoverySharingInput{Member: member.ID})
-		if err != nil {
-			return translate(err)
-		}
-		profile.PrivateDiscoveries = !sharing.Sharing
-		if *profile == scope.explorationBefore[id] {
+		// Only a staged change is saved. The preference is never derived from
+		// the encounter: SetDiscoverySharing is its one writer, so a member who
+		// never chose leaves no record behind.
+		before := scope.explorationBefore[id]
+		if sameExploration(profile, &before) {
 			continue
 		}
 		if err = m.explorations.SaveExploration(ctx, profile); err != nil {
@@ -147,6 +189,13 @@ func (m *Manager) SetDiscoverySharing(ctx context.Context, in *SetDiscoveryShari
 	out, err := scope.enc.SetDiscoverySharing(&encounter.SetDiscoverySharingInput{Member: encounter.MemberID(in.Member), Sharing: in.Sharing})
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", verb, translate(err))
+	}
+	// The explicit choice is staged here and nowhere else. Choosing the value
+	// the default already resolves to is still a choice and is saved.
+	if profile := scope.exploration[in.Member]; profile != nil {
+		sharing := out.Sharing
+		profile.DiscoverySharing = &sharing
+		profile.PrivateDiscoveries = !sharing
 	}
 	saved, delivery, err := m.commit(ctx, scope)
 	if err != nil {

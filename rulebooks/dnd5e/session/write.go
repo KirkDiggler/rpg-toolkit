@@ -554,12 +554,9 @@ func joinInputFor(
 	}
 	scope.standing.kinds[id] = encounter.MemberKind(kind)
 
-	profile := scope.exploration[id]
-	if profile == nil {
-		profile = &ExplorationData{}
-	}
 	return encounter.JoinInput{
-		PrivateDiscoveries: profile.PrivateDiscoveries,
+		// Resolved by prepareExploration; a missing entry is private.
+		PrivateDiscoveries: !scope.explorationSharing[id],
 		Member:             encounter.MemberID(id),
 		Kind:               encounter.MemberKind(kind),
 		Name:               name,
@@ -985,6 +982,10 @@ func (s *writeScope) frozen() error {
 type writeScope struct {
 	exploration       map[string]*ExplorationData
 	explorationBefore map[string]ExplorationData
+	// explorationSharing is each staged member's resolved discovery audience,
+	// written once by prepareExploration (the only place that sees a missing
+	// record) and read by joinInputFor. A missing entry is private.
+	explorationSharing map[string]bool
 	// The already-paid remainder is frozen only if a direct walk poses.
 	walkContinuation []spatial.Position
 
