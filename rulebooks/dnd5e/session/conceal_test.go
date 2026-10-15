@@ -291,11 +291,12 @@ func armedSearcher(id string) *character.Data {
 type ConcealSuite struct {
 	suite.Suite
 
-	stream     *fakeStream
-	sessions   session.SessionRepository
-	encounters session.EncounterRepository
-	characters session.CharacterRepository
-	mgr        *session.Manager
+	stream       *fakeStream
+	explorations *explorationStore
+	sessions     session.SessionRepository
+	encounters   session.EncounterRepository
+	characters   session.CharacterRepository
+	mgr          *session.Manager
 }
 
 func TestConcealSuite(t *testing.T) {
@@ -328,7 +329,9 @@ func (s *ConcealSuite) wire(driver session.TurnDriver, world scene, cast ...*cha
 	// the ones this scene's cast leaves out are given plain ones.
 	stockAuthoredPlayers(world, characters)
 	s.sessions, s.encounters, s.characters = sessions, encounters, characters
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	s.explorations = newFakeExplorations()
+	mgr, err := session.NewManager(&session.Config{
+		Seats: newFakeSeats(), Explorations: s.explorations, PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: driver,
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
@@ -434,9 +437,10 @@ var (
 // suites is the one a member walking up to the secret gets. The member must
 // stand at (1,1), where the scenes seat alice.
 //
-// The finder keeps the find to herself first. Discovery is shared with the
-// party by default, so a find would reach bob and carol too; these scenes are
-// about what the finder alone is told, which is the private preference.
+// The finder keeps the find to herself first. Discovery is private until a
+// character chooses (rpg-project#595, R8), but a scene may have chosen shared;
+// these scenes are about what the finder alone is told, so the walk states the
+// private preference explicitly rather than leaning on the default.
 //
 // On a turn clock the walk is the current Move offer, named by its selector.
 func walkToFind(
@@ -1048,6 +1052,9 @@ func (s *ConcealSuite) TestOpeningRevealsToThePerceiversThroughTheOneSeam() {
 	s.Subset(append(hallFloor(), vaultFloor()...), after.Cells, "and nothing outside the two rooms")
 }
 
+// hiddenJoiner is the member placed inside the concealed vault.
+const hiddenJoiner = "david"
+
 // TestAJoinIntoHiddenSpaceStaysHidden covers the first-crosser branch the
 // engine review seeded (PR #1373: a mover included in a frontier-scoped beat
 // before their own fold answers), on the session verb that can actually
@@ -1064,6 +1071,10 @@ func (s *ConcealSuite) TestOpeningRevealsToThePerceiversThroughTheOneSeam() {
 func (s *ConcealSuite) TestAJoinIntoHiddenSpaceStaysHidden() {
 	ctx := context.Background()
 	s.startWith(concealedWorld(encounter.DoorIsClosed()), armedFighter("david"))
+	// David's find check rolls inside Join, before he could choose, so his
+	// choice to share is already on his profile (rpg-project#595, R8).
+	shared := true
+	s.explorations.data[hiddenJoiner] = &session.ExplorationData{Character: hiddenJoiner, DiscoverySharing: &shared}
 
 	s.stream.published = nil
 	out, err := s.mgr.Join(ctx, &session.JoinInput{
@@ -1092,13 +1103,14 @@ func (s *ConcealSuite) TestAJoinIntoHiddenSpaceStaysHidden() {
 	// The hall members hear that DAVID JOINED — membership is a table-level
 	// fact and every non-detection beat stays full-data until v1.0 (the
 	// standing ruling) — but the beat carries no position, and nothing
-	// tells them WHERE he appeared: no reveal, no hole. David never chose to
-	// share discoveries, so his find check is his alone (rpg-project#595, R8:
-	// sharing is a choice) and the hall hears only the membership beat.
+	// tells them WHERE he appeared: no reveal, no hole. David chose to share
+	// discoveries with the party (seeded above), so they also hear that he
+	// rolled a find check, a beat that names neither a cell nor what he
+	// stands in.
 	for _, name := range []string{"alice", "bob"} {
 		heard := eventsFor(s.stream.published, name)
-		s.Equal([]session.EventKind{session.EventJoined},
-			recipientKinds(heard, name), "%s hears the membership beat, nothing else", name)
+		s.Equal([]session.EventKind{session.EventJoined, session.EventDiscoveryChecked},
+			recipientKinds(heard, name), "%s hears the membership beat and his find check, nothing else", name)
 		body, ok := heard[0].Body.(session.JoinedBody)
 		s.Require().True(ok)
 		s.Equal(session.JoinedBody{Member: "david"}, body,

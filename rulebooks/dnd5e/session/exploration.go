@@ -73,7 +73,7 @@ func (m *Manager) prepareExploration(ctx context.Context, scope *writeScope, ext
 	sort.Strings(ordered)
 	scope.exploration = map[string]*ExplorationData{}
 	scope.explorationBefore = map[string]ExplorationData{}
-	scope.explorationFound = map[string]bool{}
+	scope.explorationSharing = map[string]bool{}
 	for _, id := range ordered {
 		profile, loadErr := m.explorations.GetExploration(ctx, id)
 		found := true
@@ -88,7 +88,11 @@ func (m *Manager) prepareExploration(ctx context.Context, scope *writeScope, ext
 		copied := cloneExploration(profile)
 		scope.exploration[id] = copied
 		scope.explorationBefore[id] = *cloneExploration(profile)
-		scope.explorationFound[id] = found
+		// Resolve once, here, where ErrNotFound is still visible: the staged
+		// copy of a missing record is a bare {Character: id}, which reads
+		// exactly like a legacy shared record.
+		sharing := resolveDiscoverySharing(profile, found)
+		scope.explorationSharing[id] = sharing
 		if err = m.stageCheck(ctx, scope, "discovery observer", id); err != nil {
 			return err
 		}
@@ -96,7 +100,7 @@ func (m *Manager) prepareExploration(ctx context.Context, scope *writeScope, ext
 		// from the loaded encounter; no character-owned checks enter this call.
 		for _, member := range roster {
 			if string(member.ID) == id {
-				restore := &encounter.RestoreDiscoveryInput{Member: member.ID, Private: !resolveDiscoverySharing(profile, found)}
+				restore := &encounter.RestoreDiscoveryInput{Member: member.ID, Private: !sharing}
 				if _, err = scope.enc.RestoreDiscovery(restore); err != nil {
 					return translate(err)
 				}
