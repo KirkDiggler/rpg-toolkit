@@ -66,6 +66,28 @@ func (s *WalkEntrySuite) TestSeeingATeammateInAFightIsNotContact() {
 	s.Equal(encounter.ClockWorld, after.Kind)
 }
 
+// TestAWatchedWalkerOutOfTheFightIsReadmitted pins AdmitWalk's own admission
+// branch: a member who stepped out of the fight while an opposed member of it
+// still watches her has had that contact classified already, so no
+// transition re-adds her; AdmitWalk does, before her next step, without
+// moving her, and a second call is a no-op.
+func (s *WalkEntrySuite) TestAWatchedWalkerOutOfTheFightIsReadmitted() {
+	enc := s.sceneLit(map[encounter.MemberID]int{alice: 1, goblin: 2}) // spotted from first light
+	before, err := enc.Members()
+	s.Require().NoError(err)
+	_, err = enc.Transfer(&encounter.TransferInput{Member: alice, To: encounter.ClockWorld})
+	s.Require().NoError(err)
+	got, err := enc.AdmitWalk(&encounter.AdmitWalkInput{Member: alice})
+	s.Require().NoError(err)
+	s.True(got.Joined, "a hostile in the fight watching her is contact")
+	after, err := enc.Members()
+	s.Require().NoError(err)
+	s.Equal(before, after, "placement unchanged")
+	again, err := enc.AdmitWalk(&encounter.AdmitWalkInput{Member: alice})
+	s.Require().NoError(err)
+	s.False(again.Joined)
+}
+
 func (s *WalkEntrySuite) TestUnseenTeammateDoesNotPullWalkerIntoCombat() {
 	enc := s.scene(0)
 	joined, err := enc.AdmitWalk(&encounter.AdmitWalkInput{Member: alice})

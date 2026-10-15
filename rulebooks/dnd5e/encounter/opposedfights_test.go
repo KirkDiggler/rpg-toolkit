@@ -432,6 +432,12 @@ func (s *OpposedFightsSuite) TestSeeingAnAllyInAFightIsNotContact() {
 		s.Require().Equal(encounter.ClockTurn, s.clockOf(enc, alice), "precondition: alice is fighting the goblin")
 		s.walkAsTheSessionDoes(enc, bob, 10, 4)
 		s.Equal(encounter.ClockWorld, s.clockOf(enc, bob), "seeing his teammate fight is not contact")
+		// From the last cell he sees the goblin, which does not see him: the
+		// drop is his (rpg-toolkit#1020), and the next step's admission ask
+		// says so.
+		admitted, err := enc.AdmitWalk(&encounter.AdmitWalkInput{Member: bob})
+		s.Require().NoError(err)
+		s.False(admitted.Joined, "bob sees the goblin unseen: the drop is his, not admission")
 		s.Equal([]encounter.MemberID{alice, goblin}, s.order(enc, alice))
 	})
 
