@@ -257,6 +257,24 @@ func (e *Encounter) appendMutablePresences(presences []perception.Presence, geom
 // mutableWitnesses captures the original audience of a factual change. Merely
 // remembering an object is not permission to learn its unseen current state.
 func (e *Encounter) mutableWitnesses(subject core.EntityID, actor MemberID) ([]MemberID, error) {
+	return e.subjectSeers(subject, actor, true)
+}
+
+// subjectWitnesses is the actor plus every member who can see the subject
+// right now, WHETHER OR NOT THEY SEE THE ACTOR — what a door teaches when it
+// opens (rpg-project#569 R12: "the actor and the members who can see the
+// door"). A guard who watches the cell door swing learns it is open even when
+// the rogue picking it is hidden from him. The beat keeps
+// [Encounter.mutableWitnesses]'s narrower audience, because a beat names its
+// actor and must not identify one its reader cannot see; a fact names nobody.
+func (e *Encounter) subjectWitnesses(subject core.EntityID, actor MemberID) ([]MemberID, error) {
+	return e.subjectSeers(subject, actor, false)
+}
+
+// subjectSeers is the one sight pass both witness sets share: the actor, and
+// every member whose sight reaches the subject — and, when mustSeeActor, who
+// can also see the actor.
+func (e *Encounter) subjectSeers(subject core.EntityID, actor MemberID, mustSeeActor bool) ([]MemberID, error) {
 	ranges, err := e.sightNow()
 	if err != nil {
 		return nil, err
@@ -281,7 +299,7 @@ func (e *Encounter) mutableWitnesses(subject core.EntityID, actor MemberID) ([]M
 			continue
 		}
 		// A beat naming a carrier must not identify an unseen actor.
-		if actor != "" && !geometry.Reaches(perception.Sight, member, actor) {
+		if mustSeeActor && actor != "" && !geometry.Reaches(perception.Sight, member, actor) {
 			continue
 		}
 		out = append(out, member)

@@ -537,8 +537,10 @@ func (e *Encounter) setDoorState(door *doorRecord, next DoorState, actor MemberI
 	}
 
 	// A DOOR IS A SOURCE (rpg-project#569 R12): becoming open teaches the
-	// door's fact to exactly the audience the beat above was written for —
-	// the actor and whoever sees the door — and to nobody else. Landing
+	// door's fact to the actor and every member who can see the door — a
+	// wider set than the beat's audience, which also drops a witness who
+	// cannot see the actor ([Encounter.subjectWitnesses] says why) — and to
+	// nobody else; a hearer is not taught. Landing
 	// open is always a transition INTO open, because OpenDoor refuses a door
 	// already open and Unlock one not locked; a failed unlock re-states a
 	// shut door as itself and a close is not an opening. At the fact's
@@ -546,8 +548,12 @@ func (e *Encounter) setDoorState(door *doorRecord, next DoorState, actor MemberI
 	// waiting on the fact fires here; learnFact is idempotent, so a reopen
 	// teaches nobody twice.
 	if next.Kind() == DoorOpen && door.opened != "" {
+		learners, err := e.subjectWitnesses(sightDoor(door.id), actor)
+		if err != nil {
+			return doorChange{}, err
+		}
 		at := uint64(e.clock.ToData().HighWater)
-		for _, member := range audience {
+		for _, member := range learners {
 			if err := e.learnFact(member, door.opened, "opened door "+string(door.id), at); err != nil {
 				return doorChange{}, err
 			}

@@ -294,8 +294,10 @@ type DoorInput struct {
 	// (rpg-project#569 R12) — a door is a source, the way a record's
 	// `reveals` is. Empty means it teaches nothing.
 	//
-	// WHO LEARNS IT IS THE DOOR BEAT'S AUDIENCE, captured at the change: the
-	// actor and every member who can see the door. A hearer is not taught —
+	// WHO LEARNS IT is captured at the change: the actor and every member
+	// who can see the door, whether or not they see the actor — wider than
+	// the door beat's audience, which must not name an actor its reader
+	// cannot see. A hearer is not taught —
 	// a forced door's crash already lands as a sound, and whatever a listener
 	// makes of it is their own row's business. A host open with no actor that
 	// nobody sees teaches nobody: a door nobody saw open is a fact nobody

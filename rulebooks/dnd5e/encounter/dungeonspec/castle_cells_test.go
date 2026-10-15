@@ -10,7 +10,6 @@ package dungeonspec_test
 // picking the lock ends the run freed with the guards still standing.
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -56,15 +55,14 @@ func TestTheCellDoorCompilesItsFact(t *testing.T) {
 // below is refused out of range and says so.
 func TestPickingTheCellLockEndsTheRunFreed(t *testing.T) {
 	compiled := loadContent(t, cellsFixture)
+	enc := cellsRun(t, compiled, spatial.Position{X: -8, Y: 6}, everyoneSeesTheWholeMap{}, nil)
 
-	enc, ok := cellsRunWithPickerAt(t, compiled, spatial.Position{X: -8, Y: 6})
-	require.True(t, ok, "the picker's cell must be standable and within reach of the cell door")
+	_, err := enc.Unlock(&encounter.UnlockInput{
+		Door: cellsDoor, Actor: cellsPicker, Beaten: true, Total: 18, Applied: cellsPick,
+	})
+	require.NoError(t, err, "the picker's cell must be within reach of the cell door")
 
-	status, err := enc.Status()
-	require.NoError(t, err)
-	require.False(t, status.Open)
-	require.NotNil(t, status.Outcome)
-	require.Equal(t, "freed", status.Outcome.Ending)
+	requireFreed(t, enc)
 	for _, m := range compiled.Monsters {
 		if m.Faction == "garrison" {
 			require.Contains(t, memberIDsOf(t, enc), encounter.MemberID(m.MemberID),
@@ -73,15 +71,74 @@ func TestPickingTheCellLockEndsTheRunFreed(t *testing.T) {
 	}
 }
 
-// cellsRunWithPickerAt opens the cells with the picker standing at one cell
-// and has them pick the cell lock, reporting false when that cell is not one
-// the picker can stand on or reach the door from.
-func cellsRunWithPickerAt(t *testing.T, compiled dungeonspec.Compiled, cell spatial.Position) (*encounter.Encounter, bool) {
+// TestAGuardOpeningTheCellsOutOfThePartysSightEndsTheRunFreed is the walk's
+// second route, as ruled on the plan (rpg-project PR #570, 5611748): the
+// guard who opens the cell door is its actor, so he learns `cells-opened`,
+// and a `{ fact }` ending fires on anyone learning its fact (the truth grain,
+// design R5) — the party need not have seen it. The party stands at the
+// file's own start, blind, so nothing it could see is what fires the ending.
+func TestAGuardOpeningTheCellsOutOfThePartysSightEndsTheRunFreed(t *testing.T) {
+	compiled := loadContent(t, cellsFixture)
+	const opener = encounter.MemberID("44f4aa72-bd03-46b4-b8f4-d5dc2e895cff")
+	enc := cellsRun(t, compiled, compiled.PartyStart[0].At, partyIsBlind{},
+		map[encounter.MemberID]spatial.Position{opener: {X: -8, Y: 6}})
+
+	_, err := enc.Unlock(&encounter.UnlockInput{
+		Door: cellsDoor, Actor: opener, Beaten: true, Total: 18, Applied: cellsPick,
+	})
+	require.NoError(t, err)
+
+	requireFreed(t, enc)
+	learners := map[string]bool{}
+	for _, f := range enc.ToData().Journal.Facts {
+		if f.Kind == "known:fact:cells-opened" {
+			learners[f.Subject] = true
+		}
+	}
+	require.True(t, learners[string(opener)], "the guard who opened it learned it")
+	require.True(t, learners["7b8b5d1c-1b8f-4ea1-a681-5abab9420d0a"], "and so did the guard who watched him do it")
+	require.False(t, learners[string(cellsPicker)], "and the party, which saw nothing, did not")
+}
+
+// partyIsBlind is a sight model in which the party's one player sees nothing
+// and every creature sees the whole map.
+type partyIsBlind struct{}
+
+func (partyIsBlind) Sight(members []encounter.MemberID) (map[encounter.MemberID]int, error) {
+	out, err := everyoneSeesTheWholeMap{}.Sight(members)
+	if _, asked := out[cellsPicker]; asked {
+		out[cellsPicker] = 0
+	}
+
+	return out, err
+}
+
+// requireFreed asserts the run is over and ended `freed`.
+func requireFreed(t *testing.T, enc *encounter.Encounter) {
 	t.Helper()
-	members := []encounter.MemberInput{{ID: cellsPicker, Kind: encounter.KindPlayer, Position: cell}}
+	status, err := enc.Status()
+	require.NoError(t, err)
+	require.False(t, status.Open)
+	require.NotNil(t, status.Outcome)
+	require.Equal(t, "freed", status.Outcome.Ending)
+}
+
+// cellsRun opens the cells with the party's one player at a cell, the
+// file's creatures where it posts them (or where moved puts one), and the
+// sight model given.
+func cellsRun(
+	t *testing.T, compiled dungeonspec.Compiled, picker spatial.Position, sight encounter.Sight,
+	moved map[encounter.MemberID]spatial.Position,
+) *encounter.Encounter {
+	t.Helper()
+	members := []encounter.MemberInput{{ID: cellsPicker, Kind: encounter.KindPlayer, Position: picker}}
 	for _, m := range compiled.Monsters {
+		at := m.At
+		if cell, ok := moved[encounter.MemberID(m.MemberID)]; ok {
+			at = cell
+		}
 		members = append(members, encounter.MemberInput{
-			ID: encounter.MemberID(m.MemberID), Kind: encounter.KindMonster, Position: m.At,
+			ID: encounter.MemberID(m.MemberID), Kind: encounter.KindMonster, Position: at,
 			Faction: encounter.FactionID(m.Faction),
 		})
 	}
@@ -90,7 +147,7 @@ func cellsRunWithPickerAt(t *testing.T, compiled dungeonspec.Compiled, cell spat
 		Members: members,
 		Endings: append([]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, compiled.Endings...),
 		Capabilities: encounter.Capabilities{
-			Sight:         everyoneSeesTheWholeMap{},
+			Sight:         sight,
 			Equipment:     encounter.UnobservedEquipment{},
 			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        zeroSheets{},
@@ -106,20 +163,9 @@ func cellsRunWithPickerAt(t *testing.T, compiled dungeonspec.Compiled, cell spat
 			},
 		},
 	})
-	if errors.Is(err, encounter.ErrBadPlacement) {
-		return nil, false
-	}
 	require.NoError(t, err)
 
-	_, err = enc.Unlock(&encounter.UnlockInput{
-		Door: cellsDoor, Actor: cellsPicker, Beaten: true, Total: 18, Applied: cellsPick,
-	})
-	if errors.Is(err, encounter.ErrOutOfRange) {
-		return nil, false
-	}
-	require.NoError(t, err)
-
-	return enc, true
+	return enc
 }
 
 // memberIDsOf is every member still in the run.

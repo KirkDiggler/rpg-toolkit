@@ -863,6 +863,14 @@ type DoorSpec struct {
 	// room's [RoomDoorBinding.Opened], the same shape and the same grammar
 	// (rpg-project#569 R12). Nil teaches nothing.
 	Opened *OpenedSpec `yaml:"opened,omitempty"`
+
+	// openedNull and openedFactNotString are what the hand-read decode saw
+	// and the typed value cannot say: `opened: null` decodes to an absent
+	// door fact and `fact: 12` to the fact "12", each without a word. The
+	// single room judges both on the node (single_room_doors.go); v2 notes
+	// them here so [validation.doors] refuses them at the same paths, in the
+	// same sentences (rpg-project#569 R12).
+	openedNull, openedFactNotString bool
 }
 
 // OpenedSpec is what a door teaches when it becomes open (rpg-project#569
@@ -904,12 +912,16 @@ func (d *DoorSpec) UnmarshalYAML(value *yaml.Node) error {
 			// the one mapping it holds is checked for its keys here, in
 			// yaml.v3's words, which the unknown-key translation turns into
 			// a path and the list OpenedSpec takes.
-			if body := value.Content[i+1]; body.Kind == yaml.MappingNode {
+			body := value.Content[i+1]
+			d.openedNull = body.Tag == "!!null"
+			if body.Kind == yaml.MappingNode {
 				for j := 0; j < len(body.Content); j += 2 {
-					if k := body.Content[j].Value; k != "fact" {
+					k, v := body.Content[j].Value, body.Content[j+1]
+					if k != "fact" {
 						return fmt.Errorf("line %d: field %s not found in type dungeonspec.OpenedSpec",
 							body.Content[j].Line, k)
 					}
+					d.openedFactNotString = v.Kind == yaml.ScalarNode && v.Tag != "!!str" && v.Tag != "!!null"
 				}
 			}
 		default:

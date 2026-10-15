@@ -51,6 +51,22 @@ func TestAV2DoorThatOpensTeachesAFact(t *testing.T) {
 			"doors[1].opened.fact: opening this door teaches a fact, and this does not say which")
 	})
 
+	t.Run("a null opened is refused, not read as no fact", func(t *testing.T) {
+		requireDefect(t, defectsIn(t, tombDoorOpened(t, "null")), "doors[1].opened: must not be null")
+	})
+
+	t.Run("a fact that is not a word is refused, not read as one", func(t *testing.T) {
+		requireDefect(t, defectsIn(t, tombDoorOpened(t, "{ fact: 12 }")), "doors[1].opened.fact: must be a string")
+	})
+
+	t.Run("a null fact earns the one no-fact sentence", func(t *testing.T) {
+		defects := defectsIn(t, tombDoorOpened(t, "{ fact: null }"))
+		requireDefect(t, defects, "doors[1].opened.fact: opening this door teaches a fact")
+		for _, d := range defects {
+			require.NotContains(t, d, "must be a string", "one defect for one mistake")
+		}
+	})
+
 	t.Run("an unknown key under opened is named", func(t *testing.T) {
 		requireDefect(t, decodeDefects(t, tombDoorOpened(t, "{ fact: tomb-opened, when: open }")),
 			"doors[1].opened.when", `"when" is not a key this build reads: they are fact`)

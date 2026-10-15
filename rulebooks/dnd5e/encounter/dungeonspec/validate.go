@@ -485,6 +485,12 @@ func (v *validation) doors() {
 		// is this dialect's own and nobody else's.
 		v.g.doorState(p, d.Locked, d.Concealed)
 		v.g.doorOpened(p, d.Opened)
+		if d.openedNull {
+			v.fail(p+".opened", "%s", errNotNull)
+		}
+		if d.openedFactNotString {
+			v.fail(p+".opened.fact", "%s", errNotAString)
+		}
 
 		at, ok := v.position(p, "at", g, d.At)
 		if !ok {

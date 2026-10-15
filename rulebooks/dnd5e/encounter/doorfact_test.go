@@ -42,7 +42,15 @@ var doorFactSheets = sheetFacts{
 // doorFactHall is the hall with door-ab in the state given and teaching
 // doorFact, door-bc shut, the members given, and any extra endings.
 func (s *DoorFactSuite) doorFactHall(ab encounter.DoorState, members []encounter.MemberInput, endings ...encounter.EndingInput) *encounter.Encounter {
+	return s.doorFactHallSeeing(everyoneSeesTheWholeMap{}, ab, members, endings...)
+}
+
+// doorFactHallSeeing is doorFactHall under the sight model given.
+func (s *DoorFactSuite) doorFactHallSeeing(
+	sight encounter.Sight, ab encounter.DoorState, members []encounter.MemberInput, endings ...encounter.EndingInput,
+) *encounter.Encounter {
 	in := noiseHallSetup(ab, encounter.DoorIsClosed(), doorFactSheets, passDriver{}, members...)
+	in.Sight = sight
 	in.Field.Doors[0].Opened = doorFact
 	in.Endings = append(in.Endings, endings...)
 	enc, err := encounter.NewEncounter(in)
@@ -110,6 +118,43 @@ func (s *DoorFactSuite) TestOpenedByHandTeachesTheActorAndAWatchingAlly() {
 	s.Equal([]string{"opened door door-ab", "opened door door-ab"}, causesOf(enc, doorFact))
 }
 
+// TestAGuardWhoSeesTheDoorButNotThePickerLearnsIt is R12's wording, "the
+// actor and the members who can see the door": a guard in room b watches the
+// door swing open, and the rogue picking it from a hex back in room a is past
+// the end of his sight. He learns the door is open; that he cannot name who
+// opened it is the door beat's business, not the fact's.
+func (s *DoorFactSuite) TestAGuardWhoSeesTheDoorButNotThePickerLearnsIt() {
+	guard := at(noiseKeen, encounter.KindMonster, 14, 5)
+	rogue := at(noiseAlice, encounter.KindPlayer, 8, 5)
+	reach := int(adjacencyDistance(cellAt(14, 5), cellAt(10, 5)))
+	s.Require().Greater(int(adjacencyDistance(cellAt(14, 5), cellAt(8, 5))), reach,
+		"the rogue stands past the guard's sight, the door's near cell inside it")
+
+	enc := s.doorFactHallSeeing(sightRanges{noiseKeen: reach}, doorFactLock, []encounter.MemberInput{guard, rogue})
+	_, err := enc.Unlock(&encounter.UnlockInput{
+		Door: noiseDoorAB, Actor: noiseAlice, Beaten: true, Total: 17, Applied: doorFactPick,
+	})
+	s.Require().NoError(err)
+
+	s.Equal([]string{string(noiseAlice), string(noiseKeen)}, learnersOf(enc, doorFact))
+}
+
+// sightRanges is a sight model with a range per member, and no limit for
+// anybody it does not name.
+type sightRanges map[encounter.MemberID]int
+
+func (r sightRanges) Sight(members []encounter.MemberID) (map[encounter.MemberID]int, error) {
+	out := make(map[encounter.MemberID]int, len(members))
+	for _, id := range members {
+		out[id] = unlimitedSight
+		if cells, ok := r[id]; ok {
+			out[id] = cells
+		}
+	}
+
+	return out, nil
+}
+
 // TestAPickedLockTeaches: a lock beaten by its tool route is the door opening.
 func (s *DoorFactSuite) TestAPickedLockTeaches() {
 	enc := s.doorFactHall(doorFactLock, theWholeHall())
@@ -152,6 +197,15 @@ func (s *DoorFactSuite) TestAForcedLockTeachesTheWitnessesAndOnlySoundsToTheHear
 // TestCloseThenReopenTeachesOnce: closing teaches nothing, and the second
 // opening teaches nobody who already knows.
 func (s *DoorFactSuite) TestCloseThenReopenTeachesOnce() {
+	s.Run("closing a door that starts open teaches nobody", func() {
+		// NOBODY KNOWS THE FACT YET, so a close that taught would show here
+		// — after an opening, learnFact's idempotence would hide it.
+		enc := s.doorFactHall(encounter.DoorIsOpen(), theWholeHall())
+		_, err := enc.CloseDoor(&encounter.CloseDoorInput{Door: noiseDoorAB, Actor: noiseAlice})
+		s.Require().NoError(err)
+		s.Empty(learnersOf(enc, doorFact))
+	})
+
 	enc := s.doorFactHall(encounter.DoorIsClosed(), theWholeHall())
 
 	_, err := enc.OpenDoor(&encounter.OpenDoorInput{Door: noiseDoorAB, Actor: noiseAlice})
