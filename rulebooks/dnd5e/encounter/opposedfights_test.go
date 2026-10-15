@@ -197,6 +197,19 @@ func (s *OpposedFightsSuite) TestTwoHostileMonsterFactionsComeIntoThePartysFight
 		s.False(hostile, "the loyalist is in the party's fight, and not against the party")
 	})
 
+	s.Run("spotted: a loyalist who cannot see the guard comes in unaware", func() {
+		field := s.yard([]encounter.FactionInput{{ID: ofLoyalists}}, sworn())
+		field.Factions = append(field.Factions, encounter.FactionInput{ID: ofGarrison})
+		blind := &sightList{reach: map[encounter.MemberID]int{ofLoyalist: 0}, fallback: unlimitedSight}
+		enc := s.open(field, members, blind)
+
+		form := s.formed(enc, alice)
+		s.Require().NotNil(form, "alice and the guard saw each other")
+		s.ElementsMatch([]string{string(alice), string(ofGuard), string(ofLoyalist)}, engaged(form),
+			"the guard sees the loyalist, who sees nothing: one-sided, and in")
+		s.Equal([]any{string(ofLoyalist)}, form["surprised"], "the one who saw nothing enters unaware")
+	})
+
 	s.Run("the drop stays a player's: alice unseen by a hostile camp starts nothing", func() {
 		// Declared with nothing toward the party, the loyalists are hostile
 		// to it — the default for an authored camp.
