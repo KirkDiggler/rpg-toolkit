@@ -113,9 +113,10 @@ func (f *cellFold) catchUp(log *journal.Journal) {
 }
 
 // discoverCells is THE SIGHT PASS'S LEARNING HALF: every floor cell this
-// observer does not already know and that [sightReach.reachesCell] answers
-// true for — the one sight test seen-now asks too (rpg-project#586 R5) —
-// learned in ONE fact for the pass.
+// observer does not already know and that [sightReach.seesCell] answers true
+// for — reachesCell, the one sight test seen-now asks too (rpg-project#586
+// R5), plus the face of a cover standing on a cell's centre — learned in ONE
+// fact for the pass.
 //
 // A CONCEALED CELL IS LEARNED LIKE ANY OTHER, and concealment still withholds
 // it. The two masks stay separate ("unknown is not secret"): knowing a cell
@@ -138,12 +139,13 @@ func (e *Encounter) discoverCells(observer MemberID, reach sightReach) error {
 		return nil
 	}
 	known := e.world.knownCells(observer)
+	hidden := e.hiddenFrom(observer)
 	learned := make([]spatial.Position, 0)
 	for _, cell := range e.field.cells {
 		if known[cell] {
 			continue
 		}
-		if cell == own || reach.reachesCell(observer, cell) {
+		if cell == own || reach.seesCell(observer, cell, hidden) {
 			learned = append(learned, cell)
 		}
 	}

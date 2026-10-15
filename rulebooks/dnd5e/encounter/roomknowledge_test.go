@@ -543,6 +543,60 @@ func (s *CellKnowledgeSuite) TestCellsRevealedSendsEachRecordOnce() {
 	}
 }
 
+// TestAShutLeafInItsOwnHexIsSeenByItsFace: a closed footprint door whose
+// leaf covers the centres of the hexes it stands in. No sightline reaches
+// those centres, so they are learned when the leaf's face is seen — from the
+// hex beside it — and the door is presented and sighted. Opening it lets the
+// far side be learned the ordinary way (rpg-toolkit#2057).
+func (s *CellKnowledgeSuite) TestAShutLeafInItsOwnHexIsSeenByItsFace() {
+	field := footprintDoorField(encounter.DoorIsClosed())
+	field.Placed = []encounter.PlacedPropInput{placed("leaf-presence", leafAcrossTheHall(), false, false)}
+	s.startWith(field, encounter.MemberInput{ID: "a", Kind: encounter.KindPlayer, Position: cellAt(1, 1)})
+
+	atlas := s.atlas("a")
+	s.Contains(atlas.Cells, cellAt(2, 1), "the leaf's own hex is learned by its face")
+	s.Contains(s.visible("a"), cellAt(2, 1), "and is seen now")
+	s.NotContains(atlas.Cells, cellAt(4, 1), "the shut leaf still hides the far side")
+	presented := false
+	for _, p := range atlas.Placed {
+		presented = presented || p.ID == "leaf-presence"
+	}
+	s.True(presented, "the door's drawn rectangle is presented")
+	sightings, err := s.enc.DoorSightings(&encounter.ViewInput{Member: "a"})
+	s.Require().NoError(err)
+	sighted := false
+	for _, d := range sightings {
+		sighted = sighted || d.Door.ID == theLeaf
+	}
+	s.True(sighted, "and the same face is a sighting of the door")
+
+	_, err = s.enc.OpenDoor(&encounter.OpenDoorInput{Door: theLeaf, Actor: "a"})
+	s.Require().NoError(err)
+	s.Contains(s.atlas("a").Cells, cellAt(4, 1), "open, the far side is learned by sight")
+}
+
+// TestAPillarInItsOwnHexIsSeenByItsFace: a sight-blocking pillar wholly
+// inside one hex is drawn once its face is seen; a pillar against a wall is
+// not learned from across that wall.
+func (s *CellKnowledgeSuite) TestAPillarInItsOwnHexIsSeenByItsFace() {
+	pillarAt := cellAt(2, 2)
+	s.startWith(placedField(placed("pillar", coveredBox(3, centreOf(pillarAt)), true, true)),
+		encounter.MemberInput{ID: "a", Kind: encounter.KindPlayer, Position: cellAt(0, 0)})
+	atlas := s.atlas("a")
+	s.Contains(atlas.Cells, pillarAt, "the pillar's hex is learned by its face")
+	presented := false
+	for _, p := range atlas.Placed {
+		presented = presented || p.ID == "pillar"
+	}
+	s.True(presented, "and the pillar is presented")
+
+	field := doorField(3, encounter.DoorIsClosed(), "gate", 1)
+	behind := cellAt(3, 0)
+	field.Placed = []encounter.PlacedPropInput{placed("pillar", coveredBox(3, centreOf(behind)), true, true)}
+	s.startWith(field, encounter.MemberInput{ID: "a", Kind: encounter.KindPlayer, Position: cellAt(1, 0)})
+	s.NotContains(s.atlas("a").Cells, behind, "a face across a wall is not seen")
+}
+
 // TestInvalidCellKnowledgeIsRejectedOnLoad: the load boundary refuses a cell
 // off the floor, an undecodable payload, a widened audience, a foreign subject
 // or a foreign actor; a retired whole-room fact loads and teaches nothing.

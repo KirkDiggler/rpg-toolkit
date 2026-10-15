@@ -32,7 +32,9 @@ func (s *AutomaticDiscoverySuite) TestFootprintDoorSupportStillTriggersDiscovery
 	s.Require().NoError(err)
 
 	// The yardstick is the same walk with a check that fails: whatever floor
-	// alice's sight taught on the way is the same, and the find adds none.
+	// alice's sight taught on the way is the same. The find adds exactly the
+	// hex the leaf stands in — a found door's face is seen, and the cell under
+	// it with it (rpg-project#586) — and nothing beyond.
 	missed := &discoveryRoller{}
 	twin := build(missed)
 	s.walk(twin, 1, 2, 3)
@@ -40,7 +42,11 @@ func (s *AutomaticDiscoverySuite) TestFootprintDoorSupportStillTriggersDiscovery
 	s.False(s.learned(twin, "alice"))
 	yardstick, err := twin.AtlasFor("alice")
 	s.Require().NoError(err)
-	s.Equal(yardstick.Cells, after.Cells, "discovering an object reveals no additional floor")
+	leaf := spatial.Position{X: 4}
+	s.NotContains(yardstick.Cells, leaf, "an unfound leaf teaches nothing of the hex it stands in")
+	want := append([]spatial.Position{}, yardstick.Cells...)
+	want = append(want, leaf)
+	s.ElementsMatch(want, after.Cells, "discovering the door reveals its own hex and no other floor")
 }
 
 func (s *AutomaticDiscoverySuite) TestBlockedHexDoesNotGateDiscovery() {

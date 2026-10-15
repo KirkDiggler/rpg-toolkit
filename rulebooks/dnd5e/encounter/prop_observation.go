@@ -184,7 +184,14 @@ func (r observationReach) Reaches(channel perception.Channel, observer, subject 
 		return false
 	}
 	for _, cell := range support.cells {
-		if !hidden.cells[cell] && r.reachesCell(member, cell) {
+		if hidden.cells[cell] {
+			continue
+		}
+		// A DOOR IS SEEN WHEN ITS LEAF'S FACE IS: a shut footprint door
+		// covering its own hex is sighted the way the cell under it is
+		// learned ([sightReach.seesCell]), so the door a member's map
+		// presents is the door they have a sighting of.
+		if r.reachesCell(member, cell) || (support.door != "" && r.seesCell(member, cell, hidden)) {
 			return true
 		}
 	}

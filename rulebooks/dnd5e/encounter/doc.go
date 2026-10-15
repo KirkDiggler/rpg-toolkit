@@ -134,7 +134,11 @@
 // when the sight pass's [sightReach.reachesCell] answers true for it, when
 // they open an edge door on that cell's edge (the door's two edge cells and
 // nothing beyond), or when an explicit concealment reveal teaches it; the cell
-// they stand on is always learned. Each learning moment is one per-member
+// they stand on is always learned. A cell whose centre a sight-blocking
+// footprint covers — a shut leaf in its own hex, a pillar — is learned when
+// that cover's face is seen from a floor neighbour nothing else separates it
+// from, and a footprint door so covered is sighted the same way; a cover the
+// member has not found teaches nothing. Each learning moment is one per-member
 // `known:cells` journal fact, audience that member alone, independent of
 // creature testimony, and never forgotten within the run. A retired
 // `known:room:<id>` fact from an older save loads and teaches nothing.

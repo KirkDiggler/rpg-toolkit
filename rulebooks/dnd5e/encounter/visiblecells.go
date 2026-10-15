@@ -70,7 +70,7 @@ func (e *Encounter) VisibleCellsFor(in *VisibleCellsInput) (*VisibleCellsOutput,
 	hidden := e.hiddenFrom(in.Member)
 	// e.field.cells is sorted by cellBefore, so the answer is too.
 	for _, cell := range e.field.cells {
-		if cell == own || (known[cell] && !hidden.cells[cell] && geometry.reachesCell(in.Member, cell)) {
+		if cell == own || (known[cell] && !hidden.cells[cell] && geometry.seesCell(in.Member, cell, hidden)) {
 			out.Cells = append(out.Cells, cell)
 		}
 	}

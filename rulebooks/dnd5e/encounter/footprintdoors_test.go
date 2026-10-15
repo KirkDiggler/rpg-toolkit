@@ -454,22 +454,31 @@ func (s *FootprintDoorSuite) TestAFootprintDoorMayBeHidden() {
 	// THE YARDSTICK IS THE SAME HALL WITH NOTHING CONCEALED. The shut leaf
 	// splits the hall and covers the centres of (2,1) and (2,3), so alice's
 	// sight teaches the same half either way (discovery is by cell,
-	// rpg-project#586); a difference would be the secret taking floor —
-	// including the floor under the leaf — with it.
+	// rpg-project#586). The one difference is the two hexes under the leaf:
+	// a known leaf's face is seen and teaches them, an unfound one teaches
+	// nothing. Any other difference would be the secret taking floor with it.
 	plain := field
 	plain.Concealments = nil
 	twin, err := build(plain)
 	s.Require().NoError(err)
 	yardstick, err := twin.AtlasFor(alice)
 	s.Require().NoError(err)
-	s.Equal(yardstick.Cells, blind.Cells, "selecting a door must not conceal unselected floor")
+	underLeaf := []spatial.Position{cellAt(2, 1), cellAt(2, 3)}
+	for _, cell := range underLeaf {
+		s.Contains(yardstick.Cells, cell, "a known shut leaf teaches the hex it stands in")
+		s.NotContains(blind.Cells, cell, "an unfound one does not")
+	}
+	want := append([]spatial.Position{}, blind.Cells...)
+	want = append(want, underLeaf...)
+	s.ElementsMatch(yardstick.Cells, want, "selecting a door must not conceal unselected floor")
 
-	// And finding it hands the whole secret over.
+	// And finding it hands the whole secret over: the leaf's two hexes, and
+	// no other floor.
 	err = encounter.ExportedFind(enc, alice, "cellar")
 	s.Require().NoError(err)
 	found, err := enc.AtlasFor(alice)
 	s.Require().NoError(err)
-	s.Equal(blind.Cells, found.Cells, "finding a door does not introduce unselected floor")
+	s.Equal(yardstick.Cells, found.Cells, "finding a door does not introduce unselected floor")
 	foundIDs := map[encounter.PropID]bool{}
 	for _, p := range found.Placed {
 		foundIDs[p.ID] = true
