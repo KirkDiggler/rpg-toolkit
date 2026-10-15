@@ -221,7 +221,7 @@ func (s *SingleRoomDoorSuite) TestConcealedIsNoLongerADoorKey() {
 	s.Require().Len(errs, 1)
 	s.Equal(dungeonspec.FieldError{
 		Path:    "room.room.doorBindings.cellar-door.concealed",
-		Message: `"concealed" is not a key this build reads: they are closed, locked`,
+		Message: `"concealed" is not a key this build reads: they are closed, locked, opened`,
 	}, errs[0])
 }
 
@@ -292,7 +292,7 @@ func (s *SingleRoomDoorSuite) TestAnUnknownDoorKeyIsNamedAtItsPath() {
 	s.Require().Len(errs, 1)
 	s.Equal(dungeonspec.FieldError{
 		Path:    "room.room.doorBindings.cellar-door.shut",
-		Message: `"shut" is not a key this build reads: they are closed, locked`,
+		Message: `"shut" is not a key this build reads: they are closed, locked, opened`,
 	}, errs[0])
 }
 
@@ -324,4 +324,62 @@ func axial(q, r int) spatial.Position {
 	cube := spatial.CubeCoordinate{X: q, Y: -q - r, Z: r}
 
 	return cube.ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
+}
+
+// TestADoorThatOpensTeachesAFact is rpg-project#569 R12 in this dialect:
+// `opened: { fact }` beside the state keys, lowered onto the door, and every
+// way an author leaves it unfinished refused at `opened.fact` in a sentence
+// the World Builder can show there.
+func (s *SingleRoomDoorSuite) TestADoorThatOpensTeachesAFact() {
+	const noFact = "opening this door teaches a fact, and this does not say which: " +
+		"write the fact's id, like `fact: cells-opened`"
+
+	s.Run("the fact lowers onto the door", func() {
+		compiled, err := dungeonspec.Load(s.siteWith(theDoorBinding,
+			"      cellar-door: {closed: true, opened: {fact: cellar-opened}}\n"))
+		s.Require().NoError(err)
+		s.Require().Len(compiled.Field.Doors, 1)
+		s.Equal(encounter.FactID("cellar-opened"), compiled.Field.Doors[0].Opened)
+	})
+
+	s.Run("a door that says nothing teaches nothing", func() {
+		compiled, err := dungeonspec.Load([]byte(s.site))
+		s.Require().NoError(err)
+		s.Require().Len(compiled.Field.Doors, 1)
+		s.Empty(compiled.Field.Doors[0].Opened)
+	})
+
+	for name, binding := range map[string]string{
+		"no fact":    "      cellar-door: {closed: true, opened: {}}\n",
+		"empty fact": "      cellar-door: {closed: true, opened: {fact: \"\"}}\n",
+		"null fact":  "      cellar-door: {closed: true, opened: {fact: null}}\n",
+	} {
+		s.Run(name, func() {
+			errs := s.defects(s.siteWith(theDoorBinding, binding))
+			s.Require().Len(errs, 1)
+			s.Equal(dungeonspec.FieldError{Path: "room.room.doorBindings.cellar-door.opened.fact", Message: noFact}, errs[0])
+		})
+	}
+
+	s.Run("a fact that is not a word", func() {
+		errs := s.defects(s.siteWith(theDoorBinding, "      cellar-door: {closed: true, opened: {fact: 12}}\n"))
+		s.Require().Len(errs, 1)
+		s.Equal(dungeonspec.FieldError{Path: "room.room.doorBindings.cellar-door.opened.fact", Message: "must be a string"}, errs[0])
+	})
+
+	s.Run("a null opened", func() {
+		errs := s.defects(s.siteWith(theDoorBinding, "      cellar-door: {closed: true, opened: null}\n"))
+		s.Require().Len(errs, 1)
+		s.Equal(dungeonspec.FieldError{Path: "room.room.doorBindings.cellar-door.opened", Message: "must not be null"}, errs[0])
+	})
+
+	s.Run("an unknown key under opened is named", func() {
+		errs := s.defects(s.siteWith(theDoorBinding,
+			"      cellar-door: {closed: true, opened: {fact: cellar-opened, when: open}}\n"))
+		s.Require().Len(errs, 1)
+		s.Equal(dungeonspec.FieldError{
+			Path:    "room.room.doorBindings.cellar-door.opened.when",
+			Message: `"when" is not a key this build reads: they are fact`,
+		}, errs[0])
+	})
 }

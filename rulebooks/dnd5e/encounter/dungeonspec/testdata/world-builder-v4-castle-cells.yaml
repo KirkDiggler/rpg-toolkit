@@ -1,0 +1,1401 @@
+# The mad king's cells (rpg-project#569), the first studio-authored room:
+# rpg-api's shipped content/the-mad-king-cells.yaml at dev 653555d8, verbatim,
+# with the two lines R12 makes expressible added — the cell door teaches
+# `cells-opened` when it opens (`doorBindings.<id>.opened`), and the `freed`
+# ending waits on that fact. Before R12 a "cells opened" ending could not be
+# written: no predicate reads a door, and now the door writes a fact.
+version: 4
+key: the-mad-king-cells
+play:
+  void: transparent
+  lighting: bright
+  standing: centre-covered
+templates:
+  guard-1:
+    base: dnd5e:monsters:human
+    name: Prisoner Guard
+    armor: dnd5e:armor:chain-mail
+    actions:
+      - dnd5e:weapons:spear
+  prisoner:
+    base: dnd5e:monsters:human
+    name: Prisoner
+    actions:
+      - dnd5e:weapons:club
+factions:
+  - id: garrison
+    mind: 7b8b5d1c-1b8f-4ea1-a681-5abab9420d0a
+  - id: prisoners
+dispositions:
+  - between: [garrison, party]
+    stance: hostile
+    until:
+      fact: guard-bribed
+  - between: [prisoners, party]
+    stance: neutral
+intel:
+  - id: king-whereabouts
+    reveals:
+      fact: king-in-great-hall
+  - id: key-bearer
+    reveals:
+      fact: sergeant-holds-keys
+tables:
+  cell-guard:
+    time:
+      - when:
+          - fact: alarm-raised
+          - enemy: reach
+        attack: enemy
+        weight: 4
+      - when:
+          - fact: alarm-raised
+          - not:
+              enemy: reach
+        toward: enemy
+        weight: 4
+      - when:
+          heard:
+            kind: clang
+            within: 2
+        say: Steel in the cells! Sound the alarm!
+        fact: alarm-raised
+        weight: 3
+      - when:
+          enemy: seen
+        say: Intruders in the cells! Sound the alarm!
+        fact: alarm-raised
+        weight: 3
+      - hold: {}
+        weight: 1
+exits:
+  - id: stair-up
+    cell:
+      q: -11
+      r: 5
+endings:
+  - id: freed
+    when:
+      fact: cells-opened
+room:
+  version: 3
+  id: befdc82b-46d1-40b3-ad9f-5e3931b9a56c
+  name: The Mad King
+  coordinateFrame:
+    horizontalPlane: world-xz
+    verticalAxis: world-y-up
+    distanceUnit: world-scene-unit
+    hexRadius: 1
+    footprintFrame: owner-local-xz
+  workspace:
+    kind: centered-odd-r
+    widthHexes: 32
+    heightHexes: 32
+    hexRadius: 24
+    horizontalLimit: 29
+  scene:
+    version: 7
+    id: 4597c809-6b26-4f34-8b8b-26eae2d999cd
+    name: The Mad King
+    items:
+      - id: purse
+        kind: prop
+        assetRef: dnd5e:props:fantasy-kingdom:bag_explorer_01
+        label: A Fat Purse
+        transform:
+          x: 1.7320508075688772
+          y: 0
+          z: 21
+          rotationY: 0
+    groups: []
+    creaturePalette:
+      - id: 2a525303-2fbe-4feb-bf9e-63bb1a87c31f
+        name: Prisoner Guard
+        ref: dnd5e:monsters:guard-1
+        modelRef: dnd5e:npcs:kingdom:soldier-male-01
+        faction: garrison
+      - id: 7274597b-9a03-451c-ae6d-c5d3abd30eb0
+        name: Prisoner
+        ref: dnd5e:monsters:prisoner
+        modelRef: dnd5e:npcs:goblin:prisoner-02
+        faction: prisoners
+    actorNames:
+      44f4aa72-bd03-46b4-b8f4-d5dc2e895cff: Prisoner Guard
+      7b8b5d1c-1b8f-4ea1-a681-5abab9420d0a: Prisoner Guard
+      9c2196fe-2d70-4d68-a06a-f7c9438c766a: Prisoner
+      55851b10-cac4-4d5b-9df2-6146fcb5dedf: Prisoner
+      4dae25b4-9a26-4be6-9579-9fe2edf522a0: Prisoner
+      fbefe179-2e4a-4e30-af04-3368ed449159: Prisoner
+    wallFinishes:
+      9e9a112c-72b0-42b6-974b-93b4895764d2:
+        positive-z: dnd5e:material:fantasy-kingdom:wall_dungeon_01
+        negative-z: dnd5e:material:fantasy-kingdom:wall_dungeon_01
+      1349855b-dd92-4d9b-93f4-cf4cb0e7a2ce:
+        positive-z: dnd5e:material:fantasy-kingdom:wall_large_brick_01
+        negative-z: dnd5e:material:fantasy-kingdom:wall_dungeon_01
+      f6f7caa7-3811-473a-aa2e-bba7e9f6e772:
+        positive-z: dnd5e:material:fantasy-kingdom:wall_dungeon_01
+        negative-z: dnd5e:material:fantasy-kingdom:wall_large_brick_01
+      6f8d46e7-3f41-4f05-84a2-0dad2e8153d9:
+        positive-z: dnd5e:material:fantasy-kingdom:wall_dungeon_01
+        negative-z: dnd5e:material:fantasy-kingdom:wall_large_brick_01
+  room:
+    implicitRegionId: befdc82b-46d1-40b3-ad9f-5e3931b9a56c-region
+    walls:
+      - id: 1349855b-dd92-4d9b-93f4-cf4cb0e7a2ce
+        label: Wall
+        line:
+          start:
+            x: -25.11473670974872
+            z: 20.5
+          end:
+            x: -1.783139625639751
+            z: 20.5
+        appearance:
+          assetRef: dnd5e:env:fantasy-kingdom:castle_wall_fit_01
+          height: 3.75
+          thickness: 0.3750002905726433
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint:
+            width: 23.331597084108967
+            depth: 0.25
+            offsetX: 0
+            offsetZ: 0
+        openings: []
+      - id: 6f8d46e7-3f41-4f05-84a2-0dad2e8153d9
+        label: Wall
+        line:
+          start:
+            x: -25.11473670974872
+            z: 20.5
+          end:
+            x: -25.11473670974872
+            z: 9.5
+        appearance:
+          assetRef: dnd5e:env:fantasy-kingdom:castle_wall_fit_01
+          height: 3.75
+          thickness: 0.3750002905726433
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint:
+            width: 11
+            depth: 0.25
+            offsetX: 0
+            offsetZ: 0
+        openings: []
+      - id: 9e9a112c-72b0-42b6-974b-93b4895764d2
+        label: Wall
+        line:
+          start:
+            x: -25.11473670974872
+            z: 9.5
+          end:
+            x: -1.783139625639751
+            z: 9.5
+        appearance:
+          assetRef: dnd5e:env:fantasy-kingdom:castle_wall_fit_01
+          height: 3.75
+          thickness: 0.3750002905726433
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint:
+            width: 23.331597084108967
+            depth: 0.25
+            offsetX: 0
+            offsetZ: 0
+        openings:
+          - id: 847f58ea-6095-4508-ac7c-540d17daea2c
+            position: 11.213733054381908
+            width: 1.8749944567680359
+            door:
+              id: 16556f61-2915-4656-ab30-d2445dff0174
+              assetRef: dnd5e:env:dark-fortress:wall_door_double_01
+      - id: f6f7caa7-3811-473a-aa2e-bba7e9f6e772
+        label: Wall
+        line:
+          start:
+            x: -1.783139625639751
+            z: 9.5
+          end:
+            x: -1.783139625639751
+            z: 20.5
+        appearance:
+          assetRef: dnd5e:env:fantasy-kingdom:castle_wall_fit_01
+          height: 3.75
+          thickness: 0.3750002905726433
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint:
+            width: 11
+            depth: 0.25
+            offsetX: 0
+            offsetZ: 0
+        openings: []
+    walkableHexes:
+      - q: -23
+        r: 14
+      - q: -23
+        r: 15
+      - q: -22
+        r: 12
+      - q: -22
+        r: 13
+      - q: -22
+        r: 14
+      - q: -22
+        r: 15
+      - q: -21
+        r: 10
+      - q: -21
+        r: 11
+      - q: -21
+        r: 12
+      - q: -21
+        r: 13
+      - q: -21
+        r: 14
+      - q: -21
+        r: 15
+      - q: -20
+        r: 8
+      - q: -20
+        r: 9
+      - q: -20
+        r: 10
+      - q: -20
+        r: 11
+      - q: -20
+        r: 12
+      - q: -20
+        r: 13
+      - q: -20
+        r: 14
+      - q: -20
+        r: 15
+      - q: -19
+        r: 6
+      - q: -19
+        r: 7
+      - q: -19
+        r: 8
+      - q: -19
+        r: 9
+      - q: -19
+        r: 10
+      - q: -19
+        r: 11
+      - q: -19
+        r: 12
+      - q: -19
+        r: 13
+      - q: -19
+        r: 14
+      - q: -19
+        r: 15
+      - q: -18
+        r: 4
+      - q: -18
+        r: 5
+      - q: -18
+        r: 6
+      - q: -18
+        r: 7
+      - q: -18
+        r: 8
+      - q: -18
+        r: 9
+      - q: -18
+        r: 10
+      - q: -18
+        r: 11
+      - q: -18
+        r: 12
+      - q: -18
+        r: 13
+      - q: -18
+        r: 14
+      - q: -18
+        r: 15
+      - q: -17
+        r: 2
+      - q: -17
+        r: 3
+      - q: -17
+        r: 4
+      - q: -17
+        r: 5
+      - q: -17
+        r: 6
+      - q: -17
+        r: 7
+      - q: -17
+        r: 8
+      - q: -17
+        r: 9
+      - q: -17
+        r: 10
+      - q: -17
+        r: 11
+      - q: -17
+        r: 12
+      - q: -17
+        r: 13
+      - q: -17
+        r: 14
+      - q: -17
+        r: 15
+      - q: -16
+        r: 1
+      - q: -16
+        r: 2
+      - q: -16
+        r: 3
+      - q: -16
+        r: 4
+      - q: -16
+        r: 5
+      - q: -16
+        r: 6
+      - q: -16
+        r: 7
+      - q: -16
+        r: 8
+      - q: -16
+        r: 9
+      - q: -16
+        r: 10
+      - q: -16
+        r: 11
+      - q: -16
+        r: 12
+      - q: -16
+        r: 13
+      - q: -16
+        r: 14
+      - q: -16
+        r: 15
+      - q: -15
+        r: 1
+      - q: -15
+        r: 2
+      - q: -15
+        r: 3
+      - q: -15
+        r: 4
+      - q: -15
+        r: 5
+      - q: -15
+        r: 6
+      - q: -15
+        r: 7
+      - q: -15
+        r: 8
+      - q: -15
+        r: 9
+      - q: -15
+        r: 10
+      - q: -15
+        r: 11
+      - q: -15
+        r: 12
+      - q: -15
+        r: 13
+      - q: -15
+        r: 14
+      - q: -15
+        r: 15
+      - q: -14
+        r: 1
+      - q: -14
+        r: 2
+      - q: -14
+        r: 3
+      - q: -14
+        r: 4
+      - q: -14
+        r: 5
+      - q: -14
+        r: 6
+      - q: -14
+        r: 7
+      - q: -14
+        r: 8
+      - q: -14
+        r: 9
+      - q: -14
+        r: 10
+      - q: -14
+        r: 11
+      - q: -14
+        r: 12
+      - q: -14
+        r: 13
+      - q: -14
+        r: 14
+      - q: -14
+        r: 15
+      - q: -13
+        r: 1
+      - q: -13
+        r: 2
+      - q: -13
+        r: 3
+      - q: -13
+        r: 4
+      - q: -13
+        r: 5
+      - q: -13
+        r: 6
+      - q: -13
+        r: 7
+      - q: -13
+        r: 8
+      - q: -13
+        r: 9
+      - q: -13
+        r: 10
+      - q: -13
+        r: 11
+      - q: -13
+        r: 12
+      - q: -13
+        r: 13
+      - q: -13
+        r: 14
+      - q: -13
+        r: 15
+      - q: -12
+        r: 1
+      - q: -12
+        r: 2
+      - q: -12
+        r: 3
+      - q: -12
+        r: 4
+      - q: -12
+        r: 5
+      - q: -12
+        r: 6
+      - q: -12
+        r: 7
+      - q: -12
+        r: 8
+      - q: -12
+        r: 9
+      - q: -12
+        r: 10
+      - q: -12
+        r: 11
+      - q: -12
+        r: 12
+      - q: -12
+        r: 13
+      - q: -12
+        r: 14
+      - q: -12
+        r: 15
+      - q: -11
+        r: 1
+      - q: -11
+        r: 2
+      - q: -11
+        r: 3
+      - q: -11
+        r: 4
+      - q: -11
+        r: 5
+      - q: -11
+        r: 6
+      - q: -11
+        r: 7
+      - q: -11
+        r: 8
+      - q: -11
+        r: 9
+      - q: -11
+        r: 10
+      - q: -11
+        r: 11
+      - q: -11
+        r: 12
+      - q: -11
+        r: 13
+      - q: -11
+        r: 14
+      - q: -11
+        r: 15
+      - q: -10
+        r: 1
+      - q: -10
+        r: 2
+      - q: -10
+        r: 3
+      - q: -10
+        r: 4
+      - q: -10
+        r: 5
+      - q: -10
+        r: 6
+      - q: -10
+        r: 7
+      - q: -10
+        r: 8
+      - q: -10
+        r: 9
+      - q: -10
+        r: 10
+      - q: -10
+        r: 11
+      - q: -10
+        r: 12
+      - q: -10
+        r: 13
+      - q: -10
+        r: 14
+      - q: -10
+        r: 15
+      - q: -9
+        r: 1
+      - q: -9
+        r: 2
+      - q: -9
+        r: 3
+      - q: -9
+        r: 4
+      - q: -9
+        r: 5
+      - q: -9
+        r: 6
+      - q: -9
+        r: 7
+      - q: -9
+        r: 8
+      - q: -9
+        r: 9
+      - q: -9
+        r: 10
+      - q: -9
+        r: 11
+      - q: -9
+        r: 12
+      - q: -9
+        r: 13
+      - q: -9
+        r: 14
+      - q: -9
+        r: 15
+      - q: -8
+        r: 1
+      - q: -8
+        r: 2
+      - q: -8
+        r: 3
+      - q: -8
+        r: 4
+      - q: -8
+        r: 5
+      - q: -8
+        r: 6
+      - q: -8
+        r: 7
+      - q: -8
+        r: 8
+      - q: -8
+        r: 9
+      - q: -8
+        r: 10
+      - q: -8
+        r: 11
+      - q: -8
+        r: 12
+      - q: -8
+        r: 13
+      - q: -8
+        r: 14
+      - q: -8
+        r: 15
+      - q: -7
+        r: 1
+      - q: -7
+        r: 2
+      - q: -7
+        r: 3
+      - q: -7
+        r: 4
+      - q: -7
+        r: 5
+      - q: -7
+        r: 6
+      - q: -7
+        r: 7
+      - q: -7
+        r: 8
+      - q: -7
+        r: 9
+      - q: -7
+        r: 10
+      - q: -7
+        r: 11
+      - q: -7
+        r: 12
+      - q: -7
+        r: 13
+      - q: -7
+        r: 14
+      - q: -7
+        r: 15
+      - q: -6
+        r: 1
+      - q: -6
+        r: 2
+      - q: -6
+        r: 3
+      - q: -6
+        r: 4
+      - q: -6
+        r: 5
+      - q: -6
+        r: 6
+      - q: -6
+        r: 7
+      - q: -6
+        r: 8
+      - q: -6
+        r: 9
+      - q: -6
+        r: 10
+      - q: -6
+        r: 11
+      - q: -6
+        r: 12
+      - q: -6
+        r: 13
+      - q: -6
+        r: 14
+      - q: -6
+        r: 15
+      - q: -5
+        r: 1
+      - q: -5
+        r: 2
+      - q: -5
+        r: 3
+      - q: -5
+        r: 4
+      - q: -5
+        r: 5
+      - q: -5
+        r: 6
+      - q: -5
+        r: 7
+      - q: -5
+        r: 8
+      - q: -5
+        r: 9
+      - q: -5
+        r: 10
+      - q: -5
+        r: 11
+      - q: -5
+        r: 12
+      - q: -5
+        r: 13
+      - q: -5
+        r: 14
+      - q: -5
+        r: 15
+      - q: -4
+        r: 1
+      - q: -4
+        r: 2
+      - q: -4
+        r: 3
+      - q: -4
+        r: 4
+      - q: -4
+        r: 5
+      - q: -4
+        r: 6
+      - q: -4
+        r: 7
+      - q: -4
+        r: 8
+      - q: -4
+        r: 9
+      - q: -4
+        r: 10
+      - q: -4
+        r: 11
+      - q: -4
+        r: 12
+      - q: -4
+        r: 13
+      - q: -4
+        r: 14
+      - q: -4
+        r: 15
+      - q: -3
+        r: 1
+      - q: -3
+        r: 2
+      - q: -3
+        r: 3
+      - q: -3
+        r: 4
+      - q: -3
+        r: 5
+      - q: -3
+        r: 6
+      - q: -3
+        r: 7
+      - q: -3
+        r: 8
+      - q: -3
+        r: 9
+      - q: -3
+        r: 10
+      - q: -3
+        r: 11
+      - q: -3
+        r: 12
+      - q: -3
+        r: 13
+      - q: -3
+        r: 14
+      - q: -3
+        r: 15
+      - q: -2
+        r: 1
+      - q: -2
+        r: 2
+      - q: -2
+        r: 3
+      - q: -2
+        r: 4
+      - q: -2
+        r: 5
+      - q: -2
+        r: 6
+      - q: -2
+        r: 7
+      - q: -2
+        r: 8
+      - q: -2
+        r: 9
+      - q: -2
+        r: 10
+      - q: -2
+        r: 11
+      - q: -2
+        r: 12
+      - q: -2
+        r: 13
+      - q: -2
+        r: 14
+      - q: -2
+        r: 15
+      - q: -1
+        r: 1
+      - q: -1
+        r: 2
+      - q: -1
+        r: 3
+      - q: -1
+        r: 4
+      - q: -1
+        r: 5
+      - q: -1
+        r: 6
+      - q: -1
+        r: 7
+      - q: -1
+        r: 8
+      - q: -1
+        r: 9
+      - q: -1
+        r: 10
+      - q: -1
+        r: 11
+      - q: -1
+        r: 12
+      - q: -1
+        r: 13
+      - q: -1
+        r: 14
+      - q: -1
+        r: 15
+      - q: 0
+        r: 1
+      - q: 0
+        r: 2
+      - q: 0
+        r: 3
+      - q: 0
+        r: 4
+      - q: 0
+        r: 5
+      - q: 0
+        r: 6
+      - q: 0
+        r: 7
+      - q: 0
+        r: 8
+      - q: 0
+        r: 9
+      - q: 0
+        r: 10
+      - q: 0
+        r: 11
+      - q: 0
+        r: 12
+      - q: 0
+        r: 13
+      - q: 0
+        r: 14
+      - q: 0
+        r: 15
+      - q: 1
+        r: 1
+      - q: 1
+        r: 2
+      - q: 1
+        r: 3
+      - q: 1
+        r: 4
+      - q: 1
+        r: 5
+      - q: 1
+        r: 6
+      - q: 1
+        r: 7
+      - q: 1
+        r: 8
+      - q: 1
+        r: 9
+      - q: 1
+        r: 10
+      - q: 1
+        r: 11
+      - q: 1
+        r: 12
+      - q: 1
+        r: 13
+      - q: 1
+        r: 14
+      - q: 1
+        r: 15
+      - q: 2
+        r: 1
+      - q: 2
+        r: 2
+      - q: 2
+        r: 3
+      - q: 2
+        r: 4
+      - q: 2
+        r: 5
+      - q: 2
+        r: 6
+      - q: 2
+        r: 7
+      - q: 2
+        r: 8
+      - q: 2
+        r: 9
+      - q: 2
+        r: 10
+      - q: 2
+        r: 11
+      - q: 2
+        r: 12
+      - q: 2
+        r: 13
+      - q: 2
+        r: 14
+      - q: 2
+        r: 15
+      - q: 3
+        r: 1
+      - q: 3
+        r: 2
+      - q: 3
+        r: 3
+      - q: 3
+        r: 4
+      - q: 3
+        r: 5
+      - q: 3
+        r: 6
+      - q: 3
+        r: 7
+      - q: 3
+        r: 8
+      - q: 3
+        r: 9
+      - q: 3
+        r: 10
+      - q: 3
+        r: 11
+      - q: 3
+        r: 12
+      - q: 3
+        r: 13
+      - q: 3
+        r: 14
+      - q: 3
+        r: 15
+      - q: 4
+        r: 1
+      - q: 4
+        r: 2
+      - q: 4
+        r: 3
+      - q: 4
+        r: 4
+      - q: 4
+        r: 5
+      - q: 4
+        r: 6
+      - q: 4
+        r: 7
+      - q: 4
+        r: 8
+      - q: 4
+        r: 9
+      - q: 4
+        r: 10
+      - q: 4
+        r: 11
+      - q: 4
+        r: 12
+      - q: 4
+        r: 13
+      - q: 4
+        r: 14
+      - q: 4
+        r: 15
+      - q: 5
+        r: 1
+      - q: 5
+        r: 2
+      - q: 5
+        r: 3
+      - q: 5
+        r: 4
+      - q: 5
+        r: 5
+      - q: 5
+        r: 6
+      - q: 5
+        r: 7
+      - q: 5
+        r: 8
+      - q: 5
+        r: 9
+      - q: 5
+        r: 10
+      - q: 5
+        r: 11
+      - q: 5
+        r: 12
+      - q: 5
+        r: 13
+      - q: 5
+        r: 14
+      - q: 5
+        r: 15
+      - q: 6
+        r: 1
+      - q: 6
+        r: 2
+      - q: 6
+        r: 3
+      - q: 6
+        r: 4
+      - q: 6
+        r: 5
+      - q: 6
+        r: 6
+      - q: 6
+        r: 7
+      - q: 6
+        r: 8
+      - q: 6
+        r: 9
+      - q: 6
+        r: 10
+      - q: 6
+        r: 11
+      - q: 6
+        r: 12
+      - q: 6
+        r: 13
+      - q: 6
+        r: 14
+      - q: 6
+        r: 15
+      - q: 7
+        r: 1
+      - q: 7
+        r: 2
+      - q: 7
+        r: 3
+      - q: 7
+        r: 4
+      - q: 7
+        r: 5
+      - q: 7
+        r: 6
+      - q: 7
+        r: 7
+      - q: 7
+        r: 8
+      - q: 7
+        r: 9
+      - q: 7
+        r: 10
+      - q: 7
+        r: 11
+      - q: 7
+        r: 12
+      - q: 7
+        r: 13
+      - q: 7
+        r: 14
+      - q: 7
+        r: 15
+      - q: 8
+        r: 1
+      - q: 8
+        r: 2
+      - q: 8
+        r: 3
+      - q: 8
+        r: 4
+      - q: 8
+        r: 5
+      - q: 8
+        r: 6
+      - q: 8
+        r: 7
+      - q: 8
+        r: 8
+      - q: 8
+        r: 9
+      - q: 8
+        r: 10
+      - q: 8
+        r: 11
+      - q: 8
+        r: 12
+      - q: 8
+        r: 13
+      - q: 8
+        r: 14
+      - q: 8
+        r: 15
+      - q: 9
+        r: 1
+      - q: 9
+        r: 2
+      - q: 9
+        r: 3
+      - q: 9
+        r: 4
+      - q: 9
+        r: 5
+      - q: 9
+        r: 6
+      - q: 9
+        r: 7
+      - q: 9
+        r: 8
+      - q: 9
+        r: 9
+      - q: 9
+        r: 10
+      - q: 9
+        r: 11
+      - q: 9
+        r: 12
+      - q: 9
+        r: 13
+      - q: 10
+        r: 1
+      - q: 10
+        r: 2
+      - q: 10
+        r: 3
+      - q: 10
+        r: 4
+      - q: 10
+        r: 5
+      - q: 10
+        r: 6
+      - q: 10
+        r: 7
+      - q: 10
+        r: 8
+      - q: 10
+        r: 9
+      - q: 10
+        r: 10
+      - q: 10
+        r: 11
+      - q: 11
+        r: 1
+      - q: 11
+        r: 2
+      - q: 11
+        r: 3
+      - q: 11
+        r: 4
+      - q: 11
+        r: 5
+      - q: 11
+        r: 6
+      - q: 11
+        r: 7
+      - q: 11
+        r: 8
+      - q: 11
+        r: 9
+      - q: 12
+        r: 1
+      - q: 12
+        r: 2
+      - q: 12
+        r: 3
+      - q: 12
+        r: 4
+      - q: 12
+        r: 5
+      - q: 12
+        r: 6
+      - q: 12
+        r: 7
+      - q: 13
+        r: 1
+      - q: 13
+        r: 2
+      - q: 13
+        r: 3
+      - q: 13
+        r: 4
+      - q: 13
+        r: 5
+      - q: 14
+        r: 1
+      - q: 14
+        r: 2
+      - q: 14
+        r: 3
+      - q: 15
+        r: 1
+    propDeclarations:
+      purse:
+        blocksMovement: false
+        blocksLineOfSight: false
+        footprint:
+          width: 0.46
+          depth: 0.2
+          offsetX: 0
+          offsetZ: 0
+    arrangementDeclarations: {}
+    monsterDeclarations:
+      - id: 44f4aa72-bd03-46b4-b8f4-d5dc2e895cff
+        ref: dnd5e:monsters:guard-1
+        startingCell:
+          location:
+            q: -9
+            r: 5
+          facing: n
+        appearanceRef: dnd5e:npcs:kingdom:soldier-male-01-style-02-b
+      - id: 7b8b5d1c-1b8f-4ea1-a681-5abab9420d0a
+        ref: dnd5e:monsters:guard-1
+        startingCell:
+          location:
+            q: -12
+            r: 5
+          facing: n
+        appearanceRef: dnd5e:npcs:kingdom:soldier-male-01-style-02-b
+      - id: 9c2196fe-2d70-4d68-a06a-f7c9438c766a
+        ref: dnd5e:monsters:prisoner
+        startingCell:
+          location:
+            q: -9
+            r: 11
+          facing: n
+        appearanceRef: dnd5e:npcs:goblin:prisoner-02-style-03-c
+      - id: 55851b10-cac4-4d5b-9df2-6146fcb5dedf
+        ref: dnd5e:monsters:prisoner
+        startingCell:
+          location:
+            q: -18
+            r: 11
+          facing: n
+        appearanceRef: dnd5e:npcs:goblin:prisoner-02
+      - id: 4dae25b4-9a26-4be6-9579-9fe2edf522a0
+        ref: dnd5e:monsters:prisoner
+        startingCell:
+          location:
+            q: -15
+            r: 11
+          facing: n
+        appearanceRef: dnd5e:npcs:goblin:prisoner-02-style-04-c
+      - id: fbefe179-2e4a-4e30-af04-3368ed449159
+        ref: dnd5e:monsters:prisoner
+        startingCell:
+          location:
+            q: -12
+            r: 11
+          facing: n
+        appearanceRef: dnd5e:npcs:goblin:prisoner-02-style-02-a
+    partyStart:
+      q: -6
+      r: 15
+    monsterBindings:
+      44f4aa72-bd03-46b4-b8f4-d5dc2e895cff:
+        faction: garrison
+        table: cell-guard
+      7b8b5d1c-1b8f-4ea1-a681-5abab9420d0a:
+        faction: garrison
+        table: cell-guard
+        options:
+          - id: offer-the-purse
+            say: Offer the purse.
+            requires:
+              holds: purse
+            check:
+              - ability: persuasion
+                dc: 10
+            success:
+              - say: I never saw you. Be quick about it.
+                fact: guard-bribed
+            failure:
+              - say: You think I can be bought? Back off.
+      9c2196fe-2d70-4d68-a06a-f7c9438c766a:
+        faction: prisoners
+        holds:
+          - king-whereabouts
+          - key-bearer
+        options:
+          - id: where-is-the-king
+            say: Where is the king?
+            check:
+              - ability: persuasion
+                dc: 8
+            success:
+              - say: Up the stair, in the great hall. He holds court there, mad as a hare.
+                fact: king-in-great-hall
+            failure:
+              - say: Why should I tell you? Get me out first.
+          - id: who-holds-the-keys
+            say: Who holds the keys?
+            check:
+              - ability: persuasion
+                dc: 10
+            success:
+              - say: The sergeant, the one on the left. Ring on his belt.
+                fact: sergeant-holds-keys
+            failure:
+              - say: Keys? Nobody tells us anything in here.
+      55851b10-cac4-4d5b-9df2-6146fcb5dedf:
+        faction: prisoners
+        holds:
+          - king-whereabouts
+          - key-bearer
+        options:
+          - id: where-is-the-king
+            say: Where is the king?
+            check:
+              - ability: persuasion
+                dc: 8
+            success:
+              - say: Up the stair, in the great hall. He holds court there, mad as a hare.
+                fact: king-in-great-hall
+            failure:
+              - say: Why should I tell you? Get me out first.
+          - id: who-holds-the-keys
+            say: Who holds the keys?
+            check:
+              - ability: persuasion
+                dc: 10
+            success:
+              - say: The sergeant, the one on the left. Ring on his belt.
+                fact: sergeant-holds-keys
+            failure:
+              - say: Keys? Nobody tells us anything in here.
+      4dae25b4-9a26-4be6-9579-9fe2edf522a0:
+        faction: prisoners
+        holds:
+          - king-whereabouts
+          - key-bearer
+        options:
+          - id: where-is-the-king
+            say: Where is the king?
+            check:
+              - ability: persuasion
+                dc: 8
+            success:
+              - say: Up the stair, in the great hall. He holds court there, mad as a hare.
+                fact: king-in-great-hall
+            failure:
+              - say: Why should I tell you? Get me out first.
+          - id: who-holds-the-keys
+            say: Who holds the keys?
+            check:
+              - ability: persuasion
+                dc: 10
+            success:
+              - say: The sergeant, the one on the left. Ring on his belt.
+                fact: sergeant-holds-keys
+            failure:
+              - say: Keys? Nobody tells us anything in here.
+      fbefe179-2e4a-4e30-af04-3368ed449159:
+        faction: prisoners
+        holds:
+          - king-whereabouts
+          - key-bearer
+        options:
+          - id: where-is-the-king
+            say: Where is the king?
+            check:
+              - ability: persuasion
+                dc: 8
+            success:
+              - say: Up the stair, in the great hall. He holds court there, mad as a hare.
+                fact: king-in-great-hall
+            failure:
+              - say: Why should I tell you? Get me out first.
+          - id: who-holds-the-keys
+            say: Who holds the keys?
+            check:
+              - ability: persuasion
+                dc: 10
+            success:
+              - say: The sergeant, the one on the left. Ring on his belt.
+                fact: sergeant-holds-keys
+            failure:
+              - say: Keys? Nobody tells us anything in here.
+    doorBindings:
+      16556f61-2915-4656-ab30-d2445dff0174:
+        closed: true
+        locked:
+          - ability: dex
+            tool: dnd5e:item:thieves-tools
+            dc: 13
+        opened:
+          fact: cells-opened
+    propBindings:
+      purse:
+        holdable: true

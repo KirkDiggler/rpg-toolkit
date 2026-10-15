@@ -858,6 +858,39 @@ type DoorSpec struct {
 	// (rpg-project#350). Nil vs empty is Locked's law: `concealed: []` is a
 	// door hidden with no way to ever find it, refused at validate by name.
 	Concealed CheckSpec `yaml:"concealed,omitempty"`
+
+	// Opened is the fact this door teaches when it becomes open — the single
+	// room's [RoomDoorBinding.Opened], the same shape and the same grammar
+	// (rpg-project#569 R12). Nil teaches nothing.
+	Opened *OpenedSpec `yaml:"opened,omitempty"`
+
+	// openedNull and openedFactNotString are what the hand-read decode saw
+	// and the typed value cannot say: `opened: null` decodes to an absent
+	// door fact and `fact: 12` to the fact "12", each without a word. The
+	// single room judges both on the node (single_room_doors.go); v2 notes
+	// them here so [validation.doors] refuses them at the same paths, in the
+	// same sentences (rpg-project#569 R12).
+	openedNull, openedFactNotString bool
+}
+
+// OpenedSpec is what a door teaches when it becomes open (rpg-project#569
+// R12): `opened: { fact: <id> }`, one shape in both dialects.
+//
+//	doorBindings:
+//	  cell-door:
+//	    locked: [{ ability: dex, tool: dnd5e:item:thieves-tools, dc: 13 }]
+//	    opened: { fact: cells-opened }
+//
+// A DOOR IS A SOURCE, the way a record's `reveals` is: when it opens — by
+// Open, or by a beaten lock, picked or forced — the actor and every member
+// who can see the door learn the fact. Hearers are not taught; a door nobody
+// saw open teaches nobody. Nothing reads a door's state as a predicate: an
+// ending or an until waits on the fact with `{ fact: <id> }`.
+type OpenedSpec struct {
+	// Fact is the fact id the door teaches. REQUIRED non-empty — the key was
+	// written, so the author meant to teach something. A fact id is a plain
+	// string declared by mention ([PredicateSpec.Fact]), carried verbatim.
+	Fact string `yaml:"fact"`
 }
 
 // UnmarshalYAML reads a door, refusing the deleted pair form by name (F12) and
@@ -874,6 +907,23 @@ func (d *DoorSpec) UnmarshalYAML(value *yaml.Node) error {
 		case "at":
 			sawAt = true
 		case "id", "locked", "closed", "concealed":
+		case "opened":
+			// The hand-read door decodes its body without `KnownFields`, so
+			// the one mapping it holds is checked for its keys here, in
+			// yaml.v3's words, which the unknown-key translation turns into
+			// a path and the list OpenedSpec takes.
+			body := value.Content[i+1]
+			d.openedNull = body.Tag == "!!null"
+			if body.Kind == yaml.MappingNode {
+				for j := 0; j < len(body.Content); j += 2 {
+					k, v := body.Content[j].Value, body.Content[j+1]
+					if k != "fact" {
+						return fmt.Errorf("line %d: field %s not found in type dungeonspec.OpenedSpec",
+							body.Content[j].Line, k)
+					}
+					d.openedFactNotString = v.Kind == yaml.ScalarNode && v.Tag != "!!str" && v.Tag != "!!null"
+				}
+			}
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.DoorSpec",
 				value.Content[i].Line, key)
@@ -888,11 +938,13 @@ func (d *DoorSpec) UnmarshalYAML(value *yaml.Node) error {
 		Locked    CheckSpec    `yaml:"locked"`
 		Closed    bool         `yaml:"closed"`
 		Concealed CheckSpec    `yaml:"concealed"`
+		Opened    *OpenedSpec  `yaml:"opened"`
 	}
 	if err := value.Decode(&obj); err != nil {
 		return err
 	}
 	d.ID, d.At, d.Locked, d.Closed, d.Concealed = obj.ID, obj.At, obj.Locked, obj.Closed, obj.Concealed
+	d.Opened = obj.Opened
 
 	return nil
 }

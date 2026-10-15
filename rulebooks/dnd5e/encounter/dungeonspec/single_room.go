@@ -614,6 +614,12 @@ type RoomDoorBinding struct {
 	// and `locked: []` is an authored lock that forgot to say how it is
 	// beaten — refused by name.
 	Locked CheckSpec `yaml:"locked,omitempty" json:"locked,omitempty"`
+
+	// Opened, when present, is the fact this door teaches when it becomes
+	// open — `opened: { fact: <id> }` ([OpenedSpec], rpg-project#569 R12).
+	// Nil teaches nothing. Lowered onto [encounter.DoorInput.Opened] in both
+	// door paths, standalone and attached.
+	Opened *OpenedSpec `yaml:"opened,omitempty" json:"opened,omitempty"`
 }
 
 // DiscoveryAttemptsSpec authors one discovery check's retry policy. Omitted

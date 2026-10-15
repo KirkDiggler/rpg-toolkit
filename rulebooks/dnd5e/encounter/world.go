@@ -400,6 +400,12 @@ func mintedFactIDs(f *field, endings []Trigger, members []FactID) []FactID {
 			seen[id] = true
 		}
 	}
+	// AND WHAT A DOOR TEACHES WHEN IT OPENS (rpg-project#569 R12): the
+	// door's fact is field structure too, or a saved run in which somebody
+	// opened it would carry a fact this field cannot mint.
+	for _, id := range f.openedFacts {
+		seen[id] = true
+	}
 	out := make([]FactID, 0, len(seen))
 	for id := range seen {
 		out = append(out, id)

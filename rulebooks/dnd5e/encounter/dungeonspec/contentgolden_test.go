@@ -131,6 +131,7 @@ type goldenDoor struct {
 	Lock      []encounter.CheckApproach   `json:"lock,omitempty"`
 	Edges     []encounter.DoorEdge        `json:"edges,omitempty"`
 	Placement *spatial.FootprintPlacement `json:"placement,omitempty"`
+	Opened    encounter.FactID            `json:"opened,omitempty"`
 }
 
 // goldenDoorsOf renders the compiled doors for the picture, in the order the
@@ -143,6 +144,7 @@ func goldenDoorsOf(doors []encounter.DoorInput) []goldenDoor {
 			State:     string(d.State.Kind()),
 			Edges:     d.Edges,
 			Placement: d.Placement,
+			Opened:    d.Opened,
 		}
 		if lock, locked := d.State.Lock(); locked {
 			g.Lock = lock.Approaches
@@ -221,6 +223,7 @@ func TestEveryContentFileCompilesToItsCommittedPicture(t *testing.T) {
 		"world-builder-v3.yaml",
 		"world-builder-v4-site.yaml",
 		"world-builder-v4-castle-kitchen.yaml",
+		"world-builder-v4-castle-cells.yaml",
 		"world-builder-v4-front-room.yaml",
 		"world-builder-v4-raider-camp.yaml",
 		"world-builder-v4-raider-letter.yaml",
