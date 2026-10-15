@@ -509,21 +509,77 @@ func (s *MoveTestSuite) TestThereAndBackIsLegal() {
 	s.Equal(spatial.Position{X: 1, Y: 1}, out.Steps[1].Position, "back where she started")
 }
 
-// A teammate sees the fight through the gap; Alice sees only the teammate.
-func (s *MoveTestSuite) TestVisibleCombatTeammateJoinsBeforeAnyStep() {
+// TestSeeingATeammateInAFightKeepsTheWalkerOnTheWorldClock is ruling R7
+// (rpg-project ideas/movement-passage/design.md, superseding R6): only contact
+// with a HOSTILE admits a walker to a running fight. Bob sees the ogre through
+// the gap and the two are fighting from first light; alice, back at (1,0),
+// sees only bob. Under R6 that sight pulled her in before her first step.
+// Under R7 it is not contact: she takes the step, completes the walk, and is
+// still free-roaming at the end of it, with the fight's order untouched.
+//
+// The path is the ambush's first cell alone, because the second is where the
+// ogre and alice see each other — real contact, which is the next test's
+// subject and would muddy this one's claim.
+func (s *MoveTestSuite) TestSeeingATeammateInAFightKeepsTheWalkerOnTheWorldClock() {
 	ctx := context.Background()
 	world := ambushWorld()
 	world.Party = append(world.Party, seatAt("bob", 1, 3))
 	launchScene(s.T(), s.mgr, world)
-	before, err := s.mgr.Where(ctx, &session.WhereInput{Session: "sess", Member: "alice"})
+	bob, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "bob"})
 	s.Require().NoError(err)
+	s.Require().Equal(session.ClockTurn, bob.Clock, "precondition: bob is fighting the ogre")
+	s.Require().Equal([]string{"bob", "ogre"}, bob.Order)
+
+	out, err := s.mgr.Move(ctx, &session.MoveInput{
+		Session: "sess", Member: "alice", Path: ambushPath()[:1],
+	})
+	s.Require().NoError(err)
+	s.False(out.JoinedCombat, "seeing a teammate fight is not contact")
+	s.Equal(session.MovementCompleted, out.Status, "she walks on")
+	s.Require().Len(out.Steps, 1)
+	s.Equal(ambushPath()[0], out.Steps[0].Position)
+
+	alice, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Equal(session.ClockWorld, alice.Clock, "and is still on the world clock")
+	bob, err = s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "bob"})
+	s.Require().NoError(err)
+	s.Equal([]string{"bob", "ogre"}, bob.Order, "the fight did not grow")
+}
+
+// TestAWalkerSpottedByAFightsHostileJoinsBeforeTheNextStep is R7's other half:
+// contact with a hostile of a running fight DOES admit the walker. The same
+// scene; alice walks the whole ambush path, and on its second cell she and
+// the ogre see each other. She joins bob's fight at the end of its order and
+// the walk stops there: the two remaining cells are not attempted, because a
+// fight member does not free-roam.
+//
+// THE JOIN ARRIVES THROUGH THE STEP, not through the pre-step admission. The
+// step's own sight refresh classifies the first contact and transfers her as
+// a straggler, so the session's admission call before step three never has a
+// free-roamer to admit — the loop reads her turn clock and stops. Which half
+// of the composition admits her is the composition's business; what this
+// pins is the seam's answer: in the fight, after cell two, nothing further.
+func (s *MoveTestSuite) TestAWalkerSpottedByAFightsHostileJoinsBeforeTheNextStep() {
+	ctx := context.Background()
+	world := ambushWorld()
+	world.Party = append(world.Party, seatAt("bob", 1, 3))
+	launchScene(s.T(), s.mgr, world)
+
 	out, err := s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: ambushPath()})
 	s.Require().NoError(err)
-	s.True(out.JoinedCombat)
-	s.Empty(out.Steps)
-	after, err := s.mgr.Where(ctx, &session.WhereInput{Session: "sess", Member: "alice"})
+	s.Require().Len(out.Steps, 2, "she reaches the cell of contact and goes no further")
+	s.Equal(ambushPath()[1], out.Steps[1].Position)
+	s.NotEqual(session.MovementCompleted, out.Status, "the walk did not finish")
+	s.Nil(out.Formed, "no fight started: she joined the one already running")
+
+	alice, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
-	s.Equal(before, after)
+	s.Equal(session.ClockTurn, alice.Clock, "a hostile seeing her is contact")
+	s.Equal([]string{"bob", "ogre", "alice"}, alice.Order, "joined last, as a straggler")
+	where, err := s.mgr.Where(ctx, &session.WhereInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Equal(ambushPath()[1], where.Position)
 }
 
 func TestMoveSuite(t *testing.T) {
