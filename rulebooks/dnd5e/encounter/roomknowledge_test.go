@@ -477,6 +477,72 @@ func (s *CellKnowledgeSuite) TestCellsRevealedBeatIsOnePerPassAndRecipientScoped
 	s.NotEqual(atlas.Regions, s.atlas("a").Regions)
 }
 
+// TestCellsRevealedSendsEachRecordOnce: every list on the beat is a
+// difference against the recipient's own prior map (rpg-api-protos
+// 69a68f3e). Opening the entry door as its actor writes two beats — the
+// door's edge, then what the open door shows — and nothing either carries was
+// already a's: not the doorway a already held, not a frontier wall a already
+// had, and not anything the first beat sent.
+func (s *CellKnowledgeSuite) TestCellsRevealedSendsEachRecordOnce() {
+	before := s.atlas("a")
+	held := map[string]bool{}
+	for _, d := range before.Doorways {
+		held[fmt.Sprintf("door %s %v %v", d.Door, d.From, d.To)] = true
+	}
+	for _, b := range before.Boundaries {
+		held[fmt.Sprintf("wall %v %v", b.From, b.To)] = true
+	}
+	for _, c := range before.Cells {
+		held[fmt.Sprintf("cell %v", c)] = true
+	}
+	s.Require().True(held[fmt.Sprintf("door entry-door %v %v", cellAt(2, 1), cellAt(3, 1))], "a already holds the entry doorway")
+
+	_, err := s.enc.OpenDoor(&encounter.OpenDoorInput{Door: "entry-door", Actor: "a"})
+	s.Require().NoError(err)
+	beats := s.cellsRevealed("a")
+	s.Require().NotEmpty(beats)
+	for i, beat := range beats {
+		var body struct {
+			Doorways []struct {
+				Door     string
+				From, To spatial.Position
+			}
+			Boundaries []struct{ From, To spatial.Position }
+			Scenery    []spatial.Position
+			Regions    []struct{ Cells []spatial.Position }
+		}
+		raw, err := json.Marshal(beat)
+		s.Require().NoError(err)
+		s.Require().NoError(json.Unmarshal(raw, &body))
+		keys := []string{}
+		for _, d := range body.Doorways {
+			keys = append(keys, fmt.Sprintf("door %s %v %v", d.Door, d.From, d.To))
+		}
+		for _, b := range body.Boundaries {
+			keys = append(keys, fmt.Sprintf("wall %v %v", b.From, b.To))
+		}
+		for _, c := range body.Scenery {
+			keys = append(keys, fmt.Sprintf("cell %v", c))
+		}
+		for _, r := range body.Regions {
+			for _, c := range r.Cells {
+				keys = append(keys, fmt.Sprintf("cell %v", c))
+			}
+		}
+		for _, key := range keys {
+			s.False(held[key], "beat %d re-sends %s, which the recipient already holds", i, key)
+			held[key] = true
+		}
+	}
+	after := s.atlas("a")
+	for _, d := range after.Doorways {
+		s.True(held[fmt.Sprintf("door %s %v %v", d.Door, d.From, d.To)], "and the patches add up to the fresh map")
+	}
+	for _, b := range after.Boundaries {
+		s.True(held[fmt.Sprintf("wall %v %v", b.From, b.To)], "every wall too")
+	}
+}
+
 // TestInvalidCellKnowledgeIsRejectedOnLoad: the load boundary refuses a cell
 // off the floor, an undecodable payload, a widened audience, a foreign subject
 // or a foreign actor; a retired whole-room fact loads and teaches nothing.

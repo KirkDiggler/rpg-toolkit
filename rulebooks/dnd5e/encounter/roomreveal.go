@@ -80,15 +80,27 @@ func (e *Encounter) appendCellsRevealedBeat(member MemberID, before Atlas) error
 			cells[cell] = true
 		}
 	}
+	// EVERY LIST IS A DIFFERENCE against the recipient's own prior map, sent
+	// once and never again (rpg-api-protos 69a68f3e): a record the recipient
+	// already holds is not repeated because a cell beside it became known.
+	// AtlasBoundary has no id to upsert by, so a repeat would be a duplicate.
+	hadProp := make(map[PropID]bool, len(before.Props))
+	for _, prop := range before.Props {
+		hadProp[prop.ID] = true
+	}
 	props := make([]AtlasProp, 0)
 	for _, prop := range after.Props {
-		if cells[prop.At] {
+		if !hadProp[prop.ID] {
 			props = append(props, prop)
 		}
 	}
+	hadBoundary := make(map[AtlasBoundary]bool, len(before.Boundaries))
+	for _, boundary := range before.Boundaries {
+		hadBoundary[boundary] = true
+	}
 	boundaries := make([]AtlasBoundary, 0)
 	for _, boundary := range after.Boundaries {
-		if cells[boundary.From] || cells[boundary.To] {
+		if !hadBoundary[boundary] {
 			boundaries = append(boundaries, boundary)
 		}
 	}
@@ -98,7 +110,7 @@ func (e *Encounter) appendCellsRevealedBeat(member MemberID, before Atlas) error
 	}
 	doorways := make([]map[string]interface{}, 0)
 	for _, doorway := range after.Doorways {
-		if !hadDoorway[doorway] || cells[doorway.From] || cells[doorway.To] {
+		if !hadDoorway[doorway] {
 			doorways = append(doorways, map[string]interface{}{"door": doorway.Door, "from": doorway.From, "to": doorway.To})
 		}
 	}
@@ -109,31 +121,32 @@ func (e *Encounter) appendCellsRevealedBeat(member MemberID, before Atlas) error
 	placed := make([]map[string]interface{}, 0)
 	for _, prop := range after.Placed {
 		// A newly permitted boundary can have its standing support on the
-		// still-unknown side. Introduce the same row the snapshot permits; do
-		// not substitute a region-cell test for that answer.
-		include := !hadPlaced[prop.ID]
-		for _, cell := range prop.Cells {
-			if cells[cell] {
-				include = true
-				break
-			}
-		}
-		if include {
+		// still-unknown side. Introduce the same row the snapshot permits,
+		// once; do not substitute a region-cell test for that answer.
+		if !hadPlaced[prop.ID] {
 			placed = append(placed, map[string]interface{}{
 				"id": prop.ID, "placement": placementDataFrom(prop.Placement), "cells": prop.Cells,
 				"blocks_movement": prop.BlocksMovement, "blocks_line_of_sight": prop.BlocksLineOfSight, "holdable": false,
 			})
 		}
 	}
+	hadSealed := make(map[spatial.Position]bool, len(before.Sealed))
+	for _, cell := range before.Sealed {
+		hadSealed[cell] = true
+	}
 	sealed := make([]spatial.Position, 0)
 	for _, cell := range after.Sealed {
-		if cells[cell] {
+		if !hadSealed[cell] {
 			sealed = append(sealed, cell)
 		}
 	}
+	hadExit := make(map[string]bool, len(before.Exits))
+	for _, exit := range before.Exits {
+		hadExit[string(exit.ID)] = true
+	}
 	exits := make([]map[string]interface{}, 0)
 	for _, exit := range after.Exits {
-		if cells[exit.At] {
+		if !hadExit[string(exit.ID)] {
 			exits = append(exits, map[string]interface{}{"id": exit.ID, "at": exit.At})
 		}
 	}

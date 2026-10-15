@@ -151,6 +151,13 @@
 // and never a party union. A placed member always sees at least their own
 // cell.
 //
+// READS ADVANCE A SHARED FOLD. The known-cells fold is carried forward over
+// the append-only journal, so [Encounter.AtlasFor], [Encounter.VisibleCellsFor]
+// and every sight pass may write to it while answering. An [Encounter] is
+// therefore not safe for concurrent use, reads included: ingress is
+// single-command, and a host serves each request from its own freshly loaded
+// Encounter.
+//
 // Initial knowledge comes from the snapshot; every later learning moment that
 // changes a member's atlas appends one recipient-scoped [BeatCellsRevealed]
 // beat containing fixed data, not live contents: partial regions carrying only
