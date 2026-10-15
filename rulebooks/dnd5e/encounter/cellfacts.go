@@ -264,11 +264,70 @@ func (e *StaticPlacementError) Unwrap() error { return e.Cause }
 
 // ValidateStaticPlacements validates authored placement cells against the
 // compiled field and static contributors without inventing a live member.
+//
+// It compiles the field on every call. A caller asking about many cells of
+// one field — a seat search over a whole floor — compiles once with
+// [CompileStaticPlacements] and asks [StaticPlacements.Validate] per cell
+// instead; the answers are the same ones, by construction, because this is
+// that pair (rpg-toolkit#2047).
 func ValidateStaticPlacements(in FieldInput, cells []spatial.Position) error {
-	f, err := compileField(in)
+	s, err := CompileStaticPlacements(in)
 	if err != nil {
 		return err
 	}
+	return s.Validate(cells)
+}
+
+// StaticPlacements is a field compiled ONCE for the static placement
+// question [ValidateStaticPlacements] asks, so the question can be put to as
+// many cells as a caller has without recompiling the field for each one
+// (rpg-toolkit#2047: a seat search over an open floor recompiled it per
+// candidate cell, which made a compile quadratic in floor hexes).
+//
+// It is a snapshot of the input it was compiled from. The field is compiled
+// into its own storage, and the shut footprint doors — read from the INPUT,
+// for the reason [StaticPlacements.Validate] gives — are copied out at
+// compile time, so a caller editing its [FieldInput] afterwards changes
+// nothing here. A changed input is a new compile.
+type StaticPlacements struct {
+	f         *field
+	shutDoors []staticDoor
+}
+
+// staticDoor is one door that occupies its cells in its authored state, held
+// by value so the snapshot owns it.
+type staticDoor struct {
+	id        DoorID
+	placement spatial.FootprintPlacement
+}
+
+// CompileStaticPlacements compiles a field for repeated static placement
+// questions. It refuses exactly what [ValidateStaticPlacements] refuses
+// before it reaches a cell: whatever the field compile refuses.
+func CompileStaticPlacements(in FieldInput) (*StaticPlacements, error) {
+	f, err := compileField(in)
+	if err != nil {
+		return nil, err
+	}
+	s := &StaticPlacements{f: f}
+	for _, d := range in.Doors {
+		if d.Placement == nil || d.Placement.Footprint.Box == nil || d.State == nil || !d.State.blocks() {
+			// A door with no box is a field construction refuses
+			// outright (validateDoorInputs), so there is nothing
+			// measurable here and nothing to be closed about.
+			continue
+		}
+		s.shutDoors = append(s.shutDoors, staticDoor{id: d.ID, placement: *copyPlacement(d.Placement)})
+	}
+	return s, nil
+}
+
+// Validate validates authored placement cells against the compiled field and
+// static contributors without inventing a live member. The answer for each
+// cell is the one [ValidateStaticPlacements] gives for the same input; the
+// first refused cell is reported with its index in cells.
+func (s *StaticPlacements) Validate(cells []spatial.Position) error {
+	f := s.f
 	for i, authored := range cells {
 		cell := f.cellAt(authored)
 		if !f.isStandable(cell) {
@@ -295,23 +354,18 @@ func ValidateStaticPlacements(in FieldInput, cells []spatial.Position) error {
 		// defect, not something the run works out later. An open one occupies
 		// nothing, exactly as an open door's crossing blocks nothing.
 		//
-		// The doors are read from the INPUT rather than from compiled
-		// records, because this seam compiles the field alone; a door whose
-		// geometry is unmeasurable is refused by validateDoorInputs at
-		// construction, and is treated here as occupying the cell — fail
-		// closed, the rule the placed loop above already applies.
-		for _, d := range in.Doors {
-			if d.Placement == nil || d.Placement.Footprint.Box == nil || d.State == nil || !d.State.blocks() {
-				// A door with no box is a field construction refuses
-				// outright (validateDoorInputs), so there is nothing
-				// measurable here and nothing to be closed about.
-				continue
-			}
-			contact, traceErr := spatial.TraceFootprint(spatial.FootprintTraceInput{Placement: *d.Placement, From: centre, To: centre})
+		// The doors are the shut-door copy [CompileStaticPlacements] took
+		// from the input's door list, not compiled door records, because this
+		// seam compiles the field alone. A door whose geometry cannot be
+		// measured is refused by validateDoorInputs at construction, and is
+		// treated here as occupying the cell — fail closed, the rule the
+		// placed loop above already applies.
+		for _, d := range s.shutDoors {
+			contact, traceErr := spatial.TraceFootprint(spatial.FootprintTraceInput{Placement: d.placement, From: centre, To: centre})
 			if traceErr != nil || contact.Contact {
 				return &StaticPlacementError{
 					Index: i, At: authored,
-					Reason: fmt.Sprintf("is occupied by door %q", d.ID), Cause: ErrBadPlacement,
+					Reason: fmt.Sprintf("is occupied by door %q", d.id), Cause: ErrBadPlacement,
 				}
 			}
 		}

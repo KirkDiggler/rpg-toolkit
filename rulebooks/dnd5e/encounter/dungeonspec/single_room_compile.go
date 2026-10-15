@@ -276,8 +276,19 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 			at   spatial.Position
 		}{path: fmt.Sprintf("exits[%d].cell", i), cell: spec.Exits[i].Cell, at: ex.At})
 	}
+	// THE FIELD IS COMPILED ONCE for every standability question below — each
+	// placement here and every candidate seat after (rpg-toolkit#2047). Asking
+	// [encounter.ValidateStaticPlacements] per cell recompiled the whole field
+	// per cell, which made an open floor quadratic in its hexes. A field that
+	// does not compile is refused where the per-cell call refused it: at the
+	// first placement asked about, the party start.
+	static, err := encounter.CompileStaticPlacements(field)
+	if err != nil {
+		return Compiled{}, singleRoomCompileError(placements[0].path,
+			fmt.Sprintf("at author's axial q=%d r=%d: %s", placements[0].cell.Q, placements[0].cell.R, err))
+	}
 	for _, placement := range placements {
-		if err := encounter.ValidateStaticPlacements(field, []spatial.Position{placement.at}); err != nil {
+		if err := static.Validate([]spatial.Position{placement.at}); err != nil {
 			var placementErr *encounter.StaticPlacementError
 			if errors.As(err, &placementErr) {
 				err = errors.New(placementErr.Reason)
@@ -295,7 +306,7 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 			entryCells = append(entryCells, cell)
 		}
 	}
-	party := deriveSingleRoomSeats(entryCells, starts[0], occupied, o, field)
+	party := deriveSingleRoomSeats(entryCells, starts[0], occupied, o, static)
 	for i := range party {
 		party[i].Region = entryID
 	}
@@ -361,7 +372,7 @@ func axialOffset(c RoomCell, o spatial.HexOrientation) spatial.Position {
 	return cube.ToOffsetCoordinateWithOrientation(o)
 }
 
-func deriveSingleRoomSeats(cells []spatial.Position, start spatial.Position, monsters map[RoomCell]bool, o spatial.HexOrientation, field encounter.FieldInput) []Seat {
+func deriveSingleRoomSeats(cells []spatial.Position, start spatial.Position, monsters map[RoomCell]bool, o spatial.HexOrientation, static *encounter.StaticPlacements) []Seat {
 	type seatDist struct {
 		seat Seat
 		d    int
@@ -379,7 +390,7 @@ func deriveSingleRoomSeats(cells []spatial.Position, start spatial.Position, mon
 		if monsters[axial] {
 			continue
 		}
-		if encounter.ValidateStaticPlacements(field, []spatial.Position{c}) != nil {
+		if static.Validate([]spatial.Position{c}) != nil {
 			continue
 		}
 		out = append(out, seatDist{Seat{At: c}, startCube.Distance(cube)})

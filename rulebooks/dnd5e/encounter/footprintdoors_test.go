@@ -491,3 +491,65 @@ func (s *FootprintDoorSuite) TestASeatIsNeverInsideAShutLeaf() {
 	open := footprintDoorField(encounter.DoorIsOpen())
 	s.Require().NoError(encounter.ValidateStaticPlacements(open, []spatial.Position{cellAt(2, 1)}))
 }
+
+// TestACompiledFieldAnswersEveryCellTheSame: the compile-once seam
+// (rpg-toolkit#2047) answers every cell from the fixture's own facts. A shut
+// leaf covers (2,1) and (2,3) ([leafAcrossTheHall]), a two-foot crate stands
+// on (0,0), a cell off the 5x5 hall is void, and every other hall cell is a
+// seat. The table is written from those facts, never from the per-call seam,
+// because that seam is now built from this one and could not disagree with
+// it. It is also a snapshot: editing the input's door after the compile does
+// not open a door the compile saw shut.
+func (s *FootprintDoorSuite) TestACompiledFieldAnswersEveryCellTheSame() {
+	shut := footprintDoorField(encounter.DoorIsClosed())
+	shut.Placed = []encounter.PlacedPropInput{
+		placed("crate", thinWall(2, 2, 0, spatial.Point{}), true, false),
+	}
+	static, err := encounter.CompileStaticPlacements(shut)
+	s.Require().NoError(err)
+
+	// The seam is asked in the AUTHORED [col,row] frame, the one a content
+	// compiler holds, not the absolute cell [cellAt] names.
+	authored := func(col, row int) spatial.Position {
+		return spatial.Position{X: float64(col), Y: float64(row)}
+	}
+
+	refused := map[spatial.Position]string{
+		authored(2, 1):  `is occupied by door "` + string(theLeaf) + `"`,
+		authored(2, 3):  `is occupied by door "` + string(theLeaf) + `"`,
+		authored(0, 0):  `is occupied by footprint "crate"`,
+		authored(-1, 0): "is not standable",
+		authored(5, 2):  "is not standable",
+		authored(2, 5):  "is not standable",
+	}
+	asked := []spatial.Position{authored(-1, 0), authored(5, 2), authored(2, 5)}
+	for col := 0; col < 5; col++ {
+		for row := 0; row < 5; row++ {
+			asked = append(asked, authored(col, row))
+		}
+	}
+	for _, cell := range asked {
+		err := static.Validate([]spatial.Position{cell})
+		reason, isRefused := refused[cell]
+		if !isRefused {
+			s.NoError(err, "cell %v is open hall floor", cell)
+			continue
+		}
+		var placementErr *encounter.StaticPlacementError
+		s.Require().ErrorAs(err, &placementErr, "cell %v", cell)
+		s.ErrorIs(err, encounter.ErrBadPlacement)
+		s.Equal(reason, placementErr.Reason, "cell %v", cell)
+	}
+
+	// The first refused cell is named by its index in the batch.
+	err = static.Validate([]spatial.Position{authored(1, 0), authored(2, 1)})
+	var placementErr *encounter.StaticPlacementError
+	s.Require().ErrorAs(err, &placementErr)
+	s.Equal(1, placementErr.Index)
+
+	// A snapshot: the door the compile saw shut stays shut.
+	for i := range shut.Doors {
+		shut.Doors[i].State = encounter.DoorIsOpen()
+	}
+	s.Require().Error(static.Validate([]spatial.Position{authored(2, 1)}))
+}
