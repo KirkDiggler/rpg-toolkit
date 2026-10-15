@@ -225,6 +225,11 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 		out.Segments = append(out.Segments, full.Segments[i])
 	}
 
+	survivingPlaced := make(map[PropID]bool, len(out.Placed))
+	for _, p := range out.Placed {
+		survivingPlaced[p.ID] = true
+	}
+
 	// ONE PASS, TWO ANSWERS. Which cells this recipient is shown, and which of
 	// those they cannot stand on. Both questions are asked of the same cell in
 	// the same visit, because a second walk over the survivors asked the map
@@ -235,7 +240,7 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 			continue
 		}
 		out.Cells = append(out.Cells, c)
-		if masked[c] || !e.field.isStandable(c) {
+		if hiddenCells[c] || !e.field.isStandable(c) {
 			out.Sealed = append(out.Sealed, c)
 		}
 	}
@@ -275,10 +280,6 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	// UNKNOWN MUTABLE STATE DOES NOT TURN A KNOWN DOORWAY INTO WALL: no state
 	// is read here at all, so an absent DoorSighting leaves a known opening
 	// present with no state attached, exactly as a fixed identity must.
-	survivingPlaced := make(map[PropID]bool, len(out.Placed))
-	for _, p := range out.Placed {
-		survivingPlaced[p.ID] = true
-	}
 	// A wall's footprint cells are its geometry, the same for every
 	// recipient: the full atlas computed them once, and this read copies them.
 	footprints := make(map[PropID][]spatial.Position, len(full.StructuralWalls))

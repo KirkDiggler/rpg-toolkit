@@ -140,49 +140,68 @@ func (s *FootingSuite) open(
 	return enc
 }
 
-// TestA11_APresentedWallFootsNothing is fog-of-war R9, which superseded C18's
-// presentation footing.
-//
-// The watcher cannot see the vault, so its cells are withheld — ALL of them,
-// the ones the seam stands on included. Presenting a wall teaches no cell: the
-// footing used to arrive with the wall as floor nobody owns, which was
-// evidence of the wall rather than of sight, and a client grading the wall by
-// it drew the wall where nobody had looked (rpg-project#600). The wall is
-// still presented; the floor under its far side waits for sight, which an
-// explicit concealment withholds until it is found.
-func (s *FootingSuite) TestA11_APresentedWallFootsNothing() {
-	const rows = 6
-	enc := s.open(s.hugField(rows, false), findsNothing{},
-		encounter.MemberInput{ID: watcher, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}})
+// hugStructural is the hugging layout authored as a structural wall: a hall
+// (rows 0–2) and an unexplored vault (rows 3–5), with a wall along the centres
+// of row 3 — the vault's first row is the hex the wall stands on, sealed as
+// the compiler seals the hexes under a span. The span is the placed blocker
+// sight's cover rule reads; the presence is the wall's identity.
+func hugStructural() encounter.FieldInput {
+	from, to := centreOf(cellAt(0, 3)), centreOf(cellAt(4, 3))
+	mid := spatial.Point{X: (from.X + to.X) / 2, Y: from.Y}
+	field := encounter.FieldInput{
+		Canvas: openAir(),
+		Regions: []encounter.RegionInput{
+			rectRegion("hall", 0, 0, 5, 3),
+			rectRegion("vault", 0, 3, 5, 3),
+		},
+		Placed: []encounter.PlacedPropInput{
+			placed("seam", thinWall(to.X-from.X, 0.3, 0, mid), false, false),
+			placed("seam-span", thinWall(to.X-from.X, 0.3, 0, mid), true, true),
+		},
+		StructuralWalls: []encounter.StructuralWallInput{{
+			ID: "seam", Ref: "dnd5e:env:test:wall", From: from, To: to, Height: 3, Thickness: 0.3,
+		}},
+	}
+	for col := 0; col <= 4; col++ {
+		field.Sealed = append(field.Sealed, spatial.Position{X: float64(col), Y: 3})
+	}
 
-	scoped, err := enc.AtlasFor(watcher)
+	return field
+}
+
+// hugStructuralTwin is the dungeon the non-knower's map claims to be: the
+// same hall and wall, no vault, and SCENERY where the wall stands — floor
+// nobody owns.
+func hugStructuralTwin() encounter.FieldInput {
+	field := hugStructural()
+	field.Regions = field.Regions[:1]
+	field.Sealed = nil
+	field.Scenery = rectCells(0, 3, 5, 1)
+
+	return field
+}
+
+// TestA11_APresentedWallEqualsItsSceneryTwin is fog-of-war R9, which retired
+// C18's presentation footing.
+//
+// Presenting a wall teaches no cell. The watcher has never been in the vault;
+// they learn the hexes the wall stands on from its face, by sight's cover
+// rule, as the twin's observer learns its scenery, and the vault's other cells
+// stay off the map. (A CONCEALED room's footing stays withheld, as before R9:
+// rpg-project#602, Open O4.) The yardstick
+// is the twin's own AtlasFor — what a member of the honestly authored dungeon
+// would be shown — never its full Atlas().
+func (s *FootingSuite) TestA11_APresentedWallEqualsItsSceneryTwin() {
+	at := encounter.MemberInput{ID: watcher, Kind: encounter.KindPlayer, Position: cellAt(2, 0)}
+	scoped, err := s.open(hugStructural(), findsNothing{}, at).AtlasFor(watcher)
+	s.Require().NoError(err)
+	twin, err := s.open(hugStructuralTwin(), findsNothing{}, at).AtlasFor(watcher)
 	s.Require().NoError(err)
 
-	hall := make([]spatial.Position, 0)
-	for _, c := range rectCells(0, 0, 4, rows) {
-		hall = append(hall, cellAt(int(c.X), int(c.Y)))
-	}
-	s.ElementsMatch(hall, scoped.Cells, "the watcher's map is the hall they learned, and nothing of the vault")
-	vault := map[spatial.Position]bool{}
-	for _, c := range rectCells(4, 0, 3, rows) {
-		vault[cellAt(int(c.X), int(c.Y))] = true
-	}
-	for _, c := range scoped.Sealed {
-		s.False(vault[c], "no sealed footing appears in the vault: %v", c)
-	}
-	s.Require().Len(scoped.Segments, 1, "the wall itself is still presented")
-	s.Equal(hugSeam(rows).From, scoped.Segments[0].From)
-
-	// The half that can fail: the seam really does stand on vault cells, so
-	// the old rule would have shown them.
-	footingInVault := 0
-	for _, c := range hugSeam(rows).Footprint {
-		if vault[cellAt(int(c.X), int(c.Y))] {
-			footingInVault++
-			s.NotContains(scoped.Cells, cellAt(int(c.X), int(c.Y)), "the seam's footing in the vault is not on the map")
-		}
-	}
-	s.Positive(footingInVault, "the fixture's seam stands on the vault")
+	s.Contains(twin.Cells, cellAt(2, 3), "fixture: the twin's watcher learns the scenery the wall stands on")
+	s.Equal(twin.Cells, scoped.Cells, "floor on the near side and under the wall, nothing beyond it")
+	s.Equal(twin.Sealed, scoped.Sealed, "and the wall's hexes are footing nobody stands on")
+	s.NotContains(scoped.Cells, cellAt(2, 4), "the vault past the wall is not on the map")
 }
 
 // TestA11_AWithheldWallDoesNotFoot: a wall wholly inside hidden space is

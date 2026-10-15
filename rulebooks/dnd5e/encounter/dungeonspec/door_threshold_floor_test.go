@@ -40,16 +40,11 @@ groups: []
 			before, err := enc.AtlasFor("walker")
 			s.Require().NoError(err)
 			s.Require().NotEmpty(before.StructuralWalls, "the bordering wall is already known")
-			// Fog-of-war R9: presenting the wall teaches no cell. The walker
-			// stands beside the shut leaf, and sight learns its threshold
-			// through the leaf's face — the cover rule — found or not.
-			s.Contains(before.Cells, axial(1, 0), "sight learns the threshold through the closed leaf's face, independently of door concealment")
-			s.NotContains(before.Cells, axial(3, 0), "the threshold does not discover the other room")
+			s.Contains(before.Cells, axial(1, 0), "the known wall needs floor beneath its closed door, independently of door concealment")
+			s.NotContains(before.Cells, axial(3, 0), "footing does not discover the other room")
 			if secret {
-				// AN UNFOUND LEAF READS AS THE WALL IT STANDS IN: its face
-				// teaches the threshold as the solid wall's face teaches the
-				// twin's footing, and the threshold is presented as that
-				// footing — sealed, nothing standing on it permitted.
+				// AN UNFOUND LEAF TEACHES NOTHING: its threshold is the wall's
+				// footing, sealed, and nothing standing on it is permitted.
 				s.Contains(before.Sealed, axial(1, 0), "unknown threshold ownership is not permission to stand through a closed leaf")
 				for _, p := range before.Placed {
 					s.NotEqual("threshold-prop", p.ID, "footing alone does not grant object permission")

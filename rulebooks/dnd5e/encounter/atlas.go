@@ -223,8 +223,9 @@ type AtlasStructuralWall struct {
 	Height, Thickness, Elevation float64
 
 	// FootprintCells is every floor cell the wall's presence footprint
-	// overlaps by positive area ([spatial.PlacedCoverage]), in order along the
-	// wall from From to To: each cell centre's projection onto the line, ties
+	// overlaps by positive area — the same support that decides whether the
+	// wall is presented, so a presented wall's list is never empty — in order
+	// along the wall from From to To: each cell centre's projection onto the line, ties
 	// in the map's coordinate order. An edge wall lists the hex on either
 	// side; a centre-line wall lists the hexes it stands on and the
 	// neighbours it straddles. It is the wall's geometry, known or not, and

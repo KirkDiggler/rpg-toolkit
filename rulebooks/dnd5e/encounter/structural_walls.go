@@ -479,26 +479,20 @@ func namesFootprintDoor(doors []DoorInput, id DoorID) bool {
 }
 
 // wallFootprintCells is the floor a structural wall's presence footprint
-// overlaps by positive area — [spatial.PlacedCoverage] over the field's cells,
-// the same coverage [field.footprintObservationCells] answers presentation
-// with, but with no nearest-cell fallback: a wall that overlaps no floor
-// stands on none. Ordered along the wall from `from` to `to` by each cell
-// centre's projection onto the line, ties by [cellBefore], so a client walking
-// the list walks the wall (fog-of-war R9).
+// overlaps — [field.footprintObservationCells], the SAME answer that decides
+// whether the wall is presented, so a presented wall never carries an empty
+// list. Ordered along the wall from `from` to `to` by each cell centre's
+// projection onto the line, ties by [cellBefore], so a client walking the list
+// walks the wall (fog-of-war R9).
 func (f *field) wallFootprintCells(w *structuralWall, placement spatial.FootprintPlacement) ([]spatial.Position, error) {
-	coverage, err := spatial.PlacedCoverage(spatial.PlacedCoverageInput{
-		Embedding: f.plane, Placement: placement, Cells: f.cells,
-	})
+	support, err := f.footprintObservationCells(placement)
 	if err != nil {
 		return nil, err
 	}
 	dx, dy := w.to.X-w.from.X, w.to.Y-w.from.Y
-	along := make(map[spatial.Position]float64, len(coverage.Cells))
-	out := make([]spatial.Position, 0, len(coverage.Cells))
-	for _, cell := range f.cells {
-		if coverage.Cells[cell] <= 0 {
-			continue
-		}
+	along := make(map[spatial.Position]float64, len(support))
+	out := make([]spatial.Position, 0, len(support))
+	for _, cell := range support {
 		c := f.plane.CellCentre(cell)
 		along[cell] = (c.X-w.from.X)*dx + (c.Y-w.from.Y)*dy
 		out = append(out, cell)
