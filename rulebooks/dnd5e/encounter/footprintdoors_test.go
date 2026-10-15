@@ -491,3 +491,39 @@ func (s *FootprintDoorSuite) TestASeatIsNeverInsideAShutLeaf() {
 	open := footprintDoorField(encounter.DoorIsOpen())
 	s.Require().NoError(encounter.ValidateStaticPlacements(open, []spatial.Position{cellAt(2, 1)}))
 }
+
+// TestACompiledFieldAnswersEveryCellTheSame: the compile-once seam
+// (rpg-toolkit#2047) gives each cell the answer the per-call seam gives it,
+// sentence and index included, and is a snapshot — editing the input's door
+// after the compile does not open a door the compile saw shut.
+func (s *FootprintDoorSuite) TestACompiledFieldAnswersEveryCellTheSame() {
+	shut := footprintDoorField(encounter.DoorIsClosed())
+	static, err := encounter.CompileStaticPlacements(shut)
+	s.Require().NoError(err)
+
+	for q := -2; q <= 6; q++ {
+		for r := -2; r <= 6; r++ {
+			cell := cellAt(q, r)
+			want := encounter.ValidateStaticPlacements(shut, []spatial.Position{cell})
+			got := static.Validate([]spatial.Position{cell})
+			if want == nil {
+				s.NoError(got, "cell %v", cell)
+				continue
+			}
+			s.Require().Error(got, "cell %v", cell)
+			s.Equal(want.Error(), got.Error(), "cell %v", cell)
+		}
+	}
+
+	// The first refused cell is named by its index in the batch.
+	err = static.Validate([]spatial.Position{cellAt(0, 0), cellAt(2, 1)})
+	var placementErr *encounter.StaticPlacementError
+	s.Require().ErrorAs(err, &placementErr)
+	s.Equal(1, placementErr.Index)
+
+	// A snapshot: the door the compile saw shut stays shut.
+	for i := range shut.Doors {
+		shut.Doors[i].State = encounter.DoorIsOpen()
+	}
+	s.Require().Error(static.Validate([]spatial.Position{cellAt(2, 1)}))
+}
