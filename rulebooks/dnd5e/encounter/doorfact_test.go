@@ -4,6 +4,7 @@
 package encounter_test
 
 import (
+	"encoding/json"
 	"sort"
 	"testing"
 
@@ -137,6 +138,28 @@ func (s *DoorFactSuite) TestAGuardWhoSeesTheDoorButNotThePickerLearnsIt() {
 	s.Require().NoError(err)
 
 	s.Equal([]string{string(noiseAlice), string(noiseKeen)}, learnersOf(enc, doorFact))
+
+	// AND THE BEAT STAYS NARROW: it names its actor, so it goes only to those
+	// who saw the picker. The guard knows the door is open and holds no
+	// beat saying who opened it.
+	s.NotEmpty(s.doorBeatsHeldBy(enc, noiseAlice), "the picker holds the beat of her own deed")
+	s.Empty(s.doorBeatsHeldBy(enc, noiseKeen), "the guard who never saw her holds no door beat")
+}
+
+// doorBeatsHeldBy is every door beat in one member's story.
+func (s *DoorFactSuite) doorBeatsHeldBy(enc *encounter.Encounter, member encounter.MemberID) []map[string]any {
+	story, err := enc.Story(&encounter.StoryInput{Audience: member})
+	s.Require().NoError(err)
+	var out []map[string]any
+	for _, entry := range story {
+		beat := map[string]any{}
+		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		if beat["beat"] == encounter.BeatDoor {
+			out = append(out, beat)
+		}
+	}
+
+	return out
 }
 
 // sightRanges is a sight model with a range per member, and no limit for
