@@ -224,6 +224,31 @@ func (s *OpposedFightsSuite) TestTwoHostileMonsterFactionsComeIntoThePartysFight
 	})
 }
 
+// TestAPlayerWithTheDropIsNeverPulledIn guards pullInWatchers's one
+// documented exclusion: it admits creatures, never players. Alice has the
+// drop on the guard — she sees him, he does not see her — when bob's contact
+// with the guard forms a fight. Alice watching an engaged enemy is exactly
+// the link a creature is pulled in by, and she keeps her drop
+// (rpg-toolkit#1020) until the guard notices her.
+func (s *OpposedFightsSuite) TestAPlayerWithTheDropIsNeverPulledIn() {
+	field := s.yard(nil)
+	field.Factions = []encounter.FactionInput{{ID: ofGarrison}} // hostile to the party
+	light := &sightList{reach: map[encounter.MemberID]int{ofGuard: 0}, fallback: unlimitedSight}
+	enc := s.open(field, []encounter.MemberInput{
+		player(alice, 11, 4), player(bob, 4, 2), monster(ofGuard, ofGarrison, 4, 1),
+	}, light)
+	s.Require().Equal(encounter.ClockWorld, s.clockOf(enc, alice), "precondition: alice has the drop")
+
+	light.reach[ofGuard] = 2 // the guard can now see bob beside him, and not alice across the yard
+	_, err := enc.Step(&encounter.StepInput{Member: bob, To: cellAt(4, 3)})
+	s.Require().NoError(err)
+
+	form := s.formed(enc, bob)
+	s.Require().NotNil(form, "the guard noticed bob: a fight")
+	s.ElementsMatch([]string{string(bob), string(ofGuard)}, engaged(form))
+	s.Equal(encounter.ClockWorld, s.clockOf(enc, alice), "alice watching the guard is not pulled in")
+}
+
 // TestTheAggressionLawBetweenTwoMonsterFactionsFormsTheFight is the turn as
 // a transition between two monster factions: a loyalist the party is
 // fighting strikes a guard of a neutral faction, the pair is hostile from
