@@ -5,6 +5,7 @@ package encounter_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -284,6 +285,65 @@ func (s *CellKnowledgeSuite) TestVisibleCellsRefusesAStranger() {
 	s.ErrorIs(err, encounter.ErrNotMember)
 	_, err = s.enc.VisibleCellsFor(nil)
 	s.ErrorIs(err, encounter.ErrNilInput)
+}
+
+// sheetless is a Sight capability that, once armed, refuses any question
+// naming a member it has no sheet for — what the session's sheet seam does for
+// a character whose record is gone or a world NPC with no stored sheet.
+type sheetless struct {
+	inner   encounter.Sight
+	missing map[encounter.MemberID]bool
+	armed   bool
+}
+
+func (s *sheetless) Sight(members []encounter.MemberID) (map[encounter.MemberID]int, error) {
+	if s.armed {
+		for _, id := range members {
+			if s.missing[id] {
+				return nil, fmt.Errorf("character %s: no such character", id)
+			}
+		}
+	}
+	return s.inner.Sight(members)
+}
+
+// TestVisibleCellsAsksOnlyTheViewersSight: seen-now for one seat needs that
+// seat's range alone, so another member whose sight cannot be answered does
+// not fail the read — a player without a sheet, or a world NPC.
+func (s *CellKnowledgeSuite) TestVisibleCellsAsksOnlyTheViewersSight() {
+	for _, other := range []encounter.MemberInput{
+		{ID: "b", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 4}},
+		{ID: "npc", Kind: encounter.KindWorld, Position: cellAt(1, 3)},
+	} {
+		s.Run(string(other.Kind), func() {
+			sight := &sheetless{inner: &sightList{fallback: 20}, missing: map[encounter.MemberID]bool{other.ID: true}}
+			enc, err := encounter.NewEncounter(&encounter.SetupInput{
+				Field: s.field(),
+				Members: []encounter.MemberInput{
+					{ID: "a", Kind: encounter.KindPlayer, Position: cellAt(2, 1)}, other,
+				},
+				Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+				Capabilities: func() encounter.Capabilities {
+					c := s.capabilities()
+					c.Sight = sight
+					return c
+				}(),
+			})
+			s.Require().NoError(err)
+			want, err := enc.VisibleCellsFor(&encounter.VisibleCellsInput{Member: "a"})
+			s.Require().NoError(err)
+
+			sight.armed = true
+			got, err := enc.VisibleCellsFor(&encounter.VisibleCellsInput{Member: "a"})
+			s.Require().NoError(err, "another member's missing sheet is not a's read's business")
+			s.Equal(want.Cells, got.Cells)
+			_, err = enc.AtlasFor("a")
+			s.Require().NoError(err, "the atlas asks no sight at all")
+
+			_, err = enc.VisibleCellsFor(&encounter.VisibleCellsInput{Member: other.ID})
+			s.Require().Error(err, "the member whose sight cannot be answered is still refused for its own read")
+		})
+	}
 }
 
 // TestOpeningTeachesOnlyTheDoorEdge: a blind opener learns the door's two

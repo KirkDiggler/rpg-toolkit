@@ -44,7 +44,8 @@ type VisibleCellsOutput struct {
 // Task 4).
 //
 // ErrNilInput for a nil input, ErrNotMember for a stranger; an unplaced
-// member answers an empty, non-nil list.
+// member answers an empty, non-nil list. The [Sight] capability is asked about
+// this member alone, so its refusals concern this member alone.
 func (e *Encounter) VisibleCellsFor(in *VisibleCellsInput) (*VisibleCellsOutput, error) {
 	if in == nil {
 		return nil, ErrNilInput
@@ -57,7 +58,10 @@ func (e *Encounter) VisibleCellsFor(in *VisibleCellsInput) (*VisibleCellsOutput,
 	if !placed {
 		return out, nil
 	}
-	reach, err := e.sightNow()
+	// ONE VIEWER, ONE RANGE: only this member's sight enters seen-now, so only
+	// this member is asked about. Another member's unanswerable sheet is not
+	// this read's business.
+	reach, err := e.sightOf([]MemberID{in.Member})
 	if err != nil {
 		return nil, fmt.Errorf("visible cells for %q: %w", in.Member, err)
 	}
