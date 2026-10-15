@@ -354,11 +354,12 @@ func (s *StaticPlacements) Validate(cells []spatial.Position) error {
 		// defect, not something the run works out later. An open one occupies
 		// nothing, exactly as an open door's crossing blocks nothing.
 		//
-		// The doors are read from the INPUT rather than from compiled
-		// records, because this seam compiles the field alone; a door whose
-		// geometry is unmeasurable is refused by validateDoorInputs at
-		// construction, and is treated here as occupying the cell — fail
-		// closed, the rule the placed loop above already applies.
+		// The doors are the shut-door copy [CompileStaticPlacements] took
+		// from the input's door list, not compiled door records, because this
+		// seam compiles the field alone. A door whose geometry cannot be
+		// measured is refused by validateDoorInputs at construction, and is
+		// treated here as occupying the cell — fail closed, the rule the
+		// placed loop above already applies.
 		for _, d := range s.shutDoors {
 			contact, traceErr := spatial.TraceFootprint(spatial.FootprintTraceInput{Placement: d.placement, From: centre, To: centre})
 			if traceErr != nil || contact.Contact {
