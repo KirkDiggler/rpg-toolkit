@@ -290,6 +290,24 @@ type DoorInput struct {
 	// State is what state the door starts in. REQUIRED — see [DoorState].
 	State DoorState
 
+	// Opened is the fact this door TEACHES when it becomes open
+	// (rpg-project#569 R12) — a door is a source, the way a record's
+	// `reveals` is. Empty means it teaches nothing.
+	//
+	// WHO LEARNS IT IS THE DOOR BEAT'S AUDIENCE, captured at the change: the
+	// actor and every member who can see the door. A hearer is not taught —
+	// a forced door's crash already lands as a sound, and whatever a listener
+	// makes of it is their own row's business. A host open with no actor that
+	// nobody sees teaches nobody: a door nobody saw open is a fact nobody
+	// has. Only a transition INTO open teaches (Open, or a beaten lock,
+	// picked or forced — one event, so there is no `unlocked`); a close
+	// teaches nothing, and a reopen teaches nobody twice because knowing is
+	// idempotent.
+	//
+	// No predicate reads door state. The predicate set stays closed; the
+	// door writes a fact, and `when: { fact }` is how anything waits on it.
+	Opened FactID
+
 	// A DOOR NO LONGER SAYS WHETHER IT IS HIDDEN (rpg-project#490). It
 	// carried `Concealed []CheckApproach` until the concealment primitive
 	// landed; a door is hidden now by being named in a
@@ -331,6 +349,8 @@ type doorRecord struct {
 	edges     []DoorEdge
 	placement *spatial.FootprintPlacement
 	state     DoorState
+	// opened is [DoorInput.Opened]: construction truth, never changed.
+	opened FactID
 }
 
 // blocks is what this door's geometry does right now: its state's answer,
@@ -631,6 +651,7 @@ func doorRecordsFrom(doors []DoorInput) ([]*doorRecord, map[DoorID]*doorRecord) 
 			edges:     edges,
 			placement: copyPlacement(d.Placement),
 			state:     d.State,
+			opened:    d.Opened,
 		}
 		records = append(records, rec)
 		byID[d.ID] = rec

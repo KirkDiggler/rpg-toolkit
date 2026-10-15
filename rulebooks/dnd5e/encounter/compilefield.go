@@ -134,6 +134,13 @@ type field struct {
 	// without doors has none of these, exactly as it has no canvas.
 	doorFootprints []*doorRecord
 
+	// openedFacts is every fact a door teaches when it opens
+	// ([DoorInput.Opened], rpg-project#569 R12), read off the authored
+	// doors at compile so [mintedFactIDs] can count them: a door's fact is
+	// field structure the way a record's reveal is, and both construction
+	// seams hand the doors in on [FieldInput.Doors] before this compile runs.
+	openedFacts []FactID
+
 	// plane is the continuous frame the placed facts are measured in: this
 	// field's own hex layout at FeetPerCell across the flats, so a cell
 	// centre means the same point to a footprint as to the grid that
@@ -319,6 +326,11 @@ func compileField(in FieldInput) (*field, error) {
 	// contributors a wall presence and a bound door presence name, and the
 	// authored doors a binding's DoorID must resolve to. A field that declares
 	// none is untouched.
+	for _, d := range in.Doors {
+		if d.Opened != "" {
+			f.openedFacts = append(f.openedFacts, d.Opened)
+		}
+	}
 	if err := f.compileStructuralWalls(in.StructuralWalls, in.Doors); err != nil {
 		return nil, err
 	}

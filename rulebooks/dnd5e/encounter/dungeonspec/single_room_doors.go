@@ -109,6 +109,16 @@ func doorBindingsShape(gp *yaml.Node, add errSink) {
 		optionalNode(b, "closed", p, add)
 		optionalNode(b, "locked", p, add)
 		optionalNode(b, "concealed", p, add)
+		// `opened: null` is an author who deleted the fact. `fact: 12` is a
+		// number the typed decode would read as the fact "12" without a
+		// word, so it is judged on the node; `fact: null` decodes empty and
+		// earns the grammar's one sentence ([grammar.doorOpened]) rather
+		// than a second defect beside it (rpg-project#569 R12).
+		if opened := optionalNode(b, "opened", p, add); opened != nil && opened.Kind == yaml.MappingNode {
+			if fact := childNode(opened, "fact"); fact != nil && !isNull(fact) && fact.Tag != "!!str" {
+				add(p+".opened.fact", errNotAString)
+			}
+		}
 	}
 }
 
@@ -147,6 +157,7 @@ func doorBindingValues(gp *RoomGameplaySource, g *grammar, add errSink) {
 		// because these are the binding's own keys wherever the door stands.
 		if bound[id] {
 			g.doorState(p, binding.Locked, nil)
+			g.doorOpened(p, binding.Opened)
 			continue
 		}
 
@@ -173,6 +184,7 @@ func doorBindingValues(gp *RoomGameplaySource, g *grammar, add errSink) {
 		// the door is HIDDEN is not a door key in either dialect's engine
 		// any more, so nothing is handed on beside the lock.
 		g.doorState(p, binding.Locked, nil)
+		g.doorOpened(p, binding.Opened)
 	}
 }
 
@@ -242,6 +254,7 @@ func singleRoomDoors(key string, gp *RoomGameplaySource, read roomRead) []encoun
 			ID:        encounter.DoorID(key + "/" + id),
 			Placement: &placement,
 			State:     doorStateOf(binding.Locked, binding.Closed),
+			Opened:    openedFactOf(binding.Opened),
 		})
 	}
 
@@ -295,6 +308,7 @@ func attachedDoorLowering(key string, gp *RoomGameplaySource) ([]encounter.Place
 			ID:        encounter.DoorID(key + "/" + b.id),
 			Placement: &placement,
 			State:     doorStateOf(binding.Locked, binding.Closed),
+			Opened:    openedFactOf(binding.Opened),
 		})
 		placed = append(placed, encounter.PlacedPropInput{
 			ID:                encounter.PropID(b.id),

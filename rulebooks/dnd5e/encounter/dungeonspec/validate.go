@@ -484,6 +484,7 @@ func (v *validation) doors() {
 		// geometry — the side midpoint, the one wall, the crossing — which
 		// is this dialect's own and nobody else's.
 		v.g.doorState(p, d.Locked, d.Concealed)
+		v.g.doorOpened(p, d.Opened)
 
 		at, ok := v.position(p, "at", g, d.At)
 		if !ok {

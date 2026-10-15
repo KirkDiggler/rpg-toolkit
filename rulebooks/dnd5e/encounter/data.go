@@ -772,6 +772,12 @@ type DoorData struct {
 	// through after a save.
 	Placement *PlacementData `json:"placement,omitempty"`
 
+	// Opened is [DoorInput.Opened], the fact the door teaches when it
+	// becomes open (rpg-project#569 R12). Absent for a door that teaches
+	// nothing, which is every door in every blob written before R12, so
+	// those blobs load unchanged.
+	Opened FactID `json:"opened,omitempty"`
+
 	// Concealed is a TOMBSTONE, [RegionData.Concealed]'s twin on the other
 	// retired flag: the key a door wrote while a door carried its own find
 	// check, kept solely so a blob carrying it is refused BY NAME rather
@@ -1215,9 +1221,10 @@ func placementFromData(d PlacementData) spatial.FootprintPlacement {
 // doorDataFrom renders a door record for the blob.
 func doorDataFrom(d *doorRecord) DoorData {
 	out := DoorData{
-		ID:    d.id,
-		Edges: make([]EdgeData, 0, len(d.edges)),
-		State: string(d.state.Kind()),
+		ID:     d.id,
+		Edges:  make([]EdgeData, 0, len(d.edges)),
+		State:  string(d.state.Kind()),
+		Opened: d.opened,
 	}
 	if d.placement != nil {
 		placement := placementDataFrom(*d.placement)
@@ -1807,7 +1814,7 @@ func convertDoorDataToDoorInput(doors []DoorData) ([]DoorInput, error) {
 				To:   spatial.Position{X: e.To.X, Y: e.To.Y},
 			})
 		}
-		in := DoorInput{ID: dd.ID, Edges: edges, State: state}
+		in := DoorInput{ID: dd.ID, Edges: edges, State: state, Opened: dd.Opened}
 		if dd.Placement != nil {
 			placement := placementFromData(*dd.Placement)
 			in.Placement = &placement

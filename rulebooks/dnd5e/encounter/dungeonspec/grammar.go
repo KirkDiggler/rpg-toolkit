@@ -707,6 +707,25 @@ func (g *grammar) doorState(path string, locked, concealed CheckSpec) {
 	}
 }
 
+// doorOpenedNoFact is the refusal for an `opened` that does not say what the
+// door teaches (rpg-project#569 R12) — the key missing, or written empty.
+const doorOpenedNoFact = "opening this door teaches a fact, and this does not say which: " +
+	"write the fact's id, like `fact: cells-opened`"
+
+// doorOpened judges a door's `opened` (rpg-project#569 R12) in either
+// dialect, at the door's own path: present means it names a fact. A fact id
+// is declared by mention ([PredicateSpec.Fact]) — there is no id grammar
+// beyond being written, the same rule `reveals: { fact }` and an answer row's
+// `fact` keep — so the one refusal is a fact that is not there.
+func (g *grammar) doorOpened(path string, opened *OpenedSpec) {
+	if opened == nil {
+		return
+	}
+	if opened.Fact == "" {
+		g.fail(path+".opened.fact", "%s", doorOpenedNoFact)
+	}
+}
+
 // placeTemper refuses a temperament this build does not ship. The decoder
 // already refuses an unknown word inside a [TemperSpec]; a creature's own
 // `temper` is a plain word in either dialect, so this is where it is checked.

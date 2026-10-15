@@ -916,13 +916,25 @@ func doorsOf(spec *Spec, o encounter.Orientation) []encounter.DoorInput {
 		// door, not to two orderings of it.
 		crossing := normalizedCrossing(here, there)
 		out = append(out, encounter.DoorInput{
-			ID:    encounter.DoorID(spec.Key + "/" + d.ID),
-			Edges: []encounter.DoorEdge{{From: crossing[0], To: crossing[1]}},
-			State: doorStateOf(d.Locked, d.Closed),
+			ID:     encounter.DoorID(spec.Key + "/" + d.ID),
+			Edges:  []encounter.DoorEdge{{From: crossing[0], To: crossing[1]}},
+			State:  doorStateOf(d.Locked, d.Closed),
+			Opened: openedFactOf(d.Opened),
 		})
 	}
 
 	return out
+}
+
+// openedFactOf is the fact an authored door teaches when it opens
+// ([OpenedSpec], rpg-project#569 R12), or none — written once for both
+// dialects, verbatim, like every other fact id.
+func openedFactOf(opened *OpenedSpec) encounter.FactID {
+	if opened == nil {
+		return ""
+	}
+
+	return encounter.FactID(opened.Fact)
 }
 
 // doorStateOf is the state an authored door starts in, from the two keys that
