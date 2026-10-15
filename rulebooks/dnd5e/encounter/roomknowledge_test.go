@@ -541,6 +541,38 @@ func (s *CellKnowledgeSuite) TestCellsRevealedSendsEachRecordOnce() {
 	for _, b := range after.Boundaries {
 		s.True(held[fmt.Sprintf("wall %v %v", b.From, b.To)], "every wall too")
 	}
+
+	// A FIXED PROP'S ID IS OPTIONAL, so it cannot be the difference's key: a
+	// crate a already holds and a barrel behind the door, neither named, and
+	// the barrel must still arrive (the reviewer's probe on #2056).
+	s.Run("id-less props", func() {
+		field := s.field()
+		still := func(ref string, at spatial.Position) encounter.PropInput {
+			return encounter.PropInput{Ref: ref, At: at, BlocksMovement: boolPtr(false), BlocksLineOfSight: boolPtr(false)}
+		}
+		field.Props = []encounter.PropInput{
+			still("dnd5e:props:crate", spatial.Position{X: 1, Y: 2}),
+			still("dnd5e:props:barrel", spatial.Position{X: 4, Y: 1}),
+		}
+		s.startWith(field)
+		before := s.atlas("a")
+		s.Require().Len(before.Props, 1, "a holds the crate and has not seen the barrel")
+
+		_, err := s.enc.OpenDoor(&encounter.OpenDoorInput{Door: "entry-door", Actor: "a"})
+		s.Require().NoError(err)
+		after := s.atlas("a")
+		s.Require().Len(after.Props, 2, "the open door shows the barrel")
+		sent := 0
+		for _, beat := range s.cellsRevealed("a") {
+			var props []map[string]any
+			s.Require().NoError(json.Unmarshal(beat["props"], &props))
+			for _, p := range props {
+				s.Equal("dnd5e:props:barrel", p["ref"], "only the barrel is new")
+				sent++
+			}
+		}
+		s.Equal(1, sent, "the barrel arrives exactly once")
+	})
 }
 
 // TestAShutLeafInItsOwnHexIsSeenByItsFace: a closed footprint door whose

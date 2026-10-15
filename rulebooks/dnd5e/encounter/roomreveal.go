@@ -84,15 +84,22 @@ func (e *Encounter) appendCellsRevealedBeat(member MemberID, before Atlas) error
 	// once and never again (rpg-api-protos 69a68f3e): a record the recipient
 	// already holds is not repeated because a cell beside it became known.
 	// AtlasBoundary has no id to upsert by, so a repeat would be a duplicate.
-	hadProp := make(map[PropID]bool, len(before.Props))
+	// A FIXED PROP'S ID IS OPTIONAL ([AtlasProp.ID]), so it cannot key the
+	// difference: every id-less prop would share "" and the second one would
+	// never be sent. The whole record is the key, counted, so even two
+	// identical id-less props on one cell arrive as two. (Placements, exits
+	// and doors carry required ids; doorways and sealed cells key by value.)
+	hadProp := make(map[AtlasProp]int, len(before.Props))
 	for _, prop := range before.Props {
-		hadProp[prop.ID] = true
+		hadProp[prop]++
 	}
 	props := make([]AtlasProp, 0)
 	for _, prop := range after.Props {
-		if !hadProp[prop.ID] {
-			props = append(props, prop)
+		if hadProp[prop] > 0 {
+			hadProp[prop]--
+			continue
 		}
+		props = append(props, prop)
 	}
 	hadBoundary := make(map[AtlasBoundary]bool, len(before.Boundaries))
 	for _, boundary := range before.Boundaries {
