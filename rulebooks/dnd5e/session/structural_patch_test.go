@@ -85,6 +85,18 @@ func (s *StructuralSessionSuite) TestIndependentDoorIntroductionDoesNotRequireIt
 		}
 	}
 	s.ElementsMatch(after.Atlas.Cells, patched, "each new cell arrives once, on a beat")
+	known := make(map[spatial.Position]bool, len(before.Atlas.Cells))
+	for _, cell := range before.Atlas.Cells {
+		known[cell] = true
+	}
+	var added []spatial.Position
+	for _, cell := range after.Atlas.Cells {
+		if !known[cell] {
+			added = append(added, cell)
+		}
+	}
+	s.Equal([]spatial.Position{hexCell(4, 0)}, added,
+		"the find adds the leaf's own cell and nothing of the hidden parent's floor")
 	replay, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice", FromSeq: before.Seq + 1})
 	s.Require().NoError(err)
 	s.Equal(eventsFor(s.stream.published, "alice"), replay)
