@@ -72,7 +72,31 @@ func (s *StructuralSessionSuite) TestIndependentDoorIntroductionDoesNotRequireIt
 	s.Require().NoError(err)
 	s.Empty(after.Atlas.StructuralWalls)
 	s.Equal(body.StructuralDoors, after.Atlas.StructuralDoors)
-	s.Equal(before.Atlas.Cells, after.Atlas.Cells)
+	// Discovery is by cell (rpg-project#586): once the secret is found, the
+	// sighted leaf teaches the cell it covers. Whatever floor the find adds
+	// arrives on the beats — the prior map plus the reveals is the fresh map.
+	patched := append(append([]spatial.Position{}, before.Atlas.Cells...), body.Cells...)
+	for _, reveal := range eventsOfKind(s.stream.published, "alice", session.EventCellsRevealed) {
+		cells, ok := reveal.Body.(session.CellsRevealedBody)
+		s.Require().True(ok)
+		patched = append(patched, cells.Scenery...)
+		for _, region := range cells.Regions {
+			patched = append(patched, region.Cells...)
+		}
+	}
+	s.ElementsMatch(after.Atlas.Cells, patched, "each new cell arrives once, on a beat")
+	known := make(map[spatial.Position]bool, len(before.Atlas.Cells))
+	for _, cell := range before.Atlas.Cells {
+		known[cell] = true
+	}
+	var added []spatial.Position
+	for _, cell := range after.Atlas.Cells {
+		if !known[cell] {
+			added = append(added, cell)
+		}
+	}
+	s.Equal([]spatial.Position{hexCell(4, 0)}, added,
+		"the find adds the leaf's own cell and nothing of the hidden parent's floor")
 	replay, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice", FromSeq: before.Seq + 1})
 	s.Require().NoError(err)
 	s.Equal(eventsFor(s.stream.published, "alice"), replay)

@@ -333,6 +333,22 @@ func drive(out *bytes.Buffer) error {
 		fmt.Fprintf(out, "   %s: (%v,%v) kisses (%v,%v)\n",
 			d.Door, d.From.X, d.From.Y, d.To.X, d.To.Y)
 	}
+	// The map is what alice has LEARNED, cell by cell (rpg-project#586); what
+	// she sees right now is the view's own answer, a subset of it.
+	view, err := mgr.View(ctx, &session.ViewInput{Session: "crypt-run", Member: "alice"})
+	if err != nil {
+		return err
+	}
+	known := make(map[spatial.Position]bool, len(atlas.Cells))
+	for _, cell := range atlas.Cells {
+		known[cell] = true
+	}
+	for _, cell := range view.VisibleCells {
+		if !known[cell] {
+			return fmt.Errorf("alice sees %v, which is not on her map", cell)
+		}
+	}
+	fmt.Fprintf(out, "   alice sees %d of them now, every one already on her map\n", len(view.VisibleCells))
 
 	fmt.Fprintln(out, "\n== alice walks to the gate ==")
 	walked, err := mgr.Move(ctx, &session.MoveInput{

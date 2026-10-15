@@ -6,14 +6,17 @@ package session
 import (
 	"encoding/json"
 
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// EventRoomRevealed adds newly known fixed room data for its recipient.
+// EventRoomRevealed was the whole-room reveal. Discovery is by cell now
+// (rpg-project#586), so nothing produces it; the kind and its body remain so a
+// stored story naming it still decodes as what it was.
+//
+// Deprecated: superseded by [EventCellsRevealed].
 const EventRoomRevealed EventKind = "room_revealed"
 
-// RoomRevealedBody is fixed layout, not mutable observation or a whole-atlas
+// RoomRevealedBody is the deprecated [EventRoomRevealed]'s body: fixed layout, not mutable observation or a whole-atlas
 // replacement. Scenery is additional unowned floor (for example wall footing).
 type RoomRevealedBody struct {
 	Region     AtlasRegion        `json:"region"`
@@ -42,42 +45,23 @@ func (RoomRevealedBody) isEventBody() {}
 func roomRevealedBody(payload []byte) EventBody {
 	var p struct {
 		RoomRevealedBody
-		Placed []struct {
-			ID                string                  `json:"id"`
-			Placement         encounter.PlacementData `json:"placement"`
-			Cells             []spatial.Position      `json:"cells"`
-			BlocksMovement    bool                    `json:"blocks_movement"`
-			BlocksLineOfSight bool                    `json:"blocks_line_of_sight"`
-		} `json:"placed"`
+		Placed json.RawMessage `json:"placed"`
 	}
 	if json.Unmarshal(payload, &p) != nil || p.Region.ID == "" {
 		return nil
 	}
-	// THE STRUCTURAL ROWS ARE DECODED ONCE, SHARED WITH THE CONCEALMENT BEAT.
 	// A row missing its identity refuses the whole beat rather than handing a
 	// client a half-patched cache; an absent key is the legacy payload and
-	// leaves both lists empty.
-	rows, ok := structuralRowsFromPayload(payload)
+	// leaves its list empty.
+	fixed, ok := revealedFixedRows(payload)
 	if !ok {
 		return nil
 	}
-	presentations, valid := propPresentationsFromPayload(payload)
-	if !valid {
-		return nil
-	}
-	p.PropPresentations = presentations
-	p.StructuralWalls = rows.Walls
-	p.StructuralDoors = rows.Doors
-	p.StructuralWallOpeningsReplacements = rows.Replacements
-	for _, prop := range p.Placed {
-		if prop.ID == "" {
-			return nil
-		}
-		d := prop.Placement
-		p.RoomRevealedBody.Placed = append(p.RoomRevealedBody.Placed, AtlasPlacedProp{
-			ID: prop.ID, Cells: prop.Cells, BlocksMovement: prop.BlocksMovement, BlocksLineOfSight: prop.BlocksLineOfSight,
-			Placement: FootprintPlacement{Width: d.Footprint.W, Depth: d.Footprint.D, Origin: FootprintPoint{X: d.Origin.X, Y: d.Origin.Y}, Facing: d.Facing, LocalOffset: FootprintPoint{X: d.LocalOffset.X, Y: d.LocalOffset.Y}},
-		})
-	}
-	return p.RoomRevealedBody
+	body := p.RoomRevealedBody
+	body.Placed = fixed.placed
+	body.PropPresentations = fixed.presentations
+	body.StructuralWalls = fixed.rows.Walls
+	body.StructuralDoors = fixed.rows.Doors
+	body.StructuralWallOpeningsReplacements = fixed.rows.Replacements
+	return body
 }

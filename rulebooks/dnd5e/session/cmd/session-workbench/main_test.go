@@ -94,7 +94,10 @@ func TestWorkbenchRuns(t *testing.T) {
 		// the two authored rows whose axial cells read the same as their
 		// offsets under pointy-top, which is why the gate is legible here.
 		"gate: (5,1) kisses (6,1)",
-		"one hex map: 72 cells",
+		// The map is the cells alice has learned, not the whole dungeon,
+		// and what she sees now is a subset of it (rpg-project#586).
+		"one hex map: ",
+		"of them now, every one already on her map",
 		"alice enters (5,1)",           // the walk reached the doorway
 		"alice steps through to (6,1)", // and crossed it — a doorway is a step
 

@@ -239,7 +239,7 @@
 //
 // # Permitted prop presentation
 //
-// Atlas.PropPresentations and both reveal bodies carry the provider's fixed
+// Atlas.PropPresentations and every reveal body carry the provider's fixed
 // render records in the same PropID namespace as prop/placed shapes. Mutable
 // PropSighting.Presentation is captured with its observation, never enriched from
 // current world/source state when returning memory; observed-empty carries none.
@@ -259,12 +259,14 @@
 // permitted, and a withheld opening is omitted whole so a visible wall carries no
 // tell. This seam copies that answer: [Atlas.StructuralWalls] and
 // [Atlas.StructuralDoors] carry the permitted records with their canonical-feet
-// geometry. Existing room_revealed and concealment_revealed payloads introduce
-// full records through `structural_walls`/`structural_doors`, and replace a known
-// wall's opening list through `structural_wall_openings_replacements`
-// (RoomRevealedBody, ConcealmentRevealedBody). A present replacement with an
-// empty/default opening list clears it; absence is a no-op. Historical full-row
-// updates retain their whole-record upsert semantics.
+// geometry. The cells_revealed and concealment_revealed payloads (and the
+// deprecated room_revealed one, for stored stories) introduce full records
+// through `structural_walls`/`structural_doors`, and replace a known wall's
+// opening list through `structural_wall_openings_replacements`
+// (CellsRevealedBody, ConcealmentRevealedBody, RoomRevealedBody). A present
+// replacement with an empty/default opening list clears it; absence is a
+// no-op. Historical full-row updates retain their whole-record upsert
+// semantics.
 //
 // NOTHING IS DECIDED HERE. projectAtlas is a field-for-field copy; the reveal
 // decode is a shared helper that refuses a malformed or identity-less row whole
@@ -297,9 +299,24 @@
 // observations arrive through View with current/remembered currency. An unseen
 // pickup does not erase another observer's remembered placement. Knowledge
 // restores geometry, observations, own carriage, placement and known identities
-// from one loaded world with its recipient-local sequence cutoff. Room-revealed
+// from one loaded world with its recipient-local sequence cutoff. Cells-revealed
 // events add fixed data; Sighted requests a fresh mutable view. Authoring's
 // AtlasOf remains an unscoped world read, never a gameplay fallback.
+//
+// # Fog of war: seen now and discovery by cell (rpg-project#586)
+//
+// THE SESSION PROJECTS, NEVER COMPUTES. The composition learns cells one at a
+// time and withholds the rest from AtlasFor; this seam copies that atlas.
+// [ViewOutput.VisibleCells] is the composition's VisibleCellsFor answer for the
+// viewing member alone — what their sight reaches now, a subset of their own
+// atlas, never stored and never a party union — carried through View and
+// Knowledge unchanged. A placed member's answer always holds its own cell.
+//
+// Each learning moment reaches its learner alone as [EventCellsRevealed], the
+// composition's per-member delta delivered unchanged: partial regions carrying
+// only the newly known cells, which a client merges by region id with union.
+// [EventRoomRevealed] is deprecated and no longer produced; its kind and body
+// remain so a stored story still decodes as what it was.
 //
 // EXIT SAYS WHAT IT DID NOT SAY BEFORE. ExitedBody carries what the member
 // walked out with and the authored exit they used, both empty for the

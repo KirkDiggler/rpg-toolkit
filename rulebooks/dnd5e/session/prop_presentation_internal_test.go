@@ -20,8 +20,8 @@ func TestPropPresentationDecodeSuite(t *testing.T) { suite.Run(t, new(PropPresen
 
 const validPresentationRow = `{"id":"books","ref":"dnd5e:props:books","origin":{"x":0,"y":3},"elevation":2,"facing_degrees":-30,"height_scale":1.5,"point_light":{"enabled":true,"offset":{"x":1,"y":2},"offset_elevation":3,"color":"#ffffff","intensity":2,"range":4}}`
 
-func (s *PropPresentationDecodeSuite) TestBothRevealKindsCarryFullRecords() {
-	for _, beat := range []string{"room_revealed", "concealment_revealed"} {
+func (s *PropPresentationDecodeSuite) TestEveryRevealKindCarryFullRecords() {
+	for _, beat := range []string{"cells_revealed", "room_revealed", "concealment_revealed"} {
 		payload := fmt.Sprintf(`{"beat":%q,"region":{"id":"room"},"concealment":"secret","prop_presentations":[%s]}`, beat, validPresentationRow)
 		_, body := decodeBeat([]byte(payload))
 		s.Require().NotNil(body)
@@ -45,14 +45,14 @@ func (s *PropPresentationDecodeSuite) TestMalformedRowsRefuseAtomicBody() {
 		strings.Replace(validPresentationRow, `"range":4`, `"range":0`, 1),
 		validPresentationRow + "," + validPresentationRow,
 	} {
-		for _, beat := range []string{"room_revealed", "concealment_revealed"} {
+		for _, beat := range []string{"cells_revealed", "room_revealed", "concealment_revealed"} {
 			_, body := decodeBeat([]byte(fmt.Sprintf(`{"beat":%q,"region":{"id":"room"},"concealment":"secret","structural_doors":[{"id":"valid"}],"prop_presentations":[%s]}`, beat, row)))
 			s.Nil(body)
 		}
 	}
 }
 func (s *PropPresentationDecodeSuite) TestExclusiveDoorChannelsAndStandaloneIdentity() {
-	for _, beat := range []string{"room_revealed", "concealment_revealed"} {
+	for _, beat := range []string{"cells_revealed", "room_revealed", "concealment_revealed"} {
 		standalone := strings.Replace(validPresentationRow, `"id":"books"`, `"id":"books","door_id":"world/door"`, 1)
 		payload := fmt.Sprintf(`{"beat":%q,"region":{"id":"room"},"concealment":"secret","prop_presentations":[%s]}`, beat, standalone)
 		_, body := decodeBeat([]byte(payload))
