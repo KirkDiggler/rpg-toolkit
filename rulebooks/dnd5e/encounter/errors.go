@@ -376,6 +376,22 @@ var (
 	// why this differs from Decider, which IS optional.
 	ErrNoTurnDriver = errors.New("encounter: no turn driver capability")
 
+	// ErrNoPlayerInBubble indicates a bubble was asked to drive its unplayed
+	// members forward and found no KindPlayer member in it at all.
+	//
+	// Defensive rather than reachable through any documented path: a bubble
+	// forms on contact that includes a player (rpg-toolkit#964). Since
+	// rpg-project#569 (D0) classify pairs opposed members of any kind, so two
+	// hostile monster factions can make contact with each other — and with no
+	// player in that contact it is NO FORMATION, not this error: the pair
+	// stays on the world clock until a player makes contact with either side,
+	// and then the fight forms with the pair in it. A fight nobody plays has
+	// no driver, so a player-free fight should still not exist. Refused loudly
+	// here rather than looping driveMonsterTurns forever or silently ending
+	// every member's turn with nobody left to hand the clock to, in case that
+	// invariant is ever broken elsewhere.
+	ErrNoPlayerInBubble = errors.New("encounter: bubble has no player to end on")
+
 	// ErrBadTurnOutcome indicates a Driver returned a TurnIntent this
 	// version of the module does not recognise — a value outside the sealed
 	// Pass/Attack/Move/Routed vocabulary.

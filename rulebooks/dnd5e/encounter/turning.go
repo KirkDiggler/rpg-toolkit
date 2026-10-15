@@ -260,15 +260,15 @@ func (e *Encounter) attackable(what string, id MemberID) error {
 // from the current view — stays in the one place it is written.
 //
 // ANY OPPOSED PAIR, LIKE EVERY OTHER FORMATION (rpg-project#569, D0).
-// classify pairs every two contact members the graph holds hostile, so two
-// monster factions turning on each other in plain sight go to initiative
-// exactly as a camp turning on the party does: the garrison and the
-// loyalists, the moment the captain turns, with the party nowhere near. A
-// fight with no player in it is driven by the world clock, one round per
-// world round ([Encounter.driveUnplayedFights]); one the party is already in
-// is joined, by the straggler rule, and the party and the turned garrison
-// fight the loyalists side by side, opposed to neither each other nor anyone
-// the graph does not say.
+// classify pairs every two contact members the graph holds hostile, of any
+// kind, and forms only a pair a player anchors: a garrison that turns on the
+// thugs the party is fighting joins the party's fight, by the straggler rule,
+// and fights the thugs beside the party, opposed to neither. Two monster
+// factions turning on each other with no player in it form nothing — the
+// graph says they are at war, `enemy:` answers so — and come into the fight
+// when a player makes contact with either side. A fight with no player in it
+// has nobody to end a turn, and inventing one here would be a second
+// formation rule rather than this one.
 func (e *Encounter) formOnStance(before, after map[factionPair]Stance) error {
 	participation, err := e.participationNow()
 	if err != nil {

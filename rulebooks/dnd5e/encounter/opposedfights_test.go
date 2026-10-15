@@ -9,19 +9,19 @@ package encounter_test
 // loyalists and neither fights the other.
 //
 //	classify pairs every two contact members the graph holds hostile, of any
-//	kind; a one-sided monster↔monster contact forms (spotted), and the drop
-//	stays a player's;
-//	the aggression law's stance turn between two monster factions forms the
-//	fight;
-//	a fight nobody plays runs at the world's pace, one round per world round,
-//	and forming it is not a round passing;
+//	kind, and forms only a pair a player anchors — a player, or a member
+//	already in the player's fight;
+//	two monsters making contact with no player in it is no formation, not an
+//	error, and the pair comes into the fight when a player makes contact
+//	with either side;
+//	the aggression law's turn between two monster factions forms the fight
+//	when one side is already in the party's;
 //	a guard who turns on the thugs joins the party's fight against them and
 //	never swings at the party.
 //
 // THE YARD is the both-ways yard's shape: open air, everybody in sight of
-// everybody unless the scene dims somebody. Every monster faction here is
-// declared NEUTRAL to the party, so a member of the party who can see the
-// whole fight is in none of it — the graph, not the kind, decides who fights.
+// everybody unless the scene dims somebody. The graph, not the kind, decides
+// who fights.
 
 import (
 	"encoding/json"
@@ -146,10 +146,6 @@ func (s *OpposedFightsSuite) order(enc *encounter.Encounter, member core.EntityI
 	return out.Order
 }
 
-func (s *OpposedFightsSuite) highWater(enc *encounter.Encounter) int {
-	return enc.ToData().Clock.HighWater
-}
-
 // sworn is the declared war between the garrison and the loyalists.
 func sworn() encounter.DispositionInput {
 	return encounter.DispositionInput{
@@ -157,43 +153,48 @@ func sworn() encounter.DispositionInput {
 	}
 }
 
-// TestTwoHostileMonsterFactionsFightOnSight is classify's new table: two
-// monster factions declared hostile, in sight of each other at first light,
-// go to initiative with each other and nobody else.
-func (s *OpposedFightsSuite) TestTwoHostileMonsterFactionsFightOnSight() {
+// TestTwoHostileMonsterFactionsComeIntoThePartysFight is classify's new
+// table: two monster factions declared hostile and watching each other form
+// nothing on their own, and both come into the fight the moment the party
+// makes contact with one of them.
+func (s *OpposedFightsSuite) TestTwoHostileMonsterFactionsComeIntoThePartysFight() {
 	factions := []encounter.FactionInput{{ID: ofGarrison}, {ID: ofLoyalists}}
 	members := []encounter.MemberInput{
-		player(alice, 0, 0),
+		player(alice, 11, 4),
 		monster(ofGuard, ofGarrison, 4, 1),
-		monster(ofLoyalist, ofLoyalists, 6, 1),
+		monster(ofLoyalist, ofLoyalists, 5, 1),
 	}
 
-	s.Run("control: neutral to each other, as undeclared factions are, nobody fights", func() {
-		enc := s.open(s.yard(factions), members, everyoneSeesTheWholeMap{})
-		s.Equal(encounter.ClockWorld, s.clockOf(enc, ofGuard))
-		s.Equal(encounter.ClockWorld, s.clockOf(enc, ofLoyalist))
-	})
-
-	s.Run("mutual: both enter, nobody surprised, the party watches", func() {
+	s.Run("with no player in the contact it is no formation, and no error", func() {
 		enc := s.open(s.yard(factions, sworn()), members, everyoneSeesTheWholeMap{})
-
-		form := s.formed(enc, ofGuard)
-		s.Require().NotNil(form, "two hostile factions in plain sight go to initiative")
-		s.ElementsMatch([]string{string(ofGuard), string(ofLoyalist)}, engaged(form),
-			"the pair the graph holds hostile, and only that pair")
-		s.NotContains(form, "surprised", "each saw the other")
-		s.Equal(encounter.ClockWorld, s.clockOf(enc, alice),
-			"alice sees the whole fight and is opposed to neither side")
+		s.Equal(encounter.ClockWorld, s.clockOf(enc, ofGuard), "a fight nobody plays does not form")
+		s.Equal(encounter.ClockWorld, s.clockOf(enc, ofLoyalist))
+		hostile, known := enc.IsHostile(ofGuard, ofLoyalist)
+		s.True(known)
+		s.True(hostile, "they are still at war: the graph says so and `enemy:` answers so")
 	})
 
-	s.Run("spotted: a guard who sees a loyalist that cannot see him starts it", func() {
-		blind := &sightList{reach: map[encounter.MemberID]int{ofLoyalist: 0}, fallback: unlimitedSight}
-		enc := s.open(s.yard(factions, sworn()), members, blind)
+	s.Run("the party making contact with the guard brings both sides in", func() {
+		// The garrison is hostile to the party (declared with nothing toward
+		// it); the loyalists are neutral to it. Only the pair can see at
+		// first light: alice and the guard are dark until the scene lights
+		// them.
+		field := s.yard([]encounter.FactionInput{{ID: ofLoyalists}}, sworn())
+		field.Factions = append(field.Factions, encounter.FactionInput{ID: ofGarrison})
+		light := &sightList{reach: map[encounter.MemberID]int{alice: 0, ofGuard: 2, ofLoyalist: 2}}
+		enc := s.open(field, members, light)
+		s.Require().Equal(encounter.ClockWorld, s.clockOf(enc, ofGuard), "precondition: no player, no fight")
 
-		form := s.formed(enc, ofGuard)
-		s.Require().NotNil(form, "a one-sided monster contact forms: nobody has a choice to offer")
-		s.ElementsMatch([]string{string(ofGuard), string(ofLoyalist)}, engaged(form))
-		s.Equal([]any{string(ofLoyalist)}, form["surprised"], "the one who saw nothing enters unaware")
+		light.reach[alice], light.reach[ofGuard] = unlimitedSight, unlimitedSight
+		_, err := enc.Step(&encounter.StepInput{Member: alice, To: cellAt(11, 3)})
+		s.Require().NoError(err)
+
+		form := s.formed(enc, alice)
+		s.Require().NotNil(form, "the guard and alice saw each other: a fight with a player in it")
+		s.ElementsMatch([]string{string(alice), string(ofGuard), string(ofLoyalist)}, engaged(form),
+			"and the loyalist who has been watching the guard comes in with him")
+		hostile, _ := enc.IsHostile(ofLoyalist, alice)
+		s.False(hostile, "the loyalist is in the party's fight, and not against the party")
 	})
 
 	s.Run("the drop stays a player's: alice unseen by a hostile camp starts nothing", func() {
@@ -211,90 +212,59 @@ func (s *OpposedFightsSuite) TestTwoHostileMonsterFactionsFightOnSight() {
 }
 
 // TestTheAggressionLawBetweenTwoMonsterFactionsFormsTheFight is the turn as
-// a transition between two monster factions: a guard strikes a loyalist of a
-// neutral faction, the pair is hostile from that moment, and the fight forms
-// around everyone of either side who could see it — with no player.
+// a transition between two monster factions: a loyalist the party is
+// fighting strikes a guard of a neutral faction, the pair is hostile from
+// that moment, and the guard comes into the fight — while the same swing
+// with no player anywhere turns the pair and forms nothing.
 func (s *OpposedFightsSuite) TestTheAggressionLawBetweenTwoMonsterFactionsFormsTheFight() {
-	enc := s.open(
-		s.yard([]encounter.FactionInput{{ID: ofGarrison}, {ID: ofLoyalists}}),
-		[]encounter.MemberInput{
-			player(alice, 0, 0),
-			monster(ofGuard, ofGarrison, 4, 1),
+	strike := func(enc *encounter.Encounter, actor, target core.EntityID) {
+		_, err := recordOne(enc, &encounter.RecordInput{
+			Kind: encounter.OutcomeStruck, Actor: actor, Targets: []encounter.MemberID{target},
+			Values: map[encounter.OutcomeValue]int{encounter.ValueAmount: 3},
+		})
+		s.Require().NoError(err)
+	}
+	stance := func(enc *encounter.Encounter) encounter.Stance {
+		out, err := enc.Stance(ofGarrison, ofLoyalists)
+		s.Require().NoError(err)
+		return out
+	}
+
+	s.Run("in the party's fight: the guard joins it", func() {
+		// The loyalists are hostile to the party; the garrison is neutral to
+		// everyone until somebody swings at it.
+		field := s.yard([]encounter.FactionInput{{ID: ofGarrison}})
+		field.Factions = append(field.Factions, encounter.FactionInput{ID: ofLoyalists})
+		enc := s.open(field, []encounter.MemberInput{
+			player(alice, 4, 2),
 			monster(ofLoyalist, ofLoyalists, 5, 1),
-			monster(ofCaptain, ofGarrison, 8, 4),
-		},
-		everyoneSeesTheWholeMap{},
-	)
-	s.Require().Equal(encounter.ClockWorld, s.clockOf(enc, ofGuard), "precondition: two civil factions")
+			monster(ofGuard, ofGarrison, 8, 4),
+		}, everyoneSeesTheWholeMap{})
+		s.Require().Equal([]encounter.MemberID{alice, ofLoyalist}, s.order(enc, alice),
+			"precondition: the party is fighting the loyalist, and the guard is civil")
 
-	_, err := recordOne(enc, &encounter.RecordInput{
-		Kind: encounter.OutcomeStruck, Actor: ofGuard, Targets: []encounter.MemberID{ofLoyalist},
-		Values: map[encounter.OutcomeValue]int{encounter.ValueAmount: 3},
-	})
-	s.Require().NoError(err)
+		strike(enc, ofLoyalist, ofGuard)
 
-	stance, err := enc.Stance(ofGarrison, ofLoyalists)
-	s.Require().NoError(err)
-	s.Equal(encounter.StanceHostile, stance, "the law turned the pair")
-
-	form := s.formed(enc, ofGuard)
-	s.Require().NotNil(form, "the turn is the first contact with an enemy, and the fight forms")
-	s.ElementsMatch([]string{string(ofGuard), string(ofLoyalist), string(ofCaptain)}, engaged(form),
-		"the striker, the struck, and the captain across the yard — a pair is a pair")
-	s.NotContains(form, "surprised", "everyone was already watching everyone")
-	s.Equal(encounter.ClockWorld, s.clockOf(enc, alice), "the party is in no side of it")
-}
-
-// TestAFightNobodyPlaysRunsAtTheWorldsPace is the driver half: a fight of
-// creatures alone takes no turn when it forms, and one round of turns — each
-// side with an attack — for every round the party lives.
-func (s *OpposedFightsSuite) TestAFightNobodyPlaysRunsAtTheWorldsPace() {
-	swings := encounter.Table{encounter.AnswerTime: {
-		{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyReach}},
-			Attack: &encounter.Selector{Word: encounter.SelectorEnemy}},
-		{Weight: 1, Hold: true},
-	}}
-	guard := monster(ofGuard, ofGarrison, 4, 1)
-	guard.Table = swings
-	loyalist := monster(ofLoyalist, ofLoyalists, 5, 1)
-	loyalist.Table = swings
-	melee := encounter.SheetFacts{SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: ofClub, RangeFeet: 5}}}
-	striker := &scriptedStriker{kind: encounter.OutcomeMissed}
-
-	enc := s.openWith(
-		s.yard([]encounter.FactionInput{{ID: ofGarrison}, {ID: ofLoyalists}}, sworn()),
-		[]encounter.MemberInput{player(alice, 0, 0), guard, loyalist},
-		everyoneSeesTheWholeMap{},
-		sheetFacts{alice: {SpeedFeet: 30}, ofGuard: melee, ofLoyalist: melee},
-		tableDriver(), striker,
-	)
-	s.Require().Equal(encounter.ClockTurn, s.clockOf(enc, ofGuard), "precondition: they fight on sight")
-	s.Require().Equal(encounter.ClockWorld, s.clockOf(enc, alice))
-
-	s.Run("forming it took nobody's turn", func() {
-		s.Empty(striker.calls, "no round has passed")
+		s.Equal(encounter.StanceHostile, stance(enc), "the law turned the pair")
+		s.Equal([]encounter.MemberID{alice, ofLoyalist, ofGuard}, s.order(enc, alice),
+			"the guard joined the running fight, last in the order")
+		hostile, _ := enc.IsHostile(ofGuard, alice)
+		s.False(hostile, "and is not the party's enemy")
 	})
 
-	before := s.highWater(enc)
-	_, err := aRound(enc)
-	s.Require().NoError(err)
+	s.Run("with no player in it: the pair turns, and nothing forms", func() {
+		enc := s.open(s.yard([]encounter.FactionInput{{ID: ofGarrison}, {ID: ofLoyalists}}),
+			[]encounter.MemberInput{
+				player(alice, 0, 0),
+				monster(ofGuard, ofGarrison, 4, 1),
+				monster(ofLoyalist, ofLoyalists, 5, 1),
+			}, everyoneSeesTheWholeMap{})
 
-	s.Run("one round of the world is one round of the fight, each side swinging", func() {
-		s.Require().Len(striker.calls, 2, "the guard's turn and the loyalist's: one round, not the fight")
-		s.Equal(ofGuard, striker.calls[0].Attacker)
-		s.Equal(ofLoyalist, striker.calls[0].Target)
-		s.Equal(ofLoyalist, striker.calls[1].Attacker)
-		s.Equal(ofGuard, striker.calls[1].Target)
-	})
-	s.Run("and the round cost the world the one round the party paid", func() {
-		s.Equal(before+1, s.highWater(enc))
-	})
+		strike(enc, ofGuard, ofLoyalist)
 
-	_, err = aRound(enc)
-	s.Require().NoError(err)
-	s.Run("the next round of the world is the fight's next round", func() {
-		s.Len(striker.calls, 4)
-		s.Equal(before+2, s.highWater(enc))
+		s.Equal(encounter.StanceHostile, stance(enc), "the law turned the pair")
+		s.Equal(encounter.ClockWorld, s.clockOf(enc, ofGuard), "a fight nobody plays does not form")
+		s.Equal(encounter.ClockWorld, s.clockOf(enc, ofLoyalist))
 	})
 }
 

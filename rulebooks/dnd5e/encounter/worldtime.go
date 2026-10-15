@@ -317,14 +317,6 @@ func (e *Encounter) worldThinks() error {
 		return err
 	}
 
-	// The fights nobody plays are the ones running when the round BEGAN: a
-	// fight that forms during this pass formed out of what its members did
-	// with this round, and its own first round is the next one.
-	unplayed, err := e.unplayedFights()
-	if err != nil {
-		return err
-	}
-
 	thinkers, err := e.worldThinkers()
 	if err != nil {
 		return err
@@ -371,95 +363,8 @@ func (e *Encounter) worldThinks() error {
 		}
 	}
 
-	if err := e.driveUnplayedFights(unplayed); err != nil {
-		return err
-	}
-	if e.outcome != nil {
-		return nil
-	}
-
 	if _, _, err := e.refreshSight(e.rosterIDs()); err != nil {
 		return fmt.Errorf("world thinks refresh sight: %w", err)
-	}
-
-	return nil
-}
-
-// unplayedFights is every running fight with no player in it — a fight two
-// opposed creatures started between themselves (rpg-project#569, D0), or one
-// whose last player has left it.
-func (e *Encounter) unplayedFights() ([]*clock.Turn, error) {
-	var out []*clock.Turn
-	for _, bubble := range e.bubbles {
-		order, err := bubble.Order()
-		if err != nil {
-			return nil, fmt.Errorf("world thinks fights: %w", err)
-		}
-		if len(order) > 0 && !e.bubbleHasPlayer(order) {
-			out = append(out, bubble)
-		}
-	}
-
-	return out, nil
-}
-
-// driveUnplayedFights runs ONE ROUND of each fight nobody plays: a fight of
-// creatures alone lives at the world's pace (rpg-project#569, D0).
-//
-// # Why the world drives it
-//
-// A played fight moves because its players end their turns, and its unplayed
-// members are driven up to the next player who waits. A fight with no player
-// has nobody to wait on, so either something gives it rounds or it stands
-// frozen with both sides off the world clock — the guard and the prisoner
-// glaring at each other forever. Driving it to the end in one call is the
-// other wrong answer: the whole fight would happen in the instant it formed,
-// however many rounds it took, while the party lived one.
-//
-// One round per world round is the answer the clock already gives everybody
-// else: time passes because the party acts (worldtime.go), and a creature on
-// the world clock gets one turn's worth of doing per round of it. A creature
-// in a fight nobody plays gets exactly that too — as a turn, with an attack.
-//
-// # The round costs the world nothing more
-//
-// The round wrap this drive ends on advances each fighter on the world clock
-// ([Encounter.noticeRounds]), and that raises nothing: a member's progress is
-// never past the high-water, the raise that started this pass put the
-// high-water a round past it, and the drive stops at the first wrap. The
-// party paid for the round; the fight lived it.
-//
-// # Each one is asked again before it is driven
-//
-// An earlier fight's round, or a thinker's walk, can change the board: a
-// player walking into sight joins the fight (one bubble per encounter), or the
-// fight is decided and dissolved. A fight no longer running, or one a player
-// has joined, is not this pass's to drive.
-func (e *Encounter) driveUnplayedFights(fights []*clock.Turn) error {
-	for _, bubble := range fights {
-		if e.outcome != nil || e.Paused() {
-			return nil
-		}
-		running := false
-		for _, b := range e.bubbles {
-			if b == bubble {
-				running = true
-				break
-			}
-		}
-		if !running {
-			continue
-		}
-		order, err := bubble.Order()
-		if err != nil {
-			return fmt.Errorf("world drives fight: %w", err)
-		}
-		if len(order) == 0 || e.bubbleHasPlayer(order) {
-			continue
-		}
-		if _, _, _, err := e.driveMonsterTurns(bubble); err != nil {
-			return fmt.Errorf("world drives fight: %w", err)
-		}
 	}
 
 	return nil
