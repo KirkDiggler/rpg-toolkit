@@ -554,12 +554,8 @@ func joinInputFor(
 	}
 	scope.standing.kinds[id] = encounter.MemberKind(kind)
 
-	profile := scope.exploration[id]
-	if profile == nil {
-		profile = &ExplorationData{}
-	}
 	return encounter.JoinInput{
-		PrivateDiscoveries: profile.PrivateDiscoveries,
+		PrivateDiscoveries: !resolveDiscoverySharing(scope.exploration[id], scope.explorationFound[id]),
 		Member:             encounter.MemberID(id),
 		Kind:               encounter.MemberKind(kind),
 		Name:               name,
@@ -985,6 +981,10 @@ func (s *writeScope) frozen() error {
 type writeScope struct {
 	exploration       map[string]*ExplorationData
 	explorationBefore map[string]ExplorationData
+	// explorationFound says which staged profiles the repository held, so
+	// resolution can tell a legacy record (absent private meant shared) from
+	// no record at all (private).
+	explorationFound map[string]bool
 	// The already-paid remainder is frozen only if a direct walk poses.
 	walkContinuation []spatial.Position
 

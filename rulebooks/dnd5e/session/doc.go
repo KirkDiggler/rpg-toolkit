@@ -210,9 +210,20 @@
 // never exported to or imported from the character profile. Legacy profile JSON
 // containing checks is accepted but those obsolete values have no authority.
 //
+// Sharing is a choice (rpg-project#595, R8). ExplorationData.DiscoverySharing
+// is nil until the character chooses; SetDiscoverySharing is its only writer
+// and also keeps the legacy PrivateDiscoveries field its complement. One
+// resolution reads it: an explicit choice wins; a record without one keeps its
+// legacy meaning (absent private meant shared); no record at all is private.
+// Resolution never mutates the profile, so a default is never saved as a
+// choice and a later default change moves only the undecided. A member of an
+// already-saved encounter who was shared by the absence of any record becomes
+// private at the next prepare.
+//
 // prepareExploration loads preferences, stages character records and supplies
-// only the private/shared audience preference to RestoreDiscovery or Join.
-// saveExploration writes changed preferences only. Encounter owns proximity,
+// only the resolved private/shared audience to RestoreDiscovery or Join.
+// saveExploration writes a staged profile only when it differs from the loaded
+// one; it never derives the preference from the encounter. Encounter owns proximity,
 // eligibility, allowance and re-arming; resolution owns the actual check and
 // returns dirty character data and sourced arithmetic. The normal first-admission
 // long rest remains independent of this encounter-local discovery lifecycle.

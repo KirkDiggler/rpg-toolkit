@@ -179,10 +179,129 @@ func (s *AutomaticDiscoverySDKSuite) TestDiscoveryBelongsToTheEncounterNotTheCha
 			s.NotContains(freshAtlas.Cells, spatial.Position{X: 3, Y: 1}, "new encounter starts undiscovered")
 			approach("second")
 			s.Equal(1, s.checkCount(mgr, "second"), "the new playthrough has its own attempt")
-			s.True(profiles.data["alice"].PrivateDiscoveries, "only the sharing preference carries across runs")
+			s.Require().NotNil(profiles.data["alice"].DiscoverySharing, "only the sharing preference carries across runs")
+			s.False(*profiles.data["alice"].DiscoverySharing, "only the sharing preference carries across runs")
 			raw, err := json.Marshal(profiles.data["alice"])
 			s.Require().NoError(err)
 			s.NotContains(string(raw), "checks", "character profile must not export encounter discoveries")
 		})
 	}
+}
+
+const (
+	sharingRun    = "run"
+	sharingPlayer = "player-alice"
+)
+
+// sharingRig is one manager over shared in-memory repositories, so a second
+// manager built from the same Config is a reload of the same saved state.
+type sharingRig struct {
+	cfg      *session.Config
+	profiles *explorationStore
+}
+
+func newSharingRig(profiles *explorationStore) *sharingRig {
+	return &sharingRig{profiles: profiles, cfg: &session.Config{Seats: newFakeSeats(),
+		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: testCharacters(),
+		Explorations: profiles, Events: session.DiscardEvents{}, Dice: testDice{},
+		PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{},
+	}}
+}
+
+func (s *AutomaticDiscoverySDKSuite) launchSharing(rig *sharingRig) *session.Manager {
+	mgr, err := session.NewManager(rig.cfg)
+	s.Require().NoError(err)
+	sc := discoveryRunWorld(99)
+	sc.Session = sharingRun
+	sc.Party = []sceneSeat{seatAt("alice", 0, 1), seatAt("bob", 2, 4)}
+	launchScene(s.T(), mgr, sc)
+	return mgr
+}
+
+// sharingAfterPrepare reloads the manager and runs a write verb, so the
+// reported preference is whatever prepareExploration resolved from the
+// repository rather than what the previous verb left on the encounter.
+func (s *AutomaticDiscoverySDKSuite) sharingAfterPrepare(rig *sharingRig) bool {
+	ctx := context.Background()
+	mgr, err := session.NewManager(rig.cfg)
+	s.Require().NoError(err)
+	knowledge, err := mgr.Knowledge(ctx,
+		&session.KnowledgeInput{Session: sharingRun, Member: "alice", Player: sharingPlayer})
+	s.Require().NoError(err)
+	step := spatial.Position{X: 1, Y: 1}
+	if knowledge.Where.Position == step {
+		step = spatial.Position{X: 0, Y: 1}
+	}
+	_, err = mgr.Move(ctx, &session.MoveInput{Session: sharingRun, Member: "alice", Path: []spatial.Position{step}})
+	s.Require().NoError(err)
+	return s.reportedSharing(mgr)
+}
+
+func (s *AutomaticDiscoverySDKSuite) reportedSharing(mgr *session.Manager) bool {
+	knowledge, err := mgr.Knowledge(context.Background(),
+		&session.KnowledgeInput{Session: sharingRun, Member: "alice", Player: sharingPlayer})
+	s.Require().NoError(err)
+	s.Require().NotNil(knowledge.DiscoverySharing)
+	return *knowledge.DiscoverySharing
+}
+
+func (s *AutomaticDiscoverySDKSuite) TestUnchosenSharingResolvesPrivate() {
+	rig := newSharingRig(newFakeExplorations())
+	mgr := s.launchSharing(rig)
+	s.False(s.reportedSharing(mgr), "a character who never chose sees privately")
+	s.False(s.sharingAfterPrepare(rig), "a later prepare resolves the same default")
+	s.NotContains(rig.profiles.data, "alice", "resolution never writes a default down as a choice")
+}
+
+func (s *AutomaticDiscoverySDKSuite) TestLegacyRecordWithoutPrivateStaysShared() {
+	for _, tc := range []struct {
+		name    string
+		legacy  string
+		sharing bool
+	}{
+		{name: "absent private meant shared", legacy: `{"character":"alice"}`, sharing: true},
+		{name: "private true stays private", legacy: `{"character":"alice","private":true}`, sharing: false},
+	} {
+		s.Run(tc.name, func() {
+			var legacy session.ExplorationData
+			s.Require().NoError(json.Unmarshal([]byte(tc.legacy), &legacy))
+			rig := newSharingRig(&explorationStore{data: map[string]*session.ExplorationData{"alice": &legacy}})
+			mgr := s.launchSharing(rig)
+			s.Equal(tc.sharing, s.reportedSharing(mgr))
+			s.Equal(tc.sharing, s.sharingAfterPrepare(rig))
+			s.Nil(rig.profiles.data["alice"].DiscoverySharing, "reading a legacy record does not rewrite it as a choice")
+		})
+	}
+}
+
+func (s *AutomaticDiscoverySDKSuite) TestChoiceIsSavedAndSurvivesReload() {
+	ctx := context.Background()
+	rig := newSharingRig(newFakeExplorations())
+	mgr := s.launchSharing(rig)
+	_, err := mgr.SetDiscoverySharing(ctx,
+		&session.SetDiscoverySharingInput{Session: sharingRun, Member: "alice", Sharing: true})
+	s.Require().NoError(err)
+	raw, err := json.Marshal(rig.profiles.data["alice"])
+	s.Require().NoError(err)
+	s.JSONEq(`{"character":"alice","discovery_sharing":true}`, string(raw))
+	s.True(s.sharingAfterPrepare(rig), "the saved choice resolves shared after a reload")
+
+	_, err = mgr.SetDiscoverySharing(ctx,
+		&session.SetDiscoverySharingInput{Session: sharingRun, Member: "alice", Sharing: false})
+	s.Require().NoError(err)
+	raw, err = json.Marshal(rig.profiles.data["alice"])
+	s.Require().NoError(err)
+	s.JSONEq(`{"character":"alice","discovery_sharing":false,"private":true}`, string(raw))
+	s.False(s.sharingAfterPrepare(rig), "the second choice resolves private after a reload")
+}
+
+func (s *AutomaticDiscoverySDKSuite) TestChoosingTheDefaultIsStillAChoice() {
+	rig := newSharingRig(newFakeExplorations())
+	mgr := s.launchSharing(rig)
+	_, err := mgr.SetDiscoverySharing(context.Background(),
+		&session.SetDiscoverySharingInput{Session: sharingRun, Member: "alice", Sharing: false})
+	s.Require().NoError(err)
+	s.Require().Contains(rig.profiles.data, "alice", "choosing private is written even though private is the default")
+	s.Require().NotNil(rig.profiles.data["alice"].DiscoverySharing)
+	s.False(*rig.profiles.data["alice"].DiscoverySharing)
 }

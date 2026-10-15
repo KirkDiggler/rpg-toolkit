@@ -1092,13 +1092,13 @@ func (s *ConcealSuite) TestAJoinIntoHiddenSpaceStaysHidden() {
 	// The hall members hear that DAVID JOINED — membership is a table-level
 	// fact and every non-detection beat stays full-data until v1.0 (the
 	// standing ruling) — but the beat carries no position, and nothing
-	// tells them WHERE he appeared: no reveal, no hole. Discovery is shared
-	// with the party by default, so they also hear that he rolled a find
-	// check, a beat that names neither a cell nor what he stands in.
+	// tells them WHERE he appeared: no reveal, no hole. David never chose to
+	// share discoveries, so his find check is his alone (rpg-project#595, R8:
+	// sharing is a choice) and the hall hears only the membership beat.
 	for _, name := range []string{"alice", "bob"} {
 		heard := eventsFor(s.stream.published, name)
-		s.Equal([]session.EventKind{session.EventJoined, session.EventDiscoveryChecked},
-			recipientKinds(heard, name), "%s hears the membership beat and his find check, nothing else", name)
+		s.Equal([]session.EventKind{session.EventJoined},
+			recipientKinds(heard, name), "%s hears the membership beat, nothing else", name)
 		body, ok := heard[0].Body.(session.JoinedBody)
 		s.Require().True(ok)
 		s.Equal(session.JoinedBody{Member: "david"}, body,
