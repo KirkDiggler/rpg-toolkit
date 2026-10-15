@@ -165,6 +165,10 @@ func TestStructuralLayoutCrossesTheSeamWhole(t *testing.T) {
 			Height:    3,
 			Thickness: 0.3,
 			Elevation: -1.25,
+			// Out of coordinate order on purpose: the record is ordered along
+			// the line by the composition, and this seam carries that order
+			// verbatim rather than re-sorting it.
+			FootprintCells: []spatial.Position{{X: 3, Y: 1}, {X: 2, Y: 2}, {X: 4, Y: 1}},
 			Openings: []encounter.AtlasStructuralOpening{
 				{ID: "bare", Position: 2, Width: 1.5},
 				{ID: "gapped", Position: 7.25, Width: 2},
@@ -192,6 +196,8 @@ func TestStructuralLayoutCrossesTheSeamWhole(t *testing.T) {
 	require.Equal(t, 3.0, wall.Height)
 	require.Equal(t, 0.3, wall.Thickness)
 	require.Equal(t, -1.25, wall.Elevation, "a structural line may be sunk; negative is an authored fact")
+	require.Equal(t, []spatial.Position{{X: 3, Y: 1}, {X: 2, Y: 2}, {X: 4, Y: 1}}, wall.FootprintCells,
+		"the hexes the wall's footprint overlaps, in the composition's order along the line (fog-of-war R9)")
 	require.Equal(t, []AtlasStructuralOpening{
 		{ID: "bare", Position: 2, Width: 1.5},
 		{ID: "gapped", Position: 7.25, Width: 2},
@@ -211,8 +217,8 @@ func TestStructuralLayoutCrossesTheSeamWhole(t *testing.T) {
 	// no state, no private placed id and no parent association may ride it,
 	// because a client that could read those would be reading world truth this
 	// seam is forbidden to send.
-	require.Equal(t, []string{"ID", "Ref", "From", "To", "Height", "Thickness", "Elevation", "Openings"},
-		fieldNamesOf(AtlasStructuralWall{}), "a wall names its line and its cuts and nothing mutable")
+	require.Equal(t, []string{"ID", "Ref", "From", "To", "Height", "Thickness", "Elevation", "FootprintCells", "Openings"},
+		fieldNamesOf(AtlasStructuralWall{}), "a wall names its line, the hexes it stands over and its cuts, and nothing mutable")
 	require.Equal(t, []string{"ID", "Position", "Width"},
 		fieldNamesOf(AtlasStructuralOpening{}), "an opening carries no door id and no state")
 	require.Equal(t, []string{"ID", "Ref", "From", "To", "Height", "Thickness", "Elevation"},
@@ -232,11 +238,12 @@ func TestStructuralLayoutCrossesTheSeamWhole(t *testing.T) {
 // slice with the host.
 func TestTheStructuralSlicesAreCopiedNotShared(t *testing.T) {
 	innerOpenings := []encounter.AtlasStructuralOpening{{ID: "gap", Position: 5, Width: 2}}
+	innerFootprint := []spatial.Position{{X: 0, Y: 0}, {X: 1, Y: 0}}
 	in := encounter.Atlas{
 		Orientation: encounter.HexesArePointyTop(),
 		StructuralWalls: []encounter.AtlasStructuralWall{{
 			ID: "wall-presence", From: spatial.Point{X: 0, Y: 0}, To: spatial.Point{X: 10, Y: 0},
-			Height: 3, Thickness: 0.3, Openings: innerOpenings,
+			Height: 3, Thickness: 0.3, FootprintCells: innerFootprint, Openings: innerOpenings,
 		}},
 		StructuralDoors: []encounter.AtlasStructuralDoor{{
 			ID: "vault/gate", From: spatial.Point{X: 4, Y: 0}, To: spatial.Point{X: 6, Y: 0},
@@ -245,10 +252,13 @@ func TestTheStructuralSlicesAreCopiedNotShared(t *testing.T) {
 
 	out := projectAtlas(in)
 	out.StructuralWalls[0].Openings[0] = AtlasStructuralOpening{ID: "edited"}
+	out.StructuralWalls[0].FootprintCells[0] = spatial.Position{X: 99, Y: 99}
 	out.StructuralWalls[0].From = FootprintPoint{X: 99, Y: 99}
 	out.StructuralDoors[0].ID = "edited/gate"
 
 	require.Equal(t, "gap", innerOpenings[0].ID, "a caller's edit must not reach the composition's snapshot")
+	require.Equal(t, spatial.Position{X: 0, Y: 0}, innerFootprint[0],
+		"nor may an edit to a wall's footprint cells: `FootprintCells: w.FootprintCells` shares the provider's slice")
 	require.Equal(t, spatial.Point{X: 0, Y: 0}, in.StructuralWalls[0].From)
 	require.Equal(t, encounter.DoorID("vault/gate"), in.StructuralDoors[0].ID)
 }

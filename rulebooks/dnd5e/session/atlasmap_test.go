@@ -153,10 +153,11 @@ func (s *AtlasMapSuite) TestNothingOnTheMapNamesARoom() {
 			"frame, which carries different numbers for the same spot",
 	)
 	s.Equal(
-		[]string{"ID", "Ref", "From", "To", "Height", "Thickness", "Elevation", "Openings"},
+		[]string{"ID", "Ref", "From", "To", "Height", "Thickness", "Elevation", "FootprintCells", "Openings"},
 		fieldsOf(session.AtlasStructuralWall{}),
 		"a structural wall is its stable presence id, an opaque ref, its line in feet, its "+
-			"assembled dimensions, and its permitted cuts — and NO mutable state, private "+
+			"assembled dimensions, the hexes its footprint overlaps (fog-of-war R9), and its "+
+			"permitted cuts — and NO mutable state, private "+
 			"placed id or parent association (rpg-project#169)",
 	)
 	s.Equal(

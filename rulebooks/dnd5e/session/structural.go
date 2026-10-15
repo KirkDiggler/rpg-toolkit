@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // structural.go is the shared half of the structural DTO (rpg-project#169):
@@ -22,23 +23,29 @@ import (
 
 // projectStructuralWall copies one composition wall into this package's own
 // type (S2). Every field is carried; the two endpoints are rewritten into the
-// local [FootprintPoint], and the opening slice is copied so a caller mutating
-// the projection cannot reach the composition's snapshot.
+// local [FootprintPoint], and the footprint-cell and opening slices are copied
+// so a caller mutating the projection cannot reach the composition's snapshot.
+// A wall with no footprint cells projects an empty list, never nil, matching
+// the explicit empty array the reveal beats write.
 func projectStructuralWall(w encounter.AtlasStructuralWall) AtlasStructuralWall {
+	footprint := make([]spatial.Position, len(w.FootprintCells))
+	copy(footprint, w.FootprintCells)
+
 	openings := make([]AtlasStructuralOpening, 0, len(w.Openings))
 	for _, o := range w.Openings {
 		openings = append(openings, AtlasStructuralOpening{ID: o.ID, Position: o.Position, Width: o.Width})
 	}
 
 	return AtlasStructuralWall{
-		ID:        string(w.ID),
-		Ref:       w.Ref,
-		From:      FootprintPoint{X: w.From.X, Y: w.From.Y},
-		To:        FootprintPoint{X: w.To.X, Y: w.To.Y},
-		Height:    w.Height,
-		Thickness: w.Thickness,
-		Elevation: w.Elevation,
-		Openings:  openings,
+		ID:             string(w.ID),
+		Ref:            w.Ref,
+		From:           FootprintPoint{X: w.From.X, Y: w.From.Y},
+		To:             FootprintPoint{X: w.To.X, Y: w.To.Y},
+		Height:         w.Height,
+		Thickness:      w.Thickness,
+		Elevation:      w.Elevation,
+		FootprintCells: footprint,
+		Openings:       openings,
 	}
 }
 
