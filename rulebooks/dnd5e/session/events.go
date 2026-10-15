@@ -318,7 +318,12 @@ func kindFor(beat string) EventKind {
 	// and "region_revealed" were two beats for one moment, nothing writes
 	// either any more, and neither is decoded here — a seam that still
 	// answered them would claim to read a wire that no longer speaks.
-	case encounter.BeatRoomRevealed:
+	// Discovery by cell (rpg-project#586): the composition's per-member
+	// delta, delivered unchanged. The whole-room kind below is no longer
+	// produced; it stays mapped so a stored story still reads as it was.
+	case encounter.BeatCellsRevealed:
+		return EventCellsRevealed
+	case encounter.BeatRoomRevealed: //nolint:staticcheck // SA1019: replays of stored stories still name it
 		return EventRoomRevealed
 	case encounter.BeatConcealmentRevealed:
 		return EventConcealmentRevealed
@@ -792,6 +797,8 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			return nil
 		}
 		return DroppedBody{Member: p.Member, Prop: p.Prop, At: p.Position}
+	case EventCellsRevealed:
+		return cellsRevealedBody(payload)
 	case EventRoomRevealed:
 		return roomRevealedBody(payload)
 	case EventDiscoveryChecked:

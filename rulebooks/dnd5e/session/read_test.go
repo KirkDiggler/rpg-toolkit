@@ -131,24 +131,32 @@ func (s *ReadTestSuite) TestMissingWorldIsDistinctFromMissingSession() {
 	s.NotErrorIs(err, session.ErrNoSession, "the session was found; the world was not")
 }
 
-// TestAtlasProjectsTheWholeWorld is the projection's positive control.
+// TestAtlasProjectsTheKnownWorld is the projection's positive control.
 //
 // A translation that silently dropped a field would satisfy any "did it return
 // something" assertion, so every field carried across is asserted — including
 // the ones an incomplete projection is most likely to forget: occluders,
-// boundaries and the doorway pair.
-func (s *ReadTestSuite) TestAtlasProjectsTheWholeWorld() {
-	s.startWith(hexWorld())
+// boundaries and the doorway pair. Discovery is by cell (rpg-project#586), so
+// the control is the author's whole atlas restricted to alice's known cells:
+// the pillar shades part of the corridor and the open gate frames only a
+// slice of the vault.
+func (s *ReadTestSuite) TestAtlasProjectsTheKnownWorld() {
+	world := hexWorld()
+	s.startWith(world)
+	ctx := context.Background()
 
-	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess", Member: "alice"})
+	atlas, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	whole, err := s.mgr.AtlasOf(ctx, &session.AtlasOfInput{Dungeon: sceneInput(world).Dungeon})
 	s.Require().NoError(err)
 
 	s.Equal(session.GridHex, atlas.Grid, "the grid family must survive as the wire enum")
-	s.Len(atlas.Cells, 72, "both 6x6 regions, every cell, once each")
+	requireKnownSliceOf(s.T(), whole, atlas)
+	s.Require().Len(atlas.Regions, 2, "the vault is known by the cells seen through the gate")
+	s.Less(len(atlas.Cells), len(whole.Cells), "unseen cells are withheld, not projected")
 	s.Require().Len(atlas.Props, 1, "props are not optional decoration")
 	s.True(atlas.Props[0].BlocksLineOfSight, "and it must still say it blocks sight")
 	s.NotEmpty(atlas.Props[0].Ref, "and name what it is — the whole point of rpg-toolkit#1130")
-	s.Require().Len(atlas.Boundaries, 10, "every seam wall must survive the projection")
 	s.True(atlas.Boundaries[0].BlocksLineOfSight)
 	s.True(atlas.Boundaries[0].BlocksMovement)
 

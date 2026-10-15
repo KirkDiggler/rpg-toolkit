@@ -489,7 +489,16 @@ func projectView(enc *encounter.Encounter, in *ViewInput) (*ViewOutput, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &ViewOutput{Sightings: out, Props: props, Doors: doors, Areas: projectAreas(enc, in.Member)}, nil
+	// SEEN NOW is the encounter's answer for this viewer, carried as given
+	// (rpg-project#586, "the session projects, never computes").
+	visible, err := enc.VisibleCellsFor(&encounter.VisibleCellsInput{Member: encounter.MemberID(in.Member)})
+	if err != nil {
+		return nil, fmt.Errorf("view visible cells: %w", translate(err))
+	}
+	return &ViewOutput{
+		Sightings: out, Props: props, Doors: doors, Areas: projectAreas(enc, in.Member),
+		VisibleCells: visible.Cells,
+	}, nil
 }
 
 // Story returns the beats a member has witnessed, from FromSeq onward

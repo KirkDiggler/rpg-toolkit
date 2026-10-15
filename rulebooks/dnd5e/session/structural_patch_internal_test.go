@@ -15,8 +15,8 @@ type StructuralPatchDecodeSuite struct{ suite.Suite }
 
 func TestStructuralPatchDecodeSuite(t *testing.T) { suite.Run(t, new(StructuralPatchDecodeSuite)) }
 
-func (s *StructuralPatchDecodeSuite) TestBothRevealKindsPreserveReplacementsAndEmptyDefaults() {
-	for _, beat := range []string{"room_revealed", "concealment_revealed"} {
+func (s *StructuralPatchDecodeSuite) TestEveryRevealKindPreserveReplacementsAndEmptyDefaults() {
+	for _, beat := range []string{"cells_revealed", "room_revealed", "concealment_revealed"} {
 		for name, row := range map[string]string{
 			"populated":     `{"wall_id":"wall","openings":[{"id":"gap","position":3,"width":2}]}`,
 			"empty":         `{"wall_id":"wall","openings":[]}`,
@@ -50,7 +50,7 @@ func (s *StructuralPatchDecodeSuite) TestBothRevealKindsPreserveReplacementsAndE
 }
 
 func (s *StructuralPatchDecodeSuite) TestDistinctOpeningsOnDifferentWallPatchesRemainValid() {
-	for _, beat := range []string{"room_revealed", "concealment_revealed"} {
+	for _, beat := range []string{"cells_revealed", "room_revealed", "concealment_revealed"} {
 		payload := fmt.Sprintf(`{"beat":%q,"region":{"id":"room"},"concealment":"secret","structural_wall_openings_replacements":[{"wall_id":"a","openings":[{"id":"one","position":1,"width":0.5}]},{"wall_id":"b","openings":[{"id":"two","position":1,"width":0.5}]}]}`, beat)
 		_, body := decodeBeat([]byte(payload))
 		s.NotNil(body, "global uniqueness must not reject distinct cuts on different walls")
@@ -70,7 +70,7 @@ func (s *StructuralPatchDecodeSuite) TestMalformedReplacementsRefuseTheWholeBody
 		"full-row and patch opening collision": `"structural_walls":[{"id":"a","openings":[{"id":"same"}]}],"structural_wall_openings_replacements":[{"wall_id":"b","openings":[{"id":"same"}]}]`,
 		"wrong opening type":                   `"structural_walls":[{"id":"a","openings":[true]}]`,
 	} {
-		for _, beat := range []string{"room_revealed", "concealment_revealed"} {
+		for _, beat := range []string{"cells_revealed", "room_revealed", "concealment_revealed"} {
 			s.Run(beat+"/"+name, func() {
 				payload := fmt.Sprintf(`{"beat":%q,"region":{"id":"room"},"concealment":"secret","structural_doors":[{"id":"known/door"}],%s}`, beat, suffix)
 				_, body := decodeBeat([]byte(payload))

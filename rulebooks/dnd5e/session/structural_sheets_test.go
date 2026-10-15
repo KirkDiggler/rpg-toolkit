@@ -54,7 +54,10 @@ func (s *StructuralSessionSuite) TestStructuralWalkReadsLiveSheetsWithoutRewriti
 	s.Require().NoError(err)
 	s.Equal(known.Atlas.StructuralWalls, after.Atlas.StructuralWalls)
 	s.Equal(known.Atlas.StructuralDoors, after.Atlas.StructuralDoors)
-	s.Equal(known.Atlas.Cells, after.Atlas.Cells)
+	// Discovery is by cell (rpg-project#586): walking the vault teaches the
+	// cells it reaches, so knowledge grows and is never rewritten — nothing
+	// learned before the sheet changed is forgotten.
+	s.Subset(after.Atlas.Cells, known.Atlas.Cells)
 
 	beforeMissing, err := json.Marshal(worlds.byID["sess"])
 	s.Require().NoError(err)

@@ -97,7 +97,12 @@ func (s *KnowledgeSuite) TestSnapshotUsesOneWorldAndTheExactOwnedSeat() {
 	s.Nil(denied)
 }
 
-func (s *KnowledgeSuite) TestRoomRevealAndObservationsSurviveTheSessionPath() {
+// TestCellsRevealAndObservationsSurviveTheSessionPath: opening the gate
+// teaches alice vault cells (rpg-project#586 R1), delivered as cells-revealed
+// beats on her stream, carrying only cells she newly learned. Applying them
+// to her prior atlas lands exactly on the fresh Knowledge atlas, no whole-room
+// beat is produced, and the live and replayed streams are the same payloads.
+func (s *KnowledgeSuite) TestCellsRevealAndObservationsSurviveTheSessionPath() {
 	ctx := context.Background()
 	stream := &fakeStream{}
 	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
@@ -118,22 +123,49 @@ func (s *KnowledgeSuite) TestRoomRevealAndObservationsSurviveTheSessionPath() {
 	s.Require().NoError(err)
 	after, err := mgr.Knowledge(ctx, input)
 	s.Require().NoError(err)
-	s.Len(after.Atlas.Regions, 2)
+	s.Require().Len(after.Atlas.Regions, 2)
 	s.Equal("open", after.View.Doors[0].Door.State)
-	var reveals int
-	for _, event := range stream.published {
-		if event.Kind == session.EventRoomRevealed {
-			body, ok := event.Body.(session.RoomRevealedBody)
-			s.Require().True(ok)
-			s.Equal("vault", body.Region.ID)
-			s.Len(body.Region.Cells, 36)
-			s.Empty(body.Props)
-			reveals++
+
+	patched := map[string]map[spatial.Position]bool{}
+	for _, region := range before.Atlas.Regions {
+		patched[region.ID] = map[spatial.Position]bool{}
+		for _, cell := range region.Cells {
+			patched[region.ID][cell] = true
 		}
 	}
-	s.Equal(1, reveals)
+	var reveals int
+	for _, event := range stream.published {
+		s.NotEqual(session.EventRoomRevealed, event.Kind, "the whole-room beat is no longer produced")
+		if event.Kind != session.EventCellsRevealed {
+			continue
+		}
+		s.Equal("alice", event.Recipient, "a cells reveal is its learner's alone")
+		body, ok := event.Body.(session.CellsRevealedBody)
+		s.Require().True(ok)
+		s.Empty(body.Props)
+		for _, region := range body.Regions {
+			if patched[region.ID] == nil {
+				patched[region.ID] = map[spatial.Position]bool{}
+			}
+			for _, cell := range region.Cells {
+				s.False(patched[region.ID][cell], "a reveal carries only newly known cells")
+				patched[region.ID][cell] = true
+			}
+		}
+		reveals++
+	}
+	s.Positive(reveals, "opening the gate teaches alice vault cells")
+	for _, region := range after.Atlas.Regions {
+		got := make([]spatial.Position, 0, len(patched[region.ID]))
+		for cell := range patched[region.ID] {
+			got = append(got, cell)
+		}
+		s.ElementsMatch(region.Cells, got, "prior atlas plus reveals is the fresh atlas for %q", region.ID)
+	}
+	s.Subset(after.Atlas.Cells, after.View.VisibleCells, "seen now is a subset of what she knows")
+
 	replay, err := mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice", FromSeq: before.Seq + 1})
 	s.Require().NoError(err)
-	s.Equal(eventsFor(stream.published, "alice"), replay, "live and replay project the same stored room payload")
+	s.Equal(eventsFor(stream.published, "alice"), replay, "live and replay project the same stored cells payload")
 	s.Equal(replay[len(replay)-1].Seq, after.Seq)
 }

@@ -1320,12 +1320,14 @@ func TestAMalformedStructuralRowRefusesTheWholeBeat(t *testing.T) {
 		"structural_walls not an array": `{"beat":"concealment_revealed","concealment":"v","structural_walls":5}`,
 		"room wall with no id": `{"beat":"room_revealed","region":{"id":"vault"},` +
 			`"structural_walls":[{"ref":"r","from":{"x":0,"y":0},"to":{"x":1,"y":0},"height":1,"thickness":1,"elevation":0,"openings":[]}]}`,
+		"cells wall with no id": `{"beat":"cells_revealed","regions":[{"id":"vault","cells":[{"x":6,"y":0}]}],` +
+			`"structural_walls":[{"ref":"r","from":{"x":0,"y":0},"to":{"x":1,"y":0},"height":1,"thickness":1,"elevation":0,"openings":[]}]}`,
 	}
 	for name, payload := range cases {
 		t.Run(name, func(t *testing.T) {
 			kind, body := decodeBeat([]byte(payload))
 			// The KIND still decodes — it is the BODY that has nothing honest to say.
-			require.Contains(t, []EventKind{EventConcealmentRevealed, EventRoomRevealed}, kind)
+			require.Contains(t, []EventKind{EventConcealmentRevealed, EventRoomRevealed, EventCellsRevealed}, kind)
 			require.Nil(t, body, "a structurally malformed reveal is refused whole, not partially applied")
 		})
 	}

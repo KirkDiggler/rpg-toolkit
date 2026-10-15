@@ -992,13 +992,15 @@ func (s *ConcealSuite) TestOpeningRevealsToThePerceiversThroughTheOneSeam() {
 
 	// bob never searched: watching the wall open IS his reveal, and it is ONE
 	// beat carrying the whole secret — no door-state beat for a door he did
-	// not know a moment ago.
+	// not know a moment ago. Discovery is by cell (rpg-project#586): the
+	// concealment beat teaches the vault's floor, so no cells-revealed beat
+	// repeats those cells and no whole-room beat is produced at all.
 	bob := eventsFor(s.stream.published, "bob")
-	s.Equal([]session.EventKind{session.EventRoomRevealed, session.EventConcealmentRevealed, session.EventSighted}, kinds(bob),
+	s.Equal([]session.EventKind{session.EventConcealmentRevealed, session.EventSighted}, kinds(bob),
 		"perceiving a hidden door standing open reveals the concealment it belongs to, once")
 	s.assertDense(bob, "bob")
 
-	revealed, ok := bob[1].Body.(session.ConcealmentRevealedBody)
+	revealed, ok := bob[0].Body.(session.ConcealmentRevealedBody)
 	s.Require().True(ok)
 	s.Equal(vaultSecret, revealed.Concealment)
 	s.ElementsMatch(vaultFloor(), revealed.Cells, "the patch carries the secret's whole floor")
@@ -1020,7 +1022,10 @@ func (s *ConcealSuite) TestOpeningRevealsToThePerceiversThroughTheOneSeam() {
 
 	blind, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "carol"})
 	s.Require().NoError(err)
-	s.ElementsMatch(hallFloor(), blind.Cells, "carol's map still holds the hall alone")
+	// Discovery is by cell (rpg-project#586): five feet of sight teaches her
+	// only the hall cells it reached, and nothing of the vault.
+	s.NotEmpty(blind.Cells)
+	s.Subset(hallFloor(), blind.Cells, "carol's map still holds the hall alone")
 
 	// She walks up; her own verb's sight refresh is where present state
 	// reaches her — the late perceiver needs no special case.
@@ -1039,7 +1044,8 @@ func (s *ConcealSuite) TestOpeningRevealsToThePerceiversThroughTheOneSeam() {
 
 	after, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "carol"})
 	s.Require().NoError(err)
-	s.ElementsMatch(append(hallFloor(), vaultFloor()...), after.Cells, "and her map holds both rooms now")
+	s.Subset(after.Cells, vaultFloor(), "and her map holds the whole secret now")
+	s.Subset(append(hallFloor(), vaultFloor()...), after.Cells, "and nothing outside the two rooms")
 }
 
 // TestAJoinIntoHiddenSpaceStaysHidden covers the first-crosser branch the
@@ -1070,15 +1076,17 @@ func (s *ConcealSuite) TestAJoinIntoHiddenSpaceStaysHidden() {
 	david := eventsFor(s.stream.published, "david")
 	// The sweep that finds the vault for him also rolls his own find check on
 	// arrival, and that roll is his to be told: a discovery_checked beat, his
-	// alone, between the join and the reveal.
+	// alone, between the join and the reveal. The concealment beat teaches
+	// the vault's cells, so no cells-revealed beat repeats them and no
+	// whole-room beat is produced (rpg-project#586).
 	s.Equal([]session.EventKind{
-		session.EventJoined, session.EventDiscoveryChecked, session.EventRoomRevealed,
+		session.EventJoined, session.EventDiscoveryChecked,
 		session.EventConcealmentRevealed, session.EventSighted,
 	}, recipientKinds(david, "david"))
 	s.Equal(session.EventJoined, david[0].Kind)
 	s.Equal(uint64(1), david[0].Seq, "the joiner's stream starts at 1 — their own numbering, not the record's")
-	s.Equal(session.EventConcealmentRevealed, david[3].Kind)
-	s.Equal(uint64(4), david[3].Seq)
+	s.Equal(session.EventConcealmentRevealed, david[2].Kind)
+	s.Equal(uint64(3), david[2].Seq)
 	s.Equal(uint64(1), out.Seq, "the verb's own Seq speaks the actor's numbering too")
 
 	// The hall members hear that DAVID JOINED — membership is a table-level

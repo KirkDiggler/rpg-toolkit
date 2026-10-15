@@ -9,6 +9,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // ViewOutput is one observer's coherent creature, prop, door and sight-area view.
@@ -18,6 +19,14 @@ type ViewOutput struct {
 	Props     []PropSighting `json:"props"`
 	Doors     []DoorSighting `json:"doors"`
 	Areas     []SightArea    `json:"areas"`
+
+	// VisibleCells is SEEN NOW for this observer alone (rpg-project#586 R1):
+	// the encounter's [encounter.Encounter.VisibleCellsFor] answer, passed
+	// through unchanged — this package neither observes nor computes it, and
+	// it is never a party union. Sorted, never nil, and a subset of the same
+	// member's atlas cells. A placed member always has its own cell; an
+	// unplaced member has none. Derived on read and never stored.
+	VisibleCells []spatial.Position `json:"visible_cells"`
 }
 
 // PropSighting is the latest observation of one mutable prop. Exactly one shape
