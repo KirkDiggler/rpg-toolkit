@@ -4,65 +4,171 @@
 package encounter
 
 import (
+	"encoding/json"
 	"fmt"
-	"sort"
-	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 	"github.com/KirkDiggler/rpg-toolkit/world/journal"
 )
 
-const roomKnownPrefix = "known:room:"
+// legacyRoomKnownPrefix is the retired whole-room discovery kind
+// (`known:room:<region>`). A blob written before cell discovery still LOADS
+// with these facts in it, and they TEACH NOTHING (rpg-project#586 R1, R6
+// superseded): a room is no longer a unit of knowledge, so a fact claiming one
+// has no cells to contribute and is carried only so the save stays loadable.
+const legacyRoomKnownPrefix = "known:room:"
 
-func roomKnownKind(id RegionID) journal.Kind { return journal.Kind(roomKnownPrefix + id) }
+func legacyRoomKnownKind(id RegionID) journal.Kind { return journal.Kind(legacyRoomKnownPrefix + id) }
 
-// knownRooms folds learned layout independently of mutable subject testimony.
-// The journal persists only the fact of discovery; the field owns the geometry.
-func (w *encounterWorld) knownRooms(member MemberID) map[RegionID]bool {
-	out := make(map[RegionID]bool)
-	for _, fact := range w.log.All() {
-		kind := string(fact.Kind)
-		if strings.HasPrefix(kind, roomKnownPrefix) && fact.Actor == journal.EntityID(member) {
-			out[strings.TrimPrefix(kind, roomKnownPrefix)] = true
-		}
-	}
-	return out
+// cellsKnownKind is THE CELL IS THE UNIT OF KNOWLEDGE (rpg-project#586 R1):
+// one fact per member per learning moment, actor = subject = audience = that
+// member alone (R4 — memory is per seat), its [journal.Outcome.Detail] the
+// JSON [cellsKnownPayload] naming only the cells that moment newly taught.
+// The fold is a union; nothing is ever forgotten within the run.
+const cellsKnownKind journal.Kind = "known:cells"
+
+// cellsKnownPayload is a `known:cells` fact's Detail. Cells are absolute
+// axial and sorted by [cellBefore]; the writer never lists a cell twice or one
+// already known, and the load boundary refuses a cell that is not floor.
+type cellsKnownPayload struct {
+	Cells []spatial.Position `json:"cells"`
 }
 
-// discoverRooms teaches whole fixed regions from this observer's sight pass.
-// Concealed floor still requires its existing discovery mechanism. The learned
-// fact makes no claim about occupants, props, or a door's current state.
-func (e *Encounter) discoverRooms(observer MemberID, reach sightReach) error {
-	known := e.world.knownRooms(observer)
-	hidden := e.hiddenFrom(observer)
-	ids := make([]RegionID, 0, len(e.field.regions))
-	for _, region := range e.field.regions {
-		ids = append(ids, region.ID)
+// decodeCellsKnown reads one fact's Detail. The load boundary
+// ([validateWorldFacts]) is the only caller that can see a malformed one.
+func decodeCellsKnown(detail string) ([]spatial.Position, error) {
+	var payload cellsKnownPayload
+	if err := json.Unmarshal([]byte(detail), &payload); err != nil {
+		return nil, err
 	}
-	sort.Strings(ids)
-	for _, id := range ids {
-		if known[id] {
+	if payload.Cells == nil {
+		return nil, fmt.Errorf("no cells list")
+	}
+
+	return payload.Cells, nil
+}
+
+// knownCells folds what a member has learned of the fixed layout — every cell
+// of every `known:cells` fact they wrote — independently of mutable subject
+// testimony. The journal persists only the fact of discovery; the field owns
+// the geometry.
+//
+// THE ANSWER IS SHARED AND READ-ONLY: callers never write to it. It is the
+// running [cellFold], so a later fact can add cells to a map a caller is still
+// holding — which is the only change a union can make.
+func (w *encounterWorld) knownCells(member MemberID) map[spatial.Position]bool {
+	w.cells.catchUp(w.log)
+	if known := w.cells.byMember[member]; known != nil {
+		return known
+	}
+	return map[spatial.Position]bool{}
+}
+
+// cellFold is THE `known:cells` FOLD, CARRIED FORWARD rather than recomputed
+// per question. The journal is append-only and a fold of it is a union, so the
+// answer for N facts plus the facts after N is the answer for all of them; the
+// fold remembers how far it has read and decodes only what landed since. It is
+// derived state of the one truth, never persisted and never a second record —
+// it is rebuilt from the journal by whoever holds a fresh world, and it starts
+// over if it is ever handed a different journal.
+//
+// Why it exists: every [Encounter.AtlasFor], every sight pass and every
+// [Encounter.VisibleCellsFor] asks it, and re-decoding every fact's cell list
+// for each of those cost more than the rest of the read on a keep-sized floor
+// (sightpass_scale_test.go).
+type cellFold struct {
+	log      *journal.Journal
+	read     int
+	byMember map[MemberID]map[spatial.Position]bool
+}
+
+// catchUp folds every fact appended since the last call.
+func (f *cellFold) catchUp(log *journal.Journal) {
+	if f.log != log {
+		*f = cellFold{log: log, byMember: map[MemberID]map[spatial.Position]bool{}}
+	}
+	if log.Len() == f.read {
+		return
+	}
+	facts := log.All()
+	for _, fact := range facts[f.read:] {
+		if fact.Kind != cellsKnownKind {
 			continue
 		}
-		for _, cell := range e.field.regionCells[id] {
-			if hidden.cells[cell] || !reach.reachesCell(observer, cell) {
-				continue
-			}
-			if err := e.learnRoom(observer, id); err != nil {
-				return err
-			}
-			break
+		cells, err := decodeCellsKnown(fact.Outcome.Detail)
+		if err != nil {
+			continue // unreachable: the writer and the load boundary agree
+		}
+		member := MemberID(fact.Actor)
+		known := f.byMember[member]
+		if known == nil {
+			known = make(map[spatial.Position]bool, len(cells))
+			f.byMember[member] = known
+		}
+		for _, cell := range cells {
+			known[cell] = true
 		}
 	}
-	return nil
+	f.read = len(facts)
 }
 
-// learnRoom is the layout-only writer. Sight and opening a door share it;
-// neither operation records mutable contents as a consequence of learning floor.
-func (e *Encounter) learnRoom(member MemberID, id RegionID) error {
-	if e.world.knownRooms(member)[id] {
+// discoverCells is THE SIGHT PASS'S LEARNING HALF: every floor cell this
+// observer does not already know and that [sightReach.reachesCell] answers
+// true for — the one sight test seen-now asks too (rpg-project#586 R5) —
+// learned in ONE fact for the pass.
+//
+// A CONCEALED CELL IS LEARNED LIKE ANY OTHER, and concealment still withholds
+// it. The two masks stay separate ("unknown is not secret"): knowing a cell
+// says the observer has looked at that spot, so an unlisted prop standing there
+// is presented exactly as it was when knowledge was by room; the concealment
+// alone decides that the floor reads as the never-authored twin until it is
+// found. Skipping concealed cells here would fold the secret into the
+// unexplored mask and hide every unlisted thing on secret floor.
+//
+// THE CELL THE OBSERVER STANDS ON IS ALWAYS LEARNED, sight or no sight: a
+// member inside an obscuring area or with no sight at all still knows the
+// floor under their feet, the same way presence pierces a concealment. It is
+// what keeps [Encounter.VisibleCellsFor] non-empty for a placed member.
+//
+// The learned fact makes no claim about occupants, props, or a door's
+// current state.
+func (e *Encounter) discoverCells(observer MemberID, reach sightReach) error {
+	own, placed := reach.positions[observer]
+	if !placed {
 		return nil
 	}
+	known := e.world.knownCells(observer)
+	learned := make([]spatial.Position, 0)
+	for _, cell := range e.field.cells {
+		if known[cell] {
+			continue
+		}
+		if cell == own || reach.reachesCell(observer, cell) {
+			learned = append(learned, cell)
+		}
+	}
+	return e.learnCells(observer, learned, known)
+}
+
+// learnCells is the layout-only writer. Sight, opening a door and presence
+// share it; none of them records mutable contents as a consequence of
+// learning floor. known is the member's fold read by the caller, so a cell
+// already learned is never written twice. One fact and at most one
+// cells-revealed beat per call.
+func (e *Encounter) learnCells(member MemberID, cells []spatial.Position, known map[spatial.Position]bool) error {
+	fresh := make([]spatial.Position, 0, len(cells))
+	seen := make(map[spatial.Position]bool, len(cells))
+	for _, cell := range cells {
+		if known[cell] || seen[cell] {
+			continue
+		}
+		seen[cell] = true
+		fresh = append(fresh, cell)
+	}
+	if len(fresh) == 0 {
+		return nil
+	}
+	sortCells(fresh)
 	next, err := e.NextStorySeq()
 	if err != nil {
 		return err
@@ -76,38 +182,42 @@ func (e *Encounter) learnRoom(member MemberID, id RegionID) error {
 			return err
 		}
 	}
+	detail, err := json.Marshal(cellsKnownPayload{Cells: fresh})
+	if err != nil {
+		return fmt.Errorf("discover cells: %w", err)
+	}
 	_, err = e.world.log.Append(journal.Fact{
-		Kind: roomKnownKind(id), Actor: journal.EntityID(member),
+		Kind: cellsKnownKind, Actor: journal.EntityID(member),
 		Subject: journal.EntityID(member), Audience: journal.Audience{journal.EntityID(member)},
+		Outcome: journal.Outcome{Detail: string(detail)},
 	})
 	if err != nil {
-		return fmt.Errorf("discover room %q: %w", id, err)
+		return fmt.Errorf("discover cells: %w", err)
 	}
 	if next > 1 {
-		return e.appendRoomRevealedBeat(member, id, before)
+		return e.appendCellsRevealedBeat(member, before)
 	}
 	return nil
 }
 
-// discoverOpenedRooms gives the opener the rooms joined by the opened edges.
-// Other observers learn only through their own perception pass.
-func (e *Encounter) discoverOpenedRooms(member MemberID, door *doorRecord) error {
+// discoverOpenedCells gives the opener the cells on the opened door's edges,
+// both sides and nothing beyond them (rpg-project#586 R1): opening a door is
+// not seeing the room behind it. The sight pass that follows the open teaches
+// whatever the opener can actually see. A world-side open with no actor
+// teaches nobody; other observers learn only through their own pass.
+func (e *Encounter) discoverOpenedCells(member MemberID, door *doorRecord) error {
 	if member == "" {
 		return nil
 	}
-	hidden := e.hiddenFrom(member)
+	cells := make([]spatial.Position, 0, 2*len(door.edges))
 	for _, edge := range door.edges {
 		for _, cell := range []spatial.Position{edge.From, edge.To} {
-			id, owned := e.field.regionOf(cell)
-			if !owned || hidden.cells[cell] {
-				continue
-			}
-			if err := e.learnRoom(member, id); err != nil {
-				return err
+			if e.field.isFloor(cell) {
+				cells = append(cells, cell)
 			}
 		}
 	}
-	return nil
+	return e.learnCells(member, cells, e.world.knownCells(member))
 }
 
 // undiscoveredFrom adds ordinary unexplored floor to concealment's projection
@@ -116,10 +226,10 @@ func (e *Encounter) discoverOpenedRooms(member MemberID, door *doorRecord) error
 func (e *Encounter) undiscoveredFrom(member MemberID) hiddenView {
 	hidden := e.hiddenFrom(member)
 	hidden.unexploredCells = make(map[spatial.Position]bool)
-	known := e.world.knownRooms(member)
-	// Existing explicit concealment discovery may teach a slice of a region
-	// without seeing it. Preserve that knowledge; ordinary room discovery is
-	// not an authority to forget separately learned geometry.
+	known := e.world.knownCells(member)
+	// Existing explicit concealment discovery teaches its cells without the
+	// sight pass seeing them. Preserve that knowledge; ordinary cell
+	// discovery is not an authority to forget separately learned geometry.
 	revealed := make(map[spatial.Position]bool)
 	for i := range e.field.concealments {
 		c := &e.field.concealments[i]
@@ -130,8 +240,7 @@ func (e *Encounter) undiscoveredFrom(member MemberID) hiddenView {
 		}
 	}
 	for _, cell := range e.field.cells {
-		region, owned := e.field.regionOf(cell)
-		if (!owned || !known[region]) && !revealed[cell] {
+		if !known[cell] && !revealed[cell] {
 			hidden.cells[cell] = true
 			hidden.unexploredCells[cell] = true
 		}
@@ -139,12 +248,12 @@ func (e *Encounter) undiscoveredFrom(member MemberID) hiddenView {
 	// Unowned scenery directly bordering learned floor belongs to its visible
 	// boundary. Wall footing is added by the existing atlas projection below.
 	for _, cell := range e.field.cells {
-		if _, owned := e.field.regionOf(cell); owned {
+		if _, owned := e.field.regionOf(cell); owned || !hidden.unexploredCells[cell] {
 			continue
 		}
 		for _, neighbor := range adjacencyGrid.GetNeighbors(cell) {
-			region, owned := e.field.regionOf(neighbor)
-			if owned && known[region] && !hidden.cells[neighbor] {
+			_, owned := e.field.regionOf(neighbor)
+			if owned && known[neighbor] && !hidden.cells[neighbor] {
 				// Knowing a boundary's ordinary footing does not beat an
 				// explicit concealment on that floor. Keep the two masks
 				// independent so unlisted props do not inherit floor secrecy.

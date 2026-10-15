@@ -118,8 +118,12 @@ func (s *ExplicitConcealmentSuite) TestConcealedCellDoesNotSelectUnlistedWallOrP
 		s.Run(name, func() {
 			secret := cellAt(2, 2)
 			authoredSecret := spatial.Position{X: 2, Y: 2}
+			// The wall blocks movement only. A sight-blocking box covering the
+			// secret's centre would hide that cell from every sightline, and
+			// discovery is by cell (rpg-project#586): nobody could ever have
+			// looked at the bookcase inside it, which is not this law.
 			field := placedField(
-				placed("wall-section", coveredBox(6, centreOf(secret)), true, true),
+				placed("wall-section", coveredBox(6, centreOf(secret)), true, false),
 				placed("bookcase", coveredBox(1, centreOf(secret)), false, false),
 			)
 			field.Props = []encounter.PropInput{{ID: "legacy-decoration", Ref: "dnd5e:props:vase", At: authoredSecret, BlocksMovement: boolPtr(false), BlocksLineOfSight: boolPtr(false)}}
@@ -149,7 +153,7 @@ func (s *ExplicitConcealmentSuite) TestConcealedCellDoesNotSelectUnlistedWallOrP
 					if p.ID == "wall-section" {
 						s.Equal(wall.Placement, p.Placement)
 						s.True(p.BlocksMovement)
-						s.True(p.BlocksLineOfSight)
+						s.Equal(wall.BlocksLineOfSight, p.BlocksLineOfSight)
 					}
 				}
 				s.Contains(ids, "bookcase", "unlisted prop is not implicitly concealed by its floor")
@@ -208,10 +212,13 @@ func (s *ExplicitConcealmentSuite) TestWallPresenceMembershipHidesIdentityAndSpa
 		s.Run(name, func() {
 			secret := cellAt(2, 2)
 			authoredSecret := spatial.Position{X: 2, Y: 2}
+			// Movement-only spans: a sight-blocking span over the secret's
+			// centre would hide the bench from every sightline (discovery is
+			// by cell), which is geometry, not membership.
 			field := placedField(
 				placed("wall-1", coveredBox(1, centreOf(secret)), false, false),
-				placed("wall/wall-1/span/0", coveredBox(1, centreOf(secret)), true, true),
-				placed("wall/wall-1/span/1", coveredBox(1, centreOf(secret)), true, true),
+				placed("wall/wall-1/span/0", coveredBox(1, centreOf(secret)), true, false),
+				placed("wall/wall-1/span/1", coveredBox(1, centreOf(secret)), true, false),
 				placed("bench", coveredBox(1, centreOf(secret)), false, false),
 			)
 			field.Concealments = []encounter.ConcealmentInput{{
@@ -249,9 +256,10 @@ func (s *ExplicitConcealmentSuite) TestWallPresenceMembershipHidesIdentityAndSpa
 func (s *ExplicitConcealmentSuite) TestConcealedCellsAloneDoNotHideAnUnlistedWallPresence() {
 	secret := cellAt(2, 2)
 	authoredSecret := spatial.Position{X: 2, Y: 2}
+	// A movement-only span, for the reason TestWallPresenceMembership gives.
 	field := placedField(
 		placed("unlisted-wall", coveredBox(1, centreOf(secret)), false, false),
-		placed("wall/unlisted-wall/span/0", coveredBox(1, centreOf(secret)), true, true),
+		placed("wall/unlisted-wall/span/0", coveredBox(1, centreOf(secret)), true, false),
 	)
 	field.Concealments = []encounter.ConcealmentInput{{
 		ID: "vault", Checks: vaultCheck(), Cells: []spatial.Position{authoredSecret},
@@ -312,8 +320,11 @@ func (s *ExplicitConcealmentSuite) TestOrdinaryUndiscoveredRoomStillWithholdsIts
 		Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 3, 4), rectRegion("vault", 3, 0, 3, 4)},
 		Walls:   seamWallExcept(2, 4, 1),
 		Doors:   []encounter.DoorInput{{ID: "ordinary-door", Edges: doorEdgesAcross(2, 1), State: encounter.DoorIsClosed()}},
-		Placed:  []encounter.PlacedPropInput{placed("unknown-wall", coveredBox(1, centreOf(cellAt(4, 2))), true, true)},
-		Props:   []encounter.PropInput{{ID: "unknown-vase", Ref: "dnd5e:props:vase", At: cellAt(4, 3), BlocksMovement: boolPtr(false), BlocksLineOfSight: boolPtr(false)}},
+		// Six feet, so the opaque block overlaps the floor around it: a box
+		// wholly inside its own hex hides that hex from every sightline and
+		// could never be seen (discovery is by cell).
+		Placed: []encounter.PlacedPropInput{placed("unknown-wall", coveredBox(6, centreOf(cellAt(4, 2))), true, true)},
+		Props:  []encounter.PropInput{{ID: "unknown-vase", Ref: "dnd5e:props:vase", At: cellAt(4, 3), BlocksMovement: boolPtr(false), BlocksLineOfSight: boolPtr(false)}},
 	}
 	enc := s.setup(field, cellAt(2, 1))
 	for _, current := range []*encounter.Encounter{enc, s.reload(enc)} {
@@ -324,6 +335,10 @@ func (s *ExplicitConcealmentSuite) TestOrdinaryUndiscoveredRoomStillWithholdsIts
 		s.Require().Len(before.Regions, 1)
 		s.Equal("hall", before.Regions[0].ID)
 		_, err = current.OpenDoor(&encounter.OpenDoorInput{Door: "ordinary-door", Actor: "walker"})
+		s.Require().NoError(err)
+		// Through the doorway and in: the block shadows the vase from the
+		// threshold, and what arrives is what the walker sees.
+		_, err = current.Step(&encounter.StepInput{Member: "walker", To: cellAt(3, 1)})
 		s.Require().NoError(err)
 		after, err := current.AtlasFor("walker")
 		s.Require().NoError(err)

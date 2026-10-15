@@ -384,27 +384,30 @@ func (s *FootprintDoorSuite) TestAFootprintDoorMayBeHidden() {
 		Props: []encounter.PropID{"cellar-door"},
 	}}
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Field:   field,
-		Members: []encounter.MemberInput{{ID: alice, Kind: encounter.KindPlayer, Position: cellAt(0, 0)}},
-		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Capabilities: encounter.Capabilities{
-			Sight:         everyoneSeesTheWholeMap{},
-			Equipment:     encounter.UnobservedEquipment{},
-			Conditions:    encounter.UnobservedEquipment{},
-			Sheets:        zeroSheets{},
-			Participation: everyoneStanding{},
-			Initiative:    orderAsGiven{},
-			Driver:        passDriver{},
-			CheckResolver: findsNothing{},
-			Witness:       nobodyPerceives{},
-			Actors: encounter.Actors{
-				Striker:   passStriker{},
-				Mover:     quietMover{},
-				Announcer: quietAnnouncer{},
+	build := func(field encounter.FieldInput) (*encounter.Encounter, error) {
+		return encounter.NewEncounter(&encounter.SetupInput{
+			Field:   field,
+			Members: []encounter.MemberInput{{ID: alice, Kind: encounter.KindPlayer, Position: cellAt(0, 0)}},
+			Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+			Capabilities: encounter.Capabilities{
+				Sight:         everyoneSeesTheWholeMap{},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
+				CheckResolver: findsNothing{},
+				Witness:       nobodyPerceives{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
 			},
-		},
-	})
+		})
+	}
+	enc, err := build(field)
 	s.Require().NoError(err, "a footprint door in a concealment is legal now")
 
 	blind, err := enc.AtlasFor(alice)
@@ -448,13 +451,18 @@ func (s *FootprintDoorSuite) TestAFootprintDoorMayBeHidden() {
 		s.Equal(standsOn[p.ID], p.Cells,
 			"a placement this observer is shown carries the cells the unfiltered atlas gives it")
 	}
-	s.Equal(full.Cells, blind.Cells, "selecting a door must not conceal unselected floor")
-	blindCells := map[spatial.Position]bool{}
-	for _, c := range blind.Cells {
-		blindCells[c] = true
-	}
-	s.True(blindCells[cellAt(2, 1)], "floor under the leaf was not selected")
-	s.True(blindCells[cellAt(2, 3)], "nor was its other support cell")
+	// THE YARDSTICK IS THE SAME HALL WITH NOTHING CONCEALED. The shut leaf
+	// splits the hall and covers the centres of (2,1) and (2,3), so alice's
+	// sight teaches the same half either way (discovery is by cell,
+	// rpg-project#586); a difference would be the secret taking floor —
+	// including the floor under the leaf — with it.
+	plain := field
+	plain.Concealments = nil
+	twin, err := build(plain)
+	s.Require().NoError(err)
+	yardstick, err := twin.AtlasFor(alice)
+	s.Require().NoError(err)
+	s.Equal(yardstick.Cells, blind.Cells, "selecting a door must not conceal unselected floor")
 
 	// And finding it hands the whole secret over.
 	err = encounter.ExportedFind(enc, alice, "cellar")

@@ -5,7 +5,7 @@ package encounter
 
 // structural_reveal.go is THE STRUCTURAL HALF OF A REVEAL BEAT (rpg-project#169,
 // P2E): full introductions and typed opening-list replacements carried by
-// room_revealed or concealment_revealed when a recipient's layout changes.
+// cells_revealed or concealment_revealed when a recipient's layout changes.
 //
 // # What it is, and what it deliberately is not
 //

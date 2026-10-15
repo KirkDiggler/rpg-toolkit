@@ -340,7 +340,10 @@ func (s *ConcealmentSuite) TestTheMasqueradeIsGeometryForWhoeverCannotSeePastIt(
 func (s *ConcealmentSuite) TestAnOccupantOfAnAlcoveKnowsItFromFrameOne() {
 	lurking := core.EntityID("lurking")
 	field := encounter.FieldInput{
-		Canvas:  pointyCanvas(),
+		// Transparent void, so every member's sight covers the whole hall and
+		// what the atlas withholds is the secret alone (rpg-project#586:
+		// discovery is by cell, and an opaque margin would hide a corner).
+		Canvas:  openAir(),
 		Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)},
 		// A SLICE OF ONE ROOM, which the retired region flag could not say
 		// at all: hiding meant hiding a whole region.
@@ -439,7 +442,9 @@ func (s *ConcealmentSuite) TestTheRevealCarriesTheRoomsTheSecretWasCutOutOf() {
 
 	s.Run("a room only PART of which was a secret comes back whole too", func() {
 		field := encounter.FieldInput{
-			Canvas:  pointyCanvas(),
+			// Transparent void: the walker sees the whole hall, so the secret
+			// is the only thing withheld (discovery is by cell).
+			Canvas:  openAir(),
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)},
 			Concealments: []encounter.ConcealmentInput{{
 				ID: "alcove", Checks: vaultCheck(), Cells: rectCells(3, 0, 1, 4),

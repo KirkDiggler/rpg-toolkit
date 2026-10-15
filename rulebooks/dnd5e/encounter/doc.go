@@ -127,17 +127,35 @@
 // A `fact` on a `time` row is taught to the speaker's witnesses AND to the
 // hearers of its voice — the one place a fact's audience reaches past sight.
 //
-// # Individual room discovery
+// # Discovery by cell (rpg-project#586)
 //
-// Ordinary regions are not automatically known. The existing sight pass
-// teaches a region's fixed layout on first observation of any of its floor;
-// opening an edge door also teaches its opener the adjoining rooms. Discovery
-// is recorded per member in the world journal, independently of creature
-// testimony. AtlasFor withholds undiscovered room geometry, starts and exits.
-// Learning persists across loss of sight and load without rerunning perception.
-// Concealment discovery remains an independent source of learned geometry.
-// Initial room knowledge comes from the snapshot; later discovery appends
-// recipient-scoped RoomRevealed beats containing fixed data, not live contents.
+// THE CELL IS THE UNIT OF KNOWLEDGE. Ordinary floor is not automatically
+// known, and nothing teaches a whole region at once. A member learns a cell
+// when the sight pass's [sightReach.reachesCell] answers true for it, when
+// they open an edge door on that cell's edge (the door's two edge cells and
+// nothing beyond), or when an explicit concealment reveal teaches it; the cell
+// they stand on is always learned. Each learning moment is one per-member
+// `known:cells` journal fact, audience that member alone, independent of
+// creature testimony, and never forgotten within the run. A retired
+// `known:room:<id>` fact from an older save loads and teaches nothing.
+//
+// [Encounter.AtlasFor] withholds every unknown cell, and every wall, door,
+// doorway, fixed prop, start, exit and placement that touches only unknown
+// cells; a door on the edge of a known cell is presented. Unknown floor adds
+// no synthesized boundary — only concealment masquerades as wall, and the two
+// masks stay separate: a concealed cell can be known (looked at) and still be
+// withheld until its secret is found.
+//
+// SEEN NOW is [Encounter.VisibleCellsFor]: the known cells the member's sight
+// reaches at the moment of the read, from the same reachesCell, never stored
+// and never a party union. A placed member always sees at least their own
+// cell.
+//
+// Initial knowledge comes from the snapshot; every later learning moment that
+// changes a member's atlas appends one recipient-scoped [BeatCellsRevealed]
+// beat containing fixed data, not live contents: partial regions carrying only
+// the newly known cells, merged by union.
+//
 // Builder compilation can refine a painted region through [PartitionRegion]:
 // geometry-separated spaces become ordinary regions before play. Door topology
 // is measured closed so initial mutable state cannot merge room identities;
@@ -210,7 +228,7 @@
 // with unknown mutable state keeps the cut and copies no state.
 //
 // A REVEAL CARRIES THE DIFFERENCE (structural_reveal.go, P2E). The existing
-// room_revealed and concealment_revealed payloads gain optional
+// cells_revealed and concealment_revealed payloads gain optional
 // `structural_walls` and `structural_doors`: the new or changed projected rows
 // by identity, computed from the same recipient-scoped [Encounter.AtlasFor] on
 // both sides of the knowledge moment. A wall whose newly permitted cut changed
@@ -289,7 +307,7 @@
 //     visible shut door, and a mapped room stays mapped, forever.
 //
 // A field that hides nothing requires neither concealment capability. Its
-// ordinary room discovery still uses the same persisted knowledge journal.
+// ordinary cell discovery still uses the same persisted knowledge journal.
 //
 // # Discovery attempt policy
 //

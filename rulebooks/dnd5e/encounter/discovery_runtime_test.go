@@ -12,19 +12,17 @@ import (
 )
 
 func (s *AutomaticDiscoverySuite) TestFootprintDoorSupportStillTriggersDiscoveryWithoutHiddenFloor() {
+	build := func(r *discoveryRoller) *encounter.Encounter {
+		in := discoveryFixture(r)
+		in.Field.Props = nil
+		in.Field.Concealments[0].Props = nil
+		in.Field.Concealments[0].Doors = []encounter.DoorID{"secret-door"}
+		placement := coveredBox(1, centreOf(spatial.Position{X: 4}))
+		in.Field.Doors = []encounter.DoorInput{{ID: "secret-door", Placement: &placement, State: encounter.DoorIsClosed()}}
+		return s.create(in)
+	}
 	r := &discoveryRoller{success: true}
-	in := discoveryFixture(r)
-	in.Field.Props = nil
-	in.Field.Concealments[0].Props = nil
-	in.Field.Concealments[0].Doors = []encounter.DoorID{"secret-door"}
-	placement := coveredBox(1, centreOf(spatial.Position{X: 4}))
-	in.Field.Doors = []encounter.DoorInput{{ID: "secret-door", Placement: &placement, State: encounter.DoorIsClosed()}}
-	enc := s.create(in)
-	before, err := enc.AtlasFor("alice")
-	s.Require().NoError(err)
-	full, err := enc.Atlas()
-	s.Require().NoError(err)
-	s.Equal(full.Cells, before.Cells)
+	enc := build(r)
 	s.walk(enc, 1, 2)
 	s.Zero(r.calls)
 	s.step(enc, 3)
@@ -32,7 +30,17 @@ func (s *AutomaticDiscoverySuite) TestFootprintDoorSupportStillTriggersDiscovery
 	s.True(s.learned(enc, "alice"))
 	after, err := enc.AtlasFor("alice")
 	s.Require().NoError(err)
-	s.Equal(before.Cells, after.Cells, "discovering an object reveals no additional floor")
+
+	// The yardstick is the same walk with a check that fails: whatever floor
+	// alice's sight taught on the way is the same, and the find adds none.
+	missed := &discoveryRoller{}
+	twin := build(missed)
+	s.walk(twin, 1, 2, 3)
+	s.Equal(1, missed.calls)
+	s.False(s.learned(twin, "alice"))
+	yardstick, err := twin.AtlasFor("alice")
+	s.Require().NoError(err)
+	s.Equal(yardstick.Cells, after.Cells, "discovering an object reveals no additional floor")
 }
 
 func (s *AutomaticDiscoverySuite) TestBlockedHexDoesNotGateDiscovery() {

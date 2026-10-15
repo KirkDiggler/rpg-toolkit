@@ -650,9 +650,11 @@ func (s *ConcealLawSuite) TestAWitnessedCrossingKeepsTheWatcherReceiving() {
 func (s *ConcealLawSuite) TestClosingReConcealsForStrangersAndNeverForKnowers() {
 	enc := s.open(findsNothing{}, false)
 	twin := s.openTwin()
+	strangerBefore, err := enc.AtlasFor(loner)
+	s.Require().NoError(err)
 
 	// The veil-door: seeker finds it, opens it, shuts it. Nobody perceives.
-	err := encounter.ExportedFind(enc, seeker, veilConceal)
+	err = encounter.ExportedFind(enc, seeker, veilConceal)
 	s.Require().NoError(err)
 	// Both hands walk up to their door first (rpg-toolkit#1856); the cycle
 	// this scene drives is open-and-close, not reach.
@@ -675,28 +677,22 @@ func (s *ConcealLawSuite) TestClosingReConcealsForStrangersAndNeverForKnowers() 
 	_, err = enc.CloseDoor(&encounter.CloseDoorInput{Door: vaultDoor, Actor: buddy})
 	s.Require().NoError(err)
 
-	// The stranger: cells, regions, props and doorways survive the whole
-	// cycle untouched — still the never-authored yardstick. Boundaries
-	// diverge from the twin by exactly the vault frontier rpg-toolkit#1419
-	// now presents (see TestANonKnowersAtlasIsAnHonestlyAuthoredTwin for why
-	// the twin cannot author it itself).
+	// The stranger: the whole map survives the cycle untouched, and its
+	// cells, regions, props and doorways are still the never-authored
+	// yardstick for the same observer. Discovery is by cell
+	// (rpg-project#586), so the cellar-bound loner never saw the annex cell
+	// beside the vault door and holds no mask there at all; the mask's shape
+	// is pinned for buddy, who does, in
+	// TestANonKnowersAtlasIsAnHonestlyAuthoredTwin.
 	lonerAtlas, err := enc.AtlasFor(loner)
 	s.Require().NoError(err)
-	twinAtlas, err := twin.Atlas()
+	s.Equal(strangerBefore, lonerAtlas, "a stranger's map survives the whole cycle untouched")
+	twinAtlas, err := twin.AtlasFor(loner)
 	s.Require().NoError(err)
-	s.Equal(twinAtlas.Cells, lonerAtlas.Cells, "a stranger's cells survive the whole cycle untouched")
+	s.Equal(twinAtlas.Cells, lonerAtlas.Cells, "cells are the never-authored yardstick")
 	s.Equal(twinAtlas.Regions, lonerAtlas.Regions, "and its regions")
 	s.Equal(twinAtlas.Props, lonerAtlas.Props, "and its props")
 	s.Equal(twinAtlas.Doorways, lonerAtlas.Doorways, "and its doorways")
-
-	full, err := enc.Atlas()
-	s.Require().NoError(err)
-	vaultMask, present := hasBoundary(lonerAtlas, spatial.Position{X: 8, Y: concealRow}, spatial.Position{X: 9, Y: concealRow})
-	s.Require().True(present, "the vault-door's crossing still reads as wall after the whole open-close cycle")
-	expected := append(append([]encounter.AtlasBoundary(nil), twinAtlas.Boundaries...), vaultFrontier(full)...)
-	expected = append(expected, vaultMask)
-	s.ElementsMatch(expected, lonerAtlas.Boundaries,
-		"boundaries: every twin wall, the vault seam's real walls now presented, and the vault-door's own mask — the whole cycle changes none of it for a stranger")
 
 	_, probed := enc.OpenDoor(&encounter.OpenDoorInput{Door: veilDoor, Actor: loner})
 	s.Require().ErrorIs(probed, encounter.ErrNoDoor, "the probe law holds after the close")

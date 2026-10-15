@@ -39,6 +39,21 @@ type sightReach struct {
 	areas  map[string]SightArea
 }
 
+// newSightReach is THE ONE CONSTRUCTION of a pass's sight geometry: the
+// readings the caller took (where each placed member stands, how far each can
+// see this refresh) over the live canvas and the sight areas standing now.
+// [Encounter.rebuildPercepts] and [Encounter.VisibleCellsFor] both build their
+// reach here, so seen-now and learning cannot be asked of two geometries
+// (rpg-project#586 R5 — one sight test).
+func (e *Encounter) newSightReach(positions map[MemberID]spatial.Position, cells map[MemberID]int) sightReach {
+	return sightReach{
+		positions: positions,
+		cells:     cells,
+		canvas:    e.canvas,
+		areas:     e.sightAreas,
+	}
+}
+
 // Reaches answers with exactly the two filters the nested loop applied, in
 // the same order.
 //

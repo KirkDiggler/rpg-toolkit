@@ -70,12 +70,16 @@ import (
 // door's doorways name one cell of hidden floor per entrance — knowing
 // where a door is includes knowing it leads somewhere.
 
-// AtlasFor returns the field as one member has discovered it. An ordinary
-// region is learned on first observation of any of its floor, or by opening
-// a door into it. Its whole fixed layout remains known after loss of sight.
-// Concealment separately withholds its undiscovered structure; an explicit
-// concealment reveal retains the floor it teaches even without room sight.
-// Start and exits are supplied only on discovered floor.
+// AtlasFor returns the field as one member has discovered it, BY CELL
+// (rpg-project#586 R1, R2): a cell is on the map once that member's sight pass
+// reached it, they opened a door on its edge, or an explicit concealment
+// reveal taught it — never because another cell of its region was seen. What
+// is learned stays after loss of sight. Every wall, door, doorway, fixed prop
+// and placement touching only unknown cells is absent; a door on the edge of
+// a known cell is presented. Unknown floor synthesizes no wall. Concealment
+// separately withholds its undiscovered structure. Start and exits are
+// supplied only on known floor. What the member sees NOW is
+// [Encounter.VisibleCellsFor], a subset of these cells.
 //
 // Movable props are not fixed layout: their current/remembered placements are
 // [Encounter.PropSightings]. Door state is [Encounter.DoorSightings].
@@ -91,7 +95,8 @@ import (
 // a hidden region's edge would have invented geometry the author never drew,
 // so the whole list went rather than be approximated. Nothing is sliced now.
 // A placement is WITHHELD WHOLE when it belongs to an unfound concealment, or
-// touches ordinary unexplored space. Structural wall/door and fixed opaque
+// stands only on ordinary unexplored space; one with any known cell under it
+// is presented whole. Structural wall/door and fixed opaque
 // contributor boundaries, like fixed
 // wall segments, remain present when their own support also borders known space;
 // this does not reveal adjoining floor or override explicit concealment membership.
@@ -171,7 +176,7 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 		if p.Holdable || hidden.props[p.ID] || hidden.doors[p.ID] || withheldDoorPlacements[p.ID] {
 			continue
 		}
-		unexplored := e.placedTouchesHidden(p, hidden.unexploredCells)
+		unexplored := e.placedWhollyUnexplored(p, hidden.unexploredCells)
 		if structuralBoundaries[p.ID] || (p.BlocksMovement && p.BlocksLineOfSight) {
 			support, supportErr := e.field.footprintObservationCells(p.Placement)
 			if supportErr != nil {
@@ -206,7 +211,7 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 
 	// A known structural wall needs its own footing too, including an owned
 	// threshold under a still-closed leaf. This is presentation footing, not
-	// room discovery or permission to any prop/door on that floor. Explicit
+	// cell discovery or permission to any prop/door on that floor. Explicit
 	// floor secrecy remains independent. Door state is not read here: finding
 	// a secret cut cannot punch a hole that the solid-wall twin did not have.
 	for _, p := range out.Placed {
@@ -527,11 +532,15 @@ func (e *Encounter) masqueradeBlocks(member MemberID, from, to spatial.Position)
 	return hidden.cells[from] != hidden.cells[to]
 }
 
-// placedTouchesHidden reports whether a placement touches the ordinary
-// unexplored-cell mask supplied by its caller. Explicit concealment of a floor
-// cell is not placement membership and must not be included in this mask. Asked of the rectangle's own cells — the one
-// derivation reach, the probe law and an arrival fact all ask of a
-// footprint, never a second measurement of it.
+// placedWhollyUnexplored reports whether a placement stands ONLY on the
+// ordinary unexplored-cell mask supplied by its caller — the fog law's "a
+// placement touching only unknown cells is absent" (rpg-project#586 R2). A
+// rectangle with any known cell under it is presented whole: nothing is
+// sliced, and discovery by cell would otherwise make every table straddling
+// the edge of sight vanish. Explicit concealment of a floor cell is not
+// placement membership and must not be included in this mask. Asked of the
+// rectangle's own cells — the one derivation reach, the probe law and an
+// arrival fact all ask of a footprint, never a second measurement of it.
 //
 // READ OFF THE SNAPSHOT ([AtlasPlacedProp.Cells]) rather than measured here:
 // [Encounter.Atlas] already ran [field.placedCells] for this placement, and
@@ -542,16 +551,15 @@ func (e *Encounter) masqueradeBlocks(member MemberID, from, to spatial.Position)
 // invariant is that [Encounter.Atlas] — the one construction site — always
 // fills Cells, and [field.placedCells] is never empty for a compiled field,
 // so this is unreachable today. It is guarded anyway because the zero value
-// LIES IN THE LEAK DIRECTION: an empty list reads as "touches no hidden
-// cell", so a second construction site that forgot to fill it would present
-// a rectangle standing wholly on floor this recipient cannot see, silently,
-// and the map would mark the secret it was hiding. Fail closed, and the
-// forgetful caller loses a rectangle instead of giving one away.
+// LIES IN THE LEAK DIRECTION: an empty list would otherwise read as "stands
+// on nothing unknown", so a second construction site that forgot to fill it
+// would present a rectangle on floor this recipient never saw. Fail closed,
+// and the forgetful caller loses a rectangle instead of giving one away.
 //
-// Ordinary undiscovered rooms supply hiddenCells here; explicit placement
+// Ordinary undiscovered cells supply hiddenCells here; explicit placement
 // concealment is checked separately by identity in AtlasFor. Absence from a
 // concealment does not mean the observer has explored the whole field.
-func (e *Encounter) placedTouchesHidden(p AtlasPlacedProp, hiddenCells map[spatial.Position]bool) bool {
+func (e *Encounter) placedWhollyUnexplored(p AtlasPlacedProp, hiddenCells map[spatial.Position]bool) bool {
 	if len(hiddenCells) == 0 {
 		return false
 	}
@@ -559,12 +567,12 @@ func (e *Encounter) placedTouchesHidden(p AtlasPlacedProp, hiddenCells map[spati
 		return true
 	}
 	for _, cell := range p.Cells {
-		if hiddenCells[cell] {
-			return true
+		if !hiddenCells[cell] {
+			return false
 		}
 	}
 
-	return false
+	return true
 }
 
 // sortedDoorIDs orders a door-id set, so a mask's position in the boundary

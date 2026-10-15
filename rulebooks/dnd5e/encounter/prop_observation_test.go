@@ -200,9 +200,13 @@ func (s *PropObservationSuite) TestRoomLayoutDoesNotDiscloseAnOccludedProp() {
 	s.Require().NoError(err)
 	atlas, err := s.enc.AtlasFor(propObserver)
 	s.Require().NoError(err)
-	s.Contains(atlas.Cells, cellAt(5, 1), "floor behind the internal obstruction is learned")
-	s.Require().Len(atlas.Props, 1)
-	s.Equal("scenery", atlas.Props[0].ID, "fixed scenery follows the room, not internal LOS")
+	// DISCOVERY IS BY CELL (rpg-project#586 R1): the open door shows the
+	// room up to its internal wall, and the floor behind it is not learned
+	// for being in the same room. Nothing standing there is disclosed —
+	// neither the fixed statue nor the chest.
+	s.Contains(atlas.Cells, cellAt(4, 1), "floor the open door shows is learned")
+	s.NotContains(atlas.Cells, cellAt(5, 1), "floor behind the internal obstruction is not")
+	s.Empty(atlas.Props, "fixed scenery follows the cells seen, not the room")
 	sightings, err := s.enc.PropSightings(&encounter.ViewInput{Member: propObserver})
 	s.Require().NoError(err)
 	s.Empty(sightings, "the chest is not room geometry")

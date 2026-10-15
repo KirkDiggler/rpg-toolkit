@@ -53,9 +53,21 @@ func structuralWallRecord() encounter.StructuralWallInput {
 }
 
 // structuralFootprintDoor is the placement the bound door and its placed
-// presence share.
+// presence share: a thin leaf standing on the edge between (2,1) and (3,1),
+// covering neither centre — the shape a compiled structural door takes. A
+// closed leaf that covered a cell's centre would hide that cell from every
+// sightline, and since discovery is by cell (rpg-project#586) nobody could
+// ever learn the floor it stands on.
 func structuralFootprintDoor() spatial.FootprintPlacement {
-	return coveredBox(1, centreOf(cellAt(2, 1)))
+	return thinDoorBetween(cellAt(2, 1), cellAt(3, 1))
+}
+
+// thinDoorBetween is a two-foot, quarter-foot-thick leaf on the shared edge of
+// two same-row neighbours.
+func thinDoorBetween(a, b spatial.Position) spatial.FootprintPlacement {
+	from, to := centreOf(a), centreOf(b)
+
+	return thinWall(2, 0.25, 0, spatial.Point{X: (from.X + to.X) / 2, Y: (from.Y + to.Y) / 2})
 }
 
 // structuralField is a one-hall field carrying the wall presence, the door
@@ -181,7 +193,7 @@ func (s *StructuralWallSuite) TestTheFullAtlasCarriesEveryDefinitionAndOpening()
 
 func (s *StructuralWallSuite) TestMemberProjectionUsesTheFullAtlasIdentityOrder() {
 	field := structuralField()
-	placement := coveredBox(1, centreOf(cellAt(3, 1)))
+	placement := thinDoorBetween(cellAt(3, 1), cellAt(4, 1))
 	field.Placed = append(field.Placed,
 		placed("a-wall", coveredBox(1, centreOf(cellAt(2, 2))), false, false),
 		placed("other-door", placement, false, false),
@@ -367,9 +379,9 @@ func (s *StructuralWallSuite) TestANegativeElevationIsLegal() {
 
 // --- The per-member read: explicit membership, no parent-dependent subtype ---
 
-func (s *StructuralWallSuite) TestAKnownDoorIsPresentWithoutAnyDoorSighting() {
-	// No state is consulted, so the layout is exactly as authored whether or
-	// not a mutable sighting exists.
+func (s *StructuralWallSuite) TestAKnownDoorsLayoutReadsNoDoorState() {
+	// No state is consulted, so the layout is exactly as authored whatever the
+	// door's state or its sighting says.
 	enc := s.play(structuralField())
 	view, err := enc.AtlasFor("walker")
 	s.Require().NoError(err)
@@ -470,7 +482,7 @@ func (s *StructuralWallSuite) TestAConcealedCellDoesNotSelectAnUnlistedWallOrDoo
 }
 
 func (s *StructuralWallSuite) TestAnUnknownOrdinaryRoomWithholdsItsLayout() {
-	doorPlacement := coveredBox(1, centreOf(cellAt(5, 1)))
+	doorPlacement := thinDoorBetween(cellAt(5, 1), cellAt(6, 1))
 	field := encounter.FieldInput{
 		Canvas: pointyCanvas(),
 		Regions: []encounter.RegionInput{

@@ -4,7 +4,7 @@
 package encounter_test
 
 // structural_reveal_test.go is P2E's witness (rpg-project#169): the existing
-// room_revealed and concealment_revealed beats carry full structural
+// cells_revealed and concealment_revealed beats carry full structural
 // introductions and opening-list replacements for already-known walls.
 //
 // The contract the beat exists to keep is the same one the segments keep: a
@@ -57,8 +57,8 @@ func structuralRevealWall(wallID, doorPlacedID string, doorID encounter.DoorID) 
 // footprint door, so a reveal can prove it delivered one region's layout and
 // nothing of the next.
 func structuralRevealField() encounter.FieldInput {
-	doorA := coveredBox(1, centreOf(cellAt(5, 1)))
-	doorB := coveredBox(1, centreOf(cellAt(9, 1)))
+	doorA := thinDoorBetween(cellAt(5, 1), cellAt(6, 1))
+	doorB := thinDoorBetween(cellAt(8, 1), cellAt(9, 1))
 
 	return encounter.FieldInput{
 		Canvas: pointyCanvas(),
@@ -91,7 +91,7 @@ func structuralRevealField() encounter.FieldInput {
 // bound footprint door is an authored secret: before the find the wall has no
 // cut, and the find must UPDATE that same wall and add the door.
 func hiddenDoorRevealField() encounter.FieldInput {
-	doorPlacement := coveredBox(1, centreOf(cellAt(2, 1)))
+	doorPlacement := thinDoorBetween(cellAt(2, 1), cellAt(3, 1))
 
 	return encounter.FieldInput{
 		Canvas:  pointyCanvas(),
@@ -265,20 +265,34 @@ func doorRowIDs(body map[string]any) []string {
 
 // --- The fixed layout a reveal delivers ---
 
+// revealedRows is every structural wall and door id a run of beats delivered,
+// in delivery order. Discovery is by cell (rpg-project#586): one opening can
+// teach the door's edge and then the sight pass after it, two beats.
+func revealedRows(beats []map[string]any) (walls, doors []string) {
+	for _, beat := range beats {
+		walls = append(walls, wallRowIDs(beat)...)
+		doors = append(doors, doorRowIDs(beat)...)
+	}
+
+	return walls, doors
+}
+
 func (s *StructuralRevealSuite) TestOpeningIntoAnUnknownRegionCarriesOnlyThatRegionsLayout() {
 	enc := s.open(structuralRevealField(), findsNothing{})
 	before, err := enc.AtlasFor("finder")
 	s.Require().NoError(err)
+	s.Empty(s.structuralBeats(enc, "finder", encounter.BeatCellsRevealed), "nothing was revealed after the scene opened")
 	_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: "entry-door", Actor: "finder"})
 	s.Require().NoError(err)
 
-	beats := s.structuralBeats(enc, "finder", encounter.BeatRoomRevealed)
-	s.Require().Len(beats, 1, "the opener learns the room once")
-	s.Equal([]string{"wall-a"}, wallRowIDs(beats[0]), "the newly permitted room's wall, by id")
-	s.Equal([]string{"vault/gate-a"}, doorRowIDs(beats[0]), "and its independently permitted door")
-	s.assertRevealPatchMatchesFresh(enc, before, beats[0])
+	beats := s.structuralBeats(enc, "finder", encounter.BeatCellsRevealed)
+	s.Require().NotEmpty(beats, "the opener learns what the open door shows")
+	walls, doors := revealedRows(beats)
+	s.Equal([]string{"wall-a"}, walls, "the newly permitted room's wall, by id, once")
+	s.Equal([]string{"vault/gate-a"}, doors, "and its independently permitted door, once")
+	s.assertRevealsPatchMatchFresh(enc, before, beats)
 
-	s.Empty(s.structuralBeats(enc, "peer", encounter.BeatRoomRevealed),
+	s.Empty(s.structuralBeats(enc, "peer", encounter.BeatCellsRevealed),
 		"the obstructed peer is not handed the layout")
 }
 
@@ -287,10 +301,11 @@ func (s *StructuralRevealSuite) TestAThirdRegionStaysAbsentFromTheOpener() {
 	_, err := enc.OpenDoor(&encounter.OpenDoorInput{Door: "entry-door", Actor: "finder"})
 	s.Require().NoError(err)
 
-	beats := s.structuralBeats(enc, "finder", encounter.BeatRoomRevealed)
-	s.Require().Len(beats, 1)
-	s.NotContains(wallRowIDs(beats[0]), "wall-b", "the farther region's wall is not delivered early")
-	s.NotContains(doorRowIDs(beats[0]), "vault/gate-b")
+	beats := s.structuralBeats(enc, "finder", encounter.BeatCellsRevealed)
+	s.Require().NotEmpty(beats)
+	walls, doors := revealedRows(beats)
+	s.NotContains(walls, "wall-b", "the farther region's wall is not delivered early")
+	s.NotContains(doors, "vault/gate-b")
 
 	// The author truth still has both, and the farther region is simply not
 	// the opener's yet.
@@ -339,9 +354,14 @@ func (s *StructuralRevealSuite) TestDoorOnlyRevealDoesNotIntroduceFloor() {
 	enc := s.open(field, findsNothing{})
 	before, err := enc.AtlasFor("finder")
 	s.Require().NoError(err)
-	full, err := enc.Atlas()
+	// The twin with nothing concealed is the yardstick: the shut leaf hides
+	// the same floor from the finder's sight either way, so a difference
+	// would be the concealment taking floor with it.
+	plain := hiddenDoorRevealField()
+	plain.Concealments = nil
+	twin, err := s.open(plain, findsNothing{}).AtlasFor("finder")
 	s.Require().NoError(err)
-	s.Equal(full.Cells, before.Cells, "door selection does not remove its footing")
+	s.Equal(twin.Cells, before.Cells, "door selection does not remove its footing")
 	err = encounter.ExportedFind(enc, "finder", "secret")
 	s.Require().NoError(err)
 	beats := s.structuralBeats(enc, "finder", encounter.BeatConcealmentRevealed)
@@ -373,6 +393,20 @@ func (s *StructuralRevealSuite) TestRevealingAHiddenWallDoesNotDuplicateAnAlread
 	s.False(hasDoors, "an unchanged, already-known independent door is not duplicated")
 
 	s.assertRevealPatchMatchesFresh(enc, before, body)
+}
+
+// assertRevealsPatchMatchFresh is [assertRevealPatchMatchesFresh] for a run of
+// beats applied in delivery order.
+func (s *StructuralRevealSuite) assertRevealsPatchMatchFresh(enc *encounter.Encounter, before encounter.Atlas, beats []map[string]any) {
+	s.T().Helper()
+	after, err := enc.AtlasFor("finder")
+	s.Require().NoError(err)
+	patched := before
+	for _, body := range beats {
+		patched = applyStructuralRows(s.T(), patched, body)
+	}
+	s.Equal(after.StructuralWalls, patched.StructuralWalls, "patched walls are the fresh walls")
+	s.Equal(after.StructuralDoors, patched.StructuralDoors, "patched doors are the fresh doors")
 }
 
 // assertRevealPatchMatchesFresh applies the beat's structural rows by id onto
@@ -552,11 +586,13 @@ func (s *StructuralRevealSuite) TestALegacyRevealAddsNoStructuralKeys() {
 	_, err := enc.OpenDoor(&encounter.OpenDoorInput{Door: "entry-door", Actor: "finder"})
 	s.Require().NoError(err)
 
-	beats := s.structuralBeats(enc, "finder", encounter.BeatRoomRevealed)
-	s.Require().Len(beats, 1)
-	s.NotContains(beats[0], "structural_walls", "a field with no structural layout writes no key")
-	s.NotContains(beats[0], "structural_doors")
-	s.NotContains(beats[0], "structural_wall_openings_replacements")
+	beats := s.structuralBeats(enc, "finder", encounter.BeatCellsRevealed)
+	s.Require().NotEmpty(beats)
+	for _, beat := range beats {
+		s.NotContains(beat, "structural_walls", "a field with no structural layout writes no key")
+		s.NotContains(beat, "structural_doors")
+		s.NotContains(beat, "structural_wall_openings_replacements")
+	}
 }
 
 func (s *StructuralRevealSuite) TestAnEarlierPayloadNeverAcquiresLaterSecretIDs() {
@@ -564,9 +600,11 @@ func (s *StructuralRevealSuite) TestAnEarlierPayloadNeverAcquiresLaterSecretIDs(
 	_, err := enc.OpenDoor(&encounter.OpenDoorInput{Door: "entry-door", Actor: "finder"})
 	s.Require().NoError(err)
 
-	first := s.structuralBeatPayloads(enc, "finder", encounter.BeatRoomRevealed)
-	s.Require().Len(first, 1)
-	s.NotContains(string(first[0]), "vault/gate-b", "the later region's door is not in the first payload")
+	first := s.structuralBeatPayloads(enc, "finder", encounter.BeatCellsRevealed)
+	s.Require().NotEmpty(first)
+	for _, payload := range first {
+		s.NotContains(string(payload), "vault/gate-b", "the later region's door is not in the first payloads")
+	}
 
 	// A later discovery must not rewrite the earlier payload. The finder
 	// walks into the room and opens the second door, so the farther region is
@@ -578,14 +616,20 @@ func (s *StructuralRevealSuite) TestAnEarlierPayloadNeverAcquiresLaterSecretIDs(
 	s.Require().NoError(err)
 	_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: "far-door", Actor: "finder"})
 	s.Require().NoError(err)
-	again := s.structuralBeatPayloads(enc, "finder", encounter.BeatRoomRevealed)
-	s.Require().Len(again, 2)
-	s.Equal(string(first[0]), string(again[0]), "an old event is not enriched by later knowledge")
+	again := s.structuralBeatPayloads(enc, "finder", encounter.BeatCellsRevealed)
+	s.Require().Greater(len(again), len(first))
+	for i := range first {
+		s.Equal(string(first[i]), string(again[i]), "an old event is not enriched by later knowledge")
+	}
+	s.Contains(string(again[len(again)-1])+string(again[len(again)-2]), "vault/gate-b",
+		"the farther region's door arrives later, on its own beat")
 
 	// Nor does a reload.
 	reloaded := s.reload(enc)
-	afterLoad := s.structuralBeatPayloads(reloaded, "finder", encounter.BeatRoomRevealed)
-	s.Require().Len(afterLoad, 2)
-	s.Equal(string(first[0]), string(afterLoad[0]))
-	s.NotContains(string(afterLoad[0]), "vault/gate-b")
+	afterLoad := s.structuralBeatPayloads(reloaded, "finder", encounter.BeatCellsRevealed)
+	s.Require().Len(afterLoad, len(again))
+	for i := range first {
+		s.Equal(string(first[i]), string(afterLoad[i]))
+		s.NotContains(string(afterLoad[i]), "vault/gate-b")
+	}
 }

@@ -161,6 +161,9 @@ type encounterWorld struct {
 	// observers is, per turnable pair, the minds its Settles were declared
 	// for — the folds a stance question asks, sorted.
 	observers map[factionPair][]MemberID
+
+	// cells is the `known:cells` fold carried forward — see [cellFold].
+	cells cellFold
 }
 
 // newEncounterWorld is a world with an empty journal and no declaration yet

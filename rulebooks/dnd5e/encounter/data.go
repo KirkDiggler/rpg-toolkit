@@ -1116,7 +1116,7 @@ type FactData struct {
 // the same way: a blob claiming an allied pair turned hostile is claiming
 // something this field has no machinery for.
 func validateWorldFacts(
-	entries []journalEntry, concealments []ConcealmentInput, regions []RegionInput, facts []FactID,
+	entries []journalEntry, concealments []ConcealmentInput, regions []RegionInput, floor *field, facts []FactID,
 	turnable []factionPair, everMembers []MemberID,
 ) error {
 	// kind -> the subject that kind's writer always records; "" for a fact
@@ -1128,9 +1128,12 @@ func validateWorldFacts(
 	for _, id := range facts {
 		minted[string(factKnownKind(id))] = ""
 	}
+	// The retired whole-room kind still loads, and teaches nothing
+	// ([legacyRoomKnownPrefix]); its shape is judged as it always was.
 	for _, region := range regions {
-		minted[string(roomKnownKind(region.ID))] = ""
+		minted[string(legacyRoomKnownKind(region.ID))] = ""
 	}
+	minted[string(cellsKnownKind)] = ""
 	settled := make(map[string]factionPair, 2*len(turnable))
 	for _, pair := range turnable {
 		for _, to := range settledStances {
@@ -1170,6 +1173,31 @@ func validateWorldFacts(
 			return fmt.Errorf(
 				"world fact %d is not audienced to exactly its actor — this module never writes that shape: %w",
 				i, ErrInvalidData)
+		}
+		if f.Kind == string(cellsKnownKind) {
+			if err := validateCellsKnown(i, f, floor); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// validateCellsKnown is the payload half of a `known:cells` fact: a decodable
+// cell list that names only this field's floor — a cell off the map would put
+// knowledge of nothing into somebody's atlas fold, which is the void-cell
+// precedent `dropped:` facts already refuse.
+func validateCellsKnown(i int, f FactData, floor *field) error {
+	cells, err := decodeCellsKnown(f.Detail)
+	if err != nil {
+		return fmt.Errorf("world fact %d is a known:cells fact whose cells do not decode (%v): %w", i, err, ErrInvalidData)
+	}
+	if len(cells) == 0 {
+		return fmt.Errorf("world fact %d is a known:cells fact that teaches no cell: %w", i, ErrInvalidData)
+	}
+	for _, cell := range cells {
+		if !floor.isFloor(cell) {
+			return fmt.Errorf("world fact %d teaches cell %v, which is not this field's floor: %w", i, cell, ErrInvalidData)
 		}
 	}
 	return nil
@@ -2781,7 +2809,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 		mintable := mintedFactIDs(f, triggersOf(endingInputsForValidation), taught)
 		if err = validateWorldFacts(
-			worldFacts, fieldInput.Concealments, fieldInput.Regions, mintable, turnablePairsOf(f), data.EverMembers,
+			worldFacts, fieldInput.Concealments, fieldInput.Regions, f, mintable, turnablePairsOf(f), data.EverMembers,
 		); err != nil {
 			return nil, fmt.Errorf("load encounter: %w", err)
 		}

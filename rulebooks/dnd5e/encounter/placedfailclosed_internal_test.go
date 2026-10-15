@@ -19,7 +19,7 @@ package encounter
 // the same issue. So the absent value is made to mean what its author meant:
 // "I cannot say where this stands", which is a reason to withhold it.
 //
-// Internal because [Encounter.placedTouchesHidden] is the decision, and the
+// Internal because [Encounter.placedWhollyUnexplored] is the decision, and the
 // leak it guards cannot be staged through [Encounter.AtlasFor] — the whole
 // point of the finding is that no reachable path produces the input yet.
 
@@ -75,18 +75,23 @@ func TestAPlacementThatNamesNoCellIsWithheldRatherThanPresented(t *testing.T) {
 	hidden := map[spatial.Position]bool{secret: true}
 
 	standingInTheOpen := AtlasPlacedProp{ID: "table", Cells: []spatial.Position{{X: 0, Y: 0}}}
-	require.False(t, enc.placedTouchesHidden(standingInTheOpen, hidden),
+	require.False(t, enc.placedWhollyUnexplored(standingInTheOpen, hidden),
 		"a placement standing on floor this recipient can see is presented")
 
 	standingOnTheSecret := AtlasPlacedProp{ID: "table", Cells: []spatial.Position{secret}}
-	require.True(t, enc.placedTouchesHidden(standingOnTheSecret, hidden),
-		"and one standing on hidden floor is withheld, which is the rule this guards")
+	require.True(t, enc.placedWhollyUnexplored(standingOnTheSecret, hidden),
+		"and one standing only on hidden floor is withheld, which is the rule this guards")
+
+	straddling := AtlasPlacedProp{ID: "table", Cells: []spatial.Position{{X: 0, Y: 0}, secret}}
+	require.False(t, enc.placedWhollyUnexplored(straddling, hidden),
+		"one with any known cell under it is presented whole — only a placement touching "+
+			"nothing but unknown cells is absent (rpg-project#586 R2)")
 
 	saysNothing := AtlasPlacedProp{ID: "table"}
-	require.True(t, enc.placedTouchesHidden(saysNothing, hidden),
+	require.True(t, enc.placedWhollyUnexplored(saysNothing, hidden),
 		"a placement that names no cell cannot be shown to be safe, so it is withheld — "+
 			"the empty list must not read as \"stands on no hidden cell\"")
 
-	require.False(t, enc.placedTouchesHidden(saysNothing, nil),
+	require.False(t, enc.placedWhollyUnexplored(saysNothing, nil),
 		"but a field that hides nothing withholds nothing, whatever a placement says about itself")
 }
