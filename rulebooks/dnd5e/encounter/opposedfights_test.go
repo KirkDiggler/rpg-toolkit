@@ -384,3 +384,69 @@ func (s *OpposedFightsSuite) TestAGuardWhoTurnedOnTheThugsJoinsThePartysFight() 
 		}
 	})
 }
+
+// walkAsTheSessionDoes walks a member down column 4 to the given row, one
+// cell at a time, asking AdmitWalk before every step exactly as the session's
+// Move does (session/move.go) — the shape the castle walk found the bard
+// pulled into the fighter's bubble by.
+func (s *OpposedFightsSuite) walkAsTheSessionDoes(enc *encounter.Encounter, who core.EntityID, fromRow, toRow int) {
+	for row := fromRow - 1; row >= toRow; row-- {
+		admitted, err := enc.AdmitWalk(&encounter.AdmitWalkInput{Member: who})
+		s.Require().NoError(err)
+		if admitted.Joined {
+			return
+		}
+		_, err = enc.Step(&encounter.StepInput{Member: who, To: cellAt(4, row), EndWalk: row == toRow})
+		s.Require().NoError(err)
+		if s.clockOf(enc, who) == encounter.ClockTurn {
+			return // the step made contact: the walk ends in the fight, as the session's does
+		}
+	}
+}
+
+// TestSeeingAnAllyInAFightIsNotContact is the castle walk's finding
+// (rpg-project#569, D0): alice is fighting a goblin; bob walks up until he
+// can see alice and then the goblin, and the goblin never sees him. Bob is in
+// contact with nobody — sight of an ally is not contact, and his sight of the
+// goblin is a drop — so he stays on the world clock. Before the fix the walk
+// admitted him the step after alice came into view.
+func (s *OpposedFightsSuite) TestSeeingAnAllyInAFightIsNotContact() {
+	open := func(goblinReach int, goblinFaction encounter.FactionID) *encounter.Encounter {
+		field := s.yard(nil)
+		field.Regions = []encounter.RegionInput{rectRegion("yard", 0, 0, 12, 12)}
+		if goblinFaction != "" {
+			field.Factions = []encounter.FactionInput{{ID: goblinFaction}}
+			field.Dispositions = []encounter.DispositionInput{{
+				Between: [2]encounter.FactionID{goblinFaction, encounter.FactionParty}, Stance: encounter.StanceNeutral,
+			}}
+		}
+		light := &sightList{reach: map[encounter.MemberID]int{alice: 2, bob: 3, goblin: goblinReach}}
+		gob := encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Faction: goblinFaction, Position: spatial.Position{X: 4, Y: 1}}
+		return s.openWith(field, []encounter.MemberInput{player(alice, 4, 2), player(bob, 4, 10), gob},
+			light, sheetFacts{alice: {SpeedFeet: 30}, bob: {SpeedFeet: 30}, goblin: {SpeedFeet: 30}},
+			passDriver{}, passStriker{})
+	}
+
+	s.Run("bob walking into sight of alice only stays on the world clock", func() {
+		enc := open(2, "")
+		s.Require().Equal(encounter.ClockTurn, s.clockOf(enc, alice), "precondition: alice is fighting the goblin")
+		s.walkAsTheSessionDoes(enc, bob, 10, 4)
+		s.Equal(encounter.ClockWorld, s.clockOf(enc, bob), "seeing his teammate fight is not contact")
+		s.Equal([]encounter.MemberID{alice, goblin}, s.order(enc, alice))
+	})
+
+	s.Run("bob walking into the goblin's sight joins: the goblin spotted him", func() {
+		enc := open(4, "")
+		s.walkAsTheSessionDoes(enc, bob, 10, 4)
+		s.Equal(encounter.ClockTurn, s.clockOf(enc, bob), "a hostile seeing him is contact")
+		s.Equal([]encounter.MemberID{alice, goblin, bob}, s.order(enc, alice), "joined last, as a straggler")
+	})
+
+	s.Run("a neutral creature seen by a player forms nothing", func() {
+		enc := open(4, "crowd")
+		s.Equal(encounter.ClockWorld, s.clockOf(enc, alice), "alice beside a neutral is in no fight")
+		s.walkAsTheSessionDoes(enc, bob, 10, 4)
+		s.Equal(encounter.ClockWorld, s.clockOf(enc, bob))
+		s.Equal(encounter.ClockWorld, s.clockOf(enc, goblin))
+	})
+}

@@ -19,9 +19,28 @@ type AdmitWalkOutput struct {
 	IntelDeltas map[MemberID]*IntelDelta
 }
 
-// AdmitWalk joins a free-roaming member to combat when they currently see a
-// teammate in the running bubble. It never changes placement. Call before
-// announcing or charging a step. Existing combat members are unchanged.
+// AdmitWalk joins a free-roaming member to the running fight when they are
+// in CONTACT with it: an opposed member of that fight currently sees them.
+// It never changes placement. Call before announcing or charging a step.
+// Existing combat members are unchanged.
+//
+// # Contact is a hostile pair, never a teammate (the mad king D0 walk)
+//
+// This used to admit a walker who could SEE AN ALLY in the fight — the bard
+// who stepped into view of the fighter was pulled into the fighter's bubble
+// with no enemy anywhere in the bard's sight or the enemy's (rpg-project#569,
+// found on the castle walk). The operator's ruling: a seat joins a fight only
+// when IT is in contact — it sees a hostile, or a hostile sees it. Sight of
+// an ally or a neutral forms and joins nothing.
+//
+// ONLY THE BEING-SEEN SIDE ADMITS HERE. A walker who sees an opposed member
+// of the fight unseen has the drop (rpg-toolkit#1020) and keeps it: the
+// choice to approach, sneak or back away is theirs, so their own sight is
+// not admission. A walker an enemy in the fight is watching is in that fight
+// — the same answer classify gives a spotted contact, read from current
+// sight because the contact that made it may have been classified before
+// the fight ran (a straggler the fight's own refresh missed).
+//
 // Errors preserve input, perception, participation, and transfer failures.
 func (e *Encounter) AdmitWalk(in *AdmitWalkInput) (*AdmitWalkOutput, error) {
 	if in == nil {
@@ -42,33 +61,27 @@ func (e *Encounter) AdmitWalk(in *AdmitWalkInput) (*AdmitWalkOutput, error) {
 	if bubble != nil || len(e.bubbles) == 0 {
 		return out, nil
 	}
-	holdings, err := e.memberIntel(in.Member)
+	participation, err := e.participationNow()
 	if err != nil {
-		return nil, fmt.Errorf("admit walk sight: %w", err)
+		return nil, fmt.Errorf("admit walk: %w", err)
 	}
-	for _, holding := range holdings {
-		if !holding.CurrentOn(perception.Sight) {
+	if !participation.contact[member.ID] {
+		return out, nil
+	}
+	order, err := e.bubbles[0].Order()
+	if err != nil {
+		return nil, fmt.Errorf("admit walk: %w", err)
+	}
+	for _, id := range order {
+		other, exists := e.members[MemberID(id)]
+		if !exists || !participation.contact[other.ID] || !e.opposed(member.ID, other.ID) {
 			continue
 		}
-		other, exists := e.members[holding.Subject]
-		if !exists || other.ID == member.ID {
-			continue
-		}
-		// The owner answers: StanceBetween holds the no-faction rule, and a
-		// faction is allied with itself, so one read covers teammates and
-		// allied sides alike.
-		stance, err := e.StanceBetween(member.ID, other.ID)
+		watching, err := e.currentlySees(other.ID, member.ID)
 		if err != nil {
 			return nil, fmt.Errorf("admit walk sight: %w", err)
 		}
-		if stance != StanceAllied {
-			continue
-		}
-		teammateBubble, err := e.bubbleFor(other.ID)
-		if err != nil {
-			return nil, err
-		}
-		if teammateBubble == nil {
+		if !watching {
 			continue
 		}
 		transferred, err := e.Transfer(&TransferInput{Member: in.Member, To: ClockTurn, Pos: e.bubbleSize()})
@@ -79,4 +92,19 @@ func (e *Encounter) AdmitWalk(in *AdmitWalkInput) (*AdmitWalkOutput, error) {
 		return out, nil
 	}
 	return out, nil
+}
+
+// currentlySees reports whether observer's view holds subject on sight now —
+// watched, not remembered.
+func (e *Encounter) currentlySees(observer, subject MemberID) (bool, error) {
+	holdings, err := e.memberIntel(observer)
+	if err != nil {
+		return false, err
+	}
+	for _, holding := range holdings {
+		if holding.Subject == subject && holding.CurrentOn(perception.Sight) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
