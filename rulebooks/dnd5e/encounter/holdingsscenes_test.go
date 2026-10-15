@@ -765,14 +765,31 @@ func (s *HoldingsSuite) TestTheAtlasCarriesTheWaysOut() {
 		}, atlas.Exits)
 	})
 
-	s.Run("and every member sees the same ones", func() {
+	s.Run("and every member who has seen its floor sees the same ones", func() {
+		// An exit is not a secret, but it is fixed layout on a cell, and an
+		// unseen cell is absent (rpg-project#586 R2): the captain in the
+		// tomb has never looked into the hall.
 		full, err := enc.Atlas()
 		s.Require().NoError(err)
 		for _, member := range []core.EntityID{raider, partner, captain} {
 			mine, err := enc.AtlasFor(member)
 			s.Require().NoError(err)
-			s.Require().Equal(full.Exits, mine.Exits,
-				"%s sees a different way out; an exit is not a secret", member)
+			known := map[spatial.Position]bool{}
+			for _, cell := range mine.Cells {
+				known[cell] = true
+			}
+			var want []encounter.AtlasExit
+			for _, exit := range full.Exits {
+				if known[exit.At] {
+					want = append(want, exit)
+				}
+			}
+			s.Require().Equal(want, mine.Exits, "%s sees a different way out from the floor it knows", member)
+		}
+		for _, member := range []core.EntityID{raider, partner} {
+			mine, err := enc.AtlasFor(member)
+			s.Require().NoError(err)
+			s.Require().Equal(full.Exits, mine.Exits, "the hall's two seats see both of the hall's ways out")
 		}
 	})
 
@@ -814,7 +831,10 @@ func (s *HoldingsSuite) TestTheAtlasSaysWhatCanBePickedUp() {
 	enc := s.open(false)
 
 	s.Run("the flag round-trips, and only for what was declared", func() {
-		for _, member := range []core.EntityID{raider, partner} {
+		// The pillar stands in the tomb: raider looks in through the gap.
+		s.step(enc, raider, hallSideOfGap)
+		s.step(enc, raider, tombSideOfGap)
+		for _, member := range []core.EntityID{raider} {
 			atlas, err := enc.AtlasFor(member)
 			s.Require().NoError(err)
 

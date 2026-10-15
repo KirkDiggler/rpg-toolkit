@@ -184,7 +184,14 @@ func (r observationReach) Reaches(channel perception.Channel, observer, subject 
 		return false
 	}
 	for _, cell := range support.cells {
-		if !hidden.cells[cell] && r.reachesCell(member, cell) {
+		if hidden.cells[cell] {
+			continue
+		}
+		// A DOOR IS SEEN WHEN ITS LEAF'S FACE IS: a shut footprint door
+		// covering its own hex is sighted the way the cell under it is
+		// learned ([sightReach.seesCell]), so the door a member's map
+		// presents is the door they have a sighting of.
+		if r.reachesCell(member, cell) || (support.door != "" && r.seesCell(member, cell, hidden)) {
 			return true
 		}
 	}
@@ -279,12 +286,13 @@ func (e *Encounter) subjectSeers(subject core.EntityID, actor MemberID, mustSeeA
 	if err != nil {
 		return nil, err
 	}
-	geometry := sightReach{positions: make(map[MemberID]spatial.Position), cells: ranges, canvas: e.canvas, areas: e.sightAreas}
+	positions := make(map[MemberID]spatial.Position)
 	for _, member := range e.rosterIDs() {
 		if cell, placed := e.canvas.GetEntityPosition(string(member)); placed {
-			geometry.positions[member] = cell
+			positions[member] = cell
 		}
 	}
+	geometry := e.newSightReach(positions, ranges)
 	_, reach, err := e.appendMutablePresences(nil, geometry)
 	if err != nil {
 		return nil, err

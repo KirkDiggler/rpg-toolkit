@@ -198,6 +198,7 @@ func (s *deathScene) beatKindsOf(enc *encounter.Encounter, audience encounter.Me
 var recipientScopedKinds = map[string]bool{
 	"sighted":              true,
 	"concealment_revealed": true,
+	"cells_revealed":       true,
 }
 
 func (s *deathScene) beatsOf(enc *encounter.Encounter, audience encounter.MemberID) []map[string]any {

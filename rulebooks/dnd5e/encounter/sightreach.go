@@ -39,6 +39,21 @@ type sightReach struct {
 	areas  map[string]SightArea
 }
 
+// newSightReach is THE ONE CONSTRUCTION of a pass's sight geometry: the
+// readings the caller took (where each placed member stands, how far each can
+// see this refresh) over the live canvas and the sight areas standing now.
+// [Encounter.rebuildPercepts] and [Encounter.VisibleCellsFor] both build their
+// reach here, so seen-now and learning cannot be asked of two geometries
+// (rpg-project#586 R5 — one sight test).
+func (e *Encounter) newSightReach(positions map[MemberID]spatial.Position, cells map[MemberID]int) sightReach {
+	return sightReach{
+		positions: positions,
+		cells:     cells,
+		canvas:    e.canvas,
+		areas:     e.sightAreas,
+	}
+}
+
 // Reaches answers with exactly the two filters the nested loop applied, in
 // the same order.
 //
@@ -91,4 +106,70 @@ func (s sightReach) reachesCell(observer MemberID, subjectCell spatial.Position)
 		}
 	}
 	return true
+}
+
+// seesCell is reachesCell with ONE ADDITION, for a cell whose centre a
+// sight-blocking footprint covers — a shut door leaf standing in its own hex,
+// a pillar inside its hex. No sightline ever reaches such a centre, because
+// the cover itself stands on it, so by reachesCell alone the cell could never
+// be learned and the door or pillar on it never drawn (rpg-project#586; the
+// law "a door on the edge of a known cell is presented", for a door that has
+// no edge).
+//
+// SUCH A CELL IS SEEN WHEN ITS COVER'S FACE IS: when reachesCell reaches a
+// floor neighbour that nothing but that same cover separates from it — no
+// sight-blocking boundary on the shared edge, and no OTHER sight-blocking
+// contributor across the neighbour-to-cell line. So a pillar is seen from
+// beside it, a shut leaf from either side of it, and neither from across a
+// wall. The answer is still asked only of reachesCell; this decides which
+// cells it is asked of. Everything else answers exactly as reachesCell does.
+//
+// A COVER THE OBSERVER HAS NOT FOUND TEACHES NOTHING: hidden is that
+// observer's own [hiddenView], and an unfound concealed door or prop is not a
+// face they can see — otherwise the threshold under a secret leaf would read
+// as open floor where the solid-wall twin has a wall's footing, which is
+// exactly the tell concealment forbids.
+func (s sightReach) seesCell(observer MemberID, cell spatial.Position, hidden hiddenView) bool {
+	if s.reachesCell(observer, cell) {
+		return true
+	}
+	from, placed := s.positions[observer]
+	if !placed || s.canvas.GetGrid().Distance(from, cell) > float64(s.cells[observer]+1) {
+		return false
+	}
+	f := s.canvas.field
+	coverPlaced, coverDoors, err := f.screensOf(cell)
+	if err != nil {
+		return false
+	}
+	faces := 0
+	for id := range coverPlaced {
+		if !hidden.props[id] {
+			faces++
+		}
+	}
+	for id := range coverDoors {
+		if !hidden.doors[id] {
+			faces++
+		}
+	}
+	if faces == 0 {
+		return false
+	}
+	for _, neighbor := range adjacencyGrid.GetNeighbors(cell) {
+		if !f.isFloor(neighbor) {
+			continue
+		}
+		if b, ok := s.canvas.GetBoundary(neighbor, cell); ok && b.BlocksLineOfSight {
+			continue
+		}
+		blocked, err := f.sightBlocksAlongExcept(neighbor, cell, coverPlaced, coverDoors)
+		if err != nil || blocked {
+			continue
+		}
+		if s.reachesCell(observer, neighbor) {
+			return true
+		}
+	}
+	return false
 }

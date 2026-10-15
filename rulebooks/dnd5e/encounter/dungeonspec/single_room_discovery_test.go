@@ -69,7 +69,7 @@ func (s *SingleRoomWallDoorSuite) TestOrdinaryDiscoveryStopsAtTheNextClosedDoor(
 			} `json:"placed"`
 		}
 		s.Require().NoError(json.Unmarshal(entry.Payload, &payload))
-		if payload.Beat == encounter.BeatRoomRevealed {
+		if payload.Beat == encounter.BeatCellsRevealed {
 			for _, placed := range payload.Placed {
 				delivered[placed.ID] = true
 			}
@@ -77,7 +77,7 @@ func (s *SingleRoomWallDoorSuite) TestOrdinaryDiscoveryStopsAtTheNextClosedDoor(
 	}
 	for _, placed := range atlas.Placed {
 		if !known[placed.ID] {
-			s.True(delivered[placed.ID], "newly permitted boundary %q must arrive in the same room reveal as its snapshot", placed.ID)
+			s.True(delivered[placed.ID], "newly permitted boundary %q must arrive in a cells reveal, as its snapshot does", placed.ID)
 		}
 	}
 }

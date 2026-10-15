@@ -1815,12 +1815,7 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 	// ANSWER — with nothing here moving — which is exactly the promise
 	// [Standing] makes about hit points. All of it lives in [sightReach] now,
 	// which is the only thing in this pass that knows what a wall is.
-	geometry := sightReach{
-		positions: positions,
-		cells:     reach,
-		canvas:    e.canvas,
-		areas:     e.sightAreas,
-	}
+	geometry := e.newSightReach(positions, reach)
 	presences, observationGeometry, err := e.appendMutablePresences(presences, geometry)
 	if err != nil {
 		return nil, err
@@ -1838,7 +1833,7 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 
 	for _, observer := range observerIDs {
 		member, _ := subjectID(observer, memberSubjectKind)
-		if err := e.discoverRooms(member, geometry); err != nil {
+		if err := e.discoverCells(member, geometry); err != nil {
 			return nil, err
 		}
 	}

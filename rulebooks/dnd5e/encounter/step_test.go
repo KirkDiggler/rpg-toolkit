@@ -154,15 +154,24 @@ func (s *StepSuite) standsAt(id encounter.MemberID) spatial.Position {
 	return spatial.Position{}
 }
 
-// lastBeat decodes the most recent story beat one member was told about.
+// lastBeat decodes the most recent story beat one member was told about,
+// passing over the cells-revealed patch a step's sight pass may append after
+// it: discovery is by cell (rpg-project#586), so a step that shows new floor
+// is followed by that floor, and the step's own beat is the one before.
 func (s *StepSuite) lastBeat(audience encounter.MemberID) map[string]any {
 	story, err := s.enc.Story(&encounter.StoryInput{Audience: audience})
 	s.Require().NoError(err)
 	s.Require().NotEmpty(story)
 
-	var beat map[string]any
-	s.Require().NoError(json.Unmarshal(story[len(story)-1].Payload, &beat))
-	return beat
+	for i := len(story) - 1; i >= 0; i-- {
+		var beat map[string]any
+		s.Require().NoError(json.Unmarshal(story[i].Payload, &beat))
+		if beat["beat"] != encounter.BeatCellsRevealed {
+			return beat
+		}
+	}
+	s.Require().Fail("every beat was a cells-revealed patch")
+	return nil
 }
 
 // beatCell reads a beat's position back as a Position, since JSON gives it

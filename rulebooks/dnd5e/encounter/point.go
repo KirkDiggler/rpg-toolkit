@@ -46,6 +46,6 @@ func (e *Encounter) SeesWithin(observer, subject MemberID, rangeFeet int) (bool,
 	if err != nil {
 		return false, false
 	}
-	reach := sightReach{positions: map[MemberID]spatial.Position{observer: from, subject: to}, cells: ranges, canvas: e.canvas, areas: e.sightAreas}
+	reach := e.newSightReach(map[MemberID]spatial.Position{observer: from, subject: to}, ranges)
 	return reach.Reaches("sight", observer, subject), true
 }

@@ -494,7 +494,7 @@ func (e *Encounter) Atlas() (Atlas, error) {
 			// standing placement — the cost of stating the derivation
 			// instead of leaving three protocols and one client to repeat
 			// it. AtlasFor pays it ONCE, here, instead of a second time in
-			// the filter: [Encounter.placedTouchesHidden] reads these cells
+			// the filter: [Encounter.placedWhollyUnexplored] reads these cells
 			// rather than measuring the rectangle again. On a field that
 			// conceals nothing that filter never ran at all, so such a
 			// field does pay this walk where it paid none — the cost is

@@ -711,10 +711,21 @@ func (f *field) crossingBlocks(from, to spatial.Position) (PropID, bool, error) 
 // connecting lane to the original endpoint must also be clear. This is a
 // sight query, independent of whether the footprint blocks movement.
 func (f *field) sightBlocksAlong(from, to spatial.Position) (bool, error) {
+	return f.sightBlocksAlongExcept(from, to, nil, nil)
+}
+
+// sightBlocksAlongExcept is [field.sightBlocksAlong] with some contributors
+// left out of the question: the ones [field.screensOf] says cover a cell's
+// centre, when the question is whether the FACE of that cover can be seen
+// from a neighbour ([sightReach.seesCell]). One loop for both, so the two
+// reads cannot disagree about any contributor that is asked.
+func (f *field) sightBlocksAlongExcept(
+	from, to spatial.Position, skipPlaced map[PropID]bool, skipDoors map[DoorID]bool,
+) (bool, error) {
 	now := f.placedNow()
 	for i := range f.placed {
 		p := &f.placed[i]
-		if !p.blocksLineOfSight {
+		if !p.blocksLineOfSight || skipPlaced[p.id] {
 			continue
 		}
 		placement, standing := now.stands(p)
@@ -737,6 +748,9 @@ func (f *field) sightBlocksAlong(from, to spatial.Position) (bool, error) {
 	// stands in: an edge door's crossings are registered blocking both, and
 	// a footprint door's rectangle is read here. One state, both facts.
 	for _, d := range f.blockingDoorFootprints() {
+		if skipDoors[d.id] {
+			continue
+		}
 		trace, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
 			Placement: *d.placement,
 			From:      f.plane.CellCentre(from),
@@ -751,6 +765,57 @@ func (f *field) sightBlocksAlong(from, to spatial.Position) (bool, error) {
 	}
 
 	return false, nil
+}
+
+// screensOf names every sight-blocking contributor covering a cell's centre
+// — the same stationary-contact test [field.sightBlocksOriginAt] answers yes
+// or no to, here returning which ones. Nil maps mean nothing screens it.
+func (f *field) screensOf(cell spatial.Position) (map[PropID]bool, map[DoorID]bool, error) {
+	var placed map[PropID]bool
+	var doors map[DoorID]bool
+	if len(f.placed) == 0 && len(f.doorFootprints) == 0 {
+		return placed, doors, nil
+	}
+	centre := f.plane.CellCentre(cell)
+	now := f.placedNow()
+	for i := range f.placed {
+		p := &f.placed[i]
+		if !p.blocksLineOfSight {
+			continue
+		}
+		placement, standing := now.stands(p)
+		if !standing {
+			continue
+		}
+		contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
+			Placement: placement, From: centre, To: centre,
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("placed prop %q: %w", p.id, err)
+		}
+		if contact.Contact {
+			if placed == nil {
+				placed = map[PropID]bool{}
+			}
+			placed[p.id] = true
+		}
+	}
+	for _, d := range f.blockingDoorFootprints() {
+		contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
+			Placement: *d.placement, From: centre, To: centre,
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("door %q: %w", d.id, err)
+		}
+		if contact.Contact {
+			if doors == nil {
+				doors = map[DoorID]bool{}
+			}
+			doors[d.id] = true
+		}
+	}
+
+	return placed, doors, nil
 }
 
 // sightBlocksOriginAt reports whether a cell's centre is COVERED by any

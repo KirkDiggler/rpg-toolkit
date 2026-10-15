@@ -429,7 +429,7 @@ func (s *ConcealSuite) TestAPlainFieldNeedsNoConcealmentCapabilities() {
 
 	blob, err := json.Marshal(enc.ToData())
 	s.Require().NoError(err)
-	s.Contains(string(blob), `"known:room:west"`, "ordinary room knowledge uses the existing world journal")
+	s.Contains(string(blob), `"known:cells"`, "ordinary cell knowledge uses the existing world journal")
 }
 
 // TestFindingASecretRevealsItToTheFinderAlone: a find writes the fact with

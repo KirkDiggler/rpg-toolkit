@@ -203,7 +203,7 @@ var wantClass = map[string]beatClass{
 // appear in exactly one of these two tables — the loop at the bottom of
 // TestCallSiteClassification is what enforces that.
 var recipientScoped = map[string]bool{
-	"room_revealed":        true,
+	"cells_revealed":       true, // one member's newly learned cells (rpg-project#586)
 	"door":                 true, // actual witnesses, not everybody who remembers the door
 	"sighted":              true,
 	"concealment_revealed": true,

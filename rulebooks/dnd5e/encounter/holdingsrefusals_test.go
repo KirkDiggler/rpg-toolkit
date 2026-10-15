@@ -131,6 +131,12 @@ func (s *HoldingsSuite) TestHoldRefusesInOrder() {
 		s.Require().ErrorIs(err, encounter.ErrNoProp)
 	})
 	s.Run("out of range", func() {
+		// Into the tomb through the gap, where the chalice is in sight and
+		// still more than a hex away: discovery is by cell (rpg-project#586),
+		// so from the hall it is a prop raider has never seen, and refused
+		// as no such prop.
+		s.step(enc, raider, hallSideOfGap)
+		s.step(enc, raider, tombSideOfGap)
 		_, err := enc.Hold(&encounter.HoldInput{Member: raider, Target: chalice})
 		s.Require().ErrorIs(err, encounter.ErrOutOfRange)
 		// The reach helper is shared with Loot and takes the verb as a
@@ -145,6 +151,9 @@ func (s *HoldingsSuite) TestHoldRefusesInOrder() {
 		s.Require().NoError(err)
 		_, err = enc.Hold(&encounter.HoldInput{Member: raider, Target: chalice})
 		s.Require().ErrorIs(err, encounter.ErrAlreadyHeld)
+		// The partner looks into the tomb too: the refusal is about a prop
+		// they have seen, so it can say what it means.
+		s.step(enc, partner, hallSideOfGap)
 		_, err = enc.Hold(&encounter.HoldInput{Member: partner, Target: chalice})
 		s.Require().ErrorIs(err, encounter.ErrAlreadyHeld, "and it is gone for everybody, not just the holder")
 	})

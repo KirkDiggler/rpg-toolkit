@@ -291,7 +291,10 @@ func (s *DoorReachSuite) TestEveryDoorVerbMeasuresTheSameReach() {
 // string out, so a change to either message that the other did not make
 // fails here — which is the whole point of borrowing the rule.
 func (s *DoorReachSuite) TestTheRefusalIsHoldsOwnSentence() {
-	enc := s.placedDoorAt(placedDoorHall(leafDoor(encounter.DoorIsClosed())), authoredAt(4, 0))
+	// On the crate's side of the shut leaf, so the crate is a thing alice
+	// has seen (discovery is by cell, rpg-project#586) — and three hexes from
+	// it and from the leaf alike.
+	enc := s.placedDoorAt(placedDoorHall(leafDoor(encounter.DoorIsClosed())), authoredAt(0, 4))
 
 	_, held := enc.Hold(&encounter.HoldInput{Member: alice, Target: theCrate})
 	s.Require().ErrorIs(held, encounter.ErrOutOfRange, "the crate is out of reach from here")

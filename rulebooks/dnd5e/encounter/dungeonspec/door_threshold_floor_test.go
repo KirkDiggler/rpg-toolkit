@@ -41,24 +41,36 @@ groups: []
 			s.Require().NoError(err)
 			s.Require().NotEmpty(before.StructuralWalls, "the bordering wall is already known")
 			s.Contains(before.Cells, axial(1, 0), "the known wall needs floor beneath its closed door, independently of door concealment")
-			s.Contains(before.Sealed, axial(1, 0), "unknown threshold ownership is not permission to stand through a closed leaf")
 			s.NotContains(before.Cells, axial(3, 0), "footing does not discover the other room")
-			for _, p := range before.Placed {
-				s.NotEqual("threshold-prop", p.ID, "footing alone does not grant object permission")
-			}
 			if secret {
+				// AN UNFOUND LEAF TEACHES NOTHING: its threshold is the wall's
+				// footing, sealed, and nothing standing on it is permitted.
+				s.Contains(before.Sealed, axial(1, 0), "unknown threshold ownership is not permission to stand through a closed leaf")
+				for _, p := range before.Placed {
+					s.NotEqual("threshold-prop", p.ID, "footing alone does not grant object permission")
+				}
 				s.Empty(before.StructuralDoors)
 				s.Empty(before.StructuralWalls[0].Openings)
-			}
 
-			// A secret cut must not punch a hole that the solid-wall twin lacks.
-			spec.Room.Gameplay.Walls[0].Openings = nil
-			spec.Room.Gameplay.DoorBindings = nil
-			spec.Concealments = nil
-			solid, err := s.play(s.load(spec)).AtlasFor("walker")
-			s.Require().NoError(err)
-			s.Equal(solid.Cells, before.Cells)
-			s.Equal(solid.Sealed, before.Sealed)
+				// A secret cut must not punch a hole that the solid-wall twin lacks.
+				spec.Room.Gameplay.Walls[0].Openings = nil
+				spec.Room.Gameplay.DoorBindings = nil
+				spec.Concealments = nil
+				solid, err := s.play(s.load(spec)).AtlasFor("walker")
+				s.Require().NoError(err)
+				s.Equal(solid.Cells, before.Cells)
+				s.Equal(solid.Sealed, before.Sealed)
+			} else {
+				// A KNOWN SHUT LEAF'S FACE IS SEEN, and the hex it stands in is
+				// learned with it (rpg-project#586): owned floor, not footing,
+				// so it is not sealed and what stands there is presented.
+				s.NotContains(before.Sealed, axial(1, 0), "the threshold is known floor under a shut door, not permanent scenery")
+				held := false
+				for _, p := range before.Placed {
+					held = held || p.ID == "threshold-prop"
+				}
+				s.True(held, "the threshold's own fixed prop is presented with its known hex")
+			}
 
 			if !secret {
 				_, err = enc.OpenDoor(&encounter.OpenDoorInput{Actor: "walker", Door: "wall-doors-room/gap-door"})

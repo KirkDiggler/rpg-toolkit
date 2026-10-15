@@ -367,7 +367,7 @@ func (e *Encounter) takeProp(member MemberID, target PropID) (*HoldOutput, error
 // probe law's question, asked of the projection that already answers it
 // rather than of a second copy of the concealment rules.
 //
-// Ordinary room discovery and concealment both constrain this read. Knowing
+// Ordinary cell discovery and concealment both constrain this read. Knowing
 // floor does not itself make a prop current; prop observations are separate.
 //
 // THE ERROR IS RETURNED, NEVER FOLDED INTO "NOT SHOWN" (Copilot, PR #1497

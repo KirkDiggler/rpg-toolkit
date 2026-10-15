@@ -531,7 +531,7 @@ func (e *Encounter) setDoorState(door *doorRecord, next DoorState, actor MemberI
 	}
 
 	if next.Kind() == DoorOpen {
-		if err := e.discoverOpenedRooms(actor, door); err != nil {
+		if err := e.discoverOpenedCells(actor, door); err != nil {
 			return doorChange{}, err
 		}
 	}

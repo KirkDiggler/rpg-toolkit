@@ -148,7 +148,18 @@ func (e *Encounter) sightNow() (map[MemberID]int, error) {
 	}
 	sort.Slice(roster, func(i, j int) bool { return roster[i] < roster[j] })
 
-	reported, err := e.sight.Sight(roster)
+	return e.sightOf(roster)
+}
+
+// sightOf asks the capability about exactly the members given and applies
+// [Encounter.sightNow]'s three refusals to that answer. A pass asks about the
+// whole roster through sightNow; a read for ONE viewer
+// ([Encounter.VisibleCellsFor]) asks about that viewer alone, because seen-now
+// for one seat needs one range, and a member whose range cannot be answered —
+// a character with no stored sheet, a world NPC — must not fail somebody
+// else's read.
+func (e *Encounter) sightOf(members []MemberID) (map[MemberID]int, error) {
+	reported, err := e.sight.Sight(members)
 	if err != nil {
 		return nil, fmt.Errorf("sight: %w", err)
 	}
@@ -162,7 +173,7 @@ func (e *Encounter) sightNow() (map[MemberID]int, error) {
 		}
 	}
 
-	for _, id := range roster {
+	for _, id := range members {
 		if _, ok := reported[id]; !ok {
 			return nil, fmt.Errorf("sight: did not say how far %q can see: %w", id, ErrNoSight)
 		}
