@@ -320,7 +320,7 @@ other caller of the consult is a verb looking at a world something else changed.
 | `region.go` | a region is a named set of cells: `RegionAt`, `Region`, `MembersIn` |
 | `compilefield.go` | the one place an authored field becomes the canvas: regions to an owner map, walls and props checked, sealed cells subtracted from standable, every `[col,row]` converted once |
 | `field.go` | regions, props, walls, segments, and the per-verb output shapes |
-| `projection.go` | the field as ONE member knows it: the masquerade, a presented wall's footing, and the height a mask wears |
+| `projection.go` | the field as ONE member knows it: the masquerade, the threshold an unfound wall-bound door masks as footing (a presented wall adds no cell, fog-of-war R9), and the height a mask wears |
 | `data.go` | `EncounterData` and the `ToData` / `LoadFromData` round trip |
 
 ## Reading it

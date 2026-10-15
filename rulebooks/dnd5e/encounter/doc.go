@@ -229,10 +229,11 @@
 // its own positive-area floor coverage permits it from either known side without
 // revealing the adjoining interior. Footprint door observation uses that coverage
 // with the existing sight evaluator, separately from standing/holding support.
-// A permitted wall also presents floor whose centre its own footprint covers,
-// including an owned threshold beneath a closed leaf. That footing neither learns
-// the threshold's region nor permits its contents; normal room revelation supplies
-// ownership and removes temporary sealing. Explicit unfound floor secrecy remains.
+// A permitted wall presents no floor of its own (fog-of-war R9): the cells its
+// footprint overlaps ride the wall record as [AtlasStructuralWall.FootprintCells]
+// and enter [Atlas.Cells] only as the recipient's sight learns them — the cover
+// rule, which learns a closed leaf's threshold from beside its face.
+// Explicit unfound floor secrecy remains.
 // A hidden parent never conceals an unlisted door — the
 // door record is self-contained and carries no parent id — and a hidden door
 // leaves no tell, because its whole opening record is omitted. Known identity

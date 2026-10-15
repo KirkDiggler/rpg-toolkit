@@ -323,27 +323,20 @@ func (s *RevealSegmentsSuite) TestTheRevealAndTheAtlasAgree() {
 	s.Greater(len(after.Segments), len(before.Segments), "the reveal really did add walls")
 }
 
-// TestSealedIsAReplacementWithinTheRoomAndNotAnAddition is the relationship a
-// client has to apply, and it is NOT the one segments follow.
+// TestSealedIsReplacedWithinTheRevealedRoom is the relationship a client has
+// to apply, and it is NOT the one segments follow.
 //
 // Segments are a union: what they had, plus what the beat delivered, is what
-// they have. Sealed is not, and cannot be — CELLS LEAVE IT.
+// they have. Sealed is scoped to the revealed room and replaced within it.
 //
-// The reason is footing (design C18). A wall presented to a non-knower stands
-// on floor they must be shown, or the floor stops one cell short of the wall
-// and marks the secret. That floor belongs to a room they cannot see, so it
-// reaches them as ownerless — and ownerless floor is floor nobody stands on,
-// which is exactly what their atlas says. It is not a leak: it is what makes
-// their map equal the honestly-authored twin, where the same cells are
-// scenery. The moment the room is theirs, those same cells are ordinary
-// standable floor and must come OFF the list.
-//
-// So the rule is REPLACE WITHIN THE REVEALED REGION, KEEP EVERYTHING ELSE, and
-// the beat carries the region's own cells so a client can tell which is which.
-// A client that appended the beat's sealed cells to its cache would leave the
-// footing marked unstandable forever — a room you can see and cannot walk into
-// at its edges.
-func (s *RevealSegmentsSuite) TestSealedIsAReplacementWithinTheRoomAndNotAnAddition() {
+// Until fog-of-war R9 cells LEFT the sealed set on a reveal: a wall presented
+// to a non-knower stood on footing in the room they could not see, delivered
+// as ownerless (so sealed) floor, which became ordinary floor once the room
+// was theirs. R9 removed that footing — presenting a wall teaches no cell — so
+// a non-knower's sealed set holds none of the secret's cells, and the
+// replacement rule reduces to adding the room's own answer. The rule stays the
+// contract because a client can apply it without knowing why a cell is sealed.
+func (s *RevealSegmentsSuite) TestSealedIsReplacedWithinTheRevealedRoom() {
 	enc := s.open(findsNothing{})
 
 	before, err := enc.AtlasFor(finder)
@@ -362,22 +355,20 @@ func (s *RevealSegmentsSuite) TestSealedIsAReplacementWithinTheRoomAndNotAnAddit
 		c := raw.(map[string]any)
 		inRoom[spatial.Position{X: c["x"].(float64), Y: c["y"].(float64)}] = true
 	}
+	s.Require().NotEmpty(inRoom, "the beat names the room it revealed")
 
-	// CELLS REALLY DO LEAVE, or this test is about nothing.
+	// R9: THE WALL BROUGHT NO FOOTING. Nothing of the hidden room was on the
+	// non-knower's map before the reveal, sealed or otherwise.
+	for _, c := range before.Sealed {
+		s.False(inRoom[c], "a presented wall's footing in the hidden room is not sealed to a non-knower: %v", c)
+	}
+	for _, c := range before.Cells {
+		s.False(inRoom[c], "nor on their map at all: %v", c)
+	}
+
 	afterSealed := map[spatial.Position]bool{}
 	for _, c := range after.Sealed {
 		afterSealed[c] = true
-	}
-	left := make([]spatial.Position, 0)
-	for _, c := range before.Sealed {
-		if !afterSealed[c] {
-			left = append(left, c)
-		}
-	}
-	s.Require().NotEmpty(left,
-		"the footing of a presented wall is sealed to a non-knower and standable once the room is theirs")
-	for _, c := range left {
-		s.True(inRoom[c], "every cell that left the list belongs to the room just revealed")
 	}
 
 	// And the exact relationship: keep what was outside the room, take the

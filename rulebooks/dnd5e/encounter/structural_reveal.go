@@ -3,6 +3,8 @@
 
 package encounter
 
+import "github.com/KirkDiggler/rpg-toolkit/tools/spatial"
+
 // structural_reveal.go is THE STRUCTURAL HALF OF A REVEAL BEAT (rpg-project#169,
 // P2E): full introductions and typed opening-list replacements carried by
 // cells_revealed or concealment_revealed when a recipient's layout changes.
@@ -126,19 +128,26 @@ func sameStructuralOpenings(a, b []AtlasStructuralOpening) bool {
 }
 
 // structuralWallRow renders one projected wall as the wire row: its identity,
-// its opaque ref, its canonical-feet line and assembled dimensions, and its
-// permitted cuts — each opening id, position and width ONLY. No door id, no
-// state, no placed/parent association is carried through the opening.
+// its opaque ref, its canonical-feet line and assembled dimensions, the floor
+// cells its footprint overlaps in order along the line (fixed geometry, the
+// same for every recipient — fog-of-war R9), and its permitted cuts — each
+// opening id, position and width ONLY. No door id, no state, no placed/parent
+// association is carried through the opening.
 func structuralWallRow(w AtlasStructuralWall) map[string]interface{} {
+	footprint := w.FootprintCells
+	if footprint == nil {
+		footprint = []spatial.Position{}
+	}
 	return map[string]interface{}{
-		"id":        w.ID,
-		"ref":       w.Ref,
-		"from":      w.From,
-		"to":        w.To,
-		"height":    w.Height,
-		"thickness": w.Thickness,
-		"elevation": w.Elevation,
-		"openings":  structuralOpeningRows(w.Openings),
+		"id":              w.ID,
+		"ref":             w.Ref,
+		"from":            w.From,
+		"to":              w.To,
+		"height":          w.Height,
+		"thickness":       w.Thickness,
+		"elevation":       w.Elevation,
+		"footprint_cells": footprint,
+		"openings":        structuralOpeningRows(w.Openings),
 	}
 }
 

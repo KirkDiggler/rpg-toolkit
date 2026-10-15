@@ -127,6 +127,9 @@ func (s *SingleRoomWallDoorSuite) TestOrdinaryDiscoveryDoesNotSeeThroughAFoundSe
 
 // Review F1/F2: an opaque centre-covered cell separating two spaces is
 // permanent boundary footing, not a phantom room and not a bridge between rooms.
+// Under fog-of-war R9 it is on each walker's map because each one's sight
+// reached it from their own side (it is scenery bordering learned floor, and
+// the cover rule's face), never because the wall standing on it was presented.
 func (s *SingleRoomWallDoorSuite) TestOrdinaryDiscoveryOpaqueFootingIsVisibleFromBothSides() {
 	for _, structural := range []bool{false, true} {
 		s.Run(fmt.Sprintf("structural=%t", structural), func() {

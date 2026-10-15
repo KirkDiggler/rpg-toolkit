@@ -509,6 +509,11 @@ func wallFromRow(t *testing.T, raw any) encounter.AtlasStructuralWall {
 		Thickness: m["thickness"].(float64),
 		Elevation: m["elevation"].(float64),
 	}
+	w.FootprintCells = []spatial.Position{}
+	for _, c := range m["footprint_cells"].([]any) {
+		cm := c.(map[string]any)
+		w.FootprintCells = append(w.FootprintCells, spatial.Position{X: cm["x"].(float64), Y: cm["y"].(float64)})
+	}
 	for _, o := range m["openings"].([]any) {
 		om := o.(map[string]any)
 		w.Openings = append(w.Openings, encounter.AtlasStructuralOpening{

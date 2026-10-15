@@ -129,6 +129,14 @@ func (s sightReach) reachesCell(observer MemberID, subjectCell spatial.Position)
 // face they can see — otherwise the threshold under a secret leaf would read
 // as open floor where the solid-wall twin has a wall's footing, which is
 // exactly the tell concealment forbids.
+//
+// EXCEPT WHERE IT READS AS THE WALL IT STANDS IN (fog-of-war R9). An unfound
+// door bound to a structural wall's opening masquerades as that wall, and the
+// solid-wall twin's observer learns the hex behind the wall's face. So the
+// leaf's face teaches its threshold here too — and [Encounter.AtlasFor]
+// presents that threshold as the twin's footing (sealed, ownerless, nothing on
+// it) until the door is found. Without the face the secret would be a hole in
+// the wall's footing the twin does not have.
 func (s sightReach) seesCell(observer MemberID, cell spatial.Position, hidden hiddenView) bool {
 	if s.reachesCell(observer, cell) {
 		return true
@@ -144,12 +152,12 @@ func (s sightReach) seesCell(observer MemberID, cell spatial.Position, hidden hi
 	}
 	faces := 0
 	for id := range coverPlaced {
-		if !hidden.props[id] {
+		if !hidden.props[id] || f.boundInStructuralWall(id, "") {
 			faces++
 		}
 	}
 	for id := range coverDoors {
-		if !hidden.doors[id] {
+		if !hidden.doors[id] || f.boundInStructuralWall("", id) {
 			faces++
 		}
 	}

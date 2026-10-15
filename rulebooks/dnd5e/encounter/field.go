@@ -514,10 +514,11 @@ type SegmentInput struct {
 	// Footprint is every floor cell the wall passes through, in absolute
 	// authored offset [col,row] cells, in order along the wall.
 	//
-	// WHAT IT IS FOR: a wall presented to somebody who cannot see the room
-	// behind it still has to stand on something, or the floor ends in nothing
-	// and the wall marks itself (design C18). These cells enter that
-	// recipient's atlas as floor nobody owns.
+	// WHAT IT IS FOR: deciding whether the wall is presented at all — a wall
+	// every one of whose cells is hidden from a recipient is withheld with the
+	// room it stands in. Presenting a wall adds none of these cells to the
+	// recipient's atlas (fog-of-war R9, superseding design C18's footing):
+	// they arrive only as that recipient's sight learns them.
 	Footprint []spatial.Position
 
 	// DoorIDs is every door standing in this wall, in crossing order.

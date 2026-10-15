@@ -9,12 +9,11 @@ package encounter_test
 //
 // Two rules, and they are the same rule from two sides:
 //
-//   - C18, FOOTING. A presented wall stands on floor the recipient can see.
-//     Every cell a presented segment passes through is in their atlas as floor
-//     nobody owns, even when the region that owns it is hidden. Without it the
-//     floor stops one cell short of the wall and there is a black sliver
-//     exactly where the secret is — the same tell the masquerade exists to
-//     remove, one layer down.
+//   - FOOTING, R9 (superseding C18). A presented wall adds no cell: every
+//     cell a presented segment passes through enters the recipient's atlas
+//     only as their sight learns it. C18 presented that footing as floor
+//     nobody owns; fog of war made it evidence of the wall rather than of
+//     sight (rpg-project#600).
 //
 //   - C19, THE GAP. A concealed unfound door in a wall presents as the wall's
 //     WHOLE segment with no gap in it. The mechanism is that a door's gap is
@@ -111,27 +110,6 @@ func (s *FootingSuite) hugField(rows int, withDoor bool) encounter.FieldInput {
 	return field
 }
 
-// twinField is the dungeon a non-knower's atlas claims to be: the same hall,
-// no vault at all, and SCENERY where the wall's footprint falls on the far
-// side — floor that belongs to nobody, which is exactly what footing is.
-func (s *FootingSuite) twinField(rows int) encounter.FieldInput {
-	seam := hugSeam(rows)
-	var scenery []spatial.Position
-	for _, c := range seam.Footprint {
-		if c.X >= 4 {
-			scenery = append(scenery, c)
-		}
-	}
-
-	return encounter.FieldInput{
-		Canvas:   pointyCanvas(),
-		Regions:  []encounter.RegionInput{rectRegion("hall", 0, 0, 4, rows)},
-		Scenery:  scenery,
-		Walls:    nil,
-		Segments: []encounter.SegmentInput{seam},
-	}
-}
-
 func (s *FootingSuite) open(
 	field encounter.FieldInput, resolver encounter.CheckResolver, members ...encounter.MemberInput,
 ) *encounter.Encounter {
@@ -162,14 +140,17 @@ func (s *FootingSuite) open(
 	return enc
 }
 
-// TestA11_APresentedWallStandsOnFloorTheWatcherCanSee is C18.
+// TestA11_APresentedWallFootsNothing is fog-of-war R9, which superseded C18's
+// presentation footing.
 //
-// The watcher cannot see the vault, so its cells are withheld — except the
-// ones the seam stands on, which arrive as floor nobody owns. The whole atlas
-// is then compared against the twin authored with scenery exactly there, which
-// is the yardstick doing its job: not "the footing is present" but "the map is
-// the map of a dungeon somebody could have drawn".
-func (s *FootingSuite) TestA11_APresentedWallStandsOnFloorTheWatcherCanSee() {
+// The watcher cannot see the vault, so its cells are withheld — ALL of them,
+// the ones the seam stands on included. Presenting a wall teaches no cell: the
+// footing used to arrive with the wall as floor nobody owns, which was
+// evidence of the wall rather than of sight, and a client grading the wall by
+// it drew the wall where nobody had looked (rpg-project#600). The wall is
+// still presented; the floor under its far side waits for sight, which an
+// explicit concealment withholds until it is found.
+func (s *FootingSuite) TestA11_APresentedWallFootsNothing() {
 	const rows = 6
 	enc := s.open(s.hugField(rows, false), findsNothing{},
 		encounter.MemberInput{ID: watcher, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}})
@@ -177,33 +158,36 @@ func (s *FootingSuite) TestA11_APresentedWallStandsOnFloorTheWatcherCanSee() {
 	scoped, err := enc.AtlasFor(watcher)
 	s.Require().NoError(err)
 
-	twin, err := s.open(s.twinField(rows), findsNothing{},
-		encounter.MemberInput{ID: watcher, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}}).Atlas()
-	s.Require().NoError(err)
-
-	s.Equal(twin.Cells, scoped.Cells,
-		"floor on both sides of the wall, and the far side belongs to nobody")
-	s.Equal(twin.Regions, scoped.Regions, "the vault is still not there")
-	s.Equal(twin.Sealed, scoped.Sealed, "and its footing is floor nobody stands on, like any scenery")
-	s.Equal(twin.Segments, scoped.Segments, "the wall itself is the same line")
-
-	// The half that can fail: the footing really is the vault's cells, and
-	// they really were hidden. A projection that simply forgot to hide the
-	// vault would pass the twin comparison only if the twin had the whole
-	// vault in it, which it does not.
-	full, err := enc.Atlas()
-	s.Require().NoError(err)
-	s.Len(full.Cells, 4*rows+3*rows, "the whole dungeon is hall plus vault")
-	s.Len(scoped.Cells, 4*rows+rows/2, "the watcher gets the hall, plus the seam's own footing in the vault")
-	for _, c := range scoped.Cells {
-		s.Contains(full.Cells, c, "nothing is invented: every cell shown is a cell there is")
+	hall := make([]spatial.Position, 0)
+	for _, c := range rectCells(0, 0, 4, rows) {
+		hall = append(hall, cellAt(int(c.X), int(c.Y)))
 	}
+	s.ElementsMatch(hall, scoped.Cells, "the watcher's map is the hall they learned, and nothing of the vault")
+	vault := map[spatial.Position]bool{}
+	for _, c := range rectCells(4, 0, 3, rows) {
+		vault[cellAt(int(c.X), int(c.Y))] = true
+	}
+	for _, c := range scoped.Sealed {
+		s.False(vault[c], "no sealed footing appears in the vault: %v", c)
+	}
+	s.Require().Len(scoped.Segments, 1, "the wall itself is still presented")
+	s.Equal(hugSeam(rows).From, scoped.Segments[0].From)
+
+	// The half that can fail: the seam really does stand on vault cells, so
+	// the old rule would have shown them.
+	footingInVault := 0
+	for _, c := range hugSeam(rows).Footprint {
+		if vault[cellAt(int(c.X), int(c.Y))] {
+			footingInVault++
+			s.NotContains(scoped.Cells, cellAt(int(c.X), int(c.Y)), "the seam's footing in the vault is not on the map")
+		}
+	}
+	s.Positive(footingInVault, "the fixture's seam stands on the vault")
 }
 
-// TestA11_AWithheldWallDoesNotFoot is the other half of C18, and the reason it
-// says PRESENTED walls: a wall wholly inside hidden space is withheld with the
-// room, footing and all. Footing a withheld wall would trace the secret's
-// interior in floor.
+// TestA11_AWithheldWallDoesNotFoot: a wall wholly inside hidden space is
+// withheld with the room, footing and all. Footing a withheld wall would trace
+// the secret's interior in floor — true under C18 and under R9 alike.
 func (s *FootingSuite) TestA11_AWithheldWallDoesNotFoot() {
 	const rows = 6
 	field := s.hugField(rows, false)

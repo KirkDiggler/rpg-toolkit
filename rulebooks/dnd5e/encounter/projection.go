@@ -41,14 +41,17 @@ import (
 //     endpoints hidden — stays withheld: nobody standing in visible space
 //     borders it, so there is nothing there for it to disguise.
 //
-//   - A PRESENTED WALL STANDS ON FLOOR THE RECIPIENT CAN SEE: every cell a
-//     presented segment passes through is in the recipient's atlas as floor
-//     nobody owns, even when the region that owns it is hidden
-//     (rpg-project#360, design C18). Floor that stops one cell short of a wall
-//     is a black sliver exactly where the secret is — the same tell the
-//     boundary rule above exists to remove, one layer down. Only PRESENTED
-//     walls foot: the footing of a withheld wall would trace the secret
-//     itself.
+//   - A PRESENTED WALL ADDS NO CELL (fog-of-war R9, superseding design
+//     C18's presentation footing): presenting a wall teaches nothing about
+//     the floor under it. Its footprint hexes enter the recipient's atlas only
+//     as sight learns them — the cover rule ([sightReach.seesCell]) that
+//     doors and pillars already use: a footing hex is learned by reaching the
+//     floor beside the face that screens it. Footing that arrived with the
+//     wall was evidence of the wall, not of sight, and a client grading the
+//     wall by it drew the wall where nobody had looked (rpg-project#600). The
+//     wall's own geometry carries those hexes as
+//     [AtlasStructuralWall.FootprintCells]; which of them this recipient
+//     knows is [Atlas.Cells].
 //
 //   - THE ROOM ITSELF STILL HIDES WITH ITS DOOR: the yardstick governs
 //     SPACE AND CONTENTS, unmoved by the boundary rule above — a
@@ -148,6 +151,24 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 		}
 	}
 
+	// THE MASQUERADE'S FOOTING (fog-of-war R9). An unfound door bound to a
+	// structural wall's opening reads as the wall it stands in, and sight
+	// learns its threshold through the leaf's face exactly as the solid-wall
+	// twin learns the hex behind the wall's ([sightReach.seesCell]). The twin
+	// shows that hex as footing: floor nobody owns or stands on, with nothing
+	// on it. So a threshold this recipient has learned under a still-withheld
+	// bound door is presented the same way — on the map, sealed, out of its
+	// region, its contents withheld — and becomes ordinary floor when the door
+	// is found. Only LEARNED thresholds: presenting the wall teaches none.
+	masked, err := e.maskedThresholds(full.Placed, withheldDoorPlacements, hiddenCells)
+	if err != nil {
+		return Atlas{}, err
+	}
+	for c := range masked {
+		hiddenCells[c] = true
+		hidden.unexploredCells[c] = true
+	}
+
 	out := Atlas{
 		Orientation:     full.Orientation,
 		Cells:           make([]spatial.Position, 0, len(full.Cells)),
@@ -170,8 +191,8 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 		out.Start = full.Start
 	}
 
-	// Resolve identity permission before floor emission. Wall footing consumes
-	// this same answer; it must not grant permission to a wall or a door.
+	// Resolve identity permission before floor emission: which walls, doors
+	// and fixed placements this recipient is shown.
 	for _, p := range full.Placed {
 		if p.Holdable || hidden.props[p.ID] || hidden.doors[p.ID] || withheldDoorPlacements[p.ID] {
 			continue
@@ -194,64 +215,27 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 		}
 	}
 
-	// C18: a wall wholly inside hidden space is withheld with the room, and
-	// every other wall is presented — standing on its own footprint, which
-	// enters this atlas as floor nobody owns whatever the recipient may know
-	// about the region underneath.
-	footing := make(map[spatial.Position]bool)
+	// A wall wholly inside hidden space is withheld with the room, and every
+	// other wall is presented. Presenting it adds no cell (R9): its footing
+	// is in this atlas only where the recipient's sight learned it.
 	for i, seg := range e.field.segments {
 		if e.field.segmentHidden(seg, hiddenCells) {
 			continue
 		}
 		out.Segments = append(out.Segments, full.Segments[i])
-		for _, c := range seg.Footprint {
-			footing[e.field.cellAt(c)] = true
-		}
-	}
-
-	// A known structural wall needs its own footing too, including an owned
-	// threshold under a still-closed leaf. This is presentation footing, not
-	// cell discovery or permission to any prop/door on that floor. Explicit
-	// floor secrecy remains independent. Door state is not read here: finding
-	// a secret cut cannot punch a hole that the solid-wall twin did not have.
-	for _, p := range out.Placed {
-		if !structuralWallIDs[p.ID] {
-			continue
-		}
-		for _, cell := range p.Cells {
-			if _, concealed := e.field.concealmentOfCell[cell]; concealed && hiddenCells[cell] {
-				continue
-			}
-			centre := e.field.plane.CellCentre(cell)
-			contact, traceErr := spatial.TraceFootprint(spatial.FootprintTraceInput{
-				Placement: p.Placement, From: centre, To: centre,
-			})
-			if traceErr != nil {
-				return Atlas{}, fmt.Errorf("structural wall %q footing: %w", p.ID, traceErr)
-			}
-			// placedCells also includes nearest-cell support; that alone
-			// is not physical footing and cannot reveal an adjoining cell.
-			if contact.Contact {
-				footing[cell] = true
-			}
-		}
 	}
 
 	// ONE PASS, TWO ANSWERS. Which cells this recipient is shown, and which of
-	// those they cannot stand on: the ones nobody can, and the footing of a
-	// presented wall whose owner they cannot see — ownerless floor to them,
-	// which is exactly what scenery is. Both questions are asked of the same
-	// cell in the same visit, because a second walk over the survivors asked
-	// the map the same coordinates a second time (measured at a third of
-	// AtlasFor on a dungeon ten times the reference tomb, with the two walks
-	// between them).
+	// those they cannot stand on. Both questions are asked of the same cell in
+	// the same visit, because a second walk over the survivors asked the map
+	// the same coordinates a second time (measured at a third of AtlasFor on a
+	// dungeon ten times the reference tomb, with the two walks between them).
 	for _, c := range full.Cells {
-		hidden := hiddenCells[c]
-		if hidden && !footing[c] {
+		if hiddenCells[c] && !masked[c] {
 			continue
 		}
 		out.Cells = append(out.Cells, c)
-		if hidden || !e.field.isStandable(c) {
+		if masked[c] || !e.field.isStandable(c) {
 			out.Sealed = append(out.Sealed, c)
 		}
 	}
@@ -295,6 +279,12 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	for _, p := range out.Placed {
 		survivingPlaced[p.ID] = true
 	}
+	// A wall's footprint cells are its geometry, the same for every
+	// recipient: the full atlas computed them once, and this read copies them.
+	footprints := make(map[PropID][]spatial.Position, len(full.StructuralWalls))
+	for _, w := range full.StructuralWalls {
+		footprints[w.ID] = w.FootprintCells
+	}
 	for i := range e.field.structuralWalls {
 		w := &e.field.structuralWalls[i]
 		wallPresent := survivingPlaced[w.id]
@@ -303,7 +293,8 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 			wall = AtlasStructuralWall{
 				ID: w.id, Ref: w.ref, From: w.from, To: w.to,
 				Height: w.height, Thickness: w.thickness, Elevation: w.elevation,
-				Openings: make([]AtlasStructuralOpening, 0, len(w.openings)),
+				FootprintCells: footprints[w.id],
+				Openings:       make([]AtlasStructuralOpening, 0, len(w.openings)),
 			}
 		}
 		for j := range w.openings {
@@ -657,6 +648,40 @@ func (e *Encounter) doorInEdge(edge DoorEdge) (DoorID, bool) {
 	}
 
 	return "", false
+}
+
+// maskedThresholds is the cells, already known to the recipient, whose centre
+// a withheld structural-bound door's placement covers — the threshold the
+// masquerade presents as wall footing (see [Encounter.AtlasFor]). Cells the
+// recipient has not learned are not here: presenting a wall teaches no cell.
+func (e *Encounter) maskedThresholds(
+	placed []AtlasPlacedProp, withheld map[PropID]bool, hiddenCells map[spatial.Position]bool,
+) (map[spatial.Position]bool, error) {
+	masked := make(map[spatial.Position]bool)
+	for _, p := range placed {
+		if !withheld[p.ID] || !e.field.boundInStructuralWall(p.ID, "") {
+			continue
+		}
+		for _, cell := range p.Cells {
+			if hiddenCells[cell] {
+				continue
+			}
+			centre := e.field.plane.CellCentre(cell)
+			contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
+				Placement: p.Placement, From: centre, To: centre,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("structural door %q threshold: %w", p.ID, err)
+			}
+			// p.Cells includes nearest-cell support; only a covered centre
+			// is the threshold the twin's wall would stand on.
+			if contact.Contact {
+				masked[cell] = true
+			}
+		}
+	}
+
+	return masked, nil
 }
 
 // segmentHidden reports whether a wall stands WHOLLY inside hidden space —
