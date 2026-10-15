@@ -15,10 +15,9 @@ import (
 // non-combatant member that carries no NPC content of its own — no ref, no
 // capabilities, no policy. It is placed with exactly the bare facts any
 // member already has, and its exclusion from combat is structural rather
-// than something this file builds: sidesInContactOrder's switch (trigger.go)
-// has no default case, so a member typed neither KindPlayer nor KindMonster
-// already falls into neither side, and Pump's monster loop is filtered to
-// KindMonster explicitly. These tests exist to prove that claim from the
+// than something this file builds: a member typed KindWorld is in no
+// faction, so classify's pair loop (trigger.go) finds it opposed to nobody,
+// and the world clock's thinkers are filtered to KindMonster explicitly. These tests exist to prove that claim from the
 // public API rather than trust the comment on the constant.
 type WorldNPCSuite struct {
 	suite.Suite

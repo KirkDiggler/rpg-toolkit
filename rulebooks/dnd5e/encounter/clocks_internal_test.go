@@ -202,20 +202,29 @@ func sealedSeam(atX, height int) []WallInput {
 	return out
 }
 
-// TestFormRefusesAPlayerFreeBubble pins driveMonsterTurns's defensive check
-// via form: a fight with no player in it at all has nobody to ever hand the
-// clock back to, and rpg-toolkit#1162 refuses loudly (ErrNoPlayerInBubble)
-// rather than looping forever or silently ending every member's turn.
+// TestAPlayerFreeContactFormsNothing is the formation rule D0 states
+// (rpg-project#569): a bubble forms on contact that includes a player. Two
+// monster factions declared hostile, in plain sight of each other at first
+// light, form NOTHING — no bubble and no error — and stay on the world clock.
 //
-// UNREACHABLE THROUGH TRIGGER DETECTION in the running game — a bubble only
-// forms on contact between a player and something else — so this drives
-// form directly, the same white-box reason TestFormRejections does.
-func TestFormRefusesAPlayerFreeBubble(t *testing.T) {
+// The driver's defensive refusal stays behind it: a fight with no player in
+// it has nobody to ever hand the clock back to, so form, driven directly
+// (the same white-box reason TestFormRejections does), still refuses loudly
+// (ErrNoPlayerInBubble, rpg-toolkit#1162) rather than looping forever or
+// silently ending every member's turn.
+func TestAPlayerFreeContactFormsNothing(t *testing.T) {
 	enc, err := NewEncounter(&SetupInput{
-		Field: FieldInput{Canvas: CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()}, Regions: []RegionInput{rectRegion("r1", 0, 0, 8, 8)}},
+		Field: FieldInput{
+			Canvas:   CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()},
+			Regions:  []RegionInput{rectRegion("r1", 0, 0, 8, 8)},
+			Factions: []FactionInput{{ID: "goblins"}, {ID: "wolves"}},
+			Dispositions: []DispositionInput{
+				{Between: [2]FactionID{"goblins", "wolves"}, Stance: StanceHostile},
+			},
+		},
 		Members: []MemberInput{
-			{ID: "goblin", Kind: KindMonster, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "wolf", Kind: KindMonster, Position: spatial.Position{X: 2, Y: 1}},
+			{ID: "goblin", Kind: KindMonster, Faction: "goblins", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "wolf", Kind: KindMonster, Faction: "wolves", Position: spatial.Position{X: 2, Y: 1}},
 		},
 		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
 		Capabilities: Capabilities{
@@ -233,7 +242,9 @@ func TestFormRefusesAPlayerFreeBubble(t *testing.T) {
 			},
 		},
 	})
-	require.NoError(t, err)
+	require.NoError(t, err, "a player-free contact is no formation, not an error")
+	require.True(t, enc.opposed("goblin", "wolf"), "precondition: the pair is at war")
+	require.Empty(t, enc.bubbles, "and forms nothing")
 
 	_, err = enc.form(&FormInput{Order: []MemberID{"goblin", "wolf"}})
 	require.ErrorIs(t, err, ErrNoPlayerInBubble)

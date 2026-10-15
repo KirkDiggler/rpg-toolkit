@@ -259,12 +259,16 @@ func (e *Encounter) attackable(what string, id MemberID) error {
 // not, a running fight is joined rather than started twice, surprise is read
 // from the current view — stays in the one place it is written.
 //
-// PLAYER-MONSTER, LIKE EVERY OTHER FORMATION. classify pairs the two supplied
-// sides, so two monster factions turning on each other become opposed — the
-// graph says so, `enemy:` answers so, and every capability that asks
-// [Encounter.opposed] agrees — without a bubble forming around them. A fight
-// with no player in it has nobody to end a turn, and inventing one here would
-// be a second formation rule rather than this one.
+// ANY OPPOSED PAIR, LIKE EVERY OTHER FORMATION (rpg-project#569, D0).
+// classify pairs every two contact members the graph holds hostile, of any
+// kind, and forms only a pair a player anchors: a garrison that turns on the
+// thugs the party is fighting joins the party's fight, by the straggler rule,
+// and fights the thugs beside the party, opposed to neither. Two monster
+// factions turning on each other with no player in it form nothing — the
+// graph says they are at war, `enemy:` answers so — and come into the fight
+// when a player makes contact with either side. A fight with no player in it
+// has nobody to end a turn, and inventing one here would be a second
+// formation rule rather than this one.
 func (e *Encounter) formOnStance(before, after map[factionPair]Stance) error {
 	participation, err := e.participationNow()
 	if err != nil {
