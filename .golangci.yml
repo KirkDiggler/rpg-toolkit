@@ -34,110 +34,115 @@ linters:
     - unparam        # Find unused parameters
     - whitespace     # Check unnecessary newlines
 
-linters-settings:
-  dupl:
-    threshold: 150
-  
-  errcheck:
-    check-type-assertions: true
-  
-  goconst:
-    min-len: 3
-    min-occurrences: 3
-  
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - experimental
-      - opinionated
-      - performance
-      - style
-    disabled-checks:
-      - dupImport # https://github.com/go-critic/go-critic/issues/845
-      - whyNoLint
-  
-  gocyclo:
-    min-complexity: 15
-  
-  govet:
-    check-shadowing: true
-  
-  lll:
-    line-length: 140
-    tab-width: 4
-  
-  misspell:
-    locale: US
-  
-  nakedret:
-    max-func-lines: 30
-  
-  prealloc:
-    simple: true
-    range-loops: true
-    for-loops: false
-  
-  revive:
-    ignore-generated-header: true
-    severity: warning
+  settings:
+    dupl:
+      threshold: 150
+
+    errcheck:
+      check-type-assertions: true
+
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - experimental
+        - opinionated
+        - performance
+        - style
+      disabled-checks:
+        - dupImport # https://github.com/go-critic/go-critic/issues/845
+        - whyNoLint
+
+    gocyclo:
+      min-complexity: 15
+
+    govet:
+      # v1 spelled this `check-shadowing: true`; in v2 shadow is an analyzer
+      # you enable by name. Same intent, and it was inert while the config
+      # was unreadable.
+      enable:
+        - shadow
+
+    lll:
+      line-length: 140
+      tab-width: 4
+
+    misspell:
+      # NO LOCALE. The v1 config said `locale: US` and was inert for as long as
+      # the file was unreadable, so nothing in this repo was ever held to it —
+      # and the code went the other way: `neighbour`, `centre`, `behavioural`
+      # are the house spellings, 30 of them in tools/spatial alone. Turning US
+      # on here would not be enforcing a decision, it would be making one, by
+      # rewriting a codebase to match a setting nobody had followed.
+      # Locale-neutral catches real typos and leaves the house style alone.
+      # (rpg-api enforces US separately; that is its call, not this repo's.)
+
+    nakedret:
+      max-func-lines: 30
+
+    prealloc:
+      simple: true
+      range-loops: true
+      for-loops: false
+
+    revive:
+      severity: warning
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: if-return
+        - name: increment-decrement
+        - name: var-naming
+        - name: var-declaration
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: time-naming
+        - name: unexported-return
+        - name: indent-error-flow
+        - name: errorf
+
+  exclusions:
     rules:
-      - name: blank-imports
-      - name: context-as-argument
-      - name: context-keys-type
-      - name: dot-imports
-      - name: error-return
-      - name: error-strings
-      - name: error-naming
-      - name: if-return
-      - name: increment-decrement
-      - name: var-naming
-      - name: var-declaration
-      - name: package-comments
-      - name: range
-      - name: receiver-naming
-      - name: time-naming
-      - name: unexported-return
-      - name: indent-error-flow
-      - name: errorf
+      # Exclude some linters from test files
+      - path: ".*_test\\.go"
+        linters:
+          - dupl
+          - errcheck
+          - goconst
+          - gosec
+          - gocyclo
+
+      # refs/ namespace pattern is intentionally similar for IDE discoverability
+      - path: refs/
+        linters:
+          - dupl
+
+      # Exclude from example files
+      - path: example_test\.go
+        linters:
+          - lll
+          - gocritic
+          - revive
+
+      # Allow longer lines in generate directives
+      - source: "^//go:generate "
+        linters:
+          - lll
+
+    paths:
+      - vendor
+      - ".*_gen\\.go$"
 
 issues:
-  exclude-rules:
-    # Exclude some linters from test files
-    - path: ".*_test\\.go"
-      linters:
-        - dupl
-        - errcheck
-        - goconst
-        - gosec
-        - gocyclo
-
-    # Exclude refs directory from dupl - namespace pattern is intentionally similar for IDE discoverability
-    - path: refs/
-      linters:
-        - dupl
-    
-    # Exclude from example files
-    - path: example_test\.go
-      linters:
-        - lll
-        - gocritic
-        - revive
-    
-    # Exclude vendor (if any)
-    - path: vendor/
-      linters:
-        - all
-    
-    # Exclude generated files
-    - path: _gen\.go
-      linters:
-        - all
-    
-    # Allow longer lines in generate directives
-    - source: "^//go:generate "
-      linters:
-        - lll
-  
   max-issues-per-linter: 0
   max-same-issues: 0
 
@@ -146,9 +151,10 @@ formatters:
     - gofmt
     - goimports
 
-formatters-settings:
-  gofmt:
-    simplify: true
-  
-  goimports:
-    local-prefixes: github.com/KirkDiggler
+  settings:
+    gofmt:
+      simplify: true
+
+    goimports:
+      local-prefixes:
+        - github.com/KirkDiggler
