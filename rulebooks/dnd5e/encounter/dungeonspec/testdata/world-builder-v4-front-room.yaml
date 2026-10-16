@@ -9,13 +9,13 @@
 # paints three regions and walls them; this dialect has one room and no walls,
 # and that is the dialect, not a difference in what the room is FOR.
 #
-# ONE THING DOES NOT TRANSLATE, AND IT IS REFUSED RATHER THAN FAKED. v2's
-# bandits carry `toward: { at: [3, 3] }` as their standing order — walk west
-# toward the front room when nothing is in sight. `at:` is an offset resolved
-# through a document `orientation`, and this dialect's cells are axial, so the
-# same bytes would name two different cells; the engine refuses it by name
-# until the sites layer. The bandits keep the rest of their table and lose the
-# standing order.
+# ONE THING IS NOT TRANSLATED. v2's bandits carry `toward: { at: [3, 3] }` as
+# their standing order — walk west toward the front room when nothing is in
+# sight. When this file was written the single room refused any cell in an
+# orders block; it takes `toward: { at: { q, r } }` in its own axial frame now
+# (rpg-project#605, world-builder-v4-patrols.yaml), but this picture is the
+# evidence of an older claim and is left as it was. The bandits keep the rest
+# of their table without the standing order.
 version: 4
 key: front-room-v4
 play: { void: transparent, lighting: bright, standing: centre-covered }

@@ -145,3 +145,16 @@ func decodeErrors(err error, raw []byte) []FieldError {
 	}
 	return out
 }
+
+// decodeErrorsIn is [decodeErrors] for a dialect whose cells are spelt
+// otherwise than v2's: a [spelledRefusal] anywhere in the chain is re-spelt in
+// the given forms before the error is split, so the hint an author reads
+// names the spelling their dialect takes.
+func decodeErrorsIn(err error, raw []byte, forms cellForms) []FieldError {
+	var spelled spelledRefusal
+	if errors.As(err, &spelled) {
+		err = errors.New(strings.Replace(err.Error(), spelled.Error(), spelled.say(forms), 1))
+	}
+
+	return decodeErrors(err, raw)
+}
