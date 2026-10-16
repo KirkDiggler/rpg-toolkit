@@ -89,7 +89,7 @@ var (
 	besideTheCook = spatial.Position{X: -19, Y: -12}
 
 	// besideTheKing is the throne room floor beside the king.
-	besideTheKing = spatial.Position{X: 1, Y: -22}
+	besideTheKing = spatial.Position{X: -5, Y: -17}
 )
 
 // kingSpear is the one weapon everybody in this host swings.

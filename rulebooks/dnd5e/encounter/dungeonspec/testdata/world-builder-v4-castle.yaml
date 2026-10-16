@@ -26,7 +26,10 @@
 # between their rooms rather than on edge cells. Every room with a
 # door is entered only through it; the barracks and armoury stay open to the
 # courtyard. The void stays transparent, the only value this dialect accepts;
-# the walls, not the void, close the rooms.
+# the walls, not the void, close the rooms. The king sits in the throne
+# room's west corner beside the door wall, out of the open throne door's line
+# from the hall, and each knight has its own table and paces its own side of
+# the room, so neither crosses that line.
 #
 # THE CASTLE. The garrison keeps the gate and the hall, and its mind is the
 # captain: it is civil to the party until the party is recognized, and civil
@@ -161,17 +164,44 @@ tables:
       - when:
           enemy: seen
         toward: enemy
-      # Hand edit: on the alarm, fall back beside the throne.
+      # Hand edit: on the alarm, fall back beside the king, in his corner.
       - when: { fact: alarm-raised }
-        toward: { at: { q: 11, r: -21 } }
+        toward: { at: { q: 4, r: -18 } }
       - when:
           heard:
             kind: voice
             within: 3
         toward: sound
-      # Hand edit: the knights pace the throne room.
+      # Hand edit: this knight paces the throne room's west side, a loop that
+      # stays out of the open door's line from the hall.
       - when: { enemy: none }
-        toward: { path: [{ q: 4, r: -18 }, { q: 14, r: -18 }, { q: 16, r: -21 }, { q: 6, r: -21 }] }
+        toward: { path: [{ q: 4, r: -19 }, { q: 7, r: -19 }, { q: 7, r: -21 }, { q: 5, r: -21 }] }
+  keep-patrol-east:
+    time:
+      - say: Protect the king!
+        when:
+          - enemy: seen
+          - not:
+              fact: alarm-raised
+        fact: alarm-raised
+      - when:
+          enemy: reach
+        attack: enemy
+      - when:
+          enemy: seen
+        toward: enemy
+      # Hand edit: on the alarm, fall back beside the king, in his corner.
+      - when: { fact: alarm-raised }
+        toward: { at: { q: 4, r: -18 } }
+      - when:
+          heard:
+            kind: voice
+            within: 3
+        toward: sound
+      # Hand edit: this knight paces the throne room's east side, a loop that
+      # stays out of the open door's line from the hall.
+      - when: { enemy: none }
+        toward: { path: [{ q: 13, r: -19 }, { q: 16, r: -19 }, { q: 16, r: -21 }, { q: 14, r: -21 }] }
   storm-the-keep:
     time:
       # Hand edit: a turned garrison marches on the throne room until it sees
@@ -7183,8 +7213,8 @@ room:
         ref: dnd5e:monsters:mad-king
         startingCell:
           location:
-            q: 11
-            r: -22
+            q: 3
+            r: -17
         appearanceRef: dnd5e:npcs:kingdom:prince-01
     partyStart:
       q: -7
@@ -7299,7 +7329,7 @@ room:
         table: keep-patrol
       keep-2:
         faction: loyalists
-        table: keep-patrol
+        table: keep-patrol-east
       king:
         faction: loyalists
       reserve-1:

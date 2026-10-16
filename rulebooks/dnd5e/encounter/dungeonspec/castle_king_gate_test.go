@@ -119,6 +119,24 @@ func TestMadKingEveryRoomHasOneWayIn(t *testing.T) {
 	}
 }
 
+// unseenByTheKing is that the hero and the king see neither the other's
+// cell, where the hero stands now.
+func (s *kingScene) unseenByTheKing(where string) {
+	s.t.Helper()
+	sees := func(who encounter.MemberID, cell spatial.Position) bool {
+		out, err := s.enc.VisibleCellsFor(&encounter.VisibleCellsInput{Member: who})
+		require.NoError(s.t, err)
+		for _, c := range out.Cells {
+			if c == cell {
+				return true
+			}
+		}
+		return false
+	}
+	require.False(s.t, sees(hero, s.at(theKing)), "%s, the hero does not see the king", where)
+	require.False(s.t, sees(theKing, s.at(hero)), "%s, the king does not see the hero", where)
+}
+
 // seatAt is the authored offset cell a member is placed at for a
 // dungeon-absolute cell: [castleCell] read backwards.
 func seatAt(cell spatial.Position) spatial.Position {
@@ -142,12 +160,23 @@ func (s *kingScene) seenRegions() map[encounter.RegionID]int {
 	return by
 }
 
-// regionCells is every floor cell the file compiles into a region.
+// regionCells is every floor cell the file compiles into a region, as
+// dungeon-absolute cells. The compiled field authors its cells as offset
+// pairs, the frame [encounter.MemberInput.Position] takes; every answer this
+// file reads back ([encounter.Encounter.RegionAt], a route, a sight read) is
+// absolute.
 func (s *kingScene) regionCells(id encounter.RegionID) []spatial.Position {
 	s.t.Helper()
 	for _, r := range s.compiled.Field.Regions {
 		if r.ID == id {
-			return r.Cells
+			out := make([]spatial.Position, 0, len(r.Cells))
+			for _, c := range r.Cells {
+				cell := castleCell(int(c.X), int(c.Y))
+				in, ok := s.enc.RegionAt(cell)
+				require.True(s.t, ok && in == id, "%v is %s's floor", cell, id)
+				out = append(out, cell)
+			}
+			return out
 		}
 	}
 	require.FailNowf(s.t, "no such region", "%s", id)
@@ -227,15 +256,31 @@ func TestMadKingTroupe(t *testing.T) {
 
 	gatehouse, ok := s.enc.RegionAt(castleCell(0, 15))
 	require.True(t, ok, "the party start is the gatehouse's floor")
+	// THE KING SITS OUT OF THE DOOR'S LINE. The throne door stands open, and
+	// a king in its line from the hall would see the party the moment the
+	// hall door opened. From the hall door and from the hall's middle, the
+	// hero and the king do not see each other.
 	s.walkTo(castleCell(0, -6))
+	t.Run("the party crosses the hall unseen by the king", func(t *testing.T) {
+		s.unseenByTheKing("at the hall door")
+		middle := castleCell(0, -12)
+		s.walkTo(middle)
+		require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "the hero walks into the hall and into no fight")
+		hall, _ := s.enc.RegionAt(middle)
+		here, _ := s.enc.RegionAt(s.at(hero))
+		require.Equal(t, hall, here, "precondition: the hero is in the hall")
+		require.LessOrEqual(t, s.enc.Distance(s.at(hero), middle), 1.0, "precondition: beside its middle")
+		s.unseenByTheKing("in the middle of the hall")
+	})
 	s.walkTo(castleCell(-6, -10))
 
-	// THE GATE'S HALF, AND ONLY IT. From the hall door the hero is in line
-	// with the throne room's open door, and whether a pacing knight stands in
-	// that line then is the patrol's phase: set by how much world time the
-	// route has spent, not by anything the troupe said. A knight's sighting
-	// there is a loyalist fight, which the disguise never covered (§1), so
-	// this route asserts the garrison and says nothing either way about the
+	// THE GATE'S HALF, AND ONLY IT. The king and his knights are authored
+	// out of the open throne door's line from the hall door and the hall's
+	// middle, and the king is pinned above. Where a pacing knight stands at
+	// any other moment is still the patrol's phase, set by how much world
+	// time the route has spent, not by anything the troupe said. A knight's
+	// sighting is a loyalist fight, which the disguise never covered (§1), so
+	// this subtest asserts the garrison and says nothing either way about the
 	// keep.
 	t.Run("the party came through the gate and into the hall", func(t *testing.T) {
 		here, ok := s.enc.RegionAt(s.at(hero))
