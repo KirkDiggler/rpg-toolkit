@@ -15,9 +15,13 @@
 # cast, bindings, stat blocks, tables, factions and endings authored. The
 # only hand edits are these comments and the patrol and march rows
 # (`toward: { path }`, `toward: { at }`, marked "Hand edit"), which the
-# studio's table form does not offer yet. After the first walk two studio
-# values were set by hand: the captain's look (a soldier's, no longer the
-# king's), and the two stray map labels that sat in no room removed.
+# studio's table form does not offer yet. After the first walk the export
+# also gives the captain a soldier's look (the fixture dressed him as the
+# king), drops the workspace's two stray map labels that sat in no room, and
+# draws the castle's outer walls: twelve wall lines along the eight rooms'
+# outer edges, no openings, so the gate door is the gatehouse's only view as
+# well as its only way in. The void stays transparent, the only value this
+# dialect accepts; the walls, not the void, close the rooms.
 #
 # THE CASTLE. The garrison keeps the gate and the hall, and its mind is the
 # captain: it is civil to the party until the party is recognized, and civil
@@ -3631,6 +3635,282 @@ room:
             door:
               id: throne-wall-door
               assetRef: dnd5e:env:dark-fortress:wall_door_double_01
+      - id: throne-north-wall
+        label: throne-north-wall
+        line:
+          start:
+            x: -11.258330249197703
+            z: -33.75
+          end:
+            x: 12.12435565298214
+            z: -33.75
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint:
+            width: 23.382685902179844
+            depth: 0.5
+            offsetX: 0
+            offsetZ: 0
+        openings: []
+      - id: throne-west-wall
+        label: throne-west-wall
+        line:
+          start:
+            x: -11.258330249197703
+            z: -33.75
+          end:
+            x: -11.258330249197703
+            z: -24.75
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint:
+            width: 9
+            depth: 0.5
+            offsetX: 0
+            offsetZ: 0
+        openings: []
+      - id: throne-east-wall
+        label: throne-east-wall
+        line:
+          start:
+            x: 12.12435565298214
+            z: -33.75
+          end:
+            x: 12.12435565298214
+            z: -24.75
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint:
+            width: 9
+            depth: 0.5
+            offsetX: 0
+            offsetZ: 0
+        openings: []
+      - id: keep-north-west-wall
+        label: keep-north-west-wall
+        line:
+          start:
+            x: -45.89934640057525
+            z: -24.75
+          end:
+            x: -12.5
+            z: -24.75
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint:
+            width: 33.39934640057525
+            depth: 0.5
+            offsetX: 0
+            offsetZ: 0
+        openings: []
+      - id: keep-north-east-wall
+        label: keep-north-east-wall
+        line:
+          start:
+            x: 12.5
+            z: -24.75
+          end:
+            x: 46.76537180435968
+            z: -24.75
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint:
+            width: 34.26537180435968
+            depth: 0.5
+            offsetX: 0
+            offsetZ: 0
+        openings: []
+      - id: keep-west-wall
+        label: keep-west-wall
+        line:
+          start:
+            x: -45.89934640057525
+            z: -24.75
+          end:
+            x: -45.89934640057525
+            z: 15.75
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint:
+            width: 40.5
+            depth: 0.5
+            offsetX: 0
+            offsetZ: 0
+        openings: []
+      - id: keep-east-wall
+        label: keep-east-wall
+        line:
+          start:
+            x: 46.76537180435968
+            z: -24.75
+          end:
+            x: 46.76537180435968
+            z: 15.75
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint:
+            width: 40.5
+            depth: 0.5
+            offsetX: 0
+            offsetZ: 0
+        openings: []
+      - id: yard-south-west-wall
+        label: yard-south-west-wall
+        line:
+          start:
+            x: -45.89934640057525
+            z: 15.75
+          end:
+            x: -9.5
+            z: 15.75
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint:
+            width: 36.39934640057525
+            depth: 0.5
+            offsetX: 0
+            offsetZ: 0
+        openings: []
+      - id: yard-south-east-wall
+        label: yard-south-east-wall
+        line:
+          start:
+            x: 9.5
+            z: 15.75
+          end:
+            x: 46.76537180435968
+            z: 15.75
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint:
+            width: 37.26537180435968
+            depth: 0.5
+            offsetX: 0
+            offsetZ: 0
+        openings: []
+      - id: gatehouse-west-wall
+        label: gatehouse-west-wall
+        line:
+          start:
+            x: -7.794228634059947
+            z: 15.75
+          end:
+            x: -7.794228634059947
+            z: 24.75
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint:
+            width: 9
+            depth: 0.5
+            offsetX: 0
+            offsetZ: 0
+        openings: []
+      - id: gatehouse-east-wall
+        label: gatehouse-east-wall
+        line:
+          start:
+            x: 8.660254037844386
+            z: 15.75
+          end:
+            x: 8.660254037844386
+            z: 24.75
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint:
+            width: 9
+            depth: 0.5
+            offsetX: 0
+            offsetZ: 0
+        openings: []
+      - id: gatehouse-south-wall
+        label: gatehouse-south-wall
+        line:
+          start:
+            x: -7.794228634059947
+            z: 24.75
+          end:
+            x: 8.660254037844386
+            z: 24.75
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint:
+            width: 16.454482671904334
+            depth: 0.5
+            offsetX: 0
+            offsetZ: 0
+        openings: []
     walkableHexes:
       - q: -31
         r: 10

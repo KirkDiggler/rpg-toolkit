@@ -18,6 +18,44 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
+// TestMadKingTheGateIsTheOnlyView is the castle's stone: with the gate shut,
+// the hero sees nothing outside the gatehouse, from the party start or from
+// the gate itself, and opening the gate shows the courtyard. The play block's
+// void is transparent (the single-room dialect accepts nothing else), so the
+// outer walls are what close the view, not the void between the rooms.
+// Opaque void alone would not do it: it stops only the direct ray, and a
+// sight lane can start on a void cell past a wall's end (rpg-toolkit#2068).
+func TestMadKingTheGateIsTheOnlyView(t *testing.T) {
+	t.Parallel()
+	s := openTheCastle(t, partyStart(t))
+	gatehouse, ok := s.enc.RegionAt(castleCell(0, 15))
+	require.True(t, ok, "the party start is the gatehouse's floor")
+	courtyard, ok := s.enc.RegionAt(castleCell(0, 4))
+	require.True(t, ok, "the courtyard's floor")
+	seen := func() map[encounter.RegionID]int {
+		out, err := s.enc.VisibleCellsFor(&encounter.VisibleCellsInput{Member: hero})
+		require.NoError(t, err)
+		by := map[encounter.RegionID]int{}
+		for _, cell := range out.Cells {
+			region, ok := s.enc.RegionAt(cell)
+			require.True(t, ok, "%v is floor", cell)
+			by[region]++
+		}
+		return by
+	}
+	onlyTheGatehouse := func(where string) {
+		for region := range seen() {
+			require.Equal(t, gatehouse, region, "%s, with the gate shut, the hero sees only the gatehouse", where)
+		}
+	}
+
+	onlyTheGatehouse("from the party start")
+	s.walkTo(castleCell(0, 10))
+	onlyTheGatehouse("from the gate")
+	s.open(kingGateDoor)
+	require.NotZero(t, seen()[courtyard], "the open gate shows the courtyard")
+}
+
 // TestMadKingFrontDoor is the front door: the hero comes in at the party
 // start and spears the nearest gate guard. Nobody authored a rule for it —
 // the aggression law turns the garrison, the fight forms at the gate, the
