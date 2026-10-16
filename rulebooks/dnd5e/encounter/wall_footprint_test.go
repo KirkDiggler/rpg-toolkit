@@ -199,33 +199,60 @@ func (s *WallFootprintSuite) TestSightLearnsAWallsFootingByItsFace() {
 	}
 }
 
-// gateWall is a horizontal structural wall through the centres of row 2 of the
-// fixture hall, standing on every row-2 hex. secret cuts a four-foot opening
-// over (2,2) with a closed door bound to it and concealed; otherwise the wall
-// is solid — the twin a non-knower's map must equal. Spans are the placed
-// blockers sight reads; the presence is the wall's identity.
-func gateWall(secret bool) encounter.FieldInput {
+// gateShape is how the gate wall stands: covering the hexes it runs through,
+// or a foot south of their centres so it covers none of them, and whether the
+// whole wall (not just its door) is part of the secret.
+type gateShape struct {
+	offCentre    bool
+	hiddenParent bool
+}
+
+// gateWall is a horizontal structural wall along row 2 of the fixture hall.
+// secret cuts a four-foot opening over (2,2) with a closed door bound to it and
+// concealed; otherwise the wall is solid — the twin a non-knower's map must
+// equal. Spans are the placed blockers sight reads; the presence is the wall's
+// identity.
+func gateWall(secret bool, shape gateShape) encounter.FieldInput {
 	from, to := centreOf(cellAt(0, 2)), centreOf(cellAt(4, 2))
+	if shape.offCentre {
+		// South of the row's centres, so the watcher in the north reaches
+		// them directly and the wall stands on none of them.
+		from.Y++
+		to.Y++
+	}
 	at := func(along float64) spatial.Point { return spatial.Point{X: from.X + along, Y: from.Y} }
 	span := func(id string, a, b float64) encounter.PlacedPropInput {
 		return placed(id, thinWall(b-a, 0.3, 0, at((a+b)/2)), true, true)
 	}
 	presence, wall := wallAlong("wall-presence", from, to, 0.3, false)
 	field := placedField(presence)
-	// What the compiler does under a span: the hex a solid stretch stands on
-	// is sealed. The threshold under a door is floor, so it is not.
-	for col := 0; col <= 4; col++ {
-		if secret && col == 2 {
-			continue
+	if !shape.offCentre {
+		// What the compiler does under a span: the hex a solid stretch
+		// stands on is sealed. The threshold under a door is floor, so it
+		// is not.
+		for col := 0; col <= 4; col++ {
+			if secret && col == 2 {
+				continue
+			}
+			field.Sealed = append(field.Sealed, spatial.Position{X: float64(col), Y: 2})
 		}
-		field.Sealed = append(field.Sealed, spatial.Position{X: float64(col), Y: 2})
+	}
+	hide := func(props ...encounter.PropID) {
+		if !shape.hiddenParent {
+			return
+		}
+		field.Concealments = []encounter.ConcealmentInput{{
+			ID: "secret", Checks: vaultCheck(), Props: append([]encounter.PropID{"wall-presence"}, props...),
+		}}
 	}
 	if !secret {
 		field.Placed = append(field.Placed, span("span-whole", 0, 20))
 		field.StructuralWalls = []encounter.StructuralWallInput{wall}
+		hide("span-whole")
 		return field
 	}
-	leaf := thinWall(4, 0.3, 0, centreOf(cellAt(2, 2)))
+	// The leaf covers the threshold's centre wherever the wall stands.
+	leaf := thinWall(4, 2.5, 0, spatial.Point{X: centreOf(cellAt(2, 2)).X, Y: from.Y})
 	field.Placed = append(field.Placed, span("span-west", 0, 8), span("span-east", 12, 20),
 		placed("door-presence", leaf, false, false))
 	field.Doors = []encounter.DoorInput{{ID: "gate", Placement: &leaf, State: encounter.DoorIsClosed()}}
@@ -240,47 +267,75 @@ func gateWall(secret bool) encounter.FieldInput {
 	field.Concealments = []encounter.ConcealmentInput{{
 		ID: "secret", Checks: vaultCheck(), Props: []encounter.PropID{"door-presence"}, Doors: []encounter.DoorID{"gate"},
 	}}
+	if shape.hiddenParent {
+		field.Concealments[0].Props = append(field.Concealments[0].Props, "wall-presence", "span-west", "span-east")
+	}
 
 	return field
 }
 
 // TestAnUnfoundSecretDoorTeachesItsThresholdAsTheWallWould is the masquerade
-// carried into sight (C19 under fog-of-war R9). Presentation footing used to
-// put the threshold under a secret leaf on the map; without it, an unfound
-// cover teaches nothing, and the wall would show a hole exactly at the secret.
-// So an unfound door bound to a wall's opening is that wall's face: the
-// non-knower in the corridor learns the threshold hex as the solid-wall twin's
-// observer learns the hex its wall stands on, and sees it as that footing.
+// carried into sight (C19 under fog-of-war R9), read literally: the
+// masquerade IS the wall. Presentation footing used to put the threshold under
+// a secret leaf on the map; without it, an unfound cover teaches nothing, and
+// the wall would show a hole exactly at the secret. So an unfound door bound
+// to a wall's opening is that wall's face — exactly as far as the wall would
+// be: only while the wall is presented, and sealing the threshold only where
+// the wall would stand on it. In every shape the non-knower's map equals the
+// solid-wall twin's, on cells and on what is sealed.
 func (s *WallFootprintSuite) TestAnUnfoundSecretDoorTeachesItsThresholdAsTheWallWould() {
 	members := []encounter.MemberInput{
 		{ID: "watcher", Kind: encounter.KindPlayer, Position: cellAt(2, 0)},
 		{ID: "finder", Kind: encounter.KindPlayer, Position: cellAt(1, 0)},
 	}
-	secret := s.play(gateWall(true), everyoneSeesTheWholeMap{}, members...)
-	twin := s.play(gateWall(false), everyoneSeesTheWholeMap{}, members...)
+	for _, tc := range []struct {
+		name      string
+		shape     gateShape
+		threshold string // "sealed", "floor" or "absent"
+	}{
+		{"a presented wall standing on the threshold seals it", gateShape{}, "sealed"},
+		{"a presented wall beside the threshold leaves it floor", gateShape{offCentre: true}, "floor"},
+		{"a hidden wall teaches nothing", gateShape{hiddenParent: true}, "absent"},
+	} {
+		s.Run(tc.name, func() {
+			secret := s.play(gateWall(true, tc.shape), everyoneSeesTheWholeMap{}, members...)
+			twin := s.play(gateWall(false, tc.shape), everyoneSeesTheWholeMap{}, members...)
 
-	blind, err := secret.AtlasFor("watcher")
-	s.Require().NoError(err)
-	solid, err := twin.AtlasFor("watcher")
-	s.Require().NoError(err)
-	s.Contains(solid.Cells, cellAt(2, 2), "fixture: the twin's watcher learns the hex its wall stands on")
-	s.Contains(blind.Cells, cellAt(2, 2), "the threshold under the unfound leaf is learned from its face")
-	s.Equal(solid.Cells, blind.Cells, "no hole where the secret is: the map is the solid wall's")
-	s.Equal(solid.Sealed, blind.Sealed, "and the threshold is footing nobody stands on, as the twin's is")
-	s.Empty(s.wallIn(blind, "wall-presence").Openings, "the opening is withheld with its door")
+			blind, err := secret.AtlasFor("watcher")
+			s.Require().NoError(err)
+			solid, err := twin.AtlasFor("watcher")
+			s.Require().NoError(err)
+			s.Equal(solid.Cells, blind.Cells, "no hole and no lone hex where the secret is: the map is the solid wall's")
+			s.Equal(solid.Sealed, blind.Sealed, "and the threshold is sealed exactly where the twin's is")
 
-	// The knower's atlas is unchanged by the masquerade: finding the secret
-	// leaves them exactly what a member of the same dungeon with no secret
-	// in it would have.
-	s.Require().NoError(encounter.ExportedFind(secret, "finder", "secret"))
-	seen, err := secret.AtlasFor("finder")
-	s.Require().NoError(err)
-	open := gateWall(true)
-	open.Concealments = nil
-	plain, err := s.play(open, everyoneSeesTheWholeMap{}, members...).AtlasFor("finder")
-	s.Require().NoError(err)
-	s.Equal(plain.Cells, seen.Cells)
-	s.Equal(plain.Sealed, seen.Sealed)
-	s.NotContains(seen.Sealed, cellAt(2, 2), "found, the threshold is floor under a shut door")
-	s.Equal(plain.StructuralWalls, seen.StructuralWalls, "the cut is back")
+			threshold := cellAt(2, 2)
+			switch tc.threshold {
+			case "sealed":
+				s.Contains(blind.Cells, threshold)
+				s.Contains(blind.Sealed, threshold)
+			case "floor":
+				s.Contains(blind.Cells, threshold)
+				s.NotContains(blind.Sealed, threshold)
+			case "absent":
+				s.NotContains(blind.Cells, threshold)
+			}
+			if !tc.shape.hiddenParent {
+				s.Empty(s.wallIn(blind, "wall-presence").Openings, "the opening is withheld with its door")
+			}
+
+			// The knower's atlas is unchanged by the masquerade: finding
+			// the secret leaves them what a member of the same dungeon with
+			// no secret in it would have.
+			s.Require().NoError(encounter.ExportedFind(secret, "finder", "secret"))
+			seen, err := secret.AtlasFor("finder")
+			s.Require().NoError(err)
+			open := gateWall(true, tc.shape)
+			open.Concealments = nil
+			plain, err := s.play(open, everyoneSeesTheWholeMap{}, members...).AtlasFor("finder")
+			s.Require().NoError(err)
+			s.Equal(plain.Cells, seen.Cells)
+			s.Equal(plain.Sealed, seen.Sealed)
+			s.Equal(plain.StructuralWalls, seen.StructuralWalls, "the cut is back")
+		})
+	}
 }

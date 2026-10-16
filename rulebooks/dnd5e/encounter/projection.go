@@ -151,16 +151,52 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 		}
 	}
 
+	// IDENTITY PERMISSION, ONE RULE: a fixed placement is presented unless
+	// it is holdable, hidden, a withheld door's representation, or stands
+	// wholly on unexplored floor — a boundary or opaque blocker counting any
+	// known support cell as explored.
+	permits := func(p AtlasPlacedProp, unexplored map[spatial.Position]bool) (bool, error) {
+		if p.Holdable || hidden.props[p.ID] || hidden.doors[p.ID] || withheldDoorPlacements[p.ID] {
+			return false, nil
+		}
+		if !e.placedWhollyUnexplored(p, unexplored) {
+			return true, nil
+		}
+		if structuralBoundaries[p.ID] || (p.BlocksMovement && p.BlocksLineOfSight) {
+			support, supportErr := e.field.footprintObservationCells(p.Placement)
+			if supportErr != nil {
+				return false, fmt.Errorf("structural boundary %q support: %w", p.ID, supportErr)
+			}
+			for _, cell := range support {
+				if !unexplored[cell] {
+					return true, nil
+				}
+			}
+		}
+		return false, nil
+	}
+	// Walls answer on the floor as learned, before the masquerade below
+	// re-marks any threshold, so masking a threshold never withholds the
+	// wall it masks for.
+	learnedUnexplored := make(map[spatial.Position]bool, len(hidden.unexploredCells))
+	for c := range hidden.unexploredCells {
+		learnedUnexplored[c] = true
+	}
+
 	// THE MASQUERADE'S FOOTING (fog-of-war R9). An unfound door bound to a
 	// structural wall's opening reads as the wall it stands in, and sight
 	// learns its threshold through the leaf's face exactly as the solid-wall
-	// twin learns the hex behind the wall's ([sightReach.seesCell]). The twin
-	// shows that hex as footing: floor nobody owns or stands on, with nothing
-	// on it. So a threshold this recipient has learned under a still-withheld
-	// bound door is presented the same way — on the map, sealed, out of its
-	// region, its contents withheld — and becomes ordinary floor when the door
-	// is found. Only LEARNED thresholds: presenting the wall teaches none.
-	masked, err := e.maskedThresholds(full.Placed, withheldDoorPlacements, hiddenCells)
+	// twin learns the hex behind the wall's ([sightReach.seesCell]) — but only
+	// while that wall is presented to this recipient. Where the twin's solid
+	// wall would stand on the hex (its presence covers the centre), the twin
+	// shows footing: floor nobody owns or stands on, with nothing on it. So a
+	// learned threshold there is presented the same way — on the map, sealed,
+	// out of its region, its contents withheld — until the door is found.
+	// Where the twin's wall would not cover it, the twin shows plain floor,
+	// and so does this map. Only LEARNED thresholds: presenting a wall
+	// teaches none.
+	masked, err := e.maskedThresholds(full.Placed, withheldDoorPlacements, hiddenCells,
+		func(p AtlasPlacedProp) (bool, error) { return permits(p, learnedUnexplored) })
 	if err != nil {
 		return Atlas{}, err
 	}
@@ -194,23 +230,15 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	// Resolve identity permission before floor emission: which walls, doors
 	// and fixed placements this recipient is shown.
 	for _, p := range full.Placed {
-		if p.Holdable || hidden.props[p.ID] || hidden.doors[p.ID] || withheldDoorPlacements[p.ID] {
-			continue
+		unexplored := hidden.unexploredCells
+		if structuralWallIDs[p.ID] {
+			unexplored = learnedUnexplored
 		}
-		unexplored := e.placedWhollyUnexplored(p, hidden.unexploredCells)
-		if structuralBoundaries[p.ID] || (p.BlocksMovement && p.BlocksLineOfSight) {
-			support, supportErr := e.field.footprintObservationCells(p.Placement)
-			if supportErr != nil {
-				return Atlas{}, fmt.Errorf("structural boundary %q support: %w", p.ID, supportErr)
-			}
-			for _, cell := range support {
-				if !hidden.unexploredCells[cell] {
-					unexplored = false
-					break
-				}
-			}
+		ok, permitErr := permits(p, unexplored)
+		if permitErr != nil {
+			return Atlas{}, permitErr
 		}
-		if !unexplored {
+		if ok {
 			out.Placed = append(out.Placed, p)
 		}
 	}
@@ -651,32 +679,58 @@ func (e *Encounter) doorInEdge(edge DoorEdge) (DoorID, bool) {
 	return "", false
 }
 
-// maskedThresholds is the cells, already known to the recipient, whose centre
-// a withheld structural-bound door's placement covers — the threshold the
-// masquerade presents as wall footing (see [Encounter.AtlasFor]). Cells the
-// recipient has not learned are not here: presenting a wall teaches no cell.
+// maskedThresholds is the cells, already known to the recipient, that the
+// masquerade presents as wall footing (see [Encounter.AtlasFor]): the centre
+// is covered both by a withheld bound door's placement (its threshold) and by
+// the presence of the parent wall it masquerades as (where the twin's solid
+// wall would stand), and that parent is presented to the recipient
+// (presented answers on the floor as learned). Cells the recipient has not
+// learned are not here: presenting a wall teaches no cell.
 func (e *Encounter) maskedThresholds(
 	placed []AtlasPlacedProp, withheld map[PropID]bool, hiddenCells map[spatial.Position]bool,
+	presented func(AtlasPlacedProp) (bool, error),
 ) (map[spatial.Position]bool, error) {
+	byID := make(map[PropID]AtlasPlacedProp, len(placed))
+	for _, p := range placed {
+		byID[p.ID] = p
+	}
+	covers := func(p spatial.FootprintPlacement, cell spatial.Position) (bool, error) {
+		centre := e.field.plane.CellCentre(cell)
+		contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{Placement: p, From: centre, To: centre})
+		return contact.Contact, err
+	}
 	masked := make(map[spatial.Position]bool)
 	for _, p := range placed {
-		if !withheld[p.ID] || !e.field.boundInStructuralWall(p.ID, "") {
+		if !withheld[p.ID] {
 			continue
 		}
+		parentID, bound := e.field.boundParentWall(p.ID, "")
+		parent, standing := byID[parentID]
+		if !bound || !standing {
+			continue
+		}
+		shown, err := presented(parent)
+		if err != nil {
+			return nil, err
+		}
+		if !shown {
+			continue
+		}
+		// p.Cells includes nearest-cell support; only a covered centre is
+		// a threshold.
 		for _, cell := range p.Cells {
 			if hiddenCells[cell] {
 				continue
 			}
-			centre := e.field.plane.CellCentre(cell)
-			contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
-				Placement: p.Placement, From: centre, To: centre,
-			})
+			threshold, err := covers(p.Placement, cell)
 			if err != nil {
 				return nil, fmt.Errorf("structural door %q threshold: %w", p.ID, err)
 			}
-			// p.Cells includes nearest-cell support; only a covered centre
-			// is the threshold the twin's wall would stand on.
-			if contact.Contact {
+			footing, err := covers(parent.Placement, cell)
+			if err != nil {
+				return nil, fmt.Errorf("structural wall %q footing: %w", parent.ID, err)
+			}
+			if threshold && footing {
 				masked[cell] = true
 			}
 		}

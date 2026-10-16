@@ -133,10 +133,10 @@ func (s sightReach) reachesCell(observer MemberID, subjectCell spatial.Position)
 // EXCEPT WHERE IT READS AS THE WALL IT STANDS IN (fog-of-war R9). An unfound
 // door bound to a structural wall's opening masquerades as that wall, and the
 // solid-wall twin's observer learns the hex behind the wall's face. So the
-// leaf's face teaches its threshold here too — and [Encounter.AtlasFor]
-// presents that threshold as the twin's footing (sealed, ownerless, nothing on
-// it) until the door is found. Without the face the secret would be a hole in
-// the wall's footing the twin does not have.
+// leaf's face teaches its threshold here too — while the parent wall is not
+// itself hidden from the observer — and [Encounter.AtlasFor] presents that
+// threshold as the twin's would be until the door is found. Without the face
+// the secret would be a hole in the wall's footing the twin does not have.
 func (s sightReach) seesCell(observer MemberID, cell spatial.Position, hidden hiddenView) bool {
 	if s.reachesCell(observer, cell) {
 		return true
@@ -150,14 +150,20 @@ func (s sightReach) seesCell(observer MemberID, cell spatial.Position, hidden hi
 	if err != nil {
 		return false
 	}
+	// A hidden cover is a face only as the wall it masquerades as, and only
+	// while that wall is not itself hidden from this observer: a hidden parent
+	// is no wall to them, and its twin has nothing there to teach.
+	masquerades := func(parent PropID, bound bool) bool {
+		return bound && !hidden.props[parent]
+	}
 	faces := 0
 	for id := range coverPlaced {
-		if !hidden.props[id] || f.boundInStructuralWall(id, "") {
+		if !hidden.props[id] || masquerades(f.boundParentWall(id, "")) {
 			faces++
 		}
 	}
 	for id := range coverDoors {
-		if !hidden.doors[id] || f.boundInStructuralWall("", id) {
+		if !hidden.doors[id] || masquerades(f.boundParentWall("", id)) {
 			faces++
 		}
 	}

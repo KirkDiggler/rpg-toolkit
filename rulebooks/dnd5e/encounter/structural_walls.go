@@ -507,21 +507,22 @@ func (f *field) wallFootprintCells(w *structuralWall, placement spatial.Footprin
 	return out, nil
 }
 
-// boundInStructuralWall reports whether a placed id or a door id is the door
-// bound to a structural wall's opening — the identity that masquerades as the
-// wall while unfound (fog-of-war R9; see [sightReach.seesCell]). Pass "" for
-// the identity not being asked about.
-func (f *field) boundInStructuralWall(placed PropID, door DoorID) bool {
+// boundParentWall names the structural wall whose opening a placed id or a
+// door id is bound to — the wall that identity masquerades as while unfound
+// (fog-of-war R9; see [sightReach.seesCell]). Pass "" for the identity not
+// being asked about.
+func (f *field) boundParentWall(placed PropID, door DoorID) (PropID, bool) {
 	for i := range f.structuralWalls {
-		for _, o := range f.structuralWalls[i].openings {
+		w := &f.structuralWalls[i]
+		for _, o := range w.openings {
 			if o.door == nil {
 				continue
 			}
 			if (placed != "" && o.door.placedID == placed) || (door != "" && o.door.doorID == door) {
-				return true
+				return w.id, true
 			}
 		}
 	}
 
-	return false
+	return "", false
 }
