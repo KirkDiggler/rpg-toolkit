@@ -15,7 +15,9 @@
 # cast, bindings, stat blocks, tables, factions and endings authored. The
 # only hand edits are these comments and the patrol and march rows
 # (`toward: { path }`, `toward: { at }`, marked "Hand edit"), which the
-# studio's table form does not offer yet.
+# studio's table form does not offer yet. After the first walk two studio
+# values were set by hand: the captain's look (a soldier's, no longer the
+# king's), and the two stray map labels that sat in no room removed.
 #
 # THE CASTLE. The garrison keeps the gate and the hall, and its mind is the
 # captain: it is civil to the party until the party is recognized, and civil
@@ -274,16 +276,6 @@ room:
           rotationY: 0
     groups: []
     mapLabels:
-      - id: castle-kitchen
-        text: Kitchen
-        location:
-          x: -8
-          z: -6
-      - id: castle-courtyard
-        text: Courtyard
-        location:
-          x: 8
-          z: 6
       - id: label-courtyard
         text: Courtyard
         location:
@@ -6813,7 +6805,7 @@ room:
           location:
             q: -6
             r: 12
-        appearanceRef: dnd5e:npcs:kingdom:prince-01
+        appearanceRef: dnd5e:npcs:kingdom:soldier-male-01-style-04-a
       - id: reserve-1
         ref: dnd5e:monsters:knight
         startingCell:
