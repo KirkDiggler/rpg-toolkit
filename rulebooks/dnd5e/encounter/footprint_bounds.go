@@ -23,9 +23,13 @@ import (
 // in this module's arithmetic and in spatial's local-frame transform cannot
 // turn a contact into a miss: results are identical to tracing everything.
 //
-// The ZERO VALUE TRACES EVERYTHING (ok false). A placement whose reach cannot
-// be measured — the geometry spatial would refuse — is never filtered, so its
-// trace still returns spatial's own error to the caller that reads it.
+// The ZERO VALUE TRACES EVERYTHING (ok false). [boundsOf] returns it for every
+// placement spatial would refuse to trace — no box, a triangle, a side that
+// is not a positive finite number, or a reach that is not finite — so such a
+// placement is never filtered and its trace still returns spatial's own error
+// to the caller that reads it. (Construction validation refuses all of these
+// for a compiled field already; the check here keeps the filter exact without
+// relying on that.)
 type footprintBounds struct {
 	ok                     bool
 	minX, maxX, minY, maxY float64
@@ -36,10 +40,15 @@ type footprintBounds struct {
 
 // footprintBoundsSlack is the relative margin rejection must clear: a
 // segment is skipped only when it misses the reach by more than this share of
-// the largest coordinate magnitude in the question (plus one foot's share, so
-// the margin never vanishes near the plane's origin). Float64 rounding in
-// either side's arithmetic is around 1e-16 of that magnitude; 1e-9 leaves
-// seven orders of headroom and still rejects everything a cell away.
+// the coordinate magnitudes in the question (plus one foot's share, so the
+// margin never vanishes near the plane's origin). Float64 rounding in either
+// side's arithmetic is around 1e-16 of that magnitude; 1e-9 leaves seven
+// orders of headroom and still rejects everything a cell away.
+//
+// RELATIVE BECAUSE ROUNDING IS. An absolute margin small enough to reject a
+// lane a foot away near the origin is smaller than one float64 step far from
+// it. TestMayTouchAgreesWithSpatial draws placements out to 1e8 feet, where a
+// flat 1e-9 margin drops contacts spatial reports.
 const footprintBoundsSlack = 1e-9
 
 // boundsOf measures a placement's reach relative to its origin: the centre's
@@ -49,6 +58,9 @@ const footprintBoundsSlack = 1e-9
 // |across|·halfWidth either side of its centre.
 func boundsOf(p spatial.FootprintPlacement) footprintBounds {
 	if p.Footprint.Box == nil || p.Footprint.Triangle != nil {
+		return footprintBounds{}
+	}
+	if w, d := p.Footprint.Box.W, p.Footprint.Box.D; !(w > 0) || !(d > 0) || !finite(w) || !finite(d) {
 		return footprintBounds{}
 	}
 	a := math.Mod(p.Facing, 360) * math.Pi / 180
@@ -75,40 +87,43 @@ func boundsOf(p spatial.FootprintPlacement) footprintBounds {
 // mayTouch reports whether the closed segment from..to can reach the
 // rectangle these bounds were measured for, placed at origin. False is a
 // proof of no contact; true means "ask spatial". A zero-length segment is the
-// stationary question the standing reads ask.
+// stationary question the standing reads ask. It is [footprintBounds.mayOverlap]
+// asked of the segment's own bounding box, which contains the segment.
 //
 // HOT: every lane, crossing and standing read asks it of every contributor,
 // so it is straight-line arithmetic — no loops, no math.Max.
+func (b footprintBounds) mayTouch(origin, from, to spatial.Point) bool {
+	lo, hi := from, to
+	if lo.X > hi.X {
+		lo.X, hi.X = hi.X, lo.X
+	}
+	if lo.Y > hi.Y {
+		lo.Y, hi.Y = hi.Y, lo.Y
+	}
+
+	return b.mayOverlap(origin, lo, hi)
+}
+
+// mayOverlap reports whether the closed axis-aligned box lo..hi (lo the
+// lower corner on both axes) can overlap the rectangle these bounds were
+// measured for, placed at origin. False is a proof that nothing inside the
+// box touches the rectangle; true means "ask spatial".
 //
 // NON-FINITE INPUT IS NEVER REJECTED, so spatial — not this filter — is the
 // one that refuses it with [spatial.ErrBadFootprintTrace]. Each test below is
 // written as "reject when strictly beyond", and every comparison involving NaN
 // is false; an infinite coordinate makes the tolerance infinite (or NaN), so
 // no rejection can hold either.
-func (b footprintBounds) mayTouch(origin, from, to spatial.Point) bool {
+func (b footprintBounds) mayOverlap(origin, lo, hi spatial.Point) bool {
 	if !b.ok {
 		return true
 	}
 	// The tolerance's scale is a SUM of magnitudes, which is at least their
 	// maximum: a wider margin only ever traces more.
 	scale := 1 + b.mag + math.Abs(origin.X) + math.Abs(origin.Y) +
-		math.Abs(from.X) + math.Abs(from.Y) + math.Abs(to.X) + math.Abs(to.Y)
+		math.Abs(lo.X) + math.Abs(lo.Y) + math.Abs(hi.X) + math.Abs(hi.Y)
 	tol := footprintBoundsSlack * scale
 
-	segMinX, segMaxX := from.X, to.X
-	if segMinX > segMaxX {
-		segMinX, segMaxX = segMaxX, segMinX
-	}
-	if segMaxX < origin.X+b.minX-tol || segMinX > origin.X+b.maxX+tol {
-		return false
-	}
-	segMinY, segMaxY := from.Y, to.Y
-	if segMinY > segMaxY {
-		segMinY, segMaxY = segMaxY, segMinY
-	}
-	if segMaxY < origin.Y+b.minY-tol || segMinY > origin.Y+b.maxY+tol {
-		return false
-	}
-
-	return true
+	return !(hi.X < origin.X+b.minX-tol || lo.X > origin.X+b.maxX+tol ||
+		hi.Y < origin.Y+b.minY-tol || lo.Y > origin.Y+b.maxY+tol)
 }

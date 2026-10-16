@@ -86,6 +86,23 @@ func (fs *FootprintBoundsSuite) TestMayTouchRejectsOnlyWhatCannotTouch() {
 		"and its width now lies along x")
 }
 
+// TestMayOverlapIsABoxTest is the box question footprintObservationCells
+// asks: a square around a cell, not a segment between its corners.
+func (fs *FootprintBoundsSuite) TestMayOverlapIsABoxTest() {
+	t := fs.T()
+	origin := spatial.Point{X: 0, Y: 0}
+	b := boundsOf(boxPlacement(2, 2, 0, origin, spatial.Point{})) // x, y in [-1, 1]
+	p := func(x, y float64) spatial.Point { return spatial.Point{X: x, Y: y} }
+
+	require.True(t, b.mayOverlap(origin, p(-5, -5), p(5, 5)), "a box containing the rectangle overlaps it")
+	require.True(t, b.mayOverlap(origin, p(-0.5, -0.5), p(0.5, 0.5)), "so does one inside it")
+	require.True(t, b.mayOverlap(origin, p(1, -10), p(3, -0.5)),
+		"and one meeting it only off the diagonal a segment between the corners would take")
+	require.True(t, b.mayOverlap(origin, p(1, 1), p(4, 4)), "touching at a corner overlaps")
+	require.False(t, b.mayOverlap(origin, p(1.5, -10), p(3, 10)), "a box beyond one side does not")
+	require.False(t, b.mayOverlap(origin, p(-10, 2), p(10, 3)), "nor beyond the other axis")
+}
+
 func (fs *FootprintBoundsSuite) TestMayTouchNeverHidesAnError() {
 	t := fs.T()
 	origin := spatial.Point{X: 1, Y: 1}
@@ -104,6 +121,12 @@ func (fs *FootprintBoundsSuite) TestMayTouchNeverHidesAnError() {
 		"a placement with no box has no reach, so it is always traced")
 	require.False(t, boundsOf(boxPlacement(1, 1, math.NaN(), origin, spatial.Point{})).ok,
 		"nor does one whose facing cannot be measured")
+	for _, side := range []float64{0, -1, math.NaN(), math.Inf(1)} {
+		require.False(t, boundsOf(boxPlacement(side, 1, 0, origin, spatial.Point{})).ok,
+			"nor one whose width is %v", side)
+		require.False(t, boundsOf(boxPlacement(1, side, 0, origin, spatial.Point{})).ok,
+			"nor one whose depth is %v", side)
+	}
 }
 
 // TestMayTouchAgreesWithSpatial is the predicate against spatial itself:
@@ -115,12 +138,33 @@ func (fs *FootprintBoundsSuite) TestMayTouchAgreesWithSpatial() {
 	t := fs.T()
 	rng := rand.New(rand.NewSource(2049))
 	kept, rejected, contacts := 0, 0, 0
-	for i := 0; i < 20000; i++ {
-		origin := spatial.Point{X: (rng.Float64() - 0.5) * 2000, Y: (rng.Float64() - 0.5) * 2000}
+	// FAR FROM THE ORIGIN AS WELL AS NEAR IT: each draw places its box at
+	// one of these magnitudes, out to 1e8 feet, where one float64 step is
+	// about 1.5e-8 — wider than a flat 1e-9 margin. That is what proves the
+	// margin must be relative.
+	magnitudes := []float64{1e3, 1e4, 1e5, 1e6, 1e7, 1e8}
+	contactsAt := map[float64]int{}
+	for i := 0; i < 30000; i++ {
+		mag := magnitudes[i%len(magnitudes)]
+		sign := func() float64 {
+			if rng.Intn(2) == 0 {
+				return -1
+			}
+			return 1
+		}
+		origin := spatial.Point{X: sign() * mag * (0.1 + 0.9*rng.Float64()), Y: sign() * mag * (0.1 + 0.9*rng.Float64())}
 		pl := boxPlacement(0.05+rng.Float64()*20, 0.05+rng.Float64()*40, rng.Float64()*720-360, origin,
 			spatial.Point{X: (rng.Float64() - 0.5) * 10, Y: (rng.Float64() - 0.5) * 10})
 		b := boundsOf(pl)
 		require.True(t, b.ok)
+		// Far out, a small box's area can round to nothing, and spatial
+		// refuses the placement outright (construction refuses it too). Such
+		// a draw has no contact to agree about.
+		if _, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
+			Placement: pl, From: pl.Origin, To: pl.Origin,
+		}); err != nil {
+			continue
+		}
 
 		corners := placementCorners(pl)
 		near := func() spatial.Point {
@@ -149,6 +193,7 @@ func (fs *FootprintBoundsSuite) TestMayTouchAgreesWithSpatial() {
 		touch := b.mayTouch(pl.Origin, from, to)
 		if trace.Contact {
 			contacts++
+			contactsAt[mag]++
 			require.True(t, touch, "trace %d: spatial reports contact the filter would have skipped "+
 				"(placement %+v box %+v, %v -> %v)", i, pl, *pl.Footprint.Box, from, to)
 		}
@@ -159,6 +204,9 @@ func (fs *FootprintBoundsSuite) TestMayTouchAgreesWithSpatial() {
 		}
 	}
 	require.Positive(t, contacts, "the draw must exercise contact")
+	for _, mag := range magnitudes {
+		require.Positive(t, contactsAt[mag], "and contact at magnitude %g", mag)
+	}
 	require.Positive(t, rejected, "and must exercise rejection, or the agreement proves nothing")
 	require.Positive(t, kept)
 }

@@ -416,8 +416,8 @@ func (f *field) footprintObservationCells(p spatial.FootprintPlacement) ([]spati
 		for _, cell := range f.cells {
 			at := f.plane.CellCentre(cell)
 			r := float64(placedPlaneCellWidth)
-			corner, opposite := spatial.Point{X: at.X - r, Y: at.Y - r}, spatial.Point{X: at.X + r, Y: at.Y + r}
-			if reach.mayTouch(p.Origin, corner, opposite) {
+			lo, hi := spatial.Point{X: at.X - r, Y: at.Y - r}, spatial.Point{X: at.X + r, Y: at.Y + r}
+			if reach.mayOverlap(p.Origin, lo, hi) {
 				cells = append(cells, cell)
 			}
 		}
