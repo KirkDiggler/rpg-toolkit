@@ -97,7 +97,7 @@ var kingSpear = core.Ref{Module: "dnd5e", Type: "weapons", ID: "spear"}
 
 // kingScene is one run of the castle and what the host recorded of it.
 type kingScene struct {
-	t        *testing.T
+	t        testing.TB
 	enc      *encounter.Encounter
 	compiled dungeonspec.Compiled
 	strikes  *[]cellsStrike
@@ -106,7 +106,7 @@ type kingScene struct {
 
 // openTheCastle compiles the file and opens it with the hero at a cell and
 // every creature where the file posts it, carrying what the file compiled.
-func openTheCastle(t *testing.T, at spatial.Position) *kingScene {
+func openTheCastle(t testing.TB, at spatial.Position) *kingScene {
 	t.Helper()
 
 	return openTheCastleWithDoors(t, at, nil)
@@ -115,7 +115,7 @@ func openTheCastle(t *testing.T, at spatial.Position) *kingScene {
 // openTheCastleWithDoors is [openTheCastle] with some doors starting in a
 // state the file does not give them, so a test can stand a room's door shut
 // with every other door open without walking a hero to each.
-func openTheCastleWithDoors(t *testing.T, at spatial.Position, doors map[encounter.DoorID]encounter.DoorState) *kingScene {
+func openTheCastleWithDoors(t testing.TB, at spatial.Position, doors map[encounter.DoorID]encounter.DoorState) *kingScene {
 	t.Helper()
 	compiled := loadContent(t, kingFixture)
 	for i := range compiled.Field.Doors {

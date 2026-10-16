@@ -40,7 +40,7 @@ import (
 )
 
 // loadContent compiles one authored document off disk.
-func loadContent(t *testing.T, path string) dungeonspec.Compiled {
+func loadContent(t testing.TB, path string) dungeonspec.Compiled {
 	t.Helper()
 	raw, err := os.ReadFile(path) //nolint:gosec // a test reading its own fixture
 	require.NoError(t, err)

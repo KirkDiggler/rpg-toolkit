@@ -181,6 +181,11 @@ type placedContributor struct {
 	blocksMovement    bool
 	blocksLineOfSight bool
 
+	// reach is the placement's axis-aligned bounds relative to its origin,
+	// measured once here so a ray or crossing far from it skips the trace
+	// (rpg-toolkit#2049). Zero value traces everything.
+	reach footprintBounds
+
 	// holdable, holds and arrives are the three orders a placement can
 	// carry (rpg-toolkit#1854), deep-copied like everything else here.
 	holdable bool
@@ -248,14 +253,16 @@ func (f *field) compilePlaced(in []PlacedPropInput) error {
 		// caller flipping its width after construction must not change what
 		// ToData writes or what a running fold measures.
 		box := *p.Placement.Footprint.Box
+		placement := spatial.FootprintPlacement{
+			Footprint:   spatial.Footprint{Box: &box},
+			Origin:      p.Placement.Origin,
+			Facing:      p.Placement.Facing,
+			LocalOffset: p.Placement.LocalOffset,
+		}
 		f.placed[i] = placedContributor{
-			id: p.ID,
-			placement: spatial.FootprintPlacement{
-				Footprint:   spatial.Footprint{Box: &box},
-				Origin:      p.Placement.Origin,
-				Facing:      p.Placement.Facing,
-				LocalOffset: p.Placement.LocalOffset,
-			},
+			id:                p.ID,
+			placement:         placement,
+			reach:             boundsOf(placement),
 			blocksMovement:    p.BlocksMovement,
 			blocksLineOfSight: p.BlocksLineOfSight,
 			holdable:          p.Holdable,
@@ -355,6 +362,7 @@ func placedCentre(p spatial.FootprintPlacement) spatial.Point {
 // of this geometry applies; compilePlaced makes it unreachable.
 func (f *field) placedCells(p spatial.FootprintPlacement) []spatial.Position {
 	centre := placedCentre(p)
+	reach := boundsOf(p)
 	stands := make(map[spatial.Position]bool, len(f.cells))
 
 	var own spatial.Position
@@ -362,11 +370,13 @@ func (f *field) placedCells(p spatial.FootprintPlacement) []spatial.Position {
 	found := false
 	for _, cell := range f.cells {
 		at := f.plane.CellCentre(cell)
-		contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
-			Placement: p, From: at, To: at,
-		})
-		if err != nil || contact.Contact {
-			stands[cell] = true
+		if reach.mayTouch(p.Origin, at, at) {
+			contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
+				Placement: p, From: at, To: at,
+			})
+			if err != nil || contact.Contact {
+				stands[cell] = true
+			}
 		}
 		dx, dy := at.X-centre.X, at.Y-centre.Y
 		if d2 := dx*dx + dy*dy; !found || d2 < ownD2 || (d2 == ownD2 && cellBefore(cell, own)) {
@@ -394,9 +404,26 @@ func (f *field) placedCells(p spatial.FootprintPlacement) []spatial.Position {
 // Off-floor scenery retains its existing nearest-floor support when there is
 // no overlap at all. The query uses spatial's polygon coverage, not another LOS
 // evaluator; observation still asks the same sightReach for each support cell.
+//
+// Only the cells whose square of half-side one cell width (wider than the
+// hex's circumradius, so it contains the whole hex) may touch the footprint's
+// reach are measured ([footprintBounds], rpg-toolkit#2049): a cell beyond it
+// overlaps by zero area, which is exactly what the filter below drops anyway.
 func (f *field) footprintObservationCells(p spatial.FootprintPlacement) ([]spatial.Position, error) {
+	cells := f.cells
+	if reach := boundsOf(p); reach.ok {
+		cells = make([]spatial.Position, 0, len(f.cells))
+		for _, cell := range f.cells {
+			at := f.plane.CellCentre(cell)
+			r := float64(placedPlaneCellWidth)
+			lo, hi := spatial.Point{X: at.X - r, Y: at.Y - r}, spatial.Point{X: at.X + r, Y: at.Y + r}
+			if reach.mayOverlap(p.Origin, lo, hi) {
+				cells = append(cells, cell)
+			}
+		}
+	}
 	coverage, err := spatial.PlacedCoverage(spatial.PlacedCoverageInput{
-		Embedding: f.plane, Placement: p, Cells: f.cells,
+		Embedding: f.plane, Placement: p, Cells: cells,
 	})
 	if err != nil {
 		return nil, err
@@ -591,7 +618,7 @@ func (f *field) standingBlocks(cell spatial.Position) (PropID, bool) {
 		// carrying are both absent, exactly as a reserved cell prop is off
 		// the canvas and a held one is out of every atlas.
 		placement, standing := now.stands(p)
-		if !standing {
+		if !standing || !p.reach.mayTouch(placement.Origin, centre, centre) {
 			continue
 		}
 		contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
@@ -602,6 +629,9 @@ func (f *field) standingBlocks(cell spatial.Position) (PropID, bool) {
 		}
 	}
 	for _, d := range f.blockingDoorFootprints() {
+		if !d.reach.mayTouch(d.placement.Origin, centre, centre) {
+			continue
+		}
 		contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
 			Placement: *d.placement, From: centre, To: centre,
 		})
@@ -620,6 +650,9 @@ func (f *field) standingBlocks(cell spatial.Position) (PropID, bool) {
 func (f *field) doorStandingOn(cell spatial.Position) *doorRecord {
 	centre := f.plane.CellCentre(cell)
 	for _, d := range f.blockingDoorFootprints() {
+		if !d.reach.mayTouch(d.placement.Origin, centre, centre) {
+			continue
+		}
 		contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
 			Placement: *d.placement, From: centre, To: centre,
 		})
@@ -636,10 +669,12 @@ func (f *field) doorStandingOn(cell spatial.Position) *doorRecord {
 // test, asked for the door rather than its id.
 func (f *field) doorAcrossCrossing(from, to spatial.Position) *doorRecord {
 	for _, d := range f.blockingDoorFootprints() {
+		a, b := f.plane.CellCentre(from), f.plane.CellCentre(to)
+		if !d.reach.mayTouch(d.placement.Origin, a, b) {
+			continue
+		}
 		trace, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
-			Placement: *d.placement,
-			From:      f.plane.CellCentre(from),
-			To:        f.plane.CellCentre(to),
+			Placement: *d.placement, From: a, To: b,
 		})
 		if err != nil || trace.Interior {
 			return d
@@ -670,10 +705,12 @@ func (f *field) crossingBlocks(from, to spatial.Position) (PropID, bool, error) 
 		if !standing {
 			continue
 		}
+		a, b := f.plane.CellCentre(from), f.plane.CellCentre(to)
+		if !p.reach.mayTouch(placement.Origin, a, b) {
+			continue
+		}
 		trace, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
-			Placement: placement,
-			From:      f.plane.CellCentre(from),
-			To:        f.plane.CellCentre(to),
+			Placement: placement, From: a, To: b,
 		})
 		if err != nil {
 			return p.id, true, fmt.Errorf("placed prop %q: %w", p.id, err)
@@ -687,10 +724,12 @@ func (f *field) crossingBlocks(from, to spatial.Position) (PropID, bool, error) 
 	// that sees it: the canvas registered no boundary for it, so without
 	// this the step would walk through the door.
 	for _, d := range f.blockingDoorFootprints() {
+		a, b := f.plane.CellCentre(from), f.plane.CellCentre(to)
+		if !d.reach.mayTouch(d.placement.Origin, a, b) {
+			continue
+		}
 		trace, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
-			Placement: *d.placement,
-			From:      f.plane.CellCentre(from),
-			To:        f.plane.CellCentre(to),
+			Placement: *d.placement, From: a, To: b,
 		})
 		if err != nil {
 			return d.id, true, fmt.Errorf("door %q: %w", d.id, err)
@@ -732,10 +771,12 @@ func (f *field) sightBlocksAlongExcept(
 		if !standing {
 			continue
 		}
+		a, b := f.plane.CellCentre(from), f.plane.CellCentre(to)
+		if !p.reach.mayTouch(placement.Origin, a, b) {
+			continue
+		}
 		trace, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
-			Placement: placement,
-			From:      f.plane.CellCentre(from),
-			To:        f.plane.CellCentre(to),
+			Placement: placement, From: a, To: b,
 		})
 		if err != nil {
 			return false, fmt.Errorf("placed prop %q: %w", p.id, err)
@@ -751,10 +792,12 @@ func (f *field) sightBlocksAlongExcept(
 		if skipDoors[d.id] {
 			continue
 		}
+		a, b := f.plane.CellCentre(from), f.plane.CellCentre(to)
+		if !d.reach.mayTouch(d.placement.Origin, a, b) {
+			continue
+		}
 		trace, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
-			Placement: *d.placement,
-			From:      f.plane.CellCentre(from),
-			To:        f.plane.CellCentre(to),
+			Placement: *d.placement, From: a, To: b,
 		})
 		if err != nil {
 			return false, fmt.Errorf("door %q: %w", d.id, err)
@@ -784,7 +827,7 @@ func (f *field) screensOf(cell spatial.Position) (map[PropID]bool, map[DoorID]bo
 			continue
 		}
 		placement, standing := now.stands(p)
-		if !standing {
+		if !standing || !p.reach.mayTouch(placement.Origin, centre, centre) {
 			continue
 		}
 		contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
@@ -801,6 +844,9 @@ func (f *field) screensOf(cell spatial.Position) (map[PropID]bool, map[DoorID]bo
 		}
 	}
 	for _, d := range f.blockingDoorFootprints() {
+		if !d.reach.mayTouch(d.placement.Origin, centre, centre) {
+			continue
+		}
 		contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
 			Placement: *d.placement, From: centre, To: centre,
 		})
@@ -832,7 +878,7 @@ func (f *field) sightBlocksOriginAt(cell spatial.Position) (bool, error) {
 			continue
 		}
 		placement, standing := now.stands(p)
-		if !standing {
+		if !standing || !p.reach.mayTouch(placement.Origin, centre, centre) {
 			continue
 		}
 		contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
@@ -846,6 +892,9 @@ func (f *field) sightBlocksOriginAt(cell spatial.Position) (bool, error) {
 		}
 	}
 	for _, d := range f.blockingDoorFootprints() {
+		if !d.reach.mayTouch(d.placement.Origin, centre, centre) {
+			continue
+		}
 		contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
 			Placement: *d.placement, From: centre, To: centre,
 		})
