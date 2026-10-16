@@ -341,3 +341,50 @@ func (s *WallFootprintSuite) TestAnUnfoundSecretDoorTeachesItsThresholdAsTheWall
 		})
 	}
 }
+
+// TestAWallKnownOnlyByItsMaskedThresholdIsStillPresented: whether the parent
+// wall is presented is answered on the floor as learned, before the
+// masquerade re-marks the threshold. A wall that is nothing but its secret
+// door, seen by a watcher whose light reaches only their own hex, is known
+// only through that threshold; masking it must not withhold the wall the
+// twin's watcher sees.
+func (s *WallFootprintSuite) TestAWallKnownOnlyByItsMaskedThresholdIsStillPresented() {
+	centre := centreOf(cellAt(2, 2))
+	from, to := spatial.Point{X: centre.X - 1, Y: centre.Y}, spatial.Point{X: centre.X + 1, Y: centre.Y}
+	build := func(secret bool) encounter.FieldInput {
+		presence, wall := wallAlong("wall-presence", from, to, 0.3, false)
+		field := placedField(presence)
+		field.StructuralWalls = []encounter.StructuralWallInput{wall}
+		if !secret {
+			field.Placed = append(field.Placed, placed("span", thinWall(2, 0.3, 0, centre), true, true))
+			field.Sealed = []spatial.Position{{X: 2, Y: 2}}
+			return field
+		}
+		leaf := thinWall(2, 0.3, 0, centre)
+		field.Placed = append(field.Placed, placed("door-presence", leaf, false, false))
+		field.Doors = []encounter.DoorInput{{ID: "gate", Placement: &leaf, State: encounter.DoorIsClosed()}}
+		field.StructuralWalls[0].Openings = []encounter.StructuralOpeningInput{{
+			ID: "gap", Position: 1, Width: 2,
+			Door: &encounter.StructuralDoorBindingInput{
+				PlacedID: "door-presence", DoorID: "gate", Ref: "dnd5e:env:test:door", From: from, To: to,
+			},
+		}}
+		field.Concealments = []encounter.ConcealmentInput{{
+			ID: "secret", Checks: vaultCheck(), Props: []encounter.PropID{"door-presence"}, Doors: []encounter.DoorID{"gate"},
+		}}
+		return field
+	}
+	member := encounter.MemberInput{ID: "watcher", Kind: encounter.KindPlayer, Position: cellAt(2, 1)}
+	sight := func() encounter.Sight { return &sightList{reach: map[encounter.MemberID]int{"watcher": 0}} }
+
+	twin, err := s.play(build(false), sight(), member).AtlasFor("watcher")
+	s.Require().NoError(err)
+	blind, err := s.play(build(true), sight(), member).AtlasFor("watcher")
+	s.Require().NoError(err)
+
+	s.Contains(twin.Cells, cellAt(2, 2), "fixture: the twin's watcher learns the hex its wall stands on")
+	s.Equal(twin.Cells, blind.Cells)
+	s.Equal(twin.Sealed, blind.Sealed)
+	s.Equal(encounter.PropID("wall-presence"), s.wallIn(blind, "wall-presence").ID,
+		"the wall is presented, though the only floor it is known by is the threshold it masks")
+}

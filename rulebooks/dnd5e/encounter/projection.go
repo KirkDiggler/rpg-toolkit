@@ -189,9 +189,10 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	// twin learns the hex behind the wall's ([sightReach.seesCell]) — but only
 	// while that wall is presented to this recipient. Where the twin's solid
 	// wall would stand on the hex (its presence covers the centre), the twin
-	// shows a hex nobody stands on, still in its room, with nothing on it. So
-	// a learned threshold there is presented the same way — on the map,
-	// sealed, in its region, its contents withheld — until the door is found.
+	// shows a hex nobody stands on, with nothing on it. So a learned threshold
+	// there is presented the same way — on the map, sealed, its contents
+	// withheld, in its region only when that region is otherwise on the map
+	// (see the region loop) — until the door is found.
 	// Where the twin's wall would not cover it, the twin shows plain floor,
 	// and so does this map. Only LEARNED thresholds: presenting a wall
 	// teaches none.
@@ -277,14 +278,24 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	// A REGION TRIMMED TO WHAT THIS RECIPIENT CAN SEE, and dropped when
 	// nothing of it survives — the never-authored twin of a room that is
 	// wholly a secret has no entry for it at all.
+	//
+	// A MASKED THRESHOLD keeps its region only when that region is on the map
+	// anyway — another of its cells is presented — as the twin's hex stays in
+	// the room around it. A region that would be on the map ONLY through the
+	// threshold (a compiled room partitions the hex a closed door encloses into
+	// its own one-hex space) is not: the threshold is presented ownerless, as
+	// the twin's footing hex is, and no region named after the room marks the
+	// secret door.
 	for _, r := range full.Regions {
 		cells := make([]spatial.Position, 0, len(r.Cells))
+		open := false
 		for _, c := range r.Cells {
 			if !hiddenCells[c] {
 				cells = append(cells, c)
+				open = open || !masked[c]
 			}
 		}
-		if len(cells) == 0 {
+		if !open {
 			continue
 		}
 		entry := r
