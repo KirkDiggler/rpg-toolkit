@@ -1231,13 +1231,15 @@ func TestAConcealmentRevealNamingNoSecretIsRefused(t *testing.T) {
 // a new event kind.
 //
 // It intentionally decodes the EXACT wire bytes the composition emits — the
-// same `id`/`ref`/`from`/`to`/`height`/`thickness`/`elevation`/`openings`
-// spelling the provider's structural_reveal.go writes — so a name drift on
+// same `id`/`ref`/`from`/`to`/`height`/`thickness`/`elevation`/
+// `footprint_cells`/`openings` spelling the provider's structural_reveal.go
+// writes — so a name drift on
 // either side fails here rather than silently dropping the layout.
 func TestStructuralRowsDecodeOnBothRevealBeats(t *testing.T) {
 	wallJSON := `{"id":"wall-presence","ref":"dnd5e:env:test:wall",` +
 		`"from":{"x":0,"y":0},"to":{"x":10,"y":0},` +
 		`"height":3,"thickness":0.3,"elevation":-1.25,` +
+		`"footprint_cells":[{"x":0,"y":0},{"x":1,"y":0}],` +
 		`"openings":[{"id":"gap","position":5,"width":2}]}`
 	doorJSON := `{"id":"vault/gate","ref":"dnd5e:env:test:door",` +
 		`"from":{"x":4,"y":0},"to":{"x":6,"y":0},` +
@@ -1247,7 +1249,8 @@ func TestStructuralRowsDecodeOnBothRevealBeats(t *testing.T) {
 		ID: "wall-presence", Ref: "dnd5e:env:test:wall",
 		From: FootprintPoint{X: 0, Y: 0}, To: FootprintPoint{X: 10, Y: 0},
 		Height: 3, Thickness: 0.3, Elevation: -1.25,
-		Openings: []AtlasStructuralOpening{{ID: "gap", Position: 5, Width: 2}},
+		FootprintCells: []spatial.Position{{X: 0, Y: 0}, {X: 1, Y: 0}},
+		Openings:       []AtlasStructuralOpening{{ID: "gap", Position: 5, Width: 2}},
 	}}
 	wantDoors := []AtlasStructuralDoor{{
 		ID: "vault/gate", Ref: "dnd5e:env:test:door",
@@ -1274,6 +1277,20 @@ func TestStructuralRowsDecodeOnBothRevealBeats(t *testing.T) {
 		revealed, ok := body.(RoomRevealedBody)
 		require.True(t, ok)
 		require.Equal(t, "vault", revealed.Region.ID)
+		require.Equal(t, wantWalls, revealed.StructuralWalls)
+		require.Equal(t, wantDoors, revealed.StructuralDoors)
+	})
+
+	// cells_revealed is the live introduction beat under fog of war: a wall
+	// first glimpsed mid-walk arrives here, and its footprint cells must ride
+	// the row or the client cannot grade the stretch it has seen (R9).
+	t.Run("cells_revealed", func(t *testing.T) {
+		payload := `{"beat":"cells_revealed","regions":[{"id":"vault","cells":[{"x":6,"y":0}]}],` +
+			`"structural_walls":[` + wallJSON + `],"structural_doors":[` + doorJSON + `]}`
+		kind, body := decodeBeat([]byte(payload))
+		require.Equal(t, EventCellsRevealed, kind)
+		revealed, ok := body.(CellsRevealedBody)
+		require.True(t, ok)
 		require.Equal(t, wantWalls, revealed.StructuralWalls)
 		require.Equal(t, wantDoors, revealed.StructuralDoors)
 	})

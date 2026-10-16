@@ -274,6 +274,9 @@ func (s *StructuralSessionSuite) TestOpenDoorCellsRevealCarriesStructuralRows() 
 	s.Require().Len(after.Atlas.StructuralWalls, 1, "the room's wall arrives with the cells that show it")
 	s.Equal(structWallPresence, after.Atlas.StructuralWalls[0].ID)
 	s.Require().Len(after.Atlas.StructuralWalls[0].Openings, 1, "with its permitted cut")
+	s.Require().NotEmpty(after.Atlas.StructuralWalls[0].FootprintCells,
+		"and the hexes its footprint overlaps, so the beat-equals-snapshot check below cannot pass on "+
+			"two empty lists (fog-of-war R9)")
 	s.Require().Len(after.Atlas.StructuralDoors, 1, "and the independent door")
 	s.Equal(structDoorID, after.Atlas.StructuralDoors[0].ID)
 

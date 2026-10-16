@@ -270,7 +270,11 @@
 // permitted, and a withheld opening is omitted whole so a visible wall carries no
 // tell. This seam copies that answer: [Atlas.StructuralWalls] and
 // [Atlas.StructuralDoors] carry the permitted records with their canonical-feet
-// geometry. The cells_revealed and concealment_revealed payloads (and the
+// geometry. A wall also carries FootprintCells, the hexes its blocker
+// footprint overlaps in order along the line (fog-of-war R9): fixed geometry,
+// the same for every recipient, by which a client grades which stretches of
+// the wall the recipient knows through [Atlas.Cells]. The session copies the
+// list and never derives it. The cells_revealed and concealment_revealed payloads (and the
 // deprecated room_revealed one, for stored stories) introduce full records
 // through `structural_walls`/`structural_doors`, and replace a known wall's
 // opening list through `structural_wall_openings_replacements`

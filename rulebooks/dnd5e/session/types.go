@@ -709,6 +709,16 @@ type AtlasStructuralWall struct {
 	Thickness float64 `json:"thickness"`
 	Elevation float64 `json:"elevation"`
 
+	// FootprintCells is every floor cell the wall's presence footprint
+	// overlaps by positive area, in order along the wall from From to To,
+	// carried verbatim from [encounter.AtlasStructuralWall.FootprintCells]
+	// (fog-of-war R9). It is the wall's geometry, known or not, and identical
+	// in every recipient's atlas: which of these cells a recipient knows is
+	// [Atlas.Cells], and a stretch of the wall is known only where one of them
+	// is. A client grades the wall by these cells and never re-derives them
+	// from the line; this seam never derives them either.
+	FootprintCells []spatial.Position `json:"footprint_cells"`
+
 	// Openings is the permitted cut list, in authored order: every bare
 	// opening, and a bound opening only when its door is independently
 	// permitted. A withheld bound opening is omitted WHOLE, so the visible wall
