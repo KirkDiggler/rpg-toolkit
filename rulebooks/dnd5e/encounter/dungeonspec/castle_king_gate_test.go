@@ -16,44 +16,143 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// TestMadKingTheGateIsTheOnlyView is the castle's stone: with the gate shut,
-// the hero sees nothing outside the gatehouse, from the party start or from
-// the gate itself, and opening the gate shows the courtyard. The play block's
-// void is transparent (the single-room dialect accepts nothing else), so the
-// outer walls are what close the view, not the void between the rooms.
-// Opaque void alone would not do it: it stops only the direct ray, and a
-// sight lane can start on a void cell past a wall's end (rpg-toolkit#2068).
-func TestMadKingTheGateIsTheOnlyView(t *testing.T) {
+// TestMadKingEveryRoomHasOneWayIn is the castle's stone. The void is
+// transparent (the single-room dialect accepts nothing else), so walls, not
+// the void between the rooms, close each room. Opaque void alone would not:
+// it stops only the direct ray, and a sight lane can start on a void cell past
+// a wall's end (rpg-toolkit#2068).
+//
+// The gatehouse: with the gate shut the hero sees only the gatehouse, from the
+// party start and from the gate, and the open gate shows the courtyard.
+//
+// The kitchen, the chapel, the great hall and the throne room: with that
+// room's door shut and every other door open, the hero's route from the party
+// start toward any of the room's floor never enters the room, and no cell of
+// it is in sight from anywhere in the yard. With the door open the route walks
+// in, so the shut door is what refuses.
+func TestMadKingEveryRoomHasOneWayIn(t *testing.T) {
 	t.Parallel()
-	s := openTheCastle(t, partyStart(t))
-	gatehouse, ok := s.enc.RegionAt(castleCell(0, 15))
-	require.True(t, ok, "the party start is the gatehouse's floor")
-	courtyard, ok := s.enc.RegionAt(castleCell(0, 4))
-	require.True(t, ok, "the courtyard's floor")
-	seen := func() map[encounter.RegionID]int {
-		out, err := s.enc.VisibleCellsFor(&encounter.VisibleCellsInput{Member: hero})
-		require.NoError(t, err)
-		by := map[encounter.RegionID]int{}
-		for _, cell := range out.Cells {
-			region, ok := s.enc.RegionAt(cell)
-			require.True(t, ok, "%v is floor", cell)
-			by[region]++
+
+	t.Run("the gatehouse", func(t *testing.T) {
+		t.Parallel()
+		s := openTheCastle(t, partyStart(t))
+		gatehouse, ok := s.enc.RegionAt(castleCell(0, 15))
+		require.True(t, ok, "the party start is the gatehouse's floor")
+		courtyard, ok := s.enc.RegionAt(castleCell(0, 4))
+		require.True(t, ok, "the courtyard's floor")
+		onlyTheGatehouse := func(where string) {
+			for region := range s.seenRegions() {
+				require.Equal(t, gatehouse, region, "%s, with the gate shut, the hero sees only the gatehouse", where)
+			}
 		}
-		return by
+
+		onlyTheGatehouse("from the party start")
+		s.walkTo(castleCell(0, 10))
+		onlyTheGatehouse("from the gate")
+		s.open(kingGateDoor)
+		require.NotZero(t, s.seenRegions()[courtyard], "the open gate shows the courtyard")
+	})
+
+	doors := []encounter.DoorID{kingGateDoor, kingHallDoor, kingKitchenDoor, kingChapelDoor, kingThroneDoor}
+	onlyShut := func(shut encounter.DoorID) map[encounter.DoorID]encounter.DoorState {
+		states := map[encounter.DoorID]encounter.DoorState{}
+		for _, d := range doors {
+			states[d] = encounter.DoorIsOpen()
+		}
+		if shut != "" {
+			states[shut] = encounter.DoorIsClosed()
+		}
+		return states
 	}
-	onlyTheGatehouse := func(where string) {
-		for region := range seen() {
-			require.Equal(t, gatehouse, region, "%s, with the gate shut, the hero sees only the gatehouse", where)
-		}
+	// The yard: the courtyard, the barracks and the armoury, along the hall
+	// wall and its partitions, at their far corners and in the middle.
+	yard := []spatial.Position{
+		castleCell(0, -6), castleCell(-14, -6), castleCell(14, -6), castleCell(-15, -6), castleCell(15, -6),
+		castleCell(-26, -6), castleCell(26, -6), castleCell(-20, -5), castleCell(20, -5),
+		castleCell(-20, 2), castleCell(20, 2), castleCell(0, 4),
 	}
 
-	onlyTheGatehouse("from the party start")
-	s.walkTo(castleCell(0, 10))
-	onlyTheGatehouse("from the gate")
-	s.open(kingGateDoor)
-	require.NotZero(t, seen()[courtyard], "the open gate shows the courtyard")
+	for _, room := range []struct {
+		name string
+		door encounter.DoorID
+		in   spatial.Position
+	}{
+		{"the kitchen", kingKitchenDoor, castleCell(-20, -12)},
+		{"the chapel", kingChapelDoor, castleCell(20, -12)},
+		{"the great hall", kingHallDoor, castleCell(0, -12)},
+		{"the throne room", kingThroneDoor, castleCell(0, -20)},
+	} {
+		t.Run(room.name, func(t *testing.T) {
+			t.Parallel()
+			s := openTheCastleWithDoors(t, partyStart(t), onlyShut(room.door))
+			region, ok := s.enc.RegionAt(room.in)
+			require.True(t, ok, "%v is %s's floor", room.in, room.name)
+			floor := s.regionCells(region)
+			require.NotEmpty(t, floor)
+
+			// The route stops beside its anchor, so what it proves is where it
+			// goes: with the door shut, toward no cell of the room does it set
+			// foot in the room.
+			for _, cell := range floor {
+				for _, step := range s.routeFor(cell) {
+					in, _ := s.enc.RegionAt(step)
+					require.NotEqual(t, region, in,
+						"with its door shut, the hero walks toward %v and never into %s", cell, room.name)
+				}
+			}
+
+			for _, from := range yard {
+				v := openTheCastleWithDoors(t, seatAt(from), onlyShut(room.door))
+				require.Zero(t, v.seenRegions()[region],
+					"with its door shut, %s is out of sight from the yard at %v", room.name, from)
+			}
+
+			open := openTheCastleWithDoors(t, partyStart(t), onlyShut(""))
+			path := open.routeFor(room.in)
+			require.NotEmpty(t, path)
+			last, _ := open.enc.RegionAt(path[len(path)-1])
+			require.Equal(t, region, last, "control: with every door open, the hero walks into %s", room.name)
+		})
+	}
+}
+
+// seatAt is the authored offset cell a member is placed at for a
+// dungeon-absolute cell: [castleCell] read backwards.
+func seatAt(cell spatial.Position) spatial.Position {
+	col, row := encounter.OffsetOf(encounter.HexesArePointyTop(), cell)
+
+	return spatial.Position{X: float64(col), Y: float64(row)}
+}
+
+// seenRegions is how many cells of each region the hero sees now.
+func (s *kingScene) seenRegions() map[encounter.RegionID]int {
+	s.t.Helper()
+	out, err := s.enc.VisibleCellsFor(&encounter.VisibleCellsInput{Member: hero})
+	require.NoError(s.t, err)
+	by := map[encounter.RegionID]int{}
+	for _, cell := range out.Cells {
+		region, ok := s.enc.RegionAt(cell)
+		require.True(s.t, ok, "%v is floor", cell)
+		by[region]++
+	}
+
+	return by
+}
+
+// regionCells is every floor cell the file compiles into a region.
+func (s *kingScene) regionCells(id encounter.RegionID) []spatial.Position {
+	s.t.Helper()
+	for _, r := range s.compiled.Field.Regions {
+		if r.ID == id {
+			return r.Cells
+		}
+	}
+	require.FailNowf(s.t, "no such region", "%s", id)
+
+	return nil
 }
 
 // TestMadKingFrontDoor is the front door: the hero comes in at the party
@@ -121,6 +220,7 @@ func TestMadKingTroupe(t *testing.T) {
 	s.said(kingCook, "gossip", "persuasion", true)
 	require.True(t, s.learners("feast-tonight")[hero], "the cook told the hero")
 
+	s.outOfTheKitchen()
 	s.throughTheGate(kingCaptain)
 	s.said(kingCaptain, "troupe", "performance", true)
 	require.Empty(t, s.learners("party-recognized"), "a troupe that passes writes nothing")
@@ -128,7 +228,6 @@ func TestMadKingTroupe(t *testing.T) {
 	gatehouse, ok := s.enc.RegionAt(castleCell(0, 15))
 	require.True(t, ok, "the party start is the gatehouse's floor")
 	s.walkTo(castleCell(0, -6))
-	s.open(kingHallDoor)
 	s.walkTo(castleCell(-6, -10))
 
 	// THE GATE'S HALF, AND ONLY IT. From the hall door the hero is in line
@@ -138,7 +237,7 @@ func TestMadKingTroupe(t *testing.T) {
 	// there is a loyalist fight, which the disguise never covered (§1), so
 	// this route asserts the garrison and says nothing either way about the
 	// keep.
-	t.Run("the party came through the gate and opened the hall", func(t *testing.T) {
+	t.Run("the party came through the gate and into the hall", func(t *testing.T) {
 		here, ok := s.enc.RegionAt(s.at(hero))
 		require.True(t, ok)
 		require.NotEqual(t, gatehouse, here, "the hero is past the gate")
@@ -170,6 +269,7 @@ func TestMadKingTroupeBlown(t *testing.T) {
 	t.Parallel()
 	s := openTheCastle(t, besideTheCook)
 	s.said(kingCook, "gossip", "persuasion", true)
+	s.outOfTheKitchen()
 	s.throughTheGate(kingCaptain)
 	require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, kingCaptain),
 		"precondition: the hero stands in front of the captain, and nobody is fighting")
@@ -218,6 +318,7 @@ func TestMadKingScout(t *testing.T) {
 	s.said(kingCook, "ashford", "persuasion", true)
 	require.True(t, s.learners("king-burned-village")[hero], "precondition: the hero knows")
 
+	s.outOfTheKitchen()
 	s.throughTheGate(kingGate1)
 
 	t.Run("control: the captain would hear the line from this hero", func(t *testing.T) {

@@ -24,8 +24,8 @@ import (
 // `storm-the-keep` table writes it.
 var throneCell = castleCell(0, -19)
 
-// turnTheGarrison is the turn: the cook's gossip and Ashford, the hall door
-// opened on the way back across the yard, the gate opened, and the captain
+// turnTheGarrison is the turn: the cook's gossip and Ashford, out of the
+// kitchen through the great hall, the gate opened, and the captain
 // told what his king did. It returns where every member stood just before
 // he heard it.
 func turnTheGarrison(t *testing.T) (*kingScene, map[encounter.MemberID]spatial.Position) {
@@ -33,8 +33,7 @@ func turnTheGarrison(t *testing.T) (*kingScene, map[encounter.MemberID]spatial.P
 	s := openTheCastle(t, besideTheCook)
 	s.said(kingCook, "gossip", "persuasion", true)
 	s.said(kingCook, "ashford", "persuasion", true)
-	s.walkTo(castleCell(0, -6))
-	s.open(kingHallDoor)
+	s.outOfTheKitchen()
 	s.throughTheGate(kingCaptain)
 	posts := map[encounter.MemberID]spatial.Position{}
 	members, err := s.enc.Members()

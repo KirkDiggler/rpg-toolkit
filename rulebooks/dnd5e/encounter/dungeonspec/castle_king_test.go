@@ -59,14 +59,20 @@ const (
 	loyalists = encounter.FactionID("loyalists")
 )
 
-// The castle's doors, by the compiled ids of the studio's wall doors. Both
-// shut, as the file authors them.
+// The castle's doors, by the compiled ids of the studio's wall doors. The
+// file shuts every one but the throne room's.
 const (
 	// kingGateDoor is the gatehouse's one way into the courtyard.
 	kingGateDoor = encounter.DoorID("the-mad-king/gate-wall-door")
 
 	// kingHallDoor is the courtyard's door into the great hall.
 	kingHallDoor = encounter.DoorID("the-mad-king/hall-wall-door")
+
+	// kingKitchenDoor, kingChapelDoor and kingThroneDoor are the great
+	// hall's doors into the kitchen, the chapel and the throne room.
+	kingKitchenDoor = encounter.DoorID("the-mad-king/kitchen-wall-door")
+	kingChapelDoor  = encounter.DoorID("the-mad-king/chapel-wall-door")
+	kingThroneDoor  = encounter.DoorID("the-mad-king/throne-wall-door")
 )
 
 // castleCell is the dungeon-absolute cell of an offset [col, row] on the
@@ -102,7 +108,21 @@ type kingScene struct {
 // every creature where the file posts it, carrying what the file compiled.
 func openTheCastle(t *testing.T, at spatial.Position) *kingScene {
 	t.Helper()
+
+	return openTheCastleWithDoors(t, at, nil)
+}
+
+// openTheCastleWithDoors is [openTheCastle] with some doors starting in a
+// state the file does not give them, so a test can stand a room's door shut
+// with every other door open without walking a hero to each.
+func openTheCastleWithDoors(t *testing.T, at spatial.Position, doors map[encounter.DoorID]encounter.DoorState) *kingScene {
+	t.Helper()
 	compiled := loadContent(t, kingFixture)
+	for i := range compiled.Field.Doors {
+		if state, ok := doors[compiled.Field.Doors[i].ID]; ok {
+			compiled.Field.Doors[i].State = state
+		}
+	}
 
 	members := []encounter.MemberInput{{ID: hero, Kind: encounter.KindPlayer, Position: at}}
 	for _, m := range compiled.Monsters {
@@ -206,6 +226,20 @@ func (s *kingScene) open(door encounter.DoorID) {
 	s.t.Helper()
 	_, err := s.enc.OpenDoor(&encounter.OpenDoorInput{Door: door, Actor: hero})
 	require.NoError(s.t, err, "the hero reaches %s", door)
+}
+
+// outOfTheKitchen brings the hero from the kitchen to the yard by the only
+// way there is: the kitchen door into the great hall, across the hall, and
+// out by the hall door, which it leaves open.
+func (s *kingScene) outOfTheKitchen() {
+	s.t.Helper()
+	// Toward the door's own cell, which its shut leaf covers: the walk ends
+	// beside it, in reach.
+	s.walkTo(castleCell(-15, -11))
+	s.open(kingKitchenDoor)
+	// Toward the yard cell past the shut hall door: the walk ends inside it.
+	s.walkTo(castleCell(0, -6))
+	s.open(kingHallDoor)
 }
 
 // throughTheGate brings the hero from the courtyard to the gate door, opens

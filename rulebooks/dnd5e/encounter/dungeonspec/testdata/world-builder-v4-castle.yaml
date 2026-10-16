@@ -20,8 +20,13 @@
 # king), drops the workspace's two stray map labels that sat in no room, and
 # draws the castle's outer walls: twelve wall lines along the eight rooms'
 # outer edges, no openings, so the gate door is the gatehouse's only view as
-# well as its only way in. The void stays transparent, the only value this
-# dialect accepts; the walls, not the void, close the rooms.
+# well as its only way in. Two partitions carry the hall wall's line on to
+# the keep's sides, so the kitchen and chapel no longer open on the barracks
+# and armoury, and the chapel wall stands on the hex boundary between the
+# hall and the chapel rather than on the hall's edge cells. Every room with a
+# door is entered only through it; the barracks and armoury stay open to the
+# courtyard. The void stays transparent, the only value this dialect accepts;
+# the walls, not the void, close the rooms.
 #
 # THE CASTLE. The garrison keeps the gate and the hall, and its mind is the
 # captain: it is civil to the party until the party is recognized, and civil
@@ -3581,10 +3586,10 @@ room:
         label: chapel-wall
         line:
           start:
-            x: 25.1
+            x: 25.54774941164094
             z: -24.75
           end:
-            x: 25.1
+            x: 25.54774941164094
             z: -9.75
         appearance:
           assetRef: dnd5e:env:dark-fortress:45_wall_01
@@ -3907,6 +3912,52 @@ room:
           blocksLineOfSight: true
           footprint:
             width: 16.454482671904334
+            depth: 0.5
+            offsetX: 0
+            offsetZ: 0
+        openings: []
+      - id: kitchen-south-wall
+        label: kitchen-south-wall
+        line:
+          start:
+            x: -45.89934640057525
+            z: -9.75
+          end:
+            x: -25
+            z: -9.75
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint:
+            width: 20.899346400575247
+            depth: 0.5
+            offsetX: 0
+            offsetZ: 0
+        openings: []
+      - id: chapel-south-wall
+        label: chapel-south-wall
+        line:
+          start:
+            x: 25
+            z: -9.75
+          end:
+            x: 46.76537180435968
+            z: -9.75
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint:
+            width: 21.76537180435968
             depth: 0.5
             offsetX: 0
             offsetZ: 0
