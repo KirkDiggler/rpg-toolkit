@@ -1275,7 +1275,7 @@ type AnswerSpec struct {
 	// may still be written as a single mapping, which reads as a list of one:
 	//
 	//	- { when: { enemy: seen }, toward: enemy }
-	//	- { when: [{ fact: guards-turned }, { not: { enemy: seen } }], toward: { at: [20, 12] } }
+	//	- { when: [{ fact: guards-turned }, { enemy: none }], toward: { at: [20, 12] } }
 	When WhenListSpec `yaml:"when,omitempty"`
 
 	// Hold is `hold: {}` — the creature does nothing with its time. `time`
