@@ -123,7 +123,7 @@ func DecodeSingleRoom(in SingleRoomDecodeInput) (*SingleRoomDecodeResult, error)
 		// words, the same translation [Decode] runs — see unknown_key.go. The
 		// two dialects share the shapes and they share the refusal
 		// (rpg-project#481, R2).
-		errs := decodeErrors(err, in.Source)
+		errs := decodeErrorsIn(err, in.Source, singleRoomCells{}.forms())
 		// Typed decoding can fail before the normal shape walk (for example
 		// an attempts list where a mapping belongs). Preserve its error and
 		// also report source-shape defects at their authoring paths.

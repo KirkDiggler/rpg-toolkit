@@ -1174,8 +1174,12 @@ var laterWords = map[string]string{
 
 // patrolRefusal is the sentence `patrol` is refused with (rpg-project#569 R7).
 // The word was named before it was built, and what was built is a route on
-// `toward`, so the refusal says what to write rather than that it is missing.
-const patrolRefusal = "`patrol` is not a word: a patrol is a route, write toward: { path: [[col, row], …] }"
+// `toward`, so the refusal says what to write rather than that it is missing
+// — and what to write is a route in the reading dialect's own spelling
+// ([spelledRefusal]).
+func patrolRefusal(f cellForms) string {
+	return "`patrol` is not a word: a patrol is a route, write toward: { path: " + f.route + " }"
+}
 
 // AnswerSpec is ONE ENTRY in an outcome's table: how likely it is, what the
 // creature says, and the one thing it does.
@@ -1746,8 +1750,29 @@ type SelectorSpec struct {
 	Line int
 }
 
+// cellForms is how a dialect spells a cell and a route, for the hints its
+// refusals give. Each frame names its own ([floorCells.forms],
+// [singleRoomCells.forms]).
+type cellForms struct {
+	cell, route string
+}
+
+// spelledRefusal is a DECODE refusal whose hint names a cell spelling. The
+// decoder cannot tell the dialects apart — the selector and answer types are
+// shared — so the refusal carries its sentence unspelt, and the dialect that
+// read the file spells it with its own frame's forms ([decodeErrorsIn]). Its
+// Error is the v2 spelling, word for word what v2 authors have always read.
+type spelledRefusal struct {
+	say func(cellForms) string
+}
+
+// Error is the refusal in the v2 dialect's spelling.
+func (e spelledRefusal) Error() string { return e.say(floorCells{}.forms()) }
+
 // selectorForms is the forms a selector takes, for the decode refusals.
-const selectorForms = "or { at: [col, row] }, or { path: [[col, row], …] }"
+func selectorForms(f cellForms) string {
+	return "or { at: " + f.cell + " }, or { path: " + f.route + " }"
+}
 
 // UnmarshalYAML reads one selector, refusing a word outside the sealed list
 // and a mapping that names anything but `at` or `path`. How many targets a
@@ -1759,9 +1784,12 @@ func (sel *SelectorSpec) UnmarshalYAML(value *yaml.Node) error {
 
 	if value.Kind == yaml.ScalarNode {
 		if !knownSelectorWord(value.Value) {
-			return fmt.Errorf("line %d: %q is not a selector this build resolves: they are %s, "+
-				selectorForms,
-				value.Line, value.Value, strings.Join(selectorWords(), ", "))
+			line, word := value.Line, value.Value
+
+			return spelledRefusal{say: func(f cellForms) string {
+				return fmt.Sprintf("line %d: %q is not a selector this build resolves: they are %s, %s",
+					line, word, strings.Join(selectorWords(), ", "), selectorForms(f))
+			}}
 		}
 		sel.Word = value.Value
 
@@ -1769,8 +1797,12 @@ func (sel *SelectorSpec) UnmarshalYAML(value *yaml.Node) error {
 	}
 
 	if value.Kind != yaml.MappingNode {
-		return fmt.Errorf("line %d: a selector is one of %s, "+selectorForms,
-			value.Line, strings.Join(selectorWords(), ", "))
+		line := value.Line
+
+		return spelledRefusal{say: func(f cellForms) string {
+			return fmt.Sprintf("line %d: a selector is one of %s, %s",
+				line, strings.Join(selectorWords(), ", "), selectorForms(f))
+		}}
 	}
 	for i := 0; i+1 < len(value.Content); i += 2 {
 		body := value.Content[i+1]
@@ -2031,7 +2063,11 @@ func (r *AnswerSpec) UnmarshalYAML(value *yaml.Node) error {
 			return fmt.Errorf("line %d: `%s` is %s (rpg-project#458)", value.Content[i].Line, key, why)
 		}
 		if key == "patrol" {
-			return fmt.Errorf("line %d: %s", value.Content[i].Line, patrolRefusal)
+			line := value.Content[i].Line
+
+			return spelledRefusal{say: func(f cellForms) string {
+				return fmt.Sprintf("line %d: %s", line, patrolRefusal(f))
+			}}
 		}
 		switch key {
 		case "weight", "say", "when", "fact", "flee", "hold", "attack", "toward", "away":

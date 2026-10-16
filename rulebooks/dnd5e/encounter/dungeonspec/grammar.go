@@ -267,6 +267,11 @@ func (f floorCells) onFloor(cell spatial.Position) bool {
 	return ok
 }
 
+// forms is how a v2 author spells a cell and a route, for a refusal's hint.
+func (floorCells) forms() cellForms {
+	return cellForms{cell: "[col, row]", route: "[[col, row], …]"}
+}
+
 // spell writes a cell as the v2 author did: an offset pair.
 func (f floorCells) spell(cell spatial.Position) string {
 	col, row := encounter.OffsetOf(f.orientation, cell)

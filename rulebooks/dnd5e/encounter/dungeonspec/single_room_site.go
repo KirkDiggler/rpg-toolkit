@@ -103,6 +103,12 @@ func (f singleRoomCells) cellAt(at authoredCell) cellAnswer {
 
 func (f singleRoomCells) onFloor(cell spatial.Position) bool { return f.walkable[cell] }
 
+// forms is how this dialect's author spells a cell and a route, for a
+// refusal's hint ([spelledRefusal]).
+func (singleRoomCells) forms() cellForms {
+	return cellForms{cell: "{ q, r }", route: "[{ q, r }, …]"}
+}
+
 // spell writes a cell as this dialect's author does: `{q: …, r: …}`.
 func (singleRoomCells) spell(cell spatial.Position) string {
 	return fmt.Sprintf("{q: %d, r: %d}", int(cell.X), int(cell.Y))

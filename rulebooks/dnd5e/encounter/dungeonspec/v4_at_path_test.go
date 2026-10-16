@@ -304,3 +304,29 @@ func TestADefaultTableCannotNameAnAxialCell(t *testing.T) {
 		require.Contains(t, err.Error(), "belongs to a kind and not to a map")
 	}
 }
+
+// TestTheDecodeHintsSpeakTheRoomsSpelling: the bad-selector and `patrol`
+// refusals are the decoder's, shared by both dialects, and their hint names a
+// cell spelling. A single-room author is told to write `{ q, r }`; a v2 author
+// still reads `[col, row]` word for word (hearing_test.go, table_test.go).
+func TestTheDecodeHintsSpeakTheRoomsSpelling(t *testing.T) {
+	raw, err := os.ReadFile(v4PatrolsPath)
+	require.NoError(t, err)
+	for name, tc := range map[string]struct{ repl, want string }{
+		"a word nothing resolves": {"toward: sideways",
+			`"sideways" is not a selector this build resolves: they are enemy, attacker, actor, sound, ` +
+				"or { at: { q, r } }, or { path: [{ q, r }, …] }"},
+		"a selector that is a list": {"toward: [1, 1]",
+			"a selector is one of enemy, attacker, actor, sound, or { at: { q, r } }, or { path: [{ q, r }, …] }"},
+		"`patrol`": {"patrol: {}",
+			"`patrol` is not a word: a patrol is a route, write toward: { path: [{ q, r }, …] }"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := Load(swapOneIn(t, raw, keepAt, tc.repl))
+			require.Error(t, err)
+			require.ErrorIs(t, err, ErrBadSpec)
+			require.Contains(t, err.Error(), tc.want)
+			require.NotContains(t, err.Error(), "[col, row]", "no v2 spelling reaches a room author")
+		})
+	}
+}
