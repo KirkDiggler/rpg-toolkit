@@ -1148,6 +1148,16 @@ func selectorOf(sel *SelectorSpec, o encounter.Orientation) *encounter.Selector 
 	for _, waypoint := range sel.Path {
 		out.Path = append(out.Path, encounter.HexCellAt(o, waypoint[0], waypoint[1]))
 	}
+	// THE SINGLE ROOM'S SPELLING NEEDS NO ORIENTATION: its axial `{ q, r }`
+	// already is the dungeon-absolute cell (rpg-project#605). A validated
+	// document never carries both spellings — each dialect refuses the other's.
+	if sel.AtHex != nil {
+		at := hexCell(*sel.AtHex)
+		out.At = &at
+	}
+	for _, waypoint := range sel.PathHex {
+		out.Path = append(out.Path, hexCell(waypoint))
+	}
 
 	return out
 }
@@ -1210,7 +1220,7 @@ func CompileTable(source string) (encounter.Table, error) {
 	// from being asked a question it cannot have.
 	for key, entries := range on {
 		for _, entry := range entries {
-			if _, sel := entrySelectorOf(entry); sel != nil && (sel.At != nil || len(sel.Path) > 0) {
+			if _, sel := entrySelectorOf(entry); sel != nil && (sel.At != nil || len(sel.Path) > 0 || sel.AtHex != nil || len(sel.PathHex) > 0) {
 				return nil, fmt.Errorf(
 					"compile table: %w: %s: a default table belongs to a kind and not to a map, "+
 						"so it cannot name a cell or a route (line %d)",

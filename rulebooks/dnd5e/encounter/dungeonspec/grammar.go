@@ -37,9 +37,10 @@ import (
 //     which side it is on. A faction's `mind:`, a `{ down: … }` predicate, the
 //     faction-of-one rule and an orders block naming nobody are all questions
 //     about that index and nothing else.
-//   - [cells], the frame a `{ at: [col, row] }` selector resolves in. The v2
-//     dialect looks the pair up in the floor it validated; the single room
-//     names no cell at all, and says so in one sentence.
+//   - [cells], the frame a cell or route selector resolves in. The v2
+//     dialect looks an offset pair up in the floor it validated; the single
+//     room looks an axial `{ q, r }` up in its walkable hexes. Each refuses
+//     the other's spelling in one sentence.
 //
 // A validator that needs a THIRD input from the dialect is a design change,
 // not another parameter (rpg-project#484, R1).
@@ -146,35 +147,84 @@ func (m members) at(id string) (member, bool) {
 	return m.all[i], true
 }
 
+// authoredCell is one cell a selector names, in whichever spelling the author
+// wrote: an offset pair (the v2 frame) or an axial `{ q, r }` (the single
+// room's). Exactly one is set. Which spelling is LEGAL is the dialect's
+// answer, never the grammar's ([cells]).
+type authoredCell struct {
+	offset *[2]int
+	hex    *RoomCell
+}
+
+// selectorCell is the one cell a selector names, and whether it names one.
+func selectorCell(sel *SelectorSpec) (authoredCell, bool) {
+	switch {
+	case sel.AtHex != nil:
+		return authoredCell{hex: sel.AtHex}, true
+	case sel.At != nil:
+		return authoredCell{offset: sel.At}, true
+	default:
+		return authoredCell{}, false
+	}
+}
+
+// selectorRoute is the route a selector names, each waypoint in its authored
+// spelling. A route that mixes the two spellings is refused whole by the
+// dialect for the spelling that is not its own, so the order the two halves
+// come back in here never reaches an author.
+func selectorRoute(sel *SelectorSpec) []authoredCell {
+	out := make([]authoredCell, 0, len(sel.Path)+len(sel.PathHex))
+	for i := range sel.Path {
+		out = append(out, authoredCell{offset: &sel.Path[i]})
+	}
+	for i := range sel.PathHex {
+		out = append(out, authoredCell{hex: &sel.PathHex[i]})
+	}
+
+	return out
+}
+
 // cellAnswer is what a dialect says about the cell a selector named.
 type cellAnswer struct {
-	// framed is whether this dialect has a frame to resolve an authored pair
-	// in at all. When it is false the refusal is the WHOLE defect and the
-	// word carrying the cell is never judged: the frame is the mistake, and
+	// framed is whether the authored cell is spelt in this dialect's frame
+	// at all. When it is false the refusal is the WHOLE defect and the word
+	// carrying the cell is never judged: the spelling is the mistake, and
 	// two messages for one mistake sends an author looking for a second
 	// problem.
 	framed bool
 
-	// refusal is why the pair is not somewhere to walk to, or "" when it is.
+	// refusal is why the cell is not somewhere to walk to, or "" when it is.
 	refusal string
 
-	// routeRefusal is the dialect's sentence for a `path` when it has no
-	// frame — said once for the route rather than once per waypoint. Empty
-	// for a framed dialect, which judges each waypoint by refusal above.
+	// routeRefusal is the dialect's sentence for a `path` with a waypoint
+	// spelt in the other dialect's frame — said once for the route rather
+	// than once per waypoint. Empty when framed.
 	routeRefusal string
+
+	// cell is the dungeon-absolute cell the authored one names, when framed:
+	// what a route's legs are drawn between.
+	cell spatial.Position
 }
 
-// cells is the dialect's frame: what an authored `{ at: [col, row] }` inside
-// a selector means, and whether a creature can be sent there.
+// cells is the dialect's frame: what an authored cell inside a selector
+// means, whether a creature can be sent there, and how a cell the engine
+// computed is written back in the author's own coordinates.
 //
-// THE GRAMMAR OWNS NO CELLS (rpg-project#484, R2). The v2 dialect resolves the
-// pair through the orientation its document declares and looks it up in the
-// floor its regions painted ([floorCells]). The single room declares no
-// orientation and its own cells are axial, so the same authored bytes would
-// name two different cells in the two dialects, and it names none
-// ([singleRoomCells]).
+// THE GRAMMAR OWNS NO CELLS (rpg-project#484, R2). The v2 dialect resolves an
+// offset pair through the orientation its document declares and looks it up
+// in the floor its regions painted ([floorCells]). The single room declares
+// no orientation; its frame is the axial `{ q, r }` its walkable hexes are
+// written in, and a cell must be one of them ([singleRoomCells];
+// rpg-project#605). Each refuses the other's spelling, so the same authored
+// bytes never name two different cells in the two dialects.
+//
+// The route rules — a leg off the floor, two legs sharing a cell — are the
+// grammar's ([grammar.routeLegs]), asked through [cells.onFloor] and spoken
+// through [cells.spell], so both dialects keep them in one statement.
 type cells interface {
-	cellAt(at [2]int) cellAnswer
+	cellAt(at authoredCell) cellAnswer
+	onFloor(cell spatial.Position) bool
+	spell(cell spatial.Position) string
 }
 
 // floorCells is the v2 dialect's frame: the orientation the document declared,
@@ -184,14 +234,49 @@ type floorCells struct {
 	owner       map[spatial.Position]int
 }
 
+// The v2 dialect's refusals of the single room's spelling. A v2 file that
+// writes `{ q, r }` used to fail at decode in the parser's words; it decodes
+// now, because the decoder cannot tell the dialects apart, and this is the
+// dialect saying which spelling is its own.
+const (
+	v2AxialCell = "at names a cell of this document in its orientation, written [col, row]: " +
+		"{ q, r } is the single-room dialect's axial cell"
+	v2AxialRoute = "path names a route of this document's cells, each written [col, row]: " +
+		"{ q, r } is the single-room dialect's axial cell"
+)
+
 // cellAt resolves an authored pair against that floor, refusing a cell nobody
 // could walk to in the author's own coordinates.
-func (f floorCells) cellAt(at [2]int) cellAnswer {
-	if _, onFloor := f.owner[encounter.HexCellAt(f.orientation, at[0], at[1])]; !onFloor {
-		return cellAnswer{framed: true, refusal: fmt.Sprintf("this walks to [%d,%d], which is not floor", at[0], at[1])}
+func (f floorCells) cellAt(at authoredCell) cellAnswer {
+	if at.offset == nil {
+		return cellAnswer{refusal: v2AxialCell, routeRefusal: v2AxialRoute}
+	}
+	cell := encounter.HexCellAt(f.orientation, at.offset[0], at.offset[1])
+	if !f.onFloor(cell) {
+		return cellAnswer{framed: true, cell: cell,
+			refusal: fmt.Sprintf("this walks to %s, which is not floor", f.spell(cell))}
 	}
 
-	return cellAnswer{framed: true}
+	return cellAnswer{framed: true, cell: cell}
+}
+
+// onFloor reports whether a region painted the cell.
+func (f floorCells) onFloor(cell spatial.Position) bool {
+	_, ok := f.owner[cell]
+
+	return ok
+}
+
+// forms is how a v2 author spells a cell and a route, for a refusal's hint.
+func (floorCells) forms() cellForms {
+	return cellForms{cell: "[col, row]", route: "[[col, row], …]"}
+}
+
+// spell writes a cell as the v2 author did: an offset pair.
+func (f floorCells) spell(cell spatial.Position) string {
+	col, row := encounter.OffsetOf(f.orientation, cell)
+
+	return fmt.Sprintf("[%d,%d]", col, row)
 }
 
 // grammarInput is what a dialect hands the grammar: where defects go, the
@@ -511,23 +596,24 @@ func (g *grammar) wordLegality(at, key string, words []string, entry AnswerSpec)
 // stand, an `actor` with no deed to have been the actor of, and a cell the
 // dialect cannot send anybody to.
 //
-// THE FRAME COMES FIRST, and when the dialect has none it is the whole
-// answer: a single room refuses the authored pair outright and the word
-// carrying it is never judged, because the frame is the mistake. A dialect
-// that HAS a frame judges the word next — a cell is somewhere to walk toward,
-// never something to attack — and only then asks whether that cell is floor.
+// THE FRAME COMES FIRST, and a cell spelt in the other dialect's frame is the
+// whole answer: the authored cell is refused outright and the word carrying
+// it is never judged, because the spelling is the mistake. A cell spelt in
+// this dialect's frame judges the word next — a cell is somewhere to walk
+// toward, never something to attack — and only then asks whether that cell
+// is floor.
 func (g *grammar) entrySelector(at, _ string, entry AnswerSpec) {
 	word, sel := entrySelectorOf(entry)
 	if sel == nil {
 		return
 	}
-	if len(sel.Path) > 0 {
-		g.entryRoute(at, word, sel)
+	if route := selectorRoute(sel); len(route) > 0 {
+		g.entryRoute(at, word, route)
 
 		return
 	}
-	if sel.At != nil {
-		answer := g.cells.cellAt(*sel.At)
+	if cell, ok := selectorCell(sel); ok {
+		answer := g.cells.cellAt(cell)
 		if !answer.framed {
 			g.fail(at+"."+word+".at", "%s", answer.refusal)
 
@@ -552,34 +638,40 @@ func (g *grammar) entrySelector(at, _ string, entry AnswerSpec) {
 	}
 }
 
-// entryRoute refuses a `path` the dialect cannot walk: in a dialect with no
-// frame for its cells, or through a waypoint that is not floor — the frame
-// and floor questions [grammar.entrySelector] asks of an `at`, asked of every
-// waypoint. A route on a word that does not walk one is mind/behavior's
-// refusal ([grammar.entryShape]), so its waypoints are not judged as well:
-// one mistake, one defect.
-func (g *grammar) entryRoute(at, word string, sel *SelectorSpec) {
-	first := g.cells.cellAt(sel.Path[0])
-	if !first.framed {
-		g.fail(at+"."+word+".path", "%s", first.routeRefusal)
+// entryRoute refuses a `path` the dialect cannot walk: a waypoint spelt in
+// the other dialect's frame, or one that is not floor — the frame and floor
+// questions [grammar.entrySelector] asks of an `at`, asked of every waypoint.
+// A route on a word that does not walk one is mind/behavior's refusal
+// ([grammar.entryShape]), so its waypoints are not judged as well: one
+// mistake, one defect.
+func (g *grammar) entryRoute(at, word string, route []authoredCell) {
+	path := at + "." + word + ".path"
+	answers := make([]cellAnswer, 0, len(route))
+	for _, waypoint := range route {
+		answer := g.cells.cellAt(waypoint)
+		if !answer.framed {
+			g.fail(path, "%s", answer.routeRefusal)
 
-		return
+			return
+		}
+		answers = append(answers, answer)
 	}
 	if word != "toward" {
 		return
 	}
 	floorDefect := false
-	for i, waypoint := range sel.Path {
-		if answer := g.cells.cellAt(waypoint); answer.refusal != "" {
-			g.fail(fmt.Sprintf("%s.%s.path[%d]", at, word, i), "%s", answer.refusal)
+	cells := make([]spatial.Position, 0, len(answers))
+	for i, answer := range answers {
+		if answer.refusal != "" {
+			g.fail(fmt.Sprintf("%s[%d]", path, i), "%s", answer.refusal)
 			floorDefect = true
 		}
+		cells = append(cells, answer.cell)
 	}
-	frame, ok := g.cells.(floorCells)
-	if !ok || floorDefect {
+	if floorDefect {
 		return
 	}
-	g.routeLegs(at+"."+word+".path", frame, sel.Path)
+	g.routeLegs(path, cells)
 }
 
 // routeLegs asks the two questions a route's LEGS raise, once its waypoints
@@ -587,27 +679,23 @@ func (g *grammar) entryRoute(at, word string, sel *SelectorSpec) {
 // route retrace itself. A leg is the hex line the creature walks between two
 // waypoints ([encounter.RetracedCell]'s legs), so a wall of void across that
 // line is a patrol that would stop dead there, and two legs sharing a cell is
-// a creature on both. Both are named in the author's own offset pairs.
-func (g *grammar) routeLegs(path string, frame floorCells, authoredPath [][2]int) {
-	cells := make([]spatial.Position, 0, len(authoredPath))
-	for _, w := range authoredPath {
-		cells = append(cells, encounter.HexCellAt(frame.orientation, w[0], w[1]))
-	}
+// a creature on both. Both are named in the author's own coordinates, through
+// the dialect's [cells.spell], and asked of the dialect's own floor — the
+// rules live here, below either dialect, so they are the same in both.
+func (g *grammar) routeLegs(path string, cells []spatial.Position) {
 	for i := range cells {
 		for _, cell := range encounter.LegLine(cells[i], cells[(i+1)%len(cells)]) {
-			col, row := encounter.OffsetOf(frame.orientation, cell)
-			if answer := frame.cellAt([2]int{col, row}); answer.refusal != "" {
-				g.fail(path, "leg %d of this route walks through [%d,%d], which is not floor: "+
-					"move a waypoint so the line between them stays on the floor", i+1, col, row)
+			if !g.cells.onFloor(cell) {
+				g.fail(path, "leg %d of this route walks through %s, which is not floor: "+
+					"move a waypoint so the line between them stays on the floor", i+1, g.cells.spell(cell))
 
 				return
 			}
 		}
 	}
 	if cell, retraced := encounter.RetracedCell(cells); retraced {
-		col, row := encounter.OffsetOf(frame.orientation, cell)
-		g.fail(path, "this route retraces itself at [%d,%d]: a patrol walks a loop — "+
-			"add a waypoint so no leg crosses another", col, row)
+		g.fail(path, "this route retraces itself at %s: a patrol walks a loop — "+
+			"add a waypoint so no leg crosses another", g.cells.spell(cell))
 	}
 }
 

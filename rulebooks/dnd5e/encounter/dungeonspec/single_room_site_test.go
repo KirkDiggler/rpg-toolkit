@@ -161,25 +161,23 @@ func TestSingleRoomSiteRefusals(t *testing.T) {
 			want: FieldError{Path: "room.room.monsterBindings.ghost-9", Message: "must name a live room monster"},
 		},
 		{
-			name: "a cell selector, which this dialect has no frame for",
+			name: "an offset cell, which is not this dialect's spelling",
 			old:  "            - {when: {enemy: reach}, hold: {}}",
 			repl: "            - {when: {enemy: none}, toward: {at: [3, 4]}}",
 			want: FieldError{
 				Path: "room.room.monsterBindings.goblin-1.on.time[0].toward.at",
-				Message: "at is not a place a single room can name yet: its cells are axial and the selector's " +
-					"cell is an offset in a document orientation this dialect does not have; " +
-					"name enemy, attacker, actor or sound, or wait for the sites layer",
+				Message: "at names a cell of this room, written { q, r } as its walkable hexes are: " +
+					"[col, row] is an offset in a document orientation this dialect does not have",
 			},
 		},
 		{
-			name: "a cell under a word that is not `toward`, which is still the frame's defect",
+			name: "an offset cell under a word that is not `toward`, which is still the spelling's defect",
 			old:  "            - {when: {enemy: reach}, hold: {}}",
 			repl: "            - {when: {enemy: none}, attack: {at: [3, 4]}}",
 			want: FieldError{
 				Path: "room.room.monsterBindings.goblin-1.on.time[0].attack.at",
-				Message: "at is not a place a single room can name yet: its cells are axial and the selector's " +
-					"cell is an offset in a document orientation this dialect does not have; " +
-					"name enemy, attacker, actor or sound, or wait for the sites layer",
+				Message: "at names a cell of this room, written { q, r } as its walkable hexes are: " +
+					"[col, row] is an offset in a document orientation this dialect does not have",
 			},
 		},
 		{
@@ -516,16 +514,14 @@ func TestTheSiteScopeShapeWalkNamesItsDefects(t *testing.T) {
 	}
 }
 
-// TestTheFactionLevelCellSelectorIsRefusedToo is the `at` refusal one layer
-// up (rpg-project#484, design §3). A faction's inherited `on:` block is judged
-// by the same grammar a creature's own is, and a single room has no more of a
-// frame for a cell there than it has inside a binding — so the sentence and
-// the shape of the path are the same, with `factions[0]` in front of it
-// instead of the creature's id.
-//
-// It was reachable and pinned by nothing until the grammar split; #1834's
-// review named it and deferred it here.
-func TestTheFactionLevelCellSelectorIsRefusedToo(t *testing.T) {
+// TestTheFactionLevelOffsetCellIsRefusedToo pins the faction-level spelling
+// refusal (rpg-project#484, design §3; rpg-project#605). A faction's inherited
+// `on:` block is judged by the same grammar a creature's own is, so an offset
+// pair is no more this dialect's spelling there than inside a binding — the
+// sentence and the shape of the path are the same, with `factions[0]` in front
+// of it instead of the creature's id. The axial spelling at the same level is
+// TestTheFactionLevelCellTakesTheRoomFrameToo's.
+func TestTheFactionLevelOffsetCellIsRefusedToo(t *testing.T) {
 	raw, err := os.ReadFile(v4SitePath)
 	require.NoError(t, err)
 	source := swapOneIn(t, raw,
@@ -539,9 +535,8 @@ func TestTheFactionLevelCellSelectorIsRefusedToo(t *testing.T) {
 	require.ErrorAs(t, err, &validation)
 	require.Contains(t, validation.Errors, FieldError{
 		Path: "factions[0].on.time[0].toward.at",
-		Message: "at is not a place a single room can name yet: its cells are axial and the selector's " +
-			"cell is an offset in a document orientation this dialect does not have; " +
-			"name enemy, attacker, actor or sound, or wait for the sites layer",
+		Message: "at names a cell of this room, written { q, r } as its walkable hexes are: " +
+			"[col, row] is an offset in a document orientation this dialect does not have",
 	})
 }
 
@@ -570,12 +565,12 @@ func TestTheV2DialectStillResolvesCellSelectors(t *testing.T) {
 	})
 }
 
-// TestTheSingleRoomRefusesARouteForTheCellsReason: a `path` is a list of the
-// same offset cells an `at` is, so the dialect with no frame for one has none
-// for the other — refused once for the route, in its own sentence, rather
-// than once per waypoint (rpg-project#569 R7). The same layer that gives `at`
-// a frame gives this one.
-func TestTheSingleRoomRefusesARouteForTheCellsReason(t *testing.T) {
+// TestTheSingleRoomRefusesAnOffsetRoute: a `path` of offset pairs is the same
+// wrong spelling an offset `at` is, so it is refused once for the route, in
+// its own sentence, rather than once per waypoint (rpg-project#569 R7;
+// rpg-project#605). The route this dialect does take is `{ q, r }` waypoints
+// (v4_at_path_test.go).
+func TestTheSingleRoomRefusesAnOffsetRoute(t *testing.T) {
 	raw, err := os.ReadFile(v4SitePath)
 	require.NoError(t, err)
 	source := swapOneIn(t, raw,
@@ -588,8 +583,7 @@ func TestTheSingleRoomRefusesARouteForTheCellsReason(t *testing.T) {
 	require.ErrorAs(t, err, &validation)
 	require.Contains(t, validation.Errors, FieldError{
 		Path: "factions[0].on.time[0].toward.path",
-		Message: "path is not a route a single room can name yet: its cells are axial and a " +
-			"waypoint is an offset in a document orientation this dialect does not have; " +
-			"name enemy, attacker, actor or sound, or wait for the sites layer",
+		Message: "path names a route of this room's cells, each written { q, r } as its walkable hexes are: " +
+			"[col, row] is an offset in a document orientation this dialect does not have",
 	})
 }
