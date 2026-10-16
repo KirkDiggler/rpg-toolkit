@@ -177,7 +177,7 @@ func (e *cellQuery) cellAt(in CellAtInput) (CellFact, error) {
 			// reads — a router that saw a table nobody can walk into any more
 			// would hand back a path around nothing.
 			placement, standing := now.stands(p)
-			if !standing {
+			if !standing || !p.reach.mayTouch(placement.Origin, centre, centre) {
 				continue
 			}
 			contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{

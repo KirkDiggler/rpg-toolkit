@@ -350,7 +350,10 @@ type doorRecord struct {
 	id        DoorID
 	edges     []DoorEdge
 	placement *spatial.FootprintPlacement
-	state     DoorState
+	// reach is the footprint's bounds relative to its origin, measured once
+	// here ([footprintBounds], rpg-toolkit#2049). Zero value traces everything.
+	reach footprintBounds
+	state DoorState
 	// opened is [DoorInput.Opened]: construction truth, never changed.
 	opened FactID
 }
@@ -654,6 +657,9 @@ func doorRecordsFrom(doors []DoorInput) ([]*doorRecord, map[DoorID]*doorRecord) 
 			placement: copyPlacement(d.Placement),
 			state:     d.State,
 			opened:    d.Opened,
+		}
+		if rec.placement != nil {
+			rec.reach = boundsOf(*rec.placement)
 		}
 		records = append(records, rec)
 		byID[d.ID] = rec
