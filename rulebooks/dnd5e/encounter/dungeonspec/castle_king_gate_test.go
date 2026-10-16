@@ -10,6 +10,7 @@ package dungeonspec_test
 // for that row, and nothing about how the rest of the castle spent its time.
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -30,9 +31,10 @@ import (
 //
 // The kitchen, the chapel, the great hall and the throne room: with that
 // room's door shut and every other door open, the hero's route from the party
-// start toward any of the room's floor never enters the room, and no cell of
-// it is in sight from anywhere in the yard. With the door open the route walks
-// in, so the shut door is what refuses.
+// start toward the room's anchors (its floor along every border a partition or
+// moved wall closed, its far corners, its door) never enters the room, and no
+// cell of it is in sight from the yard cells a gap would show it from. With
+// the door open the route walks in, so the shut door is what refuses.
 func TestMadKingEveryRoomHasOneWayIn(t *testing.T) {
 	t.Parallel()
 
@@ -67,36 +69,80 @@ func TestMadKingEveryRoomHasOneWayIn(t *testing.T) {
 		}
 		return states
 	}
-	// The yard: the courtyard, the barracks and the armoury, along the hall
-	// wall and its partitions, at their far corners and in the middle.
+	// The yard cells a gap would show a room from: under the hall door, just
+	// past both ends of the hall wall, and at both far ends of the partitions
+	// that carry its line on.
 	yard := []spatial.Position{
-		castleCell(0, -6), castleCell(-14, -6), castleCell(14, -6), castleCell(-15, -6), castleCell(15, -6),
-		castleCell(-26, -6), castleCell(26, -6), castleCell(-20, -5), castleCell(20, -5),
-		castleCell(-20, 2), castleCell(20, 2), castleCell(0, 4),
+		castleCell(0, -6), castleCell(-15, -6), castleCell(15, -6), castleCell(-26, -6), castleCell(26, -6),
 	}
 
+	// rows and cols are a fixture room's offset cells along one row or one
+	// column, for the anchors below.
+	row := func(r, from, to int) []spatial.Position {
+		var out []spatial.Position
+		for c := from; c <= to; c++ {
+			out = append(out, castleCell(c, r))
+		}
+		return out
+	}
+	col := func(c, from, to int) []spatial.Position {
+		var out []spatial.Position
+		for r := from; r <= to; r++ {
+			out = append(out, castleCell(c, r))
+		}
+		return out
+	}
+	cells := func(lists ...[]spatial.Position) []spatial.Position {
+		var out []spatial.Position
+		for _, l := range lists {
+			out = append(out, l...)
+		}
+		return out
+	}
+
+	// Each room's anchors: its floor along every border a partition or a
+	// moved wall closed, its far corners, and the cells at its door. A route
+	// toward every floor cell is the same proof hundreds of times over; these
+	// are the cells a gap in a wall would let a route reach.
 	for _, room := range []struct {
-		name string
-		door encounter.DoorID
-		in   spatial.Position
+		name    string
+		door    encounter.DoorID
+		in      spatial.Position
+		anchors []spatial.Position
 	}{
-		{"the kitchen", kingKitchenDoor, castleCell(-20, -12)},
-		{"the chapel", kingChapelDoor, castleCell(20, -12)},
-		{"the great hall", kingHallDoor, castleCell(0, -12)},
-		{"the throne room", kingThroneDoor, castleCell(0, -20)},
+		{"the kitchen", kingKitchenDoor, castleCell(-20, -12), cells(
+			row(-7, -26, -15),  // the barracks border, kitchen-south-wall
+			col(-15, -16, -8),  // the hall border, the kitchen wall
+			row(-16, -26, -26), // the far corner
+		)},
+		{"the chapel", kingChapelDoor, castleCell(20, -12), cells(
+			row(-7, 15, 26),  // the armoury border, chapel-south-wall
+			col(15, -16, -8), // the hall border, the chapel wall
+			row(-16, 26, 26), // the far corner
+		)},
+		{"the great hall", kingHallDoor, castleCell(0, -12), cells(
+			col(-14, -16, -7), // the kitchen border, the kitchen wall
+			col(14, -16, -7),  // the chapel border and the armoury corner
+			row(-7, 0, 0),     // the hall door
+			row(-16, 0, 0),    // the throne door
+		)},
+		{"the throne room", kingThroneDoor, castleCell(0, -20), cells(
+			// The corners by the door wall, the far corners, and the door.
+			row(-17, -6, -6), row(-17, 6, 6), row(-22, -6, -6), row(-22, 6, 6), row(-17, 0, 0),
+		)},
 	} {
 		t.Run(room.name, func(t *testing.T) {
 			t.Parallel()
 			s := openTheCastleWithDoors(t, partyStart(t), onlyShut(room.door))
 			region, ok := s.enc.RegionAt(room.in)
 			require.True(t, ok, "%v is %s's floor", room.in, room.name)
-			floor := s.regionCells(region)
-			require.NotEmpty(t, floor)
 
 			// The route stops beside its anchor, so what it proves is where it
-			// goes: with the door shut, toward no cell of the room does it set
-			// foot in the room.
-			for _, cell := range floor {
+			// goes: with the door shut, toward no anchor does it set foot in
+			// the room.
+			for _, cell := range room.anchors {
+				in, ok := s.enc.RegionAt(cell)
+				require.True(t, ok && in == region, "anchor %v is %s's floor", cell, room.name)
 				for _, step := range s.routeFor(cell) {
 					in, _ := s.enc.RegionAt(step)
 					require.NotEqual(t, region, in,
@@ -116,6 +162,48 @@ func TestMadKingEveryRoomHasOneWayIn(t *testing.T) {
 			last, _ := open.enc.RegionAt(path[len(path)-1])
 			require.Equal(t, region, last, "control: with every door open, the hero walks into %s", room.name)
 		})
+	}
+}
+
+// TestMadKingWallsStandOnCellBoundaries is that no wall's blocking footprint
+// covers the centre of a floor cell. A wall laid through a row of centres
+// seals those cells: nobody stands there, no region owns them, and an edge
+// leaving one starts inside the wall rather than crossing it. That is how the
+// kitchen and chapel walls once stood. Each wall's depth is read off its
+// blocking spans, the footprints sight and movement trace.
+func TestMadKingWallsStandOnCellBoundaries(t *testing.T) {
+	t.Parallel()
+	compiled := loadContent(t, kingFixture)
+	plane := spatial.NewHexEmbedding(spatial.HexEmbeddingConfig{Orientation: spatial.HexOrientationPointyTop, CellWidth: 5})
+
+	var floor []spatial.Position
+	for _, r := range compiled.Field.Regions {
+		for _, c := range r.Cells {
+			floor = append(floor, castleCell(int(c.X), int(c.Y)))
+		}
+	}
+	require.NotEmpty(t, floor)
+	require.NotEmpty(t, compiled.Field.StructuralWalls)
+
+	for _, wall := range compiled.Field.StructuralWalls {
+		var half float64
+		for _, p := range compiled.Field.Placed {
+			if strings.HasPrefix(string(p.ID), "wall/"+string(wall.ID)+"/span/") && p.Placement.Footprint.Box != nil {
+				half = max(half, p.Placement.Footprint.Box.W/2)
+			}
+		}
+		require.Positive(t, half, "%s has a blocking span", wall.ID)
+
+		dx, dy := wall.To.X-wall.From.X, wall.To.Y-wall.From.Y
+		length := math.Hypot(dx, dy)
+		for _, cell := range floor {
+			c := plane.CellCentre(cell)
+			along := ((c.X-wall.From.X)*dx + (c.Y-wall.From.Y)*dy) / length
+			across := math.Abs((c.X-wall.From.X)*dy-(c.Y-wall.From.Y)*dx) / length
+			if along >= 0 && along <= length {
+				require.Greater(t, across, half, "%s covers the centre of floor cell %v", wall.ID, cell)
+			}
+		}
 	}
 }
 
