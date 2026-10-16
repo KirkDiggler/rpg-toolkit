@@ -215,7 +215,7 @@ func prisonersOf(t *testing.T, compiled dungeonspec.Compiled) []encounter.Member
 }
 
 // clockKind is the clock one member is on.
-func clockKind(t *testing.T, enc *encounter.Encounter, id encounter.MemberID) encounter.ClockKind {
+func clockKind(t testing.TB, enc *encounter.Encounter, id encounter.MemberID) encounter.ClockKind {
 	t.Helper()
 	on, err := enc.ClockOf(&encounter.ClockOfInput{Member: id})
 	require.NoError(t, err)
