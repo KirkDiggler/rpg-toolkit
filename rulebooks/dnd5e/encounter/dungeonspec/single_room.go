@@ -417,12 +417,12 @@ type RoomMonsterBinding struct {
 	// ([FactionSpec.On]) key by key, the nearer layer winning WHOLESALE. The
 	// shape, the grammar and every refusal are [PlaceSpec.On]'s.
 	//
-	// ONE EXCEPTION, AND IT IS A REFUSAL: a selector may not name a cell
-	// here. `{ at: [col, row] }` is an offset resolved through a document
-	// `orientation`, and this dialect has none — its cells are axial — so
-	// the same bytes would mean two things in the two dialects. Refused with
-	// a sentence that says so, until a sites layer gives a creature
-	// somewhere else to walk to.
+	// A CELL IS SPELT IN THIS ROOM'S FRAME: `toward: { at: { q, r } }` and
+	// `toward: { path: [{ q, r }, …] }`, each cell one of the room's
+	// walkable hexes (rpg-project#605). The offset spelling `[col, row]` is
+	// resolved through a document `orientation` this dialect does not have,
+	// so it is refused with a sentence naming `{ q, r }` — the same bytes
+	// never mean two cells in the two dialects.
 	On map[string][]AnswerSpec `yaml:"on,omitempty" json:"on,omitempty"`
 
 	// Temper is this creature's temperament: ONE WORD, and it WINS over its

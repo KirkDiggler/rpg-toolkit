@@ -44,9 +44,8 @@ import (
 //
 // A door with no `propDeclarations` entry has no shape at all. A door id that
 // names an ARRANGEMENT template is a door inside a stamp, which nothing
-// remaps yet (R5). Each is refused by name, in the shape
-// [singleRoomCellSelector] takes: what is wrong, what to write instead, and
-// what would make it legal.
+// remaps yet (R5). Each is refused by name, in one sentence: what is wrong,
+// what to write instead, and what would make it legal.
 //
 // `concealed` USED TO BE THE THIRD ONE, and is not any more
 // (rpg-project#490). A hidden rectangle in the middle of a room was the

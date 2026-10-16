@@ -8,6 +8,8 @@ import (
 	"sort"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // single_room_site.go is THE SITE SCOPE AND THE CREATURE'S ORDERS IN THE
@@ -20,7 +22,8 @@ import (
 //
 // Every shape is the v2 root's and every refusal is the one gameplay
 // grammar's (grammar.go). What this file writes is the dialect's HALF of that
-// call: the cast it placed, the frame it has for a cell, and the paths its
+// call: the cast it placed, the frame it resolves a cell in (its walkable
+// hexes, axial `{ q, r }`), and the paths its
 // defects are reported at. Paths are part of the contract — the World Builder
 // draws each refusal on the thing it names — so they are this dialect's own
 // (`room.room.monsterBindings.goblin-1.faction`,
@@ -34,38 +37,76 @@ import (
 // (rpg-project#484). They are shared now, and nothing here impersonates
 // anything.
 //
-// # The one refusal this dialect adds
+// # A cell is spelt in the room's own frame
 //
-// `{ at: [col, row] }` inside an orders block. [SelectorSpec.At] is an offset
-// resolved through the document's `orientation`, and the single-room dialect
-// has none — its cells are axial {q, r} — so the same bytes would mean two
-// different cells in the two dialects. The only shipped use of `at` is a
-// reserve walking in from another room, and a single room has no elsewhere
-// yet: refused now, fail closed, defined against the room's own frame when
-// the sites layer gives a creature somewhere to walk to (rpg-toolkit#1826,
-// ruling 1).
+// `toward: { at: { q, r } }` and `toward: { path: [{ q, r }, …] }` inside an
+// orders block name cells of THIS ROOM, in the axial frame every walkable hex
+// and every starting cell is already written in (rpg-project#605, D1a). A
+// cell must be one of the room's walkable hexes, refused by path — and a
+// waypoint by index — in the sentence the v2 dialect uses for its floor; a
+// route's legs keep the rules every route keeps ([grammar.routeLegs]).
+//
+// THE OFFSET SPELLING IS REFUSED. `[col, row]` is resolved through a document
+// `orientation`, which this dialect does not have, so `at: [4, 2]` here would
+// be the same bytes as a v2 cell meaning a different one. rpg-toolkit#1826
+// ruling 1 refused `at` outright "until the sites layer gives a creature
+// somewhere to walk to"; a patrol and a march inside one room are that
+// somewhere, and the object spelling is the answer to the ruling's concern
+// rather than a way round it.
 
-// singleRoomCellSelector is that refusal, verbatim. One sentence, saying what
-// is wrong, what to write instead, and what would make it legal.
-const singleRoomCellSelector = "at is not a place a single room can name yet: its cells are axial and the selector's " +
-	"cell is an offset in a document orientation this dialect does not have; name enemy, attacker, actor or sound, " +
-	"or wait for the sites layer"
+// singleRoomCellSelector is the offset refusal for an `at`, verbatim. One
+// sentence, saying what is wrong and what to write instead.
+const singleRoomCellSelector = "at names a cell of this room, written { q, r } as its walkable hexes are: " +
+	"[col, row] is an offset in a document orientation this dialect does not have"
 
-// singleRoomCells is this dialect's answer to [cells]: it names no cell at
-// all. Not framed, so the refusal above is the whole defect and the word
-// carrying the selector is never judged beside it.
-type singleRoomCells struct{}
+// singleRoomPathSelector is [singleRoomCellSelector]'s twin for a route,
+// said once for the route rather than once per waypoint.
+const singleRoomPathSelector = "path names a route of this room's cells, each written { q, r } as its " +
+	"walkable hexes are: [col, row] is an offset in a document orientation this dialect does not have"
 
-func (singleRoomCells) cellAt([2]int) cellAnswer {
-	return cellAnswer{refusal: singleRoomCellSelector, routeRefusal: singleRoomPathSelector}
+// singleRoomCells is this dialect's answer to [cells]: the room's walkable
+// hexes, keyed by the dungeon-absolute cell each one is. A single room's
+// axial `{ q, r }` IS that cell — [CompileSingleRoom] lowers each walkable
+// hex through the pointy-top offset and the field raises it straight back —
+// so nothing here converts through an orientation.
+type singleRoomCells struct {
+	walkable map[spatial.Position]bool
 }
 
-// singleRoomPathSelector is [singleRoomCellSelector]'s twin for a route: a
-// `path` is a list of the same offset cells, so this dialect names none of
-// them either, for the same reason and until the same layer arrives.
-const singleRoomPathSelector = "path is not a route a single room can name yet: its cells are axial and a " +
-	"waypoint is an offset in a document orientation this dialect does not have; " +
-	"name enemy, attacker, actor or sound, or wait for the sites layer"
+// roomCells is the frame of one room's walkable hexes.
+func roomCells(gp *RoomGameplaySource) singleRoomCells {
+	walkable := make(map[spatial.Position]bool, len(gp.WalkableHexes))
+	for _, c := range gp.WalkableHexes {
+		walkable[hexCell(c)] = true
+	}
+
+	return singleRoomCells{walkable: walkable}
+}
+
+// hexCell is the dungeon-absolute cell an authored axial `{ q, r }` names.
+func hexCell(c RoomCell) spatial.Position {
+	return spatial.Position{X: float64(c.Q), Y: float64(c.R)}
+}
+
+func (f singleRoomCells) cellAt(at authoredCell) cellAnswer {
+	if at.hex == nil {
+		return cellAnswer{refusal: singleRoomCellSelector, routeRefusal: singleRoomPathSelector}
+	}
+	cell := hexCell(*at.hex)
+	if !f.onFloor(cell) {
+		return cellAnswer{framed: true, cell: cell,
+			refusal: fmt.Sprintf("this walks to %s, which is not floor", f.spell(cell))}
+	}
+
+	return cellAnswer{framed: true, cell: cell}
+}
+
+func (f singleRoomCells) onFloor(cell spatial.Position) bool { return f.walkable[cell] }
+
+// spell writes a cell as this dialect's author does: `{q: …, r: …}`.
+func (singleRoomCells) spell(cell spatial.Position) string {
+	return fmt.Sprintf("{q: %d, r: %d}", int(cell.X), int(cell.Y))
+}
 
 // # Source shape
 //
@@ -228,7 +269,7 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 		Dispositions: s.Dispositions,
 		Tables:       s.Tables,
 		Members:      roomMembers(gp),
-		Cells:        singleRoomCells{},
+		Cells:        roomCells(gp),
 	})
 	g.factions()
 	g.factionOrders()

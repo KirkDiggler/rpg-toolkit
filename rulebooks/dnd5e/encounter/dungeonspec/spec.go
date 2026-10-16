@@ -46,8 +46,9 @@
 //   - the CAST it placed ([members]) — who exists, what each one is, and which
 //     side it is on;
 //   - the FRAME it resolves a cell in ([cells]) — the v2 dialect looks an
-//     authored pair up in the floor its regions painted, and the single room
-//     names no cell at all and says so.
+//     offset pair up in the floor its regions painted, and the single room
+//     looks an axial `{ q, r }` up in its walkable hexes; each refuses the
+//     other's spelling by path.
 //
 // The single-room dialect used to reach the grammar by building a fake v2
 // [Spec] and running the v2 validator over it. Nothing does that now, and a
@@ -127,6 +128,7 @@ package dungeonspec
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -1696,51 +1698,69 @@ func scopeWords() string {
 //
 //	attack: enemy
 //	toward: sound
-//	toward: { at: [3, 4] }
-//	toward: { path: [[2, 3], [6, 3], [6, 8], [2, 8]] }
+//	toward: { at: [3, 4] }                                   # v2: an offset
+//	toward: { path: [[2, 3], [6, 3], [6, 8], [2, 8]] }       # v2: offsets
+//	toward: { at: { q: 1, r: -1 } }                          # single room: axial
+//	toward: { path: [{ q: -2, r: 0 }, { q: 0, r: -2 }, …] }  # single room: axial
 //
 // A SCALAR OR A MAPPING, and the author writes whichever says what they mean.
 // The words are sealed in mind/behavior ([encounter.SelectorWords]); `at:` and
 // `path:` are legal on `toward` alone, and `sound` is refused on `attack`, by
 // the validator with the reason.
+//
+// A CELL IS SPELT IN ITS DIALECT'S FRAME, and the spelling says which frame
+// (rpg-project#605, D1a). The v2 document's cells are offset pairs resolved
+// through its `orientation`; the single room's are the axial `{ q, r }` every
+// one of its walkable hexes and starting cells is written in. Both spellings
+// decode here, into their own fields, because the decoder does not know which
+// dialect it is reading — and the DIALECT refuses the other one's spelling by
+// path, through its [cells]. The same bytes therefore never mean two cells:
+// `[4, 2]` is only ever an offset and `{ q: 4, r: 2 }` only ever axial.
 type SelectorSpec struct {
-	// Word is `enemy`, `attacker`, `actor` or `sound`, or empty when At or
-	// Path is written.
+	// Word is `enemy`, `attacker`, `actor` or `sound`, or empty when a cell
+	// or a route is written.
 	Word string
 
-	// At is the authored cell, offset [col,row], or nil when Word is
-	// written. It must be floor, the same rule a placement's own `at` keeps.
+	// At is the authored cell, offset [col,row] — the v2 spelling — or nil.
+	// It must be floor, the same rule a placement's own `at` keeps.
 	At *[2]int
 
-	// Path is an authored route of cells, offset [col,row], walked in order
-	// and round again — a patrol (rpg-project#569 R7). Each must be floor.
-	// THE ROUTE HOLDS NO STATE: which waypoint is next is derived from where
-	// the creature stands each time the row fires.
+	// Path is an authored route of cells, offset [col,row] — the v2 spelling —
+	// walked in order and round again: a patrol (rpg-project#569 R7). Each
+	// must be floor. THE ROUTE HOLDS NO STATE: which waypoint is next is
+	// derived from where the creature stands each time the row fires.
 	Path [][2]int
+
+	// AtHex is the authored cell in the single room's own axial frame, `{ q,
+	// r }`, or nil. It must be one of the room's walkable hexes.
+	AtHex *RoomCell
+
+	// PathHex is an authored route in the single room's axial frame, each
+	// waypoint `{ q, r }` and each one walkable. A route that mixes the two
+	// spellings fills both this and [SelectorSpec.Path], and whichever
+	// dialect reads it refuses the spelling that is not its own.
+	PathHex []RoomCell
 
 	// Line is the file line, captured at decode for [AnswerSpec.Line]'s
 	// reason.
 	Line int
 }
 
-// atSpec is the body a cell or route selector takes: `{ at: [col, row] }` or
-// `{ path: [[col, row], …] }`.
-type atSpec struct {
-	At   *[2]int   `yaml:"at"`
-	Path *[][2]int `yaml:"path"`
-}
+// selectorForms is the forms a selector takes, for the decode refusals.
+const selectorForms = "or { at: [col, row] }, or { path: [[col, row], …] }"
 
 // UnmarshalYAML reads one selector, refusing a word outside the sealed list
 // and a mapping that names anything but `at` or `path`. How many targets a
 // selector names — both, or a route with no waypoints — is mind/behavior's
-// shape rule, refused on the form in its words ([grammar.entryShape]).
+// shape rule, refused on the form in its words ([grammar.entryShape]); which
+// SPELLING of a cell is legal is the dialect's ([cells]).
 func (sel *SelectorSpec) UnmarshalYAML(value *yaml.Node) error {
 	sel.Line = value.Line
 
 	if value.Kind == yaml.ScalarNode {
 		if !knownSelectorWord(value.Value) {
 			return fmt.Errorf("line %d: %q is not a selector this build resolves: they are %s, "+
-				"or { at: [col, row] }, or { path: [[col, row], …] }",
+				selectorForms,
 				value.Line, value.Value, strings.Join(selectorWords(), ", "))
 		}
 		sel.Word = value.Value
@@ -1749,27 +1769,125 @@ func (sel *SelectorSpec) UnmarshalYAML(value *yaml.Node) error {
 	}
 
 	if value.Kind != yaml.MappingNode {
-		return fmt.Errorf("line %d: a selector is one of %s, or { at: [col, row] }, or { path: [[col, row], …] }",
+		return fmt.Errorf("line %d: a selector is one of %s, "+selectorForms,
 			value.Line, strings.Join(selectorWords(), ", "))
 	}
-	for i := 0; i < len(value.Content); i += 2 {
+	for i := 0; i+1 < len(value.Content); i += 2 {
+		body := value.Content[i+1]
 		switch value.Content[i].Value {
-		case "at", "path":
+		case "at":
+			if err := sel.decodeAt(body); err != nil {
+				return err
+			}
+		case "path":
+			if err := sel.decodePath(body); err != nil {
+				return err
+			}
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.SelectorSpec",
 				value.Content[i].Line, value.Content[i].Value)
 		}
 	}
-	var body atSpec
-	if err := value.Decode(&body); err != nil {
+
+	return nil
+}
+
+// decodeAt reads `at`: an offset pair into [SelectorSpec.At], an axial
+// mapping into [SelectorSpec.AtHex].
+func (sel *SelectorSpec) decodeAt(body *yaml.Node) error {
+	if resolveNode(body) != nil && resolveNode(body).Kind == yaml.MappingNode {
+		cell, err := decodeHexCell(resolveNode(body))
+		if err != nil {
+			return err
+		}
+		sel.AtHex = &cell
+
+		return nil
+	}
+	var at *[2]int
+	if err := body.Decode(&at); err != nil {
 		return err
 	}
-	sel.At = body.At
-	if body.Path != nil {
-		sel.Path = *body.Path
+	sel.At = at
+
+	return nil
+}
+
+// decodePath reads `path`, each waypoint into the field its spelling names.
+// A route of offset pairs decodes exactly as it always did — an empty list
+// included, which mind/behavior refuses as a route with no waypoints.
+func (sel *SelectorSpec) decodePath(body *yaml.Node) error {
+	seq := resolveNode(body)
+	if seq == nil || seq.Kind != yaml.SequenceNode {
+		var path *[][2]int
+		if err := body.Decode(&path); err != nil {
+			return err
+		}
+		if path != nil {
+			sel.Path = *path
+		}
+
+		return nil
+	}
+	offsets := [][2]int{}
+	for _, waypoint := range seq.Content {
+		if w := resolveNode(waypoint); w != nil && w.Kind == yaml.MappingNode {
+			cell, err := decodeHexCell(w)
+			if err != nil {
+				return err
+			}
+			sel.PathHex = append(sel.PathHex, cell)
+
+			continue
+		}
+		var pair [2]int
+		if err := waypoint.Decode(&pair); err != nil {
+			return err
+		}
+		offsets = append(offsets, pair)
+	}
+	if len(offsets) > 0 || len(sel.PathHex) == 0 {
+		sel.Path = offsets
 	}
 
 	return nil
+}
+
+// decodeHexCell reads one axial `{ q, r }` STRICTLY: both keys, each an
+// integer, nothing else. A custom unmarshaller's nested decode does not keep
+// the document's KnownFields, so the strictness every other mapping in the
+// gameplay grammar gets is spelt out here — a missing `r` read as 0 would be
+// a creature sent to a cell nobody wrote.
+func decodeHexCell(node *yaml.Node) (RoomCell, error) {
+	var cell RoomCell
+	seen := map[string]bool{}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		key, val := node.Content[i], resolveNode(node.Content[i+1])
+		if key.Value != "q" && key.Value != "r" {
+			return RoomCell{}, fmt.Errorf("line %d: field %s not found in type dungeonspec.RoomCell",
+				key.Line, key.Value)
+		}
+		if val == nil || val.Kind != yaml.ScalarNode || val.Tag != "!!int" {
+			return RoomCell{}, fmt.Errorf("line %d: a cell's %s must be an integer", key.Line, key.Value)
+		}
+		n, err := strconv.Atoi(val.Value)
+		if err != nil {
+			return RoomCell{}, fmt.Errorf("line %d: a cell's %s must be an integer", key.Line, key.Value)
+		}
+		if key.Value == "q" {
+			cell.Q = n
+		} else {
+			cell.R = n
+		}
+		seen[key.Value] = true
+	}
+	for _, k := range []string{"q", "r"} {
+		if !seen[k] {
+			return RoomCell{}, fmt.Errorf("line %d: a cell is { q, r }, and this one has no %s", node.Line, k)
+		}
+	}
+
+	return cell, nil
 }
 
 // TemperSpec is a temperament: one word, or a MIX to deal one from
