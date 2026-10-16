@@ -330,3 +330,55 @@ func TestTheDecodeHintsSpeakTheRoomsSpelling(t *testing.T) {
 		})
 	}
 }
+
+// TestARepeatedKeyInACellIsRefused: the selector and the `{ q, r }` inside it
+// are read by hand, so yaml.v3's refusal of a key written twice is spelt out
+// there in the parser's own words — never last-one-wins.
+func TestARepeatedKeyInACellIsRefused(t *testing.T) {
+	raw, err := os.ReadFile(v4PatrolsPath)
+	require.NoError(t, err)
+	for name, repl := range map[string]string{
+		"a repeated at": "toward: {at: {q: 1, r: 1}, at: {q: 0, r: 0}}",
+		"a repeated q":  "toward: {at: {q: 1, r: 1, q: 0}}",
+		"a repeated path": "toward: {path: [{q: -2, r: 0}, {q: 2, r: 0}, {q: 0, r: 2}], " +
+			"path: [{q: 1, r: 1}, {q: 1, r: 2}, {q: 2, r: 1}]}",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := Load(swapOneIn(t, raw, keepAt, repl))
+			require.Error(t, err)
+			require.ErrorIs(t, err, ErrBadSpec)
+			require.Contains(t, err.Error(), "already defined at line")
+		})
+	}
+}
+
+// TestARepeatedKeyInAV2SelectorIsRefused: the same refusal reaches a v2
+// author, as it did before the selector was read by hand.
+func TestARepeatedKeyInAV2SelectorIsRefused(t *testing.T) {
+	source := strings.Replace(theSameCampInVersionTwo,
+		"        - { when: { enemy: reach }, hold: {} }",
+		"        - { when: { enemy: none }, toward: { at: [0,0], at: [1,1] } }", 1)
+	_, err := Load([]byte(source))
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrBadSpec)
+	require.Contains(t, err.Error(), `mapping key "at" already defined at line`)
+}
+
+// TestARootTableCellIsRefusedAtTheTablesPath pins where a cell defect inside a
+// root table is reported TODAY: `tables.<id>.on.time[i]`, with an `.on` the
+// author never wrote, because the table is judged by the binding's `on:`
+// grammar with the table's id as the prefix. That path is a defect of its own,
+// filed as rpg-toolkit#2064; this test moves when it is fixed.
+func TestARootTableCellIsRefusedAtTheTablesPath(t *testing.T) {
+	raw, err := os.ReadFile(v4PatrolsPath)
+	require.NoError(t, err)
+	source := swapOneIn(t, raw, "room:\n  version: 3\n",
+		"tables:\n  march:\n    time:\n      - {toward: {at: {q: 9, r: 9}}}\nroom:\n  version: 3\n")
+	_, err = Load(source)
+	require.Error(t, err)
+	var validation *ValidationError
+	require.ErrorAs(t, err, &validation)
+	require.Contains(t, validation.Errors, FieldError{
+		Path: "tables.march.on.time[0].toward.at", Message: "this walks to {q: 9, r: 9}, which is not floor",
+	})
+}

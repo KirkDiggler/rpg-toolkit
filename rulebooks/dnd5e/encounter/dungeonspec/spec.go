@@ -1804,8 +1804,16 @@ func (sel *SelectorSpec) UnmarshalYAML(value *yaml.Node) error {
 				line, strings.Join(selectorWords(), ", "), selectorForms(f))
 		}}
 	}
+	// A REPEATED KEY IS REFUSED, in the parser's own words: yaml.v3 refuses
+	// one when it decodes a mapping into a struct, and this mapping is read
+	// by hand, so the check is spelt out — last-one-wins would be a selector
+	// the author wrote twice and got once.
+	seen := map[string]int{}
 	for i := 0; i+1 < len(value.Content); i += 2 {
 		body := value.Content[i+1]
+		if err := repeatedKey(seen, value.Content[i]); err != nil {
+			return err
+		}
 		switch value.Content[i].Value {
 		case "at":
 			if err := sel.decodeAt(body); err != nil {
@@ -1885,6 +1893,18 @@ func (sel *SelectorSpec) decodePath(body *yaml.Node) error {
 	return nil
 }
 
+// repeatedKey records a key of a hand-read mapping and refuses one already
+// seen, in yaml.v3's own sentence for the defect it would have caught had
+// the mapping been decoded into a struct.
+func repeatedKey(seen map[string]int, key *yaml.Node) error {
+	if first, again := seen[key.Value]; again {
+		return fmt.Errorf("line %d: mapping key %q already defined at line %d", key.Line, key.Value, first)
+	}
+	seen[key.Value] = key.Line
+
+	return nil
+}
+
 // decodeHexCell reads one axial `{ q, r }` STRICTLY: both keys, each an
 // integer, nothing else. A custom unmarshaller's nested decode does not keep
 // the document's KnownFields, so the strictness every other mapping in the
@@ -1892,12 +1912,15 @@ func (sel *SelectorSpec) decodePath(body *yaml.Node) error {
 // a creature sent to a cell nobody wrote.
 func decodeHexCell(node *yaml.Node) (RoomCell, error) {
 	var cell RoomCell
-	seen := map[string]bool{}
+	seen := map[string]int{}
 	for i := 0; i+1 < len(node.Content); i += 2 {
 		key, val := node.Content[i], resolveNode(node.Content[i+1])
 		if key.Value != "q" && key.Value != "r" {
 			return RoomCell{}, fmt.Errorf("line %d: field %s not found in type dungeonspec.RoomCell",
 				key.Line, key.Value)
+		}
+		if err := repeatedKey(seen, key); err != nil {
+			return RoomCell{}, err
 		}
 		if val == nil || val.Kind != yaml.ScalarNode || val.Tag != "!!int" {
 			return RoomCell{}, fmt.Errorf("line %d: a cell's %s must be an integer", key.Line, key.Value)
@@ -1911,10 +1934,9 @@ func decodeHexCell(node *yaml.Node) (RoomCell, error) {
 		} else {
 			cell.R = n
 		}
-		seen[key.Value] = true
 	}
 	for _, k := range []string{"q", "r"} {
-		if !seen[k] {
+		if _, ok := seen[k]; !ok {
 			return RoomCell{}, fmt.Errorf("line %d: a cell is { q, r }, and this one has no %s", node.Line, k)
 		}
 	}
