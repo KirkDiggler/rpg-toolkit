@@ -117,6 +117,17 @@ func openTheCastle(t testing.TB, at spatial.Position) *kingScene {
 // with every other door open without walking a hero to each.
 func openTheCastleWithDoors(t testing.TB, at spatial.Position, doors map[encounter.DoorID]encounter.DoorState) *kingScene {
 	t.Helper()
+
+	return openTheCastleWithEars(t, at, doors, nil)
+}
+
+// openTheCastleWithEars is [openTheCastleWithDoors] with some members'
+// passive Perception other than the host's 10, so a test can find the DC a
+// sound reaches a room at.
+func openTheCastleWithEars(
+	t testing.TB, at spatial.Position, doors map[encounter.DoorID]encounter.DoorState, passive map[encounter.MemberID]int,
+) *kingScene {
+	t.Helper()
 	compiled := loadContent(t, kingFixture)
 	for i := range compiled.Field.Doors {
 		if state, ok := doors[compiled.Field.Doors[i].ID]; ok {
@@ -155,7 +166,7 @@ func openTheCastleWithDoors(t testing.TB, at spatial.Position, doors map[encount
 			Sight:         castleSight{},
 			Equipment:     encounter.UnobservedEquipment{},
 			Conditions:    encounter.UnobservedEquipment{},
-			Sheets:        castleSheets{},
+			Sheets:        castleSheets{passive: passive},
 			Participation: standing,
 			Initiative:    orderAsGiven{},
 			Driver:        encounter.TableDriver{Roller: rollsOne{}},
@@ -408,16 +419,20 @@ func (castleSight) Sight(members []encounter.MemberID) (map[encounter.MemberID]i
 }
 
 // castleSheets is everybody's sheet in this host: thirty feet, a spear at
-// five, and a passive Perception of 10.
-type castleSheets struct{}
+// five, and a passive Perception of 10 unless passive names another.
+type castleSheets struct{ passive map[encounter.MemberID]int }
 
-func (castleSheets) Sheets(members []encounter.MemberID) (map[encounter.MemberID]encounter.SheetFacts, error) {
+func (c castleSheets) Sheets(members []encounter.MemberID) (map[encounter.MemberID]encounter.SheetFacts, error) {
 	out := make(map[encounter.MemberID]encounter.SheetFacts, len(members))
 	for _, id := range members {
+		passive, ok := c.passive[id]
+		if !ok {
+			passive = 10
+		}
 		out[id] = encounter.SheetFacts{
 			SpeedFeet:         castleSpeedFeet,
 			Actions:           []encounter.ActionView{{Ref: kingSpear, RangeFeet: 5}},
-			PassivePerception: 10,
+			PassivePerception: passive,
 		}
 	}
 

@@ -10,12 +10,14 @@ package dungeonspec_test
 // for that row, and nothing about how the rest of the castle spent its time.
 
 import (
+	"encoding/json"
 	"math"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -295,11 +297,104 @@ func TestMadKingFrontDoor(t *testing.T) {
 		require.Contains(t, memberIDsOf(t, s.enc), kingReserve)
 	})
 
-	// NOT ASSERTED, AND WHY: the use case's "loyalists in the keep walk to
-	// the throne room on the fact". The keep-patrol row is in the file, but no
-	// knight ever holds `alarm-raised`: a wall-attached door links no regions
-	// for hearing, so the shout at the gate never crosses into the hall
-	// (rpg-toolkit#2066). That issue's fix brings this assertion.
+	// THE ALARM DOES NOT REACH THE KEEP, AND THE FILE'S NUMBERS SAY WHY. The
+	// wall doors now join their regions for hearing (rpg-toolkit#2066), so
+	// the shout's way to the throne room is gatehouse → yard → hall → throne
+	// room: three regions crossed, each through a shut door, six hops. A
+	// voice is DC 5, so the keep's knights would need passive Perception 35
+	// (the hall's knight, four hops in, 25); everybody here has 10. The use
+	// case's "loyalists in the keep walk to the throne room on the fact" is
+	// not this content's outcome; it is a content question, not an engine one.
+	t.Run("the shout at the gate is six hops from the keep, and the keep does not hear it", func(t *testing.T) {
+		learned := s.learners("alarm-raised")
+		for _, who := range []encounter.MemberID{kingHall1, kingKeep1, kingKeep2, theKing} {
+			require.False(t, learned[who], "%s is behind shut doors: the hall is DC 25 and the throne room DC 35, against passive 10", who)
+		}
+	})
+}
+
+// TestMadKingTheAlarmCarriesToTheKeenEar is the positive half of the front
+// door's "six hops from the keep": the same spear at the gate, with one
+// listener's ears raised. The shout is a voice, DC 5, plus 5 a hop. The hall
+// is 4 hops away behind two shut doors, DC 25; the throne room 6 hops behind
+// three, DC 35. Each is heard at its DC and missed one below it, which pins
+// the hop count as well as the link.
+func TestMadKingTheAlarmCarriesToTheKeenEar(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		who     encounter.MemberID
+		passive int
+		learns  bool
+	}{
+		{name: "the hall at 25", who: kingHall1, passive: 25, learns: true},
+		{name: "the hall at 24", who: kingHall1, passive: 24, learns: false},
+		{name: "the throne room at 35", who: kingKeep1, passive: 35, learns: true},
+		{name: "the throne room at 34", who: kingKeep1, passive: 34, learns: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s := openTheCastleWithEars(t, partyStart(t), nil, map[encounter.MemberID]int{tc.who: tc.passive})
+			s.struck(kingGate1, false)
+			require.True(t, s.learners("alarm-raised")[hero], "precondition: the gate raised the alarm")
+			require.Equal(t, tc.learns, s.learners("alarm-raised")[tc.who])
+		})
+	}
+}
+
+// TestMadKingGateDoorCarriesASound is the castle's wall doors joining its
+// regions for hearing (rpg-toolkit#2066): a gate guard's swing in the
+// gatehouse, and the hero in the yard beyond the gate door. Open, the clang
+// is one hop away, DC 10, and the hero's passive 10 hears it; shut, it is
+// DC 15 and the hero does not. Before the fix the yard heard nothing either
+// way.
+func TestMadKingGateDoorCarriesASound(t *testing.T) {
+	t.Parallel()
+	yard := castleCell(0, 4)
+	for _, tc := range []struct {
+		name  string
+		state encounter.DoorState
+		heard bool
+	}{
+		{name: "open", state: encounter.DoorIsOpen(), heard: true},
+		{name: "shut", state: encounter.DoorIsClosed(), heard: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s := openTheCastleWithDoors(t, seatAt(yard), map[encounter.DoorID]encounter.DoorState{kingGateDoor: tc.state})
+			gatehouse, ok := s.enc.RegionAt(s.at(kingGate1))
+			require.True(t, ok)
+			courtyard, ok := s.enc.RegionAt(yard)
+			require.True(t, ok)
+			require.NotEqual(t, gatehouse, courtyard, "precondition: the gate guard and the hero are a region apart")
+
+			_, err := s.enc.RecordTrain(&encounter.RecordTrainInput{Units: []encounter.TrainUnit{{Outcome: &encounter.RecordInput{
+				Kind: encounter.OutcomeStruck, Actor: kingGate1, Targets: []encounter.MemberID{kingGate2},
+				Attack: &encounter.AttackIdentity{Ref: kingSpear.String(), Name: "Spear", DamageType: "piercing"},
+				Values: map[encounter.OutcomeValue]int{encounter.ValueAmount: 6},
+			}}}})
+			require.NoError(t, err)
+
+			require.Equal(t, tc.heard, s.heardKind(hero, encounter.SoundClang))
+		})
+	}
+}
+
+// heardKind reports whether a member holds a sound of this kind.
+func (s *kingScene) heardKind(member encounter.MemberID, kind string) bool {
+	s.t.Helper()
+	for _, h := range s.enc.ToData().Perception.Intel.Holdings[core.EntityID("member|"+string(member))] {
+		if string(h.Channel) != "sounds" {
+			continue
+		}
+		var payload map[string]any
+		require.NoError(s.t, json.Unmarshal(h.Payload, &payload))
+		if payload["kind"] == kind {
+			return true
+		}
+	}
+
+	return false
 }
 
 // TestMadKingTroupe is the troupe: the cook's gossip teaches the hero that

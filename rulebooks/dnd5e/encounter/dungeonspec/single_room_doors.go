@@ -302,7 +302,9 @@ func attachedDoorLowering(key string, gp *RoomGameplaySource) ([]encounter.Place
 		}
 		// One placement, two questions: the map DRAWS the rectangle under the
 		// raw id, and the door STATE decides what that rectangle closes. The
-		// door stands in no edge crossing, so Edges stays empty.
+		// door stands in no edge crossing, so Edges stays empty: the regions
+		// it joins for hearing are read off the rectangle itself, from the
+		// crossings it lies across (encounter's links, rpg-toolkit#2066).
 		doors = append(doors, encounter.DoorInput{
 			ID:        encounter.DoorID(key + "/" + b.id),
 			Placement: &placement,

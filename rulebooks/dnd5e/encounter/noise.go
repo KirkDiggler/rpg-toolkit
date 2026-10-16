@@ -36,8 +36,9 @@ import (
 //
 // # Hops are regions, door to door
 //
-// The graph is the field's regions joined by its doors' edges, derived once
-// per encounter from the construction-time doors ([Encounter.regionLinks]).
+// The graph is the field's regions joined by its doors — an edge door's
+// edges, a footprint door's crossings — derived once per encounter from the
+// construction-time doors ([Encounter.regionLinks]).
 // Only a door's STATE is read live, because it is the one thing about the
 // graph a verb changes.
 
@@ -152,29 +153,53 @@ type regionLink struct {
 }
 
 // links is the region graph: every region's ways out, derived on first use
-// from the doors' construction-time edges and cached for the encounter's life.
+// from the doors' construction-time geometry and cached for the encounter's
+// life.
 //
-// ONCE, because nothing it is made of changes: a door's edges and the field's
-// region owners are construction truth. The door POINTER is kept rather than
-// its state, so [Encounter.hopsFrom] reads whether it is closed at the moment
-// a sound is made.
+// ONCE, because nothing it is made of changes: a door's edges, a footprint
+// door's rectangle and the field's region owners are construction truth. The
+// door POINTER is kept rather than its state, so [Encounter.hopsFrom] reads
+// whether it is closed at the moment a sound is made.
 //
-// A DOOR WHOSE TWO CELLS ARE ONE REGION'S joins nothing: it is a door inside a
-// room, and crossing it changes no region.
+// TWO DOOR GEOMETRIES, ONE GRAPH (rpg-toolkit#2066). An edge door joins the
+// regions either side of each of its edges. A FOOTPRINT door — the studio's
+// wall door, or a standalone door prop — joins the regions either side of
+// each crossing its rectangle lies across ([field.doorCrossings]): the same
+// trace a step through it asks, so hearing and movement cannot disagree
+// about which regions a door stands between.
+//
+// A DOOR WHOSE TWO SIDES ARE ONE REGION'S joins nothing: it is a door inside a
+// room, and crossing it changes no region. Each pair of regions is linked once
+// per door, however many crossings the door spans.
 func (e *Encounter) links() map[RegionID][]regionLink {
 	if e.regionLinks != nil {
 		return e.regionLinks
 	}
 	out := map[RegionID][]regionLink{}
 	for _, d := range e.doors {
-		for _, edge := range d.edges {
-			from, okFrom := e.field.regionOf(edge.From)
-			to, okTo := e.field.regionOf(edge.To)
+		joined := map[[2]RegionID]bool{}
+		join := func(a, b spatial.Position) {
+			from, okFrom := e.field.regionOf(a)
+			to, okTo := e.field.regionOf(b)
 			if !okFrom || !okTo || from == to {
-				continue
+				return
 			}
+			pair := [2]RegionID{from, to}
+			if to < from {
+				pair = [2]RegionID{to, from}
+			}
+			if joined[pair] {
+				return
+			}
+			joined[pair] = true
 			out[from] = append(out[from], regionLink{to: to, door: d})
 			out[to] = append(out[to], regionLink{to: from, door: d})
+		}
+		for _, edge := range d.edges {
+			join(edge.From, edge.To)
+		}
+		for _, crossing := range e.field.doorCrossings(d) {
+			join(crossing[0], crossing[1])
 		}
 	}
 	e.regionLinks = out
