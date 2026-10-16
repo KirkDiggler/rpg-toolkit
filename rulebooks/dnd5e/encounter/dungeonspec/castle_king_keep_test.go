@@ -30,7 +30,12 @@ var throneCell = castleCell(0, -19)
 // he heard it.
 func turnTheGarrison(t *testing.T) (*kingScene, map[encounter.MemberID]spatial.Position) {
 	t.Helper()
-	s := openTheCastle(t, besideTheCook)
+	// THE THRONE DOOR STARTS OPEN HERE. The file shuts it, and a turned
+	// garrison's march stops at a shut door, because a driven walk routes
+	// only through open doors and no creature opens one (rpg-toolkit#2069).
+	// Until that lands, the routes that march stand it open, as the party
+	// would before the march it means to see.
+	s := openTheCastleWithDoors(t, besideTheCook, map[encounter.DoorID]encounter.DoorState{kingThroneDoor: encounter.DoorIsOpen()})
 	s.said(kingCook, "gossip", "persuasion", true)
 	s.said(kingCook, "ashford", "persuasion", true)
 	s.outOfTheKitchen()
@@ -137,7 +142,9 @@ func TestMadKingDeposed(t *testing.T) {
 // hero's spear drops the king. The ending is the file's `{ down: king }`.
 func TestMadKingSlain(t *testing.T) {
 	t.Parallel()
-	s := openTheCastle(t, besideTheKing)
+	// The throne door stands open, as in every route that reaches the keep
+	// (see turnTheGarrison, rpg-toolkit#2069).
+	s := openTheCastleWithDoors(t, besideTheKing, map[encounter.DoorID]encounter.DoorState{kingThroneDoor: encounter.DoorIsOpen()})
 	require.Equal(t, encounter.ClockTurn, clockKind(t, s.enc, theKing), "precondition: the court saw the hero")
 	require.Empty(t, s.ending())
 

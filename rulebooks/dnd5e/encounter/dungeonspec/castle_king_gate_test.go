@@ -10,6 +10,7 @@ package dungeonspec_test
 // for that row, and nothing about how the rest of the castle spent its time.
 
 import (
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -320,10 +321,10 @@ func TestMadKingTroupe(t *testing.T) {
 
 	gatehouse, ok := s.enc.RegionAt(castleCell(0, 15))
 	require.True(t, ok, "the party start is the gatehouse's floor")
-	// THE KING SITS OUT OF THE DOOR'S LINE. The throne door stands open, and
-	// a king in its line from the hall would see the party the moment the
-	// hall door opened. From the hall door and from the hall's middle, the
-	// hero and the king do not see each other.
+	// THE KING IS UNSEEN FROM THE HALL. The throne door is shut, and the king
+	// sits in its room's corner, so from the hall door, the hall's middle and
+	// (3,-11), where a knight was once sighted through an open throne door,
+	// the hero and the king do not see each other.
 	s.walkTo(castleCell(0, -6))
 	t.Run("the party crosses the hall unseen by the king", func(t *testing.T) {
 		s.unseenByTheKing("at the hall door")
@@ -335,17 +336,18 @@ func TestMadKingTroupe(t *testing.T) {
 		require.Equal(t, hall, here, "precondition: the hero is in the hall")
 		require.LessOrEqual(t, s.enc.Distance(s.at(hero), middle), 1.0, "precondition: beside its middle")
 		s.unseenByTheKing("in the middle of the hall")
+		east := spatial.Position{X: 3, Y: -11}
+		s.walkTo(east)
+		require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "the hero walks on across the hall and into no fight")
+		require.LessOrEqual(t, s.enc.Distance(s.at(hero), east), 1.0, "precondition: beside %v", east)
+		s.unseenByTheKing(fmt.Sprintf("beside %v", east))
 	})
 	s.walkTo(castleCell(-6, -10))
 
-	// THE GATE'S HALF, AND ONLY IT. The king and his knights are authored
-	// out of the open throne door's line from the hall door and the hall's
-	// middle, and the king is pinned above. Where a pacing knight stands at
-	// any other moment is still the patrol's phase, set by how much world
-	// time the route has spent, not by anything the troupe said. A knight's
-	// sighting is a loyalist fight, which the disguise never covered (§1), so
-	// this subtest asserts the garrison and says nothing either way about the
-	// keep.
+	// THE GATE'S HALF, AND ONLY IT. A loyalist sighting would be a fight the
+	// disguise never covered (§1), and the keep stays behind its shut door,
+	// so this subtest asserts the garrison and says nothing either way about
+	// the keep.
 	t.Run("the party came through the gate and into the hall", func(t *testing.T) {
 		here, ok := s.enc.RegionAt(s.at(hero))
 		require.True(t, ok)

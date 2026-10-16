@@ -60,7 +60,7 @@ const (
 )
 
 // The castle's doors, by the compiled ids of the studio's wall doors. The
-// file shuts every one but the throne room's.
+// file shuts every one, and locks none.
 const (
 	// kingGateDoor is the gatehouse's one way into the courtyard.
 	kingGateDoor = encounter.DoorID("the-mad-king/gate-wall-door")
