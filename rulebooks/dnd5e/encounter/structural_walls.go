@@ -477,3 +477,52 @@ func namesFootprintDoor(doors []DoorInput, id DoorID) bool {
 
 	return false
 }
+
+// wallFootprintCells is the floor a structural wall's presence footprint
+// overlaps — [field.footprintObservationCells], the SAME answer that decides
+// whether the wall is presented, so a presented wall never carries an empty
+// list. Ordered along the wall from `from` to `to` by each cell centre's
+// projection onto the line, ties by [cellBefore], so a client walking the list
+// walks the wall (fog-of-war R9).
+func (f *field) wallFootprintCells(w *structuralWall, placement spatial.FootprintPlacement) ([]spatial.Position, error) {
+	support, err := f.footprintObservationCells(placement)
+	if err != nil {
+		return nil, err
+	}
+	dx, dy := w.to.X-w.from.X, w.to.Y-w.from.Y
+	along := make(map[spatial.Position]float64, len(support))
+	out := make([]spatial.Position, 0, len(support))
+	for _, cell := range support {
+		c := f.plane.CellCentre(cell)
+		along[cell] = (c.X-w.from.X)*dx + (c.Y-w.from.Y)*dy
+		out = append(out, cell)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if along[out[i]] != along[out[j]] {
+			return along[out[i]] < along[out[j]]
+		}
+		return cellBefore(out[i], out[j])
+	})
+
+	return out, nil
+}
+
+// boundParentWall names the structural wall whose opening a placed id or a
+// door id is bound to — the wall that identity masquerades as while unfound
+// (fog-of-war R9; see [sightReach.seesCell]). Pass "" for the identity not
+// being asked about.
+func (f *field) boundParentWall(placed PropID, door DoorID) (PropID, bool) {
+	for i := range f.structuralWalls {
+		w := &f.structuralWalls[i]
+		for _, o := range w.openings {
+			if o.door == nil {
+				continue
+			}
+			if (placed != "" && o.door.placedID == placed) || (door != "" && o.door.doorID == door) {
+				return w.id, true
+			}
+		}
+	}
+
+	return "", false
+}

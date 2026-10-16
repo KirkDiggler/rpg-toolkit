@@ -130,13 +130,12 @@ func (e *Encounter) appendConcealmentRevealedBeat(
 	// recipient who has the cells still needs telling which of them are not a
 	// place to stand.
 	//
-	// SCOPED TO THE CONCEALMENT, AND A REPLACEMENT RATHER THAN AN ADDITION —
-	// which is why it is not a difference the way the segments are. Cells
-	// LEAVE a recipient's sealed set on a reveal: the footing of a wall
-	// presented to a non-knower reaches them as ownerless floor, which is
-	// floor nobody stands on, and is ordinary standable floor once the secret
-	// is theirs. A difference could only ever add. Pinned by
-	// TestSealedIsAReplacementWithinTheRoomAndNotAnAddition.
+	// SCOPED TO THE CONCEALMENT, AND A REPLACEMENT WITHIN IT. Since
+	// fog-of-war R9 a presented wall adds no footing, so a non-knower's sealed
+	// set holds none of the secret's cells and a reveal only adds to it; the
+	// replacement rule stays the contract because it is the one a client can
+	// apply without knowing why a cell was sealed. Pinned by
+	// TestSealedIsReplacedWithinTheRevealedRoom.
 	sealed := make([]spatial.Position, 0)
 	for _, cell := range scoped.Sealed {
 		if owned[cell] {

@@ -725,8 +725,8 @@ func (f *field) compileSealed(sealed []spatial.Position) error {
 
 // compileSegments carries the authored walls as lines, refusing a segment
 // whose footprint is not floor — the one thing about a segment this module is
-// in a position to check, and the one that matters, since a presented wall's
-// footing enters a recipient's atlas as floor.
+// in a position to check, and the one that matters, since a segment's
+// footprint decides whether it is presented to a recipient at all.
 func (f *field) compileSegments(segments []SegmentInput) error {
 	if len(segments) == 0 {
 		return nil

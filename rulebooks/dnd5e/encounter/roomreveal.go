@@ -171,7 +171,7 @@ func (e *Encounter) appendCellsRevealedBeat(member MemberID, before Atlas) error
 	addStructuralReveal(payload, before, after)
 	addPropPresentationReveal(payload, before, after)
 	// A cell can be learned that the recipient's map already drew — scenery
-	// already presented beside known floor, or a wall's footing. Learning it
+	// already presented beside known floor. Learning it
 	// changes no record, and an empty patch is not a beat.
 	if len(payload) == base && len(regions) == 0 && len(scenery) == 0 && len(props) == 0 &&
 		len(boundaries) == 0 && len(segments) == 0 && len(sealed) == 0 && len(doorways) == 0 &&

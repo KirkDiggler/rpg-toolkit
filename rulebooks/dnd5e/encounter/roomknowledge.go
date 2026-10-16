@@ -248,7 +248,7 @@ func (e *Encounter) undiscoveredFrom(member MemberID) hiddenView {
 		}
 	}
 	// Unowned scenery directly bordering learned floor belongs to its visible
-	// boundary. Wall footing is added by the existing atlas projection below.
+	// boundary. A presented wall adds no footing of its own (fog-of-war R9).
 	for _, cell := range e.field.cells {
 		if _, owned := e.field.regionOf(cell); owned || !hidden.unexploredCells[cell] {
 			continue

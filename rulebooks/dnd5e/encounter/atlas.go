@@ -222,6 +222,19 @@ type AtlasStructuralWall struct {
 	// canonical feet ([StructuralWallInput]).
 	Height, Thickness, Elevation float64
 
+	// FootprintCells is every floor cell the wall's presence footprint
+	// overlaps by positive area — the same support that decides whether the
+	// wall is presented, so a presented wall's list is never empty — in order
+	// along the wall from From to To: each cell centre's projection onto the line, ties
+	// in the map's coordinate order. An edge wall lists the hex on either
+	// side; a centre-line wall lists the hexes it stands on and the
+	// neighbours it straddles. It is the wall's geometry, known or not, and
+	// identical in every recipient's atlas: which of these cells a recipient
+	// knows is [Atlas.Cells], and a stretch of the wall is known only where
+	// one of them is (fog-of-war R9). A client grades the wall by these cells
+	// and never re-derives them from the line.
+	FootprintCells []spatial.Position
+
 	// Openings is the permitted cut list, in authored order: every bare
 	// opening, and a bound opening only when its door is independently
 	// permitted. A withheld bound opening is omitted WHOLE — id, position and
@@ -635,12 +648,27 @@ func (e *Encounter) Atlas() (Atlas, error) {
 	// per-member filter is [Encounter.AtlasFor]'s, exactly as it is for the
 	// placed contributors. Sorted by wall id and door id so a map or an
 	// authored order never leaks through the list (C8).
+	placedAt := make(map[PropID]spatial.FootprintPlacement, len(out.Placed))
+	for _, p := range out.Placed {
+		placedAt[p.ID] = p.Placement
+	}
 	for i := range f.structuralWalls {
 		w := &f.structuralWalls[i]
+		placement, standing := placedAt[w.id]
+		if !standing {
+			// compileStructuralWalls requires a static presence, so this is
+			// unreachable; refusing beats a wall graded by no cells.
+			return Atlas{}, fmt.Errorf("structural wall %q presence: %w", w.id, ErrNoProp)
+		}
+		footprint, err := f.wallFootprintCells(w, placement)
+		if err != nil {
+			return Atlas{}, fmt.Errorf("structural wall %q footprint: %w", w.id, err)
+		}
 		wall := AtlasStructuralWall{
 			ID: w.id, Ref: w.ref, From: w.from, To: w.to,
 			Height: w.height, Thickness: w.thickness, Elevation: w.elevation,
-			Openings: make([]AtlasStructuralOpening, 0, len(w.openings)),
+			FootprintCells: footprint,
+			Openings:       make([]AtlasStructuralOpening, 0, len(w.openings)),
 		}
 		for j := range w.openings {
 			o := &w.openings[j]
