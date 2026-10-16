@@ -28,6 +28,15 @@ func TestMadKingFrontDoor(t *testing.T) {
 		"precondition: the gate is civil to the party")
 	require.NotContains(t, memberIDsOf(t, s.enc), kingReserve, "precondition: the reserves are in the barracks, unseen")
 
+	t.Run("the gatehouse's one way into the courtyard is its shut door", func(t *testing.T) {
+		yard := castleCell(0, 4)
+		path := s.routeFor(yard)
+		if len(path) > 0 {
+			require.Greater(t, s.enc.Distance(path[len(path)-1], yard), 1.0,
+				"with the gate shut the pathfinder gets the hero no nearer the yard than the gatehouse")
+		}
+	})
+
 	s.struck(kingGate1, false)
 
 	t.Run("the aggression law turns the garrison on the party", func(t *testing.T) {
@@ -54,6 +63,12 @@ func TestMadKingFrontDoor(t *testing.T) {
 	t.Run("the reserves arrive on the alarm", func(t *testing.T) {
 		require.Contains(t, memberIDsOf(t, s.enc), kingReserve)
 	})
+
+	// NOT ASSERTED, AND WHY: the use case's "loyalists in the keep walk to
+	// the throne room on the fact". The keep-patrol row is in the file, but no
+	// knight ever holds `alarm-raised`: a wall-attached door links no regions
+	// for hearing, so the shout at the gate never crosses into the hall
+	// (rpg-toolkit#2066). That issue's fix brings this assertion.
 }
 
 // TestMadKingTroupe is the troupe: the cook's gossip teaches the hero that
@@ -67,7 +82,7 @@ func TestMadKingTroupe(t *testing.T) {
 	s.said(kingCook, "gossip", "persuasion", true)
 	require.True(t, s.learners("feast-tonight")[hero], "the cook told the hero")
 
-	s.walkTo(s.at(kingCaptain))
+	s.throughTheGate(kingCaptain)
 	s.said(kingCaptain, "troupe", "performance", true)
 	require.Empty(t, s.learners("party-recognized"), "a troupe that passes writes nothing")
 
@@ -102,7 +117,7 @@ func TestMadKingTroupeBlown(t *testing.T) {
 	t.Parallel()
 	s := openTheCastle(t, besideTheCook)
 	s.said(kingCook, "gossip", "persuasion", true)
-	s.walkTo(s.at(kingCaptain))
+	s.throughTheGate(kingCaptain)
 	require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, kingCaptain),
 		"precondition: the hero stands in front of the captain, and nobody is fighting")
 
@@ -136,7 +151,7 @@ func TestMadKingScout(t *testing.T) {
 	s.said(kingCook, "ashford", "persuasion", true)
 	require.True(t, s.learners("king-burned-village")[hero], "precondition: the hero knows")
 
-	s.walkTo(s.at(kingGate1))
+	s.throughTheGate(kingGate1)
 
 	t.Run("control: the captain would hear the line from this hero", func(t *testing.T) {
 		options, err := s.enc.OptionsFor(hero, kingCaptain)

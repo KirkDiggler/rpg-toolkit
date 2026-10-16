@@ -10,7 +10,8 @@
 # walls and doors with the read-back castle's scope), edited with the
 # studio's own document verbs: the populated fixture underneath it (the
 # goblin front room, its props, wall and scope) removed, the floor erased
-# down to the eight rooms, the captain moved to the gate, and the keep's
+# down to the eight rooms, the gate and throne walls drawn wider so each
+# door is its room's only way in, the captain moved to the gate, and the keep's
 # cast, bindings, stat blocks, tables, factions and endings authored. The
 # only hand edits are these comments and the patrol and march rows
 # (`toward: { path }`, `toward: { at }`, marked "Hand edit"), which the
@@ -22,8 +23,10 @@
 # knights, the reserves in the barracks) are hostile to the party always.
 # The kitchen is civil and stays civil. One fact is learned in the kitchen
 # and spent at the gate — the cook's gossip opens the troupe, and Ashford
-# opens the turn. The throne room's doors stand open; every other door is
-# shut. A turned garrison storms the keep; a garrison told to hold the
+# opens the turn. Every door is shut but the throne room's, which stands
+# open because the march needs it: a driven walk routes only through open
+# doors and no creature opens one, so a shut throne door stops a turned
+# garrison at it. A turned garrison storms the keep; a garrison told to hold the
 # castle ends the run with the king still breathing.
 #
 # THE ROUTES, each a scenario test in dungeonspec/castle_king_*_test.go:
@@ -3491,10 +3494,10 @@ room:
         label: gate-wall
         line:
           start:
-            x: -8
+            x: -9.5
             z: 15.75
           end:
-            x: 8
+            x: 9.5
             z: 15.75
         appearance:
           assetRef: dnd5e:env:dark-fortress:45_wall_01
@@ -3505,13 +3508,13 @@ room:
           blocksMovement: true
           blocksLineOfSight: true
           footprint:
-            width: 16
+            width: 19
             depth: 0.5
             offsetX: 0
             offsetZ: 0
         openings:
           - id: gate-wall-opening
-            position: 8
+            position: 9.5
             width: 2
             door:
               id: gate-wall-door
@@ -3607,10 +3610,10 @@ room:
         label: throne-wall
         line:
           start:
-            x: -11
+            x: -12.5
             z: -24.75
           end:
-            x: 11
+            x: 12.5
             z: -24.75
         appearance:
           assetRef: dnd5e:env:dark-fortress:45_wall_01
@@ -3621,13 +3624,13 @@ room:
           blocksMovement: true
           blocksLineOfSight: true
           footprint:
-            width: 22
+            width: 25
             depth: 0.5
             offsetX: 0
             offsetZ: 0
         openings:
           - id: throne-wall-opening
-            position: 11
+            position: 12.5
             width: 2
             door:
               id: throne-wall-door

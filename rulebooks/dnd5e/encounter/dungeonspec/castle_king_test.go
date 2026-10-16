@@ -59,9 +59,15 @@ const (
 	loyalists = encounter.FactionID("loyalists")
 )
 
-// kingHallDoor is the courtyard's door into the great hall, by the compiled
-// id of the studio's wall door. Shut, as the file authors it.
-const kingHallDoor = encounter.DoorID("the-mad-king/hall-wall-door")
+// The castle's doors, by the compiled ids of the studio's wall doors. Both
+// shut, as the file authors them.
+const (
+	// kingGateDoor is the gatehouse's one way into the courtyard.
+	kingGateDoor = encounter.DoorID("the-mad-king/gate-wall-door")
+
+	// kingHallDoor is the courtyard's door into the great hall.
+	kingHallDoor = encounter.DoorID("the-mad-king/hall-wall-door")
+)
 
 // castleCell is the dungeon-absolute cell of an offset [col, row] on the
 // studio's floor: the frame the keep fixture places its rooms in, and the
@@ -198,6 +204,15 @@ func (s *kingScene) open(door encounter.DoorID) {
 	s.t.Helper()
 	_, err := s.enc.OpenDoor(&encounter.OpenDoorInput{Door: door, Actor: hero})
 	require.NoError(s.t, err, "the hero reaches %s", door)
+}
+
+// throughTheGate brings the hero from the courtyard to the gate door, opens
+// it, and walks on to a member in the gatehouse.
+func (s *kingScene) throughTheGate(to encounter.MemberID) {
+	s.t.Helper()
+	s.walkTo(castleCell(0, 10))
+	s.open(kingGateDoor)
+	s.walkTo(s.at(to))
 }
 
 // partyStart is the file's own party start, as an offset cell.

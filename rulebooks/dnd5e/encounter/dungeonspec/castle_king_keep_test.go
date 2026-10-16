@@ -24,8 +24,8 @@ import (
 var throneCell = castleCell(0, -19)
 
 // turnTheGarrison is the turn: the cook's gossip and Ashford, the hall door
-// opened on the way back across the yard, and the captain told what his
-// king did. It returns where the captain stood when he heard it.
+// opened on the way back across the yard, the gate opened, and the captain
+// told what his king did. It returns where the captain stood when he heard it.
 func turnTheGarrison(t *testing.T) (*kingScene, spatial.Position) {
 	t.Helper()
 	s := openTheCastle(t, besideTheCook)
@@ -33,7 +33,7 @@ func turnTheGarrison(t *testing.T) (*kingScene, spatial.Position) {
 	s.said(kingCook, "ashford", "persuasion", true)
 	s.walkTo(castleCell(0, -6))
 	s.open(kingHallDoor)
-	s.walkTo(s.at(kingCaptain))
+	s.throughTheGate(kingCaptain)
 	post := s.at(kingCaptain)
 	s.said(kingCaptain, "turn", "persuasion", true)
 
@@ -123,33 +123,37 @@ func TestMadKingSlain(t *testing.T) {
 	require.Equal(t, "king-slain", s.ending())
 }
 
-// followIntoTheKeep has the hero follow a member at a walk until a fight
-// takes the hero: the first few cells of the pathfinder's way to them while
-// they are out of reach, and the first cell of its way to the throne room
-// while they are beside the hero. Every cell is world time, which is what
-// lets the followed member walk on.
+// followIntoTheKeep has the hero follow a member at a walk, a few cells
+// behind, until a fight takes the hero: the first cells of the pathfinder's
+// way to them while they are farther than that, and a cell out and back
+// while they are not. Every cell is world time, which is what lets the
+// followed member walk on, and keeping back lets the leader, not the hero,
+// be the first through a door.
 func (s *kingScene) followIntoTheKeep(leader encounter.MemberID) {
 	s.t.Helper()
-	for i := 0; i < 80 && clockKind(s.t, s.enc, hero) == encounter.ClockWorld; i++ {
-		path, take := s.routeFor(s.at(leader)), 3
-		if len(path) == 0 {
-			path, take = s.routeFor(throneCell), 1
+	const behind = 3
+	for i := 0; i < 120 && clockKind(s.t, s.enc, hero) == encounter.ClockWorld; i++ {
+		var walk []spatial.Position
+		if s.enc.Distance(s.at(hero), s.at(leader)) > behind {
+			walk = s.routeFor(s.at(leader))
+		} else {
+			back, err := s.enc.Route(encounter.RouteInput{Mover: hero, Policy: encounter.MoveAway, Anchor: s.at(leader), Budget: 1})
+			require.NoError(s.t, err)
+			require.NotEmpty(s.t, back.Path, "the hero has room to mark time (%s)", back.StoppedBy)
+			walk = []spatial.Position{back.Path[0], s.at(hero)}
 		}
-		require.NotEmpty(s.t, path, "the hero can keep up")
-		for j, cell := range path {
-			// A walk ends on the first cell past `take` the hero may stop on:
-			// a doorway is passed through, never stood in.
-			end := j >= take-1
-			_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: cell, EndWalk: end || j == len(path)-1})
-			if end && j < len(path)-1 && errors.Is(err, encounter.ErrBadPlacement) {
+		require.NotEmpty(s.t, walk, "the hero can keep up")
+		for j, cell := range walk {
+			// A walk ends on the first cell past `behind` the hero may stop
+			// on: a doorway is passed through, never stood in.
+			end := j >= behind-1 || j == len(walk)-1
+			_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: cell, EndWalk: end})
+			if end && j < len(walk)-1 && errors.Is(err, encounter.ErrBadPlacement) {
 				_, err = s.enc.Step(&encounter.StepInput{Member: hero, To: cell})
 				end = false
 			}
 			require.NoError(s.t, err)
-			if clockKind(s.t, s.enc, hero) == encounter.ClockTurn {
-				return
-			}
-			if end {
+			if clockKind(s.t, s.enc, hero) == encounter.ClockTurn || end {
 				break
 			}
 		}
