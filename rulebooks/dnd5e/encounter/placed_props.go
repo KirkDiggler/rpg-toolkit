@@ -684,6 +684,45 @@ func (f *field) doorAcrossCrossing(from, to spatial.Position) *doorRecord {
 	return nil
 }
 
+// doorCrossings is every crossing between two adjacent floor cells that a
+// footprint door's rectangle lies across, whatever the door's state: the
+// trace [field.doorAcrossCrossing] asks of a shut door before a step, asked
+// here of the door's construction geometry. Each crossing is named once,
+// earlier cell first, in floor order (C8). An edge door, which has no
+// rectangle, has none.
+//
+// GEOMETRY, NOT STATE: an open door still stands between the two rooms it
+// joins, which is what the hearing graph ([Encounter.links]) needs — whether
+// it is shut is read live, per sound. The bounds pre-filter skips every
+// crossing the rectangle cannot reach, so this is one trace per crossing
+// near the door, once per encounter.
+func (f *field) doorCrossings(d *doorRecord) [][2]spatial.Position {
+	if d.placement == nil {
+		return nil
+	}
+	var out [][2]spatial.Position
+	for _, cell := range f.cells {
+		a := f.plane.CellCentre(cell)
+		for _, next := range adjacencyGrid.GetNeighbors(cell) {
+			if !cellBefore(cell, next) || !f.isFloor(next) {
+				continue
+			}
+			b := f.plane.CellCentre(next)
+			if !d.reach.mayTouch(d.placement.Origin, a, b) {
+				continue
+			}
+			trace, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
+				Placement: *d.placement, From: a, To: b,
+			})
+			if err == nil && trace.Interior {
+				out = append(out, [2]spatial.Position{cell, next})
+			}
+		}
+	}
+
+	return out
+}
+
 // crossingBlocks answers INTERIOR CROSSING: which movement-blocking placed
 // contributor, if any, closes the straight crossing between two cells'
 // centres. A thin segment between two clear centres is exactly the case a
