@@ -4,6 +4,7 @@
 package session
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 
@@ -417,4 +418,26 @@ func TestAPlacementWithNoBoxProjectsNoSides(t *testing.T) {
 	require.Zero(t, out.Placed[0].Placement.Depth)
 	require.Equal(t, FootprintPoint{X: 3, Y: 4}, out.Placed[0].Placement.Origin,
 		"and the rest of the pose still crosses: the guard skips a box, not a placement")
+}
+
+// TestAWallWithNoFootprintCellsProjectsAnEmptyList pins the "empty, never nil"
+// half of the footprint copy (fog-of-war R9). The reveal beats always write an
+// explicit `footprint_cells` array, so the snapshot must spell an absent list
+// the same way: a nil here would marshal as null on the snapshot and [] on the
+// beat, and a client comparing the two would see a difference that is not one.
+//
+// The mutant it kills is `var footprint []spatial.Position` followed by an
+// append loop, which passes every value test above and returns nil for an
+// empty input.
+func TestAWallWithNoFootprintCellsProjectsAnEmptyList(t *testing.T) {
+	out := projectStructuralWall(encounter.AtlasStructuralWall{
+		ID: "wall-presence", From: spatial.Point{X: 0, Y: 0}, To: spatial.Point{X: 10, Y: 0},
+	})
+
+	require.NotNil(t, out.FootprintCells, "an absent footprint projects an empty list, never nil")
+	require.Empty(t, out.FootprintCells)
+
+	raw, err := json.Marshal(out)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"footprint_cells":[]`, "and it reaches the wire as the beat writes it")
 }

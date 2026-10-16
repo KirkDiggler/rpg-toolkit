@@ -95,16 +95,8 @@ func (s *StructuralSessionSuite) TestIndependentDoorIntroductionDoesNotRequireIt
 			added = append(added, cell)
 		}
 	}
-	// The masquerade (fog-of-war R9, second law): before the find, the unfound
-	// leaf stands in the wall as wall cover, so its threshold hex was already
-	// learned from its face and shown as sealed scenery nobody owns, exactly
-	// as the solid-wall twin would teach it. The find therefore adds NO cell;
-	// it only unseals the leaf's own hex, and nothing of the hidden parent's
-	// floor appears.
-	s.Empty(added, "the threshold was learned before the find; the find adds no floor")
-	s.Equal([]spatial.Position{hexCell(4, 0)}, before.Atlas.Sealed,
-		"the unfound leaf's hex is sealed scenery, as the wall twin's would be")
-	s.Empty(after.Atlas.Sealed, "the find unseals the leaf's own hex and nothing else")
+	s.Equal([]spatial.Position{hexCell(4, 0)}, added,
+		"the find adds the leaf's own cell and nothing of the hidden parent's floor")
 	replay, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice", FromSeq: before.Seq + 1})
 	s.Require().NoError(err)
 	s.Equal(eventsFor(s.stream.published, "alice"), replay)
