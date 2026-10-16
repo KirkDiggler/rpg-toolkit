@@ -313,6 +313,35 @@ func TestMadKingFrontDoor(t *testing.T) {
 	})
 }
 
+// TestMadKingTheAlarmCarriesToTheKeenEar is the positive half of the front
+// door's "six hops from the keep": the same spear at the gate, with one
+// listener's ears raised. The shout is a voice, DC 5, plus 5 a hop. The hall
+// is 4 hops away behind two shut doors, DC 25; the throne room 6 hops behind
+// three, DC 35. Each is heard at its DC and missed one below it, which pins
+// the hop count as well as the link.
+func TestMadKingTheAlarmCarriesToTheKeenEar(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		who     encounter.MemberID
+		passive int
+		learns  bool
+	}{
+		{name: "the hall at 25", who: kingHall1, passive: 25, learns: true},
+		{name: "the hall at 24", who: kingHall1, passive: 24, learns: false},
+		{name: "the throne room at 35", who: kingKeep1, passive: 35, learns: true},
+		{name: "the throne room at 34", who: kingKeep1, passive: 34, learns: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s := openTheCastleWithEars(t, partyStart(t), nil, map[encounter.MemberID]int{tc.who: tc.passive})
+			s.struck(kingGate1, false)
+			require.True(t, s.learners("alarm-raised")[hero], "precondition: the gate raised the alarm")
+			require.Equal(t, tc.learns, s.learners("alarm-raised")[tc.who])
+		})
+	}
+}
+
 // TestMadKingGateDoorCarriesASound is the castle's wall doors joining its
 // regions for hearing (rpg-toolkit#2066): a gate guard's swing in the
 // gatehouse, and the hero in the yard beyond the gate door. Open, the clang
