@@ -22,8 +22,8 @@
 # outer edges, no openings, so the gate door is the gatehouse's only view as
 # well as its only way in. Two partitions carry the hall wall's line on to
 # the keep's sides, so the kitchen and chapel no longer open on the barracks
-# and armoury, and the chapel wall stands on the hex boundary between the
-# hall and the chapel rather than on the hall's edge cells. Every room with a
+# and armoury, and the kitchen and chapel walls stand on the hex boundaries
+# between their rooms rather than on edge cells. Every room with a
 # door is entered only through it; the barracks and armoury stay open to the
 # courtyard. The void stays transparent, the only value this dialect accepts;
 # the walls, not the void, close the rooms.
@@ -3557,10 +3557,10 @@ room:
         label: kitchen-wall
         line:
           start:
-            x: -25.1
+            x: -24.6817240078565
             z: -24.75
           end:
-            x: -25.1
+            x: -24.6817240078565
             z: -9.75
         appearance:
           assetRef: dnd5e:env:dark-fortress:45_wall_01

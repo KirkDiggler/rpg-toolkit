@@ -233,9 +233,9 @@ func (s *kingScene) open(door encounter.DoorID) {
 // out by the hall door, which it leaves open.
 func (s *kingScene) outOfTheKitchen() {
 	s.t.Helper()
-	// Toward the door's own cell, which its shut leaf covers: the walk ends
-	// beside it, in reach.
-	s.walkTo(castleCell(-15, -11))
+	// Toward the hall cell past the shut kitchen door: the walk ends inside
+	// the kitchen, beside the door, in reach.
+	s.walkTo(castleCell(-14, -12))
 	s.open(kingKitchenDoor)
 	// Toward the yard cell past the shut hall door: the walk ends inside it.
 	s.walkTo(castleCell(0, -6))
