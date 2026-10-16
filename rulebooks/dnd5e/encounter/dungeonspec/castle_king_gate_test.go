@@ -248,30 +248,6 @@ func (s *kingScene) seenRegions() map[encounter.RegionID]int {
 	return by
 }
 
-// regionCells is every floor cell the file compiles into a region, as
-// dungeon-absolute cells. The compiled field authors its cells as offset
-// pairs, the frame [encounter.MemberInput.Position] takes; every answer this
-// file reads back ([encounter.Encounter.RegionAt], a route, a sight read) is
-// absolute.
-func (s *kingScene) regionCells(id encounter.RegionID) []spatial.Position {
-	s.t.Helper()
-	for _, r := range s.compiled.Field.Regions {
-		if r.ID == id {
-			out := make([]spatial.Position, 0, len(r.Cells))
-			for _, c := range r.Cells {
-				cell := castleCell(int(c.X), int(c.Y))
-				in, ok := s.enc.RegionAt(cell)
-				require.True(s.t, ok && in == id, "%v is %s's floor", cell, id)
-				out = append(out, cell)
-			}
-			return out
-		}
-	}
-	require.FailNowf(s.t, "no such region", "%s", id)
-
-	return nil
-}
-
 // TestMadKingFrontDoor is the front door: the hero comes in at the party
 // start and spears the nearest gate guard. Nobody authored a rule for it —
 // the aggression law turns the garrison, the fight forms at the gate, the
