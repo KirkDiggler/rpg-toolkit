@@ -32,14 +32,14 @@ func (s *SingleRoomWallDoorSuite) thresholdSpec(door bool) *dungeonspec.SingleRo
 	return spec
 }
 
-// TestAnUnfoundDoorsThresholdIsOwnerlessWhereTheTwinsFootingIs is the region
+// TestUnfoundSecretDoorRegionsEqualTheSolidTwin is the region
 // half of the masquerade on compiled content (fog-of-war R9). The compiler
 // partitions a room by geometry, so the hex a closed door encloses is its own
 // one-hex space; the solid twin's hex there is ownerless footing. A masked
 // threshold keeps its region only when that region is otherwise on the map,
 // so the non-knower is not handed a region named after the room exactly at
 // the secret door.
-func (s *SingleRoomWallDoorSuite) TestAnUnfoundDoorsThresholdIsOwnerlessWhereTheTwinsFootingIs() {
+func (s *SingleRoomWallDoorSuite) TestUnfoundSecretDoorRegionsEqualTheSolidTwin() {
 	secret, err := s.play(s.load(s.thresholdSpec(true))).AtlasFor("walker")
 	s.Require().NoError(err)
 	solid, err := s.play(s.load(s.thresholdSpec(false))).AtlasFor("walker")
