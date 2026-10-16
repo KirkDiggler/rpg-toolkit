@@ -150,15 +150,17 @@ func (s sightReach) seesCell(observer MemberID, cell spatial.Position, hidden hi
 	if err != nil {
 		return false
 	}
-	// A hidden cover is a face only as the wall it masquerades as, and only
+	// A hidden door is a face only as the wall it masquerades as, and only
 	// while that wall is not itself hidden from this observer: a hidden parent
-	// is no wall to them, and its twin has nothing there to teach.
+	// is no wall to them, and its twin has nothing there to teach. The door
+	// footprint is the leaf that covers the threshold; its placed
+	// representation adds no second face.
 	masquerades := func(parent PropID, bound bool) bool {
 		return bound && !hidden.props[parent]
 	}
 	faces := 0
 	for id := range coverPlaced {
-		if !hidden.props[id] || masquerades(f.boundParentWall(id, "")) {
+		if !hidden.props[id] {
 			faces++
 		}
 	}

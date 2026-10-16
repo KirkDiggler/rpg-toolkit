@@ -189,9 +189,9 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	// twin learns the hex behind the wall's ([sightReach.seesCell]) — but only
 	// while that wall is presented to this recipient. Where the twin's solid
 	// wall would stand on the hex (its presence covers the centre), the twin
-	// shows footing: floor nobody owns or stands on, with nothing on it. So a
-	// learned threshold there is presented the same way — on the map, sealed,
-	// out of its region, its contents withheld — until the door is found.
+	// shows a hex nobody stands on, still in its room, with nothing on it. So
+	// a learned threshold there is presented the same way — on the map,
+	// sealed, in its region, its contents withheld — until the door is found.
 	// Where the twin's wall would not cover it, the twin shows plain floor,
 	// and so does this map. Only LEARNED thresholds: presenting a wall
 	// teaches none.
@@ -200,8 +200,10 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	if err != nil {
 		return Atlas{}, err
 	}
+	// The threshold stays in its region, as the twin's hex under its solid
+	// wall does; what stands on it is withheld, as nothing stands under a
+	// solid wall.
 	for c := range masked {
-		hiddenCells[c] = true
 		hidden.unexploredCells[c] = true
 	}
 
@@ -264,11 +266,11 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	// the same coordinates a second time (measured at a third of AtlasFor on a
 	// dungeon ten times the reference tomb, with the two walks between them).
 	for _, c := range full.Cells {
-		if hiddenCells[c] && !masked[c] {
+		if hiddenCells[c] {
 			continue
 		}
 		out.Cells = append(out.Cells, c)
-		if hiddenCells[c] || !e.field.isStandable(c) {
+		if masked[c] || !e.field.isStandable(c) {
 			out.Sealed = append(out.Sealed, c)
 		}
 	}

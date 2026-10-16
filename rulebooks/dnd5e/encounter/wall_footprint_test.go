@@ -307,6 +307,7 @@ func (s *WallFootprintSuite) TestAnUnfoundSecretDoorTeachesItsThresholdAsTheWall
 			s.Require().NoError(err)
 			s.Equal(solid.Cells, blind.Cells, "no hole and no lone hex where the secret is: the map is the solid wall's")
 			s.Equal(solid.Sealed, blind.Sealed, "and the threshold is sealed exactly where the twin's is")
+			s.Equal(solid.Regions, blind.Regions, "and it is in its room as the twin's hex is: no region-less hex marks the door")
 
 			threshold := cellAt(2, 2)
 			switch tc.threshold {
@@ -335,6 +336,7 @@ func (s *WallFootprintSuite) TestAnUnfoundSecretDoorTeachesItsThresholdAsTheWall
 			s.Require().NoError(err)
 			s.Equal(plain.Cells, seen.Cells)
 			s.Equal(plain.Sealed, seen.Sealed)
+			s.Equal(plain.Regions, seen.Regions)
 			s.Equal(plain.StructuralWalls, seen.StructuralWalls, "the cut is back")
 		})
 	}
