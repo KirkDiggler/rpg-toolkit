@@ -10,6 +10,7 @@ package dungeonspec_test
 // reach them.
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -60,7 +61,6 @@ func TestMadKingTurnTheGarrison(t *testing.T) {
 	})
 
 	t.Run("the captain storms the keep and stops where he sees a loyalist", func(t *testing.T) {
-		t.Skip("needs d1a-at-path")
 		s.followIntoTheKeep(kingCaptain)
 		require.Equal(t, encounter.ClockTurn, clockKind(t, s.enc, kingCaptain), "the captain is fighting")
 		now := s.at(kingCaptain)
@@ -70,7 +70,6 @@ func TestMadKingTurnTheGarrison(t *testing.T) {
 	})
 
 	t.Run("one fight, three sides: the party and the garrison against the loyalists", func(t *testing.T) {
-		t.Skip("needs d1a-at-path")
 		on, err := s.enc.ClockOf(&encounter.ClockOfInput{Member: hero})
 		require.NoError(t, err)
 		require.Equal(t, encounter.ClockTurn, on.Kind)
@@ -125,27 +124,43 @@ func TestMadKingSlain(t *testing.T) {
 }
 
 // followIntoTheKeep has the hero follow a member at a walk until a fight
-// takes the hero: a few cells toward them while they are out of reach, and a
-// cell toward the throne room while they are beside the hero — every cell is
-// world time, which is what lets the followed member walk on.
+// takes the hero: the first few cells of the pathfinder's way to them while
+// they are out of reach, and the first cell of its way to the throne room
+// while they are beside the hero. Every cell is world time, which is what
+// lets the followed member walk on.
 func (s *kingScene) followIntoTheKeep(leader encounter.MemberID) {
 	s.t.Helper()
-	for i := 0; i < 60 && clockKind(s.t, s.enc, hero) == encounter.ClockWorld; i++ {
-		route, err := s.enc.Route(encounter.RouteInput{
-			Mover: hero, Policy: encounter.MoveToward, Anchor: s.at(leader), Budget: 3,
-		})
-		require.NoError(s.t, err)
-		if len(route.Path) == 0 {
-			route, err = s.enc.Route(encounter.RouteInput{Mover: hero, Policy: encounter.MoveToward, Anchor: throneCell, Budget: 1})
-			require.NoError(s.t, err)
+	for i := 0; i < 80 && clockKind(s.t, s.enc, hero) == encounter.ClockWorld; i++ {
+		path, take := s.routeFor(s.at(leader)), 3
+		if len(path) == 0 {
+			path, take = s.routeFor(throneCell), 1
 		}
-		require.NotEmpty(s.t, route.Path, "the hero can keep up (%s)", route.StoppedBy)
-		for j, cell := range route.Path {
-			_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: cell, EndWalk: j == len(route.Path)-1})
+		require.NotEmpty(s.t, path, "the hero can keep up")
+		for j, cell := range path {
+			// A walk ends on the first cell past `take` the hero may stop on:
+			// a doorway is passed through, never stood in.
+			end := j >= take-1
+			_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: cell, EndWalk: end || j == len(path)-1})
+			if end && j < len(path)-1 && errors.Is(err, encounter.ErrBadPlacement) {
+				_, err = s.enc.Step(&encounter.StepInput{Member: hero, To: cell})
+				end = false
+			}
 			require.NoError(s.t, err)
 			if clockKind(s.t, s.enc, hero) == encounter.ClockTurn {
 				return
 			}
+			if end {
+				break
+			}
 		}
 	}
+}
+
+// routeFor is the pathfinder's whole way for the hero toward a cell.
+func (s *kingScene) routeFor(to spatial.Position) []spatial.Position {
+	s.t.Helper()
+	route, err := s.enc.Route(encounter.RouteInput{Mover: hero, Policy: encounter.MoveToward, Anchor: to, Budget: 200})
+	require.NoError(s.t, err)
+
+	return route.Path
 }

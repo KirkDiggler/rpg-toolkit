@@ -13,8 +13,8 @@
 # down to the eight rooms, the captain moved to the gate, and the keep's
 # cast, bindings, stat blocks, tables, factions and endings authored. The
 # only hand edits are these comments and the patrol and march rows
-# (`toward: { path }`, `toward: { at }`), which the studio's table form does
-# not offer in this dialect yet.
+# (`toward: { path }`, `toward: { at }`, marked "Hand edit"), which the
+# studio's table form does not offer yet.
 #
 # THE CASTLE. The garrison keeps the gate and the hall, and its mind is the
 # captain: it is civil to the party until the party is recognized, and civil
@@ -125,6 +125,10 @@ tables:
             kind: clang
             within: 2
         toward: sound
+      # Hand edit: the gate guards pace the gatehouse, a right-angled loop
+      # whose legs never share a cell (use case R7).
+      - when: { enemy: none }
+        toward: { path: [{ q: -9, r: 13 }, { q: -3, r: 13 }, { q: -5, r: 16 }, { q: -11, r: 16 }] }
   keep-patrol:
     time:
       - say: Protect the king!
@@ -139,13 +143,26 @@ tables:
       - when:
           enemy: seen
         toward: enemy
+      # Hand edit: on the alarm, fall back beside the throne.
+      - when: { fact: alarm-raised }
+        toward: { at: { q: 11, r: -21 } }
       - when:
           heard:
             kind: voice
             within: 3
         toward: sound
+      # Hand edit: the knights pace the throne room.
+      - when: { enemy: none }
+        toward: { path: [{ q: 4, r: -18 }, { q: 14, r: -18 }, { q: 16, r: -21 }, { q: 6, r: -21 }] }
   storm-the-keep:
     time:
+      # Hand edit: a turned garrison marches on the throne room until it sees
+      # a loyalist (use case R8's list form). `enemy: none`, not `not: { enemy:
+      # seen }`: the bands are exclusive (R11), so an enemy in reach is not
+      # "seen", and the negation would march a captain past the knight
+      # swinging at him.
+      - when: [{ fact: guards-turned }, { enemy: none }]
+        toward: { at: { q: 10, r: -19 } }
       - when:
           enemy: reach
         attack: enemy
