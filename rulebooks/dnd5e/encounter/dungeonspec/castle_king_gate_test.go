@@ -10,6 +10,7 @@ package dungeonspec_test
 // for that row, and nothing about how the rest of the castle spent its time.
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -86,24 +87,38 @@ func TestMadKingTroupe(t *testing.T) {
 	s.said(kingCaptain, "troupe", "performance", true)
 	require.Empty(t, s.learners("party-recognized"), "a troupe that passes writes nothing")
 
+	gatehouse, ok := s.enc.RegionAt(castleCell(0, 15))
+	require.True(t, ok, "the party start is the gatehouse's floor")
 	s.walkTo(castleCell(0, -6))
 	s.open(kingHallDoor)
 	s.walkTo(castleCell(-6, -10))
 
-	t.Run("the party stands in the great hall", func(t *testing.T) {
-		hall, ok := s.enc.RegionAt(s.at(kingHall1))
-		require.True(t, ok)
+	// THE GATE'S HALF, AND ONLY IT. From the hall door the hero is in line
+	// with the throne room's open door, and whether a pacing knight stands in
+	// that line then is the patrol's phase: set by how much world time the
+	// route has spent, not by anything the troupe said. A knight's sighting
+	// there is a loyalist fight, which the disguise never covered (§1), so
+	// this route asserts the garrison and says nothing either way about the
+	// keep.
+	t.Run("the party came through the gate and opened the hall", func(t *testing.T) {
 		here, ok := s.enc.RegionAt(s.at(hero))
 		require.True(t, ok)
-		require.Equal(t, hall, here, "the hero is in the hall the hall guard keeps")
+		require.NotEqual(t, gatehouse, here, "the hero is past the gate")
 	})
 
-	t.Run("the garrison is civil and nobody fought", func(t *testing.T) {
+	t.Run("the garrison is civil, and no garrison member fought", func(t *testing.T) {
 		require.Equal(t, encounter.StanceNeutral, s.stance(garrison, encounter.FactionParty))
-		require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "the hero walked in, and never into a fight")
-		require.Empty(t, *s.strikes, "no creature swung")
+		for _, id := range s.garrisonMembers() {
+			require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, id), "%s is in no fight", id)
+		}
+		for _, st := range *s.strikes {
+			require.NotEqual(t, garrison, s.factionOf(st.attacker), "no garrison member swung")
+			require.NotEqual(t, garrison, s.factionOf(st.target), "nobody swung at the garrison")
+		}
 		for _, f := range s.enc.ToData().Journal.Facts {
-			require.NotContains(t, f.Kind, "settled:hostile", "no blow turned anybody")
+			if strings.HasPrefix(f.Kind, "settled:hostile") {
+				require.NotContains(t, f.Kind, string(garrison), "no blow turned the garrison")
+			}
 		}
 	})
 }
@@ -127,6 +142,9 @@ func TestMadKingTroupeBlown(t *testing.T) {
 		learned := s.learners("party-recognized")
 		require.True(t, learned[kingCaptain], "the captain, the garrison's mind, saw through it")
 		require.True(t, learned[hero])
+		for _, id := range []encounter.MemberID{theKing, kingKeep1, kingKeep2} {
+			require.False(t, learned[id], "%s, in the keep, did not witness it: the court is not fooled or warned", id)
+		}
 	})
 
 	t.Run("the garrison turned on a fact its mind witnessed", func(t *testing.T) {
@@ -147,6 +165,17 @@ func TestMadKingTroupeBlown(t *testing.T) {
 func TestMadKingScout(t *testing.T) {
 	t.Parallel()
 	s := openTheCastle(t, besideTheCook)
+
+	t.Run("control: the captain withholds the line from a hero who has not heard about Ashford", func(t *testing.T) {
+		options, err := s.enc.OptionsFor(hero, kingCaptain)
+		require.NoError(t, err)
+		for _, o := range options {
+			require.NotEqual(t, "turn", o.ID, "the line waits on king-burned-village")
+		}
+		_, err = s.speak(kingCaptain, "turn", "persuasion", true)
+		require.ErrorIs(t, err, encounter.ErrNoOption)
+	})
+
 	s.said(kingCook, "gossip", "persuasion", true)
 	s.said(kingCook, "ashford", "persuasion", true)
 	require.True(t, s.learners("king-burned-village")[hero], "precondition: the hero knows")

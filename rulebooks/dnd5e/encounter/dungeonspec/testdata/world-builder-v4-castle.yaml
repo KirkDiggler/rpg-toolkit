@@ -111,6 +111,10 @@ templates:
 tables:
   gate-patrol:
     time:
+      # Hand edit: a gate guard who witnessed the turn marches with the
+      # captain, on storm-the-keep's own row.
+      - when: [{ fact: guards-turned }, { enemy: none }]
+        toward: { at: { q: 10, r: -19 } }
       - say: To arms! Intruders at the gate!
         when:
           - enemy: seen

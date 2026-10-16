@@ -126,9 +126,11 @@ func openTheCastle(t *testing.T, at spatial.Position) *kingScene {
 	strikes := &[]cellsStrike{}
 	standing := &castleStanding{down: map[encounter.MemberID]bool{}}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Field:     compiled.Field,
-		Members:   members,
-		Endings:   append([]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, compiled.Endings...),
+		Field:   compiled.Field,
+		Members: members,
+		Endings: append([]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, compiled.Endings...),
+		// Unbounded, so a route can read a creature's whole story back.
+		Retention: encounter.RetentionUnbounded,
 		Capabilities: encounter.Capabilities{
 			Sight:         castleSight{},
 			Equipment:     encounter.UnobservedEquipment{},
@@ -269,6 +271,35 @@ func (s *kingScene) answeredWith(fact string, audience encounter.MemberID) []enc
 		require.NoError(s.t, json.Unmarshal(beat.Payload, &body))
 		if body.Beat == encounter.BeatAnswered && body.Fact == fact {
 			out = append(out, encounter.MemberID(body.Creature))
+		}
+	}
+
+	return out
+}
+
+// factionOf is the faction the file places a member in; the hero's is the
+// party.
+func (s *kingScene) factionOf(id encounter.MemberID) encounter.FactionID {
+	s.t.Helper()
+	if id == hero {
+		return encounter.FactionParty
+	}
+	for _, m := range s.compiled.Monsters {
+		if encounter.MemberID(m.MemberID) == id {
+			return encounter.FactionID(m.Faction)
+		}
+	}
+	require.FailNowf(s.t, "not in the file", "%s", id)
+
+	return ""
+}
+
+// garrisonMembers is every member the file places in the garrison.
+func (s *kingScene) garrisonMembers() []encounter.MemberID {
+	var out []encounter.MemberID
+	for _, m := range s.compiled.Monsters {
+		if encounter.FactionID(m.Faction) == garrison {
+			out = append(out, encounter.MemberID(m.MemberID))
 		}
 	}
 

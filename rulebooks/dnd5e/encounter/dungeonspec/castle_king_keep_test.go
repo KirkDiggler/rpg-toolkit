@@ -10,6 +10,7 @@ package dungeonspec_test
 // reach them.
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -25,8 +26,9 @@ var throneCell = castleCell(0, -19)
 
 // turnTheGarrison is the turn: the cook's gossip and Ashford, the hall door
 // opened on the way back across the yard, the gate opened, and the captain
-// told what his king did. It returns where the captain stood when he heard it.
-func turnTheGarrison(t *testing.T) (*kingScene, spatial.Position) {
+// told what his king did. It returns where every member stood just before
+// he heard it.
+func turnTheGarrison(t *testing.T) (*kingScene, map[encounter.MemberID]spatial.Position) {
 	t.Helper()
 	s := openTheCastle(t, besideTheCook)
 	s.said(kingCook, "gossip", "persuasion", true)
@@ -34,10 +36,15 @@ func turnTheGarrison(t *testing.T) (*kingScene, spatial.Position) {
 	s.walkTo(castleCell(0, -6))
 	s.open(kingHallDoor)
 	s.throughTheGate(kingCaptain)
-	post := s.at(kingCaptain)
+	posts := map[encounter.MemberID]spatial.Position{}
+	members, err := s.enc.Members()
+	require.NoError(t, err)
+	for _, m := range members {
+		posts[m.ID] = m.Position
+	}
 	s.said(kingCaptain, "turn", "persuasion", true)
 
-	return s, post
+	return s, posts
 }
 
 // TestMadKingTurnTheGarrison is turning the garrison: the captain learns the
@@ -47,7 +54,7 @@ func turnTheGarrison(t *testing.T) (*kingScene, spatial.Position) {
 // the garrison both fight the loyalists and never each other.
 func TestMadKingTurnTheGarrison(t *testing.T) {
 	t.Parallel()
-	s, post := turnTheGarrison(t)
+	s, posts := turnTheGarrison(t)
 
 	t.Run("the captain, the garrison's mind, learned the guards have turned", func(t *testing.T) {
 		learned := s.learners("guards-turned")
@@ -64,9 +71,26 @@ func TestMadKingTurnTheGarrison(t *testing.T) {
 		s.followIntoTheKeep(kingCaptain)
 		require.Equal(t, encounter.ClockTurn, clockKind(t, s.enc, kingCaptain), "the captain is fighting")
 		now := s.at(kingCaptain)
-		require.Less(t, s.enc.Distance(now, throneCell), s.enc.Distance(post, throneCell),
+		require.Less(t, s.enc.Distance(now, throneCell), s.enc.Distance(posts[kingCaptain], throneCell),
 			"he walked from his post toward the throne room")
 		require.NotEqual(t, throneCell, now, "and stopped short of it, where a loyalist came into his sight")
+	})
+
+	t.Run("a gate guard who witnessed the turn marches with him", func(t *testing.T) {
+		learned := s.learners("guards-turned")
+		var marched bool
+		for _, id := range []encounter.MemberID{kingGate1, kingGate2} {
+			if !learned[id] {
+				continue
+			}
+			// The march row is the gate patrol's only row that names a
+			// cell, so a pick of `toward` at a cell is that row firing.
+			if s.pickedTowardACell(id) &&
+				s.enc.Distance(s.at(id), throneCell) < s.enc.Distance(posts[id], throneCell) {
+				marched = true
+			}
+		}
+		require.True(t, marched, "a guard who heard the captain took the march row toward the throne room")
 	})
 
 	t.Run("one fight, three sides: the party and the garrison against the loyalists", func(t *testing.T) {
@@ -82,7 +106,7 @@ func TestMadKingTurnTheGarrison(t *testing.T) {
 		}
 		var garrisonSwung bool
 		for _, st := range *s.strikes {
-			if st.attacker != kingCaptain && st.attacker != kingHall1 {
+			if s.factionOf(st.attacker) != garrison {
 				continue
 			}
 			require.NotEqual(t, hero, st.target, "the garrison never swings at the party")
@@ -121,6 +145,24 @@ func TestMadKingSlain(t *testing.T) {
 	s.struck(theKing, true)
 
 	require.Equal(t, "king-slain", s.ending())
+}
+
+// pickedTowardACell is whether a creature's own story shows it picking a
+// `toward` row that names a cell.
+func (s *kingScene) pickedTowardACell(id encounter.MemberID) bool {
+	s.t.Helper()
+	story, err := s.enc.Story(&encounter.StoryInput{Audience: id})
+	require.NoError(s.t, err)
+	for _, beat := range story {
+		var body struct{ Beat, Creature, Word, Selector string }
+		require.NoError(s.t, json.Unmarshal(beat.Payload, &body))
+		if body.Beat == encounter.BeatAnswered && body.Creature == string(id) &&
+			body.Word == "toward" && body.Selector == "at" {
+			return true
+		}
+	}
+
+	return false
 }
 
 // followIntoTheKeep has the hero follow a member at a walk, a few cells
