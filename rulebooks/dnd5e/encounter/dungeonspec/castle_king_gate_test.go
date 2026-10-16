@@ -10,7 +10,6 @@ package dungeonspec_test
 // for that row, and nothing about how the rest of the castle spent its time.
 
 import (
-	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -321,26 +320,42 @@ func TestMadKingTroupe(t *testing.T) {
 
 	gatehouse, ok := s.enc.RegionAt(castleCell(0, 15))
 	require.True(t, ok, "the party start is the gatehouse's floor")
-	// THE KING IS UNSEEN FROM THE HALL. The throne door is shut, and the king
-	// sits in its room's corner, so from the hall door, the hall's middle and
-	// (3,-11), where a knight was once sighted through an open throne door,
-	// the hero and the king do not see each other.
+	// THE KEEP IS UNSEEN FROM THE HALL. The throne door is shut, so from the
+	// yard side of the hall door, where a walk opens it, from the hall's
+	// middle, and from the hall's west side at offset (-3,-11), where a knight
+	// was once sighted through the open throne door, the hero sees no cell of
+	// the throne room, and the hero and the king do not see each other. The
+	// throne-room count is the pin on the shut door: with it open the hero
+	// sees 5, 19 and 21 of its cells from these three spots.
+	throneRoom, ok := s.enc.RegionAt(castleCell(0, -20))
+	require.True(t, ok, "the throne room's floor")
+	courtyard, ok := s.enc.RegionAt(castleCell(0, -6))
+	require.True(t, ok, "the yard cell under the hall door")
+	unseen := func(where string) {
+		require.Zero(t, s.seenRegions()[throneRoom], "%s, the hero sees no cell of the throne room", where)
+		s.unseenByTheKing(where)
+	}
 	s.walkTo(castleCell(0, -6))
 	t.Run("the party crosses the hall unseen by the king", func(t *testing.T) {
-		s.unseenByTheKing("at the hall door")
+		here, _ := s.enc.RegionAt(s.at(hero))
+		require.Equal(t, courtyard, here, "precondition: the hero stands on the yard side of the hall door")
+		require.LessOrEqual(t, s.enc.Distance(s.at(hero), castleCell(0, -6)), 1.0, "precondition: at the hall door")
+		unseen("at the hall door")
+
 		middle := castleCell(0, -12)
 		s.walkTo(middle)
 		require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "the hero walks into the hall and into no fight")
 		hall, _ := s.enc.RegionAt(middle)
-		here, _ := s.enc.RegionAt(s.at(hero))
+		here, _ = s.enc.RegionAt(s.at(hero))
 		require.Equal(t, hall, here, "precondition: the hero is in the hall")
 		require.LessOrEqual(t, s.enc.Distance(s.at(hero), middle), 1.0, "precondition: beside its middle")
-		s.unseenByTheKing("in the middle of the hall")
-		east := spatial.Position{X: 3, Y: -11}
-		s.walkTo(east)
+		unseen("in the middle of the hall")
+
+		hallWest := castleCell(-3, -11)
+		s.walkTo(hallWest)
 		require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "the hero walks on across the hall and into no fight")
-		require.LessOrEqual(t, s.enc.Distance(s.at(hero), east), 1.0, "precondition: beside %v", east)
-		s.unseenByTheKing(fmt.Sprintf("beside %v", east))
+		require.LessOrEqual(t, s.enc.Distance(s.at(hero), hallWest), 1.0, "precondition: beside the hall's west side")
+		unseen("on the hall's west side")
 	})
 	s.walkTo(castleCell(-6, -10))
 

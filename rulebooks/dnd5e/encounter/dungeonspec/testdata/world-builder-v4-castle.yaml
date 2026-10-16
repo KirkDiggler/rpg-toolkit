@@ -39,8 +39,7 @@
 # opens the turn. Every door is shut, the throne room's too, and none is
 # locked. A shut throne door stops a turned garrison's march at it, because a
 # driven walk routes only through open doors and no creature opens one
-# (rpg-toolkit#2069); the tests that march open it first, as the party
-# would. A turned garrison storms the keep; a garrison told to hold the
+# (rpg-toolkit#2069); the party opens it. A turned garrison storms the keep; a garrison told to hold the
 # castle ends the run with the king still breathing.
 #
 # THE ROUTES, each a scenario test in dungeonspec/castle_king_*_test.go:
