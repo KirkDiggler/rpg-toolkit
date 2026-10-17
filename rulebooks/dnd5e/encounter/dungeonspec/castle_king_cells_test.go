@@ -27,6 +27,9 @@ const (
 	kingTurnkey  = encounter.MemberID("turnkey")
 )
 
+// prisoners is the cells' prisoners' faction, as the file names it.
+const prisoners = encounter.FactionID("prisoners")
+
 // kingOrders is the captain's orders, the holdable prop on the kitchen floor.
 const kingOrders = encounter.PropID("orders")
 
@@ -35,10 +38,13 @@ var kingCellPick = encounter.CheckApproach{Ability: "dex", Tool: "dnd5e:item:thi
 
 // TestMadKingPickingTheCellLockEndsTheRunFreed is the cells' route in the
 // castle: the hero comes in at the party start, opens the gate, crosses the
-// yard into the barracks and walks toward the cells, which leaves the hero
-// beside the shut cell door. A pick of 15 against DC 13 opens it, the door
-// teaches `cells-opened`, and the run ends `freed` with both of the cells'
-// guards still in it: the lock was picked, not fought through.
+// yard into the barracks, past the sergeant and the turnkey who keep the
+// cell door from the barracks side, and walks toward the cells, which leaves
+// the hero beside the shut door. The guards are the garrison, civil to the
+// party, so the pick happens under their eyes and no fight forms. A pick of
+// 15 against DC 13 opens the door, the door teaches `cells-opened`, and the
+// run ends `freed` with both guards still in it: the lock was picked, not
+// fought through.
 func TestMadKingPickingTheCellLockEndsTheRunFreed(t *testing.T) {
 	t.Parallel()
 	s := openTheCastle(t, partyStart(t))
@@ -54,6 +60,18 @@ func TestMadKingPickingTheCellLockEndsTheRunFreed(t *testing.T) {
 	require.NotEqual(t, cells, here, "precondition: the locked door keeps the hero out of the cells")
 	require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "precondition: nobody fought on the way")
 	require.Empty(t, s.ending())
+	require.Equal(t, encounter.StanceNeutral, s.stance(prisoners, encounter.FactionParty), "the prisoners are civil to the party")
+
+	t.Run("the guards watch the hero at the door, and nobody fights", func(t *testing.T) {
+		for _, id := range []encounter.MemberID{kingSergeant, kingTurnkey} {
+			here, _ := s.enc.RegionAt(s.at(id))
+			require.NotEqual(t, cells, here, "%s keeps the door from the barracks side", id)
+			out, err := s.enc.VisibleCellsFor(&encounter.VisibleCellsInput{Member: id})
+			require.NoError(t, err)
+			require.Contains(t, out.Cells, s.at(hero), "%s sees the hero at the door", id)
+			require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, id), "%s is in no fight", id)
+		}
+	})
 
 	_, err := s.enc.Unlock(&encounter.UnlockInput{
 		Door: kingCellsDoor, Actor: hero, Beaten: true, Total: 15, Applied: kingCellPick,
@@ -61,6 +79,7 @@ func TestMadKingPickingTheCellLockEndsTheRunFreed(t *testing.T) {
 	require.NoError(t, err, "the hero stands within reach of the cell door")
 
 	require.Equal(t, "freed", s.ending())
+	require.Empty(t, *s.strikes, "nobody swung")
 	require.True(t, s.learners("cells-opened")[hero], "the hero who opened it learned it")
 	for _, id := range []encounter.MemberID{kingSergeant, kingTurnkey} {
 		require.Equal(t, garrison, s.factionOf(id), "%s is the garrison's", id)

@@ -38,8 +38,11 @@
 # party start and the postern move north with it. The cells
 # (the-mad-king-cells) are a ninth room, a 12 x 8 block below the barracks
 # whose one door is in the barracks' south wall; its sergeant, its turnkey
-# and four prisoners are the one-off's, the guards in the garrison and the
-# prisoners their own faction. The kitchen gains castle-kitchen's second
+# and four prisoners are the one-off's, the guards in the garrison keeping
+# the door from the barracks side and the prisoners their own faction. The
+# one-off's bribe (the sergeant's purse line, `guard-bribed`) is not
+# carried: it turned a hostile garrison civil, and this garrison starts
+# civil. It is an authoring hook for a cells guard who starts hostile. The kitchen gains castle-kitchen's second
 # hand, a scullion, and its trigger: the captain's orders on the kitchen
 # floor. The one-offs stay in testdata as their own tests' content.
 #
@@ -6956,15 +6959,15 @@ room:
         ref: dnd5e:monsters:guard
         startingCell:
           location:
-            q: -26
-            r: 8
+            q: -24
+            r: 5
         appearanceRef: dnd5e:npcs:kingdom:soldier-male-01-style-02-b
       - id: turnkey
         ref: dnd5e:monsters:guard
         startingCell:
           location:
-            q: -22
-            r: 8
+            q: -20
+            r: 5
         appearanceRef: dnd5e:npcs:kingdom:soldier-male-01-style-02-b
       - id: prisoner-1
         ref: dnd5e:monsters:prisoner
@@ -7125,19 +7128,6 @@ room:
       sergeant:
         faction: garrison
         table: cell-guard
-        options:
-          - id: offer-the-purse
-            say: Offer the purse.
-            check:
-              - ability: persuasion
-                dc: 10
-            requires:
-              holds: purse
-            success:
-              - say: I never saw you. Be quick about it.
-                fact: guard-bribed
-            failure:
-              - say: You think I can be bought? Back off.
       turnkey:
         faction: garrison
         table: cell-guard
