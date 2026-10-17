@@ -43,7 +43,7 @@ func TestMadKingEveryRoomHasOneWayIn(t *testing.T) {
 	t.Run("the gatehouse", func(t *testing.T) {
 		t.Parallel()
 		s := openTheCastle(t, partyStart(t))
-		gatehouse, ok := s.enc.RegionAt(castleCell(0, 15))
+		gatehouse, ok := s.enc.RegionAt(castleCell(0, 11))
 		require.True(t, ok, "the party start is the gatehouse's floor")
 		courtyard, ok := s.enc.RegionAt(castleCell(0, 4))
 		require.True(t, ok, "the courtyard's floor")
@@ -54,13 +54,13 @@ func TestMadKingEveryRoomHasOneWayIn(t *testing.T) {
 		}
 
 		onlyTheGatehouse("from the party start")
-		s.walkTo(castleCell(0, 10))
+		s.walkTo(castleCell(0, 6))
 		onlyTheGatehouse("from the gate")
 		s.open(kingGateDoor)
 		require.NotZero(t, s.seenRegions()[courtyard], "the open gate shows the courtyard")
 	})
 
-	doors := []encounter.DoorID{kingGateDoor, kingHallDoor, kingKitchenDoor, kingChapelDoor, kingThroneDoor}
+	doors := []encounter.DoorID{kingGateDoor, kingHallDoor, kingKitchenDoor, kingChapelDoor, kingThroneDoor, kingCellsDoor}
 	onlyShut := func(shut encounter.DoorID) map[encounter.DoorID]encounter.DoorState {
 		states := map[encounter.DoorID]encounter.DoorState{}
 		for _, d := range doors {
@@ -73,9 +73,11 @@ func TestMadKingEveryRoomHasOneWayIn(t *testing.T) {
 	}
 	// The yard cells a gap would show a room from: under the hall door, just
 	// past both ends of the hall wall, and at both far ends of the partitions
-	// that carry its line on.
+	// that carry its line on; and on the barracks floor over the cell door and
+	// at the yard's south-west corner, past the cells wall's east end.
 	yard := []spatial.Position{
 		castleCell(0, -6), castleCell(-15, -6), castleCell(15, -6), castleCell(-26, -6), castleCell(26, -6),
+		castleCell(-20, 6), castleCell(-14, 6),
 	}
 
 	// rows and cols are a fixture room's offset cells along one row or one
@@ -132,6 +134,7 @@ func TestMadKingEveryRoomHasOneWayIn(t *testing.T) {
 			// The corners by the door wall, the far corners, and the door.
 			row(-17, -6, -6), row(-17, 6, 6), row(-22, -6, -6), row(-22, 6, 6), row(-17, 0, 0),
 		)},
+		{"the cells", kingCellsDoor, castleCell(-20, 10), cells(row(7, -26, -15), row(14, -26, -26), row(14, -15, -15))},
 	} {
 		t.Run(room.name, func(t *testing.T) {
 			t.Parallel()
@@ -413,7 +416,7 @@ func TestMadKingTroupe(t *testing.T) {
 	s.said(kingCaptain, "troupe", "performance", true)
 	require.Empty(t, s.learners("party-recognized"), "a troupe that passes writes nothing")
 
-	gatehouse, ok := s.enc.RegionAt(castleCell(0, 15))
+	gatehouse, ok := s.enc.RegionAt(castleCell(0, 11))
 	require.True(t, ok, "the party start is the gatehouse's floor")
 	// THE KEEP IS UNSEEN FROM THE HALL. The throne door is shut, so from the
 	// yard side of the hall door, where a walk opens it, from the hall's

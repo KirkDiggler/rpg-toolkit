@@ -257,7 +257,7 @@ func (s *kingScene) outOfTheKitchen() {
 // it, and walks on to a member in the gatehouse.
 func (s *kingScene) throughTheGate(to encounter.MemberID) {
 	s.t.Helper()
-	s.walkTo(castleCell(0, 10))
+	s.walkTo(castleCell(0, 6))
 	s.open(kingGateDoor)
 	s.walkTo(s.at(to))
 }

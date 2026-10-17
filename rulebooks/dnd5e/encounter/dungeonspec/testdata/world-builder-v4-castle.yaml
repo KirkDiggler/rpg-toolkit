@@ -30,28 +30,48 @@
 # room's west corner beside the door wall, and each knight has its own table
 # and paces its own side of the room, clear of the throne door's line.
 #
+# ONE CASTLE (rpg-project#611). The castle is the only castle entry, so the
+# cells and the kitchen's trigger fold into it, still by the export. The
+# south front is cut four rows north (the courtyard, barracks and armoury
+# end at row 6, the gatehouse is rows 7..12) so the courtyard, 29 x 13, fits
+# the play view; the gate, the gate guards, their loop, the captain, the
+# party start and the postern move north with it. The cells
+# (the-mad-king-cells) are a ninth room, a 12 x 8 block below the barracks
+# whose one door is in the barracks' south wall; its sergeant, its turnkey
+# and four prisoners are the one-off's, the guards in the garrison and the
+# prisoners their own faction. The kitchen gains castle-kitchen's second
+# hand, a scullion, and its trigger: the captain's orders on the kitchen
+# floor. The one-offs stay in testdata as their own tests' content.
+#
 # THE CASTLE. The garrison keeps the gate and the hall, and its mind is the
 # captain: it is civil to the party until the party is recognized, and civil
 # to the loyalists until the guards turn. The loyalists (the king, his
 # knights, the reserves in the barracks) are hostile to the party always.
 # The kitchen is civil and stays civil. One fact is learned in the kitchen
 # and spent at the gate — the cook's gossip opens the troupe, and Ashford
-# opens the turn. Every door is shut, the throne room's too, and none is
-# locked. A shut throne door stops a turned garrison's march at it, because a
-# driven walk routes only through open doors and no creature opens one
-# (rpg-toolkit#2069); the party opens it. A turned garrison storms the keep; a garrison told to hold the
-# castle ends the run with the king still breathing.
+# opens the turn. The captain's orders on the kitchen floor say the party is
+# not who it claims: carry them into the captain's presence and the garrison
+# knows it (`party-recognized`, the garrison's `until`). The prisoners are
+# neutral to everybody. Every door is shut, the throne room's too, and one
+# is locked: the cell door, thieves' tools at DC 13, whose opening teaches
+# `cells-opened` and ends the run `freed`. A shut throne door stops a turned
+# garrison's march at it, because a driven walk routes only through open
+# doors and no creature opens one (rpg-toolkit#2069); the party opens it. A
+# turned garrison storms the keep; a garrison told to hold the castle ends
+# the run with the king still breathing.
 #
 # THE ROUTES, each a scenario test in dungeonspec/castle_king_*_test.go:
 # the front door, the troupe, the troupe blown, turning the garrison, the
-# king deposed, the king slain, and the scout who talks to the wrong guard.
+# king deposed, the king slain, the scout who talks to the wrong guard, the
+# cell lock picked, and the orders carried to the captain.
 # THE KITCHEN-DOOR ROUTES (sneaking past the keep patrol, and the forced
 # door the knights hear) wait on wave C (rpg-project#606).
 #
 # STORED IS AUTHORED. Each stat block under `templates:` says scores, hit
 # dice, armor, proficiency, skills and weapons — never hit points, armor
 # class or an attack bonus, which are the rulebook's to derive. The guard
-# and the captain are the castle kitchen's numbers.
+# and the captain are the castle kitchen's numbers; the cells' guards are
+# guards, and the prisoner is the cells' own.
 version: 4
 key: the-mad-king
 play:
@@ -121,6 +141,11 @@ templates:
     proficiency: 2
     actions:
       - dnd5e:weapons:longsword
+  prisoner:
+    base: dnd5e:monsters:human
+    name: Prisoner
+    actions:
+      - dnd5e:weapons:club
 tables:
   gate-patrol:
     time:
@@ -148,7 +173,7 @@ tables:
       # Hand edit: the gate guards pace the gatehouse, a right-angled loop
       # whose legs never share a cell (use case R7).
       - when: { enemy: none }
-        toward: { path: [{ q: -9, r: 13 }, { q: -3, r: 13 }, { q: -5, r: 16 }, { q: -11, r: 16 }] }
+        toward: { path: [{ q: -7, r: 9 }, { q: -1, r: 9 }, { q: -3, r: 12 }, { q: -9, r: 12 }] }
   keep-patrol:
     time:
       - say: Protect the king!
@@ -201,6 +226,33 @@ tables:
       # stays clear of the throne door's line from the hall.
       - when: { enemy: none }
         toward: { path: [{ q: 13, r: -19 }, { q: 16, r: -19 }, { q: 16, r: -21 }, { q: 14, r: -21 }] }
+  cell-guard:
+    time:
+      - weight: 4
+        when:
+          - fact: alarm-raised
+          - enemy: reach
+        attack: enemy
+      - weight: 4
+        when:
+          - fact: alarm-raised
+          - not:
+              enemy: reach
+        toward: enemy
+      - weight: 3
+        say: Steel in the cells! Sound the alarm!
+        when:
+          heard:
+            kind: clang
+            within: 2
+        fact: alarm-raised
+      - weight: 3
+        say: Intruders in the cells! Sound the alarm!
+        when:
+          enemy: seen
+        fact: alarm-raised
+      - weight: 1
+        hold: {}
   storm-the-keep:
     time:
       # Hand edit: a turned garrison marches on the throne room until it sees
@@ -227,6 +279,7 @@ factions:
     temper: aggressive
   - id: kitchen
     mind: cook
+  - id: prisoners
 dispositions:
   - between:
       - garrison
@@ -248,15 +301,28 @@ dispositions:
       - kitchen
       - party
     stance: neutral
+  - between:
+      - prisoners
+      - party
+    stance: neutral
 intel:
   - id: cooks-ledger
     reveals:
       fact: king-burned-village
+  - id: captains-orders
+    reveals:
+      fact: party-recognized
+  - id: king-whereabouts
+    reveals:
+      fact: king-in-throne-room
+  - id: key-bearer
+    reveals:
+      fact: sergeant-holds-keys
 exits:
   - id: postern
     cell:
-      q: -24
-      r: 9
+      q: -22
+      r: 5
 endings:
   - id: king-slain
     when:
@@ -264,6 +330,9 @@ endings:
   - id: king-deposed
     when:
       fact: throne-taken
+  - id: freed
+    when:
+      fact: cells-opened
 room:
   version: 3
   id: room-1
@@ -312,18 +381,27 @@ room:
           y: 0
           z: -15
           rotationY: 0
+      - id: orders
+        kind: prop
+        assetRef: dnd5e:props:dark-fortress:letter_01
+        label: The Captain’s Orders
+        transform:
+          x: -41.569219381653056
+          y: 0
+          z: -18
+          rotationY: 0
     groups: []
     mapLabels:
       - id: label-courtyard
         text: Courtyard
         location:
-          x: 0.40754136648679445
-          z: 3
+          x: 0.39970403251589465
+          z: 0
       - id: label-gatehouse
         text: Gatehouse
         location:
           x: 0.4330127018922192
-          z: 20.25
+          z: 14.25
       - id: label-great-hall
         text: Great hall
         location:
@@ -337,8 +415,8 @@ room:
       - id: label-barracks
         text: Barracks
         location:
-          x: -35.09950018867517
-          z: 3
+          x: -35.10733752264608
+          z: 0
       - id: label-chapel
         text: Chapel
         location:
@@ -347,51 +425,32 @@ room:
       - id: label-armoury
         text: Armoury
         location:
-          x: 35.91458292164878
-          z: 3
+          x: 35.90674558767788
+          z: 0
       - id: label-throne-room
         text: Throne room
         location:
           x: 0.43301270189221913
           z: -29.25
+      - id: label-cells
+        text: Cells
+        location:
+          x: -35.07402885326976
+          z: 15.75
     authoringRegions:
       - id: region-courtyard
         labelId: label-courtyard
         boundary:
           kind: explicit
           cells:
-            - q: -19
-              r: 10
-            - q: -18
-              r: 8
-            - q: -18
-              r: 9
-            - q: -18
-              r: 10
             - q: -17
               r: 6
-            - q: -17
-              r: 7
-            - q: -17
-              r: 8
-            - q: -17
-              r: 9
-            - q: -17
-              r: 10
             - q: -16
               r: 4
             - q: -16
               r: 5
             - q: -16
               r: 6
-            - q: -16
-              r: 7
-            - q: -16
-              r: 8
-            - q: -16
-              r: 9
-            - q: -16
-              r: 10
             - q: -15
               r: 2
             - q: -15
@@ -402,14 +461,6 @@ room:
               r: 5
             - q: -15
               r: 6
-            - q: -15
-              r: 7
-            - q: -15
-              r: 8
-            - q: -15
-              r: 9
-            - q: -15
-              r: 10
             - q: -14
               r: 0
             - q: -14
@@ -424,14 +475,6 @@ room:
               r: 5
             - q: -14
               r: 6
-            - q: -14
-              r: 7
-            - q: -14
-              r: 8
-            - q: -14
-              r: 9
-            - q: -14
-              r: 10
             - q: -13
               r: -2
             - q: -13
@@ -450,14 +493,6 @@ room:
               r: 5
             - q: -13
               r: 6
-            - q: -13
-              r: 7
-            - q: -13
-              r: 8
-            - q: -13
-              r: 9
-            - q: -13
-              r: 10
             - q: -12
               r: -4
             - q: -12
@@ -480,14 +515,6 @@ room:
               r: 5
             - q: -12
               r: 6
-            - q: -12
-              r: 7
-            - q: -12
-              r: 8
-            - q: -12
-              r: 9
-            - q: -12
-              r: 10
             - q: -11
               r: -6
             - q: -11
@@ -514,14 +541,6 @@ room:
               r: 5
             - q: -11
               r: 6
-            - q: -11
-              r: 7
-            - q: -11
-              r: 8
-            - q: -11
-              r: 9
-            - q: -11
-              r: 10
             - q: -10
               r: -6
             - q: -10
@@ -548,14 +567,6 @@ room:
               r: 5
             - q: -10
               r: 6
-            - q: -10
-              r: 7
-            - q: -10
-              r: 8
-            - q: -10
-              r: 9
-            - q: -10
-              r: 10
             - q: -9
               r: -6
             - q: -9
@@ -582,14 +593,6 @@ room:
               r: 5
             - q: -9
               r: 6
-            - q: -9
-              r: 7
-            - q: -9
-              r: 8
-            - q: -9
-              r: 9
-            - q: -9
-              r: 10
             - q: -8
               r: -6
             - q: -8
@@ -616,14 +619,6 @@ room:
               r: 5
             - q: -8
               r: 6
-            - q: -8
-              r: 7
-            - q: -8
-              r: 8
-            - q: -8
-              r: 9
-            - q: -8
-              r: 10
             - q: -7
               r: -6
             - q: -7
@@ -650,14 +645,6 @@ room:
               r: 5
             - q: -7
               r: 6
-            - q: -7
-              r: 7
-            - q: -7
-              r: 8
-            - q: -7
-              r: 9
-            - q: -7
-              r: 10
             - q: -6
               r: -6
             - q: -6
@@ -684,14 +671,6 @@ room:
               r: 5
             - q: -6
               r: 6
-            - q: -6
-              r: 7
-            - q: -6
-              r: 8
-            - q: -6
-              r: 9
-            - q: -6
-              r: 10
             - q: -5
               r: -6
             - q: -5
@@ -718,14 +697,6 @@ room:
               r: 5
             - q: -5
               r: 6
-            - q: -5
-              r: 7
-            - q: -5
-              r: 8
-            - q: -5
-              r: 9
-            - q: -5
-              r: 10
             - q: -4
               r: -6
             - q: -4
@@ -752,14 +723,6 @@ room:
               r: 5
             - q: -4
               r: 6
-            - q: -4
-              r: 7
-            - q: -4
-              r: 8
-            - q: -4
-              r: 9
-            - q: -4
-              r: 10
             - q: -3
               r: -6
             - q: -3
@@ -786,14 +749,6 @@ room:
               r: 5
             - q: -3
               r: 6
-            - q: -3
-              r: 7
-            - q: -3
-              r: 8
-            - q: -3
-              r: 9
-            - q: -3
-              r: 10
             - q: -2
               r: -6
             - q: -2
@@ -820,14 +775,6 @@ room:
               r: 5
             - q: -2
               r: 6
-            - q: -2
-              r: 7
-            - q: -2
-              r: 8
-            - q: -2
-              r: 9
-            - q: -2
-              r: 10
             - q: -1
               r: -6
             - q: -1
@@ -854,14 +801,6 @@ room:
               r: 5
             - q: -1
               r: 6
-            - q: -1
-              r: 7
-            - q: -1
-              r: 8
-            - q: -1
-              r: 9
-            - q: -1
-              r: 10
             - q: 0
               r: -6
             - q: 0
@@ -888,14 +827,6 @@ room:
               r: 5
             - q: 0
               r: 6
-            - q: 0
-              r: 7
-            - q: 0
-              r: 8
-            - q: 0
-              r: 9
-            - q: 0
-              r: 10
             - q: 1
               r: -6
             - q: 1
@@ -922,14 +853,6 @@ room:
               r: 5
             - q: 1
               r: 6
-            - q: 1
-              r: 7
-            - q: 1
-              r: 8
-            - q: 1
-              r: 9
-            - q: 1
-              r: 10
             - q: 2
               r: -6
             - q: 2
@@ -956,14 +879,6 @@ room:
               r: 5
             - q: 2
               r: 6
-            - q: 2
-              r: 7
-            - q: 2
-              r: 8
-            - q: 2
-              r: 9
-            - q: 2
-              r: 10
             - q: 3
               r: -6
             - q: 3
@@ -990,14 +905,6 @@ room:
               r: 5
             - q: 3
               r: 6
-            - q: 3
-              r: 7
-            - q: 3
-              r: 8
-            - q: 3
-              r: 9
-            - q: 3
-              r: 10
             - q: 4
               r: -6
             - q: 4
@@ -1024,14 +931,6 @@ room:
               r: 5
             - q: 4
               r: 6
-            - q: 4
-              r: 7
-            - q: 4
-              r: 8
-            - q: 4
-              r: 9
-            - q: 4
-              r: 10
             - q: 5
               r: -6
             - q: 5
@@ -1058,14 +957,6 @@ room:
               r: 5
             - q: 5
               r: 6
-            - q: 5
-              r: 7
-            - q: 5
-              r: 8
-            - q: 5
-              r: 9
-            - q: 5
-              r: 10
             - q: 6
               r: -6
             - q: 6
@@ -1092,14 +983,6 @@ room:
               r: 5
             - q: 6
               r: 6
-            - q: 6
-              r: 7
-            - q: 6
-              r: 8
-            - q: 6
-              r: 9
-            - q: 6
-              r: 10
             - q: 7
               r: -6
             - q: 7
@@ -1126,14 +1009,6 @@ room:
               r: 5
             - q: 7
               r: 6
-            - q: 7
-              r: 7
-            - q: 7
-              r: 8
-            - q: 7
-              r: 9
-            - q: 7
-              r: 10
             - q: 8
               r: -6
             - q: 8
@@ -1160,14 +1035,6 @@ room:
               r: 5
             - q: 8
               r: 6
-            - q: 8
-              r: 7
-            - q: 8
-              r: 8
-            - q: 8
-              r: 9
-            - q: 8
-              r: 10
             - q: 9
               r: -6
             - q: 9
@@ -1194,14 +1061,6 @@ room:
               r: 5
             - q: 9
               r: 6
-            - q: 9
-              r: 7
-            - q: 9
-              r: 8
-            - q: 9
-              r: 9
-            - q: 9
-              r: 10
             - q: 10
               r: -6
             - q: 10
@@ -1228,12 +1087,6 @@ room:
               r: 5
             - q: 10
               r: 6
-            - q: 10
-              r: 7
-            - q: 10
-              r: 8
-            - q: 10
-              r: 9
             - q: 11
               r: -6
             - q: 11
@@ -1260,8 +1113,6 @@ room:
               r: 5
             - q: 11
               r: 6
-            - q: 11
-              r: 7
             - q: 12
               r: -6
             - q: 12
@@ -1351,114 +1202,114 @@ room:
         boundary:
           kind: explicit
           cells:
-            - q: -12
-              r: 16
-            - q: -11
-              r: 14
-            - q: -11
-              r: 15
-            - q: -11
-              r: 16
             - q: -10
               r: 12
-            - q: -10
-              r: 13
-            - q: -10
-              r: 14
-            - q: -10
-              r: 15
-            - q: -10
-              r: 16
+            - q: -9
+              r: 10
             - q: -9
               r: 11
             - q: -9
               r: 12
-            - q: -9
-              r: 13
-            - q: -9
-              r: 14
-            - q: -9
-              r: 15
-            - q: -9
-              r: 16
+            - q: -8
+              r: 8
+            - q: -8
+              r: 9
+            - q: -8
+              r: 10
             - q: -8
               r: 11
             - q: -8
               r: 12
-            - q: -8
-              r: 13
-            - q: -8
-              r: 14
-            - q: -8
-              r: 15
-            - q: -8
-              r: 16
+            - q: -7
+              r: 7
+            - q: -7
+              r: 8
+            - q: -7
+              r: 9
+            - q: -7
+              r: 10
             - q: -7
               r: 11
             - q: -7
               r: 12
-            - q: -7
-              r: 13
-            - q: -7
-              r: 14
-            - q: -7
-              r: 15
-            - q: -7
-              r: 16
+            - q: -6
+              r: 7
+            - q: -6
+              r: 8
+            - q: -6
+              r: 9
+            - q: -6
+              r: 10
             - q: -6
               r: 11
             - q: -6
               r: 12
-            - q: -6
-              r: 13
-            - q: -6
-              r: 14
-            - q: -6
-              r: 15
-            - q: -6
-              r: 16
+            - q: -5
+              r: 7
+            - q: -5
+              r: 8
+            - q: -5
+              r: 9
+            - q: -5
+              r: 10
             - q: -5
               r: 11
             - q: -5
               r: 12
-            - q: -5
-              r: 13
-            - q: -5
-              r: 14
-            - q: -5
-              r: 15
-            - q: -5
-              r: 16
+            - q: -4
+              r: 7
+            - q: -4
+              r: 8
+            - q: -4
+              r: 9
+            - q: -4
+              r: 10
             - q: -4
               r: 11
             - q: -4
               r: 12
-            - q: -4
-              r: 13
-            - q: -4
-              r: 14
-            - q: -4
-              r: 15
-            - q: -4
-              r: 16
+            - q: -3
+              r: 7
+            - q: -3
+              r: 8
+            - q: -3
+              r: 9
+            - q: -3
+              r: 10
             - q: -3
               r: 11
             - q: -3
               r: 12
-            - q: -3
-              r: 13
-            - q: -3
-              r: 14
-            - q: -3
-              r: 15
+            - q: -2
+              r: 7
+            - q: -2
+              r: 8
+            - q: -2
+              r: 9
+            - q: -2
+              r: 10
             - q: -2
               r: 11
             - q: -2
               r: 12
-            - q: -2
-              r: 13
+            - q: -1
+              r: 7
+            - q: -1
+              r: 8
+            - q: -1
+              r: 9
+            - q: -1
+              r: 10
             - q: -1
               r: 11
+            - q: 0
+              r: 7
+            - q: 0
+              r: 8
+            - q: 0
+              r: 9
+            - q: 1
+              r: 7
       - id: region-great-hall
         labelId: label-great-hall
         boundary:
@@ -2294,38 +2145,14 @@ room:
         boundary:
           kind: explicit
           cells:
-            - q: -31
-              r: 10
-            - q: -30
-              r: 8
-            - q: -30
-              r: 9
-            - q: -30
-              r: 10
             - q: -29
               r: 6
-            - q: -29
-              r: 7
-            - q: -29
-              r: 8
-            - q: -29
-              r: 9
-            - q: -29
-              r: 10
             - q: -28
               r: 4
             - q: -28
               r: 5
             - q: -28
               r: 6
-            - q: -28
-              r: 7
-            - q: -28
-              r: 8
-            - q: -28
-              r: 9
-            - q: -28
-              r: 10
             - q: -27
               r: 2
             - q: -27
@@ -2336,14 +2163,6 @@ room:
               r: 5
             - q: -27
               r: 6
-            - q: -27
-              r: 7
-            - q: -27
-              r: 8
-            - q: -27
-              r: 9
-            - q: -27
-              r: 10
             - q: -26
               r: 0
             - q: -26
@@ -2358,14 +2177,6 @@ room:
               r: 5
             - q: -26
               r: 6
-            - q: -26
-              r: 7
-            - q: -26
-              r: 8
-            - q: -26
-              r: 9
-            - q: -26
-              r: 10
             - q: -25
               r: -2
             - q: -25
@@ -2384,14 +2195,6 @@ room:
               r: 5
             - q: -25
               r: 6
-            - q: -25
-              r: 7
-            - q: -25
-              r: 8
-            - q: -25
-              r: 9
-            - q: -25
-              r: 10
             - q: -24
               r: -4
             - q: -24
@@ -2414,14 +2217,6 @@ room:
               r: 5
             - q: -24
               r: 6
-            - q: -24
-              r: 7
-            - q: -24
-              r: 8
-            - q: -24
-              r: 9
-            - q: -24
-              r: 10
             - q: -23
               r: -6
             - q: -23
@@ -2448,14 +2243,6 @@ room:
               r: 5
             - q: -23
               r: 6
-            - q: -23
-              r: 7
-            - q: -23
-              r: 8
-            - q: -23
-              r: 9
-            - q: -23
-              r: 10
             - q: -22
               r: -6
             - q: -22
@@ -2482,14 +2269,6 @@ room:
               r: 5
             - q: -22
               r: 6
-            - q: -22
-              r: 7
-            - q: -22
-              r: 8
-            - q: -22
-              r: 9
-            - q: -22
-              r: 10
             - q: -21
               r: -6
             - q: -21
@@ -2516,14 +2295,6 @@ room:
               r: 5
             - q: -21
               r: 6
-            - q: -21
-              r: 7
-            - q: -21
-              r: 8
-            - q: -21
-              r: 9
-            - q: -21
-              r: 10
             - q: -20
               r: -6
             - q: -20
@@ -2550,14 +2321,6 @@ room:
               r: 5
             - q: -20
               r: 6
-            - q: -20
-              r: 7
-            - q: -20
-              r: 8
-            - q: -20
-              r: 9
-            - q: -20
-              r: 10
             - q: -19
               r: -6
             - q: -19
@@ -2584,12 +2347,6 @@ room:
               r: 5
             - q: -19
               r: 6
-            - q: -19
-              r: 7
-            - q: -19
-              r: 8
-            - q: -19
-              r: 9
             - q: -18
               r: -6
             - q: -18
@@ -2616,8 +2373,6 @@ room:
               r: 5
             - q: -18
               r: 6
-            - q: -18
-              r: 7
             - q: -17
               r: -6
             - q: -17
@@ -2952,38 +2707,14 @@ room:
         boundary:
           kind: explicit
           cells:
-            - q: 10
-              r: 10
-            - q: 11
-              r: 8
-            - q: 11
-              r: 9
-            - q: 11
-              r: 10
             - q: 12
               r: 6
-            - q: 12
-              r: 7
-            - q: 12
-              r: 8
-            - q: 12
-              r: 9
-            - q: 12
-              r: 10
             - q: 13
               r: 4
             - q: 13
               r: 5
             - q: 13
               r: 6
-            - q: 13
-              r: 7
-            - q: 13
-              r: 8
-            - q: 13
-              r: 9
-            - q: 13
-              r: 10
             - q: 14
               r: 2
             - q: 14
@@ -2994,14 +2725,6 @@ room:
               r: 5
             - q: 14
               r: 6
-            - q: 14
-              r: 7
-            - q: 14
-              r: 8
-            - q: 14
-              r: 9
-            - q: 14
-              r: 10
             - q: 15
               r: 0
             - q: 15
@@ -3016,14 +2739,6 @@ room:
               r: 5
             - q: 15
               r: 6
-            - q: 15
-              r: 7
-            - q: 15
-              r: 8
-            - q: 15
-              r: 9
-            - q: 15
-              r: 10
             - q: 16
               r: -2
             - q: 16
@@ -3042,14 +2757,6 @@ room:
               r: 5
             - q: 16
               r: 6
-            - q: 16
-              r: 7
-            - q: 16
-              r: 8
-            - q: 16
-              r: 9
-            - q: 16
-              r: 10
             - q: 17
               r: -4
             - q: 17
@@ -3072,14 +2779,6 @@ room:
               r: 5
             - q: 17
               r: 6
-            - q: 17
-              r: 7
-            - q: 17
-              r: 8
-            - q: 17
-              r: 9
-            - q: 17
-              r: 10
             - q: 18
               r: -6
             - q: 18
@@ -3106,14 +2805,6 @@ room:
               r: 5
             - q: 18
               r: 6
-            - q: 18
-              r: 7
-            - q: 18
-              r: 8
-            - q: 18
-              r: 9
-            - q: 18
-              r: 10
             - q: 19
               r: -6
             - q: 19
@@ -3140,14 +2831,6 @@ room:
               r: 5
             - q: 19
               r: 6
-            - q: 19
-              r: 7
-            - q: 19
-              r: 8
-            - q: 19
-              r: 9
-            - q: 19
-              r: 10
             - q: 20
               r: -6
             - q: 20
@@ -3174,14 +2857,6 @@ room:
               r: 5
             - q: 20
               r: 6
-            - q: 20
-              r: 7
-            - q: 20
-              r: 8
-            - q: 20
-              r: 9
-            - q: 20
-              r: 10
             - q: 21
               r: -6
             - q: 21
@@ -3208,14 +2883,6 @@ room:
               r: 5
             - q: 21
               r: 6
-            - q: 21
-              r: 7
-            - q: 21
-              r: 8
-            - q: 21
-              r: 9
-            - q: 21
-              r: 10
             - q: 22
               r: -6
             - q: 22
@@ -3242,12 +2909,6 @@ room:
               r: 5
             - q: 22
               r: 6
-            - q: 22
-              r: 7
-            - q: 22
-              r: 8
-            - q: 22
-              r: 9
             - q: 23
               r: -6
             - q: 23
@@ -3274,8 +2935,6 @@ room:
               r: 5
             - q: 23
               r: 6
-            - q: 23
-              r: 7
             - q: 24
               r: -6
             - q: 24
@@ -3521,6 +3180,203 @@ room:
               r: -22
             - q: 17
               r: -21
+      - id: region-cells
+        labelId: label-cells
+        boundary:
+          kind: explicit
+          cells:
+            - q: -33
+              r: 14
+            - q: -32
+              r: 12
+            - q: -32
+              r: 13
+            - q: -32
+              r: 14
+            - q: -31
+              r: 10
+            - q: -31
+              r: 11
+            - q: -31
+              r: 12
+            - q: -31
+              r: 13
+            - q: -31
+              r: 14
+            - q: -30
+              r: 8
+            - q: -30
+              r: 9
+            - q: -30
+              r: 10
+            - q: -30
+              r: 11
+            - q: -30
+              r: 12
+            - q: -30
+              r: 13
+            - q: -30
+              r: 14
+            - q: -29
+              r: 7
+            - q: -29
+              r: 8
+            - q: -29
+              r: 9
+            - q: -29
+              r: 10
+            - q: -29
+              r: 11
+            - q: -29
+              r: 12
+            - q: -29
+              r: 13
+            - q: -29
+              r: 14
+            - q: -28
+              r: 7
+            - q: -28
+              r: 8
+            - q: -28
+              r: 9
+            - q: -28
+              r: 10
+            - q: -28
+              r: 11
+            - q: -28
+              r: 12
+            - q: -28
+              r: 13
+            - q: -28
+              r: 14
+            - q: -27
+              r: 7
+            - q: -27
+              r: 8
+            - q: -27
+              r: 9
+            - q: -27
+              r: 10
+            - q: -27
+              r: 11
+            - q: -27
+              r: 12
+            - q: -27
+              r: 13
+            - q: -27
+              r: 14
+            - q: -26
+              r: 7
+            - q: -26
+              r: 8
+            - q: -26
+              r: 9
+            - q: -26
+              r: 10
+            - q: -26
+              r: 11
+            - q: -26
+              r: 12
+            - q: -26
+              r: 13
+            - q: -26
+              r: 14
+            - q: -25
+              r: 7
+            - q: -25
+              r: 8
+            - q: -25
+              r: 9
+            - q: -25
+              r: 10
+            - q: -25
+              r: 11
+            - q: -25
+              r: 12
+            - q: -25
+              r: 13
+            - q: -25
+              r: 14
+            - q: -24
+              r: 7
+            - q: -24
+              r: 8
+            - q: -24
+              r: 9
+            - q: -24
+              r: 10
+            - q: -24
+              r: 11
+            - q: -24
+              r: 12
+            - q: -24
+              r: 13
+            - q: -24
+              r: 14
+            - q: -23
+              r: 7
+            - q: -23
+              r: 8
+            - q: -23
+              r: 9
+            - q: -23
+              r: 10
+            - q: -23
+              r: 11
+            - q: -23
+              r: 12
+            - q: -23
+              r: 13
+            - q: -23
+              r: 14
+            - q: -22
+              r: 7
+            - q: -22
+              r: 8
+            - q: -22
+              r: 9
+            - q: -22
+              r: 10
+            - q: -22
+              r: 11
+            - q: -22
+              r: 12
+            - q: -22
+              r: 13
+            - q: -22
+              r: 14
+            - q: -21
+              r: 7
+            - q: -21
+              r: 8
+            - q: -21
+              r: 9
+            - q: -21
+              r: 10
+            - q: -21
+              r: 11
+            - q: -21
+              r: 12
+            - q: -21
+              r: 13
+            - q: -20
+              r: 7
+            - q: -20
+              r: 8
+            - q: -20
+              r: 9
+            - q: -20
+              r: 10
+            - q: -20
+              r: 11
+            - q: -19
+              r: 7
+            - q: -19
+              r: 8
+            - q: -19
+              r: 9
+            - q: -18
+              r: 7
   room:
     implicitRegionId: room-1-region
     walls:
@@ -3529,10 +3385,10 @@ room:
         line:
           start:
             x: -9.5
-            z: 15.75
+            z: 9.75
           end:
             x: 9.5
-            z: 15.75
+            z: 9.75
         appearance:
           assetRef: dnd5e:env:dark-fortress:45_wall_01
           height: 3
@@ -3792,7 +3648,7 @@ room:
             z: -24.75
           end:
             x: -45.89934640057525
-            z: 15.75
+            z: 9.75
         appearance:
           assetRef: dnd5e:env:dark-fortress:45_wall_01
           height: 3
@@ -3802,7 +3658,7 @@ room:
           blocksMovement: true
           blocksLineOfSight: true
           footprint:
-            width: 40.5
+            width: 34.5
             depth: 0.5
             offsetX: 0
             offsetZ: 0
@@ -3815,7 +3671,7 @@ room:
             z: -24.75
           end:
             x: 46.76537180435968
-            z: 15.75
+            z: 9.75
         appearance:
           assetRef: dnd5e:env:dark-fortress:45_wall_01
           height: 3
@@ -3825,7 +3681,105 @@ room:
           blocksMovement: true
           blocksLineOfSight: true
           footprint:
-            width: 40.5
+            width: 34.5
+            depth: 0.5
+            offsetX: 0
+            offsetZ: 0
+        openings: []
+      - id: cells-wall
+        label: cells-wall
+        line:
+          start:
+            x: -45.89934640057525
+            z: 9.75
+          end:
+            x: -24.24871130596428
+            z: 9.75
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint:
+            width: 21.650635094610966
+            depth: 0.5
+            offsetX: 0
+            offsetZ: 0
+        openings:
+          - id: cells-wall-opening
+            position: 11.258330249197705
+            width: 2
+            door:
+              id: cells-wall-door
+              assetRef: dnd5e:env:dark-fortress:wall_door_double_01
+      - id: cells-west-wall
+        label: cells-west-wall
+        line:
+          start:
+            x: -45.89934640057525
+            z: 9.75
+          end:
+            x: -45.89934640057525
+            z: 21.75
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint:
+            width: 12
+            depth: 0.5
+            offsetX: 0
+            offsetZ: 0
+        openings: []
+      - id: cells-south-wall
+        label: cells-south-wall
+        line:
+          start:
+            x: -45.89934640057525
+            z: 21.75
+          end:
+            x: -24.24871130596428
+            z: 21.75
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint:
+            width: 21.650635094610966
+            depth: 0.5
+            offsetX: 0
+            offsetZ: 0
+        openings: []
+      - id: cells-east-wall
+        label: cells-east-wall
+        line:
+          start:
+            x: -24.24871130596428
+            z: 9.75
+          end:
+            x: -24.24871130596428
+            z: 21.75
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint:
+            width: 12
             depth: 0.5
             offsetX: 0
             offsetZ: 0
@@ -3834,11 +3788,11 @@ room:
         label: yard-south-west-wall
         line:
           start:
-            x: -45.89934640057525
-            z: 15.75
+            x: -24.24871130596428
+            z: 9.75
           end:
             x: -9.5
-            z: 15.75
+            z: 9.75
         appearance:
           assetRef: dnd5e:env:dark-fortress:45_wall_01
           height: 3
@@ -3848,7 +3802,7 @@ room:
           blocksMovement: true
           blocksLineOfSight: true
           footprint:
-            width: 36.39934640057525
+            width: 14.748711305964282
             depth: 0.5
             offsetX: 0
             offsetZ: 0
@@ -3858,10 +3812,10 @@ room:
         line:
           start:
             x: 9.5
-            z: 15.75
+            z: 9.75
           end:
             x: 46.76537180435968
-            z: 15.75
+            z: 9.75
         appearance:
           assetRef: dnd5e:env:dark-fortress:45_wall_01
           height: 3
@@ -3881,10 +3835,10 @@ room:
         line:
           start:
             x: -7.794228634059947
-            z: 15.75
+            z: 9.75
           end:
             x: -7.794228634059947
-            z: 24.75
+            z: 18.75
         appearance:
           assetRef: dnd5e:env:dark-fortress:45_wall_01
           height: 3
@@ -3904,10 +3858,10 @@ room:
         line:
           start:
             x: 8.660254037844386
-            z: 15.75
+            z: 9.75
           end:
             x: 8.660254037844386
-            z: 24.75
+            z: 18.75
         appearance:
           assetRef: dnd5e:env:dark-fortress:45_wall_01
           height: 3
@@ -3927,10 +3881,10 @@ room:
         line:
           start:
             x: -7.794228634059947
-            z: 24.75
+            z: 18.75
           end:
             x: 8.660254037844386
-            z: 24.75
+            z: 18.75
         appearance:
           assetRef: dnd5e:env:dark-fortress:45_wall_01
           height: 3
@@ -3992,14 +3946,38 @@ room:
             offsetZ: 0
         openings: []
     walkableHexes:
+      - q: -33
+        r: 14
+      - q: -32
+        r: 12
+      - q: -32
+        r: 13
+      - q: -32
+        r: 14
       - q: -31
         r: 10
+      - q: -31
+        r: 11
+      - q: -31
+        r: 12
+      - q: -31
+        r: 13
+      - q: -31
+        r: 14
       - q: -30
         r: 8
       - q: -30
         r: 9
       - q: -30
         r: 10
+      - q: -30
+        r: 11
+      - q: -30
+        r: 12
+      - q: -30
+        r: 13
+      - q: -30
+        r: 14
       - q: -29
         r: 6
       - q: -29
@@ -4010,6 +3988,14 @@ room:
         r: 9
       - q: -29
         r: 10
+      - q: -29
+        r: 11
+      - q: -29
+        r: 12
+      - q: -29
+        r: 13
+      - q: -29
+        r: 14
       - q: -28
         r: 4
       - q: -28
@@ -4024,752 +4010,744 @@ room:
         r: 9
       - q: -28
         r: 10
-      - q: -27
-        r: 2
-      - q: -27
-        r: 3
-      - q: -27
-        r: 4
-      - q: -27
-        r: 5
-      - q: -27
-        r: 6
-      - q: -27
-        r: 7
-      - q: -27
-        r: 8
-      - q: -27
-        r: 9
-      - q: -27
-        r: 10
-      - q: -26
-        r: 0
-      - q: -26
-        r: 1
-      - q: -26
-        r: 2
-      - q: -26
-        r: 3
-      - q: -26
-        r: 4
-      - q: -26
-        r: 5
-      - q: -26
-        r: 6
-      - q: -26
-        r: 7
-      - q: -26
-        r: 8
-      - q: -26
-        r: 9
-      - q: -26
-        r: 10
-      - q: -25
-        r: -2
-      - q: -25
-        r: -1
-      - q: -25
-        r: 0
-      - q: -25
-        r: 1
-      - q: -25
-        r: 2
-      - q: -25
-        r: 3
-      - q: -25
-        r: 4
-      - q: -25
-        r: 5
-      - q: -25
-        r: 6
-      - q: -25
-        r: 7
-      - q: -25
-        r: 8
-      - q: -25
-        r: 9
-      - q: -25
-        r: 10
-      - q: -24
-        r: -4
-      - q: -24
-        r: -3
-      - q: -24
-        r: -2
-      - q: -24
-        r: -1
-      - q: -24
-        r: 0
-      - q: -24
-        r: 1
-      - q: -24
-        r: 2
-      - q: -24
-        r: 3
-      - q: -24
-        r: 4
-      - q: -24
-        r: 5
-      - q: -24
-        r: 6
-      - q: -24
-        r: 7
-      - q: -24
-        r: 8
-      - q: -24
-        r: 9
-      - q: -24
-        r: 10
-      - q: -23
-        r: -6
-      - q: -23
-        r: -5
-      - q: -23
-        r: -4
-      - q: -23
-        r: -3
-      - q: -23
-        r: -2
-      - q: -23
-        r: -1
-      - q: -23
-        r: 0
-      - q: -23
-        r: 1
-      - q: -23
-        r: 2
-      - q: -23
-        r: 3
-      - q: -23
-        r: 4
-      - q: -23
-        r: 5
-      - q: -23
-        r: 6
-      - q: -23
-        r: 7
-      - q: -23
-        r: 8
-      - q: -23
-        r: 9
-      - q: -23
-        r: 10
-      - q: -22
-        r: -8
-      - q: -22
-        r: -7
-      - q: -22
-        r: -6
-      - q: -22
-        r: -5
-      - q: -22
-        r: -4
-      - q: -22
-        r: -3
-      - q: -22
-        r: -2
-      - q: -22
-        r: -1
-      - q: -22
-        r: 0
-      - q: -22
-        r: 1
-      - q: -22
-        r: 2
-      - q: -22
-        r: 3
-      - q: -22
-        r: 4
-      - q: -22
-        r: 5
-      - q: -22
-        r: 6
-      - q: -22
-        r: 7
-      - q: -22
-        r: 8
-      - q: -22
-        r: 9
-      - q: -22
-        r: 10
-      - q: -21
-        r: -10
-      - q: -21
-        r: -9
-      - q: -21
-        r: -8
-      - q: -21
-        r: -7
-      - q: -21
-        r: -6
-      - q: -21
-        r: -5
-      - q: -21
-        r: -4
-      - q: -21
-        r: -3
-      - q: -21
-        r: -2
-      - q: -21
-        r: -1
-      - q: -21
-        r: 0
-      - q: -21
-        r: 1
-      - q: -21
-        r: 2
-      - q: -21
-        r: 3
-      - q: -21
-        r: 4
-      - q: -21
-        r: 5
-      - q: -21
-        r: 6
-      - q: -21
-        r: 7
-      - q: -21
-        r: 8
-      - q: -21
-        r: 9
-      - q: -21
-        r: 10
-      - q: -20
-        r: -12
-      - q: -20
-        r: -11
-      - q: -20
-        r: -10
-      - q: -20
-        r: -9
-      - q: -20
-        r: -8
-      - q: -20
-        r: -7
-      - q: -20
-        r: -6
-      - q: -20
-        r: -5
-      - q: -20
-        r: -4
-      - q: -20
-        r: -3
-      - q: -20
-        r: -2
-      - q: -20
-        r: -1
-      - q: -20
-        r: 0
-      - q: -20
-        r: 1
-      - q: -20
-        r: 2
-      - q: -20
-        r: 3
-      - q: -20
-        r: 4
-      - q: -20
-        r: 5
-      - q: -20
-        r: 6
-      - q: -20
-        r: 7
-      - q: -20
-        r: 8
-      - q: -20
-        r: 9
-      - q: -20
-        r: 10
-      - q: -19
-        r: -14
-      - q: -19
-        r: -13
-      - q: -19
-        r: -12
-      - q: -19
-        r: -11
-      - q: -19
-        r: -10
-      - q: -19
-        r: -9
-      - q: -19
-        r: -8
-      - q: -19
-        r: -7
-      - q: -19
-        r: -6
-      - q: -19
-        r: -5
-      - q: -19
-        r: -4
-      - q: -19
-        r: -3
-      - q: -19
-        r: -2
-      - q: -19
-        r: -1
-      - q: -19
-        r: 0
-      - q: -19
-        r: 1
-      - q: -19
-        r: 2
-      - q: -19
-        r: 3
-      - q: -19
-        r: 4
-      - q: -19
-        r: 5
-      - q: -19
-        r: 6
-      - q: -19
-        r: 7
-      - q: -19
-        r: 8
-      - q: -19
-        r: 9
-      - q: -19
-        r: 10
-      - q: -18
-        r: -16
-      - q: -18
-        r: -15
-      - q: -18
-        r: -14
-      - q: -18
-        r: -13
-      - q: -18
-        r: -12
-      - q: -18
-        r: -11
-      - q: -18
-        r: -10
-      - q: -18
-        r: -9
-      - q: -18
-        r: -8
-      - q: -18
-        r: -7
-      - q: -18
-        r: -6
-      - q: -18
-        r: -5
-      - q: -18
-        r: -4
-      - q: -18
-        r: -3
-      - q: -18
-        r: -2
-      - q: -18
-        r: -1
-      - q: -18
-        r: 0
-      - q: -18
-        r: 1
-      - q: -18
-        r: 2
-      - q: -18
-        r: 3
-      - q: -18
-        r: 4
-      - q: -18
-        r: 5
-      - q: -18
-        r: 6
-      - q: -18
-        r: 7
-      - q: -18
-        r: 8
-      - q: -18
-        r: 9
-      - q: -18
-        r: 10
-      - q: -17
-        r: -16
-      - q: -17
-        r: -15
-      - q: -17
-        r: -14
-      - q: -17
-        r: -13
-      - q: -17
-        r: -12
-      - q: -17
-        r: -11
-      - q: -17
-        r: -10
-      - q: -17
-        r: -9
-      - q: -17
-        r: -8
-      - q: -17
-        r: -7
-      - q: -17
-        r: -6
-      - q: -17
-        r: -5
-      - q: -17
-        r: -4
-      - q: -17
-        r: -3
-      - q: -17
-        r: -2
-      - q: -17
-        r: -1
-      - q: -17
-        r: 0
-      - q: -17
-        r: 1
-      - q: -17
-        r: 2
-      - q: -17
-        r: 3
-      - q: -17
-        r: 4
-      - q: -17
-        r: 5
-      - q: -17
-        r: 6
-      - q: -17
-        r: 7
-      - q: -17
-        r: 8
-      - q: -17
-        r: 9
-      - q: -17
-        r: 10
-      - q: -16
-        r: -16
-      - q: -16
-        r: -15
-      - q: -16
-        r: -14
-      - q: -16
-        r: -13
-      - q: -16
-        r: -12
-      - q: -16
-        r: -11
-      - q: -16
-        r: -10
-      - q: -16
-        r: -9
-      - q: -16
-        r: -8
-      - q: -16
-        r: -7
-      - q: -16
-        r: -6
-      - q: -16
-        r: -5
-      - q: -16
-        r: -4
-      - q: -16
-        r: -3
-      - q: -16
-        r: -2
-      - q: -16
-        r: -1
-      - q: -16
-        r: 0
-      - q: -16
-        r: 1
-      - q: -16
-        r: 2
-      - q: -16
-        r: 3
-      - q: -16
-        r: 4
-      - q: -16
-        r: 5
-      - q: -16
-        r: 6
-      - q: -16
-        r: 7
-      - q: -16
-        r: 8
-      - q: -16
-        r: 9
-      - q: -16
-        r: 10
-      - q: -15
-        r: -16
-      - q: -15
-        r: -15
-      - q: -15
-        r: -14
-      - q: -15
-        r: -13
-      - q: -15
-        r: -12
-      - q: -15
-        r: -11
-      - q: -15
-        r: -10
-      - q: -15
-        r: -9
-      - q: -15
-        r: -8
-      - q: -15
-        r: -7
-      - q: -15
-        r: -6
-      - q: -15
-        r: -5
-      - q: -15
-        r: -4
-      - q: -15
-        r: -3
-      - q: -15
-        r: -2
-      - q: -15
-        r: -1
-      - q: -15
-        r: 0
-      - q: -15
-        r: 1
-      - q: -15
-        r: 2
-      - q: -15
-        r: 3
-      - q: -15
-        r: 4
-      - q: -15
-        r: 5
-      - q: -15
-        r: 6
-      - q: -15
-        r: 7
-      - q: -15
-        r: 8
-      - q: -15
-        r: 9
-      - q: -15
-        r: 10
-      - q: -14
-        r: -16
-      - q: -14
-        r: -15
-      - q: -14
-        r: -14
-      - q: -14
-        r: -13
-      - q: -14
-        r: -12
-      - q: -14
-        r: -11
-      - q: -14
-        r: -10
-      - q: -14
-        r: -9
-      - q: -14
-        r: -8
-      - q: -14
-        r: -7
-      - q: -14
-        r: -6
-      - q: -14
-        r: -5
-      - q: -14
-        r: -4
-      - q: -14
-        r: -3
-      - q: -14
-        r: -2
-      - q: -14
-        r: -1
-      - q: -14
-        r: 0
-      - q: -14
-        r: 1
-      - q: -14
-        r: 2
-      - q: -14
-        r: 3
-      - q: -14
-        r: 4
-      - q: -14
-        r: 5
-      - q: -14
-        r: 6
-      - q: -14
-        r: 7
-      - q: -14
-        r: 8
-      - q: -14
-        r: 9
-      - q: -14
-        r: 10
-      - q: -13
-        r: -16
-      - q: -13
-        r: -15
-      - q: -13
-        r: -14
-      - q: -13
-        r: -13
-      - q: -13
-        r: -12
-      - q: -13
-        r: -11
-      - q: -13
-        r: -10
-      - q: -13
-        r: -9
-      - q: -13
-        r: -8
-      - q: -13
-        r: -7
-      - q: -13
-        r: -6
-      - q: -13
-        r: -5
-      - q: -13
-        r: -4
-      - q: -13
-        r: -3
-      - q: -13
-        r: -2
-      - q: -13
-        r: -1
-      - q: -13
-        r: 0
-      - q: -13
-        r: 1
-      - q: -13
-        r: 2
-      - q: -13
-        r: 3
-      - q: -13
-        r: 4
-      - q: -13
-        r: 5
-      - q: -13
-        r: 6
-      - q: -13
-        r: 7
-      - q: -13
-        r: 8
-      - q: -13
-        r: 9
-      - q: -13
-        r: 10
-      - q: -12
-        r: -16
-      - q: -12
-        r: -15
-      - q: -12
-        r: -14
-      - q: -12
-        r: -13
-      - q: -12
-        r: -12
-      - q: -12
-        r: -11
-      - q: -12
-        r: -10
-      - q: -12
-        r: -9
-      - q: -12
-        r: -8
-      - q: -12
-        r: -7
-      - q: -12
-        r: -6
-      - q: -12
-        r: -5
-      - q: -12
-        r: -4
-      - q: -12
-        r: -3
-      - q: -12
-        r: -2
-      - q: -12
-        r: -1
-      - q: -12
-        r: 0
-      - q: -12
-        r: 1
-      - q: -12
-        r: 2
-      - q: -12
-        r: 3
-      - q: -12
-        r: 4
-      - q: -12
-        r: 5
-      - q: -12
-        r: 6
-      - q: -12
-        r: 7
-      - q: -12
-        r: 8
-      - q: -12
-        r: 9
-      - q: -12
-        r: 10
-      - q: -12
-        r: 16
-      - q: -11
-        r: -16
-      - q: -11
-        r: -15
-      - q: -11
-        r: -14
-      - q: -11
-        r: -13
-      - q: -11
-        r: -12
-      - q: -11
-        r: -11
-      - q: -11
-        r: -10
-      - q: -11
-        r: -9
-      - q: -11
-        r: -8
-      - q: -11
-        r: -7
-      - q: -11
-        r: -6
-      - q: -11
-        r: -5
-      - q: -11
-        r: -4
-      - q: -11
-        r: -3
-      - q: -11
-        r: -2
-      - q: -11
-        r: -1
-      - q: -11
-        r: 0
-      - q: -11
-        r: 1
-      - q: -11
-        r: 2
-      - q: -11
-        r: 3
-      - q: -11
-        r: 4
-      - q: -11
-        r: 5
-      - q: -11
-        r: 6
-      - q: -11
-        r: 7
-      - q: -11
-        r: 8
-      - q: -11
-        r: 9
-      - q: -11
-        r: 10
-      - q: -11
+      - q: -28
+        r: 11
+      - q: -28
+        r: 12
+      - q: -28
+        r: 13
+      - q: -28
         r: 14
+      - q: -27
+        r: 2
+      - q: -27
+        r: 3
+      - q: -27
+        r: 4
+      - q: -27
+        r: 5
+      - q: -27
+        r: 6
+      - q: -27
+        r: 7
+      - q: -27
+        r: 8
+      - q: -27
+        r: 9
+      - q: -27
+        r: 10
+      - q: -27
+        r: 11
+      - q: -27
+        r: 12
+      - q: -27
+        r: 13
+      - q: -27
+        r: 14
+      - q: -26
+        r: 0
+      - q: -26
+        r: 1
+      - q: -26
+        r: 2
+      - q: -26
+        r: 3
+      - q: -26
+        r: 4
+      - q: -26
+        r: 5
+      - q: -26
+        r: 6
+      - q: -26
+        r: 7
+      - q: -26
+        r: 8
+      - q: -26
+        r: 9
+      - q: -26
+        r: 10
+      - q: -26
+        r: 11
+      - q: -26
+        r: 12
+      - q: -26
+        r: 13
+      - q: -26
+        r: 14
+      - q: -25
+        r: -2
+      - q: -25
+        r: -1
+      - q: -25
+        r: 0
+      - q: -25
+        r: 1
+      - q: -25
+        r: 2
+      - q: -25
+        r: 3
+      - q: -25
+        r: 4
+      - q: -25
+        r: 5
+      - q: -25
+        r: 6
+      - q: -25
+        r: 7
+      - q: -25
+        r: 8
+      - q: -25
+        r: 9
+      - q: -25
+        r: 10
+      - q: -25
+        r: 11
+      - q: -25
+        r: 12
+      - q: -25
+        r: 13
+      - q: -25
+        r: 14
+      - q: -24
+        r: -4
+      - q: -24
+        r: -3
+      - q: -24
+        r: -2
+      - q: -24
+        r: -1
+      - q: -24
+        r: 0
+      - q: -24
+        r: 1
+      - q: -24
+        r: 2
+      - q: -24
+        r: 3
+      - q: -24
+        r: 4
+      - q: -24
+        r: 5
+      - q: -24
+        r: 6
+      - q: -24
+        r: 7
+      - q: -24
+        r: 8
+      - q: -24
+        r: 9
+      - q: -24
+        r: 10
+      - q: -24
+        r: 11
+      - q: -24
+        r: 12
+      - q: -24
+        r: 13
+      - q: -24
+        r: 14
+      - q: -23
+        r: -6
+      - q: -23
+        r: -5
+      - q: -23
+        r: -4
+      - q: -23
+        r: -3
+      - q: -23
+        r: -2
+      - q: -23
+        r: -1
+      - q: -23
+        r: 0
+      - q: -23
+        r: 1
+      - q: -23
+        r: 2
+      - q: -23
+        r: 3
+      - q: -23
+        r: 4
+      - q: -23
+        r: 5
+      - q: -23
+        r: 6
+      - q: -23
+        r: 7
+      - q: -23
+        r: 8
+      - q: -23
+        r: 9
+      - q: -23
+        r: 10
+      - q: -23
+        r: 11
+      - q: -23
+        r: 12
+      - q: -23
+        r: 13
+      - q: -23
+        r: 14
+      - q: -22
+        r: -8
+      - q: -22
+        r: -7
+      - q: -22
+        r: -6
+      - q: -22
+        r: -5
+      - q: -22
+        r: -4
+      - q: -22
+        r: -3
+      - q: -22
+        r: -2
+      - q: -22
+        r: -1
+      - q: -22
+        r: 0
+      - q: -22
+        r: 1
+      - q: -22
+        r: 2
+      - q: -22
+        r: 3
+      - q: -22
+        r: 4
+      - q: -22
+        r: 5
+      - q: -22
+        r: 6
+      - q: -22
+        r: 7
+      - q: -22
+        r: 8
+      - q: -22
+        r: 9
+      - q: -22
+        r: 10
+      - q: -22
+        r: 11
+      - q: -22
+        r: 12
+      - q: -22
+        r: 13
+      - q: -22
+        r: 14
+      - q: -21
+        r: -10
+      - q: -21
+        r: -9
+      - q: -21
+        r: -8
+      - q: -21
+        r: -7
+      - q: -21
+        r: -6
+      - q: -21
+        r: -5
+      - q: -21
+        r: -4
+      - q: -21
+        r: -3
+      - q: -21
+        r: -2
+      - q: -21
+        r: -1
+      - q: -21
+        r: 0
+      - q: -21
+        r: 1
+      - q: -21
+        r: 2
+      - q: -21
+        r: 3
+      - q: -21
+        r: 4
+      - q: -21
+        r: 5
+      - q: -21
+        r: 6
+      - q: -21
+        r: 7
+      - q: -21
+        r: 8
+      - q: -21
+        r: 9
+      - q: -21
+        r: 10
+      - q: -21
+        r: 11
+      - q: -21
+        r: 12
+      - q: -21
+        r: 13
+      - q: -20
+        r: -12
+      - q: -20
+        r: -11
+      - q: -20
+        r: -10
+      - q: -20
+        r: -9
+      - q: -20
+        r: -8
+      - q: -20
+        r: -7
+      - q: -20
+        r: -6
+      - q: -20
+        r: -5
+      - q: -20
+        r: -4
+      - q: -20
+        r: -3
+      - q: -20
+        r: -2
+      - q: -20
+        r: -1
+      - q: -20
+        r: 0
+      - q: -20
+        r: 1
+      - q: -20
+        r: 2
+      - q: -20
+        r: 3
+      - q: -20
+        r: 4
+      - q: -20
+        r: 5
+      - q: -20
+        r: 6
+      - q: -20
+        r: 7
+      - q: -20
+        r: 8
+      - q: -20
+        r: 9
+      - q: -20
+        r: 10
+      - q: -20
+        r: 11
+      - q: -19
+        r: -14
+      - q: -19
+        r: -13
+      - q: -19
+        r: -12
+      - q: -19
+        r: -11
+      - q: -19
+        r: -10
+      - q: -19
+        r: -9
+      - q: -19
+        r: -8
+      - q: -19
+        r: -7
+      - q: -19
+        r: -6
+      - q: -19
+        r: -5
+      - q: -19
+        r: -4
+      - q: -19
+        r: -3
+      - q: -19
+        r: -2
+      - q: -19
+        r: -1
+      - q: -19
+        r: 0
+      - q: -19
+        r: 1
+      - q: -19
+        r: 2
+      - q: -19
+        r: 3
+      - q: -19
+        r: 4
+      - q: -19
+        r: 5
+      - q: -19
+        r: 6
+      - q: -19
+        r: 7
+      - q: -19
+        r: 8
+      - q: -19
+        r: 9
+      - q: -18
+        r: -16
+      - q: -18
+        r: -15
+      - q: -18
+        r: -14
+      - q: -18
+        r: -13
+      - q: -18
+        r: -12
+      - q: -18
+        r: -11
+      - q: -18
+        r: -10
+      - q: -18
+        r: -9
+      - q: -18
+        r: -8
+      - q: -18
+        r: -7
+      - q: -18
+        r: -6
+      - q: -18
+        r: -5
+      - q: -18
+        r: -4
+      - q: -18
+        r: -3
+      - q: -18
+        r: -2
+      - q: -18
+        r: -1
+      - q: -18
+        r: 0
+      - q: -18
+        r: 1
+      - q: -18
+        r: 2
+      - q: -18
+        r: 3
+      - q: -18
+        r: 4
+      - q: -18
+        r: 5
+      - q: -18
+        r: 6
+      - q: -18
+        r: 7
+      - q: -17
+        r: -16
+      - q: -17
+        r: -15
+      - q: -17
+        r: -14
+      - q: -17
+        r: -13
+      - q: -17
+        r: -12
+      - q: -17
+        r: -11
+      - q: -17
+        r: -10
+      - q: -17
+        r: -9
+      - q: -17
+        r: -8
+      - q: -17
+        r: -7
+      - q: -17
+        r: -6
+      - q: -17
+        r: -5
+      - q: -17
+        r: -4
+      - q: -17
+        r: -3
+      - q: -17
+        r: -2
+      - q: -17
+        r: -1
+      - q: -17
+        r: 0
+      - q: -17
+        r: 1
+      - q: -17
+        r: 2
+      - q: -17
+        r: 3
+      - q: -17
+        r: 4
+      - q: -17
+        r: 5
+      - q: -17
+        r: 6
+      - q: -16
+        r: -16
+      - q: -16
+        r: -15
+      - q: -16
+        r: -14
+      - q: -16
+        r: -13
+      - q: -16
+        r: -12
+      - q: -16
+        r: -11
+      - q: -16
+        r: -10
+      - q: -16
+        r: -9
+      - q: -16
+        r: -8
+      - q: -16
+        r: -7
+      - q: -16
+        r: -6
+      - q: -16
+        r: -5
+      - q: -16
+        r: -4
+      - q: -16
+        r: -3
+      - q: -16
+        r: -2
+      - q: -16
+        r: -1
+      - q: -16
+        r: 0
+      - q: -16
+        r: 1
+      - q: -16
+        r: 2
+      - q: -16
+        r: 3
+      - q: -16
+        r: 4
+      - q: -16
+        r: 5
+      - q: -16
+        r: 6
+      - q: -15
+        r: -16
+      - q: -15
+        r: -15
+      - q: -15
+        r: -14
+      - q: -15
+        r: -13
+      - q: -15
+        r: -12
+      - q: -15
+        r: -11
+      - q: -15
+        r: -10
+      - q: -15
+        r: -9
+      - q: -15
+        r: -8
+      - q: -15
+        r: -7
+      - q: -15
+        r: -6
+      - q: -15
+        r: -5
+      - q: -15
+        r: -4
+      - q: -15
+        r: -3
+      - q: -15
+        r: -2
+      - q: -15
+        r: -1
+      - q: -15
+        r: 0
+      - q: -15
+        r: 1
+      - q: -15
+        r: 2
+      - q: -15
+        r: 3
+      - q: -15
+        r: 4
+      - q: -15
+        r: 5
+      - q: -15
+        r: 6
+      - q: -14
+        r: -16
+      - q: -14
+        r: -15
+      - q: -14
+        r: -14
+      - q: -14
+        r: -13
+      - q: -14
+        r: -12
+      - q: -14
+        r: -11
+      - q: -14
+        r: -10
+      - q: -14
+        r: -9
+      - q: -14
+        r: -8
+      - q: -14
+        r: -7
+      - q: -14
+        r: -6
+      - q: -14
+        r: -5
+      - q: -14
+        r: -4
+      - q: -14
+        r: -3
+      - q: -14
+        r: -2
+      - q: -14
+        r: -1
+      - q: -14
+        r: 0
+      - q: -14
+        r: 1
+      - q: -14
+        r: 2
+      - q: -14
+        r: 3
+      - q: -14
+        r: 4
+      - q: -14
+        r: 5
+      - q: -14
+        r: 6
+      - q: -13
+        r: -16
+      - q: -13
+        r: -15
+      - q: -13
+        r: -14
+      - q: -13
+        r: -13
+      - q: -13
+        r: -12
+      - q: -13
+        r: -11
+      - q: -13
+        r: -10
+      - q: -13
+        r: -9
+      - q: -13
+        r: -8
+      - q: -13
+        r: -7
+      - q: -13
+        r: -6
+      - q: -13
+        r: -5
+      - q: -13
+        r: -4
+      - q: -13
+        r: -3
+      - q: -13
+        r: -2
+      - q: -13
+        r: -1
+      - q: -13
+        r: 0
+      - q: -13
+        r: 1
+      - q: -13
+        r: 2
+      - q: -13
+        r: 3
+      - q: -13
+        r: 4
+      - q: -13
+        r: 5
+      - q: -13
+        r: 6
+      - q: -12
+        r: -16
+      - q: -12
+        r: -15
+      - q: -12
+        r: -14
+      - q: -12
+        r: -13
+      - q: -12
+        r: -12
+      - q: -12
+        r: -11
+      - q: -12
+        r: -10
+      - q: -12
+        r: -9
+      - q: -12
+        r: -8
+      - q: -12
+        r: -7
+      - q: -12
+        r: -6
+      - q: -12
+        r: -5
+      - q: -12
+        r: -4
+      - q: -12
+        r: -3
+      - q: -12
+        r: -2
+      - q: -12
+        r: -1
+      - q: -12
+        r: 0
+      - q: -12
+        r: 1
+      - q: -12
+        r: 2
+      - q: -12
+        r: 3
+      - q: -12
+        r: 4
+      - q: -12
+        r: 5
+      - q: -12
+        r: 6
       - q: -11
-        r: 15
+        r: -16
       - q: -11
-        r: 16
+        r: -15
+      - q: -11
+        r: -14
+      - q: -11
+        r: -13
+      - q: -11
+        r: -12
+      - q: -11
+        r: -11
+      - q: -11
+        r: -10
+      - q: -11
+        r: -9
+      - q: -11
+        r: -8
+      - q: -11
+        r: -7
+      - q: -11
+        r: -6
+      - q: -11
+        r: -5
+      - q: -11
+        r: -4
+      - q: -11
+        r: -3
+      - q: -11
+        r: -2
+      - q: -11
+        r: -1
+      - q: -11
+        r: 0
+      - q: -11
+        r: 1
+      - q: -11
+        r: 2
+      - q: -11
+        r: 3
+      - q: -11
+        r: 4
+      - q: -11
+        r: 5
+      - q: -11
+        r: 6
       - q: -10
         r: -16
       - q: -10
@@ -4816,24 +4794,8 @@ room:
         r: 5
       - q: -10
         r: 6
-      - q: -10
-        r: 7
-      - q: -10
-        r: 8
-      - q: -10
-        r: 9
-      - q: -10
-        r: 10
       - q: -10
         r: 12
-      - q: -10
-        r: 13
-      - q: -10
-        r: 14
-      - q: -10
-        r: 15
-      - q: -10
-        r: 16
       - q: -9
         r: -16
       - q: -9
@@ -4880,26 +4842,12 @@ room:
         r: 5
       - q: -9
         r: 6
-      - q: -9
-        r: 7
-      - q: -9
-        r: 8
-      - q: -9
-        r: 9
       - q: -9
         r: 10
       - q: -9
         r: 11
       - q: -9
         r: 12
-      - q: -9
-        r: 13
-      - q: -9
-        r: 14
-      - q: -9
-        r: 15
-      - q: -9
-        r: 16
       - q: -8
         r: -16
       - q: -8
@@ -4946,8 +4894,6 @@ room:
         r: 5
       - q: -8
         r: 6
-      - q: -8
-        r: 7
       - q: -8
         r: 8
       - q: -8
@@ -4958,14 +4904,6 @@ room:
         r: 11
       - q: -8
         r: 12
-      - q: -8
-        r: 13
-      - q: -8
-        r: 14
-      - q: -8
-        r: 15
-      - q: -8
-        r: 16
       - q: -7
         r: -16
       - q: -7
@@ -5024,14 +4962,6 @@ room:
         r: 11
       - q: -7
         r: 12
-      - q: -7
-        r: 13
-      - q: -7
-        r: 14
-      - q: -7
-        r: 15
-      - q: -7
-        r: 16
       - q: -6
         r: -16
       - q: -6
@@ -5090,14 +5020,6 @@ room:
         r: 11
       - q: -6
         r: 12
-      - q: -6
-        r: 13
-      - q: -6
-        r: 14
-      - q: -6
-        r: 15
-      - q: -6
-        r: 16
       - q: -5
         r: -16
       - q: -5
@@ -5156,14 +5078,6 @@ room:
         r: 11
       - q: -5
         r: 12
-      - q: -5
-        r: 13
-      - q: -5
-        r: 14
-      - q: -5
-        r: 15
-      - q: -5
-        r: 16
       - q: -4
         r: -16
       - q: -4
@@ -5222,14 +5136,6 @@ room:
         r: 11
       - q: -4
         r: 12
-      - q: -4
-        r: 13
-      - q: -4
-        r: 14
-      - q: -4
-        r: 15
-      - q: -4
-        r: 16
       - q: -3
         r: -16
       - q: -3
@@ -5288,12 +5194,6 @@ room:
         r: 11
       - q: -3
         r: 12
-      - q: -3
-        r: 13
-      - q: -3
-        r: 14
-      - q: -3
-        r: 15
       - q: -2
         r: -16
       - q: -2
@@ -5352,8 +5252,6 @@ room:
         r: 11
       - q: -2
         r: 12
-      - q: -2
-        r: 13
       - q: -1
         r: -16
       - q: -1
@@ -5462,8 +5360,6 @@ room:
         r: 8
       - q: 0
         r: 9
-      - q: 0
-        r: 10
       - q: 1
         r: -16
       - q: 1
@@ -5512,12 +5408,6 @@ room:
         r: 6
       - q: 1
         r: 7
-      - q: 1
-        r: 8
-      - q: 1
-        r: 9
-      - q: 1
-        r: 10
       - q: 2
         r: -16
       - q: 2
@@ -5564,14 +5454,6 @@ room:
         r: 5
       - q: 2
         r: 6
-      - q: 2
-        r: 7
-      - q: 2
-        r: 8
-      - q: 2
-        r: 9
-      - q: 2
-        r: 10
       - q: 3
         r: -18
       - q: 3
@@ -5622,14 +5504,6 @@ room:
         r: 5
       - q: 3
         r: 6
-      - q: 3
-        r: 7
-      - q: 3
-        r: 8
-      - q: 3
-        r: 9
-      - q: 3
-        r: 10
       - q: 4
         r: -20
       - q: 4
@@ -5684,14 +5558,6 @@ room:
         r: 5
       - q: 4
         r: 6
-      - q: 4
-        r: 7
-      - q: 4
-        r: 8
-      - q: 4
-        r: 9
-      - q: 4
-        r: 10
       - q: 5
         r: -22
       - q: 5
@@ -5750,14 +5616,6 @@ room:
         r: 5
       - q: 5
         r: 6
-      - q: 5
-        r: 7
-      - q: 5
-        r: 8
-      - q: 5
-        r: 9
-      - q: 5
-        r: 10
       - q: 6
         r: -22
       - q: 6
@@ -5816,14 +5674,6 @@ room:
         r: 5
       - q: 6
         r: 6
-      - q: 6
-        r: 7
-      - q: 6
-        r: 8
-      - q: 6
-        r: 9
-      - q: 6
-        r: 10
       - q: 7
         r: -22
       - q: 7
@@ -5882,14 +5732,6 @@ room:
         r: 5
       - q: 7
         r: 6
-      - q: 7
-        r: 7
-      - q: 7
-        r: 8
-      - q: 7
-        r: 9
-      - q: 7
-        r: 10
       - q: 8
         r: -22
       - q: 8
@@ -5948,14 +5790,6 @@ room:
         r: 5
       - q: 8
         r: 6
-      - q: 8
-        r: 7
-      - q: 8
-        r: 8
-      - q: 8
-        r: 9
-      - q: 8
-        r: 10
       - q: 9
         r: -22
       - q: 9
@@ -6014,14 +5848,6 @@ room:
         r: 5
       - q: 9
         r: 6
-      - q: 9
-        r: 7
-      - q: 9
-        r: 8
-      - q: 9
-        r: 9
-      - q: 9
-        r: 10
       - q: 10
         r: -22
       - q: 10
@@ -6080,14 +5906,6 @@ room:
         r: 5
       - q: 10
         r: 6
-      - q: 10
-        r: 7
-      - q: 10
-        r: 8
-      - q: 10
-        r: 9
-      - q: 10
-        r: 10
       - q: 11
         r: -22
       - q: 11
@@ -6146,14 +5964,6 @@ room:
         r: 5
       - q: 11
         r: 6
-      - q: 11
-        r: 7
-      - q: 11
-        r: 8
-      - q: 11
-        r: 9
-      - q: 11
-        r: 10
       - q: 12
         r: -22
       - q: 12
@@ -6212,14 +6022,6 @@ room:
         r: 5
       - q: 12
         r: 6
-      - q: 12
-        r: 7
-      - q: 12
-        r: 8
-      - q: 12
-        r: 9
-      - q: 12
-        r: 10
       - q: 13
         r: -22
       - q: 13
@@ -6278,14 +6080,6 @@ room:
         r: 5
       - q: 13
         r: 6
-      - q: 13
-        r: 7
-      - q: 13
-        r: 8
-      - q: 13
-        r: 9
-      - q: 13
-        r: 10
       - q: 14
         r: -22
       - q: 14
@@ -6344,14 +6138,6 @@ room:
         r: 5
       - q: 14
         r: 6
-      - q: 14
-        r: 7
-      - q: 14
-        r: 8
-      - q: 14
-        r: 9
-      - q: 14
-        r: 10
       - q: 15
         r: -22
       - q: 15
@@ -6410,14 +6196,6 @@ room:
         r: 5
       - q: 15
         r: 6
-      - q: 15
-        r: 7
-      - q: 15
-        r: 8
-      - q: 15
-        r: 9
-      - q: 15
-        r: 10
       - q: 16
         r: -22
       - q: 16
@@ -6472,14 +6250,6 @@ room:
         r: 5
       - q: 16
         r: 6
-      - q: 16
-        r: 7
-      - q: 16
-        r: 8
-      - q: 16
-        r: 9
-      - q: 16
-        r: 10
       - q: 17
         r: -22
       - q: 17
@@ -6530,14 +6300,6 @@ room:
         r: 5
       - q: 17
         r: 6
-      - q: 17
-        r: 7
-      - q: 17
-        r: 8
-      - q: 17
-        r: 9
-      - q: 17
-        r: 10
       - q: 18
         r: -16
       - q: 18
@@ -6584,14 +6346,6 @@ room:
         r: 5
       - q: 18
         r: 6
-      - q: 18
-        r: 7
-      - q: 18
-        r: 8
-      - q: 18
-        r: 9
-      - q: 18
-        r: 10
       - q: 19
         r: -16
       - q: 19
@@ -6638,14 +6392,6 @@ room:
         r: 5
       - q: 19
         r: 6
-      - q: 19
-        r: 7
-      - q: 19
-        r: 8
-      - q: 19
-        r: 9
-      - q: 19
-        r: 10
       - q: 20
         r: -16
       - q: 20
@@ -6692,14 +6438,6 @@ room:
         r: 5
       - q: 20
         r: 6
-      - q: 20
-        r: 7
-      - q: 20
-        r: 8
-      - q: 20
-        r: 9
-      - q: 20
-        r: 10
       - q: 21
         r: -16
       - q: 21
@@ -6746,14 +6484,6 @@ room:
         r: 5
       - q: 21
         r: 6
-      - q: 21
-        r: 7
-      - q: 21
-        r: 8
-      - q: 21
-        r: 9
-      - q: 21
-        r: 10
       - q: 22
         r: -16
       - q: 22
@@ -6800,12 +6530,6 @@ room:
         r: 5
       - q: 22
         r: 6
-      - q: 22
-        r: 7
-      - q: 22
-        r: 8
-      - q: 22
-        r: 9
       - q: 23
         r: -16
       - q: 23
@@ -6852,8 +6576,6 @@ room:
         r: 5
       - q: 23
         r: 6
-      - q: 23
-        r: 7
       - q: 24
         r: -16
       - q: 24
@@ -7143,28 +6865,36 @@ room:
           depth: 0.8
           offsetX: 0
           offsetZ: 0
+      orders:
+        blocksMovement: false
+        blocksLineOfSight: false
+        footprint:
+          width: 0.3
+          depth: 0.3
+          offsetX: 0
+          offsetZ: 0
     arrangementDeclarations: {}
     monsterDeclarations:
       - id: gate-1
         ref: dnd5e:monsters:guard
         startingCell:
           location:
-            q: -9
-            r: 14
+            q: -7
+            r: 10
         appearanceRef: dnd5e:npcs:kingdom:soldier-male-01
       - id: gate-2
         ref: dnd5e:monsters:guard
         startingCell:
           location:
-            q: -5
-            r: 14
+            q: -3
+            r: 10
         appearanceRef: dnd5e:npcs:kingdom:soldier-female-01
       - id: captain
         ref: dnd5e:monsters:guard-captain
         startingCell:
           location:
-            q: -6
-            r: 12
+            q: -4
+            r: 8
         appearanceRef: dnd5e:npcs:kingdom:soldier-male-01-style-04-a
       - id: reserve-1
         ref: dnd5e:monsters:knight
@@ -7215,9 +6945,58 @@ room:
             q: 3
             r: -17
         appearanceRef: dnd5e:npcs:kingdom:prince-01
+      - id: scullion
+        ref: dnd5e:monsters:commoner
+        startingCell:
+          location:
+            q: -19
+            r: -9
+        appearanceRef: dnd5e:npcs:kingdom:peasant-female-01
+      - id: sergeant
+        ref: dnd5e:monsters:guard
+        startingCell:
+          location:
+            q: -26
+            r: 8
+        appearanceRef: dnd5e:npcs:kingdom:soldier-male-01-style-02-b
+      - id: turnkey
+        ref: dnd5e:monsters:guard
+        startingCell:
+          location:
+            q: -22
+            r: 8
+        appearanceRef: dnd5e:npcs:kingdom:soldier-male-01-style-02-b
+      - id: prisoner-1
+        ref: dnd5e:monsters:prisoner
+        startingCell:
+          location:
+            q: -31
+            r: 13
+        appearanceRef: dnd5e:npcs:goblin:prisoner-02-style-03-c
+      - id: prisoner-2
+        ref: dnd5e:monsters:prisoner
+        startingCell:
+          location:
+            q: -28
+            r: 13
+        appearanceRef: dnd5e:npcs:goblin:prisoner-02
+      - id: prisoner-3
+        ref: dnd5e:monsters:prisoner
+        startingCell:
+          location:
+            q: -25
+            r: 13
+        appearanceRef: dnd5e:npcs:goblin:prisoner-02-style-04-c
+      - id: prisoner-4
+        ref: dnd5e:monsters:prisoner
+        startingCell:
+          location:
+            q: -22
+            r: 13
+        appearanceRef: dnd5e:npcs:goblin:prisoner-02-style-02-a
     partyStart:
-      q: -7
-      r: 15
+      q: -5
+      r: 11
     monsterBindings:
       gate-1:
         faction: garrison
@@ -7341,6 +7120,135 @@ room:
         table: keep-patrol
         arrives:
           fact: alarm-raised
+      scullion:
+        faction: kitchen
+      sergeant:
+        faction: garrison
+        table: cell-guard
+        options:
+          - id: offer-the-purse
+            say: Offer the purse.
+            check:
+              - ability: persuasion
+                dc: 10
+            requires:
+              holds: purse
+            success:
+              - say: I never saw you. Be quick about it.
+                fact: guard-bribed
+            failure:
+              - say: You think I can be bought? Back off.
+      turnkey:
+        faction: garrison
+        table: cell-guard
+      prisoner-1:
+        faction: prisoners
+        options:
+          - id: where-is-the-king
+            say: Where is the king?
+            check:
+              - ability: persuasion
+                dc: 8
+            success:
+              - say: Through the great hall, in the throne room. He holds court there, mad as a
+                  hare.
+                fact: king-in-throne-room
+            failure:
+              - say: Why should I tell you? Get me out first.
+          - id: who-holds-the-keys
+            say: Who holds the keys?
+            check:
+              - ability: persuasion
+                dc: 10
+            success:
+              - say: The sergeant, the one on the left. Ring on his belt.
+                fact: sergeant-holds-keys
+            failure:
+              - say: Keys? Nobody tells us anything in here.
+        holds:
+          - king-whereabouts
+          - key-bearer
+      prisoner-2:
+        faction: prisoners
+        options:
+          - id: where-is-the-king
+            say: Where is the king?
+            check:
+              - ability: persuasion
+                dc: 8
+            success:
+              - say: Through the great hall, in the throne room. He holds court there, mad as a
+                  hare.
+                fact: king-in-throne-room
+            failure:
+              - say: Why should I tell you? Get me out first.
+          - id: who-holds-the-keys
+            say: Who holds the keys?
+            check:
+              - ability: persuasion
+                dc: 10
+            success:
+              - say: The sergeant, the one on the left. Ring on his belt.
+                fact: sergeant-holds-keys
+            failure:
+              - say: Keys? Nobody tells us anything in here.
+        holds:
+          - king-whereabouts
+          - key-bearer
+      prisoner-3:
+        faction: prisoners
+        options:
+          - id: where-is-the-king
+            say: Where is the king?
+            check:
+              - ability: persuasion
+                dc: 8
+            success:
+              - say: Through the great hall, in the throne room. He holds court there, mad as a
+                  hare.
+                fact: king-in-throne-room
+            failure:
+              - say: Why should I tell you? Get me out first.
+          - id: who-holds-the-keys
+            say: Who holds the keys?
+            check:
+              - ability: persuasion
+                dc: 10
+            success:
+              - say: The sergeant, the one on the left. Ring on his belt.
+                fact: sergeant-holds-keys
+            failure:
+              - say: Keys? Nobody tells us anything in here.
+        holds:
+          - king-whereabouts
+          - key-bearer
+      prisoner-4:
+        faction: prisoners
+        options:
+          - id: where-is-the-king
+            say: Where is the king?
+            check:
+              - ability: persuasion
+                dc: 8
+            success:
+              - say: Through the great hall, in the throne room. He holds court there, mad as a
+                  hare.
+                fact: king-in-throne-room
+            failure:
+              - say: Why should I tell you? Get me out first.
+          - id: who-holds-the-keys
+            say: Who holds the keys?
+            check:
+              - ability: persuasion
+                dc: 10
+            success:
+              - say: The sergeant, the one on the left. Ring on his belt.
+                fact: sergeant-holds-keys
+            failure:
+              - say: Keys? Nobody tells us anything in here.
+        holds:
+          - king-whereabouts
+          - key-bearer
     doorBindings:
       gate-wall-door:
         closed: true
@@ -7352,9 +7260,21 @@ room:
         closed: true
       throne-wall-door:
         closed: true
+      cells-wall-door:
+        closed: true
+        locked:
+          - ability: dex
+            tool: dnd5e:item:thieves-tools
+            dc: 13
+        opened:
+          fact: cells-opened
     propBindings:
       purse:
         holdable: true
+      orders:
+        holdable: true
+        holds:
+          - captains-orders
       ledger:
         holdable: true
         holds:
