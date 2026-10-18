@@ -335,6 +335,12 @@ func (s *RestSuite) holds(member, ref string) bool {
 
 // TestAnAreaClosesAfterTheRestIsTold: the rest beat comes before the
 // membership change the closed area tells — cause before consequence.
+//
+// TOLD ON THE RESTER'S OWN STREAM. Both fighters stand inside bob's Fog
+// Cloud, and a sight area screens a deed as it screens a sighting (lead
+// ruling on rpg-toolkit#2078: a deed's audience is the one sight answer), so
+// alice, in the fog, does not witness bob's rest. The rester always witnesses
+// his own act, so the order is asserted where both beats arrive.
 func (s *RestSuite) TestAnAreaClosesAfterTheRestIsTold() {
 	bob := withHitDice(armedFighter("bob"), 1)
 	holding := conditions.NewConcentratingCondition("bob", refs.Spells.FogCloud().String(), "Fog Cloud", 10)
@@ -354,21 +360,29 @@ func (s *RestSuite) TestAnAreaClosesAfterTheRestIsTold() {
 	s.Require().NoError(err)
 
 	var rested, left uint64
+	aliceSawTheRest, aliceLeft := false, false
 	for _, event := range s.stream.published {
-		if event.Recipient != "alice" {
-			continue
+		removed := ""
+		if body, ok := event.Body.(session.ActivationResultBody); ok && event.Kind == session.EventActivationResult &&
+			body.ConditionRemoved != nil {
+			removed = body.ConditionRemoved.Target
 		}
-		switch event.Kind {
-		case session.EventRested:
-			rested = event.Seq
-		case session.EventActivationResult:
-			if body, ok := event.Body.(session.ActivationResultBody); ok && body.ConditionRemoved != nil &&
-				body.ConditionRemoved.Target == "alice" {
+		switch event.Recipient {
+		case "bob":
+			if event.Kind == session.EventRested {
+				rested = event.Seq
+			}
+			if removed == "bob" {
 				left = event.Seq
 			}
+		case "alice":
+			aliceSawTheRest = aliceSawTheRest || event.Kind == session.EventRested
+			aliceLeft = aliceLeft || removed == "alice"
 		}
 	}
-	s.Require().NotZero(rested, "alice witnesses the rest")
-	s.Require().NotZero(left, "alice is told she left the closed area")
+	s.Require().NotZero(rested, "bob is told his own rest")
+	s.Require().NotZero(left, "bob is told he left the area his rest closed")
 	s.Less(rested, left, "the rest is told before the area it closed")
+	s.True(aliceLeft, "alice is told she left the closed area")
+	s.False(aliceSawTheRest, "the fog screened bob's rest from alice")
 }
