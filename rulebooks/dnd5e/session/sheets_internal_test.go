@@ -384,3 +384,24 @@ func (s *SheetSeamSuite) TestTheWatchResetSeed() {
 	s.Zero(s.sheetOf("alice").WatchResetCells, "a character watches nobody")
 	s.Zero(s.sheetOf("merchant").WatchResetCells, "a world NPC states no watch terms")
 }
+
+// sneakingSet answers the live encounter's one question from a set.
+type sneakingSet map[encounter.MemberID]bool
+
+func (s sneakingSet) Sneaking(member encounter.MemberID) bool { return s[member] }
+
+// TestAPushRunsASneakerAtFullSpeed: sneaking halves the sneaker's own walking
+// (design R8), and a move imposed on it is not its walking (lead ruling on
+// rpg-toolkit#2079). So the composition's speed answer for sneaking alice is
+// half, the push budget's is whole, and asking the push budget leaves the
+// halved answer in place for the next walk.
+func (s *SheetSeamSuite) TestAPushRunsASneakerAtFullSpeed() {
+	s.seam.live = &liveEncounter{enc: sneakingSet{"alice": true}}
+
+	s.Equal(15, s.sheetOf("alice").SpeedFeet, "her own walking is half her thirty feet")
+	speeds, err := sheetSpeeds(s.seam, []encounter.MemberID{"alice", "skel-1"})
+	s.Require().NoError(err)
+	s.Equal(30, speeds["alice"], "a push runs her at her full speed")
+	s.Equal(s.data.NPCs[0].Speed.Walk, speeds["skel-1"], "and nobody else's answer changes")
+	s.Equal(15, s.sheetOf("alice").SpeedFeet, "the push budget did not clear the shared slot")
+}

@@ -93,7 +93,14 @@ type standingSeam struct {
 // verb's load returns, then the encounter that load built, replaced when a
 // verb adopts a world back from a resolution ([Manager.adopt]).
 type liveEncounter struct {
-	enc *encounter.Encounter
+	enc sneakingReader
+}
+
+// sneakingReader is the one question the sheet seam asks the live encounter.
+// [encounter.Encounter] answers it; a test may answer it without building a
+// world.
+type sneakingReader interface {
+	Sneaking(member encounter.MemberID) bool
 }
 
 // sneaking reports whether the verb's loaded encounter holds member sneaking.

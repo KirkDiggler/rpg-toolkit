@@ -31,11 +31,15 @@ func rosterPositions(roster []encounter.Member) map[string]spatial.Position {
 // the seam, not answered with zero; a sheet that answers zero is a true speed
 // of zero, and the caller turns that into a refusal with a sentence on it
 // (routeCastPushes, noSpeedToRunWith).
-func sheetSpeeds(sheets encounter.Sheets, members []encounter.MemberID) (map[string]int, error) {
+//
+// FULL SPEED, EVEN FOR A SNEAKER. A directed move is imposed on the mover,
+// not walked by it, and sneaking halves only the sneaker's own walking (lead
+// ruling on rpg-toolkit#2079), so the seam is asked [sheetSeam.unhalved].
+func sheetSpeeds(sheets sheetSeam, members []encounter.MemberID) (map[string]int, error) {
 	if len(members) == 0 {
 		return map[string]int{}, nil
 	}
-	facts, err := sheets.Sheets(members)
+	facts, err := sheets.unhalved().Sheets(members)
 	if err != nil {
 		return nil, err
 	}

@@ -214,9 +214,11 @@ func (s *SneakSuite) TestAMonsterWalkOnAnotherPlayersVerbRollsForTheSneaker() {
 	s.Empty(s.snuckIn("alice"), "out of the goblin's sight, declaring rolls nothing")
 	goblinAt := persistedMonsterPosition(s.T(), s.encounters, "goblin")
 
-	// bob paces his row until the world has had a round.
+	// bob paces his row until the world has had a round: six cells at
+	// thirty feet, so three two-cell walks. Bounded at four, so a pace or
+	// clock regression fails here rather than hanging the package.
 	before := s.encounters.byID[testSession].Clock.HighWater
-	for s.encounters.byID[testSession].Clock.HighWater == before {
+	for walks := 0; walks < 4 && s.encounters.byID[testSession].Clock.HighWater == before; walks++ {
 		at := persistedMonsterPosition(s.T(), s.encounters, "bob")
 		if at == hexCell(0, 4) {
 			s.move("bob", hexCell(1, 4), hexCell(2, 4))
@@ -224,6 +226,7 @@ func (s *SneakSuite) TestAMonsterWalkOnAnotherPlayersVerbRollsForTheSneaker() {
 			s.move("bob", hexCell(1, 4), hexCell(0, 4))
 		}
 	}
+	s.Require().Greater(s.encounters.byID[testSession].Clock.HighWater, before, "bob's walking paid the world a round")
 	s.NotEqual(goblinAt, persistedMonsterPosition(s.T(), s.encounters, "goblin"), "the goblin walked")
 
 	rolls := s.snuckIn("alice")

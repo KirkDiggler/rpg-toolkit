@@ -72,7 +72,7 @@ type castPush struct {
 // makes it safe to run before the record: a cast refused at this point has
 // moved nobody.
 func routeCastPushes(
-	enc *encounter.Encounter, sheets encounter.Sheets, pushes []castPush, targets []encounter.CastTargetResult,
+	enc *encounter.Encounter, sheets sheetSeam, pushes []castPush, targets []encounter.CastTargetResult,
 ) error {
 	if len(pushes) == 0 {
 		return nil

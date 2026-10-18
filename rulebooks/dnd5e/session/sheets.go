@@ -68,6 +68,15 @@ var _ encounter.Sheets = sheetSeam{}
 // is asking while staying separate contracts answering separate questions.
 type sheetSeam standingSeam
 
+// unhalved is this seam answering as if nobody sneaks: the live encounter
+// slot cleared on a copy, so every other fact is read exactly as before and
+// the shared slot itself is untouched. For a move imposed on a member, which
+// is not the member's own walking (see the halving in [sheetSeam.factsOf]).
+func (s sheetSeam) unhalved() sheetSeam {
+	s.live = nil
+	return s
+}
+
 // sheetsBeside builds the sheet capability from the verb-scoped facts a
 // [standingSeam] already carries, for [equipmentBeside]'s reason: the roster
 // kind snapshot is the verb's one classification, and a second snapshot could
@@ -136,6 +145,13 @@ func (s sheetSeam) factsOf(id encounter.MemberID) (encounter.SheetFacts, error) 
 		// session's, and the encounter never learns the rule. Integer feet,
 		// rounded down. A fight engaging the sneaker ends the mode before
 		// any turn budget asks (R7), so only free-roam pace sees the half.
+		//
+		// ONLY THE SNEAKER'S OWN WALKING (lead ruling on rpg-toolkit#2079,
+		// operator may veto): a move imposed on the sneaker — a cast push
+		// that runs it at its speed, any MoveImposed — runs at full speed,
+		// the same own-steps line facing draws (R17). The push budget asks
+		// [sheetSpeeds], which reads this seam with the slot cleared
+		// ([sheetSeam.unhalved]).
 		if s.live.sneaking(id) {
 			speed /= 2
 		}
