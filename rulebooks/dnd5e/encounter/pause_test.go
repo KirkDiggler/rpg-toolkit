@@ -305,6 +305,50 @@ func (s *PauseTestSuite) TestResumingFinishesTheWalkAndTheTurn() {
 	}, s.beats(enc, alice))
 }
 
+// TestAPausedWalkStillEndsFacingItsTarget is the lead's ruling on
+// rpg-toolkit#2073: a walk paused for a reaction window keeps its walk-end
+// target, through a save, so the resumed walk still ends facing it.
+//
+// The goblin closes on alice along axial (4,3), (3,3), (2,3), (1,3): a first
+// step of 210, then due west. It stops beside her at (1,3), where she is at
+// (0,-1), a bearing of 330 that no step of the walk had. The second step's
+// window holds the walk with the goblin still facing its first step.
+func (s *PauseTestSuite) TestAPausedWalkStillEndsFacingItsTarget() {
+	path := []spatial.Position{{X: 4, Y: 3}, {X: 3, Y: 3}, {X: 2, Y: 3}, {X: 1, Y: 3}}
+	mover := &pausingMover{pauseAt: map[int]bool{1: true}}
+	enc := s.sceneWithDriver(mover, &downList{}, &scriptedDriver{
+		intents: []encounter.TurnIntent{encounter.Move{Path: path, Target: alice}},
+	})
+	s.Require().Equal(cellAt(2, 2), spatial.Position{X: 1, Y: 2}, "alice stands at axial (1,2)")
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().True(enc.Paused())
+	s.Equal(spatial.Position{X: 4, Y: 3}, s.positionOf(enc, goblin))
+	s.InDelta(210.0, s.facingOf(enc, goblin), 1e-9, "mid-walk it faces the step it took")
+
+	loaded := s.reload(enc, mover, &downList{})
+	out, err := loaded.Resume(context.Background())
+	s.Require().NoError(err)
+	s.False(out.Paused, "the walk finished")
+	s.Equal(spatial.Position{X: 1, Y: 3}, s.positionOf(loaded, goblin), "the whole path was walked")
+	s.InDelta(330.0, s.facingOf(loaded, goblin), 1e-9,
+		"the resumed walk ends facing alice, not along its last step (270)")
+}
+
+// facingOf reads one member's facing through the public seam.
+func (s *PauseTestSuite) facingOf(enc *encounter.Encounter, id encounter.MemberID) float64 {
+	members, err := enc.Members()
+	s.Require().NoError(err)
+	for _, m := range members {
+		if m.ID == id {
+			return m.Facing
+		}
+	}
+	s.Require().Failf("not placed", "member %q is not on the roster", id)
+	return 0
+}
+
 // TestAPausedTurnRoundTripsThroughOnePause is the turn half of ruling E2: the
 // paused turn is written as the one Pause, kind turn, at PauseVersion, and a
 // reload resumed through the one Resume finishes the walk exactly as the

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -20,11 +21,21 @@ import (
 // ([MemberInput.Facing], [JoinInput.Facing]) or, when none was stated, from
 // [UnstatedFacing]. After that the engine writes it and nobody else does:
 //
-//   - every step turns the stepper along the step ([Encounter.stepMember]);
+//   - every step a creature takes turns it along that step;
 //   - a walk whose intent names a target member ends facing that member's
-//     cell ([Move.Target], [Routed.Anchor] toward);
+//     cell as the walker holds it ([Move.Target], [Routed.Anchor] toward),
+//     and a walk paused for a reaction window keeps that target across the
+//     pause, so the resumed walk still ends facing it;
 //   - an attack turns the attacker toward its target, whether a driven turn
 //     declared it or the rulebook records it ([Encounter.RecordTrain]).
+//
+// ONLY A CREATURE'S OWN STEPS AND INTENTS TURN IT (lead ruling on
+// rpg-toolkit#2073). A forced move — a push, a pull, a shove, any walk an
+// effect imposes through [Encounter.Direct] — does not: the mover keeps the
+// facing it had, because being shoved backwards is not turning round. So the
+// turn is written where a walk is the walker's own ([Encounter.Step], a
+// driven or world-round walk, a resumed turn), never in the step every walk
+// shares.
 //
 // It persists with the encounter, and it is TESTIMONY: every sighting
 // snapshots the subject's facing as the observer saw it
@@ -143,23 +154,40 @@ func (e *Encounter) faceToward(m *memberRecord, cell spatial.Position) {
 	}
 }
 
-// heldCellOf is where a member's view holds another member: its current
-// sighting first, then its memory — the order [TableDriver]'s own route to a
-// target reads them in, because a creature that can see where somebody IS
-// does not turn to where they WERE.
-func heldCellOf(view MonsterView, target MemberID) (spatial.Position, bool) {
-	for _, s := range view.Seen {
-		if s.ID == target {
-			return s.Position, true
-		}
+// turnAlong turns a creature along a step it took itself: the bearing from
+// the cell it left to the cell it took. A zero-distance step has no direction
+// and keeps the facing it had. Callers whose walk is imposed do not ask.
+func (e *Encounter) turnAlong(action executedAction) {
+	if degrees, ok := bearing(e.field.orientation, action.from, action.to); ok {
+		action.member.Facing = degrees
 	}
-	for _, r := range view.Remembered {
-		if r.ID == target {
-			return r.Position, true
+}
+
+// faceHeld turns a member toward another as the member HOLDS them: the cell
+// its own sighting of that member places them at, current or remembered —
+// the cell a walk toward them was routed to, never a live read of where they
+// are. A member it holds no placed sighting of leaves the facing as it was.
+//
+// Errors: the member's own holdings could not be read.
+func (e *Encounter) faceHeld(m *memberRecord, target MemberID) error {
+	if target == "" {
+		return nil
+	}
+	held, err := e.memberIntel(m.ID)
+	if err != nil {
+		return fmt.Errorf("facing %q: %w", target, err)
+	}
+	for _, h := range held {
+		if h.Channel != perception.Sight || MemberID(h.Subject) != target {
+			continue
 		}
+		if seen, ok := DecodeSightTestimony(h.Payload); ok && seen.State == LocationKnown {
+			e.faceToward(m, seen.Position)
+		}
+		return nil
 	}
 
-	return spatial.Position{}, false
+	return nil
 }
 
 // faceMember turns one member toward another's cell — the attacker toward
@@ -175,4 +203,16 @@ func (e *Encounter) faceMember(id, target MemberID) {
 		return
 	}
 	e.faceToward(m, cell)
+}
+
+// routedFace is who a [Routed] walk ends facing: its anchor member when the
+// route closes on one, and nobody for a flight or an authored cell — a
+// creature running from something does not end its run turned toward it,
+// and a cell names a place, not a target.
+func routedFace(r Routed) MemberID {
+	if r.Policy == MoveToward {
+		return r.Anchor
+	}
+
+	return ""
 }

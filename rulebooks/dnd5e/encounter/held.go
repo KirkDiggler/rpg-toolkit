@@ -143,7 +143,7 @@ func (e *Encounter) walkHeld(ctx context.Context, h *pause, m *memberRecord) (wa
 
 	res := walkResult{moved: 1}
 	if len(h.remaining) > 1 {
-		rest, werr := e.walkPath(ctx, h.member, m, h.remaining[1:], h.audience, h.at, h.cause, h.forced)
+		rest, werr := e.walkPath(ctx, h.member, m, h.remaining[1:], h.audience, h.at, h.cause, h.forced, true)
 		if werr != nil {
 			return walkResult{}, fmt.Errorf("resume directive %q: %w", h.member, werr)
 		}

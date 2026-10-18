@@ -153,6 +153,11 @@ type turnPause struct {
 	bound       int
 	terminal    bool
 	afterStrike bool
+
+	// face is the member the paused walk closes on — [Move.Target], or a
+	// [Routed] walk's anchor toward — kept so the resumed walk still ends
+	// facing it (facing.go). Empty for a walk to a place.
+	face MemberID
 }
 
 // PauseData is the persistent representation of the encounter's one pause —
@@ -243,6 +248,12 @@ type TurnPauseData struct {
 	// AfterStrike is true when the turn's STRIKE paused rather than its walk:
 	// nothing remains to walk, and the resume finishes the turn.
 	AfterStrike bool `json:"after_strike,omitempty"`
+
+	// Face is the member the paused walk closes on, so the resumed walk still
+	// ends facing it (rpg-project#582). Omitted for a walk to a place. It is
+	// not required to name a current member: a target who left during the
+	// window leaves the walker facing as it was.
+	Face MemberID `json:"face,omitempty"`
 }
 
 // TurnBudgetData is the persistent representation of a [TurnBudget].
@@ -290,6 +301,7 @@ func pauseDataFrom(p *pause) *PauseData {
 			Bound:       p.turn.bound,
 			Terminal:    p.turn.terminal,
 			AfterStrike: p.turn.afterStrike,
+			Face:        p.turn.face,
 		}
 	}
 	return d
@@ -362,6 +374,7 @@ func pauseFrom(d *PauseData) (*pause, error) {
 			bound:       d.Turn.Bound,
 			terminal:    d.Turn.Terminal,
 			afterStrike: d.Turn.AfterStrike,
+			face:        d.Turn.Face,
 		}
 	}
 	return p, nil
@@ -864,6 +877,7 @@ func (e *Encounter) finishPausedIntent(
 	}
 	action.cause = p.cause
 	if stepped {
+		e.turnAlong(action) // a turn's walk is the walker's own (facing.go)
 		if _, berr := e.appendMovementBeat(action, p.audience, p.at); berr != nil {
 			return 0, nil, false, fmt.Errorf("resume move beat: %w", berr)
 		}
@@ -874,7 +888,7 @@ func (e *Encounter) finishPausedIntent(
 	if stepped && len(p.remaining) > 1 {
 		// Every LATER cell is an ordinary announced step, and may pause
 		// again.
-		rest, werr := e.walkPath(ctx, p.member, m, p.remaining[1:], p.audience, p.at, p.cause, false)
+		rest, werr := e.walkPath(ctx, p.member, m, p.remaining[1:], p.audience, p.at, p.cause, false, false)
 		if werr != nil {
 			return 0, nil, false, fmt.Errorf("resume move: %w", werr)
 		}
@@ -885,6 +899,16 @@ func (e *Encounter) finishPausedIntent(
 	}
 
 	p.turn.budget.MovementFeet -= res.moved * FeetPerCell
+
+	// THE WALK'S END FACES ITS TARGET, the pause having kept who that was —
+	// the arm's own rule, across the window: only a walk that finished, and
+	// before the refresh so every observer sees the turn.
+	if res.paused == nil && !res.dropped && p.moved+res.moved > 0 {
+		if ferr := e.faceHeld(m, p.turn.face); ferr != nil {
+			return 0, nil, false, ferr
+		}
+	}
+
 	deltas, serr := e.settleWalk(p.audience, res.moved)
 	if serr != nil {
 		return 0, deltas, false, serr
@@ -907,6 +931,7 @@ func (e *Encounter) finishPausedIntent(
 				intent:   p.turn.intent,
 				bound:    p.turn.bound,
 				terminal: p.turn.terminal,
+				face:     p.turn.face,
 			},
 		}
 		wseq, berr := e.appendWindowOpenedBeat(

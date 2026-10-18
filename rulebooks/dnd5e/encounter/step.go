@@ -135,6 +135,8 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 	if err != nil {
 		return nil, fmt.Errorf("step: %w", err)
 	}
+	// A player's step is their own: it turns them along it (facing.go).
+	e.turnAlong(action)
 
 	// subjectBeat, subject is the mover — v1 still sends everyone
 	// (audienceFor's doc).
@@ -396,15 +398,6 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position, endWal
 
 	action := executedAction{member: member, from: from, to: to}
 	action.doors = e.crossedDoors(from, to)
-
-	// EVERY STEP TURNS THE STEPPER ALONG IT (rpg-project#582, design R13):
-	// the bearing from the cell it left to the cell it took. HERE, in the one
-	// implementation, so a player's Step, a monster's walk, a directed move
-	// and a resumed walk all turn the same way. A zero-distance step has no
-	// direction and keeps the facing it had.
-	if degrees, ok := bearing(e.field.orientation, from, to); ok {
-		member.Facing = degrees
-	}
 
 	return action, nil
 }

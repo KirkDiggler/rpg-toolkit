@@ -962,8 +962,8 @@ func (e *Encounter) executeTurnIntent(
 		// refreshes see the attacker turned. The target's cell as this
 		// attacker sees it: attackRefusal above has already required that
 		// it is in sight.
-		if cell, held := heldCellOf(view, it.Target); held {
-			e.faceToward(m, cell)
+		if ferr := e.faceHeld(m, it.Target); ferr != nil {
+			return false, nil, ferr
 		}
 
 		if serr := e.striker.Strike(context.Background(), e, activeID, it.Target, it.Action); serr != nil {
@@ -1016,11 +1016,12 @@ func (e *Encounter) executeTurnIntent(
 		// and its memory after — the cell its path was routed to, never a
 		// live read of where the target really is. Before the walk's one
 		// sight refresh, so every observer sees the turn. Only a walk that
-		// finished here: a paused walk is still walking, and a body is not
-		// turning toward anybody.
-		if it.Target != "" && res.paused == nil && !res.dropped && res.moved > 0 {
-			if cell, held := heldCellOf(view, it.Target); held {
-				e.faceToward(m, cell)
+		// finished here: a body is not turning toward anybody, and a paused
+		// walk is still walking — its pause keeps the target, and the resume
+		// turns it ([Encounter.finishPausedIntent]).
+		if res.paused == nil && !res.dropped && res.moved > 0 {
+			if ferr := e.faceHeld(m, it.Target); ferr != nil {
+				return false, nil, ferr
 			}
 		}
 
@@ -1053,6 +1054,7 @@ func (e *Encounter) executeTurnIntent(
 				audience:  audience,
 				turn: &turnPause{
 					round: coords.Round, budget: *budget, intent: coords.Intent, bound: coords.Bound,
+					face: it.Target,
 				},
 			}
 			if _, berr := e.appendWindowOpenedBeat(
@@ -1162,8 +1164,13 @@ func (e *Encounter) executeTurnIntent(
 		// Not a flight — a creature running from something does not end its
 		// run turned toward it — and not an authored cell, which names a
 		// place and not a target.
-		if it.Policy == MoveToward && it.Anchor != "" && res.paused == nil && !res.dropped && res.moved > 0 {
-			e.faceToward(m, anchorCell)
+		// As the walker holds the anchor, the Move arm's reading, so a
+		// resumed walk ends on the same answer.
+		face := routedFace(it)
+		if res.paused == nil && !res.dropped && res.moved > 0 {
+			if ferr := e.faceHeld(m, face); ferr != nil {
+				return false, nil, ferr
+			}
 		}
 
 		// Charged here, once, for what the walk actually took — the Move
@@ -1193,7 +1200,7 @@ func (e *Encounter) executeTurnIntent(
 				cause:     it.Cause,
 				turn: &turnPause{
 					round: coords.Round, budget: *budget, intent: coords.Intent, bound: coords.Bound,
-					terminal: true,
+					terminal: true, face: face,
 				},
 			}
 			if _, berr := e.appendWindowOpenedBeat(
@@ -1408,7 +1415,7 @@ type walkResult struct {
 // walking rather than being walked, so it provokes.
 func (e *Encounter) walkPath(
 	ctx context.Context, mover MemberID, m *memberRecord,
-	path []spatial.Position, audience []MemberID, at uint64, cause core.Ref, forced bool,
+	path []spatial.Position, audience []MemberID, at uint64, cause core.Ref, forced, imposed bool,
 ) (walkResult, error) {
 	var res walkResult
 
@@ -1523,6 +1530,11 @@ func (e *Encounter) walkPath(
 			return res, stepErr
 		}
 		action.cause = cause
+		// A creature's own step turns it; an imposed one — a directive, an
+		// effect moving it — does not (facing.go).
+		if stepped && !imposed {
+			e.turnAlong(action)
+		}
 		if !stepped {
 			// The same silent-refusal contract stepTo already has for
 			// the pump: a wall stops the WALK, not the turn — whatever
@@ -1676,7 +1688,7 @@ func (e *Encounter) walkFor(
 		return e.walkWorld(mover, m, path, audience, at, cause)
 	}
 
-	return e.walkPath(ctx, mover, m, path, audience, at, cause, false)
+	return e.walkPath(ctx, mover, m, path, audience, at, cause, false, false)
 }
 
 // walkWorld takes each cell of a path on the world clock: no announcement, no
@@ -1713,6 +1725,7 @@ func (e *Encounter) walkWorld(
 		if !stepped {
 			break
 		}
+		e.turnAlong(action) // a world round's walk is the creature's own
 		if _, berr := e.appendMovementBeat(action, audience, at); berr != nil {
 			return res, fmt.Errorf("world move beat: %w", berr)
 		}
