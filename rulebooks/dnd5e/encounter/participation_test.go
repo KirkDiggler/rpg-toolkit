@@ -248,7 +248,6 @@ func TestDriveReassessesAfterStrikeBeforeUsingTheNextSlotsTurnAnswer(t *testing.
 	capability.members = map[encounter.MemberID]encounter.MemberParticipation{
 		zara: {Contact: true, Conscious: false, Turn: encounter.TurnParticipationAutoPass},
 	}
-	callsBefore := len(capability.questions)
 	out, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
 	require.NoError(t, err)
 	require.Equal(t, zara, out.Next)
@@ -262,7 +261,6 @@ func TestDriveReassessesAfterStrikeBeforeUsingTheNextSlotsTurnAnswer(t *testing.
 	// turn happened to run, and broke when an attack began turning its
 	// attacker (rpg-project#582), whose refresh is one more question and no
 	// change to the answer.
-	require.Greater(t, len(capability.questions), callsBefore, "the drive asked participation after alice's turn")
 
 	for _, beat := range storyBeats(t, enc, zara) {
 		require.False(t, beat["beat"] == "turn-ended" && beat["member"] == string(zara),

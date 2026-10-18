@@ -336,6 +336,49 @@ func (s *PauseTestSuite) TestAPausedWalkStillEndsFacingItsTarget() {
 		"the resumed walk ends facing alice, not along its last step (270)")
 }
 
+// TestAPausedPushResumedKeepsItsFacing is the forced-move ruling on its
+// paused branch (rpg-toolkit#2073 review). The push carries the goblin three
+// cells east, which a walk of its own would turn it to (90); the second step's
+// window holds it, the resume hand-takes that cell and walks the third through
+// the held directive's own walk. Pushed, it still faces the unstated 180 —
+// for a push, and for a provoking rout, the one an opportunity attack pauses.
+func (s *PauseTestSuite) TestAPausedPushResumedKeepsItsFacing() {
+	for _, provokes := range []bool{false, true} {
+		mover := &pausingMover{pauseAt: map[int]bool{1: true}}
+		enc := s.sceneWithDriver(mover, &downList{}, passDriver{})
+		route := []spatial.Position{{X: 6, Y: 2}, {X: 7, Y: 2}, {X: 8, Y: 2}}
+		out, err := enc.Direct(context.Background(), encounter.DirectInput{
+			Mover: goblin, Cause: thunderwaveRef, Route: route, Provokes: provokes,
+		})
+		s.Require().NoError(err)
+		s.Require().True(out.Paused, "provokes=%v: the second step's window holds the push", provokes)
+
+		_, err = enc.Resume(context.Background())
+		s.Require().NoError(err)
+		s.Require().Equal(spatial.Position{X: 8, Y: 2}, s.positionOf(enc, goblin), "the whole push landed")
+		s.Equal(encounter.UnstatedFacing, s.facingOf(enc, goblin), "provokes=%v: a pushed creature does not turn", provokes)
+	}
+}
+
+// TestAResumedWalksFirstStepTurnsIt pins the resumed walk's hand-taken step
+// on its own (rpg-toolkit#2073 review): a walk to a place, no target, paused
+// on its LAST cell, so the resumed step is the only one that can set the
+// facing. The walk goes west twice (270) and then along +r (150).
+func (s *PauseTestSuite) TestAResumedWalksFirstStepTurnsIt() {
+	path := []spatial.Position{{X: 4, Y: 2}, {X: 3, Y: 2}, {X: 3, Y: 3}}
+	mover := &pausingMover{pauseAt: map[int]bool{2: true}}
+	enc := s.sceneWithPath(mover, &downList{}, path)
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().True(enc.Paused())
+	s.InDelta(270.0, s.facingOf(enc, goblin), 1e-9, "held before its last step, it faces west")
+
+	_, err = enc.Resume(context.Background())
+	s.Require().NoError(err)
+	s.Equal(spatial.Position{X: 3, Y: 3}, s.positionOf(enc, goblin))
+	s.InDelta(150.0, s.facingOf(enc, goblin), 1e-9, "the resumed step turned it")
+}
+
 // facingOf reads one member's facing through the public seam.
 func (s *PauseTestSuite) facingOf(enc *encounter.Encounter, id encounter.MemberID) float64 {
 	members, err := enc.Members()

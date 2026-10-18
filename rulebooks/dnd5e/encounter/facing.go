@@ -37,6 +37,18 @@ import (
 // driven or world-round walk, a resumed turn), never in the step every walk
 // shares.
 //
+// A [Routed] WALK IS THE CREATURE'S OWN. Its doc calls it "somebody else's"
+// because somebody else chose the route — a table's `toward` or `away`, a
+// Command — but the creature's own legs walk it, on its own turn, so it turns
+// along its steps and ends facing the anchor it closed on. Imposed means an
+// effect moved the body, which is [Encounter.Direct] and nothing else.
+//
+// ONE SOURCE FOR WHERE A CREATURE TURNS TO (lead ruling on
+// rpg-toolkit#2073): the cell it HOLDS for its target, through [faceHeld] —
+// at a walk's end, before a driven attack, and when a recorded attack lands.
+// Never a live read: a creature that holds no placed sighting of its target
+// does not turn toward it.
+//
 // It persists with the encounter, and it is TESTIMONY: every sighting
 // snapshots the subject's facing as the observer saw it
 // ([SightTestimony.Facing]), so a memory keeps the facing it last saw. No
@@ -188,21 +200,6 @@ func (e *Encounter) faceHeld(m *memberRecord, target MemberID) error {
 	}
 
 	return nil
-}
-
-// faceMember turns one member toward another's cell — the attacker toward
-// the member it struck. A member that is not on the map, or a target that is
-// not, leaves the facing as it was.
-func (e *Encounter) faceMember(id, target MemberID) {
-	m, ok := e.members[id]
-	if !ok || target == "" {
-		return
-	}
-	cell, placed := e.canvas.GetEntityPosition(string(target))
-	if !placed {
-		return
-	}
-	e.faceToward(m, cell)
 }
 
 // routedFace is who a [Routed] walk ends facing: its anchor member when the

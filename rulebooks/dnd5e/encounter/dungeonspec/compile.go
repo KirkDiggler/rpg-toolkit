@@ -434,9 +434,11 @@ func Compile(spec *Spec) (Compiled, error) {
 	if monsters, err = lowerFacings(monsters); err != nil {
 		return Compiled{}, err
 	}
-	startFacing, err := lowerFacing(spec.Start.Facing)
-	if err != nil {
-		return Compiled{}, &ValidationError{Errors: []FieldError{{Path: "start.facing", Message: err.Error()}}}
+	var startFacing *float64
+	if spec.Start.Facing != "" {
+		if startFacing, err = lowerFacing(spec.Start.Facing); err != nil {
+			return Compiled{}, &ValidationError{Errors: []FieldError{{Path: "start.facing", Message: err.Error()}}}
+		}
 	}
 
 	return Compiled{

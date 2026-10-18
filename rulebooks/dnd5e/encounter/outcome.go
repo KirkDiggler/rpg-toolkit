@@ -830,7 +830,10 @@ func (e *Encounter) prepareUnit(index int, unit TrainUnit) (preparedUnit, error)
 		// THE ATTACKER TURNS TOWARD ITS TARGET (rpg-project#582, design R13)
 		// — the first one the rulebook named, the one it swung at — when the
 		// deed lands, ahead of the consult whose refresh lets every watcher
-		// see the turn.
+		// see the turn. Toward the cell the attacker HOLDS for it, the one
+		// source every turn reads (lead ruling on rpg-toolkit#2073): never
+		// the target's live cell, and no turn at all when the attacker holds
+		// no placed sighting of it.
 		var faced MemberID
 		if len(in.Targets) > 0 {
 			faced = in.Targets[0]
@@ -839,7 +842,11 @@ func (e *Encounter) prepareUnit(index int, unit TrainUnit) (preparedUnit, error)
 		// hold what they saw, and whoever is listening beyond them holds a
 		// clang — a kind and a place, never who swung.
 		prepared.land = func() error {
-			e.faceMember(in.Actor, faced)
+			if attacker, ok := e.members[in.Actor]; ok {
+				if err := e.faceHeld(attacker, faced); err != nil {
+					return err
+				}
+			}
 			if err := e.landAttack(in.Actor, targets); err != nil {
 				return err
 			}

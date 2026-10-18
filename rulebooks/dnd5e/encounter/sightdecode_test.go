@@ -85,6 +85,11 @@ func TestDecodeSightTestimonyRejectsMalformedOrContradictoryShapes(t *testing.T)
 		{name: "duplicate y", payload: `{"state":"known","x":1,"y":2,"y":2}`},
 		{name: "conflicting y", payload: `{"state":"known","x":1,"y":2,"y":3}`},
 		{name: "trailing json", payload: `{"state":"known","x":1,"y":2}{}`},
+		// A facing key must hold a bearing in [0, 360) (rpg-project#582).
+		{name: "null facing", payload: `{"state":"known","x":1,"y":2,"facing":null}`},
+		{name: "facing out of range", payload: `{"state":"known","x":1,"y":2,"facing":400}`},
+		{name: "negative facing", payload: `{"state":"known","x":1,"y":2,"facing":-1}`},
+		{name: "unknown with facing", payload: `{"state":"unknown","facing":90}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, ok := encounter.DecodeSightTestimony([]byte(tc.payload))
