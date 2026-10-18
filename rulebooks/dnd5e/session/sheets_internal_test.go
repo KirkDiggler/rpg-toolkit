@@ -374,3 +374,13 @@ func (s *SheetSeamSuite) placeTemplate(id string, spec dungeonspec.TemplateSpec)
 func storeOf(repo CharacterRepository) sheetStore {
 	return sheetStore{repo: repo}
 }
+
+// TestTheWatchResetSeed is the session's seed for the sneak re-arm distance
+// (rpg-project#606, design R10, O6): a monster watcher re-arms a sneaker two
+// cells outside its zone; a character is never a watcher and seeds zero. A
+// world NPC's recorded content states no watch terms, so it answers zero too.
+func (s *SheetSeamSuite) TestTheWatchResetSeed() {
+	s.Equal(2, s.sheetOf("skel-1").WatchResetCells, "a monster's seeded re-arm distance")
+	s.Zero(s.sheetOf("alice").WatchResetCells, "a character watches nobody")
+	s.Zero(s.sheetOf("merchant").WatchResetCells, "a world NPC states no watch terms")
+}
