@@ -236,6 +236,7 @@ func TestEveryContentFileCompilesToItsCommittedPicture(t *testing.T) {
 		"world-builder-v4-tomb-vault.yaml",
 		"world-builder-v4-wall-doors.yaml",
 		"world-builder-v4-walls.yaml",
+		"zone-site.yaml",
 	}, names, "the authored dungeons this package ships")
 
 	for _, path := range files {
