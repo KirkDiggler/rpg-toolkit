@@ -463,6 +463,10 @@ func (j *sneakJudge) pair(mover, watcher MemberID) (bool, error) {
 // the watcher's re-arm distance outside its zone, and — for a lost pair —
 // the watcher's ordinary sight no longer reaches the mover (R10: hiding needs
 // a broken line of sight first).
+//
+// THE SECOND TERM BINDS ONLY ONCE CONES LAND. With no arc a zone is the
+// watcher's sight, so a mover outside it is already out of ordinary sight;
+// C-cone's narrower zone is what makes the two answers differ.
 func (j *sneakJudge) rearms(watcher MemberID, cell spatial.Position, v SneakVerdictData) (bool, error) {
 	facts, err := j.sheet(watcher)
 	if err != nil {

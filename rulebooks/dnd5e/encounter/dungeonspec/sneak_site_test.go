@@ -35,9 +35,6 @@ const sneakSiteReset = 2
 
 // The site's cells, as offset [col, row] on the studio's floor.
 var (
-	// sneakSiteDoorWest and sneakSiteDoorEast are the doorway's two cells.
-	sneakSiteDoorWest = castleCell(-1, 0)
-	sneakSiteDoorEast = castleCell(0, 0)
 	// sneakSiteFarEnd is where the rogue's walk ends: two cells into the far
 	// room, north of the doorway.
 	sneakSiteFarEnd = castleCell(2, -1)

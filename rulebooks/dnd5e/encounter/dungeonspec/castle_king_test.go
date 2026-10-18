@@ -60,7 +60,8 @@ const (
 )
 
 // The castle's doors, by the compiled ids of the studio's wall doors. The
-// file shuts every one, and locks none.
+// file shuts every one, and locks two: the cell door, and the kitchen's door
+// into the great hall (sneaking S1).
 const (
 	// kingGateDoor is the gatehouse's one way into the courtyard.
 	kingGateDoor = encounter.DoorID("the-mad-king/gate-wall-door")
@@ -128,14 +129,34 @@ func openTheCastleWithEars(
 	t testing.TB, at spatial.Position, doors map[encounter.DoorID]encounter.DoorState, passive map[encounter.MemberID]int,
 ) *kingScene {
 	t.Helper()
+
+	return openTheCastleAs(t, castleHost{at: at, doors: doors, passive: passive})
+}
+
+// castleHost is everything a route may set about how the castle is opened:
+// where the hero starts, doors standing in a state the file does not give
+// them, passive Perception other than 10, more players beside the hero, and
+// the check resolver (the host's nothingIsEverFound when nil).
+type castleHost struct {
+	at       spatial.Position
+	doors    map[encounter.DoorID]encounter.DoorState
+	passive  map[encounter.MemberID]int
+	players  []encounter.MemberInput
+	resolver encounter.CheckResolver
+}
+
+// openTheCastleAs compiles the file and opens it the way the host says.
+func openTheCastleAs(t testing.TB, host castleHost) *kingScene {
+	t.Helper()
 	compiled := loadContent(t, kingFixture)
 	for i := range compiled.Field.Doors {
-		if state, ok := doors[compiled.Field.Doors[i].ID]; ok {
+		if state, ok := host.doors[compiled.Field.Doors[i].ID]; ok {
 			compiled.Field.Doors[i].State = state
 		}
 	}
 
-	members := []encounter.MemberInput{{ID: hero, Kind: encounter.KindPlayer, Position: at}}
+	members := []encounter.MemberInput{{ID: hero, Kind: encounter.KindPlayer, Position: host.at}}
+	members = append(members, host.players...)
 	for _, m := range compiled.Monsters {
 		var holds []encounter.IntelID
 		for _, h := range m.Holds {
@@ -154,6 +175,10 @@ func openTheCastleWithEars(
 		})
 	}
 
+	var resolver encounter.CheckResolver = nothingIsEverFound{}
+	if host.resolver != nil {
+		resolver = host.resolver
+	}
 	strikes := &[]cellsStrike{}
 	standing := &castleStanding{down: map[encounter.MemberID]bool{}}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
@@ -166,12 +191,12 @@ func openTheCastleWithEars(
 			Sight:         castleSight{},
 			Equipment:     encounter.UnobservedEquipment{},
 			Conditions:    encounter.UnobservedEquipment{},
-			Sheets:        castleSheets{passive: passive},
+			Sheets:        castleSheets{passive: host.passive},
 			Participation: standing,
 			Initiative:    orderAsGiven{},
 			Driver:        encounter.TableDriver{Roller: rollsOne{}},
 			Roller:        rollsOne{},
-			CheckResolver: nothingIsEverFound{},
+			CheckResolver: resolver,
 			Witness:       nobodyPerceivesAnything{},
 			Actors: encounter.Actors{
 				Striker:   cellsStriker{calls: strikes},
@@ -240,17 +265,36 @@ func (s *kingScene) open(door encounter.DoorID) {
 }
 
 // outOfTheKitchen brings the hero from the kitchen to the yard by the only
-// way there is: the kitchen door into the great hall, across the hall, and
-// out by the hall door, which it leaves open.
+// way there is: the kitchen door into the great hall — locked, so the hero
+// picks it — across the hall, and out by the hall door, which it leaves open.
 func (s *kingScene) outOfTheKitchen() {
 	s.t.Helper()
 	// Toward the hall cell past the shut kitchen door: the walk ends inside
 	// the kitchen, beside the door, in reach.
 	s.walkTo(castleCell(-14, -12))
-	s.open(kingKitchenDoor)
+	s.pickTheKitchenDoor()
 	// Toward the yard cell past the shut hall door: the walk ends inside it.
 	s.walkTo(castleCell(0, -6))
 	s.open(kingHallDoor)
+}
+
+// kitchenDoorPick is the kitchen door's thieves'-tools route, as the file
+// authors it.
+var kitchenDoorPick = encounter.CheckApproach{Ability: "dex", Tool: "dnd5e:item:thieves-tools", DC: 13}
+
+// kitchenDoorForce is the kitchen door's Strength route, as the file authors
+// it: a beaten one is a door broken in, and it crashes.
+var kitchenDoorForce = encounter.CheckApproach{Ability: "str", DC: 15}
+
+// pickTheKitchenDoor picks the locked kitchen door with the hero's
+// thieves' tools, already rolled and beaten: the lock beaten opens it,
+// silently.
+func (s *kingScene) pickTheKitchenDoor() {
+	s.t.Helper()
+	_, err := s.enc.Unlock(&encounter.UnlockInput{
+		Door: kingKitchenDoor, Actor: hero, Beaten: true, Total: 17, Applied: kitchenDoorPick,
+	})
+	require.NoError(s.t, err, "the hero picks the kitchen door")
 }
 
 // throughTheGate brings the hero from the courtyard to the gate door, opens
