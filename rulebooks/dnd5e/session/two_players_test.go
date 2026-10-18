@@ -401,7 +401,8 @@ func TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers(t *testing.T) {
 	// DC 10 in her own room, and her sheet's passive 11 reaches it
 	// (rpg-project#569). Barbarian receives neither: no sight testimony about
 	// self, and the blow that made the sound downed her before it landed, so
-	// she was not standing to hear it. Every recipient still has its own
+	// she was not standing to hear it. What she does see is the skeleton turn
+	// toward her to swing (sneaking R13). Every recipient still has its own
 	// contiguous sequence.
 	heardBy := map[string]int{}
 	for _, event := range round1Drive {
@@ -422,21 +423,32 @@ func TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers(t *testing.T) {
 		}
 		return kinds
 	}
-	fighterKinds := kindsOf("fighter")
-	for _, extra := range []session.EventKind{session.EventSighted, session.EventHeard} {
-		at := slices.Index(fighterKinds, extra)
-		require.GreaterOrEqual(t, at, 0, "fighter received a %s beat", extra)
-		fighterKinds = slices.Delete(fighterKinds, at, at+1)
-	}
-	require.ElementsMatch(t, fighterKinds, kindsOf("barbarian"),
-		"barbarian receives every beat fighter does but the sighting of her fall and the clang")
-	var witnessUpdates int
-	for _, event := range round1Drive {
-		if event.Recipient == "fighter" && event.Kind == session.EventSighted {
-			witnessUpdates++
+	// Sightings are compared by who they name rather than by count: the
+	// skeleton turns toward barbarian to swing (sneaking R13), so BOTH
+	// watchers are told to look at it again, and fighter's one beat also
+	// names barbarian's fall.
+	sightedBy := func(recipient string) []string {
+		var named []string
+		for _, e := range round1Drive {
+			if body, ok := e.Body.(session.SightedBody); ok && e.Recipient == recipient {
+				named = append(named, body.Changed...)
+			}
 		}
+		return named
 	}
-	require.Equal(t, 1, witnessUpdates)
+	require.ElementsMatch(t, []string{"barbarian", "skel-1"}, sightedBy("fighter"),
+		"fighter sees barbarian fall and the skeleton turn")
+	require.Equal(t, []string{"skel-1"}, sightedBy("barbarian"),
+		"barbarian sees the skeleton turn on her, and never testifies about herself")
+	withoutSighted := func(kinds []session.EventKind) []session.EventKind {
+		return slices.DeleteFunc(kinds, func(k session.EventKind) bool { return k == session.EventSighted })
+	}
+	fighterKinds := withoutSighted(kindsOf("fighter"))
+	at := slices.Index(fighterKinds, session.EventHeard)
+	require.GreaterOrEqual(t, at, 0, "fighter received a heard beat")
+	fighterKinds = slices.Delete(fighterKinds, at, at+1)
+	require.ElementsMatch(t, fighterKinds, withoutSighted(kindsOf("barbarian")),
+		"barbarian receives every beat fighter does but the clang")
 	for i := 1; i < len(round1Barbarian); i++ {
 		require.Equal(t, round1Barbarian[i-1]+1, round1Barbarian[i],
 			"barbarian's own stream stays gap-free through the drive")

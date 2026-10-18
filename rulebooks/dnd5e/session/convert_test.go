@@ -162,6 +162,13 @@ var omitted = map[string]string{
 	// get is the `answered` beat after an entry fires.
 	"encounter.Member.Table": "the author's script for what the creature does and says; a client " +
 		"reads it as the `answered` beat AFTER an entry fires, never as a roster row it could read ahead",
+	// Facing is testimony, never a roster read (rpg-project#582, sneaking
+	// R13: forbids a live read of facing). A watcher learns which way a
+	// member faces from its own sighting, as Seen.Facing; a roster row that
+	// carried the live bearing would tell every reader the truth a sighting
+	// is allowed to have wrong.
+	"encounter.Member.Facing": "facing reaches a client only as testimony on Seen.Facing (sneaking R13 " +
+		"forbids a live read); the roster row would disclose the live bearing no observer witnessed",
 	"encounter.Member.Temper": "the loading on that script's die, omitted for Table's reason; which " +
 		"temperament a faction's mix dealt reaches a client as the `tempered` beat",
 

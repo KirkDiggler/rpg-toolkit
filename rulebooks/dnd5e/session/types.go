@@ -941,6 +941,18 @@ type Seen struct {
 	// field. Observed-empty arrives as a present
 	// value whose strings are empty.
 	Equipment *SeenEquipment `json:"equipment,omitempty"`
+
+	// Facing is which way the sighted subject was observed to face: a
+	// bearing in degrees, 0 is map north (-Y of the planar frame), 90 is
+	// east (+X), clockwise, in [0, 360) (rpg-project#582, sneaking R13).
+	// Read out of the observer's own snapshot, as Standing and Equipment
+	// are: a memory keeps the facing it last saw. The session passes the
+	// composition's number through unchanged.
+	//
+	// NIL MEANS NOT OBSERVED: testimony written before sightings carried a
+	// facing. It is not the same claim as "facing south" — an unauthored
+	// member faces 180 and its sighting says so as a present value.
+	Facing *float64 `json:"facing,omitempty"`
 }
 
 // SeenEquipment is what a subject was observed holding, as one observer saw

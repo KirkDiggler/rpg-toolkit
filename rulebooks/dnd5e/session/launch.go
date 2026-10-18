@@ -206,6 +206,10 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 		if err != nil {
 			return nil, fmt.Errorf("launch: %w", err)
 		}
+		// Every seat looks the start's way (sneaking R13): the compile lowered
+		// the author's compass word, and nil leaves the composition's rule
+		// bearing of 180.
+		join.Facing = in.Dungeon.StartFacingDegrees
 		board = append(board, join)
 	}
 	for _, monster := range monsters {
@@ -222,6 +226,9 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 			return nil, fmt.Errorf("launch: %w", err)
 		}
 		join.AppearanceRef = monster.placement.AppearanceRef
+		// The author's facing, lowered to a bearing by the compile (sneaking
+		// R13); nil leaves the composition's rule bearing of 180.
+		join.Facing = monster.placement.FacingDegrees
 		board = append(board, join)
 	}
 	if err := scope.enc.ValidateBoard(&encounter.BoardInput{Members: board}); err != nil {

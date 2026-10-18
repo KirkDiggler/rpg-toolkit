@@ -279,7 +279,9 @@ func (s *EffectRowsSuite) TestACorruptTargetConditionFailsTheRead() {
 // just arrived, and it stays on its feet. Nobody's conditions change — every
 // combatant holds its opportunity attack from the moment it is a participant,
 // whether or not its stored sheet has caught up, and the wound is what writes
-// the goblin's sheet back with it — so no watcher is told to look again.
+// the goblin's sheet back with it — so no watcher is told to look again at
+// the goblin. Alice turning to swing is a different fact (sneaking R13): her
+// watchers are told to look again at HER, which is not what this pins.
 func (s *EffectRowsSuite) TestAHitOnAFreshMonsterSendsNoSightedBeat() {
 	s.cave(s.rogue())
 	data := s.sessions.byID[erSession]
@@ -299,7 +301,8 @@ func (s *EffectRowsSuite) TestAHitOnAFreshMonsterSendsNoSightedBeat() {
 
 	for _, event := range s.stream.published {
 		if body, ok := event.Body.(session.SightedBody); ok {
-			s.Empty(body.Changed, "no condition changed, so nobody is told to look again: %+v to %s", body, event.Recipient)
+			s.NotContains(body.Changed, erGoblin1,
+				"no condition changed, so nobody is told to look again at the goblin: %+v to %s", body, event.Recipient)
 		}
 	}
 }

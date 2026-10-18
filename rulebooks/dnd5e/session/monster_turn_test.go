@@ -332,6 +332,10 @@ func (s *MonsterTurnTestSuite) TestSkeletonAttacksFromRange() {
 			// the fighter rather than reaching her, takes its `toward`, and
 			// is already within the shortbow's range — a spent word that
 			// moved nobody, which the stayed beat exists to say.
+		case "sighted":
+			// The skeleton turns toward the fighter to shoot (sneaking R13),
+			// and its facing is testimony, so the fighter is told to look at
+			// it again: a consequence of the swing, not a decision.
 		default:
 			s.Equal("answered", beat,
 				"the only other thing a driven turn writes is the roll that chose each intent")
