@@ -16,6 +16,7 @@ package session
 //     [encounter.Encounter.Sneaking] says so (sheets.go);
 //   - the re-arm distance seed, [encounter.SheetFacts.WatchResetCells]
 //     (sheets.go);
+//   - the watch arc seed, [encounter.SheetFacts.WatchArc] (sheets.go, R14);
 //   - the roll itself, which arrives through [checkSeam.ResolveDiscoveryCheck]
 //     against the sneaker's staged record — every write verb stages every
 //     player (exploration.go), so a verb by one player that walks a watcher

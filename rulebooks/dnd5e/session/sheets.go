@@ -43,6 +43,16 @@ import (
 // terms — and it leaves when `senses` can say it.
 const monsterWatchResetCells = 2
 
+// monsterWatchArc is the seeded watch arc, in degrees centred on its facing,
+// for a monster watcher (rpg-project#621, design R14 and open item O6): its
+// sneak watch zone keeps only the cells within half this arc of the way it
+// faces, so a sneaker behind it is outside the zone and rolls nothing. A
+// content fact with nowhere to live yet — the stat block states no
+// `senses.watch_arc` — so the session seeds it until content does; the value
+// is tuned on the castle walk (O6). The encounter holds no arc of its own:
+// its only built-in answer is zero, all round.
+const monsterWatchArc = 120
+
 // sheetSeam answers the composition's sheet and sight questions out of the
 // sheets this one verb holds.
 //
@@ -162,6 +172,9 @@ func (s sheetSeam) factsOf(id encounter.MemberID) (encounter.SheetFacts, error) 
 			// A character is never a watcher (design R9), so it re-arms
 			// nobody; zero is the encounter's no-hysteresis answer.
 			WatchResetCells: 0,
+			// Nobody's zone is a character's (design R9, R14), so it states
+			// no arc; zero is the encounter's no-arc, all-round answer.
+			WatchArc: 0,
 		}, nil
 	case held.monster != nil:
 		bonusDisengage, err := bonusDisengageOf(held.monster, registryName)
@@ -186,6 +199,11 @@ func (s sheetSeam) factsOf(id encounter.MemberID) (encounter.SheetFacts, error) 
 			// content states it on the stat block; the encounter picks no
 			// distance of its own.
 			WatchResetCells: monsterWatchResetCells,
+			// How wide this watcher's zone opens around its facing (design
+			// R14, O6). SEEDED HERE until the stat block states
+			// `senses.watch_arc`; then that field answers and the seed is
+			// only the fallback for a block that states none.
+			WatchArc: monsterWatchArc,
 		}, nil
 	default:
 		return encounter.SheetFacts{}, nil
