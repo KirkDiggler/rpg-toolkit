@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
+	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
@@ -188,8 +189,7 @@ func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
 
 	story, err := enc.Story(&encounter.StoryInput{Audience: "bob"})
 	require.NoError(t, err)
-	require.NotEmpty(t, story)
-	payload := string(story[len(story)-1].Payload)
+	payload := string(lastStruck(t, story).Payload)
 	require.JSONEq(t,
 		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":9,`+
 			`"critical":false,"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":""},`+
@@ -290,8 +290,7 @@ func TestRecordProjectsCriticalStrikeTrace(t *testing.T) {
 
 	story, err := enc.Story(&encounter.StoryInput{Audience: "bob"})
 	require.NoError(t, err)
-	require.NotEmpty(t, story)
-	entry := story[len(story)-1]
+	entry := lastStruck(t, story)
 	event := projectEntry("sess", "bob", entry, 1)
 	require.Equal(t, EventStruck, event.Kind)
 	require.JSONEq(t,
@@ -909,4 +908,21 @@ func recordOne(enc *encounter.Encounter, in *encounter.RecordInput) (*encounter.
 		return nil, err
 	}
 	return &out.Units[0], nil
+}
+
+// lastStruck is the latest struck beat in a story. Since an attack turns its
+// attacker toward its target (sneaking R13), the strike is followed by the
+// watchers' re-look at the attacker, so the strike is no longer always last.
+func lastStruck(t *testing.T, story []record.Entry) record.Entry {
+	t.Helper()
+	for i := len(story) - 1; i >= 0; i-- {
+		var beat struct {
+			Beat string `json:"beat"`
+		}
+		if json.Unmarshal(story[i].Payload, &beat) == nil && beat.Beat == "struck" {
+			return story[i]
+		}
+	}
+	t.Fatalf("the story holds no struck beat")
+	return record.Entry{}
 }

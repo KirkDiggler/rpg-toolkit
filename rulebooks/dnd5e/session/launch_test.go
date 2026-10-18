@@ -6,6 +6,10 @@ package session_test
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -657,4 +661,90 @@ func (s *LaunchActionsSuite) TestABadWeaponLateInTheListStillRefusesTheWholeLaun
 	s.Require().Error(err)
 	s.ErrorIs(err, session.ErrUnknownContent)
 	s.NotContains(s.sessions.byID, testSession)
+}
+
+// Authored facing reaches play (rpg-project#582, sneaking R13). The compile
+// lowers each compass word to a bearing; the launch seeds every member with
+// it, and every observer's sighting carries the bearing it saw. The camp's
+// own start says `facing: e`, so the party is seated looking east.
+
+// faceWest is the encounter's facing site (rpg-project#582, Task F1: a
+// version-4 room exported from the studio, the castle's own format) with its
+// knight authored looking west instead of east, and the guard left
+// unauthored. The camp cannot serve: its older format still refuses a
+// monster's facing (rpg-toolkit#1892).
+func (s *LaunchSuite) faceWest() *dungeonspec.Compiled {
+	const authored = "          facing: e\n"
+	out, err := exec.CommandContext(s.T().Context(), "go", "list", "-m", "-f", "{{.Dir}}", campModule).Output()
+	s.Require().NoError(err, "resolve the pinned encounter module's directory")
+	raw, err := os.ReadFile(filepath.Join(strings.TrimSpace(string(out)), "dungeonspec/testdata/facing-site.yaml"))
+	s.Require().NoError(err, "read the facing site")
+	source := strings.ReplaceAll(string(raw), "\r\n", "\n")
+	s.Require().Equal(1, strings.Count(source, authored), "the site authors exactly one facing, the knight's")
+	source = strings.Replace(source, authored, "          facing: w\n", 1)
+	// The site names castle templates it does not carry; the rulebook's own
+	// monsters stand in, because what this pins is the bearing, not the sheet.
+	source = strings.ReplaceAll(source, "dnd5e:monsters:knight", refs.Monsters.Skeleton().String())
+	source = strings.ReplaceAll(source, "dnd5e:monsters:guard", refs.Monsters.Goblin().String())
+	compiled, err := dungeonspec.Load([]byte(source))
+	s.Require().NoError(err, "the facing site compiles")
+	return &compiled
+}
+
+// storedFacings is every stored member's facing, read off the run the launch
+// saved — what the next load starts from.
+func (s *LaunchSuite) storedFacings() map[string]float64 {
+	s.T().Helper()
+	stored, ok := s.encounters.byID["run"]
+	s.Require().True(ok, "the launch saved the run")
+	out := map[string]float64{}
+	for _, m := range stored.Members {
+		s.Require().NotNil(m.Facing, "member %s was saved without a facing", m.ID)
+		out[string(m.ID)] = *m.Facing
+	}
+	return out
+}
+
+// sightedFacing is the facing observer's held sighting of subject carries.
+func (s *LaunchSuite) sightedFacing(observer, subject string) *float64 {
+	s.T().Helper()
+	view, err := s.mgr.View(context.Background(), &session.ViewInput{Session: "run", Member: observer})
+	s.Require().NoError(err)
+	sighting := findSighting(view, subject)
+	s.Require().NotNil(sighting, "%s holds a sighting of %s", observer, subject)
+	s.Require().NotNil(sighting.Seen, "%s's sighting of %s is sight testimony", observer, subject)
+	return sighting.Seen.Facing
+}
+
+func (s *LaunchSuite) TestAPlacementFacingWestLaunchesFacing270AndIsSeenSo() {
+	_, err := s.launch(s.faceWest(), "alice")
+	s.Require().NoError(err)
+
+	facings := s.storedFacings()
+	s.Equal(270.0, facings["knight"], "the knight was authored facing w")
+
+	seen := s.sightedFacing("alice", "knight")
+	s.Require().NotNil(seen, "the sighting observed the knight's facing")
+	s.Equal(270.0, *seen)
+}
+
+func (s *LaunchSuite) TestAPlacementWithoutAFacingLaunchesFacingSouth() {
+	_, err := s.launch(s.faceWest(), "alice")
+	s.Require().NoError(err)
+
+	s.Equal(180.0, s.storedFacings()["guard"],
+		"an unauthored facing is the rule bearing of 180, not zero")
+}
+
+func (s *LaunchSuite) TestThePartyIsSeatedFacingTheStartsWay() {
+	_, err := s.launch(s.camp(), "alice", "bob")
+	s.Require().NoError(err)
+
+	facings := s.storedFacings()
+	s.Equal(90.0, facings["alice"], "the camp's start says facing: e")
+	s.Equal(90.0, facings["bob"])
+
+	seen := s.sightedFacing("bob", "alice")
+	s.Require().NotNil(seen)
+	s.Equal(90.0, *seen, "bob saw alice looking the start's way")
 }

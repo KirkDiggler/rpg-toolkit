@@ -300,3 +300,42 @@ func TestSightingStatusReportsAGhostAsHeldWithNoChannels(t *testing.T) {
 	require.Equal(t, "held", out[0].Status)
 	require.Empty(t, out[0].CurrentVia)
 }
+
+// facingTestimonyBytes encodes sight testimony carrying the given facing —
+// nil for testimony written before sightings carried one.
+func facingTestimonyBytes(t *testing.T, facing *float64) []byte {
+	t.Helper()
+	b, err := encounter.EncodeSightTestimony(encounter.SightTestimony{
+		State: encounter.LocationKnown, Position: spatial.Position{X: 2, Y: 4}, Down: boolPtr(false),
+		Facing: facing,
+	})
+	require.NoError(t, err)
+	return b
+}
+
+// TestProjectSeenCarriesTheObservedFacing pins sneaking R13 at the
+// projection: the bearing the observer saw crosses unchanged, on both the
+// held sighting and the first-contact report, and testimony that observed
+// no facing projects none — never an invented 180.
+func TestProjectSeenCarriesTheObservedFacing(t *testing.T) {
+	west := 270.0
+	observed := facingTestimonyBytes(t, &west)
+	predates := facingTestimonyBytes(t, nil)
+
+	seen := projectSeen(perception.Sight, observed)
+	require.NotNil(t, seen)
+	require.NotNil(t, seen.Facing, "the testimony observed a facing")
+	require.Equal(t, 270.0, *seen.Facing)
+
+	report := projectReportSeen(observed)
+	require.NotNil(t, report)
+	require.NotNil(t, report.Facing, "first contact carries the same facing as the held sighting")
+	require.Equal(t, 270.0, *report.Facing)
+
+	absent := projectSeen(perception.Sight, predates)
+	require.NotNil(t, absent)
+	require.Nil(t, absent.Facing, "testimony that predates facing observed none")
+	absentReport := projectReportSeen(predates)
+	require.NotNil(t, absentReport)
+	require.Nil(t, absentReport.Facing)
+}

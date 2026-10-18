@@ -293,7 +293,9 @@ func (s *OneMapSuite) TestASightingIsReportedOnTheMap() {
 	// it is a present false, not an absent key — the same "observed, not
 	// inferred" discipline Equipment already keeps. Conditions ride the
 	// testimony for rules (rpg-project#520, R16) but never a delivered
-	// payload, so there is no "conditions" key here.
+	// payload, so there is no "conditions" key here. "facing" rides it too
+	// (rpg-project#582, sneaking R13): bob's seat declares none, so he faces
+	// the rule bearing of 180, observed as a present value.
 	s.Equal(map[string]any{
 		"state":           string(encounter.LocationKnown),
 		"x":               bobsCell.X,
@@ -301,6 +303,7 @@ func (s *OneMapSuite) TestASightingIsReportedOnTheMap() {
 		"down":            false,
 		"blocks_movement": false,
 		"equipment":       map[string]any{},
+		"facing":          180.0,
 	}, payload,
 		"bob's cell on the dungeon map — authored [42,21] as one axial cell")
 	s.NotContains(payload, "room", "a sighting names no room; there is one map")

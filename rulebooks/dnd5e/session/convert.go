@@ -327,6 +327,9 @@ func sightingStatus(h perception.Holding) (status string, via []string) {
 // what makes a LIE possible at all, since a fact resolved live could only
 // ever be true (Kirk, rpg-toolkit#1615).
 //
+// Facing crosses the same way (rpg-project#582, sneaking R13): the bearing
+// the observer saw, unchanged, and nil when the testimony predates facing.
+//
 // Nil Standing or nil Equipment means the fact was not observed: testimony
 // older than the field, or (for Equipment) no sheet behind the subject at
 // all. Neither means "seen standing" or "seen empty-handed" — those arrive as
@@ -343,6 +346,7 @@ func projectSeen(channel perception.Channel, payload []byte) *Seen {
 		Position:  testimony.Position,
 		Standing:  projectStanding(testimony.Down),
 		Equipment: projectSeenEquipment(testimony.Equipment),
+		Facing:    testimony.Facing,
 	}
 }
 
@@ -619,5 +623,6 @@ func projectReportSeen(payload []byte) *Seen {
 	return &Seen{
 		Position: testimony.Position, Standing: projectStanding(testimony.Down),
 		Equipment: projectSeenEquipment(testimony.Equipment),
+		Facing:    testimony.Facing,
 	}
 }

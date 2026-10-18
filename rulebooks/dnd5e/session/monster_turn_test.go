@@ -263,6 +263,25 @@ func (s *MonsterTurnTestSuite) storyBeats(mgr *session.Manager, member string) [
 	return beats
 }
 
+// storySighted is the names each sighted beat in member's story names, from
+// the entry at index from onward, in order.
+func (s *MonsterTurnTestSuite) storySighted(mgr *session.Manager, member string, from int) [][]string {
+	entries, err := mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: member})
+	s.Require().NoError(err)
+	var out [][]string
+	for _, e := range entries[from:] {
+		var body struct {
+			Beat    string   `json:"beat"`
+			Changed []string `json:"changed"`
+		}
+		s.Require().NoError(json.Unmarshal(e.Payload, &body))
+		if body.Beat == "sighted" {
+			out = append(out, body.Changed)
+		}
+	}
+	return out
+}
+
 // (a) A skeleton four cells off attacks with its shortbow without inventing
 // an approach: a struck (or missed) beat naming a real attack, then the turn
 // hands cleanly back.
@@ -317,7 +336,7 @@ func (s *MonsterTurnTestSuite) TestSkeletonAttacksFromRange() {
 	s.Equal("turn-ended", beats[len(beats)-2], "the skeleton's own turn closes the round")
 
 	middle := beats[1 : len(beats)-2]
-	swings := 0
+	swings, sightings := 0, 0
 	for _, beat := range middle {
 		switch beat {
 		case "struck", "missed":
@@ -332,12 +351,21 @@ func (s *MonsterTurnTestSuite) TestSkeletonAttacksFromRange() {
 			// the fighter rather than reaching her, takes its `toward`, and
 			// is already within the shortbow's range — a spent word that
 			// moved nobody, which the stayed beat exists to say.
+		case "sighted":
+			// The skeleton turns toward the fighter to shoot (sneaking R13),
+			// and its facing is testimony, so the fighter is told to look at
+			// it again: a consequence of the swing, not a decision. Counted,
+			// and its names pinned below, so this arm is not a catch-all.
+			sightings++
 		default:
 			s.Equal("answered", beat,
 				"the only other thing a driven turn writes is the roll that chose each intent")
 		}
 	}
 	s.Equal(1, swings, "the shortbow attack needs no approach")
+	s.Equal(1, sightings, "one turn toward the fighter, one re-look")
+	s.Equal([][]string{{"skel-1"}}, s.storySighted(mgr, "fighter", before),
+		"the re-look names the skeleton that turned, and nobody else")
 
 	s.Equal("fighter", out.Next, "a two-member fight wraps straight back to whoever led it")
 	s.True(out.RoundWrapped)
