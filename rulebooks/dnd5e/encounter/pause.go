@@ -154,10 +154,11 @@ type turnPause struct {
 	terminal    bool
 	afterStrike bool
 
-	// face is the member the paused walk closes on — [Move.Target], or a
-	// [Routed] walk's anchor toward — kept so the resumed walk still ends
-	// facing it (facing.go). Empty for a walk to a place.
-	face MemberID
+	// face is what the paused walk closes on — [Move.Target], a [Routed]
+	// walk's anchor toward, or the cell of a sound it walks toward — kept so
+	// the resumed walk still ends facing it (facing.go). Zero for a walk to a
+	// place.
+	face walkFace
 }
 
 // PauseData is the persistent representation of the encounter's one pause —
@@ -254,6 +255,12 @@ type TurnPauseData struct {
 	// not required to name a current member: a target who left during the
 	// window leaves the walker facing as it was.
 	Face MemberID `json:"face,omitempty"`
+
+	// FaceHeard is the cell of the sound the paused walk closes on
+	// ([Routed.Heard]), so the resumed walk still ends facing where it rang
+	// (rpg-toolkit#2076). Omitted for every other walk. Never set beside
+	// Face: a walk closes on one target.
+	FaceHeard *PositionData `json:"face_heard,omitempty"`
 }
 
 // TurnBudgetData is the persistent representation of a [TurnBudget].
@@ -301,7 +308,10 @@ func pauseDataFrom(p *pause) *PauseData {
 			Bound:       p.turn.bound,
 			Terminal:    p.turn.terminal,
 			AfterStrike: p.turn.afterStrike,
-			Face:        p.turn.face,
+			Face:        p.turn.face.member,
+		}
+		if heard := p.turn.face.heard; heard != nil {
+			d.Turn.FaceHeard = &PositionData{X: heard.X, Y: heard.Y}
 		}
 	}
 	return d
@@ -374,7 +384,10 @@ func pauseFrom(d *PauseData) (*pause, error) {
 			bound:       d.Turn.Bound,
 			terminal:    d.Turn.Terminal,
 			afterStrike: d.Turn.AfterStrike,
-			face:        d.Turn.Face,
+			face:        walkFace{member: d.Turn.Face},
+		}
+		if heard := d.Turn.FaceHeard; heard != nil {
+			p.turn.face.heard = &spatial.Position{X: heard.X, Y: heard.Y}
 		}
 	}
 	return p, nil
@@ -487,6 +500,9 @@ func validatePause(d *PauseData, members map[core.EntityID]struct{}) error {
 		}
 		if t.Round < 0 {
 			return fmt.Errorf("load encounter paused turn %q: negative round: %w", d.Member, ErrInvalidData)
+		}
+		if t.Face != "" && t.FaceHeard != nil {
+			return fmt.Errorf("load encounter paused turn %q: faces a member and a sound: %w", d.Member, ErrInvalidData)
 		}
 	}
 	return nil
@@ -904,7 +920,7 @@ func (e *Encounter) finishPausedIntent(
 	// the arm's own rule, across the window: only a walk that finished, and
 	// before the refresh so every observer sees the turn.
 	if res.paused == nil && !res.dropped && p.moved+res.moved > 0 {
-		if ferr := e.faceHeld(m, p.turn.face); ferr != nil {
+		if ferr := e.faceWalkEnd(m, p.turn.face); ferr != nil {
 			return 0, nil, false, ferr
 		}
 	}

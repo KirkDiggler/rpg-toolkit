@@ -24,10 +24,13 @@ import (
 //   - every step a creature takes turns it along that step;
 //   - a walk whose intent names a target member ends facing that member's
 //     cell as the walker holds it ([Move.Target], [Routed.Anchor] toward),
-//     and a walk paused for a reaction window keeps that target across the
-//     pause, so the resumed walk still ends facing it;
+//     a walk toward a heard sound ends facing the cell the walker holds it
+//     at ([Routed.Heard]), and a walk paused for a reaction window keeps
+//     that target across the pause, so the resumed walk still ends facing it;
 //   - an attack turns the attacker toward its target, whether a driven turn
-//     declared it or the rulebook records it ([Encounter.RecordTrain]).
+//     declared it or the rulebook records it ([Encounter.RecordTrain]) — an
+//     opportunity attack included: a [Mover] records the reaction through
+//     the same train, with the mover still on the cell it is leaving.
 //
 // ONLY A CREATURE'S OWN STEPS AND INTENTS TURN IT (lead ruling on
 // rpg-toolkit#2073). A forced move — a push, a pull, a shove, any walk an
@@ -48,6 +51,11 @@ import (
 // at a walk's end, before a driven attack, and when a recorded attack lands.
 // Never a live read: a creature that holds no placed sighting of its target
 // does not turn toward it.
+//
+// A TRAIN THAT CLOSES THE ENCOUNTER LEAVES THE LAST TESTIMONY AS IT STOOD
+// (lead ruling on rpg-toolkit#2076): the striker's own facing still turns,
+// but no sight refresh and no beat follows `ended`, so a watcher's sighting of
+// it stays the last one taken before the end.
 //
 // It persists with the encounter, and it is TESTIMONY: every sighting
 // snapshots the subject's facing as the observer saw it
@@ -202,14 +210,47 @@ func (e *Encounter) faceHeld(m *memberRecord, target MemberID) error {
 	return nil
 }
 
-// routedFace is who a [Routed] walk ends facing: its anchor member when the
-// route closes on one, and nobody for a flight or an authored cell — a
-// creature running from something does not end its run turned toward it,
-// and a cell names a place, not a target.
-func routedFace(r Routed) MemberID {
-	if r.Policy == MoveToward {
-		return r.Anchor
+// walkFace is what a walk ends facing: a member as the walker holds them, or
+// the cell of a sound the walker holds ([Routed.Heard]). The zero value faces
+// nothing, and the walk keeps the facing of its last step.
+//
+// TWO TARGETS, ONE SOURCE. Both are the walker's own holdings: the member's
+// cell is read off its sighting at the walk's end ([Encounter.faceHeld]), and
+// the sound's cell was read off its hearing when the walk was decided
+// ([MonsterView.Sounds]) — a sound cannot move, so the cell it rang at is the
+// cell it is held at.
+type walkFace struct {
+	member MemberID
+	heard  *spatial.Position
+}
+
+// faceWalkEnd turns a walker toward what its walk closed on ([walkFace]).
+//
+// Errors: the walker's own holdings could not be read.
+func (e *Encounter) faceWalkEnd(m *memberRecord, f walkFace) error {
+	if f.heard != nil {
+		e.faceToward(m, *f.heard)
+
+		return nil
 	}
 
-	return ""
+	return e.faceHeld(m, f.member)
+}
+
+// routedFace is what a [Routed] walk ends facing: its anchor member when the
+// route closes on one, the sound's cell when it walks toward a sound
+// ([Routed.Heard]), and nothing for a flight or an authored cell — a creature
+// running from something does not end its run turned toward it, and a cell
+// names a place, not a target.
+func routedFace(r Routed) walkFace {
+	if r.Policy != MoveToward {
+		return walkFace{}
+	}
+	if r.Heard && r.AnchorAt != nil {
+		cell := *r.AnchorAt
+
+		return walkFace{heard: &cell}
+	}
+
+	return walkFace{member: r.Anchor}
 }

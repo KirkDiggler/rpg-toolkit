@@ -228,7 +228,9 @@ func (d TableDriver) towardIntent(view MonsterView, entry Answer) TurnIntent {
 			return Pass{}
 		}
 
-		return Routed{Policy: MoveToward, AnchorAt: &cell, Cause: tableCauseToward}
+		// A SOUND IS A TARGET, so the walk ends facing where it rang
+		// ([Routed.Heard]).
+		return Routed{Policy: MoveToward, AnchorAt: &cell, Heard: true, Cause: tableCauseToward}
 	}
 
 	target, ok := d.selectMember(view, entry, *entry.Toward)

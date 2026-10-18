@@ -1020,7 +1020,7 @@ func (e *Encounter) executeTurnIntent(
 		// walk is still walking — its pause keeps the target, and the resume
 		// turns it ([Encounter.finishPausedIntent]).
 		if res.paused == nil && !res.dropped && res.moved > 0 {
-			if ferr := e.faceHeld(m, it.Target); ferr != nil {
+			if ferr := e.faceWalkEnd(m, walkFace{member: it.Target}); ferr != nil {
 				return false, nil, ferr
 			}
 		}
@@ -1054,7 +1054,7 @@ func (e *Encounter) executeTurnIntent(
 				audience:  audience,
 				turn: &turnPause{
 					round: coords.Round, budget: *budget, intent: coords.Intent, bound: coords.Bound,
-					face: it.Target,
+					face: walkFace{member: it.Target},
 				},
 			}
 			if _, berr := e.appendWindowOpenedBeat(
@@ -1168,7 +1168,7 @@ func (e *Encounter) executeTurnIntent(
 		// resumed walk ends on the same answer.
 		face := routedFace(it)
 		if res.paused == nil && !res.dropped && res.moved > 0 {
-			if ferr := e.faceHeld(m, face); ferr != nil {
+			if ferr := e.faceWalkEnd(m, face); ferr != nil {
 				return false, nil, ferr
 			}
 		}
@@ -1559,10 +1559,14 @@ func (e *Encounter) walkPath(
 // that names neither does not say anything at all; both are decisions a driver
 // could have made differently, which is [ErrBadIntent]'s own line — the turn
 // ends, exactly like Pass.
+//
+// A HEARD ROUTED NAMES A CELL ([Routed.Heard]), and one that names a member
+// instead answers false for the same reason: a sound is a place it rang, and
+// a member is not one.
 func (e *Encounter) routedAnchor(it Routed) (spatial.Position, bool) {
 	named := it.Anchor != ""
 	authored := it.AnchorAt != nil
-	if named == authored {
+	if named == authored || (it.Heard && !authored) {
 		return spatial.Position{}, false
 	}
 	if authored {

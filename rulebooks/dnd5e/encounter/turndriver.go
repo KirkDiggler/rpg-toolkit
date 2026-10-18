@@ -494,6 +494,18 @@ type Routed struct {
 	// a member's is — it cannot move.
 	AnchorAt *spatial.Position
 
+	// Heard says AnchorAt is where a sound this walker HOLDS rang — what
+	// `toward: sound` compiles to (rpg-project#569) — and so a TARGET, not a
+	// place: a walk toward it ends facing that cell (rpg-toolkit#2076, design
+	// R13), where a walk to an authored cell or a waypoint ends facing along
+	// its last step. The cell is the sound's place in the walker's own
+	// holdings ([MonsterView.Sounds]), never a live read of who made it.
+	//
+	// Only with AnchorAt: a Heard Routed that names a member is a malformed
+	// intent ([ErrBadIntent]). Away from a sound faces nothing, as every
+	// flight does.
+	Heard bool
+
 	// Cause is the effect that routed them, and it travels on every beat this
 	// walk appends. REQUIRED ([ErrNoCause]), exactly as [DirectInput.Cause]
 	// is and for the identical reason: a creature whose whole turn was spent
