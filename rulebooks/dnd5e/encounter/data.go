@@ -26,8 +26,9 @@ import (
 type EncounterData struct {
 	// Discovery holds run attempt/re-arm state; learned facts remain in World.
 	Discovery map[MemberID]DiscoveryStateData `json:"discovery,omitempty"`
-	// SneakVerdicts is every standing Stealth verdict, by sneaking mover then
-	// by watcher (sneak.go, rpg-project#606 R10) — discovery's armed shape.
+	// SneakVerdicts is every Stealth verdict, and every armed pair a
+	// watcher's arc keeps unseen, by sneaking mover then by watcher (sneak.go,
+	// rpg-project#606 R10, R14) — discovery's armed shape.
 	// Absent when nobody sneaks, so a run with no sneaker persists
 	// byte-identically to one from before sneaking existed. Validated at load:
 	// the mover a sneaking player, the watcher a non-player member

@@ -215,6 +215,7 @@ func TestEveryContentFileCompilesToItsCommittedPicture(t *testing.T) {
 		names = append(names, filepath.Base(path))
 	}
 	require.ElementsMatch(t, []string{
+		"cone-site.yaml",
 		"facing-site.yaml",
 		"reference-raider-camp.yaml",
 		"reference-tomb-heirloom.yaml",
