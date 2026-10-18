@@ -18,7 +18,6 @@ package session_test
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -276,7 +275,8 @@ func (s *SneakSuite) TestDeclaringOffInsideAHostileZoneFormsAFight() {
 
 // TestTheViewCarriesTheEncountersWatchZonesUnchanged (sneaking Z2, R15): a
 // sneaking member's view carries the composition's own WatchZonesFor answer
-// byte-equal, and a walking member's view carries an empty list. alice
+// value for value (same watchers, same order, same cells) in the session's
+// own WatchZone shape, and a walking member's view carries an empty list. alice
 // sneaks onto the door row, where she holds the goblin live through it.
 func (s *SneakSuite) TestTheViewCarriesTheEncountersWatchZonesUnchanged() {
 	s.launch(false, nil)
@@ -290,13 +290,12 @@ func (s *SneakSuite) TestTheViewCarriesTheEncountersWatchZonesUnchanged() {
 	s.Require().NotEmpty(want.Zones, "the scene must give alice a watcher to see, or the test proves nothing")
 
 	got := s.view("alice").WatchZones
-	wantJSON, err := json.Marshal(want.Zones)
-	s.Require().NoError(err)
-	gotJSON, err := json.Marshal(got)
-	s.Require().NoError(err)
-	s.JSONEq(string(wantJSON), string(gotJSON), "the view is the encounter's answer, byte for byte")
-	s.Equal(want.Zones, got)
-
+	expected := make([]session.WatchZone, 0, len(want.Zones))
+	for _, zone := range want.Zones {
+		expected = append(expected, session.WatchZone{Watcher: string(zone.Watcher), Cells: zone.Cells})
+	}
+	s.Require().NotEmpty(want.Zones[0].Cells, "the goblin's zone reaches floor alice knows")
+	s.Equal(expected, got, "the same watchers in the same order, each with the encounter's cells unchanged")
 	bob := s.view("bob").WatchZones
 	s.NotNil(bob, "a walker's list is empty, never nil")
 	s.Empty(bob, "a member who is not sneaking is sent no zones")
