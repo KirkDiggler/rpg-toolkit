@@ -121,6 +121,11 @@ type SheetFacts struct {
 	// THE ZONE ONLY, NEVER SIGHT (R2, R14). Nothing but the watch zone reads
 	// it: fog of war's seen-now cells, a mover who is not sneaking, and every
 	// other sight question are answered by the one sight test, all round.
+	//
+	// NO PASSIVE, NO CONE (lead ruling R29 on rpg-project#621). A watcher
+	// whose PassivePerception is zero judges no sneak and sees a sneaker by
+	// ordinary sight, so its arc is not read: its zone stays its sight, and
+	// the red floor never shows less than what sees the sneaker (R22).
 	WatchArc int
 }
 

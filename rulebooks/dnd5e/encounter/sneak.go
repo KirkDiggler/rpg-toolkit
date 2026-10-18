@@ -71,7 +71,9 @@ const stealthAbility = "stealth"
 // zone does not. So the judgement writes an armed record for a never-rolled
 // pair the moment ordinary sight reaches the mover outside the zone, and
 // every reach built from the stored verdicts reads it ([sightReach.Reaches]).
-// With no arc the zone is sight, and such a pair is unreached anyway.
+// It is never written for a watcher that holds the mover live (R10; lead
+// ruling R28 on rpg-project#621). With no arc the zone is sight, so such a
+// pair is unreached anyway and the rule changes nothing.
 type SneakVerdictData struct {
 	Beaten bool `json:"beaten,omitempty"`
 	Armed  bool `json:"armed,omitempty"`
@@ -323,7 +325,8 @@ type watchCone struct {
 // [SheetFacts.WatchArc] is non-zero, keyed by member. Nil when nobody has an
 // arc, which is a zone of 360 for everybody.
 //
-// A WATCHER WITH NO PASSIVE PERCEPTION GETS NO CONE (R22). It judges no
+// A WATCHER WITH NO PASSIVE PERCEPTION GETS NO CONE (R22; lead ruling R29
+// on rpg-project#621). It judges no
 // sneak and sees a sneaker by ordinary sight ([sneakJudge.pair]), so its
 // zone stays its sight and the floor drawn red ([Encounter.WatchZonesFor])
 // stays the floor it sees the sneaker on. A cone there would draw the floor
@@ -627,11 +630,24 @@ func (j *sneakJudge) pair(mover, watcher MemberID) (bool, error) {
 		v.InZone = nowIn
 	}
 	if !has {
-		// OUTSIDE THE ZONE, UNSEEN (R9, R14). A never-rolled pair whose
-		// mover ordinary sight reaches outside the zone — behind an arc —
-		// is recorded armed, so every reach built from the verdicts keeps
-		// the mover out of this watcher's sight ([SneakVerdictData]).
+		// OUTSIDE THE ZONE, UNSEEN (R9, R14; lead ruling R28 on
+		// rpg-project#621). A never-rolled pair whose mover ordinary sight
+		// reaches outside the zone — behind an arc — is recorded armed, so
+		// every reach built from the verdicts keeps the mover out of this
+		// watcher's sight ([SneakVerdictData]).
+		//
+		// NEVER FROM A WATCHER THAT HOLDS THE MOVER LIVE (R10, R28). Nobody
+		// vanishes in plain view: a watcher already seeing the mover is
+		// answered by the lost verdict a declaration writes, never by this.
+		// Without an arc the zone is sight, so nothing reaches this line.
 		if nowIn || !j.reach.reachesCell(watcher, cell) {
+			return false, nil
+		}
+		live, err := e.holdsLive(watcher, mover)
+		if err != nil {
+			return false, err
+		}
+		if live {
 			return false, nil
 		}
 		v = SneakVerdictData{Armed: true}

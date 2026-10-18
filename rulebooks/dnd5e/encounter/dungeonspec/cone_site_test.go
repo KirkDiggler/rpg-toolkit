@@ -52,12 +52,13 @@ func (coneSiteSight) Sight(members []encounter.MemberID) (map[encounter.MemberID
 }
 
 // coneSiteSheets answers thirty feet (halved while sneaking, the session's
-// rule), the knight's passive 10 and the cook's 9, a re-arm distance of two,
-// and each member's arc from arcs — which the scene changes to ask what an
-// answer of zero means.
+// rule), the knight's passive 10 and the cook's 9 unless deaf names them —
+// then 0, not supplied — a re-arm distance of two, and each member's arc from
+// arcs. The scene changes both to ask what an answer of zero means.
 type coneSiteSheets struct {
 	enc  **encounter.Encounter
 	arcs map[encounter.MemberID]int
+	deaf map[encounter.MemberID]bool
 }
 
 func (s coneSiteSheets) Sheets(members []encounter.MemberID) (map[encounter.MemberID]encounter.SheetFacts, error) {
@@ -71,7 +72,7 @@ func (s coneSiteSheets) Sheets(members []encounter.MemberID) (map[encounter.Memb
 		out[id] = encounter.SheetFacts{
 			SpeedFeet:         speed,
 			Actions:           []encounter.ActionView{{Ref: kingSpear, RangeFeet: 5}},
-			PassivePerception: passive[id],
+			PassivePerception: map[bool]int{false: passive[id]}[s.deaf[id]],
 			WatchResetCells:   2,
 			WatchArc:          s.arcs[id],
 		}
@@ -84,6 +85,7 @@ func (s coneSiteSheets) Sheets(members []encounter.MemberID) (map[encounter.Memb
 type coneSite struct {
 	*sneakSite
 	arcs map[encounter.MemberID]int
+	deaf map[encounter.MemberID]bool
 }
 
 // openTheConeSite seats the rogue at the party start, the walker — a second
@@ -105,6 +107,7 @@ func openTheConeSite(t *testing.T, d20s ...int) *coneSite {
 	site := &coneSite{
 		sneakSite: &sneakSite{t: t, stealth: &sneakSiteStealth{d20s: d20s}},
 		arcs:      map[encounter.MemberID]int{coneSiteKnight: coneSiteArc, coneSiteCook: coneSiteArc},
+		deaf:      map[encounter.MemberID]bool{},
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field:     compiled.Field,
@@ -115,7 +118,7 @@ func openTheConeSite(t *testing.T, d20s ...int) *coneSite {
 			Sight:         coneSiteSight{},
 			Equipment:     encounter.UnobservedEquipment{},
 			Conditions:    encounter.UnobservedEquipment{},
-			Sheets:        coneSiteSheets{enc: &site.enc, arcs: site.arcs},
+			Sheets:        coneSiteSheets{enc: &site.enc, arcs: site.arcs, deaf: site.deaf},
 			Participation: &castleStanding{down: map[encounter.MemberID]bool{}},
 			Initiative:    orderAsGiven{},
 			Driver:        encounter.TableDriver{Roller: rollsOne{}},
@@ -239,6 +242,9 @@ func TestConeSite(t *testing.T) {
 	require.Empty(t, s.stealth.asked, "behind the knight nothing rolls")
 	require.False(t, s.seesLive(coneSiteKnight, coneSiteRogue), "the knight does not see the sneaker behind it")
 	require.Nil(t, s.holding(coneSiteKnight, coneSiteRogue), "the knight's holdings never gained the rogue")
+	armed, judged := s.verdict(coneSiteKnight)
+	require.True(t, judged, "the knight's sight reaching the rogue outside its zone records the pair")
+	require.Equal(t, encounter.SneakVerdictData{Armed: true}, armed, "armed and un-rolled: unseen, and the next entry rolls (R28)")
 	require.True(t, s.seesLive(coneSiteKnight, coneSiteWalker), "the walker beside it is still seen")
 
 	// The knight's zone is its front third: the cell ahead and the edge cell
@@ -317,4 +323,22 @@ func TestConeSite(t *testing.T) {
 	require.Equal(t, behindCook, positionOf(t, s.enc, coneSiteRogue))
 	require.False(t, s.seesLive(coneSiteCook, coneSiteRogue), "re-armed, the sneaker behind her is unseen")
 	require.Equal(t, rolled, s.stealth.asked, "behind her nothing rolls")
+
+	// A WATCHER THAT HOLDS THE SNEAKER IS NEVER ANSWERED BY THE ARC (R10,
+	// lead ruling R28). With no passive supplied the knight judges no sneak
+	// and sees the rogue by ordinary sight, so the rogue walks up behind it
+	// held live. Supplied again, the knight still holds the rogue: the arc
+	// does not make a creature that sees you lose you.
+	s.deaf[coneSiteKnight] = true
+	s.walkTo(behind)
+	require.Equal(t, behind, positionOf(t, s.enc, coneSiteRogue))
+	require.True(t, s.seesLive(coneSiteKnight, coneSiteRogue), "a knight with no passive sees the sneaker behind it")
+	delete(s.deaf, coneSiteKnight)
+	stillBehind := castleCell(4, 2)
+	require.Greater(t, offArc(0, coneBearing(knightAt, stillBehind)), 60.0, "the next cell is outside the front third")
+	s.step(stillBehind)
+	require.True(t, s.seesLive(coneSiteKnight, coneSiteRogue), "held live, the sneaker behind it stays seen")
+	_, judged = s.verdict(coneSiteKnight)
+	require.False(t, judged, "no armed pair is written against a watcher that holds the mover")
+	require.Equal(t, rolled, s.stealth.asked, "and nothing rolls")
 }
