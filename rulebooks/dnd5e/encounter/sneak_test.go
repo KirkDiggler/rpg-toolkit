@@ -35,6 +35,8 @@ const (
 	sneakSentry = encounter.MemberID("sentry")
 	// sneakDeaf is a watcher whose sheet supplies no passive Perception.
 	sneakDeaf = encounter.MemberID("deaf")
+	// sneakBard is a second player, already fighting the knight.
+	sneakBard = encounter.MemberID("bard")
 )
 
 // The knight sees four cells; the rogue sees everything.
@@ -128,6 +130,8 @@ type sneakOptions struct {
 	// sideDoor opens the wall a second time at row 6, with a SHUT door
 	// standing in it.
 	sideDoor bool
+	// knightOptions are lines the knight can be spoken to with.
+	knightOptions []encounter.Option
 }
 
 // sneakSideDoor is the shut door at row 6, beside the doorway.
@@ -165,6 +169,7 @@ func (s *SneakSuite) open(opts sneakOptions, script ...bool) {
 	if !opts.noKnight {
 		members = append(members, encounter.MemberInput{
 			ID: sneakKnight, Kind: encounter.KindMonster, Position: offsetOf(14, 5), Table: opts.knightTable,
+			Options: opts.knightOptions,
 		})
 	}
 	members = append(members, opts.extra...)
@@ -174,6 +179,7 @@ func (s *SneakSuite) open(opts sneakOptions, script ...bool) {
 		sneakCook:   {PassivePerception: 9},
 		sneakSentry: {PassivePerception: 14},
 		sneakDeaf:   {},
+		sneakBard:   {SpeedFeet: 30, PassivePerception: 11},
 	}
 	s.caps = encounter.Capabilities{
 		Sight:         s.sight,
@@ -705,4 +711,82 @@ func (s *SneakSuite) toldDoor(audience encounter.MemberID) bool {
 	}
 
 	return false
+}
+
+// TestABeatenWatcherWitnessesNoDeed: the deed and equip audiences ask the same
+// sight answer as the pass (lead ruling on rpg-toolkit#2078). The rogue beat
+// the knight and draws a dagger in its zone: the cook, whose pair is lost,
+// sees the draw; the knight does not.
+func (s *SneakSuite) TestABeatenWatcherWitnessesNoDeed() {
+	s.open(sneakOptions{extra: []encounter.MemberInput{cook()}}, true)
+	s.sneak(true)
+	s.walkTo(sneakInside)
+	v, _ := s.verdict(sneakKnight)
+	s.Require().True(v.Beaten)
+
+	out, err := s.enc.RecordEquip(&encounter.RecordEquipInput{Member: sneakRogue, Slot: "main_hand", Drawn: "dnd5e:weapons:dagger"})
+	s.Require().NoError(err)
+	s.Contains(out.Audience, sneakRogue)
+	s.Contains(out.Audience, sneakCook)
+	s.NotContains(out.Audience, sneakKnight, "the knight the rogue beat does not see the draw")
+	s.True(s.enc.Sneaking(sneakRogue), "drawing a blade is not showing yourself")
+}
+
+// TestSpeakingToABeatenWatcherIsHeard: speech shows you (R7). A line said to
+// the knight the rogue beat ends the mode first, so the knight sees the
+// speaker and the line lands — never refused as unwitnessed.
+func (s *SneakSuite) TestSpeakingToABeatenWatcherIsHeard() {
+	hail := encounter.Option{ID: "hail", Say: "Hail.", Check: []encounter.CheckApproach{{Ability: "persuasion", DC: 10}}}
+	s.open(sneakOptions{knightOptions: []encounter.Option{hail}}, true)
+	s.sneak(true)
+	s.walkTo(sneakInside)
+	s.Require().Nil(s.holding(sneakKnight, sneakRogue))
+
+	speak := func(option string) (*encounter.SpeakOutput, error) {
+		return s.enc.Speak(context.Background(), &encounter.SpeakInput{
+			Actor: sneakRogue, Target: sneakKnight, OptionID: option, Skill: "persuasion",
+			Beaten: true, DC: 10, Total: 15, Roller: rollsLowest{},
+		})
+	}
+	_, err := speak("no-such-line")
+	s.ErrorIs(err, encounter.ErrNoOption)
+	s.True(s.enc.Sneaking(sneakRogue), "a refused line changes nothing")
+	s.NotNil(s.enc.ToData().SneakVerdicts)
+
+	out, err := speak("hail")
+	s.Require().NoError(err)
+	s.Contains(out.Witnesses, sneakKnight, "the knight witnessed the line")
+	s.False(s.enc.Sneaking(sneakRogue))
+}
+
+// TestExitingWhileSneakingLeavesNoVerdict: the sneaker leaving ends the mode
+// and drops every verdict it held, so the run it leaves still loads.
+func (s *SneakSuite) TestExitingWhileSneakingLeavesNoVerdict() {
+	s.open(sneakOptions{extra: []encounter.MemberInput{cook()}})
+	s.sneak(true)
+	s.Require().NotNil(s.enc.ToData().SneakVerdicts)
+	_, err := s.enc.Exit(&encounter.ExitInput{Member: sneakRogue})
+	s.Require().NoError(err)
+	s.Nil(s.enc.ToData().SneakVerdicts)
+	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: s.enc.ToData(), Capabilities: s.caps})
+	s.NoError(err, "the run the sneaker left loads")
+}
+
+// TestJoiningAFightEndsTheMode: the bard is already fighting the knight; the
+// sneaking rogue loses its roll walking in, and the fight takes it as a
+// straggler — the join ends the mode as formation does (R7).
+func (s *SneakSuite) TestJoiningAFightEndsTheMode() {
+	bard := encounter.MemberInput{ID: sneakBard, Kind: encounter.KindPlayer, Position: offsetOf(11, 5)}
+	s.open(sneakOptions{extra: []encounter.MemberInput{bard}}, false)
+	on, err := s.enc.ClockOf(&encounter.ClockOfInput{Member: sneakBard})
+	s.Require().NoError(err)
+	s.Require().Equal(encounter.ClockTurn, on.Kind, "the bard and the knight are fighting")
+	s.Require().False(s.inFight())
+
+	s.sneak(true)
+	s.walkTo(sneakInside)
+	s.Require().Len(s.stealth.asked, 1)
+	s.True(s.inFight(), "the lost roll brought the rogue into the running fight")
+	s.False(s.enc.Sneaking(sneakRogue))
+	s.Nil(s.enc.ToData().SneakVerdicts)
 }

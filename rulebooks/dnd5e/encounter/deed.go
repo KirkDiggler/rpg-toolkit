@@ -5,11 +5,11 @@ package encounter
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/deed"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/stage"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -161,9 +161,24 @@ func (e *Encounter) audienceOf(actor MemberID) (spatial.Position, []core.EntityI
 		return spatial.Position{}, nil, fmt.Errorf("deed: actor %q: %w", actor, err)
 	}
 
-	witnesses, err := e.witnessesOf(where)
+	// THE ONE SIGHT ANSWER (lead ruling on rpg-toolkit#2078): who sees the
+	// actor is asked of a [sightReach], as a pass and [Encounter.subjectSeers]
+	// ask it, so a watcher a sneaker beat witnesses nothing the sneaker does —
+	// no deed, no line, no equip, no rest — and a sight area screens a deed as
+	// it screens a sighting. The actor always witnesses its own act.
+	reach, err := e.placedSightReach()
 	if err != nil {
-		return spatial.Position{}, nil, fmt.Errorf("deed: %w", err)
+		return spatial.Position{}, nil, fmt.Errorf("deed: witnesses: %w", err)
+	}
+	witnesses := make([]core.EntityID, 0, len(reach.positions))
+	for _, id := range e.rosterIDs() {
+		if _, placed := reach.positions[id]; !placed {
+			continue
+		}
+		if id != actor && !reach.Reaches(perception.Sight, id, actor) {
+			continue
+		}
+		witnesses = append(witnesses, id)
 	}
 
 	return where, witnesses, nil
@@ -201,38 +216,4 @@ func (e *Encounter) landDeedAt(
 	}
 
 	return nil
-}
-
-// witnessesOf is every placed member whose sight reaches a cell: within its
-// sight range and not blocked — the same two tests [sightReach] makes for a
-// pass, asked of a place instead of a subject. Sorted by member so two
-// identical outcomes land identically.
-func (e *Encounter) witnessesOf(cell spatial.Position) ([]core.EntityID, error) {
-	cells, err := e.sightNow()
-	if err != nil {
-		return nil, fmt.Errorf("witnesses: %w", err)
-	}
-
-	ids := make([]MemberID, 0, len(e.members))
-	for id := range e.members {
-		ids = append(ids, id)
-	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-
-	out := make([]core.EntityID, 0, len(ids))
-	for _, id := range ids {
-		pos, err := e.cellOf(e.members[id])
-		if err != nil {
-			continue
-		}
-		if e.canvas.GetGrid().Distance(pos, cell) > float64(cells[id]) {
-			continue
-		}
-		if e.canvas.IsLineOfSightBlocked(pos, cell) {
-			continue
-		}
-		out = append(out, id)
-	}
-
-	return out, nil
 }
