@@ -44,7 +44,9 @@ type WatchZone struct {
 // [Encounter.SetSneaking] judges a declaration with: the floor drawn red is
 // the floor a roll is asked on. It is never built from what the watcher
 // knows, because knowledge lags sight, and never from an arc or a distance
-// picked here — the encounter holds no tuning of its own.
+// picked here — the encounter holds no tuning of its own. A watcher's
+// supplied arc ([SheetFacts.WatchArc]) narrows it here exactly as it narrows
+// the judgement, because both ask the one predicate (R14).
 //
 // ONLY WATCHERS THE VIEWER SEES (R15, fog-of-war R5). A zone is sent for a
 // watcher — a placed member that is not a player, the judgement's own
@@ -53,9 +55,9 @@ type WatchZone struct {
 // ghost whose zone would tell the viewer where it stands now; an unseen one
 // would hand the client a creature its eyes never gave it.
 // A watcher whose sheet supplies no passive Perception still has a zone
-// (R22): it rolls nothing, but it keeps its ordinary sight, which with no arc
-// is the zone, so the floor drawn red is still the floor it sees the sneaker
-// on.
+// (R22): it rolls nothing, but it keeps its ordinary sight, which is the
+// zone — no arc narrows a watcher that judges no sneak ([watchCones]) — so
+// the floor drawn red is still the floor it sees the sneaker on.
 //
 // ONLY FLOOR THE VIEWER KNOWS. Each zone is cut to the viewer's known cells
 // and loses every cell a concealment hides from them, the refusals
@@ -84,7 +86,7 @@ func (e *Encounter) WatchZonesFor(in *WatchZonesInput) (*WatchZonesOutput, error
 	if _, placed := e.canvas.GetEntityPosition(string(in.Member)); !placed {
 		return out, nil
 	}
-	geometry, err := e.placedSightReach()
+	geometry, _, err := e.watchReach()
 	if err != nil {
 		return nil, fmt.Errorf("watch zones for %q: %w", in.Member, err)
 	}
