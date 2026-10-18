@@ -62,6 +62,14 @@ type Compiled struct {
 	// [Compiled.Field].
 	StartFacing string
 
+	// StartFacingDegrees is StartFacing LOWERED, once, through
+	// [encounter.FacingFromCompass] (rpg-project#582, design R13): the
+	// bearing a host hands to [encounter.JoinInput.Facing] when it seats the
+	// party. Nil when the author stated none, which the encounter seats as
+	// [encounter.UnstatedFacing]. The word stays beside it because it is what
+	// the author wrote and what the atlas's start carries.
+	StartFacingDegrees *float64 `json:"StartFacingDegrees,omitempty"`
+
 	// Monsters is every authored monster, in the order the author wrote
 	// them. The half that still needs a sheet.
 	Monsters []MonsterPlacement
@@ -170,13 +178,19 @@ type MonsterPlacement struct {
 
 	// Facing is the direction the monster faces when it arrives, one of the
 	// eight true-compass names (n|ne|e|se|s|sw|w|nw), or empty when the
-	// author stated none — the asset's own default facing. CARRIED VERBATIM
-	// (rpg-toolkit#1899): it is the authored word, never an angle, and this
-	// package never turns it into one — which way the model is turned at
-	// spawn is a render concern. A v2 placement cannot author one (its
-	// `facing` is refused there), so the field is empty for the legacy
-	// dialect.
+	// author stated none. CARRIED VERBATIM (rpg-toolkit#1899): the authored
+	// word, as written. A v2 placement cannot author one (its `facing` is
+	// refused there), so the field is empty for the legacy dialect.
 	Facing string `json:"Facing,omitempty"`
+
+	// FacingDegrees is Facing LOWERED, once, through
+	// [encounter.FacingFromCompass] (rpg-project#582, design R13): the bearing
+	// a host hands to [encounter.MemberInput.Facing] when it spawns the
+	// sheet. Facing stopped being only a render concern when cones began to
+	// read it, so the dialect converts the word and no host keeps a second
+	// table. Nil when the author stated none, which the encounter seats as
+	// [encounter.UnstatedFacing], 180.
+	FacingDegrees *float64 `json:"FacingDegrees,omitempty"`
 
 	// Targeting is the author's word for how it picks a target, or empty.
 	// CARRIED, NEVER INTERPRETED.
@@ -417,20 +431,29 @@ func Compile(spec *Spec) (Compiled, error) {
 	if err != nil {
 		return Compiled{}, err
 	}
+	if monsters, err = lowerFacings(monsters); err != nil {
+		return Compiled{}, err
+	}
+	startFacing, err := lowerFacing(spec.Start.Facing)
+	if err != nil {
+		return Compiled{}, &ValidationError{Errors: []FieldError{{Path: "start.facing", Message: err.Error()}}}
+	}
 
 	return Compiled{
-		Key:          spec.Key,
-		Name:         spec.Name,
-		Field:        field,
-		PartyStart:   start,
-		StartFacing:  spec.Start.Facing,
-		Monsters:     monsters,
-		Scenarios:    scenariosOf(spec.Scenarios),
-		Endings:      endingsOf(spec.Endings),
-		Intel:        field.Intel,
-		Concealments: field.Concealments,
-		Factions:     field.Factions,
-		Dispositions: field.Dispositions,
+		Key:         spec.Key,
+		Name:        spec.Name,
+		Field:       field,
+		PartyStart:  start,
+		StartFacing: spec.Start.Facing,
+		// The same word, lowered (StartFacingDegrees).
+		StartFacingDegrees: startFacing,
+		Monsters:           monsters,
+		Scenarios:          scenariosOf(spec.Scenarios),
+		Endings:            endingsOf(spec.Endings),
+		Intel:              field.Intel,
+		Concealments:       field.Concealments,
+		Factions:           field.Factions,
+		Dispositions:       field.Dispositions,
 	}, nil
 }
 

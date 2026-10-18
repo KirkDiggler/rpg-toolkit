@@ -5,9 +5,10 @@ package dungeonspec
 
 // monster_facing_test.go is the single-room dialect's half of the author's
 // own words on rpg-toolkit#1899: a monster's start is a cell WITH a facing,
-// and the word is presentation — carried verbatim to the compiled dungeon,
-// never turned into an angle, never snapped to the nearest compass point, and
-// never read as anything but "which way the model is turned at spawn".
+// and the word is carried verbatim to the compiled dungeon and never snapped
+// to the nearest compass point. Since rpg-project#582 (design R13) the
+// compile also lowers it to the bearing the encounter seats the member with;
+// facing_site_test.go plays that.
 
 import (
 	"os"

@@ -502,6 +502,11 @@ type ReserveData struct {
 	Faction        FactionID   `json:"faction,omitempty"`
 	Holds          []IntelID   `json:"holds,omitempty"`
 	Arrives        TriggerData `json:"arrives"`
+
+	// Facing is the way the waiting member will face when it arrives —
+	// [MemberData.Facing]'s key and rule, kept across a save for the same
+	// reason as its other facts.
+	Facing *float64 `json:"facing,omitempty"`
 }
 
 // IntelData is the persistent representation of one authored knowledge
@@ -1923,6 +1928,14 @@ type MemberData struct {
 	// at zero, which is a member standing on a round boundary.
 	Pace int `json:"pace,omitempty"`
 
+	// Facing is the way this member faces — memberRecord.Facing, a bearing in
+	// [0, 360) (rpg-project#582, design R13). ALWAYS WRITTEN, because 0 is a
+	// bearing (due north) and not an absence. A blob written before facing
+	// existed has no key and loads facing [UnstatedFacing], 180, which is
+	// what an unstated facing is; nothing is migrated. A value outside
+	// [0, 360) is refused at load (ErrInvalidData, ErrBadFacing).
+	Facing *float64 `json:"facing,omitempty"`
+
 	// BlocksMovement carries forward memberRecord.BlocksMovement
 	// (rpg-toolkit#1434) — see MemberInput.BlocksMovement's own doc. A blob
 	// written before this field existed has no blocks_movement key and
@@ -2053,6 +2066,7 @@ func (e *Encounter) snapshot() EncounterData {
 		if !ok {
 			continue // Not placed (shouldn't happen in valid encounter)
 		}
+		facing := m.Facing
 		membersData = append(membersData, MemberData{
 			ID:             m.ID,
 			Kind:           m.Kind,
@@ -2063,6 +2077,7 @@ func (e *Encounter) snapshot() EncounterData {
 			Table:          tableDataFrom(m.Table),
 			Temper:         temperDataFrom(m.Temper),
 			Pace:           m.PaceCells,
+			Facing:         &facing,
 			BlocksMovement: m.BlocksMovement,
 			Faction:        m.Faction,
 		})
@@ -2140,6 +2155,7 @@ func (e *Encounter) snapshot() EncounterData {
 	var reserveData []ReserveData
 	for _, id := range e.reservedIDs() {
 		rm := e.reserve[id]
+		facing := rm.record.Facing
 		reserveData = append(reserveData, ReserveData{
 			ID:             rm.record.ID,
 			Kind:           rm.record.Kind,
@@ -2153,6 +2169,7 @@ func (e *Encounter) snapshot() EncounterData {
 			Faction:        rm.record.Faction,
 			Holds:          append([]IntelID(nil), rm.holds...),
 			Arrives:        triggerDataFrom(rm.arrives),
+			Facing:         &facing,
 		})
 	}
 
@@ -2650,6 +2667,12 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 
 		cell := spatial.Position{X: m.Cell.X, Y: m.Cell.Y}
 
+		// A stored facing is a bearing this build would have written, or
+		// absent (MemberData.Facing).
+		if err := validateFacing(m.Facing); err != nil {
+			return nil, fmt.Errorf("load encounter: member %q: %w: %w", m.ID, ErrInvalidData, err)
+		}
+
 		// Integral axial cells, asked FIRST and named as itself — the same
 		// order and the same words Step and Join use (isIntegralHexCell).
 		// Ownership refuses a fractional cell too, but it would report it as
@@ -2742,6 +2765,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		if err := validateMemberFacts(memberFacts{
 			ID:            r.ID,
 			AppearanceRef: r.AppearanceRef,
+			Facing:        r.Facing,
 			Table:         tableFromData(r.Table),
 		}); err != nil {
 			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, err)
@@ -3105,6 +3129,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			Table:          tableFromData(m.Table),
 			Temper:         temperFromData(m.Temper),
 			PaceCells:      m.Pace,
+			Facing:         seedFacing(m.Facing),
 			BlocksMovement: m.BlocksMovement,
 			Faction:        m.Faction,
 		}
@@ -3149,6 +3174,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 				Options:        reserveOptions[i],
 				Table:          tableFromData(r.Table),
 				Temper:         undealtTemperFromData(r.Temper),
+				Facing:         seedFacing(r.Facing),
 				BlocksMovement: r.BlocksMovement,
 				Faction:        r.Faction,
 			},

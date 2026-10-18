@@ -827,10 +827,19 @@ func (e *Encounter) prepareUnit(index int, unit TrainUnit) (preparedUnit, error)
 		// kinds: only [OutcomeExperienceGained] puts anything else in there,
 		// and it never lands an attack.
 		targets := beats[0].subjects[1:]
+		// THE ATTACKER TURNS TOWARD ITS TARGET (rpg-project#582, design R13)
+		// — the first one the rulebook named, the one it swung at — when the
+		// deed lands, ahead of the consult whose refresh lets every watcher
+		// see the turn.
+		var faced MemberID
+		if len(in.Targets) > 0 {
+			faced = in.Targets[0]
+		}
 		// THE DEED, THEN THE NOISE OF IT (rpg-project#569 R5): the witnesses
 		// hold what they saw, and whoever is listening beyond them holds a
 		// clang — a kind and a place, never who swung.
 		prepared.land = func() error {
+			e.faceMember(in.Actor, faced)
 			if err := e.landAttack(in.Actor, targets); err != nil {
 				return err
 			}

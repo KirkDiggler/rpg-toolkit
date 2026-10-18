@@ -618,11 +618,11 @@ type StartSpec struct {
 	// eight true-compass names props already speak — n|ne|e|se|s|sw|w|nw
 	// (rpg-project#272). Empty means the author stated none.
 	//
-	// PRESENTATION, and the compiler treats it as such: it says which way a
-	// camera opens, and nothing anywhere reads it to decide what a member
-	// may see, reach or do. A word outside the eight is refused BY NAME
-	// rather than snapped to the nearest — the vocabulary rule every
-	// authored word in this dialect follows.
+	// It says which way a camera opens, and — lowered at compile to
+	// [Compiled.StartFacingDegrees] — which way a host seats the party
+	// facing (rpg-project#582, design R13). A word outside the eight is
+	// refused BY NAME rather than snapped to the nearest — the vocabulary
+	// rule every authored word in this dialect follows.
 	Facing string
 }
 

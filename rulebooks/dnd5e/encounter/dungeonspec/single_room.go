@@ -357,10 +357,12 @@ type RoomStartingCell struct {
 	Location RoomCell `yaml:"location" json:"location"`
 
 	// Facing is the direction the monster faces when it arrives, one of the
-	// eight true-compass names — n|ne|e|se|s|sw|w|nw — or empty, which means
-	// the asset's own default facing. Optional: a model has no "no
-	// orientation", so absent is a default, not a gap. Carried verbatim and
-	// never turned into an angle — angle math is a render concern.
+	// eight true-compass names — n|ne|e|se|s|sw|w|nw — or empty, which the
+	// encounter seats as its unstated facing, 180 (rpg-project#582, design
+	// R13). Optional: a creature has no "no orientation", so absent is a
+	// default, not a gap. The word is carried verbatim to
+	// [MonsterPlacement.Facing] and lowered once, at compile, to
+	// [MonsterPlacement.FacingDegrees] — the bearing cones read.
 	Facing string `yaml:"facing,omitempty" json:"facing,omitempty"`
 }
 

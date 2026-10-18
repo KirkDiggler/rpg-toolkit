@@ -216,3 +216,32 @@ func (s *kingScene) routeFor(to spatial.Position) []spatial.Position {
 
 	return route.Path
 }
+
+// TestMadKingKeepFacesAlongItsPatrol is the castle's facing line
+// (rpg-project#582, design R13). The castle authors no facings, so keep-1
+// starts at the unstated 180; one world round later it faces along its patrol.
+//
+// A round at thirty feet is six cells, and keep-1's loop on the throne room's
+// west side spends them across legs: one cell to (7,-19), two north to
+// (7,-21), two west to (5,-21), and the first of the leg back to (4,-19),
+// which is axial +r — a bearing of 150 on pointy-top hexes. The facing is that
+// last step's, not any authored word and not the 180 it started with.
+func TestMadKingKeepFacesAlongItsPatrol(t *testing.T) {
+	t.Parallel()
+	s := openTheCastle(t, partyStart(t))
+	require.Equal(t, encounter.UnstatedFacing, facingOf(t, s.enc, kingKeep1), "the castle authors no facing")
+
+	start := s.at(hero)
+	beside := spatial.Position{X: start.X + 1, Y: start.Y}
+	for i := range 6 {
+		to := beside
+		if i%2 == 1 {
+			to = start
+		}
+		_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: to})
+		require.NoError(t, err)
+	}
+
+	require.Equal(t, spatial.Position{X: 5, Y: -20}, s.at(kingKeep1), "one round of patrol")
+	require.InDelta(t, 150.0, facingOf(t, s.enc, kingKeep1), 1e-9, "keep-1 faces along the leg it is walking")
+}

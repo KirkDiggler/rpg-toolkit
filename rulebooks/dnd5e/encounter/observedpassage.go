@@ -45,9 +45,16 @@ func (e *Encounter) ObservedPassages(in *ViewInput) (map[MemberID]Passage, error
 	return out, nil
 }
 
-// A recorded interaction can change standing without moving anyone. Refresh
-// through perception only when a current witness has an outdated observation;
-// ghosts retain their last testimony. Reads never perform this update.
+// A recorded interaction can change standing without moving anyone, and an
+// attack turns its attacker toward its target without moving them either
+// (rpg-project#582, design R13). Refresh through perception only when a
+// current witness has an outdated observation of either; ghosts retain their
+// last testimony. Reads never perform this update.
+//
+// A sighting that carries no facing at all was written before sightings did,
+// and is not called outdated for it: the next refresh that runs for any other
+// reason replaces it, and a train should not tell every watcher to look again
+// at everybody because a blob is old.
 func (e *Encounter) refreshChangedStanding(state *participationState) (map[MemberID]*IntelDelta, error) {
 	if e.outcome != nil {
 		return nil, nil
@@ -67,6 +74,9 @@ func (e *Encounter) refreshChangedStanding(state *participationState) (map[Membe
 				continue
 			}
 			if seen.Down == nil || *seen.Down != state.down[holding.Subject] {
+				changed[holding.Subject] = true
+			}
+			if subject, ok := e.members[holding.Subject]; ok && seen.Facing != nil && *seen.Facing != subject.Facing {
 				changed[holding.Subject] = true
 			}
 		}

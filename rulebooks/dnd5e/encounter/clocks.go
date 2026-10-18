@@ -957,6 +957,15 @@ func (e *Encounter) executeTurnIntent(
 		// this slice asks for; the day Striker's own implementation needs
 		// cancellation propagated from the host, that is the day to revisit
 		// this rather than the day to speculatively add it everywhere now.
+		// AN ATTACK TURNS THE ATTACKER TOWARD ITS TARGET (design R13), before
+		// the swing, so the record the striker writes and every sighting it
+		// refreshes see the attacker turned. The target's cell as this
+		// attacker sees it: attackRefusal above has already required that
+		// it is in sight.
+		if cell, held := heldCellOf(view, it.Target); held {
+			e.faceToward(m, cell)
+		}
+
 		if serr := e.striker.Strike(context.Background(), e, activeID, it.Target, it.Action); serr != nil {
 			if errors.Is(serr, ErrStrikePaused) {
 				budget.AttacksLeft = 0
@@ -1000,6 +1009,19 @@ func (e *Encounter) executeTurnIntent(
 		res, werr := e.walkFor(coords.Clock, context.Background(), activeID, m, it.Path, audience, at, core.Ref{})
 		if werr != nil {
 			return false, nil, werr
+		}
+
+		// A WALK THAT NAMES ITS TARGET ENDS FACING IT (design R13): the
+		// target's cell as this walker holds it, its current sighting first
+		// and its memory after — the cell its path was routed to, never a
+		// live read of where the target really is. Before the walk's one
+		// sight refresh, so every observer sees the turn. Only a walk that
+		// finished here: a paused walk is still walking, and a body is not
+		// turning toward anybody.
+		if it.Target != "" && res.paused == nil && !res.dropped && res.moved > 0 {
+			if cell, held := heldCellOf(view, it.Target); held {
+				e.faceToward(m, cell)
+			}
 		}
 
 		// CHARGED HERE, once, for whatever the walk actually took — and a
@@ -1133,6 +1155,15 @@ func (e *Encounter) executeTurnIntent(
 		res, werr := e.walkFor(coords.Clock, context.Background(), activeID, m, route.Path, audience, at, it.Cause)
 		if werr != nil {
 			return false, nil, werr
+		}
+
+		// The Move arm's facing rule, for a route measured TOWARD a member:
+		// it ends facing the anchor's cell, the one the route was asked for.
+		// Not a flight — a creature running from something does not end its
+		// run turned toward it — and not an authored cell, which names a
+		// place and not a target.
+		if it.Policy == MoveToward && it.Anchor != "" && res.paused == nil && !res.dropped && res.moved > 0 {
+			e.faceToward(m, anchorCell)
 		}
 
 		// Charged here, once, for what the walk actually took — the Move

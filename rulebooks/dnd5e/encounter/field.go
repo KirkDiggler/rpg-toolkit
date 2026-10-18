@@ -899,6 +899,15 @@ type MemberInput struct {
 	// (ErrBadPlacement otherwise).
 	Position spatial.Position
 
+	// Facing is the way the member faces when it is placed: a bearing in
+	// degrees, 0 is map north, clockwise, in [0, 360) (rpg-project#582,
+	// sneaking design R13). Nil means nobody stated one, and the member faces
+	// [UnstatedFacing], 180 — a rules bearing, because cones read it. A
+	// compiled placement's authored word arrives here already lowered through
+	// [FacingFromCompass]. Outside [0, 360) is refused ([ErrBadFacing] beside
+	// ErrBadMember). After the seed the engine writes it (facing.go).
+	Facing *float64
+
 	// Speed, sight, actions and targeting are NOT here (rpg-project#538).
 	// They are the member's sheet's, asked at the moment they are used —
 	// speed, actions and targeting through [Sheets], sight through [Sight] —
@@ -1066,6 +1075,7 @@ type ActionView struct {
 type memberFacts struct {
 	ID            MemberID
 	AppearanceRef string
+	Facing        *float64
 	Options       []Option
 	Table         Table
 }
@@ -1077,6 +1087,9 @@ type memberFacts struct {
 // are asked ([Encounter.sheetsNow]).
 func validateMemberFacts(in memberFacts) error {
 	if err := validateAppearanceRef(in.AppearanceRef); err != nil {
+		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
+	}
+	if err := validateFacing(in.Facing); err != nil {
 		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
 	}
 	// A line nobody could speak is refused at the door, never when a player
@@ -1370,6 +1383,12 @@ type Member struct {
 	// whose cells hold this one.
 	Position spatial.Position
 
+	// Facing is the way the member faces now: a bearing in degrees, 0 is map
+	// north, clockwise, in [0, 360) (facing.go). The roster's truth, for a
+	// host and a rule; what an OBSERVER saw is its sighting's
+	// [SightTestimony.Facing], never this.
+	Facing float64
+
 	// Table and Temper carry forward [MemberInput.Table] and
 	// [MemberInput.Temper] verbatim — see those fields' own docs. They are
 	// read by nobody outside this composition; they are on the roster row so
@@ -1428,6 +1447,12 @@ type memberRecord struct {
 	// to be keyed by member anyway. Persisted because a party that walks
 	// three cells, saves, reloads and walks three more has walked six.
 	PaceCells int
+
+	// Facing is the way this member faces, a bearing (facing.go): seeded at
+	// the door, written by every step, by a walk's end on a target and by an
+	// attack, and persisted. ON THE RECORD, unlike the cell: the canvas holds
+	// where an entity stands and nothing about which way it is turned.
+	Facing float64
 
 	// Faction is the faction the caller NAMED, or empty for the kind's
 	// default — stored as given, never resolved here, so a member in the
@@ -1626,6 +1651,11 @@ type JoinInput struct {
 	// not floor, and arriving in it is not a placement this composition can
 	// make sense of.
 	Cell spatial.Position
+
+	// Facing is the way the joiner faces when it arrives — [MemberInput.Facing]
+	// under the name Join takes it by: a bearing, nil for [UnstatedFacing]. A
+	// party seated at an authored start hands the start's facing here.
+	Facing *float64
 
 	// Speed, sight, actions and targeting are not carried in: they are the
 	// joiner's sheet's, asked at use (rpg-project#538, [Sheets]).

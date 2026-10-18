@@ -430,6 +430,14 @@ type Move struct {
 	// Path is the sequence of cells this member intends to step through, in
 	// travel order.
 	Path []spatial.Position
+
+	// Target is the member this walk closes on, when it closes on one — the
+	// table's `toward` a member. Optional: empty is a walk to a place, a
+	// patrol leg. When set, a walk that finishes ends with the walker FACING
+	// the target's cell as the walker holds it in [MonsterView.Seen] or
+	// [MonsterView.Remembered] (rpg-project#582, design R13). It moves
+	// nothing and changes no refusal.
+	Target MemberID
 }
 
 // isTurnIntent marks Move as a TurnIntent.
