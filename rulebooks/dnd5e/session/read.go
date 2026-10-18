@@ -495,11 +495,18 @@ func projectView(enc *encounter.Encounter, in *ViewInput) (*ViewOutput, error) {
 	if err != nil {
 		return nil, fmt.Errorf("view visible cells: %w", translate(err))
 	}
+	// THE RED FLOOR is the encounter's answer for this viewer, carried as
+	// given (sneaking R15): the session computes no zone.
+	zones, err := enc.WatchZonesFor(&encounter.WatchZonesInput{Member: encounter.MemberID(in.Member)})
+	if err != nil {
+		return nil, fmt.Errorf("view watch zones: %w", translate(err))
+	}
 	return &ViewOutput{
 		Sightings: out, Props: props, Doors: doors, Areas: projectAreas(enc, in.Member),
 		VisibleCells: visible.Cells,
 		// The viewer's own mode, the encounter's answer carried as given.
-		Sneaking: enc.Sneaking(encounter.MemberID(in.Member)),
+		Sneaking:   enc.Sneaking(encounter.MemberID(in.Member)),
+		WatchZones: zones.Zones,
 	}, nil
 }
 

@@ -18,6 +18,7 @@ package session_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -271,4 +272,32 @@ func (s *SneakSuite) TestDeclaringOffInsideAHostileZoneFormsAFight() {
 	}
 	s.True(delivered, "the formation is delivered to alice's stream")
 	s.False(s.stored("alice").Sneaking)
+}
+
+// TestTheViewCarriesTheEncountersWatchZonesUnchanged (sneaking Z2, R15): a
+// sneaking member's view carries the composition's own WatchZonesFor answer
+// byte-equal, and a walking member's view carries an empty list. alice
+// sneaks onto the door row, where she holds the goblin live through it.
+func (s *SneakSuite) TestTheViewCarriesTheEncountersWatchZonesUnchanged() {
+	s.launch(false, nil)
+	s.setSneaking("alice", true)
+	s.move("alice", hexCell(2, 2), hexCell(2, 1))
+
+	enc, err := s.mgr.LoadWorldForTest(context.Background(), testSession)
+	s.Require().NoError(err)
+	want, err := enc.WatchZonesFor(&encounter.WatchZonesInput{Member: "alice"})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(want.Zones, "the scene must give alice a watcher to see, or the test proves nothing")
+
+	got := s.view("alice").WatchZones
+	wantJSON, err := json.Marshal(want.Zones)
+	s.Require().NoError(err)
+	gotJSON, err := json.Marshal(got)
+	s.Require().NoError(err)
+	s.JSONEq(string(wantJSON), string(gotJSON), "the view is the encounter's answer, byte for byte")
+	s.Equal(want.Zones, got)
+
+	bob := s.view("bob").WatchZones
+	s.NotNil(bob, "a walker's list is empty, never nil")
+	s.Empty(bob, "a member who is not sneaking is sent no zones")
 }
