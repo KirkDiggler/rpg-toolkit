@@ -385,6 +385,15 @@ func (s *SheetSeamSuite) TestTheWatchResetSeed() {
 	s.Zero(s.sheetOf("merchant").WatchResetCells, "a world NPC states no watch terms")
 }
 
+// TestTheWatchArcSeed is the session's seed for a watcher's arc
+// (rpg-project#621, design R14, O6): a monster whose stat block states no arc
+// watches 120 degrees around its facing; a character is never a watcher and
+// answers zero, the encounter's all-round no-arc answer.
+func (s *SheetSeamSuite) TestTheWatchArcSeed() {
+	s.Equal(120, s.sheetOf("skel-1").WatchArc, "a monster with no stated arc")
+	s.Zero(s.sheetOf("alice").WatchArc, "a character watches nobody")
+}
+
 // sneakingSet answers the live encounter's one question from a set.
 type sneakingSet map[encounter.MemberID]bool
 

@@ -58,11 +58,18 @@ func (s *SneakSuite) SetupTest() {
 }
 
 // launch places alice at hall (2,3), bob at hall (0,4) and the goblin at
-// barracks (9,1), neutral or hostile, with the given table.
+// barracks (9,1), neutral or hostile, with the given table. The goblin faces
+// west, 270, down its row through the open door into the hall: it is placed to
+// watch that door, and since its watch zone keeps only the cells inside its
+// arc (design R14, the session's seeded 120), the scene states the facing
+// rather than leave it the unstated south, which would turn its back on the
+// door.
 func (s *SneakSuite) launch(hostile bool, table encounter.Table) {
 	s.T().Helper()
 	goblin := monsterAt("goblin", refs.Monsters.Goblin().String(), 9, 1)
 	goblin.Table = table
+	facingTheDoor := 270.0
+	goblin.FacingDegrees = &facingTheDoor
 	field := encounter.FieldInput{
 		Canvas:  pointyCanvas(),
 		Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 6, 5), rectRegion("barracks", 6, 0, 6, 5)},
