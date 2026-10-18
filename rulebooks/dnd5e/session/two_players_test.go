@@ -427,19 +427,27 @@ func TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers(t *testing.T) {
 	// skeleton turns toward barbarian to swing (sneaking R13), so BOTH
 	// watchers are told to look at it again, and fighter's one beat also
 	// names barbarian's fall.
-	sightedBy := func(recipient string) []string {
-		var named []string
+	// One beat per recipient (the batching invariant): fighter's single
+	// beat names both barbarian's fall and the skeleton's turn.
+	sightedBy := func(recipient string) [][]string {
+		var beats [][]string
 		for _, e := range round1Drive {
 			if body, ok := e.Body.(session.SightedBody); ok && e.Recipient == recipient {
-				named = append(named, body.Changed...)
+				beats = append(beats, body.Changed)
 			}
 		}
-		return named
+		return beats
 	}
-	require.ElementsMatch(t, []string{"barbarian", "skel-1"}, sightedBy("fighter"),
-		"fighter sees barbarian fall and the skeleton turn")
-	require.Equal(t, []string{"skel-1"}, sightedBy("barbarian"),
-		"barbarian sees the skeleton turn on her, and never testifies about herself")
+	fighterSighted := sightedBy("fighter")
+	require.Len(t, fighterSighted, 1, "fighter's witness update arrives as ONE sighted beat")
+	require.ElementsMatch(t, []string{"barbarian", "skel-1"}, fighterSighted[0],
+		"fighter sees barbarian fall and the skeleton turn, in one beat")
+	// Pins rpg-toolkit#2074's CURRENT behaviour, not a ruling: a downed
+	// member still sights, while hearing skips her. Whichever way #2074 is
+	// ruled, this assertion moves with it.
+	require.Equal(t, [][]string{{"skel-1"}}, sightedBy("barbarian"),
+		"downed barbarian still sees the skeleton turn on her (rpg-toolkit#2074), and never "+
+			"testifies about herself")
 	withoutSighted := func(kinds []session.EventKind) []session.EventKind {
 		return slices.DeleteFunc(kinds, func(k session.EventKind) bool { return k == session.EventSighted })
 	}
