@@ -52,6 +52,11 @@ import (
 // Never a live read: a creature that holds no placed sighting of its target
 // does not turn toward it.
 //
+// A TRAIN THAT CLOSES THE ENCOUNTER LEAVES THE LAST TESTIMONY AS IT STOOD
+// (lead ruling on rpg-toolkit#2076): the striker's own facing still turns,
+// but no sight refresh and no beat follows `ended`, so a watcher's sighting of
+// it stays the last one taken before the end.
+//
 // It persists with the encounter, and it is TESTIMONY: every sighting
 // snapshots the subject's facing as the observer saw it
 // ([SightTestimony.Facing]), so a memory keeps the facing it last saw. No
