@@ -441,6 +441,10 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 		return nil, fmt.Errorf("speak: target %q cannot see the actor: %w", in.Target, ErrUnwitnessed)
 	}
 
+	// SPEAKING SHOWS YOU (sneaking R7): the mode ends before the line is
+	// said, so whatever this verb refreshes sees the speaker plainly.
+	e.endSneaking(in.Actor)
+
 	at := uint64(e.clock.ToData().HighWater)
 	seq, err := e.appendSpokeBeat(in, option, witnesses, at)
 	if err != nil {

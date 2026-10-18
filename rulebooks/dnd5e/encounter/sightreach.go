@@ -37,6 +37,14 @@ type sightReach struct {
 	// asked of.
 	canvas *canvasRoom
 	areas  map[string]SightArea
+
+	// suppressed is every (sneaking subject, watcher) pair a standing won
+	// Stealth verdict hides this pass (sneak.go, design R11): subject first,
+	// then watcher. Set by [Encounter.judgeSneakers] on the reach the pass is
+	// handed BEFORE anything copies it, and read only by [sightReach.Reaches]
+	// — [sightReach.reachesCell] stays the one sight test zones, fog and
+	// discovery ask. Nil for every reach no judgement ran on.
+	suppressed map[MemberID]map[MemberID]bool
 }
 
 // newSightReach is THE ONE CONSTRUCTION of a pass's sight geometry: the
@@ -80,6 +88,15 @@ func (e *Encounter) newSightReach(positions map[MemberID]spatial.Position, cells
 func (s sightReach) Reaches(_ perception.Channel, observer, subject core.EntityID) bool {
 	subjectCell, placed := s.positions[subject]
 	if !placed {
+		return false
+	}
+	// A WON STEALTH ROLL HIDES ONE PAIR, AND ONLY IT (design R11). The pass
+	// then fades the watcher's holding of the sneaker to a ghost at the last
+	// cell it saw; nothing is erased. Every other answer is the one sight
+	// test: a lost pair is ordinary sight (R10), and with no arc supplied a
+	// watcher's zone is its sight (R9, R14), so a sneaker outside it is
+	// already unreached.
+	if s.suppressed[subject][observer] {
 		return false
 	}
 

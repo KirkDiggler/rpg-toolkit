@@ -26,8 +26,15 @@ import (
 type EncounterData struct {
 	// Discovery holds run attempt/re-arm state; learned facts remain in World.
 	Discovery map[MemberID]DiscoveryStateData `json:"discovery,omitempty"`
-	Outcome   *OutcomeData                    `json:"outcome,omitempty"`
-	Clock     clock.TickData                  `json:"clock"`
+	// SneakVerdicts is every standing Stealth verdict, by sneaking mover then
+	// by watcher (sneak.go, rpg-project#606 R10) — discovery's armed shape.
+	// Absent when nobody sneaks, so a run with no sneaker persists
+	// byte-identically to one from before sneaking existed. Validated at load:
+	// the mover a sneaking player, the watcher a non-player member
+	// (ErrInvalidData).
+	SneakVerdicts map[MemberID]map[MemberID]SneakVerdictData `json:"sneak_verdicts,omitempty"`
+	Outcome       *OutcomeData                               `json:"outcome,omitempty"`
+	Clock         clock.TickData                             `json:"clock"`
 	// Bubbles holds the localized initiative bubbles running in this
 	// encounter — zero or more, and zero for any encounter not currently in a
 	// fight. Absent in blobs written before this field existed, which load as
@@ -1936,6 +1943,12 @@ type MemberData struct {
 	// [0, 360) is refused at load (ErrInvalidData, ErrBadFacing).
 	Facing *float64 `json:"facing,omitempty"`
 
+	// Sneaking is memberRecord.Sneaking (sneak.go, design R6). Omits at
+	// false, so a blob from before sneaking existed loads every member not
+	// sneaking, which is what it meant. True on a non-player is refused at
+	// load (ErrInvalidData).
+	Sneaking bool `json:"sneaking,omitempty"`
+
 	// BlocksMovement carries forward memberRecord.BlocksMovement
 	// (rpg-toolkit#1434) — see MemberInput.BlocksMovement's own doc. A blob
 	// written before this field existed has no blocks_movement key and
@@ -2078,6 +2091,7 @@ func (e *Encounter) snapshot() EncounterData {
 			Temper:         temperDataFrom(m.Temper),
 			Pace:           m.PaceCells,
 			Facing:         &facing,
+			Sneaking:       m.Sneaking,
 			BlocksMovement: m.BlocksMovement,
 			Faction:        m.Faction,
 		})
@@ -2175,6 +2189,7 @@ func (e *Encounter) snapshot() EncounterData {
 
 	return EncounterData{
 		Discovery:          copyDiscoveryStates(e.discovery),
+		SneakVerdicts:      copySneakVerdicts(e.sneakVerdicts),
 		Outcome:            outcomeData,
 		Clock:              e.clock.ToData(),
 		Bubbles:            bubblesData,
@@ -3008,6 +3023,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	world := newEncounterWorld()
 	e := &Encounter{
 		discovery:     copyDiscoveryStates(data.Discovery),
+		sneakVerdicts: copySneakVerdicts(data.SneakVerdicts),
 		sightAreas:    sightAreasFromData(data.SightAreas),
 		members:       make(map[MemberID]*memberRecord),
 		everMembers:   make(map[MemberID]bool),
@@ -3041,9 +3057,11 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// The concealment capabilities, held exactly when the field declares a
 	// concealment; the world exists either way (world.go).
 	if fieldConcealed {
-		e.checkResolver = input.CheckResolver
 		e.witness = input.Witness
 	}
+	// Held whenever supplied, as at Setup: a sneaker's Stealth roll asks it on
+	// any field (sneak.go).
+	e.checkResolver = input.CheckResolver
 
 	// The graph is reseeded from the field (construction truth) once the
 	// roster and endings are known below, and the persisted facts are replayed
@@ -3130,6 +3148,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			Temper:         temperFromData(m.Temper),
 			PaceCells:      m.Pace,
 			Facing:         seedFacing(m.Facing),
+			Sneaking:       m.Sneaking,
 			BlocksMovement: m.BlocksMovement,
 			Faction:        m.Faction,
 		}
@@ -3250,6 +3269,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 
 	if err := e.validateDiscoveryStates(); err != nil {
 		return nil, err
+	}
+	if err := e.validateSneaking(); err != nil {
+		return nil, fmt.Errorf("load encounter: %w", err)
 	}
 	return e, nil
 }

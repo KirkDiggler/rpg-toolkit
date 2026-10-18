@@ -213,6 +213,12 @@ type Encounter struct {
 	world     *encounterWorld
 	discovery map[MemberID]DiscoveryStateData
 
+	// sneakVerdicts is every standing Stealth verdict, by sneaking mover then
+	// by watcher (sneak.go, rpg-project#606 R10): discovery's attempt shape,
+	// persisted on EncounterData.SneakVerdicts, dropped when the mover stops
+	// sneaking.
+	sneakVerdicts map[MemberID]map[MemberID]SneakVerdictData
+
 	// holdings is WHO HAS WHAT: a reader over the world's journal for the
 	// holdings, takings and drops (rpg-project#368, design §5). An
 	// encounter where nobody holds anything writes no such facts and no
@@ -785,10 +791,13 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// held as their records (placed_props.go).
 	f.attachHoldings(e.holdings)
 
-	// The two concealment capabilities, held exactly when the field declares
-	// a concealment (rpg-toolkit#1371); the world exists either way.
+	// The two concealment capabilities, REQUIRED exactly when the field
+	// declares a concealment (rpg-toolkit#1371); the world exists either way.
+	// The check resolver is HELD whenever it is supplied, because a sneaking
+	// mover's Stealth roll asks it on any field (sneak.go, rpg-project#606);
+	// a field that hides nothing and sees no sneaker never calls it.
+	e.checkResolver = in.CheckResolver
 	if fieldHasConcealment(in.Field.Concealments) {
-		e.checkResolver = in.CheckResolver
 		e.witness = in.Witness
 	}
 
@@ -1824,6 +1833,22 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 	// [Standing] makes about hit points. All of it lives in [sightReach] now,
 	// which is the only thing in this pass that knows what a wall is.
 	geometry := e.newSightReach(positions, reach)
+
+	// THE STEALTH JUDGEMENT, BEFORE ANY COPY OF THE REACH (sneak.go, design
+	// R10/R11). appendMutablePresences copies the geometry into the
+	// observation reach the pass is handed, so a pair suppressed after that
+	// line would be suppressed nowhere. Only this pass's observers are
+	// judged.
+	observerMembers := make([]MemberID, 0, len(observerIDs))
+	for _, id := range observerIDs {
+		member, _ := subjectID(id, memberSubjectKind)
+		observerMembers = append(observerMembers, member)
+	}
+	snuck, err := e.judgeSneakers(&geometry, observerMembers)
+	if err != nil {
+		return nil, err
+	}
+
 	presences, observationGeometry, err := e.appendMutablePresences(presences, geometry)
 	if err != nil {
 		return nil, err
@@ -1837,6 +1862,12 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 	})
 	if err != nil {
 		return nil, fmt.Errorf("refreshsight observe: %w", err)
+	}
+
+	// The rolls are told after the pass, so a beat names its watcher exactly
+	// when the mover now holds it live (R12).
+	if err := e.tellSnuck(snuck, clockReading); err != nil {
+		return nil, err
 	}
 
 	for _, observer := range observerIDs {
@@ -2256,6 +2287,11 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 	// audienceFor reads live membership, so calling it after the delete
 	// would leave the exiter out (tableBeat, no subjects — see its doc).
 	audience := e.audienceFor(tableBeat)
+
+	// LEAVING ENDS SNEAKING (sneaking R7), and no verdict may name a member
+	// who is gone, whichever side of the pair they stood on.
+	e.endSneaking(in.Member)
+	e.forgetWatcher(in.Member)
 
 	// Remove from the map
 	if err = e.canvas.RemoveEntity(string(in.Member)); err != nil {

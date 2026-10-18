@@ -364,6 +364,8 @@ func (e *Encounter) RecordCast(in *RecordCastInput) (*RecordCastOutput, error) {
 	if err != nil {
 		return nil, err
 	}
+	// CASTING SHOWS YOU (sneaking R7).
+	e.endSneaking(in.Actor)
 
 	at := uint64(e.clock.ToData().HighWater)
 	seqs := make([]uint64, 0, len(prepared))

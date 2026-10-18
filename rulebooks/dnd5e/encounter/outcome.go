@@ -760,6 +760,13 @@ func (e *Encounter) RecordTrain(in *RecordTrainInput) (*RecordTrainOutput, error
 		}
 		prepared = append(prepared, p)
 	}
+	// AN ATTACK SHOWS YOU (sneaking R7): every swing's actor, struck or
+	// missed, stops sneaking before the train is told.
+	for _, unit := range in.Units {
+		if o := unit.Outcome; o != nil && (o.Kind == OutcomeStruck || o.Kind == OutcomeMissed) {
+			e.endSneaking(o.Actor)
+		}
+	}
 
 	landed, intelDeltas, err := e.appendTrainAndNotice(verb, prepared)
 	if err != nil {

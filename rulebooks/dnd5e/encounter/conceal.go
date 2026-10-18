@@ -91,10 +91,12 @@ type CheckResolver interface {
 	// fault, not a failed check.
 	ResolveCheck(in *ResolveCheckInput) (*ResolveCheckOutput, error)
 
-	// ResolveDiscoveryCheck decides one automatic attempt, made when a member
-	// comes near hidden content. It carries the same approach list and the
-	// same wiring-fault meaning for an error as ResolveCheck. Implementations
-	// prepare character data before the composition acts.
+	// ResolveDiscoveryCheck decides any automatic attempt the composition
+	// triggers: a member coming near hidden content, and a sneaking mover
+	// crossing into a watcher's zone (one `stealth` approach against the
+	// watcher's passive Perception, sneak.go). It carries the same approach
+	// list and the same wiring-fault meaning for an error as ResolveCheck.
+	// Implementations prepare character data before the composition acts.
 	ResolveDiscoveryCheck(in *ResolveCheckInput) (*ResolveCheckOutput, error)
 }
 

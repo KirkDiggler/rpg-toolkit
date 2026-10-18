@@ -89,7 +89,20 @@ type SheetFacts struct {
 	//
 	// ASKED, NEVER STORED, like every other answer here: a listener whose
 	// Wisdom changed hears with the new number at the next sound.
+	//
+	// IT IS ALSO A SNEAKER'S DC (rpg-project#606 R10): a sneaking mover's
+	// Stealth is rolled against this watcher's passive Perception, at least
+	// 1, through [CheckResolver.ResolveDiscoveryCheck].
 	PassivePerception int
+
+	// WatchResetCells is how far, in cells, a sneaker must stand outside this
+	// watcher's zone before the pair re-arms and the next entry rolls again
+	// (sneak.go, rpg-project#606 R10). SUPPLIED, never picked here: the
+	// session seeds it until content states it (design O6). Zero re-arms on
+	// the first refresh the sneaker stands outside the zone; negative is
+	// refused (ErrInvalidData). Read only for a watcher a sneaker has a
+	// standing verdict against.
+	WatchResetCells int
 }
 
 // Sheets reports each given member's [SheetFacts]. The composition asks; the
@@ -191,13 +204,16 @@ func (e *Encounter) sheetOf(id MemberID) (SheetFacts, error) {
 }
 
 // validateSheetFacts refuses a negative speed, a negative passive Perception, a
-// negative action range and a half-named [SheetFacts.BonusDisengage].
+// negative watch reset distance, a negative action range and a half-named [SheetFacts.BonusDisengage].
 func validateSheetFacts(facts SheetFacts) error {
 	if facts.SpeedFeet < 0 {
 		return fmt.Errorf("speed %d feet is negative", facts.SpeedFeet)
 	}
 	if facts.PassivePerception < 0 {
 		return fmt.Errorf("passive Perception %d is negative", facts.PassivePerception)
+	}
+	if facts.WatchResetCells < 0 {
+		return fmt.Errorf("watch reset %d cells is negative", facts.WatchResetCells)
 	}
 	for _, a := range facts.Actions {
 		if a.RangeFeet < 0 {
