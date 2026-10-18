@@ -6,6 +6,7 @@ package encounter
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
@@ -28,7 +29,8 @@ import (
 // WHAT THIS MODULE NEVER DOES (C1, C8; design R8, R10): it never compares a
 // Stealth total, never rolls, never halves a speed and never picks an arc or a
 // re-arm distance. The resolver decides; the session halves pace; the
-// re-arm distance arrives on [SheetFacts.WatchResetCells].
+// re-arm distance arrives on [SheetFacts.WatchResetCells] and the arc on
+// [SheetFacts.WatchArc].
 
 // BeatSnuck is the "beat" value of the story beat a sneaking mover receives
 // when one of its pairs is rolled (design R12): `{member, watcher, dc, total,
@@ -60,6 +62,18 @@ const stealthAbility = "stealth"
 //
 // A verdict STANDS while it is not Armed: a standing won verdict keeps the
 // mover out of that watcher's sight; a standing lost one changes nothing.
+//
+// AN ARMED PAIR OUTSIDE THE ZONE IS UNSEEN (design R9, R14). A pair with no
+// standing verdict — armed, or never rolled — sees the mover only inside the
+// zone, so an armed pair whose InZone is false keeps the mover out of that
+// watcher's sight exactly as a standing won verdict does. Under an arc that
+// is a sneaker behind a watcher's back: ordinary sight reaches them, the
+// zone does not. So the judgement writes an armed record for a never-rolled
+// pair the moment ordinary sight reaches the mover outside the zone, and
+// every reach built from the stored verdicts reads it ([sightReach.Reaches]).
+// It is never written for a watcher that holds the mover live (R10; lead
+// ruling R28 on rpg-project#621). With no arc the zone is sight, so such a
+// pair is unreached anyway and the rule changes nothing.
 type SneakVerdictData struct {
 	Beaten bool `json:"beaten,omitempty"`
 	Armed  bool `json:"armed,omitempty"`
@@ -169,17 +183,13 @@ func (e *Encounter) Sneaking(member MemberID) bool {
 // Errors: the mover is not on the canvas, or sight or a holding could not be
 // read.
 func (e *Encounter) declareSneaking(mover *memberRecord) error {
-	geometry, err := e.placedSightReach()
+	geometry, sheets, err := e.watchReach()
 	if err != nil {
 		return err
 	}
 	cell, placed := geometry.positions[mover.ID]
 	if !placed {
 		return fmt.Errorf("sneaker is not on the canvas: %w", ErrBadPlacement)
-	}
-	sheets, err := e.sheetsNow()
-	if err != nil {
-		return err
 	}
 	for _, watcher := range e.watchersIn(geometry, e.rosterIDs()) {
 		// An unsupplied passive judges no sneak ([sneakJudge.pair]).
@@ -244,13 +254,19 @@ func (e *Encounter) dropSneakVerdict(mover, watcher MemberID) {
 	}
 }
 
-// standingSuppression is every pair a standing won verdict hides — Beaten
-// and not yet Armed — subject first, then watcher; nil when none stands.
+// standingSuppression is every pair the verdicts hide, subject first, then
+// watcher; nil when none is hidden. Two kinds of pair are hidden: a standing
+// won verdict — Beaten and not yet Armed (R11) — and an armed pair whose
+// mover stood outside the zone at the last judging pass (R9, R14:
+// [SneakVerdictData]). A standing LOST verdict hides nothing: that watcher
+// sees the mover by ordinary sight (R10).
 func (e *Encounter) standingSuppression() map[MemberID]map[MemberID]bool {
 	var out map[MemberID]map[MemberID]bool
 	for mover, pairs := range e.sneakVerdicts {
 		for watcher, v := range pairs {
-			if !v.Beaten || v.Armed {
+			wonStands := v.Beaten && !v.Armed
+			unwatched := v.Armed && !v.InZone
+			if !wonStands && !unwatched {
 				continue
 			}
 			if out == nil {
@@ -275,6 +291,65 @@ func (e *Encounter) setSneakVerdict(mover, watcher MemberID, v SneakVerdictData)
 		e.sneakVerdicts[mover] = map[MemberID]SneakVerdictData{}
 	}
 	e.sneakVerdicts[mover][watcher] = v
+}
+
+// watchReach is [Encounter.placedSightReach] with every watcher's cone on it
+// — the geometry a zone is asked of outside a pass ([Encounter.SetSneaking]'s
+// declaration, [Encounter.WatchZonesFor]) — and the sheets the cones were
+// read from, asked once.
+//
+// Errors: sight or the sheets could not be read.
+func (e *Encounter) watchReach() (sightReach, map[MemberID]SheetFacts, error) {
+	geometry, err := e.placedSightReach()
+	if err != nil {
+		return sightReach{}, nil, err
+	}
+	sheets, err := e.sheetsNow()
+	if err != nil {
+		return sightReach{}, nil, err
+	}
+	geometry.cones = e.watchCones(sheets)
+
+	return geometry, sheets, nil
+}
+
+// watchCone is one watcher's supplied arc, in degrees, and the facing it is
+// centred on, both read at use: the arc from [SheetFacts.WatchArc] this ask,
+// the facing from the member as it stands this pass.
+type watchCone struct {
+	arc    int
+	facing float64
+}
+
+// watchCones is every watcher's cone from one sheets answer: a member whose
+// [SheetFacts.WatchArc] is non-zero, keyed by member. Nil when nobody has an
+// arc, which is a zone of 360 for everybody.
+//
+// A WATCHER WITH NO PASSIVE PERCEPTION GETS NO CONE (R22; lead ruling R29
+// on rpg-project#621). It judges no
+// sneak and sees a sneaker by ordinary sight ([sneakJudge.pair]), so its
+// zone stays its sight and the floor drawn red ([Encounter.WatchZonesFor])
+// stays the floor it sees the sneaker on. A cone there would draw the floor
+// behind it clear while it watches that floor all round.
+//
+// AN ABSENT FACING IS NOT A CASE. Every member carries one: the stated
+// facing, or [UnstatedFacing] — 180, south, a rules bearing (R13) — from the
+// moment it is seeded, so an unplaced or never-turned watcher's cone faces
+// south. An unplaced watcher has no zone at all; its cone is never asked.
+func (e *Encounter) watchCones(sheets map[MemberID]SheetFacts) map[MemberID]watchCone {
+	var out map[MemberID]watchCone
+	for id, facts := range sheets {
+		m, ok := e.members[id]
+		if !ok || facts.WatchArc == 0 || facts.PassivePerception == 0 {
+			continue
+		}
+		if out == nil {
+			out = map[MemberID]watchCone{}
+		}
+		out[id] = watchCone{arc: facts.WatchArc, facing: m.Facing}
+	}
+
+	return out
 }
 
 // placedSightReach is the sight geometry over every placed member, built the
@@ -332,19 +407,51 @@ func (e *Encounter) holdsLive(observer, subject MemberID) (bool, error) {
 	return false, nil
 }
 
-// inWatchZone is THE WATCH ZONE (design R9), asked one cell at a time: does
-// this watcher's zone hold this cell in the pass's geometry? A zone is every
-// floor cell the watcher's sight reaches from where it stands, by the ONE
-// sight test ([sightReach.reachesCell]) — its own Sight range, line of sight
-// and sight areas — and never the cells it knows, because knowledge lags
-// sight.
+// inWatchZone is THE WATCH ZONE (design R9, R14), asked one cell at a time:
+// does this watcher's zone hold this cell in the pass's geometry? A zone is
+// every floor cell the watcher's sight reaches from where it stands, by the
+// ONE sight test ([sightReach.reachesCell]) — its own Sight range, line of
+// sight and sight areas — and never the cells it knows, because knowledge
+// lags sight; narrowed by the watcher's supplied arc ([sightReach.inArc]).
 //
-// NO ARC YET. With no supplied arc a zone is 360 degrees and equals the
-// watcher's sight; C-cone narrows it here with [SheetFacts]'s arc and facing,
-// and only here (R14). The red floor's set (C-zone) is this predicate asked of
-// the watcher's reach.
+// THE ONLY PLACE THE ARC APPLIES (R14). [sightReach.reachesCell],
+// [sightReach.Reaches] and [Encounter.VisibleCellsFor] never read it, so a
+// watcher's fog, its sight of anybody who is not sneaking, and its sight of a
+// sneaker it already holds a lost verdict against stay all round (R2, R10).
+// The judgement ([Encounter.judgeSneakers]) and the red floor
+// ([Encounter.WatchZonesFor]) both ask this, so a cone narrows the floor that
+// rolls and the floor drawn red at once.
 func (s sightReach) inWatchZone(watcher MemberID, cell spatial.Position) bool {
-	return s.canvas.field.isFloor(cell) && s.reachesCell(watcher, cell)
+	return s.canvas.field.isFloor(cell) && s.reachesCell(watcher, cell) && s.inArc(watcher, cell)
+}
+
+// inArc reports whether a cell lies inside a watcher's supplied arc: its
+// bearing from the watcher's cell is within half the arc of the watcher's
+// facing, EDGE INCLUSIVE, so an arc of 120 holds a cell at exactly 60 off the
+// facing. A watcher with no cone ([watchCones]) watches all round.
+//
+// ONE FRAME. The bearing is [bearing] — the frame facing.go turns members in
+// — so a watcher facing 0 watches the cells north of it on the same map its
+// steps turned it on.
+//
+// THE WATCHER'S OWN CELL IS NEVER IN QUESTION: a cell has no bearing from
+// itself, and a watcher's arc never hides its own feet.
+func (s sightReach) inArc(watcher MemberID, cell spatial.Position) bool {
+	cone, ok := s.cones[watcher]
+	if !ok {
+		return true
+	}
+	from, placed := s.positions[watcher]
+	if !placed {
+		return false
+	}
+	toward, ok := bearing(s.canvas.field.orientation, from, cell)
+	if !ok {
+		return true
+	}
+	off := math.Abs(math.Mod(toward-cone.facing+540, 360) - 180)
+
+	return off <= float64(cone.arc)/2
 }
 
 // clearOfZone reports whether a cell stands at least reset cells from every
@@ -394,15 +501,31 @@ type sneakJudge struct {
 
 // sheet is one watcher's facts, asking the capability once per pass.
 func (j *sneakJudge) sheet(id MemberID) (SheetFacts, error) {
-	if j.sheets == nil {
-		all, err := j.e.sheetsNow()
-		if err != nil {
-			return SheetFacts{}, err
-		}
-		j.sheets = all
+	if err := j.readSheets(); err != nil {
+		return SheetFacts{}, err
 	}
 
 	return j.sheets[id], nil
+}
+
+// readSheets asks the capability once per pass, and puts every watcher's
+// cone on the pass's reach from that one answer, so the zone the pass judges
+// with is narrowed by the arcs read with the passives it rolls against.
+func (j *sneakJudge) readSheets() error {
+	if j.sheets != nil {
+		return nil
+	}
+	all, err := j.e.sheetsNow()
+	if err != nil {
+		return err
+	}
+	if all == nil {
+		all = map[MemberID]SheetFacts{}
+	}
+	j.sheets = all
+	j.reach.cones = j.e.watchCones(all)
+
+	return nil
 }
 
 // judgeSneakers is THE JUDGEMENT (design R10, R11), run inside
@@ -429,6 +552,12 @@ func (e *Encounter) judgeSneakers(reach *sightReach, observers []MemberID) ([]sn
 	}
 	judge := &sneakJudge{e: e, reach: reach}
 	watchers := e.watchersIn(*reach, observers)
+	if len(watchers) > 0 {
+		// The cones before the first pair: every zone below is narrowed.
+		if err := judge.readSheets(); err != nil {
+			return nil, err
+		}
+	}
 	for _, mover := range movers {
 		for _, watcher := range watchers {
 			if _, err := judge.pair(mover, watcher); err != nil {
@@ -501,11 +630,31 @@ func (j *sneakJudge) pair(mover, watcher MemberID) (bool, error) {
 		v.InZone = nowIn
 	}
 	if !has {
-		return false, nil
+		// OUTSIDE THE ZONE, UNSEEN (R9, R14; lead ruling R28 on
+		// rpg-project#621). A never-rolled pair whose mover ordinary sight
+		// reaches outside the zone — behind an arc — is recorded armed, so
+		// every reach built from the verdicts keeps the mover out of this
+		// watcher's sight ([SneakVerdictData]).
+		//
+		// NEVER FROM A WATCHER THAT HOLDS THE MOVER LIVE (R10, R28). Nobody
+		// vanishes in plain view: a watcher already seeing the mover is
+		// answered by the lost verdict a declaration writes, never by this.
+		// Without an arc the zone is sight, so nothing reaches this line.
+		if nowIn || !j.reach.reachesCell(watcher, cell) {
+			return false, nil
+		}
+		live, err := e.holdsLive(watcher, mover)
+		if err != nil {
+			return false, err
+		}
+		if live {
+			return false, nil
+		}
+		v = SneakVerdictData{Armed: true}
 	}
 	e.setSneakVerdict(mover, watcher, v)
 
-	return v.Beaten && !v.Armed, nil
+	return (v.Beaten && !v.Armed) || (v.Armed && !v.InZone), nil
 }
 
 // rearms reports whether a standing pair re-arms this pass: the mover stands
@@ -513,9 +662,10 @@ func (j *sneakJudge) pair(mover, watcher MemberID) (bool, error) {
 // the watcher's ordinary sight no longer reaches the mover (R10: hiding needs
 // a broken line of sight first).
 //
-// THE SECOND TERM BINDS ONLY ONCE CONES LAND. With no arc a zone is the
+// THE SECOND TERM IS WHAT AN ARC MAKES BIND. With no arc a zone is the
 // watcher's sight, so a mover outside it is already out of ordinary sight;
-// C-cone's narrower zone is what makes the two answers differ.
+// under an arc a mover behind the watcher is outside the zone and still in
+// its sight, and a lost pair holds until that sight breaks too.
 func (j *sneakJudge) rearms(watcher MemberID, cell spatial.Position, v SneakVerdictData) (bool, error) {
 	facts, err := j.sheet(watcher)
 	if err != nil {

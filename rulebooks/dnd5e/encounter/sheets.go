@@ -105,6 +105,28 @@ type SheetFacts struct {
 	// refused (ErrInvalidData). Read only for a watcher a sneaker has a
 	// standing verdict against.
 	WatchResetCells int
+
+	// WatchArc is how wide this watcher watches, in degrees, centred on its
+	// facing (sneaking design R14): its zone keeps only the cells whose
+	// bearing from where it stands lies within WatchArc/2 of [Member.Facing],
+	// edge inclusive. A sneaker behind a watcher with an arc is outside its
+	// zone, so nothing rolls and that watcher does not see them (sneak.go).
+	//
+	// SUPPLIED, NEVER PICKED HERE. Zero is no arc — the watcher watches all
+	// round, 360, which is this module's only built-in answer; 1 to 360 is an
+	// arc; anything else is refused (ErrInvalidData). The session answers a
+	// monster's from its stat block, seeding one until content states it
+	// (design O6), and a character's as zero.
+	//
+	// THE ZONE ONLY, NEVER SIGHT (R2, R14). Nothing but the watch zone reads
+	// it: fog of war's seen-now cells, a mover who is not sneaking, and every
+	// other sight question are answered by the one sight test, all round.
+	//
+	// NO PASSIVE, NO CONE (lead ruling R29 on rpg-project#621). A watcher
+	// whose PassivePerception is zero judges no sneak and sees a sneaker by
+	// ordinary sight, so its arc is not read: its zone stays its sight, and
+	// the red floor never shows less than what sees the sneaker (R22).
+	WatchArc int
 }
 
 // Sheets reports each given member's [SheetFacts]. The composition asks; the
@@ -152,7 +174,7 @@ type Sheets interface {
 // action range (ErrInvalidData): [CellsFromFeet] divides those, and a
 // negative one is not a shorter distance but a defect that would produce a
 // nonsense budget or reach — and a negative passive Perception, which no
-// arithmetic of 10 plus a modifier produces.
+// arithmetic of 10 plus a modifier produces, and a watch arc no circle holds.
 func (e *Encounter) sheetsNow() (map[MemberID]SheetFacts, error) {
 	if len(e.members) == 0 {
 		return nil, nil
@@ -206,7 +228,8 @@ func (e *Encounter) sheetOf(id MemberID) (SheetFacts, error) {
 }
 
 // validateSheetFacts refuses a negative speed, a negative passive Perception, a
-// negative watch reset distance, a negative action range and a half-named [SheetFacts.BonusDisengage].
+// negative watch reset distance, a watch arc outside 0–360, a negative action
+// range and a half-named [SheetFacts.BonusDisengage].
 func validateSheetFacts(facts SheetFacts) error {
 	if facts.SpeedFeet < 0 {
 		return fmt.Errorf("speed %d feet is negative", facts.SpeedFeet)
@@ -216,6 +239,9 @@ func validateSheetFacts(facts SheetFacts) error {
 	}
 	if facts.WatchResetCells < 0 {
 		return fmt.Errorf("watch reset %d cells is negative", facts.WatchResetCells)
+	}
+	if facts.WatchArc < 0 || facts.WatchArc > 360 {
+		return fmt.Errorf("watch arc %d degrees is not 0 (none) or an arc of 1 to 360", facts.WatchArc)
 	}
 	for _, a := range facts.Actions {
 		if a.RangeFeet < 0 {

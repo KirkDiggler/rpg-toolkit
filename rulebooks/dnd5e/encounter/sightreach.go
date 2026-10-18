@@ -38,14 +38,23 @@ type sightReach struct {
 	canvas *canvasRoom
 	areas  map[string]SightArea
 
-	// suppressed is every (sneaking subject, watcher) pair a standing won
-	// Stealth verdict hides (sneak.go, design R11): subject first, then
-	// watcher. Seeded from the stored verdicts by [Encounter.newSightReach],
+	// suppressed is every (sneaking subject, watcher) pair the stored
+	// verdicts hide — a standing won Stealth verdict (R11), or an armed pair
+	// outside the watcher's zone (R9, R14) — sneak.go's
+	// [Encounter.standingSuppression]: subject first, then watcher. Seeded from the stored verdicts by [Encounter.newSightReach],
 	// re-set for the pass's own pairs by [Encounter.judgeSneakers] on the
 	// reach the pass is handed BEFORE anything copies it, and read only by
 	// [sightReach.Reaches] — [sightReach.reachesCell] stays the one sight test
-	// zones, fog and discovery ask. Nil when no won verdict stands.
+	// zones, fog and discovery ask. Nil when no pair is hidden.
 	suppressed map[MemberID]map[MemberID]bool
+
+	// cones is each watcher's supplied arc and facing, read by
+	// [sightReach.inWatchZone] alone (sneak.go, design R14). Set only on a
+	// reach a zone is asked of — the pass's, by [Encounter.judgeSneakers],
+	// and [Encounter.watchReach]'s — and never by [Encounter.newSightReach],
+	// so no other sight question can learn an arc exists. Nil is everybody
+	// watching all round.
+	cones map[MemberID]watchCone
 }
 
 // newSightReach is THE ONE CONSTRUCTION of a pass's sight geometry: the
@@ -101,9 +110,11 @@ func (s sightReach) Reaches(_ perception.Channel, observer, subject core.EntityI
 	}
 	// A WON STEALTH ROLL HIDES ONE PAIR, AND ONLY IT (design R11). The pass
 	// then fades the watcher's holding of the sneaker to a ghost at the last
-	// cell it saw; nothing is erased. Every other answer is the one sight
-	// test: a lost pair is ordinary sight (R10), and with no arc supplied a
-	// watcher's zone is its sight (R9, R14), so a sneaker outside it is
+	// cell it saw; nothing is erased. An armed pair outside the watcher's
+	// zone is hidden the same way (R9, R14): a sneaker behind an arc is in
+	// the watcher's sight and not in its zone. Every other answer is the one
+	// sight test: a lost pair is ordinary sight (R10), and with no arc
+	// supplied a watcher's zone is its sight, so a sneaker outside it is
 	// already unreached.
 	if s.suppressed[subject][observer] {
 		return false
