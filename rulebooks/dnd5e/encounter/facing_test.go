@@ -10,6 +10,7 @@ package encounter
 
 import (
 	"errors"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -61,6 +62,40 @@ func TestTheSixStepsHaveSixBearings(t *testing.T) {
 		_, ok := bearing(HexesArePointyTop(), from, from)
 		require.False(t, ok)
 	})
+}
+
+// TestTheBearingFrameIsTheWiresFrame pins the frame against the plane, so a
+// swap of X and Y or a flipped sign cannot pass (rpg-api-protos#397): on the
+// field's plane +X is east and +Y is south, a facing is 0 = north = -Y,
+// 90 = east = +X, 180 = south = +Y, 270 = west = -X, clockwise, and a placed
+// prop's angle (0 at +X, +90 at +Y) is (facing - 90) mod 360.
+func TestTheBearingFrameIsTheWiresFrame(t *testing.T) {
+	steps := []spatial.Position{{X: 1, Y: 0}, {X: 1, Y: -1}, {X: 0, Y: -1}, {X: -1, Y: 0}, {X: -1, Y: 1}, {X: 0, Y: 1}}
+	for _, o := range []Orientation{HexesArePointyTop(), HexesAreFlatTop()} {
+		plane := spatial.NewHexEmbedding(spatial.HexEmbeddingConfig{Orientation: o.spatial(), CellWidth: FeetPerCell})
+		for _, step := range steps {
+			from := spatial.Position{X: -3, Y: 2}
+			to := spatial.Position{X: from.X + step.X, Y: from.Y + step.Y}
+			a, b := plane.CellCentre(from), plane.CellCentre(to)
+			propAngle := math.Mod(math.Atan2(b.Y-a.Y, b.X-a.X)*180/math.Pi+360, 360)
+			got, ok := bearing(o, from, to)
+			require.True(t, ok)
+			require.InDelta(t, propAngle, math.Mod(got-90+360, 360), 1e-6,
+				"%s step %v: a prop's angle is the facing less a quarter turn", o.Kind(), step)
+		}
+	}
+
+	// The compass words name the same frame: the pointy-top +q step runs
+	// along +X, due east; the flat-top -r step runs along -Y, due north.
+	east, _ := FacingFromCompass("e")
+	got, _ := bearing(HexesArePointyTop(), spatial.Position{}, spatial.Position{X: 1})
+	require.Equal(t, east, got, "+X is e")
+	north, _ := FacingFromCompass("n")
+	got, _ = bearing(HexesAreFlatTop(), spatial.Position{}, spatial.Position{Y: -1})
+	require.Equal(t, north, got, "-Y is n")
+	south, _ := FacingFromCompass("s")
+	got, _ = bearing(HexesAreFlatTop(), spatial.Position{}, spatial.Position{Y: 1})
+	require.Equal(t, south, got, "+Y is s")
 }
 
 // TestTheEightCompassWords is the authored vocabulary's one conversion:
