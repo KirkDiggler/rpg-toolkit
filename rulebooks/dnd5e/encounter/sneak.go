@@ -177,8 +177,13 @@ func (e *Encounter) declareSneaking(mover *memberRecord) error {
 	if !placed {
 		return fmt.Errorf("sneaker is not on the canvas: %w", ErrBadPlacement)
 	}
+	sheets, err := e.sheetsNow()
+	if err != nil {
+		return err
+	}
 	for _, watcher := range e.watchersIn(geometry, e.rosterIDs()) {
-		if watcher == mover.ID {
+		// An unsupplied passive judges no sneak ([sneakJudge.pair]).
+		if watcher == mover.ID || sheets[watcher].PassivePerception == 0 {
 			continue
 		}
 		live, err := e.holdsLive(watcher, mover.ID)
@@ -222,6 +227,43 @@ func (e *Encounter) forgetWatcher(watcher MemberID) {
 	if len(e.sneakVerdicts) == 0 {
 		e.sneakVerdicts = nil
 	}
+}
+
+// dropSneakVerdict removes one pair's verdict, if it has one.
+func (e *Encounter) dropSneakVerdict(mover, watcher MemberID) {
+	pairs, ok := e.sneakVerdicts[mover]
+	if !ok {
+		return
+	}
+	delete(pairs, watcher)
+	if len(pairs) == 0 {
+		delete(e.sneakVerdicts, mover)
+	}
+	if len(e.sneakVerdicts) == 0 {
+		e.sneakVerdicts = nil
+	}
+}
+
+// standingSuppression is every pair a standing won verdict hides — Beaten
+// and not yet Armed — subject first, then watcher; nil when none stands.
+func (e *Encounter) standingSuppression() map[MemberID]map[MemberID]bool {
+	var out map[MemberID]map[MemberID]bool
+	for mover, pairs := range e.sneakVerdicts {
+		for watcher, v := range pairs {
+			if !v.Beaten || v.Armed {
+				continue
+			}
+			if out == nil {
+				out = map[MemberID]map[MemberID]bool{}
+			}
+			if out[mover] == nil {
+				out[mover] = map[MemberID]bool{}
+			}
+			out[mover][watcher] = true
+		}
+	}
+
+	return out
 }
 
 // setSneakVerdict stores one pair's verdict.
@@ -387,24 +429,17 @@ func (e *Encounter) judgeSneakers(reach *sightReach, observers []MemberID) ([]sn
 	}
 	judge := &sneakJudge{e: e, reach: reach}
 	watchers := e.watchersIn(*reach, observers)
-	suppressed := map[MemberID]map[MemberID]bool{}
 	for _, mover := range movers {
 		for _, watcher := range watchers {
-			beaten, err := judge.pair(mover, watcher)
-			if err != nil {
+			if _, err := judge.pair(mover, watcher); err != nil {
 				return nil, err
-			}
-			if beaten {
-				if suppressed[mover] == nil {
-					suppressed[mover] = map[MemberID]bool{}
-				}
-				suppressed[mover][watcher] = true
 			}
 		}
 	}
-	// A standing won verdict whose watcher is NOT in this pass still holds;
-	// the pass never asks that watcher, so only this pass's pairs need it.
-	reach.suppressed = suppressed
+	// The pass's pairs were just re-judged; a watcher outside the pass keeps
+	// its standing answer. One map, rebuilt from the verdicts as they now
+	// stand.
+	reach.suppressed = e.standingSuppression()
 
 	return judge.rolls, nil
 }
@@ -426,9 +461,23 @@ func (e *Encounter) sneakersIn(reach sightReach) []MemberID {
 }
 
 // pair judges one (mover, watcher) pair and reports whether a standing won
-// verdict suppresses it this pass.
+// verdict suppresses it now.
+//
+// AN UNSUPPLIED PASSIVE JUDGES NO SNEAK (lead ruling on rpg-toolkit#2078): a
+// watcher whose [SheetFacts.PassivePerception] is zero — "not supplied",
+// every world NPC today — rolls nothing and holds no verdict, and sees the
+// sneaker by ordinary sight exactly as it sees a mover who is not sneaking
+// (R2). Fail closed: no DC is invented for a number nobody gave.
 func (j *sneakJudge) pair(mover, watcher MemberID) (bool, error) {
 	e := j.e
+	facts, err := j.sheet(watcher)
+	if err != nil {
+		return false, err
+	}
+	if facts.PassivePerception == 0 {
+		e.dropSneakVerdict(mover, watcher)
+		return false, nil
+	}
 	cell := j.reach.positions[mover]
 	v, has := e.sneakVerdicts[mover][watcher]
 	nowIn := j.reach.inWatchZone(watcher, cell)
@@ -480,7 +529,8 @@ func (j *sneakJudge) rearms(watcher MemberID, cell spatial.Position, v SneakVerd
 }
 
 // roll asks the resolver for the mover's Stealth against the watcher's
-// passive Perception, and keeps the verdict for its beat.
+// passive Perception — supplied, so at least 1 ([sneakJudge.pair]) — and
+// keeps the verdict for its beat.
 func (j *sneakJudge) roll(mover, watcher MemberID) (*ResolveCheckOutput, error) {
 	facts, err := j.sheet(watcher)
 	if err != nil {
@@ -491,7 +541,7 @@ func (j *sneakJudge) roll(mover, watcher MemberID) (*ResolveCheckOutput, error) 
 	}
 	verdict, err := j.e.checkResolver.ResolveDiscoveryCheck(&ResolveCheckInput{
 		Member:     mover,
-		Approaches: []CheckApproach{{Ability: stealthAbility, DC: max(facts.PassivePerception, 1)}},
+		Approaches: []CheckApproach{{Ability: stealthAbility, DC: facts.PassivePerception}},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("sneak roll for %q against %q: %w", mover, watcher, err)

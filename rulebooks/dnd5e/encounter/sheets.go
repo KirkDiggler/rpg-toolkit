@@ -91,8 +91,10 @@ type SheetFacts struct {
 	// Wisdom changed hears with the new number at the next sound.
 	//
 	// IT IS ALSO A SNEAKER'S DC (rpg-project#606 R10): a sneaking mover's
-	// Stealth is rolled against this watcher's passive Perception, at least
-	// 1, through [CheckResolver.ResolveDiscoveryCheck].
+	// Stealth is rolled against this watcher's passive Perception through
+	// [CheckResolver.ResolveDiscoveryCheck]. Zero fails closed here too: a
+	// watcher with no passive supplied judges no sneak — no roll, no verdict
+	// — and sees a sneaker by ordinary sight, as it sees anyone (sneak.go).
 	PassivePerception int
 
 	// WatchResetCells is how far, in cells, a sneaker must stand outside this

@@ -33,6 +33,8 @@ const (
 	sneakKnight = encounter.MemberID("knight")
 	sneakCook   = encounter.MemberID("cook")
 	sneakSentry = encounter.MemberID("sentry")
+	// sneakDeaf is a watcher whose sheet supplies no passive Perception.
+	sneakDeaf = encounter.MemberID("deaf")
 )
 
 // The knight sees four cells; the rogue sees everything.
@@ -121,7 +123,15 @@ type sneakOptions struct {
 	noResolver bool
 	// noKnight leaves the knight out.
 	noKnight bool
+	// knightSight overrides the knight's four cells.
+	knightSight int
+	// sideDoor opens the wall a second time at row 6, with a SHUT door
+	// standing in it.
+	sideDoor bool
 }
+
+// sneakSideDoor is the shut door at row 6, beside the doorway.
+const sneakSideDoor = encounter.DoorID("side-door")
 
 type SneakSuite struct {
 	suite.Suite
@@ -137,9 +147,19 @@ func TestSneakSuite(t *testing.T) { suite.Run(t, new(SneakSuite)) }
 // open builds the scene.
 func (s *SneakSuite) open(opts sneakOptions, script ...bool) {
 	s.stealth = &scriptedStealth{script: script}
-	s.sight = &sneakSight{reach: map[encounter.MemberID]int{sneakKnight: sneakKnightSight, sneakSentry: sneakKnightSight}}
+	s.sight = &sneakSight{reach: map[encounter.MemberID]int{sneakKnight: sneakKnightSight, sneakSentry: sneakKnightSight, sneakDeaf: sneakKnightSight}}
 	if opts.rogueSight > 0 {
 		s.sight.reach[sneakRogue] = opts.rogueSight
+	}
+	if opts.knightSight > 0 {
+		s.sight.reach[sneakKnight] = opts.knightSight
+	}
+	walls, doors := twoRoomWall(), []encounter.DoorInput{twoRoomDoor}
+	if opts.sideDoor {
+		walls = squareSeamWall(9, 10, 5, 6)
+		doors = append(doors, encounter.DoorInput{
+			ID: sneakSideDoor, Edges: []encounter.DoorEdge{{From: cellAt(9, 6), To: cellAt(10, 6)}}, State: encounter.DoorIsClosed(),
+		})
 	}
 	members := []encounter.MemberInput{{ID: sneakRogue, Kind: encounter.KindPlayer, Position: offsetOf(4, 5)}}
 	if !opts.noKnight {
@@ -153,6 +173,7 @@ func (s *SneakSuite) open(opts sneakOptions, script ...bool) {
 		sneakKnight: {SpeedFeet: opts.knightSpeed, PassivePerception: 10, WatchResetCells: opts.reset},
 		sneakCook:   {PassivePerception: 9},
 		sneakSentry: {PassivePerception: 14},
+		sneakDeaf:   {},
 	}
 	s.caps = encounter.Capabilities{
 		Sight:         s.sight,
@@ -175,8 +196,8 @@ func (s *SneakSuite) open(opts sneakOptions, script ...bool) {
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion("room-a", 0, 0, 10, 10), rectRegion("room-b", 10, 0, 10, 10)},
-			Walls:   twoRoomWall(),
-			Doors:   []encounter.DoorInput{twoRoomDoor},
+			Walls:   walls,
+			Doors:   doors,
 		},
 		Members:      members,
 		Endings:      []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
@@ -625,4 +646,63 @@ func (s *SneakSuite) TestANegativeResetIsRefused() {
 	s.open(sneakOptions{reset: -1})
 	_, err := s.enc.Step(&encounter.StepInput{Member: sneakRogue, To: cellAt(5, 5)})
 	s.ErrorIs(err, encounter.ErrInvalidData)
+}
+
+// TestAnUnsuppliedPassiveJudgesNoSneak: a watcher whose sheet supplies no
+// passive Perception (zero, every world NPC today) is never rolled against,
+// holds no verdict, and sees the sneaker by ordinary sight (lead ruling on
+// rpg-toolkit#2078, R2).
+func (s *SneakSuite) TestAnUnsuppliedPassiveJudgesNoSneak() {
+	deaf := encounter.MemberInput{ID: sneakDeaf, Kind: encounter.KindWorld, Position: offsetOf(14, 5)}
+	s.open(sneakOptions{noKnight: true, extra: []encounter.MemberInput{deaf}})
+	s.sneak(true)
+	s.walkTo(sneakInside)
+	s.walkTo(cellAt(11, 5))
+	s.Empty(s.stealth.asked, "nobody rolls against a passive nobody supplied")
+	_, ok := s.verdict(sneakDeaf)
+	s.False(ok, "and no verdict is held")
+	s.True(s.seesLive(sneakDeaf, sneakRogue), "the watcher sees the sneaker as it sees anyone")
+}
+
+// TestABeatenWatcherWitnessesNothingTheSneakerDoes: suppression is one answer
+// to "does this watcher see this member" (lead ruling on rpg-toolkit#2078).
+// The rogue beat the knight and opens a shut door inside the knight's zone:
+// the door's beat — whose audience must see its actor — goes to the cook,
+// whose pair is lost, and not to the knight; a pointed SeesWithin answers the
+// same way.
+func (s *SneakSuite) TestABeatenWatcherWitnessesNothingTheSneakerDoes() {
+	s.open(sneakOptions{sideDoor: true, knightSight: 6, extra: []encounter.MemberInput{cook()}}, true)
+	s.sneak(true)
+	s.walkTo(sneakInside)
+	s.Require().Len(s.stealth.asked, 1)
+	v, _ := s.verdict(sneakKnight)
+	s.Require().True(v.Beaten)
+	cookPair, _ := s.verdict(sneakCook)
+	s.Require().False(cookPair.Beaten, "the cook saw the declaration: its pair is lost")
+
+	seen, known := s.enc.SeesWithin(sneakKnight, sneakRogue, 1000)
+	s.True(known)
+	s.False(seen, "the knight does not see the rogue it was beaten by")
+	seen, _ = s.enc.SeesWithin(sneakCook, sneakRogue, 1000)
+	s.True(seen)
+
+	_, err := s.enc.OpenDoor(&encounter.OpenDoorInput{Door: sneakSideDoor, Actor: sneakRogue})
+	s.Require().NoError(err)
+	s.True(s.toldDoor(sneakCook), "the cook watched the rogue open it")
+	s.False(s.toldDoor(sneakKnight), "the knight is no witness of what the rogue does")
+}
+
+// toldDoor reports whether a member's story holds the side door's beat.
+func (s *SneakSuite) toldDoor(audience encounter.MemberID) bool {
+	story, err := s.enc.Story(&encounter.StoryInput{Audience: audience})
+	s.Require().NoError(err)
+	for _, entry := range story {
+		var body map[string]any
+		s.Require().NoError(json.Unmarshal(entry.Payload, &body))
+		if body["door"] == string(sneakSideDoor) {
+			return true
+		}
+	}
+
+	return false
 }

@@ -39,11 +39,12 @@ type sightReach struct {
 	areas  map[string]SightArea
 
 	// suppressed is every (sneaking subject, watcher) pair a standing won
-	// Stealth verdict hides this pass (sneak.go, design R11): subject first,
-	// then watcher. Set by [Encounter.judgeSneakers] on the reach the pass is
-	// handed BEFORE anything copies it, and read only by [sightReach.Reaches]
-	// — [sightReach.reachesCell] stays the one sight test zones, fog and
-	// discovery ask. Nil for every reach no judgement ran on.
+	// Stealth verdict hides (sneak.go, design R11): subject first, then
+	// watcher. Seeded from the stored verdicts by [Encounter.newSightReach],
+	// re-set for the pass's own pairs by [Encounter.judgeSneakers] on the
+	// reach the pass is handed BEFORE anything copies it, and read only by
+	// [sightReach.Reaches] — [sightReach.reachesCell] stays the one sight test
+	// zones, fog and discovery ask. Nil when no won verdict stands.
 	suppressed map[MemberID]map[MemberID]bool
 }
 
@@ -53,12 +54,20 @@ type sightReach struct {
 // [Encounter.rebuildPercepts] and [Encounter.VisibleCellsFor] both build their
 // reach here, so seen-now and learning cannot be asked of two geometries
 // (rpg-project#586 R5 — one sight test).
+//
+// EVERY REACH CARRIES THE STANDING WON VERDICTS (sneaking, lead ruling on
+// rpg-toolkit#2078): suppression is ONE answer to "does this watcher see this
+// member", so a watcher a sneaker beat is not a seer for any question built
+// here — the pass, a door's or a deed's witnesses ([Encounter.subjectSeers]),
+// a pointed [Encounter.SeesWithin]. The pass then re-judges its own
+// observers' pairs over this ([Encounter.judgeSneakers]).
 func (e *Encounter) newSightReach(positions map[MemberID]spatial.Position, cells map[MemberID]int) sightReach {
 	return sightReach{
-		positions: positions,
-		cells:     cells,
-		canvas:    e.canvas,
-		areas:     e.sightAreas,
+		positions:  positions,
+		cells:      cells,
+		canvas:     e.canvas,
+		areas:      e.sightAreas,
+		suppressed: e.standingSuppression(),
 	}
 }
 
