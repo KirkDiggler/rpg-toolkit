@@ -52,6 +52,10 @@ type WatchZone struct {
 // a sight holding with a non-empty CurrentVia. A remembered watcher is a
 // ghost whose zone would tell the viewer where it stands now; an unseen one
 // would hand the client a creature its eyes never gave it.
+// A watcher whose sheet supplies no passive Perception still has a zone
+// (R22): it rolls nothing, but it keeps its ordinary sight, which with no arc
+// is the zone, so the floor drawn red is still the floor it sees the sneaker
+// on.
 //
 // ONLY FLOOR THE VIEWER KNOWS. Each zone is cut to the viewer's known cells
 // and loses every cell a concealment hides from them, the refusals
