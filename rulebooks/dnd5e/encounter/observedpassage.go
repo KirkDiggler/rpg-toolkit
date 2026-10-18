@@ -2,6 +2,7 @@ package encounter
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 )
@@ -84,18 +85,43 @@ func (e *Encounter) refreshChangedStanding(state *participationState) (map[Membe
 	if len(changed) == 0 {
 		return nil, nil
 	}
-	subjects := make([]MemberID, 0, len(changed))
-	for _, id := range e.rosterIDs() {
-		if changed[id] {
-			subjects = append(subjects, id)
-		}
-	}
 	deltas, err := e.rebuildPercepts(e.rosterIDs())
 	if err != nil {
 		return nil, err
 	}
+	// ANNOUNCE WHAT THE REBUILD CHANGED, not what the pre-check flagged. The
+	// check above only decides whether to rebuild; the rebuild rewrites EVERY
+	// observer's testimony of every subject, so a target whose conditions
+	// changed in the same train as its attacker turned is rewritten too, and
+	// a beat naming only the attacker would leave the watcher's client
+	// holding the old sighting of the target — a host's own freshness pass
+	// skips a member a sight refresh already wrote. The rebuild's own Changed
+	// lists are the answer (rpg-toolkit#2073 review, found by F2).
+	subjects := changedSubjects(deltas)
 	if err = e.appendSightedBeats(deltas, subjects, uint64(e.clock.ToData().HighWater)); err != nil {
 		return nil, err
 	}
 	return deltas, nil
+}
+
+// changedSubjects is every member whose testimony some observer's rebuild
+// actually changed, from the deltas' own Changed lists: the subjects a
+// sighted beat owes "look again" to.
+func changedSubjects(deltas map[MemberID]*IntelDelta) []MemberID {
+	seen := map[MemberID]bool{}
+	var out []MemberID
+	for _, delta := range deltas {
+		if delta == nil {
+			continue
+		}
+		for _, subject := range delta.Changed {
+			if id := MemberID(subject); !seen[id] {
+				seen[id] = true
+				out = append(out, id)
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+
+	return out
 }
