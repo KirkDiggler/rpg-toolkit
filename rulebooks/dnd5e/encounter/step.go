@@ -135,6 +135,8 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 	if err != nil {
 		return nil, fmt.Errorf("step: %w", err)
 	}
+	// A player's step is their own: it turns them along it (facing.go).
+	e.turnAlong(action)
 
 	// subjectBeat, subject is the mover — v1 still sends everyone
 	// (audienceFor's doc).

@@ -112,6 +112,10 @@ func (s *StartFacingSuite) TestTheFacingReachesTheCompiledDungeonAndTheAtlas() {
 	s.Require().NoError(err)
 
 	s.Equal("se", compiled.StartFacing, "the convenience beside the seats")
+	// AND LOWERED, the bearing a host seats the party facing
+	// (rpg-project#582): se is 135.
+	s.Require().NotNil(compiled.StartFacingDegrees)
+	s.Equal(135.0, *compiled.StartFacingDegrees)
 	s.Require().NotNil(compiled.Field.Start, "and the copy that survives being stored")
 	s.Equal("se", compiled.Field.Start.Facing)
 
@@ -135,6 +139,7 @@ func (s *StartFacingSuite) TestAStartWithNoFacingCarriesNoFacing() {
 	compiled, err := dungeonspec.Load([]byte(s.withStart("start: [1, 3]\n")))
 	s.Require().NoError(err)
 	s.Empty(compiled.StartFacing)
+	s.Nil(compiled.StartFacingDegrees, "no word, no bearing: the host seats the unstated 180")
 	s.Require().NotNil(compiled.Field.Start)
 	s.Empty(compiled.Field.Start.Facing)
 
@@ -155,6 +160,12 @@ func (s *StartFacingSuite) TestTheStartRefusesByName() {
 				s.Contains(e.Message, "n|ne|e|se|s|sw|w|nw", "and lists the eight that exist")
 			}
 		}
+	})
+
+	s.Run("the load refuses it too, by the same path, before any bearing", func() {
+		_, err := dungeonspec.Load([]byte(s.withStart("start: { at: [1, 3], facing: northeast }\n")))
+		s.Require().ErrorIs(err, dungeonspec.ErrBadSpec)
+		s.Contains(err.Error(), "start.facing")
 	})
 
 	s.Run("a direction that is merely the wrong case", func() {

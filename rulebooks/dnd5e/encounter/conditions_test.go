@@ -524,3 +524,51 @@ func (s *sightingConditionsSuite) TestAConditionsOnlyChangeStillTellsWatchers() 
 	}
 	s.Equal([]string{string(goblin)}, changed)
 }
+
+// TestATurningAttackStillAnnouncesItsTargetsNewConditions is F2's finding on
+// rpg-toolkit#2073: an attack that turns its attacker refreshes every
+// watcher's testimony, and the target whose conditions changed in the same
+// train is rewritten too — so the watcher's sighted beat must name the
+// target, not only the attacker it was refreshed for. Here the goblin, seated
+// facing the unstated 180, swings west at bob (a turn to 270) while bob
+// gains guiding bolt.
+func (s *sightingConditionsSuite) TestATurningAttackStillAnnouncesItsTargetsNewConditions() {
+	story, err := s.enc.Story(&encounter.StoryInput{Audience: alice})
+	s.Require().NoError(err)
+	seen := len(story)
+
+	s.table.held[bob] = heldSet(encounter.ConditionKey{ConditionRef: guidingBolt, SourceID: clericSource})
+	_, err = recordOne(s.enc, &encounter.RecordInput{
+		Kind: encounter.OutcomeStruck, Actor: goblin, Targets: []encounter.MemberID{bob},
+	})
+	s.Require().NoError(err)
+
+	members, err := s.enc.Members()
+	s.Require().NoError(err)
+	for _, m := range members {
+		if m.ID == goblin {
+			s.Require().InDelta(270.0, m.Facing, 1e-9, "the goblin turned toward bob")
+		}
+	}
+	b, _ := s.observed(s.enc, bob)
+	s.Equal(heldSet(encounter.ConditionKey{ConditionRef: guidingBolt, SourceID: clericSource}), b.Conditions,
+		"alice's testimony of bob was rewritten")
+
+	story, err = s.enc.Story(&encounter.StoryInput{Audience: alice})
+	s.Require().NoError(err)
+	changed := map[string]bool{}
+	for _, entry := range story[seen:] {
+		var beat struct {
+			Beat    string   `json:"beat"`
+			Changed []string `json:"changed"`
+		}
+		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		if beat.Beat == encounter.BeatSighted {
+			for _, id := range beat.Changed {
+				changed[id] = true
+			}
+		}
+	}
+	s.True(changed[string(bob)], "alice is told to look again at bob, whose testimony the refresh rewrote")
+	s.True(changed[string(goblin)], "and at the goblin, who turned")
+}

@@ -797,8 +797,9 @@ func monsterValues(monsters []RoomMonsterSource, add errSink) {
 			}
 		}
 		// The facing word, when authored, is one of the eight true-compass
-		// names — the same [facings] set the prop path speaks. The value is
-		// carried verbatim and never turned into an angle.
+		// names — the same [facings] set the prop path speaks — refused here,
+		// by the author's path, before the compile lowers it to a bearing
+		// (facing.go).
 		if m.StartingCell.Facing != "" && !facings[m.StartingCell.Facing] {
 			add(p+".startingCell.facing", fmt.Sprintf("%q is not a compass direction: a facing is one of n|ne|e|se|s|sw|w|nw", m.StartingCell.Facing))
 		}

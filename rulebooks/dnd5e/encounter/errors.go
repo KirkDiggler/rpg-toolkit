@@ -31,6 +31,13 @@ var (
 	// duplicate; the member's facts are what is wrong.
 	ErrBadMember = errors.New("encounter: member cannot be seated")
 
+	// ErrBadFacing is returned for a facing that is not one: a stated bearing
+	// outside [0, 360) or not finite, or a compass word that is not one of the
+	// eight (rpg-project#582, sneaking design R13). A member stated with one
+	// is refused with ErrBadMember beside it; a stored one with
+	// ErrInvalidData beside it.
+	ErrBadFacing = errors.New("encounter: not a facing")
+
 	// ErrNotMember is returned when an entity is not a member of this encounter.
 	ErrNotMember = errors.New("encounter: not a member")
 

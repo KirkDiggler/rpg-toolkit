@@ -270,6 +270,31 @@ func (s *DirectiveTestSuite) TestADirectiveThatProvokesSaysSoToTheMover() {
 	s.Equal(thunderwaveRef, s.mover.calls[0].Cause, "it still says what moved them")
 }
 
+// TestAPushedCreatureKeepsItsFacing is the lead's ruling on
+// rpg-toolkit#2073: only a creature's own steps and intents turn it. A push
+// carries the goblin east, which a step of its own would turn it to (90);
+// shoved, it keeps the unstated 180 it was seated with. A rout — a directive
+// that provokes — is imposed all the same, and keeps it too.
+func (s *DirectiveTestSuite) TestAPushedCreatureKeepsItsFacing() {
+	for _, provokes := range []bool{false, true} {
+		enc := s.lineScene(false)
+		_, err := enc.Direct(context.Background(), encounter.DirectInput{
+			Mover: goblin, Cause: thunderwaveRef, Route: []spatial.Position{cellAt(2, 0), cellAt(3, 0)},
+			Provokes: provokes,
+		})
+		s.Require().NoError(err)
+		s.Require().Equal(cellAt(3, 0), s.cellOfMember(goblin), "the directive moved it")
+
+		members, err := enc.Members()
+		s.Require().NoError(err)
+		for _, m := range members {
+			if m.ID == goblin {
+				s.Equal(encounter.UnstatedFacing, m.Facing, "provokes=%v: a moved creature did not turn", provokes)
+			}
+		}
+	}
+}
+
 // TestAChosenWalkIsNeitherForcedNorCaused.
 //
 // THE ZERO VALUE HAS TO BE THE WALK. Every existing Mover call in this module

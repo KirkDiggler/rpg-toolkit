@@ -617,6 +617,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		if err := validateMemberFacts(memberFacts{
 			ID:            m.ID,
 			AppearanceRef: m.AppearanceRef,
+			Facing:        m.Facing,
 			Options:       m.Options, Table: m.Table,
 		}); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
@@ -823,6 +824,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			Kind:           mi.Kind,
 			Name:           mi.Name,
 			AppearanceRef:  mi.AppearanceRef,
+			Facing:         seedFacing(mi.Facing),
 			Options:        cloneOptions(mi.Options),
 			Table:          cloneTable(mi.Table),
 			Temper:         mi.Temper,
@@ -1084,6 +1086,7 @@ func (e *Encounter) placementOf(record *memberRecord) (Member, error) {
 		Name:           record.Name,
 		Region:         region,
 		Position:       cell,
+		Facing:         record.Facing,
 		Table:          cloneTable(record.Table),
 		Temper:         record.Temper,
 		BlocksMovement: record.BlocksMovement,
@@ -1753,6 +1756,7 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 		// range variable.
 		isDown := down[subjectID]
 		blocksMovement := e.members[subjectID].BlocksMovement
+		facing := e.members[subjectID].Facing
 		payload, perr := encodeSighting(SightTestimony{
 			State:          LocationKnown,
 			Position:       cell,
@@ -1761,6 +1765,10 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 			Down:           &isDown,
 			BlocksMovement: &blocksMovement,
 			AppearanceRef:  e.members[subjectID].AppearanceRef,
+			// FACING IS SEEN, beside where (design R13): snapshotted into
+			// the one payload this subject is encoded into this pass, so a
+			// memory keeps the facing it last saw.
+			Facing: &facing,
 		})
 		if perr != nil {
 			return nil, fmt.Errorf("encode sight testimony: %w", perr)
@@ -1988,6 +1996,7 @@ func (e *Encounter) validateJoin(in *JoinInput) error {
 	if err := validateMemberFacts(memberFacts{
 		ID:            in.Member,
 		AppearanceRef: in.AppearanceRef,
+		Facing:        in.Facing,
 		Options:       in.Options, Table: in.Table,
 	}); err != nil {
 		return fmt.Errorf("join: %w", err)
@@ -2073,6 +2082,7 @@ func (e *Encounter) admitMember(in *JoinInput) (*memberRecord, *JoinOutput, erro
 		Kind:           in.Kind,
 		Name:           in.Name,
 		AppearanceRef:  in.AppearanceRef,
+		Facing:         seedFacing(in.Facing),
 		Options:        cloneOptions(in.Options),
 		Table:          cloneTable(in.Table),
 		Temper:         in.Temper,

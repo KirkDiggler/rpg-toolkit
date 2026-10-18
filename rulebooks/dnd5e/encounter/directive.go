@@ -646,7 +646,9 @@ func (e *Encounter) Direct(ctx context.Context, in DirectInput) (DirectOutput, e
 	audience := e.audienceFor(subjectBeat, in.Mover)
 	at := uint64(e.clock.ToData().HighWater)
 
-	res, err := e.walkPath(ctx, in.Mover, m, in.Route, audience, at, in.Cause, !in.Provokes)
+	// IMPOSED: whatever moved them, the mover did not turn to walk it, so it
+	// keeps the facing it had (facing.go).
+	res, err := e.walkPath(ctx, in.Mover, m, in.Route, audience, at, in.Cause, !in.Provokes, true)
 	if err != nil {
 		return DirectOutput{}, fmt.Errorf("direct %q: %w", in.Mover, err)
 	}

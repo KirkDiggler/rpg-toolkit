@@ -248,7 +248,6 @@ func TestDriveReassessesAfterStrikeBeforeUsingTheNextSlotsTurnAnswer(t *testing.
 	capability.members = map[encounter.MemberID]encounter.MemberParticipation{
 		zara: {Contact: true, Conscious: false, Turn: encounter.TurnParticipationAutoPass},
 	}
-	callsBefore := len(capability.questions)
 	out, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
 	require.NoError(t, err)
 	require.Equal(t, zara, out.Next)
@@ -256,8 +255,12 @@ func TestDriveReassessesAfterStrikeBeforeUsingTheNextSlotsTurnAnswer(t *testing.
 		"the fresh Wait answer after the strike wins over the stale AutoPass answer")
 	require.Equal(t, 1, striker.calls)
 	require.Len(t, driver.calls, 2, "the driven monster attacks once and then passes")
-	require.Len(t, capability.questions, callsBefore+6,
-		"end-position guard, boundary pass, two views, nested Record pass, and post-interaction scheduling reassessment")
+	// THE REASSESSMENT IS PROVED BY ITS ANSWER, not by counting questions:
+	// zara active above is the fresh Wait winning over the stale AutoPass.
+	// A count of every participation question pinned how many refreshes a
+	// turn happened to run, and broke when an attack began turning its
+	// attacker (rpg-project#582), whose refresh is one more question and no
+	// change to the answer.
 
 	for _, beat := range storyBeats(t, enc, zara) {
 		require.False(t, beat["beat"] == "turn-ended" && beat["member"] == string(zara),

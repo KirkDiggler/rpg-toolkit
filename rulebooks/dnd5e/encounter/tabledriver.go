@@ -246,7 +246,9 @@ func (d TableDriver) towardIntent(view MonsterView, entry Answer) TurnIntent {
 		path = path[:cells]
 	}
 
-	return Move{Path: append([]spatial.Position(nil), path...)}
+	// THE WALK NAMES WHO IT CLOSES ON, so the creature ends it facing them
+	// ([Move.Target]).
+	return Move{Path: append([]spatial.Position(nil), path...), Target: target}
 }
 
 // towardAlreadyInReach is the sentence a `toward` whose target is already

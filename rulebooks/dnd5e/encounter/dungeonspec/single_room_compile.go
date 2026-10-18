@@ -317,6 +317,9 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 	if err != nil {
 		return Compiled{}, err
 	}
+	if monsters, err = lowerFacings(monsters); err != nil {
+		return Compiled{}, err
+	}
 	field.Start = &encounter.FieldStart{At: starts[0]}
 	// AND THE WAYS OUT RIDE THE FIELD, for the start's reason ([Compiled.Field]):
 	// they are part of the world the composition runs, so a copy kept only on

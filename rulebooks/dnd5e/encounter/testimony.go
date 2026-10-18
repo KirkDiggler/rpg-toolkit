@@ -49,7 +49,7 @@ const (
 //
 // Unknown testimony means the subject is known to exist without being placed —
 // so there is nobody in view to have a standing or a pair of hands. Unknown
-// therefore carries no position, no standing, no equipment and no conditions,
+// therefore carries no position, no standing, no equipment, no conditions and no facing,
 // and encoding one that does is refused rather than silently trimmed.
 //
 // # Each fact says whether it was observed at all
@@ -102,6 +102,14 @@ type SightTestimony struct {
 	//   - [Encounter.ToData], the persisted blob, which a host stores and
 	//     hands back to [LoadEncounter], never to a client.
 	Conditions *ConditionSet
+
+	// Facing is the way the subject was seen facing: a bearing in degrees, 0
+	// is map north, clockwise, in [0, 360) (rpg-project#582, sneaking design
+	// R13). Nil means facing was not observed — testimony written before
+	// sightings carried one — which is not the same as any bearing. A memory
+	// keeps the facing it last saw, as it keeps the hands; nobody reads a
+	// subject's facing live.
+	Facing *float64
 }
 
 type handsWire struct {
@@ -120,6 +128,7 @@ type sightWire struct {
 	// Conditions is a pointer to a slice so that nil (not observed) omits the
 	// key while an observed empty set encodes [].
 	Conditions *[]ConditionKey `json:"conditions,omitempty"`
+	Facing     *float64        `json:"facing,omitempty"`
 }
 
 // sightPayloadFields is the complete set of keys canonical sight testimony may
@@ -128,6 +137,7 @@ type sightWire struct {
 // a testimony that then reads as confident.
 var sightPayloadFields = map[string]struct{}{
 	"state": {}, "x": {}, "y": {}, "down": {}, "equipment": {}, "blocks_movement": {}, "conditions": {}, "appearance_ref": {},
+	"facing": {},
 }
 
 // EncodeSightTestimony encodes sight testimony in the canonical tagged wire
@@ -138,10 +148,13 @@ func EncodeSightTestimony(testimony SightTestimony) ([]byte, error) {
 	if err := validateAppearanceRef(testimony.AppearanceRef); err != nil {
 		return nil, err
 	}
+	if err := validateFacing(testimony.Facing); err != nil {
+		return nil, asInvalidData(err)
+	}
 	switch testimony.State {
 	case LocationKnown:
 		x, y := testimony.Position.X, testimony.Position.Y
-		wire := sightWire{State: string(LocationKnown), X: &x, Y: &y, Down: testimony.Down, BlocksMovement: testimony.BlocksMovement, AppearanceRef: testimony.AppearanceRef}
+		wire := sightWire{State: string(LocationKnown), X: &x, Y: &y, Down: testimony.Down, BlocksMovement: testimony.BlocksMovement, AppearanceRef: testimony.AppearanceRef, Facing: testimony.Facing}
 		if testimony.Equipment != nil {
 			wire.Equipment = &handsWire{
 				MainHand: testimony.Equipment.MainHand,
@@ -174,6 +187,9 @@ func EncodeSightTestimony(testimony SightTestimony) ([]byte, error) {
 		}
 		if testimony.Conditions != nil {
 			return nil, asInvalidData(fmt.Errorf("unknown location cannot carry conditions"))
+		}
+		if testimony.Facing != nil {
+			return nil, asInvalidData(fmt.Errorf("unknown location cannot carry facing"))
 		}
 		return json.Marshal(sightWire{State: string(LocationUnknown)})
 	default:
@@ -281,6 +297,13 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 	_, blocksPresent := fields["blocks_movement"]
 	_, conditionsPresent := fields["conditions"]
 	_, appearancePresent := fields["appearance_ref"]
+	_, facingPresent := fields["facing"]
+	// A present key must hold a bearing: "facing": null would decode as not
+	// observed while claiming the key, and a value outside [0, 360) is a
+	// facing no build writes.
+	if facingPresent && (wire.Facing == nil || validateFacing(wire.Facing) != nil) {
+		return SightTestimony{}, false
+	}
 	if appearancePresent && (wire.AppearanceRef == "" || validateAppearanceRef(wire.AppearanceRef) != nil) {
 		return SightTestimony{}, false
 	}
@@ -316,11 +339,13 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 			Equipment:      hands,
 			Conditions:     held,
 			AppearanceRef:  wire.AppearanceRef,
+			Facing:         wire.Facing,
 		}, true
 	case LocationUnknown:
 		// Nobody in view has a position, a standing, hands or conditions to
 		// observe.
-		if xPresent || yPresent || downPresent || equipmentPresent || blocksPresent || conditionsPresent || appearancePresent {
+		if xPresent || yPresent || downPresent || equipmentPresent || blocksPresent || conditionsPresent || appearancePresent ||
+			facingPresent {
 			return SightTestimony{}, false
 		}
 		return SightTestimony{State: LocationUnknown}, true
