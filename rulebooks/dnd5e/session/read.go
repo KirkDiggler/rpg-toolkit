@@ -495,11 +495,18 @@ func projectView(enc *encounter.Encounter, in *ViewInput) (*ViewOutput, error) {
 	if err != nil {
 		return nil, fmt.Errorf("view visible cells: %w", translate(err))
 	}
+	// THE RED FLOOR is the encounter's answer for this viewer, carried as
+	// given (sneaking R15): the session computes no zone.
+	zones, err := enc.WatchZonesFor(&encounter.WatchZonesInput{Member: encounter.MemberID(in.Member)})
+	if err != nil {
+		return nil, fmt.Errorf("view watch zones: %w", translate(err))
+	}
 	return &ViewOutput{
 		Sightings: out, Props: props, Doors: doors, Areas: projectAreas(enc, in.Member),
 		VisibleCells: visible.Cells,
 		// The viewer's own mode, the encounter's answer carried as given.
-		Sneaking: enc.Sneaking(encounter.MemberID(in.Member)),
+		Sneaking:   enc.Sneaking(encounter.MemberID(in.Member)),
+		WatchZones: projectWatchZones(zones.Zones),
 	}, nil
 }
 
@@ -985,4 +992,14 @@ func causeOf(cause encounter.DissolveCause) (DissolveCause, error) {
 	default:
 		return nil, fmt.Errorf("unknown dissolve cause %q: %w", cause.Kind(), ErrInvalidWorld)
 	}
+}
+
+// projectWatchZones copies the encounter's zones into the session's own
+// shape, field for field: same order, same cells (sneaking R15). Never nil.
+func projectWatchZones(zones []encounter.WatchZone) []WatchZone {
+	out := make([]WatchZone, 0, len(zones))
+	for _, z := range zones {
+		out = append(out, WatchZone{Watcher: string(z.Watcher), Cells: z.Cells})
+	}
+	return out
 }

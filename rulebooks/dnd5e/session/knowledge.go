@@ -33,6 +33,27 @@ type ViewOutput struct {
 	// the viewer, passed through unchanged. The mode is server state; a
 	// client draws its toggle from this and never keeps a flag of its own.
 	Sneaking bool `json:"sneaking"`
+
+	// WatchZones is the red floor for this observer (rpg-project#619, design
+	// R15): the encounter's [encounter.Encounter.WatchZonesFor] answer for the
+	// viewer, passed through unchanged — the same zones in the same order, each
+	// with the same cells — one per watcher the viewer holds live, cut to the
+	// floor the viewer knows. Never nil; empty unless the observer is
+	// sneaking. This package adds no zone logic of its own.
+	WatchZones []WatchZone `json:"watch_zones"`
+}
+
+// WatchZone is the floor one watcher would catch the viewer on, as far as
+// the viewer knows the floor (sneaking R15). The session owns the view's
+// shape; the encounter's zone type stays inside the boundary, and this is
+// its values copied field for field, never recomputed.
+type WatchZone struct {
+	// Watcher names the watcher whose zone this is, as Sighting.Subject does.
+	Watcher string `json:"watcher"`
+
+	// Cells are the zone's cells exactly as the encounter answered them:
+	// sorted in the map's coordinate order, never nil, possibly empty.
+	Cells []spatial.Position `json:"cells"`
 }
 
 // PropSighting is the latest observation of one mutable prop. Exactly one shape
