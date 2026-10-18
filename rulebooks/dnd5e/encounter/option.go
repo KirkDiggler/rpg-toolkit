@@ -419,26 +419,40 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 		options = target.Options
 	}
 
+	// SPEAKING SHOWS YOU (sneaking R7, lead ruling on rpg-toolkit#2078): the
+	// mode ends BEFORE the audience is asked, so a line said to a watcher the
+	// speaker beat is heard and witnessed rather than refused unwitnessed. A
+	// refusal below puts the mode back: a refused verb changes nothing (R5).
+	wasSneaking, sneakVerdicts := e.Sneaking(in.Actor), copySneakVerdicts(e.sneakVerdicts)
+	e.endSneaking(in.Actor)
+	refuse := func(err error) (*SpeakOutput, error) {
+		if wasSneaking {
+			e.members[in.Actor].Sneaking = true
+			e.sneakVerdicts = sneakVerdicts
+		}
+		return nil, err
+	}
+
 	where, witnesses, err := e.audienceOf(in.Actor)
 	if err != nil {
-		return nil, fmt.Errorf("speak: %w", err)
+		return refuse(fmt.Errorf("speak: %w", err))
 	}
 
 	if in.Prop != "" {
 		options, err = e.speakableProp(in.Actor, in.Prop)
 		if err != nil {
-			return nil, fmt.Errorf("speak: %w", err)
+			return refuse(fmt.Errorf("speak: %w", err))
 		}
 	}
 	option, ok := e.optionOffered(in.Actor, options, in.OptionID)
 	if !ok {
-		return nil, fmt.Errorf("speak: %q is not a line this speaker is offered: %w", in.OptionID, ErrNoOption)
+		return refuse(fmt.Errorf("speak: %q is not a line this speaker is offered: %w", in.OptionID, ErrNoOption))
 	}
 	if !slices.ContainsFunc(option.Check, func(a CheckApproach) bool { return a.Ability == in.Skill }) {
-		return nil, fmt.Errorf("speak: line %q offers no %q approach: %w", in.OptionID, in.Skill, ErrNoOption)
+		return refuse(fmt.Errorf("speak: line %q offers no %q approach: %w", in.OptionID, in.Skill, ErrNoOption))
 	}
 	if in.Target != "" && !slices.Contains(witnesses, in.Target) {
-		return nil, fmt.Errorf("speak: target %q cannot see the actor: %w", in.Target, ErrUnwitnessed)
+		return refuse(fmt.Errorf("speak: target %q cannot see the actor: %w", in.Target, ErrUnwitnessed))
 	}
 
 	at := uint64(e.clock.ToData().HighWater)

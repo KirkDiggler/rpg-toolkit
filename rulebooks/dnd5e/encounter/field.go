@@ -1454,6 +1454,12 @@ type memberRecord struct {
 	// where an entity stands and nothing about which way it is turned.
 	Facing float64
 
+	// Sneaking is whether this player is sneaking (sneak.go, design R6):
+	// set by [Encounter.SetSneaking], cleared by every verb that shows the
+	// member and by a fight engaging it, and persisted. Always false for a
+	// non-player: a monster never sneaks.
+	Sneaking bool
+
 	// Faction is the faction the caller NAMED, or empty for the kind's
 	// default — stored as given, never resolved here, so a member in the
 	// default faction persists byte-identically to one from before factions

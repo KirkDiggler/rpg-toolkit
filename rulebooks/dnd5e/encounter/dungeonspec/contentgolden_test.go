@@ -219,6 +219,7 @@ func TestEveryContentFileCompilesToItsCommittedPicture(t *testing.T) {
 		"reference-raider-camp.yaml",
 		"reference-tomb-heirloom.yaml",
 		"reference-tomb.yaml",
+		"sneak-site.yaml",
 		"tomb-faced-props.yaml",
 		"tomb-second-skeleton.yaml",
 		"world-builder-v3.yaml",

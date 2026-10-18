@@ -2432,6 +2432,10 @@ func (e *Encounter) formWithParticipation(
 	// coherent encounter — but a failure here still returns, and the caller's
 	// obligation is doc.go's: drop the encounter unsaved.
 	for _, id := range in.Order {
+		// A FIGHT ENGAGING A SNEAKER ENDS THE MODE (sneaking R7), here and
+		// before any turn budget below asks for the member's speed, so a
+		// caught sneaker fights at full speed.
+		e.endSneaking(id)
 		if _, lerr := e.clock.Leave(&clock.LeaveInput{ID: core.EntityID(id)}); lerr != nil {
 			return nil, fmt.Errorf("form member %q world clock: %w", id, lerr)
 		}
@@ -2604,6 +2608,8 @@ func (e *Encounter) transfer(in *TransferInput, driveAfterRemove bool) (*Transfe
 		}); terr != nil {
 			return nil, fmt.Errorf("transfer %q into bubble: %w", in.Member, terr)
 		}
+		// A straggler joining a fight is engaged by it too (sneaking R7).
+		e.endSneaking(in.Member)
 	case ClockWorld:
 		if bubble == nil {
 			return nil, fmt.Errorf("transfer %q: %w", in.Member, ErrNoBubble)

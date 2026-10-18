@@ -67,8 +67,14 @@
 # the front door, the troupe, the troupe blown, turning the garrison, the
 # king deposed, the king slain, the scout who talks to the wrong guard, the
 # cell lock picked, and the orders carried to the captain.
-# THE KITCHEN-DOOR ROUTES (sneaking past the keep patrol, and the forced
-# door the knights hear) wait on wave C (rpg-project#606).
+# THE KITCHEN-DOOR ROUTES (rpg-project#606, sneaking S1). The kitchen's one
+# door into the great hall is LOCKED: thieves' tools at DC 13 pick it
+# silently, Strength at DC 15 forces it and crashes. The hall guard walks a
+# loop across the great hall between the kitchen door and the throne door.
+# A party that declares sneaking in the kitchen, picks the door and crosses
+# the hall past him reaches the throne door unseen
+# (castle_king_kitchen_test.go). Every other route out of the kitchen picks
+# the lock first.
 #
 # STORED IS AUTHORED. Each stat block under `templates:` says scores, hit
 # dice, armor, proficiency, skills and weapons — never hit points, armor
@@ -256,6 +262,23 @@ tables:
         fact: alarm-raised
       - weight: 1
         hold: {}
+  hall-patrol:
+    time:
+      # Hand edit: the hall guard is storm-the-keep's soldier when the
+      # garrison turns, and until then walks a loop across the great hall
+      # between the kitchen door and the throne door (sneaking S1,
+      # rpg-project#606): the watcher a party sneaking from the kitchen to the
+      # throne room has to get past.
+      - when: [{ fact: guards-turned }, { enemy: none }]
+        toward: { at: { q: 10, r: -19 } }
+      - when:
+          enemy: reach
+        attack: enemy
+      - when:
+          enemy: seen
+        toward: enemy
+      - when: { enemy: none }
+        toward: { path: [{ q: -2, r: -12 }, { q: 6, r: -12 }, { q: 6, r: -15 }, { q: 1, r: -15 }] }
   storm-the-keep:
     time:
       # Hand edit: a turned garrison marches on the throne room until it sees
@@ -7009,7 +7032,7 @@ room:
         table: gate-patrol
       hall-1:
         faction: garrison
-        table: storm-the-keep
+        table: hall-patrol
       captain:
         faction: garrison
         table: storm-the-keep
@@ -7246,6 +7269,15 @@ room:
         closed: true
       kitchen-wall-door:
         closed: true
+        # Hand edit (sneaking S1, rpg-project#606): the use case's forced
+        # door. Picked with thieves' tools, it opens silently; forced with
+        # Strength, it crashes.
+        locked:
+          - ability: str
+            dc: 15
+          - ability: dex
+            tool: dnd5e:item:thieves-tools
+            dc: 13
       chapel-wall-door:
         closed: true
       throne-wall-door:

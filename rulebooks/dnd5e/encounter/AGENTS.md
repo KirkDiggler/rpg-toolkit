@@ -82,7 +82,7 @@ supplied capability, never as a new import.** Every one of these is required at
 | how that member's swing resolves | `Striker` ([turndriver.go:473](./turndriver.go#L473)) | `ErrNoStriker` |
 | who should hear about a step before it happens, and what a FORCED one means | `Mover` ([turndriver.go](./turndriver.go)), asked with a [`MoveStep`](./turndriver.go) | `ErrNoMover` |
 | who should hear a turn or fight boundary | `Announcer` ([turndriver.go:427](./turndriver.go#L427)) | `ErrNoAnnouncer` |
-| did the discovery check beat the hidden thing's DC — rolled automatically when a placed player comes within a hex | `CheckResolver` ([conceal.go](./conceal.go)), asked through `ResolveDiscoveryCheck` | `ErrNoCheckResolver`, when the field declares a concealment |
+| did the discovery check beat the hidden thing's DC — rolled automatically when a placed player comes within a hex — and did a sneaker's Stealth beat a watcher's passive Perception ([sneak.go](./sneak.go)) | `CheckResolver` ([conceal.go](./conceal.go)), asked through `ResolveDiscoveryCheck` | `ErrNoCheckResolver`, when the field declares a concealment; held whenever supplied, and `SetSneaking` refuses without it |
 | who perceives this open hidden door | `Witness` ([conceal.go](./conceal.go)) | `ErrNoWitness`, same condition |
 
 One actor is asked but NOT required: `Disengager` ([turndriver.go](./turndriver.go)) makes a
