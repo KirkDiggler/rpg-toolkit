@@ -333,6 +333,8 @@ func TestConeSite(t *testing.T) {
 	s.walkTo(behind)
 	require.Equal(t, behind, positionOf(t, s.enc, coneSiteRogue))
 	require.True(t, s.seesLive(coneSiteKnight, coneSiteRogue), "a knight with no passive sees the sneaker behind it")
+	require.True(t, s.zoneOf(coneSiteKnight)[behind],
+		"with no passive the knight gets no cone: its red floor is its sight, the cell behind it included (R29)")
 	delete(s.deaf, coneSiteKnight)
 	stillBehind := castleCell(4, 2)
 	require.Greater(t, offArc(0, coneBearing(knightAt, stillBehind)), 60.0, "the next cell is outside the front third")

@@ -97,13 +97,16 @@ func TestMadKingTheHallGuardsBackIsNotWatched(t *testing.T) {
 	// Into the hall behind his back, a step at a time.
 	inHall := door
 	inHall.X += 2
+	checkedInHall := false
 	for x := door.X - 1; x <= inHall.X; x++ {
 		step(spatial.Position{X: x, Y: door.Y})
 		if !behindHim() {
 			break
 		}
 		requireUnwatched("walking into the hall behind him")
+		checkedInHall = checkedInHall || x > door.X
 	}
+	require.True(t, checkedInHall, "at least one hall cell was walked behind his back and checked")
 
 	// THE PATROL TURNS BACK: the roll fires against him, from his front.
 	inside := s.at(hero)
