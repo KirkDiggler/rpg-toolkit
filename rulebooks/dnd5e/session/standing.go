@@ -79,6 +79,28 @@ type standingSeam struct {
 	// Nil is legal and means "no session-scoped sheets", which is what a load
 	// with no session record behind it has: nothing exists yet to hold anything.
 	data *SessionData
+
+	// live is the encounter this verb loaded, filled in once the load that
+	// needs these seams has returned (the chicken-and-egg [strikerSeam]
+	// names). Shared by pointer, so every copy of this seam — the sheet seam
+	// beside it included — reads the same one. Read only by
+	// [sheetSeam.factsOf], for the one fact the session answers from the
+	// encounter's own state: whether a member is sneaking (design R8).
+	live *liveEncounter
+}
+
+// liveEncounter is the slot [standingSeam.live] points at: nil until the
+// verb's load returns, then the encounter that load built, replaced when a
+// verb adopts a world back from a resolution ([Manager.adopt]).
+type liveEncounter struct {
+	enc *encounter.Encounter
+}
+
+// sneaking reports whether the verb's loaded encounter holds member sneaking.
+// False before the load has returned: a world still being built has asked
+// nobody to sneak yet.
+func (l *liveEncounter) sneaking(member encounter.MemberID) bool {
+	return l != nil && l.enc != nil && l.enc.Sneaking(member)
 }
 
 // standingFor builds the participation capability for one verb. Returning the
@@ -90,7 +112,7 @@ func (m *Manager) standingFor(
 	for id, kind := range kinds {
 		copiedKinds[id] = kind
 	}
-	return standingSeam{ctx: ctx, sheets: m.sheetsFor(nil), data: data, kinds: copiedKinds}
+	return standingSeam{ctx: ctx, sheets: m.sheetsFor(nil), data: data, kinds: copiedKinds, live: &liveEncounter{}}
 }
 
 // Assess returns the provider-derived scheduling/contact answer, Down

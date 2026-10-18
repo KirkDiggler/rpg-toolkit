@@ -1214,6 +1214,7 @@ func (m *Manager) adopt(ctx context.Context, scope *writeScope, world encounter.
 		return fmt.Errorf("%q: %w: %v", scope.encounter, ErrInvalidWorld, err)
 	}
 	scope.enc = enc
+	scope.standing.live.enc = enc
 	return nil
 }
 

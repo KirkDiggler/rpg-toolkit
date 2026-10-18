@@ -35,6 +35,14 @@ import (
 // stat block changed is read at the next ask without any verb owning a
 // refresh. This package's own push budget (castmove.go) asks the same answer.
 
+// monsterWatchResetCells is the seeded re-arm distance, in cells, for a
+// monster watcher (rpg-project#606, design R10 and open item O6): a sneaker
+// must stand this far outside the monster's zone before the next entry rolls
+// again, so a zone edge pacing over a still sneaker does not roll every step.
+// A content fact with nowhere to live yet — the stat block states no watch
+// terms — and it leaves when `senses` can say it.
+const monsterWatchResetCells = 2
+
 // sheetSeam answers the composition's sheet and sight questions out of the
 // sheets this one verb holds.
 //
@@ -122,10 +130,22 @@ func (s sheetSeam) factsOf(id encounter.MemberID) (encounter.SheetFacts, error) 
 		if passiveErr != nil {
 			return encounter.SheetFacts{}, passiveErr
 		}
+		speed := projected.Sheet.SpeedFeet
+		// HALF SPEED WHILE SNEAKING (rpg-project#606, design R8): the cost
+		// is time, so the answer every pace and budget asks for is the
+		// session's, and the encounter never learns the rule. Integer feet,
+		// rounded down. A fight engaging the sneaker ends the mode before
+		// any turn budget asks (R7), so only free-roam pace sees the half.
+		if s.live.sneaking(id) {
+			speed /= 2
+		}
 		return encounter.SheetFacts{
-			SpeedFeet:         projected.Sheet.SpeedFeet,
+			SpeedFeet:         speed,
 			Actions:           memberActionsOf(projected.Actions),
 			PassivePerception: passive,
+			// A character is never a watcher (design R9), so it re-arms
+			// nobody; zero is the encounter's no-hysteresis answer.
+			WatchResetCells: 0,
 		}, nil
 	case held.monster != nil:
 		bonusDisengage, err := bonusDisengageOf(held.monster, registryName)
@@ -145,6 +165,11 @@ func (s sheetSeam) factsOf(id encounter.MemberID) (encounter.SheetFacts, error) 
 			// reason: it is a stored fact, and loading a sheet to read one
 			// field back would be the same number by a longer road.
 			PassivePerception: held.monster.Senses.PassivePerception,
+			// How far a sneaker must stand outside this watcher's zone
+			// before the pair re-arms (design R10, O6). SEEDED HERE until
+			// content states it on the stat block; the encounter picks no
+			// distance of its own.
+			WatchResetCells: monsterWatchResetCells,
 		}, nil
 	default:
 		return encounter.SheetFacts{}, nil

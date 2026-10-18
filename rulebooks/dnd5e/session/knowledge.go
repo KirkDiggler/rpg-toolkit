@@ -27,6 +27,12 @@ type ViewOutput struct {
 	// member's atlas cells. A placed member always has its own cell; an
 	// unplaced member has none. Derived on read and never stored.
 	VisibleCells []spatial.Position `json:"visible_cells"`
+
+	// Sneaking is whether this observer is sneaking now (rpg-project#606,
+	// design R6): the encounter's [encounter.Encounter.Sneaking] answer for
+	// the viewer, passed through unchanged. The mode is server state; a
+	// client draws its toggle from this and never keeps a flag of its own.
+	Sneaking bool `json:"sneaking"`
 }
 
 // PropSighting is the latest observation of one mutable prop. Exactly one shape

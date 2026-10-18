@@ -93,6 +93,13 @@ func (m *Manager) prepareExploration(ctx context.Context, scope *writeScope, ext
 		// exactly like a legacy shared record.
 		sharing := resolveDiscoverySharing(profile, found)
 		scope.explorationSharing[id] = sharing
+		// EVERY PLAYER IS STAGED, ON EVERY WRITE VERB, and that is also what
+		// a sneaker's roll needs (rpg-project#606, design R10): the
+		// encounter asks the check seam for a sneaker's Stealth inside
+		// whatever verb produced the entry — another player's walk, a
+		// monster's turn, a door opening — so the sneaker's record must be
+		// staged even when the verb is somebody else's. No second staging
+		// path: a sneaker is a player, and this loop already holds them all.
 		if err = m.stageCheck(ctx, scope, "discovery observer", id); err != nil {
 			return err
 		}
