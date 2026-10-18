@@ -15,7 +15,7 @@ for why the split exists at all.
 return — no setup call, no teardown, no ordering for the caller to get
 wrong. They include `Move`, `Attack`, `Cast`, `Activate`, `DeathSave`, `EndTurn`, `React`,
 `Loot`, `Hold`, `Trade`, `Interact`, `Speak`, `OpenDoor`, `CloseDoor`, `Unlock`, `Join`,
-`Exit`, `End`, `Launch`, `Rest`, `Equip`, `Unequip`, `PlaceNPC`, `Dissolve`, `Unpack`,
+`Exit`, `End`, `Launch`, `Rest`, `Equip`, `Unequip`, `PlaceNPC`, `Dissolve`, `Unpack`, `SetSneaking`,
 `LevelUp`, and the reads `Afford`, `Roster`, `Atlas`, `AtlasOf`, `Status`,
 `View`, `Story`, `Where`, `Turn`, `Doors`, `NextLevel`. A verb is a file; the
 file is the unit of ownership.

@@ -1485,6 +1485,17 @@ const (
 	// sheet seam), so there is no roll to show.
 	EventHeard EventKind = "heard"
 
+	// EventSnuck is A SNEAKER'S STEALTH ROLL against one watcher, made as
+	// the sneaker crossed into that watcher's zone (rpg-project#606, design
+	// R10, R12). Always recipient-scoped to exactly one member, the mover:
+	// the composition appends it with the sneaker alone as its audience, so
+	// the watcher and every other player never receive it.
+	//
+	// THE WATCHER IS NAMED ONLY WHEN THE MOVER SEES IT. A roll against a
+	// creature the sneaker cannot see still arrives, with an empty Watcher,
+	// so the player watches the check without learning who made it.
+	EventSnuck EventKind = "snuck"
+
 	// EventConcealmentRevealed is a concealment entering THIS RECIPIENT's
 	// knowledge — their own search, a looted record naming it, crossing
 	// into it, perceiving one of its doors standing open, or seeing a
@@ -2995,6 +3006,36 @@ type HeardBody struct {
 }
 
 func (HeardBody) isEventBody() {}
+
+// SnuckBody is [EventSnuck]'s typed body: one Stealth roll, as the sneaker
+// who made it is told.
+//
+// CARRIED, NEVER COMPARED: Beaten is the rulebook's verdict, and a client
+// never compares Total to DC itself.
+type SnuckBody struct {
+	// Member is the sneaker who rolled — always this event's recipient.
+	Member string `json:"member"`
+
+	// Watcher is the watcher the roll was against, or empty when the mover
+	// does not see that watcher (R12).
+	Watcher string `json:"watcher,omitempty"`
+
+	// DC is the difficulty the roll was against: the watcher's passive
+	// Perception, as the composition faced it.
+	DC int `json:"dc"`
+
+	// Total is the sneaker's Stealth total, as the resolver asserted it.
+	Total int `json:"total"`
+
+	// Beaten is whether the roll beat the DC.
+	Beaten bool `json:"beaten"`
+
+	// Calculation is the roll's sourced arithmetic, or nil when the
+	// resolver recorded none.
+	Calculation *RollCalculation `json:"calculation,omitempty"`
+}
+
+func (SnuckBody) isEventBody() {}
 
 // RevealedDoor is one door a concealment hid, as the recipient's own door
 // list and atlas now carry it — the patch for both cached reads.

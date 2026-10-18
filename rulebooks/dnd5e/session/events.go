@@ -357,6 +357,12 @@ func kindFor(beat string) EventKind {
 	// so routing it is the per-recipient Story's job and not this switch's.
 	case encounter.BeatHeard:
 		return EventHeard
+	// A sneaker's Stealth roll against one watcher (rpg-project#606, R12).
+	// Named by the composition's own exported constant for BeatAnswered's
+	// reason; the audience is the mover alone, set where the composition
+	// appends it, so routing it is the per-recipient Story's job.
+	case encounter.BeatSnuck:
+		return EventSnuck
 	// A driven word that did nothing — a routed walk that moved nobody
 	// (rpg-project#465), an attack refused, or a `toward` already in reach
 	// (rpg-toolkit#2000). Named by the
@@ -801,6 +807,15 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		return cellsRevealedBody(payload)
 	case EventRoomRevealed:
 		return roomRevealedBody(payload)
+	case EventSnuck:
+		var body SnuckBody
+		// THE MEMBER GATES, AND THE WATCHER CANNOT: the composition names
+		// the watcher only when the mover sees it after the roll (R12), so
+		// an empty watcher is the ordinary unseen case, not a gap.
+		if json.Unmarshal(payload, &body) != nil || body.Member == "" {
+			return nil
+		}
+		return body
 	case EventDiscoveryChecked:
 		var body DiscoveryCheckedBody
 		if json.Unmarshal(payload, &body) != nil || body.Member == "" || body.Ability == "" {

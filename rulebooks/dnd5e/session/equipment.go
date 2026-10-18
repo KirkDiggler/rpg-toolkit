@@ -170,5 +170,8 @@ func (s equipmentSeam) Equipment(
 // who is down, and what is in their hands. They only share where the sheets are
 // and which verb is asking.
 func equipmentBeside(s standingSeam) equipmentSeam {
-	return equipmentSeam(s)
+	// Field by field, because the standing seam also carries the live
+	// encounter slot only the sheet seam reads; the kinds map and the
+	// session record are still shared, not copied.
+	return equipmentSeam{ctx: s.ctx, sheets: s.sheets, kinds: s.kinds, data: s.data}
 }

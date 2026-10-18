@@ -498,6 +498,8 @@ func projectView(enc *encounter.Encounter, in *ViewInput) (*ViewOutput, error) {
 	return &ViewOutput{
 		Sightings: out, Props: props, Doors: doors, Areas: projectAreas(enc, in.Member),
 		VisibleCells: visible.Cells,
+		// The viewer's own mode, the encounter's answer carried as given.
+		Sneaking: enc.Sneaking(encounter.MemberID(in.Member)),
 	}, nil
 }
 
@@ -755,6 +757,7 @@ func (m *Manager) loadGivenWorld(
 		// match on but ours (S2).
 		return nil, 0, standingSeam{}, fmt.Errorf("%q: %w: %v", encID, ErrInvalidWorld, err)
 	}
+	standing.live.enc = enc
 	return enc, world.Log.NextSeq, standing, nil
 }
 
