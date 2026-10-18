@@ -162,3 +162,118 @@ func TestTowardSoundEndsFacingTheClang(t *testing.T) {
 	require.InDelta(t, stepBearing(t, end, clangAt), memberOf(t, enc, noiseKeen).Facing, 1e-9,
 		"the walk toward the sound ended facing where it rang")
 }
+
+// TestAHeardRoutedNamingAMemberIsRefused: [encounter.Routed.Heard] says the
+// anchor is a sound's cell, so a Heard Routed that names a member instead is
+// a malformed intent — the turn ends unwalked, as Pass would.
+func TestAHeardRoutedNamingAMemberIsRefused(t *testing.T) {
+	mover := &recordingMover{}
+	enc := facingFight(t, []encounter.MemberInput{
+		{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+		{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 0}},
+	}, &oneMemberDriver{member: goblin, intent: encounter.Routed{
+		Policy: encounter.MoveToward, Anchor: alice, Heard: true, Cause: facingRoutedCause,
+	}}, &scriptedStriker{kind: encounter.OutcomeMissed}, mover)
+	start := memberOf(t, enc, goblin).Position
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	require.NoError(t, err)
+	require.Empty(t, mover.calls, "the refused walk announced no step")
+	require.Equal(t, start, memberOf(t, enc, goblin).Position, "the goblin did not walk")
+	require.Equal(t, encounter.UnstatedFacing, memberOf(t, enc, goblin).Facing, "nor turn")
+}
+
+// TestAPausedWalkTowardASoundResumesFacingIt: a walk toward a heard sound
+// stops for a reaction window on its first step, and the resumed walk still
+// ends facing the sound's cell. The clang rang on alice's cell, so the walk
+// stops beside it; bob stands where an open approach would end, so the last
+// step (210) does not already point at the clang (270).
+func TestAPausedWalkTowardASoundResumesFacingIt(t *testing.T) {
+	members := []encounter.MemberInput{
+		{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+		{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 0}},
+		{ID: bob, Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 1}, BlocksMovement: true},
+	}
+	mover := &pausingMover{pauseAt: map[int]bool{0: true}}
+	driver := &soundWalkDriver{member: goblin, sound: alice}
+	enc := facingFight(t, members, driver, &scriptedStriker{kind: encounter.OutcomeMissed}, mover)
+	clang := memberOf(t, enc, alice).Position
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	require.NoError(t, err)
+	require.True(t, enc.Paused(), "precondition: the walk stopped for a window")
+
+	_, err = enc.Resume(context.Background())
+	require.NoError(t, err)
+	require.False(t, enc.Paused())
+
+	end := memberOf(t, enc, goblin).Position
+	last := mover.calls[len(mover.calls)-1]
+	toClang := stepBearing(t, end, clang)
+	require.NotEqual(t, stepBearing(t, last.From, last.To), toClang,
+		"precondition: the last step does not already point at the clang")
+	require.InDelta(t, toClang, memberOf(t, enc, goblin).Facing, 1e-9,
+		"the resumed walk ended facing where the sound rang")
+}
+
+// soundWalkDriver sends one member toward a heard sound that rang on another
+// member's cell, read off the view, on its first turn, and passes after.
+type soundWalkDriver struct {
+	member, sound encounter.MemberID
+	used          bool
+}
+
+func (d *soundWalkDriver) Act(view encounter.MonsterView) (encounter.Decision, error) {
+	if view.Self != d.member || d.used {
+		return encounter.Decision{Intent: encounter.Pass{}}, nil
+	}
+	d.used = true
+	for _, s := range view.Seen {
+		if s.ID == d.sound {
+			cell := s.Position
+
+			return encounter.Decision{Intent: encounter.Routed{
+				Policy: encounter.MoveToward, AnchorAt: &cell, Heard: true, Cause: facingRoutedCause,
+			}}, nil
+		}
+	}
+
+	return encounter.Decision{Intent: encounter.Pass{}}, nil
+}
+
+// TestAMoveNamingATargetEndsFacingIt pins the Move arm's walk-end turn
+// ([encounter.Move.Target]): the goblin steps west, 270, to the cell beside
+// alice, and ends facing her held cell, 210.
+func TestAMoveNamingATargetEndsFacingIt(t *testing.T) {
+	enc := facingFight(t, []encounter.MemberInput{
+		{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+		{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1}},
+	}, &targetedStepDriver{member: goblin, target: alice}, &scriptedStriker{kind: encounter.OutcomeMissed}, quietMover{})
+	start := memberOf(t, enc, goblin).Position
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	require.NoError(t, err)
+
+	end := memberOf(t, enc, goblin).Position
+	require.Equal(t, spatial.Position{X: start.X - 1, Y: start.Y}, end, "precondition: the goblin stepped west")
+	toAlice := stepBearing(t, end, memberOf(t, enc, alice).Position)
+	require.NotEqual(t, stepBearing(t, start, end), toAlice, "precondition: the step does not already point at alice")
+	require.InDelta(t, toAlice, memberOf(t, enc, goblin).Facing, 1e-9, "the walk ended facing its target")
+}
+
+// targetedStepDriver walks one member one cell west, naming a target, on its
+// first turn, and passes after.
+type targetedStepDriver struct {
+	member, target encounter.MemberID
+	used           bool
+}
+
+func (d *targetedStepDriver) Act(view encounter.MonsterView) (encounter.Decision, error) {
+	if view.Self != d.member || d.used {
+		return encounter.Decision{Intent: encounter.Pass{}}, nil
+	}
+	d.used = true
+	to := spatial.Position{X: view.Position.X - 1, Y: view.Position.Y}
+
+	return encounter.Decision{Intent: encounter.Move{Path: []spatial.Position{to}, Target: d.target}}, nil
+}

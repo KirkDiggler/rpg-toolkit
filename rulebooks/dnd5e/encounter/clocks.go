@@ -1559,6 +1559,10 @@ func (e *Encounter) walkPath(
 // that names neither does not say anything at all; both are decisions a driver
 // could have made differently, which is [ErrBadIntent]'s own line — the turn
 // ends, exactly like Pass.
+//
+// A HEARD ROUTED NAMES A CELL ([Routed.Heard]), and one that names a member
+// instead answers false for the same reason: a sound is a place it rang, and
+// a member is not one.
 func (e *Encounter) routedAnchor(it Routed) (spatial.Position, bool) {
 	named := it.Anchor != ""
 	authored := it.AnchorAt != nil
