@@ -221,10 +221,10 @@ func (e *Encounter) faceHeld(m *memberRecord, target MemberID) error {
 // cell it is held at.
 //
 // AND A PAUSE, WHICH WINS WHERE IT HOLDS (rpg-project#624). A patrol walk to
-// a waypoint that states a facing or a wait carries that waypoint
-// ([WaypointPause]); a walk that ends standing on it pauses there, and one
-// that ends anywhere else — cut short by its budget, or by an ally on the
-// waypoint — reads the other two, as before.
+// a waypoint that states a wait carries that waypoint ([WaypointPause]); a
+// walk that ends standing on it stops there, and one that ends anywhere else
+// — cut short by its budget, or by an ally on the waypoint — reads the other
+// two, as before.
 type walkFace struct {
 	member MemberID
 	heard  *spatial.Position
@@ -238,14 +238,15 @@ type walkFace struct {
 // with the walk to that waypoint ([Move.Pause], [Routed.Pause]).
 //
 // THE PAUSE IS A DWELL (Kirk, 2026-10-19): "the patrol walks to an area,
-// STANDS for N turns, then goes on." A walk that ends standing on Cell with
-// a Wait stops the patrol there: the rest of that turn and Wait more of the
-// walker's turns, facing Facing when one is stated ([dwell]). A waypoint with
-// no wait pauses its walker only when the walk to it spends the turn's
-// movement there ([walkFace.resting]); with movement left the patrol walks
-// straight on. WAIT 0 IS THE GLANCE-ONLY CASE: its facing holds from the end
-// of that walk to the creature's next step, and nothing stops the patrol to
-// keep it.
+// STANDS for N turns, then goes on." A walk that ends standing on Cell stops
+// the patrol there: the rest of that turn and Wait more of the walker's
+// turns, facing Facing when one is stated ([dwell]).
+//
+// NO WAIT, NO PAUSE (lead ruling on rpg-toolkit#2087, operator may veto). A
+// facing is taken while standing, so a waypoint states one only beside a
+// wait — the dialect refuses it alone — and a pause whose Wait is 0 does
+// nothing at all: the patrol walks through the waypoint facing its step.
+// Nobody asked for a glance at a corner; Kirk's primitive is the stand.
 //
 // TAKEN ONLY AT THE PAUSE (Kirk, 2026-10-19). Walking, the creature faces
 // its step (sneaking design R17–R20 unchanged); a walk that ends mid-leg
@@ -261,7 +262,7 @@ type WaypointPause struct {
 	Facing *float64
 
 	// Wait is how many of the walker's turns it stands there after the turn
-	// it arrives in. Zero is no dwell. Never negative.
+	// it arrives in. Zero is no pause at all. Never negative.
 	Wait int
 }
 
@@ -293,38 +294,16 @@ func cloneWaypointPause(p *WaypointPause) *WaypointPause {
 	return &out
 }
 
-// resting is the face a walk ends with once it is known whether the walker's
-// walking is over for the turn: a walk that ends the turn's walking keeps
-// its pause, and so does one to a waypoint with a wait, which stops the
-// patrol there; any other walk with movement left drops it.
-//
-// A PATROL PASSES THROUGH A WAYPOINT WITH NO WAIT. With movement left the
-// table fires again in the same turn and the next leg's steps begin, so
-// arriving is not pausing (Kirk, 2026-10-19: the facing applies only while
-// paused). Turning it there would be a glance nobody asked for — the sight
-// refresh after the walk would testify to a facing the creature holds for
-// no time at all. A [Routed] walk ends its turn, so its walking is always
-// over.
-func (f walkFace) resting(walkingOver bool) walkFace {
-	if !walkingOver && (f.pause == nil || f.pause.Wait == 0) {
-		f.pause = nil
-	}
-
-	return f
-}
-
 // faceWalkEnd turns a walker toward what its walk closed on ([walkFace]).
 //
 // Errors: the walker's own holdings could not be read.
 func (e *Encounter) faceWalkEnd(m *memberRecord, f walkFace) error {
-	if f.pause != nil {
+	if f.pause != nil && f.pause.Wait > 0 {
 		if here, placed := e.canvas.GetEntityPosition(string(m.ID)); placed && here == f.pause.Cell {
 			if f.pause.Facing != nil {
 				m.Facing = *f.pause.Facing
 			}
-			if f.pause.Wait > 0 {
-				m.Dwell = &dwell{Cell: f.pause.Cell, Rounds: f.pause.Wait}
-			}
+			m.Dwell = &dwell{Cell: f.pause.Cell, Rounds: f.pause.Wait}
 
 			return nil
 		}

@@ -1029,12 +1029,11 @@ func (e *Encounter) executeTurnIntent(
 		// sight refresh, so every observer sees the turn. Only a walk that
 		// finished here: a body is not turning toward anybody, and a paused
 		// walk is still walking — its pause keeps the target, and the resume
-		// turns it ([Encounter.finishPausedIntent]). A patrol's waypoint
-		// facing turns it only when this walk spends the turn's movement
-		// there: with movement left the next leg follows at once
-		// ([walkFace.resting], rpg-project#624).
+		// turns it ([Encounter.finishPausedIntent]). A walk that ends on a
+		// patrol waypoint with a wait stops there instead, facing the
+		// waypoint's facing ([WaypointPause], rpg-project#624).
 		if res.paused == nil && !res.dropped && res.moved > 0 {
-			face := walkFace{member: it.Target, pause: it.Pause}.resting(budget.MovementFeet-res.moved*FeetPerCell <= 0)
+			face := walkFace{member: it.Target, pause: it.Pause}
 			if ferr := e.faceWalkEnd(m, face); ferr != nil {
 				return false, nil, ferr
 			}

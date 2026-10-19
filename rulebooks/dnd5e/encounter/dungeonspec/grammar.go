@@ -684,6 +684,11 @@ func (g *grammar) entryRoute(at, word string, route []authoredCell) {
 		if word := route[i].facing; word != "" && !facings[word] {
 			g.fail(fmt.Sprintf("%s[%d].facing", path, i),
 				"%q is not a compass direction: a facing is one of n|ne|e|se|s|sw|w|nw", word)
+		} else if word != "" && route[i].wait == 0 {
+			// NO WAIT, NO PAUSE (lead ruling on rpg-toolkit#2087): the
+			// facing is the stand's, so it is refused alone.
+			g.fail(fmt.Sprintf("%s[%d].facing", path, i),
+				"a facing is taken while standing; give the waypoint a wait")
 		}
 		if wait := route[i].wait; wait < 0 {
 			g.fail(fmt.Sprintf("%s[%d].wait", path, i),

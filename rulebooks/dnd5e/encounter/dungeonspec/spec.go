@@ -1754,9 +1754,11 @@ type SelectorSpec struct {
 	// sentence ([facings]), and lowered through the same
 	// [encounter.FacingFromCompass].
 	//
-	// AT THE PAUSE ONLY (Kirk, 2026-10-19): a walk that ends standing on the
-	// waypoint turns to it; walking, the creature faces its step (sneaking
-	// design R17–R20); a walk that ends mid-leg faces its last step.
+	// TAKEN WHILE STANDING (Kirk, 2026-10-19), so only beside a wait
+	// ([SelectorSpec.PathHexWait]; a facing alone is refused): the walker
+	// faces it while it stands out the wait; walking, it faces its step
+	// (sneaking design R17–R20); a walk that ends mid-leg faces its last
+	// step.
 	//
 	// The v2 offset pair `[col, row]` has no key to carry one: a faced
 	// waypoint is spelt in the axial mapping.

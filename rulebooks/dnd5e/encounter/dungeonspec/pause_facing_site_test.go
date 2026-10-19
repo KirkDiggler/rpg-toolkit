@@ -104,27 +104,11 @@ func openThePauseFacingSite(t *testing.T) *sneakSite {
 	}
 	site := &sneakSite{t: t, stealth: &sneakSiteStealth{d20s: []int{20, 20, 20, 20, 20, 20, 20, 20}}}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Field:     compiled.Field,
-		Members:   members,
-		Endings:   append([]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, compiled.Endings...),
-		Retention: encounter.RetentionUnbounded,
-		Capabilities: encounter.Capabilities{
-			Sight:         pauseFacingSight{},
-			Equipment:     encounter.UnobservedEquipment{},
-			Conditions:    encounter.UnobservedEquipment{},
-			Sheets:        pauseFacingSheets{enc: &site.enc},
-			Participation: &castleStanding{down: map[encounter.MemberID]bool{}},
-			Initiative:    orderAsGiven{},
-			Driver:        encounter.TableDriver{Roller: rollsOne{}},
-			Roller:        rollsOne{},
-			CheckResolver: site.stealth,
-			Witness:       nobodyPerceivesAnything{},
-			Actors: encounter.Actors{
-				Striker:   cellsStriker{calls: &[]cellsStrike{}},
-				Mover:     quietMover{},
-				Announcer: quietAnnouncer{},
-			},
-		},
+		Field:        compiled.Field,
+		Members:      members,
+		Endings:      append([]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, compiled.Endings...),
+		Retention:    encounter.RetentionUnbounded,
+		Capabilities: pauseFacingCapabilities(site),
 	})
 	require.NoError(t, err)
 	site.enc = enc
@@ -139,6 +123,38 @@ func seenFacing(t *testing.T, s *sneakSite) float64 {
 	require.NotNil(t, seen.Facing, "the rogue's sighting of the guard carries his facing")
 
 	return *seen.Facing
+}
+
+// pauseFacingCapabilities is the site's host, for a fresh run and a loaded
+// one alike.
+func pauseFacingCapabilities(site *sneakSite) encounter.Capabilities {
+	return encounter.Capabilities{
+		Sight:         pauseFacingSight{},
+		Equipment:     encounter.UnobservedEquipment{},
+		Conditions:    encounter.UnobservedEquipment{},
+		Sheets:        pauseFacingSheets{enc: &site.enc},
+		Participation: &castleStanding{down: map[encounter.MemberID]bool{}},
+		Initiative:    orderAsGiven{},
+		Driver:        encounter.TableDriver{Roller: rollsOne{}},
+		Roller:        rollsOne{},
+		CheckResolver: site.stealth,
+		Witness:       nobodyPerceivesAnything{},
+		Actors: encounter.Actors{
+			Striker:   cellsStriker{calls: &[]cellsStrike{}},
+			Mover:     quietMover{},
+			Announcer: quietAnnouncer{},
+		},
+	}
+}
+
+// reload saves the run and loads it again with the same host.
+func reloadPauseFacingSite(t *testing.T, site *sneakSite) {
+	t.Helper()
+	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data: site.enc.ToData(), Capabilities: pauseFacingCapabilities(site),
+	})
+	require.NoError(t, err)
+	site.enc = loaded
 }
 
 // TestPauseFacingSite is the slice's scenario, on a site authored in the
@@ -157,6 +173,11 @@ func TestPauseFacingSite(t *testing.T) {
 	require.ErrorContains(t, err, "tables.pacing.on.time[0].toward.path[1].wait: "+
 		"a wait is how many rounds the walker stands here, and -1 is negative")
 
+	_, err = dungeonspec.Load([]byte(strings.Replace(string(raw), "r: 0, wait: 2, facing: s }", "r: 0, facing: s }", 1)))
+	require.ErrorIs(t, err, dungeonspec.ErrBadSpec)
+	require.ErrorContains(t, err, "tables.pacing.on.time[0].toward.path[1].facing: "+
+		"a facing is taken while standing; give the waypoint a wait")
+
 	s := openThePauseFacingSite(t)
 	require.Equal(t, pauseFacingPost, positionOf(t, s.enc, pauseFacingGuard))
 	require.Equal(t, pauseFacingSouth, positionOf(t, s.enc, pauseFacingRogue))
@@ -174,10 +195,10 @@ func TestPauseFacingSite(t *testing.T) {
 	// slice's, so the scenario names his rounds by what they are rather than
 	// by number.
 	var (
-		midEastLeg, walkedOn bool
-		dwellLeft            = map[int]bool{}
-		last                 = positionOf(t, s.enc, pauseFacingGuard)
-		lastDwell            *encounter.DwellData
+		midEastLeg, walkedOn, reloaded bool
+		dwellLeft                      = map[int]bool{}
+		last                           = positionOf(t, s.enc, pauseFacingGuard)
+		lastDwell                      *encounter.DwellData
 	)
 	for range 90 {
 		to := pauseFacingSouth2
@@ -212,6 +233,11 @@ func TestPauseFacingSite(t *testing.T) {
 			if lastDwell == nil {
 				require.True(t, moved, "the dwell begins on the walk that ends on the waypoint")
 				require.Equal(t, 2, dwell.Rounds, "the waypoint's two rounds are ahead of him")
+				// SAVED AND LOADED MID-DWELL: the loaded run stands out the
+				// rest of it, below, exactly as this one would have.
+				reloadPauseFacingSite(t, s)
+				reloaded = true
+				require.Equal(t, dwell, dwellOf(t, s.enc, pauseFacingGuard), "the dwell survives the reload")
 			}
 			dwellLeft[dwell.Rounds] = true
 		case lastDwell != nil:
@@ -237,6 +263,7 @@ func TestPauseFacingSite(t *testing.T) {
 	require.Equal(t, map[int]bool{2: true, 1: true, 0: true}, dwellLeft,
 		"he stood on the waypoint for the rest of the round he arrived in and two rounds more")
 	require.True(t, walkedOn, "and then walked on")
+	require.True(t, reloaded, "the run was reloaded mid-dwell")
 }
 
 // dwellOf is a member's dwell as the run persists it, or nil.

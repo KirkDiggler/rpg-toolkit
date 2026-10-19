@@ -950,7 +950,7 @@ func (e *Encounter) finishPausedIntent(
 	// the arm's own rule, across the window: only a walk that finished, and
 	// before the refresh so every observer sees the turn.
 	if res.paused == nil && !res.dropped && p.moved+res.moved > 0 {
-		face := p.turn.face.resting(p.turn.terminal || p.turn.budget.MovementFeet <= 0)
+		face := p.turn.face
 		if ferr := e.faceWalkEnd(m, face); ferr != nil {
 			return 0, nil, false, ferr
 		}

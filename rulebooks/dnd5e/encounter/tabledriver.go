@@ -270,7 +270,7 @@ func (d TableDriver) towardIntent(view MonsterView, entry Answer) TurnIntent {
 
 // pauseAt is the pause a route states for one of its waypoints
 // ([Selector.Facings], [Selector.Waits]), or nil when the cell is not a
-// waypoint of the route or the author stated neither there. A route names
+// waypoint of the route or the author stated no wait there. A route names
 // each waypoint once ([RetracedCell] refuses one that comes back), so the
 // cell is the lookup.
 func pauseAt(route *Selector, cell spatial.Position) *WaypointPause {
@@ -286,7 +286,9 @@ func pauseAt(route *Selector, cell spatial.Position) *WaypointPause {
 		if i < len(route.Waits) {
 			pause.Wait = route.Waits[i]
 		}
-		if pause.Facing == nil && pause.Wait == 0 {
+		if pause.Wait == 0 {
+			// No wait, no pause: a facing is taken while standing
+			// ([WaypointPause]).
 			return nil
 		}
 
