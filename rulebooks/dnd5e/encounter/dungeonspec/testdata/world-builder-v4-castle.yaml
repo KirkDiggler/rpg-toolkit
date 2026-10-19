@@ -76,6 +76,17 @@
 # (castle_king_kitchen_test.go). Every other route out of the kitchen picks
 # the lock first.
 #
+# STATED FACINGS (rpg-project#623). A watcher's cone points where it faces,
+# and an unstated facing is south (180), so every creature that stands still
+# states the compass word that points it at what it keeps, nearest the
+# bearing from its cell to that cell: the cook looks at the kitchen door (e,
+# 90), the scullion into the kitchen (ne; its centre is at 53), the captain
+# at the gate behind him (n; its two cells are at 330 and 30), the turnkey and
+# the sergeant at the cells door (w, 251; se, 120), the king at the throne
+# door (e, 90). Creatures that walk a route face their steps; the gate
+# guards' pause facings are rpg-project#624's. castle_king_facings_test.go
+# holds each cone over the cell it keeps.
+#
 # STORED IS AUTHORED. Each stat block under `templates:` says scores, hit
 # dice, armor, proficiency, skills and weapons — never hit points, armor
 # class or an attack bonus, which are the rulebook's to derive. The guard
@@ -6921,6 +6932,7 @@ room:
           location:
             q: -4
             r: 8
+          facing: n
         appearanceRef: dnd5e:npcs:kingdom:soldier-male-01-style-04-a
       - id: reserve-1
         ref: dnd5e:monsters:knight
@@ -6942,6 +6954,7 @@ room:
           location:
             q: -14
             r: -12
+          facing: e
         appearanceRef: dnd5e:npcs:kingdom:peasant-male-01
       - id: hall-1
         ref: dnd5e:monsters:guard
@@ -6970,6 +6983,7 @@ room:
           location:
             q: 3
             r: -17
+          facing: e
         appearanceRef: dnd5e:npcs:kingdom:prince-01
       - id: scullion
         ref: dnd5e:monsters:commoner
@@ -6977,6 +6991,7 @@ room:
           location:
             q: -19
             r: -9
+          facing: ne
         appearanceRef: dnd5e:npcs:kingdom:peasant-female-01
       - id: sergeant
         ref: dnd5e:monsters:guard
@@ -6984,6 +6999,7 @@ room:
           location:
             q: -24
             r: 5
+          facing: se
         appearanceRef: dnd5e:npcs:kingdom:soldier-male-01-style-02-b
       - id: turnkey
         ref: dnd5e:monsters:guard
@@ -6991,6 +7007,7 @@ room:
           location:
             q: -20
             r: 5
+          facing: w
         appearanceRef: dnd5e:npcs:kingdom:soldier-male-01-style-02-b
       - id: prisoner-1
         ref: dnd5e:monsters:prisoner
