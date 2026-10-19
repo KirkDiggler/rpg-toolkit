@@ -27,13 +27,11 @@ var (
 	// kitchenDoorInside is the kitchen's cell nearest its door into the hall.
 	kitchenDoorInside = spatial.Position{X: -9, Y: -11}
 
-	// cellsDoorOutside is the barracks' cell nearest the cells door.
-	cellsDoorOutside = spatial.Position{X: -23, Y: 6}
-
-	// beforeTheCellsDoor is one step from cellsDoorOutside toward the
-	// sergeant, east of him: 90 degrees off the south he would face unstated,
-	// so only his stated facing covers it.
-	beforeTheCellsDoor = spatial.Position{X: -23, Y: 5}
+	// northOfTheCellsDoor is the barracks floor directly north of the cells
+	// door, whose own cell (-23,6) the door stands on. It lies at 90 from the
+	// sergeant and 270 from the turnkey: off the south either would face
+	// unstated, so only their stated facings cover it.
+	northOfTheCellsDoor = spatial.Position{X: -23, Y: 5}
 
 	// outsideTheGate is the courtyard's cell at the shut gate door, behind the
 	// captain (offset [col, row], for MemberInput.Position).
@@ -71,8 +69,8 @@ func TestMadKingStillWatchersFaceWhatTheyKeep(t *testing.T) {
 	}{
 		{kingCook, besideTheCook, kitchenDoorInside, "the kitchen door", false},
 		{kingScullion, besideTheCook, kitchenDoorInside, "the kitchen door", false},
-		{kingTurnkey, inTheBarracks, cellsDoorOutside, "the cells door", false},
-		{kingSergeant, inTheBarracks, beforeTheCellsDoor, "the cells door", false},
+		{kingTurnkey, inTheBarracks, northOfTheCellsDoor, "the cells door", false},
+		{kingSergeant, inTheBarracks, northOfTheCellsDoor, "the cells door", false},
 		{theKing, atTheThroneDoor, throneDoorInside, "the throne door", true},
 	}
 	for _, c := range cases {
