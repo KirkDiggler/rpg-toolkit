@@ -81,9 +81,9 @@
 # states the compass word that points it at what it keeps, nearest the
 # bearing from its cell to that cell: the cook looks at the kitchen door (e,
 # 90), the scullion into the kitchen (ne; its centre is at 53), the captain
-# at the gate behind him (n; its two cells are at 330 and 30), the turnkey and
-# the sergeant at the cells door (w, 251; se, 120), the king at the throne
-# door (e, 90). Creatures that walk a route face their steps; the gate
+# down the gatehouse at whoever comes to the gate (s, the party start), the
+# turnkey and the sergeant at the cells door (w, 251; se, 120), the king at
+# the throne door (e, 90). The facings are test choices, not story. Creatures that walk a route face their steps; the gate
 # guards' pause facings are rpg-project#624's. castle_king_facings_test.go
 # holds each cone over the cell it keeps.
 #
@@ -6932,7 +6932,7 @@ room:
           location:
             q: -4
             r: 8
-          facing: n
+          facing: s
         appearanceRef: dnd5e:npcs:kingdom:soldier-male-01-style-04-a
       - id: reserve-1
         ref: dnd5e:monsters:knight

@@ -27,12 +27,17 @@ var (
 	// kitchenDoorInside is the kitchen's cell nearest its door into the hall.
 	kitchenDoorInside = spatial.Position{X: -9, Y: -11}
 
-	// gateDoorInside is the gatehouse's cell beneath the gate door, the one
-	// of its two nearest the captain's post.
-	gateDoorInside = spatial.Position{X: -4, Y: 7}
-
 	// cellsDoorOutside is the barracks' cell nearest the cells door.
 	cellsDoorOutside = spatial.Position{X: -23, Y: 6}
+
+	// beforeTheCellsDoor is one step from cellsDoorOutside toward the
+	// sergeant, east of him: 90 degrees off the south he would face unstated,
+	// so only his stated facing covers it.
+	beforeTheCellsDoor = spatial.Position{X: -23, Y: 5}
+
+	// outsideTheGate is the courtyard's cell at the shut gate door, behind the
+	// captain (offset [col, row], for MemberInput.Position).
+	outsideTheGate = spatial.Position{X: 0, Y: 6}
 
 	// throneDoorInside is the throne room's cell beside its door, on the
 	// king's row.
@@ -66,9 +71,8 @@ func TestMadKingStillWatchersFaceWhatTheyKeep(t *testing.T) {
 	}{
 		{kingCook, besideTheCook, kitchenDoorInside, "the kitchen door", false},
 		{kingScullion, besideTheCook, kitchenDoorInside, "the kitchen door", false},
-		{kingCaptain, partyStart(t), gateDoorInside, "the gate", false},
 		{kingTurnkey, inTheBarracks, cellsDoorOutside, "the cells door", false},
-		{kingSergeant, inTheBarracks, cellsDoorOutside, "the cells door", false},
+		{kingSergeant, inTheBarracks, beforeTheCellsDoor, "the cells door", false},
 		{theKing, atTheThroneDoor, throneDoorInside, "the throne door", true},
 	}
 	for _, c := range cases {
@@ -97,4 +101,79 @@ func TestMadKingStillWatchersFaceWhatTheyKeep(t *testing.T) {
 			require.True(t, zone[c.keeps], "%s's zone holds the cell in front of %s", c.watcher, c.what)
 		})
 	}
+}
+
+// TestMadKingTheCaptainWatchesWhoComesToTheGate is GETTING BEHIND THE CONE
+// (rpg-project#623): the captain faces down the gatehouse at whoever comes to
+// the gate, arc 120 scripted. A hero who sneaks in through the gate door
+// stands behind him, in his sight and out of his zone, and nothing rolls;
+// circling round to his front rolls against him.
+func TestMadKingTheCaptainWatchesWhoComesToTheGate(t *testing.T) {
+	const captainPassive = 13
+	t.Parallel()
+	stealth := &partyStealth{
+		modifier: map[encounter.MemberID]int{hero: 7},
+		d20s:     map[encounter.MemberID][]int{hero: {15, 15, 15, 15, 15, 15, 15, 15}},
+	}
+	s := openTheCastleAs(t, castleHost{
+		at: outsideTheGate, resolver: stealth, arcs: map[encounter.MemberID]int{kingCaptain: 120},
+		passive: map[encounter.MemberID]int{kingCaptain: captainPassive},
+	})
+	seer := &coneSite{sneakSite: &sneakSite{t: t, enc: s.enc}}
+	s.declare(hero)
+	s.open(kingGateDoor)
+
+	// rolled reports whether the hero's Stealth was rolled against the
+	// captain: his passive is the DC only he answers. The gate guards, who
+	// watch all round, roll at the host's 10 as the hero comes through.
+	rolled := func() bool {
+		for _, in := range stealth.asked {
+			if in.Member == hero && in.Approaches[0].DC == captainPassive {
+				return true
+			}
+		}
+		return false
+	}
+	captainZone := func() map[spatial.Position]bool {
+		for _, z := range zonesOf(t, s.enc, hero) {
+			if z.Watcher == kingCaptain {
+				return cellSet(z.Cells)
+			}
+		}
+		return nil
+	}
+	step := func(to spatial.Position, endWalk bool) {
+		t.Helper()
+		_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: to, EndWalk: endWalk})
+		require.NoError(t, err)
+		require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "no fight formed")
+	}
+
+	// BEHIND HIM: through the gate door to the gatehouse cell beneath it,
+	// north of the captain, in his sight.
+	step(spatial.Position{X: -3, Y: 7}, true)
+	behind := s.at(hero)
+	captain := positionOf(t, s.enc, kingCaptain)
+	require.Greater(t, offArc(facingOf(t, s.enc, kingCaptain), coneBearing(captain, behind)), 60.0,
+		"the cell beneath the gate is behind the captain")
+	require.True(t, seer.seenNow(kingCaptain)[behind], "the captain's sight reaches the hero behind him")
+	require.False(t, rolled(), "behind him nothing rolls against the captain")
+	require.False(t, seer.seesLive(kingCaptain, hero), "the captain does not see the hero behind him")
+	require.False(t, captainZone()[behind], "the captain's zone does not hold the cell behind him")
+
+	// ROUND TO HIS FRONT: east of him, then down the gatehouse to his south,
+	// a step at a time, until the roll fires.
+	round := []spatial.Position{{X: -3, Y: 8}, {X: -4, Y: 9}, {X: -4, Y: 10}, {X: -4, Y: 11}}
+	for i, cell := range round {
+		step(cell, i == len(round)-1)
+		if rolled() {
+			break
+		}
+	}
+	require.True(t, rolled(), "in front of him the roll fires against the captain")
+	require.LessOrEqual(t, offArc(facingOf(t, s.enc, kingCaptain), coneBearing(captain, s.at(hero))), 60.0,
+		"the roll fired with the hero inside his front third")
+	require.True(t, captainZone()[s.at(hero)], "the captain's zone holds the cell in front of him")
+	verdict := s.enc.ToData().SneakVerdicts[hero][kingCaptain]
+	require.True(t, verdict.Beaten, "a 15 and +7 beat his passive")
 }
