@@ -9,8 +9,8 @@ package dungeonspec_test
 // (castle_king_*_test.go); this file is the host they share.
 //
 // THE COMPILED CONTENT IS WHAT PLAYS. Every creature enters with the table,
-// options, arrival, temper and holdings the file compiled for it. No test
-// swaps a table or adds a line: a route that needs one the file does not
+// options, arrival, temper, holdings and facing the file compiled for it. No
+// test swaps a table or adds a line: a route that needs one the file does not
 // carry is a finding, not a fixture edit.
 //
 // THE HOST IS DELIBERATELY PLAIN. Everyone sees sixty feet and hears with a
@@ -174,6 +174,7 @@ func openTheCastleAs(t testing.TB, host castleHost) *kingScene {
 			Arrives:  m.Arrives,
 			Temper:   soldierProfiles(m.Temper),
 			Holds:    holds,
+			Facing:   m.FacingDegrees,
 		})
 	}
 
