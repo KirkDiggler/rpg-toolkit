@@ -4,10 +4,11 @@
 package dungeonspec_test
 
 // castle_king_pause_facing_test.go is THE GATE GUARDS WATCH THE INCOMERS
-// (rpg-project#624): the gate patrol's gate-side corner states `wait: 2,
-// facing: s`, so a gate guard whose walk ends there stands two rounds facing
-// south (Kirk, 2026-10-19: a pause is a dwell, and its facing holds only
-// while he stands there).
+// (rpg-project#624): the gate patrol's two gate-side corners state `wait: 2`
+// with `facing: se` and `facing: sw`, so a gate guard whose walk ends on one
+// stands two rounds there turned inward to the party start (Kirk,
+// 2026-10-19: a pause is a dwell, and its facing holds only while he stands
+// there).
 
 import (
 	"testing"
@@ -20,8 +21,9 @@ import (
 
 // TestMadKingGateGuardsDwellWatchingTheApproach paces a sneaking hero at the
 // party start, with an arc of 120 scripted for both gate guards, until a gate
-// guard has stood out his dwell at the gate-side corner; on every round of
-// it he faces south and his zone holds the approach cell.
+// guard has stood out a dwell at each gate-side corner; on every round of it
+// he faces the corner's word and his zone holds the approach cell, the party
+// start.
 func TestMadKingGateGuardsDwellWatchingTheApproach(t *testing.T) {
 	t.Parallel()
 	stealth := &partyStealth{
@@ -38,21 +40,20 @@ func TestMadKingGateGuardsDwellWatchingTheApproach(t *testing.T) {
 	start := s.at(hero)
 	beside := spatial.Position{X: start.X - 1, Y: start.Y}
 
-	// The gate-side corner as the file writes it, and the approach: a cell
-	// of the gatehouse floor two rows south of it, inside the hero's sight.
-	corner := spatial.Position{X: -7, Y: 9}
-	approach := spatial.Position{X: -8, Y: 11}
-	require.InDelta(t, 180, coneBearing(corner, approach), 1e-6, "the approach lies due south of the corner")
-
-	stood := map[encounter.MemberID]map[int]bool{kingGate1: {}, kingGate2: {}}
-	done := func() bool {
-		for _, rounds := range stood {
-			if rounds[0] {
-				return true
-			}
-		}
-		return false
+	// The gate-side corners as the file writes them and the bearing each
+	// states; the approach is the party start, where the incomers arrive.
+	corners := map[spatial.Position]float64{
+		{X: -7, Y: 9}: 135, // se
+		{X: -1, Y: 9}: 225, // sw
 	}
+	approach := start
+	for corner, facing := range corners {
+		require.LessOrEqual(t, offArc(facing, coneBearing(corner, approach)), 60.0,
+			"the approach lies inside the front third of the corner at %v", corner)
+	}
+
+	stoodOut := map[spatial.Position]bool{}
+	done := func() bool { return len(stoodOut) == len(corners) }
 	for i := 0; i < 240 && !done(); i++ {
 		to := map[bool]spatial.Position{true: beside, false: start}[i%2 == 0]
 		_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: to, EndWalk: true})
@@ -63,9 +64,14 @@ func TestMadKingGateGuardsDwellWatchingTheApproach(t *testing.T) {
 			if dwell == nil {
 				continue
 			}
-			require.Equal(t, corner, s.at(guard), "%s dwells on the gate-side corner", guard)
-			stood[guard][dwell.Rounds] = true
-			require.InDelta(t, 180, facingOf(t, s.enc, guard), 1e-9, "%s stands facing the stated south", guard)
+			corner := s.at(guard)
+			stated, onCorner := corners[corner]
+			require.True(t, onCorner, "%s dwells on a gate-side corner, not %v", guard, corner)
+			require.Equal(t, corner, spatial.Position{X: dwell.Cell.X, Y: dwell.Cell.Y})
+			if dwell.Rounds == 0 {
+				stoodOut[corner] = true
+			}
+			require.InDelta(t, stated, facingOf(t, s.enc, guard), 1e-9, "%s stands facing the corner's word", guard)
 			zone := map[spatial.Position]bool{}
 			for _, z := range zonesOf(t, s.enc, hero) {
 				if z.Watcher == guard {
@@ -75,5 +81,5 @@ func TestMadKingGateGuardsDwellWatchingTheApproach(t *testing.T) {
 			require.True(t, zone[approach], "%s's zone, standing at the corner, holds the approach cell", guard)
 		}
 	}
-	require.True(t, done(), "a gate guard stood out his dwell at the gate-side corner")
+	require.True(t, done(), "a gate guard stood out a dwell at each gate-side corner")
 }
