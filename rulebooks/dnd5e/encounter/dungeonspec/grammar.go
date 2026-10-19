@@ -152,12 +152,13 @@ func (m members) at(id string) (member, bool) {
 // room's). Exactly one is set. Which spelling is LEGAL is the dialect's
 // answer, never the grammar's ([cells]).
 //
-// facing is the word a route's waypoint states for its pause, or "" — only a
-// waypoint carries one (rpg-project#624).
+// facing and wait are what a route's waypoint states for its pause, or ""
+// and 0 — only a waypoint carries them (rpg-project#624).
 type authoredCell struct {
 	offset *[2]int
 	hex    *RoomCell
 	facing string
+	wait   int
 }
 
 // selectorCell is the one cell a selector names, and whether it names one.
@@ -185,6 +186,9 @@ func selectorRoute(sel *SelectorSpec) []authoredCell {
 		waypoint := authoredCell{hex: &sel.PathHex[i]}
 		if i < len(sel.PathHexFacing) {
 			waypoint.facing = sel.PathHexFacing[i]
+		}
+		if i < len(sel.PathHexWait) {
+			waypoint.wait = sel.PathHexWait[i]
 		}
 		out = append(out, waypoint)
 	}
@@ -680,6 +684,10 @@ func (g *grammar) entryRoute(at, word string, route []authoredCell) {
 		if word := route[i].facing; word != "" && !facings[word] {
 			g.fail(fmt.Sprintf("%s[%d].facing", path, i),
 				"%q is not a compass direction: a facing is one of n|ne|e|se|s|sw|w|nw", word)
+		}
+		if wait := route[i].wait; wait < 0 {
+			g.fail(fmt.Sprintf("%s[%d].wait", path, i),
+				"a wait is how many rounds the walker stands here, and %d is negative", wait)
 		}
 	}
 	if floorDefect {

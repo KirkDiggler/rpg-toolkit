@@ -221,75 +221,94 @@ func (e *Encounter) faceHeld(m *memberRecord, target MemberID) error {
 // cell it is held at.
 //
 // AND A PAUSE, WHICH WINS WHERE IT HOLDS (rpg-project#624). A patrol walk to
-// a waypoint that states a facing carries that waypoint and its bearing
-// ([PauseFacing]); a walk that ends standing on it turns to the bearing, and
-// one that ends anywhere else — cut short by its budget, or by an ally on the
+// a waypoint that states a facing or a wait carries that waypoint
+// ([WaypointPause]); a walk that ends standing on it pauses there, and one
+// that ends anywhere else — cut short by its budget, or by an ally on the
 // waypoint — reads the other two, as before.
 type walkFace struct {
 	member MemberID
 	heard  *spatial.Position
-	pause  *PauseFacing
+	pause  *WaypointPause
 }
 
-// PauseFacing is a waypoint's facing for the pause (rpg-project#624): the
-// bearing a walker takes when its walk ENDS standing on Cell. A table's
-// patrol states it per waypoint ([Selector.Facings]) and the table driver
-// hands it on with the walk to that waypoint ([Move.Pause], [Routed.Pause]).
+// WaypointPause is what a patrol's waypoint states for the PAUSE there
+// (rpg-project#624): the facing the walker faces while it stands on Cell,
+// and how many rounds it stands. A table's patrol states both per waypoint
+// ([Selector.Facings], [Selector.Waits]) and the table driver hands them on
+// with the walk to that waypoint ([Move.Pause], [Routed.Pause]).
 //
-// AT THE PAUSE ONLY (Kirk, 2026-10-19). Walking, the creature faces its step
-// (R17–R20 unchanged); a walk that ends mid-leg faces its last step; a
-// waypoint with no facing changes nothing. So the turn is asked of the cell
-// the walker STANDS on when the walk ends, never of the cell it was sent to.
+// THE PAUSE IS A DWELL (Kirk, 2026-10-19): "the patrol walks to an area,
+// STANDS for N turns, then goes on." A walk that ends standing on Cell with
+// a Wait stops the patrol there: the rest of that turn and Wait more of the
+// walker's turns, facing Facing when one is stated ([dwell]). A waypoint with
+// no wait pauses its walker only when the walk to it spends the turn's
+// movement there ([walkFace.resting]); with movement left the patrol walks
+// straight on.
 //
-// NOTHING IS REMEMBERED. The route stays stateless: the walk carries the
-// waypoint it is walking to, and when that walk is over the facing is a
-// member's facing like any other — the next step turns it along the next leg.
-type PauseFacing struct {
+// TAKEN ONLY AT THE PAUSE (Kirk, 2026-10-19). Walking, the creature faces
+// its step (sneaking design R17–R20 unchanged); a walk that ends mid-leg
+// faces its last step; a waypoint that states nothing changes nothing. So
+// the pause is asked of the cell the walker STANDS on when the walk ends,
+// never of the cell it was sent to.
+type WaypointPause struct {
 	// Cell is the waypoint, dungeon-absolute.
 	Cell spatial.Position
 
-	// Facing is the bearing taken there, in [0, 360): 0 is map north,
-	// clockwise (the frame above).
-	Facing float64
+	// Facing is the bearing faced while paused there, in [0, 360): 0 is map
+	// north, clockwise (the frame above). Nil keeps the last step's.
+	Facing *float64
+
+	// Wait is how many of the walker's turns it stands there after the turn
+	// it arrives in. Zero is no dwell. Never negative.
+	Wait int
 }
 
-// resting is the face a walk ends with once it is known whether the walker's
-// walking is over for the turn: a walk that ends the turn's walking keeps
-// its pause; one with movement left to go on with drops it.
-//
-// A PATROL PASSES THROUGH A WAYPOINT IT HAS MOVEMENT LEFT AT. The table fires
-// again in the same turn and the next leg's steps begin, so arriving is not
-// pausing (Kirk, 2026-10-19: the facing applies only while paused). Turning
-// it there would be a glance nobody asked for — the sight refresh after the
-// walk would testify to a facing the creature holds for no time at all. A
-// [Routed] walk ends its turn, so its walking is always over.
-func (f walkFace) resting(walkingOver bool) walkFace {
-	if !walkingOver {
-		f.pause = nil
-	}
-
-	return f
-}
-
-// validatePauseFacing refuses a pause whose facing is not a bearing. Nil is no
-// pause.
-func validatePauseFacing(p *PauseFacing) error {
+// validateWaypointPause refuses a pause whose facing is not a bearing or
+// whose wait is negative ([ErrBadFacing], [ErrBadIntent]). Nil is no pause.
+func validateWaypointPause(p *WaypointPause) error {
 	if p == nil {
 		return nil
 	}
+	if p.Wait < 0 {
+		return fmt.Errorf("a waypoint's wait of %d rounds is negative: %w", p.Wait, ErrBadIntent)
+	}
 
-	return validateFacing(&p.Facing)
+	return validateFacing(p.Facing)
 }
 
-// clonePause copies a pause, nil staying nil, so a stored walk shares nothing
-// with the intent it came from.
-func clonePause(p *PauseFacing) *PauseFacing {
+// cloneWaypointPause copies a pause, nil staying nil, so a stored walk shares
+// nothing with the intent it came from.
+func cloneWaypointPause(p *WaypointPause) *WaypointPause {
 	if p == nil {
 		return nil
 	}
 	out := *p
+	if p.Facing != nil {
+		degrees := *p.Facing
+		out.Facing = &degrees
+	}
 
 	return &out
+}
+
+// resting is the face a walk ends with once it is known whether the walker's
+// walking is over for the turn: a walk that ends the turn's walking keeps
+// its pause, and so does one to a waypoint with a wait, which stops the
+// patrol there; any other walk with movement left drops it.
+//
+// A PATROL PASSES THROUGH A WAYPOINT WITH NO WAIT. With movement left the
+// table fires again in the same turn and the next leg's steps begin, so
+// arriving is not pausing (Kirk, 2026-10-19: the facing applies only while
+// paused). Turning it there would be a glance nobody asked for — the sight
+// refresh after the walk would testify to a facing the creature holds for
+// no time at all. A [Routed] walk ends its turn, so its walking is always
+// over.
+func (f walkFace) resting(walkingOver bool) walkFace {
+	if !walkingOver && (f.pause == nil || f.pause.Wait == 0) {
+		f.pause = nil
+	}
+
+	return f
 }
 
 // faceWalkEnd turns a walker toward what its walk closed on ([walkFace]).
@@ -298,7 +317,12 @@ func clonePause(p *PauseFacing) *PauseFacing {
 func (e *Encounter) faceWalkEnd(m *memberRecord, f walkFace) error {
 	if f.pause != nil {
 		if here, placed := e.canvas.GetEntityPosition(string(m.ID)); placed && here == f.pause.Cell {
-			m.Facing = f.pause.Facing
+			if f.pause.Facing != nil {
+				m.Facing = *f.pause.Facing
+			}
+			if f.pause.Wait > 0 {
+				m.Dwell = &dwell{Cell: f.pause.Cell, Rounds: f.pause.Wait}
+			}
 
 			return nil
 		}
@@ -319,7 +343,7 @@ func (e *Encounter) faceWalkEnd(m *memberRecord, f walkFace) error {
 // names a place, not a target. A walk that carries a waypoint's pause
 // ([Routed.Pause]) also turns to it when it ends there.
 func routedFace(r Routed) walkFace {
-	pause := clonePause(r.Pause)
+	pause := cloneWaypointPause(r.Pause)
 	if r.Policy != MoveToward {
 		return walkFace{pause: pause}
 	}

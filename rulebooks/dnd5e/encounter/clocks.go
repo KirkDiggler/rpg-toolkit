@@ -591,6 +591,13 @@ func (e *Encounter) runIntents(
 	activeID := MemberID(active)
 	var turnDeltas map[MemberID]*IntelDelta
 
+	// A FRESH TURN SPENDS ONE OF A DWELL'S TURNS (dwell.go); a turn resumed
+	// after a reaction window starts past its first intent and is the same
+	// turn, so it spends none (R18).
+	if startJ == 0 {
+		e.spendDwell(m)
+	}
+
 	for j := startJ; j < bound; j++ {
 		view, verr := e.buildMonsterView(m, *budget, round)
 		if verr != nil {
@@ -994,7 +1001,7 @@ func (e *Encounter) executeTurnIntent(
 			// malformed ask.
 			return true, nil, nil
 		}
-		if validatePauseFacing(it.Pause) != nil {
+		if validateWaypointPause(it.Pause) != nil {
 			return true, nil, nil
 		}
 
@@ -1062,7 +1069,7 @@ func (e *Encounter) executeTurnIntent(
 				audience:  audience,
 				turn: &turnPause{
 					round: coords.Round, budget: *budget, intent: coords.Intent, bound: coords.Bound,
-					face: walkFace{member: it.Target, pause: clonePause(it.Pause)},
+					face: walkFace{member: it.Target, pause: cloneWaypointPause(it.Pause)},
 				},
 			}
 			if _, berr := e.appendWindowOpenedBeat(
@@ -1106,7 +1113,7 @@ func (e *Encounter) executeTurnIntent(
 		// simply ends, exactly like Pass. So is naming both a member and a
 		// cell, or neither: the intent does not say what it is measured from.
 		anchorCell, known := e.routedAnchor(it)
-		if !known || validatePauseFacing(it.Pause) != nil {
+		if !known || validateWaypointPause(it.Pause) != nil {
 			return true, nil, nil
 		}
 
@@ -2047,6 +2054,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		Remembered: remembered,
 		Budget:     budget,
 		Round:      round,
+		Dwelling:   e.dwelling(m),
 	}, nil
 }
 

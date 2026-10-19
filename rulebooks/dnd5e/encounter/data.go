@@ -1497,6 +1497,11 @@ type SelectorData struct {
 	// rpg-project#624), null where a waypoint states none. Omitted when no
 	// waypoint states one, so an unfaced route stores what it always did.
 	Facings []*float64 `json:"facings,omitempty"`
+
+	// Waits is the route's per-waypoint rounds to stand ([Selector.Waits],
+	// rpg-project#624), 0 where a waypoint states none. Omitted when no
+	// waypoint states one.
+	Waits []int `json:"waits,omitempty"`
 }
 
 // TemperData is the persistent representation of a resolved [Temper]: the
@@ -1620,6 +1625,9 @@ func selectorDataFrom(sel *Selector) *SelectorData {
 		out.Path = append(out.Path, PositionData{X: p.X, Y: p.Y})
 	}
 	out.Facings = copyFacings(sel.Facings)
+	if sel.Waits != nil {
+		out.Waits = append([]int(nil), sel.Waits...)
+	}
 
 	return out
 }
@@ -1712,6 +1720,9 @@ func selectorFromData(data *SelectorData) *Selector {
 		out.Path = append(out.Path, spatial.Position{X: p.X, Y: p.Y})
 	}
 	out.Facings = copyFacings(data.Facings)
+	if data.Waits != nil {
+		out.Waits = append([]int(nil), data.Waits...)
+	}
 
 	return out
 }
@@ -1974,6 +1985,13 @@ type MemberData struct {
 	// load (ErrInvalidData).
 	Sneaking bool `json:"sneaking,omitempty"`
 
+	// Dwell is memberRecord.Dwell (dwell.go, rpg-project#624): the waypoint a
+	// patrolling creature stands at and the turns it has left there. Omitted
+	// when it stands at none, so a blob from before dwells existed loads
+	// every creature walking. Negative turns are refused at load
+	// (ErrInvalidData).
+	Dwell *DwellData `json:"dwell,omitempty"`
+
 	// BlocksMovement carries forward memberRecord.BlocksMovement
 	// (rpg-toolkit#1434) — see MemberInput.BlocksMovement's own doc. A blob
 	// written before this field existed has no blocks_movement key and
@@ -2117,6 +2135,7 @@ func (e *Encounter) snapshot() EncounterData {
 			Pace:           m.PaceCells,
 			Facing:         &facing,
 			Sneaking:       m.Sneaking,
+			Dwell:          dwellDataFrom(m.Dwell),
 			BlocksMovement: m.BlocksMovement,
 			Faction:        m.Faction,
 		})
@@ -2712,6 +2731,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		if err := validateFacing(m.Facing); err != nil {
 			return nil, fmt.Errorf("load encounter: member %q: %w: %w", m.ID, ErrInvalidData, err)
 		}
+		if err := validateDwellData(m.Dwell); err != nil {
+			return nil, fmt.Errorf("load encounter: member %q: %s: %w", m.ID, err, ErrInvalidData)
+		}
 
 		// Integral axial cells, asked FIRST and named as itself — the same
 		// order and the same words Step and Join use (isIntegralHexCell).
@@ -3174,6 +3196,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			PaceCells:      m.Pace,
 			Facing:         seedFacing(m.Facing),
 			Sneaking:       m.Sneaking,
+			Dwell:          dwellFromData(m.Dwell),
 			BlocksMovement: m.BlocksMovement,
 			Faction:        m.Faction,
 		}

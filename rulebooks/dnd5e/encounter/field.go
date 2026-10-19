@@ -1460,6 +1460,12 @@ type memberRecord struct {
 	// non-player: a monster never sneaks.
 	Sneaking bool
 
+	// Dwell is the waypoint this creature stands at and how many more of its
+	// turns it stands there (dwell.go, rpg-project#624), or nil. Set when a
+	// patrol walk ends on a waypoint with a wait, spent one per fresh turn,
+	// and persisted.
+	Dwell *dwell
+
 	// Faction is the faction the caller NAMED, or empty for the kind's
 	// default — stored as given, never resolved here, so a member in the
 	// default faction persists byte-identically to one from before factions

@@ -186,6 +186,12 @@ type MonsterView struct {
 	// monster that flees only after round 2, say — has the fact without
 	// this composition growing a second capability to answer it.
 	Round int
+
+	// Dwelling is whether this member stands out a patrol waypoint's wait now
+	// (dwell.go, rpg-project#624): it arrived on the waypoint and its turns
+	// there are not spent. The table driver's patrol row holds while it is
+	// true; nothing else reads it.
+	Dwelling bool
 }
 
 // RememberedMember is one other member's last-known position, projected from
@@ -439,13 +445,14 @@ type Move struct {
 	// nothing and changes no refusal.
 	Target MemberID
 
-	// Pause is the waypoint this walk is walking to and the facing its author
+	// Pause is the waypoint this walk is walking to and what its author
 	// stated for the pause there (rpg-project#624), or nil. A walk that ENDS
-	// standing on Pause.Cell turns to Pause.Facing instead of keeping its
-	// last step's bearing; any other end ignores it (Kirk, 2026-10-19: the
-	// facing applies only while paused on the waypoint). It moves nothing.
-	// A facing outside [0, 360) is a malformed intent ([ErrBadIntent]).
-	Pause *PauseFacing
+	// standing on Pause.Cell pauses there ([WaypointPause]): it faces the
+	// stated facing and stands out the stated wait. Any other end ignores it
+	// (Kirk, 2026-10-19: the facing applies only while paused on the
+	// waypoint). It moves nothing. A facing outside [0, 360) or a negative
+	// wait is a malformed intent ([ErrBadIntent]).
+	Pause *WaypointPause
 }
 
 // isTurnIntent marks Move as a TurnIntent.
@@ -526,9 +533,9 @@ type Routed struct {
 
 	// Pause is [Move.Pause] for a routed walk: the table driver's walk BACK
 	// to a patrol's nearest waypoint carries that waypoint's facing, so a
-	// creature that regains its route on a faced waypoint pauses facing the
-	// way the author said. Nil for every other routed walk.
-	Pause *PauseFacing
+	// creature that regains its route on a waypoint pauses there as the
+	// author said. Nil for every other routed walk.
+	Pause *WaypointPause
 }
 
 // isTurnIntent marks Routed as a TurnIntent.

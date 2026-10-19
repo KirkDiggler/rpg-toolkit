@@ -1,18 +1,16 @@
 # THE PAUSE-FACING SITE (rpg-project#624): one open room, authored in the
 # encounter studio and exported through its own encoder (exportDraftYaml, the
 # studio's "download draft"), cut down from the cone site's export. One hand
-# edit, marked below: the route editor does not yet write a waypoint's facing.
+# edit, marked below: the route editor does not yet write a waypoint's pause.
 #
 #   room    the cone site's: offset cols -8..7, rows -4..6, no wall; the
 #           party start at its south, axial { q: 0, r: 6 }.
 #   guard   civil to the party, posted at { q: -6, r: 0 }, pacing a loop of
 #           three waypoints: east along row 0 to { q: 2, r: 0 }, which
-#           states `facing: s` for the pause there; south-west to
-#           { q: -2, r: 4 }, which states none; and back north-west to the first.
+#           states `wait: 2, facing: s` — stand two rounds there facing
+#           south; south-west to { q: -2, r: 4 }, which states nothing; and
+#           back north-west to the first.
 #
-# The legs are eight, four and eight cells, so his rounds end mid-leg, on a
-# waypoint, and sometimes carry him over one: only a round that ends on the
-# faced waypoint pauses him there, facing south.
 # pause_facing_site_test.go plays it.
 version: 4
 key: pause-facing-site
@@ -31,9 +29,9 @@ tables:
   pacing:
     time:
       # Hand edit: the guard paces his loop, and the waypoint at the east
-      # end of row 0 states the facing he takes when he pauses there.
+      # end of row 0 states how long he stands there and which way he faces.
       - when: { enemy: none }
-        toward: { path: [{ q: -6, r: 0 }, { q: 2, r: 0, facing: s }, { q: -2, r: 4 }] }
+        toward: { path: [{ q: -6, r: 0 }, { q: 2, r: 0, wait: 2, facing: s }, { q: -2, r: 4 }] }
 room:
   version: 3
   id: room-1

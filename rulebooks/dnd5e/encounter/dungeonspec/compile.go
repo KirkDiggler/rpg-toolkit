@@ -1184,6 +1184,7 @@ func selectorOf(sel *SelectorSpec, o encounter.Orientation) *encounter.Selector 
 		out.Path = append(out.Path, hexCell(waypoint))
 	}
 	out.Facings = waypointFacings(sel, len(out.Path))
+	out.Waits = waypointWaits(sel, len(out.Path))
 
 	return out
 }
@@ -1209,6 +1210,24 @@ func waypointFacings(sel *SelectorSpec, waypoints int) []*float64 {
 		}
 		if degrees, err := lowerFacing(word); err == nil {
 			out[first+i] = degrees
+		}
+	}
+
+	return out
+}
+
+// waypointWaits is a route's rounds to stand at each waypoint
+// (rpg-project#624), as the encounter's [encounter.Selector.Waits] carries
+// them, or nil when no waypoint states one, for [waypointFacings]' reason.
+func waypointWaits(sel *SelectorSpec, waypoints int) []int {
+	if len(sel.PathHexWait) == 0 {
+		return nil
+	}
+	out := make([]int, waypoints)
+	first := waypoints - len(sel.PathHex)
+	for i, wait := range sel.PathHexWait {
+		if first+i < waypoints {
+			out[first+i] = wait
 		}
 	}
 
