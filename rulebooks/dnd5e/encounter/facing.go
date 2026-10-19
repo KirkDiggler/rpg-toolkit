@@ -243,7 +243,9 @@ type walkFace struct {
 // walker's turns, facing Facing when one is stated ([dwell]). A waypoint with
 // no wait pauses its walker only when the walk to it spends the turn's
 // movement there ([walkFace.resting]); with movement left the patrol walks
-// straight on.
+// straight on. WAIT 0 IS THE GLANCE-ONLY CASE: its facing holds from the end
+// of that walk to the creature's next step, and nothing stops the patrol to
+// keep it.
 //
 // TAKEN ONLY AT THE PAUSE (Kirk, 2026-10-19). Walking, the creature faces
 // its step (sneaking design R17–R20 unchanged); a walk that ends mid-leg

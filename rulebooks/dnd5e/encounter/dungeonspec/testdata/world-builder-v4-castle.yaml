@@ -180,11 +180,12 @@ tables:
             within: 2
         toward: sound
       # Hand edit: the gate guards pace the gatehouse, a right-angled loop
-      # whose legs never share a cell (use case R7). At the gate-side
-      # corner each stands two rounds facing south, watching the incomers
-      # (rpg-project#624).
+      # whose legs never share a cell (use case R7). At each gate-side
+      # corner a guard stands two rounds turned inward to the party start,
+      # watching the incomers (rpg-project#624): se from the west corner,
+      # sw from the east.
       - when: { enemy: none }
-        toward: { path: [{ q: -7, r: 9, wait: 2, facing: s }, { q: -1, r: 9 }, { q: -3, r: 12 }, { q: -9, r: 12 }] }
+        toward: { path: [{ q: -7, r: 9, wait: 2, facing: se }, { q: -1, r: 9, wait: 2, facing: sw }, { q: -3, r: 12 }, { q: -9, r: 12 }] }
   keep-patrol:
     time:
       - say: Protect the king!
