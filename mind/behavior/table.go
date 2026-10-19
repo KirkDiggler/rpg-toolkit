@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"sort"
 	"strings"
@@ -535,20 +536,33 @@ type Selector struct {
 	// did before routes existed.
 	Path []spatial.Position `json:",omitempty"`
 
-	// Facings is, per waypoint of Path, the bearing the walker turns to when
-	// it PAUSES on that waypoint, or nil where the author stated none
+	// Facings is, per waypoint of Path, the bearing the walker faces while it
+	// PAUSES on that waypoint, or nil where the author stated none
 	// (rpg-project#624). Empty when no waypoint states one; otherwise exactly
-	// as long as Path, index for index.
+	// as long as Path, index for index. A bearing is degrees in [0, 360);
+	// which way zero points and which way it turns is the caller's frame.
 	//
-	// AT THE PAUSE ONLY (Kirk, 2026-10-19): a walk that ends standing on the
-	// waypoint takes its facing; walking, and a walk that ends anywhere else,
-	// is the caller's ordinary facing rule. Which way a bearing points — its
-	// zero, its sense, its range — is the caller's frame: this module carries
-	// the number beside the cell, as it carries the cell, and reads neither.
+	// TAKEN ONLY AT THE PAUSE (Kirk, 2026-10-19): standing on the waypoint
+	// the walker faces it; walking, and a walk that ends anywhere else, is
+	// the caller's ordinary facing rule.
 	//
 	// Omitted when empty, so a route whose waypoints state no facing marshals
 	// as it did before facings existed.
 	Facings []*float64 `json:",omitempty"`
+
+	// Waits is, per waypoint of Path, how many rounds the walker STANDS on
+	// that waypoint before it walks on, 0 where the author stated none
+	// (rpg-project#624; Kirk, 2026-10-19: a patrol walks to an area, stands
+	// for N turns, then goes on). Empty when no waypoint states one;
+	// otherwise exactly as long as Path. Never negative.
+	//
+	// THE ROUTE STILL HOLDS NO STATE. How long a creature has stood so far is
+	// the caller's to keep on the creature, as which waypoint is next is the
+	// caller's to derive; this module carries the number and reads it no more
+	// than the cell.
+	//
+	// Omitted when empty, for Facings' reason.
+	Waits []int `json:",omitempty"`
 }
 
 // targets names every target this selector sets, each as an author wrote it.
@@ -584,14 +598,42 @@ func (s *Selector) validate(word string) error {
 		return fmt.Errorf("`attack` cannot take `sound`: a sound cannot be struck, only walked toward "+
 			"or away from: %w", ErrBadSelector)
 	}
+	if err := s.validateWaypoints(word); err != nil {
+		return err
+	}
+	if len(s.Path) > 0 && word != "toward" {
+		return fmt.Errorf("`%s` cannot take a `path`: a route is walked, and only `toward` walks one: %w",
+			word, ErrBadSelector)
+	}
+
+	return nil
+}
+
+// validateWaypoints refuses a route's per-waypoint facings or waits that
+// cannot be matched to its waypoints, a facing that is not a bearing in
+// [0, 360), and a negative wait. word is the table word the selector is on.
+func (s *Selector) validateWaypoints(word string) error {
 	if len(s.Facings) > 0 && len(s.Facings) != len(s.Path) {
 		return fmt.Errorf("`%s` states %d waypoint facings for a route of %d waypoints; a facing belongs "+
 			"to one waypoint, so a route states one per waypoint or none: %w",
 			word, len(s.Facings), len(s.Path), ErrBadSelector)
 	}
-	if len(s.Path) > 0 && word != "toward" {
-		return fmt.Errorf("`%s` cannot take a `path`: a route is walked, and only `toward` walks one: %w",
-			word, ErrBadSelector)
+	if len(s.Waits) > 0 && len(s.Waits) != len(s.Path) {
+		return fmt.Errorf("`%s` states %d waypoint waits for a route of %d waypoints; a wait belongs "+
+			"to one waypoint, so a route states one per waypoint or none: %w",
+			word, len(s.Waits), len(s.Path), ErrBadSelector)
+	}
+	for i, f := range s.Facings {
+		if f != nil && (math.IsNaN(*f) || *f < 0 || *f >= 360) {
+			return fmt.Errorf("`%s` waypoint %d faces %v, which is not a bearing in [0, 360): %w",
+				word, i+1, *f, ErrBadSelector)
+		}
+	}
+	for i, w := range s.Waits {
+		if w < 0 {
+			return fmt.Errorf("`%s` waypoint %d waits %d rounds; a wait is never negative: %w",
+				word, i+1, w, ErrBadSelector)
+		}
 	}
 
 	return nil
