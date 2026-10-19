@@ -534,6 +534,21 @@ type Selector struct {
 	// Omitted when empty, so a selector that names no route marshals as it
 	// did before routes existed.
 	Path []spatial.Position `json:",omitempty"`
+
+	// Facings is, per waypoint of Path, the bearing the walker turns to when
+	// it PAUSES on that waypoint, or nil where the author stated none
+	// (rpg-project#624). Empty when no waypoint states one; otherwise exactly
+	// as long as Path, index for index.
+	//
+	// AT THE PAUSE ONLY (Kirk, 2026-10-19): a walk that ends standing on the
+	// waypoint takes its facing; walking, and a walk that ends anywhere else,
+	// is the caller's ordinary facing rule. Which way a bearing points — its
+	// zero, its sense, its range — is the caller's frame: this module carries
+	// the number beside the cell, as it carries the cell, and reads neither.
+	//
+	// Omitted when empty, so a route whose waypoints state no facing marshals
+	// as it did before facings existed.
+	Facings []*float64 `json:",omitempty"`
 }
 
 // targets names every target this selector sets, each as an author wrote it.
@@ -568,6 +583,11 @@ func (s *Selector) validate(word string) error {
 	if s.Word == SelectorSound && word == "attack" {
 		return fmt.Errorf("`attack` cannot take `sound`: a sound cannot be struck, only walked toward "+
 			"or away from: %w", ErrBadSelector)
+	}
+	if len(s.Facings) > 0 && len(s.Facings) != len(s.Path) {
+		return fmt.Errorf("`%s` states %d waypoint facings for a route of %d waypoints; a facing belongs "+
+			"to one waypoint, so a route states one per waypoint or none: %w",
+			word, len(s.Facings), len(s.Path), ErrBadSelector)
 	}
 	if len(s.Path) > 0 && word != "toward" {
 		return fmt.Errorf("`%s` cannot take a `path`: a route is walked, and only `toward` walks one: %w",

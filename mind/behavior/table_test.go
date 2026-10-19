@@ -1054,6 +1054,37 @@ func (s *TableSuite) TestTheNewFieldsAreOmittedWhenEmpty() {
 	sel, err := json.Marshal(behavior.Selector{Word: behavior.SelectorEnemy})
 	s.Require().NoError(err)
 	s.NotContains(string(sel), "Path")
+
+	route, err := json.Marshal(behavior.Selector{Path: []spatial.Position{{X: 1, Y: 2}}})
+	s.Require().NoError(err)
+	s.NotContains(string(route), "Facings")
+}
+
+// TestAWaypointMayCarryTheFacingOfItsPause is rpg-project#624: a route may
+// state, per waypoint, the bearing taken when the walker pauses there. The
+// module carries it beside the cell and reads it no more than the cell; it
+// refuses only a list that cannot be matched to the waypoints.
+func (s *TableSuite) TestAWaypointMayCarryTheFacingOfItsPause() {
+	route := []spatial.Position{{X: 2, Y: 3}, {X: 6, Y: 3}, {X: 6, Y: 8}}
+	south := 180.0
+	faced := &behavior.Selector{Path: route, Facings: []*float64{nil, &south, nil}}
+
+	table := behavior.Table{behavior.KeyTime: {
+		{Weight: 1, When: []behavior.When{{Enemy: behavior.EnemyNone}}, Toward: faced},
+	}}
+	s.Require().NoError((&behavior.Answer{Weight: 1, Toward: faced}).Validate())
+	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
+		Key: behavior.KeyTime, Table: table, Facts: behavior.Facts{CanMove: true}, Die: &facedDie{face: 1}})
+	s.Require().NoError(err)
+	s.Require().Len(chosen.Answer.Toward.Facings, len(route), "one facing slot per waypoint")
+	s.Nil(chosen.Answer.Toward.Facings[0], "a waypoint with no facing carries none")
+	s.Equal(&south, chosen.Answer.Toward.Facings[1], "the faced waypoint carries its bearing")
+
+	short := behavior.Answer{Weight: 1, Toward: &behavior.Selector{Path: route, Facings: []*float64{&south}}}
+	err = short.Validate()
+	s.Require().ErrorIs(err, behavior.ErrBadSelector)
+	s.EqualError(err, "`toward` states 1 waypoint facings for a route of 3 waypoints; a facing belongs "+
+		"to one waypoint, so a route states one per waypoint or none: behavior: selector cannot be read")
 }
 
 // TestSoundIsAPlaceToWalkToOrFrom is the `sound` selector word: where the
