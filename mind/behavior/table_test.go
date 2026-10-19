@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/rand"
 	"testing"
 
@@ -1054,6 +1055,76 @@ func (s *TableSuite) TestTheNewFieldsAreOmittedWhenEmpty() {
 	sel, err := json.Marshal(behavior.Selector{Word: behavior.SelectorEnemy})
 	s.Require().NoError(err)
 	s.NotContains(string(sel), "Path")
+
+	route, err := json.Marshal(behavior.Selector{Path: []spatial.Position{{X: 1, Y: 2}}})
+	s.Require().NoError(err)
+	s.NotContains(string(route), "Facings")
+	s.NotContains(string(route), "Waits")
+}
+
+// TestAWaypointMayCarryTheFacingOfItsPause is rpg-project#624: a route may
+// state, per waypoint, the bearing faced and the rounds stood while the
+// walker pauses there. The module carries both beside the cell and reads
+// them no more than the cell; it refuses a list that cannot be matched to
+// the waypoints, a facing outside [0, 360) and a negative wait.
+func (s *TableSuite) TestAWaypointMayCarryTheFacingOfItsPause() {
+	route := []spatial.Position{{X: 2, Y: 3}, {X: 6, Y: 3}, {X: 6, Y: 8}}
+	south := 180.0
+	faced := &behavior.Selector{Path: route, Facings: []*float64{nil, &south, nil}, Waits: []int{0, 2, 0}}
+
+	table := behavior.Table{behavior.KeyTime: {
+		{Weight: 1, When: []behavior.When{{Enemy: behavior.EnemyNone}}, Toward: faced},
+	}}
+	s.Require().NoError((&behavior.Answer{Weight: 1, Toward: faced}).Validate())
+	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
+		Key: behavior.KeyTime, Table: table, Facts: behavior.Facts{CanMove: true}, Die: &facedDie{face: 1}})
+	s.Require().NoError(err)
+	s.Require().Len(chosen.Answer.Toward.Facings, len(route), "one facing slot per waypoint")
+	s.Nil(chosen.Answer.Toward.Facings[0], "a waypoint with no facing carries none")
+	s.Equal(&south, chosen.Answer.Toward.Facings[1], "the faced waypoint carries its bearing")
+
+	s.Require().Len(chosen.Answer.Toward.Waits, len(route), "one wait slot per waypoint")
+	s.Equal(0, chosen.Answer.Toward.Waits[0], "a waypoint with no wait carries none")
+	s.Equal(2, chosen.Answer.Toward.Waits[1], "the waypoint that waits carries its rounds")
+
+	north := 0.0
+	facedNorth := &behavior.Selector{Path: route, Facings: []*float64{&north, nil, nil}}
+	s.NoError((&behavior.Answer{Weight: 1, Toward: facedNorth}).Validate(), "a facing of exactly 0 is a bearing")
+
+	full, wrapAround, notANumber := 360.0, -1.0, math.NaN()
+	for _, tc := range []struct {
+		name string
+		sel  behavior.Selector
+		says string
+	}{
+		{name: "too few facings", sel: behavior.Selector{Path: route, Facings: []*float64{&south}},
+			says: "`toward` states 1 waypoint facings for a route of 3 waypoints; a facing belongs " +
+				"to one waypoint, so a route states one per waypoint or none: behavior: selector cannot be read"},
+		{name: "too few waits", sel: behavior.Selector{Path: route, Waits: []int{2}},
+			says: "`toward` states 1 waypoint waits for a route of 3 waypoints; a wait belongs " +
+				"to one waypoint, so a route states one per waypoint or none: behavior: selector cannot be read"},
+		{name: "too many facings", sel: behavior.Selector{Path: route, Facings: []*float64{nil, &south, nil, nil}},
+			says: "`toward` states 4 waypoint facings for a route of 3 waypoints; a facing belongs " +
+				"to one waypoint, so a route states one per waypoint or none: behavior: selector cannot be read"},
+		{name: "too many waits", sel: behavior.Selector{Path: route, Waits: []int{0, 2, 0, 1}},
+			says: "`toward` states 4 waypoint waits for a route of 3 waypoints; a wait belongs " +
+				"to one waypoint, so a route states one per waypoint or none: behavior: selector cannot be read"},
+		{name: "a NaN facing", sel: behavior.Selector{Path: route, Facings: []*float64{nil, nil, &notANumber}},
+			says: "`toward` waypoint 3 faces NaN, which is not a bearing in [0, 360): behavior: selector cannot be read"},
+		{name: "a facing of 360", sel: behavior.Selector{Path: route, Facings: []*float64{nil, &full, nil}},
+			says: "`toward` waypoint 2 faces 360, which is not a bearing in [0, 360): behavior: selector cannot be read"},
+		{name: "a negative facing", sel: behavior.Selector{Path: route, Facings: []*float64{&wrapAround, nil, nil}},
+			says: "`toward` waypoint 1 faces -1, which is not a bearing in [0, 360): behavior: selector cannot be read"},
+		{name: "a negative wait", sel: behavior.Selector{Path: route, Waits: []int{0, 0, -1}},
+			says: "`toward` waypoint 3 waits -1 rounds; a wait is never negative: behavior: selector cannot be read"},
+	} {
+		s.Run(tc.name, func() {
+			sel := tc.sel
+			err := (&behavior.Answer{Weight: 1, Toward: &sel}).Validate()
+			s.Require().ErrorIs(err, behavior.ErrBadSelector)
+			s.EqualError(err, tc.says)
+		})
+	}
 }
 
 // TestSoundIsAPlaceToWalkToOrFrom is the `sound` selector word: where the
