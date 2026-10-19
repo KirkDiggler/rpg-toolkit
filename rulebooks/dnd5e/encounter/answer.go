@@ -762,6 +762,10 @@ func cloneSelector(sel *Selector) *Selector {
 	if sel.Path != nil {
 		out.Path = append([]spatial.Position(nil), sel.Path...)
 	}
+	out.Facings = copyFacings(sel.Facings)
+	if sel.Waits != nil {
+		out.Waits = append([]int(nil), sel.Waits...)
+	}
 
 	return &out
 }

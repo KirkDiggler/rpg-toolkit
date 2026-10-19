@@ -211,15 +211,30 @@ func (d TableDriver) towardIntent(view MonsterView, entry Answer) TurnIntent {
 		// WAYPOINT ([patrolStep]). A Move rather than a Routed walk, because
 		// the leg IS the route: the creature walks the same cells the next
 		// round will find it on.
+		//
+		// THE WAYPOINT AHEAD MAY STATE A PAUSE (rpg-project#624) — a facing,
+		// a wait, or both — and the walk carries it: the encounter pauses the
+		// creature there only if the walk ends standing on it
+		// ([WaypointPause]). Asked of the leg's own end, before the budget's
+		// cut, because a cut walk simply does not end on it.
+		//
+		// STANDING OUT A WAIT, THE ROW HOLDS (dwell.go): the creature is on
+		// its waypoint and its turns there are not spent, so the patrol
+		// walks nowhere. Rows above this one still fire first.
+		if view.Dwelling {
+			return Pass{Cause: tableCauseToward, Why: towardDwelling}
+		}
 		ahead, back := patrolStep(view.Position, path)
 		if len(ahead) == 0 {
-			return Routed{Policy: MoveToward, AnchorAt: &back, Cause: tableCauseToward}
+			return Routed{Policy: MoveToward, AnchorAt: &back, Cause: tableCauseToward,
+				Pause: pauseAt(entry.Toward, back)}
 		}
+		pause := pauseAt(entry.Toward, ahead[len(ahead)-1])
 		if len(ahead) > cells {
 			ahead = ahead[:cells]
 		}
 
-		return Move{Path: append([]spatial.Position(nil), ahead...)}
+		return Move{Path: append([]spatial.Position(nil), ahead...), Pause: pause}
 	}
 
 	if entry.Toward.Word == SelectorSound {
@@ -252,6 +267,40 @@ func (d TableDriver) towardIntent(view MonsterView, entry Answer) TurnIntent {
 	// ([Move.Target]).
 	return Move{Path: append([]spatial.Position(nil), path...), Target: target}
 }
+
+// pauseAt is the pause a route states for one of its waypoints
+// ([Selector.Facings], [Selector.Waits]), or nil when the cell is not a
+// waypoint of the route or the author stated no wait there. A route names
+// each waypoint once ([RetracedCell] refuses one that comes back), so the
+// cell is the lookup.
+func pauseAt(route *Selector, cell spatial.Position) *WaypointPause {
+	for i, waypoint := range route.Path {
+		if waypoint != cell {
+			continue
+		}
+		pause := WaypointPause{Cell: cell}
+		if i < len(route.Facings) && route.Facings[i] != nil {
+			degrees := *route.Facings[i]
+			pause.Facing = &degrees
+		}
+		if i < len(route.Waits) {
+			pause.Wait = route.Waits[i]
+		}
+		if pause.Wait == 0 {
+			// No wait, no pause: a facing is taken while standing
+			// ([WaypointPause]).
+			return nil
+		}
+
+		return &pause
+	}
+
+	return nil
+}
+
+// towardDwelling is the sentence a patrol row holding at its waypoint tells
+// on its stayed beat.
+const towardDwelling = "standing at its waypoint"
 
 // towardAlreadyInReach is the sentence a `toward` whose target is already
 // within range of one of the creature's actions tells on its stayed beat.

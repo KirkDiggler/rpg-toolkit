@@ -1183,6 +1183,53 @@ func selectorOf(sel *SelectorSpec, o encounter.Orientation) *encounter.Selector 
 	for _, waypoint := range sel.PathHex {
 		out.Path = append(out.Path, hexCell(waypoint))
 	}
+	out.Facings = waypointFacings(sel, len(out.Path))
+	out.Waits = waypointWaits(sel, len(out.Path))
+
+	return out
+}
+
+// waypointFacings lowers a route's pause facings (rpg-project#624) to the
+// per-waypoint bearings the encounter's [encounter.Selector.Facings] carries,
+// through the placement's own [lowerFacing], or nil when no waypoint states
+// one — an unfaced route compiles to the bytes it always did. The axial
+// waypoints follow any offset ones in [selectorOf], so their facings do too;
+// a validated document never holds both spellings.
+//
+// A word the dialect would refuse never reaches here (grammar.entryRoute);
+// one that does anyway lowers to no facing rather than a guessed one.
+func waypointFacings(sel *SelectorSpec, waypoints int) []*float64 {
+	if len(sel.PathHexFacing) == 0 {
+		return nil
+	}
+	out := make([]*float64, waypoints)
+	first := waypoints - len(sel.PathHex)
+	for i, word := range sel.PathHexFacing {
+		if word == "" || first+i >= waypoints {
+			continue
+		}
+		if degrees, err := lowerFacing(word); err == nil {
+			out[first+i] = degrees
+		}
+	}
+
+	return out
+}
+
+// waypointWaits is a route's rounds to stand at each waypoint
+// (rpg-project#624), as the encounter's [encounter.Selector.Waits] carries
+// them, or nil when no waypoint states one, for [waypointFacings]' reason.
+func waypointWaits(sel *SelectorSpec, waypoints int) []int {
+	if len(sel.PathHexWait) == 0 {
+		return nil
+	}
+	out := make([]int, waypoints)
+	first := waypoints - len(sel.PathHex)
+	for i, wait := range sel.PathHexWait {
+		if first+i < waypoints {
+			out[first+i] = wait
+		}
+	}
 
 	return out
 }

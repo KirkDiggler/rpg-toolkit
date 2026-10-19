@@ -1706,6 +1706,7 @@ func scopeWords() string {
 //	toward: { path: [[2, 3], [6, 3], [6, 8], [2, 8]] }       # v2: offsets
 //	toward: { at: { q: 1, r: -1 } }                          # single room: axial
 //	toward: { path: [{ q: -2, r: 0 }, { q: 0, r: -2 }, …] }  # single room: axial
+//	toward: { path: [{ q: -2, r: 0, wait: 2, facing: s }, …] } # a pause
 //
 // A SCALAR OR A MAPPING, and the author writes whichever says what they mean.
 // The words are sealed in mind/behavior ([encounter.SelectorWords]); `at:` and
@@ -1744,6 +1745,32 @@ type SelectorSpec struct {
 	// spellings fills both this and [SelectorSpec.Path], and whichever
 	// dialect reads it refuses the spelling that is not its own.
 	PathHex []RoomCell
+
+	// PathHexFacing is, index for index with [SelectorSpec.PathHex], the
+	// compass word a waypoint states for the PAUSE there — `{ q, r, facing:
+	// s }` — or "" where it states none (rpg-project#624). Nil when no
+	// waypoint states one, so an unfaced route decodes as it always did. The
+	// word is the placement's own vocabulary, refused in the placement's own
+	// sentence ([facings]), and lowered through the same
+	// [encounter.FacingFromCompass].
+	//
+	// TAKEN WHILE STANDING (Kirk, 2026-10-19), so only beside a wait
+	// ([SelectorSpec.PathHexWait]; a facing alone is refused): the walker
+	// faces it while it stands out the wait; walking, it faces its step
+	// (sneaking design R17–R20); a walk that ends mid-leg faces its last
+	// step.
+	//
+	// The v2 offset pair `[col, row]` has no key to carry one: a faced
+	// waypoint is spelt in the axial mapping.
+	PathHexFacing []string
+
+	// PathHexWait is, index for index with [SelectorSpec.PathHex], how many
+	// rounds the walker STANDS on a waypoint before it walks on — `{ q, r,
+	// wait: 2 }` — or 0 where it states none (rpg-project#624; Kirk,
+	// 2026-10-19: "the patrol walks to an area, stands for N turns, then
+	// goes on"). Nil when no waypoint states one. Axial waypoints only, for
+	// [SelectorSpec.PathHexFacing]'s reason.
+	PathHexWait []int
 
 	// Line is the file line, captured at decode for [AnswerSpec.Line]'s
 	// reason.
@@ -1870,13 +1897,20 @@ func (sel *SelectorSpec) decodePath(body *yaml.Node) error {
 		return nil
 	}
 	offsets := [][2]int{}
+	faced, waited := false, false
+	var words []string
+	var waits []int
 	for _, waypoint := range seq.Content {
 		if w := resolveNode(waypoint); w != nil && w.Kind == yaml.MappingNode {
-			cell, err := decodeHexCell(w)
+			cell, pause, err := decodeWaypoint(w)
 			if err != nil {
 				return err
 			}
 			sel.PathHex = append(sel.PathHex, cell)
+			words = append(words, pause.facing)
+			waits = append(waits, pause.wait)
+			faced = faced || pause.facing != ""
+			waited = waited || pause.wait != 0
 
 			continue
 		}
@@ -1889,8 +1923,69 @@ func (sel *SelectorSpec) decodePath(body *yaml.Node) error {
 	if len(offsets) > 0 || len(sel.PathHex) == 0 {
 		sel.Path = offsets
 	}
+	if faced {
+		sel.PathHexFacing = words
+	}
+	if waited {
+		sel.PathHexWait = waits
+	}
 
 	return nil
+}
+
+// waypointPause is what one axial waypoint states for the pause there, as
+// written: the facing word, or "", and the rounds to stand, or 0.
+type waypointPause struct {
+	facing string
+	wait   int
+}
+
+// decodeWaypoint reads one axial waypoint of a route: the strict `{ q, r }`
+// [decodeHexCell] reads, and the optional `facing` word and `wait` count for
+// the pause there (rpg-project#624). The word is judged by the dialect beside
+// a placement's ([facings]) and the count's sign by the dialect too; here
+// the word must only be a word and the count a whole number.
+func decodeWaypoint(node *yaml.Node) (RoomCell, waypointPause, error) {
+	cell := &yaml.Node{Kind: yaml.MappingNode, Tag: node.Tag, Line: node.Line, Column: node.Column}
+	var pause waypointPause
+	seen := map[string]int{}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		key, val := node.Content[i], node.Content[i+1]
+		if key.Value != "facing" && key.Value != "wait" {
+			cell.Content = append(cell.Content, key, val)
+
+			continue
+		}
+		if err := repeatedKey(seen, key); err != nil {
+			return RoomCell{}, waypointPause{}, err
+		}
+		v := resolveNode(val)
+		if key.Value == "facing" {
+			if v == nil || v.Kind != yaml.ScalarNode || v.Tag != "!!str" {
+				return RoomCell{}, waypointPause{}, fmt.Errorf(
+					"line %d: a waypoint's facing is a word, one of n|ne|e|se|s|sw|w|nw", key.Line)
+			}
+			pause.facing = v.Value
+
+			continue
+		}
+		if v == nil || v.Kind != yaml.ScalarNode || v.Tag != "!!int" {
+			return RoomCell{}, waypointPause{}, fmt.Errorf(
+				"line %d: a waypoint's wait is a whole number of rounds", key.Line)
+		}
+		n, err := strconv.Atoi(v.Value)
+		if err != nil {
+			return RoomCell{}, waypointPause{}, fmt.Errorf(
+				"line %d: a waypoint's wait is a whole number of rounds", key.Line)
+		}
+		pause.wait = n
+	}
+	out, err := decodeHexCell(cell)
+	if err != nil {
+		return RoomCell{}, waypointPause{}, err
+	}
+
+	return out, pause, nil
 }
 
 // repeatedKey records a key of a hand-read mapping and refuses one already

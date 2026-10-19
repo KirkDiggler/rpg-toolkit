@@ -219,15 +219,95 @@ func (e *Encounter) faceHeld(m *memberRecord, target MemberID) error {
 // the sound's cell was read off its hearing when the walk was decided
 // ([MonsterView.Sounds]) — a sound cannot move, so the cell it rang at is the
 // cell it is held at.
+//
+// AND A PAUSE, WHICH WINS WHERE IT HOLDS (rpg-project#624). A patrol walk to
+// a waypoint that states a wait carries that waypoint ([WaypointPause]); a
+// walk that ends standing on it stops there, and one that ends anywhere else
+// — cut short by its budget, or by an ally on the waypoint — reads the other
+// two, as before.
 type walkFace struct {
 	member MemberID
 	heard  *spatial.Position
+	pause  *WaypointPause
+}
+
+// WaypointPause is what a patrol's waypoint states for the PAUSE there
+// (rpg-project#624): the facing the walker faces while it stands on Cell,
+// and how many rounds it stands. A table's patrol states both per waypoint
+// ([Selector.Facings], [Selector.Waits]) and the table driver hands them on
+// with the walk to that waypoint ([Move.Pause], [Routed.Pause]).
+//
+// THE PAUSE IS A DWELL (Kirk, 2026-10-19): "the patrol walks to an area,
+// STANDS for N turns, then goes on." A walk that ends standing on Cell stops
+// the patrol there: the rest of that turn and Wait more of the walker's
+// turns, facing Facing when one is stated ([dwell]).
+//
+// NO WAIT, NO PAUSE (lead ruling on rpg-toolkit#2087, operator may veto). A
+// facing is taken while standing, so a waypoint states one only beside a
+// wait — the dialect refuses it alone — and a pause whose Wait is 0 does
+// nothing at all: the patrol walks through the waypoint facing its step.
+// Nobody asked for a glance at a corner; Kirk's primitive is the stand.
+//
+// TAKEN ONLY AT THE PAUSE (Kirk, 2026-10-19). Walking, the creature faces
+// its step (sneaking design R17–R20 unchanged); a walk that ends mid-leg
+// faces its last step; a waypoint that states nothing changes nothing. So
+// the pause is asked of the cell the walker STANDS on when the walk ends,
+// never of the cell it was sent to.
+type WaypointPause struct {
+	// Cell is the waypoint, dungeon-absolute.
+	Cell spatial.Position
+
+	// Facing is the bearing faced while paused there, in [0, 360): 0 is map
+	// north, clockwise (the frame above). Nil keeps the last step's.
+	Facing *float64
+
+	// Wait is how many of the walker's turns it stands there after the turn
+	// it arrives in. Zero is no pause at all. Never negative.
+	Wait int
+}
+
+// validateWaypointPause refuses a pause whose facing is not a bearing or
+// whose wait is negative ([ErrBadFacing], [ErrBadIntent]). Nil is no pause.
+func validateWaypointPause(p *WaypointPause) error {
+	if p == nil {
+		return nil
+	}
+	if p.Wait < 0 {
+		return fmt.Errorf("a waypoint's wait of %d rounds is negative: %w", p.Wait, ErrBadIntent)
+	}
+
+	return validateFacing(p.Facing)
+}
+
+// cloneWaypointPause copies a pause, nil staying nil, so a stored walk shares
+// nothing with the intent it came from.
+func cloneWaypointPause(p *WaypointPause) *WaypointPause {
+	if p == nil {
+		return nil
+	}
+	out := *p
+	if p.Facing != nil {
+		degrees := *p.Facing
+		out.Facing = &degrees
+	}
+
+	return &out
 }
 
 // faceWalkEnd turns a walker toward what its walk closed on ([walkFace]).
 //
 // Errors: the walker's own holdings could not be read.
 func (e *Encounter) faceWalkEnd(m *memberRecord, f walkFace) error {
+	if f.pause != nil && f.pause.Wait > 0 {
+		if here, placed := e.canvas.GetEntityPosition(string(m.ID)); placed && here == f.pause.Cell {
+			if f.pause.Facing != nil {
+				m.Facing = *f.pause.Facing
+			}
+			m.Dwell = &dwell{Cell: f.pause.Cell, Rounds: f.pause.Wait}
+
+			return nil
+		}
+	}
 	if f.heard != nil {
 		e.faceToward(m, *f.heard)
 
@@ -241,16 +321,18 @@ func (e *Encounter) faceWalkEnd(m *memberRecord, f walkFace) error {
 // route closes on one, the sound's cell when it walks toward a sound
 // ([Routed.Heard]), and nothing for a flight or an authored cell — a creature
 // running from something does not end its run turned toward it, and a cell
-// names a place, not a target.
+// names a place, not a target. A walk that carries a waypoint's pause
+// ([Routed.Pause]) also turns to it when it ends there.
 func routedFace(r Routed) walkFace {
+	pause := cloneWaypointPause(r.Pause)
 	if r.Policy != MoveToward {
-		return walkFace{}
+		return walkFace{pause: pause}
 	}
 	if r.Heard && r.AnchorAt != nil {
 		cell := *r.AnchorAt
 
-		return walkFace{heard: &cell}
+		return walkFace{heard: &cell, pause: pause}
 	}
 
-	return walkFace{member: r.Anchor}
+	return walkFace{member: r.Anchor, pause: pause}
 }

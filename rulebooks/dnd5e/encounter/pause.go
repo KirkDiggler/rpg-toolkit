@@ -261,6 +261,20 @@ type TurnPauseData struct {
 	// (rpg-toolkit#2076). Omitted for every other walk. Never set beside
 	// Face: a walk closes on one target.
 	FaceHeard *PositionData `json:"face_heard,omitempty"`
+
+	// FacePause is the waypoint the paused walk was walking to and what its
+	// author stated for the pause there ([WaypointPause], rpg-project#624),
+	// so a walk resumed after a reaction window still pauses there as its
+	// author said when it ends on that waypoint (R18). Omitted for every
+	// other walk.
+	FacePause *WaypointPauseData `json:"face_pause,omitempty"`
+}
+
+// WaypointPauseData is the persistent representation of a [WaypointPause].
+type WaypointPauseData struct {
+	Cell   PositionData `json:"cell"`
+	Facing *float64     `json:"facing,omitempty"`
+	Wait   int          `json:"wait,omitempty"`
 }
 
 // TurnBudgetData is the persistent representation of a [TurnBudget].
@@ -312,6 +326,12 @@ func pauseDataFrom(p *pause) *PauseData {
 		}
 		if heard := p.turn.face.heard; heard != nil {
 			d.Turn.FaceHeard = &PositionData{X: heard.X, Y: heard.Y}
+		}
+		if at := p.turn.face.pause; at != nil {
+			kept := cloneWaypointPause(at)
+			d.Turn.FacePause = &WaypointPauseData{
+				Cell: PositionData{X: at.Cell.X, Y: at.Cell.Y}, Facing: kept.Facing, Wait: kept.Wait,
+			}
 		}
 	}
 	return d
@@ -388,6 +408,11 @@ func pauseFrom(d *PauseData) (*pause, error) {
 		}
 		if heard := d.Turn.FaceHeard; heard != nil {
 			p.turn.face.heard = &spatial.Position{X: heard.X, Y: heard.Y}
+		}
+		if at := d.Turn.FacePause; at != nil {
+			p.turn.face.pause = cloneWaypointPause(&WaypointPause{
+				Cell: spatial.Position{X: at.Cell.X, Y: at.Cell.Y}, Facing: at.Facing, Wait: at.Wait,
+			})
 		}
 	}
 	return p, nil
@@ -503,6 +528,11 @@ func validatePause(d *PauseData, members map[core.EntityID]struct{}) error {
 		}
 		if t.Face != "" && t.FaceHeard != nil {
 			return fmt.Errorf("load encounter paused turn %q: faces a member and a sound: %w", d.Member, ErrInvalidData)
+		}
+		if at := t.FacePause; at != nil {
+			if err := validateWaypointPause(&WaypointPause{Facing: at.Facing, Wait: at.Wait}); err != nil {
+				return fmt.Errorf("load encounter paused turn %q: pause facing: %w: %w", d.Member, err, ErrInvalidData)
+			}
 		}
 	}
 	return nil
@@ -920,7 +950,8 @@ func (e *Encounter) finishPausedIntent(
 	// the arm's own rule, across the window: only a walk that finished, and
 	// before the refresh so every observer sees the turn.
 	if res.paused == nil && !res.dropped && p.moved+res.moved > 0 {
-		if ferr := e.faceWalkEnd(m, p.turn.face); ferr != nil {
+		face := p.turn.face
+		if ferr := e.faceWalkEnd(m, face); ferr != nil {
 			return 0, nil, false, ferr
 		}
 	}

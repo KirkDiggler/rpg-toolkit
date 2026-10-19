@@ -591,6 +591,13 @@ func (e *Encounter) runIntents(
 	activeID := MemberID(active)
 	var turnDeltas map[MemberID]*IntelDelta
 
+	// A FRESH TURN SPENDS ONE OF A DWELL'S TURNS (dwell.go); a turn resumed
+	// after a reaction window starts past its first intent and is the same
+	// turn, so it spends none (R18).
+	if startJ == 0 {
+		e.spendDwell(m)
+	}
+
 	for j := startJ; j < bound; j++ {
 		view, verr := e.buildMonsterView(m, *budget, round)
 		if verr != nil {
@@ -990,7 +997,11 @@ func (e *Encounter) executeTurnIntent(
 			// ErrBadIntent: a driver asking for more than its own budget, or
 			// for nothing at all (that is what Pass is for) — this member's
 			// turn ends rather than executing a path it did not fully ask
-			// for.
+			// for. A pause facing that is not a bearing is the same
+			// malformed ask.
+			return true, nil, nil
+		}
+		if validateWaypointPause(it.Pause) != nil {
 			return true, nil, nil
 		}
 
@@ -1018,9 +1029,12 @@ func (e *Encounter) executeTurnIntent(
 		// sight refresh, so every observer sees the turn. Only a walk that
 		// finished here: a body is not turning toward anybody, and a paused
 		// walk is still walking — its pause keeps the target, and the resume
-		// turns it ([Encounter.finishPausedIntent]).
+		// turns it ([Encounter.finishPausedIntent]). A walk that ends on a
+		// patrol waypoint with a wait stops there instead, facing the
+		// waypoint's facing ([WaypointPause], rpg-project#624).
 		if res.paused == nil && !res.dropped && res.moved > 0 {
-			if ferr := e.faceWalkEnd(m, walkFace{member: it.Target}); ferr != nil {
+			face := walkFace{member: it.Target, pause: it.Pause}
+			if ferr := e.faceWalkEnd(m, face); ferr != nil {
 				return false, nil, ferr
 			}
 		}
@@ -1054,7 +1068,7 @@ func (e *Encounter) executeTurnIntent(
 				audience:  audience,
 				turn: &turnPause{
 					round: coords.Round, budget: *budget, intent: coords.Intent, bound: coords.Bound,
-					face: walkFace{member: it.Target},
+					face: walkFace{member: it.Target, pause: cloneWaypointPause(it.Pause)},
 				},
 			}
 			if _, berr := e.appendWindowOpenedBeat(
@@ -1098,7 +1112,7 @@ func (e *Encounter) executeTurnIntent(
 		// simply ends, exactly like Pass. So is naming both a member and a
 		// cell, or neither: the intent does not say what it is measured from.
 		anchorCell, known := e.routedAnchor(it)
-		if !known {
+		if !known || validateWaypointPause(it.Pause) != nil {
 			return true, nil, nil
 		}
 
@@ -2039,6 +2053,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		Remembered: remembered,
 		Budget:     budget,
 		Round:      round,
+		Dwelling:   e.dwelling(m),
 	}, nil
 }
 
