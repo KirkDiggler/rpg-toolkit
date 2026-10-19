@@ -1706,6 +1706,7 @@ func scopeWords() string {
 //	toward: { path: [[2, 3], [6, 3], [6, 8], [2, 8]] }       # v2: offsets
 //	toward: { at: { q: 1, r: -1 } }                          # single room: axial
 //	toward: { path: [{ q: -2, r: 0 }, { q: 0, r: -2 }, …] }  # single room: axial
+//	toward: { path: [{ q: -2, r: 0, facing: s }, …] }        # a pause facing
 //
 // A SCALAR OR A MAPPING, and the author writes whichever says what they mean.
 // The words are sealed in mind/behavior ([encounter.SelectorWords]); `at:` and
@@ -1744,6 +1745,22 @@ type SelectorSpec struct {
 	// spellings fills both this and [SelectorSpec.Path], and whichever
 	// dialect reads it refuses the spelling that is not its own.
 	PathHex []RoomCell
+
+	// PathHexFacing is, index for index with [SelectorSpec.PathHex], the
+	// compass word a waypoint states for the PAUSE there — `{ q, r, facing:
+	// s }` — or "" where it states none (rpg-project#624). Nil when no
+	// waypoint states one, so an unfaced route decodes as it always did. The
+	// word is the placement's own vocabulary, refused in the placement's own
+	// sentence ([facings]), and lowered through the same
+	// [encounter.FacingFromCompass].
+	//
+	// AT THE PAUSE ONLY (Kirk, 2026-10-19): a walk that ends standing on the
+	// waypoint turns to it; walking, the creature faces its step (sneaking
+	// design R17–R20); a walk that ends mid-leg faces its last step.
+	//
+	// The v2 offset pair `[col, row]` has no key to carry one: a faced
+	// waypoint is spelt in the axial mapping.
+	PathHexFacing []string
 
 	// Line is the file line, captured at decode for [AnswerSpec.Line]'s
 	// reason.
@@ -1870,13 +1887,17 @@ func (sel *SelectorSpec) decodePath(body *yaml.Node) error {
 		return nil
 	}
 	offsets := [][2]int{}
+	faced := false
+	var words []string
 	for _, waypoint := range seq.Content {
 		if w := resolveNode(waypoint); w != nil && w.Kind == yaml.MappingNode {
-			cell, err := decodeHexCell(w)
+			cell, facing, err := decodeWaypoint(w)
 			if err != nil {
 				return err
 			}
 			sel.PathHex = append(sel.PathHex, cell)
+			words = append(words, facing)
+			faced = faced || facing != ""
 
 			continue
 		}
@@ -1889,8 +1910,45 @@ func (sel *SelectorSpec) decodePath(body *yaml.Node) error {
 	if len(offsets) > 0 || len(sel.PathHex) == 0 {
 		sel.Path = offsets
 	}
+	if faced {
+		sel.PathHexFacing = words
+	}
 
 	return nil
+}
+
+// decodeWaypoint reads one axial waypoint of a route: the strict `{ q, r }`
+// [decodeHexCell] reads, and an optional `facing` word for the pause there
+// (rpg-project#624). The word is judged by the dialect beside a placement's
+// ([facings]); here it must only be a word.
+func decodeWaypoint(node *yaml.Node) (RoomCell, string, error) {
+	cell := &yaml.Node{Kind: yaml.MappingNode, Tag: node.Tag, Line: node.Line, Column: node.Column}
+	facing := ""
+	seenFacing := false
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		key, val := node.Content[i], node.Content[i+1]
+		if key.Value != "facing" {
+			cell.Content = append(cell.Content, key, val)
+
+			continue
+		}
+		if seenFacing {
+			return RoomCell{}, "", fmt.Errorf("line %d: mapping key %q already defined", key.Line, key.Value)
+		}
+		seenFacing = true
+		word := resolveNode(val)
+		if word == nil || word.Kind != yaml.ScalarNode || word.Tag != "!!str" {
+			return RoomCell{}, "", fmt.Errorf(
+				"line %d: a waypoint's facing is a word, one of n|ne|e|se|s|sw|w|nw", key.Line)
+		}
+		facing = word.Value
+	}
+	out, err := decodeHexCell(cell)
+	if err != nil {
+		return RoomCell{}, "", err
+	}
+
+	return out, facing, nil
 }
 
 // repeatedKey records a key of a hand-read mapping and refuses one already

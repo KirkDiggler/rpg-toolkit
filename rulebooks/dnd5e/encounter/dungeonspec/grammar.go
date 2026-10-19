@@ -151,9 +151,13 @@ func (m members) at(id string) (member, bool) {
 // wrote: an offset pair (the v2 frame) or an axial `{ q, r }` (the single
 // room's). Exactly one is set. Which spelling is LEGAL is the dialect's
 // answer, never the grammar's ([cells]).
+//
+// facing is the word a route's waypoint states for its pause, or "" — only a
+// waypoint carries one (rpg-project#624).
 type authoredCell struct {
 	offset *[2]int
 	hex    *RoomCell
+	facing string
 }
 
 // selectorCell is the one cell a selector names, and whether it names one.
@@ -178,7 +182,11 @@ func selectorRoute(sel *SelectorSpec) []authoredCell {
 		out = append(out, authoredCell{offset: &sel.Path[i]})
 	}
 	for i := range sel.PathHex {
-		out = append(out, authoredCell{hex: &sel.PathHex[i]})
+		waypoint := authoredCell{hex: &sel.PathHex[i]}
+		if i < len(sel.PathHexFacing) {
+			waypoint.facing = sel.PathHexFacing[i]
+		}
+		out = append(out, waypoint)
 	}
 
 	return out
@@ -667,6 +675,12 @@ func (g *grammar) entryRoute(at, word string, route []authoredCell) {
 			floorDefect = true
 		}
 		cells = append(cells, answer.cell)
+		// A WAYPOINT'S FACING IS A PLACEMENT'S WORD (rpg-project#624), refused
+		// in the placement's sentence, so an author meets one vocabulary.
+		if word := route[i].facing; word != "" && !facings[word] {
+			g.fail(fmt.Sprintf("%s[%d].facing", path, i),
+				"%q is not a compass direction: a facing is one of n|ne|e|se|s|sw|w|nw", word)
+		}
 	}
 	if floorDefect {
 		return

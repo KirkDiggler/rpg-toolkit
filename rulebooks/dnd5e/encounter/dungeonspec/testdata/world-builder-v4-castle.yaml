@@ -180,9 +180,12 @@ tables:
             within: 2
         toward: sound
       # Hand edit: the gate guards pace the gatehouse, a right-angled loop
-      # whose legs never share a cell (use case R7).
+      # whose legs never share a cell (use case R7). The two gate-side
+      # waypoints state the facing for the pause there (rpg-project#624):
+      # each turns inward to the party start, where the road comes in — se
+      # from the west corner, sw from the east.
       - when: { enemy: none }
-        toward: { path: [{ q: -7, r: 9 }, { q: -1, r: 9 }, { q: -3, r: 12 }, { q: -9, r: 12 }] }
+        toward: { path: [{ q: -7, r: 9, facing: se }, { q: -1, r: 9, facing: sw }, { q: -3, r: 12 }, { q: -9, r: 12 }] }
   keep-patrol:
     time:
       - say: Protect the king!

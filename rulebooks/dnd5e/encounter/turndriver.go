@@ -438,6 +438,14 @@ type Move struct {
 	// [MonsterView.Remembered] (rpg-project#582, design R13). It moves
 	// nothing and changes no refusal.
 	Target MemberID
+
+	// Pause is the waypoint this walk is walking to and the facing its author
+	// stated for the pause there (rpg-project#624), or nil. A walk that ENDS
+	// standing on Pause.Cell turns to Pause.Facing instead of keeping its
+	// last step's bearing; any other end ignores it (Kirk, 2026-10-19: the
+	// facing applies only while paused on the waypoint). It moves nothing.
+	// A facing outside [0, 360) is a malformed intent ([ErrBadIntent]).
+	Pause *PauseFacing
 }
 
 // isTurnIntent marks Move as a TurnIntent.
@@ -515,6 +523,12 @@ type Routed struct {
 	// It is why this walk carries a cause where a [Move] intent's does not.
 	// A Move is the member's own decision; a Routed is somebody else's.
 	Cause core.Ref
+
+	// Pause is [Move.Pause] for a routed walk: the table driver's walk BACK
+	// to a patrol's nearest waypoint carries that waypoint's facing, so a
+	// creature that regains its route on a faced waypoint pauses facing the
+	// way the author said. Nil for every other routed walk.
+	Pause *PauseFacing
 }
 
 // isTurnIntent marks Routed as a TurnIntent.

@@ -219,15 +219,90 @@ func (e *Encounter) faceHeld(m *memberRecord, target MemberID) error {
 // the sound's cell was read off its hearing when the walk was decided
 // ([MonsterView.Sounds]) — a sound cannot move, so the cell it rang at is the
 // cell it is held at.
+//
+// AND A PAUSE, WHICH WINS WHERE IT HOLDS (rpg-project#624). A patrol walk to
+// a waypoint that states a facing carries that waypoint and its bearing
+// ([PauseFacing]); a walk that ends standing on it turns to the bearing, and
+// one that ends anywhere else — cut short by its budget, or by an ally on the
+// waypoint — reads the other two, as before.
 type walkFace struct {
 	member MemberID
 	heard  *spatial.Position
+	pause  *PauseFacing
+}
+
+// PauseFacing is a waypoint's facing for the pause (rpg-project#624): the
+// bearing a walker takes when its walk ENDS standing on Cell. A table's
+// patrol states it per waypoint ([Selector.Facings]) and the table driver
+// hands it on with the walk to that waypoint ([Move.Pause], [Routed.Pause]).
+//
+// AT THE PAUSE ONLY (Kirk, 2026-10-19). Walking, the creature faces its step
+// (R17–R20 unchanged); a walk that ends mid-leg faces its last step; a
+// waypoint with no facing changes nothing. So the turn is asked of the cell
+// the walker STANDS on when the walk ends, never of the cell it was sent to.
+//
+// NOTHING IS REMEMBERED. The route stays stateless: the walk carries the
+// waypoint it is walking to, and when that walk is over the facing is a
+// member's facing like any other — the next step turns it along the next leg.
+type PauseFacing struct {
+	// Cell is the waypoint, dungeon-absolute.
+	Cell spatial.Position
+
+	// Facing is the bearing taken there, in [0, 360): 0 is map north,
+	// clockwise (the frame above).
+	Facing float64
+}
+
+// resting is the face a walk ends with once it is known whether the walker's
+// walking is over for the turn: a walk that ends the turn's walking keeps
+// its pause; one with movement left to go on with drops it.
+//
+// A PATROL PASSES THROUGH A WAYPOINT IT HAS MOVEMENT LEFT AT. The table fires
+// again in the same turn and the next leg's steps begin, so arriving is not
+// pausing (Kirk, 2026-10-19: the facing applies only while paused). Turning
+// it there would be a glance nobody asked for — the sight refresh after the
+// walk would testify to a facing the creature holds for no time at all. A
+// [Routed] walk ends its turn, so its walking is always over.
+func (f walkFace) resting(walkingOver bool) walkFace {
+	if !walkingOver {
+		f.pause = nil
+	}
+
+	return f
+}
+
+// validatePauseFacing refuses a pause whose facing is not a bearing. Nil is no
+// pause.
+func validatePauseFacing(p *PauseFacing) error {
+	if p == nil {
+		return nil
+	}
+
+	return validateFacing(&p.Facing)
+}
+
+// clonePause copies a pause, nil staying nil, so a stored walk shares nothing
+// with the intent it came from.
+func clonePause(p *PauseFacing) *PauseFacing {
+	if p == nil {
+		return nil
+	}
+	out := *p
+
+	return &out
 }
 
 // faceWalkEnd turns a walker toward what its walk closed on ([walkFace]).
 //
 // Errors: the walker's own holdings could not be read.
 func (e *Encounter) faceWalkEnd(m *memberRecord, f walkFace) error {
+	if f.pause != nil {
+		if here, placed := e.canvas.GetEntityPosition(string(m.ID)); placed && here == f.pause.Cell {
+			m.Facing = f.pause.Facing
+
+			return nil
+		}
+	}
 	if f.heard != nil {
 		e.faceToward(m, *f.heard)
 
@@ -241,16 +316,18 @@ func (e *Encounter) faceWalkEnd(m *memberRecord, f walkFace) error {
 // route closes on one, the sound's cell when it walks toward a sound
 // ([Routed.Heard]), and nothing for a flight or an authored cell — a creature
 // running from something does not end its run turned toward it, and a cell
-// names a place, not a target.
+// names a place, not a target. A walk that carries a waypoint's pause
+// ([Routed.Pause]) also turns to it when it ends there.
 func routedFace(r Routed) walkFace {
+	pause := clonePause(r.Pause)
 	if r.Policy != MoveToward {
-		return walkFace{}
+		return walkFace{pause: pause}
 	}
 	if r.Heard && r.AnchorAt != nil {
 		cell := *r.AnchorAt
 
-		return walkFace{heard: &cell}
+		return walkFace{heard: &cell, pause: pause}
 	}
 
-	return walkFace{member: r.Anchor}
+	return walkFace{member: r.Anchor, pause: pause}
 }

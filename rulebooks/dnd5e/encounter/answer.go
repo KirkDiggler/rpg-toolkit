@@ -567,6 +567,14 @@ func validateEntry(key AnswerKey, i int, entry Answer) error {
 		if cell, retraced := RetracedCell(sel.Path); retraced {
 			return fmt.Errorf("answer %q entry %d: %s: %w", key, i, retraceRefusal(cell), ErrBadAnswer)
 		}
+		// A WAYPOINT'S FACING IS A BEARING in this composition's frame
+		// (rpg-project#624); mind/behavior carries the number and reads it
+		// no more than the cell, so the frame's range is refused here.
+		for w, facing := range sel.Facings {
+			if err := validateFacing(facing); err != nil {
+				return fmt.Errorf("answer %q entry %d: waypoint %d: %w: %w", key, i, w+1, err, ErrBadAnswer)
+			}
+		}
 	}
 
 	return nil
@@ -762,6 +770,7 @@ func cloneSelector(sel *Selector) *Selector {
 	if sel.Path != nil {
 		out.Path = append([]spatial.Position(nil), sel.Path...)
 	}
+	out.Facings = copyFacings(sel.Facings)
 
 	return &out
 }

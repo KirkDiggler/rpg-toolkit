@@ -1492,6 +1492,11 @@ type SelectorData struct {
 	Word string         `json:"word,omitempty"`
 	At   *PositionData  `json:"at,omitempty"`
 	Path []PositionData `json:"path,omitempty"`
+
+	// Facings is the route's per-waypoint pause facing ([Selector.Facings],
+	// rpg-project#624), null where a waypoint states none. Omitted when no
+	// waypoint states one, so an unfaced route stores what it always did.
+	Facings []*float64 `json:"facings,omitempty"`
 }
 
 // TemperData is the persistent representation of a resolved [Temper]: the
@@ -1614,6 +1619,24 @@ func selectorDataFrom(sel *Selector) *SelectorData {
 	for _, p := range sel.Path {
 		out.Path = append(out.Path, PositionData{X: p.X, Y: p.Y})
 	}
+	out.Facings = copyFacings(sel.Facings)
+
+	return out
+}
+
+// copyFacings deep-copies a route's per-waypoint facings, nil staying nil
+// and a waypoint with none staying none.
+func copyFacings(in []*float64) []*float64 {
+	if in == nil {
+		return nil
+	}
+	out := make([]*float64, len(in))
+	for i, f := range in {
+		if f != nil {
+			degrees := *f
+			out[i] = &degrees
+		}
+	}
 
 	return out
 }
@@ -1688,6 +1711,7 @@ func selectorFromData(data *SelectorData) *Selector {
 	for _, p := range data.Path {
 		out.Path = append(out.Path, spatial.Position{X: p.X, Y: p.Y})
 	}
+	out.Facings = copyFacings(data.Facings)
 
 	return out
 }

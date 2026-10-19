@@ -990,7 +990,11 @@ func (e *Encounter) executeTurnIntent(
 			// ErrBadIntent: a driver asking for more than its own budget, or
 			// for nothing at all (that is what Pass is for) — this member's
 			// turn ends rather than executing a path it did not fully ask
-			// for.
+			// for. A pause facing that is not a bearing is the same
+			// malformed ask.
+			return true, nil, nil
+		}
+		if validatePauseFacing(it.Pause) != nil {
 			return true, nil, nil
 		}
 
@@ -1018,9 +1022,13 @@ func (e *Encounter) executeTurnIntent(
 		// sight refresh, so every observer sees the turn. Only a walk that
 		// finished here: a body is not turning toward anybody, and a paused
 		// walk is still walking — its pause keeps the target, and the resume
-		// turns it ([Encounter.finishPausedIntent]).
+		// turns it ([Encounter.finishPausedIntent]). A patrol's waypoint
+		// facing turns it only when this walk spends the turn's movement
+		// there: with movement left the next leg follows at once
+		// ([walkFace.resting], rpg-project#624).
 		if res.paused == nil && !res.dropped && res.moved > 0 {
-			if ferr := e.faceWalkEnd(m, walkFace{member: it.Target}); ferr != nil {
+			face := walkFace{member: it.Target, pause: it.Pause}.resting(budget.MovementFeet-res.moved*FeetPerCell <= 0)
+			if ferr := e.faceWalkEnd(m, face); ferr != nil {
 				return false, nil, ferr
 			}
 		}
@@ -1054,7 +1062,7 @@ func (e *Encounter) executeTurnIntent(
 				audience:  audience,
 				turn: &turnPause{
 					round: coords.Round, budget: *budget, intent: coords.Intent, bound: coords.Bound,
-					face: walkFace{member: it.Target},
+					face: walkFace{member: it.Target, pause: clonePause(it.Pause)},
 				},
 			}
 			if _, berr := e.appendWindowOpenedBeat(
@@ -1098,7 +1106,7 @@ func (e *Encounter) executeTurnIntent(
 		// simply ends, exactly like Pass. So is naming both a member and a
 		// cell, or neither: the intent does not say what it is measured from.
 		anchorCell, known := e.routedAnchor(it)
-		if !known {
+		if !known || validatePauseFacing(it.Pause) != nil {
 			return true, nil, nil
 		}
 

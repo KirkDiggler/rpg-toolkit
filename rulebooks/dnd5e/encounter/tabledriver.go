@@ -211,15 +211,23 @@ func (d TableDriver) towardIntent(view MonsterView, entry Answer) TurnIntent {
 		// WAYPOINT ([patrolStep]). A Move rather than a Routed walk, because
 		// the leg IS the route: the creature walks the same cells the next
 		// round will find it on.
+		//
+		// THE WAYPOINT AHEAD MAY STATE A FACING FOR THE PAUSE (rpg-project#624),
+		// and the walk carries it: the encounter turns the creature to it only
+		// if the walk ends standing there ([PauseFacing]). Asked of the leg's
+		// own end, before the budget's cut, because a cut walk simply does not
+		// end on it.
 		ahead, back := patrolStep(view.Position, path)
 		if len(ahead) == 0 {
-			return Routed{Policy: MoveToward, AnchorAt: &back, Cause: tableCauseToward}
+			return Routed{Policy: MoveToward, AnchorAt: &back, Cause: tableCauseToward,
+				Pause: pauseAt(entry.Toward, back)}
 		}
+		pause := pauseAt(entry.Toward, ahead[len(ahead)-1])
 		if len(ahead) > cells {
 			ahead = ahead[:cells]
 		}
 
-		return Move{Path: append([]spatial.Position(nil), ahead...)}
+		return Move{Path: append([]spatial.Position(nil), ahead...), Pause: pause}
 	}
 
 	if entry.Toward.Word == SelectorSound {
@@ -251,6 +259,22 @@ func (d TableDriver) towardIntent(view MonsterView, entry Answer) TurnIntent {
 	// THE WALK NAMES WHO IT CLOSES ON, so the creature ends it facing them
 	// ([Move.Target]).
 	return Move{Path: append([]spatial.Position(nil), path...), Target: target}
+}
+
+// pauseAt is the pause a route states for one of its waypoints
+// ([Selector.Facings]), or nil when the cell is not a waypoint of the route
+// or the author stated no facing there. A route names each waypoint once
+// ([RetracedCell] refuses one that comes back), so the cell is the lookup.
+func pauseAt(route *Selector, cell spatial.Position) *PauseFacing {
+	for i, waypoint := range route.Path {
+		if waypoint != cell || i >= len(route.Facings) || route.Facings[i] == nil {
+			continue
+		}
+
+		return &PauseFacing{Cell: cell, Facing: *route.Facings[i]}
+	}
+
+	return nil
 }
 
 // towardAlreadyInReach is the sentence a `toward` whose target is already
