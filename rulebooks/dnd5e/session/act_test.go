@@ -111,6 +111,18 @@ func (s *ReactWindowSuite) TestOpportunityAttackMidWalkCarriesWalkAct() {
 	for _, m := range moved {
 		s.Equal(walk, m.Correlation, "the resumed walk is the same act")
 	}
+
+	// THE TURN ENDS IN THE ACT THE WALK WAS OPENED INSIDE. The skeleton's
+	// walk began under the fighter's end_turn; the encounter's pause kept
+	// that act beneath the walk's, so after React the skeleton's turn-ended
+	// carries the end_turn id, not the walk's that React reopened.
+	fighterEnded := eventsOf(s.T(), events, session.EventTurnEnded, "member", "fighter")
+	s.Require().NotEmpty(fighterEnded)
+	endTurn := fighterEnded[len(fighterEnded)-1].Correlation
+	s.Require().True(strings.HasPrefix(endTurn, "end_turn:"), "got %q", endTurn)
+	skelEnded := eventsOf(s.T(), events, session.EventTurnEnded, "member", "skel-1")
+	s.Require().NotEmpty(skelEnded)
+	s.Equal(endTurn, skelEnded[len(skelEnded)-1].Correlation, "not the walk's %s", walk)
 }
 
 // TestAPlayersWalkAndTheBiteItProvokesShareOneAct is Law 2 with no window: a
