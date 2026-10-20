@@ -101,8 +101,9 @@ type RecordEquipOutput struct {
 //
 // ONE BEAT PER ITEM, ONE WAY EACH. A swap is not a third kind of change; it
 // is a stow and a draw, told in the order they happen, and the correlation
-// is what says they were one act. The correlation is minted HERE, from the
-// sequence of the equip's first beat — the story owns its own sequence, so
+// is what says they were one act. The correlation is the open act's id
+// ([Encounter.OpenAct]) when there is one, and otherwise minted HERE, from
+// the sequence of the equip's first beat — the story owns its own sequence, so
 // no two acts in one story can share a token, and no caller has to mint one.
 //
 // THE SHEET MUST ALREADY CARRY THE CHANGE. The re-look asks [Equipment] for
@@ -174,7 +175,13 @@ func (e *Encounter) RecordEquip(in *RecordEquipInput) (*RecordEquipOutput, error
 	if err != nil {
 		return nil, fmt.Errorf("record equip: %w", err)
 	}
-	correlation := fmt.Sprintf("equip:%d", first)
+	// UNDER AN OPEN ACT THE EQUIP IS THAT ACT (act.go): a host's equip verb
+	// already opened it. With none open the equip mints its own, as it
+	// always has.
+	correlation := e.currentAct()
+	if correlation == "" {
+		correlation = fmt.Sprintf("equip:%d", first)
+	}
 	at := uint64(e.clock.ToData().HighWater)
 
 	seqs := make([]uint64, 0, len(changes))

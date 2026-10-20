@@ -69,6 +69,11 @@ type Encounter struct {
 	holdEndings bool
 	heldEnding  *heldEnding
 
+	// acts is the stack of open acts (act.go): every beat appended carries
+	// the top one as its correlation unless it names its own. Unexported and
+	// never persisted — an act lives inside one call.
+	acts []string
+
 	// deferredDrives are the fights a held deed formed, whose first slot is
 	// driven by the train's post-train pass instead of by the formation.
 	deferredDrives []*clock.Turn
@@ -397,7 +402,13 @@ func logFloorOf(data record.LogData) uint64 {
 // beats than the window would trim its own earliest beats mid-verb — entries
 // no reader has been handed yet — so the live log holds everything appended
 // since load and the window is enforced at the storage boundary, in ToData.
+//
+// THE ACT ID IS STAMPED HERE (act.go): a beat that names no correlation of
+// its own carries the open act's id, so no verb has to remember to.
 func (e *Encounter) appendBeat(in *record.AppendInput) (*record.AppendOutput, error) {
+	if in.Correlation == "" {
+		in.Correlation = e.currentAct()
+	}
 	return e.story.Append(in)
 }
 
@@ -915,7 +926,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// tableBeat branch preserves exactly that (see its doc).
 	beatPayload, _ := json.Marshal(map[string]string{"beat": BeatSceneOpened})
 	_, err = e.appendBeat(&record.AppendInput{
-		At:       0,
+		At:       uint64(e.clock.ToData().HighWater),
 		Audience: e.audienceFor(tableBeat, memberIDs...),
 		Tags:     map[string]string{"tag": "scene"},
 		Payload:  beatPayload,

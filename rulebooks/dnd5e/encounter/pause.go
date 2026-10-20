@@ -131,6 +131,12 @@ type pause struct {
 	cause     core.Ref
 	turn      *turnPause
 	forced    bool
+
+	// act is the act the paused walk or strike belongs to (act.go), so the
+	// cells walked after the answer carry the same id as the cells before
+	// it, and the reaction's own beats can carry it too (Law 2). Empty on a
+	// pause saved before acts existed, which resumes with no act id.
+	act string
 }
 
 // turnPause is what a [PauseTurn] carries beyond the walk: the turn the walk
@@ -222,6 +228,12 @@ type PauseData struct {
 	// [DirectInput.Provokes], inverted, exactly as the live walk carried it.
 	// A directive's only; refused on a turn.
 	Forced bool `json:"forced,omitempty"`
+
+	// Act is the id of the act the paused walk or strike belongs to
+	// ([Encounter.PausedAct]). Absent on a pause written before acts
+	// existed, which still loads — PauseVersion is unchanged — and resumes
+	// with no act id: degraded, not refused.
+	Act string `json:"act,omitempty"`
 }
 
 // TurnPauseData is the persistent representation of what a paused TURN
@@ -309,6 +321,7 @@ func pauseDataFrom(p *pause) *PauseData {
 		Audience:  append([]MemberID(nil), p.audience...),
 		Cause:     causeString(p.cause),
 		Forced:    p.forced,
+		Act:       p.act,
 	}
 	if p.turn != nil {
 		d.Turn = &TurnPauseData{
@@ -391,6 +404,7 @@ func pauseFrom(d *PauseData) (*pause, error) {
 		audience:  append([]MemberID(nil), d.Audience...),
 		cause:     cause,
 		forced:    d.Forced,
+		act:       d.Act,
 	}
 	if d.Turn != nil {
 		p.turn = &turnPause{
@@ -847,7 +861,19 @@ func (e *Encounter) finishTurnFromPause(
 	ctx context.Context, bubble *clock.Turn, p *pause, m *memberRecord,
 	seq *uint64, wrapped *bool, deltas *map[MemberID]*IntelDelta,
 ) (bool, error) {
-	walkSeq, walkDeltas, done, rerr := e.finishPausedIntent(ctx, p, m)
+	// THE INTERRUPTED INTENT FINISHES IN ITS OWN ACT (act.go, Law 2): the
+	// cells after the window carry the walk's id. Whatever intents the turn
+	// has left below open acts of their own.
+	var (
+		walkSeq    uint64
+		walkDeltas map[MemberID]*IntelDelta
+		done       bool
+	)
+	rerr := e.underAct(p.act, func() error {
+		var ferr error
+		walkSeq, walkDeltas, done, ferr = e.finishPausedIntent(ctx, p, m)
+		return ferr
+	})
 	*deltas = mergeIntelDeltas(*deltas, walkDeltas)
 	if rerr != nil {
 		return false, fmt.Errorf("resume turn %q: %w", p.member, rerr)
@@ -972,6 +998,7 @@ func (e *Encounter) finishPausedIntent(
 			at:        p.at,
 			audience:  p.audience,
 			cause:     p.cause,
+			act:       p.act,
 			turn: &turnPause{
 				round:    p.turn.round,
 				budget:   p.turn.budget,

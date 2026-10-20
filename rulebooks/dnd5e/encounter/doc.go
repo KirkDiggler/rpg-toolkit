@@ -91,6 +91,20 @@
 // callers. An ordinary placement refusal stops a driven walk; a failed query
 // requires the caller to discard the encounter without saving.
 //
+// # The act id (rpg-project#627)
+//
+// EVERY BEAT OF AN ACT CARRIES THE ACT'S ID as its record correlation, and a
+// beat outside any act carries none (act.go). The id is `<verb>:<first seq>`,
+// minted by [Encounter.OpenAct] from the seq the act's first beat takes. The
+// open acts are an in-memory stack that is never persisted: a beat carries
+// the top of it, a driven creature's intent (`move`, `attack`, `pass`) and
+// its world-clock pick (`time`) open their own acts on top of whatever host
+// verb drew them, and [Encounter.CloseAct] restores the outer one. A reaction
+// reopens its trigger's id rather than minting one (Law 2), and the one act
+// that outlives a call — a walk or strike held by a reaction window — travels
+// on the pause, where [Encounter.PausedAct] reads it and the resume walks on
+// under it. A beat's At is the world clock's high-water in rounds.
+//
 // # Time on the world clock (rpg-project#465)
 //
 // The world clock advances ONLY BECAUSE SOMEBODY ACTS. A walk pays one round
