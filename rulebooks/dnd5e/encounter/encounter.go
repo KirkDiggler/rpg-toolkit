@@ -407,7 +407,7 @@ func logFloorOf(data record.LogData) uint64 {
 // its own carries the open act's id, so no verb has to remember to.
 func (e *Encounter) appendBeat(in *record.AppendInput) (*record.AppendOutput, error) {
 	if in.Correlation == "" {
-		in.Correlation = e.currentAct()
+		in.Correlation = e.CurrentAct()
 	}
 	return e.story.Append(in)
 }

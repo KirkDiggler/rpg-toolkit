@@ -178,7 +178,7 @@ func (e *Encounter) RecordEquip(in *RecordEquipInput) (*RecordEquipOutput, error
 	// UNDER AN OPEN ACT THE EQUIP IS THAT ACT (act.go): a host's equip verb
 	// already opened it. With none open the equip mints its own, as it
 	// always has.
-	correlation := e.currentAct()
+	correlation := e.CurrentAct()
 	if correlation == "" {
 		correlation = fmt.Sprintf("equip:%d", first)
 	}

@@ -90,8 +90,14 @@ func (e *Encounter) PausedAct() string {
 	return e.pause.act
 }
 
-// currentAct is the open act a beat appended now carries, or "".
-func (e *Encounter) currentAct() string {
+// CurrentAct returns the open act's id — the one a beat appended now carries
+// — or "" when no act is open.
+//
+// A HOST READS IT FROM INSIDE A CAPABILITY. A [Mover] or [Striker] that
+// poses a reaction window is called while the driven intent's own act is
+// open and before the encounter stores its pause, so this, not
+// [Encounter.PausedAct], is what names the act the window answers.
+func (e *Encounter) CurrentAct() string {
 	if len(e.acts) == 0 {
 		return ""
 	}

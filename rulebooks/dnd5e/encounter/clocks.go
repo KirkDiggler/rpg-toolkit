@@ -995,7 +995,7 @@ func (e *Encounter) executeTurnIntent(
 				e.pause = &pause{
 					kind:   PauseTurn,
 					member: activeID,
-					act:    e.currentAct(),
+					act:    e.CurrentAct(),
 					turn: &turnPause{
 						round: coords.Round, budget: *budget, intent: coords.Intent, bound: coords.Bound,
 						afterStrike: true,
@@ -1083,7 +1083,7 @@ func (e *Encounter) executeTurnIntent(
 				moved:     res.moved,
 				at:        at,
 				audience:  audience,
-				act:       e.currentAct(),
+				act:       e.CurrentAct(),
 				turn: &turnPause{
 					round: coords.Round, budget: *budget, intent: coords.Intent, bound: coords.Bound,
 					face: walkFace{member: it.Target, pause: cloneWaypointPause(it.Pause)},
@@ -1230,7 +1230,7 @@ func (e *Encounter) executeTurnIntent(
 				at:        at,
 				audience:  audience,
 				cause:     it.Cause,
-				act:       e.currentAct(),
+				act:       e.CurrentAct(),
 				turn: &turnPause{
 					round: coords.Round, budget: *budget, intent: coords.Intent, bound: coords.Bound,
 					terminal: true, face: face,

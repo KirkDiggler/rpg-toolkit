@@ -189,12 +189,16 @@ func (s *ActTestSuite) TestReopenedActKeepsId() {
 func (s *ActTestSuite) TestCloseActRestoresTheOuterAct() {
 	enc := s.pair(&downList{})
 
+	s.Empty(enc.CurrentAct(), "nothing is open yet")
 	outer := s.open(enc, "attack", "")
 	inner := s.open(enc, "react", "move:7")
+	s.Equal(inner, enc.CurrentAct())
 	s.missAt(enc)
 	s.Require().NoError(enc.CloseAct())
+	s.Equal(outer, enc.CurrentAct(), "closing the inner act restores the outer")
 	s.missAt(enc)
 	s.Require().NoError(enc.CloseAct())
+	s.Empty(enc.CurrentAct())
 
 	missed := ofKind(s.story(enc, alice), string(encounter.OutcomeMissed), "")
 	s.Require().Len(missed, 2)
@@ -301,10 +305,23 @@ func (s *ActTestSuite) TestDrivenWalkThenAttackIsTwoActs() {
 	s.NotEqual(endTurn, swing)
 }
 
-// TestDrivenPauseKeepsWalkAct is Law 2 across a window: the pause keeps the
-// walk's act through a save, and the cells walked after the answer carry it.
+// actSeeingMover is a pausingMover that records the act open at every step
+// it is told about — what a host's Mover reads when it poses a window.
+type actSeeingMover struct {
+	pausingMover
+	acts []string
+}
+
+func (m *actSeeingMover) Move(ctx context.Context, enc *encounter.Encounter, step encounter.MoveStep) error {
+	m.acts = append(m.acts, enc.CurrentAct())
+	return m.pausingMover.Move(ctx, enc, step)
+}
+
+// TestDrivenPauseKeepsWalkAct is Law 2 across a window: the Mover that poses
+// the window sees the walk's act, the pause keeps it through a save, and the
+// cells walked after the answer carry it.
 func (s *ActTestSuite) TestDrivenPauseKeepsWalkAct() {
-	mover := &pausingMover{pauseAt: map[int]bool{1: true}}
+	mover := &actSeeingMover{pausingMover: pausingMover{pauseAt: map[int]bool{1: true}}}
 	driver := &scriptedDriver{intents: []encounter.TurnIntent{encounter.Move{Path: closeIn}}}
 	enc := s.drivenScene(driver, passStriker{}, mover)
 
@@ -319,6 +336,8 @@ func (s *ActTestSuite) TestDrivenPauseKeepsWalkAct() {
 	walk := before[0].correlation
 	s.True(strings.HasPrefix(walk, "move:"))
 	s.Equal(walk, enc.PausedAct(), "the pause belongs to the walk")
+	s.Require().Len(mover.acts, 2)
+	s.Equal(walk, mover.acts[1], "the Mover posing the window sees the walk's act")
 
 	data := enc.ToData()
 	s.Require().NotNil(data.Pause)
