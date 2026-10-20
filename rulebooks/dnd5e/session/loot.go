@@ -103,7 +103,7 @@ func (m *Manager) Loot(ctx context.Context, in *LootInput) (*LootOutput, error) 
 		return nil, fmt.Errorf("loot: %w", ErrNoMemberID)
 	}
 
-	scope, err := m.openForChange(ctx, in.Session)
+	scope, err := m.openForChange(ctx, "loot", in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("loot: %w", err)
 	}

@@ -204,7 +204,7 @@ func (m *Manager) Dissolve(ctx context.Context, in *DissolveInput) (*DissolveOut
 		return nil, fmt.Errorf("dissolve: %w", ErrNoCause)
 	}
 
-	scope, err := m.openForChange(ctx, in.Session)
+	scope, err := m.openForChange(ctx, "dissolve", in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("dissolve: %w", err)
 	}

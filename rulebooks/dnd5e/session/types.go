@@ -1647,19 +1647,19 @@ type Event struct {
 	// internal to the seam (the gap-oracle ruling, rpg-project#351).
 	Seq uint64 `json:"seq"`
 
-	// At is the clock reading when the underlying beat was recorded.
+	// At is the world clock's reading, in rounds, when the underlying beat
+	// was recorded — the composition's world-clock high-water (design R4).
 	At uint64 `json:"at,omitempty"`
 
-	// Correlation groups cause and effect across events. Empty is legal.
+	// Correlation is the id of the act this beat belongs to,
+	// `<verb>:<first seq>` (rpg-project#627, design R3): every event of one
+	// player verb, or of one driven creature's walk, swing or pick, carries
+	// the same id, and a reaction carries its trigger's. Empty means the beat
+	// was recorded outside any act.
+	//
+	// The record's tags stay on the record (design R23); they do not ride
+	// the event.
 	Correlation string `json:"correlation,omitempty"`
-
-	// Tags is queryable metadata describing the beat, carried unchanged from
-	// the story-log entry this event was projected from. Before
-	// rpg-api-protos#239 only a Story catch-up carried this field; a live
-	// subscriber now gets the identical Tags too, so a client resolving a
-	// gap by re-querying Story is never handed a thinner answer than what
-	// arrived live.
-	Tags map[string]string `json:"tags,omitempty"`
 
 	// Recipient is the member this projection is addressed to.
 	Recipient string `json:"recipient"`

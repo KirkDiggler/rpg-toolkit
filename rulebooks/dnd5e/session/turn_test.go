@@ -165,7 +165,7 @@ func (s *TurnTestSuite) TestEndingATurnHandsItOn() {
 	s.Require().NoError(err)
 	var turnEnded, ogrePassed int
 	for _, entry := range story {
-		if entry.Tags["tag"] != "clock" {
+		if entry.Kind != session.EventTurnEnded {
 			continue
 		}
 		var p struct {

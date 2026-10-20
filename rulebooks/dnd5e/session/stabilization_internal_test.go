@@ -70,7 +70,7 @@ func (s *StabilizationSessionSuite) TestCompiledProfilePersistsAndDeliversReplay
 			// Launch rests whoever it seats, so the dying sheet is written
 			// once they are on the board: it is the state under test.
 			characters.byID["bob"] = bob
-			scope, err := mgr.openForChange(ctx, "sess")
+			scope, err := mgr.openForChange(ctx, "recheck", "sess")
 			s.Require().NoError(err)
 			roster, err := scope.enc.Members()
 			s.Require().NoError(err)

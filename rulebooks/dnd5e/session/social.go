@@ -108,7 +108,7 @@ func (m *Manager) speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, erro
 		return nil, fmt.Errorf("%s: no line named: %w", VerbSpeak, ErrNoOption)
 	}
 
-	scope, err := m.openForChange(ctx, in.Session)
+	scope, err := m.openForChange(ctx, string(VerbSpeak), in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
 	}

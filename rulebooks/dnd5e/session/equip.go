@@ -205,7 +205,7 @@ func (m *Manager) equipUnseated(
 func (m *Manager) equipSeated(
 	ctx context.Context, session, id string, slot character.InventorySlot, item string,
 ) (*EquipOutput, error) {
-	scope, err := m.openForChange(ctx, session)
+	scope, err := m.openForChange(ctx, "equip", session)
 	if err != nil {
 		return nil, err
 	}

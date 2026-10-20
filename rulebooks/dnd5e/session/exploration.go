@@ -189,7 +189,7 @@ func (m *Manager) SetDiscoverySharing(ctx context.Context, in *SetDiscoveryShari
 		return nil, fmt.Errorf("%s: %w", verb, lockErr)
 	}
 	defer release()
-	scope, err := m.openForChange(ctx, in.Session)
+	scope, err := m.openForChange(ctx, "set_discovery_sharing", in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", verb, err)
 	}

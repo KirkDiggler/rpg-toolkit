@@ -113,7 +113,7 @@ func (s *ForcedStepSuite) SetupTest() {
 // payload and nothing else carries it.
 func (s *ForcedStepSuite) takeStep(step encounter.MoveStep) []string {
 	ctx := context.Background()
-	scope, err := s.mgr.openForChange(ctx, "sess")
+	scope, err := s.mgr.openForChange(ctx, "recheck", "sess")
 	s.Require().NoError(err)
 
 	s.Require().NoError(moverSeam{m: s.mgr, scope: scope}.Move(ctx, scope.enc, step))

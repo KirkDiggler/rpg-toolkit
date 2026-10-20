@@ -106,7 +106,7 @@ func (s *LandSuite) SetupTest() {
 	sc.Monsters = []dungeonspec.MonsterPlacement{monsterAt("goblin", refs.Monsters.Goblin().String(), 3, 0)}
 	launchScene(s.T(), mgr, sc)
 
-	s.scope, err = s.mgr.openForChange(ctx, "sess")
+	s.scope, err = s.mgr.openForChange(ctx, "recheck", "sess")
 	s.Require().NoError(err)
 	// The area the output will close, open before the landing.
 	s.Require().NoError(s.scope.enc.AddSightArea(&encounter.SightAreaInput{

@@ -6,6 +6,7 @@ package session_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -416,7 +417,7 @@ func (s *AttackTestSuite) TestASwingLandsAndTheStoryRecordsIt() {
 	s.Require().NoError(err)
 	last := story[len(story)-1]
 	s.Equal(out.Seq, last.Seq, "AttackOutput.Seq references the recorded beat")
-	s.Equal("outcome", last.Tags["tag"])
+	s.True(strings.HasPrefix(last.Correlation, "attack:"), "the swing is the attack verb's act, got %q", last.Correlation)
 	s.JSONEq(
 		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":8,`+
 			`"critical":false,"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":"slashing"},`+
