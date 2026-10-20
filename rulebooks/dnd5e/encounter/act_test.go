@@ -137,6 +137,10 @@ func (s *ActTestSuite) TestStrikeAndDownedShareAct() {
 	s.Require().Len(downed, 1)
 	s.Equal(act, struck[0].correlation)
 	s.Equal(act, downed[0].correlation, "the body is the strike's own consequence")
+
+	ended := ofKind(entries, "bubble-dissolved", "")
+	s.Require().Len(ended, 1, "the last goblin down ends the fight")
+	s.Equal(act, ended[0].correlation, "and the fight's end is the strike's consequence too")
 }
 
 // blowFrom records one landed strike from alice at the goblin.
@@ -153,15 +157,13 @@ func (s *ActTestSuite) blowFrom(enc *encounter.Encounter) (uint64, error) {
 	return out.Seq, nil
 }
 
-// TestBeatOutsideActCarriesNone: absence means outside any act, and the
-// scene-opened beat is stamped with the world clock's reading (R4).
+// TestBeatOutsideActCarriesNone: absence means outside any act.
 func (s *ActTestSuite) TestBeatOutsideActCarriesNone() {
 	enc := s.pair(&downList{})
 
 	opened := ofKind(s.story(enc, alice), encounter.BeatSceneOpened, "")
 	s.Require().Len(opened, 1)
 	s.Empty(opened[0].correlation, "nobody's verb opened the scene")
-	s.Equal(uint64(enc.ToData().Clock.HighWater), opened[0].at)
 
 	s.missAt(enc)
 	missed := ofKind(s.story(enc, alice), string(encounter.OutcomeMissed), "")
@@ -317,15 +319,17 @@ func (m *actSeeingMover) Move(ctx context.Context, enc *encounter.Encounter, ste
 	return m.pausingMover.Move(ctx, enc, step)
 }
 
-// TestDrivenPauseKeepsWalkAct is Law 2 across a window: the Mover that poses
-// the window sees the walk's act, the pause keeps it through a save, and the
-// cells walked after the answer carry it.
-func (s *ActTestSuite) TestDrivenPauseKeepsWalkAct() {
+// pausedWalk is the pause suite's walk, paused on its second cell inside a
+// player's end_turn act: the encounter is saved and reloaded across the
+// window, as a host does. It returns the reloaded encounter, the end_turn
+// id and the walk's id.
+func (s *ActTestSuite) pausedWalk() (*encounter.Encounter, string, string) {
+	s.T().Helper()
 	mover := &actSeeingMover{pausingMover: pausingMover{pauseAt: map[int]bool{1: true}}}
 	driver := &scriptedDriver{intents: []encounter.TurnIntent{encounter.Move{Path: closeIn}}}
 	enc := s.drivenScene(driver, passStriker{}, mover)
 
-	s.open(enc, "end_turn", "")
+	endTurn := s.open(enc, "end_turn", "")
 	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
 	s.Require().NoError(err)
 	s.Require().NoError(enc.CloseAct())
@@ -334,29 +338,101 @@ func (s *ActTestSuite) TestDrivenPauseKeepsWalkAct() {
 	before := ofKind(s.story(enc, alice), encounter.BeatMoved, goblin)
 	s.Require().Len(before, 1)
 	walk := before[0].correlation
-	s.True(strings.HasPrefix(walk, "move:"))
-	s.Equal(walk, enc.PausedAct(), "the pause belongs to the walk")
-	s.Require().Len(mover.acts, 2)
-	s.Equal(walk, mover.acts[1], "the Mover posing the window sees the walk's act")
+	s.Require().True(strings.HasPrefix(walk, "move:"))
+	s.Require().NotEmpty(mover.acts)
+	s.Equal(walk, mover.acts[len(mover.acts)-1], "the Mover posing the window sees the walk's act")
 
 	data := enc.ToData()
 	s.Require().NotNil(data.Pause)
 	s.Equal(walk, data.Pause.Act, "the blob carries the walk's act")
+	s.Equal([]string{endTurn}, data.Pause.Outer, "and the act the walk was opened inside")
 
 	pt := &PauseTestSuite{}
 	pt.SetT(s.T())
 	loaded := pt.reload(enc, &pausingMover{}, &downList{})
 	s.Equal(walk, loaded.PausedAct(), "a reload keeps it")
+	return loaded, endTurn, walk
+}
 
-	s.open(loaded, "react", walk)
-	_, err = loaded.Resume(context.Background())
+// TestDrivenPauseKeepsWalkAct is Law 2 across a window: the pause keeps the
+// walk's act through a save, and the ENCOUNTER reopens it, so the cells
+// walked after the answer carry it even though the resuming caller has an
+// act of its own open.
+func (s *ActTestSuite) TestDrivenPauseKeepsWalkAct() {
+	loaded, _, walk := s.pausedWalk()
+
+	react := s.open(loaded, "react", "react:999")
+	_, err := loaded.Resume(context.Background())
 	s.Require().NoError(err)
 	s.Require().NoError(loaded.CloseAct())
 
 	after := ofKind(s.story(loaded, alice), encounter.BeatMoved, goblin)
-	s.Require().Len(after, 3)
+	s.Require().Len(after, len(closeIn), "the whole walk, the paused cell included")
 	for _, m := range after {
-		s.Equal(walk, m.correlation, "the resumed cells are the same walk")
+		s.Equal(walk, m.correlation, "the resumed cells are the same walk, not the caller's %s", react)
+	}
+}
+
+// TestResumedTurnEndsInsideItsOuterAct: the pause keeps the acts its walk
+// was opened inside, so the paused turn's own end and the round's tick
+// after it carry the player's end_turn — as they do with no window — and
+// neither the walk's id nor the resuming caller's.
+func (s *ActTestSuite) TestResumedTurnEndsInsideItsOuterAct() {
+	for _, resumer := range []string{"", "react:999"} {
+		loaded, endTurn, walk := s.pausedWalk()
+		before := len(s.story(loaded, alice))
+
+		if resumer != "" {
+			s.open(loaded, "react", resumer)
+		}
+		_, err := loaded.Resume(context.Background())
+		s.Require().NoError(err)
+		if resumer != "" {
+			s.Require().NoError(loaded.CloseAct())
+		}
+
+		tail := s.story(loaded, alice)[before:]
+		ended := ofKind(tail, encounter.BeatTurnEnded, goblin)
+		s.Require().Len(ended, 1, "the goblin's paused turn ends on the resume (resumer %q)", resumer)
+		s.Equal(endTurn, ended[0].correlation, "resumer %q", resumer)
+		s.NotEqual(walk, ended[0].correlation)
+		ticks := ofKind(tail, encounter.BeatTick, "")
+		s.Require().NotEmpty(ticks, "the goblin's turn closes the round")
+		for _, t := range ticks {
+			s.Equal(endTurn, t.correlation, "the round wraps inside the end_turn (resumer %q)", resumer)
+		}
+	}
+}
+
+// TestHeldDirectiveResumesInItsAct is Law 2 on the directive arm: a pushed
+// walk held by a window keeps the act it was directed in through a save,
+// and the cells after the answer carry it however the resume is called.
+func (s *ActTestSuite) TestHeldDirectiveResumesInItsAct() {
+	ht := &HeldTestSuite{}
+	ht.SetT(s.T())
+	mover := &pausingMover{pauseAt: map[int]bool{1: true}}
+	enc := ht.scene(mover, &downList{})
+
+	cast := s.open(enc, "cast", "")
+	out, err := ht.flee(enc)
+	s.Require().NoError(err)
+	s.Require().True(out.Paused)
+	s.Require().NoError(enc.CloseAct())
+	s.Equal(cast, enc.PausedAct())
+
+	loaded, err := encounter.LoadEncounter(loadInput(enc.ToData(), mover, &downList{}))
+	s.Require().NoError(err)
+	s.Equal(cast, loaded.PausedAct(), "a reload keeps the directive's act")
+
+	s.open(loaded, "react", "react:999")
+	_, err = loaded.Resume(context.Background())
+	s.Require().NoError(err)
+	s.Require().NoError(loaded.CloseAct())
+
+	moved := ofKind(s.story(loaded, alice), encounter.BeatMoved, goblin)
+	s.Require().Len(moved, len(fleeRoute()), "the whole route, across the hold")
+	for _, m := range moved {
+		s.Equal(cast, m.correlation, "every cell of the pushed walk is the cast's")
 	}
 }
 

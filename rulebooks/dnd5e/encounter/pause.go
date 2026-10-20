@@ -137,6 +137,12 @@ type pause struct {
 	// it, and the reaction's own beats can carry it too (Law 2). Empty on a
 	// pause saved before acts existed, which resumes with no act id.
 	act string
+
+	// outer is every act open beneath act when the pause was made,
+	// outermost first — a driven walk's end_turn — so the resumed turn's
+	// own end, and the drive after it, carry it rather than the resuming
+	// caller's act. Empty when act was the only one open.
+	outer []string
 }
 
 // turnPause is what a [PauseTurn] carries beyond the walk: the turn the walk
@@ -234,6 +240,13 @@ type PauseData struct {
 	// existed, which still loads — PauseVersion is unchanged — and resumes
 	// with no act id: degraded, not refused.
 	Act string `json:"act,omitempty"`
+
+	// Outer is every act open beneath Act when the pause was made,
+	// outermost first: the resume pushes them back before Act, so the beats
+	// after the resumed walk land in the act the walk was opened inside.
+	// Absent on a pause written before it existed, or when Act was the only
+	// act open.
+	Outer []string `json:"outer,omitempty"`
 }
 
 // TurnPauseData is the persistent representation of what a paused TURN
@@ -322,6 +335,7 @@ func pauseDataFrom(p *pause) *PauseData {
 		Cause:     causeString(p.cause),
 		Forced:    p.forced,
 		Act:       p.act,
+		Outer:     append([]string(nil), p.outer...),
 	}
 	if p.turn != nil {
 		d.Turn = &TurnPauseData{
@@ -405,6 +419,7 @@ func pauseFrom(d *PauseData) (*pause, error) {
 		cause:     cause,
 		forced:    d.Forced,
 		act:       d.Act,
+		outer:     append([]string(nil), d.Outer...),
 	}
 	if d.Turn != nil {
 		p.turn = &turnPause{
@@ -770,6 +785,12 @@ func (e *Encounter) resumeTurn(ctx context.Context) (*ResumeOutput, error) {
 	// no-op on a fight that is running again.
 	e.pause = nil
 
+	// THE ACTS THE WALK WAS OPENED INSIDE COME BACK FIRST (act.go). The
+	// turn's end and the drive after it are the outer act's — a player's
+	// end_turn — exactly as they would have been had no window opened; the
+	// walk's own act is reopened around its remaining cells only.
+	defer e.pushActs(p.outer...)()
+
 	var (
 		seq     uint64
 		wrapped bool
@@ -999,6 +1020,7 @@ func (e *Encounter) finishPausedIntent(
 			audience:  p.audience,
 			cause:     p.cause,
 			act:       p.act,
+			outer:     p.outer,
 			turn: &turnPause{
 				round:    p.turn.round,
 				budget:   p.turn.budget,

@@ -22,7 +22,8 @@ import "fmt"
 //
 // THE STACK IS NEVER PERSISTED. An act lives inside one call. The one act
 // that outlives a call is a walk held by a reaction window, and it travels on
-// the pause ([PauseData.Act]), not on the stack.
+// the pause ([PauseData.Act]) with the acts it was opened inside
+// ([PauseData.Outer]); the resume pushes both back, outermost first.
 
 // OpenActInput names the act to open.
 type OpenActInput struct {
@@ -107,11 +108,38 @@ func (e *Encounter) CurrentAct() string {
 // inAct runs fn inside an act: a minted `<verb>:<first seq>` when act is
 // empty, or act reopened. The act is closed however fn returns.
 func (e *Encounter) inAct(verb, act string, fn func() error) error {
+	depth := len(e.acts)
 	if _, err := e.OpenAct(&OpenActInput{Verb: verb, Act: act}); err != nil {
 		return err
 	}
-	defer func() { e.acts = e.acts[:len(e.acts)-1] }()
+	// TO THE DEPTH RECORDED AT OPEN, not one entry: a capability that opened
+	// an act and left it open, or closed one too many, cannot shift the id
+	// every later beat of the call carries.
+	defer func() { e.acts = e.acts[:depth] }()
 	return fn()
+}
+
+// outerActs is a copy of every act open beneath the current one, outermost
+// first — what a pause keeps beside its own act so the beats after the
+// resumed walk land in the act the walk was opened inside (a driven walk's
+// end_turn), not in whatever the resuming caller has open.
+func (e *Encounter) outerActs() []string {
+	if len(e.acts) < 2 {
+		return nil
+	}
+	return append([]string(nil), e.acts[:len(e.acts)-1]...)
+}
+
+// pushActs pushes acts, outermost first, and returns the restore that
+// truncates the stack back to the depth it had before the push.
+func (e *Encounter) pushActs(acts ...string) func() {
+	depth := len(e.acts)
+	for _, a := range acts {
+		if a != "" {
+			e.acts = append(e.acts, a)
+		}
+	}
+	return func() { e.acts = e.acts[:depth] }
 }
 
 // underAct runs fn inside act when there is one, and as it is when act is

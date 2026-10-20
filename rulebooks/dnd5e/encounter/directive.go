@@ -685,6 +685,7 @@ func (e *Encounter) Direct(ctx context.Context, in DirectInput) (DirectOutput, e
 			cause:     in.Cause,
 			forced:    !in.Provokes,
 			act:       e.CurrentAct(),
+			outer:     e.outerActs(),
 		}
 		if _, berr := e.appendWindowOpenedBeat(
 			in.Mover, res.from, res.to, at, res.paused.Windows, in.Cause,
