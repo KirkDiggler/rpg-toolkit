@@ -2491,6 +2491,10 @@ type LoadEncounterInput struct {
 	// the persisted field carries concealed structure, which depends on Data,
 	// so [LoadEncounter] refuses them in its body rather than in Validate.
 	Capabilities
+
+	// IDs is the id source, exactly as on [SetupInput]: optional, nil is
+	// the wall clock and crypto/rand.
+	IDs record.IDSource
 }
 
 // Validate reports whether the input is usable. It checks only the input's own
@@ -3058,7 +3062,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		return nil, fmt.Errorf("load encounter intel: %w: %w", ErrInvalidData, err)
 	}
 
-	loadedLog, err := record.LoadLog(data.Log)
+	loadedLog, err := record.LoadLog(data.Log, record.WithIDSource(input.IDs))
 	if err != nil {
 		return nil, fmt.Errorf("load encounter log: %w: %w", ErrInvalidData, err)
 	}

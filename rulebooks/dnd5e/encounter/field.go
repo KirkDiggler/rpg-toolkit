@@ -8,6 +8,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
+	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -1312,6 +1313,13 @@ type SetupInput struct {
 	// Retention persists with the encounter, so a reloaded encounter keeps
 	// the policy it was built with.
 	Retention int
+
+	// IDs is where the story's wire ids and the acts' v2 ids draw their
+	// time and entropy ([record.IDSource], act.go). Optional: nil is the
+	// record's default, the wall clock and crypto/rand. The composition
+	// holds no randomness of its own (C8); a caller that pins exact bytes
+	// supplies a fixed source.
+	IDs record.IDSource
 }
 
 // ViewInput is used to query a member's current percepts.

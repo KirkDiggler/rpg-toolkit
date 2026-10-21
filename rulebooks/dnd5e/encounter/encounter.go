@@ -70,9 +70,10 @@ type Encounter struct {
 	heldEnding  *heldEnding
 
 	// acts is the stack of open acts (act.go): every beat appended carries
-	// the top one as its correlation unless it names its own. Unexported and
-	// never persisted — an act lives inside one call.
-	acts []string
+	// the top one as its correlation and its [ActTag] unless it names its
+	// own correlation. Unexported and never persisted — an act lives inside
+	// one call.
+	acts []actRef
 
 	// deferredDrives are the fights a held deed formed, whose first slot is
 	// driven by the train's post-train pass instead of by the formation.
@@ -404,10 +405,20 @@ func logFloorOf(data record.LogData) uint64 {
 // since load and the window is enforced at the storage boundary, in ToData.
 //
 // THE ACT ID IS STAMPED HERE (act.go): a beat that names no correlation of
-// its own carries the open act's id, so no verb has to remember to.
+// its own carries the open act's v1alpha1 id as its correlation and its
+// v1alpha2 id as the [ActTag] tag, so no verb has to remember to.
 func (e *Encounter) appendBeat(in *record.AppendInput) (*record.AppendOutput, error) {
 	if in.Correlation == "" {
-		in.Correlation = e.CurrentAct()
+		act := e.currentAct()
+		in.Correlation = act.corr
+		if act.id != "" {
+			tags := make(map[string]string, len(in.Tags)+1)
+			for k, v := range in.Tags {
+				tags[k] = v
+			}
+			tags[ActTag] = act.id
+			in.Tags = tags
+		}
 	}
 	return e.story.Append(in)
 }
@@ -823,7 +834,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter intel: %w", err)
 	}
 
-	e.story, err = record.NewLog()
+	e.story, err = record.NewLog(record.WithIDSource(in.IDs))
 	if err != nil {
 		return nil, fmt.Errorf("newencounter story: %w", err)
 	}

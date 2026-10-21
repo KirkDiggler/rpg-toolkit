@@ -160,6 +160,7 @@ func (s *HoldOutSuite) open(field encounter.FieldInput, members []encounter.Memb
 		Members:   members,
 		Endings:   endings,
 		Retention: encounter.RetentionUnbounded,
+		IDs:       newFixedIDs(),
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
