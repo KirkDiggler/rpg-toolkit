@@ -252,6 +252,30 @@ type outcomeFields struct {
 	PresentationID string          `json:"presentation_id"`
 	Calculation    json.RawMessage `json:"calculation"`
 	Components     json.RawMessage `json:"damage_components"`
+	// AdvantageSources and DisadvantageSources are the attack fold's own
+	// ordered sources (encounter.AttackModifierSource). RETIRED by the dice
+	// keep (rpg-project#462 R1): read only for a beat with no keep.
+	AdvantageSources    []modifierSource `json:"advantage_sources"`
+	DisadvantageSources []modifierSource `json:"disadvantage_sources"`
+}
+
+// modifierSource is one advantage or disadvantage source a swing names.
+type modifierSource struct {
+	SourceRef string `json:"source_ref"`
+	SourceID  string `json:"source_id"`
+}
+
+// attackInfluences are a swing's retired advantage and disadvantage source
+// keys, in that order, for a beat with no keep; nil when it named none.
+func attackInfluences(p outcomeFields) []RollInfluence {
+	var out []RollInfluence
+	for _, src := range p.AdvantageSources {
+		out = append(out, RollInfluence{Kind: InfluenceAdvantage, SourceRef: src.SourceRef, SourceID: src.SourceID})
+	}
+	for _, src := range p.DisadvantageSources {
+		out = append(out, RollInfluence{Kind: InfluenceDisadvantage, SourceRef: src.SourceRef, SourceID: src.SourceID})
+	}
+	return out
 }
 
 // attackBase is the AttackAct the shared keys fill, and the piece's family:
@@ -301,6 +325,12 @@ func attackPiece(beat string, payload []byte) ([]piece, error) {
 	roll, err := rollOf(p.Calculation, facesOf(p.Roll), p.Total, intp(p.Against), boolp(hit))
 	if err != nil {
 		return nil, err
+	}
+	// THE KEEP IS THE RECORD (rpg-project#462 R1). The swing's
+	// advantage_sources/disadvantage_sources keys are retired; they are read
+	// only for a beat whose calculation recorded no keep.
+	if len(roll.Influences) == 0 {
+		roll.Influences = attackInfluences(p)
 	}
 	act.Roll = roll
 	return one(piece{family: family, body: act})
