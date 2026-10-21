@@ -19,12 +19,19 @@ type LogData struct {
 	NextSeq uint64 `json:"next_seq,omitempty"`
 	// Entries are the retained log entries, deep-copied from the runtime log.
 	Entries []EntryData `json:"entries,omitempty"`
+	// LastID is the last id the log issued, written only for a log trimmed
+	// to nothing — a populated log's last id is its last entry's — so an id
+	// minted after the load still sorts after every id issued before it.
+	LastID string `json:"last_id,omitempty"`
 }
 
 // EntryData is the persistent representation of an Entry.
 type EntryData struct {
 	// Seq is the monotonic, gapless sequence assigned at Append.
 	Seq uint64 `json:"seq"`
+	// ID is the entry's wire id (id.go). Empty only on an entry persisted
+	// before ids existed, which LoadLog gives a deterministic legacy id.
+	ID string `json:"id,omitempty"`
 	// At is the optional caller-supplied provenance timestamp.
 	At uint64 `json:"at,omitempty"`
 	// Correlation is an opaque caller token grouping cause and effects.
@@ -52,12 +59,16 @@ func (l *Log) ToData() LogData {
 	data := LogData{
 		NextSeq: l.nextSeq,
 	}
+	if len(l.entries) == 0 && !l.last.isZero() {
+		data.LastID = l.last.String()
+	}
 
 	if len(l.entries) > 0 {
 		data.Entries = make([]EntryData, len(l.entries))
 		for i, e := range l.entries {
 			data.Entries[i] = EntryData{
 				Seq:         e.seq,
+				ID:          e.id,
 				At:          e.at,
 				Correlation: e.correlation,
 				Audience:    copyAudience(e.audience),
@@ -76,10 +87,32 @@ func (l *Log) ToData() LogData {
 // invalid audiences (empty IDs, duplicates), invalid tags (empty keys),
 // and nil payloads. Deep-copies all data; empty→nil normalization preserved.
 // Returns ErrInvalidData for any R9 rejection with verb-context wrapping.
-func LoadLog(data LogData) (*Log, error) {
+//
+// IDS (id.go): an entry with no id — persisted before ids existed — takes the
+// deterministic legacy id of its seq, which sorts below every minted id. Ids
+// must be well formed and strictly increasing in seq order, so a minted id
+// followed by a legacy one is refused. Options configure the loaded log as
+// they do NewLog.
+func LoadLog(data LogData, opts ...Option) (*Log, error) {
+	l := &Log{ids: wallClock{}}
+	for _, opt := range opts {
+		opt(l)
+	}
+
+	var last ulid
+	if data.LastID != "" {
+		u, err := parseULID(data.LastID)
+		if err != nil {
+			return nil, fmt.Errorf("load log: last_id: %v: %w", err, ErrInvalidData)
+		}
+		last = u
+	}
+
 	// Empty data (zero LogData) → fresh log (nextSeq 1)
 	if data.NextSeq == 0 && len(data.Entries) == 0 {
-		return &Log{nextSeq: 1}, nil
+		l.nextSeq = 1
+		l.last = last
+		return l, nil
 	}
 
 	// Validate empty-entries case
@@ -89,7 +122,9 @@ func LoadLog(data LogData) (*Log, error) {
 			return nil, fmt.Errorf("load log: empty entries with next_seq 1 unreachable: %w", ErrInvalidData)
 		}
 		// Trimmed-empty: NextSeq >= 2 is legal
-		return &Log{nextSeq: data.NextSeq}, nil
+		l.nextSeq = data.NextSeq
+		l.last = last
+		return l, nil
 	}
 
 	// Non-empty: validate contiguity, NextSeq, and per-entry constraints
@@ -146,11 +181,34 @@ func LoadLog(data LogData) (*Log, error) {
 		}
 	}
 
+	// Ids: fill legacy ones, then require well-formed and strictly
+	// increasing (an id is the order a wire carries).
+	ids := make([]ulid, len(data.Entries))
+	for i, ed := range data.Entries {
+		if ed.ID == "" {
+			ids[i] = legacyULID(ed.Seq)
+		} else {
+			u, err := parseULID(ed.ID)
+			if err != nil {
+				return nil, fmt.Errorf("load log: entry[%d] %v: %w", i, err, ErrInvalidData)
+			}
+			ids[i] = u
+		}
+		if i > 0 && ids[i].String() <= ids[i-1].String() {
+			return nil, fmt.Errorf("load log: entry[%d] id %s does not increase: %w",
+				i, ids[i].String(), ErrInvalidData)
+		}
+	}
+	if top := ids[len(ids)-1]; top.String() > last.String() {
+		last = top
+	}
+
 	// All validation passed; deep-copy entries
 	entries := make([]entry, len(data.Entries))
 	for i, ed := range data.Entries {
 		entries[i] = entry{
 			seq:         ed.Seq,
+			id:          ids[i].String(),
 			at:          ed.At,
 			correlation: ed.Correlation,
 			audience:    copyAudience(ed.Audience),
@@ -159,8 +217,8 @@ func LoadLog(data LogData) (*Log, error) {
 		}
 	}
 
-	return &Log{
-		entries: entries,
-		nextSeq: data.NextSeq,
-	}, nil
+	l.entries = entries
+	l.nextSeq = data.NextSeq
+	l.last = last
+	return l, nil
 }

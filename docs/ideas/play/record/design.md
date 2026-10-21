@@ -46,7 +46,11 @@ Family laws, restated as binding:
 - **R6** — `Seq` is assigned by `Append`, starts at 1, and is strictly
   monotonic and gapless across the log's lifetime; `TrimBefore` never
   reuses or renumbers. Entries are immutable once appended.
-- **R7** — No randomness.
+- **R7** — No randomness of the log's own. The wire id (R11) draws its
+  time and entropy from an `IDSource`: the wall clock and `crypto/rand`
+  unless the caller supplies one (`WithIDSource`). Everything the log
+  decides is deterministic given its source, so a composition that pins
+  exact bytes supplies a fixed one (amended for rpg-project#628).
 - **R8** — `ToData`/`LoadLog`; plain JSON structs; idle snapshot
   deep-equals the zero `LogData` and marshals to `{}`. The fresh-log
   encoding convention that makes this hold (record's fresh runtime state
@@ -68,6 +72,17 @@ Family laws, restated as binding:
   `NextSeq` 0 (fresh) or >= 2 (trimmed-empty — reachable and MUST
   load); a trimmed log's first retained `Seq` may be any value >= 1.
 - **R10** — Not safe for concurrent use.
+- **R11** — Every entry carries an `ID`, minted by `Append`: a
+  26-character ULID (48-bit millisecond, 80-bit entropy) that is an
+  ordering key, not a counter (rpg-project ideas/event-stream R27, R30).
+  Ids compare as strings in `Seq` order; inside one millisecond each id
+  steps the last one's entropy by a random 1..2^32, so two ids say nothing
+  about how many lie between. `MintID` issues an id from the same space
+  without appending (an act names itself by one). `LoadLog` gives an entry
+  with no id the deterministic legacy id of its seq (millisecond 0, the
+  seq as entropy) and refuses malformed or non-increasing ids (R9). A log
+  trimmed to nothing persists `last_id` so ids keep increasing across a
+  load.
 
 ## Types
 

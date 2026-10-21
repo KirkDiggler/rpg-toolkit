@@ -17,12 +17,18 @@ import (
 type Log struct {
 	entries []entry
 	nextSeq uint64
+
+	// ids is where minted ids draw their time and entropy (id.go); last is
+	// the last id issued, entry or mint, zero before the first.
+	ids  IDSource
+	last ulid
 }
 
 // entry is the internal representation of a log entry, with deep-copied
 // fields and nil-normalized empty containers.
 type entry struct {
 	seq         uint64
+	id          string
 	at          uint64
 	correlation string
 	audience    []core.EntityID
@@ -35,6 +41,10 @@ type Entry struct {
 	// Seq is the monotonic, gapless, strictly-increasing sequence assigned
 	// by Append and never renumbered by TrimBefore.
 	Seq uint64
+	// ID is the entry's wire id, minted by Append: a 26-character ULID that
+	// is an ordering key, not a counter (id.go). Ids compare as strings in
+	// Seq order, are never reused, and survive TrimBefore and persistence.
+	ID string
 	// At is the optional caller-supplied provenance timestamp (e.g., wall
 	// clock). The log's order is Seq; At is informational.
 	At uint64
@@ -78,6 +88,8 @@ type AppendInput struct {
 type AppendOutput struct {
 	// Seq is the assigned sequence number, monotonic and gapless from 1.
 	Seq uint64
+	// ID is the entry's minted wire id.
+	ID string
 }
 
 // SliceForInput is the input to the SliceFor query.
@@ -117,10 +129,15 @@ type TrimBeforeOutput struct {
 	Removed int
 }
 
-// NewLog returns a fresh Log ready for use.
+// NewLog returns a fresh Log ready for use. Its ids come from the wall clock
+// and crypto/rand unless [WithIDSource] names another source.
 // Returns (*Log, error) per family law (cannot fail today; error slot reserved).
-func NewLog() (*Log, error) {
-	return &Log{nextSeq: 1}, nil
+func NewLog(opts ...Option) (*Log, error) {
+	l := &Log{nextSeq: 1, ids: wallClock{}}
+	for _, opt := range opts {
+		opt(l)
+	}
+	return l, nil
 }
 
 // Append appends one immutable entry to the log, assigning the next Seq.
@@ -150,9 +167,17 @@ func (l *Log) Append(in *AppendInput) (*AppendOutput, error) {
 		return nil, fmt.Errorf("append: %w", ErrNoPayload)
 	}
 
+	// The id is computed before anything changes: a mint can fail (the
+	// source's entropy), and a failed Append changes nothing (R5).
+	id, err := nextULID(l.ids, l.last)
+	if err != nil {
+		return nil, fmt.Errorf("append: %w", err)
+	}
+
 	// All validation passed; now mutate state (R5 atomicity)
 	seq := l.nextSeq
 	l.nextSeq++
+	l.last = id
 
 	// Deep copy and normalize audience
 	var aud []core.EntityID
@@ -177,6 +202,7 @@ func (l *Log) Append(in *AppendInput) (*AppendOutput, error) {
 	// Append entry
 	l.entries = append(l.entries, entry{
 		seq:         seq,
+		id:          id.String(),
 		at:          in.At,
 		correlation: in.Correlation,
 		audience:    aud,
@@ -184,7 +210,7 @@ func (l *Log) Append(in *AppendInput) (*AppendOutput, error) {
 		payload:     p,
 	})
 
-	return &AppendOutput{Seq: seq}, nil
+	return &AppendOutput{Seq: seq, ID: id.String()}, nil
 }
 
 // NextSeq returns the sequence number the next Append will assign.
@@ -319,6 +345,7 @@ func containsViewer(audience []core.EntityID, viewer core.EntityID) bool {
 func copyEntryOut(e entry) Entry {
 	return Entry{
 		Seq:         e.seq,
+		ID:          e.id,
 		At:          e.at,
 		Correlation: e.correlation,
 		Audience:    copyAudience(e.audience),
