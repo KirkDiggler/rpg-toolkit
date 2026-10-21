@@ -19,3 +19,11 @@ func (m *Manager) LoadWorldForTest(ctx context.Context, sessionID string) (*enco
 	}
 	return m.loadWorld(ctx, data)
 }
+
+// FamilyOfBeatForTest exposes the act family table (act_family.go) to
+// TestEveryBeatHasAFamily: a beat's family, whether it has one, and whether
+// it is one of R9's record-only beats.
+func FamilyOfBeatForTest(beat string) (family Family, mapped, recordOnlyBeat bool) {
+	family, mapped = familyOf(beat)
+	return family, mapped, recordOnly[beat]
+}

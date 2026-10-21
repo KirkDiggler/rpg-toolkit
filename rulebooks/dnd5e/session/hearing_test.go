@@ -78,7 +78,7 @@ func guardOrders() encounter.Table {
 func (s *HearingSuite) SetupTest() {
 	s.stream = &fakeStream{}
 	s.encounters = newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{},
 		Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: newFakeSessions(), Encounters: s.encounters,

@@ -63,7 +63,7 @@ func (s *ForcedStepSuite) SetupTest() {
 		"fighter": strikeFixtureFighter("fighter"),
 	}}
 
-	mgr, err := NewManager(&Config{Record: DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := NewManager(&Config{Record: DiscardRecord{}, Acts: DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{},
 		// Faces for the one swing this scene can produce, and no more: a roll
 		// nobody expected exhausts the roller and says so out loud.

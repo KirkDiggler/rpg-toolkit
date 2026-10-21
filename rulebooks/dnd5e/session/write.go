@@ -1424,6 +1424,7 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 	}
 	events := m.projectEvents(scope, &view)
 	recorded := commitRecord(scope)
+	acts := commitActs(scope, view.EverMembers)
 
 	// THE final storage boundary: this ToData runs after the verb's complete
 	// delta has been numbered and projected. Everything before this line read
@@ -1448,6 +1449,7 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 	report.Written = mergeReportIdentities(report.Written, scope.written)
 	delivery := m.deliver(ctx, events)
 	m.deliverRecord(ctx, recorded)
+	m.deliverActs(ctx, acts)
 	return report, delivery, nil
 }
 

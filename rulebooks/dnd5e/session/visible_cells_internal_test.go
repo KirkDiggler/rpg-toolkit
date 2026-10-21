@@ -19,7 +19,7 @@ import (
 // same cells, same order — on the very world the read loaded.
 func TestViewVisibleCellsIsTheEncounterAnswerExactly(t *testing.T) {
 	ctx := context.Background()
-	mgr, err := NewManager(&Config{Record: DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := NewManager(&Config{Record: DiscardRecord{}, Acts: DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: &scriptedDice{}, TurnDriver: Pass{},
 		Sessions:   &strikeSessions{byID: map[string]*SessionData{}},
 		Encounters: &strikeEncounters{byID: map[string]*encounter.EncounterData{}},

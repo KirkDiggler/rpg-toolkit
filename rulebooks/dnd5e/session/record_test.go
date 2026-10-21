@@ -214,7 +214,7 @@ func (s *SpeakWorldSuite) TestBeatIsVerbatim() {
 func (s *ManagerTestSuite) TestNilRecordStreamRefused() {
 	_, err := session.NewManager(&session.Config{
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: testCharacters(),
-		Seats: newFakeSeats(), Explorations: newFakeExplorations(), Events: session.DiscardEvents{},
+		Seats: newFakeSeats(), Explorations: newFakeExplorations(), Events: session.DiscardEvents{}, Acts: session.DiscardActs{},
 		Dice: testDice{}, PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{},
 	})
 	s.ErrorIs(err, session.ErrIncompleteConfig)

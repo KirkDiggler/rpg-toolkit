@@ -65,7 +65,7 @@ func (s *ConcentrationBreakSuite) scene(children []dnd5eEvents.ConditionAddress,
 	s.characters = newFakeCharacters(armedFighter("alice"), bob)
 	s.stream = &fakeStream{}
 
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{},
 		Dice:            &sequenceDice{rolls: rolls},
 		TurnDriver:      session.Pass{},

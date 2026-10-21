@@ -33,7 +33,7 @@ func (s *MoveTestSuite) SetupTest() {
 	s.characters = testCharacters()
 	s.stream = &fakeStream{}
 	s.record = &fakeRecord{}
-	mgr, err := session.NewManager(&session.Config{Record: s.record, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Record: s.record, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: s.stream,
 	})
