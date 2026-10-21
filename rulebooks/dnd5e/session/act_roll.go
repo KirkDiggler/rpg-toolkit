@@ -66,7 +66,10 @@ type Roll struct {
 
 // RollDiceTerm is one dice pool of a roll and the source that brought it.
 type RollDiceTerm struct {
-	// Count and DieSize are the pool as rolled: 1 and 4 for a 1d4.
+	// Count is how many faces counted: len(Faces). A die a keep rule
+	// discarded is not counted (advantage's d20 [7,15] is Count 1, Faces
+	// [15]); the keep itself is the roll's Influences. DieSize is each die's
+	// size.
 	Count   int
 	DieSize int
 	// Faces are the faces that counted; a face a keep rule discarded is not

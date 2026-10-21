@@ -419,3 +419,25 @@ func (s *ActFoldSuite) TestRollTermsCarryTheirSources() {
 	}, roll.Terms)
 	s.Equal("1d20+1d4-1d4+1", roll.Expression)
 }
+
+// TestRollTermCountsTheFacesThatCounted: a 2d6 pool is ONE term with both
+// faces, and an advantage d20 is one term counting only its kept face.
+func (s *ActFoldSuite) TestRollTermCountsTheFacesThatCounted() {
+	damage := json.RawMessage(`{"components":[
+		{"source":{"ref":"dnd5e:weapons:greatsword","name":"Greatsword","source_id":"alice"},"dice":{"notation":"2d6","die_size":6,"original_rolls":[4,5],"final_rolls":[4,5],"subtotal":9}},
+		{"source":{"ref":"dnd5e:abilities:str","name":"STR"},"modifier":3}
+	],"total":12}`)
+	roll, err := rollOf(damage, nil, 12, nil, nil)
+	s.Require().NoError(err)
+	s.Equal([]RollDiceTerm{
+		{Count: 2, DieSize: 6, Faces: []int{4, 5}, SourceRef: "dnd5e:weapons:greatsword", SourceName: "Greatsword", SourceID: "alice"},
+	}, roll.Terms)
+
+	advantage := keepCalc(`[7,15]`, `[1]`,
+		`{"rule":"advantage","granted":[{"ref":"dnd5e:conditions:helped","name":"Helped","source_id":"bob"}]}`, 15)
+	roll, err = rollOf(advantage, nil, 18, intp(16), boolp(true))
+	s.Require().NoError(err)
+	s.Require().Len(roll.Terms, 1)
+	s.Equal(1, roll.Terms[0].Count)
+	s.Equal([]int{15}, roll.Terms[0].Faces)
+}
