@@ -171,42 +171,46 @@ func (e *Encounter) RecordEquip(in *RecordEquipInput) (*RecordEquipOutput, error
 		changes = append(changes, moved{item: in.Drawn, change: EquipDraw})
 	}
 
-	first, err := e.story.NextSeq()
-	if err != nil {
-		return nil, fmt.Errorf("record equip: %w", err)
-	}
 	// UNDER AN OPEN ACT THE EQUIP IS THAT ACT (act.go): a host's equip verb
-	// already opened it. With none open the equip mints its own, as it
-	// always has.
-	correlation := e.CurrentAct()
-	if correlation == "" {
-		correlation = fmt.Sprintf("equip:%d", first)
+	// already opened it. With none open the equip opens its own, which
+	// mints `equip:<first>` exactly as it always has, and its v2 id beside.
+	var correlation string
+	var seqs []uint64
+	appendEquip := func() error {
+		correlation = e.CurrentAct()
+		at := uint64(e.clock.ToData().HighWater)
+		seqs = make([]uint64, 0, len(changes))
+		for _, c := range changes {
+			payload, err := json.Marshal(map[string]interface{}{
+				"beat":   BeatEquipmentChanged,
+				"member": string(in.Member),
+				"slot":   in.Slot,
+				"item":   c.item,
+				"change": string(c.change),
+			})
+			if err != nil {
+				return fmt.Errorf("record equip: marshal beat: %w", err)
+			}
+			appended, err := e.appendBeat(&record.AppendInput{
+				At:       at,
+				Audience: witnesses,
+				Tags:     map[string]string{"tag": "equip"},
+				Payload:  payload,
+			})
+			if err != nil {
+				return fmt.Errorf("record equip: append beat: %w", err)
+			}
+			seqs = append(seqs, appended.Seq)
+		}
+		return nil
 	}
-	at := uint64(e.clock.ToData().HighWater)
-
-	seqs := make([]uint64, 0, len(changes))
-	for _, c := range changes {
-		payload, err := json.Marshal(map[string]interface{}{
-			"beat":   BeatEquipmentChanged,
-			"member": string(in.Member),
-			"slot":   in.Slot,
-			"item":   c.item,
-			"change": string(c.change),
-		})
-		if err != nil {
-			return nil, fmt.Errorf("record equip: marshal beat: %w", err)
-		}
-		appended, err := e.appendBeat(&record.AppendInput{
-			At:          at,
-			Correlation: correlation,
-			Audience:    witnesses,
-			Tags:        map[string]string{"tag": "equip"},
-			Payload:     payload,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("record equip: append beat: %w", err)
-		}
-		seqs = append(seqs, appended.Seq)
+	if e.CurrentAct() != "" {
+		err = appendEquip()
+	} else {
+		err = e.inAct("equip", actRef{}, appendEquip)
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	deltas, formed, err := e.refreshSightDeclaring(e.rosterIDs(), []MemberID{in.Member})

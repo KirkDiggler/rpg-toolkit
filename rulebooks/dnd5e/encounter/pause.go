@@ -135,14 +135,15 @@ type pause struct {
 	// act is the act the paused walk or strike belongs to (act.go), so the
 	// cells walked after the answer carry the same id as the cells before
 	// it, and the reaction's own beats can carry it too (Law 2). Empty on a
-	// pause saved before acts existed, which resumes with no act id.
-	act string
+	// pause saved before acts existed, which resumes with no act id. Its v2
+	// id is empty on a pause saved before v2 ids existed.
+	act actRef
 
 	// outer is every act open beneath act when the pause was made,
 	// outermost first — a driven walk's end_turn — so the resumed turn's
 	// own end, and the drive after it, carry it rather than the resuming
 	// caller's act. Empty when act was the only one open.
-	outer []string
+	outer []actRef
 }
 
 // turnPause is what a [PauseTurn] carries beyond the walk: the turn the walk
@@ -247,6 +248,15 @@ type PauseData struct {
 	// Absent on a pause written before it existed, or when Act was the only
 	// act open.
 	Outer []string `json:"outer,omitempty"`
+
+	// ActID is Act's v1alpha2 id, `<verb>:<id>` ([Encounter.PausedActID]).
+	// Absent on a pause written before v2 ids existed, which resumes with
+	// no [ActTag] on its beats: degraded, not refused. Refused without Act.
+	ActID string `json:"act_id,omitempty"`
+
+	// OuterIDs are Outer's v1alpha2 ids, index for index. Absent on a pause
+	// written before v2 ids existed; otherwise exactly as long as Outer.
+	OuterIDs []string `json:"outer_ids,omitempty"`
 }
 
 // TurnPauseData is the persistent representation of what a paused TURN
@@ -334,9 +344,10 @@ func pauseDataFrom(p *pause) *PauseData {
 		Audience:  append([]MemberID(nil), p.audience...),
 		Cause:     causeString(p.cause),
 		Forced:    p.forced,
-		Act:       p.act,
-		Outer:     append([]string(nil), p.outer...),
+		Act:       p.act.corr,
+		ActID:     p.act.id,
 	}
+	d.Outer, d.OuterIDs = actRefsToData(p.outer)
 	if p.turn != nil {
 		d.Turn = &TurnPauseData{
 			Round: p.turn.round,
@@ -418,8 +429,8 @@ func pauseFrom(d *PauseData) (*pause, error) {
 		audience:  append([]MemberID(nil), d.Audience...),
 		cause:     cause,
 		forced:    d.Forced,
-		act:       d.Act,
-		outer:     append([]string(nil), d.Outer...),
+		act:       actRef{corr: d.Act, id: d.ActID},
+		outer:     actRefsFromData(d.Outer, d.OuterIDs),
 	}
 	if d.Turn != nil {
 		p.turn = &turnPause{
@@ -511,6 +522,14 @@ func validatePause(d *PauseData, members map[core.EntityID]struct{}) error {
 			return fmt.Errorf(
 				"load encounter pause %q: a directive's cause %q: %w: %w", d.Member, d.Cause, ErrInvalidData, err)
 		}
+	}
+
+	if d.ActID != "" && d.Act == "" {
+		return fmt.Errorf("load encounter pause %q: v2 act %q names no act: %w", d.Member, d.ActID, ErrInvalidData)
+	}
+	if len(d.OuterIDs) > 0 && len(d.OuterIDs) != len(d.Outer) {
+		return fmt.Errorf("load encounter pause %q: %d outer v2 ids for %d outer acts: %w",
+			d.Member, len(d.OuterIDs), len(d.Outer), ErrInvalidData)
 	}
 
 	if d.Member == "" {

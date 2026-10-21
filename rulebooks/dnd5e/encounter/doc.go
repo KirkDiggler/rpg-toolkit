@@ -105,6 +105,14 @@
 // on the pause, where [Encounter.PausedAct] reads it and the resume walks on
 // under it. A beat's At is the world clock's high-water in rounds.
 //
+// AN ACT HAS A SECOND NAME FOR v1alpha2 (rpg-project#628): `<verb>:<id>`,
+// minted at the same open from the record's own id space, stamped on every
+// beat of the act as the record tag [ActTag], and carried beside the first
+// through reopens and pauses ([Encounter.CurrentActID],
+// [Encounter.PausedActID]). [Encounter.ReadRecord] reads the whole retained
+// record after an id, every audience included — the debug stream's source.
+// The record's ids draw on [SetupInput.IDs], the wall clock by default.
+//
 // # Time on the world clock (rpg-project#465)
 //
 // The world clock advances ONLY BECAUSE SOMEBODY ACTS. A walk pays one round
