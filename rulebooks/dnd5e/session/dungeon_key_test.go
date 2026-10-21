@@ -35,7 +35,7 @@ func TestDungeonKeySuite(t *testing.T) { suite.Run(t, new(DungeonKeySuite)) }
 
 func (s *DungeonKeySuite) SetupTest() {
 	s.sessions = newFakeSessions()
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: newFakeEncounters(), Characters: testCharacters(),
 		Events: session.DiscardEvents{},

@@ -158,7 +158,7 @@ func (s *StructuralSessionSuite) startWith(world scene, cast ...*character.Data)
 	s.stream = &fakeStream{}
 	characters := newFakeCharacters(cast...)
 	stockAuthoredPlayers(world, characters)
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 		Characters: characters, Events: s.stream,

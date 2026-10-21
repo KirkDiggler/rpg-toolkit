@@ -129,6 +129,11 @@ type windowStory struct {
 	// answer's beats carry the trigger's id. Set by [poseWindow]; empty on a
 	// window saved before acts existed, whose answer then carries none.
 	Act string `json:"act,omitempty"`
+
+	// ActID is Act's v1alpha2 id (`<verb>:<id>`, record.go), set beside it
+	// by [poseWindow]. Empty on a window saved before v2 ids existed, whose
+	// answer then carries Act alone.
+	ActID string `json:"act_id,omitempty"`
 }
 
 // validate refuses a story missing what its kind needs to tell a resume.
@@ -182,7 +187,7 @@ func poseWindow(scope *writeScope, pause resolution.Pause, story windowStory) er
 	// swing's own act is open and before the encounter stores its pause, so
 	// the current act — not the paused one — is the trigger's.
 	if story.Act == "" {
-		story.Act = scope.enc.CurrentAct()
+		story.Act, story.ActID = scope.enc.CurrentAct(), scope.enc.CurrentActID()
 	}
 	raw, err := json.Marshal(pendingWindow{
 		Version:  windowVersion,

@@ -84,6 +84,12 @@ type Config struct {
 	// decision, rather than a nil that reads as an oversight.
 	Events EventStream
 
+	// Record is the live channel for the record stream: every beat the
+	// encounter writes, as written, for the debug panel (record.go,
+	// rpg-project#628). Required, as Events is, and for the same reason a
+	// nil is refused: use DiscardRecord to say "no record stream".
+	Record RecordStream
+
 	// Dice is where random numbers come from. Required.
 	//
 	// Required rather than optional because a fight now starts on its own, and
@@ -167,6 +173,7 @@ type Manager struct {
 	characters        CharacterRepository
 	seats             SeatRepository
 	events            EventStream
+	record            RecordStream
 	initiative        encounter.InitiativeRoller
 	presentationIDs   PresentationIDGenerator
 
@@ -218,6 +225,7 @@ func NewManager(cfg *Config) (*Manager, error) {
 		{"Seats", cfg.Seats != nil},
 		{"Explorations", cfg.Explorations != nil},
 		{"Events", cfg.Events != nil},
+		{"Record", cfg.Record != nil},
 		{"Dice", cfg.Dice != nil},
 		{"PresentationIDs", cfg.PresentationIDs != nil},
 		// ONE ROW FOR THE PAIR, because either one satisfies the requirement
@@ -261,6 +269,7 @@ func NewManager(cfg *Config) (*Manager, error) {
 		characters:        cfg.Characters,
 		seats:             cfg.Seats,
 		events:            cfg.Events,
+		record:            cfg.Record,
 		initiative:        initiativeSeam{dice: cfg.Dice},
 		dice:              cfg.Dice,
 		turnDrivers:       drivers,

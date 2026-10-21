@@ -63,7 +63,7 @@ func task6ArrivalFixture(t *testing.T) (*session.Manager, *fakeSessions, *fakeEn
 	t.Helper()
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	stream := &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: sessions, Encounters: encounters,
 		Characters: newFakeCharacters(armedFighter("fighter")), Events: stream,
@@ -111,7 +111,7 @@ func TestSessionMonsterArrivalSaveFailureRollsBackCorrection(t *testing.T) {
 	mgr, sessions, encounters, stream := task6ArrivalFixture(t)
 	declarationID := currentEndTurnID(t, mgr, "sess", "fighter")
 	errSave := errors.New("encounter store unavailable")
-	failing, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	failing, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: sessions, Encounters: &failingEncounters{fakeEncounters: encounters, saveErr: errSave},
 		Characters: newFakeCharacters(armedFighter("fighter")), Events: stream,
@@ -174,7 +174,7 @@ func TestMalformedSightTestimonyFailsSessionLoadBeforeProjection(t *testing.T) {
 
 	// Use a fresh manager to make this a load-path assertion, not an in-memory
 	// object assertion.
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: sessions, Encounters: encounters,
 		Characters: newFakeCharacters(armedFighter("fighter")), Events: session.DiscardEvents{},
@@ -237,7 +237,7 @@ func skeletonAt(id string, col, row int) dungeonspec.MonsterPlacement {
 // session's own Launch, never authored straight into MemberInput, so
 // every gate test exercises the real member-record-filling this wave built.
 func (s *MonsterTurnTestSuite) tombManager(driver session.TurnDriver, dice session.Roller) *session.Manager {
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: dice, TurnDriver: driver,
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: newFakeCharacters(armedFighter("fighter")),
@@ -595,7 +595,7 @@ func (s *MonsterTurnTestSuite) TestRoundTwoStruckReachesTheLiveSubscriber() {
 	fighter := armedFighter("fighter")
 	fighter.HitPoints, fighter.MaxHitPoints = 100, 100
 
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: newFakeCharacters(fighter),
@@ -706,7 +706,7 @@ func (s *MonsterTurnTestSuite) TestRoundTwoStruckReachesTheLiveSubscriber() {
 func (s *MonsterTurnTestSuite) TestLiveDeliveryAndStoryCatchUpAreByteEqual() {
 	ctx := context.Background()
 	stream := &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: newFakeCharacters(armedFighter("fighter")),
@@ -1065,7 +1065,7 @@ func doubleDoorFixture(t *testing.T, withDavid bool) (*session.Manager, *fakeSes
 		characters = append(characters, armedFighter("david"))
 	}
 	recorder := &recordingBehavior{next: pursuingDriver{}}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: recorder, Sessions: sessions, Encounters: encounters,
 		Characters: newFakeCharacters(characters...), Events: session.DiscardEvents{},
 	})

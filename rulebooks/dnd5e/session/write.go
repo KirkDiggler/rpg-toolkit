@@ -953,24 +953,26 @@ func (m *Manager) openForChange(
 	if err := scope.frozen(); err != nil {
 		return nil, err
 	}
-	if err := scope.openAct(verb, ""); err != nil {
+	if err := scope.openAct(verb, "", ""); err != nil {
 		return nil, err
 	}
 	return scope, nil
 }
 
 // openAct opens this verb's act on the scope's encounter: verb minted when
-// act is empty, act reopened otherwise. A scope holds at most one act of its
+// act is empty, act reopened otherwise — under both of its names, act (the
+// v1alpha1 `<verb>:<first seq>`) and actID (the v1alpha2 `<verb>:<id>`,
+// empty on an act from before v2 ids). A scope holds at most one act of its
 // own, which commit closes.
-func (s *writeScope) openAct(verb, act string) error {
+func (s *writeScope) openAct(verb, act, actID string) error {
 	if s.act != "" {
 		return fmt.Errorf("%w: act %q is already open on this verb", ErrInvalidSession, s.act)
 	}
-	out, err := s.enc.OpenAct(&encounter.OpenActInput{Verb: verb, Act: act})
+	out, err := s.enc.OpenAct(&encounter.OpenActInput{Verb: verb, Act: act, ID: actID})
 	if err != nil {
 		return translate(err)
 	}
-	s.act = out.Act
+	s.act, s.actID = out.Act, out.ID
 	return nil
 }
 
@@ -1021,8 +1023,10 @@ type writeScope struct {
 	baseline  uint64
 
 	// act is the id of the act this verb opened on enc ([writeScope.openAct]),
-	// or "" for a scope that opened none. commit closes it.
-	act string
+	// or "" for a scope that opened none. commit closes it. actID is the same
+	// act's v1alpha2 id (record.go).
+	act   string
+	actID string
 
 	// ledger is the session's open interrupt windows, loaded beside data
 	// because it IS part of the session record (SessionData.Windows) and a
@@ -1247,7 +1251,7 @@ func (m *Manager) adopt(ctx context.Context, scope *writeScope, world encounter.
 	// loaded here starts with none; the verb is still the same act, and the
 	// outcome recorded on this world next is its beat.
 	if scope.act != "" {
-		if _, err := enc.OpenAct(&encounter.OpenActInput{Act: scope.act}); err != nil {
+		if _, err := enc.OpenAct(&encounter.OpenActInput{Act: scope.act, ID: scope.actID}); err != nil {
 			return fmt.Errorf("%q: %w", scope.encounter, translate(err))
 		}
 	}
@@ -1404,7 +1408,7 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 			report := SaveReport{Written: append([]string(nil), scope.written...)}
 			return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", translate(err))
 		}
-		scope.act = ""
+		scope.act, scope.actID = "", ""
 	}
 
 	view := scope.enc.WorldView()
@@ -1419,6 +1423,7 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 		scope.touched = true
 	}
 	events := m.projectEvents(scope, &view)
+	recorded := commitRecord(scope)
 
 	// THE final storage boundary: this ToData runs after the verb's complete
 	// delta has been numbered and projected. Everything before this line read
@@ -1441,7 +1446,9 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 		return report, DeliveryReport{}, err
 	}
 	report.Written = mergeReportIdentities(report.Written, scope.written)
-	return report, m.deliver(ctx, events), nil
+	delivery := m.deliver(ctx, events)
+	m.deliverRecord(ctx, recorded)
+	return report, delivery, nil
 }
 
 // clearSeatsOfAClosedRun clears every player's seat when this verb closed the

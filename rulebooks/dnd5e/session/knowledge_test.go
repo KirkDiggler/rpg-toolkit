@@ -39,7 +39,7 @@ func (s *KnowledgeSuite) TestCapturedPresentationCrossesKnowledgeAndViewWithoutA
 		Party:   []sceneSeat{seatAt("alice", 0, 0)},
 		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
 	}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: newFakeCharacters(armedFighter("alice")),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: newFakeCharacters(armedFighter("alice")),
 		Events: session.DiscardEvents{}, Dice: testDice{}, TurnDriver: session.Pass{}, PresentationIDs: testPresentationIDs{}})
 	s.Require().NoError(err)
 	ctx := context.Background()
@@ -70,7 +70,7 @@ func (s *KnowledgeSuite) TestSnapshotUsesOneWorldAndTheExactOwnedSeat() {
 	// current world placement into new knowledge.
 	delete(fixture.encounters.byID["world"].Perception.Intel.Holdings["member|alice"], "member|skel-1")
 	repo := &knowledgeEncounters{fakeEncounters: fixture.encounters}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), Sessions: fixture.sessions, Encounters: repo, Characters: fixture.characters,
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), Sessions: fixture.sessions, Encounters: repo, Characters: fixture.characters,
 		Events: session.DiscardEvents{}, Dice: testDice{}, TurnDriver: session.Pass{}, PresentationIDs: testPresentationIDs{}})
 	s.Require().NoError(err)
 	ctx := context.Background()
@@ -105,7 +105,7 @@ func (s *KnowledgeSuite) TestSnapshotUsesOneWorldAndTheExactOwnedSeat() {
 func (s *KnowledgeSuite) TestCellsRevealAndObservationsSurviveTheSessionPath() {
 	ctx := context.Background()
 	stream := &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: newFakeCharacters(armedFighter("alice")),
 		Events: stream, Dice: testDice{}, TurnDriver: session.Pass{}, PresentationIDs: testPresentationIDs{},
 	})

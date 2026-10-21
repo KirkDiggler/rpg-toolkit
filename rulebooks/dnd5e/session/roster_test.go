@@ -89,7 +89,7 @@ func newRosterFixture(t *testing.T) *rosterFixture {
 		}},
 	}
 
-	manager, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	manager, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{},
 		Sessions:        sessions, Encounters: encounters, Characters: characters,
 		Events: session.DiscardEvents{}, Dice: testDice{}, TurnDriver: session.Pass{},
@@ -392,7 +392,7 @@ func TestRosterRefusesACharacterReturnedUnderTheWrongID(t *testing.T) {
 
 func TestRosterRefusesANilCharacterRepositoryResult(t *testing.T) {
 	fixture := newRosterFixture(t)
-	manager, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	manager, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{},
 		Sessions:        fixture.sessions, Encounters: fixture.encounters,
 		Characters: nilRosterRepository{}, Events: session.DiscardEvents{},
@@ -569,7 +569,7 @@ func TestRosterSurvivesManagerRestartFromCopiedPersistence(t *testing.T) {
 	restartedEncounters := newFakeEncounters()
 	restartedEncounters.byID["world"] = storedEncounter
 	restartedCharacters := newFakeCharacters(alice, bob)
-	restarted, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	restarted, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{},
 		Sessions:        restartedSessions, Encounters: restartedEncounters,
 		Characters: restartedCharacters, Events: session.DiscardEvents{},
@@ -599,7 +599,7 @@ func TestRosterRejectsMalformedNPCRefWithoutLeakingCoreErrors(t *testing.T) {
 			ID: "skel-1", Name: "Skeleton", Ref: &core.Ref{Module: "", Type: "monsters", ID: "skeleton"},
 		}},
 	})
-	manager, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	manager, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{},
 		Sessions:        sessions, Encounters: fixture.encounters, Characters: fixture.characters,
 		Events: session.DiscardEvents{}, Dice: testDice{}, TurnDriver: session.Pass{},

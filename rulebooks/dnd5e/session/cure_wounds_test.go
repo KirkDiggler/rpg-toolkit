@@ -74,7 +74,7 @@ func (s *CastSuite) TestCureWoundsLifeBonusClampingAndStoryReload() {
 		s.characters.byID[id], err = copyOf(data)
 		s.Require().NoError(err)
 	}
-	s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: brokenDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream,
 	})
@@ -170,7 +170,7 @@ func (s *CastSuite) TestCureWoundsUntypedMonsterSelectionHealingAndReload() {
 				s.characters.byID[id], err = copyOf(data)
 				s.Require().NoError(err)
 			}
-			s.mgr, err = session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: brokenDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+			s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: brokenDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
 			s.Require().NoError(err)
 			story, err := s.mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "cleric", FromSeq: beats[0].Seq})
 			s.Require().NoError(err)
@@ -291,7 +291,7 @@ func (s *CastSuite) TestCureWoundsFailureBoundaries() {
 			// Wounded after the launch: its first-admission rest would heal her.
 			s.characters.byID["cleric"].HitPoints = 2
 			id := s.castRow(spells.CureWounds).ID
-			config := &session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream}
+			config := &session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream}
 			fault := errors.New("injected failure")
 			switch failure {
 			case "roller":

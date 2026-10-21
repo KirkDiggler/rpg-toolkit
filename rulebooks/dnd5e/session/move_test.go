@@ -23,6 +23,7 @@ type MoveTestSuite struct {
 	encounters *fakeEncounters
 	characters *fakeCharacters
 	stream     *fakeStream
+	record     *fakeRecord
 	mgr        *session.Manager
 }
 
@@ -31,7 +32,8 @@ func (s *MoveTestSuite) SetupTest() {
 	s.encounters = newFakeEncounters()
 	s.characters = testCharacters()
 	s.stream = &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	s.record = &fakeRecord{}
+	mgr, err := session.NewManager(&session.Config{Record: s.record, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: s.stream,
 	})

@@ -37,7 +37,7 @@ func (s *EntitiesTestSuite) SetupTest() {
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
 	s.characters = testCharacters()
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
 	})
@@ -184,7 +184,7 @@ func (s *EntitiesTestSuite) TestSpawnedContentIsNeverLookedUpAsACharacter() {
 	// A run of its own, launched with the monster on its board: the suite's
 	// run already seats alice, and a character sits in one run at a time.
 	characters := testCharacters()
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: characters,
 		Events: session.DiscardEvents{},
 	})
@@ -254,7 +254,7 @@ func (s *EntitiesTestSuite) TestEveryPlayerJoinConsultsTheRepository() {
 // violation rather than the absence: a store that returns (nil, nil) is broken,
 // and guessing in either direction is worse than saying so.
 func (s *EntitiesTestSuite) TestARepositoryReportingSuccessWithNoDataIsRejected() {
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: &nilDataCharacters{},
 		Events:     session.DiscardEvents{},
@@ -326,7 +326,7 @@ func TestEntitiesSuite(t *testing.T) { suite.Run(t, new(EntitiesTestSuite)) }
 // benchManager builds a fresh, launched session for one benchmark iteration.
 func benchManager(b *testing.B) *session.Manager {
 	b.Helper()
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})

@@ -84,7 +84,7 @@ func (s *DeathTestSuite) SetupTest() {
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
 	s.stream = &fakeStream{}
 
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
 	})
@@ -567,7 +567,7 @@ func (s *DeathTestSuite) TestAKillingAttackReportsTheNestedBoundarySaveFailure()
 		failAt:         2,
 		err:            errBoundaryCharacterSave,
 	}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: failing, Events: s.stream,
 	})
@@ -634,7 +634,7 @@ func (s *DeathTestSuite) TestASwingThatCannotRecordStillNamesTheSheetItWrote() {
 	chars := &brokenAfterWriting{
 		fakeCharacters: newFakeCharacters(armedFighter("alice"), armedFighter("bob")),
 	}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: chars, Events: s.stream,
 	})
@@ -998,7 +998,7 @@ func (m *markedCharacters) GetCharacter(ctx context.Context, id string) (*charac
 // is a request the host can no longer stop.
 func (s *DeathTestSuite) TestTheSeamReadsOnTheCallersContext() {
 	chars := &markedCharacters{fakeCharacters: newFakeCharacters(armedFighter("alice"), armedFighter("bob"))}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: chars, Events: s.stream,
 	})
@@ -1053,7 +1053,7 @@ func (s *DeathTestSuite) TestAStoreThatCannotAnswerFailsTheVerb() {
 	chars := &failingCharacters{
 		fakeCharacters: newFakeCharacters(armedFighter("alice"), armedFighter("bob")),
 	}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: chars, Events: s.stream,
 	})

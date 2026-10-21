@@ -37,7 +37,7 @@ func (s *SeatSuite) SetupTest() {
 	s.characters = testCharacters()
 	s.seats = newFakeSeats()
 	s.locker = &observingLocker{}
-	mgr, err := session.NewManager(&session.Config{Seats: s.seats, Explorations: newFakeExplorations(), Locker: s.locker,
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: s.seats, Explorations: newFakeExplorations(), Locker: s.locker,
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
@@ -258,7 +258,7 @@ func (s *SeatSuite) TestALoadAndAnEquipIssuedTogetherBothLand() {
 	locker := newKeyedLocker()
 	seats := newFakeSeats()
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Seats: seats, Explorations: newFakeExplorations(), Locker: locker,
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: seats, Explorations: newFakeExplorations(), Locker: locker,
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: chars, Events: session.DiscardEvents{},
 	})

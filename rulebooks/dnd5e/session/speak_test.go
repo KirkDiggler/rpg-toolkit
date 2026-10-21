@@ -93,7 +93,7 @@ func (s *SpeakSuite) aYardDriven(
 	// Two initiative rolls first: spawning the goblin in the open forms a
 	// fight, and initiative is rolled before any check this suite asserts.
 	roller := &sequenceDice{rolls: append([]int{10, 10}, rolls...)}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: roller,
 		TurnDriver: driver,
 		Sessions:   s.sessions, Encounters: s.encounters,
@@ -689,7 +689,7 @@ func (s *SpeakSuite) TestAnAuthoredFactSurvivesTheSpawnAndIsTaught() {
 // teaching a fact is observable at this seam.
 func (s *SpeakSuite) aCamp(fact string, rolls []int) *session.Manager {
 	roller := &sequenceDice{rolls: append([]int{10, 10}, rolls...)}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},

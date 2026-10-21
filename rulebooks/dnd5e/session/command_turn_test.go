@@ -91,7 +91,7 @@ func (s *CommandTurnSuite) scene(
 	s.driver = &recordingBehavior{next: s.behind}
 	s.stream = &fakeStream{}
 
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: whisperDice{}, TurnDriver: s.driver,
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: s.stream,
