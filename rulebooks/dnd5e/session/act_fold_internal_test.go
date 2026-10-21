@@ -451,7 +451,7 @@ func (s *ActFoldSuite) TestRollTermCountsTheFacesThatCounted() {
 // Mutants: dropping the reroll copy, or swapping before and after, fails it.
 func (s *ActFoldSuite) TestRollKeepsTheRerollRecord() {
 	calc := json.RawMessage(`{"components":[
-		{"source":{"ref":"dnd5e:weapons:greatsword","name":"Greatsword","source_id":"fighter"},"dice":{"notation":"2d6","die_size":6,"original_rolls":[1,5],
+		{"source":{"ref":"dnd5e:weapons:greatsword","name":"Greatsword","label":"weapon","source_id":"fighter"},"dice":{"notation":"2d6","die_size":6,"original_rolls":[1,5],
 			"rerolls":[{"die_index":0,"before":1,"after":4,"source":{"ref":"dnd5e:fighting-styles:great-weapon-fighting","name":"Great Weapon Fighting","label":"fighting style","source_id":"fighter"}}],
 			"final_rolls":[4,5],"subtotal":9}}
 	],"total":9}`)
@@ -461,6 +461,7 @@ func (s *ActFoldSuite) TestRollKeepsTheRerollRecord() {
 	term := roll.Terms[0]
 	s.Equal([]int{1, 5}, term.Rolled, "the pool as first rolled")
 	s.Equal([]int{4, 5}, term.Faces, "the faces that counted, after the reroll")
+	s.Equal("weapon", term.SourceLabel, "the term's source arrives whole")
 	s.Equal([]RollReroll{{
 		DieIndex: 0, Before: 1, After: 4,
 		SourceRef: "dnd5e:fighting-styles:great-weapon-fighting", SourceName: "Great Weapon Fighting", SourceID: "fighter",
@@ -483,6 +484,17 @@ func (s *ActFoldSuite) TestRollKeptIndicesWithAdvantage() {
 	s.Equal([]int{1}, term.KeptIndices)
 	s.Equal([]int{15}, term.Faces)
 	s.Empty(term.Rerolls, "nothing rerolled this pool")
+
+	// Each influence's source arrives whole, label included, on both sides
+	// of a cancelled keep.
+	cancelled := keepCalc(`[9]`, ``,
+		`{"rule":"cancelled","granted":[{"ref":"dnd5e:conditions:helped","name":"Helped","label":"help","source_id":"bob"}],"imposed":[{"ref":"dnd5e:conditions:prone","name":"Prone","label":"condition","source_id":"alice"}]}`, 9)
+	roll, err = rollOf(cancelled, nil, 12, intp(16), boolp(false))
+	s.Require().NoError(err)
+	s.Equal([]RollInfluence{
+		{Kind: InfluenceAdvantage, SourceRef: "dnd5e:conditions:helped", SourceID: "bob", Name: "Helped", SourceLabel: "help"},
+		{Kind: InfluenceDisadvantage, SourceRef: "dnd5e:conditions:prone", SourceID: "alice", Name: "Prone", SourceLabel: "condition"},
+	}, roll.Influences)
 }
 
 // TestRollModifierCarriesItsSource is #643 D (R17, "modifiers with
@@ -551,14 +563,28 @@ func (s *ActFoldSuite) TestCastActivationCarriesItsSpell() {
 
 	acts := foldActs("sess", "fighter", entries)
 
+	// The result CONTINUES the cast in a later segment; it never absorbs
+	// into the open CastAct, which would replace the cast's body and drop
+	// the fighter's failed save.
+	castAt, activateAt := -1, -1
+	var castBody CastAct
 	var activate *ActivateAct
-	for _, a := range acts {
+	for i, a := range acts {
 		s.Equal(cast, a.Act, "every piece stays under the cast's act id")
-		if body, ok := a.Body.(ActivateAct); ok {
-			activate = &body
+		switch body := a.Body.(type) {
+		case CastAct:
+			castAt, castBody = i, body
+		case ActivateAct:
+			activateAt, activate = i, &body
 		}
 	}
+	s.Require().NotEqual(-1, castAt, "the cast keeps its own segment")
+	s.Require().Len(castBody.Results, 1)
+	s.Equal(Party{Kind: PartyMember, ID: "fighter"}, castBody.Results[0].Target)
+	s.Equal(CastFailed, castBody.Results[0].Outcome, "the cast keeps the fighter's failed save")
 	s.Require().NotNil(activate, "the Baned result rides an activate act")
+	s.Greater(activateAt, castAt, "the activation is a separate, later segment")
+	s.Greater(acts[activateAt].Segment, acts[castAt].Segment)
 	s.Equal(AbilityRef{Ref: "dnd5e:spells:bane", Name: "Bane"}, activate.Ability)
 	s.Equal(Party{Kind: PartyMember, ID: "cultist"}, activate.By)
 	s.Require().Len(activate.Results, 1)
