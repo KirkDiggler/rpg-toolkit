@@ -83,6 +83,38 @@ type RollDiceTerm struct {
 	SourceName string
 	// SourceID is the entity the source belongs to, when one was named.
 	SourceID string
+	// SourceLabel is the source's role within the calculation, when the
+	// rulebook recorded one.
+	SourceLabel string
+	// Rolled is the pool as first rolled, before any reroll and any keep
+	// rule: advantage's d20 [7,15], Great Weapon Fighting's 2d6 [1,5]
+	// (#643 B). Faces are the faces that counted after both.
+	Rolled []int
+	// KeptIndices are the indices into Rolled whose final faces counted, in
+	// order. Empty means every die was kept.
+	KeptIndices []int
+	// Rerolls are the dice of Rolled a feature replaced, each with its
+	// source, in the order they happened.
+	Rerolls []RollReroll
+}
+
+// RollReroll is one die of a pool rerolled, and the source that rerolled it
+// (Great Weapon Fighting rerolling a 1).
+type RollReroll struct {
+	// DieIndex is the die's index into its term's Rolled.
+	DieIndex int
+	// Before is the face the die showed before the reroll; After is the face
+	// the reroll produced.
+	Before, After int
+	// SourceRef is the rerolling source's full ref, verbatim.
+	SourceRef string
+	// SourceName is the rerolling source's display name.
+	SourceName string
+	// SourceID is the entity the source belongs to, when one was named.
+	SourceID string
+	// SourceLabel is the rerolling source's role within the calculation,
+	// when the rulebook recorded one.
+	SourceLabel string
 }
 
 // InfluenceKind is whether a source granted advantage or imposed
@@ -106,14 +138,26 @@ type RollInfluence struct {
 	// Name is the source's display name, as the keep recorded it. "" for a
 	// beat's retired source keys, which carried none.
 	Name string
+	// SourceLabel is the source's role within the calculation, when the
+	// rulebook recorded one.
+	SourceLabel string
 }
 
-// RollModifier is one flat contribution to a roll.
+// RollModifier is one flat contribution to a roll, with its source (R17,
+// "modifiers with sources"; #643 D).
 type RollModifier struct {
-	// Source is the contribution's source name ("Strength", "Proficiency").
+	// Source is the contribution's source name ("Strength", "Fighter").
 	Source string
 	// Value is what it added.
 	Value int
+	// SourceRef is the source's full ref ("dnd5e:classes:fighter"),
+	// verbatim. "" when the calculation named none.
+	SourceRef string
+	// SourceID is the entity the source belongs to, when one was named.
+	SourceID string
+	// SourceLabel is the source's role within the calculation ("Fighter
+	// level"), when the rulebook recorded one.
+	SourceLabel string
 }
 
 // errCalculation is a calculation present on a beat that does not replay.
@@ -151,6 +195,8 @@ func rollOf(calc json.RawMessage, faces []int, total int, against *int, beaten *
 			roll.Terms = append(roll.Terms, RollDiceTerm{
 				Count: len(kept), DieSize: c.Dice.DieSize, Faces: kept, Subtract: c.SubtractDice,
 				SourceRef: c.Source.Ref, SourceName: c.Source.Name, SourceID: c.Source.SourceID,
+				SourceLabel: c.Source.Label,
+				Rolled:      c.Dice.OriginalRolls, KeptIndices: c.Dice.KeptIndices, Rerolls: rerollsOf(c.Dice.Rerolls),
 			})
 			term := fmt.Sprintf("%dd%d", len(kept), c.Dice.DieSize)
 			switch {
@@ -163,16 +209,19 @@ func rollOf(calc json.RawMessage, faces []int, total int, against *int, beaten *
 		}
 		if c.Dice != nil && c.Dice.Keep != nil {
 			for _, g := range c.Dice.Keep.Granted {
-				roll.Influences = append(roll.Influences, RollInfluence{Kind: InfluenceAdvantage, SourceRef: g.Ref, SourceID: g.SourceID, Name: g.Name})
+				roll.Influences = append(roll.Influences, RollInfluence{Kind: InfluenceAdvantage, SourceRef: g.Ref, SourceID: g.SourceID, Name: g.Name, SourceLabel: g.Label})
 			}
 			for _, g := range c.Dice.Keep.Imposed {
-				roll.Influences = append(roll.Influences, RollInfluence{Kind: InfluenceDisadvantage, SourceRef: g.Ref, SourceID: g.SourceID, Name: g.Name})
+				roll.Influences = append(roll.Influences, RollInfluence{Kind: InfluenceDisadvantage, SourceRef: g.Ref, SourceID: g.SourceID, Name: g.Name, SourceLabel: g.Label})
 			}
 		}
 		if c.Modifier != nil {
 			mods = true
 			sum += *c.Modifier
-			roll.Modifiers = append(roll.Modifiers, RollModifier{Source: c.Source.Name, Value: *c.Modifier})
+			roll.Modifiers = append(roll.Modifiers, RollModifier{
+				Source: c.Source.Name, Value: *c.Modifier,
+				SourceRef: c.Source.Ref, SourceID: c.Source.SourceID, SourceLabel: c.Source.Label,
+			})
 		}
 	}
 	expression := strings.Join(dice, "")
@@ -184,6 +233,22 @@ func rollOf(calc json.RawMessage, faces []int, total int, against *int, beaten *
 	}
 	roll.Expression = expression
 	return roll, nil
+}
+
+// rerollsOf is a pool's sourced rerolls as a term states them, nil for none.
+func rerollsOf(rerolls []DiceReroll) []RollReroll {
+	if len(rerolls) == 0 {
+		return nil
+	}
+	out := make([]RollReroll, 0, len(rerolls))
+	for _, r := range rerolls {
+		out = append(out, RollReroll{
+			DieIndex: r.DieIndex, Before: r.Before, After: r.After,
+			SourceRef: r.Source.Ref, SourceName: r.Source.Name, SourceID: r.Source.SourceID,
+			SourceLabel: r.Source.Label,
+		})
+	}
+	return out
 }
 
 // intp is a pointer to v, for a roll's Against.

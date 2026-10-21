@@ -606,6 +606,14 @@ func activationResultPiece(payload []byte) ([]piece, error) {
 			return a, true
 		},
 		continues: func(prior ActBody) ActBody {
+			// A cast's results (Bane's Baned) follow its cast under the cast's
+			// act id: the activation is the spell's (#643 F, rpg-toolkit#2100).
+			if c, ok := prior.(CastAct); ok {
+				return ActivateAct{
+					By: c.By, Ability: AbilityRef{Ref: c.Spell.Ref, Name: c.Spell.Name},
+					Results: []ActivationResult{result},
+				}
+			}
 			a, ok := restartActivation(prior).(ActivateAct)
 			if !ok || a.By.ID == "" {
 				return alone
@@ -1009,6 +1017,16 @@ func secretRevealed(payload []byte) (*SecretRevealed, error) {
 	presentations, ok := propPresentationsFromPayload(payload)
 	if !ok {
 		return nil, fmt.Errorf("prop presentations do not read")
+	}
+	// The beat hangs each door's doorways under the door and names only the
+	// crossing; the act names the door on every doorway, as v1's projection
+	// did (#643 E). A doorway that names its own door keeps it.
+	for i := range p.Doors {
+		for j := range p.Doors[i].Doorways {
+			if p.Doors[i].Doorways[j].Door == "" {
+				p.Doors[i].Doorways[j].Door = p.Doors[i].Door
+			}
+		}
 	}
 	return &SecretRevealed{
 		Concealment: p.Concealment, Cells: p.Cells, Props: p.Props, Doors: p.Doors,
