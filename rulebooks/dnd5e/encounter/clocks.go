@@ -622,20 +622,36 @@ func (e *Encounter) runIntents(
 		// story; a second one would only repeat that the turn is over, which
 		// the turn-ended beat already says (rpg-project#465, ruled on an
 		// api-builder finding).
+		//
+		// THE PICK IS ITS OWN ACT, `time:<seq>` (act.go, design R24): the
+		// creature's roll is a driven activation of its own, not part of
+		// whichever player verb raised the clock that drew it.
 		if decision.Pick != nil && (j == startJ || len(decision.Pick.Candidates) > 0) {
-			if berr := e.appendPickBeat(activeID, decision.Pick); berr != nil {
-				return turnDeltas, berr
-			}
-			// WHAT THE PICK SAID, AFTER THE PICK (rpg-project#569 R6): the
-			// beat is the cause, the voice and the alarm are its effects.
-			if aerr := e.answerTime(activeID, decision.Pick.Answer); aerr != nil {
-				return turnDeltas, aerr
+			if perr := e.inAct("time", "", func() error {
+				if berr := e.appendPickBeat(activeID, decision.Pick); berr != nil {
+					return berr
+				}
+				// WHAT THE PICK SAID, AFTER THE PICK (rpg-project#569 R6): the
+				// beat is the cause, the voice and the alarm are its effects.
+				return e.answerTime(activeID, decision.Pick.Answer)
+			}); perr != nil {
+				return turnDeltas, perr
 			}
 		}
 
-		done, intentDeltas, dexecerr := e.executeTurnIntent(
-			activeID, m, view, decision.Intent, budget,
-			turnCoords{Round: round, Intent: j, Bound: bound, Clock: kind})
+		// ONE ACT PER INTENT (act.go, design R24): a driven walk-then-attack
+		// is a move act and an attack act, each named by its intent.
+		var (
+			done         bool
+			intentDeltas map[MemberID]*IntelDelta
+		)
+		dexecerr := e.inAct(intentVerb(decision.Intent), "", func() error {
+			var xerr error
+			done, intentDeltas, xerr = e.executeTurnIntent(
+				activeID, m, view, decision.Intent, budget,
+				turnCoords{Round: round, Intent: j, Bound: bound, Clock: kind})
+			return xerr
+		})
 		if dexecerr != nil {
 			return turnDeltas, fmt.Errorf("execute: %w", dexecerr)
 		}
@@ -979,6 +995,8 @@ func (e *Encounter) executeTurnIntent(
 				e.pause = &pause{
 					kind:   PauseTurn,
 					member: activeID,
+					act:    e.CurrentAct(),
+					outer:  e.outerActs(),
 					turn: &turnPause{
 						round: coords.Round, budget: *budget, intent: coords.Intent, bound: coords.Bound,
 						afterStrike: true,
@@ -1066,6 +1084,8 @@ func (e *Encounter) executeTurnIntent(
 				moved:     res.moved,
 				at:        at,
 				audience:  audience,
+				act:       e.CurrentAct(),
+				outer:     e.outerActs(),
 				turn: &turnPause{
 					round: coords.Round, budget: *budget, intent: coords.Intent, bound: coords.Bound,
 					face: walkFace{member: it.Target, pause: cloneWaypointPause(it.Pause)},
@@ -1212,6 +1232,8 @@ func (e *Encounter) executeTurnIntent(
 				at:        at,
 				audience:  audience,
 				cause:     it.Cause,
+				act:       e.CurrentAct(),
+				outer:     e.outerActs(),
 				turn: &turnPause{
 					round: coords.Round, budget: *budget, intent: coords.Intent, bound: coords.Bound,
 					terminal: true, face: face,

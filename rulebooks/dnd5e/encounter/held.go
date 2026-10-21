@@ -59,6 +59,14 @@ func (e *Encounter) resumeDirective(ctx context.Context) (*ResumeOutput, error) 
 	// Cleared before the first step — see [Encounter.Resume].
 	e.pause = nil
 
+	// THE RESUMED HALF IS THE SAME ACT (act.go, Law 2): every cell walked
+	// after the answer, and the window a later cell may open, carry the act
+	// the walk was held in. A pause saved before acts existed has none.
+	// The acts it was opened inside come back beneath it, outermost first.
+	if h.act != "" {
+		defer e.pushActs(append(append([]string(nil), h.outer...), h.act)...)()
+	}
+
 	downNow, derr := e.downNow()
 	if derr != nil {
 		return nil, fmt.Errorf("resume directive %q standing: %w", h.member, derr)
@@ -93,6 +101,8 @@ func (e *Encounter) resumeDirective(ctx context.Context) (*ResumeOutput, error) 
 			audience:  h.audience,
 			cause:     h.cause,
 			forced:    h.forced,
+			act:       h.act,
+			outer:     h.outer,
 		}
 		if _, berr := e.appendWindowOpenedBeat(
 			h.member, res.from, res.to, h.at, res.paused.Windows, h.cause,

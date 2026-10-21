@@ -131,6 +131,18 @@ type pause struct {
 	cause     core.Ref
 	turn      *turnPause
 	forced    bool
+
+	// act is the act the paused walk or strike belongs to (act.go), so the
+	// cells walked after the answer carry the same id as the cells before
+	// it, and the reaction's own beats can carry it too (Law 2). Empty on a
+	// pause saved before acts existed, which resumes with no act id.
+	act string
+
+	// outer is every act open beneath act when the pause was made,
+	// outermost first — a driven walk's end_turn — so the resumed turn's
+	// own end, and the drive after it, carry it rather than the resuming
+	// caller's act. Empty when act was the only one open.
+	outer []string
 }
 
 // turnPause is what a [PauseTurn] carries beyond the walk: the turn the walk
@@ -222,6 +234,19 @@ type PauseData struct {
 	// [DirectInput.Provokes], inverted, exactly as the live walk carried it.
 	// A directive's only; refused on a turn.
 	Forced bool `json:"forced,omitempty"`
+
+	// Act is the id of the act the paused walk or strike belongs to
+	// ([Encounter.PausedAct]). Absent on a pause written before acts
+	// existed, which still loads — PauseVersion is unchanged — and resumes
+	// with no act id: degraded, not refused.
+	Act string `json:"act,omitempty"`
+
+	// Outer is every act open beneath Act when the pause was made,
+	// outermost first: the resume pushes them back before Act, so the beats
+	// after the resumed walk land in the act the walk was opened inside.
+	// Absent on a pause written before it existed, or when Act was the only
+	// act open.
+	Outer []string `json:"outer,omitempty"`
 }
 
 // TurnPauseData is the persistent representation of what a paused TURN
@@ -309,6 +334,8 @@ func pauseDataFrom(p *pause) *PauseData {
 		Audience:  append([]MemberID(nil), p.audience...),
 		Cause:     causeString(p.cause),
 		Forced:    p.forced,
+		Act:       p.act,
+		Outer:     append([]string(nil), p.outer...),
 	}
 	if p.turn != nil {
 		d.Turn = &TurnPauseData{
@@ -391,6 +418,8 @@ func pauseFrom(d *PauseData) (*pause, error) {
 		audience:  append([]MemberID(nil), d.Audience...),
 		cause:     cause,
 		forced:    d.Forced,
+		act:       d.Act,
+		outer:     append([]string(nil), d.Outer...),
 	}
 	if d.Turn != nil {
 		p.turn = &turnPause{
@@ -756,6 +785,12 @@ func (e *Encounter) resumeTurn(ctx context.Context) (*ResumeOutput, error) {
 	// no-op on a fight that is running again.
 	e.pause = nil
 
+	// THE ACTS THE WALK WAS OPENED INSIDE COME BACK FIRST (act.go). The
+	// turn's end and the drive after it are the outer act's — a player's
+	// end_turn — exactly as they would have been had no window opened; the
+	// walk's own act is reopened around its remaining cells only.
+	defer e.pushActs(p.outer...)()
+
 	var (
 		seq     uint64
 		wrapped bool
@@ -847,7 +882,19 @@ func (e *Encounter) finishTurnFromPause(
 	ctx context.Context, bubble *clock.Turn, p *pause, m *memberRecord,
 	seq *uint64, wrapped *bool, deltas *map[MemberID]*IntelDelta,
 ) (bool, error) {
-	walkSeq, walkDeltas, done, rerr := e.finishPausedIntent(ctx, p, m)
+	// THE INTERRUPTED INTENT FINISHES IN ITS OWN ACT (act.go, Law 2): the
+	// cells after the window carry the walk's id. Whatever intents the turn
+	// has left below open acts of their own.
+	var (
+		walkSeq    uint64
+		walkDeltas map[MemberID]*IntelDelta
+		done       bool
+	)
+	rerr := e.underAct(p.act, func() error {
+		var ferr error
+		walkSeq, walkDeltas, done, ferr = e.finishPausedIntent(ctx, p, m)
+		return ferr
+	})
 	*deltas = mergeIntelDeltas(*deltas, walkDeltas)
 	if rerr != nil {
 		return false, fmt.Errorf("resume turn %q: %w", p.member, rerr)
@@ -972,6 +1019,8 @@ func (e *Encounter) finishPausedIntent(
 			at:        p.at,
 			audience:  p.audience,
 			cause:     p.cause,
+			act:       p.act,
+			outer:     p.outer,
 			turn: &turnPause{
 				round:    p.turn.round,
 				budget:   p.turn.budget,
