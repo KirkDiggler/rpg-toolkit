@@ -304,3 +304,36 @@ func (s *ActFoldSuite) TestAnUnreadableBeatFailsOnlyItsEntry() {
 	s.Equal(FamilyAct, acts[0].Family)
 	s.Equal(ClockEntry{Mark: ClockTick, Tick: 1}, acts[1].Body)
 }
+
+// TestRollCarriesAdvantageSources is R17 (a roll carries its sources) for
+// advantage: a swing with advantage from a named source folds to one roll
+// influence with that ref and source, and a disadvantage source after it; a
+// roll whose calculation kept the high face reads its granting source from
+// the dice keep.
+func (s *ActFoldSuite) TestRollCarriesAdvantageSources() {
+	swing := s.beat("attack:01HZZZZZZZZZZZZZZZZZZZSWNG", map[string]any{
+		"beat": string(encounter.OutcomeStruck), "actor": "fighter", "targets": []string{"gate-1"},
+		"roll": 15, "total": 20, "against": 16, "amount": 6,
+		"attack":               map[string]string{"ref": "dnd5e:weapons:longsword", "name": "Longsword", "damage_type": "slashing"},
+		"advantage_sources":    []map[string]string{{"source_ref": "dnd5e:conditions:hidden", "source_id": "fighter"}},
+		"disadvantage_sources": []map[string]string{{"source_ref": "dnd5e:conditions:frightened"}},
+	})
+	acts := foldActs("sess", "fighter", []record.Entry{swing})
+	s.Require().Len(acts, 1)
+	attack, ok := acts[0].Body.(AttackAct)
+	s.Require().True(ok)
+	s.Require().NotNil(attack.Roll)
+	s.Equal([]RollInfluence{
+		{Kind: InfluenceAdvantage, SourceRef: "dnd5e:conditions:hidden", SourceID: "fighter"},
+		{Kind: InfluenceDisadvantage, SourceRef: "dnd5e:conditions:frightened"},
+	}, attack.Roll.Influences)
+
+	calc := json.RawMessage(`{"components":[
+		{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"},"dice":{"notation":"2d20","die_size":20,"original_rolls":[7,15],"final_rolls":[7,15],"kept_indices":[1],"keep":{"rule":"advantage","granted":[{"ref":"dnd5e:conditions:helped","name":"Helped","source_id":"bob"}]},"subtotal":15}},
+		{"source":{"ref":"dnd5e:abilities:str","name":"STR"},"modifier":3},
+		{"source":{"ref":"dnd5e:proficiency:proficiency","name":"proficiency"},"modifier":2}
+	],"total":20}`)
+	roll, err := rollOf(calc, []int{15}, 20, intp(16), boolp(true))
+	s.Require().NoError(err)
+	s.Equal([]RollInfluence{{Kind: InfluenceAdvantage, SourceRef: "dnd5e:conditions:helped", SourceID: "bob"}}, roll.Influences)
+}

@@ -252,6 +252,29 @@ type outcomeFields struct {
 	PresentationID string          `json:"presentation_id"`
 	Calculation    json.RawMessage `json:"calculation"`
 	Components     json.RawMessage `json:"damage_components"`
+	// AdvantageSources and DisadvantageSources are the attack fold's own
+	// ordered sources (encounter.AttackModifierSource).
+	AdvantageSources    []modifierSource `json:"advantage_sources"`
+	DisadvantageSources []modifierSource `json:"disadvantage_sources"`
+}
+
+// modifierSource is one advantage or disadvantage source a swing names.
+type modifierSource struct {
+	SourceRef string `json:"source_ref"`
+	SourceID  string `json:"source_id"`
+}
+
+// attackInfluences are a swing's own advantage and disadvantage sources, in
+// that order; nil when it named none.
+func attackInfluences(p outcomeFields) []RollInfluence {
+	var out []RollInfluence
+	for _, src := range p.AdvantageSources {
+		out = append(out, RollInfluence{Kind: InfluenceAdvantage, SourceRef: src.SourceRef, SourceID: src.SourceID})
+	}
+	for _, src := range p.DisadvantageSources {
+		out = append(out, RollInfluence{Kind: InfluenceDisadvantage, SourceRef: src.SourceRef, SourceID: src.SourceID})
+	}
+	return out
 }
 
 // attackBase is the AttackAct the shared keys fill, and the piece's family:
@@ -301,6 +324,11 @@ func attackPiece(beat string, payload []byte) ([]piece, error) {
 	roll, err := rollOf(p.Calculation, facesOf(p.Roll), p.Total, intp(p.Against), boolp(hit))
 	if err != nil {
 		return nil, err
+	}
+	// The swing's own named sources are the attack fold's report, and win
+	// over what the calculation's keep says.
+	if named := attackInfluences(p); len(named) > 0 {
+		roll.Influences = named
 	}
 	act.Roll = roll
 	return one(piece{family: family, body: act})
