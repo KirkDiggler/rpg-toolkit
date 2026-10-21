@@ -437,8 +437,13 @@ func (s *RecordSuite) TestPersistenceGoldenJSON() {
 		kind  = "kind"
 		kindX = "x"
 	)
+	// Exact bytes need exact ids: a fixed clock and seeded entropy.
+	var err error
+	s.log, err = record.NewLog(record.WithIDSource(newFixedSource(1_700_000_000_000)))
+	s.Require().NoError(err)
+
 	// Populated log with ONE entry
-	_, err := s.log.Append(&record.AppendInput{
+	_, err = s.log.Append(&record.AppendInput{
 		At: 7, Correlation: "c1",
 		Audience: []core.EntityID{alice},
 		Tags:     map[string]string{kind: kindX},
@@ -451,12 +456,12 @@ func (s *RecordSuite) TestPersistenceGoldenJSON() {
 	s.Require().NoError(err)
 
 	// Exact golden JSON format with payload base64-encoded.
-	expectedJSON := `{"next_seq":2,"entries":[{"seq":1,"at":7,"correlation":"c1",` +
+	expectedJSON := `{"next_seq":2,"entries":[{"seq":1,"id":"01HF7YAT006FZMTH8Y8AF1G8GN","at":7,"correlation":"c1",` +
 		`"audience":["alice"],"tags":{"kind":"x"},"payload":"cA=="}]}`
 	s.JSONEq(expectedJSON, string(jsonBytes), "populated log must marshal to exact golden JSON")
 
-	// Trimmed-empty marshals {"next_seq":3}
-	trimLog, err := record.NewLog()
+	// Trimmed-empty marshals {"next_seq":3} and the last id it issued
+	trimLog, err := record.NewLog(record.WithIDSource(newFixedSource(1_700_000_000_000)))
 	s.Require().NoError(err)
 	_, err = trimLog.Append(&record.AppendInput{Payload: []byte("a")})
 	s.Require().NoError(err)
@@ -468,8 +473,8 @@ func (s *RecordSuite) TestPersistenceGoldenJSON() {
 	trimData := trimLog.ToData()
 	trimJSON, err := json.Marshal(trimData)
 	s.Require().NoError(err)
-	trimExpected := `{"next_seq":3}`
-	s.JSONEq(trimExpected, string(trimJSON), "trimmed-empty must marshal to {\"next_seq\":3}")
+	trimExpected := `{"next_seq":3,"last_id":"01HF7YAT006FZMTH9133MRAF63"}`
+	s.JSONEq(trimExpected, string(trimJSON), "trimmed-empty must marshal its next_seq and last id")
 
 	// Unmarshal populated string → LoadLog → behavior-identical
 	var loadedData record.LogData
@@ -481,6 +486,7 @@ func (s *RecordSuite) TestPersistenceGoldenJSON() {
 	s.Require().NoError(err)
 	s.Len(all, 1)
 	s.Equal(uint64(1), all[0].Seq)
+	s.Equal("01HF7YAT006FZMTH8Y8AF1G8GN", all[0].ID)
 	s.Equal(uint64(7), all[0].At)
 	s.Equal("c1", all[0].Correlation)
 	s.Equal([]core.EntityID{alice}, all[0].Audience)
