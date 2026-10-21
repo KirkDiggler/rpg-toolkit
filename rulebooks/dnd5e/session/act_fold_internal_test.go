@@ -452,7 +452,7 @@ func (s *ActFoldSuite) TestRollTermCountsTheFacesThatCounted() {
 func (s *ActFoldSuite) TestRollKeepsTheRerollRecord() {
 	calc := json.RawMessage(`{"components":[
 		{"source":{"ref":"dnd5e:weapons:greatsword","name":"Greatsword","source_id":"fighter"},"dice":{"notation":"2d6","die_size":6,"original_rolls":[1,5],
-			"rerolls":[{"die_index":0,"before":1,"after":4,"source":{"ref":"dnd5e:fighting-styles:great-weapon-fighting","name":"Great Weapon Fighting","source_id":"fighter"}}],
+			"rerolls":[{"die_index":0,"before":1,"after":4,"source":{"ref":"dnd5e:fighting-styles:great-weapon-fighting","name":"Great Weapon Fighting","label":"fighting style","source_id":"fighter"}}],
 			"final_rolls":[4,5],"subtotal":9}}
 	],"total":9}`)
 	roll, err := rollOf(calc, nil, 9, nil, nil)
@@ -464,6 +464,7 @@ func (s *ActFoldSuite) TestRollKeepsTheRerollRecord() {
 	s.Equal([]RollReroll{{
 		DieIndex: 0, Before: 1, After: 4,
 		SourceRef: "dnd5e:fighting-styles:great-weapon-fighting", SourceName: "Great Weapon Fighting", SourceID: "fighter",
+		SourceLabel: "fighting style",
 	}}, term.Rerolls)
 	s.Equal(9, roll.Total)
 }

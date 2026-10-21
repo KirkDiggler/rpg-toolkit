@@ -112,6 +112,9 @@ type RollReroll struct {
 	SourceName string
 	// SourceID is the entity the source belongs to, when one was named.
 	SourceID string
+	// SourceLabel is the rerolling source's role within the calculation,
+	// when the rulebook recorded one.
+	SourceLabel string
 }
 
 // InfluenceKind is whether a source granted advantage or imposed
@@ -242,6 +245,7 @@ func rerollsOf(rerolls []DiceReroll) []RollReroll {
 		out = append(out, RollReroll{
 			DieIndex: r.DieIndex, Before: r.Before, After: r.After,
 			SourceRef: r.Source.Ref, SourceName: r.Source.Name, SourceID: r.Source.SourceID,
+			SourceLabel: r.Source.Label,
 		})
 	}
 	return out
