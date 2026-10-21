@@ -10,6 +10,7 @@ package session
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -335,5 +336,86 @@ func (s *ActFoldSuite) TestRollCarriesAdvantageSources() {
 	],"total":20}`)
 	roll, err := rollOf(calc, []int{15}, 20, intp(16), boolp(true))
 	s.Require().NoError(err)
-	s.Equal([]RollInfluence{{Kind: InfluenceAdvantage, SourceRef: "dnd5e:conditions:helped", SourceID: "bob"}}, roll.Influences)
+	s.Equal([]RollInfluence{{Kind: InfluenceAdvantage, SourceRef: "dnd5e:conditions:helped", SourceID: "bob", Name: "Helped"}}, roll.Influences)
+}
+
+// keepCalc is a d20 attack calculation whose pool carries the given keep JSON
+// over the given faces and kept indices.
+func keepCalc(faces, kept, keep string, subtotal int) json.RawMessage {
+	keptKey := ""
+	if kept != "" {
+		keptKey = `"kept_indices":` + kept + `,`
+	}
+	return json.RawMessage(fmt.Sprintf(`{"components":[
+		{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"},"dice":{"notation":"%dd20","die_size":20,"original_rolls":%s,"final_rolls":%s,%s"keep":%s,"subtotal":%d}},
+		{"source":{"ref":"dnd5e:abilities:str","name":"STR"},"modifier":3}
+	],"total":%d}`, strings.Count(faces, ",")+1, faces, faces, keptKey, keep, subtotal, subtotal+3))
+}
+
+// TestRollInfluencesComeFromTheKeep is rpg-project#462 R1 on the act roll:
+// the calculation's keep is the record, for disadvantage and for a
+// cancellation as for advantage, and each influence keeps its source's name.
+func (s *ActFoldSuite) TestRollInfluencesComeFromTheKeep() {
+	disadvantage := keepCalc(`[7,15]`, `[0]`,
+		`{"rule":"disadvantage","imposed":[{"ref":"dnd5e:conditions:prone","name":"Prone","source_id":"alice"}]}`, 7)
+	roll, err := rollOf(disadvantage, nil, 10, intp(16), boolp(false))
+	s.Require().NoError(err)
+	s.Equal([]RollInfluence{
+		{Kind: InfluenceDisadvantage, SourceRef: "dnd5e:conditions:prone", SourceID: "alice", Name: "Prone"},
+	}, roll.Influences)
+
+	cancelled := keepCalc(`[11]`, ``,
+		`{"rule":"cancelled","granted":[{"ref":"dnd5e:conditions:helped","name":"Helped","source_id":"bob"}],"imposed":[{"ref":"dnd5e:conditions:prone","name":"Prone","source_id":"alice"}]}`, 11)
+	roll, err = rollOf(cancelled, nil, 14, intp(16), boolp(false))
+	s.Require().NoError(err)
+	s.Equal([]RollInfluence{
+		{Kind: InfluenceAdvantage, SourceRef: "dnd5e:conditions:helped", SourceID: "bob", Name: "Helped"},
+		{Kind: InfluenceDisadvantage, SourceRef: "dnd5e:conditions:prone", SourceID: "alice", Name: "Prone"},
+	}, roll.Influences, "a cancellation names both sides, as the keep does")
+}
+
+// TestTheKeepWinsOverRetiredSourceKeys is R1's precedence: the
+// advantage_sources and disadvantage_sources keys are retired, so a swing
+// that carries both them and a keep reads the keep alone — never both
+// appended. The keys are read only by a beat with no keep.
+func (s *ActFoldSuite) TestTheKeepWinsOverRetiredSourceKeys() {
+	var calc map[string]any
+	s.Require().NoError(json.Unmarshal(keepCalc(`[7,15]`, `[1]`,
+		`{"rule":"advantage","granted":[{"ref":"dnd5e:conditions:helped","name":"Helped","source_id":"bob"}]}`, 15), &calc))
+	swing := s.beat("attack:01HZZZZZZZZZZZZZZZZZZZKEEP", map[string]any{
+		"beat": string(encounter.OutcomeStruck), "actor": "alice", "targets": []string{"gate-1"},
+		"roll": 15, "total": 18, "against": 16, "amount": 6, "calculation": calc,
+		"attack":               map[string]string{"ref": "dnd5e:weapons:longsword", "name": "Longsword", "damage_type": "slashing"},
+		"advantage_sources":    []map[string]string{{"source_ref": "dnd5e:conditions:hidden", "source_id": "alice"}},
+		"disadvantage_sources": []map[string]string{{"source_ref": "dnd5e:conditions:frightened"}},
+	})
+	acts := foldActs("sess", "alice", []record.Entry{swing})
+	s.Require().Len(acts, 1)
+	s.Require().Empty(acts[0].Undecoded)
+	attack, ok := acts[0].Body.(AttackAct)
+	s.Require().True(ok)
+	s.Require().NotNil(attack.Roll)
+	s.Equal([]RollInfluence{
+		{Kind: InfluenceAdvantage, SourceRef: "dnd5e:conditions:helped", SourceID: "bob", Name: "Helped"},
+	}, attack.Roll.Influences)
+}
+
+// TestRollTermsCarryTheirSources is R17 for dice terms: a Bless-blessed save
+// folds to a d4 term with Bless's ref and name beside its d20, and Bane's d4
+// is a subtracted term with Bane's.
+func (s *ActFoldSuite) TestRollTermsCarryTheirSources() {
+	calc := json.RawMessage(`{"components":[
+		{"source":{"ref":"dnd5e:saves:wis","name":"Wisdom save","source_id":"fighter"},"dice":{"notation":"d20","die_size":20,"original_rolls":[12],"final_rolls":[12],"subtotal":12}},
+		{"source":{"ref":"dnd5e:spells:bless","name":"Bless","source_id":"cleric"},"dice":{"notation":"d4","die_size":4,"original_rolls":[3],"final_rolls":[3],"subtotal":3}},
+		{"source":{"ref":"dnd5e:spells:bane","name":"Bane","source_id":"cultist"},"dice":{"notation":"d4","die_size":4,"original_rolls":[2],"final_rolls":[2],"subtotal":2},"subtract_dice":true},
+		{"source":{"ref":"dnd5e:abilities:wis","name":"WIS"},"modifier":1}
+	],"total":14}`)
+	roll, err := rollOf(calc, nil, 14, intp(13), boolp(true))
+	s.Require().NoError(err)
+	s.Equal([]RollDiceTerm{
+		{Count: 1, DieSize: 20, Faces: []int{12}, SourceRef: "dnd5e:saves:wis", SourceName: "Wisdom save", SourceID: "fighter"},
+		{Count: 1, DieSize: 4, Faces: []int{3}, SourceRef: "dnd5e:spells:bless", SourceName: "Bless", SourceID: "cleric"},
+		{Count: 1, DieSize: 4, Faces: []int{2}, Subtract: true, SourceRef: "dnd5e:spells:bane", SourceName: "Bane", SourceID: "cultist"},
+	}, roll.Terms)
+	s.Equal("1d20+1d4-1d4+1", roll.Expression)
 }

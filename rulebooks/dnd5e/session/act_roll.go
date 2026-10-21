@@ -50,10 +50,36 @@ type Roll struct {
 	// Influences are the advantage and disadvantage that shaped the roll,
 	// each with its source, in the order the beat recorded them (R17: a roll
 	// carries its sources). Read from the calculation's dice keep (Granted is
-	// advantage, Imposed is disadvantage); a swing's own
-	// `advantage_sources`/`disadvantage_sources` keys take precedence
-	// (attackPiece). Empty when nothing granted or imposed either.
+	// advantage, Imposed is disadvantage; a cancellation names both) — the
+	// keep is the record (rpg-project#462 R1). A swing's retired
+	// `advantage_sources`/`disadvantage_sources` keys are read only when its
+	// calculation recorded no keep (attackPiece). Empty when nothing granted
+	// or imposed either.
 	Influences []RollInfluence
+
+	// Terms are the roll's dice pools in calculation order, each with the
+	// source that brought it: the d20, Bless's +1d4, Bane's -1d4 (R17). Dice
+	// is these terms' faces concatenated. Empty when the beat carried no
+	// calculation.
+	Terms []RollDiceTerm
+}
+
+// RollDiceTerm is one dice pool of a roll and the source that brought it.
+type RollDiceTerm struct {
+	// Count and DieSize are the pool as rolled: 1 and 4 for a 1d4.
+	Count   int
+	DieSize int
+	// Faces are the faces that counted; a face a keep rule discarded is not
+	// here.
+	Faces []int
+	// Subtract is true when the pool is taken from the total.
+	Subtract bool
+	// SourceRef is the source's full ref, verbatim.
+	SourceRef string
+	// SourceName is the source's display name.
+	SourceName string
+	// SourceID is the entity the source belongs to, when one was named.
+	SourceID string
 }
 
 // InfluenceKind is whether a source granted advantage or imposed
@@ -74,6 +100,9 @@ type RollInfluence struct {
 	SourceRef string
 	// SourceID is the entity the source belongs to, when one was named.
 	SourceID string
+	// Name is the source's display name, as the keep recorded it. "" for a
+	// beat's retired source keys, which carried none.
+	Name string
 }
 
 // RollModifier is one flat contribution to a roll.
@@ -116,6 +145,10 @@ func rollOf(calc json.RawMessage, faces []int, total int, against *int, beaten *
 				}
 			}
 			roll.Dice = append(roll.Dice, kept...)
+			roll.Terms = append(roll.Terms, RollDiceTerm{
+				Count: len(kept), DieSize: c.Dice.DieSize, Faces: kept, Subtract: c.SubtractDice,
+				SourceRef: c.Source.Ref, SourceName: c.Source.Name, SourceID: c.Source.SourceID,
+			})
 			term := fmt.Sprintf("%dd%d", len(kept), c.Dice.DieSize)
 			switch {
 			case c.SubtractDice:
@@ -127,10 +160,10 @@ func rollOf(calc json.RawMessage, faces []int, total int, against *int, beaten *
 		}
 		if c.Dice != nil && c.Dice.Keep != nil {
 			for _, g := range c.Dice.Keep.Granted {
-				roll.Influences = append(roll.Influences, RollInfluence{Kind: InfluenceAdvantage, SourceRef: g.Ref, SourceID: g.SourceID})
+				roll.Influences = append(roll.Influences, RollInfluence{Kind: InfluenceAdvantage, SourceRef: g.Ref, SourceID: g.SourceID, Name: g.Name})
 			}
 			for _, g := range c.Dice.Keep.Imposed {
-				roll.Influences = append(roll.Influences, RollInfluence{Kind: InfluenceDisadvantage, SourceRef: g.Ref, SourceID: g.SourceID})
+				roll.Influences = append(roll.Influences, RollInfluence{Kind: InfluenceDisadvantage, SourceRef: g.Ref, SourceID: g.SourceID, Name: g.Name})
 			}
 		}
 		if c.Modifier != nil {

@@ -253,7 +253,8 @@ type outcomeFields struct {
 	Calculation    json.RawMessage `json:"calculation"`
 	Components     json.RawMessage `json:"damage_components"`
 	// AdvantageSources and DisadvantageSources are the attack fold's own
-	// ordered sources (encounter.AttackModifierSource).
+	// ordered sources (encounter.AttackModifierSource). RETIRED by the dice
+	// keep (rpg-project#462 R1): read only for a beat with no keep.
 	AdvantageSources    []modifierSource `json:"advantage_sources"`
 	DisadvantageSources []modifierSource `json:"disadvantage_sources"`
 }
@@ -264,8 +265,8 @@ type modifierSource struct {
 	SourceID  string `json:"source_id"`
 }
 
-// attackInfluences are a swing's own advantage and disadvantage sources, in
-// that order; nil when it named none.
+// attackInfluences are a swing's retired advantage and disadvantage source
+// keys, in that order, for a beat with no keep; nil when it named none.
 func attackInfluences(p outcomeFields) []RollInfluence {
 	var out []RollInfluence
 	for _, src := range p.AdvantageSources {
@@ -325,10 +326,11 @@ func attackPiece(beat string, payload []byte) ([]piece, error) {
 	if err != nil {
 		return nil, err
 	}
-	// The swing's own named sources are the attack fold's report, and win
-	// over what the calculation's keep says.
-	if named := attackInfluences(p); len(named) > 0 {
-		roll.Influences = named
+	// THE KEEP IS THE RECORD (rpg-project#462 R1). The swing's
+	// advantage_sources/disadvantage_sources keys are retired; they are read
+	// only for a beat whose calculation recorded no keep.
+	if len(roll.Influences) == 0 {
+		roll.Influences = attackInfluences(p)
 	}
 	act.Roll = roll
 	return one(piece{family: family, body: act})
