@@ -236,7 +236,10 @@ func (s *ActFoldSuite) TestRollFromCalculation() {
 
 	s.Equal("1d20+5", roll.Expression)
 	s.Equal([]int{14}, roll.Dice)
-	s.Equal([]RollModifier{{Source: "STR", Value: 3}, {Source: "proficiency", Value: 2}}, roll.Modifiers)
+	s.Equal([]RollModifier{
+		{Source: "STR", Value: 3, SourceRef: "dnd5e:abilities:str"},
+		{Source: "proficiency", Value: 2, SourceRef: "dnd5e:proficiency:proficiency"},
+	}, roll.Modifiers)
 	s.Equal(19, roll.Total)
 	s.Equal(16, *roll.Against)
 	s.True(*roll.Beaten)
@@ -413,9 +416,9 @@ func (s *ActFoldSuite) TestRollTermsCarryTheirSources() {
 	roll, err := rollOf(calc, nil, 14, intp(13), boolp(true))
 	s.Require().NoError(err)
 	s.Equal([]RollDiceTerm{
-		{Count: 1, DieSize: 20, Faces: []int{12}, SourceRef: "dnd5e:saves:wis", SourceName: "Wisdom save", SourceID: "fighter"},
-		{Count: 1, DieSize: 4, Faces: []int{3}, SourceRef: "dnd5e:spells:bless", SourceName: "Bless", SourceID: "cleric"},
-		{Count: 1, DieSize: 4, Faces: []int{2}, Subtract: true, SourceRef: "dnd5e:spells:bane", SourceName: "Bane", SourceID: "cultist"},
+		{Count: 1, DieSize: 20, Faces: []int{12}, Rolled: []int{12}, SourceRef: "dnd5e:saves:wis", SourceName: "Wisdom save", SourceID: "fighter"},
+		{Count: 1, DieSize: 4, Faces: []int{3}, Rolled: []int{3}, SourceRef: "dnd5e:spells:bless", SourceName: "Bless", SourceID: "cleric"},
+		{Count: 1, DieSize: 4, Faces: []int{2}, Rolled: []int{2}, Subtract: true, SourceRef: "dnd5e:spells:bane", SourceName: "Bane", SourceID: "cultist"},
 	}, roll.Terms)
 	s.Equal("1d20+1d4-1d4+1", roll.Expression)
 }
@@ -430,7 +433,7 @@ func (s *ActFoldSuite) TestRollTermCountsTheFacesThatCounted() {
 	roll, err := rollOf(damage, nil, 12, nil, nil)
 	s.Require().NoError(err)
 	s.Equal([]RollDiceTerm{
-		{Count: 2, DieSize: 6, Faces: []int{4, 5}, SourceRef: "dnd5e:weapons:greatsword", SourceName: "Greatsword", SourceID: "alice"},
+		{Count: 2, DieSize: 6, Faces: []int{4, 5}, Rolled: []int{4, 5}, SourceRef: "dnd5e:weapons:greatsword", SourceName: "Greatsword", SourceID: "alice"},
 	}, roll.Terms)
 
 	advantage := keepCalc(`[7,15]`, `[1]`,
@@ -440,4 +443,155 @@ func (s *ActFoldSuite) TestRollTermCountsTheFacesThatCounted() {
 	s.Require().Len(roll.Terms, 1)
 	s.Equal(1, roll.Terms[0].Count)
 	s.Equal([]int{15}, roll.Terms[0].Faces)
+}
+
+// TestRollKeepsTheRerollRecord is #643 B: a Great Weapon Fighting damage
+// roll keeps the pool as first rolled and the sourced reroll beside its
+// final faces, so a reader can show die 0 rerolled from 1 to 4 and by whom.
+// Mutants: dropping the reroll copy, or swapping before and after, fails it.
+func (s *ActFoldSuite) TestRollKeepsTheRerollRecord() {
+	calc := json.RawMessage(`{"components":[
+		{"source":{"ref":"dnd5e:weapons:greatsword","name":"Greatsword","source_id":"fighter"},"dice":{"notation":"2d6","die_size":6,"original_rolls":[1,5],
+			"rerolls":[{"die_index":0,"before":1,"after":4,"source":{"ref":"dnd5e:fighting-styles:great-weapon-fighting","name":"Great Weapon Fighting","source_id":"fighter"}}],
+			"final_rolls":[4,5],"subtotal":9}}
+	],"total":9}`)
+	roll, err := rollOf(calc, nil, 9, nil, nil)
+	s.Require().NoError(err)
+	s.Require().Len(roll.Terms, 1)
+	term := roll.Terms[0]
+	s.Equal([]int{1, 5}, term.Rolled, "the pool as first rolled")
+	s.Equal([]int{4, 5}, term.Faces, "the faces that counted, after the reroll")
+	s.Equal([]RollReroll{{
+		DieIndex: 0, Before: 1, After: 4,
+		SourceRef: "dnd5e:fighting-styles:great-weapon-fighting", SourceName: "Great Weapon Fighting", SourceID: "fighter",
+	}}, term.Rerolls)
+	s.Equal(9, roll.Total)
+}
+
+// TestRollKeptIndicesWithAdvantage is #643 B for a keep: an advantage d20
+// rolled [7, 15] keeps index 1, so the term says the pool, the kept index,
+// and only the kept face counted. Mutant: returning the pool as Faces fails.
+func (s *ActFoldSuite) TestRollKeptIndicesWithAdvantage() {
+	advantage := keepCalc(`[7,15]`, `[1]`,
+		`{"rule":"advantage","granted":[{"ref":"dnd5e:conditions:helped","name":"Helped","source_id":"bob"}]}`, 15)
+	roll, err := rollOf(advantage, nil, 18, intp(16), boolp(true))
+	s.Require().NoError(err)
+	s.Require().Len(roll.Terms, 1)
+	term := roll.Terms[0]
+	s.Equal([]int{7, 15}, term.Rolled)
+	s.Equal([]int{1}, term.KeptIndices)
+	s.Equal([]int{15}, term.Faces)
+	s.Empty(term.Rerolls, "nothing rerolled this pool")
+}
+
+// TestRollModifierCarriesItsSource is #643 D (R17, "modifiers with
+// sources"): Second Wind's healing modifier names its source by ref, name
+// and role, not by a display name alone. Mutant: dropping the ref fill fails.
+func (s *ActFoldSuite) TestRollModifierCarriesItsSource() {
+	calc := json.RawMessage(`{"components":[
+		{"source":{"ref":"dnd5e:features:second_wind","name":"Second Wind","source_id":"fighter"},"dice":{"notation":"1d10","die_size":10,"original_rolls":[6],"final_rolls":[6],"subtotal":6}},
+		{"source":{"ref":"dnd5e:classes:fighter","name":"Fighter","label":"Fighter level","source_id":"fighter"},"modifier":1}
+	],"total":7}`)
+	roll, err := rollOf(calc, nil, 7, nil, nil)
+	s.Require().NoError(err)
+	s.Equal([]RollModifier{{
+		Source: "Fighter", Value: 1,
+		SourceRef: "dnd5e:classes:fighter", SourceID: "fighter", SourceLabel: "Fighter level",
+	}}, roll.Modifiers)
+	s.Equal("1d10+1", roll.Expression)
+}
+
+// TestRevealedDoorwaysNameTheirDoor is #643 E: the reveal beat hangs each
+// door's doorways under the door, naming only the crossing; the act names
+// the door on every doorway, as v1's projection did. A doorway that names
+// its own door keeps it. Mutant: dropping the fill fails the first fixture.
+func (s *ActFoldSuite) TestRevealedDoorwaysNameTheirDoor() {
+	from, to := cell(4, 2), cell(5, 2)
+	reveal := func(doorway map[string]any) *SecretRevealed {
+		e := s.beat("search:01HZZZZZZZZZZZZZZZZZZZVALT", map[string]any{
+			"beat": encounter.BeatConcealmentRevealed, "concealment": "concealed-vault",
+			"doors": []map[string]any{{"door": "concealed-vault/vault-door", "state": "closed", "doorways": []map[string]any{doorway}}},
+		})
+		acts := foldActs("sess", "fighter", []record.Entry{e})
+		s.Require().Len(acts, 1)
+		p, ok := acts[0].Body.(Perception)
+		s.Require().True(ok, "%T", acts[0].Body)
+		s.Require().NotNil(p.Revealed)
+		return p.Revealed
+	}
+
+	r := reveal(map[string]any{"from": from, "to": to})
+	s.Require().Len(r.Doors, 1)
+	s.Equal([]AtlasDoorway{{Door: "concealed-vault/vault-door", From: from, To: to}}, r.Doors[0].Doorways)
+
+	r = reveal(map[string]any{"door": "concealed-vault/inner-door", "from": from, "to": to})
+	s.Equal("concealed-vault/inner-door", r.Doors[0].Doorways[0].Door, "a doorway naming its own door keeps it")
+}
+
+// TestCastActivationCarriesItsSpell is #643 F and rpg-toolkit#2100: Bane's
+// cast, its save, then the activation-result applying Baned fold to an
+// ActivateAct under the cast's act id that names the spell as its ability,
+// with the Baned result inside. Mutant: continues returning an empty act
+// fails it.
+func (s *ActFoldSuite) TestCastActivationCarriesItsSpell() {
+	const cast = "cast:01HZZZZZZZZZZZZZZZZZZZBANE"
+	bane := map[string]string{"ref": "dnd5e:spells:bane", "name": "Bane"}
+	entries := []record.Entry{
+		s.beat(cast, map[string]any{"beat": encounter.BeatCast, "actor": "cultist", "spell": bane, "targets": []string{"fighter"}}),
+		s.beat(cast, map[string]any{
+			"beat": encounter.BeatSaved, "saver": "fighter", "ability": "cha", "roll": 4, "total": 5, "dc": 13,
+			"succeeded": false, "source": bane,
+		}),
+		s.beat(cast, map[string]any{
+			"beat": encounter.BeatActivationResult, "actor": "cultist",
+			"result": map[string]any{"kind": "condition-applied", "target": "fighter", "ref": "dnd5e:conditions:baned", "name": "Baned", "source_id": "cultist"},
+		}),
+	}
+
+	acts := foldActs("sess", "fighter", entries)
+
+	var activate *ActivateAct
+	for _, a := range acts {
+		s.Equal(cast, a.Act, "every piece stays under the cast's act id")
+		if body, ok := a.Body.(ActivateAct); ok {
+			activate = &body
+		}
+	}
+	s.Require().NotNil(activate, "the Baned result rides an activate act")
+	s.Equal(AbilityRef{Ref: "dnd5e:spells:bane", Name: "Bane"}, activate.Ability)
+	s.Equal(Party{Kind: PartyMember, ID: "cultist"}, activate.By)
+	s.Require().Len(activate.Results, 1)
+	s.Equal("dnd5e:conditions:baned", activate.Results[0].Ref)
+	s.Equal("Baned", activate.Results[0].Name)
+}
+
+// TestStateEntriesNameTheirSource is rpg-toolkit#2100's sweep: the other
+// state entries a cast or an activation leaves already name what they came
+// from. A concentration's end names its spell, and a lifted condition names
+// itself by ref and name.
+func (s *ActFoldSuite) TestStateEntriesNameTheirSource() {
+	entries := []record.Entry{
+		s.beat("cast:01HZZZZZZZZZZZZZZZZZZZCONC", map[string]any{
+			"beat": encounter.BeatConcentrationEnded, "caster": "cleric",
+			"spell": map[string]string{"ref": "dnd5e:spells:bless", "name": "Bless"}, "reason": "damage",
+		}),
+		s.beat("activate:01HZZZZZZZZZZZZZZZZZZZLIFT", map[string]any{
+			"beat": encounter.BeatActivationResult, "actor": "cleric",
+			"result": map[string]any{"kind": "condition-removed", "target": "fighter", "ref": "dnd5e:conditions:baned", "name": "Baned", "source_id": "cultist", "reason": "ended"},
+		}),
+	}
+
+	acts := foldActs("sess", "fighter", entries)
+
+	s.Require().Len(acts, 2)
+	ended, ok := acts[0].Body.(StateChange)
+	s.Require().True(ok, "%T", acts[0].Body)
+	s.Require().NotNil(ended.Concentration)
+	s.Equal(SpellRef{Ref: "dnd5e:spells:bless", Name: "Bless"}, ended.Concentration.Spell)
+
+	lifted, ok := acts[1].Body.(StateChange)
+	s.Require().True(ok, "%T", acts[1].Body)
+	s.Require().NotNil(lifted.Condition)
+	s.Equal("dnd5e:conditions:baned", lifted.Condition.Ref)
+	s.Equal("Baned", lifted.Condition.Name)
 }
