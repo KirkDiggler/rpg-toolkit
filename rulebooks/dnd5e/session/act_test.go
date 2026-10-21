@@ -169,15 +169,19 @@ func (s *ReactWindowSuite) TestWindowActSurvivesSaveLoad() {
 	s.Require().NoError(json.Unmarshal(stored.Windows.Windows[0].Payload, &payload))
 	s.Equal(walk, payload.Story.Act, "the window's story names the act it answers")
 
-	// A fresh manager over the same stores is the restart: it answers and
-	// the answer carries the act the stored window named.
+	// A fresh manager over the same stores is the restart: it TAKES the
+	// swing, and the swing is recorded by the session under the act React
+	// reopened from the stored window — the one beat only the stored act can
+	// name, since the encounter's own pause reopens the walk's cells either
+	// way.
 	fresh := s.managerWith(&pathWalker{paths: map[string][]spatial.Position{}, walked: map[string]bool{}})
-	s.react(fresh, "fighter", session.Decline())
-	moved := eventsOf(s.T(), storyOf(s.T(), fresh, "fighter"), session.EventMoved, "member", "skel-1")
-	s.Require().Len(moved, 2)
-	for _, m := range moved {
-		s.Equal(walk, m.Correlation)
-	}
+	s.react(fresh, "fighter", session.Take(""))
+	events := storyOf(s.T(), fresh, "fighter")
+	var swings []session.Event
+	swings = append(swings, eventsOf(s.T(), events, session.EventStruck, "actor", "fighter")...)
+	swings = append(swings, eventsOf(s.T(), events, session.EventMissed, "actor", "fighter")...)
+	s.Require().Len(swings, 1, "the opportunity attack she took")
+	s.Equal(walk, swings[0].Correlation, "the swing carries the act the stored window named")
 }
 
 // TestStrikeAndDownedShareCorrelation is R3: a lethal swing and the fall it
