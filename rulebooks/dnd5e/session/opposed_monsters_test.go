@@ -55,7 +55,7 @@ func (d strikesBySelf) Act(view session.MonsterView) (session.TurnIntent, error)
 
 func (s *OpposedMonstersSuite) SetupTest() {
 	s.stream = &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{},
 		TurnDriver: strikesBySelf{omZombie: omSkeleton},
 		Sessions:   newFakeSessions(), Encounters: newFakeEncounters(),

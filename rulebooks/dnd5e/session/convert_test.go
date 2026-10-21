@@ -135,6 +135,8 @@ var omitted = map[string]string{
 	// including members they have never perceived and rooms they have never
 	// entered. The audience is a delivery rule, not story content.
 	"record.Entry.Audience": "delivery rule, not story content — naming it leaks unperceived members",
+	"record.Entry.ID": "the record stream's own wire id, carried on RecordEvent.ID (record.go); the v1alpha1 " +
+		"Event keeps its per-recipient seq, and a second numbering there would undo the per-recipient numbering",
 
 	// Placement answers a cell, not a chamber (rpg-toolkit#1046). The region
 	// is derivable: the Atlas now lists every region's cells

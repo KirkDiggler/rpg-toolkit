@@ -70,7 +70,7 @@ func (s *CloseDoorSuite) startWith(world scene) {
 	s.stream = &fakeStream{}
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: testCharacters(), Events: s.stream,
@@ -169,7 +169,7 @@ func (s *CloseDoorSuite) TestAClosedDoorSurvivesARepositoryReload() {
 	_, err = s.mgr.CloseDoor(ctx, &session.CloseDoorInput{Session: "sess", Member: "alice", Door: leafDoorID})
 	s.Require().NoError(err)
 
-	reloaded, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	reloaded, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: testCharacters(), Events: &fakeStream{},
@@ -334,7 +334,7 @@ func (s *CloseDoorSuite) TestCloseDoorRunsUnderTheSessionLock() {
 		s.True(locker.held, "repository and delivery operations must hold the session guard")
 	}
 	stream := &guardedStream{probe: probe}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions:   guardedSessions{SessionRepository: s.sessions, probe: probe},
 		Encounters: guardedEncounters{EncounterRepository: s.encounters, probe: probe},

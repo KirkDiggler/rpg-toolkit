@@ -42,7 +42,7 @@ func (s *MonsterTurnTestSuite) bossSwingsAt(target trainTarget, roller interface
 		sc.Party = append(sc.Party, seatAt("ally", 11, 5))
 	}
 	chars := newFakeCharacters(sheets...)
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: firstInReach{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: chars, Events: session.DiscardEvents{},

@@ -51,7 +51,7 @@ func TestExecutionPathsNeverAttachInformation(t *testing.T) {
 				"alice": strikeFixtureFighter("alice"),
 				"bob":   strikeFixtureFighter("bob"),
 			}}
-			mgr, err := NewManager(&Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+			mgr, err := NewManager(&Config{Record: DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 				Dice: &scriptedDice{}, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters,
 				Characters: characters, Events: DiscardEvents{},
 			})
@@ -345,7 +345,7 @@ func TestAffordFailsClosedOnInformation(t *testing.T) {
 				"alice": strikeFixtureFighter("alice"),
 				"bob":   strikeFixtureFighter("bob"),
 			}}
-			mgr, err := NewManager(&Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+			mgr, err := NewManager(&Config{Record: DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 				Dice: &scriptedDice{}, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters,
 				Characters: characters, Events: DiscardEvents{},
 			})

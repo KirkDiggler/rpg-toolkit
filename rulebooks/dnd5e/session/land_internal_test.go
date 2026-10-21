@@ -87,7 +87,7 @@ func (s *LandSuite) SetupTest() {
 		probe: s.probe,
 		saved: map[string]int{},
 	}
-	mgr, err := NewManager(&Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := NewManager(&Config{Record: DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: &scriptedDice{rolls: []int{10, 10, 10, 10, 10, 10}}, TurnDriver: Pass{},
 		Sessions: s.sessions, Encounters: &probedEncounters{strikeEncounters: s.encounters, probe: s.probe},
 		Characters: s.characters, Events: DiscardEvents{},

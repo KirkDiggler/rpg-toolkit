@@ -265,7 +265,7 @@ func (opaquePresentationIDs) Generate() string {
 func drive(out *bytes.Buffer) error {
 	ctx := context.Background()
 
-	mgr, err := session.NewManager(&session.Config{Dice: loadedDice{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Dice: loadedDice{},
 		PresentationIDs: opaquePresentationIDs{},
 		Sessions:        &memSessions{byID: map[string]*session.SessionData{}},
 		Encounters:      &memEncounters{byID: map[string]*encounter.EncounterData{}},

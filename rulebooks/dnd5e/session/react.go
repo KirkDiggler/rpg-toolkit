@@ -196,7 +196,7 @@ func (m *Manager) answerWindow(
 	// beats, and the walk that continues after the last answer, carry the id
 	// of the walk or swing the window interrupted. A window saved before acts
 	// existed names none, and the answer mints a react act of its own.
-	if err := scope.openAct(string(VerbReact), w.Story.Act); err != nil {
+	if err := scope.openAct(string(VerbReact), w.Story.Act, w.Story.ActID); err != nil {
 		return nil, err
 	}
 	answer := a.resolution()

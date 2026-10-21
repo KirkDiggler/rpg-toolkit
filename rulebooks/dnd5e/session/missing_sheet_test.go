@@ -32,7 +32,7 @@ func TestMissingSheetSuite(t *testing.T) { suite.Run(t, new(MissingSheetSuite)) 
 func (s *MissingSheetSuite) manager() *session.Manager {
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
 	s.encounters = newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})

@@ -46,7 +46,7 @@ func TestSneakSuite(t *testing.T) { suite.Run(t, new(SneakSuite)) }
 func (s *SneakSuite) SetupTest() {
 	s.stream = &fakeStream{}
 	s.encounters = newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{},
 		Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: newFakeSessions(), Encounters: s.encounters,

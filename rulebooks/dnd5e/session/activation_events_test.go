@@ -43,7 +43,7 @@ func newActivationEventScene(
 		sessions: newFakeSessions(), encounters: newFakeEncounters(),
 		characters: newFakeCharacters(alice, bob), stream: &fakeStream{},
 	}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: es.sessions, Encounters: es.encounters,
 		Characters: es.characters, Events: es.stream,
@@ -315,7 +315,7 @@ func TestActivationRecordFailureReportsTheDurableSheetAndDropsTheEncounterScope(
 	innerCharacters := newFakeCharacters(alice)
 	standingErr := errors.New("standing unavailable after character save")
 	characters := &failAfterCharacterSave{inner: innerCharacters, err: standingErr}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions,
 		Encounters: encounters, Characters: characters, Events: session.DiscardEvents{},
 	})
@@ -385,7 +385,7 @@ func TestActivationDissolveReportsNestedBoundarySaveFailure(t *testing.T) {
 		err:            errors.Join(boundaryStoreUnavailable, boundaryWriteRefused),
 	}
 	stream := &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions,
 		Encounters: encounters, Characters: characters, Events: stream,
 	})

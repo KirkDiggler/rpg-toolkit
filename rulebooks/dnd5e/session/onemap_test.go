@@ -66,7 +66,7 @@ func offsetWorld() scene {
 
 func (s *OneMapSuite) SetupTest() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
@@ -154,7 +154,7 @@ func (s *OneMapSuite) TestAWalkCrossesTheDoorway() {
 // else a client sees.
 func (s *OneMapSuite) TestACrossingReachesClientsAsACrossing() {
 	stream := &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: testCharacters(), Events: stream,
 	})
@@ -377,7 +377,7 @@ func shallowAnchoredWorld() scene {
 // [2,3] and the stairs are at authored [5,3], three cells east along row 3.
 func (s *OneMapSuite) shallowSession() *session.Manager {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
