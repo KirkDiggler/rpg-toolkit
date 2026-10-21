@@ -6,6 +6,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
@@ -35,6 +36,10 @@ import (
 // reads its own form. Neither is derived from the other.
 
 // RecordEvent is one record beat as written.
+//
+// IT CARRIES NO SEQ. The record's internal sequence is dense and global, so a
+// viewer holding two of them could count the beats it was not sent (R30); the
+// wire id is the only order a RecordEvent names.
 type RecordEvent struct {
 	// Session is the session the beat belongs to — what a host's stream
 	// routes by, since the record is per session, not per recipient.
@@ -106,7 +111,8 @@ type RecordReadOutput struct {
 // read: it saves nothing and trims nothing. Who may read it is the host's
 // gate (R13); the SDK names no member.
 //
-// Errors: ErrNilInput; a session or world load failure.
+// Errors: ErrNilInput; ErrBadRecordID for an AfterID that is not a record
+// id; a session or world load failure.
 func (m *Manager) Record(ctx context.Context, in *RecordReadInput) (*RecordReadOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("record: %w", ErrNilInput)
@@ -125,6 +131,11 @@ func (m *Manager) Record(ctx context.Context, in *RecordReadInput) (*RecordReadO
 		return nil, fmt.Errorf("record: %w", err)
 	}
 	read, err := enc.ReadRecord(&encounter.ReadRecordInput{AfterID: in.AfterID})
+	if errors.Is(err, encounter.ErrInvalidData) {
+		// The encounter refused the AfterID: the caller's mistake, not a
+		// stored world that cannot answer (which translate would say).
+		return nil, fmt.Errorf("record: after id %q: %w", in.AfterID, ErrBadRecordID)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("record: %w", translate(err))
 	}

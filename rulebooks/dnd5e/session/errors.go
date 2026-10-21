@@ -753,6 +753,11 @@ var (
 	// refers to a resolution that cannot be real".
 	ErrInvalidSession = errors.New("invalid session data")
 
+	// ErrBadRecordID is returned by [Manager.Record] for an AfterID that is
+	// not a record id (26 upper-case Crockford base32 characters). The
+	// request is wrong; it is never read as "caught up" (R28).
+	ErrBadRecordID = errors.New("not a record id")
+
 	// ErrSaveFailed is returned when an operation fails after persistence is
 	// involved. Usually an aggregate could not be saved. A first-admission Join
 	// can instead have saved its independently valid rest before a later local

@@ -10,6 +10,7 @@ package session_test
 
 import (
 	"context"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -212,6 +213,33 @@ func (s *ManagerTestSuite) TestNilRecordStreamRefused() {
 	})
 	s.ErrorIs(err, session.ErrIncompleteConfig)
 	s.Contains(err.Error(), "Record")
+}
+
+// TestRecordEventCarriesNoSeq: the record's dense global seq never rides a
+// RecordEvent — the wire id is its only order (R27, R30). The fields are
+// exactly these; a new one must be argued for here.
+func (s *MoveTestSuite) TestRecordEventCarriesNoSeq() {
+	typ := reflect.TypeOf(session.RecordEvent{})
+	var names []string
+	for i := 0; i < typ.NumField(); i++ {
+		names = append(names, typ.Field(i).Name)
+		s.NotContains(strings.ToLower(typ.Field(i).Name), "seq")
+	}
+	s.Equal([]string{"Session", "ID", "At", "Act", "Beat", "Fields"}, names)
+}
+
+// TestRecordRefusesABadAfterID: an AfterID that is not a record id is the
+// caller's error, ErrBadRecordID — never an empty "caught up" read, and not a
+// broken world.
+func (s *MoveTestSuite) TestRecordRefusesABadAfterID() {
+	s.startCorridor()
+	held, err := readRecord(s.mgr, "")
+	s.Require().NoError(err)
+	for _, after := range []string{"zzz", strings.ToLower(held.Events[0].ID)} {
+		_, err := readRecord(s.mgr, after)
+		s.ErrorIs(err, session.ErrBadRecordID, "after %q", after)
+		s.NotErrorIs(err, session.ErrInvalidWorld)
+	}
 }
 
 // TestRecordNilInput is the package's nil-input law.
