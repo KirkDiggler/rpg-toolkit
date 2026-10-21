@@ -75,14 +75,19 @@ Family laws, restated as binding:
 - **R11** — Every entry carries an `ID`, minted by `Append`: a
   26-character ULID (48-bit millisecond, 80-bit entropy) that is an
   ordering key, not a counter (rpg-project ideas/event-stream R27, R30).
-  Ids compare as strings in `Seq` order; inside one millisecond each id
-  steps the last one's entropy by a random 1..2^32, so two ids say nothing
-  about how many lie between. `MintID` issues an id from the same space
-  without appending (an act names itself by one). `LoadLog` gives an entry
-  with no id the deterministic legacy id of its seq (millisecond 0, the
-  seq as entropy) and refuses malformed or non-increasing ids (R9). A log
-  trimmed to nothing persists `last_id` so ids keep increasing across a
-  load.
+  Ids compare as strings in `Seq` order. Inside one millisecond each id
+  steps the last one's entropy by `1 + (x mod 2^r)`, `x` random and `r`
+  uniform in 1..64: a heavy-tailed step whose sum is dominated by its
+  largest draw, so the distance between two ids of one millisecond carries
+  only log-scale information about the ids between them, not a count. A
+  step that would run past 80 bits is refused, never wrapped. `MintID`
+  issues an id from the same space without appending (an act names itself
+  by one). `ToData` writes `last_id` whenever the last id issued is above
+  the last retained entry's — a mint after the last append, or a log
+  trimmed to nothing — so ids keep increasing across a load. `LoadLog`
+  gives an entry with no id the deterministic legacy id of its seq
+  (millisecond 0, the seq as entropy) and refuses malformed or
+  non-increasing ids (R9).
 
 ## Types
 

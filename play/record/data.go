@@ -19,9 +19,11 @@ type LogData struct {
 	NextSeq uint64 `json:"next_seq,omitempty"`
 	// Entries are the retained log entries, deep-copied from the runtime log.
 	Entries []EntryData `json:"entries,omitempty"`
-	// LastID is the last id the log issued, written only for a log trimmed
-	// to nothing — a populated log's last id is its last entry's — so an id
-	// minted after the load still sorts after every id issued before it.
+	// LastID is the last id the log issued, written only when it is above
+	// the last retained entry's id — a MintID after the last append, or a log
+	// trimmed to nothing — so an id issued after the load still sorts after
+	// every id issued before it. Absent when the last id issued is the last
+	// entry's.
 	LastID string `json:"last_id,omitempty"`
 }
 
@@ -50,17 +52,22 @@ type EntryData struct {
 // A trimmed-empty log (nextSeq >= 2, no entries) stores the real NextSeq.
 // A populated log stores NextSeq and deep-copied entries.
 func (l *Log) ToData() LogData {
-	// Fresh log: nextSeq == 1 && no entries → return zero LogData
+	// The last id issued is written whenever no retained entry carries it.
+	var lastID string
+	if !l.last.isZero() && (len(l.entries) == 0 || l.last.String() > l.entries[len(l.entries)-1].id) {
+		lastID = l.last.String()
+	}
+
+	// Fresh log: nextSeq == 1 && no entries → zero LogData (but for an id
+	// minted before any append, which must survive the load)
 	if l.nextSeq == 1 && len(l.entries) == 0 {
-		return LogData{}
+		return LogData{LastID: lastID}
 	}
 
 	// Populated or trimmed-empty: store the real NextSeq and deep-copied entries
 	data := LogData{
 		NextSeq: l.nextSeq,
-	}
-	if len(l.entries) == 0 && !l.last.isZero() {
-		data.LastID = l.last.String()
+		LastID:  lastID,
 	}
 
 	if len(l.entries) > 0 {

@@ -5,8 +5,11 @@ package record_test
 
 import (
 	"errors"
+	"math"
+	"math/big"
 	"math/rand"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
@@ -92,14 +95,92 @@ func (s *IDSuite) TestIDsIncreaseAcrossMilliseconds() {
 	s.Less(b, c)
 }
 
-// TestIDsCarryNoCount: consecutive ids inside one millisecond are not one
-// apart, so no viewer can count the beats between two ids it was sent
-// (event-stream R27, R30).
+// TestIDsCarryNoCount: inside one millisecond the steps between ids are
+// heavy-tailed — their spread covers many orders of magnitude — so a distance
+// carries only log-scale information about the ids between, not a count
+// (event-stream R27, R30). A constant step, or a narrow uniform one, fails.
 func (s *IDSuite) TestIDsCarryNoCount() {
-	a := s.appendID()
-	b := s.appendID()
-	s.Equal(a[:10], b[:10], "same millisecond, same time prefix")
-	s.NotEqual(nextULID(a), b, "an id must not be its predecessor plus one")
+	const n = 400
+	prev := s.appendID()
+	steps := make([]float64, 0, n)
+	for i := 0; i < n; i++ {
+		next := s.appendID()
+		s.Equal(prev[:10], next[:10], "same millisecond, same time prefix")
+		steps = append(steps, idDistance(prev, next))
+		prev = next
+	}
+	sort.Float64s(steps)
+	median, largest := steps[n/2], steps[n-1]
+	s.Greater(largest/median, math.Pow(2, 16),
+		"the largest step must dwarf the median: one draw dominates a sum")
+	s.Greater(steps[n/2]/steps[n/10], 16.0, "the steps spread over orders of magnitude, not a constant")
+}
+
+// TestMintedIDSurvivesSave is the review's probe: an id minted after the last
+// append, then a save and load with nothing appended between, must still sort
+// below the next entry's id — under a source whose entropy never changes,
+// the case a composition pinning bytes would hand the log.
+func (s *IDSuite) TestMintedIDSurvivesSave() {
+	src := &constantSource{ms: 1_700_000_000_000}
+	log, err := record.NewLog(record.WithIDSource(src))
+	s.Require().NoError(err)
+	_, err = log.Append(&record.AppendInput{Payload: []byte("p")})
+	s.Require().NoError(err)
+	minted, err := log.MintID()
+	s.Require().NoError(err)
+
+	data := log.ToData()
+	s.Equal(minted, data.LastID, "a mint above the last entry is written")
+	loaded, err := record.LoadLog(data, record.WithIDSource(src))
+	s.Require().NoError(err)
+	out, err := loaded.Append(&record.AppendInput{Payload: []byte("p")})
+	s.Require().NoError(err)
+	s.Greater(out.ID, minted)
+}
+
+// TestMintBeforeAnyAppendSurvivesSave: the same on a log that has appended
+// nothing yet — its snapshot is the zero LogData but for the last id.
+func (s *IDSuite) TestMintBeforeAnyAppendSurvivesSave() {
+	src := &constantSource{ms: 1_700_000_000_000}
+	log, err := record.NewLog(record.WithIDSource(src))
+	s.Require().NoError(err)
+	minted, err := log.MintID()
+	s.Require().NoError(err)
+
+	data := log.ToData()
+	s.Equal(record.LogData{LastID: minted}, data)
+	loaded, err := record.LoadLog(data, record.WithIDSource(src))
+	s.Require().NoError(err)
+	out, err := loaded.Append(&record.AppendInput{Payload: []byte("p")})
+	s.Require().NoError(err)
+	s.Equal(uint64(1), out.Seq)
+	s.Greater(out.ID, minted)
+}
+
+// TestNoMintWritesNoLastID: a log whose last issue was an entry writes no
+// last_id — the entry carries it.
+func (s *IDSuite) TestNoMintWritesNoLastID() {
+	s.appendID()
+	s.Empty(s.log.ToData().LastID)
+}
+
+// TestExhaustedMillisecondIsRefused: a burst that would carry the entropy past
+// 80 bits fails the Append and changes nothing; it never wraps.
+func (s *IDSuite) TestExhaustedMillisecondIsRefused() {
+	src := &maxSource{ms: 1_700_000_000_000}
+	log, err := record.NewLog(record.WithIDSource(src))
+	s.Require().NoError(err)
+	var appended uint64
+	for i := 0; i < 1<<17; i++ {
+		if _, err = log.Append(&record.AppendInput{Payload: []byte("p")}); err != nil {
+			break
+		}
+		appended++
+	}
+	s.Require().Error(err, "maximal steps exhaust the millisecond")
+	next, nerr := log.NextSeq()
+	s.Require().NoError(nerr)
+	s.Equal(appended+1, next, "the refused append changed nothing")
 }
 
 // TestMintIDSharesTheEntryIDSpace: an id minted for something that is not an
@@ -236,23 +317,48 @@ func (s *IDSuite) TestDefaultSourceMints() {
 	s.Less(a.ID, b.ID)
 }
 
-// nextULID is the id one above id in Crockford base32 — what a counting id
-// would be.
-func nextULID(id string) string {
-	const alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
-	b := []byte(id)
-	for i := len(b) - 1; i >= 0; i-- {
-		j := 0
-		for j < len(alphabet) && alphabet[j] != b[i] {
-			j++
-		}
-		if j+1 < len(alphabet) {
-			b[i] = alphabet[j+1]
-			return string(b)
-		}
-		b[i] = alphabet[0]
+// constantSource is a legal deterministic IDSource whose entropy is always
+// zero: every same-millisecond step is the smallest.
+type constantSource struct{ ms uint64 }
+
+func (c *constantSource) NowMillis() uint64 { return c.ms }
+
+func (c *constantSource) Entropy(p []byte) error {
+	for i := range p {
+		p[i] = 0
 	}
-	return string(b)
+	return nil
+}
+
+// maxSource draws the largest step every time.
+type maxSource struct{ ms uint64 }
+
+func (m *maxSource) NowMillis() uint64 { return m.ms }
+
+func (m *maxSource) Entropy(p []byte) error {
+	for i := range p {
+		p[i] = 0xff
+	}
+	return nil
+}
+
+// idDistance is b minus a as a float, from the ids' 80 entropy bits.
+func idDistance(a, b string) float64 {
+	return idEntropy(b) - idEntropy(a)
+}
+
+// idEntropy decodes an id's low 80 bits as a float (enough precision for a
+// ratio test).
+func idEntropy(id string) float64 {
+	const alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+	v := new(big.Int)
+	for _, ch := range id {
+		v.Mul(v, big.NewInt(32))
+		v.Add(v, big.NewInt(int64(strings.IndexRune(alphabet, ch))))
+	}
+	v.And(v, new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 80), big.NewInt(1)))
+	f, _ := new(big.Float).SetInt(v).Float64()
+	return f
 }
 
 func TestIDSuite(t *testing.T) {

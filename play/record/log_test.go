@@ -473,7 +473,7 @@ func (s *RecordSuite) TestPersistenceGoldenJSON() {
 	trimData := trimLog.ToData()
 	trimJSON, err := json.Marshal(trimData)
 	s.Require().NoError(err)
-	trimExpected := `{"next_seq":3,"last_id":"01HF7YAT006FZMTH8Y8D4GCA5R"}`
+	trimExpected := `{"next_seq":3,"last_id":"01HF7YAT006FZMTH9133MRAF63"}`
 	s.JSONEq(trimExpected, string(trimJSON), "trimmed-empty must marshal its next_seq and last id")
 
 	// Unmarshal populated string → LoadLog → behavior-identical

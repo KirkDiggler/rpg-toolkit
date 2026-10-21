@@ -17,12 +17,18 @@ import (
 // millisecond reading and 80 bits of entropy. Two ids compare as strings in
 // the order they were issued, inside one millisecond and across many.
 //
-// MONOTONIC AND SPARSE. A fresh millisecond draws fresh entropy. An id issued
-// in the same millisecond as the last one (or after a clock that stepped
-// back) keeps the last id's time and adds a RANDOM step of 1 to 2^32 to its
-// entropy, never one. So ids strictly increase, and the distance between two
-// of them says nothing about how many ids lie between — a viewer sent two ids
-// cannot count the beats it was not sent (R30).
+// MONOTONIC, WITH A HEAVY-TAILED STEP. A fresh millisecond draws fresh
+// entropy. An id issued in the same millisecond as the last one (or after a
+// clock that stepped back) keeps the last id's time and adds a step of
+// 1 + (x mod 2^r) to its entropy, with x a random 64-bit value and r uniform
+// in 1..64. The sum of such steps is dominated by its largest one, so the
+// distance between two ids of one millisecond carries only log-scale
+// information about how many ids lie between them, not a count (R30). That is
+// the honest claim: not "nothing", and not a count. Two ids in different
+// milliseconds carry the clock, not a count.
+//
+// A millisecond's entropy starts with 2^78 of headroom; a burst that would
+// run past 80 bits is refused (an error), never wrapped.
 //
 // THE RANDOMNESS IS THE SOURCE'S, NOT THE LOG'S (R7). Time and entropy come
 // from an [IDSource]: the wall clock and crypto/rand unless the caller
@@ -170,33 +176,55 @@ func nextULID(src IDSource, last ulid) (ulid, error) {
 		return u, nil
 	}
 	// The same millisecond as the last id, or a clock behind it: keep its
-	// time and step its entropy forward by a random 1..2^32.
-	var step [4]byte
-	if err := src.Entropy(step[:]); err != nil {
+	// time and step its entropy forward by the heavy-tailed step.
+	var draw [9]byte
+	if err := src.Entropy(draw[:]); err != nil {
 		return ulid{}, fmt.Errorf("mint id: entropy: %w", err)
 	}
-	add := uint64(binary.BigEndian.Uint32(step[:])) + 1
-	u := last
-	lo := binary.BigEndian.Uint64(u[8:])
-	sum := lo + add
-	binary.BigEndian.PutUint64(u[8:], sum)
-	if sum < lo {
-		// Carry into the entropy's top two bytes.
-		hi := binary.BigEndian.Uint16(u[6:8])
-		if hi == 0xffff {
-			return ulid{}, fmt.Errorf("mint id: millisecond %d exhausted", last.millis())
-		}
-		binary.BigEndian.PutUint16(u[6:8], hi+1)
+	carry, low := heavyStep(draw)
+	return stepULID(last, carry, low)
+}
+
+// heavyStep turns nine random bytes into a step of 1 + (x mod 2^r): r uniform
+// in 1..64 from the first byte, x the next eight. The result is 1..2^64,
+// returned as (carry, low): carry is 1 only for the single value 2^64.
+func heavyStep(draw [9]byte) (carry, low uint64) {
+	r := uint(draw[0]%64) + 1
+	x := binary.BigEndian.Uint64(draw[1:])
+	if r < 64 {
+		x &= (uint64(1) << r) - 1
 	}
-	return u, nil
+	low = x + 1
+	if low == 0 { // x was 2^64-1
+		return 1, 0
+	}
+	return 0, low
+}
+
+// stepULID adds carry*2^64 + low to the 80-bit entropy of u, keeping its
+// millisecond. A sum past 80 bits exhausts the millisecond: refused.
+func stepULID(u ulid, carry, low uint64) (ulid, error) {
+	lo := binary.BigEndian.Uint64(u[8:])
+	sum := lo + low
+	if sum < lo {
+		carry++
+	}
+	hi := uint64(binary.BigEndian.Uint16(u[6:8])) + carry
+	if hi > 0xffff {
+		return ulid{}, fmt.Errorf("mint id: millisecond %d exhausted", u.millis())
+	}
+	out := u
+	binary.BigEndian.PutUint64(out[8:], sum)
+	binary.BigEndian.PutUint16(out[6:8], uint16(hi))
+	return out, nil
 }
 
 // MintID issues an id from the log's id space without appending an entry —
 // for a caller that names something by the same ordering key its entries
 // carry (an act). It sorts after every id issued before it and before every
-// id issued after it, and no entry is ever given it. The minted id is not
-// persisted; [Log.ToData] keeps only what entries carry (and, for a log
-// trimmed to nothing, the last id issued).
+// id issued after it, across a save and load too: [Log.ToData] writes the
+// last id issued whenever it is above the last retained entry's, so no entry
+// is ever given it.
 //
 // Errors: the id source's entropy failure, or an exhausted millisecond; on
 // error nothing changed.
