@@ -128,6 +128,47 @@ func (s *ActTestSuite) TestPauseKeepsV2Act() {
 	s.Equal(len(closeIn), walked)
 }
 
+// TestResumedTurnEndsInsideItsOuterActV2 is E1's
+// TestResumedTurnEndsInsideItsOuterAct for the v2 name: after a paused and
+// resumed driven walk, the goblin's turn-ended and the tick carry the outer
+// end_turn's v2 id (Pause.OuterIDs[0]) as their act tag, whoever resumes.
+func (s *ActTestSuite) TestResumedTurnEndsInsideItsOuterActV2() {
+	for _, resumer := range []string{"", "react:999"} {
+		loaded, _, _ := s.pausedWalk()
+		data := loaded.ToData()
+		s.Require().NotNil(data.Pause)
+		s.Require().Len(data.Pause.OuterIDs, 1)
+		outer := data.Pause.OuterIDs[0]
+		s.Require().True(strings.HasPrefix(outer, "end_turn:"), "got %q", outer)
+		before := len(s.whole(loaded))
+
+		if resumer != "" {
+			_, err := loaded.OpenAct(&encounter.OpenActInput{Act: resumer, ID: "react:01HF7YAT003RVQKEBZ99Y1AF3E"})
+			s.Require().NoError(err)
+		}
+		_, err := loaded.Resume(context.Background())
+		s.Require().NoError(err)
+		if resumer != "" {
+			s.Require().NoError(loaded.CloseAct())
+		}
+
+		tail := s.whole(loaded)[before:]
+		var ended int
+		for _, e := range beatsNamed(tail, encounter.BeatTurnEnded) {
+			if strings.Contains(string(e.Payload), `"member":"`+string(goblin)+`"`) {
+				ended++
+				s.Equal(outer, e.Tags[encounter.ActTag], "resumer %q", resumer)
+			}
+		}
+		s.Equal(1, ended, "the goblin's paused turn ends on the resume (resumer %q)", resumer)
+		ticks := beatsNamed(tail, encounter.BeatTick)
+		s.Require().NotEmpty(ticks)
+		for _, t := range ticks {
+			s.Equal(outer, t.Tags[encounter.ActTag], "the round wraps inside the end_turn (resumer %q)", resumer)
+		}
+	}
+}
+
 // TestPauseWithoutV2IDsStillLoads: a pause saved before v2 ids resumes with
 // no act tag (degraded, not refused); outer v2 ids that do not match the
 // outer acts are refused.

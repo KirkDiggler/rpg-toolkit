@@ -9,6 +9,7 @@ package encounter_test
 
 import (
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -148,6 +149,18 @@ func (s *ReadRecordSuite) TestRecordOlderThanRetentionRestarts() {
 	again := s.read(enc, oldest)
 	s.False(again.Restarted)
 	s.Len(again.Entries, 4)
+}
+
+// TestReadRecordRefusesAMalformedAfterID: an AfterID that is not a record id
+// is refused, never read as caught up — the three probes from review.
+func (s *ReadRecordSuite) TestReadRecordRefusesAMalformedAfterID() {
+	enc := s.facing(encounter.RetentionUnbounded)
+	held := s.read(enc, "").Entries[0].ID
+	for _, after := range []string{"zzz", strings.ToLower(held), "not-an-id"} {
+		_, err := enc.ReadRecord(&encounter.ReadRecordInput{AfterID: after})
+		s.ErrorIs(err, encounter.ErrInvalidData, "after %q", after)
+	}
+	s.read(enc, held) // a real id still reads
 }
 
 // TestReadRecordNilInput is the module's nil-input law.

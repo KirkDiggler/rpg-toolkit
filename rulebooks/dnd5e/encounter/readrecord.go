@@ -5,6 +5,7 @@ package encounter
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 )
@@ -43,10 +44,27 @@ type ReadRecordOutput struct {
 // trimmed, cannot be resumed from and restarts the read instead; an id below
 // it when nothing has been trimmed is an ordinary read from the start.
 //
-// Errors: ErrNilInput; a record read failure.
+// THE TRIM EDGE RESTARTS. An AfterID equal to the newest trimmed entry's id
+// — a caller that missed nothing — is also below the oldest retained entry,
+// and is told to restart: the record does not keep the id it trimmed
+// through, so it cannot tell that caller from one that missed beats. The
+// cost is a caller replacing rows it legitimately held. It is inert under
+// RetentionUnbounded, which every session run uses; the fix, when retention
+// matters, is for play/record to persist its trim floor id.
+//
+// AN AfterID IS AN ID OR NOTHING. Anything but empty or 26 upper-case
+// Crockford base32 characters is refused, never read as "caught up": a
+// lower-cased id sorts above every real one and would silently answer
+// nothing (R28).
+//
+// Errors: ErrNilInput; ErrInvalidData for a malformed AfterID; a record
+// read failure.
 func (e *Encounter) ReadRecord(in *ReadRecordInput) (*ReadRecordOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("read record: %w", ErrNilInput)
+	}
+	if in.AfterID != "" && !isRecordID(in.AfterID) {
+		return nil, fmt.Errorf("read record: after id %q is not a record id: %w", in.AfterID, ErrInvalidData)
 	}
 	all, err := e.story.All(&record.AllInput{})
 	if err != nil {
@@ -66,4 +84,20 @@ func (e *Encounter) ReadRecord(in *ReadRecordInput) (*ReadRecordOutput, error) {
 		}
 	}
 	return &ReadRecordOutput{Entries: all[cut:]}, nil
+}
+
+// isRecordID reports whether id has the record's wire-id form: 26 upper-case
+// Crockford base32 characters, the first no wider than 3 bits — the rule
+// play/record applies to the ids it loads.
+func isRecordID(id string) bool {
+	const crockford = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+	if len(id) != 26 || id[0] > '7' {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		if strings.IndexByte(crockford, id[i]) < 0 {
+			return false
+		}
+	}
+	return true
 }
