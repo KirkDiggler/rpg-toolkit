@@ -83,6 +83,15 @@ type Act struct {
 
 	// ID is the record id of the last entry this segment folds (R31). It is
 	// the resume point: [Manager.Acts] after it returns what follows.
+	//
+	// ACTS SHARING AN ID ARE ONE DELIVERY UNIT. One record entry can fold
+	// into several acts — a rest and the concentrations and conditions it
+	// ended, a departure or an ending and the conditions it lifted — and
+	// each carries that entry's id. They are always adjacent, a transport
+	// never splits them, and resuming after the id skips them all. A broker
+	// closes a lagging subscriber, and a paged read ends a page, only
+	// between two ids, never inside a same-id run; cutting inside one would
+	// lose the rest of it with no signal (R28).
 	ID string
 
 	// Act is the act id, the [encounter.ActTag] value `<verb>:<id>` (R27).

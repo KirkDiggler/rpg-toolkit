@@ -242,6 +242,52 @@ func (s *ActFoldSuite) TestRollFromCalculation() {
 	s.Zero(roll.Of)
 }
 
+// TestRollKeepsOnlyTheKeptFaces: an advantage roll's discarded face is not
+// one of the roll's dice, and the expression counts the die that counted.
+func (s *ActFoldSuite) TestRollKeepsOnlyTheKeptFaces() {
+	calculation := json.RawMessage(`{"components":[
+		{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"},"dice":{"notation":"2d20","die_size":20,"original_rolls":[7,15],"final_rolls":[7,15],"kept_indices":[1],"keep":{"rule":"advantage","granted":[{"ref":"dnd5e:conditions:helped","name":"Helped","source_id":"bob"}]},"subtotal":15}},
+		{"source":{"ref":"dnd5e:abilities:str","name":"STR"},"modifier":3},
+		{"source":{"ref":"dnd5e:proficiency:proficiency","name":"proficiency"},"modifier":2}
+	],"total":20}`)
+
+	roll, err := rollOf(calculation, []int{15}, 20, intp(16), boolp(true))
+	s.Require().NoError(err)
+
+	s.Equal([]int{15}, roll.Dice, "the low face of advantage is not a die that counted")
+	s.Equal("1d20+5", roll.Expression)
+	s.Equal(20, roll.Total)
+}
+
+// TestActsSharingAnIDAreOneDeliveryUnit: a rest that ended a concentration
+// folds into the rest and the concentration's end under the rest beat's one
+// id, adjacent; resuming after that id skips both.
+func (s *ActFoldSuite) TestActsSharingAnIDAreOneDeliveryUnit() {
+	const rest = "rest:01HZZZZZZZZZZZZZZZZZZZREST"
+	rested := s.beat(rest, map[string]any{
+		"beat": encounter.BeatRested, "member": "cleric", "kind": "short",
+		"hit_points_restored": 0, "hit_points": 10, "hit_dice_spent": 0, "hit_dice_returned": 0, "hit_dice_remaining": 2,
+		"concentration_ended": []map[string]any{{
+			"caster": "cleric", "spell": map[string]string{"ref": "dnd5e:spells:bless", "name": "Bless"}, "reason": "rested",
+		}},
+	})
+	tick := s.beat("", map[string]any{"beat": encounter.BeatTick, "tick": 4})
+	entries := []record.Entry{rested, tick}
+
+	acts := foldActs("sess", "cleric", entries)
+
+	s.Require().Len(acts, 3)
+	s.IsType(RestAct{}, acts[0].Body)
+	s.Equal(StateConcentrationEnded, acts[1].Body.(StateChange).Change)
+	s.Equal(rest, acts[1].Act, "the end is under the rest's act")
+	s.Equal(rested.ID, acts[0].ID)
+	s.Equal(rested.ID, acts[1].ID, "one entry, one id: the two are one delivery unit")
+
+	after := actsAfter("sess", "cleric", entries, rested.ID)
+	s.Require().Len(after, 1, "resuming after the id skips the whole unit")
+	s.Equal(tick.ID, after[0].ID)
+}
+
 // TestAnUnreadableBeatFailsOnlyItsEntry is R22's spirit: one bad payload is
 // one marked entry, and the fold goes on.
 func (s *ActFoldSuite) TestAnUnreadableBeatFailsOnlyItsEntry() {

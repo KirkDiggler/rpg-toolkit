@@ -73,39 +73,13 @@ func actsOf(t *testing.T, mgr *session.Manager, member, after string) *session.A
 // across calls without a beat would fail here.
 func (s *ReactWindowSuite) TestCatchUpEqualsLive() {
 	live := &actCapture{}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: live, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
-		PresentationIDs: testPresentationIDs{}, Dice: testDice{},
-		TurnDriver: &pathWalker{paths: map[string][]spatial.Position{"skel-1": {hexCell(5, 0), hexCell(6, 0)}}, walked: map[string]bool{}},
-		Sessions:   s.sessions, Encounters: s.encounters, Characters: s.characters, Events: session.DiscardEvents{},
-	})
-	s.Require().NoError(err)
+	mgr := s.walkingSkeleton(live, hexCell(5, 0), hexCell(6, 0))
 	s.start(mgr, []sceneSeat{seatAt("fighter", 3, 0)}, reactSkeleton("skel-1", 4, 0))
 	s.endTurn(mgr, "fighter")
 	s.react(mgr, "fighter", session.Take(""))
 
 	for _, member := range []string{"fighter", "skel-1"} {
-		published := live.of(member)
-		s.Require().NotEmpty(published, member)
-
-		caught := actsOf(s.T(), mgr, member, "")
-		s.Require().False(caught.Restarted, "the round fits the retention window, or this proves nothing")
-		s.Equal(published, caught.Acts, "%s: live and catch-up fold the same acts", member)
-
-		for i, act := range published {
-			last := i
-			for j := i; j < len(published); j++ {
-				if published[j].ID == act.ID {
-					last = j
-				}
-			}
-			want := published[last+1:]
-			got := actsOf(s.T(), mgr, member, act.ID).Acts
-			if len(want) == 0 {
-				s.Empty(got, "%s after %s", member, act.ID)
-				continue
-			}
-			s.Equal(want, got, "%s after %s", member, act.ID)
-		}
+		s.liveIsCatchUp(mgr, live, member)
 	}
 
 	// And the round folded as a reader would tell it: the window the walk
@@ -134,6 +108,71 @@ func (s *ReactWindowSuite) TestCatchUpEqualsLive() {
 		}
 	}
 	s.Equal([]string{string(session.ClockWindowOpened), string(session.FamilyReaction), "walk"}, told)
+}
+
+// walkingSkeleton is a manager whose skeleton walks the path given, its acts
+// captured live.
+func (s *ReactWindowSuite) walkingSkeleton(live *actCapture, path ...spatial.Position) *session.Manager {
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: live, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+		PresentationIDs: testPresentationIDs{}, Dice: testDice{},
+		TurnDriver: &pathWalker{paths: map[string][]spatial.Position{"skel-1": path}, walked: map[string]bool{}},
+		Sessions:   s.sessions, Encounters: s.encounters, Characters: s.characters, Events: session.DiscardEvents{},
+	})
+	s.Require().NoError(err)
+	return mgr
+}
+
+// liveIsCatchUp asserts what one member received live is what a catch-up
+// folds, whole and after every act's id. Acts sharing an id are one
+// delivery unit, so the suffix after an id starts past the last of them.
+func (s *ReactWindowSuite) liveIsCatchUp(mgr *session.Manager, live *actCapture, member string) {
+	published := live.of(member)
+	s.Require().NotEmpty(published, member)
+
+	caught := actsOf(s.T(), mgr, member, "")
+	s.Require().False(caught.Restarted, "the round fits the retention window, or this proves nothing")
+	s.Equal(published, caught.Acts, "%s: live and catch-up fold the same acts", member)
+
+	for i, act := range published {
+		last := i
+		for j := i; j < len(published); j++ {
+			if published[j].ID == act.ID {
+				last = j
+			}
+		}
+		want := published[last+1:]
+		got := actsOf(s.T(), mgr, member, act.ID).Acts
+		if len(want) == 0 {
+			s.Empty(got, "%s after %s", member, act.ID)
+			continue
+		}
+		s.Equal(want, got, "%s after %s", member, act.ID)
+	}
+}
+
+// TestCatchUpEqualsLiveAcrossACommit is the fixture where the invariant is
+// at stake: the skeleton steps once inside the fighter's reach, then asks to
+// leave it. The first commit holds that step's walk and the window; the
+// fighter declines, and the next commit continues the SAME walk. Only the
+// window's beat separates the walk's cells across the commit, so a fold that
+// lost it would run them into one segment on catch-up and two live.
+func (s *ReactWindowSuite) TestCatchUpEqualsLiveAcrossACommit() {
+	live := &actCapture{}
+	mgr := s.walkingSkeleton(live, hexCell(3, 1), hexCell(3, 2))
+	s.start(mgr, []sceneSeat{seatAt("fighter", 3, 0)}, reactSkeleton("skel-1", 4, 0))
+	s.endTurn(mgr, "fighter")
+	s.react(mgr, "fighter", session.Decline())
+
+	var walks []session.Act
+	for _, act := range live.of("fighter") {
+		if body, ok := act.Body.(session.WalkAct); ok && body.Mover.ID == "skel-1" {
+			walks = append(walks, act)
+		}
+	}
+	s.Require().GreaterOrEqual(len(walks), 2, "the walk reached the fighter in both commits")
+	s.Equal(walks[0].Act, walks[1].Act, "one walk, continued")
+
+	s.liveIsCatchUp(mgr, live, "fighter")
 }
 
 // TestFoldLethalAttack is Law 6 and the state rule: a lethal swing is one
