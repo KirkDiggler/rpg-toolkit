@@ -76,6 +76,7 @@ func (s *MoveTestSuite) TestRecordEventCarriesV2ActID() {
 
 	moved := recordOf(s.record.last(), encounter.BeatMoved)
 	s.Require().Len(moved, 3)
+	s.Equal("sess", moved[0].Session, "a record event names its session, which a host routes by")
 	act := moved[0].Act
 	s.Regexp(v2Act, act)
 	s.True(strings.HasPrefix(act, "move:"))

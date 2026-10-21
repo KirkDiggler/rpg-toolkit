@@ -36,6 +36,10 @@ import (
 
 // RecordEvent is one record beat as written.
 type RecordEvent struct {
+	// Session is the session the beat belongs to — what a host's stream
+	// routes by, since the record is per session, not per recipient.
+	Session string
+
 	// ID is the record's wire id: a ULID-style ordering key, compared as a
 	// string. Never a count.
 	ID string
@@ -128,13 +132,13 @@ func (m *Manager) Record(ctx context.Context, in *RecordReadInput) (*RecordReadO
 	if in.Limit > 0 && len(entries) > in.Limit {
 		entries = entries[:in.Limit]
 	}
-	return &RecordReadOutput{Events: recordEvents(entries), Restarted: read.Restarted}, nil
+	return &RecordReadOutput{Events: recordEvents(in.Session, entries), Restarted: read.Restarted}, nil
 }
 
 // recordEvents is the one mapping from record entries to record events —
 // live publish and catch-up read alike, so the two are byte-equal for the
 // same id.
-func recordEvents(entries []record.Entry) []RecordEvent {
+func recordEvents(session string, entries []record.Entry) []RecordEvent {
 	if len(entries) == 0 {
 		return nil
 	}
@@ -145,11 +149,12 @@ func recordEvents(entries []record.Entry) []RecordEvent {
 		}
 		_ = json.Unmarshal(e.Payload, &peek) // an unreadable payload names no beat
 		out[i] = RecordEvent{
-			ID:     e.ID,
-			At:     e.At,
-			Act:    e.Tags[encounter.ActTag],
-			Beat:   peek.Beat,
-			Fields: append(json.RawMessage(nil), e.Payload...),
+			Session: session,
+			ID:      e.ID,
+			At:      e.At,
+			Act:     e.Tags[encounter.ActTag],
+			Beat:    peek.Beat,
+			Fields:  append(json.RawMessage(nil), e.Payload...),
 		}
 	}
 	return out
@@ -170,7 +175,7 @@ func commitRecord(scope *writeScope) []RecordEvent {
 			break
 		}
 	}
-	return recordEvents(read.Entries[cut:])
+	return recordEvents(scope.session, read.Entries[cut:])
 }
 
 // deliverRecord hands one commit's record batch to the record stream, after
