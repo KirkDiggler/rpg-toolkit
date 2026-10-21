@@ -206,9 +206,9 @@ func (s *ActFoldSuite) TestFoldMissAndWarded() {
 	}
 }
 
-// TestDoorActNamesWhoChangedIt is Law 7 for the door: the door beat's actor
+// TestFoldDoorNamesActor is Law 7 for the door: the door beat's actor
 // is the act's By, and an unattributed change names nobody.
-func (s *ActFoldSuite) TestDoorActNamesWhoChangedIt() {
+func (s *ActFoldSuite) TestFoldDoorNamesActor() {
 	acts := foldActs("sess", "alice", []record.Entry{
 		s.beat("open_door:01HZZZZZZZZZZZZZZZZZZZDOOR", map[string]any{
 			"beat": encounter.BeatDoor, "door": "gatehouse-door", "state": "open", "actor": "alice",
