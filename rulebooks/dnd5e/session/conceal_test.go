@@ -330,7 +330,7 @@ func (s *ConcealSuite) wire(driver session.TurnDriver, world scene, cast ...*cha
 	stockAuthoredPlayers(world, characters)
 	s.sessions, s.encounters, s.characters = sessions, encounters, characters
 	s.explorations = newFakeExplorations()
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{},
 		Seats: newFakeSeats(), Explorations: s.explorations, PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: driver,
 		Sessions: s.sessions, Encounters: s.encounters,
@@ -894,7 +894,7 @@ func (s *ConcealSuite) TestTheProbeLawHoldsAtTheSeam() {
 	characters := newFakeCharacters(sharpEyed("alice"), dullEyed("bob"))
 	stockAuthoredPlayers(world, characters)
 	s.characters = characters
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{calls: &rolled}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
@@ -1166,7 +1166,7 @@ func (s *ConcealSuite) TestPerRecipientNumberingSurvivesLoadAndTrim() {
 	// A different process picks the session up: same repositories, fresh
 	// Manager, fresh stream. Numbering must continue, not restart.
 	live := &fakeStream{}
-	mgr2, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr2, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: live,
@@ -1310,7 +1310,7 @@ func (s *ConcealSuite) TestOneVerbBiggerThanTheRetentionWindowCommitsWhole() {
 	// And the count survives a load that happened entirely after the
 	// single-verb trim: a fresh Manager continues bob's stream exactly.
 	live := &fakeStream{}
-	mgr2, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr2, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: live,

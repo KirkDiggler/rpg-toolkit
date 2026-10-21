@@ -83,7 +83,7 @@ func (s *AutomaticDiscoverySDKSuite) TestLegacyCharacterChecksCannotSeedANewEnco
 	s.Require().NoError(json.Unmarshal([]byte(`{"character":"alice","private":true,"checks":{"same-dungeon/secret":{"used":9,"learned":true}}}`), &legacy))
 	profiles := &explorationStore{data: map[string]*session.ExplorationData{"alice": &legacy}}
 	encounters := newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(),
 		Sessions: newFakeSessions(), Encounters: encounters, Characters: testCharacters(),
 		Explorations: profiles, Events: session.DiscardEvents{}, Dice: testDice{},
 		PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{},
@@ -115,7 +115,7 @@ func (s *AutomaticDiscoverySDKSuite) TestDiscoveryBelongsToTheEncounterNotTheCha
 			ctx := context.Background()
 			profiles := newFakeExplorations()
 			sessions, encounters := newFakeSessions(), newFakeEncounters()
-			cfg := &session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
+			cfg := &session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
 				Explorations: profiles, Events: session.DiscardEvents{}, Dice: testDice{},
 				PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{}}
 			mgr, err := session.NewManager(cfg)
@@ -201,7 +201,7 @@ type sharingRig struct {
 }
 
 func newSharingRig(profiles *explorationStore) *sharingRig {
-	return &sharingRig{profiles: profiles, cfg: &session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(),
+	return &sharingRig{profiles: profiles, cfg: &session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(),
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: testCharacters(),
 		Explorations: profiles, Events: session.DiscardEvents{}, Dice: testDice{},
 		PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{},

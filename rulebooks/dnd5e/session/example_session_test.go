@@ -31,7 +31,7 @@ func Example_theSession() {
 	ctx := context.Background()
 
 	// The host's entire integration: two stores.
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions:   newFakeSessions(),
 		Encounters: newFakeEncounters(), Characters: testCharacters(),
 		Events: session.DiscardEvents{},
@@ -127,7 +127,7 @@ func Example_theSession() {
 func Example_theFightThatStartsItself() {
 	ctx := context.Background()
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
 		Events: session.DiscardEvents{},
 	})

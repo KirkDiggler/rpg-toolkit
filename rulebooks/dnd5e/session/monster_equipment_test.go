@@ -48,7 +48,7 @@ func (s *MonsterWeaponObservationSuite) launchWith(monsters ...dungeonspec.Monst
 func (s *MonsterWeaponObservationSuite) SetupSubTest() { s.SetupTest() }
 
 func (s *MonsterWeaponObservationSuite) manager() *session.Manager {
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: newFakeCharacters(armedFighter("fighter")), Events: session.DiscardEvents{},
