@@ -92,7 +92,8 @@ type RecordReadInput struct {
 	// with a greater id. Empty reads from the oldest retained beat.
 	AfterID string
 
-	// Limit caps the events returned, oldest first; zero or less is no cap.
+	// Limit caps the events returned, oldest first. Zero or less is no cap
+	// here; a host applies its own page maximum and passes it as Limit.
 	Limit int
 }
 
@@ -105,6 +106,11 @@ type RecordReadOutput struct {
 	// start at the oldest retained beat, and the caller replaces what it
 	// holds rather than appending (R25).
 	Restarted bool
+
+	// More is true when Limit cut the read short: retained beats after the
+	// last returned one remain. It is the only end signal; read again after
+	// the last returned id while it is true.
+	More bool
 }
 
 // Record reads the session's retained record after an id (R15). It is a
@@ -140,10 +146,11 @@ func (m *Manager) Record(ctx context.Context, in *RecordReadInput) (*RecordReadO
 		return nil, fmt.Errorf("record: %w", translate(err))
 	}
 	entries := read.Entries
-	if in.Limit > 0 && len(entries) > in.Limit {
+	more := in.Limit > 0 && len(entries) > in.Limit
+	if more {
 		entries = entries[:in.Limit]
 	}
-	return &RecordReadOutput{Events: recordEvents(in.Session, entries), Restarted: read.Restarted}, nil
+	return &RecordReadOutput{Events: recordEvents(in.Session, entries), Restarted: read.Restarted, More: more}, nil
 }
 
 // recordEvents is the one mapping from record entries to record events —

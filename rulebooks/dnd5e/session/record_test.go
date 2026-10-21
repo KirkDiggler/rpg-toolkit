@@ -123,9 +123,15 @@ func (s *MoveTestSuite) TestRecordReadAfterID() {
 		s.Greater(e.ID, mark)
 	}
 
+	s.False(after.More, "an uncapped read has nothing more")
 	limited, err := s.mgr.Record(context.Background(), &session.RecordReadInput{Session: "sess", AfterID: mark, Limit: 1})
 	s.Require().NoError(err)
 	s.Equal(after.Events[:1], limited.Events)
+	s.True(limited.More, "a page cut short says more remain")
+	exact, err := s.mgr.Record(context.Background(), &session.RecordReadInput{Session: "sess", AfterID: mark, Limit: len(after.Events)})
+	s.Require().NoError(err)
+	s.Len(exact.Events, len(after.Events))
+	s.False(exact.More, "a page that holds the rest says no more")
 }
 
 // TestRecordReadRestarted: an id older than what the stored record retains
