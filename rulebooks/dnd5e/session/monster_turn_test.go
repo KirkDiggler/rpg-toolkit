@@ -750,7 +750,7 @@ func (s *MonsterTurnTestSuite) TestLiveDeliveryAndStoryCatchUpAreByteEqual() {
 
 	s.Equal(live, caughtUp,
 		"live delivery and Story{FromSeq:1} catch-up must be the SAME projection, entry by "+
-			"entry — kind, typed Body and Tags included — not two mappings that merely agree today")
+			"entry — kind, typed Body and Correlation included — not two mappings that merely agree today")
 }
 
 // reachlessAttacker always declares an attack against the fighter using the

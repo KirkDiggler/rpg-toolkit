@@ -163,20 +163,11 @@ func (m *Manager) projectEvents(
 func projectEntry(session, recipient string, e record.Entry, seq uint64) Event {
 	kind, body := decodeBeat(e.Payload)
 
-	var tags map[string]string
-	if len(e.Tags) > 0 {
-		tags = make(map[string]string, len(e.Tags))
-		for k, v := range e.Tags {
-			tags[k] = v
-		}
-	}
-
 	return Event{
 		Session:     session,
 		Seq:         seq,
 		At:          e.At,
 		Correlation: e.Correlation,
-		Tags:        tags,
 		Recipient:   recipient,
 		Kind:        kind,
 		Payload:     append([]byte(nil), e.Payload...),

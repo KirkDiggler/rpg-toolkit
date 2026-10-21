@@ -109,7 +109,7 @@ func (m *Manager) DeathSave(ctx context.Context, in *DeathSaveInput) (*DeathSave
 		return nil, fmt.Errorf("death save: %w", ErrNoDeclarationID)
 	}
 
-	scope, err := m.openForChange(ctx, in.Session)
+	scope, err := m.openForChange(ctx, string(VerbDeathSave), in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("death save: %w", err)
 	}

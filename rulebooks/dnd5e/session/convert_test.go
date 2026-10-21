@@ -183,6 +183,10 @@ var omitted = map[string]string{
 	"encounter.MonsterView.AllyDeeds": "encounter.TableDriver reads the ally-scoped testimony directly on the composition view; host drivers receive Holdings",
 	"encounter.MonsterView.OwnDeeds":  "encounter.TableDriver reads self-scoped testimony directly on the composition view; host drivers receive Holdings",
 	"encounter.MonsterView.Temper":    "Table's companion, omitted for Table's reason",
+	// Dwelling (rpg-project#624) is read by the table driver's patrol row and
+	// nothing else, so it is omitted for Table's reason too.
+	"encounter.MonsterView.Dwelling": "the patrol-waypoint wait the table driver's patrol row reads; " +
+		"encounter.TableDriver reads it on the composition view, never through this twin",
 	"encounter.MonsterView.Deeds": "the deeds a `when` condition reads, decoded from Holdings — which " +
 		"IS carried, so a host driver that wants them reads the same testimony the table does",
 	// Hearing's two reads (rpg-project#569 R4–R6), omitted for Table's reason:
@@ -210,6 +214,12 @@ var omitted = map[string]string{
 	// (Confirmed, above). Surfacing Observed too is exactly the "last seen
 	// N ago" feature rpg-toolkit#1702 named out of scope: add it when a
 	// caller actually asks, not on spec.
+	// Tags stay on the record (rpg-project#627, event-stream design R23): they
+	// are the record's own query metadata, and the event carries the act id
+	// as its Correlation instead.
+	"record.Entry.Tags": "the record's own query metadata, kept on the record by event-stream design R23; " +
+		"an event names its act through Correlation",
+
 	"perception.Holding.Observed": "first-observed timestamp; no caller asks how old a memory is yet (rpg-toolkit#1702's own out-of-scope note)",
 
 	// CurrentVia is every channel delivering the subject right now. It is

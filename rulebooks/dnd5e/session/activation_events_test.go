@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -127,8 +128,9 @@ func TestSecondWindActivationEventsReachTheFullRosterAndCatchUpExactly(t *testin
 	for _, recipient := range []string{"alice", "bob", "skeleton"} {
 		live := activationEvents(eventsFor(scene.stream.published, recipient))
 		requireActivationOrder(t, live)
-		require.Equal(t, map[string]string{"tag": "outcome"}, live[0].Tags)
-		require.Equal(t, live[0].Tags, live[1].Tags)
+		require.True(t, strings.HasPrefix(live[0].Correlation, "activate:"),
+			"the activation is the activate verb's act, got %q", live[0].Correlation)
+		require.Equal(t, live[0].Correlation, live[1].Correlation, "its result is the same act")
 
 		activated, ok := live[0].Body.(session.ActivatedBody)
 		require.True(t, ok, "%s received ActivatedBody, got %T", recipient, live[0].Body)

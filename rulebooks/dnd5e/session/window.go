@@ -123,6 +123,12 @@ type windowStory struct {
 	Caster string         `json:"caster,omitempty"`
 	Spell  SpellRef       `json:"spell"`
 	Caught []CaughtMember `json:"caught,omitempty"`
+
+	// Act is the id of the act the window answers (rpg-project#627, Law 2):
+	// the walk or swing it interrupted. [Manager.React] reopens it, so the
+	// answer's beats carry the trigger's id. Set by [poseWindow]; empty on a
+	// window saved before acts existed, whose answer then carries none.
+	Act string `json:"act,omitempty"`
 }
 
 // validate refuses a story missing what its kind needs to tell a resume.
@@ -171,6 +177,13 @@ func (s windowStory) validate() error {
 // whole beside the story, reads its own output back through [thawWindow] so
 // it can never write what it would refuse, and poses it on the ledger.
 func poseWindow(scope *writeScope, pause resolution.Pause, story windowStory) error {
+	// THE ACT OPEN NOW IS THE ONE THE WINDOW ANSWERS. A window is posed from
+	// inside the encounter's Mover or Striker, while the driven walk's or
+	// swing's own act is open and before the encounter stores its pause, so
+	// the current act — not the paused one — is the trigger's.
+	if story.Act == "" {
+		story.Act = scope.enc.CurrentAct()
+	}
 	raw, err := json.Marshal(pendingWindow{
 		Version:  windowVersion,
 		Kind:     pause.Kind,

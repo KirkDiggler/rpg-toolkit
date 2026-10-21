@@ -267,7 +267,7 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 		return nil, fmt.Errorf("cast: %w", err)
 	}
 
-	scope, err := m.openForChange(ctx, in.Session)
+	scope, err := m.openForChange(ctx, string(VerbCast), in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("cast: %w", err)
 	}

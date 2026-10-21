@@ -60,7 +60,7 @@ func (s *SettlementSuite) SetupTest() {
 // left the roster later in the same act is still a monster that fell.
 func (s *SettlementSuite) TestAMonsterThatFellAndThenExitedStillGrants() {
 	ctx := context.Background()
-	scope, err := s.mgr.openForChange(ctx, "sess")
+	scope, err := s.mgr.openForChange(ctx, "recheck", "sess")
 	s.Require().NoError(err)
 
 	sheet, ok := npcSheet(scope.data, "goblin")
@@ -99,7 +99,7 @@ func (s *SettlementSuite) TestAMonsterThatFellAndThenExitedStillGrants() {
 
 	// The beat names the goblin as its actor and its cause: the composition
 	// accepts a former member as the actor of an experience beat.
-	after, err := s.mgr.openForChange(ctx, "sess")
+	after, err := s.mgr.openForChange(ctx, "recheck", "sess")
 	s.Require().NoError(err)
 	entries, err := after.enc.Story(&encounter.StoryInput{Audience: "fighter"})
 	s.Require().NoError(err)
@@ -129,7 +129,7 @@ func (s *SettlementSuite) TestAMonsterThatFellAndThenExitedStillGrants() {
 // consumes what it applies and a second call for the same output is a no-op.
 func (s *SettlementSuite) TestAnOutputLandsItsAreasOnce() {
 	ctx := context.Background()
-	scope, err := s.mgr.openForChange(ctx, "sess")
+	scope, err := s.mgr.openForChange(ctx, "recheck", "sess")
 	s.Require().NoError(err)
 	out := &resolution.Output{OpenedAreas: []encounter.SightAreaInput{{
 		ID: "cloud", SourceID: "fighter", Name: "Fog Cloud",

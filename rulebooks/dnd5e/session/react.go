@@ -192,6 +192,13 @@ func (m *Manager) answerWindow(
 	if err := closeWindow(scope, window, a.ledger()); err != nil {
 		return nil, err
 	}
+	// THE ANSWER IS ITS TRIGGER'S ACT (rpg-project#627, Law 2): the reaction's
+	// beats, and the walk that continues after the last answer, carry the id
+	// of the walk or swing the window interrupted. A window saved before acts
+	// existed names none, and the answer mints a react act of its own.
+	if err := scope.openAct(string(VerbReact), w.Story.Act); err != nil {
+		return nil, err
+	}
 	answer := a.resolution()
 
 	if w.Story.Kind == storyCheck {

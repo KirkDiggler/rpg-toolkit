@@ -241,7 +241,7 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		return nil, fmt.Errorf("join: %w", ErrNoMemberID)
 	}
 
-	scope, err := m.openForChange(ctx, in.Session, in.Member)
+	scope, err := m.openForChange(ctx, "join", in.Session, in.Member)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", err)
 	}
@@ -447,7 +447,7 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 		return nil, fmt.Errorf("place npc: %w: %w", ErrBadNPC, err)
 	}
 
-	scope, err := m.openForChange(ctx, in.Session)
+	scope, err := m.openForChange(ctx, "place_npc", in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("place npc: %w", err)
 	}
@@ -701,7 +701,7 @@ func (m *Manager) Exit(ctx context.Context, in *ExitInput) (*ExitOutput, error) 
 		return nil, fmt.Errorf("exit: %w", ErrNoMemberID)
 	}
 
-	scope, err := m.openForChange(ctx, in.Session)
+	scope, err := m.openForChange(ctx, "exit", in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("exit: %w", err)
 	}
@@ -779,7 +779,7 @@ func (m *Manager) End(ctx context.Context, in *EndInput) (*EndOutput, error) {
 	}
 	defer release()
 
-	scope, err := m.openForChange(ctx, in.Session)
+	scope, err := m.openForChange(ctx, "end", in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("end: %w", err)
 	}
@@ -938,7 +938,14 @@ func (m *Manager) openScope(
 // change is exactly what a player waiting on somebody else's answer does, and
 // refusing it would blank the screen of every member at the table for the one
 // who has to decide.
-func (m *Manager) openForChange(ctx context.Context, sessionID string, extraMembers ...string) (*writeScope, error) {
+//
+// THE VERB IS ONE ACT (rpg-project#627, design R3). verb names it in
+// snake_case, and every beat the verb appends — its consequences, the
+// creatures it gives time to, the settlements commit runs — carries the
+// act's id, `<verb>:<first seq>`, until commit closes it.
+func (m *Manager) openForChange(
+	ctx context.Context, verb string, sessionID string, extraMembers ...string,
+) (*writeScope, error) {
 	scope, err := m.openForWrite(ctx, sessionID, extraMembers...)
 	if err != nil {
 		return nil, err
@@ -946,7 +953,25 @@ func (m *Manager) openForChange(ctx context.Context, sessionID string, extraMemb
 	if err := scope.frozen(); err != nil {
 		return nil, err
 	}
+	if err := scope.openAct(verb, ""); err != nil {
+		return nil, err
+	}
 	return scope, nil
+}
+
+// openAct opens this verb's act on the scope's encounter: verb minted when
+// act is empty, act reopened otherwise. A scope holds at most one act of its
+// own, which commit closes.
+func (s *writeScope) openAct(verb, act string) error {
+	if s.act != "" {
+		return fmt.Errorf("%w: act %q is already open on this verb", ErrInvalidSession, s.act)
+	}
+	out, err := s.enc.OpenAct(&encounter.OpenActInput{Verb: verb, Act: act})
+	if err != nil {
+		return translate(err)
+	}
+	s.act = out.Act
+	return nil
 }
 
 // frozen reports every open window as a [WindowOpenError], or nil while the
@@ -994,6 +1019,10 @@ type writeScope struct {
 	data      *SessionData
 	enc       *encounter.Encounter
 	baseline  uint64
+
+	// act is the id of the act this verb opened on enc ([writeScope.openAct]),
+	// or "" for a scope that opened none. commit closes it.
+	act string
 
 	// ledger is the session's open interrupt windows, loaded beside data
 	// because it IS part of the session record (SessionData.Windows) and a
@@ -1213,6 +1242,15 @@ func (m *Manager) adopt(ctx context.Context, scope *writeScope, world encounter.
 	if err != nil {
 		return fmt.Errorf("%q: %w: %v", scope.encounter, ErrInvalidWorld, err)
 	}
+	// THE VERB'S ACT CARRIES OVER (rpg-project#627). The act stack is the
+	// encounter's in-memory state and never persisted, so the encounter
+	// loaded here starts with none; the verb is still the same act, and the
+	// outcome recorded on this world next is its beat.
+	if scope.act != "" {
+		if _, err := enc.OpenAct(&encounter.OpenActInput{Act: scope.act}); err != nil {
+			return fmt.Errorf("%q: %w", scope.encounter, translate(err))
+		}
+	}
 	scope.enc = enc
 	scope.standing.live.enc = enc
 	return nil
@@ -1359,6 +1397,16 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 	// numbering design. Delivery still WAITS for the save (S9): computed
 	// here, handed to the stream only after persist reports the world
 	// durable.
+	// THE ACT CLOSES HERE (rpg-project#627): every beat this verb and its
+	// settlements appended is in, and nothing after this line appends.
+	if scope.act != "" {
+		if err := scope.enc.CloseAct(); err != nil {
+			report := SaveReport{Written: append([]string(nil), scope.written...)}
+			return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", translate(err))
+		}
+		scope.act = ""
+	}
+
 	view := scope.enc.WorldView()
 	numbers, cursors, err := buildStreamNumbers(scope.enc, &view, scope.data.Streams)
 	if err != nil {
@@ -1792,7 +1840,7 @@ func (m *Manager) Recheck(ctx context.Context, in *RecheckInput) (*RecheckOutput
 		members = append(members, encounter.MemberID(id))
 	}
 
-	scope, err := m.openForChange(ctx, in.Session)
+	scope, err := m.openForChange(ctx, "recheck", in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("recheck: %w", err)
 	}
