@@ -49,7 +49,10 @@ func stout(id string) *character.Data {
 // fact is the one that turns it, nobody falls), so the board the walks
 // produced is placed directly, and the letter lies where the holder carried
 // it. The camp's own letter placement is moved on a copy of the field.
-func (s *HoldOutSessionSuite) launchTheChiefAtTheDoor(opts campOptions, holder, other string) {
+//
+// It returns, per player, the last beat they held once the scene is set: the
+// scenes read what happened after it.
+func (s *HoldOutSessionSuite) launchTheChiefAtTheDoor(opts campOptions, holder, other string) map[string]uint64 {
 	s.T().Helper()
 	in := s.prepare(opts)
 
@@ -101,7 +104,10 @@ func (s *HoldOutSessionSuite) launchTheChiefAtTheDoor(opts campOptions, holder, 
 	if s.turn(holder).Active == holder {
 		s.hold(holder, campLetter)
 	}
-	s.stream.published = nil
+	return map[string]uint64{
+		holder: lastSeq(storyBeats(s.T(), s.mgr, campSession, holder)),
+		other:  lastSeq(storyBeats(s.T(), s.mgr, campSession, other)),
+	}
 }
 
 // closingDriver is the fixture these three scenes drive with: strike an
@@ -161,11 +167,14 @@ func (s *HoldOutSessionSuite) endTurnOf(who string) error {
 	return err
 }
 
-// after is the kinds on a recipient's stream from the first of a kind on.
-func after(kinds []session.EventKind, from session.EventKind) []session.EventKind {
-	for i, k := range kinds {
-		if k == from {
-			return kinds[i:]
+// beatsSince is the beat words a recipient witnessed after since, from the
+// first `from` beat on.
+func (s *HoldOutSessionSuite) beatsSince(recipient string, since uint64, from string) []string {
+	s.T().Helper()
+	names := beatNames(storyBeatsAfter(s.T(), s.mgr, campSession, recipient, since))
+	for i, name := range names {
+		if name == from {
+			return names[i:]
 		}
 	}
 	return nil
@@ -177,7 +186,7 @@ func after(kinds []session.EventKind, from session.EventKind) []session.EventKin
 // the hold-out ends — and his turn ends THERE. The verb succeeds, the
 // ending reaches everyone, and nothing swings after the run closed.
 func (s *HoldOutSessionSuite) TestTheChiefsOwnStepTurnsTheCampAndEndsHisTurn() {
-	s.launchTheChiefAtTheDoor(campOptions{withEnding: true, driver: closingDriver{},
+	since := s.launchTheChiefAtTheDoor(campOptions{withEnding: true, driver: closingDriver{},
 		cast: []*character.Data{stout("alice"), stout("bob")}, spawn: []string{}}, "alice", "bob")
 
 	s.Require().NoError(s.endTurnOf("alice"))
@@ -189,10 +198,12 @@ func (s *HoldOutSessionSuite) TestTheChiefsOwnStepTurnsTheCampAndEndsHisTurn() {
 	s.Equal(scenarios.HoldOutID, status.Outcome.Ending)
 
 	for _, who := range []string{"alice", "bob"} {
-		s.Equal([]session.EventKind{session.EventStanceChanged, session.EventFightEnded, session.EventEnded},
-			after(s.kinds(who), session.EventStanceChanged),
+		s.Equal([]string{encounter.BeatStance, encounter.BeatFightEnded, encounter.BeatEnded},
+			s.beatsSince(who, since[who], encounter.BeatStance),
 			"%s: the flip, the fight ending by stance, the run ending — and no swing after", who)
-		s.Equal(session.FightEndedBody{Cause: session.DissolveByStance}, s.bodyOf(who, session.EventFightEnded))
+		dissolved := beatsNamed(storyBeatsAfter(s.T(), s.mgr, campSession, who, since[who]), encounter.BeatFightEnded)
+		s.Require().Len(dissolved, 1, "%s: the fight ended once", who)
+		s.Equal(string(session.DissolveByStance), dissolved[0].Fields["cause"])
 	}
 }
 
@@ -201,14 +212,14 @@ func (s *HoldOutSessionSuite) TestTheChiefsOwnStepTurnsTheCampAndEndsHisTurn() {
 // dissolves — and a chief opposed to nobody does not strike the player he
 // was walking toward. Everyone is back on the world clock, unstruck.
 func (s *HoldOutSessionSuite) TestAChiefWhoseCampTurnedDoesNotSwing() {
-	s.launchTheChiefAtTheDoor(campOptions{withEnding: false, driver: closingDriver{},
+	since := s.launchTheChiefAtTheDoor(campOptions{withEnding: false, driver: closingDriver{},
 		cast: []*character.Data{stout("alice"), stout("bob")}, spawn: []string{}}, "alice", "bob")
 
 	s.Require().NoError(s.endTurnOf("alice"))
 	s.Require().NoError(s.endTurnOf("bob"))
 
-	s.Equal([]session.EventKind{session.EventStanceChanged, session.EventFightEnded},
-		after(s.kinds("alice"), session.EventStanceChanged),
+	s.Equal([]string{encounter.BeatStance, encounter.BeatFightEnded},
+		s.beatsSince("alice", since["alice"], encounter.BeatStance),
 		"the flip and the dissolution, and nothing after: no struck, no missed")
 	s.Equal(session.ClockWorld, s.turn("alice").Clock)
 	s.Equal(session.ClockWorld, s.turn(campChief).Clock)
@@ -221,7 +232,7 @@ func (s *HoldOutSessionSuite) TestAChiefWhoseCampTurnedDoesNotSwing() {
 // who steps into the yard and strikes the player still there. The departure
 // must not leave a half-removed member on the roster the strike reads.
 func (s *HoldOutSessionSuite) TestTheActiveHolderExitingMidFightLetsTheChiefSwing() {
-	s.launchTheChiefAtTheDoor(campOptions{withEnding: true, driver: closingDriver{},
+	since := s.launchTheChiefAtTheDoor(campOptions{withEnding: true, driver: closingDriver{},
 		cast: []*character.Data{stout("alice"), stout("bob")}, spawn: []string{}}, "bob", "alice")
 	s.Require().NoError(s.endTurnOf("alice"))
 	s.Require().Equal("bob", s.turn("bob").Active)
@@ -231,16 +242,11 @@ func (s *HoldOutSessionSuite) TestTheActiveHolderExitingMidFightLetsTheChiefSwin
 	s.Require().NoError(err, "bob leaves; the chief's driven turn is inside this verb")
 	s.Nil(out.Closed, "the letter lies in the yard, unheld; the camp has not turned")
 
-	kinds := s.kinds("alice")
-	s.Contains(kinds, session.EventExited)
-	s.Contains(kinds, session.EventDropped, "the letter, dropped where bob stood")
-	s.NotContains(kinds, session.EventStanceChanged, "nobody carried it to the chief")
-	swung := false
-	for _, k := range kinds {
-		if k == session.EventStruck || k == session.EventMissed {
-			swung = true
-		}
-	}
-	s.True(swung, "the chief reached alice and swung: %v", kinds)
+	beats := beatNames(storyBeatsAfter(s.T(), s.mgr, campSession, "alice", since["alice"]))
+	s.Contains(beats, encounter.BeatExited)
+	s.Contains(beats, encounter.BeatDropped, "the letter, dropped where bob stood")
+	s.NotContains(beats, encounter.BeatStance, "nobody carried it to the chief")
+	swung := slices.Contains(beats, string(encounter.OutcomeStruck)) || slices.Contains(beats, string(encounter.OutcomeMissed))
+	s.True(swung, "the chief reached alice and swung: %v", beats)
 	s.Equal(encounter.FactionParty, s.roster()["alice"].Faction)
 }

@@ -47,9 +47,9 @@ func (s *MoveTurnClockSuite) SetupTest() {
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
 	s.stream = &fakeStream{}
 
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: s.stream,
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -129,14 +129,14 @@ func (s *MoveTurnClockSuite) TestActiveMemberSpendsMovementAndAffordSeesIt() {
 	// The sheet's own spend is durable, not merely reported.
 	s.Equal(15, s.storedMovement("alice"), "30 speed - 15 spent = 15 left, persisted")
 
-	// MOVED reached the stream — the walk is a real one, not a silent charge.
+	// The walk reached the stream — a real one, not a silent charge.
 	var moved int
-	for _, ev := range s.stream.published {
-		if ev.Kind == session.EventMoved && ev.Recipient == "alice" {
-			moved++
+	for _, act := range s.stream.published {
+		if walk, ok := act.Body.(session.WalkAct); ok && act.Recipient == "alice" && walk.Mover.ID == "alice" {
+			moved += walkSteps(act, walk)
 		}
 	}
-	s.Equal(3, moved, "one MOVED per cell entered, delivered to alice's own stream")
+	s.Equal(3, moved, "one step per cell entered, delivered to alice's own stream")
 
 	// Afford shows the same number the sheet now holds — never a second copy
 	// of the arithmetic.
@@ -296,7 +296,7 @@ func (s *MoveTurnClockSuite) TestWorldClockMoveNeverTouchesTheEconomy() {
 	characters := testCharacters()
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
-		Characters: characters, Events: session.DiscardEvents{},
+		Characters: characters,
 	})
 	s.Require().NoError(err)
 
@@ -330,59 +330,4 @@ func (s *MoveTurnClockSuite) TestWorldClockMoveNeverTouchesTheEconomy() {
 		"a free-roam walk is not a priced row and must not be offered as one")
 	s.Equal([]session.Verb{session.VerbSpeak},
 		declarationVerbs(direct.Declarations), "the social verb, and no verb with a price")
-}
-
-// TestMovedTurnEndedAndFightStartedCarryTypedBodies pins rpg-toolkit#941 for
-// the three beat families this fixture's own setup and Move already produce:
-// the spawn that pulled everyone into one bubble (FightStartedBody, in
-// initiative order), a step of the walk (MovedBody), and ending alice's turn
-// (TurnEndedBody). Bob — a real player, next in initiative — is NOT
-// Pass-driven through automatically the way skel-1 would be, so this is
-// exactly one turn-ended BEAT, delivered once per recipient (three events,
-// one beat).
-func (s *MoveTurnClockSuite) TestMovedTurnEndedAndFightStartedCarryTypedBodies() {
-	ctx := context.Background()
-
-	started := s.eventsOfKind(session.EventFightStarted)
-	s.Require().NotEmpty(started, "the spawn in SetupTest already formed the bubble")
-	fsBody, ok := started[0].Body.(session.FightStartedBody)
-	s.Require().True(ok, "got %T", started[0].Body)
-	s.Equal([]string{"alice", "bob", "skel-1"}, fsBody.Members)
-
-	_, err := s.mgr.Move(ctx, &session.MoveInput{
-		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 1, Y: 2}},
-		DeclarationID: currentMoveID(s.T(), s.mgr, "sess", "alice"),
-	})
-	s.Require().NoError(err)
-
-	moved := s.eventsOfKind(session.EventMoved)
-	s.Require().NotEmpty(moved)
-	movedBody, ok := moved[0].Body.(session.MovedBody)
-	s.Require().True(ok, "got %T", moved[0].Body)
-	s.Equal("alice", movedBody.Member)
-	s.Equal(spatial.Position{X: 1, Y: 2}, movedBody.To)
-
-	ended, err := s.endTurn(ctx, "alice")
-	s.Require().NoError(err)
-	s.Equal("bob", ended.Next)
-
-	turnEnded := s.eventsOfKind(session.EventTurnEnded)
-	s.Require().Len(turnEnded, 3, "one beat, delivered once per member of the encounter")
-	first, ok := turnEnded[0].Body.(session.TurnEndedBody)
-	s.Require().True(ok, "got %T", turnEnded[0].Body)
-	s.Equal("alice", first.Member)
-	s.Equal("bob", first.Next)
-}
-
-// eventsOfKind collects everything of one kind published across this
-// suite's stream — MoveTurnClockSuite's own copy of DeathTestSuite's helper,
-// since the two suites do not share a base.
-func (s *MoveTurnClockSuite) eventsOfKind(kind session.EventKind) []session.Event {
-	var out []session.Event
-	for _, event := range s.stream.published {
-		if event.Kind == kind {
-			out = append(out, event)
-		}
-	}
-	return out
 }

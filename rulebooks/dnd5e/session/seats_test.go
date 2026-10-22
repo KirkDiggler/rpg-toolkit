@@ -40,7 +40,6 @@ func (s *SeatSuite) SetupTest() {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: s.seats, Explorations: newFakeExplorations(), Locker: s.locker,
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
-		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -260,7 +259,7 @@ func (s *SeatSuite) TestALoadAndAnEquipIssuedTogetherBothLand() {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: seats, Explorations: newFakeExplorations(), Locker: locker,
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
-		Sessions: sessions, Encounters: encounters, Characters: chars, Events: session.DiscardEvents{},
+		Sessions: sessions, Encounters: encounters, Characters: chars,
 	})
 	s.Require().NoError(err)
 	launchScene(s.T(), mgr, freeRoamDuelWorld())

@@ -21,8 +21,8 @@ import (
 // transfers nothing, and this verb's response is IDENTICAL either way: no
 // found list, no transferred count, no flag. What the looter gained reaches
 // them the way all world change reaches anybody — as their own
-// recipient-scoped EventConcealmentRevealed, the same beat a successful
-// discovery produces (design P4) — and everyone present hears EventLooted, which names
+// recipient-scoped `concealment_revealed`, the same beat a successful
+// discovery produces (design P4) — and everyone present hears `looted`, which names
 // looter and body and nothing of what moved.
 //
 // That is why there is no Seq here and no Found. LootOutput is

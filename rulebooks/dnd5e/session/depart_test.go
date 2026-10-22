@@ -71,9 +71,9 @@ func (s *DepartSuite) SetupTest() {
 
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"), armedFighter("carol"))
 	s.stream = &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
-		Characters: s.characters, Events: s.stream,
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -121,18 +121,21 @@ func (s *DepartSuite) holdTargets() []string {
 	return nil
 }
 
-// exitRemovals is every removal on the exit beat told to recipient.
-func (s *DepartSuite) exitRemovals(recipient string) []string {
+// liftedFor is every condition removal the live act stream told recipient
+// since the setup cleared it, as holder:ref — the state entries a departure
+// or an ending folds beside its own clock entry.
+func (s *DepartSuite) liftedFor(recipient string) []string {
 	var out []string
-	for _, event := range s.stream.published {
-		if event.Kind != session.EventExited || event.Recipient != recipient {
+	for _, act := range s.stream.published {
+		if act.Recipient != recipient {
 			continue
 		}
-		body, ok := event.Body.(session.ExitedBody)
-		s.Require().True(ok)
-		for _, removed := range body.Ended {
-			out = append(out, removed.Target+":"+removed.Ref)
+		change, ok := act.Body.(session.StateChange)
+		if !ok || change.Change != session.StateConditionRemoved {
+			continue
 		}
+		s.Require().NotNil(change.Condition)
+		out = append(out, change.Party.ID+":"+change.Condition.Ref)
 	}
 	return out
 }
@@ -146,7 +149,7 @@ func (s *DepartSuite) TestATargetLeavesAndTheHoldCarriesOnForTheOthers() {
 	s.False(s.holds("alice", blessed), "the Bless came off alice as she left")
 	s.True(s.holds("carol", blessed), "carol is still blessed")
 	s.Equal([]string{"carol"}, s.holdTargets(), "bob's hold carries on, naming carol alone")
-	s.Contains(s.exitRemovals("carol"), "alice:"+blessed, "the removal is told on the exit beat")
+	s.Contains(s.liftedFor("carol"), "alice:"+blessed, "the removal is told on the exit beat")
 
 	_, err = s.mgr.Rest(context.Background(), &session.RestInput{
 		Session: "sess", Kind: session.RestShort, Resters: []session.Rester{{Member: "bob"}},
@@ -163,7 +166,7 @@ func (s *DepartSuite) TestACasterLeavesAndTheHoldEndsForEveryTarget() {
 	s.False(s.holds("alice", blessed), "alice's Bless ended with its caster's departure")
 	s.False(s.holds("carol", blessed), "carol's too")
 	s.Nil(s.holdTargets(), "bob holds nothing as he goes")
-	told := s.exitRemovals("alice")
+	told := s.liftedFor("alice")
 	s.Contains(told, "alice:"+blessed)
 	s.Contains(told, "carol:"+blessed)
 }
@@ -176,20 +179,7 @@ func (s *DepartSuite) TestEndTakesEveryHoldWithTheParty() {
 
 	s.False(s.holds("alice", blessed))
 	s.False(s.holds("carol", blessed))
-	var told []string
-	for _, event := range s.stream.published {
-		if event.Kind != session.EventEnded || event.Recipient != "alice" {
-			continue
-		}
-		body, ok := event.Body.(session.EndedBody)
-		s.Require().True(ok)
-		for member, removals := range body.Ended {
-			for _, removed := range removals {
-				s.Equal(member, removed.Target, "each removal is filed under the member it came off")
-				told = append(told, removed.Target+":"+removed.Ref)
-			}
-		}
-	}
+	told := s.liftedFor("alice")
 	s.Contains(told, "alice:"+blessed)
 	s.Contains(told, "carol:"+blessed)
 }

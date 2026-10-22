@@ -69,7 +69,7 @@ func (s *ConditionsTestSuite) managerOverStores(
 ) *session.Manager {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters,
-		Characters: characters, Events: session.DiscardEvents{},
+		Characters: characters,
 	})
 	s.Require().NoError(err)
 	return mgr

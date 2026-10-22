@@ -5,14 +5,13 @@ package session_test
 
 import (
 	"context"
-	"encoding/json"
-	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -45,7 +44,7 @@ func (s *MoverSeamSuite) managerWith(driver session.TurnDriver) *session.Manager
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: driver,
 		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: session.DiscardEvents{},
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	return mgr
@@ -120,13 +119,10 @@ type reactedBeat struct {
 // a player actually sees: the reaction reaches a client through the beat's own
 // payload and nothing else carries it.
 func (s *MoverSeamSuite) reactionBeats(mgr *session.Manager, member string) []reactedBeat {
-	entries, err := mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: member})
-	s.Require().NoError(err)
-
 	var out []reactedBeat
-	for _, entry := range entries {
+	for _, beat := range storyBeats(s.T(), mgr, "sess", member) {
 		var body reactedBeat
-		s.Require().NoError(json.Unmarshal(entry.Payload, &body))
+		beat.decode(s.T(), &body)
 		if body.Reaction == nil {
 			continue
 		}
@@ -224,23 +220,29 @@ func (s *MoverSeamSuite) TestANimbleGoblinLeavingTheFightersReachAsksNobody() {
 	s.Require().NoError(err)
 	s.Equal(hexCell(4, 0), where.Position, "the whole walk was taken without stopping to ask")
 
-	story, err := mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "fighter"})
-	s.Require().NoError(err)
+	type activatedBeat struct {
+		Actor   string `json:"actor"`
+		Ability struct {
+			Ref  string `json:"ref"`
+			Name string `json:"name"`
+		} `json:"ability"`
+		Target string `json:"target"`
+	}
 	activated, moved := -1, -1
-	for i, event := range story {
-		switch event.Kind {
-		case session.EventActivated:
+	for i, beat := range storyBeats(s.T(), mgr, "sess", "fighter") {
+		switch beat.Beat {
+		case encounter.BeatActivated:
 			s.Equal(-1, activated, "the trait is told once")
 			activated = i
-			s.Equal(session.ActivatedBody{
-				Actor:   "gob-1",
-				Ability: session.AbilityRef{Ref: refs.MonsterTraits.NimbleEscape().String(), Name: "Nimble Escape"},
-			}, event.Body)
-		case session.EventMoved:
-			if moved == -1 {
-				if body, ok := event.Body.(session.MovedBody); ok && body.Member == "gob-1" {
-					moved = i
-				}
+			var body activatedBeat
+			beat.decode(s.T(), &body)
+			s.Equal("gob-1", body.Actor)
+			s.Equal(refs.MonsterTraits.NimbleEscape().String(), body.Ability.Ref)
+			s.Equal("Nimble Escape", body.Ability.Name)
+			s.Empty(body.Target)
+		case encounter.BeatMoved:
+			if moved == -1 && beat.Fields["member"] == "gob-1" {
+				moved = i
 			}
 		}
 	}
@@ -285,9 +287,7 @@ func (s *MoverSeamSuite) TestANimbleGoblinStopsDisengagingAtItsTurnEnd() {
 	s.Require().NoError(err)
 	s.Equal("fighter", turn.Active, "the goblin's turn is over")
 
-	story, err := mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "fighter"})
-	s.Require().NoError(err)
-	disengaged := slices.ContainsFunc(story, func(event session.Event) bool { return event.Kind == session.EventActivated })
+	disengaged := len(beatsNamed(storyBeats(s.T(), mgr, "sess", "fighter"), encounter.BeatActivated)) > 0
 	s.Require().True(disengaged, "precondition: the goblin disengaged this turn, so there was something to clear")
 
 	stored, err := s.sessions.GetSession(ctx, "sess")

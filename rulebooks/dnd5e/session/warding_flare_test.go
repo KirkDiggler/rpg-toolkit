@@ -6,6 +6,7 @@ import (
 
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
@@ -23,6 +24,16 @@ func (s *CastSuite) flareSheet() *character.Data {
 	sheet.Resources[resources.WardingFlare] = character.RecoverableResourceData{Current: 3, Maximum: 3, ResetType: coreResources.ResetLongRest}
 	return sheet
 }
+
+// swung is the beat words for one weapon swing's outcome.
+var swung = []string{string(encounter.OutcomeStruck), string(encounter.OutcomeMissed)}
+
+// flareBeats is the suite member's story beats named one of names.
+func (s *CastSuite) flareBeats(names ...string) []witnessed {
+	s.T().Helper()
+	return beatsNamed(storyBeats(s.T(), s.mgr, "sess", s.member), names...)
+}
+
 func (s *CastSuite) flareReaction() session.Declaration {
 	offered, err := s.mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "cleric"})
 	s.Require().NoError(err)
@@ -43,7 +54,7 @@ func (s *CastSuite) TestFlareMonsterTurnReloadResumesWithoutRepeatingAttack() {
 			ctx := context.Background()
 			newManager := func() {
 				var err error
-				s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+				s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters})
 				s.Require().NoError(err)
 			}
 			newManager()
@@ -53,7 +64,7 @@ func (s *CastSuite) TestFlareMonsterTurnReloadResumesWithoutRepeatingAttack() {
 			s.Require().NoError(err)
 			s.Equal(rolls, s.dice.next, "no attack roll before answering")
 			s.Equal(hp, s.characters.byID["cleric"].HitPoints)
-			s.Empty(s.beats(session.EventStruck, session.EventMissed))
+			s.Empty(s.flareBeats(swung...))
 			newManager()
 			row := s.flareReaction()
 			s.Require().Len(row.Options, 1)
@@ -70,7 +81,7 @@ func (s *CastSuite) TestFlareMonsterTurnReloadResumesWithoutRepeatingAttack() {
 			}
 			s.Equal(expected, s.characters.byID["cleric"].Resources[resources.WardingFlare].Current)
 			s.Equal(2, s.characters.byID["cleric"].Resources[resources.SpellSlotLevel1].Current)
-			live := s.beats(session.EventStruck, session.EventMissed)
+			live := s.flareBeats(swung...)
 			s.Require().Len(live, 1)
 			_, err = s.mgr.React(ctx, in)
 			s.ErrorIs(err, session.ErrNoWindow)
@@ -78,15 +89,7 @@ func (s *CastSuite) TestFlareMonsterTurnReloadResumesWithoutRepeatingAttack() {
 			s.Require().NoError(err)
 			s.Equal("cleric", turn.Active)
 			newManager()
-			story, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "cleric"})
-			s.Require().NoError(err)
-			var replay []session.Event
-			for _, e := range story {
-				if e.Kind == session.EventStruck || e.Kind == session.EventMissed {
-					replay = append(replay, e)
-				}
-			}
-			s.Equal(live, replay)
+			s.Equal(live, s.flareBeats(swung...), "a reload tells the one swing, not a repeat")
 		})
 	}
 }
@@ -104,7 +107,7 @@ func (s *CastSuite) TestFlareBeforeSpellAttackUsesSharedCastContinuation() {
 	s.Require().NoError(err)
 	s.Equal(1, s.characters.byID["aaron"].Resources[resources.SpellSlotLevel1].Current)
 	s.Equal(2, s.characters.byID["cleric"].Resources[resources.WardingFlare].Current)
-	s.Len(s.beats(session.EventCast), 1)
+	s.Len(s.flareBeats(encounter.BeatCast), 1)
 }
 
 func (s *CastSuite) TestFlareDuringOpportunityAttackResumesWithoutRepeatingStep() {
@@ -122,7 +125,7 @@ func (s *CastSuite) TestFlareDuringOpportunityAttackResumesWithoutRepeatingStep(
 	row := s.flareReaction()
 	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Answer: session.Take("use")})
 	s.Require().NoError(err)
-	s.Len(s.beats(session.EventStruck, session.EventMissed), 1)
+	s.Len(s.flareBeats(swung...), 1)
 	s.Equal(2, s.characters.byID["cleric"].Resources[resources.WardingFlare].Current)
 	s.Equal(spatial.Position{X: 0, Y: 1}, s.cellOf("cleric"))
 	s.Equal(movement-5, s.characters.byID["cleric"].ActionEconomy.MovementRemaining, "resuming does not pay movement twice")
@@ -140,7 +143,7 @@ func (s *CastSuite) TestFlareLethalResumeCommitsDefeatAndClosesWindow() {
 			s.characters.byID["cleric"].HitPoints = 1
 			ctx := context.Background()
 			var err error
-			s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+			s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters})
 			s.Require().NoError(err)
 			_, err = s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "cleric", DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "cleric")})
 			s.Require().NoError(err)
@@ -154,14 +157,14 @@ func (s *CastSuite) TestFlareLethalResumeCommitsDefeatAndClosesWindow() {
 			s.Zero(s.characters.byID["cleric"].HitPoints)
 			s.Require().NotNil(s.encounters.byID["sess"].Outcome)
 			s.Nil(s.encounters.byID["sess"].Pause)
-			s.Len(s.beats(session.EventStruck), 1)
+			s.Len(s.flareBeats(string(encounter.OutcomeStruck)), 1)
 			expected := 3
 			if spend {
 				expected = 2
 			}
 			s.Equal(expected, s.characters.byID["cleric"].Resources[resources.WardingFlare].Current)
 			s.reloadHealingScene()
-			_, err = s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "cleric"})
+			_, err = s.mgr.LoadWorldForTest(ctx, "sess")
 			s.Require().NoError(err, "closed world reloads")
 		})
 	}
@@ -212,7 +215,7 @@ func (s *CastSuite) TestFlareBeforeAPlayersSwingPosesTheWindowAndCommitsThePrice
 
 	s.True(out.Paused, "the swing stopped to ask before the roll")
 	s.Equal(rolls, s.dice.next, "no die was thrown")
-	s.Empty(s.beats(session.EventStruck, session.EventMissed), "no strike is told before the answer")
+	s.Empty(s.flareBeats(swung...), "no strike is told before the answer")
 	s.Equal(actions-1, s.characters.byID["aaron"].ActionEconomy.ActionsRemaining, "the price is written to the attacker's sheet")
 	s.Contains(out.Saved.Written, "encounter:sess", "the adopted world is committed")
 	s.Contains(out.Saved.Written, "session:sess", "and the session record with the window")
@@ -233,17 +236,17 @@ func (s *CastSuite) TestASecondReactionInTheSameStepAsksAgainAfterTheFirstAnswer
 	out, err := s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "cleric", DeclarationID: currentMoveID(s.T(), s.mgr, "sess", "cleric"), Path: []spatial.Position{{X: 0, Y: 1}}})
 	s.Require().NoError(err)
 	s.Require().Equal(session.MovementPaused, out.Status, "control: the first swing asks before its roll")
-	s.Empty(s.beats(session.EventStruck, session.EventMissed), "control: nothing has swung")
+	s.Empty(s.flareBeats(swung...), "control: nothing has swung")
 
 	first := s.flareReaction()
 	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: first.ID, Answer: session.Decline()})
 	s.Require().NoError(err)
-	s.Len(s.beats(session.EventStruck, session.EventMissed), 1, "the first swing is told")
+	s.Len(s.flareBeats(swung...), 1, "the first swing is told")
 	second := s.flareReaction()
 	s.NotEqual(first.ID, second.ID, "the resumed step asked again, on a window of its own")
 
 	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: second.ID, Answer: session.Decline()})
 	s.Require().NoError(err)
-	s.Len(s.beats(session.EventStruck, session.EventMissed), 2, "the second swing is told, the first not again")
+	s.Len(s.flareBeats(swung...), 2, "the second swing is told, the first not again")
 	s.Equal(spatial.Position{X: 0, Y: 1}, s.cellOf("cleric"), "and the walk finishes its step")
 }

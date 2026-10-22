@@ -40,7 +40,7 @@ func (s *KnowledgeSuite) TestCapturedPresentationCrossesKnowledgeAndViewWithoutA
 		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
 	}
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: newFakeCharacters(armedFighter("alice")),
-		Events: session.DiscardEvents{}, Dice: testDice{}, TurnDriver: session.Pass{}, PresentationIDs: testPresentationIDs{}})
+		Dice: testDice{}, TurnDriver: session.Pass{}, PresentationIDs: testPresentationIDs{}})
 	s.Require().NoError(err)
 	ctx := context.Background()
 	launchScene(s.T(), mgr, sc)
@@ -71,7 +71,7 @@ func (s *KnowledgeSuite) TestSnapshotUsesOneWorldAndTheExactOwnedSeat() {
 	delete(fixture.encounters.byID["world"].Perception.Intel.Holdings["member|alice"], "member|skel-1")
 	repo := &knowledgeEncounters{fakeEncounters: fixture.encounters}
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), Sessions: fixture.sessions, Encounters: repo, Characters: fixture.characters,
-		Events: session.DiscardEvents{}, Dice: testDice{}, TurnDriver: session.Pass{}, PresentationIDs: testPresentationIDs{}})
+		Dice: testDice{}, TurnDriver: session.Pass{}, PresentationIDs: testPresentationIDs{}})
 	s.Require().NoError(err)
 	ctx := context.Background()
 	snapshot, err := mgr.Knowledge(ctx, &session.KnowledgeInput{Session: "sess", Member: "alice", Player: "player-alice"})
@@ -86,10 +86,6 @@ func (s *KnowledgeSuite) TestSnapshotUsesOneWorldAndTheExactOwnedSeat() {
 		s.NotEqual("skel-1", sighting.Subject)
 	}
 	s.Empty(snapshot.Holding)
-	story, err := mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice"})
-	s.Require().NoError(err)
-	s.Require().NotEmpty(story)
-	s.Equal(story[len(story)-1].Seq, snapshot.Seq)
 	s.Zero(fixture.sessions.saves)
 	s.Zero(fixture.encounters.saves)
 	denied, err := mgr.Knowledge(ctx, &session.KnowledgeInput{Session: "sess", Member: "bob", Player: "player-alice"})
@@ -99,15 +95,15 @@ func (s *KnowledgeSuite) TestSnapshotUsesOneWorldAndTheExactOwnedSeat() {
 
 // TestCellsRevealAndObservationsSurviveTheSessionPath: opening the gate
 // teaches alice vault cells (rpg-project#586 R1), delivered as cells-revealed
-// beats on her stream, carrying only cells she newly learned. Applying them
-// to her prior atlas lands exactly on the fresh Knowledge atlas, no whole-room
-// beat is produced, and the live and replayed streams are the same payloads.
+// perceptions on her act stream, carrying only cells she newly learned.
+// Applying them to her prior atlas lands exactly on the fresh Knowledge atlas,
+// and no whole-room beat is produced.
 func (s *KnowledgeSuite) TestCellsRevealAndObservationsSurviveTheSessionPath() {
 	ctx := context.Background()
 	stream := &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: newFakeCharacters(armedFighter("alice")),
-		Events: stream, Dice: testDice{}, TurnDriver: session.Pass{}, PresentationIDs: testPresentationIDs{},
+		Dice: testDice{}, TurnDriver: session.Pass{}, PresentationIDs: testPresentationIDs{},
 	})
 	s.Require().NoError(err)
 	launchScene(s.T(), mgr, gatedWorld(encounter.DoorIsClosed()))
@@ -119,6 +115,7 @@ func (s *KnowledgeSuite) TestCellsRevealAndObservationsSurviveTheSessionPath() {
 	s.Require().Len(before.View.Doors, 1)
 	s.Equal("closed", before.View.Doors[0].Door.State)
 	stream.published = nil
+	mark := lastSeq(storyBeats(s.T(), mgr, "sess", "alice"))
 	_, err = mgr.OpenDoor(ctx, &session.OpenDoorInput{Session: "sess", Member: "alice", Door: "gate"})
 	s.Require().NoError(err)
 	after, err := mgr.Knowledge(ctx, input)
@@ -134,14 +131,16 @@ func (s *KnowledgeSuite) TestCellsRevealAndObservationsSurviveTheSessionPath() {
 		}
 	}
 	var reveals int
-	for _, event := range stream.published {
-		s.NotEqual(session.EventRoomRevealed, event.Kind, "the whole-room beat is no longer produced")
-		if event.Kind != session.EventCellsRevealed {
+	s.Empty(beatsNamed(storyBeatsAfter(s.T(), mgr, "sess", "alice", mark), "room_revealed"),
+		"the whole-room beat is no longer produced")
+	for _, act := range stream.published {
+		perceived, ok := act.Body.(session.Perception)
+		if !ok || perceived.Sense != session.SenseCells {
 			continue
 		}
-		s.Equal("alice", event.Recipient, "a cells reveal is its learner's alone")
-		body, ok := event.Body.(session.CellsRevealedBody)
-		s.Require().True(ok)
+		s.Equal("alice", act.Recipient, "a cells reveal is its learner's alone")
+		body := perceived.Cells
+		s.Require().NotNil(body)
 		s.Empty(body.Props)
 		for _, region := range body.Regions {
 			if patched[region.ID] == nil {
@@ -163,9 +162,4 @@ func (s *KnowledgeSuite) TestCellsRevealAndObservationsSurviveTheSessionPath() {
 		s.ElementsMatch(region.Cells, got, "prior atlas plus reveals is the fresh atlas for %q", region.ID)
 	}
 	s.Subset(after.Atlas.Cells, after.View.VisibleCells, "seen now is a subset of what she knows")
-
-	replay, err := mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice", FromSeq: before.Seq + 1})
-	s.Require().NoError(err)
-	s.Equal(eventsFor(stream.published, "alice"), replay, "live and replay project the same stored cells payload")
-	s.Equal(replay[len(replay)-1].Seq, after.Seq)
 }

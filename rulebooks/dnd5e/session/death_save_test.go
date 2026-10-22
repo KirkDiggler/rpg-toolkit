@@ -81,8 +81,8 @@ func (f *deathSaveForbiddenIO) SaveCharacter(context.Context, *character.Data) e
 	return f.called("SaveCharacter")
 }
 
-func (f *deathSaveForbiddenIO) Publish(context.Context, []session.Event) error {
-	return f.called("Publish")
+func (f *deathSaveForbiddenIO) PublishActs(context.Context, []session.Act) error {
+	return f.called("PublishActs")
 }
 
 type deathSaveFixture struct {
@@ -105,10 +105,10 @@ func newDeathSaveFixture(t *testing.T, face int) *deathSaveFixture {
 		characters: newFakeCharacters(armedFighter("alice"), armedFighter("bob")),
 		stream:     &fakeStream{}, token: "opaque-save-token",
 	}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: f.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		Dice: literalDeathSaveDice{face: face, calls: &f.rolls}, TurnDriver: session.Pass{},
 		PresentationIDs: testPresentationIDs{value: f.token, calls: &f.ids},
-		Sessions:        f.sessions, Encounters: f.encounters, Characters: f.characters, Events: f.stream,
+		Sessions:        f.sessions, Encounters: f.encounters, Characters: f.characters,
 	})
 	require.NoError(t, err)
 	f.mgr = mgr
@@ -140,6 +140,28 @@ func (f *deathSaveFixture) makeDying(successes, failures int) {
 	f.stream.published = nil
 }
 
+// deathSaveDetail is a death_save beat's `death_save` detail.
+type deathSaveDetail struct {
+	Roll           int                      `json:"roll"`
+	Outcome        session.DeathSaveOutcome `json:"outcome"`
+	PresentationID string                   `json:"presentation_id"`
+	Calculation    *session.RollCalculation `json:"calculation"`
+}
+
+// deathSaves is every death_save beat in member's story, with its detail.
+func (f *deathSaveFixture) deathSaves(member string) []deathSaveDetail {
+	f.t.Helper()
+	var out []deathSaveDetail
+	for _, beat := range beatsNamed(storyBeats(f.t, f.mgr, "sess", member), string(encounter.OutcomeDeathSave)) {
+		var p struct {
+			DeathSave deathSaveDetail `json:"death_save"`
+		}
+		beat.decode(f.t, &p)
+		out = append(out, p.DeathSave)
+	}
+	return out
+}
+
 func (f *deathSaveFixture) declaration() session.Declaration {
 	f.t.Helper()
 	return currentDeclaration(f.t, f.mgr, "sess", "alice", session.VerbDeathSave)
@@ -155,8 +177,8 @@ func (f *deathSaveFixture) execute(id string) (*session.DeathSaveOutput, error) 
 func TestDeathSaveRejectsEmptyDeclarationBeforeAnyIO(t *testing.T) {
 	stores := &deathSaveForbiddenIO{}
 	rolls, ids := 0, 0
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
-		Sessions: stores, Encounters: stores, Characters: stores, Events: stores,
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: stores, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+		Sessions: stores, Encounters: stores, Characters: stores,
 		Dice:            literalDeathSaveDice{face: 10, calls: &rolls},
 		PresentationIDs: literalPresentationIDs{value: "must-not-generate", calls: &ids},
 		TurnDriver:      session.Pass{},
@@ -239,7 +261,6 @@ func TestDeathSaveIsNotOfferedToNonActiveDyingCharacter(t *testing.T) {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		Dice: testDice{}, TurnDriver: session.Pass{}, PresentationIDs: testPresentationIDs{},
 		Sessions: sessions, Encounters: encounters, Characters: characters,
-		Events: session.DiscardEvents{},
 	})
 	require.NoError(t, err)
 	launchOnClock(t, mgr, encounters, freeRoamDuelWorld(), []string{"alice", "bob"}, 0)
@@ -330,15 +351,14 @@ func TestDeathSaveOutcomesAndContinuations(t *testing.T) {
 			require.Equal(t, f.token, out.PresentationID)
 			require.NotNil(t, out.Calculation)
 			require.Equal(t, out.Roll, out.Calculation.Components[0].Dice.Subtotal)
-			require.Positive(t, out.Seq)
 			require.Equal(t, 1, f.rolls, "an accepted declaration rolls exactly once")
 			require.Equal(t, 1, f.ids, "an accepted declaration generates exactly one opaque token")
 			require.Contains(t, out.Saved.Written, "character:alice")
 			require.Contains(t, out.Saved.Written, "encounter:sess")
 			deathRecipients := map[string]bool{}
-			for _, event := range f.stream.published {
-				if event.Kind == session.EventDeathSave {
-					deathRecipients[event.Recipient] = true
+			for _, act := range f.stream.published {
+				if _, ok := act.Body.(session.DeathSaveAct); ok {
+					deathRecipients[act.Recipient] = true
 				}
 			}
 			require.Equal(t, map[string]bool{"alice": true, "bob": true, "skeleton": true},
@@ -391,68 +411,30 @@ func TestDeathSaveProjectsSourceQualifiedBaneCalculation(t *testing.T) {
 	require.Equal(t, 4, bane.Dice.Subtotal)
 	require.Equal(t, 0, out.Calculation.Total)
 
-	var eventBody session.DeathSaveBody
-	for _, event := range f.stream.published {
-		if event.Kind == session.EventDeathSave && event.Recipient == "alice" {
-			var ok bool
-			eventBody, ok = event.Body.(session.DeathSaveBody)
-			require.True(t, ok)
-		}
-	}
-	require.NotNil(t, eventBody.Calculation)
-	require.Equal(t, bane, eventBody.Calculation.Components[1])
+	told := f.deathSaves("alice")
+	require.Len(t, told, 1)
+	require.NotNil(t, told[0].Calculation)
+	require.Equal(t, bane, told[0].Calculation.Components[1])
 }
 
-func TestDeathSaveStoryAndResponseShareOpaqueFactsAcrossLocalSequences(t *testing.T) {
+// TestDeathSaveStoryAndResponseShareOpaqueFacts: the roller and a witness
+// read the same death save in their stories, and it states what the response
+// said — the opaque presentation token, the face, the outcome and the trace.
+func TestDeathSaveStoryAndResponseShareOpaqueFacts(t *testing.T) {
 	f := newDeathSaveFixture(t, 10)
 	f.makeDying(0, 0)
 
-	// Turn one already-persisted shared beat into an Alice-only beat and update
-	// Bob's cursor to the matching honest count. Their next shared beat then has
-	// different recipient-local numbers without an invalid cursor.
-	world := f.encounters.byID["sess"]
-	removed := false
-	for i := range world.Log.Entries {
-		audience := world.Log.Entries[i].Audience[:0]
-		for _, recipient := range world.Log.Entries[i].Audience {
-			if string(recipient) == "bob" && !removed {
-				removed = true
-				continue
-			}
-			audience = append(audience, recipient)
-		}
-		world.Log.Entries[i].Audience = audience
-		if removed {
-			break
-		}
-	}
-	require.True(t, removed)
-	bobCursor := f.sessions.byID["sess"].Streams["bob"]
-	require.Positive(t, bobCursor.Count)
-	bobCursor.Count--
-	f.sessions.byID["sess"].Streams["bob"] = bobCursor
-
 	out, err := f.execute(f.declaration().ID)
 	require.NoError(t, err)
-	deathEvents := map[string]session.Event{}
-	for _, event := range f.stream.published {
-		if event.Kind == session.EventDeathSave {
-			deathEvents[event.Recipient] = event
-		}
-	}
-	require.Len(t, deathEvents, 3)
-	actorBody, ok := deathEvents["alice"].Body.(session.DeathSaveBody)
-	require.True(t, ok)
-	witnessBody, ok := deathEvents["bob"].Body.(session.DeathSaveBody)
-	require.True(t, ok)
+	actor, witness := f.deathSaves("alice"), f.deathSaves("bob")
+	require.Len(t, actor, 1)
+	require.Len(t, witness, 1)
+	actorBody := actor[0]
 	require.Equal(t, f.token, actorBody.PresentationID)
-	require.Equal(t, actorBody, witnessBody)
+	require.Equal(t, actorBody, witness[0])
 	require.Equal(t, out.Roll, actorBody.Roll)
 	require.Equal(t, out.Outcome, actorBody.Outcome)
 	require.Equal(t, out.Calculation, actorBody.Calculation)
-	require.Equal(t, out.Seq, deathEvents["alice"].Seq)
-	require.NotEqual(t, deathEvents["alice"].Seq, deathEvents["bob"].Seq,
-		"recipient-local cursors may differ without changing correlation")
 }
 
 func TestDeathSaveRejectsStaleAndReplayBeforeEntropyOrMutation(t *testing.T) {
@@ -502,7 +484,7 @@ func TestDeathSaveRejectsInvalidGeneratedPresentationIDBeforeRoll(t *testing.T) 
 				Dice: literalDeathSaveDice{face: 10, calls: &f.rolls}, TurnDriver: session.Pass{},
 				PresentationIDs: literalPresentationIDs{value: token, calls: &f.ids},
 				Sessions:        f.sessions, Encounters: f.encounters,
-				Characters: f.characters, Events: f.stream,
+				Characters: f.characters,
 			})
 			require.NoError(t, err)
 
@@ -528,7 +510,7 @@ func TestDeathSavePartialWritePreventsRetry(t *testing.T) {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		Dice: literalDeathSaveDice{face: 10, calls: &f.rolls}, TurnDriver: session.Pass{},
 		PresentationIDs: testPresentationIDs{value: f.token, calls: &f.ids},
-		Sessions:        f.sessions, Encounters: failing, Characters: f.characters, Events: f.stream,
+		Sessions:        f.sessions, Encounters: failing, Characters: f.characters,
 	})
 	require.NoError(t, err)
 

@@ -17,7 +17,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -239,15 +238,13 @@ func bobTheDwarf() *character.Data {
 	}
 }
 
-// printStream shows the fan-out as it happens, one line per addressed event —
+// printStream shows the fan-out as it happens, one line per addressed act —
 // which is what a host would be shipping to each connected client.
 type printStream struct{ out *bytes.Buffer }
 
-func (p *printStream) Publish(_ context.Context, events []session.Event) error {
-	for _, e := range events {
-		var body map[string]any
-		_ = json.Unmarshal(e.Payload, &body)
-		fmt.Fprintf(p.out, "      → %-6s %-12s seq=%d %v\n", e.Recipient, e.Kind, e.Seq, body["beat"])
+func (p *printStream) PublishActs(_ context.Context, acts []session.Act) error {
+	for _, a := range acts {
+		fmt.Fprintf(p.out, "      → %-6s %-12s %s\n", a.Recipient, a.Family, a.Verb)
 	}
 	return nil
 }
@@ -265,7 +262,7 @@ func (opaquePresentationIDs) Generate() string {
 func drive(out *bytes.Buffer) error {
 	ctx := context.Background()
 
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Dice: loadedDice{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: &printStream{out: out}, Dice: loadedDice{},
 		PresentationIDs: opaquePresentationIDs{},
 		Sessions:        &memSessions{byID: map[string]*session.SessionData{}},
 		Encounters:      &memEncounters{byID: map[string]*encounter.EncounterData{}},
@@ -274,7 +271,6 @@ func drive(out *bytes.Buffer) error {
 		},
 		Seats:        &memSeats{byID: map[string]*session.SeatData{}},
 		Explorations: &memExplorations{byID: map[string]*session.ExplorationData{}},
-		Events:       &printStream{out: out},
 		// The workbench demonstrates verbs a human drives; nothing in it
 		// gives a monster a real behavior yet, so an unplayed member simply
 		// passes (rpg-toolkit#1162).
@@ -361,7 +357,7 @@ func drive(out *bytes.Buffer) error {
 	for _, step := range walked.Steps {
 		fmt.Fprintf(out, "   alice enters (%v,%v)\n", step.Position.X, step.Position.Y)
 	}
-	fmt.Fprintf(out, "   delivered %d events\n", walked.Delivery.Events)
+	fmt.Fprintf(out, "   delivered: %v\n", !walked.Delivery.Failed)
 
 	// SHE REACHES THE GATE UNSEEN, and that is a claim about LIGHT rather than
 	// about walls. The arch on row 1 is open, and an opening is an opening in
@@ -432,14 +428,12 @@ func drive(out *bytes.Buffer) error {
 	fmt.Fprintf(out, "   bob walks on regardless, %d step(s)\n", len(bobWalk.Steps))
 
 	fmt.Fprintln(out, "\n== bob's story ==")
-	story, err := mgr.Story(ctx, &session.StoryInput{Session: "crypt-run", Member: "bob"})
+	story, err := mgr.Acts(ctx, &session.ActsInput{Session: "crypt-run", Member: "bob"})
 	if err != nil {
 		return err
 	}
-	for _, entry := range story {
-		var body map[string]any
-		_ = json.Unmarshal(entry.Payload, &body)
-		fmt.Fprintf(out, "   seq=%-3d %v\n", entry.Seq, body["beat"])
+	for _, act := range story.Acts {
+		fmt.Fprintf(out, "   %-12s %s\n", act.Family, act.Verb)
 	}
 
 	fmt.Fprintln(out, "\n== the party leaves ==")

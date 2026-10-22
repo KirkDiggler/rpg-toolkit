@@ -5,7 +5,6 @@ package session_test
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -15,12 +14,12 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// failingStream refuses to deliver.
+// failingStream is an ActStream that refuses to deliver.
 type failingStream struct{ err error }
 
-func (f *failingStream) Publish(_ context.Context, _ []session.Event) error { return f.err }
+func (f *failingStream) PublishActs(_ context.Context, _ []session.Act) error { return f.err }
 
-// EventsTestSuite covers the multiplayer fan-out.
+// EventsTestSuite covers the multiplayer fan-out of the act stream.
 type EventsTestSuite struct {
 	suite.Suite
 
@@ -36,8 +35,8 @@ func (s *EventsTestSuite) SetupTest() {
 	s.encounters = newFakeEncounters()
 	s.characters = testCharacters()
 	s.stream = &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
-		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream,
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Acts: s.stream,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -71,8 +70,8 @@ func (s *EventsTestSuite) recipients() map[string]int {
 	return out
 }
 
-// TestOneBeatBecomesPerRecipientEvents pins that a single beat fans out as one
-// addressed event per recipient, and that the recipient list is whatever the
+// TestOneBeatBecomesPerRecipientActs pins that a single beat fans out as
+// addressed acts per recipient, and that the recipient list is whatever the
 // composition says it is.
 //
 // It does NOT pin perception scoping, because the composition does not do that
@@ -87,7 +86,7 @@ func (s *EventsTestSuite) recipients() map[string]int {
 // audiences, this fan-out inherits the fix with no change at all — which is
 // also why this test asserts on "whoever the composition addressed" rather than
 // on a hard-coded roster.
-func (s *EventsTestSuite) TestOneBeatBecomesPerRecipientEvents() {
+func (s *EventsTestSuite) TestOneBeatBecomesPerRecipientActs() {
 	s.start()
 
 	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
@@ -108,13 +107,13 @@ func (s *EventsTestSuite) TestOneBeatBecomesPerRecipientEvents() {
 			"when that is scoped by perception this becomes Zero")
 }
 
-// TestEventsAreAddressed pins that events are per-recipient rather than
+// TestActsAreAddressed pins that acts are per-recipient rather than
 // broadcast with a viewer list attached.
 //
-// A single event carrying "here is everyone who may see this" would put the
+// A single act carrying "here is everyone who may see this" would put the
 // filtering decision back on the host, and would hand every client the roster
 // of who else was watching.
-func (s *EventsTestSuite) TestEventsAreAddressed() {
+func (s *EventsTestSuite) TestActsAreAddressed() {
 	s.start()
 
 	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
@@ -124,9 +123,9 @@ func (s *EventsTestSuite) TestEventsAreAddressed() {
 	s.Require().NotEmpty(s.stream.published)
 
 	for _, e := range s.stream.published {
-		s.NotEmpty(e.Recipient, "every event names exactly one recipient")
+		s.NotEmpty(e.Recipient, "every act names exactly one recipient")
 		s.Equal("sess", e.Session)
-		s.NotZero(e.Seq, "and carries the sequence a client uses to detect gaps")
+		s.NotEmpty(e.ID, "and carries the id a client resumes after")
 	}
 }
 
@@ -134,13 +133,13 @@ func (s *EventsTestSuite) TestEventsAreAddressed() {
 //
 // Announcing a fact that failed to persist is the one mistake with no recovery:
 // the client is told the world changed, the world did not, and there is no
-// sequence gap to betray the difference. The client would never resync, because
+// missing id to betray the difference. The client would never resync, because
 // nothing looks missing.
 func (s *EventsTestSuite) TestNothingIsPublishedWhenTheSaveFails() {
 	encounters := &failingEncounters{fakeEncounters: newFakeEncounters()}
 	stream := &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
-		Sessions: newFakeSessions(), Encounters: encounters, Characters: testCharacters(), Events: stream,
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+		Sessions: newFakeSessions(), Encounters: encounters, Characters: testCharacters(), Acts: stream,
 	})
 	s.Require().NoError(err)
 
@@ -161,12 +160,12 @@ func (s *EventsTestSuite) TestNothingIsPublishedWhenTheSaveFails() {
 //
 // The world already changed by the time delivery is attempted, so failing the
 // verb would roll back nothing and would turn a transient stream outage into an
-// error the host has to interpret. The log is the truth and sequences are
-// gapless, so clients self-heal.
+// error the host has to interpret. The record is the truth, so clients
+// self-heal by catching up after the last act id they hold.
 func (s *EventsTestSuite) TestDeliveryFailureDoesNotFailTheVerb() {
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
-		Events: &failingStream{err: errBroken},
+		Acts: &failingStream{err: errBroken},
 	})
 	s.Require().NoError(err)
 
@@ -178,7 +177,6 @@ func (s *EventsTestSuite) TestDeliveryFailureDoesNotFailTheVerb() {
 	})
 	s.Require().NoError(err, "a stream outage must not fail the move")
 	s.True(out.Delivery.Failed, "but it is reported, not hidden")
-	s.NotZero(out.Delivery.Events, "including how many events went undelivered")
 
 	// And the move really happened.
 	status, err := mgr.Status(ctx, &session.StatusInput{Session: "sess"})
@@ -186,18 +184,13 @@ func (s *EventsTestSuite) TestDeliveryFailureDoesNotFailTheVerb() {
 	s.True(status.Open)
 }
 
-// TestDiscardingEventsStillReportsHonestly pins that the explicit no-op is a
-// real stream rather than a hole in the flow.
-//
-// DiscardEvents accepts the batch and succeeds, so the report says events were
-// delivered and nothing failed — which is true: they were handed to a stream
-// that chose to drop them. Reporting zero would be a lie about what the manager
-// did, and would make a genuinely silent run indistinguishable from a broken
-// one.
-func (s *EventsTestSuite) TestDiscardingEventsStillReportsHonestly() {
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
-		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
-		Events: session.DiscardEvents{},
+// TestDiscardingActsIsNotFailing pins that the explicit no-op is a real
+// stream rather than a hole in the flow: DiscardActs accepts the batch and
+// succeeds, so the report says nothing failed — which is true: the acts were
+// handed to a stream that chose to drop them.
+func (s *EventsTestSuite) TestDiscardingActsIsNotFailing() {
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Acts: session.DiscardActs{},
 	})
 	s.Require().NoError(err)
 
@@ -208,14 +201,13 @@ func (s *EventsTestSuite) TestDiscardingEventsStillReportsHonestly() {
 		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 2, Y: 1}},
 	})
 	s.Require().NoError(err)
-	s.NotZero(out.Delivery.Events, "the events were produced and handed over")
 	s.False(out.Delivery.Failed, "discarding is not failing")
 }
 
 // TestDepartingMemberHearsTheirOwnExit pins the roster choice.
 //
 // The fan-out addresses everyone who has ever been a member, not the current
-// roster. Using the live one would drop the single event the departing player
+// roster. Using the live one would drop the single act the departing player
 // most needs — the one saying they left.
 func (s *EventsTestSuite) TestDepartingMemberHearsTheirOwnExit() {
 	s.start()
@@ -226,92 +218,6 @@ func (s *EventsTestSuite) TestDepartingMemberHearsTheirOwnExit() {
 
 	s.NotZero(s.recipients()["alice"],
 		"a member who just left must still be told that they left")
-}
-
-// TestKindsComeFromTheBeatNotTheTag pins the discriminator choice.
-//
-// The composition's tags are coarser than its beats: "membership" covers both
-// joining and leaving, and "movement" covers both a step and a doorway
-// crossing. Switching on the tag would collapse pairs of opposite events into
-// one kind, and a client cannot narrate an arrival and a departure the same way.
-//
-// It also pins JoinedBody/ExitedBody (rpg-project#260 slice 4): every
-// recipient's Join event carries JoinedBody.Member == the joiner, and every
-// recipient's Exit event carries ExitedBody.Member == the leaver — not just
-// the actor's own copy, since the beat is fanned out to the whole audience by
-// one producer (projectEntry) and live/catch-up must agree.
-func (s *EventsTestSuite) TestKindsComeFromTheBeatNotTheTag() {
-	s.start()
-	ctx := context.Background()
-
-	_, err := s.mgr.Move(ctx, &session.MoveInput{
-		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 2, Y: 1}},
-	})
-	s.Require().NoError(err)
-	s.Contains(s.kinds(), session.EventMoved)
-
-	s.stream.published = nil
-	_, err = s.mgr.Join(ctx, &session.JoinInput{
-		Session: "sess", Member: "erin",
-		Position: spatial.Position{X: 3, Y: 3},
-	})
-	s.Require().NoError(err)
-	joined := s.kinds()
-	s.Contains(joined, session.EventJoined)
-	s.NotContains(joined, session.EventExited,
-		"joining and leaving share a tag and must not share a kind")
-
-	s.Require().NotEmpty(s.stream.published, "the join beat must have fanned out to someone")
-	for _, e := range s.stream.published {
-		if e.Kind != session.EventJoined {
-			continue
-		}
-		body, ok := e.Body.(session.JoinedBody)
-		s.Require().True(ok, "recipient %s: EventJoined must carry JoinedBody", e.Recipient)
-		s.Equal("erin", body.Member, "recipient %s: JoinedBody names the joiner", e.Recipient)
-	}
-
-	s.stream.published = nil
-	_, err = s.mgr.Exit(ctx, &session.ExitInput{Session: "sess", Member: "erin"})
-	s.Require().NoError(err)
-	exited := s.kinds()
-	s.Contains(exited, session.EventExited)
-	s.NotContains(exited, session.EventJoined)
-
-	s.Require().NotEmpty(s.stream.published, "the exit beat must have fanned out to someone")
-	for _, e := range s.stream.published {
-		if e.Kind != session.EventExited {
-			continue
-		}
-		body, ok := e.Body.(session.ExitedBody)
-		s.Require().True(ok, "recipient %s: EventExited must carry ExitedBody", e.Recipient)
-		s.Equal("erin", body.Member, "recipient %s: ExitedBody names the leaver", e.Recipient)
-	}
-}
-
-func (s *EventsTestSuite) kinds() []session.EventKind {
-	var out []session.EventKind
-	for _, e := range s.stream.published {
-		out = append(out, e.Kind)
-	}
-	return out
-}
-
-// TestPayloadIsCarriedIntact pins that the beat body survives the projection —
-// a client needs the detail, not merely the kind.
-func (s *EventsTestSuite) TestPayloadIsCarriedIntact() {
-	s.start()
-
-	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
-		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 2, Y: 1}},
-	})
-	s.Require().NoError(err)
-	s.Require().NotEmpty(s.stream.published)
-
-	var body map[string]any
-	s.Require().NoError(json.Unmarshal(s.stream.published[0].Payload, &body))
-	s.Equal("moved", body["beat"])
-	s.Equal("alice", body["member"])
 }
 
 func TestEventsSuite(t *testing.T) {

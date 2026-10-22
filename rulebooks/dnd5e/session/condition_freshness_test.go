@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 )
 
@@ -71,11 +72,13 @@ func TestUnchangedConditionsDoNotRecheck(t *testing.T) {
 // subject as changed.
 func sightedNaming(t *testing.T, mgr *session.Manager, watcher, subject string) int {
 	t.Helper()
-	story, err := mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: watcher})
-	require.NoError(t, err)
 	count := 0
-	for _, event := range story {
-		if body, ok := event.Body.(session.SightedBody); ok && slices.Contains(body.Changed, subject) {
+	for _, beat := range beatsNamed(storyBeats(t, mgr, "sess", watcher), encounter.BeatSighted) {
+		var body struct {
+			Changed []string `json:"changed"`
+		}
+		beat.decode(t, &body)
+		if slices.Contains(body.Changed, subject) {
 			count++
 		}
 	}

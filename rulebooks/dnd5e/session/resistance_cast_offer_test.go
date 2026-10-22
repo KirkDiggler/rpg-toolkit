@@ -17,6 +17,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -128,10 +129,9 @@ func (s *CastSuite) TestSpendingFinishesTheCastWithTheDieOnIt() {
 	})
 	s.Require().NoError(err)
 
-	saves := s.beats(session.EventSaved)
+	saves := s.beats(encounter.BeatSaved)
 	s.Require().Len(saves, 1)
-	saved, ok := saves[0].Body.(session.SavedBody)
-	s.Require().True(ok)
+	saved := savedOf(s.T(), saves[0])
 	s.Equal("fighter", saved.Saver)
 	s.Equal(9+4, saved.Total, "10 - 1 CHA plus the offered d4's own face")
 	s.True(saved.Succeeded, "13 beats Bane's own DC of 13")
@@ -163,7 +163,7 @@ func (s *CastSuite) TestAKeptOfferOnOneTargetLeavesTheNextTargetToRun() {
 	})
 	s.Require().NoError(err)
 	s.True(out.Posed, "fighter-a holds the die")
-	s.Empty(s.beats(session.EventSaved), "no verdict for anybody yet")
+	s.Empty(s.beats(encounter.BeatSaved), "no verdict for anybody yet")
 
 	rowA := s.reactRow("fighter-a")
 	s.Require().NotEmpty(rowA.ID)
@@ -177,21 +177,19 @@ func (s *CastSuite) TestAKeptOfferOnOneTargetLeavesTheNextTargetToRun() {
 	s.Empty(s.reactRow("fighter-a").ID, "fighter-a's window is closed")
 	rowB := s.reactRow("fighter-b")
 	s.Require().NotEmpty(rowB.ID, "fighter-b's own save posed in turn")
-	s.Empty(s.beats(session.EventSaved), "still no verdict — the cast has not finished")
+	s.Empty(s.beats(encounter.BeatSaved), "still no verdict — the cast has not finished")
 
 	_, err = s.mgr.React(context.Background(), &session.ReactInput{
 		Session: "sess", Member: "fighter-b", DeclarationID: rowB.ID, Answer: session.Take(""),
 	})
 	s.Require().NoError(err)
 
-	saves := s.beats(session.EventSaved)
+	saves := s.beats(encounter.BeatSaved)
 	s.Require().Len(saves, 2, "both targets' saves are now on the story, in caller order")
-	first, ok := saves[0].Body.(session.SavedBody)
-	s.Require().True(ok)
+	first := savedOf(s.T(), saves[0])
 	s.Equal("fighter-a", first.Saver)
 	s.Equal(9, first.Total, "fighter-a kept the die")
-	second, ok := saves[1].Body.(session.SavedBody)
-	s.Require().True(ok)
+	second := savedOf(s.T(), saves[1])
 	s.Equal("fighter-b", second.Saver)
 	s.Equal(11+3, second.Total, "fighter-b spent it: 12 - 1 CHA plus the offered d4")
 
@@ -217,10 +215,9 @@ func (s *CastSuite) TestKeepingFinishesTheCastWithoutIt() {
 	})
 	s.Require().NoError(err)
 
-	saves := s.beats(session.EventSaved)
+	saves := s.beats(encounter.BeatSaved)
 	s.Require().Len(saves, 1)
-	saved, ok := saves[0].Body.(session.SavedBody)
-	s.Require().True(ok)
+	saved := savedOf(s.T(), saves[0])
 	s.Equal(9, saved.Total, "no face joined it")
 	s.False(saved.Succeeded, "9 misses Bane's own DC of 13")
 
@@ -266,16 +263,18 @@ func (s *CastSuite) TestARecastThatStopsToAskTellsTheOldBreakThroughTellConcentr
 	s.Require().NoError(err)
 	s.Empty(areas, "the paid recast ended the cloud before the cast stopped to ask")
 
-	told := s.beats(session.EventCast, session.EventConcentrationEnded)
+	told := s.beats(encounter.BeatCast, encounter.BeatConcentrationEnded)
 	s.Require().NotEmpty(told)
 	last := told[len(told)-1]
-	s.Equal(session.EventConcentrationEnded, last.Kind, "the old break is told at the pause")
-	ended, ok := last.Body.(session.ConcentrationEndedBody)
-	s.Require().True(ok)
+	s.Equal(encounter.BeatConcentrationEnded, last.Beat, "the old break is told at the pause")
+	var ended struct {
+		Spell session.SpellRef `json:"spell"`
+	}
+	last.decode(s.T(), &ended)
 	s.Equal(refs.Spells.FogCloud().String(), ended.Spell.Ref, "and it is the cloud's")
-	for _, event := range told {
-		if cast, isCast := event.Body.(session.CastBody); isCast {
-			s.NotEqual(refs.Spells.Bane().String(), cast.Spell.Ref, "no Bane beat is told before the answer")
+	for _, beat := range told {
+		if beat.Beat == encounter.BeatCast {
+			s.NotEqual(refs.Spells.Bane().String(), castOf(s.T(), beat).Spell.Ref, "no Bane beat is told before the answer")
 		}
 	}
 
@@ -283,11 +282,10 @@ func (s *CastSuite) TestARecastThatStopsToAskTellsTheOldBreakThroughTellConcentr
 		Session: "sess", Member: "fighter", DeclarationID: s.reactRow("fighter").ID, Answer: session.Decline(),
 	})
 	s.Require().NoError(err)
-	after := s.beats(session.EventCast, session.EventConcentrationEnded)[len(told):]
+	after := s.beats(encounter.BeatCast, encounter.BeatConcentrationEnded)[len(told):]
 	s.Require().Len(after, 1, "the resume tells the cast and nothing about the cloud again")
-	cast, ok := after[0].Body.(session.CastBody)
-	s.Require().True(ok)
-	s.Equal(refs.Spells.Bane().String(), cast.Spell.Ref)
+	s.Equal(encounter.BeatCast, after[0].Beat)
+	s.Equal(refs.Spells.Bane().String(), castOf(s.T(), after[0]).Spell.Ref)
 }
 
 // TestASaveOfferInsideACastResumesAndTellsTheCastOnce: Bane at two allies, the
@@ -305,17 +303,15 @@ func (s *CastSuite) TestASaveOfferInsideACastResumesAndTellsTheCastOnce() {
 	})
 	s.Require().NoError(err)
 	s.Require().True(out.Posed, "control: fighter-a is asked about the die")
-	s.Empty(s.beats(session.EventCast), "the cast is not told at its pause")
+	s.Empty(s.beats(encounter.BeatCast), "the cast is not told at its pause")
 
 	_, err = s.mgr.React(context.Background(), &session.ReactInput{
 		Session: "sess", Member: "fighter-a", DeclarationID: s.reactRow("fighter-a").ID, Answer: session.Take(""),
 	})
 	s.Require().NoError(err)
 
-	casts := s.beats(session.EventCast)
+	casts := s.beats(encounter.BeatCast)
 	s.Require().Len(casts, 1, "one cast beat")
-	cast, ok := casts[0].Body.(session.CastBody)
-	s.Require().True(ok)
-	s.Equal([]string{"fighter-a", "fighter-b"}, cast.Targets, "naming every target, the paused one included")
-	s.Len(s.beats(session.EventSaved), 2, "each save told once")
+	s.Equal([]string{"fighter-a", "fighter-b"}, castOf(s.T(), casts[0]).Targets, "naming every target, the paused one included")
+	s.Len(s.beats(encounter.BeatSaved), 2, "each save told once")
 }

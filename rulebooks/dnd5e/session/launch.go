@@ -269,7 +269,7 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 	}
 	formed := make([]*Formed, 0, len(placed.Formed))
 	for _, bubble := range placed.Formed {
-		formed = append(formed, projectFormedFor(scope, firstPartyIn(in.Party, bubble), bubble))
+		formed = append(formed, projectFormed(bubble))
 	}
 	return &LaunchOutput{
 		Session:    in.Session,
@@ -279,20 +279,6 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 		Saved:      report,
 		Delivery:   delivery,
 	}, nil
-}
-
-// firstPartyIn is the party member, in seat order, whose own delivered
-// numbering a formed fight's Seq is reported in: the first one the fight
-// holds, or the first seat when it holds none of them.
-func firstPartyIn(party []string, bubble *encounter.FormedBubble) string {
-	for _, id := range party {
-		for _, member := range bubble.Order {
-			if string(member) == id {
-				return id
-			}
-		}
-	}
-	return party[0]
 }
 
 // validateLaunch refuses a launch that is wrong in itself, before any read: no

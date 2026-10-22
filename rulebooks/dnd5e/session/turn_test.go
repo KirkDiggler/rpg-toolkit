@@ -5,11 +5,11 @@ package session_test
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 )
 
@@ -151,8 +151,7 @@ func (s *TurnTestSuite) TestEndingATurnHandsItOn() {
 	s.Equal("alice", out.Next,
 		"the ogre has no player; TurnDriver passes its turn and the round wraps straight back to her")
 	s.True(out.RoundWrapped, "two in the fight, so the ogre's driven-through pass closes the round")
-	s.NotZero(out.Seq)
-	s.Equal([]string{"character:alice", "encounter:sess", "session:sess"}, out.Saved.Written)
+	s.Equal([]string{"character:alice", "encounter:sess"}, out.Saved.Written)
 
 	after, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
@@ -161,23 +160,10 @@ func (s *TurnTestSuite) TestEndingATurnHandsItOn() {
 
 	// The story carries both ends, independently addressed to their member —
 	// a client rendering "the ogre does nothing" reads it from here.
-	story, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice"})
-	s.Require().NoError(err)
 	var turnEnded, ogrePassed int
-	for _, entry := range story {
-		if entry.Kind != session.EventTurnEnded {
-			continue
-		}
-		var p struct {
-			Beat   string `json:"beat"`
-			Member string `json:"member"`
-		}
-		s.Require().NoError(json.Unmarshal(entry.Payload, &p))
-		if p.Beat != "turn-ended" {
-			continue
-		}
+	for _, beat := range beatsNamed(storyBeats(s.T(), s.mgr, "sess", "alice"), encounter.BeatTurnEnded) {
 		turnEnded++
-		if p.Member == "ogre" {
+		if beat.Fields["member"] == "ogre" {
 			ogrePassed++
 		}
 	}
@@ -273,7 +259,7 @@ func (s *TurnTestSuite) TestAPointerPassDrivesThroughTheSameAsAValue() {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: pointerPass{}, Sessions: sessions, Encounters: encounters,
-		Characters: testCharacters(), Events: session.DiscardEvents{},
+		Characters: testCharacters(),
 	})
 	s.Require().NoError(err)
 
@@ -295,13 +281,16 @@ func (s *TurnTestSuite) TestAPointerPassDrivesThroughTheSameAsAValue() {
 	s.True(out.RoundWrapped)
 }
 
+// TestTheTurnEndingReachesClients pins that the act stream carries the turn
+// ending live as a clock entry, and that no entry of the call goes out
+// undecoded.
 func (s *TurnTestSuite) TestTheTurnEndingReachesClients() {
 	s.fight()
 
 	stream := &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: testCharacters(), Events: stream,
+		Characters: testCharacters(),
 	})
 	s.Require().NoError(err)
 
@@ -311,12 +300,14 @@ func (s *TurnTestSuite) TestTheTurnEndingReachesClients() {
 	})
 	s.Require().NoError(err)
 
-	kinds := map[session.EventKind]int{}
-	for _, e := range stream.published {
-		kinds[e.Kind]++
+	turnsEnded := 0
+	for _, act := range stream.published {
+		s.Empty(act.Undecoded, "nothing in this verb goes out unread")
+		if entry, ok := act.Body.(session.ClockEntry); ok && entry.Mark == session.ClockTurnEnded {
+			turnsEnded++
+		}
 	}
-	s.Positive(kinds[session.EventTurnEnded], "the turn ending is a kind, not a mystery")
-	s.Zero(kinds[session.EventUnknown], "and nothing else in this verb is one either")
+	s.Positive(turnsEnded, "the turn ending reaches the stream")
 }
 
 // TestTurnCarriesParticipants pins rpg-toolkit#1137: a cold client reading

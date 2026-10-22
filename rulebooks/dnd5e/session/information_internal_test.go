@@ -53,7 +53,7 @@ func TestExecutionPathsNeverAttachInformation(t *testing.T) {
 			}}
 			mgr, err := NewManager(&Config{Record: DiscardRecord{}, Acts: DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 				Dice: &scriptedDice{}, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters,
-				Characters: characters, Events: DiscardEvents{},
+				Characters: characters,
 			})
 			require.NoError(t, err)
 			launchScene(t, mgr, scene{
@@ -347,7 +347,7 @@ func TestAffordFailsClosedOnInformation(t *testing.T) {
 			}}
 			mgr, err := NewManager(&Config{Record: DiscardRecord{}, Acts: DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 				Dice: &scriptedDice{}, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters,
-				Characters: characters, Events: DiscardEvents{},
+				Characters: characters,
 			})
 			require.NoError(t, err)
 			launchScene(t, mgr, scene{
