@@ -403,17 +403,11 @@ func (s *kingScene) heardKind(member encounter.MemberID, kind string) bool {
 }
 
 // troupeRoute is one way a hero comes to the captain knowing the feast, and
-// on from the gate into the yard.
+// on from the gate into the yard with the hall door open.
 type troupeRoute struct {
 	name         string
 	toTheCaptain func(t *testing.T) *kingScene
 	intoTheYard  func(s *kingScene)
-
-	// crossesTheHall is whether the route walks on across the great hall
-	// past the king. The cook's route does; the stranger's stops in the
-	// yard, because the hall is the same hall whichever way the feast was
-	// learned, and walking it twice is minutes of the package's race budget.
-	crossesTheHall bool
 }
 
 // troupeRoutes are the two ways the feast is learned: the cook's gossip in
@@ -433,8 +427,7 @@ var troupeRoutes = []troupeRoute{
 		},
 		// The walk out of the kitchen left the hall door open, and the walk
 		// to the captain opened the gate.
-		intoTheYard:    func(*kingScene) {},
-		crossesTheHall: true,
+		intoTheYard: func(*kingScene) {},
 	},
 	{
 		name: "the stranger's word",
@@ -448,16 +441,16 @@ var troupeRoutes = []troupeRoute{
 		intoTheYard: func(s *kingScene) {
 			s.stepTo(beneathTheGate)
 			s.open(kingGateDoor)
-			s.walkTo(castleCell(0, 3))
+			s.walkTo(castleCell(0, -6))
+			s.open(kingHallDoor)
 		},
 	},
 }
 
 // TestMadKingTroupe is the troupe: the cook's gossip, or the stranger before
 // the gate, teaches the hero that there is a feast tonight, the hero walks to
-// the gate and passes as the feast's players, and walks on past it — by the
-// cook's route on across the great hall — with the garrison civil the whole
-// way and nobody having swung at anybody.
+// the gate and passes as the feast's players, and walks on into the great hall — with the garrison
+// civil the whole way and nobody having swung at anybody.
 func TestMadKingTroupe(t *testing.T) {
 	t.Parallel()
 	for _, route := range troupeRoutes {
@@ -485,37 +478,35 @@ func TestMadKingTroupe(t *testing.T) {
 				require.Zero(t, s.seenRegions()[throneRoom], "%s, the hero sees no cell of the throne room", where)
 				s.unseenByTheKing(where)
 			}
-			if route.crossesTheHall {
-				s.walkTo(castleCell(0, -6))
-				t.Run("the party crosses the hall unseen by the king", func(t *testing.T) {
-					here, _ := s.enc.RegionAt(s.at(hero))
-					require.Equal(t, courtyard, here, "precondition: the hero stands on the yard side of the hall door")
-					require.LessOrEqual(t, s.enc.Distance(s.at(hero), castleCell(0, -6)), 1.0, "precondition: at the hall door")
-					unseen("at the hall door")
+			s.walkTo(castleCell(0, -6))
+			t.Run("the party crosses the hall unseen by the king", func(t *testing.T) {
+				here, _ := s.enc.RegionAt(s.at(hero))
+				require.Equal(t, courtyard, here, "precondition: the hero stands on the yard side of the hall door")
+				require.LessOrEqual(t, s.enc.Distance(s.at(hero), castleCell(0, -6)), 1.0, "precondition: at the hall door")
+				unseen("at the hall door")
 
-					middle := castleCell(0, -12)
-					s.walkTo(middle)
-					require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "the hero walks into the hall and into no fight")
-					hall, _ := s.enc.RegionAt(middle)
-					here, _ = s.enc.RegionAt(s.at(hero))
-					require.Equal(t, hall, here, "precondition: the hero is in the hall")
-					require.LessOrEqual(t, s.enc.Distance(s.at(hero), middle), 1.0, "precondition: beside its middle")
-					unseen("in the middle of the hall")
+				middle := castleCell(0, -12)
+				s.walkTo(middle)
+				require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "the hero walks into the hall and into no fight")
+				hall, _ := s.enc.RegionAt(middle)
+				here, _ = s.enc.RegionAt(s.at(hero))
+				require.Equal(t, hall, here, "precondition: the hero is in the hall")
+				require.LessOrEqual(t, s.enc.Distance(s.at(hero), middle), 1.0, "precondition: beside its middle")
+				unseen("in the middle of the hall")
 
-					hallWest := castleCell(-3, -11)
-					s.walkTo(hallWest)
-					require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "the hero walks on across the hall and into no fight")
-					require.LessOrEqual(t, s.enc.Distance(s.at(hero), hallWest), 1.0, "precondition: beside the hall's west side")
-					unseen("on the hall's west side")
-				})
-				s.walkTo(castleCell(-6, -10))
-			}
+				hallWest := castleCell(-3, -11)
+				s.walkTo(hallWest)
+				require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "the hero walks on across the hall and into no fight")
+				require.LessOrEqual(t, s.enc.Distance(s.at(hero), hallWest), 1.0, "precondition: beside the hall's west side")
+				unseen("on the hall's west side")
+			})
+			s.walkTo(castleCell(-6, -10))
 
 			// THE GATE'S HALF, AND ONLY IT. A loyalist sighting would be a fight the
 			// disguise never covered (§1), and the keep stays behind its shut door,
 			// so this subtest asserts the garrison and says nothing either way about
 			// the keep.
-			t.Run("the party came through the gate", func(t *testing.T) {
+			t.Run("the party came through the gate and into the hall", func(t *testing.T) {
 				here, ok := s.enc.RegionAt(s.at(hero))
 				require.True(t, ok)
 				require.NotEqual(t, gatehouse, here, "the hero is past the gate")

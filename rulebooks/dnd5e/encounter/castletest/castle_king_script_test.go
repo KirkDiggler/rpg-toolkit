@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package dungeonspec_test
+package castletest
 
 // castle_king_script_test.go is THE QA CASTLE'S SCRIPT (rpg-project#639): the
 // castle is the standing QA script, and each piece of it the content stages is
@@ -386,12 +386,84 @@ func TestMadKingScriptTheTroupeNeedsTheFeast(t *testing.T) {
 
 // TestMadKingScriptASneakWindowAtTheDoor is piece 4: the gate patrol stands
 // at its door posts watching the cell under the gate, then at its beat posts
-// with its back to it. The window is the beat: a hero who declares behind the
+// with its back to it. Every loop of the patrol watches the cell under the
+// gate and then leaves it unwatched for two rounds running. The window is the
+// beat: a hero who declares behind the
 // corner and crosses to the gate then is rolled against by nobody, and no
 // zone holds the cell under the gate; the same crossing while the door posts
 // are kept is rolled against both gate guards, whose zones both hold it.
 func TestMadKingScriptASneakWindowAtTheDoor(t *testing.T) {
 	t.Parallel()
+
+	t.Run("every loop the cell under the gate is watched, then unwatched two rounds running", func(t *testing.T) {
+		t.Parallel()
+		s := openTheScript(t, partyStart(t), scriptStealth())
+		s.stepTo(besideTheCorner)
+		s.declare(hero)
+
+		// watch is one round's reading of the cell under the gate: whether
+		// each gate guard's zone holds it.
+		type watch struct{ gate1, gate2 bool }
+		watched := func() watch {
+			var w watch
+			for _, z := range zonesOf(t, s.enc, hero) {
+				in := cellSet(z.Cells)[beneathTheGate]
+				switch z.Watcher {
+				case kingGate1:
+					w.gate1 = in
+				case kingGate2:
+					w.gate2 = in
+				}
+			}
+			return w
+		}
+
+		// A loop begins on the round both gate guards come to their door
+		// posts, and runs to the next such round. The rounds before the first
+		// arrival are no loop. Two whole loops are enough to show the window
+		// comes round again.
+		var loops [][]watch
+		var current []watch
+		wasAtTheDoor := false
+		beside := castleCell(-4, 8)
+		for round := 0; round < 20 && len(loops) < 2; round++ {
+			atTheDoor := s.atPosts(westDoorPost, eastDoorPost)
+			if atTheDoor && !wasAtTheDoor {
+				if current != nil {
+					loops = append(loops, current)
+					if len(loops) == 2 {
+						break
+					}
+				}
+				current = []watch{}
+			}
+			wasAtTheDoor = atTheDoor
+			if current != nil {
+				current = append(current, watched())
+			}
+			start := s.enc.ToData().Clock.HighWater
+			require.True(t, s.pace(besideTheCorner, beside, 12, func() bool { return s.enc.ToData().Clock.HighWater > start }),
+				"a round passes")
+		}
+		require.GreaterOrEqual(t, len(loops), 2, "the patrol walks whole loops")
+
+		for i, loop := range loops {
+			both, run, longest := false, 0, 0
+			for _, w := range loop {
+				if w.gate1 && w.gate2 {
+					both = true
+				}
+				if !w.gate1 && !w.gate2 {
+					run++
+					longest = max(longest, run)
+				} else {
+					run = 0
+				}
+			}
+			require.True(t, both, "loop %d: some round both gate guards watch the cell under the gate", i)
+			require.GreaterOrEqual(t, longest, 2, "loop %d: two rounds running neither does: the window", i)
+		}
+	})
 
 	// dash declares the hero behind the corner once both gate guards dwell on
 	// the given posts, then walks it to the cell under the gate.
