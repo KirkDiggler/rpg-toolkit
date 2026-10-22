@@ -56,9 +56,10 @@ var (
 	// waits in the open for the patrol to turn.
 	besideTheCorner = castleCell(-3, 8)
 
-	// theDash is the way from the corner to the cell under the gate, a step
-	// at a time, along the gate wall.
-	theDash = []spatial.Position{castleCell(-3, 8), castleCell(-2, 8), castleCell(-1, 7), castleCell(0, 7)}
+	// theDash is the way from the corner to the cell under the gate, one
+	// adjacent cell at a time (Step checks no adjacency; the walk does): out
+	// below the corner wall's end, then along the gate wall.
+	theDash = []spatial.Position{castleCell(-3, 8), castleCell(-2, 8), castleCell(-2, 7), castleCell(-1, 7), castleCell(0, 7)}
 
 	// pastTheGate is the courtyard cell under the gate, past the shut door: a
 	// walk toward it ends beneath the gate.
@@ -128,10 +129,12 @@ func (s *kingScene) stepTo(to spatial.Position) {
 	require.Equal(s.t, to, s.at(hero))
 }
 
-// pace walks the hero out and back between two cells, a cell per step, until
-// a condition holds or the steps run out, and reports whether it held.
+// pace walks the hero out and back between two adjacent cells, a cell per
+// step, until a condition holds or the steps run out, and reports whether it
+// held.
 func (s *kingScene) pace(a, b spatial.Position, steps int, until func() bool) bool {
 	s.t.Helper()
+	require.Equal(s.t, 1.0, s.enc.Distance(a, b), "pace walks between adjacent cells")
 	for i := 0; i < steps; i++ {
 		if until() {
 			return true
@@ -410,7 +413,10 @@ func TestMadKingScriptASneakWindowAtTheDoor(t *testing.T) {
 		require.False(t, judged, "nor the captain")
 
 		snuck := len(s.beatsOf(hero, encounter.BeatSnuck))
-		for _, cell := range theDash {
+		for i, cell := range theDash {
+			if i > 0 {
+				require.Equal(t, 1.0, s.enc.Distance(theDash[i-1], cell), "the dash steps to an adjacent cell")
+			}
 			_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: cell})
 			require.NoError(t, err)
 			require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "no fight formed")
@@ -564,7 +570,7 @@ func TestMadKingScriptOpeningTheGateBringsTheFarRoom(t *testing.T) {
 		}
 		start := s.enc.ToData().Clock.HighWater
 		for !closer() && s.enc.ToData().Clock.HighWater < start+3 && clockKind(t, s.enc, hero) == encounter.ClockWorld {
-			s.pace(beneathTheGate, castleCell(-1, 8), 1, func() bool { return false })
+			s.pace(beneathTheGate, castleCell(-1, 7), 1, func() bool { return false })
 		}
 		require.True(t, closer(), "both walked toward the gate within three world rounds")
 	}
