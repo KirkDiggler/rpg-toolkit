@@ -82,7 +82,7 @@ func (s *ActFoldSuite) TestFoldWalkWithMidWalkReaction() {
 		s.step(walk, "gate-1", e),
 	}
 
-	acts := foldActs("sess", "fighter", entries)
+	acts := foldActs("sess", "fighter", everyone(), entries)
 
 	s.Require().Len(acts, 3)
 	first, reaction, second := acts[0], acts[1], acts[2]
@@ -134,6 +134,16 @@ func (s *ActFoldSuite) TestResumeAfterASegmentFoldsTheSameSuffix() {
 	}
 }
 
+// everyone is a view that sees every member these fixtures name, so a test
+// of the fold's shape is not also a test of the perception filter.
+func everyone() *viewState {
+	v := newView()
+	for _, id := range []string{"alice", "bob", "cleric", "cultist", "fighter", "captain", "gate-1"} {
+		v.seen[id] = true
+	}
+	return v
+}
+
 // orEmpty reads nil and empty alike, so a suffix compares by its acts.
 func orEmpty(acts []Act) []Act {
 	if len(acts) == 0 {
@@ -150,8 +160,8 @@ func (s *ActFoldSuite) TestPerceptionStaysPerObserver() {
 	sighted := s.beat(walk, map[string]any{"beat": encounter.BeatSighted, "gained": []string{"gate-1"}})
 	second := s.step(walk, "alice", cell(2, 0))
 
-	alice := foldActs("sess", "alice", []record.Entry{first, sighted, second})
-	bob := foldActs("sess", "bob", []record.Entry{first, second})
+	alice := foldActs("sess", "alice", everyone(), []record.Entry{first, sighted, second})
+	bob := foldActs("sess", "bob", everyone(), []record.Entry{first, second})
 
 	s.Require().Len(alice, 3)
 	s.Equal(FamilyPerception, alice[1].Family)
@@ -184,7 +194,7 @@ func (s *ActFoldSuite) TestFoldMissAndWarded() {
 		}),
 	}
 
-	acts := foldActs("sess", "alice", entries)
+	acts := foldActs("sess", "alice", everyone(), entries)
 
 	s.Require().Len(acts, 2)
 	missed := acts[0].Body.(AttackAct)
@@ -210,7 +220,7 @@ func (s *ActFoldSuite) TestFoldMissAndWarded() {
 // TestFoldDoorNamesActor is Law 7 for the door: the door beat's actor
 // is the act's By, and an unattributed change names nobody.
 func (s *ActFoldSuite) TestFoldDoorNamesActor() {
-	acts := foldActs("sess", "alice", []record.Entry{
+	acts := foldActs("sess", "alice", everyone(), []record.Entry{
 		s.beat("open_door:01HZZZZZZZZZZZZZZZZZZZDOOR", map[string]any{
 			"beat": encounter.BeatDoor, "door": "gatehouse-door", "state": "open", "actor": "alice",
 		}),
@@ -278,7 +288,7 @@ func (s *ActFoldSuite) TestActsSharingAnIDAreOneDeliveryUnit() {
 	tick := s.beat("", map[string]any{"beat": encounter.BeatTick, "tick": 4})
 	entries := []record.Entry{rested, tick}
 
-	acts := foldActs("sess", "cleric", entries)
+	acts := foldActs("sess", "cleric", everyone(), entries)
 
 	s.Require().Len(acts, 3)
 	s.IsType(RestAct{}, acts[0].Body)
@@ -295,7 +305,7 @@ func (s *ActFoldSuite) TestActsSharingAnIDAreOneDeliveryUnit() {
 // TestAnUnreadableBeatFailsOnlyItsEntry is R22's spirit: one bad payload is
 // one marked entry, and the fold goes on.
 func (s *ActFoldSuite) TestAnUnreadableBeatFailsOnlyItsEntry() {
-	acts := foldActs("sess", "alice", []record.Entry{
+	acts := foldActs("sess", "alice", everyone(), []record.Entry{
 		s.beat("attack:01HZZZZZZZZZZZZZZZZZZZZBAD", map[string]any{
 			"beat": string(encounter.OutcomeStruck), "actor": "alice", "targets": "not a list",
 		}),
@@ -322,7 +332,7 @@ func (s *ActFoldSuite) TestRollCarriesAdvantageSources() {
 		"advantage_sources":    []map[string]string{{"source_ref": "dnd5e:conditions:hidden", "source_id": "fighter"}},
 		"disadvantage_sources": []map[string]string{{"source_ref": "dnd5e:conditions:frightened"}},
 	})
-	acts := foldActs("sess", "fighter", []record.Entry{swing})
+	acts := foldActs("sess", "fighter", everyone(), []record.Entry{swing})
 	s.Require().Len(acts, 1)
 	attack, ok := acts[0].Body.(AttackAct)
 	s.Require().True(ok)
@@ -392,7 +402,7 @@ func (s *ActFoldSuite) TestTheKeepWinsOverRetiredSourceKeys() {
 		"advantage_sources":    []map[string]string{{"source_ref": "dnd5e:conditions:hidden", "source_id": "alice"}},
 		"disadvantage_sources": []map[string]string{{"source_ref": "dnd5e:conditions:frightened"}},
 	})
-	acts := foldActs("sess", "alice", []record.Entry{swing})
+	acts := foldActs("sess", "alice", everyone(), []record.Entry{swing})
 	s.Require().Len(acts, 1)
 	s.Require().Empty(acts[0].Undecoded)
 	attack, ok := acts[0].Body.(AttackAct)
@@ -525,7 +535,7 @@ func (s *ActFoldSuite) TestRevealedDoorwaysNameTheirDoor() {
 			"beat": encounter.BeatConcealmentRevealed, "concealment": "concealed-vault",
 			"doors": []map[string]any{{"door": "concealed-vault/vault-door", "state": "closed", "doorways": []map[string]any{doorway}}},
 		})
-		acts := foldActs("sess", "fighter", []record.Entry{e})
+		acts := foldActs("sess", "fighter", everyone(), []record.Entry{e})
 		s.Require().Len(acts, 1)
 		p, ok := acts[0].Body.(Perception)
 		s.Require().True(ok, "%T", acts[0].Body)
@@ -561,7 +571,7 @@ func (s *ActFoldSuite) TestCastActivationCarriesItsSpell() {
 		}),
 	}
 
-	acts := foldActs("sess", "fighter", entries)
+	acts := foldActs("sess", "fighter", everyone(), entries)
 
 	// The result CONTINUES the cast in a later segment; it never absorbs
 	// into the open CastAct, which would replace the cast's body and drop
@@ -608,7 +618,7 @@ func (s *ActFoldSuite) TestStateEntriesNameTheirSource() {
 		}),
 	}
 
-	acts := foldActs("sess", "fighter", entries)
+	acts := foldActs("sess", "fighter", everyone(), entries)
 
 	s.Require().Len(acts, 2)
 	ended, ok := acts[0].Body.(StateChange)

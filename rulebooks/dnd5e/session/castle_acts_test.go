@@ -447,35 +447,10 @@ func Example_theGatehouseActs() {
 	// speak        perception   alice hears voice
 	// speak        clock        tick 1
 	// time         table_answer captain answers time with "hold", no roll
-	// time         table_answer cook answers time with "hold", rolled 1 of 100
 	// time         table_answer gate-1 answers time with "toward", rolled 1 of 50
 	// move         act 1        gate-1 walks (-7,9)
 	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
 	// move         act 1        gate-2 walks (-2,9) (-1,9)
-	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
-	// move         act 1        hall-1 walks (13,-11) (12,-11) (11,-11) (10,-11) (9,-11) (8,-11)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
-	// move         act 1        keep-1 walks (7,-19)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
-	// move         act 1        keep-1 walks (7,-20) (7,-21)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
-	// move         act 1        keep-1 walks (6,-21) (5,-21)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
-	// move         act 1        keep-1 walks (5,-20)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
-	// move         act 1        keep-2 walks (15,-19) (16,-19)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
-	// move         act 1        keep-2 walks (16,-20) (16,-21)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
-	// move         act 1        keep-2 walks (15,-21) (14,-21)
-	// time         table_answer king answers time with "hold", rolled 1 of 50
-	// time         table_answer prisoner-1 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-2 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-3 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-4 answers time with "hold", rolled 1 of 100
-	// time         table_answer scullion answers time with "hold", rolled 1 of 100
-	// time         table_answer sergeant answers time with "hold", rolled 1 of 100
-	// time         table_answer turnkey answers time with "hold", rolled 1 of 100
 	// -- alice tells him again --
 	// speak        act 1        alice to captain, "stand-aside" (intimidation): rolled 1d20+3 = 8, missed 14
 	// speak        state        garrison and party turn hostile
@@ -500,37 +475,8 @@ func Example_theGatehouseActs() {
 	// end_turn     clock        captain's turn ends, gate-2's begins
 	// time         table_answer gate-2 answers time with "fact", rolled 1 of 200
 	// time         perception   alice hears voice
-	// time         clock        reserve-1 arrives (monster)
-	// time         clock        reserve-2 arrives (monster)
 	// end_turn     clock        gate-2's turn ends, alice's begins
 	// end_turn     clock        tick 2
-	// time         table_answer cook answers time with "hold", rolled 1 of 100
-	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
-	// move         act 1        hall-1 walks (7,-11) (6,-11) (6,-12)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
-	// move         act 1        keep-1 walks (4,-19)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
-	// move         act 1        keep-1 walks (5,-19) (6,-19) (7,-19)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
-	// move         act 1        keep-1 walks (7,-20) (7,-21)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
-	// move         act 1        keep-2 walks (14,-20) (13,-19)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
-	// move         act 1        keep-2 walks (14,-19) (15,-19) (16,-19)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
-	// move         act 1        keep-2 walks (16,-20)
-	// time         table_answer king answers time with "hold", rolled 1 of 50
-	// time         table_answer prisoner-1 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-2 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-3 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-4 answers time with "hold", rolled 1 of 100
-	// time         table_answer reserve-1 answers time with "toward", rolled 1 of 300
-	// move         act 1        reserve-1 walks (-19,-1) (-18,-2) (-17,-3) (-16,-4) (-15,-5) (-14,-6)
-	// time         table_answer reserve-2 answers time with "toward", rolled 1 of 300
-	// move         act 1        reserve-2 walks (-19,3) (-18,2) (-17,1) (-16,0) (-15,-1) (-14,-2)
-	// time         table_answer scullion answers time with "hold", rolled 1 of 100
-	// time         table_answer sergeant answers time with "hold", rolled 1 of 100
-	// time         table_answer turnkey answers time with "hold", rolled 1 of 100
 	// -- alice falls back past the captain --
 	// move         reaction     captain swings Longsword at alice: hit, rolled 1d20+5 = 20, beat 12, 3 damage (Opportunity Attack)
 	// move         perception   alice hears clang

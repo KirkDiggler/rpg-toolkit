@@ -219,7 +219,7 @@ func actsAfter(session, recipient string, entries []record.Entry, afterID string
 		}
 	}
 	var out []Act
-	for _, a := range foldActs(session, recipient, entries[start:]) {
+	for _, a := range foldActs(session, recipient, seedView(recipient, entries[:start]), entries[start:]) {
 		if a.ID > afterID {
 			out = append(out, a)
 		}
@@ -228,15 +228,17 @@ func actsAfter(session, recipient string, entries []record.Entry, afterID string
 }
 
 // foldActs folds one recipient's entries, in record order, into act
-// segments. Every entry yields its pieces (act_family.go); a piece either
-// extends the segment the previous piece left open or starts its own.
-func foldActs(session, recipient string, entries []record.Entry) []Act {
-	f := &fold{session: session, recipient: recipient, segments: map[string]int{}, last: map[string]ActBody{}}
+// segments, keeping only what the recipient perceives (act_filter.go) from
+// the view they begin with. Every entry yields its pieces (act_family.go); a
+// delivered piece either extends the segment the previous one left open or
+// starts its own.
+func foldActs(session, recipient string, view *viewState, entries []record.Entry) []Act {
+	f := &fold{
+		session: session, recipient: recipient, view: view,
+		segments: map[string]int{}, last: map[string]ActBody{}, own: map[string]bool{}, opened: map[string]bool{},
+	}
 	for _, e := range entries {
-		tag := e.Tags[encounter.ActTag]
-		for _, p := range piecesOf(recipient, tag, e.Payload) {
-			f.add(e, tag, p)
-		}
+		f.entry(e)
 	}
 	return f.out
 }
@@ -253,26 +255,150 @@ type fold struct {
 	// last is each act tag's most recent FamilyAct body, which a new segment
 	// of the same act continues from.
 	last map[string]ActBody
+
+	// view is what the recipient perceives at the current entry.
+	view *viewState
+	// opened marks each act tag whose first entry the fold has read; own
+	// marks those whose first entry was the recipient's — the acts they
+	// opened.
+	opened, own map[string]bool
+	// held are pieces of members not yet in view, waiting for a sighting
+	// later in their act (act_filter.go, walking into view).
+	held []heldPiece
 }
 
-// add places one piece of entry e.
-func (f *fold) add(e record.Entry, tag string, p piece) {
-	if f.open && tag != "" && len(f.out) > 0 {
-		prev := &f.out[len(f.out)-1]
-		into := p.family
-		if p.into != "" {
-			into = p.into
-		}
-		if prev.Act == tag && prev.Family == into && p.absorb != nil && prev.Body != nil {
-			if body, ok := p.absorb(prev.Body); ok {
-				prev.Body = body
-				prev.ID, prev.At = e.ID, e.At
-				f.last[tag] = body
-				return
+// heldPiece is one piece waiting to learn whether its subject comes into view.
+type heldPiece struct {
+	entry   record.Entry
+	tag     string
+	piece   piece
+	subject string
+}
+
+// entry filters and folds one entry.
+func (f *fold) entry(e record.Entry) {
+	tag := e.Tags[encounter.ActTag]
+	pieces := piecesOf(f.recipient, tag, e.Payload)
+	f.settle(tag, pieces)
+	for _, p := range pieces {
+		if tag != "" && !f.opened[tag] {
+			f.opened[tag] = true
+			s := Party{}
+			if p.body != nil {
+				s = subjectOf(p.body)
 			}
+			f.own[tag] = s.Kind == PartyMember && s.ID == f.recipient
+		}
+		if f.absorb(e, tag, p) {
+			continue // part of an act the recipient is already receiving
+		}
+		v := f.view.judge(f.recipient, f.own[tag], p)
+		if v == deliver {
+			f.start(e, tag, p)
+			continue
+		}
+		// AN UNDELIVERED PART BREAKS WHAT THE RECIPIENT HOLDS OF THE ACT: a
+		// walk seen again after steps they did not see starts where they see
+		// it, never from the last cell they saw.
+		if p.family == FamilyAct {
+			delete(f.last, tag)
+		}
+		if v == hold && tag != "" {
+			f.held = append(f.held, heldPiece{entry: e, tag: tag, piece: p, subject: heldSubject(p.body)})
 		}
 	}
+	f.view.observe(f.recipient, e.Payload)
+	f.release(e, tag)
+}
 
+// settle drops the held pieces this entry ends the wait for: it is outside
+// their act, or it is their subject's next step.
+func (f *fold) settle(tag string, pieces []piece) {
+	if len(f.held) == 0 {
+		return
+	}
+	stepper := ""
+	for _, p := range pieces {
+		if w, ok := p.body.(WalkAct); ok {
+			stepper = w.Mover.ID
+		}
+	}
+	kept := f.held[:0]
+	for _, h := range f.held {
+		if h.tag == tag && h.subject != stepper {
+			kept = append(kept, h)
+		}
+	}
+	f.held = kept
+}
+
+// release delivers, after sighting e, the held pieces of its act whose
+// subject it gains — under e's id, since they now follow it.
+func (f *fold) release(e record.Entry, tag string) {
+	gained := gains(e.Payload)
+	if len(gained) == 0 || len(f.held) == 0 {
+		return
+	}
+	kept := f.held[:0]
+	for _, h := range f.held {
+		if h.tag != tag || !contains(gained, h.subject) {
+			kept = append(kept, h)
+			continue
+		}
+		at := h.entry
+		at.ID, at.At = e.ID, e.At
+		if !f.absorb(at, h.tag, h.piece) {
+			f.start(at, h.tag, h.piece)
+		}
+	}
+	f.held = kept
+}
+
+// heldSubject is the member a held piece waits to see.
+func heldSubject(body ActBody) string {
+	switch b := body.(type) {
+	case WalkAct:
+		return b.Mover.ID
+	case ClockEntry:
+		switch {
+		case b.Arrival != nil:
+			return b.Arrival.ID
+		case b.Departure != nil:
+			return b.Departure.Member.ID
+		default:
+			return b.Member.ID
+		}
+	default:
+		return ""
+	}
+}
+
+// absorb folds piece p of entry e into the open segment when it extends it,
+// and reports whether it did.
+func (f *fold) absorb(e record.Entry, tag string, p piece) bool {
+	if !f.open || tag == "" || len(f.out) == 0 {
+		return false
+	}
+	prev := &f.out[len(f.out)-1]
+	into := p.family
+	if p.into != "" {
+		into = p.into
+	}
+	if prev.Act != tag || prev.Family != into || p.absorb == nil || prev.Body == nil {
+		return false
+	}
+	body, ok := p.absorb(prev.Body)
+	if !ok {
+		return false
+	}
+	prev.Body = body
+	prev.ID, prev.At = e.ID, e.At
+	f.last[tag] = body
+	return true
+}
+
+// start places piece p of entry e as an Act of its own.
+func (f *fold) start(e record.Entry, tag string, p piece) {
 	verb := ""
 	if i := strings.IndexByte(tag, ':'); i > 0 {
 		verb = tag[:i]
