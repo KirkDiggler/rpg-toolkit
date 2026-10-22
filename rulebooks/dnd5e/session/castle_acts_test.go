@@ -5,7 +5,10 @@ package session_test
 
 // castle_acts_test.go is E3's castle check (rpg-project#629): the mad king's
 // gatehouse played through the session seam, and every recipient's acts
-// folded and told.
+// folded and told. Two scenes, the QA castle's script (rpg-project#639): the
+// fight at the gate, which brings nobody, and the troupe, which learns the
+// feast from the stranger round the corner, is let through, and opens the
+// gate on the far room.
 
 import (
 	"context"
@@ -187,6 +190,114 @@ func playTheGatehouse() []beat {
 	return beats
 }
 
+// The troupe scene's cells, dungeon-absolute: the floor south of the corner
+// wall, the cell behind it beside the stranger, and the cell under the gate.
+var (
+	besideTheCorner = spatial.Position{X: -7, Y: 8}
+	theCorner       = spatial.Position{X: -6, Y: 7}
+	beneathTheGate  = spatial.Position{X: -3, Y: 7}
+)
+
+// castleGate is the gate door's id, as the atlas's doorways name it.
+const castleGate = "the-mad-king/gate-wall-door"
+
+// playTheTroupe is the troupe route through the session seam: alice goes
+// round the corner and asks the stranger what the bustle is (15 against 5),
+// walks up to the captain and passes as the feast's players (15 against 13),
+// walks under the gate and opens it, and the far room's two guards arrive and
+// walk to the gate, civil.
+func playTheTroupe() []beat {
+	ctx := context.Background()
+	g := openTheGatehouse(12, 12, 15)
+	var beats []beat
+	play := func(label string, verb func() error) {
+		g.live.mu.Lock()
+		g.live.acts = nil
+		g.live.mu.Unlock()
+		if err := verb(); err != nil {
+			panic(fmt.Sprintf("%s: %v", label, err))
+		}
+		beats = append(beats, beat{label: label, acts: append([]session.Act(nil), g.live.acts...)})
+	}
+	// walk walks alice along a path of cells, each adjacent to the last, on
+	// the world clock, where a move carries no declaration.
+	walk := func(path []spatial.Position) error {
+		_, err := g.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: path})
+		return err
+	}
+	// toward walks alice by the pathfinder's way toward a cell, onto it when
+	// it is free.
+	toward := func(anchor func(*encounter.Encounter) spatial.Position, onto bool) error {
+		enc, err := g.mgr.LoadWorldForTest(ctx, "sess")
+		if err != nil {
+			return err
+		}
+		cell := anchor(enc)
+		route, err := enc.Route(encounter.RouteInput{Mover: "alice", Policy: encounter.MoveToward, Anchor: cell, Budget: 200})
+		if err != nil {
+			return err
+		}
+		path := route.Path
+		if onto && (len(path) == 0 || path[len(path)-1] != cell) {
+			path = append(path, cell)
+		}
+		return walk(path)
+	}
+	at := func(cell spatial.Position) func(*encounter.Encounter) spatial.Position {
+		return func(*encounter.Encounter) spatial.Position { return cell }
+	}
+	speak := func(target, option string) func() error {
+		return func() error {
+			_, err := g.mgr.Speak(ctx, &session.SpeakInput{Session: "sess", Member: "alice", Target: target, OptionID: option})
+			return err
+		}
+	}
+
+	play("alice goes round the corner", func() error {
+		if err := toward(at(besideTheCorner), true); err != nil {
+			return err
+		}
+		return walk([]spatial.Position{theCorner})
+	})
+	play("alice asks the stranger what the bustle is", speak("pedlar", "tonight"))
+	play("alice walks up to the captain", func() error {
+		return toward(func(enc *encounter.Encounter) spatial.Position { return standingAt(enc, "captain") }, false)
+	})
+	play("alice tells the captain they are the troupe", speak("captain", "troupe"))
+	play("alice walks under the gate", func() error { return toward(at(beneathTheGate), true) })
+	play("alice opens the gate", func() error {
+		_, err := g.mgr.OpenDoor(ctx, &session.OpenDoorInput{Session: "sess", Member: "alice", Door: castleGate})
+		return err
+	})
+	// A round on the world clock is six cells walked: out a cell and back,
+	// three times.
+	beside := spatial.Position{X: -4, Y: 7}
+	play("alice waits at the gate", func() error {
+		return walk([]spatial.Position{beside, beneathTheGate, beside, beneathTheGate, beside, beneathTheGate})
+	})
+	return beats
+}
+
+// Each scene is played once per test binary and shared by its test and its
+// Example: a scene is the whole castle's world turns through the seam, and
+// under -race each play is minutes of the package's budget.
+var (
+	gatehouseOnce, troupeOnce   sync.Once
+	gatehouseBeats, troupeBeats []beat
+)
+
+// theGatehouse is the gatehouse route's beats, played once.
+func theGatehouse() []beat {
+	gatehouseOnce.Do(func() { gatehouseBeats = playTheGatehouse() })
+	return gatehouseBeats
+}
+
+// theTroupe is the troupe route's beats, played once.
+func theTroupe() []beat {
+	troupeOnce.Do(func() { troupeBeats = playTheTroupe() })
+	return troupeBeats
+}
+
 // standingAt is where a member stands now.
 func standingAt(enc *encounter.Encounter, id encounter.MemberID) spatial.Position {
 	members, err := enc.Members()
@@ -205,7 +316,7 @@ func standingAt(enc *encounter.Encounter, id encounter.MemberID) spatial.Positio
 // for alice, into acts that each say what happened inside themselves. It
 // asserts what each act claims and never how many there are.
 func TestCastleActsTranscript(t *testing.T) {
-	beats := playTheGatehouse()
+	beats := theGatehouse()
 	cowed, recognized, closes, cut, ended, falls := beats[0], beats[1], beats[2], beats[3], beats[4], beats[5]
 
 	// THE LINE THAT LANDS: one speak act, its check and its answer inside.
@@ -269,15 +380,31 @@ func TestCastleActsTranscript(t *testing.T) {
 	ticks := where[session.ClockEntry](ended.to("alice"), func(c session.ClockEntry) bool { return c.Mark == session.ClockTick })
 	assert.NotEmpty(t, ticks)
 
+	// THE FIGHT BRINGS NOBODY (the QA castle's step 6, rpg-project#639): the
+	// gate shouts the alarm and alice hears it, and nobody arrives.
+	heard := where[session.Perception](ended.to("alice"), func(p session.Perception) bool {
+		return p.Sense == session.SenseHearing && p.Heard.Kind == "voice"
+	})
+	assert.NotEmpty(t, heard, "alice hears the gate shout")
+	for _, b := range beats {
+		arrived := where[session.ClockEntry](b.to("alice"), func(c session.ClockEntry) bool { return c.Mark == session.ClockArrived })
+		assert.Empty(t, arrived, "%s: nobody arrives", b.label)
+	}
+
 	// THE RETREAT: the captain's opportunity attack is a reaction under
-	// alice's walk's act, and the walk follows it.
+	// alice's walk's act, and the walk follows it. The walk comes in
+	// segments — round the corner wall alice sees new floor mid-walk — and
+	// every segment is the one act.
 	oa := only[session.AttackAct](t, falls.to("alice"))
 	assert.Equal(t, session.FamilyReaction, oa.act.Family)
 	require.NotNil(t, oa.body.Reaction)
 	assert.Equal(t, "Opportunity Attack", oa.body.Reaction.Name)
-	retreat := only[session.WalkAct](t, falls.to("alice"))
-	assert.Equal(t, oa.act.Act, retreat.act.Act)
-	assert.True(t, strings.HasPrefix(retreat.act.Act, "move:"), retreat.act.Act)
+	retreat := where[session.WalkAct](falls.to("alice"), func(session.WalkAct) bool { return true })
+	require.NotEmpty(t, retreat)
+	for _, segment := range retreat {
+		assert.Equal(t, oa.act.Act, segment.act.Act, "every segment of the walk is the opportunity attack's act")
+		assert.True(t, strings.HasPrefix(segment.act.Act, "move:"), segment.act.Act)
+	}
 
 	// EVERY RECIPIENT PERCEIVES ONLY AS ITSELF.
 	for _, b := range beats {
@@ -285,6 +412,74 @@ func TestCastleActsTranscript(t *testing.T) {
 			if p, ok := act.Body.(session.Perception); ok {
 				assert.Equal(t, act.Recipient, p.Observer.ID, "%s: a perception is its observer's", b.label)
 			}
+			assert.Empty(t, act.Undecoded, "%s: %s", b.label, act.Undecoded)
+		}
+	}
+}
+
+// TestCastleTroupeActsTranscript is the QA castle's troupe (rpg-project#639,
+// steps 2, 3 and 7): the stranger round the corner gives the feast, the
+// captain lets the troupe through, and opening the gate brings the far room,
+// civil. It asserts what each act claims and never how many there are.
+func TestCastleTroupeActsTranscript(t *testing.T) {
+	beats := theTroupe()
+	corner, stranger, troupe, gate, wait := beats[0], beats[1], beats[3], beats[5], beats[6]
+
+	// ROUND THE CORNER: alice drops out of the gate's sight.
+	lost := map[string]bool{}
+	for _, p := range where[session.Perception](corner.to("alice"), func(p session.Perception) bool { return p.Sense == session.SenseSight }) {
+		for _, who := range p.body.Sighted.Lost {
+			lost[who] = true
+		}
+	}
+	for _, id := range []string{"captain", "gate-1", "gate-2"} {
+		assert.True(t, lost[id], "behind the corner alice loses sight of %s", id)
+	}
+
+	// THE STRANGER'S LINE: one speak act, its check and the feast inside.
+	asked := only[session.SpeakAct](t, stranger.to("alice"))
+	assert.Equal(t, "pedlar", asked.body.To.ID)
+	assert.Equal(t, "tonight", asked.body.Option)
+	require.NotNil(t, asked.body.Roll)
+	assert.Equal(t, 5, *asked.body.Roll.Against)
+	assert.True(t, *asked.body.Roll.Beaten)
+	require.NotNil(t, asked.body.Answer)
+	assert.Equal(t, "Feast for the whole court tonight — they’ll want players.", asked.body.Answer.Say)
+
+	// THE TROUPE: the captain's line passes and nothing turns.
+	passed := only[session.SpeakAct](t, troupe.to("alice"))
+	assert.Equal(t, "troupe", passed.body.Option)
+	assert.True(t, *passed.body.Roll.Beaten)
+	require.NotNil(t, passed.body.Answer)
+	assert.Equal(t, "Through to the hall, then. Don’t dawdle.", passed.body.Answer.Say)
+	assert.Empty(t, where[session.StateChange](troupe.to("alice"), func(c session.StateChange) bool { return c.Change == session.StateStance }))
+
+	// THE GATE: alice opens it, and the far room arrives under the door's
+	// own act.
+	door := only[session.DoorAct](t, gate.to("alice"))
+	assert.Equal(t, "alice", door.body.By.ID)
+	assert.Equal(t, castleGate, door.body.Door)
+	assert.Equal(t, "open", door.body.State)
+	arrived := map[string]bool{}
+	for _, a := range where[session.ClockEntry](gate.to("alice"), func(c session.ClockEntry) bool { return c.Mark == session.ClockArrived }) {
+		arrived[a.body.Arrival.ID] = true
+		assert.Equal(t, door.act.Act, a.act.Act, "%s arrives under the door's act", a.body.Arrival.ID)
+	}
+	assert.True(t, arrived["reserve-1"], "reserve-1 arrives")
+	assert.True(t, arrived["reserve-2"], "reserve-2 arrives")
+
+	// THE FAR ROOM WALKS TO THE GATE, CIVIL: both walk, nobody turns and no
+	// fight forms.
+	for _, id := range []string{"reserve-1", "reserve-2"} {
+		walks := where[session.WalkAct](wait.to("alice"), func(w session.WalkAct) bool { return w.Mover.ID == id })
+		assert.NotEmpty(t, walks, "%s walks toward the gate", id)
+	}
+	for _, b := range beats {
+		assert.Empty(t, where[session.StateChange](b.to("alice"), func(c session.StateChange) bool { return c.Change == session.StateStance }),
+			"%s: nobody turns", b.label)
+		assert.Empty(t, where[session.ClockEntry](b.to("alice"), func(c session.ClockEntry) bool { return c.Mark == session.ClockFightFormed }),
+			"%s: no fight forms", b.label)
+		for _, act := range b.acts {
 			assert.Empty(t, act.Undecoded, "%s: %s", b.label, act.Undecoded)
 		}
 	}
@@ -377,6 +572,14 @@ func describe(body session.ActBody) string {
 			s += fmt.Sprintf("; %s answers %q", b.Answer.Who.ID, b.Answer.Say)
 		}
 		return s
+	case session.DoorAct:
+		s := fmt.Sprintf("%s's door %s is %s", b.By.ID, b.Door, b.State)
+		if b.Roll != nil {
+			s += ", " + roll(b.Roll)
+		}
+		return s
+	case session.SneakAct:
+		return fmt.Sprintf("%s sneaks past %s: %s", b.By.ID, b.Watcher.ID, roll(b.Roll))
 	case session.StayAct:
 		return fmt.Sprintf("%s stays: %s", b.Member.ID, b.Why)
 	case session.TableAnswer:
@@ -435,7 +638,7 @@ func describe(body session.ActBody) string {
 // Example_theGatehouseActs is the castle's gatehouse as alice receives it:
 // each verb of the route, and the acts it folded for her.
 func Example_theGatehouseActs() {
-	for _, b := range playTheGatehouse() {
+	for _, b := range theGatehouse() {
 		fmt.Println("-- " + b.label + " --")
 		for _, act := range b.to("alice") {
 			fmt.Println(strings.TrimRight(tell(act), " "))
@@ -449,9 +652,15 @@ func Example_theGatehouseActs() {
 	// time         table_answer captain answers time with "hold", no roll
 	// time         table_answer cook answers time with "hold", rolled 1 of 100
 	// time         table_answer gate-1 answers time with "toward", rolled 1 of 50
-	// move         act 1        gate-1 walks (-7,9)
+	// move         act 1        gate-1 walks (-6,9) (-5,8)
+	// time         table_answer gate-1 answers time with "toward", rolled 1 of 50
+	// pass         act 1        gate-1 stays: standing at its waypoint
 	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
-	// move         act 1        gate-2 walks (-2,9) (-1,9)
+	// move         act 1        gate-2 walks (-2,10)
+	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
+	// move         act 1        gate-2 walks (-2,9) (-2,8)
+	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
+	// pass         act 1        gate-2 stays: standing at its waypoint
 	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
 	// move         act 1        hall-1 walks (13,-11) (12,-11) (11,-11) (10,-11) (9,-11) (8,-11)
 	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
@@ -469,6 +678,7 @@ func Example_theGatehouseActs() {
 	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (15,-21) (14,-21)
 	// time         table_answer king answers time with "hold", rolled 1 of 50
+	// time         table_answer pedlar answers time with "hold", rolled 1 of 100
 	// time         table_answer prisoner-1 answers time with "hold", rolled 1 of 100
 	// time         table_answer prisoner-2 answers time with "hold", rolled 1 of 100
 	// time         table_answer prisoner-3 answers time with "hold", rolled 1 of 100
@@ -483,25 +693,22 @@ func Example_theGatehouseActs() {
 	// speak        table_answer captain answers failure with "fact", rolled 1 of 100
 	// speak        perception   alice hears voice
 	// -- alice closes on gate-1 --
-	// move         act 1        alice walks (-6,11) (-7,11) (-7,10)
+	// move         act 1        alice walks (-5,10) (-5,9)
 	// -- alice cuts gate-1 down --
 	// attack       act 1        alice swings Longsword at gate-1: hit, rolled 1d20+5 = 20, beat 13, 4 damage
 	// attack       state        gate-1 is down (monster)
 	// attack       perception   alice sees [], loses [], sees [gate-1] change
 	// -- alice ends her turn --
 	// end_turn     clock        alice's turn ends, captain's begins
-	// time         table_answer captain answers time with "toward", rolled 1 of 50
-	// move         act 1        captain walks (-5,8) (-6,9)
 	// time         table_answer captain answers time with "attack", rolled 1 of 50
 	// attack       act 1        captain swings Longsword at alice: hit, rolled 1d20+5 = 20, beat 12, 3 damage
 	// attack       perception   alice hears clang
+	// attack       perception   alice sees [], loses [], sees [captain] change
 	// time         table_answer captain answers time with "toward", rolled 1 of 50
 	// pass         act 1        captain stays: already in reach
 	// end_turn     clock        captain's turn ends, gate-2's begins
 	// time         table_answer gate-2 answers time with "fact", rolled 1 of 200
 	// time         perception   alice hears voice
-	// time         clock        reserve-1 arrives (monster)
-	// time         clock        reserve-2 arrives (monster)
 	// end_turn     clock        gate-2's turn ends, alice's begins
 	// end_turn     clock        tick 2
 	// time         table_answer cook answers time with "hold", rolled 1 of 100
@@ -520,19 +727,256 @@ func Example_theGatehouseActs() {
 	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (16,-20)
 	// time         table_answer king answers time with "hold", rolled 1 of 50
+	// time         table_answer pedlar answers time with "hold", rolled 1 of 100
 	// time         table_answer prisoner-1 answers time with "hold", rolled 1 of 100
 	// time         table_answer prisoner-2 answers time with "hold", rolled 1 of 100
 	// time         table_answer prisoner-3 answers time with "hold", rolled 1 of 100
 	// time         table_answer prisoner-4 answers time with "hold", rolled 1 of 100
-	// time         table_answer reserve-1 answers time with "toward", rolled 1 of 300
-	// move         act 1        reserve-1 walks (-19,-1) (-18,-2) (-17,-3) (-16,-4) (-15,-5) (-14,-6)
-	// time         table_answer reserve-2 answers time with "toward", rolled 1 of 300
-	// move         act 1        reserve-2 walks (-19,3) (-18,2) (-17,1) (-16,0) (-15,-1) (-14,-2)
 	// time         table_answer scullion answers time with "hold", rolled 1 of 100
 	// time         table_answer sergeant answers time with "hold", rolled 1 of 100
 	// time         table_answer turnkey answers time with "hold", rolled 1 of 100
 	// -- alice falls back past the captain --
 	// move         reaction     captain swings Longsword at alice: hit, rolled 1d20+5 = 20, beat 12, 3 damage (Opportunity Attack)
 	// move         perception   alice hears clang
-	// move         act 1        alice walks (-8,10) (-9,11)
+	// move         act 1        alice walks (-6,9) (-7,9)
+	// move         perception   alice learns 1 region(s)
+	// move         act 2        alice walks (-7,9) (-8,10)
+}
+
+// Example_theTroupeActs is the castle's troupe as alice receives it: each
+// verb of the route, and the acts it folded for her.
+func Example_theTroupeActs() {
+	for _, b := range theTroupe() {
+		fmt.Println("-- " + b.label + " --")
+		for _, act := range b.to("alice") {
+			fmt.Println(strings.TrimRight(tell(act), " "))
+		}
+	}
+	// Output:
+	// -- alice goes round the corner --
+	// move         act 1        alice walks (-6,11) (-7,11)
+	// move         perception   alice learns 1 region(s)
+	// move         act 2        alice walks (-7,11) (-7,10) (-7,9) (-7,8)
+	// move         act 1        alice walks (-6,7)
+	// move         clock        tick 1
+	// time         table_answer captain answers time with "hold", no roll
+	// time         table_answer cook answers time with "hold", rolled 1 of 100
+	// time         table_answer gate-1 answers time with "toward", rolled 1 of 50
+	// move         act 1        gate-1 walks (-6,9) (-5,8)
+	// time         table_answer gate-1 answers time with "toward", rolled 1 of 50
+	// pass         act 1        gate-1 stays: standing at its waypoint
+	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
+	// move         act 1        gate-2 walks (-2,10)
+	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
+	// move         act 1        gate-2 walks (-2,9) (-2,8)
+	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
+	// pass         act 1        gate-2 stays: standing at its waypoint
+	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
+	// move         act 1        hall-1 walks (13,-11) (12,-11) (11,-11) (10,-11) (9,-11) (8,-11)
+	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-1 walks (7,-19)
+	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-1 walks (7,-20) (7,-21)
+	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-1 walks (6,-21) (5,-21)
+	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-1 walks (5,-20)
+	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-2 walks (15,-19) (16,-19)
+	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-2 walks (16,-20) (16,-21)
+	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-2 walks (15,-21) (14,-21)
+	// time         table_answer king answers time with "hold", rolled 1 of 50
+	// time         table_answer pedlar answers time with "hold", rolled 1 of 100
+	// time         table_answer prisoner-1 answers time with "hold", rolled 1 of 100
+	// time         table_answer prisoner-2 answers time with "hold", rolled 1 of 100
+	// time         table_answer prisoner-3 answers time with "hold", rolled 1 of 100
+	// time         table_answer prisoner-4 answers time with "hold", rolled 1 of 100
+	// time         table_answer scullion answers time with "hold", rolled 1 of 100
+	// time         table_answer sergeant answers time with "hold", rolled 1 of 100
+	// time         table_answer turnkey answers time with "hold", rolled 1 of 100
+	// move         perception   alice sees [], loses [captain gate-1 gate-2], sees [] change
+	// -- alice asks the stranger what the bustle is --
+	// speak        act 1        alice to pedlar, "tonight" (persuasion): rolled 1d20+3 = 15, beat 5; pedlar answers "Feast for the whole court tonight — they’ll want players."
+	// speak        perception   alice hears voice
+	// speak        clock        tick 2
+	// time         table_answer captain answers time with "hold", no roll
+	// time         table_answer cook answers time with "hold", rolled 1 of 100
+	// time         table_answer gate-1 answers time with "toward", rolled 1 of 50
+	// pass         act 1        gate-1 stays: standing at its waypoint
+	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
+	// pass         act 1        gate-2 stays: standing at its waypoint
+	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
+	// move         act 1        hall-1 walks (7,-11) (6,-11) (6,-12)
+	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-1 walks (4,-19)
+	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-1 walks (5,-19) (6,-19) (7,-19)
+	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-1 walks (7,-20) (7,-21)
+	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-2 walks (14,-20) (13,-19)
+	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-2 walks (14,-19) (15,-19) (16,-19)
+	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-2 walks (16,-20)
+	// time         table_answer king answers time with "hold", rolled 1 of 50
+	// time         table_answer pedlar answers time with "hold", rolled 1 of 100
+	// time         table_answer prisoner-1 answers time with "hold", rolled 1 of 100
+	// time         table_answer prisoner-2 answers time with "hold", rolled 1 of 100
+	// time         table_answer prisoner-3 answers time with "hold", rolled 1 of 100
+	// time         table_answer prisoner-4 answers time with "hold", rolled 1 of 100
+	// time         table_answer scullion answers time with "hold", rolled 1 of 100
+	// time         table_answer sergeant answers time with "hold", rolled 1 of 100
+	// time         table_answer turnkey answers time with "hold", rolled 1 of 100
+	// -- alice walks up to the captain --
+	// move         act 1        alice walks (-7,8)
+	// move         perception   alice sees [captain gate-1 gate-2], loses [], sees [] change
+	// move         act 2        alice walks (-7,8) (-7,9) (-6,9) (-5,9)
+	// -- alice tells the captain they are the troupe --
+	// speak        act 1        alice to captain, "troupe" (performance): rolled 1d20+3 = 15, beat 13; captain answers "Through to the hall, then. Don’t dawdle."
+	// speak        perception   alice hears voice
+	// speak        clock        tick 3
+	// time         table_answer captain answers time with "hold", no roll
+	// time         table_answer cook answers time with "hold", rolled 1 of 100
+	// time         table_answer gate-1 answers time with "toward", rolled 1 of 50
+	// move         act 1        gate-1 walks (-5,9) (-5,10)
+	// time         table_answer gate-1 answers time with "toward", rolled 1 of 50
+	// pass         act 1        gate-1 stays: standing at its waypoint
+	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
+	// move         act 1        gate-2 walks (-3,9) (-4,10)
+	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
+	// pass         act 1        gate-2 stays: standing at its waypoint
+	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
+	// move         act 1        hall-1 walks (6,-13) (6,-14) (6,-15)
+	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
+	// move         act 1        hall-1 walks (5,-15) (4,-15) (3,-15)
+	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-1 walks (6,-21) (5,-21)
+	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-1 walks (5,-20) (4,-19)
+	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-1 walks (5,-19) (6,-19)
+	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-2 walks (16,-21)
+	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-2 walks (15,-21) (14,-21)
+	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-2 walks (14,-20) (13,-19)
+	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-2 walks (14,-19)
+	// time         table_answer king answers time with "hold", rolled 1 of 50
+	// time         table_answer pedlar answers time with "hold", rolled 1 of 100
+	// time         table_answer prisoner-1 answers time with "hold", rolled 1 of 100
+	// time         table_answer prisoner-2 answers time with "hold", rolled 1 of 100
+	// time         table_answer prisoner-3 answers time with "hold", rolled 1 of 100
+	// time         table_answer prisoner-4 answers time with "hold", rolled 1 of 100
+	// time         table_answer scullion answers time with "hold", rolled 1 of 100
+	// time         table_answer sergeant answers time with "hold", rolled 1 of 100
+	// time         table_answer turnkey answers time with "hold", rolled 1 of 100
+	// -- alice walks under the gate --
+	// move         act 1        alice walks (-5,8) (-4,7)
+	// move         clock        tick 4
+	// time         table_answer captain answers time with "hold", no roll
+	// time         table_answer cook answers time with "hold", rolled 1 of 100
+	// time         table_answer gate-1 answers time with "toward", rolled 1 of 50
+	// pass         act 1        gate-1 stays: standing at its waypoint
+	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
+	// pass         act 1        gate-2 stays: standing at its waypoint
+	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
+	// move         act 1        hall-1 walks (2,-15) (1,-15)
+	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
+	// move         act 1        hall-1 walks (0,-14) (-1,-13) (-2,-12)
+	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
+	// move         act 1        hall-1 walks (-1,-12)
+	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-1 walks (7,-19)
+	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-1 walks (7,-20) (7,-21)
+	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-1 walks (6,-21) (5,-21)
+	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-1 walks (5,-20)
+	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-2 walks (15,-19) (16,-19)
+	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-2 walks (16,-20) (16,-21)
+	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-2 walks (15,-21) (14,-21)
+	// time         table_answer king answers time with "hold", rolled 1 of 50
+	// time         table_answer pedlar answers time with "hold", rolled 1 of 100
+	// time         table_answer prisoner-1 answers time with "hold", rolled 1 of 100
+	// time         table_answer prisoner-2 answers time with "hold", rolled 1 of 100
+	// time         table_answer prisoner-3 answers time with "hold", rolled 1 of 100
+	// time         table_answer prisoner-4 answers time with "hold", rolled 1 of 100
+	// time         table_answer scullion answers time with "hold", rolled 1 of 100
+	// time         table_answer sergeant answers time with "hold", rolled 1 of 100
+	// time         table_answer turnkey answers time with "hold", rolled 1 of 100
+	// move         perception   alice sees [], loses [pedlar], sees [] change
+	// move         act 2        alice walks (-4,7) (-3,7)
+	// -- alice opens the gate --
+	// open_door    act 1        alice's door the-mad-king/gate-wall-door is open
+	// open_door    clock        reserve-1 arrives (monster)
+	// open_door    table_answer reserve-1 is dealt "coward", rolled 1 of 3
+	// open_door    clock        reserve-2 arrives (monster)
+	// open_door    table_answer reserve-2 is dealt "coward", rolled 1 of 3
+	// open_door    perception   alice learns 1 region(s)
+	// open_door    perception   alice sees [reserve-1 reserve-2 sergeant turnkey], loses [], sees [] change
+	// -- alice waits at the gate --
+	// move         act 1        alice walks (-4,7)
+	// move         perception   alice learns 1 region(s)
+	// move         perception   alice sees [], loses [reserve-1 reserve-2 sergeant turnkey], sees [] change
+	// move         act 2        alice walks (-4,7) (-3,7)
+	// move         perception   alice sees [reserve-1 reserve-2 sergeant turnkey], loses [], sees [] change
+	// move         act 3        alice walks (-3,7) (-4,7)
+	// move         perception   alice sees [], loses [reserve-1 reserve-2 sergeant turnkey], sees [] change
+	// move         act 4        alice walks (-4,7) (-3,7)
+	// move         perception   alice sees [reserve-1 reserve-2 sergeant turnkey], loses [], sees [] change
+	// move         act 5        alice walks (-3,7) (-4,7)
+	// move         clock        tick 5
+	// time         table_answer captain answers time with "hold", no roll
+	// time         table_answer cook answers time with "hold", rolled 1 of 100
+	// time         table_answer gate-1 answers time with "toward", rolled 1 of 50
+	// move         act 1        gate-1 walks (-6,10) (-7,10)
+	// time         table_answer gate-1 answers time with "toward", rolled 1 of 50
+	// move         act 1        gate-1 walks (-6,9) (-5,8)
+	// time         table_answer gate-1 answers time with "toward", rolled 1 of 50
+	// pass         act 1        gate-1 stays: standing at its waypoint
+	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
+	// move         act 1        gate-2 walks (-3,10) (-2,10)
+	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
+	// move         act 1        gate-2 walks (-2,9) (-2,8)
+	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
+	// pass         act 1        gate-2 stays: standing at its waypoint
+	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
+	// move         act 1        hall-1 walks (0,-12) (1,-12) (2,-12) (3,-12) (4,-12) (5,-12)
+	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-1 walks (4,-19)
+	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-1 walks (5,-19) (6,-19) (7,-19)
+	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-1 walks (7,-20) (7,-21)
+	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-2 walks (14,-20) (13,-19)
+	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-2 walks (14,-19) (15,-19) (16,-19)
+	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// move         act 1        keep-2 walks (16,-20)
+	// time         table_answer king answers time with "hold", rolled 1 of 50
+	// time         table_answer pedlar answers time with "hold", rolled 1 of 100
+	// time         table_answer prisoner-1 answers time with "hold", rolled 1 of 100
+	// time         table_answer prisoner-2 answers time with "hold", rolled 1 of 100
+	// time         table_answer prisoner-3 answers time with "hold", rolled 1 of 100
+	// time         table_answer prisoner-4 answers time with "hold", rolled 1 of 100
+	// time         table_answer reserve-1 answers time with "toward", rolled 1 of 50
+	// move         act 1        reserve-1 walks (-20,1) (-20,2) (-20,3) (-20,4) (-19,4) (-18,4)
+	// time         table_answer reserve-2 answers time with "toward", rolled 1 of 50
+	// move         act 1        reserve-2 walks (-19,4) (-18,4) (-17,4) (-16,4) (-15,4) (-14,4)
+	// time         table_answer scullion answers time with "hold", rolled 1 of 100
+	// time         table_answer sergeant answers time with "hold", rolled 1 of 100
+	// time         table_answer turnkey answers time with "hold", rolled 1 of 100
+	// move         perception   alice sees [], loses [reserve-1 reserve-2 sergeant turnkey], sees [] change
+	// move         act 6        alice walks (-4,7) (-3,7)
+	// move         perception   alice sees [reserve-1 reserve-2 sergeant turnkey], loses [], sees [] change
 }
